@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "protocol": "siligen.application/1.0",
+  "definitions": {
+    "requestEnvelope": {
+      "type": "object",
+      "required": ["id", "method"],
+      "properties": {
+        "id": { "type": "string" },
+        "method": { "type": "string" },
+        "params": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "successEnvelope": {
+      "type": "object",
+      "required": ["id", "version", "success", "result"],
+      "properties": {
+        "id": { "type": "string" },
+        "version": { "type": "string", "const": "1.0" },
+        "success": { "type": "boolean", "const": true },
+        "result": {}
+      },
+      "additionalProperties": false
+    },
+    "errorEnvelope": {
+      "type": "object",
+      "required": ["id", "version", "success", "error"],
+      "properties": {
+        "id": { "type": "string" },
+        "version": { "type": "string", "const": "1.0" },
+        "success": { "type": "boolean", "const": false },
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "type": "integer" },
+            "message": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "eventEnvelope": {
+      "type": "object",
+      "required": ["version", "event", "data"],
+      "properties": {
+        "version": { "type": "string", "const": "1.0" },
+        "event": { "type": "string" },
+        "data": {}
+      },
+      "additionalProperties": false
+    }
+  }
+}

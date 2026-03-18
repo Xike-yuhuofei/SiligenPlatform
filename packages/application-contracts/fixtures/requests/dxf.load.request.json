@@ -1,0 +1,7 @@
+{
+  "id": "2",
+  "method": "dxf.load",
+  "params": {
+    "filepath": "D:/data/sample.dxf"
+  }
+}

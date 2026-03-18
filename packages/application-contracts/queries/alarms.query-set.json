@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "protocol": "siligen.application/1.0",
+  "group": "alarms",
+  "operations": [
+    {
+      "method": "alarms.list",
+      "kind": "query",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["alarms"],
+        "properties": {
+          "alarms": { "type": "array" }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [],
+      "consumers": [
+        "hmi-client CommandProtocol.get_alarms"
+      ]
+    },
+    {
+      "method": "alarms.clear",
+      "kind": "query-like-command",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [],
+      "consumers": [
+        "hmi-client CommandProtocol.clear_alarms"
+      ]
+    },
+    {
+      "method": "alarms.acknowledge",
+      "kind": "query-like-command",
+      "paramsSchema": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [3201],
+      "consumers": [
+        "hmi-client CommandProtocol.acknowledge_alarm"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "id": "6",
+  "method": "recipe.import",
+  "params": {
+    "bundleJson": "{\"recipes\":[]}",
+    "resolution": "rename",
+    "dryRun": true,
+    "actor": "tester"
+  }
+}

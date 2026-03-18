@@ -1,0 +1,11 @@
+{
+  "id": "3",
+  "method": "dxf.execute",
+  "params": {
+    "dry_run": false,
+    "dispensing_speed_mm_s": 12.5,
+    "velocity_trace_enabled": true,
+    "velocity_trace_interval_ms": 20,
+    "velocity_trace_path": "D:/logs/trace.csv"
+  }
+}

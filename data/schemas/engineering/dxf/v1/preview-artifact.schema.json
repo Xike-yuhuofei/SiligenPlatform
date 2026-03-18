@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://siligensuite.local/contracts/engineering/v1/preview-artifact.schema.json",
+  "title": "DXF Preview Artifact",
+  "description": "Canonical JSON returned by dxf-pipeline generate_preview --json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "preview_path",
+    "entity_count",
+    "segment_count",
+    "point_count",
+    "total_length_mm",
+    "estimated_time_s",
+    "width_mm",
+    "height_mm"
+  ],
+  "properties": {
+    "preview_path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Absolute or consumer-resolvable path to the generated preview HTML."
+    },
+    "entity_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "segment_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "point_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "total_length_mm": {
+      "type": "number",
+      "minimum": 0
+    },
+    "estimated_time_s": {
+      "type": "number",
+      "minimum": 0
+    },
+    "width_mm": {
+      "type": "number",
+      "minimum": 0
+    },
+    "height_mm": {
+      "type": "number",
+      "minimum": 0
+    }
+  }
+}

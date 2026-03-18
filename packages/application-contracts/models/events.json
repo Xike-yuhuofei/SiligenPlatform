@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "protocol": "siligen.application/1.0",
+  "eventEnvelopeRef": "../models/common.json#/definitions/eventEnvelope",
+  "currentFacts": {
+    "eventEnvelopeImplemented": true,
+    "concreteDomainEventsRegisteredInTcpDispatcher": [],
+    "note": "当前代码中只发现通用 event envelope 构造器，未发现已注册、对外稳定发布的具体事件名。"
+  }
+}

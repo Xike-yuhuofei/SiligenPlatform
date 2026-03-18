@@ -1,0 +1,192 @@
+{
+  "schema_version": "scheme_c.recording.v1",
+  "session_status": "completed",
+  "runtime_bridge": {
+    "owner": "packages/simulation-engine/runtime-bridge",
+    "next_integration_point": "",
+    "process_runtime_core_linked": false,
+    "follow_up_seams": [],
+    "mode": "seam_stub"
+  },
+  "bridge_bindings": {
+    "axis_bindings": [
+      {
+        "logical_axis_index": 0,
+        "axis_name": "X"
+      }
+    ],
+    "io_bindings": [
+      {
+        "channel": 0,
+        "signal_name": "DO_VALVE",
+        "output": true
+      }
+    ]
+  },
+  "recording": {
+    "ticks_executed": 1,
+    "simulated_time_ns": 1000000,
+    "motion_profile": [
+      {
+        "tick": {
+          "tick_index": 0,
+          "time_ns": 0,
+          "step_ns": 1000000
+        },
+        "axis": "X",
+        "position_mm": 0.0,
+        "velocity_mm_per_s": 0.0,
+        "running": false,
+        "done": true,
+        "homed": true,
+        "has_error": false,
+        "error_code": 0
+      }
+    ],
+    "trace": [
+      {
+        "tick": {
+          "tick_index": 0,
+          "time_ns": 0,
+          "step_ns": 1000000
+        },
+        "scope": "axis",
+        "subject": "X",
+        "field": "homed",
+        "previous_value": "false",
+        "current_value": "true"
+      }
+    ],
+    "timeline": [
+      {
+        "tick": {
+          "tick_index": 0,
+          "time_ns": 0,
+          "step_ns": 1000000
+        },
+        "kind": "event",
+        "source": "RuntimeBridge",
+        "subject": "",
+        "field": "",
+        "previous_value": "",
+        "current_value": "",
+        "message": "initialized"
+      },
+      {
+        "tick": {
+          "tick_index": 0,
+          "time_ns": 0,
+          "step_ns": 1000000
+        },
+        "kind": "state_change",
+        "source": "axis",
+        "subject": "X",
+        "field": "homed",
+        "previous_value": "false",
+        "current_value": "true",
+        "message": ""
+      }
+    ],
+    "summary": {
+      "terminal_state": "completed",
+      "termination_reason": "bridge_completed",
+      "ticks_executed": 1,
+      "simulated_time_ns": 1000000,
+      "snapshot_count": 1,
+      "event_count": 1,
+      "trace_count": 1,
+      "timeline_count": 2,
+      "motion_sample_count": 1,
+      "axis_count": 1,
+      "io_count": 1,
+      "empty_timeline": false,
+      "has_error": false
+    },
+    "snapshots": [
+      {
+        "tick": {
+          "tick_index": 0,
+          "time_ns": 0,
+          "step_ns": 1000000
+        },
+        "axes": [
+          {
+            "axis": "X",
+            "position_mm": 0.0,
+            "velocity_mm_per_s": 0.0,
+            "configured_velocity_mm_per_s": 0.0,
+            "configured_acceleration_mm_per_s2": 0.0,
+            "soft_limit_negative_mm": 0.0,
+            "soft_limit_positive_mm": 0.0,
+            "enabled": false,
+            "homed": true,
+            "home_signal": false,
+            "index_signal": false,
+            "positive_soft_limit": false,
+            "negative_soft_limit": false,
+            "positive_hard_limit": false,
+            "negative_hard_limit": false,
+            "positive_hard_limit_enabled": true,
+            "negative_hard_limit_enabled": true,
+            "servo_alarm": false,
+            "has_error": false,
+            "error_code": 0,
+            "running": false,
+            "done": true
+          }
+        ],
+        "io": [
+          {
+            "channel": "DO_VALVE",
+            "value": false,
+            "output": true
+          }
+        ]
+      }
+    ],
+    "events": [
+      {
+        "tick": {
+          "tick_index": 0,
+          "time_ns": 0,
+          "step_ns": 1000000
+        },
+        "source": "RuntimeBridge",
+        "message": "initialized"
+      }
+    ],
+    "final_axes": [
+      {
+        "axis": "X",
+        "position_mm": 0.0,
+        "velocity_mm_per_s": 0.0,
+        "configured_velocity_mm_per_s": 0.0,
+        "configured_acceleration_mm_per_s2": 0.0,
+        "soft_limit_negative_mm": 0.0,
+        "soft_limit_positive_mm": 0.0,
+        "enabled": false,
+        "homed": true,
+        "home_signal": false,
+        "index_signal": false,
+        "positive_soft_limit": false,
+        "negative_soft_limit": false,
+        "positive_hard_limit": false,
+        "negative_hard_limit": false,
+        "positive_hard_limit_enabled": true,
+        "negative_hard_limit_enabled": true,
+        "servo_alarm": false,
+        "has_error": false,
+        "error_code": 0,
+        "running": false,
+        "done": true
+      }
+    ],
+    "final_io": [
+      {
+        "channel": "DO_VALVE",
+        "value": false,
+        "output": true
+      }
+    ]
+  }
+}

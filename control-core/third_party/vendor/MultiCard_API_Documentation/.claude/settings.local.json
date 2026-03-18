@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tree:*)",
+      "Read(//d/GoogleDrive/Project/Dispenser/Backend_CPP_x86_v1.1/docs/**)",
+      "Bash(for:*)",
+      "Bash(done:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

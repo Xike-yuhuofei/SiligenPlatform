@@ -1,0 +1,26 @@
+{
+    "schemaVersion": "1.0",
+    "version": {
+        "createdAt": 1769378975042,
+        "createdBy": "tester",
+        "id": "version-fea9ce29-f963",
+        "parameters": [
+            {
+                "key": "dispense_speed",
+                "value": 120.0
+            },
+            {
+                "key": "dispense_pressure",
+                "value": 220.0
+            },
+            {
+                "key": "material_type",
+                "value": "epoxy"
+            }
+        ],
+        "publishedAt": 1769379274475,
+        "recipeId": "recipe-7d1b00f4-6a99",
+        "status": "published",
+        "versionLabel": "v1"
+    }
+}

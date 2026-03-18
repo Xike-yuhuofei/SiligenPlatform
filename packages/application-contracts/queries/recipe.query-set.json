@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "protocol": "siligen.application/1.0",
+  "group": "recipe",
+  "operations": [
+    {
+      "method": "recipe.list",
+      "kind": "query",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string" },
+          "query": { "type": "string" },
+          "tag": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["recipes"],
+        "properties": {
+          "recipes": { "type": "array" }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [3300, 3301],
+      "consumers": [
+        "hmi-client CommandProtocol.recipe_list",
+        "Backend_CPP CLI RECIPE_LIST"
+      ]
+    },
+    {
+      "method": "recipe.get",
+      "kind": "query",
+      "paramsSchema": {
+        "type": "object",
+        "required": ["recipeId"],
+        "properties": {
+          "recipeId": { "type": "string" },
+          "recipe_id": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "resultRef": "../models/states.json#/definitions/recipe",
+      "resultWrapperField": "recipe",
+      "errorCodes": [3310, 3311, 3312],
+      "compatibility": {
+        "requestAliases": [
+          { "canonical": "recipeId", "accepted": ["recipeId", "recipe_id"] }
+        ]
+      },
+      "consumers": [
+        "hmi-client CommandProtocol.recipe_get",
+        "Backend_CPP CLI RECIPE_GET"
+      ]
+    },
+    {
+      "method": "recipe.templates",
+      "kind": "query",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["templates"],
+        "properties": {
+          "templates": { "type": "array" }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [3420, 3421],
+      "consumers": [
+        "hmi-client CommandProtocol.recipe_templates"
+      ]
+    },
+    {
+      "method": "recipe.schema.default",
+      "kind": "query",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "resultRef": "../models/states.json#/definitions/parameterSchema",
+      "resultWrapperField": "schema",
+      "errorCodes": [3430, 3431],
+      "consumers": [
+        "hmi-client CommandProtocol.recipe_schema_default"
+      ]
+    },
+    {
+      "method": "recipe.versions",
+      "kind": "query",
+      "paramsSchema": {
+        "type": "object",
+        "required": ["recipeId"],
+        "properties": {
+          "recipeId": { "type": "string" },
+          "recipe_id": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["versions"],
+        "properties": {
+          "versions": { "type": "array" }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [3380, 3381, 3382],
+      "compatibility": {
+        "requestAliases": [
+          { "canonical": "recipeId", "accepted": ["recipeId", "recipe_id"] }
+        ]
+      },
+      "consumers": [
+        "hmi-client CommandProtocol.recipe_versions",
+        "Backend_CPP CLI RECIPE_LIST_VERSIONS"
+      ]
+    },
+    {
+      "method": "recipe.version.compare",
+      "kind": "query",
+      "paramsSchema": {
+        "type": "object",
+        "required": ["recipeId", "baseVersionId", "versionId"],
+        "properties": {
+          "recipeId": { "type": "string" },
+          "recipe_id": { "type": "string" },
+          "baseVersionId": { "type": "string" },
+          "base_version_id": { "type": "string" },
+          "versionId": { "type": "string" },
+          "version_id": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["changes"],
+        "properties": {
+          "changes": { "type": "array" }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [3400, 3401, 3402],
+      "compatibility": {
+        "requestAliases": [
+          { "canonical": "recipeId", "accepted": ["recipeId", "recipe_id"] },
+          { "canonical": "baseVersionId", "accepted": ["baseVersionId", "base_version_id"] },
+          { "canonical": "versionId", "accepted": ["versionId", "version_id"] }
+        ]
+      },
+      "consumers": [
+        "hmi-client CommandProtocol.recipe_compare",
+        "Backend_CPP CLI RECIPE_VERSION_COMPARE"
+      ]
+    },
+    {
+      "method": "recipe.audit",
+      "kind": "query",
+      "paramsSchema": {
+        "type": "object",
+        "required": ["recipeId"],
+        "properties": {
+          "recipeId": { "type": "string" },
+          "recipe_id": { "type": "string" },
+          "versionId": { "type": "string" },
+          "version_id": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["records"],
+        "properties": {
+          "records": { "type": "array" }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [3440, 3441, 3442],
+      "compatibility": {
+        "requestAliases": [
+          { "canonical": "recipeId", "accepted": ["recipeId", "recipe_id"] },
+          { "canonical": "versionId", "accepted": ["versionId", "version_id"] }
+        ]
+      },
+      "consumers": [
+        "hmi-client CommandProtocol.recipe_audit",
+        "Backend_CPP CLI RECIPE_AUDIT"
+      ]
+    }
+  ]
+}

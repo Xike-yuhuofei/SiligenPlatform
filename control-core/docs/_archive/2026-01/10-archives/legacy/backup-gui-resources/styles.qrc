@@ -1,0 +1,8 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/styles">
+        <file>styles/main.qss</file>
+        <file>styles/emergency.qss</file>
+        <file>styles/controls.qss</file>
+    </qresource>
+</RCC>

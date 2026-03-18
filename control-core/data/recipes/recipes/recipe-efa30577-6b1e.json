@@ -1,0 +1,15 @@
+{
+    "recipe": {
+        "createdAt": 1769377537517,
+        "description": "Demo",
+        "id": "recipe-efa30577-6b1e",
+        "name": "Demo Recipe_imported",
+        "status": "active",
+        "tags": [
+            "demo"
+        ],
+        "updatedAt": 1769377537517,
+        "versionIds": []
+    },
+    "schemaVersion": "1.0"
+}

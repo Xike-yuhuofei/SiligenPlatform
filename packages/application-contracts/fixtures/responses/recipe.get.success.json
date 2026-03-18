@@ -1,0 +1,25 @@
+{
+  "id": "15",
+  "version": "1.0",
+  "success": true,
+  "result": {
+    "recipe": {
+      "id": "recipe-001",
+      "name": "Sealant-A",
+      "description": "主线配方",
+      "status": "active",
+      "tags": [
+        "prod",
+        "sealant"
+      ],
+      "activeVersionId": "ver-003",
+      "versionIds": [
+        "ver-001",
+        "ver-002",
+        "ver-003"
+      ],
+      "createdAt": 1710000000,
+      "updatedAt": 1710001234
+    }
+  }
+}

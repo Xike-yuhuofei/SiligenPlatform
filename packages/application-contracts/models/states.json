@@ -1,0 +1,237 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "protocol": "siligen.application/1.0",
+  "definitions": {
+    "axisStatus": {
+      "type": "object",
+      "required": ["position", "velocity", "enabled", "homed"],
+      "properties": {
+        "position": { "type": "number" },
+        "velocity": { "type": "number" },
+        "enabled": { "type": "boolean" },
+        "homed": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "ioStatus": {
+      "type": "object",
+      "required": ["limit_x_pos", "limit_x_neg", "limit_y_pos", "limit_y_neg", "estop", "door"],
+      "properties": {
+        "limit_x_pos": { "type": "boolean" },
+        "limit_x_neg": { "type": "boolean" },
+        "limit_y_pos": { "type": "boolean" },
+        "limit_y_neg": { "type": "boolean" },
+        "estop": { "type": "boolean" },
+        "door": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "machineStatus": {
+      "type": "object",
+      "required": ["connected", "machine_state", "axes", "io", "dispenser", "alarms"],
+      "properties": {
+        "connected": { "type": "boolean" },
+        "machine_state": {
+          "type": "string",
+          "description": "当前源码中已观测到 Ready / Idle / Running / Unknown。"
+        },
+        "axes": { "type": "object" },
+        "position": {
+          "type": "object",
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" }
+          },
+          "additionalProperties": false
+        },
+        "io": { "$ref": "#/definitions/ioStatus" },
+        "dispenser": {
+          "type": "object",
+          "required": ["valve_open", "supply_open"],
+          "properties": {
+            "valve_open": { "type": "boolean" },
+            "supply_open": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        },
+        "alarms": { "type": "array" }
+      },
+      "additionalProperties": false
+    },
+    "dxfInfo": {
+      "type": "object",
+      "required": ["total_length", "bounds"],
+      "properties": {
+        "total_length": { "type": "number" },
+        "bounds": {
+          "type": "object",
+          "required": ["x_min", "x_max", "y_min", "y_max"],
+          "properties": {
+            "x_min": { "type": "number" },
+            "x_max": { "type": "number" },
+            "y_min": { "type": "number" },
+            "y_max": { "type": "number" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "dxfProgress": {
+      "type": "object",
+      "required": ["running", "progress", "current_segment", "total_segments", "state", "error_message"],
+      "properties": {
+        "running": { "type": "boolean" },
+        "progress": { "type": "integer" },
+        "current_segment": { "type": "integer" },
+        "total_segments": { "type": "integer" },
+        "state": {
+          "type": "string",
+          "enum": ["idle", "pending", "running", "paused", "completed", "failed", "cancelled", "unknown"]
+        },
+        "error_message": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "alarm": {
+      "type": "object",
+      "required": ["id", "level", "message"],
+      "properties": {
+        "id": { "type": "string" },
+        "level": { "type": "string", "enum": ["CRIT", "WARN"] },
+        "message": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "parameterValueEntry": {
+      "type": "object",
+      "required": ["key", "value"],
+      "properties": {
+        "key": { "type": "string" },
+        "value": { "description": "当前序列化事实允许 bool / int / float / string。" }
+      },
+      "additionalProperties": false
+    },
+    "recipe": {
+      "type": "object",
+      "required": ["id", "name", "description", "status", "tags", "versionIds", "createdAt", "updatedAt"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "archived"] },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "activeVersionId": { "type": "string" },
+        "versionIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "createdAt": { "type": "integer" },
+        "updatedAt": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "recipeVersion": {
+      "type": "object",
+      "required": ["id", "recipeId", "versionLabel", "status", "parameters", "createdBy", "createdAt"],
+      "properties": {
+        "id": { "type": "string" },
+        "recipeId": { "type": "string" },
+        "versionLabel": { "type": "string" },
+        "status": { "type": "string", "enum": ["draft", "published", "archived"] },
+        "baseVersionId": { "type": "string" },
+        "parameters": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/parameterValueEntry" }
+        },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "integer" },
+        "publishedAt": { "type": "integer" },
+        "changeNote": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "template": {
+      "type": "object",
+      "required": ["id", "name", "description", "parameters", "createdAt", "updatedAt"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "parameters": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/parameterValueEntry" }
+        },
+        "createdAt": { "type": "integer" },
+        "updatedAt": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "parameterSchema": {
+      "type": "object",
+      "required": ["schemaId", "entries"],
+      "properties": {
+        "schemaId": { "type": "string" },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["key", "type", "required"],
+            "properties": {
+              "key": { "type": "string" },
+              "displayName": { "type": "string" },
+              "type": { "type": "string", "enum": ["int", "float", "bool", "string", "enum"] },
+              "unit": { "type": "string" },
+              "required": { "type": "boolean" },
+              "constraints": { "type": "object" }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "fieldChange": {
+      "type": "object",
+      "required": ["field"],
+      "properties": {
+        "field": { "type": "string" },
+        "before": { "type": "string" },
+        "after": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "auditRecord": {
+      "type": "object",
+      "required": ["id", "recipeId", "action", "actor", "timestamp", "changes"],
+      "properties": {
+        "id": { "type": "string" },
+        "recipeId": { "type": "string" },
+        "versionId": { "type": "string" },
+        "action": { "type": "string", "enum": ["create", "edit", "publish", "rollback", "archive", "import", "export"] },
+        "actor": { "type": "string" },
+        "timestamp": { "type": "integer" },
+        "changes": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/fieldChange" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "importConflict": {
+      "type": "object",
+      "required": ["type", "message", "existingId", "incomingName", "suggestedResolution"],
+      "properties": {
+        "type": { "type": "string", "enum": ["name", "version"] },
+        "message": { "type": "string" },
+        "existingId": { "type": "string" },
+        "incomingName": { "type": "string" },
+        "suggestedResolution": { "type": "string", "enum": ["rename", "skip", "replace"] }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "schemaId": "default",
+  "entries": [
+    {
+      "key": "dispense_speed",
+      "displayName": "Dispense Speed",
+      "type": "float",
+      "unit": "mm/s",
+      "required": true,
+      "constraints": {
+        "min": 0.1,
+        "max": 200.0
+      }
+    },
+    {
+      "key": "dispense_pressure",
+      "displayName": "Dispense Pressure",
+      "type": "float",
+      "unit": "kPa",
+      "required": true,
+      "constraints": {
+        "min": 0.0,
+        "max": 500.0
+      }
+    },
+    {
+      "key": "dot_size",
+      "displayName": "Dot Size",
+      "type": "float",
+      "unit": "mm",
+      "required": false,
+      "constraints": {
+        "min": 0.01,
+        "max": 10.0
+      }
+    },
+    {
+      "key": "material_type",
+      "displayName": "Material Type",
+      "type": "enum",
+      "required": true,
+      "constraints": {
+        "allowedValues": [
+          "epoxy",
+          "silicone",
+          "acrylic"
+        ]
+      }
+    }
+  ]
+}

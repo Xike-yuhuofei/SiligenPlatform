@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "protocol": "siligen.application/1.0",
+  "group": "dxf",
+  "operations": [
+    {
+      "method": "dxf.load",
+      "kind": "command",
+      "paramsSchema": {
+        "type": "object",
+        "required": ["filepath"],
+        "properties": {
+          "filepath": { "type": "string" },
+          "file_path": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["loaded", "segment_count", "filepath"],
+        "properties": {
+          "loaded": { "type": "boolean" },
+          "segment_count": { "type": "integer" },
+          "filepath": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [2900, 2901, 2902, 2903, 2904],
+      "consumers": [
+        "hmi-client CommandProtocol.dxf_load",
+        "Backend_CPP CLI DXF_PLAN",
+        "Backend_CPP CLI DXF_DISPENSE"
+      ],
+      "compatibility": {
+        "requestAliases": [
+          {
+            "canonical": "filepath",
+            "accepted": ["filepath", "file_path"]
+          }
+        ]
+      }
+    },
+    {
+      "method": "dxf.execute",
+      "kind": "command",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {
+          "dry_run": { "type": "boolean" },
+          "dispensing_speed_mm_s": { "type": "number" },
+          "dry_run_speed_mm_s": { "type": "number" },
+          "rapid_speed_mm_s": { "type": "number" },
+          "optimize_path": { "type": "boolean" },
+          "start_x": { "type": "number" },
+          "start_y": { "type": "number" },
+          "approximate_splines": { "type": "boolean" },
+          "two_opt_iterations": { "type": "integer" },
+          "spline_max_step_mm": { "type": "number" },
+          "spline_max_error_mm": { "type": "number" },
+          "arc_tolerance_mm": { "type": "number" },
+          "arc_tolerance": { "type": "number" },
+          "continuity_tolerance_mm": { "type": "number" },
+          "continuity_tolerance": { "type": "number" },
+          "curve_chain_angle_deg": { "type": "number" },
+          "curve_chain_max_segment_mm": { "type": "number" },
+          "use_hardware_trigger": { "type": "boolean" },
+          "velocity_trace_enabled": { "type": "boolean" },
+          "velocity_trace_interval_ms": { "type": "integer" },
+          "velocity_trace_path": { "type": "string" },
+          "velocity_guard_enabled": { "type": "boolean" },
+          "velocity_guard_ratio": { "type": "number" },
+          "velocity_guard_abs_mm_s": { "type": "number" },
+          "velocity_guard_min_expected_mm_s": { "type": "number" },
+          "velocity_guard_grace_ms": { "type": "integer" },
+          "velocity_guard_interval_ms": { "type": "integer" },
+          "velocity_guard_max_consecutive": { "type": "integer" },
+          "velocity_guard_stop_on_violation": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["executing", "task_id"],
+        "properties": {
+          "executing": { "type": "boolean" },
+          "task_id": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [3000, 3001, 3002, 3003],
+      "consumers": [
+        "hmi-client CommandProtocol.dxf_execute",
+        "Backend_CPP CLI DXF_DISPENSE"
+      ],
+      "compatibility": {
+        "rejectedLegacyParams": ["speed", "dry_run_speed", "dryRunSpeed"],
+        "notes": [
+          "HMI 当前只消费执行成功与否，不使用 task_id；TCP 仍返回 task_id 供后续查询。"
+        ]
+      }
+    },
+    {
+      "method": "dxf.stop",
+      "kind": "command",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["stopped"],
+        "properties": {
+          "stopped": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [3030],
+      "consumers": [
+        "hmi-client CommandProtocol.dxf_stop"
+      ]
+    },
+    {
+      "method": "dxf.pause",
+      "kind": "command",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["paused", "task_id"],
+        "properties": {
+          "paused": { "type": "boolean" },
+          "task_id": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [3031, 3032, 3033],
+      "consumers": [
+        "hmi-client CommandProtocol.dxf_pause"
+      ]
+    },
+    {
+      "method": "dxf.resume",
+      "kind": "command",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["resumed", "task_id"],
+        "properties": {
+          "resumed": { "type": "boolean" },
+          "task_id": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [3034, 3035, 3036],
+      "consumers": [
+        "hmi-client CommandProtocol.dxf_resume"
+      ]
+    }
+  ]
+}

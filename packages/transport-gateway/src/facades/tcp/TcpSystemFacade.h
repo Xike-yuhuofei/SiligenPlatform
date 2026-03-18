@@ -1,0 +1,25 @@
+#pragma once
+
+#include "application/usecases/system/EmergencyStopUseCase.h"
+#include "application/usecases/system/InitializeSystemUseCase.h"
+
+#include <memory>
+
+namespace Siligen::Application::Facades::Tcp {
+
+class TcpSystemFacade {
+   public:
+    TcpSystemFacade(std::shared_ptr<UseCases::System::InitializeSystemUseCase> initialize_use_case,
+                    std::shared_ptr<UseCases::System::EmergencyStopUseCase> emergency_stop_use_case);
+
+    Shared::Types::Result<UseCases::System::InitializeSystemResponse> Initialize(
+        const UseCases::System::InitializeSystemRequest& request);
+    Shared::Types::Result<UseCases::System::EmergencyStopResponse> EmergencyStop(
+        const UseCases::System::EmergencyStopRequest& request);
+
+   private:
+    std::shared_ptr<UseCases::System::InitializeSystemUseCase> initialize_use_case_;
+    std::shared_ptr<UseCases::System::EmergencyStopUseCase> emergency_stop_use_case_;
+};
+
+}  // namespace Siligen::Application::Facades::Tcp

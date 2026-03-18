@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "protocol": "siligen.application/1.0",
+  "group": "dispensing",
+  "operations": [
+    {
+      "method": "dispenser.start",
+      "kind": "command",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {
+          "count": { "type": "integer" },
+          "interval_ms": { "type": "integer" },
+          "duration_ms": { "type": "integer" }
+        },
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["dispensing"],
+        "properties": {
+          "dispensing": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [2700, 2701, 2702],
+      "consumers": [
+        "hmi-client CommandProtocol.dispenser_start",
+        "Backend_CPP CLI DISPENSER_START"
+      ]
+    },
+    {
+      "method": "dispenser.stop",
+      "kind": "command",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["dispensing"],
+        "properties": {
+          "dispensing": { "type": "boolean", "const": false }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [2800, 2801],
+      "consumers": [
+        "hmi-client CommandProtocol.dispenser_stop",
+        "Backend_CPP CLI DISPENSER_STOP"
+      ]
+    },
+    {
+      "method": "dispenser.pause",
+      "kind": "command",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["paused"],
+        "properties": {
+          "paused": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [2810, 2811],
+      "consumers": [
+        "hmi-client CommandProtocol.dispenser_pause",
+        "Backend_CPP CLI DISPENSER_PAUSE"
+      ],
+      "compatibility": {
+        "notes": [
+          "如果当前存在 DXF 任务，TCP 适配器会先强制停止 DXF，再执行点胶暂停。"
+        ]
+      }
+    },
+    {
+      "method": "dispenser.resume",
+      "kind": "command",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["resumed"],
+        "properties": {
+          "resumed": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [2820, 2821],
+      "consumers": [
+        "hmi-client CommandProtocol.dispenser_resume",
+        "Backend_CPP CLI DISPENSER_RESUME"
+      ]
+    },
+    {
+      "method": "purge",
+      "kind": "command",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {
+          "timeout_ms": { "type": "integer" }
+        },
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["purged", "timeout_ms"],
+        "properties": {
+          "purged": { "type": "boolean" },
+          "timeout_ms": { "type": "integer" }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [2830, 2831],
+      "consumers": [
+        "hmi-client CommandProtocol.purge",
+        "Backend_CPP CLI DISPENSER_PURGE"
+      ]
+    },
+    {
+      "method": "supply.open",
+      "kind": "command",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["supply_open"],
+        "properties": {
+          "supply_open": { "type": "boolean", "const": true }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [2840, 2841],
+      "consumers": [
+        "hmi-client CommandProtocol.supply_open",
+        "Backend_CPP CLI SUPPLY_OPEN"
+      ]
+    },
+    {
+      "method": "supply.close",
+      "kind": "command",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["supply_open"],
+        "properties": {
+          "supply_open": { "type": "boolean", "const": false }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [2850, 2851],
+      "consumers": [
+        "hmi-client CommandProtocol.supply_close",
+        "Backend_CPP CLI SUPPLY_CLOSE"
+      ]
+    }
+  ]
+}

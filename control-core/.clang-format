@@ -1,0 +1,66 @@
+# .clang-format
+# C++ 代码格式化配置
+# 基于Google风格，针对项目需求定制
+
+BasedOnStyle: Google
+Language: Cpp
+Standard: c++17
+
+# ========== 缩进 ==========
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 120
+
+# ========== 大括号 ==========
+BreakBeforeBraces: Attach
+
+# ========== 指针对齐 ==========
+DerivePointerAlignment: false
+PointerAlignment: Left
+
+# ========== 命名空间 ==========
+NamespaceIndentation: None
+FixNamespaceComments: true
+
+# ========== 其他 ==========
+MaxEmptyLinesToKeep: 2
+SortIncludes: true
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex:           '^".*\.h"'
+    Priority:        1
+  - Regex:           '^<(Shared|shared)/'
+    Priority:        2
+  - Regex:           '^<(Domain|domain)/'
+    Priority:        3
+  - Regex:           '^<(Application|application)/'
+    Priority:        4
+  - Regex:           '^<(Infrastructure|infrastructure)/'
+    Priority:        5
+  - Regex:           '^<'
+    Priority:        6
+
+# ========== 函数/方法 ==========
+AllowShortFunctionsOnASingleLine: Empty
+BinPackArguments: false
+BinPackParameters: false
+
+# ========== 类 ==========
+AllowShortBlocksOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+
+# ========== 注释 ==========
+ReflowComments: true
+
+# ========== 空格 ==========
+SpaceAfterCStyleCast: false
+SpaceAfterTemplateKeyword: true
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyParentheses: false
+SpacesInAngles: false
+SpacesInContainerLiterals: true
+SpacesInCStyleCastParentheses: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false

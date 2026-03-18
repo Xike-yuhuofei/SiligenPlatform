@@ -1,0 +1,13 @@
+{
+  "id": "13",
+  "version": "1.0",
+  "success": true,
+  "result": {
+    "running": true,
+    "progress": 42,
+    "current_segment": 54,
+    "total_segments": 128,
+    "state": "running",
+    "error_message": ""
+  }
+}

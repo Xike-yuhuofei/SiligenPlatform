@@ -1,0 +1,65 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.venv/
+venv/
+env/
+
+# Build outputs and local runtime data
+build/
+logs/
+tmp/
+uploads/
+integration/reports/
+control-core/build/
+control-core/build-codex-*/
+
+# CMake / native build artifacts
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+Makefile
+*.obj
+*.o
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+*.app
+*.pdb
+*.idb
+*.ilk
+*.bin
+
+# Python packaging
+*.egg-info/
+dist/
+
+# Local environment files
+.env
+.env.*
+*.local
+
+# Backups created when flattening nested repositories into this monorepo
+control-core/.git.nested-backup/
+dxf-pipeline/.git.nested-backup/
+hmi-client/.git.nested-backup/

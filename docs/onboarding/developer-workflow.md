@@ -1,0 +1,52 @@
+# Developer Workflow
+
+更新时间：`2026-03-18`
+
+## 1. 唯一推荐工作方式
+
+- 从仓库根目录开始。
+- 优先使用根级 `build.ps1`、`test.ps1`、`ci.ps1`。
+- 优先使用 `apps/`、`packages/` 下的 canonical 路径。
+- DXF 编辑统一走外部编辑器人工流程，不再有 editor app。
+
+## 2. 默认启动命令
+
+```powershell
+Set-Location D:\Projects\SiligenSuite
+```
+
+| 目标 | 推荐命令 | 备注 |
+|---|---|---|
+| HMI | `.\apps\hmi-app\run.ps1` | 官方默认入口。 |
+| TCP server | `.\apps\control-tcp-server\run.ps1` | 官方默认入口，但内部仍回退到 `control-core/build/bin/**`。 |
+| CLI | `.\apps\control-cli\run.ps1` | 官方默认入口，但内部仍回退到 `control-core/build/bin/**`。 |
+| Runtime | `.\apps\control-runtime\run.ps1` | 官方默认入口；当前若提示 `BLOCKED`，按文档视为真实状态。 |
+
+DXF 编辑：
+
+- 读取 `docs/runtime/external-dxf-editing.md`
+- 使用 AutoCAD 等外部编辑器人工处理 DXF
+
+## 3. 构建与测试入口
+
+```powershell
+.\build.ps1
+.\test.ps1
+.\ci.ps1
+```
+
+## 4. 不再作为默认入口的旧路径
+
+- `dxf-editor`
+- `apps/dxf-editor-app`
+- `packages/editor-contracts`
+- `hmi-client`
+- `dxf-pipeline`
+- `control-core/apps/*`
+- `control-core/build/bin/*`
+
+## 5. 代码审查要求
+
+1. PR 描述中的运行命令、测试命令、验证步骤，必须先给根级入口。
+2. 新文档和新脚本不得再写 `dxf-editor`、`apps/dxf-editor-app`、`packages/editor-contracts` 为默认能力。
+3. 若需求涉及 DXF 编辑，默认引用 `docs/runtime/external-dxf-editing.md`。

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "protocol": "siligen.application/1.0",
+  "group": "dxf",
+  "operations": [
+    {
+      "method": "dxf.info",
+      "kind": "query",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "resultRef": "../models/states.json#/definitions/dxfInfo",
+      "errorCodes": [3010],
+      "consumers": [
+        "hmi-client CommandProtocol.dxf_get_info"
+      ],
+      "compatibility": {
+        "notes": [
+          "当前 TCP 服务端不返回 total_segments；HMI UI 仍在 main_window.py 读取该字段。详见 mappings/compatibility-overrides.json。"
+        ]
+      }
+    },
+    {
+      "method": "dxf.progress",
+      "kind": "query",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "resultRef": "../models/states.json#/definitions/dxfProgress",
+      "errorCodes": [3020],
+      "consumers": [
+        "hmi-client CommandProtocol.dxf_get_progress"
+      ]
+    }
+  ]
+}

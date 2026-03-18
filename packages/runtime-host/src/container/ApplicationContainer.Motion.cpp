@@ -1,0 +1,199 @@
+#include "ApplicationContainer.h"
+
+#include "application/usecases/motion/coordination/MotionCoordinationUseCase.h"
+#include "application/usecases/motion/homing/HomeAxesUseCase.h"
+#include "application/usecases/motion/initialization/MotionInitializationUseCase.h"
+#include "application/usecases/motion/interpolation/InterpolationPlanningUseCase.h"
+#include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
+#include "application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
+#include "application/usecases/motion/safety/MotionSafetyUseCase.h"
+#include "application/usecases/motion/trajectory/ExecuteTrajectoryUseCase.h"
+#include "domain/motion/domain-services/JogController.h"
+#include "domain/motion/domain-services/VelocityProfileService.h"
+#include "services/motion/HardLimitMonitorService.h"
+#include "shared/interfaces/ILoggingService.h"
+
+#include <memory>
+#include <stdexcept>
+
+#ifdef MODULE_NAME
+#undef MODULE_NAME
+#endif
+#define MODULE_NAME "ApplicationContainer.Motion"
+
+namespace Siligen::Application::Container {
+
+void ApplicationContainer::ValidateMotionPorts() {
+    if (!motion_runtime_port_) {
+        throw std::runtime_error("IMotionRuntimePort 未注册");
+    }
+    if (!hardware_test_port_) {
+        throw std::runtime_error("IHardwareTestPort 未注册");
+    }
+    if (!interpolation_port_) {
+        throw std::runtime_error("IInterpolationPort 未注册");
+    }
+    if (!velocity_profile_port_) {
+        SILIGEN_LOG_WARNING("IVelocityProfilePort 未注册");
+    }
+}
+
+void ApplicationContainer::ConfigureMotionServices() {
+    auto motion_jog_port = motion_runtime_port_
+        ? std::static_pointer_cast<Domain::Motion::Ports::IJogControlPort>(motion_runtime_port_)
+        : motion_jog_port_;
+    auto motion_state_port = motion_runtime_port_
+        ? std::static_pointer_cast<Domain::Motion::Ports::IMotionStatePort>(motion_runtime_port_)
+        : motion_state_port_;
+    auto io_control_port = motion_runtime_port_
+        ? std::static_pointer_cast<Domain::Motion::Ports::IIOControlPort>(motion_runtime_port_)
+        : io_control_port_;
+    auto position_control_port = motion_runtime_port_
+        ? std::static_pointer_cast<Domain::Motion::Ports::IPositionControlPort>(motion_runtime_port_)
+        : position_control_port_;
+    jog_controller_ = std::make_shared<Domain::Motion::DomainServices::JogController>(
+        motion_jog_port,
+        motion_state_port);
+    RegisterService<Domain::Motion::DomainServices::JogController>(jog_controller_);
+    SILIGEN_LOG_INFO("JogController registered");
+
+    if (velocity_profile_port_) {
+        velocity_profile_service_ =
+            std::make_shared<Domain::Motion::DomainServices::VelocityProfileService>(velocity_profile_port_);
+        RegisterService<Domain::Motion::DomainServices::VelocityProfileService>(velocity_profile_service_);
+        SILIGEN_LOG_INFO("VelocityProfileService registered");
+    } else {
+        SILIGEN_LOG_WARNING("VelocityProfileService not registered: IVelocityProfilePort missing");
+    }
+
+    if (io_control_port && position_control_port) {
+        hard_limit_monitor_ =
+            std::make_shared<Siligen::Application::Services::Motion::HardLimitMonitorService>(
+                io_control_port,
+                position_control_port);
+        SILIGEN_LOG_INFO("HardLimitMonitorService registered");
+    } else {
+        SILIGEN_LOG_WARNING("HardLimitMonitorService not registered: IO or position control port missing");
+    }
+}
+
+template<>
+std::shared_ptr<UseCases::Motion::Homing::HomeAxesUseCase>
+ApplicationContainer::CreateInstance<UseCases::Motion::Homing::HomeAxesUseCase>() {
+    auto motion_connection_port = motion_runtime_port_
+        ? std::static_pointer_cast<Domain::Motion::Ports::IMotionConnectionPort>(motion_runtime_port_)
+        : motion_connection_port_;
+    auto homing_port = motion_runtime_port_
+        ? std::static_pointer_cast<Domain::Motion::Ports::IHomingPort>(motion_runtime_port_)
+        : homing_port_;
+    auto motion_state_port = motion_runtime_port_
+        ? std::static_pointer_cast<Domain::Motion::Ports::IMotionStatePort>(motion_runtime_port_)
+        : motion_state_port_;
+    return std::make_shared<UseCases::Motion::Homing::HomeAxesUseCase>(
+        homing_port,
+        config_port_,
+        motion_connection_port,
+        event_port_,
+        motion_state_port);
+}
+
+template<>
+std::shared_ptr<UseCases::Motion::Trajectory::ExecuteTrajectoryUseCase>
+ApplicationContainer::CreateInstance<UseCases::Motion::Trajectory::ExecuteTrajectoryUseCase>() {
+    auto position_control_port = motion_runtime_port_
+        ? std::static_pointer_cast<Domain::Motion::Ports::IPositionControlPort>(motion_runtime_port_)
+        : position_control_port_;
+    return std::make_shared<UseCases::Motion::Trajectory::ExecuteTrajectoryUseCase>(
+        position_control_port,
+        trigger_port_,
+        event_port_);
+}
+
+template<>
+std::shared_ptr<UseCases::Motion::Manual::ManualMotionControlUseCase>
+ApplicationContainer::CreateInstance<UseCases::Motion::Manual::ManualMotionControlUseCase>() {
+    auto position_control_port = motion_runtime_port_
+        ? std::static_pointer_cast<Domain::Motion::Ports::IPositionControlPort>(motion_runtime_port_)
+        : position_control_port_;
+    auto homing_port = motion_runtime_port_
+        ? std::static_pointer_cast<Domain::Motion::Ports::IHomingPort>(motion_runtime_port_)
+        : homing_port_;
+    return std::make_shared<UseCases::Motion::Manual::ManualMotionControlUseCase>(
+        position_control_port,
+        jog_controller_,
+        homing_port);
+}
+
+template<>
+std::shared_ptr<UseCases::Motion::Initialization::MotionInitializationUseCase>
+ApplicationContainer::CreateInstance<UseCases::Motion::Initialization::MotionInitializationUseCase>() {
+    auto motion_connection_port = motion_runtime_port_
+        ? std::static_pointer_cast<Domain::Motion::Ports::IMotionConnectionPort>(motion_runtime_port_)
+        : motion_connection_port_;
+    auto axis_control_port = motion_runtime_port_
+        ? std::static_pointer_cast<Domain::Motion::Ports::IAxisControlPort>(motion_runtime_port_)
+        : axis_control_port_;
+    auto io_control_port = motion_runtime_port_
+        ? std::static_pointer_cast<Domain::Motion::Ports::IIOControlPort>(motion_runtime_port_)
+        : io_control_port_;
+    return std::make_shared<UseCases::Motion::Initialization::MotionInitializationUseCase>(
+        motion_connection_port,
+        axis_control_port,
+        io_control_port,
+        hardware_test_port_);
+}
+
+template<>
+std::shared_ptr<UseCases::Motion::Safety::MotionSafetyUseCase>
+ApplicationContainer::CreateInstance<UseCases::Motion::Safety::MotionSafetyUseCase>() {
+    auto position_control_port = motion_runtime_port_
+        ? std::static_pointer_cast<Domain::Motion::Ports::IPositionControlPort>(motion_runtime_port_)
+        : position_control_port_;
+    return std::make_shared<UseCases::Motion::Safety::MotionSafetyUseCase>(
+        position_control_port,
+        hardware_test_port_);
+}
+
+template<>
+std::shared_ptr<UseCases::Motion::Monitoring::MotionMonitoringUseCase>
+ApplicationContainer::CreateInstance<UseCases::Motion::Monitoring::MotionMonitoringUseCase>() {
+    auto motion_state_port = motion_runtime_port_
+        ? std::static_pointer_cast<Domain::Motion::Ports::IMotionStatePort>(motion_runtime_port_)
+        : motion_state_port_;
+    auto io_control_port = motion_runtime_port_
+        ? std::static_pointer_cast<Domain::Motion::Ports::IIOControlPort>(motion_runtime_port_)
+        : io_control_port_;
+    auto homing_port = motion_runtime_port_
+        ? std::static_pointer_cast<Domain::Motion::Ports::IHomingPort>(motion_runtime_port_)
+        : homing_port_;
+    return std::make_shared<UseCases::Motion::Monitoring::MotionMonitoringUseCase>(
+        motion_state_port,
+        io_control_port,
+        homing_port);
+}
+
+template<>
+std::shared_ptr<UseCases::Motion::Coordination::MotionCoordinationUseCase>
+ApplicationContainer::CreateInstance<UseCases::Motion::Coordination::MotionCoordinationUseCase>() {
+    auto io_control_port = motion_runtime_port_
+        ? std::static_pointer_cast<Domain::Motion::Ports::IIOControlPort>(motion_runtime_port_)
+        : io_control_port_;
+    auto axis_control_port = motion_runtime_port_
+        ? std::static_pointer_cast<Domain::Motion::Ports::IAxisControlPort>(motion_runtime_port_)
+        : axis_control_port_;
+    return std::make_shared<UseCases::Motion::Coordination::MotionCoordinationUseCase>(
+        interpolation_port_,
+        io_control_port,
+        hardware_test_port_,
+        axis_control_port,
+        trigger_port_);
+}
+
+template<>
+std::shared_ptr<UseCases::Motion::Interpolation::InterpolationPlanningUseCase>
+ApplicationContainer::CreateInstance<UseCases::Motion::Interpolation::InterpolationPlanningUseCase>() {
+    return std::make_shared<UseCases::Motion::Interpolation::InterpolationPlanningUseCase>();
+}
+
+}  // namespace Siligen::Application::Container
+

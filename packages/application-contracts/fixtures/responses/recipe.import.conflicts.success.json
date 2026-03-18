@@ -1,0 +1,18 @@
+{
+  "id": "16",
+  "version": "1.0",
+  "success": true,
+  "result": {
+    "status": "conflicts",
+    "importedCount": 0,
+    "conflicts": [
+      {
+        "type": "name",
+        "message": "Recipe name already exists",
+        "existingId": "recipe-001",
+        "incomingName": "Sealant-A",
+        "suggestedResolution": "rename"
+      }
+    ]
+  }
+}

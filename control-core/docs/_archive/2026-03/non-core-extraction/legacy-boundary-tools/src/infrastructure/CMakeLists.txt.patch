@@ -1,0 +1,25 @@
+# Infrastructure层 - 基础设施和适配器实现
+# 本层包含硬件、日志、配置的具体实现
+
+# Infrastructure层硬件适配器库
+add_library(siligen_hardware STATIC
+    hardware/MultiCardAdapter.cpp
+    adapters/hardware/HardwareTestAdapter.cpp
+    adapters/hardware/HardwareConnectionAdapter.cpp
+)
+
+# MultiCard真实硬件实现 - 使用静态链接
+# 检查MultiCard.lib是否存在，存在则链接，不存在则使用模拟实现
+set(MULTICARD_LIB "${CMAKE_SOURCE_DIR}/infrastructure/hardware/MultiCard.lib")
+if(EXISTS ${MULTICARD_LIB})
+    # 使用真实硬件库
+    message(STATUS "[Infrastructure] 使用MultiCard.lib静态链接真实硬件")
+else()
+    # 无真实硬件库，使用模拟实现
+    set(MULTICARD_CPP_SOURCE "${CMAKE_SOURCE_DIR}/infrastructure/hardware/MultiCardCPP.cpp")
+    if(EXISTS ${MULTICARD_CPP_SOURCE})
+        target_sources(siligen_hardware PRIVATE ${MULTICARD_CPP_SOURCE})
+        message(WARNING "[Infrastructure] 使用MultiCardCPP.cpp模拟模式（无真实硬件）")
+    endif()
+endif()
+

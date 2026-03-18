@@ -1,0 +1,107 @@
+{
+  "cli_path": "../control-core/build/bin/siligen_cli.exe",
+  "working_dir": "../control-core",
+  "dxf_path": "tests/fixtures/imported/uploads-dxf/archive/Demo.dxf",
+  "output_dir": "benchmarks/reports/trajectory_compare",
+  "global_args": ["--preview-max-points", "0"],
+  "base_args": [],
+  "include_base": true,
+  "switches": [
+    {
+      "key": "optimize_path",
+      "label": "Optimize path",
+      "off_args": ["--no-optimize"],
+      "on_args": ["--optimize"]
+    },
+    {
+      "key": "two_opt",
+      "label": "2-opt",
+      "off_args": ["--two-opt-iter", "0"],
+      "on_args": ["--optimize", "--two-opt-iter", "100"]
+    },
+    {
+      "key": "approx_spline",
+      "label": "Approximate spline",
+      "off_args": [],
+      "on_args": ["--approx-spline"]
+    },
+    {
+      "key": "spline_max_step",
+      "label": "Spline max step",
+      "off_args": ["--spline-step", "0"],
+      "on_args": ["--approx-spline", "--spline-step", "1.0"]
+    },
+    {
+      "key": "spline_max_error",
+      "label": "Spline max error",
+      "off_args": ["--spline-error", "0"],
+      "on_args": ["--approx-spline", "--spline-error", "0.1"]
+    },
+    {
+      "key": "continuity_tolerance",
+      "label": "Continuity tolerance",
+      "off_args": ["--continuity-tolerance", "0"],
+      "on_args": ["--continuity-tolerance", "0.05"]
+    },
+    {
+      "key": "curve_chain",
+      "label": "Curve chain",
+      "off_args": ["--curve-chain-angle", "0", "--curve-chain-max-seg", "0"],
+      "on_args": ["--curve-chain-angle", "30", "--curve-chain-max-seg", "2.0"]
+    },
+    {
+      "key": "hardware_trigger",
+      "label": "Hardware trigger",
+      "off_args": ["--no-hardware-trigger"],
+      "on_args": ["--use-hardware-trigger"]
+    },
+    {
+      "key": "interp_linear",
+      "label": "Interpolation linear",
+      "off_args": ["--no-interpolation-planner"],
+      "on_args": ["--use-interpolation-planner", "--interpolation-algorithm", "linear"]
+    },
+    {
+      "key": "interp_arc",
+      "label": "Interpolation arc",
+      "off_args": ["--no-interpolation-planner"],
+      "on_args": ["--use-interpolation-planner", "--interpolation-algorithm", "arc"]
+    },
+    {
+      "key": "interp_spline",
+      "label": "Interpolation spline",
+      "off_args": ["--no-interpolation-planner"],
+      "on_args": ["--use-interpolation-planner", "--interpolation-algorithm", "spline"]
+    },
+    {
+      "key": "interp_transition",
+      "label": "Interpolation transition",
+      "off_args": ["--no-interpolation-planner"],
+      "on_args": ["--use-interpolation-planner", "--interpolation-algorithm", "transition"]
+    },
+    {
+      "key": "interp_cmp",
+      "label": "Interpolation cmp",
+      "off_args": ["--no-interpolation-planner"],
+      "on_args": ["--use-interpolation-planner", "--interpolation-algorithm", "cmp"]
+    },
+    {
+      "key": "interp_seal_bead",
+      "label": "Interpolation seal bead",
+      "off_args": ["--no-interpolation-planner"],
+      "on_args": ["--use-interpolation-planner", "--interpolation-algorithm", "seal_bead"]
+    },
+    {
+      "key": "interp_grid_filling",
+      "label": "Interpolation grid filling",
+      "off_args": ["--no-interpolation-planner"],
+      "on_args": ["--use-interpolation-planner", "--interpolation-algorithm", "grid_filling"]
+    },
+    {
+      "key": "interp_circular_array",
+      "label": "Interpolation circular array",
+      "off_args": ["--no-interpolation-planner"],
+      "on_args": ["--use-interpolation-planner", "--interpolation-algorithm", "circular_array"]
+    }
+  ]
+}

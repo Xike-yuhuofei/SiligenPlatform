@@ -1,0 +1,12 @@
+{
+  "executable": "D:\\Deploy\\Siligen\\siligen_tcp_server.exe",
+  "cwd": "D:\\Deploy\\Siligen",
+  "args": [],
+  "pathEntries": [
+    "D:\\Deploy\\Siligen"
+  ],
+  "env": {
+    "SILIGEN_TCP_SERVER_HOST": "127.0.0.1",
+    "SILIGEN_TCP_SERVER_PORT": "9527"
+  }
+}

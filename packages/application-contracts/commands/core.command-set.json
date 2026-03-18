@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "protocol": "siligen.application/1.0",
+  "group": "core",
+  "operations": [
+    {
+      "method": "connect",
+      "kind": "command",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {
+          "card_ip": { "type": "string" },
+          "local_ip": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["connected", "message"],
+        "properties": {
+          "connected": { "type": "boolean" },
+          "message": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [2000, 2001],
+      "consumers": [
+        "hmi-client CommandProtocol.connect_hardware",
+        "Backend_CPP CLI CONNECT"
+      ],
+      "compatibility": {
+        "notes": [
+          "TCP 处理器当前固定 auto_connect_hardware=true。"
+        ]
+      }
+    },
+    {
+      "method": "disconnect",
+      "kind": "command",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["disconnected"],
+        "properties": {
+          "disconnected": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [],
+      "consumers": [
+        "Backend_CPP CLI DISCONNECT"
+      ]
+    },
+    {
+      "method": "stop",
+      "kind": "command",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["stopped"],
+        "properties": {
+          "stopped": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [2500],
+      "consumers": [
+        "hmi-client CommandProtocol.stop",
+        "Backend_CPP CLI STOP_ALL"
+      ]
+    },
+    {
+      "method": "estop",
+      "kind": "command",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["motion_stopped", "message"],
+        "properties": {
+          "motion_stopped": { "type": "boolean" },
+          "message": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [2600, 2601],
+      "consumers": [
+        "hmi-client CommandProtocol.emergency_stop",
+        "Backend_CPP CLI EMERGENCY_STOP"
+      ]
+    }
+  ]
+}

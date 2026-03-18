@@ -1,0 +1,40 @@
+from __future__ import annotations
+
+import subprocess
+import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def main() -> int:
+    commands = [
+        ("application-contracts", [sys.executable, str(ROOT / "packages" / "application-contracts" / "tests" / "test_protocol_compatibility.py")]),
+        ("engineering-contracts", [sys.executable, str(ROOT / "packages" / "engineering-contracts" / "tests" / "test_engineering_contracts.py")]),
+        ("engineering-data", [sys.executable, str(ROOT / "packages" / "engineering-data" / "tests" / "test_engineering_data_compatibility.py")]),
+        ("transport-gateway", [sys.executable, str(ROOT / "packages" / "transport-gateway" / "tests" / "test_transport_gateway_compatibility.py")]),
+    ]
+
+    for label, command in commands:
+        completed = subprocess.run(
+            command,
+            cwd=str(ROOT),
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        print(f"[{label}] returncode={completed.returncode}")
+        if completed.stdout:
+            print(completed.stdout.strip())
+        if completed.stderr:
+            print(completed.stderr.strip(), file=sys.stderr)
+        if completed.returncode != 0:
+            return completed.returncode
+    print("protocol compatibility suite passed")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

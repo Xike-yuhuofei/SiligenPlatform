@@ -1,0 +1,29 @@
+/* emergency.qss - 紧急停止按钮样式 (ISO 13850标准) */
+
+#emergencyStopButton {
+    background-color: #FF0000;
+    border: 2px solid #990000;
+    border-radius: 50px;
+    color: white;
+    font-size: 16px;
+    font-weight: bold;
+    min-width: 100px;
+    min-height: 100px;
+    max-width: 100px;
+    max-height: 100px;
+}
+
+#emergencyStopButton:hover {
+    background-color: #FF3333;
+    border: 3px solid #CC0000;
+}
+
+#emergencyStopButton:pressed {
+    background-color: #990000;
+}
+
+#emergencyStopButton:disabled {
+    background-color: #999999;
+    border: 2px solid #666666;
+    color: #cccccc;
+}

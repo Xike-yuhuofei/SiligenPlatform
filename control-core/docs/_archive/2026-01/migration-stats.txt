@@ -1,0 +1,23 @@
+=== 迁移统计 ===
+
+_archive/2026-01/ 文件统计:
+316
+
+主题目录分布:
+  10-archives: 30 个文件
+  analysis: 5 个文件
+  exploration: 11 个文件
+  hardware-integration: 1 个文件
+  legacy-01-architecture: 10 个文件
+  legacy-01-getting-started: 2 个文件
+  legacy-02-api: 72 个文件
+  legacy-03-api-reference: 1 个文件
+  legacy-03-hardware: 17 个文件
+  legacy-04-development: 75 个文件
+  legacy-05-observability: 4 个文件
+  legacy-05-testing: 4 个文件
+  legacy-06-user-guides: 10 个文件
+  legacy-08-troubleshooting: 27 个文件
+  legacy-09-reports: 10 个文件
+  refactoring: 1 个文件
+  reports: 10 个文件

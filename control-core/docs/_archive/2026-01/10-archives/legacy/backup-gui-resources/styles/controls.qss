@@ -1,0 +1,105 @@
+/* controls.qss - 控制面板控件样式 */
+
+/* 连接按钮 */
+#connectButton {
+    background-color: #4CAF50;
+    color: white;
+}
+
+#connectButton:hover {
+    background-color: #45a049;
+}
+
+/* 断开连接按钮 */
+#disconnectButton {
+    background-color: #f44336;
+    color: white;
+}
+
+#disconnectButton:hover {
+    background-color: #da190b;
+}
+
+/* 回零按钮 */
+#homingButton {
+    background-color: #2196F3;
+    color: white;
+}
+
+#homingButton:hover {
+    background-color: #0b7dda;
+}
+
+/* 点动按钮 */
+.jogButton {
+    background-color: #FF9800;
+    color: white;
+    min-width: 60px;
+    padding: 6px 12px;
+}
+
+.jogButton:hover {
+    background-color: #e68900;
+}
+
+.jogButton:pressed {
+    background-color: #cc7a00;
+}
+
+.jogButton:disabled {
+    background-color: #cccccc;
+    color: #888888;
+}
+
+/* 位置标签 */
+.positionLabel {
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 12pt;
+    font-weight: bold;
+    color: #2196F3;
+    background-color: #f0f0f0;
+    border: 1px solid #cccccc;
+    border-radius: 3px;
+    padding: 5px 10px;
+}
+
+/* 状态指示器 */
+.statusIndicator {
+    border-radius: 10px;
+    min-width: 20px;
+    max-width: 20px;
+    min-height: 20px;
+    max-height: 20px;
+}
+
+.statusIndicator[connected="true"] {
+    background-color: #4CAF50;
+}
+
+.statusIndicator[connected="false"] {
+    background-color: #f44336;
+}
+
+/* 日志文本框 */
+#logTextEdit {
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 9pt;
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    border: 1px solid #3c3c3c;
+}
+
+/* 任务面板 */
+#taskListWidget {
+    background-color: white;
+    border: 1px solid #cccccc;
+}
+
+#taskListWidget::item {
+    padding: 5px;
+}
+
+#taskListWidget::item:selected {
+    background-color: #4CAF50;
+    color: white;
+}

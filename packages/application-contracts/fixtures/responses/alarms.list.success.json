@@ -1,0 +1,19 @@
+{
+  "id": "14",
+  "version": "1.0",
+  "success": true,
+  "result": {
+    "alarms": [
+      {
+        "id": "LIMIT_X_POS",
+        "level": "WARN",
+        "message": "X轴正限位触发"
+      },
+      {
+        "id": "SERVO_Y",
+        "level": "CRIT",
+        "message": "Y轴伺服报警"
+      }
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+{
+    "schemaVersion": "1.0",
+    "version": {
+        "baseVersionId": "version-fea9ce29-f963",
+        "createdAt": 1769379286856,
+        "createdBy": "tester",
+        "id": "version-866d9107-0e49",
+        "parameters": [
+            {
+                "key": "dispense_speed",
+                "value": 150.0
+            },
+            {
+                "key": "dispense_pressure",
+                "value": 230.0
+            },
+            {
+                "key": "material_type",
+                "value": "silicone"
+            }
+        ],
+        "publishedAt": 1769379308616,
+        "recipeId": "recipe-7d1b00f4-6a99",
+        "status": "published",
+        "versionLabel": "v2"
+    }
+}

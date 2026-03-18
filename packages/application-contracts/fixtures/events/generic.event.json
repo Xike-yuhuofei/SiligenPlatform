@@ -1,0 +1,8 @@
+{
+  "version": "1.0",
+  "event": "trace.snapshot.created",
+  "data": {
+    "path": "D:/logs/snapshot.json",
+    "createdAt": 1710001234
+  }
+}
