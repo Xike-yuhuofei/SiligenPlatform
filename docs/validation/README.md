@@ -70,7 +70,14 @@
 - [受控生产测试发布结论模板 V1](/D:/Projects/SiligenSuite/docs/validation/simulation-controlled-production-test-release-summary-v1.md)
 - 串行执行入口：`integration/simulated-line/run_controlled_production_test.ps1`
 - 单独回归入口：`integration/simulated-line/run_simulated_line.py --report-dir <report-dir>`
-- 默认证据位置：`integration/reports/controlled-production-test/workspace-validation.json`、`integration/reports/controlled-production-test/simulation/simulated-line/simulated-line-summary.json`
+- Gate 校验入口：`integration/simulated-line/verify_controlled_production_gate.py --report-dir <report-dir>`
+- 发布结论摘要生成入口：`integration/simulated-line/render_controlled_production_release_summary.py --report-dir <report-dir> --profile <Local|CI>`
+- 默认证据位置：
+  - `integration/reports/controlled-production-test/workspace-validation.json`
+  - `integration/reports/controlled-production-test/simulation/simulated-line/simulated-line-summary.json`
+  - `integration/reports/controlled-production-test/controlled-production-gate-summary.json`
+  - `integration/reports/controlled-production-test/simulation-controlled-production-release-summary.md`
+- 双轨证据：时间戳目录保留原始批次，固定目录发布最新通过结果；来源追溯见 `integration/reports/controlled-production-test/latest-source.txt`
 
 ## HIL 闭环/长稳受控测试
 
