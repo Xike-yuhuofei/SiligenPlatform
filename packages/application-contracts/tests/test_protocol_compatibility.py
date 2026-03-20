@@ -101,7 +101,12 @@ def test_known_compatibility_gaps_are_recorded():
 
     hmi_ui = HMI_MAIN_WINDOW.read_text(encoding="utf-8")
     tcp_source = TCP_DISPATCHER.read_text(encoding="utf-8")
-    assert 'info.get("total_segments"' in hmi_ui
+    segment_cache_match = re.search(
+        r'_dxf_segment_count_cache\s*=\s*info\.get\("total_segments"(?:,\s*0)?\)',
+        hmi_ui,
+    )
+    assert segment_cache_match, "HMI must cache total_segments from dxf.info"
+    assert "segments = getattr(self, '_dxf_segment_count_cache', 0)" in hmi_ui
 
     dxf_info_match = re.search(
         r"std::string TcpCommandDispatcher::HandleDxfInfo.*?return GatewayJsonProtocol::MakeSuccessResponse",
@@ -109,7 +114,10 @@ def test_known_compatibility_gaps_are_recorded():
         re.S,
     )
     assert dxf_info_match, "cannot locate HandleDxfInfo body"
-    assert '"total_segments"' not in dxf_info_match.group(0)
+    dxf_info_body = dxf_info_match.group(0)
+    assert '"total_length"' in dxf_info_body
+    assert '"bounds"' in dxf_info_body
+    assert '"total_segments"' not in dxf_info_body
 
 
 def test_recipe_aliases_are_explicit():
