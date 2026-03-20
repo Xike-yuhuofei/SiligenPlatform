@@ -31,8 +31,27 @@ jobs:
           name: legacy-exit-gates
           path: integration/reports/ci/legacy-exit/
 
-  validation:
+  protocol-drift-precheck:
     needs: legacy-exit-gates
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run protocol drift precheck
+        shell: pwsh
+        run: python .\packages\application-contracts\tests\test_protocol_compatibility.py
+
+  validation:
+    needs:
+      - legacy-exit-gates
+      - protocol-drift-precheck
     runs-on: windows-latest
     env:
       SILIGEN_CONTROL_APPS_BUILD_ROOT: ${{ github.workspace }}\build\control-apps
