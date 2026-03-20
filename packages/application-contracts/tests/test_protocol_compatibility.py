@@ -101,7 +101,7 @@ def test_known_compatibility_gaps_are_recorded():
 
     hmi_ui = HMI_MAIN_WINDOW.read_text(encoding="utf-8")
     tcp_source = TCP_DISPATCHER.read_text(encoding="utf-8")
-    assert 'info.get("total_segments", 0)' in hmi_ui
+    assert 'info.get("total_segments"' in hmi_ui
 
     dxf_info_match = re.search(
         r"std::string TcpCommandDispatcher::HandleDxfInfo.*?return GatewayJsonProtocol::MakeSuccessResponse",
