@@ -1,1 +1,0 @@
-"""DXF preview generation helpers."""
