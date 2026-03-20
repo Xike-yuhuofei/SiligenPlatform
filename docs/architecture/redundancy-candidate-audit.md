@@ -1,6 +1,6 @@
 # 冗余候选审计（初稿）
 
-更新时间：`2026-03-18`
+更新时间：`2026-03-19`
 
 ## 1. 目的
 
@@ -38,7 +38,7 @@
 | 模块 | 初判 | 关键证据 | 建议动作 |
 |---|---|---|---|
 | `dxf-editor` | `候删（先收缩）` | README 已明确定义为 `apps/dxf-editor-app` 的兼容壳；`dxf-editor/src` 与 `apps/dxf-editor-app/src` 共有 `116` 个相对路径文件，`116` 个 hash 全一致 | 先收缩为 `README + scripts + 必要迁移文档`，停止保留重复 `src/tests/pyproject.toml` |
-| `hmi-client` | `候删（先收缩）` | README 已明确定义为 `apps/hmi-app` 的兼容壳；`hmi-client/src` 与 `apps/hmi-app/src` 共有 `19` 个相对路径文件，其中 `16` 个 hash 完全一致，canonical 目录仅多出 `1` 个源文件 | 先收缩为兼容入口，后续删除 legacy `src/tests/pyproject.toml` |
+| `hmi-client` | `已删除（已完成）` | HMI 真实源码与入口已统一到 `apps/hmi-app`；legacy `hmi-client/` 目录已删除，历史材料已归档到 `docs/_archive/2026-03/hmi-client/` | 保持 archive 与删除门禁，不再恢复兼容壳 |
 
 ### 3.2 需要重新证明业务必要性的模块
 
@@ -59,16 +59,16 @@
 
 | 模块 | 初判 | 关键证据 | 建议动作 |
 |---|---|---|---|
-| `apps/control-runtime` | `保留为薄入口` | `run.ps1` 只负责在 `control-core/build/bin/**` 中解析可执行文件；若找不到则输出 `BLOCKED` | 保留，但禁止新增宿主实现 |
-| `apps/control-cli` | `保留为薄入口` | `run.ps1` 只解析 `siligen_cli.exe`，并明确说明源码迁移仍缺失 | 保留，但禁止新增 CLI 业务逻辑 |
-| `apps/control-tcp-server` | `保留为薄入口` | `run.ps1` 只解析 `siligen_tcp_server.exe`，真实产物仍来自 `control-core` | 保留，但禁止新增协议实现 |
+| `apps/control-runtime` | `保留为薄入口` | `run.ps1` 只解析 canonical `siligen_control_runtime.exe`；legacy fallback 已阻断 | 保留，但禁止新增宿主实现 |
+| `apps/control-cli` | `保留为薄入口` | `run.ps1` 默认只解析 canonical `siligen_cli.exe`；连接调试、运动、点胶、DXF、recipe 命令面都已迁入 canonical CLI | 保留，但禁止新增 CLI 业务逻辑 |
+| `apps/control-tcp-server` | `保留为薄入口` | `run.ps1` 只解析 canonical `siligen_tcp_server.exe`；HIL 默认入口也已切到 canonical | 保留，但禁止新增协议实现 |
 
 ### 3.5 当前明确不能删的真实依赖
 
 | 模块 | 初判 | 关键证据 | 建议动作 |
 |---|---|---|---|
 | `dxf-pipeline` | `保留` | `apps/hmi-app/src/hmi_client/integrations/dxf_pipeline/preview_client.py` 当前直接通过子进程调用它生成预览 | 不能按“旧目录”直接判死刑，应先把 HMI 预览链路迁出 |
-| `control-core` | `保留` | `apps/control-runtime/control-cli/control-tcp-server` 入口仍依赖其构建产物；多处 C++ canonical 包仍以它为真实实现承载 | 当前是运行时主事实来源之一，不能静默下线 |
+| `control-core` | `保留` | config/data/HIL/alias/source-root fallback 已切走，CLI residual fallback 也已切除；但多处 C++ canonical 包仍以它为真实实现承载，并继续持有 `third_party` | 当前仍是核心源码与 `third_party` owner，不能静默下线 |
 
 ## 4. 对 `apps/dxf-editor-app` 的特别说明
 
@@ -89,7 +89,7 @@
 
 ### P1：立即处理
 
-1. 把 `dxf-editor`、`hmi-client` 明确列入收缩计划，目标是退化为兼容壳。
+1. 把 `dxf-editor` 明确列入收缩计划；`hmi-client` 已完成退场并切到删除后治理。
 2. 对 `apps/dxf-editor-app` 发起一次产品/流程复审：
    - 是否存在独立编辑器用户？
    - 是否存在必须单独发布的桌面编辑器？
@@ -111,6 +111,7 @@
 
 当前工作区最明确的冗余不是 `control-*` 这类入口壳，而是：
 
-- **镜像冗余**：`dxf-editor`、`hmi-client`
+- **镜像冗余**：`dxf-editor`
+- **已完成收口**：`hmi-client`
 - **概念性冗余候选**：`apps/dxf-editor-app`、`packages/editor-contracts`
 - **占位性冗余认知**：`packages/shared-kernel`、`packages/traceability-observability` 这些目录已经存在，但不能被误读为“真实模块已迁完”

@@ -14,7 +14,7 @@
 
 - 在未完成真实迁移前静默删除现有子项目
 - 一步到位重写所有构建文件
-- 把 `control-core`、`hmi-client`、`dxf-pipeline` 整体搬入新目录
+- 把 `control-core`、`dxf-pipeline` 整体搬入新目录
 
 ## 2. 当前状态
 
@@ -23,7 +23,6 @@
 1. 现有实现承载路径
 
 - `control-core`
-- `hmi-client`
 - `dxf-pipeline`
 
 2. 新增 canonical 工作区路径
@@ -54,7 +53,7 @@
 
 - `packages/runtime-host` 已是当前运行时宿主的真实实现路径；`control-core/apps/control-runtime` 仅保留旧 target 名称和文档兼容壳。
 - `packages/transport-gateway` 已是当前 TCP/JSON 传输实现的真实路径；`control-core/apps/control-tcp-server` 仅保留薄启动入口，`control-core/modules/control-gateway` 与 `control-core/src/adapters/tcp` 仅保留兼容壳。
-- `hmi-client`、`dxf-pipeline` 仍是当前真实源码根，未来分别对齐 `apps/` 或 `packages/` 下的 canonical 目标。
+- `apps/hmi-app` 已是当前 HMI 的真实源码根；历史 `hmi-client` 目录已删除并归档到 `docs/_archive/2026-03/hmi-client/`。
 - `packages/simulation-engine` 已完成对原顶层 `simulation-engine` 的源码收口，当前由 package 承接真实实现与构建入口。
 - `control-cli` 当前没有新式源码目录，后续以旧仓 `Backend_CPP/src/adapters/cli` 为迁移源，对齐到 `apps/control-cli`。
 - `dxf-editor`、`apps/dxf-editor-app`、`packages/editor-contracts` 已退出工作区默认能力版图；DXF 编辑改为外部编辑器人工流程。
@@ -73,3 +72,12 @@
 1. 新增治理/契约/入口骨架时，优先放根级 canonical 路径。
 2. 现有业务实现的局部修复，仍可以留在旧子项目，但不能借机扩张旧目录边界。
 3. DXF 编辑相关需求不再创建新的 app 或 contracts 包，统一按外部编辑器人工流程说明处理。
+4. Git 分支命名必须使用统一格式：`<type>/<scope>/<ticket>-<short-desc>`；无任务号时可临时使用 `NOISSUE` 占位。
+
+## 7. 协作命名约定（强制）
+
+- 分支命名格式：`<type>/<scope>/<ticket>-<short-desc>`
+- `type` 允许值：`feat`、`fix`、`chore`、`refactor`、`docs`、`test`、`hotfix`、`spike`、`release`
+- `scope` 使用模块短名，例如 `hmi`、`runtime`、`cli`、`gateway`
+- `ticket` 优先使用任务系统编号（如 `SS-142`），确无编号时使用 `NOISSUE`
+- `short-desc` 使用英文小写 kebab-case

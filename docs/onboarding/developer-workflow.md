@@ -1,6 +1,6 @@
 # Developer Workflow
 
-更新时间：`2026-03-18`
+更新时间：`2026-03-19`
 
 ## 1. 唯一推荐工作方式
 
@@ -18,9 +18,9 @@ Set-Location D:\Projects\SiligenSuite
 | 目标 | 推荐命令 | 备注 |
 |---|---|---|
 | HMI | `.\apps\hmi-app\run.ps1` | 官方默认入口。 |
-| TCP server | `.\apps\control-tcp-server\run.ps1` | 官方默认入口，但内部仍回退到 `control-core/build/bin/**`。 |
-| CLI | `.\apps\control-cli\run.ps1` | 官方默认入口，但内部仍回退到 `control-core/build/bin/**`。 |
-| Runtime | `.\apps\control-runtime\run.ps1` | 官方默认入口；当前若提示 `BLOCKED`，按文档视为真实状态。 |
+| TCP server | `.\apps\control-tcp-server\run.ps1` | 官方默认入口；默认只认 canonical `siligen_tcp_server.exe`，已移除 legacy fallback。 |
+| CLI | `.\apps\control-cli\run.ps1` | 官方默认入口；默认只认 canonical `siligen_cli.exe`，不再支持 legacy fallback。 |
+| Runtime | `.\apps\control-runtime\run.ps1` | 官方默认入口；默认只认 canonical `siligen_control_runtime.exe`，已移除 legacy fallback。 |
 
 DXF 编辑：
 
@@ -40,7 +40,7 @@ DXF 编辑：
 - `dxf-editor`
 - `apps/dxf-editor-app`
 - `packages/editor-contracts`
-- `hmi-client`
+- `hmi-client`（已删除；历史材料见 `docs/_archive/2026-03/hmi-client/`）
 - `dxf-pipeline`
 - `control-core/apps/*`
 - `control-core/build/bin/*`

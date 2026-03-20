@@ -12,6 +12,7 @@
 - HMI 打开 DXF 的默认候选目录不再优先指向 `dxf-pipeline/tests/fixtures/...`
 - `packages/engineering-contracts/tests/test_engineering_contracts.py` 改为只验证 canonical proto、canonical fixture、canonical producer 与 consumer 兼容性
 - `engineering-data` 安装入口同时暴露 canonical CLI 名称和 legacy CLI 名称，旧命令名不再必须依赖 `dxf-pipeline` 包安装
+- `dxf-pipeline/.github`、`benchmarks`、`docs`、`examples`、`proto`、`scripts`、`tests`、`tmp` 已从工作区删除，只保留最小兼容壳
 
 ## 2. HMI 预览链路状态
 
@@ -92,6 +93,7 @@ HMI 预览只在 canonical 路径内做定位，不再默认回退到 sibling `d
 
 - 旧 CLI 名称已由 `packages/engineering-data/pyproject.toml` 直接提供 alias，可逐步脱离 `dxf-pipeline` 包安装
 - 旧 Python import 路径仍只存在于 `dxf-pipeline/src`，这仍是删除整个 `dxf-pipeline/` 目录前需要处理的剩余依赖
+- 顶层 proto、fixtures、样例、脚本和子项目文档已经删掉，不再构成当前工作区默认链路的一部分
 
 ## 5. 删除 `dxf-pipeline/` 的剩余阻塞
 
@@ -100,7 +102,7 @@ HMI 预览只在 canonical 路径内做定位，不再默认回退到 sibling `d
 1. `dxf_pipeline.*` import shim 仍位于 `dxf-pipeline/src`，外部历史调用如果还 import 这些路径，删除目录会直接中断。
 2. `packages/engineering-data/docs/compatibility.md` 仍把 `dxf_pipeline.*` / `dxf-pipeline/src/proto/dxf_primitives_pb2.py` 记录为现存兼容面。
 3. `dxf-pipeline/pyproject.toml` 仍声明 legacy console scripts；虽然 canonical 包已提供同名 alias，但若某些环境仍只安装 `dxf-pipeline`，删除前要先迁移安装说明。
-4. 历史文档、runbook、排障说明里仍有大量 `dxf-pipeline` 文本残留，需要在交付文档层完成收口。
+4. 历史文档、runbook、排障说明里仍有 `dxf-pipeline` 文本残留，需要在交付文档层完成收口。
 
 ### 5.2 已切到 canonical 的链路
 
@@ -111,13 +113,13 @@ HMI 预览只在 canonical 路径内做定位，不再默认回退到 sibling `d
 
 ## 6. 建议删除时机
 
-当前建议状态：`可继续 strangler，暂不删目录`
+当前建议状态：`可进入删除准备，但暂不删剩余目录`
 
 建议在以下条件同时满足后删除 `dxf-pipeline/`：
 
 1. 把 `dxf_pipeline.*` import shim 迁到 `packages/engineering-data/src` 下的独立兼容包，或明确确认仓内外已无 import 用户。
 2. 部署脚本、运行手册、排障文档全部改为 `engineering-data` 与 `engineering-contracts` 命名。
 3. 对外发布一次包含 legacy CLI alias 的 `engineering-data` 安装链，并确认历史 CLI 用户不再要求安装 `dxf-pipeline`。
-4. 负向搜索清零以下模式：`dxf-pipeline/src`、`dxf-pipeline/proto`、`dxf-pipeline/tests/fixtures`、`dxf_pipeline.cli.generate_preview`。
+4. 负向搜索清零以下模式：`dxf-pipeline/src`、`dxf_pipeline.cli.generate_preview`。
 
-在当前工作区里，等 import shim 迁移完成后，就可以把 `dxf-pipeline/` 从“仅可冻结”推进到“可进入删除准备”。
+在当前工作区里，外围目录已经删掉；等 import shim 迁移完成后，就可以把剩余 `dxf-pipeline/` 彻底移除。

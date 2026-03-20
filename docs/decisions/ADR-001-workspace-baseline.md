@@ -20,4 +20,4 @@
 - `apps/hmi-app`、`packages/engineering-data`、`packages/runtime-host`、`packages/transport-gateway`、`packages/application-contracts`、`packages/engineering-contracts`、`packages/test-kit`、`integration/` 为当前 `effective canonical`。
 - `apps/control-runtime`、`apps/control-tcp-server`、`apps/control-cli`、`packages/process-runtime-core`、`packages/device-adapters`、`packages/device-contracts`、`config/`、`data/` 为 `transitional canonical`。
 - `control-core` 仍是 C++ 主控的主要 legacy 实现承载体。
-- `hmi-client` 不是纯薄壳，而是保留了整套重复源码的 legacy 目录。
+- `hmi-client` 在本 ADR 建立时不是纯薄壳，而是保留了整套重复源码的 legacy 目录；当前该目录已删除，历史材料已归档到 `docs/_archive/2026-03/hmi-client/`。

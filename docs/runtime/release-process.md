@@ -1,6 +1,6 @@
 # Release Process
 
-更新时间：`2026-03-18`
+更新时间：`2026-03-19`
 
 ## 1. 适用范围
 
@@ -11,7 +11,8 @@
 - `apps/`
 - `packages/`
 - `integration/`
-- 必要的 legacy 兼容产物
+- `legacy-exit` 门禁
+- 必要的兼容产物说明
 
 不再覆盖：
 
@@ -36,7 +37,7 @@ Set-Location D:\Projects\SiligenSuite
 4. 执行根级 `test.ps1 -Profile CI -Suite all -FailOnKnownFailure`
 5. 生成 release evidence 到 `integration\reports\releases\<version>\`
 6. 执行以下 app dry-run 并固化输出：
-   - `apps\hmi-app\run.ps1 -DryRun`
+   - `apps\hmi-app\run.ps1 -DryRun -DisableGatewayAutostart`
    - `apps\control-tcp-server\run.ps1 -DryRun`
    - `apps\control-cli\run.ps1 -DryRun`
    - `apps\control-runtime\run.ps1 -DryRun`
@@ -49,8 +50,13 @@ Set-Location D:\Projects\SiligenSuite
 
 ## 4. 当前已知阻塞
 
-1. 根仓当前 `No commits yet`，还没有可打 tag 的正式提交锚点
-2. `apps\control-runtime` 仍无独立可执行文件，dry-run 当前返回 `BLOCKED`
-3. `control-tcp-server` 与 `control-cli` 仍依赖 `control-core\build\bin\**` 兼容产物
-4. 现场部署仍依赖手工拷贝 `control-core` 产物与 `dxf-pipeline` sibling 目录
-5. `hardware smoke` 当前不能作为可信 release gate
+1. 根仓当前 `No commits yet`，还没有可打 tag 的正式提交锚点。
+2. `control-core` 仍承载真实 C++ 库图、`third_party`、shared compat include root 与未迁完的 infrastructure / device-hal 实现，因此还不能进入物理删除。
+3. `hardware smoke` 已具备最小 canonical 启动闭环，但尚未升级为长稳或现场验收 gate。
+
+## 5. 当前已完成的切换
+
+- `control-runtime`、`control-tcp-server`、`control-cli` 的默认可执行产物都已切到 canonical control-apps build root。
+- `config\machine\machine_config.ini` 与 `data\recipes\` 已是默认配置/数据来源。
+- HIL 默认入口已经切到 `integration\hardware-in-loop\run_hardware_smoke.py` + canonical `siligen_tcp_server.exe`。
+- legacy gateway/tcp alias 已删除；兼容测试现在只验证 canonical target 仍存在且 alias 不得回流。

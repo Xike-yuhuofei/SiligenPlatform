@@ -1,6 +1,6 @@
 # Post-Refactor Runbook
 
-更新时间：`2026-03-18`
+更新时间：`2026-03-19`
 
 ## 1. 当前 canonical 入口
 
@@ -15,10 +15,11 @@ Set-Location D:\Projects\SiligenSuite
 | 入口 | 用途 | 当前状态 |
 |---|---|---|
 | `integration\reports\workspace-validation.md` | 最近一次统一验证结果 | 已存在 |
-| `docs\architecture\system-acceptance-report.md` | 当前已验证事实与已知阻塞 | 已存在 |
-| `.\apps\control-tcp-server\run.ps1 -DryRun` | 查 TCP server 入口是否能定位旧产物 | 已验证 |
-| `.\apps\control-cli\run.ps1 -DryRun` | 查 CLI 入口是否能定位旧产物 | 已验证 |
-| `.\apps\control-runtime\run.ps1 -DryRun` | 确认 runtime 当前仍是 `BLOCKED` | 已验证 |
+| `integration\reports\legacy-exit\legacy-exit-checks.md` | legacy fallback 回流检查 | 已存在 |
+| `.\apps\control-runtime\run.ps1 -DryRun` | 查 runtime 宿主 canonical 入口 | 已验证 |
+| `.\apps\control-tcp-server\run.ps1 -DryRun` | 查 TCP server canonical 入口 | 已验证 |
+| `.\apps\control-cli\run.ps1 -DryRun` | 查 CLI canonical 入口 | 已验证 |
+| `python .\integration\hardware-in-loop\run_hardware_smoke.py` | 查 HIL 默认入口 | 已验证 |
 | `.\apps\hmi-app\run.ps1 -DryRun -DisableGatewayAutostart` | 查 HMI 根入口是否存在 | 已验证 |
 | `.\test.ps1` | 复跑可重复验证 | 已验证 |
 
@@ -29,14 +30,15 @@ DXF 编辑问题处理：
 
 ## 2. 常见失败点
 
-1. `apps\control-runtime\run.ps1 -DryRun` 返回 `BLOCKED` 被误判成新故障。
-2. `hardware-smoke` 脚本直接返回 0 被误判成真实现场链路通过。
-3. 误以为仓库仍提供 `apps/dxf-editor-app`、`dxf-editor` 或 `packages/editor-contracts`。
-4. 误以为系统仍支持 notify / CLI 编辑器协作协议。
-5. HMI DXF 预览失败，其实是 `dxf-pipeline` 没跟着交付或 `SILIGEN_DXF_PIPELINE_ROOT` 指错。
+1. canonical control-apps build root 下缺少 exe，导致 `run.ps1 -DryRun` 直接失败。
+2. 机器配置只恢复了 `config\machine\machine_config.ini`，忘了同步 `config\machine_config.ini` bridge。
+3. 把 `control-core\config`、`control-core\data\recipes` 误当成默认排查入口，导致修改没有进入真实链路。
+4. 误以为 `control-cli` 仍支持 `-UseLegacyFallback`，导致按旧文档排障失败。
+5. `hardware-smoke` 已通过最小 canonical 启动闭环，却被误判成“已经完成真实机台验收”。
 
 ## 3. 与 legacy 路径的关系
 
-- `apps\control-tcp-server`、`apps\control-cli` 是当前排查入口，但真正的问题常落在 `control-core\build\bin\**` 产物或相关配置 fallback。
-- `apps\control-runtime` 当前只有 canonical 名称，不是独立可执行排查目标。
-- `dxf-pipeline\` 仍是 HMI DXF 预览的实际兼容依赖。
+- `control-core\build\bin\**` 不再是 `control-runtime`、`control-tcp-server` 的默认排查对象。
+- `control-core\config`、`control-core\data\recipes`、`control-core\src\infrastructure\resources\config\files\recipes\schemas` 已退出默认 fallback。
+- `control-core\build\bin\**\siligen_cli.exe` 不再是 CLI 的排障入口。
+- legacy gateway/tcp alias 已删除；`legacy-exit-check.ps1` 会拦截其回流到 `control-core` 注册。

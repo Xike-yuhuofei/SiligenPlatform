@@ -1,6 +1,13 @@
 # Legacy Cleanup Plan V2
 
-更新时间：`2026-03-18`
+> `2026-03-19` 状态更新：`control-core/modules/shared-kernel`、`control-core/src/domain`、`control-core/src/application`、`control-core/modules/process-core`、`control-core/modules/motion-core` 已完成物理删除。本文中的旧风险表仅作为历史基线保留；当前状态以 `docs/architecture/removed-legacy-items-final.md`、`docs/architecture/legacy-deletion-gates.md`、`docs/decisions/legacy-removal-execution.md` 为准。
+
+更新时间：`2026-03-19`
+
+补充说明：
+
+- 本文档中的 `hmi-client` 判定已被 `docs/architecture/legacy-deletion-gates.md` 与 `docs/architecture/removed-legacy-items.md` 覆盖；以下表格仅保留执行时上下文。
+- 本文档中的 `dxf-pipeline` 判定已被 `docs/architecture/dxf-pipeline-final-cutover.md` 与 `docs/architecture/removed-legacy-items-final.md` 覆盖；以下表格仅保留执行时上下文。
 
 ## 1. 目标与判定口径
 
@@ -48,7 +55,7 @@
 
 | 路径 | 当前角色 | 为什么仍不可删除 | 风险 | 回滚方式 |
 |---|---|---|---|---|
-| `dxf-pipeline/` | active compatibility shell | canonical HMI 预览仍直接调用 `dxf_pipeline.cli.generate_preview` | 删除会直接打断 DXF 预览链路与相关契约验证 | 若误删，从工作区备份恢复目录，并重跑 engineering/HMI 验证 |
+| `dxf-pipeline/` | 已完成删除 | 兼容 import/CLI 已迁入 `packages/engineering-data/src`，工作区内目录已不存在 | 当前风险转为工作区外调用者若仍依赖旧安装方式会失效 | 如需回到删除前状态，从 `tmp\legacy-removal-backups\20260319-074024\dxf-pipeline` 恢复并重跑 engineering/HMI 验证 |
 | `control-core/build/bin/**/siligen_tcp_server.exe` | 唯一默认 HIL 可执行入口 | `apps/control-tcp-server/run.ps1` 与 `integration/hardware-in-loop/run_hardware_smoke.py` 仍依赖它 | 删除会让 HIL/现场烟测失效 | 若误删，恢复构建产物或从构建机重新生成，并重跑 HIL smoke |
 | `control-core/build/bin/**/siligen_cli.exe` | 唯一工作区内 CLI 产物 | `apps/control-cli/run.ps1` 仍转发到它 | 删除会让 CLI wrapper 失效 | 若误删，恢复构建产物或从构建机重新生成，并重跑 CLI dry-run |
 | `control-core/apps/control-runtime/`、`control-core/apps/control-tcp-server/` | transitional runtime/tcp 壳 | 真实 runtime/tcp 迁移未闭环，legacy main/alias 仍在使用 | 删除会波及 runtime/tcp 构建与运行链路 | 若误删，从工作区备份恢复目录，并重跑 dry-run/HIL 验证 |

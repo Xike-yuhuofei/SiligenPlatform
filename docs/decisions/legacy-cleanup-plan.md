@@ -1,6 +1,12 @@
 # Legacy Cleanup Plan
 
+> `2026-03-19` 状态更新：`control-core/modules/shared-kernel`、`control-core/src/domain`、`control-core/src/application`、`control-core/modules/process-core`、`control-core/modules/motion-core` 已完成物理删除。本文未归档段落仅反映旧基线，当前状态以 `docs/architecture/removed-legacy-items-final.md`、`docs/architecture/legacy-deletion-gates.md`、`docs/decisions/legacy-removal-execution.md` 为准。
+
 更新时间：`2026-03-18`
+
+补充说明：
+
+- 本文档记录的是第一批 legacy 收缩动作；`hmi-client` 的最终目录删除已由 `docs/architecture/legacy-deletion-gates.md` 与 `docs/architecture/removed-legacy-items.md` 覆盖。
 
 ## 1. 目标
 

@@ -1,12 +1,16 @@
 # Legacy Freeze Policy
 
-更新时间：`2026-03-18`
+> `2026-03-19` 状态更新：`control-core/modules/shared-kernel`、`control-core/src/domain`、`control-core/src/application`、`control-core/modules/process-core`、`control-core/modules/motion-core` 已删除，相关“允许维护”口径仅代表历史冻结基线。当前删除状态请以 `docs/architecture/legacy-deletion-gates.md` 与 `docs/architecture/removed-legacy-items-final.md` 为准。
+
+更新时间：`2026-03-19`
 
 ## 1. 目的
 
 本策略用于冻结 legacy 路径的使用方式，确保团队切到 canonical 工作流后，不再把历史路径重新扩成默认入口。
 
 冻结不是删除。
+
+已删除目录不再适用本策略，而是由 `docs/architecture/legacy-deletion-gates.md` 与 `legacy-exit-check.ps1` 的“目录缺失 + 防回流”门禁接管。
 
 冻结的含义是：
 
@@ -18,10 +22,7 @@
 
 以下路径全部纳入冻结范围：
 
-- `hmi-client`
 - `dxf-pipeline`
-- `control-core/apps/control-runtime`
-- `control-core/apps/control-tcp-server`
 - `control-core/build/bin/*`
 - `control-core/src/domain`
 - `control-core/src/application`
@@ -40,9 +41,9 @@
 
 1. 新 README、Runbook、ADR、脚本说明把 legacy 路径写成第一入口。
 2. 新脚本、CI、自动化直接从 legacy 目录起跑，而不经过根级入口。
-3. 新测试默认从 `hmi-client/src`、`dxf-pipeline/src` 读取源码。
+3. 新测试默认从 `dxf-pipeline/src` 读取源码。
 4. 新 CMake / include / link 新增对 `control-core/...` 的硬编码引用，而不声明其为阻塞项或兼容项。
-5. 新功能默认落在 `hmi-client`、`dxf-pipeline`、`control-core/src/*`、`control-core/modules/*`。
+5. 新功能默认落在 `dxf-pipeline`、`control-core/src/*`、`control-core/modules/*`。
 
 ### 3.2 允许的改动类型
 
@@ -61,25 +62,25 @@
 
 | 路径 | 还能不能用 | 什么时候能用 | 谁可以用 | 默认状态 |
 |---|---|---|---|---|
-| `hmi-client/scripts/*` | 能用 | 接住历史命令或验证转发是否正常 | 应用维护者、测试负责人 | 兼容壳，不是默认入口 |
 | `dxf-pipeline` | 能用 | HMI DXF 预览仍依赖、旧 CLI/import 兼容仍依赖时 | 工程数据维护者、HMI 维护者 | 兼容壳，不是默认入口 |
-| `control-core/apps/control-runtime` | 能用 | 解释阻塞、维护 alias、修复 runtime 迁移阻塞时 | 运行时维护者 | 兼容壳，不是默认入口 |
-| `control-core/apps/control-tcp-server` | 能用 | 维护 legacy `main.cpp` 或构建接线时 | 运行时维护者 | 兼容壳，不是默认入口 |
-| `control-core/src/adapters/tcp` / `modules/control-gateway` | 能用 | 维护 legacy target alias 或兼容测试时 | 运行时维护者 | 兼容壳，不是默认入口 |
+
+补充说明：
+
+- `packages/transport-gateway` 曾导出的 `siligen_control_gateway_tcp_adapter`、`siligen_tcp_adapter`、`siligen_control_gateway` 已在 `2026-03-19` 审计确认消费者归零后删除，不再属于允许保留的兼容壳。
 
 ## 5. 唯一可运行路径的例外
 
-以下对象虽然属于 legacy，但当前仍是唯一可运行路径或唯一真实产物来源，因此保留例外资格：
+以下对象虽然属于 legacy，但当前仍是唯一真实实现或唯一显式兼容面，因此保留例外资格：
 
 | legacy 对象 | 例外规则 |
 |---|---|
-| `control-core/build/bin/**/siligen_tcp_server.exe` | 可以被 `apps/control-tcp-server/run.ps1` 间接调用；不能直接写回团队默认命令。 |
-| `control-core/build/bin/**/siligen_cli.exe` | 可以被 `apps/control-cli/run.ps1` 间接调用；不能直接写回团队默认命令。 |
 | `control-core/src/domain` / `src/application` / `modules/process-core` / `modules/motion-core` | 当前仍是 process/runtime 真实实现面；允许维护，但每次改动都必须说明 canonical 替代尚未完成。 |
 | `control-core/modules/device-hal` / `modules/shared-kernel` | 当前仍是 device/shared-kernel 真实实现面；允许维护，但不得新增新的默认依赖面。 |
-| `control-core/config/machine_config.ini` | 当前仍可能被 fallback 读取；允许发布和现场同步，但默认编辑入口仍是 `config/machine/machine_config.ini`。 |
-| `control-core/data/recipes/*` | 当前仍可能是旧链路真实资产来源；允许同步和核对，但默认公开路径仍是 `data/recipes/*`。 |
-| `hmi-client/src` | 当前只允许做 mirror 差异核对和兼容下线准备；不作为新功能默认落点。 |
+| `control-core/config/machine_config.ini` | 已退出默认 fallback；当前仅允许做历史残留核对、provenance 审计或删除前比对，不得写回默认发布/编辑口径。 |
+| `control-core/data/recipes/*` | 已退出默认 fallback；当前仅允许做历史残留核对、provenance 审计或删除前比对，不得写回默认公开路径。 |
+- `apps/control-runtime/run.ps1`、`apps/control-tcp-server/run.ps1`、`apps/control-cli/run.ps1` 已不再享有 legacy build 例外；三者默认和显式 legacy fallback 都已经阻断。
+- `integration/hardware-in-loop/run_hardware_smoke.py` 的默认入口已经切到 canonical `siligen_tcp_server.exe`，不再属于 `control-core/build/bin/**` 例外。
+- CLI cutover 详情见 `docs/architecture/control-cli-cutover.md`；`control-core/build/bin/**/siligen_cli.exe` 仅剩历史产物语义，不再属于“唯一可运行路径例外”。
 
 ## 6. 评审与准入规则
 
@@ -100,7 +101,7 @@
 3. 测试、文档、自动化都已改到 canonical 路径。
 4. `docs/architecture/canonical-paths.md` 与 `docs/architecture/compatibility-shell-audit.md` 已同步更新。
 
-在满足这些条件前，禁止直接删除兼容壳。
+在满足这些条件前，禁止直接删除仍存在的兼容壳。
 
 ## 8. 团队执行口径
 

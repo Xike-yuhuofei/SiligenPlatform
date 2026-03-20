@@ -21,17 +21,17 @@
 
 | app | 职责 | 当前真实来源 |
 |---|---|---|
-| `apps/control-runtime` | 运行时宿主薄入口 | `packages/runtime-host` + `control-core/apps/control-runtime` 兼容壳 |
-| `apps/control-tcp-server` | TCP/JSON 服务入口 | `packages/transport-gateway` + `control-core/apps/control-tcp-server` 薄入口 |
+| `apps/control-runtime` | 运行时宿主入口 | `packages/runtime-host` |
+| `apps/control-tcp-server` | TCP/JSON 服务入口 | `packages/transport-gateway` + `packages/runtime-host` |
 | `apps/control-cli` | CLI 入口 | 旧仓 `src/adapters/cli` |
-| `apps/hmi-app` | 桌面 HMI 入口 | `hmi-client` |
+| `apps/hmi-app` | 桌面 HMI 入口 | `apps/hmi-app` + `packages/application-contracts` + `packages/transport-gateway` |
 
 ## 4. `packages/` 目录职责
 
 | package | 职责 | 当前真实来源 |
 |---|---|---|
 | `engineering-data` | 工程对象、几何预处理、离线规划/轨迹 | `dxf-pipeline` + `control-core` 离线切片 |
-| `process-runtime-core` | 强收拢业务内核 | `control-core/src/domain/*` + `src/application/usecases/*` |
+| `process-runtime-core` | 强收拢业务内核 | `packages/process-runtime-core/src/domain/*` + `src/application/*` + `modules/process-core/*` + `modules/motion-core/*` |
 | `runtime-host` | 宿主装配、配置、生命周期、安全、后台任务 | `packages/runtime-host` + 旧 bootstrap/container 迁移来源 |
 | `device-adapters` | 硬件驱动与设备适配 | `control-core/modules/device-hal` |
 | `transport-gateway` | TCP/JSON 边界和传输映射 | `packages/transport-gateway` + `control-core/modules/control-gateway` 兼容壳 |
@@ -39,7 +39,7 @@
 | `application-contracts` | HMI/CLI/TCP 应用契约 | 当前散落在 HMI 和 control-gateway |
 | `device-contracts` | 核心与设备之间的能力契约 | 当前散落在 ports/include |
 | `engineering-contracts` | 工程输出 schema/proto/codegen | `dxf-pipeline/proto` + contracts |
-| `shared-kernel` | 小而稳的公共基础内核 | `control-core/modules/shared-kernel` |
+| `shared-kernel` | 小而稳的公共基础内核 | `packages/shared-kernel` |
 | `packages/simulation-engine` | 运动仿真、虚拟设备桥接、回归支撑 | 原顶层 `simulation-engine` 已收口到 `packages/simulation-engine` |
 | `test-kit` | 跨包测试支撑与回归工具箱 | 当前散落在各子项目和旧仓工具 |
 

@@ -1,6 +1,6 @@
 # packages 子模块审计（保留 / 冻结 / 候删）
 
-更新时间：`2026-03-18`
+更新时间：`2026-03-19`
 
 ## 1. 审计前提
 
@@ -67,7 +67,7 @@
 补充说明：
 
 - 本包已有真实代码，应继续保留。
-- 但 `CMakeLists.txt` 仍直接 include `../../control-core/modules/shared-kernel/include`，说明它是“真实 owner + 迁移欠账”状态，而不是完全收口完成。
+- shared-kernel include 已切到 `packages/shared-kernel`；当前阻塞转为 `device-hal`、`third_party` 与 process-runtime seam 的遗留依赖。
 
 ### 4.3 `packages/device-contracts`
 
@@ -132,6 +132,10 @@
 
 | 子模块 | 状态 | 理由 |
 |---|---|---|
+| `src/domain/` | `保留` | 已成为业务内核 canonical 实现目录；`control-core/src/domain` 已删除 |
+| `src/application/` | `保留` | 已成为应用层 canonical 实现目录；`control-core/src/application` 已删除 |
+| `modules/process-core/` | `保留` | 已成为 process canonical 实现目录；legacy 子树已删除 |
+| `modules/motion-core/` | `保留` | 已成为 motion/safety canonical 实现目录；legacy 子树已删除 |
 | `tests/` | `保留` | 当前最真实的 package 内部资产，已迁入大量 C++ 单测 |
 | `process/` | `冻结` | 当前主要是边界锚点，真实实现仍依赖 legacy 映射 |
 | `planning/` | `冻结` | 同上 |
@@ -146,9 +150,9 @@
 
 补充说明：
 
-- `CMakeLists.txt` 当前仍以 `INTERFACE` target 方式把 legacy 实现收口进来。
-- 这说明本包现在是**边界 owner 已建立，但源码 owner 尚未完全迁入**。
-- 因此，`tests/` 是保留核心，其余子域先冻结为真实迁移落点，不要再在别处发散。
+- `packages/process-runtime-core` 已是四个 core legacy 子树的唯一真实源码 owner。
+- 当前剩余欠账不在 `src/domain` / `src/application` / `modules/*` 本身，而在 `control-core/src/shared`、`control-core/src/infrastructure` 与 `third_party` 仍未完全迁出。
+- `tests/` 与 package 内源码目录都应继续作为保留核心，不再把旧 `control-core` 子树当作迁移落点。
 
 ### 4.8 `packages/runtime-host`
 
@@ -173,7 +177,10 @@
 
 | 子模块 | 状态 | 理由 |
 |---|---|---|
-| 包整体 | `冻结` | 当前只有 README，没有真实代码，仍是占位锚点 |
+| `include/` | `保留` | 当前公开 shared-kernel 头文件真实来源 |
+| `src/` | `保留` | 当前共享基础实现真实来源 |
+| `tests/` | `保留` | 当前 canonical shared-kernel 单测入口 |
+| 包整体 | `保留` | `control-core/modules/shared-kernel` 已删除，本包是唯一真实 owner |
 
 ### 4.10 `packages/simulation-engine`
 
@@ -228,15 +235,15 @@
 - `device-contracts`
 - `engineering-contracts`
 - `engineering-data`
+- `process-runtime-core`
+- `shared-kernel`
 - `test-kit`
 - `transport-gateway`
 
 ### 5.2 以“冻结”为主的包
 
 - `editor-contracts`
-- `process-runtime-core`
 - `runtime-host`
-- `shared-kernel`
 - `traceability-observability`
 
 ## 6. 推荐执行顺序
@@ -250,7 +257,7 @@
 ### P2：下一轮收口
 
 1. 优先接线 `runtime-host/src/runtime/configuration`、`events`、`scheduling`、`storage/files`
-2. 逐步把 `process-runtime-core` 从“README 子域 + interface target”推进到真实源码落位
+2. 继续清理 `process-runtime-core` 对 `control-core/src/shared`、`control-core/src/infrastructure`、`control-core/third_party` 的剩余依赖
 3. 替换 `device-adapters`、`transport-gateway` 对 `control-core` legacy include/link 的直接依赖
 
 ### P3：产品决策后处理

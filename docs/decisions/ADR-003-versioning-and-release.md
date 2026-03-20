@@ -1,7 +1,7 @@
 # ADR-003 Versioning And Release
 
 - 状态：`Accepted`
-- 日期：`2026-03-18`
+- 日期：`2026-03-19`
 
 ## 背景
 
@@ -94,7 +94,7 @@
 - `config\`
 - `data\recipes\`
 - `control-core\build\bin\<Config>\`
-- `dxf-pipeline\`（如发布范围包含 DXF 预览）
+- `packages\engineering-data\`（如发布范围包含 DXF 预览 / `.pb` / simulation input 导出）
 
 ### 7. 当前状态只允许定义候选基线，不假设已有稳定版
 
