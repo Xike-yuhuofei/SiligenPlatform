@@ -1,9 +1,0 @@
-<!DOCTYPE RCC>
-<RCC version="1.0">
-    <qresource prefix="/icons">
-        <file>icons/emergency_stop.svg</file>
-        <file>icons/connect.svg</file>
-        <file>icons/disconnect.svg</file>
-        <file>icons/homing.svg</file>
-    </qresource>
-</RCC>
