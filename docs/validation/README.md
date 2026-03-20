@@ -79,9 +79,11 @@
 - 单独回归入口：`integration/hardware-in-loop/run_hil_closed_loop.py --report-dir <report-dir>`
 - 关键开关：`test.ps1 -IncludeHilClosedLoop`
 - 默认长稳时长：`run_hil_controlled_test.ps1` 默认 `HilDurationSeconds=1800`
+- 默认状态门槛：`run_hil_controlled_test.ps1` / `run_hil_closed_loop.py` 默认 `pause/resume=3`
 - 参数透传（环境变量）：`SILIGEN_HIL_DISPENSER_COUNT`、`SILIGEN_HIL_DISPENSER_INTERVAL_MS`、`SILIGEN_HIL_DISPENSER_DURATION_MS`、`SILIGEN_HIL_STATE_WAIT_TIMEOUT_SECONDS`
 - 报告目录规范：`workspace_validation` 会将历史 `hil-controlled-test/hil-controlled-test` 归档到 `_legacy-nested/`，并固定输出到单层 `hil-controlled-test/`
 - 默认证据位置：`integration/reports/hil-controlled-test/workspace-validation.json`、`integration/reports/hil-controlled-test/hil-closed-loop-summary.json`
+- 双轨证据：时间戳目录保留原始批次，固定目录发布最新通过结果；来源追溯见 `integration/reports/hil-controlled-test/latest-source.txt`
 
 ## Sim Observer 验收
 

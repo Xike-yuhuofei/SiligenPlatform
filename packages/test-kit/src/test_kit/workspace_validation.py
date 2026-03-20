@@ -397,7 +397,7 @@ def build_cases(
             resolved_report_dir = (report_dir if report_dir is not None else _default_report_dir()).resolve()
             hil_report_dir = _resolve_hil_report_dir(resolved_report_dir)
             hil_duration_seconds = int(os.getenv("SILIGEN_HIL_DURATION_SECONDS", "300"))
-            hil_pause_resume_cycles = int(os.getenv("SILIGEN_HIL_PAUSE_RESUME_CYCLES", "1"))
+            hil_pause_resume_cycles = int(os.getenv("SILIGEN_HIL_PAUSE_RESUME_CYCLES", "3"))
             hil_dispenser_count = int(os.getenv("SILIGEN_HIL_DISPENSER_COUNT", "300"))
             hil_dispenser_interval_ms = int(os.getenv("SILIGEN_HIL_DISPENSER_INTERVAL_MS", "200"))
             hil_dispenser_duration_ms = int(os.getenv("SILIGEN_HIL_DISPENSER_DURATION_MS", "80"))

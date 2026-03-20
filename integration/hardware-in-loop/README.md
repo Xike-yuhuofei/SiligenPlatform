@@ -17,6 +17,8 @@
 - 进程 `cwd` 使用仓库根，而不是 `control-core`
 - 若启动失败并命中当前已知模式，会归类为 `known_failure`
 - 若未来接入真实机台，可通过环境变量替换目标可执行程序
+- `run_hil_controlled_test.ps1` 在 `passed` 且门禁满足时，会将本次时间戳目录证据同步到固定目录 `integration/reports/hil-controlled-test`
+- 固定目录会写入 `latest-source.txt`，用于追溯来源时间戳目录（双轨证据）
 
 推荐命令：
 
@@ -43,6 +45,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\integration\hardware-in-lo
 
 关键参数：
 
+- `--pause-resume-cycles`（默认 `3`）
 - `--dispenser-count`（默认 `300`）
 - `--dispenser-interval-ms`（默认 `200`）
 - `--dispenser-duration-ms`（默认 `80`）
@@ -50,6 +53,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\integration\hardware-in-lo
 
 对应环境变量：
 
+- `SILIGEN_HIL_PAUSE_RESUME_CYCLES`
 - `SILIGEN_HIL_DISPENSER_COUNT`
 - `SILIGEN_HIL_DISPENSER_INTERVAL_MS`
 - `SILIGEN_HIL_DISPENSER_DURATION_MS`

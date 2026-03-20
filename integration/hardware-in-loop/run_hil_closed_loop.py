@@ -569,7 +569,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gateway-exe", default=os.getenv("SILIGEN_HIL_GATEWAY_EXE", str(_resolve_default_exe("siligen_tcp_server.exe"))))
     parser.add_argument("--cli-exe", default=os.getenv("SILIGEN_HIL_CLI_EXE", str(_resolve_default_exe("siligen_cli.exe"))))
     parser.add_argument("--dxf-file", type=Path, default=DEFAULT_DXF_FILE)
-    parser.add_argument("--pause-resume-cycles", type=int, default=1)
+    parser.add_argument("--pause-resume-cycles", type=int, default=3)
     parser.add_argument("--dispenser-count", type=int, default=int(os.getenv("SILIGEN_HIL_DISPENSER_COUNT", "300")))
     parser.add_argument("--dispenser-interval-ms", type=int, default=int(os.getenv("SILIGEN_HIL_DISPENSER_INTERVAL_MS", "200")))
     parser.add_argument("--dispenser-duration-ms", type=int, default=int(os.getenv("SILIGEN_HIL_DISPENSER_DURATION_MS", "80")))

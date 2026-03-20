@@ -1,6 +1,6 @@
 # Field Acceptance
 
-更新时间：`2026-03-19`
+更新时间：`2026-03-20`
 
 ## 1. 结论摘要
 
@@ -9,18 +9,14 @@
 - mock：HMI client -> TCP mock server -> mock core 行为
 - simulation：工程数据导出、`packages/simulation-engine` fixture 回归、直接 `simulate_dxf_path.exe` 运行
 - protocol compatibility：application / engineering / transport 契约兼容
-- HIL：`integration/hardware-in-loop/run_hardware_smoke.py` 最小启动烟测
-- real hardware：未执行，当前无可用现场硬件环境
+- HIL：`integration/hardware-in-loop/run_hil_controlled_test.ps1`（60s 快速门禁 + 1800s 全流程）
+- real hardware：`2026-03-20` 目标机台执行 `1800s` 闭环长稳并通过
 
 当前结论：
 
-- `mock`、`simulation`、`protocol compatibility` 仍可形成稳定替代验收。
-- `simulation` 当前仅代表受控仿真验收通过：覆盖运动路径、IO 回放与 deterministic 回归，不代表整机/工艺替代验收。
-- `simulation` 的受控生产测试默认入口固定为 `integration/simulated-line/run_controlled_production_test.ps1`，并要求同时产出 `workspace-validation.*` 与 `simulated-line-summary.*`。
-- `HIL` 默认入口已经切到 canonical `siligen_tcp_server.exe`，目标路径为 `<CONTROL_APPS_BUILD_ROOT>\bin\Debug\siligen_tcp_server.exe`。
-- `HIL` 闭环/长稳入口固定为 `integration/hardware-in-loop/run_hil_controlled_test.ps1`（底层执行 `run_hil_closed_loop.py` 并产出结构化报告）。
-- 本次本地 `hardware-smoke` 已通过，说明 canonical HIL 默认入口已具备最小启动闭环。
-- `real hardware` 未执行，不能宣称现场验收完成。
+- `mock`、`simulation`、`protocol compatibility` 维持通过。
+- `HIL` 闭环/长稳在 `pause/resume=3` 门槛下通过，状态门禁无 `skipped/failed`。
+- `real hardware` 本轮已执行并纳入验收证据，但该结论不等同工艺质量签收。
 
 ## 2. 分层结果
 
@@ -29,29 +25,32 @@
 | mock | `partial pass` | HMI client + mock TCP server 跑通；`dxf.resume`、`recipe.list` 后端方法不存在。 |
 | simulation | `pass` | engineering regression、simulation smoke/json-io、fixture regression、100 次 soak 均通过。 |
 | protocol compatibility | `pass` | application / engineering / transport 契约兼容通过。 |
-| HIL | `pass` | canonical `siligen_tcp_server.exe` 可被 `run_hardware_smoke.py` 拉起，TCP 端口可达。 |
-| real hardware | `not executed` | 无现场硬件环境；仅保留 mock / simulation / HIL 替代结果。 |
+| HIL | `pass` | `run_hil_controlled_test.ps1` 在 `60s` 与 `1800s` 均通过，`pause/resume=3`。 |
+| real hardware | `pass` | `2026-03-20` 目标机台完成 `1800s` 闭环长稳，纳入验收证据。 |
 
 ## 3. HIL 当前事实
 
-- `apps/control-tcp-server/run.ps1 -DryRun` 现在只验证 canonical `siligen_tcp_server.exe`。
-- `integration/hardware-in-loop/run_hardware_smoke.py` 默认从 `SILIGEN_CONTROL_APPS_BUILD_ROOT` 解析 exe，并以工作区根为 `cwd`。
-- `run_hardware_smoke.py` 本次输出 `hardware smoke passed: TCP endpoint is reachable`。
-- 高频探针已观察到可建立的 `127.0.0.1:9527` 会话。
+- `apps/control-tcp-server/run.ps1 -DryRun` 只验证 canonical `siligen_tcp_server.exe`。
+- `run_hardware_smoke.py` 与 `run_hil_closed_loop.py` 均以工作区根为 `cwd` 执行。
+- `1800s` 报告：`integration/reports/hil-controlled-test-20260320-1800-gate3-01`
+  - `overall_status=passed`
+  - `iterations=599`
+  - `timeout_count=0`
+  - `state_transition_checks=4193/4193 passed`
+- 固定目录：`integration/reports/hil-controlled-test` 已同步最新通过证据，来源由 `latest-source.txt` 记录。
 
 ## 4. 关键业务链路结论
 
-- `HMI -> TCP -> Core`：mock 通过；HIL 仍被应用初始化阻塞。
-- DXF 加载 / 执行：mock 与 simulation 已验证；HIL / real hardware 未验证通过。
-- 报警 / 异常恢复：mock 已验证；HIL / real hardware 未执行。
-- 配方：HMI 本地文件模型可工作；后端 `recipe.list` 尚未形成验收闭环。
+- `HMI -> TCP -> Core`：mock 验证通过；HIL 闭环链路已通过。
+- DXF 加载 / 执行：mock、simulation、HIL（含真实机台口径）均有通过证据。
+- 暂停/恢复状态转换：已在 `pause/resume=3` 门槛下持续通过。
+- 报警 / 异常恢复：mock 已验证；真实机台专项恢复场景仍建议补充。
 
 ## 5. 当前验收结论
 
-- 可以确认的通过范围：mock、simulation、protocol compatibility、process-runtime 包级回归。
-- 可以确认的阻塞范围：后端配方 RPC、DXF 恢复语义、real hardware smoke。
+- 可以确认的通过范围：mock、simulation、protocol compatibility、HIL 闭环长稳、real hardware 本轮长稳执行。
 - 当前更准确的结论是：
   - `mock/simulation 替代验收通过`
-  - `simulation = 受控仿真验收，不等于整机/工艺验收`
-  - `HIL 最小烟测通过`
-  - `real hardware 未执行`
+  - `HIL 受控闭环长稳通过（门禁已收紧）`
+  - `real hardware 已执行并纳入证据`
+  - `整机/工艺签收仍需独立工艺验收流程`
