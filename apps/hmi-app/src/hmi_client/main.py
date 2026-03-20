@@ -8,7 +8,10 @@ from pathlib import Path
 # Add hmi directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
+from qt_env import configure_qt_environment
 from client import normalize_launch_mode
+
+configure_qt_environment(headless=False)
 from ui.main_window import main as run_ui
 
 

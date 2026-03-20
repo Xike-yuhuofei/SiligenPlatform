@@ -5,6 +5,9 @@ param(
     [string]$ListenHost = "127.0.0.1",
     [int]$Port = 0,
     [string]$MockCommand = "",
+    [string]$ExpectFailureCode = "",
+    [string]$ExpectFailureStage = "",
+    [switch]$UseSupervisorInjection,
     [switch]$VerboseMock
 )
 
@@ -17,10 +20,17 @@ $ExitGuiTimeout = 11
 $ExitMockStartFailed = 20
 $ExitMockReadyTimeout = 21
 
+$hasExpectedSupervisorFailure = (-not [string]::IsNullOrWhiteSpace($ExpectFailureCode)) -or (-not [string]::IsNullOrWhiteSpace($ExpectFailureStage))
+$effectiveUseSupervisorInjection = $UseSupervisorInjection -or $hasExpectedSupervisorFailure
+if ($hasExpectedSupervisorFailure -and -not $UseSupervisorInjection) {
+    Write-Host "[online-smoke] ExpectFailure* detected; forcing supervisor injection mode for authoritative diagnostics"
+}
+
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $sourceRoot = Join-Path $projectRoot "src"
 $uiQtest = Join-Path $sourceRoot "hmi_client\\tools\\ui_qtest.py"
 $mockServer = Join-Path $sourceRoot "hmi_client\\tools\\mock_server.py"
+$hangingServer = Join-Path $sourceRoot "hmi_client\\tools\\fake_hanging_server.py"
 
 if ([string]::IsNullOrWhiteSpace($env:PYTHONPATH)) {
     $env:PYTHONPATH = $sourceRoot
@@ -123,75 +133,65 @@ function Resolve-MockEntry {
     return $projectRelativeEntry
 }
 
-$actualPort = if ($Port -gt 0) { $Port } else { Get-FreeTcpPort }
-if (Test-TcpPort -TargetHost $ListenHost -TargetPort $actualPort) {
-    Write-Host "[online-smoke] mock port already in use host=$ListenHost port=$actualPort"
-    exit $ExitMockStartFailed
-}
+function New-TemporaryLaunchSpec {
+    param(
+        [string]$PythonPath,
+        [string]$EntryPath,
+        [string]$TargetHost,
+        [int]$TargetPort
+    )
 
-$mockEntry = Resolve-MockEntry -Entry $MockCommand
-$stdoutLog = Join-Path ([IO.Path]::GetTempPath()) ("siligen-online-smoke-{0}-stdout.log" -f [guid]::NewGuid().ToString("N"))
-$stderrLog = Join-Path ([IO.Path]::GetTempPath()) ("siligen-online-smoke-{0}-stderr.log" -f [guid]::NewGuid().ToString("N"))
-$mockArgs = @("-u", $mockEntry, "--host", $ListenHost, "--port", "$actualPort")
-if ($VerboseMock) {
-    $mockArgs += "--verbose"
-}
-
-$mockProcess = $null
-
-try {
-    Write-Host "[online-smoke] starting mock server host=$ListenHost port=$actualPort entry=$mockEntry"
-    $mockProcess = Start-Process `
-        -FilePath $PythonExe `
-        -ArgumentList $mockArgs `
-        -PassThru `
-        -RedirectStandardOutput $stdoutLog `
-        -RedirectStandardError $stderrLog `
-        -WindowStyle Hidden
-
-    $deadline = (Get-Date).AddMilliseconds($MockStartupTimeoutMs)
-    $ready = $false
-    while ((Get-Date) -lt $deadline) {
-        if ($mockProcess.HasExited) {
-            $stdoutText = Read-LogFile -Path $stdoutLog
-            $stderrText = Read-LogFile -Path $stderrLog
-            Write-Host "[online-smoke] mock server exited early exit_code=$($mockProcess.ExitCode)"
-            if ($stdoutText) {
-                Write-Host "[online-smoke][mock-stdout] $stdoutText"
-            }
-            if ($stderrText) {
-                Write-Host "[online-smoke][mock-stderr] $stderrText"
-            }
-            exit $ExitMockStartFailed
+    $specPath = Join-Path ([IO.Path]::GetTempPath()) ("siligen-gateway-launch-{0}.json" -f [guid]::NewGuid().ToString("N"))
+    $resolvedPython = $PythonPath
+    if (-not [IO.Path]::IsPathRooted($resolvedPython)) {
+        try {
+            $resolvedPython = (Get-Command $PythonPath -ErrorAction Stop).Source
+        } catch {
+            throw "Cannot resolve python executable for launch spec: $PythonPath"
         }
-
-        if (Test-TcpPort -TargetHost $ListenHost -TargetPort $actualPort) {
-            $ready = $true
-            break
-        }
-
-        Start-Sleep -Milliseconds 100
     }
 
-    if (-not $ready) {
-        Write-Host "[online-smoke] mock server readiness timeout host=$ListenHost port=$actualPort timeout_ms=$MockStartupTimeoutMs"
-        exit $ExitMockReadyTimeout
+    $payload = @{
+        executable = $resolvedPython
+        args       = @("-u", $EntryPath, "--host", $TargetHost, "--port", "$TargetPort")
     }
+    $json = $payload | ConvertTo-Json -Depth 3
+    [System.IO.File]::WriteAllText($specPath, $json, [System.Text.UTF8Encoding]::new($false))
+    return $specPath
+}
+
+function Invoke-UiSmoke {
+    param(
+        [int]$TargetPort,
+        [string]$LaunchSpecPath = ""
+    )
 
     $uiArgs = @(
         $uiQtest,
         "--mode", "online",
         "--host", $ListenHost,
-        "--port", "$actualPort",
+        "--port", "$TargetPort",
         "--no-mock",
         "--timeout-ms", "$TimeoutMs"
     )
+    if (-not [string]::IsNullOrWhiteSpace($ExpectFailureCode)) {
+        $uiArgs += @("--expect-failure-code", $ExpectFailureCode)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ExpectFailureStage)) {
+        $uiArgs += @("--expect-failure-stage", $ExpectFailureStage)
+    }
 
-    Write-Host "[online-smoke] mode=online timeout_ms=$TimeoutMs host=$ListenHost port=$actualPort"
     $uiStdoutLog = Join-Path ([IO.Path]::GetTempPath()) ("siligen-online-qtest-{0}-stdout.log" -f [guid]::NewGuid().ToString("N"))
     $uiStderrLog = Join-Path ([IO.Path]::GetTempPath()) ("siligen-online-qtest-{0}-stderr.log" -f [guid]::NewGuid().ToString("N"))
 
+    $previousLaunchSpec = $env:SILIGEN_GATEWAY_LAUNCH_SPEC
+    $previousAutoStart = $env:SILIGEN_GATEWAY_AUTOSTART
     try {
+        if (-not [string]::IsNullOrWhiteSpace($LaunchSpecPath)) {
+            $env:SILIGEN_GATEWAY_LAUNCH_SPEC = $LaunchSpecPath
+            $env:SILIGEN_GATEWAY_AUTOSTART = "1"
+        }
+        Write-Host "[online-smoke] mode=online timeout_ms=$TimeoutMs host=$ListenHost port=$TargetPort"
         $uiProcess = Start-Process `
             -FilePath $PythonExe `
             -ArgumentList $uiArgs `
@@ -203,20 +203,162 @@ try {
         $rawExitCode = $uiProcess.ExitCode
     } finally {
         Remove-Item $uiStdoutLog, $uiStderrLog -ErrorAction SilentlyContinue
+        if (-not [string]::IsNullOrWhiteSpace($LaunchSpecPath)) {
+            if ([string]::IsNullOrWhiteSpace($previousLaunchSpec)) {
+                Remove-Item Env:SILIGEN_GATEWAY_LAUNCH_SPEC -ErrorAction SilentlyContinue
+            } else {
+                $env:SILIGEN_GATEWAY_LAUNCH_SPEC = $previousLaunchSpec
+            }
+            if ([string]::IsNullOrWhiteSpace($previousAutoStart)) {
+                Remove-Item Env:SILIGEN_GATEWAY_AUTOSTART -ErrorAction SilentlyContinue
+            } else {
+                $env:SILIGEN_GATEWAY_AUTOSTART = $previousAutoStart
+            }
+        }
     }
 
     if ($output) {
         Write-Host $output
     }
+    return @{
+        RawExitCode = $rawExitCode
+        Output      = $output
+    }
+}
 
-    $exitCode = 0
-    if ($rawExitCode -ne 0) {
-        if ($output -match "FAIL: Timed out waiting for GUI contract completion") {
-            $exitCode = $ExitGuiTimeout
-        } else {
-            $exitCode = $ExitGuiAssertionFailed
+function Resolve-UiExitCode {
+    param(
+        [int]$RawExitCode,
+        [string]$Output
+    )
+
+    if ($RawExitCode -ne 0) {
+        if ($Output -match "FAIL: Timed out waiting for GUI contract completion") {
+            return $ExitGuiTimeout
+        }
+        return $ExitGuiAssertionFailed
+    }
+
+    if ($hasExpectedSupervisorFailure) {
+        $expectedCodeFound = $true
+        if (-not [string]::IsNullOrWhiteSpace($ExpectFailureCode)) {
+            $expectedCodeFound = $Output -match "SUPERVISOR_DIAG .*failure_code=$([regex]::Escape($ExpectFailureCode))(\s|$)"
+        }
+        $expectedStageFound = $true
+        $expectedStageFailedEvent = $true
+        if (-not [string]::IsNullOrWhiteSpace($ExpectFailureStage)) {
+            $expectedStageFound = $Output -match "SUPERVISOR_DIAG .*failure_stage=$([regex]::Escape($ExpectFailureStage))(\s|$)"
+            $expectedStageFailedEvent = $Output -match "SUPERVISOR_EVENT type=stage_failed .*stage=$([regex]::Escape($ExpectFailureStage))(\s|$)"
+        }
+        if ($expectedCodeFound -and $expectedStageFound -and $expectedStageFailedEvent) {
+            return $ExitMockReadyTimeout
+        }
+        Write-Host "[online-smoke] expected diagnostics not found code=$ExpectFailureCode stage=$ExpectFailureStage"
+        return $ExitGuiAssertionFailed
+    }
+
+    $requiredSequence = @(
+        "backend_starting",
+        "backend_ready",
+        "tcp_connecting",
+        "hardware_probing",
+        "online_ready"
+    )
+    $cursor = 0
+    $lines = $Output -split "(`r`n|`n|`r)"
+    foreach ($line in $lines) {
+        if ($cursor -ge $requiredSequence.Count) {
+            break
+        }
+        $stage = $requiredSequence[$cursor]
+        if ($line -match "SUPERVISOR_EVENT type=stage_entered .*stage=$([regex]::Escape($stage))(\s|$)") {
+            $cursor++
         }
     }
+    if ($cursor -lt $requiredSequence.Count) {
+        Write-Host "[online-smoke] missing required stage_entered sequence in SUPERVISOR_EVENT output"
+        return $ExitGuiAssertionFailed
+    }
+    if ($Output -notmatch "SUPERVISOR_DIAG .*online_ready=true(\s|$)") {
+        Write-Host "[online-smoke] missing SUPERVISOR_DIAG online_ready=true on success path"
+        return $ExitGuiAssertionFailed
+    }
+
+    return 0
+}
+
+$actualPort = if ($Port -gt 0) { $Port } else { Get-FreeTcpPort }
+if (Test-TcpPort -TargetHost $ListenHost -TargetPort $actualPort) {
+    Write-Host "[online-smoke] mock port already in use host=$ListenHost port=$actualPort"
+    Write-Host "[online-smoke][diagnostics] failure_code=SUP_BACKEND_START_FAILED failure_stage=backend_starting recoverable=true"
+    exit $ExitMockStartFailed
+}
+
+$mockProcess = $null
+$stdoutLog = $null
+$stderrLog = $null
+$launchSpecPath = $null
+
+try {
+    if ($effectiveUseSupervisorInjection) {
+        $injectSource = if ([string]::IsNullOrWhiteSpace($MockCommand)) { $hangingServer } else { $MockCommand }
+        $injectEntry = Resolve-MockEntry -Entry $injectSource
+        Write-Host "[online-smoke] supervisor injection mode enabled host=$ListenHost port=$actualPort entry=$injectEntry"
+        $launchSpecPath = New-TemporaryLaunchSpec -PythonPath $PythonExe -EntryPath $injectEntry -TargetHost $ListenHost -TargetPort $actualPort
+        $uiResult = Invoke-UiSmoke -TargetPort $actualPort -LaunchSpecPath $launchSpecPath
+    } else {
+        $mockEntry = Resolve-MockEntry -Entry $MockCommand
+        $stdoutLog = Join-Path ([IO.Path]::GetTempPath()) ("siligen-online-smoke-{0}-stdout.log" -f [guid]::NewGuid().ToString("N"))
+        $stderrLog = Join-Path ([IO.Path]::GetTempPath()) ("siligen-online-smoke-{0}-stderr.log" -f [guid]::NewGuid().ToString("N"))
+        $mockArgs = @("-u", $mockEntry, "--host", $ListenHost, "--port", "$actualPort")
+        if ($VerboseMock) {
+            $mockArgs += "--verbose"
+        }
+
+        Write-Host "[online-smoke] starting mock server host=$ListenHost port=$actualPort entry=$mockEntry"
+        $mockProcess = Start-Process `
+            -FilePath $PythonExe `
+            -ArgumentList $mockArgs `
+            -PassThru `
+            -RedirectStandardOutput $stdoutLog `
+            -RedirectStandardError $stderrLog `
+            -WindowStyle Hidden
+
+        $deadline = (Get-Date).AddMilliseconds($MockStartupTimeoutMs)
+        $ready = $false
+        while ((Get-Date) -lt $deadline) {
+            if ($mockProcess.HasExited) {
+                $stdoutText = Read-LogFile -Path $stdoutLog
+                $stderrText = Read-LogFile -Path $stderrLog
+                Write-Host "[online-smoke] mock server exited early exit_code=$($mockProcess.ExitCode)"
+                if ($stdoutText) {
+                    Write-Host "[online-smoke][mock-stdout] $stdoutText"
+                }
+                if ($stderrText) {
+                    Write-Host "[online-smoke][mock-stderr] $stderrText"
+                }
+                Write-Host "[online-smoke][diagnostics] failure_code=SUP_BACKEND_START_FAILED failure_stage=backend_starting recoverable=true"
+                exit $ExitMockStartFailed
+            }
+
+            if (Test-TcpPort -TargetHost $ListenHost -TargetPort $actualPort) {
+                $ready = $true
+                break
+            }
+
+            Start-Sleep -Milliseconds 100
+        }
+
+        if (-not $ready) {
+            Write-Host "[online-smoke] mock server readiness timeout host=$ListenHost port=$actualPort timeout_ms=$MockStartupTimeoutMs"
+            Write-Host "[online-smoke][diagnostics] failure_code=SUP_BACKEND_READY_TIMEOUT failure_stage=backend_ready recoverable=true"
+            exit $ExitMockReadyTimeout
+        }
+
+        $uiResult = Invoke-UiSmoke -TargetPort $actualPort
+    }
+
+    $exitCode = Resolve-UiExitCode -RawExitCode $uiResult.RawExitCode -Output $uiResult.Output
 
     if ($exitCode -ne 0) {
         Write-Host "[online-smoke] failed exit_code=$exitCode"
@@ -225,5 +367,10 @@ try {
     exit $exitCode
 } finally {
     Stop-MockProcess -Process $mockProcess
-    Remove-Item $stdoutLog, $stderrLog -ErrorAction SilentlyContinue
+    if ($null -ne $stdoutLog -and $null -ne $stderrLog) {
+        Remove-Item $stdoutLog, $stderrLog -ErrorAction SilentlyContinue
+    }
+    if (-not [string]::IsNullOrWhiteSpace($launchSpecPath)) {
+        Remove-Item $launchSpecPath -ErrorAction SilentlyContinue
+    }
 }

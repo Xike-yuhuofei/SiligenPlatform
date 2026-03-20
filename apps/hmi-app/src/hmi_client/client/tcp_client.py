@@ -29,20 +29,25 @@ class TcpClient:
         self._socket: Optional[socket.socket] = None
         self._recv_thread: Optional[threading.Thread] = None
         self._running = False
+        self.last_connect_error: str = ""
         self._request_id = 0
         self._pending: dict[str, Queue] = {}
         self._on_event: Optional[Callable[[dict], None]] = None
         self._lock = threading.Lock()
 
-    def connect(self) -> bool:
+    def connect(self, timeout: float = 3.0) -> bool:
         try:
+            self.last_connect_error = ""
             self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self._socket.settimeout(timeout)
             self._socket.connect((self.host, self.port))
+            self._socket.settimeout(None)
             self._running = True
             self._recv_thread = threading.Thread(target=self._recv_loop, daemon=True)
             self._recv_thread.start()
             return True
         except Exception as e:
+            self.last_connect_error = str(e) or "Unknown connection error"
             print(f"Connection failed: {e}")
             return False
 

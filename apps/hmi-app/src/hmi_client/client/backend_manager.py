@@ -4,10 +4,19 @@ import os
 import socket
 import subprocess
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Tuple
 
 from .gateway_launch import GatewayLaunchSpec, load_gateway_launch_spec
+
+
+@dataclass(frozen=True)
+class BackendStepResult:
+    ok: bool
+    message: str
+    failure_code: str | None = None
+    recoverable: bool = True
 
 
 class BackendManager:
@@ -57,29 +66,43 @@ class BackendManager:
         """Get the port number."""
         return self._port
 
-    def start(self) -> Tuple[bool, str]:
+    def start_detailed(self) -> BackendStepResult:
         """
         Start the backend process.
 
         Returns:
-            Tuple of (success, message)
+            Structured startup result.
         """
         # Check if port is already in use (another instance may be running)
         if self._is_port_in_use():
-            return True, "Backend already running"
+            return BackendStepResult(ok=True, message="Backend already running")
 
         if not self._auto_start_enabled:
-            return False, "Gateway auto-start 已禁用，请先手动启动 transport-gateway。"
+            return BackendStepResult(
+                ok=False,
+                message="Gateway auto-start 已禁用，请先手动启动 transport-gateway。",
+                failure_code="SUP_BACKEND_AUTOSTART_DISABLED",
+                recoverable=False,
+            )
 
         if self._launch_spec is None:
-            return (
-                False,
-                "未配置 gateway 启动契约。请设置 SILIGEN_GATEWAY_EXE 或 "
-                "SILIGEN_GATEWAY_LAUNCH_SPEC。",
+            return BackendStepResult(
+                ok=False,
+                message=(
+                    "未配置 gateway 启动契约。请设置 SILIGEN_GATEWAY_EXE 或 "
+                    "SILIGEN_GATEWAY_LAUNCH_SPEC。"
+                ),
+                failure_code="SUP_BACKEND_SPEC_MISSING",
+                recoverable=False,
             )
 
         if not self._launch_spec.executable.exists():
-            return False, f"Gateway executable not found: {self._launch_spec.executable}"
+            return BackendStepResult(
+                ok=False,
+                message=f"Gateway executable not found: {self._launch_spec.executable}",
+                failure_code="SUP_BACKEND_EXE_NOT_FOUND",
+                recoverable=False,
+            )
 
         try:
             env = os.environ.copy()
@@ -103,15 +126,34 @@ class BackendManager:
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
         except FileNotFoundError:
-            return False, f"Gateway executable not found: {self._launch_spec.executable}"
+            return BackendStepResult(
+                ok=False,
+                message=f"Gateway executable not found: {self._launch_spec.executable}",
+                failure_code="SUP_BACKEND_EXE_NOT_FOUND",
+                recoverable=False,
+            )
         except PermissionError:
-            return False, f"Permission denied: {self._launch_spec.executable}"
+            return BackendStepResult(
+                ok=False,
+                message=f"Permission denied: {self._launch_spec.executable}",
+                failure_code="SUP_BACKEND_START_FAILED",
+                recoverable=True,
+            )
         except Exception as e:
-            return False, f"Failed to start gateway: {e}"
+            return BackendStepResult(
+                ok=False,
+                message=f"Failed to start gateway: {e}",
+                failure_code="SUP_BACKEND_START_FAILED",
+                recoverable=True,
+            )
 
-        return True, "Gateway process started"
+        return BackendStepResult(ok=True, message="Gateway process started")
 
-    def wait_ready(self, timeout: float = STARTUP_TIMEOUT) -> Tuple[bool, str]:
+    def start(self) -> Tuple[bool, str]:
+        result = self.start_detailed()
+        return result.ok, result.message
+
+    def wait_ready_detailed(self, timeout: float = STARTUP_TIMEOUT) -> BackendStepResult:
         """
         Wait for the backend to be ready (port connectable).
 
@@ -119,22 +161,36 @@ class BackendManager:
             timeout: Timeout in seconds
 
         Returns:
-            Tuple of (success, message)
+            Structured readiness result.
         """
         start_time = time.time()
 
         while time.time() - start_time < timeout:
             # Check if process exited abnormally
             if self._process and self._process.poll() is not None:
-                return False, f"Backend process exited with code: {self._process.returncode}"
+                return BackendStepResult(
+                    ok=False,
+                    message=f"Backend process exited with code: {self._process.returncode}",
+                    failure_code="SUP_BACKEND_EXITED",
+                    recoverable=True,
+                )
 
             # Try to connect to the port
             if self._is_port_in_use():
-                return True, "Backend ready"
+                return BackendStepResult(ok=True, message="Backend ready")
 
             time.sleep(self.HEALTH_CHECK_INTERVAL)
 
-        return False, f"Backend startup timeout ({timeout}s)"
+        return BackendStepResult(
+            ok=False,
+            message=f"Backend startup timeout ({timeout}s)",
+            failure_code="SUP_BACKEND_READY_TIMEOUT",
+            recoverable=True,
+        )
+
+    def wait_ready(self, timeout: float = STARTUP_TIMEOUT) -> Tuple[bool, str]:
+        result = self.wait_ready_detailed(timeout=timeout)
+        return result.ok, result.message
 
     def stop(self) -> None:
         """Stop the backend process."""

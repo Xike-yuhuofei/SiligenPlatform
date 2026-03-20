@@ -5,11 +5,15 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from qt_env import configure_qt_environment
+
+configure_qt_environment(headless=True)
+
 from PyQt5.QtCore import QTimer
 from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication, QWidget
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ui.main_window import MainWindow  # noqa: E402
 

@@ -43,13 +43,13 @@ class CommandProtocol:
         resp = self._client.send_request("ping")
         return "result" in resp
 
-    def connect_hardware(self, card_ip: str = "", local_ip: str = "") -> tuple:
+    def connect_hardware(self, card_ip: str = "", local_ip: str = "", timeout: float = 15.0) -> tuple:
         params = {}
         if card_ip:
             params["card_ip"] = card_ip
         if local_ip:
             params["local_ip"] = local_ip
-        resp = self._client.send_request("connect", params, timeout=15.0)
+        resp = self._client.send_request("connect", params, timeout=timeout)
         if "error" in resp:
             return False, resp["error"].get("message", "Unknown error")
         result = resp.get("result", {})
