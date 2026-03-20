@@ -64,6 +64,7 @@
           "curve_chain_angle_deg": { "type": "number" },
           "curve_chain_max_segment_mm": { "type": "number" },
           "use_hardware_trigger": { "type": "boolean" },
+          "require_active_recipe": { "type": "boolean" },
           "velocity_trace_enabled": { "type": "boolean" },
           "velocity_trace_interval_ms": { "type": "integer" },
           "velocity_trace_path": { "type": "string" },
@@ -87,7 +88,7 @@
         },
         "additionalProperties": false
       },
-      "errorCodes": [3000, 3001, 3002, 3003],
+      "errorCodes": [3000, 3001, 3002, 3003, 3004],
       "consumers": [
         "hmi-client CommandProtocol.dxf_execute",
         "Backend_CPP CLI DXF_DISPENSE"
@@ -95,7 +96,8 @@
       "compatibility": {
         "rejectedLegacyParams": ["speed", "dry_run_speed", "dryRunSpeed"],
         "notes": [
-          "HMI 当前只消费执行成功与否，不使用 task_id；TCP 仍返回 task_id 供后续查询。"
+          "HMI 当前只消费执行成功与否，不使用 task_id；TCP 仍返回 task_id 供后续查询。",
+          "当 require_active_recipe=true 时，若无已激活配方则返回错误码 3004。"
         ]
       }
     },

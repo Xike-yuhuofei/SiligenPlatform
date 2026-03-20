@@ -287,6 +287,15 @@ def build_cases(
                     ),
                     cwd=WORKSPACE_ROOT,
                 ),
+                ValidationCase(
+                    name="hmi-app-online-recovery-loop",
+                    layer="apps",
+                    description="hmi-app 在线恢复链路（supervisor recovery loop）验证",
+                    command=_powershell_file_command(
+                        WORKSPACE_ROOT / "apps" / "hmi-app" / "scripts" / "verify-online-recovery-loop.ps1",
+                    ),
+                    cwd=WORKSPACE_ROOT,
+                ),
             ]
         )
 
