@@ -25,10 +25,21 @@ struct AxisCommand {
     bool stop_requested{false};
 };
 
+struct MotionRealismConfig {
+    bool enabled{false};
+    double servo_lag_seconds{0.0};
+    double encoder_quantization_mm{0.0};
+    double following_error_threshold_mm{0.0};
+};
+
 struct AxisState {
     std::string axis;
     double position_mm{0.0};
     double velocity_mm_per_s{0.0};
+    double command_position_mm{0.0};
+    double command_velocity_mm_per_s{0.0};
+    double following_error_mm{0.0};
+    double encoder_quantization_mm{0.0};
     double configured_velocity_mm_per_s{0.0};
     double configured_acceleration_mm_per_s2{0.0};
     double soft_limit_negative_mm{0.0};
@@ -48,6 +59,7 @@ struct AxisState {
     int error_code{0};
     bool running{false};
     bool done{true};
+    bool following_error_active{false};
 };
 
 struct IoState {
@@ -83,11 +95,16 @@ struct MotionProfileSample {
     std::string axis;
     double position_mm{0.0};
     double velocity_mm_per_s{0.0};
+    double command_position_mm{0.0};
+    double command_velocity_mm_per_s{0.0};
+    double following_error_mm{0.0};
+    double encoder_quantization_mm{0.0};
     bool running{false};
     bool done{true};
     bool homed{false};
     bool has_error{false};
     int error_code{0};
+    bool following_error_active{false};
 };
 
 struct StateTraceEntry {
@@ -122,8 +139,11 @@ struct RecordingSummary {
     std::size_t motion_sample_count{0};
     std::size_t axis_count{0};
     std::size_t io_count{0};
+    std::size_t following_error_sample_count{0};
     bool empty_timeline{true};
     bool has_error{false};
+    double max_following_error_mm{0.0};
+    double mean_following_error_mm{0.0};
 };
 
 struct RecordingResult {

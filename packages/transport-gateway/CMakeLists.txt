@@ -12,9 +12,8 @@ set_target_properties(siligen_transport_gateway_protocol PROPERTIES
 target_include_directories(siligen_transport_gateway_protocol PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/third_party
+    ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
+    ${SILIGEN_THIRD_PARTY_DIR}
 )
 
 target_compile_features(siligen_transport_gateway_protocol PUBLIC cxx_std_17)
@@ -39,10 +38,9 @@ set_target_properties(siligen_transport_gateway PROPERTIES
 target_include_directories(siligen_transport_gateway PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/third_party
-    ${CMAKE_SOURCE_DIR}/third_party/boost
+    ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
+    ${SILIGEN_THIRD_PARTY_DIR}
+    ${SILIGEN_BOOST_INCLUDE_DIR}
 )
 
 target_link_libraries(siligen_transport_gateway PUBLIC
@@ -51,7 +49,21 @@ target_link_libraries(siligen_transport_gateway PUBLIC
     siligen_control_runtime_infrastructure
     siligen_domain
     siligen_shared
-    storage_adapters
+    siligen_control_runtime_storage
+)
+target_link_libraries(siligen_transport_gateway PRIVATE
+    siligen_recipe_json_codec
+)
+
+add_library(siligen_control_gateway_tcp_adapter INTERFACE)
+add_library(siligen_tcp_adapter ALIAS siligen_control_gateway_tcp_adapter)
+target_link_libraries(siligen_control_gateway_tcp_adapter INTERFACE
+    siligen_transport_gateway
+)
+
+add_library(siligen_control_gateway INTERFACE)
+target_link_libraries(siligen_control_gateway INTERFACE
+    siligen_transport_gateway
 )
 
 target_compile_definitions(siligen_transport_gateway PUBLIC

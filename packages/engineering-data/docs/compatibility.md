@@ -21,13 +21,19 @@
 - `dxf_pipeline.contracts.*`
 - `dxf_pipeline.preview.html_preview`
 - `dxf_pipeline.services.*`
-- `dxf-pipeline/src/proto/dxf_primitives_pb2.py`
+- `proto.dxf_primitives_pb2`
 
 兼容壳职责：
 
 - 维持旧 CLI 名称和旧 Python 导入路径
-- 在源码工作区运行时自动把 `packages/engineering-data/src` 加入 `sys.path`
+- 兼容包物理位置统一位于 `packages/engineering-data/src`
 - 不再承载 canonical 算法实现
+
+## Cutover 约束
+
+- 不再支持把 `dxf-pipeline/src` 作为 `PYTHONPATH` source root
+- 工作区内调用方必须直接指向 `engineering_data.*` 或 `packages/engineering-data/scripts/*`
+- 工作区外如仍使用 legacy import/CLI 名称，可在兼容窗口内继续安装 `engineering-data` 获取这些入口
 
 ## 后续拆分点
 

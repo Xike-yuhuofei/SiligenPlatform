@@ -22,6 +22,7 @@ public:
 };
 
 std::unique_ptr<VirtualAxisGroup> createInMemoryVirtualAxisGroup(
-    const std::vector<std::string>& axis_names = {});
+    const std::vector<std::string>& axis_names = {},
+    MotionRealismConfig motion_realism = {});
 
 }  // namespace sim::scheme_c

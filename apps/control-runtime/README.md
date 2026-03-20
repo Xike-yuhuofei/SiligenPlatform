@@ -22,6 +22,7 @@
 
 ## 与 legacy 的关系
 
-- `control-core/apps/control-runtime` 现在只保留兼容 target 壳与迁移期文档，不再是默认源码 owner。
+- `control-core/apps/control-runtime` 兼容壳目录已删除；根级 `apps/control-runtime` 是当前唯一 app 入口。
 - `control-core/build/bin/**/siligen_control_runtime.exe` 不再被默认启动链路使用。
-- 如确需临时回退，必须显式执行 `run.ps1 -UseLegacyFallback`，该回退仅用于审计期过渡。
+- `run.ps1` 已移除 legacy fallback；若传入 `-UseLegacyFallback` 会直接报错，要求先修复 canonical 产物。
+- `run.ps1 -DryRun` 在 canonical 产物缺失时会以非零退出，作为真实可执行物验证的一部分。

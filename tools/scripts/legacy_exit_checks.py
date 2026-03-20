@@ -271,10 +271,24 @@ def main() -> int:
             title="已删除目录必须保持不存在",
             description="已声明移除的 legacy 目录重新出现时立即失败。",
             paths=(
+                "control-core",
+                "hmi-client",
                 "apps/dxf-editor-app",
                 "dxf-editor",
                 "packages/editor-contracts",
                 "simulation-engine",
+                "control-core/modules/shared-kernel",
+                "control-core/src/shared",
+                "control-core/src/domain",
+                "control-core/src/application",
+                "control-core/src/adapters",
+                "control-core/src/infrastructure",
+                "control-core/modules/process-core",
+                "control-core/modules/motion-core",
+                "control-core/modules/control-gateway",
+                "control-core/modules/device-hal",
+                "control-core/modules/device-hal/src/adapters/diagnostics/logging",
+                "control-core/modules/device-hal/src/adapters/recipes",
             ),
         ),
         SearchRule(
@@ -283,6 +297,7 @@ def main() -> int:
             description="阻止 build/test/CI、自动化和源码把已删除目录重新拉回执行链路。",
             scope="code",
             patterns=(
+                r"hmi-client[/\\]",
                 r"apps[/\\]dxf-editor-app",
                 r"packages[/\\]editor-contracts",
                 r"(?<![A-Za-z0-9_-])dxf-editor(?=$|[/\\])",
@@ -290,13 +305,32 @@ def main() -> int:
             ),
         ),
         SearchRule(
-            id="hmi-legacy-shell-blocked-in-code",
-            title="代码/自动化不得新增 hmi-client 源码或脚本依赖",
-            description="冻结 hmi-client 兼容壳，阻止新的 src/scripts 直连依赖。",
+            id="control-core-removed-subtrees-blocked-in-code",
+            title="已删除 control-core 子树不得重新回流到代码/脚本/CMake",
+            description="阻止已删除的 process-runtime-core legacy 镜像与 shared-kernel 目录重新进入构建、脚本或自动化链路。",
             scope="code",
             patterns=(
-                r"hmi-client[/\\]src",
-                r"hmi-client[/\\]scripts",
+                r"control-core[/\\]modules[/\\]shared-kernel(?=$|[/\\])",
+                r"control-core[/\\]src[/\\]shared(?=$|[/\\])",
+                r"control-core[/\\]src[/\\]domain(?=$|[/\\])",
+                r"control-core[/\\]src[/\\]application(?=$|[/\\])",
+                r"control-core[/\\]src[/\\]adapters(?=$|[/\\])",
+                r"control-core[/\\]src[/\\]infrastructure(?=$|[/\\])",
+                r"control-core[/\\]modules[/\\]process-core(?=$|[/\\])",
+                r"control-core[/\\]modules[/\\]motion-core(?=$|[/\\])",
+                r"control-core[/\\]modules[/\\]control-gateway(?=$|[/\\])",
+                r"control-core[/\\]modules[/\\]device-hal(?=$|[/\\])",
+                r"control-core[/\\]modules[/\\]device-hal[/\\]src[/\\]adapters[/\\]diagnostics[/\\]logging(?=$|[/\\])",
+                r"control-core[/\\]modules[/\\]device-hal[/\\]src[/\\]adapters[/\\]recipes(?=$|[/\\])",
+            ),
+        ),
+        SearchRule(
+            id="control-core-root-blocked-in-live-code",
+            title="live 代码/脚本/CMake 不得再直接引用 control-core 根目录",
+            description="最终删除后，除删除门禁自身外，不允许任何 live 代码、脚本、测试或 CMake 再直接指向 control-core。",
+            scope="code",
+            patterns=(
+                r"control-core(?=$|[/\\])",
             ),
         ),
         SearchRule(
@@ -316,7 +350,7 @@ def main() -> int:
         SearchRule(
             id="control-core-shell-direct-paths-allowlist",
             title="直接 control-core 兼容壳路径必须收敛在白名单",
-            description="阻止新的脚本、测试或自动化直接指向 control-core 兼容壳路径。",
+            description="最终删除后，脚本、测试和自动化不得再指向任何 control-core 兼容壳路径。",
             scope="code",
             patterns=(
                 r"control-core[/\\]build[/\\]bin",
@@ -325,43 +359,83 @@ def main() -> int:
                 r"control-core[/\\]src[/\\]adapters[/\\]tcp",
                 r"control-core[/\\]modules[/\\]control-gateway",
             ),
-            allowlist=(
-                "packages/transport-gateway/tests/test_transport_gateway_compatibility.py",
+        ),
+        SearchRule(
+            id="control-core-config-fallback-blocked-in-code",
+            title="代码中不得重新回退到 control-core 配置路径",
+            description="阻止 runtime、脚本和自动化继续把 control-core 配置文件当默认 fallback。",
+            scope="code",
+            patterns=(
+                r"control-core[/\\]config[/\\]machine_config\.ini",
+                r"control-core[/\\]src[/\\]infrastructure[/\\]resources[/\\]config[/\\]files[/\\]machine_config\.ini",
+            ),
+        ),
+        SearchRule(
+            id="control-core-recipe-fallback-blocked-in-code",
+            title="代码中不得重新回退到 control-core recipes/schema 路径",
+            description="阻止 runtime、脚本和自动化继续把 control-core data/recipes 当默认来源。",
+            scope="code",
+            patterns=(
+                r"control-core[/\\]data[/\\]recipes",
+                r"control-core[/\\]src[/\\]infrastructure[/\\]resources[/\\]config[/\\]files[/\\]recipes[/\\]schemas",
             ),
         ),
         SearchRule(
             id="control-core-powershell-root-allowlist",
             title="PowerShell 中 control-core 根目录拼接必须收敛在白名单",
-            description="当前只允许根级 wrapper 和现有 build 入口继续拼接 control-core 根目录。",
+            description="最终删除后，PowerShell 不得再拼接 control-core 根目录。",
             scope="powershell",
             patterns=(
                 r"Join-Path\s+\$\w+\s+[\"']control-core[\"']",
             ),
+        ),
+        SearchRule(
+            id="control-cli-legacy-fallback-blocked",
+            title="control-cli run.ps1 不得重新引入 legacy fallback",
+            description="canonical CLI 已完成 cutover，run.ps1 不得再显式依赖 control-core build/bin 或外部旧仓 CLI 源。",
+            scope="powershell",
+            patterns=(
+                r"UseLegacyFallback",
+                r"control-core[/\\]build[/\\]bin.*siligen_cli\.exe",
+                r"Backend_CPP[/\\]src[/\\]adapters[/\\]cli",
+            ),
             allowlist=(
-                "apps/control-cli/run.ps1",
                 "apps/control-runtime/run.ps1",
                 "apps/control-tcp-server/run.ps1",
-                "tools/build/build-validation.ps1",
             ),
         ),
         SearchRule(
             id="control-core-python-root-allowlist",
             title="Python 中 control-core 根目录路径必须收敛在白名单",
-            description="阻止新的 Python 代码直接依赖 control-core 目录，只保留现有兼容例外。",
+            description="最终删除后，Python 不得再直接依赖 control-core 目录。",
             scope="python",
             patterns=(
                 r"[\"']control-core[\"']",
             ),
-            allowlist=(
-                "apps/hmi-app/src/hmi_client/ui/main_window.py",
-                "packages/transport-gateway/tests/test_transport_gateway_compatibility.py",
-                "tools/migration/validate_device_split.py",
+        ),
+        SearchRule(
+            id="control-core-hmi-launcher-env-blocked",
+            title="HMI 代码不得重新接受 control-core legacy 启动环境变量",
+            description="阻止 HMI 或自动化重新读取 SILIGEN_CONTROL_CORE_ROOT / SILIGEN_TCP_SERVER_EXE。",
+            scope="code",
+            patterns=(
+                r"SILIGEN_CONTROL_CORE_ROOT",
+                r"SILIGEN_TCP_SERVER_EXE",
+            ),
+        ),
+        SearchRule(
+            id="control-core-dxf-default-path-blocked",
+            title="HMI 代码不得重新把 control-core/uploads/dxf 当默认候选路径",
+            description="默认 DXF 路径只能来自显式环境变量或 workspace canonical 路径。",
+            scope="code",
+            patterns=(
+                r"control-core[/\\]uploads[/\\]dxf",
             ),
         ),
         SearchRule(
             id="control-core-cmake-allowlist",
             title="CMake legacy include/link 只能出现在已登记阻塞项",
-            description="阻止 packages/apps 再新增 control-core 硬编码 include 或 source 依赖。",
+            description="最终删除后，packages/apps/CMake 不得再新增任何 control-core 硬编码 include 或 source 依赖。",
             scope="cmake",
             patterns=(
                 r"control-core[/\\]src[/\\]domain",
@@ -374,10 +448,37 @@ def main() -> int:
                 r"\.\./\.\./control-core",
                 r"\.\.\\\.\.\\control-core",
             ),
-            allowlist=(
-                "packages/device-adapters/CMakeLists.txt",
-                "packages/shared-kernel/CMakeLists.txt",
-                "packages/simulation-engine/CMakeLists.txt",
+        ),
+        SearchRule(
+            id="device-hal-mirrored-source-include-blocked",
+            title="已迁出的 device-hal 镜像源码不得再从 legacy 目录 include",
+            description="health/motion/dispensing/multicard 镜像源码已切到 packages/device-adapters，禁止 runtime-host 等消费者继续从 modules/device-hal/src 获取这些头。",
+            scope="code",
+            patterns=(
+                r'#include\s+"modules/device-hal/src/adapters/diagnostics/health/testing/',
+                r'#include\s+"modules/device-hal/src/adapters/dispensing/dispenser/',
+                r'#include\s+"modules/device-hal/src/adapters/motion/controller/',
+                r'#include\s+"modules/device-hal/src/drivers/multicard/(IMultiCardWrapper|MockMultiCardWrapper|RealMultiCardWrapper)\.h"',
+            ),
+        ),
+        SearchRule(
+            id="control-core-gateway-shell-registration-blocked",
+            title="control-core 默认库图不得继续注册 gateway/tcp alias 壳",
+            description="legacy gateway/tcp alias 必须由 canonical transport-gateway package 暴露，而不是由 control-core 子目录注册。",
+            scope="cmake",
+            patterns=(
+                r"add_subdirectory\(adapters/tcp\)",
+                r"add_subdirectory\(control-gateway\)",
+            ),
+        ),
+        SearchRule(
+            id="canonical-package-source-root-fallback-blocked",
+            title="canonical package/app 不得继续隐式回落到 CMAKE_SOURCE_DIR",
+            description="阻止 apps/runtime-host/process-runtime-core/transport-gateway 继续把 CMAKE_SOURCE_DIR 当 control-core 兼容 source root。",
+            scope="cmake",
+            patterns=(
+                r"\$\{CMAKE_SOURCE_DIR\}/src",
+                r"\$\{CMAKE_SOURCE_DIR\}/third_party",
             ),
         ),
         SearchRule(

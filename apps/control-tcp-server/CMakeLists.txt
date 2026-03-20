@@ -12,9 +12,8 @@ set_target_properties(siligen_tcp_server PROPERTIES
 )
 
 target_include_directories(siligen_tcp_server PRIVATE
-    ${CMAKE_SOURCE_DIR}
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/third_party/boost
+    ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
+    ${SILIGEN_BOOST_INCLUDE_DIR}
 )
 
 target_link_libraries(siligen_tcp_server PRIVATE

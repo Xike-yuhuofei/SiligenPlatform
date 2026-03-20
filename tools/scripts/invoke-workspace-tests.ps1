@@ -5,7 +5,8 @@ param(
     [string[]]$Suite = @("all"),
     [string]$ReportDir = "integration\\reports",
     [switch]$FailOnKnownFailure,
-    [switch]$IncludeHardwareSmoke
+    [switch]$IncludeHardwareSmoke,
+    [switch]$IncludeHilClosedLoop
 )
 
 $ErrorActionPreference = "Stop"
@@ -34,6 +35,10 @@ foreach ($suiteName in $Suite) {
 
 if ($IncludeHardwareSmoke) {
     $argsList += "--include-hardware-smoke"
+}
+
+if ($IncludeHilClosedLoop) {
+    $argsList += "--include-hil-closed-loop"
 }
 
 if ($FailOnKnownFailure) {

@@ -5,7 +5,8 @@ param(
     [string[]]$Suite = @("all"),
     [string]$ReportDir = "integration\\reports",
     [switch]$FailOnKnownFailure,
-    [switch]$IncludeHardwareSmoke
+    [switch]$IncludeHardwareSmoke,
+    [switch]$IncludeHilClosedLoop
 )
 
 $ErrorActionPreference = "Stop"
@@ -20,4 +21,5 @@ if (-not (Test-Path $runner)) {
     -Suite $Suite `
     -ReportDir $ReportDir `
     -FailOnKnownFailure:$FailOnKnownFailure `
-    -IncludeHardwareSmoke:$IncludeHardwareSmoke
+    -IncludeHardwareSmoke:$IncludeHardwareSmoke `
+    -IncludeHilClosedLoop:$IncludeHilClosedLoop

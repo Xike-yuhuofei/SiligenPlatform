@@ -30,6 +30,37 @@ struct RuntimeBridgeBindings {
     std::vector<RuntimeIoBinding> io_bindings{};
 };
 
+enum class ReplayTriggerSpace {
+    AxisPosition,
+    PathProgress
+};
+
+struct ReplayIoDelaySpec {
+    std::string channel;
+    Duration delay{Duration::zero()};
+};
+
+struct ReplayTriggerSpec {
+    std::string channel;
+    double position_mm{0.0};
+    bool state{false};
+    std::int32_t logical_axis_index{0};
+    ReplayTriggerSpace space{ReplayTriggerSpace::PathProgress};
+    std::uint32_t pulse_width_us{0};
+};
+
+struct ReplayValveSpec {
+    std::string channel{"DO_VALVE"};
+    Duration open_delay{Duration::zero()};
+    Duration close_delay{Duration::zero()};
+};
+
+struct DeterministicReplayPlan {
+    std::vector<ReplayIoDelaySpec> io_delays{};
+    std::vector<ReplayTriggerSpec> triggers{};
+    std::optional<ReplayValveSpec> valve{};
+};
+
 enum class RuntimeBridgeCommandKind {
     Home,
     Move,
@@ -143,7 +174,8 @@ RuntimeBridgeBindings makeDefaultRuntimeBridgeBindings(
     const std::vector<std::string>& io_channels);
 
 std::unique_ptr<RuntimeBridge> createRuntimeBridge(
-    const RuntimeBridgeBindings& bindings = {});
+    const RuntimeBridgeBindings& bindings = {},
+    const DeterministicReplayPlan& replay_plan = {});
 std::unique_ptr<RuntimeBridge> createRuntimeBridgeSeam(
     const RuntimeBridgeBindings& bindings = {});
 

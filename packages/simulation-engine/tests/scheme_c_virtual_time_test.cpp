@@ -29,8 +29,8 @@ public:
     sim::scheme_c::RuntimeBridgeMetadata metadata() const override {
         sim::scheme_c::RuntimeBridgeMetadata metadata;
         metadata.owner = "packages/simulation-engine/runtime-bridge";
-        metadata.next_integration_point = "Counted test bridge";
-        metadata.follow_up_seams = {"SC-B-002 process-runtime-core motion port shim bundle"};
+        metadata.next_integration_point =
+            "Scheme C test bridge metadata mirrors the closed canonical runtime path.";
         return metadata;
     }
 
@@ -207,7 +207,7 @@ void testSimulationSessionSupportsPauseResumeAndStop() {
     const auto result = session.finish();
     require(result.status == sim::scheme_c::SessionStatus::Stopped, "session: stop status mismatch");
     require(result.recording.ticks_executed == 2U, "session: stopped tick count mismatch");
-    require(result.recording.summary.termination_reason == "stopped",
+    require(result.recording.summary.termination_reason == "application_requested_stop",
             "session: stopped termination reason mismatch");
     require(bridge_ptr->stopRequested(), "session: runtime bridge stop should be requested");
     require(bridge_ptr->advanceTicks() == std::vector<sim::scheme_c::TickIndex>{0, 1},
@@ -243,7 +243,7 @@ void testSimulationSessionStopsAtTimeout() {
     require(result.recording.simulated_time == std::chrono::milliseconds(2),
             "session: timeout simulated time mismatch");
     require(result.recording.snapshots.size() == 2U, "session: timeout snapshot count mismatch");
-    require(result.recording.summary.termination_reason == "timeout",
+    require(result.recording.summary.termination_reason == "logical_timeout",
             "session: timeout termination reason mismatch");
     require(bridge_ptr->stopRequested(), "session: timeout should stop runtime bridge");
     require(bridge_ptr->advanceTicks() == std::vector<sim::scheme_c::TickIndex>{0, 1},

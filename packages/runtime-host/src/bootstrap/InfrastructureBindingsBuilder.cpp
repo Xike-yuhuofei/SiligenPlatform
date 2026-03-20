@@ -9,36 +9,36 @@
 #include "domain/dispensing/value-objects/DispenseCompensationProfile.h"
 #include "domain/motion/domain-services/interpolation/ValidatedInterpolationPort.h"
 
-#include "modules/device-hal/src/adapters/diagnostics/logging/SpdlogLoggingAdapter.h"
+#include "logging/spdlog/SpdlogLoggingAdapter.h"
+#include "legacy/adapters/diagnostics/health/testing/HardwareTestAdapter.h"
+#include "legacy/adapters/dispensing/dispenser/ValveAdapter.h"
+#include "legacy/adapters/dispensing/dispenser/triggering/TriggerControllerAdapter.h"
+#include "legacy/adapters/motion/controller/interpolation/InterpolationAdapter.h"
+#include "legacy/adapters/motion/controller/control/MultiCardMotionAdapter.h"
+#include "legacy/adapters/motion/controller/homing/HomingPortAdapter.h"
+#include "legacy/adapters/motion/controller/runtime/MotionRuntimeConnectionAdapter.h"
+#include "legacy/adapters/motion/controller/runtime/MotionRuntimeFacade.h"
+#include "siligen/device/adapters/drivers/multicard/IMultiCardWrapper.h"
 #include "runtime/configuration/ConfigFileAdapter.h"
 #include "runtime/diagnostics/DiagnosticsPortAdapter.h"
-#include "modules/device-hal/src/adapters/diagnostics/health/testing/HardwareTestAdapter.h"
-#include "modules/device-hal/src/adapters/dispensing/dispenser/ValveAdapter.h"
-#include "modules/device-hal/src/adapters/dispensing/dispenser/triggering/TriggerControllerAdapter.h"
-#include "modules/device-hal/src/adapters/motion/controller/interpolation/InterpolationAdapter.h"
-#include "modules/device-hal/src/adapters/motion/controller/control/MultiCardMotionAdapter.h"
-#include "modules/device-hal/src/adapters/motion/controller/homing/HomingPortAdapter.h"
-#include "modules/device-hal/src/adapters/motion/controller/runtime/MotionRuntimeConnectionAdapter.h"
-#include "modules/device-hal/src/adapters/motion/controller/runtime/MotionRuntimeFacade.h"
 #include "domain/motion/domain-services/SevenSegmentSCurveProfile.h"
 #include "runtime/storage/files/LocalFileStorageAdapter.h"
 #include "runtime/events/InMemoryEventPublisherAdapter.h"
 #include "runtime/scheduling/TaskSchedulerAdapter.h"
 #include "infrastructure/adapters/planning/dxf/AutoPathSourceAdapter.h"
 #include "infrastructure/adapters/planning/dxf/DXFAdapterFactory.h"
-#include "modules/device-hal/src/adapters/recipes/RecipeFileRepository.h"
-#include "modules/device-hal/src/adapters/recipes/TemplateFileRepository.h"
-#include "modules/device-hal/src/adapters/recipes/AuditFileRepository.h"
-#include "modules/device-hal/src/adapters/recipes/ParameterSchemaFileProvider.h"
-#include "modules/device-hal/src/adapters/recipes/RecipeBundleSerializer.h"
-#include "modules/device-hal/src/drivers/multicard/IMultiCardWrapper.h"
+#include "runtime/recipes/RecipeFileRepository.h"
+#include "runtime/recipes/TemplateFileRepository.h"
+#include "runtime/recipes/AuditFileRepository.h"
+#include "runtime/recipes/ParameterSchemaFileProvider.h"
+#include "runtime/recipes/RecipeBundleSerializer.h"
 
 #if SILIGEN_ENABLE_MOCK_MULTICARD
-#include "modules/device-hal/src/drivers/multicard/MockMultiCardWrapper.h"
+#include "siligen/device/adapters/drivers/multicard/MockMultiCardWrapper.h"
 #endif
 
 #if HAS_REAL_MULTICARD
-#include "modules/device-hal/src/drivers/multicard/RealMultiCardWrapper.h"
+#include "siligen/device/adapters/drivers/multicard/RealMultiCardWrapper.h"
 #endif
 
 #include <algorithm>
@@ -48,6 +48,10 @@
 #include <stdexcept>
 #include <system_error>
 #include <vector>
+
+#ifdef GetMessage
+#undef GetMessage
+#endif
 
 namespace {
 
@@ -161,8 +165,6 @@ std::vector<std::string> BuildConfigCandidatePaths(const std::string& config_pat
         candidates.emplace_back("config/machine_config.ini");
     }
 
-    candidates.emplace_back("control-core/config/machine_config.ini");
-    candidates.emplace_back("control-core/src/infrastructure/resources/config/files/machine_config.ini");
     return candidates;
 }
 
@@ -338,7 +340,7 @@ InfrastructureBindings CreateInfrastructureBindings(const InfrastructureBootstra
     bindings.file_storage_port = std::make_shared<Infrastructure::Adapters::LocalFileStorageAdapter>(
         bindings.upload_base_dir);
 
-    bindings.recipe_base_dir = ResolveRecipeDirectory("data/recipes", {"control-core/data/recipes"});
+    bindings.recipe_base_dir = ResolveRecipeDirectory("data/recipes");
     bindings.recipe_repository = std::make_shared<Infrastructure::Adapters::Recipes::RecipeFileRepository>(
         bindings.recipe_base_dir);
     bindings.template_repository = std::make_shared<Infrastructure::Adapters::Recipes::TemplateFileRepository>(
@@ -346,14 +348,10 @@ InfrastructureBindings CreateInfrastructureBindings(const InfrastructureBootstra
     bindings.audit_repository = std::make_shared<Infrastructure::Adapters::Recipes::AuditFileRepository>(
         bindings.recipe_base_dir);
     const auto schema_primary_dir = ResolveRecipeDirectory("data/schemas/recipes");
-    const auto schema_fallback_dir = ResolveRecipeDirectory(
-        "control-core/data/recipes/schemas",
-        {"control-core/src/infrastructure/resources/config/files/recipes/schemas"});
     std::error_code schema_ec;
     std::filesystem::create_directories(schema_primary_dir, schema_ec);
     bindings.parameter_schema_port = std::make_shared<Infrastructure::Adapters::Recipes::ParameterSchemaFileProvider>(
-        schema_primary_dir,
-        schema_fallback_dir);
+        schema_primary_dir);
     bindings.recipe_bundle_serializer_port =
         std::make_shared<Infrastructure::Adapters::Recipes::RecipeBundleSerializer>();
 

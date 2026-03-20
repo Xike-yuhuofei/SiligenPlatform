@@ -96,8 +96,6 @@ std::vector<std::string> BuildConfigCandidatePaths(const std::string& config_pat
         candidates.emplace_back("config/machine_config.ini");
     }
 
-    candidates.emplace_back("control-core/config/machine_config.ini");
-    candidates.emplace_back("control-core/src/infrastructure/resources/config/files/machine_config.ini");
     return candidates;
 }
 

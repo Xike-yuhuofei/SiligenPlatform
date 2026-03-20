@@ -46,7 +46,7 @@ void SimulationSession::start() {
 
 bool SimulationSession::advanceOneTick() {
     if (status_ == SessionStatus::Paused) {
-        return true;
+        return false;
     }
     if (status_ != SessionStatus::Running) {
         return false;
@@ -266,8 +266,8 @@ SimulationSession createBaselineSession(const SimulationSessionConfig& config) {
 
     return SimulationSession(
         config,
-        createRuntimeBridge(bindings),
-        createInMemoryVirtualAxisGroup(config.axis_names),
+        createRuntimeBridge(bindings, config.replay_plan),
+        createInMemoryVirtualAxisGroup(config.axis_names, config.motion_realism),
         createInMemoryVirtualIo(config.io_channels),
         createTimelineRecorder());
 }

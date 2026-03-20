@@ -2,6 +2,13 @@ cmake_minimum_required(VERSION 3.20)
 
 add_executable(siligen_cli
     ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/CommandLineParser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/CommandHandlers.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/CommandHandlers.Connection.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/CommandHandlers.Motion.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/CommandHandlers.Dispensing.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/CommandHandlers.Dxf.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/CommandHandlers.Recipe.cpp
 )
 
 set_target_properties(siligen_cli PROPERTIES
@@ -12,8 +19,9 @@ set_target_properties(siligen_cli PROPERTIES
 )
 
 target_include_directories(siligen_cli PRIVATE
-    ${CMAKE_SOURCE_DIR}
-    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
+    ${SILIGEN_PROCESS_RUNTIME_CORE_DIR}/src
     ${SILIGEN_RUNTIME_HOST_DIR}/src
 )
 

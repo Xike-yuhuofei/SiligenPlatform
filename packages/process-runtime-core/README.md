@@ -1,17 +1,17 @@
 # process-runtime-core
 
-`process-runtime-core` 是 `D:\Projects\SiligenSuite` 中业务内核的 canonical owner。默认构建、默认核心测试和公开 target 已切到本 package；`control-core/src/domain`、`control-core/src/application`、`control-core/modules/process-core`、`control-core/modules/motion-core` 不再是默认构建 owner。
+`process-runtime-core` 是 `D:\Projects\SiligenSuite` 中业务内核的 canonical owner。默认构建、默认核心测试和公开 target 已切到本 package；`control-core/src/domain`、`control-core/src/application`、`control-core/modules/process-core`、`control-core/modules/motion-core` 已于 `2026-03-19` 物理删除，不再保留 legacy source root。
 
 ## 当前中间态
 
-本次切换优先完成真实构建和真实测试切换，因此当前采用 package 内的 compatibility mirror 承接已编译源码：
+本次切换优先完成真实构建和真实测试切换，当前由 package 内 canonical 目录直接承接已编译源码：
 
 - `src/domain`
 - `src/application`
 - `modules/process-core`
 - `modules/motion-core`
 
-顶层 `process/`、`planning/`、`execution/`、`machine/`、`safety/`、`recipes/`、`dispensing/`、`diagnostics-domain/`、`application/` 继续表达包内子域边界和长期落点；在 include 清理完成前，实际编译源码仍主要位于上面的 mirror 目录。禁止新增任何 `../../control-core/...` 真实依赖。
+顶层 `process/`、`planning/`、`execution/`、`machine/`、`safety/`、`recipes/`、`dispensing/`、`diagnostics-domain/`、`application/` 继续表达包内子域边界和长期落点。禁止新增任何 `../../control-core/...` 真实依赖，也不得让已删除的 legacy 四个目录回流。
 
 各子域职责、依赖限制和禁止依赖见 [BOUNDARIES.md](./BOUNDARIES.md)。
 
@@ -49,9 +49,9 @@
 ## 依赖约束
 
 - package 外消费者优先 link `siligen_process_runtime_core*`，不要直接 include package 内部私有目录。
-- 允许继续通过 `control-core/src` 获取 `shared/*` 兼容头，但不得重新指向 `control-core/src/domain`、`control-core/src/application`、`control-core/modules/process-core`、`control-core/modules/motion-core`。
+- 允许继续通过 `control-core/src` 获取 `shared/*` 兼容头，但不得重新引入已删除的 `control-core/src/domain`、`control-core/src/application`、`control-core/modules/process-core`、`control-core/modules/motion-core`。
 - runtime 装配、生命周期、任务调度宿主能力继续归 `packages/runtime-host`。
-- TCP 协议、会话与网关能力继续归 `packages/transport-gateway` 和 `control-core/src/adapters/tcp`。
+- TCP 协议、会话与网关能力继续归 `packages/transport-gateway` 与 `apps/control-tcp-server`；legacy gateway/tcp alias 也由 package 侧导出。
 - 设备实现、厂商 SDK 和驱动适配继续归 `modules/device-hal` 及相关 device package。
 
 ## 测试入口

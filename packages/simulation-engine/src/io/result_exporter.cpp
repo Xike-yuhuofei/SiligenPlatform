@@ -69,6 +69,10 @@ OrderedJson axisStateToJson(const sim::scheme_c::AxisState& state) {
         {"axis", state.axis},
         {"position_mm", state.position_mm},
         {"velocity_mm_per_s", state.velocity_mm_per_s},
+        {"command_position_mm", state.command_position_mm},
+        {"command_velocity_mm_per_s", state.command_velocity_mm_per_s},
+        {"following_error_mm", state.following_error_mm},
+        {"encoder_quantization_mm", state.encoder_quantization_mm},
         {"configured_velocity_mm_per_s", state.configured_velocity_mm_per_s},
         {"configured_acceleration_mm_per_s2", state.configured_acceleration_mm_per_s2},
         {"soft_limit_negative_mm", state.soft_limit_negative_mm},
@@ -87,7 +91,8 @@ OrderedJson axisStateToJson(const sim::scheme_c::AxisState& state) {
         {"has_error", state.has_error},
         {"error_code", state.error_code},
         {"running", state.running},
-        {"done", state.done}
+        {"done", state.done},
+        {"following_error_active", state.following_error_active}
     };
 }
 
@@ -131,11 +136,16 @@ OrderedJson schemeCMotionSampleToJson(const sim::scheme_c::MotionProfileSample& 
         {"axis", sample.axis},
         {"position_mm", sample.position_mm},
         {"velocity_mm_per_s", sample.velocity_mm_per_s},
+        {"command_position_mm", sample.command_position_mm},
+        {"command_velocity_mm_per_s", sample.command_velocity_mm_per_s},
+        {"following_error_mm", sample.following_error_mm},
+        {"encoder_quantization_mm", sample.encoder_quantization_mm},
         {"running", sample.running},
         {"done", sample.done},
         {"homed", sample.homed},
         {"has_error", sample.has_error},
-        {"error_code", sample.error_code}
+        {"error_code", sample.error_code},
+        {"following_error_active", sample.following_error_active}
     };
 }
 
@@ -176,8 +186,11 @@ OrderedJson summaryToJson(const sim::scheme_c::RecordingSummary& summary) {
         {"motion_sample_count", summary.motion_sample_count},
         {"axis_count", summary.axis_count},
         {"io_count", summary.io_count},
+        {"following_error_sample_count", summary.following_error_sample_count},
         {"empty_timeline", summary.empty_timeline},
-        {"has_error", summary.has_error}
+        {"has_error", summary.has_error},
+        {"max_following_error_mm", summary.max_following_error_mm},
+        {"mean_following_error_mm", summary.mean_following_error_mm}
     };
 }
 

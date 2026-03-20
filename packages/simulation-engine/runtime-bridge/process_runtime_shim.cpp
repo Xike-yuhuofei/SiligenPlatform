@@ -2,13 +2,18 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <deque>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "domain/motion/domain-services/interpolation/ValidatedInterpolationPort.h"
+#include "domain/motion/ports/IMotionRuntimePort.h"
 #include "domain/motion/value-objects/MotionTypes.h"
+#include "process_runtime_ports.h"
 #include "shared/types/AxisTypes.h"
 #include "shared/types/Error.h"
 #include "shared/types/Point.h"
@@ -31,12 +36,16 @@ using IHomingPort = Siligen::Domain::Motion::Ports::IHomingPort;
 using IInterpolationPort = Siligen::Domain::Motion::Ports::IInterpolationPort;
 using IIOControlPort = Siligen::Domain::Motion::Ports::IIOControlPort;
 using IMotionStatePort = Siligen::Domain::Motion::Ports::IMotionStatePort;
+using IMotionRuntimePort = Siligen::Domain::Motion::Ports::IMotionRuntimePort;
 using InterpolationData = Siligen::Domain::Motion::Ports::InterpolationData;
+using ValidatedInterpolationPort = Siligen::Domain::Motion::DomainServices::ValidatedInterpolationPort;
 using IOStatus = Siligen::Domain::Motion::Ports::IOStatus;
+using JogParameters = Siligen::Domain::Motion::Ports::JogParameters;
 using LogicalAxisId = Siligen::Shared::Types::LogicalAxisId;
 using MotionState = Siligen::Domain::Motion::Ports::MotionState;
 using MotionStatus = Siligen::Domain::Motion::Ports::MotionStatus;
 using Point2D = Siligen::Shared::Types::Point2D;
+using MotionCommand = Siligen::Domain::Motion::Ports::MotionCommand;
 template <typename T>
 using Result = Siligen::Shared::Types::Result<T>;
 using ResultVoid = Siligen::Shared::Types::Result<void>;
@@ -47,6 +56,13 @@ using Siligen::Shared::Types::ToIndex;
 Error makeError(ErrorCode code, const std::string& message) {
     return Error(code, message, "simulation-engine/process-runtime-shim");
 }
+
+constexpr std::uint32_t kInterpolationBufferCapacity = 16U;
+constexpr std::uint32_t kMaxLookAheadCapacity = 8U;
+constexpr std::int32_t kCoordStatusMovingBit = 1 << 0;
+constexpr std::int32_t kCoordStatusBufferedBit = 1 << 1;
+constexpr std::int32_t kCoordStatusStagedBit = 1 << 2;
+constexpr double kPositionEpsilon = 1e-4;
 
 std::vector<std::string> axisNamesFromSnapshot(const VirtualAxisGroup& axis_group) {
     std::vector<std::string> names;
@@ -157,10 +173,14 @@ struct AxisHardwareConfig {
 
 struct CoordinateSystemRuntime {
     CoordinateSystemConfig config{};
-    std::vector<InterpolationData> buffer{};
+    std::vector<InterpolationData> staged{};
+    std::deque<InterpolationData> queued{};
+    std::optional<InterpolationData> active_segment{};
     float override_percent{100.0f};
     bool s_curve_enabled{false};
     bool constant_linear_velocity{false};
+    bool motion_started{false};
+    bool active_segment_pending_start{false};
 };
 
 class BridgeContext {
@@ -349,7 +369,7 @@ public:
         status.has_error = axis_state.Value().has_error;
         status.error_code = axis_state.Value().error_code;
         status.enabled = axis_state.Value().enabled;
-        status.following_error = false;
+        status.following_error = axis_state.Value().following_error_active;
         status.soft_limit_positive = axis_state.Value().positive_soft_limit;
         status.soft_limit_negative = axis_state.Value().negative_soft_limit;
         status.hard_limit_positive = axis_state.Value().positive_hard_limit;
@@ -711,6 +731,11 @@ public:
 
         auto& runtime = context_->coordinateSystem(coord_sys);
         runtime.config = config;
+        runtime.staged.clear();
+        runtime.queued.clear();
+        runtime.active_segment.reset();
+        runtime.motion_started = false;
+        runtime.active_segment_pending_start = false;
         return ResultVoid::Success();
     }
 
@@ -720,7 +745,11 @@ public:
             return ResultVoid::Failure(runtime.GetError());
         }
 
-        runtime.Value()->buffer.push_back(data);
+        if (bufferOccupancy(*runtime.Value()) >= kInterpolationBufferCapacity) {
+            return ResultVoid::Failure(makeError(ErrorCode::INVALID_STATE, "Interpolation buffer is full"));
+        }
+
+        runtime.Value()->staged.push_back(data);
         return ResultVoid::Success();
     }
 
@@ -730,7 +759,12 @@ public:
             return ResultVoid::Failure(runtime.GetError());
         }
 
-        runtime.Value()->buffer.clear();
+        runtime.Value()->staged.clear();
+        runtime.Value()->queued.clear();
+        if (!runtime.Value()->active_segment.has_value()) {
+            runtime.Value()->motion_started = false;
+            runtime.Value()->active_segment_pending_start = false;
+        }
         return ResultVoid::Success();
     }
 
@@ -738,6 +772,23 @@ public:
         auto runtime = context_->findCoordinateSystem(coord_sys);
         if (runtime.IsError()) {
             return ResultVoid::Failure(runtime.GetError());
+        }
+
+        auto executable_space = availableExecutableSlots(*runtime.Value());
+        if (runtime.Value()->staged.size() > executable_space) {
+            return ResultVoid::Failure(makeError(ErrorCode::INVALID_STATE, "Look-ahead buffer is full"));
+        }
+
+        for (auto& segment : runtime.Value()->staged) {
+            runtime.Value()->queued.push_back(segment);
+        }
+        runtime.Value()->staged.clear();
+
+        if (runtime.Value()->motion_started && !runtime.Value()->active_segment.has_value()) {
+            const auto dispatch = dispatchNextSegment(*runtime.Value());
+            if (dispatch.IsError()) {
+                return dispatch;
+            }
         }
 
         return ResultVoid::Success();
@@ -750,36 +801,11 @@ public:
                 return ResultVoid::Failure(runtime.GetError());
             }
 
-            if (runtime.Value()->buffer.empty()) {
-                continue;
+            runtime.Value()->motion_started = true;
+            const auto sync = synchronizeRuntime(*runtime.Value());
+            if (sync.IsError()) {
+                return sync;
             }
-
-            const auto& final_segment = runtime.Value()->buffer.back();
-            std::vector<AxisCommand> commands;
-            const auto axis_count = std::min(runtime.Value()->config.axis_map.size(), final_segment.positions.size());
-            commands.reserve(axis_count);
-
-            for (std::size_t index = 0; index < axis_count; ++index) {
-                const auto axis_name = context_->axisName(runtime.Value()->config.axis_map[index]);
-                if (axis_name.IsError()) {
-                    return ResultVoid::Failure(axis_name.GetError());
-                }
-
-                commands.push_back(AxisCommand{
-                    axis_name.Value(),
-                    final_segment.positions[index],
-                    final_segment.velocity * (runtime.Value()->override_percent / 100.0f),
-                    false,
-                    false
-                });
-            }
-
-            const auto apply = context_->applyCommands(commands);
-            if (apply.IsError()) {
-                return apply;
-            }
-
-            runtime.Value()->buffer.clear();
         }
 
         return ResultVoid::Success();
@@ -806,6 +832,12 @@ public:
             if (apply.IsError()) {
                 return apply;
             }
+
+            runtime.Value()->staged.clear();
+            runtime.Value()->queued.clear();
+            runtime.Value()->active_segment.reset();
+            runtime.Value()->motion_started = false;
+            runtime.Value()->active_segment_pending_start = false;
         }
 
         return ResultVoid::Success();
@@ -857,11 +889,28 @@ public:
             return Result<uint32>::Failure(runtime.GetError());
         }
 
-        return Result<uint32>::Success(1024U - static_cast<uint32>(runtime.Value()->buffer.size()));
+        const auto occupancy = bufferOccupancy(*runtime.Value());
+        if (occupancy >= kInterpolationBufferCapacity) {
+            return Result<uint32>::Success(0U);
+        }
+
+        return Result<uint32>::Success(kInterpolationBufferCapacity - static_cast<uint32>(occupancy));
     }
 
     Result<uint32> GetLookAheadBufferSpace(int16 coord_sys) const override {
-        return GetInterpolationBufferSpace(coord_sys);
+        auto runtime = context_->findCoordinateSystem(coord_sys);
+        if (runtime.IsError()) {
+            return Result<uint32>::Failure(runtime.GetError());
+        }
+
+        const auto capacity = lookAheadCapacity(*runtime.Value());
+        const auto queued = runtime.Value()->queued.size();
+        const auto occupied = (!runtime.Value()->active_segment.has_value() && queued > 0U) ? (queued - 1U) : queued;
+        if (occupied >= capacity) {
+            return Result<uint32>::Success(0U);
+        }
+
+        return Result<uint32>::Success(capacity - static_cast<uint32>(occupied));
     }
 
     Result<CoordinateSystemRuntimeStatus> GetCoordinateSystemStatus(int16 coord_sys) const override {
@@ -871,27 +920,173 @@ public:
         }
 
         CoordinateSystemRuntimeStatus status;
-        status.remaining_segments = static_cast<uint32>(runtime.Value()->buffer.size());
-        status.current_velocity = 0.0f;
+        const auto running = isRuntimeMoving(*runtime.Value());
+        const auto remaining_segments = runtime.Value()->queued.size() + (runtime.Value()->active_segment.has_value() ? 1U : 0U);
+        status.remaining_segments = static_cast<uint32>(remaining_segments);
+        status.current_velocity = running
+            ? activeVelocity(*runtime.Value())
+            : (runtime.Value()->active_segment.has_value()
+                ? effectiveVelocity(*runtime.Value(), *runtime.Value()->active_segment)
+                : 0.0f);
         status.raw_status_word = 0;
-        status.raw_segment = static_cast<int32>(runtime.Value()->buffer.size());
-        status.mc_status_ret = 0;
-
-        bool any_running = false;
-        for (const auto axis : runtime.Value()->config.axis_map) {
-            const auto state = context_->readAxis(axis);
-            if (state.IsSuccess() && state.Value().running) {
-                any_running = true;
-                status.current_velocity = static_cast<float32>(state.Value().velocity_mm_per_s);
-            }
+        if (running) {
+            status.raw_status_word |= kCoordStatusMovingBit;
         }
-
-        status.is_moving = any_running;
-        status.state = any_running ? CoordinateSystemState::MOVING : CoordinateSystemState::IDLE;
+        if (!running && remaining_segments > 0U) {
+            status.raw_status_word |= kCoordStatusBufferedBit;
+        }
+        if (!runtime.Value()->staged.empty()) {
+            status.raw_status_word |= kCoordStatusStagedBit;
+        }
+        status.raw_segment = static_cast<int32>(remaining_segments);
+        status.mc_status_ret = 0;
+        status.is_moving = running;
+        status.state = running ? CoordinateSystemState::MOVING : CoordinateSystemState::IDLE;
         return Result<CoordinateSystemRuntimeStatus>::Success(status);
     }
 
 private:
+    std::size_t bufferOccupancy(const CoordinateSystemRuntime& runtime) const {
+        return runtime.staged.size() + runtime.queued.size() + (runtime.active_segment.has_value() ? 1U : 0U);
+    }
+
+    std::uint32_t lookAheadCapacity(const CoordinateSystemRuntime& runtime) const {
+        if (!runtime.config.look_ahead_enabled) {
+            return 0U;
+        }
+
+        const auto configured = runtime.config.look_ahead_segments > 0
+            ? static_cast<std::uint32_t>(runtime.config.look_ahead_segments)
+            : 0U;
+        return std::min(kMaxLookAheadCapacity, configured);
+    }
+
+    std::size_t availableExecutableSlots(const CoordinateSystemRuntime& runtime) const {
+        const auto capacity = 1U + lookAheadCapacity(runtime);
+        const auto occupied = runtime.queued.size() + (runtime.active_segment.has_value() ? 1U : 0U);
+        if (occupied >= capacity) {
+            return 0U;
+        }
+
+        return capacity - occupied;
+    }
+
+    bool isRuntimeMoving(const CoordinateSystemRuntime& runtime) const {
+        if (runtime.active_segment.has_value()) {
+            return true;
+        }
+
+        for (const auto axis : runtime.config.axis_map) {
+            const auto state = context_->readAxis(axis);
+            if (state.IsSuccess() && state.Value().running) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    float32 activeVelocity(const CoordinateSystemRuntime& runtime) const {
+        for (const auto axis : runtime.config.axis_map) {
+            const auto state = context_->readAxis(axis);
+            if (state.IsSuccess() && state.Value().running) {
+                return static_cast<float32>(state.Value().velocity_mm_per_s);
+            }
+        }
+
+        if (runtime.active_segment.has_value()) {
+            return effectiveVelocity(runtime, *runtime.active_segment);
+        }
+
+        return 0.0f;
+    }
+
+    float32 effectiveVelocity(const CoordinateSystemRuntime& runtime, const InterpolationData& segment) const {
+        return segment.velocity * (runtime.override_percent / 100.0f);
+    }
+
+    bool segmentTargetReached(const CoordinateSystemRuntime& runtime, const InterpolationData& segment) const {
+        const auto axis_count = std::min(runtime.config.axis_map.size(), segment.positions.size());
+        for (std::size_t index = 0; index < axis_count; ++index) {
+            const auto state = context_->readAxis(runtime.config.axis_map[index]);
+            if (state.IsError()) {
+                return false;
+            }
+            if (std::abs(state.Value().position_mm - static_cast<double>(segment.positions[index])) > kPositionEpsilon) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    ResultVoid synchronizeRuntime(CoordinateSystemRuntime& runtime) {
+        const auto running = [&]() {
+            for (const auto axis : runtime.config.axis_map) {
+                const auto state = context_->readAxis(axis);
+                if (state.IsSuccess() && state.Value().running) {
+                    return true;
+                }
+            }
+            return false;
+        }();
+
+        if (runtime.active_segment_pending_start) {
+            if (running) {
+                runtime.active_segment_pending_start = false;
+            } else if (runtime.active_segment.has_value() && segmentTargetReached(runtime, *runtime.active_segment)) {
+                runtime.active_segment_pending_start = false;
+                runtime.active_segment.reset();
+            } else {
+                return ResultVoid::Success();
+            }
+        } else if (runtime.active_segment.has_value() && !running && segmentTargetReached(runtime, *runtime.active_segment)) {
+            runtime.active_segment.reset();
+        }
+
+        if (runtime.motion_started && !runtime.active_segment.has_value() && !runtime.queued.empty()) {
+            return dispatchNextSegment(runtime);
+        }
+
+        return ResultVoid::Success();
+    }
+
+    ResultVoid dispatchNextSegment(CoordinateSystemRuntime& runtime) {
+        if (runtime.queued.empty()) {
+            return ResultVoid::Success();
+        }
+
+        const auto& segment = runtime.queued.front();
+        std::vector<AxisCommand> commands;
+        const auto axis_count = std::min(runtime.config.axis_map.size(), segment.positions.size());
+        commands.reserve(axis_count);
+
+        for (std::size_t index = 0; index < axis_count; ++index) {
+            const auto axis_name = context_->axisName(runtime.config.axis_map[index]);
+            if (axis_name.IsError()) {
+                return ResultVoid::Failure(axis_name.GetError());
+            }
+
+            commands.push_back(AxisCommand{
+                axis_name.Value(),
+                segment.positions[index],
+                effectiveVelocity(runtime, segment),
+                false,
+                false
+            });
+        }
+
+        const auto apply = context_->applyCommands(commands);
+        if (apply.IsError()) {
+            return apply;
+        }
+
+        runtime.active_segment = segment;
+        runtime.active_segment_pending_start = true;
+        runtime.queued.pop_front();
+        return ResultVoid::Success();
+    }
+
     std::vector<int16> activeCoordinateSystems(uint32 coord_sys_mask) const {
         std::vector<int16> systems;
         for (int16 coord_sys = 1; coord_sys <= 16; ++coord_sys) {
@@ -907,22 +1102,409 @@ private:
     std::shared_ptr<BridgeContext> context_;
 };
 
+class MotionRuntimePortAdapter final : public IMotionRuntimePort {
+public:
+    MotionRuntimePortAdapter(std::shared_ptr<BridgeContext> context,
+                             std::shared_ptr<AxisControlPortShim> axis_control,
+                             std::shared_ptr<HomingPortShim> homing,
+                             std::shared_ptr<MotionStatePortShim> motion_state,
+                             std::shared_ptr<IoControlPortShim> io_control,
+                             std::shared_ptr<IInterpolationPort> interpolation)
+        : context_(std::move(context)),
+          axis_control_(std::move(axis_control)),
+          homing_(std::move(homing)),
+          motion_state_(std::move(motion_state)),
+          io_control_(std::move(io_control)),
+          interpolation_(std::move(interpolation)),
+          available_axes_(context_ ? context_->allAxes() : std::vector<LogicalAxisId>{}) {}
+
+    ResultVoid Connect(const std::string& /*card_ip*/, const std::string& /*pc_ip*/, std::int16_t /*port*/) override {
+        connected_ = true;
+        return ResultVoid::Success();
+    }
+
+    ResultVoid Disconnect() override {
+        connected_ = false;
+        return ResultVoid::Success();
+    }
+
+    Result<bool> IsConnected() const override {
+        return Result<bool>::Success(connected_);
+    }
+
+    ResultVoid Reset() override {
+        connected_ = true;
+        return ResultVoid::Success();
+    }
+
+    Result<std::string> GetCardInfo() const override {
+        return Result<std::string>::Success("virtual-process-runtime-core-port-adapter");
+    }
+
+    ResultVoid EnableAxis(LogicalAxisId axis) override {
+        return axis_control_->EnableAxis(axis);
+    }
+
+    ResultVoid DisableAxis(LogicalAxisId axis) override {
+        return axis_control_->DisableAxis(axis);
+    }
+
+    Result<bool> IsAxisEnabled(LogicalAxisId axis) const override {
+        return axis_control_->IsAxisEnabled(axis);
+    }
+
+    ResultVoid ClearAxisStatus(LogicalAxisId axis) override {
+        return axis_control_->ClearAxisStatus(axis);
+    }
+
+    ResultVoid ClearPosition(LogicalAxisId axis) override {
+        return axis_control_->ClearPosition(axis);
+    }
+
+    ResultVoid SetAxisVelocity(LogicalAxisId axis, float32 velocity) override {
+        return axis_control_->SetAxisVelocity(axis, velocity);
+    }
+
+    ResultVoid SetAxisAcceleration(LogicalAxisId axis, float32 acceleration) override {
+        return axis_control_->SetAxisAcceleration(axis, acceleration);
+    }
+
+    ResultVoid SetSoftLimits(LogicalAxisId axis, float32 negative_limit, float32 positive_limit) override {
+        return axis_control_->SetSoftLimits(axis, negative_limit, positive_limit);
+    }
+
+    ResultVoid ConfigureAxis(LogicalAxisId axis, const AxisConfiguration& config) override {
+        return axis_control_->ConfigureAxis(axis, config);
+    }
+
+    ResultVoid SetHardLimits(LogicalAxisId axis,
+                             short positive_io_index,
+                             short negative_io_index,
+                             short card_index,
+                             short signal_type) override {
+        return axis_control_->SetHardLimits(axis, positive_io_index, negative_io_index, card_index, signal_type);
+    }
+
+    ResultVoid EnableHardLimits(LogicalAxisId axis, bool enable, short limit_type = -1) override {
+        return axis_control_->EnableHardLimits(axis, enable, limit_type);
+    }
+
+    ResultVoid SetHardLimitPolarity(LogicalAxisId axis,
+                                    short positive_polarity,
+                                    short negative_polarity) override {
+        return axis_control_->SetHardLimitPolarity(axis, positive_polarity, negative_polarity);
+    }
+
+    ResultVoid MoveToPosition(const Point2D& position, float32 velocity) override {
+        std::vector<MotionCommand> commands;
+        if (hasAxis(LogicalAxisId::X)) {
+            commands.push_back(MotionCommand{LogicalAxisId::X, position.x, velocity, false});
+        }
+        if (hasAxis(LogicalAxisId::Y)) {
+            commands.push_back(MotionCommand{LogicalAxisId::Y, position.y, velocity, false});
+        }
+        return SynchronizedMove(commands);
+    }
+
+    ResultVoid MoveAxisToPosition(LogicalAxisId axis, float32 position, float32 velocity) override {
+        return SynchronizedMove({MotionCommand{axis, position, velocity, false}});
+    }
+
+    ResultVoid RelativeMove(LogicalAxisId axis, float32 distance, float32 velocity) override {
+        if (!motion_state_) {
+            return ResultVoid::Failure(makeError(ErrorCode::PORT_NOT_INITIALIZED, "Motion state port not initialized"));
+        }
+
+        const auto current = motion_state_->GetAxisPosition(axis);
+        if (current.IsError()) {
+            return ResultVoid::Failure(current.GetError());
+        }
+
+        return MoveAxisToPosition(axis, current.Value() + distance, velocity);
+    }
+
+    ResultVoid SynchronizedMove(const std::vector<MotionCommand>& commands) override {
+        if (!interpolation_) {
+            return ResultVoid::Failure(makeError(ErrorCode::PORT_NOT_INITIALIZED, "Interpolation port not initialized"));
+        }
+        if (commands.empty()) {
+            return ResultVoid::Failure(makeError(ErrorCode::INVALID_PARAMETER, "Motion command list is empty"));
+        }
+
+        CoordinateSystemConfig config;
+        config.dimension = static_cast<std::int16_t>(commands.size());
+        config.max_velocity = 0.0f;
+        config.max_acceleration = 0.0f;
+        config.axis_map.reserve(commands.size());
+
+        InterpolationData data;
+        data.positions.reserve(commands.size());
+
+        for (const auto& command : commands) {
+            if (!hasAxis(command.axis)) {
+                return ResultVoid::Failure(
+                    makeError(ErrorCode::INVALID_PARAMETER, "Axis not available in runtime adapter"));
+            }
+
+            config.axis_map.push_back(command.axis);
+            config.max_velocity = std::max(config.max_velocity, command.velocity);
+            config.max_acceleration = std::max(config.max_acceleration, command.velocity);
+
+            float32 target_position = command.position;
+            if (command.relative) {
+                const auto current = motion_state_->GetAxisPosition(command.axis);
+                if (current.IsError()) {
+                    return ResultVoid::Failure(current.GetError());
+                }
+                target_position += current.Value();
+            }
+
+            data.positions.push_back(target_position);
+            data.velocity = std::max(data.velocity, command.velocity);
+            data.acceleration = std::max(data.acceleration, command.velocity);
+        }
+
+        auto result = interpolation_->ConfigureCoordinateSystem(1, config);
+        if (result.IsError()) {
+            return result;
+        }
+        result = interpolation_->ClearInterpolationBuffer(1);
+        if (result.IsError()) {
+            return result;
+        }
+        result = interpolation_->AddInterpolationData(1, data);
+        if (result.IsError()) {
+            return result;
+        }
+        result = interpolation_->FlushInterpolationData(1);
+        if (result.IsError()) {
+            return result;
+        }
+        return interpolation_->StartCoordinateSystemMotion(1U);
+    }
+
+    ResultVoid StopAxis(LogicalAxisId /*axis*/, bool immediate = false) override {
+        return StopAllAxes(immediate);
+    }
+
+    ResultVoid StopAllAxes(bool /*immediate*/ = false) override {
+        if (!interpolation_) {
+            return ResultVoid::Failure(makeError(ErrorCode::PORT_NOT_INITIALIZED, "Interpolation port not initialized"));
+        }
+
+        const auto result = interpolation_->StopCoordinateSystemMotion(0xFFFFU);
+        if (result.IsError() &&
+            result.GetError().GetCode() == ErrorCode::INVALID_PARAMETER &&
+            result.GetError().GetMessage().find("Coordinate system not configured") != std::string::npos) {
+            return ResultVoid::Success();
+        }
+        return result;
+    }
+
+    ResultVoid EmergencyStop() override {
+        return StopAllAxes(true);
+    }
+
+    ResultVoid WaitForMotionComplete(LogicalAxisId axis, int32 timeout_ms = 60000) override {
+        (void)timeout_ms;
+        if (!motion_state_) {
+            return ResultVoid::Failure(makeError(ErrorCode::PORT_NOT_INITIALIZED, "Motion state port not initialized"));
+        }
+
+        const auto moving = motion_state_->IsAxisMoving(axis);
+        if (moving.IsError()) {
+            return ResultVoid::Failure(moving.GetError());
+        }
+        if (moving.Value()) {
+            return ResultVoid::Failure(
+                makeError(ErrorCode::TIMEOUT, "Deterministic runtime requires later virtual ticks"));
+        }
+
+        return ResultVoid::Success();
+    }
+
+    Result<Point2D> GetCurrentPosition() const override {
+        return motion_state_->GetCurrentPosition();
+    }
+
+    Result<float32> GetAxisPosition(LogicalAxisId axis) const override {
+        return motion_state_->GetAxisPosition(axis);
+    }
+
+    Result<float32> GetAxisVelocity(LogicalAxisId axis) const override {
+        return motion_state_->GetAxisVelocity(axis);
+    }
+
+    Result<MotionStatus> GetAxisStatus(LogicalAxisId axis) const override {
+        return motion_state_->GetAxisStatus(axis);
+    }
+
+    Result<bool> IsAxisMoving(LogicalAxisId axis) const override {
+        return motion_state_->IsAxisMoving(axis);
+    }
+
+    Result<bool> IsAxisInPosition(LogicalAxisId axis) const override {
+        return motion_state_->IsAxisInPosition(axis);
+    }
+
+    Result<std::vector<MotionStatus>> GetAllAxesStatus() const override {
+        return motion_state_->GetAllAxesStatus();
+    }
+
+    ResultVoid StartJog(LogicalAxisId axis, int16 direction, float32 velocity) override {
+        if (direction != 1 && direction != -1) {
+            return ResultVoid::Failure(makeError(ErrorCode::INVALID_PARAMETER, "Jog direction must be +/-1"));
+        }
+        const auto params_it = jog_parameters_.find(static_cast<std::int32_t>(ToIndex(axis)));
+        const float32 distance = params_it != jog_parameters_.end() && params_it->second.smooth_time > 0.0f
+            ? (velocity * params_it->second.smooth_time)
+            : velocity;
+        return StartJogStep(axis, direction, distance, velocity);
+    }
+
+    ResultVoid StartJogStep(LogicalAxisId axis, int16 direction, float32 distance, float32 velocity) override {
+        if (direction != 1 && direction != -1) {
+            return ResultVoid::Failure(makeError(ErrorCode::INVALID_PARAMETER, "Jog direction must be +/-1"));
+        }
+        return RelativeMove(axis, static_cast<float32>(direction) * distance, velocity);
+    }
+
+    ResultVoid StopJog(LogicalAxisId axis) override {
+        return StopAxis(axis, false);
+    }
+
+    ResultVoid SetJogParameters(LogicalAxisId axis, const JogParameters& params) override {
+        jog_parameters_[static_cast<std::int32_t>(ToIndex(axis))] = params;
+        return ResultVoid::Success();
+    }
+
+    Result<IOStatus> ReadDigitalInput(int16 channel) override {
+        return io_control_->ReadDigitalInput(channel);
+    }
+
+    Result<IOStatus> ReadDigitalOutput(int16 channel) override {
+        return io_control_->ReadDigitalOutput(channel);
+    }
+
+    ResultVoid WriteDigitalOutput(int16 channel, bool value) override {
+        return io_control_->WriteDigitalOutput(channel, value);
+    }
+
+    Result<bool> ReadLimitStatus(LogicalAxisId axis, bool positive) override {
+        return io_control_->ReadLimitStatus(axis, positive);
+    }
+
+    Result<bool> ReadServoAlarm(LogicalAxisId axis) override {
+        return io_control_->ReadServoAlarm(axis);
+    }
+
+    ResultVoid HomeAxis(LogicalAxisId axis) override {
+        return homing_->HomeAxis(axis);
+    }
+
+    ResultVoid StopHoming(LogicalAxisId axis) override {
+        return homing_->StopHoming(axis);
+    }
+
+    ResultVoid ResetHomingState(LogicalAxisId axis) override {
+        return homing_->ResetHomingState(axis);
+    }
+
+    Result<HomingStatus> GetHomingStatus(LogicalAxisId axis) const override {
+        return homing_->GetHomingStatus(axis);
+    }
+
+    Result<bool> IsAxisHomed(LogicalAxisId axis) const override {
+        return homing_->IsAxisHomed(axis);
+    }
+
+    Result<bool> IsHomingInProgress(LogicalAxisId axis) const override {
+        return homing_->IsHomingInProgress(axis);
+    }
+
+    ResultVoid WaitForHomingComplete(LogicalAxisId axis, int32 timeout_ms = 30000) override {
+        return homing_->WaitForHomingComplete(axis, timeout_ms);
+    }
+
+private:
+    bool hasAxis(LogicalAxisId axis) const {
+        return std::find(available_axes_.begin(), available_axes_.end(), axis) != available_axes_.end();
+    }
+
+    std::shared_ptr<BridgeContext> context_;
+    std::shared_ptr<AxisControlPortShim> axis_control_;
+    std::shared_ptr<HomingPortShim> homing_;
+    std::shared_ptr<MotionStatePortShim> motion_state_;
+    std::shared_ptr<IoControlPortShim> io_control_;
+    std::shared_ptr<IInterpolationPort> interpolation_;
+    std::vector<LogicalAxisId> available_axes_{};
+    std::unordered_map<std::int32_t, JogParameters> jog_parameters_{};
+    bool connected_{true};
+};
+
+struct RuntimeAdapterComponents {
+    RuntimeBridgeBindings resolved_bindings{};
+    std::shared_ptr<BridgeContext> context{};
+    std::shared_ptr<HomingPortShim> homing{};
+    std::shared_ptr<IInterpolationPort> interpolation{};
+    std::shared_ptr<AxisControlPortShim> axis_control{};
+    std::shared_ptr<MotionStatePortShim> motion_state{};
+    std::shared_ptr<IoControlPortShim> io_control{};
+    std::shared_ptr<IMotionRuntimePort> motion_runtime{};
+};
+
+RuntimeAdapterComponents buildRuntimeAdapterComponents(
+    VirtualAxisGroup& axis_group,
+    VirtualIo& io,
+    const RuntimeBridgeBindings& bindings) {
+    RuntimeAdapterComponents components;
+    components.resolved_bindings = normalizeBindings(bindings, axis_group, io);
+    components.context = std::make_shared<BridgeContext>(axis_group, io, components.resolved_bindings);
+    components.homing = std::make_shared<HomingPortShim>(components.context);
+    components.interpolation = std::make_shared<ValidatedInterpolationPort>(
+        std::make_shared<InterpolationPortShim>(components.context));
+    components.axis_control = std::make_shared<AxisControlPortShim>(components.context);
+    components.motion_state = std::make_shared<MotionStatePortShim>(components.context);
+    components.io_control = std::make_shared<IoControlPortShim>(components.context);
+    components.motion_runtime = std::make_shared<MotionRuntimePortAdapter>(
+        components.context,
+        components.axis_control,
+        components.homing,
+        components.motion_state,
+        components.io_control,
+        components.interpolation);
+    return components;
+}
+
 }  // namespace
 
 ProcessRuntimeCoreShimBundle createProcessRuntimeCoreShimBundle(
     VirtualAxisGroup& axis_group,
     VirtualIo& io,
     const RuntimeBridgeBindings& bindings) {
-    ProcessRuntimeCoreShimBundle bundle;
-    bundle.resolved_bindings = normalizeBindings(bindings, axis_group, io);
+    const auto components = buildRuntimeAdapterComponents(axis_group, io, bindings);
 
-    auto context = std::make_shared<BridgeContext>(axis_group, io, bundle.resolved_bindings);
-    bundle.homing = std::make_shared<HomingPortShim>(context);
-    bundle.interpolation = std::make_shared<InterpolationPortShim>(context);
-    bundle.axis_control = std::make_shared<AxisControlPortShim>(context);
-    bundle.motion_state = std::make_shared<MotionStatePortShim>(context);
-    bundle.io_control = std::make_shared<IoControlPortShim>(context);
+    ProcessRuntimeCoreShimBundle bundle;
+    bundle.resolved_bindings = components.resolved_bindings;
+    bundle.homing = components.homing;
+    bundle.interpolation = components.interpolation;
+    bundle.axis_control = components.axis_control;
+    bundle.motion_state = components.motion_state;
+    bundle.io_control = components.io_control;
     return bundle;
+}
+
+ProcessRuntimeCorePortAdapters createProcessRuntimeCorePortAdapters(
+    VirtualAxisGroup& axis_group,
+    VirtualIo& io,
+    const RuntimeBridgeBindings& bindings) {
+    const auto components = buildRuntimeAdapterComponents(axis_group, io, bindings);
+
+    ProcessRuntimeCorePortAdapters adapters;
+    adapters.resolved_bindings = components.resolved_bindings;
+    adapters.motion_runtime = components.motion_runtime;
+    adapters.interpolation = components.interpolation;
+    return adapters;
 }
 
 }  // namespace sim::scheme_c

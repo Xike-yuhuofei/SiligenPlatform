@@ -1,8 +1,6 @@
 #include "siligen/device/adapters/drivers/multicard/MockMultiCard.h"
 
 #include <algorithm>
-#include <boost/geometry/algorithms/distance.hpp>
-#include <boost/geometry/geometries/point_xy.hpp>
 #include <cmath>
 #include <cstring>
 #include <iostream>
@@ -768,11 +766,7 @@ void MockMultiCard::TickMs(double dt_ms) {
         // Move towards target
         double dx = static_cast<double>(target_x - current_x);
         double dy = static_cast<double>(target_y - current_y);
-        const boost::geometry::model::d2::point_xy<double> current_pt(static_cast<double>(current_x),
-                                                                      static_cast<double>(current_y));
-        const boost::geometry::model::d2::point_xy<double> target_pt(static_cast<double>(target_x),
-                                                                     static_cast<double>(target_y));
-        double distance = boost::geometry::distance(current_pt, target_pt);
+        double distance = std::sqrt((dx * dx) + (dy * dy));
 
         if (distance <= max_delta) {
             // Reached target, move to next segment

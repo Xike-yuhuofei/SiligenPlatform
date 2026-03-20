@@ -29,7 +29,7 @@ target_link_libraries(siligen_recipe_core PUBLIC
 target_compile_features(siligen_recipe_core PUBLIC cxx_std_17)
 
 if(SILIGEN_USE_PCH)
-    target_precompile_headers(siligen_recipe_core PRIVATE ${CMAKE_SOURCE_DIR}/src/siligen_pch.h)
+    target_precompile_headers(siligen_recipe_core PRIVATE ${SILIGEN_PCH_HEADER})
     message(STATUS "[Application::Recipes] 预编译头已应用于 siligen_recipe_core")
 endif()
 

@@ -22,7 +22,8 @@
 
 ## 与 legacy 的关系
 
-- `control-core/apps/control-tcp-server` 不再是默认源码 owner。
+- `control-core/apps/control-tcp-server` 兼容壳目录已删除；根级 `apps/control-tcp-server` 是当前唯一 app 入口。
 - `control-core/build/bin/**/siligen_tcp_server.exe` 不再是默认启动目标。
-- `run.ps1 -UseLegacyFallback` 仍保留临时、显式、可审计的回退通道。
+- `run.ps1` 已移除 legacy fallback；若传入 `-UseLegacyFallback` 会直接报错，要求先修复 canonical 产物。
 - `integration/hardware-in-loop/run_hardware_smoke.py` 默认也已切到 canonical TCP server，而不是 `control-core/build/bin/**`。
+- `run.ps1 -DryRun` 在 canonical 产物缺失时会以非零退出，作为真实可执行物验证的一部分。

@@ -12,7 +12,7 @@
 #include "facades/tcp/TcpSystemFacade.h"
 #include "domain/configuration/ports/IConfigurationPort.h"
 
-#include "modules/device-hal/src/adapters/recipes/RecipeJsonSerializer.h"
+#include "recipes/serialization/RecipeJsonSerializer.h"
 
 #include <algorithm>
 #include <cctype>

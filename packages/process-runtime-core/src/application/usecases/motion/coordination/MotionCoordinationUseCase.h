@@ -53,6 +53,9 @@ class MotionCoordinationUseCase {
                                            const std::vector<Siligen::Shared::Types::LogicalAxisId>& axis_map,
                                            float32 max_velocity);
     Result<void> AddInterpolationSegment(const InterpolationConfig& command);
+    Result<void> DispatchCoordinateSystemSegment(
+        int16 coord_sys,
+        const Domain::Motion::Ports::InterpolationData& segment);
     Result<void> StartCoordinateSystemMotion(uint32 coord_sys_mask);
     Result<void> StopCoordinateSystemMotion(uint32 coord_sys_mask);
     Result<void> SetCoordinateSystemVelocityOverride(int16 coord_sys, float32 override_percent);

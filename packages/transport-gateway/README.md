@@ -28,11 +28,13 @@
 - `siligen_transport_gateway`
 - `siligen_transport_gateway_protocol`
 
-兼容 alias 仍保留在 legacy shell 中：
+以下 3 个 legacy alias 已在 `2026-03-19` 完成消费者审计后提前删除：
 
 - `siligen_control_gateway_tcp_adapter`
 - `siligen_tcp_adapter`
 - `siligen_control_gateway`
+
+审计证据见 `docs/architecture/alias-consumer-audit.md`。
 
 ## 验证
 

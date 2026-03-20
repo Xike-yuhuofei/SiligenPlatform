@@ -240,16 +240,16 @@ list(APPEND DOMAIN_LIBRARIES
 
 # 为领域层库添加预编译头
 if(SILIGEN_USE_PCH)
-    target_precompile_headers(siligen_motion PRIVATE ${CMAKE_SOURCE_DIR}/src/siligen_pch.h)
+    target_precompile_headers(siligen_motion PRIVATE ${SILIGEN_PCH_HEADER})
     # siligen_trajectory 现在是 INTERFACE 库,跳过预编译头
-    # target_precompile_headers(siligen_trajectory PRIVATE ${CMAKE_SOURCE_DIR}/src/siligen_pch.h)
-    target_precompile_headers(siligen_triggering PRIVATE ${CMAKE_SOURCE_DIR}/src/siligen_pch.h)
-    target_precompile_headers(siligen_configuration PRIVATE ${CMAKE_SOURCE_DIR}/src/siligen_pch.h)
-    target_precompile_headers(siligen_dispensing_execution_services PRIVATE ${CMAKE_SOURCE_DIR}/src/siligen_pch.h)
-    target_precompile_headers(siligen_motion_execution_services PRIVATE ${CMAKE_SOURCE_DIR}/src/siligen_pch.h)
-    target_precompile_headers(siligen_recipe_domain_services PRIVATE ${CMAKE_SOURCE_DIR}/src/siligen_pch.h)
-    target_precompile_headers(siligen_diagnostics_domain_services PRIVATE ${CMAKE_SOURCE_DIR}/src/siligen_pch.h)
-    target_precompile_headers(siligen_safety_domain_services PRIVATE ${CMAKE_SOURCE_DIR}/src/siligen_pch.h)
+    # target_precompile_headers(siligen_trajectory PRIVATE ${SILIGEN_PCH_HEADER})
+    target_precompile_headers(siligen_triggering PRIVATE ${SILIGEN_PCH_HEADER})
+    target_precompile_headers(siligen_configuration PRIVATE ${SILIGEN_PCH_HEADER})
+    target_precompile_headers(siligen_dispensing_execution_services PRIVATE ${SILIGEN_PCH_HEADER})
+    target_precompile_headers(siligen_motion_execution_services PRIVATE ${SILIGEN_PCH_HEADER})
+    target_precompile_headers(siligen_recipe_domain_services PRIVATE ${SILIGEN_PCH_HEADER})
+    target_precompile_headers(siligen_diagnostics_domain_services PRIVATE ${SILIGEN_PCH_HEADER})
+    target_precompile_headers(siligen_safety_domain_services PRIVATE ${SILIGEN_PCH_HEADER})
 
     message(STATUS "[Domain Layer] 预编译头已应用于所有领域库")
 endif()

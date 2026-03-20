@@ -1,4 +1,5 @@
 #include <chrono>
+#include <cmath>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -12,6 +13,10 @@ void require(bool condition, const std::string& message) {
     if (!condition) {
         throw std::runtime_error(message);
     }
+}
+
+bool nearlyEqual(double lhs, double rhs, double epsilon = 1e-9) {
+    return std::abs(lhs - rhs) <= epsilon;
 }
 
 sim::scheme_c::TickInfo secondsTick(sim::scheme_c::TickIndex tick_index, int seconds) {
@@ -57,6 +62,67 @@ void testAxisMotionFeedbackIsDeterministic() {
     require(completed.velocity_mm_per_s == 0.0, "virtual axis: final velocity should be zero");
     require(!completed.running, "virtual axis: axis should stop after reaching target");
     require(completed.done, "virtual axis: axis should report done after reaching target");
+}
+
+void testAxisMotionRealismAddsDeterministicFollowingErrorAndQuantization() {
+    sim::scheme_c::MotionRealismConfig realism;
+    realism.enabled = true;
+    realism.servo_lag_seconds = 4.0;
+    realism.encoder_quantization_mm = 0.5;
+
+    auto axis_group_a = sim::scheme_c::createInMemoryVirtualAxisGroup({"X"}, realism);
+    auto axis_group_b = sim::scheme_c::createInMemoryVirtualAxisGroup({"X"}, realism);
+
+    sim::scheme_c::AxisState x_state{"X"};
+    x_state.enabled = true;
+    x_state.configured_velocity_mm_per_s = 6.0;
+    axis_group_a->writeAxisState(x_state);
+    axis_group_b->writeAxisState(x_state);
+
+    const sim::scheme_c::AxisCommand move_command{"X", 6.0, 6.0, false, false};
+    axis_group_a->applyCommands({move_command});
+    axis_group_b->applyCommands({move_command});
+
+    axis_group_a->advance(secondsTick(0, 1));
+    axis_group_b->advance(secondsTick(0, 1));
+
+    const auto first_tick_a = axis_group_a->readAxis("X");
+    const auto first_tick_b = axis_group_b->readAxis("X");
+    require(nearlyEqual(first_tick_a.position_mm, 1.5), "virtual axis realism: first feedback position mismatch");
+    require(nearlyEqual(first_tick_a.velocity_mm_per_s, 1.5), "virtual axis realism: first feedback velocity mismatch");
+    require(nearlyEqual(first_tick_a.command_position_mm, 6.0), "virtual axis realism: command position mismatch");
+    require(nearlyEqual(first_tick_a.command_velocity_mm_per_s, 0.0), "virtual axis realism: command velocity mismatch");
+    require(nearlyEqual(first_tick_a.following_error_mm, 4.5), "virtual axis realism: following error mismatch");
+    require(nearlyEqual(first_tick_a.encoder_quantization_mm, 0.5), "virtual axis realism: quantization mismatch");
+    require(first_tick_a.following_error_active, "virtual axis realism: following error should be active");
+    require(first_tick_a.running, "virtual axis realism: axis should still report moving while settling");
+    require(!first_tick_a.done, "virtual axis realism: axis should not be done while settling");
+    require(first_tick_a.position_mm == first_tick_b.position_mm &&
+                first_tick_a.following_error_mm == first_tick_b.following_error_mm &&
+                first_tick_a.following_error_active == first_tick_b.following_error_active,
+            "virtual axis realism: repeated execution should stay deterministic on first tick");
+
+    for (sim::scheme_c::TickIndex tick = 1; tick < 16; ++tick) {
+        axis_group_a->advance(secondsTick(tick, 1));
+        axis_group_b->advance(secondsTick(tick, 1));
+
+        const auto state_a = axis_group_a->readAxis("X");
+        const auto state_b = axis_group_b->readAxis("X");
+        require(state_a.position_mm == state_b.position_mm, "virtual axis realism: position should stay deterministic");
+        require(state_a.velocity_mm_per_s == state_b.velocity_mm_per_s, "virtual axis realism: velocity should stay deterministic");
+        require(state_a.following_error_mm == state_b.following_error_mm,
+                "virtual axis realism: following error should stay deterministic");
+        require(state_a.following_error_active == state_b.following_error_active,
+                "virtual axis realism: following error flag should stay deterministic");
+    }
+
+    const auto settled = axis_group_a->readAxis("X");
+    require(nearlyEqual(settled.position_mm, 6.0), "virtual axis realism: settled feedback position mismatch");
+    require(nearlyEqual(settled.command_position_mm, 6.0), "virtual axis realism: settled command position mismatch");
+    require(nearlyEqual(settled.following_error_mm, 0.0), "virtual axis realism: settled following error mismatch");
+    require(!settled.following_error_active, "virtual axis realism: following error should clear after settling");
+    require(!settled.running, "virtual axis realism: axis should stop after settling");
+    require(settled.done, "virtual axis realism: axis should finish after settling");
 }
 
 void testAxisHomeAndSoftLimitSemantics() {
@@ -128,6 +194,7 @@ void testOptionalZAndVirtualIoSemantics() {
 int main() {
     try {
         testAxisMotionFeedbackIsDeterministic();
+        testAxisMotionRealismAddsDeterministicFollowingErrorAndQuantization();
         testAxisHomeAndSoftLimitSemantics();
         testOptionalZAndVirtualIoSemantics();
         return 0;

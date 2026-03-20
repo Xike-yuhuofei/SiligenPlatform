@@ -1,0 +1,21 @@
+{
+  "schema_version": "scheme_c.recording.v1",
+  "session_status": "failed",
+  "runtime_bridge_mode": "process_runtime_core",
+  "process_runtime_core_linked": true,
+  "terminal_state": "failed",
+  "termination_reason": "invalid_input",
+  "ticks_executed": 0,
+  "simulated_time_ns": 0,
+  "motion_sample_count": 0,
+  "timeline_count": 1,
+  "event_count": 1,
+  "trace_count": 0,
+  "axis_count": 2,
+  "io_count": 0,
+  "following_error_sample_count": 0,
+  "max_following_error_mm": 0.0,
+  "mean_following_error_mm": 0.0,
+  "final_x_mm": 0.0,
+  "final_y_mm": 0.0
+}

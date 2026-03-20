@@ -53,10 +53,13 @@ void testBaselineSessionFreezesBridgeMetadataAndTickOrder() {
     require(result.recording.final_io.size() == 1U, "session: final io count mismatch");
     require(result.runtime_bridge.owner == "packages/simulation-engine/runtime-bridge",
             "session: runtime bridge owner mismatch");
-    require(result.runtime_bridge.next_integration_point.find("process-runtime-core") != std::string::npos,
-            "session: next integration point mismatch");
-    require(result.runtime_bridge.follow_up_seams.size() == 3U,
-            "session: expected frozen follow-up seam list");
+    require(result.runtime_bridge.process_runtime_core_linked,
+            "session: process-runtime-core should be linked for baseline session");
+    require(
+        result.runtime_bridge.next_integration_point.find("SC-B-002 closed") != std::string::npos,
+        "session: runtime bridge should report the closed core-owned assembly seam");
+    require(result.runtime_bridge.follow_up_seams.empty(),
+            "session: expected no remaining follow-up seams");
     require(result.bridge_bindings.axis_bindings.size() == 3U, "session: expected resolved axis bindings");
     require(result.bridge_bindings.io_bindings.size() == 1U, "session: expected resolved io bindings");
     require(result.bridge_bindings.axis_bindings[0].logical_axis_index == 0, "session: X axis binding mismatch");

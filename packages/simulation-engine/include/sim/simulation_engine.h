@@ -35,6 +35,9 @@ struct SimulationResult {
 
 class SimulationEngine {
 public:
+    // Deprecated for new development: this compat engine remains only for
+    // historical baseline / smoke comparisons. New simulation work belongs to
+    // sim::scheme_c::*.
     SimulationResult run(const SimulationContext& context) const;
 };
 

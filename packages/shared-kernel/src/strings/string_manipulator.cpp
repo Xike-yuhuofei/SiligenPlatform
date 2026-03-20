@@ -1,22 +1,73 @@
 #include "siligen/shared/strings/string_manipulator.h"
 
-#include <boost/algorithm/string.hpp>
-
+#include <algorithm>
 #include <cctype>
 #include <sstream>
 
 namespace Siligen::SharedKernel {
 
+namespace {
+
+bool IsWhitespace(unsigned char value) {
+    return std::isspace(value) != 0;
+}
+
+std::string TrimLeftCopy(const std::string& str) {
+    const auto first = std::find_if_not(str.begin(), str.end(), [](unsigned char value) {
+        return IsWhitespace(value);
+    });
+    return std::string(first, str.end());
+}
+
+std::string TrimRightCopy(const std::string& str) {
+    const auto last = std::find_if_not(str.rbegin(), str.rend(), [](unsigned char value) {
+        return IsWhitespace(value);
+    });
+    return std::string(str.begin(), last.base());
+}
+
+std::string ReplaceOnceCopy(const std::string& str, const std::string& from, const std::string& to) {
+    const auto pos = str.find(from);
+    if (pos == std::string::npos) {
+        return str;
+    }
+
+    std::string result;
+    result.reserve(str.size() - from.size() + to.size());
+    result.append(str, 0, pos);
+    result.append(to);
+    result.append(str, pos + from.size(), std::string::npos);
+    return result;
+}
+
+std::string ReplaceAllCopy(const std::string& str, const std::string& from, const std::string& to) {
+    std::string result;
+    size_t start = 0;
+    size_t pos = str.find(from);
+
+    while (pos != std::string::npos) {
+        result.append(str, start, pos - start);
+        result.append(to);
+        start = pos + from.size();
+        pos = str.find(from, start);
+    }
+
+    result.append(str, start, std::string::npos);
+    return result;
+}
+
+}  // namespace
+
 std::string StringManipulator::Trim(const std::string& str) {
-    return boost::algorithm::trim_copy(str);
+    return TrimRightCopy(TrimLeftCopy(str));
 }
 
 std::string StringManipulator::TrimLeft(const std::string& str) {
-    return boost::algorithm::trim_left_copy(str);
+    return TrimLeftCopy(str);
 }
 
 std::string StringManipulator::TrimRight(const std::string& str) {
-    return boost::algorithm::trim_right_copy(str);
+    return TrimRightCopy(str);
 }
 
 std::string StringManipulator::StripInlineComment(const std::string& str) {
@@ -30,25 +81,33 @@ std::string StringManipulator::StripInlineComment(const std::string& str) {
 }
 
 std::string StringManipulator::ToLower(const std::string& str) {
-    return boost::algorithm::to_lower_copy(str);
+    std::string result = str;
+    std::transform(result.begin(), result.end(), result.begin(), [](unsigned char value) {
+        return static_cast<char>(std::tolower(value));
+    });
+    return result;
 }
 
 std::string StringManipulator::ToUpper(const std::string& str) {
-    return boost::algorithm::to_upper_copy(str);
+    std::string result = str;
+    std::transform(result.begin(), result.end(), result.begin(), [](unsigned char value) {
+        return static_cast<char>(std::toupper(value));
+    });
+    return result;
 }
 
 std::string StringManipulator::Replace(const std::string& str, const std::string& from, const std::string& to) {
     if (from.empty()) {
         return str;
     }
-    return boost::algorithm::replace_first_copy(str, from, to);
+    return ReplaceOnceCopy(str, from, to);
 }
 
 std::string StringManipulator::ReplaceAll(const std::string& str, const std::string& from, const std::string& to) {
     if (from.empty()) {
         return str;
     }
-    return boost::algorithm::replace_all_copy(str, from, to);
+    return ReplaceAllCopy(str, from, to);
 }
 
 std::vector<std::string> StringManipulator::Split(const std::string& str, const std::string& delimiter, int32 max_split) {
@@ -66,7 +125,18 @@ std::vector<std::string> StringManipulator::SplitLines(const std::string& str) {
 }
 
 std::string StringManipulator::Join(const std::vector<std::string>& strings, const std::string& separator) {
-    return boost::algorithm::join(strings, separator);
+    if (strings.empty()) {
+        return {};
+    }
+
+    std::ostringstream oss;
+    for (size_t index = 0; index < strings.size(); ++index) {
+        if (index != 0) {
+            oss << separator;
+        }
+        oss << strings[index];
+    }
+    return oss.str();
 }
 
 std::string StringManipulator::PadLeft(const std::string& str, int32 width, char fill_char) {

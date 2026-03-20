@@ -34,6 +34,8 @@ add_library(siligen_application_motion STATIC
     usecases/motion/coordination/MotionCoordinationUseCase.cpp
     usecases/motion/homing/HomeAxesUseCase.cpp
     usecases/motion/ptp/MoveToPositionUseCase.cpp
+    usecases/motion/runtime/MotionRuntimeAssemblyFactory.cpp
+    usecases/motion/trajectory/DeterministicPathExecutionUseCase.cpp
     usecases/motion/trajectory/ExecuteTrajectoryUseCase.cpp
     usecases/motion/interpolation/InterpolationPlanningUseCase.cpp
 )
@@ -114,9 +116,9 @@ endif()
 
 # 为应用层库添加预编译头
 if(SILIGEN_USE_PCH)
-    target_precompile_headers(siligen_application_system PRIVATE ${CMAKE_SOURCE_DIR}/src/siligen_pch.h)
-    target_precompile_headers(siligen_application_motion PRIVATE ${CMAKE_SOURCE_DIR}/src/siligen_pch.h)
-    target_precompile_headers(siligen_application_dispensing PRIVATE ${CMAKE_SOURCE_DIR}/src/siligen_pch.h)
+    target_precompile_headers(siligen_application_system PRIVATE ${SILIGEN_PCH_HEADER})
+    target_precompile_headers(siligen_application_motion PRIVATE ${SILIGEN_PCH_HEADER})
+    target_precompile_headers(siligen_application_dispensing PRIVATE ${SILIGEN_PCH_HEADER})
     message(STATUS "[Application Layer] 预编译头已应用于应用层库")
 endif()
 

@@ -1,0 +1,6 @@
+{
+  "timestep_seconds": 0.001,
+  "max_simulation_time_seconds": 30.0,
+  "max_velocity": 10.0,
+  "max_acceleration": 20.0
+}

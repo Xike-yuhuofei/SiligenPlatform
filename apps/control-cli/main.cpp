@@ -1,21 +1,12 @@
-#include <fstream>
 #include <iostream>
-#include <optional>
-#include <sstream>
-#include <stdexcept>
+#include <memory>
 #include <string>
-#include <unordered_map>
-#include <vector>
 
 #include "ContainerBootstrap.h"
-#include "application/usecases/recipes/CreateRecipeUseCase.h"
-#include "application/usecases/recipes/ExportRecipeBundlePayloadUseCase.h"
-#include "application/usecases/recipes/ImportRecipeBundlePayloadUseCase.h"
-#include "application/usecases/recipes/RecipeCommandUseCase.h"
-#include "application/usecases/recipes/RecipeQueryUseCase.h"
+#include "CommandHandlers.h"
+#include "CommandHandlersInternal.h"
+#include "CommandLineParser.h"
 #include "domain/configuration/ports/IConfigurationPort.h"
-#include "domain/recipes/value-objects/RecipeTypes.h"
-#include "shared/Strings/StringManipulator.h"
 #include "shared/types/Error.h"
 
 #ifndef SILIGEN_GIT_HASH
@@ -24,186 +15,41 @@
 
 namespace {
 
+using Siligen::Adapters::CLI::CLICommandHandlers;
+using Siligen::Application::CommandLineConfig;
+using Siligen::Application::CommandLineParser;
+using Siligen::Application::CommandType;
 using Siligen::Application::Container::ApplicationContainer;
-using Siligen::Application::UseCases::Recipes::ArchiveRecipeRequest;
-using Siligen::Application::UseCases::Recipes::CreateRecipeRequest;
-using Siligen::Application::UseCases::Recipes::ExportRecipeBundlePayloadRequest;
-using Siligen::Application::UseCases::Recipes::GetRecipeAuditRequest;
-using Siligen::Application::UseCases::Recipes::GetRecipeRequest;
-using Siligen::Application::UseCases::Recipes::ImportRecipeBundlePayloadRequest;
-using Siligen::Application::UseCases::Recipes::ListRecipesRequest;
-using Siligen::Application::UseCases::Recipes::ListRecipeVersionsRequest;
 using Siligen::Domain::Configuration::Ports::IConfigurationPort;
-using Siligen::Domain::Recipes::ValueObjects::RecipeStatus;
-using Siligen::Domain::Recipes::ValueObjects::RecipeVersionStatus;
 using Siligen::Shared::Types::Error;
-using Siligen::StringManipulator;
-
-struct CliOptions {
-    std::string command;
-    std::string subcommand;
-    std::unordered_map<std::string, std::string> values;
-    bool help = false;
-    bool version = false;
-    bool dry_run = false;
-};
-
-std::string Lower(std::string value) {
-    return StringManipulator::ToLower(StringManipulator::Trim(value));
-}
-
-std::optional<std::string> ConsumeValue(const std::string& arg, const std::string& flag, int argc, char* argv[], int& index) {
-    const std::string prefix = flag + "=";
-    if (arg == flag) {
-        if (index + 1 >= argc) {
-            return std::nullopt;
-        }
-        return std::string(argv[++index]);
-    }
-    if (arg.rfind(prefix, 0) == 0) {
-        return arg.substr(prefix.size());
-    }
-    return std::nullopt;
-}
-
-std::vector<std::string> SplitCsv(const std::string& raw) {
-    std::vector<std::string> values;
-    std::istringstream stream(raw);
-    std::string item;
-    while (std::getline(stream, item, ',')) {
-        item = StringManipulator::Trim(item);
-        if (!item.empty()) {
-            values.push_back(item);
-        }
-    }
-    return values;
-}
 
 void PrintUsage() {
     std::cout
         << "Siligen CLI canonical 入口\n"
         << "用法:\n"
         << "  siligen_cli bootstrap-check [--config <path>]\n"
-        << "  siligen_cli recipe create --name <name> [--description <text>] [--tags a,b] [--actor <name>]\n"
-        << "  siligen_cli recipe list [--recipe-query <text>] [--recipe-tag <tag>] [--recipe-status active|archived]\n"
-        << "  siligen_cli recipe get --recipe-id <id>\n"
-        << "  siligen_cli recipe versions --recipe-id <id>\n"
-        << "  siligen_cli recipe audit --recipe-id <id> [--version-id <id>]\n"
-        << "  siligen_cli recipe export --recipe-id <id> [--export-file <path>]\n"
-        << "  siligen_cli recipe import --import-file <path> [--dry-run] [--resolution rename|skip|replace] [--actor <name>]\n"
+        << "  siligen_cli connect|disconnect|status\n"
+        << "  siligen_cli home [--axis <n>|--all] [--timeout-ms <ms>]\n"
+        << "  siligen_cli jog --axis <n> --direction <1|-1> --distance <mm> [--velocity <mm/s>]\n"
+        << "  siligen_cli move --axis <n> --position <mm> [--relative] [--velocity <mm/s>] [--acceleration <mm/s^2>]\n"
+        << "  siligen_cli stop-all [--immediate]\n"
+        << "  siligen_cli estop\n"
+        << "  siligen_cli dispenser start|purge|stop|pause|resume [...]\n"
+        << "  siligen_cli supply open|close\n"
+        << "  siligen_cli dxf-plan --file <path> [...]\n"
+        << "  siligen_cli dxf-dispense --file <path> [...]\n"
+        << "  siligen_cli dxf-augment --file <path> [--output <path>] [--dxf-r12]\n"
+        << "  siligen_cli recipe create|update|draft|draft-update|publish [...]\n"
+        << "  siligen_cli recipe list|get|versions|archive|version-create|compare|rollback|activate|audit|export|import [...]\n"
         << "\n"
-        << "当前 canonical CLI 已承载 bootstrap/recipe 子命令。\n"
-        << "运动、点胶、DXF、连接调试命令仍在迁移中；如需 legacy 能力，请显式使用 run.ps1 的 legacy fallback。\n";
+        << "说明:\n"
+        << "  - canonical CLI 已承载连接调试、运动、点胶、DXF 与完整 recipe 命令面\n"
+        << "  - 默认配置优先使用 config/machine/machine_config.ini，可通过 --config 覆盖\n"
+        << "  - 不再依赖 legacy build/bin CLI 产物或旧 wrapper fallback\n";
 }
 
 void PrintVersion() {
     std::cout << "siligen_cli git=" << SILIGEN_GIT_HASH << std::endl;
-}
-
-[[noreturn]] void ThrowUsage(const std::string& message) {
-    throw std::runtime_error(message);
-}
-
-std::string RequireValue(const CliOptions& options, const std::string& key) {
-    const auto it = options.values.find(key);
-    if (it == options.values.end() || it->second.empty()) {
-        ThrowUsage("缺少参数: " + key);
-    }
-    return it->second;
-}
-
-std::string OptionalValue(const CliOptions& options, const std::string& key, const std::string& fallback = "") {
-    const auto it = options.values.find(key);
-    if (it == options.values.end()) {
-        return fallback;
-    }
-    return it->second;
-}
-
-CliOptions ParseArgs(int argc, char* argv[]) {
-    CliOptions options;
-    if (argc <= 1) {
-        options.help = true;
-        return options;
-    }
-
-    std::vector<std::string> args;
-    args.reserve(static_cast<size_t>(argc));
-    for (int i = 0; i < argc; ++i) {
-        args.emplace_back(argv[i]);
-    }
-
-    const std::string first = args[1];
-    if (first == "-h" || first == "--help") {
-        options.help = true;
-        return options;
-    }
-    if (first == "--version" || first == "-v") {
-        options.version = true;
-        return options;
-    }
-
-    options.command = first;
-    int option_start = 2;
-    if (first == "recipe") {
-        if (argc <= 2) {
-            ThrowUsage("recipe 需要子命令");
-        }
-        options.subcommand = args[2];
-        option_start = 3;
-    }
-
-    for (int i = option_start; i < argc; ++i) {
-        const std::string arg = args[static_cast<size_t>(i)];
-        if (arg == "--help" || arg == "-h") {
-            options.help = true;
-            return options;
-        }
-        if (arg == "--dry-run") {
-            options.dry_run = true;
-            continue;
-        }
-
-        const std::vector<std::string> keys = {
-            "--config",
-            "--name",
-            "--description",
-            "--tags",
-            "--actor",
-            "--recipe-id",
-            "--recipe-query",
-            "--recipe-tag",
-            "--recipe-status",
-            "--version-id",
-            "--export-file",
-            "--import-file",
-            "--resolution"
-        };
-
-        bool matched = false;
-        for (const auto& key : keys) {
-            if (auto value = ConsumeValue(arg, key, argc, argv, i)) {
-                options.values.emplace(key, *value);
-                matched = true;
-                break;
-            }
-        }
-        if (matched) {
-            continue;
-        }
-
-        ThrowUsage("未知参数: " + arg);
-    }
-
-    return options;
-}
-
-std::shared_ptr<ApplicationContainer> BuildCliContainer(const CliOptions& options) {
-    const auto config_path = OptionalValue(options, "--config", "config/machine/machine_config.ini");
-    return Siligen::Apps::Runtime::BuildContainer(
-        config_path,
-        Siligen::Application::Container::LogMode::File,
-        "logs/cli_business.log");
 }
 
 void PrintError(const Error& error) {
@@ -214,24 +60,15 @@ void PrintError(const Error& error) {
     }
 }
 
-std::string RecipeStatusToString(RecipeStatus status) {
-    return status == RecipeStatus::Archived ? "archived" : "active";
+std::shared_ptr<ApplicationContainer> BuildCliContainer(const CommandLineConfig& config) {
+    return Siligen::Apps::Runtime::BuildContainer(
+        ResolveCliConfigPath(config.config_path),
+        Siligen::Application::Container::LogMode::File,
+        "logs/cli_business.log");
 }
 
-std::string VersionStatusToString(RecipeVersionStatus status) {
-    switch (status) {
-        case RecipeVersionStatus::Draft:
-            return "draft";
-        case RecipeVersionStatus::Published:
-            return "published";
-        case RecipeVersionStatus::Archived:
-            return "archived";
-    }
-    return "draft";
-}
-
-int HandleBootstrapCheck(const CliOptions& options) {
-    auto container = BuildCliContainer(options);
+int HandleBootstrapCheck(const CommandLineConfig& config) {
+    auto container = BuildCliContainer(config);
     auto config_port = container->ResolvePort<IConfigurationPort>();
     if (!config_port) {
         std::cout << "bootstrap-check failed: IConfigurationPort 未注册" << std::endl;
@@ -249,283 +86,52 @@ int HandleBootstrapCheck(const CliOptions& options) {
     return 0;
 }
 
-int HandleRecipeCreate(const CliOptions& options) {
-    auto container = BuildCliContainer(options);
-    auto usecase = container->Resolve<Siligen::Application::UseCases::Recipes::CreateRecipeUseCase>();
-    if (!usecase) {
-        std::cout << "错误: 配方创建用例不可用" << std::endl;
-        return 1;
-    }
-
-    CreateRecipeRequest request;
-    request.name = RequireValue(options, "--name");
-    request.description = OptionalValue(options, "--description");
-    request.tags = SplitCsv(OptionalValue(options, "--tags"));
-    request.actor = OptionalValue(options, "--actor", "cli");
-
-    auto result = usecase->Execute(request);
-    if (result.IsError()) {
-        PrintError(result.GetError());
-        return 1;
-    }
-
-    const auto& recipe = result.Value().recipe;
-    std::cout << "已创建配方: " << recipe.id << " (" << recipe.name << ")" << std::endl;
-    return 0;
-}
-
-int HandleRecipeList(const CliOptions& options) {
-    auto container = BuildCliContainer(options);
-    auto usecase = container->Resolve<Siligen::Application::UseCases::Recipes::RecipeQueryUseCase>();
-    if (!usecase) {
-        std::cout << "错误: 配方列表用例不可用" << std::endl;
-        return 1;
-    }
-
-    ListRecipesRequest request;
-    request.query = OptionalValue(options, "--recipe-query");
-    request.tag = OptionalValue(options, "--recipe-tag");
-
-    const auto status = Lower(OptionalValue(options, "--recipe-status"));
-    if (!status.empty()) {
-        if (status != "active" && status != "archived") {
-            ThrowUsage("recipe-status 仅支持 active|archived");
-        }
-        request.status = status;
-    }
-
-    auto result = usecase->Execute(request);
-    if (result.IsError()) {
-        PrintError(result.GetError());
-        return 1;
-    }
-
-    for (const auto& recipe : result.Value().recipes) {
-        std::cout << "- " << recipe.id << " | " << recipe.name << " | "
-                  << RecipeStatusToString(recipe.status) << " | active=" << recipe.active_version_id << std::endl;
-    }
-    return 0;
-}
-
-int HandleRecipeGet(const CliOptions& options) {
-    auto container = BuildCliContainer(options);
-    auto usecase = container->Resolve<Siligen::Application::UseCases::Recipes::RecipeQueryUseCase>();
-    if (!usecase) {
-        std::cout << "错误: 获取配方用例不可用" << std::endl;
-        return 1;
-    }
-
-    GetRecipeRequest request;
-    request.recipe_id = RequireValue(options, "--recipe-id");
-
-    auto result = usecase->Execute(request);
-    if (result.IsError()) {
-        PrintError(result.GetError());
-        return 1;
-    }
-
-    const auto& recipe = result.Value().recipe;
-    std::cout << "配方ID: " << recipe.id << std::endl;
-    std::cout << "名称: " << recipe.name << std::endl;
-    std::cout << "状态: " << RecipeStatusToString(recipe.status) << std::endl;
-    std::cout << "当前版本: " << recipe.active_version_id << std::endl;
-    return 0;
-}
-
-int HandleRecipeVersions(const CliOptions& options) {
-    auto container = BuildCliContainer(options);
-    auto usecase = container->Resolve<Siligen::Application::UseCases::Recipes::RecipeQueryUseCase>();
-    if (!usecase) {
-        std::cout << "错误: 获取版本列表用例不可用" << std::endl;
-        return 1;
-    }
-
-    ListRecipeVersionsRequest request;
-    request.recipe_id = RequireValue(options, "--recipe-id");
-
-    auto result = usecase->Execute(request);
-    if (result.IsError()) {
-        PrintError(result.GetError());
-        return 1;
-    }
-
-    for (const auto& version : result.Value().versions) {
-        std::cout << "- " << version.id << " | " << version.version_label << " | "
-                  << VersionStatusToString(version.status) << std::endl;
-    }
-    return 0;
-}
-
-int HandleRecipeAudit(const CliOptions& options) {
-    auto container = BuildCliContainer(options);
-    auto usecase = container->Resolve<Siligen::Application::UseCases::Recipes::RecipeQueryUseCase>();
-    if (!usecase) {
-        std::cout << "错误: 审计查询用例不可用" << std::endl;
-        return 1;
-    }
-
-    GetRecipeAuditRequest request;
-    request.recipe_id = RequireValue(options, "--recipe-id");
-    request.version_id = OptionalValue(options, "--version-id");
-
-    auto result = usecase->Execute(request);
-    if (result.IsError()) {
-        PrintError(result.GetError());
-        return 1;
-    }
-
-    for (const auto& record : result.Value().records) {
-        std::cout << "- " << record.id << " | " << record.actor << " | " << record.timestamp << std::endl;
-    }
-    return 0;
-}
-
-int HandleRecipeExport(const CliOptions& options) {
-    auto container = BuildCliContainer(options);
-    auto usecase = container->Resolve<Siligen::Application::UseCases::Recipes::ExportRecipeBundlePayloadUseCase>();
-    if (!usecase) {
-        std::cout << "错误: 导出用例不可用" << std::endl;
-        return 1;
-    }
-
-    const auto recipe_id = RequireValue(options, "--recipe-id");
-    const auto output_path = OptionalValue(options, "--export-file", "recipe_export_" + recipe_id + ".json");
-
-    ExportRecipeBundlePayloadRequest request;
-    request.recipe_id = recipe_id;
-
-    auto result = usecase->Execute(request);
-    if (result.IsError()) {
-        PrintError(result.GetError());
-        return 1;
-    }
-
-    std::ofstream output(output_path, std::ios::binary | std::ios::trunc);
-    if (!output) {
-        std::cout << "错误: 无法写入导出文件 " << output_path << std::endl;
-        return 1;
-    }
-
-    output << result.Value().bundle_json;
-    if (!output) {
-        std::cout << "错误: 导出文件写入失败" << std::endl;
-        return 1;
-    }
-
-    std::cout << "已导出配方到: " << output_path << std::endl;
-    return 0;
-}
-
-int HandleRecipeImport(const CliOptions& options) {
-    auto container = BuildCliContainer(options);
-    auto usecase = container->Resolve<Siligen::Application::UseCases::Recipes::ImportRecipeBundlePayloadUseCase>();
-    if (!usecase) {
-        std::cout << "错误: 导入用例不可用" << std::endl;
-        return 1;
-    }
-
-    const auto input_path = RequireValue(options, "--import-file");
-    std::ifstream input(input_path, std::ios::binary);
-    if (!input.is_open()) {
-        std::cout << "错误: 无法读取导入文件: " << input_path << std::endl;
-        return 1;
-    }
-
-    std::ostringstream buffer;
-    buffer << input.rdbuf();
-
-    const auto resolution = Lower(OptionalValue(options, "--resolution"));
-    if (!resolution.empty() && resolution != "rename" && resolution != "skip" && resolution != "replace") {
-        ThrowUsage("resolution 仅支持 rename|skip|replace");
-    }
-
-    ImportRecipeBundlePayloadRequest request;
-    request.bundle_json = buffer.str();
-    request.dry_run = options.dry_run;
-    request.actor = OptionalValue(options, "--actor", "cli");
-    request.source_label = input_path;
-    request.resolution_strategy = resolution;
-
-    auto result = usecase->Execute(request);
-    if (result.IsError()) {
-        PrintError(result.GetError());
-        return 1;
-    }
-
-    if (result.Value().status == "conflicts") {
-        std::cout << "检测到冲突:" << std::endl;
-        for (const auto& conflict : result.Value().conflicts) {
-            std::cout << "- " << conflict.message << std::endl;
-        }
-        return 2;
-    }
-
-    std::cout << "导入完成，处理配方数: " << result.Value().imported_count << std::endl;
-    return 0;
-}
-
-int HandleUnsupportedCommand(const CliOptions& options) {
-    std::ostringstream message;
-    message << "命令尚未迁移到 canonical CLI: " << options.command;
-    if (!options.subcommand.empty()) {
-        message << " " << options.subcommand;
-    }
-    message << "\n当前 canonical CLI 已承载: bootstrap-check, recipe create/list/get/versions/audit/export/import"
-            << "\n如需 legacy CLI，请显式执行 apps/control-cli/run.ps1 -UseLegacyFallback -- <legacy-args>";
-    std::cout << message.str() << std::endl;
-    return 3;
-}
-
 }  // namespace
 
 int main(int argc, char* argv[]) {
+    int exit_code = 0;
+
     try {
-        const auto options = ParseArgs(argc, argv);
-        if (options.help) {
+        auto config = CommandLineParser::Parse(argc, argv);
+        if (config.help) {
             PrintUsage();
             return 0;
         }
-        if (options.version) {
+        if (config.version) {
             PrintVersion();
             return 0;
         }
 
-        if (options.command == "bootstrap-check") {
-            return HandleBootstrapCheck(options);
+        if (config.command == CommandType::BOOTSTRAP_CHECK) {
+            return HandleBootstrapCheck(config);
         }
 
-        if (options.command != "recipe") {
-            return HandleUnsupportedCommand(options);
+        auto container = BuildCliContainer(config);
+        CLICommandHandlers handlers(container);
+
+        if (config.no_interactive && config.command == CommandType::INTERACTIVE) {
+            std::cout << "未指定命令且已禁用交互模式，请查看 --help" << std::endl;
+            return 1;
         }
 
-        if (options.subcommand == "create") {
-            return HandleRecipeCreate(options);
+        if (config.no_interactive || config.command != CommandType::INTERACTIVE) {
+            exit_code = handlers.Execute(config);
+        } else {
+            exit_code = handlers.RunInteractive();
         }
-        if (options.subcommand == "list") {
-            return HandleRecipeList(options);
-        }
-        if (options.subcommand == "get") {
-            return HandleRecipeGet(options);
-        }
-        if (options.subcommand == "versions") {
-            return HandleRecipeVersions(options);
-        }
-        if (options.subcommand == "audit") {
-            return HandleRecipeAudit(options);
-        }
-        if (options.subcommand == "export") {
-            return HandleRecipeExport(options);
-        }
-        if (options.subcommand == "import") {
-            return HandleRecipeImport(options);
-        }
-
-        return HandleUnsupportedCommand(options);
-    } catch (const std::exception& ex) {
-        std::cerr << "[control-cli] 错误: " << ex.what() << std::endl;
-        return 1;
+    } catch (const std::exception& e) {
+        std::cerr << "\n========================================" << std::endl;
+        std::cerr << "程序异常" << std::endl;
+        std::cerr << "========================================" << std::endl;
+        std::cerr << "错误: " << e.what() << std::endl;
+        std::cerr << "========================================" << std::endl;
+        exit_code = 1;
     } catch (...) {
-        std::cerr << "[control-cli] 未知错误" << std::endl;
-        return 2;
+        std::cerr << "\n========================================" << std::endl;
+        std::cerr << "程序发生未知异常" << std::endl;
+        std::cerr << "========================================" << std::endl;
+        exit_code = 2;
     }
+
+    return exit_code;
 }

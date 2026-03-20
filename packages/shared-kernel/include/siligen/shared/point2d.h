@@ -4,9 +4,6 @@
 #include "siligen/shared/error.h"
 #include "siligen/shared/numeric_types.h"
 
-#include <boost/geometry/algorithms/distance.hpp>
-#include <boost/geometry/geometries/register/point.hpp>
-
 #include <cmath>
 #include <string>
 
@@ -119,12 +116,8 @@ inline Point2D UnitY() { return {0.0f, 1.0f}; }
 
 }  // namespace Siligen::SharedKernel
 
-BOOST_GEOMETRY_REGISTER_POINT_2D(Siligen::SharedKernel::Point2D,
-                                 float,
-                                 boost::geometry::cs::cartesian,
-                                 x,
-                                 y)
-
 inline Siligen::SharedKernel::float32 Siligen::SharedKernel::Point2D::DistanceTo(const Point2D& other) const {
-    return boost::geometry::distance(*this, other);
+    const auto dx = static_cast<double>(x) - static_cast<double>(other.x);
+    const auto dy = static_cast<double>(y) - static_cast<double>(other.y);
+    return static_cast<float32>(std::sqrt((dx * dx) + (dy * dy)));
 }

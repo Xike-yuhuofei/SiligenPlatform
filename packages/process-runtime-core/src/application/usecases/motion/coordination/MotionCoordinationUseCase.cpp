@@ -70,6 +70,50 @@ Result<void> MotionCoordinationUseCase::AddInterpolationSegment(const Interpolat
         "MotionCoordinationUseCase::AddInterpolationSegment"));
 }
 
+Result<void> MotionCoordinationUseCase::DispatchCoordinateSystemSegment(
+    int16 coord_sys,
+    const Domain::Motion::Ports::InterpolationData& segment) {
+    if (!interpolation_port_) {
+        return MissingPort("MotionCoordinationUseCase::DispatchCoordinateSystemSegment", "Interpolation port");
+    }
+    if (coord_sys <= 0) {
+        return Result<void>::Failure(Error(
+            ErrorCode::INVALID_PARAMETER,
+            "Coordinate system must be greater than zero",
+            "MotionCoordinationUseCase::DispatchCoordinateSystemSegment"));
+    }
+
+    const auto status_result = interpolation_port_->GetCoordinateSystemStatus(coord_sys);
+    if (status_result.IsError()) {
+        return Result<void>::Failure(status_result.GetError());
+    }
+
+    const auto status = status_result.Value();
+    const bool buffer_empty = !status.is_moving && status.remaining_segments == 0U;
+
+    if (buffer_empty) {
+        auto result = interpolation_port_->ClearInterpolationBuffer(coord_sys);
+        if (result.IsError()) {
+            return result;
+        }
+    }
+
+    auto result = interpolation_port_->AddInterpolationData(coord_sys, segment);
+    if (result.IsError()) {
+        return result;
+    }
+    result = interpolation_port_->FlushInterpolationData(coord_sys);
+    if (result.IsError()) {
+        return result;
+    }
+
+    if (buffer_empty) {
+        return interpolation_port_->StartCoordinateSystemMotion(1U << static_cast<uint32>(coord_sys - 1));
+    }
+
+    return Result<void>::Success();
+}
+
 Result<void> MotionCoordinationUseCase::StartCoordinateSystemMotion(uint32 coord_sys_mask) {
     if (!interpolation_port_) {
         return MissingPort("MotionCoordinationUseCase::StartCoordinateSystemMotion", "Interpolation port");

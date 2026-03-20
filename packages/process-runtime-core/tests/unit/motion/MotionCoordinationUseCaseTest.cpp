@@ -48,15 +48,22 @@ class FakeInterpolationPort final : public IInterpolationPort {
         return Result<void>::Success();
     }
 
-    Result<void> AddInterpolationData(int16 /*coord_sys*/, const InterpolationData& /*data*/) override {
-        return NotImplementedVoid("AddInterpolationData");
-    }
-
-    Result<void> ClearInterpolationBuffer(int16 /*coord_sys*/) override {
+    Result<void> AddInterpolationData(int16 coord_sys, const InterpolationData& data) override {
+        add_called = true;
+        last_add_coord_sys = coord_sys;
+        last_data = data;
         return Result<void>::Success();
     }
 
-    Result<void> FlushInterpolationData(int16 /*coord_sys*/) override {
+    Result<void> ClearInterpolationBuffer(int16 coord_sys) override {
+        clear_called = true;
+        last_clear_coord_sys = coord_sys;
+        return Result<void>::Success();
+    }
+
+    Result<void> FlushInterpolationData(int16 coord_sys) override {
+        flush_called = true;
+        last_flush_coord_sys = coord_sys;
         return Result<void>::Success();
     }
 
@@ -97,16 +104,24 @@ class FakeInterpolationPort final : public IInterpolationPort {
     }
 
     Result<CoordinateSystemStatus> GetCoordinateSystemStatus(int16 /*coord_sys*/) const override {
-        return Result<CoordinateSystemStatus>::Success(CoordinateSystemStatus{});
+        return Result<CoordinateSystemStatus>::Success(status_to_return);
     }
 
     bool configure_called = false;
+    bool add_called = false;
+    bool clear_called = false;
+    bool flush_called = false;
     int16 last_coord_sys = 0;
+    int16 last_add_coord_sys = 0;
+    int16 last_clear_coord_sys = 0;
+    int16 last_flush_coord_sys = 0;
     CoordinateSystemConfig last_config{};
+    InterpolationData last_data{};
     uint32 start_mask = 0;
     uint32 stop_mask = 0;
     int16 override_coord_sys = 0;
     float32 override_percent_value = 0.0f;
+    CoordinateSystemStatus status_to_return{};
 };
 
 class FakeIOControlPort final : public IIOControlPort {
@@ -317,6 +332,69 @@ TEST(MotionCoordinationUseCaseTest, ControlDigitalOutputAndPulseUseIoPort) {
     EXPECT_EQ(io_port->writes[0], expected_write_0);
     EXPECT_EQ(io_port->writes[1], expected_write_1);
     EXPECT_EQ(io_port->writes[2], expected_write_2);
+}
+
+TEST(MotionCoordinationUseCaseTest, DispatchCoordinateSystemSegmentUsesInterpolationPort) {
+    auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    auto io_port = std::make_shared<FakeIOControlPort>();
+
+    MotionCoordinationUseCase use_case(interpolation_port, io_port, nullptr);
+
+    InterpolationData segment;
+    segment.type = Siligen::Domain::Motion::Ports::InterpolationType::LINEAR;
+    segment.positions = {12.5f, 7.5f};
+    segment.velocity = 20.0f;
+    segment.acceleration = 100.0f;
+
+    const auto result = use_case.DispatchCoordinateSystemSegment(2, segment);
+
+    ASSERT_TRUE(result.IsSuccess());
+    EXPECT_TRUE(interpolation_port->clear_called);
+    EXPECT_TRUE(interpolation_port->add_called);
+    EXPECT_TRUE(interpolation_port->flush_called);
+    EXPECT_EQ(interpolation_port->last_clear_coord_sys, 2);
+    EXPECT_EQ(interpolation_port->last_add_coord_sys, 2);
+    EXPECT_EQ(interpolation_port->last_flush_coord_sys, 2);
+    ASSERT_EQ(interpolation_port->last_data.positions.size(), 2u);
+    EXPECT_FLOAT_EQ(interpolation_port->last_data.positions[0], 12.5f);
+    EXPECT_FLOAT_EQ(interpolation_port->last_data.positions[1], 7.5f);
+    EXPECT_EQ(interpolation_port->start_mask, 2u);
+}
+
+TEST(MotionCoordinationUseCaseTest, DispatchCoordinateSystemSegmentAppendsWhenBufferAlreadyActive) {
+    auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    auto io_port = std::make_shared<FakeIOControlPort>();
+
+    MotionCoordinationUseCase use_case(interpolation_port, io_port, nullptr);
+
+    InterpolationData first_segment;
+    first_segment.type = Siligen::Domain::Motion::Ports::InterpolationType::LINEAR;
+    first_segment.positions = {10.0f, 0.0f};
+    first_segment.velocity = 20.0f;
+    first_segment.acceleration = 100.0f;
+
+    InterpolationData second_segment = first_segment;
+    second_segment.positions = {10.0f, 5.0f};
+
+    ASSERT_TRUE(use_case.DispatchCoordinateSystemSegment(2, first_segment).IsSuccess());
+    EXPECT_TRUE(interpolation_port->clear_called);
+    EXPECT_EQ(interpolation_port->start_mask, 2u);
+
+    interpolation_port->clear_called = false;
+    interpolation_port->start_mask = 0;
+    interpolation_port->status_to_return.is_moving = true;
+    interpolation_port->status_to_return.remaining_segments = 1;
+
+    const auto result = use_case.DispatchCoordinateSystemSegment(2, second_segment);
+
+    ASSERT_TRUE(result.IsSuccess());
+    EXPECT_FALSE(interpolation_port->clear_called);
+    EXPECT_TRUE(interpolation_port->add_called);
+    EXPECT_TRUE(interpolation_port->flush_called);
+    EXPECT_EQ(interpolation_port->start_mask, 0u);
+    ASSERT_EQ(interpolation_port->last_data.positions.size(), 2u);
+    EXPECT_FLOAT_EQ(interpolation_port->last_data.positions[0], 10.0f);
+    EXPECT_FLOAT_EQ(interpolation_port->last_data.positions[1], 5.0f);
 }
 
 TEST(MotionCoordinationUseCaseTest, ConfigureLimitEnableForwardsToAxisControlPort) {

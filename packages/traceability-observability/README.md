@@ -4,8 +4,8 @@
 
 当前真实迁移来源：
 
-- `control-core/apps/control-runtime/runtime/events`
-- `control-core/apps/control-runtime/runtime/storage`
+- `packages/runtime-host/src/runtime/events`
+- `packages/runtime-host/src/runtime/storage`
 - `control-core/src/shared/logging`
 - `control-core/modules/device-hal/src/adapters/diagnostics/*`
 

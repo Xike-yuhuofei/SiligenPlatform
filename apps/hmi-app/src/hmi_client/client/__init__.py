@@ -4,7 +4,14 @@ from .auth import AuthManager, User
 from .recipe import Recipe, RecipeManager
 from .backend_manager import BackendManager
 from .gateway_launch import GatewayLaunchSpec, load_gateway_launch_spec
-from .startup_sequence import StartupWorker, StartupResult
+from .startup_sequence import (
+    LaunchResult,
+    LaunchMode,
+    StartupResult,
+    StartupWorker,
+    normalize_launch_mode,
+    run_launch_sequence,
+)
 
 __all__ = [
     "TcpClient",
@@ -18,6 +25,10 @@ __all__ = [
     "BackendManager",
     "GatewayLaunchSpec",
     "load_gateway_launch_spec",
+    "LaunchMode",
+    "LaunchResult",
     "StartupWorker",
     "StartupResult",
+    "normalize_launch_mode",
+    "run_launch_sequence",
 ]

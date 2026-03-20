@@ -18,6 +18,8 @@ struct SimulationSessionConfig {
     std::vector<std::string> axis_names{"X", "Y"};
     std::vector<std::string> io_channels{};
     RuntimeBridgeBindings bridge_bindings{};
+    DeterministicReplayPlan replay_plan{};
+    MotionRealismConfig motion_realism{};
     Duration tick{std::chrono::milliseconds(1)};
     std::optional<Duration> timeout{};
     TickIndex max_ticks{60000};

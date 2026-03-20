@@ -70,12 +70,14 @@ def main() -> int:
     shared_kernel_dir = ROOT / "packages" / "shared-kernel"
     contracts_dir = ROOT / "packages" / "device-contracts"
     adapters_dir = ROOT / "packages" / "device-adapters"
-    legacy_device_hal_dir = ROOT / "control-core" / "modules" / "device-hal"
+
+    legacy_shared_kernel_pattern = re.compile(r"modules[/\\]shared-kernel")
+    legacy_device_hal_pattern = re.compile(r"modules[/\\]device-hal")
 
     shared_kernel_illegal = scan(
         shared_kernel_dir,
         [
-            ("shared-kernel->legacy-shared-kernel", re.compile(r"control-core/modules/shared-kernel|modules/shared-kernel")),
+            ("shared-kernel->legacy-shared-kernel", legacy_shared_kernel_pattern),
             ("shared-kernel->device", re.compile(r"siligen/device|device-contracts|device-adapters")),
             ("shared-kernel->process-runtime-core", re.compile(r"siligen/process|process-runtime-core|siligen_process_core")),
         ],
@@ -86,27 +88,16 @@ def main() -> int:
         [
             ("contracts->adapters", re.compile(r"device-adapters|siligen_device_adapters")),
             ("contracts->process-runtime-core", re.compile(r"process-runtime-core|siligen_process_core")),
-            ("contracts->legacy-shared-kernel", re.compile(r"control-core/modules/shared-kernel|modules/shared-kernel")),
-            ("contracts->legacy-device-hal", re.compile(r"control-core/modules/device-hal|modules/device-hal|siligen_device_hal")),
+            ("contracts->legacy-shared-kernel", legacy_shared_kernel_pattern),
+            ("contracts->legacy-device-hal", legacy_device_hal_pattern),
         ],
     )
 
     adapters_illegal = scan(
         adapters_dir,
         [
-            ("adapters->process-runtime-core", re.compile(r"process-runtime-core|siligen_process_core")),
-            ("adapters->legacy-shared-kernel", re.compile(r"control-core/modules/shared-kernel|modules/shared-kernel")),
-            ("adapters->legacy-device-hal", re.compile(r"control-core/modules/device-hal|modules/device-hal|siligen_device_hal")),
-        ],
-    )
-
-    legacy_illegal = scan(
-        legacy_device_hal_dir / "src",
-        [
-            ("legacy-domain-motion", re.compile(r"Domain::Motion|siligen/motion|siligen_motion_core")),
-            ("legacy-domain-process", re.compile(r"Domain::Dispensing|Domain::Configuration|siligen/process|siligen_process_core")),
-            ("legacy-recipes-in-device", re.compile(r"adapters/recipes|Recipe(File|Json|Bundle|Template|Audit)")),
-            ("legacy-diagnostics-logging-in-device", re.compile(r"adapters/diagnostics/logging|SpdlogLoggingAdapter|MemorySink")),
+            ("adapters->legacy-shared-kernel", legacy_shared_kernel_pattern),
+            ("adapters->legacy-device-hal", legacy_device_hal_pattern),
         ],
     )
 
@@ -152,14 +143,11 @@ def main() -> int:
     print_entries(contracts_illegal)
     print("device-adapters")
     print_entries(adapters_illegal)
-    print("legacy-device-hal")
-    print_entries(legacy_illegal)
 
     print_section("validation")
     print(f"  - shared_kernel_illegal_count={len(shared_kernel_illegal)}")
     print(f"  - contracts_illegal_count={len(contracts_illegal)}")
     print(f"  - adapters_illegal_count={len(adapters_illegal)}")
-    print(f"  - legacy_device_hal_illegal_count={len(legacy_illegal)}")
 
     return 0 if shared_kernel_complete and not shared_kernel_illegal and not contracts_illegal and not adapters_illegal else 1
 

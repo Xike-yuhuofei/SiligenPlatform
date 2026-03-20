@@ -21,7 +21,7 @@ target_link_libraries(siligen_valve_core PUBLIC
 target_compile_features(siligen_valve_core PUBLIC cxx_std_17)
 
 if(SILIGEN_USE_PCH)
-    target_precompile_headers(siligen_valve_core PRIVATE ${CMAKE_SOURCE_DIR}/src/siligen_pch.h)
+    target_precompile_headers(siligen_valve_core PRIVATE ${SILIGEN_PCH_HEADER})
     message(STATUS "[Application::Valve] 预编译头已应用于 siligen_valve_core")
 endif()
 

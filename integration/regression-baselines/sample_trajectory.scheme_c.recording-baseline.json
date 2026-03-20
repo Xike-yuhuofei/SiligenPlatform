@@ -1,0 +1,21 @@
+{
+  "schema_version": "scheme_c.recording.v1",
+  "session_status": "completed",
+  "runtime_bridge_mode": "process_runtime_core",
+  "process_runtime_core_linked": true,
+  "terminal_state": "completed",
+  "termination_reason": "bridge_completed",
+  "ticks_executed": 2313,
+  "simulated_time_ns": 2313000000,
+  "motion_sample_count": 4626,
+  "timeline_count": 57,
+  "event_count": 27,
+  "trace_count": 30,
+  "axis_count": 2,
+  "io_count": 2,
+  "following_error_sample_count": 0,
+  "max_following_error_mm": 0.0,
+  "mean_following_error_mm": 0.0,
+  "final_x_mm": 280.0,
+  "final_y_mm": 140.0
+}

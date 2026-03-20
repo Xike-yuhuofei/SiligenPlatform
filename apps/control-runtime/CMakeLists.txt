@@ -12,8 +12,7 @@ set_target_properties(siligen_control_runtime PROPERTIES
 )
 
 target_include_directories(siligen_control_runtime PRIVATE
-    ${CMAKE_SOURCE_DIR}
-    ${CMAKE_SOURCE_DIR}/src
+    ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
     ${SILIGEN_RUNTIME_HOST_DIR}/src
 )
 

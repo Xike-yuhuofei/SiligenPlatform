@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <string>
 #include <utility>
@@ -47,11 +48,12 @@ void appendAxisStateChanges(const TickInfo& tick,
         std::string (*to_string)(const AxisState&);
     };
 
-    static const std::array<FieldSpec, 10> kFieldSpecs{{
+    static const std::array<FieldSpec, 11> kFieldSpecs{{
         {"homed", [](const AxisState& state) { return boolToString(state.homed); }},
         {"home_signal", [](const AxisState& state) { return boolToString(state.home_signal); }},
         {"running", [](const AxisState& state) { return boolToString(state.running); }},
         {"done", [](const AxisState& state) { return boolToString(state.done); }},
+        {"following_error_active", [](const AxisState& state) { return boolToString(state.following_error_active); }},
         {"positive_soft_limit", [](const AxisState& state) { return boolToString(state.positive_soft_limit); }},
         {"negative_soft_limit", [](const AxisState& state) { return boolToString(state.negative_soft_limit); }},
         {"positive_hard_limit", [](const AxisState& state) { return boolToString(state.positive_hard_limit); }},
@@ -107,11 +109,16 @@ std::vector<MotionProfileSample> buildMotionProfile(const std::vector<RecordedSn
                 axis.axis,
                 axis.position_mm,
                 axis.velocity_mm_per_s,
+                axis.command_position_mm,
+                axis.command_velocity_mm_per_s,
+                axis.following_error_mm,
+                axis.encoder_quantization_mm,
                 axis.running,
                 axis.done,
                 axis.homed,
                 axis.has_error,
-                axis.error_code
+                axis.error_code,
+                axis.following_error_active
             });
         }
     }
@@ -233,6 +240,25 @@ void refreshSummary(RecordingResult& result) {
         result.final_axes.begin(),
         result.final_axes.end(),
         [](const AxisState& axis) { return axis.has_error || axis.error_code != 0; });
+    result.summary.following_error_sample_count = 0U;
+    result.summary.max_following_error_mm = 0.0;
+    result.summary.mean_following_error_mm = 0.0;
+
+    double total_following_error_mm = 0.0;
+    for (const auto& sample : result.motion_profile) {
+        const double absolute_error_mm = std::abs(sample.following_error_mm);
+        total_following_error_mm += absolute_error_mm;
+        result.summary.max_following_error_mm =
+            std::max(result.summary.max_following_error_mm, absolute_error_mm);
+        if (sample.following_error_active) {
+            ++result.summary.following_error_sample_count;
+        }
+    }
+
+    if (!result.motion_profile.empty()) {
+        result.summary.mean_following_error_mm =
+            total_following_error_mm / static_cast<double>(result.motion_profile.size());
+    }
 }
 
 class TimelineRecorder final : public Recorder {

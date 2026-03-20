@@ -7,7 +7,7 @@ add_library(siligen_task_scheduler STATIC
 target_include_directories(siligen_task_scheduler PUBLIC
     ${SILIGEN_RUNTIME_HOST_DIR}/src
     ${SILIGEN_PROCESS_RUNTIME_CORE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/src
+    ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
 
 # 链接依赖

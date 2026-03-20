@@ -12,6 +12,12 @@ namespace Siligen::Application::UseCases::Motion::Trajectory
 
 ## Use Cases
 
+### DeterministicPathExecutionUseCase
+- **职责**: 以 `Start/Advance/Status/Cancel` 语义驱动非阻塞路径执行
+- **使用场景**: deterministic tick 驱动的仿真/runtime bridge 路径执行
+- **依赖**: `IInterpolationPort`、`IMotionStatePort`
+- **说明**: 负责路径规划、插补程序生成以及逐 tick 段派发，不阻塞调用线程
+
 ### ExecuteTrajectoryUseCase
 - **职责**: 执行完整的运动轨迹
 - **使用场景**: DXF 点胶路径执行

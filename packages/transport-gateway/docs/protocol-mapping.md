@@ -4,7 +4,7 @@
 
 - 协议方法名、fixture、兼容字段别名：`D:\Projects\SiligenSuite\packages\application-contracts`
 - 传输运行时实现：`D:\Projects\SiligenSuite\packages\transport-gateway`
-- 进程入口与宿主装配：`D:\Projects\SiligenSuite\control-core\apps\control-tcp-server` + `D:\Projects\SiligenSuite\packages\runtime-host`
+- 进程入口与宿主装配：`D:\Projects\SiligenSuite\apps\control-tcp-server` + `D:\Projects\SiligenSuite\packages\runtime-host`
 
 ## 2. 运行时映射落点
 

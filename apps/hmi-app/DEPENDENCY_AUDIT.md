@@ -13,12 +13,13 @@
 1. `control-core/build/bin/**/siligen_tcp_server.exe` 的隐式目录探测
 2. `control-core/src/infrastructure/drivers/multicard` 的运行时 DLL 探测
 3. `control-core/third_party/vendor/MultiCardDemoVC/bin` 的运行时 DLL 探测
-4. `apps/hmi-app -> hmi-client/scripts/run.ps1` 的反向 wrapper 依赖
+4. `apps/hmi-app -> hmi-client/scripts/run.ps1` 的反向 wrapper 依赖（对应 legacy 目录现已删除）
 
 ## 当前依赖方式
 
 - HMI 与后端的交互只走 TCP/JSON 应用契约
 - 后端自动拉起只读取显式 launcher 契约，不再读取 Core 内部实现路径
+- 默认 DXF 文件候选目录只读取 `uploads/dxf`、`packages/engineering-contracts/fixtures/cases/rect_diag`，以及显式 `SILIGEN_DXF_DEFAULT_DIR`
 - DXF 编辑改为外部编辑器人工流程，不再依赖 editor contracts
 
 ## 未决项

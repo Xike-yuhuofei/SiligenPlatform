@@ -64,7 +64,10 @@ target_link_libraries(siligen_unit_tests PRIVATE
     siligen_utils
 )
 
-add_test(NAME siligen_unit_tests COMMAND siligen_unit_tests)
+process_runtime_core_add_test_with_runtime_environment(
+    siligen_unit_tests
+    siligen_unit_tests
+)
 
 set(PR1_TEST_SOURCES
     unit/domain/safety/EmergencyStopServiceTest.cpp
@@ -88,4 +91,15 @@ target_link_libraries(siligen_pr1_tests PRIVATE
     siligen_utils
 )
 
-add_test(NAME siligen_pr1_tests COMMAND siligen_pr1_tests)
+process_runtime_core_add_test_with_runtime_environment(
+    siligen_pr1_tests
+    siligen_pr1_tests
+)
+
+if(NOT TARGET process_runtime_core_tests)
+    add_custom_target(process_runtime_core_tests
+        DEPENDS
+            siligen_unit_tests
+            siligen_pr1_tests
+    )
+endif()

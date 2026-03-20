@@ -25,9 +25,12 @@
 
 当前构建口径：
 
+- `siligen_device_adapters` 只承接 canonical 公开适配器、wrapper、fake device 和厂商 vendor owner
+- `siligen_device_adapters_legacy_bridges` 只承接仍需暴露给 runtime-host / control-runtime 的 package-owned legacy bridge
 - 通过 `siligen_device_contracts` 和 `siligen_shared_kernel` 获取公开头
 - 不再显式 include legacy `control-core/modules/shared-kernel/include`
-- `control-core/modules/device-hal` 中残留的 `recipes/`、`diagnostics/`、复杂 motion/dispensing adapter 仍需后续精确迁移，不回灌到本包
+- 不再通过 `control-core/third_party` 获取 Boost / vendor include
+- `control-core/modules/device-hal` 中残留的 `recipes/`、`diagnostics/logging/` 仍需后续精确迁移，不回灌到本包
 
 当前最小可用切分：
 
@@ -40,3 +43,4 @@
 - `MultiCardMotionDevice` -> `ConnectionAdapter` / `AxisMotionAdapter` / `HomingAdapter`
 - `drivers/multicard` 的历史命名空间统一迁到 `Siligen::Device::Adapters::Drivers::MultiCard`
 - 位置触发/CMP、插补、供胶阀等粗粒度能力继续拆小
+- `src/legacy/**` 目前仍作为 bridge include 面公开；待 runtime-host/public header 完成收口后，再退回稳定 `include/` 面

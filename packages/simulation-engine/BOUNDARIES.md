@@ -57,3 +57,19 @@
 - 仿真回归脚本对接路径
 
 根级旧 `simulation-engine/` 目录不再作为 owner 保留。
+
+## 7. 正式验证入口
+
+- 包内 build root：
+  `D:\Projects\SiligenSuite\build\simulation-engine`
+- 包内最小闭环 executable：
+  `simulate_scheme_c_closed_loop.exe`
+- 包内 scheme C 测试入口：
+  `ctest --test-dir D:\Projects\SiligenSuite\build\simulation-engine -C Debug --output-on-failure -R "simulation_engine_scheme_c_.*_test"`
+- 根级仿真 suite：
+  `.\build.ps1 -Profile Local -Suite simulation`
+  `.\test.ps1 -Profile Local -Suite simulation`
+- 跨包最小场景回归：
+  `integration/simulated-line/run_simulated_line.py`
+
+以上入口都不依赖 `runtime-host`、`apps/*` 或 `control-core/src/infrastructure/runtime/*`。

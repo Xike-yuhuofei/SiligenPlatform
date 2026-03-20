@@ -4,11 +4,12 @@
 
 当前约定：
 
-- `config/machine/`：机器配置的 canonical 源
-- `config/machine_config.ini`：旧调用方兼容桥接
-- `config/build/`、`config/ci/`、`config/environments/`：保留给工作区级模板与治理配置
+- `config/machine/`：机器配置 canonical 源
+- `config/machine_config.ini`：根级 bridge，仅兼容仍硬编码旧根级路径的调用方
+- `config/build/`、`config/ci/`、`config/environments/`：工作区模板与治理配置
 
 边界说明：
 
 - `build/config/*` 属于构建输出，不是手工维护源文件
-- `control-core/src/infrastructure/resources/config/files/*` 属于 legacy fallback，不再作为首选入口
+- 运行时代码与 `control-core/CMakeLists.txt` 已不再回退到 `control-core/config/*`
+- `control-core/src/infrastructure/resources/config/files/*` 不再是默认配置来源

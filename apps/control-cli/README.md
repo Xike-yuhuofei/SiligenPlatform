@@ -2,9 +2,9 @@
 
 ## 负责什么
 
-- 作为根级 canonical CLI 入口
-- 承接 bootstrap 检查与 recipe 子命令的真实源码承载面
-- 为剩余未迁移 CLI 能力提供明确阻塞提示，而不是继续假装 wrapper 已完成 canonical 化
+- 作为根级 canonical CLI 唯一默认入口
+- 承接连接调试、运动、点胶、DXF、recipe 的真实命令实现
+- 对外暴露独立的 `siligen_cli.exe`
 
 ## 真实入口
 
@@ -20,20 +20,34 @@
 - 真实 exe 路径模式：`<CONTROL_APPS_BUILD_ROOT>\bin\<Config>\siligen_cli.exe`
 - 当前默认路径示例：`%LOCALAPPDATA%\SiligenSuite\control-apps-build\bin\Debug\siligen_cli.exe`
 
-## 当前承载面
+## 当前 canonical 命令面
 
 - `bootstrap-check`
-- `recipe create`
-- `recipe list`
-- `recipe get`
-- `recipe versions`
-- `recipe audit`
-- `recipe export`
-- `recipe import`
+- `connect`
+- `disconnect`
+- `status`
+- `home`
+- `jog`
+- `move`
+- `stop-all`
+- `estop`
+- `dispenser start|purge|stop|pause|resume`
+- `supply open|close`
+- `dxf-plan`
+- `dxf-dispense`
+- `dxf-augment`
+- `recipe create|update|draft|draft-update|publish|list|get|versions|archive|version-create|compare|rollback|activate|audit|export|import`
 
-## 剩余阻塞
+## 默认行为
 
-- 运动、点胶、DXF、连接调试命令尚未迁入 canonical CLI。
-- 旧仓 `D:\Projects\Backend_CPP\src\adapters\cli` 仍是这些未迁移命令的可信迁移源。
-- 如确需调用 legacy CLI，必须显式执行 `run.ps1 -UseLegacyFallback`，该回退仅用于过渡期审计。
-- 对未迁移命令，canonical `siligen_cli.exe` 会直接返回阻塞提示，不再继续伪装 wrapper 已经完成。
+- `run.ps1` 默认且只解析 canonical `siligen_cli.exe`
+- `run.ps1 -DryRun` 找不到 canonical 产物时会非零退出
+- 不再支持 `-UseLegacyFallback`
+- `control-core/build/bin/**/siligen_cli.exe` 不再是默认或显式入口
+
+## 与 legacy 的关系
+
+- `control-core` 不再承载新的 CLI 命令实现
+- 若短期需要保留旧名称，只允许在 canonical 路径上做 alias；真实实现必须继续留在 `apps/control-cli`
+- 当前 CLI cutover 不再依赖外部 `Backend_CPP\src\adapters\cli`
+- `dxf-augment` 已位于 canonical CLI，但当前本地 build 若关闭 `SILIGEN_ENABLE_CGAL`，会返回 `NOT_IMPLEMENTED`

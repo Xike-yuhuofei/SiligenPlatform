@@ -5,6 +5,8 @@
 当前入口：
 
 - `run_hardware_smoke.py`
+- `run_hil_closed_loop.py`
+- `run_hil_controlled_test.ps1`
 
 当前策略：
 
@@ -21,3 +23,34 @@
 ```powershell
 python .\integration\hardware-in-loop\run_hardware_smoke.py
 ```
+
+```powershell
+python .\integration\hardware-in-loop\run_hil_closed_loop.py --report-dir .\integration\reports\hil-controlled-test --duration-seconds 1800
+```
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\integration\hardware-in-loop\run_hil_controlled_test.ps1 -Profile Local
+```
+
+`run_hil_closed_loop.py` 说明：
+
+- 预检阶段执行一次 `dxf.load`，循环阶段按 `tcp connect -> status -> dispenser start/pause/resume -> dispenser.stop -> disconnect` 执行闭环
+- 默认对 `Running/Paused/Running` 状态做等待门控，避免 pause/resume 竞态误判
+- `dispenser.start` 未观测到 `Running` 视为失败，不再按 `skipped` 兼容通过
+- 默认输出 `hil-closed-loop-summary.json` 与 `hil-closed-loop-summary.md`
+- 报告包含 `dispenser_start_params` 与 `state_transition_checks` 字段
+- 默认退出码与 workspace validation 对齐：`0=pass`、`10=known_failure`、`11=skipped`、`1=failed`
+
+关键参数：
+
+- `--dispenser-count`（默认 `300`）
+- `--dispenser-interval-ms`（默认 `200`）
+- `--dispenser-duration-ms`（默认 `80`）
+- `--state-wait-timeout-seconds`（默认 `8`）
+
+对应环境变量：
+
+- `SILIGEN_HIL_DISPENSER_COUNT`
+- `SILIGEN_HIL_DISPENSER_INTERVAL_MS`
+- `SILIGEN_HIL_DISPENSER_DURATION_MS`
+- `SILIGEN_HIL_STATE_WAIT_TIMEOUT_SECONDS`

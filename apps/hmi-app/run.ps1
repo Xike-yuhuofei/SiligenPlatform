@@ -1,5 +1,7 @@
 param(
     [switch]$DryRun,
+    [ValidateSet("online", "offline")]
+    [string]$Mode = "online",
     [string]$GatewayExe,
     [string]$GatewayLaunchSpec,
     [switch]$DisableGatewayAutostart,
@@ -18,6 +20,7 @@ if ($DryRun) {
         if ($GatewayExe) {
             Write-Output "gateway exe: $GatewayExe"
         }
+        Write-Output "mode: $Mode"
         if ($GatewayLaunchSpec) {
             Write-Output "gateway spec: $GatewayLaunchSpec"
         }
@@ -48,4 +51,19 @@ if ($DisableGatewayAutostart) {
     $env:SILIGEN_GATEWAY_AUTOSTART = "0"
 }
 
-& $runner @AppArgs
+$forwardArgs = @()
+$hasExplicitModeArg = $false
+foreach ($arg in $AppArgs) {
+    if ($arg -eq "--mode") {
+        $hasExplicitModeArg = $true
+        break
+    }
+}
+if (-not $hasExplicitModeArg) {
+    $forwardArgs += @("--mode", $Mode)
+}
+if ($AppArgs) {
+    $forwardArgs += $AppArgs
+}
+
+& $runner @forwardArgs

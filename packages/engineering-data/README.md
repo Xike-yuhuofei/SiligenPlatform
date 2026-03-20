@@ -15,15 +15,17 @@
 
 ## 兼容壳范围
 
-以下入口继续保留为兼容面，但真实实现都转发到 `engineering-data`：
+以下入口继续保留为兼容面，但真实实现都转发到 `engineering-data`，兼容壳也由 `packages/engineering-data/src` 统一承载：
 
 - 旧 CLI 名称：`dxf-to-pb`、`path-to-trajectory`、`export-simulation-input`、`generate-dxf-preview`
 - 旧导入路径：`dxf_pipeline.cli.*`、`dxf_pipeline.contracts.*`、`dxf_pipeline.preview.*`
 - 旧脚本/服务壳：`dxf_pipeline.services.*`
+- 旧 protobuf 顶层包：`proto.dxf_primitives_pb2`
 
 说明：
 
 - 安装 `engineering-data` 后会同时暴露 canonical CLI 名称和 legacy CLI 名称
+- 删除 `dxf-pipeline/` 后，历史调用方若仍保留 `import dxf_pipeline...`，只要改为安装 `engineering-data` 或把 `packages/engineering-data/src` 加入 `PYTHONPATH` 即可继续运行
 - 不把 `dxf-pipeline` 全部历史脚本原样搬进来
 - `control-core` 不再依赖 `dxf-pipeline` 内部实现路径
 - 需要兼容的 `.pb`、preview JSON、simulation JSON 由测试覆盖

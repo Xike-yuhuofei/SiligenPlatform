@@ -21,9 +21,21 @@ except ImportError:
     QWebEngineView = None
     WEB_ENGINE_AVAILABLE = False
 
-from client import TcpClient, CommandProtocol, BackendManager, StartupWorker, StartupResult
+from client import (
+    BackendManager,
+    CommandProtocol,
+    LaunchResult,
+    StartupWorker,
+    TcpClient,
+    normalize_launch_mode,
+)
 from client.auth import AuthManager
 from integrations.dxf_pipeline import DxfPipelinePreviewClient
+try:
+    from hmi_client.features.sim_observer.ui import SimObserverWorkspace
+except ImportError:
+    from features.sim_observer.ui import SimObserverWorkspace
+from .dxf_default_paths import build_default_dxf_candidates
 from .styles import DARK_THEME
 from .recipe_config_widget import RecipeConfigWidget
 
@@ -211,8 +223,11 @@ class AspectRatioContainer(QWidget):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, launch_mode: str = "online"):
         super().__init__()
+        self._requested_launch_mode = normalize_launch_mode(launch_mode)
+        self._launch_result: LaunchResult | None = None
+        self._startup_worker = None
         self._aspect_ratio = _resolve_aspect_ratio()
         min_size = _resolve_min_size(self._aspect_ratio)
         self.setWindowTitle("思力根运动控制器")
@@ -262,7 +277,23 @@ class MainWindow(QMainWindow):
 
         self._setup_ui()
         self._setup_timer()
-        self._auto_startup()
+        self._refresh_launch_status_ui()
+        self._apply_mode_capabilities()
+        if self._requested_launch_mode == "online":
+            self._auto_startup()
+        else:
+            self._apply_launch_result(
+                LaunchResult(
+                    requested_mode="offline",
+                    effective_mode="offline",
+                    phase="offline",
+                    success=True,
+                    backend_started=False,
+                    tcp_connected=False,
+                    hardware_ready=False,
+                    user_message="Offline 模式已启用，本次启动不会尝试连接 gateway。",
+                )
+            )
         self._update_home_controls_state()
 
     def _setup_ui(self):
@@ -281,10 +312,17 @@ class MainWindow(QMainWindow):
         # Tab Widget - Workflow Oriented
         tabs = QTabWidget()
         tabs.setProperty("data-testid", "main-tabs")
-        tabs.addTab(self._create_production_tab(), "生产")
-        tabs.addTab(self._create_setup_tab(), "设置")
-        tabs.addTab(self._create_recipe_tab(), "配置")
-        tabs.addTab(self._create_alarm_panel(), "报警")
+        self._main_tabs = tabs
+        self._production_tab = self._create_production_tab()
+        self._setup_tab = self._create_setup_tab()
+        self._recipe_tab = self._create_recipe_tab()
+        self._alarm_panel = self._create_alarm_panel()
+        self._sim_observer_tab = self._create_sim_observer_tab()
+        tabs.addTab(self._production_tab, "生产")
+        tabs.addTab(self._setup_tab, "设置")
+        tabs.addTab(self._recipe_tab, "配置")
+        tabs.addTab(self._alarm_panel, "报警")
+        tabs.addTab(self._sim_observer_tab, "仿真观察")
         content_layout.addWidget(tabs)
 
         main_layout.addLayout(content_layout)
@@ -362,6 +400,13 @@ class MainWindow(QMainWindow):
 
         layout.addSpacing(30)
 
+        layout.addWidget(QLabel("模式:"))
+        self._launch_mode_label = QLabel("Online")
+        self._launch_mode_label.setProperty("data-testid", "label-launch-mode")
+        layout.addWidget(self._launch_mode_label)
+
+        layout.addSpacing(30)
+
         # Connection Indicators
         layout.addWidget(QLabel("TCP:"))
         self._tcp_led = QLabel()
@@ -369,6 +414,9 @@ class MainWindow(QMainWindow):
         self._tcp_led.setProperty("role", "led-off")
         self._tcp_led.setFixedSize(16, 16)
         layout.addWidget(self._tcp_led)
+        self._tcp_state_label = QLabel("未连接")
+        self._tcp_state_label.setProperty("data-testid", "label-tcp-state")
+        layout.addWidget(self._tcp_state_label)
         layout.addSpacing(10)
         layout.addWidget(QLabel("硬件:"))
         self._hw_led = QLabel()
@@ -376,6 +424,9 @@ class MainWindow(QMainWindow):
         self._hw_led.setProperty("role", "led-off")
         self._hw_led.setFixedSize(16, 16)
         layout.addWidget(self._hw_led)
+        self._hw_state_label = QLabel("不可用")
+        self._hw_state_label.setProperty("data-testid", "label-hw-state")
+        layout.addWidget(self._hw_state_label)
 
         layout.addSpacing(30)
 
@@ -668,10 +719,12 @@ class MainWindow(QMainWindow):
 
         left_column = QVBoxLayout()
         left_column.setSpacing(15)
-        left_column.addWidget(self._create_system_panel())
+        self._system_panel = self._create_system_panel()
+        left_column.addWidget(self._system_panel)
         left_column.addStretch()
         top_layout.addLayout(left_column, 1)
-        top_layout.addWidget(self._create_status_panel(), 2)
+        self._status_panel = self._create_status_panel()
+        top_layout.addWidget(self._status_panel, 2)
         layout.addLayout(top_layout)
 
         # Control Panels in horizontal layout
@@ -679,10 +732,12 @@ class MainWindow(QMainWindow):
         controls_layout.setSpacing(20)
 
         # Motion Control
-        controls_layout.addWidget(self._create_motion_control_panel())
+        self._motion_control_panel = self._create_motion_control_panel()
+        controls_layout.addWidget(self._motion_control_panel)
 
         # Dispenser Control
-        controls_layout.addWidget(self._create_dispenser_control_panel())
+        self._dispenser_control_panel = self._create_dispenser_control_panel()
+        controls_layout.addWidget(self._dispenser_control_panel)
 
         layout.addLayout(controls_layout)
         return widget
@@ -1140,6 +1195,92 @@ class MainWindow(QMainWindow):
 
         return widget
 
+    def _create_sim_observer_tab(self) -> QWidget:
+        widget = QWidget()
+        widget.setProperty("data-testid", "tab-sim-observer")
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        self._sim_observer_workspace = SimObserverWorkspace(widget)
+        layout.addWidget(self._sim_observer_workspace)
+        return widget
+
+    def _current_effective_mode(self) -> str:
+        if self._launch_result is not None:
+            return self._launch_result.effective_mode
+        return self._requested_launch_mode
+
+    def _is_offline_mode(self) -> bool:
+        return self._current_effective_mode() == "offline"
+
+    def _refresh_launch_status_ui(self) -> None:
+        effective_mode = self._current_effective_mode()
+        self._launch_mode_label.setText("Offline" if effective_mode == "offline" else "Online")
+
+        if self._is_offline_mode():
+            self._operation_status.setText("离线模式")
+            self._tcp_state_label.setText("未连接")
+            self._hw_state_label.setText("不可用")
+            self._state_label.setText("Offline")
+            self._update_led(self._tcp_led, "off")
+            self._update_led(self._hw_led, "off")
+            return
+
+        self._update_led(self._tcp_led, "green" if self._connected else "off")
+        self._update_led(self._hw_led, "green" if self._hw_connected else "off")
+        self._tcp_state_label.setText("已连接" if self._connected else "未连接")
+        if not self._connected:
+            self._hw_state_label.setText("不可用")
+        else:
+            self._hw_state_label.setText("就绪" if self._hw_connected else "未初始化")
+
+        if self._launch_result is None:
+            self._operation_status.setText("启动中")
+            self._state_label.setText("Starting")
+            return
+
+        if self._launch_result.success:
+            self._operation_status.setText("空闲")
+            self._state_label.setText("Ready")
+        else:
+            self._operation_status.setText("启动失败")
+            self._state_label.setText("Launch Failed")
+
+    def _apply_mode_capabilities(self) -> None:
+        offline = self._is_offline_mode()
+        for widget_name in (
+            "_production_tab",
+            "_system_panel",
+            "_motion_control_panel",
+            "_dispenser_control_panel",
+            "_recipe_tab",
+        ):
+            widget = getattr(self, widget_name, None)
+            if widget is not None:
+                widget.setEnabled(not offline)
+        if hasattr(self, "_global_estop_btn"):
+            self._global_estop_btn.setEnabled(not offline)
+
+    def _apply_launch_result(self, result: LaunchResult) -> None:
+        self._launch_result = result
+        self._connected = bool(result.tcp_connected)
+        self._hw_connected = bool(result.hardware_ready)
+        self._refresh_launch_status_ui()
+        self._apply_mode_capabilities()
+        self._update_home_controls_state()
+        if result.user_message:
+            self.statusBar().showMessage(result.user_message)
+
+    def _show_offline_unavailable(self, capability: str) -> None:
+        self.statusBar().showMessage(f"Offline 模式下不可用: {capability}")
+
+    def _require_online_mode(self, capability: str) -> bool:
+        if self._is_offline_mode():
+            self._show_offline_unavailable(capability)
+            return False
+        return True
+
     def _setup_timer(self):
         self._timer = QTimer()
         self._timer.timeout.connect(self._update_status)
@@ -1150,7 +1291,8 @@ class MainWindow(QMainWindow):
         self._startup_worker = StartupWorker(
             self._backend,
             self._client,
-            self._protocol
+            self._protocol,
+            launch_mode=self._requested_launch_mode,
         )
         self._startup_worker.progress.connect(self._on_startup_progress)
         self._startup_worker.finished.connect(self._on_startup_finished)
@@ -1161,37 +1303,30 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(message)
         self._global_progress.setValue(percent)
 
-    def _on_startup_finished(self, result: StartupResult):
+    def _on_startup_finished(self, result: LaunchResult):
         """Handle startup sequence completion."""
+        self._apply_launch_result(result)
+        self._global_progress.setValue(0)
         if result.success:
-            self._connected = True
-            self._hw_connected = True
-            self._update_led(self._tcp_led, "green")
-            self._update_led(self._hw_led, "green")
             self._hw_connect_btn.setEnabled(False)
-            self._global_progress.setValue(0)
-            self.statusBar().showMessage("System ready")
-            self._update_home_controls_state()
             if hasattr(self, '_recipe_config_widget'):
                 self._recipe_config_widget._load_recipe_context()
         else:
             self._show_startup_error(result)
-            self._global_progress.setValue(0)
-            self._update_home_controls_state()
 
-    def _show_startup_error(self, result: StartupResult):
+    def _show_startup_error(self, result: LaunchResult):
         """Display startup error dialog."""
         stage_names = {
             "backend": "Backend startup",
             "tcp": "TCP connection",
             "hardware": "Hardware initialization"
         }
-        stage_name = stage_names.get(result.stage, result.stage)
+        stage_name = stage_names.get(result.phase, result.phase)
 
         QMessageBox.critical(
             self,
             "Startup Failed",
-            f"{stage_name} failed:\n{result.message}\n\n"
+            f"{stage_name} failed:\n{result.user_message}\n\n"
             "Please check:\n"
             "1. Backend executable exists\n"
             "2. Port is not in use\n"
@@ -1209,6 +1344,9 @@ class MainWindow(QMainWindow):
                 btn.setEnabled(enabled)
 
     def _check_home_preconditions(self) -> bool:
+        if self._is_offline_mode():
+            self._show_offline_unavailable("回零")
+            return False
         if not self._connected:
             self.statusBar().showMessage("未连接到后端，请先连接")
             return False
@@ -1270,6 +1408,9 @@ class MainWindow(QMainWindow):
         return "home", ""
 
     def _check_motion_preconditions(self) -> bool:
+        if self._is_offline_mode():
+            self._show_offline_unavailable("点动")
+            return False
         if not self._connected:
             self.statusBar().showMessage("未连接到后端，无法点动")
             return False
@@ -1289,18 +1430,23 @@ class MainWindow(QMainWindow):
         return True
 
     def _on_connect(self):
+        if not self._require_online_mode("TCP连接"):
+            return
         if self._connected:
             return
         if self._client.connect():
             self._connected = True
             self._hw_connect_btn.setEnabled(True)
-            self._update_led(self._tcp_led, "green")
+            self._refresh_launch_status_ui()
             self.statusBar().showMessage(f"已连接到 {self._client.host}:{self._client.port}")
             self._update_home_controls_state()
         else:
+            self._refresh_launch_status_ui()
             self.statusBar().showMessage("连接失败")
 
     def _on_disconnect(self):
+        if not self._require_online_mode("断开连接"):
+            return
         if not self._connected:
             return
         reply = QMessageBox.question(
@@ -1313,19 +1459,19 @@ class MainWindow(QMainWindow):
         self._connected = False
         self._hw_connected = False
         self._hw_connect_btn.setEnabled(False)
-        self._update_led(self._tcp_led, "off")
-        self._update_led(self._hw_led, "off")
+        self._refresh_launch_status_ui()
         self.statusBar().showMessage("已断开")
         self._update_home_controls_state()
 
     def _on_hw_connect(self):
+        if not self._require_online_mode("硬件初始化"):
+            return
         ok, msg = self._protocol.connect_hardware()
         if ok:
             self._hw_connected = True
-            self._update_led(self._hw_led, "green")
         else:
             self._hw_connected = False
-            self._update_led(self._hw_led, "red")
+        self._refresh_launch_status_ui()
         self.statusBar().showMessage(f"硬件: {msg}" if msg else ("硬件已连接" if ok else "硬件连接失败"))
         self._update_home_controls_state()
 
@@ -1472,10 +1618,14 @@ class MainWindow(QMainWindow):
             self._log_motion_snapshot("Stop post", axis)
 
     def _on_estop(self):
+        if not self._require_online_mode("急停"):
+            return
         ok, msg = self._protocol.emergency_stop()
-        self.statusBar().showMessage(f"急停: {msg}")
+        self.statusBar().showMessage(f"急停: {msg}" if ok else (f"急停失败: {msg}" if msg else "急停失败"))
 
     def _on_move_to(self):
+        if not self._require_online_mode("移动控制"):
+            return
         self._auth.record_activity()
         x = self._move_inputs["X"].value()
         y = self._move_inputs["Y"].value()
@@ -1484,72 +1634,70 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("移动中..." if ok else "移动失败")
 
     def _on_dispenser_start(self):
+        if not self._require_online_mode("点胶控制"):
+            return
         count = self._dispenser_count.value()
         interval = self._dispenser_interval.value()
         duration = self._dispenser_duration.value()
         ok = self._protocol.dispenser_start(count, interval, duration)
         if ok:
             self._increment_needle_count(count)
-        self.statusBar().showMessage(f"点胶已启动 (次数:{count}, 间隔:{interval}ms, 持续:{duration}ms)")
+        if ok:
+            self.statusBar().showMessage(f"点胶已启动 (次数:{count}, 间隔:{interval}ms, 持续:{duration}ms)")
+        else:
+            self.statusBar().showMessage("点胶启动失败")
 
     def _on_dispenser_pause(self):
-        self._protocol.dispenser_pause()
-        self.statusBar().showMessage("点胶已暂停")
+        if not self._require_online_mode("点胶控制"):
+            return
+        ok = self._protocol.dispenser_pause()
+        self.statusBar().showMessage("点胶已暂停" if ok else "点胶暂停失败")
 
     def _on_dispenser_resume(self):
-        self._protocol.dispenser_resume()
-        self.statusBar().showMessage("点胶已继续")
+        if not self._require_online_mode("点胶控制"):
+            return
+        ok = self._protocol.dispenser_resume()
+        self.statusBar().showMessage("点胶已继续" if ok else "点胶恢复失败")
 
     def _on_dispenser_stop(self):
-        self._protocol.dispenser_stop()
-        self.statusBar().showMessage("点胶已停止")
+        if not self._require_online_mode("点胶控制"):
+            return
+        ok = self._protocol.dispenser_stop()
+        self.statusBar().showMessage("点胶已停止" if ok else "点胶停止失败")
 
     def _on_supply_open(self):
-        self._protocol.supply_open()
-        self.statusBar().showMessage("供料阀已打开")
+        if not self._require_online_mode("供料阀控制"):
+            return
+        ok = self._protocol.supply_open()
+        self.statusBar().showMessage("供料阀已打开" if ok else "供料阀打开失败")
 
     def _on_supply_close(self):
-        self._protocol.supply_close()
-        self.statusBar().showMessage("供料阀已关闭")
+        if not self._require_online_mode("供料阀控制"):
+            return
+        ok = self._protocol.supply_close()
+        self.statusBar().showMessage("供料阀已关闭" if ok else "供料阀关闭失败")
 
     def _on_purge(self):
+        if not self._require_online_mode("清洗"):
+            return
         timeout = self._purge_duration.value()
         ok = self._protocol.purge(timeout)
         if ok:
             self._last_purge_time = time.time()
             self._update_maintenance_display()
-        self.statusBar().showMessage(f"清洗中 (超时: {timeout}ms)")
+            self.statusBar().showMessage(f"清洗中 (超时: {timeout}ms)")
+        else:
+            self.statusBar().showMessage("清洗启动失败")
 
     def _on_dxf_browse(self):
+        if not self._require_online_mode("DXF加载"):
+            return
         import os
         start_dir = ""
         if self._dxf_filepath:
             start_dir = os.path.dirname(self._dxf_filepath)
         else:
-            workspace_override = os.getenv("SILIGEN_WORKSPACE_ROOT", "").strip()
-            workspace_root = None
-            if workspace_override:
-                workspace_root = Path(workspace_override).expanduser()
-            else:
-                for candidate in Path(__file__).resolve().parents:
-                    if (candidate / "apps").exists() and (candidate / "packages").exists():
-                        workspace_root = candidate
-                        break
-
-            default_dir_override = os.getenv("SILIGEN_DXF_DEFAULT_DIR", "").strip()
-            default_candidates = []
-            if default_dir_override:
-                default_candidates.append(Path(default_dir_override).expanduser())
-            if workspace_root is not None:
-                default_candidates.extend(
-                    [
-                        workspace_root / "uploads" / "dxf",
-                        workspace_root / "packages" / "engineering-contracts" / "fixtures" / "cases" / "rect_diag",
-                        workspace_root / "control-core" / "uploads" / "dxf",
-                    ]
-                )
-
-            for candidate in default_candidates:
+            for candidate in build_default_dxf_candidates(Path(__file__)):
                 if candidate.exists():
                     start_dir = str(candidate)
                     break
@@ -1599,6 +1747,8 @@ class MainWindow(QMainWindow):
         self._dxf_info_label.setText(f"段数: {segments} | 长度: {self._dxf_total_length_val:.1f}mm | 预估: {est}")
 
     def _on_dxf_load(self):
+        if not self._require_online_mode("DXF加载"):
+            return
         if not self._dxf_filepath:
             self.statusBar().showMessage("未选择DXF文件")
             return
@@ -1628,6 +1778,8 @@ class MainWindow(QMainWindow):
 
     def _generate_dxf_preview(self):
         """Generate and display DXF preview in embedded view."""
+        if not self._require_online_mode("DXF预览"):
+            return
         if not self._dxf_loaded:
             return
         if not WEB_ENGINE_AVAILABLE or not self._dxf_view:
@@ -1680,6 +1832,9 @@ class MainWindow(QMainWindow):
         QMessageBox.warning(self, "无法启动", message)
 
     def _check_production_preconditions(self) -> bool:
+        if self._is_offline_mode():
+            self._show_offline_unavailable("生产控制")
+            return False
         if not self._connected:
             self._show_preflight_warning("未连接到后端，请先连接")
             return False
@@ -1731,10 +1886,14 @@ class MainWindow(QMainWindow):
         self._start_production_process(dry_run=is_dry_run)
 
     def _on_dxf_stop(self):
-        self._protocol.dxf_stop()
-        self.statusBar().showMessage("DXF执行已停止")
+        if not self._require_online_mode("DXF控制"):
+            return
+        ok = self._protocol.dxf_stop()
+        self.statusBar().showMessage("DXF执行已停止" if ok else "DXF停止失败")
 
     def _on_alarm_clear(self):
+        if not self._require_online_mode("报警控制"):
+            return
         if self._protocol.clear_alarms():
             self._alarm_list.clear()
             self.statusBar().showMessage("报警已清除")
@@ -1742,6 +1901,8 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("清除报警失败")
 
     def _on_alarm_ack(self):
+        if not self._require_online_mode("报警控制"):
+            return
         current = self._alarm_list.currentItem()
         if current:
             alarm_id = current.data(Qt.UserRole)
@@ -1787,6 +1948,8 @@ class MainWindow(QMainWindow):
     # Production Control Methods
     def _start_production_process(self, dry_run: bool = False):
         """Start production cycle (or dry run)."""
+        if not self._require_online_mode("生产控制"):
+            return
         self._auth.record_activity()
         if not self._dxf_loaded:
             self.statusBar().showMessage("请先加载DXF文件")
@@ -2133,8 +2296,8 @@ class MainWindow(QMainWindow):
         return False
 
 
-def main():
+def main(launch_mode: str = "online") -> int:
     app = QApplication(sys.argv)
-    window = MainWindow()
+    window = MainWindow(launch_mode=launch_mode)
     window.show()
-    sys.exit(app.exec_())
+    return app.exec_()

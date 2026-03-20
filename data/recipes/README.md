@@ -1,6 +1,6 @@
 # recipes
 
-owner: `control-core` 配方域 + `packages/runtime-host` 配方仓储适配器
+owner: `packages/process-runtime-core` 配方域 + `packages/runtime-host` 配方仓储适配器
 
 canonical 说明：
 
@@ -12,4 +12,5 @@ canonical 说明：
 兼容说明：
 
 - legacy `templates.json` 已拆分为 `templates/*.json`
-- 旧代码如仍从 `control-core/data/recipes` 读取，当前通过运行时桥接继续可用
+- 运行时代码默认只读取根级 `data/recipes/`
+- `control-core/data/recipes` 已退出默认 fallback 链路，只保留历史残留价值，不再作为 source of truth

@@ -7,10 +7,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 CONTRACTS = ROOT / "packages" / "application-contracts"
 TCP_DISPATCHER = ROOT / "packages" / "transport-gateway" / "src" / "tcp" / "TcpCommandDispatcher.cpp"
-APP_MAIN = ROOT / "control-core" / "apps" / "control-tcp-server" / "main.cpp"
-APP_CMAKE = ROOT / "control-core" / "apps" / "control-tcp-server" / "CMakeLists.txt"
-LEGACY_ADAPTER_CMAKE = ROOT / "control-core" / "src" / "adapters" / "tcp" / "CMakeLists.txt"
-LEGACY_MODULE_CMAKE = ROOT / "control-core" / "modules" / "control-gateway" / "CMakeLists.txt"
+APP_MAIN = ROOT / "apps" / "control-tcp-server" / "main.cpp"
+APP_CMAKE = ROOT / "apps" / "control-tcp-server" / "CMakeLists.txt"
+TRANSPORT_GATEWAY_CMAKE = ROOT / "packages" / "transport-gateway" / "CMakeLists.txt"
+ROOT_CMAKE = ROOT / "CMakeLists.txt"
 
 
 def load_json(path: Path):
@@ -54,25 +54,28 @@ def test_app_entry_is_thin():
     assert 'modules/control-gateway/src/' not in source
 
 
-def test_cmake_aliases_forward_to_canonical_targets():
+def test_canonical_targets_are_exported_without_legacy_aliases():
     app_cmake = APP_CMAKE.read_text(encoding="utf-8")
-    legacy_adapter = LEGACY_ADAPTER_CMAKE.read_text(encoding="utf-8")
-    legacy_module = LEGACY_MODULE_CMAKE.read_text(encoding="utf-8")
+    transport_gateway_cmake = TRANSPORT_GATEWAY_CMAKE.read_text(encoding="utf-8")
+    root_cmake = ROOT_CMAKE.read_text(encoding="utf-8")
 
     assert "siligen_transport_gateway" in app_cmake
     assert "siligen_runtime_host" in app_cmake
-    assert "siligen_control_gateway_tcp_adapter" in legacy_adapter
-    assert "siligen_tcp_adapter" in legacy_adapter
-    assert "siligen_transport_gateway" in legacy_adapter
-    assert "siligen_control_gateway" in legacy_module
-    assert "siligen_transport_gateway_protocol" in legacy_module
+    assert "siligen_transport_gateway" in transport_gateway_cmake
+    assert "siligen_transport_gateway_protocol" in transport_gateway_cmake
+    assert "siligen_control_gateway_tcp_adapter" in transport_gateway_cmake
+    assert "siligen_tcp_adapter" in transport_gateway_cmake
+    assert "siligen_control_gateway" in transport_gateway_cmake
+    assert 'add_subdirectory("${SILIGEN_TRANSPORT_GATEWAY_DIR}"' in root_cmake
+    assert "packages/transport-gateway" in root_cmake
+    assert 'add_subdirectory(apps)' in root_cmake
 
 
 def main():
     tests = [
         test_dispatcher_matches_contracts,
         test_app_entry_is_thin,
-        test_cmake_aliases_forward_to_canonical_targets,
+        test_canonical_targets_are_exported_without_legacy_aliases,
     ]
     for test in tests:
         test()

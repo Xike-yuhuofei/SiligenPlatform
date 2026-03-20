@@ -39,9 +39,47 @@ simulation-input.json
 
 ## 5. 实现顺序
 
-1. 复用现有 compatibility timing engine 保住示例和基线
+1. 复用现有 compatibility timing engine 保住历史基线
 2. 增加 `VirtualClock`
 3. 增加 `VirtualAxisGroup` 与基础反馈
 4. 增加 `RuntimeBridge`，把真实执行语义接入虚拟端口
 5. 增加 `Recorder`，统一导出结果
 6. 用 `integration/simulated-line` 做最小回归
+7. 方案 C 收口后，将 compat 降级为 baseline-only
+
+## 6. 当前正式入口
+
+- 应用入口：
+  `sim::scheme_c::loadCanonicalSimulationInputJson/File`
+  `sim::scheme_c::runMinimalClosedLoop/File`
+- 包内示例：
+  `packages/simulation-engine/examples/simulate_scheme_c_closed_loop.cpp`
+- 根级输入：
+  `examples/simulation/rect_diag.simulation-input.json`
+  `examples/simulation/sample_trajectory.json`
+- 根级最小闭环回归：
+  `integration/simulated-line/run_simulated_line.py`
+
+## 7. 当前正式验证命令
+
+```powershell
+cmake --fresh -S D:\Projects\SiligenSuite\packages\simulation-engine -B D:\Projects\SiligenSuite\build\simulation-engine -DSIM_ENGINE_BUILD_EXAMPLES=ON -DSIM_ENGINE_BUILD_TESTS=ON
+cmake --build D:\Projects\SiligenSuite\build\simulation-engine --config Debug
+ctest --test-dir D:\Projects\SiligenSuite\build\simulation-engine -C Debug --output-on-failure
+python D:\Projects\SiligenSuite\integration\simulated-line\run_simulated_line.py
+```
+
+当前 package + integration 矩阵实际覆盖：
+
+- compat `simulation_engine_smoke_test.exe`
+- compat `simulation_engine_json_io_test.exe`
+- compat `simulate_dxf_path.exe` 对照 `rect_diag.simulation-baseline.json`
+- 全量 package `ctest`
+- scheme C `rect_diag` 长路径 / 多段连续执行
+- scheme C `sample_trajectory` 线段 + 圆弧混合路径与 replay 组合
+- scheme C `invalid_empty_segments` 结构化失败结果
+
+compat 现状：
+
+- 仅保留历史基线和对照验证
+- 不再作为新增仿真能力入口

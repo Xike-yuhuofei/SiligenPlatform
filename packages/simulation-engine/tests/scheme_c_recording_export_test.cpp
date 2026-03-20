@@ -37,6 +37,13 @@ void testRecorderBuildsTraceTimelineAndSummary() {
     sim::scheme_c::AxisState x_axis{"X"};
     x_axis.homed = true;
     x_axis.home_signal = true;
+    x_axis.position_mm = 1.0;
+    x_axis.velocity_mm_per_s = 0.25;
+    x_axis.command_position_mm = 1.25;
+    x_axis.command_velocity_mm_per_s = 0.0;
+    x_axis.following_error_mm = 0.25;
+    x_axis.encoder_quantization_mm = 0.25;
+    x_axis.following_error_active = true;
 
     recorder->recordSnapshot(
         second_tick,
@@ -50,15 +57,21 @@ void testRecorderBuildsTraceTimelineAndSummary() {
     sim::scheme_c::finalizeRecordingResult(result, sim::scheme_c::SessionStatus::Completed, "bridge_completed");
 
     require(result.motion_profile.size() == 4U, "recorder: expected one motion sample per axis per snapshot");
-    require(result.trace.size() == 3U, "recorder: expected axis and io trace entries");
-    require(result.timeline.size() == 4U, "recorder: expected merged event + trace timeline");
+    require(result.trace.size() == 4U, "recorder: expected axis and io trace entries");
+    require(result.timeline.size() == 5U, "recorder: expected merged event + trace timeline");
     require(result.timeline.front().kind == "event", "recorder: timeline should keep event before state changes");
     require(result.trace[0].subject == "X", "recorder: axis trace subject mismatch");
     require(result.trace[0].field == "homed", "recorder: axis trace field mismatch");
-    require(result.trace[2].scope == "io", "recorder: expected io trace entry");
+    require(result.trace[3].scope == "io", "recorder: expected io trace entry");
     require(result.summary.terminal_state == "completed", "recorder: summary terminal state mismatch");
     require(result.summary.motion_sample_count == 4U, "recorder: summary motion sample count mismatch");
     require(!result.summary.empty_timeline, "recorder: summary should mark non-empty timeline");
+    require(result.summary.following_error_sample_count == 1U,
+            "recorder: summary following error sample count mismatch");
+    require(result.summary.max_following_error_mm == 0.25,
+            "recorder: summary max following error mismatch");
+    require(result.summary.mean_following_error_mm == 0.0625,
+            "recorder: summary mean following error mismatch");
 }
 
 void testRecordingResultNormalizesStoppedSessionWithoutSnapshots() {
@@ -75,7 +88,7 @@ void testRecordingResultNormalizesStoppedSessionWithoutSnapshots() {
     require(result.status == sim::scheme_c::SessionStatus::Stopped, "session: expected stopped status");
     require(result.recording.motion_profile.empty(), "session: stopped session should not emit motion profile");
     require(result.recording.summary.terminal_state == "stopped", "session: stopped summary state mismatch");
-    require(result.recording.summary.termination_reason == "stopped",
+    require(result.recording.summary.termination_reason == "application_requested_stop",
             "session: stopped summary reason mismatch");
     require(!result.recording.timeline.empty(), "session: stopped session should emit stop timeline event");
 }
@@ -104,12 +117,18 @@ void testSchemeCResultExporterSerializesCanonicalFields() {
 
     sim::scheme_c::AxisState axis{"X"};
     axis.homed = true;
+    axis.position_mm = 2.0;
+    axis.command_position_mm = 2.5;
+    axis.following_error_mm = 0.5;
+    axis.encoder_quantization_mm = 0.25;
+    axis.following_error_active = true;
     recorder->recordEvent(tick, "RuntimeBridge", "initialized");
     recorder->recordSnapshot(tick, {axis}, {sim::scheme_c::IoState{"DO_VALVE", false, true}});
 
     sim::scheme_c::SimulationSessionResult result;
     result.status = sim::scheme_c::SessionStatus::Completed;
     result.bridge_bindings = sim::scheme_c::makeDefaultRuntimeBridgeBindings({"X"}, {"DO_VALVE"});
+    result.runtime_bridge = sim::scheme_c::createRuntimeBridge(result.bridge_bindings)->metadata();
     result.recording = recorder->finish(tick, {axis}, {sim::scheme_c::IoState{"DO_VALVE", false, true}});
     sim::scheme_c::finalizeRecordingResult(result.recording, result.status, "bridge_completed");
 
@@ -119,10 +138,30 @@ void testSchemeCResultExporterSerializesCanonicalFields() {
     require(json.at("schema_version").get<std::string>() == "scheme_c.recording.v1",
             "exporter: schema version mismatch");
     require(json.at("session_status").get<std::string>() == "completed", "exporter: session status mismatch");
+    require(json.at("runtime_bridge").at("process_runtime_core_linked").get<bool>(),
+            "exporter: runtime bridge linkage flag mismatch");
+    require(json.at("runtime_bridge").at("follow_up_seams").empty(),
+            "exporter: follow_up_seams should be empty after scheme C closure");
     require(json.at("recording").at("motion_profile").size() == 1U, "exporter: motion_profile size mismatch");
-    require(json.at("recording").at("trace").size() == 1U, "exporter: trace size mismatch");
+    require(json.at("recording").at("trace").size() == 2U, "exporter: trace size mismatch");
+    require(json.at("recording").at("motion_profile").at(0).at("command_position_mm").get<double>() == 2.5,
+            "exporter: command_position_mm mismatch");
+    require(json.at("recording").at("motion_profile").at(0).at("following_error_mm").get<double>() == 0.5,
+            "exporter: following_error_mm mismatch");
+    require(json.at("recording").at("motion_profile").at(0).at("following_error_active").get<bool>(),
+            "exporter: following_error_active mismatch");
+    require(json.at("recording").at("summary").at("timeline_count").get<std::size_t>() ==
+                json.at("recording").at("timeline").size(),
+            "exporter: summary timeline_count mismatch");
+    require(json.at("recording").at("summary").at("event_count").get<std::size_t>() ==
+                json.at("recording").at("events").size(),
+            "exporter: summary event_count mismatch");
     require(json.at("recording").at("summary").at("terminal_state").get<std::string>() == "completed",
             "exporter: summary state mismatch");
+    require(json.at("recording").at("summary").at("max_following_error_mm").get<double>() == 0.5,
+            "exporter: summary max_following_error_mm mismatch");
+    require(json.at("recording").at("summary").at("following_error_sample_count").get<std::size_t>() == 1U,
+            "exporter: summary following_error_sample_count mismatch");
 
     const auto path = std::filesystem::temp_directory_path() / "simulation_engine_scheme_c_result_export.json";
     sim::ResultExporter::writeJsonFile(result, path.string(), true);
@@ -131,7 +170,7 @@ void testSchemeCResultExporterSerializesCanonicalFields() {
     std::ifstream input(path);
     nlohmann::json file_json;
     input >> file_json;
-    require(file_json.at("recording").at("timeline").size() == 2U, "exporter: persisted timeline mismatch");
+    require(file_json.at("recording").at("timeline").size() == 3U, "exporter: persisted timeline mismatch");
     input.close();
     std::filesystem::remove(path);
 }
