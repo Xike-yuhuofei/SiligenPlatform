@@ -3,6 +3,7 @@
 #include "siligen/gateway/tcp/tcp_facade_bundle.h"
 
 #include "application/usecases/dispensing/DispensingExecutionUseCase.h"
+#include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
 #include "application/usecases/dispensing/PlanningUseCase.h"
 #include "application/usecases/dispensing/UploadFileUseCase.h"
 #include "application/usecases/dispensing/valve/ValveCommandUseCase.h"
@@ -49,7 +50,8 @@ TcpFacadeBundle BuildTcpFacadeBundle(Resolver& resolver) {
         resolver.template Resolve<Application::UseCases::Dispensing::Valve::ValveQueryUseCase>(),
         resolver.template Resolve<Application::UseCases::Dispensing::DispensingExecutionUseCase>(),
         resolver.template Resolve<Application::UseCases::Dispensing::UploadFileUseCase>(),
-        resolver.template Resolve<Application::UseCases::Dispensing::PlanningUseCase>());
+        resolver.template Resolve<Application::UseCases::Dispensing::PlanningUseCase>(),
+        resolver.template Resolve<Application::UseCases::Dispensing::DispensingWorkflowUseCase>());
 
     bundle.recipe = std::make_shared<Application::Facades::Tcp::TcpRecipeFacade>(
         resolver.template Resolve<Application::UseCases::Recipes::CreateRecipeUseCase>(),

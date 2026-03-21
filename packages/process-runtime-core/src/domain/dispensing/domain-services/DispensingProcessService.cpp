@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <optional>
 #include <thread>
 #include <utility>
 
@@ -22,6 +23,7 @@ using Siligen::Shared::Types::int16;
 using Siligen::Shared::Types::int32;
 using Siligen::Shared::Types::uint32;
 using Siligen::Shared::Types::LogicalAxisId;
+using Siligen::Shared::Types::Point2D;
 using Siligen::Domain::Machine::Ports::HardwareConnectionState;
 
 namespace {
@@ -30,10 +32,54 @@ constexpr float32 kDefaultPulsePerMm = 200.0f;
 constexpr uint32 kDefaultDispenserIntervalMs = 100;
 constexpr uint32 kDefaultDispenserDurationMs = 100;
 constexpr float32 kDefaultTriggerSpatialIntervalMm = 3.0f;
-constexpr uint32 kMotionCompletionToleranceMs = 100;
 constexpr uint32 kStatusPollIntervalMs = 50;
+constexpr uint32 kMotionCompletionGraceMinMs = 5000;
+constexpr uint32 kMotionCompletionGraceMaxMs = 30000;
+constexpr float32 kMotionCompletionGraceRatio = 0.15f;
+constexpr float32 kCompletionVelocityToleranceMmS = 0.5f;
+constexpr float32 kCompletionPositionToleranceFloorMm = 0.2f;
+constexpr auto kCompletionSettleWindow = std::chrono::milliseconds(250);
+constexpr int32 kCrdStatusFifoFinish0 = 0x00000010;
 constexpr int16 kCoordinateSystem = 1;
 constexpr uint32 kCoordinateSystemMask = 0x01;
+
+bool IsCoordinateSystemCompleted(const Motion::Ports::CoordinateSystemStatus& status) {
+    if (status.state == Motion::Ports::CoordinateSystemState::ERROR_STATE) {
+        return false;
+    }
+
+    if (status.state == Motion::Ports::CoordinateSystemState::IDLE) {
+        return true;
+    }
+
+    if (!status.is_moving && status.remaining_segments == 0U) {
+        return true;
+    }
+
+    const bool fifo_finished = (status.raw_status_word & kCrdStatusFifoFinish0) != 0;
+    const bool coord_velocity_idle = std::fabs(status.current_velocity) <= kCompletionVelocityToleranceMmS;
+    const bool segments_drained = status.remaining_segments == 0U || status.raw_segment <= 0;
+    return fifo_finished && coord_velocity_idle && segments_drained;
+}
+
+std::optional<uint32> TryResolveExecutedSegmentsForProgress(const Motion::Ports::CoordinateSystemStatus& status,
+                                                            uint32 total_segments) {
+    if (total_segments == 0U) {
+        return 0U;
+    }
+
+    if (IsCoordinateSystemCompleted(status)) {
+        return total_segments;
+    }
+
+    if (status.raw_segment <= 0) {
+        return std::nullopt;
+    }
+
+    const auto remaining_segments =
+        std::min<uint32>(total_segments, static_cast<uint32>(status.raw_segment));
+    return total_segments - remaining_segments;
+}
 
 struct SupplyValveGuard {
     std::shared_ptr<IValvePort> port;
@@ -160,6 +206,49 @@ class MotionObserverGuard {
     IDispensingExecutionObserver* observer_;
     bool started_ = false;
 };
+
+int32 BuildMotionCompletionTimeoutMs(float32 estimated_motion_time_ms) noexcept {
+    const auto base_timeout = static_cast<int32>(std::max(0.0f, estimated_motion_time_ms));
+    if (base_timeout <= 0) {
+        return static_cast<int32>(kMotionCompletionGraceMinMs);
+    }
+
+    const auto ratio_grace = static_cast<int32>(std::ceil(estimated_motion_time_ms * kMotionCompletionGraceRatio));
+    const auto grace_ms = std::clamp(ratio_grace,
+                                     static_cast<int32>(kMotionCompletionGraceMinMs),
+                                     static_cast<int32>(kMotionCompletionGraceMaxMs));
+    return base_timeout + grace_ms;
+}
+
+Point2D ResolveFinalTargetPosition(const DispensingExecutionPlan& plan) noexcept {
+    if (!plan.motion_trajectory.points.empty()) {
+        return Point2D(plan.motion_trajectory.points.back().position);
+    }
+    if (!plan.interpolation_points.empty()) {
+        return plan.interpolation_points.back().position;
+    }
+    if (!plan.interpolation_segments.empty()) {
+        const auto& positions = plan.interpolation_segments.back().positions;
+        if (positions.size() >= 2) {
+            return Point2D(positions[0], positions[1]);
+        }
+    }
+    return Point2D{};
+}
+
+float32 ResolveCompletionPositionToleranceMm(const std::shared_ptr<IConfigurationPort>& config_port) noexcept {
+    float32 tolerance = kCompletionPositionToleranceFloorMm;
+    if (!config_port) {
+        return tolerance;
+    }
+
+    auto machine_result = config_port->GetMachineConfig();
+    if (!machine_result.IsSuccess()) {
+        return tolerance;
+    }
+
+    return std::max(machine_result.Value().positioning_tolerance, tolerance);
+}
 
 }  // namespace
 
@@ -566,9 +655,12 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
         auto progress_status_result = interpolation_port_->GetCoordinateSystemStatus(kCoordinateSystem);
         if (progress_status_result.IsSuccess()) {
             const auto& progress_status = progress_status_result.Value();
-            const auto remaining_segments = std::min<size_t>(total_segments, progress_status.remaining_segments);
-            const auto executed_segments = static_cast<uint32>(total_segments - remaining_segments);
-            PublishProgress(observer, executed_segments, static_cast<uint32>(total_segments));
+            auto executed_segments = TryResolveExecutedSegmentsForProgress(
+                progress_status,
+                static_cast<uint32>(total_segments));
+            if (executed_segments.has_value()) {
+                PublishProgress(observer, executed_segments.value(), static_cast<uint32>(total_segments));
+            }
         }
 
         const auto space = space_result.Value();
@@ -649,18 +741,27 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
         last_progress = std::chrono::steady_clock::now();
     }
 
-    int32 timeout_ms = static_cast<int32>(std::max(0.0f, trigger_output.estimated_motion_time_ms));
-    if (timeout_ms == 0) {
-        timeout_ms = static_cast<int32>(kMotionCompletionToleranceMs);
-    } else {
-        timeout_ms += static_cast<int32>(kMotionCompletionToleranceMs);
-    }
+    const auto final_target_position = ResolveFinalTargetPosition(plan);
+    const auto position_tolerance_mm = ResolveCompletionPositionToleranceMm(config_port_);
+    const auto timeout_ms = BuildMotionCompletionTimeoutMs(trigger_output.estimated_motion_time_ms);
+
+    SILIGEN_LOG_INFO_FMT_HELPER(
+        "等待运动完成: timeout_ms=%d, estimated_motion_time_ms=%.1f, final_target=(%.3f, %.3f), "
+        "position_tolerance_mm=%.3f, total_segments=%zu",
+        timeout_ms,
+        trigger_output.estimated_motion_time_ms,
+        final_target_position.x,
+        final_target_position.y,
+        position_tolerance_mm,
+        total_segments);
 
     auto wait_result = WaitForMotionComplete(
         timeout_ms,
         stop_flag,
         pause_flag,
         pause_applied_flag,
+        &final_target_position,
+        position_tolerance_mm,
         static_cast<uint32>(total_segments),
         options.dispense_enabled,
         observer);
@@ -681,6 +782,8 @@ Result<void> DispensingProcessService::WaitForMotionComplete(int32 timeout_ms,
                                                              std::atomic<bool>* stop_flag,
                                                              std::atomic<bool>* pause_flag,
                                                              std::atomic<bool>* pause_applied_flag,
+                                                             const Point2D* final_target_position,
+                                                             float32 position_tolerance_mm,
                                                              uint32 total_segments,
                                                              bool dispense_enabled,
                                                              IDispensingExecutionObserver* observer) noexcept {
@@ -690,6 +793,20 @@ Result<void> DispensingProcessService::WaitForMotionComplete(int32 timeout_ms,
     }
 
     auto start = std::chrono::steady_clock::now();
+    auto settled_since = std::chrono::steady_clock::time_point{};
+    bool settle_tracking = false;
+    bool has_initial_position = false;
+    Point2D initial_position{};
+    if (motion_state_port_) {
+        auto initial_position_result = motion_state_port_->GetCurrentPosition();
+        if (initial_position_result.IsSuccess()) {
+            initial_position = initial_position_result.Value();
+            has_initial_position = true;
+        }
+    }
+    bool has_last_position = false;
+    Point2D last_position{};
+    bool observed_motion = false;
     while (true) {
         auto pause_result = WaitWhilePaused(stop_flag, pause_flag, pause_applied_flag, dispense_enabled, observer);
         if (pause_result.IsError()) {
@@ -708,18 +825,210 @@ Result<void> DispensingProcessService::WaitForMotionComplete(int32 timeout_ms,
         }
 
         const auto& status = status_result.Value();
-        const auto remaining_segments = std::min<uint32>(total_segments, status.remaining_segments);
-        const auto executed_segments = total_segments - remaining_segments;
-        PublishProgress(observer, executed_segments, total_segments);
-        bool completed = (status.state == Motion::Ports::CoordinateSystemState::IDLE) ||
-                         (!status.is_moving && status.remaining_segments == 0);
-        if (completed) {
+        auto executed_segments = TryResolveExecutedSegmentsForProgress(status, total_segments);
+        if (executed_segments.has_value()) {
+            PublishProgress(observer, executed_segments.value(), total_segments);
+        }
+        const bool coord_completed = IsCoordinateSystemCompleted(status);
+
+        if (final_target_position && motion_state_port_) {
+            auto now = std::chrono::steady_clock::now();
+            auto position_result = motion_state_port_->GetCurrentPosition();
+            auto x_velocity_result = motion_state_port_->GetAxisVelocity(LogicalAxisId::X);
+            auto y_velocity_result = motion_state_port_->GetAxisVelocity(LogicalAxisId::Y);
+
+            if (position_result.IsSuccess() && x_velocity_result.IsSuccess() && y_velocity_result.IsSuccess()) {
+                const auto& current_position = position_result.Value();
+                if (!has_last_position) {
+                    last_position = current_position;
+                    has_last_position = true;
+                }
+                const auto distance_to_target = current_position.DistanceTo(*final_target_position);
+                const auto position_delta = current_position.DistanceTo(last_position);
+                const auto x_velocity = std::fabs(x_velocity_result.Value());
+                const auto y_velocity = std::fabs(y_velocity_result.Value());
+                const bool within_target = distance_to_target <= position_tolerance_mm;
+                const bool low_velocity =
+                    x_velocity <= kCompletionVelocityToleranceMmS &&
+                    y_velocity <= kCompletionVelocityToleranceMmS;
+                if ((has_initial_position && current_position.DistanceTo(initial_position) > position_tolerance_mm) ||
+                    x_velocity > kCompletionVelocityToleranceMmS ||
+                    y_velocity > kCompletionVelocityToleranceMmS ||
+                    (executed_segments.has_value() && executed_segments.value() > 0U)) {
+                    observed_motion = true;
+                }
+
+                if (coord_completed && low_velocity && within_target) {
+                    if (!settle_tracking) {
+                        settled_since = now;
+                        settle_tracking = true;
+                    } else if (now - settled_since >= kCompletionSettleWindow) {
+                        SILIGEN_LOG_INFO_FMT_HELPER(
+                            "运动完成采用权威反馈收敛: pos=(%.3f, %.3f), target=(%.3f, %.3f), "
+                            "distance=%.4f, delta=%.4f, vx=%.4f, vy=%.4f, observed_motion=%d, raw_status=%d, raw_segment=%d",
+                            current_position.x,
+                            current_position.y,
+                            final_target_position->x,
+                            final_target_position->y,
+                            distance_to_target,
+                            position_delta,
+                            x_velocity,
+                            y_velocity,
+                            observed_motion ? 1 : 0,
+                            status.raw_status_word,
+                            status.raw_segment);
+                        PublishProgress(observer, total_segments, total_segments);
+                        return Result<void>::Success();
+                    }
+                } else {
+                    settle_tracking = false;
+                }
+                last_position = current_position;
+            } else {
+                settle_tracking = false;
+            }
+        } else if (coord_completed) {
+            PublishProgress(observer, total_segments, total_segments);
             return Result<void>::Success();
         }
 
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - start).count();
         if (timeout_ms > 0 && elapsed > timeout_ms) {
+            int raw_status = 0;
+            int raw_segment = 0;
+            int mc_ret = 0;
+            int state = -1;
+            int is_moving = 0;
+            unsigned remaining_segments = 0;
+            float current_velocity = 0.0f;
+            float current_x = 0.0f;
+            float current_y = 0.0f;
+            float x_velocity = 0.0f;
+            float y_velocity = 0.0f;
+            float distance_to_target = -1.0f;
+            bool has_position_snapshot = false;
+            std::string x_feedback_source = "unknown";
+            std::string y_feedback_source = "unknown";
+            float x_profile_position = 0.0f;
+            float x_encoder_position = 0.0f;
+            float y_profile_position = 0.0f;
+            float y_encoder_position = 0.0f;
+            float x_profile_velocity = 0.0f;
+            float x_encoder_velocity = 0.0f;
+            float y_profile_velocity = 0.0f;
+            float y_encoder_velocity = 0.0f;
+            int x_profile_position_ret = 0;
+            int x_encoder_position_ret = 0;
+            int y_profile_position_ret = 0;
+            int y_encoder_position_ret = 0;
+            int x_profile_velocity_ret = 0;
+            int x_encoder_velocity_ret = 0;
+            int y_profile_velocity_ret = 0;
+            int y_encoder_velocity_ret = 0;
+
+            auto timeout_status_result = interpolation_port_->GetCoordinateSystemStatus(kCoordinateSystem);
+            if (timeout_status_result.IsSuccess()) {
+                const auto& timeout_status = timeout_status_result.Value();
+                raw_status = timeout_status.raw_status_word;
+                raw_segment = timeout_status.raw_segment;
+                mc_ret = timeout_status.mc_status_ret;
+                state = static_cast<int>(timeout_status.state);
+                is_moving = timeout_status.is_moving ? 1 : 0;
+                remaining_segments = timeout_status.remaining_segments;
+                current_velocity = timeout_status.current_velocity;
+            }
+
+            if (motion_state_port_) {
+                auto timeout_position_result = motion_state_port_->GetCurrentPosition();
+                auto timeout_x_velocity_result = motion_state_port_->GetAxisVelocity(LogicalAxisId::X);
+                auto timeout_y_velocity_result = motion_state_port_->GetAxisVelocity(LogicalAxisId::Y);
+                if (timeout_position_result.IsSuccess()) {
+                    const auto& timeout_position = timeout_position_result.Value();
+                    current_x = timeout_position.x;
+                    current_y = timeout_position.y;
+                    has_position_snapshot = true;
+                    if (final_target_position) {
+                        distance_to_target = timeout_position.DistanceTo(*final_target_position);
+                    }
+                }
+                if (timeout_x_velocity_result.IsSuccess()) {
+                    x_velocity = timeout_x_velocity_result.Value();
+                }
+                if (timeout_y_velocity_result.IsSuccess()) {
+                    y_velocity = timeout_y_velocity_result.Value();
+                }
+                auto timeout_x_status_result = motion_state_port_->GetAxisStatus(LogicalAxisId::X);
+                if (timeout_x_status_result.IsSuccess()) {
+                    const auto& x_status = timeout_x_status_result.Value();
+                    x_feedback_source = x_status.selected_feedback_source;
+                    x_profile_position = x_status.profile_position_mm;
+                    x_encoder_position = x_status.encoder_position_mm;
+                    x_profile_velocity = x_status.profile_velocity_mm_s;
+                    x_encoder_velocity = x_status.encoder_velocity_mm_s;
+                    x_profile_position_ret = x_status.profile_position_ret;
+                    x_encoder_position_ret = x_status.encoder_position_ret;
+                    x_profile_velocity_ret = x_status.profile_velocity_ret;
+                    x_encoder_velocity_ret = x_status.encoder_velocity_ret;
+                }
+                auto timeout_y_status_result = motion_state_port_->GetAxisStatus(LogicalAxisId::Y);
+                if (timeout_y_status_result.IsSuccess()) {
+                    const auto& y_status = timeout_y_status_result.Value();
+                    y_feedback_source = y_status.selected_feedback_source;
+                    y_profile_position = y_status.profile_position_mm;
+                    y_encoder_position = y_status.encoder_position_mm;
+                    y_profile_velocity = y_status.profile_velocity_mm_s;
+                    y_encoder_velocity = y_status.encoder_velocity_mm_s;
+                    y_profile_position_ret = y_status.profile_position_ret;
+                    y_encoder_position_ret = y_status.encoder_position_ret;
+                    y_profile_velocity_ret = y_status.profile_velocity_ret;
+                    y_encoder_velocity_ret = y_status.encoder_velocity_ret;
+                }
+            }
+
+            SILIGEN_LOG_ERROR_FMT_HELPER(
+                "等待运动完成超时: elapsed_ms=%lld, observed_motion=%d, state=%d, moving=%d, remaining=%u, "
+                "coord_vel=%.4f, raw_status=%d, raw_segment=%d, mc_ret=%d, pos=(%.3f, %.3f), "
+                "axis_vel=(%.4f, %.4f), target=(%.3f, %.3f), distance=%.4f, has_pos=%d",
+                static_cast<long long>(elapsed),
+                observed_motion ? 1 : 0,
+                state,
+                is_moving,
+                remaining_segments,
+                current_velocity,
+                raw_status,
+                raw_segment,
+                mc_ret,
+                current_x,
+                current_y,
+                x_velocity,
+                y_velocity,
+                final_target_position ? final_target_position->x : 0.0f,
+                final_target_position ? final_target_position->y : 0.0f,
+                distance_to_target,
+                has_position_snapshot ? 1 : 0);
+            SILIGEN_LOG_ERROR_FMT_HELPER(
+                "等待运动完成超时轴反馈: "
+                "X[source=%s prf_pos=%.3f enc_pos=%.3f prf_vel=%.4f enc_vel=%.4f ret=(%d,%d,%d,%d)] "
+                "Y[source=%s prf_pos=%.3f enc_pos=%.3f prf_vel=%.4f enc_vel=%.4f ret=(%d,%d,%d,%d)]",
+                x_feedback_source.c_str(),
+                x_profile_position,
+                x_encoder_position,
+                x_profile_velocity,
+                x_encoder_velocity,
+                x_profile_position_ret,
+                x_encoder_position_ret,
+                x_profile_velocity_ret,
+                x_encoder_velocity_ret,
+                y_feedback_source.c_str(),
+                y_profile_position,
+                y_encoder_position,
+                y_profile_velocity,
+                y_encoder_velocity,
+                y_profile_position_ret,
+                y_encoder_position_ret,
+                y_profile_velocity_ret,
+                y_encoder_velocity_ret);
             return Result<void>::Failure(
                 Error(ErrorCode::MOTION_TIMEOUT, "等待运动完成超时", "DispensingProcessService"));
         }

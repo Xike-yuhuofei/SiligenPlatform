@@ -12,6 +12,8 @@ PACKAGE_ROOT = WORKSPACE_ROOT / "packages" / "engineering-contracts"
 ENGINEERING_DATA_ROOT = WORKSPACE_ROOT / "packages" / "engineering-data"
 HMI_ROOT = WORKSPACE_ROOT / "apps" / "hmi-app"
 FIXTURE_ROOT = PACKAGE_ROOT / "fixtures" / "cases" / "rect_diag"
+CANONICAL_SCHEMA_ROOT = WORKSPACE_ROOT / "data" / "schemas" / "engineering" / "dxf" / "v1"
+LEGACY_BACKEND_CPP_ROOT = WORKSPACE_ROOT.parent / "Backend_CPP" / "proto"
 
 import sys
 
@@ -126,6 +128,8 @@ class EngineeringContractsCompatibilityTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.proto_path = PACKAGE_ROOT / "proto" / "v1" / "dxf_primitives.proto"
+        cls.workspace_canonical_proto_path = CANONICAL_SCHEMA_ROOT / "dxf_primitives.proto"
+        cls.legacy_backend_proto_path = LEGACY_BACKEND_CPP_ROOT / "dxf_primitives.proto"
         cls.preview_schema_path = PACKAGE_ROOT / "schemas" / "v1" / "preview-artifact.schema.json"
         cls.sim_schema_path = PACKAGE_ROOT / "schemas" / "v1" / "simulation-input.schema.json"
         cls.preview_fixture_path = FIXTURE_ROOT / "preview-artifact.json"
@@ -133,13 +137,24 @@ class EngineeringContractsCompatibilityTest(unittest.TestCase):
         cls.pb_fixture_path = FIXTURE_ROOT / "rect_diag.pb"
         cls.dxf_fixture_path = FIXTURE_ROOT / "rect_diag.dxf"
 
-    def test_canonical_proto_matches_backend_cpp_source(self) -> None:
-        canonical = self.proto_path.read_text(encoding="utf-8").replace("\r\n", "\n").strip()
-        backend = (
-            WORKSPACE_ROOT.parent / "Backend_CPP" / "proto" / "dxf_primitives.proto"
-        ).read_text(encoding="utf-8").replace("\r\n", "\n").strip()
+    def test_owner_proto_matches_workspace_canonical_source(self) -> None:
+        self.assertTrue(
+            self.workspace_canonical_proto_path.exists(),
+            msg=f"workspace canonical proto missing: {self.workspace_canonical_proto_path}",
+        )
+        owner_proto = self.proto_path.read_text(encoding="utf-8").replace("\r\n", "\n").strip()
+        workspace_canonical = self.workspace_canonical_proto_path.read_text(encoding="utf-8").replace("\r\n", "\n").strip()
 
-        self.assertEqual(canonical, backend)
+        self.assertEqual(owner_proto, workspace_canonical)
+
+    def test_owner_proto_matches_backend_cpp_source_when_available(self) -> None:
+        if not self.legacy_backend_proto_path.exists():
+            self.skipTest(f"legacy Backend_CPP proto not available: {self.legacy_backend_proto_path}")
+
+        owner_proto = self.proto_path.read_text(encoding="utf-8").replace("\r\n", "\n").strip()
+        backend_proto = self.legacy_backend_proto_path.read_text(encoding="utf-8").replace("\r\n", "\n").strip()
+
+        self.assertEqual(owner_proto, backend_proto)
 
     def test_schema_documents_are_present_and_parseable(self) -> None:
         preview_schema = _load_json(self.preview_schema_path)

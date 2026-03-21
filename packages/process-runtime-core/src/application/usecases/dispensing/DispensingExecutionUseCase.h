@@ -16,6 +16,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -130,18 +131,27 @@ enum class TaskState {
 struct TaskExecutionContext {
     TaskID task_id;
     std::atomic<TaskState> state{TaskState::PENDING};
+    std::atomic<TaskState> committed_terminal_state{TaskState::PENDING};
     DispensingMVPRequest request;
     DispensingMVPResult result;
 
     std::atomic<uint32> total_segments{0};
     std::atomic<uint32> executed_segments{0};
+    std::atomic<uint32> reported_progress_percent{0};
+    std::atomic<uint32> reported_executed_segments{0};
+    std::atomic<uint32> estimated_execution_ms{0};
     std::atomic<bool> cancel_requested{false};
     std::atomic<bool> pause_requested{false};
     std::atomic<bool> pause_applied{false};
+    std::atomic<bool> terminal_committed{false};
+    std::atomic<bool> execution_started{false};
+    std::atomic<bool> inflight_registered{false};
+    std::atomic<bool> inflight_released{false};
 
     std::chrono::steady_clock::time_point start_time;
     std::chrono::steady_clock::time_point end_time;
     mutable std::mutex mutex_;
+    std::string scheduler_task_id;
     std::string error_message;
 };
 
@@ -169,7 +179,7 @@ class DispensingExecutionUseCase {
         std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService>
             pb_preparation_service = nullptr);
 
-    ~DispensingExecutionUseCase() = default;
+    ~DispensingExecutionUseCase();
 
     DispensingExecutionUseCase(const DispensingExecutionUseCase&) = delete;
     DispensingExecutionUseCase& operator=(const DispensingExecutionUseCase&) = delete;
@@ -207,9 +217,16 @@ class DispensingExecutionUseCase {
 
     std::atomic<bool> stop_requested_{false};
     std::mutex execution_mutex_;
+    mutable std::mutex worker_mutex_;
+    std::thread worker_thread_;
+    std::atomic<std::uint64_t> task_sequence_{0};
+    std::atomic<std::uint32_t> inflight_tasks_{0};
+    mutable std::mutex inflight_mutex_;
+    std::condition_variable inflight_cv_;
 
     std::unordered_map<TaskID, std::shared_ptr<TaskExecutionContext>> tasks_;
     mutable std::mutex tasks_mutex_;
+    TaskID active_task_id_;
 
     Shared::Types::Result<void> ValidateHardwareConnection() noexcept;
     Shared::Types::Result<void> RefreshRuntimeParameters(const DispensingMVPRequest& request) noexcept;
@@ -217,8 +234,28 @@ class DispensingExecutionUseCase {
     Shared::Types::Result<DispensingMVPResult> ExecuteInternal(
         const DispensingMVPRequest& request,
         const std::shared_ptr<TaskExecutionContext>& context);
+    static bool IsTerminalState(TaskState state);
+    static bool TryCommitTerminalState(
+        const std::shared_ptr<TaskExecutionContext>& context,
+        TaskState terminal_state,
+        const std::string& error_message);
+    static TaskState ResolveVisibleState(const std::shared_ptr<TaskExecutionContext>& context);
+    std::shared_ptr<TaskExecutionContext> ResolveActiveContextLocked() const;
+    void JoinWorkerThread();
+    void RegisterTaskInflight(const std::shared_ptr<TaskExecutionContext>& context);
+    void ReleaseTaskInflight(const std::shared_ptr<TaskExecutionContext>& context);
+    bool WaitForTaskTerminalState(
+        const std::shared_ptr<TaskExecutionContext>& context,
+        std::chrono::milliseconds timeout,
+        TaskState* terminal_state_out = nullptr) const;
+    bool WaitForAllInflightTasks(
+        std::chrono::milliseconds timeout,
+        std::string* diagnostics_out = nullptr);
+    void ReconcileStalledInflightTasks();
+    std::string BuildInflightDiagnostics() const;
+    std::string ReadTaskErrorMessage(const std::shared_ptr<TaskExecutionContext>& context) const;
 
-    TaskID GenerateTaskID() const;
+    TaskID GenerateTaskID();
     std::string TaskStateToString(TaskState state) const;
 };
 

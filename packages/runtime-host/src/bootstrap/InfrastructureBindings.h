@@ -13,6 +13,12 @@ class ILoggingService;
 }  // namespace Shared
 
 namespace Domain {
+namespace Safety {
+namespace Ports {
+class IInterlockSignalPort;
+}  // namespace Ports
+}  // namespace Safety
+
 namespace Configuration {
 namespace Ports {
 class IConfigurationPort;
@@ -109,6 +115,7 @@ struct InfrastructureBindings {
     std::shared_ptr<Domain::Diagnostics::Ports::ICMPTestPresetPort> preset_port;
     std::shared_ptr<Domain::Dispensing::Ports::ITaskSchedulerPort> task_scheduler_port;
     std::shared_ptr<Domain::System::Ports::IEventPublisherPort> event_port;
+    std::shared_ptr<Domain::Safety::Ports::IInterlockSignalPort> interlock_signal_port;
     std::shared_ptr<Domain::Trajectory::Ports::IPathSourcePort> path_source_port;
     std::shared_ptr<Domain::Trajectory::Ports::IDXFPathSourcePort> dxf_path_source_port;
     std::shared_ptr<Domain::Recipes::Ports::IRecipeRepositoryPort> recipe_repository;

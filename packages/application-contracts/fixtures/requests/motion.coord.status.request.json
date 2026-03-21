@@ -1,0 +1,8 @@
+{
+  "id": "11",
+  "version": "1.0",
+  "method": "motion.coord.status",
+  "params": {
+    "coord_sys": 1
+  }
+}

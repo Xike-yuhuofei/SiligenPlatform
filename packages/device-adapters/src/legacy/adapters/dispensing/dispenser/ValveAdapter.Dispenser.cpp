@@ -296,12 +296,15 @@ Result<DispenserValveState> ValveAdapter::StartPositionTriggeredDispenser(
         }
 
         SILIGEN_LOG_INFO("CMP output channel set to: " + std::to_string(cmp_output_channel));
+        SILIGEN_LOG_INFO("StartPositionTriggeredDispenser: compare_source_axis=" +
+                         std::to_string(sdk_axis) +
+                         " (SDK 1-based, derived from trigger axis; legacy [CMP].encoder_num is ignored by DXF hardware trigger path)");
 
         // 5. 加载位置触发缓冲区
-        // MC_CmpBufData 第一个参数 nCmpEncodeNum 是编码器/轴号（1-16），不是输出通道！
+        // MC_CmpBufData 第一个参数 nCmpEncodeNum 是位置比较源轴号（1-16），不是输出通道！
         if (!use_streaming) {
             result = CallMC_CmpBufData(
-                sdk_axis,  // 编码器/轴号（1-based SDK轴号）
+                sdk_axis,  // 位置比较源轴号（1-based SDK轴号）
                 adjusted_params.trigger_positions,
                 adjusted_params.pulse_width_ms,
                 adjusted_params.start_level
@@ -321,7 +324,7 @@ Result<DispenserValveState> ValveAdapter::StartPositionTriggeredDispenser(
                 cmp_stream_total_chunks_ =
                     (cmp_stream_positions_.size() + kCmpBufChunkSize - 1) / kCmpBufChunkSize;
                 cmp_stream_next_chunk_ = 0;
-                cmp_stream_encoder_axis_ = sdk_axis;
+                cmp_stream_compare_source_axis_ = sdk_axis;
                 cmp_stream_pulse_width_ms_ = adjusted_params.pulse_width_ms;
                 cmp_stream_start_level_ = adjusted_params.start_level;
             }
@@ -748,7 +751,7 @@ bool ValveAdapter::LoadCmpBufferChunk(bool load_buf1) noexcept {
         size_t start = cmp_stream_next_chunk_ * kCmpBufChunkSize;
         size_t end = std::min(start + kCmpBufChunkSize, cmp_stream_positions_.size());
         chunk.assign(cmp_stream_positions_.begin() + start, cmp_stream_positions_.begin() + end);
-        axis = cmp_stream_encoder_axis_;
+        axis = cmp_stream_compare_source_axis_;
         pulse_width = cmp_stream_pulse_width_ms_;
         start_level = cmp_stream_start_level_;
         cmp_stream_next_chunk_++;

@@ -13,6 +13,7 @@ constexpr int kCrdStatusProgRun = 0x00000001;
 constexpr int kCrdStatusProgEstop = 0x00000004;
 constexpr int kCrdStatusFifoFinish0 = 0x00000010;
 constexpr int kCrdStatusAlarm = 0x00000040;
+constexpr float kCoordinateVelocityIdleToleranceMmS = 0.001f;
 
 void LogCrdDiagnostics(const std::shared_ptr<Siligen::Infrastructure::Hardware::IMultiCardWrapper>& wrapper,
                        int16 coord_sys,
@@ -443,17 +444,16 @@ Result<Siligen::Domain::Motion::Ports::CoordinateSystemStatus> InterpolationAdap
         SILIGEN_LOG_WARNING("MC_GetCrdVel failed: " + std::to_string(vel_result));
     }
 
-    status.is_moving = is_running;
-    if (is_fifo_finished && segment <= 0) {
-        if (!velocity_valid || std::abs(current_velocity) < 1e-6) {
-            status.is_moving = false;
-        }
-    }
-    status.remaining_segments = static_cast<uint32>(segment);
+    const bool coord_velocity_idle =
+        !velocity_valid || std::fabs(status.current_velocity) <= kCoordinateVelocityIdleToleranceMmS;
+    const bool controller_reported_complete = is_fifo_finished && coord_velocity_idle && segment <= 0;
+
+    status.is_moving = is_running && !controller_reported_complete;
+    status.remaining_segments = segment > 0 ? static_cast<uint32>(segment) : 0U;
 
     if (is_estop || is_alarm) {
         status.state = Siligen::Domain::Motion::Ports::CoordinateSystemState::ERROR_STATE;
-    } else if (is_running) {
+    } else if (status.is_moving) {
         status.state = Siligen::Domain::Motion::Ports::CoordinateSystemState::MOVING;
     } else {
         status.state = Siligen::Domain::Motion::Ports::CoordinateSystemState::IDLE;

@@ -189,8 +189,26 @@ Result<TransitionCandidateResponse> RedundancyGovernanceUseCases::TransitionCand
         rollback_request.reason = "rollback_due_to_decision_log_failure";
         rollback_request.ticket = request.ticket;
         rollback_request.transitioned_at = transitioned_at;
-        repository_->TransitionCandidateStatus(rollback_request);
-        return Result<TransitionCandidateResponse>::Failure(decision_result.GetError());
+        auto rollback_result = repository_->TransitionCandidateStatus(rollback_request);
+        if (rollback_result.IsError()) {
+            return Result<TransitionCandidateResponse>::Failure(
+                Error(
+                    rollback_result.GetError().GetCode(),
+                    std::string("failure_stage=rollback_transition;decision_failure_code=") +
+                        std::to_string(static_cast<int>(decision_result.GetError().GetCode())) +
+                        ";decision_failure_message=" + decision_result.GetError().GetMessage() +
+                        ";rollback_failure_code=" + std::to_string(static_cast<int>(rollback_result.GetError().GetCode())) +
+                        ";rollback_failure_message=" + rollback_result.GetError().GetMessage(),
+                    "RedundancyGovernanceUseCases::TransitionCandidate"));
+        }
+        return Result<TransitionCandidateResponse>::Failure(
+            Error(
+                decision_result.GetError().GetCode(),
+                std::string("failure_stage=append_decision_log;failure_code=") +
+                    std::to_string(static_cast<int>(decision_result.GetError().GetCode())) +
+                    ";failure_message=" + decision_result.GetError().GetMessage() +
+                    ";rollback=success",
+                "RedundancyGovernanceUseCases::TransitionCandidate"));
     }
 
     TransitionCandidateResponse response;

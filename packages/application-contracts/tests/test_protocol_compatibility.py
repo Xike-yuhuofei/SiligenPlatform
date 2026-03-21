@@ -145,6 +145,59 @@ def test_recipe_aliases_are_explicit():
     assert expected.issubset(alias_methods)
 
 
+def test_dxf_preview_and_execute_snapshot_contract():
+    operations = load_operations()
+    assert "dxf.preview.snapshot" in operations
+    assert "dxf.preview.confirm" in operations
+    assert "dxf.artifact.create" in operations
+    assert "dxf.plan.prepare" in operations
+    assert "dxf.job.start" in operations
+    assert "dxf.job.status" in operations
+
+    preview = operations["dxf.preview.snapshot"]
+    preview_params = preview["paramsSchema"]
+    assert "plan_id" in preview_params["required"]
+    assert "snapshot_hash" in preview["resultSchema"]["required"]
+    assert "plan_id" in preview["resultSchema"]["required"]
+    assert "preview_state" in preview["resultSchema"]["required"]
+    preview_result_properties = preview["resultSchema"]["properties"]
+    assert "trajectory_polyline" in preview_result_properties
+    assert "polyline_point_count" in preview_result_properties
+    assert "polyline_source_point_count" in preview_result_properties
+
+    preview_confirm = operations["dxf.preview.confirm"]
+    assert {"plan_id", "snapshot_hash"}.issubset(set(preview_confirm["paramsSchema"]["required"]))
+    assert {"confirmed", "plan_id", "snapshot_hash", "preview_state", "confirmed_at"}.issubset(
+        set(preview_confirm["resultSchema"]["required"])
+    )
+
+    execute = operations["dxf.execute"]
+    execute_params = execute["paramsSchema"]
+    assert "snapshot_hash" in execute_params["required"]
+    assert "snapshot_hash" in execute_params["properties"]
+    execute_result_required = set(execute["resultSchema"]["required"])
+    assert "snapshot_hash" in execute_result_required
+    assert "preview_request_signature" in execute_result_required
+    assert "plan_id" in execute_result_required
+    assert "plan_fingerprint" in execute_result_required
+    assert {3004, 3005, 3006, 3007}.issubset(set(execute["errorCodes"]))
+
+    plan_prepare = operations["dxf.plan.prepare"]
+    assert "preview_request_signature" not in plan_prepare["resultSchema"]["required"]
+
+    job_status = operations["dxf.job.status"]
+    assert job_status["resultRef"].endswith("#/definitions/dxfJobStatus")
+
+
+def test_status_contract_describes_backend_interlock_authority():
+    states = load_json(CONTRACTS / "models" / "states.json")
+    io_required = set(states["definitions"]["ioStatus"]["required"])
+    io_props = states["definitions"]["ioStatus"]["properties"]
+    assert {"estop_known", "door_known"}.issubset(io_required)
+    assert "后端权威" in io_props["estop"]["description"]
+    assert "运行时互锁端口" in io_props["door"]["description"]
+
+
 def main():
     operations = load_operations()
     tests = [
@@ -153,6 +206,8 @@ def main():
       test_fixtures,
       test_known_compatibility_gaps_are_recorded,
       test_recipe_aliases_are_explicit,
+      test_dxf_preview_and_execute_snapshot_contract,
+      test_status_contract_describes_backend_interlock_authority,
     ]
     for test in tests:
         test()

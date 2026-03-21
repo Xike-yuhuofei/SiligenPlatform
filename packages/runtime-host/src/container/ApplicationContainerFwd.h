@@ -111,6 +111,7 @@ class ValveQueryUseCase;
 namespace Siligen::Application::UseCases::Dispensing {
 class CleanupFilesUseCase;
 class DispensingExecutionUseCase;
+class DispensingWorkflowUseCase;
 class PlanningUseCase;
 class UploadFileUseCase;
 }

@@ -172,6 +172,7 @@ struct HomingConfig {
     float32 search_distance = 520.0f;     ///< 搜索距离
     float32 escape_distance = 5.0f;       ///< 回退距离
     float32 escape_velocity = 0.0f;       ///< 回退速度(0=跟随定位速度)
+    bool home_backoff_enabled = true;     ///< 启用板卡原生HOME触发后二次回退
 
     // 时间参数 (ms)
     int32 timeout_ms = 30000;             ///< 超时时间

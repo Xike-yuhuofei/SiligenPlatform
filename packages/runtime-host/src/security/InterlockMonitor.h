@@ -3,17 +3,14 @@
 #include "shared/types/Types.h"
 #include "security/AuditLogger.h"
 #include "domain/safety/ports/IInterlockSignalPort.h"
+#include "siligen/device/adapters/drivers/multicard/IMultiCardWrapper.h"
 
 #include <atomic>
 #include <chrono>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <thread>
-
-// 前向声明MultiCard API函数
-extern "C" {
-short MC_GetDiRaw(short cardHandle, short diType, long* pValue);
-}
 
 namespace Siligen {
 
@@ -59,6 +56,7 @@ struct InterlockState {
 struct InterlockConfig {
     bool enabled;
     int16 emergency_stop_input;
+    bool emergency_stop_active_low;
     int16 safety_door_input;
     int16 pressure_sensor_input;
     int16 temperature_sensor_input;
@@ -82,7 +80,9 @@ class InterlockMonitor : public Domain::Safety::Ports::IInterlockSignalPort {
    public:
     using InterlockCallback = std::function<void(const std::string&)>;
 
-    explicit InterlockMonitor(AuditLogger& audit_logger);
+    explicit InterlockMonitor(
+        AuditLogger& audit_logger,
+        std::shared_ptr<Infrastructure::Hardware::IMultiCardWrapper> multicard = nullptr);
     ~InterlockMonitor();
 
     // 禁止拷贝
@@ -112,6 +112,7 @@ class InterlockMonitor : public Domain::Safety::Ports::IInterlockSignalPort {
     std::thread monitor_thread_;
     InterlockCallback callback_;
     AuditLogger& audit_logger_;
+    std::shared_ptr<Infrastructure::Hardware::IMultiCardWrapper> multicard_;
     std::chrono::system_clock::time_point last_self_test_;
     Domain::Safety::ValueObjects::InterlockPolicyConfig policy_config_;
 };

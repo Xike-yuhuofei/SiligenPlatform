@@ -120,12 +120,14 @@ function Invoke-ControlAppsBuild {
     }
 
     $buildTestsFlag = if ($EnableTests) { "ON" } else { "OFF" }
+    $usePchFlag = "ON"
+    $parallelCompileFlag = "ON"
     Reset-ControlAppsBuildIfSourceRootChanged
     cmake -S $workspaceSourceRoot -B $controlAppsBuild `
         -DSILIGEN_BUILD_TESTS=$buildTestsFlag `
-        -DSILIGEN_USE_PCH=OFF `
-        -DSILIGEN_PARALLEL_COMPILE=OFF
-    cmake --build $controlAppsBuild --config Debug --target $resolvedTargets
+        -DSILIGEN_USE_PCH=$usePchFlag `
+        -DSILIGEN_PARALLEL_COMPILE=$parallelCompileFlag
+    cmake --build $controlAppsBuild --config Debug --target $resolvedTargets --parallel
 }
 
 $resolvedSuites = Resolve-Suites -RequestedSuites $Suite

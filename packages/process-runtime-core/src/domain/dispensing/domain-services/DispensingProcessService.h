@@ -56,6 +56,8 @@ class DispensingProcessService {
                                        std::atomic<bool>* stop_flag,
                                        std::atomic<bool>* pause_flag,
                                        std::atomic<bool>* pause_applied_flag,
+                                       const Siligen::Shared::Types::Point2D* final_target_position,
+                                       float32 position_tolerance_mm,
                                        uint32 total_segments,
                                        bool dispense_enabled,
                                        IDispensingExecutionObserver* observer) noexcept;

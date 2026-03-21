@@ -56,6 +56,7 @@ add_library(siligen_application_dispensing STATIC
     usecases/dispensing/UploadFileUseCase.cpp
     usecases/dispensing/CleanupFilesUseCase.cpp
     usecases/dispensing/PlanningUseCase.cpp
+    usecases/dispensing/DispensingWorkflowUseCase.cpp
     usecases/dispensing/DispensingExecutionUseCase.cpp
     usecases/dispensing/DispensingExecutionUseCase.Setup.cpp
     usecases/dispensing/DispensingExecutionUseCase.Control.cpp
@@ -121,5 +122,4 @@ if(SILIGEN_USE_PCH)
 endif()
 
 message(STATUS "[Application Layer] 应用层配置完成")
-
 

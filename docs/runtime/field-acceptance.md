@@ -1,6 +1,6 @@
 # Field Acceptance
 
-更新时间：`2026-03-20`
+更新时间：`2026-03-21`
 
 ## 1. 结论摘要
 
@@ -17,6 +17,7 @@
 - `mock`、`simulation`、`protocol compatibility` 维持通过。
 - `HIL` 闭环/长稳在 `pause/resume=3` 门槛下通过，状态门禁无 `skipped/failed`。
 - `real hardware` 本轮已执行并纳入验收证据，但该结论不等同工艺质量签收。
+- `2026-03-21` 已补做一次新 `artifact / plan / job` 主链的真机真实点胶回归，记录见 [DXF 真机真实点胶回归记录 2026-03-21](/D:/Projects/SiligenSuite/docs/validation/dxf-real-dispense-field-regression-2026-03-21.md)。
 
 ## 2. 分层结果
 
@@ -43,6 +44,7 @@
 
 - `HMI -> TCP -> Core`：mock 验证通过；HIL 闭环链路已通过。
 - DXF 加载 / 执行：mock、simulation、HIL（含真实机台口径）均有通过证据。
+- DXF 新主链真实点胶：`2026-03-21` 已完成一次 `dry_run=false` 真机闭环，供料与点胶阀运行中均被观测到打开，任务最终 `completed`。
 - 暂停/恢复状态转换：已在 `pause/resume=3` 门槛下持续通过。
 - 报警 / 异常恢复：mock 已验证；真实机台专项恢复场景仍建议补充。
 
@@ -53,4 +55,5 @@
   - `mock/simulation 替代验收通过`
   - `HIL 受控闭环长稳通过（门禁已收紧）`
   - `real hardware 已执行并纳入证据`
+  - `DXF 新主链真机真实点胶已完成一次通过性回归`
   - `整机/工艺签收仍需独立工艺验收流程`

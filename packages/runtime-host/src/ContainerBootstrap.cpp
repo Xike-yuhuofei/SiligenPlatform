@@ -27,6 +27,7 @@
 #include "domain/recipes/ports/IRecipeBundleSerializerPort.h"
 #include "domain/recipes/ports/IRecipeRepositoryPort.h"
 #include "domain/recipes/ports/ITemplateRepositoryPort.h"
+#include "domain/safety/ports/IInterlockSignalPort.h"
 #include "domain/trajectory/ports/IPathSourcePort.h"
 
 namespace {
@@ -113,6 +114,9 @@ void ApplyBindings(
     }
     if (bindings.event_port) {
         container.RegisterPort<Siligen::Domain::System::Ports::IEventPublisherPort>(bindings.event_port);
+    }
+    if (bindings.interlock_signal_port) {
+        container.RegisterPort<Siligen::Domain::Safety::Ports::IInterlockSignalPort>(bindings.interlock_signal_port);
     }
     if (bindings.path_source_port) {
         container.RegisterPort<Siligen::Domain::Trajectory::Ports::IPathSourcePort>(bindings.path_source_port);

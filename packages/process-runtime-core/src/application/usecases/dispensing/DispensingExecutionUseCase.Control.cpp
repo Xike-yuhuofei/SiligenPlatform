@@ -19,6 +19,25 @@ namespace {
 constexpr auto kPauseTransitionTimeout = std::chrono::seconds(2);
 constexpr auto kPauseTransitionPoll = std::chrono::milliseconds(50);
 
+const char* TaskStateCode(TaskState state) {
+    switch (state) {
+        case TaskState::PENDING:
+            return "PENDING";
+        case TaskState::RUNNING:
+            return "RUNNING";
+        case TaskState::PAUSED:
+            return "PAUSED";
+        case TaskState::COMPLETED:
+            return "COMPLETED";
+        case TaskState::FAILED:
+            return "FAILED";
+        case TaskState::CANCELLED:
+            return "CANCELLED";
+        default:
+            return "UNKNOWN";
+    }
+}
+
 }  // namespace
 
 void DispensingExecutionUseCase::StopExecution() {
@@ -38,10 +57,14 @@ Result<void> DispensingExecutionUseCase::PauseTask(const TaskID& task_id) {
             return Result<void>::Failure(
                 Error(ErrorCode::INVALID_STATE, "Task not found", "DispensingExecutionUseCase"));
         }
+        if (task_id != active_task_id_) {
+            return Result<void>::Failure(
+                Error(ErrorCode::INVALID_STATE, "Task is not active", "DispensingExecutionUseCase"));
+        }
         context = it->second;
     }
 
-    const auto state = context->state.load();
+    const auto state = ResolveVisibleState(context);
     if (state == TaskState::PAUSED) {
         return Result<void>::Success();
     }
@@ -53,19 +76,41 @@ Result<void> DispensingExecutionUseCase::PauseTask(const TaskID& task_id) {
     context->pause_requested.store(true);
     const auto deadline = std::chrono::steady_clock::now() + kPauseTransitionTimeout;
     while (std::chrono::steady_clock::now() < deadline) {
-        if (context->state.load() == TaskState::PAUSED && context->pause_applied.load()) {
+        if (ResolveVisibleState(context) == TaskState::PAUSED && context->pause_applied.load()) {
             return Result<void>::Success();
         }
-        if (context->state.load() == TaskState::FAILED ||
-            context->state.load() == TaskState::CANCELLED ||
-            context->state.load() == TaskState::COMPLETED) {
-            break;
+        const auto observed_state = ResolveVisibleState(context);
+        if (observed_state == TaskState::FAILED ||
+            observed_state == TaskState::CANCELLED ||
+            observed_state == TaskState::COMPLETED) {
+            if (observed_state == TaskState::FAILED) {
+                auto failure_message = ReadTaskErrorMessage(context);
+                if (failure_message.empty()) {
+                    failure_message = "task_failed";
+                }
+                return Result<void>::Failure(
+                    Error(
+                        ErrorCode::HARDWARE_ERROR,
+                        "failure_stage=pause_confirm;failure_code=" + std::string(TaskStateCode(observed_state)) +
+                            ";message=" + failure_message,
+                        "DispensingExecutionUseCase"));
+            }
+
+            return Result<void>::Failure(
+                Error(
+                    ErrorCode::INVALID_STATE,
+                    "failure_stage=pause_confirm;failure_code=" + std::string(TaskStateCode(observed_state)) +
+                        ";message=pause_interrupted_by_terminal_state",
+                    "DispensingExecutionUseCase"));
         }
         std::this_thread::sleep_for(kPauseTransitionPoll);
     }
 
     return Result<void>::Failure(
-        Error(ErrorCode::MOTION_TIMEOUT, "Pause transition timed out", "DispensingExecutionUseCase"));
+        Error(
+            ErrorCode::MOTION_TIMEOUT,
+            "failure_stage=pause_confirm;failure_code=MOTION_TIMEOUT;message=pause_transition_timed_out",
+            "DispensingExecutionUseCase"));
 }
 
 Result<void> DispensingExecutionUseCase::ResumeTask(const TaskID& task_id) {
@@ -77,10 +122,14 @@ Result<void> DispensingExecutionUseCase::ResumeTask(const TaskID& task_id) {
             return Result<void>::Failure(
                 Error(ErrorCode::INVALID_STATE, "Task not found", "DispensingExecutionUseCase"));
         }
+        if (task_id != active_task_id_) {
+            return Result<void>::Failure(
+                Error(ErrorCode::INVALID_STATE, "Task is not active", "DispensingExecutionUseCase"));
+        }
         context = it->second;
     }
 
-    const auto state = context->state.load();
+    const auto state = ResolveVisibleState(context);
     if (state == TaskState::RUNNING && !context->pause_applied.load()) {
         return Result<void>::Success();
     }
@@ -92,19 +141,41 @@ Result<void> DispensingExecutionUseCase::ResumeTask(const TaskID& task_id) {
     context->pause_requested.store(false);
     const auto deadline = std::chrono::steady_clock::now() + kPauseTransitionTimeout;
     while (std::chrono::steady_clock::now() < deadline) {
-        if (context->state.load() == TaskState::RUNNING && !context->pause_applied.load()) {
+        if (ResolveVisibleState(context) == TaskState::RUNNING && !context->pause_applied.load()) {
             return Result<void>::Success();
         }
-        if (context->state.load() == TaskState::FAILED ||
-            context->state.load() == TaskState::CANCELLED ||
-            context->state.load() == TaskState::COMPLETED) {
-            break;
+        const auto observed_state = ResolveVisibleState(context);
+        if (observed_state == TaskState::FAILED ||
+            observed_state == TaskState::CANCELLED ||
+            observed_state == TaskState::COMPLETED) {
+            if (observed_state == TaskState::FAILED) {
+                auto failure_message = ReadTaskErrorMessage(context);
+                if (failure_message.empty()) {
+                    failure_message = "task_failed";
+                }
+                return Result<void>::Failure(
+                    Error(
+                        ErrorCode::HARDWARE_ERROR,
+                        "failure_stage=resume_confirm;failure_code=" + std::string(TaskStateCode(observed_state)) +
+                            ";message=" + failure_message,
+                        "DispensingExecutionUseCase"));
+            }
+
+            return Result<void>::Failure(
+                Error(
+                    ErrorCode::INVALID_STATE,
+                    "failure_stage=resume_confirm;failure_code=" + std::string(TaskStateCode(observed_state)) +
+                        ";message=resume_interrupted_by_terminal_state",
+                    "DispensingExecutionUseCase"));
         }
         std::this_thread::sleep_for(kPauseTransitionPoll);
     }
 
     return Result<void>::Failure(
-        Error(ErrorCode::MOTION_TIMEOUT, "Resume transition timed out", "DispensingExecutionUseCase"));
+        Error(
+            ErrorCode::MOTION_TIMEOUT,
+            "failure_stage=resume_confirm;failure_code=MOTION_TIMEOUT;message=resume_transition_timed_out",
+            "DispensingExecutionUseCase"));
 }
 
 }  // namespace Siligen::Application::UseCases::Dispensing

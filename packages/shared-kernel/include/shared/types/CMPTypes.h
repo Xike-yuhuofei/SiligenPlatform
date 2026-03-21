@@ -333,11 +333,11 @@ struct CMPBufferData {
     std::vector<int32> position_buffer;  // 位置缓冲区 (Position buffer)
     std::vector<int16> time_buffer;      // 时间缓冲区 (Time buffer)
     bool abs_position_flag;              // 绝对位置标志 (Absolute position flag)
-    int32 encoder_num;                   // 编码器编号 (Encoder number)
+    int32 compare_source_axis;           // 位置比较源轴号 (MC_CmpBufData nCmpEncodeNum, SDK 1-based axis)
     CMPTriggerMode trigger_mode;         // 触发模式 (Trigger mode)
 
     // 默认构造函数 (Default constructor)
-    CMPBufferData() : abs_position_flag(false), encoder_num(1), trigger_mode(CMPTriggerMode::SINGLE_POINT) {}
+    CMPBufferData() : abs_position_flag(false), compare_source_axis(1), trigger_mode(CMPTriggerMode::SINGLE_POINT) {}
 
     // 清除缓冲区 (Clear buffer)
     void Clear() {

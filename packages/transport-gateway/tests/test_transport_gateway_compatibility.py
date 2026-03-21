@@ -71,11 +71,70 @@ def test_canonical_targets_are_exported_without_legacy_aliases():
     assert 'add_subdirectory(apps)' in root_cmake
 
 
+def test_dxf_preview_gate_contract_is_wired():
+    source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    assert 'RegisterCommand("dxf.preview.snapshot"' in source
+    assert 'RegisterCommand("dxf.preview.confirm"' in source
+    assert 'RegisterCommand("dxf.artifact.create"' in source
+    assert 'RegisterCommand("dxf.plan.prepare"' in source
+    assert 'RegisterCommand("dxf.job.start"' in source
+    assert 'RegisterCommand("dxf.job.status"' in source
+    assert 'std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot' in source
+    assert 'std::string TcpCommandDispatcher::HandleDxfPreviewConfirm' in source
+    assert "GetDxfPreviewSnapshot(" in source
+    assert "ConfirmDxfPreview(" in source
+    assert '{"trajectory_polyline", trajectory_polyline}' in source
+    assert '{"polyline_point_count", snapshot.polyline_point_count}' in source
+    assert '{"polyline_source_point_count", snapshot.polyline_source_point_count}' in source
+    assert "dxf_cache_.preview_state = snapshot.preview_state;" in source
+    assert 'request.snapshot_hash = snapshot_hash;' in source
+    assert "Missing 'snapshot_hash'" in source
+    assert "Preview snapshot not prepared" in source
+    assert "Preview request signature mismatch" in source
+    assert "Preview snapshot hash mismatch" in source
+    assert "HandleDxfPreviewSnapshot" in source
+
+
+def test_status_reads_backend_interlock_signals():
+    source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    assert "ReadInterlockSignals()" in source
+    assert 'ioJson["door"] = signals.safety_door_open' in source
+    assert 'ioJson["estop"] = estop_active || signals.emergency_stop_triggered' in source
+    assert '"estop_known"' in source
+    assert '"door_known"' in source
+
+
+def test_motion_coord_status_exposes_feedback_diagnostics():
+    source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    assert 'RegisterCommand("motion.coord.status"' in source
+    assert '{"selected_feedback_source", x_status_result.Value().selected_feedback_source}' in source
+    assert '{"prf_position_mm", x_status_result.Value().profile_position_mm}' in source
+    assert '{"enc_position_mm", x_status_result.Value().encoder_position_mm}' in source
+    assert '{"prf_velocity_mm_s", x_status_result.Value().profile_velocity_mm_s}' in source
+    assert '{"enc_velocity_mm_s", x_status_result.Value().encoder_velocity_mm_s}' in source
+    assert '{"prf_position_ret", x_status_result.Value().profile_position_ret}' in source
+    assert '{"enc_position_ret", x_status_result.Value().encoder_position_ret}' in source
+    assert '{"prf_velocity_ret", x_status_result.Value().profile_velocity_ret}' in source
+    assert '{"enc_velocity_ret", x_status_result.Value().encoder_velocity_ret}' in source
+    assert '{"selected_feedback_source", y_status_result.Value().selected_feedback_source}' in source
+    assert '{"prf_position_mm", y_status_result.Value().profile_position_mm}' in source
+    assert '{"enc_position_mm", y_status_result.Value().encoder_position_mm}' in source
+    assert '{"prf_velocity_mm_s", y_status_result.Value().profile_velocity_mm_s}' in source
+    assert '{"enc_velocity_mm_s", y_status_result.Value().encoder_velocity_mm_s}' in source
+    assert '{"prf_position_ret", y_status_result.Value().profile_position_ret}' in source
+    assert '{"enc_position_ret", y_status_result.Value().encoder_position_ret}' in source
+    assert '{"prf_velocity_ret", y_status_result.Value().profile_velocity_ret}' in source
+    assert '{"enc_velocity_ret", y_status_result.Value().encoder_velocity_ret}' in source
+
+
 def main():
     tests = [
         test_dispatcher_matches_contracts,
         test_app_entry_is_thin,
         test_canonical_targets_are_exported_without_legacy_aliases,
+        test_dxf_preview_gate_contract_is_wired,
+        test_status_reads_backend_interlock_signals,
+        test_motion_coord_status_exposes_feedback_diagnostics,
     ]
     for test in tests:
         test()

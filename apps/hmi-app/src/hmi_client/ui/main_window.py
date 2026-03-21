@@ -3,6 +3,7 @@ import os
 import sys
 import time
 import logging
+import html
 from pathlib import Path
 
 try:
@@ -19,7 +20,7 @@ from PyQt5.QtWidgets import (
     QProgressBar, QListWidget, QListWidgetItem, QMessageBox, QDialog, QDialogButtonBox,
     QComboBox, QFormLayout, QScrollArea, QRadioButton, QStatusBar
 )
-from PyQt5.QtCore import QTimer, Qt, QSize, QUrl, QEvent
+from PyQt5.QtCore import QTimer, Qt, QSize, QEvent, QThread, pyqtSignal
 from PyQt5.QtGui import QFont, QColor
 
 try:
@@ -44,11 +45,22 @@ from client import (
     normalize_launch_mode,
 )
 from client.auth import AuthManager
-from integrations.dxf_pipeline import DxfPipelinePreviewClient
 try:
     from hmi_client.features.sim_observer.ui import SimObserverWorkspace
 except ImportError:
     from features.sim_observer.ui import SimObserverWorkspace
+try:
+    from hmi_client.features.dispense_preview_gate import (
+        DispensePreviewGate,
+        PreviewSnapshotMeta,
+        StartBlockReason,
+    )
+except ImportError:
+    from features.dispense_preview_gate import (  # type: ignore
+        DispensePreviewGate,
+        PreviewSnapshotMeta,
+        StartBlockReason,
+    )
 from .dxf_default_paths import build_default_dxf_candidates
 from .styles import DARK_THEME
 from .recipe_config_widget import RecipeConfigWidget
@@ -236,6 +248,66 @@ class AspectRatioContainer(QWidget):
         super().resizeEvent(event)
 
 
+class PreviewSnapshotWorker(QThread):
+    completed = pyqtSignal(bool, object, str)
+
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        artifact_id: str,
+        speed_mm_s: float,
+        dry_run: bool,
+        dry_run_speed_mm_s: float,
+    ):
+        super().__init__()
+        self._host = host
+        self._port = port
+        self._artifact_id = artifact_id
+        self._speed_mm_s = speed_mm_s
+        self._dry_run = dry_run
+        self._dry_run_speed_mm_s = dry_run_speed_mm_s
+
+    def run(self):
+        client = TcpClient(host=self._host, port=self._port)
+        ok = False
+        payload = {}
+        error = ""
+        try:
+            if not client.connect():
+                error = "无法连接后端，请检查TCP链路"
+            else:
+                protocol = CommandProtocol(client)
+                plan_ok, plan_payload, plan_error = protocol.dxf_prepare_plan(
+                    artifact_id=self._artifact_id,
+                    speed_mm_s=self._speed_mm_s,
+                    dry_run=self._dry_run,
+                    dry_run_speed_mm_s=self._dry_run_speed_mm_s,
+                )
+                if not plan_ok:
+                    ok = False
+                    payload = {}
+                    error = plan_error
+                else:
+                    plan_id = str(plan_payload.get("plan_id", "")).strip()
+                    if not plan_id:
+                        ok = False
+                        payload = {}
+                        error = "plan.prepare 返回缺少 plan_id"
+                    else:
+                        ok, payload, error = protocol.dxf_preview_snapshot(plan_id=plan_id, max_polyline_points=4000)
+                        if ok and isinstance(payload, dict):
+                            payload.setdefault("plan_id", plan_id)
+                            payload.setdefault("plan_fingerprint", str(plan_payload.get("plan_fingerprint", "")))
+                            payload.setdefault("snapshot_hash", str(plan_payload.get("plan_fingerprint", "")))
+                            payload.setdefault("dry_run", bool(self._dry_run))
+        except Exception as exc:
+            error = str(exc) or "预览快照生成异常"
+        finally:
+            client.disconnect()
+        self.completed.emit(ok, payload if isinstance(payload, dict) else {}, error)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, launch_mode: str = "online"):
         super().__init__()
@@ -256,26 +328,38 @@ class MainWindow(QMainWindow):
 
         self._client = TcpClient()
         self._protocol = CommandProtocol(self._client)
-        self._dxf_preview_client = DxfPipelinePreviewClient()
         self._backend = BackendManager()
         self._jog_speed = 20.0
         self._jog_press_time = None
         self._last_jog_context = None
         self._dxf_loaded = False
         self._dxf_filepath = ""
+        self._dxf_artifact_id = ""
+        self._current_plan_id = ""
+        self._current_plan_fingerprint = ""
+        self._current_job_id = ""
         self._dxf_dry_run_speed_custom = None
         self._temp_preview_file = None
         self._dxf_total_length_val = 0.0
         self._dxf_segment_count_cache = 0
         self._dxf_est_time_val = "-"
+        self._preview_gate = DispensePreviewGate()
+        self._preview_plan_dry_run = None
+        self._preview_snapshot_worker = None
+        self._preview_refresh_inflight = False
+        self._runtime_status_fault = False
+        self._last_status_error_notice_ts = 0.0
         self._last_status = None
         self._last_status_ts = 0.0
+        self._connected = False
+        self._hw_connected = False
 
         # Production statistics
         self._production_running = False
         self._production_paused = False
         self._production_dry_run = False
         self._completed_count = 0
+        self._last_completed_count_seen = 0
         self._target_count = 100
         self._cycle_times = []
         self._last_cycle_start = 0
@@ -312,6 +396,8 @@ class MainWindow(QMainWindow):
                 )
             )
         self._update_home_controls_state()
+        self._update_preview_refresh_button_state()
+        self._set_preview_message_html("轨迹预览待生成", "请先加载DXF文件，再点击“刷新预览”。")
 
     def _setup_ui(self):
         content = QWidget()
@@ -558,9 +644,15 @@ class MainWindow(QMainWindow):
         job_layout.addWidget(self._prod_home_btn)
 
         # File Info (Compact)
-        self._dxf_info_label = QLabel("段数: - | 长度: - | 预估: -")
+        self._dxf_info_label = QLabel("段数: - | 长度: - | 预估: - | 预览: 待生成")
         self._dxf_info_label.setProperty("class", "sub-text")
         job_layout.addWidget(self._dxf_info_label)
+
+        self._refresh_preview_btn = QPushButton("刷新预览")
+        self._refresh_preview_btn.setProperty("data-testid", "btn-dxf-preview-refresh")
+        self._refresh_preview_btn.setCursor(Qt.PointingHandCursor)
+        self._refresh_preview_btn.clicked.connect(self._generate_dxf_preview)
+        job_layout.addWidget(self._refresh_preview_btn)
         
         sidebar_layout.addWidget(job_frame)
 
@@ -613,8 +705,9 @@ class MainWindow(QMainWindow):
         mode_layout = QHBoxLayout()
         self._mode_production = QRadioButton("生产")
         self._mode_production.setChecked(True)
-        self._mode_production.toggled.connect(self._update_start_button_state)
+        self._mode_production.toggled.connect(self._on_mode_toggled)
         self._mode_dryrun = QRadioButton("空跑")
+        self._mode_dryrun.toggled.connect(self._on_mode_toggled)
         mode_layout.addWidget(self._mode_production)
         mode_layout.addWidget(self._mode_dryrun)
         param_layout.addLayout(mode_layout, 3, 1)
@@ -1321,6 +1414,8 @@ class MainWindow(QMainWindow):
         self._launch_mode_label.setText("Offline" if effective_mode == "offline" else "Online")
 
         if self._is_offline_mode():
+            self._connected = False
+            self._hw_connected = False
             self._operation_status.setText("离线模式")
             self._tcp_state_label.setText("未连接")
             self._hw_state_label.setText("不可用")
@@ -1328,10 +1423,13 @@ class MainWindow(QMainWindow):
             self._update_led(self._tcp_led, "off")
             self._update_led(self._hw_led, "off")
             self._update_recovery_controls_state()
+            self._update_preview_refresh_button_state()
             return
 
         snapshot = self._current_session_snapshot()
         if snapshot is None:
+            self._connected = False
+            self._hw_connected = False
             self._update_led(self._tcp_led, "off")
             self._update_led(self._hw_led, "off")
             self._tcp_state_label.setText("未连接")
@@ -1341,6 +1439,8 @@ class MainWindow(QMainWindow):
             self._update_recovery_controls_state()
             return
 
+        self._connected = snapshot.tcp_state == "ready"
+        self._hw_connected = snapshot.hardware_state == "ready"
         self._tcp_state_label.setText(self._label_for_tcp_state(snapshot.tcp_state))
         self._hw_state_label.setText(self._label_for_hw_state(snapshot.hardware_state))
         self._update_led(
@@ -1371,6 +1471,7 @@ class MainWindow(QMainWindow):
             self._operation_status.setText("未就绪")
             self._state_label.setText("Not Ready")
         self._update_recovery_controls_state()
+        self._update_preview_refresh_button_state()
 
     def _apply_mode_capabilities(self) -> None:
         allow_online_actions = self._has_online_capability()
@@ -1666,6 +1767,9 @@ class MainWindow(QMainWindow):
         if not status or not status.connected:
             self.statusBar().showMessage("后端状态未就绪，请稍后再试")
             return False
+        if not status.io.estop_known or not status.io.door_known:
+            self.statusBar().showMessage("互锁信号状态未知，无法回零")
+            return False
         if status.io.estop:
             self.statusBar().showMessage("急停未解除，无法回零")
             return False
@@ -1718,6 +1822,9 @@ class MainWindow(QMainWindow):
         status = self._protocol.get_status()
         if not status.connected:
             self.statusBar().showMessage("后端状态不可用，请检查连接")
+            return False
+        if not status.io.estop_known or not status.io.door_known:
+            self.statusBar().showMessage("互锁信号状态未知，无法点动")
             return False
         if status.io.estop:
             self.statusBar().showMessage("急停未解除，无法点动")
@@ -1983,6 +2090,8 @@ class MainWindow(QMainWindow):
         self._dxf_speed.blockSignals(True)
         self._dxf_speed.setValue(float(value))
         self._dxf_speed.blockSignals(False)
+        if self._dxf_loaded:
+            self._invalidate_preview_plan()
         self._update_dxf_estimated_time()
 
     def _on_speed_spinbox_changed(self, value: float):
@@ -1990,7 +2099,24 @@ class MainWindow(QMainWindow):
         self._dxf_speed_slider.blockSignals(True)
         self._dxf_speed_slider.setValue(int(value))
         self._dxf_speed_slider.blockSignals(False)
+        if self._dxf_loaded:
+            self._invalidate_preview_plan()
         self._update_dxf_estimated_time()
+
+    def _on_mode_toggled(self, checked: bool):
+        if not checked:
+            return
+        self._update_start_button_state()
+        if self._dxf_loaded:
+            self._invalidate_preview_plan()
+            self.statusBar().showMessage("运行模式已变更，请刷新预览并重新确认")
+
+    def _invalidate_preview_plan(self):
+        self._preview_gate.mark_input_changed()
+        self._current_plan_id = ""
+        self._current_plan_fingerprint = ""
+        self._preview_plan_dry_run = None
+        self._update_info_label()
 
     def _update_dxf_info(self):
         info = self._protocol.dxf_get_info()
@@ -2011,10 +2137,275 @@ class MainWindow(QMainWindow):
         
         self._update_info_label()
 
+    def _preview_state_text(self) -> str:
+        state_map = {
+            "dirty": "待生成",
+            "generating": "生成中",
+            "ready_unsigned": "待确认",
+            "ready_signed": "已确认",
+            "stale": "已过期",
+            "failed": "失败",
+        }
+        return state_map.get(self._preview_gate.state.value, self._preview_gate.state.value)
+
+    def _preview_block_message(self, reason: StartBlockReason) -> str:
+        if reason == StartBlockReason.PREVIEW_MISSING:
+            return "请先生成轨迹预览"
+        if reason == StartBlockReason.PREVIEW_GENERATING:
+            return "轨迹预览仍在生成中，请稍后"
+        if reason == StartBlockReason.PREVIEW_FAILED:
+            if self._preview_gate.last_error_message:
+                return f"轨迹预览失败: {self._preview_gate.last_error_message}"
+            return "轨迹预览失败，请重新生成"
+        if reason == StartBlockReason.PREVIEW_STALE:
+            return "轨迹参数已变更，需重新生成并确认预览"
+        if reason == StartBlockReason.CONFIRM_MISSING:
+            return "请先确认轨迹预览"
+        if reason == StartBlockReason.HASH_MISMATCH:
+            return "预览快照与执行快照不一致，请重新生成并确认"
+        return "预检失败"
+
+    def _confirm_preview_gate(self) -> bool:
+        snapshot = self._preview_gate.snapshot
+        if snapshot is None:
+            return False
+        summary = (
+            f"段数: {snapshot.segment_count}\n"
+            f"点数: {snapshot.point_count}\n"
+            f"长度: {snapshot.total_length_mm:.1f}mm\n"
+            f"预估: {snapshot.estimated_time_s:.1f}s\n\n"
+            "确认以上轨迹预览后继续执行？"
+        )
+        reply = QMessageBox.question(
+            self,
+            "预览确认",
+            summary,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return False
+        plan_id = self._current_plan_id or snapshot.snapshot_id
+        ok, payload, error = self._protocol.dxf_preview_confirm(plan_id=plan_id, snapshot_hash=snapshot.snapshot_hash)
+        if not ok:
+            self._show_preflight_warning(f"预览确认失败: {error or 'Unknown error'}")
+            _UI_LOGGER.warning(
+                "preview_confirm_failed plan_id=%s snapshot_hash=%s error=%s",
+                plan_id,
+                snapshot.snapshot_hash,
+                error,
+            )
+            return False
+
+        confirmed = bool(payload.get("confirmed", False))
+        if not confirmed:
+            self._show_preflight_warning("预览确认未生效，请重试")
+            return False
+
+        confirmed_hash = str(payload.get("snapshot_hash", snapshot.snapshot_hash)).strip()
+        if confirmed_hash and confirmed_hash != snapshot.snapshot_hash:
+            self._preview_gate.preview_failed("确认返回的快照哈希与当前预览不一致")
+            self._show_preflight_warning("预览确认哈希不一致，请重新生成预览")
+            return False
+
+        gate_confirmed = self._preview_gate.confirm_current_snapshot()
+        if not gate_confirmed:
+            self._show_preflight_warning("本地预览确认状态更新失败")
+            return False
+
+        _UI_LOGGER.info(
+            "preview_confirmed snapshot_id=%s snapshot_hash=%s confirmed_at=%s",
+            snapshot.snapshot_id,
+            snapshot.snapshot_hash,
+            payload.get("confirmed_at", ""),
+        )
+        self._update_info_label()
+        return True
+
     def _update_info_label(self):
         segments = getattr(self, '_dxf_segment_count_cache', 0)
         est = getattr(self, '_dxf_est_time_val', "-")
-        self._dxf_info_label.setText(f"段数: {segments} | 长度: {self._dxf_total_length_val:.1f}mm | 预估: {est}")
+        preview_text = self._preview_state_text()
+        self._dxf_info_label.setText(
+            f"段数: {segments} | 长度: {self._dxf_total_length_val:.1f}mm | 预估: {est} | 预览: {preview_text}"
+        )
+
+    def _set_preview_message_html(self, title: str, detail: str = "", is_error: bool = False):
+        if not WEB_ENGINE_AVAILABLE or not self._dxf_view:
+            return
+        title_color = "#ff7b72" if is_error else "#8be9fd"
+        detail_html = html.escape(detail) if detail else " "
+        self._dxf_view.setHtml(
+            "<html><body style='background:#141414;color:#e8e8e8;font-family:Segoe UI;padding:24px;'>"
+            f"<h3 style='margin-top:0;color:{title_color};'>{html.escape(title)}</h3>"
+            f"<p style='color:#b8b8b8;line-height:1.6;'>{detail_html}</p>"
+            "</body></html>"
+        )
+
+    def _set_preview_refresh_inflight(self, inflight: bool):
+        self._preview_refresh_inflight = bool(inflight)
+        self._update_preview_refresh_button_state()
+
+    def _update_preview_refresh_button_state(self):
+        if not hasattr(self, "_refresh_preview_btn"):
+            return
+        enabled = (
+            not self._is_offline_mode()
+            and getattr(self, "_connected", False)
+            and self._dxf_loaded
+            and not self._preview_refresh_inflight
+        )
+        self._refresh_preview_btn.setEnabled(enabled)
+
+    def _render_runtime_preview_html(
+        self,
+        snapshot: PreviewSnapshotMeta,
+        speed_mm_s: float,
+        dry_run: bool,
+        trajectory_points: list,
+    ) -> str:
+        mode_text = "空跑" if dry_run else "生产"
+        generated_at = html.escape(snapshot.generated_at or "-")
+        min_x = min(point[0] for point in trajectory_points)
+        max_x = max(point[0] for point in trajectory_points)
+        min_y = min(point[1] for point in trajectory_points)
+        max_y = max(point[1] for point in trajectory_points)
+
+        width = 920.0
+        height = 520.0
+        padding = 24.0
+        span_x = max(max_x - min_x, 1e-6)
+        span_y = max(max_y - min_y, 1e-6)
+
+        mapped_points = []
+        for x_value, y_value in trajectory_points:
+            mapped_x = padding + ((x_value - min_x) / span_x) * (width - 2 * padding)
+            mapped_y = height - (padding + ((y_value - min_y) / span_y) * (height - 2 * padding))
+            mapped_points.append(f"{mapped_x:.2f},{mapped_y:.2f}")
+        dot_radius = 1.2 if len(mapped_points) > 1000 else 1.6
+        points_markup = []
+        for point in mapped_points:
+            point_x, point_y = point.split(",", 1)
+            points_markup.append(
+                f"<circle cx='{point_x}' cy='{point_y}' r='{dot_radius:.1f}' fill='#00d084' />"
+            )
+        point_cloud_svg = "".join(points_markup)
+        return (
+            "<html><body style='background:#1e1e1e;color:#e8e8e8;font-family:Segoe UI;padding:18px;'>"
+            "<h3 style='margin-top:0;'>真实链路轨迹预览（点状胶点）</h3>"
+            "<p style='color:#b8b8b8;'>"
+            "轨迹图按快照点集以点状方式渲染，模拟真实胶点分布；执行前确认与哈希校验仍生效。"
+            "</p>"
+            f"<svg viewBox='0 0 {width:.0f} {height:.0f}' style='width:100%;height:56vh;background:#141414;border:1px solid #333;'>"
+            f"{point_cloud_svg}"
+            "</svg>"
+            "<table style='border-collapse:collapse;'>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>模式</td><td>{mode_text}</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>速度</td><td>{speed_mm_s:.3f} mm/s</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>段数</td><td>{snapshot.segment_count}</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>点数</td><td>{snapshot.point_count}</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>预览采样点</td><td>{len(trajectory_points)}</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>总长度</td><td>{snapshot.total_length_mm:.3f} mm</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>预估时长</td><td>{snapshot.estimated_time_s:.3f} s</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>X范围</td><td>{min_x:.3f} ~ {max_x:.3f}</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>Y范围</td><td>{min_y:.3f} ~ {max_y:.3f}</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>快照ID</td><td>{html.escape(snapshot.snapshot_id)}</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>快照哈希</td><td>{html.escape(snapshot.snapshot_hash)}</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>生成时间</td><td>{generated_at}</td></tr>"
+            "</table>"
+            "</body></html>"
+        )
+
+    def _extract_preview_points(self, payload: dict) -> list[tuple[float, float]]:
+        points = []
+        for raw in payload.get("trajectory_polyline", []) or []:
+            if not isinstance(raw, dict):
+                continue
+            try:
+                x_value = float(raw.get("x"))
+                y_value = float(raw.get("y"))
+            except (TypeError, ValueError):
+                continue
+            points.append((x_value, y_value))
+        return points
+
+    def _on_preview_snapshot_completed(self, ok: bool, payload: dict, error: str):
+        self._preview_snapshot_worker = None
+        self._set_preview_refresh_inflight(False)
+
+        if not ok:
+            failure_message = error or "运行时快照生成失败"
+            self._preview_gate.preview_failed(failure_message)
+            self._update_info_label()
+            self.statusBar().showMessage(self._preview_block_message(StartBlockReason.PREVIEW_FAILED))
+            self._set_preview_message_html("轨迹预览生成失败", failure_message, is_error=True)
+            _UI_LOGGER.warning("preview_failed stage=snapshot error=%s", failure_message)
+            return
+
+        snapshot_id = str(payload.get("snapshot_id", payload.get("plan_id", ""))).strip()
+        snapshot_hash = str(payload.get("snapshot_hash", payload.get("plan_fingerprint", ""))).strip()
+        if not snapshot_id or not snapshot_hash:
+            self._preview_gate.preview_failed("运行时快照缺少 snapshot_id/snapshot_hash")
+            self._update_info_label()
+            self.statusBar().showMessage(self._preview_block_message(StartBlockReason.PREVIEW_FAILED))
+            self._set_preview_message_html("轨迹预览生成失败", "返回结果缺少快照标识。", is_error=True)
+            _UI_LOGGER.warning("preview_failed stage=snapshot_validate payload=%s", payload)
+            return
+
+        trajectory_points = self._extract_preview_points(payload)
+        if not trajectory_points:
+            self._preview_gate.preview_failed("运行时快照缺少轨迹点集")
+            self._update_info_label()
+            self.statusBar().showMessage(self._preview_block_message(StartBlockReason.PREVIEW_FAILED))
+            self._set_preview_message_html("轨迹预览生成失败", "返回结果缺少 trajectory_polyline。", is_error=True)
+            _UI_LOGGER.warning("preview_failed stage=polyline_missing payload=%s", payload)
+            return
+
+        preview_dry_run = bool(payload.get("dry_run", False))
+        self._current_plan_id = str(payload.get("plan_id", snapshot_id)).strip() or snapshot_id
+        self._current_plan_fingerprint = snapshot_hash
+        self._preview_plan_dry_run = preview_dry_run
+        self._dxf_segment_count_cache = int(payload.get("segment_count", 0) or 0)
+        self._dxf_total_length_val = float(payload.get("total_length_mm", 0.0) or 0.0)
+        estimated_time = float(payload.get("estimated_time_s", 0.0) or 0.0)
+        self._dxf_est_time_val = f"{estimated_time:.1f}s" if estimated_time > 0 else "-"
+
+        snapshot = PreviewSnapshotMeta(
+            snapshot_id=snapshot_id,
+            snapshot_hash=snapshot_hash,
+            segment_count=int(payload.get("segment_count", 0) or 0),
+            point_count=int(payload.get("point_count", len(trajectory_points)) or len(trajectory_points)),
+            total_length_mm=float(payload.get("total_length_mm", 0.0) or 0.0),
+            estimated_time_s=float(payload.get("estimated_time_s", 0.0) or 0.0),
+            generated_at=str(payload.get("generated_at", "")),
+        )
+        self._preview_gate.preview_ready(snapshot)
+        self._update_info_label()
+
+        html_content = self._render_runtime_preview_html(
+            snapshot=snapshot,
+            speed_mm_s=self._dxf_speed.value(),
+            dry_run=preview_dry_run,
+            trajectory_points=trajectory_points,
+        )
+        self._dxf_view.setHtml(html_content)
+        current_dry_run = self._mode_dryrun.isChecked() if hasattr(self, "_mode_dryrun") else False
+        if current_dry_run != preview_dry_run:
+            self._invalidate_preview_plan()
+            self.statusBar().showMessage("运行模式已变更，请刷新预览并重新确认")
+            _UI_LOGGER.warning(
+                "preview_staled_by_mode_change preview_dry_run=%s current_dry_run=%s",
+                preview_dry_run,
+                current_dry_run,
+            )
+        else:
+            self.statusBar().showMessage("轨迹预览已更新，启动前需确认")
+        _UI_LOGGER.info(
+            "preview_ready snapshot_id=%s snapshot_hash=%s sampled_points=%d",
+            snapshot.snapshot_id,
+            snapshot.snapshot_hash,
+            len(trajectory_points),
+        )
 
     def _on_dxf_load(self):
         if not self._require_online_mode("DXF加载"):
@@ -2022,10 +2413,19 @@ class MainWindow(QMainWindow):
         if not self._dxf_filepath:
             self.statusBar().showMessage("未选择DXF文件")
             return
-        ok, segment_count = self._protocol.dxf_load(self._dxf_filepath)
+        ok, payload, error = self._protocol.dxf_create_artifact(self._dxf_filepath)
         if ok:
+            self._dxf_artifact_id = str(payload.get("artifact_id", "")).strip()
+            self._current_plan_id = ""
+            self._current_plan_fingerprint = ""
+            self._preview_plan_dry_run = None
+            self._current_job_id = ""
             self._dxf_loaded = True
+            self._preview_gate.reset_for_loaded_dxf()
             self._dxf_segments_label = None # Deprecated, clear ref if any
+            self._dxf_segment_count_cache = int(payload.get("segment_count", 0) or 0)
+            self._dxf_total_length_val = 0.0
+            self._dxf_est_time_val = "-"
             
             # Update filename display (Basename only)
             import os
@@ -2035,46 +2435,76 @@ class MainWindow(QMainWindow):
             
             # Fetch and display DXF info
             self._update_dxf_info()
-            self.statusBar().showMessage(f"DXF已加载: {segment_count}段")
+            self.statusBar().showMessage("DXF工件已上传，正在生成预览")
+            self._update_preview_refresh_button_state()
             # Auto generate preview
             self._generate_dxf_preview()
         else:
             self._dxf_loaded = False
-            # 显示具体的错误信息，而不是通用的"DXF加载失败"
-            error_msg = "DXF加载失败"
-            if isinstance(segment_count, str):
-                error_msg = f"DXF加载失败: {segment_count}"
-            self.statusBar().showMessage(error_msg)
+            self._dxf_artifact_id = ""
+            self._current_plan_id = ""
+            self._current_plan_fingerprint = ""
+            self._preview_plan_dry_run = None
+            self._current_job_id = ""
+            self._preview_gate.reset_for_loaded_dxf()
+            self._update_info_label()
+            self._update_preview_refresh_button_state()
+            self._set_preview_message_html("轨迹预览不可用", "DXF加载失败，无法生成点状轨迹预览。", is_error=True)
+            self.statusBar().showMessage(f"DXF加载失败: {error or 'Unknown error'}")
 
     def _generate_dxf_preview(self):
         """Generate and display DXF preview in embedded view."""
         if not self._require_online_mode("DXF预览"):
             return
+        if self._preview_refresh_inflight:
+            self.statusBar().showMessage("轨迹预览仍在生成中，请稍后")
+            return
         if not self._dxf_loaded:
+            self.statusBar().showMessage("请先加载DXF文件后再刷新预览")
+            self._set_preview_message_html("尚未加载DXF", "请先选择并上传DXF文件。")
+            return
+        if not self._dxf_artifact_id:
+            self._preview_gate.preview_failed("DXF工件未创建")
+            self._update_info_label()
+            self.statusBar().showMessage("DXF工件未创建")
+            self._set_preview_message_html("轨迹预览生成失败", "DXF工件未创建。", is_error=True)
             return
         if not WEB_ENGINE_AVAILABLE or not self._dxf_view:
+            self._preview_gate.preview_failed("预览组件不可用")
+            self._update_info_label()
             self.statusBar().showMessage("预览组件不可用")
             return
 
         speed = self._dxf_speed.value()
+        dry_run_mode = self._mode_dryrun.isChecked() if hasattr(self, "_mode_dryrun") else False
+        self._preview_gate.begin_preview()
+        self._update_info_label()
+        self._set_preview_refresh_inflight(True)
         self._cleanup_temp_preview()
+        self._set_preview_message_html("轨迹预览生成中", "正在请求运行时快照点集，请稍候。")
+        self.statusBar().showMessage("轨迹预览生成中...")
+        _UI_LOGGER.info("preview_requested speed_mm_s=%.3f file=%s", speed, self._dxf_filepath)
 
-        preview_result = self._dxf_preview_client.generate_preview(
-            dxf_path=self._dxf_filepath,
+        worker = PreviewSnapshotWorker(
+            host=self._client.host,
+            port=self._client.port,
+            artifact_id=self._dxf_artifact_id,
             speed_mm_s=speed,
-            title=f"DXF 预览 - {Path(self._dxf_filepath).name}",
+            dry_run=dry_run_mode,
+            dry_run_speed_mm_s=speed,
         )
-        if not preview_result.ok:
-            self.statusBar().showMessage(f"DXF预览生成失败: {preview_result.error_message}")
-            self._dxf_view.setHtml(
-                "<html><body><h3 style='color:red'>"
-                f"预览生成失败: {preview_result.error_message}"
-                "</h3></body></html>"
-            )
-            return
-
-        self._temp_preview_file = preview_result.preview_path
-        self._dxf_view.load(QUrl.fromLocalFile(preview_result.preview_path))
+        worker.completed.connect(self._on_preview_snapshot_completed)
+        worker.finished.connect(worker.deleteLater)
+        self._preview_snapshot_worker = worker
+        try:
+            worker.start()
+        except Exception as exc:
+            self._preview_snapshot_worker = None
+            self._set_preview_refresh_inflight(False)
+            self._preview_gate.preview_failed(str(exc))
+            self._update_info_label()
+            self.statusBar().showMessage(self._preview_block_message(StartBlockReason.PREVIEW_FAILED))
+            self._set_preview_message_html("轨迹预览生成失败", str(exc), is_error=True)
 
     def _cleanup_temp_preview(self):
         try:
@@ -2101,44 +2531,76 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(message)
         QMessageBox.warning(self, "无法启动", message)
 
-    def _check_production_preconditions(self) -> bool:
+    def _check_production_preconditions(self, dry_run: bool = False) -> bool:
         if not self._require_online_mode("生产控制"):
+            return False
+        if not self._connected:
+            self._show_preflight_warning("未连接到后端，请先连接")
+            return False
+        if not self._hw_connected:
+            self._show_preflight_warning("硬件未初始化，请先初始化硬件")
+            return False
+        if self._runtime_status_fault:
+            self._show_preflight_warning("运行状态采集异常，请先恢复状态链路后再启动")
+            return False
+        if self._preview_refresh_inflight:
+            self._show_preflight_warning("轨迹预览仍在生成中，请稍后再启动")
             return False
 
         status = self._protocol.get_status()
         if not status.connected:
             self._show_preflight_warning("后端状态不可用，请检查连接")
             return False
+        if not status.io.estop_known or not status.io.door_known:
+            self._show_preflight_warning("互锁信号状态未知，禁止启动")
+            return False
         if status.io.estop:
-            self._show_preflight_warning("急停未解除，无法启动")
+            self._show_preflight_warning("急停未解除，禁止启动")
             return False
         if status.io.door:
-            self._show_preflight_warning("安全门打开，无法启动")
+            self._show_preflight_warning("安全门打开，禁止启动")
+            return False
+        self._last_status = status
+        self._last_status_ts = time.monotonic()
+        self._runtime_status_fault = False
+        if not self._current_plan_id or not self._current_plan_fingerprint:
+            self._show_preflight_warning("预览计划未生成，请重新生成预览")
+            return False
+        if self._preview_plan_dry_run is None:
+            self._show_preflight_warning("预览模式未知，请刷新预览并重新确认")
+            return False
+        if bool(dry_run) != bool(self._preview_plan_dry_run):
+            preview_dry_run = self._preview_plan_dry_run
+            self._invalidate_preview_plan()
+            self._show_preflight_warning("运行模式已变更，请刷新预览并重新确认")
+            _UI_LOGGER.warning(
+                "start_blocked_by_mode_mismatch requested_dry_run=%s preview_dry_run=%s",
+                dry_run,
+                preview_dry_run,
+            )
             return False
 
-        required_axes = ("X", "Y")
-        missing_axes = []
-        not_enabled = []
-        not_homed = []
-        for axis in required_axes:
-            axis_status = status.axes.get(axis)
-            if axis_status is None:
-                missing_axes.append(axis)
-                continue
-            if not axis_status.enabled:
-                not_enabled.append(axis)
-            if not axis_status.homed:
-                not_homed.append(axis)
+        gate_decision = self._preview_gate.decision_for_start()
+        if gate_decision.reason == StartBlockReason.CONFIRM_MISSING:
+            if not self._confirm_preview_gate():
+                self._show_preflight_warning(self._preview_block_message(StartBlockReason.CONFIRM_MISSING))
+                return False
+            gate_decision = self._preview_gate.decision_for_start()
 
-        if missing_axes or not_enabled or not_homed:
-            parts = []
-            if missing_axes:
-                parts.append(f"缺少轴状态: {', '.join(missing_axes)}")
-            if not_enabled:
-                parts.append(f"未使能: {', '.join(not_enabled)}")
-            if not_homed:
-                parts.append(f"未回零: {', '.join(not_homed)}")
-            self._show_preflight_warning(f"无法启动，{'；'.join(parts)}")
+        if not gate_decision.allowed:
+            block_message = self._preview_block_message(gate_decision.reason)
+            self._show_preflight_warning(block_message)
+            _UI_LOGGER.warning("start_blocked_by_preview_gate reason=%s", gate_decision.reason.value)
+            return False
+
+        hash_decision = self._preview_gate.validate_execution_snapshot_hash(self._current_plan_fingerprint)
+        if not hash_decision.allowed:
+            self._show_preflight_warning(self._preview_block_message(hash_decision.reason))
+            _UI_LOGGER.warning(
+                "start_blocked_by_preview_hash confirmed=%s runtime=%s",
+                self._preview_gate.get_confirmed_snapshot_hash(),
+                self._current_plan_fingerprint,
+            )
             return False
 
         return True
@@ -2151,8 +2613,13 @@ class MainWindow(QMainWindow):
     def _on_dxf_stop(self):
         if not self._require_online_mode("DXF控制"):
             return
-        ok = self._protocol.dxf_stop()
-        self.statusBar().showMessage("DXF执行已停止" if ok else "DXF停止失败")
+        ok = self._protocol.dxf_job_stop(self._current_job_id) if self._current_job_id else self._protocol.dxf_stop()
+        if ok:
+            self._production_paused = False
+            self._operation_status.setText("停止中")
+            self.statusBar().showMessage("DXF停止请求已发送，等待后端完成")
+        else:
+            self.statusBar().showMessage("DXF停止失败")
 
     def _on_alarm_clear(self):
         if not self._require_online_mode("报警控制"):
@@ -2217,55 +2684,71 @@ class MainWindow(QMainWindow):
         if not self._dxf_loaded:
             self.statusBar().showMessage("请先加载DXF文件")
             return
-        if not self._check_production_preconditions():
+        if not self._check_production_preconditions(dry_run=dry_run):
             return
-            
+
+        ok, payload, error = self._protocol.dxf_start_job(
+            self._current_plan_id,
+            target_count=self._target_count,
+            plan_fingerprint=self._current_plan_fingerprint,
+        )
+        if not ok:
+            self._production_running = False
+            self._production_paused = False
+            self.statusBar().showMessage(f"启动失败: {error}")
+            return
+
+        self._current_job_id = str(payload.get("job_id", "")).strip()
         self._production_running = True
         self._production_paused = False
         self._production_dry_run = dry_run
+        self._completed_count = 0
+        self._last_completed_count_seen = 0
+        self._cycle_times = []
+        self._total_run_time = 0
         self._run_start_time = time.time()
         self._last_cycle_start = time.time()
-        
+
         mode_text = "空跑" if dry_run else "生产"
         self._operation_status.setText(f"{mode_text}运行中")
-        
-        speed = self._dxf_speed.value() if hasattr(self, '_dxf_speed') else 10.0
-        # Use same speed for dry run in simplified mode
-        if self._protocol.dxf_execute(speed, dry_run=dry_run, dry_run_speed_mm_s=speed):
-            self.statusBar().showMessage(f"{mode_text}已启动")
-        else:
-            self._production_running = False
-            self._production_paused = False
-            self.statusBar().showMessage("启动失败")
+        self._update_production_stats()
+        self.statusBar().showMessage(f"{mode_text}已启动")
+        _UI_LOGGER.info(
+            "job_started plan_id=%s plan_fingerprint=%s job_id=%s target=%s dry_run=%s",
+            self._current_plan_id,
+            self._current_plan_fingerprint,
+            self._current_job_id,
+            self._target_count,
+            dry_run,
+        )
 
     def _on_production_pause(self):
         """Pause production."""
         if not self._require_online_mode("生产控制"):
             return
-        if not self._production_running:
+        if not self._production_running or not self._current_job_id:
             self.statusBar().showMessage("当前没有运行中的生产任务")
             return
-        if self._run_start_time > 0:
-            self._total_run_time += time.time() - self._run_start_time
-        self._production_running = False
-        if self._protocol.dxf_pause():
+        if self._protocol.dxf_job_pause(self._current_job_id):
+            if self._run_start_time > 0:
+                self._total_run_time += time.time() - self._run_start_time
             self._production_paused = True
+            self._production_running = False
+            self._run_start_time = 0
             self._operation_status.setText("已暂停")
             self.statusBar().showMessage("生产已暂停")
         else:
-            self._production_running = True
-            self._run_start_time = time.time()
             self.statusBar().showMessage("暂停失败")
 
     def _on_production_resume(self):
         """Resume production after a pause."""
         if not self._require_online_mode("生产控制"):
             return
-        if not self._production_paused:
+        if not self._production_paused or not self._current_job_id:
             self.statusBar().showMessage("当前没有已暂停的生产任务")
             return
 
-        if self._protocol.dxf_resume():
+        if self._protocol.dxf_job_resume(self._current_job_id):
             self._production_running = True
             self._production_paused = False
             self._run_start_time = time.time()
@@ -2279,13 +2762,18 @@ class MainWindow(QMainWindow):
         """Stop production."""
         if not self._require_online_mode("生产控制"):
             return
+        if not self._current_job_id:
+            self.statusBar().showMessage("当前没有运行中的生产任务")
+            return
         if self._production_running and self._run_start_time > 0:
             self._total_run_time += time.time() - self._run_start_time
-        self._production_running = False
-        self._production_paused = False
-        self._operation_status.setText("已停止")
-        self._protocol.dxf_stop()
-        self.statusBar().showMessage("生产已停止")
+        self._run_start_time = 0
+        if self._protocol.dxf_job_stop(self._current_job_id):
+            self._production_paused = False
+            self._operation_status.setText("停止中")
+            self.statusBar().showMessage("停止请求已发送，等待后端完成")
+        else:
+            self.statusBar().showMessage("停止失败")
 
     def _on_target_changed(self, value):
         """Update target count."""
@@ -2296,6 +2784,7 @@ class MainWindow(QMainWindow):
     def _on_reset_counter(self):
         """Reset production counter."""
         self._completed_count = 0
+        self._last_completed_count_seen = 0
         self._cycle_times = []
         self._total_run_time = 0
         self._update_production_stats()
@@ -2375,6 +2864,13 @@ class MainWindow(QMainWindow):
                 return
             self._last_status = status
             self._last_status_ts = time.monotonic()
+            self._runtime_status_fault = False
+            self._last_status_error_notice_ts = 0.0
+            self._state_label.setText(status.machine_state)
+            backend_hw_connected = bool(status.connected)
+            if backend_hw_connected != self._hw_connected:
+                self._hw_connected = backend_hw_connected
+                self._refresh_launch_status_ui()
 
             # Update Dispenser Status
             is_dispensing = status.dispenser_valve_open
@@ -2417,71 +2913,80 @@ class MainWindow(QMainWindow):
 
             # Update DXF Progress
             if self._dxf_loaded:
-                dxf_progress = self._protocol.dxf_get_progress()
+                backend_active_job_id = str(getattr(status, "active_job_id", "")).strip()
+                backend_active_job_state = str(getattr(status, "active_job_state", "")).strip().lower()
+                if backend_active_job_id:
+                    self._current_job_id = backend_active_job_id
+                elif backend_active_job_state in ("", "completed", "failed", "cancelled"):
+                    self._current_job_id = ""
+                dxf_progress = (
+                    self._protocol.dxf_get_job_status(self._current_job_id)
+                    if self._current_job_id
+                    else {
+                        "state": "idle",
+                        "overall_progress_percent": int(
+                            (self._completed_count / max(1, self._target_count)) * 100
+                        ) if self._target_count > 0 else 0,
+                        "completed_count": self._completed_count,
+                    }
+                )
                 current = dxf_progress.get("current_segment", 0)
                 total = dxf_progress.get("total_segments", 0)
-                progress = dxf_progress.get("progress", 0)
-                running = dxf_progress.get("running", False)
+                progress = dxf_progress.get("overall_progress_percent", dxf_progress.get("progress", 0))
                 state = dxf_progress.get("state", "")
                 error_message = dxf_progress.get("error_message", "")
+                if backend_active_job_state and state in ("", "idle"):
+                    state = backend_active_job_state
+                completed_count = int(dxf_progress.get("completed_count", self._completed_count) or 0)
                 if hasattr(self, '_global_progress'):
                     self._global_progress.setValue(int(progress))
-                # self._dxf_current_segment.setText(f"{current} / {total}") # Widget removed
+                if completed_count > self._last_completed_count_seen:
+                    for _ in range(completed_count - self._last_completed_count_seen):
+                        self._record_cycle_complete()
+                    self._last_completed_count_seen = completed_count
+                else:
+                    self._completed_count = completed_count
 
                 if state == "paused":
                     self._production_paused = True
                     self._production_running = False
                     self._operation_status.setText("已暂停")
-                elif self._production_paused and state == "running":
+                elif state in ("running", "pending"):
                     self._production_paused = False
                     self._production_running = True
                     if self._run_start_time <= 0:
                         self._run_start_time = time.time()
                     mode_text = "空跑" if self._production_dry_run else "生产"
                     self._operation_status.setText(f"{mode_text}运行中")
-
-                # Check for cycle completion
-                if self._production_running:
-                    if state in ("failed", "cancelled"):
-                        self._production_running = False
-                        self._production_paused = False
-                        status_text = "失败" if state == "failed" else "已取消"
-                        self._operation_status.setText(status_text)
-                        if error_message:
-                            self.statusBar().showMessage(f"执行失败: {error_message}")
-                        else:
-                            self.statusBar().showMessage(f"执行{status_text}")
-                    elif state == "completed" or (not running and progress >= 100):
-                        self._record_cycle_complete()
-                        # Auto-restart if target not reached
-                        if self._completed_count < self._target_count:
-                            if not self._is_online_ready():
-                                self._production_running = False
-                                self._production_paused = False
-                                self._operation_status.setText("未就绪")
-                                self.statusBar().showMessage("系统未就绪，已停止自动续跑")
-                                return
-                            self._last_cycle_start = time.time()
-                            speed = self._dxf_speed.value() if hasattr(self, '_dxf_speed') else 10.0
-                            self._protocol.dxf_execute(
-                                speed,
-                                dry_run=self._production_dry_run,
-                                dry_run_speed_mm_s=speed,
-                            )
-                        else:
-                            self._production_running = False
-                            self._production_paused = False
-                            self._operation_status.setText("完成")
-                            self.statusBar().showMessage("生产目标已达成")
-                    elif not running and progress == 0:
-                        # Task not running but production flag still on: treat as abnormal stop
-                        self._production_running = False
-                        self._production_paused = False
-                        self._operation_status.setText("已停止")
-                        if error_message:
-                            self.statusBar().showMessage(f"执行失败: {error_message}")
-                        else:
-                            self.statusBar().showMessage("执行未启动或已中断")
+                elif state == "stopping":
+                    self._production_paused = False
+                    self._production_running = False
+                    self._operation_status.setText("停止中")
+                elif state == "completed":
+                    self._production_running = False
+                    self._production_paused = False
+                    self._current_job_id = ""
+                    self._operation_status.setText("完成")
+                    self.statusBar().showMessage("生产目标已达成")
+                elif state == "unknown":
+                    self._production_running = False
+                    self._production_paused = False
+                    self._operation_status.setText("状态未知")
+                    self._runtime_status_fault = True
+                    if error_message:
+                        self.statusBar().showMessage(f"执行状态未知: {error_message}")
+                    else:
+                        self.statusBar().showMessage("执行状态未知，请检查后端链路")
+                elif state in ("failed", "cancelled"):
+                    self._production_running = False
+                    self._production_paused = False
+                    self._current_job_id = ""
+                    status_text = "失败" if state == "failed" else "已取消"
+                    self._operation_status.setText(status_text)
+                    if error_message:
+                        self.statusBar().showMessage(f"执行失败: {error_message}")
+                    else:
+                        self.statusBar().showMessage(f"执行{status_text}")
 
             # Update production stats periodically
             if self._production_running:
@@ -2503,7 +3008,7 @@ class MainWindow(QMainWindow):
                     self._alarm_list.addItem(item)
                 self._last_alarms_snapshot = alarms_snapshot
         except Exception as exc:
-            _UI_LOGGER.warning("Runtime status polling failed: %s", exc)
+            _UI_LOGGER.exception("status_update_failed: %s", exc)
             degradation = self._detect_runtime_degradation(
                 tcp_connected=False,
                 error_message=f"运行中 TCP 连接异常: {exc}",
@@ -2511,6 +3016,15 @@ class MainWindow(QMainWindow):
             if degradation is not None:
                 degraded_snapshot, stage_event = degradation
                 self._apply_runtime_degradation_snapshot(degraded_snapshot, stage_event)
+            self._runtime_status_fault = True
+            self._last_status = None
+            self._last_status_ts = 0.0
+            self._operation_status.setText("状态异常")
+            self._state_label.setText("Status Error")
+            now = time.monotonic()
+            if now - self._last_status_error_notice_ts >= 1.5:
+                self.statusBar().showMessage(f"运行状态更新异常: {exc}")
+                self._last_status_error_notice_ts = now
 
     def closeEvent(self, event):
         """Handle application close event."""
@@ -2524,6 +3038,8 @@ class MainWindow(QMainWindow):
                 return
 
         self._cleanup_temp_preview()
+        if self._preview_snapshot_worker and self._preview_snapshot_worker.isRunning():
+            self._preview_snapshot_worker.wait(1000)
         if self._backend:
             self._backend.stop()
         super().closeEvent(event)

@@ -12,3 +12,8 @@
 - `migration/`：迁移辅助脚本
 
 当前不重写现有子项目脚本，只建立统一落位。
+
+## scripts 新增约定
+
+- `resolve-workflow-context.ps1`：统一解析 `branchSafe`、`ticket`、`timestamp`
+- `invoke-guarded-command.ps1`：高风险命令执行前检查与显式批准执行

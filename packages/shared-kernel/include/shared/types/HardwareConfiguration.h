@@ -5,6 +5,7 @@
 #include "Error.h"
 #include "Result.h"
 
+#include <array>
 #include <string>
 
 namespace Siligen {
@@ -15,6 +16,8 @@ namespace Types {
 // 用于统一管理所有硬件相关的配置参数,特别是单位转换系数
 // (Used to uniformly manage all hardware-related configuration parameters, especially unit conversion coefficients)
 struct HardwareConfiguration {
+    static constexpr int32 kMaxAxes = 8;
+
     // 单位转换系数 (Unit conversion coefficient)
     // 每毫米的脉冲数 - 所有适配器必须使用此统一配置
     // (Pulses per millimeter - all adapters must use this unified configuration)
@@ -36,6 +39,7 @@ struct HardwareConfiguration {
 
     // 轴配置 (Axis configuration)
     int32 num_axes = 2;  // 轴数量
+    std::array<bool, kMaxAxes> encoder_enabled{true, true, true, true, true, true, true, true};
 
     // 统一轴数量裁剪 (Clamp axis count to supported range)
     static int32 ClampAxisCount(int32 requested, int32 max_axes = 2) {
@@ -50,6 +54,13 @@ struct HardwareConfiguration {
 
     int32 EffectiveAxisCount(int32 max_axes = 2) const {
         return ClampAxisCount(num_axes, max_axes);
+    }
+
+    bool IsEncoderEnabledForAxis(int32 axis_index) const noexcept {
+        if (axis_index < 0 || axis_index >= kMaxAxes) {
+            return true;
+        }
+        return encoder_enabled[static_cast<size_t>(axis_index)];
     }
 
     // 验证配置有效性 (Validate configuration validity)
@@ -107,7 +118,9 @@ struct HardwareConfiguration {
         return std::string("HardwareConfiguration{") + "pulse_per_mm=" + std::to_string(pulse_per_mm) +
                ", max_velocity_mm_s=" + std::to_string(max_velocity_mm_s) +
                ", max_acceleration_mm_s2=" + std::to_string(max_acceleration_mm_s2) +
-               ", num_axes=" + std::to_string(num_axes) + "}";
+               ", num_axes=" + std::to_string(num_axes) +
+               ", axis1_encoder_enabled=" + std::string(encoder_enabled[0] ? "true" : "false") +
+               ", axis2_encoder_enabled=" + std::string(encoder_enabled[1] ? "true" : "false") + "}";
     }
 };
 

@@ -4,8 +4,10 @@
 #include "shared/types/Error.h"
 
 #include <algorithm>
+#include <cmath>
 #include <chrono>
 #include <sstream>
+#include <thread>
 #include <utility>
 
 namespace Siligen::Domain::Motion::DomainServices {
@@ -20,6 +22,8 @@ using Siligen::Shared::Types::Result;
 namespace {
 // 保持错误来源字符串不变，避免迁移引入行为差异。
 constexpr const char* kErrorSource = "HomeAxesUseCase";
+constexpr int32 kPostHomingPollIntervalMs = 20;
+constexpr float kSettledVelocityThresholdMmS = 0.1f;
 }  // namespace
 
 HomingProcess::HomingProcess(std::shared_ptr<Ports::IHomingPort> homing_port,
@@ -133,6 +137,13 @@ Result<HomeAxesResponse> HomingProcess::Execute(const HomeAxesRequest& request) 
             int retries_left = retry_count;
             bool homed = false;
             std::string last_error_message;
+            auto abort_homing = [&]() {
+                if (!homing_port_) {
+                    return;
+                }
+                (void)homing_port_->StopHoming(axis_id);
+                (void)homing_port_->ResetHomingState(axis_id);
+            };
 
             while (true) {
                 auto wait_result = WaitForHomingComplete(axis_id, request.timeout_ms);
@@ -148,16 +159,15 @@ Result<HomeAxesResponse> HomingProcess::Execute(const HomeAxesRequest& request) 
                 }
 
                 if (retries_left <= 0) {
+                    abort_homing();
                     break;
                 }
 
                 --retries_left;
-                if (homing_port_) {
-                    (void)homing_port_->StopHoming(axis_id);
-                    (void)homing_port_->ResetHomingState(axis_id);
-                }
+                abort_homing();
                 auto restart_result = HomeAxis(axis_id);
                 if (restart_result.IsError()) {
+                    abort_homing();
                     last_error_message = restart_result.GetError().GetMessage();
                     break;
                 }
@@ -418,7 +428,78 @@ Result<void> HomingProcess::WaitForHomingComplete(LogicalAxisId axis_id, int32 t
             Error(ErrorCode::PORT_NOT_INITIALIZED, "Homing port not initialized", kErrorSource));
     }
 
-    return homing_port_->WaitForHomingComplete(axis_id, timeout_ms);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    auto wait_result = homing_port_->WaitForHomingComplete(axis_id, timeout_ms);
+    if (wait_result.IsError()) {
+        return wait_result;
+    }
+
+    return WaitForAxisSettleAfterHoming(axis_id, deadline);
+}
+
+Result<void> HomingProcess::WaitForAxisSettleAfterHoming(
+    LogicalAxisId axis_id,
+    const std::chrono::steady_clock::time_point& deadline) const {
+    if (!motion_state_port_) {
+        return Result<void>::Success();
+    }
+
+    auto settle_time_result = GetHomingSettleTimeMs(axis_id);
+    if (settle_time_result.IsError()) {
+        return Result<void>::Failure(settle_time_result.GetError());
+    }
+
+    const auto settle_time_ms = settle_time_result.Value();
+    if (settle_time_ms <= 0) {
+        return Result<void>::Success();
+    }
+
+    std::chrono::steady_clock::time_point stable_since{};
+    while (true) {
+        auto velocity_result = motion_state_port_->GetAxisVelocity(axis_id);
+        if (velocity_result.IsError()) {
+            return Result<void>::Failure(velocity_result.GetError());
+        }
+
+        const auto velocity = std::fabs(velocity_result.Value());
+        const auto now = std::chrono::steady_clock::now();
+        if (velocity <= kSettledVelocityThresholdMmS) {
+            if (stable_since == std::chrono::steady_clock::time_point{}) {
+                stable_since = now;
+            }
+
+            const auto stable_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                now - stable_since).count();
+            if (stable_ms >= settle_time_ms) {
+                return Result<void>::Success();
+            }
+        } else {
+            stable_since = std::chrono::steady_clock::time_point{};
+        }
+
+        if (now >= deadline) {
+            return Result<void>::Failure(
+                Error(ErrorCode::TIMEOUT,
+                      "Axis " + std::to_string(ToIndex(axis_id)) +
+                          " did not settle after homing: velocity=" + std::to_string(velocity) + " mm/s",
+                      kErrorSource));
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(kPostHomingPollIntervalMs));
+    }
+}
+
+Result<int32> HomingProcess::GetHomingSettleTimeMs(LogicalAxisId axis_id) const {
+    if (!config_port_) {
+        return Result<int32>::Success(0);
+    }
+
+    auto config_result = config_port_->GetHomingConfig(static_cast<int>(ToIndex(axis_id)));
+    if (config_result.IsError()) {
+        return Result<int32>::Failure(config_result.GetError());
+    }
+
+    return Result<int32>::Success(std::max<int32>(0, config_result.Value().settle_time_ms));
 }
 
 Result<void> HomingProcess::VerifyHomingSuccess(LogicalAxisId axis_id) {

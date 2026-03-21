@@ -7,12 +7,14 @@ TcpDispensingFacade::TcpDispensingFacade(
     std::shared_ptr<UseCases::Dispensing::Valve::ValveQueryUseCase> valve_query_use_case,
     std::shared_ptr<UseCases::Dispensing::DispensingExecutionUseCase> dxf_execute_use_case,
     std::shared_ptr<UseCases::Dispensing::UploadFileUseCase> dxf_upload_use_case,
-    std::shared_ptr<UseCases::Dispensing::PlanningUseCase> dxf_planning_use_case)
+    std::shared_ptr<UseCases::Dispensing::PlanningUseCase> dxf_planning_use_case,
+    std::shared_ptr<UseCases::Dispensing::DispensingWorkflowUseCase> dxf_workflow_use_case)
     : valve_command_use_case_(std::move(valve_command_use_case)),
       valve_query_use_case_(std::move(valve_query_use_case)),
       dxf_execute_use_case_(std::move(dxf_execute_use_case)),
       dxf_upload_use_case_(std::move(dxf_upload_use_case)),
-      dxf_planning_use_case_(std::move(dxf_planning_use_case)) {}
+      dxf_planning_use_case_(std::move(dxf_planning_use_case)),
+      dxf_workflow_use_case_(std::move(dxf_workflow_use_case)) {}
 
 Shared::Types::Result<Domain::Dispensing::Ports::DispenserValveState> TcpDispensingFacade::StartDispenser(
     const Domain::Dispensing::Ports::DispenserValveParams& params) {
@@ -77,6 +79,59 @@ Shared::Types::Result<void> TcpDispensingFacade::CancelDxfTask(
 
 void TcpDispensingFacade::StopDxfExecution() {
     dxf_execute_use_case_->StopExecution();
+}
+
+Shared::Types::Result<UseCases::Dispensing::CreateArtifactResponse> TcpDispensingFacade::CreateDxfArtifact(
+    const UseCases::Dispensing::UploadRequest& request) {
+    return dxf_workflow_use_case_->CreateArtifact(request);
+}
+
+Shared::Types::Result<UseCases::Dispensing::PreparePlanResponse> TcpDispensingFacade::PrepareDxfPlan(
+    const UseCases::Dispensing::PreparePlanRequest& request) {
+    return dxf_workflow_use_case_->PreparePlan(request);
+}
+
+Shared::Types::Result<UseCases::Dispensing::PreviewSnapshotResponse> TcpDispensingFacade::GetDxfPreviewSnapshot(
+    const UseCases::Dispensing::PreviewSnapshotRequest& request) {
+    return dxf_workflow_use_case_->GetPreviewSnapshot(request);
+}
+
+Shared::Types::Result<UseCases::Dispensing::ConfirmPreviewResponse> TcpDispensingFacade::ConfirmDxfPreview(
+    const UseCases::Dispensing::ConfirmPreviewRequest& request) {
+    return dxf_workflow_use_case_->ConfirmPreview(request);
+}
+
+Shared::Types::Result<UseCases::Dispensing::JobID> TcpDispensingFacade::StartDxfJob(
+    const UseCases::Dispensing::StartJobRequest& request) {
+    return dxf_workflow_use_case_->StartJob(request);
+}
+
+Shared::Types::Result<UseCases::Dispensing::JobStatusResponse> TcpDispensingFacade::GetDxfJobStatus(
+    const UseCases::Dispensing::JobID& job_id) const {
+    return dxf_workflow_use_case_->GetJobStatus(job_id);
+}
+
+Shared::Types::Result<void> TcpDispensingFacade::PauseDxfJob(
+    const UseCases::Dispensing::JobID& job_id) {
+    return dxf_workflow_use_case_->PauseJob(job_id);
+}
+
+Shared::Types::Result<void> TcpDispensingFacade::ResumeDxfJob(
+    const UseCases::Dispensing::JobID& job_id) {
+    return dxf_workflow_use_case_->ResumeJob(job_id);
+}
+
+Shared::Types::Result<void> TcpDispensingFacade::StopDxfJob(
+    const UseCases::Dispensing::JobID& job_id) {
+    return dxf_workflow_use_case_->StopJob(job_id);
+}
+
+Shared::Types::Result<Domain::Safety::ValueObjects::InterlockSignals> TcpDispensingFacade::ReadInterlockSignals() const {
+    return dxf_workflow_use_case_->ReadInterlockSignals();
+}
+
+bool TcpDispensingFacade::IsInterlockLatched() const {
+    return dxf_workflow_use_case_ != nullptr && dxf_workflow_use_case_->IsInterlockLatched();
 }
 
 }  // namespace Siligen::Application::Facades::Tcp

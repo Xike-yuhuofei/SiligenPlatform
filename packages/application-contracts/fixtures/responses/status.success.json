@@ -4,7 +4,7 @@
   "success": true,
   "result": {
     "connected": true,
-    "machine_state": "Ready",
+    "machine_state": "Idle",
     "axes": {
       "X": {
         "position": 12.5,
@@ -29,7 +29,9 @@
       "limit_y_pos": false,
       "limit_y_neg": false,
       "estop": false,
-      "door": false
+      "estop_known": true,
+      "door": false,
+      "door_known": true
     },
     "dispenser": {
       "valve_open": false,

@@ -32,7 +32,7 @@ if ($DryRun) {
     }
 
     Write-Output "control-cli target: BLOCKED"
-    Write-Output "reason: 未找到 canonical siligen_cli.exe。请先执行根级 build 生成 '$controlAppsBuildRoot\bin\siligen_cli.exe'。"
+    Write-Output "reason: canonical siligen_cli.exe not found. Build '$controlAppsBuildRoot\\bin\\siligen_cli.exe' from workspace root first."
     exit 1
 }
 
@@ -41,4 +41,4 @@ if ($canonicalResolved) {
     exit $LASTEXITCODE
 }
 
-Write-Error "未找到可运行的 canonical siligen_cli.exe。请先执行根级 build 生成 '$controlAppsBuildRoot\bin\siligen_cli.exe'。"
+Write-Error "No runnable canonical siligen_cli.exe found. Build '$controlAppsBuildRoot\\bin\\siligen_cli.exe' from workspace root first."

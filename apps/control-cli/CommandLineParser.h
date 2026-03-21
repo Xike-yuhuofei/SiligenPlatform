@@ -58,25 +58,15 @@ enum class CommandType {
 
 struct CommandLineConfig {
     RunMode mode = RunMode::NONE;
-    std::string mode_string;
     CommandType command = CommandType::NONE;
-    std::string command_string;
     std::string config_path = "config/machine/machine_config.ini";
 
-    bool verbose = false;
     bool help = false;
     bool version = false;
     bool no_interactive = false;
 
     double velocity = 0.0;
     double acceleration = 0.0;
-    double dispensing_time = 0.1;
-    int pulse_width = 2000;
-    int cmp_channel = 1;
-    bool safety_checks = true;
-    bool auto_enable = true;
-    std::vector<double> path_points;
-    int segments = 16;
 
     std::string control_card_ip = "192.168.0.1";
     std::string local_ip = "192.168.0.200";
@@ -93,8 +83,6 @@ struct CommandLineConfig {
     std::string preview_title;
     bool preview_json = false;
 
-    bool show_status = false;
-    bool log_to_file = false;
     bool show_motion = false;
     bool show_io = false;
     bool show_valves = false;

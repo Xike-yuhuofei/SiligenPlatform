@@ -95,6 +95,61 @@ std::string NormalizeExtension(std::filesystem::path path) {
     return ext;
 }
 
+std::filesystem::path FindAncestorContainingRelativePath(const std::filesystem::path& start,
+                                                         const std::filesystem::path& relative_path) {
+    namespace fs = std::filesystem;
+
+    if (start.empty()) {
+        return {};
+    }
+
+    std::error_code ec;
+    fs::path candidate = start;
+    if (!fs::is_directory(candidate, ec)) {
+        candidate = candidate.parent_path();
+    }
+    ec.clear();
+
+    constexpr int kMaxSearchLevels = 12;
+    for (int level = 0; level < kMaxSearchLevels && !candidate.empty(); ++level) {
+        const auto script_path = candidate / relative_path;
+        if (fs::exists(script_path, ec) && !ec) {
+            return script_path;
+        }
+        ec.clear();
+
+        auto parent = candidate.parent_path();
+        if (parent == candidate) {
+            break;
+        }
+        candidate = parent;
+    }
+
+    return {};
+}
+
+std::filesystem::path ResolveDefaultPbScriptPath(const std::filesystem::path& dxf_path) {
+    namespace fs = std::filesystem;
+
+    constexpr const char* kDefaultScriptRelativePath = "packages/engineering-data/scripts/dxf_to_pb.py";
+    const fs::path relative_script_path(kDefaultScriptRelativePath);
+
+    std::error_code ec;
+    std::vector<fs::path> anchors;
+    anchors.push_back(dxf_path.parent_path());
+    anchors.push_back(fs::current_path(ec));
+    ec.clear();
+
+    for (const auto& anchor : anchors) {
+        auto resolved = FindAncestorContainingRelativePath(anchor, relative_script_path);
+        if (!resolved.empty()) {
+            return resolved;
+        }
+    }
+
+    return fs::current_path(ec) / relative_script_path;
+}
+
 Result<void> ValidatePbOutput(const std::filesystem::path& pb_path) {
     std::error_code ec;
     if (!std::filesystem::exists(pb_path, ec)) {
@@ -257,7 +312,7 @@ Result<std::vector<std::string>> BuildPbCommandArgs(
     const char* script_env = std::getenv("SILIGEN_DXF_PB_SCRIPT");
     fs::path script_path = script_env && *script_env
                                ? fs::path(script_env)
-                               : fs::current_path() / "packages" / "engineering-data" / "scripts" / "dxf_to_pb.py";
+                               : ResolveDefaultPbScriptPath(dxf_path);
     if (!fs::exists(script_path)) {
         std::string detail = script_env && *script_env
                                  ? ("指定脚本不存在: " + std::string(script_env))

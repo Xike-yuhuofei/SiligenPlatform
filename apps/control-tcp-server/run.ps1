@@ -25,7 +25,7 @@ $canonicalCandidates = @(
 $canonicalResolved = $canonicalCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 
 if ($UseLegacyFallback) {
-    $reason = "control-tcp-server 已完成 canonical binary cutover；run.ps1 不再支持 -UseLegacyFallback。请先执行根级 build 生成 '$controlAppsBuildRoot\bin\siligen_tcp_server.exe'。"
+    $reason = "control-tcp-server completed canonical binary cutover; run.ps1 no longer supports -UseLegacyFallback. Build '$controlAppsBuildRoot\\bin\\siligen_tcp_server.exe' from workspace root first."
     if ($DryRun) {
         Write-Output "control-tcp-server target: BLOCKED"
         Write-Output "reason: $reason"
@@ -43,7 +43,7 @@ if ($DryRun) {
     }
 
     Write-Output "control-tcp-server target: BLOCKED"
-    Write-Output "reason: 未找到 canonical siligen_tcp_server.exe，请先执行根级 build 生成 '$controlAppsBuildRoot\bin\siligen_tcp_server.exe'。"
+    Write-Output "reason: canonical siligen_tcp_server.exe not found. Build '$controlAppsBuildRoot\\bin\\siligen_tcp_server.exe' from workspace root first."
     exit 1
 }
 
@@ -52,4 +52,4 @@ if ($canonicalResolved) {
     exit $LASTEXITCODE
 }
 
-Write-Error "未找到 canonical siligen_tcp_server.exe。请先执行根级 build 生成 '$controlAppsBuildRoot\bin\siligen_tcp_server.exe'。"
+Write-Error "Canonical siligen_tcp_server.exe not found. Build '$controlAppsBuildRoot\\bin\\siligen_tcp_server.exe' from workspace root first."

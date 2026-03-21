@@ -137,18 +137,15 @@ int CLICommandHandlers::RunInteractive() {
         switch (choice) {
             case 1:
                 cmd.command = CommandType::CONNECT;
-                cmd.command_string = "connect";
                 cmd.auto_connect = true;
                 HandleConnect(cmd);
                 break;
             case 2:
                 cmd.command = CommandType::DISCONNECT;
-                cmd.command_string = "disconnect";
                 HandleDisconnect(cmd);
                 break;
             case 3:
                 cmd.command = CommandType::STATUS;
-                cmd.command_string = "status";
                 cmd.show_motion = true;
                 cmd.show_io = true;
                 cmd.show_valves = true;
@@ -156,13 +153,11 @@ int CLICommandHandlers::RunInteractive() {
                 break;
             case 4:
                 cmd.command = CommandType::HOME;
-                cmd.command_string = "home";
                 cmd.home_all_axes = true;
                 HandleHome(cmd);
                 break;
             case 5:
                 cmd.command = CommandType::JOG;
-                cmd.command_string = "jog";
                 cmd.axis = static_cast<short>(PromptInt("轴号(1-2)", 1));
                 cmd.direction = PromptYesNo("方向是否为正向", true) ? 1 : -1;
                 cmd.distance = PromptDouble("步进距离(mm, 0.01-100)", 10.0);
@@ -171,7 +166,6 @@ int CLICommandHandlers::RunInteractive() {
                 break;
             case 6:
                 cmd.command = CommandType::MOVE;
-                cmd.command_string = "move";
                 cmd.axis = static_cast<short>(PromptInt("轴号(1-2)", 1));
                 cmd.position = PromptDouble("目标位置(mm)", 0.0);
                 cmd.relative_move = PromptYesNo("相对运动", false);
@@ -184,7 +178,6 @@ int CLICommandHandlers::RunInteractive() {
                 const int action = PromptInt("选择操作", 1);
                 if (action == 1) {
                     cmd.command = CommandType::DISPENSER_START;
-                    cmd.command_string = "dispenser start";
                     cmd.dispenser_count = static_cast<uint32>(PromptInt("点胶次数", static_cast<int>(cmd.dispenser_count)));
                     cmd.dispenser_interval_ms =
                         static_cast<uint32>(PromptInt("点胶间隔(ms)", static_cast<int>(cmd.dispenser_interval_ms)));
@@ -192,20 +185,16 @@ int CLICommandHandlers::RunInteractive() {
                         static_cast<uint32>(PromptInt("点胶时长(ms)", static_cast<int>(cmd.dispenser_duration_ms)));
                 } else if (action == 2) {
                     cmd.command = CommandType::DISPENSER_PAUSE;
-                    cmd.command_string = "dispenser pause";
                 } else if (action == 3) {
                     cmd.command = CommandType::DISPENSER_RESUME;
-                    cmd.command_string = "dispenser resume";
                 } else {
                     cmd.command = CommandType::DISPENSER_STOP;
-                    cmd.command_string = "dispenser stop";
                 }
                 HandleDispenser(cmd);
                 break;
             }
             case 8:
                 cmd.command = CommandType::DISPENSER_PURGE;
-                cmd.command_string = "dispenser purge";
                 cmd.wait_purge_key = PromptYesNo("等待排胶键触发", false);
                 if (!cmd.wait_purge_key) {
                     cmd.wait_for_completion = PromptYesNo("达到时长后自动停止", true);
@@ -219,38 +208,32 @@ int CLICommandHandlers::RunInteractive() {
                 std::cout << "供胶阀操作: 1)打开 2)关闭\n";
                 const int action = PromptInt("选择操作", 1);
                 cmd.command = (action == 1) ? CommandType::SUPPLY_OPEN : CommandType::SUPPLY_CLOSE;
-                cmd.command_string = (action == 1) ? "supply open" : "supply close";
                 HandleSupply(cmd);
                 break;
             }
             case 10:
                 cmd.command = CommandType::DXF_PLAN;
-                cmd.command_string = "dxf-plan";
                 cmd.dxf_file_path = PromptString("DXF文件路径", cmd.dxf_file_path);
                 HandleDXFPlan(cmd);
                 break;
             case 11:
                 cmd.command = CommandType::DXF_DISPENSE;
-                cmd.command_string = "dxf-dispense";
                 cmd.dxf_file_path = PromptString("DXF文件路径", cmd.dxf_file_path);
                 cmd.auto_home_axes = PromptYesNo("检测到未回零是否自动回零", true);
                 HandleDXFDispense(cmd);
                 break;
             case 12:
                 cmd.command = CommandType::DXF_AUGMENT;
-                cmd.command_string = "dxf-augment";
                 cmd.dxf_file_path = PromptString("DXF文件路径", cmd.dxf_file_path);
                 cmd.dxf_output_path = PromptString("输出路径(可选)", "");
                 HandleDXFAugment(cmd);
                 break;
             case 13:
                 cmd.command = CommandType::EMERGENCY_STOP;
-                cmd.command_string = "estop";
                 HandleEmergencyStop(cmd);
                 break;
             case 14:
                 cmd.command = CommandType::STOP_ALL;
-                cmd.command_string = "stop-all";
                 cmd.immediate_stop = PromptYesNo("立即停止", false);
                 HandleStopAll(cmd);
                 break;

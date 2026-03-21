@@ -142,7 +142,7 @@ private:
      * @brief 检查阀门安全状态
      * @return Result<void> 通过检查返回Success，否则返回错误信息
      */
-    Result<void> CheckValveSafety() const noexcept;
+    Result<void> CheckValveSafety(bool require_supply_open) const noexcept;
 };
 
 }  // namespace Siligen::Domain::Dispensing::DomainServices

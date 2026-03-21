@@ -81,6 +81,31 @@ Shared::Types::Result<Point2D> TcpMotionFacade::GetCurrentPosition() const {
     return monitoring_use_case_->GetCurrentPosition();
 }
 
+Shared::Types::Result<Domain::Motion::Ports::CoordinateSystemStatus> TcpMotionFacade::GetCoordinateSystemStatus(
+    int16 coord_sys) const {
+    if (!monitoring_use_case_) {
+        return Shared::Types::Result<Domain::Motion::Ports::CoordinateSystemStatus>::Failure(
+            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionMonitoringUseCase not available"));
+    }
+    return monitoring_use_case_->GetCoordinateSystemStatus(coord_sys);
+}
+
+Shared::Types::Result<uint32> TcpMotionFacade::GetInterpolationBufferSpace(int16 coord_sys) const {
+    if (!monitoring_use_case_) {
+        return Shared::Types::Result<uint32>::Failure(
+            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionMonitoringUseCase not available"));
+    }
+    return monitoring_use_case_->GetInterpolationBufferSpace(coord_sys);
+}
+
+Shared::Types::Result<uint32> TcpMotionFacade::GetLookAheadBufferSpace(int16 coord_sys) const {
+    if (!monitoring_use_case_) {
+        return Shared::Types::Result<uint32>::Failure(
+            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionMonitoringUseCase not available"));
+    }
+    return monitoring_use_case_->GetLookAheadBufferSpace(coord_sys);
+}
+
 Shared::Types::Result<bool> TcpMotionFacade::ReadLimitStatus(
     Shared::Types::LogicalAxisId axis,
     bool positive) const {

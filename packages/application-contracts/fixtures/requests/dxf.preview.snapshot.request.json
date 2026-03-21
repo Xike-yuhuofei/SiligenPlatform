@@ -1,0 +1,8 @@
+{
+  "id": "4",
+  "method": "dxf.preview.snapshot",
+  "params": {
+    "plan_id": "plan-8b2649f36dcb",
+    "max_polyline_points": 4000
+  }
+}

@@ -93,6 +93,9 @@ enum class ErrorCode : int32 {
     ENUM_CONVERSION_FAILED = 6008,
     UNSUPPORTED_TYPE = 6009,
 
+    // 冗余治理契约错误 (Redundancy governance contract errors 7100-7199)
+    DUPLICATE_DECISION_ID = 7104,
+
     // 适配器错误 (Adapter errors 9000-9099)
     ADAPTER_EXCEPTION = 9000,          // 适配器内部异常
     ADAPTER_NOT_INITIALIZED = 9001,    // 适配器未初始化
@@ -324,6 +327,8 @@ inline const char* ErrorCodeToString(ErrorCode code) {
             return "ENUM_CONVERSION_FAILED";
         case ErrorCode::UNSUPPORTED_TYPE:
             return "UNSUPPORTED_TYPE";
+        case ErrorCode::DUPLICATE_DECISION_ID:
+            return "DUPLICATE_DECISION_ID";
 
         // 适配器错误 (Adapter errors)
         case ErrorCode::ADAPTER_EXCEPTION:

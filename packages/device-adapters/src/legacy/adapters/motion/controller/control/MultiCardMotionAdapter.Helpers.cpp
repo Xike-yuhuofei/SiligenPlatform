@@ -57,6 +57,89 @@ bool MultiCardMotionAdapter::ValidateAxis(short axis) const {
     return axis >= 0 && axis < kAxisCount;
 }
 
+bool MultiCardMotionAdapter::IsEncoderFeedbackEnabled(short axis) const noexcept {
+    return hardware_config_.IsEncoderEnabledForAxis(axis);
+}
+
+std::string MultiCardMotionAdapter::DescribeSelectedFeedbackSource(short axis) const {
+    return IsEncoderFeedbackEnabled(axis) ? "encoder" : "profile";
+}
+
+MultiCardMotionAdapter::AxisFeedbackSnapshot MultiCardMotionAdapter::ReadAxisFeedbackSnapshot(short axis,
+                                                                                              short sdk_axis) const
+    noexcept {
+    AxisFeedbackSnapshot snapshot;
+    snapshot.encoder_enabled = IsEncoderFeedbackEnabled(axis);
+
+    double prf_pos = 0.0;
+    snapshot.profile_position_ret = hardware_wrapper_->MC_GetPrfPos(sdk_axis, &prf_pos);
+    if (snapshot.profile_position_ret == 0) {
+        snapshot.profile_position_mm = static_cast<float>(unit_converter_.PulsesToPosition(axis, static_cast<long>(prf_pos)));
+    }
+
+    double enc_pos = 0.0;
+    snapshot.encoder_position_ret = hardware_wrapper_->MC_GetAxisEncPos(sdk_axis, &enc_pos);
+    if (snapshot.encoder_position_ret == 0) {
+        snapshot.encoder_position_mm = static_cast<float>(unit_converter_.PulsesToPosition(axis, static_cast<long>(enc_pos)));
+    }
+
+    double prf_vel = 0.0;
+    unsigned long prf_clock = 0;
+    snapshot.profile_velocity_ret = hardware_wrapper_->MC_GetAxisPrfVel(sdk_axis, &prf_vel, 1, &prf_clock);
+    if (snapshot.profile_velocity_ret == 0) {
+        snapshot.profile_velocity_mm_s = static_cast<float>(unit_converter_.PulsePerMsToVelocity(axis, prf_vel));
+    }
+
+    double enc_vel = 0.0;
+    unsigned long enc_clock = 0;
+    snapshot.encoder_velocity_ret = hardware_wrapper_->MC_GetAxisEncVel(sdk_axis, &enc_vel, 1, &enc_clock);
+    if (snapshot.encoder_velocity_ret == 0) {
+        snapshot.encoder_velocity_mm_s = static_cast<float>(unit_converter_.PulsePerMsToVelocity(axis, enc_vel));
+    }
+
+    return snapshot;
+}
+
+Result<float32> MultiCardMotionAdapter::ResolveAxisPositionFromSnapshot(short axis,
+                                                                        const AxisFeedbackSnapshot& snapshot,
+                                                                        const std::string& operation) const {
+    if (snapshot.encoder_enabled) {
+        if (snapshot.encoder_position_ret != 0) {
+            return Result<float32>(Shared::Types::Error(Shared::Types::ErrorCode::MOTION_ERROR,
+                                                        FormatErrorMessage(operation + "(encoder)", axis,
+                                                                           static_cast<short>(snapshot.encoder_position_ret))));
+        }
+        return Result<float32>(snapshot.encoder_position_mm);
+    }
+
+    if (snapshot.profile_position_ret != 0) {
+        return Result<float32>(Shared::Types::Error(Shared::Types::ErrorCode::MOTION_ERROR,
+                                                    FormatErrorMessage(operation + "(profile)", axis,
+                                                                       static_cast<short>(snapshot.profile_position_ret))));
+    }
+    return Result<float32>(snapshot.profile_position_mm);
+}
+
+Result<float32> MultiCardMotionAdapter::ResolveAxisVelocityFromSnapshot(short axis,
+                                                                        const AxisFeedbackSnapshot& snapshot,
+                                                                        const std::string& operation) const {
+    if (snapshot.encoder_enabled) {
+        if (snapshot.encoder_velocity_ret != 0) {
+            return Result<float32>(Shared::Types::Error(Shared::Types::ErrorCode::MOTION_ERROR,
+                                                        FormatErrorMessage(operation + "(encoder)", axis,
+                                                                           static_cast<short>(snapshot.encoder_velocity_ret))));
+        }
+        return Result<float32>(snapshot.encoder_velocity_mm_s);
+    }
+
+    if (snapshot.profile_velocity_ret != 0) {
+        return Result<float32>(Shared::Types::Error(Shared::Types::ErrorCode::MOTION_ERROR,
+                                                    FormatErrorMessage(operation + "(profile)", axis,
+                                                                       static_cast<short>(snapshot.profile_velocity_ret))));
+    }
+    return Result<float32>(snapshot.profile_velocity_mm_s);
+}
+
 // 将内部轴号(0-based)转换为SDK轴号(1-based)
 // MultiCard SDK 轴号范围是 [1, AXIS_MAX_COUNT]
 // 使用类型安全的 AxisTypes.h 转换函数
@@ -109,19 +192,11 @@ void MultiCardMotionAdapter::LogAxisSnapshot(const std::string& tag, short axis,
     long cmd_pos = 0;
     short cmd_ret = hardware_wrapper_->MC_GetPos(sdk_axis, &cmd_pos);
 
-    double prf_pos = 0.0;
-    short prf_pos_ret = hardware_wrapper_->MC_GetPrfPos(sdk_axis, &prf_pos);
-
-    double enc_pos = 0.0;
-    short enc_pos_ret = hardware_wrapper_->MC_GetAxisEncPos(sdk_axis, &enc_pos);
-
-    double prf_vel = 0.0;
-    unsigned long prf_clock = 0;
-    short prf_vel_ret = hardware_wrapper_->MC_GetAxisPrfVel(sdk_axis, &prf_vel, 1, &prf_clock);
-
-    double enc_vel = 0.0;
-    unsigned long enc_clock = 0;
-    short enc_vel_ret = hardware_wrapper_->MC_GetAxisEncVel(sdk_axis, &enc_vel, 1, &enc_clock);
+    const auto feedback = ReadAxisFeedbackSnapshot(axis, sdk_axis);
+    const short prf_pos_ret = static_cast<short>(feedback.profile_position_ret);
+    const short enc_pos_ret = static_cast<short>(feedback.encoder_position_ret);
+    const short prf_vel_ret = static_cast<short>(feedback.profile_velocity_ret);
+    const short enc_vel_ret = static_cast<short>(feedback.encoder_velocity_ret);
 
     short alarm_status = 0;
     short alarm_ret = hardware_wrapper_->MC_GetAlarmOnOff(sdk_axis, &alarm_status);
@@ -136,10 +211,10 @@ void MultiCardMotionAdapter::LogAxisSnapshot(const std::string& tag, short axis,
 
     const double pulses_per_mm = unit_converter_.GetPulsesPerMm(axis);
     const double cmd_mm = pulses_per_mm > 0.0 ? static_cast<double>(cmd_pos) / pulses_per_mm : 0.0;
-    const double prf_mm = pulses_per_mm > 0.0 ? prf_pos / pulses_per_mm : 0.0;
-    const double enc_mm = pulses_per_mm > 0.0 ? enc_pos / pulses_per_mm : 0.0;
-    const double prf_vel_mm_s = unit_converter_.PulsePerMsToVelocity(axis, prf_vel);
-    const double enc_vel_mm_s = unit_converter_.PulsePerMsToVelocity(axis, enc_vel);
+    const double prf_mm = feedback.profile_position_mm;
+    const double enc_mm = feedback.encoder_position_mm;
+    const double prf_vel_mm_s = feedback.profile_velocity_mm_s;
+    const double enc_vel_mm_s = feedback.encoder_velocity_mm_s;
 
     SILIGEN_LOG_INFO("Diag " + tag +
                      " axis=" + std::to_string(axis) +
@@ -164,14 +239,14 @@ void MultiCardMotionAdapter::LogAxisSnapshot(const std::string& tag, short axis,
                      " enc_mm=" + std::to_string(enc_mm) +
                      " prf_vel_mm_s=" + std::to_string(prf_vel_mm_s) +
                      " enc_vel_mm_s=" + std::to_string(enc_vel_mm_s) +
+                     " selected=" + DescribeSelectedFeedbackSource(axis) +
                      " ret(cmd=" + std::to_string(cmd_ret) +
                      " prf_pos=" + std::to_string(prf_pos_ret) +
                      " enc_pos=" + std::to_string(enc_pos_ret) +
                      " prf_vel=" + std::to_string(prf_vel_ret) +
                      " enc_vel=" + std::to_string(enc_vel_ret) +
                      ") clk(sts=" + std::to_string(sts_clock) +
-                     " prf=" + std::to_string(prf_clock) +
-                     " enc=" + std::to_string(enc_clock) + ")");
+                     " prf=0 enc=0)");
 
     if (diagnostics_config_.deep_hardware_logging) {
         long di_gpi = 0;
