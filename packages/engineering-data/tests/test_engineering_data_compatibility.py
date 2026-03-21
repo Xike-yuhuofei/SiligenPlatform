@@ -73,6 +73,26 @@ class EngineeringDataCompatibilityTest(unittest.TestCase):
         self.assertEqual(payload["width_mm"], expected["width_mm"])
         self.assertEqual(payload["height_mm"], expected["height_mm"])
 
+    def test_generate_preview_deterministic_output_is_stable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_dir = Path(tmp_dir)
+            request = PreviewRequest(
+                input_path=self.dxf_fixture_path,
+                output_dir=output_dir,
+                title="rect_diag",
+                speed_mm_s=10.0,
+                deterministic_name=True,
+            )
+            artifact_a = generate_preview(request)
+            html_a = Path(artifact_a.preview_path).read_text(encoding="utf-8")
+
+            artifact_b = generate_preview(request)
+            html_b = Path(artifact_b.preview_path).read_text(encoding="utf-8")
+
+        self.assertEqual(Path(artifact_a.preview_path).name, "rect_diag-preview.html")
+        self.assertEqual(artifact_a.to_dict(), artifact_b.to_dict())
+        self.assertEqual(html_a, html_b)
+
     def test_simulation_payload_matches_fixture(self) -> None:
         payload = bundle_to_simulation_payload(load_path_bundle(self.pb_fixture_path))
         self.assertEqual(payload, _load_json(self.sim_fixture_path))

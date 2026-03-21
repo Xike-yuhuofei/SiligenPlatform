@@ -241,6 +241,23 @@ def build_cases(
                     cwd=WORKSPACE_ROOT,
                 ),
                 ValidationCase(
+                    name="control-cli-dxf-preview",
+                    layer="apps",
+                    description="control-cli canonical DXF preview 离线入口",
+                    command=[
+                        str(_control_apps_executable("siligen_cli.exe")),
+                        "dxf-preview",
+                        "--file",
+                        str(WORKSPACE_ROOT / "examples" / "dxf" / "rect_diag.dxf"),
+                        "--preview-max-points",
+                        "200",
+                        "--json",
+                        "--config",
+                        str(machine_config),
+                    ],
+                    cwd=WORKSPACE_ROOT,
+                ),
+                ValidationCase(
                     name="hmi-app-dryrun",
                     layer="apps",
                     description="hmi-app canonical 入口 dry-run（仅允许显式 gateway 契约）",

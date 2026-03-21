@@ -4,6 +4,7 @@
   "success": true,
   "result": {
     "total_length": 245.6,
+    "total_segments": 128,
     "bounds": {
       "x_min": 0.0,
       "x_max": 25.4,

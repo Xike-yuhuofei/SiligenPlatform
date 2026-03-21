@@ -22,6 +22,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Polyline flattening tolerance in mm")
     parser.add_argument("--max-points", type=int, default=12000,
                         help="Maximum sampled points kept in the preview")
+    parser.add_argument("--deterministic", action="store_true",
+                        help="Use deterministic output filename (<stem>-preview.html)")
     parser.add_argument("--json", action="store_true", help="Print preview metadata as JSON")
     return parser
 
@@ -43,6 +45,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 speed_mm_s=float(args.speed),
                 curve_tolerance_mm=float(args.curve_tolerance_mm),
                 max_points=int(args.max_points),
+                deterministic_name=bool(args.deterministic),
             )
         )
     except Exception as exc:

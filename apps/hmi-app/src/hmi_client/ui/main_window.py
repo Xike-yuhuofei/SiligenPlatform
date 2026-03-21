@@ -1728,7 +1728,10 @@ class MainWindow(QMainWindow):
     def _update_dxf_info(self):
         info = self._protocol.dxf_get_info()
         self._dxf_total_length_val = info.get("total_length", 0.0)
-        self._dxf_segment_count_cache = info.get("total_segments", 0)
+        total_segments = info.get("total_segments")
+        if total_segments is None:
+            total_segments = getattr(self, "_dxf_segment_count_cache", 0)
+        self._dxf_segment_count_cache = int(total_segments or 0)
         self._update_dxf_estimated_time()
 
     def _update_dxf_estimated_time(self, _=None):

@@ -12,6 +12,7 @@ class PreviewRequest:
     speed_mm_s: float = 10.0
     curve_tolerance_mm: float = 0.25
     max_points: int = 12000
+    deterministic_name: bool = False
 
 
 @dataclass(frozen=True)

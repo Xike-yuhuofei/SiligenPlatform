@@ -548,7 +548,7 @@ def parse_args(argv):
     parser.add_argument("--min-seg-enabled", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--spline-samples", type=int, default=64)
     parser.add_argument("--spline-max-step", type=float, default=0.0)
-    parser.add_argument("--strict-r12", action=argparse.BooleanOptionalAction, default=True,
+    parser.add_argument("--strict-r12", action=argparse.BooleanOptionalAction, default=False,
                         help="Reject non-R12 DXF versions and compatibility-only entities")
     return parser.parse_args(argv)
 

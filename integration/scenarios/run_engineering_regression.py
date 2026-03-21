@@ -69,6 +69,58 @@ def main() -> int:
         actual_pb = load_path_bundle(pb_path)
         actual_sim = _load_json(sim_path)
 
+        preview_run_a = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "packages" / "engineering-data" / "scripts" / "generate_preview.py"),
+                "--input", str(dxf_path),
+                "--output-dir", str(temp_root),
+                "--json",
+                "--deterministic",
+            ],
+            cwd=str(ROOT),
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        if preview_run_a.returncode != 0:
+            print(preview_run_a.stdout)
+            print(preview_run_a.stderr, file=sys.stderr)
+            return preview_run_a.returncode
+        preview_payload_a = json.loads((preview_run_a.stdout or "").strip().splitlines()[-1])
+        preview_path_a = Path(preview_payload_a["preview_path"])
+        if not preview_path_a.exists():
+            print(f"engineering regression failed: preview artifact missing: {preview_path_a}", file=sys.stderr)
+            return 1
+        preview_html_a = preview_path_a.read_bytes()
+
+        preview_run_b = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "packages" / "engineering-data" / "scripts" / "generate_preview.py"),
+                "--input", str(dxf_path),
+                "--output-dir", str(temp_root),
+                "--json",
+                "--deterministic",
+            ],
+            cwd=str(ROOT),
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        if preview_run_b.returncode != 0:
+            print(preview_run_b.stdout)
+            print(preview_run_b.stderr, file=sys.stderr)
+            return preview_run_b.returncode
+        preview_payload_b = json.loads((preview_run_b.stdout or "").strip().splitlines()[-1])
+        preview_path_b = Path(preview_payload_b["preview_path"])
+        if not preview_path_b.exists():
+            print(f"engineering regression failed: preview artifact missing: {preview_path_b}", file=sys.stderr)
+            return 1
+        preview_html_b = preview_path_b.read_bytes()
+
     actual_pb.header.source_path = ""
     expected_pb.header.source_path = ""
     if actual_pb.SerializeToString() != expected_pb.SerializeToString():
@@ -76,6 +128,12 @@ def main() -> int:
         return 1
     if actual_sim != expected_sim:
         print("engineering regression failed: simulation input differs from canonical fixture", file=sys.stderr)
+        return 1
+    if preview_payload_a != preview_payload_b:
+        print("engineering regression failed: deterministic preview metadata mismatch", file=sys.stderr)
+        return 1
+    if preview_html_a != preview_html_b:
+        print("engineering regression failed: deterministic preview html mismatch", file=sys.stderr)
         return 1
 
     print("engineering regression passed")

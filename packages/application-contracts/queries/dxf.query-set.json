@@ -15,12 +15,7 @@
       "errorCodes": [3010],
       "consumers": [
         "hmi-client CommandProtocol.dxf_get_info"
-      ],
-      "compatibility": {
-        "notes": [
-          "当前 TCP 服务端不返回 total_segments；HMI UI 仍在 main_window.py 读取该字段。详见 mappings/compatibility-overrides.json。"
-        ]
-      }
+      ]
     },
     {
       "method": "dxf.progress",

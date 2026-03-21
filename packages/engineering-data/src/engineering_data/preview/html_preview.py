@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import html
 import math
 from dataclasses import dataclass
@@ -142,7 +143,8 @@ def _layer_color(layer_name: str) -> str:
         "#16a34a",
         "#db2777",
     )
-    index = abs(hash(layer_name)) % len(palette)
+    digest = hashlib.sha1(layer_name.encode("utf-8")).digest()
+    index = digest[0] % len(palette)
     return palette[index]
 
 
@@ -355,7 +357,10 @@ def generate_preview(request: PreviewRequest) -> PreviewArtifact:
     estimated_time = total_length / request.speed_mm_s if request.speed_mm_s > 0 else 0.0
 
     request.output_dir.mkdir(parents=True, exist_ok=True)
-    preview_name = f"{request.input_path.stem}-{uuid4().hex[:8]}-preview.html"
+    if request.deterministic_name:
+        preview_name = f"{request.input_path.stem}-preview.html"
+    else:
+        preview_name = f"{request.input_path.stem}-{uuid4().hex[:8]}-preview.html"
     preview_path = request.output_dir / preview_name
     preview_path.write_text(
         _svg_markup(

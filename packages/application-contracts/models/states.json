@@ -60,9 +60,10 @@
     },
     "dxfInfo": {
       "type": "object",
-      "required": ["total_length", "bounds"],
+      "required": ["total_length", "total_segments", "bounds"],
       "properties": {
         "total_length": { "type": "number" },
+        "total_segments": { "type": "integer", "minimum": 0 },
         "bounds": {
           "type": "object",
           "required": ["x_min", "x_max", "y_min", "y_max"],

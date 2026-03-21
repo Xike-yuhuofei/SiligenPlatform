@@ -26,17 +26,6 @@
       "type": "request-alias-family",
       "methods": ["dxf.load"],
       "source": "packages/transport-gateway/src/tcp/TcpCommandDispatcher.cpp"
-    },
-    {
-      "id": "dxf-info-total-segments-gap",
-      "type": "consumer-producer-gap",
-      "method": "dxf.info",
-      "producer": "transport-gateway TcpCommandDispatcher::HandleDxfInfo",
-      "consumer": "hmi-client ui/main_window.py::_update_dxf_info",
-      "producerFields": ["total_length", "bounds"],
-      "consumerExpectedFields": ["total_segments"],
-      "compatibilityLayer": "HMI 继续以 dxf.load 返回的 segment_count 作为段数缓存；在未统一前不得假定 dxf.info 已提供 total_segments。",
-      "status": "recorded-pending"
     }
   ]
 }

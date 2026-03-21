@@ -23,7 +23,7 @@
 | `dxf.load` | 命令 | `CommandProtocol.dxf_load()` | `HandleDxfLoad` | `DXF_PLAN` / `DXF_DISPENSE` 前置 | `loaded` / `segment_count` / `filepath` | 同时接受 `filepath` / `file_path` |
 | `dxf.execute` | 命令 | `CommandProtocol.dxf_execute()` | `HandleDxfExecute` | `DXF_DISPENSE` | `executing` / `task_id` | 旧速度字段 `speed` / `dry_run_speed` / `dryRunSpeed` 被明确拒绝 |
 | `dxf.stop` | 命令 | `CommandProtocol.dxf_stop()` | `HandleDxfStop` | 无独立 CLI facade | `stopped` | 会取消现有 task 并清空缓存 task id |
-| `dxf.info` | 查询 | `CommandProtocol.dxf_get_info()` | `HandleDxfInfo` | `DXF_PLAN` 结果侧等价 | `total_length` / `bounds` | 当前未返回 `total_segments`，HMI UI 仍在读该字段 |
+| `dxf.info` | 查询 | `CommandProtocol.dxf_get_info()` | `HandleDxfInfo` | `DXF_PLAN` 结果侧等价 | `total_length` / `total_segments` / `bounds` | 与 HMI UI 段数读取字段已对齐 |
 | `dxf.progress` | 查询 | `CommandProtocol.dxf_get_progress()` | `HandleDxfProgress` | 无 | `running` / `progress` / `current_segment` / `total_segments` / `state` / `error_message` | HMI UI 与 TCP 对该结构目前一致 |
 
 ## `recipe.*`
@@ -51,5 +51,5 @@
 ## 额外观察
 
 - `recipe.*` 是当前别名兼容最密集的一组协议。
-- `dxf.*` 当前命令和查询都已经跨 HMI / CLI / TCP 共用，但 `dxf.info` 仍有字段缺口。
+- `dxf.*` 当前命令和查询都已经跨 HMI / CLI / TCP 共用，`dxf.info` 与 HMI 段数字段已对齐。
 - `status` 与 `alarms.*` 结构已被 HMI UI 直接依赖，字段改名风险高。

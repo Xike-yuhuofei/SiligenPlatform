@@ -29,6 +29,5 @@
 
 ## 当前未对齐但已记录
 
-- `dxf.info` 当前不返回 `total_segments`，但 HMI UI 仍读取该字段。
 - `status.machine_state` 在 TCP 真服务端目前偏静态（`Ready`），而 HMI mock 中还出现过 `Idle` / `Running`。
 - 当前事件 envelope 已存在，但未发现已稳定发布的具体事件名。

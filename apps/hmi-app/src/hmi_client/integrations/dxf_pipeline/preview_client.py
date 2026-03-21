@@ -57,6 +57,7 @@ class DxfPipelinePreviewClient:
             f"{float(speed_mm_s):.6f}",
             "--max-points",
             str(int(max_points)),
+            "--deterministic",
             "--json",
         ]
         if title:
