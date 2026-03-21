@@ -22,6 +22,8 @@ env/
 
 # Build outputs and local runtime data
 build/
+/build-tests/
+/.tmp/
 !tools/build/
 !tools/build/build-validation.ps1
 logs/
