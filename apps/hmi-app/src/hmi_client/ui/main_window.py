@@ -351,6 +351,8 @@ class MainWindow(QMainWindow):
         self._last_status_error_notice_ts = 0.0
         self._last_status = None
         self._last_status_ts = 0.0
+        self._connected = False
+        self._hw_connected = False
 
         # Production statistics
         self._production_running = False
@@ -1412,6 +1414,8 @@ class MainWindow(QMainWindow):
         self._launch_mode_label.setText("Offline" if effective_mode == "offline" else "Online")
 
         if self._is_offline_mode():
+            self._connected = False
+            self._hw_connected = False
             self._operation_status.setText("离线模式")
             self._tcp_state_label.setText("未连接")
             self._hw_state_label.setText("不可用")
@@ -1424,6 +1428,8 @@ class MainWindow(QMainWindow):
 
         snapshot = self._current_session_snapshot()
         if snapshot is None:
+            self._connected = False
+            self._hw_connected = False
             self._update_led(self._tcp_led, "off")
             self._update_led(self._hw_led, "off")
             self._tcp_state_label.setText("未连接")
@@ -1433,6 +1439,8 @@ class MainWindow(QMainWindow):
             self._update_recovery_controls_state()
             return
 
+        self._connected = snapshot.tcp_state == "ready"
+        self._hw_connected = snapshot.hardware_state == "ready"
         self._tcp_state_label.setText(self._label_for_tcp_state(snapshot.tcp_state))
         self._hw_state_label.setText(self._label_for_hw_state(snapshot.hardware_state))
         self._update_led(
@@ -2243,7 +2251,7 @@ class MainWindow(QMainWindow):
             return
         enabled = (
             not self._is_offline_mode()
-            and self._connected
+            and getattr(self, "_connected", False)
             and self._dxf_loaded
             and not self._preview_refresh_inflight
         )
