@@ -6,7 +6,7 @@
 #include "shared/types/TrajectoryTypes.h"
 #include "domain/trajectory/value-objects/PlanningReport.h"
 #include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
-#include "DXFDispensingPlanner.h"
+#include "domain/dispensing/planning/domain-services/DispensingPlannerService.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -15,7 +15,7 @@ namespace Siligen::Application::Services::DXF {
 class DxfPbPreparationService;
 }
 
-namespace Siligen::Application::UseCases::Dispensing::DXF {
+namespace Siligen::Application::UseCases::Dispensing {
 
 // 引入 Result 类型（位于 Siligen::Shared::Types）
 using Siligen::Shared::Types::Result;
@@ -23,6 +23,9 @@ using Siligen::Shared::Types::TrajectoryConfig;
 using Siligen::Shared::Types::TrajectoryResult;
 using Siligen::TrajectoryPoint;
 using Siligen::Domain::Trajectory::ValueObjects::PlanningReport;
+using Siligen::Domain::Dispensing::DomainServices::DispensingPlan;
+using Siligen::Domain::Dispensing::DomainServices::DispensingPlanner;
+using Siligen::Domain::Dispensing::DomainServices::DispensingPlanRequest;
 
 /**
  * @brief DXF 路径规划请求参数
@@ -30,7 +33,7 @@ using Siligen::Domain::Trajectory::ValueObjects::PlanningReport;
 /**
  * @brief DXF 路径规划请求参数
  */
-struct DXFPlanningRequest {
+struct PlanningRequest {
     std::string dxf_filepath;              ///< DXF 文件路径
     TrajectoryConfig trajectory_config;    ///< 轨迹配置参数
     bool optimize_path = true;             ///< 是否启用路径优化
@@ -111,7 +114,7 @@ struct DXFPlanningRequest {
 /**
  * @brief DXF 路径规划响应结果
  */
-struct DXFPlanningResponse {
+struct PlanningResponse {
     bool success = false;                      ///< 是否成功
     std::string error_message;                 ///< 错误信息
 
@@ -146,39 +149,39 @@ struct DXFPlanningResponse {
  * 5. 返回完整的规划结果
  *
  * 架构合规性:
- * - 组合现有组件（DXFDispensingPlanner）
+ * - 组合现有组件（DispensingPlanner）
  * - 单一职责：仅编排 DXF 路径规划流程
  */
-class DXFWebPlanningUseCase {
+class PlanningUseCase {
 public:
     /**
      * @brief 构造函数
      * @param parser DXF 解析器
      * @param generator 轨迹生成器
      */
-    DXFWebPlanningUseCase(
-        std::shared_ptr<DXFDispensingPlanner> planner,
+    PlanningUseCase(
+        std::shared_ptr<DispensingPlanner> planner,
         std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port = nullptr,
         std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService>
             pb_preparation_service = nullptr);
 
-    ~DXFWebPlanningUseCase() = default;
+    ~PlanningUseCase() = default;
 
     // 禁止拷贝和移动
-    DXFWebPlanningUseCase(const DXFWebPlanningUseCase&) = delete;
-    DXFWebPlanningUseCase& operator=(const DXFWebPlanningUseCase&) = delete;
-    DXFWebPlanningUseCase(DXFWebPlanningUseCase&&) = delete;
-    DXFWebPlanningUseCase& operator=(DXFWebPlanningUseCase&&) = delete;
+    PlanningUseCase(const PlanningUseCase&) = delete;
+    PlanningUseCase& operator=(const PlanningUseCase&) = delete;
+    PlanningUseCase(PlanningUseCase&&) = delete;
+    PlanningUseCase& operator=(PlanningUseCase&&) = delete;
 
     /**
      * @brief 执行 DXF 路径规划
      * @param request 规划请求参数
-     * @return Result<DXFPlanningResponse> 规划结果
+     * @return Result<PlanningResponse> 规划结果
      */
-    Result<DXFPlanningResponse> Execute(const DXFPlanningRequest& request);
+    Result<PlanningResponse> Execute(const PlanningRequest& request);
 
 private:
-    std::shared_ptr<DXFDispensingPlanner> planner_;
+    std::shared_ptr<DispensingPlanner> planner_;
     std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port_;
     std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService> pb_preparation_service_;
 
@@ -197,7 +200,8 @@ private:
     std::string ExtractFilename(const std::string& filepath);
 };
 
-}  // namespace Siligen::Application::UseCases::Dispensing::DXF
+}  // namespace Siligen::Application::UseCases::Dispensing
+
 
 
 

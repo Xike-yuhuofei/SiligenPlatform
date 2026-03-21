@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "dictionary": "siligen.process-runtime-core.redundancy.enums/1.0",
+  "version": "1.0.0",
+  "enums": {
+    "entityType": [
+      "function",
+      "method",
+      "class",
+      "file",
+      "cmake_target"
+    ],
+    "language": [
+      "cpp",
+      "header",
+      "cmake"
+    ],
+    "staticSignalType": [
+      "unreferenced",
+      "unreachable",
+      "duplicate",
+      "isolated"
+    ],
+    "runtimeEnvironment": [
+      "test",
+      "staging",
+      "canary"
+    ],
+    "candidatePriority": [
+      "P0",
+      "P1",
+      "P2",
+      "P3"
+    ],
+    "candidateAction": [
+      "observe",
+      "deprecate",
+      "remove",
+      "hold"
+    ],
+    "candidateStatus": [
+      "NEW",
+      "REVIEWED",
+      "DEPRECATED",
+      "OBSERVED",
+      "REMOVED",
+      "ROLLED_BACK"
+    ],
+    "decisionAction": [
+      "approve",
+      "reject",
+      "deprecate",
+      "remove",
+      "rollback"
+    ]
+  }
+}

@@ -1,4 +1,4 @@
-#include "UploadDXFFileUseCase.h"
+#include "UploadFileUseCase.h"
 #include "application/services/dxf/DxfPbPreparationService.h"
 #include "shared/interfaces/ILoggingService.h"
 
@@ -9,7 +9,7 @@
 #ifdef MODULE_NAME
 #undef MODULE_NAME
 #endif
-#define MODULE_NAME "UploadDXFFileUseCase"
+#define MODULE_NAME "UploadFileUseCase"
 #include "shared/types/Error.h"
 #include "shared/types/Result.h"
 
@@ -20,13 +20,13 @@
 #include <random>
 #include <sstream>
 
-namespace Siligen::Application::UseCases::Dispensing::DXF {
+namespace Siligen::Application::UseCases::Dispensing {
 
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
 
-UploadDXFFileUseCase::UploadDXFFileUseCase(std::shared_ptr<Domain::Configuration::Ports::IFileStoragePort> file_storage_port,
+UploadFileUseCase::UploadFileUseCase(std::shared_ptr<Domain::Configuration::Ports::IFileStoragePort> file_storage_port,
                                            size_t max_file_size_mb,
                                            std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port,
                                            std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService>
@@ -39,24 +39,24 @@ UploadDXFFileUseCase::UploadDXFFileUseCase(std::shared_ptr<Domain::Configuration
                                   : std::make_shared<Siligen::Application::Services::DXF::DxfPbPreparationService>(
                                         config_port_)) {
     if (!file_storage_port_) {
-        throw std::invalid_argument("UploadDXFFileUseCase: file_storage_port cannot be null");
+        throw std::invalid_argument("UploadFileUseCase: file_storage_port cannot be null");
     }
 }
 
-Result<DXFUploadResponse> UploadDXFFileUseCase::Execute(const DXFUploadRequest& request) {
+Result<UploadResponse> UploadFileUseCase::Execute(const UploadRequest& request) {
     SILIGEN_LOG_INFO("Starting file upload: " + request.original_filename);
 
     // 1. 验证请求参数
     if (!request.Validate()) {
-        return Result<DXFUploadResponse>::Failure(Error(ErrorCode::INVALID_PARAMETER,
+        return Result<UploadResponse>::Failure(Error(ErrorCode::INVALID_PARAMETER,
                                                         "Invalid upload request: empty file content or filename",
-                                                        "UploadDXFFileUseCase"));
+                                                        "UploadFileUseCase"));
     }
 
     // 2. 验证 DXF 格式
-    auto dxf_validation = ValidateDXFFormat(request.file_content);
+    auto dxf_validation = ValidateFileFormat(request.file_content);
     if (!dxf_validation.IsSuccess()) {
-        return Result<DXFUploadResponse>::Failure(dxf_validation.GetError());
+        return Result<UploadResponse>::Failure(dxf_validation.GetError());
     }
 
     // 3. 生成安全文件名
@@ -76,25 +76,25 @@ Result<DXFUploadResponse> UploadDXFFileUseCase::Execute(const DXFUploadRequest& 
     auto validation_result = file_storage_port_->ValidateFile(file_data, max_file_size_mb_, allowed_extensions);
 
     if (!validation_result.IsSuccess()) {
-        return Result<DXFUploadResponse>::Failure(validation_result.GetError());
+        return Result<UploadResponse>::Failure(validation_result.GetError());
     }
 
     // 6. 存储文件
     auto store_result = file_storage_port_->StoreFile(file_data, safe_filename);
 
     if (!store_result.IsSuccess()) {
-        return Result<DXFUploadResponse>::Failure(store_result.GetError());
+        return Result<UploadResponse>::Failure(store_result.GetError());
     }
 
     // 6.1 生成对应的 PB 文件
     auto pb_result = pb_preparation_service_->EnsurePbReady(store_result.Value());
     if (!pb_result.IsSuccess()) {
         CleanupGeneratedArtifacts(store_result.Value());
-        return Result<DXFUploadResponse>::Failure(pb_result.GetError());
+        return Result<UploadResponse>::Failure(pb_result.GetError());
     }
 
     // 7. 构建响应
-    DXFUploadResponse response;
+    UploadResponse response;
     response.success = true;
     response.filepath = store_result.Value();
     response.original_name = request.original_filename;
@@ -104,10 +104,10 @@ Result<DXFUploadResponse> UploadDXFFileUseCase::Execute(const DXFUploadRequest& 
 
     SILIGEN_LOG_INFO("File uploaded successfully: " + response.filepath);
 
-    return Result<DXFUploadResponse>::Success(response);
+    return Result<UploadResponse>::Success(response);
 }
 
-std::string UploadDXFFileUseCase::GenerateSafeFilename(const std::string& original_filename) {
+std::string UploadFileUseCase::GenerateSafeFilename(const std::string& original_filename) {
     // 1. 提取文件扩展名
     std::string extension;
     size_t dot_pos = original_filename.find_last_of('.');
@@ -158,13 +158,13 @@ std::string UploadDXFFileUseCase::GenerateSafeFilename(const std::string& origin
     return filename_ss.str();
 }
 
-Result<void> UploadDXFFileUseCase::ValidateDXFFormat(const std::vector<uint8_t>& file_content) {
+Result<void> UploadFileUseCase::ValidateFileFormat(const std::vector<uint8_t>& file_content) {
     // DXF 文件格式验证（简化版）
     // 检查文件头是否包含 DXF 标识
 
     if (file_content.size() < 20) {
         return Result<void>::Failure(
-            Error(ErrorCode::FILE_FORMAT_INVALID, "File too small to be a valid DXF file", "UploadDXFFileUseCase"));
+            Error(ErrorCode::FILE_FORMAT_INVALID, "File too small to be a valid DXF file", "UploadFileUseCase"));
     }
 
     // DXF 文件通常以文本开头，检查前几个字节
@@ -190,13 +190,13 @@ Result<void> UploadDXFFileUseCase::ValidateDXFFormat(const std::vector<uint8_t>&
 
     if (!is_valid_dxf) {
         return Result<void>::Failure(Error(
-            ErrorCode::FILE_FORMAT_INVALID, "File does not appear to be a valid DXF file", "UploadDXFFileUseCase"));
+            ErrorCode::FILE_FORMAT_INVALID, "File does not appear to be a valid DXF file", "UploadFileUseCase"));
     }
 
     return Result<void>::Success();
 }
 
-void UploadDXFFileUseCase::CleanupGeneratedArtifacts(const std::string& filepath) noexcept {
+void UploadFileUseCase::CleanupGeneratedArtifacts(const std::string& filepath) noexcept {
     auto delete_result = file_storage_port_->DeleteFile(filepath);
     if (delete_result.IsError()) {
         SILIGEN_LOG_WARNING("清理上传失败DXF文件失败: " + delete_result.GetError().ToString());
@@ -212,7 +212,8 @@ void UploadDXFFileUseCase::CleanupGeneratedArtifacts(const std::string& filepath
     }
 }
 
-}  // namespace Siligen::Application::UseCases::Dispensing::DXF
+}  // namespace Siligen::Application::UseCases::Dispensing
+
 
 
 

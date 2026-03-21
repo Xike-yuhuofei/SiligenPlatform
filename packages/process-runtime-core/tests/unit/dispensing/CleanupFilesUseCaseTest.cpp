@@ -1,4 +1,4 @@
-#include "application/usecases/dispensing/dxf/CleanupDXFFilesUseCase.h"
+#include "application/usecases/dispensing/CleanupFilesUseCase.h"
 #include "domain/configuration/ports/IFileStoragePort.h"
 #include "shared/types/Error.h"
 
@@ -13,8 +13,8 @@
 
 namespace {
 
-using Siligen::Application::UseCases::Dispensing::DXF::CleanupDXFFilesRequest;
-using Siligen::Application::UseCases::Dispensing::DXF::CleanupDXFFilesUseCase;
+using Siligen::Application::UseCases::Dispensing::CleanupFilesRequest;
+using Siligen::Application::UseCases::Dispensing::CleanupFilesUseCase;
 using Siligen::Domain::Configuration::Ports::FileData;
 using Siligen::Domain::Configuration::Ports::IFileStoragePort;
 using Siligen::Shared::Types::Error;
@@ -25,7 +25,7 @@ class TestFileStoragePort final : public IFileStoragePort {
    public:
     Result<std::string> StoreFile(const FileData&, const std::string&) override {
         return Result<std::string>::Failure(
-            Error(ErrorCode::NOT_IMPLEMENTED, "StoreFile not used", "CleanupDXFFilesUseCaseTest"));
+            Error(ErrorCode::NOT_IMPLEMENTED, "StoreFile not used", "CleanupFilesUseCaseTest"));
     }
 
     Result<void> ValidateFile(const FileData&, size_t, const std::vector<std::string>&) override {
@@ -38,7 +38,7 @@ class TestFileStoragePort final : public IFileStoragePort {
         std::filesystem::remove(filepath, ec);
         if (ec) {
             return Result<void>::Failure(
-                Error(ErrorCode::FILE_IO_ERROR, "delete failed", "CleanupDXFFilesUseCaseTest"));
+                Error(ErrorCode::FILE_IO_ERROR, "delete failed", "CleanupFilesUseCaseTest"));
         }
         return Result<void>::Success();
     }
@@ -52,7 +52,7 @@ class TestFileStoragePort final : public IFileStoragePort {
         const auto size = std::filesystem::file_size(filepath, ec);
         if (ec) {
             return Result<size_t>::Failure(
-                Error(ErrorCode::FILE_IO_ERROR, "size query failed", "CleanupDXFFilesUseCaseTest"));
+                Error(ErrorCode::FILE_IO_ERROR, "size query failed", "CleanupFilesUseCaseTest"));
         }
         return Result<size_t>::Success(static_cast<size_t>(size));
     }
@@ -81,7 +81,7 @@ void SetFileAgeHours(const std::filesystem::path& path, int hours_ago) {
 
 }  // namespace
 
-TEST(CleanupDXFFilesUseCaseTest, DeletesExpiredDxfFilesOnly) {
+TEST(CleanupFilesUseCaseTest, DeletesExpiredDxfFilesOnly) {
     const auto base_dir = MakeTempDir("delete_expired");
     const auto expired_dxf = WriteFile(base_dir / "expired.dxf", "old");
     const auto fresh_dxf = WriteFile(base_dir / "fresh.dxf", "fresh");
@@ -91,9 +91,9 @@ TEST(CleanupDXFFilesUseCaseTest, DeletesExpiredDxfFilesOnly) {
     SetFileAgeHours(txt_file, 72);
 
     auto storage = std::make_shared<TestFileStoragePort>();
-    CleanupDXFFilesUseCase use_case(storage, base_dir.string());
+    CleanupFilesUseCase use_case(storage, base_dir.string());
 
-    CleanupDXFFilesRequest request;
+    CleanupFilesRequest request;
     request.max_age_hours = 24;
     request.dry_run = false;
 
@@ -111,15 +111,15 @@ TEST(CleanupDXFFilesUseCaseTest, DeletesExpiredDxfFilesOnly) {
     std::filesystem::remove_all(base_dir, ec);
 }
 
-TEST(CleanupDXFFilesUseCaseTest, DryRunReportsDeletionWithoutRemovingFiles) {
+TEST(CleanupFilesUseCaseTest, DryRunReportsDeletionWithoutRemovingFiles) {
     const auto base_dir = MakeTempDir("dry_run");
     const auto expired_dxf = WriteFile(base_dir / "expired.dxf", "old");
     SetFileAgeHours(expired_dxf, 48);
 
     auto storage = std::make_shared<TestFileStoragePort>();
-    CleanupDXFFilesUseCase use_case(storage, base_dir.string());
+    CleanupFilesUseCase use_case(storage, base_dir.string());
 
-    CleanupDXFFilesRequest request;
+    CleanupFilesRequest request;
     request.max_age_hours = 24;
     request.dry_run = true;
 
@@ -134,18 +134,18 @@ TEST(CleanupDXFFilesUseCaseTest, DryRunReportsDeletionWithoutRemovingFiles) {
     std::filesystem::remove_all(base_dir, ec);
 }
 
-TEST(CleanupDXFFilesUseCaseTest, SkipsFilesReportedAsInUse) {
+TEST(CleanupFilesUseCaseTest, SkipsFilesReportedAsInUse) {
     const auto base_dir = MakeTempDir("in_use");
     const auto expired_dxf = WriteFile(base_dir / "busy.dxf", "old");
     SetFileAgeHours(expired_dxf, 72);
 
     auto storage = std::make_shared<TestFileStoragePort>();
-    CleanupDXFFilesUseCase use_case(
+    CleanupFilesUseCase use_case(
         storage,
         base_dir.string(),
         [target = expired_dxf.string()](const std::string& filepath) { return filepath == target; });
 
-    CleanupDXFFilesRequest request;
+    CleanupFilesRequest request;
     request.max_age_hours = 24;
 
     auto result = use_case.Execute(request);
@@ -158,3 +158,5 @@ TEST(CleanupDXFFilesUseCaseTest, SkipsFilesReportedAsInUse) {
     std::error_code ec;
     std::filesystem::remove_all(base_dir, ec);
 }
+
+

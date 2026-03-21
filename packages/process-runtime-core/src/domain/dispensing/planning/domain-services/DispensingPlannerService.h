@@ -15,15 +15,11 @@
 #include <string>
 #include <vector>
 
-namespace Siligen::Application::UseCases::Motion::Interpolation {
-class InterpolationPlanningUseCase;
-}
-
 namespace Siligen::Domain::Motion::DomainServices {
 class VelocityProfileService;
 }
 
-namespace Siligen::Application::UseCases::Dispensing::DXF {
+namespace Siligen::Domain::Dispensing::DomainServices {
 
 using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::DispensingStrategy;
@@ -37,9 +33,7 @@ using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectory;
 using Siligen::Domain::Dispensing::ValueObjects::DispenseCompensationProfile;
 
-namespace MotionInterpolation = Siligen::Application::UseCases::Motion::Interpolation;
-
-struct DXFDispensingPlanRequest {
+struct DispensingPlanRequest {
     std::string dxf_filepath;
     Point2D dxf_offset{0.0f, 0.0f};
     bool bounds_check_enabled = false;
@@ -88,7 +82,7 @@ struct DXFDispensingPlanRequest {
     bool Validate() const noexcept;
 };
 
-struct DXFDispensingPlan {
+struct DispensingPlan {
     bool success = false;
     std::string error_message;
     Path path;
@@ -104,22 +98,21 @@ struct DXFDispensingPlan {
     float32 estimated_time_s = 0.0f;
 };
 
-class DXFDispensingPlanner {
+class DispensingPlanner {
    public:
-    explicit DXFDispensingPlanner(
+    explicit DispensingPlanner(
         std::shared_ptr<Domain::Trajectory::Ports::IPathSourcePort> path_source,
-        std::shared_ptr<MotionInterpolation::InterpolationPlanningUseCase> interpolation_usecase = nullptr,
         std::shared_ptr<Domain::Motion::DomainServices::VelocityProfileService> velocity_profile_service = nullptr);
 
-    Result<DXFDispensingPlan> Plan(const DXFDispensingPlanRequest& request) const noexcept;
-    std::vector<TrajectoryPoint> BuildPreviewPoints(const DXFDispensingPlan& plan,
+    Result<DispensingPlan> Plan(const DispensingPlanRequest& request) const noexcept;
+    std::vector<TrajectoryPoint> BuildPreviewPoints(const DispensingPlan& plan,
                                                     float32 spacing_mm,
                                                     size_t max_points) const;
 
    private:
     std::shared_ptr<Domain::Trajectory::Ports::IPathSourcePort> path_source_;
-    std::shared_ptr<MotionInterpolation::InterpolationPlanningUseCase> interpolation_usecase_;
     std::shared_ptr<Domain::Motion::DomainServices::VelocityProfileService> velocity_profile_service_;
 };
 
-}  // namespace Siligen::Application::UseCases::Dispensing::DXF
+}  // namespace Siligen::Domain::Dispensing::DomainServices
+

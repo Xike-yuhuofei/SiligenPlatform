@@ -1,13 +1,13 @@
-#include "application/usecases/dispensing/dxf/DXFWebPlanningUseCase.h"
+#include "application/usecases/dispensing/PlanningUseCase.h"
 
 #include <gtest/gtest.h>
 
 namespace {
-using Siligen::Application::UseCases::Dispensing::DXF::DXFPlanningRequest;
+using Siligen::Application::UseCases::Dispensing::PlanningRequest;
 using Siligen::Shared::Types::TrajectoryConfig;
 
-DXFPlanningRequest MakeValidRequest() {
-    DXFPlanningRequest request;
+PlanningRequest MakeValidRequest() {
+    PlanningRequest request;
     request.dxf_filepath = "dummy.dxf";
     request.trajectory_config = TrajectoryConfig();
     request.trajectory_config.max_velocity = 100.0f;
@@ -17,18 +17,18 @@ DXFPlanningRequest MakeValidRequest() {
 }
 }  // namespace
 
-TEST(DXFPlanningRequestTest, ValidRequestPasses) {
+TEST(PlanningRequestTest, ValidRequestPasses) {
     auto request = MakeValidRequest();
     EXPECT_TRUE(request.Validate());
 }
 
-TEST(DXFPlanningRequestTest, RejectsEmptyFilepath) {
+TEST(PlanningRequestTest, RejectsEmptyFilepath) {
     auto request = MakeValidRequest();
     request.dxf_filepath.clear();
     EXPECT_FALSE(request.Validate());
 }
 
-TEST(DXFPlanningRequestTest, RejectsVelocityOutOfRange) {
+TEST(PlanningRequestTest, RejectsVelocityOutOfRange) {
     auto request = MakeValidRequest();
     request.trajectory_config.max_velocity = 0.0f;
     EXPECT_FALSE(request.Validate());
@@ -38,7 +38,7 @@ TEST(DXFPlanningRequestTest, RejectsVelocityOutOfRange) {
     EXPECT_FALSE(request.Validate());
 }
 
-TEST(DXFPlanningRequestTest, RejectsAccelerationOutOfRange) {
+TEST(PlanningRequestTest, RejectsAccelerationOutOfRange) {
     auto request = MakeValidRequest();
     request.trajectory_config.max_acceleration = 0.0f;
     EXPECT_FALSE(request.Validate());
@@ -48,7 +48,7 @@ TEST(DXFPlanningRequestTest, RejectsAccelerationOutOfRange) {
     EXPECT_FALSE(request.Validate());
 }
 
-TEST(DXFPlanningRequestTest, RejectsTimeStepOutOfRange) {
+TEST(PlanningRequestTest, RejectsTimeStepOutOfRange) {
     auto request = MakeValidRequest();
     request.trajectory_config.time_step = 0.0f;
     EXPECT_FALSE(request.Validate());
@@ -57,3 +57,5 @@ TEST(DXFPlanningRequestTest, RejectsTimeStepOutOfRange) {
     request.trajectory_config.time_step = 0.1001f;
     EXPECT_FALSE(request.Validate());
 }
+
+

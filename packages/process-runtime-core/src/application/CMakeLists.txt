@@ -53,16 +53,13 @@ target_compile_features(siligen_application_motion PUBLIC cxx_std_17)
 
 add_library(siligen_application_dispensing STATIC
     usecases/dispensing/valve/coordination/ValveCoordinationUseCase.cpp
-    usecases/dispensing/dxf/UploadDXFFileUseCase.cpp
-    usecases/dispensing/dxf/CleanupDXFFilesUseCase.cpp
-    usecases/dispensing/dxf/DXFWebPlanningUseCase.cpp
-    usecases/dispensing/dxf/DXFDispensingExecutionUseCase.cpp
-    usecases/dispensing/dxf/DXFDispensingExecutionUseCase.Setup.cpp
-    usecases/dispensing/dxf/DXFDispensingExecutionUseCase.Control.cpp
-    usecases/dispensing/dxf/DXFDispensingExecutionUseCase.Async.cpp
-    usecases/dispensing/dxf/DXFDispensingPlanner.cpp
-    usecases/dispensing/dxf/ContourPathOptimizer.cpp
-    usecases/dispensing/dxf/UnifiedTrajectoryPlanner.cpp
+    usecases/dispensing/UploadFileUseCase.cpp
+    usecases/dispensing/CleanupFilesUseCase.cpp
+    usecases/dispensing/PlanningUseCase.cpp
+    usecases/dispensing/DispensingExecutionUseCase.cpp
+    usecases/dispensing/DispensingExecutionUseCase.Setup.cpp
+    usecases/dispensing/DispensingExecutionUseCase.Control.cpp
+    usecases/dispensing/DispensingExecutionUseCase.Async.cpp
     services/dxf/DxfPbPreparationService.cpp
 )
 target_include_directories(siligen_application_dispensing PUBLIC
@@ -78,6 +75,22 @@ target_link_libraries(siligen_application_dispensing PUBLIC
 )
 target_compile_features(siligen_application_dispensing PUBLIC cxx_std_17)
 
+add_library(siligen_application_redundancy STATIC
+    services/redundancy/CandidateScoringService.cpp
+    usecases/redundancy/RedundancyGovernanceUseCases.cpp
+)
+target_include_directories(siligen_application_redundancy PUBLIC
+    ${SILIGEN_APPLICATION_PUBLIC_INCLUDE_DIRS}
+)
+target_link_libraries(siligen_application_redundancy PUBLIC
+    siligen_types
+    siligen_utils
+    siligen_domain
+    siligen_domain_services
+    siligen_redundancy_storage_adapter
+)
+target_compile_features(siligen_application_redundancy PUBLIC cxx_std_17)
+
 # Canonical target is `siligen_control_application`; keep the old name only for
 # compatibility with legacy build scripts and transitional references.
 add_library(siligen_control_application INTERFACE)
@@ -88,6 +101,7 @@ target_link_libraries(siligen_control_application INTERFACE
     siligen_application_system
     siligen_application_motion
     siligen_application_dispensing
+    siligen_application_redundancy
     siligen_recipe_core
     siligen_valve_core
 )
@@ -95,32 +109,17 @@ target_compile_features(siligen_control_application INTERFACE cxx_std_17)
 add_library(siligen_application ALIAS siligen_control_application)
 
 # CGAL (填充算法)
-if(SILIGEN_ENABLE_CGAL)
-    target_sources(siligen_application_dispensing PRIVATE
-        usecases/dispensing/dxf/DXFContourAugmenter.cpp
-    )
-    find_package(CGAL REQUIRED COMPONENTS Core)
-    target_link_libraries(siligen_application_dispensing PUBLIC
-        CGAL::CGAL
-        CGAL::CGAL_Core
-    )
-    target_compile_definitions(siligen_application_dispensing PRIVATE SILIGEN_ENABLE_CGAL=1)
-    message(STATUS "[Application Layer] CGAL enabled: DXFContourAugmenter")
-else()
-    target_sources(siligen_application_dispensing PRIVATE
-        usecases/dispensing/dxf/DXFContourAugmenter.stub.cpp
-    )
-    target_compile_definitions(siligen_application_dispensing PRIVATE SILIGEN_ENABLE_CGAL=0)
-    message(STATUS "[Application Layer] CGAL disabled: DXFContourAugmenter stub")
-endif()
+target_compile_definitions(siligen_application_dispensing PRIVATE SILIGEN_ENABLE_CGAL=0)
 
 # 为应用层库添加预编译头
 if(SILIGEN_USE_PCH)
     target_precompile_headers(siligen_application_system PRIVATE ${SILIGEN_PCH_HEADER})
     target_precompile_headers(siligen_application_motion PRIVATE ${SILIGEN_PCH_HEADER})
     target_precompile_headers(siligen_application_dispensing PRIVATE ${SILIGEN_PCH_HEADER})
+    target_precompile_headers(siligen_application_redundancy PRIVATE ${SILIGEN_PCH_HEADER})
     message(STATUS "[Application Layer] 预编译头已应用于应用层库")
 endif()
 
 message(STATUS "[Application Layer] 应用层配置完成")
+
 

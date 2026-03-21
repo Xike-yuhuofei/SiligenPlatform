@@ -6,7 +6,7 @@
 
 #include <vector>
 
-namespace Siligen::Application::UseCases::Dispensing::DXF {
+namespace Siligen::Domain::Dispensing::DomainServices {
 
 struct ContourOptimizationStats {
     size_t contour_count = 0;
@@ -17,7 +17,7 @@ struct ContourOptimizationStats {
     bool metadata_valid = false;
 };
 
-class ContourPathOptimizer {
+class ContourOptimizationService {
    public:
     static std::vector<Domain::Trajectory::ValueObjects::Primitive> Optimize(
         const std::vector<Domain::Trajectory::ValueObjects::Primitive>& primitives,
@@ -28,4 +28,6 @@ class ContourPathOptimizer {
         ContourOptimizationStats* stats = nullptr);
 };
 
-}  // namespace Siligen::Application::UseCases::Dispensing::DXF
+}  // namespace Siligen::Domain::Dispensing::DomainServices
+
+

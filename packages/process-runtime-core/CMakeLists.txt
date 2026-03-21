@@ -247,6 +247,20 @@ if(NOT TARGET siligen_parsing_adapter)
     )
 endif()
 
+if(NOT TARGET siligen_contour_augment_adapter)
+    add_subdirectory(
+        "${PROCESS_RUNTIME_CORE_SRC_DIR}/infrastructure/adapters/planning/geometry"
+        "${CMAKE_BINARY_DIR}/packages/process-runtime-core/infrastructure-adapters-planning-geometry"
+    )
+endif()
+
+if(NOT TARGET siligen_redundancy_storage_adapter)
+    add_subdirectory(
+        "${PROCESS_RUNTIME_CORE_SRC_DIR}/infrastructure/adapters/redundancy"
+        "${CMAKE_BINARY_DIR}/packages/process-runtime-core/infrastructure-adapters-redundancy"
+    )
+endif()
+
 add_subdirectory(
     "${PROCESS_RUNTIME_CORE_SRC_DIR}/application"
     "${CMAKE_BINARY_DIR}/packages/process-runtime-core/application"

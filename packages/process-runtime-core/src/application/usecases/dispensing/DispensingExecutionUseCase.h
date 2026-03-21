@@ -9,8 +9,8 @@
 #include "domain/dispensing/ports/ITaskSchedulerPort.h"
 #include "domain/dispensing/value-objects/DispensingExecutionTypes.h"
 #include "domain/dispensing/value-objects/QualityMetrics.h"
+#include "domain/dispensing/planning/domain-services/DispensingPlannerService.h"
 #include "domain/motion/ports/IMotionStatePort.h"
-#include "DXFDispensingPlanner.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
 
@@ -38,14 +38,17 @@ namespace Siligen::Application::Services::DXF {
 class DxfPbPreparationService;
 }
 
-namespace Siligen::Application::UseCases::Dispensing::DXF {
+namespace Siligen::Application::UseCases::Dispensing {
 
 namespace DomainServices = Siligen::Domain::Dispensing::DomainServices;
 
 using Siligen::Shared::Types::LogicalAxisId;
 using Siligen::Shared::Types::int32;
+using Siligen::Domain::Dispensing::DomainServices::DispensingPlan;
+using Siligen::Domain::Dispensing::DomainServices::DispensingPlanner;
+using Siligen::Domain::Dispensing::DomainServices::DispensingPlanRequest;
 
-struct DXFDispensingMVPRequest {
+struct DispensingMVPRequest {
     std::string dxf_filepath;
     bool optimize_path = false;
     float32 start_x = 0.0f;
@@ -97,7 +100,7 @@ struct DXFDispensingMVPRequest {
     Shared::Types::Result<void> Validate() const noexcept;
 };
 
-struct DXFDispensingMVPResult {
+struct DispensingMVPResult {
     bool success = false;
     std::string message;
 
@@ -127,8 +130,8 @@ enum class TaskState {
 struct TaskExecutionContext {
     TaskID task_id;
     std::atomic<TaskState> state{TaskState::PENDING};
-    DXFDispensingMVPRequest request;
-    DXFDispensingMVPResult result;
+    DispensingMVPRequest request;
+    DispensingMVPResult result;
 
     std::atomic<uint32> total_segments{0};
     std::atomic<uint32> executed_segments{0};
@@ -152,10 +155,10 @@ struct TaskStatusResponse {
     std::string error_message;
 };
 
-class DXFDispensingExecutionUseCase {
+class DispensingExecutionUseCase {
    public:
-    explicit DXFDispensingExecutionUseCase(
-        std::shared_ptr<DXFDispensingPlanner> planner,
+    explicit DispensingExecutionUseCase(
+        std::shared_ptr<DispensingPlanner> planner,
         std::shared_ptr<Domain::Dispensing::Ports::IValvePort> valve_port,
         std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port,
         std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port,
@@ -166,15 +169,15 @@ class DXFDispensingExecutionUseCase {
         std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService>
             pb_preparation_service = nullptr);
 
-    ~DXFDispensingExecutionUseCase() = default;
+    ~DispensingExecutionUseCase() = default;
 
-    DXFDispensingExecutionUseCase(const DXFDispensingExecutionUseCase&) = delete;
-    DXFDispensingExecutionUseCase& operator=(const DXFDispensingExecutionUseCase&) = delete;
+    DispensingExecutionUseCase(const DispensingExecutionUseCase&) = delete;
+    DispensingExecutionUseCase& operator=(const DispensingExecutionUseCase&) = delete;
 
-    Shared::Types::Result<DXFDispensingMVPResult> Execute(const DXFDispensingMVPRequest& request);
+    Shared::Types::Result<DispensingMVPResult> Execute(const DispensingMVPRequest& request);
     void StopExecution();
 
-    Shared::Types::Result<TaskID> ExecuteAsync(const DXFDispensingMVPRequest& request);
+    Shared::Types::Result<TaskID> ExecuteAsync(const DispensingMVPRequest& request);
     Shared::Types::Result<TaskStatusResponse> GetTaskStatus(const TaskID& task_id) const;
     Shared::Types::Result<void> PauseTask(const TaskID& task_id);
     Shared::Types::Result<void> ResumeTask(const TaskID& task_id);
@@ -191,7 +194,7 @@ class DXFDispensingExecutionUseCase {
     std::shared_ptr<Domain::Dispensing::Ports::ITaskSchedulerPort> task_scheduler_port_;
     std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService> pb_preparation_service_;
 
-    std::shared_ptr<DXFDispensingPlanner> planner_;
+    std::shared_ptr<DispensingPlanner> planner_;
     std::shared_ptr<::Siligen::Domain::Dispensing::DomainServices::DispensingProcessService> process_service_;
 
     struct VelocityTraceSettings {
@@ -209,14 +212,15 @@ class DXFDispensingExecutionUseCase {
     mutable std::mutex tasks_mutex_;
 
     Shared::Types::Result<void> ValidateHardwareConnection() noexcept;
-    Shared::Types::Result<void> RefreshRuntimeParameters(const DXFDispensingMVPRequest& request) noexcept;
-    DXFDispensingPlanRequest BuildPlanRequest(const DXFDispensingMVPRequest& request) const noexcept;
-    Shared::Types::Result<DXFDispensingMVPResult> ExecuteInternal(
-        const DXFDispensingMVPRequest& request,
+    Shared::Types::Result<void> RefreshRuntimeParameters(const DispensingMVPRequest& request) noexcept;
+    DispensingPlanRequest BuildPlanRequest(const DispensingMVPRequest& request) const noexcept;
+    Shared::Types::Result<DispensingMVPResult> ExecuteInternal(
+        const DispensingMVPRequest& request,
         const std::shared_ptr<TaskExecutionContext>& context);
 
     TaskID GenerateTaskID() const;
     std::string TaskStateToString(TaskState state) const;
 };
 
-}  // namespace Siligen::Application::UseCases::Dispensing::DXF
+}  // namespace Siligen::Application::UseCases::Dispensing
+

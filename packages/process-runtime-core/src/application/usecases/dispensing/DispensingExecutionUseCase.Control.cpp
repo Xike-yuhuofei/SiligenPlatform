@@ -1,6 +1,6 @@
-#define MODULE_NAME "DXFDispensingExecutionUseCase"
+#define MODULE_NAME "DispensingExecutionUseCase"
 
-#include "DXFDispensingExecutionUseCase.h"
+#include "DispensingExecutionUseCase.h"
 
 #include "domain/dispensing/domain-services/DispensingProcessService.h"
 #include "shared/logging/PrintfLogFormatter.h"
@@ -9,7 +9,7 @@
 #include <chrono>
 #include <thread>
 
-namespace Siligen::Application::UseCases::Dispensing::DXF {
+namespace Siligen::Application::UseCases::Dispensing {
 
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
@@ -21,7 +21,7 @@ constexpr auto kPauseTransitionPoll = std::chrono::milliseconds(50);
 
 }  // namespace
 
-void DXFDispensingExecutionUseCase::StopExecution() {
+void DispensingExecutionUseCase::StopExecution() {
     stop_requested_.store(true);
     if (!process_service_) {
         return;
@@ -29,14 +29,14 @@ void DXFDispensingExecutionUseCase::StopExecution() {
     process_service_->StopExecution(&stop_requested_);
 }
 
-Result<void> DXFDispensingExecutionUseCase::PauseTask(const TaskID& task_id) {
+Result<void> DispensingExecutionUseCase::PauseTask(const TaskID& task_id) {
     std::shared_ptr<TaskExecutionContext> context;
     {
         std::lock_guard<std::mutex> lock(tasks_mutex_);
         auto it = tasks_.find(task_id);
         if (it == tasks_.end()) {
             return Result<void>::Failure(
-                Error(ErrorCode::INVALID_STATE, "Task not found", "DXFDispensingExecutionUseCase"));
+                Error(ErrorCode::INVALID_STATE, "Task not found", "DispensingExecutionUseCase"));
         }
         context = it->second;
     }
@@ -47,7 +47,7 @@ Result<void> DXFDispensingExecutionUseCase::PauseTask(const TaskID& task_id) {
     }
     if (state != TaskState::RUNNING) {
         return Result<void>::Failure(
-            Error(ErrorCode::INVALID_STATE, "Task is not running", "DXFDispensingExecutionUseCase"));
+            Error(ErrorCode::INVALID_STATE, "Task is not running", "DispensingExecutionUseCase"));
     }
 
     context->pause_requested.store(true);
@@ -65,17 +65,17 @@ Result<void> DXFDispensingExecutionUseCase::PauseTask(const TaskID& task_id) {
     }
 
     return Result<void>::Failure(
-        Error(ErrorCode::MOTION_TIMEOUT, "Pause transition timed out", "DXFDispensingExecutionUseCase"));
+        Error(ErrorCode::MOTION_TIMEOUT, "Pause transition timed out", "DispensingExecutionUseCase"));
 }
 
-Result<void> DXFDispensingExecutionUseCase::ResumeTask(const TaskID& task_id) {
+Result<void> DispensingExecutionUseCase::ResumeTask(const TaskID& task_id) {
     std::shared_ptr<TaskExecutionContext> context;
     {
         std::lock_guard<std::mutex> lock(tasks_mutex_);
         auto it = tasks_.find(task_id);
         if (it == tasks_.end()) {
             return Result<void>::Failure(
-                Error(ErrorCode::INVALID_STATE, "Task not found", "DXFDispensingExecutionUseCase"));
+                Error(ErrorCode::INVALID_STATE, "Task not found", "DispensingExecutionUseCase"));
         }
         context = it->second;
     }
@@ -86,7 +86,7 @@ Result<void> DXFDispensingExecutionUseCase::ResumeTask(const TaskID& task_id) {
     }
     if (state != TaskState::PAUSED) {
         return Result<void>::Failure(
-            Error(ErrorCode::INVALID_STATE, "Task is not paused", "DXFDispensingExecutionUseCase"));
+            Error(ErrorCode::INVALID_STATE, "Task is not paused", "DispensingExecutionUseCase"));
     }
 
     context->pause_requested.store(false);
@@ -104,7 +104,8 @@ Result<void> DXFDispensingExecutionUseCase::ResumeTask(const TaskID& task_id) {
     }
 
     return Result<void>::Failure(
-        Error(ErrorCode::MOTION_TIMEOUT, "Resume transition timed out", "DXFDispensingExecutionUseCase"));
+        Error(ErrorCode::MOTION_TIMEOUT, "Resume transition timed out", "DispensingExecutionUseCase"));
 }
 
-}  // namespace Siligen::Application::UseCases::Dispensing::DXF
+}  // namespace Siligen::Application::UseCases::Dispensing
+

@@ -74,6 +74,10 @@ target_link_libraries(siligen_motion
     domain_trajectory
 )
 
+if(TARGET domain_dispensing)
+    target_link_libraries(domain_dispensing PUBLIC siligen_motion)
+endif()
+
 # 轨迹执行器库 (已合并到 siligen_motion)
 # 依赖IHardwareController接口，符合六边形架构原则
 # 注意: MotionBufferController 已迁移到 motion/domain-services/

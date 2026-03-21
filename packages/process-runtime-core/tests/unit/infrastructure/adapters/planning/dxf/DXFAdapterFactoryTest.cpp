@@ -2,9 +2,28 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdlib>
+#include <string>
+
 namespace {
 
 using Siligen::Infrastructure::Adapters::Parsing::DXFAdapterFactory;
+
+void SetEnvVar(const std::string& name, const std::string& value) {
+#ifdef _WIN32
+    _putenv_s(name.c_str(), value.c_str());
+#else
+    setenv(name.c_str(), value.c_str(), 1);
+#endif
+}
+
+void UnsetEnvVar(const std::string& name) {
+#ifdef _WIN32
+    _putenv_s(name.c_str(), "");
+#else
+    unsetenv(name.c_str());
+#endif
+}
 
 }  // namespace
 
@@ -47,4 +66,26 @@ TEST(DXFAdapterFactoryTest, RemoteAdapterStubFailsExplicitlyInsteadOfFallingBack
     auto load_result = adapter->LoadDXFFile("remote_input.dxf");
     ASSERT_TRUE(load_result.IsError());
     EXPECT_EQ(load_result.GetError().GetCode(), Siligen::Shared::Types::ErrorCode::NOT_IMPLEMENTED);
+}
+
+TEST(DXFAdapterFactoryTest, LocalAdapterRejectsLegacyDxfAutopathByDefault) {
+    UnsetEnvVar("SILIGEN_DXF_AUTOPATH_LEGACY");
+    auto adapter = DXFAdapterFactory::CreateDXFPathSourceAdapter(DXFAdapterFactory::AdapterType::LOCAL);
+
+    ASSERT_NE(adapter, nullptr);
+    auto load_result = adapter->LoadDXFFile("legacy_input.dxf");
+    ASSERT_TRUE(load_result.IsError());
+    EXPECT_EQ(load_result.GetError().GetCode(), Siligen::Shared::Types::ErrorCode::CONFIGURATION_ERROR);
+}
+
+TEST(DXFAdapterFactoryTest, LocalAdapterAllowsLegacyPathWhenExplicitlyEnabled) {
+    SetEnvVar("SILIGEN_DXF_AUTOPATH_LEGACY", "1");
+    auto adapter = DXFAdapterFactory::CreateDXFPathSourceAdapter(DXFAdapterFactory::AdapterType::LOCAL);
+
+    ASSERT_NE(adapter, nullptr);
+    auto load_result = adapter->LoadDXFFile("legacy_input.dxf");
+    ASSERT_TRUE(load_result.IsSuccess());
+    EXPECT_FALSE(load_result.Value().success);
+    EXPECT_FALSE(load_result.Value().error_message.empty());
+    UnsetEnvVar("SILIGEN_DXF_AUTOPATH_LEGACY");
 }

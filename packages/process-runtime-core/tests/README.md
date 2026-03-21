@@ -19,7 +19,7 @@
 - `tests/unit/motion/*`
 - `tests/unit/recipes/*`
 - `tests/unit/system/*`
-- `tests/unit/dispensing/dxf/*`
+- `tests/unit/dispensing/*`
 - `tests/unit/infrastructure/adapters/planning/dxf/*`
 
 迁移原则：
@@ -36,3 +36,4 @@ cmake --build tmp\process-runtime-core-cutover-build-clean --target siligen_unit
 cmake --build tmp\process-runtime-core-cutover-build-clean --target siligen_pr1_tests --config Debug -j 1 -- /v:m
 ctest --test-dir tmp\process-runtime-core-cutover-build-clean -C Debug -R "siligen_(unit|pr1)_tests" --output-on-failure
 ```
+

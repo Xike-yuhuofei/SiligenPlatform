@@ -13,7 +13,7 @@
 #include <memory>
 #include <vector>
 
-namespace Siligen::Application::UseCases::Dispensing::DXF {
+namespace Siligen::Domain::Dispensing::DomainServices {
 
 struct UnifiedTrajectoryPlanRequest {
     Domain::Trajectory::DomainServices::NormalizationConfig normalization;
@@ -30,11 +30,11 @@ struct UnifiedTrajectoryPlanResult {
     Domain::Motion::ValueObjects::MotionTrajectory motion_trajectory;
 };
 
-class UnifiedTrajectoryPlanner {
+class UnifiedTrajectoryPlannerService {
    public:
-    explicit UnifiedTrajectoryPlanner(
+    explicit UnifiedTrajectoryPlannerService(
         std::shared_ptr<Domain::Motion::DomainServices::VelocityProfileService> velocity_service = nullptr);
-    ~UnifiedTrajectoryPlanner() = default;
+    ~UnifiedTrajectoryPlannerService() = default;
 
     UnifiedTrajectoryPlanResult Plan(const std::vector<Domain::Trajectory::ValueObjects::Primitive>& primitives,
                                      const UnifiedTrajectoryPlanRequest& request) const;
@@ -43,4 +43,6 @@ class UnifiedTrajectoryPlanner {
     std::shared_ptr<Domain::Motion::DomainServices::VelocityProfileService> velocity_service_;
 };
 
-}  // namespace Siligen::Application::UseCases::Dispensing::DXF
+}  // namespace Siligen::Domain::Dispensing::DomainServices
+
+

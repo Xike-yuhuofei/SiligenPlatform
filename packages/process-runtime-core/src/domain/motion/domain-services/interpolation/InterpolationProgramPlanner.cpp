@@ -23,7 +23,7 @@ using Siligen::Domain::Trajectory::ValueObjects::SegmentEnd;
 
 namespace {
 constexpr float32 kEpsilon = 1e-6f;
-constexpr const char* kErrorModule = "DXFDispensingPlanner";
+constexpr const char* kErrorModule = "DispensingPlanner";
 
 struct SpeedSamples {
     std::vector<float32> s;

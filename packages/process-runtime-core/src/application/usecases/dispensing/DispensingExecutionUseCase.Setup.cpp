@@ -1,6 +1,6 @@
-#define MODULE_NAME "DXFDispensingExecutionUseCase"
+#define MODULE_NAME "DispensingExecutionUseCase"
 
-#include "DXFDispensingExecutionUseCase.h"
+#include "DispensingExecutionUseCase.h"
 
 #include "domain/dispensing/domain-services/DispensingProcessService.h"
 #include "shared/logging/PrintfLogFormatter.h"
@@ -11,20 +11,20 @@
 
 using namespace Siligen::Shared::Types;
 
-namespace Siligen::Application::UseCases::Dispensing::DXF {
+namespace Siligen::Application::UseCases::Dispensing {
 
-Result<void> DXFDispensingExecutionUseCase::ValidateHardwareConnection() noexcept {
+Result<void> DispensingExecutionUseCase::ValidateHardwareConnection() noexcept {
     if (!process_service_) {
         return Result<void>::Failure(
-            Error(ErrorCode::PORT_NOT_INITIALIZED, "点胶流程服务未初始化", "DXFDispensingExecutionUseCase"));
+            Error(ErrorCode::PORT_NOT_INITIALIZED, "点胶流程服务未初始化", "DispensingExecutionUseCase"));
     }
     return process_service_->ValidateHardwareConnection();
 }
 
-Result<void> DXFDispensingExecutionUseCase::RefreshRuntimeParameters(const DXFDispensingMVPRequest& request) noexcept {
+Result<void> DispensingExecutionUseCase::RefreshRuntimeParameters(const DispensingMVPRequest& request) noexcept {
     if (!process_service_) {
         return Result<void>::Failure(
-            Error(ErrorCode::PORT_NOT_INITIALIZED, "点胶流程服务未初始化", "DXFDispensingExecutionUseCase"));
+            Error(ErrorCode::PORT_NOT_INITIALIZED, "点胶流程服务未初始化", "DispensingExecutionUseCase"));
     }
 
     Domain::Dispensing::ValueObjects::DispensingRuntimeOverrides overrides;
@@ -51,9 +51,9 @@ Result<void> DXFDispensingExecutionUseCase::RefreshRuntimeParameters(const DXFDi
     return Result<void>::Success();
 }
 
-DXFDispensingPlanRequest DXFDispensingExecutionUseCase::BuildPlanRequest(
-    const DXFDispensingMVPRequest& request) const noexcept {
-    DXFDispensingPlanRequest plan_request;
+DispensingPlanRequest DispensingExecutionUseCase::BuildPlanRequest(
+    const DispensingMVPRequest& request) const noexcept {
+    DispensingPlanRequest plan_request;
     plan_request.dxf_filepath = request.dxf_filepath;
     plan_request.optimize_path = request.optimize_path;
     plan_request.start_x = request.start_x;
@@ -79,7 +79,7 @@ DXFDispensingPlanRequest DXFDispensingExecutionUseCase::BuildPlanRequest(
     plan_request.sample_dt = runtime_params_.sample_dt;
     plan_request.sample_ds = runtime_params_.sample_ds;
     plan_request.arc_tolerance_mm = request.arc_tolerance_mm;
-    plan_request.max_jerk = (request.max_jerk > 0.0f) ? request.max_jerk : DXFDispensingMVPRequest::JERK;
+    plan_request.max_jerk = (request.max_jerk > 0.0f) ? request.max_jerk : DispensingMVPRequest::JERK;
     plan_request.use_interpolation_planner = request.use_interpolation_planner;
     plan_request.interpolation_algorithm = request.interpolation_algorithm;
 
@@ -125,4 +125,5 @@ DXFDispensingPlanRequest DXFDispensingExecutionUseCase::BuildPlanRequest(
     return plan_request;
 }
 
-}  // namespace Siligen::Application::UseCases::Dispensing::DXF
+}  // namespace Siligen::Application::UseCases::Dispensing
+

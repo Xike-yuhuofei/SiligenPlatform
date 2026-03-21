@@ -1,4 +1,4 @@
-#include "ContourPathOptimizer.h"
+#include "ContourOptimizationService.h"
 #include "domain/dispensing/domain-services/PathOptimizationStrategy.h"
 #include "domain/trajectory/value-objects/GeometryUtils.h"
 #include "shared/types/MathConstants.h"
@@ -8,7 +8,7 @@
 #include <limits>
 #include <unordered_map>
 
-namespace Siligen::Application::UseCases::Dispensing::DXF {
+namespace Siligen::Domain::Dispensing::DomainServices {
 
 using Siligen::Domain::Trajectory::Ports::PathPrimitiveMeta;
 using Siligen::Domain::Trajectory::ValueObjects::Primitive;
@@ -281,7 +281,7 @@ void ApplyReverse(Contour& contour) {
 
 }  // namespace
 
-std::vector<Primitive> ContourPathOptimizer::Optimize(
+std::vector<Primitive> ContourOptimizationService::Optimize(
     const std::vector<Primitive>& primitives,
     const std::vector<PathPrimitiveMeta>& metadata,
     const Point2D& start_pos,
@@ -441,4 +441,6 @@ std::vector<Primitive> ContourPathOptimizer::Optimize(
     return output;
 }
 
-}  // namespace Siligen::Application::UseCases::Dispensing::DXF
+}  // namespace Siligen::Domain::Dispensing::DomainServices
+
+

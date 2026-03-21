@@ -1,4 +1,4 @@
-#include "CleanupDXFFilesUseCase.h"
+#include "CleanupFilesUseCase.h"
 #include "shared/interfaces/ILoggingService.h"
 
 #include <chrono>
@@ -9,11 +9,11 @@
 #ifdef MODULE_NAME
 #undef MODULE_NAME
 #endif
-#define MODULE_NAME "CleanupDXFFilesUseCase"
+#define MODULE_NAME "CleanupFilesUseCase"
 
-namespace Siligen::Application::UseCases::Dispensing::DXF {
+namespace Siligen::Application::UseCases::Dispensing {
 
-CleanupDXFFilesUseCase::CleanupDXFFilesUseCase(
+CleanupFilesUseCase::CleanupFilesUseCase(
     std::shared_ptr<Domain::Configuration::Ports::IFileStoragePort> file_storage_port,
     std::string base_directory,
     FileInUseChecker file_in_use_checker)
@@ -21,23 +21,23 @@ CleanupDXFFilesUseCase::CleanupDXFFilesUseCase(
       base_directory_(std::move(base_directory)),
       file_in_use_checker_(std::move(file_in_use_checker)) {}
 
-Result<CleanupDXFFilesResult> CleanupDXFFilesUseCase::Execute(
-    const CleanupDXFFilesRequest& request) {
+Result<CleanupFilesResult> CleanupFilesUseCase::Execute(
+    const CleanupFilesRequest& request) {
 
     // 1. 验证请求
     auto validation = request.Validate();
     if (!validation.IsSuccess()) {
-        return Result<CleanupDXFFilesResult>::Failure(validation.GetError());
+        return Result<CleanupFilesResult>::Failure(validation.GetError());
     }
 
     // 2. 列出所有 DXF 文件
     auto files_result = ListDXFFiles();
     if (!files_result.IsSuccess()) {
-        return Result<CleanupDXFFilesResult>::Failure(files_result.GetError());
+        return Result<CleanupFilesResult>::Failure(files_result.GetError());
     }
     auto files = files_result.Value();
 
-    CleanupDXFFilesResult result;
+    CleanupFilesResult result;
     result.success = true;
 
     // 3. 遍历文件，检查是否过期
@@ -77,10 +77,10 @@ Result<CleanupDXFFilesResult> CleanupDXFFilesUseCase::Execute(
         result.message += " (dry run mode)";
     }
 
-    return Result<CleanupDXFFilesResult>::Success(result);
+    return Result<CleanupFilesResult>::Success(result);
 }
 
-Result<std::vector<std::string>> CleanupDXFFilesUseCase::ListDXFFiles() noexcept {
+Result<std::vector<std::string>> CleanupFilesUseCase::ListDXFFiles() noexcept {
     std::vector<std::string> files;
 
     std::error_code ec;
@@ -111,7 +111,7 @@ Result<std::vector<std::string>> CleanupDXFFilesUseCase::ListDXFFiles() noexcept
     return Result<std::vector<std::string>>::Success(files);
 }
 
-bool CleanupDXFFilesUseCase::IsFileExpired(const std::string& filepath, uint32_t max_age_hours) noexcept {
+bool CleanupFilesUseCase::IsFileExpired(const std::string& filepath, uint32_t max_age_hours) noexcept {
     std::error_code ec;
     auto file_time = std::filesystem::last_write_time(filepath, ec);
     if (ec) {
@@ -128,7 +128,7 @@ bool CleanupDXFFilesUseCase::IsFileExpired(const std::string& filepath, uint32_t
     return age_seconds > max_age_seconds;
 }
 
-bool CleanupDXFFilesUseCase::IsFileInUse(const std::string& filepath) noexcept {
+bool CleanupFilesUseCase::IsFileInUse(const std::string& filepath) noexcept {
     if (file_in_use_checker_) {
         return file_in_use_checker_(filepath);
     }
@@ -137,6 +137,7 @@ bool CleanupDXFFilesUseCase::IsFileInUse(const std::string& filepath) noexcept {
     return false;
 }
 
-}  // namespace Siligen::Application::UseCases::Dispensing::DXF
+}  // namespace Siligen::Application::UseCases::Dispensing
+
 
 

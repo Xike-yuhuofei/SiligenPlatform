@@ -1,13 +1,14 @@
-#include "DXFDispensingPlanner.h"
-#include "ContourPathOptimizer.h"
-#include "UnifiedTrajectoryPlanner.h"
-#include "application/usecases/motion/interpolation/InterpolationPlanningUseCase.h"
+#include "DispensingPlannerService.h"
+#include "ContourOptimizationService.h"
+#include "UnifiedTrajectoryPlannerService.h"
 
 #include "domain/dispensing/domain-services/TriggerPlanner.h"
+#include "domain/motion/CMPCoordinatedInterpolator.h"
 #include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
 #include "domain/trajectory/value-objects/GeometryBoostAdapter.h"
 #include "domain/trajectory/value-objects/GeometryUtils.h"
-#include "shared/Geometry/BoostGeometryAdapter.h"
+#include "shared/geometry/BoostGeometryAdapter.h"
+#include "shared/types/CMPTypes.h"
 #include "shared/types/Error.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
@@ -24,9 +25,9 @@
 #ifdef MODULE_NAME
 #undef MODULE_NAME
 #endif
-#define MODULE_NAME "DXFDispensingPlanner"
+#define MODULE_NAME "DispensingPlannerService"
 
-namespace Siligen::Application::UseCases::Dispensing::DXF {
+namespace Siligen::Domain::Dispensing::DomainServices {
 
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
@@ -39,8 +40,8 @@ using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
 using Siligen::Domain::Motion::Ports::InterpolationData;
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectory;
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectoryPoint;
-using Siligen::Application::UseCases::Dispensing::DXF::UnifiedTrajectoryPlanRequest;
-using Siligen::Application::UseCases::Dispensing::DXF::UnifiedTrajectoryPlanner;
+using Siligen::Domain::Dispensing::DomainServices::UnifiedTrajectoryPlanRequest;
+using Siligen::Domain::Dispensing::DomainServices::UnifiedTrajectoryPlannerService;
 using Siligen::Domain::Dispensing::DomainServices::TriggerPlanner;
 using Siligen::Domain::Dispensing::ValueObjects::TriggerPlan;
 using Siligen::Domain::Trajectory::Geometry::LineLength;
@@ -944,7 +945,7 @@ float32 ComputeTrajectoryPointLength(const MotionTrajectory& trajectory) {
     return total;
 }
 
-float32 ResolveInterpolationStep(const DXFDispensingPlanRequest& request) {
+float32 ResolveInterpolationStep(const DispensingPlanRequest& request) {
     if (request.sample_ds > kEpsilon) {
         return request.sample_ds;
     }
@@ -1094,24 +1095,24 @@ void ApplyProcessInfoToTrajectory(const ProcessPath& path, float32 vmax, MotionT
     }
 }
 
-Result<MotionTrajectory> TryPlanWithRuckig(const ProcessPath& path, const DXFDispensingPlanRequest& request) {
+Result<MotionTrajectory> TryPlanWithRuckig(const ProcessPath& path, const DispensingPlanRequest& request) {
     const float32 step = ResolveInterpolationStep(request);
     auto points = BuildInterpolationSeedPoints(path, step);
     if (points.size() < 2) {
         return Result<MotionTrajectory>::Failure(
-            Error(ErrorCode::INVALID_PARAMETER, "路径点不足，无法生成Ruckig轨迹", "DXFDispensingPlanner"));
+            Error(ErrorCode::INVALID_PARAMETER, "路径点不足，无法生成Ruckig轨迹", "DispensingPlanner"));
     }
 
     auto cumulative = BuildCumulativeLengths(points);
     if (cumulative.empty()) {
         return Result<MotionTrajectory>::Failure(
-            Error(ErrorCode::INVALID_PARAMETER, "路径长度为0，无法生成Ruckig轨迹", "DXFDispensingPlanner"));
+            Error(ErrorCode::INVALID_PARAMETER, "路径长度为0，无法生成Ruckig轨迹", "DispensingPlanner"));
     }
 
     const double total_length = cumulative.back();
     if (total_length <= static_cast<double>(kEpsilon)) {
         return Result<MotionTrajectory>::Failure(
-            Error(ErrorCode::INVALID_PARAMETER, "路径长度为0，无法生成Ruckig轨迹", "DXFDispensingPlanner"));
+            Error(ErrorCode::INVALID_PARAMETER, "路径长度为0，无法生成Ruckig轨迹", "DispensingPlanner"));
     }
 
     float32 vmax = request.dispensing_velocity;
@@ -1142,7 +1143,7 @@ Result<MotionTrajectory> TryPlanWithRuckig(const ProcessPath& path, const DXFDis
         return Result<MotionTrajectory>::Failure(
             Error(ErrorCode::INVALID_STATE,
                   "Ruckig计算失败: result=" + std::to_string(static_cast<int>(result)),
-                  "DXFDispensingPlanner"));
+                  "DispensingPlanner"));
     }
 
     const double duration = traj.get_duration();
@@ -1248,7 +1249,7 @@ Result<MotionTrajectory> TryPlanWithRuckig(const ProcessPath& path, const DXFDis
     return Result<MotionTrajectory>::Success(trajectory);
 }
 
-UnifiedTrajectoryPlanRequest BuildUnifiedPlanRequest(const DXFDispensingPlanRequest& request) {
+UnifiedTrajectoryPlanRequest BuildUnifiedPlanRequest(const DispensingPlanRequest& request) {
     UnifiedTrajectoryPlanRequest plan_request{};
     plan_request.process.default_flow = 1.0f;
     plan_request.process.lead_on_dist = 0.0f;
@@ -1298,7 +1299,7 @@ struct TriggerArtifacts {
     bool downgraded = false;
 };
 
-Result<TriggerArtifacts> BuildTriggerArtifacts(const ProcessPath& path, const DXFDispensingPlanRequest& request) {
+Result<TriggerArtifacts> BuildTriggerArtifacts(const ProcessPath& path, const DispensingPlanRequest& request) {
     TriggerArtifacts artifacts;
     TriggerPlan trigger_plan;
     trigger_plan.strategy = request.dispensing_strategy;
@@ -1352,54 +1353,121 @@ Result<TriggerArtifacts> BuildTriggerArtifacts(const ProcessPath& path, const DX
 }
 
 Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
-    const DXFDispensingPlanRequest& request,
+    const DispensingPlanRequest& request,
     const ProcessPath& path,
-    const std::shared_ptr<MotionInterpolation::InterpolationPlanningUseCase>& interpolation_usecase,
     const std::vector<float32>& trigger_distances) {
     if (!request.use_interpolation_planner) {
         return Result<std::vector<TrajectoryPoint>>::Success({});
     }
-    if (!interpolation_usecase) {
+
+    auto seed_points = BuildInterpolationSeedPoints(path, ResolveInterpolationStep(request));
+    if (seed_points.size() < 2) {
         return Result<std::vector<TrajectoryPoint>>::Failure(
-            Error(ErrorCode::INVALID_PARAMETER, "插补规划用例未注入", "DXFDispensingPlanner"));
+            Error(ErrorCode::INVALID_PARAMETER, "插补规划参数无效", "DispensingPlanner"));
     }
 
-    MotionInterpolation::InterpolationPlanningRequest interp_request;
-    interp_request.algorithm = request.interpolation_algorithm;
-    interp_request.config.max_velocity = request.dispensing_velocity;
-    interp_request.config.max_acceleration = request.acceleration;
-    interp_request.config.max_jerk = request.max_jerk;
-    interp_request.config.time_step = (request.sample_dt > kEpsilon) ? request.sample_dt : 0.001f;
+    InterpolationConfig config{};
+    config.max_velocity = request.dispensing_velocity;
+    config.max_acceleration = request.acceleration;
+    config.max_jerk = request.max_jerk;
+    config.time_step = (request.sample_dt > kEpsilon) ? request.sample_dt : 0.001f;
     if (request.spline_max_error_mm > kEpsilon) {
-        interp_request.config.position_tolerance = request.spline_max_error_mm;
+        config.position_tolerance = request.spline_max_error_mm;
     }
     if (request.compensation_profile.curvature_speed_factor > kEpsilon) {
-        interp_request.config.curvature_speed_factor = request.compensation_profile.curvature_speed_factor;
+        config.curvature_speed_factor = request.compensation_profile.curvature_speed_factor;
     }
     if (request.trigger_spatial_interval_mm > kEpsilon) {
-        interp_request.config.trigger_spacing_mm = request.trigger_spatial_interval_mm;
+        config.trigger_spacing_mm = request.trigger_spatial_interval_mm;
     }
-    interp_request.trigger_distances_mm = trigger_distances;
-    interp_request.points = BuildInterpolationSeedPoints(path, ResolveInterpolationStep(request));
 
-    auto interp_result = interpolation_usecase->Execute(interp_request);
-    if (interp_result.IsError()) {
-        return Result<std::vector<TrajectoryPoint>>::Failure(interp_result.GetError());
+    if (config.max_velocity <= 0.0f || config.max_acceleration <= 0.0f ||
+        config.time_step <= 0.0f || config.trigger_spacing_mm < 0.0f) {
+        return Result<std::vector<TrajectoryPoint>>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "插补规划参数无效", "DispensingPlanner"));
     }
-    return Result<std::vector<TrajectoryPoint>>::Success(std::move(interp_result.Value().points));
+
+    if ((request.interpolation_algorithm == InterpolationAlgorithm::LINEAR ||
+         request.interpolation_algorithm == InterpolationAlgorithm::CMP_COORDINATED) &&
+        config.max_jerk <= 0.0f) {
+        return Result<std::vector<TrajectoryPoint>>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "插补规划参数无效", "DispensingPlanner"));
+    }
+
+    std::vector<TrajectoryPoint> points;
+    if (request.interpolation_algorithm == InterpolationAlgorithm::CMP_COORDINATED &&
+        !trigger_distances.empty()) {
+        Siligen::CMPConfiguration cmp_config;
+        cmp_config.trigger_mode = Siligen::CMPTriggerMode::POSITION_SYNC;
+        cmp_config.cmp_channel = 1;
+        cmp_config.pulse_width_us = 2000;
+        cmp_config.trigger_position_tolerance = 0.1f;
+        cmp_config.time_tolerance_ms = 1.0f;
+        cmp_config.enable_compensation = true;
+        cmp_config.compensation_factor = 1.0f;
+        cmp_config.enable_multi_channel = false;
+
+        std::vector<Siligen::DispensingTriggerPoint> triggers;
+        std::vector<float32> cumulative(seed_points.size(), 0.0f);
+        for (size_t i = 1; i < seed_points.size(); ++i) {
+            cumulative[i] = cumulative[i - 1] + seed_points[i - 1].DistanceTo(seed_points[i]);
+        }
+
+        std::vector<float32> targets = trigger_distances;
+        std::sort(targets.begin(), targets.end());
+
+        size_t idx = 1;
+        uint32 seq = 0;
+        for (float32 target : targets) {
+            while (idx < cumulative.size() && cumulative[idx] + kEpsilon < target) {
+                ++idx;
+            }
+            if (idx >= cumulative.size()) {
+                break;
+            }
+
+            float32 seg_len = cumulative[idx] - cumulative[idx - 1];
+            float32 ratio = (seg_len > kEpsilon) ? (target - cumulative[idx - 1]) / seg_len : 0.0f;
+            Point2D trigger_pos = seed_points[idx - 1] + (seed_points[idx] - seed_points[idx - 1]) * ratio;
+
+            Siligen::DispensingTriggerPoint trigger;
+            trigger.position = trigger_pos;
+            trigger.trigger_distance = target;
+            trigger.sequence_id = seq++;
+            trigger.pulse_width_us = cmp_config.pulse_width_us;
+            trigger.is_enabled = true;
+            triggers.push_back(trigger);
+        }
+
+        Domain::Motion::CMPCoordinatedInterpolator cmp_interpolator;
+        points = cmp_interpolator.PositionTriggeredDispensing(seed_points, triggers, cmp_config, config);
+    } else {
+        auto interpolator = Domain::Motion::TrajectoryInterpolatorFactory::CreateInterpolator(
+            request.interpolation_algorithm);
+        if (!interpolator) {
+            return Result<std::vector<TrajectoryPoint>>::Failure(
+                Error(ErrorCode::NOT_IMPLEMENTED, "插补算法未实现", "DispensingPlanner"));
+        }
+        points = interpolator->CalculateInterpolation(seed_points, config);
+    }
+
+    if (points.empty()) {
+        return Result<std::vector<TrajectoryPoint>>::Failure(
+            Error(ErrorCode::TRAJECTORY_GENERATION_FAILED, "插补结果为空", "DispensingPlanner"));
+    }
+
+    return Result<std::vector<TrajectoryPoint>>::Success(std::move(points));
 }
 
 }  // namespace
 
-DXFDispensingPlanner::DXFDispensingPlanner(
+DispensingPlanner::DispensingPlanner(
     std::shared_ptr<Domain::Trajectory::Ports::IPathSourcePort> path_source,
-    std::shared_ptr<MotionInterpolation::InterpolationPlanningUseCase> interpolation_usecase,
     std::shared_ptr<Domain::Motion::DomainServices::VelocityProfileService> velocity_profile_service)
     : path_source_(std::move(path_source)),
-      interpolation_usecase_(std::move(interpolation_usecase)),
       velocity_profile_service_(std::move(velocity_profile_service)) {}
 
-bool DXFDispensingPlanRequest::Validate() const noexcept {
+bool DispensingPlanRequest::Validate() const noexcept {
     if (dxf_filepath.empty()) {
         return false;
     }
@@ -1459,27 +1527,27 @@ bool DXFDispensingPlanRequest::Validate() const noexcept {
     return true;
 }
 
-Result<DXFDispensingPlan> DXFDispensingPlanner::Plan(const DXFDispensingPlanRequest& request) const noexcept {
+Result<DispensingPlan> DispensingPlanner::Plan(const DispensingPlanRequest& request) const noexcept {
     if (!request.Validate()) {
-        return Result<DXFDispensingPlan>::Failure(
-            Error(ErrorCode::INVALID_PARAMETER, "DXF规划参数无效", "DXFDispensingPlanner"));
+        return Result<DispensingPlan>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "DXF规划参数无效", "DispensingPlanner"));
     }
 
     if (!path_source_) {
-        return Result<DXFDispensingPlan>::Failure(
-            Error(ErrorCode::INVALID_PARAMETER, "DXF路径源未注入", "DXFDispensingPlanner"));
+        return Result<DispensingPlan>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "DXF路径源未注入", "DispensingPlanner"));
     }
 
     auto path_result = path_source_->LoadFromFile(request.dxf_filepath);
     if (path_result.IsError()) {
-        return Result<DXFDispensingPlan>::Failure(path_result.GetError());
+        return Result<DispensingPlan>::Failure(path_result.GetError());
     }
 
     auto primitives = path_result.Value().primitives;
     auto metadata = path_result.Value().metadata;
     if (primitives.empty()) {
-        return Result<DXFDispensingPlan>::Failure(
-            Error(ErrorCode::FILE_FORMAT_INVALID, "DXF无可用路径", "DXFDispensingPlanner"));
+        return Result<DispensingPlan>::Failure(
+            Error(ErrorCode::FILE_FORMAT_INVALID, "DXF无可用路径", "DispensingPlanner"));
     }
 
     if (std::abs(request.dxf_offset.x) > kEpsilon || std::abs(request.dxf_offset.y) > kEpsilon) {
@@ -1525,7 +1593,7 @@ Result<DXFDispensingPlan> DXFDispensingPlanner::Plan(const DXFDispensingPlanRequ
         }
 
         ContourOptimizationStats contour_stats;
-        auto optimized = ContourPathOptimizer::Optimize(primitives,
+        auto optimized = ContourOptimizationService::Optimize(primitives,
                                                         metadata,
                                                         Point2D(request.start_x, request.start_y),
                                                         true,
@@ -1604,18 +1672,18 @@ Result<DXFDispensingPlan> DXFDispensingPlanner::Plan(const DXFDispensingPlanRequ
                 << "limits x=[" << request.bounds_x_min << "," << request.bounds_x_max << "] "
                 << "y=[" << request.bounds_y_min << "," << request.bounds_y_max << "]";
             SILIGEN_LOG_ERROR(oss.str());
-            return Result<DXFDispensingPlan>::Failure(
-                Error(ErrorCode::POSITION_OUT_OF_RANGE, oss.str(), "DXFDispensingPlanner"));
+            return Result<DispensingPlan>::Failure(
+                Error(ErrorCode::POSITION_OUT_OF_RANGE, oss.str(), "DispensingPlanner"));
         }
     }
 
-    UnifiedTrajectoryPlanner planner(velocity_profile_service_);
+    UnifiedTrajectoryPlannerService planner(velocity_profile_service_);
     auto plan_request = BuildUnifiedPlanRequest(request);
     auto plan_result = planner.Plan(primitives, plan_request);
     auto py_result = TryPlanWithRuckig(plan_result.shaped_path, request);
     if (py_result.IsError()) {
         SILIGEN_LOG_ERROR("Ruckig轨迹生成失败: " + py_result.GetError().ToString());
-        return Result<DXFDispensingPlan>::Failure(py_result.GetError());
+        return Result<DispensingPlan>::Failure(py_result.GetError());
     }
     plan_result.motion_trajectory = py_result.Value();
     {
@@ -1666,8 +1734,8 @@ Result<DXFDispensingPlan> DXFDispensingPlanner::Plan(const DXFDispensingPlanRequ
             request.trigger_spatial_interval_mm,
             request.use_interpolation_planner ? 1 : 0,
             static_cast<int>(request.interpolation_algorithm));
-        return Result<DXFDispensingPlan>::Failure(
-            Error(ErrorCode::INVALID_STATE, "轨迹规划失败", "DXFDispensingPlanner"));
+        return Result<DispensingPlan>::Failure(
+            Error(ErrorCode::INVALID_STATE, "轨迹规划失败", "DispensingPlanner"));
     }
 
     auto normalized_bounds = ComputeBoundsForSegments(plan_result.normalized.path.segments);
@@ -1682,17 +1750,16 @@ Result<DXFDispensingPlan> DXFDispensingPlanner::Plan(const DXFDispensingPlanRequ
 
     auto trigger_artifacts_result = BuildTriggerArtifacts(plan_result.shaped_path, request);
     if (trigger_artifacts_result.IsError()) {
-        return Result<DXFDispensingPlan>::Failure(trigger_artifacts_result.GetError());
+        return Result<DispensingPlan>::Failure(trigger_artifacts_result.GetError());
     }
     auto trigger_artifacts = trigger_artifacts_result.Value();
 
     auto interpolation_points_result = BuildInterpolationPoints(
         request,
         plan_result.shaped_path,
-        interpolation_usecase_,
         trigger_artifacts.distances);
     if (interpolation_points_result.IsError()) {
-        return Result<DXFDispensingPlan>::Failure(interpolation_points_result.GetError());
+        return Result<DispensingPlan>::Failure(interpolation_points_result.GetError());
     }
     auto interpolation_points = interpolation_points_result.Value();
     if (request.use_interpolation_planner) {
@@ -1705,7 +1772,7 @@ Result<DXFDispensingPlan> DXFDispensingPlanner::Plan(const DXFDispensingPlanRequ
                                                               plan_result.motion_trajectory,
                                                               request.acceleration);
     if (interpolation_program.IsError()) {
-        return Result<DXFDispensingPlan>::Failure(interpolation_program.GetError());
+        return Result<DispensingPlan>::Failure(interpolation_program.GetError());
     }
 
     float32 sample_total_length = ComputeTrajectoryPointLength(plan_result.motion_trajectory);
@@ -1720,7 +1787,7 @@ Result<DXFDispensingPlan> DXFDispensingPlanner::Plan(const DXFDispensingPlanRequ
         }
     }
 
-    DXFDispensingPlan plan;
+    DispensingPlan plan;
     plan.success = true;
     plan.path = plan_result.normalized.path;
     plan.process_path = plan_result.shaped_path;
@@ -1734,7 +1801,7 @@ Result<DXFDispensingPlan> DXFDispensingPlanner::Plan(const DXFDispensingPlanRequ
     plan.total_length_mm = plan.motion_trajectory.total_length;
     plan.estimated_time_s = plan.motion_trajectory.total_time;
 
-    return Result<DXFDispensingPlan>::Success(plan);
+    return Result<DispensingPlan>::Success(plan);
 }
 
 namespace {
@@ -1836,7 +1903,7 @@ std::vector<TrajectoryPoint> ResampleByDistance(const std::vector<TrajectoryPoin
 
 }  // namespace
 
-std::vector<TrajectoryPoint> DXFDispensingPlanner::BuildPreviewPoints(const DXFDispensingPlan& plan,
+std::vector<TrajectoryPoint> DispensingPlanner::BuildPreviewPoints(const DispensingPlan& plan,
                                                                       float32 spacing_mm,
                                                                       size_t max_points) const {
     if (!plan.interpolation_points.empty()) {
@@ -1864,5 +1931,7 @@ std::vector<TrajectoryPoint> DXFDispensingPlanner::BuildPreviewPoints(const DXFD
     return ResampleByDistance(base_points, spacing_mm, max_points);
 }
 
-}  // namespace Siligen::Application::UseCases::Dispensing::DXF
+}  // namespace Siligen::Domain::Dispensing::DomainServices
+
+
 

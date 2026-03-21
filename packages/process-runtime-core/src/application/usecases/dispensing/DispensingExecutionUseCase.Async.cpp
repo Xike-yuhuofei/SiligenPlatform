@@ -1,6 +1,6 @@
-#define MODULE_NAME "DXFDispensingExecutionUseCase"
+#define MODULE_NAME "DispensingExecutionUseCase"
 
-#include "DXFDispensingExecutionUseCase.h"
+#include "DispensingExecutionUseCase.h"
 
 #include "shared/logging/PrintfLogFormatter.h"
 #include "shared/interfaces/ILoggingService.h"
@@ -10,9 +10,9 @@
 
 using namespace Siligen::Shared::Types;
 
-namespace Siligen::Application::UseCases::Dispensing::DXF {
+namespace Siligen::Application::UseCases::Dispensing {
 
-Result<TaskID> DXFDispensingExecutionUseCase::ExecuteAsync(const DXFDispensingMVPRequest& request) {
+Result<TaskID> DispensingExecutionUseCase::ExecuteAsync(const DispensingMVPRequest& request) {
     auto validation = request.Validate();
     if (!validation.IsSuccess()) {
         return Result<TaskID>::Failure(validation.GetError());
@@ -80,13 +80,13 @@ Result<TaskID> DXFDispensingExecutionUseCase::ExecuteAsync(const DXFDispensingMV
     return Result<TaskID>::Success(task_id);
 }
 
-Result<TaskStatusResponse> DXFDispensingExecutionUseCase::GetTaskStatus(const TaskID& task_id) const {
+Result<TaskStatusResponse> DispensingExecutionUseCase::GetTaskStatus(const TaskID& task_id) const {
     std::lock_guard<std::mutex> lock(tasks_mutex_);
 
     auto it = tasks_.find(task_id);
     if (it == tasks_.end()) {
         return Result<TaskStatusResponse>::Failure(
-            Error(ErrorCode::INVALID_STATE, "Task not found", "DXFDispensingExecutionUseCase"));
+            Error(ErrorCode::INVALID_STATE, "Task not found", "DispensingExecutionUseCase"));
     }
 
     const auto& context = it->second;
@@ -108,14 +108,14 @@ Result<TaskStatusResponse> DXFDispensingExecutionUseCase::GetTaskStatus(const Ta
     return Result<TaskStatusResponse>::Success(response);
 }
 
-Result<void> DXFDispensingExecutionUseCase::CancelTask(const TaskID& task_id) {
+Result<void> DispensingExecutionUseCase::CancelTask(const TaskID& task_id) {
     std::shared_ptr<TaskExecutionContext> context;
     {
         std::lock_guard<std::mutex> lock(tasks_mutex_);
         auto it = tasks_.find(task_id);
         if (it == tasks_.end()) {
             return Result<void>::Failure(
-                Error(ErrorCode::INVALID_STATE, "Task not found", "DXFDispensingExecutionUseCase"));
+                Error(ErrorCode::INVALID_STATE, "Task not found", "DispensingExecutionUseCase"));
         }
         context = it->second;
     }
@@ -129,10 +129,10 @@ Result<void> DXFDispensingExecutionUseCase::CancelTask(const TaskID& task_id) {
     }
 
     return Result<void>::Failure(
-        Error(ErrorCode::INVALID_STATE, "Task cannot be cancelled in current state", "DXFDispensingExecutionUseCase"));
+        Error(ErrorCode::INVALID_STATE, "Task cannot be cancelled in current state", "DispensingExecutionUseCase"));
 }
 
-void DXFDispensingExecutionUseCase::CleanupExpiredTasks() {
+void DispensingExecutionUseCase::CleanupExpiredTasks() {
     std::lock_guard<std::mutex> lock(tasks_mutex_);
 
     auto now = std::chrono::steady_clock::now();
@@ -168,13 +168,13 @@ void DXFDispensingExecutionUseCase::CleanupExpiredTasks() {
     }
 }
 
-TaskID DXFDispensingExecutionUseCase::GenerateTaskID() const {
+TaskID DispensingExecutionUseCase::GenerateTaskID() const {
     auto now = std::chrono::steady_clock::now();
     auto timestamp = now.time_since_epoch().count();
     return "task-" + std::to_string(timestamp);
 }
 
-std::string DXFDispensingExecutionUseCase::TaskStateToString(TaskState state) const {
+std::string DispensingExecutionUseCase::TaskStateToString(TaskState state) const {
     switch (state) {
         case TaskState::PENDING:
             return "pending";
@@ -193,5 +193,6 @@ std::string DXFDispensingExecutionUseCase::TaskStateToString(TaskState state) co
     }
 }
 
-}  // namespace Siligen::Application::UseCases::Dispensing::DXF
+}  // namespace Siligen::Application::UseCases::Dispensing
+
 

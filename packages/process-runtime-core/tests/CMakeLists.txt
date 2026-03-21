@@ -24,7 +24,7 @@ set(TEST_SOURCES
     unit/motion/MotionSafetyUseCaseTest.cpp
     unit/system/InitializeSystemUseCaseTest.cpp
     unit/motion/MotionCoordinationUseCaseTest.cpp
-    unit/dispensing/dxf/CleanupDXFFilesUseCaseTest.cpp
+    unit/dispensing/CleanupFilesUseCaseTest.cpp
 )
 
 set(OPTIONAL_TEST_SOURCES
@@ -35,10 +35,13 @@ set(OPTIONAL_TEST_SOURCES
     unit/domain/trajectory/MotionPlannerConstraintTest.cpp
     unit/domain/trajectory/InterpolationProgramPlannerTest.cpp
     unit/domain/trajectory/PathRegularizerTest.cpp
-    unit/dispensing/dxf/DXFPlanningRequestTest.cpp
-    unit/dispensing/dxf/ContourPathOptimizerTest.cpp
-    unit/dispensing/dxf/UploadDXFFileUseCaseTest.cpp
+    unit/dispensing/PlanningRequestTest.cpp
+    unit/dispensing/ContourPathOptimizerTest.cpp
+    unit/dispensing/UploadFileUseCaseTest.cpp
     unit/infrastructure/adapters/planning/dxf/DXFAdapterFactoryTest.cpp
+    unit/infrastructure/adapters/redundancy/JsonRedundancyRepositoryAdapterTest.cpp
+    unit/redundancy/CandidateScoringServiceTest.cpp
+    unit/redundancy/RedundancyGovernanceUseCasesTest.cpp
 )
 
 foreach(test_source IN LISTS OPTIONAL_TEST_SOURCES)

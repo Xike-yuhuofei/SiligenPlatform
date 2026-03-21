@@ -1,6 +1,6 @@
-#define MODULE_NAME "DXFDispensingExecutionUseCase"
+#define MODULE_NAME "DispensingExecutionUseCase"
 
-#include "DXFDispensingExecutionUseCase.h"
+#include "DispensingExecutionUseCase.h"
 #include "application/services/dxf/DxfPbPreparationService.h"
 
 #include "domain/dispensing/domain-services/DispensingProcessService.h"
@@ -20,7 +20,7 @@
 
 using namespace Siligen::Shared::Types;
 
-namespace Siligen::Application::UseCases::Dispensing::DXF {
+namespace Siligen::Application::UseCases::Dispensing {
 
 namespace {
 
@@ -236,7 +236,7 @@ bool PrepareVelocityTraceFile(const std::string& output_path,
 
 }  // namespace
 
-Result<void> DXFDispensingMVPRequest::Validate() const noexcept {
+Result<void> DispensingMVPRequest::Validate() const noexcept {
     if (dxf_filepath.empty()) {
         return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "DXF文件路径不能为空"));
     }
@@ -285,8 +285,8 @@ Result<void> DXFDispensingMVPRequest::Validate() const noexcept {
     return Result<void>::Success();
 }
 
-DXFDispensingExecutionUseCase::DXFDispensingExecutionUseCase(
-    std::shared_ptr<DXFDispensingPlanner> planner,
+DispensingExecutionUseCase::DispensingExecutionUseCase(
+    std::shared_ptr<DispensingPlanner> planner,
     std::shared_ptr<Domain::Dispensing::Ports::IValvePort> valve_port,
     std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port,
     std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port,
@@ -314,16 +314,16 @@ DXFDispensingExecutionUseCase::DXFDispensingExecutionUseCase(
           connection_port_,
           config_port_)) {
     if (!planner_) {
-        throw std::invalid_argument("DXFDispensingExecutionUseCase: planner cannot be null");
+        throw std::invalid_argument("DispensingExecutionUseCase: planner cannot be null");
     }
 }
 
-Result<DXFDispensingMVPResult> DXFDispensingExecutionUseCase::Execute(const DXFDispensingMVPRequest& request) {
+Result<DispensingMVPResult> DispensingExecutionUseCase::Execute(const DispensingMVPRequest& request) {
     return ExecuteInternal(request, nullptr);
 }
 
-Result<DXFDispensingMVPResult> DXFDispensingExecutionUseCase::ExecuteInternal(
-    const DXFDispensingMVPRequest& request,
+Result<DispensingMVPResult> DispensingExecutionUseCase::ExecuteInternal(
+    const DispensingMVPRequest& request,
     const std::shared_ptr<TaskExecutionContext>& context) {
     SILIGEN_LOG_INFO("开始执行DXF点胶: " + request.dxf_filepath);
 
@@ -337,39 +337,42 @@ Result<DXFDispensingMVPResult> DXFDispensingExecutionUseCase::ExecuteInternal(
     auto validation = request.Validate();
     if (!validation.IsSuccess()) {
         SILIGEN_LOG_ERROR("请求参数验证失败: " + validation.GetError().GetMessage());
-        return Result<DXFDispensingMVPResult>::Failure(validation.GetError());
+        return Result<DispensingMVPResult>::Failure(validation.GetError());
     }
     if (!process_service_) {
-        return Result<DXFDispensingMVPResult>::Failure(
-            Error(ErrorCode::PORT_NOT_INITIALIZED, "点胶流程服务未初始化", "DXFDispensingExecutionUseCase"));
+        return Result<DispensingMVPResult>::Failure(
+            Error(ErrorCode::PORT_NOT_INITIALIZED, "点胶流程服务未初始化", "DispensingExecutionUseCase"));
     }
 
     auto conn_check = ValidateHardwareConnection();
     if (!conn_check.IsSuccess()) {
         SILIGEN_LOG_ERROR("硬件连接验证失败: " + conn_check.GetError().GetMessage());
-        return Result<DXFDispensingMVPResult>::Failure(conn_check.GetError());
+        return Result<DispensingMVPResult>::Failure(conn_check.GetError());
     }
 
     auto runtime_result = RefreshRuntimeParameters(request);
     if (runtime_result.IsError()) {
-        return Result<DXFDispensingMVPResult>::Failure(runtime_result.GetError());
+        return Result<DispensingMVPResult>::Failure(runtime_result.GetError());
     }
 
     auto pb_result = pb_preparation_service_->EnsurePbReady(request.dxf_filepath);
     if (pb_result.IsError()) {
-        return Result<DXFDispensingMVPResult>::Failure(pb_result.GetError());
+        return Result<DispensingMVPResult>::Failure(pb_result.GetError());
     }
+    const std::string prepared_pb_path = pb_result.Value();
 
-    auto plan_result = planner_->Plan(BuildPlanRequest(request));
+    auto plan_request = BuildPlanRequest(request);
+    plan_request.dxf_filepath = prepared_pb_path;
+    auto plan_result = planner_->Plan(plan_request);
     if (!plan_result.IsSuccess()) {
         SILIGEN_LOG_ERROR("DXF规划失败: " + plan_result.GetError().GetMessage());
-        return Result<DXFDispensingMVPResult>::Failure(plan_result.GetError());
+        return Result<DispensingMVPResult>::Failure(plan_result.GetError());
     }
 
     const auto& plan = plan_result.Value();
     if (plan.motion_trajectory.points.size() < 2) {
-        return Result<DXFDispensingMVPResult>::Failure(
-            Error(ErrorCode::TRAJECTORY_GENERATION_FAILED, "轨迹点数量不足", "DXFDispensingExecutionUseCase"));
+        return Result<DispensingMVPResult>::Failure(
+            Error(ErrorCode::TRAJECTORY_GENERATION_FAILED, "轨迹点数量不足", "DispensingExecutionUseCase"));
     }
 
     VelocityTraceSettings trace_settings;
@@ -406,7 +409,7 @@ Result<DXFDispensingMVPResult> DXFDispensingExecutionUseCase::ExecuteInternal(
             trace_settings.output_path.c_str());
     }
 
-    DXFDispensingMVPResult result;
+    DispensingMVPResult result;
     result.total_segments = static_cast<uint32>(plan.interpolation_segments.size());
     if (result.total_segments == 0) {
         result.total_segments = static_cast<uint32>(plan.process_path.segments.size());
@@ -467,7 +470,7 @@ Result<DXFDispensingMVPResult> DXFDispensingExecutionUseCase::ExecuteInternal(
         result.quality_metrics.run_count = 1;
         result.quality_metrics.interruption_count = 1;
         result.quality_metrics_available = true;
-        return Result<DXFDispensingMVPResult>::Failure(exec_result.GetError());
+        return Result<DispensingMVPResult>::Failure(exec_result.GetError());
     }
 
     result.executed_segments = exec_result.Value().executed_segments;
@@ -487,8 +490,9 @@ Result<DXFDispensingMVPResult> DXFDispensingExecutionUseCase::ExecuteInternal(
         result.total_distance,
         result.execution_time_seconds);
 
-    return Result<DXFDispensingMVPResult>::Success(result);
+    return Result<DispensingMVPResult>::Success(result);
 }
 
-}  // namespace Siligen::Application::UseCases::Dispensing::DXF
+}  // namespace Siligen::Application::UseCases::Dispensing
+
 

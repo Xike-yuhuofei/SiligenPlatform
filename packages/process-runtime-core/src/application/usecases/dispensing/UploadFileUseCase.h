@@ -18,14 +18,14 @@ template <typename T>
 class Result;
 }
 
-namespace Siligen::Application::UseCases::Dispensing::DXF {
+namespace Siligen::Application::UseCases::Dispensing {
 
 using Siligen::Shared::Types::Result;
 
 /**
  * @brief DXF 文件上传请求
  */
-struct DXFUploadRequest {
+struct UploadRequest {
     std::vector<uint8_t> file_content;  ///< 文件内容
     std::string original_filename;      ///< 原始文件名
     size_t file_size;                   ///< 文件大小（字节）
@@ -43,7 +43,7 @@ struct DXFUploadRequest {
 /**
  * @brief DXF 文件上传响应
  */
-struct DXFUploadResponse {
+struct UploadResponse {
     bool success;                    ///< 是否成功
     std::string filepath;            ///< 存储文件路径
     std::string original_name;       ///< 原始文件名
@@ -67,33 +67,33 @@ struct DXFUploadResponse {
  * - 不依赖具体实现
  * - 使用 Result<T> 错误处理
  */
-class UploadDXFFileUseCase {
+class UploadFileUseCase {
    public:
     /**
      * @brief 构造函数
      * @param file_storage_port 文件存储端口
      * @param max_file_size_mb 最大文件大小（MB）
      */
-    UploadDXFFileUseCase(std::shared_ptr<Domain::Configuration::Ports::IFileStoragePort> file_storage_port,
+    UploadFileUseCase(std::shared_ptr<Domain::Configuration::Ports::IFileStoragePort> file_storage_port,
                          size_t max_file_size_mb = 10,
                          std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port = nullptr,
                          std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService>
                              pb_preparation_service = nullptr);
 
-    ~UploadDXFFileUseCase() = default;
+    ~UploadFileUseCase() = default;
 
     // 禁止拷贝和移动
-    UploadDXFFileUseCase(const UploadDXFFileUseCase&) = delete;
-    UploadDXFFileUseCase& operator=(const UploadDXFFileUseCase&) = delete;
-    UploadDXFFileUseCase(UploadDXFFileUseCase&&) = delete;
-    UploadDXFFileUseCase& operator=(UploadDXFFileUseCase&&) = delete;
+    UploadFileUseCase(const UploadFileUseCase&) = delete;
+    UploadFileUseCase& operator=(const UploadFileUseCase&) = delete;
+    UploadFileUseCase(UploadFileUseCase&&) = delete;
+    UploadFileUseCase& operator=(UploadFileUseCase&&) = delete;
 
     /**
      * @brief 执行文件上传
      * @param request 上传请求
-     * @return Result<DXFUploadResponse> 上传结果
+     * @return Result<UploadResponse> 上传结果
      */
-    Result<DXFUploadResponse> Execute(const DXFUploadRequest& request);
+    Result<UploadResponse> Execute(const UploadRequest& request);
 
    private:
     std::shared_ptr<Domain::Configuration::Ports::IFileStoragePort> file_storage_port_;
@@ -113,7 +113,7 @@ class UploadDXFFileUseCase {
      * @param file_content 文件内容
      * @return Result<void> 验证结果
      */
-    Result<void> ValidateDXFFormat(const std::vector<uint8_t>& file_content);
+    Result<void> ValidateFileFormat(const std::vector<uint8_t>& file_content);
 
     /**
      * @brief 清理上传失败后遗留的 DXF/PB 文件
@@ -121,5 +121,6 @@ class UploadDXFFileUseCase {
     void CleanupGeneratedArtifacts(const std::string& filepath) noexcept;
 };
 
-}  // namespace Siligen::Application::UseCases::Dispensing::DXF
+}  // namespace Siligen::Application::UseCases::Dispensing
+
 

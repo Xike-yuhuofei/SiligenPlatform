@@ -1,4 +1,4 @@
-#include "DXFContourAugmenter.h"
+#include "ContourAugmenterAdapter.h"
 
 #include "shared/Geometry/BoostGeometryAdapter.h"
 #include "shared/types/Point.h"
@@ -21,7 +21,7 @@
 #include <utility>
 #include <vector>
 
-namespace Siligen::Application::UseCases::Dispensing::DXF {
+namespace Siligen::Infrastructure::Adapters::Planning::Geometry {
 namespace {
 
 using Siligen::Shared::Types::Point2D;
@@ -864,7 +864,7 @@ static bool BuildCupPathWithInner(const std::vector<Point2D>& cup,
                                   const std::vector<Point2D>& inner,
                                   float32 offset,
                                   bool is_left,
-                                  const DXFContourAugmentConfig& config,
+                                  const ContourAugmentConfig& config,
                                   std::vector<Point2D>& out_path,
                                   Point2D& out_bottom) {
     auto offset_poly = OffsetClosedPolyline(cup, offset, config.offset_approx_epsilon, config.merge_epsilon);
@@ -899,7 +899,7 @@ static bool BuildCupPathWithCut(const std::vector<Point2D>& cup,
                                 float32 offset,
                                 float32 y_cut,
                                 bool is_left,
-                                const DXFContourAugmentConfig& config,
+                                const ContourAugmentConfig& config,
                                 std::vector<Point2D>& out_path,
                                 Point2D& out_bottom,
                                 Point2D& out_cut_point) {
@@ -983,7 +983,7 @@ static std::vector<Point2D> BuildBridgePathWithInner(const std::vector<Point2D>&
                                                      const std::vector<Point2D>& right_cup,
                                                      const std::vector<Point2D>& inner,
                                                      float32 offset,
-                                                     const DXFContourAugmentConfig& config) {
+                                                     const ContourAugmentConfig& config) {
     std::vector<Point2D> left_path;
     std::vector<Point2D> right_path;
     Point2D left_bottom;
@@ -1007,7 +1007,7 @@ static std::vector<Point2D> BuildBridgePathWithCut(const std::vector<Point2D>& l
                                                    const std::vector<Point2D>& right_cup,
                                                    float32 offset,
                                                    float32 y_cut,
-                                                   const DXFContourAugmentConfig& config) {
+                                                   const ContourAugmentConfig& config) {
     std::vector<Point2D> left_path;
     std::vector<Point2D> right_path;
     Point2D left_bottom;
@@ -1032,7 +1032,7 @@ static std::vector<Point2D> BuildBridgePathWithCut(const std::vector<Point2D>& l
 static std::vector<Point2D> GenerateGridPoints(const std::vector<Point2D>& inner,
                                                const std::vector<Point2D>& left_cup,
                                                const std::vector<Point2D>& right_cup,
-                                               const DXFContourAugmentConfig& config) {
+                                               const ContourAugmentConfig& config) {
     std::vector<Point2D> points;
     if (inner.size() < 3) {
         return points;
@@ -1105,9 +1105,9 @@ static std::vector<Point2D> GenerateGridPoints(const std::vector<Point2D>& inner
 
 }  // namespace
 
-Result<void> DXFContourAugmenter::ConvertFile(const std::string& input_path,
+Result<void> ContourAugmenterAdapter::ConvertFile(const std::string& input_path,
                                               const std::string& output_path,
-                                              const DXFContourAugmentConfig& config) {
+                                              const ContourAugmentConfig& config) {
     std::vector<std::string> lines;
     if (!ReadAllLines(input_path, lines)) {
         return Result<void>::Failure(Error(ErrorCode::FILE_IO_ERROR, "Failed to read DXF file: " + input_path));
@@ -1246,4 +1246,6 @@ Result<void> DXFContourAugmenter::ConvertFile(const std::string& input_path,
     return Result<void>::Success();
 }
 
-}  // namespace Siligen::Application::UseCases::Dispensing::DXF
+}  // namespace Siligen::Infrastructure::Adapters::Planning::Geometry
+
+

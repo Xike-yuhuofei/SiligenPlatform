@@ -1,4 +1,4 @@
-#include "DXFWebPlanningUseCase.h"
+#include "PlanningUseCase.h"
 #include "application/services/dxf/DxfPbPreparationService.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
@@ -19,9 +19,9 @@
 #ifdef MODULE_NAME
 #undef MODULE_NAME
 #endif
-#define MODULE_NAME "DXFWebPlanningUseCase"
+#define MODULE_NAME "PlanningUseCase"
 
-namespace Siligen::Application::UseCases::Dispensing::DXF {
+namespace Siligen::Application::UseCases::Dispensing {
 
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
@@ -275,7 +275,7 @@ ABABacktrackStats AnalyzeABABacktrack(const std::vector<TrajectoryPoint>& points
 }
 
 PreviewRuntimeParams BuildPreviewRuntimeParams(
-    const DXFPlanningRequest& request,
+    const PlanningRequest& request,
     const std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort>& config_port) {
     PreviewRuntimeParams params;
     params.dispensing_velocity = request.trajectory_config.max_velocity;
@@ -745,11 +745,11 @@ struct ExecutionTrajectorySelection {
     const std::vector<TrajectoryPoint>* execution_trajectory = nullptr;
 };
 
-DXFDispensingPlanRequest BuildPlanRequest(
-    const DXFPlanningRequest& request,
+DispensingPlanRequest BuildPlanRequest(
+    const PlanningRequest& request,
     const PreviewRuntimeParams& runtime_params,
     const std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort>& config_port) {
-    DXFDispensingPlanRequest plan_request;
+    DispensingPlanRequest plan_request;
     plan_request.dxf_filepath = request.dxf_filepath;
     plan_request.optimize_path = request.optimize_path;
     plan_request.start_x = request.start_x;
@@ -815,7 +815,7 @@ DXFDispensingPlanRequest BuildPlanRequest(
     return plan_request;
 }
 
-ExecutionTrajectorySelection SelectExecutionTrajectory(const DXFDispensingPlan& plan, bool dump_preview) {
+ExecutionTrajectorySelection SelectExecutionTrajectory(const DispensingPlan& plan, bool dump_preview) {
     ExecutionTrajectorySelection selection;
     if (!plan.interpolation_points.empty()) {
         selection.execution_trajectory = &plan.interpolation_points;
@@ -865,8 +865,8 @@ void DumpTrajectoryArtifacts(const std::vector<TrajectoryPoint>& points,
     LogDumpResult(json_success_label, json_failure_label, json_result);
 }
 
-void DumpPreviewArtifacts(const DXFPlanningRequest& request,
-                         const DXFDispensingPlan& plan,
+void DumpPreviewArtifacts(const PlanningRequest& request,
+                         const DispensingPlan& plan,
                          const ExecutionTrajectorySelection& selection,
                          bool dump_preview,
                          std::time_t dump_timestamp) {
@@ -934,7 +934,7 @@ std::vector<Siligen::Shared::Types::Point2D> CollectTriggerPositions(
     return final_glue_points;
 }
 
-float32 ResolveTargetSpacing(const DXFDispensingPlan& plan, const PreviewRuntimeParams& runtime_params) {
+float32 ResolveTargetSpacing(const DispensingPlan& plan, const PreviewRuntimeParams& runtime_params) {
     if (plan.trigger_interval_mm > kEpsilon) {
         return plan.trigger_interval_mm;
     }
@@ -944,7 +944,7 @@ float32 ResolveTargetSpacing(const DXFDispensingPlan& plan, const PreviewRuntime
     return 0.0f;
 }
 
-void ValidateGlueSpacing(const DXFPlanningRequest& request,
+void ValidateGlueSpacing(const PlanningRequest& request,
                          const std::vector<GluePointSegment>& glue_segments,
                          float32 target_spacing) {
     if (glue_segments.empty() || target_spacing <= kEpsilon) {
@@ -987,7 +987,7 @@ void WriteGluePointArtifacts(const std::vector<GluePointSegment>& glue_segments,
     }
 }
 
-float32 EstimateExecutionTime(const DXFDispensingPlan& plan, const DXFDispensingPlanRequest& plan_request) {
+float32 EstimateExecutionTime(const DispensingPlan& plan, const DispensingPlanRequest& plan_request) {
     float32 estimated_time = plan.estimated_time_s;
     if (estimated_time <= kEpsilon) {
         estimated_time = plan.motion_trajectory.total_time;
@@ -998,8 +998,8 @@ float32 EstimateExecutionTime(const DXFDispensingPlan& plan, const DXFDispensing
     return estimated_time;
 }
 
-DXFPlanningResponse BuildPlanningResponse(const DXFPlanningRequest& request,
-                                         const DXFDispensingPlan& plan,
+PlanningResponse BuildPlanningResponse(const PlanningRequest& request,
+                                         const DispensingPlan& plan,
                                          const std::vector<TrajectoryPoint>* execution_trajectory,
                                          const std::vector<Siligen::Shared::Types::Point2D>& final_glue_points,
                                          const std::string& dxf_filename,
@@ -1009,7 +1009,7 @@ DXFPlanningResponse BuildPlanningResponse(const DXFPlanningRequest& request,
         preview_points = *execution_trajectory;
     }
 
-    DXFPlanningResponse response;
+    PlanningResponse response;
     response.success = true;
     response.segment_count = static_cast<int>(plan.process_path.segments.size());
     response.total_length = plan.total_length_mm > kEpsilon ? plan.total_length_mm : plan.motion_trajectory.total_length;
@@ -1025,8 +1025,8 @@ DXFPlanningResponse BuildPlanningResponse(const DXFPlanningRequest& request,
 
 }  // namespace
 
-DXFWebPlanningUseCase::DXFWebPlanningUseCase(
-    std::shared_ptr<DXFDispensingPlanner> planner,
+PlanningUseCase::PlanningUseCase(
+    std::shared_ptr<DispensingPlanner> planner,
     std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port,
     std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService> pb_preparation_service)
     : planner_(std::move(planner)),
@@ -1036,36 +1036,38 @@ DXFWebPlanningUseCase::DXFWebPlanningUseCase(
                                   : std::make_shared<Siligen::Application::Services::DXF::DxfPbPreparationService>(
                                         config_port_)) {
     if (!planner_) {
-        throw std::invalid_argument("DXFWebPlanningUseCase: planner cannot be null");
+        throw std::invalid_argument("PlanningUseCase: planner cannot be null");
     }
 }
 
-Result<DXFPlanningResponse> DXFWebPlanningUseCase::Execute(const DXFPlanningRequest& request) {
+Result<PlanningResponse> PlanningUseCase::Execute(const PlanningRequest& request) {
     SILIGEN_LOG_INFO("Starting DXF planning...");
     const auto total_start = std::chrono::steady_clock::now();
 
     if (!request.Validate()) {
-        return Result<DXFPlanningResponse>::Failure(
-            Error(ErrorCode::INVALID_PARAMETER, "Invalid request parameters", "DXFWebPlanningUseCase"));
+        return Result<PlanningResponse>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "Invalid request parameters", "PlanningUseCase"));
     }
 
     auto file_validation = ValidateFileExists(request.dxf_filepath);
     if (file_validation.IsError()) {
-        return Result<DXFPlanningResponse>::Failure(file_validation.GetError());
+        return Result<PlanningResponse>::Failure(file_validation.GetError());
     }
 
     auto pb_result = pb_preparation_service_->EnsurePbReady(request.dxf_filepath);
     if (pb_result.IsError()) {
-        return Result<DXFPlanningResponse>::Failure(pb_result.GetError());
+        return Result<PlanningResponse>::Failure(pb_result.GetError());
     }
+    const std::string prepared_pb_path = pb_result.Value();
 
     const auto runtime_params = BuildPreviewRuntimeParams(request, config_port_);
-    const auto plan_request = BuildPlanRequest(request, runtime_params, config_port_);
+    auto plan_request = BuildPlanRequest(request, runtime_params, config_port_);
+    plan_request.dxf_filepath = prepared_pb_path;
 
     const auto plan_start = std::chrono::steady_clock::now();
     auto plan_result = planner_->Plan(plan_request);
     if (plan_result.IsError()) {
-        return Result<DXFPlanningResponse>::Failure(plan_result.GetError());
+        return Result<PlanningResponse>::Failure(plan_result.GetError());
     }
     const auto plan_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - plan_start).count();
@@ -1090,10 +1092,10 @@ Result<DXFPlanningResponse> DXFWebPlanningUseCase::Execute(const DXFPlanningRequ
                                                      plan.trigger_distances_mm);
     }
     if (preview_triggers.empty()) {
-        return Result<DXFPlanningResponse>::Failure(
+        return Result<PlanningResponse>::Failure(
             Error(ErrorCode::CMP_TRIGGER_SETUP_FAILED,
                   "位置触发不可用，禁止回退为定时触发",
-                  "DXFWebPlanningUseCase"));
+                  "PlanningUseCase"));
     }
 
     const auto final_glue_points = CollectTriggerPositions(preview_triggers);
@@ -1117,19 +1119,19 @@ Result<DXFPlanningResponse> DXFWebPlanningUseCase::Execute(const DXFPlanningRequ
         std::chrono::steady_clock::now() - total_start).count();
     SILIGEN_LOG_INFO_FMT_HELPER("DXF规划流程完成: total_time=%lldms", static_cast<long long>(total_elapsed_ms));
 
-    return Result<DXFPlanningResponse>::Success(std::move(response));
+    return Result<PlanningResponse>::Success(std::move(response));
 }
 
-Result<void> DXFWebPlanningUseCase::ValidateFileExists(const std::string& filepath) {
+Result<void> PlanningUseCase::ValidateFileExists(const std::string& filepath) {
     std::ifstream file(filepath, std::ios::binary);
     if (!file.good()) {
         return Result<void>::Failure(
-            Error(ErrorCode::FILE_NOT_FOUND, "File not found: " + filepath, "DXFWebPlanningUseCase"));
+            Error(ErrorCode::FILE_NOT_FOUND, "File not found: " + filepath, "PlanningUseCase"));
     }
     return Result<void>::Success();
 }
 
-std::string DXFWebPlanningUseCase::ExtractFilename(const std::string& filepath) {
+std::string PlanningUseCase::ExtractFilename(const std::string& filepath) {
     try {
         std::filesystem::path path(filepath);
         return path.filename().string();
@@ -1138,5 +1140,6 @@ std::string DXFWebPlanningUseCase::ExtractFilename(const std::string& filepath) 
     }
 }
 
-}  // namespace Siligen::Application::UseCases::Dispensing::DXF
+}  // namespace Siligen::Application::UseCases::Dispensing
+
 

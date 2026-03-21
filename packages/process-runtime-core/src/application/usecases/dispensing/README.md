@@ -7,21 +7,21 @@
 ## 命名空间
 
 ```cpp
-namespace Siligen::Application::UseCases::Dispensing::DXF
+namespace Siligen::Application::UseCases::Dispensing
 ```
 
 ## Use Cases
 
-### UploadDXFFileUseCase
+### UploadFileUseCase
 - **职责**: 上传和验证 DXF 文件
 - **使用场景**: 用户导入点胶路径
 
-### DXFWebPlanningUseCase
+### PlanningUseCase
 - **职责**: 解析 DXF 并生成点胶路径规划
 - **使用场景**: 路径预览和编辑
-- **补充**: 可选启用 Domain 插补算法 (InterpolationPlanningUseCase)，用于生成插补轨迹点用于预览/分析
+- **补充**: 可选启用 Domain 插补算法（由 `Domain::Dispensing::DomainServices::DispensingPlanner` 内部直接调用 Domain 插补组件），用于生成插补轨迹点用于预览/分析
 
-### DXFDispensingExecutionUseCase
+### DispensingExecutionUseCase
 - **职责**: 执行 DXF 点胶任务
 - **使用场景**: 自动点胶流程
 - **依赖**: Domain::Dispensing::DomainServices::DispensingProcessService
@@ -49,7 +49,7 @@ namespace Siligen::Application::UseCases::Dispensing::DXF
     - **优点**: 触发点间距更贴合速度曲线，均匀性更好。
     - **配置**: `subsegment_count` (默认 8)。
 
-### CleanupDXFFilesUseCase
+### CleanupFilesUseCase
 - **职责**: 清理过期的 DXF 文件
 - **使用场景**: 存储管理
 
@@ -69,7 +69,10 @@ namespace Siligen::Application::UseCases::Dispensing::DXF
 - `.pb` 是 **运行时中间格式**，由 DXF 预处理管线从 DXF 生成。
 - DXF 不是直接被 C++ 规划器消费；规划/预览/执行统一读取 `.pb`。
 - DXF 上传、预览、执行前，都会先通过统一的 `DxfPbPreparationService` 确保 `.pb` 已存在、非空且时间戳不落后于源 DXF。
-- `DxfPbPreparationService` 会优先尝试调用独立的 `D:\Projects\DXF` 算法仓库；找不到外部仓库时再回退到本仓库内的 `tools/dxf_pipeline/dxf_to_pb.py`。
+- `DxfPbPreparationService` 默认调用本仓库内的 `packages/engineering-data/scripts/dxf_to_pb.py`；仅在显式设置 `SILIGEN_DXF_PROJECT_ROOT` 且路径有效时才调用外部 DXF 算法仓库。
+- `Domain::Dispensing::DomainServices::DispensingPlanner` 在主链路中接收 `EnsurePbReady` 返回的 `.pb` 路径，不再直接消费 `.dxf`。
+- `ContourAugmenterAdapter` 已下沉到 `infrastructure/adapters/planning/geometry`，应用层不再直接承载几何增广实现。
+- `AutoPathSourceAdapter` 的 legacy DXF 自动预处理分支默认禁用；仅在显式设置 `SILIGEN_DXF_AUTOPATH_LEGACY=1` 时允许临时回退。
 - 上传阶段的校验不只看扩展名或文件头，还会实际跑预处理；若 DXF 无法解析，或预处理后没有导出任何受支持图元，上传会直接失败。
 
 ### 当前支持的 DXF 实体

@@ -60,3 +60,11 @@
 - `siligen_unit_tests` 与 `siligen_pr1_tests` 由 package 侧 `tests/CMakeLists.txt` 定义
 - `control-core/tests/CMakeLists.txt` 仅保留兼容转发入口
 - package 侧测试说明见 `tests/README.md`
+
+## 冗余治理文档
+
+- Day 1 实体盘点与边界冻结：`docs/redundancy/day1-entity-boundary-freeze.md`
+- 冻结索引：`docs/redundancy/README.md`
+- 数据模型 Schema v1：`docs/redundancy/model/redundancy-data-model.schema.v1.json`
+- 接口契约 v1：`docs/redundancy/contracts/redundancy-interface.contract.v1.json`
+- M2 实施进展：`docs/redundancy/milestones/m2-implementation-progress-2026-03-21.md`

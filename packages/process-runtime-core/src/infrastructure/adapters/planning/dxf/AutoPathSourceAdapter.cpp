@@ -13,6 +13,8 @@
 namespace Siligen::Infrastructure::Adapters::Parsing {
 
 namespace {
+constexpr const char* kLegacyDxfAutopathEnv = "SILIGEN_DXF_AUTOPATH_LEGACY";
+
 std::string ToLower(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return std::tolower(c); });
     return value;
@@ -23,6 +25,24 @@ bool EndsWith(const std::string& value, const std::string& suffix) {
         return false;
     }
     return value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+bool IsLegacyDxfAutopathEnabled() {
+    const char* raw = std::getenv(kLegacyDxfAutopathEnv);
+    if (!(raw && *raw)) {
+        return false;
+    }
+    std::string value(raw);
+    value = ToLower(value);
+    return value == "1" || value == "true" || value == "yes" || value == "on";
+}
+
+Siligen::Shared::Types::Error LegacyDxfAutopathDisabledError() {
+    return Siligen::Shared::Types::Error(
+        Siligen::Shared::Types::ErrorCode::CONFIGURATION_ERROR,
+        std::string("legacy DXF 自动预处理路径已默认禁用。请先通过 DxfPbPreparationService 生成 .pb，")
+            + "或显式设置 " + kLegacyDxfAutopathEnv + "=1 临时回退。",
+        "AutoPathSourceAdapter");
 }
 
 // 模拟DXF文件分析 - 未来将迁移到dxf-pipeline
@@ -66,6 +86,9 @@ Result<PathSourceResult> AutoPathSourceAdapter::LoadFromFile(const std::string& 
     }
     
     if (EndsWith(lower, ".dxf")) {
+        if (!IsLegacyDxfAutopathEnabled()) {
+            return Result<PathSourceResult>::Failure(LegacyDxfAutopathDisabledError());
+        }
         // 对于DXF文件，现在使用专用接口处理
         auto dxf_result = LoadDXFFile(filepath);
         if (!dxf_result.IsSuccess()) {
@@ -90,6 +113,10 @@ Result<PathSourceResult> AutoPathSourceAdapter::LoadFromFile(const std::string& 
 
 // 实现专用DXF接口
 Result<DXFPathSourceResult> AutoPathSourceAdapter::LoadDXFFile(const std::string& filepath) {
+    if (!IsLegacyDxfAutopathEnabled()) {
+        return Result<DXFPathSourceResult>::Failure(LegacyDxfAutopathDisabledError());
+    }
+
     DXFPathSourceResult result;
     
     // 首先验证文件
@@ -168,6 +195,10 @@ std::vector<std::string> AutoPathSourceAdapter::GetSupportedFormats() {
 }
 
 Result<bool> AutoPathSourceAdapter::RequiresPreprocessing(const std::string& filepath) {
+    if (!IsLegacyDxfAutopathEnabled()) {
+        return Result<bool>::Failure(LegacyDxfAutopathDisabledError());
+    }
+
     auto validation = AnalyzeDXFInternal(filepath);
     if (!validation.is_valid) {
         return Result<bool>::Failure(
@@ -189,6 +220,10 @@ Result<bool> AutoPathSourceAdapter::RequiresPreprocessing(const std::string& fil
 
 // 私有方法实现
 Result<std::string> AutoPathSourceAdapter::PreprocessDXFFile(const std::string& dxf_path) {
+    if (!IsLegacyDxfAutopathEnabled()) {
+        return Result<std::string>::Failure(LegacyDxfAutopathDisabledError());
+    }
+
     // 生成PB文件路径
     std::filesystem::path pb_path(dxf_path);
     pb_path.replace_extension(".pb");

@@ -94,6 +94,7 @@ struct DispensingConfig {
  */
 struct DxfPreprocessConfig {
     bool normalize_units = true;     ///< 是否按DXF单位归一化为mm
+    bool strict_r12 = false;         ///< 是否严格限制输入为R12及核心实体
     bool approx_splines = false;     ///< 是否将SPLINE近似为折线
     bool snap_enabled = false;       ///< 是否启用坐标吸附
     bool densify_enabled = false;    ///< 是否启用线段密化

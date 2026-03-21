@@ -1,12 +1,12 @@
-#include "application/usecases/dispensing/dxf/ContourPathOptimizer.h"
+#include "domain/dispensing/planning/domain-services/ContourOptimizationService.h"
 
 #include <gtest/gtest.h>
 
 #include <cmath>
 
 namespace {
-using Siligen::Application::UseCases::Dispensing::DXF::ContourPathOptimizer;
-using Siligen::Application::UseCases::Dispensing::DXF::ContourOptimizationStats;
+using Siligen::Domain::Dispensing::DomainServices::ContourOptimizationService;
+using Siligen::Domain::Dispensing::DomainServices::ContourOptimizationStats;
 using Siligen::Domain::Trajectory::Ports::PathPrimitiveMeta;
 using Siligen::Domain::Trajectory::ValueObjects::Primitive;
 using Siligen::Shared::Types::DXFEntityType;
@@ -42,7 +42,7 @@ TEST(ContourPathOptimizerTest, EmptyInputReturnsEmpty) {
     std::vector<PathPrimitiveMeta> metadata;
 
     ContourOptimizationStats stats;
-    auto optimized = ContourPathOptimizer::Optimize(primitives, metadata, Point2D(0.0f, 0.0f), true, 0, &stats);
+    auto optimized = ContourOptimizationService::Optimize(primitives, metadata, Point2D(0.0f, 0.0f), true, 0, &stats);
 
     EXPECT_TRUE(optimized.empty());
     EXPECT_FALSE(stats.applied);
@@ -55,7 +55,7 @@ TEST(ContourPathOptimizerTest, MetadataMismatchReturnsOriginal) {
     std::vector<PathPrimitiveMeta> metadata;
 
     ContourOptimizationStats stats;
-    auto optimized = ContourPathOptimizer::Optimize(primitives, metadata, Point2D(0.0f, 0.0f), true, 0, &stats);
+    auto optimized = ContourOptimizationService::Optimize(primitives, metadata, Point2D(0.0f, 0.0f), true, 0, &stats);
 
     ASSERT_EQ(optimized.size(), primitives.size());
     EXPECT_NEAR(optimized[0].line.start.x, primitives[0].line.start.x, 1e-4f);
@@ -74,7 +74,7 @@ TEST(ContourPathOptimizerTest, SingleOpenContourKeepsOrderWhenStartMatches) {
     };
 
     ContourOptimizationStats stats;
-    auto optimized = ContourPathOptimizer::Optimize(primitives, metadata, Point2D(0.0f, 0.0f), true, 0, &stats);
+    auto optimized = ContourOptimizationService::Optimize(primitives, metadata, Point2D(0.0f, 0.0f), true, 0, &stats);
 
     ASSERT_EQ(optimized.size(), primitives.size());
     EXPECT_NEAR(optimized[0].line.start.x, 0.0f, 1e-4f);
@@ -88,7 +88,7 @@ TEST(ContourPathOptimizerTest, RotatesCircleClosedContourToNearestStart) {
     std::vector<PathPrimitiveMeta> metadata = {MakeMeta(1, 0, true)};
 
     ContourOptimizationStats stats;
-    auto optimized = ContourPathOptimizer::Optimize(
+    auto optimized = ContourOptimizationService::Optimize(
         primitives, metadata, Point2D(0.0f, 10.0f), true, 0, &stats);
 
     ASSERT_EQ(optimized.size(), 1u);
@@ -103,7 +103,7 @@ TEST(ContourPathOptimizerTest, RotatesEllipseClosedContourToNearestStart) {
     std::vector<PathPrimitiveMeta> metadata = {MakeMeta(1, 0, true)};
 
     ContourOptimizationStats stats;
-    auto optimized = ContourPathOptimizer::Optimize(
+    auto optimized = ContourOptimizationService::Optimize(
         primitives, metadata, Point2D(0.0f, 5.0f), true, 0, &stats);
 
     ASSERT_EQ(optimized.size(), 1u);
@@ -126,7 +126,7 @@ TEST(ContourPathOptimizerTest, RotatesClosedContourToNearestStart) {
     }
 
     ContourOptimizationStats stats;
-    auto optimized = ContourPathOptimizer::Optimize(
+    auto optimized = ContourOptimizationService::Optimize(
         primitives, metadata, Point2D(10.0f, 10.0f), true, 0, &stats);
 
     ASSERT_EQ(optimized.size(), primitives.size());
@@ -153,7 +153,7 @@ TEST(ContourPathOptimizerTest, MixedOpenClosedContoursReorders) {
     metadata.push_back(MakeMeta(2, 1, false));
 
     ContourOptimizationStats stats;
-    auto optimized = ContourPathOptimizer::Optimize(
+    auto optimized = ContourOptimizationService::Optimize(
         primitives, metadata, Point2D(120.0f, 0.0f), true, 0, &stats);
 
     ASSERT_EQ(optimized.size(), primitives.size());
@@ -178,7 +178,7 @@ TEST(ContourPathOptimizerTest, ReordersAndReversesOpenContours) {
     metadata[3].entity_segment_index = 1;
 
     ContourOptimizationStats stats;
-    auto optimized = ContourPathOptimizer::Optimize(
+    auto optimized = ContourOptimizationService::Optimize(
         primitives, metadata, Point2D(30.0f, 0.0f), true, 0, &stats);
 
     ASSERT_EQ(optimized.size(), primitives.size());
@@ -201,6 +201,9 @@ TEST(ContourPathOptimizerTest, LargeInputDoesNotLoseSegments) {
         metadata.push_back(MakeMeta(i, 0, false));
     }
 
-    auto optimized = ContourPathOptimizer::Optimize(primitives, metadata, Point2D(0.0f, 0.0f), true, 0, nullptr);
+    auto optimized = ContourOptimizationService::Optimize(primitives, metadata, Point2D(0.0f, 0.0f), true, 0, nullptr);
     EXPECT_EQ(optimized.size(), primitives.size());
 }
+
+
+

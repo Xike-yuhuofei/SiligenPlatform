@@ -9,7 +9,16 @@
 #include <cctype>
 #include <cstdlib>
 #include <filesystem>
+#include <sstream>
 #include <string>
+#include <vector>
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
 
 #ifdef MODULE_NAME
 #undef MODULE_NAME
@@ -25,6 +34,9 @@ using Siligen::Shared::Types::Result;
 namespace {
 constexpr const char* kDxFProjectRootEnv = "SILIGEN_DXF_PROJECT_ROOT";
 constexpr const char* kDxFProjectLauncherRelative = "scripts/dxf_core_launcher.py";
+constexpr const char* kForbiddenMetaChars = "&|;<>`";
+constexpr const char* kEngineeringDataPythonEnv = "SILIGEN_ENGINEERING_DATA_PYTHON";
+constexpr const char* kLegacyPbPythonEnv = "SILIGEN_DXF_PB_PYTHON";
 
 std::string QuoteArg(const std::string& value) {
     if (value.find_first_of(" \t\"") == std::string::npos) {
@@ -44,27 +56,22 @@ std::string QuoteArg(const std::string& value) {
     return out;
 }
 
-void AppendBoolArg(std::string& command, const std::string& flag, bool enabled) {
-    command += " ";
+void AppendBoolArg(std::vector<std::string>& args, const std::string& flag, bool enabled) {
     if (enabled) {
-        command += flag;
+        args.push_back(flag);
         return;
     }
     if (flag.rfind("--", 0) == 0) {
-        command += "--no-";
-        command += flag.substr(2);
+        args.push_back("--no-" + flag.substr(2));
         return;
     }
-    command += "no-";
-    command += flag;
+    args.push_back("no-" + flag);
 }
 
 template <typename T>
-void AppendValueArg(std::string& command, const std::string& flag, T value) {
-    command += " ";
-    command += flag;
-    command += " ";
-    command += std::to_string(value);
+void AppendValueArg(std::vector<std::string>& args, const std::string& flag, T value) {
+    args.push_back(flag);
+    args.push_back(std::to_string(value));
 }
 
 std::string ReplaceAll(std::string value, const std::string& from, const std::string& to) {
@@ -126,69 +133,125 @@ bool HasDxFLauncher(const std::filesystem::path& root) {
     return std::filesystem::exists(root / kDxFProjectLauncherRelative, ec);
 }
 
-std::filesystem::path FindExternalDxFProjectRoot() {
+bool HasForbiddenMetaChar(const std::string& value) {
+    return value.find_first_of(kForbiddenMetaChars) != std::string::npos;
+}
+
+void WarnDeprecatedPbPythonEnvOnce() {
+    static bool warned = false;
+    if (warned) {
+        return;
+    }
+    warned = true;
+    SILIGEN_LOG_WARNING(std::string(kLegacyPbPythonEnv) + " 已弃用，请改用 " + kEngineeringDataPythonEnv);
+}
+
+Result<std::vector<std::string>> TokenizeCommandLine(const std::string& command_text) {
+    std::vector<std::string> tokens;
+    std::string current;
+    current.reserve(command_text.size());
+
+    char active_quote = '\0';
+    for (char c : command_text) {
+        if (active_quote != '\0') {
+            if (c == active_quote) {
+                active_quote = '\0';
+            } else {
+                current.push_back(c);
+            }
+            continue;
+        }
+
+        if (c == '"' || c == '\'') {
+            active_quote = c;
+            continue;
+        }
+
+        if (std::isspace(static_cast<unsigned char>(c))) {
+            if (!current.empty()) {
+                tokens.push_back(current);
+                current.clear();
+            }
+            continue;
+        }
+
+        current.push_back(c);
+    }
+
+    if (active_quote != '\0') {
+        return Result<std::vector<std::string>>::Failure(
+            Error(ErrorCode::CONFIGURATION_ERROR,
+                  "SILIGEN_DXF_PB_COMMAND 存在未闭合引号",
+                  MODULE_NAME));
+    }
+    if (!current.empty()) {
+        tokens.push_back(current);
+    }
+    if (tokens.empty()) {
+        return Result<std::vector<std::string>>::Failure(
+            Error(ErrorCode::CONFIGURATION_ERROR,
+                  "SILIGEN_DXF_PB_COMMAND 为空或无法解析为命令",
+                  MODULE_NAME));
+    }
+    return Result<std::vector<std::string>>::Success(tokens);
+}
+
+Result<std::filesystem::path> ResolveExternalDxFProjectRoot() {
     namespace fs = std::filesystem;
 
     const char* explicit_root = std::getenv(kDxFProjectRootEnv);
-    if (explicit_root && *explicit_root) {
-        fs::path root = fs::path(explicit_root);
-        if (HasDxFLauncher(root)) {
-            return root;
-        }
+    if (!(explicit_root && *explicit_root)) {
+        return Result<fs::path>::Success({});
     }
 
-    std::error_code ec;
-    fs::path current = fs::current_path(ec);
-    if (ec) {
-        return {};
+    fs::path root = fs::path(explicit_root);
+    if (!HasDxFLauncher(root)) {
+        return Result<fs::path>::Failure(
+            Error(ErrorCode::FILE_NOT_FOUND,
+                  std::string(kDxFProjectRootEnv) + " 指向的外部DXF仓库无效（缺少 " +
+                      kDxFProjectLauncherRelative + "）: " + root.string(),
+                  MODULE_NAME));
     }
-
-    for (fs::path cursor = current; !cursor.empty(); cursor = cursor.parent_path()) {
-        if (HasDxFLauncher(cursor)) {
-            return cursor;
-        }
-
-        const fs::path sibling = cursor.parent_path() / "DXF";
-        if (!sibling.empty() && HasDxFLauncher(sibling)) {
-            return sibling;
-        }
-
-        if (cursor == cursor.root_path()) {
-            break;
-        }
-    }
-
-    return {};
+    return Result<fs::path>::Success(root);
 }
 
-std::string BuildPbCommand(const std::filesystem::path& dxf_path,
-                           const std::filesystem::path& pb_path,
-                           const std::string& python,
-                           const Siligen::Domain::Configuration::Ports::DxfPreprocessConfig& preprocess_config) {
+Result<std::vector<std::string>> BuildPbCommandArgs(
+    const std::filesystem::path& dxf_path,
+    const std::filesystem::path& pb_path,
+    const std::string& python,
+    const std::filesystem::path& external_root,
+    const Siligen::Domain::Configuration::Ports::DxfPreprocessConfig& preprocess_config) {
     namespace fs = std::filesystem;
 
-    const std::filesystem::path external_root = FindExternalDxFProjectRoot();
+    std::vector<std::string> args;
     if (!external_root.empty()) {
         const fs::path launcher_path = external_root / kDxFProjectLauncherRelative;
-        std::string command = QuoteArg(python) + " " + QuoteArg(launcher_path.string()) +
-                              " dxf-to-pb --input " + QuoteArg(dxf_path.string()) +
-                              " --output " + QuoteArg(pb_path.string());
+        args = {
+            python,
+            launcher_path.string(),
+            "dxf-to-pb",
+            "--input",
+            dxf_path.string(),
+            "--output",
+            pb_path.string(),
+        };
 
-        AppendBoolArg(command, "--normalize-units", preprocess_config.normalize_units);
-        AppendBoolArg(command, "--approx-splines", preprocess_config.approx_splines);
-        AppendBoolArg(command, "--snap-enabled", preprocess_config.snap_enabled);
-        AppendBoolArg(command, "--densify-enabled", preprocess_config.densify_enabled);
-        AppendBoolArg(command, "--min-seg-enabled", preprocess_config.min_seg_enabled);
-        AppendValueArg(command, "--spline-samples", preprocess_config.spline_samples);
-        AppendValueArg(command, "--spline-max-step", preprocess_config.spline_max_step);
-        AppendValueArg(command, "--chordal", preprocess_config.chordal);
-        AppendValueArg(command, "--max-seg", preprocess_config.max_seg);
-        AppendValueArg(command, "--snap", preprocess_config.snap);
-        AppendValueArg(command, "--angular", preprocess_config.angular);
-        AppendValueArg(command, "--min-seg", preprocess_config.min_seg);
+        AppendBoolArg(args, "--normalize-units", preprocess_config.normalize_units);
+        AppendBoolArg(args, "--strict-r12", preprocess_config.strict_r12);
+        AppendBoolArg(args, "--approx-splines", preprocess_config.approx_splines);
+        AppendBoolArg(args, "--snap-enabled", preprocess_config.snap_enabled);
+        AppendBoolArg(args, "--densify-enabled", preprocess_config.densify_enabled);
+        AppendBoolArg(args, "--min-seg-enabled", preprocess_config.min_seg_enabled);
+        AppendValueArg(args, "--spline-samples", preprocess_config.spline_samples);
+        AppendValueArg(args, "--spline-max-step", preprocess_config.spline_max_step);
+        AppendValueArg(args, "--chordal", preprocess_config.chordal);
+        AppendValueArg(args, "--max-seg", preprocess_config.max_seg);
+        AppendValueArg(args, "--snap", preprocess_config.snap);
+        AppendValueArg(args, "--angular", preprocess_config.angular);
+        AppendValueArg(args, "--min-seg", preprocess_config.min_seg);
 
         SILIGEN_LOG_INFO("使用外部DXF算法仓库生成PB: root=" + external_root.string());
-        return command;
+        return Result<std::vector<std::string>>::Success(args);
     }
 
     const char* script_env = std::getenv("SILIGEN_DXF_PB_SCRIPT");
@@ -196,66 +259,273 @@ std::string BuildPbCommand(const std::filesystem::path& dxf_path,
                                ? fs::path(script_env)
                                : fs::current_path() / "packages" / "engineering-data" / "scripts" / "dxf_to_pb.py";
     if (!fs::exists(script_path)) {
-        return {};
+        std::string detail = script_env && *script_env
+                                 ? ("指定脚本不存在: " + std::string(script_env))
+                                 : "未找到本地 packages/engineering-data/scripts/dxf_to_pb.py";
+        return Result<std::vector<std::string>>::Failure(
+            Error(ErrorCode::FILE_NOT_FOUND, detail, MODULE_NAME));
     }
 
-    std::string command = QuoteArg(python) + " " + QuoteArg(script_path.string()) + " --input " +
-                          QuoteArg(dxf_path.string()) + " --output " + QuoteArg(pb_path.string());
+    args = {
+        python,
+        script_path.string(),
+        "--input",
+        dxf_path.string(),
+        "--output",
+        pb_path.string(),
+    };
 
-    AppendBoolArg(command, "--normalize-units", preprocess_config.normalize_units);
-    AppendBoolArg(command, "--approx-splines", preprocess_config.approx_splines);
-    AppendBoolArg(command, "--snap-enabled", preprocess_config.snap_enabled);
-    AppendBoolArg(command, "--densify-enabled", preprocess_config.densify_enabled);
-    AppendBoolArg(command, "--min-seg-enabled", preprocess_config.min_seg_enabled);
-    AppendValueArg(command, "--spline-samples", preprocess_config.spline_samples);
-    AppendValueArg(command, "--spline-max-step", preprocess_config.spline_max_step);
-    AppendValueArg(command, "--chordal", preprocess_config.chordal);
-    AppendValueArg(command, "--max-seg", preprocess_config.max_seg);
-    AppendValueArg(command, "--snap", preprocess_config.snap);
-    AppendValueArg(command, "--angular", preprocess_config.angular);
-    AppendValueArg(command, "--min-seg", preprocess_config.min_seg);
-    return command;
+    AppendBoolArg(args, "--normalize-units", preprocess_config.normalize_units);
+    AppendBoolArg(args, "--strict-r12", preprocess_config.strict_r12);
+    AppendBoolArg(args, "--approx-splines", preprocess_config.approx_splines);
+    AppendBoolArg(args, "--snap-enabled", preprocess_config.snap_enabled);
+    AppendBoolArg(args, "--densify-enabled", preprocess_config.densify_enabled);
+    AppendBoolArg(args, "--min-seg-enabled", preprocess_config.min_seg_enabled);
+    AppendValueArg(args, "--spline-samples", preprocess_config.spline_samples);
+    AppendValueArg(args, "--spline-max-step", preprocess_config.spline_max_step);
+    AppendValueArg(args, "--chordal", preprocess_config.chordal);
+    AppendValueArg(args, "--max-seg", preprocess_config.max_seg);
+    AppendValueArg(args, "--snap", preprocess_config.snap);
+    AppendValueArg(args, "--angular", preprocess_config.angular);
+    AppendValueArg(args, "--min-seg", preprocess_config.min_seg);
+    return Result<std::vector<std::string>>::Success(args);
+}
+
+std::string BuildCommandSummary(const std::vector<std::string>& args) {
+    if (args.empty()) {
+        return "<empty>";
+    }
+
+    std::ostringstream out;
+    const size_t limit = std::min<size_t>(args.size(), 8);
+    for (size_t i = 0; i < limit; ++i) {
+        if (i > 0) {
+            out << ' ';
+        }
+        out << QuoteArg(args[i]);
+    }
+    if (args.size() > limit) {
+        out << " ...(+" << (args.size() - limit) << " args)";
+    }
+    return out.str();
+}
+
+Result<std::vector<std::string>> BuildOverrideCommandArgs(const std::string& command_template,
+                                                          const std::filesystem::path& dxf_path,
+                                                          const std::filesystem::path& pb_path) {
+    if (command_template.find('\n') != std::string::npos || command_template.find('\r') != std::string::npos) {
+        return Result<std::vector<std::string>>::Failure(
+            Error(ErrorCode::CONFIGURATION_ERROR,
+                  "SILIGEN_DXF_PB_COMMAND 不允许包含换行符",
+                  MODULE_NAME));
+    }
+    if (command_template.find("{input}") == std::string::npos ||
+        command_template.find("{output}") == std::string::npos) {
+        return Result<std::vector<std::string>>::Failure(
+            Error(ErrorCode::CONFIGURATION_ERROR,
+                  "SILIGEN_DXF_PB_COMMAND 必须包含 {input} 和 {output} 占位符",
+                  MODULE_NAME));
+    }
+
+    auto tokenized = TokenizeCommandLine(command_template);
+    if (tokenized.IsError()) {
+        return tokenized;
+    }
+
+    std::vector<std::string> args;
+    args.reserve(tokenized.Value().size());
+    for (const auto& raw : tokenized.Value()) {
+        if (HasForbiddenMetaChar(raw)) {
+            return Result<std::vector<std::string>>::Failure(
+                Error(ErrorCode::CONFIGURATION_ERROR,
+                      "SILIGEN_DXF_PB_COMMAND 禁止包含 shell 元字符(&|;<>`)",
+                      MODULE_NAME));
+        }
+        std::string token = ReplaceAll(raw, "{input}", dxf_path.string());
+        token = ReplaceAll(token, "{output}", pb_path.string());
+        if (token.empty()) {
+            return Result<std::vector<std::string>>::Failure(
+                Error(ErrorCode::CONFIGURATION_ERROR,
+                      "SILIGEN_DXF_PB_COMMAND 含空参数",
+                      MODULE_NAME));
+        }
+        args.push_back(std::move(token));
+    }
+
+    return Result<std::vector<std::string>>::Success(args);
+}
+
+#ifdef _WIN32
+Result<int> RunProcess(const std::vector<std::string>& args) {
+    if (args.empty()) {
+        return Result<int>::Failure(
+            Error(ErrorCode::COMMAND_FAILED,
+                  "外部命令参数为空",
+                  MODULE_NAME));
+    }
+
+    std::ostringstream command_stream;
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (i > 0) {
+            command_stream << ' ';
+        }
+        command_stream << QuoteArg(args[i]);
+    }
+    std::string command = command_stream.str();
+    std::vector<char> mutable_command(command.begin(), command.end());
+    mutable_command.push_back('\0');
+
+    STARTUPINFOA startup_info{};
+    startup_info.cb = sizeof(startup_info);
+    PROCESS_INFORMATION process_info{};
+    const BOOL created = ::CreateProcessA(
+        nullptr,
+        mutable_command.data(),
+        nullptr,
+        nullptr,
+        FALSE,
+        CREATE_NO_WINDOW,
+        nullptr,
+        nullptr,
+        &startup_info,
+        &process_info);
+    if (!created) {
+        const DWORD err = ::GetLastError();
+        return Result<int>::Failure(
+            Error(ErrorCode::COMMAND_FAILED,
+                  "启动PB生成进程失败: winerr=" + std::to_string(static_cast<unsigned long>(err)),
+                  MODULE_NAME));
+    }
+
+    const DWORD wait_result = ::WaitForSingleObject(process_info.hProcess, INFINITE);
+    if (wait_result == WAIT_FAILED) {
+        const DWORD err = ::GetLastError();
+        ::CloseHandle(process_info.hThread);
+        ::CloseHandle(process_info.hProcess);
+        return Result<int>::Failure(
+            Error(ErrorCode::COMMAND_FAILED,
+                  "等待PB生成进程失败: winerr=" + std::to_string(static_cast<unsigned long>(err)),
+                  MODULE_NAME));
+    }
+
+    DWORD exit_code = 1;
+    if (!::GetExitCodeProcess(process_info.hProcess, &exit_code)) {
+        const DWORD err = ::GetLastError();
+        ::CloseHandle(process_info.hThread);
+        ::CloseHandle(process_info.hProcess);
+        return Result<int>::Failure(
+            Error(ErrorCode::COMMAND_FAILED,
+                  "读取PB生成进程退出码失败: winerr=" + std::to_string(static_cast<unsigned long>(err)),
+                  MODULE_NAME));
+    }
+
+    ::CloseHandle(process_info.hThread);
+    ::CloseHandle(process_info.hProcess);
+    return Result<int>::Success(static_cast<int>(exit_code));
+}
+#else
+Result<int> RunProcess(const std::vector<std::string>& args) {
+    if (args.empty()) {
+        return Result<int>::Failure(
+            Error(ErrorCode::COMMAND_FAILED,
+                  "外部命令参数为空",
+                  MODULE_NAME));
+    }
+
+    pid_t pid = ::fork();
+    if (pid < 0) {
+        return Result<int>::Failure(
+            Error(ErrorCode::COMMAND_FAILED,
+                  "fork 失败",
+                  MODULE_NAME));
+    }
+
+    if (pid == 0) {
+        std::vector<char*> argv;
+        argv.reserve(args.size() + 1);
+        for (const auto& arg : args) {
+            argv.push_back(const_cast<char*>(arg.c_str()));
+        }
+        argv.push_back(nullptr);
+        ::execvp(argv.front(), argv.data());
+        _exit(127);
+    }
+
+    int status = 0;
+    if (::waitpid(pid, &status, 0) < 0) {
+        return Result<int>::Failure(
+            Error(ErrorCode::COMMAND_FAILED,
+                  "waitpid 失败",
+                  MODULE_NAME));
+    }
+
+    if (WIFEXITED(status)) {
+        return Result<int>::Success(WEXITSTATUS(status));
+    }
+    if (WIFSIGNALED(status)) {
+        return Result<int>::Success(128 + WTERMSIG(status));
+    }
+    return Result<int>::Success(status);
+}
+#endif
+
+Result<std::vector<std::string>> ResolvePbCommandArgs(
+    const std::filesystem::path& dxf_path,
+    const std::filesystem::path& pb_path,
+    const std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort>& config_port) {
+    const char* cmd_override = std::getenv("SILIGEN_DXF_PB_COMMAND");
+    if (cmd_override && *cmd_override) {
+        return BuildOverrideCommandArgs(cmd_override, dxf_path, pb_path);
+    }
+
+    Siligen::Domain::Configuration::Ports::DxfPreprocessConfig preprocess_config;
+    if (config_port) {
+        auto config_result = config_port->GetDxfPreprocessConfig();
+        if (config_result.IsSuccess()) {
+            preprocess_config = config_result.Value();
+        } else {
+            SILIGEN_LOG_WARNING("读取DXF预处理配置失败，使用默认值: " + config_result.GetError().ToString());
+        }
+    }
+
+    auto external_root_result = ResolveExternalDxFProjectRoot();
+    if (external_root_result.IsError()) {
+        return Result<std::vector<std::string>>::Failure(external_root_result.GetError());
+    }
+
+    const char* python_env = std::getenv(kEngineeringDataPythonEnv);
+    if (!(python_env && *python_env)) {
+        python_env = std::getenv(kLegacyPbPythonEnv);
+        if (python_env && *python_env) {
+            WarnDeprecatedPbPythonEnvOnce();
+        }
+    }
+    const std::string python = (python_env && *python_env) ? python_env : "python";
+    return BuildPbCommandArgs(dxf_path,
+                              pb_path,
+                              python,
+                              external_root_result.Value(),
+                              preprocess_config);
 }
 
 Result<void> GeneratePbFile(const std::filesystem::path& dxf_path,
                             const std::filesystem::path& pb_path,
                             const std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort>& config_port) {
-    namespace fs = std::filesystem;
-
-    std::string command;
-    const char* cmd_override = std::getenv("SILIGEN_DXF_PB_COMMAND");
-    if (cmd_override && *cmd_override) {
-        command = cmd_override;
-        command = ReplaceAll(command, "{input}", QuoteArg(dxf_path.string()));
-        command = ReplaceAll(command, "{output}", QuoteArg(pb_path.string()));
-    } else {
-        Siligen::Domain::Configuration::Ports::DxfPreprocessConfig preprocess_config;
-        if (config_port) {
-            auto config_result = config_port->GetDxfPreprocessConfig();
-            if (config_result.IsSuccess()) {
-                preprocess_config = config_result.Value();
-            } else {
-                SILIGEN_LOG_WARNING("读取DXF预处理配置失败，使用默认值: " + config_result.GetError().ToString());
-            }
-        }
-
-        const char* python_env = std::getenv("SILIGEN_DXF_PB_PYTHON");
-        const std::string python = (python_env && *python_env) ? python_env : "python";
-        command = BuildPbCommand(dxf_path, pb_path, python, preprocess_config);
-        if (command.empty()) {
-            const char* script_env = std::getenv("SILIGEN_DXF_PB_SCRIPT");
-            std::string detail = script_env && *script_env
-                                     ? ("指定脚本不存在: " + std::string(script_env))
-                                     : "未找到外部DXF仓库启动脚本，也未找到本地 packages/engineering-data/scripts/dxf_to_pb.py";
-            return Result<void>::Failure(
-                Error(ErrorCode::FILE_NOT_FOUND, detail, MODULE_NAME));
-        }
+    auto args_result = ResolvePbCommandArgs(dxf_path, pb_path, config_port);
+    if (args_result.IsError()) {
+        return Result<void>::Failure(args_result.GetError());
     }
+    const auto& command_args = args_result.Value();
 
     std::error_code remove_ec;
     std::filesystem::remove(pb_path, remove_ec);
 
-    const int exit_code = std::system(command.c_str());
+    SILIGEN_LOG_INFO("执行PB生成命令: " + BuildCommandSummary(command_args));
+    auto run_result = RunProcess(command_args);
+    if (run_result.IsError()) {
+        return Result<void>::Failure(run_result.GetError());
+    }
+    const int exit_code = run_result.Value();
     if (exit_code != 0) {
         return Result<void>::Failure(
             Error(ErrorCode::COMMAND_FAILED,

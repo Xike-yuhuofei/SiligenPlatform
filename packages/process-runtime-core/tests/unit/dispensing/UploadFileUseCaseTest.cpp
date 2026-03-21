@@ -1,4 +1,4 @@
-#include "application/usecases/dispensing/dxf/UploadDXFFileUseCase.h"
+#include "application/usecases/dispensing/UploadFileUseCase.h"
 #include "application/services/dxf/DxfPbPreparationService.h"
 #include "domain/configuration/ports/IFileStoragePort.h"
 #include "shared/types/Error.h"
@@ -15,8 +15,8 @@
 
 namespace {
 using Siligen::Application::Services::DXF::DxfPbPreparationService;
-using Siligen::Application::UseCases::Dispensing::DXF::DXFUploadRequest;
-using Siligen::Application::UseCases::Dispensing::DXF::UploadDXFFileUseCase;
+using Siligen::Application::UseCases::Dispensing::UploadRequest;
+using Siligen::Application::UseCases::Dispensing::UploadFileUseCase;
 using Siligen::Domain::Configuration::Ports::FileData;
 using Siligen::Domain::Configuration::Ports::IFileStoragePort;
 using Siligen::Shared::Types::Error;
@@ -136,21 +136,21 @@ void WriteTextFile(const std::filesystem::path& path, const std::string& content
 
 }  // namespace
 
-TEST(UploadDXFFileUseCaseTest, GeneratesPbAfterUpload) {
+TEST(UploadFileUseCaseTest, GeneratesPbAfterUpload) {
     const auto base_dir = MakeTempDir("upload_success");
 
-    const auto generator_path = base_dir / "gen_pb.cmd";
+    const auto generator_path = base_dir / "gen_pb.py";
     {
         std::ofstream script(generator_path);
-        script << "@echo off\n";
-        script << "echo pb> \"%2\"\n";
-        script << "exit /b 0\n";
+        script << "import pathlib\n";
+        script << "import sys\n";
+        script << "pathlib.Path(sys.argv[2]).write_bytes(b'pb')\n";
     }
 
-    std::string command = QuoteArg(generator_path.string()) + " {input} {output}";
+    std::string command = "python " + QuoteArg(generator_path.string()) + " {input} {output}";
     SetEnvVar("SILIGEN_DXF_PB_COMMAND", command);
 
-    DXFUploadRequest request;
+    UploadRequest request;
     request.original_filename = "unit_test.dxf";
     request.content_type = "application/dxf";
     const std::string minimal_dxf = MinimalDxf();
@@ -158,7 +158,7 @@ TEST(UploadDXFFileUseCaseTest, GeneratesPbAfterUpload) {
     request.file_size = request.file_content.size();
 
     auto storage = std::make_shared<TestFileStoragePort>(base_dir);
-    UploadDXFFileUseCase usecase(storage);
+    UploadFileUseCase usecase(storage);
 
     auto result = usecase.Execute(request);
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
@@ -209,12 +209,15 @@ TEST(DxfPbPreparationServiceTest, SkipsRegenerationWhenUpToDatePbExists) {
 TEST(DxfPbPreparationServiceTest, RejectsEmptyPbOutput) {
     const auto base_dir = MakeTempDir("pb_empty_output");
     const auto dxf_path = base_dir / "sample.dxf";
-    const auto generator_path = base_dir / "write_empty.cmd";
+    const auto generator_path = base_dir / "write_empty.py";
 
     WriteTextFile(dxf_path, MinimalDxf());
-    WriteTextFile(generator_path, "@echo off\ntype NUL > \"%2\"\nexit /b 0\n");
+    WriteTextFile(generator_path,
+                  "import pathlib\n"
+                  "import sys\n"
+                  "pathlib.Path(sys.argv[2]).write_bytes(b'')\n");
 
-    SetEnvVar("SILIGEN_DXF_PB_COMMAND", QuoteArg(generator_path.string()) + " {input} {output}");
+    SetEnvVar("SILIGEN_DXF_PB_COMMAND", "python " + QuoteArg(generator_path.string()) + " {input} {output}");
 
     DxfPbPreparationService service;
     auto result = service.EnsurePbReady(dxf_path.string());
@@ -229,10 +232,9 @@ TEST(DxfPbPreparationServiceTest, RejectsEmptyPbOutput) {
 
 TEST(DxfPbPreparationServiceTest, UsesExternalDxFProjectLauncherWhenAvailable) {
     const auto root_dir = MakeTempDir("external_dxf_project");
-    const auto backend_dir = root_dir / "Backend_CPP";
     const auto dxf_repo_dir = root_dir / "DXF";
     const auto scripts_dir = dxf_repo_dir / "scripts";
-    const auto output_dir = backend_dir / "artifacts";
+    const auto output_dir = root_dir / "artifacts";
     const auto dxf_path = output_dir / "sample.dxf";
     const auto launcher_path = scripts_dir / "dxf_core_launcher.py";
 
@@ -251,13 +253,12 @@ TEST(DxfPbPreparationServiceTest, UsesExternalDxFProjectLauncherWhenAvailable) {
 
     WriteTextFile(dxf_path, MinimalDxf());
 
-    auto old_cwd = std::filesystem::current_path();
-    std::filesystem::current_path(backend_dir);
+    SetEnvVar("SILIGEN_DXF_PROJECT_ROOT", dxf_repo_dir.string());
 
     DxfPbPreparationService service;
     auto result = service.EnsurePbReady(dxf_path.string());
 
-    std::filesystem::current_path(old_cwd);
+    UnsetEnvVar("SILIGEN_DXF_PROJECT_ROOT");
 
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
     std::filesystem::path pb_path = dxf_path;
@@ -272,14 +273,121 @@ TEST(DxfPbPreparationServiceTest, UsesExternalDxFProjectLauncherWhenAvailable) {
     std::filesystem::remove_all(root_dir, ec);
 }
 
-TEST(UploadDXFFileUseCaseTest, CleansUpArtifactsWhenPbGenerationFails) {
+TEST(DxfPbPreparationServiceTest, RejectsInvalidExternalDxFProjectRoot) {
+    const auto base_dir = MakeTempDir("invalid_external_root");
+    const auto dxf_path = base_dir / "sample.dxf";
+
+    WriteTextFile(dxf_path, MinimalDxf());
+    SetEnvVar("SILIGEN_DXF_PROJECT_ROOT", (base_dir / "missing_dxf_repo").string());
+
+    DxfPbPreparationService service;
+    auto result = service.EnsurePbReady(dxf_path.string());
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::FILE_NOT_FOUND);
+
+    UnsetEnvVar("SILIGEN_DXF_PROJECT_ROOT");
+    std::error_code ec;
+    std::filesystem::remove_all(base_dir, ec);
+}
+
+TEST(DxfPbPreparationServiceTest, RejectsCommandOverrideWithoutInputOutputPlaceholders) {
+    const auto base_dir = MakeTempDir("invalid_command_override");
+    const auto dxf_path = base_dir / "sample.dxf";
+
+    WriteTextFile(dxf_path, MinimalDxf());
+    SetEnvVar("SILIGEN_DXF_PB_COMMAND", "python fake_generator.py");
+
+    DxfPbPreparationService service;
+    auto result = service.EnsurePbReady(dxf_path.string());
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::CONFIGURATION_ERROR);
+
+    UnsetEnvVar("SILIGEN_DXF_PB_COMMAND");
+    std::error_code ec;
+    std::filesystem::remove_all(base_dir, ec);
+}
+
+TEST(DxfPbPreparationServiceTest, RejectsCommandOverrideWithShellMetaCharacters) {
+    const auto base_dir = MakeTempDir("invalid_command_meta");
+    const auto dxf_path = base_dir / "sample.dxf";
+
+    WriteTextFile(dxf_path, MinimalDxf());
+    SetEnvVar("SILIGEN_DXF_PB_COMMAND", "python fake_generator.py {input} {output} && echo hacked");
+
+    DxfPbPreparationService service;
+    auto result = service.EnsurePbReady(dxf_path.string());
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::CONFIGURATION_ERROR);
+
+    UnsetEnvVar("SILIGEN_DXF_PB_COMMAND");
+    std::error_code ec;
+    std::filesystem::remove_all(base_dir, ec);
+}
+
+TEST(DxfPbPreparationServiceTest, DefaultConfigPassesNoStrictR12ToPythonExporter) {
+    const auto base_dir = MakeTempDir("default_no_strict_r12");
+    const auto dxf_path = base_dir / "sample.dxf";
+    const auto script_path = base_dir / "capture_args.py";
+
+    WriteTextFile(dxf_path, MinimalDxf());
+    WriteTextFile(
+        script_path,
+        "import pathlib\n"
+        "import sys\n"
+        "args = sys.argv[1:]\n"
+        "if '--no-strict-r12' not in args:\n"
+        "    raise SystemExit(8)\n"
+        "output = pathlib.Path(args[args.index('--output') + 1])\n"
+        "output.write_bytes(b'default-no-strict')\n");
+
+    SetEnvVar("SILIGEN_DXF_PB_SCRIPT", script_path.string());
+    DxfPbPreparationService service;
+    auto result = service.EnsurePbReady(dxf_path.string());
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
+
+    UnsetEnvVar("SILIGEN_DXF_PB_SCRIPT");
+    std::error_code ec;
+    std::filesystem::remove_all(base_dir, ec);
+}
+
+TEST(DxfPbPreparationServiceTest, PrefersCanonicalEngineeringDataPythonEnv) {
+    const auto base_dir = MakeTempDir("canonical_python_env");
+    const auto dxf_path = base_dir / "sample.dxf";
+    const auto script_path = base_dir / "emit_pb.py";
+
+    WriteTextFile(dxf_path, MinimalDxf());
+    WriteTextFile(
+        script_path,
+        "import pathlib\n"
+        "import sys\n"
+        "args = sys.argv[1:]\n"
+        "output = pathlib.Path(args[args.index('--output') + 1])\n"
+        "output.write_bytes(b'pb-from-canonical-env')\n");
+
+    SetEnvVar("SILIGEN_ENGINEERING_DATA_PYTHON", "python");
+    SetEnvVar("SILIGEN_DXF_PB_PYTHON", "python_binary_that_must_not_be_used");
+    SetEnvVar("SILIGEN_DXF_PB_SCRIPT", script_path.string());
+
+    DxfPbPreparationService service;
+    auto result = service.EnsurePbReady(dxf_path.string());
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
+
+    UnsetEnvVar("SILIGEN_DXF_PB_SCRIPT");
+    UnsetEnvVar("SILIGEN_DXF_PB_PYTHON");
+    UnsetEnvVar("SILIGEN_ENGINEERING_DATA_PYTHON");
+    std::error_code ec;
+    std::filesystem::remove_all(base_dir, ec);
+}
+
+TEST(UploadFileUseCaseTest, CleansUpArtifactsWhenPbGenerationFails) {
     const auto base_dir = MakeTempDir("upload_failure_cleanup");
-    const auto generator_path = base_dir / "fail_pb.cmd";
-    WriteTextFile(generator_path, "@echo off\nexit /b 7\n");
+    const auto generator_path = base_dir / "fail_pb.py";
+    WriteTextFile(generator_path,
+                  "raise SystemExit(7)\n");
 
-    SetEnvVar("SILIGEN_DXF_PB_COMMAND", QuoteArg(generator_path.string()) + " {input} {output}");
+    SetEnvVar("SILIGEN_DXF_PB_COMMAND", "python " + QuoteArg(generator_path.string()) + " {input} {output}");
 
-    DXFUploadRequest request;
+    UploadRequest request;
     request.original_filename = "unit_test.dxf";
     request.content_type = "application/dxf";
     const std::string minimal_dxf = MinimalDxf();
@@ -287,7 +395,7 @@ TEST(UploadDXFFileUseCaseTest, CleansUpArtifactsWhenPbGenerationFails) {
     request.file_size = request.file_content.size();
 
     auto storage = std::make_shared<TestFileStoragePort>(base_dir);
-    UploadDXFFileUseCase usecase(storage);
+    UploadFileUseCase usecase(storage);
 
     auto result = usecase.Execute(request);
     ASSERT_TRUE(result.IsError());
@@ -311,3 +419,5 @@ TEST(UploadDXFFileUseCaseTest, CleansUpArtifactsWhenPbGenerationFails) {
     std::error_code ec;
     std::filesystem::remove_all(base_dir, ec);
 }
+
+

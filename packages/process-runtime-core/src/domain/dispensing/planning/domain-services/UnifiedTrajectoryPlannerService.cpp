@@ -1,10 +1,10 @@
-#include "UnifiedTrajectoryPlanner.h"
+#include "UnifiedTrajectoryPlannerService.h"
 
 #include "domain/trajectory/domain-services/MotionPlanner.h"
 
 #include <cmath>
 
-namespace Siligen::Application::UseCases::Dispensing::DXF {
+namespace Siligen::Domain::Dispensing::DomainServices {
 
 namespace {
 constexpr float32 kPi = 3.14159265359f;
@@ -83,11 +83,11 @@ void OptimizeLineOrientation(Siligen::Domain::Trajectory::ValueObjects::Path& pa
 }
 }  // namespace
 
-UnifiedTrajectoryPlanner::UnifiedTrajectoryPlanner(
+UnifiedTrajectoryPlannerService::UnifiedTrajectoryPlannerService(
     std::shared_ptr<Domain::Motion::DomainServices::VelocityProfileService> velocity_service)
     : velocity_service_(std::move(velocity_service)) {}
 
-UnifiedTrajectoryPlanResult UnifiedTrajectoryPlanner::Plan(
+UnifiedTrajectoryPlanResult UnifiedTrajectoryPlannerService::Plan(
     const std::vector<Domain::Trajectory::ValueObjects::Primitive>& primitives,
     const UnifiedTrajectoryPlanRequest& request) const {
     UnifiedTrajectoryPlanResult result;
@@ -110,4 +110,6 @@ UnifiedTrajectoryPlanResult UnifiedTrajectoryPlanner::Plan(
     return result;
 }
 
-}  // namespace Siligen::Application::UseCases::Dispensing::DXF
+}  // namespace Siligen::Domain::Dispensing::DomainServices
+
+

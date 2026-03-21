@@ -6,14 +6,14 @@
 
 #include <string>
 
-namespace Siligen::Application::UseCases::Dispensing::DXF {
+namespace Siligen::Infrastructure::Adapters::Planning::Geometry {
 
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Point2D;
 using Siligen::Shared::Types::Result;
 
-struct DXFContourAugmentConfig {
+struct ContourAugmentConfig {
     float32 cup_offset_far = 20.0f;             // mm, outer offset
     float32 cup_offset_mid = 17.5f;             // mm
     float32 cup_offset_near = 2.5f;             // mm
@@ -35,11 +35,13 @@ struct DXFContourAugmentConfig {
 };
 
 // Convert contour DXF into glue paths and points DXF
-class DXFContourAugmenter {
+class ContourAugmenterAdapter {
 public:
     Result<void> ConvertFile(const std::string& input_path,
                              const std::string& output_path,
-                             const DXFContourAugmentConfig& config = DXFContourAugmentConfig());
+                             const ContourAugmentConfig& config = ContourAugmentConfig());
 };
 
-}  // namespace Siligen::Application::UseCases::Dispensing::DXF
+}  // namespace Siligen::Infrastructure::Adapters::Planning::Geometry
+
+
