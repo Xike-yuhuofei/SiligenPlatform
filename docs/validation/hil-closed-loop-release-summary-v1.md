@@ -2,6 +2,12 @@
 
 更新时间：`2026-03-20`
 
+自动化生成入口：
+
+```powershell
+python D:\Projects\SiligenSuite\integration\hardware-in-loop\render_hil_controlled_release_summary.py --report-dir D:\Projects\SiligenSuite\integration\reports\hil-controlled-test --profile Local
+```
+
 ## 1. 执行信息
 
 - 执行日期：`2026-03-20`
@@ -20,6 +26,9 @@
 - `workspace-validation.md`：`integration/reports/hil-controlled-test/workspace-validation.md`
 - `hil-closed-loop-summary.json`：`integration/reports/hil-controlled-test/hil-closed-loop-summary.json`（generated_at=`2026-03-20T06:56:30.595963+00:00`）
 - `hil-closed-loop-summary.md`：`integration/reports/hil-controlled-test/hil-closed-loop-summary.md`
+- `failure_context`（阻塞时）：见 `hil-closed-loop-summary.json.failure_context`
+- `hil-controlled-gate-summary.json`：`integration/reports/hil-controlled-test/hil-controlled-gate-summary.json`
+- `hil-controlled-gate-summary.md`：`integration/reports/hil-controlled-test/hil-controlled-gate-summary.md`
 - 来源追溯：`integration/reports/hil-controlled-test/latest-source.txt`
 
 ## 3. 判定摘要

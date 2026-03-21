@@ -67,6 +67,9 @@ class TcpJsonClient:
             self._socket = None
             self._recv_buffer = ""
 
+    def is_connected(self) -> bool:
+        return self._socket is not None
+
     def send_request(self, method: str, params: dict[str, Any] | None, timeout_seconds: float) -> dict[str, Any]:
         if self._socket is None:
             raise RuntimeError("tcp session not connected")
@@ -449,6 +452,69 @@ def _build_sequence(
     return sequence
 
 
+def _extract_method_from_step(step: StepResult | None) -> str:
+    if step is None:
+        return ""
+    if step.command and step.command[0] == "tcp" and len(step.command) >= 2:
+        return str(step.command[1])
+    if step.name.startswith("wait-dispenser-"):
+        return "status(wait)"
+    if step.name.startswith("tcp-session-open"):
+        return "connect(session)"
+    if step.name.startswith("gateway-ready"):
+        return "gateway-ready"
+    return ""
+
+
+def _build_failure_context(
+    *,
+    steps: list[StepResult],
+    iterations: int,
+    socket_connected: bool | None = None,
+) -> dict[str, Any] | None:
+    latest_non_passed: StepResult | None = None
+    for item in reversed(steps):
+        if item.status != "passed":
+            latest_non_passed = item
+            break
+    if latest_non_passed is None:
+        return None
+
+    if socket_connected is None:
+        has_session_open = any(item.name == "tcp-session-open" and item.status == "passed" for item in steps)
+        has_disconnect = any(item.name == "tcp-disconnect" and item.status == "passed" for item in steps)
+        socket_connected = has_session_open and not has_disconnect
+
+    last_success_step = ""
+    for item in reversed(steps):
+        if item.status == "passed":
+            last_success_step = item.name
+            break
+
+    error_message = latest_non_passed.note or latest_non_passed.stderr or latest_non_passed.stdout or ""
+    if len(error_message) > 400:
+        error_message = error_message[:400] + "...[truncated]"
+
+    snapshot = [
+        {
+            "name": item.name,
+            "status": item.status,
+            "note": item.note,
+        }
+        for item in steps[-10:]
+    ]
+
+    return {
+        "iteration": iterations,
+        "step_name": latest_non_passed.name,
+        "method": _extract_method_from_step(latest_non_passed),
+        "error_message": error_message,
+        "last_success_step": last_success_step,
+        "socket_connected": socket_connected,
+        "recent_status_snapshot": snapshot,
+    }
+
+
 def _write_reports(report: dict, report_dir: Path) -> tuple[Path, Path]:
     report_dir.mkdir(parents=True, exist_ok=True)
     json_path = report_dir / "hil-closed-loop-summary.json"
@@ -473,6 +539,30 @@ def _write_reports(report: dict, report_dir: Path) -> tuple[Path, Path]:
         f"- state_wait_timeout_seconds: `{report['state_wait_timeout_seconds']}`",
         "",
     ]
+
+    failure_context = report.get("failure_context")
+    if isinstance(failure_context, dict):
+        lines.extend(
+            [
+                "## Failure Context",
+                "",
+                f"- iteration: `{failure_context.get('iteration', '')}`",
+                f"- step_name: `{failure_context.get('step_name', '')}`",
+                f"- method: `{failure_context.get('method', '')}`",
+                f"- error_message: `{failure_context.get('error_message', '')}`",
+                f"- last_success_step: `{failure_context.get('last_success_step', '')}`",
+                f"- socket_connected: `{failure_context.get('socket_connected', '')}`",
+                "",
+            ]
+        )
+        snapshot = failure_context.get("recent_status_snapshot", [])
+        if isinstance(snapshot, list) and snapshot:
+            lines.extend(["### Recent Status Snapshot", ""])
+            for item in snapshot:
+                lines.append(
+                    f"- `{item.get('status', 'unknown')}` `{item.get('name', 'unknown')}` note=`{item.get('note', '')}`"
+                )
+            lines.append("")
 
     transition_checks = report.get("state_transition_checks", [])
     if transition_checks:
@@ -523,6 +613,8 @@ def _build_report(
     timeout_count: int,
     elapsed_seconds: float,
     state_transition_checks: list[dict],
+    socket_connected: bool | None = None,
+    failure_context: dict[str, Any] | None = None,
 ) -> dict:
     statuses = [step.status for step in steps]
     overall_status = "passed"
@@ -533,7 +625,15 @@ def _build_report(
     elif "skipped" in statuses:
         overall_status = "skipped"
 
-    return {
+    resolved_failure_context = failure_context
+    if overall_status != "passed" and resolved_failure_context is None:
+        resolved_failure_context = _build_failure_context(
+            steps=steps,
+            iterations=iterations,
+            socket_connected=socket_connected,
+        )
+
+    payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "workspace_root": str(ROOT),
         "gateway_exe": str(gateway_exe),
@@ -558,6 +658,9 @@ def _build_report(
         "state_transition_checks": state_transition_checks,
         "steps": [asdict(step) for step in steps],
     }
+    if resolved_failure_context is not None:
+        payload["failure_context"] = resolved_failure_context
+    return payload
 
 
 def parse_args() -> argparse.Namespace:
