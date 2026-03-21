@@ -135,6 +135,9 @@ struct TaskExecutionContext {
 
     std::atomic<uint32> total_segments{0};
     std::atomic<uint32> executed_segments{0};
+    std::atomic<uint32> reported_progress_percent{0};
+    std::atomic<uint32> reported_executed_segments{0};
+    std::atomic<uint32> estimated_execution_ms{0};
     std::atomic<bool> cancel_requested{false};
     std::atomic<bool> pause_requested{false};
     std::atomic<bool> pause_applied{false};

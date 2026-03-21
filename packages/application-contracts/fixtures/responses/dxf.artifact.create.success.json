@@ -1,0 +1,14 @@
+{
+  "id": "21",
+  "version": "1.0",
+  "success": true,
+  "result": {
+    "created": true,
+    "artifact_id": "artifact-20260321-001",
+    "filepath": "D:/runtime/uploads/sample.dxf",
+    "original_name": "sample.dxf",
+    "generated_filename": "20260321_sample.dxf",
+    "size": 128,
+    "timestamp": 1774070400000
+  }
+}

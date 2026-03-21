@@ -350,6 +350,55 @@ TEST(DxfPbPreparationServiceTest, DefaultConfigPassesNoStrictR12ToPythonExporter
     std::filesystem::remove_all(base_dir, ec);
 }
 
+TEST(DxfPbPreparationServiceTest, FindsDefaultPbScriptRelativeToWorkspaceWhenCwdIsNestedBuildDir) {
+    const auto base_dir = MakeTempDir("default_script_workspace_lookup");
+    const auto workspace_root = base_dir / "workspace";
+    const auto nested_cwd = workspace_root / "build" / "bin" / "Debug";
+    const auto uploads_dir = workspace_root / "uploads";
+    const auto scripts_dir = workspace_root / "packages" / "engineering-data" / "scripts";
+    const auto dxf_path = uploads_dir / "sample.dxf";
+    const auto script_path = scripts_dir / "dxf_to_pb.py";
+
+    std::filesystem::create_directories(nested_cwd);
+    std::filesystem::create_directories(uploads_dir);
+    std::filesystem::create_directories(scripts_dir);
+
+    WriteTextFile(dxf_path, MinimalDxf());
+    WriteTextFile(
+        script_path,
+        "import pathlib\n"
+        "import sys\n"
+        "args = sys.argv[1:]\n"
+        "output = pathlib.Path(args[args.index('--output') + 1])\n"
+        "output.write_bytes(b'workspace-script-pb')\n");
+
+    UnsetEnvVar("SILIGEN_DXF_PB_SCRIPT");
+    UnsetEnvVar("SILIGEN_DXF_PB_COMMAND");
+
+    std::error_code ec;
+    const auto original_cwd = std::filesystem::current_path(ec);
+    ASSERT_FALSE(ec);
+    std::filesystem::current_path(nested_cwd, ec);
+    ASSERT_FALSE(ec);
+
+    DxfPbPreparationService service;
+    auto result = service.EnsurePbReady(dxf_path.string());
+
+    std::filesystem::current_path(original_cwd, ec);
+    ASSERT_FALSE(ec);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
+    std::filesystem::path pb_path = dxf_path;
+    pb_path.replace_extension(".pb");
+    ASSERT_TRUE(std::filesystem::exists(pb_path));
+
+    std::ifstream in(pb_path, std::ios::binary);
+    std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    EXPECT_EQ(content, "workspace-script-pb");
+
+    std::filesystem::remove_all(base_dir, ec);
+}
+
 TEST(DxfPbPreparationServiceTest, PrefersCanonicalEngineeringDataPythonEnv) {
     const auto base_dir = MakeTempDir("canonical_python_env");
     const auto dxf_path = base_dir / "sample.dxf";

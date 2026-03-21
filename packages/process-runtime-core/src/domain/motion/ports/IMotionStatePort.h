@@ -4,6 +4,7 @@
 #include "shared/types/Result.h"
 #include "shared/types/Types.h"
 
+#include <string>
 #include <vector>
 
 // 导入共享类型
@@ -49,6 +50,16 @@ struct MotionStatus {
     bool servo_alarm = false;
     bool home_signal = false;
     bool index_signal = false;
+    float32 axis_position_mm = 0.0f;
+    std::string selected_feedback_source = "encoder";
+    float32 profile_position_mm = 0.0f;
+    float32 encoder_position_mm = 0.0f;
+    float32 profile_velocity_mm_s = 0.0f;
+    float32 encoder_velocity_mm_s = 0.0f;
+    int32 profile_position_ret = 0;
+    int32 encoder_position_ret = 0;
+    int32 profile_velocity_ret = 0;
+    int32 encoder_velocity_ret = 0;
 };
 
 /**

@@ -473,6 +473,10 @@ std::shared_ptr<UseCases::Dispensing::DispensingExecutionUseCase>
 ApplicationContainer::CreateInstance<UseCases::Dispensing::DispensingExecutionUseCase>();
 
 template<>
+std::shared_ptr<UseCases::Dispensing::DispensingWorkflowUseCase>
+ApplicationContainer::CreateInstance<UseCases::Dispensing::DispensingWorkflowUseCase>();
+
+template<>
 std::shared_ptr<UseCases::System::EmergencyStopUseCase>
 ApplicationContainer::CreateInstance<UseCases::System::EmergencyStopUseCase>();
 

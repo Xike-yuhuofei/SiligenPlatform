@@ -8,8 +8,10 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <memory>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -331,6 +333,203 @@ class RetryHomingPort : public Siligen::Domain::Motion::Ports::IHomingPort {
     mutable int status_calls_ = 0;
 };
 
+class FailingWaitHomingPort : public Siligen::Domain::Motion::Ports::IHomingPort {
+   public:
+    int StopCalls() const { return stop_calls_; }
+    int ResetCalls() const { return reset_calls_; }
+
+    Siligen::Shared::Types::Result<void> HomeAxis(
+        Siligen::Shared::Types::LogicalAxisId /*axis*/) override {
+        return Siligen::Shared::Types::Result<void>::Success();
+    }
+
+    Siligen::Shared::Types::Result<void> StopHoming(
+        Siligen::Shared::Types::LogicalAxisId /*axis*/) override {
+        ++stop_calls_;
+        return Siligen::Shared::Types::Result<void>::Success();
+    }
+
+    Siligen::Shared::Types::Result<void> ResetHomingState(
+        Siligen::Shared::Types::LogicalAxisId /*axis*/) override {
+        ++reset_calls_;
+        return Siligen::Shared::Types::Result<void>::Success();
+    }
+
+    Siligen::Shared::Types::Result<Siligen::Domain::Motion::Ports::HomingStatus> GetHomingStatus(
+        Siligen::Shared::Types::LogicalAxisId axis) const override {
+        Siligen::Domain::Motion::Ports::HomingStatus status;
+        status.axis = axis;
+        status.state = Siligen::Domain::Motion::Ports::HomingState::NOT_HOMED;
+        return Siligen::Shared::Types::Result<Siligen::Domain::Motion::Ports::HomingStatus>::Success(status);
+    }
+
+    Siligen::Shared::Types::Result<bool> IsAxisHomed(
+        Siligen::Shared::Types::LogicalAxisId /*axis*/) const override {
+        return Siligen::Shared::Types::Result<bool>::Success(false);
+    }
+
+    Siligen::Shared::Types::Result<bool> IsHomingInProgress(
+        Siligen::Shared::Types::LogicalAxisId /*axis*/) const override {
+        return Siligen::Shared::Types::Result<bool>::Success(false);
+    }
+
+    Siligen::Shared::Types::Result<void> WaitForHomingComplete(
+        Siligen::Shared::Types::LogicalAxisId /*axis*/, int32 /*timeout_ms*/) override {
+        return Siligen::Shared::Types::Result<void>::Failure(
+            Siligen::Shared::Types::Error(
+                Siligen::Shared::Types::ErrorCode::TIMEOUT,
+                "Homing timeout",
+                "FailingWaitHomingPort"));
+    }
+
+   private:
+    int stop_calls_ = 0;
+    int reset_calls_ = 0;
+};
+
+class RestartFailureHomingPort : public Siligen::Domain::Motion::Ports::IHomingPort {
+   public:
+    int HomeCalls() const { return home_calls_; }
+    int StopCalls() const { return stop_calls_; }
+    int ResetCalls() const { return reset_calls_; }
+
+    Siligen::Shared::Types::Result<void> HomeAxis(
+        Siligen::Shared::Types::LogicalAxisId /*axis*/) override {
+        ++home_calls_;
+        if (home_calls_ >= 2) {
+            return Siligen::Shared::Types::Result<void>::Failure(
+                Siligen::Shared::Types::Error(
+                    Siligen::Shared::Types::ErrorCode::HARDWARE_OPERATION_FAILED,
+                    "restart homing failed",
+                    "RestartFailureHomingPort"));
+        }
+        return Siligen::Shared::Types::Result<void>::Success();
+    }
+
+    Siligen::Shared::Types::Result<void> StopHoming(
+        Siligen::Shared::Types::LogicalAxisId /*axis*/) override {
+        ++stop_calls_;
+        return Siligen::Shared::Types::Result<void>::Success();
+    }
+
+    Siligen::Shared::Types::Result<void> ResetHomingState(
+        Siligen::Shared::Types::LogicalAxisId /*axis*/) override {
+        ++reset_calls_;
+        return Siligen::Shared::Types::Result<void>::Success();
+    }
+
+    Siligen::Shared::Types::Result<Siligen::Domain::Motion::Ports::HomingStatus> GetHomingStatus(
+        Siligen::Shared::Types::LogicalAxisId axis) const override {
+        Siligen::Domain::Motion::Ports::HomingStatus status;
+        status.axis = axis;
+        status.state = Siligen::Domain::Motion::Ports::HomingState::NOT_HOMED;
+        return Siligen::Shared::Types::Result<Siligen::Domain::Motion::Ports::HomingStatus>::Success(status);
+    }
+
+    Siligen::Shared::Types::Result<bool> IsAxisHomed(
+        Siligen::Shared::Types::LogicalAxisId /*axis*/) const override {
+        return Siligen::Shared::Types::Result<bool>::Success(false);
+    }
+
+    Siligen::Shared::Types::Result<bool> IsHomingInProgress(
+        Siligen::Shared::Types::LogicalAxisId /*axis*/) const override {
+        return Siligen::Shared::Types::Result<bool>::Success(false);
+    }
+
+    Siligen::Shared::Types::Result<void> WaitForHomingComplete(
+        Siligen::Shared::Types::LogicalAxisId /*axis*/, int32 /*timeout_ms*/) override {
+        return Siligen::Shared::Types::Result<void>::Failure(
+            Siligen::Shared::Types::Error(
+                Siligen::Shared::Types::ErrorCode::TIMEOUT,
+                "Homing timeout",
+                "RestartFailureHomingPort"));
+    }
+
+   private:
+    int home_calls_ = 0;
+    int stop_calls_ = 0;
+    int reset_calls_ = 0;
+};
+
+class SequencedMotionStatePort : public Siligen::Domain::Motion::Ports::IMotionStatePort {
+   public:
+    void SetAxisVelocitySequence(Siligen::Shared::Types::LogicalAxisId axis,
+                                 std::vector<Siligen::Shared::Types::float32> samples) {
+        velocity_samples_[AxisIndex(axis)] = std::move(samples);
+    }
+
+    Siligen::Shared::Types::Result<Siligen::Shared::Types::Point2D> GetCurrentPosition() const override {
+        return Siligen::Shared::Types::Result<Siligen::Shared::Types::Point2D>::Success(
+            Siligen::Shared::Types::Point2D{});
+    }
+
+    Siligen::Shared::Types::Result<Siligen::Shared::Types::float32> GetAxisPosition(
+        Siligen::Shared::Types::LogicalAxisId /*axis*/) const override {
+        return Siligen::Shared::Types::Result<Siligen::Shared::Types::float32>::Success(0.0f);
+    }
+
+    Siligen::Shared::Types::Result<Siligen::Shared::Types::float32> GetAxisVelocity(
+        Siligen::Shared::Types::LogicalAxisId axis) const override {
+        const auto axis_index = AxisIndex(axis);
+        auto it = velocity_samples_.find(axis_index);
+        if (it == velocity_samples_.end() || it->second.empty()) {
+            return Siligen::Shared::Types::Result<Siligen::Shared::Types::float32>::Success(0.0f);
+        }
+
+        auto& cursor = sample_cursor_[axis_index];
+        const auto& samples = it->second;
+        const auto capped_cursor = std::min(cursor, samples.size() - 1);
+        const auto value = samples[capped_cursor];
+        if (cursor + 1 < samples.size()) {
+            ++cursor;
+        }
+        return Siligen::Shared::Types::Result<Siligen::Shared::Types::float32>::Success(value);
+    }
+
+    Siligen::Shared::Types::Result<Siligen::Domain::Motion::Ports::MotionStatus> GetAxisStatus(
+        Siligen::Shared::Types::LogicalAxisId axis) const override {
+        Siligen::Domain::Motion::Ports::MotionStatus status;
+        status.state = Siligen::Domain::Motion::Ports::MotionState::IDLE;
+        status.enabled = true;
+        status.velocity = PeekVelocity(axis);
+        return Siligen::Shared::Types::Result<Siligen::Domain::Motion::Ports::MotionStatus>::Success(status);
+    }
+
+    Siligen::Shared::Types::Result<bool> IsAxisMoving(
+        Siligen::Shared::Types::LogicalAxisId axis) const override {
+        return Siligen::Shared::Types::Result<bool>::Success(PeekVelocity(axis) > 0.1f);
+    }
+
+    Siligen::Shared::Types::Result<bool> IsAxisInPosition(
+        Siligen::Shared::Types::LogicalAxisId /*axis*/) const override {
+        return Siligen::Shared::Types::Result<bool>::Success(true);
+    }
+
+    Siligen::Shared::Types::Result<std::vector<Siligen::Domain::Motion::Ports::MotionStatus>> GetAllAxesStatus()
+        const override {
+        return Siligen::Shared::Types::Result<std::vector<Siligen::Domain::Motion::Ports::MotionStatus>>::Success({});
+    }
+
+   private:
+    static int AxisIndex(Siligen::Shared::Types::LogicalAxisId axis) {
+        return static_cast<int>(Siligen::Shared::Types::ToIndex(axis));
+    }
+
+    Siligen::Shared::Types::float32 PeekVelocity(Siligen::Shared::Types::LogicalAxisId axis) const {
+        const auto axis_index = AxisIndex(axis);
+        auto it = velocity_samples_.find(axis_index);
+        if (it == velocity_samples_.end() || it->second.empty()) {
+            return 0.0f;
+        }
+        auto cursor_it = sample_cursor_.find(axis_index);
+        const auto cursor = cursor_it == sample_cursor_.end() ? static_cast<size_t>(0) : cursor_it->second;
+        return it->second[std::min(cursor, it->second.size() - 1)];
+    }
+
+    mutable std::unordered_map<int, size_t> sample_cursor_;
+    std::unordered_map<int, std::vector<Siligen::Shared::Types::float32>> velocity_samples_;
+};
+
 class StubEventPublisherPort : public Siligen::Domain::System::Ports::IEventPublisherPort {
    public:
     Siligen::Shared::Types::Result<void> Publish(const Siligen::Domain::System::Ports::DomainEvent& /*event*/) override {
@@ -541,4 +740,125 @@ TEST(HomeAxesUseCaseTest, RetriesWhenHomingVerificationFails) {
     EXPECT_EQ(homing_port->WaitCalls(), 2);
     EXPECT_TRUE(response.failed_axes.empty());
     EXPECT_TRUE(response.all_completed);
+}
+
+TEST(HomeAxesUseCaseTest, WaitsForAxisToSettleAfterHomingBeforeReturningSuccess) {
+    auto config_port = std::make_shared<FakeConfigurationPort>(1);
+    Siligen::Domain::Configuration::Ports::HomingConfig homing_config;
+    homing_config.axis = 0;
+    homing_config.settle_time_ms = 60;
+    config_port->SetHomingConfigData(0, homing_config);
+
+    auto homing_port = std::make_shared<TrackingHomingPort>();
+    homing_port->SetAxisHomed(Siligen::Shared::Types::LogicalAxisId::X, false);
+    auto motion_state_port = std::make_shared<SequencedMotionStatePort>();
+    motion_state_port->SetAxisVelocitySequence(
+        Siligen::Shared::Types::LogicalAxisId::X,
+        {5.0f, 5.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+    std::shared_ptr<Siligen::Domain::Motion::Ports::IMotionConnectionPort> motion_connection_port;
+    auto event_port = std::make_shared<StubEventPublisherPort>();
+
+    Siligen::Application::UseCases::Motion::Homing::HomeAxesUseCase use_case(
+        homing_port, config_port, motion_connection_port, event_port, motion_state_port);
+
+    Siligen::Application::UseCases::Motion::Homing::HomeAxesRequest request;
+    request.home_all_axes = true;
+    request.wait_for_completion = true;
+    request.timeout_ms = 500;
+
+    const auto started = std::chrono::steady_clock::now();
+    auto result = use_case.Execute(request);
+    const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - started).count();
+
+    ASSERT_TRUE(result.IsSuccess());
+    EXPECT_GE(elapsed_ms, 100);
+    EXPECT_TRUE(result.Value().all_completed);
+}
+
+TEST(HomeAxesUseCaseTest, FailsWhenAxisDoesNotSettleBeforeTimeout) {
+    auto config_port = std::make_shared<FakeConfigurationPort>(1);
+    Siligen::Domain::Configuration::Ports::HomingConfig homing_config;
+    homing_config.axis = 0;
+    homing_config.settle_time_ms = 80;
+    config_port->SetHomingConfigData(0, homing_config);
+
+    auto homing_port = std::make_shared<TrackingHomingPort>();
+    homing_port->SetAxisHomed(Siligen::Shared::Types::LogicalAxisId::X, false);
+    auto motion_state_port = std::make_shared<SequencedMotionStatePort>();
+    motion_state_port->SetAxisVelocitySequence(
+        Siligen::Shared::Types::LogicalAxisId::X,
+        {5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f});
+    std::shared_ptr<Siligen::Domain::Motion::Ports::IMotionConnectionPort> motion_connection_port;
+    auto event_port = std::make_shared<StubEventPublisherPort>();
+
+    Siligen::Application::UseCases::Motion::Homing::HomeAxesUseCase use_case(
+        homing_port, config_port, motion_connection_port, event_port, motion_state_port);
+
+    Siligen::Application::UseCases::Motion::Homing::HomeAxesRequest request;
+    request.home_all_axes = true;
+    request.wait_for_completion = true;
+    request.timeout_ms = 120;
+
+    auto result = use_case.Execute(request);
+    ASSERT_TRUE(result.IsSuccess());
+    ASSERT_EQ(result.Value().failed_axes.size(), 1u);
+    EXPECT_FALSE(result.Value().all_completed);
+    ASSERT_EQ(result.Value().error_messages.size(), 1u);
+    EXPECT_NE(result.Value().error_messages.front().find("did not settle after homing"), std::string::npos);
+}
+
+TEST(HomeAxesUseCaseTest, StopsAndResetsAxisWhenHomingUltimatelyFails) {
+    auto config_port = std::make_shared<FakeConfigurationPort>(1);
+    Siligen::Domain::Configuration::Ports::HomingConfig homing_config;
+    homing_config.axis = 0;
+    homing_config.retry_count = 0;
+    config_port->SetHomingConfigData(0, homing_config);
+
+    auto homing_port = std::make_shared<FailingWaitHomingPort>();
+    std::shared_ptr<Siligen::Domain::Motion::Ports::IMotionConnectionPort> motion_connection_port;
+    auto event_port = std::make_shared<StubEventPublisherPort>();
+
+    Siligen::Application::UseCases::Motion::Homing::HomeAxesUseCase use_case(
+        homing_port, config_port, motion_connection_port, event_port);
+
+    Siligen::Application::UseCases::Motion::Homing::HomeAxesRequest request;
+    request.home_all_axes = true;
+    request.wait_for_completion = true;
+    request.timeout_ms = 100;
+
+    auto result = use_case.Execute(request);
+    ASSERT_TRUE(result.IsSuccess());
+    EXPECT_FALSE(result.Value().all_completed);
+    EXPECT_EQ(result.Value().failed_axes.size(), 1u);
+    EXPECT_EQ(homing_port->StopCalls(), 1);
+    EXPECT_EQ(homing_port->ResetCalls(), 1);
+}
+
+TEST(HomeAxesUseCaseTest, StopsAndResetsAxisWhenRetryStartFails) {
+    auto config_port = std::make_shared<FakeConfigurationPort>(1);
+    Siligen::Domain::Configuration::Ports::HomingConfig homing_config;
+    homing_config.axis = 0;
+    homing_config.retry_count = 1;
+    config_port->SetHomingConfigData(0, homing_config);
+
+    auto homing_port = std::make_shared<RestartFailureHomingPort>();
+    std::shared_ptr<Siligen::Domain::Motion::Ports::IMotionConnectionPort> motion_connection_port;
+    auto event_port = std::make_shared<StubEventPublisherPort>();
+
+    Siligen::Application::UseCases::Motion::Homing::HomeAxesUseCase use_case(
+        homing_port, config_port, motion_connection_port, event_port);
+
+    Siligen::Application::UseCases::Motion::Homing::HomeAxesRequest request;
+    request.home_all_axes = true;
+    request.wait_for_completion = true;
+    request.timeout_ms = 100;
+
+    auto result = use_case.Execute(request);
+    ASSERT_TRUE(result.IsSuccess());
+    EXPECT_FALSE(result.Value().all_completed);
+    EXPECT_EQ(result.Value().failed_axes.size(), 1u);
+    EXPECT_EQ(homing_port->HomeCalls(), 2);
+    EXPECT_EQ(homing_port->StopCalls(), 2);
+    EXPECT_EQ(homing_port->ResetCalls(), 2);
 }

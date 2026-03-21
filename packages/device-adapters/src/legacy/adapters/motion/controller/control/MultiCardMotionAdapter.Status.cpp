@@ -7,14 +7,7 @@
 #include "shared/types/AxisTypes.h"
 #include "shared/types/Error.h"
 
-#include <atomic>
-
 namespace Siligen::Infrastructure::Adapters {
-
-// 单位转换常量: pulse/s → pulse/ms (MultiCard SDK 要求 pulse/ms 单位)
-namespace Units {
-constexpr double PULSE_PER_SEC_TO_MS = 1000.0;
-}
 
 namespace {
 // 当前硬件无硬限位, HOME 仅用于回零
@@ -57,23 +50,8 @@ Result<float32> MultiCardMotionAdapter::GetAxisPosition(LogicalAxisId axis_id) c
 
     // 转换为SDK轴号(1-based)
     short sdk_axis = ToSdkAxis(axis);
-
-    double position_pulses = 0.0;
-    short ret = hardware_wrapper_->MC_GetAxisEncPos(sdk_axis, &position_pulses);
-
-    if (ret != 0) {
-        static std::atomic<bool> warned{false};
-        if (!warned.exchange(true)) {
-            SILIGEN_LOG_WARNING("GetAxisPosition 使用编码器位置失败，回退到轮廓位置");
-        }
-        ret = hardware_wrapper_->MC_GetPrfPos(sdk_axis, &position_pulses);
-        if (ret != 0) {
-            return Result<float32>(Shared::Types::Error(Shared::Types::ErrorCode::MOTION_ERROR,
-                                                        FormatErrorMessage("GetAxisPosition", axis, ret)));
-        }
-    }
-
-    return Result<float32>(unit_converter_.PulsesToPosition(axis, static_cast<long>(position_pulses)));
+    const auto snapshot = ReadAxisFeedbackSnapshot(axis, sdk_axis);
+    return ResolveAxisPositionFromSnapshot(axis, snapshot, "GetAxisPosition");
 }
 
 Result<float32> MultiCardMotionAdapter::GetAxisVelocity(LogicalAxisId axis_id) const {
@@ -85,16 +63,8 @@ Result<float32> MultiCardMotionAdapter::GetAxisVelocity(LogicalAxisId axis_id) c
 
     // 转换为SDK轴号(1-based)
     short sdk_axis = ToSdkAxis(axis);
-
-    double velocity_pulses = 0.0;
-    short ret = hardware_wrapper_->MC_GetAxisEncVel(sdk_axis, &velocity_pulses);
-
-    if (ret != 0) {
-        return Result<float32>(Shared::Types::Error(Shared::Types::ErrorCode::MOTION_ERROR,
-                                                    FormatErrorMessage("GetAxisVelocity", axis, ret)));
-    }
-
-    return Result<float32>(static_cast<float32>(velocity_pulses / unit_converter_.GetPulsesPerMm(axis)));
+    const auto snapshot = ReadAxisFeedbackSnapshot(axis, sdk_axis);
+    return ResolveAxisVelocityFromSnapshot(axis, snapshot, "GetAxisVelocity");
 }
 
 Result<MotionStatus> MultiCardMotionAdapter::GetAxisStatus(LogicalAxisId axis_id) const {
@@ -161,15 +131,27 @@ Result<MotionStatus> MultiCardMotionAdapter::GetAxisStatus(LogicalAxisId axis_id
         status.error_code = ret;
     }
 
+    const auto feedback = ReadAxisFeedbackSnapshot(axis, sdk_axis);
+    status.selected_feedback_source = DescribeSelectedFeedbackSource(axis);
+    status.profile_position_mm = feedback.profile_position_mm;
+    status.encoder_position_mm = feedback.encoder_position_mm;
+    status.profile_velocity_mm_s = feedback.profile_velocity_mm_s;
+    status.encoder_velocity_mm_s = feedback.encoder_velocity_mm_s;
+    status.profile_position_ret = feedback.profile_position_ret;
+    status.encoder_position_ret = feedback.encoder_position_ret;
+    status.profile_velocity_ret = feedback.profile_velocity_ret;
+    status.encoder_velocity_ret = feedback.encoder_velocity_ret;
+
     // 获取位置
-    auto pos_result = GetAxisPosition(axis_id);
+    auto pos_result = ResolveAxisPositionFromSnapshot(axis, feedback, "GetAxisStatus.position");
     if (pos_result.IsError()) {
         return Result<MotionStatus>(pos_result.GetError());
     }
+    status.axis_position_mm = pos_result.Value();
     status.position = Point2D(pos_result.Value(), 0.0f);
 
     // 获取速度
-    auto vel_result = GetAxisVelocity(axis_id);
+    auto vel_result = ResolveAxisVelocityFromSnapshot(axis, feedback, "GetAxisStatus.velocity");
     if (vel_result.IsSuccess()) {
         status.velocity = vel_result.Value();
     }

@@ -30,6 +30,22 @@
       "consumers": [
         "hmi-client CommandProtocol.dxf_get_progress"
       ]
+    },
+    {
+      "method": "dxf.job.status",
+      "kind": "query",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {
+          "job_id": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "resultRef": "../models/states.json#/definitions/dxfJobStatus",
+      "errorCodes": [2902, 2903, 2904],
+      "consumers": [
+        "hmi-client CommandProtocol.dxf_get_job_status"
+      ]
     }
   ]
 }

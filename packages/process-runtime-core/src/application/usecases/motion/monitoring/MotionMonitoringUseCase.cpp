@@ -57,10 +57,12 @@ void ApplyHomingStatusOverride(
 MotionMonitoringUseCase::MotionMonitoringUseCase(
     std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port,
     std::shared_ptr<Domain::Motion::Ports::IIOControlPort> io_port,
-    std::shared_ptr<Domain::Motion::Ports::IHomingPort> homing_port)
+    std::shared_ptr<Domain::Motion::Ports::IHomingPort> homing_port,
+    std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port)
     : motion_state_port_(std::move(motion_state_port))
     , homing_port_(std::move(homing_port))
     , io_port_(io_port)
+    , interpolation_port_(std::move(interpolation_port))
     , status_update_running_(false)
     , status_update_interval_ms_(100) {
 }
@@ -123,6 +125,39 @@ Result<Point2D> MotionMonitoringUseCase::GetCurrentPosition() const {
     }
 
     return motion_state_port_->GetCurrentPosition();
+}
+
+Result<Domain::Motion::Ports::CoordinateSystemStatus> MotionMonitoringUseCase::GetCoordinateSystemStatus(int16 coord_sys) const {
+    if (!interpolation_port_) {
+        return Result<Domain::Motion::Ports::CoordinateSystemStatus>::Failure(Error(
+            ErrorCode::PORT_NOT_INITIALIZED,
+            "Interpolation port not initialized",
+            "MotionMonitoringUseCase::GetCoordinateSystemStatus"
+        ));
+    }
+    return interpolation_port_->GetCoordinateSystemStatus(coord_sys);
+}
+
+Result<uint32> MotionMonitoringUseCase::GetInterpolationBufferSpace(int16 coord_sys) const {
+    if (!interpolation_port_) {
+        return Result<uint32>::Failure(Error(
+            ErrorCode::PORT_NOT_INITIALIZED,
+            "Interpolation port not initialized",
+            "MotionMonitoringUseCase::GetInterpolationBufferSpace"
+        ));
+    }
+    return interpolation_port_->GetInterpolationBufferSpace(coord_sys);
+}
+
+Result<uint32> MotionMonitoringUseCase::GetLookAheadBufferSpace(int16 coord_sys) const {
+    if (!interpolation_port_) {
+        return Result<uint32>::Failure(Error(
+            ErrorCode::PORT_NOT_INITIALIZED,
+            "Interpolation port not initialized",
+            "MotionMonitoringUseCase::GetLookAheadBufferSpace"
+        ));
+    }
+    return interpolation_port_->GetLookAheadBufferSpace(coord_sys);
 }
 
 Result<Domain::Motion::Ports::IOStatus> MotionMonitoringUseCase::ReadDigitalInputStatus(int16 channel) const {

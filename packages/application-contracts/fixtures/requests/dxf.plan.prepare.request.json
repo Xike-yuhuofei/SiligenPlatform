@@ -1,0 +1,9 @@
+{
+  "id": "22",
+  "method": "dxf.plan.prepare",
+  "params": {
+    "artifact_id": "artifact-20260321-001",
+    "dispensing_speed_mm_s": 12.5,
+    "dry_run": false
+  }
+}

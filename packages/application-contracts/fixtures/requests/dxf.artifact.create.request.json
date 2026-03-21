@@ -1,0 +1,10 @@
+{
+  "id": "21",
+  "method": "dxf.artifact.create",
+  "params": {
+    "filename": "sample.dxf",
+    "original_filename": "sample.dxf",
+    "content_type": "application/dxf",
+    "file_content_b64": "MFxOU0VDVElPTgoyXEVOVElUSUVTXDAKRU5EU0VDXDAKRU9GCg=="
+  }
+}

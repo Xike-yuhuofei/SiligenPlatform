@@ -38,6 +38,26 @@
         "hmi-client CommandProtocol.get_status",
         "Backend_CPP CLI STATUS"
       ]
+    },
+    {
+      "method": "motion.coord.status",
+      "kind": "query",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {
+          "coord_sys": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "resultRef": "../models/states.json#/definitions/motionCoordStatus",
+      "errorCodes": [2200, 2201],
+      "consumers": [
+        "Backend_CPP CLI MOTION_COORD_STATUS",
+        "现场诊断 runbook"
+      ]
     }
   ]
 }

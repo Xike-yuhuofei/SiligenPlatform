@@ -1,20 +1,52 @@
 #include "shared/Encoding/EncodingCodec.h"
 
-#include <boost/url/encode.hpp>
-#include <boost/url/encoding_opts.hpp>
-#include <boost/url/pct_string_view.hpp>
-#include <boost/url/rfc/unreserved_chars.hpp>
 #include <boost/beast/core/detail/base64.hpp>
 
 #include <cctype>
+#include <iomanip>
 #include <sstream>
 
 namespace Siligen {
 
+namespace {
+
+bool IsUnreservedUrlChar(unsigned char ch) {
+    return std::isalnum(ch) || ch == '-' || ch == '_' || ch == '.' || ch == '~';
+}
+
+int HexDigitToValue(unsigned char ch) {
+    if (ch >= '0' && ch <= '9') {
+        return ch - '0';
+    }
+    if (ch >= 'a' && ch <= 'f') {
+        return 10 + (ch - 'a');
+    }
+    if (ch >= 'A' && ch <= 'F') {
+        return 10 + (ch - 'A');
+    }
+    return -1;
+}
+
+}  // namespace
+
 std::string EncodingCodec::UrlEncode(const std::string& str) {
-    boost::urls::encoding_opts opt;
-    opt.space_as_plus = false;  // 与旧实现一致：空格编码为%20
-    return boost::urls::encode(str, boost::urls::unreserved_chars, opt);
+    if (str.empty()) {
+        return "";
+    }
+
+    std::ostringstream encoded;
+    encoded << std::uppercase << std::hex;
+
+    for (unsigned char ch : str) {
+        if (IsUnreservedUrlChar(ch)) {
+            encoded << static_cast<char>(ch);
+            continue;
+        }
+
+        encoded << '%' << std::setw(2) << std::setfill('0') << static_cast<int>(ch);
+    }
+
+    return encoded.str();
 }
 
 std::string EncodingCodec::UrlDecode(const std::string& str) {
@@ -22,24 +54,19 @@ std::string EncodingCodec::UrlDecode(const std::string& str) {
         return "";
     }
 
-    boost::urls::encoding_opts opt;
-    opt.space_as_plus = true;  // 保持对'+'的兼容
-
-    auto pct = boost::urls::make_pct_string_view(str);
-    if (!pct.has_error()) {
-        return pct.value().decode(opt);
-    }
-
-    // 回退到旧逻辑，容忍非法转义
     std::string result;
     result.reserve(str.size());
     for (size_t i = 0; i < str.length(); ++i) {
         if (str[i] == '%' && i + 2 < str.length()) {
-            int32 value = 0;
-            std::istringstream iss(str.substr(i + 1, 2));
-            iss >> std::hex >> value;
-            result += static_cast<char>(value);
-            i += 2;
+            const int high = HexDigitToValue(static_cast<unsigned char>(str[i + 1]));
+            const int low = HexDigitToValue(static_cast<unsigned char>(str[i + 2]));
+            if (high >= 0 && low >= 0) {
+                result += static_cast<char>((high << 4) | low);
+                i += 2;
+                continue;
+            }
+
+            result += str[i];
         } else if (str[i] == '+') {
             result += ' ';
         } else {

@@ -1,4 +1,6 @@
 """Command Protocol - High-level API for motion controller commands."""
+import base64
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, Dict
 from .tcp_client import TcpClient
@@ -38,6 +40,28 @@ class CommandProtocol:
 
     def __init__(self, client: TcpClient):
         self._client = client
+
+    def _build_dxf_execute_params(
+        self,
+        dispensing_speed_mm_s: float,
+        dry_run: bool = False,
+        dry_run_speed_mm_s: float = 0.0,
+        snapshot_hash: str = "",
+        velocity_trace_enabled: bool = True,
+        velocity_trace_interval_ms: int = 0,
+        velocity_trace_path: str = "",
+    ) -> dict:
+        params = {"dispensing_speed_mm_s": float(dispensing_speed_mm_s), "dry_run": bool(dry_run)}
+        if dry_run and dry_run_speed_mm_s > 0.0:
+            params["dry_run_speed_mm_s"] = float(dry_run_speed_mm_s)
+        params["velocity_trace_enabled"] = bool(velocity_trace_enabled)
+        if velocity_trace_interval_ms and velocity_trace_interval_ms > 0:
+            params["velocity_trace_interval_ms"] = int(velocity_trace_interval_ms)
+        if velocity_trace_path:
+            params["velocity_trace_path"] = velocity_trace_path
+        if snapshot_hash:
+            params["snapshot_hash"] = snapshot_hash
+        return params
 
     def ping(self) -> bool:
         resp = self._client.send_request("ping")
@@ -169,24 +193,112 @@ class CommandProtocol:
         result = resp.get("result", {})
         return result.get("loaded", False), result.get("segment_count", 0)
 
+    def dxf_create_artifact(self, filepath: str, timeout: float = 30.0) -> tuple:
+        try:
+            data = Path(filepath).read_bytes()
+        except OSError as exc:
+            return False, {}, str(exc)
+        if not data:
+            return False, {}, "DXF文件为空"
+        params = {
+            "filename": Path(filepath).name,
+            "original_filename": Path(filepath).name,
+            "content_type": "application/dxf",
+            "file_content_b64": base64.b64encode(data).decode("ascii"),
+        }
+        resp = self._client.send_request("dxf.artifact.create", params, timeout=timeout)
+        if "error" in resp:
+            return False, {}, resp["error"].get("message", "Unknown error")
+        return True, resp.get("result", {}), ""
+
     def dxf_execute(
         self,
         dispensing_speed_mm_s: float,
         dry_run: bool = False,
         dry_run_speed_mm_s: float = 0.0,
+        snapshot_hash: str = "",
         velocity_trace_enabled: bool = True,
         velocity_trace_interval_ms: int = 0,
         velocity_trace_path: str = ""
     ) -> bool:
-        params = {"dispensing_speed_mm_s": dispensing_speed_mm_s, "dry_run": dry_run}
-        if dry_run and dry_run_speed_mm_s > 0.0:
-            params["dry_run_speed_mm_s"] = dry_run_speed_mm_s
-        params["velocity_trace_enabled"] = bool(velocity_trace_enabled)
-        if velocity_trace_interval_ms and velocity_trace_interval_ms > 0:
-            params["velocity_trace_interval_ms"] = int(velocity_trace_interval_ms)
-        if velocity_trace_path:
-            params["velocity_trace_path"] = velocity_trace_path
+        params = self._build_dxf_execute_params(
+            dispensing_speed_mm_s=dispensing_speed_mm_s,
+            dry_run=dry_run,
+            dry_run_speed_mm_s=dry_run_speed_mm_s,
+            snapshot_hash=snapshot_hash,
+            velocity_trace_enabled=velocity_trace_enabled,
+            velocity_trace_interval_ms=velocity_trace_interval_ms,
+            velocity_trace_path=velocity_trace_path,
+        )
         resp = self._client.send_request("dxf.execute", params)
+        return "result" in resp
+
+    def dxf_preview_snapshot(
+        self,
+        speed_mm_s: float,
+        dry_run: bool = False,
+        dry_run_speed_mm_s: float = 0.0,
+    ) -> tuple:
+        params = self._build_dxf_execute_params(
+            dispensing_speed_mm_s=speed_mm_s,
+            dry_run=dry_run,
+            dry_run_speed_mm_s=dry_run_speed_mm_s,
+            velocity_trace_enabled=False,
+        )
+        params.pop("snapshot_hash", None)
+        resp = self._client.send_request("dxf.preview.snapshot", params, timeout=15.0)
+        if "error" in resp:
+            return False, {}, resp["error"].get("message", "Unknown error")
+        return True, resp.get("result", {}), ""
+
+    def dxf_prepare_plan(
+        self,
+        artifact_id: str,
+        speed_mm_s: float,
+        dry_run: bool = False,
+        dry_run_speed_mm_s: float = 0.0,
+    ) -> tuple:
+        params = self._build_dxf_execute_params(
+            dispensing_speed_mm_s=speed_mm_s,
+            dry_run=dry_run,
+            dry_run_speed_mm_s=dry_run_speed_mm_s,
+            velocity_trace_enabled=False,
+        )
+        params["artifact_id"] = artifact_id
+        resp = self._client.send_request("dxf.plan.prepare", params, timeout=15.0)
+        if "error" in resp:
+            return False, {}, resp["error"].get("message", "Unknown error")
+        return True, resp.get("result", {}), ""
+
+    def dxf_start_job(self, plan_id: str, target_count: int = 1, plan_fingerprint: str = "") -> tuple:
+        params = {"plan_id": plan_id, "target_count": max(1, int(target_count))}
+        if plan_fingerprint:
+            params["plan_fingerprint"] = plan_fingerprint
+        resp = self._client.send_request("dxf.job.start", params, timeout=15.0)
+        if "error" in resp:
+            return False, {}, resp["error"].get("message", "Unknown error")
+        return True, resp.get("result", {}), ""
+
+    def dxf_get_job_status(self, job_id: str = "") -> dict:
+        params = {"job_id": job_id} if job_id else {}
+        resp = self._client.send_request("dxf.job.status", params)
+        if "error" in resp:
+            return {"state": "unknown", "error_message": resp["error"].get("message", "Unknown error")}
+        return resp.get("result", {})
+
+    def dxf_job_pause(self, job_id: str = "") -> bool:
+        params = {"job_id": job_id} if job_id else {}
+        resp = self._client.send_request("dxf.job.pause", params)
+        return "result" in resp
+
+    def dxf_job_resume(self, job_id: str = "") -> bool:
+        params = {"job_id": job_id} if job_id else {}
+        resp = self._client.send_request("dxf.job.resume", params)
+        return "result" in resp
+
+    def dxf_job_stop(self, job_id: str = "") -> bool:
+        params = {"job_id": job_id} if job_id else {}
+        resp = self._client.send_request("dxf.job.stop", params)
         return "result" in resp
 
     def dxf_get_info(self) -> dict:

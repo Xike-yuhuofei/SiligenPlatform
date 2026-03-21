@@ -73,6 +73,7 @@ private:
 
     struct DxfCache {
         bool loaded = false;
+        std::string artifact_id;
         std::string filepath;
         uint32_t segment_count = 0;
         double total_length = 0.0;
@@ -80,6 +81,11 @@ private:
         double x_max = 0.0;
         double y_min = 0.0;
         double y_max = 0.0;
+        std::string preview_snapshot_id;
+        std::string preview_snapshot_hash;
+        std::string preview_request_signature;
+        std::string preview_generated_at;
+        double preview_speed_mm_s = 0.0;
     };
 
     mutable std::mutex dxf_mutex_;
@@ -99,6 +105,7 @@ private:
     std::string HandleConnect(const std::string& id, const nlohmann::json& params);
     std::string HandleDisconnect(const std::string& id, const nlohmann::json& params);
     std::string HandleStatus(const std::string& id, const nlohmann::json& params);
+    std::string HandleMotionCoordStatus(const std::string& id, const nlohmann::json& params);
     std::string HandleHome(const std::string& id, const nlohmann::json& params);
     std::string HandleHomeGo(const std::string& id, const nlohmann::json& params);
     std::string HandleJog(const std::string& id, const nlohmann::json& params);
@@ -113,11 +120,19 @@ private:
     std::string HandleSupplyOpen(const std::string& id, const nlohmann::json& params);
     std::string HandleSupplyClose(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfLoad(const std::string& id, const nlohmann::json& params);
+    std::string HandleDxfArtifactCreate(const std::string& id, const nlohmann::json& params);
+    std::string HandleDxfPlanPrepare(const std::string& id, const nlohmann::json& params);
+    std::string HandleDxfJobStart(const std::string& id, const nlohmann::json& params);
+    std::string HandleDxfJobStatus(const std::string& id, const nlohmann::json& params);
+    std::string HandleDxfJobPause(const std::string& id, const nlohmann::json& params);
+    std::string HandleDxfJobResume(const std::string& id, const nlohmann::json& params);
+    std::string HandleDxfJobStop(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfExecute(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfPause(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfResume(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfStop(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfInfo(const std::string& id, const nlohmann::json& params);
+    std::string HandleDxfPreviewSnapshot(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfProgress(const std::string& id, const nlohmann::json& params);
     std::string HandleAlarmsList(const std::string& id, const nlohmann::json& params);
     std::string HandleAlarmsClear(const std::string& id, const nlohmann::json& params);

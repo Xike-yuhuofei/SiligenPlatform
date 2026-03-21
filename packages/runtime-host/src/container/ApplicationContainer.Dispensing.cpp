@@ -2,12 +2,14 @@
 
 #include "application/usecases/dispensing/CleanupFilesUseCase.h"
 #include "application/usecases/dispensing/DispensingExecutionUseCase.h"
+#include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
 #include "application/usecases/dispensing/PlanningUseCase.h"
 #include "application/usecases/dispensing/UploadFileUseCase.h"
 #include "application/usecases/dispensing/valve/ValveCommandUseCase.h"
 #include "application/usecases/dispensing/valve/ValveQueryUseCase.h"
 #include "domain/dispensing/planning/domain-services/DispensingPlannerService.h"
 #include "domain/dispensing/domain-services/ValveCoordinationService.h"
+#include "domain/safety/ports/IInterlockSignalPort.h"
 #include "domain/trajectory/ports/IPathSourcePort.h"
 #include "shared/interfaces/ILoggingService.h"
 
@@ -113,6 +115,19 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::DispensingExecutionUs
         config_port_,
         event_port_,
         task_scheduler_port_);
+}
+
+template<>
+std::shared_ptr<UseCases::Dispensing::DispensingWorkflowUseCase>
+ApplicationContainer::CreateInstance<UseCases::Dispensing::DispensingWorkflowUseCase>() {
+    return std::make_shared<UseCases::Dispensing::DispensingWorkflowUseCase>(
+        Resolve<UseCases::Dispensing::UploadFileUseCase>(),
+        Resolve<UseCases::Dispensing::PlanningUseCase>(),
+        Resolve<UseCases::Dispensing::DispensingExecutionUseCase>(),
+        hardware_connection_port_,
+        motion_state_port_,
+        homing_port_,
+        ResolvePort<Domain::Safety::Ports::IInterlockSignalPort>());
 }
 
 }  // namespace Siligen::Application::Container

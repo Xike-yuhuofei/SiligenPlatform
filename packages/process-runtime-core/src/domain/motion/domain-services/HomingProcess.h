@@ -7,6 +7,7 @@
 #include "shared/types/AxisTypes.h"
 #include "shared/types/Result.h"
 
+#include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
@@ -88,6 +89,10 @@ class HomingProcess final {
     Result<void> ValidateSafetyPreconditions(const std::vector<LogicalAxisId>& axes) const;
     Result<void> HomeAxis(LogicalAxisId axis_id);
     Result<void> WaitForHomingComplete(LogicalAxisId axis_id, int32 timeout_ms);
+    Result<void> WaitForAxisSettleAfterHoming(
+        LogicalAxisId axis_id,
+        const std::chrono::steady_clock::time_point& deadline) const;
+    Result<int32> GetHomingSettleTimeMs(LogicalAxisId axis_id) const;
     Result<void> VerifyHomingSuccess(LogicalAxisId axis_id);
     Result<int> GetConfiguredAxisCount() const;
 };

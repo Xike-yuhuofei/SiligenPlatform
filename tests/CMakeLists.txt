@@ -23,3 +23,13 @@ add_subdirectory(
     "${PROCESS_RUNTIME_CORE_TESTS_DIR}"
     "${CMAKE_BINARY_DIR}/packages/process-runtime-core-tests"
 )
+
+set(RUNTIME_HOST_TESTS_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/../packages/runtime-host/tests"
+)
+if(EXISTS "${RUNTIME_HOST_TESTS_DIR}/CMakeLists.txt")
+    add_subdirectory(
+        "${RUNTIME_HOST_TESTS_DIR}"
+        "${CMAKE_BINARY_DIR}/packages/runtime-host-tests"
+    )
+endif()

@@ -1,0 +1,9 @@
+{
+  "id": "4",
+  "method": "dxf.preview.snapshot",
+  "params": {
+    "dry_run": false,
+    "dispensing_speed_mm_s": 12.5,
+    "dry_run_speed_mm_s": 12.5
+  }
+}

@@ -5,12 +5,33 @@
 #include "shared/logging/PrintfLogFormatter.h"
 #include "shared/interfaces/ILoggingService.h"
 
+#include <algorithm>
 #include <chrono>
 #include <thread>
 
 using namespace Siligen::Shared::Types;
 
 namespace Siligen::Application::UseCases::Dispensing {
+
+namespace {
+
+void ClampRunningProgress(uint32 total_segments, uint32& executed_segments, uint32& progress_percent) {
+    if (total_segments == 0U) {
+        progress_percent = 0U;
+        executed_segments = 0U;
+        return;
+    }
+
+    if (progress_percent >= 100U) {
+        progress_percent = 99U;
+    }
+
+    if (executed_segments >= total_segments) {
+        executed_segments = total_segments > 0U ? total_segments - 1U : 0U;
+    }
+}
+
+}  // namespace
 
 Result<TaskID> DispensingExecutionUseCase::ExecuteAsync(const DispensingMVPRequest& request) {
     auto validation = request.Validate();
@@ -57,6 +78,8 @@ Result<TaskID> DispensingExecutionUseCase::ExecuteAsync(const DispensingMVPReque
             context->result = exec_result.Value();
             context->executed_segments.store(context->result.executed_segments);
             context->total_segments.store(context->result.total_segments);
+            context->reported_executed_segments.store(context->result.executed_segments);
+            context->reported_progress_percent.store(100);
         } else {
             context->state.store(TaskState::FAILED);
             std::lock_guard<std::mutex> lock(context->mutex_);
@@ -92,7 +115,8 @@ Result<TaskStatusResponse> DispensingExecutionUseCase::GetTaskStatus(const TaskI
     const auto& context = it->second;
     TaskStatusResponse response;
     response.task_id = task_id;
-    response.state = TaskStateToString(context->state.load());
+    const auto state = context->state.load();
+    response.state = TaskStateToString(state);
     response.executed_segments = context->executed_segments.load();
     response.total_segments = context->total_segments.load();
     if (response.total_segments > 0) {
@@ -100,6 +124,35 @@ Result<TaskStatusResponse> DispensingExecutionUseCase::GetTaskStatus(const TaskI
     }
     auto now = std::chrono::steady_clock::now();
     response.elapsed_seconds = std::chrono::duration<float>(now - context->start_time).count();
+    if (state == TaskState::RUNNING && response.total_segments > 0) {
+        const auto estimated_execution_ms = context->estimated_execution_ms.load();
+        if (estimated_execution_ms > 0) {
+            const auto elapsed_ms = static_cast<uint32>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(now - context->start_time).count());
+            auto estimated_progress_percent = static_cast<uint32>(
+                std::min<std::uint64_t>(
+                    99ULL,
+                    (static_cast<std::uint64_t>(elapsed_ms) * 100ULL) / estimated_execution_ms));
+            auto estimated_executed_segments = static_cast<uint32>(
+                (static_cast<std::uint64_t>(response.total_segments) * estimated_progress_percent + 99ULL) / 100ULL);
+            if (estimated_executed_segments >= response.total_segments) {
+                estimated_executed_segments = response.total_segments > 0 ? response.total_segments - 1 : 0;
+            }
+
+            response.progress_percent = std::max(response.progress_percent, estimated_progress_percent);
+            response.executed_segments = std::max(response.executed_segments, estimated_executed_segments);
+        }
+
+        ClampRunningProgress(response.total_segments, response.executed_segments, response.progress_percent);
+    }
+
+    context->reported_progress_percent.store(std::max(context->reported_progress_percent.load(), response.progress_percent));
+    context->reported_executed_segments.store(std::max(context->reported_executed_segments.load(), response.executed_segments));
+    response.progress_percent = std::max(response.progress_percent, context->reported_progress_percent.load());
+    response.executed_segments = std::max(response.executed_segments, context->reported_executed_segments.load());
+    if (state == TaskState::RUNNING && response.total_segments > 0) {
+        ClampRunningProgress(response.total_segments, response.executed_segments, response.progress_percent);
+    }
     {
         std::lock_guard<std::mutex> context_lock(context->mutex_);
         response.error_message = context->error_message;

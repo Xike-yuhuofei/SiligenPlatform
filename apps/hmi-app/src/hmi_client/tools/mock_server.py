@@ -6,6 +6,7 @@ import argparse
 import configparser
 import hashlib
 import json
+import math
 import socketserver
 import threading
 import time
@@ -34,6 +35,8 @@ class IOState:
 @dataclass
 class DxfState:
     loaded: bool = False
+    artifact_id: str = ""
+    current_plan_id: str = ""
     filepath: str = ""
     segment_count: int = 0
     total_length: float = 0.0
@@ -44,6 +47,41 @@ class DxfState:
     paused: bool = False
     progress: float = 0.0
     current_segment: int = 0
+    preview_snapshot_hash: str = ""
+    preview_snapshot_id: str = ""
+    preview_generated_at: str = ""
+    preview_request_signature: str = ""
+    current_job_id: str = ""
+    target_count: int = 0
+    completed_count: int = 0
+
+
+def _build_preview_signature(filepath: str, params: Dict) -> str:
+    payload = {
+        "filepath": filepath,
+        "dry_run": bool(params.get("dry_run", False)),
+        "dispensing_speed_mm_s": float(params.get("dispensing_speed_mm_s", params.get("speed_mm_s", 0.0))),
+        "dry_run_speed_mm_s": float(params.get("dry_run_speed_mm_s", 0.0)),
+        "rapid_speed_mm_s": float(params.get("rapid_speed_mm_s", 0.0)),
+        "optimize_path": bool(params.get("optimize_path", False)),
+        "start_x": float(params.get("start_x", 0.0)),
+        "start_y": float(params.get("start_y", 0.0)),
+        "approximate_splines": bool(params.get("approximate_splines", False)),
+        "two_opt_iterations": int(params.get("two_opt_iterations", 0)),
+        "spline_max_step_mm": float(params.get("spline_max_step_mm", 0.0)),
+        "spline_max_error_mm": float(params.get("spline_max_error_mm", 0.0)),
+        "arc_tolerance_mm": float(params.get("arc_tolerance_mm", params.get("arc_tolerance", 0.0))),
+        "continuity_tolerance_mm": float(
+            params.get("continuity_tolerance_mm", params.get("continuity_tolerance", 0.0))
+        ),
+        "curve_chain_angle_deg": float(params.get("curve_chain_angle_deg", 0.0)),
+        "curve_chain_max_segment_mm": float(params.get("curve_chain_max_segment_mm", 0.0)),
+        "max_jerk": float(params.get("max_jerk", 0.0)),
+        "use_hardware_trigger": bool(params.get("use_hardware_trigger", True)),
+        "use_interpolation_planner": bool(params.get("use_interpolation_planner", False)),
+        "interpolation_algorithm": int(params.get("interpolation_algorithm", 0)),
+    }
+    return json.dumps(payload, sort_keys=True, ensure_ascii=True)
 
 
 def _normalize_config(parser: configparser.ConfigParser) -> Dict[str, Dict[str, str]]:
@@ -200,9 +238,14 @@ class MockState:
                                 self.dxf.progress / 100.0 * self.dxf.segment_count
                             )
                         if self.dxf.progress >= 100.0:
-                            self.dxf.running = False
-                            self.dxf.paused = False
-                            break
+                            self.dxf.completed_count += 1
+                            if self.dxf.completed_count >= max(1, self.dxf.target_count):
+                                self.dxf.running = False
+                                self.dxf.paused = False
+                                self.dxf.progress = 100.0
+                                break
+                            self.dxf.progress = 0.0
+                            self.dxf.current_segment = 0
                 time.sleep(0.2)
 
         if self._dxf_thread and self._dxf_thread.is_alive():
@@ -220,6 +263,13 @@ class MockState:
             return
         self._disp_thread = threading.Thread(target=worker, daemon=True)
         self._disp_thread.start()
+
+    def _interlock_error(self) -> Optional[Dict]:
+        if self.io.estop:
+            return {"error": {"code": -32011, "message": "emergency stop active"}}
+        if self.io.door:
+            return {"error": {"code": -32012, "message": "safety door open"}}
+        return None
 
     def handle_request(self, method: str, params: Optional[Dict]) -> Dict:
         params = params or {}
@@ -306,6 +356,20 @@ class MockState:
                         },
                     }
                 }
+            if method == "mock.io.set":
+                if "estop" in params:
+                    self.io.estop = bool(params.get("estop"))
+                if "door" in params:
+                    self.io.door = bool(params.get("door"))
+                if self.io.estop:
+                    self.dxf.running = False
+                    self.dxf.paused = False
+                return {
+                    "result": {
+                        "estop": self.io.estop,
+                        "door": self.io.door,
+                    }
+                }
             if method == "home":
                 axes = params.get("axes")
                 targets = axes if axes else list(self.axes.keys())
@@ -380,22 +444,217 @@ class MockState:
                 return {"result": {"ok": True}}
             if method == "dxf.load":
                 self.dxf.loaded = True
+                self.dxf.artifact_id = f"artifact-{int(time.time() * 1000)}"
                 self.dxf.filepath = params.get("filepath", "")
                 self.dxf.segment_count = 120
                 self.dxf.total_length = 256.0
                 self.dxf.progress = 0.0
                 self.dxf.current_segment = 0
                 self.dxf.paused = False
-                return {"result": {"loaded": True, "segment_count": self.dxf.segment_count}}
+                self.dxf.current_job_id = ""
+                self.dxf.target_count = 0
+                self.dxf.completed_count = 0
+                self.dxf.preview_snapshot_hash = ""
+                self.dxf.preview_snapshot_id = ""
+                self.dxf.current_plan_id = ""
+                self.dxf.preview_generated_at = ""
+                self.dxf.preview_request_signature = ""
+                return {
+                    "result": {
+                        "loaded": True,
+                        "artifact_id": self.dxf.artifact_id,
+                        "segment_count": self.dxf.segment_count,
+                    }
+                }
+            if method == "dxf.artifact.create":
+                self.dxf.loaded = True
+                self.dxf.artifact_id = f"artifact-{int(time.time() * 1000)}"
+                self.dxf.filepath = params.get("filename", "mock.dxf")
+                self.dxf.segment_count = 120
+                self.dxf.total_length = 256.0
+                self.dxf.preview_snapshot_hash = ""
+                self.dxf.preview_snapshot_id = ""
+                self.dxf.current_plan_id = ""
+                self.dxf.preview_generated_at = ""
+                self.dxf.preview_request_signature = ""
+                self.dxf.current_job_id = ""
+                self.dxf.target_count = 0
+                self.dxf.completed_count = 0
+                return {
+                    "result": {
+                        "created": True,
+                        "artifact_id": self.dxf.artifact_id,
+                        "filepath": self.dxf.filepath,
+                        "segment_count": self.dxf.segment_count,
+                    }
+                }
+            if method == "dxf.preview.snapshot":
+                if not self.dxf.loaded:
+                    return {"error": {"code": -32003, "message": "DXF not loaded"}}
+                speed = float(params.get("dispensing_speed_mm_s", params.get("speed_mm_s", 0.0)))
+                if speed <= 0:
+                    return {"error": {"code": -32004, "message": "Invalid speed_mm_s"}}
+                signature = _build_preview_signature(self.dxf.filepath, params)
+                seed = f"{signature}|{self.dxf.segment_count}|{self.dxf.total_length:.6f}"
+                snapshot_hash = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
+                snapshot_id = f"mock-snapshot-{snapshot_hash}"
+                generated_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                self.dxf.preview_snapshot_hash = snapshot_hash
+                self.dxf.preview_snapshot_id = snapshot_id
+                self.dxf.preview_generated_at = generated_at
+                self.dxf.preview_request_signature = signature
+                point_count = max(self.dxf.segment_count * 2, 0)
+                polyline_source_point_count = max(point_count, 2)
+                polyline_point_count = min(polyline_source_point_count, 400)
+                trajectory_polyline = []
+                for i in range(polyline_point_count):
+                    t = i / float(max(polyline_point_count - 1, 1))
+                    x = t * self.dxf.total_length
+                    y = 6.0 * math.sin(t * 4.0 * math.pi)
+                    trajectory_polyline.append({"x": x, "y": y})
+                return {
+                    "result": {
+                        "snapshot_id": snapshot_id,
+                        "snapshot_hash": snapshot_hash,
+                        "segment_count": self.dxf.segment_count,
+                        "point_count": point_count,
+                        "polyline_point_count": polyline_point_count,
+                        "polyline_source_point_count": polyline_source_point_count,
+                        "trajectory_polyline": trajectory_polyline,
+                        "total_length_mm": self.dxf.total_length,
+                        "estimated_time_s": self.dxf.total_length / speed,
+                        "generated_at": generated_at,
+                    }
+                }
+            if method == "dxf.plan.prepare":
+                if not self.dxf.loaded:
+                    return {"error": {"code": -32003, "message": "DXF not loaded"}}
+                artifact_id = str(params.get("artifact_id", "")).strip()
+                if artifact_id and artifact_id != self.dxf.artifact_id:
+                    return {"error": {"code": -32008, "message": "artifact not found"}}
+                speed = float(params.get("dispensing_speed_mm_s", params.get("speed_mm_s", 0.0)))
+                if speed <= 0:
+                    return {"error": {"code": -32004, "message": "Invalid speed_mm_s"}}
+                signature = _build_preview_signature(self.dxf.filepath, params)
+                seed = f"{signature}|{self.dxf.segment_count}|{self.dxf.total_length:.6f}"
+                snapshot_hash = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
+                snapshot_id = f"plan-{snapshot_hash}"
+                generated_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                self.dxf.preview_snapshot_hash = snapshot_hash
+                self.dxf.preview_snapshot_id = snapshot_id
+                self.dxf.current_plan_id = snapshot_id
+                self.dxf.preview_generated_at = generated_at
+                self.dxf.preview_request_signature = signature
+                point_count = max(self.dxf.segment_count * 2, 0)
+                return {
+                    "result": {
+                        "artifact_id": self.dxf.artifact_id,
+                        "plan_id": snapshot_id,
+                        "plan_fingerprint": snapshot_hash,
+                        "snapshot_id": snapshot_id,
+                        "snapshot_hash": snapshot_hash,
+                        "segment_count": self.dxf.segment_count,
+                        "point_count": point_count,
+                        "total_length_mm": self.dxf.total_length,
+                        "estimated_time_s": self.dxf.total_length / speed,
+                        "generated_at": generated_at,
+                    }
+                }
             if method == "dxf.execute":
                 if not self.dxf.loaded:
                     return {"error": {"code": -32000, "message": "DXF not loaded"}}
+                interlock_error = self._interlock_error()
+                if interlock_error:
+                    return interlock_error
+                snapshot_hash = str(params.get("snapshot_hash", "")).strip()
+                if not snapshot_hash:
+                    return {"error": {"code": -32005, "message": "Missing snapshot_hash"}}
+                signature = _build_preview_signature(self.dxf.filepath, params)
+                if signature != self.dxf.preview_request_signature:
+                    return {"error": {"code": -32007, "message": "Preview request signature mismatch"}}
+                if snapshot_hash != self.dxf.preview_snapshot_hash:
+                    return {"error": {"code": -32006, "message": "Preview snapshot hash mismatch"}}
                 self.dxf.running = True
                 self.dxf.paused = False
                 self.dxf.progress = 0.0
                 self.dxf.current_segment = 0
                 self._start_dxf_progress()
                 return {"result": {"ok": True}}
+            if method == "dxf.job.start":
+                interlock_error = self._interlock_error()
+                if interlock_error:
+                    return interlock_error
+                plan_id = str(params.get("plan_id", "")).strip()
+                if not plan_id or plan_id != self.dxf.preview_snapshot_id:
+                    if not plan_id or plan_id != self.dxf.current_plan_id:
+                        return {"error": {"code": -32009, "message": "plan not prepared"}}
+                self.dxf.current_job_id = f"job-{int(time.time() * 1000)}"
+                self.dxf.running = True
+                self.dxf.paused = False
+                self.dxf.progress = 0.0
+                self.dxf.current_segment = 0
+                self.dxf.target_count = max(1, int(params.get("target_count", 1)))
+                self.dxf.completed_count = 0
+                self._start_dxf_progress()
+                return {
+                    "result": {
+                        "started": True,
+                        "job_id": self.dxf.current_job_id,
+                        "task_id": self.dxf.current_job_id,
+                        "plan_id": self.dxf.current_plan_id,
+                        "plan_fingerprint": self.dxf.preview_snapshot_hash,
+                        "target_count": self.dxf.target_count,
+                    }
+                }
+            if method == "dxf.job.status":
+                if not self.dxf.current_job_id:
+                    return {"error": {"code": -32010, "message": "job not found"}}
+                state = "paused" if self.dxf.paused else ("running" if self.dxf.running else "completed")
+                return {
+                    "result": {
+                        "job_id": self.dxf.current_job_id,
+                        "plan_id": self.dxf.current_plan_id,
+                        "plan_fingerprint": self.dxf.preview_snapshot_hash,
+                        "state": state,
+                        "target_count": self.dxf.target_count,
+                        "completed_count": self.dxf.completed_count,
+                        "current_cycle": min(self.dxf.target_count, self.dxf.completed_count + (1 if self.dxf.running else 0)),
+                        "current_segment": self.dxf.current_segment,
+                        "total_segments": self.dxf.segment_count,
+                        "cycle_progress_percent": int(self.dxf.progress),
+                        "overall_progress_percent": int(
+                            ((self.dxf.completed_count * 100.0) + self.dxf.progress) / max(1, self.dxf.target_count)
+                        ),
+                        "elapsed_seconds": 0.0,
+                        "error_message": "",
+                        "active_task_id": self.dxf.current_job_id,
+                        "dry_run": bool(params.get("dry_run", False)),
+                    }
+                }
+            if method == "dxf.job.pause":
+                if not self.dxf.running:
+                    return {"error": {"code": -32001, "message": "DXF not running"}}
+                self.dxf.paused = True
+                return {"result": {"paused": True, "job_id": self.dxf.current_job_id}}
+            if method == "dxf.job.resume":
+                if not self.dxf.current_job_id:
+                    return {"error": {"code": -32002, "message": "DXF not paused"}}
+                interlock_error = self._interlock_error()
+                if interlock_error:
+                    return interlock_error
+                self.dxf.paused = False
+                self.dxf.running = True
+                self._start_dxf_progress()
+                return {"result": {"resumed": True, "job_id": self.dxf.current_job_id}}
+            if method == "dxf.job.stop":
+                self.dxf.running = False
+                self.dxf.paused = False
+                self.dxf.progress = 0.0
+                self.dxf.current_segment = 0
+                self.dxf.current_job_id = ""
+                self.dxf.completed_count = 0
+                self.dxf.target_count = 0
+                return {"result": {"stopped": True}}
             if method == "dxf.pause":
                 if not self.dxf.running:
                     return {"error": {"code": -32001, "message": "DXF not running"}}
@@ -430,6 +689,9 @@ class MockState:
                         "total_segments": self.dxf.segment_count,
                         "state": state,
                         "error_message": "",
+                        "job_id": self.dxf.current_job_id,
+                        "completed_count": self.dxf.completed_count,
+                        "target_count": self.dxf.target_count,
                     }
                 }
             if method == "alarms.list":

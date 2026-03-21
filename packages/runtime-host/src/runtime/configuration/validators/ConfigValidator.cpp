@@ -111,6 +111,10 @@ ValidationResult ConfigValidator::ValidateHomingConfigDetailed(const HomingConfi
         result.AddError(FormatRangeError("逃离速度", config.escape_velocity, 0.1f, kHomingMaxVelocity));
     }
 
+    if (!config.home_backoff_enabled && config.mode == 2) {
+        result.AddWarning("HOME+INDEX模式下禁用板卡二次回退，可能影响最终定位精度");
+    }
+
     // 验证其他参数
     if (!ValidateRange(config.retry_count, 0, 10)) {
         result.AddError(FormatRangeError("重试次数", config.retry_count, 0, 10));
@@ -149,6 +153,10 @@ ValidationResult ConfigValidator::ValidateHomingConfigDetailed(const HomingConfi
 
     if (config.home_debounce_ms == 0) {
         result.AddWarning("HOME去抖为0，可能导致开关抖动影响回零判定");
+    }
+
+    if (!config.home_backoff_enabled) {
+        result.AddWarning("已禁用板卡原生HOME二次回退，回零成功后可能保持HOME触发态");
     }
 
     if (config.home_input_bit < 0) {

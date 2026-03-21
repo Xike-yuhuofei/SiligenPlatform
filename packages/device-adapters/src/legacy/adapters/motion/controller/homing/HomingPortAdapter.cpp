@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <numeric>
 #include <thread>
 
@@ -21,6 +22,7 @@ using Siligen::Domain::Motion::ValueObjects::LimitSwitchState;
 
 namespace {
 constexpr int32 kPollingIntervalMs = 50;
+constexpr double kStopVelocityToleranceMmS = 0.1;
 }  // namespace
 
 HomingPortAdapter::HomingPortAdapter(
@@ -45,8 +47,14 @@ Result<void> HomingPortAdapter::StopHoming(LogicalAxisId axis) {
 
 Result<void> HomingPortAdapter::ResetHomingState(LogicalAxisId axis) {
     SetHomingInvalidated(axis, true);
-    if (multicard_) {
-        (void)multicard_->MC_HomeStop(static_cast<short>(AxisIndex(axis) + 1));
+    if (!multicard_) {
+        return Result<void>::Success();
+    }
+    const int axis_index = AxisIndex(axis);
+    (void)multicard_->MC_HomeStop(static_cast<short>(axis_index + 1));
+    auto stop_result = StopAxisMotionAndWait(axis_index);
+    if (stop_result.IsError()) {
+        return stop_result;
     }
     return Result<void>::Success();
 }
@@ -513,6 +521,8 @@ Result<void> HomingPortAdapter::stopHoming(const std::vector<LogicalAxisId>& axe
         homing_success_latch_[axis] = false;
         homing_failed_latch_[axis] = false;
         homing_active_latch_[axis] = false;
+        homing_timer_active_[axis] = false;
+        homing_stage_[axis] = HomingStage::Idle;
 
         // MultiCard API使用1-based轴号
         short axisNum = static_cast<short>(axis + 1);
@@ -524,9 +534,118 @@ Result<void> HomingPortAdapter::stopHoming(const std::vector<LogicalAxisId>& axe
                       "Failed to stop homing for axis " + std::to_string(axis) + ": " + getMultiCardErrorMessage(ret),
                       "HomingPortAdapter"));
         }
+
+        auto stop_result = StopAxisMotionAndWait(axis);
+        if (stop_result.IsError()) {
+            return stop_result;
+        }
     }
 
     return Result<void>::Success();
+}
+
+Result<void> HomingPortAdapter::StopAxisMotionAndWait(int axis) const {
+    if (!multicard_) {
+        return Result<void>::Failure(
+            Error(ErrorCode::PORT_NOT_INITIALIZED, "Hardware not connected", "HomingPortAdapter"));
+    }
+
+    auto validateResult = validateAxisNumber(axis);
+    if (validateResult.IsError()) {
+        return validateResult;
+    }
+
+    const short axis_num = static_cast<short>(axis + 1);
+    const auto read_profile_velocity_mm_s = [&]() -> Result<double> {
+        double profile_velocity_pulse_per_ms = 0.0;
+        unsigned long clock = 0;
+        const short velocity_ret = multicard_->MC_GetAxisPrfVel(axis_num, &profile_velocity_pulse_per_ms, 1, &clock);
+        if (velocity_ret != 0) {
+            return Result<double>::Failure(
+                Error(ErrorCode::HARDWARE_OPERATION_FAILED,
+                      "Failed to read axis profile velocity while stopping homing",
+                      "HomingPortAdapter"));
+        }
+        return Result<double>::Success(
+            profile_velocity_pulse_per_ms * 1000.0 / unit_converter_.GetPulsePerMm());
+    };
+
+    long status = 0;
+    short status_ret = multicard_->MC_GetSts(axis_num, &status);
+    if (status_ret != 0) {
+        return Result<void>::Failure(
+            Error(ErrorCode::HARDWARE_OPERATION_FAILED,
+                  "Failed to read axis status while stopping homing",
+                  "HomingPortAdapter"));
+    }
+
+    auto velocity_result = read_profile_velocity_mm_s();
+    const double profile_velocity_mm_s = velocity_result.IsSuccess() ? velocity_result.Value() : 0.0;
+    const bool status_reports_running =
+        (status & AXIS_STATUS_RUNNING) != 0 || (status & AXIS_STATUS_HOME_RUNNING) != 0;
+    const bool velocity_reports_running =
+        velocity_result.IsSuccess() && std::fabs(profile_velocity_mm_s) > kStopVelocityToleranceMmS;
+
+    SILIGEN_LOG_INFO_FMT_HELPER(
+        "StopAxisMotionAndWait pre-check axis=%d hw_status=0x%lx running_bits=%d prf_vel_mm_s=%.4f vel_valid=%d",
+        axis,
+        status,
+        status_reports_running ? 1 : 0,
+        profile_velocity_mm_s,
+        velocity_result.IsSuccess() ? 1 : 0);
+
+    if (!status_reports_running && !velocity_reports_running) {
+        return Result<void>::Success();
+    }
+
+    const long axis_mask = static_cast<long>(1) << axis;
+    short stop_ret = multicard_->MC_Stop(axis_mask, 0);
+    if (stop_ret != 0) {
+        return Result<void>::Failure(
+            Error(ErrorCode::HARDWARE_OPERATION_FAILED,
+                  "Failed to stop axis after homing abort: " + getMultiCardErrorMessage(stop_ret),
+                  "HomingPortAdapter"));
+    }
+
+    const int64 stop_timeout_ms = std::max<int32>(hardware_config_.response_timeout_ms, 1000);
+    const auto stop_start = std::chrono::steady_clock::now();
+    while (true) {
+        long stop_status = 0;
+        short stop_status_ret = multicard_->MC_GetSts(axis_num, &stop_status);
+        if (stop_status_ret != 0) {
+            return Result<void>::Failure(
+                Error(ErrorCode::HARDWARE_OPERATION_FAILED,
+                      "Failed to read axis status while waiting homing stop",
+                      "HomingPortAdapter"));
+        }
+        auto stop_velocity_result = read_profile_velocity_mm_s();
+        const double stop_profile_velocity_mm_s =
+            stop_velocity_result.IsSuccess() ? stop_velocity_result.Value() : 0.0;
+        const bool stop_status_running =
+            (stop_status & AXIS_STATUS_RUNNING) != 0 || (stop_status & AXIS_STATUS_HOME_RUNNING) != 0;
+        const bool stop_velocity_running =
+            stop_velocity_result.IsSuccess() && std::fabs(stop_profile_velocity_mm_s) > kStopVelocityToleranceMmS;
+
+        if (!stop_status_running && !stop_velocity_running) {
+            SILIGEN_LOG_INFO_FMT_HELPER(
+                "StopAxisMotionAndWait completed axis=%d hw_status=0x%lx prf_vel_mm_s=%.4f vel_valid=%d",
+                axis,
+                stop_status,
+                stop_profile_velocity_mm_s,
+                stop_velocity_result.IsSuccess() ? 1 : 0);
+            return Result<void>::Success();
+        }
+
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - stop_start).count();
+        if (elapsed >= stop_timeout_ms) {
+            return Result<void>::Failure(
+                Error(ErrorCode::TIMEOUT,
+                      "Timeout waiting for axis to stop after homing abort",
+                      "HomingPortAdapter"));
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
 }
 
 

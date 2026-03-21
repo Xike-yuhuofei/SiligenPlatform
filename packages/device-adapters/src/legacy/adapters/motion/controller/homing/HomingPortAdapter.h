@@ -68,6 +68,7 @@ class HomingPortAdapter final : public IHomingPort {
                                             int sample_count,
                                             int sample_interval_ms,
                                             bool allow_blocking = true) const;
+    Result<void> StopAxisMotionAndWait(int axis) const;
     Result<void> EscapeFromHomeLimit(int axis, short axis_num, const HomingConfig& config);
     std::string getMultiCardErrorMessage(short error_code) const;
 

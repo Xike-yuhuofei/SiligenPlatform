@@ -1,10 +1,12 @@
 #pragma once
 
 #include "application/usecases/dispensing/DispensingExecutionUseCase.h"
+#include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
 #include "application/usecases/dispensing/PlanningUseCase.h"
 #include "application/usecases/dispensing/UploadFileUseCase.h"
 #include "application/usecases/dispensing/valve/ValveCommandUseCase.h"
 #include "application/usecases/dispensing/valve/ValveQueryUseCase.h"
+#include "domain/safety/value-objects/InterlockTypes.h"
 
 #include <memory>
 
@@ -16,7 +18,8 @@ class TcpDispensingFacade {
                         std::shared_ptr<UseCases::Dispensing::Valve::ValveQueryUseCase> valve_query_use_case,
                         std::shared_ptr<UseCases::Dispensing::DispensingExecutionUseCase> dxf_execute_use_case,
                         std::shared_ptr<UseCases::Dispensing::UploadFileUseCase> dxf_upload_use_case,
-                        std::shared_ptr<UseCases::Dispensing::PlanningUseCase> dxf_planning_use_case);
+                        std::shared_ptr<UseCases::Dispensing::PlanningUseCase> dxf_planning_use_case,
+                        std::shared_ptr<UseCases::Dispensing::DispensingWorkflowUseCase> dxf_workflow_use_case);
 
     Shared::Types::Result<Domain::Dispensing::Ports::DispenserValveState> StartDispenser(
         const Domain::Dispensing::Ports::DispenserValveParams& params);
@@ -42,6 +45,18 @@ class TcpDispensingFacade {
     Shared::Types::Result<void> ResumeDxfTask(const UseCases::Dispensing::TaskID& task_id);
     Shared::Types::Result<void> CancelDxfTask(const UseCases::Dispensing::TaskID& task_id);
     void StopDxfExecution();
+    Shared::Types::Result<UseCases::Dispensing::CreateArtifactResponse> CreateDxfArtifact(
+        const UseCases::Dispensing::UploadRequest& request);
+    Shared::Types::Result<UseCases::Dispensing::PreparePlanResponse> PrepareDxfPlan(
+        const UseCases::Dispensing::PreparePlanRequest& request);
+    Shared::Types::Result<UseCases::Dispensing::JobID> StartDxfJob(
+        const UseCases::Dispensing::StartJobRequest& request);
+    Shared::Types::Result<UseCases::Dispensing::JobStatusResponse> GetDxfJobStatus(
+        const UseCases::Dispensing::JobID& job_id) const;
+    Shared::Types::Result<void> PauseDxfJob(const UseCases::Dispensing::JobID& job_id);
+    Shared::Types::Result<void> ResumeDxfJob(const UseCases::Dispensing::JobID& job_id);
+    Shared::Types::Result<void> StopDxfJob(const UseCases::Dispensing::JobID& job_id);
+    Shared::Types::Result<Domain::Safety::ValueObjects::InterlockSignals> ReadInterlockSignals() const;
 
    private:
     std::shared_ptr<UseCases::Dispensing::Valve::ValveCommandUseCase> valve_command_use_case_;
@@ -49,6 +64,7 @@ class TcpDispensingFacade {
     std::shared_ptr<UseCases::Dispensing::DispensingExecutionUseCase> dxf_execute_use_case_;
     std::shared_ptr<UseCases::Dispensing::UploadFileUseCase> dxf_upload_use_case_;
     std::shared_ptr<UseCases::Dispensing::PlanningUseCase> dxf_planning_use_case_;
+    std::shared_ptr<UseCases::Dispensing::DispensingWorkflowUseCase> dxf_workflow_use_case_;
 };
 
 }  // namespace Siligen::Application::Facades::Tcp

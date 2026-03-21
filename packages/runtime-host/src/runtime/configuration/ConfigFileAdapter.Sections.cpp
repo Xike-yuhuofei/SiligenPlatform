@@ -2,6 +2,7 @@
 #define MODULE_NAME "ConfigFile"
 
 #include "ConfigFileAdapter.h"
+#include "shared/interfaces/ILoggingService.h"
 #include <algorithm>
 
 namespace Siligen::Infrastructure::Adapters {
@@ -290,6 +291,18 @@ Result<void> ConfigFileAdapter::LoadHomingSection(std::vector<HomingConfig>& con
         if (result.IsError()) return result;
         result = assign_float(section, "escape_velocity", config.escape_velocity);
         if (result.IsError()) return result;
+        auto home_backoff_result = ReadBoolValue(section, "home_backoff_enabled");
+        if (home_backoff_result.IsSuccess()) {
+            config.home_backoff_enabled = home_backoff_result.Value();
+        } else {
+            const auto& message = home_backoff_result.GetError().GetMessage();
+            if (message.find("缺少配置项") != std::string::npos) {
+                SILIGEN_LOG_WARNING(
+                    "Missing [" + section + "] home_backoff_enabled, keeping compatibility default=true");
+            } else {
+                return Result<void>(home_backoff_result.GetError());
+            }
+        }
 
         result = assign_int(section, "timeout_ms", config.timeout_ms);
         if (result.IsError()) return result;
@@ -426,6 +439,7 @@ void ConfigFileAdapter::SaveHomingSection(const std::vector<HomingConfig>& confi
         WriteIniValue(section, "search_distance", FloatToString(config.search_distance));
         WriteIniValue(section, "escape_distance", FloatToString(config.escape_distance));
         WriteIniValue(section, "escape_velocity", FloatToString(config.escape_velocity));
+        WriteIniValue(section, "home_backoff_enabled", BoolToString(config.home_backoff_enabled));
 
         // 时间参数
         WriteIniValue(section, "timeout_ms", IntToString(config.timeout_ms));

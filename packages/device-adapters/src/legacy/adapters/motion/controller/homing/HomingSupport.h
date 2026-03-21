@@ -36,6 +36,9 @@ constexpr int kDefaultHomeSampleIntervalMs = 5;
 constexpr double kSearchDistanceMarginMm = 5.0;
 constexpr double kAbsoluteMinSearchDistanceMm = 10.0;
 constexpr double kSoftLimitMarginMm = 1.0;
+constexpr int kHomeReleaseConfirmPollIntervalMs = 10;
+constexpr int kHomeReleaseConfirmMinMs = 50;
+constexpr int kHomeReleaseConfirmMaxMs = 500;
 
 struct PreparedHomeParameters {
     TAxisHomePrm home_parameters{};
@@ -132,6 +135,40 @@ inline void MarkHomingSucceeded(std::array<bool, 4>& success_latch,
 }
 
 template <typename ReadHomeStateFn>
+bool WaitForHomeSwitchReleaseAfterHoming(int axis,
+                                         const HomingConfig& config,
+                                         ReadHomeStateFn&& read_home_input_state_raw) {
+    const int release_confirm_ms = std::clamp(
+        std::max(config.home_debounce_ms * 2, config.settle_time_ms),
+        kHomeReleaseConfirmMinMs,
+        kHomeReleaseConfirmMaxMs);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(release_confirm_ms);
+
+    while (true) {
+        auto home_state_result = read_home_input_state_raw(axis);
+        if (home_state_result.IsSuccess()) {
+            if (!home_state_result.Value().triggered) {
+                SILIGEN_LOG_INFO_FMT_HELPER(
+                    "Home switch released after homing confirmation window (axis=%d, wait_ms=%d)",
+                    axis,
+                    release_confirm_ms);
+                return true;
+            }
+        } else {
+            SILIGEN_LOG_WARNING(
+                "Failed to re-read home input state after homing: " + home_state_result.GetError().GetMessage());
+        }
+
+        if (std::chrono::steady_clock::now() >= deadline) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(kHomeReleaseConfirmPollIntervalMs));
+    }
+
+    return false;
+}
+
+template <typename ReadHomeStateFn>
 HomingTestStatus FinalizeSuccessfulHoming(int axis,
                                           const HomingConfig& config,
                                           std::array<bool, 4>& success_latch,
@@ -140,14 +177,23 @@ HomingTestStatus FinalizeSuccessfulHoming(int axis,
                                           std::array<HomingStage, 4>& stage_latch,
                                           std::array<bool, 4>& timer_active_latch,
                                           ReadHomeStateFn&& read_home_input_state_raw) {
-    if (config.enable_limit_switch && config.enable_escape && config.home_input_source == MC_HOME) {
+    if (config.home_backoff_enabled &&
+        config.enable_limit_switch &&
+        config.enable_escape &&
+        config.home_input_source == MC_HOME) {
         auto home_state_result = read_home_input_state_raw(axis);
         if (home_state_result.IsSuccess()) {
             if (home_state_result.Value().triggered) {
-                MarkHomingFailed(success_latch, failed_latch, active_latch, stage_latch, timer_active_latch, axis);
                 SILIGEN_LOG_WARNING_FMT_HELPER(
-                    "Homing completed but home switch still triggered (axis=%d)", axis);
-                return HomingTestStatus::Failed;
+                    "Homing completed but home switch still triggered on first check (axis=%d), waiting for release",
+                    axis);
+                if (!WaitForHomeSwitchReleaseAfterHoming(axis, config, read_home_input_state_raw)) {
+                    MarkHomingFailed(success_latch, failed_latch, active_latch, stage_latch, timer_active_latch, axis);
+                    SILIGEN_LOG_WARNING_FMT_HELPER(
+                        "Homing completed but home switch still triggered after confirmation window (axis=%d)",
+                        axis);
+                    return HomingTestStatus::Failed;
+                }
             }
         } else {
             SILIGEN_LOG_WARNING(
@@ -415,6 +461,12 @@ Result<PreparedHomeParameters> PrepareHomeParameters(int axis,
         to_pulse_ul_allow_zero(static_cast<double>(config.escape_distance), escape_distance_pulse);
     if (escape_result.IsError()) {
         return Result<PreparedHomeParameters>::Failure(escape_result.GetError());
+    }
+    if (!config.home_backoff_enabled) {
+        SILIGEN_LOG_WARNING_FMT_HELPER(
+            "Axis %d home_backoff_enabled=false, forcing board home backoff distance to 0",
+            axis);
+        escape_distance_pulse = 0;
     }
     home_parameters.ulHomeBackDis = escape_distance_pulse;
     home_parameters.nDelayTimeBeforeZero = static_cast<short>(config.settle_time_ms);

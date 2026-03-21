@@ -1,0 +1,22 @@
+{
+  "id": "24",
+  "version": "1.0",
+  "success": true,
+  "result": {
+    "job_id": "job-20260321-001",
+    "plan_id": "plan-8b2649f36dcb4a79",
+    "plan_fingerprint": "8b2649f36dcb4a79",
+    "state": "running",
+    "target_count": 2,
+    "completed_count": 0,
+    "current_cycle": 1,
+    "current_segment": 12,
+    "total_segments": 128,
+    "cycle_progress_percent": 10,
+    "overall_progress_percent": 5,
+    "elapsed_seconds": 1.2,
+    "error_message": "",
+    "active_task_id": "job-20260321-001",
+    "dry_run": true
+  }
+}

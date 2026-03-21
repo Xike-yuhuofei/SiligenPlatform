@@ -1,0 +1,18 @@
+{
+  "id": "22",
+  "version": "1.0",
+  "success": true,
+  "result": {
+    "plan_id": "plan-8b2649f36dcb4a79",
+    "plan_fingerprint": "8b2649f36dcb4a79",
+    "artifact_id": "artifact-20260321-001",
+    "segment_count": 128,
+    "point_count": 256,
+    "total_length_mm": 512.5,
+    "estimated_time_s": 41.0,
+    "generated_at": "2026-03-21T10:00:00Z",
+    "snapshot_id": "plan-8b2649f36dcb4a79",
+    "snapshot_hash": "8b2649f36dcb4a79",
+    "preview_request_signature": "{\"dispensing_speed_mm_s\":12.5}"
+  }
+}

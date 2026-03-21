@@ -28,6 +28,9 @@ class TcpMotionFacade {
         Shared::Types::LogicalAxisId axis) const;
     Shared::Types::Result<std::vector<Domain::Motion::Ports::MotionStatus>> GetAllAxesMotionStatus() const;
     Shared::Types::Result<Point2D> GetCurrentPosition() const;
+    Shared::Types::Result<Domain::Motion::Ports::CoordinateSystemStatus> GetCoordinateSystemStatus(int16 coord_sys) const;
+    Shared::Types::Result<uint32> GetInterpolationBufferSpace(int16 coord_sys) const;
+    Shared::Types::Result<uint32> GetLookAheadBufferSpace(int16 coord_sys) const;
     Shared::Types::Result<bool> ReadLimitStatus(Shared::Types::LogicalAxisId axis, bool positive) const;
     Shared::Types::Result<bool> ReadServoAlarmStatus(Shared::Types::LogicalAxisId axis) const;
 

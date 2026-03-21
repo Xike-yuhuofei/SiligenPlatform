@@ -20,11 +20,15 @@ set(TEST_SOURCES
     unit/domain/motion/MotionBufferControllerTest.cpp
     unit/recipes/RecipeCommandUseCaseTest.cpp
     unit/motion/HomeAxesUseCaseTest.cpp
+    unit/motion/HomingSupportTest.cpp
     unit/motion/MotionMonitoringUseCaseTest.cpp
     unit/motion/MotionSafetyUseCaseTest.cpp
     unit/system/InitializeSystemUseCaseTest.cpp
     unit/motion/MotionCoordinationUseCaseTest.cpp
     unit/dispensing/CleanupFilesUseCaseTest.cpp
+    unit/dispensing/DispensingWorkflowUseCaseTest.cpp
+    unit/dispensing/DispensingExecutionUseCaseProgressTest.cpp
+    unit/dispensing/DispensingProcessServiceWaitForMotionCompleteTest.cpp
 )
 
 set(OPTIONAL_TEST_SOURCES
@@ -62,9 +66,15 @@ endif()
 
 target_link_libraries(siligen_unit_tests PRIVATE
     siligen_process_runtime_core
+    domain_dispensing
     siligen_parsing_adapter
     siligen_types
     siligen_utils
+)
+
+target_include_directories(siligen_unit_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/packages/device-adapters/src
+    ${CMAKE_SOURCE_DIR}/packages/device-adapters/include
 )
 
 process_runtime_core_add_test_with_runtime_environment(

@@ -28,6 +28,16 @@ DXF 编辑问题处理：
 - 当前不再排查内建 editor app
 - 若问题涉及 DXF 文件编辑，按 `docs/runtime/external-dxf-editing.md` 处理人工流程
 
+现场 IO / 接线问题处理：
+
+- 若问题涉及急停、回零、限位、通用输入或控制卡端子定义，先看 `docs/machine-model/multicard-io-and-wiring-reference.md`
+- 当前机型现场基线：`X7=急停`、`HOME1/2=回零`、`LIM1+/2+` 与 `LIM1-/2-` 未接线、默认不存在安全门输入
+- 当前机型反馈基线：`[Hardware].axis1_encoder_enabled=false`、`axis2_encoder_enabled=false`；真机 `status` 与执行完成判定应基于 profile 反馈，不应依赖编码器接口
+- 当前机型回零基线：`[Homing_Axis1/2].home_backoff_enabled=false`、`retry_count=0`；若触发 HOME 后出现持续反向运动，先确认是否误恢复了板卡原生二次回退
+- 若 `io.estop=true` 但现场急停按钮已经物理复位，先核对 `[Interlock].emergency_stop_active_low` 与 X7 的实际电平语义是否一致；不要再按“安全门打开”方向排查。
+- 若运行态出现 `door=true` 或 `safety_door_input` 相关报错，先判定为输入组/位号/机型映射错误，不要先按“现场有门禁”排障
+- 若真机运动中 `coord.current_velocity>0` 但 `status.axes.X/Y.velocity=0`，先核对 `axisN_encoder_enabled` 是否错误地保持为 `true`
+
 ## 2. 常见失败点
 
 1. canonical control-apps build root 下缺少 exe，导致 `run.ps1 -DryRun` 直接失败。

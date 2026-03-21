@@ -58,6 +58,46 @@ Result<Shared::Types::HardwareConfiguration> ConfigFileAdapter::GetHardwareConfi
         out = result.Value();
         return Result<void>();
     };
+    auto read_optional_raw = [this](const std::string& sec, const std::string& key,
+                                    std::string& out, bool& found) -> Result<void> {
+        auto load_result = LoadIniCache();
+        if (load_result.IsError()) {
+            return Result<void>(load_result.GetError());
+        }
+
+        found = false;
+        const std::string section_key = StringManipulator::ToLower(sec);
+        const std::string key_name = StringManipulator::ToLower(key);
+        auto section_it = ini_cache_.find(section_key);
+        if (section_it == ini_cache_.end()) {
+            return Result<void>();
+        }
+        auto key_it = section_it->second.find(key_name);
+        if (key_it == section_it->second.end()) {
+            return Result<void>();
+        }
+        std::string raw = StringManipulator::Trim(key_it->second);
+        if (raw.empty()) {
+            return Result<void>();
+        }
+        out = raw;
+        found = true;
+        return Result<void>();
+    };
+    auto parse_bool = [](const std::string& sec, const std::string& key,
+                         const std::string& raw, bool& out) -> Result<void> {
+        const std::string value = StringManipulator::ToLower(raw);
+        if (value == "true" || value == "1" || value == "yes") {
+            out = true;
+            return Result<void>();
+        }
+        if (value == "false" || value == "0" || value == "no") {
+            out = false;
+            return Result<void>();
+        }
+        return Result<void>(Error(ErrorCode::CONFIG_PARSE_ERROR,
+                                  "配置项格式错误: [" + sec + "] " + key + "=" + raw));
+    };
 
     auto result = assign_float("Hardware", "pulse_per_mm", config.pulse_per_mm);
     if (result.IsError()) {
@@ -99,10 +139,39 @@ Result<Shared::Types::HardwareConfiguration> ConfigFileAdapter::GetHardwareConfi
     if (result.IsError()) {
         return Result<Shared::Types::HardwareConfiguration>(result.GetError());
     }
+    config.num_axes = Shared::Types::HardwareConfiguration::ClampAxisCount(
+        config.num_axes,
+        Shared::Types::HardwareConfiguration::kMaxAxes);
+
+    bool used_encoder_feedback_default = false;
+    for (int axis = 0; axis < Shared::Types::HardwareConfiguration::kMaxAxes; ++axis) {
+        const std::string key = "axis" + std::to_string(axis + 1) + "_encoder_enabled";
+        std::string raw;
+        bool found = false;
+        result = read_optional_raw("Hardware", key, raw, found);
+        if (result.IsError()) {
+            return Result<Shared::Types::HardwareConfiguration>(result.GetError());
+        }
+        if (found) {
+            result = parse_bool("Hardware", key, raw, config.encoder_enabled[static_cast<size_t>(axis)]);
+            if (result.IsError()) {
+                return Result<Shared::Types::HardwareConfiguration>(result.GetError());
+            }
+        } else if (axis < config.num_axes) {
+            config.encoder_enabled[static_cast<size_t>(axis)] = true;
+            used_encoder_feedback_default = true;
+        }
+    }
 
     // ✅ 添加加载成功日志
     SILIGEN_LOG_INFO("硬件配置加载成功: pulse_per_mm=" + std::to_string(config.pulse_per_mm) +
-                      ", max_velocity=" + std::to_string(config.max_velocity_mm_s) + " mm/s");
+                      ", max_velocity=" + std::to_string(config.max_velocity_mm_s) + " mm/s" +
+                      ", axis1_encoder_enabled=" + std::string(config.encoder_enabled[0] ? "true" : "false") +
+                      ", axis2_encoder_enabled=" + std::string(config.encoder_enabled[1] ? "true" : "false"));
+    if (used_encoder_feedback_default) {
+        SILIGEN_LOG_WARNING("Hardware 段缺少 axisN_encoder_enabled，回退为默认 true；"
+                            "无编码器机型必须显式配置 axis1_encoder_enabled/axis2_encoder_enabled=false");
+    }
 
     // 验证配置有效性
     auto validation_result = config.Validate();

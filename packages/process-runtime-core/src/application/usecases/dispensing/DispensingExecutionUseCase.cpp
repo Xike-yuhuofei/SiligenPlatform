@@ -182,6 +182,10 @@ class TaskTrackingObserver final : public Domain::Dispensing::Ports::IDispensing
         if (context_) {
             context_->executed_segments.store(executed_segments);
             context_->total_segments.store(total_segments);
+            context_->reported_executed_segments.store(executed_segments);
+            const auto progress_percent =
+                total_segments > 0 ? static_cast<uint32>((static_cast<std::uint64_t>(executed_segments) * 100ULL) / total_segments) : 0U;
+            context_->reported_progress_percent.store(progress_percent);
         }
     }
 
@@ -424,6 +428,11 @@ Result<DispensingMVPResult> DispensingExecutionUseCase::ExecuteInternal(
     if (context) {
         context->total_segments.store(result.total_segments);
         context->executed_segments.store(0);
+        context->reported_progress_percent.store(0);
+        context->reported_executed_segments.store(0);
+        const auto estimated_execution_ms = static_cast<uint32>(
+            std::max(0.0f, (plan.estimated_time_s > 0.0f ? plan.estimated_time_s : plan.motion_trajectory.total_time) * 1000.0f));
+        context->estimated_execution_ms.store(estimated_execution_ms);
         context->state.store(TaskState::RUNNING);
     }
 

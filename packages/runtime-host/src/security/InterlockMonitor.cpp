@@ -12,6 +12,7 @@ using Shared::Types::LogLevel;
 
 namespace {
 using DomainPriority = Siligen::Domain::Safety::ValueObjects::InterlockPriority;
+constexpr short kGeneralPurposeInputGroup = 4;  // MultiCard MC_GPI: X0~X15 通用输入
 
 InterlockPriority MapPriority(DomainPriority priority) noexcept {
     switch (priority) {
@@ -28,10 +29,13 @@ InterlockPriority MapPriority(DomainPriority priority) noexcept {
 }
 }  // namespace
 
-InterlockMonitor::InterlockMonitor(AuditLogger& audit_logger)
+InterlockMonitor::InterlockMonitor(
+    AuditLogger& audit_logger,
+    std::shared_ptr<Infrastructure::Hardware::IMultiCardWrapper> multicard)
     : running_(false),
       triggered_(false),
       audit_logger_(audit_logger),
+      multicard_(std::move(multicard)),
       last_self_test_(std::chrono::system_clock::now()) {}
 
 InterlockMonitor::~InterlockMonitor() {
@@ -158,23 +162,47 @@ bool InterlockMonitor::ReadSensorStates() {
     std::lock_guard<std::mutex> lock(state_mutex_);
     state_.last_update = std::chrono::system_clock::now();
 
-    // 读取急停状态 - X1引脚作为急停输入 (MC_GetDiRaw, diType=0)
-    long diValue = 0;
+    if (!multicard_) {
+        SecurityLogHelper::Log(LogLevel::ERR, "InterlockMonitor", "MultiCardWrapper 未注入，无法读取互锁输入");
+        state_.emergency_stop_triggered = true;
+        state_.safety_door_open = false;
+        state_.pressure_abnormal = false;
+        state_.temperature_abnormal = false;
+        state_.voltage_abnormal = false;
+        state_.servo_alarm = false;
+        return false;
+    }
 
-    // 使用默认卡句柄0读取DI状态
-    short ret = MC_GetDiRaw(0, 0, &diValue);
+    // 读取通用数字输入组(X0~X15)；急停极性由配置决定，安全门默认按高电平表示打开处理。
+    long diValue = 0;
+    const int ret = multicard_->MC_GetDiRaw(kGeneralPurposeInputGroup, &diValue);
     if (ret == 0) {
-        // X1引脚对应DI bit 0，低电平有效（急停按钮按下时为0）
-        state_.emergency_stop_triggered = (diValue & 0x01) == 0;
-        SecurityLogHelper::Log(LogLevel::INFO, "InterlockMonitor", "急停状态读取: " + std::string(state_.emergency_stop_triggered ? "触发" : "正常"));
+        const auto emergency_input = config_.emergency_stop_input >= 0 ? config_.emergency_stop_input : 0;
+        const long emergency_mask = (1L << emergency_input);
+        const bool emergency_raw_high = (diValue & emergency_mask) != 0;
+        state_.emergency_stop_triggered =
+            config_.emergency_stop_active_low ? !emergency_raw_high : emergency_raw_high;
+
+        if (config_.safety_door_input >= 0 && config_.safety_door_input < static_cast<int16>(sizeof(long) * 8)) {
+            const long safety_door_mask = (1L << config_.safety_door_input);
+            state_.safety_door_open = (diValue & safety_door_mask) != 0;
+        } else {
+            state_.safety_door_open = false;
+        }
+
+        SecurityLogHelper::Log(
+            LogLevel::INFO,
+            "InterlockMonitor",
+            "互锁状态读取: estop=" + std::string(state_.emergency_stop_triggered ? "触发" : "正常") +
+                ", door=" + std::string(state_.safety_door_open ? "打开" : "关闭"));
     } else {
         SecurityLogHelper::Log(LogLevel::ERR, "InterlockMonitor", "急停状态读取失败，错误码: " + std::to_string(ret));
         // 读取失败时保守处理，假设急停已触发
         state_.emergency_stop_triggered = true;
+        state_.safety_door_open = false;
     }
 
     // 其他传感器暂时保持默认值（待硬件连接）
-    state_.safety_door_open = false;
     state_.pressure_abnormal = false;
     state_.temperature_abnormal = false;
     state_.voltage_abnormal = false;

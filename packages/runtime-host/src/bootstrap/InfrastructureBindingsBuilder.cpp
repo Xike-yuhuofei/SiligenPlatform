@@ -20,11 +20,14 @@
 #include "legacy/adapters/motion/controller/runtime/MotionRuntimeFacade.h"
 #include "siligen/device/adapters/drivers/multicard/IMultiCardWrapper.h"
 #include "runtime/configuration/ConfigFileAdapter.h"
+#include "runtime/configuration/InterlockConfigResolver.h"
 #include "runtime/diagnostics/DiagnosticsPortAdapter.h"
 #include "domain/motion/domain-services/SevenSegmentSCurveProfile.h"
 #include "runtime/storage/files/LocalFileStorageAdapter.h"
 #include "runtime/events/InMemoryEventPublisherAdapter.h"
 #include "runtime/scheduling/TaskSchedulerAdapter.h"
+#include "security/AuditLogger.h"
+#include "security/InterlockMonitor.h"
 #include "infrastructure/adapters/planning/dxf/AutoPathSourceAdapter.h"
 #include "infrastructure/adapters/planning/dxf/DXFAdapterFactory.h"
 #include "infrastructure/adapters/planning/dxf/PbPathSourceAdapter.h"
@@ -55,6 +58,36 @@
 #endif
 
 namespace {
+
+class RuntimeInterlockSignalPort final : public Siligen::Domain::Safety::Ports::IInterlockSignalPort {
+   public:
+    RuntimeInterlockSignalPort(
+        const std::string& audit_log_dir,
+        std::shared_ptr<Siligen::Infrastructure::Hardware::IMultiCardWrapper> multicard)
+        : audit_logger_(audit_log_dir),
+          monitor_(audit_logger_, std::move(multicard)) {}
+
+    ~RuntimeInterlockSignalPort() override {
+        monitor_.Stop();
+    }
+
+    bool Initialize(const Siligen::InterlockConfig& config) {
+        if (!monitor_.Initialize(config)) {
+            return false;
+        }
+        monitor_.Start();
+        return true;
+    }
+
+    Siligen::Shared::Types::Result<Siligen::Domain::Safety::ValueObjects::InterlockSignals> ReadSignals()
+        const noexcept override {
+        return monitor_.ReadSignals();
+    }
+
+   private:
+    Siligen::AuditLogger audit_logger_;
+    Siligen::InterlockMonitor monitor_;
+};
 
 std::string NormalizeRelativePath(std::string value) {
     std::replace(value.begin(), value.end(), '\\', '/');
@@ -377,6 +410,20 @@ InfrastructureBindings CreateInfrastructureBindings(const InfrastructureBootstra
     BuildMotionRuntimeBindings(bindings, multi_card, hw_config, diagnostics_config, homing_configs);
 
     bindings.event_port = std::make_shared<Infrastructure::Adapters::InMemoryEventPublisherAdapter>(100);
+
+    const auto interlock_resolution =
+        Siligen::Infrastructure::Configuration::ResolveInterlockConfigFromIni(resolved_config_path);
+    for (const auto& warning : interlock_resolution.warnings) {
+        SILIGEN_LOG_WARNING("Interlock config: " + warning + " [config=" + resolved_config_path + "]");
+    }
+    auto interlock_port = std::make_shared<RuntimeInterlockSignalPort>(
+        ResolveWorkspaceRelativePath("logs/audit"),
+        multi_card);
+    if (!interlock_port->Initialize(interlock_resolution.config)) {
+        SILIGEN_LOG_WARNING("Failed to initialize interlock monitor; runtime interlock checks disabled");
+    } else {
+        bindings.interlock_signal_port = interlock_port;
+    }
 
     bindings.path_source_port = std::make_shared<Infrastructure::Adapters::Parsing::PbPathSourceAdapter>();
     

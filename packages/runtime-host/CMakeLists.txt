@@ -89,6 +89,7 @@ add_library(siligen_control_runtime_config STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/configuration/ConfigFileAdapter.Ini.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/configuration/ConfigFileAdapter.Sections.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/configuration/ConfigFileAdapter.System.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/configuration/InterlockConfigResolver.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/configuration/validators/ConfigValidator.cpp
 )
 add_library(siligen_configs ALIAS siligen_control_runtime_config)

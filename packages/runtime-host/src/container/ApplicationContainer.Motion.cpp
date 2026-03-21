@@ -169,7 +169,8 @@ ApplicationContainer::CreateInstance<UseCases::Motion::Monitoring::MotionMonitor
     return std::make_shared<UseCases::Motion::Monitoring::MotionMonitoringUseCase>(
         motion_state_port,
         io_control_port,
-        homing_port);
+        homing_port,
+        interpolation_port_);
 }
 
 template<>

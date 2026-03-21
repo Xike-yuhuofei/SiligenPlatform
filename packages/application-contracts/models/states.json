@@ -21,8 +21,14 @@
         "limit_x_neg": { "type": "boolean" },
         "limit_y_pos": { "type": "boolean" },
         "limit_y_neg": { "type": "boolean" },
-        "estop": { "type": "boolean" },
-        "door": { "type": "boolean" }
+        "estop": {
+          "type": "boolean",
+          "description": "后端权威急停信号；优先来自运行时互锁端口，端口不可用时回退到运动状态机中的 ESTOP 状态。"
+        },
+        "door": {
+          "type": "boolean",
+          "description": "后端权威安全门信号；来自运行时互锁端口。"
+        }
       },
       "additionalProperties": false
     },
@@ -55,6 +61,111 @@
           "additionalProperties": false
         },
         "alarms": { "type": "array" }
+      },
+      "additionalProperties": false
+    },
+    "motionCoordAxisDiagnostics": {
+      "type": "object",
+      "required": [
+        "position",
+        "velocity",
+        "state",
+        "enabled",
+        "homed",
+        "in_position",
+        "has_error",
+        "error_code",
+        "servo_alarm",
+        "following_error",
+        "hard_limit_positive",
+        "hard_limit_negative",
+        "soft_limit_positive",
+        "soft_limit_negative",
+        "home_signal",
+        "index_signal",
+        "selected_feedback_source",
+        "prf_position_mm",
+        "enc_position_mm",
+        "prf_velocity_mm_s",
+        "enc_velocity_mm_s",
+        "prf_position_ret",
+        "enc_position_ret",
+        "prf_velocity_ret",
+        "enc_velocity_ret"
+      ],
+      "properties": {
+        "position": { "type": "number" },
+        "velocity": { "type": "number" },
+        "state": { "type": "integer" },
+        "enabled": { "type": "boolean" },
+        "homed": { "type": "boolean" },
+        "in_position": { "type": "boolean" },
+        "has_error": { "type": "boolean" },
+        "error_code": { "type": "integer" },
+        "servo_alarm": { "type": "boolean" },
+        "following_error": { "type": "boolean" },
+        "hard_limit_positive": { "type": "boolean" },
+        "hard_limit_negative": { "type": "boolean" },
+        "soft_limit_positive": { "type": "boolean" },
+        "soft_limit_negative": { "type": "boolean" },
+        "home_signal": { "type": "boolean" },
+        "index_signal": { "type": "boolean" },
+        "selected_feedback_source": {
+          "type": "string",
+          "enum": ["encoder", "profile"]
+        },
+        "prf_position_mm": { "type": "number" },
+        "enc_position_mm": { "type": "number" },
+        "prf_velocity_mm_s": { "type": "number" },
+        "enc_velocity_mm_s": { "type": "number" },
+        "prf_position_ret": { "type": "integer" },
+        "enc_position_ret": { "type": "integer" },
+        "prf_velocity_ret": { "type": "integer" },
+        "enc_velocity_ret": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "motionCoordStatus": {
+      "type": "object",
+      "required": [
+        "coord_sys",
+        "state",
+        "is_moving",
+        "remaining_segments",
+        "current_velocity",
+        "raw_status_word",
+        "raw_segment",
+        "mc_status_ret"
+      ],
+      "properties": {
+        "coord_sys": { "type": "integer" },
+        "state": { "type": "integer" },
+        "is_moving": { "type": "boolean" },
+        "remaining_segments": { "type": "integer", "minimum": 0 },
+        "current_velocity": { "type": "number" },
+        "raw_status_word": { "type": "integer" },
+        "raw_segment": { "type": "integer" },
+        "mc_status_ret": { "type": "integer" },
+        "buffer_space": { "type": "integer", "minimum": 0 },
+        "lookahead_space": { "type": "integer", "minimum": 0 },
+        "position": {
+          "type": "object",
+          "required": ["x", "y"],
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" }
+          },
+          "additionalProperties": false
+        },
+        "axes": {
+          "type": "object",
+          "required": ["X", "Y"],
+          "properties": {
+            "X": { "$ref": "#/definitions/motionCoordAxisDiagnostics" },
+            "Y": { "$ref": "#/definitions/motionCoordAxisDiagnostics" }
+          },
+          "additionalProperties": false
+        }
       },
       "additionalProperties": false
     },
@@ -91,6 +202,28 @@
           "enum": ["idle", "pending", "running", "paused", "completed", "failed", "cancelled", "unknown"]
         },
         "error_message": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "dxfJobStatus": {
+      "type": "object",
+      "required": ["job_id", "plan_id", "plan_fingerprint", "state", "target_count", "completed_count", "current_cycle", "current_segment", "total_segments", "cycle_progress_percent", "overall_progress_percent", "elapsed_seconds", "error_message", "active_task_id", "dry_run"],
+      "properties": {
+        "job_id": { "type": "string" },
+        "plan_id": { "type": "string" },
+        "plan_fingerprint": { "type": "string" },
+        "state": { "type": "string" },
+        "target_count": { "type": "integer" },
+        "completed_count": { "type": "integer" },
+        "current_cycle": { "type": "integer" },
+        "current_segment": { "type": "integer" },
+        "total_segments": { "type": "integer" },
+        "cycle_progress_percent": { "type": "integer" },
+        "overall_progress_percent": { "type": "integer" },
+        "elapsed_seconds": { "type": "number" },
+        "error_message": { "type": "string" },
+        "active_task_id": { "type": "string" },
+        "dry_run": { "type": "boolean" }
       },
       "additionalProperties": false
     },

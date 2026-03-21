@@ -13,6 +13,7 @@
 #include "../internal/UnitConverter.h"
 
 #include <array>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -164,6 +165,17 @@ class MultiCardMotionAdapter : public Siligen::Domain::Motion::Ports::IMotionCon
         short card_index = 0;
         bool configured = false;
     };
+    struct AxisFeedbackSnapshot {
+        float profile_position_mm = 0.0f;
+        float encoder_position_mm = 0.0f;
+        float profile_velocity_mm_s = 0.0f;
+        float encoder_velocity_mm_s = 0.0f;
+        int profile_position_ret = 0;
+        int encoder_position_ret = 0;
+        int profile_velocity_ret = 0;
+        int encoder_velocity_ret = 0;
+        bool encoder_enabled = true;
+    };
     std::array<LimitConfig, 4> limit_configs_{};
 
     // 默认配置
@@ -189,6 +201,15 @@ class MultiCardMotionAdapter : public Siligen::Domain::Motion::Ports::IMotionCon
     std::string FormatErrorMessage(const std::string& operation, short axis, short error_code) const;
     Result<bool> IsLimitTriggeredRaw(short axis, bool positive) const;
     Result<std::array<bool, kAxisCount>> ReadHomeLimitState() const;
+    bool IsEncoderFeedbackEnabled(short axis) const noexcept;
+    AxisFeedbackSnapshot ReadAxisFeedbackSnapshot(short axis, short sdk_axis) const noexcept;
+    Result<float32> ResolveAxisPositionFromSnapshot(short axis,
+                                                    const AxisFeedbackSnapshot& snapshot,
+                                                    const std::string& operation) const;
+    Result<float32> ResolveAxisVelocityFromSnapshot(short axis,
+                                                    const AxisFeedbackSnapshot& snapshot,
+                                                    const std::string& operation) const;
+    std::string DescribeSelectedFeedbackSource(short axis) const;
 
     // 诊断辅助
     void LogAxisSnapshot(const std::string& tag, short axis, short sdk_axis) const;
