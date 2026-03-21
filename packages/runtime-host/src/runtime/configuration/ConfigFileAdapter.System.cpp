@@ -6,6 +6,8 @@
 #include "shared/interfaces/ILoggingService.h"
 #include "siligen/shared/strings/string_manipulator.h"
 
+#include <vector>
+
 namespace Siligen::Infrastructure::Adapters {
 
 using namespace Domain::Configuration::Ports;
@@ -13,6 +15,17 @@ using namespace Shared::Types;
 
 namespace {
 using StringManipulator = Siligen::SharedKernel::StringManipulator;
+
+std::string JoinKeys(const std::vector<std::string>& keys) {
+    std::string joined;
+    for (size_t i = 0; i < keys.size(); ++i) {
+        if (i > 0) {
+            joined += ", ";
+        }
+        joined += keys[i];
+    }
+    return joined;
+}
 }
 
 // === 硬件模式配置 ===
@@ -264,6 +277,26 @@ Result<void> ConfigFileAdapter::LoadDispenserValveSection(Shared::Types::Dispens
                                       "配置项格式错误: [" + sec + "] " + key + "=" + raw));
         }
     };
+    auto has_nonempty_key = [this](const std::string& sec, const std::string& key, bool& found) -> Result<void> {
+        auto load_result = LoadIniCache();
+        if (load_result.IsError()) {
+            return Result<void>(load_result.GetError());
+        }
+
+        found = false;
+        const std::string section_key = StringManipulator::ToLower(sec);
+        const std::string key_name = StringManipulator::ToLower(key);
+        auto section_it = ini_cache_.find(section_key);
+        if (section_it == ini_cache_.end()) {
+            return Result<void>();
+        }
+        auto key_it = section_it->second.find(key_name);
+        if (key_it == section_it->second.end()) {
+            return Result<void>();
+        }
+        found = !StringManipulator::Trim(key_it->second).empty();
+        return Result<void>();
+    };
 
     auto result = assign_int("ValveDispenser", "cmp_channel", config.cmp_channel);
     if (result.IsError()) return result;
@@ -274,10 +307,6 @@ Result<void> ConfigFileAdapter::LoadDispenserValveSection(Shared::Types::Dispens
     bool cmp_axis_mask_found = false;
     result = read_optional_int("ValveDispenser", "cmp_axis_mask", config.cmp_axis_mask, cmp_axis_mask_found);
     if (result.IsError()) return result;
-    if (!cmp_axis_mask_found) {
-        result = read_optional_int("CMP", "cmp_axis_mask", config.cmp_axis_mask, cmp_axis_mask_found);
-        if (result.IsError()) return result;
-    }
     result = assign_int("ValveDispenser", "min_count", config.min_count);
     if (result.IsError()) return result;
     result = assign_int("ValveDispenser", "max_count", config.max_count);
@@ -290,6 +319,39 @@ Result<void> ConfigFileAdapter::LoadDispenserValveSection(Shared::Types::Dispens
     if (result.IsError()) return result;
     result = assign_int("ValveDispenser", "max_duration_ms", config.max_duration_ms);
     if (result.IsError()) return result;
+
+    std::vector<std::string> ignored_legacy_cmp_keys;
+    for (const char* key : {"cmp_channel",
+                            "signal_type",
+                            "trigger_mode",
+                            "pulse_width_us",
+                            "delay_time_us",
+                            "encoder_num",
+                            "abs_position_flag",
+                            "cmp_axis_mask",
+                            "trigger_method",
+                            "timing_precision_ms",
+                            "enable_trigger_log",
+                            "enable_compensation",
+                            "trigger_position_tolerance",
+                            "expected_accuracy_mm"}) {
+        bool found = false;
+        result = has_nonempty_key("CMP", key, found);
+        if (result.IsError()) return result;
+        if (found) {
+            ignored_legacy_cmp_keys.emplace_back(key);
+        }
+    }
+
+    if (!ignored_legacy_cmp_keys.empty()) {
+        SILIGEN_LOG_WARNING("检测到遗留 [CMP] 字段: " + JoinKeys(ignored_legacy_cmp_keys) +
+                            "。当前 DXF 真机点胶主链以 [ValveDispenser] 为权威来源，上述字段不会改变当前主链运行时行为。");
+    }
+    if (!cmp_axis_mask_found) {
+        SILIGEN_LOG_WARNING("ValveDispenser 段缺少 cmp_axis_mask，当前回退为 DispenserValveConfig 默认值 " +
+                            std::to_string(config.cmp_axis_mask) +
+                            "。建议显式配置 [ValveDispenser].cmp_axis_mask，停止依赖任何遗留默认口径。");
+    }
 
     SILIGEN_LOG_INFO("点胶阀配置: CMP channel=" + std::to_string(config.cmp_channel) +
                      ", pulse_type=" + std::to_string(config.pulse_type) +

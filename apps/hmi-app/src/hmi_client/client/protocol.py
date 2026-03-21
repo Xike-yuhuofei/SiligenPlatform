@@ -12,6 +12,7 @@ class AxisStatus:
     velocity: float = 0.0
     enabled: bool = False
     homed: bool = False
+    homing_state: str = "unknown"
 
 
 @dataclass
@@ -22,13 +23,20 @@ class IOStatus:
     limit_y_pos: bool = False
     limit_y_neg: bool = False
     estop: bool = False
+    estop_known: bool = False
     door: bool = False
+    door_known: bool = False
 
 
 @dataclass
 class MachineStatus:
     connected: bool = False
+    connection_state: str = "disconnected"
     machine_state: str = "Unknown"
+    machine_state_reason: str = "unknown"
+    interlock_latched: bool = False
+    active_job_id: str = ""
+    active_job_state: str = ""
     axes: Dict[str, AxisStatus] = field(default_factory=dict)
     io: IOStatus = field(default_factory=IOStatus)
     dispenser_valve_open: bool = False
@@ -93,12 +101,21 @@ class CommandProtocol:
             limit_y_pos=io_data.get("limit_y_pos", False),
             limit_y_neg=io_data.get("limit_y_neg", False),
             estop=io_data.get("estop", False),
+            estop_known=io_data.get("estop_known", False),
             door=io_data.get("door", False),
+            door_known=io_data.get("door_known", False),
         )
 
         status = MachineStatus(
             connected=result.get("connected", False),
+            connection_state=result.get(
+                "connection_state", "connected" if result.get("connected", False) else "disconnected"
+            ),
             machine_state=result.get("machine_state", "Unknown"),
+            machine_state_reason=result.get("machine_state_reason", "unknown"),
+            interlock_latched=result.get("interlock_latched", False),
+            active_job_id=str(result.get("active_job_id", "")),
+            active_job_state=str(result.get("active_job_state", "")),
             io=io_status,
             dispenser_valve_open=result.get("dispenser", {}).get("valve_open", False),
             supply_valve_open=result.get("dispenser", {}).get("supply_open", False),
@@ -109,6 +126,7 @@ class CommandProtocol:
                 velocity=data.get("velocity", 0.0),
                 enabled=data.get("enabled", False),
                 homed=data.get("homed", False),
+                homing_state=str(data.get("homing_state", "unknown")),
             )
         return status
 
@@ -235,18 +253,20 @@ class CommandProtocol:
 
     def dxf_preview_snapshot(
         self,
-        speed_mm_s: float,
-        dry_run: bool = False,
-        dry_run_speed_mm_s: float = 0.0,
+        plan_id: str,
+        max_polyline_points: int = 4000,
     ) -> tuple:
-        params = self._build_dxf_execute_params(
-            dispensing_speed_mm_s=speed_mm_s,
-            dry_run=dry_run,
-            dry_run_speed_mm_s=dry_run_speed_mm_s,
-            velocity_trace_enabled=False,
-        )
-        params.pop("snapshot_hash", None)
+        params = {"plan_id": plan_id}
+        if max_polyline_points > 0:
+            params["max_polyline_points"] = int(max_polyline_points)
         resp = self._client.send_request("dxf.preview.snapshot", params, timeout=15.0)
+        if "error" in resp:
+            return False, {}, resp["error"].get("message", "Unknown error")
+        return True, resp.get("result", {}), ""
+
+    def dxf_preview_confirm(self, plan_id: str, snapshot_hash: str) -> tuple:
+        params = {"plan_id": plan_id, "snapshot_hash": snapshot_hash}
+        resp = self._client.send_request("dxf.preview.confirm", params, timeout=15.0)
         if "error" in resp:
             return False, {}, resp["error"].get("message", "Unknown error")
         return True, resp.get("result", {}), ""

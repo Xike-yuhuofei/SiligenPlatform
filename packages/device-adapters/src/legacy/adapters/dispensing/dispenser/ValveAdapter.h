@@ -122,20 +122,20 @@
          * @brief 调用MultiCard MC_CmpBufData 加载位置触发缓冲区
          *
          * 注意：CMP 输出通道需要在调用前通过 MC_CmpBufSetChannel 设置。
-         * 此函数的第一个参数是编码器/轴号（位置比较源），不是输出通道。
+         * 此函数的第一个参数是位置比较源轴号（SDK 1-based），不是输出通道。
          *
-         * @param encoder_axis 编码器/轴号（1-16），用于位置比较源
+         * @param compare_source_axis 位置比较源轴号（1-16），用于 MC_CmpBufData 的 nCmpEncodeNum
          * @param positions 位置数组（脉冲单位）
          * @param pulse_width_ms 脉冲宽度（毫秒）
          * @param start_level 起始电平（0=低，1=高）
          * @return 调用结果（0=成功）
          */
-        int CallMC_CmpBufData(short encoder_axis,
+        int CallMC_CmpBufData(short compare_source_axis,
                               const std::vector<long>& positions,
                               uint32 pulse_width_ms,
                               short start_level);
 
-        int CallMC_CmpBufDataBuffers(short encoder_axis,
+        int CallMC_CmpBufDataBuffers(short compare_source_axis,
                                      const std::vector<long>* buffer1,
                                      const std::vector<long>* buffer2,
                                      uint32 pulse_width_ms,
@@ -209,7 +209,7 @@
         std::vector<long> cmp_stream_positions_;
         size_t cmp_stream_next_chunk_ = 0;
         size_t cmp_stream_total_chunks_ = 0;
-        short cmp_stream_encoder_axis_ = 0;
+        short cmp_stream_compare_source_axis_ = 0;
         uint32 cmp_stream_pulse_width_ms_ = 0;
         short cmp_stream_start_level_ = 0;
 

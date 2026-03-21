@@ -14,3 +14,5 @@
 - `HOME1` / `HOME2` 为回零输入。
 - `LIM1+/2+`、`LIM1-/2-` 未接线。
 - 当前机型未定义“安全门/门禁”输入；若软件出现 `door` / `safety_door_input`，应优先视为映射错误，而不是现场真的存在门禁。
+- 当前机型 DXF 真机点胶主链以 `[ValveDispenser]` 为权威来源；`[CMP]` 段中的 `cmp_channel`、`signal_type`、`trigger_mode`、`pulse_width_us`、`delay_time_us`、`encoder_num`、`abs_position_flag` 及软件触发相关字段仅作兼容/历史保留。
+- 当前机型已显式使用 `[ValveDispenser].cmp_axis_mask=3`；`[CMP].cmp_axis_mask` 不再进入 DXF 真机点胶主链。

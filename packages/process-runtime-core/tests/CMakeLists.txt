@@ -35,6 +35,7 @@ set(OPTIONAL_TEST_SOURCES
     unit/domain/diagnostics/ProcessResultServiceTest.cpp
     unit/domain/dispensing/TriggerPlannerTest.cpp
     unit/domain/dispensing/ClosedLoopSkeletonTest.cpp
+    unit/domain/dispensing/ValveCoordinationServiceTest.cpp
     unit/domain/trajectory/MotionPlannerTest.cpp
     unit/domain/trajectory/MotionPlannerConstraintTest.cpp
     unit/domain/trajectory/InterpolationProgramPlannerTest.cpp

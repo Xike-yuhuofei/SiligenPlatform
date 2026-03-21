@@ -11,11 +11,14 @@ using Siligen::Domain::System::Redundancy::CandidatePriority;
 using Siligen::Domain::System::Redundancy::CandidateRecord;
 using Siligen::Domain::System::Redundancy::CandidateStatus;
 using Siligen::Domain::System::Redundancy::CodeEntity;
+using Siligen::Domain::System::Redundancy::DecisionAction;
+using Siligen::Domain::System::Redundancy::DecisionLogRecord;
 using Siligen::Domain::System::Redundancy::EntityType;
 using Siligen::Domain::System::Redundancy::Ports::CandidateQueryFilter;
 using Siligen::Domain::System::Redundancy::Ports::CandidateTransitionRequest;
 using Siligen::Domain::System::Redundancy::SourceLanguage;
 using Siligen::Infrastructure::Adapters::Redundancy::JsonRedundancyRepositoryAdapter;
+using Siligen::Shared::Types::ErrorCode;
 
 std::filesystem::path BuildTempDir() {
     return std::filesystem::temp_directory_path() / "siligen_redundancy_repo_test";
@@ -43,6 +46,19 @@ CandidateRecord BuildCandidate() {
     record.policy_version = "v1";
     record.snapshot_id = "snap_repo";
     record.computed_at = "2026-03-21T00:00:00Z";
+    return record;
+}
+
+DecisionLogRecord BuildDecisionLogRecord() {
+    DecisionLogRecord record;
+    record.decision_id = "decision_repo";
+    record.candidate_id = "cand_repo";
+    record.action = DecisionAction::Approve;
+    record.actor = "tester";
+    record.reason = "approve";
+    record.evidence_snapshot_json = "{ \"confidence\": 1 }";
+    record.ticket = "NOISSUE";
+    record.created_at = "2026-03-21T02:00:00Z";
     return record;
 }
 
@@ -98,4 +114,52 @@ TEST(JsonRedundancyRepositoryAdapterTest, TransitionCandidateStatusRequiresMatch
     ASSERT_TRUE(invalid_result.IsError());
 
     std::filesystem::remove_all(temp_dir);
+}
+
+TEST(JsonRedundancyRepositoryAdapterTest, AppendDecisionLogTreatsSamePayloadAsIdempotentSuccess) {
+    const auto temp_dir = BuildTempDir();
+    std::filesystem::remove_all(temp_dir);
+    JsonRedundancyRepositoryAdapter adapter(temp_dir);
+
+    auto first = adapter.AppendDecisionLog(BuildDecisionLogRecord());
+    ASSERT_TRUE(first.IsSuccess()) << first.GetError().ToString();
+    EXPECT_EQ(first.Value().received, 1U);
+    EXPECT_EQ(first.Value().upserted, 1U);
+
+    auto second = adapter.AppendDecisionLog(BuildDecisionLogRecord());
+    ASSERT_TRUE(second.IsSuccess()) << second.GetError().ToString();
+    EXPECT_EQ(second.Value().received, 1U);
+    EXPECT_EQ(second.Value().upserted, 0U);
+}
+
+TEST(JsonRedundancyRepositoryAdapterTest, AppendDecisionLogRejectsDifferentPayloadWithSameDecisionId) {
+    const auto temp_dir = BuildTempDir();
+    std::filesystem::remove_all(temp_dir);
+    JsonRedundancyRepositoryAdapter adapter(temp_dir);
+
+    auto record = BuildDecisionLogRecord();
+    auto first = adapter.AppendDecisionLog(record);
+    ASSERT_TRUE(first.IsSuccess()) << first.GetError().ToString();
+
+    record.reason = "changed_reason";
+    auto conflict = adapter.AppendDecisionLog(record);
+    ASSERT_TRUE(conflict.IsError());
+    EXPECT_EQ(conflict.GetError().GetCode(), ErrorCode::DUPLICATE_DECISION_ID);
+}
+
+TEST(JsonRedundancyRepositoryAdapterTest, ListCandidatesRejectsInvalidPriorityFilter) {
+    const auto temp_dir = BuildTempDir();
+    std::filesystem::remove_all(temp_dir);
+    JsonRedundancyRepositoryAdapter adapter(temp_dir);
+
+    ASSERT_TRUE(adapter.UpsertEntities({BuildEntity()}).IsSuccess());
+    ASSERT_TRUE(adapter.UpsertCandidates({BuildCandidate()}).IsSuccess());
+
+    CandidateQueryFilter filter;
+    filter.priority = std::string("P9");
+    auto list_result = adapter.ListCandidates(filter);
+
+    ASSERT_TRUE(list_result.IsError());
+    EXPECT_EQ(list_result.GetError().GetCode(), ErrorCode::INVALID_PARAMETER);
+    EXPECT_NE(list_result.GetError().GetMessage().find("failure_stage=list_candidates_filter"), std::string::npos);
 }

@@ -55,3 +55,5 @@
 - `--preview-max-points` 已迁移到 `dxf-preview` 命令；在 `dxf-plan/dxf-dispense/dxf-augment` 中仅告警且不生效
 - `dxf-preview` 通过参数化进程调用 `engineering-data` 预览脚本，不再通过 shell 拼接命令执行
 - 预览 Python 解释器环境变量优先级：`SILIGEN_ENGINEERING_DATA_PYTHON` > `SILIGEN_DXF_PREVIEW_PYTHON`（后者保留兼容但已弃用）
+- DXF 真机点胶主链的 CMP 运行时配置入口是 `config/machine/machine_config.ini` 的 `[ValveDispenser]` 段；CLI 不再暴露 `--cmp-channel` 这类会造成主链配置错觉的残留参数
+- CLI 已移除一组“可解析但无消费点”的死参数：`--verbose`、`--disable-safety-checks`、`--no-auto-enable`、`--show-status`、`--dispensing-time`、`--pulse-width`、`--segments`

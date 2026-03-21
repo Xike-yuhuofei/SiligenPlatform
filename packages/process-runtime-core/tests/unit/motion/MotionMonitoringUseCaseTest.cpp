@@ -2,6 +2,10 @@
 
 #include "gtest/gtest.h"
 
+#include <atomic>
+#include <chrono>
+#include <thread>
+
 namespace {
 
 using Siligen::Application::UseCases::Motion::Monitoring::MotionMonitoringUseCase;
@@ -25,6 +29,7 @@ using Siligen::Shared::Types::float32;
 using Siligen::Shared::Types::int16;
 using Siligen::Shared::Types::int32;
 using Siligen::Shared::Types::uint32;
+using Siligen::Shared::Types::ErrorCode;
 
 class FakeMotionStatePort final : public IMotionStatePort {
    public:
@@ -129,7 +134,18 @@ class FakeInterpolationPort final : public IInterpolationPort {
     uint32 lookahead_space = 0;
 };
 
-TEST(MotionMonitoringUseCaseTest, OverlaysHomingStateOntoRuntimeStatus) {
+bool WaitUntil(const std::function<bool()>& predicate, std::chrono::milliseconds timeout) {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (predicate()) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return predicate();
+}
+
+TEST(MotionMonitoringUseCaseTest, ExposesHomingStateWithoutOverridingRuntimeState) {
     auto state_port = std::make_shared<FakeMotionStatePort>();
     auto io_port = std::make_shared<FakeIOControlPort>();
     auto homing_port = std::make_shared<FakeHomingPort>();
@@ -141,7 +157,8 @@ TEST(MotionMonitoringUseCaseTest, OverlaysHomingStateOntoRuntimeStatus) {
     auto result = use_case.GetAxisMotionStatus(LogicalAxisId::X);
 
     ASSERT_TRUE(result.IsSuccess());
-    EXPECT_EQ(result.Value().state, MotionState::HOMED);
+    EXPECT_EQ(result.Value().state, MotionState::IDLE);
+    EXPECT_EQ(result.Value().homing_state, "homed");
 }
 
 TEST(MotionMonitoringUseCaseTest, ReadsLimitStatusThroughUnifiedIoPort) {
@@ -188,6 +205,121 @@ TEST(MotionMonitoringUseCaseTest, ExposesCoordinateSystemDiagnosticsWhenInterpol
     EXPECT_EQ(buffer_result.Value(), 42U);
     ASSERT_TRUE(lookahead_result.IsSuccess());
     EXPECT_EQ(lookahead_result.Value(), 3U);
+}
+
+TEST(MotionMonitoringUseCaseTest, StatusUpdateLoopProducesCallbacksAndStopsCleanly) {
+    auto state_port = std::make_shared<FakeMotionStatePort>();
+    auto io_port = std::make_shared<FakeIOControlPort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    state_port->status.state = MotionState::MOVING;
+
+    MotionMonitoringUseCase use_case(state_port, io_port, homing_port);
+
+    std::atomic<int> motion_callback_count{0};
+    std::atomic<int> io_callback_count{0};
+    use_case.SetMotionStatusCallback([&motion_callback_count](LogicalAxisId, const MotionStatus&) {
+        motion_callback_count.fetch_add(1);
+    });
+    use_case.SetIOStatusCallback([&io_callback_count](const IOStatus&) {
+        io_callback_count.fetch_add(1);
+    });
+
+    auto start_result = use_case.StartStatusUpdate(20);
+    ASSERT_TRUE(start_result.IsSuccess());
+    std::this_thread::sleep_for(std::chrono::milliseconds(160));
+    EXPECT_TRUE(use_case.IsStatusUpdateRunning());
+    EXPECT_GT(motion_callback_count.load(), 0);
+    EXPECT_GT(io_callback_count.load(), 0);
+
+    use_case.StopStatusUpdate();
+    const auto motion_count_after_stop = motion_callback_count.load();
+    const auto io_count_after_stop = io_callback_count.load();
+    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+    EXPECT_EQ(motion_callback_count.load(), motion_count_after_stop);
+    EXPECT_EQ(io_callback_count.load(), io_count_after_stop);
+    EXPECT_FALSE(use_case.IsStatusUpdateRunning());
+}
+
+TEST(MotionMonitoringUseCaseTest, StartStatusUpdateRejectsInvalidInterval) {
+    auto state_port = std::make_shared<FakeMotionStatePort>();
+    auto io_port = std::make_shared<FakeIOControlPort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+
+    MotionMonitoringUseCase use_case(state_port, io_port, homing_port);
+    auto start_result = use_case.StartStatusUpdate(0);
+
+    ASSERT_TRUE(start_result.IsError());
+    EXPECT_EQ(start_result.GetError().GetCode(), ErrorCode::INVALID_PARAMETER);
+}
+
+TEST(MotionMonitoringUseCaseTest, CallbackCanReconfigureStatusUpdateWithoutSelfJoin) {
+    auto state_port = std::make_shared<FakeMotionStatePort>();
+    auto io_port = std::make_shared<FakeIOControlPort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+
+    MotionMonitoringUseCase use_case(state_port, io_port, homing_port);
+    std::atomic<bool> reconfigured{false};
+    std::atomic<bool> reconfigure_success{false};
+
+    use_case.SetMotionStatusCallback([&](LogicalAxisId, const MotionStatus&) {
+        if (!reconfigured.exchange(true)) {
+            auto reconfigure_result = use_case.StartStatusUpdate(10);
+            reconfigure_success.store(reconfigure_result.IsSuccess());
+        }
+    });
+
+    auto start_result = use_case.StartStatusUpdate(30);
+    ASSERT_TRUE(start_result.IsSuccess());
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(160));
+    use_case.StopStatusUpdate();
+
+    EXPECT_TRUE(reconfigured.load());
+    EXPECT_TRUE(reconfigure_success.load());
+    EXPECT_FALSE(use_case.IsStatusUpdateRunning());
+}
+
+TEST(MotionMonitoringUseCaseTest, CallbackCanRequestStopAndMainThreadCanRestart) {
+    auto state_port = std::make_shared<FakeMotionStatePort>();
+    auto io_port = std::make_shared<FakeIOControlPort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+
+    MotionMonitoringUseCase use_case(state_port, io_port, homing_port);
+    std::atomic<bool> stop_requested_from_callback{false};
+
+    use_case.SetMotionStatusCallback([&](LogicalAxisId, const MotionStatus&) {
+        if (!stop_requested_from_callback.exchange(true)) {
+            use_case.StopStatusUpdate();
+        }
+    });
+
+    auto start_result = use_case.StartStatusUpdate(20);
+    ASSERT_TRUE(start_result.IsSuccess());
+    ASSERT_TRUE(WaitUntil([&stop_requested_from_callback]() { return stop_requested_from_callback.load(); },
+                          std::chrono::milliseconds(400)));
+
+    EXPECT_TRUE(stop_requested_from_callback.load());
+    ASSERT_TRUE(WaitUntil([&use_case]() { return !use_case.IsStatusUpdateRunning(); },
+                          std::chrono::milliseconds(300)));
+    EXPECT_FALSE(use_case.IsStatusUpdateRunning());
+
+    auto restart_result = use_case.StartStatusUpdate(15);
+    ASSERT_TRUE(restart_result.IsSuccess());
+    ASSERT_TRUE(WaitUntil([&use_case]() { return use_case.IsStatusUpdateRunning(); },
+                          std::chrono::milliseconds(300)));
+    EXPECT_TRUE(use_case.IsStatusUpdateRunning());
+
+    use_case.StopStatusUpdate();
+    EXPECT_FALSE(use_case.IsStatusUpdateRunning());
+}
+
+TEST(MotionMonitoringUseCaseTest, StartStatusUpdateFailsWhenMotionAndIoPortsAreUnavailable) {
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    MotionMonitoringUseCase use_case(nullptr, nullptr, homing_port);
+
+    auto start_result = use_case.StartStatusUpdate(50);
+    ASSERT_TRUE(start_result.IsError());
+    EXPECT_EQ(start_result.GetError().GetCode(), ErrorCode::PORT_NOT_INITIALIZED);
 }
 
 }  // namespace

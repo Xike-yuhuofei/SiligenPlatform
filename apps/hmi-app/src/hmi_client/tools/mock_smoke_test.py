@@ -45,12 +45,15 @@ def main(host: str = "127.0.0.1", port: int = 9527) -> int:
     print("dxf_prepare_plan:", plan_ok, plan_payload if plan_ok else plan_error)
     plan_id = plan_payload.get("plan_id", "") if plan_ok else ""
     preview_ok, preview_payload, preview_error = proto.dxf_preview_snapshot(
-        10.0,
-        dry_run=True,
-        dry_run_speed_mm_s=10.0,
+        plan_id=plan_id,
+        max_polyline_points=4000,
     )
     print("dxf_preview_snapshot:", preview_ok, preview_payload if preview_ok else preview_error)
     snapshot_hash = preview_payload.get("snapshot_hash", "") if preview_ok else ""
+    confirm_ok, confirm_payload, confirm_error = proto.dxf_preview_confirm(plan_id, snapshot_hash)
+    print("dxf_preview_confirm:", confirm_ok, confirm_payload if confirm_ok else confirm_error)
+    if not confirm_ok:
+        return 1
     print("mock_io_set_door:", client.send_request("mock.io.set", {"door": True}))
     door_block_ok, door_block_payload, door_block_error = proto.dxf_start_job(
         plan_id,

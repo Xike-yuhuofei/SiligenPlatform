@@ -81,10 +81,14 @@ private:
         double x_max = 0.0;
         double y_min = 0.0;
         double y_max = 0.0;
+        std::string plan_id;
+        std::string plan_fingerprint;
         std::string preview_snapshot_id;
         std::string preview_snapshot_hash;
         std::string preview_request_signature;
         std::string preview_generated_at;
+        std::string preview_confirmed_at;
+        std::string preview_state;
         double preview_speed_mm_s = 0.0;
     };
 
@@ -133,6 +137,7 @@ private:
     std::string HandleDxfStop(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfInfo(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfPreviewSnapshot(const std::string& id, const nlohmann::json& params);
+    std::string HandleDxfPreviewConfirm(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfProgress(const std::string& id, const nlohmann::json& params);
     std::string HandleAlarmsList(const std::string& id, const nlohmann::json& params);
     std::string HandleAlarmsClear(const std::string& id, const nlohmann::json& params);

@@ -192,7 +192,7 @@ int ValveAdapter::ResetDispenserHardwareState(const char* reason, bool strict) n
     return 0;
 }
 
-int ValveAdapter::CallMC_CmpBufData(short encoder_axis,
+int ValveAdapter::CallMC_CmpBufData(short compare_source_axis,
                                      const std::vector<long>& positions,
                                      uint32 pulse_width_ms, short start_level) {
     try {
@@ -206,7 +206,7 @@ int ValveAdapter::CallMC_CmpBufData(short encoder_axis,
         //                   short nAbsPosFlag, short nTimerFlag);
         //
         // 参数说明:
-        // - nCmpEncodeNum: 编码器/轴号（1-16），用于位置比较源
+        // - nCmpEncodeNum: 位置比较源轴号（1-16），SDK 历史命名仍写作 EncodeNum
         // - nPluseType: 脉冲类型（0=单次，1=持续）
         // - nStartLevel: 起始电平（0=低电平，1=高电平）
         // - nTime: 脉冲宽度（单位由 nTimerFlag 决定）
@@ -258,7 +258,7 @@ int ValveAdapter::CallMC_CmpBufData(short encoder_axis,
         short nBufLen1 = static_cast<short>(positions_copy.size());
 
         // 详细诊断日志
-        SILIGEN_LOG_DEBUG("CallMC_CmpBufData: encoder_axis=" + std::to_string(encoder_axis) +
+        SILIGEN_LOG_DEBUG("CallMC_CmpBufData: compare_source_axis=" + std::to_string(compare_source_axis) +
                           " (有效范围: 1-16)");
         SILIGEN_LOG_DEBUG("CallMC_CmpBufData: nPluseType=" + std::to_string(nPluseType) +
                           " (2=脉冲输出, 0/1=电平输出)");
@@ -281,7 +281,8 @@ int ValveAdapter::CallMC_CmpBufData(short encoder_axis,
                               ", " + std::to_string(maxPos) + "] 脉冲");
         }
 
-        SILIGEN_LOG_INFO("CallMC_CmpBufData: 调用 MC_CmpBufData, axis=" + std::to_string(encoder_axis) +
+        SILIGEN_LOG_INFO("CallMC_CmpBufData: 调用 MC_CmpBufData, compare_source_axis=" +
+                         std::to_string(compare_source_axis) +
                          ", len=" + std::to_string(nBufLen1) +
                          ", pulse_width_ms=" + std::to_string(pulse_width_ms) +
                          ", start_level=" + std::to_string(start_level) +
@@ -289,7 +290,7 @@ int ValveAdapter::CallMC_CmpBufData(short encoder_axis,
                          ", timer_flag=" + std::to_string(nTimerFlag));
 
         int result = hardware_->MC_CmpBufData(
-            encoder_axis,       // 编码器/轴号（位置比较源）
+            compare_source_axis,  // 位置比较源轴号
             nPluseType,         // 脉冲类型
             start_level,        // 起始电平
             nTime,              // 脉冲宽度
@@ -310,7 +311,7 @@ int ValveAdapter::CallMC_CmpBufData(short encoder_axis,
     }
 }
 
-int ValveAdapter::CallMC_CmpBufDataBuffers(short encoder_axis,
+int ValveAdapter::CallMC_CmpBufDataBuffers(short compare_source_axis,
                                            const std::vector<long>* buffer1,
                                            const std::vector<long>* buffer2,
                                            uint32 pulse_width_ms,
@@ -357,12 +358,13 @@ int ValveAdapter::CallMC_CmpBufDataBuffers(short encoder_axis,
             nBufLen2 = static_cast<short>(buf2_copy.size());
         }
 
-        SILIGEN_LOG_DEBUG("CallMC_CmpBufDataBuffers: axis=" + std::to_string(encoder_axis) +
+        SILIGEN_LOG_DEBUG("CallMC_CmpBufDataBuffers: compare_source_axis=" +
+                          std::to_string(compare_source_axis) +
                           ", buf1_len=" + std::to_string(nBufLen1) +
                           ", buf2_len=" + std::to_string(nBufLen2));
 
-        SILIGEN_LOG_INFO("CallMC_CmpBufDataBuffers: 调用 MC_CmpBufData, axis=" +
-                         std::to_string(encoder_axis) +
+        SILIGEN_LOG_INFO("CallMC_CmpBufDataBuffers: 调用 MC_CmpBufData, compare_source_axis=" +
+                         std::to_string(compare_source_axis) +
                          ", buf1_len=" + std::to_string(nBufLen1) +
                          ", buf2_len=" + std::to_string(nBufLen2) +
                          ", pulse_width_ms=" + std::to_string(pulse_width_ms) +
@@ -371,7 +373,7 @@ int ValveAdapter::CallMC_CmpBufDataBuffers(short encoder_axis,
                          ", timer_flag=" + std::to_string(nTimerFlag));
 
         int result = hardware_->MC_CmpBufData(
-            encoder_axis,
+            compare_source_axis,
             nPluseType,
             start_level,
             nTime,

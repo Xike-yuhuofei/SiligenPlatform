@@ -433,7 +433,10 @@ Application::UseCases::Dispensing::DispensingMVPRequest BuildExecutionRequest(
     request.use_hardware_trigger = params.value("use_hardware_trigger", true);
     request.dry_run = params.value("dry_run", false);
 
-    const double dispensingSpeed = ReadJsonDouble(params, "dispensing_speed_mm_s", 0.0);
+    const double dispensingSpeed = ReadJsonDouble(
+        params,
+        "dispensing_speed_mm_s",
+        ReadJsonDouble(params, "speed_mm_s", 0.0));
     const double dryRunSpeed = ReadJsonDouble(params, "dry_run_speed_mm_s", 0.0);
     const double rapidSpeed = ReadJsonDouble(params, "rapid_speed_mm_s", 0.0);
     if (dispensingSpeed > 0.0) {
@@ -667,6 +670,7 @@ void TcpCommandDispatcher::RegisterDxfCommands() {
     RegisterCommand("dxf.job.resume", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobResume(id, params); });
     RegisterCommand("dxf.job.stop", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobStop(id, params); });
     RegisterCommand("dxf.preview.snapshot", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfPreviewSnapshot(id, params); });
+    RegisterCommand("dxf.preview.confirm", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfPreviewConfirm(id, params); });
     RegisterCommand("dxf.execute", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfExecute(id, params); });
     RegisterCommand("dxf.pause", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfPause(id, params); });
     RegisterCommand("dxf.resume", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfResume(id, params); });
@@ -841,8 +845,15 @@ std::string TcpCommandDispatcher::HandleConnect(const std::string& id, const nlo
 }
 
 std::string TcpCommandDispatcher::HandleDisconnect(const std::string& id, const nlohmann::json& /*params*/) {
-    // 断开连接逻辑（简化实现）
-    nlohmann::json resultJson = {{"disconnected", true}};
+    // 当前组合根未暴露显式 disconnect 用例，这里返回观测到的实际连接态，避免“假断开”。
+    bool disconnected = false;
+    if (!motionFacade_) {
+        disconnected = true;
+    } else {
+        auto status_result = motionFacade_->GetAllAxesMotionStatus();
+        disconnected = status_result.IsError();
+    }
+    nlohmann::json resultJson = {{"disconnected", disconnected}};
     return GatewayJsonProtocol::MakeSuccessResponse(id, resultJson);
 }
 
@@ -852,22 +863,32 @@ std::string TcpCommandDispatcher::HandleStatus(const std::string& id, const nloh
     }
 
     nlohmann::json axesJson = nlohmann::json::object();
+    bool connected = false;
     bool estop_active = false;
+    bool any_axis_fault = false;
+    bool any_axis_moving = false;
 
     // 获取各轴状态
     auto allStatusResult = motionFacade_->GetAllAxesMotionStatus();
     if (allStatusResult.IsSuccess()) {
+        connected = true;
         const auto& statuses = allStatusResult.Value();
         const char* axisNames[] = {"X", "Y", "Z", "U"};
         for (size_t i = 0; i < statuses.size() && i < 4; ++i) {
             const auto& status = statuses[i];
-            bool isHomed = (status.state == Domain::Motion::Ports::MotionState::HOMED);
+            const bool is_homed =
+                (status.homing_state == "homed") ||
+                (status.state == Domain::Motion::Ports::MotionState::HOMED);
             estop_active = estop_active || (status.state == Domain::Motion::Ports::MotionState::ESTOP);
+            any_axis_fault = any_axis_fault || status.has_error || status.servo_alarm || status.following_error ||
+                             status.state == Domain::Motion::Ports::MotionState::FAULT;
+            any_axis_moving = any_axis_moving || status.state == Domain::Motion::Ports::MotionState::MOVING;
             nlohmann::json axisJson = {
                 {"position", status.position.x},
                 {"velocity", status.velocity},
                 {"enabled", status.enabled},
-                {"homed", isHomed}
+                {"homed", is_homed},
+                {"homing_state", status.homing_state}
             };
             axesJson[axisNames[i]] = axisJson;
         }
@@ -897,13 +918,19 @@ std::string TcpCommandDispatcher::HandleStatus(const std::string& id, const nloh
         }
     }
 
+    bool estop_known = connected;
+    bool door_known = false;
+    bool door_open = false;
+    bool interlock_latched = false;
     nlohmann::json ioJson = {
         {"limit_x_pos", false},
         {"limit_x_neg", false},
         {"limit_y_pos", false},
         {"limit_y_neg", false},
         {"estop", estop_active},
-        {"door", false}
+        {"estop_known", estop_known},
+        {"door", door_open},
+        {"door_known", door_known}
     };
     auto limitXPos = motionFacade_->ReadLimitStatus(LogicalAxisId::X, true);
     if (limitXPos.IsSuccess()) {
@@ -925,14 +952,83 @@ std::string TcpCommandDispatcher::HandleStatus(const std::string& id, const nloh
         auto interlockResult = dispensingFacade_->ReadInterlockSignals();
         if (interlockResult.IsSuccess()) {
             const auto& signals = interlockResult.Value();
+            estop_known = true;
+            door_known = true;
+            door_open = signals.safety_door_open;
             ioJson["estop"] = estop_active || signals.emergency_stop_triggered;
+            ioJson["estop_known"] = estop_known;
             ioJson["door"] = signals.safety_door_open;
+            ioJson["door_known"] = door_known;
+        }
+        interlock_latched = dispensingFacade_->IsInterlockLatched();
+    }
+
+    std::string connection_state = connected ? "connected" : "disconnected";
+    std::string machine_state = "Disconnected";
+    std::string machine_state_reason = connected ? "idle" : "motion_status_unavailable";
+    std::string active_job_id;
+    std::string active_job_state;
+    if (connected) {
+        machine_state = "Idle";
+        {
+            std::lock_guard<std::mutex> lock(dxf_mutex_);
+            active_job_id = dxf_task_id_;
+        }
+        if (!active_job_id.empty() && dispensingFacade_) {
+            auto job_status_result = dispensingFacade_->GetDxfJobStatus(active_job_id);
+            if (job_status_result.IsSuccess()) {
+                const auto& job_status = job_status_result.Value();
+                active_job_state = job_status.state;
+                if (job_status.state == "paused") {
+                    machine_state = "Paused";
+                    machine_state_reason = "job_paused";
+                } else if (job_status.state == "pending" || job_status.state == "running" || job_status.state == "stopping") {
+                    machine_state = "Running";
+                    machine_state_reason = std::string("job_") + job_status.state;
+                } else if (job_status.state == "failed") {
+                    machine_state = "Fault";
+                    machine_state_reason = "job_failed";
+                }
+                if (job_status.state == "completed" || job_status.state == "failed" || job_status.state == "cancelled") {
+                    std::lock_guard<std::mutex> lock(dxf_mutex_);
+                    if (dxf_task_id_ == active_job_id) {
+                        dxf_task_id_.clear();
+                    }
+                }
+            } else {
+                active_job_state = "unknown";
+                machine_state_reason = "job_status_unavailable";
+            }
+        }
+
+        if (machine_state == "Idle" && any_axis_moving) {
+            machine_state = "Running";
+            machine_state_reason = "axis_motion";
+        }
+        if (any_axis_fault) {
+            machine_state = "Fault";
+            machine_state_reason = "axis_fault";
+        }
+        if (ioJson.value("estop", false)) {
+            machine_state = "Estop";
+            machine_state_reason = "interlock_estop";
+        } else if (door_known && door_open && machine_state != "Fault") {
+            machine_state = "Fault";
+            machine_state_reason = "interlock_door_open";
+        } else if (!door_known) {
+            machine_state = "Unknown";
+            machine_state_reason = "door_signal_unknown";
         }
     }
 
     nlohmann::json resultJson = {
-        {"connected", true},
-        {"machine_state", "Ready"},
+        {"connected", connected},
+        {"connection_state", connection_state},
+        {"machine_state", machine_state},
+        {"machine_state_reason", machine_state_reason},
+        {"interlock_latched", interlock_latched},
+        {"active_job_id", active_job_id},
+        {"active_job_state", active_job_state},
         {"axes", axesJson},
         {"position", positionJson},
         {"io", ioJson},
@@ -1480,10 +1576,14 @@ std::string TcpCommandDispatcher::HandleDxfPlanPrepare(const std::string& id, co
         dxf_cache_.filepath = plan.filepath;
         dxf_cache_.segment_count = plan.segment_count;
         dxf_cache_.total_length = plan.total_length_mm;
-        dxf_cache_.preview_snapshot_id = plan.plan_id;
-        dxf_cache_.preview_snapshot_hash = plan.plan_fingerprint;
+        dxf_cache_.plan_id = plan.plan_id;
+        dxf_cache_.plan_fingerprint = plan.plan_fingerprint;
+        dxf_cache_.preview_snapshot_id.clear();
+        dxf_cache_.preview_snapshot_hash.clear();
         dxf_cache_.preview_request_signature = request_signature;
-        dxf_cache_.preview_generated_at = plan.generated_at;
+        dxf_cache_.preview_generated_at.clear();
+        dxf_cache_.preview_confirmed_at.clear();
+        dxf_cache_.preview_state = "prepared";
         dxf_cache_.preview_speed_mm_s = effective_speed;
         dxf_task_id_.clear();
     }
@@ -1497,9 +1597,10 @@ std::string TcpCommandDispatcher::HandleDxfPlanPrepare(const std::string& id, co
         {"total_length_mm", plan.total_length_mm},
         {"estimated_time_s", plan.estimated_time_s},
         {"generated_at", plan.generated_at},
-        {"snapshot_id", plan.plan_id},
-        {"snapshot_hash", plan.plan_fingerprint},
-        {"preview_request_signature", request_signature}
+        {"snapshot_id", ""},
+        {"snapshot_hash", ""},
+        {"preview_request_signature", request_signature},
+        {"preview_state", "prepared"}
     });
 }
 
@@ -1514,8 +1615,8 @@ std::string TcpCommandDispatcher::HandleDxfJobStart(const std::string& id, const
     std::string cached_plan_fingerprint;
     if (plan_id.empty() || expected_plan_fingerprint.empty()) {
         std::lock_guard<std::mutex> lock(dxf_mutex_);
-        cached_plan_id = dxf_cache_.preview_snapshot_id;
-        cached_plan_fingerprint = dxf_cache_.preview_snapshot_hash;
+        cached_plan_id = dxf_cache_.plan_id;
+        cached_plan_fingerprint = dxf_cache_.plan_fingerprint;
         if (plan_id.empty()) {
             plan_id = cached_plan_id;
         }
@@ -1524,8 +1625,8 @@ std::string TcpCommandDispatcher::HandleDxfJobStart(const std::string& id, const
         }
     } else {
         std::lock_guard<std::mutex> lock(dxf_mutex_);
-        cached_plan_id = dxf_cache_.preview_snapshot_id;
-        cached_plan_fingerprint = dxf_cache_.preview_snapshot_hash;
+        cached_plan_id = dxf_cache_.plan_id;
+        cached_plan_fingerprint = dxf_cache_.plan_fingerprint;
     }
     if (plan_id.empty()) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 2899, "Missing plan_id");
@@ -1541,6 +1642,7 @@ std::string TcpCommandDispatcher::HandleDxfJobStart(const std::string& id, const
     const std::uint32_t target_count = static_cast<std::uint32_t>(ReadJsonSizeT(params, "target_count", 1));
     Application::UseCases::Dispensing::StartJobRequest request;
     request.plan_id = plan_id;
+    request.plan_fingerprint = expected_plan_fingerprint;
     request.target_count = std::max<std::uint32_t>(1, target_count);
     auto start_result = dispensingFacade_->StartDxfJob(request);
     if (start_result.IsError()) {
@@ -1657,9 +1759,6 @@ std::string TcpCommandDispatcher::HandleDxfJobStop(const std::string& id, const 
         if (job_id.empty()) {
             job_id = dxf_task_id_;
         }
-        if (job_id == dxf_task_id_) {
-            dxf_task_id_.clear();
-        }
     }
     if (job_id.empty()) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 2912, "DXF job not running");
@@ -1669,7 +1768,7 @@ std::string TcpCommandDispatcher::HandleDxfJobStop(const std::string& id, const 
         return GatewayJsonProtocol::MakeErrorResponse(id, 2913, stop_result.GetError().GetMessage());
     }
     dispensingFacade_->StopDxfExecution();
-    return GatewayJsonProtocol::MakeSuccessResponse(id, {{"stopped", true}, {"job_id", job_id}});
+    return GatewayJsonProtocol::MakeSuccessResponse(id, {{"stopped", true}, {"job_id", job_id}, {"transition_state", "stopping"}});
 }
 
 std::string TcpCommandDispatcher::HandleDxfLoad(const std::string& id, const nlohmann::json& params) {
@@ -1796,6 +1895,7 @@ std::string TcpCommandDispatcher::HandleDxfExecute(const std::string& id, const 
     std::string expectedSnapshotHash;
     std::string expectedPreviewSignature;
     std::string planId;
+    std::string planFingerprint;
     {
         std::lock_guard<std::mutex> lock(dxf_mutex_);
         if (!dxf_cache_.loaded || dxf_cache_.filepath.empty()) {
@@ -1806,7 +1906,8 @@ std::string TcpCommandDispatcher::HandleDxfExecute(const std::string& id, const 
         filepath = dxf_cache_.filepath;
         expectedSnapshotHash = dxf_cache_.preview_snapshot_hash;
         expectedPreviewSignature = dxf_cache_.preview_request_signature;
-        planId = dxf_cache_.preview_snapshot_id;
+        planId = dxf_cache_.plan_id;
+        planFingerprint = dxf_cache_.plan_fingerprint;
     }
 
     if (requestedSnapshotHash.empty()) {
@@ -1817,12 +1918,8 @@ std::string TcpCommandDispatcher::HandleDxfExecute(const std::string& id, const 
         FlushLogs();
         return GatewayJsonProtocol::MakeErrorResponse(id, 3005, "Preview snapshot not prepared");
     }
-    if (expectedPreviewSignature.empty()) {
-        FlushLogs();
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3005, "Preview request signature not prepared");
-    }
     const std::string requestSignature = ComputePreviewRequestSignature(filepath, params);
-    if (requestSignature != expectedPreviewSignature) {
+    if (!expectedPreviewSignature.empty() && requestSignature != expectedPreviewSignature) {
         FlushLogs();
         return GatewayJsonProtocol::MakeErrorResponse(id, 3007, "Preview request signature mismatch");
     }
@@ -1867,6 +1964,25 @@ std::string TcpCommandDispatcher::HandleDxfExecute(const std::string& id, const 
         }
     }
 
+    Application::UseCases::Dispensing::ConfirmPreviewRequest confirm_request;
+    confirm_request.plan_id = planId;
+    confirm_request.snapshot_hash = expectedSnapshotHash;
+    auto confirm_result = dispensingFacade_->ConfirmDxfPreview(confirm_request);
+    if (confirm_result.IsError()) {
+        FlushLogs();
+        return GatewayJsonProtocol::MakeErrorResponse(id, 3005, confirm_result.GetError().GetMessage());
+    }
+    const auto& confirm_response = confirm_result.Value();
+    {
+        std::lock_guard<std::mutex> lock(dxf_mutex_);
+        if (dxf_cache_.plan_id == planId) {
+            dxf_cache_.preview_state = confirm_response.preview_state;
+            dxf_cache_.preview_confirmed_at = confirm_response.confirmed_at;
+            dxf_cache_.preview_snapshot_hash = confirm_response.snapshot_hash;
+            dxf_cache_.plan_fingerprint = confirm_response.snapshot_hash;
+        }
+    }
+
     SILIGEN_LOG_INFO("收到DXF执行请求: dry_run=" + std::string(dryRun ? "true" : "false") +
                      ", require_active_recipe=" + std::string(requireActiveRecipe ? "true" : "false") +
                      ", dispensing_speed_mm_s=" + std::to_string(dispensingSpeed) +
@@ -1877,6 +1993,7 @@ std::string TcpCommandDispatcher::HandleDxfExecute(const std::string& id, const 
 
     Application::UseCases::Dispensing::StartJobRequest start_request;
     start_request.plan_id = planId;
+    start_request.plan_fingerprint = planFingerprint.empty() ? expectedSnapshotHash : planFingerprint;
     start_request.target_count = static_cast<std::uint32_t>(ReadJsonSizeT(params, "target_count", 1));
     if (start_request.target_count == 0) {
         start_request.target_count = 1;
@@ -1904,7 +2021,7 @@ std::string TcpCommandDispatcher::HandleDxfExecute(const std::string& id, const 
          {"job_id", taskId},
          {"plan_id", planId},
          {"snapshot_hash", requestedSnapshotHash},
-         {"plan_fingerprint", expectedSnapshotHash},
+         {"plan_fingerprint", start_request.plan_fingerprint},
          {"preview_request_signature", requestSignature},
          {"target_count", start_request.target_count}});
 }
@@ -1918,7 +2035,6 @@ std::string TcpCommandDispatcher::HandleDxfStop(const std::string& id, const nlo
     {
         std::lock_guard<std::mutex> lock(dxf_mutex_);
         taskId = dxf_task_id_;
-        dxf_task_id_.clear();
     }
 
     if (!taskId.empty()) {
@@ -1929,7 +2045,7 @@ std::string TcpCommandDispatcher::HandleDxfStop(const std::string& id, const nlo
     }
     dispensingFacade_->StopDxfExecution();
 
-    return GatewayJsonProtocol::MakeSuccessResponse(id, {{"stopped", true}});
+    return GatewayJsonProtocol::MakeSuccessResponse(id, {{"stopped", true}, {"transition_state", "stopping"}});
 }
 
 std::string TcpCommandDispatcher::HandleDxfPause(const std::string& id, const nlohmann::json& /*params*/) {
@@ -2003,7 +2119,184 @@ std::string TcpCommandDispatcher::HandleDxfInfo(const std::string& id, const nlo
 }
 
 std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id, const nlohmann::json& params) {
-    return HandleDxfPlanPrepare(id, params);
+    if (!dispensingFacade_) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 3010, "TcpDispensingFacade not available");
+    }
+
+    std::string plan_id = params.value("plan_id", "");
+    std::string artifact_id;
+    std::string filepath;
+    double effective_speed = 0.0;
+    std::string request_signature;
+
+    // 兼容入口：旧客户端未传 plan_id 时，在 snapshot 内部先 prepare 一次。
+    if (plan_id.empty()) {
+        artifact_id = params.value("artifact_id", "");
+        if (artifact_id.empty()) {
+            std::lock_guard<std::mutex> lock(dxf_mutex_);
+            artifact_id = dxf_cache_.artifact_id;
+        }
+        if (artifact_id.empty()) {
+            return GatewayJsonProtocol::MakeErrorResponse(id, 3011, "Missing artifact_id");
+        }
+
+        auto request = BuildExecutionRequest("", params);
+        effective_speed = request.dry_run
+                              ? static_cast<double>(request.dry_run_speed_mm_s.value_or(0.0f))
+                              : static_cast<double>(request.dispensing_speed_mm_s.value_or(0.0f));
+        if (effective_speed <= 0.0) {
+            return GatewayJsonProtocol::MakeErrorResponse(id, 3011, "Missing dispensing_speed_mm_s");
+        }
+
+        Application::UseCases::Dispensing::PreparePlanRequest prepare_request;
+        prepare_request.artifact_id = artifact_id;
+        prepare_request.execution_request = request;
+        auto plan_result = dispensingFacade_->PrepareDxfPlan(prepare_request);
+        if (plan_result.IsError()) {
+            return GatewayJsonProtocol::MakeErrorResponse(id, 3012, plan_result.GetError().GetMessage());
+        }
+        const auto& plan = plan_result.Value();
+        plan_id = plan.plan_id;
+        filepath = plan.filepath;
+        request_signature = ComputePreviewRequestSignature(plan.filepath, params);
+
+        {
+            std::lock_guard<std::mutex> lock(dxf_mutex_);
+            dxf_cache_.loaded = true;
+            dxf_cache_.artifact_id = artifact_id;
+            dxf_cache_.filepath = filepath;
+            dxf_cache_.segment_count = plan.segment_count;
+            dxf_cache_.total_length = plan.total_length_mm;
+            dxf_cache_.plan_id = plan.plan_id;
+            dxf_cache_.plan_fingerprint = plan.plan_fingerprint;
+            dxf_cache_.preview_request_signature = request_signature;
+            dxf_cache_.preview_speed_mm_s = effective_speed;
+        }
+    } else {
+        std::lock_guard<std::mutex> lock(dxf_mutex_);
+        if (dxf_cache_.plan_id == plan_id) {
+            artifact_id = dxf_cache_.artifact_id;
+            filepath = dxf_cache_.filepath;
+            request_signature = dxf_cache_.preview_request_signature;
+            effective_speed = dxf_cache_.preview_speed_mm_s;
+        }
+    }
+
+    Application::UseCases::Dispensing::PreviewSnapshotRequest snapshot_request;
+    snapshot_request.plan_id = plan_id;
+    snapshot_request.max_polyline_points =
+        ReadJsonSizeT(params, "max_polyline_points", kPreviewPolylineMaxPoints);
+    auto snapshot_result = dispensingFacade_->GetDxfPreviewSnapshot(snapshot_request);
+    if (snapshot_result.IsError()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 3012, snapshot_result.GetError().GetMessage());
+    }
+    const auto& snapshot = snapshot_result.Value();
+
+    nlohmann::json trajectory_polyline = nlohmann::json::array();
+    for (const auto& point : snapshot.trajectory_polyline) {
+        trajectory_polyline.push_back({
+            {"x", static_cast<double>(point.x)},
+            {"y", static_cast<double>(point.y)},
+        });
+    }
+    if (trajectory_polyline.empty()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview trajectory polyline is empty");
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(dxf_mutex_);
+        dxf_cache_.loaded = true;
+        if (!artifact_id.empty()) {
+            dxf_cache_.artifact_id = artifact_id;
+        }
+        if (!filepath.empty()) {
+            dxf_cache_.filepath = filepath;
+        }
+        dxf_cache_.segment_count = snapshot.segment_count;
+        dxf_cache_.total_length = snapshot.total_length_mm;
+        dxf_cache_.plan_id = snapshot.plan_id.empty() ? plan_id : snapshot.plan_id;
+        dxf_cache_.plan_fingerprint = snapshot.snapshot_hash;
+        dxf_cache_.preview_snapshot_id = snapshot.snapshot_id;
+        dxf_cache_.preview_snapshot_hash = snapshot.snapshot_hash;
+        dxf_cache_.preview_generated_at = snapshot.generated_at;
+        dxf_cache_.preview_confirmed_at = snapshot.confirmed_at;
+        dxf_cache_.preview_state = snapshot.preview_state;
+        if (!request_signature.empty()) {
+            dxf_cache_.preview_request_signature = request_signature;
+        }
+        if (effective_speed > 0.0) {
+            dxf_cache_.preview_speed_mm_s = effective_speed;
+        }
+        dxf_task_id_.clear();
+    }
+
+    return GatewayJsonProtocol::MakeSuccessResponse(id, {
+        {"snapshot_id", snapshot.snapshot_id},
+        {"snapshot_hash", snapshot.snapshot_hash},
+        {"plan_id", snapshot.plan_id.empty() ? plan_id : snapshot.plan_id},
+        {"preview_state", snapshot.preview_state},
+        {"confirmed_at", snapshot.confirmed_at},
+        {"segment_count", snapshot.segment_count},
+        {"point_count", snapshot.point_count},
+        {"polyline_point_count", snapshot.polyline_point_count},
+        {"polyline_source_point_count", snapshot.polyline_source_point_count},
+        {"trajectory_polyline", trajectory_polyline},
+        {"total_length_mm", snapshot.total_length_mm},
+        {"estimated_time_s", snapshot.estimated_time_s},
+        {"generated_at", snapshot.generated_at}
+    });
+}
+
+std::string TcpCommandDispatcher::HandleDxfPreviewConfirm(const std::string& id, const nlohmann::json& params) {
+    if (!dispensingFacade_) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 3015, "TcpDispensingFacade not available");
+    }
+
+    std::string plan_id = params.value("plan_id", "");
+    std::string snapshot_hash = params.value("snapshot_hash", "");
+    {
+        std::lock_guard<std::mutex> lock(dxf_mutex_);
+        if (plan_id.empty()) {
+            plan_id = dxf_cache_.plan_id;
+        }
+        if (snapshot_hash.empty()) {
+            snapshot_hash = dxf_cache_.preview_snapshot_hash;
+        }
+    }
+
+    if (plan_id.empty()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 3016, "Missing plan_id");
+    }
+    if (snapshot_hash.empty()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 3017, "Missing snapshot_hash");
+    }
+
+    Application::UseCases::Dispensing::ConfirmPreviewRequest request;
+    request.plan_id = plan_id;
+    request.snapshot_hash = snapshot_hash;
+    auto confirm_result = dispensingFacade_->ConfirmDxfPreview(request);
+    if (confirm_result.IsError()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 3018, confirm_result.GetError().GetMessage());
+    }
+
+    const auto& confirm = confirm_result.Value();
+    {
+        std::lock_guard<std::mutex> lock(dxf_mutex_);
+        if (dxf_cache_.plan_id == plan_id) {
+            dxf_cache_.plan_fingerprint = confirm.snapshot_hash;
+            dxf_cache_.preview_snapshot_hash = confirm.snapshot_hash;
+            dxf_cache_.preview_confirmed_at = confirm.confirmed_at;
+            dxf_cache_.preview_state = confirm.preview_state;
+        }
+    }
+
+    return GatewayJsonProtocol::MakeSuccessResponse(id, {
+        {"confirmed", confirm.confirmed},
+        {"plan_id", confirm.plan_id},
+        {"snapshot_hash", confirm.snapshot_hash},
+        {"preview_state", confirm.preview_state},
+        {"confirmed_at", confirm.confirmed_at}
+    });
 }
 
 std::string TcpCommandDispatcher::HandleDxfProgress(const std::string& id, const nlohmann::json& /*params*/) {
@@ -2669,7 +2962,9 @@ std::string TcpCommandDispatcher::HandleMotionCoordStatus(const std::string& id,
             {"velocity", x_status_result.Value().velocity},
             {"state", static_cast<int>(x_status_result.Value().state)},
             {"enabled", x_status_result.Value().enabled},
-            {"homed", x_status_result.Value().state == Siligen::Domain::Motion::Ports::MotionState::HOMED},
+            {"homed",
+             x_status_result.Value().homing_state == "homed" ||
+                 x_status_result.Value().state == Siligen::Domain::Motion::Ports::MotionState::HOMED},
             {"in_position", x_status_result.Value().in_position},
             {"has_error", x_status_result.Value().has_error},
             {"error_code", x_status_result.Value().error_code},
@@ -2698,7 +2993,9 @@ std::string TcpCommandDispatcher::HandleMotionCoordStatus(const std::string& id,
             {"velocity", y_status_result.Value().velocity},
             {"state", static_cast<int>(y_status_result.Value().state)},
             {"enabled", y_status_result.Value().enabled},
-            {"homed", y_status_result.Value().state == Siligen::Domain::Motion::Ports::MotionState::HOMED},
+            {"homed",
+             y_status_result.Value().homing_state == "homed" ||
+                 y_status_result.Value().state == Siligen::Domain::Motion::Ports::MotionState::HOMED},
             {"in_position", y_status_result.Value().in_position},
             {"has_error", y_status_result.Value().has_error},
             {"error_code", y_status_result.Value().error_code},

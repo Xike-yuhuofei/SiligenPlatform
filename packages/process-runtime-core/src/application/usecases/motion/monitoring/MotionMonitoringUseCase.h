@@ -8,7 +8,11 @@
 #include "shared/types/Types.h"
 
 #include <functional>
+#include <atomic>
+#include <cstdint>
 #include <memory>
+#include <mutex>
+#include <thread>
 #include <vector>
 
 namespace Siligen::Application::UseCases::Motion::Monitoring {
@@ -27,7 +31,7 @@ class MotionMonitoringUseCase {
                             std::shared_ptr<Domain::Motion::Ports::IHomingPort> homing_port,
                             std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port = nullptr);
 
-    ~MotionMonitoringUseCase() = default;
+    ~MotionMonitoringUseCase();
 
     Result<Domain::Motion::Ports::MotionStatus> GetAxisMotionStatus(Siligen::Shared::Types::LogicalAxisId axis) const;
     Result<std::vector<Domain::Motion::Ports::MotionStatus>> GetAllAxesMotionStatus() const;
@@ -58,15 +62,24 @@ class MotionMonitoringUseCase {
 
     MotionStatusCallback motion_status_callback_;
     IOStatusCallback io_status_callback_;
+    mutable std::mutex callback_mutex_;
 
-    bool status_update_running_ = false;
-    int32 status_update_interval_ms_ = 100;
+    std::atomic<bool> status_update_running_{false};
+    std::atomic<bool> stop_status_update_requested_{false};
+    std::atomic<int32> status_update_interval_ms_{100};
+    std::atomic<std::uint32_t> motion_status_failure_count_{0};
+    std::atomic<std::uint32_t> io_status_failure_count_{0};
+    std::atomic<bool> motion_status_failure_logged_{false};
+    std::atomic<bool> io_status_failure_logged_{false};
+    mutable std::mutex status_update_lifecycle_mutex_;
+    std::thread status_update_thread_;
 
     Result<void> ValidateAxisNumber(Siligen::Shared::Types::LogicalAxisId axis) const;
     Result<void> ValidateChannelNumber(int16 channel) const;
     void NotifyMotionStatusUpdate(Siligen::Shared::Types::LogicalAxisId axis,
                                   const Domain::Motion::Ports::MotionStatus& status);
     void NotifyIOStatusUpdate(const Domain::Motion::Ports::IOStatus& signal);
+    void StatusUpdateLoop();
     void StatusUpdateTimer();
 };
 

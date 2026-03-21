@@ -91,6 +91,16 @@ Shared::Types::Result<UseCases::Dispensing::PreparePlanResponse> TcpDispensingFa
     return dxf_workflow_use_case_->PreparePlan(request);
 }
 
+Shared::Types::Result<UseCases::Dispensing::PreviewSnapshotResponse> TcpDispensingFacade::GetDxfPreviewSnapshot(
+    const UseCases::Dispensing::PreviewSnapshotRequest& request) {
+    return dxf_workflow_use_case_->GetPreviewSnapshot(request);
+}
+
+Shared::Types::Result<UseCases::Dispensing::ConfirmPreviewResponse> TcpDispensingFacade::ConfirmDxfPreview(
+    const UseCases::Dispensing::ConfirmPreviewRequest& request) {
+    return dxf_workflow_use_case_->ConfirmPreview(request);
+}
+
 Shared::Types::Result<UseCases::Dispensing::JobID> TcpDispensingFacade::StartDxfJob(
     const UseCases::Dispensing::StartJobRequest& request) {
     return dxf_workflow_use_case_->StartJob(request);
@@ -118,6 +128,10 @@ Shared::Types::Result<void> TcpDispensingFacade::StopDxfJob(
 
 Shared::Types::Result<Domain::Safety::ValueObjects::InterlockSignals> TcpDispensingFacade::ReadInterlockSignals() const {
     return dxf_workflow_use_case_->ReadInterlockSignals();
+}
+
+bool TcpDispensingFacade::IsInterlockLatched() const {
+    return dxf_workflow_use_case_ != nullptr && dxf_workflow_use_case_->IsInterlockLatched();
 }
 
 }  // namespace Siligen::Application::Facades::Tcp

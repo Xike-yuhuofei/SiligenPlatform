@@ -74,11 +74,20 @@ def test_canonical_targets_are_exported_without_legacy_aliases():
 def test_dxf_preview_gate_contract_is_wired():
     source = TCP_DISPATCHER.read_text(encoding="utf-8")
     assert 'RegisterCommand("dxf.preview.snapshot"' in source
+    assert 'RegisterCommand("dxf.preview.confirm"' in source
     assert 'RegisterCommand("dxf.artifact.create"' in source
     assert 'RegisterCommand("dxf.plan.prepare"' in source
     assert 'RegisterCommand("dxf.job.start"' in source
     assert 'RegisterCommand("dxf.job.status"' in source
-    assert 'return HandleDxfPlanPrepare(id, params);' in source
+    assert 'std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot' in source
+    assert 'std::string TcpCommandDispatcher::HandleDxfPreviewConfirm' in source
+    assert "GetDxfPreviewSnapshot(" in source
+    assert "ConfirmDxfPreview(" in source
+    assert '{"trajectory_polyline", trajectory_polyline}' in source
+    assert '{"polyline_point_count", snapshot.polyline_point_count}' in source
+    assert '{"polyline_source_point_count", snapshot.polyline_source_point_count}' in source
+    assert "dxf_cache_.preview_state = snapshot.preview_state;" in source
+    assert 'request.snapshot_hash = snapshot_hash;' in source
     assert "Missing 'snapshot_hash'" in source
     assert "Preview snapshot not prepared" in source
     assert "Preview request signature mismatch" in source
@@ -91,6 +100,8 @@ def test_status_reads_backend_interlock_signals():
     assert "ReadInterlockSignals()" in source
     assert 'ioJson["door"] = signals.safety_door_open' in source
     assert 'ioJson["estop"] = estop_active || signals.emergency_stop_triggered' in source
+    assert '"estop_known"' in source
+    assert '"door_known"' in source
 
 
 def test_motion_coord_status_exposes_feedback_diagnostics():

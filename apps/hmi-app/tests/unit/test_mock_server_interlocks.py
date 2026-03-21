@@ -33,6 +33,16 @@ class MockServerInterlockTest(unittest.TestCase):
             {"artifact_id": state.dxf.artifact_id, "dispensing_speed_mm_s": 12.5},
         )
         self.assertIn("result", plan)
+        snapshot = state.handle_request("dxf.preview.snapshot", {"plan_id": plan["result"]["plan_id"]})
+        self.assertIn("result", snapshot)
+        confirm = state.handle_request(
+            "dxf.preview.confirm",
+            {
+                "plan_id": plan["result"]["plan_id"],
+                "snapshot_hash": snapshot["result"]["snapshot_hash"],
+            },
+        )
+        self.assertIn("result", confirm)
 
         state.handle_request("mock.io.set", {"door": True})
         start = state.handle_request(
@@ -58,6 +68,15 @@ class MockServerInterlockTest(unittest.TestCase):
             "dxf.plan.prepare",
             {"artifact_id": state.dxf.artifact_id, "dispensing_speed_mm_s": 12.5},
         )
+        snapshot = state.handle_request("dxf.preview.snapshot", {"plan_id": plan["result"]["plan_id"]})
+        confirm = state.handle_request(
+            "dxf.preview.confirm",
+            {
+                "plan_id": plan["result"]["plan_id"],
+                "snapshot_hash": snapshot["result"]["snapshot_hash"],
+            },
+        )
+        self.assertIn("result", confirm)
         start = state.handle_request(
             "dxf.job.start",
             {

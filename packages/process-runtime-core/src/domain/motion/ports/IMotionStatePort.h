@@ -35,6 +35,7 @@ enum class MotionState {
  */
 struct MotionStatus {
     MotionState state = MotionState::IDLE;
+    std::string homing_state = "unknown";
     Point2D position{0, 0};
     float32 velocity = 0.0f;
     float32 acceleration = 0.0f;

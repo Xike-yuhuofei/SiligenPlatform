@@ -9,6 +9,7 @@ Project-Binding: Completed (IO映射、错误码、配置参数已补充)
 # Runbook 排障手册
 
 > 目标: 让任何人按步骤能把机器"先恢复运行",并能留下足够信息定位根因。
+> 迁入副本说明: 本文保留了外部仓库形成时的命名与入口。若涉及当前工作区 DXF 真机点胶主链，CMP 运行时配置入口以 `[ValveDispenser]` 为准；文中 `[CMP]` 表述按历史背景理解。
 
 ## 通用信息(先补齐)
 - 控制卡型号/连接方式: 博派MultiCard (网口连接, Ethernet)
@@ -188,7 +189,7 @@ Project-Binding: Completed (IO映射、错误码、配置参数已补充)
 - **关联参考**:
   - IO映射: 见 `06_reference.md` 的 "IO映射表" (CMP通道1配置)
   - API规范: 见 `06_reference.md` 的 "7.2 比较输出(CMP)API规范"
-  - CMP配置: 见 `config/machine_config.ini` 的 `[CMP]` 段
+  - 当前工作区主链 CMP 配置: 见 `config/machine_config.ini` 的 `[ValveDispenser]` 段；本文中 `[CMP]` 表述仅作历史背景说明
   - CMP API: 见 [third_party/vendor/03-高级功能/03-比较输出飞拍API.md](../../third_party/vendor/03-高级功能/03-比较输出飞拍API.md)
   - 阀控制实现: 见 `src/infrastructure/adapters/dispensing/dispenser/ValveAdapter.cpp`
 

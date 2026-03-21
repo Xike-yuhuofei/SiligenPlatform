@@ -1,0 +1,8 @@
+{
+  "id": "41",
+  "method": "dxf.preview.confirm",
+  "params": {
+    "plan_id": "plan-8b2649f36dcb",
+    "snapshot_hash": "8b2649f36dcb4a79"
+  }
+}

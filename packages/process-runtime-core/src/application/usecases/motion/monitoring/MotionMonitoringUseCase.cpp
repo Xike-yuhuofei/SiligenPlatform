@@ -1,17 +1,42 @@
+#define MODULE_NAME "MotionMonitoringUseCase"
+
 #include "MotionMonitoringUseCase.h"
 
+#include "shared/interfaces/ILoggingService.h"
+#include "shared/logging/PrintfLogFormatter.h"
+
+#include <algorithm>
 #include <utility>
+#include <chrono>
+#include <thread>
 
 using namespace Siligen::Shared::Types;
 
 namespace Siligen::Application::UseCases::Motion::Monitoring {
 
 namespace {
-void ApplyHomingStatusOverride(
+const char* ToHomingStateLabel(Domain::Motion::Ports::HomingState state) {
+    using Domain::Motion::Ports::HomingState;
+    switch (state) {
+        case HomingState::NOT_HOMED:
+            return "not_homed";
+        case HomingState::HOMING:
+            return "homing";
+        case HomingState::HOMED:
+            return "homed";
+        case HomingState::FAILED:
+            return "failed";
+        default:
+            return "unknown";
+    }
+}
+
+void AttachHomingState(
     const std::shared_ptr<Domain::Motion::Ports::IHomingPort>& homing_port,
     LogicalAxisId axis_id,
     Domain::Motion::Ports::MotionStatus& status
 ) {
+    status.homing_state = "unknown";
     if (!homing_port) {
         return;
     }
@@ -22,34 +47,10 @@ void ApplyHomingStatusOverride(
     }
 
     using Domain::Motion::Ports::HomingState;
-    using Domain::Motion::Ports::MotionState;
-
-    if (status.state == MotionState::ESTOP) {
-        return;
-    }
-
-    switch (homing_result.Value().state) {
-        case HomingState::HOMED:
-            if (status.state != MotionState::FAULT) {
-                status.state = MotionState::HOMED;
-            }
-            break;
-        case HomingState::HOMING:
-            if (status.state != MotionState::FAULT) {
-                status.state = MotionState::HOMING;
-            }
-            break;
-        case HomingState::FAILED:
-            status.state = MotionState::FAULT;
-            status.has_error = true;
-            break;
-        case HomingState::NOT_HOMED:
-            if (status.state == MotionState::HOMED) {
-                status.state = MotionState::IDLE;
-            }
-            break;
-        default:
-            break;
+    const auto homing_state = homing_result.Value().state;
+    status.homing_state = ToHomingStateLabel(homing_state);
+    if (homing_state == HomingState::FAILED) {
+        status.has_error = true;
     }
 }
 }  // namespace
@@ -62,9 +63,11 @@ MotionMonitoringUseCase::MotionMonitoringUseCase(
     : motion_state_port_(std::move(motion_state_port))
     , homing_port_(std::move(homing_port))
     , io_port_(io_port)
-    , interpolation_port_(std::move(interpolation_port))
-    , status_update_running_(false)
-    , status_update_interval_ms_(100) {
+    , interpolation_port_(std::move(interpolation_port)) {
+}
+
+MotionMonitoringUseCase::~MotionMonitoringUseCase() {
+    StopStatusUpdate();
 }
 
 Result<Domain::Motion::Ports::MotionStatus> MotionMonitoringUseCase::GetAxisMotionStatus(LogicalAxisId axis_id) const {
@@ -86,7 +89,7 @@ Result<Domain::Motion::Ports::MotionStatus> MotionMonitoringUseCase::GetAxisMoti
         return Result<Domain::Motion::Ports::MotionStatus>::Failure(status_result.GetError());
     }
     auto status = status_result.Value();
-    ApplyHomingStatusOverride(homing_port_, axis_id, status);
+    AttachHomingState(homing_port_, axis_id, status);
     return Result<Domain::Motion::Ports::MotionStatus>::Success(status);
 }
 
@@ -110,7 +113,7 @@ Result<std::vector<Domain::Motion::Ports::MotionStatus>> MotionMonitoringUseCase
         if (!IsValid(axis_id)) {
             continue;
         }
-        ApplyHomingStatusOverride(homing_port_, axis_id, statuses[i]);
+        AttachHomingState(homing_port_, axis_id, statuses[i]);
     }
     return Result<std::vector<Domain::Motion::Ports::MotionStatus>>::Success(statuses);
 }
@@ -272,25 +275,92 @@ Result<bool> MotionMonitoringUseCase::ReadServoAlarmStatus(LogicalAxisId axis_id
 }
 
 void MotionMonitoringUseCase::SetMotionStatusCallback(MotionStatusCallback callback) {
+    std::lock_guard<std::mutex> lock(callback_mutex_);
     motion_status_callback_ = std::move(callback);
 }
 
 void MotionMonitoringUseCase::SetIOStatusCallback(IOStatusCallback callback) {
+    std::lock_guard<std::mutex> lock(callback_mutex_);
     io_status_callback_ = std::move(callback);
 }
 
 Result<void> MotionMonitoringUseCase::StartStatusUpdate(int32 interval_ms) {
-    status_update_interval_ms_ = interval_ms;
-    status_update_running_ = true;
+    if (interval_ms <= 0) {
+        return Result<void>::Failure(Error(
+            ErrorCode::INVALID_PARAMETER,
+            "interval_ms must be greater than 0",
+            "MotionMonitoringUseCase::StartStatusUpdate"
+        ));
+    }
+
+    if (!motion_state_port_ && !io_port_) {
+        return Result<void>::Failure(Error(
+            ErrorCode::PORT_NOT_INITIALIZED,
+            "Motion state port and IO port are both unavailable",
+            "MotionMonitoringUseCase::StartStatusUpdate"
+        ));
+    }
+
+    std::thread thread_to_join;
+    {
+        std::lock_guard<std::mutex> lock(status_update_lifecycle_mutex_);
+        status_update_interval_ms_.store(interval_ms);
+        if (status_update_thread_.joinable()) {
+            if (status_update_thread_.get_id() == std::this_thread::get_id()) {
+                // 避免在状态更新线程内自停自启造成 self-join 或双线程并发。
+                stop_status_update_requested_.store(false);
+                status_update_running_.store(true);
+                return Result<void>::Success();
+            }
+            stop_status_update_requested_.store(true);
+            thread_to_join = std::move(status_update_thread_);
+        }
+    }
+
+    if (thread_to_join.joinable()) {
+        thread_to_join.join();
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(status_update_lifecycle_mutex_);
+        stop_status_update_requested_.store(false);
+        status_update_running_.store(true);
+        motion_status_failure_count_.store(0);
+        io_status_failure_count_.store(0);
+        motion_status_failure_logged_.store(false);
+        io_status_failure_logged_.store(false);
+        status_update_thread_ = std::thread([this]() { StatusUpdateLoop(); });
+    }
     return Result<void>::Success();
 }
 
 void MotionMonitoringUseCase::StopStatusUpdate() {
-    status_update_running_ = false;
+    std::thread thread_to_join;
+    bool called_from_worker_thread = false;
+    {
+        std::lock_guard<std::mutex> lock(status_update_lifecycle_mutex_);
+        stop_status_update_requested_.store(true);
+        if (status_update_thread_.joinable()) {
+            if (status_update_thread_.get_id() == std::this_thread::get_id()) {
+                // 由状态线程自身发起停止时仅设置停止标志，join 由外层线程负责。
+                called_from_worker_thread = true;
+            } else {
+                thread_to_join = std::move(status_update_thread_);
+            }
+        } else {
+            status_update_running_.store(false);
+        }
+    }
+    if (thread_to_join.joinable()) {
+        thread_to_join.join();
+    }
+    if (!called_from_worker_thread) {
+        status_update_running_.store(false);
+    }
 }
 
 bool MotionMonitoringUseCase::IsStatusUpdateRunning() const {
-    return status_update_running_;
+    return status_update_running_.load();
 }
 
 Result<void> MotionMonitoringUseCase::ValidateAxisNumber(LogicalAxisId axis_id) const {
@@ -317,38 +387,81 @@ Result<void> MotionMonitoringUseCase::ValidateChannelNumber(int16 channel) const
 
 void MotionMonitoringUseCase::NotifyMotionStatusUpdate(LogicalAxisId axis_id,
                                                        const Domain::Motion::Ports::MotionStatus& status) {
-    if (motion_status_callback_) {
-        motion_status_callback_(axis_id, status);
+    MotionStatusCallback callback;
+    {
+        std::lock_guard<std::mutex> lock(callback_mutex_);
+        callback = motion_status_callback_;
+    }
+    if (callback) {
+        callback(axis_id, status);
     }
 }
 
 void MotionMonitoringUseCase::NotifyIOStatusUpdate(const Domain::Motion::Ports::IOStatus& signal) {
-    if (io_status_callback_) {
-        io_status_callback_(signal);
+    IOStatusCallback callback;
+    {
+        std::lock_guard<std::mutex> lock(callback_mutex_);
+        callback = io_status_callback_;
+    }
+    if (callback) {
+        callback(signal);
     }
 }
 
-void MotionMonitoringUseCase::StatusUpdateTimer() {
-    if (!status_update_running_) {
-        return;
-    }
+void MotionMonitoringUseCase::StatusUpdateLoop() {
+    while (!stop_status_update_requested_.load()) {
+        StatusUpdateTimer();
 
-    auto allStatusResult = GetAllAxesMotionStatus();
-    if (allStatusResult.IsSuccess()) {
-        const auto& allStatus = allStatusResult.Value();
-        for (size_t i = 0; i < allStatus.size(); ++i) {
-            auto axis_id = FromIndex(static_cast<int16>(i));
-            if (IsValid(axis_id)) {
-                NotifyMotionStatusUpdate(axis_id, allStatus[i]);
+        const auto interval_ms = std::max(1, status_update_interval_ms_.load());
+        const auto sleep_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(interval_ms);
+        while (!stop_status_update_requested_.load() && std::chrono::steady_clock::now() < sleep_deadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+    }
+    status_update_running_.store(false);
+}
+
+void MotionMonitoringUseCase::StatusUpdateTimer() {
+    if (motion_state_port_) {
+        auto allStatusResult = GetAllAxesMotionStatus();
+        if (allStatusResult.IsSuccess()) {
+            const auto& allStatus = allStatusResult.Value();
+            for (size_t i = 0; i < allStatus.size(); ++i) {
+                auto axis_id = FromIndex(static_cast<int16>(i));
+                if (IsValid(axis_id)) {
+                    NotifyMotionStatusUpdate(axis_id, allStatus[i]);
+                }
+            }
+            motion_status_failure_logged_.store(false);
+        } else {
+            const auto failure_count = motion_status_failure_count_.fetch_add(1) + 1;
+            if (!motion_status_failure_logged_.exchange(true)) {
+                SILIGEN_LOG_WARNING(
+                    "failure_stage=motion_status_poll;failure_code=" +
+                    std::to_string(static_cast<int>(allStatusResult.GetError().GetCode())) +
+                    ";message=" + allStatusResult.GetError().GetMessage() +
+                    ";failure_count=" + std::to_string(failure_count));
             }
         }
     }
 
-    auto allIOResult = ReadAllDigitalInputStatus();
-    if (allIOResult.IsSuccess()) {
-        const auto& allIO = allIOResult.Value();
-        for (const auto& io : allIO) {
-            NotifyIOStatusUpdate(io);
+    if (io_port_) {
+        auto allIOResult = ReadAllDigitalInputStatus();
+        if (allIOResult.IsSuccess()) {
+            const auto& allIO = allIOResult.Value();
+            for (const auto& io : allIO) {
+                NotifyIOStatusUpdate(io);
+            }
+            io_status_failure_logged_.store(false);
+        } else {
+            const auto failure_count = io_status_failure_count_.fetch_add(1) + 1;
+            if (!io_status_failure_logged_.exchange(true)) {
+                SILIGEN_LOG_WARNING(
+                    "failure_stage=io_status_poll;failure_code=" +
+                    std::to_string(static_cast<int>(allIOResult.GetError().GetCode())) +
+                    ";message=" + allIOResult.GetError().GetMessage() +
+                    ";failure_count=" + std::to_string(failure_count));
+            }
         }
     }
 }

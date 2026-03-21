@@ -49,6 +49,10 @@ class TcpDispensingFacade {
         const UseCases::Dispensing::UploadRequest& request);
     Shared::Types::Result<UseCases::Dispensing::PreparePlanResponse> PrepareDxfPlan(
         const UseCases::Dispensing::PreparePlanRequest& request);
+    Shared::Types::Result<UseCases::Dispensing::PreviewSnapshotResponse> GetDxfPreviewSnapshot(
+        const UseCases::Dispensing::PreviewSnapshotRequest& request);
+    Shared::Types::Result<UseCases::Dispensing::ConfirmPreviewResponse> ConfirmDxfPreview(
+        const UseCases::Dispensing::ConfirmPreviewRequest& request);
     Shared::Types::Result<UseCases::Dispensing::JobID> StartDxfJob(
         const UseCases::Dispensing::StartJobRequest& request);
     Shared::Types::Result<UseCases::Dispensing::JobStatusResponse> GetDxfJobStatus(
@@ -57,6 +61,7 @@ class TcpDispensingFacade {
     Shared::Types::Result<void> ResumeDxfJob(const UseCases::Dispensing::JobID& job_id);
     Shared::Types::Result<void> StopDxfJob(const UseCases::Dispensing::JobID& job_id);
     Shared::Types::Result<Domain::Safety::ValueObjects::InterlockSignals> ReadInterlockSignals() const;
+    bool IsInterlockLatched() const;
 
    private:
     std::shared_ptr<UseCases::Dispensing::Valve::ValveCommandUseCase> valve_command_use_case_;

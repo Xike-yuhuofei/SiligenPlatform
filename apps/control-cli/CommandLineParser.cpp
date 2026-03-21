@@ -70,81 +70,67 @@ void ParsePrimaryCommand(CommandLineConfig& config, int argc, char* argv[], int&
     const std::string arg = argv[index];
     if (arg == "bootstrap-check") {
         config.command = CommandType::BOOTSTRAP_CHECK;
-        config.command_string = arg;
         command_set = true;
         return;
     }
     if (arg == "connect") {
         config.command = CommandType::CONNECT;
-        config.command_string = arg;
         command_set = true;
         return;
     }
     if (arg == "disconnect") {
         config.command = CommandType::DISCONNECT;
-        config.command_string = arg;
         command_set = true;
         return;
     }
     if (arg == "status") {
         config.command = CommandType::STATUS;
-        config.command_string = arg;
         command_set = true;
         return;
     }
     if (arg == "home") {
         config.command = CommandType::HOME;
-        config.command_string = arg;
         command_set = true;
         return;
     }
     if (arg == "jog") {
         config.command = CommandType::JOG;
-        config.command_string = arg;
         command_set = true;
         return;
     }
     if (arg == "move") {
         config.command = CommandType::MOVE;
-        config.command_string = arg;
         command_set = true;
         return;
     }
     if (arg == "stop-all") {
         config.command = CommandType::STOP_ALL;
-        config.command_string = arg;
         command_set = true;
         return;
     }
     if (arg == "estop") {
         config.command = CommandType::EMERGENCY_STOP;
-        config.command_string = arg;
         command_set = true;
         return;
     }
     if (arg == "dxf-plan") {
         config.command = CommandType::DXF_PLAN;
-        config.command_string = arg;
         command_set = true;
         return;
     }
     if (arg == "dxf-dispense") {
         config.command = CommandType::DXF_DISPENSE;
-        config.command_string = arg;
         config.mode = RunMode::DXF_DISPENSE;
-        config.mode_string = arg;
         command_set = true;
         return;
     }
     if (arg == "dxf-preview") {
         config.command = CommandType::DXF_PREVIEW;
-        config.command_string = arg;
         command_set = true;
         return;
     }
     if (arg == "dxf-augment") {
         config.command = CommandType::DXF_AUGMENT;
-        config.command_string = arg;
         command_set = true;
         return;
     }
@@ -159,7 +145,6 @@ void ParsePrimaryCommand(CommandLineConfig& config, int argc, char* argv[], int&
         else if (action == "pause") config.command = CommandType::DISPENSER_PAUSE;
         else if (action == "resume") config.command = CommandType::DISPENSER_RESUME;
         else ThrowUsage("dispenser 不支持的操作: " + action);
-        config.command_string = "dispenser " + action;
         command_set = true;
         return;
     }
@@ -171,7 +156,6 @@ void ParsePrimaryCommand(CommandLineConfig& config, int argc, char* argv[], int&
         if (action == "open") config.command = CommandType::SUPPLY_OPEN;
         else if (action == "close") config.command = CommandType::SUPPLY_CLOSE;
         else ThrowUsage("supply 不支持的操作: " + action);
-        config.command_string = "supply " + action;
         command_set = true;
         return;
     }
@@ -181,7 +165,6 @@ void ParsePrimaryCommand(CommandLineConfig& config, int argc, char* argv[], int&
         }
         const std::string action = argv[++index];
         config.command = ParseRecipeAction(action);
-        config.command_string = "recipe " + action;
         command_set = true;
         return;
     }
@@ -216,7 +199,6 @@ CommandLineConfig CommandLineParser::Parse(int argc, char* argv[]) {
 
     if (argc <= 1) {
         config.command = CommandType::INTERACTIVE;
-        config.command_string = "interactive";
         return config;
     }
 
@@ -237,10 +219,6 @@ CommandLineConfig CommandLineParser::Parse(int argc, char* argv[]) {
             return config;
         }
 
-        if (arg == "--verbose") {
-            config.verbose = true;
-            continue;
-        }
         if (arg == "--no-interactive") {
             config.no_interactive = true;
             continue;
@@ -271,18 +249,6 @@ CommandLineConfig CommandLineParser::Parse(int argc, char* argv[]) {
         }
         if (arg == "--immediate") {
             config.immediate_stop = true;
-            continue;
-        }
-        if (arg == "--disable-safety-checks") {
-            config.safety_checks = false;
-            continue;
-        }
-        if (arg == "--no-auto-enable") {
-            config.auto_enable = false;
-            continue;
-        }
-        if (arg == "--show-status") {
-            config.show_status = true;
             continue;
         }
         if (arg == "--show-motion") {
@@ -360,7 +326,6 @@ CommandLineConfig CommandLineParser::Parse(int argc, char* argv[]) {
 
         if (const auto value = ConsumeValue(arg, "--mode", argc, argv, i); !value.empty()) {
             config.mode = ParseMode(value);
-            config.mode_string = value;
             continue;
         }
         if (const auto value = ConsumeValue(arg, "--config", argc, argv, i); !value.empty()) {
@@ -406,22 +371,6 @@ CommandLineConfig CommandLineParser::Parse(int argc, char* argv[]) {
         }
         if (const auto value = ConsumeValue(arg, "--duration-ms", argc, argv, i); !value.empty()) {
             AssignNumber("--duration-ms", value, config.dispenser_duration_ms);
-            continue;
-        }
-        if (const auto value = ConsumeValue(arg, "--dispensing-time", argc, argv, i); !value.empty()) {
-            AssignNumber("--dispensing-time", value, config.dispensing_time);
-            continue;
-        }
-        if (const auto value = ConsumeValue(arg, "--pulse-width", argc, argv, i); !value.empty()) {
-            AssignNumber("--pulse-width", value, config.pulse_width);
-            continue;
-        }
-        if (const auto value = ConsumeValue(arg, "--cmp-channel", argc, argv, i); !value.empty()) {
-            AssignNumber("--cmp-channel", value, config.cmp_channel);
-            continue;
-        }
-        if (const auto value = ConsumeValue(arg, "--segments", argc, argv, i); !value.empty()) {
-            AssignNumber("--segments", value, config.segments);
             continue;
         }
         if (const auto value = ConsumeValue(arg, "--status-monitor-interval", argc, argv, i); !value.empty()) {
@@ -655,22 +604,17 @@ CommandLineConfig CommandLineParser::Parse(int argc, char* argv[]) {
 
     if (config.mode == RunMode::NONE) {
         config.mode = RunMode::BASIC;
-        config.mode_string = "basic";
     }
 
     if (!command_set) {
         if (config.mode == RunMode::DXF_DISPENSE) {
             config.command = CommandType::DXF_DISPENSE;
-            config.command_string = "dxf-dispense";
         } else if (config.mode == RunMode::HOME) {
             config.command = CommandType::HOME;
-            config.command_string = "home";
         } else if (config.mode == RunMode::STATUS) {
             config.command = CommandType::STATUS;
-            config.command_string = "status";
         } else {
             config.command = CommandType::INTERACTIVE;
-            config.command_string = "interactive";
         }
     }
 

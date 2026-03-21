@@ -27,10 +27,52 @@ using Domain::Safety::ValueObjects::InterlockPolicyConfig;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::LogicalAxisId;
+using Siligen::Shared::Types::Point2D;
 
 namespace {
 
 constexpr auto kJobPollInterval = std::chrono::milliseconds(100);
+
+std::vector<Point2D> BuildPreviewPolyline(
+    const std::vector<Siligen::TrajectoryPoint>& points,
+    std::size_t max_points) {
+    std::vector<Point2D> polyline;
+    if (points.empty()) {
+        return polyline;
+    }
+
+    const std::size_t safe_max_points = std::max<std::size_t>(2, max_points);
+    const std::size_t source_point_count = points.size();
+    std::size_t step = 1;
+    if (source_point_count > safe_max_points) {
+        const std::size_t numerator = source_point_count - 1;
+        const std::size_t denominator = safe_max_points - 1;
+        step = (numerator + denominator - 1) / denominator;
+        step = std::max<std::size_t>(1, step);
+    }
+
+    polyline.reserve(std::min(source_point_count, safe_max_points));
+    for (std::size_t i = 0; i < source_point_count; i += step) {
+        const auto& trajectory_point = points[i];
+        Point2D point;
+        point.x = trajectory_point.position.x;
+        point.y = trajectory_point.position.y;
+        polyline.push_back(point);
+    }
+
+    const auto& last_source = points.back();
+    const bool should_append_last =
+        polyline.empty() ||
+        polyline.back().x != last_source.position.x ||
+        polyline.back().y != last_source.position.y;
+    if (should_append_last) {
+        Point2D point;
+        point.x = last_source.position.x;
+        point.y = last_source.position.y;
+        polyline.push_back(point);
+    }
+    return polyline;
+}
 
 std::string ToIso8601UtcNow() {
     const auto now = std::chrono::system_clock::now();
@@ -67,6 +109,10 @@ bool IsTerminal(DispensingWorkflowUseCase::WorkflowJobState state) {
            state == DispensingWorkflowUseCase::WorkflowJobState::CANCELLED;
 }
 
+bool IsTaskStateActive(const std::string& state) {
+    return state == "pending" || state == "running" || state == "paused";
+}
+
 }  // namespace
 
 DispensingWorkflowUseCase::DispensingWorkflowUseCase(
@@ -86,6 +132,29 @@ DispensingWorkflowUseCase::DispensingWorkflowUseCase(
       interlock_signal_port_(std::move(interlock_signal_port)) {
     if (!upload_use_case_ || !planning_use_case_ || !execution_use_case_) {
         throw std::invalid_argument("DispensingWorkflowUseCase: dependencies cannot be null");
+    }
+}
+
+DispensingWorkflowUseCase::~DispensingWorkflowUseCase() {
+    shutting_down_.store(true);
+    JobID active_job;
+    {
+        std::lock_guard<std::mutex> lock(jobs_mutex_);
+        active_job = active_job_id_;
+    }
+    if (!active_job.empty()) {
+        (void)StopJob(active_job);
+    }
+
+    std::thread worker_to_join;
+    {
+        std::lock_guard<std::mutex> lock(worker_mutex_);
+        if (worker_thread_.joinable()) {
+            worker_to_join = std::move(worker_thread_);
+        }
+    }
+    if (worker_to_join.joinable()) {
+        worker_to_join.join();
     }
 }
 
@@ -158,19 +227,122 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
     PlanRecord record;
     record.response = response;
     record.execution_request = execution_request;
+    record.trajectory_points = planning.trajectory_points;
+    record.preview_state = PlanPreviewState::PREPARED;
+    record.latest = true;
 
     {
         std::lock_guard<std::mutex> lock(plans_mutex_);
+        for (auto& [existing_plan_id, existing_record] : plans_) {
+            if (existing_plan_id == response.plan_id) {
+                continue;
+            }
+            if (existing_record.response.artifact_id == request.artifact_id && existing_record.latest) {
+                existing_record.latest = false;
+                existing_record.preview_state = PlanPreviewState::STALE;
+                existing_record.confirmed_at.clear();
+            }
+        }
         plans_[response.plan_id] = record;
     }
 
     return Result<PreparePlanResponse>::Success(std::move(response));
 }
 
+Result<PreviewSnapshotResponse> DispensingWorkflowUseCase::GetPreviewSnapshot(const PreviewSnapshotRequest& request) {
+    if (request.plan_id.empty()) {
+        return Result<PreviewSnapshotResponse>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "plan_id is required", "DispensingWorkflowUseCase"));
+    }
+
+    PlanRecord snapshot_record;
+    {
+        std::lock_guard<std::mutex> lock(plans_mutex_);
+        auto it = plans_.find(request.plan_id);
+        if (it == plans_.end()) {
+            return Result<PreviewSnapshotResponse>::Failure(
+                Error(ErrorCode::NOT_FOUND, "plan not found", "DispensingWorkflowUseCase"));
+        }
+        if (!it->second.latest) {
+            return Result<PreviewSnapshotResponse>::Failure(
+                Error(ErrorCode::INVALID_STATE, "plan is stale", "DispensingWorkflowUseCase"));
+        }
+        if (it->second.trajectory_points.empty()) {
+            it->second.preview_state = PlanPreviewState::FAILED;
+            it->second.failure_message = "trajectory points unavailable";
+            return Result<PreviewSnapshotResponse>::Failure(
+                Error(ErrorCode::INVALID_STATE, "trajectory points unavailable", "DispensingWorkflowUseCase"));
+        }
+
+        it->second.preview_snapshot_id = it->second.response.plan_id;
+        it->second.preview_snapshot_hash = it->second.response.plan_fingerprint;
+        it->second.preview_generated_at = ToIso8601UtcNow();
+        it->second.preview_state = PlanPreviewState::SNAPSHOT_READY;
+        it->second.confirmed_at.clear();
+        it->second.failure_message.clear();
+        snapshot_record = it->second;
+    }
+
+    return Result<PreviewSnapshotResponse>::Success(
+        BuildPreviewSnapshotResponse(snapshot_record, request.max_polyline_points));
+}
+
+Result<ConfirmPreviewResponse> DispensingWorkflowUseCase::ConfirmPreview(const ConfirmPreviewRequest& request) {
+    if (request.plan_id.empty()) {
+        return Result<ConfirmPreviewResponse>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "plan_id is required", "DispensingWorkflowUseCase"));
+    }
+    if (request.snapshot_hash.empty()) {
+        return Result<ConfirmPreviewResponse>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "snapshot_hash is required", "DispensingWorkflowUseCase"));
+    }
+
+    ConfirmPreviewResponse response;
+    {
+        std::lock_guard<std::mutex> lock(plans_mutex_);
+        auto it = plans_.find(request.plan_id);
+        if (it == plans_.end()) {
+            return Result<ConfirmPreviewResponse>::Failure(
+                Error(ErrorCode::NOT_FOUND, "plan not found", "DispensingWorkflowUseCase"));
+        }
+        if (!it->second.latest) {
+            return Result<ConfirmPreviewResponse>::Failure(
+                Error(ErrorCode::INVALID_STATE, "plan is stale", "DispensingWorkflowUseCase"));
+        }
+        if (it->second.preview_state != PlanPreviewState::SNAPSHOT_READY &&
+            it->second.preview_state != PlanPreviewState::CONFIRMED) {
+            return Result<ConfirmPreviewResponse>::Failure(
+                Error(ErrorCode::INVALID_STATE, "preview snapshot not prepared", "DispensingWorkflowUseCase"));
+        }
+        if (request.snapshot_hash != it->second.preview_snapshot_hash) {
+            return Result<ConfirmPreviewResponse>::Failure(
+                Error(ErrorCode::INVALID_PARAMETER, "snapshot hash mismatch", "DispensingWorkflowUseCase"));
+        }
+
+        it->second.preview_state = PlanPreviewState::CONFIRMED;
+        if (it->second.confirmed_at.empty()) {
+            it->second.confirmed_at = ToIso8601UtcNow();
+        }
+        it->second.failure_message.clear();
+
+        response.confirmed = true;
+        response.plan_id = it->second.response.plan_id;
+        response.snapshot_hash = it->second.preview_snapshot_hash;
+        response.preview_state = PreviewStateToString(it->second.preview_state);
+        response.confirmed_at = it->second.confirmed_at;
+    }
+
+    return Result<ConfirmPreviewResponse>::Success(std::move(response));
+}
+
 Result<JobID> DispensingWorkflowUseCase::StartJob(const StartJobRequest& request) {
     if (request.plan_id.empty()) {
         return Result<JobID>::Failure(
             Error(ErrorCode::INVALID_PARAMETER, "plan_id is required", "DispensingWorkflowUseCase"));
+    }
+    if (request.plan_fingerprint.empty()) {
+        return Result<JobID>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "plan_fingerprint is required", "DispensingWorkflowUseCase"));
     }
     if (request.target_count == 0) {
         return Result<JobID>::Failure(
@@ -184,6 +356,18 @@ Result<JobID> DispensingWorkflowUseCase::StartJob(const StartJobRequest& request
         if (it == plans_.end()) {
             return Result<JobID>::Failure(
                 Error(ErrorCode::NOT_FOUND, "plan not found", "DispensingWorkflowUseCase"));
+        }
+        if (!it->second.latest) {
+            return Result<JobID>::Failure(
+                Error(ErrorCode::INVALID_STATE, "plan is stale", "DispensingWorkflowUseCase"));
+        }
+        if (it->second.preview_state != PlanPreviewState::CONFIRMED) {
+            return Result<JobID>::Failure(
+                Error(ErrorCode::INVALID_STATE, "preview not confirmed", "DispensingWorkflowUseCase"));
+        }
+        if (request.plan_fingerprint != it->second.response.plan_fingerprint) {
+            return Result<JobID>::Failure(
+                Error(ErrorCode::INVALID_PARAMETER, "plan fingerprint mismatch", "DispensingWorkflowUseCase"));
         }
         plan_record = it->second;
     }
@@ -217,7 +401,54 @@ Result<JobID> DispensingWorkflowUseCase::StartJob(const StartJobRequest& request
         active_job_id_ = job_id;
     }
 
-    std::thread([this, context, plan_record]() { RunJob(context, plan_record); }).detach();
+    std::thread new_worker_thread;
+    try {
+        new_worker_thread = std::thread([this, context, plan_record]() { RunJob(context, plan_record); });
+    } catch (const std::exception& ex) {
+        {
+            std::lock_guard<std::mutex> lock(jobs_mutex_);
+            auto job_it = jobs_.find(job_id);
+            if (job_it != jobs_.end() && job_it->second == context) {
+                jobs_.erase(job_it);
+            }
+            if (active_job_id_ == job_id) {
+                active_job_id_.clear();
+            }
+        }
+        return Result<JobID>::Failure(
+            Error(
+                ErrorCode::THREAD_START_FAILED,
+                "failure_stage=start_job_thread_start;failure_code=THREAD_START_FAILED;message=" + std::string(ex.what()),
+                "DispensingWorkflowUseCase"));
+    } catch (...) {
+        {
+            std::lock_guard<std::mutex> lock(jobs_mutex_);
+            auto job_it = jobs_.find(job_id);
+            if (job_it != jobs_.end() && job_it->second == context) {
+                jobs_.erase(job_it);
+            }
+            if (active_job_id_ == job_id) {
+                active_job_id_.clear();
+            }
+        }
+        return Result<JobID>::Failure(
+            Error(
+                ErrorCode::THREAD_START_FAILED,
+                "failure_stage=start_job_thread_start;failure_code=THREAD_START_FAILED;message=unknown",
+                "DispensingWorkflowUseCase"));
+    }
+
+    std::thread worker_to_join;
+    {
+        std::lock_guard<std::mutex> lock(worker_mutex_);
+        if (worker_thread_.joinable()) {
+            worker_to_join = std::move(worker_thread_);
+        }
+        worker_thread_ = std::move(new_worker_thread);
+    }
+    if (worker_to_join.joinable()) {
+        worker_to_join.join();
+    }
     return Result<JobID>::Success(job_id);
 }
 
@@ -250,6 +481,10 @@ Result<void> DispensingWorkflowUseCase::PauseJob(const JobID& job_id) {
     const auto state = context->state.load();
     if (state == WorkflowJobState::PAUSED) {
         return Result<void>::Success();
+    }
+    if (state == WorkflowJobState::STOPPING) {
+        return Result<void>::Failure(
+            Error(ErrorCode::INVALID_STATE, "job is stopping", "DispensingWorkflowUseCase"));
     }
     if (IsTerminal(state)) {
         return Result<void>::Failure(
@@ -284,6 +519,10 @@ Result<void> DispensingWorkflowUseCase::ResumeJob(const JobID& job_id) {
     }
 
     const auto state = context->state.load();
+    if (state == WorkflowJobState::STOPPING) {
+        return Result<void>::Failure(
+            Error(ErrorCode::INVALID_STATE, "job is stopping", "DispensingWorkflowUseCase"));
+    }
     if (IsTerminal(state)) {
         return Result<void>::Failure(
             Error(ErrorCode::INVALID_STATE, "job already finished", "DispensingWorkflowUseCase"));
@@ -327,6 +566,7 @@ Result<void> DispensingWorkflowUseCase::StopJob(const JobID& job_id) {
 
     context->stop_requested.store(true);
     context->pause_requested.store(false);
+    context->state.store(WorkflowJobState::STOPPING);
 
     std::string active_task_id;
     {
@@ -336,7 +576,50 @@ Result<void> DispensingWorkflowUseCase::StopJob(const JobID& job_id) {
     if (!active_task_id.empty()) {
         auto cancel_result = execution_use_case_->CancelTask(active_task_id);
         if (cancel_result.IsError()) {
-            return cancel_result;
+            auto status_result = execution_use_case_->GetTaskStatus(active_task_id);
+            if (status_result.IsError()) {
+                if (IsTerminal(context->state.load())) {
+                    return Result<void>::Success();
+                }
+                return Result<void>::Failure(
+                    Error(
+                        cancel_result.GetError().GetCode(),
+                        "failure_stage=stop_cancel_forward;failure_code=" +
+                            std::to_string(static_cast<int>(cancel_result.GetError().GetCode())) +
+                            ";message=" + cancel_result.GetError().GetMessage() +
+                            ";status_query_failure_code=" +
+                            std::to_string(static_cast<int>(status_result.GetError().GetCode())) +
+                            ";status_query_failure_message=" + status_result.GetError().GetMessage(),
+                        "DispensingWorkflowUseCase"));
+            }
+
+            const auto& task_status = status_result.Value();
+            if (task_status.state == "cancelled") {
+                FinalizeJob(context, WorkflowJobState::CANCELLED, task_status.error_message);
+                return Result<void>::Success();
+            }
+            if (task_status.state == "completed") {
+                FinalizeJob(context, WorkflowJobState::COMPLETED, task_status.error_message);
+                return Result<void>::Success();
+            }
+            if (task_status.state == "failed") {
+                FinalizeJob(context, WorkflowJobState::FAILED, task_status.error_message);
+                return Result<void>::Failure(
+                    Error(
+                        ErrorCode::HARDWARE_ERROR,
+                        "failure_stage=stop_cancel_forward;failure_code=TASK_FAILED;message=" +
+                            task_status.error_message,
+                        "DispensingWorkflowUseCase"));
+            }
+
+            return Result<void>::Failure(
+                Error(
+                    cancel_result.GetError().GetCode(),
+                    "failure_stage=stop_cancel_forward;failure_code=" +
+                        std::to_string(static_cast<int>(cancel_result.GetError().GetCode())) +
+                        ";message=" + cancel_result.GetError().GetMessage() +
+                        ";task_state=" + task_status.state,
+                    "DispensingWorkflowUseCase"));
         }
     } else {
         FinalizeJob(context, WorkflowJobState::CANCELLED, "job cancelled");
@@ -351,6 +634,13 @@ Result<Domain::Safety::ValueObjects::InterlockSignals> DispensingWorkflowUseCase
             Error(ErrorCode::PORT_NOT_INITIALIZED, "interlock signal port not available", "DispensingWorkflowUseCase"));
     }
     return interlock_signal_port_->ReadSignals();
+}
+
+bool DispensingWorkflowUseCase::IsInterlockLatched() const {
+    if (!interlock_signal_port_) {
+        return false;
+    }
+    return interlock_signal_port_->IsLatched();
 }
 
 Result<void> DispensingWorkflowUseCase::ValidateExecutionPreconditions() const {
@@ -513,6 +803,34 @@ JobStatusResponse DispensingWorkflowUseCase::BuildJobStatusResponse(const std::s
     return response;
 }
 
+PreviewSnapshotResponse DispensingWorkflowUseCase::BuildPreviewSnapshotResponse(
+    const PlanRecord& plan_record,
+    std::size_t max_polyline_points) {
+    PreviewSnapshotResponse response;
+    response.snapshot_id = plan_record.preview_snapshot_id;
+    response.snapshot_hash = plan_record.preview_snapshot_hash;
+    response.plan_id = plan_record.response.plan_id;
+    response.preview_state = PreviewStateToString(plan_record.preview_state);
+    response.confirmed_at = plan_record.confirmed_at;
+    response.segment_count = plan_record.response.segment_count;
+    response.point_count = plan_record.response.point_count;
+    response.polyline_source_point_count = static_cast<std::uint32_t>(plan_record.trajectory_points.size());
+    response.total_length_mm = plan_record.response.total_length_mm;
+    response.estimated_time_s = plan_record.response.estimated_time_s;
+    response.generated_at = plan_record.preview_generated_at;
+
+    auto polyline = BuildPreviewPolyline(plan_record.trajectory_points, max_polyline_points);
+    response.polyline_point_count = static_cast<std::uint32_t>(polyline.size());
+    response.trajectory_polyline.reserve(polyline.size());
+    for (const auto& point : polyline) {
+        PreviewSnapshotPoint snapshot_point;
+        snapshot_point.x = point.x;
+        snapshot_point.y = point.y;
+        response.trajectory_polyline.push_back(snapshot_point);
+    }
+    return response;
+}
+
 std::string DispensingWorkflowUseCase::GenerateId(const char* prefix) {
     const auto seq = id_sequence_.fetch_add(1, std::memory_order_relaxed) + 1;
     const auto now = std::chrono::system_clock::now().time_since_epoch();
@@ -552,12 +870,31 @@ std::string DispensingWorkflowUseCase::BuildPlanFingerprint(
     return HexEncodeUint64(Fnv1a64(oss.str()));
 }
 
+std::string DispensingWorkflowUseCase::PreviewStateToString(PlanPreviewState state) const {
+    switch (state) {
+        case PlanPreviewState::PREPARED:
+            return "prepared";
+        case PlanPreviewState::SNAPSHOT_READY:
+            return "snapshot_ready";
+        case PlanPreviewState::CONFIRMED:
+            return "confirmed";
+        case PlanPreviewState::STALE:
+            return "stale";
+        case PlanPreviewState::FAILED:
+            return "failed";
+        default:
+            return "unknown";
+    }
+}
+
 std::string DispensingWorkflowUseCase::JobStateToString(WorkflowJobState state) const {
     switch (state) {
         case WorkflowJobState::PENDING:
             return "pending";
         case WorkflowJobState::RUNNING:
             return "running";
+        case WorkflowJobState::STOPPING:
+            return "stopping";
         case WorkflowJobState::PAUSED:
             return "paused";
         case WorkflowJobState::COMPLETED:
@@ -574,10 +911,22 @@ std::string DispensingWorkflowUseCase::JobStateToString(WorkflowJobState state) 
 void DispensingWorkflowUseCase::RunJob(
     const std::shared_ptr<JobContext>& context,
     const PlanRecord& plan_record) {
-    context->state.store(WorkflowJobState::RUNNING);
+    if (context->stop_requested.load()) {
+        FinalizeJob(context, WorkflowJobState::CANCELLED, "job cancelled");
+        return;
+    }
+
     const auto target_count = context->target_count.load();
 
     for (std::uint32_t cycle = 0; cycle < target_count; ++cycle) {
+        if (context->final_state_committed.load()) {
+            return;
+        }
+        if (context->stop_requested.load()) {
+            FinalizeJob(context, WorkflowJobState::CANCELLED, "job cancelled");
+            return;
+        }
+
         context->current_cycle.store(cycle + 1);
         context->current_segment.store(0);
         context->total_segments.store(0);
@@ -588,13 +937,29 @@ void DispensingWorkflowUseCase::RunJob(
                 FinalizeJob(context, WorkflowJobState::CANCELLED, "job cancelled");
                 return;
             }
-            context->state.store(WorkflowJobState::PAUSED);
+            if (!context->final_state_committed.load()) {
+                context->state.store(WorkflowJobState::PAUSED);
+            }
             std::this_thread::sleep_for(kJobPollInterval);
         }
 
         auto precondition_result = ValidateExecutionPreconditions();
         if (precondition_result.IsError()) {
             FinalizeJob(context, WorkflowJobState::FAILED, precondition_result.GetError().GetMessage());
+            return;
+        }
+        if (context->stop_requested.load()) {
+            FinalizeJob(context, WorkflowJobState::CANCELLED, "job cancelled");
+            return;
+        }
+        if (!context->final_state_committed.load()) {
+            context->state.store(WorkflowJobState::RUNNING);
+        }
+        if (context->final_state_committed.load()) {
+            return;
+        }
+        if (context->stop_requested.load()) {
+            FinalizeJob(context, WorkflowJobState::CANCELLED, "job cancelled");
             return;
         }
 
@@ -611,13 +976,67 @@ void DispensingWorkflowUseCase::RunJob(
         }
 
         bool pause_forwarded = false;
+        bool cancel_forwarded = false;
         while (true) {
-            if (context->stop_requested.load()) {
+            if (context->final_state_committed.load()) {
+                return;
+            }
+            if (context->stop_requested.load() && !cancel_forwarded) {
+                if (!context->final_state_committed.load()) {
+                    context->state.store(WorkflowJobState::STOPPING);
+                }
                 auto cancel_result = execution_use_case_->CancelTask(task_id);
                 if (cancel_result.IsError()) {
-                    FinalizeJob(context, WorkflowJobState::FAILED, cancel_result.GetError().GetMessage());
+                    auto task_status_after_cancel_result = execution_use_case_->GetTaskStatus(task_id);
+                    if (task_status_after_cancel_result.IsError()) {
+                        FinalizeJob(
+                            context,
+                            WorkflowJobState::FAILED,
+                            "failure_stage=cancel_forward;cancel_failure_code=" +
+                                std::to_string(static_cast<int>(cancel_result.GetError().GetCode())) +
+                                ";cancel_failure_message=" + cancel_result.GetError().GetMessage() +
+                                ";status_query_failure_code=" +
+                                std::to_string(static_cast<int>(task_status_after_cancel_result.GetError().GetCode())) +
+                                ";status_query_failure_message=" + task_status_after_cancel_result.GetError().GetMessage());
+                        return;
+                    }
+
+                    const auto& task_status_after_cancel = task_status_after_cancel_result.Value();
+                    if (task_status_after_cancel.state == "cancelled") {
+                        FinalizeJob(context, WorkflowJobState::CANCELLED, task_status_after_cancel.error_message);
+                        return;
+                    }
+                    if (task_status_after_cancel.state == "completed") {
+                        context->completed_count.store(cycle + 1);
+                        context->cycle_progress_percent.store(100);
+                        if (cycle + 1 >= context->target_count.load()) {
+                            break;
+                        }
+                        FinalizeJob(context, WorkflowJobState::CANCELLED, "job cancelled");
+                        return;
+                    }
+                    if (task_status_after_cancel.state == "failed") {
+                        FinalizeJob(context, WorkflowJobState::FAILED, task_status_after_cancel.error_message);
+                        return;
+                    }
+                    if (IsTaskStateActive(task_status_after_cancel.state)) {
+                        FinalizeJob(
+                            context,
+                            WorkflowJobState::FAILED,
+                            "failure_stage=cancel_confirm;failure_code=TASK_STILL_ACTIVE;message=" +
+                                cancel_result.GetError().GetMessage() +
+                                ";task_state=" + task_status_after_cancel.state);
+                        return;
+                    }
+
+                    FinalizeJob(
+                        context,
+                        WorkflowJobState::FAILED,
+                        "failure_stage=cancel_confirm;failure_code=UNKNOWN_TASK_STATE;task_state=" +
+                            task_status_after_cancel.state);
                     return;
                 }
+                cancel_forwarded = true;
             }
 
             auto task_status_result = execution_use_case_->GetTaskStatus(task_id);
@@ -649,12 +1068,21 @@ void DispensingWorkflowUseCase::RunJob(
             }
 
             if (task_status.state == "paused") {
-                context->state.store(WorkflowJobState::PAUSED);
+                if (!context->final_state_committed.load()) {
+                    context->state.store(WorkflowJobState::PAUSED);
+                }
             } else if (task_status.state == "running" || task_status.state == "pending") {
-                context->state.store(WorkflowJobState::RUNNING);
+                if (!context->final_state_committed.load()) {
+                    context->state.store(
+                        context->stop_requested.load() ? WorkflowJobState::STOPPING : WorkflowJobState::RUNNING);
+                }
             } else if (task_status.state == "completed") {
                 context->completed_count.store(cycle + 1);
                 context->cycle_progress_percent.store(100);
+                if (context->stop_requested.load() && cycle + 1 < context->target_count.load()) {
+                    FinalizeJob(context, WorkflowJobState::CANCELLED, "job cancelled");
+                    return;
+                }
                 break;
             } else if (task_status.state == "cancelled") {
                 FinalizeJob(context, WorkflowJobState::CANCELLED, task_status.error_message);
@@ -680,6 +1108,11 @@ void DispensingWorkflowUseCase::FinalizeJob(
     const std::shared_ptr<JobContext>& context,
     WorkflowJobState final_state,
     const std::string& error_message) {
+    bool expected = false;
+    if (!context->final_state_committed.compare_exchange_strong(expected, true)) {
+        return;
+    }
+
     context->state.store(final_state);
     context->end_time = std::chrono::steady_clock::now();
     {

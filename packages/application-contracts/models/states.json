@@ -4,18 +4,19 @@
   "definitions": {
     "axisStatus": {
       "type": "object",
-      "required": ["position", "velocity", "enabled", "homed"],
+      "required": ["position", "velocity", "enabled", "homed", "homing_state"],
       "properties": {
         "position": { "type": "number" },
         "velocity": { "type": "number" },
         "enabled": { "type": "boolean" },
-        "homed": { "type": "boolean" }
+        "homed": { "type": "boolean" },
+        "homing_state": { "type": "string" }
       },
       "additionalProperties": false
     },
     "ioStatus": {
       "type": "object",
-      "required": ["limit_x_pos", "limit_x_neg", "limit_y_pos", "limit_y_neg", "estop", "door"],
+      "required": ["limit_x_pos", "limit_x_neg", "limit_y_pos", "limit_y_neg", "estop", "estop_known", "door", "door_known"],
       "properties": {
         "limit_x_pos": { "type": "boolean" },
         "limit_x_neg": { "type": "boolean" },
@@ -28,19 +29,32 @@
         "door": {
           "type": "boolean",
           "description": "后端权威安全门信号；来自运行时互锁端口。"
+        },
+        "estop_known": {
+          "type": "boolean",
+          "description": "急停信号是否可靠可判定；false 表示来源不可判定。"
+        },
+        "door_known": {
+          "type": "boolean",
+          "description": "安全门信号是否可靠可判定；false 表示来源不可判定。"
         }
       },
       "additionalProperties": false
     },
     "machineStatus": {
       "type": "object",
-      "required": ["connected", "machine_state", "axes", "io", "dispenser", "alarms"],
+      "required": ["connected", "connection_state", "machine_state", "machine_state_reason", "interlock_latched", "active_job_id", "active_job_state", "axes", "io", "dispenser", "alarms"],
       "properties": {
         "connected": { "type": "boolean" },
+        "connection_state": { "type": "string" },
         "machine_state": {
           "type": "string",
-          "description": "当前源码中已观测到 Ready / Idle / Running / Unknown。"
+          "description": "权威状态枚举：Disconnected / Idle / Running / Paused / Interlock / Estop / Fault / Unknown。"
         },
+        "machine_state_reason": { "type": "string" },
+        "interlock_latched": { "type": "boolean" },
+        "active_job_id": { "type": "string" },
+        "active_job_state": { "type": "string" },
         "axes": { "type": "object" },
         "position": {
           "type": "object",
@@ -212,7 +226,10 @@
         "job_id": { "type": "string" },
         "plan_id": { "type": "string" },
         "plan_fingerprint": { "type": "string" },
-        "state": { "type": "string" },
+        "state": {
+          "type": "string",
+          "enum": ["pending", "running", "stopping", "paused", "completed", "failed", "cancelled", "unknown"]
+        },
         "target_count": { "type": "integer" },
         "completed_count": { "type": "integer" },
         "current_cycle": { "type": "integer" },

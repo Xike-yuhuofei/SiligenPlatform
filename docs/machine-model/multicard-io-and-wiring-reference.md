@@ -93,9 +93,11 @@ Source: migrated from D:\Projects\Backend_CPP\docs\library\06_reference.md
 | **CMP+** | Trigger | 差分模块-IN-A- | 差分信号(负) | 2000μs | 点胶阀触发 | MC_CmpBufData |
 | **CMP-** | Trigger | 差分模块-IN-A+ | 差分信号(正) | 2000μs | 点胶阀触发 | MC_CmpBufData |
 
-> **CMP配置来源**: machine_config.ini [CMP] 段
-> **典型配置**: cmp_channel=1, pulse_width_us=2000, signal_type=0(脉冲)
+> **当前 DXF 主链权威配置来源**: machine_config.ini `[ValveDispenser]` 段
+> **当前主链典型配置**: `cmp_channel=1`, `pulse_type=0`, `abs_position_flag=1`
 > **触发技术说明**: DXF 执行采用 **规划位置触发 (Planned Position Triggering)**。CMP 位置比较以规划位置(Profile Position)为比较源，通过 `MC_CmpBufData` 下发触发位置数组。定时触发 (`MC_CmpPluse`) 仅用于阀门调试/单独控制，不参与 DXF 执行。
+> **遗留配置澄清**: `[CMP]` 段中的 `cmp_channel`、`signal_type`、`trigger_mode`、`pulse_width_us`、`delay_time_us`、`encoder_num`、`abs_position_flag` 及软件触发相关字段不再是当前 DXF 真机点胶主链的权威配置。真机实际使用的 `MC_CmpBufData.nCmpEncodeNum` 由触发轴映射得到的 SDK 轴号决定，而不是从 `encoder_num` 读取。
+> **当前基线**: 当前机型已显式配置 `[ValveDispenser].cmp_axis_mask=3`；`[CMP].cmp_axis_mask` 不再参与 DXF 真机点胶主链。
 
 ### 2.4 电源与安全系统
 
@@ -242,10 +244,11 @@ MHE3 系列是 FESTO 的高速微型阀, 专为快速切换应用设计:
 | Dispensing | `dispensing_time` | 0.1 | 单次点胶持续时间(秒) | 🟢 低 | 影响出胶量，推荐0.05-0.2s |
 | Dispensing | `dot_diameter_target_mm` | 1.0 | 点径目标(mm)，胶点直径=1mm | 🟡 中 | 影响点胶密度与搭接，需与工艺匹配 |
 | Dispensing | `dot_edge_gap_mm` | 2.0 | 点与点边缘间隔(mm) | 🟡 中 | 与点径相加得到中心间距(点径1.0mm时中心距=3.0mm，CLI `--dispensing-interval` 默认3.0mm) |
-| CMP | `cmp_channel` | 1 | CMP通道编号(1-4) | 🟡 中 | 与硬件接线对应，错误配置会导致点胶阀不触发 |
-| CMP | `signal_type` | 0 | CMP信号类型(0=脉冲,1=电平) | 🔴 高 | 电平模式已禁用，必须使用脉冲模式 |
-| CMP | `pulse_width_us` | 2000 | CMP脉冲宽度(微秒) | 🟡 中 | 影响点胶阀响应，推荐2000μs(2ms)，范围[1000,5000] |
-| CMP | `abs_position_flag` | 1 | 绝对位置标志(0=相对,1=绝对) | 🔴 高 | DXF点胶必须使用绝对位置(1)，轨迹点胶使用相对位置(0) |
+| ValveDispenser | `cmp_channel` | 1 | 当前 DXF 真机点胶主链使用的 CMP 通道编号(1-4) | 🟡 中 | 与硬件接线对应，错误配置会导致点胶阀不触发 |
+| ValveDispenser | `pulse_type` | 0 | 当前 DXF 真机点胶主链使用的脉冲极性(0=正脉冲,1=负脉冲) | 🟡 中 | 与阀驱动电平语义不一致会导致触发极性错误 |
+| ValveDispenser | `abs_position_flag` | 1 | 当前 DXF 真机点胶主链使用的绝对位置标志(0=相对,1=绝对) | 🔴 高 | DXF 点胶必须使用绝对位置(1) |
+| ValveDispenser | `cmp_axis_mask` | 3 | 当前 DXF 真机点胶主链使用的 CMP 触发允许轴掩码 | 🟡 中 | 当前机型显式配置为 `3`（X/Y 有效）；修改会直接影响主链触发轴范围 |
+| CMP | `legacy fields` | - | 兼容/历史字段：`cmp_channel`、`signal_type`、`trigger_mode`、`pulse_width_us`、`delay_time_us`、`encoder_num`、`abs_position_flag`、`cmp_axis_mask` 及软件触发相关字段 | 🟡 中 | 当前 DXF 真机点胶主链忽略这些字段；修改它们不会改变当前主链运行时行为 |
 | Safety | `emergency_stop_enabled` | true | 紧急停止功能启用 | 🔴 高 | 禁用后将失去软件急停保护，仅依赖硬件急停按钮 |
 | Safety | `soft_limits_enabled` | true | 软限位检查启用 | 🔴 高 | 禁用后无硬限位保护(当前硬件无硬限位) |
 | Safety | `status_monitor_interval` | 100 | 轴状态监控间隔(毫秒) | 🟢 低 | 影响系统响应速度，推荐100ms，范围[50,500] |

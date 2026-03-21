@@ -56,6 +56,23 @@ Result<void> EnsureFileInitialized(const std::filesystem::path& filepath) {
 Result<nlohmann::json> LoadStore(const std::filesystem::path& filepath) {
     std::ifstream in(filepath, std::ios::binary);
     if (!in.is_open()) {
+        auto backup_path = filepath;
+        backup_path += ".bak";
+        if (std::filesystem::exists(backup_path)) {
+            std::error_code recover_ec;
+            std::filesystem::copy_file(
+                backup_path,
+                filepath,
+                std::filesystem::copy_options::overwrite_existing,
+                recover_ec);
+            std::ifstream recovered_in(filepath, std::ios::binary);
+            if (recovered_in.is_open()) {
+                in.swap(recovered_in);
+            }
+        }
+    }
+
+    if (!in.is_open()) {
         return Result<nlohmann::json>::Failure(
             Error(ErrorCode::FILE_IO_ERROR, "Failed to open store file: " + filepath.string(), "JsonRedundancyRepositoryAdapter"));
     }
@@ -79,6 +96,8 @@ Result<void> SaveStoreAtomically(const std::filesystem::path& filepath, const nl
     std::filesystem::create_directories(filepath.parent_path());
     auto tmp_path = filepath;
     tmp_path += ".tmp";
+    auto backup_path = filepath;
+    backup_path += ".bak";
 
     std::ofstream out(tmp_path, std::ios::binary | std::ios::trunc);
     if (!out.is_open()) {
@@ -89,12 +108,55 @@ Result<void> SaveStoreAtomically(const std::filesystem::path& filepath, const nl
     out.close();
 
     std::error_code ec;
-    std::filesystem::remove(filepath, ec);
+    const bool had_original = std::filesystem::exists(filepath);
+    if (had_original) {
+        std::filesystem::remove(backup_path, ec);
+        ec.clear();
+        std::filesystem::copy_file(
+            filepath,
+            backup_path,
+            std::filesystem::copy_options::overwrite_existing,
+            ec);
+        if (ec) {
+            std::filesystem::remove(tmp_path, ec);
+            return Result<void>::Failure(
+                Error(
+                    ErrorCode::FILE_IO_ERROR,
+                    "failure_stage=create_backup;failure_code=FILE_IO_ERROR;message=" + ec.message(),
+                    "JsonRedundancyRepositoryAdapter"));
+        }
+    }
+
     ec.clear();
     std::filesystem::rename(tmp_path, filepath, ec);
+    if (ec && had_original) {
+        ec.clear();
+        std::filesystem::remove(filepath, ec);
+        ec.clear();
+        std::filesystem::rename(tmp_path, filepath, ec);
+    }
     if (ec) {
+        std::error_code rollback_ec;
+        if (had_original && std::filesystem::exists(backup_path)) {
+            std::filesystem::copy_file(
+                backup_path,
+                filepath,
+                std::filesystem::copy_options::overwrite_existing,
+                rollback_ec);
+        }
+        std::error_code cleanup_ec;
+        std::filesystem::remove(tmp_path, cleanup_ec);
+
         return Result<void>::Failure(
-            Error(ErrorCode::FILE_IO_ERROR, "Failed to replace store file atomically: " + ec.message(), "JsonRedundancyRepositoryAdapter"));
+            Error(
+                ErrorCode::FILE_IO_ERROR,
+                "failure_stage=replace_store;failure_code=FILE_IO_ERROR;message=" + ec.message() +
+                    ";rollback_status=" + (rollback_ec ? rollback_ec.message() : "success"),
+                "JsonRedundancyRepositoryAdapter"));
+    }
+
+    if (had_original) {
+        std::filesystem::remove(backup_path, ec);
     }
     return Result<void>::Success();
 }
@@ -338,6 +400,30 @@ nlohmann::json ToJson(const Domain::System::Redundancy::DecisionLogRecord& recor
     };
 }
 
+std::string CanonicalizeDecisionSnapshotJson(const std::string& snapshot_json) {
+    if (snapshot_json.empty()) {
+        return "{}";
+    }
+    try {
+        return nlohmann::json::parse(snapshot_json).dump();
+    } catch (...) {
+        return snapshot_json;
+    }
+}
+
+bool IsEquivalentDecisionLogRecord(const Domain::System::Redundancy::DecisionLogRecord& left,
+                                   const Domain::System::Redundancy::DecisionLogRecord& right) {
+    return left.decision_id == right.decision_id &&
+           left.candidate_id == right.candidate_id &&
+           left.action == right.action &&
+           left.actor == right.actor &&
+           left.reason == right.reason &&
+           CanonicalizeDecisionSnapshotJson(left.evidence_snapshot_json) ==
+               CanonicalizeDecisionSnapshotJson(right.evidence_snapshot_json) &&
+           left.ticket == right.ticket &&
+           left.created_at == right.created_at;
+}
+
 Result<Domain::System::Redundancy::DecisionLogRecord> ParseDecisionLogRecord(const nlohmann::json& value) {
     Domain::System::Redundancy::DecisionLogRecord record;
     if (!value.is_object()) {
@@ -559,12 +645,23 @@ Result<BatchWriteSummary> JsonRedundancyRepositoryAdapter::AppendDecisionLog(con
     if (existing_result.IsError()) {
         return Result<BatchWriteSummary>::Failure(existing_result.GetError());
     }
-    auto existing = existing_result.Value();
-    std::vector<Domain::System::Redundancy::DecisionLogRecord> incoming = {record};
 
     BatchWriteSummary summary;
     summary.received = 1;
-    summary.upserted = UpsertById(existing, incoming, [](const auto& item) { return item.decision_id; });
+    auto existing = existing_result.Value();
+    auto duplicate_it = std::find_if(existing.begin(), existing.end(), [&record](const auto& current) {
+        return current.decision_id == record.decision_id;
+    });
+    if (duplicate_it != existing.end()) {
+        if (IsEquivalentDecisionLogRecord(*duplicate_it, record)) {
+            return Result<BatchWriteSummary>::Success(summary);
+        }
+        return Result<BatchWriteSummary>::Failure(
+            Error(ErrorCode::DUPLICATE_DECISION_ID, "duplicate_decision_id", "JsonRedundancyRepositoryAdapter"));
+    }
+
+    existing.push_back(record);
+    summary.upserted = 1;
     auto save_result = SaveRecords(
         decision_logs_file_,
         existing,
@@ -689,6 +786,19 @@ Result<std::vector<Domain::System::Redundancy::CandidateRecord>> JsonRedundancyR
         module_map = BuildEntityModuleMap(entities_result.Value());
     }
 
+    std::optional<Domain::System::Redundancy::CandidatePriority> parsed_priority_filter;
+    if (filter.priority.has_value()) {
+        parsed_priority_filter = CandidatePriorityFromString(filter.priority.value());
+        if (!parsed_priority_filter.has_value()) {
+            return Result<std::vector<Domain::System::Redundancy::CandidateRecord>>::Failure(
+                Error(
+                    ErrorCode::INVALID_PARAMETER,
+                    "failure_stage=list_candidates_filter;failure_code=INVALID_PARAMETER;message=invalid_priority:" +
+                        filter.priority.value(),
+                    "JsonRedundancyRepositoryAdapter"));
+        }
+    }
+
     std::vector<Domain::System::Redundancy::CandidateRecord> filtered;
     for (const auto& item : records_result.Value()) {
         if (!filter.module.empty()) {
@@ -700,11 +810,8 @@ Result<std::vector<Domain::System::Redundancy::CandidateRecord>> JsonRedundancyR
         if (filter.status.has_value() && item.status != filter.status.value()) {
             continue;
         }
-        if (filter.priority.has_value()) {
-            auto parsed_priority = CandidatePriorityFromString(filter.priority.value());
-            if (!parsed_priority.has_value() || item.priority != parsed_priority.value()) {
-                continue;
-            }
+        if (parsed_priority_filter.has_value() && item.priority != parsed_priority_filter.value()) {
+            continue;
         }
         if (filter.min_redundancy_score.has_value() && item.redundancy_score < filter.min_redundancy_score.value()) {
             continue;

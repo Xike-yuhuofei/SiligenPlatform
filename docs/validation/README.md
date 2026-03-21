@@ -96,6 +96,13 @@
 - 失败诊断字段：`hil-closed-loop-summary.json` 在非 passed 情况会补充 `failure_context`
 - 双轨证据：时间戳目录保留原始批次，固定目录发布最新通过结果；来源追溯见 `integration/reports/hil-controlled-test/latest-source.txt`
 
+## DXF 真机真实点胶回归
+
+- [DXF 真机真实点胶回归记录 2026-03-21](/D:/Projects/SiligenSuite/docs/validation/dxf-real-dispense-field-regression-2026-03-21.md)
+- 本记录覆盖新 `artifact / plan / job` 主链在真机上的一次 `dry_run=false` 闭环，不替代工艺质量签收
+- [DXF 真机真实点胶多批次回归模板 V1](/D:/Projects/SiligenSuite/docs/validation/dxf-real-dispense-multi-cycle-template-v1.md)
+- [DXF 主线会话收尾总结 2026-03-21](/D:/Projects/SiligenSuite/docs/validation/dxf-mainline-session-summary-2026-03-21.md)
+
 ## Sim Observer 验收
 
 - [P0 验收矩阵](/D:/Projects/SiligenSuite/docs/validation/sim-observer-p0-acceptance-v1.md)

@@ -150,6 +150,9 @@ void SeedPlan(DispensingWorkflowUseCase& use_case, const std::string& plan_id) {
     DispensingWorkflowUseCase::PlanRecord plan_record;
     plan_record.response.plan_id = plan_id;
     plan_record.response.plan_fingerprint = "fp-" + plan_id;
+    plan_record.preview_state = DispensingWorkflowUseCase::PlanPreviewState::CONFIRMED;
+    plan_record.preview_snapshot_hash = plan_record.response.plan_fingerprint;
+    plan_record.latest = true;
     use_case.plans_[plan_id] = plan_record;
 }
 
@@ -186,6 +189,7 @@ TEST(DispensingWorkflowUseCaseTest, StartJobRejectsSafetyDoor) {
 
     Siligen::Application::UseCases::Dispensing::StartJobRequest request;
     request.plan_id = "plan-door";
+    request.plan_fingerprint = "fp-plan-door";
     request.target_count = 1;
     auto result = use_case.StartJob(request);
 
@@ -212,6 +216,7 @@ TEST(DispensingWorkflowUseCaseTest, StartJobRejectsUnhomedAxis) {
 
     Siligen::Application::UseCases::Dispensing::StartJobRequest request;
     request.plan_id = "plan-home";
+    request.plan_fingerprint = "fp-plan-home";
     request.target_count = 1;
     auto result = use_case.StartJob(request);
 
@@ -235,6 +240,7 @@ TEST(DispensingWorkflowUseCaseTest, StartAndResumeUseSameInterlockPreconditions)
 
     Siligen::Application::UseCases::Dispensing::StartJobRequest start_request;
     start_request.plan_id = "plan-1";
+    start_request.plan_fingerprint = "fp-plan-1";
     start_request.target_count = 1;
 
     auto start_result = use_case.StartJob(start_request);

@@ -2,8 +2,7 @@
   "id": "4",
   "method": "dxf.preview.snapshot",
   "params": {
-    "dry_run": false,
-    "dispensing_speed_mm_s": 12.5,
-    "dry_run_speed_mm_s": 12.5
+    "plan_id": "plan-8b2649f36dcb",
+    "max_polyline_points": 4000
   }
 }

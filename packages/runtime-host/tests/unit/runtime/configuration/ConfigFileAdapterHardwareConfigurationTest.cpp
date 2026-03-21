@@ -145,6 +145,18 @@ std::string BuildBaseIni(const std::string& hardware_suffix = "") {
         "escape_max_attempts=1\n";
 }
 
+std::string BuildValveConfigIni(const std::string& cmp_section,
+                                const std::string& valve_dispenser_section) {
+    return BuildBaseIni() +
+           "\n"
+           "[CMP]\n" +
+           cmp_section +
+           "\n"
+           "[ValveDispenser]\n" +
+           valve_dispenser_section +
+           "\n";
+}
+
 }  // namespace
 
 TEST(ConfigFileAdapterHardwareConfigurationTest, LoadsExplicitAxisEncoderFlags) {
@@ -210,6 +222,74 @@ TEST(ConfigFileAdapterHardwareConfigurationTest, DefaultsMissingHomeBackoffFlagT
     ASSERT_GE(result.Value().homing_configs.size(), 2u);
     EXPECT_TRUE(result.Value().homing_configs[0].home_backoff_enabled);
     EXPECT_TRUE(result.Value().homing_configs[1].home_backoff_enabled);
+
+    std::error_code ec;
+    std::filesystem::remove(ini_path, ec);
+}
+
+TEST(ConfigFileAdapterHardwareConfigurationTest, UsesValveDispenserAsAuthoritativeCmpConfigSource) {
+    const auto ini_path = WriteTempIni(
+        "valve_dispenser_authority",
+        BuildValveConfigIni(
+            "cmp_channel=4\n"
+            "signal_type=1\n"
+            "trigger_mode=3\n"
+            "pulse_width_us=9999\n"
+            "delay_time_us=100\n"
+            "encoder_num=7\n"
+            "abs_position_flag=0\n"
+            "trigger_method=firmware_timed\n"
+            "timing_precision_ms=5\n"
+            "enable_trigger_log=1\n"
+            "enable_compensation=1\n"
+            "trigger_position_tolerance=0.20\n"
+            "expected_accuracy_mm=0.10\n"
+            "cmp_axis_mask=1\n",
+            "cmp_channel=2\n"
+            "pulse_type=1\n"
+            "cmp_axis_mask=3\n"
+            "min_count=1\n"
+            "max_count=100\n"
+            "min_interval_ms=10\n"
+            "max_interval_ms=1000\n"
+            "min_duration_ms=5\n"
+            "max_duration_ms=500\n"
+            "abs_position_flag=1\n"));
+
+    ConfigFileAdapter adapter(ini_path.string());
+    auto result = adapter.GetDispenserValveConfig();
+
+    ASSERT_TRUE(result.IsSuccess());
+    EXPECT_EQ(result.Value().cmp_channel, 2);
+    EXPECT_EQ(result.Value().pulse_type, 1);
+    EXPECT_EQ(result.Value().cmp_axis_mask, 3);
+    EXPECT_EQ(result.Value().abs_position_flag, 1);
+
+    std::error_code ec;
+    std::filesystem::remove(ini_path, ec);
+}
+
+TEST(ConfigFileAdapterHardwareConfigurationTest, IgnoresLegacyCmpAxisMaskWhenValveDispenserOmitsIt) {
+    const auto ini_path = WriteTempIni(
+        "valve_dispenser_cmp_axis_mask_default",
+        BuildValveConfigIni(
+            "cmp_channel=4\n"
+            "cmp_axis_mask=1\n",
+            "cmp_channel=2\n"
+            "pulse_type=1\n"
+            "min_count=1\n"
+            "max_count=100\n"
+            "min_interval_ms=10\n"
+            "max_interval_ms=1000\n"
+            "min_duration_ms=5\n"
+            "max_duration_ms=500\n"
+            "abs_position_flag=1\n"));
+
+    ConfigFileAdapter adapter(ini_path.string());
+    auto result = adapter.GetDispenserValveConfig();
+
+    ASSERT_TRUE(result.IsSuccess());
+    EXPECT_EQ(result.Value().cmp_axis_mask, 0x03);
 
     std::error_code ec;
     std::filesystem::remove(ini_path, ec);

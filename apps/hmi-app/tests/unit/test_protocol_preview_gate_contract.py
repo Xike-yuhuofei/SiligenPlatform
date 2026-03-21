@@ -29,9 +29,9 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
                 {
                     "result": {
                         "connected": True,
-                        "machine_state": "Ready",
+                        "machine_state": "Idle",
                         "axes": {},
-                        "io": {"estop": True, "door": True},
+                        "io": {"estop": True, "estop_known": True, "door": True, "door_known": True},
                         "dispenser": {"valve_open": False, "supply_open": False},
                     }
                 }
@@ -44,6 +44,8 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertTrue(status.connected)
         self.assertTrue(status.io.estop)
         self.assertTrue(status.io.door)
+        self.assertTrue(status.io.estop_known)
+        self.assertTrue(status.io.door_known)
 
     def test_preview_snapshot_success_contract(self) -> None:
         client = _FakeClient(
@@ -67,41 +69,48 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         )
         protocol = CommandProtocol(client)
 
-        ok, payload, error = protocol.dxf_preview_snapshot(speed_mm_s=20.0)
+        ok, payload, error = protocol.dxf_preview_snapshot(plan_id="plan-1")
 
         self.assertTrue(ok)
         self.assertEqual(error, "")
         self.assertEqual(payload["snapshot_hash"], "h1")
         self.assertEqual(len(payload["trajectory_polyline"]), 2)
         self.assertEqual(client.calls[0][0], "dxf.preview.snapshot")
-        self.assertEqual(client.calls[0][1]["dispensing_speed_mm_s"], 20.0)
-        self.assertFalse(client.calls[0][1]["dry_run"])
+        self.assertEqual(client.calls[0][1]["plan_id"], "plan-1")
 
     def test_preview_snapshot_error_contract(self) -> None:
         client = _FakeClient([{"error": {"code": 3201, "message": "DXF not loaded"}}])
         protocol = CommandProtocol(client)
 
-        ok, payload, error = protocol.dxf_preview_snapshot(speed_mm_s=20.0)
+        ok, payload, error = protocol.dxf_preview_snapshot(plan_id="plan-1")
 
         self.assertFalse(ok)
         self.assertEqual(payload, {})
         self.assertIn("DXF not loaded", error)
 
-    def test_preview_snapshot_uses_dry_run_params(self) -> None:
-        client = _FakeClient([{"result": {"snapshot_id": "s2", "snapshot_hash": "h2"}}])
+    def test_preview_snapshot_accepts_max_polyline_points(self) -> None:
+        client = _FakeClient([{"result": {"snapshot_id": "s2", "snapshot_hash": "h2", "plan_id": "plan-2"}}])
         protocol = CommandProtocol(client)
 
-        ok, payload, _ = protocol.dxf_preview_snapshot(
-            speed_mm_s=15.0,
-            dry_run=True,
-            dry_run_speed_mm_s=15.0,
-        )
+        ok, payload, _ = protocol.dxf_preview_snapshot(plan_id="plan-2", max_polyline_points=128)
 
         self.assertTrue(ok)
         self.assertEqual(payload["snapshot_hash"], "h2")
-        self.assertEqual(client.calls[0][1]["dispensing_speed_mm_s"], 15.0)
-        self.assertTrue(client.calls[0][1]["dry_run"])
-        self.assertEqual(client.calls[0][1]["dry_run_speed_mm_s"], 15.0)
+        self.assertEqual(client.calls[0][1]["plan_id"], "plan-2")
+        self.assertEqual(client.calls[0][1]["max_polyline_points"], 128)
+
+    def test_preview_confirm_contract(self) -> None:
+        client = _FakeClient([{"result": {"confirmed": True, "plan_id": "plan-1", "snapshot_hash": "h1"}}])
+        protocol = CommandProtocol(client)
+
+        ok, payload, error = protocol.dxf_preview_confirm("plan-1", "h1")
+
+        self.assertTrue(ok)
+        self.assertEqual(error, "")
+        self.assertTrue(payload["confirmed"])
+        self.assertEqual(client.calls[0][0], "dxf.preview.confirm")
+        self.assertEqual(client.calls[0][1]["plan_id"], "plan-1")
+        self.assertEqual(client.calls[0][1]["snapshot_hash"], "h1")
 
     def test_dxf_execute_passes_snapshot_hash(self) -> None:
         client = _FakeClient([{"result": {"ok": True}}])

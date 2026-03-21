@@ -7,15 +7,19 @@
 #include "domain/motion/ports/IHomingPort.h"
 #include "domain/motion/ports/IMotionStatePort.h"
 #include "domain/safety/ports/IInterlockSignalPort.h"
+#include "shared/types/Point.h"
 #include "shared/types/Result.h"
 
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
+#include <vector>
 
 namespace Siligen::Application::UseCases::Dispensing {
 
@@ -51,8 +55,48 @@ struct PreparePlanResponse {
     std::string generated_at;
 };
 
+struct PreviewSnapshotRequest {
+    PlanID plan_id;
+    std::size_t max_polyline_points = 4000;
+};
+
+struct PreviewSnapshotPoint {
+    float32 x = 0.0f;
+    float32 y = 0.0f;
+};
+
+struct PreviewSnapshotResponse {
+    std::string snapshot_id;
+    std::string snapshot_hash;
+    PlanID plan_id;
+    std::string preview_state;
+    std::string confirmed_at;
+    std::uint32_t segment_count = 0;
+    std::uint32_t point_count = 0;
+    std::uint32_t polyline_source_point_count = 0;
+    std::uint32_t polyline_point_count = 0;
+    std::vector<PreviewSnapshotPoint> trajectory_polyline;
+    float32 total_length_mm = 0.0f;
+    float32 estimated_time_s = 0.0f;
+    std::string generated_at;
+};
+
+struct ConfirmPreviewRequest {
+    PlanID plan_id;
+    std::string snapshot_hash;
+};
+
+struct ConfirmPreviewResponse {
+    bool confirmed = false;
+    PlanID plan_id;
+    std::string snapshot_hash;
+    std::string preview_state;
+    std::string confirmed_at;
+};
+
 struct StartJobRequest {
     PlanID plan_id;
+    std::string plan_fingerprint;
     std::uint32_t target_count = 1;
 };
 
@@ -79,10 +123,19 @@ class DispensingWorkflowUseCase {
     enum class WorkflowJobState {
         PENDING,
         RUNNING,
+        STOPPING,
         PAUSED,
         COMPLETED,
         FAILED,
         CANCELLED
+    };
+
+    enum class PlanPreviewState {
+        PREPARED,
+        SNAPSHOT_READY,
+        CONFIRMED,
+        STALE,
+        FAILED
     };
 
     DispensingWorkflowUseCase(
@@ -94,19 +147,22 @@ class DispensingWorkflowUseCase {
         std::shared_ptr<Domain::Motion::Ports::IHomingPort> homing_port = nullptr,
         std::shared_ptr<Domain::Safety::Ports::IInterlockSignalPort> interlock_signal_port = nullptr);
 
-    ~DispensingWorkflowUseCase() = default;
+    ~DispensingWorkflowUseCase();
 
     DispensingWorkflowUseCase(const DispensingWorkflowUseCase&) = delete;
     DispensingWorkflowUseCase& operator=(const DispensingWorkflowUseCase&) = delete;
 
     Result<CreateArtifactResponse> CreateArtifact(const UploadRequest& request);
     Result<PreparePlanResponse> PreparePlan(const PreparePlanRequest& request);
+    Result<PreviewSnapshotResponse> GetPreviewSnapshot(const PreviewSnapshotRequest& request);
+    Result<ConfirmPreviewResponse> ConfirmPreview(const ConfirmPreviewRequest& request);
     Result<JobID> StartJob(const StartJobRequest& request);
     Result<JobStatusResponse> GetJobStatus(const JobID& job_id) const;
     Result<void> PauseJob(const JobID& job_id);
     Result<void> ResumeJob(const JobID& job_id);
     Result<void> StopJob(const JobID& job_id);
     Result<Domain::Safety::ValueObjects::InterlockSignals> ReadInterlockSignals() const;
+    bool IsInterlockLatched() const;
 
    private:
     struct ArtifactRecord {
@@ -117,6 +173,14 @@ class DispensingWorkflowUseCase {
     struct PlanRecord {
         PreparePlanResponse response;
         DispensingMVPRequest execution_request;
+        std::vector<TrajectoryPoint> trajectory_points;
+        PlanPreviewState preview_state = PlanPreviewState::PREPARED;
+        std::string preview_snapshot_id;
+        std::string preview_snapshot_hash;
+        std::string preview_generated_at;
+        std::string confirmed_at;
+        std::string failure_message;
+        bool latest = true;
     };
 
     struct JobContext {
@@ -133,6 +197,7 @@ class DispensingWorkflowUseCase {
         std::atomic<std::uint32_t> cycle_progress_percent{0};
         std::atomic<bool> stop_requested{false};
         std::atomic<bool> pause_requested{false};
+        std::atomic<bool> final_state_committed{false};
         bool dry_run = false;
         std::chrono::steady_clock::time_point start_time{};
         std::chrono::steady_clock::time_point end_time{};
@@ -158,6 +223,9 @@ class DispensingWorkflowUseCase {
     mutable std::mutex jobs_mutex_;
     std::unordered_map<JobID, std::shared_ptr<JobContext>> jobs_;
     JobID active_job_id_;
+    mutable std::mutex worker_mutex_;
+    std::thread worker_thread_;
+    std::atomic<bool> shutting_down_{false};
 
     std::atomic<std::uint64_t> id_sequence_{0};
 
@@ -166,11 +234,13 @@ class DispensingWorkflowUseCase {
         const std::string& filepath,
         const DispensingMVPRequest& request) const;
     JobStatusResponse BuildJobStatusResponse(const std::shared_ptr<JobContext>& context) const;
+    PreviewSnapshotResponse BuildPreviewSnapshotResponse(const PlanRecord& plan_record, std::size_t max_polyline_points);
     std::string GenerateId(const char* prefix);
     std::string BuildPlanFingerprint(
         const ArtifactID& artifact_id,
         const PlanningResponse& planning,
         const DispensingMVPRequest& execution_request) const;
+    std::string PreviewStateToString(PlanPreviewState state) const;
     std::string JobStateToString(WorkflowJobState state) const;
     void RunJob(
         const std::shared_ptr<JobContext>& context,

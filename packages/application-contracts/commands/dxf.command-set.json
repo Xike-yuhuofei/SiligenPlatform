@@ -115,7 +115,7 @@
       },
       "resultSchema": {
         "type": "object",
-        "required": ["plan_id", "plan_fingerprint", "artifact_id", "segment_count", "point_count", "total_length_mm", "estimated_time_s", "generated_at", "snapshot_id", "snapshot_hash", "preview_request_signature"],
+        "required": ["plan_id", "plan_fingerprint", "artifact_id", "segment_count", "point_count", "total_length_mm", "estimated_time_s", "generated_at"],
         "properties": {
           "plan_id": { "type": "string" },
           "plan_fingerprint": { "type": "string" },
@@ -127,7 +127,8 @@
           "generated_at": { "type": "string" },
           "snapshot_id": { "type": "string" },
           "snapshot_hash": { "type": "string" },
-          "preview_request_signature": { "type": "string" }
+          "preview_request_signature": { "type": "string" },
+          "preview_state": { "type": "string" }
         },
         "additionalProperties": false
       },
@@ -152,42 +153,22 @@
       "kind": "command",
       "paramsSchema": {
         "type": "object",
-        "required": ["dispensing_speed_mm_s"],
+        "required": ["plan_id"],
         "properties": {
-          "dry_run": { "type": "boolean" },
-          "dispensing_speed_mm_s": { "type": "number" },
-          "speed_mm_s": { "type": "number" },
-          "dry_run_speed_mm_s": { "type": "number" },
-          "rapid_speed_mm_s": { "type": "number" },
-          "optimize_path": { "type": "boolean" },
-          "start_x": { "type": "number" },
-          "start_y": { "type": "number" },
-          "approximate_splines": { "type": "boolean" },
-          "two_opt_iterations": { "type": "integer" },
-          "spline_max_step_mm": { "type": "number" },
-          "spline_max_error_mm": { "type": "number" },
-          "arc_tolerance_mm": { "type": "number" },
-          "arc_tolerance": { "type": "number" },
-          "continuity_tolerance_mm": { "type": "number" },
-          "continuity_tolerance": { "type": "number" },
-          "curve_chain_angle_deg": { "type": "number" },
-          "curve_chain_max_segment_mm": { "type": "number" },
-          "max_jerk": { "type": "number" },
-          "use_hardware_trigger": { "type": "boolean" },
-          "use_interpolation_planner": { "type": "boolean" },
-          "interpolation_algorithm": { "type": "integer" },
-          "velocity_trace_enabled": { "type": "boolean" },
-          "velocity_trace_interval_ms": { "type": "integer" },
-          "velocity_trace_path": { "type": "string" }
+          "plan_id": { "type": "string" },
+          "max_polyline_points": { "type": "integer", "minimum": 2 }
         },
         "additionalProperties": false
       },
       "resultSchema": {
         "type": "object",
-        "required": ["snapshot_id", "snapshot_hash", "segment_count", "point_count", "total_length_mm", "estimated_time_s", "generated_at"],
+        "required": ["snapshot_id", "snapshot_hash", "plan_id", "preview_state", "confirmed_at", "segment_count", "point_count", "polyline_point_count", "polyline_source_point_count", "trajectory_polyline", "total_length_mm", "estimated_time_s", "generated_at"],
         "properties": {
           "snapshot_id": { "type": "string" },
           "snapshot_hash": { "type": "string" },
+          "plan_id": { "type": "string" },
+          "preview_state": { "type": "string" },
+          "confirmed_at": { "type": "string" },
           "segment_count": { "type": "integer" },
           "point_count": { "type": "integer" },
           "polyline_point_count": { "type": "integer" },
@@ -215,19 +196,46 @@
         "hmi-client CommandProtocol.dxf_preview_snapshot"
       ],
       "compatibility": {
-        "requestAliases": [
-          {
-            "canonical": "dispensing_speed_mm_s",
-            "accepted": ["dispensing_speed_mm_s", "speed_mm_s"]
-          }
+        "notes": [
+          "过渡期允许服务端在缺省 plan_id 时走兼容链路（prepare+snapshot），新客户端必须显式传 plan_id。"
         ]
       }
+    },
+    {
+      "method": "dxf.preview.confirm",
+      "kind": "command",
+      "paramsSchema": {
+        "type": "object",
+        "required": ["plan_id", "snapshot_hash"],
+        "properties": {
+          "plan_id": { "type": "string" },
+          "snapshot_hash": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["confirmed", "plan_id", "snapshot_hash", "preview_state", "confirmed_at"],
+        "properties": {
+          "confirmed": { "type": "boolean" },
+          "plan_id": { "type": "string" },
+          "snapshot_hash": { "type": "string" },
+          "preview_state": { "type": "string" },
+          "confirmed_at": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [3015, 3016, 3017, 3018],
+      "consumers": [
+        "hmi-client CommandProtocol.dxf_preview_confirm"
+      ]
     },
     {
       "method": "dxf.job.start",
       "kind": "command",
       "paramsSchema": {
         "type": "object",
+        "required": ["plan_id", "plan_fingerprint"],
         "properties": {
           "plan_id": { "type": "string" },
           "plan_fingerprint": { "type": "string" },
@@ -254,7 +262,7 @@
       ],
       "compatibility": {
         "notes": [
-          "plan_id / plan_fingerprint 允许省略；省略时服务端回退到最近一次已准备的 preview/plan。"
+          "过渡期服务端可回退最近一次 prepared plan；新客户端必须显式传入 plan_id 与 plan_fingerprint。"
         ]
       }
     },
@@ -395,7 +403,8 @@
         "required": ["stopped", "job_id"],
         "properties": {
           "stopped": { "type": "boolean" },
-          "job_id": { "type": "string" }
+          "job_id": { "type": "string" },
+          "transition_state": { "type": "string" }
         },
         "additionalProperties": false
       },
@@ -416,7 +425,8 @@
         "type": "object",
         "required": ["stopped"],
         "properties": {
-          "stopped": { "type": "boolean" }
+          "stopped": { "type": "boolean" },
+          "transition_state": { "type": "string" }
         },
         "additionalProperties": false
       },

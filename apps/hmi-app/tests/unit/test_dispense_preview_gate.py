@@ -63,6 +63,17 @@ class DispensePreviewGateTest(unittest.TestCase):
         self.assertFalse(decision.allowed)
         self.assertEqual(decision.reason, StartBlockReason.PREVIEW_STALE)
 
+    def test_input_change_clears_confirmed_hash(self) -> None:
+        gate = DispensePreviewGate()
+        gate.begin_preview()
+        gate.preview_ready(_snapshot("h-mode"))
+        gate.confirm_current_snapshot()
+
+        gate.mark_input_changed()
+        decision = gate.validate_execution_snapshot_hash("h-mode")
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, StartBlockReason.CONFIRM_MISSING)
+
     def test_validate_execution_hash_mismatch(self) -> None:
         gate = DispensePreviewGate()
         gate.begin_preview()
@@ -85,4 +96,3 @@ class DispensePreviewGateTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -12,23 +12,41 @@ ValveCoordinationService::ValveCoordinationService(std::shared_ptr<IValvePort> v
 // ============================================================
 
 Result<SupplyValveState> ValveCoordinationService::OpenSupplyValve() noexcept {
-    // 安全检查
-    auto safety_result = CheckValveSafety();
+    auto safety_result = CheckValveSafety(false);
     if (safety_result.IsError()) {
         return Result<SupplyValveState>::Failure(safety_result.GetError());
     }
 
-    // 调用Port接口
+    if (!valve_port_) {
+        return Result<SupplyValveState>::Failure(
+            Error(
+                ErrorCode::PORT_NOT_INITIALIZED,
+                "failure_stage=open_supply;failure_code=PORT_NOT_INITIALIZED;message=valve_port_unavailable",
+                "ValveCoordinationService"));
+    }
+
     return valve_port_->OpenSupply();
 }
 
 Result<SupplyValveState> ValveCoordinationService::CloseSupplyValve() noexcept {
-    // 调用Port接口（关闭操作不需要安全检查）
+    if (!valve_port_) {
+        return Result<SupplyValveState>::Failure(
+            Error(
+                ErrorCode::PORT_NOT_INITIALIZED,
+                "failure_stage=close_supply;failure_code=PORT_NOT_INITIALIZED;message=valve_port_unavailable",
+                "ValveCoordinationService"));
+    }
     return valve_port_->CloseSupply();
 }
 
 Result<SupplyValveStatusDetail> ValveCoordinationService::GetSupplyValveStatus() noexcept {
-    // 调用Port接口
+    if (!valve_port_) {
+        return Result<SupplyValveStatusDetail>::Failure(
+            Error(
+                ErrorCode::PORT_NOT_INITIALIZED,
+                "failure_stage=get_supply_status;failure_code=PORT_NOT_INITIALIZED;message=valve_port_unavailable",
+                "ValveCoordinationService"));
+    }
     return valve_port_->GetSupplyStatus();
 }
 
@@ -44,7 +62,7 @@ Result<DispenserValveState> ValveCoordinationService::StartDispenser(const Dispe
     }
 
     // 2. 安全检查
-    auto safety_result = CheckValveSafety();
+    auto safety_result = CheckValveSafety(true);
     if (safety_result.IsError()) {
         return Result<DispenserValveState>::Failure(safety_result.GetError());
     }
@@ -62,7 +80,7 @@ Result<DispenserValveState> ValveCoordinationService::StartPositionTriggeredDisp
     }
 
     // 2. 安全检查
-    auto safety_result = CheckValveSafety();
+    auto safety_result = CheckValveSafety(true);
     if (safety_result.IsError()) {
         return Result<DispenserValveState>::Failure(safety_result.GetError());
     }
@@ -72,28 +90,44 @@ Result<DispenserValveState> ValveCoordinationService::StartPositionTriggeredDisp
 }
 
 Result<void> ValveCoordinationService::StopDispenser() noexcept {
-    // 调用Port接口
+    if (!valve_port_) {
+        return Result<void>::Failure(
+            Error(
+                ErrorCode::PORT_NOT_INITIALIZED,
+                "failure_stage=stop_dispenser;failure_code=PORT_NOT_INITIALIZED;message=valve_port_unavailable",
+                "ValveCoordinationService"));
+    }
     return valve_port_->StopDispenser();
 }
 
 Result<void> ValveCoordinationService::PauseDispenser() noexcept {
-    // 调用Port接口
+    if (!valve_port_) {
+        return Result<void>::Failure(
+            Error(
+                ErrorCode::PORT_NOT_INITIALIZED,
+                "failure_stage=pause_dispenser;failure_code=PORT_NOT_INITIALIZED;message=valve_port_unavailable",
+                "ValveCoordinationService"));
+    }
     return valve_port_->PauseDispenser();
 }
 
 Result<void> ValveCoordinationService::ResumeDispenser() noexcept {
-    // 安全检查
-    auto safety_result = CheckValveSafety();
+    auto safety_result = CheckValveSafety(true);
     if (safety_result.IsError()) {
         return safety_result;
     }
 
-    // 调用Port接口
     return valve_port_->ResumeDispenser();
 }
 
 Result<DispenserValveState> ValveCoordinationService::GetDispenserStatus() noexcept {
-    // 调用Port接口
+    if (!valve_port_) {
+        return Result<DispenserValveState>::Failure(
+            Error(
+                ErrorCode::PORT_NOT_INITIALIZED,
+                "failure_stage=get_dispenser_status;failure_code=PORT_NOT_INITIALIZED;message=valve_port_unavailable",
+                "ValveCoordinationService"));
+    }
     return valve_port_->GetDispenserStatus();
 }
 
@@ -157,14 +191,61 @@ Result<DispenserValveParams> ValveCoordinationService::ApplySafetyBoundary(
     return Result<DispenserValveParams>::Success(adjusted);
 }
 
-Result<void> ValveCoordinationService::CheckValveSafety() const noexcept {
-    // TODO: 实现安全检查
-    // 1. 检查急停状态
-    // 2. 检查硬件连接状态
-    // 3. 检查气压状态
-    // 4. 检查供胶阀状态（点胶前必须打开供胶阀）
+Result<void> ValveCoordinationService::CheckValveSafety(bool require_supply_open) const noexcept {
+    if (!valve_port_) {
+        return Result<void>::Failure(
+            Error(
+                ErrorCode::PORT_NOT_INITIALIZED,
+                "failure_stage=check_valve_safety;failure_code=PORT_NOT_INITIALIZED;message=valve_port_unavailable",
+                "ValveCoordinationService"));
+    }
 
-    // 当前返回成功，实际实现需要调用IIOControlPort或IHardwareTestPort
+    auto dispenser_status_result = valve_port_->GetDispenserStatus();
+    if (dispenser_status_result.IsError()) {
+        return Result<void>::Failure(
+            Error(
+                dispenser_status_result.GetError().GetCode(),
+                "failure_stage=check_valve_safety_dispenser_status;failure_code=" +
+                    std::to_string(static_cast<int>(dispenser_status_result.GetError().GetCode())) +
+                    ";message=" + dispenser_status_result.GetError().GetMessage(),
+                "ValveCoordinationService"));
+    }
+    if (dispenser_status_result.Value().HasError()) {
+        return Result<void>::Failure(
+            Error(
+                ErrorCode::HARDWARE_ERROR,
+                "failure_stage=check_valve_safety_dispenser_status;failure_code=DISPENSER_ERROR;message=dispenser_status_error",
+                "ValveCoordinationService"));
+    }
+
+    auto supply_status_result = valve_port_->GetSupplyStatus();
+    if (supply_status_result.IsError()) {
+        return Result<void>::Failure(
+            Error(
+                supply_status_result.GetError().GetCode(),
+                "failure_stage=check_valve_safety_supply_status;failure_code=" +
+                    std::to_string(static_cast<int>(supply_status_result.GetError().GetCode())) +
+                    ";message=" + supply_status_result.GetError().GetMessage(),
+                "ValveCoordinationService"));
+    }
+
+    const auto& supply_status = supply_status_result.Value();
+    if (supply_status.HasError()) {
+        return Result<void>::Failure(
+            Error(
+                ErrorCode::HARDWARE_ERROR,
+                "failure_stage=check_valve_safety_supply_status;failure_code=SUPPLY_STATUS_ERROR;message=supply_status_error",
+                "ValveCoordinationService"));
+    }
+
+    if (require_supply_open && supply_status.state != SupplyValveState::Open) {
+        return Result<void>::Failure(
+            Error(
+                ErrorCode::INVALID_STATE,
+                "failure_stage=check_valve_safety_supply_open;failure_code=SUPPLY_NOT_OPEN;message=supply_valve_not_open",
+                "ValveCoordinationService"));
+    }
+
     return Result<void>::Success();
 }
 

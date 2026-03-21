@@ -164,7 +164,7 @@ class TaskTrackingObserver final : public Domain::Dispensing::Ports::IDispensing
         if (inner_) {
             inner_->OnMotionStart();
         }
-        if (context_) {
+        if (context_ && !context_->terminal_committed.load()) {
             context_->state.store(TaskState::RUNNING);
         }
     }
@@ -179,7 +179,7 @@ class TaskTrackingObserver final : public Domain::Dispensing::Ports::IDispensing
         if (inner_) {
             inner_->OnProgress(executed_segments, total_segments);
         }
-        if (context_) {
+        if (context_ && !context_->terminal_committed.load()) {
             context_->executed_segments.store(executed_segments);
             context_->total_segments.store(total_segments);
             context_->reported_executed_segments.store(executed_segments);
@@ -193,7 +193,7 @@ class TaskTrackingObserver final : public Domain::Dispensing::Ports::IDispensing
         if (inner_) {
             inner_->OnPauseStateChanged(paused);
         }
-        if (context_) {
+        if (context_ && !context_->terminal_committed.load()) {
             context_->state.store(paused ? TaskState::PAUSED : TaskState::RUNNING);
         }
     }
@@ -322,6 +322,68 @@ DispensingExecutionUseCase::DispensingExecutionUseCase(
     }
 }
 
+DispensingExecutionUseCase::~DispensingExecutionUseCase() {
+    stop_requested_.store(true);
+    std::shared_ptr<TaskExecutionContext> active_context;
+    {
+        std::lock_guard<std::mutex> lock(tasks_mutex_);
+        auto active_it = tasks_.find(active_task_id_);
+        if (active_it != tasks_.end()) {
+            active_context = active_it->second;
+        }
+    }
+    if (active_context) {
+        active_context->cancel_requested.store(true);
+        active_context->pause_requested.store(false);
+
+        if (task_scheduler_port_) {
+            std::string scheduler_task_id;
+            {
+                std::lock_guard<std::mutex> context_lock(active_context->mutex_);
+                scheduler_task_id = active_context->scheduler_task_id;
+            }
+            if (!scheduler_task_id.empty()) {
+                auto scheduler_cancel_result = task_scheduler_port_->CancelTask(scheduler_task_id);
+                if (scheduler_cancel_result.IsSuccess()) {
+                    TryCommitTerminalState(
+                        active_context,
+                        TaskState::CANCELLED,
+                        "failure_stage=destructor_cancel;failure_code=scheduler_cancelled;message=execution_destroyed");
+                    ReleaseTaskInflight(active_context);
+                }
+            }
+        }
+    }
+    if (process_service_) {
+        process_service_->StopExecution(&stop_requested_);
+    }
+
+    constexpr auto kInflightDrainTimeout = std::chrono::seconds(5);
+    constexpr std::uint32_t kInflightDrainMaxRetries = 3;
+
+    std::string inflight_diagnostics;
+    bool inflight_drained = WaitForAllInflightTasks(kInflightDrainTimeout, &inflight_diagnostics);
+    for (std::uint32_t attempt = 1; !inflight_drained && attempt <= kInflightDrainMaxRetries; ++attempt) {
+        SILIGEN_LOG_WARNING(
+            "failure_stage=destructor_wait_inflight;failure_code=INFLIGHT_DRAIN_TIMEOUT;attempt=" +
+            std::to_string(attempt) + ";message=" + inflight_diagnostics);
+
+        ReconcileStalledInflightTasks();
+        inflight_diagnostics.clear();
+        inflight_drained = WaitForAllInflightTasks(kInflightDrainTimeout, &inflight_diagnostics);
+    }
+
+    while (!inflight_drained) {
+        SILIGEN_LOG_ERROR(
+            "failure_stage=destructor_wait_inflight;failure_code=INFLIGHT_STILL_PENDING;message=" + inflight_diagnostics);
+        ReconcileStalledInflightTasks();
+        inflight_diagnostics.clear();
+        inflight_drained = WaitForAllInflightTasks(kInflightDrainTimeout, &inflight_diagnostics);
+    }
+
+    JoinWorkerThread();
+}
+
 Result<DispensingMVPResult> DispensingExecutionUseCase::Execute(const DispensingMVPRequest& request) {
     return ExecuteInternal(request, nullptr);
 }
@@ -433,7 +495,9 @@ Result<DispensingMVPResult> DispensingExecutionUseCase::ExecuteInternal(
         const auto estimated_execution_ms = static_cast<uint32>(
             std::max(0.0f, (plan.estimated_time_s > 0.0f ? plan.estimated_time_s : plan.motion_trajectory.total_time) * 1000.0f));
         context->estimated_execution_ms.store(estimated_execution_ms);
-        context->state.store(TaskState::RUNNING);
+        if (!context->terminal_committed.load()) {
+            context->state.store(TaskState::RUNNING);
+        }
     }
 
     bool dispense_enabled = !request.dry_run;

@@ -8,6 +8,7 @@
 - 测试：`docs\onboarding\workspace-onboarding.md` + `docs\troubleshooting\post-refactor-runbook.md`
 - 现场：`docs\runtime\deployment.md` + `docs\runtime\rollback.md` + `docs\troubleshooting\post-refactor-runbook.md`
 - 外部 DXF 编辑：`docs\runtime\external-dxf-editing.md`
+- Codex 工作流：`docs\process-model\codex-workflow.md`
 
 补充背景：
 
