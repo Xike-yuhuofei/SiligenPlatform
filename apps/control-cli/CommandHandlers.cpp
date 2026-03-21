@@ -43,6 +43,8 @@ int CLICommandHandlers::Execute(const CommandLineConfig& config) {
             return HandleDXFPlan(config);
         case CommandType::DXF_DISPENSE:
             return HandleDXFDispense(config);
+        case CommandType::DXF_PREVIEW:
+            return HandleDXFPreview(config);
         case CommandType::DXF_AUGMENT:
             return HandleDXFAugment(config);
         case CommandType::RECIPE_CREATE:

@@ -5,9 +5,9 @@ namespace Siligen::Application::Facades::Tcp {
 TcpDispensingFacade::TcpDispensingFacade(
     std::shared_ptr<UseCases::Dispensing::Valve::ValveCommandUseCase> valve_command_use_case,
     std::shared_ptr<UseCases::Dispensing::Valve::ValveQueryUseCase> valve_query_use_case,
-    std::shared_ptr<UseCases::Dispensing::DXF::DXFDispensingExecutionUseCase> dxf_execute_use_case,
-    std::shared_ptr<UseCases::Dispensing::DXF::UploadDXFFileUseCase> dxf_upload_use_case,
-    std::shared_ptr<UseCases::Dispensing::DXF::DXFWebPlanningUseCase> dxf_planning_use_case)
+    std::shared_ptr<UseCases::Dispensing::DispensingExecutionUseCase> dxf_execute_use_case,
+    std::shared_ptr<UseCases::Dispensing::UploadFileUseCase> dxf_upload_use_case,
+    std::shared_ptr<UseCases::Dispensing::PlanningUseCase> dxf_planning_use_case)
     : valve_command_use_case_(std::move(valve_command_use_case)),
       valve_query_use_case_(std::move(valve_query_use_case)),
       dxf_execute_use_case_(std::move(dxf_execute_use_case)),
@@ -40,38 +40,38 @@ Shared::Types::Result<Domain::Dispensing::Ports::SupplyValveStatusDetail> TcpDis
     return valve_query_use_case_->GetSupplyStatus();
 }
 
-Shared::Types::Result<UseCases::Dispensing::DXF::DXFUploadResponse> TcpDispensingFacade::UploadDxf(
-    const UseCases::Dispensing::DXF::DXFUploadRequest& request) {
+Shared::Types::Result<UseCases::Dispensing::UploadResponse> TcpDispensingFacade::UploadDxf(
+    const UseCases::Dispensing::UploadRequest& request) {
     return dxf_upload_use_case_->Execute(request);
 }
 
-Shared::Types::Result<UseCases::Dispensing::DXF::DXFPlanningResponse> TcpDispensingFacade::PlanDxf(
-    const UseCases::Dispensing::DXF::DXFPlanningRequest& request) {
+Shared::Types::Result<UseCases::Dispensing::PlanningResponse> TcpDispensingFacade::PlanDxf(
+    const UseCases::Dispensing::PlanningRequest& request) {
     return dxf_planning_use_case_->Execute(request);
 }
 
-Shared::Types::Result<UseCases::Dispensing::DXF::TaskID> TcpDispensingFacade::ExecuteDxfAsync(
-    const UseCases::Dispensing::DXF::DXFDispensingMVPRequest& request) {
+Shared::Types::Result<UseCases::Dispensing::TaskID> TcpDispensingFacade::ExecuteDxfAsync(
+    const UseCases::Dispensing::DispensingMVPRequest& request) {
     return dxf_execute_use_case_->ExecuteAsync(request);
 }
 
-Shared::Types::Result<UseCases::Dispensing::DXF::TaskStatusResponse> TcpDispensingFacade::GetDxfTaskStatus(
-    const UseCases::Dispensing::DXF::TaskID& task_id) const {
+Shared::Types::Result<UseCases::Dispensing::TaskStatusResponse> TcpDispensingFacade::GetDxfTaskStatus(
+    const UseCases::Dispensing::TaskID& task_id) const {
     return dxf_execute_use_case_->GetTaskStatus(task_id);
 }
 
 Shared::Types::Result<void> TcpDispensingFacade::PauseDxfTask(
-    const UseCases::Dispensing::DXF::TaskID& task_id) {
+    const UseCases::Dispensing::TaskID& task_id) {
     return dxf_execute_use_case_->PauseTask(task_id);
 }
 
 Shared::Types::Result<void> TcpDispensingFacade::ResumeDxfTask(
-    const UseCases::Dispensing::DXF::TaskID& task_id) {
+    const UseCases::Dispensing::TaskID& task_id) {
     return dxf_execute_use_case_->ResumeTask(task_id);
 }
 
 Shared::Types::Result<void> TcpDispensingFacade::CancelDxfTask(
-    const UseCases::Dispensing::DXF::TaskID& task_id) {
+    const UseCases::Dispensing::TaskID& task_id) {
     return dxf_execute_use_case_->CancelTask(task_id);
 }
 
@@ -80,3 +80,4 @@ void TcpDispensingFacade::StopDxfExecution() {
 }
 
 }  // namespace Siligen::Application::Facades::Tcp
+

@@ -123,7 +123,7 @@ cmake --build <CONTROL_APPS_BUILD_ROOT> --config Debug --target siligen_control_
 
 - `control-cli` 已完成命令面 cutover
 - `control-core/build/bin/**/siligen_cli.exe` 不再是默认或显式 CLI 入口
-- `dxf-augment` 已迁入 canonical CLI，但当前本地构建若关闭 `SILIGEN_ENABLE_CGAL`，仍会命中 `DXFContourAugmenter.stub.cpp`
+- `dxf-augment` 已迁入 canonical CLI，但当前本地构建若关闭 `SILIGEN_ENABLE_CGAL`，仍会命中 `ContourAugmenterAdapter.stub.cpp`
 - 详见 `docs/architecture/control-cli-cutover.md`
 
 ## 5. run.ps1、README、build/test/CI 更新
@@ -233,3 +233,5 @@ python .\integration\hardware-in-loop\run_hardware_smoke.py
 - “默认产物来源切换”已经完成
 - “删除 legacy app 子目录”已经完成
 - “彻底删除 `control-core` 作为 app build source root 的角色”还需要先收尾 CLI 命令迁移与 `control-core` source root 剥离
+
+

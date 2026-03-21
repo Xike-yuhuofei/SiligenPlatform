@@ -222,7 +222,7 @@ private:
     // MultiCard共享实例（内部管理，不暴露给外部）
     std::shared_ptr<void> multiCard_;  // 使用void*避免类型暴露
 
-    // 上传目录绝对路径（用于 LocalFileStorageAdapter 和 CleanupDXFFilesUseCase）
+    // 上传目录绝对路径（用于 LocalFileStorageAdapter 和 CleanupFilesUseCase）
     std::string upload_base_dir_;
 
     // 日志重定向相关
@@ -456,21 +456,21 @@ std::shared_ptr<UseCases::Motion::Interpolation::InterpolationPlanningUseCase>
 ApplicationContainer::CreateInstance<UseCases::Motion::Interpolation::InterpolationPlanningUseCase>();
 
 template<>
-std::shared_ptr<UseCases::Dispensing::DXF::DXFWebPlanningUseCase>
-ApplicationContainer::CreateInstance<UseCases::Dispensing::DXF::DXFWebPlanningUseCase>();
+std::shared_ptr<UseCases::Dispensing::PlanningUseCase>
+ApplicationContainer::CreateInstance<UseCases::Dispensing::PlanningUseCase>();
 
 template<>
-std::shared_ptr<UseCases::Dispensing::DXF::UploadDXFFileUseCase>
-ApplicationContainer::CreateInstance<UseCases::Dispensing::DXF::UploadDXFFileUseCase>();
+std::shared_ptr<UseCases::Dispensing::UploadFileUseCase>
+ApplicationContainer::CreateInstance<UseCases::Dispensing::UploadFileUseCase>();
 
 // DXF Cleanup and Execution UseCase 特化声明
 template<>
-std::shared_ptr<UseCases::Dispensing::DXF::CleanupDXFFilesUseCase>
-ApplicationContainer::CreateInstance<UseCases::Dispensing::DXF::CleanupDXFFilesUseCase>();
+std::shared_ptr<UseCases::Dispensing::CleanupFilesUseCase>
+ApplicationContainer::CreateInstance<UseCases::Dispensing::CleanupFilesUseCase>();
 
 template<>
-std::shared_ptr<UseCases::Dispensing::DXF::DXFDispensingExecutionUseCase>
-ApplicationContainer::CreateInstance<UseCases::Dispensing::DXF::DXFDispensingExecutionUseCase>();
+std::shared_ptr<UseCases::Dispensing::DispensingExecutionUseCase>
+ApplicationContainer::CreateInstance<UseCases::Dispensing::DispensingExecutionUseCase>();
 
 template<>
 std::shared_ptr<UseCases::System::EmergencyStopUseCase>
@@ -522,5 +522,6 @@ std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort>
 ApplicationContainer::CreateInstance<Domain::Configuration::Ports::IConfigurationPort>();
 
 } // namespace Siligen::Application::Container
+
 
 

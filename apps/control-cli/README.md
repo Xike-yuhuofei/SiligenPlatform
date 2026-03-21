@@ -35,6 +35,7 @@
 - `supply open|close`
 - `dxf-plan`
 - `dxf-dispense`
+- `dxf-preview`
 - `dxf-augment`
 - `recipe create|update|draft|draft-update|publish|list|get|versions|archive|version-create|compare|rollback|activate|audit|export|import`
 
@@ -51,3 +52,6 @@
 - 若短期需要保留旧名称，只允许在 canonical 路径上做 alias；真实实现必须继续留在 `apps/control-cli`
 - 当前 CLI cutover 不再依赖外部 `Backend_CPP\src\adapters\cli`
 - `dxf-augment` 已位于 canonical CLI，但当前本地 build 若关闭 `SILIGEN_ENABLE_CGAL`，会返回 `NOT_IMPLEMENTED`
+- `--preview-max-points` 已迁移到 `dxf-preview` 命令；在 `dxf-plan/dxf-dispense/dxf-augment` 中仅告警且不生效
+- `dxf-preview` 通过参数化进程调用 `engineering-data` 预览脚本，不再通过 shell 拼接命令执行
+- 预览 Python 解释器环境变量优先级：`SILIGEN_ENGINEERING_DATA_PYTHON` > `SILIGEN_DXF_PREVIEW_PYTHON`（后者保留兼容但已弃用）

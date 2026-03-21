@@ -108,11 +108,11 @@ class ValveCommandUseCase;
 class ValveQueryUseCase;
 }
 
-namespace Siligen::Application::UseCases::Dispensing::DXF {
-class CleanupDXFFilesUseCase;
-class DXFDispensingExecutionUseCase;
-class DXFWebPlanningUseCase;
-class UploadDXFFileUseCase;
+namespace Siligen::Application::UseCases::Dispensing {
+class CleanupFilesUseCase;
+class DispensingExecutionUseCase;
+class PlanningUseCase;
+class UploadFileUseCase;
 }
 
 namespace Siligen::Application::UseCases::Recipes {
@@ -127,3 +127,4 @@ class RecipeQueryUseCase;
 class UpdateDraftVersionUseCase;
 class UpdateRecipeUseCase;
 }
+

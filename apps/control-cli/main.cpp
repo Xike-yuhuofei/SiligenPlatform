@@ -38,6 +38,7 @@ void PrintUsage() {
         << "  siligen_cli supply open|close\n"
         << "  siligen_cli dxf-plan --file <path> [...]\n"
         << "  siligen_cli dxf-dispense --file <path> [...]\n"
+        << "  siligen_cli dxf-preview --file <path> [--output-dir <dir>] [--preview-max-points <n>] [--json]\n"
         << "  siligen_cli dxf-augment --file <path> [--output <path>] [--dxf-r12]\n"
         << "  siligen_cli recipe create|update|draft|draft-update|publish [...]\n"
         << "  siligen_cli recipe list|get|versions|archive|version-create|compare|rollback|activate|audit|export|import [...]\n"

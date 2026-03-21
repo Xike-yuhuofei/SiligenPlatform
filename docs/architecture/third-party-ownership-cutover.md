@@ -78,7 +78,7 @@
 | 依赖 | 当前 live 使用方 | 当前临时 owner | canonical owner / 切换方式 | 退出条件 |
 |---|---|---|---|---|
 | `boost` | `packages/process-runtime-core/src`、`control-core/src/shared`、`control-core/src/infrastructure/adapters/planning/spatial` | `control-core/third_party/boost` | 不新增副本。真正消费方改为显式依赖 workspace 预注册的 Boost headers target，或直接移除 Boost 用法 | `process-runtime-core` 与 shared compat 不再 include `boost/describe`、`boost::geometry`；`siligen_device_adapters_legacy_bridges` standalone 可通过 |
-| `ruckig` | `packages/process-runtime-core/CMakeLists.txt`、`packages/process-runtime-core/src/domain/trajectory/**`、`DXFDispensingPlanner.cpp` | `control-core/third_party/ruckig` | `process-runtime-core` 成为 canonical consumer owner；依赖由上层显式注入 target，不再把 `control-core/third_party` 当 source root | `packages/process-runtime-core` standalone 可在无 `control-core/third_party` 前提下配置并编译 |
+| `ruckig` | `packages/process-runtime-core/CMakeLists.txt`、`packages/process-runtime-core/src/domain/trajectory/**`、`DispensingPlannerService.cpp` | `control-core/third_party/ruckig` | `process-runtime-core` 成为 canonical consumer owner；依赖由上层显式注入 target，不再把 `control-core/third_party` 当 source root | `packages/process-runtime-core` standalone 可在无 `control-core/third_party` 前提下配置并编译 |
 | `protobuf` | `packages/process-runtime-core/CMakeLists.txt`、`control-core/src/infrastructure/adapters/planning/dxf/CMakeLists.txt` | `control-core/third_party/protobuf` | 不复制 vendor。由实际消费者改为链接上层预注册的 `protobuf` targets | `process-runtime-core` 与 DXF planning 均不再从 `control-core/third_party/protobuf` add_subdirectory |
 | `spdlog` | `control-core/src/infrastructure/CMakeLists.txt`、`control-core/src/shared/CMakeLists.txt` | `control-core/third_party/spdlog` | logging 迁到独立 canonical package 或 workspace 预注册 target；停止手写 include path | `siligen_spdlog_adapter` 不再编译 `modules/device-hal` logging 源；shared/infrastructure 不再 include `${CMAKE_SOURCE_DIR}/third_party/spdlog/include` |
 | `nlohmann/json` | `packages/transport-gateway/src/tcp/**`、`packages/process-runtime-core/src/domain/**`、`control-core/src/infrastructure/CMakeLists.txt` | 当前实际仍靠 `control-core` 侧 include root 暴露 | 不复制 vendor。由 `transport-gateway`、`process-runtime-core`、recipe/serialization canonical owner 显式链接 imported target | `transport-gateway` 与 serialization 相关目标不再从 `control-core` 继承 json include root |
@@ -236,3 +236,5 @@
 - control-core 大图继续向前验证时，会先遇到既有 `siligen_types` include-root 问题：
   - `shared/errors/ErrorHandler.h` not found
 - 这是既有全图问题，不是本轮 shared/device cutover 新引入
+
+

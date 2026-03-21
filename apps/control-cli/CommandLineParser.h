@@ -37,6 +37,7 @@ enum class CommandType {
     SUPPLY_CLOSE,
     DXF_PLAN,
     DXF_DISPENSE,
+    DXF_PREVIEW,
     DXF_AUGMENT,
     RECIPE_CREATE,
     RECIPE_UPDATE,
@@ -88,6 +89,9 @@ struct CommandLineConfig {
     bool dry_run = false;
     double dxf_speed = 0.0;
     double dxf_dry_run_speed = 0.0;
+    std::string preview_output_dir;
+    std::string preview_title;
+    bool preview_json = false;
 
     bool show_status = false;
     bool log_to_file = false;

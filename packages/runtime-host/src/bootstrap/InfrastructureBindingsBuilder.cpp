@@ -27,6 +27,7 @@
 #include "runtime/scheduling/TaskSchedulerAdapter.h"
 #include "infrastructure/adapters/planning/dxf/AutoPathSourceAdapter.h"
 #include "infrastructure/adapters/planning/dxf/DXFAdapterFactory.h"
+#include "infrastructure/adapters/planning/dxf/PbPathSourceAdapter.h"
 #include "runtime/recipes/RecipeFileRepository.h"
 #include "runtime/recipes/TemplateFileRepository.h"
 #include "runtime/recipes/AuditFileRepository.h"
@@ -377,7 +378,7 @@ InfrastructureBindings CreateInfrastructureBindings(const InfrastructureBootstra
 
     bindings.event_port = std::make_shared<Infrastructure::Adapters::InMemoryEventPublisherAdapter>(100);
 
-    bindings.path_source_port = std::make_shared<Infrastructure::Adapters::Parsing::AutoPathSourceAdapter>();
+    bindings.path_source_port = std::make_shared<Infrastructure::Adapters::Parsing::PbPathSourceAdapter>();
     
     // 注册DXF专用路径源适配器
     bindings.dxf_path_source_port = Infrastructure::Adapters::Parsing::DXFAdapterFactory::CreateDXFPathSourceAdapter();

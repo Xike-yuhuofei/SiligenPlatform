@@ -1,13 +1,12 @@
 #include "ApplicationContainer.h"
 
-#include "application/usecases/dispensing/dxf/CleanupDXFFilesUseCase.h"
-#include "application/usecases/dispensing/dxf/DXFDispensingExecutionUseCase.h"
-#include "application/usecases/dispensing/dxf/DXFDispensingPlanner.h"
-#include "application/usecases/dispensing/dxf/DXFWebPlanningUseCase.h"
-#include "application/usecases/dispensing/dxf/UploadDXFFileUseCase.h"
+#include "application/usecases/dispensing/CleanupFilesUseCase.h"
+#include "application/usecases/dispensing/DispensingExecutionUseCase.h"
+#include "application/usecases/dispensing/PlanningUseCase.h"
+#include "application/usecases/dispensing/UploadFileUseCase.h"
 #include "application/usecases/dispensing/valve/ValveCommandUseCase.h"
 #include "application/usecases/dispensing/valve/ValveQueryUseCase.h"
-#include "application/usecases/motion/interpolation/InterpolationPlanningUseCase.h"
+#include "domain/dispensing/planning/domain-services/DispensingPlannerService.h"
 #include "domain/dispensing/domain-services/ValveCoordinationService.h"
 #include "domain/trajectory/ports/IPathSourcePort.h"
 #include "shared/interfaces/ILoggingService.h"
@@ -61,55 +60,51 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::Valve::ValveQueryUseC
 }
 
 template<>
-std::shared_ptr<UseCases::Dispensing::DXF::DXFWebPlanningUseCase>
-ApplicationContainer::CreateInstance<UseCases::Dispensing::DXF::DXFWebPlanningUseCase>() {
+std::shared_ptr<UseCases::Dispensing::PlanningUseCase>
+ApplicationContainer::CreateInstance<UseCases::Dispensing::PlanningUseCase>() {
     auto path_source = ResolvePort<Domain::Trajectory::Ports::IPathSourcePort>();
     if (!path_source) {
         throw std::runtime_error("IPathSourcePort 未注册");
     }
 
-    auto interpolation_usecase = Resolve<UseCases::Motion::Interpolation::InterpolationPlanningUseCase>();
-    auto planner = std::make_shared<UseCases::Dispensing::DXF::DXFDispensingPlanner>(
+    auto planner = std::make_shared<UseCases::Dispensing::DispensingPlanner>(
         path_source,
-        interpolation_usecase,
         velocity_profile_service_);
 
-    return std::make_shared<UseCases::Dispensing::DXF::DXFWebPlanningUseCase>(
+    return std::make_shared<UseCases::Dispensing::PlanningUseCase>(
         planner,
         config_port_);
 }
 
 template<>
-std::shared_ptr<UseCases::Dispensing::DXF::UploadDXFFileUseCase>
-ApplicationContainer::CreateInstance<UseCases::Dispensing::DXF::UploadDXFFileUseCase>() {
-    return std::make_shared<UseCases::Dispensing::DXF::UploadDXFFileUseCase>(
+std::shared_ptr<UseCases::Dispensing::UploadFileUseCase>
+ApplicationContainer::CreateInstance<UseCases::Dispensing::UploadFileUseCase>() {
+    return std::make_shared<UseCases::Dispensing::UploadFileUseCase>(
         file_storage_port_,
         10,
         config_port_);
 }
 
 template<>
-std::shared_ptr<UseCases::Dispensing::DXF::CleanupDXFFilesUseCase>
-ApplicationContainer::CreateInstance<UseCases::Dispensing::DXF::CleanupDXFFilesUseCase>() {
-    return std::make_shared<UseCases::Dispensing::DXF::CleanupDXFFilesUseCase>(
+std::shared_ptr<UseCases::Dispensing::CleanupFilesUseCase>
+ApplicationContainer::CreateInstance<UseCases::Dispensing::CleanupFilesUseCase>() {
+    return std::make_shared<UseCases::Dispensing::CleanupFilesUseCase>(
         file_storage_port_,
         upload_base_dir_);
 }
 
 template<>
-std::shared_ptr<UseCases::Dispensing::DXF::DXFDispensingExecutionUseCase>
-ApplicationContainer::CreateInstance<UseCases::Dispensing::DXF::DXFDispensingExecutionUseCase>() {
+std::shared_ptr<UseCases::Dispensing::DispensingExecutionUseCase>
+ApplicationContainer::CreateInstance<UseCases::Dispensing::DispensingExecutionUseCase>() {
     auto path_source = ResolvePort<Domain::Trajectory::Ports::IPathSourcePort>();
     if (!path_source) {
         throw std::runtime_error("IPathSourcePort 未注册");
     }
 
-    auto interpolation_usecase = Resolve<UseCases::Motion::Interpolation::InterpolationPlanningUseCase>();
-    auto planner = std::make_shared<UseCases::Dispensing::DXF::DXFDispensingPlanner>(
+    auto planner = std::make_shared<UseCases::Dispensing::DispensingPlanner>(
         path_source,
-        interpolation_usecase,
         velocity_profile_service_);
-    return std::make_shared<UseCases::Dispensing::DXF::DXFDispensingExecutionUseCase>(
+    return std::make_shared<UseCases::Dispensing::DispensingExecutionUseCase>(
         planner,
         valve_port_,
         interpolation_port_,
@@ -121,3 +116,5 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::DXF::DXFDispensingExe
 }
 
 }  // namespace Siligen::Application::Container
+
+

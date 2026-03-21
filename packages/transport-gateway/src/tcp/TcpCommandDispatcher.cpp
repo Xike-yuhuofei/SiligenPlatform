@@ -1109,7 +1109,7 @@ std::string TcpCommandDispatcher::HandleDxfLoad(const std::string& id, const nlo
         return GatewayJsonProtocol::MakeErrorResponse(id, 2902, readError);
     }
 
-    Application::UseCases::Dispensing::DXF::DXFUploadRequest request;
+    Application::UseCases::Dispensing::UploadRequest request;
     request.file_content = std::move(fileContent);
     request.original_filename = ExtractFilename(filePath);
     request.file_size = request.file_content.size();
@@ -1127,7 +1127,7 @@ std::string TcpCommandDispatcher::HandleDxfLoad(const std::string& id, const nlo
     cache.filepath = uploadResponse.filepath;
 
     if (dispensingFacade_) {
-        Application::UseCases::Dispensing::DXF::DXFPlanningRequest planRequest;
+        Application::UseCases::Dispensing::PlanningRequest planRequest;
         planRequest.dxf_filepath = uploadResponse.filepath;
         planRequest.trajectory_config = Siligen::Shared::Types::TrajectoryConfig();
         auto planResult = dispensingFacade_->PlanDxf(planRequest);
@@ -1238,7 +1238,7 @@ std::string TcpCommandDispatcher::HandleDxfExecute(const std::string& id, const 
                      ", rapid_speed_mm_s=" + std::to_string(rapidSpeed) +
                      ", filepath=" + filepath);
 
-    Application::UseCases::Dispensing::DXF::DXFDispensingMVPRequest request;
+    Application::UseCases::Dispensing::DispensingMVPRequest request;
     request.dxf_filepath = filepath;
     request.optimize_path = params.value("optimize_path", false);
     request.start_x = params.value("start_x", 0.0f);
@@ -1418,6 +1418,7 @@ std::string TcpCommandDispatcher::HandleDxfInfo(const std::string& id, const nlo
 
     nlohmann::json resultJson = {
         {"total_length", cache.total_length},
+        {"total_segments", cache.segment_count},
         {"bounds", boundsJson}
     };
     return GatewayJsonProtocol::MakeSuccessResponse(id, resultJson);
@@ -2079,6 +2080,7 @@ std::string TcpCommandDispatcher::HandleRecipeImport(const std::string& id, cons
 }
 
 } // namespace Siligen::Adapters::Tcp
+
 
 
 

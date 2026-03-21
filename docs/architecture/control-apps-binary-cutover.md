@@ -137,7 +137,7 @@ python -m test_kit.workspace_validation --profile local --suite apps --report-di
 
 补充说明：
 
-- `dxf-augment` 命令已迁入 canonical CLI，但当前本地 build 仍以 `SILIGEN_ENABLE_CGAL=OFF` 构建，因此会命中 `DXFContourAugmenter.stub.cpp` 并返回 `NOT_IMPLEMENTED`。这不再是 fallback 依赖问题，而是单独的 CGAL 特性开关问题。
+- `dxf-augment` 命令已迁入 canonical CLI，但当前本地 build 仍以 `SILIGEN_ENABLE_CGAL=OFF` 构建，因此会命中 `ContourAugmenterAdapter.stub.cpp` 并返回 `NOT_IMPLEMENTED`。这不再是 fallback 依赖问题，而是单独的 CGAL 特性开关问题。
 
 ## 7. 删除 `control-core/build` 相关依赖的剩余条件
 
@@ -167,3 +167,5 @@ python -m test_kit.workspace_validation --profile local --suite apps --report-di
 - 默认 binary cutover 已完成
 - `control-core/build/bin/**` 现在不再是三个 control app 的默认 source of truth
 - 剩余未删除条件已不再集中在 CLI fallback，而主要是 `control-core` 的库图、`third_party` 与其他 residual consumer
+
+

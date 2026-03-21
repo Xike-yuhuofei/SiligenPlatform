@@ -605,6 +605,13 @@ Result<DxfPreprocessConfig> ConfigFileAdapter::GetDxfPreprocessConfig() const {
         if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
     }
 
+    result = read_optional_raw(section, "strict_r12", raw, found);
+    if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+    if (found) {
+        result = parse_bool(section, "strict_r12", raw, config.strict_r12);
+        if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+    }
+
     result = read_optional_raw(section, "approx_splines", raw, found);
     if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
     if (found) {

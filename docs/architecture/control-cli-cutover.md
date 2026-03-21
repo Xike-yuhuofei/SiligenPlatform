@@ -36,6 +36,7 @@
 - `supply close`
 - `dxf-plan`
 - `dxf-dispense`
+- `dxf-preview`
 - `dxf-augment`
 - `recipe create`
 - `recipe update`
@@ -62,7 +63,7 @@
 | 连接调试 | `apps/control-cli/CommandHandlers.Connection.cpp` | `InitializeSystemUseCase`、`MotionInitializationUseCase`、`MotionMonitoringUseCase`、`ValveQueryUseCase` |
 | 运动 | `apps/control-cli/CommandHandlers.Motion.cpp` | `HomeAxesUseCase`、`ManualMotionControlUseCase`、`MotionSafetyUseCase`、`EmergencyStopUseCase` |
 | 点胶 / 供胶 | `apps/control-cli/CommandHandlers.Dispensing.cpp` | `ValveCommandUseCase`、`MotionMonitoringUseCase` |
-| DXF | `apps/control-cli/CommandHandlers.Dxf.cpp` | `DXFWebPlanningUseCase`、`DXFDispensingExecutionUseCase`、`DXFContourAugmenter`、`HomeAxesUseCase` |
+| DXF | `apps/control-cli/CommandHandlers.Dxf.cpp` | `PlanningUseCase`、`DispensingExecutionUseCase`、`ContourAugmenterAdapter`、`HomeAxesUseCase` |
 | recipe | `apps/control-cli/CommandHandlers.Recipe.cpp` | `CreateRecipeUseCase`、`UpdateRecipeUseCase`、`CreateDraftVersionUseCase`、`UpdateDraftVersionUseCase`、`RecipeCommandUseCase`、`RecipeQueryUseCase`、`CreateVersionFromPublishedUseCase`、`CompareRecipeVersionsUseCase`、`ExportRecipeBundlePayloadUseCase`、`ImportRecipeBundlePayloadUseCase` |
 
 约束落实：
@@ -140,8 +141,8 @@
 
 - 命令名：`dxf-augment`
 - CLI 入口位置：`apps/control-cli/CommandHandlers.Dxf.cpp`
-- 当前实际实现位置：`packages/process-runtime-core/src/application/usecases/dispensing/dxf/DXFContourAugmenter.stub.cpp`
-- 阻塞原因：当前 build 以 `SILIGEN_ENABLE_CGAL=OFF` 构建，`DXFContourAugmenter` 返回 `NOT_IMPLEMENTED`
+- 当前实际实现位置：`packages/process-runtime-core/src/infrastructure/adapters/planning/geometry/ContourAugmenterAdapter.stub.cpp`
+- 阻塞原因：当前 build 以 `SILIGEN_ENABLE_CGAL=OFF` 构建，`ContourAugmenterAdapter` 返回 `NOT_IMPLEMENTED`
 - 说明：这不是 legacy fallback；命令已迁入 canonical CLI，但本地构建未启用 CGAL 特性
 
 ## 8. 对删除 `control-core/build/bin/**/siligen_cli.exe` 的结论
@@ -156,3 +157,6 @@
 
 1. `control-core` 仍是共享库图与 `third_party` owner。
 2. 其他非 CLI residual consumer 仍需按 `control-core` 总体删除计划继续清理。
+
+
+

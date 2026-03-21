@@ -136,6 +136,12 @@ void ParsePrimaryCommand(CommandLineConfig& config, int argc, char* argv[], int&
         command_set = true;
         return;
     }
+    if (arg == "dxf-preview") {
+        config.command = CommandType::DXF_PREVIEW;
+        config.command_string = arg;
+        command_set = true;
+        return;
+    }
     if (arg == "dxf-augment") {
         config.command = CommandType::DXF_AUGMENT;
         config.command_string = arg;
@@ -347,6 +353,10 @@ CommandLineConfig CommandLineParser::Parse(int argc, char* argv[]) {
             config.planning_report = true;
             continue;
         }
+        if (arg == "--json") {
+            config.preview_json = true;
+            continue;
+        }
 
         if (const auto value = ConsumeValue(arg, "--mode", argc, argv, i); !value.empty()) {
             config.mode = ParseMode(value);
@@ -452,6 +462,14 @@ CommandLineConfig CommandLineParser::Parse(int argc, char* argv[]) {
         }
         if (const auto value = ConsumeValue(arg, "--output", argc, argv, i); !value.empty()) {
             config.dxf_output_path = value;
+            continue;
+        }
+        if (const auto value = ConsumeValue(arg, "--output-dir", argc, argv, i); !value.empty()) {
+            config.preview_output_dir = value;
+            continue;
+        }
+        if (const auto value = ConsumeValue(arg, "--title", argc, argv, i); !value.empty()) {
+            config.preview_title = value;
             continue;
         }
         if (const auto value = ConsumeValue(arg, "--two-opt-iterations", argc, argv, i); !value.empty()) {

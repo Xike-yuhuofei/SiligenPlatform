@@ -2,9 +2,9 @@
 
 #include "siligen/gateway/tcp/tcp_facade_bundle.h"
 
-#include "application/usecases/dispensing/dxf/DXFDispensingExecutionUseCase.h"
-#include "application/usecases/dispensing/dxf/DXFWebPlanningUseCase.h"
-#include "application/usecases/dispensing/dxf/UploadDXFFileUseCase.h"
+#include "application/usecases/dispensing/DispensingExecutionUseCase.h"
+#include "application/usecases/dispensing/PlanningUseCase.h"
+#include "application/usecases/dispensing/UploadFileUseCase.h"
 #include "application/usecases/dispensing/valve/ValveCommandUseCase.h"
 #include "application/usecases/dispensing/valve/ValveQueryUseCase.h"
 #include "application/usecases/motion/homing/HomeAxesUseCase.h"
@@ -47,9 +47,9 @@ TcpFacadeBundle BuildTcpFacadeBundle(Resolver& resolver) {
     bundle.dispensing = std::make_shared<Application::Facades::Tcp::TcpDispensingFacade>(
         resolver.template Resolve<Application::UseCases::Dispensing::Valve::ValveCommandUseCase>(),
         resolver.template Resolve<Application::UseCases::Dispensing::Valve::ValveQueryUseCase>(),
-        resolver.template Resolve<Application::UseCases::Dispensing::DXF::DXFDispensingExecutionUseCase>(),
-        resolver.template Resolve<Application::UseCases::Dispensing::DXF::UploadDXFFileUseCase>(),
-        resolver.template Resolve<Application::UseCases::Dispensing::DXF::DXFWebPlanningUseCase>());
+        resolver.template Resolve<Application::UseCases::Dispensing::DispensingExecutionUseCase>(),
+        resolver.template Resolve<Application::UseCases::Dispensing::UploadFileUseCase>(),
+        resolver.template Resolve<Application::UseCases::Dispensing::PlanningUseCase>());
 
     bundle.recipe = std::make_shared<Application::Facades::Tcp::TcpRecipeFacade>(
         resolver.template Resolve<Application::UseCases::Recipes::CreateRecipeUseCase>(),
@@ -67,3 +67,5 @@ TcpFacadeBundle BuildTcpFacadeBundle(Resolver& resolver) {
 }
 
 }  // namespace Siligen::Gateway::Tcp
+
+

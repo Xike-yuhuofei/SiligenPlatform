@@ -1,29 +1,43 @@
 #include "CommandHandlers.h"
 #include "CommandHandlersInternal.h"
 
-#include "application/usecases/dispensing/dxf/DXFContourAugmenter.h"
-#include "application/usecases/dispensing/dxf/DXFDispensingExecutionUseCase.h"
-#include "application/usecases/dispensing/dxf/DXFWebPlanningUseCase.h"
+#include "infrastructure/adapters/planning/geometry/ContourAugmenterAdapter.h"
+#include "application/usecases/dispensing/DispensingExecutionUseCase.h"
+#include "application/usecases/dispensing/PlanningUseCase.h"
 #include "application/usecases/motion/homing/HomeAxesUseCase.h"
 #include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
 #include "domain/trajectory/value-objects/PlanningReport.h"
 #include "shared/types/TrajectoryTypes.h"
 
 #include <algorithm>
+#include <cctype>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <sstream>
 #include <system_error>
+#include <vector>
+
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
 
 namespace Siligen::Adapters::CLI {
 
 using Siligen::Application::CommandLineConfig;
-using Siligen::Application::UseCases::Dispensing::DXF::DXFContourAugmentConfig;
-using Siligen::Application::UseCases::Dispensing::DXF::DXFContourAugmenter;
-using Siligen::Application::UseCases::Dispensing::DXF::DXFDispensingExecutionUseCase;
-using Siligen::Application::UseCases::Dispensing::DXF::DXFDispensingMVPRequest;
-using Siligen::Application::UseCases::Dispensing::DXF::DXFPlanningRequest;
-using Siligen::Application::UseCases::Dispensing::DXF::DXFWebPlanningUseCase;
+using Siligen::Application::UseCases::Dispensing::DispensingExecutionUseCase;
+using Siligen::Application::UseCases::Dispensing::DispensingMVPRequest;
+using Siligen::Application::UseCases::Dispensing::PlanningRequest;
+using Siligen::Application::UseCases::Dispensing::PlanningUseCase;
+using Siligen::Infrastructure::Adapters::Planning::Geometry::ContourAugmentConfig;
+using Siligen::Infrastructure::Adapters::Planning::Geometry::ContourAugmenterAdapter;
 using Siligen::Application::UseCases::Motion::Homing::HomeAxesRequest;
 using Siligen::Application::UseCases::Motion::Homing::HomeAxesUseCase;
 using Siligen::Domain::Motion::InterpolationAlgorithm;
@@ -37,6 +51,215 @@ constexpr float32 kMaxVelocityUpper = 1000.0f;
 constexpr float32 kMaxAccelerationUpper = 10000.0f;
 constexpr float32 kMaxTimeStep = 0.1f;
 constexpr float32 kEpsilon = 1e-6f;
+constexpr const char* kForbiddenOverrideMetaChars = "&|;<>`";
+
+bool HasForbiddenMetaChar(const std::string& value) {
+    return value.find_first_of(kForbiddenOverrideMetaChars) != std::string::npos;
+}
+
+std::string QuoteArg(const std::string& value) {
+    if (value.find_first_of(" \t\"") == std::string::npos) {
+        return value;
+    }
+    std::string out;
+    out.reserve(value.size() + 2);
+    out.push_back('"');
+    for (char c : value) {
+        if (c == '"') {
+            out.push_back('\\');
+        }
+        out.push_back(c);
+    }
+    out.push_back('"');
+    return out;
+}
+
+bool HasLineBreak(const std::string& value) {
+    return value.find('\n') != std::string::npos || value.find('\r') != std::string::npos;
+}
+
+void WarnDeprecatedPreviewPythonEnvOnce() {
+    static bool warned = false;
+    if (warned) {
+        return;
+    }
+    warned = true;
+    std::cerr << "[WARNING] 环境变量 SILIGEN_DXF_PREVIEW_PYTHON 已弃用，请改用 "
+                 "SILIGEN_ENGINEERING_DATA_PYTHON。"
+              << std::endl;
+}
+
+struct ProcessRunResult {
+    bool ok = false;
+    int exit_code = 1;
+    std::string error;
+};
+
+#ifdef _WIN32
+ProcessRunResult RunProcess(const std::vector<std::string>& args) {
+    if (args.empty()) {
+        return ProcessRunResult{false, 1, "外部命令参数为空"};
+    }
+
+    std::ostringstream command_stream;
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (i > 0) {
+            command_stream << ' ';
+        }
+        command_stream << QuoteArg(args[i]);
+    }
+
+    std::string command = command_stream.str();
+    std::vector<char> mutable_command(command.begin(), command.end());
+    mutable_command.push_back('\0');
+
+    STARTUPINFOA startup_info{};
+    startup_info.cb = sizeof(startup_info);
+    startup_info.dwFlags |= STARTF_USESTDHANDLES;
+    startup_info.hStdInput = ::GetStdHandle(STD_INPUT_HANDLE);
+    startup_info.hStdOutput = ::GetStdHandle(STD_OUTPUT_HANDLE);
+    startup_info.hStdError = ::GetStdHandle(STD_ERROR_HANDLE);
+
+    PROCESS_INFORMATION process_info{};
+    const BOOL created = ::CreateProcessA(
+        nullptr,
+        mutable_command.data(),
+        nullptr,
+        nullptr,
+        TRUE,
+        CREATE_NO_WINDOW,
+        nullptr,
+        nullptr,
+        &startup_info,
+        &process_info);
+    if (!created) {
+        const DWORD err = ::GetLastError();
+        return ProcessRunResult{
+            false,
+            1,
+            "启动预览进程失败: winerr=" + std::to_string(static_cast<unsigned long>(err))};
+    }
+
+    const DWORD wait_result = ::WaitForSingleObject(process_info.hProcess, INFINITE);
+    if (wait_result == WAIT_FAILED) {
+        const DWORD err = ::GetLastError();
+        ::CloseHandle(process_info.hThread);
+        ::CloseHandle(process_info.hProcess);
+        return ProcessRunResult{
+            false, 1, "等待预览进程失败: winerr=" + std::to_string(static_cast<unsigned long>(err))};
+    }
+
+    DWORD exit_code = 1;
+    if (!::GetExitCodeProcess(process_info.hProcess, &exit_code)) {
+        const DWORD err = ::GetLastError();
+        ::CloseHandle(process_info.hThread);
+        ::CloseHandle(process_info.hProcess);
+        return ProcessRunResult{
+            false, 1, "读取预览进程退出码失败: winerr=" + std::to_string(static_cast<unsigned long>(err))};
+    }
+
+    ::CloseHandle(process_info.hThread);
+    ::CloseHandle(process_info.hProcess);
+    return ProcessRunResult{true, static_cast<int>(exit_code), ""};
+}
+#else
+ProcessRunResult RunProcess(const std::vector<std::string>& args) {
+    if (args.empty()) {
+        return ProcessRunResult{false, 1, "外部命令参数为空"};
+    }
+
+    pid_t pid = ::fork();
+    if (pid < 0) {
+        return ProcessRunResult{false, 1, "fork 失败"};
+    }
+    if (pid == 0) {
+        std::vector<char*> argv;
+        argv.reserve(args.size() + 1);
+        for (const auto& arg : args) {
+            argv.push_back(const_cast<char*>(arg.c_str()));
+        }
+        argv.push_back(nullptr);
+        ::execvp(argv.front(), argv.data());
+        _exit(127);
+    }
+
+    int status = 0;
+    if (::waitpid(pid, &status, 0) < 0) {
+        return ProcessRunResult{false, 1, "waitpid 失败"};
+    }
+    if (WIFEXITED(status)) {
+        return ProcessRunResult{true, WEXITSTATUS(status), ""};
+    }
+    if (WIFSIGNALED(status)) {
+        return ProcessRunResult{true, 128 + WTERMSIG(status), ""};
+    }
+    return ProcessRunResult{true, status, ""};
+}
+#endif
+
+std::filesystem::path ResolvePreviewScriptPath() {
+    const char* script_env = std::getenv("SILIGEN_DXF_PREVIEW_SCRIPT");
+    if (script_env && *script_env) {
+        return std::filesystem::path(script_env);
+    }
+    return std::filesystem::current_path() / "packages" / "engineering-data" / "scripts" / "generate_preview.py";
+}
+
+std::string ResolvePreviewPythonExecutable() {
+    const char* python_env = std::getenv("SILIGEN_ENGINEERING_DATA_PYTHON");
+    if (python_env && *python_env) {
+        return python_env;
+    }
+    python_env = std::getenv("SILIGEN_DXF_PREVIEW_PYTHON");
+    if (python_env && *python_env) {
+        WarnDeprecatedPreviewPythonEnvOnce();
+        return python_env;
+    }
+    return "python";
+}
+
+double ResolvePreviewSpeed(const CommandLineConfig& config) {
+    if (config.dxf_speed > 0.0) {
+        return config.dxf_speed;
+    }
+    return 10.0;
+}
+
+size_t ResolvePreviewMaxPoints(const CommandLineConfig& config) {
+    if (config.preview_max_points > 0) {
+        return config.preview_max_points;
+    }
+    return 12000;
+}
+
+std::filesystem::path ResolvePreviewOutputDir(const CommandLineConfig& config, const std::filesystem::path& dxf_path) {
+    if (!config.preview_output_dir.empty()) {
+        return std::filesystem::path(config.preview_output_dir);
+    }
+    if (!config.dxf_output_path.empty()) {
+        return std::filesystem::path(config.dxf_output_path);
+    }
+
+    if (dxf_path.has_parent_path()) {
+        return dxf_path.parent_path();
+    }
+    return std::filesystem::current_path();
+}
+
+std::string ResolvePreviewTitle(const CommandLineConfig& config, const std::string& dxf_path) {
+    if (!config.preview_title.empty()) {
+        return config.preview_title;
+    }
+    return BuildPreviewTitle(dxf_path);
+}
+
+void WarnPreviewMaxPointsIgnored(const CommandLineConfig& config) {
+    if (config.preview_max_points == 0) {
+        return;
+    }
+    std::cout << "[WARNING] 参数 --preview-max-points 已迁移到 dxf-preview；当前命令不会消费该参数。"
+              << std::endl;
+}
 
 bool TryParseInterpolationAlgorithm(const std::string& raw, InterpolationAlgorithm& out) {
     if (raw.empty()) {
@@ -309,6 +532,7 @@ bool ResolveTrajectoryConfig(const CommandLineConfig& config, TrajectoryConfig& 
 }  // namespace
 
 int CLICommandHandlers::HandleDXFPlan(const CommandLineConfig& config) {
+    WarnPreviewMaxPointsIgnored(config);
     const auto resolved = ApplyDxfDefaults(config);
     if (resolved.dxf_file_path.empty()) {
         std::cout << "请提供 DXF 文件路径 (--file)" << std::endl;
@@ -320,7 +544,7 @@ int CLICommandHandlers::HandleDXFPlan(const CommandLineConfig& config) {
         return 1;
     }
 
-    auto usecase = container_->Resolve<DXFWebPlanningUseCase>();
+    auto usecase = container_->Resolve<PlanningUseCase>();
     if (!usecase) {
         std::cout << "无法解析 DXF 规划用例" << std::endl;
         return 1;
@@ -333,7 +557,7 @@ int CLICommandHandlers::HandleDXFPlan(const CommandLineConfig& config) {
         return 1;
     }
 
-    DXFPlanningRequest request;
+    PlanningRequest request;
     request.dxf_filepath = resolved.dxf_file_path;
     request.trajectory_config = trajectory;
     request.optimize_path = resolved.optimize_path;
@@ -411,6 +635,7 @@ int CLICommandHandlers::HandleDXFPlan(const CommandLineConfig& config) {
 }
 
 int CLICommandHandlers::HandleDXFAugment(const CommandLineConfig& config) {
+    WarnPreviewMaxPointsIgnored(config);
     const auto resolved = ApplyDxfDefaults(config);
     if (resolved.dxf_file_path.empty()) {
         std::cout << "请提供 DXF 文件路径 (--file)" << std::endl;
@@ -439,8 +664,8 @@ int CLICommandHandlers::HandleDXFAugment(const CommandLineConfig& config) {
         std::filesystem::create_directories(output_path.parent_path(), ec);
     }
 
-    DXFContourAugmenter augmenter;
-    DXFContourAugmentConfig augment_config;
+    ContourAugmenterAdapter augmenter;
+    ContourAugmentConfig augment_config;
     augment_config.output_r12 = resolved.dxf_output_r12;
     auto result = augmenter.ConvertFile(input_path.string(), output_path.string(), augment_config);
     if (result.IsError()) {
@@ -452,7 +677,85 @@ int CLICommandHandlers::HandleDXFAugment(const CommandLineConfig& config) {
     return 0;
 }
 
+int CLICommandHandlers::HandleDXFPreview(const CommandLineConfig& config) {
+    const auto resolved = ApplyDxfDefaults(config);
+    if (resolved.dxf_file_path.empty()) {
+        std::cout << "请提供 DXF 文件路径 (--file)" << std::endl;
+        return 1;
+    }
+
+    std::filesystem::path input_path(resolved.dxf_file_path);
+    if (!std::filesystem::exists(input_path)) {
+        std::cout << "文件不存在或无法访问: " << resolved.dxf_file_path << std::endl;
+        return 1;
+    }
+
+    const auto script_path = ResolvePreviewScriptPath();
+    if (!std::filesystem::exists(script_path)) {
+        std::cout << "未找到预览脚本: " << script_path.string() << std::endl;
+        return 1;
+    }
+
+    std::filesystem::path output_dir = ResolvePreviewOutputDir(resolved, input_path);
+    std::error_code ec;
+    std::filesystem::create_directories(output_dir, ec);
+    if (ec) {
+        std::cout << "无法创建预览输出目录: " << output_dir.string() << std::endl;
+        return 1;
+    }
+
+    const std::string python = ResolvePreviewPythonExecutable();
+    if (HasLineBreak(python) || HasForbiddenMetaChar(python)) {
+        std::cout << "SILIGEN_ENGINEERING_DATA_PYTHON/SILIGEN_DXF_PREVIEW_PYTHON 含非法字符" << std::endl;
+        return 1;
+    }
+    if (HasLineBreak(script_path.string()) || HasForbiddenMetaChar(script_path.string())) {
+        std::cout << "SILIGEN_DXF_PREVIEW_SCRIPT 含非法字符" << std::endl;
+        return 1;
+    }
+    const double speed = ResolvePreviewSpeed(resolved);
+    const size_t max_points = ResolvePreviewMaxPoints(resolved);
+    const std::string title = ResolvePreviewTitle(resolved, input_path.string());
+
+    std::vector<std::string> command_args = {
+        python,
+        script_path.string(),
+        "--input",
+        input_path.string(),
+        "--output-dir",
+        output_dir.string(),
+        "--speed",
+        std::to_string(speed),
+        "--max-points",
+        std::to_string(max_points),
+        "--deterministic",
+    };
+    if (resolved.preview_json) {
+        command_args.emplace_back("--json");
+    }
+    if (!title.empty()) {
+        command_args.emplace_back("--title");
+        command_args.emplace_back(title);
+    }
+
+    const auto run_result = RunProcess(command_args);
+    if (!run_result.ok) {
+        std::cout << "DXF 预览命令执行失败: " << run_result.error << std::endl;
+        return 1;
+    }
+    if (run_result.exit_code != 0) {
+        std::cout << "DXF 预览生成失败，退出码: " << run_result.exit_code << std::endl;
+        return 1;
+    }
+
+    if (!resolved.preview_json) {
+        std::cout << "DXF 预览生成完成，输出目录: " << output_dir.string() << std::endl;
+    }
+    return 0;
+}
+
 int CLICommandHandlers::HandleDXFDispense(const CommandLineConfig& config) {
+    WarnPreviewMaxPointsIgnored(config);
     const auto resolved = ApplyDxfDefaults(config);
     if (resolved.dry_run) {
         std::cout << "启用预览模式，不执行硬件点胶" << std::endl;
@@ -510,13 +813,13 @@ int CLICommandHandlers::HandleDXFDispense(const CommandLineConfig& config) {
         }
     }
 
-    auto usecase = container_->Resolve<DXFDispensingExecutionUseCase>();
+    auto usecase = container_->Resolve<DispensingExecutionUseCase>();
     if (!usecase) {
         std::cout << "无法解析 DXF 点胶执行用例" << std::endl;
         return 1;
     }
 
-    DXFDispensingMVPRequest request;
+    DispensingMVPRequest request;
     request.dxf_filepath = resolved.dxf_file_path;
     request.optimize_path = resolved.optimize_path;
     request.start_x = static_cast<float32>(resolved.start_x);
@@ -594,3 +897,5 @@ int CLICommandHandlers::HandleDXFDispense(const CommandLineConfig& config) {
 }
 
 }  // namespace Siligen::Adapters::CLI
+
+

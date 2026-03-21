@@ -29,6 +29,7 @@ target_link_libraries(siligen_cli PRIVATE
     siligen_runtime_host
     siligen_control_application
     siligen_control_runtime_infrastructure
+    siligen_contour_augment_adapter
     siligen_domain
     siligen_shared
 )
