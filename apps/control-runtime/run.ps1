@@ -25,7 +25,7 @@ $canonicalCandidates = @(
 $canonicalResolved = $canonicalCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 
 if ($UseLegacyFallback) {
-    $reason = "control-runtime 已完成 canonical binary cutover；run.ps1 不再支持 -UseLegacyFallback。请先执行根级 build 生成 '$controlAppsBuildRoot\bin\siligen_control_runtime.exe'。"
+    $reason = "control-runtime completed canonical binary cutover; run.ps1 no longer supports -UseLegacyFallback. Build '$controlAppsBuildRoot\\bin\\siligen_control_runtime.exe' from workspace root first."
     if ($DryRun) {
         Write-Output "control-runtime target: BLOCKED"
         Write-Output "reason: $reason"
@@ -43,7 +43,7 @@ if ($DryRun) {
     }
 
     Write-Output "control-runtime target: BLOCKED"
-    Write-Output "reason: 未找到 canonical control-runtime 产物。请先执行根级 build 入口生成 '$controlAppsBuildRoot\bin\siligen_control_runtime.exe'。"
+    Write-Output "reason: canonical control-runtime binary not found. Build '$controlAppsBuildRoot\\bin\\siligen_control_runtime.exe' from workspace root first."
     exit 1
 }
 
@@ -52,4 +52,4 @@ if ($canonicalResolved) {
     exit $LASTEXITCODE
 }
 
-Write-Error "未找到可运行的 canonical control-runtime 可执行文件。请先执行根级 build 生成 '$controlAppsBuildRoot\bin\siligen_control_runtime.exe'。"
+Write-Error "No runnable canonical control-runtime executable found. Build '$controlAppsBuildRoot\\bin\\siligen_control_runtime.exe' from workspace root first."

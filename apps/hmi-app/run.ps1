@@ -31,12 +31,12 @@ if ($DryRun) {
     }
 
     Write-Output "hmi-app target: BLOCKED"
-    Write-Output "reason: 未找到 canonical hmi-app run 脚本。"
+    Write-Output "reason: canonical hmi-app run script not found."
     exit 0
 }
 
 if (-not (Test-Path $runner)) {
-    Write-Error "未找到 canonical hmi-app run 脚本: $runner"
+    Write-Error "Canonical hmi-app run script not found: $runner"
 }
 
 if ($GatewayExe) {
