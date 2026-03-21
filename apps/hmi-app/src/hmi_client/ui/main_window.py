@@ -4,6 +4,14 @@ import sys
 import time
 import logging
 from pathlib import Path
+
+try:
+    from hmi_client.qt_env import configure_qt_environment
+except ImportError:  # pragma: no cover - script-mode fallback
+    from qt_env import configure_qt_environment
+
+configure_qt_environment(headless=False)
+
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QGroupBox, QLabel, QPushButton, QLineEdit, QGridLayout, QFrame,
@@ -25,8 +33,14 @@ from client import (
     BackendManager,
     CommandProtocol,
     LaunchResult,
+    RecoveryWorker,
+    SessionStageEvent,
+    SupervisorSession,
     StartupWorker,
     TcpClient,
+    is_online_ready,
+    launch_result_from_snapshot,
+    load_supervisor_policy_from_env,
     normalize_launch_mode,
 )
 from client.auth import AuthManager
@@ -227,7 +241,12 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._requested_launch_mode = normalize_launch_mode(launch_mode)
         self._launch_result: LaunchResult | None = None
+        self._session_snapshot = None
+        self._supervisor_stage_events = []
         self._startup_worker = None
+        self._recovery_worker = None
+        self._pending_recovery_action = ""
+        self._supervisor_policy = load_supervisor_policy_from_env()
         self._aspect_ratio = _resolve_aspect_ratio()
         min_size = _resolve_min_size(self._aspect_ratio)
         self.setWindowTitle("思力根运动控制器")
@@ -239,8 +258,6 @@ class MainWindow(QMainWindow):
         self._protocol = CommandProtocol(self._client)
         self._dxf_preview_client = DxfPipelinePreviewClient()
         self._backend = BackendManager()
-        self._connected = False
-        self._hw_connected = False
         self._jog_speed = 20.0
         self._jog_press_time = None
         self._last_jog_context = None
@@ -760,6 +777,28 @@ class MainWindow(QMainWindow):
         self._hw_connect_btn.setEnabled(False)
         layout.addWidget(self._hw_connect_btn)
 
+        recovery_group = QGroupBox("会话恢复")
+        recovery_group.setProperty("data-testid", "panel-session-recovery")
+        recovery_layout = QGridLayout(recovery_group)
+        recovery_layout.setSpacing(6)
+
+        self._retry_stage_btn = QPushButton("重试阶段")
+        self._retry_stage_btn.setProperty("data-testid", "btn-recovery-retry")
+        self._retry_stage_btn.clicked.connect(self._on_recovery_retry_stage)
+        recovery_layout.addWidget(self._retry_stage_btn, 0, 0)
+
+        self._restart_session_btn = QPushButton("重启会话")
+        self._restart_session_btn.setProperty("data-testid", "btn-recovery-restart")
+        self._restart_session_btn.clicked.connect(self._on_recovery_restart_session)
+        recovery_layout.addWidget(self._restart_session_btn, 0, 1)
+
+        self._stop_session_btn = QPushButton("停止会话")
+        self._stop_session_btn.setProperty("data-testid", "btn-recovery-stop")
+        self._stop_session_btn.clicked.connect(self._on_recovery_stop_session)
+        recovery_layout.addWidget(self._stop_session_btn, 1, 0, 1, 2)
+
+        layout.addWidget(recovery_group)
+
         # Home buttons (X/Y only)
         home_layout = QGridLayout()
         self._home_all_btn = QPushButton("全部回零")
@@ -1207,12 +1246,75 @@ class MainWindow(QMainWindow):
         return widget
 
     def _current_effective_mode(self) -> str:
+        snapshot = self._current_session_snapshot()
+        if snapshot is not None:
+            return snapshot.mode
         if self._launch_result is not None:
             return self._launch_result.effective_mode
         return self._requested_launch_mode
 
+    def _current_session_snapshot(self):
+        if self._launch_result is not None:
+            return self._launch_result.session_snapshot
+        return self._session_snapshot
+
     def _is_offline_mode(self) -> bool:
         return self._current_effective_mode() == "offline"
+
+    def _is_online_ready(self) -> bool:
+        return is_online_ready(self._current_session_snapshot())
+
+    def _has_online_capability(self) -> bool:
+        return not self._is_offline_mode() and self._is_online_ready()
+
+    def _is_session_operation_running(self) -> bool:
+        startup_running = self._startup_worker is not None and self._startup_worker.isRunning()
+        recovery_running = self._recovery_worker is not None and self._recovery_worker.isRunning()
+        return startup_running or recovery_running
+
+    def _update_recovery_controls_state(self) -> None:
+        if not all(
+            hasattr(self, name)
+            for name in ("_retry_stage_btn", "_restart_session_btn", "_stop_session_btn")
+        ):
+            return
+        if self._is_offline_mode() or self._is_session_operation_running():
+            retry_enabled = False
+            restart_enabled = False
+            stop_enabled = False
+        else:
+            snapshot = self._current_session_snapshot()
+            failed = snapshot is not None and snapshot.session_state == "failed"
+            recoverable = bool(snapshot.recoverable) if failed else False
+            ready = snapshot is not None and is_online_ready(snapshot)
+            retry_enabled = failed and recoverable
+            restart_enabled = failed and recoverable
+            stop_enabled = failed or ready
+        self._retry_stage_btn.setEnabled(retry_enabled)
+        self._restart_session_btn.setEnabled(restart_enabled)
+        self._stop_session_btn.setEnabled(stop_enabled)
+
+    @staticmethod
+    def _label_for_tcp_state(state: str) -> str:
+        if state == "ready":
+            return "已连接"
+        if state == "connecting":
+            return "连接中"
+        if state == "failed":
+            return "连接失败"
+        return "未连接"
+
+    @staticmethod
+    def _label_for_hw_state(state: str) -> str:
+        if state == "ready":
+            return "就绪"
+        if state == "probing":
+            return "初始化中"
+        if state == "failed":
+            return "初始化失败"
+        if state == "unavailable":
+            return "不可用"
+        return "未初始化"
 
     def _refresh_launch_status_ui(self) -> None:
         effective_mode = self._current_effective_mode()
@@ -1225,52 +1327,157 @@ class MainWindow(QMainWindow):
             self._state_label.setText("Offline")
             self._update_led(self._tcp_led, "off")
             self._update_led(self._hw_led, "off")
+            self._update_recovery_controls_state()
             return
 
-        self._update_led(self._tcp_led, "green" if self._connected else "off")
-        self._update_led(self._hw_led, "green" if self._hw_connected else "off")
-        self._tcp_state_label.setText("已连接" if self._connected else "未连接")
-        if not self._connected:
-            self._hw_state_label.setText("不可用")
-        else:
-            self._hw_state_label.setText("就绪" if self._hw_connected else "未初始化")
-
-        if self._launch_result is None:
+        snapshot = self._current_session_snapshot()
+        if snapshot is None:
+            self._update_led(self._tcp_led, "off")
+            self._update_led(self._hw_led, "off")
+            self._tcp_state_label.setText("未连接")
+            self._hw_state_label.setText("未初始化")
             self._operation_status.setText("启动中")
             self._state_label.setText("Starting")
+            self._update_recovery_controls_state()
             return
 
-        if self._launch_result.success:
+        self._tcp_state_label.setText(self._label_for_tcp_state(snapshot.tcp_state))
+        self._hw_state_label.setText(self._label_for_hw_state(snapshot.hardware_state))
+        self._update_led(
+            self._tcp_led,
+            "green" if snapshot.tcp_state == "ready" else ("red" if snapshot.tcp_state == "failed" else "off"),
+        )
+        self._update_led(
+            self._hw_led,
+            "green" if snapshot.hardware_state == "ready" else ("red" if snapshot.hardware_state == "failed" else "off"),
+        )
+
+        if self._is_online_ready():
             self._operation_status.setText("空闲")
             self._state_label.setText("Ready")
-        else:
+            self._update_recovery_controls_state()
+            return
+
+        if snapshot.session_state == "starting":
+            self._operation_status.setText("启动中")
+            self._state_label.setText("Starting")
+        elif snapshot.session_state == "failed":
             self._operation_status.setText("启动失败")
             self._state_label.setText("Launch Failed")
+        elif snapshot.session_state == "stopping":
+            self._operation_status.setText("停止中")
+            self._state_label.setText("Stopping")
+        else:
+            self._operation_status.setText("未就绪")
+            self._state_label.setText("Not Ready")
+        self._update_recovery_controls_state()
 
     def _apply_mode_capabilities(self) -> None:
-        offline = self._is_offline_mode()
+        allow_online_actions = self._has_online_capability()
         for widget_name in (
             "_production_tab",
-            "_system_panel",
             "_motion_control_panel",
             "_dispenser_control_panel",
             "_recipe_tab",
         ):
             widget = getattr(self, widget_name, None)
             if widget is not None:
-                widget.setEnabled(not offline)
+                widget.setEnabled(allow_online_actions)
+        if hasattr(self, "_system_panel"):
+            self._system_panel.setEnabled(not self._is_offline_mode())
+        if hasattr(self, "_stop_btn"):
+            self._stop_btn.setEnabled(allow_online_actions)
+        if hasattr(self, "_hw_connect_btn"):
+            self._hw_connect_btn.setEnabled(allow_online_actions and not self._is_session_operation_running())
         if hasattr(self, "_global_estop_btn"):
-            self._global_estop_btn.setEnabled(not offline)
+            self._global_estop_btn.setEnabled(allow_online_actions)
+        self._update_recovery_controls_state()
 
     def _apply_launch_result(self, result: LaunchResult) -> None:
         self._launch_result = result
-        self._connected = bool(result.tcp_connected)
-        self._hw_connected = bool(result.hardware_ready)
+        self._session_snapshot = result.session_snapshot
         self._refresh_launch_status_ui()
         self._apply_mode_capabilities()
         self._update_home_controls_state()
         if result.user_message:
             self.statusBar().showMessage(result.user_message)
+
+    def _apply_runtime_degradation(
+        self,
+        *,
+        failure_code: str,
+        failure_stage: str,
+        message: str,
+        tcp_state: str | None = None,
+        hardware_state: str | None = None,
+    ) -> None:
+        snapshot = self._current_session_snapshot()
+        result = self._launch_result
+        if snapshot is None or result is None:
+            return
+        degraded = SupervisorSession.build_runtime_failure_snapshot(
+            snapshot,
+            failure_code=failure_code,
+            failure_stage=failure_stage,
+            message=message,
+            tcp_state=tcp_state,
+            hardware_state=hardware_state,
+            recoverable=True,
+        )
+        session_id = self._current_supervisor_session_id()
+        event = SessionStageEvent(
+            event_type="stage_failed",
+            session_id=session_id,
+            stage=degraded.failure_stage,
+            timestamp=degraded.updated_at,
+            failure_code=degraded.failure_code,
+            recoverable=degraded.recoverable,
+            message=degraded.last_error_message,
+        )
+        self._apply_runtime_degradation_snapshot(degraded, event)
+
+    def _apply_runtime_degradation_snapshot(self, degraded_snapshot, stage_event=None) -> None:
+        result = self._launch_result
+        if degraded_snapshot is None or result is None:
+            return
+        if stage_event is not None:
+            self._on_supervisor_stage_event(stage_event)
+        self._session_snapshot = degraded_snapshot
+        self._launch_result = launch_result_from_snapshot(
+            requested_mode=result.requested_mode,
+            snapshot=degraded_snapshot,
+            user_message=degraded_snapshot.last_error_message,
+        )
+        message = degraded_snapshot.last_error_message or "运行态退化，在线能力已收敛。"
+        self._refresh_launch_status_ui()
+        self._apply_mode_capabilities()
+        self._update_home_controls_state()
+        self._apply_permissions()
+        self.statusBar().showMessage(message)
+
+    def _current_supervisor_session_id(self) -> str:
+        if self._supervisor_stage_events:
+            last_event = self._supervisor_stage_events[-1]
+            session_id = getattr(last_event, "session_id", "")
+            if isinstance(session_id, str) and session_id:
+                return session_id
+        # Fallback session id for runtime failures emitted outside worker lifecycle.
+        return f"runtime-{int(time.time() * 1000)}"
+
+    def _detect_runtime_degradation(
+        self,
+        *,
+        tcp_connected: bool | None = None,
+        hardware_ready: bool | None = None,
+        error_message: str | None = None,
+    ):
+        return SupervisorSession.detect_runtime_degradation_with_event(
+            self._current_session_snapshot(),
+            session_id=self._current_supervisor_session_id(),
+            tcp_connected=tcp_connected,
+            hardware_ready=hardware_ready,
+            error_message=error_message,
+        )
 
     def _show_offline_unavailable(self, capability: str) -> None:
         self.statusBar().showMessage(f"Offline 模式下不可用: {capability}")
@@ -1279,6 +1486,15 @@ class MainWindow(QMainWindow):
         if self._is_offline_mode():
             self._show_offline_unavailable(capability)
             return False
+        if not self._is_online_ready():
+            result = self._launch_result
+            if result is not None and result.failure_code:
+                self.statusBar().showMessage(
+                    f"系统未就绪({result.failure_code}): {capability} 不可用"
+                )
+            else:
+                self.statusBar().showMessage(f"系统启动中: {capability} 暂不可用")
+            return False
         return True
 
     def _setup_timer(self):
@@ -1286,25 +1502,94 @@ class MainWindow(QMainWindow):
         self._timer.timeout.connect(self._update_status)
         self._timer.start(200)
 
+    def _bind_session_worker_signals(self, worker) -> None:
+        worker.progress.connect(self._on_startup_progress)
+        worker.snapshot.connect(self._on_startup_snapshot)
+        worker.stage_event.connect(self._on_supervisor_stage_event)
+
     def _auto_startup(self):
         """Execute automatic startup sequence."""
+        if self._is_session_operation_running():
+            return
+        self._supervisor_stage_events = []
         self._startup_worker = StartupWorker(
             self._backend,
             self._client,
             self._protocol,
             launch_mode=self._requested_launch_mode,
+            policy=self._supervisor_policy,
         )
-        self._startup_worker.progress.connect(self._on_startup_progress)
+        self._bind_session_worker_signals(self._startup_worker)
         self._startup_worker.finished.connect(self._on_startup_finished)
+        self._update_recovery_controls_state()
         self._startup_worker.start()
+
+    def _start_recovery_action(self, action: str) -> None:
+        if self._is_offline_mode():
+            self._show_offline_unavailable("会话恢复")
+            return
+        if self._is_session_operation_running():
+            self.statusBar().showMessage("会话操作进行中，请稍候")
+            return
+        snapshot = self._current_session_snapshot()
+        if snapshot is None:
+            self.statusBar().showMessage("无可用会话快照，无法执行恢复动作")
+            return
+        if action in ("retry_stage", "restart_session"):
+            if snapshot.session_state != "failed":
+                self.statusBar().showMessage("当前会话未处于失败态，恢复动作不可用")
+                return
+            if not snapshot.recoverable:
+                self.statusBar().showMessage("当前失败不可恢复，仅允许停止会话")
+                return
+        if action == "stop_session" and snapshot.mode != "online":
+            self.statusBar().showMessage("仅在线会话支持停止动作")
+            return
+
+        self._pending_recovery_action = action
+        self._recovery_worker = RecoveryWorker(
+            action=action,
+            recovery_snapshot=snapshot,
+            backend=self._backend,
+            client=self._client,
+            protocol=self._protocol,
+            policy=self._supervisor_policy,
+        )
+        self._bind_session_worker_signals(self._recovery_worker)
+        self._recovery_worker.finished.connect(self._on_recovery_finished)
+        self.statusBar().showMessage(f"正在执行恢复动作: {action}")
+        self._update_recovery_controls_state()
+        self._recovery_worker.start()
+
+    def _on_recovery_retry_stage(self):
+        self._start_recovery_action("retry_stage")
+
+    def _on_recovery_restart_session(self):
+        self._start_recovery_action("restart_session")
+
+    def _on_recovery_stop_session(self):
+        self._start_recovery_action("stop_session")
 
     def _on_startup_progress(self, message: str, percent: int):
         """Handle startup progress updates."""
         self.statusBar().showMessage(message)
         self._global_progress.setValue(percent)
 
+    def _on_startup_snapshot(self, snapshot) -> None:
+        self._session_snapshot = snapshot
+        self._refresh_launch_status_ui()
+        self._apply_mode_capabilities()
+        self._update_home_controls_state()
+
+    def _on_supervisor_stage_event(self, event) -> None:
+        self._supervisor_stage_events.append(event)
+        # Cap in-memory event list to keep UI runtime footprint bounded.
+        if len(self._supervisor_stage_events) > 128:
+            self._supervisor_stage_events = self._supervisor_stage_events[-128:]
+
     def _on_startup_finished(self, result: LaunchResult):
         """Handle startup sequence completion."""
+        self._startup_worker = None
         self._apply_launch_result(result)
         self._global_progress.setValue(0)
         if result.success:
@@ -1313,20 +1598,47 @@ class MainWindow(QMainWindow):
                 self._recipe_config_widget._load_recipe_context()
         else:
             self._show_startup_error(result)
+        self._apply_permissions()
+        self._update_recovery_controls_state()
+
+    def _on_recovery_finished(self, result: LaunchResult):
+        action = self._pending_recovery_action
+        self._pending_recovery_action = ""
+        self._recovery_worker = None
+        self._apply_launch_result(result)
+        self._global_progress.setValue(0)
+        if result.success and result.online_ready:
+            self.statusBar().showMessage(f"恢复动作完成({action})，系统已就绪")
+        elif action == "stop_session" and result.session_state == "idle":
+            self.statusBar().showMessage("会话已停止")
+        else:
+            code = result.failure_code or "SUP_UNKNOWN"
+            self.statusBar().showMessage(f"恢复动作失败({action}): {code}")
+        self._apply_permissions()
+        self._update_recovery_controls_state()
 
     def _show_startup_error(self, result: LaunchResult):
         """Display startup error dialog."""
         stage_names = {
             "backend": "Backend startup",
             "tcp": "TCP connection",
-            "hardware": "Hardware initialization"
+            "hardware": "Hardware initialization",
+            "backend_starting": "Backend starting",
+            "backend_ready": "Backend ready",
+            "tcp_connecting": "TCP connecting",
+            "tcp_ready": "TCP ready",
+            "hardware_probing": "Hardware probing",
+            "hardware_ready": "Hardware ready",
+            "online_ready": "Online ready",
         }
         stage_name = stage_names.get(result.phase, result.phase)
+        code_text = f"\nFailure Code: {result.failure_code}" if result.failure_code else ""
+        stage_text = f"\nFailure Stage: {result.failure_stage}" if result.failure_stage else ""
 
         QMessageBox.critical(
             self,
             "Startup Failed",
-            f"{stage_name} failed:\n{result.user_message}\n\n"
+            f"{stage_name} failed:\n{result.user_message}{code_text}{stage_text}\n\n"
             "Please check:\n"
             "1. Backend executable exists\n"
             "2. Port is not in use\n"
@@ -1334,7 +1646,7 @@ class MainWindow(QMainWindow):
         )
 
     def _update_home_controls_state(self):
-        enabled = self._connected and self._hw_connected
+        enabled = self._is_online_ready()
         if hasattr(self, "_home_all_btn"):
             self._home_all_btn.setEnabled(enabled)
         if hasattr(self, "_prod_home_btn"):
@@ -1344,14 +1656,7 @@ class MainWindow(QMainWindow):
                 btn.setEnabled(enabled)
 
     def _check_home_preconditions(self) -> bool:
-        if self._is_offline_mode():
-            self._show_offline_unavailable("回零")
-            return False
-        if not self._connected:
-            self.statusBar().showMessage("未连接到后端，请先连接")
-            return False
-        if not self._hw_connected:
-            self.statusBar().showMessage("硬件未初始化，请先初始化硬件")
+        if not self._require_online_mode("回零"):
             return False
         status = self._get_cached_status()
         if not status or not status.connected:
@@ -1408,14 +1713,7 @@ class MainWindow(QMainWindow):
         return "home", ""
 
     def _check_motion_preconditions(self) -> bool:
-        if self._is_offline_mode():
-            self._show_offline_unavailable("点动")
-            return False
-        if not self._connected:
-            self.statusBar().showMessage("未连接到后端，无法点动")
-            return False
-        if not self._hw_connected:
-            self.statusBar().showMessage("硬件未初始化，无法点动")
+        if not self._require_online_mode("点动"):
             return False
         status = self._protocol.get_status()
         if not status.connected:
@@ -1432,48 +1730,17 @@ class MainWindow(QMainWindow):
     def _on_connect(self):
         if not self._require_online_mode("TCP连接"):
             return
-        if self._connected:
-            return
-        if self._client.connect():
-            self._connected = True
-            self._hw_connect_btn.setEnabled(True)
-            self._refresh_launch_status_ui()
-            self.statusBar().showMessage(f"已连接到 {self._client.host}:{self._client.port}")
-            self._update_home_controls_state()
-        else:
-            self._refresh_launch_status_ui()
-            self.statusBar().showMessage("连接失败")
+        self.statusBar().showMessage("P0 模式下连接由 Supervisor 启动会话托管")
 
     def _on_disconnect(self):
         if not self._require_online_mode("断开连接"):
             return
-        if not self._connected:
-            return
-        reply = QMessageBox.question(
-            self, "确认断开", "确定要断开连接吗？",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
-        )
-        if reply != QMessageBox.Yes:
-            return
-        self._client.disconnect()
-        self._connected = False
-        self._hw_connected = False
-        self._hw_connect_btn.setEnabled(False)
-        self._refresh_launch_status_ui()
-        self.statusBar().showMessage("已断开")
-        self._update_home_controls_state()
+        self.statusBar().showMessage("P0 模式下断开由 Supervisor 会话控制")
 
     def _on_hw_connect(self):
         if not self._require_online_mode("硬件初始化"):
             return
-        ok, msg = self._protocol.connect_hardware()
-        if ok:
-            self._hw_connected = True
-        else:
-            self._hw_connected = False
-        self._refresh_launch_status_ui()
-        self.statusBar().showMessage(f"硬件: {msg}" if msg else ("硬件已连接" if ok else "硬件连接失败"))
-        self._update_home_controls_state()
+        self.statusBar().showMessage("P0 模式下硬件初始化由 Supervisor 启动会话托管")
 
     def _update_led(self, led: QLabel, state: str):
         """Update LED indicator state: off, green, red, yellow, blue"""
@@ -1835,14 +2102,7 @@ class MainWindow(QMainWindow):
         QMessageBox.warning(self, "无法启动", message)
 
     def _check_production_preconditions(self) -> bool:
-        if self._is_offline_mode():
-            self._show_offline_unavailable("生产控制")
-            return False
-        if not self._connected:
-            self._show_preflight_warning("未连接到后端，请先连接")
-            return False
-        if not self._hw_connected:
-            self._show_preflight_warning("硬件未初始化，请先初始化硬件")
+        if not self._require_online_mode("生产控制"):
             return False
 
         status = self._protocol.get_status()
@@ -1980,6 +2240,8 @@ class MainWindow(QMainWindow):
 
     def _on_production_pause(self):
         """Pause production."""
+        if not self._require_online_mode("生产控制"):
+            return
         if not self._production_running:
             self.statusBar().showMessage("当前没有运行中的生产任务")
             return
@@ -1997,6 +2259,8 @@ class MainWindow(QMainWindow):
 
     def _on_production_resume(self):
         """Resume production after a pause."""
+        if not self._require_online_mode("生产控制"):
+            return
         if not self._production_paused:
             self.statusBar().showMessage("当前没有已暂停的生产任务")
             return
@@ -2013,6 +2277,8 @@ class MainWindow(QMainWindow):
 
     def _on_production_stop(self):
         """Stop production."""
+        if not self._require_online_mode("生产控制"):
+            return
         if self._production_running and self._run_start_time > 0:
             self._total_run_time += time.time() - self._run_start_time
         self._production_running = False
@@ -2093,13 +2359,22 @@ class MainWindow(QMainWindow):
 
         self._update_maintenance_display()
 
-        if not self._connected:
+        if not self._is_online_ready():
             return
         try:
             status = self._protocol.get_status()
+            if not status.connected:
+                degradation = self._detect_runtime_degradation(
+                    tcp_connected=True,
+                    hardware_ready=False,
+                    error_message="运行中硬件状态不可用，在线能力已收敛。",
+                )
+                if degradation is not None:
+                    degraded_snapshot, stage_event = degradation
+                    self._apply_runtime_degradation_snapshot(degraded_snapshot, stage_event)
+                return
             self._last_status = status
             self._last_status_ts = time.monotonic()
-            self._state_label.setText(status.machine_state)
 
             # Update Dispenser Status
             is_dispensing = status.dispenser_valve_open
@@ -2180,6 +2455,12 @@ class MainWindow(QMainWindow):
                         self._record_cycle_complete()
                         # Auto-restart if target not reached
                         if self._completed_count < self._target_count:
+                            if not self._is_online_ready():
+                                self._production_running = False
+                                self._production_paused = False
+                                self._operation_status.setText("未就绪")
+                                self.statusBar().showMessage("系统未就绪，已停止自动续跑")
+                                return
                             self._last_cycle_start = time.time()
                             speed = self._dxf_speed.value() if hasattr(self, '_dxf_speed') else 10.0
                             self._protocol.dxf_execute(
@@ -2221,8 +2502,15 @@ class MainWindow(QMainWindow):
                     item.setData(Qt.UserRole, alarm.get("id"))
                     self._alarm_list.addItem(item)
                 self._last_alarms_snapshot = alarms_snapshot
-        except:
-            pass
+        except Exception as exc:
+            _UI_LOGGER.warning("Runtime status polling failed: %s", exc)
+            degradation = self._detect_runtime_degradation(
+                tcp_connected=False,
+                error_message=f"运行中 TCP 连接异常: {exc}",
+            )
+            if degradation is not None:
+                degraded_snapshot, stage_event = degradation
+                self._apply_runtime_degradation_snapshot(degraded_snapshot, stage_event)
 
     def closeEvent(self, event):
         """Handle application close event."""
@@ -2288,7 +2576,7 @@ class MainWindow(QMainWindow):
 
         # Hardware init (level 3)
         if hasattr(self, '_hw_connect_btn'):
-            self._hw_connect_btn.setEnabled(level >= 3 and self._connected)
+            self._hw_connect_btn.setEnabled(level >= 3 and self._is_online_ready())
 
     def _check_permission(self, required_level: int) -> bool:
         """Check if current user has required permission level."""

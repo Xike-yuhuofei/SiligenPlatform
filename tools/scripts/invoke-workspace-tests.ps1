@@ -14,6 +14,12 @@ $ErrorActionPreference = "Stop"
 $workspaceRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $testKitSrc = Join-Path $workspaceRoot "packages\\test-kit\\src"
 
+$resolvedReportDir = if ([System.IO.Path]::IsPathRooted($ReportDir)) {
+    [System.IO.Path]::GetFullPath($ReportDir)
+} else {
+    [System.IO.Path]::GetFullPath((Join-Path $workspaceRoot $ReportDir))
+}
+
 if ([string]::IsNullOrWhiteSpace($env:PYTHONPATH)) {
     $env:PYTHONPATH = $testKitSrc
 } else {
@@ -26,7 +32,7 @@ $argsList = @(
     "--profile",
     $Profile.ToLowerInvariant(),
     "--report-dir",
-    (Join-Path $workspaceRoot $ReportDir)
+    $resolvedReportDir
 )
 
 foreach ($suiteName in $Suite) {

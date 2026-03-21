@@ -1171,6 +1171,7 @@ std::string TcpCommandDispatcher::HandleDxfExecute(const std::string& id, const 
     }
 
     bool dryRun = params.value("dry_run", false);
+    const bool requireActiveRecipe = params.value("require_active_recipe", false);
     const double dispensingSpeed = ReadJsonDouble(params, "dispensing_speed_mm_s", 0.0);
     const double dryRunSpeed = ReadJsonDouble(params, "dry_run_speed_mm_s", 0.0);
     const double rapidSpeed = ReadJsonDouble(params, "rapid_speed_mm_s", 0.0);
@@ -1203,6 +1204,7 @@ std::string TcpCommandDispatcher::HandleDxfExecute(const std::string& id, const 
                      ", velocity_guard_interval_ms=" + DescribeJsonField(params, "velocity_guard_interval_ms") +
                      ", velocity_guard_max_consecutive=" + DescribeJsonField(params, "velocity_guard_max_consecutive") +
                      ", velocity_guard_stop_on_violation=" + DescribeJsonField(params, "velocity_guard_stop_on_violation") +
+                     ", require_active_recipe=" + DescribeJsonField(params, "require_active_recipe") +
                      ", velocity_trace_enabled=" + DescribeJsonField(params, "velocity_trace_enabled") +
                      ", velocity_trace_interval_ms=" + DescribeJsonField(params, "velocity_trace_interval_ms") +
                      ", velocity_trace_path=" + DescribeJsonField(params, "velocity_trace_path"));
@@ -1232,7 +1234,35 @@ std::string TcpCommandDispatcher::HandleDxfExecute(const std::string& id, const 
         return GatewayJsonProtocol::MakeErrorResponse(id, 3002, "必须显式指定点胶速度");
     }
 
+    if (requireActiveRecipe) {
+        if (!recipeFacade_) {
+            SILIGEN_LOG_WARNING("DXF执行失败: require_active_recipe=true 但 TcpRecipeFacade 不可用");
+            FlushLogs();
+            return GatewayJsonProtocol::MakeErrorResponse(id, 3004, "Active recipe is required before dxf.execute");
+        }
+
+        Application::UseCases::Recipes::ListRecipesRequest recipeListRequest;
+        auto recipeListResult = recipeFacade_->ListRecipes(recipeListRequest);
+        if (recipeListResult.IsError()) {
+            SILIGEN_LOG_WARNING("DXF执行失败: 查询配方列表失败: " + recipeListResult.GetError().GetMessage());
+            FlushLogs();
+            return GatewayJsonProtocol::MakeErrorResponse(id, 3004, "Active recipe is required before dxf.execute");
+        }
+
+        const auto& recipes = recipeListResult.Value().recipes;
+        const bool hasActiveRecipe = std::any_of(
+            recipes.begin(),
+            recipes.end(),
+            [](const auto& recipe) { return !recipe.active_version_id.empty(); });
+        if (!hasActiveRecipe) {
+            SILIGEN_LOG_WARNING("DXF执行失败: require_active_recipe=true 但未检测到已激活配方");
+            FlushLogs();
+            return GatewayJsonProtocol::MakeErrorResponse(id, 3004, "Active recipe is required before dxf.execute");
+        }
+    }
+
     SILIGEN_LOG_INFO("收到DXF执行请求: dry_run=" + std::string(dryRun ? "true" : "false") +
+                     ", require_active_recipe=" + std::string(requireActiveRecipe ? "true" : "false") +
                      ", dispensing_speed_mm_s=" + std::to_string(dispensingSpeed) +
                      ", dry_run_speed_mm_s=" + std::to_string(dryRunSpeed) +
                      ", rapid_speed_mm_s=" + std::to_string(rapidSpeed) +

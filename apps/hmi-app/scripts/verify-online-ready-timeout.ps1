@@ -59,13 +59,15 @@ $stderrLog = Join-Path ([IO.Path]::GetTempPath()) ("siligen-verify-online-timeou
 $args = @(
     "-ExecutionPolicy", "Bypass",
     "-File", $onlineSmoke,
+    "-UseSupervisorInjection",
     "-MockCommand", $hangingMock,
-    "-MockStartupTimeoutMs", "$MockStartupTimeoutMs",
+    "-ExpectFailureCode", "SUP_BACKEND_READY_TIMEOUT",
+    "-ExpectFailureStage", "backend_ready",
     "-PythonExe", $PythonExe
 )
 
 try {
-    Write-Host "[verify-online-ready-timeout] expect_exit=21 timeout_ms=$MockStartupTimeoutMs"
+    Write-Host "[verify-online-ready-timeout] expect_exit=21 via supervisor injection timeout_ms=$MockStartupTimeoutMs"
     $process = Start-Process `
         -FilePath "powershell" `
         -ArgumentList $args `
@@ -89,8 +91,20 @@ if ($rawExitCode -ne 21) {
     exit $ExitUnexpectedResult
 }
 
-if ($output -notmatch "mock server readiness timeout") {
-    Write-Host "[verify-online-ready-timeout] missing readiness-timeout marker"
+if ($output -notmatch "SUPERVISOR_DIAG .*failure_code=SUP_BACKEND_READY_TIMEOUT(\s|$)") {
+    Write-Host "[verify-online-ready-timeout] missing SUPERVISOR_DIAG failure_code mapping for backend ready timeout"
+    Stop-HangingMockProcesses
+    exit $ExitMissingTimeoutMessage
+}
+
+if ($output -notmatch "SUPERVISOR_DIAG .*failure_stage=backend_ready(\s|$)") {
+    Write-Host "[verify-online-ready-timeout] missing SUPERVISOR_DIAG failure_stage mapping for backend ready timeout"
+    Stop-HangingMockProcesses
+    exit $ExitMissingTimeoutMessage
+}
+
+if ($output -notmatch "SUPERVISOR_EVENT type=stage_failed .*stage=backend_ready(\s|$)") {
+    Write-Host "[verify-online-ready-timeout] missing SUPERVISOR_EVENT stage_failed mapping for backend ready timeout"
     Stop-HangingMockProcesses
     exit $ExitMissingTimeoutMessage
 }
@@ -102,5 +116,5 @@ if (@($leftovers).Count -gt 0) {
     exit $ExitCleanupFailed
 }
 
-Write-Host "[verify-online-ready-timeout] observed exit_code=21 with clean process teardown"
+Write-Host "[verify-online-ready-timeout] observed exit_code=21 with expected supervisor failure mapping and clean process teardown"
 exit $ExitSuccess

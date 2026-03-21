@@ -11,13 +11,15 @@ from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from typing import Callable, Iterator, Optional, Tuple
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from PyQt5.QtCore import QTimer
+from qt_env import configure_qt_environment
+
+configure_qt_environment(headless=True)
+
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication, QWidget
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import ui.main_window as main_window_module  # noqa: E402
 from tools.mock_server import MockRequestHandler, MockState, MockTcpServer  # noqa: E402
@@ -63,6 +65,20 @@ def patch_headless_preview() -> Iterator[None]:
         main_window_module.WEB_ENGINE_AVAILABLE = original_flag
 
 
+@contextmanager
+def patch_modal_dialogs() -> Iterator[None]:
+    original_critical = main_window_module.QMessageBox.critical
+
+    def _critical_noop(*_args, **_kwargs):
+        return main_window_module.QMessageBox.Ok
+
+    main_window_module.QMessageBox.critical = _critical_noop
+    try:
+        yield
+    finally:
+        main_window_module.QMessageBox.critical = original_critical
+
+
 def start_mock_server(host: str, port: int, verbose: bool) -> Tuple[MockTcpServer, int]:
     state = MockState(seed_alarms=True)
     server = MockTcpServer((host, port), MockRequestHandler, state, verbose)
@@ -75,11 +91,23 @@ def start_mock_server(host: str, port: int, verbose: bool) -> Tuple[MockTcpServe
 
 
 class GuiContractRunner:
-    def __init__(self, app: QApplication, window: MainWindow, launch_mode: str, timeout_ms: int):
+    def __init__(
+        self,
+        app: QApplication,
+        window: MainWindow,
+        launch_mode: str,
+        timeout_ms: int,
+        expect_failure_code: str = "",
+        expect_failure_stage: str = "",
+        exercise_recovery: bool = False,
+    ):
         self.app = app
         self.window = window
         self.launch_mode = launch_mode
         self.timeout_ms = timeout_ms
+        self.expect_failure_code = expect_failure_code.strip()
+        self.expect_failure_stage = expect_failure_stage.strip()
+        self.exercise_recovery = exercise_recovery
         self.failed = False
         self.timed_out = False
         self.exit_code = EXIT_SUCCESS
@@ -128,6 +156,70 @@ class GuiContractRunner:
     def _status_message(self) -> str:
         return self.window.statusBar().currentMessage()
 
+    def _emit_supervisor_diag(self) -> None:
+        result = self.window._launch_result
+        if result is None:
+            print(
+                "SUPERVISOR_DIAG "
+                "mode=unknown "
+                "session_state=none "
+                "backend_state=unknown "
+                "tcp_state=unknown "
+                "hardware_state=unknown "
+                "failure_code=null "
+                "failure_stage=null "
+                "recoverable=false "
+                "online_ready=false",
+                flush=True,
+            )
+            return
+        snapshot = result.session_snapshot
+        mode = snapshot.mode if snapshot is not None else result.effective_mode
+        session_state = snapshot.session_state if snapshot is not None else result.session_state
+        backend_state = snapshot.backend_state if snapshot is not None else ("ready" if result.backend_started else "stopped")
+        tcp_state = snapshot.tcp_state if snapshot is not None else ("ready" if result.tcp_connected else "disconnected")
+        hardware_state = snapshot.hardware_state if snapshot is not None else ("ready" if result.hardware_ready else "unavailable")
+        failure_code = snapshot.failure_code if snapshot is not None else result.failure_code
+        failure_stage = snapshot.failure_stage if snapshot is not None else result.failure_stage
+        recoverable = snapshot.recoverable if snapshot is not None else result.recoverable
+        online_ready = result.online_ready
+        print(
+            "SUPERVISOR_DIAG "
+            f"mode={mode} "
+            f"session_state={session_state} "
+            f"backend_state={backend_state} "
+            f"tcp_state={tcp_state} "
+            f"hardware_state={hardware_state} "
+            f"failure_code={failure_code or 'null'} "
+            f"failure_stage={failure_stage or 'null'} "
+            f"recoverable={str(bool(recoverable)).lower()} "
+            f"online_ready={str(bool(online_ready)).lower()}",
+            flush=True,
+        )
+
+    def _emit_supervisor_stage_events(self) -> None:
+        events = getattr(self.window, "_supervisor_stage_events", None) or []
+        for event in events:
+            failure_code = getattr(event, "failure_code", None) or "null"
+            recoverable = getattr(event, "recoverable", None)
+            if recoverable is None:
+                recoverable_text = "null"
+            else:
+                recoverable_text = str(bool(recoverable)).lower()
+            message = getattr(event, "message", None) or "null"
+            message = str(message).replace(" ", "_")
+            print(
+                "SUPERVISOR_EVENT "
+                f"type={getattr(event, 'event_type', 'unknown')} "
+                f"session_id={getattr(event, 'session_id', 'unknown')} "
+                f"stage={getattr(event, 'stage', 'unknown')} "
+                f"failure_code={failure_code} "
+                f"recoverable={recoverable_text} "
+                f"message={message} "
+                f"timestamp={getattr(event, 'timestamp', 'unknown')}",
+                flush=True,
+            )
+
     def _assert_gui_shell_present(self) -> None:
         print("STEP: gui shell", flush=True)
         self._expect(self.window.isVisible(), "Main window should be visible")
@@ -158,6 +250,9 @@ class GuiContractRunner:
         if result is not None:
             self._expect(result.effective_mode == "offline", "Effective mode should stay offline")
             self._expect(result.success, "Offline launch should succeed")
+            if result.session_snapshot is not None:
+                self._expect(result.session_snapshot.mode == "offline", "Offline snapshot mode should be offline")
+                self._expect(result.session_snapshot.failure_code is None, "Offline snapshot should not carry failure code")
 
         self._expect(self._label_text("label-launch-mode") == "Offline", "Launch mode label should read Offline")
         self._expect(self._label_text("label-tcp-state") == "未连接", "Offline TCP label should stay disconnected")
@@ -180,17 +275,39 @@ class GuiContractRunner:
     def _assert_online_contract(self) -> None:
         print("STEP: online contract", flush=True)
         self._wait_for("online launch result", lambda: self.window._launch_result is not None)
+        if self.expect_failure_code:
+            self._wait_for(
+                f"expected failure_code={self.expect_failure_code}",
+                lambda: bool(self.window._launch_result)
+                and (self.window._launch_result.failure_code == self.expect_failure_code),
+            )
+            result = self.window._launch_result
+            self._expect(result is not None, "Online failure launch result should be available")
+            if result is not None:
+                self._expect(not result.online_ready, "Expected failure path must not be online_ready")
+                self._expect(result.failure_code == self.expect_failure_code, "Unexpected failure_code")
+                if self.expect_failure_stage:
+                    self._expect(
+                        result.failure_stage == self.expect_failure_stage,
+                        f"Unexpected failure_stage, expect {self.expect_failure_stage}",
+                    )
+            self._expect(self._label_text("label-launch-mode") == "Online", "Launch mode label should read Online")
+            return
+
         self._wait_for(
-            "online connection flags",
-            lambda: bool(self.window._connected) and bool(self.window._hw_connected),
+            "online ready snapshot",
+            lambda: bool(self.window._launch_result) and bool(self.window._launch_result.online_ready),
         )
         result = self.window._launch_result
         self._expect(result is not None, "Online launch result should be available")
         if result is not None:
             self._expect(result.success, "Online launch should succeed with the mock server")
             self._expect(result.phase == "ready", "Online launch should reach the ready phase")
+            self._expect(result.online_ready, "Online launch should report online_ready")
             self._expect(result.tcp_connected, "Online launch should connect TCP")
             self._expect(result.hardware_ready, "Online launch should initialize hardware")
+            self._expect(result.failure_code is None, "Successful online launch should not carry failure_code")
+            self._expect(result.failure_stage is None, "Successful online launch should not carry failure_stage")
 
         self._expect(self._label_text("label-launch-mode") == "Online", "Launch mode label should read Online")
         self._expect(self._label_text("label-tcp-state") == "已连接", "Online TCP label should report connected")
@@ -215,6 +332,77 @@ class GuiContractRunner:
             not self._status_message().startswith("Offline 模式下不可用"),
             "Online actions should not be blocked by the offline guard",
         )
+        if self.exercise_recovery:
+            self._assert_recovery_cycle()
+
+    def _assert_recovery_cycle(self) -> None:
+        print("STEP: recovery cycle", flush=True)
+        self.window._apply_runtime_degradation(
+            failure_code="SUP_TCP_CONNECT_FAILED",
+            failure_stage="tcp_ready",
+            message="Injected recovery cycle failure",
+            tcp_state="failed",
+            hardware_state="unavailable",
+        )
+        self._wait_for(
+            "degraded launch snapshot",
+            lambda: bool(self.window._launch_result)
+            and (self.window._launch_result.failure_code == "SUP_TCP_CONNECT_FAILED"),
+        )
+
+        degraded = self.window._launch_result
+        self._expect(degraded is not None, "Recovery scenario should produce a degraded launch result")
+        if degraded is not None:
+            self._expect(not degraded.online_ready, "Degraded launch result must not stay online_ready")
+            self._expect(degraded.failure_stage == "tcp_ready", "Runtime degradation should map to tcp_ready stage")
+
+        retry_btn = self._require_widget("btn-recovery-retry")
+        restart_btn = self._require_widget("btn-recovery-restart")
+        stop_btn = self._require_widget("btn-recovery-stop")
+        if retry_btn is not None:
+            self._expect(retry_btn.isEnabled(), "Retry-stage recovery button should be enabled after recoverable failure")
+        if restart_btn is not None:
+            self._expect(restart_btn.isEnabled(), "Restart-session recovery button should be enabled after recoverable failure")
+        if stop_btn is not None:
+            self._expect(stop_btn.isEnabled(), "Stop-session recovery button should be enabled after recoverable failure")
+        if retry_btn is None:
+            return
+
+        QTest.mouseClick(retry_btn, Qt.LeftButton)
+        self._wait_for(
+            "online ready after retry-stage recovery",
+            lambda: bool(self.window._launch_result) and bool(self.window._launch_result.online_ready),
+            timeout_ms=8000,
+        )
+        recovered = self.window._launch_result
+        self._expect(recovered is not None, "Recovered launch result should be available")
+        if recovered is not None:
+            self._expect(recovered.online_ready, "Retry-stage recovery should return system to online_ready")
+            self._expect(recovered.failure_code is None, "Recovered launch result must clear failure_code")
+            self._expect(recovered.failure_stage is None, "Recovered launch result must clear failure_stage")
+
+        events = getattr(self.window, "_supervisor_stage_events", None) or []
+        self._expect(
+            any(
+                getattr(event, "event_type", "") == "stage_failed"
+                and getattr(event, "stage", "") == "tcp_ready"
+                and getattr(event, "failure_code", "") == "SUP_TCP_CONNECT_FAILED"
+                for event in events
+            ),
+            "Recovery cycle should emit stage_failed for runtime tcp_ready degradation",
+        )
+        self._expect(
+            any(getattr(event, "event_type", "") == "recovery_invoked" for event in events),
+            "Recovery cycle should emit recovery_invoked supervisor event",
+        )
+        self._expect(
+            any(
+                getattr(event, "event_type", "") == "stage_succeeded"
+                and getattr(event, "stage", "") == "online_ready"
+                for event in events
+            ),
+            "Recovery cycle should emit stage_succeeded for online_ready",
+        )
 
     def run(self) -> None:
         try:
@@ -224,6 +412,8 @@ class GuiContractRunner:
             else:
                 self._assert_online_contract()
         finally:
+            self._emit_supervisor_stage_events()
+            self._emit_supervisor_diag()
             if hasattr(self.window, "_timer"):
                 self.window._timer.stop()
             if getattr(self.window, "_client", None) is not None:
@@ -240,9 +430,13 @@ class GuiContractRunner:
 def build_window(launch_mode: str, host: str, port: int) -> MainWindow:
     with ExitStack() as stack:
         stack.enter_context(patch_headless_preview())
+        stack.enter_context(patch_modal_dialogs())
         if launch_mode == "online":
             stack.enter_context(patch_launch_endpoints(host, port))
         window = MainWindow(launch_mode=launch_mode)
+        # Startup failures may trigger modal error dialogs; disable them in smoke runs.
+        if hasattr(window, "_show_startup_error"):
+            window._show_startup_error = lambda *_args, **_kwargs: None
     return window
 
 
@@ -254,6 +448,9 @@ def main() -> int:
     parser.add_argument("--no-mock", action="store_true", help="Use an existing TCP server for online mode")
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--timeout-ms", type=int, default=15000)
+    parser.add_argument("--expect-failure-code", default="")
+    parser.add_argument("--expect-failure-stage", default="")
+    parser.add_argument("--exercise-recovery", action="store_true")
     args = parser.parse_args()
 
     server: Optional[MockTcpServer] = None
@@ -265,7 +462,15 @@ def main() -> int:
     window = build_window(args.mode, args.host, port)
     window.show()
 
-    runner = GuiContractRunner(app, window, args.mode, args.timeout_ms)
+    runner = GuiContractRunner(
+        app,
+        window,
+        args.mode,
+        args.timeout_ms,
+        expect_failure_code=args.expect_failure_code,
+        expect_failure_stage=args.expect_failure_stage,
+        exercise_recovery=args.exercise_recovery,
+    )
     QTimer.singleShot(0, runner.run)
     QTimer.singleShot(args.timeout_ms, runner.request_timeout)
     app.exec_()

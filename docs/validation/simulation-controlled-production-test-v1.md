@@ -1,6 +1,6 @@
 # Simulation 受控生产测试说明 V1
 
-更新时间：`2026-03-19`
+更新时间：`2026-03-20`
 
 ## 1. 目标
 
@@ -36,8 +36,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\Projects\SiligenSuite\int
 
 1. `build.ps1 -Suite simulation`
 2. `test.ps1 -Suite simulation -FailOnKnownFailure`
+3. `verify_controlled_production_gate.py` 受控生产 Gate 校验
+4. `render_controlled_production_release_summary.py` 自动生成发布结论摘要
 
 禁止并发 build/test，避免 Windows 链接锁导致的伪失败。
+
+常用双轨发布命令（时间戳目录运行 + latest 发布）：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\Projects\SiligenSuite\integration\simulated-line\run_controlled_production_test.ps1 `
+  -Profile Local `
+  -UseTimestampedReportDir `
+  -PublishLatestOnPass $true `
+  -PublishLatestReportDir integration\reports\controlled-production-test
+```
 
 ### 3.2 单独回归入口
 
@@ -45,7 +57,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\Projects\SiligenSuite\int
 python D:\Projects\SiligenSuite\integration\simulated-line\run_simulated_line.py --mode both --report-dir D:\Projects\SiligenSuite\integration\reports\local\simulation\simulated-line
 ```
 
-### 3.3 Standalone fresh build 入口
+### 3.3 Gate 校验入口
+
+```powershell
+python D:\Projects\SiligenSuite\integration\simulated-line\verify_controlled_production_gate.py --report-dir D:\Projects\SiligenSuite\integration\reports\controlled-production-test
+```
+
+### 3.4 发布结论摘要生成入口
+
+```powershell
+python D:\Projects\SiligenSuite\integration\simulated-line\render_controlled_production_release_summary.py --report-dir D:\Projects\SiligenSuite\integration\reports\controlled-production-test --profile Local
+```
+
+### 3.5 Standalone fresh build 入口
 
 ```powershell
 cmake --fresh -S D:\Projects\SiligenSuite\packages\simulation-engine -B D:\Projects\SiligenSuite\build\simulation-engine -DSIM_ENGINE_BUILD_EXAMPLES=ON -DSIM_ENGINE_BUILD_TESTS=ON
@@ -57,6 +81,7 @@ ctest --test-dir D:\Projects\SiligenSuite\build\simulation-engine -C Debug --out
 
 只有同时满足以下条件，才允许填写“受控生产测试通过”：
 
+- `controlled-production-gate-summary.json` 的 `overall_status=passed`
 - `simulation` suite 全部 `passed`
 - `process_runtime_core_deterministic_path_execution_test`、`process_runtime_core_motion_runtime_assembly_test`、`process_runtime_core_pb_path_source_adapter_test` 全部通过
 - `simulated-line` 的 compat + scheme C 场景全部通过
@@ -67,7 +92,16 @@ ctest --test-dir D:\Projects\SiligenSuite\build\simulation-engine -C Debug --out
   - `workspace-validation.md`
   - `simulation/simulated-line/simulated-line-summary.json`
   - `simulation/simulated-line/simulated-line-summary.md`
+  - `controlled-production-gate-summary.json`
+  - `controlled-production-gate-summary.md`
+  - `simulation-controlled-production-release-summary.md`
 - 不允许出现 `known_failure` / `skipped`
+
+双轨证据约定：
+
+- 时间戳目录保留原始批次（例如 `.../controlled-production-test/20260320T...Z`）
+- 固定目录发布 latest 通过结果（默认 `integration/reports/controlled-production-test`）
+- 来源追溯使用 `integration/reports/controlled-production-test/latest-source.txt`
 
 ## 5. 升级到 HIL 的前置条件
 
