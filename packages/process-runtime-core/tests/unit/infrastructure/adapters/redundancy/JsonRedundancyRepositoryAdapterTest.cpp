@@ -3,6 +3,8 @@
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <fstream>
+#include <string>
 
 namespace {
 
@@ -60,6 +62,11 @@ DecisionLogRecord BuildDecisionLogRecord() {
     record.ticket = "NOISSUE";
     record.created_at = "2026-03-21T02:00:00Z";
     return record;
+}
+
+void WriteTextFile(const std::filesystem::path& path, const std::string& text) {
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    out << text;
 }
 
 }  // namespace
@@ -162,4 +169,54 @@ TEST(JsonRedundancyRepositoryAdapterTest, ListCandidatesRejectsInvalidPriorityFi
     ASSERT_TRUE(list_result.IsError());
     EXPECT_EQ(list_result.GetError().GetCode(), ErrorCode::INVALID_PARAMETER);
     EXPECT_NE(list_result.GetError().GetMessage().find("failure_stage=list_candidates_filter"), std::string::npos);
+}
+
+TEST(JsonRedundancyRepositoryAdapterTest, ListCandidatesRecoversFromCorruptPrimaryStoreUsingBackup) {
+    const auto temp_dir = BuildTempDir();
+    std::filesystem::remove_all(temp_dir);
+    JsonRedundancyRepositoryAdapter adapter(temp_dir);
+
+    ASSERT_TRUE(adapter.UpsertEntities({BuildEntity()}).IsSuccess());
+    ASSERT_TRUE(adapter.UpsertCandidates({BuildCandidate()}).IsSuccess());
+
+    const auto candidates_path = temp_dir / "candidates.json";
+    auto backup_path = candidates_path;
+    backup_path += ".bak";
+    ASSERT_TRUE(std::filesystem::copy_file(
+        candidates_path,
+        backup_path,
+        std::filesystem::copy_options::overwrite_existing));
+    WriteTextFile(candidates_path, "{ invalid-json");
+
+    auto recovered_result = adapter.ListCandidates({});
+    ASSERT_TRUE(recovered_result.IsSuccess()) << recovered_result.GetError().ToString();
+    ASSERT_EQ(recovered_result.Value().size(), 1U);
+    EXPECT_EQ(recovered_result.Value()[0].candidate_id, "cand_repo");
+
+    auto second_read_result = adapter.ListCandidates({});
+    ASSERT_TRUE(second_read_result.IsSuccess()) << second_read_result.GetError().ToString();
+    ASSERT_EQ(second_read_result.Value().size(), 1U);
+
+    std::filesystem::remove_all(temp_dir);
+}
+
+TEST(JsonRedundancyRepositoryAdapterTest, ListCandidatesFailsWhenPrimaryAndBackupStoresAreBothCorrupted) {
+    const auto temp_dir = BuildTempDir();
+    std::filesystem::remove_all(temp_dir);
+    JsonRedundancyRepositoryAdapter adapter(temp_dir);
+
+    ASSERT_TRUE(adapter.UpsertEntities({BuildEntity()}).IsSuccess());
+    ASSERT_TRUE(adapter.UpsertCandidates({BuildCandidate()}).IsSuccess());
+
+    const auto candidates_path = temp_dir / "candidates.json";
+    auto backup_path = candidates_path;
+    backup_path += ".bak";
+    WriteTextFile(candidates_path, "{ invalid-primary");
+    WriteTextFile(backup_path, "{ invalid-backup");
+
+    auto list_result = adapter.ListCandidates({});
+    ASSERT_TRUE(list_result.IsError());
+    EXPECT_EQ(list_result.GetError().GetCode(), ErrorCode::JSON_PARSE_ERROR);
+
+    std::filesystem::remove_all(temp_dir);
 }

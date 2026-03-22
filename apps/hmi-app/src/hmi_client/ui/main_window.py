@@ -52,12 +52,14 @@ except ImportError:
 try:
     from hmi_client.features.dispense_preview_gate import (
         DispensePreviewGate,
+        PreviewGateState,
         PreviewSnapshotMeta,
         StartBlockReason,
     )
 except ImportError:
     from features.dispense_preview_gate import (  # type: ignore
         DispensePreviewGate,
+        PreviewGateState,
         PreviewSnapshotMeta,
         StartBlockReason,
     )
@@ -347,6 +349,8 @@ class MainWindow(QMainWindow):
         self._preview_plan_dry_run = None
         self._preview_snapshot_worker = None
         self._preview_refresh_inflight = False
+        self._preview_state_resync_pending = False
+        self._last_preview_resync_attempt_ts = 0.0
         self._runtime_status_fault = False
         self._last_status_error_notice_ts = 0.0
         self._last_status = None
@@ -1412,10 +1416,13 @@ class MainWindow(QMainWindow):
     def _refresh_launch_status_ui(self) -> None:
         effective_mode = self._current_effective_mode()
         self._launch_mode_label.setText("Offline" if effective_mode == "offline" else "Online")
+        previous_connected = bool(getattr(self, "_connected", False))
 
         if self._is_offline_mode():
             self._connected = False
             self._hw_connected = False
+            if previous_connected and self._current_plan_id:
+                self._preview_state_resync_pending = True
             self._operation_status.setText("离线模式")
             self._tcp_state_label.setText("未连接")
             self._hw_state_label.setText("不可用")
@@ -1430,6 +1437,8 @@ class MainWindow(QMainWindow):
         if snapshot is None:
             self._connected = False
             self._hw_connected = False
+            if previous_connected and self._current_plan_id:
+                self._preview_state_resync_pending = True
             self._update_led(self._tcp_led, "off")
             self._update_led(self._hw_led, "off")
             self._tcp_state_label.setText("未连接")
@@ -1441,6 +1450,8 @@ class MainWindow(QMainWindow):
 
         self._connected = snapshot.tcp_state == "ready"
         self._hw_connected = snapshot.hardware_state == "ready"
+        if self._current_plan_id and self._connected != previous_connected:
+            self._preview_state_resync_pending = True
         self._tcp_state_label.setText(self._label_for_tcp_state(snapshot.tcp_state))
         self._hw_state_label.setText(self._label_for_hw_state(snapshot.hardware_state))
         self._update_led(
@@ -2116,6 +2127,8 @@ class MainWindow(QMainWindow):
         self._current_plan_id = ""
         self._current_plan_fingerprint = ""
         self._preview_plan_dry_run = None
+        self._preview_state_resync_pending = False
+        self._last_preview_resync_attempt_ts = 0.0
         self._update_info_label()
 
     def _update_dxf_info(self):
@@ -2257,6 +2270,98 @@ class MainWindow(QMainWindow):
         )
         self._refresh_preview_btn.setEnabled(enabled)
 
+    def _is_unrecoverable_preview_resync_error(self, error_message: str, error_code=None) -> bool:
+        normalized = str(error_message or "").strip().lower()
+        if not normalized:
+            return False
+        unrecoverable_tokens = (
+            "plan not found",
+            "not found",
+            "plan is not latest",
+            "not latest",
+            "invalid state",
+            "plan_id is required",
+        )
+        if any(token in normalized for token in unrecoverable_tokens):
+            return True
+        # 3012 代表 snapshot 阶段后端错误；仅在消息可判定不可恢复时视为终止重试。
+        if error_code == 3012 and "plan" in normalized and ("not" in normalized or "invalid" in normalized):
+            return True
+        return False
+
+    def _degrade_preview_after_unrecoverable_resync(self, plan_id: str, error_message: str):
+        self._preview_state_resync_pending = False
+        self._last_preview_resync_attempt_ts = 0.0
+        self._current_plan_id = ""
+        self._current_plan_fingerprint = ""
+        self._preview_plan_dry_run = None
+        self._preview_gate.preview_failed("运行时预览已失效，请重新生成并确认")
+        self._update_info_label()
+        self.statusBar().showMessage("运行时预览已失效，请重新生成并确认")
+        self._set_preview_message_html(
+            "轨迹预览已失效",
+            "运行时计划状态已变化，请重新生成并确认预览。",
+            is_error=True,
+        )
+        _UI_LOGGER.warning(
+            "preview_resync_aborted reason=unrecoverable plan_id=%s error=%s",
+            plan_id,
+            error_message,
+        )
+
+    def _sync_preview_state_from_runtime(self):
+        if not self._preview_state_resync_pending:
+            return
+        if self._is_offline_mode() or not self._connected or not self._current_plan_id:
+            return
+        if self._preview_refresh_inflight:
+            return
+        if self._production_running or self._current_job_id:
+            return
+
+        now = time.monotonic()
+        if now - self._last_preview_resync_attempt_ts < 2.0:
+            return
+        self._last_preview_resync_attempt_ts = now
+
+        plan_id = self._current_plan_id
+        try:
+            ok, payload, error, error_code = self._protocol.dxf_preview_snapshot_with_error_details(
+                plan_id=plan_id,
+                max_polyline_points=4000,
+            )
+        except Exception as exc:
+            _UI_LOGGER.warning("preview_resync_failed plan_id=%s error=%s", plan_id, exc)
+            return
+
+        if not ok:
+            if self._is_unrecoverable_preview_resync_error(error, error_code):
+                self._degrade_preview_after_unrecoverable_resync(plan_id, error)
+                return
+            _UI_LOGGER.warning(
+                "preview_resync_failed plan_id=%s error=%s error_code=%s",
+                plan_id,
+                error,
+                error_code,
+            )
+            return
+        if not isinstance(payload, dict):
+            self._preview_state_resync_pending = False
+            self._preview_gate.preview_failed("运行时预览同步返回异常，请手动刷新预览")
+            self._update_info_label()
+            self.statusBar().showMessage(self._preview_block_message(StartBlockReason.PREVIEW_FAILED))
+            self._set_preview_message_html("轨迹预览同步失败", "返回结果格式异常，请手动刷新预览。", is_error=True)
+            _UI_LOGGER.warning("preview_resync_failed plan_id=%s error=invalid_payload", plan_id)
+            return
+
+        payload.setdefault("plan_id", plan_id)
+        if self._preview_plan_dry_run is not None:
+            payload.setdefault("dry_run", bool(self._preview_plan_dry_run))
+        elif hasattr(self, "_mode_dryrun"):
+            payload.setdefault("dry_run", bool(self._mode_dryrun.isChecked()))
+        self._on_preview_snapshot_completed(True, payload, "", source="resync")
+        self._preview_state_resync_pending = False
+
     def _render_runtime_preview_html(
         self,
         snapshot: PreviewSnapshotMeta,
@@ -2274,25 +2379,29 @@ class MainWindow(QMainWindow):
         width = 920.0
         height = 520.0
         padding = 24.0
+        glue_point_spacing_mm = 3.0
+        glue_dot_diameter_mm = 1.5
         span_x = max(max_x - min_x, 1e-6)
         span_y = max(max_y - min_y, 1e-6)
+        scale_x_px_per_mm = (width - 2 * padding) / span_x
+        scale_y_px_per_mm = (height - 2 * padding) / span_y
+        dot_diameter_px = glue_dot_diameter_mm * min(scale_x_px_per_mm, scale_y_px_per_mm)
+        dot_radius = max(0.6, min(8.0, dot_diameter_px * 0.5))
 
         mapped_points = []
         for x_value, y_value in trajectory_points:
             mapped_x = padding + ((x_value - min_x) / span_x) * (width - 2 * padding)
             mapped_y = height - (padding + ((y_value - min_y) / span_y) * (height - 2 * padding))
-            mapped_points.append(f"{mapped_x:.2f},{mapped_y:.2f}")
-        dot_radius = 1.2 if len(mapped_points) > 1000 else 1.6
+            mapped_points.append((mapped_x, mapped_y))
+        display_points = mapped_points
         points_markup = []
-        for point in mapped_points:
-            point_x, point_y = point.split(",", 1)
+        for point_x, point_y in display_points:
             points_markup.append(
-                f"<circle cx='{point_x}' cy='{point_y}' r='{dot_radius:.1f}' fill='#00d084' />"
+                f"<circle cx='{point_x:.2f}' cy='{point_y:.2f}' r='{dot_radius:.1f}' fill='#00d084' />"
             )
         point_cloud_svg = "".join(points_markup)
         return (
             "<html><body style='background:#1e1e1e;color:#e8e8e8;font-family:Segoe UI;padding:18px;'>"
-            "<h3 style='margin-top:0;'>真实链路轨迹预览（点状胶点）</h3>"
             "<p style='color:#b8b8b8;'>"
             "轨迹图按快照点集以点状方式渲染，模拟真实胶点分布；执行前确认与哈希校验仍生效。"
             "</p>"
@@ -2304,7 +2413,9 @@ class MainWindow(QMainWindow):
             f"<tr><td style='padding:4px 16px 4px 0;'>速度</td><td>{speed_mm_s:.3f} mm/s</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>段数</td><td>{snapshot.segment_count}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>点数</td><td>{snapshot.point_count}</td></tr>"
-            f"<tr><td style='padding:4px 16px 4px 0;'>预览采样点</td><td>{len(trajectory_points)}</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>预览采样点</td><td>{len(display_points)}</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>胶点圆心距</td><td>{glue_point_spacing_mm:.1f} mm</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>胶点直径</td><td>{glue_dot_diameter_mm:.1f} mm</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>总长度</td><td>{snapshot.total_length_mm:.3f} mm</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>预估时长</td><td>{snapshot.estimated_time_s:.3f} s</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>X范围</td><td>{min_x:.3f} ~ {max_x:.3f}</td></tr>"
@@ -2329,7 +2440,7 @@ class MainWindow(QMainWindow):
             points.append((x_value, y_value))
         return points
 
-    def _on_preview_snapshot_completed(self, ok: bool, payload: dict, error: str):
+    def _on_preview_snapshot_completed(self, ok: bool, payload: dict, error: str, source: str = "worker"):
         self._preview_snapshot_worker = None
         self._set_preview_refresh_inflight(False)
 
@@ -2361,6 +2472,7 @@ class MainWindow(QMainWindow):
             _UI_LOGGER.warning("preview_failed stage=polyline_missing payload=%s", payload)
             return
 
+        backend_preview_state = str(payload.get("preview_state", "snapshot_ready")).strip().lower()
         preview_dry_run = bool(payload.get("dry_run", False))
         self._current_plan_id = str(payload.get("plan_id", snapshot_id)).strip() or snapshot_id
         self._current_plan_fingerprint = snapshot_hash
@@ -2380,6 +2492,14 @@ class MainWindow(QMainWindow):
             generated_at=str(payload.get("generated_at", "")),
         )
         self._preview_gate.preview_ready(snapshot)
+        if backend_preview_state == "confirmed":
+            if not self._preview_gate.confirm_current_snapshot():
+                self._preview_gate.preview_failed("运行时状态同步失败：confirmed 快照无效")
+                self._update_info_label()
+                self.statusBar().showMessage(self._preview_block_message(StartBlockReason.PREVIEW_FAILED))
+                self._set_preview_message_html("轨迹预览同步失败", "运行时确认态与本地快照不一致。", is_error=True)
+                _UI_LOGGER.warning("preview_sync_failed stage=confirmed_state payload=%s", payload)
+                return
         self._update_info_label()
 
         html_content = self._render_runtime_preview_html(
@@ -2399,7 +2519,16 @@ class MainWindow(QMainWindow):
                 current_dry_run,
             )
         else:
-            self.statusBar().showMessage("轨迹预览已更新，启动前需确认")
+            if source == "resync":
+                if self._preview_gate.state == PreviewGateState.READY_SIGNED:
+                    self.statusBar().showMessage("已从运行时同步预览状态（已确认）")
+                else:
+                    self.statusBar().showMessage("已从运行时同步预览状态")
+            else:
+                if self._preview_gate.state == PreviewGateState.READY_SIGNED:
+                    self.statusBar().showMessage("轨迹预览已更新（运行时已确认）")
+                else:
+                    self.statusBar().showMessage("轨迹预览已更新，启动前需确认")
         _UI_LOGGER.info(
             "preview_ready snapshot_id=%s snapshot_hash=%s sampled_points=%d",
             snapshot.snapshot_id,
@@ -2853,6 +2982,7 @@ class MainWindow(QMainWindow):
         try:
             status = self._protocol.get_status()
             if not status.connected:
+                self._preview_state_resync_pending = True
                 degradation = self._detect_runtime_degradation(
                     tcp_connected=True,
                     hardware_ready=False,
@@ -2966,6 +3096,7 @@ class MainWindow(QMainWindow):
                     self._production_running = False
                     self._production_paused = False
                     self._current_job_id = ""
+                    self._preview_state_resync_pending = True
                     self._operation_status.setText("完成")
                     self.statusBar().showMessage("生产目标已达成")
                 elif state == "unknown":
@@ -2981,6 +3112,7 @@ class MainWindow(QMainWindow):
                     self._production_running = False
                     self._production_paused = False
                     self._current_job_id = ""
+                    self._preview_state_resync_pending = True
                     status_text = "失败" if state == "failed" else "已取消"
                     self._operation_status.setText(status_text)
                     if error_message:
@@ -2991,6 +3123,8 @@ class MainWindow(QMainWindow):
             # Update production stats periodically
             if self._production_running:
                 self._update_production_stats()
+            else:
+                self._sync_preview_state_from_runtime()
 
             # Update Alarms (only when changed)
             alarms = self._protocol.get_alarms()
@@ -3009,6 +3143,7 @@ class MainWindow(QMainWindow):
                 self._last_alarms_snapshot = alarms_snapshot
         except Exception as exc:
             _UI_LOGGER.exception("status_update_failed: %s", exc)
+            self._preview_state_resync_pending = True
             degradation = self._detect_runtime_degradation(
                 tcp_connected=False,
                 error_message=f"运行中 TCP 连接异常: {exc}",

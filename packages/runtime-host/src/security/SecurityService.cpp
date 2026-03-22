@@ -65,6 +65,7 @@ bool SecurityService::Initialize() {
     InterlockConfig interlock_cfg;
     interlock_cfg.enabled = cfg.interlock_enabled;
     interlock_cfg.emergency_stop_input = cfg.emergency_stop_input;
+    interlock_cfg.emergency_stop_active_low = true;
     interlock_cfg.safety_door_input = cfg.safety_door_input;
     interlock_cfg.pressure_sensor_input = cfg.pressure_sensor_input;
     interlock_cfg.temperature_sensor_input = cfg.temperature_sensor_input;

@@ -149,3 +149,51 @@ TEST(InterlockConfigResolverTest, AllowsEmergencyStopPolarityToBeConfigured) {
     std::error_code ec;
     std::filesystem::remove(ini_path, ec);
 }
+
+TEST(InterlockConfigResolverTest, RejectsOutOfRangeEmergencyStopInputWithCompatibilityFallback) {
+    const auto ini_path = WriteTempIni(
+        "out_of_range_estop",
+        "[Safety]\n"
+        "emergency_stop_enabled=true\n"
+        "\n"
+        "[Interlock]\n"
+        "enabled=true\n"
+        "emergency_stop_input=16\n"
+        "safety_door_input=1\n");
+
+    const InterlockConfigResolution resolution = ResolveInterlockConfigFromIni(ini_path.string());
+
+    EXPECT_TRUE(resolution.explicit_interlock_section);
+    EXPECT_TRUE(resolution.used_compat_fallback);
+    EXPECT_TRUE(resolution.config.enabled);
+    EXPECT_EQ(resolution.config.emergency_stop_input, 0);
+    ASSERT_FALSE(resolution.warnings.empty());
+    EXPECT_NE(resolution.warnings.front().find("emergency_stop_input"), std::string::npos);
+    EXPECT_NE(resolution.warnings.front().find("0-15"), std::string::npos);
+
+    std::error_code ec;
+    std::filesystem::remove(ini_path, ec);
+}
+
+TEST(InterlockConfigResolverTest, AcceptsEmergencyStopInputUpperBoundaryValue) {
+    const auto ini_path = WriteTempIni(
+        "estop_upper_boundary",
+        "[Safety]\n"
+        "emergency_stop_enabled=false\n"
+        "\n"
+        "[Interlock]\n"
+        "enabled=true\n"
+        "emergency_stop_input=15\n"
+        "safety_door_input=0\n");
+
+    const InterlockConfigResolution resolution = ResolveInterlockConfigFromIni(ini_path.string());
+
+    EXPECT_TRUE(resolution.explicit_interlock_section);
+    EXPECT_FALSE(resolution.used_compat_fallback);
+    EXPECT_TRUE(resolution.config.enabled);
+    EXPECT_EQ(resolution.config.emergency_stop_input, 15);
+    EXPECT_EQ(resolution.config.safety_door_input, 0);
+
+    std::error_code ec;
+    std::filesystem::remove(ini_path, ec);
+}

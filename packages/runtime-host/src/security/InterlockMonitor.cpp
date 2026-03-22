@@ -13,6 +13,12 @@ using Shared::Types::LogLevel;
 namespace {
 using DomainPriority = Siligen::Domain::Safety::ValueObjects::InterlockPriority;
 constexpr short kGeneralPurposeInputGroup = 4;  // MultiCard MC_GPI: X0~X15 通用输入
+constexpr int16 kGeneralPurposeInputMin = 0;
+constexpr int16 kGeneralPurposeInputMax = 15;
+
+bool IsGeneralPurposeInputIndexValid(int16 index) noexcept {
+    return index >= kGeneralPurposeInputMin && index <= kGeneralPurposeInputMax;
+}
 
 InterlockPriority MapPriority(DomainPriority priority) noexcept {
     switch (priority) {
@@ -177,16 +183,39 @@ bool InterlockMonitor::ReadSensorStates() {
     long diValue = 0;
     const int ret = multicard_->MC_GetDiRaw(kGeneralPurposeInputGroup, &diValue);
     if (ret == 0) {
-        const auto emergency_input = config_.emergency_stop_input >= 0 ? config_.emergency_stop_input : 0;
-        const long emergency_mask = (1L << emergency_input);
+        if (!IsGeneralPurposeInputIndexValid(config_.emergency_stop_input)) {
+            SecurityLogHelper::Log(
+                LogLevel::ERR,
+                "InterlockMonitor",
+                "急停输入位越界，进入fail-safe: emergency_stop_input=" +
+                    std::to_string(config_.emergency_stop_input) + ", valid_range=0..15");
+            state_.emergency_stop_triggered = true;
+            state_.safety_door_open = false;
+            state_.pressure_abnormal = false;
+            state_.temperature_abnormal = false;
+            state_.voltage_abnormal = false;
+            state_.servo_alarm = false;
+            return false;
+        }
+
+        const auto emergency_input = static_cast<unsigned int>(config_.emergency_stop_input);
+        const auto emergency_mask = static_cast<unsigned long>(1UL << emergency_input);
         const bool emergency_raw_high = (diValue & emergency_mask) != 0;
         state_.emergency_stop_triggered =
             config_.emergency_stop_active_low ? !emergency_raw_high : emergency_raw_high;
 
-        if (config_.safety_door_input >= 0 && config_.safety_door_input < static_cast<int16>(sizeof(long) * 8)) {
-            const long safety_door_mask = (1L << config_.safety_door_input);
+        if (config_.safety_door_input < 0) {
+            state_.safety_door_open = false;
+        } else if (IsGeneralPurposeInputIndexValid(config_.safety_door_input)) {
+            const auto safety_door_input = static_cast<unsigned int>(config_.safety_door_input);
+            const auto safety_door_mask = static_cast<unsigned long>(1UL << safety_door_input);
             state_.safety_door_open = (diValue & safety_door_mask) != 0;
         } else {
+            SecurityLogHelper::Log(
+                LogLevel::ERR,
+                "InterlockMonitor",
+                "安全门输入位越界，按关闭处理: safety_door_input=" + std::to_string(config_.safety_door_input) +
+                    ", valid_range=0..15");
             state_.safety_door_open = false;
         }
 

@@ -53,43 +53,57 @@ Result<void> EnsureFileInitialized(const std::filesystem::path& filepath) {
     return Result<void>::Success();
 }
 
-Result<nlohmann::json> LoadStore(const std::filesystem::path& filepath) {
-    std::ifstream in(filepath, std::ios::binary);
-    if (!in.is_open()) {
-        auto backup_path = filepath;
-        backup_path += ".bak";
-        if (std::filesystem::exists(backup_path)) {
-            std::error_code recover_ec;
-            std::filesystem::copy_file(
-                backup_path,
-                filepath,
-                std::filesystem::copy_options::overwrite_existing,
-                recover_ec);
-            std::ifstream recovered_in(filepath, std::ios::binary);
-            if (recovered_in.is_open()) {
-                in.swap(recovered_in);
-            }
-        }
-    }
-
-    if (!in.is_open()) {
-        return Result<nlohmann::json>::Failure(
-            Error(ErrorCode::FILE_IO_ERROR, "Failed to open store file: " + filepath.string(), "JsonRedundancyRepositoryAdapter"));
-    }
-
+Result<nlohmann::json> ParseStorePayload(std::istream& in, const std::filesystem::path& source_path) {
     nlohmann::json payload;
     try {
         in >> payload;
     } catch (const std::exception& ex) {
         return Result<nlohmann::json>::Failure(
-            Error(ErrorCode::JSON_PARSE_ERROR, std::string("Invalid json store file: ") + ex.what(), "JsonRedundancyRepositoryAdapter"));
+            Error(
+                ErrorCode::JSON_PARSE_ERROR,
+                std::string("Invalid json store file: ") + source_path.string() + "; " + ex.what(),
+                "JsonRedundancyRepositoryAdapter"));
     }
 
     if (!payload.is_object() || !payload.contains(kStoreKeyItems) || !payload[kStoreKeyItems].is_array()) {
         return Result<nlohmann::json>::Failure(
-            Error(ErrorCode::JSON_INVALID_TYPE, "Store payload must contain array field 'items'", "JsonRedundancyRepositoryAdapter"));
+            Error(
+                ErrorCode::JSON_INVALID_TYPE,
+                "Store payload must contain array field 'items': " + source_path.string(),
+                "JsonRedundancyRepositoryAdapter"));
     }
     return Result<nlohmann::json>::Success(payload);
+}
+
+Result<nlohmann::json> LoadStoreFromPath(const std::filesystem::path& filepath) {
+    std::ifstream in(filepath, std::ios::binary);
+    if (!in.is_open()) {
+        return Result<nlohmann::json>::Failure(
+            Error(ErrorCode::FILE_IO_ERROR, "Failed to open store file: " + filepath.string(), "JsonRedundancyRepositoryAdapter"));
+    }
+    return ParseStorePayload(in, filepath);
+}
+
+Result<nlohmann::json> LoadStore(const std::filesystem::path& filepath) {
+    auto primary_result = LoadStoreFromPath(filepath);
+    if (primary_result.IsSuccess()) {
+        return primary_result;
+    }
+
+    auto backup_path = filepath;
+    backup_path += ".bak";
+    if (!std::filesystem::exists(backup_path)) {
+        return primary_result;
+    }
+
+    auto backup_result = LoadStoreFromPath(backup_path);
+    if (backup_result.IsError()) {
+        return primary_result;
+    }
+
+    std::error_code recover_ec;
+    std::filesystem::copy_file(backup_path, filepath, std::filesystem::copy_options::overwrite_existing, recover_ec);
+    return backup_result;
 }
 
 Result<void> SaveStoreAtomically(const std::filesystem::path& filepath, const nlohmann::json& payload) {

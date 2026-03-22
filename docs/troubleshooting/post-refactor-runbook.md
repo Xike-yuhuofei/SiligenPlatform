@@ -46,6 +46,7 @@ DXF 编辑问题处理：
 3. 把 `control-core\config`、`control-core\data\recipes` 误当成默认排查入口，导致修改没有进入真实链路。
 4. 误以为 `control-cli` 仍支持 `-UseLegacyFallback`，导致按旧文档排障失败。
 5. `hardware-smoke` 已通过最小 canonical 启动闭环，却被误判成“已经完成真实机台验收”。
+6. `run.ps1` 中引入非 ASCII 提示文本，在非 UTF-8 代码页的 Windows PowerShell 下触发脚本解析错误（建议 wrapper 层提示文本保持 ASCII）。
 
 ## 3. 与 legacy 路径的关系
 

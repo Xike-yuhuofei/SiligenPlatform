@@ -99,6 +99,19 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertEqual(client.calls[0][1]["plan_id"], "plan-2")
         self.assertEqual(client.calls[0][1]["max_polyline_points"], 128)
 
+    def test_preview_snapshot_error_details_contract(self) -> None:
+        client = _FakeClient([{"error": {"code": 3012, "message": "plan not found"}}])
+        protocol = CommandProtocol(client)
+
+        ok, payload, error, error_code = protocol.dxf_preview_snapshot_with_error_details(plan_id="plan-x")
+
+        self.assertFalse(ok)
+        self.assertEqual(payload, {})
+        self.assertEqual(error, "plan not found")
+        self.assertEqual(error_code, 3012)
+        self.assertEqual(client.calls[0][0], "dxf.preview.snapshot")
+        self.assertEqual(client.calls[0][1]["plan_id"], "plan-x")
+
     def test_preview_confirm_contract(self) -> None:
         client = _FakeClient([{"result": {"confirmed": True, "plan_id": "plan-1", "snapshot_hash": "h1"}}])
         protocol = CommandProtocol(client)

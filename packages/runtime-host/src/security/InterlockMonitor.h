@@ -54,25 +54,25 @@ struct InterlockState {
 
 // 连锁配置
 struct InterlockConfig {
-    bool enabled;
-    int16 emergency_stop_input;
-    bool emergency_stop_active_low;
-    int16 safety_door_input;
-    int16 pressure_sensor_input;
-    int16 temperature_sensor_input;
-    int16 voltage_sensor_input;
-    int32 poll_interval_ms;
-    float32 pressure_critical_low;
-    float32 pressure_warning_low;
-    float32 pressure_warning_high;
-    float32 pressure_critical_high;
-    float32 temperature_critical_low;
-    float32 temperature_normal_low;
-    float32 temperature_normal_high;
-    float32 temperature_critical_high;
-    float32 voltage_min;
-    float32 voltage_max;
-    int32 self_test_interval_hours;
+    bool enabled = false;
+    int16 emergency_stop_input = 0;
+    bool emergency_stop_active_low = true;
+    int16 safety_door_input = 1;
+    int16 pressure_sensor_input = 2;
+    int16 temperature_sensor_input = 3;
+    int16 voltage_sensor_input = 4;
+    int32 poll_interval_ms = 50;
+    float32 pressure_critical_low = 0.4f;
+    float32 pressure_warning_low = 0.5f;
+    float32 pressure_warning_high = 0.7f;
+    float32 pressure_critical_high = 0.8f;
+    float32 temperature_critical_low = 5.0f;
+    float32 temperature_normal_low = 10.0f;
+    float32 temperature_normal_high = 50.0f;
+    float32 temperature_critical_high = 55.0f;
+    float32 voltage_min = 220.0f;
+    float32 voltage_max = 240.0f;
+    int32 self_test_interval_hours = 24;
 };
 
 // 互锁信号采集器：仅采集/转发信号，判定规则委托 Domain::Safety::InterlockPolicy

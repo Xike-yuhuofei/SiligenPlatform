@@ -2131,6 +2131,8 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
 
     // 兼容入口：旧客户端未传 plan_id 时，在 snapshot 内部先 prepare 一次。
     if (plan_id.empty()) {
+        SILIGEN_LOG_WARNING(
+            "dxf.preview.snapshot 使用了兼容回退路径（缺少 plan_id），该路径将在后续小版本移除。request_id=" + id);
         artifact_id = params.value("artifact_id", "");
         if (artifact_id.empty()) {
             std::lock_guard<std::mutex> lock(dxf_mutex_);
@@ -2184,8 +2186,17 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
 
     Application::UseCases::Dispensing::PreviewSnapshotRequest snapshot_request;
     snapshot_request.plan_id = plan_id;
-    snapshot_request.max_polyline_points =
+    const std::size_t requested_polyline_points =
         ReadJsonSizeT(params, "max_polyline_points", kPreviewPolylineMaxPoints);
+    if (requested_polyline_points > kPreviewPolylineMaxPoints) {
+        SILIGEN_LOG_WARNING(
+            "dxf.preview.snapshot max_polyline_points 超过上限，已夹断。request_id=" + id +
+            ", requested=" + std::to_string(requested_polyline_points) +
+            ", capped=" + std::to_string(kPreviewPolylineMaxPoints));
+    }
+    snapshot_request.max_polyline_points = std::min<std::size_t>(
+        kPreviewPolylineMaxPoints,
+        std::max<std::size_t>(2, requested_polyline_points));
     auto snapshot_result = dispensingFacade_->GetDxfPreviewSnapshot(snapshot_request);
     if (snapshot_result.IsError()) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 3012, snapshot_result.GetError().GetMessage());
