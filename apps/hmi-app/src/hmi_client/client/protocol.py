@@ -256,13 +256,31 @@ class CommandProtocol:
         plan_id: str,
         max_polyline_points: int = 4000,
     ) -> tuple:
+        ok, payload, error, _ = self.dxf_preview_snapshot_with_error_details(
+            plan_id=plan_id,
+            max_polyline_points=max_polyline_points,
+        )
+        return ok, payload, error
+
+    def dxf_preview_snapshot_with_error_details(
+        self,
+        plan_id: str,
+        max_polyline_points: int = 4000,
+    ) -> tuple:
         params = {"plan_id": plan_id}
         if max_polyline_points > 0:
             params["max_polyline_points"] = int(max_polyline_points)
         resp = self._client.send_request("dxf.preview.snapshot", params, timeout=15.0)
         if "error" in resp:
-            return False, {}, resp["error"].get("message", "Unknown error")
-        return True, resp.get("result", {}), ""
+            error_payload = resp.get("error", {}) or {}
+            error_message = error_payload.get("message", "Unknown error")
+            error_code = error_payload.get("code")
+            try:
+                error_code = int(error_code)
+            except (TypeError, ValueError):
+                error_code = None
+            return False, {}, error_message, error_code
+        return True, resp.get("result", {}), "", None
 
     def dxf_preview_confirm(self, plan_id: str, snapshot_hash: str) -> tuple:
         params = {"plan_id": plan_id, "snapshot_hash": snapshot_hash}

@@ -88,6 +88,10 @@ def test_dxf_preview_gate_contract_is_wired():
     assert '{"polyline_source_point_count", snapshot.polyline_source_point_count}' in source
     assert "dxf_cache_.preview_state = snapshot.preview_state;" in source
     assert 'request.snapshot_hash = snapshot_hash;' in source
+    assert "dxf.preview.snapshot 使用了兼容回退路径（缺少 plan_id）" in source
+    assert "dxf.preview.snapshot max_polyline_points 超过上限，已夹断" in source
+    assert "std::min<std::size_t>(" in source
+    assert "kPreviewPolylineMaxPoints" in source
     assert "Missing 'snapshot_hash'" in source
     assert "Preview snapshot not prepared" in source
     assert "Preview request signature mismatch" in source

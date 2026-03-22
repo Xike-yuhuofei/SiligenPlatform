@@ -1,5 +1,7 @@
 # NOISSUE Scope - HMI 点胶轨迹预览（点状几何路径）
 
+> 说明：当前冻结范围请以 `NOISSUE-scope-20260322-042851.md` 为准。
+
 - 状态：Frozen
 - 日期：2026-03-21
 - 分支：`feat/hmi/NOISSUE-dispense-trajectory-preview-v2`
@@ -78,3 +80,16 @@
 2. 不在本轮引入多版本并发预览管理。
 3. 不在本轮扩展到历史任务回放与批量比较功能。
 4. 不在本轮做协议层大规模重构。
+
+## 9. 关键澄清问题（最多 5 项）与推荐答案
+
+1. 产品侧是否要求“新客户端强制传 `plan_id`”，并在下一阶段关闭 `snapshot` 的兼容 prepare 回退？
+   推荐答案：要求强制传 `plan_id`。`snapshot` 的兼容 prepare 回退进入弃用期（1 个版本仅告警）后关闭。
+2. 启动路径是否最终统一到 `dxf.job.start`，还是继续保留 `dxf.execute` 作为长期入口？
+   推荐答案：统一到 `dxf.job.start`。`dxf.execute` 仅保留兼容壳，不承载新能力，并设定最多 2 个小版本的退役窗口。
+3. `preview confirmed` 状态的有效期是否需跨 HMI 重启/重连持久化，还是仅绑定当前会话？
+   推荐答案：以后端状态为权威并在同一 runtime 生命周期内跨 HMI 重启/重连有效，绑定键为 `plan_id + snapshot_hash`；当计划重建、快照哈希变化或任务进入终态（completed/failed/cancelled）时失效。
+4. `max_polyline_points` 的上线值与降采样策略是否需要产品级冻结（避免现场性能漂移）？
+   推荐答案：需要冻结。默认值与服务端硬上限统一为 `4000`，降采样策略必须确定性（同输入同输出），禁止客户端自行放大上限。
+5. 现场验收最小门槛是否必须包含真机一轮 `prepare->snapshot->confirm->start`，还是允许 mock 链路替代？
+   推荐答案：必须包含至少 1 轮真机链路；mock 链路仅作为开发回归证据，不可替代发布门禁。

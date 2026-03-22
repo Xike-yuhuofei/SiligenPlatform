@@ -26,7 +26,8 @@
 
 兼容性测试位于 `tests/test_engineering_contracts.py`，覆盖：
 
-- canonical proto 与现有 `Backend_CPP` proto 一致
+- owner proto 与工作区公开 canonical `data/schemas/engineering/dxf/v1/dxf_primitives.proto` 一致
+- 若存在外部 `Backend_CPP/proto/dxf_primitives.proto`，额外校验 owner proto 与其一致
 - `.pb` fixture 能按现有 protobuf 生成代码解析
 - `engineering-data` 当前 preview / simulation 导出结果符合 canonical schema
 - `apps/hmi-app` 当前 preview consumer 可消费 canonical preview fixture

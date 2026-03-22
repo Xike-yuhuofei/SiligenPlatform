@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <ctime>
 #include <iomanip>
 #include <sstream>
@@ -32,44 +33,356 @@ using Siligen::Shared::Types::Point2D;
 namespace {
 
 constexpr auto kJobPollInterval = std::chrono::milliseconds(100);
+constexpr double kPreviewGluePointSpacingMm = 3.0;
+constexpr double kPreviewDuplicateEpsilonMm = 1e-4;
+constexpr double kPreviewTailPositionEpsilonMm = 2e-2;
+constexpr double kPreviewTailLegMaxMm = 4e-1;
+constexpr double kPreviewCornerMinTurnDeg = 20.0;
+constexpr double kPreviewCornerMinLegMm = 2e-1;
 
-std::vector<Point2D> BuildPreviewPolyline(
-    const std::vector<Siligen::TrajectoryPoint>& points,
-    std::size_t max_points) {
-    std::vector<Point2D> polyline;
-    if (points.empty()) {
-        return polyline;
-    }
+double DistanceSquared(const Point2D& lhs, const Point2D& rhs) {
+    const double dx = static_cast<double>(lhs.x) - static_cast<double>(rhs.x);
+    const double dy = static_cast<double>(lhs.y) - static_cast<double>(rhs.y);
+    return dx * dx + dy * dy;
+}
 
-    const std::size_t safe_max_points = std::max<std::size_t>(2, max_points);
-    const std::size_t source_point_count = points.size();
-    std::size_t step = 1;
-    if (source_point_count > safe_max_points) {
-        const std::size_t numerator = source_point_count - 1;
-        const std::size_t denominator = safe_max_points - 1;
-        step = (numerator + denominator - 1) / denominator;
-        step = std::max<std::size_t>(1, step);
-    }
+double Distance(const Point2D& lhs, const Point2D& rhs) {
+    return std::sqrt(DistanceSquared(lhs, rhs));
+}
 
-    polyline.reserve(std::min(source_point_count, safe_max_points));
-    for (std::size_t i = 0; i < source_point_count; i += step) {
-        const auto& trajectory_point = points[i];
+bool NearlyEqualPoint(const Point2D& lhs, const Point2D& rhs, double epsilon_mm) {
+    const double epsilon_sq = epsilon_mm * epsilon_mm;
+    return DistanceSquared(lhs, rhs) <= epsilon_sq;
+}
+
+std::vector<Point2D> ToPointVector(const std::vector<Siligen::TrajectoryPoint>& points) {
+    std::vector<Point2D> converted;
+    converted.reserve(points.size());
+    for (const auto& trajectory_point : points) {
         Point2D point;
         point.x = trajectory_point.position.x;
         point.y = trajectory_point.position.y;
-        polyline.push_back(point);
+        converted.push_back(point);
+    }
+    return converted;
+}
+
+std::vector<Point2D> RemoveConsecutiveNearDuplicates(
+    const std::vector<Point2D>& points,
+    double epsilon_mm = kPreviewDuplicateEpsilonMm) {
+    std::vector<Point2D> deduped;
+    if (points.empty()) {
+        return deduped;
+    }
+    deduped.reserve(points.size());
+    deduped.push_back(points.front());
+    for (std::size_t i = 1; i < points.size(); ++i) {
+        if (!NearlyEqualPoint(deduped.back(), points[i], epsilon_mm)) {
+            deduped.push_back(points[i]);
+        }
+    }
+    return deduped;
+}
+
+std::vector<Point2D> RemoveShortABABacktracks(const std::vector<Point2D>& points) {
+    std::vector<Point2D> reduced;
+    reduced.reserve(points.size());
+    for (const auto& point : points) {
+        reduced.push_back(point);
+        while (reduced.size() >= 3U) {
+            const auto& a = reduced[reduced.size() - 3U];
+            const auto& b = reduced[reduced.size() - 2U];
+            const auto& c = reduced[reduced.size() - 1U];
+            const bool is_backtrack =
+                NearlyEqualPoint(a, c, kPreviewTailPositionEpsilonMm) &&
+                Distance(a, b) <= kPreviewTailLegMaxMm &&
+                Distance(b, c) <= kPreviewTailLegMaxMm;
+            if (!is_backtrack) {
+                break;
+            }
+            reduced.pop_back();
+            reduced.pop_back();
+        }
+    }
+    return reduced;
+}
+
+std::vector<std::size_t> DetectCornerAnchorIndices(const std::vector<Point2D>& points) {
+    std::vector<std::size_t> anchors;
+    if (points.size() < 3U) {
+        return anchors;
+    }
+    anchors.reserve(points.size() / 4U + 2U);
+    for (std::size_t i = 1; i + 1 < points.size(); ++i) {
+        const auto& prev = points[i - 1];
+        const auto& cur = points[i];
+        const auto& next = points[i + 1];
+        const double leg1 = Distance(prev, cur);
+        const double leg2 = Distance(cur, next);
+        if (leg1 < kPreviewCornerMinLegMm || leg2 < kPreviewCornerMinLegMm) {
+            continue;
+        }
+        const double vx1 = static_cast<double>(cur.x) - static_cast<double>(prev.x);
+        const double vy1 = static_cast<double>(cur.y) - static_cast<double>(prev.y);
+        const double vx2 = static_cast<double>(next.x) - static_cast<double>(cur.x);
+        const double vy2 = static_cast<double>(next.y) - static_cast<double>(cur.y);
+        const double dot = vx1 * vx2 + vy1 * vy2;
+        const double cos_theta = std::clamp(dot / (leg1 * leg2), -1.0, 1.0);
+        const double turn_deg = std::acos(cos_theta) * 180.0 / 3.14159265358979323846;
+        if (turn_deg >= kPreviewCornerMinTurnDeg) {
+            anchors.push_back(i);
+        }
+    }
+    return anchors;
+}
+
+std::vector<std::size_t> PickUniformIndices(const std::vector<std::size_t>& candidates, std::size_t target_count) {
+    if (target_count == 0U || candidates.empty()) {
+        return {};
+    }
+    if (candidates.size() <= target_count) {
+        return candidates;
+    }
+    if (target_count == 1U) {
+        return {candidates.front()};
+    }
+
+    std::vector<std::size_t> picked;
+    picked.reserve(target_count);
+    const std::size_t last_pos = candidates.size() - 1U;
+    for (std::size_t i = 0; i < target_count; ++i) {
+        const double ratio = static_cast<double>(i) / static_cast<double>(target_count - 1U);
+        const std::size_t pos = static_cast<std::size_t>(std::llround(ratio * static_cast<double>(last_pos)));
+        const std::size_t value = candidates[pos];
+        if (picked.empty() || picked.back() != value) {
+            picked.push_back(value);
+        }
+    }
+    if (picked.size() < target_count) {
+        for (const auto value : candidates) {
+            if (picked.size() >= target_count) {
+                break;
+            }
+            if (std::find(picked.begin(), picked.end(), value) == picked.end()) {
+                picked.push_back(value);
+            }
+        }
+        std::sort(picked.begin(), picked.end());
+    }
+    if (picked.size() > target_count) {
+        picked.resize(target_count);
+    }
+    return picked;
+}
+
+std::vector<Point2D> BuildUniformStepSample(
+    const std::vector<Point2D>& points,
+    std::size_t max_points) {
+    std::vector<Point2D> polyline;
+    if (points.empty() || max_points == 0U) {
+        return polyline;
+    }
+
+    const std::size_t safe_max_points = std::max<std::size_t>(2U, max_points);
+    const std::size_t source_point_count = points.size();
+    std::size_t step = 1U;
+    if (source_point_count > safe_max_points) {
+        const std::size_t numerator = source_point_count - 1U;
+        const std::size_t denominator = safe_max_points - 1U;
+        step = (numerator + denominator - 1U) / denominator;
+        step = std::max<std::size_t>(1U, step);
+    }
+
+    polyline.reserve(std::min(source_point_count, safe_max_points));
+    for (std::size_t i = 0U; i < source_point_count; i += step) {
+        polyline.push_back(points[i]);
     }
 
     const auto& last_source = points.back();
     const bool should_append_last =
         polyline.empty() ||
-        polyline.back().x != last_source.position.x ||
-        polyline.back().y != last_source.position.y;
+        !NearlyEqualPoint(polyline.back(), last_source, kPreviewDuplicateEpsilonMm);
     if (should_append_last) {
-        Point2D point;
-        point.x = last_source.position.x;
-        point.y = last_source.position.y;
-        polyline.push_back(point);
+        polyline.push_back(last_source);
+    }
+    return polyline;
+}
+
+Point2D InterpolatePoint(const Point2D& start, const Point2D& end, double ratio) {
+    Point2D point;
+    point.x = static_cast<float32>(
+        static_cast<double>(start.x) + (static_cast<double>(end.x) - static_cast<double>(start.x)) * ratio);
+    point.y = static_cast<float32>(
+        static_cast<double>(start.y) + (static_cast<double>(end.y) - static_cast<double>(start.y)) * ratio);
+    return point;
+}
+
+std::vector<Point2D> BuildFixedSpacingSample(
+    const std::vector<Point2D>& points,
+    double spacing_mm,
+    const std::vector<std::size_t>& anchor_indices) {
+    std::vector<Point2D> sampled;
+    if (points.empty()) {
+        return sampled;
+    }
+
+    sampled.reserve(points.size());
+    sampled.push_back(points.front());
+    if (points.size() == 1U) {
+        return sampled;
+    }
+
+    std::vector<bool> force_vertex(points.size(), false);
+    for (const auto idx : anchor_indices) {
+        if (idx < force_vertex.size()) {
+            force_vertex[idx] = true;
+        }
+    }
+    force_vertex.back() = true;
+
+    const double safe_spacing = std::max(spacing_mm, kPreviewDuplicateEpsilonMm);
+    double distance_since_last_emit = 0.0;
+
+    for (std::size_t seg_idx = 1U; seg_idx < points.size(); ++seg_idx) {
+        const auto& seg_start = points[seg_idx - 1U];
+        const auto& seg_end = points[seg_idx];
+        const double segment_length = Distance(seg_start, seg_end);
+        if (segment_length <= kPreviewDuplicateEpsilonMm) {
+            continue;
+        }
+
+        double traveled = 0.0;
+        while (traveled + kPreviewDuplicateEpsilonMm < segment_length) {
+            const double remaining_to_emit = std::max(safe_spacing - distance_since_last_emit, kPreviewDuplicateEpsilonMm);
+            const double remaining_in_segment = segment_length - traveled;
+            if (remaining_in_segment + kPreviewDuplicateEpsilonMm < remaining_to_emit) {
+                distance_since_last_emit += remaining_in_segment;
+                traveled = segment_length;
+                break;
+            }
+
+            traveled += remaining_to_emit;
+            const double ratio = std::clamp(traveled / segment_length, 0.0, 1.0);
+            const auto interpolated = InterpolatePoint(seg_start, seg_end, ratio);
+            if (!NearlyEqualPoint(sampled.back(), interpolated, kPreviewDuplicateEpsilonMm)) {
+                sampled.push_back(interpolated);
+            }
+            distance_since_last_emit = 0.0;
+        }
+
+        if (force_vertex[seg_idx]) {
+            const auto& vertex = points[seg_idx];
+            if (!NearlyEqualPoint(sampled.back(), vertex, kPreviewDuplicateEpsilonMm)) {
+                sampled.push_back(vertex);
+            }
+            distance_since_last_emit = 0.0;
+        }
+    }
+
+    if (!NearlyEqualPoint(sampled.back(), points.back(), kPreviewDuplicateEpsilonMm)) {
+        sampled.push_back(points.back());
+    }
+    return sampled;
+}
+
+std::vector<Point2D> ClampPolylineByMaxPointsPreserveCorners(
+    const std::vector<Point2D>& points,
+    std::size_t max_points) {
+    if (points.empty() || max_points == 0U) {
+        return {};
+    }
+
+    const std::size_t safe_max_points = std::max<std::size_t>(2U, max_points);
+    if (points.size() <= safe_max_points) {
+        return points;
+    }
+
+    const auto corner_anchors = DetectCornerAnchorIndices(points);
+    std::vector<std::size_t> mandatory_indices;
+    mandatory_indices.reserve(corner_anchors.size() + 2U);
+    mandatory_indices.push_back(0U);
+    for (const auto idx : corner_anchors) {
+        if (idx + 1U < points.size()) {
+            mandatory_indices.push_back(idx);
+        }
+    }
+    mandatory_indices.push_back(points.size() - 1U);
+    std::sort(mandatory_indices.begin(), mandatory_indices.end());
+    mandatory_indices.erase(std::unique(mandatory_indices.begin(), mandatory_indices.end()), mandatory_indices.end());
+
+    std::vector<std::size_t> sample_indices;
+    if (mandatory_indices.size() >= safe_max_points) {
+        sample_indices = PickUniformIndices(mandatory_indices, safe_max_points);
+    } else {
+        sample_indices = mandatory_indices;
+        std::vector<bool> is_mandatory(points.size(), false);
+        for (const auto idx : mandatory_indices) {
+            if (idx < is_mandatory.size()) {
+                is_mandatory[idx] = true;
+            }
+        }
+        std::vector<std::size_t> supplemental_indices;
+        supplemental_indices.reserve(points.size() - mandatory_indices.size());
+        for (std::size_t idx = 0U; idx < points.size(); ++idx) {
+            if (!is_mandatory[idx]) {
+                supplemental_indices.push_back(idx);
+            }
+        }
+        const std::size_t remaining = safe_max_points - sample_indices.size();
+        const auto picked_supplemental = PickUniformIndices(supplemental_indices, remaining);
+        sample_indices.insert(sample_indices.end(), picked_supplemental.begin(), picked_supplemental.end());
+        std::sort(sample_indices.begin(), sample_indices.end());
+        sample_indices.erase(std::unique(sample_indices.begin(), sample_indices.end()), sample_indices.end());
+    }
+
+    std::vector<Point2D> polyline;
+    polyline.reserve(sample_indices.size());
+    for (const auto idx : sample_indices) {
+        if (idx < points.size()) {
+            polyline.push_back(points[idx]);
+        }
+    }
+    if (polyline.size() < 2U) {
+        return BuildUniformStepSample(points, safe_max_points);
+    }
+    return polyline;
+}
+
+std::vector<Point2D> BuildPreviewPolyline(
+    const std::vector<Siligen::TrajectoryPoint>& trajectory_points,
+    std::size_t max_points) {
+    const auto raw_points = ToPointVector(trajectory_points);
+    auto fallback_polyline = BuildUniformStepSample(raw_points, max_points);
+    if (raw_points.empty()) {
+        return fallback_polyline;
+    }
+
+    auto deduped_points = RemoveConsecutiveNearDuplicates(raw_points);
+    if (deduped_points.size() < 2U) {
+        return fallback_polyline;
+    }
+
+    auto reduced_points = RemoveShortABABacktracks(deduped_points);
+    if (reduced_points.size() < 2U) {
+        reduced_points = deduped_points;
+    } else if (deduped_points.size() >= 20U && reduced_points.size() * 5U < deduped_points.size()) {
+        // Backtrack suppression dropped too many points; keep original deduped geometry as fallback.
+        reduced_points = deduped_points;
+    }
+    reduced_points = RemoveConsecutiveNearDuplicates(reduced_points);
+
+    const auto corner_anchors = DetectCornerAnchorIndices(reduced_points);
+    auto spacing_sample = BuildFixedSpacingSample(reduced_points, kPreviewGluePointSpacingMm, corner_anchors);
+    if (spacing_sample.size() < 2U) {
+        spacing_sample = BuildUniformStepSample(reduced_points, max_points);
+    }
+    if (spacing_sample.size() < 2U) {
+        return fallback_polyline;
+    }
+
+    auto polyline = ClampPolylineByMaxPointsPreserveCorners(spacing_sample, max_points);
+    if (polyline.size() < 2U) {
+        return fallback_polyline;
     }
     return polyline;
 }
@@ -274,11 +587,18 @@ Result<PreviewSnapshotResponse> DispensingWorkflowUseCase::GetPreviewSnapshot(co
                 Error(ErrorCode::INVALID_STATE, "trajectory points unavailable", "DispensingWorkflowUseCase"));
         }
 
+        const bool keep_confirmed_state =
+            it->second.preview_state == PlanPreviewState::CONFIRMED &&
+            !it->second.preview_snapshot_hash.empty() &&
+            it->second.preview_snapshot_hash == it->second.response.plan_fingerprint;
+
         it->second.preview_snapshot_id = it->second.response.plan_id;
         it->second.preview_snapshot_hash = it->second.response.plan_fingerprint;
         it->second.preview_generated_at = ToIso8601UtcNow();
-        it->second.preview_state = PlanPreviewState::SNAPSHOT_READY;
-        it->second.confirmed_at.clear();
+        if (!keep_confirmed_state) {
+            it->second.preview_state = PlanPreviewState::SNAPSHOT_READY;
+            it->second.confirmed_at.clear();
+        }
         it->second.failure_message.clear();
         snapshot_record = it->second;
     }
@@ -1129,6 +1449,19 @@ void DispensingWorkflowUseCase::FinalizeJob(
         std::lock_guard<std::mutex> lock(jobs_mutex_);
         if (active_job_id_ == context->job_id) {
             active_job_id_.clear();
+        }
+    }
+
+    if (final_state == WorkflowJobState::COMPLETED ||
+        final_state == WorkflowJobState::FAILED ||
+        final_state == WorkflowJobState::CANCELLED) {
+        std::lock_guard<std::mutex> lock(plans_mutex_);
+        auto plan_it = plans_.find(context->plan_id);
+        if (plan_it != plans_.end() && plan_it->second.latest) {
+            if (plan_it->second.preview_state == PlanPreviewState::CONFIRMED) {
+                plan_it->second.preview_state = PlanPreviewState::SNAPSHOT_READY;
+            }
+            plan_it->second.confirmed_at.clear();
         }
     }
 }

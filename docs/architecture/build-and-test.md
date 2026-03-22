@@ -34,6 +34,7 @@
   - canonical app source root：`apps/control-runtime`、`apps/control-tcp-server`、`apps/control-cli`
   - canonical binary root：`SILIGEN_CONTROL_APPS_BUILD_ROOT` -> `%LOCALAPPDATA%\SiligenSuite\control-apps-build` -> `D:\Projects\SiligenSuite\build\control-apps`
   - app 产物：`<CONTROL_APPS_BUILD_ROOT>\bin\<Config>\siligen_control_runtime.exe`、`siligen_tcp_server.exe`、`siligen_cli.exe`
+  - CI 默认启用 `SILIGEN_USE_PCH=ON`、`SILIGEN_PARALLEL_COMPILE=ON`，并在 `cmake --build` 显式使用 `--parallel`
   - build 后验证：`tools/build/build-validation.ps1` 会校验上述 exe 已真实落盘
 - `packages/simulation-engine` 的 CMake configure/build
   - `simulation` suite 走 fresh configure，要求空 build root 下也能独立生成全部示例与测试产物

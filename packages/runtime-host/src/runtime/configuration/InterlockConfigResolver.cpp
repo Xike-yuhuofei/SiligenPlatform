@@ -13,6 +13,8 @@ namespace {
 
 using StringManipulator = Siligen::SharedKernel::StringManipulator;
 using IniSectionMap = std::unordered_map<std::string, std::unordered_map<std::string, std::string>>;
+constexpr int kGeneralPurposeInputMin = 0;
+constexpr int kGeneralPurposeInputMax = 15;
 
 std::string NormalizeToken(const std::string& value) {
     return StringManipulator::ToLower(StringManipulator::Trim(value));
@@ -125,9 +127,14 @@ std::optional<TValue> ParseNumericOption(const IniSectionMap& snapshot, const st
     return parsed;
 }
 
-std::optional<int> ParseNonNegativeIntOption(const IniSectionMap& snapshot, const std::string& section, const std::string& key) {
+std::optional<int> ParseRangedIntOption(
+    const IniSectionMap& snapshot,
+    const std::string& section,
+    const std::string& key,
+    int min_value,
+    int max_value) {
     const auto value = ParseNumericOption<int>(snapshot, section, key);
-    if (!value.has_value() || value.value() < 0) {
+    if (!value.has_value() || value.value() < min_value || value.value() > max_value) {
         return std::nullopt;
     }
     return value;
@@ -208,14 +215,19 @@ InterlockConfigResolution ResolveInterlockConfigFromIni(const std::string& confi
     }
 
     const auto enabled = ParseBoolOption(snapshot.value(), "Interlock", "enabled");
-    const auto emergency_stop_input = ParseNonNegativeIntOption(snapshot.value(), "Interlock", "emergency_stop_input");
+    const auto emergency_stop_input = ParseRangedIntOption(
+        snapshot.value(),
+        "Interlock",
+        "emergency_stop_input",
+        kGeneralPurposeInputMin,
+        kGeneralPurposeInputMax);
     const auto safety_door_input = ParseInputIndexOption(snapshot.value(), "Interlock", "safety_door_input");
 
     if (!enabled.has_value() || !emergency_stop_input.has_value() || !safety_door_input.has_value()) {
         resolution.used_compat_fallback = true;
         resolution.config.enabled = safety_enabled;
         resolution.warnings.emplace_back(
-            "Interlock section is incomplete or invalid; required keys are enabled, emergency_stop_input, safety_door_input (use -1 to disable optional door input). Optional key emergency_stop_active_low defaults to true. Falling back to compatibility defaults");
+            "Interlock section is incomplete or invalid; required keys are enabled, emergency_stop_input(range: 0-15), safety_door_input (use -1 to disable optional door input). Optional key emergency_stop_active_low defaults to true. Falling back to compatibility defaults");
         return resolution;
     }
 
