@@ -42,7 +42,6 @@
 - `ss-ui-plan-check`：UI/交互方案审查（HMI 相关需求）
 - `ss-incident-debug`：故障调查与根因分析
 - `ss-safety-guard`：高风险操作安全护栏
-- `ss-workflow`：工作流路由与技能选择
 
 命名优化原则：
 
