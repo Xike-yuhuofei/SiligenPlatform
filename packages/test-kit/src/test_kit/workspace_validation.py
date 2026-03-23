@@ -16,10 +16,12 @@ from .runner import (
     report_to_markdown,
     run_case,
 )
+from .workspace_layout import load_workspace_layout
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_SUITES = ("apps", "packages", "integration", "protocol-compatibility", "simulation")
+WORKSPACE_LAYOUT = load_workspace_layout(WORKSPACE_ROOT)
 CONTROL_APPS_BUILD_ROOT = Path(
     os.getenv(
         "SILIGEN_CONTROL_APPS_BUILD_ROOT",
@@ -36,6 +38,36 @@ SIMULATION_ENGINE_BUILD_ROOT = Path(
 
 def _default_report_dir() -> Path:
     return WORKSPACE_ROOT / "integration" / "reports"
+
+
+def _layout_absolute_path(key: str) -> Path:
+    return WORKSPACE_LAYOUT[key].absolute
+
+
+def _control_apps_cmake_cache_file() -> Path:
+    return CONTROL_APPS_BUILD_ROOT / "CMakeCache.txt"
+
+
+def _read_cmake_cache_home_directory(cache_file: Path) -> str:
+    if not cache_file.exists():
+        return ""
+
+    for raw_line in cache_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+        if raw_line.startswith("CMAKE_HOME_DIRECTORY:"):
+            _, _, value = raw_line.partition("=")
+            return value.strip()
+    return ""
+
+
+def _workspace_validation_metadata() -> dict[str, str]:
+    control_apps_cache = _control_apps_cmake_cache_file()
+    return {
+        "workspace_layout_file": str((WORKSPACE_ROOT / "cmake" / "workspace-layout.env").resolve()),
+        "workspace_root": str(WORKSPACE_ROOT.resolve()),
+        "control_apps_build_root": str(CONTROL_APPS_BUILD_ROOT.resolve()),
+        "control_apps_cmake_cache_file": str(control_apps_cache.resolve()),
+        "control_apps_cmake_home_directory": _read_cmake_cache_home_directory(control_apps_cache),
+    }
 
 
 def _archive_nested_hil_reports(hil_report_dir: Path) -> None:
@@ -81,7 +113,7 @@ def _control_apps_executable(name: str) -> Path:
 def _simulation_engine_build_root() -> Path:
     candidates = (
         SIMULATION_ENGINE_BUILD_ROOT,
-        WORKSPACE_ROOT / "packages" / "simulation-engine" / "build",
+        _layout_absolute_path("SILIGEN_SIMULATION_ENGINE_DIR") / "build",
     )
     for candidate in candidates:
         if candidate.exists():
@@ -146,7 +178,7 @@ def build_cases(
 ) -> list[ValidationCase]:
     cases: list[ValidationCase] = []
     local_profile = profile == "local"
-    machine_config = WORKSPACE_ROOT / "config" / "machine" / "machine_config.ini"
+    machine_config = _layout_absolute_path("SILIGEN_MACHINE_CONFIG_FILE")
     if "apps" in suites:
         cases.extend(
             [
@@ -574,6 +606,7 @@ def main() -> int:
     report = ValidationReport(
         generated_at=datetime.now(timezone.utc).isoformat(),
         workspace_root=str(WORKSPACE_ROOT),
+        metadata=_workspace_validation_metadata(),
     )
 
     suites = _normalize_suites(args.suite)

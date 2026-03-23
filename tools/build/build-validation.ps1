@@ -9,7 +9,16 @@ param(
 $ErrorActionPreference = "Stop"
 
 $workspaceRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-$workspaceSourceRoot = $workspaceRoot
+$layoutScript = Join-Path $workspaceRoot "tools\scripts\get-workspace-layout.ps1"
+if (-not (Test-Path $layoutScript)) {
+    throw "未找到 workspace layout 解析脚本: $layoutScript"
+}
+$layout = & $layoutScript -WorkspaceRoot $workspaceRoot
+$workspaceSourceRoot = [System.IO.Path]::GetFullPath($workspaceRoot)
+$resolvedWorkspaceRoot = [System.IO.Path]::GetFullPath($workspaceRoot)
+if ($workspaceSourceRoot -ine $resolvedWorkspaceRoot) {
+    throw "workspace root mismatch: workspaceRoot='$resolvedWorkspaceRoot', resolved='$workspaceSourceRoot'"
+}
 $controlAppsBuild = if (-not [string]::IsNullOrWhiteSpace($env:SILIGEN_CONTROL_APPS_BUILD_ROOT)) {
     $env:SILIGEN_CONTROL_APPS_BUILD_ROOT
 } elseif (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
@@ -17,12 +26,13 @@ $controlAppsBuild = if (-not [string]::IsNullOrWhiteSpace($env:SILIGEN_CONTROL_A
 } else {
     Join-Path $workspaceRoot "build\control-apps"
 }
-$simulationRoot = Join-Path $workspaceRoot "packages\simulation-engine"
+$simulationRoot = $layout.Entries.SILIGEN_SIMULATION_ENGINE_DIR.Absolute
 $simulationBuild = if (-not [string]::IsNullOrWhiteSpace($env:SILIGEN_SIMULATION_ENGINE_BUILD_ROOT)) {
     $env:SILIGEN_SIMULATION_ENGINE_BUILD_ROOT
 } else {
     Join-Path $workspaceRoot "build\simulation-engine"
 }
+$controlAppsCmakeHomeDirectory = ""
 
 function Resolve-Suites {
     param(
@@ -89,11 +99,14 @@ function Reset-ControlAppsBuildIfSourceRootChanged {
     }
 
     $resolvedConfiguredSourceRoot = [System.IO.Path]::GetFullPath($configuredSourceRoot)
+    $script:controlAppsCmakeHomeDirectory = $resolvedConfiguredSourceRoot
     $resolvedWorkspaceSourceRoot = [System.IO.Path]::GetFullPath($workspaceSourceRoot)
     if ($resolvedConfiguredSourceRoot -ieq $resolvedWorkspaceSourceRoot) {
+        Write-Output "source-root cache-check: matched '$resolvedConfiguredSourceRoot'"
         return
     }
 
+    Write-Output "source-root cache-check: mismatch '$resolvedConfiguredSourceRoot' vs '$resolvedWorkspaceSourceRoot'"
     Write-Output "build-root reset: source root changed from '$resolvedConfiguredSourceRoot' to '$resolvedWorkspaceSourceRoot'"
     try {
         Remove-Item -Path $controlAppsBuild -Recurse -Force -ErrorAction Stop
@@ -106,6 +119,28 @@ function Reset-ControlAppsBuildIfSourceRootChanged {
         Write-Output "build-root fallback: unable to clear '$controlAppsBuild', switching to '$fallbackBuildRoot'"
         $script:controlAppsBuild = $fallbackBuildRoot
     }
+}
+
+function Refresh-ControlAppsCmakeHomeDirectory {
+    $cacheFile = Join-Path $controlAppsBuild "CMakeCache.txt"
+    if (-not (Test-Path $cacheFile)) {
+        $script:controlAppsCmakeHomeDirectory = ""
+        return
+    }
+
+    $homeDirectoryLine = Get-Content $cacheFile | Where-Object { $_ -like "CMAKE_HOME_DIRECTORY:*" } | Select-Object -First 1
+    if (-not $homeDirectoryLine) {
+        $script:controlAppsCmakeHomeDirectory = ""
+        return
+    }
+
+    $resolvedSourceRoot = ($homeDirectoryLine -split "=", 2)[1]
+    if ([string]::IsNullOrWhiteSpace($resolvedSourceRoot)) {
+        $script:controlAppsCmakeHomeDirectory = ""
+        return
+    }
+
+    $script:controlAppsCmakeHomeDirectory = [System.IO.Path]::GetFullPath($resolvedSourceRoot)
 }
 
 function Invoke-ControlAppsBuild {
@@ -151,6 +186,7 @@ if (($resolvedSuites -contains "integration") -and $localProfile) {
 if (($resolvedSuites -contains "packages") -and $localProfile) {
     $controlAppTargets += @(
         "siligen_shared_kernel_tests",
+        "siligen_runtime_host_unit_tests",
         "siligen_unit_tests",
         "siligen_pr1_tests"
     )
@@ -158,12 +194,14 @@ if (($resolvedSuites -contains "packages") -and $localProfile) {
 }
 
 Invoke-ControlAppsBuild -Targets $controlAppTargets -EnableTests:$enableControlAppTests
+Refresh-ControlAppsCmakeHomeDirectory
 
 $controlAppArtifactMap = @{
     "siligen_control_runtime" = "siligen_control_runtime.exe"
     "siligen_tcp_server" = "siligen_tcp_server.exe"
     "siligen_cli" = "siligen_cli.exe"
     "siligen_shared_kernel_tests" = "siligen_shared_kernel_tests.exe"
+    "siligen_runtime_host_unit_tests" = "siligen_runtime_host_unit_tests.exe"
     "siligen_unit_tests" = "siligen_unit_tests.exe"
     "siligen_pr1_tests" = "siligen_pr1_tests.exe"
 }
@@ -198,8 +236,16 @@ if ($needsSimulationBuild) {
 Write-Output "workspace build complete"
 Write-Output "profile: $Profile"
 Write-Output "suites: $($resolvedSuites -join ', ')"
+Write-Output "workspace root: $resolvedWorkspaceRoot"
 Write-Output "control-apps source root: $workspaceSourceRoot"
 Write-Output "control-apps build root: $controlAppsBuild"
+if ([string]::IsNullOrWhiteSpace($controlAppsCmakeHomeDirectory)) {
+    Write-Output "control-apps cmake home directory: missing (new build cache)"
+} else {
+    Write-Output "control-apps cmake home directory: $controlAppsCmakeHomeDirectory"
+}
+Write-Output "workspace layout file: $($layout.LayoutFile)"
+Write-Output "simulation source root: $simulationRoot"
 
 if ($controlAppTargets.Count -gt 0 -and $needsSimulationBuild) {
     Write-Output "built: canonical control apps/tests -> $controlAppsBuild; packages/simulation-engine examples/tests"
@@ -211,4 +257,4 @@ if ($controlAppTargets.Count -gt 0 -and $needsSimulationBuild) {
     Write-Output "built: no suite-specific build work required"
 }
 
-Write-Output "legacy-relation: canonical control app artifacts now build under '$controlAppsBuild'; workspace root 已成为唯一 C++ superbuild source root。"
+Write-Output "provenance gate: control-apps CMAKE_HOME_DIRECTORY must equal '$resolvedWorkspaceRoot' when build cache exists."

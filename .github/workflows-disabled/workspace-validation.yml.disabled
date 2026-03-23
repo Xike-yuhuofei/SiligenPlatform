@@ -2,11 +2,17 @@
 name: workspace-gate
 
 on:
-  push:
-    branches:
-      - main
-      - master
-  pull_request:
+  workflow_dispatch:
+    inputs:
+      run_apps:
+        description: "Force run apps suite (default true)"
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: workspace-gate-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   legacy-exit-gates:
@@ -49,10 +55,80 @@ jobs:
         shell: pwsh
         run: python .\packages\application-contracts\tests\test_protocol_compatibility.py
 
+  detect-apps-scope:
+    runs-on: windows-latest
+    outputs:
+      apps_changed: ${{ steps.detect.outputs.apps_changed }}
+      changed_file_count: ${{ steps.detect.outputs.changed_file_count }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect apps-impacting changes
+        id: detect
+        shell: pwsh
+        run: |
+          $eventName = '${{ github.event_name }}'
+          $runAppsInput = '${{ github.event.inputs.run_apps }}'
+          $appsChanged = $false
+          $changedFiles = @()
+          $patterns = @(
+            '^apps/',
+            '^tools/build/',
+            '^build\.ps1$',
+            '^test\.ps1$',
+            '^cmake/',
+            '^CMakeLists\.txt$',
+            '^tests/CMakeLists\.txt$',
+            '^\.github/workflows/workspace-validation\.yml$'
+          )
+
+          if ($eventName -eq 'workflow_dispatch') {
+            if ([string]::IsNullOrWhiteSpace($runAppsInput) -or $runAppsInput -eq 'true') {
+              $appsChanged = $true
+            }
+          } elseif ($eventName -eq 'pull_request') {
+            $baseRef = '${{ github.event.pull_request.base.ref }}'
+            git fetch --no-tags --depth=1 origin $baseRef
+            $changedFiles = git diff --name-only "origin/$baseRef...${{ github.sha }}"
+          } elseif ($eventName -eq 'push') {
+            $before = '${{ github.event.before }}'
+            $after = '${{ github.sha }}'
+            if ($before -and $before -ne '0000000000000000000000000000000000000000') {
+              $changedFiles = git diff --name-only "$before...$after"
+            } else {
+              git rev-parse "$after~1" *> $null
+              if ($LASTEXITCODE -eq 0) {
+                $changedFiles = git diff --name-only "$after~1...$after"
+              } else {
+                $changedFiles = git show --pretty=format: --name-only "$after"
+              }
+            }
+          }
+
+          foreach ($file in $changedFiles) {
+            foreach ($pattern in $patterns) {
+              if ($file -match $pattern) {
+                $appsChanged = $true
+                break
+              }
+            }
+            if ($appsChanged) { break }
+          }
+
+          $changedCount = @($changedFiles).Count
+          "apps_changed=$($appsChanged.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          "changed_file_count=$changedCount" >> $env:GITHUB_OUTPUT
+          Write-Host "apps_changed=$appsChanged changed_file_count=$changedCount event=$eventName run_apps_input=$runAppsInput"
+
   validation:
     needs:
       - legacy-exit-gates
       - protocol-drift-precheck
+      - detect-apps-scope
     runs-on: windows-latest
     env:
       SILIGEN_CONTROL_APPS_BUILD_ROOT: ${{ github.workspace }}\build\control-apps
@@ -60,7 +136,6 @@ jobs:
       fail-fast: false
       matrix:
         suite:
-          - apps
           - packages
           - integration
           - protocol-compatibility
@@ -93,3 +168,41 @@ jobs:
         with:
           name: workspace-validation-${{ matrix.suite }}
           path: integration/reports/ci/${{ matrix.suite }}/
+
+  validation-apps:
+    needs:
+      - legacy-exit-gates
+      - protocol-drift-precheck
+      - detect-apps-scope
+    if: ${{ needs.detect-apps-scope.outputs.apps_changed == 'true' }}
+    runs-on: windows-latest
+    env:
+      SILIGEN_CONTROL_APPS_BUILD_ROOT: ${{ github.workspace }}\build\control-apps
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install workspace Python dependencies
+        shell: pwsh
+        run: .\tools\scripts\install-python-deps.ps1
+
+      - name: Build suite prerequisites
+        shell: pwsh
+        run: .\build.ps1 -Profile CI -Suite apps
+
+      - name: Run suite validation
+        shell: pwsh
+        run: .\test.ps1 -Profile CI -Suite apps -ReportDir "integration\reports\ci\apps" -FailOnKnownFailure
+
+      - name: Upload validation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspace-validation-apps
+          path: integration/reports/ci/apps/

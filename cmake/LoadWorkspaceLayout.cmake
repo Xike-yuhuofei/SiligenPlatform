@@ -1,0 +1,23 @@
+function(siligen_load_workspace_layout workspace_root layout_file)
+    if(NOT EXISTS "${layout_file}")
+        message(FATAL_ERROR "未找到 workspace layout 清单: ${layout_file}")
+    endif()
+
+    file(STRINGS "${layout_file}" SILIGEN_LAYOUT_LINES REGEX "^[A-Z0-9_]+=.+$")
+    foreach(layout_line IN LISTS SILIGEN_LAYOUT_LINES)
+        string(REGEX MATCH "^([A-Z0-9_]+)=(.+)$" _ "${layout_line}")
+        set(layout_key "${CMAKE_MATCH_1}")
+        set(layout_value "${CMAKE_MATCH_2}")
+
+        if(layout_value STREQUAL ".")
+            set(layout_abs "${workspace_root}")
+        elseif(IS_ABSOLUTE "${layout_value}")
+            set(layout_abs "${layout_value}")
+        else()
+            set(layout_abs "${workspace_root}/${layout_value}")
+        endif()
+
+        set(${layout_key} "${layout_abs}" CACHE INTERNAL "Loaded from ${layout_file}" FORCE)
+        set(${layout_key}_RELATIVE "${layout_value}" CACHE INTERNAL "Relative value loaded from ${layout_file}" FORCE)
+    endforeach()
+endfunction()

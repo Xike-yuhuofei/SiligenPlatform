@@ -1,0 +1,15 @@
+﻿{
+    "scope":  "field-scripts",
+    "status":  "collected",
+    "source_path":  "C:\\Users\\Xike\\Desktop",
+    "collected_at":  "2026-03-23T10:43:24.1929563+08:00",
+    "operator":  "Xike",
+    "hash_or_listing":  "integration\\reports\\verify\\wave6b-external-20260323-104249\\intake\\field-scripts.listing.txt",
+    "scan_command":  "rg -n \"dxf-to-pb|path-to-trajectory|export-simulation-input|generate-dxf-preview|dxf_pipeline|proto\\.dxf_primitives_pb2|config\\\\machine_config\\.ini\" \"C:\\Users\\Xike\\Desktop\" -g \u0027*.ps1\u0027 -g \u0027*.py\u0027 -g \u0027*.bat\u0027 -g \u0027*.cmd\u0027 -g \u0027*.scr\u0027 -g \u0027*.ini\u0027 -g \u0027*.json\u0027 -g \u0027*.yaml\u0027 -g \u0027*.yml\u0027 -g \u0027*.xml\u0027 -g \u0027*.cfg\u0027 -g \u0027*.conf\u0027 -g \u0027*.toml\u0027 -g \u0027*.txt\u0027 -g \u0027*.md\u0027",
+    "observation_result":  "pending-input",
+    "evidence":  "integration\\reports\\verify\\wave6b-external-20260323-104249\\intake\\field-scripts.listing.txt",
+    "next_action":  "run external observation for field-scripts against the recorded source_path",
+    "evidence_files":  [
+                           "integration\\reports\\verify\\wave6b-external-20260323-104249\\intake\\field-scripts.listing.txt"
+                       ]
+}
