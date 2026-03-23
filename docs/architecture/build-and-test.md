@@ -1,10 +1,10 @@
 # Build And Test
 
-更新时间：`2026-03-19`
+更新时间：`2026-03-23`
 
 ## 1. 目标
 
-本文档定义 `SiligenSuite` 当前统一的根级 build/test/CI 入口。
+本文档定义 `SiligenSuite` 当前统一的根级 build/test/本地门禁入口。
 
 原则：
 
@@ -47,19 +47,18 @@
 .\test.ps1 -Profile CI -Suite simulation -FailOnKnownFailure
 ```
 
-### 2.4 CI 入口
+### 2.4 本地门禁入口
 
 ```powershell
-.\ci.ps1
-.\ci.ps1 -Suite protocol-compatibility
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\scripts\run-local-validation-gate.ps1
 ```
 
-当前默认 CI 工作流：
+当前默认门禁口径：
 
-- `.github/workflows/workspace-validation.yml`
-- 所有 suite 都通过根级 `.\build.ps1` + `.\test.ps1` 执行
-- workflow 显式设置 `SILIGEN_CONTROL_APPS_BUILD_ROOT=${{ github.workspace }}\build\control-apps`
-- `.\ci.ps1` 会先执行 `.\legacy-exit-check.ps1 -Profile CI`
+- 本地串行执行 `workspace-layout + packages test + build validation(local/ci)` 四步
+- 证据输出到 `integration/reports/local-validation-gate/<timestamp>/`
+- `workspace-validation` GitHub Actions workflow 已迁移禁用：
+  - `.github/workflows-disabled/workspace-validation.yml.disabled`
 
 ## 3. 当前测试矩阵
 
@@ -73,16 +72,16 @@
 
 ## 4. 当前纳入门禁的范围
 
-当前 CI 门禁纳入：
+当前本地门禁纳入：
 
 - `apps`: `control-runtime`、`control-tcp-server`、`control-cli`、`hmi-app`
 - `packages`: `application-contracts`、`engineering-contracts`、`engineering-data`、`transport-gateway`
 - `integration`: `engineering-regression`
 - `protocol-compatibility`
 - `simulation`
-- `legacy-exit`: config/data fallback、HIL 默认入口、gateway/tcp alias 注册点、canonical package source-root fallback
+- `legacy-exit`: config/data fallback、HIL 默认入口、gateway/tcp alias 防回流、canonical package source-root fallback
 
-当前未纳入 CI 强制门禁，但有根级入口或本地检查方式：
+当前未纳入默认门禁强制执行，但有根级入口或本地检查方式：
 
 - `integration/hardware-in-loop/run_hardware_smoke.py`
 - `process-runtime-core` 通过 canonical control-apps build root `bin\*.exe` 暴露的本地单测

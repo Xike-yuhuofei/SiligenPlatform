@@ -30,6 +30,17 @@
 3. 已将 `.github/workflows/workspace-validation.yml` 迁移为：
    - `.github/workflows-disabled/workspace-validation.yml.disabled`
 
+## 3.1 子任务 C 实施记录（已完成）
+
+1. 已更新发布与门禁入口文档，统一默认验收口径为本地门禁脚本：
+   - `docs/runtime/release-process.md`
+   - `docs/architecture/build-and-test.md`
+   - `docs/architecture/legacy-exit-checks.md`
+   - `docs/onboarding/developer-workflow.md`
+2. 文档明确：
+   - 默认验收命令为 `tools/scripts/run-local-validation-gate.ps1`
+   - `workspace-validation` GitHub Actions workflow 已禁用并迁移到 `workflows-disabled`
+
 ## 4. 证据产物规范
 
 1. 执行目录：`integration/reports/local-validation-gate/<timestamp>/`
