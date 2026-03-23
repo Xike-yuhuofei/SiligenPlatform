@@ -33,18 +33,21 @@
    - 外部观察执行：`run-external-migration-observation.ps1` exit `0`
    - 结果：四个 scope 均 `Go`，`external migration complete declaration = Go`
 
-## 3. 特例说明与剩余任务
+## 3. 策略变更与收尾
 
-1. 特例背景：GitHub Actions 账户账单/额度问题导致 workflow_dispatch 未启动 runner。
+1. 历史背景：GitHub Actions 账户账单/额度问题导致 runner 无法启动。
    - run `23419203726`（`run_apps=false`）失败，annotation 显示 billing 限制。
    - run `23419226121`（`run_apps=true`）同类失败，jobs 未实际执行测试步骤。
    - PR `#6` run `23419522017` 同类失败（`legacy-exit-gates` / `detect-apps-scope` 在启动前失败）。
 
-2. 特例决策（已执行）：
-   - 停用 `workspace-validation.yml` 的 `push/pull_request` 自动触发，保留 `workflow_dispatch` 手动触发；
-   - 以本地验证链 + 外部观察证据链作为本阶段验收依据。
-3. 剩余任务（非阻断）：
-   - 账单恢复后按需重跑两次 dispatch（`run_apps=false/true`）补云端行为证据。
+2. 策略决策（永久生效）：
+   - 弃用 GitHub Actions 作为默认门禁执行面；
+   - `.github/workflows/` 下不再保留可执行 workflow；
+   - 现有 workflow 已迁移到 `.github/workflows-disabled/workspace-validation.yml.disabled`；
+   - 后续阶段默认以本地验证链 + 落盘证据作为验收依据。
+3. 当前收尾状态：
+   - Wave6B PR `#6` 已合并；
+   - main 最小本地复验已完成并通过。
 
 ## 4. 关键证据索引
 

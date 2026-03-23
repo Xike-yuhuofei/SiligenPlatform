@@ -16,6 +16,7 @@
 2. CI workflow 治理增强已提交：
    - `workspace-validation.yml` push 首提交 diff fallback
    - `concurrency` 分组按分支名归一
+   - GitHub Actions 自动触发已停用，workflow 移至 `.github/workflows-disabled/`
 3. 本地验证链通过：
    - `validate_workspace_layout.py`：`pass`
    - `test.ps1 -Profile CI -Suite packages -FailOnKnownFailure`：`pass`
@@ -24,7 +25,7 @@
 ## 3. 门禁状态
 
 1. 本地门禁：`Go`
-2. 远端 dispatch 门禁：`Blocked`
+2. 远端 GitHub Actions（历史记录，仅用于说明弃用原因）：
    - run `23419203726`（`run_apps=false`）失败
    - run `23419226121`（`run_apps=true`）失败
    - run `23419522017`（PR #6 自动门禁）失败
@@ -34,11 +35,12 @@
 
 ## 4. 结论与后续
 
-1. 当前裁决：`GO_WITH_EXCEPTION`
-2. 特例口径（已批准）：
-   - 迁移/重构阶段放弃 GitHub Actions 自动门禁；
+1. 当前裁决：`GO`
+2. 最终口径（已生效）：
+   - 项目后续阶段弃用 GitHub Actions；
    - 使用本地验证链 + 外部观察证据链作为验收主依据；
-   - `.github/workflows/workspace-validation.yml` 已改为仅 `workflow_dispatch` 手动触发。
+   - `.github/workflows/` 不再保留可执行 workflow，当前文件迁移到 `.github/workflows-disabled/workspace-validation.yml.disabled`。
 3. 已完成：Wave6B 外部观察与本地验证闭环。
-4. 账单恢复后的补动作（非当前阻断）：
-   - 按需手动重跑 `run_apps=false/true` 两次 dispatch，验证 workflow 行为。
+4. Wave6B 合并状态：
+   - PR：`https://github.com/Xike-yuhuofei/SiligenPlatform/pull/6`
+   - state：`MERGED`
