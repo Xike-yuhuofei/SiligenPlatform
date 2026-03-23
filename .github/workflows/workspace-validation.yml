@@ -128,7 +128,6 @@ jobs:
       - legacy-exit-gates
       - protocol-drift-precheck
       - detect-apps-scope
-    if: ${{ matrix.suite != 'apps' || needs.detect-apps-scope.outputs.apps_changed == 'true' }}
     runs-on: windows-latest
     env:
       SILIGEN_CONTROL_APPS_BUILD_ROOT: ${{ github.workspace }}\build\control-apps
@@ -136,7 +135,6 @@ jobs:
       fail-fast: false
       matrix:
         suite:
-          - apps
           - packages
           - integration
           - protocol-compatibility
@@ -169,3 +167,41 @@ jobs:
         with:
           name: workspace-validation-${{ matrix.suite }}
           path: integration/reports/ci/${{ matrix.suite }}/
+
+  validation-apps:
+    needs:
+      - legacy-exit-gates
+      - protocol-drift-precheck
+      - detect-apps-scope
+    if: ${{ needs.detect-apps-scope.outputs.apps_changed == 'true' }}
+    runs-on: windows-latest
+    env:
+      SILIGEN_CONTROL_APPS_BUILD_ROOT: ${{ github.workspace }}\build\control-apps
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install workspace Python dependencies
+        shell: pwsh
+        run: .\tools\scripts\install-python-deps.ps1
+
+      - name: Build suite prerequisites
+        shell: pwsh
+        run: .\build.ps1 -Profile CI -Suite apps
+
+      - name: Run suite validation
+        shell: pwsh
+        run: .\test.ps1 -Profile CI -Suite apps -ReportDir "integration\reports\ci\apps" -FailOnKnownFailure
+
+      - name: Upload validation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspace-validation-apps
+          path: integration/reports/ci/apps/
