@@ -41,17 +41,6 @@
    - 默认验收命令为 `tools/scripts/run-local-validation-gate.ps1`
    - `workspace-validation` GitHub Actions workflow 已禁用并迁移到 `workflows-disabled`
 
-## 3.2 子任务 D 实施记录（已完成）
-
-1. 在分支 `chore/runtime/NOISSUE-local-gate-entrypoint-sync` 完成脚本入口收敛：
-   - `ci.ps1` 默认在 `Suite=all` 下先执行 `tools/scripts/run-local-validation-gate.ps1`
-   - `release-check.ps1` 默认内置执行 `tools/scripts/run-local-validation-gate.ps1`
-2. 两个脚本都新增显式绕过开关：
-   - `-SkipLocalValidationGate`
-3. `release-check.ps1` 的 `release-manifest.txt` 已增加本地门禁字段：
-   - `local-validation-report-root`
-   - `skip-local-validation-gate`
-
 ## 4. 证据产物规范
 
 1. 执行目录：`integration/reports/local-validation-gate/<timestamp>/`

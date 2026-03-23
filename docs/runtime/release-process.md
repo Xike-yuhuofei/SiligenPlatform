@@ -38,6 +38,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\scripts\run-local-va
 
 并输出证据到 `integration\reports\local-validation-gate\<timestamp>\`。
 
+在本地门禁通过后，再执行 release 检查：
+
 发布前必须在根仓执行：
 
 ```powershell
@@ -49,11 +51,10 @@ Set-Location <repo-root>
 
 1. 检查根仓是否已有可打 tag 的提交
 2. 检查 `CHANGELOG.md` 是否已有目标版本条目
-3. 默认执行本地门禁脚本 `tools\scripts\run-local-validation-gate.ps1`（可用 `-SkipLocalValidationGate` 显式跳过）
-4. 执行根级 `build.ps1 -Profile CI -Suite all`
-5. 执行根级 `test.ps1 -Profile CI -Suite all -FailOnKnownFailure`
-6. 生成 release evidence 到 `integration\reports\releases\<version>\`
-7. 执行以下 app dry-run 并固化输出：
+3. 执行根级 `build.ps1 -Profile CI -Suite all`
+4. 执行根级 `test.ps1 -Profile CI -Suite all -FailOnKnownFailure`
+5. 生成 release evidence 到 `integration\reports\releases\<version>\`
+6. 执行以下 app dry-run 并固化输出：
    - `apps\hmi-app\run.ps1 -DryRun -DisableGatewayAutostart`
    - `apps\control-tcp-server\run.ps1 -DryRun`
    - `apps\control-cli\run.ps1 -DryRun`

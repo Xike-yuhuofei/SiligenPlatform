@@ -5,9 +5,7 @@ param(
     [string]$ReportDir,
     [switch]$IncludeHardwareSmoke,
     [switch]$AllowRuntimeBlocked,
-    [switch]$AllowCliBlocked,
-    [string]$LocalValidationReportRoot,
-    [switch]$SkipLocalValidationGate
+    [switch]$AllowCliBlocked
 )
 
 $ErrorActionPreference = "Stop"
@@ -20,10 +18,6 @@ if ([string]::IsNullOrWhiteSpace($ReportDir)) {
 
 $resolvedReportDir = Join-Path $workspaceRoot $ReportDir
 New-Item -ItemType Directory -Force -Path $resolvedReportDir | Out-Null
-
-if ([string]::IsNullOrWhiteSpace($LocalValidationReportRoot)) {
-    $LocalValidationReportRoot = Join-Path $resolvedReportDir "local-validation-gate"
-}
 
 function Write-Section {
     param(
@@ -100,15 +94,6 @@ Assert-ChangelogEntry -ChangelogPath $changelogPath -ExpectedVersion $Version
 
 $ciReportDir = Join-Path $ReportDir "ci"
 
-if (-not $SkipLocalValidationGate) {
-    Write-Section "local validation gate"
-    & (Join-Path $workspaceRoot "tools\\scripts\\run-local-validation-gate.ps1") `
-        -ReportRoot $LocalValidationReportRoot
-} else {
-    Write-Section "local validation gate"
-    Write-Output "skipped: SkipLocalValidationGate=true"
-}
-
 Write-Section "build"
 & (Join-Path $workspaceRoot "build.ps1") -Profile CI -Suite all
 
@@ -151,8 +136,6 @@ $manifest = @(
     "git-head: $head",
     "report-dir: $ReportDir",
     "ci-report-dir: $ciReportDir",
-    "local-validation-report-root: $LocalValidationReportRoot",
-    "skip-local-validation-gate: $($SkipLocalValidationGate.IsPresent)",
     "include-hardware-smoke: $($IncludeHardwareSmoke.IsPresent)",
     "allow-cli-blocked: $($AllowCliBlocked.IsPresent)",
     "allow-runtime-blocked: $($AllowRuntimeBlocked.IsPresent)"

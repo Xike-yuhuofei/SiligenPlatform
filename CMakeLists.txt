@@ -39,20 +39,7 @@ project(SiligenDispenser
     LANGUAGES CXX
 )
 
-get_filename_component(SILIGEN_CMAKE_SOURCE_ROOT "${CMAKE_SOURCE_DIR}" ABSOLUTE)
-set(SILIGEN_LAYOUT_FILE "${SILIGEN_CMAKE_SOURCE_ROOT}/cmake/workspace-layout.env")
-include("${SILIGEN_CMAKE_SOURCE_ROOT}/cmake/LoadWorkspaceLayout.cmake")
-siligen_load_workspace_layout(
-    "${SILIGEN_CMAKE_SOURCE_ROOT}"
-    "${SILIGEN_LAYOUT_FILE}"
-)
-set(SILIGEN_WORKSPACE_ROOT "${SILIGEN_CMAKE_SOURCE_ROOT}")
-if(NOT "${SILIGEN_WORKSPACE_ROOT}" STREQUAL "${CMAKE_SOURCE_DIR}")
-    message(FATAL_ERROR
-        "workspace root must be canonical superbuild source root: "
-        "CMAKE_SOURCE_DIR='${CMAKE_SOURCE_DIR}', resolved='${SILIGEN_WORKSPACE_ROOT}'"
-    )
-endif()
+get_filename_component(SILIGEN_WORKSPACE_ROOT "${CMAKE_SOURCE_DIR}" ABSOLUTE)
 set(SILIGEN_WORKSPACE_ROOT
     "${SILIGEN_WORKSPACE_ROOT}"
     CACHE INTERNAL "Workspace root used by the canonical build graph"
@@ -61,33 +48,45 @@ set(SILIGEN_PCH_HEADER
     "${SILIGEN_WORKSPACE_ROOT}/cmake/pch/siligen_pch.h"
     CACHE INTERNAL "Shared PCH header provided by the workspace root"
 )
+set(SILIGEN_MULTICARD_VENDOR_DIR
+    "${SILIGEN_WORKSPACE_ROOT}/packages/device-adapters/vendor/multicard"
+    CACHE INTERNAL "Canonical location of vendor MultiCard SDK binaries"
+)
+set(SILIGEN_RUNTIME_HOST_DIR
+    "${SILIGEN_WORKSPACE_ROOT}/packages/runtime-host"
+    CACHE INTERNAL "Canonical location of the runtime-host package sources"
+)
+set(SILIGEN_PROCESS_RUNTIME_CORE_DIR
+    "${SILIGEN_WORKSPACE_ROOT}/packages/process-runtime-core"
+    CACHE INTERNAL "Canonical location of the process-runtime-core package sources"
+)
+set(SILIGEN_SHARED_KERNEL_DIR
+    "${SILIGEN_WORKSPACE_ROOT}/packages/shared-kernel"
+    CACHE INTERNAL "Canonical location of the shared-kernel package sources"
+)
 set(SILIGEN_SHARED_COMPAT_INCLUDE_ROOT
     "${SILIGEN_SHARED_KERNEL_DIR}/include"
     CACHE INTERNAL "Compatibility include root for shared/* headers"
 )
+set(SILIGEN_THIRD_PARTY_DIR
+    "${SILIGEN_WORKSPACE_ROOT}/third_party"
+    CACHE INTERNAL "Workspace third_party include root"
+)
 set(SILIGEN_BOOST_INCLUDE_DIR
-    "${SILIGEN_THIRD_PARTY_DIR}"
-    CACHE INTERNAL "Explicit Boost include root used by #include <boost/...>"
+    "${SILIGEN_THIRD_PARTY_DIR}/boost"
+    CACHE INTERNAL "Workspace Boost include root"
 )
-set(SILIGEN_NLOHMANN_INCLUDE_DIR
-    "${SILIGEN_THIRD_PARTY_DIR}"
-    CACHE INTERNAL "Explicit nlohmann/json include root used by #include \"nlohmann/json.hpp\""
+set(SILIGEN_TRANSPORT_GATEWAY_DIR
+    "${SILIGEN_WORKSPACE_ROOT}/packages/transport-gateway"
+    CACHE INTERNAL "Canonical location of the transport-gateway package sources"
 )
-set(SILIGEN_SPDLOG_INCLUDE_DIR
-    "${SILIGEN_THIRD_PARTY_DIR}/spdlog/include"
-    CACHE INTERNAL "Explicit spdlog include root used by traceability-observability"
+set(SILIGEN_TRACEABILITY_OBSERVABILITY_DIR
+    "${SILIGEN_WORKSPACE_ROOT}/packages/traceability-observability"
+    CACHE INTERNAL "Canonical location of the traceability-observability package sources"
 )
-set(SILIGEN_RUCKIG_SOURCE_DIR
-    "${SILIGEN_THIRD_PARTY_DIR}/ruckig"
-    CACHE INTERNAL "Explicit Ruckig source root used by process-runtime-core"
-)
-set(SILIGEN_PROTOBUF_SOURCE_DIR
-    "${SILIGEN_THIRD_PARTY_DIR}/protobuf"
-    CACHE INTERNAL "Explicit Protobuf source root used by process-runtime-core"
-)
-set(SILIGEN_GTEST_SOURCE_DIR
-    "${SILIGEN_THIRD_PARTY_DIR}/googletest"
-    CACHE INTERNAL "Explicit GoogleTest source root used by process-runtime-core"
+set(SILIGEN_MACHINE_CONFIG_FILE
+    "${SILIGEN_WORKSPACE_ROOT}/config/machine/machine_config.ini"
+    CACHE INTERNAL "Canonical location of the machine config asset"
 )
 
 if(NOT EXISTS "${SILIGEN_SHARED_KERNEL_DIR}/CMakeLists.txt")
@@ -348,9 +347,7 @@ include_directories(${SILIGEN_PROCESS_RUNTIME_CORE_DIR}/src)
 include_directories(${SILIGEN_PROCESS_RUNTIME_CORE_DIR}/modules/process-core/include)
 include_directories(${SILIGEN_PROCESS_RUNTIME_CORE_DIR}/modules/motion-core/include)
 include_directories(${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT})
-include_directories(${SILIGEN_BOOST_INCLUDE_DIR})
-include_directories(${SILIGEN_NLOHMANN_INCLUDE_DIR})
-include_directories(${SILIGEN_SPDLOG_INCLUDE_DIR})
+include_directories(${SILIGEN_THIRD_PARTY_DIR})
 include_directories(${SILIGEN_WORKSPACE_ROOT}/tests)
 
 add_subdirectory("${SILIGEN_RUNTIME_HOST_DIR}" "${CMAKE_BINARY_DIR}/packages/runtime-host")
@@ -386,9 +383,17 @@ configure_file(
     ${CMAKE_BINARY_DIR}/config/machine/machine_config.ini
     COPYONLY
 )
+configure_file(
+    ${SILIGEN_MACHINE_CONFIG_FILE}
+    ${CMAKE_BINARY_DIR}/config/machine_config.ini
+    COPYONLY
+)
 
 install(FILES ${SILIGEN_MACHINE_CONFIG_FILE}
     DESTINATION config/machine
+)
+install(FILES ${SILIGEN_MACHINE_CONFIG_FILE}
+    DESTINATION config
 )
 
 if(EXISTS "${SILIGEN_MULTICARD_VENDOR_DIR}/MultiCard.dll")
@@ -419,7 +424,7 @@ if(BUILD_SECURITY_MODULE)
         ${SILIGEN_PROCESS_RUNTIME_CORE_DIR}/src
         ${SILIGEN_RUNTIME_HOST_DIR}/src
         ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
-        ${SILIGEN_BOOST_INCLUDE_DIR}
+        ${SILIGEN_THIRD_PARTY_DIR}
     )
 
     target_link_libraries(security_module

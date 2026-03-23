@@ -46,7 +46,6 @@ class ValidationResult:
 class ValidationReport:
     generated_at: str
     workspace_root: str
-    metadata: dict[str, object] = field(default_factory=dict)
     results: list[ValidationResult] = field(default_factory=list)
 
     def counts(self) -> dict[str, int]:
@@ -144,7 +143,6 @@ def report_to_json(report: ValidationReport, path: Path) -> None:
     payload = {
         "generated_at": report.generated_at,
         "workspace_root": report.workspace_root,
-        "metadata": report.metadata,
         "counts": report.counts(),
         "results": [asdict(item) for item in report.results],
     }
@@ -165,13 +163,6 @@ def report_to_markdown(report: ValidationReport, path: Path) -> None:
         f"- skipped: `{counts.get('skipped', 0)}`",
         "",
     ]
-
-    if report.metadata:
-        lines.append("## metadata")
-        lines.append("")
-        for key in sorted(report.metadata):
-            lines.append(f"- {key}: `{report.metadata[key]}`")
-        lines.append("")
 
     preferred_layers = [
         "apps",

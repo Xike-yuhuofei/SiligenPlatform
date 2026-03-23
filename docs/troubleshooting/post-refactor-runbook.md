@@ -54,7 +54,3 @@ DXF 编辑问题处理：
 - `control-core\config`、`control-core\data\recipes`、`control-core\src\infrastructure\resources\config\files\recipes\schemas` 已退出默认 fallback。
 - `control-core\build\bin\**\siligen_cli.exe` 不再是 CLI 的排障入口。
 - legacy gateway/tcp alias 已删除；`legacy-exit-check.ps1` 会拦截其回流到 `control-core` 注册。
-
-## 4. 开发环境 FAQ
-
-- Windows Terminal 配色方案跟随系统：见 `docs/troubleshooting/windows-terminal-color-scheme-follow-system.md`
