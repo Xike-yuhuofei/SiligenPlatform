@@ -1,77 +1,59 @@
 # NOISSUE Wave 6B External Input Backfill and Observation Reopen Plan
 
-- 状态：In Progress
+- 状态：Done with Exception（Local Acceptance）
 - 日期：2026-03-23
-- 分支：feat/dispense/NOISSUE-wave6a-foundation-ingest
+- 分支：feat/dispense/NOISSUE-wave6b-external-observation-reopen
 - 工作区：`D:\Projects\SS-dispense-align-wave6a`
-- 工作流上下文：`ticket=NOISSUE`，`timestamp=20260323-085817`
-- 上一阶段 PR：`https://github.com/Xike-yuhuofei/SiligenPlatform/pull/4`
+- 工作流上下文：`ticket=NOISSUE`，`timestamp=20260323-104249`
+- 上一阶段 PR：`https://github.com/Xike-yuhuofei/SiligenPlatform/pull/4`（已合并）
 
 ## 1. 阶段目标
 
-1. 完成 Wave6A 收尾门禁确认并形成可合并结论（不使用 admin bypass）。
-2. 推进 Wave6B：外部输入补齐与外部观察重开，形成可追踪证据链。
-3. 降低 PR 门禁等待成本，重点治理 `validation (apps)` 长耗时对交付节奏的阻塞。
+1. 完成 Wave6A 正式收口（PR 合并与门禁快照归档）。
+2. 完成 Wave6B 外部输入补齐与外部观察重开，形成可审计证据链。
+3. 完成 CI 门禁治理强化并验证 `run_apps` 条件执行行为。
+4. 最终达成：Wave6B PR 合并 + main 最小复验。
 
-## 2. 已知事实与约束
+## 2. 已完成执行（按工作包）
 
-1. `gh` 在本机优先读取环境变量 `GITHUB_TOKEN`；若该 token 权限受限，会导致 PR/checks 查询失败（404/GraphQL not found）。
-2. `validation (apps)` 在当前流水线中为长耗时路径，常见执行时长约 30 分钟，显著拖慢收尾确认。
-3. 当前工作分支已合规命名且已推送，禁止 destructive git 命令，禁止覆盖他人改动。
+1. `WP-1` Wave6A 收尾门禁确认：
+   - PR #4 已合并，merge commit=`822a4f53691decef52a80ebfd625c5a9a5aaf441`。
+   - 最终 run `23418159551` checks 全部 `pass`。
 
-## 3. 工作包拆解（多子任务）
+2. `WP-3` 门禁治理强化：
+   - 提交 `75731046`：`workspace-validation.yml` 增强 `push` 首提交 diff 兜底（`git show` fallback）。
+   - 并发分组键改为分支名归一：`workspace-gate-${{ github.event.pull_request.head.ref || github.ref_name }}`。
 
-1. `WP-1` Wave6A 收尾门禁确认
-   - 拉取 PR #4 checks 实时状态，输出是否满足可合并条件。
-   - 若失败：定位到具体 job/step，最小修复并补齐验证与文档证据。
-   - 交付：收尾结论与阻塞项清单（如有）。
+3. `WP-4` 外部输入补齐与观察重开：
+   - 证据根：`integration/reports/verify/wave6b-external-20260323-104249/`
+   - 三类 intake 均 `collected`：
+     - `field-scripts`
+     - `release-package`
+     - `rollback-package`（由 `generate-temporary-rollback-sop.ps1` 生成临时目录）
+   - 外部观察执行：`run-external-migration-observation.ps1` exit `0`
+   - 结果：四个 scope 均 `Go`，`external migration complete declaration = Go`
 
-2. `WP-2` 认证路径收敛（本机 gh 可观测性稳定）
-   - 约定 PR/check 查询命令在执行前显式清理当前进程的 `GITHUB_TOKEN`，回退到 keyring 凭据。
-   - 在流程文档中固化“token 优先级与排障步骤”。
-   - 验收：`gh pr view/checks` 可稳定读取私有仓库 PR 状态。
+## 3. 特例说明与剩余任务
 
-3. `WP-3` 门禁提速（`validation (apps)` 治理）
-   - 评估并实施路径过滤：仅当 `apps/**` 或相关构建脚本变更时触发 apps lane。
-   - 引入 `concurrency`（按分支分组，`cancel-in-progress: true`）减少重复排队。
-   - 将慢任务拆分为“PR 必需最小集”与“非阻断扩展集（nightly/手动触发）”的改造方案。
-   - 验收：非 apps 改动的 PR 不再被 apps lane 阻塞；同分支重复提交不叠加等待。
+1. 特例背景：GitHub Actions 账户账单/额度问题导致 workflow_dispatch 未启动 runner。
+   - run `23419203726`（`run_apps=false`）失败，annotation 显示 billing 限制。
+   - run `23419226121`（`run_apps=true`）同类失败，jobs 未实际执行测试步骤。
+   - PR `#6` run `23419522017` 同类失败（`legacy-exit-gates` / `detect-apps-scope` 在启动前失败）。
 
-4. `WP-4` 外部输入补齐与外部观察重开
-   - 补齐 field scripts/release evidence/rollback package 相关输入。
-   - 恢复外部观察执行并产出可审计报告。
-   - 验收：形成完整外部输入与观察证据链，支持下一轮 release 审查。
+2. 特例决策（已执行）：
+   - 停用 `workspace-validation.yml` 的 `push/pull_request` 自动触发，保留 `workflow_dispatch` 手动触发；
+   - 以本地验证链 + 外部观察证据链作为本阶段验收依据。
+3. 剩余任务（非阻断）：
+   - 账单恢复后按需重跑两次 dispatch（`run_apps=false/true`）补云端行为证据。
 
-## 4. 执行顺序与里程碑
+## 4. 关键证据索引
 
-1. M1（进行中）：Wave6A 收尾门禁确认。
-2. M2：落地认证路径收敛（命令级约束 + 文档固化）。
-3. M3：完成 workflow 提速改造并通过一次 PR 触发验证。
-4. M4：完成外部输入补齐与外部观察重开证据归档。
-
-## 5. 风险与应对
-
-1. 风险：`validation (apps)` 长时间运行导致收尾卡点。
-   - 应对：拆分门禁、路径过滤、并发取消；保留扩展验证在非阻断通道执行。
-2. 风险：认证来源混用导致 checks 不可见。
-   - 应对：统一排障动作（先清理 `GITHUB_TOKEN` 再执行 gh 查询），在文档中固定为标准步骤。
-3. 风险：外部输入补齐信息不完整。
-   - 应对：先建立输入清单与缺口矩阵，再分批补齐并逐项验证。
-
-## 6. 第一阶段执行记录
-
-1. 已完成第一步：本计划文档已落盘。
-2. 已执行并推送 `WP-3` 改造（提交：`f0da319a`、`10bd8d0a`）：
-   - `workflow_dispatch`：支持手动异步触发；
-   - `concurrency`：`workspace-gate-${{ github.ref }}` + `cancel-in-progress: true`；
-   - `detect-apps-scope`：输出 `apps_changed`；
-   - `validation` 保留核心矩阵（`packages/integration/protocol-compatibility/simulation`）；
-   - 新增 `validation-apps`，仅在 `apps_changed == true` 时执行。
-3. 首次手动触发（`run_apps=false`）验证通过：
-   - run：`23417587848`
-   - 总结论：`success`
-   - 关键行为：`validation-apps = skipped`，其余 suite 全通过。
-4. 第二次手动触发（`run_apps=true`）已启动：
-   - run：`23417870462`
-   - 当前状态：`in_progress`（`validation-apps` 正在执行 `Build suite prerequisites`）
-5. 下一步：等待 run `23417870462` 完成并补齐最终证据；若失败则按 job/step 最小修复并复测。
+1. 外部观察总览：
+   - `integration/reports/verify/wave6b-external-20260323-104249/observation/summary.md`
+   - `integration/reports/verify/wave6b-external-20260323-104249/observation/blockers.md`
+2. 三类 intake：
+   - `integration/reports/verify/wave6b-external-20260323-104249/intake/field-scripts.{md,json}`
+   - `integration/reports/verify/wave6b-external-20260323-104249/intake/release-package.{md,json}`
+   - `integration/reports/verify/wave6b-external-20260323-104249/intake/rollback-package.{md,json}`
+3. rollback 生成记录：
+   - `integration/reports/verify/wave6b-external-20260323-104249/intake/temporary-rollback-sop-generation.{md,json}`
