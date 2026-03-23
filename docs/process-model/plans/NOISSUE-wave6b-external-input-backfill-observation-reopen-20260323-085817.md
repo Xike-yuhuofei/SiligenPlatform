@@ -1,6 +1,6 @@
 # NOISSUE Wave 6B External Input Backfill and Observation Reopen Plan
 
-- 状态：In Progress（Blocked by GitHub Actions Billing）
+- 状态：Done with Exception（Local Acceptance）
 - 日期：2026-03-23
 - 分支：feat/dispense/NOISSUE-wave6b-external-observation-reopen
 - 工作区：`D:\Projects\SS-dispense-align-wave6a`
@@ -33,19 +33,18 @@
    - 外部观察执行：`run-external-migration-observation.ps1` exit `0`
    - 结果：四个 scope 均 `Go`，`external migration complete declaration = Go`
 
-## 3. 当前阻塞与剩余任务
+## 3. 特例说明与剩余任务
 
-1. 阻塞：GitHub Actions 账户账单/额度问题导致 workflow_dispatch 未启动 runner。
+1. 特例背景：GitHub Actions 账户账单/额度问题导致 workflow_dispatch 未启动 runner。
    - run `23419203726`（`run_apps=false`）失败，annotation 显示 billing 限制。
    - run `23419226121`（`run_apps=true`）同类失败，jobs 未实际执行测试步骤。
    - PR `#6` run `23419522017` 同类失败（`legacy-exit-gates` / `detect-apps-scope` 在启动前失败）。
 
-2. 剩余任务：
-   - 账单恢复后重跑两次 dispatch：
-     - `run_apps=false`（验 `validation-apps=skipped`）
-     - `run_apps=true`（验 `validation-apps=pass`）
-   - Wave6B PR：`https://github.com/Xike-yuhuofei/SiligenPlatform/pull/6`（待 checks 可执行后收口合并）。
-   - 合并后 main 最小复验并落盘 closeout/release 结论。
+2. 特例决策（已执行）：
+   - 停用 `workspace-validation.yml` 的 `push/pull_request` 自动触发，保留 `workflow_dispatch` 手动触发；
+   - 以本地验证链 + 外部观察证据链作为本阶段验收依据。
+3. 剩余任务（非阻断）：
+   - 账单恢复后按需重跑两次 dispatch（`run_apps=false/true`）补云端行为证据。
 
 ## 4. 关键证据索引
 

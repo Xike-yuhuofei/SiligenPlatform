@@ -34,10 +34,11 @@
 
 ## 4. 结论与后续
 
-1. 当前裁决：`DONE_WITH_CONCERNS`
-2. 已完成：Wave6B 外部观察与本地验证闭环。
-3. 未完成：远端 dispatch 行为复验、Wave6B PR 全绿与合并、main 最小复验。
-4. 下一动作（外部条件解除后）：
-   - 修复 GitHub Actions billing 问题
-   - 重跑 `run_apps=false/true` 两次 dispatch
-   - 完成 PR 门禁与合并收口
+1. 当前裁决：`GO_WITH_EXCEPTION`
+2. 特例口径（已批准）：
+   - 迁移/重构阶段放弃 GitHub Actions 自动门禁；
+   - 使用本地验证链 + 外部观察证据链作为验收主依据；
+   - `.github/workflows/workspace-validation.yml` 已改为仅 `workflow_dispatch` 手动触发。
+3. 已完成：Wave6B 外部观察与本地验证闭环。
+4. 账单恢复后的补动作（非当前阻断）：
+   - 按需手动重跑 `run_apps=false/true` 两次 dispatch，验证 workflow 行为。

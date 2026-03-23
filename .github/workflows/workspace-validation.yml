@@ -1,11 +1,6 @@
 name: workspace-gate
 
 on:
-  push:
-    branches:
-      - main
-      - master
-  pull_request:
   workflow_dispatch:
     inputs:
       run_apps:
