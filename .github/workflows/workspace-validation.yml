@@ -15,7 +15,7 @@ on:
         default: true
 
 concurrency:
-  group: workspace-gate-${{ github.ref }}
+  group: workspace-gate-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -104,7 +104,12 @@ jobs:
             if ($before -and $before -ne '0000000000000000000000000000000000000000') {
               $changedFiles = git diff --name-only "$before...$after"
             } else {
-              $changedFiles = git diff --name-only "$after~1...$after"
+              git rev-parse "$after~1" *> $null
+              if ($LASTEXITCODE -eq 0) {
+                $changedFiles = git diff --name-only "$after~1...$after"
+              } else {
+                $changedFiles = git show --pretty=format: --name-only "$after"
+              }
             }
           }
 
