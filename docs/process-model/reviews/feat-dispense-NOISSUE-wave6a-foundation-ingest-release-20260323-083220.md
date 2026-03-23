@@ -25,8 +25,15 @@
 ## 4. 发布通道状态
 
 1. 分支已推送：`origin/feat/dispense/NOISSUE-wave6a-foundation-ingest`
-2. PR 已创建：`#4`
-3. 运行时检查读取：当前 `gh pr checks` 因仓库 GraphQL 可见性报错，未在 CLI 内拉取到 checks 快照。
+2. PR 已合并：`#4`
+   - merged at：`2026-03-23T02:42:15Z`
+   - merge commit：`822a4f53691decef52a80ebfd625c5a9a5aaf441`
+3. 最终 checks 快照（run `23418159551`）：
+   - `legacy-exit-gates`：`pass`
+   - `detect-apps-scope`：`pass`
+   - `protocol-drift-precheck`：`pass`
+   - `validation (packages|integration|protocol-compatibility|simulation)`：全部 `pass`
+   - `validation-apps`：`pass`
 
 ## 5. 结论与后续
 

@@ -1,0 +1,87 @@
+﻿{
+    "generated_at":  "2026-03-23T10:43:39.2128134+08:00",
+    "workspace_root":  "D:\\Projects\\SS-dispense-align-wave6a",
+    "python_exe":  "python",
+    "require_console_scripts":  false,
+    "required_checks_passed":  true,
+    "console_scripts_passed":  true,
+    "overall_status":  "passed",
+    "checks":  [
+                   {
+                       "label":  "import engineering_data",
+                       "command":  "python -c import engineering_data",
+                       "exit_code":  0,
+                       "output":  "\u003cempty\u003e",
+                       "kind":  "required",
+                       "passed":  true
+                   },
+                   {
+                       "label":  "module dxf_to_pb",
+                       "command":  "python -m engineering_data.cli.dxf_to_pb --help",
+                       "exit_code":  0,
+                       "output":  "usage: dxf_to_pb.py [-h] --input INPUT --output OUTPUT\r\n                    [--schema-version SCHEMA_VERSION] [--chordal CHORDAL]\r\n                    [--max-seg MAX_SEG] [--snap SNAP] [--angular ANGULAR]\r\n                    [--min-seg MIN_SEG]\r\n                    [--normalize-units | --no-normalize-units]\r\n                    [--approx-splines | --no-approx-splines]\r\n                    [--snap-enabled | --no-snap-enabled]\r\n                    [--densify-enabled | --no-densify-enabled]\r\n                    [--min-seg-enabled | --no-min-seg-enabled]\r\n                    [--spline-samples SPLINE_SAMPLES]\r\n                    [--spline-max-step SPLINE_MAX_STEP]\r\n                    [--strict-r12 | --no-strict-r12]\r\n\r\nDXF -\u003e Protobuf (.pb) export\r\n\r\noptions:\r\n  -h, --help            show this help message and exit\r\n  --input INPUT         Input DXF file path\r\n  --output OUTPUT       Output .pb file path\r\n  --schema-version SCHEMA_VERSION\r\n  --chordal CHORDAL\r\n  --max-seg MAX_SEG\r\n  --snap SNAP\r\n  --angular ANGULAR\r\n  --min-seg MIN_SEG\r\n  --normalize-units, --no-normalize-units\r\n  --approx-splines, --no-approx-splines\r\n  --snap-enabled, --no-snap-enabled\r\n  --densify-enabled, --no-densify-enabled\r\n  --min-seg-enabled, --no-min-seg-enabled\r\n  --spline-samples SPLINE_SAMPLES\r\n  --spline-max-step SPLINE_MAX_STEP\r\n  --strict-r12, --no-strict-r12\r\n                        Reject non-R12 DXF versions and compatibility-only\r\n                        entities",
+                       "kind":  "required",
+                       "passed":  true
+                   },
+                   {
+                       "label":  "module path_to_trajectory",
+                       "command":  "python -m engineering_data.cli.path_to_trajectory --help",
+                       "exit_code":  0,
+                       "output":  "usage: path_to_trajectory.py [-h] --input INPUT --output OUTPUT --vmax VMAX\r\n                             --amax AMAX --jmax JMAX [--sample-dt SAMPLE_DT]\r\n                             [--sample-ds SAMPLE_DS]\r\n\r\nGenerate trajectory from polyline points using Ruckig\r\n\r\noptions:\r\n  -h, --help            show this help message and exit\r\n  --input INPUT         Input path points JSON\r\n  --output OUTPUT       Output trajectory JSON\r\n  --vmax VMAX\r\n  --amax AMAX\r\n  --jmax JMAX\r\n  --sample-dt SAMPLE_DT\r\n  --sample-ds SAMPLE_DS",
+                       "kind":  "required",
+                       "passed":  true
+                   },
+                   {
+                       "label":  "module export_simulation_input",
+                       "command":  "python -m engineering_data.cli.export_simulation_input --help",
+                       "exit_code":  0,
+                       "output":  "usage: export_simulation_input.py [-h] --input INPUT --output OUTPUT\r\n                                  [--trigger-points-csv TRIGGER_POINTS_CSV]\r\n                                  [--trigger-channel TRIGGER_CHANNEL]\r\n                                  [--trigger-state | --no-trigger-state]\r\n                                  [--ellipse-max-seg ELLIPSE_MAX_SEG]\r\n                                  [--timestep-seconds TIMESTEP_SECONDS]\r\n                                  [--max-simulation-time-seconds MAX_SIMULATION_TIME_SECONDS]\r\n                                  [--max-velocity MAX_VELOCITY]\r\n                                  [--max-acceleration MAX_ACCELERATION]\r\n                                  [--valve-open-delay-seconds VALVE_OPEN_DELAY_SECONDS]\r\n                                  [--valve-close-delay-seconds VALVE_CLOSE_DELAY_SECONDS]\r\n\r\nExport packages/simulation-engine compatible JSON from a PathBundle (.pb).\r\n\r\noptions:\r\n  -h, --help            show this help message and exit\r\n  --input INPUT         Input PathBundle .pb file\r\n  --output OUTPUT       Output *.simulation-input.json file\r\n  --trigger-points-csv TRIGGER_POINTS_CSV\r\n                        Optional CSV with x_mm,y_mm and optional channel,state\r\n                        columns\r\n  --trigger-channel TRIGGER_CHANNEL\r\n                        Default channel for trigger CSV rows\r\n  --trigger-state, --no-trigger-state\r\n                        Default state for trigger CSV rows without a state\r\n                        column\r\n  --ellipse-max-seg ELLIPSE_MAX_SEG\r\n                        Linearization step in mm for ellipse primitives\r\n  --timestep-seconds TIMESTEP_SECONDS\r\n  --max-simulation-time-seconds MAX_SIMULATION_TIME_SECONDS\r\n  --max-velocity MAX_VELOCITY\r\n  --max-acceleration MAX_ACCELERATION\r\n  --valve-open-delay-seconds VALVE_OPEN_DELAY_SECONDS\r\n  --valve-close-delay-seconds VALVE_CLOSE_DELAY_SECONDS",
+                       "kind":  "required",
+                       "passed":  true
+                   },
+                   {
+                       "label":  "module generate_preview",
+                       "command":  "python -m engineering_data.cli.generate_preview --help",
+                       "exit_code":  0,
+                       "output":  "usage: generate_preview.py [-h] --input INPUT --output-dir OUTPUT_DIR\r\n                           [--title TITLE] [--speed SPEED]\r\n                           [--curve-tolerance-mm CURVE_TOLERANCE_MM]\r\n                           [--max-points MAX_POINTS] [--deterministic]\r\n                           [--json]\r\n\r\nGenerate a local HTML preview for a DXF file.\r\n\r\noptions:\r\n  -h, --help            show this help message and exit\r\n  --input INPUT         Input DXF file\r\n  --output-dir OUTPUT_DIR\r\n                        Directory for generated HTML preview\r\n  --title TITLE         Optional preview title\r\n  --speed SPEED         Estimated speed in mm/s\r\n  --curve-tolerance-mm CURVE_TOLERANCE_MM\r\n                        Polyline flattening tolerance in mm\r\n  --max-points MAX_POINTS\r\n                        Maximum sampled points kept in the preview\r\n  --deterministic       Use deterministic output filename\r\n                        (\u003cstem\u003e-preview.html)\r\n  --json                Print preview metadata as JSON",
+                       "kind":  "required",
+                       "passed":  true
+                   },
+                   {
+                       "label":  "console-script engineering-data-dxf-to-pb",
+                       "command":  "where.exe engineering-data-dxf-to-pb",
+                       "exit_code":  0,
+                       "output":  "C:\\Program Files\\Python312\\Scripts\\engineering-data-dxf-to-pb.exe",
+                       "kind":  "console_script",
+                       "script_name":  "engineering-data-dxf-to-pb",
+                       "passed":  true
+                   },
+                   {
+                       "label":  "console-script engineering-data-path-to-trajectory",
+                       "command":  "where.exe engineering-data-path-to-trajectory",
+                       "exit_code":  0,
+                       "output":  "C:\\Program Files\\Python312\\Scripts\\engineering-data-path-to-trajectory.exe",
+                       "kind":  "console_script",
+                       "script_name":  "engineering-data-path-to-trajectory",
+                       "passed":  true
+                   },
+                   {
+                       "label":  "console-script engineering-data-export-simulation-input",
+                       "command":  "where.exe engineering-data-export-simulation-input",
+                       "exit_code":  0,
+                       "output":  "C:\\Program Files\\Python312\\Scripts\\engineering-data-export-simulation-input.exe",
+                       "kind":  "console_script",
+                       "script_name":  "engineering-data-export-simulation-input",
+                       "passed":  true
+                   },
+                   {
+                       "label":  "console-script engineering-data-generate-preview",
+                       "command":  "where.exe engineering-data-generate-preview",
+                       "exit_code":  0,
+                       "output":  "C:\\Program Files\\Python312\\Scripts\\engineering-data-generate-preview.exe",
+                       "kind":  "console_script",
+                       "script_name":  "engineering-data-generate-preview",
+                       "passed":  true
+                   }
+               ]
+}
