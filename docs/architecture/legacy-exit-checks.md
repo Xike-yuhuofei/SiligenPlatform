@@ -1,6 +1,6 @@
 # Legacy Exit Checks
 
-更新时间：`2026-03-19`
+更新时间：`2026-03-23`
 
 ## 1. 目的
 
@@ -9,17 +9,18 @@
 目标只有两个：
 
 1. 阻止 legacy 引用回流。
-2. 为目录级最终删除建立可重复、可在 CI 中执行的归零验证。
+2. 为目录级最终删除建立可重复、可在本地门禁中执行的归零验证。
 
 ## 2. 自动化入口
 
 - 根级命令：`.\legacy-exit-check.ps1`
 - 严格验证：`.\ci.ps1`
-- GitHub Actions：`.github/workflows/workspace-validation.yml` 中的 `legacy-exit-gates` job
+- 本地统一门禁：`powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\scripts\run-local-validation-gate.ps1`
+- GitHub Actions workflow 已禁用：`.github/workflows-disabled/workspace-validation.yml.disabled`
 - 报告输出：
   - `integration/reports/legacy-exit/legacy-exit-checks.json`
   - `integration/reports/legacy-exit/legacy-exit-checks.md`
-  - CI 下对应输出到 `integration/reports/ci/legacy-exit/`
+  - 历史 CI 输出目录仍可保留：`integration/reports/ci/legacy-exit/`
 
 ## 3. 门禁分层
 
@@ -29,7 +30,7 @@
 | 顶层 `simulation-engine/` | 已删除归零门禁 | 顶层目录必须不存在；代码和活动文档不得再把旧顶层目录写回执行链路 |
 | `hmi-client` | 已删除归零门禁 | 目录必须不存在；代码/自动化不得重新引用 `hmi-client/`；活动文档仅允许在显式白名单中作为“已删除/历史说明”出现 |
 | `control-core/modules/shared-kernel` / `control-core/src/domain` / `control-core/src/application` / `control-core/modules/process-core` / `control-core/modules/motion-core` | 已删除归零门禁 | 目录必须不存在；代码/脚本/CMake 不得再把这些 legacy 子树写回执行链路 |
-| `dxf-pipeline` | 冻结防回流 | 代码/自动化不得新增 `dxf-pipeline/src`、`dxf-pipeline/proto`、`dxf_pipeline` import/CLI 依赖；活动文档出现时必须在白名单内 |
+| `dxf-pipeline` | 兼容壳归零门禁 | `dxf-pipeline` 目录、`dxf_pipeline.*` import、`proto.dxf_primitives_pb2`、legacy CLI alias 都不得重新进入代码、自动化或活动文档默认入口 |
 | `control-core` 兼容壳 | 兼容例外白名单 | 直接路径、PowerShell 根目录拼接、Python 根目录引用、CMake legacy include/link 只能出现在登记白名单内 |
 
 ## 4. 显式白名单
@@ -39,8 +40,8 @@
 | 规则 | 白名单 | 原因 |
 |---|---|---|
 | PowerShell 拼接 `control-core` 根目录 | `apps/control-cli/run.ps1`、`apps/control-runtime/run.ps1`、`apps/control-tcp-server/run.ps1`、`tools/build/build-validation.ps1` | 当前 wrapper / build 入口仍需识别兼容产物或兼容源码根 |
-| Python 引用 `control-core` 根目录 | `packages/transport-gateway/tests/test_transport_gateway_compatibility.py`、`tools/migration/validate_device_split.py` | 分别用于兼容壳测试、device split 迁移校验 |
-| 直接 control-core 兼容壳路径 | `packages/transport-gateway/tests/test_transport_gateway_compatibility.py` | 该测试负责锁定 `control-core/src/adapters/tcp`、`modules/control-gateway` 仍是 thin shell |
+| Python 引用 `control-core` 根目录 | `packages/transport-gateway/tests/test_transport_gateway_compatibility.py`、`tools/migration/validate_device_split.py` | 分别用于 legacy anti-regression 测试、device split 迁移校验 |
+| 直接 control-core 兼容壳路径 | `packages/transport-gateway/tests/test_transport_gateway_compatibility.py` | 该测试只保留历史 thin-shell / anti-regression 证据，不代表 alias 仍是活跃默认链路 |
 | CMake 硬编码 control-core legacy 依赖 | `packages/process-runtime-core/CMakeLists.txt`、`packages/simulation-engine/CMakeLists.txt` | 这些是当前已登记、尚未切完的阻塞项；新增文件一律失败 |
 
 ### 4.2 活动文档中的兼容例外
@@ -61,13 +62,19 @@
 
 不在这份白名单里的 root/onboarding/runtime/troubleshooting/validation 文档，只要再出现 legacy 路径，就会被 `legacy-exit-check.ps1` 直接打失败。
 
+### 4.3 历史迁移审计脚本例外
+
+以下脚本允许保留少量 legacy 路径文本，但仅用于历史 residual needle / payoff 校验，不能作为默认入口或实现来源：
+
+- `tools/migration/validate_wave2b_residual_payoff.py`
+
 ## 5. 当前已自动化门禁
 
 1. 已删除目录实体是否重新出现。
 2. build/test/CI/源码是否重新引用 `dxf-editor`、`apps/dxf-editor-app`、`packages/editor-contracts`。
 3. 顶层旧 `simulation-engine/` 路径是否回流。
 4. `hmi-client/` 是否重新出现，或其路径是否重新进入代码、自动化与活动文档默认链路。
-5. `dxf-pipeline/src`、`dxf-pipeline/proto`、`dxf_pipeline` import/CLI 是否重新进入代码或自动化链路。
+5. `dxf-pipeline/src`、`dxf-pipeline/proto`、`dxf_pipeline` import、`proto.dxf_primitives_pb2` 与 legacy CLI alias 是否重新进入代码或自动化链路。
 6. 已删除的 `control-core/modules/shared-kernel`、`src/domain`、`src/application`、`modules/process-core`、`modules/motion-core` 是否重新出现，或是否被代码/脚本/CMake 重新写回执行链路。
 7. `control-core/build/bin`、`control-core/apps/*`、`control-core/src/adapters/tcp`、`control-core/modules/control-gateway` 是否被未登记文件直接引用。
 8. 代码、脚本、自动化是否重新把 `control-core/config/machine_config.ini`、`control-core/src/infrastructure/resources/config/files/machine_config.ini` 写回默认 fallback。
@@ -92,7 +99,7 @@
 1. 现场/HIL/发布负责人确认：没有工作区外脚本仍依赖待删目录。
 2. 兼容壳 owner 确认：白名单中的每个例外都已有明确下线前置条件和责任人。
 3. 文档 owner 确认：默认 onboarding / runtime / rollback 口径已经以 canonical 路径为第一入口。
-4. 对已删除的 `hmi-client`，仍需继续确认仓外消费者是否已经迁移；若准备删除其他 legacy 目录（如 `dxf-pipeline`），也需至少经历一个兼容观察周期。
+4. 对已删除的 `hmi-client` 仍需继续确认仓外消费者是否已经迁移；`dxf-pipeline` 的兼容壳虽已退出，但仓外脚本是否仍缓存旧入口仍需人工确认。
 5. 若准备删除 `control-core` 下某个兼容壳，需先确认对应 canonical 产物、测试、发布链路都已闭环。
 
 ## 8. 已记录缺口

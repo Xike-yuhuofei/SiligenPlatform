@@ -1,18 +1,18 @@
 # Developer Workflow
 
-更新时间：`2026-03-19`
+更新时间：`2026-03-23`
 
 ## 1. 唯一推荐工作方式
 
 - 从仓库根目录开始。
-- 优先使用根级 `build.ps1`、`test.ps1`、`ci.ps1`。
+- 优先使用根级 `build.ps1`、`test.ps1`、`ci.ps1`，验收默认使用 `tools/scripts/run-local-validation-gate.ps1`。
 - 优先使用 `apps/`、`packages/` 下的 canonical 路径。
 - DXF 编辑统一走外部编辑器人工流程，不再有 editor app。
 
 ## 2. 默认启动命令
 
 ```powershell
-Set-Location D:\Projects\SiligenSuite
+Set-Location <repo-root>
 ```
 
 | 目标 | 推荐命令 | 备注 |
@@ -33,7 +33,12 @@ DXF 编辑：
 .\build.ps1
 .\test.ps1
 .\ci.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\scripts\run-local-validation-gate.ps1
 ```
+
+说明：
+
+- 仓库默认门禁已切换为本地验证链路，不再依赖 GitHub Actions checks。
 
 ## 4. 不再作为默认入口的旧路径
 
