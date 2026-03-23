@@ -61,5 +61,17 @@
 ## 6. 第一阶段执行记录
 
 1. 已完成第一步：本计划文档已落盘。
-2. 已执行 `WP-3` 首轮改造：`.github/workflows/workspace-validation.yml` 新增 `workflow_dispatch`、`concurrency`、`detect-apps-scope` 路径过滤，并在 `validation` job 对 `apps` suite 做条件执行。
-3. 下一步：将上述改造推送并在 PR/手动触发场景验证 `apps` 过滤与并发取消行为，随后继续跟踪 PR #4 直到给出 Wave6A 可合并/阻塞结论。
+2. 已执行并推送 `WP-3` 改造（提交：`f0da319a`、`10bd8d0a`）：
+   - `workflow_dispatch`：支持手动异步触发；
+   - `concurrency`：`workspace-gate-${{ github.ref }}` + `cancel-in-progress: true`；
+   - `detect-apps-scope`：输出 `apps_changed`；
+   - `validation` 保留核心矩阵（`packages/integration/protocol-compatibility/simulation`）；
+   - 新增 `validation-apps`，仅在 `apps_changed == true` 时执行。
+3. 首次手动触发（`run_apps=false`）验证通过：
+   - run：`23417587848`
+   - 总结论：`success`
+   - 关键行为：`validation-apps = skipped`，其余 suite 全通过。
+4. 第二次手动触发（`run_apps=true`）已启动：
+   - run：`23417870462`
+   - 当前状态：`in_progress`（`validation-apps` 正在执行 `Build suite prerequisites`）
+5. 下一步：等待 run `23417870462` 完成并补齐最终证据；若失败则按 job/step 最小修复并复测。
