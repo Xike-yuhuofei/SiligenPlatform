@@ -38,12 +38,13 @@
 1. 阻塞：GitHub Actions 账户账单/额度问题导致 workflow_dispatch 未启动 runner。
    - run `23419203726`（`run_apps=false`）失败，annotation 显示 billing 限制。
    - run `23419226121`（`run_apps=true`）同类失败，jobs 未实际执行测试步骤。
+   - PR `#6` run `23419522017` 同类失败（`legacy-exit-gates` / `detect-apps-scope` 在启动前失败）。
 
 2. 剩余任务：
    - 账单恢复后重跑两次 dispatch：
      - `run_apps=false`（验 `validation-apps=skipped`）
      - `run_apps=true`（验 `validation-apps=pass`）
-   - 创建并收口 Wave6B PR（全绿后合并）。
+   - Wave6B PR：`https://github.com/Xike-yuhuofei/SiligenPlatform/pull/6`（待 checks 可执行后收口合并）。
    - 合并后 main 最小复验并落盘 closeout/release 结论。
 
 ## 4. 关键证据索引

@@ -5,7 +5,8 @@
 1. 波次：`Wave 6B`
 2. 分支：`feat/dispense/NOISSUE-wave6b-external-observation-reopen`
 3. 工作流上下文：`ticket=NOISSUE`，`timestamp=20260323-104249`
-4. 上一阶段：PR #4（Wave6A）已合并，merge commit=`822a4f53691decef52a80ebfd625c5a9a5aaf441`
+4. Wave6B PR：`https://github.com/Xike-yuhuofei/SiligenPlatform/pull/6`
+5. 上一阶段：PR #4（Wave6A）已合并，merge commit=`822a4f53691decef52a80ebfd625c5a9a5aaf441`
 
 ## 2. 变更与执行结果
 
@@ -26,6 +27,7 @@
 2. 远端 dispatch 门禁：`Blocked`
    - run `23419203726`（`run_apps=false`）失败
    - run `23419226121`（`run_apps=true`）失败
+   - run `23419522017`（PR #6 自动门禁）失败
    - 原因：GitHub Actions 账单/额度限制，runner 未启动
 
 ## 4. 结论与后续
