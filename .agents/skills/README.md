@@ -22,4 +22,3 @@
 - `ss-ui-plan-check`：UI 方案审查（HMI）
 - `ss-incident-debug`：故障定位与根因分析
 - `ss-safety-guard`：高风险操作护栏
-- `ss-workflow`：流程路由与技能选择
