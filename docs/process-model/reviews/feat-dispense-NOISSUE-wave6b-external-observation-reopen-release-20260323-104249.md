@@ -28,6 +28,7 @@
    - run `23419203726`（`run_apps=false`）失败
    - run `23419226121`（`run_apps=true`）失败
    - run `23419522017`（PR #6 自动门禁）失败
+   - run `23419563106`（PR #6 最新自动门禁）失败
    - 原因：GitHub Actions 账单/额度限制，runner 未启动
 
 ## 4. 结论与后续
