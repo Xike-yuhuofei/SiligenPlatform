@@ -5,6 +5,7 @@
 - 分支：feat/dispense/NOISSUE-wave6a-foundation-ingest
 - 工作区：`D:\Projects\SS-dispense-align-wave6a`
 - 工作流上下文：`ticket=NOISSUE`，`timestamp=20260323-083220`
+- PR：`https://github.com/Xike-yuhuofei/SiligenPlatform/pull/4`
 
 ## 1. 总体裁决
 

@@ -6,6 +6,7 @@
 2. 分支：`feat/dispense/NOISSUE-wave6a-foundation-ingest`
 3. 目标：workspace layout/provenance 基础设施入库，作为后续外部观察重开的前置条件
 4. 工作流上下文：`ticket=NOISSUE`，`timestamp=20260323-083220`
+5. PR：`https://github.com/Xike-yuhuofei/SiligenPlatform/pull/4`
 
 ## 2. 变更摘要
 
@@ -21,7 +22,13 @@
 3. `build-validation.ps1 -Profile Local -Suite packages`：`pass`
 4. `build-validation.ps1 -Profile CI -Suite packages`：`pass`
 
-## 4. 结论与后续
+## 4. 发布通道状态
+
+1. 分支已推送：`origin/feat/dispense/NOISSUE-wave6a-foundation-ingest`
+2. PR 已创建：`#4`
+3. 运行时检查读取：当前 `gh pr checks` 因仓库 GraphQL 可见性报错，未在 CLI 内拉取到 checks 快照。
+
+## 5. 结论与后续
 
 1. `Wave 6A release readiness = Go`
 2. 本波完成 repo 内基础设施收敛，不构成“外部迁移完成”声明。
