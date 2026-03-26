@@ -1,0 +1,4 @@
+interface:
+  display_name: "SS Post Change Closeout"
+  short_description: "Close out finished repo changes safely"
+  default_prompt: "Use $ss-post-change-closeout to validate, document, commit, push, and report a finished repository change."
