@@ -1,0 +1,87 @@
+{
+  "dxf_file": "samples/dxf/rect_diag.dxf",
+  "config_mode": "mock",
+  "preview_source": "runtime_snapshot",
+  "snapshot": {
+    "preview_state": "snapshot_ready",
+    "segment_count": 9,
+    "point_count": 5463,
+    "polyline_point_count": 183,
+    "polyline_source_point_count": 5463,
+    "total_length_mm": 545.2704467773438,
+    "estimated_time_s": 54.616485595703125
+  },
+  "geometry_summary": {
+    "point_count": 183,
+    "x_range": [
+      -0.5670820474624634,
+      100.0
+    ],
+    "y_range": [
+      0.0,
+      100.0
+    ],
+    "first_point": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "last_point": {
+      "x": 100.0,
+      "y": 100.0
+    },
+    "axis_aligned_segments": 129,
+    "diagonal_segments": 53
+  },
+  "sample_points": [
+    {
+      "index": 0,
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "index": 33,
+      "x": 99.0,
+      "y": 0.0
+    },
+    {
+      "index": 61,
+      "x": 100.0,
+      "y": 81.9330062866211
+    },
+    {
+      "index": 68,
+      "x": 98.13912200927734,
+      "y": 100.0
+    },
+    {
+      "index": 101,
+      "x": -0.5670820474624634,
+      "y": 99.59254455566406
+    },
+    {
+      "index": 122,
+      "x": 0.0,
+      "y": 37.20631408691406
+    },
+    {
+      "index": 140,
+      "x": 11.558696746826172,
+      "y": 11.558696746826172
+    },
+    {
+      "index": 152,
+      "x": 37.01454162597656,
+      "y": 37.01454162597656
+    },
+    {
+      "index": 182,
+      "x": 100.0,
+      "y": 100.0
+    }
+  ],
+  "tolerances": {
+    "coordinate_mm": 0.05,
+    "length_mm": 0.05,
+    "time_s": 0.05
+  }
+}

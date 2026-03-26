@@ -343,6 +343,7 @@ class MainWindow(QMainWindow):
         self._dxf_est_time_val = "-"
         self._preview_gate = DispensePreviewGate()
         self._preview_plan_dry_run = None
+        self._preview_source = ""
         self._preview_snapshot_worker = None
         self._preview_refresh_inflight = False
         self._preview_state_resync_pending = False
@@ -2038,6 +2039,7 @@ class MainWindow(QMainWindow):
         self._current_plan_id = ""
         self._current_plan_fingerprint = ""
         self._preview_plan_dry_run = None
+        self._preview_source = ""
         self._preview_state_resync_pending = False
         self._last_preview_resync_attempt_ts = 0.0
         self._update_info_label()
@@ -2071,6 +2073,24 @@ class MainWindow(QMainWindow):
             "failed": "失败",
         }
         return state_map.get(self._preview_gate.state.value, self._preview_gate.state.value)
+
+    def _preview_source_text(self, preview_source: str | None = None) -> str:
+        normalized = str(self._preview_source if preview_source is None else preview_source).strip().lower()
+        if normalized == "runtime_snapshot":
+            return "运行时快照"
+        if normalized == "mock_synthetic":
+            return "Mock模拟"
+        if normalized:
+            return normalized
+        return "-"
+
+    def _preview_source_warning(self, preview_source: str | None = None) -> str:
+        normalized = str(self._preview_source if preview_source is None else preview_source).strip().lower()
+        if normalized == "mock_synthetic":
+            return "模拟轨迹，非真实几何"
+        if normalized == "runtime_snapshot":
+            return "运行时权威点集"
+        return "预览来源未知"
 
     def _preview_block_message(self, reason: StartBlockReason) -> str:
         if reason == StartBlockReason.PREVIEW_MISSING:
@@ -2150,8 +2170,9 @@ class MainWindow(QMainWindow):
         segments = getattr(self, '_dxf_segment_count_cache', 0)
         est = getattr(self, '_dxf_est_time_val', "-")
         preview_text = self._preview_state_text()
+        preview_source_text = self._preview_source_text()
         self._dxf_info_label.setText(
-            f"段数: {segments} | 长度: {self._dxf_total_length_val:.1f}mm | 预估: {est} | 预览: {preview_text}"
+            f"段数: {segments} | 长度: {self._dxf_total_length_val:.1f}mm | 预估: {est} | 预览: {preview_text} | 来源: {preview_source_text}"
         )
 
     def _set_preview_message_html(self, title: str, detail: str = "", is_error: bool = False):
@@ -2206,6 +2227,7 @@ class MainWindow(QMainWindow):
         self._current_plan_id = ""
         self._current_plan_fingerprint = ""
         self._preview_plan_dry_run = None
+        self._preview_source = ""
         self._preview_gate.preview_failed("运行时预览已失效，请重新生成并确认")
         self._update_info_label()
         self.statusBar().showMessage("运行时预览已失效，请重新生成并确认")
@@ -2278,10 +2300,35 @@ class MainWindow(QMainWindow):
         snapshot: PreviewSnapshotMeta,
         speed_mm_s: float,
         dry_run: bool,
+        preview_source: str,
         trajectory_points: list,
     ) -> str:
         mode_text = "空跑" if dry_run else "生产"
         generated_at = html.escape(snapshot.generated_at or "-")
+        normalized_source = str(preview_source or "").strip().lower()
+        source_text = html.escape(self._preview_source_text(normalized_source))
+        source_warning = html.escape(self._preview_source_warning(normalized_source))
+        if normalized_source == "mock_synthetic":
+            source_banner = (
+                "<div style='margin-bottom:14px;padding:12px 14px;border:1px solid #7f1d1d;"
+                "background:#3a1717;color:#ffd5d5;'>"
+                "<strong>当前为 Mock 模拟轨迹。</strong> 该结果仅用于联调，不代表真实 DXF 几何或真实点胶轨迹。"
+                "</div>"
+            )
+        elif normalized_source == "runtime_snapshot":
+            source_banner = (
+                "<div style='margin-bottom:14px;padding:12px 14px;border:1px solid #14532d;"
+                "background:#10261a;color:#c7f9d3;'>"
+                "<strong>当前为运行时权威快照。</strong> 预览点集直接来自 runtime `trajectory_polyline`。"
+                "</div>"
+            )
+        else:
+            source_banner = (
+                "<div style='margin-bottom:14px;padding:12px 14px;border:1px solid #854d0e;"
+                "background:#2d2110;color:#fde68a;'>"
+                "<strong>预览来源未知。</strong> 请勿将当前画面作为真实轨迹验收依据。"
+                "</div>"
+            )
         min_x = min(point[0] for point in trajectory_points)
         max_x = max(point[0] for point in trajectory_points)
         min_y = min(point[1] for point in trajectory_points)
@@ -2313,6 +2360,7 @@ class MainWindow(QMainWindow):
         point_cloud_svg = "".join(points_markup)
         return (
             "<html><body style='background:#1e1e1e;color:#e8e8e8;font-family:Segoe UI;padding:18px;'>"
+            f"{source_banner}"
             "<p style='color:#b8b8b8;'>"
             "轨迹图按快照点集以点状方式渲染，模拟真实胶点分布；执行前确认与哈希校验仍生效。"
             "</p>"
@@ -2320,6 +2368,8 @@ class MainWindow(QMainWindow):
             f"{point_cloud_svg}"
             "</svg>"
             "<table style='border-collapse:collapse;'>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>来源</td><td>{source_text}</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>来源说明</td><td>{source_warning}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>模式</td><td>{mode_text}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>速度</td><td>{speed_mm_s:.3f} mm/s</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>段数</td><td>{snapshot.segment_count}</td></tr>"
@@ -2357,6 +2407,7 @@ class MainWindow(QMainWindow):
 
         if not ok:
             failure_message = error or "运行时快照生成失败"
+            self._preview_source = ""
             self._preview_gate.preview_failed(failure_message)
             self._update_info_label()
             self.statusBar().showMessage(self._preview_block_message(StartBlockReason.PREVIEW_FAILED))
@@ -2384,10 +2435,12 @@ class MainWindow(QMainWindow):
             return
 
         backend_preview_state = str(payload.get("preview_state", "snapshot_ready")).strip().lower()
+        preview_source = str(payload.get("preview_source", "")).strip().lower() or "unknown"
         preview_dry_run = bool(payload.get("dry_run", False))
         self._current_plan_id = str(payload.get("plan_id", snapshot_id)).strip() or snapshot_id
         self._current_plan_fingerprint = snapshot_hash
         self._preview_plan_dry_run = preview_dry_run
+        self._preview_source = preview_source
         self._dxf_segment_count_cache = int(payload.get("segment_count", 0) or 0)
         self._dxf_total_length_val = float(payload.get("total_length_mm", 0.0) or 0.0)
         estimated_time = float(payload.get("estimated_time_s", 0.0) or 0.0)
@@ -2417,6 +2470,7 @@ class MainWindow(QMainWindow):
             snapshot=snapshot,
             speed_mm_s=self._dxf_speed.value(),
             dry_run=preview_dry_run,
+            preview_source=preview_source,
             trajectory_points=trajectory_points,
         )
         self._dxf_view.setHtml(html_content)
@@ -2437,13 +2491,20 @@ class MainWindow(QMainWindow):
                     self.statusBar().showMessage("已从运行时同步预览状态")
             else:
                 if self._preview_gate.state == PreviewGateState.READY_SIGNED:
-                    self.statusBar().showMessage("轨迹预览已更新（运行时已确认）")
+                    if preview_source == "mock_synthetic":
+                        self.statusBar().showMessage("模拟轨迹预览已更新（仅供联调，非真实几何）")
+                    else:
+                        self.statusBar().showMessage("轨迹预览已更新（运行时已确认）")
                 else:
-                    self.statusBar().showMessage("轨迹预览已更新，启动前需确认")
+                    if preview_source == "mock_synthetic":
+                        self.statusBar().showMessage("模拟轨迹预览已更新，非真实几何")
+                    else:
+                        self.statusBar().showMessage("轨迹预览已更新，启动前需确认")
         _UI_LOGGER.info(
-            "preview_ready snapshot_id=%s snapshot_hash=%s sampled_points=%d",
+            "preview_ready snapshot_id=%s snapshot_hash=%s preview_source=%s sampled_points=%d",
             snapshot.snapshot_id,
             snapshot.snapshot_hash,
+            preview_source,
             len(trajectory_points),
         )
 
@@ -2459,6 +2520,7 @@ class MainWindow(QMainWindow):
             self._current_plan_id = ""
             self._current_plan_fingerprint = ""
             self._preview_plan_dry_run = None
+            self._preview_source = ""
             self._current_job_id = ""
             self._dxf_loaded = True
             self._preview_gate.reset_for_loaded_dxf()
@@ -2485,6 +2547,7 @@ class MainWindow(QMainWindow):
             self._current_plan_id = ""
             self._current_plan_fingerprint = ""
             self._preview_plan_dry_run = None
+            self._preview_source = ""
             self._current_job_id = ""
             self._preview_gate.reset_for_loaded_dxf()
             self._update_info_label()

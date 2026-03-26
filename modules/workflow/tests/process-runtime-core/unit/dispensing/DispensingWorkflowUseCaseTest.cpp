@@ -322,6 +322,7 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotKeepsConfirmedStateWhenFin
     ASSERT_TRUE(result.IsSuccess());
     const auto& snapshot = result.Value();
     EXPECT_EQ(snapshot.preview_state, "confirmed");
+    EXPECT_EQ(snapshot.preview_source, "runtime_snapshot");
     EXPECT_EQ(snapshot.confirmed_at, "2026-03-22T00:00:00Z");
     EXPECT_EQ(snapshot.snapshot_hash, "fp-plan-confirmed");
     EXPECT_EQ(snapshot.plan_id, "plan-confirmed");

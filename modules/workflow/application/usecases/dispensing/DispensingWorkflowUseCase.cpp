@@ -1139,6 +1139,7 @@ PreviewSnapshotResponse DispensingWorkflowUseCase::BuildPreviewSnapshotResponse(
     response.snapshot_hash = plan_record.preview_snapshot_hash;
     response.plan_id = plan_record.response.plan_id;
     response.preview_state = PreviewStateToString(plan_record.preview_state);
+    response.preview_source = "runtime_snapshot";
     response.confirmed_at = plan_record.confirmed_at;
     response.segment_count = plan_record.response.segment_count;
     response.point_count = plan_record.response.point_count;

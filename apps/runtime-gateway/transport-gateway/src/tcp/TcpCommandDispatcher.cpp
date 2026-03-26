@@ -2069,6 +2069,7 @@ std::string TcpCommandDispatcher::HandleDxfPlanPrepare(const std::string& id, co
         dxf_cache_.preview_generated_at.clear();
         dxf_cache_.preview_confirmed_at.clear();
         dxf_cache_.preview_state = "prepared";
+        dxf_cache_.preview_source.clear();
         dxf_cache_.preview_speed_mm_s = effective_speed;
         dxf_task_id_.clear();
     }
@@ -2452,6 +2453,7 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
         dxf_cache_.preview_generated_at = snapshot.generated_at;
         dxf_cache_.preview_confirmed_at = snapshot.confirmed_at;
         dxf_cache_.preview_state = snapshot.preview_state;
+        dxf_cache_.preview_source = snapshot.preview_source;
         if (!request_signature.empty()) {
             dxf_cache_.preview_request_signature = request_signature;
         }
@@ -2466,6 +2468,7 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
         {"snapshot_hash", snapshot.snapshot_hash},
         {"plan_id", snapshot.plan_id.empty() ? plan_id : snapshot.plan_id},
         {"preview_state", snapshot.preview_state},
+        {"preview_source", snapshot.preview_source},
         {"confirmed_at", snapshot.confirmed_at},
         {"segment_count", snapshot.segment_count},
         {"point_count", snapshot.point_count},

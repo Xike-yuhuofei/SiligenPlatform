@@ -90,6 +90,7 @@ private:
         std::string preview_generated_at;
         std::string preview_confirmed_at;
         std::string preview_state;
+        std::string preview_source;
         double preview_speed_mm_s = 0.0;
     };
 

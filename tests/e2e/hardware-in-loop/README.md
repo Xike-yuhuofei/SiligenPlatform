@@ -36,6 +36,10 @@ python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun.py
 ```
 
 ```powershell
+python .\tests\e2e\hardware-in-loop\run_real_dxf_preview_snapshot.py
+```
+
+```powershell
 python .\tests\e2e\hardware-in-loop\run_hil_closed_loop.py --report-dir .\tests\reports\hil-controlled-test --duration-seconds 1800
 ```
 
@@ -75,6 +79,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 - 默认报告目录为 `tests/reports/adhoc/real-dxf-machine-dryrun-canonical/<timestamp>/`
 - 运行前会检查急停/门/限位，并在需要时先执行回零
 - 默认参数为 `dispensing=10mm/s`、`dry_run=10mm/s`、`rapid=20mm/s`、`velocity_trace_interval_ms=50`
+
+`run_real_dxf_preview_snapshot.py` 说明：
+
+- 只走 preview-only 主链：`dxf.artifact.create -> dxf.plan.prepare -> dxf.preview.snapshot`
+- 默认用 `--config-mode mock` 生成 mock 硬件配置，但预览数据源必须仍为 runtime `preview_source=runtime_snapshot`
+- 默认 DXF 为 `samples/dxf/rect_diag.dxf`
+- 默认报告目录为 `tests/reports/adhoc/real-dxf-preview-snapshot-canonical/<timestamp>/`
+- 输出 `snapshot.json`、`trajectory_polyline.json`、`real-dxf-preview-snapshot.json`、`real-dxf-preview-snapshot.md`
+- 若返回 `mock_synthetic` 或缺少 `preview_source`，脚本直接失败，禁止把结果当作真实轨迹预览证据
+- `rect_diag` 的当前几何基线固定在 `tests/baselines/preview/rect_diag.preview-snapshot-baseline.json`
+- 自动回归入口为 `python -m pytest tests/e2e/first-layer/test_real_preview_snapshot_geometry.py -q`
 
 `verify_hil_controlled_gate.py` 说明：
 

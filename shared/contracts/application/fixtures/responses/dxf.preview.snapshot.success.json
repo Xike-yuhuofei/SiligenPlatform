@@ -7,6 +7,7 @@
     "snapshot_hash": "8b2649f36dcb4a79",
     "plan_id": "plan-8b2649f36dcb",
     "preview_state": "snapshot_ready",
+    "preview_source": "runtime_snapshot",
     "confirmed_at": "",
     "segment_count": 128,
     "point_count": 384,

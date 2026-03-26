@@ -705,6 +705,7 @@ class MockState:
                         "snapshot_hash": self.dxf.preview_snapshot_hash,
                         "plan_id": self.dxf.current_plan_id,
                         "preview_state": self.dxf.preview_state,
+                        "preview_source": "mock_synthetic",
                         "confirmed_at": self.dxf.preview_confirmed_at,
                         "segment_count": self.dxf.segment_count,
                         "point_count": point_count,

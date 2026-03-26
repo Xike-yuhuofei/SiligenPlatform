@@ -70,6 +70,7 @@ struct PreviewSnapshotResponse {
     std::string snapshot_hash;
     PlanID plan_id;
     std::string preview_state;
+    std::string preview_source;
     std::string confirmed_at;
     std::uint32_t segment_count = 0;
     std::uint32_t point_count = 0;

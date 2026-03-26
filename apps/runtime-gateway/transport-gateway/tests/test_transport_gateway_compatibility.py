@@ -117,6 +117,7 @@ def test_dxf_preview_gate_contract_is_wired():
     assert 'std::string TcpCommandDispatcher::HandleDxfPreviewConfirm' in source
     assert "GetDxfPreviewSnapshot(" in source
     assert "ConfirmDxfPreview(" in source
+    assert '{"preview_source", snapshot.preview_source}' in source
     assert '{"trajectory_polyline", trajectory_polyline}' in source
     assert '{"polyline_point_count", snapshot.polyline_point_count}' in source
     assert '{"polyline_source_point_count", snapshot.polyline_source_point_count}' in source

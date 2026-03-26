@@ -167,7 +167,9 @@ def test_dxf_preview_and_job_contract():
     assert "snapshot_hash" in preview["resultSchema"]["required"]
     assert "plan_id" in preview["resultSchema"]["required"]
     assert "preview_state" in preview["resultSchema"]["required"]
+    assert "preview_source" in preview["resultSchema"]["required"]
     preview_result_properties = preview["resultSchema"]["properties"]
+    assert "preview_source" in preview_result_properties
     assert "trajectory_polyline" in preview_result_properties
     assert "polyline_point_count" in preview_result_properties
     assert "polyline_source_point_count" in preview_result_properties

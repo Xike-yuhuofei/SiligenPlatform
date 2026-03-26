@@ -224,6 +224,29 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertNotIn("btn-recovery-restart", testids)
         self.assertNotIn("btn-recovery-stop", testids)
 
+    def test_render_runtime_preview_html_marks_mock_source_as_non_real_geometry(self) -> None:
+        snapshot = main_window_module.PreviewSnapshotMeta(
+            snapshot_id="snapshot-1",
+            snapshot_hash="hash-1",
+            segment_count=2,
+            point_count=3,
+            total_length_mm=12.0,
+            estimated_time_s=1.5,
+            generated_at="2026-03-26T00:00:00Z",
+        )
+
+        html = self.window._render_runtime_preview_html(
+            snapshot=snapshot,
+            speed_mm_s=12.0,
+            dry_run=False,
+            preview_source="mock_synthetic",
+            trajectory_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 3.0)],
+        )
+
+        self.assertIn("当前为 Mock 模拟轨迹", html)
+        self.assertIn("非真实几何", html)
+        self.assertIn("来源</td><td>Mock模拟</td>", html)
+
 
 if __name__ == "__main__":
     unittest.main()
