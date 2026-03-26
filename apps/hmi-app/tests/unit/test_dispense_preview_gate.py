@@ -84,6 +84,22 @@ class DispensePreviewGateTest(unittest.TestCase):
         self.assertFalse(decision.allowed)
         self.assertEqual(decision.reason, StartBlockReason.HASH_MISMATCH)
 
+    def test_validate_preview_source_blocks_non_authoritative_source(self) -> None:
+        gate = DispensePreviewGate()
+
+        decision = gate.validate_preview_source("mock_synthetic")
+
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, StartBlockReason.INVALID_SOURCE)
+
+    def test_validate_online_ready_blocks_not_ready_context(self) -> None:
+        gate = DispensePreviewGate()
+
+        decision = gate.validate_online_ready(False)
+
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, StartBlockReason.NOT_READY)
+
     def test_preview_failed_exposes_failure_reason(self) -> None:
         gate = DispensePreviewGate()
         gate.preview_failed("timeout")

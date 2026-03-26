@@ -267,11 +267,12 @@ class PreviewSnapshotWorker(QThread):
         self._dry_run_speed_mm_s = dry_run_speed_mm_s
 
     def run(self):
-        client = TcpClient(host=self._host, port=self._port)
+        client = None
         ok = False
         payload = {}
         error = ""
         try:
+            client = TcpClient(host=self._host, port=self._port)
             if not client.connect():
                 error = "无法连接后端，请检查TCP链路"
             else:
@@ -302,7 +303,8 @@ class PreviewSnapshotWorker(QThread):
         except Exception as exc:
             error = str(exc) or "预览快照生成异常"
         finally:
-            client.disconnect()
+            if client is not None:
+                client.disconnect()
         self.completed.emit(ok, payload if isinstance(payload, dict) else {}, error)
 
 
@@ -2093,6 +2095,8 @@ class MainWindow(QMainWindow):
         return "预览来源未知"
 
     def _preview_block_message(self, reason: StartBlockReason) -> str:
+        if reason == StartBlockReason.NOT_READY:
+            return "当前未达到 online_ready，禁止将预览记为真实在线结果"
         if reason == StartBlockReason.PREVIEW_MISSING:
             return "请先生成轨迹预览"
         if reason == StartBlockReason.PREVIEW_GENERATING:
@@ -2105,6 +2109,10 @@ class MainWindow(QMainWindow):
             return "轨迹参数已变更，需重新生成并确认预览"
         if reason == StartBlockReason.CONFIRM_MISSING:
             return "请先确认轨迹预览"
+        if reason == StartBlockReason.INVALID_SOURCE:
+            if self._preview_source == "mock_synthetic":
+                return "当前预览来源为 mock_synthetic，不能作为真实在线预览通过依据"
+            return "当前预览来源不是 runtime_snapshot，不能作为真实在线预览通过依据"
         if reason == StartBlockReason.HASH_MISMATCH:
             return "预览快照与执行快照不一致，请重新生成并确认"
         return "预检失败"
@@ -2112,6 +2120,10 @@ class MainWindow(QMainWindow):
     def _confirm_preview_gate(self) -> bool:
         snapshot = self._preview_gate.snapshot
         if snapshot is None:
+            return False
+        source_decision = self._preview_gate.validate_preview_source(self._preview_source)
+        if not source_decision.allowed:
+            self._show_preflight_warning(self._preview_block_message(source_decision.reason))
             return False
         summary = (
             f"段数: {snapshot.segment_count}\n"
@@ -2456,7 +2468,8 @@ class MainWindow(QMainWindow):
             generated_at=str(payload.get("generated_at", "")),
         )
         self._preview_gate.preview_ready(snapshot)
-        if backend_preview_state == "confirmed":
+        source_decision = self._preview_gate.validate_preview_source(preview_source)
+        if backend_preview_state == "confirmed" and source_decision.allowed:
             if not self._preview_gate.confirm_current_snapshot():
                 self._preview_gate.preview_failed("运行时状态同步失败：confirmed 快照无效")
                 self._update_info_label()
@@ -2649,6 +2662,10 @@ class MainWindow(QMainWindow):
         if self._preview_refresh_inflight:
             self._show_preflight_warning("轨迹预览仍在生成中，请稍后再启动")
             return False
+        ready_decision = self._preview_gate.validate_online_ready(self._is_online_ready())
+        if not ready_decision.allowed:
+            self._show_preflight_warning(self._preview_block_message(ready_decision.reason))
+            return False
 
         status = self._protocol.get_status()
         if not status.connected:
@@ -2681,6 +2698,12 @@ class MainWindow(QMainWindow):
                 dry_run,
                 preview_dry_run,
             )
+            return False
+
+        source_decision = self._preview_gate.validate_preview_source(self._preview_source)
+        if not source_decision.allowed:
+            self._show_preflight_warning(self._preview_block_message(source_decision.reason))
+            _UI_LOGGER.warning("start_blocked_by_preview_source source=%s", self._preview_source)
             return False
 
         gate_decision = self._preview_gate.decision_for_start()
