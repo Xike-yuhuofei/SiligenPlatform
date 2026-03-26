@@ -56,8 +56,9 @@ class DefaultDxfCandidateTest(unittest.TestCase):
                 (WORKSPACE_ROOT / "uploads" / "dxf").resolve(),
                 (
                     WORKSPACE_ROOT
-                    / "packages"
-                    / "engineering-contracts"
+                    / "shared"
+                    / "contracts"
+                    / "engineering"
                     / "fixtures"
                     / "cases"
                     / "rect_diag"

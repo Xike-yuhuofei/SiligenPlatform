@@ -5,9 +5,15 @@ param(
     [string]$ListenHost = "127.0.0.1",
     [int]$Port = 0,
     [string]$MockCommand = "",
+    [string]$LaunchSpecPath = "",
+    [string]$GatewayExe = "",
+    [string]$GatewayConfig = "",
+    [switch]$UseMockGatewayConfig,
+    [int]$DoorInputIndex = -1,
     [string]$ExpectFailureCode = "",
     [string]$ExpectFailureStage = "",
     [switch]$UseSupervisorInjection,
+    [switch]$ExerciseRuntimeActions,
     [switch]$VerboseMock
 )
 
@@ -27,6 +33,7 @@ if ($hasExpectedSupervisorFailure -and -not $UseSupervisorInjection) {
 }
 
 $projectRoot = Split-Path $PSScriptRoot -Parent
+$workspaceRoot = Split-Path (Split-Path $projectRoot -Parent) -Parent
 $sourceRoot = Join-Path $projectRoot "src"
 $uiQtest = Join-Path $sourceRoot "hmi_client\\tools\\ui_qtest.py"
 $mockServer = Join-Path $sourceRoot "hmi_client\\tools\\mock_server.py"
@@ -160,6 +167,129 @@ function New-TemporaryLaunchSpec {
     return $specPath
 }
 
+function New-TemporaryGatewayConfig {
+    param(
+        [string]$SourcePath,
+        [switch]$EnableMockMode,
+        [int]$DoorInput = -1
+    )
+
+    if ([string]::IsNullOrWhiteSpace($SourcePath)) {
+        $SourcePath = Join-Path $workspaceRoot "config\\machine\\machine_config.ini"
+    }
+
+    $resolvedSource = if ([IO.Path]::IsPathRooted($SourcePath)) {
+        $SourcePath
+    } else {
+        (Join-Path $workspaceRoot $SourcePath)
+    }
+    if (-not (Test-Path $resolvedSource)) {
+        throw "Cannot find gateway config source: $resolvedSource"
+    }
+
+    $content = Get-Content $resolvedSource -Raw
+    $lines = $content -split "(`r`n|`n|`r)"
+    $inHardware = $false
+    $inInterlock = $false
+    $modeReplaced = -not $EnableMockMode
+    $doorReplaced = ($DoorInput -lt 0)
+
+    for ($i = 0; $i -lt $lines.Length; $i++) {
+        $line = $lines[$i]
+        $trimmed = $line.Trim()
+        if ($trimmed.StartsWith("[") -and $trimmed.EndsWith("]")) {
+            $section = $trimmed.ToLowerInvariant()
+            $inHardware = $section -eq "[hardware]"
+            $inInterlock = $section -eq "[interlock]"
+            continue
+        }
+        if ($EnableMockMode -and $inHardware -and $trimmed.ToLowerInvariant().StartsWith("mode=")) {
+            $indentLength = $line.Length - $line.TrimStart().Length
+            $indent = $line.Substring(0, $indentLength)
+            $lines[$i] = "$indent" + "mode=Mock"
+            $modeReplaced = $true
+            continue
+        }
+        if ($DoorInput -ge 0 -and $inInterlock -and $trimmed.ToLowerInvariant().StartsWith("safety_door_input=")) {
+            $indentLength = $line.Length - $line.TrimStart().Length
+            $indent = $line.Substring(0, $indentLength)
+            $lines[$i] = "$indent" + "safety_door_input=$DoorInput"
+            $doorReplaced = $true
+        }
+    }
+
+    if (-not $modeReplaced) {
+        throw "Failed to locate [Hardware] mode entry in gateway config"
+    }
+    if (-not $doorReplaced) {
+        throw "Failed to locate [Interlock] safety_door_input entry in gateway config"
+    }
+
+    $tempPath = Join-Path ([IO.Path]::GetTempPath()) ("siligen-gateway-config-{0}.ini" -f [guid]::NewGuid().ToString("N"))
+    [System.IO.File]::WriteAllText($tempPath, ($lines -join [Environment]::NewLine), [System.Text.UTF8Encoding]::new($false))
+    return $tempPath
+}
+
+function New-TemporaryGatewayLaunchSpec {
+    param(
+        [string]$ExecutablePath,
+        [string]$ConfigPath,
+        [string]$TargetHost,
+        [int]$TargetPort
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ExecutablePath)) {
+        throw "Gateway executable path is required"
+    }
+
+    $resolvedExe = if ([IO.Path]::IsPathRooted($ExecutablePath)) {
+        $ExecutablePath
+    } else {
+        (Join-Path $workspaceRoot $ExecutablePath)
+    }
+    if (-not (Test-Path $resolvedExe)) {
+        throw "Cannot find gateway executable: $resolvedExe"
+    }
+
+    $exeItem = Get-Item $resolvedExe
+    $cwdPath = $exeItem.DirectoryName
+    $pathEntries = @($cwdPath)
+    if ($exeItem.Directory.Parent -and $exeItem.Directory.Parent.Name -ieq "bin") {
+        $libDir = Join-Path $exeItem.Directory.Parent.Parent.FullName ("lib\\" + $exeItem.Directory.Name)
+        if (Test-Path $libDir) {
+            $pathEntries += $libDir
+        }
+    }
+
+    $args = @("--port", "$TargetPort")
+    if (-not [string]::IsNullOrWhiteSpace($ConfigPath)) {
+        $resolvedConfig = if ([IO.Path]::IsPathRooted($ConfigPath)) {
+            $ConfigPath
+        } else {
+            (Join-Path $workspaceRoot $ConfigPath)
+        }
+        if (-not (Test-Path $resolvedConfig)) {
+            throw "Cannot find gateway config: $resolvedConfig"
+        }
+        $args = @("--config", $resolvedConfig, "--port", "$TargetPort")
+    }
+
+    $payload = @{
+        executable  = $exeItem.FullName
+        cwd         = $cwdPath
+        args        = $args
+        pathEntries = $pathEntries
+        env         = @{
+            SILIGEN_TCP_SERVER_HOST = $TargetHost
+            SILIGEN_TCP_SERVER_PORT = "$TargetPort"
+        }
+    }
+    $specPath = Join-Path ([IO.Path]::GetTempPath()) ("siligen-runtime-launch-{0}.json" -f [guid]::NewGuid().ToString("N"))
+    $json = $payload | ConvertTo-Json -Depth 5
+    [System.IO.File]::WriteAllText($specPath, $json, [System.Text.UTF8Encoding]::new($false))
+    return $specPath
+}
+
 function Invoke-UiSmoke {
     param(
         [int]$TargetPort,
@@ -179,6 +309,9 @@ function Invoke-UiSmoke {
     }
     if (-not [string]::IsNullOrWhiteSpace($ExpectFailureStage)) {
         $uiArgs += @("--expect-failure-stage", $ExpectFailureStage)
+    }
+    if ($ExerciseRuntimeActions) {
+        $uiArgs += "--exercise-runtime-actions"
     }
 
     $uiStdoutLog = Join-Path ([IO.Path]::GetTempPath()) ("siligen-online-qtest-{0}-stdout.log" -f [guid]::NewGuid().ToString("N"))
@@ -298,13 +431,40 @@ $mockProcess = $null
 $stdoutLog = $null
 $stderrLog = $null
 $launchSpecPath = $null
+$temporaryGatewayConfigPath = $null
+$ownsLaunchSpecPath = $false
 
 try {
-    if ($effectiveUseSupervisorInjection) {
+    if (-not [string]::IsNullOrWhiteSpace($GatewayExe)) {
+        $resolvedGatewayConfig = $GatewayConfig
+        if ($UseMockGatewayConfig -or $DoorInputIndex -ge 0) {
+            $temporaryGatewayConfigPath = New-TemporaryGatewayConfig `
+                -SourcePath $GatewayConfig `
+                -EnableMockMode:$UseMockGatewayConfig `
+                -DoorInput $DoorInputIndex
+            $resolvedGatewayConfig = $temporaryGatewayConfigPath
+        }
+        $launchSpecPath = New-TemporaryGatewayLaunchSpec `
+            -ExecutablePath $GatewayExe `
+            -ConfigPath $resolvedGatewayConfig `
+            -TargetHost $ListenHost `
+            -TargetPort $actualPort
+        $ownsLaunchSpecPath = $true
+        Write-Host "[online-smoke] runtime gateway mode enabled host=$ListenHost port=$actualPort exe=$GatewayExe"
+        if (-not [string]::IsNullOrWhiteSpace($resolvedGatewayConfig)) {
+            Write-Host "[online-smoke] runtime gateway config=$resolvedGatewayConfig"
+        }
+        $uiResult = Invoke-UiSmoke -TargetPort $actualPort -LaunchSpecPath $launchSpecPath
+    } elseif (-not [string]::IsNullOrWhiteSpace($LaunchSpecPath)) {
+        $launchSpecPath = $LaunchSpecPath
+        Write-Host "[online-smoke] explicit launch spec mode enabled host=$ListenHost port=$actualPort spec=$launchSpecPath"
+        $uiResult = Invoke-UiSmoke -TargetPort $actualPort -LaunchSpecPath $launchSpecPath
+    } elseif ($effectiveUseSupervisorInjection) {
         $injectSource = if ([string]::IsNullOrWhiteSpace($MockCommand)) { $hangingServer } else { $MockCommand }
         $injectEntry = Resolve-MockEntry -Entry $injectSource
         Write-Host "[online-smoke] supervisor injection mode enabled host=$ListenHost port=$actualPort entry=$injectEntry"
         $launchSpecPath = New-TemporaryLaunchSpec -PythonPath $PythonExe -EntryPath $injectEntry -TargetHost $ListenHost -TargetPort $actualPort
+        $ownsLaunchSpecPath = $true
         $uiResult = Invoke-UiSmoke -TargetPort $actualPort -LaunchSpecPath $launchSpecPath
     } else {
         $mockEntry = Resolve-MockEntry -Entry $MockCommand
@@ -370,7 +530,10 @@ try {
     if ($null -ne $stdoutLog -and $null -ne $stderrLog) {
         Remove-Item $stdoutLog, $stderrLog -ErrorAction SilentlyContinue
     }
-    if (-not [string]::IsNullOrWhiteSpace($launchSpecPath)) {
+    if ($ownsLaunchSpecPath -and -not [string]::IsNullOrWhiteSpace($launchSpecPath)) {
         Remove-Item $launchSpecPath -ErrorAction SilentlyContinue
+    }
+    if (-not [string]::IsNullOrWhiteSpace($temporaryGatewayConfigPath)) {
+        Remove-Item $temporaryGatewayConfigPath -ErrorAction SilentlyContinue
     }
 }

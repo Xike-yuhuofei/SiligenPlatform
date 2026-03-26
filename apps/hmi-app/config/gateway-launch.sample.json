@@ -1,5 +1,5 @@
 {
-  "executable": "D:\\Deploy\\Siligen\\siligen_tcp_server.exe",
+  "executable": "D:\\Deploy\\Siligen\\siligen_runtime_gateway.exe",
   "cwd": "D:\\Deploy\\Siligen",
   "args": [],
   "pathEntries": [

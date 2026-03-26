@@ -14,7 +14,7 @@ def _resolve_workspace_root(current_file: Path) -> Path | None:
         return _normalize_candidate(Path(workspace_override))
 
     for candidate in current_file.resolve().parents:
-        if (candidate / "apps").exists() and (candidate / "packages").exists():
+        if (candidate / "WORKSPACE.md").exists() and (candidate / "cmake" / "workspace-layout.env").exists():
             return candidate
     return None
 
@@ -32,7 +32,7 @@ def build_default_dxf_candidates(current_file: Path) -> list[Path]:
     if workspace_root is not None:
         for candidate in (
             workspace_root / "uploads" / "dxf",
-            workspace_root / "packages" / "engineering-contracts" / "fixtures" / "cases" / "rect_diag",
+            workspace_root / "shared" / "contracts" / "engineering" / "fixtures" / "cases" / "rect_diag",
         ):
             normalized = _normalize_candidate(candidate)
             if normalized in seen:

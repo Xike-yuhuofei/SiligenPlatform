@@ -341,14 +341,56 @@ class MockState:
                         active_job_state = "running"
                     else:
                         active_job_state = "completed"
-                machine_state = "Running" if self.dxf.running else ("Paused" if self.dxf.paused else "Idle")
-                machine_state_reason = "job_running" if self.dxf.running else ("job_paused" if self.dxf.paused else "idle")
+                if not self.hardware_connected:
+                    machine_state = "Disconnected"
+                    machine_state_reason = "hardware_disconnected"
+                elif self.io.estop:
+                    machine_state = "Estop"
+                    machine_state_reason = "interlock_estop"
+                elif self.io.door:
+                    machine_state = "Fault"
+                    machine_state_reason = "interlock_door_open"
+                else:
+                    machine_state = "Running" if self.dxf.running else ("Paused" if self.dxf.paused else "Idle")
+                    machine_state_reason = (
+                        "job_running" if self.dxf.running else ("job_paused" if self.dxf.paused else "idle")
+                    )
+                effective_interlocks = {
+                    "estop_active": self.io.estop,
+                    "estop_known": True,
+                    "door_open_active": self.io.door,
+                    "door_open_known": True,
+                    "home_boundary_x_active": self.io.limit_x_neg,
+                    "home_boundary_y_active": self.io.limit_y_neg,
+                    "positive_escape_only_axes": [
+                        axis
+                        for axis, active in (("X", self.io.limit_x_neg), ("Y", self.io.limit_y_neg))
+                        if active
+                    ],
+                    "sources": {
+                        "estop": "mock_io",
+                        "door_open": "mock_io",
+                        "home_boundary_x": "mock_io_home",
+                        "home_boundary_y": "mock_io_home",
+                    },
+                }
+                supervision = {
+                    "current_state": machine_state,
+                    "requested_state": machine_state,
+                    "state_change_in_process": False,
+                    "state_reason": machine_state_reason,
+                    "failure_code": machine_state_reason if machine_state in ("Fault", "Estop", "Degraded") else "",
+                    "failure_stage": "runtime_status" if machine_state in ("Fault", "Estop", "Degraded") else "",
+                    "recoverable": True,
+                    "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                }
                 return {
                     "result": {
                         "connected": self.hardware_connected,
                         "connection_state": "connected" if self.hardware_connected else "disconnected",
                         "machine_state": machine_state,
                         "machine_state_reason": machine_state_reason,
+                        "supervision": supervision,
                         "interlock_latched": bool(self.io.estop or self.io.door),
                         "active_job_id": self.dxf.current_job_id,
                         "active_job_state": active_job_state,
@@ -362,6 +404,7 @@ class MockState:
                             }
                             for name, axis in self.axes.items()
                         },
+                        "effective_interlocks": effective_interlocks,
                         "io": {
                             "limit_x_pos": self.io.limit_x_pos,
                             "limit_x_neg": self.io.limit_x_neg,
@@ -383,16 +426,40 @@ class MockState:
                     self.io.estop = bool(params.get("estop"))
                 if "door" in params:
                     self.io.door = bool(params.get("door"))
+                if "limit_x_pos" in params:
+                    self.io.limit_x_pos = bool(params.get("limit_x_pos"))
+                if "limit_x_neg" in params:
+                    self.io.limit_x_neg = bool(params.get("limit_x_neg"))
+                if "limit_y_pos" in params:
+                    self.io.limit_y_pos = bool(params.get("limit_y_pos"))
+                if "limit_y_neg" in params:
+                    self.io.limit_y_neg = bool(params.get("limit_y_neg"))
                 if self.io.estop:
                     self.dxf.running = False
                     self.dxf.paused = False
+                    for axis in self.axes.values():
+                        axis.velocity = 0.0
+                    self.dispenser_valve_open = False
                 return {
                     "result": {
                         "estop": self.io.estop,
                         "door": self.io.door,
+                        "limit_x_pos": self.io.limit_x_pos,
+                        "limit_x_neg": self.io.limit_x_neg,
+                        "limit_y_pos": self.io.limit_y_pos,
+                        "limit_y_neg": self.io.limit_y_neg,
                     }
                 }
+            if method == "disconnect":
+                self.hardware_connected = False
+                for axis in self.axes.values():
+                    axis.enabled = False
+                    axis.velocity = 0.0
+                return {"result": {"disconnected": True}}
             if method == "home":
+                interlock_error = self._interlock_error()
+                if interlock_error:
+                    return interlock_error
                 axes = params.get("axes")
                 targets = axes if axes else list(self.axes.keys())
                 for name in targets:
@@ -402,22 +469,97 @@ class MockState:
                         self.axes[name].velocity = 0.0
                 return {"result": {"completed": True, "message": "Homed"}}
             if method == "home.go":
+                interlock_error = self._interlock_error()
+                if interlock_error:
+                    return interlock_error
                 axes = params.get("axes")
                 targets = axes if axes else list(self.axes.keys())
+                for name in targets:
+                    if name in self.axes and not self.axes[name].homed:
+                        return {"error": {"code": -32013, "message": "axis not homed, run homing first"}}
                 for name in targets:
                     if name in self.axes:
                         self.axes[name].position = 0.0
                         self.axes[name].velocity = 0.0
                 return {"result": {"moving": True, "message": "Go home"}}
+            if method == "home.auto":
+                interlock_error = self._interlock_error()
+                if interlock_error:
+                    return interlock_error
+                axes = params.get("axes")
+                targets = axes if axes else list(self.axes.keys())
+                force = bool(params.get("force", False))
+                axis_results = []
+                any_executed = False
+                for name in targets:
+                    axis = self.axes.get(name)
+                    if axis is None:
+                        continue
+                    planned_action = "noop"
+                    supervisor_state = "homed_at_zero"
+                    success = True
+                    executed = False
+                    reason_code = "already_at_zero"
+                    message = "Already homed at zero"
+                    if force or not axis.homed:
+                        planned_action = "home"
+                        supervisor_state = "not_homed"
+                        executed = True
+                        success = True
+                        axis.homed = True
+                        axis.position = 0.0
+                        axis.velocity = 0.0
+                        reason_code = "not_homed" if not force else "force_rehome"
+                        message = "Homing completed" if not force else "Rehomed"
+                    elif not math.isclose(axis.position, 0.0, abs_tol=1e-9):
+                        planned_action = "go_home"
+                        supervisor_state = "homed_away_from_zero"
+                        executed = True
+                        success = True
+                        axis.position = 0.0
+                        axis.velocity = 0.0
+                        reason_code = "homed_away_from_zero"
+                        message = "Moved to zero"
+                    any_executed = any_executed or executed
+                    axis_results.append(
+                        {
+                            "axis": name,
+                            "supervisor_state": supervisor_state,
+                            "planned_action": planned_action,
+                            "executed": executed,
+                            "success": success,
+                            "reason_code": reason_code,
+                            "message": message,
+                        }
+                    )
+                return {
+                    "result": {
+                        "accepted": True,
+                        "summary_state": "completed" if any_executed else "noop",
+                        "message": "Axes ready at zero" if any_executed else "Axes already homed at zero",
+                        "axis_results": axis_results,
+                        "total_time_ms": 0,
+                    }
+                }
             if method == "jog":
+                interlock_error = self._interlock_error()
+                if interlock_error:
+                    return interlock_error
                 axis = params.get("axis")
                 direction = params.get("direction", 0)
                 speed = float(params.get("speed", 10.0))
                 if axis in self.axes:
+                    if not self.axes[axis].homed:
+                        return {"error": {"code": -32013, "message": "axis not homed, run homing first"}}
                     self.axes[axis].position += direction * 0.1
                     self.axes[axis].velocity = speed
-                return {"result": {"ok": True}}
+                return {"result": {"jogging": True}}
             if method == "move":
+                interlock_error = self._interlock_error()
+                if interlock_error:
+                    return interlock_error
+                if not self.axes["X"].homed or not self.axes["Y"].homed:
+                    return {"error": {"code": -32013, "message": "axis not homed, run homing first"}}
                 x = float(params.get("x", 0.0))
                 y = float(params.get("y", 0.0))
                 speed = float(params.get("speed", 10.0))
@@ -425,45 +567,59 @@ class MockState:
                 self.axes["Y"].position = y
                 self.axes["X"].velocity = speed
                 self.axes["Y"].velocity = speed
-                return {"result": {"ok": True}}
+                return {"result": {"moving": True}}
             if method == "stop":
                 for axis in self.axes.values():
                     axis.velocity = 0.0
                 self.dxf.running = False
-                return {"result": {"ok": True}}
+                return {"result": {"stopped": True}}
             if method == "estop":
                 self.io.estop = True
                 self.dxf.running = False
+                for axis in self.axes.values():
+                    axis.velocity = 0.0
+                self.dispenser_valve_open = False
                 self._add_alarm("CRIT", "急停触发")
                 return {"result": {"motion_stopped": True, "message": "E-Stop"}}
+            if method == "estop.reset":
+                if not self.io.estop:
+                    return {"error": {"code": -32014, "message": "emergency stop not active"}}
+                self.io.estop = False
+                return {"result": {"reset": True, "message": "E-Stop reset"}}
             if method == "dispenser.start":
+                interlock_error = self._interlock_error()
+                if interlock_error:
+                    return interlock_error
                 count = int(params.get("count", 1))
                 interval_ms = int(params.get("interval_ms", 1000))
                 duration_ms = int(params.get("duration_ms", 100))
                 self.dispenser_valve_open = True
                 total_ms = max(0, (count - 1) * interval_ms + duration_ms)
                 self._start_dispenser_cycle(total_ms)
-                return {"result": {"ok": True}}
+                return {"result": {"dispensing": True}}
             if method == "dispenser.stop":
                 self.dispenser_valve_open = False
-                return {"result": {"ok": True}}
+                return {"result": {"dispensing": False}}
             if method == "dispenser.pause":
                 self.dispenser_valve_open = False
-                return {"result": {"ok": True}}
+                return {"result": {"paused": True}}
             if method == "dispenser.resume":
                 self.dispenser_valve_open = True
-                return {"result": {"ok": True}}
+                return {"result": {"resumed": True}}
             if method == "purge":
                 timeout_ms = int(params.get("timeout_ms", 5000))
                 self.dispenser_valve_open = True
                 self._start_dispenser_cycle(timeout_ms)
-                return {"result": {"ok": True}}
+                return {"result": {"purged": True, "timeout_ms": timeout_ms}}
             if method == "supply.open":
+                interlock_error = self._interlock_error()
+                if interlock_error:
+                    return interlock_error
                 self.supply_valve_open = True
-                return {"result": {"ok": True}}
+                return {"result": {"supply_open": True}}
             if method == "supply.close":
                 self.supply_valve_open = False
-                return {"result": {"ok": True}}
+                return {"result": {"supply_open": False}}
             if method == "dxf.load":
                 self.dxf.loaded = True
                 self.dxf.artifact_id = f"artifact-{int(time.time() * 1000)}"
@@ -618,26 +774,6 @@ class MockState:
                         "generated_at": generated_at,
                     }
                 }
-            if method == "dxf.execute":
-                if not self.dxf.loaded:
-                    return {"error": {"code": -32000, "message": "DXF not loaded"}}
-                interlock_error = self._interlock_error()
-                if interlock_error:
-                    return interlock_error
-                snapshot_hash = str(params.get("snapshot_hash", "")).strip()
-                if not snapshot_hash:
-                    return {"error": {"code": -32005, "message": "Missing snapshot_hash"}}
-                signature = _build_preview_signature(self.dxf.filepath, params)
-                if signature != self.dxf.preview_request_signature:
-                    return {"error": {"code": -32007, "message": "Preview request signature mismatch"}}
-                if snapshot_hash != self.dxf.preview_snapshot_hash:
-                    return {"error": {"code": -32006, "message": "Preview snapshot hash mismatch"}}
-                self.dxf.running = True
-                self.dxf.paused = False
-                self.dxf.progress = 0.0
-                self.dxf.current_segment = 0
-                self._start_dxf_progress()
-                return {"result": {"ok": True}}
             if method == "dxf.job.start":
                 interlock_error = self._interlock_error()
                 if interlock_error:
@@ -720,43 +856,11 @@ class MockState:
                 self.dxf.target_count = 0
                 self.dxf.job_dry_run = False
                 return {"result": {"stopped": True, "job_id": job_id, "transition_state": "stopping"}}
-            if method == "dxf.pause":
-                if not self.dxf.running:
-                    return {"error": {"code": -32001, "message": "DXF not running"}}
-                self.dxf.paused = True
-                return {"result": {"paused": True, "task_id": "mock-dxf-task"}}
-            if method == "dxf.resume":
-                if not self.dxf.running:
-                    return {"error": {"code": -32002, "message": "DXF not paused"}}
-                self.dxf.paused = False
-                self._start_dxf_progress()
-                return {"result": {"resumed": True, "task_id": "mock-dxf-task"}}
-            if method == "dxf.stop":
-                self.dxf.running = False
-                self.dxf.paused = False
-                self.dxf.progress = 0.0
-                self.dxf.current_segment = 0
-                return {"result": {"stopped": True, "transition_state": "stopping"}}
             if method == "dxf.info":
                 return {
                     "result": {
                         "total_length": self.dxf.total_length,
                         "bounds": self.dxf.bounds,
-                    }
-                }
-            if method == "dxf.progress":
-                state = "paused" if self.dxf.paused else ("running" if self.dxf.running else "idle")
-                return {
-                    "result": {
-                        "running": self.dxf.running,
-                        "progress": self.dxf.progress,
-                        "current_segment": self.dxf.current_segment,
-                        "total_segments": self.dxf.segment_count,
-                        "state": state,
-                        "error_message": "",
-                        "job_id": self.dxf.current_job_id,
-                        "completed_count": self.dxf.completed_count,
-                        "target_count": self.dxf.target_count,
                     }
                 }
             if method == "alarms.list":

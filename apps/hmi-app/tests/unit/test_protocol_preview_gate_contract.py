@@ -29,7 +29,37 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
                 {
                     "result": {
                         "connected": True,
+                        "connection_state": "connected",
                         "machine_state": "Idle",
+                        "machine_state_reason": "idle",
+                        "supervision": {
+                            "current_state": "Idle",
+                            "requested_state": "Fault",
+                            "state_change_in_process": True,
+                            "state_reason": "idle",
+                            "failure_code": "",
+                            "failure_stage": "",
+                            "recoverable": True,
+                            "updated_at": "2026-03-26T00:00:00Z",
+                        },
+                        "effective_interlocks": {
+                            "estop_active": True,
+                            "estop_known": True,
+                            "door_open_active": True,
+                            "door_open_known": True,
+                            "home_boundary_x_active": True,
+                            "home_boundary_y_active": False,
+                            "positive_escape_only_axes": ["X"],
+                            "sources": {
+                                "estop": "system_interlock",
+                                "door_open": "dispensing_interlock",
+                                "home_boundary_x": "motion_home_signal",
+                                "home_boundary_y": "none",
+                            },
+                        },
+                        "interlock_latched": True,
+                        "active_job_id": "",
+                        "active_job_state": "",
                         "axes": {},
                         "io": {"estop": True, "estop_known": True, "door": True, "door_known": True},
                         "dispenser": {"valve_open": False, "supply_open": False},
@@ -46,6 +76,112 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertTrue(status.io.door)
         self.assertTrue(status.io.estop_known)
         self.assertTrue(status.io.door_known)
+        self.assertTrue(status.effective_interlocks.estop_active)
+        self.assertTrue(status.effective_interlocks.door_open_active)
+        self.assertTrue(status.home_boundary_active("X"))
+        self.assertEqual(status.effective_interlocks.positive_escape_only_axes, ["X"])
+        self.assertEqual(status.supervision.requested_state, "Fault")
+        self.assertTrue(status.supervision.state_change_in_process)
+        self.assertTrue(status.gate_estop_active())
+        self.assertTrue(status.gate_door_active())
+
+    def test_get_status_preserves_degraded_connection_state(self) -> None:
+        client = _FakeClient(
+            [
+                {
+                    "result": {
+                        "connected": False,
+                        "connection_state": "degraded",
+                        "machine_state": "Degraded",
+                        "machine_state_reason": "heartbeat_degraded",
+                        "axes": {},
+                        "io": {},
+                        "dispenser": {"valve_open": False, "supply_open": False},
+                    }
+                }
+            ]
+        )
+        protocol = CommandProtocol(client)
+
+        status = protocol.get_status()
+
+        self.assertFalse(status.connected)
+        self.assertEqual(status.connection_state, "degraded")
+        self.assertEqual(status.machine_state_reason, "heartbeat_degraded")
+
+    def test_home_prefers_axis_level_error_messages(self) -> None:
+        client = _FakeClient(
+            [
+                {
+                    "result": {
+                        "completed": False,
+                        "message": "Homing completed with errors",
+                        "error_messages": ["Hardware not connected", "Axis Y timeout"],
+                    }
+                }
+            ]
+        )
+        protocol = CommandProtocol(client)
+
+        ok, message = protocol.home()
+
+        self.assertFalse(ok)
+        self.assertEqual(message, "Hardware not connected; Axis Y timeout")
+
+    def test_home_prefers_axis_results_over_legacy_error_messages(self) -> None:
+        client = _FakeClient(
+            [
+                {
+                    "result": {
+                        "completed": False,
+                        "message": "Homing completed with errors",
+                        "error_messages": ["Homing failed", "Homing failed"],
+                        "axis_results": [
+                            {"axis": "X", "success": False, "message": "HOME switch stuck active"},
+                            {"axis": "Y", "success": False, "message": "Timeout waiting for settle"},
+                        ],
+                    }
+                }
+            ]
+        )
+        protocol = CommandProtocol(client)
+
+        ok, message = protocol.home()
+
+        self.assertFalse(ok)
+        self.assertEqual(message, "X: HOME switch stuck active; Y: Timeout waiting for settle")
+
+    def test_home_auto_reports_axis_level_failure_messages(self) -> None:
+        client = _FakeClient(
+            [
+                {
+                    "result": {
+                        "accepted": True,
+                        "summary_state": "failed",
+                        "message": "Axes ready at zero",
+                        "axis_results": [
+                            {
+                                "axis": "X",
+                                "supervisor_state": "not_homed",
+                                "planned_action": "home",
+                                "executed": True,
+                                "success": False,
+                                "reason_code": "home_failed",
+                                "message": "Timeout waiting for settle",
+                            }
+                        ],
+                        "total_time_ms": 123,
+                    }
+                }
+            ]
+        )
+        protocol = CommandProtocol(client)
+
+        ok, message = protocol.home_auto(["X"])
+
+        self.assertFalse(ok)
+        self.assertEqual(message, "X: Timeout waiting for settle")
+        self.assertEqual(client.calls[0][0], "home.auto")
 
     def test_preview_snapshot_success_contract(self) -> None:
         client = _FakeClient(
@@ -125,20 +261,28 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertEqual(client.calls[0][1]["plan_id"], "plan-1")
         self.assertEqual(client.calls[0][1]["snapshot_hash"], "h1")
 
-    def test_dxf_execute_passes_snapshot_hash(self) -> None:
-        client = _FakeClient([{"result": {"ok": True}}])
+    def test_estop_reset_contract(self) -> None:
+        client = _FakeClient([{"result": {"reset": True, "message": "Emergency stop reset"}}])
         protocol = CommandProtocol(client)
 
-        started = protocol.dxf_execute(
-            20.0,
-            dry_run=False,
-            dry_run_speed_mm_s=0.0,
-            snapshot_hash="hash-abc",
-        )
+        ok, message = protocol.estop_reset()
 
-        self.assertTrue(started)
-        self.assertEqual(client.calls[0][0], "dxf.execute")
-        self.assertEqual(client.calls[0][1]["snapshot_hash"], "hash-abc")
+        self.assertTrue(ok)
+        self.assertEqual(message, "Emergency stop reset")
+        self.assertEqual(client.calls[0][0], "estop.reset")
+
+    def test_mock_io_set_contract(self) -> None:
+        client = _FakeClient([{"result": {"estop": False, "door": True, "limit_x_neg": True, "limit_y_neg": False}}])
+        protocol = CommandProtocol(client)
+
+        ok, payload, error = protocol.mock_io_set(door=True, limit_x_neg=True)
+
+        self.assertTrue(ok)
+        self.assertEqual(error, "")
+        self.assertTrue(payload["door"])
+        self.assertTrue(payload["limit_x_neg"])
+        self.assertEqual(client.calls[0][0], "mock.io.set")
+        self.assertEqual(client.calls[0][1], {"door": True, "limit_x_neg": True})
 
     def test_dxf_create_artifact_encodes_file_and_calls_new_contract(self) -> None:
         client = _FakeClient([{"result": {"artifact_id": "artifact-1"}}])

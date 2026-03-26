@@ -19,7 +19,7 @@ from hmi_client.features.sim_observer.ui.sim_observer_workspace import SimObserv
 
 
 REPO_ROOT = PROJECT_ROOT.parents[1]
-REPLAY_ROOT = REPO_ROOT / "examples" / "replay-data"
+REPLAY_ROOT = REPO_ROOT / "samples" / "replay-data"
 SAMPLE_TRAJECTORY = REPLAY_ROOT / "sample_trajectory.scheme_c.recording.json"
 RECT_DIAG = REPLAY_ROOT / "rect_diag.scheme_c.recording.json"
 

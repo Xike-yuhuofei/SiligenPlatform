@@ -73,14 +73,9 @@ def main(host: str = "127.0.0.1", port: int = 9527) -> int:
     print("dxf_start_job:", job_ok, job_payload if job_ok else job_error)
     if not job_ok:
         return 1
-    print(
-        "dxf_execute:",
-        proto.dxf_execute(10.0, dry_run=True, dry_run_speed_mm_s=10.0, snapshot_hash=snapshot_hash),
-    )
 
     time.sleep(0.5)
     print("dxf_job_status:", proto.dxf_get_job_status(job_payload.get("job_id", "") if job_ok else ""))
-    print("dxf_progress:", proto.dxf_get_progress())
     print("alarms:", proto.get_alarms())
     print("clear_alarms:", proto.clear_alarms())
 

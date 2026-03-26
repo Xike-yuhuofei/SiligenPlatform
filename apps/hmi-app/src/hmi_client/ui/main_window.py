@@ -46,10 +46,6 @@ from client import (
 )
 from client.auth import AuthManager
 try:
-    from hmi_client.features.sim_observer.ui import SimObserverWorkspace
-except ImportError:
-    from features.sim_observer.ui import SimObserverWorkspace
-try:
     from hmi_client.features.dispense_preview_gate import (
         DispensePreviewGate,
         PreviewGateState,
@@ -424,12 +420,10 @@ class MainWindow(QMainWindow):
         self._setup_tab = self._create_setup_tab()
         self._recipe_tab = self._create_recipe_tab()
         self._alarm_panel = self._create_alarm_panel()
-        self._sim_observer_tab = self._create_sim_observer_tab()
         tabs.addTab(self._production_tab, "生产")
         tabs.addTab(self._setup_tab, "设置")
         tabs.addTab(self._recipe_tab, "配置")
         tabs.addTab(self._alarm_panel, "报警")
-        tabs.addTab(self._sim_observer_tab, "仿真观察")
         content_layout.addWidget(tabs)
 
         main_layout.addLayout(content_layout)
@@ -874,49 +868,6 @@ class MainWindow(QMainWindow):
         self._hw_connect_btn.setEnabled(False)
         layout.addWidget(self._hw_connect_btn)
 
-        recovery_group = QGroupBox("会话恢复")
-        recovery_group.setProperty("data-testid", "panel-session-recovery")
-        recovery_layout = QGridLayout(recovery_group)
-        recovery_layout.setSpacing(6)
-
-        self._retry_stage_btn = QPushButton("重试阶段")
-        self._retry_stage_btn.setProperty("data-testid", "btn-recovery-retry")
-        self._retry_stage_btn.clicked.connect(self._on_recovery_retry_stage)
-        recovery_layout.addWidget(self._retry_stage_btn, 0, 0)
-
-        self._restart_session_btn = QPushButton("重启会话")
-        self._restart_session_btn.setProperty("data-testid", "btn-recovery-restart")
-        self._restart_session_btn.clicked.connect(self._on_recovery_restart_session)
-        recovery_layout.addWidget(self._restart_session_btn, 0, 1)
-
-        self._stop_session_btn = QPushButton("停止会话")
-        self._stop_session_btn.setProperty("data-testid", "btn-recovery-stop")
-        self._stop_session_btn.clicked.connect(self._on_recovery_stop_session)
-        recovery_layout.addWidget(self._stop_session_btn, 1, 0, 1, 2)
-
-        layout.addWidget(recovery_group)
-
-        # Home buttons (X/Y only)
-        home_layout = QGridLayout()
-        self._home_all_btn = QPushButton("全部回零")
-        self._home_all_btn.setProperty("data-testid", "btn-home-all")
-        self._home_all_btn.setProperty("role", "primary")
-        self._home_all_btn.setCursor(Qt.PointingHandCursor)
-        self._home_all_btn.clicked.connect(lambda: self._on_home(None))
-        home_layout.addWidget(self._home_all_btn, 0, 0, 1, 2)
-
-        self._home_axis_buttons = []
-        for i, axis in enumerate(["X", "Y"]):
-            btn = QPushButton(f"{axis}轴回零")
-            btn.setProperty("data-testid", f"btn-home-{axis}")
-            btn.setCursor(Qt.PointingHandCursor)
-            btn.clicked.connect(lambda checked, a=axis: self._on_home([a]))
-            home_layout.addWidget(btn, 1, i)
-            self._home_axis_buttons.append(btn)
-        layout.addLayout(home_layout)
-
-        layout.addSpacing(10)
-
         self._stop_btn = QPushButton("停止")
         self._stop_btn.setProperty("data-testid", "btn-stop")
         self._stop_btn.setProperty("role", "warning")
@@ -932,6 +883,14 @@ class MainWindow(QMainWindow):
         self._estop_btn.setMinimumHeight(50)
         self._estop_btn.clicked.connect(self._on_estop)
         layout.addWidget(self._estop_btn)
+
+        self._estop_reset_btn = QPushButton("急停复位")
+        self._estop_reset_btn.setProperty("data-testid", "btn-estop-reset")
+        self._estop_reset_btn.setProperty("role", "warning")
+        self._estop_reset_btn.setCursor(Qt.PointingHandCursor)
+        self._estop_reset_btn.setMinimumHeight(40)
+        self._estop_reset_btn.clicked.connect(self._on_estop_reset)
+        layout.addWidget(self._estop_reset_btn)
 
         return group
 
@@ -1329,17 +1288,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(list_group)
         layout.addStretch()
 
-        return widget
-
-    def _create_sim_observer_tab(self) -> QWidget:
-        widget = QWidget()
-        widget.setProperty("data-testid", "tab-sim-observer")
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-
-        self._sim_observer_workspace = SimObserverWorkspace(widget)
-        layout.addWidget(self._sim_observer_workspace)
         return widget
 
     def _current_effective_mode(self) -> str:
@@ -1775,72 +1723,40 @@ class MainWindow(QMainWindow):
             status = self._protocol.get_status()
             self._last_status = status
             self._last_status_ts = time.monotonic()
+        if status and status.connection_state == "degraded":
+            self.statusBar().showMessage("硬件连接已降级，无法回零，请重新连接")
+            return False
         if not status or not status.connected:
             self.statusBar().showMessage("后端状态未就绪，请稍后再试")
             return False
-        if not status.io.estop_known or not status.io.door_known:
+        if not status.gate_estop_known() or not status.gate_door_known():
             self.statusBar().showMessage("互锁信号状态未知，无法回零")
             return False
-        if status.io.estop:
+        if status.gate_estop_active():
             self.statusBar().showMessage("急停未解除，无法回零")
             return False
-        if status.io.door:
+        if status.gate_door_active():
             self.statusBar().showMessage("安全门打开，无法回零")
             return False
         return True
-
-    def _should_go_home(self, axes) -> bool:
-        status = self._get_cached_status()
-        if not status or not status.connected:
-            status = self._protocol.get_status()
-            self._last_status = status
-            self._last_status_ts = time.monotonic()
-        if not status or not status.connected:
-            return False
-        target_axes = axes if axes else list(status.axes.keys())
-        if not target_axes:
-            return False
-        for axis in target_axes:
-            axis_status = status.axes.get(axis)
-            if not axis_status or not axis_status.homed:
-                return False
-        return True
-
-    def _resolve_home_action(self, axes):
-        status = self._protocol.get_status()
-        self._last_status = status
-        self._last_status_ts = time.monotonic()
-        if not status or not status.connected:
-            return "home", "后端状态未就绪"
-        target_axes = axes if axes else list(status.axes.keys())
-        if not target_axes:
-            return "home", "轴列表为空"
-        all_homed = True
-        for axis in target_axes:
-            axis_status = status.axes.get(axis)
-            if not axis_status:
-                all_homed = False
-                continue
-            if not axis_status.homed:
-                all_homed = False
-        if all_homed:
-            return "go", ""
-        return "home", ""
 
     def _check_motion_preconditions(self) -> bool:
         if not self._require_online_mode("点动"):
             return False
         status = self._protocol.get_status()
+        if status.connection_state == "degraded":
+            self.statusBar().showMessage("硬件连接已降级，无法点动，请重新连接")
+            return False
         if not status.connected:
             self.statusBar().showMessage("后端状态不可用，请检查连接")
             return False
-        if not status.io.estop_known or not status.io.door_known:
+        if not status.gate_estop_known() or not status.gate_door_known():
             self.statusBar().showMessage("互锁信号状态未知，无法点动")
             return False
-        if status.io.estop:
+        if status.gate_estop_active():
             self.statusBar().showMessage("急停未解除，无法点动")
             return False
-        if status.io.door:
+        if status.gate_door_active():
             self.statusBar().showMessage("安全门打开，无法点动")
             return False
         return True
@@ -1876,22 +1792,11 @@ class MainWindow(QMainWindow):
         self._auth.record_activity()
         if not self._check_home_preconditions():
             return
-        action = "home"
-        reason = ""
-        if allow_go_home:
-            action, reason = self._resolve_home_action(axes)
-        if reason:
-            self.statusBar().showMessage(reason)
-            if action == "home":
-                return
-        if action == "go":
-            ok, msg = self._protocol.home_go(axes)
-        else:
-            ok, msg = self._protocol.home(axes, force=force_rehome)
+        _ = allow_go_home
+        ok, msg = self._protocol.home_auto(axes, force=force_rehome)
         if not ok and msg:
             QMessageBox.warning(self, "回零失败", msg)
-        action_text = "回零位" if action == "go" else "回零"
-        self.statusBar().showMessage(f"{action_text}: {msg}" if msg else (f"{action_text}完成" if ok else f"{action_text}失败"))
+        self.statusBar().showMessage(f"回零: {msg}" if msg else ("回零完成" if ok else "回零失败"))
 
     def _on_speed_changed(self, value):
         self._jog_speed = float(value)
@@ -2007,6 +1912,12 @@ class MainWindow(QMainWindow):
             return
         ok, msg = self._protocol.emergency_stop()
         self.statusBar().showMessage(f"急停: {msg}" if ok else (f"急停失败: {msg}" if msg else "急停失败"))
+
+    def _on_estop_reset(self):
+        if not self._require_online_mode("急停复位"):
+            return
+        ok, msg = self._protocol.estop_reset()
+        self.statusBar().showMessage(f"急停复位: {msg}" if ok else (f"急停复位失败: {msg}" if msg else "急停复位失败"))
 
     def _on_move_to(self):
         if not self._require_online_mode("移动控制"):
@@ -2680,13 +2591,13 @@ class MainWindow(QMainWindow):
         if not status.connected:
             self._show_preflight_warning("后端状态不可用，请检查连接")
             return False
-        if not status.io.estop_known or not status.io.door_known:
+        if not status.gate_estop_known() or not status.gate_door_known():
             self._show_preflight_warning("互锁信号状态未知，禁止启动")
             return False
-        if status.io.estop:
+        if status.gate_estop_active():
             self._show_preflight_warning("急停未解除，禁止启动")
             return False
-        if status.io.door:
+        if status.gate_door_active():
             self._show_preflight_warning("安全门打开，禁止启动")
             return False
         self._last_status = status
@@ -2742,7 +2653,10 @@ class MainWindow(QMainWindow):
     def _on_dxf_stop(self):
         if not self._require_online_mode("DXF控制"):
             return
-        ok = self._protocol.dxf_job_stop(self._current_job_id) if self._current_job_id else self._protocol.dxf_stop()
+        if not self._current_job_id:
+            self.statusBar().showMessage("当前没有运行中的DXF任务")
+            return
+        ok = self._protocol.dxf_job_stop(self._current_job_id)
         if ok:
             self._production_paused = False
             self._operation_status.setText("停止中")
@@ -3030,8 +2944,8 @@ class MainWindow(QMainWindow):
                 "io-limit-x-neg": io.limit_x_neg,
                 "io-limit-y-pos": io.limit_y_pos,
                 "io-limit-y-neg": io.limit_y_neg,
-                "io-estop": io.estop,
-                "io-door": io.door,
+                "io-estop": status.gate_estop_active(),
+                "io-door": status.gate_door_active(),
             }
             for testid, active in io_map.items():
                 if testid in self._io_leds:

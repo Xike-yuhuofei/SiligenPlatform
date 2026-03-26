@@ -29,6 +29,30 @@ class IOStatus:
 
 
 @dataclass
+class EffectiveInterlocks:
+    estop_active: bool = False
+    estop_known: bool = False
+    door_open_active: bool = False
+    door_open_known: bool = False
+    home_boundary_x_active: bool = False
+    home_boundary_y_active: bool = False
+    positive_escape_only_axes: list[str] = field(default_factory=list)
+    sources: Dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class SupervisionStatus:
+    current_state: str = "Unknown"
+    requested_state: str = ""
+    state_change_in_process: bool = False
+    state_reason: str = "unknown"
+    failure_code: str = ""
+    failure_stage: str = ""
+    recoverable: bool = True
+    updated_at: str = ""
+
+
+@dataclass
 class MachineStatus:
     connected: bool = False
     connection_state: str = "disconnected"
@@ -39,8 +63,34 @@ class MachineStatus:
     active_job_state: str = ""
     axes: Dict[str, AxisStatus] = field(default_factory=dict)
     io: IOStatus = field(default_factory=IOStatus)
+    effective_interlocks: EffectiveInterlocks = field(default_factory=EffectiveInterlocks)
+    supervision: SupervisionStatus = field(default_factory=SupervisionStatus)
     dispenser_valve_open: bool = False
     supply_valve_open: bool = False
+
+    def gate_estop_known(self) -> bool:
+        return bool(self.effective_interlocks.estop_known or self.io.estop_known)
+
+    def gate_estop_active(self) -> bool:
+        if self.effective_interlocks.estop_known:
+            return bool(self.effective_interlocks.estop_active)
+        return bool(self.io.estop)
+
+    def gate_door_known(self) -> bool:
+        return bool(self.effective_interlocks.door_open_known or self.io.door_known)
+
+    def gate_door_active(self) -> bool:
+        if self.effective_interlocks.door_open_known:
+            return bool(self.effective_interlocks.door_open_active)
+        return bool(self.io.door)
+
+    def home_boundary_active(self, axis: str) -> bool:
+        axis_name = str(axis).strip().upper()
+        if axis_name == "X":
+            return bool(self.effective_interlocks.home_boundary_x_active)
+        if axis_name == "Y":
+            return bool(self.effective_interlocks.home_boundary_y_active)
+        return False
 
 
 class CommandProtocol:
@@ -49,7 +99,7 @@ class CommandProtocol:
     def __init__(self, client: TcpClient):
         self._client = client
 
-    def _build_dxf_execute_params(
+    def _build_dxf_plan_params(
         self,
         dispensing_speed_mm_s: float,
         dry_run: bool = False,
@@ -106,17 +156,45 @@ class CommandProtocol:
             door_known=io_data.get("door_known", False),
         )
 
+        effective_interlocks_data = result.get("effective_interlocks", {})
+        effective_interlocks = EffectiveInterlocks(
+            estop_active=effective_interlocks_data.get("estop_active", io_status.estop),
+            estop_known=effective_interlocks_data.get("estop_known", io_status.estop_known),
+            door_open_active=effective_interlocks_data.get("door_open_active", io_status.door),
+            door_open_known=effective_interlocks_data.get("door_open_known", io_status.door_known),
+            home_boundary_x_active=effective_interlocks_data.get("home_boundary_x_active", False),
+            home_boundary_y_active=effective_interlocks_data.get("home_boundary_y_active", False),
+            positive_escape_only_axes=list(effective_interlocks_data.get("positive_escape_only_axes", [])),
+            sources=dict(effective_interlocks_data.get("sources", {})),
+        )
+
+        supervision_data = result.get("supervision", {})
+        current_state = str(supervision_data.get("current_state", result.get("machine_state", "Unknown")))
+        current_reason = str(supervision_data.get("state_reason", result.get("machine_state_reason", "unknown")))
+        supervision = SupervisionStatus(
+            current_state=current_state,
+            requested_state=str(supervision_data.get("requested_state", current_state)),
+            state_change_in_process=bool(supervision_data.get("state_change_in_process", False)),
+            state_reason=current_reason,
+            failure_code=str(supervision_data.get("failure_code", "") or ""),
+            failure_stage=str(supervision_data.get("failure_stage", "") or ""),
+            recoverable=bool(supervision_data.get("recoverable", True)),
+            updated_at=str(supervision_data.get("updated_at", "")),
+        )
+
         status = MachineStatus(
             connected=result.get("connected", False),
             connection_state=result.get(
                 "connection_state", "connected" if result.get("connected", False) else "disconnected"
             ),
-            machine_state=result.get("machine_state", "Unknown"),
-            machine_state_reason=result.get("machine_state_reason", "unknown"),
+            machine_state=current_state,
+            machine_state_reason=current_reason,
             interlock_latched=result.get("interlock_latched", False),
             active_job_id=str(result.get("active_job_id", "")),
             active_job_state=str(result.get("active_job_state", "")),
             io=io_status,
+            effective_interlocks=effective_interlocks,
+            supervision=supervision,
             dispenser_valve_open=result.get("dispenser", {}).get("valve_open", False),
             supply_valve_open=result.get("dispenser", {}).get("supply_open", False),
         )
@@ -138,7 +216,32 @@ class CommandProtocol:
         if "error" in resp:
             return False, resp["error"].get("message", "Unknown error")
         result = resp.get("result", {})
-        return result.get("completed", False), result.get("message", "")
+        completed = result.get("completed", False)
+        message = result.get("message", "")
+        if completed:
+            return True, message
+
+        axis_results = result.get("axis_results", [])
+        failed_axis_messages = []
+        for item in axis_results:
+            if not isinstance(item, dict) or item.get("success", False):
+                continue
+            axis = str(item.get("axis", "")).strip()
+            axis_message = str(item.get("message", "")).strip() or "Homing failed"
+            if axis and not axis_message.startswith(f"{axis}:"):
+                failed_axis_messages.append(f"{axis}: {axis_message}")
+            else:
+                failed_axis_messages.append(axis_message)
+        if failed_axis_messages:
+            return False, "; ".join(failed_axis_messages)
+
+        error_messages = [str(item) for item in result.get("error_messages", []) if str(item)]
+        if error_messages:
+            details = "; ".join(error_messages)
+            if message and message != "Homing completed with errors":
+                return False, f"{message}: {details}"
+            return False, details
+        return False, message
 
     def home_go(self, axes: list = None, speed: float = 0.0) -> tuple:
         params = {"axes": axes} if axes else {}
@@ -149,6 +252,47 @@ class CommandProtocol:
             return False, resp["error"].get("message", "Unknown error")
         result = resp.get("result", {})
         return result.get("moving", False), result.get("message", "")
+
+    def home_auto(
+        self,
+        axes: list = None,
+        force: bool = False,
+        wait_for_completion: bool = True,
+        timeout_ms: int = 0,
+    ) -> tuple:
+        params = {"axes": axes} if axes else {}
+        if force:
+            params["force"] = True
+        if not wait_for_completion:
+            params["wait_for_completion"] = False
+        if timeout_ms > 0:
+            params["timeout_ms"] = int(timeout_ms)
+        resp = self._client.send_request("home.auto", params, timeout=30.0)
+        if "error" in resp:
+            return False, resp["error"].get("message", "Unknown error")
+
+        result = resp.get("result", {})
+        accepted = bool(result.get("accepted", False))
+        summary_state = str(result.get("summary_state", ""))
+        message = str(result.get("message", "") or "")
+        axis_results = result.get("axis_results", [])
+
+        failed_axis_messages = []
+        for item in axis_results:
+            if not isinstance(item, dict) or item.get("success", False):
+                continue
+            axis = str(item.get("axis", "")).strip()
+            axis_message = str(item.get("message", "")).strip() or "Ready-zero failed"
+            if axis and not axis_message.startswith(f"{axis}:"):
+                failed_axis_messages.append(f"{axis}: {axis_message}")
+            else:
+                failed_axis_messages.append(axis_message)
+
+        if accepted and summary_state in ("completed", "noop", "in_progress"):
+            return True, message
+        if failed_axis_messages:
+            return False, "; ".join(failed_axis_messages)
+        return False, message or "Ready-zero rejected"
 
     def jog(self, axis: str, direction: int, speed: float = 10.0) -> tuple[bool, str]:
         resp = self._client.send_request("jog", {"axis": axis, "direction": direction, "speed": speed})
@@ -171,6 +315,32 @@ class CommandProtocol:
             return False, resp["error"].get("message", "Unknown error")
         result = resp.get("result", {})
         return result.get("motion_stopped", False), result.get("message", "")
+
+    def estop_reset(self) -> tuple:
+        resp = self._client.send_request("estop.reset")
+        if "error" in resp:
+            return False, resp["error"].get("message", "Unknown error")
+        result = resp.get("result", {})
+        return result.get("reset", False), result.get("message", "")
+
+    def mock_io_set(
+        self,
+        *,
+        estop: Optional[bool] = None,
+        door: Optional[bool] = None,
+        limit_x_neg: Optional[bool] = None,
+        limit_y_neg: Optional[bool] = None,
+    ) -> tuple:
+        params = {}
+        if estop is not None:
+            params["estop"] = bool(estop)
+        if door is not None:
+            params["door"] = bool(door)
+        if limit_x_neg is not None:
+            params["limit_x_neg"] = bool(limit_x_neg)
+        if limit_y_neg is not None:
+            params["limit_y_neg"] = bool(limit_y_neg)
+        return self._call("mock.io.set", params)
 
     def dispenser_start(self, count: int = 1, interval_ms: int = 1000, duration_ms: int = 15) -> bool:
         resp = self._client.send_request("dispenser.start", {
@@ -229,28 +399,6 @@ class CommandProtocol:
             return False, {}, resp["error"].get("message", "Unknown error")
         return True, resp.get("result", {}), ""
 
-    def dxf_execute(
-        self,
-        dispensing_speed_mm_s: float,
-        dry_run: bool = False,
-        dry_run_speed_mm_s: float = 0.0,
-        snapshot_hash: str = "",
-        velocity_trace_enabled: bool = True,
-        velocity_trace_interval_ms: int = 0,
-        velocity_trace_path: str = ""
-    ) -> bool:
-        params = self._build_dxf_execute_params(
-            dispensing_speed_mm_s=dispensing_speed_mm_s,
-            dry_run=dry_run,
-            dry_run_speed_mm_s=dry_run_speed_mm_s,
-            snapshot_hash=snapshot_hash,
-            velocity_trace_enabled=velocity_trace_enabled,
-            velocity_trace_interval_ms=velocity_trace_interval_ms,
-            velocity_trace_path=velocity_trace_path,
-        )
-        resp = self._client.send_request("dxf.execute", params)
-        return "result" in resp
-
     def dxf_preview_snapshot(
         self,
         plan_id: str,
@@ -296,7 +444,7 @@ class CommandProtocol:
         dry_run: bool = False,
         dry_run_speed_mm_s: float = 0.0,
     ) -> tuple:
-        params = self._build_dxf_execute_params(
+        params = self._build_dxf_plan_params(
             dispensing_speed_mm_s=speed_mm_s,
             dry_run=dry_run,
             dry_run_speed_mm_s=dry_run_speed_mm_s,
@@ -344,24 +492,6 @@ class CommandProtocol:
         resp = self._client.send_request("dxf.info")
         if "error" in resp:
             return {}
-        return resp.get("result", {})
-
-    def dxf_stop(self) -> bool:
-        resp = self._client.send_request("dxf.stop")
-        return "result" in resp
-
-    def dxf_pause(self) -> bool:
-        resp = self._client.send_request("dxf.pause")
-        return "result" in resp
-
-    def dxf_resume(self) -> bool:
-        resp = self._client.send_request("dxf.resume")
-        return "result" in resp
-
-    def dxf_get_progress(self) -> dict:
-        resp = self._client.send_request("dxf.progress")
-        if "error" in resp:
-            return {"running": False, "progress": 0, "current_segment": 0, "total_segments": 0}
         return resp.get("result", {})
 
     def get_alarms(self) -> list:

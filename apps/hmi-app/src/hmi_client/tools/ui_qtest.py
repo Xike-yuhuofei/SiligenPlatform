@@ -100,6 +100,7 @@ class GuiContractRunner:
         expect_failure_code: str = "",
         expect_failure_stage: str = "",
         exercise_recovery: bool = False,
+        exercise_runtime_actions: bool = False,
     ):
         self.app = app
         self.window = window
@@ -108,9 +109,13 @@ class GuiContractRunner:
         self.expect_failure_code = expect_failure_code.strip()
         self.expect_failure_stage = expect_failure_stage.strip()
         self.exercise_recovery = exercise_recovery
+        self.exercise_runtime_actions = exercise_runtime_actions
         self.failed = False
         self.timed_out = False
         self.exit_code = EXIT_SUCCESS
+
+    def _uses_external_gateway(self) -> bool:
+        return bool(os.getenv("SILIGEN_GATEWAY_LAUNCH_SPEC", "").strip())
 
     def _fail(self, message: str) -> None:
         self.failed = True
@@ -155,6 +160,192 @@ class GuiContractRunner:
 
     def _status_message(self) -> str:
         return self.window.statusBar().currentMessage()
+
+    def _cached_status(self):
+        return getattr(self.window, "_last_status", None)
+
+    def _axis_status(self, axis: str):
+        status = self._cached_status()
+        if status is None:
+            return None
+        return status.axes.get(axis)
+
+    def _spinbox_set(self, testid: str, value: float) -> None:
+        widget = self._require_widget(testid)
+        if widget is None:
+            return
+        if hasattr(widget, "setValue"):
+            widget.setValue(value)
+            QTest.qWait(50)
+            return
+        self._fail(f"Widget does not expose setValue(): {testid}")
+
+    def _click_button(self, testid: str) -> None:
+        widget = self._require_widget(testid)
+        if widget is None:
+            return
+        self._expect(widget.isEnabled(), f"{testid} should be enabled")
+        QTest.mouseClick(widget, Qt.LeftButton)
+        QTest.qWait(100)
+
+    def _elevate_runtime_permissions(self) -> None:
+        auth = getattr(self.window, "_auth", None)
+        self._expect(auth is not None, "Runtime action chain requires auth manager")
+        if auth is None:
+            return
+        ok, message = auth.login("tech", "5678")
+        self._expect(ok, f"Runtime action chain requires tech permission: {message}")
+        if not ok:
+            return
+        user = auth.current_user
+        if user is not None and hasattr(self.window, "_user_label"):
+            self.window._user_label.setText(f"{user.role}")
+        if hasattr(self.window, "_apply_permissions"):
+            self.window._apply_permissions()
+        QTest.qWait(100)
+
+    def _assert_runtime_action_chain(self) -> None:
+        print("STEP: runtime action chain", flush=True)
+        self._elevate_runtime_permissions()
+        cached = self._cached_status()
+        self._expect(cached is not None, "Online runtime action chain requires cached status")
+        if cached is None:
+            return
+
+        self._click_button("btn-home-all")
+        self._wait_for(
+            "runtime home completion",
+            lambda: bool(self._axis_status("X"))
+            and bool(self._axis_status("Y"))
+            and bool(self._axis_status("X").homed)
+            and bool(self._axis_status("Y").homed),
+            timeout_ms=30000,
+        )
+        self._wait_for(
+            "runtime home settles velocity",
+            lambda: bool(self._axis_status("X"))
+            and bool(self._axis_status("Y"))
+            and abs(self._axis_status("X").velocity) <= 1e-3
+            and abs(self._axis_status("Y").velocity) <= 1e-3,
+            timeout_ms=10000,
+        )
+
+        move_source = self._cached_status()
+        self._expect(move_source is not None, "Cached status should exist before move_to")
+        if move_source is None:
+            return
+        baseline_move_x = float(move_source.axes.get("X", type("Obj", (), {"position": 0.0})()).position)
+        baseline_move_y = float(move_source.axes.get("Y", type("Obj", (), {"position": 0.0})()).position)
+        target_x = round(baseline_move_x + 1.0, 3)
+        target_y = round(baseline_move_y + 1.5, 3)
+        self._spinbox_set("input-move-X", target_x)
+        self._spinbox_set("input-move-Y", target_y)
+        self._spinbox_set("input-move-speed", 8.0)
+        move_button = self._require_widget("btn-move-to-position")
+        if move_button is not None:
+            self._wait_for("runtime move button enabled", lambda: move_button.isEnabled(), timeout_ms=3000)
+        self._click_button("btn-move-to-position")
+        self._wait_for(
+            "runtime move_to changes both axes",
+            lambda: bool(self._axis_status("X"))
+            and bool(self._axis_status("Y"))
+            and (self._axis_status("X").position >= baseline_move_x + 0.2)
+            and (self._axis_status("Y").position >= baseline_move_y + 0.2),
+            timeout_ms=10000,
+        )
+        self._click_button("btn-stop")
+        self._wait_for(
+            "runtime move_to stop settles velocity",
+            lambda: bool(self._axis_status("X"))
+            and bool(self._axis_status("Y"))
+            and abs(self._axis_status("X").velocity) <= 1e-3
+            and abs(self._axis_status("Y").velocity) <= 1e-3,
+            timeout_ms=6000,
+        )
+
+        jog_before = self._axis_status("X")
+        self._expect(jog_before is not None, "Axis X status should exist before jog")
+        if jog_before is None:
+            return
+        jog_baseline_x = float(jog_before.position)
+        jog_btn = self._require_widget("btn-jog-X-plus")
+        if jog_btn is not None:
+            self._expect(jog_btn.isEnabled(), "btn-jog-X-plus should be enabled")
+            QTest.mousePress(jog_btn, Qt.LeftButton)
+            QTest.qWait(350)
+            QTest.mouseRelease(jog_btn, Qt.LeftButton)
+        self._wait_for(
+            "runtime jog changes X position",
+            lambda: bool(self._axis_status("X")) and (self._axis_status("X").position > jog_baseline_x + 0.05),
+            timeout_ms=6000,
+        )
+        self._wait_for(
+            "runtime jog stop settles velocity",
+            lambda: bool(self._axis_status("X")) and abs(self._axis_status("X").velocity) <= 1e-3,
+            timeout_ms=6000,
+        )
+
+        self._click_button("btn-supply-open")
+        self._wait_for("runtime supply opens", lambda: self._label_text("valve-supply") == "开", timeout_ms=5000)
+
+        self._spinbox_set("input-dispenser-count", 20)
+        self._spinbox_set("input-dispenser-interval", 40)
+        self._spinbox_set("input-dispenser-duration", 40)
+        self._click_button("btn-dispenser-start")
+        self._wait_for(
+            "runtime dispenser opens",
+            lambda: self._label_text("valve-dispenser") == "开" or "点胶已启动" in self._status_message(),
+            timeout_ms=5000,
+        )
+        self._click_button("btn-dispenser-stop")
+        self._wait_for("runtime dispenser closes", lambda: self._label_text("valve-dispenser") == "关", timeout_ms=5000)
+
+        self._click_button("btn-supply-close")
+        self._wait_for("runtime supply closes", lambda: self._label_text("valve-supply") == "关", timeout_ms=5000)
+
+        self._click_button("btn-estop")
+        self._wait_for(
+            "runtime estop visible",
+            lambda: bool(self._cached_status()) and bool(self._cached_status().gate_estop_active()),
+            timeout_ms=8000,
+        )
+        self._click_button("btn-estop-reset")
+        self._wait_for(
+            "runtime estop reset visible",
+            lambda: bool(self._cached_status()) and not bool(self._cached_status().gate_estop_active()),
+            timeout_ms=8000,
+        )
+
+        move_before_door = self._axis_status("X")
+        self._expect(move_before_door is not None, "Axis X status should exist before door interlock check")
+        if move_before_door is None:
+            return
+        door_baseline_x = float(move_before_door.position)
+        door_target_y = float(self._axis_status("Y").position) if self._axis_status("Y") else 0.0
+        door_ok, _, door_msg = self.window._protocol.mock_io_set(door=True)
+        self._expect(door_ok, f"mock_io_set door should succeed: {door_msg}")
+        self._wait_for(
+            "runtime door visible",
+            lambda: bool(self._cached_status()) and bool(self._cached_status().gate_door_active()),
+            timeout_ms=8000,
+        )
+        self._spinbox_set("input-move-X", round(door_baseline_x + 1.0, 3))
+        self._spinbox_set("input-move-Y", round(door_target_y, 3))
+        self._click_button("btn-move-to-position")
+        QTest.qWait(300)
+        self._expect("移动失败" in self._status_message(), "Move should fail when door interlock is active")
+        self._wait_for(
+            "runtime door block keeps X position stable",
+            lambda: bool(self._axis_status("X")) and abs(self._axis_status("X").position - door_baseline_x) <= 0.05,
+            timeout_ms=3000,
+        )
+        door_clear_ok, _, door_clear_msg = self.window._protocol.mock_io_set(door=False)
+        self._expect(door_clear_ok, f"mock_io_set door clear should succeed: {door_clear_msg}")
+        self._wait_for(
+            "runtime door clears",
+            lambda: bool(self._cached_status()) and not bool(self._cached_status().gate_door_active()),
+            timeout_ms=8000,
+        )
 
     def _emit_supervisor_diag(self) -> None:
         result = self.window._launch_result
@@ -241,6 +432,8 @@ class GuiContractRunner:
         tabs = self._require_widget("main-tabs")
         if tabs is not None and hasattr(tabs, "count"):
             self._expect(tabs.count() >= 4, "Main tab container should expose the core workspaces")
+            labels = [tabs.tabText(index) for index in range(tabs.count())]
+            self._expect("仿真观察" not in labels, "Main tab container should not expose the sim observer tab")
 
     def _assert_offline_contract(self) -> None:
         print("STEP: offline contract", flush=True)
@@ -321,17 +514,27 @@ class GuiContractRunner:
 
         alarm_list = self._require_widget("list-alarms")
         if alarm_list is not None:
-            self._wait_for("mock alarms to populate", lambda: alarm_list.count() > 0, timeout_ms=3000)
-            before = alarm_list.count()
-            self._expect(before > 0, "Mock server should seed at least one alarm")
-            self.window._on_alarm_clear()
-            self._wait_for("alarm clear action", lambda: alarm_list.count() == 0, timeout_ms=3000)
-            self._expect(alarm_list.count() == 0, "Online guarded alarm action should be allowed")
+            if self._uses_external_gateway():
+                self._expect(alarm_list.count() >= 0, "Alarm list should remain available with external gateway")
+            else:
+                self._wait_for("mock alarms to populate", lambda: alarm_list.count() > 0, timeout_ms=3000)
+                before = alarm_list.count()
+                self._expect(before > 0, "Mock server should seed at least one alarm")
+                self.window._on_alarm_clear()
+                self._wait_for("alarm clear action", lambda: alarm_list.count() == 0, timeout_ms=3000)
+                self._expect(alarm_list.count() == 0, "Online guarded alarm action should be allowed")
 
         self._expect(
             not self._status_message().startswith("Offline 模式下不可用"),
             "Online actions should not be blocked by the offline guard",
         )
+        if self.exercise_runtime_actions:
+            self._wait_for(
+                "runtime status cache ready",
+                lambda: self._cached_status() is not None,
+                timeout_ms=5000,
+            )
+            self._assert_runtime_action_chain()
         if self.exercise_recovery:
             self._assert_recovery_cycle()
 
@@ -451,6 +654,7 @@ def main() -> int:
     parser.add_argument("--expect-failure-code", default="")
     parser.add_argument("--expect-failure-stage", default="")
     parser.add_argument("--exercise-recovery", action="store_true")
+    parser.add_argument("--exercise-runtime-actions", action="store_true")
     args = parser.parse_args()
 
     server: Optional[MockTcpServer] = None
@@ -470,6 +674,7 @@ def main() -> int:
         expect_failure_code=args.expect_failure_code,
         expect_failure_stage=args.expect_failure_stage,
         exercise_recovery=args.exercise_recovery,
+        exercise_runtime_actions=args.exercise_runtime_actions,
     )
     QTimer.singleShot(0, runner.run)
     QTimer.singleShot(args.timeout_ms, runner.request_timeout)

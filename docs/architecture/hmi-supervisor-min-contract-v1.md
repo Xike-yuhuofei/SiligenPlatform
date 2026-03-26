@@ -22,6 +22,11 @@
 4. 服务总线化扩展。
 5. HMI 大规模结构重构。
 
+补充说明：
+
+- 关于运行态 `raw_io`、`effective_interlocks` 与 `supervision` 的边界划分，见 `docs/architecture/runtime-supervision-state-contract-boundary-v1.md`。
+- 当前设计基线已采纳：`effective_interlocks` 作为正式对外契约暴露，`supervision` 显式提供 `requested_state` 与 `state_change_in_process`，并以 `door`、`negative-limit` 作为第一批样板场景。
+
 ## 2. 术语与权威边界
 
 - `Supervisor`：本机启动链路编排者，负责 backend/TCP/hardware 生命周期与状态发布。

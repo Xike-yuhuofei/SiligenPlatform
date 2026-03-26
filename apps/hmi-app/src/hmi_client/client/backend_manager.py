@@ -80,7 +80,11 @@ class BackendManager:
         if not self._auto_start_enabled:
             return BackendStepResult(
                 ok=False,
-                message="Gateway auto-start 已禁用，请先手动启动 transport-gateway。",
+                message=(
+                    "Gateway auto-start 已禁用"
+                    "（SILIGEN_GATEWAY_AUTOSTART=0 或使用了 -DisableGatewayAutostart），"
+                    "请先手动启动 transport-gateway。"
+                ),
                 failure_code="SUP_BACKEND_AUTOSTART_DISABLED",
                 recoverable=False,
             )
@@ -89,8 +93,8 @@ class BackendManager:
             return BackendStepResult(
                 ok=False,
                 message=(
-                    "未配置 gateway 启动契约。请设置 SILIGEN_GATEWAY_EXE 或 "
-                    "SILIGEN_GATEWAY_LAUNCH_SPEC。"
+                    "未配置 gateway 启动契约。请使用 apps/hmi-app/run.ps1，或设置 "
+                    "SILIGEN_GATEWAY_LAUNCH_SPEC。若只有 exe 路径，请先通过 run.ps1 -GatewayExe 生成契约。"
                 ),
                 failure_code="SUP_BACKEND_SPEC_MISSING",
                 recoverable=False,
