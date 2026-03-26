@@ -1,6 +1,6 @@
 # Release Process
 
-更新时间：`2026-03-25`
+更新时间：`2026-03-26`
 
 ## 1. 适用范围
 
@@ -8,13 +8,13 @@
 
 发布判定的唯一正式标准见：
 
-- [docs/runtime/release-readiness-standard.md](/D:/Projects/SS-dispense-align/docs/runtime/release-readiness-standard.md)
+- [docs/runtime/release-readiness-standard.md](/D:/Projects/SiligenSuite/docs/runtime/release-readiness-standard.md)
 
 本文档只说明执行流程，不降低发布标准。
 
 执行清单见：
 
-- [docs/validation/release-test-checklist.md](/D:/Projects/SS-dispense-align/docs/validation/release-test-checklist.md)
+- [docs/validation/release-test-checklist.md](/D:/Projects/SiligenSuite/docs/validation/release-test-checklist.md)
 
 ## 2. 发布分类
 
@@ -88,10 +88,10 @@ Set-Location <repo-root>
 
 以下项不因仓内自动化全绿而自动满足：
 
-- 仓外交付物观察：见 [docs/runtime/external-migration-observation.md](/D:/Projects/SS-dispense-align/docs/runtime/external-migration-observation.md)
-- 现场/HIL 验收：见 [docs/runtime/field-acceptance.md](/D:/Projects/SS-dispense-align/docs/runtime/field-acceptance.md)
-- 部署与回滚准备：见 [docs/runtime/deployment.md](/D:/Projects/SS-dispense-align/docs/runtime/deployment.md)、[docs/runtime/rollback.md](/D:/Projects/SS-dispense-align/docs/runtime/rollback.md)
-- 发布判定标准：见 [docs/runtime/release-readiness-standard.md](/D:/Projects/SS-dispense-align/docs/runtime/release-readiness-standard.md)
+- 仓外交付物观察：见 [docs/runtime/external-migration-observation.md](/D:/Projects/SiligenSuite/docs/runtime/external-migration-observation.md)
+- 现场/HIL 验收：见 [docs/runtime/field-acceptance.md](/D:/Projects/SiligenSuite/docs/runtime/field-acceptance.md)
+- 部署与回滚准备：见 [docs/runtime/deployment.md](/D:/Projects/SiligenSuite/docs/runtime/deployment.md)、[docs/runtime/rollback.md](/D:/Projects/SiligenSuite/docs/runtime/rollback.md)
+- 发布判定标准：见 [docs/runtime/release-readiness-standard.md](/D:/Projects/SiligenSuite/docs/runtime/release-readiness-standard.md)
 
 ## 5. DXF 编辑发布口径
 

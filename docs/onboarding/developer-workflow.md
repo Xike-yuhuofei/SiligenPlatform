@@ -1,6 +1,6 @@
 # Developer Workflow
 
-更新时间：`2026-03-25`
+更新时间：`2026-03-26`
 
 ## 1. 唯一推荐工作方式
 
@@ -55,3 +55,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\run-loc
 1. PR 描述中的运行命令、测试命令、验证步骤，必须先给根级入口。
 2. 新文档和新脚本不得再写已退出旧根为默认能力。
 3. 若需求涉及 DXF 编辑，默认引用 `docs/runtime/external-dxf-editing.md`。
+
+## 6. 分支与 Worktree 收口
+
+- 默认长期分支只有 `main`；日常开发结束后，仓库应回到 `main...origin/main` 的干净状态。
+- 临时开发分支必须使用 `AGENTS.md` 规定的命名格式。
+- 若为隔离验证临时创建了额外 worktree，合并或放弃该任务后必须同步删除该 worktree 以及对应本地/远端分支。
+- 发布、release-check、现场 SOP 和交付清单中的仓库根统一使用 `D:\Projects\SiligenSuite`。

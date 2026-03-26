@@ -43,3 +43,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\run-loc
 - `scope`：模块短名，例如 `hmi`、`runtime`、`cli`、`gateway`
 - `ticket`：任务号，如 `SS-142`；缺失时使用 `NOISSUE`
 - `short-desc`：英文小写 kebab-case
+
+## Git 收口规则
+
+- 仓库常态只保留 `main` / `origin/main` 作为长期分支。
+- 临时开发分支必须满足命名规范，并在合并或废弃后删除本地分支、远端分支和额外 worktree。
+- 发布、门禁和交付文档中的根路径默认指向当前 canonical 仓库根 `D:\Projects\SiligenSuite`。

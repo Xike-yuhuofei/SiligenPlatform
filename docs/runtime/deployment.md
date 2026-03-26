@@ -1,6 +1,6 @@
 # Deployment
 
-更新时间：`2026-03-25`
+更新时间：`2026-03-26`
 
 ## 1. 正式入口
 
@@ -27,7 +27,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\run-loc
 
 ## 3. 发布前统一检查
 
-以下检查是正式发布前的最低执行链，不替代 [docs/runtime/release-readiness-standard.md](/D:/Projects/SS-dispense-align/docs/runtime/release-readiness-standard.md) 的全部门禁：
+以下检查是正式发布前的最低执行链，不替代 [docs/runtime/release-readiness-standard.md](/D:/Projects/SiligenSuite/docs/runtime/release-readiness-standard.md) 的全部门禁：
 
 ```powershell
 .\scripts\validation\install-python-deps.ps1

@@ -1,6 +1,6 @@
 # Hardware Bring-Up Smoke SOP
 
-更新时间：`2026-03-25`
+更新时间：`2026-03-26`
 
 ## 1. 目的与适用范围
 
@@ -21,7 +21,7 @@
 
 ## 3. canonical 入口
 
-- 仓库根：`D:\Projects\SS-dispense-align`
+- 仓库根：`D:\Projects\SiligenSuite`
 - 机器配置：`config/machine/machine_config.ini`
 - vendor 目录：`modules/runtime-execution/adapters/device/vendor/multicard`
 - 宿主入口：`apps/runtime-service/run.ps1`
@@ -45,7 +45,7 @@
 在仓库根 PowerShell 会话执行：
 
 ```powershell
-Set-Location D:\Projects\SS-dispense-align
+Set-Location D:\Projects\SiligenSuite
 
 $EvidenceRoot = Join-Path (Get-Location) ("tests\reports\hardware-smoke\" + (Get-Date -Format "yyyyMMdd-HHmmss"))
 New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
@@ -139,7 +139,7 @@ Test-Path (Join-Path $ControlAppsBuildRoot "bin\Debug\siligen_runtime_gateway.ex
 判定规则：
 
 - `[脚本]` dry-run 返回非零：停止，先处理配置或 vendor 资产问题。
-- `[脚本]` dry-run 输出中的 `config=` 必须指向 `D:\Projects\SS-dispense-align\config\machine\machine_config.ini`。
+- `[脚本]` dry-run 输出中的 `config=` 必须指向 `D:\Projects\SiligenSuite\config\machine\machine_config.ini`。
 
 ## 7. 上电后安全检查
 
@@ -188,21 +188,21 @@ Test-Path (Join-Path $ControlAppsBuildRoot "bin\Debug\siligen_runtime_gateway.ex
 窗口 A：
 
 ```powershell
-Set-Location D:\Projects\SS-dispense-align
+Set-Location D:\Projects\SiligenSuite
 .\apps\runtime-service\run.ps1 -BuildConfig Debug -VendorDir $VendorDir
 ```
 
 窗口 B：
 
 ```powershell
-Set-Location D:\Projects\SS-dispense-align
+Set-Location D:\Projects\SiligenSuite
 .\apps\runtime-gateway\run.ps1 -BuildConfig Debug -VendorDir $VendorDir -- --port 9527
 ```
 
 可选操作界面：
 
 ```powershell
-Set-Location D:\Projects\SS-dispense-align
+Set-Location D:\Projects\SiligenSuite
 .\apps\hmi-app\run.ps1 -Mode online -BuildConfig Debug -DisableGatewayAutostart
 ```
 
@@ -250,7 +250,7 @@ Set-Location D:\Projects\SS-dispense-align
 本 SOP 的回滚以 `docs/runtime/rollback.md` 为基线，最小动作如下：
 
 ```powershell
-Set-Location D:\Projects\SS-dispense-align
+Set-Location D:\Projects\SiligenSuite
 
 Get-Process siligen_runtime_gateway,siligen_runtime_service -ErrorAction SilentlyContinue |
     Stop-Process -Force
@@ -267,7 +267,7 @@ Copy-Item .\backup\config\machine_config.ini .\config\machine\machine_config.ini
 回滚后至少执行以下确认：
 
 ```powershell
-Set-Location D:\Projects\SS-dispense-align
+Set-Location D:\Projects\SiligenSuite
 .\apps\hmi-app\run.ps1 -DryRun -DisableGatewayAutostart
 ```
 
@@ -289,7 +289,7 @@ Set-Location D:\Projects\SS-dispense-align
 建议命令：
 
 ```powershell
-Set-Location D:\Projects\SS-dispense-align
+Set-Location D:\Projects\SiligenSuite
 
 if (Test-Path ".\logs\control_runtime.log") {
     Copy-Item ".\logs\control_runtime.log" (Join-Path $EvidenceRoot "control_runtime.log") -Force

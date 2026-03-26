@@ -1,6 +1,6 @@
 # Performance Baseline
 
-更新时间：`2026-03-25`
+更新时间：`2026-03-26`
 
 ## 1. 目的
 
@@ -13,7 +13,7 @@
 
 ## 2. 采样环境
 
-- 工作区：`D:\Projects\SS-dispense-align`
+- 工作区：`D:\Projects\SiligenSuite`
 - 采样时间：`2026-03-25`
 - 平台：`Windows-11-10.0.26100-SP0`
 - Python：`3.12.1`

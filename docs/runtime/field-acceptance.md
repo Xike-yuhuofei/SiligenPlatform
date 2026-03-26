@@ -1,6 +1,6 @@
 # Field Acceptance
 
-更新时间：`2026-03-25`
+更新时间：`2026-03-26`
 
 ## 1. 结论摘要
 
@@ -19,7 +19,7 @@
 - `HIL` 长稳以 `pause/resume=3` 为默认门槛，且 `failed=0`、`known_failure=0`、`skipped=0`。
 - `real hardware` 结论用于现场可运行性确认，不等同工艺质量签收。
 - `hardware smoke` 只能证明最小启动闭环，不构成正式发布的现场放行依据。
-- 正式发布必须满足 [docs/runtime/release-readiness-standard.md](/D:/Projects/SS-dispense-align/docs/runtime/release-readiness-standard.md) 中 `G8` 的要求。
+- 正式发布必须满足 [docs/runtime/release-readiness-standard.md](/D:/Projects/SiligenSuite/docs/runtime/release-readiness-standard.md) 中 `G8` 的要求。
 
 ## 2. 证据位置
 

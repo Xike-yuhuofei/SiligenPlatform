@@ -1,12 +1,12 @@
 # 正式发版前测试执行清单
 
-更新时间：`2026-03-25`
+更新时间：`2026-03-26`
 
 ## 1. 目的
 
 本文用于把正式发版前需要执行的测试和验证动作按阶段收敛成可勾选清单。
 
-- 本文补充执行顺序，不降低 [docs/runtime/release-readiness-standard.md](/D:/Projects/SS-dispense-align/docs/runtime/release-readiness-standard.md) 的任何硬门禁。
+- 本文补充执行顺序，不降低 [docs/runtime/release-readiness-standard.md](/D:/Projects/SiligenSuite/docs/runtime/release-readiness-standard.md) 的任何硬门禁。
 - 本文包含上机前模拟/弱依赖验证、仓内自动化门禁、仓外交付物观察、HIL/真机验证和最终放行判定。
 - 只有当对应测试实际通过且证据已归档后，才能勾选复选框。
 
@@ -14,15 +14,15 @@
 
 - 目标正式版本：`待填写`
 - 目标 RC 版本：`待填写`
-- 执行日期：`2026-03-25`
+- 执行日期：`待填写`
 - 执行人：`待填写`
 - 机台/环境：`待填写`
-- 统一证据根：`tests\reports\verify\release-validation-20260325-203603`
+- 统一证据根：`tests\reports\verify\release-validation-<yyyyMMdd-HHmmss>`
 
 建议先在 PowerShell 会话中初始化：
 
 ```powershell
-Set-Location D:\Projects\SS-dispense-align
+Set-Location D:\Projects\SiligenSuite
 
 $Version = "0.1.0"
 $RcVersion = "0.1.0-rc.1"
@@ -140,13 +140,10 @@ New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
 
 当前阶段说明（`2026-03-26`）：
 
-- 已完成 `Batch-1A / Route-T` 候选边界固化；`git diff --cached --name-only` 当前只保留 11 个 core 文件。
-- 该结果只说明“提交树候选边界已成型”，不说明“当前工作树已经可直接运行 RC”。
-- 因此 `P3-01` 与 `P3-02` 继续保持未勾选，直到后续批次完成并再次收敛到满足 `release-check.ps1` 的干净工作树。
-- 边界与操作证据见：
-  [worktree-triage-batch1a-routet-manifest.md](/D:/Projects/SS-dispense-align/tests/reports/verify/release-validation-20260325-203603/phase3-worktree-audit/worktree-triage-batch1a-routet-manifest.md)、
-  [worktree-triage-batch1a-routet-checklist.md](/D:/Projects/SS-dispense-align/tests/reports/verify/release-validation-20260325-203603/phase3-worktree-audit/worktree-triage-batch1a-routet-checklist.md)、
-  [worktree-triage-batch1a-routet-runbook.md](/D:/Projects/SS-dispense-align/tests/reports/verify/release-validation-20260325-203603/phase3-worktree-audit/worktree-triage-batch1a-routet-runbook.md)
+- 历史 `worktree triage` 材料仅用于解释曾经的收口过程，不再作为当前主线的有效入口证据。
+- 当前仓库常态要求：`main...origin/main` 干净、无额外 worktree、无残留临时分支。
+- 因此 `P3-01` 与 `P3-02` 必须基于当前 `$EvidenceRoot` 重新生成证据，不接受复用旧批次路径。
+- 若当前主线再次出现脏工作树或临时 worktree，应先完成清理，再继续 RC 验证。
 
 - [ ] `P3-01` 执行 RC release-check  
   命令：
@@ -213,7 +210,7 @@ New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
 
 - [ ] `P5-01` 完成真实硬件 bring-up/smoke 前检查  
   参考文档：  
-  [docs/runtime/hardware-bring-up-smoke-sop.md](/D:/Projects/SS-dispense-align/docs/runtime/hardware-bring-up-smoke-sop.md)  
+  [docs/runtime/hardware-bring-up-smoke-sop.md](/D:/Projects/SiligenSuite/docs/runtime/hardware-bring-up-smoke-sop.md)
   通过标准：硬停止条件全部排除，配置、vendor 资产、dry-run 和现场安全前提明确。
 
 - [ ] `P5-02` 执行 hardware smoke  
@@ -250,7 +247,7 @@ New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
 
 - [ ] `P5-05` 完成真机多批次回归记录  
   参考模板：  
-  [docs/validation/dxf-real-dispense-multi-cycle-template-v1.md](/D:/Projects/SS-dispense-align/docs/validation/dxf-real-dispense-multi-cycle-template-v1.md)  
+  [docs/validation/dxf-real-dispense-multi-cycle-template-v1.md](/D:/Projects/SiligenSuite/docs/validation/dxf-real-dispense-multi-cycle-template-v1.md)
   通过标准：`artifact / plan / job` 主链在真机上可重复执行，运行中和结束后的 IO/状态收敛一致。
 
 - [ ] `P5-06` 完成异常恢复专项验证  
@@ -267,13 +264,13 @@ New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
 
 - [ ] `P5-07` 完成现场长稳或多轮复测  
   参考文档：  
-  [docs/runtime/long-run-stability.md](/D:/Projects/SS-dispense-align/docs/runtime/long-run-stability.md)  
+  [docs/runtime/long-run-stability.md](/D:/Projects/SiligenSuite/docs/runtime/long-run-stability.md)
   通过标准：跨时段或多轮验证无新增阻断，结果可复现。
 
 - [ ] `P5-08` 完成部署与回滚受控演练  
   参考文档：  
-  [docs/runtime/deployment.md](/D:/Projects/SS-dispense-align/docs/runtime/deployment.md)  
-  [docs/runtime/rollback.md](/D:/Projects/SS-dispense-align/docs/runtime/rollback.md)  
+  [docs/runtime/deployment.md](/D:/Projects/SiligenSuite/docs/runtime/deployment.md)
+  [docs/runtime/rollback.md](/D:/Projects/SiligenSuite/docs/runtime/rollback.md)
   通过标准：安装、升级、回滚、配置恢复和产物恢复路径明确且可执行；回滚后验证通过。
 
 ## 9. Phase 6 正式版放行判定
@@ -295,7 +292,7 @@ New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
 
 - [ ] `P6-03` 按 `G1-G8` 完成最终放行复核  
   参考文档：  
-  [docs/runtime/release-readiness-standard.md](/D:/Projects/SS-dispense-align/docs/runtime/release-readiness-standard.md)  
+  [docs/runtime/release-readiness-standard.md](/D:/Projects/SiligenSuite/docs/runtime/release-readiness-standard.md)
   通过标准：范围、可追溯、仓内验证、契约/e2e/性能、部署/回滚、仓外观察、设备/HIL/现场验证全部闭环。
 
 - [ ] `P6-04` 形成最终 `Go / No-Go` 结论  
@@ -312,15 +309,15 @@ New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
 
 ## 10. 阻断记录
 
-- `item_id`：`P3-P6`
-  `问题`：`release-check 前置条件仍不满足；当前工作树存在 1256 条 short-format 未收敛变更，核心不是少量临时文件，而是 938 条 legacy 正式删除仍停留在工作区、114 条 canonical tracked 改动未收敛、1613 条 canonical 新内容尚未纳管；另有 3506 条 .codex/.codex-tmp 本地噪声放大 -uall 输出。`
-  `证据`：`tests\reports\verify\release-validation-20260325-203603\phase3-worktree-audit\worktree-dirty-audit.md/.json`、`tests\reports\verify\release-validation-20260325-203603\phase3-worktree-audit\worktree-triage-batch-plan.md`、`tests\reports\verify\release-validation-20260325-203603\phase3-worktree-audit\worktree-triage-batch1.md`、`git status --short`、`git status --porcelain=v1 -z -uall`
+- `item_id`：`待填写`
+  `问题`：`待填写；若阻断来自脏工作树、残留临时分支或额外 worktree，必须先完成 Git 收口再继续。`
+  `证据`：`待填写；至少记录当前批次报告路径、git status --short --branch 和相关日志/报告。`
 
 ## 11. 关联文档
 
-- [docs/runtime/release-process.md](/D:/Projects/SS-dispense-align/docs/runtime/release-process.md)
-- [docs/runtime/release-readiness-standard.md](/D:/Projects/SS-dispense-align/docs/runtime/release-readiness-standard.md)
-- [docs/runtime/field-acceptance.md](/D:/Projects/SS-dispense-align/docs/runtime/field-acceptance.md)
-- [docs/runtime/external-migration-observation.md](/D:/Projects/SS-dispense-align/docs/runtime/external-migration-observation.md)
-- [docs/runtime/hardware-bring-up-smoke-sop.md](/D:/Projects/SS-dispense-align/docs/runtime/hardware-bring-up-smoke-sop.md)
-- [docs/runtime/long-run-stability.md](/D:/Projects/SS-dispense-align/docs/runtime/long-run-stability.md)
+- [docs/runtime/release-process.md](/D:/Projects/SiligenSuite/docs/runtime/release-process.md)
+- [docs/runtime/release-readiness-standard.md](/D:/Projects/SiligenSuite/docs/runtime/release-readiness-standard.md)
+- [docs/runtime/field-acceptance.md](/D:/Projects/SiligenSuite/docs/runtime/field-acceptance.md)
+- [docs/runtime/external-migration-observation.md](/D:/Projects/SiligenSuite/docs/runtime/external-migration-observation.md)
+- [docs/runtime/hardware-bring-up-smoke-sop.md](/D:/Projects/SiligenSuite/docs/runtime/hardware-bring-up-smoke-sop.md)
+- [docs/runtime/long-run-stability.md](/D:/Projects/SiligenSuite/docs/runtime/long-run-stability.md)
