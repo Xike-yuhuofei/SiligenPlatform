@@ -1,0 +1,5 @@
+interface:
+  display_name: "Speckit Parallel"
+  short_description: "Build phase-scoped parallel prompt workspaces."
+  default_prompt: "Use $speckit-parallel to generate and validate Prompts parallel assets for this feature after speckit-tasks."
+

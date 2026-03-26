@@ -1,0 +1,4 @@
+interface:
+  display_name: "SS Feature Deep Test"
+  short_description: "对单个功能做无机台深挖测试，打通 HMI、协议与领域规则"
+  default_prompt: "Use $ss-feature-deep-test 专门深挖一个功能的无机台测试链路，覆盖 HMI、协议、mock、领域规则与最小必要构建。"

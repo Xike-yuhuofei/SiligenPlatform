@@ -1,8 +1,8 @@
 <!--
 Sync Impact Report
-- Version change: 1.0.0 -> 1.1.0
+- Version change: 1.1.0 -> 2.0.0
 - Modified principles:
-  - None
+  - II. Canonical Workspace First
 - Added sections:
   - None
 - Removed sections:
@@ -34,9 +34,13 @@ Rationale: This prevents subjective drift and keeps cross-team collaboration aud
 
 ### II. Canonical Workspace First
 New development, documentation, and operational instructions MUST use canonical
-workspace paths under repository root (`apps/`, `packages/`, `integration/`, `tools/`,
-`docs/`, `config/`, `data/`, `examples/`). Historical paths and removed modules MUST
-only appear in migration context and MUST NOT be treated as default runtime inputs.
+workspace paths under repository root (`apps/`, `modules/`, `shared/`, `docs/`,
+`samples/`, `tests/`, `scripts/`, `config/`, `data/`, `deploy/`). `specs/` is a
+feature-artifact root only. `packages/`, `integration/`, `tools/`, and `examples/`
+are migration-source roots permitted only during approved in-place refactor waves and
+MUST NOT remain terminal owner surfaces once the corresponding template-aligned root
+is available. Historical paths and removed modules MUST only appear in migration
+context and MUST NOT be treated as default runtime inputs.
 Rationale: A single canonical layout reduces ambiguity and prevents regressions to
 retired structures.
 
@@ -100,4 +104,4 @@ Compliance review expectations:
 - Reviewers MUST block merges that violate mandatory principles.
 - Deferred compliance items MUST include owner and due date in writing.
 
-**Version**: 1.1.0 | **Ratified**: 2026-03-23 | **Last Amended**: 2026-03-23
+**Version**: 2.0.0 | **Ratified**: 2026-03-23 | **Last Amended**: 2026-03-24

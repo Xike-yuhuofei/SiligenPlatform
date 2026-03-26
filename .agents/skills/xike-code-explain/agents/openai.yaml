@@ -1,0 +1,4 @@
+interface:
+  display_name: "Xike-CodeExplain"
+  short_description: "按叶子目录输出文件树与业务流程解读表格，聚焦业务主线"
+  default_prompt: "Use $xike-code-explain 为指定代码目录生成文件树和业务流程解读表格。"

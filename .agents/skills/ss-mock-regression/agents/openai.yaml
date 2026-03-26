@@ -1,0 +1,4 @@
+interface:
+  display_name: "SS Mock Regression"
+  short_description: "批量执行无机台 mock 回归测试并输出结论与覆盖边界"
+  default_prompt: "Use $ss-mock-regression 对指定功能做无机台 mock 回归测试，优先复用现有 smoke、mock、unit test、ctest，并直接执行到出结论。"
