@@ -212,6 +212,40 @@ TEST(MultiCardMotionAdapterTest, StartJogAndStopExposeVelocityFromMockRuntime) {
     EXPECT_FLOAT_EQ(stopped_status.Value().velocity, 0.0f);
 }
 
+TEST(MultiCardMotionAdapterTest, RecoverFromEmergencyStopClearsEstopAndReenablesAxis) {
+    auto mock_card = std::make_shared<MockMultiCard>();
+    auto wrapper = std::make_shared<MockMultiCardWrapper>(mock_card);
+
+    HardwareConfiguration hardware_config;
+    hardware_config.num_axes = 2;
+    hardware_config.pulse_per_mm = 200.0f;
+    hardware_config.max_acceleration_mm_s2 = 500.0f;
+    hardware_config.max_deceleration_mm_s2 = 500.0f;
+
+    auto adapter_result = MultiCardMotionAdapter::Create(wrapper, hardware_config);
+    ASSERT_TRUE(adapter_result.IsSuccess()) << adapter_result.GetError().GetMessage();
+
+    auto connect_result = adapter_result.Value()->Connect("192.168.10.20", "192.168.10.10", 5000);
+    ASSERT_TRUE(connect_result.IsSuccess()) << connect_result.GetError().GetMessage();
+
+    const int reset_calls_before_recover = mock_card->GetResetCallCount();
+    mock_card->SetAxisStatus(1, AXIS_STATUS_ESTOP);
+
+    auto estop_status = adapter_result.Value()->GetAxisStatus(LogicalAxisId::X);
+    ASSERT_TRUE(estop_status.IsSuccess()) << estop_status.GetError().GetMessage();
+    EXPECT_EQ(estop_status.Value().state, MotionState::ESTOP);
+    EXPECT_FALSE(estop_status.Value().enabled);
+
+    auto recover_result = adapter_result.Value()->RecoverFromEmergencyStop();
+    ASSERT_TRUE(recover_result.IsSuccess()) << recover_result.GetError().GetMessage();
+    EXPECT_EQ(mock_card->GetResetCallCount(), reset_calls_before_recover + 1);
+
+    auto recovered_status = adapter_result.Value()->GetAxisStatus(LogicalAxisId::X);
+    ASSERT_TRUE(recovered_status.IsSuccess()) << recovered_status.GetError().GetMessage();
+    EXPECT_NE(recovered_status.Value().state, MotionState::ESTOP);
+    EXPECT_TRUE(recovered_status.Value().enabled);
+}
+
 TEST(MockMultiCardCharacterizationTest, AxisOnSetsEnableBitInRawStatus) {
     auto mock_card = std::make_shared<MockMultiCard>();
 

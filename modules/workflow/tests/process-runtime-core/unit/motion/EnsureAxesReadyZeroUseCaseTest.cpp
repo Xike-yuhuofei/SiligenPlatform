@@ -228,6 +228,7 @@ class FakeMotionEnvironment final : public IHomingPort,
         return Result<void>::Success();
     }
     Result<void> EmergencyStop() override { return StopAllAxes(true); }
+    Result<void> RecoverFromEmergencyStop() override { return Result<void>::Success(); }
     Result<void> WaitForMotionComplete(LogicalAxisId, int32 = 60000) override { return Result<void>::Success(); }
 
     Result<IOStatus> ReadDigitalInput(int16 channel) override {

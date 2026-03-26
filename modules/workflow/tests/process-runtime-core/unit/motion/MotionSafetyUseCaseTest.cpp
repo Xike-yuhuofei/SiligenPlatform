@@ -39,6 +39,9 @@ class FakePositionControlPort final : public IPositionControlPort {
         ++emergency_stop_calls;
         return Result<void>::Success();
     }
+    Result<void> RecoverFromEmergencyStop() override {
+        return Result<void>::Success();
+    }
     Result<void> WaitForMotionComplete(LogicalAxisId /*axis*/, int32 /*timeout_ms*/ = 60000) override {
         return Result<void>::Success();
     }

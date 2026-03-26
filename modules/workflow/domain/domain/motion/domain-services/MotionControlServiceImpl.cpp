@@ -70,4 +70,13 @@ Result<void> MotionControlServiceImpl::EmergencyStop() {
     return position_control_port_->EmergencyStop();
 }
 
+Result<void> MotionControlServiceImpl::RecoverFromEmergencyStop() {
+    auto port_check =
+        EnsurePositionControlPort(position_control_port_, "MotionControlServiceImpl::RecoverFromEmergencyStop");
+    if (port_check.IsError()) {
+        return port_check;
+    }
+    return position_control_port_->RecoverFromEmergencyStop();
+}
+
 }  // namespace Siligen::Domain::Motion::DomainServices

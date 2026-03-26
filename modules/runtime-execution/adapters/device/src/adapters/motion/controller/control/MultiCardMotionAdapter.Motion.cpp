@@ -121,6 +121,31 @@ Result<void> MultiCardMotionAdapter::EmergencyStop() {
     return StopAllAxes(true);
 }
 
+Result<void> MultiCardMotionAdapter::RecoverFromEmergencyStop() {
+    auto reset_result = Reset();
+    if (reset_result.IsError()) {
+        return reset_result;
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    for (short axis = 0; axis < static_cast<short>(kAxisCount); ++axis) {
+        const auto axis_id = FromIndex(axis);
+
+        auto clear_result = ClearAxisStatus(axis_id);
+        if (clear_result.IsError()) {
+            return clear_result;
+        }
+
+        auto enable_result = EnableAxis(axis_id);
+        if (enable_result.IsError()) {
+            return enable_result;
+        }
+    }
+
+    return Result<void>::Success();
+}
+
 // === JOG连续运动实现 ===
 
 Result<void> MultiCardMotionAdapter::StartJog(LogicalAxisId axis_id, int16 direction, float32 velocity) {

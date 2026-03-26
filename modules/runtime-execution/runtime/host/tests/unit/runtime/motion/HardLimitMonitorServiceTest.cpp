@@ -61,6 +61,10 @@ class CountingPositionControlPort final : public IPositionControlPort {
         return Siligen::Shared::Types::Result<void>::Success();
     }
 
+    Siligen::Shared::Types::Result<void> RecoverFromEmergencyStop() override {
+        return Siligen::Shared::Types::Result<void>::Success();
+    }
+
     Siligen::Shared::Types::Result<void> WaitForMotionComplete(LogicalAxisId, int32) override {
         return Siligen::Shared::Types::Result<void>::Success();
     }

@@ -91,6 +91,7 @@ class MultiCardMotionAdapter : public Siligen::Domain::Motion::Ports::IMotionCon
     Result<void> StopAxis(LogicalAxisId axis, bool immediate = false) override;
     Result<void> StopAllAxes(bool immediate = false) override;
     Result<void> EmergencyStop() override;
+    Result<void> RecoverFromEmergencyStop() override;
     
     // JOG连续运动 (IJogControlPort)
     Result<void> StartJog(LogicalAxisId axis, int16 direction, float32 velocity) override;

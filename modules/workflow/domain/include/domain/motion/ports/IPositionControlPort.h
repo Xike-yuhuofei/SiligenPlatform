@@ -86,6 +86,11 @@ class IPositionControlPort {
     virtual Result<void> EmergencyStop() = 0;
 
     /**
+     * @brief 从急停恢复
+     */
+    virtual Result<void> RecoverFromEmergencyStop() = 0;
+
+    /**
      * @brief 等待运动完成
      * @param axis 轴号
      * @param timeout_ms 超时时间(毫秒)

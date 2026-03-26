@@ -58,6 +58,7 @@ class MotionRuntimeFacade final : public Domain::Motion::Ports::IMotionRuntimePo
     Result<void> StopAxis(LogicalAxisId axis, bool immediate = false) override;
     Result<void> StopAllAxes(bool immediate = false) override;
     Result<void> EmergencyStop() override;
+    Result<void> RecoverFromEmergencyStop() override;
     Result<void> WaitForMotionComplete(LogicalAxisId axis, int32 timeout_ms = 60000) override;
 
     Result<Point2D> GetCurrentPosition() const override;

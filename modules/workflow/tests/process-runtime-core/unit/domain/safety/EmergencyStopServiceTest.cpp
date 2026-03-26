@@ -29,6 +29,8 @@ class StubMotionControlService final : public MotionControlService {
 public:
     Result<void> emergency_stop_result = Result<void>::Success();
     Result<void> stop_all_axes_result = Result<void>::Success();
+    Result<void> recover_from_emergency_stop_result = Result<void>::Success();
+    int recover_from_emergency_stop_calls = 0;
 
     Result<void> MoveToPosition(const Point2D& /*position*/, float /*speed*/) override {
         return Result<void>::Failure(Error(ErrorCode::NOT_IMPLEMENTED, "MoveToPosition not implemented", "StubMotionControl"));
@@ -48,6 +50,11 @@ public:
 
     Result<void> EmergencyStop() override {
         return emergency_stop_result;
+    }
+
+    Result<void> RecoverFromEmergencyStop() override {
+        ++recover_from_emergency_stop_calls;
+        return recover_from_emergency_stop_result;
     }
 };
 
@@ -141,7 +148,8 @@ TEST(EmergencyStopServiceTest, ExecuteReportsMissingDependencies) {
 
 TEST(EmergencyStopServiceTest, RecoverFromEmergencyStopValidatesState) {
     auto model = std::make_shared<DispenserModel>();
-    EmergencyStopService service(nullptr, nullptr, nullptr, model);
+    auto motion_control = std::make_shared<StubMotionControlService>();
+    EmergencyStopService service(motion_control, nullptr, nullptr, model);
 
     auto invalid_result = service.RecoverFromEmergencyStop();
     EXPECT_TRUE(invalid_result.IsError());
@@ -155,4 +163,22 @@ TEST(EmergencyStopServiceTest, RecoverFromEmergencyStopValidatesState) {
     auto recover_result = service.RecoverFromEmergencyStop();
     EXPECT_TRUE(recover_result.IsSuccess());
     EXPECT_EQ(model->GetState(), Siligen::DispenserState::UNINITIALIZED);
+    EXPECT_EQ(motion_control->recover_from_emergency_stop_calls, 1);
+}
+
+TEST(EmergencyStopServiceTest, RecoverFromEmergencyStopKeepsEmergencyStopStateWhenMotionRecoveryFails) {
+    auto motion_control = std::make_shared<StubMotionControlService>();
+    motion_control->recover_from_emergency_stop_result =
+        Result<void>::Failure(Error(ErrorCode::MOTION_ERROR, "recover failed", "StubMotionControl"));
+    auto model = std::make_shared<DispenserModel>();
+    ASSERT_TRUE(model->SetState(Siligen::DispenserState::EMERGENCY_STOP).IsSuccess());
+
+    EmergencyStopService service(motion_control, nullptr, nullptr, model);
+
+    auto recover_result = service.RecoverFromEmergencyStop();
+
+    EXPECT_TRUE(recover_result.IsError());
+    EXPECT_EQ(recover_result.GetError().GetCode(), ErrorCode::MOTION_ERROR);
+    EXPECT_EQ(model->GetState(), Siligen::DispenserState::EMERGENCY_STOP);
+    EXPECT_EQ(motion_control->recover_from_emergency_stop_calls, 1);
 }

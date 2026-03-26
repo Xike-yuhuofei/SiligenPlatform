@@ -179,6 +179,7 @@ Result<void> MotionRuntimeFacade::StopAxis(LogicalAxisId axis, bool immediate) {
 }
 Result<void> MotionRuntimeFacade::StopAllAxes(bool immediate) { return motion_adapter_->StopAllAxes(immediate); }
 Result<void> MotionRuntimeFacade::EmergencyStop() { return motion_adapter_->EmergencyStop(); }
+Result<void> MotionRuntimeFacade::RecoverFromEmergencyStop() { return motion_adapter_->RecoverFromEmergencyStop(); }
 Result<void> MotionRuntimeFacade::WaitForMotionComplete(LogicalAxisId axis, int32 timeout_ms) {
     return motion_adapter_->WaitForMotionComplete(axis, timeout_ms);
 }

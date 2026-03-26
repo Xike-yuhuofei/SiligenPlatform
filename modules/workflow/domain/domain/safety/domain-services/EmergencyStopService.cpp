@@ -141,6 +141,16 @@ Result<void> EmergencyStopService::RecoverFromEmergencyStop() noexcept {
             Error(ErrorCode::INVALID_STATE, "System is not in emergency stop state", "EmergencyStopService"));
     }
 
+    if (!motion_control_service_) {
+        return Result<void>::Failure(
+            Error(ErrorCode::PORT_NOT_INITIALIZED, "Motion service not initialized", "EmergencyStopService"));
+    }
+
+    auto recover_result = motion_control_service_->RecoverFromEmergencyStop();
+    if (recover_result.IsError()) {
+        return recover_result;
+    }
+
     return dispenser_model_->SetState(Siligen::DispenserState::UNINITIALIZED);
 }
 

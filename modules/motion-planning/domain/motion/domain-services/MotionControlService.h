@@ -21,6 +21,7 @@ public:
 
     virtual Result<void> StopAllAxes() = 0;
     virtual Result<void> EmergencyStop() = 0;
+    virtual Result<void> RecoverFromEmergencyStop() = 0;
 };
 
 }  // namespace Siligen::Domain::Motion::DomainServices

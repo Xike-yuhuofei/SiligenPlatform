@@ -22,6 +22,7 @@ public:
 
     Result<void> StopAllAxes() override;
     Result<void> EmergencyStop() override;
+    Result<void> RecoverFromEmergencyStop() override;
 
 private:
     std::shared_ptr<Siligen::Domain::Motion::Ports::IPositionControlPort> position_control_port_;

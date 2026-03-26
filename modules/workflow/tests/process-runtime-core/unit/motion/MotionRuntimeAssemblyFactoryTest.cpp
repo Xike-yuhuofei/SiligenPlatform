@@ -233,6 +233,7 @@ public:
         return ResultVoid::Success();
     }
     ResultVoid EmergencyStop() override { ++emergency_stop_calls; return StopAllAxes(true); }
+    ResultVoid RecoverFromEmergencyStop() override { return ResultVoid::Success(); }
     ResultVoid WaitForMotionComplete(LogicalAxisId, int32) override {
         return moving ? ResultVoid::Failure(Error(ErrorCode::TIMEOUT, "still moving", "FakeMotionRuntimePort")) : ResultVoid::Success();
     }
