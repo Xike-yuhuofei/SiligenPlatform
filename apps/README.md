@@ -1,10 +1,19 @@
 # apps
 
-根级 `apps/` 是最终可运行入口的 canonical 落位。
+`apps/` 只承载进程入口、装配面和发布壳，不承载一级业务 owner。
 
-当前阶段：
+## 当前进程入口
 
-- 这里只放应用入口骨架、说明和后续统一启动落位
-- 现有真实实现仍暂时保留在旧子项目中
+| 目录 | 角色 |
+|---|---|
+| `apps/planner-cli/` | 规划侧 CLI 入口 |
+| `apps/runtime-service/` | 运行时宿主入口 |
+| `apps/runtime-gateway/` | 网关与 TCP 入口 |
+| `apps/hmi-app/` | HMI 进程入口 |
+| `apps/trace-viewer/` | 追溯与证据查看入口 |
 
-不要把可复用逻辑直接堆到 `apps/`；可复用部分应进入 `packages/`。
+## 约束
+
+- 可复用业务能力进入 `modules/` 或 `shared/`。
+- 不再保留 `control-*` 目录作为默认入口。
+- 新增进程入口和发布脚本必须优先落在当前目录体系。

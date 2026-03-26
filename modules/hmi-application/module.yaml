@@ -1,0 +1,11 @@
+module_id: M11
+module_name: hmi-application
+owner_artifact: UIViewModel
+group: runtime
+target_root: modules/hmi-application
+allowed_dependencies:
+  - workflow/contracts
+  - runtime-execution/contracts
+  - shared
+uniform_skeleton_ready: true
+notes: hmi 业务 owner 在模块内，apps/hmi-app 仅保留宿主职责；live 实现与构建入口不得回落到 bridge 根

@@ -1,13 +1,13 @@
 param(
     [ValidateSet("Local", "CI")]
     [string]$Profile = "Local",
-    [string]$ReportDir = "integration\\reports\\legacy-exit"
+    [string]$ReportDir = "tests\\reports\\legacy-exit"
 )
 
 $ErrorActionPreference = "Stop"
 
 $workspaceRoot = $PSScriptRoot
-$runner = Join-Path $workspaceRoot "tools\\scripts\\legacy_exit_checks.py"
+$runner = Join-Path $workspaceRoot "scripts\\migration\\legacy-exit-checks.py"
 if (-not (Test-Path $runner)) {
     Write-Error "未找到 legacy 退出检查实现：$runner"
 }

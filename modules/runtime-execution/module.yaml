@@ -1,0 +1,10 @@
+module_id: M9
+module_name: runtime-execution
+owner_artifact: ExecutionSession
+group: runtime
+target_root: modules/runtime-execution
+allowed_dependencies:
+  - dispense-packaging/contracts
+  - shared
+uniform_skeleton_ready: true
+notes: contracts/device、adapters/device、runtime/host 是唯一真实实现与构建承载面；planner-cli 与 transport-gateway 仅消费 canonical runtime surfaces

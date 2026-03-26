@@ -1,0 +1,10 @@
+module_id: M3
+module_name: topology-feature
+owner_artifact: TopologyModel
+group: upstream
+target_root: modules/topology-feature
+allowed_dependencies:
+  - dxf-geometry/contracts
+  - shared
+uniform_skeleton_ready: true
+notes: domain/geometry 是唯一真实实现承载面；模块根 target 直接使用 siligen_topology_feature_contour_augment_adapter

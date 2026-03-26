@@ -1,0 +1,10 @@
+module_id: M10
+module_name: trace-diagnostics
+owner_artifact: ExecutionRecord
+group: runtime
+target_root: modules/trace-diagnostics
+allowed_dependencies:
+  - */contracts
+  - shared
+uniform_skeleton_ready: true
+notes: adapters/logging/spdlog 是唯一真实实现承载面；runtime-host 通过 canonical adapters 根消费日志适配实现

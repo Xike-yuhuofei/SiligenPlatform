@@ -44,7 +44,7 @@
 
 | 模块 | 初判 | 关键证据 | 建议动作 |
 |---|---|---|---|
-| `apps/dxf-editor-app` | `强候选复审` | 当前 HMI 的真实 DXF 工作流代码落在 `apps/hmi-app/src/hmi_client/integrations/dxf_pipeline/preview_client.py`，直接调用 `dxf_pipeline.cli.generate_preview`；未在 `apps/hmi-app/src` 中发现 `dxf_editor`、编辑器启动、notify 监听等真实源码引用；`packages/editor-contracts/README.md` 也明确写到“未看到 HMI notify 监听实现源码” | 不要默认把它当成必须保留的独立 app。先确认产品上是否真存在“独立 DXF 编辑器”用户与工作流；若没有，应考虑降级为内部工具或把必要能力回收为 package 能力 |
+| `apps/dxf-editor-app` | `强候选复审` | HMI 生产页运行时预览主链路已切到 gateway `dxf.preview.snapshot` / `dxf.preview.confirm`；未在 `apps/hmi-app/src` 中发现 `dxf_editor`、编辑器启动、notify 监听等真实源码引用；`packages/editor-contracts/README.md` 也明确写到“未看到 HMI notify 监听实现源码” | 不要默认把它当成必须保留的独立 app。先确认产品上是否真存在“独立 DXF 编辑器”用户与工作流；若没有，应考虑降级为内部工具或把必要能力回收为 package 能力 |
 | `packages/editor-contracts` | `随同复审` | 该包只在“外部进程编辑器协作”成立时才有强必要性；当前 HMI 代码侧未看到真实消费者，更多体现为文档和冻结说明 | 与 `apps/dxf-editor-app` 一并决策。若独立编辑器不是主链路，可收缩为历史契约文档，甚至进入废弃计划 |
 
 ### 3.3 不是冗余，但容易被误判为“已迁完”的占位模块
@@ -67,7 +67,7 @@
 
 | 模块 | 初判 | 关键证据 | 建议动作 |
 |---|---|---|---|
-| `dxf-pipeline` | `保留` | `apps/hmi-app/src/hmi_client/integrations/dxf_pipeline/preview_client.py` 当前直接通过子进程调用它生成预览 | 不能按“旧目录”直接判死刑，应先把 HMI 预览链路迁出 |
+| `dxf-pipeline` | `已完成兼容退出` | HMI 运行时预览主链路已迁出；legacy CLI / import shim / proto 兼容壳也已退出 | 不再把它当成 HMI 运行时依赖；后续只保留仓外观察与防回流门禁 |
 | `control-core` | `保留` | config/data/HIL/alias/source-root fallback 已切走，CLI residual fallback 也已切除；但多处 C++ canonical 包仍以它为真实实现承载，并继续持有 `third_party` | 当前仍是核心源码与 `third_party` owner，不能静默下线 |
 
 ## 4. 对 `apps/dxf-editor-app` 的特别说明

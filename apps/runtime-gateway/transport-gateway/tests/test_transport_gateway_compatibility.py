@@ -1,0 +1,355 @@
+import json
+import re
+import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[4]
+CONTRACTS = ROOT / "shared" / "contracts" / "application"
+TCP_DISPATCHER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "tcp" / "TcpCommandDispatcher.cpp"
+TCP_DISPATCHER_HEADER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "tcp" / "TcpCommandDispatcher.h"
+MOCK_IO_CONTROL_SERVICE = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "tcp" / "MockIoControlService.cpp"
+TCP_SYSTEM_FACADE_HEADER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "facades" / "tcp" / "TcpSystemFacade.h"
+TCP_SYSTEM_FACADE_CPP = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "facades" / "tcp" / "TcpSystemFacade.cpp"
+TCP_SERVER_HOST_HEADER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "include" / "siligen" / "gateway" / "tcp" / "tcp_server_host.h"
+APP_MAIN = ROOT / "apps" / "runtime-gateway" / "main.cpp"
+TARGET_APP_CMAKE = ROOT / "apps" / "runtime-gateway" / "CMakeLists.txt"
+TRANSPORT_GATEWAY_CMAKE = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "CMakeLists.txt"
+ROOT_CMAKE = ROOT / "CMakeLists.txt"
+WORKSPACE_LAYOUT = ROOT / "cmake" / "workspace-layout.env"
+
+
+def load_json(path: Path):
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_workspace_layout():
+    entries = {}
+    for raw_line in WORKSPACE_LAYOUT.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, _, value = line.partition("=")
+        if key and _:
+            entries[key] = value
+    return entries
+
+
+def load_operations():
+    operations = {}
+    for folder in ("commands", "queries"):
+        for path in sorted((CONTRACTS / folder).glob("*.json")):
+            payload = load_json(path)
+            for op in payload["operations"]:
+                method = op["method"]
+                if method in operations:
+                    raise AssertionError(f"duplicate contract method: {method}")
+                operations[method] = op
+    return operations
+
+
+def extract_tcp_methods():
+    source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    return set(re.findall(r'RegisterCommand\("([^"]+)"', source))
+
+
+def test_dispatcher_matches_contracts():
+    operations = load_operations()
+    tcp_methods = extract_tcp_methods()
+    missing = sorted(tcp_methods - operations.keys())
+    extra = sorted(operations.keys() - tcp_methods)
+    assert not missing, f"transport-gateway methods missing from contracts: {missing}"
+    assert not extra, f"contract methods not registered by transport-gateway: {extra}"
+
+
+def test_app_entry_is_thin():
+    source = APP_MAIN.read_text(encoding="utf-8")
+    assert '#include "siligen/gateway/tcp/tcp_facade_builder.h"' in source
+    assert '#include "siligen/gateway/tcp/tcp_server_host.h"' in source
+    assert 'BuildTcpFacadeBundle(*container)' in source
+    assert 'TcpServerHost server_host(' in source
+    assert "TcpServerHostOptions{port}" in source
+    assert 'TcpCommandDispatcher' not in source
+    assert 'modules/control-gateway/src/' not in source
+
+
+def test_gateway_public_host_contract_does_not_expose_config_path():
+    host_header = TCP_SERVER_HOST_HEADER.read_text(encoding="utf-8")
+    dispatcher_header = TCP_DISPATCHER_HEADER.read_text(encoding="utf-8")
+    dispatcher_impl = TCP_DISPATCHER.read_text(encoding="utf-8")
+
+    assert "std::string config_path" not in host_header
+    assert "std::string config_path" not in dispatcher_header
+    assert "config_path_" not in dispatcher_header
+    assert "config_path_" not in dispatcher_impl
+    assert "CanonicalMachineConfigRelativePath" not in dispatcher_impl
+
+
+def test_canonical_targets_are_exported_without_legacy_aliases():
+    target_app_cmake = TARGET_APP_CMAKE.read_text(encoding="utf-8")
+    transport_gateway_cmake = TRANSPORT_GATEWAY_CMAKE.read_text(encoding="utf-8")
+    root_cmake = ROOT_CMAKE.read_text(encoding="utf-8")
+    workspace_layout = load_workspace_layout()
+
+    assert "siligen_app_runtime_gateway" in target_app_cmake
+    assert "siligen_transport_gateway" in target_app_cmake
+    assert "siligen_runtime_host" in target_app_cmake
+    assert "siligen_transport_gateway" in transport_gateway_cmake
+    assert "siligen_transport_gateway_protocol" in transport_gateway_cmake
+    assert "siligen_control_gateway_tcp_adapter" not in transport_gateway_cmake
+    assert "siligen_tcp_adapter" not in transport_gateway_cmake
+    assert "siligen_control_gateway" not in transport_gateway_cmake
+    assert 'add_subdirectory("${SILIGEN_TRANSPORT_GATEWAY_DIR}"' not in root_cmake
+    assert workspace_layout.get("SILIGEN_TRANSPORT_GATEWAY_DIR") is None
+    assert 'add_subdirectory("${SILIGEN_APPS_ROOT}"' in root_cmake
+    assert workspace_layout.get("SILIGEN_APPS_ROOT") == "apps"
+
+
+def test_dxf_preview_gate_contract_is_wired():
+    source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    assert 'RegisterCommand("dxf.preview.snapshot"' in source
+    assert 'RegisterCommand("dxf.preview.confirm"' in source
+    assert 'RegisterCommand("dxf.artifact.create"' in source
+    assert 'RegisterCommand("dxf.plan.prepare"' in source
+    assert 'RegisterCommand("dxf.job.start"' in source
+    assert 'RegisterCommand("dxf.job.status"' in source
+    assert 'std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot' in source
+    assert 'std::string TcpCommandDispatcher::HandleDxfPreviewConfirm' in source
+    assert "GetDxfPreviewSnapshot(" in source
+    assert "ConfirmDxfPreview(" in source
+    assert '{"trajectory_polyline", trajectory_polyline}' in source
+    assert '{"polyline_point_count", snapshot.polyline_point_count}' in source
+    assert '{"polyline_source_point_count", snapshot.polyline_source_point_count}' in source
+    assert "dxf_cache_.preview_state = snapshot.preview_state;" in source
+    assert 'request.snapshot_hash = snapshot_hash;' in source
+    assert "dxf.preview.snapshot 使用了兼容回退路径（缺少 plan_id）" in source
+    assert "dxf.preview.snapshot max_polyline_points 超过上限，已夹断" in source
+    assert "std::min<std::size_t>(" in source
+    assert "kPreviewPolylineMaxPoints" in source
+    assert "Missing 'snapshot_hash'" in source
+    assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3018, confirm_result.GetError().GetMessage())' in source
+    assert "HandleDxfPreviewSnapshot" in source
+
+
+def test_status_reads_backend_interlock_signals():
+    source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    assert "ReadInterlockSignals()" in source
+    assert "IsInEmergencyStop()" in source
+    assert 'ioJson["door"] = signals.safety_door_open' in source
+    assert 'ioJson["estop"] = estop_active || signals.emergency_stop_triggered' in source
+    assert '"estop_known"' in source
+    assert '"door_known"' in source
+    assert 'connection_state = "degraded"' in source
+    assert 'machine_state_reason = "heartbeat_degraded"' in source
+    assert "IsHardwareReadyForMotion()" in source
+
+
+def test_status_publishes_effective_interlocks_and_supervision_contract():
+    source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    assert '{"estop_active", ioJson.value("estop", false)}' in source
+    assert '{"door_open_active", door_known && door_open}' in source
+    assert '{"home_boundary_x_active", home_boundary_x_active}' in source
+    assert '{"home_boundary_y_active", home_boundary_y_active}' in source
+    assert '{"positive_escape_only_axes", positiveEscapeOnlyAxes}' in source
+    assert '{"estop", estop_state_known ? "system_interlock" : (connected ? "motion_status" : "unknown")}' in source
+    assert '{"door_open", door_known ? "dispensing_interlock" : "unknown"}' in source
+    assert '{"home_boundary_x", home_boundary_x_active ? "motion_home_signal" : "none"}' in source
+    assert '{"home_boundary_y", home_boundary_y_active ? "motion_home_signal" : "none"}' in source
+    assert 'requested_state = "Idle";' in source
+    assert 'requested_state = "Estop";' in source
+    assert 'requested_state = "Fault";' in source
+    assert '{"current_state", machine_state}' in source
+    assert '{"requested_state", requested_state}' in source
+    assert '{"state_change_in_process", state_change_in_process}' in source
+    assert '{"failure_code", failure_code}' in source
+    assert '{"failure_stage", failure_stage}' in source
+    assert '{"supervision", supervisionJson}' in source
+    assert '{"effective_interlocks", effectiveInterlocksJson}' in source
+
+
+def test_motion_coord_status_exposes_feedback_diagnostics():
+    source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    assert 'RegisterCommand("motion.coord.status"' in source
+    assert '{"home_failed", x_status_result.Value().home_failed}' in source
+    assert '{"selected_feedback_source", x_status_result.Value().selected_feedback_source}' in source
+    assert '{"prf_position_mm", x_status_result.Value().profile_position_mm}' in source
+    assert '{"enc_position_mm", x_status_result.Value().encoder_position_mm}' in source
+    assert '{"prf_velocity_mm_s", x_status_result.Value().profile_velocity_mm_s}' in source
+    assert '{"enc_velocity_mm_s", x_status_result.Value().encoder_velocity_mm_s}' in source
+    assert '{"prf_position_ret", x_status_result.Value().profile_position_ret}' in source
+    assert '{"enc_position_ret", x_status_result.Value().encoder_position_ret}' in source
+    assert '{"prf_velocity_ret", x_status_result.Value().profile_velocity_ret}' in source
+    assert '{"enc_velocity_ret", x_status_result.Value().encoder_velocity_ret}' in source
+    assert '{"home_failed", y_status_result.Value().home_failed}' in source
+    assert '{"selected_feedback_source", y_status_result.Value().selected_feedback_source}' in source
+    assert '{"prf_position_mm", y_status_result.Value().profile_position_mm}' in source
+    assert '{"enc_position_mm", y_status_result.Value().encoder_position_mm}' in source
+    assert '{"prf_velocity_mm_s", y_status_result.Value().profile_velocity_mm_s}' in source
+    assert '{"enc_velocity_mm_s", y_status_result.Value().encoder_velocity_mm_s}' in source
+    assert '{"prf_position_ret", y_status_result.Value().profile_position_ret}' in source
+    assert '{"enc_position_ret", y_status_result.Value().encoder_position_ret}' in source
+    assert '{"prf_velocity_ret", y_status_result.Value().profile_velocity_ret}' in source
+    assert '{"enc_velocity_ret", y_status_result.Value().encoder_velocity_ret}' in source
+
+
+def test_estop_reset_and_disconnect_semantics_are_wired():
+    source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    facade_header = TCP_SYSTEM_FACADE_HEADER.read_text(encoding="utf-8")
+    facade_impl = TCP_SYSTEM_FACADE_CPP.read_text(encoding="utf-8")
+
+    assert 'RegisterCommand("estop.reset"' in source
+    assert "std::string TcpCommandDispatcher::HandleEstopReset" in source
+    assert '{"reset", true}' in source
+    assert '{"disconnected", true}' in source
+    assert "Shared::Types::Result<void> RecoverFromEmergencyStop();" in facade_header
+    assert "emergency_stop_use_case_->RecoverFromEmergencyStop()" in facade_impl
+
+
+def test_mock_io_set_is_registered_and_wired():
+    source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    mock_io_service = MOCK_IO_CONTROL_SERVICE.read_text(encoding="utf-8")
+    host_header = TCP_SERVER_HOST_HEADER.read_text(encoding="utf-8")
+    app_main = APP_MAIN.read_text(encoding="utf-8")
+
+    assert 'RegisterCommand("mock.io.set"' in source
+    assert "std::string TcpCommandDispatcher::HandleMockIoSet" in source
+    assert '{"estop", state.estop}' in source
+    assert '{"door", state.door}' in source
+    assert '{"limit_x_neg", state.limit_x_neg}' in source
+    assert '{"limit_y_neg", state.limit_y_neg}' in source
+    assert "mock.io.set is only available when Hardware.mode=Mock" in mock_io_service
+    assert "mock.io.set cannot drive door because [Interlock].safety_door_input is disabled" in mock_io_service
+    assert "std::shared_ptr<Adapters::Tcp::MockIoControlService> mock_io_control" in host_header
+    assert "MockIoControlService" in app_main
+
+
+def test_homed_semantics_follow_homing_state_only():
+    source = TCP_DISPATCHER.read_text(encoding="utf-8")
+
+    status_match = re.search(
+        r"std::string TcpCommandDispatcher::HandleStatus.*?return GatewayJsonProtocol::MakeSuccessResponse",
+        source,
+        re.S,
+    )
+    assert status_match, "cannot locate HandleStatus body"
+    status_body = status_match.group(0)
+    assert 'const bool is_homed = IsAxisStatusHomed(status);' in status_body
+    assert "MotionState::HOMED" not in status_body
+
+    coord_match = re.search(
+        r"std::string TcpCommandDispatcher::HandleMotionCoordStatus.*?return GatewayJsonProtocol::MakeSuccessResponse",
+        source,
+        re.S,
+    )
+    assert coord_match, "cannot locate HandleMotionCoordStatus body"
+    coord_body = coord_match.group(0)
+    assert '{"homed", x_status_result.Value().homing_state == "homed"}' in coord_body
+    assert '{"homed", y_status_result.Value().homing_state == "homed"}' in coord_body
+    assert "MotionState::HOMED" not in coord_body
+
+
+def test_manual_commands_are_guarded_by_interlocks():
+    source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    assert "MakeManualInterlockErrorResponse(" in source
+    assert "ReadManualInterlockSnapshot(systemFacade_, dispensingFacade_)" in source
+    assert "2404" in source
+    assert "2305" in source
+    assert "2417" in source
+    assert "2703" in source
+    assert "2842" in source
+
+
+def test_move_prechecks_directional_limits_before_dispatch():
+    source = TCP_DISPATCHER.read_text(encoding="utf-8")
+
+    assert "std::optional<std::string> CheckMoveAxisLimitBeforeDispatch(" in source
+    assert "ReadLimitStatus(axis_id, positive)" in source
+
+    move_match = re.search(
+        r"std::string TcpCommandDispatcher::HandleMove.*?return GatewayJsonProtocol::MakeSuccessResponse",
+        source,
+        re.S,
+    )
+    assert move_match, "cannot locate HandleMove body"
+    move_body = move_match.group(0)
+    assert "GetCurrentPosition()" in move_body
+    assert "CheckMoveAxisLimitBeforeDispatch(motionFacade_, LogicalAxisId::X, current_position.x, x)" in move_body
+    assert "CheckMoveAxisLimitBeforeDispatch(motionFacade_, LogicalAxisId::Y, current_position.y, y)" in move_body
+
+
+def test_home_command_exposes_axis_level_results():
+    source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    assert 'RegisterCommand("home"' in source
+    assert '{"succeeded_axes", axes_to_json(response.successfully_homed_axes)}' in source
+    assert '{"failed_axes", axes_to_json(response.failed_axes)}' in source
+    assert '{"error_messages", response.error_messages}' in source
+    assert '{"axis_results", axis_results_to_json(response.axis_results)}' in source
+    assert '{"total_time_ms", response.total_time_ms}' in source
+    assert "Hardware connection degraded, reconnect before homing" in source
+
+
+def test_home_auto_command_is_registered_and_uses_supervisor_chain():
+    source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    facade_header = (ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "facades" / "tcp" / "TcpMotionFacade.h").read_text(encoding="utf-8")
+    facade_impl = (ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "facades" / "tcp" / "TcpMotionFacade.cpp").read_text(encoding="utf-8")
+
+    assert 'RegisterCommand("home.auto"' in source
+    assert "std::string TcpCommandDispatcher::HandleHomeAuto" in source
+    assert 'motionFacade_->EnsureAxesReadyZero(request)' in source
+    assert '{"accepted", response.accepted}' in source
+    assert '{"summary_state", response.summary_state}' in source
+    assert '{"axis_results", axisResultsJson}' in source
+    assert '{"total_time_ms", response.total_time_ms}' in source
+    assert "HandleHomeGo" in source
+    assert "HandleHome(" in source
+    assert "EnsureAxesReadyZero(" in facade_header
+    assert "ensure_ready_zero_use_case_" in facade_header
+    assert "ensure_ready_zero_use_case_->Execute(request)" in facade_impl
+
+
+def test_jog_allows_positive_escape_when_home_is_active_but_axis_not_homed():
+    source = TCP_DISPATCHER.read_text(encoding="utf-8")
+
+    jog_match = re.search(
+        r"std::string TcpCommandDispatcher::HandleJog.*?return GatewayJsonProtocol::MakeSuccessResponse",
+        source,
+        re.S,
+    )
+    assert jog_match, "cannot locate HandleJog body"
+    jog_body = jog_match.group(0)
+    assert "const bool positive_escape_from_home = axis_status.home_signal && direction > 0;" in jog_body
+    assert 'if (!is_homed && !positive_escape_from_home)' in jog_body
+    assert '"Axis not homed; HOME is active, only positive escape jog is allowed"' in jog_body
+    assert '"Axis not homed, run homing first"' in jog_body
+
+
+def main():
+    tests = [
+        test_dispatcher_matches_contracts,
+        test_app_entry_is_thin,
+        test_gateway_public_host_contract_does_not_expose_config_path,
+        test_canonical_targets_are_exported_without_legacy_aliases,
+        test_dxf_preview_gate_contract_is_wired,
+        test_status_reads_backend_interlock_signals,
+        test_status_publishes_effective_interlocks_and_supervision_contract,
+        test_motion_coord_status_exposes_feedback_diagnostics,
+        test_estop_reset_and_disconnect_semantics_are_wired,
+        test_mock_io_set_is_registered_and_wired,
+        test_homed_semantics_follow_homing_state_only,
+        test_manual_commands_are_guarded_by_interlocks,
+        test_move_prechecks_directional_limits_before_dispatch,
+        test_home_command_exposes_axis_level_results,
+        test_home_auto_command_is_registered_and_uses_supervisor_chain,
+        test_jog_allows_positive_escape_when_home_is_active_but_axis_not_homed,
+    ]
+    for test in tests:
+        test()
+    print("transport-gateway compatibility checks passed")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except AssertionError as exc:
+        print(f"FAIL: {exc}", file=sys.stderr)
+        sys.exit(1)

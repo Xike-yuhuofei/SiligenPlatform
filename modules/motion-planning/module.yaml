@@ -1,0 +1,10 @@
+module_id: M7
+module_name: motion-planning
+owner_artifact: MotionPlan
+group: planning
+target_root: modules/motion-planning
+allowed_dependencies:
+  - process-path/contracts
+  - shared
+uniform_skeleton_ready: true
+notes: 模块根 target 直接链接 canonical siligen_motion owner target；所有 live 规划与 runtime/control surface 均已收敛到 canonical roots

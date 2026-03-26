@@ -40,7 +40,7 @@
 ### Added
 
 - 建立基于当前 canonical workspace 的首个根仓候选发布基线，用于冻结 `workspace template refactor` 与架构重构后的仓内验证口径。
-- 新增面向根仓的本地验证与 release evidence 入口，统一收敛 `build.ps1`、`test.ps1`、`ci.ps1`、`tools/scripts/run-local-validation-gate.ps1` 与 `release-check.ps1`。
+- 新增面向根仓的本地验证与 release evidence 入口，统一收敛 `build.ps1`、`test.ps1`、`ci.ps1`、`scripts/validation/run-local-validation-gate.ps1` 与 `release-check.ps1`。
 - 补充 `shared/`、`tools/`、`scripts/`、`cmake/` 等重构根目录对应的门禁与说明资产，为后续 owner root 切换提供仓内基线。
 
 ### Changed

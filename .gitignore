@@ -22,14 +22,17 @@ env/
 
 # Build outputs and local runtime data
 build/
+/bin/
+/obj/
+/out/
 /build-tests/
 /.tmp/
-!tools/build/
-!tools/build/build-validation.ps1
+!scripts/build/
+!scripts/build/build-validation.ps1
 logs/
 tmp/
 uploads/
-integration/reports/
+tests/reports/
 control-core/build/
 control-core/build-codex-*/
 
@@ -61,7 +64,13 @@ dist/
 # Local environment files
 .env
 .env.*
+*.env
+*.env.*
+!cmake/workspace-layout.env
 *.local
+*.log
+*.tmp
+*.swp
 
 # Backups created when flattening nested repositories into this monorepo
 control-core/.git.nested-backup/

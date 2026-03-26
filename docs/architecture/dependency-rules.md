@@ -93,3 +93,42 @@ packages/simulation-engine
 - `device-contracts` / `device-adapters` / `shared-kernel` 的 CMake 或源码重新出现 `control-core/modules/*`
 - HMI 需要直接引用 `control-core` 内部模型而不是协议 DTO
 - `dxf-pipeline` 同时承担算法、schema、generated code、回归基线且没有独立 contracts owner
+
+## 6. Wave 1 shared target boundary（目标态，不代表已迁移）
+
+本节只定义 Wave 1 的目标态边界，不改变前文的 current canonical 事实。
+
+```text
+shared/contracts/application
+    <- packages/application-contracts
+
+shared/contracts/device
+    <- packages/device-contracts
+
+shared/contracts/engineering
+    <- packages/engineering-contracts
+
+shared/kernel
+    <- packages/shared-kernel
+
+shared/testing
+    <- packages/test-kit
+
+shared/logging
+    <- packages/shared-kernel
+    <- packages/traceability-observability
+```
+
+Wave 1 仅允许新增以下类型的内容：
+
+- 边界说明
+- 命名冻结
+- 门禁说明
+- 迁移占位
+
+Wave 1 不允许把以下内容视为已迁移：
+
+- `packages/*` 实现源码
+- `fixtures/tests` 进入 `shared/contracts/*`
+- 场景 gate 脚本进入 `shared/testing`
+- logging sink 或追溯业务实现进入 `shared/logging`

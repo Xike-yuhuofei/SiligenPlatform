@@ -1,0 +1,10 @@
+module_id: M5
+module_name: coordinate-alignment
+owner_artifact: CoordinateTransformSet
+group: planning
+target_root: modules/coordinate-alignment
+allowed_dependencies:
+  - process-planning/contracts
+  - shared
+uniform_skeleton_ready: true
+notes: domain/machine 是唯一真实实现承载面；模块根 target 已切到 siligen_coordinate_alignment_domain_machine，并消费 workflow canonical public headers

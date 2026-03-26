@@ -1,12 +1,12 @@
 # Workspace Baseline
 
-更新时间：`2026-03-24`
+更新时间：`2026-03-25`
 
 ## 1. 当前正式基线
 
 当前工作区的唯一正式冻结基线入口为：
 
-- `docs/architecture/workspace-e2e-freeze/`
+- `docs/architecture/dsp-e2e-spec/`
 
 该目录承载 `S01-S09` 正式轴文档和 `S10` 索引，不再并行维护第二套默认架构冻结入口。
 
@@ -14,40 +14,44 @@
 
 | 类别 | 当前结论 |
 |---|---|
-| target canonical roots | `apps/`, `modules/`, `shared/`, `docs/`, `samples/`, `tests/`, `scripts/`, `config/`, `data/`, `deploy/` |
-| migration-source roots | `packages/`, `integration/`, `tools/`, `examples/` |
-| feature artifact roots | `specs/` (`freeze/input artifacts` only) |
+| canonical roots | `apps/`, `modules/`, `shared/`, `docs/`, `samples/`, `tests/`, `scripts/`, `config/`, `data/`, `deploy/` |
+| removed legacy roots | `packages/`, `integration/`, `tools/`, `examples/` 已物理删除 |
+| feature artifact roots | `specs/`（仅保留 freeze/input artifacts，不参与 live owner graph） |
 | support/vendor/generated | `cmake/`, `third_party/`, `build/`, `logs/`, `uploads/` |
-| 正式冻结文档集 | `docs/architecture/workspace-e2e-freeze/` |
+| 正式冻结文档集 | `docs/architecture/dsp-e2e-spec/` |
 
-## 2.1 canonical roots 与 migration-source roots 正式口径
+## 2.1 单轨根级口径
 
-- `target canonical roots` 是后续架构评审、owner 判定、目录归位和根级构建图收敛的唯一正式目标根集合。
-- `migration-source roots` 仅用于承载迁移过程中的当前事实，不具备默认 owner 资格，也不构成终态承载面。
-- 新增或迁移后的稳定资产必须优先写入 `target canonical roots`；禁止以“临时落位”为由回流到 `migration-source roots`。
-- 若确需临时桥接保留在 `migration-source roots`，必须在对应 `Wave` 文档中声明退出条件、责任人和清理时点。
+- `canonical roots` 是后续架构评审、owner 判定、目录归位和根级构建图收敛的唯一正式根集合。
+- 已删除 legacy roots 不得以 wrapper、旁路目录或文档默认入口的形式回流；一旦回流，`legacy-exit-checks.py` 必须失败。
+- 新增稳定资产必须直接落在 canonical roots；禁止以“临时落位”为由恢复 bridge root 或默认 fallback。
 
 ## 3. 当前阶段说明
 
-- 本工作区已完成治理基线切换与根级 cutover：模板化目标根已经成为正式目标结构，同时也是默认构建与验证入口。
-- `packages/`、`integration/`、`tools/`、`examples/` 当前仅允许作为迁移来源、wrapper、tombstone 或历史审计面存在，不再是终态 owner 根。
-- `modules/`、`samples/`、`scripts/`、`deploy/` 已从“预留目标根”转为正式承载根；新增稳定资产必须直接归位到这些 canonical roots。
+- 本工作区已完成治理基线切换、根级 cutover 与 bridge exit closeout。
+- `modules/`、`shared/`、`tests/`、`scripts/`、`samples/`、`deploy/` 均已转为正式承载根。
+- `apps/` 只承担宿主与装配职责，`shared/` 只承担跨模块稳定能力，不再通过 legacy 根承载 live owner 事实。
 
 ## 4. 统一验证事实
 
 - 根级 build/test/CI 入口是 `build.ps1`、`test.ps1`、`ci.ps1`。
-- 本地冻结门禁入口是 `tools/scripts/run-local-validation-gate.ps1`。
-- 冻结文档集校验入口是 `tools/migration/validate_workspace_freeze_docset.py`。
-- workspace 布局校验入口是 `tools/migration/validate_workspace_layout.py`。
+- 本地冻结门禁入口是 `scripts/validation/run-local-validation-gate.ps1`。
+- 冻结文档集校验入口是 `scripts/migration/validate_dsp_e2e_spec_docset.py`。
+- workspace 布局校验入口是 `scripts/migration/validate_workspace_layout.py`。
+- legacy/bridge 退出校验入口是 `scripts/migration/legacy-exit-checks.py`。
 
 ## 5. 当前结论
 
-本页用于声明正式冻结基线，不在 `Wave 1` 阶段宣告整项模板化工作区重构最终 closeout。正式审阅、owner 判定和 acceptance 回链统一以 `workspace-e2e-freeze`、根级 gate 证据以及 `system-acceptance-report.md` 为准；后续任何目录调整都必须继续保持向本页声明的 target canonical roots 收敛。
+- `2026-03-25` 实测结果表明，工作区已经完成单轨收口。
+- `validate_workspace_layout.py`：`missing=0`、`legacy_root_present=0`、`bridge_root_failure=0`。
+- `legacy-exit-checks.py`：`finding_count=0`。
+- `test.ps1 -Profile CI -Suite contracts -FailOnKnownFailure`：`passed=15`、`failed=0`、`known_failure=0`、`skipped=0`。
+- `run-local-validation-gate.ps1`：`overall_status=passed`、`passed_steps=6/6`。
 
-## 6. 本次特性 closeout 判定
+## 6. Closeout Evidence
 
-- 历史约束：在 `Wave 1` 基线阶段，当前仅 `US1 / Wave 0` 已完成 closeout；后续波次必须逐步通过 `Phase End Check` 回写，不得在本页预宣告“整项模板化工作区重构最终 closeout”。
-- 当前已完成的 closeout 波次，以 `docs/architecture/system-acceptance-report.md` 中已回写并通过 `Phase End Check` 的条目为准；截至 `2026-03-24`，该报告已确认 `US1 / Wave 0`、`US2 / Wave 1`、`US3 / Wave 2`、`US4 / Wave 3`、`US5 / Wave 4`、`US6 / Wave 5`、`US7 / Wave 6`。
-- `build.ps1`、`test.ps1`、`ci.ps1`、`tools/scripts/run-local-validation-gate.ps1`、`scripts/migration/legacy-exit-checks.py` 的有效证据，统一由 `system-acceptance-report.md` 与对应 `integration/reports/**` 路径承载。
-- accepted exceptions：`none`
-- `packages/`、`integration/`、`tools/`、`examples/` 继续保留当前迁移来源事实，但不构成默认 owner；其是否影响某一波次 closeout，以对应 Phase End Check 结论为准。
+- `tests/reports/workspace-validation.md`
+- `tests/reports/legacy-exit-current/legacy-exit-checks.md`
+- `tests/reports/dsp-e2e-spec-docset/dsp-e2e-spec-docset.md`
+- `tests/reports/local-validation-gate/20260325-212745/local-validation-gate-summary.md`
+- `docs/architecture/system-acceptance-report.md`

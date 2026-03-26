@@ -5,7 +5,6 @@
 当前约定：
 
 - `config/machine/`：机器配置 canonical 源
-- `config/machine_config.ini`：根级 bridge，仅兼容仍硬编码旧根级路径的调用方
 - `config/build/`、`config/ci/`、`config/environments/`：工作区模板与治理配置
 
 边界说明：

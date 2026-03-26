@@ -1,35 +1,60 @@
 cmake_minimum_required(VERSION 3.20)
 
-set(SHARED_KERNEL_TESTS_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/../packages/shared-kernel/tests"
+get_filename_component(SILIGEN_TESTS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}" ABSOLUTE)
+get_filename_component(SILIGEN_WORKSPACE_ROOT_CANDIDATE "${SILIGEN_TESTS_SOURCE_DIR}/.." ABSOLUTE)
+set(SILIGEN_LAYOUT_FILE "${SILIGEN_WORKSPACE_ROOT_CANDIDATE}/cmake/workspace-layout.env")
+include("${SILIGEN_WORKSPACE_ROOT_CANDIDATE}/cmake/LoadWorkspaceLayout.cmake")
+siligen_load_workspace_layout(
+    "${SILIGEN_WORKSPACE_ROOT_CANDIDATE}"
+    "${SILIGEN_LAYOUT_FILE}"
 )
-if(NOT EXISTS "${SHARED_KERNEL_TESTS_DIR}/CMakeLists.txt")
-    message(FATAL_ERROR "未找到 shared-kernel canonical 测试入口: ${SHARED_KERNEL_TESTS_DIR}")
-endif()
-
-add_subdirectory(
-    "${SHARED_KERNEL_TESTS_DIR}"
-    "${CMAKE_BINARY_DIR}/packages/shared-kernel-tests"
-)
-
-set(PROCESS_RUNTIME_CORE_TESTS_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/../packages/process-runtime-core/tests"
-)
-if(NOT EXISTS "${PROCESS_RUNTIME_CORE_TESTS_DIR}/CMakeLists.txt")
-    message(FATAL_ERROR "未找到 process-runtime-core canonical 测试入口: ${PROCESS_RUNTIME_CORE_TESTS_DIR}")
-endif()
-
-add_subdirectory(
-    "${PROCESS_RUNTIME_CORE_TESTS_DIR}"
-    "${CMAKE_BINARY_DIR}/packages/process-runtime-core-tests"
-)
-
-set(RUNTIME_HOST_TESTS_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/../packages/runtime-host/tests"
-)
-if(EXISTS "${RUNTIME_HOST_TESTS_DIR}/CMakeLists.txt")
-    add_subdirectory(
-        "${RUNTIME_HOST_TESTS_DIR}"
-        "${CMAKE_BINARY_DIR}/packages/runtime-host-tests"
+set(SILIGEN_WORKSPACE_ROOT "${SILIGEN_WORKSPACE_ROOT_CANDIDATE}")
+if(NOT "${SILIGEN_WORKSPACE_ROOT}" STREQUAL "${SILIGEN_WORKSPACE_ROOT_CANDIDATE}")
+    message(FATAL_ERROR
+        "tests workspace root mismatch: "
+        "resolved='${SILIGEN_WORKSPACE_ROOT}', candidate='${SILIGEN_WORKSPACE_ROOT_CANDIDATE}'"
     )
 endif()
+if(NOT "${SILIGEN_WORKSPACE_ROOT}" STREQUAL "${CMAKE_SOURCE_DIR}")
+    message(FATAL_ERROR
+        "tests root must resolve to canonical superbuild source root: CMAKE_SOURCE_DIR='${CMAKE_SOURCE_DIR}', "
+        "resolved='${SILIGEN_WORKSPACE_ROOT}'"
+    )
+endif()
+
+set(SILIGEN_REPO_VALIDATION_SURFACE_READMES
+    "${SILIGEN_TESTS_SOURCE_DIR}/integration/README.md"
+    "${SILIGEN_TESTS_SOURCE_DIR}/e2e/README.md"
+    "${SILIGEN_TESTS_SOURCE_DIR}/performance/README.md"
+)
+foreach(SILIGEN_VALIDATION_SURFACE_README IN LISTS SILIGEN_REPO_VALIDATION_SURFACE_READMES)
+    if(NOT EXISTS "${SILIGEN_VALIDATION_SURFACE_README}")
+        message(FATAL_ERROR "未找到仓库级验证承载面说明: ${SILIGEN_VALIDATION_SURFACE_README}")
+    endif()
+endforeach()
+
+add_custom_target(
+    siligen_repo_validation_surface_docs
+    SOURCES ${SILIGEN_REPO_VALIDATION_SURFACE_READMES}
+)
+
+set(SILIGEN_CANONICAL_TEST_ROOTS
+    "${SILIGEN_SHARED_ROOT}/kernel/tests"
+    "${SILIGEN_MODULES_ROOT}/workflow/tests"
+    "${SILIGEN_MODULES_ROOT}/runtime-execution/tests"
+)
+
+foreach(SILIGEN_CANONICAL_TEST_ROOT IN LISTS SILIGEN_CANONICAL_TEST_ROOTS)
+    if(NOT EXISTS "${SILIGEN_CANONICAL_TEST_ROOT}/CMakeLists.txt")
+        message(FATAL_ERROR "missing canonical test root: ${SILIGEN_CANONICAL_TEST_ROOT}/CMakeLists.txt")
+    endif()
+endforeach()
+
+foreach(SILIGEN_CANONICAL_TEST_ROOT IN LISTS SILIGEN_CANONICAL_TEST_ROOTS)
+    file(RELATIVE_PATH SILIGEN_REL_TEST_ROOT "${SILIGEN_WORKSPACE_ROOT}" "${SILIGEN_CANONICAL_TEST_ROOT}")
+    string(REPLACE "/" "-" SILIGEN_TEST_BIN_SUFFIX "${SILIGEN_REL_TEST_ROOT}")
+    add_subdirectory(
+        "${SILIGEN_CANONICAL_TEST_ROOT}"
+        "${CMAKE_BINARY_DIR}/tests/${SILIGEN_TEST_BIN_SUFFIX}"
+    )
+endforeach()

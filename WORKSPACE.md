@@ -1,83 +1,64 @@
 # SiligenSuite WORKSPACE
 
+更新时间：`2026-03-25`
+
 ## 1. 目的
 
-本文件定义 `D:\Projects\SiligenSuite` 根级 monorepo 工作区骨架、治理边界和当前兼容口径。
+本文件冻结仓库根目录的工作区结构、目录职责和单轨约束，防止后续实现把历史承载面重新引回主线。
 
-当前阶段目标是：
-
-- 建立根级 canonical 目录
-- 固定后续任务的稳定落位
-- 在不做大规模业务迁移的前提下统一治理入口
-
-当前阶段不做：
-
-- 在未完成真实迁移前静默删除现有子项目
-- 一步到位重写所有构建文件
-- 把 `control-core`、`dxf-pipeline` 整体搬入新目录
-
-## 2. 当前状态
-
-当前根目录同时存在两类路径：
-
-1. 现有实现承载路径
-
-- `control-core`
-- `dxf-pipeline`
-
-2. 新增 canonical 工作区路径
+## 2. target canonical roots
 
 - `apps/`
-- `packages/`
-- `integration/`
-- `tools/`
+- `modules/`
+- `shared/`
 - `docs/`
+- `samples/`
+- `tests/`
+- `scripts/`
 - `config/`
 - `data/`
-- `examples/`
+- `deploy/`
 
-## 3. 根级目录职责
+## 3. legacy roots（已退出）
 
-| 目录 | 职责 | 当前阶段使用方式 |
+- `packages/`（已物理删除）
+- `integration/`（已物理删除）
+- `tools/`（已物理删除）
+- `examples/`（已物理删除）
+
+约束：
+
+- 任何新变更不得重新创建 legacy roots。
+- 旧根路径不得作为默认入口、默认脚本路径或正式文档锚点。
+
+## 4. 根级职责
+
+| 根目录 | 正式职责 | 说明 |
 |---|---|---|
-| `apps/` | 可运行入口、壳层装配、启动封装 | 当前承接 HMI 与控制侧入口 |
-| `packages/` | 可复用业务能力、契约、宿主支撑、公共基础 | 当前承接工程数据、应用契约、工程契约、运行时与测试工具 |
-| `integration/` | 跨包场景回归、协议兼容、联调验证 | 当前已有工程回归、协议兼容、HIL/SIL 脚本 |
-| `tools/` | 构建、脚本、codegen、迁移工具 | 当前承接根级 build/test/install 治理入口 |
-| `docs/` | 根级架构与治理文档 | 当前承接工作区规范、部署、排障与外部 DXF 编辑说明 |
-| `config/` | 构建/CI/环境/机器配置资产 | 当前作为默认说明路径 |
-| `data/` | 配方、schema、基线等版本化资产 | 当前作为默认说明路径 |
-| `examples/` | 示例输入、样例输出、演示场景 | 当前作为工作区样例目录 |
+| `apps/` | 进程入口、装配、发布壳 | 当前 canonical 入口为 `planner-cli`、`runtime-service`、`runtime-gateway`、`hmi-app`、`trace-viewer` |
+| `modules/` | `M0-M11` 的唯一业务 owner 根 | 当前先以锚点和接口目标冻结 owner 落位 |
+| `shared/` | 公共契约、ID、消息、failure payload、基础设施 | 不承载一级业务 owner |
+| `docs/` | 架构冻结、运行说明、验收索引 | 以 `dsp-e2e-spec/` 为唯一正式冻结入口 |
+| `samples/` | golden cases、fixtures、稳定样本 | 唯一样本承载根 |
+| `tests/` | contracts/e2e/performance/protocol-compatibility 验证根 | 唯一测试与验证承载根 |
+| `scripts/` | 自动化、迁移脚本、构建辅助 | 唯一脚本与迁移承载根 |
+| `config/` | 版本化配置 | 默认机器与环境配置源 |
+| `data/` | 配方、schema、运行资产 | 默认数据源 |
+| `deploy/` | 部署与交付材料 | 发布清单、交付约束和环境说明 |
 
-## 4. 当前兼容口径
+## 5. 当前 live 入口
 
-- `packages/runtime-host` 已是当前运行时宿主的真实实现路径；`control-core/apps/control-runtime` 仅保留旧 target 名称和文档兼容壳。
-- `packages/transport-gateway` 已是当前 TCP/JSON 传输实现的真实路径；`control-core/apps/control-tcp-server` 仅保留薄启动入口，`control-core/modules/control-gateway` 与 `control-core/src/adapters/tcp` 仅保留兼容壳。
-- `apps/hmi-app` 已是当前 HMI 的真实源码根；历史 `hmi-client` 目录已删除并归档到 `docs/_archive/2026-03/hmi-client/`。
-- `packages/simulation-engine` 已完成对原顶层 `simulation-engine` 的源码收口，当前由 package 承接真实实现与构建入口。
-- `control-cli` 当前没有新式源码目录，后续以旧仓 `Backend_CPP/src/adapters/cli` 为迁移源，对齐到 `apps/control-cli`。
-- `dxf-editor`、`apps/dxf-editor-app`、`packages/editor-contracts` 已退出工作区默认能力版图；DXF 编辑改为外部编辑器人工流程。
+| live 入口 | 角色 | 说明 |
+|---|---|---|
+| `apps/planner-cli/` | 规划侧 CLI 入口 | 生产口径 |
+| `apps/runtime-service/` | 运行时宿主入口 | 生产口径 |
+| `apps/runtime-gateway/` | 网关与 TCP 入口 | 生产口径 |
+| `apps/hmi-app/` | HMI 进程入口 | 与 `modules/hmi-application/` 协同 |
+| `apps/trace-viewer/` | 轨迹/追踪观测入口 | 观测与诊断 |
 
-## 5. 依赖与迁移入口
+## 6. 执行规则
 
-工作区级治理规则见以下文档：
-
-- `docs/architecture/directory-responsibilities.md`
-- `docs/architecture/dependency-rules.md`
-- `docs/architecture/migration-principles.md`
-- `docs/runtime/external-dxf-editing.md`
-
-## 6. 后续任务执行原则
-
-1. 新增治理/契约/入口骨架时，优先放根级 canonical 路径。
-2. 现有业务实现的局部修复，仍可以留在旧子项目，但不能借机扩张旧目录边界。
-3. DXF 编辑相关需求不再创建新的 app 或 contracts 包，统一按外部编辑器人工流程说明处理。
-4. Git 分支命名必须使用统一格式：`<type>/<scope>/<ticket>-<short-desc>`；无任务号时可临时使用 `NOISSUE` 占位。
-
-## 7. 协作命名约定（强制）
-
-- 分支命名格式：`<type>/<scope>/<ticket>-<short-desc>`
-- `type` 允许值：`feat`、`fix`、`chore`、`refactor`、`docs`、`test`、`hotfix`、`spike`、`release`
-- `scope` 使用模块短名，例如 `hmi`、`runtime`、`cli`、`gateway`
-- `ticket` 优先使用任务系统编号（如 `SS-142`），确无编号时使用 `NOISSUE`
-- `short-desc` 使用英文小写 kebab-case
+1. 根级命令只认 `build.ps1`、`test.ps1`、`ci.ps1` 与 `scripts/validation/run-local-validation-gate.ps1`。
+2. `docs/architecture/dsp-e2e-spec/` 是阶段、对象、模块、控制语义和 acceptance baseline 的唯一正式入口。
+3. 任何目录调整必须先更新 `S05`、`S06`、`S09`、`S10` 和对应验证脚本。
+4. 分支命名必须符合 `<type>/<scope>/<ticket>-<short-desc>`。

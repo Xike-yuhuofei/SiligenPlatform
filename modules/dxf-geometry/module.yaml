@@ -1,0 +1,10 @@
+module_id: M2
+module_name: dxf-geometry
+owner_artifact: CanonicalGeometry
+group: upstream
+target_root: modules/dxf-geometry
+allowed_dependencies:
+  - job-ingest/contracts
+  - shared
+uniform_skeleton_ready: true
+notes: DXF 解析适配、几何转换与 engineering_data Python 包均已归位到 canonical application/adapters surfaces

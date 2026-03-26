@@ -28,7 +28,7 @@
 当前重跑阶段的仓外观察期证据应整理到当前阶段独立目录，不要覆写 `Wave 4C/4D` 历史证据。例如：
 
 ```text
-integration/reports/verify/wave4e-rerun/
+tests/reports/verify/wave4e-rerun/
   intake/
   observation/
 ```
@@ -42,10 +42,10 @@ integration/reports/verify/wave4e-rerun/
 推荐执行入口：
 
 ```powershell
-.\tools\scripts\register-external-observation-intake.ps1 -Scope field-scripts -SourcePath <field-script-root>
-.\tools\scripts\register-external-observation-intake.ps1 -Scope release-package -SourcePath <unpacked-release-root>
-.\tools\scripts\register-external-observation-intake.ps1 -Scope rollback-package -SourcePath <rollback-root>
-.\tools\scripts\run-external-migration-observation.ps1 -PythonExe <target-python> -ReportRoot integration\reports\verify\wave4e-rerun
+.\scripts\validation\register-external-observation-intake.ps1 -Scope field-scripts -SourcePath <field-script-root>
+.\scripts\validation\register-external-observation-intake.ps1 -Scope release-package -SourcePath <unpacked-release-root>
+.\scripts\validation\register-external-observation-intake.ps1 -Scope rollback-package -SourcePath <rollback-root>
+.\scripts\validation\run-external-migration-observation.ps1 -PythonExe <target-python> -ReportRoot tests\reports\verify\wave4e-rerun
 ```
 
 说明：

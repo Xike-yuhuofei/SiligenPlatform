@@ -1,0 +1,10 @@
+module_id: M0
+module_name: workflow
+owner_artifact: WorkflowRun
+group: workflow
+target_root: modules/workflow
+allowed_dependencies:
+  - shared
+  - */contracts
+uniform_skeleton_ready: true
+notes: application/include、domain/include、adapters/include 为 owner-backed canonical public surface；domain/application/adapters/tests 是唯一真实实现承载面，motion-core/process-core 通过 canonical public headers 暴露

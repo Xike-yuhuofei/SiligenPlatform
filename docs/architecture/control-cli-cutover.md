@@ -158,5 +158,13 @@
 1. `control-core` 仍是共享库图与 `third_party` owner。
 2. 其他非 CLI residual consumer 仍需按 `control-core` 总体删除计划继续清理。
 
+## 9. Wave 3C 入口收口补充
+
+当前补充结论：
+
+1. CLI 默认配置路径仍是 `config/machine/machine_config.ini`，但真实解析统一经 `ResolveConfigFilePathWithBridge(...)`，旧 alias 继续 hard-fail。
+2. `dxf-preview` 未显式设置 `SILIGEN_DXF_PREVIEW_SCRIPT` 时，默认脚本入口为 `tools/engineering-data-bridge/scripts/generate_preview.py`。
+3. `packages/engineering-data/scripts/generate_preview.py` 继续保留为 owner/维护入口，不再被描述为工作区默认入口。
+4. `SILIGEN_ENGINEERING_DATA_PYTHON`、`SILIGEN_DXF_PREVIEW_PYTHON` 的优先级与兼容策略不变。
 
 

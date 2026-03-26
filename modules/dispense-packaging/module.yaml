@@ -1,0 +1,11 @@
+module_id: M8
+module_name: dispense-packaging
+owner_artifact: ExecutionPackage
+group: planning
+target_root: modules/dispense-packaging
+allowed_dependencies:
+  - motion-planning/contracts
+  - process-planning/contracts
+  - shared
+uniform_skeleton_ready: true
+notes: domain/dispensing 是唯一真实实现承载面；模块根 target 已切到 siligen_dispense_packaging_domain_dispensing

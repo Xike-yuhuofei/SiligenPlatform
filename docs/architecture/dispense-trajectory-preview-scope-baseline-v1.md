@@ -92,13 +92,12 @@
 ## 11. P1 契约冻结（2026-03-21）
 
 - 新增命令：`dxf.preview.snapshot`
-  - 请求：与 `dxf.execute` 共享轨迹参数来源，至少提供 `dispensing_speed_mm_s`（兼容别名 `speed_mm_s`）
+  - 请求：与 `dxf.plan.prepare` 共享轨迹参数来源，至少提供 `dispensing_speed_mm_s`（兼容别名 `speed_mm_s`）
   - 响应：`snapshot_id`、`snapshot_hash`、`segment_count`、`point_count`、`total_length_mm`、`estimated_time_s`、`generated_at`
   - 错误码：`3010`、`3011`、`3012`、`3013`、`3014`
-- 更新命令：`dxf.execute`
-  - 请求新增强制字段：`snapshot_hash`
-  - 响应新增字段：`snapshot_hash`、`preview_request_signature`
-  - 错误码新增：`3004`（缺少快照哈希）、`3005`（快照或签名未准备）、`3006`（快照哈希不一致）、`3007`（请求签名不一致）
+- canonical 执行链：`dxf.artifact.create -> dxf.plan.prepare -> dxf.preview.snapshot -> dxf.preview.confirm -> dxf.job.start`
+  - `dxf.preview.confirm` 负责显式锁定用户确认的快照
+  - `dxf.job.start` 作为唯一正式启动入口，不再通过 `dxf.execute` 兼容链承载执行语义
 
 ## 12. P2 优先级调整（2026-03-21）
 

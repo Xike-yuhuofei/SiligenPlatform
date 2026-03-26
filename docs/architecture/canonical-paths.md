@@ -1,64 +1,60 @@
 # Canonical Paths
 
-更新时间：`2026-03-19`
+更新时间：`2026-03-24`
 
 ## 1. 分类定义
 
-本文档使用四类路径标签：
-
-- `effective canonical`
-- `transitional canonical`
-- `legacy source owner`
-- `removed`
-
-## 2. Effective Canonical
-
-| 能力 | 路径 | 备注 |
+| classification | 含义 | 治理约束 |
 |---|---|---|
-| HMI 应用 | `apps/hmi-app` | 有真实源码、脚本、测试。 |
-| Runtime app 入口 | `apps/control-runtime` | 有真实 `main.cpp`、`run.ps1` 与独立可执行文件。 |
-| TCP server 入口 | `apps/control-tcp-server` | 有真实 `main.cpp`、`run.ps1`；HIL 默认已切到该入口。 |
-| 机器配置 | `config/` | `config/machine/machine_config.ini` 已是默认配置源。 |
-| 配方/Schema 数据 | `data/` | `data/recipes/`、`data/schemas/recipes/` 已是默认数据源。 |
-| 运行时宿主实现 | `packages/runtime-host` | 真实 C++ 宿主实现。 |
-| 传输网关实现 | `packages/transport-gateway` | 真实 TCP/JSON 协议与 facade/wiring 实现；兼容 alias 也从这里导出。 |
-| 过程运行时核心公开入口 | `packages/process-runtime-core` | 公开 target、测试入口与核心源码承接目录均在此；`control-core` 的四个 legacy 子树已删除。 |
-| shared-kernel | `packages/shared-kernel` | 真实共享基础源码 owner；legacy `control-core/modules/shared-kernel` 已删除。 |
-| 工作区验证工具 | `packages/test-kit` | 有统一 runner 与报告模型。 |
-| 集成验证目录 | `integration/` | HIL、协议、工程回归、sim 脚本都从这里发起。 |
+| `effective-canonical` | 正式 owner 根、正式承载面或正式入口面 | 必须先成为真实承载面，legacy root 才允许降级。 |
+| `migration-source` | 迁移期间暂存当前事实的历史根 | 只允许显式 bridge，不得继续新增业务 owner。 |
+| `feature-artifact` | 规格、计划、任务与 freeze/input 材料 | 只保留设计与治理事实，不承载运行时 owner。 |
+| `support` | 构建、装配或辅助基础设施 | 只能支撑正式根，不能升级为默认 owner 根。 |
+| `vendor` | 第三方依赖引入面 | 不承载项目业务事实。 |
+| `generated` | 构建、验证或运行生成物 | 不是 source of truth，不允许回写正式事实。 |
+| `archived` | 历史归档材料 | 不参与默认审阅链，不向当前实现回流。 |
+| `removed` | 已退出或已删除的历史根 | 只保留退出结论，不重新开放实现入口。 |
 
-## 3. Transitional Canonical
+## 2. 根级结构分类与处置
 
-| 能力 | 路径 | 当前缺口 |
-|---|---|---|
-| CLI 入口 | `apps/control-cli` | 默认产物已 canonical，但命令面仍未完全迁入。 |
-| 设备适配 | `packages/device-adapters` | 仅接管部分驱动/IO/fake；`device-hal` 仍保留大量混合实现。 |
-| 设备契约 | `packages/device-contracts` | 已有头文件和 CMake，但仍缺独立测试闭环。 |
+| 路径 | classification | main-chain relation | disposition | 说明 |
+|---|---|---|---|---|
+| `apps/` | `effective-canonical` | `adjacent` | `keep` | 应用入口、装配与发布面；不承载一级业务 owner。 |
+| `modules/` | `effective-canonical` | `main-chain` | `migrate` | `M0-M11` 的唯一业务 owner 根。 |
+| `shared/` | `effective-canonical` | `adjacent` | `keep` | 稳定公共契约、ID、envelope、failure payload 与低业务含义基础设施。 |
+| `docs/` | `effective-canonical` | `adjacent` | `keep` | 架构冻结、验证索引、运行文档。 |
+| `samples/` | `effective-canonical` | `adjacent` | `migrate` | golden cases、fixtures、稳定样本的目标根。 |
+| `tests/` | `effective-canonical` | `adjacent` | `keep` | integration/e2e/performance/contract-lint 的正式承载面。 |
+| `scripts/` | `effective-canonical` | `adjacent` | `migrate` | 根级自动化、迁移脚本与构建辅助的正式目标根。 |
+| `config/` | `effective-canonical` | `adjacent` | `keep` | 机台与环境配置源。 |
+| `data/` | `effective-canonical` | `adjacent` | `keep` | 配方、schema、运行资产。 |
+| `deploy/` | `effective-canonical` | `adjacent` | `migrate` | 部署与交付材料的目标根。 |
+| `packages/` | `migration-source` | `main-chain` | `migrate` | 历史业务、契约、宿主承载面；必须被排空或降级。 |
+| `integration/` | `migration-source` | `adjacent` | `migrate` | 历史集成、回归、证据根；目标收敛到 `tests/`。 |
+| `tools/` | `migration-source` | `adjacent` | `migrate` | 历史脚本、迁移、构建辅助根；目标收敛到 `scripts/`。 |
+| `examples/` | `migration-source` | `adjacent` | `migrate` | 历史样本根；目标收敛到 `samples/`。 |
+| `specs/` | `feature-artifact` | `adjacent` | `freeze` | 规格、计划、任务材料；只保留为 freeze/input artifacts。 |
+| `cmake/` | `support` | `non-main-chain` | `keep` | 构建基础设施与布局清单。 |
+| `third_party/` | `vendor` | `non-main-chain` | `keep` | 第三方依赖；不得承载业务事实。 |
+| `build/` | `generated` | `non-main-chain` | `keep` | 构建产物输出。 |
+| `logs/` | `generated` | `non-main-chain` | `keep` | 运行与验证日志。 |
+| `uploads/` | `generated` | `adjacent` | `keep` | staging 输入面，不是 source of truth。 |
+| `docs/_archive/` | `archived` | `non-main-chain` | `archive` | 历史归档，不参与默认审阅链。 |
+| 已退出历史根 | `removed` | `non-main-chain` | `remove` | 只保留迁移结论，不作为正式入口。 |
 
-## 4. Legacy Source Owner
+## 3. bridge、脚本入口与门禁约束
 
-| 能力 | 路径 | 当前角色 | 对应 canonical |
-|---|---|---|---|
-| shared compat include root | `control-core/src/shared` | 仍承接 `shared/*` 兼容头与共享类型桥接 | 后续独立迁移 |
-| infrastructure / DXF parsing | `control-core/src/infrastructure` | 仍承接 parsing adapter、日志/持久化装配等基础设施实现 | `packages/runtime-host` / `packages/engineering-data` / 后续拆分 |
-| 设备混合实现 | `control-core/modules/device-hal` | 仍承载纯设备外的 recipes/diagnostics 等实现 | `packages/device-adapters` / `packages/traceability-observability` |
-| `third_party` / PCH / 顶层库图 | `control-core` | 仍是当前 C++ 顶层构建 owner | 后续独立迁移 |
-| `control-core/config/*` | `control-core` | 历史残留，不再是默认配置入口 | `config/` |
-| `control-core/data/recipes/*` | `control-core` | 历史残留，不再是默认数据入口 | `data/` |
-| `control-core/src/adapters/tcp` / `modules/control-gateway` | `control-core` | 目录仍在，但已退出默认 alias 注册链路 | `packages/transport-gateway` |
+- `effective-canonical` 必须先变成真实 owner 面、正式承载面或正式入口面，legacy root 才允许降级为 wrapper、redirect、forwarding include/CMake、README+tombstone 等显式 bridge。
+- `migration-source` 只表达“当前仍有内容，但必须迁出到目标根”；它不构成终态 canonical 许可，也不允许继续承载新业务逻辑。
+- 根级稳定入口固定为 `build.ps1`、`test.ps1`、`ci.ps1` 与 `scripts/validation/run-local-validation-gate.ps1`；正式脚本实现目标根为 `scripts/`，`tools/` 仅保留兼容入口或 wrapper 角色。
+- `Wave 1` 对根治理的正式门禁以 `validation-gates.md` 为准，至少要求 canonical root 文档、workspace layout 解析、root script 入口和 freeze/layout validator 能形成同一套证据链。
+- 任何想把 `migration-source`、`support`、`vendor`、`generated`、`archived` 重新解释为默认 owner 根的行为，都视为违规；必须先更新冻结文档与门禁定义并重新通过根级验证。
 
-## 5. Removed Paths
+## 4. 与冻结文档集的关系
 
-| 能力 | 路径 | 当前状态 |
-|---|---|---|
-| 内建 DXF 编辑器应用 | `apps/dxf-editor-app` | 已删除；改为外部编辑器人工流程。 |
-| DXF 编辑器旧项目名目录 | `dxf-editor` | 已删除；不再保留兼容壳。 |
-| 编辑器协作契约 | `packages/editor-contracts` | 已删除；原 notify / CLI 协议已废弃。 |
-| Runtime legacy app 兼容壳 | `control-core/apps/control-runtime` | 已删除；根级 `apps/control-runtime` 成为唯一 app 入口。 |
-| TCP server legacy app 兼容壳 | `control-core/apps/control-tcp-server` | 已删除；根级 `apps/control-tcp-server` 成为唯一 app 入口。 |
-| Shared-kernel legacy 子树 | `control-core/modules/shared-kernel` | 已删除；canonical owner 为 `packages/shared-kernel`。 |
-| process-runtime-core legacy domain 子树 | `control-core/src/domain` | 已删除；canonical owner 为 `packages/process-runtime-core`。 |
-| process-runtime-core legacy application 子树 | `control-core/src/application` | 已删除；canonical owner 为 `packages/process-runtime-core` / `packages/runtime-host`。 |
-| process-runtime-core legacy process 子树 | `control-core/modules/process-core` | 已删除；canonical owner 为 `packages/process-runtime-core`。 |
-| process-runtime-core legacy motion 子树 | `control-core/modules/motion-core` | 已删除；canonical owner 为 `packages/process-runtime-core`。 |
-| 顶层 legacy 仿真目录 | `simulation-engine/` | 已删除；默认入口稳定指向 `packages/simulation-engine`。 |
+- `docs/architecture/dsp-e2e-spec/dsp-e2e-spec-s06-repo-structure-guide.md` 是路径分类、处置值和 bridge 退出口径的冻结事实源。
+- `docs/architecture/dsp-e2e-spec/dsp-e2e-spec-s09-test-matrix-acceptance-baseline.md` 定义根级验证入口和证据路径。
+- `docs/architecture/dsp-e2e-spec/dsp-e2e-spec-s10-frozen-directory-index.md` 定义审阅顺序与回链索引。
+- `specs/refactor/arch/NOISSUE-workspace-template-refactor/wave-mapping.md` 负责 root 到 wave 的正式映射与退出波次。
+- `specs/refactor/arch/NOISSUE-workspace-template-refactor/validation-gates.md` 负责 `Wave 0-6` 的入口门禁、退出门禁、验证命令和证据路径。
+- `docs/architecture/system-acceptance-report.md` 是根级 closeout 与 acceptance 证据的最终汇总面。

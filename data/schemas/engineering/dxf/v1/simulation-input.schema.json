@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://siligensuite.local/contracts/engineering/v1/simulation-input.schema.json",
   "title": "Simulation Input",
-  "description": "Canonical JSON directly consumable by packages/simulation-engine current loader or runtime bridge.",
+  "description": "Canonical JSON directly consumable by runtime simulation loader or runtime bridge.",
   "type": "object",
   "additionalProperties": false,
   "required": [

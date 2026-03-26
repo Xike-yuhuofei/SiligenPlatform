@@ -1,0 +1,22 @@
+if(NOT TARGET siligen_dispense_packaging_domain_dispensing)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/domain/dispensing"
+        "${CMAKE_BINARY_DIR}/modules/dispense-packaging/domain/dispensing"
+    )
+endif()
+
+if(NOT TARGET siligen_dispense_packaging_domain_dispensing)
+    message(FATAL_ERROR "dispense-packaging requires canonical domain/dispensing target: siligen_dispense_packaging_domain_dispensing")
+endif()
+
+add_library(siligen_module_dispense_packaging INTERFACE)
+target_link_libraries(siligen_module_dispense_packaging INTERFACE
+    siligen_dispense_packaging_domain_dispensing
+)
+target_compile_features(siligen_module_dispense_packaging INTERFACE cxx_std_17)
+
+set_target_properties(siligen_module_dispense_packaging PROPERTIES
+    SILIGEN_MODULE_ID "M8"
+    SILIGEN_TARGET_TOPOLOGY_OWNER_ROOT "modules/dispense-packaging"
+    SILIGEN_TARGET_IMPLEMENTATION_ROOTS "modules/dispense-packaging/domain;modules/dispense-packaging/services;modules/dispense-packaging/application;modules/dispense-packaging/adapters;modules/dispense-packaging/tests;modules/dispense-packaging/examples"
+)

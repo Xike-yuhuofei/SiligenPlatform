@@ -1,23 +1,20 @@
 # ADR-001 Workspace Baseline
 
 - 状态：`Accepted`
-- 日期：`2026-03-18`
+- 日期：`2026-03-24`
 
 ## 决策
 
-本仓库从 `2026-03-18` 起采用以下基线判定规则：
+本仓库采用模板化目标拓扑作为正式基线：
 
-1. `canonical` 必须以当前代码事实、构建事实、测试事实为准。
-2. 所有路径统一分为五类：`effective canonical`、`transitional canonical`、`legacy`、`compatibility shell`、`removed`。
-3. DXF 编辑器能力已退出工作区默认版图：
-   - `apps/dxf-editor-app` 已删除
-   - `dxf-editor` 已删除
-   - `packages/editor-contracts` 已删除
-   - 当前改为外部编辑器人工流程
+1. target canonical roots：`apps/`、`modules/`、`shared/`、`docs/`、`samples/`、`tests/`、`scripts/`、`config/`、`data/`、`deploy/`
+2. migration-source roots：`packages/`、`integration/`、`tools/`、`examples/`
+3. `specs/` 仅作为 `feature artifact` root
+4. `cmake/`、`third_party/`、`build/`、`logs/`、`uploads/` 分别归类为 `support`、`vendor`、`generated`
 
 ## 当前基线认定
 
-- `apps/hmi-app`、`packages/engineering-data`、`packages/runtime-host`、`packages/transport-gateway`、`packages/application-contracts`、`packages/engineering-contracts`、`packages/test-kit`、`integration/` 为当前 `effective canonical`。
-- `apps/control-runtime`、`apps/control-tcp-server`、`apps/control-cli`、`packages/process-runtime-core`、`packages/device-adapters`、`packages/device-contracts`、`config/`、`data/` 为 `transitional canonical`。
-- `control-core` 仍是 C++ 主控的主要 legacy 实现承载体。
-- `hmi-client` 在本 ADR 建立时不是纯薄壳，而是保留了整套重复源码的 legacy 目录；当前该目录已删除，历史材料已归档到 `docs/_archive/2026-03/hmi-client/`。
+- `modules/` 是 `M0-M11` 的唯一正式 owner 根。
+- `packages/`、`integration/`、`tools/`、`examples/` 允许继续承载迁移中的当前事实，但不再被视为终态 canonical roots。
+- `docs/architecture/dsp-e2e-spec/` 是唯一正式冻结文档集入口。
+- 根级验证入口固定为 `build.ps1`、`test.ps1`、`ci.ps1` 与 `scripts/validation/run-local-validation-gate.ps1`。

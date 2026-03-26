@@ -1,6 +1,6 @@
 # recipes
 
-owner: `packages/process-runtime-core` 配方域 + `packages/runtime-host` 配方仓储适配器
+owner: `modules/workflow` 配方域 + `modules/runtime-execution/runtime/host` 配方仓储适配器
 
 canonical 说明：
 

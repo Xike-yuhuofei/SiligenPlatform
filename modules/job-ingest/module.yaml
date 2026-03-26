@@ -1,0 +1,9 @@
+module_id: M1
+module_name: job-ingest
+owner_artifact: JobDefinition
+group: upstream
+target_root: modules/job-ingest
+allowed_dependencies:
+  - shared
+uniform_skeleton_ready: true
+notes: job-ingest 的真实 owner 面与构建入口仅允许落在 canonical roots；apps/planner-cli 与 apps/hmi-app 只作为消费方
