@@ -78,6 +78,7 @@
   "test-kit": [
     "pyproject.toml",
     "src/test_kit/__init__.py",
+    "src/test_kit/legacy_fact_catalog.py",
     "src/test_kit/runner.py",
     "src/test_kit/workspace_layout.py",
     "src/test_kit/workspace_validation.py"
