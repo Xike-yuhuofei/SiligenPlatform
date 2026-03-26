@@ -1,0 +1,31 @@
+{
+  "protocol": "siligen.application/1.0",
+  "overrides": [
+    {
+      "id": "recipe-request-aliases",
+      "type": "request-alias-family",
+      "methods": [
+        "recipe.get",
+        "recipe.update",
+        "recipe.archive",
+        "recipe.draft.create",
+        "recipe.draft.update",
+        "recipe.publish",
+        "recipe.versions",
+        "recipe.version.create",
+        "recipe.version.compare",
+        "recipe.version.activate",
+        "recipe.audit",
+        "recipe.export",
+        "recipe.import"
+      ],
+      "source": "apps/runtime-gateway/transport-gateway/src/tcp/TcpCommandDispatcher.cpp"
+    },
+    {
+      "id": "dxf-load-filepath-alias",
+      "type": "request-alias-family",
+      "methods": ["dxf.load"],
+      "source": "apps/runtime-gateway/transport-gateway/src/tcp/TcpCommandDispatcher.cpp"
+    }
+  ]
+}

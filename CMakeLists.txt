@@ -39,7 +39,21 @@ project(SiligenDispenser
     LANGUAGES CXX
 )
 
-get_filename_component(SILIGEN_WORKSPACE_ROOT "${CMAKE_SOURCE_DIR}" ABSOLUTE)
+get_filename_component(SILIGEN_CMAKE_SOURCE_ROOT "${CMAKE_SOURCE_DIR}" ABSOLUTE)
+set(SILIGEN_LAYOUT_FILE "${SILIGEN_CMAKE_SOURCE_ROOT}/cmake/workspace-layout.env")
+include("${SILIGEN_CMAKE_SOURCE_ROOT}/cmake/LoadWorkspaceLayout.cmake")
+include("${SILIGEN_CMAKE_SOURCE_ROOT}/cmake/SiligenVendoredStaticSubdirectory.cmake")
+siligen_load_workspace_layout(
+    "${SILIGEN_CMAKE_SOURCE_ROOT}"
+    "${SILIGEN_LAYOUT_FILE}"
+)
+set(SILIGEN_WORKSPACE_ROOT "${SILIGEN_CMAKE_SOURCE_ROOT}")
+if(NOT "${SILIGEN_WORKSPACE_ROOT}" STREQUAL "${CMAKE_SOURCE_DIR}")
+    message(FATAL_ERROR
+        "workspace root must be canonical superbuild source root: "
+        "CMAKE_SOURCE_DIR='${CMAKE_SOURCE_DIR}', resolved='${SILIGEN_WORKSPACE_ROOT}'"
+    )
+endif()
 set(SILIGEN_WORKSPACE_ROOT
     "${SILIGEN_WORKSPACE_ROOT}"
     CACHE INTERNAL "Workspace root used by the canonical build graph"
@@ -48,49 +62,73 @@ set(SILIGEN_PCH_HEADER
     "${SILIGEN_WORKSPACE_ROOT}/cmake/pch/siligen_pch.h"
     CACHE INTERNAL "Shared PCH header provided by the workspace root"
 )
+set(SILIGEN_SHARED_KERNEL_CANONICAL_DIR
+    "${SILIGEN_SHARED_ROOT}/kernel"
+    CACHE INTERNAL "Canonical shared kernel source root"
+)
+set(SILIGEN_WORKFLOW_CORE_DIR
+    "${SILIGEN_MODULES_ROOT}/workflow/process-runtime-core"
+    CACHE INTERNAL "Canonical workflow/process-runtime-core source root"
+)
+set(SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR
+    "${SILIGEN_MODULES_ROOT}/workflow/application/include"
+    CACHE INTERNAL "Canonical workflow application public include root"
+)
+set(SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR
+    "${SILIGEN_MODULES_ROOT}/workflow/domain/include"
+    CACHE INTERNAL "Canonical workflow domain public include root"
+)
+set(SILIGEN_WORKFLOW_ADAPTERS_PUBLIC_INCLUDE_DIR
+    "${SILIGEN_MODULES_ROOT}/workflow/adapters/include"
+    CACHE INTERNAL "Canonical workflow adapters public include root"
+)
+set(SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR
+    "${SILIGEN_MODULES_ROOT}/motion-planning"
+    CACHE INTERNAL "Canonical motion-planning public include root"
+)
+set(SILIGEN_RUNTIME_HOST_CANONICAL_DIR
+    "${SILIGEN_MODULES_ROOT}/runtime-execution/runtime/host"
+    CACHE INTERNAL "Canonical runtime/host source root"
+)
+set(SILIGEN_TRANSPORT_GATEWAY_CANONICAL_DIR
+    "${SILIGEN_APPS_ROOT}/runtime-gateway/transport-gateway"
+    CACHE INTERNAL "Canonical transport-gateway source root"
+)
 set(SILIGEN_MULTICARD_VENDOR_DIR
-    "${SILIGEN_WORKSPACE_ROOT}/packages/device-adapters/vendor/multicard"
-    CACHE INTERNAL "Canonical location of vendor MultiCard SDK binaries"
-)
-set(SILIGEN_RUNTIME_HOST_DIR
-    "${SILIGEN_WORKSPACE_ROOT}/packages/runtime-host"
-    CACHE INTERNAL "Canonical location of the runtime-host package sources"
-)
-set(SILIGEN_PROCESS_RUNTIME_CORE_DIR
-    "${SILIGEN_WORKSPACE_ROOT}/packages/process-runtime-core"
-    CACHE INTERNAL "Canonical location of the process-runtime-core package sources"
-)
-set(SILIGEN_SHARED_KERNEL_DIR
-    "${SILIGEN_WORKSPACE_ROOT}/packages/shared-kernel"
-    CACHE INTERNAL "Canonical location of the shared-kernel package sources"
+    "${SILIGEN_MODULES_ROOT}/runtime-execution/adapters/device/vendor/multicard"
+    CACHE INTERNAL "Canonical multicard vendor root"
 )
 set(SILIGEN_SHARED_COMPAT_INCLUDE_ROOT
-    "${SILIGEN_SHARED_KERNEL_DIR}/include"
+    "${SILIGEN_SHARED_KERNEL_CANONICAL_DIR}/include"
     CACHE INTERNAL "Compatibility include root for shared/* headers"
 )
-set(SILIGEN_THIRD_PARTY_DIR
-    "${SILIGEN_WORKSPACE_ROOT}/third_party"
-    CACHE INTERNAL "Workspace third_party include root"
-)
 set(SILIGEN_BOOST_INCLUDE_DIR
-    "${SILIGEN_THIRD_PARTY_DIR}/boost"
-    CACHE INTERNAL "Workspace Boost include root"
+    "${SILIGEN_THIRD_PARTY_DIR}"
+    CACHE INTERNAL "Explicit Boost include root used by #include <boost/...>"
 )
-set(SILIGEN_TRANSPORT_GATEWAY_DIR
-    "${SILIGEN_WORKSPACE_ROOT}/packages/transport-gateway"
-    CACHE INTERNAL "Canonical location of the transport-gateway package sources"
+set(SILIGEN_NLOHMANN_INCLUDE_DIR
+    "${SILIGEN_THIRD_PARTY_DIR}"
+    CACHE INTERNAL "Explicit nlohmann/json include root used by #include \"nlohmann/json.hpp\""
 )
-set(SILIGEN_TRACEABILITY_OBSERVABILITY_DIR
-    "${SILIGEN_WORKSPACE_ROOT}/packages/traceability-observability"
-    CACHE INTERNAL "Canonical location of the traceability-observability package sources"
+set(SILIGEN_SPDLOG_INCLUDE_DIR
+    "${SILIGEN_THIRD_PARTY_DIR}/spdlog/include"
+    CACHE INTERNAL "Explicit spdlog include root used by traceability-observability"
 )
-set(SILIGEN_MACHINE_CONFIG_FILE
-    "${SILIGEN_WORKSPACE_ROOT}/config/machine/machine_config.ini"
-    CACHE INTERNAL "Canonical location of the machine config asset"
+set(SILIGEN_RUCKIG_SOURCE_DIR
+    "${SILIGEN_THIRD_PARTY_DIR}/ruckig"
+    CACHE INTERNAL "Explicit Ruckig source root used by process-runtime-core"
+)
+set(SILIGEN_PROTOBUF_SOURCE_DIR
+    "${SILIGEN_THIRD_PARTY_DIR}/protobuf"
+    CACHE INTERNAL "Explicit Protobuf source root used by process-runtime-core"
+)
+set(SILIGEN_GTEST_SOURCE_DIR
+    "${SILIGEN_THIRD_PARTY_DIR}/googletest"
+    CACHE INTERNAL "Explicit GoogleTest source root used by process-runtime-core"
 )
 
-if(NOT EXISTS "${SILIGEN_SHARED_KERNEL_DIR}/CMakeLists.txt")
-    message(FATAL_ERROR "未找到 canonical shared-kernel package: ${SILIGEN_SHARED_KERNEL_DIR}")
+if(NOT EXISTS "${SILIGEN_SHARED_ROOT}/CMakeLists.txt")
+    message(FATAL_ERROR "未找到 canonical shared root: ${SILIGEN_SHARED_ROOT}")
 endif()
 if(NOT EXISTS "${SILIGEN_MACHINE_CONFIG_FILE}")
     message(FATAL_ERROR "未找到 canonical machine config: ${SILIGEN_MACHINE_CONFIG_FILE}")
@@ -304,7 +342,10 @@ if(SILIGEN_ENABLE_PROTOBUF)
     set(protobuf_WITH_ZLIB OFF CACHE BOOL "" FORCE)
 
     if(EXISTS "${SILIGEN_THIRD_PARTY_DIR}/protobuf/CMakeLists.txt")
-        add_subdirectory("${SILIGEN_THIRD_PARTY_DIR}/protobuf" "${CMAKE_BINARY_DIR}/third_party/protobuf")
+        siligen_add_static_vendor_subdirectory(
+            "${SILIGEN_THIRD_PARTY_DIR}/protobuf"
+            "${CMAKE_BINARY_DIR}/third_party/protobuf"
+        )
         message(STATUS "[ThirdParty] Protobuf 库已添加")
     else()
         message(WARNING "[ThirdParty] Protobuf 库未找到 (${SILIGEN_THIRD_PARTY_DIR}/protobuf)")
@@ -317,7 +358,10 @@ set(BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
 set(BUILD_PYTHON_MODULE OFF CACHE BOOL "" FORCE)
 set(BUILD_ONLINE_CLIENT OFF CACHE BOOL "" FORCE)
 if(EXISTS "${SILIGEN_THIRD_PARTY_DIR}/ruckig/CMakeLists.txt")
-    add_subdirectory("${SILIGEN_THIRD_PARTY_DIR}/ruckig" "${CMAKE_BINARY_DIR}/third_party/ruckig")
+    siligen_add_static_vendor_subdirectory(
+        "${SILIGEN_THIRD_PARTY_DIR}/ruckig"
+        "${CMAKE_BINARY_DIR}/third_party/ruckig"
+    )
     message(STATUS "[ThirdParty] Ruckig 库已添加")
 else()
     message(WARNING "[ThirdParty] Ruckig 库未找到 (${SILIGEN_THIRD_PARTY_DIR}/ruckig)")
@@ -327,35 +371,33 @@ message(STATUS "")
 
 message(STATUS "")
 message(STATUS "=== 六边形架构模块 ===")
-add_subdirectory("${SILIGEN_SHARED_KERNEL_DIR}" "${CMAKE_BINARY_DIR}/packages/shared-kernel")
-if(NOT TARGET siligen_types OR NOT TARGET siligen_utils OR NOT TARGET siligen_geometry)
-    message(FATAL_ERROR "shared compat targets 必须由 packages/shared-kernel 提前注册")
+# Canonical roots load first.
+add_subdirectory("${SILIGEN_SHARED_ROOT}" "${CMAKE_BINARY_DIR}/shared")
+if(NOT TARGET siligen_shared OR NOT TARGET siligen_shared_kernel)
+    message(FATAL_ERROR "canonical shared root 必须提前注册 siligen_shared / siligen_shared_kernel")
 endif()
 
-add_library(siligen_shared INTERFACE)
-target_link_libraries(siligen_shared INTERFACE
-    siligen_types
-    siligen_utils
-    siligen_geometry
-    siligen_shared_kernel
-)
-
-add_subdirectory("${SILIGEN_PROCESS_RUNTIME_CORE_DIR}" "${CMAKE_BINARY_DIR}/packages/process-runtime-core")
-
 include_directories(${SILIGEN_WORKSPACE_ROOT})
-include_directories(${SILIGEN_PROCESS_RUNTIME_CORE_DIR}/src)
-include_directories(${SILIGEN_PROCESS_RUNTIME_CORE_DIR}/modules/process-core/include)
-include_directories(${SILIGEN_PROCESS_RUNTIME_CORE_DIR}/modules/motion-core/include)
+include_directories(${SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR})
+include_directories(${SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR})
+include_directories(${SILIGEN_WORKFLOW_ADAPTERS_PUBLIC_INCLUDE_DIR})
+include_directories(${SILIGEN_WORKFLOW_CORE_DIR}/modules/process-core/include)
+include_directories(${SILIGEN_WORKFLOW_CORE_DIR}/modules/motion-core/include)
 include_directories(${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT})
-include_directories(${SILIGEN_THIRD_PARTY_DIR})
+include_directories(${SILIGEN_BOOST_INCLUDE_DIR})
+include_directories(${SILIGEN_NLOHMANN_INCLUDE_DIR})
+include_directories(${SILIGEN_SPDLOG_INCLUDE_DIR})
 include_directories(${SILIGEN_WORKSPACE_ROOT}/tests)
 
-add_subdirectory("${SILIGEN_RUNTIME_HOST_DIR}" "${CMAKE_BINARY_DIR}/packages/runtime-host")
-add_subdirectory("${SILIGEN_TRANSPORT_GATEWAY_DIR}" "${CMAKE_BINARY_DIR}/packages/transport-gateway")
-add_subdirectory(apps)
+if(EXISTS "${SILIGEN_MODULES_ROOT}/CMakeLists.txt")
+    add_subdirectory("${SILIGEN_MODULES_ROOT}" "${CMAKE_BINARY_DIR}/modules")
+endif()
+if(EXISTS "${SILIGEN_APPS_ROOT}/CMakeLists.txt")
+    add_subdirectory("${SILIGEN_APPS_ROOT}" "${CMAKE_BINARY_DIR}/apps")
+endif()
 
 if(NOT TARGET siligen_domain)
-    message(FATAL_ERROR "packages/process-runtime-core 必须提供 siligen_domain")
+    message(FATAL_ERROR "workflow/process-runtime-core 必须提供 siligen_domain")
 endif()
 
 message(STATUS "=== 六边形架构模块配置完成 ===")
@@ -383,17 +425,9 @@ configure_file(
     ${CMAKE_BINARY_DIR}/config/machine/machine_config.ini
     COPYONLY
 )
-configure_file(
-    ${SILIGEN_MACHINE_CONFIG_FILE}
-    ${CMAKE_BINARY_DIR}/config/machine_config.ini
-    COPYONLY
-)
 
 install(FILES ${SILIGEN_MACHINE_CONFIG_FILE}
     DESTINATION config/machine
-)
-install(FILES ${SILIGEN_MACHINE_CONFIG_FILE}
-    DESTINATION config
 )
 
 if(EXISTS "${SILIGEN_MULTICARD_VENDOR_DIR}/MultiCard.dll")
@@ -405,29 +439,29 @@ endif()
 if(BUILD_SECURITY_MODULE)
     message(STATUS "安全模块已启用")
     add_library(security_module STATIC
-        ${SILIGEN_RUNTIME_HOST_DIR}/src/security/AuditLogger.cpp
-        ${SILIGEN_RUNTIME_HOST_DIR}/src/security/NetworkWhitelist.cpp
-        ${SILIGEN_RUNTIME_HOST_DIR}/src/security/NetworkAccessControl.cpp
-        ${SILIGEN_RUNTIME_HOST_DIR}/src/security/SafetyLimitsValidator.cpp
-        ${SILIGEN_RUNTIME_HOST_DIR}/src/security/SessionService.cpp
-        ${SILIGEN_RUNTIME_HOST_DIR}/src/security/PermissionService.cpp
-        ${SILIGEN_RUNTIME_HOST_DIR}/src/security/UserService.cpp
-        ${SILIGEN_RUNTIME_HOST_DIR}/src/security/SecurityService.cpp
-        ${SILIGEN_RUNTIME_HOST_DIR}/src/security/InterlockMonitor.cpp
-        ${SILIGEN_RUNTIME_HOST_DIR}/src/security/config/SecurityConfigLoader.cpp
-        ${SILIGEN_RUNTIME_HOST_DIR}/src/security/config/ConfigurationVersionService.cpp
-        ${SILIGEN_SHARED_KERNEL_DIR}/src/shared/hashing/HashCalculator.cpp
+        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/AuditLogger.cpp
+        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/NetworkWhitelist.cpp
+        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/NetworkAccessControl.cpp
+        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/SafetyLimitsValidator.cpp
+        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/SessionService.cpp
+        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/PermissionService.cpp
+        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/UserService.cpp
+        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/SecurityService.cpp
+        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/InterlockMonitor.cpp
+        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/config/SecurityConfigLoader.cpp
+        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/config/ConfigurationVersionService.cpp
+        ${SILIGEN_SHARED_KERNEL_CANONICAL_DIR}/src/shared/hashing/HashCalculator.cpp
     )
 
     target_include_directories(security_module PRIVATE
         ${SILIGEN_WORKSPACE_ROOT}
-        ${SILIGEN_PROCESS_RUNTIME_CORE_DIR}/src
-        ${SILIGEN_RUNTIME_HOST_DIR}/src
+        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}
         ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
-        ${SILIGEN_THIRD_PARTY_DIR}
+        ${SILIGEN_BOOST_INCLUDE_DIR}
     )
 
-    target_link_libraries(security_module
+    target_link_libraries(security_module PRIVATE
+        siligen_workflow_runtime_consumer_public
         siligen_shared_kernel
         ${WINDOWS_LIBS}
         bcrypt
@@ -474,8 +508,6 @@ if(SILIGEN_BUILD_TESTS)
     message(STATUS "=== 单元测试配置完成 ===")
     message(STATUS "")
 endif()
-
-add_subdirectory(examples)
 
 add_custom_target(build_info ALL
     COMMAND ${CMAKE_COMMAND} -E echo ""

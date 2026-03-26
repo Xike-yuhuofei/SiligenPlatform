@@ -1,0 +1,679 @@
+{
+  "catalog_meta": {
+    "catalog_id": "legacy-fact-catalog",
+    "catalog_version": "1.0.0",
+    "repo_id": "SS-dispense-align",
+    "baseline_date": "2026-03-26",
+    "status": "active",
+    "scope_statement": "Canonical root governance and legacy exit facts for in-repo bridge and fallback detection.",
+    "non_scope_statement": "Does not model sibling repositories, field deployment scripts, or offline operator history.",
+    "source_of_truth_refs": [
+      "REF-001",
+      "REF-002",
+      "REF-003",
+      "REF-004",
+      "REF-005"
+    ],
+    "review_cycle": "Update when closeout or root-governance facts change.",
+    "change_rule": "Catalog changes must remain aligned with higher-authority closeout and canonical path documents."
+  },
+  "reference_registry": [
+    {
+      "reference_id": "REF-001",
+      "source_type": "closeout-doc",
+      "source_path": "docs/architecture/bridge-exit-closeout.md",
+      "statement_summary": "Zero bridge root, zero bridge metadata, zero default fallback is the current closeout rule.",
+      "authority_level": "terminal-closeout",
+      "effective_from": "2026-03-25"
+    },
+    {
+      "reference_id": "REF-002",
+      "source_type": "closeout-doc",
+      "source_path": "docs/architecture/removed-legacy-items-final.md",
+      "statement_summary": "Removed legacy roots must stay absent and legacy exit remains enforced after closeout.",
+      "authority_level": "terminal-closeout",
+      "effective_from": "2026-03-24"
+    },
+    {
+      "reference_id": "REF-003",
+      "source_type": "freeze-doc",
+      "source_path": "docs/architecture/canonical-paths.md",
+      "statement_summary": "Canonical roots, migration-source roots, and archived/generated zones have different governance semantics.",
+      "authority_level": "structure-freeze",
+      "effective_from": "2026-03-24"
+    },
+    {
+      "reference_id": "REF-004",
+      "source_type": "rule-doc",
+      "source_path": "docs/architecture/legacy-exit-checks.md",
+      "statement_summary": "Legacy exit gate must block bridge and fallback re-entry into active execution chains.",
+      "authority_level": "operational-rule",
+      "effective_from": "2026-03-23"
+    },
+    {
+      "reference_id": "REF-005",
+      "source_type": "audit-doc",
+      "source_path": "docs/architecture/compatibility-shell-audit.md",
+      "statement_summary": "Historical compatibility shells are audit evidence, not live default entry points.",
+      "authority_level": "historical-audit",
+      "effective_from": "2026-03-19"
+    }
+  ],
+  "root_registry": [
+    {
+      "root_id": "ROOT-001",
+      "path": "apps",
+      "classification": "effective-canonical",
+      "presence_policy": "required",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "primary-app-entry",
+      "content_constraint": "composition-only",
+      "notes": "Application entrypoints remain in apps but business ownership stays in modules."
+    },
+    {
+      "root_id": "ROOT-002",
+      "path": "modules",
+      "classification": "effective-canonical",
+      "presence_policy": "required",
+      "impl_owner_policy": "allowed",
+      "entry_role": "none",
+      "content_constraint": "business-owner",
+      "notes": "Modules are the only canonical business owner root."
+    },
+    {
+      "root_id": "ROOT-003",
+      "path": "shared",
+      "classification": "effective-canonical",
+      "presence_policy": "required",
+      "impl_owner_policy": "allowed",
+      "entry_role": "none",
+      "content_constraint": "shared-contract-only",
+      "notes": "Shared contains stable shared contracts and low-business-meaning building blocks."
+    },
+    {
+      "root_id": "ROOT-004",
+      "path": "docs",
+      "classification": "effective-canonical",
+      "presence_policy": "required",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "doc-entry",
+      "content_constraint": "governance-doc-only",
+      "notes": "Docs remain a fact source, not an implementation owner root."
+    },
+    {
+      "root_id": "ROOT-005",
+      "path": "tests",
+      "classification": "effective-canonical",
+      "presence_policy": "required",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "validation-entry",
+      "content_constraint": "verification-only",
+      "notes": "Tests host formal validation assets and contract suites."
+    },
+    {
+      "root_id": "ROOT-006",
+      "path": "scripts",
+      "classification": "effective-canonical",
+      "presence_policy": "required",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "automation-entry",
+      "content_constraint": "automation-only",
+      "notes": "Scripts are the canonical automation root."
+    },
+    {
+      "root_id": "ROOT-007",
+      "path": "config",
+      "classification": "effective-canonical",
+      "presence_policy": "required",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "none",
+      "content_constraint": "runtime-config-only",
+      "notes": "Config contains canonical machine and environment configuration."
+    },
+    {
+      "root_id": "ROOT-008",
+      "path": "data",
+      "classification": "effective-canonical",
+      "presence_policy": "required",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "none",
+      "content_constraint": "runtime-data-only",
+      "notes": "Data contains canonical recipes, schemas, and runtime data assets."
+    },
+    {
+      "root_id": "ROOT-009",
+      "path": "deploy",
+      "classification": "effective-canonical",
+      "presence_policy": "allowed",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "none",
+      "content_constraint": "deployment-only",
+      "notes": "Deploy remains canonical for deployment assets when present."
+    },
+    {
+      "root_id": "ROOT-010",
+      "path": "samples",
+      "classification": "effective-canonical",
+      "presence_policy": "allowed",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "none",
+      "content_constraint": "sample-only",
+      "notes": "Samples remain canonical for golden fixtures when present."
+    },
+    {
+      "root_id": "ROOT-011",
+      "path": "specs",
+      "classification": "feature-artifact",
+      "presence_policy": "required",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "none",
+      "content_constraint": "feature-artifact-only",
+      "notes": "Specs contain feature artifacts and freeze inputs, not runtime owners."
+    },
+    {
+      "root_id": "ROOT-012",
+      "path": "docs/_archive",
+      "classification": "archived",
+      "presence_policy": "allowed",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "none",
+      "content_constraint": "archive-only",
+      "notes": "Archived documents preserve history only."
+    },
+    {
+      "root_id": "ROOT-013",
+      "path": "third_party",
+      "classification": "vendor",
+      "presence_policy": "required",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "none",
+      "content_constraint": "vendor-only",
+      "notes": "Third-party content is never a business fact owner."
+    },
+    {
+      "root_id": "ROOT-014",
+      "path": "build",
+      "classification": "generated",
+      "presence_policy": "allowed",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "none",
+      "content_constraint": "generated-only",
+      "notes": "Build outputs are generated assets."
+    },
+    {
+      "root_id": "ROOT-015",
+      "path": "logs",
+      "classification": "generated",
+      "presence_policy": "allowed",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "none",
+      "content_constraint": "generated-only",
+      "notes": "Logs are generated outputs."
+    },
+    {
+      "root_id": "ROOT-016",
+      "path": "uploads",
+      "classification": "generated",
+      "presence_policy": "allowed",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "none",
+      "content_constraint": "generated-only",
+      "notes": "Uploads are staging inputs, not a source of truth."
+    },
+    {
+      "root_id": "ROOT-017",
+      "path": "packages",
+      "classification": "migration-source",
+      "presence_policy": "allowed",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "none",
+      "content_constraint": "migration-history-only",
+      "notes": "Historical package root; must not return as default owner or entry."
+    },
+    {
+      "root_id": "ROOT-018",
+      "path": "integration",
+      "classification": "migration-source",
+      "presence_policy": "allowed",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "none",
+      "content_constraint": "migration-history-only",
+      "notes": "Historical integration root; must not return as default owner or entry."
+    },
+    {
+      "root_id": "ROOT-019",
+      "path": "tools",
+      "classification": "migration-source",
+      "presence_policy": "allowed",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "compat-wrapper-entry",
+      "content_constraint": "wrapper-only",
+      "notes": "Historical tools root; current automation must live under scripts."
+    },
+    {
+      "root_id": "ROOT-020",
+      "path": "examples",
+      "classification": "migration-source",
+      "presence_policy": "allowed",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "none",
+      "content_constraint": "migration-history-only",
+      "notes": "Historical examples root; canonical reusable samples belong in samples."
+    },
+    {
+      "root_id": "ROOT-101",
+      "path": "control-core",
+      "classification": "removed",
+      "presence_policy": "forbidden",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "none",
+      "content_constraint": "removed-only",
+      "notes": "Removed root must not reappear."
+    },
+    {
+      "root_id": "ROOT-102",
+      "path": "hmi-client",
+      "classification": "removed",
+      "presence_policy": "forbidden",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "none",
+      "content_constraint": "removed-only",
+      "notes": "Removed root must not reappear."
+    },
+    {
+      "root_id": "ROOT-103",
+      "path": "dxf-editor",
+      "classification": "removed",
+      "presence_policy": "forbidden",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "none",
+      "content_constraint": "removed-only",
+      "notes": "Removed root must not reappear."
+    },
+    {
+      "root_id": "ROOT-104",
+      "path": "apps/dxf-editor-app",
+      "classification": "removed",
+      "presence_policy": "forbidden",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "none",
+      "content_constraint": "removed-only",
+      "notes": "Removed root must not reappear."
+    },
+    {
+      "root_id": "ROOT-105",
+      "path": "packages/editor-contracts",
+      "classification": "removed",
+      "presence_policy": "forbidden",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "none",
+      "content_constraint": "removed-only",
+      "notes": "Removed root must not reappear."
+    },
+    {
+      "root_id": "ROOT-106",
+      "path": "simulation-engine",
+      "classification": "removed",
+      "presence_policy": "forbidden",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "none",
+      "content_constraint": "removed-only",
+      "notes": "Removed root must not reappear."
+    },
+    {
+      "root_id": "ROOT-107",
+      "path": "dxf-pipeline",
+      "classification": "removed",
+      "presence_policy": "forbidden",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "none",
+      "content_constraint": "removed-only",
+      "notes": "Removed root must not reappear."
+    }
+  ],
+  "zone_registry": [
+    {
+      "zone_id": "active-source",
+      "zone_class": "active-source",
+      "path_prefixes": [
+        "apps/",
+        "modules/",
+        "shared/",
+        "scripts/",
+        "tests/",
+        "config/",
+        "data/",
+        "deploy/",
+        "cmake/"
+      ],
+      "root_level_files": [
+        "build.ps1",
+        "test.ps1",
+        "ci.ps1",
+        "release-check.ps1",
+        "legacy-exit-check.ps1",
+        "CMakeLists.txt"
+      ],
+      "default_scan_policy": "include",
+      "notes": "Live code, build scripts, validation entries, and machine-readable source files."
+    },
+    {
+      "zone_id": "active-doc",
+      "zone_class": "active-doc",
+      "path_prefixes": [
+        "docs/"
+      ],
+      "root_level_files": [
+        "README.md",
+        "WORKSPACE.md"
+      ],
+      "default_scan_policy": "exclude",
+      "notes": "Active documentation; not yet scanned by the current legacy-exit gate."
+    },
+    {
+      "zone_id": "feature-artifact",
+      "zone_class": "feature-artifact",
+      "path_prefixes": [
+        "specs/"
+      ],
+      "root_level_files": [],
+      "default_scan_policy": "exclude",
+      "notes": "Frozen feature artifacts should not fail the live gate."
+    },
+    {
+      "zone_id": "archived-doc",
+      "zone_class": "archived-doc",
+      "path_prefixes": [
+        "docs/_archive/"
+      ],
+      "root_level_files": [],
+      "default_scan_policy": "exclude",
+      "notes": "Archived history is recorded but not scanned by the live gate."
+    },
+    {
+      "zone_id": "generated-report",
+      "zone_class": "generated-report",
+      "path_prefixes": [
+        "tests/reports/",
+        "integration/reports/"
+      ],
+      "root_level_files": [],
+      "default_scan_policy": "exclude",
+      "notes": "Generated reports preserve evidence and must not block live gate scans."
+    },
+    {
+      "zone_id": "vendor",
+      "zone_class": "vendor",
+      "path_prefixes": [
+        "third_party/"
+      ],
+      "root_level_files": [],
+      "default_scan_policy": "exclude",
+      "notes": "Third-party sources are excluded from legacy exit scanning."
+    },
+    {
+      "zone_id": "generated-asset",
+      "zone_class": "generated-asset",
+      "path_prefixes": [
+        "build/",
+        "logs/",
+        "uploads/"
+      ],
+      "root_level_files": [],
+      "default_scan_policy": "exclude",
+      "notes": "Generated assets are excluded from legacy exit scanning."
+    }
+  ],
+  "residual_registry": [
+    {
+      "residual_id": "RES-001",
+      "rule": "legacy-root-presence",
+      "residual_kind": "migration-source-root-presence",
+      "decision": "blocker",
+      "severity": "high",
+      "reference_ids": [
+        "REF-004"
+      ],
+      "matchers": [
+        {
+          "matcher_kind": "path-exists",
+          "paths": [
+            "packages",
+            "integration",
+            "tools",
+            "examples"
+          ],
+          "message": "旧根必须物理删除: {path}"
+        }
+      ]
+    },
+    {
+      "residual_id": "RES-002",
+      "rule": "bridge-root-presence",
+      "residual_kind": "bridge-root-presence",
+      "decision": "blocker",
+      "severity": "critical",
+      "reference_ids": [
+        "REF-001"
+      ],
+      "matchers": [
+        {
+          "matcher_kind": "path-exists",
+          "paths": [
+            "modules/workflow/src",
+            "modules/workflow/process-runtime-core",
+            "modules/workflow/application/usecases-bridge",
+            "modules/job-ingest/src",
+            "modules/dxf-geometry/src",
+            "modules/dxf-geometry/engineering-data",
+            "modules/topology-feature/src",
+            "modules/process-planning/src",
+            "modules/coordinate-alignment/src",
+            "modules/process-path/src",
+            "modules/motion-planning/src",
+            "modules/dispense-packaging/src",
+            "modules/runtime-execution/runtime-host",
+            "modules/runtime-execution/device-adapters",
+            "modules/runtime-execution/device-contracts",
+            "modules/trace-diagnostics/src",
+            "modules/hmi-application/src",
+            "scripts/engineering-data-bridge"
+          ],
+          "message": "bridge 根必须物理删除: {path}"
+        }
+      ]
+    },
+    {
+      "residual_id": "RES-003",
+      "rule": "bridge-metadata",
+      "residual_kind": "bridge-metadata",
+      "decision": "blocker",
+      "severity": "high",
+      "reference_ids": [
+        "REF-001"
+      ],
+      "matchers": [
+        {
+          "matcher_kind": "line-contains",
+          "target_glob": "modules/**/module.yaml",
+          "snippets": [
+            "bridge_roots:",
+            "bridge_mode: active"
+          ],
+          "message": "module bridge metadata still present: {snippet}"
+        },
+        {
+          "matcher_kind": "line-contains",
+          "target_glob": "modules/**/CMakeLists.txt",
+          "snippets": [
+            "SILIGEN_BRIDGE_ROOTS",
+            "SILIGEN_MIGRATION_SOURCE_ROOTS"
+          ],
+          "message": "module CMake bridge metadata still present: {snippet}"
+        }
+      ]
+    },
+    {
+      "residual_id": "RES-004",
+      "rule": "legacy-path-reference",
+      "residual_kind": "migration-source-owner-usage",
+      "decision": "blocker",
+      "severity": "high",
+      "reference_ids": [
+        "REF-003",
+        "REF-004"
+      ],
+      "matchers": [
+        {
+          "matcher_kind": "line-regex",
+          "target_set": "active-source-files",
+          "patterns": [
+            "(?<![A-Za-z0-9_./\\\\-])packages[/\\\\]",
+            "(?<![A-Za-z0-9_./\\\\-])integration[/\\\\]",
+            "(?<![A-Za-z0-9_./\\\\-])tools[/\\\\]",
+            "(?<![A-Za-z0-9_./\\\\-])examples[/\\\\]"
+          ],
+          "message": "发现旧根路径引用，需切换到 canonical 路径。"
+        }
+      ]
+    },
+    {
+      "residual_id": "RES-005",
+      "rule": "bridge-path-reference",
+      "residual_kind": "bridge-path-reference",
+      "decision": "blocker",
+      "severity": "high",
+      "reference_ids": [
+        "REF-001",
+        "REF-004"
+      ],
+      "matchers": [
+        {
+          "matcher_kind": "line-contains",
+          "target_set": "active-source-files",
+          "snippets": [
+            "modules/workflow/src",
+            "modules/workflow/process-runtime-core",
+            "modules/workflow/application/usecases-bridge",
+            "modules/dxf-geometry/src",
+            "modules/dxf-geometry/engineering-data",
+            "scripts/engineering-data-bridge",
+            "modules/runtime-execution/runtime-host",
+            "modules/runtime-execution/device-adapters",
+            "modules/runtime-execution/device-contracts"
+          ],
+          "message": "发现 bridge/fallback 路径引用，需切换到 canonical owner 面: {snippet}"
+        }
+      ]
+    }
+  ],
+  "exception_registry": [
+    {
+      "exception_id": "EXC-901",
+      "status": "suspended",
+      "linked_residual_ids": [
+        "RES-004",
+        "RES-005"
+      ],
+      "allowed_locations": [
+        "apps/control-cli/run.ps1",
+        "apps/control-runtime/run.ps1",
+        "apps/control-tcp-server/run.ps1",
+        "tools/build/build-validation.ps1"
+      ],
+      "owner_scope": "legacy-exit-owner",
+      "justification": "Historical allowlist carried forward for review only; not active after bridge exit closeout.",
+      "exit_condition": "Delete the suspended record once historical comparison is no longer needed.",
+      "reference_ids": [
+        "REF-001",
+        "REF-004"
+      ]
+    },
+    {
+      "exception_id": "EXC-902",
+      "status": "suspended",
+      "linked_residual_ids": [
+        "RES-004",
+        "RES-005"
+      ],
+      "allowed_locations": [
+        "packages/transport-gateway/tests/test_transport_gateway_compatibility.py",
+        "tools/migration/validate_device_split.py"
+      ],
+      "owner_scope": "legacy-exit-owner",
+      "justification": "Historical anti-regression references are retained as backlog only and do not bypass live gates.",
+      "exit_condition": "Remove once historical compatibility comparison is fully retired.",
+      "reference_ids": [
+        "REF-001",
+        "REF-004",
+        "REF-005"
+      ]
+    }
+  ],
+  "gate_profile_registry": [
+    {
+      "profile_id": "legacy-exit",
+      "included_zone_ids": [
+        "active-source"
+      ],
+      "scan_roots": [
+        "apps",
+        "modules",
+        "shared",
+        "scripts",
+        "tests",
+        "config",
+        "data",
+        "deploy",
+        "cmake"
+      ],
+      "root_level_files": [
+        "build.ps1",
+        "test.ps1",
+        "ci.ps1",
+        "release-check.ps1",
+        "legacy-exit-check.ps1",
+        "CMakeLists.txt"
+      ],
+      "file_suffixes": [
+        ".py",
+        ".ps1",
+        ".cmake",
+        ".json",
+        ".toml",
+        ".yaml",
+        ".yml",
+        ".h",
+        ".hpp",
+        ".cpp",
+        ".cc",
+        ".md"
+      ],
+      "skip_path_prefixes": [
+        ".git/",
+        "build/",
+        "__pycache__/",
+        "node_modules/",
+        ".venv/",
+        "third_party/",
+        "docs/",
+        "specs/",
+        ".codex/",
+        ".codex-tmp/",
+        ".agents/",
+        ".specify/",
+        "tests/reports/",
+        "tests/tests/"
+      ],
+      "allowlisted_paths": [
+        "scripts/migration/legacy_fact_catalog.json",
+        "scripts/migration/legacy-exit-checks.py",
+        "scripts/migration/validate_workspace_layout.py",
+        "tests/contracts/test_bridge_exit_contract.py"
+      ],
+      "fail_on_decisions": [
+        "blocker"
+      ]
+    }
+  ]
+}

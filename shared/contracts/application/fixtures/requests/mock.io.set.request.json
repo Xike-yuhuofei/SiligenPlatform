@@ -1,0 +1,8 @@
+{
+  "id": "mock-io-1",
+  "method": "mock.io.set",
+  "params": {
+    "door": true,
+    "limit_x_neg": false
+  }
+}

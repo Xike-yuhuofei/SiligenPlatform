@@ -1,0 +1,11 @@
+{
+  "id": "mock-io-1",
+  "version": "1.0",
+  "success": true,
+  "result": {
+    "estop": false,
+    "door": true,
+    "limit_x_neg": false,
+    "limit_y_neg": false
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "id": "10",
+  "version": "1.0",
+  "success": true,
+  "result": {
+    "connected": true,
+    "connection_state": "connected",
+    "machine_state": "Idle",
+    "machine_state_reason": "idle",
+    "supervision": {
+      "current_state": "Idle",
+      "requested_state": "Idle",
+      "state_change_in_process": false,
+      "state_reason": "idle",
+      "failure_code": "",
+      "failure_stage": "",
+      "recoverable": true,
+      "updated_at": "2026-03-26T00:00:00Z"
+    },
+    "interlock_latched": false,
+    "active_job_id": "",
+    "active_job_state": "",
+    "axes": {
+      "X": {
+        "position": 12.5,
+        "velocity": 0.0,
+        "enabled": true,
+        "homed": true,
+        "homing_state": "homed"
+      },
+      "Y": {
+        "position": 8.0,
+        "velocity": 0.0,
+        "enabled": true,
+        "homed": true,
+        "homing_state": "homed"
+      }
+    },
+    "position": {
+      "x": 12.5,
+      "y": 8.0
+    },
+    "effective_interlocks": {
+      "estop_active": false,
+      "estop_known": true,
+      "door_open_active": false,
+      "door_open_known": true,
+      "home_boundary_x_active": false,
+      "home_boundary_y_active": false,
+      "positive_escape_only_axes": [],
+      "sources": {
+        "estop": "system_interlock",
+        "door_open": "dispensing_interlock",
+        "home_boundary_x": "none",
+        "home_boundary_y": "none"
+      }
+    },
+    "io": {
+      "limit_x_pos": false,
+      "limit_x_neg": false,
+      "limit_y_pos": false,
+      "limit_y_neg": false,
+      "estop": false,
+      "estop_known": true,
+      "door": false,
+      "door_known": true
+    },
+    "dispenser": {
+      "valve_open": false,
+      "supply_open": true
+    },
+    "alarms": []
+  }
+}

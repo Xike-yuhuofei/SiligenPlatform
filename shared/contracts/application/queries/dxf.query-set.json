@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "protocol": "siligen.application/1.0",
+  "group": "dxf",
+  "operations": [
+    {
+      "method": "dxf.info",
+      "kind": "query",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "resultRef": "../models/states.json#/definitions/dxfInfo",
+      "errorCodes": [3010],
+      "consumers": [
+        "hmi-client CommandProtocol.dxf_get_info"
+      ]
+    },
+    {
+      "method": "dxf.job.status",
+      "kind": "query",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {
+          "job_id": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "resultRef": "../models/states.json#/definitions/dxfJobStatus",
+      "errorCodes": [2902, 2903, 2904],
+      "consumers": [
+        "hmi-client CommandProtocol.dxf_get_job_status"
+      ]
+    }
+  ]
+}
