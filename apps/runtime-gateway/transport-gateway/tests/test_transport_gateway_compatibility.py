@@ -308,6 +308,23 @@ def test_home_auto_command_is_registered_and_uses_supervisor_chain():
     assert "ensure_ready_zero_use_case_->Execute(request)" in facade_impl
 
 
+def test_home_go_uses_ready_zero_configuration_and_rejects_speed_override():
+    source = TCP_DISPATCHER.read_text(encoding="utf-8")
+
+    home_go_match = re.search(
+        r"std::string TcpCommandDispatcher::HandleHomeGo.*?return GatewayJsonProtocol::MakeSuccessResponse",
+        source,
+        re.S,
+    )
+    assert home_go_match, "cannot locate HandleHomeGo body"
+    home_go_body = home_go_match.group(0)
+
+    assert "ResolveReadyZeroSpeed(" in home_go_body
+    assert "ready_zero_speed_mm_s" in home_go_body
+    assert "home.go speed override is not supported; configure ready_zero_speed_mm_s" in home_go_body
+    assert "machine_result.Value().max_speed" not in home_go_body
+
+
 def test_jog_allows_positive_escape_when_home_is_active_but_axis_not_homed():
     source = TCP_DISPATCHER.read_text(encoding="utf-8")
 
@@ -341,6 +358,7 @@ def main():
         test_move_prechecks_directional_limits_before_dispatch,
         test_home_command_exposes_axis_level_results,
         test_home_auto_command_is_registered_and_uses_supervisor_chain,
+        test_home_go_uses_ready_zero_configuration_and_rejects_speed_override,
         test_jog_allows_positive_escape_when_home_is_active_but_axis_not_homed,
     ]
     for test in tests:

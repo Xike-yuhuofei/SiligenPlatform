@@ -13,6 +13,7 @@
 #include "facades/tcp/TcpRecipeFacade.h"
 #include "facades/tcp/TcpSystemFacade.h"
 #include "domain/configuration/ports/IConfigurationPort.h"
+#include "domain/configuration/services/ReadyZeroSpeedResolver.h"
 
 #include "recipes/serialization/RecipeJsonSerializer.h"
 
@@ -1527,28 +1528,35 @@ std::string TcpCommandDispatcher::HandleHomeGo(const std::string& id, const nloh
         return interlock_error.value();
     }
 
-    std::optional<float> speed_override;
     if (params.contains("speed")) {
-        speed_override = params.value("speed", 0.0f);
-    }
-    float speed = 0.0f;
-    if (speed_override.has_value()) {
-        speed = speed_override.value();
-    } else if (configPort_) {
-        auto machine_result = configPort_->GetMachineConfig();
-        if (machine_result.IsSuccess()) {
-            speed = machine_result.Value().max_speed;
-        }
-    }
-    if (speed <= 0.0f) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 2415, "Invalid move speed");
+        return GatewayJsonProtocol::MakeErrorResponse(
+            id,
+            2415,
+            "home.go speed override is not supported; configure ready_zero_speed_mm_s");
     }
 
+    std::vector<std::pair<LogicalAxisId, float32>> go_home_plans;
+    go_home_plans.reserve(axes.size());
     for (auto axis_id : axes) {
+        auto speed_result = Siligen::Domain::Configuration::Services::ResolveReadyZeroSpeed(
+            axis_id,
+            configPort_,
+            "TcpCommandDispatcher");
+        if (speed_result.IsError()) {
+            return GatewayJsonProtocol::MakeErrorResponse(id, 2415, speed_result.GetError().GetMessage());
+        }
+        if (speed_result.Value().used_fallback) {
+            SILIGEN_LOG_WARNING("home.go axis " + std::string(Siligen::Shared::Types::AxisName(axis_id)) +
+                                " is using locate_velocity fallback because ready_zero_speed_mm_s is not configured");
+        }
+        go_home_plans.emplace_back(axis_id, speed_result.Value().speed_mm_s);
+    }
+
+    for (const auto& plan : go_home_plans) {
         Application::UseCases::Motion::Manual::ManualMotionCommand cmd;
-        cmd.axis = axis_id;
+        cmd.axis = plan.first;
         cmd.position = 0.0f;
-        cmd.velocity = speed;
+        cmd.velocity = plan.second;
         auto result = motionFacade_->ExecutePointToPointMotion(cmd, false);
         if (!result.IsSuccess()) {
             return GatewayJsonProtocol::MakeErrorResponse(id, 2416, result.GetError().GetMessage());

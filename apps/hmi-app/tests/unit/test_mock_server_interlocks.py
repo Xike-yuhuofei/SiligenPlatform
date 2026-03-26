@@ -147,6 +147,16 @@ class MockServerInterlockTest(unittest.TestCase):
         self.assertIn("error", resp)
         self.assertIn("axis not homed", resp["error"]["message"])
 
+    def test_home_go_is_rejected_when_speed_override_is_provided(self) -> None:
+        state = MockState(seed_alarms=False)
+        state.handle_request("connect", {})
+        state.handle_request("home", {"axes": ["X"]})
+
+        resp = state.handle_request("home.go", {"axes": ["X"], "speed": 12.5})
+
+        self.assertIn("error", resp)
+        self.assertIn("ready_zero_speed_mm_s", resp["error"]["message"])
+
     def test_home_go_is_rejected_when_interlock_active(self) -> None:
         state = MockState(seed_alarms=False)
         state.handle_request("connect", {})

@@ -5,6 +5,7 @@
 #include "shared/types/Error.h"
 #include "shared/logging/PrintfLogFormatter.h"
 #include "adapters/motion/controller/homing/HomingSupport.h"
+#include "domain/configuration/services/ReadyZeroSpeedResolver.h"
 
 #include <algorithm>
 #include <chrono>
@@ -227,7 +228,13 @@ Result<void> HomingPortAdapter::startHoming(const std::vector<LogicalAxisId>& ax
                                         homing_timer_active_,
                                         axis);
 
-        const auto& config = homing_configs_[axis];
+        auto effective_config_result = Siligen::Domain::Configuration::Services::ApplyUnifiedReadyZeroSpeed(
+            homing_configs_[axis],
+            "HomingPortAdapter");
+        if (effective_config_result.IsError()) {
+            return fail(effective_config_result.GetError());
+        }
+        const auto& config = effective_config_result.Value();
         auto prepared_result = HomingSupport::PrepareHomeParameters(axis,
                                                                     config,
                                                                     hardware_config_,

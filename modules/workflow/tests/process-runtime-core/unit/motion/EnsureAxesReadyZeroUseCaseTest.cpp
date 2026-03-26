@@ -264,6 +264,8 @@ class FakeConfigurationPort final : public IConfigurationPort {
         for (int index = 0; index < axis_count; ++index) {
             HomingConfig config;
             config.axis = index;
+            config.ready_zero_speed_mm_s = 5.0f;
+            config.locate_velocity = 3.0f;
             config.settle_time_ms = 0;
             homing_configs_.push_back(config);
         }
@@ -405,6 +407,7 @@ TEST(EnsureAxesReadyZeroUseCaseTest, HomesThenMovesToZeroWhenAxisWasNotHomed) {
     EXPECT_EQ(environment->home_calls, 1);
     EXPECT_EQ(environment->move_calls, 1);
     EXPECT_FLOAT_EQ(environment->Axis(LogicalAxisId::X).status.axis_position_mm, 0.0f);
+    EXPECT_FLOAT_EQ(environment->last_move_velocity, 5.0f);
     EXPECT_EQ(response.axis_results[0].planned_action, "home");
     EXPECT_TRUE(response.axis_results[0].executed);
     EXPECT_TRUE(response.axis_results[0].success);
@@ -433,9 +436,39 @@ TEST(EnsureAxesReadyZeroUseCaseTest, GoesHomeWithoutRehomingWhenAxisAlreadyHomed
     EXPECT_EQ(response.summary_state, "completed");
     EXPECT_EQ(environment->home_calls, 0);
     EXPECT_EQ(environment->move_calls, 1);
+    EXPECT_FLOAT_EQ(environment->last_move_velocity, 5.0f);
     EXPECT_EQ(response.axis_results[0].planned_action, "go_home");
     EXPECT_TRUE(response.axis_results[0].success);
     EXPECT_EQ(response.axis_results[0].message, "Moved to zero");
+}
+
+TEST(EnsureAxesReadyZeroUseCaseTest, FallsBackToLocateVelocityWhenReadyZeroSpeedIsMissing) {
+    auto environment = std::make_shared<FakeMotionEnvironment>();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto event_port = std::make_shared<FakeEventPublisher>();
+    auto use_case = MakeUseCase(environment, config_port, event_port);
+
+    auto config_result = config_port->GetHomingConfig(1);
+    ASSERT_TRUE(config_result.IsSuccess());
+    auto config = config_result.Value();
+    config.ready_zero_speed_mm_s = 0.0f;
+    config.locate_velocity = 4.0f;
+    ASSERT_TRUE(config_port->SetHomingConfig(1, config).IsSuccess());
+
+    environment->Axis(LogicalAxisId::Y).homing_state = HomingState::HOMED;
+    environment->Axis(LogicalAxisId::Y).status.axis_position_mm = 2.0f;
+    environment->Axis(LogicalAxisId::Y).status.position.y = 2.0f;
+
+    EnsureAxesReadyZeroRequest request;
+    request.axes = {LogicalAxisId::Y};
+
+    auto result = use_case->Execute(request);
+
+    ASSERT_TRUE(result.IsSuccess());
+    EXPECT_TRUE(result.Value().accepted);
+    EXPECT_EQ(result.Value().summary_state, "completed");
+    EXPECT_EQ(environment->move_calls, 1);
+    EXPECT_FLOAT_EQ(environment->last_move_velocity, 4.0f);
 }
 
 TEST(EnsureAxesReadyZeroUseCaseTest, ReturnsNoopWhenAxisAlreadyAtZero) {

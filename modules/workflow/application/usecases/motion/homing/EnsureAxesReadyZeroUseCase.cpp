@@ -1,5 +1,6 @@
 #include "application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
 
+#include "domain/configuration/services/ReadyZeroSpeedResolver.h"
 #include "shared/types/Error.h"
 
 #include <algorithm>
@@ -33,6 +34,11 @@ struct AxisSnapshot {
     LogicalAxisId axis = LogicalAxisId::INVALID;
     MotionStatus status;
     ReadyZeroDecision decision;
+};
+
+struct GoHomeAxisPlan {
+    LogicalAxisId axis = LogicalAxisId::INVALID;
+    float32 speed_mm_s = 0.0f;
 };
 
 int32 ElapsedMs(const std::chrono::steady_clock::time_point& start_time) {
@@ -130,22 +136,18 @@ float32 ReadZeroToleranceMm(const std::shared_ptr<Domain::Configuration::Ports::
     return std::max(machine_result.Value().positioning_tolerance, kMinimumZeroToleranceMm);
 }
 
-Result<float32> ReadGoHomeSpeedMmS(
+Result<GoHomeAxisPlan> ResolveGoHomePlan(
+    LogicalAxisId axis,
     const std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort>& config_port) {
-    if (!config_port) {
-        return Result<float32>::Failure(
-            Error(ErrorCode::PORT_NOT_INITIALIZED, "Config port not available", kErrorSource));
+    auto speed_result = Siligen::Domain::Configuration::Services::ResolveReadyZeroSpeed(axis, config_port, kErrorSource);
+    if (speed_result.IsError()) {
+        return Result<GoHomeAxisPlan>::Failure(speed_result.GetError());
     }
-    auto machine_result = config_port->GetMachineConfig();
-    if (machine_result.IsError()) {
-        return Result<float32>::Failure(machine_result.GetError());
-    }
-    const float32 speed = machine_result.Value().max_speed;
-    if (speed <= 0.0f) {
-        return Result<float32>::Failure(
-            Error(ErrorCode::INVALID_CONFIG_VALUE, "Machine max_speed must be positive", kErrorSource));
-    }
-    return Result<float32>::Success(speed);
+
+    GoHomeAxisPlan plan;
+    plan.axis = axis;
+    plan.speed_mm_s = speed_result.Value().speed_mm_s;
+    return Result<GoHomeAxisPlan>::Success(plan);
 }
 
 Result<std::vector<AxisSnapshot>> CaptureAxisSnapshots(
@@ -373,13 +375,18 @@ Result<EnsureAxesReadyZeroResponse> EnsureAxesReadyZeroUseCase::Execute(const En
     }
 
     if (!axes_to_go_home.empty()) {
-        auto speed_result = ReadGoHomeSpeedMmS(config_port_);
-        if (speed_result.IsError()) {
-            return Result<EnsureAxesReadyZeroResponse>::Failure(speed_result.GetError());
-        }
-        const float32 speed_mm_s = speed_result.Value();
-
+        std::vector<GoHomeAxisPlan> go_home_plans;
+        go_home_plans.reserve(axes_to_go_home.size());
         for (const auto axis : axes_to_go_home) {
+            auto plan_result = ResolveGoHomePlan(axis, config_port_);
+            if (plan_result.IsError()) {
+                return Result<EnsureAxesReadyZeroResponse>::Failure(plan_result.GetError());
+            }
+            go_home_plans.push_back(plan_result.Value());
+        }
+
+        for (const auto& plan : go_home_plans) {
+            const auto axis = plan.axis;
             auto* axis_result = FindAxisResult(response.axis_results, axis);
             if (axis_result) {
                 axis_result->executed = true;
@@ -388,7 +395,7 @@ Result<EnsureAxesReadyZeroResponse> EnsureAxesReadyZeroUseCase::Execute(const En
             Manual::ManualMotionCommand command;
             command.axis = axis;
             command.position = 0.0f;
-            command.velocity = speed_mm_s;
+            command.velocity = plan.speed_mm_s;
 
             auto move_result = manual_motion_use_case_->ExecutePointToPointMotion(command, false);
             if (move_result.IsError()) {

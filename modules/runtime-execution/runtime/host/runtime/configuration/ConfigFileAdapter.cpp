@@ -14,6 +14,27 @@ namespace Siligen::Infrastructure::Adapters {
 using namespace Domain::Configuration::Ports;
 using namespace Shared::Types;
 
+namespace {
+
+HomingConfig NormalizeReadyZeroSpeedForPersistence(const HomingConfig& config) {
+    HomingConfig normalized = config;
+    if (normalized.ready_zero_speed_mm_s <= 0.0f) {
+        normalized.ready_zero_speed_mm_s = normalized.locate_velocity;
+    }
+    return normalized;
+}
+
+std::vector<HomingConfig> NormalizeReadyZeroSpeedsForPersistence(const std::vector<HomingConfig>& configs) {
+    std::vector<HomingConfig> normalized;
+    normalized.reserve(configs.size());
+    for (const auto& config : configs) {
+        normalized.push_back(NormalizeReadyZeroSpeedForPersistence(config));
+    }
+    return normalized;
+}
+
+}  // namespace
+
 ConfigFileAdapter::ConfigFileAdapter(const std::string& config_file_path)
     : config_file_path_(config_file_path), config_loaded_(false) {
     auto load_result = LoadConfiguration();
@@ -67,13 +88,16 @@ Result<SystemConfig> ConfigFileAdapter::LoadConfiguration() {
 }
 
 Result<void> ConfigFileAdapter::SaveConfiguration(const SystemConfig& config) {
-    // 保存各个配置段
-    SaveDispensingSection(config.dispensing);
-    SaveMachineSection(config.machine);
-    SaveDxfSection(config.dxf);
-    SaveHomingSection(config.homing_configs);
+    SystemConfig normalized = config;
+    normalized.homing_configs = NormalizeReadyZeroSpeedsForPersistence(config.homing_configs);
 
-    cached_config_ = config;
+    // 保存各个配置段
+    SaveDispensingSection(normalized.dispensing);
+    SaveMachineSection(normalized.machine);
+    SaveDxfSection(normalized.dxf);
+    SaveHomingSection(normalized.homing_configs);
+
+    cached_config_ = normalized;
 
     return Result<void>();
 }
@@ -151,7 +175,7 @@ Result<void> ConfigFileAdapter::SetHomingConfig(int axis, const HomingConfig& co
         cached_config_.homing_configs.resize(axis + 1);
     }
 
-    cached_config_.homing_configs[axis] = config;
+    cached_config_.homing_configs[axis] = NormalizeReadyZeroSpeedForPersistence(config);
     SaveHomingSection(cached_config_.homing_configs);
 
     return Result<void>();

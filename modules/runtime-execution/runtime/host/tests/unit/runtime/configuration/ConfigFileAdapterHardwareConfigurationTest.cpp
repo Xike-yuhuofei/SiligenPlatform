@@ -99,6 +99,7 @@ std::string BuildBaseIni(const std::string& hardware_suffix = "") {
         "home_input_bit=0\n"
         "home_active_low=false\n"
         "home_debounce_ms=0\n"
+        "ready_zero_speed_mm_s=5.0\n"
         "rapid_velocity=50.0\n"
         "locate_velocity=10.0\n"
         "index_velocity=5.0\n"
@@ -125,6 +126,7 @@ std::string BuildBaseIni(const std::string& hardware_suffix = "") {
         "home_input_bit=1\n"
         "home_active_low=false\n"
         "home_debounce_ms=0\n"
+        "ready_zero_speed_mm_s=5.0\n"
         "rapid_velocity=50.0\n"
         "locate_velocity=10.0\n"
         "index_velocity=5.0\n"
@@ -222,6 +224,38 @@ TEST(ConfigFileAdapterHardwareConfigurationTest, DefaultsMissingHomeBackoffFlagT
     ASSERT_GE(result.Value().homing_configs.size(), 2u);
     EXPECT_TRUE(result.Value().homing_configs[0].home_backoff_enabled);
     EXPECT_TRUE(result.Value().homing_configs[1].home_backoff_enabled);
+
+    std::error_code ec;
+    std::filesystem::remove(ini_path, ec);
+}
+
+TEST(ConfigFileAdapterHardwareConfigurationTest, LoadsReadyZeroSpeedFromHomingSections) {
+    const auto ini_path = WriteTempIni("ready_zero_speed", BuildBaseIni());
+
+    ConfigFileAdapter adapter(ini_path.string());
+    auto result = adapter.LoadConfiguration();
+
+    ASSERT_TRUE(result.IsSuccess());
+    ASSERT_GE(result.Value().homing_configs.size(), 2u);
+    EXPECT_FLOAT_EQ(result.Value().homing_configs[0].ready_zero_speed_mm_s, 5.0f);
+    EXPECT_FLOAT_EQ(result.Value().homing_configs[1].ready_zero_speed_mm_s, 5.0f);
+
+    std::error_code ec;
+    std::filesystem::remove(ini_path, ec);
+}
+
+TEST(ConfigFileAdapterHardwareConfigurationTest, KeepsReadyZeroFallbackUnsetWhenFieldMissing) {
+    auto ini = ReplaceAll(BuildBaseIni(), "ready_zero_speed_mm_s=5.0\n", "");
+    const auto ini_path = WriteTempIni("ready_zero_speed_missing", ini);
+
+    ConfigFileAdapter adapter(ini_path.string());
+    auto result = adapter.LoadConfiguration();
+
+    ASSERT_TRUE(result.IsSuccess());
+    ASSERT_GE(result.Value().homing_configs.size(), 2u);
+    EXPECT_FLOAT_EQ(result.Value().homing_configs[0].ready_zero_speed_mm_s, 0.0f);
+    EXPECT_FLOAT_EQ(result.Value().homing_configs[1].ready_zero_speed_mm_s, 0.0f);
+    EXPECT_FLOAT_EQ(result.Value().homing_configs[0].locate_velocity, 10.0f);
 
     std::error_code ec;
     std::filesystem::remove(ini_path, ec);

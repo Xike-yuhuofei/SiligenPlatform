@@ -472,6 +472,13 @@ class MockState:
                 interlock_error = self._interlock_error()
                 if interlock_error:
                     return interlock_error
+                if "speed" in params:
+                    return {
+                        "error": {
+                            "code": -32015,
+                            "message": "home.go speed override is not supported; configure ready_zero_speed_mm_s",
+                        }
+                    }
                 axes = params.get("axes")
                 targets = axes if axes else list(self.axes.keys())
                 for name in targets:

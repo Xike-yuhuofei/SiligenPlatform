@@ -56,6 +56,16 @@ ValidationResult ConfigValidator::ValidateHomingConfigDetailed(const HomingConfi
         result.AddError(FormatRangeError("超时时间", config.timeout_ms, 100, 300000));
     }
 
+    const bool has_ready_zero_speed = config.ready_zero_speed_mm_s > 0.0f;
+
+    if (has_ready_zero_speed) {
+        if (!ValidateVelocity(config.ready_zero_speed_mm_s, 0.1f, kHomingMaxVelocity)) {
+            result.AddError(FormatRangeError("统一回零速度", config.ready_zero_speed_mm_s, 0.1f, kHomingMaxVelocity));
+        }
+    } else {
+        result.AddWarning("未配置 ready_zero_speed_mm_s，当前兼容回退到 locate_velocity；建议尽快补齐显式配置");
+    }
+
     // 验证速度参数
     if (!ValidateVelocity(config.rapid_velocity, 0.1f, kHomingMaxVelocity)) {
         result.AddError(FormatRangeError("快速回零速度", config.rapid_velocity, 0.1f, kHomingMaxVelocity));
@@ -70,7 +80,8 @@ ValidationResult ConfigValidator::ValidateHomingConfigDetailed(const HomingConfi
     }
 
     // 验证速度关系
-    if (!ValidateVelocityRelationship(config.rapid_velocity, config.locate_velocity, config.index_velocity)) {
+    if (!has_ready_zero_speed &&
+        !ValidateVelocityRelationship(config.rapid_velocity, config.locate_velocity, config.index_velocity)) {
         result.AddError("速度参数关系错误: 快速速度 > 定位速度 > 索引速度");
     }
 
@@ -221,6 +232,16 @@ ValidationResult ConfigValidator::ValidateHomingConfigDetailed(const HomingConfi
                             " 搜索=" + std::to_string(config.search_distance) +
                             "mm, 上限=" + std::to_string(max_search_distance) + "mm)");
         }
+    }
+
+    const float32 effective_ready_zero_speed =
+        config.ready_zero_speed_mm_s > 0.0f ? config.ready_zero_speed_mm_s : config.locate_velocity;
+    if (machine.max_speed > 0.0f &&
+        effective_ready_zero_speed > 0.0f &&
+        effective_ready_zero_speed > machine.max_speed) {
+        result.AddError("统一回零速度超出 machine.max_speed: speed=" +
+                        std::to_string(effective_ready_zero_speed) +
+                        "mm/s, max_speed=" + std::to_string(machine.max_speed) + "mm/s");
     }
 
     return result;
