@@ -12,4 +12,6 @@
 
 - 仅放置 `M9 runtime-execution` owner 专属契约，不放跨模块长期稳定公共契约。
 - 跨模块稳定设备契约应维护在 `shared/contracts/device/`。
-- `modules/runtime-execution/contracts/device/`、`modules/runtime-execution/runtime/host/`、`modules/runtime-execution/adapters/device/` 是当前 canonical 契约与消费面。
+- `shared/contracts/device/` 是稳定设备契约 canonical root。
+- `modules/runtime-execution/contracts/device/` 仅保留兼容装配入口，不再定义 `siligen_device_contracts` 的 canonical owner。
+- `modules/runtime-execution/runtime/host/`、`modules/runtime-execution/adapters/device/` 消费 `shared/contracts/device/`，不再把 runtime 私有目录当作设备契约源。

@@ -62,8 +62,51 @@ class BridgeExitContractTest(unittest.TestCase):
 
     def test_shared_contracts_resolve_runtime_device_contracts_from_canonical_root(self) -> None:
         shared_contracts = _read(WORKSPACE_ROOT / "shared" / "contracts" / "CMakeLists.txt")
-        self.assertIn("modules/runtime-execution/contracts/device", shared_contracts)
+        self.assertIn('set(SILIGEN_DEVICE_CONTRACTS_CANONICAL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/device")', shared_contracts)
         self.assertNotIn("modules/runtime-execution/device-contracts", shared_contracts)
+        self.assertNotIn("modules/runtime-execution/contracts/device", shared_contracts)
+
+    def test_shared_device_contracts_have_canonical_build_entry(self) -> None:
+        canonical_device_contracts = WORKSPACE_ROOT / "shared" / "contracts" / "device" / "CMakeLists.txt"
+        self.assertTrue(canonical_device_contracts.exists(), msg="shared/contracts/device/CMakeLists.txt is required")
+        device_cmake = _read(canonical_device_contracts)
+        self.assertIn("siligen_device_contracts", device_cmake)
+        self.assertIn('SILIGEN_TARGET_TOPOLOGY_OWNER_ROOT "shared/contracts/device"', device_cmake)
+
+    def test_application_owner_wiring_has_no_reverse_mutations(self) -> None:
+        workflow_application = _read(WORKSPACE_ROOT / "modules" / "workflow" / "application" / "CMakeLists.txt")
+        self.assertIn("siligen_job_ingest_application_public", workflow_application)
+        self.assertIn("siligen_dxf_geometry_application_public", workflow_application)
+        self.assertIn("../../runtime-execution/application/include", workflow_application)
+        self.assertIn("siligen_runtime_execution_application_public", workflow_application)
+
+        for relative, forbidden in (
+            ("modules/job-ingest/CMakeLists.txt", "siligen_workflow_application_public"),
+            ("modules/job-ingest/CMakeLists.txt", "siligen_process_runtime_core_application"),
+            ("modules/job-ingest/CMakeLists.txt", "siligen_application_dispensing"),
+            ("modules/dxf-geometry/CMakeLists.txt", "siligen_workflow_application_public"),
+            ("modules/dxf-geometry/CMakeLists.txt", "siligen_process_runtime_core_application"),
+            ("modules/dxf-geometry/CMakeLists.txt", "siligen_application_dispensing"),
+            ("modules/runtime-execution/application/CMakeLists.txt", "siligen_workflow_application_headers"),
+            ("modules/runtime-execution/application/CMakeLists.txt", "siligen_process_runtime_core_application"),
+            ("modules/runtime-execution/application/CMakeLists.txt", "siligen_application_dispensing"),
+        ):
+            self.assertNotIn(forbidden, _read(WORKSPACE_ROOT / relative), msg=f"{relative} must not reference {forbidden}")
+
+    def test_workflow_dxf_wrapper_uses_owner_public_header(self) -> None:
+        wrapper = _read(
+            WORKSPACE_ROOT
+            / "modules"
+            / "workflow"
+            / "application"
+            / "include"
+            / "application"
+            / "services"
+            / "dxf"
+            / "DxfPbPreparationService.h"
+        )
+        self.assertIn("dxf_geometry/application/services/dxf/DxfPbPreparationService.h", wrapper)
+        self.assertNotIn("../../../../../../dxf-geometry/application/include/application/services/dxf/DxfPbPreparationService.h", wrapper)
 
     def test_root_entries_run_bridge_exit_gate(self) -> None:
         build_validation = _read(WORKSPACE_ROOT / "scripts" / "build" / "build-validation.ps1")

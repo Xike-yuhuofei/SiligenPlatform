@@ -13,7 +13,7 @@
 #include <unordered_map>
 
 #define private public
-#include "application/usecases/dispensing/DispensingExecutionUseCase.h"
+#include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #undef private
 
 namespace {
@@ -22,7 +22,7 @@ using Siligen::Application::UseCases::Dispensing::DispensingExecutionUseCase;
 using Siligen::Application::UseCases::Dispensing::DispensingMVPRequest;
 using Siligen::Application::UseCases::Dispensing::TaskExecutionContext;
 using Siligen::Application::UseCases::Dispensing::TaskState;
-using Siligen::Domain::Dispensing::DomainServices::DispensingPlanner;
+using Siligen::Application::Services::Dispensing::DispensePlanningFacade;
 using Siligen::Domain::Dispensing::ValueObjects::JobExecutionMode;
 using Siligen::Domain::Dispensing::ValueObjects::ProcessOutputPolicy;
 using Siligen::Domain::Machine::ValueObjects::MachineMode;
@@ -35,7 +35,7 @@ std::shared_ptr<T> MakeDummyShared() {
 
 DispensingExecutionUseCase CreateExecutionUseCase() {
     return DispensingExecutionUseCase(
-        MakeDummyShared<DispensingPlanner>(),
+        MakeDummyShared<DispensePlanningFacade>(),
         nullptr,
         nullptr,
         nullptr,

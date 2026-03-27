@@ -42,7 +42,7 @@ set_target_properties(siligen_engineering_contracts PROPERTIES
     SILIGEN_TARGET_TOPOLOGY_OWNER_ROOT "shared/contracts/engineering"
 )
 
-set(SILIGEN_DEVICE_CONTRACTS_CANONICAL_DIR "${SILIGEN_WORKSPACE_ROOT}/modules/runtime-execution/contracts/device")
+set(SILIGEN_DEVICE_CONTRACTS_CANONICAL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/device")
 if(NOT EXISTS "${SILIGEN_DEVICE_CONTRACTS_CANONICAL_DIR}/CMakeLists.txt")
     message(FATAL_ERROR
         "未找到 canonical shared/contracts/device source: "
@@ -53,7 +53,7 @@ endif()
 if(NOT TARGET siligen_device_contracts)
     add_subdirectory(
         "${SILIGEN_DEVICE_CONTRACTS_CANONICAL_DIR}"
-        "${CMAKE_BINARY_DIR}/modules/runtime-execution/contracts/device"
+        "${CMAKE_BINARY_DIR}/shared/contracts/device"
     )
 endif()
 

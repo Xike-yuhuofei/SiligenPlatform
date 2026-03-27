@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/system/ports/IEventPublisherPort.h"
+#include "runtime_execution/contracts/system/IEventPublisherPort.h"
 #include "domain/motion/ports/IMotionStatePort.h"
 #include "domain/motion/ports/IPositionControlPort.h"
 #include "shared/types/Result.h"
@@ -22,6 +22,7 @@ using Shared::Types::Result;
 using Shared::Types::LogicalAxisId;
 using Shared::Types::float32;
 using Shared::Types::uint32;
+using RuntimeEventPublisherPort = Siligen::RuntimeExecution::Contracts::System::IEventPublisherPort;
 
 /**
  * @brief 软限位监控配置
@@ -70,7 +71,7 @@ class SoftLimitMonitorService {
      */
     explicit SoftLimitMonitorService(
         std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port,
-        std::shared_ptr<Domain::System::Ports::IEventPublisherPort> event_port,
+        std::shared_ptr<RuntimeEventPublisherPort> event_port,
         std::shared_ptr<Domain::Motion::Ports::IPositionControlPort> position_control_port,
         const SoftLimitMonitorConfig& config = SoftLimitMonitorConfig{});
 
@@ -169,7 +170,7 @@ class SoftLimitMonitorService {
 
     // 端口依赖
     std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port_;
-    std::shared_ptr<Domain::System::Ports::IEventPublisherPort> event_port_;
+    std::shared_ptr<RuntimeEventPublisherPort> event_port_;
     std::shared_ptr<Domain::Motion::Ports::IPositionControlPort> position_control_port_;
 
     // 配置

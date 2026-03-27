@@ -2,6 +2,7 @@
 
 #include "DispensingWorkflowUseCase.h"
 
+#include "application/services/dispensing/WorkflowPreviewSnapshotService.h"
 #include "domain/safety/domain-services/InterlockPolicy.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
@@ -1134,30 +1135,21 @@ JobStatusResponse DispensingWorkflowUseCase::BuildJobStatusResponse(const std::s
 PreviewSnapshotResponse DispensingWorkflowUseCase::BuildPreviewSnapshotResponse(
     const PlanRecord& plan_record,
     std::size_t max_polyline_points) {
-    PreviewSnapshotResponse response;
-    response.snapshot_id = plan_record.preview_snapshot_id;
-    response.snapshot_hash = plan_record.preview_snapshot_hash;
-    response.plan_id = plan_record.response.plan_id;
-    response.preview_state = PreviewStateToString(plan_record.preview_state);
-    response.preview_source = "runtime_snapshot";
-    response.confirmed_at = plan_record.confirmed_at;
-    response.segment_count = plan_record.response.segment_count;
-    response.point_count = plan_record.response.point_count;
-    response.polyline_source_point_count = static_cast<std::uint32_t>(plan_record.trajectory_points.size());
-    response.total_length_mm = plan_record.response.total_length_mm;
-    response.estimated_time_s = plan_record.response.estimated_time_s;
-    response.generated_at = plan_record.preview_generated_at;
+    Siligen::Application::Services::Dispensing::WorkflowPreviewSnapshotInput input;
+    input.snapshot_id = plan_record.preview_snapshot_id;
+    input.snapshot_hash = plan_record.preview_snapshot_hash;
+    input.plan_id = plan_record.response.plan_id;
+    input.preview_state = PreviewStateToString(plan_record.preview_state);
+    input.confirmed_at = plan_record.confirmed_at;
+    input.segment_count = plan_record.response.segment_count;
+    input.point_count = plan_record.response.point_count;
+    input.total_length_mm = plan_record.response.total_length_mm;
+    input.estimated_time_s = plan_record.response.estimated_time_s;
+    input.generated_at = plan_record.preview_generated_at;
+    input.trajectory_points = &plan_record.trajectory_points;
 
-    auto polyline = BuildPreviewPolyline(plan_record.trajectory_points, max_polyline_points);
-    response.polyline_point_count = static_cast<std::uint32_t>(polyline.size());
-    response.trajectory_polyline.reserve(polyline.size());
-    for (const auto& point : polyline) {
-        PreviewSnapshotPoint snapshot_point;
-        snapshot_point.x = point.x;
-        snapshot_point.y = point.y;
-        response.trajectory_polyline.push_back(snapshot_point);
-    }
-    return response;
+    Siligen::Application::Services::Dispensing::WorkflowPreviewSnapshotService snapshot_service;
+    return snapshot_service.BuildResponse(input, max_polyline_points);
 }
 
 std::string DispensingWorkflowUseCase::GenerateId(const char* prefix) {

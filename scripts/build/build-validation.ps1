@@ -10,6 +10,14 @@ param(
 $ErrorActionPreference = "Stop"
 
 $workspaceRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+$thirdPartyBootstrap = Join-Path $workspaceRoot "scripts\bootstrap\bootstrap-third-party.ps1"
+if (-not (Test-Path $thirdPartyBootstrap)) {
+    throw "third-party bootstrap script not found: $thirdPartyBootstrap"
+}
+
+Write-Output "third-party bootstrap: powershell -NoProfile -ExecutionPolicy Bypass -File $thirdPartyBootstrap"
+& $thirdPartyBootstrap -WorkspaceRoot $workspaceRoot
+
 $layoutScript = Join-Path $workspaceRoot "scripts\validation\get-workspace-layout.ps1"
 if (-not (Test-Path $layoutScript)) {
     throw "未找到 workspace layout 解析脚本: $layoutScript"
@@ -278,6 +286,8 @@ if (($resolvedSuites -contains "contracts") -and $localProfile -and (-not $SkipH
     $controlAppTargets += @(
         "siligen_shared_kernel_tests",
         "siligen_runtime_host_unit_tests",
+        "siligen_dxf_geometry_unit_tests",
+        "siligen_job_ingest_unit_tests",
         "siligen_unit_tests",
         "siligen_pr1_tests"
     )
@@ -292,6 +302,8 @@ $controlAppArtifactMap = @{
     "siligen_planner_cli" = "siligen_planner_cli.exe"
     "siligen_shared_kernel_tests" = "siligen_shared_kernel_tests.exe"
     "siligen_runtime_host_unit_tests" = "siligen_runtime_host_unit_tests.exe"
+    "siligen_dxf_geometry_unit_tests" = "siligen_dxf_geometry_unit_tests.exe"
+    "siligen_job_ingest_unit_tests" = "siligen_job_ingest_unit_tests.exe"
     "siligen_unit_tests" = "siligen_unit_tests.exe"
     "siligen_pr1_tests" = "siligen_pr1_tests.exe"
 }

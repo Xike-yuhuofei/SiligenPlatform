@@ -1,0 +1,74 @@
+﻿{
+    "schemaVersion":  1,
+    "artifactVersion":  "2026-03-27-084659",
+    "description":  "Top-level third_party bundles materialized outside the Git repository.",
+    "artifactBaseUri":  "",
+    "packages":  [
+                     {
+                         "name":  "boost",
+                         "archiveFileName":  "boost.zip",
+                         "targetDirectory":  "boost",
+                         "required":  true,
+                         "sha256":  "da1e6c2fad96c5d3c65c8c65f0199b06a35eb3bf4c92ad4f0511d29a0fa6e60c",
+                         "sizeBytes":  25676446,
+                         "validationPaths":  [
+                                                 "boost/version.hpp"
+                                             ]
+                     },
+                     {
+                         "name":  "nlohmann",
+                         "archiveFileName":  "nlohmann.zip",
+                         "targetDirectory":  "nlohmann",
+                         "required":  true,
+                         "sha256":  "f4a87ef17d6bc857c8fb4c96ffbca3389118cff3c5d62dcc1392f74446acc8bf",
+                         "sizeBytes":  138100,
+                         "validationPaths":  [
+                                                 "nlohmann/json.hpp"
+                                             ]
+                     },
+                     {
+                         "name":  "protobuf",
+                         "archiveFileName":  "protobuf.zip",
+                         "targetDirectory":  "protobuf",
+                         "required":  true,
+                         "sha256":  "123740d69969a96a0a56560c7a2e454523c3133885ebf142363a67f42040c88b",
+                         "sizeBytes":  14130712,
+                         "validationPaths":  [
+                                                 "protobuf/CMakeLists.txt"
+                                             ]
+                     },
+                     {
+                         "name":  "ruckig",
+                         "archiveFileName":  "ruckig.zip",
+                         "targetDirectory":  "ruckig",
+                         "required":  true,
+                         "sha256":  "357b50dd5f6dcdaf1b431a846b8307a22493d0896974c59f28b8a3a1ffc4fc8f",
+                         "sizeBytes":  997529,
+                         "validationPaths":  [
+                                                 "ruckig/CMakeLists.txt"
+                                             ]
+                     },
+                     {
+                         "name":  "spdlog",
+                         "archiveFileName":  "spdlog.zip",
+                         "targetDirectory":  "spdlog",
+                         "required":  true,
+                         "sha256":  "c6c71b05759f619eb1107e19c1873c57dd23b5c16b7ea5d4ce11cd020f12d078",
+                         "sizeBytes":  325947,
+                         "validationPaths":  [
+                                                 "spdlog/include/spdlog/spdlog.h"
+                                             ]
+                     },
+                     {
+                         "name":  "googletest",
+                         "archiveFileName":  "googletest.zip",
+                         "targetDirectory":  "googletest",
+                         "required":  true,
+                         "sha256":  "78a3f2d999faf42af9302cecfa115523bf0be4ed13456ed5fb3181a23011771c",
+                         "sizeBytes":  1083418,
+                         "validationPaths":  [
+                                                 "googletest/CMakeLists.txt"
+                                             ]
+                     }
+                 ]
+}

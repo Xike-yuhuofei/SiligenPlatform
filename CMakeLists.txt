@@ -98,6 +98,12 @@ set(SILIGEN_MULTICARD_VENDOR_DIR
     "${SILIGEN_MODULES_ROOT}/runtime-execution/adapters/device/vendor/multicard"
     CACHE INTERNAL "Canonical multicard vendor root"
 )
+if(NOT EXISTS "${SILIGEN_THIRD_PARTY_DIR}")
+    message(FATAL_ERROR
+        "third_party root is missing: ${SILIGEN_THIRD_PARTY_DIR}. "
+        "Run scripts/bootstrap/bootstrap-third-party.ps1 or use build.ps1/test.ps1/ci.ps1 before configuring CMake."
+    )
+endif()
 set(SILIGEN_SHARED_COMPAT_INCLUDE_ROOT
     "${SILIGEN_SHARED_KERNEL_CANONICAL_DIR}/include"
     CACHE INTERNAL "Compatibility include root for shared/* headers"

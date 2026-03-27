@@ -1008,6 +1008,99 @@ void SampleArcPoints(const Domain::Trajectory::ValueObjects::ArcPrimitive& arc,
     }
 }
 
+bool ResolveSplinePolylinePosition(const Domain::Trajectory::ValueObjects::SplinePrimitive& spline,
+                                   float32 target_distance,
+                                   Point2D& out) {
+    if (spline.control_points.size() < 2) {
+        return false;
+    }
+
+    if (target_distance <= 0.0f) {
+        out = spline.control_points.front();
+        return true;
+    }
+
+    float32 accumulated = 0.0f;
+    for (size_t i = 1; i < spline.control_points.size(); ++i) {
+        float32 segment_length = Distance(spline.control_points[i - 1], spline.control_points[i]);
+        if (segment_length <= kEpsilon) {
+            continue;
+        }
+        if (accumulated + segment_length >= target_distance - kEpsilon) {
+            float32 ratio = std::clamp((target_distance - accumulated) / segment_length, 0.0f, 1.0f);
+            out = spline.control_points[i - 1] + (spline.control_points[i] - spline.control_points[i - 1]) * ratio;
+            return true;
+        }
+        accumulated += segment_length;
+    }
+
+    out = spline.control_points.back();
+    return true;
+}
+
+bool ResolveSegmentPosition(const Domain::Trajectory::ValueObjects::Segment& segment,
+                            float32 local_distance,
+                            Point2D& out) {
+    float32 segment_length = SegmentLength(segment);
+    if (segment_length <= kEpsilon) {
+        out = SegmentEnd(segment);
+        return true;
+    }
+
+    float32 ratio = std::clamp(local_distance / segment_length, 0.0f, 1.0f);
+    switch (segment.type) {
+        case Domain::Trajectory::ValueObjects::SegmentType::Line:
+            out = segment.line.start + (segment.line.end - segment.line.start) * ratio;
+            return true;
+        case Domain::Trajectory::ValueObjects::SegmentType::Arc: {
+            float32 sweep = ComputeArcSweep(segment.arc.start_angle_deg,
+                                            segment.arc.end_angle_deg,
+                                            segment.arc.clockwise);
+            float32 direction = segment.arc.clockwise ? -1.0f : 1.0f;
+            float32 angle = segment.arc.start_angle_deg + direction * sweep * ratio;
+            out = ArcPoint(segment.arc, angle);
+            return true;
+        }
+        case Domain::Trajectory::ValueObjects::SegmentType::Spline:
+            return ResolveSplinePolylinePosition(segment.spline, local_distance, out);
+        default:
+            return false;
+    }
+}
+
+bool ResolveProcessPathPosition(const ProcessPath& path, float32 target_distance, Point2D& out) {
+    if (path.segments.empty()) {
+        return false;
+    }
+
+    if (target_distance <= 0.0f) {
+        const auto& first = path.segments.front().geometry;
+        if (first.type == Domain::Trajectory::ValueObjects::SegmentType::Line) {
+            out = first.line.start;
+        } else {
+            out = Domain::Trajectory::ValueObjects::SegmentStart(first);
+        }
+        return true;
+    }
+
+    float32 accumulated = 0.0f;
+    for (const auto& process_segment : path.segments) {
+        const auto& segment = process_segment.geometry;
+        float32 segment_length = SegmentLength(segment);
+        if (segment_length <= kEpsilon) {
+            continue;
+        }
+
+        if (accumulated + segment_length >= target_distance - kEpsilon) {
+            return ResolveSegmentPosition(segment, target_distance - accumulated, out);
+        }
+        accumulated += segment_length;
+    }
+
+    out = SegmentEnd(path.segments.back().geometry);
+    return true;
+}
+
 std::vector<Point2D> BuildInterpolationSeedPoints(const ProcessPath& path, float32 step) {
     std::vector<Point2D> points;
     if (path.segments.empty()) {
@@ -1360,12 +1453,6 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
         return Result<std::vector<TrajectoryPoint>>::Success({});
     }
 
-    auto seed_points = BuildInterpolationSeedPoints(path, ResolveInterpolationStep(request));
-    if (seed_points.size() < 2) {
-        return Result<std::vector<TrajectoryPoint>>::Failure(
-            Error(ErrorCode::INVALID_PARAMETER, "插补规划参数无效", "DispensingPlanner"));
-    }
-
     InterpolationConfig config{};
     config.max_velocity = request.dispensing_velocity;
     config.max_acceleration = request.acceleration;
@@ -1408,27 +1495,15 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
         cmp_config.enable_multi_channel = false;
 
         std::vector<Siligen::DispensingTriggerPoint> triggers;
-        std::vector<float32> cumulative(seed_points.size(), 0.0f);
-        for (size_t i = 1; i < seed_points.size(); ++i) {
-            cumulative[i] = cumulative[i - 1] + seed_points[i - 1].DistanceTo(seed_points[i]);
-        }
-
         std::vector<float32> targets = trigger_distances;
         std::sort(targets.begin(), targets.end());
 
-        size_t idx = 1;
         uint32 seq = 0;
         for (float32 target : targets) {
-            while (idx < cumulative.size() && cumulative[idx] + kEpsilon < target) {
-                ++idx;
-            }
-            if (idx >= cumulative.size()) {
+            Point2D trigger_pos;
+            if (!ResolveProcessPathPosition(path, target, trigger_pos)) {
                 break;
             }
-
-            float32 seg_len = cumulative[idx] - cumulative[idx - 1];
-            float32 ratio = (seg_len > kEpsilon) ? (target - cumulative[idx - 1]) / seg_len : 0.0f;
-            Point2D trigger_pos = seed_points[idx - 1] + (seed_points[idx] - seed_points[idx - 1]) * ratio;
 
             Siligen::DispensingTriggerPoint trigger;
             trigger.position = trigger_pos;
@@ -1439,9 +1514,20 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
             triggers.push_back(trigger);
         }
 
+        if (triggers.empty()) {
+            return Result<std::vector<TrajectoryPoint>>::Failure(
+                Error(ErrorCode::TRAJECTORY_GENERATION_FAILED, "CMP触发点解析失败", "DispensingPlanner"));
+        }
+
         Domain::Motion::CMPCoordinatedInterpolator cmp_interpolator;
-        points = cmp_interpolator.PositionTriggeredDispensing(seed_points, triggers, cmp_config, config);
+        points = cmp_interpolator.PositionTriggeredDispensing(path, triggers, cmp_config, config);
     } else {
+        auto seed_points = BuildInterpolationSeedPoints(path, ResolveInterpolationStep(request));
+        if (seed_points.size() < 2) {
+            return Result<std::vector<TrajectoryPoint>>::Failure(
+                Error(ErrorCode::INVALID_PARAMETER, "插补规划参数无效", "DispensingPlanner"));
+        }
+
         auto interpolator = Domain::Motion::TrajectoryInterpolatorFactory::CreateInterpolator(
             request.interpolation_algorithm);
         if (!interpolator) {

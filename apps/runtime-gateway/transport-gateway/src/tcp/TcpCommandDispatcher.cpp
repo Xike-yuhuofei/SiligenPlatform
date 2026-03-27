@@ -15,7 +15,7 @@
 #include "domain/configuration/ports/IConfigurationPort.h"
 #include "domain/configuration/services/ReadyZeroSpeedResolver.h"
 
-#include "recipes/serialization/RecipeJsonSerializer.h"
+#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
 
 #include <algorithm>
 #include <cctype>

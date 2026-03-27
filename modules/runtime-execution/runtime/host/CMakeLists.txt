@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 set(RUNTIME_HOST_DEVICE_ADAPTERS_CANONICAL_DIR "${SILIGEN_WORKSPACE_ROOT}/modules/runtime-execution/adapters/device")
-set(RUNTIME_HOST_DEVICE_CONTRACTS_CANONICAL_DIR "${SILIGEN_WORKSPACE_ROOT}/modules/runtime-execution/contracts/device")
+set(RUNTIME_HOST_DEVICE_CONTRACTS_CANONICAL_DIR "${SILIGEN_WORKSPACE_ROOT}/shared/contracts/device")
 set(RUNTIME_HOST_TRACEABILITY_DIR "${SILIGEN_WORKSPACE_ROOT}/modules/trace-diagnostics")
 set(RUNTIME_HOST_DEVICE_ADAPTERS_INCLUDE_DIR "${RUNTIME_HOST_DEVICE_ADAPTERS_CANONICAL_DIR}/include")
 set(RUNTIME_HOST_DEVICE_CONTRACTS_INCLUDE_DIR "${RUNTIME_HOST_DEVICE_CONTRACTS_CANONICAL_DIR}/include")
@@ -39,7 +39,7 @@ endif()
 if(NOT TARGET siligen_device_contracts AND EXISTS "${RUNTIME_HOST_DEVICE_CONTRACTS_CANONICAL_DIR}/CMakeLists.txt")
     add_subdirectory(
         "${RUNTIME_HOST_DEVICE_CONTRACTS_CANONICAL_DIR}"
-        "${CMAKE_BINARY_DIR}/modules/runtime-execution/contracts/device"
+        "${CMAKE_BINARY_DIR}/shared/contracts/device"
     )
 endif()
 
@@ -94,7 +94,7 @@ target_include_directories(siligen_device_hal_hardware INTERFACE
 target_link_libraries(siligen_device_hal_hardware INTERFACE
     siligen_device_adapters
     siligen_device_contracts
-    siligen_workflow_domain_public
+    siligen_domain
     siligen_types
     siligen_utils
 )
@@ -111,7 +111,8 @@ target_include_directories(siligen_runtime_recipe_persistence PUBLIC
     ${RUNTIME_HOST_COMMON_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_runtime_recipe_persistence PUBLIC
-    siligen_workflow_runtime_consumer_public
+    siligen_workflow_recipe_domain_public
+    siligen_workflow_recipe_serialization_public
 )
 target_link_libraries(siligen_runtime_recipe_persistence PRIVATE
     siligen_types
@@ -132,7 +133,7 @@ target_include_directories(siligen_runtime_host_config PUBLIC
     ${RUNTIME_HOST_COMMON_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_runtime_host_config PUBLIC
-    siligen_workflow_runtime_consumer_public
+    siligen_process_planning_domain_configuration
 )
 target_link_libraries(siligen_runtime_host_config PRIVATE
     siligen_runtime_host_boost_headers
@@ -149,7 +150,7 @@ target_include_directories(siligen_runtime_host_storage PUBLIC
     ${RUNTIME_HOST_COMMON_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_runtime_host_storage PUBLIC
-    siligen_workflow_runtime_consumer_public
+    siligen_process_planning_domain_configuration
 )
 target_link_libraries(siligen_runtime_host_storage PRIVATE
     siligen_types
@@ -165,7 +166,7 @@ target_include_directories(siligen_runtime_host_factories PUBLIC
     ${RUNTIME_HOST_COMMON_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_runtime_host_factories PUBLIC
-    siligen_workflow_runtime_consumer_public
+    siligen_process_planning_domain_configuration
 )
 target_link_libraries(siligen_runtime_host_factories PRIVATE
     siligen_device_hal_hardware
@@ -189,7 +190,6 @@ target_include_directories(siligen_runtime_host_infrastructure INTERFACE
     ${RUNTIME_HOST_COMMON_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_runtime_host_infrastructure INTERFACE
-    siligen_workflow_runtime_consumer_public
     siligen_device_hal_hardware
     siligen_runtime_recipe_persistence
     siligen_runtime_host_config
@@ -254,7 +254,10 @@ target_compile_definitions(siligen_runtime_host PRIVATE
 )
 
 target_link_libraries(siligen_runtime_host PUBLIC
-    siligen_workflow_runtime_consumer_public
+    siligen_job_ingest_application_public
+    siligen_workflow_application_public
+    siligen_runtime_execution_application_public
+    siligen_workflow_recipe_application_public
     siligen_runtime_host_infrastructure
     siligen_shared
 )

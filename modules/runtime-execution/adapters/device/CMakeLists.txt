@@ -7,11 +7,11 @@ if(NOT TARGET siligen_shared_kernel AND EXISTS "${SILIGEN_WORKSPACE_ROOT}/shared
     )
 endif()
 
-set(SILIGEN_DEVICE_CONTRACTS_CANONICAL_DIR "${SILIGEN_WORKSPACE_ROOT}/modules/runtime-execution/contracts/device")
+set(SILIGEN_DEVICE_CONTRACTS_CANONICAL_DIR "${SILIGEN_WORKSPACE_ROOT}/shared/contracts/device")
 if(NOT TARGET siligen_device_contracts AND EXISTS "${SILIGEN_DEVICE_CONTRACTS_CANONICAL_DIR}/CMakeLists.txt")
     add_subdirectory(
         "${SILIGEN_DEVICE_CONTRACTS_CANONICAL_DIR}"
-        "${CMAKE_BINARY_DIR}/modules/runtime-execution/contracts/device"
+        "${CMAKE_BINARY_DIR}/shared/contracts/device"
     )
 endif()
 
@@ -114,7 +114,7 @@ target_include_directories(siligen_device_adapters PRIVATE
 target_link_libraries(siligen_device_adapters PUBLIC
     siligen_device_contracts
     siligen_shared_kernel
-    siligen_workflow_domain_public
+    siligen_domain
 )
 if(TARGET siligen_types)
     target_link_libraries(siligen_device_adapters PRIVATE siligen_types)

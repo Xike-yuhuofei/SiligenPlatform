@@ -6,7 +6,7 @@
 #include "domain/diagnostics/ports/IDiagnosticsPort.h"
 #include "domain/diagnostics/ports/ITestConfigurationPort.h"
 #include "domain/diagnostics/ports/ITestRecordRepository.h"
-#include "domain/dispensing/ports/ITaskSchedulerPort.h"
+#include "runtime_execution/contracts/dispensing/ITaskSchedulerPort.h"
 #include "domain/dispensing/ports/ITriggerControllerPort.h"
 #include "domain/dispensing/ports/IValvePort.h"
 #include "domain/machine/ports/IHardwareConnectionPort.h"
@@ -21,7 +21,7 @@
 #include "domain/motion/ports/IMotionStatePort.h"
 #include "domain/motion/ports/IPositionControlPort.h"
 #include "domain/motion/ports/IVelocityProfilePort.h"
-#include "domain/system/ports/IEventPublisherPort.h"
+#include "runtime_execution/contracts/system/IEventPublisherPort.h"
 #include "domain/recipes/ports/IParameterSchemaPort.h"
 #include "domain/recipes/ports/IAuditRepositoryPort.h"
 #include "domain/recipes/ports/IRecipeBundleSerializerPort.h"
@@ -114,11 +114,11 @@ void ApplyBindings(
         RegisterMotionRuntimePorts(container, bindings.motion_runtime_port);
     }
     if (bindings.task_scheduler_port) {
-        container.RegisterPort<Siligen::Domain::Dispensing::Ports::ITaskSchedulerPort>(
+        container.RegisterPort<Siligen::RuntimeExecution::Contracts::Dispensing::ITaskSchedulerPort>(
             bindings.task_scheduler_port);
     }
     if (bindings.event_port) {
-        container.RegisterPort<Siligen::Domain::System::Ports::IEventPublisherPort>(bindings.event_port);
+        container.RegisterPort<Siligen::RuntimeExecution::Contracts::System::IEventPublisherPort>(bindings.event_port);
     }
     if (bindings.interlock_signal_port) {
         container.RegisterPort<Siligen::Domain::Safety::Ports::IInterlockSignalPort>(bindings.interlock_signal_port);

@@ -1,8 +1,72 @@
-add_library(siligen_module_job_ingest INTERFACE)
+cmake_minimum_required(VERSION 3.20)
 
-if(TARGET siligen_process_runtime_core_application)
-    target_link_libraries(siligen_module_job_ingest INTERFACE siligen_process_runtime_core_application)
+if(NOT TARGET siligen_process_planning_domain_configuration)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../process-planning/domain/configuration"
+        "${CMAKE_BINARY_DIR}/modules/process-planning/domain/configuration"
+    )
 endif()
+
+set(SILIGEN_JOB_INGEST_APPLICATION_PUBLIC_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/application/include")
+if(NOT EXISTS "${SILIGEN_JOB_INGEST_APPLICATION_PUBLIC_INCLUDE_DIR}/application")
+    message(FATAL_ERROR
+        "job-ingest canonical application include root missing: "
+        "${SILIGEN_JOB_INGEST_APPLICATION_PUBLIC_INCLUDE_DIR}/application"
+    )
+endif()
+
+if(NOT TARGET siligen_job_ingest_application_headers)
+    add_library(siligen_job_ingest_application_headers INTERFACE)
+endif()
+target_include_directories(siligen_job_ingest_application_headers INTERFACE
+    ${SILIGEN_JOB_INGEST_APPLICATION_PUBLIC_INCLUDE_DIR}
+    ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
+)
+target_link_libraries(siligen_job_ingest_application_headers INTERFACE
+    siligen_process_planning_domain_configuration
+)
+target_compile_features(siligen_job_ingest_application_headers INTERFACE cxx_std_17)
+
+set(SILIGEN_JOB_INGEST_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS
+    ${PROCESS_RUNTIME_CORE_PUBLIC_INCLUDE_DIRS}
+    ${PROCESS_RUNTIME_CORE_IMPLEMENTATION_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/application
+)
+list(REMOVE_DUPLICATES SILIGEN_JOB_INGEST_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS)
+
+add_library(siligen_job_ingest_application STATIC
+    application/usecases/dispensing/UploadFileUseCase.cpp
+)
+target_include_directories(siligen_job_ingest_application PUBLIC
+    ${SILIGEN_JOB_INGEST_APPLICATION_PUBLIC_INCLUDE_DIR}
+)
+target_include_directories(siligen_job_ingest_application PRIVATE
+    ${SILIGEN_JOB_INGEST_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
+)
+target_link_libraries(siligen_job_ingest_application PUBLIC
+    siligen_process_planning_domain_configuration
+    siligen_dxf_geometry_application_public
+    siligen_types
+    siligen_utils
+)
+target_compile_features(siligen_job_ingest_application PUBLIC cxx_std_17)
+
+if(NOT TARGET siligen_job_ingest_application_public)
+    add_library(siligen_job_ingest_application_public INTERFACE)
+endif()
+target_link_libraries(siligen_job_ingest_application_public INTERFACE
+    siligen_job_ingest_application_headers
+    $<LINK_ONLY:siligen_job_ingest_application>
+)
+target_compile_features(siligen_job_ingest_application_public INTERFACE cxx_std_17)
+
+if(NOT TARGET siligen_module_job_ingest)
+    add_library(siligen_module_job_ingest INTERFACE)
+endif()
+target_link_libraries(siligen_module_job_ingest INTERFACE
+    siligen_job_ingest_application_public
+)
 
 if(TARGET siligen_application_contracts)
     target_link_libraries(siligen_module_job_ingest INTERFACE siligen_application_contracts)

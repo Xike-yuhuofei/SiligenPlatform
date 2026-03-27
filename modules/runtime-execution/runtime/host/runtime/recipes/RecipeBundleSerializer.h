@@ -2,7 +2,7 @@
 
 #include "domain/recipes/ports/IRecipeBundleSerializerPort.h"
 #include "domain/recipes/value-objects/RecipeBundle.h"
-#include "recipes/serialization/RecipeJsonSerializer.h"
+#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
 
 #include <string>
 

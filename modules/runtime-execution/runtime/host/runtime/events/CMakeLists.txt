@@ -11,7 +11,7 @@ target_include_directories(siligen_event_adapters PUBLIC
 
 # 链接依赖
 target_link_libraries(siligen_event_adapters PUBLIC
-    siligen_workflow_domain_public
+    siligen_runtime_execution_runtime_contracts
 )
 target_link_libraries(siligen_event_adapters PRIVATE
     siligen_runtime_host_boost_headers

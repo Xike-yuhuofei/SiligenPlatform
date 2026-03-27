@@ -19,39 +19,100 @@
 
 namespace Siligen::Domain::Motion {
 
+namespace {
+constexpr float32 kInterpolationEpsilon = 1e-6f;
+
+TrajectoryPoint InterpolateTrajectoryPoint(const TrajectoryPoint& prev,
+                                           const TrajectoryPoint& next,
+                                           float32 target_time,
+                                           const Point2D& target_position) {
+    TrajectoryPoint point = prev;
+    const float32 dt = next.timestamp - prev.timestamp;
+    const float32 ratio = (std::abs(dt) <= kInterpolationEpsilon)
+                              ? 0.0f
+                              : std::clamp((target_time - prev.timestamp) / dt, 0.0f, 1.0f);
+
+    point.position = target_position;
+    point.timestamp = target_time;
+    point.velocity = prev.velocity + (next.velocity - prev.velocity) * ratio;
+    point.acceleration = prev.acceleration + (next.acceleration - prev.acceleration) * ratio;
+    point.enable_position_trigger = false;
+    point.trigger_pulse_width_us = 0;
+    return point;
+}
+
+void ApplyTrigger(TrajectoryPoint& point, uint32 pulse_width, const Point2D* exact_position = nullptr) {
+    if (exact_position != nullptr) {
+        point.position = *exact_position;
+    }
+    point.enable_position_trigger = true;
+    point.trigger_pulse_width_us = static_cast<uint16>(std::max<uint32>(point.trigger_pulse_width_us, pulse_width));
+}
+}  // namespace
+
 std::vector<TrajectoryPoint> TrajectoryPlanner::GenerateCMPCoordinatedTrajectory(
     const std::vector<TrajectoryPoint>& base_trajectory,
     const TriggerTimeline& timeline,
     const CMPConfiguration& cmp_config) const {
+    (void)cmp_config;
     std::vector<TrajectoryPoint> cmp_trajectory = base_trajectory;
+    cmp_trajectory.reserve(base_trajectory.size() + timeline.trigger_times.size());
 
     if (base_trajectory.empty() || timeline.trigger_times.empty()) {
         // Domain层不应包含日志记录（违反架构规则DOMAIN_NO_IO_OR_THREADING）
         return cmp_trajectory;
     }
 
-    // 为每个触发点在最近的时间步添加CMP触发信息
+    // 在精确触发时间插入轨迹点，避免最终胶点被量化到最近采样点。
     for (size_t i = 0; i < timeline.trigger_times.size(); ++i) {
         float32 trigger_time = timeline.trigger_times[i];
+        const Point2D& trigger_position = timeline.trigger_positions[i];
+        const uint32 pulse_width = timeline.pulse_widths[i];
 
-        // 找到最接近的轨迹点
-        int32 closest_index = 0;
-        float32 min_time_diff = std::numeric_limits<float32>::max();
-
-        for (size_t j = 0; j < cmp_trajectory.size(); ++j) {
-            float32 time_diff = std::abs(cmp_trajectory[j].timestamp - trigger_time);
-            if (time_diff < min_time_diff) {
-                min_time_diff = time_diff;
-                closest_index = static_cast<int32>(j);
-            }
+        if (trigger_time <= cmp_trajectory.front().timestamp + kInterpolationEpsilon) {
+            ApplyTrigger(cmp_trajectory.front(), pulse_width, &trigger_position);
+            continue;
+        }
+        if (trigger_time >= cmp_trajectory.back().timestamp - kInterpolationEpsilon) {
+            ApplyTrigger(cmp_trajectory.back(), pulse_width, &trigger_position);
+            continue;
         }
 
-        // 检查时间容差
-        if (min_time_diff <= cmp_config.time_tolerance_ms / 1000.0f) {
-            // 标记CMP触发点
-            cmp_trajectory[closest_index].enable_position_trigger = true;
-            cmp_trajectory[closest_index].trigger_pulse_width_us = static_cast<uint16>(timeline.pulse_widths[i]);
+        auto upper = std::lower_bound(cmp_trajectory.begin(),
+                                      cmp_trajectory.end(),
+                                      trigger_time,
+                                      [](const TrajectoryPoint& point, float32 time) {
+                                          return point.timestamp < time;
+                                      });
+
+        if (upper == cmp_trajectory.end()) {
+            ApplyTrigger(cmp_trajectory.back(), pulse_width, &trigger_position);
+            continue;
         }
+
+        if (std::abs(upper->timestamp - trigger_time) <= kInterpolationEpsilon) {
+            ApplyTrigger(*upper, pulse_width, &trigger_position);
+            continue;
+        }
+
+        if (upper == cmp_trajectory.begin()) {
+            ApplyTrigger(cmp_trajectory.front(), pulse_width, &trigger_position);
+            continue;
+        }
+
+        auto prev = upper - 1;
+        if (std::abs(prev->timestamp - trigger_time) <= kInterpolationEpsilon) {
+            ApplyTrigger(*prev, pulse_width, &trigger_position);
+            continue;
+        }
+
+        TrajectoryPoint exact_trigger = InterpolateTrajectoryPoint(*prev, *upper, trigger_time, trigger_position);
+        ApplyTrigger(exact_trigger, pulse_width);
+        cmp_trajectory.insert(upper, exact_trigger);
+    }
+
+    for (size_t i = 0; i < cmp_trajectory.size(); ++i) {
+        cmp_trajectory[i].sequence_id = static_cast<uint32>(i);
     }
 
     return cmp_trajectory;

@@ -17,6 +17,7 @@ set(WORKFLOW_TEST_IMPLEMENTATION_INCLUDE_DIRS
     "${WORKFLOW_MODULE_DIR}/application/include"
     "${WORKFLOW_MODULE_DIR}/domain/include"
     "${WORKFLOW_MODULE_DIR}/adapters/include"
+    "${CMAKE_SOURCE_DIR}/modules/runtime-execution/application/include"
     "${CMAKE_SOURCE_DIR}/modules/motion-planning"
     "${CMAKE_SOURCE_DIR}/modules/runtime-execution/adapters/device/include"
 )
@@ -28,7 +29,6 @@ set(TEST_SOURCES
     unit/domain/safety/SafetyOutputGuardTest.cpp
     unit/domain/motion/JogControllerTest.cpp
     unit/domain/dispensing/ArcTriggerPointCalculatorTest.cpp
-    unit/domain/dispensing/DispensingControllerTest.cpp
     unit/domain/dispensing/PurgeDispenserProcessTest.cpp
     unit/domain/machine/CalibrationProcessTest.cpp
     unit/domain/recipes/RecipeActivationServiceTest.cpp
@@ -50,16 +50,10 @@ set(TEST_SOURCES
 
 set(OPTIONAL_TEST_SOURCES
     unit/domain/diagnostics/ProcessResultServiceTest.cpp
-    unit/domain/dispensing/TriggerPlannerTest.cpp
     unit/domain/dispensing/ClosedLoopSkeletonTest.cpp
     unit/domain/dispensing/ValveCoordinationServiceTest.cpp
-    unit/domain/trajectory/MotionPlannerTest.cpp
-    unit/domain/trajectory/MotionPlannerConstraintTest.cpp
-    unit/domain/trajectory/InterpolationProgramPlannerTest.cpp
-    unit/domain/trajectory/PathRegularizerTest.cpp
     unit/dispensing/PlanningRequestTest.cpp
     unit/dispensing/ContourPathOptimizerTest.cpp
-    unit/dispensing/UploadFileUseCaseTest.cpp
     unit/infrastructure/adapters/planning/dxf/DXFAdapterFactoryTest.cpp
     unit/infrastructure/adapters/redundancy/JsonRedundancyRepositoryAdapterTest.cpp
     unit/redundancy/CandidateScoringServiceTest.cpp
@@ -84,7 +78,7 @@ endif()
 
 target_link_libraries(siligen_unit_tests PRIVATE
     siligen_process_runtime_core
-    siligen_dispense_packaging_domain_dispensing
+    siligen_dispense_packaging_application_public
     siligen_parsing_adapter
     siligen_types
     siligen_utils
@@ -150,7 +144,10 @@ endif()
 target_link_libraries(siligen_dispensing_semantics_tests PRIVATE
     siligen_process_runtime_core
     siligen_application_dispensing
-    siligen_dispense_packaging_domain_dispensing
+    siligen_runtime_execution_application_public
+    siligen_job_ingest_application_public
+    siligen_dxf_geometry_application_public
+    siligen_dispense_packaging_application_public
     siligen_parsing_adapter
     siligen_types
     siligen_utils

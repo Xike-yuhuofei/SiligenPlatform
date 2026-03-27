@@ -59,7 +59,11 @@ target_include_directories(siligen_transport_gateway PUBLIC
 target_link_libraries(siligen_transport_gateway PUBLIC
     siligen_transport_gateway_boost_headers
     siligen_transport_gateway_protocol
-    siligen_workflow_runtime_consumer_public
+    siligen_module_job_ingest
+    siligen_workflow_application_public
+    siligen_workflow_recipe_application_public
+    siligen_workflow_recipe_serialization_public
+    siligen_runtime_execution_application_public
     siligen_runtime_host_infrastructure
     siligen_shared
     siligen_runtime_host_storage

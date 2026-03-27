@@ -9,7 +9,10 @@ if(DEFINED SILIGEN_THIRD_PARTY_DIR AND EXISTS "${SILIGEN_THIRD_PARTY_DIR}")
 elseif(EXISTS "${SHARED_KERNEL_WORKSPACE_ROOT}/third_party")
     set(SHARED_KERNEL_THIRD_PARTY_DIR "${SHARED_KERNEL_WORKSPACE_ROOT}/third_party")
 else()
-    message(FATAL_ERROR "shared-kernel 需要显式提供 SILIGEN_THIRD_PARTY_DIR 或 workspace third_party 根目录。")
+    message(FATAL_ERROR
+        "shared-kernel requires SILIGEN_THIRD_PARTY_DIR or a materialized workspace third_party root. "
+        "Run scripts/bootstrap/bootstrap-third-party.ps1 before configuring standalone builds."
+    )
 endif()
 
 add_library(siligen_shared_kernel STATIC

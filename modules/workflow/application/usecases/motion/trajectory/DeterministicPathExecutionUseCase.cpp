@@ -1,7 +1,7 @@
 #include "DeterministicPathExecutionUseCase.h"
 
 #include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
-#include "domain/trajectory/domain-services/MotionPlanner.h"
+#include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "domain/trajectory/value-objects/GeometryUtils.h"
 #include "shared/types/Error.h"
 
@@ -18,7 +18,7 @@ using Siligen::Domain::Motion::Ports::CoordinateSystemStatus;
 using Siligen::Domain::Motion::Ports::InterpolationData;
 using Siligen::Domain::Motion::Ports::MotionStatus;
 using Siligen::Domain::Motion::Ports::MotionState;
-using Siligen::Domain::Trajectory::DomainServices::MotionPlanner;
+using Siligen::Application::Services::MotionPlanning::MotionPlanningFacade;
 using Siligen::Domain::Trajectory::ValueObjects::MotionConfig;
 using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
 using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
@@ -288,7 +288,7 @@ bool DeterministicPathExecutionUseCase::HasActiveExecution() const noexcept {
 Result<DeterministicPathExecutionUseCase::ActiveExecution> DeterministicPathExecutionUseCase::BuildExecution(
     const DeterministicPathExecutionRequest& request,
     const Point2D& start_point) const {
-    MotionPlanner motion_planner;
+    MotionPlanningFacade motion_planner;
     InterpolationProgramPlanner program_planner;
 
     ProcessPath path;

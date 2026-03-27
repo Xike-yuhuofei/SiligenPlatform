@@ -9,10 +9,35 @@ if(NOT TARGET siligen_process_path_domain_trajectory)
     message(FATAL_ERROR "process-path requires canonical domain/trajectory target: siligen_process_path_domain_trajectory")
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/contracts/CMakeLists.txt")
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/contracts"
+        "${CMAKE_BINARY_DIR}/modules/process-path/contracts"
+    )
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/application/CMakeLists.txt")
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/application"
+        "${CMAKE_BINARY_DIR}/modules/process-path/application"
+    )
+endif()
+
 add_library(siligen_module_process_path INTERFACE)
-target_link_libraries(siligen_module_process_path INTERFACE
-    siligen_process_path_domain_trajectory
-)
+if(TARGET siligen_process_path_application_public)
+    target_link_libraries(siligen_module_process_path INTERFACE
+        siligen_process_path_application_public
+    )
+else()
+    target_link_libraries(siligen_module_process_path INTERFACE
+        siligen_process_path_domain_trajectory
+    )
+endif()
+if(TARGET siligen_process_path_contracts_public)
+    target_link_libraries(siligen_module_process_path INTERFACE
+        siligen_process_path_contracts_public
+    )
+endif()
 target_compile_features(siligen_module_process_path INTERFACE cxx_std_17)
 
 set_target_properties(siligen_module_process_path PROPERTIES

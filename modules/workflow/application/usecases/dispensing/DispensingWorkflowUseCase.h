@@ -1,8 +1,8 @@
 #pragma once
 
-#include "application/usecases/dispensing/DispensingExecutionUseCase.h"
+#include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "application/usecases/dispensing/PlanningUseCase.h"
-#include "application/usecases/dispensing/UploadFileUseCase.h"
+#include "job_ingest/application/usecases/dispensing/UploadFileUseCase.h"
 #include "domain/machine/ports/IHardwareConnectionPort.h"
 #include "domain/motion/ports/IHomingPort.h"
 #include "domain/motion/ports/IMotionStatePort.h"

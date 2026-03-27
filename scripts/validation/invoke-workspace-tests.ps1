@@ -16,6 +16,14 @@ param(
 $ErrorActionPreference = "Stop"
 
 $workspaceRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+$thirdPartyBootstrap = Join-Path $workspaceRoot "scripts\bootstrap\bootstrap-third-party.ps1"
+if (-not (Test-Path $thirdPartyBootstrap)) {
+    throw "third-party bootstrap script not found: $thirdPartyBootstrap"
+}
+
+Write-Output "third-party bootstrap: powershell -NoProfile -ExecutionPolicy Bypass -File $thirdPartyBootstrap"
+& $thirdPartyBootstrap -WorkspaceRoot $workspaceRoot
+
 $testKitSrc = Join-Path $workspaceRoot "shared\\testing\\test-kit\\src"
 
 $resolvedReportDir = if ([System.IO.Path]::IsPathRooted($ReportDir)) {

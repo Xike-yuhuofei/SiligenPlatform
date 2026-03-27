@@ -1,5 +1,6 @@
 #include "PlanningUseCase.h"
 #include "application/services/dxf/DxfPbPreparationService.h"
+#include "application/services/dispensing/PlanningPreviewAssemblyService.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
 #include "domain/trajectory/value-objects/ProcessPath.h"
@@ -1079,37 +1080,18 @@ Result<PlanningResponse> PlanningUseCase::Execute(const PlanningRequest& request
 
     const bool dump_preview = ShouldDumpPreviewTrajectory();
     const std::time_t dump_timestamp = dump_preview ? std::time(nullptr) : 0;
-    auto selection = SelectExecutionTrajectory(plan, dump_preview);
-    DumpPreviewArtifacts(request, plan, selection, dump_preview, dump_timestamp);
-
-    PreviewTriggerConfig trigger_config;
-    trigger_config.spatial_interval_mm = runtime_params.trigger_spatial_interval_mm;
-
-    std::vector<VisualizationTriggerPoint> preview_triggers;
-    if (selection.execution_trajectory) {
-        preview_triggers = BuildPlannedTriggerPoints(*selection.execution_trajectory,
-                                                     trigger_config,
-                                                     plan.trigger_distances_mm);
+    Siligen::Application::Services::Dispensing::PlanningPreviewAssemblyService preview_assembly_service;
+    auto response_result = preview_assembly_service.BuildResponse(
+        request,
+        plan,
+        plan_request,
+        dump_preview,
+        dump_timestamp,
+        ExtractFilename(request.dxf_filepath));
+    if (response_result.IsError()) {
+        return Result<PlanningResponse>::Failure(response_result.GetError());
     }
-    if (preview_triggers.empty()) {
-        return Result<PlanningResponse>::Failure(
-            Error(ErrorCode::CMP_TRIGGER_SETUP_FAILED,
-                  "位置触发不可用，禁止回退为定时触发",
-                  "PlanningUseCase"));
-    }
-
-    const auto final_glue_points = CollectTriggerPositions(preview_triggers);
-    const std::vector<GluePointSegment> glue_segments =
-        final_glue_points.empty() ? std::vector<GluePointSegment>() : std::vector<GluePointSegment>{GluePointSegment{final_glue_points}};
-    ValidateGlueSpacing(request, glue_segments, ResolveTargetSpacing(plan, runtime_params));
-    WriteGluePointArtifacts(glue_segments, request.dxf_filepath);
-
-    auto response = BuildPlanningResponse(request,
-                                         plan,
-                                         selection.execution_trajectory,
-                                         final_glue_points,
-                                         ExtractFilename(request.dxf_filepath),
-                                         EstimateExecutionTime(plan, plan_request));
+    auto response = response_result.Value();
 
     SILIGEN_LOG_INFO_FMT_HELPER("DXF预览数据准备完成: points=%zu, triggers=%d",
                                 response.trajectory_points.size(),

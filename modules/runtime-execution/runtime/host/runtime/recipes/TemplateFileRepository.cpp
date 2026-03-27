@@ -1,6 +1,6 @@
 #include "TemplateFileRepository.h"
 
-#include "recipes/serialization/RecipeJsonSerializer.h"
+#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
 #include "shared/types/Error.h"
 #include "shared/interfaces/ILoggingService.h"
 

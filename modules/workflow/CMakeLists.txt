@@ -24,6 +24,15 @@ set(SILIGEN_WORKFLOW_APPLICATION_DIR
 set(SILIGEN_WORKFLOW_ADAPTERS_IMPL_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/adapters"
 )
+set(SILIGEN_PROCESS_PATH_APPLICATION_PUBLIC_INCLUDE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/../process-path/application/include"
+)
+set(SILIGEN_MOTION_PLANNING_APPLICATION_PUBLIC_INCLUDE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/../motion-planning/application/include"
+)
+set(SILIGEN_DISPENSE_PACKAGING_APPLICATION_PUBLIC_INCLUDE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/../dispense-packaging/application/include"
+)
 if(NOT DEFINED SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR)
     set(SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR
         "${CMAKE_CURRENT_SOURCE_DIR}/../motion-planning"
@@ -42,6 +51,13 @@ set(PROCESS_RUNTIME_CORE_PUBLIC_INCLUDE_DIRS
     ${SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_WORKFLOW_ADAPTERS_PUBLIC_INCLUDE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../job-ingest/application/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../dxf-geometry/application/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../runtime-execution/application/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../runtime-execution/contracts/runtime/include
+    ${SILIGEN_PROCESS_PATH_APPLICATION_PUBLIC_INCLUDE_DIR}
+    ${SILIGEN_MOTION_PLANNING_APPLICATION_PUBLIC_INCLUDE_DIR}
+    ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_WORKFLOW_PROCESS_CORE_DIR}/include
     ${SILIGEN_WORKFLOW_MOTION_CORE_DIR}/include
@@ -60,6 +76,9 @@ foreach(required_dir
         "${SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR}/domain"
         "${SILIGEN_WORKFLOW_ADAPTERS_PUBLIC_INCLUDE_DIR}/infrastructure"
         "${SILIGEN_WORKFLOW_ADAPTERS_PUBLIC_INCLUDE_DIR}/recipes"
+        "${SILIGEN_PROCESS_PATH_APPLICATION_PUBLIC_INCLUDE_DIR}/application"
+        "${SILIGEN_MOTION_PLANNING_APPLICATION_PUBLIC_INCLUDE_DIR}/application"
+        "${SILIGEN_DISPENSE_PACKAGING_APPLICATION_PUBLIC_INCLUDE_DIR}/application"
         "${SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR}/domain/motion"
 )
     if(NOT EXISTS "${required_dir}")
@@ -169,10 +188,24 @@ target_link_libraries(siligen_process_runtime_core_process INTERFACE
 )
 
 siligen_process_runtime_core_interface(siligen_process_runtime_core_planning)
-target_link_libraries(siligen_process_runtime_core_planning INTERFACE
-    siligen_process_path_domain_trajectory
-    siligen_motion
-)
+if(TARGET siligen_process_path_application_public)
+    target_link_libraries(siligen_process_runtime_core_planning INTERFACE
+        siligen_process_path_application_public
+    )
+else()
+    target_link_libraries(siligen_process_runtime_core_planning INTERFACE
+        siligen_process_path_domain_trajectory
+    )
+endif()
+if(TARGET siligen_motion_planning_application_public)
+    target_link_libraries(siligen_process_runtime_core_planning INTERFACE
+        siligen_motion_planning_application_public
+    )
+else()
+    target_link_libraries(siligen_process_runtime_core_planning INTERFACE
+        siligen_motion
+    )
+endif()
 
 siligen_process_runtime_core_interface(siligen_process_runtime_core_execution)
 target_link_libraries(siligen_process_runtime_core_execution INTERFACE
@@ -201,8 +234,16 @@ target_link_libraries(siligen_process_runtime_core_recipes INTERFACE
 )
 
 siligen_process_runtime_core_interface(siligen_process_runtime_core_dispensing)
+if(TARGET siligen_dispense_packaging_application_public)
+    target_link_libraries(siligen_process_runtime_core_dispensing INTERFACE
+        siligen_dispense_packaging_application_public
+    )
+else()
+    target_link_libraries(siligen_process_runtime_core_dispensing INTERFACE
+        siligen_dispense_packaging_domain_dispensing
+    )
+endif()
 target_link_libraries(siligen_process_runtime_core_dispensing INTERFACE
-    siligen_dispense_packaging_domain_dispensing
     siligen_triggering
     siligen_dispensing_execution_services
     siligen_valve_core
@@ -276,7 +317,6 @@ foreach(adapter_target
     IN ITEMS
         siligen_parsing_adapter
         siligen_contour_augment_adapter
-        siligen_recipe_json_codec
         siligen_redundancy_storage_adapter
 )
     if(TARGET ${adapter_target})
@@ -286,6 +326,48 @@ foreach(adapter_target
     endif()
 endforeach()
 target_compile_features(siligen_workflow_adapters_public INTERFACE cxx_std_17)
+
+if(NOT TARGET siligen_workflow_recipe_domain_public)
+    add_library(siligen_workflow_recipe_domain_public INTERFACE)
+endif()
+target_link_libraries(siligen_workflow_recipe_domain_public INTERFACE
+    siligen_workflow_domain_headers
+    domain_recipes
+)
+if(TARGET siligen_recipe_domain_services)
+    target_link_libraries(siligen_workflow_recipe_domain_public INTERFACE
+        $<LINK_ONLY:siligen_recipe_domain_services>
+    )
+endif()
+target_compile_features(siligen_workflow_recipe_domain_public INTERFACE cxx_std_17)
+
+if(NOT TARGET siligen_workflow_recipe_application_public)
+    add_library(siligen_workflow_recipe_application_public INTERFACE)
+endif()
+target_link_libraries(siligen_workflow_recipe_application_public INTERFACE
+    siligen_workflow_recipe_domain_public
+    siligen_workflow_application_headers
+)
+if(TARGET siligen_recipe_core)
+    target_link_libraries(siligen_workflow_recipe_application_public INTERFACE
+        $<LINK_ONLY:siligen_recipe_core>
+    )
+endif()
+target_compile_features(siligen_workflow_recipe_application_public INTERFACE cxx_std_17)
+
+if(NOT TARGET siligen_workflow_recipe_serialization_public)
+    add_library(siligen_workflow_recipe_serialization_public INTERFACE)
+endif()
+target_link_libraries(siligen_workflow_recipe_serialization_public INTERFACE
+    siligen_workflow_recipe_domain_public
+    siligen_workflow_adapters_headers
+)
+if(TARGET siligen_recipe_json_codec)
+    target_link_libraries(siligen_workflow_recipe_serialization_public INTERFACE
+        $<LINK_ONLY:siligen_recipe_json_codec>
+    )
+endif()
+target_compile_features(siligen_workflow_recipe_serialization_public INTERFACE cxx_std_17)
 
 if(NOT TARGET siligen_workflow_runtime_consumer_public)
     add_library(siligen_workflow_runtime_consumer_public INTERFACE)
@@ -300,13 +382,22 @@ target_compile_features(siligen_workflow_runtime_consumer_public INTERFACE cxx_s
 if(NOT TARGET siligen_module_workflow)
     add_library(siligen_module_workflow INTERFACE)
 endif()
-if(TARGET siligen_workflow_runtime_consumer_public)
-    target_link_libraries(siligen_module_workflow INTERFACE siligen_workflow_runtime_consumer_public)
+if(TARGET siligen_workflow_application_public)
+    target_link_libraries(siligen_module_workflow INTERFACE siligen_workflow_application_public)
 elseif(TARGET siligen_process_runtime_core_application)
     target_link_libraries(siligen_module_workflow INTERFACE siligen_process_runtime_core_application)
 elseif(TARGET siligen_process_runtime_core)
     target_link_libraries(siligen_module_workflow INTERFACE siligen_process_runtime_core)
 endif()
+foreach(workflow_public_target
+    IN ITEMS
+        siligen_workflow_recipe_application_public
+        siligen_workflow_recipe_serialization_public
+)
+    if(TARGET ${workflow_public_target})
+        target_link_libraries(siligen_module_workflow INTERFACE ${workflow_public_target})
+    endif()
+endforeach()
 target_compile_features(siligen_module_workflow INTERFACE cxx_std_17)
 
 set_target_properties(siligen_module_workflow PROPERTIES

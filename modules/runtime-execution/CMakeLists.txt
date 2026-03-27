@@ -1,13 +1,29 @@
 cmake_minimum_required(VERSION 3.20)
 
 set(SILIGEN_RUNTIME_EXECUTION_DEVICE_CONTRACTS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/contracts/device")
+set(SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/contracts/runtime")
 set(SILIGEN_RUNTIME_EXECUTION_DEVICE_ADAPTERS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/adapters/device")
+set(SILIGEN_RUNTIME_EXECUTION_APPLICATION_DIR "${CMAKE_CURRENT_SOURCE_DIR}/application")
 set(SILIGEN_RUNTIME_EXECUTION_RUNTIME_HOST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/runtime/host")
 
 if(NOT TARGET siligen_device_contracts AND EXISTS "${SILIGEN_RUNTIME_EXECUTION_DEVICE_CONTRACTS_DIR}/CMakeLists.txt")
     add_subdirectory(
         "${SILIGEN_RUNTIME_EXECUTION_DEVICE_CONTRACTS_DIR}"
         "${CMAKE_BINARY_DIR}/modules/runtime-execution/contracts/device"
+    )
+endif()
+
+if(NOT TARGET siligen_runtime_execution_runtime_contracts AND EXISTS "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_DIR}/CMakeLists.txt")
+    add_subdirectory(
+        "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_DIR}"
+        "${CMAKE_BINARY_DIR}/modules/runtime-execution/contracts/runtime"
+    )
+endif()
+
+if(NOT TARGET siligen_runtime_execution_application_public AND EXISTS "${SILIGEN_RUNTIME_EXECUTION_APPLICATION_DIR}/CMakeLists.txt")
+    add_subdirectory(
+        "${SILIGEN_RUNTIME_EXECUTION_APPLICATION_DIR}"
+        "${CMAKE_BINARY_DIR}/modules/runtime-execution/application"
     )
 endif()
 
@@ -28,7 +44,10 @@ endif()
 if(NOT TARGET siligen_module_runtime_execution)
     add_library(siligen_module_runtime_execution INTERFACE)
 endif()
-target_link_libraries(siligen_module_runtime_execution INTERFACE siligen_runtime_host)
+target_link_libraries(siligen_module_runtime_execution INTERFACE
+    siligen_runtime_execution_application_public
+    siligen_runtime_host
+)
 target_compile_features(siligen_module_runtime_execution INTERFACE cxx_std_17)
 
 set_target_properties(siligen_module_runtime_execution PROPERTIES

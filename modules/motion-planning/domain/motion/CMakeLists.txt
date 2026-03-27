@@ -25,6 +25,7 @@ if(NOT TARGET siligen_process_path_domain_trajectory)
 endif()
 
 add_library(siligen_motion STATIC
+    ../../../process-path/domain/trajectory/domain-services/MotionPlanner.cpp
     domain-services/interpolation/TrajectoryInterpolatorBase.cpp
     domain-services/interpolation/LinearInterpolator.cpp
     domain-services/interpolation/ArcInterpolator.cpp

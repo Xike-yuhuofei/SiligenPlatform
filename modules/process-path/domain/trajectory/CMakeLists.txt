@@ -5,12 +5,19 @@ include_directories(BEFORE
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
 )
 
+if(NOT DEFINED SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR)
+    get_filename_component(SILIGEN_PROCESS_PATH_MODULE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+    get_filename_component(SILIGEN_MODULES_ROOT "${SILIGEN_PROCESS_PATH_MODULE_DIR}/.." ABSOLUTE)
+    set(SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR
+        "${SILIGEN_MODULES_ROOT}/motion-planning"
+    )
+endif()
+
 add_library(siligen_process_path_domain_trajectory STATIC
     domain-services/GeometryNormalizer.cpp
     domain-services/PathRegularizer.cpp
     domain-services/ProcessAnnotator.cpp
     domain-services/TrajectoryShaper.cpp
-    domain-services/MotionPlanner.cpp
     domain-services/SplineApproximation.cpp
 )
 
@@ -28,7 +35,7 @@ target_sources(siligen_process_path_domain_trajectory PRIVATE
 target_include_directories(siligen_process_path_domain_trajectory PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
-    ${SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR}
+    ${SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
 
