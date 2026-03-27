@@ -393,6 +393,18 @@ $forbiddenOwnershipReferences = @(
         detail = "process-path must not compile MotionPlanner implementation after moving motion planning ownership to M7"
     },
     @{
+        path = "modules/motion-planning/domain/motion/CMakeLists.txt"
+        pattern = "../../../process-path/domain/trajectory/domain-services/MotionPlanner.cpp"
+        rule_id = "motion-planning-still-compiles-process-path-motion-planner"
+        detail = "motion-planning must compile its own MotionPlanner implementation from modules/motion-planning/domain/motion/domain-services"
+    },
+    @{
+        path = "modules/motion-planning/application/services/motion_planning/MotionPlanningFacade.cpp"
+        pattern = '#include "domain/trajectory/domain-services/MotionPlanner.h"'
+        rule_id = "motion-planning-facade-still-uses-legacy-motion-planner-include"
+        detail = "MotionPlanningFacade must include domain/motion/domain-services/MotionPlanner.h"
+    },
+    @{
         path = "modules/workflow/domain/domain/CMakeLists.txt"
         pattern = "add_subdirectory(dispensing)"
         rule_id = "workflow-still-builds-dispensing-domain-duplicate"

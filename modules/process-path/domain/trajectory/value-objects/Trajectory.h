@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/motion/value-objects/MotionTrajectory.h"
+#include "../../../../motion-planning/domain/motion/value-objects/MotionTrajectory.h"
 
 namespace Siligen::Domain::Trajectory::ValueObjects {
 

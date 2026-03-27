@@ -7,4 +7,4 @@ allowed_dependencies:
   - process-path/contracts
   - shared
 uniform_skeleton_ready: true
-notes: 模块根 target 直接链接 canonical siligen_motion owner target；所有 live 规划与 runtime/control surface 均已收敛到 canonical roots
+notes: MotionPlanner canonical implementation 已归位至 modules/motion-planning/domain/motion/domain-services；process-path legacy 路径仅保留兼容包装并在 ARCH-201 阶段退出

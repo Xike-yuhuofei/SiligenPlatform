@@ -1,5 +1,5 @@
 #include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
-#include "domain/trajectory/domain-services/MotionPlanner.h"
+#include "domain/motion/domain-services/MotionPlanner.h"
 
 #include <gtest/gtest.h>
 
@@ -11,7 +11,7 @@ TEST(InterpolationProgramPlannerTest, BuildsLinearProgramFromMotionPlannerTrajec
     using Siligen::Shared::Types::Point2D;
     using Siligen::Domain::Motion::DomainServices::InterpolationProgramPlanner;
     using Siligen::Domain::Motion::Ports::InterpolationType;
-    using Siligen::Domain::Trajectory::DomainServices::MotionPlanner;
+    using Siligen::Domain::Motion::DomainServices::MotionPlanner;
     using Siligen::Domain::Trajectory::ValueObjects::MotionConfig;
     using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
     using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
@@ -52,7 +52,7 @@ TEST(InterpolationProgramPlannerTest, SplitsFullCircleArcIntoTwoSegments) {
     using Siligen::Shared::Types::Point2D;
     using Siligen::Domain::Motion::DomainServices::InterpolationProgramPlanner;
     using Siligen::Domain::Motion::Ports::InterpolationType;
-    using Siligen::Domain::Trajectory::DomainServices::MotionPlanner;
+    using Siligen::Domain::Motion::DomainServices::MotionPlanner;
     using Siligen::Domain::Trajectory::ValueObjects::MotionConfig;
     using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
     using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;

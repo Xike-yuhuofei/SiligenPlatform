@@ -17,6 +17,7 @@ class MotionPlanningFacade {
     explicit MotionPlanningFacade(
         std::shared_ptr<Siligen::Domain::Motion::DomainServices::VelocityProfileService> velocity_service = nullptr);
 
+    // Canonical planner owner lives in domain/motion/domain-services/MotionPlanner.
     Siligen::Domain::Motion::ValueObjects::MotionTrajectory Plan(
         const Siligen::Domain::Trajectory::ValueObjects::ProcessPath& path,
         const Siligen::Domain::Trajectory::ValueObjects::MotionConfig& config) const;

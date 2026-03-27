@@ -1,4 +1,4 @@
-#include "domain/trajectory/domain-services/MotionPlanner.h"
+#include "domain/motion/domain-services/MotionPlanner.h"
 
 #include <algorithm>
 #include <cmath>
@@ -15,7 +15,7 @@ float SpeedMagnitude(const Siligen::Point3D& v) {
 
 TEST(MotionPlannerConstraintTest, AppliesVelocityFactorConstraint) {
     using Siligen::Shared::Types::Point2D;
-    using Siligen::Domain::Trajectory::DomainServices::MotionPlanner;
+    using Siligen::Domain::Motion::DomainServices::MotionPlanner;
     using Siligen::Domain::Trajectory::ValueObjects::MotionConfig;
     using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
     using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;

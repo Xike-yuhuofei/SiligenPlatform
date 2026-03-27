@@ -1,10 +1,10 @@
 #include "TimeTrajectoryPlanner.h"
 
-#include "domain/trajectory/domain-services/MotionPlanner.h"
+#include "domain/motion/domain-services/MotionPlanner.h"
 
 namespace Siligen::Domain::Motion::DomainServices {
 
-using Siligen::Domain::Trajectory::DomainServices::MotionPlanner;
+using Siligen::Domain::Motion::DomainServices::MotionPlanner;
 using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
 using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
 using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
