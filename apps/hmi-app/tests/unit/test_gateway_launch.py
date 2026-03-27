@@ -11,7 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from hmi_client.client import gateway_launch as gateway_launch_module
-from hmi_client.client.gateway_launch import load_gateway_launch_spec
+from hmi_client.client.gateway_launch import load_gateway_connection_config, load_gateway_launch_spec
 
 
 class _EnvGuard:
@@ -138,3 +138,60 @@ class GatewayLaunchSpecEnvTest(unittest.TestCase):
             ):
                 with self.assertRaisesRegex(ValueError, "gateway launch spec 缺少 executable"):
                     load_gateway_launch_spec()
+
+    def test_load_gateway_connection_config_uses_config_from_launch_spec(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir).resolve()
+            exe_path = temp_root / "gateway.exe"
+            exe_path.write_text("", encoding="utf-8")
+            config_dir = temp_root / "configs"
+            config_dir.mkdir()
+            config_path = config_dir / "machine.ini"
+            config_path.write_text(
+                "[Network]\ncontrol_card_ip=192.168.0.1\nlocal_ip=192.168.0.200\n",
+                encoding="utf-8",
+            )
+            spec_path = temp_root / "gateway-launch.json"
+            spec_path.write_text(
+                json.dumps(
+                    {
+                        "executable": str(exe_path),
+                        "cwd": str(temp_root),
+                        "args": ["--config", "configs/machine.ini"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with _EnvGuard(
+                SILIGEN_GATEWAY_LAUNCH_SPEC=str(spec_path),
+                SILIGEN_GATEWAY_EXE=None,
+            ):
+                config = load_gateway_connection_config()
+
+        self.assertIsNotNone(config)
+        assert config is not None
+        self.assertEqual(config.card_ip, "192.168.0.1")
+        self.assertEqual(config.local_ip, "192.168.0.200")
+
+    def test_load_gateway_connection_config_falls_back_to_default_machine_config(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir).resolve()
+            default_config = temp_root / "machine_config.ini"
+            default_config.write_text(
+                "[Network]\ncard_ip=10.0.0.10\nlocal_ip=10.0.0.20\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(gateway_launch_module, "_DEFAULT_SPEC_PATH", temp_root / "__missing__.json"):
+                with mock.patch.object(gateway_launch_module, "_DEFAULT_MACHINE_CONFIG_PATH", default_config):
+                    with _EnvGuard(
+                        SILIGEN_GATEWAY_LAUNCH_SPEC=None,
+                        SILIGEN_GATEWAY_EXE=None,
+                    ):
+                        config = load_gateway_connection_config()
+
+        self.assertIsNotNone(config)
+        assert config is not None
+        self.assertEqual(config.card_ip, "10.0.0.10")
+        self.assertEqual(config.local_ip, "10.0.0.20")

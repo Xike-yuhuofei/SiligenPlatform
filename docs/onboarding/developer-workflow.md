@@ -40,6 +40,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\run-loc
 
 - 仓库默认门禁已切换为本地验证链路。
 - HMI 的开发态在线启动默认允许 `apps/hmi-app/run.ps1` 临时生成 gateway launch contract；验证/CI/release 入口要求正式 `apps/hmi-app/config/gateway-launch.json` 已落地，否则会 fail fast。
+- HMI online 硬件探测默认从 gateway launch contract 的 `--config` 指向的 `config/machine/machine_config.ini` 读取 `[Network] control_card_ip/local_ip`；不要再假设 UI 会用空参数直连后端。
 
 ## 4. 不再作为默认入口的旧路径
 

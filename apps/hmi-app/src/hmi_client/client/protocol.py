@@ -1,8 +1,10 @@
 """Command Protocol - High-level API for motion controller commands."""
 import base64
-from pathlib import Path
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional, Dict
+
+from .gateway_launch import load_gateway_connection_config
 from .tcp_client import TcpClient
 
 
@@ -127,6 +129,13 @@ class CommandProtocol:
 
     def connect_hardware(self, card_ip: str = "", local_ip: str = "", timeout: float = 15.0) -> tuple:
         params = {}
+        if not card_ip or not local_ip:
+            connection_config = load_gateway_connection_config()
+            if connection_config is not None:
+                if not card_ip:
+                    card_ip = connection_config.card_ip
+                if not local_ip:
+                    local_ip = connection_config.local_ip
         if card_ip:
             params["card_ip"] = card_ip
         if local_ip:

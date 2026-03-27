@@ -7,6 +7,7 @@ from unittest.mock import patch
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+from hmi_client.client.gateway_launch import MachineConnectionConfig
 from hmi_client.client.protocol import CommandProtocol
 
 
@@ -23,6 +24,40 @@ class _FakeClient:
 
 
 class PreviewGateProtocolContractTest(unittest.TestCase):
+    def test_connect_hardware_falls_back_to_gateway_connection_config(self) -> None:
+        client = _FakeClient([{"result": {"connected": True, "message": "ok"}}])
+        protocol = CommandProtocol(client)
+
+        with patch(
+            "hmi_client.client.protocol.load_gateway_connection_config",
+            return_value=MachineConnectionConfig(card_ip="192.168.0.1", local_ip="192.168.0.200"),
+        ):
+            ok, message = protocol.connect_hardware()
+
+        self.assertTrue(ok)
+        self.assertEqual(message, "ok")
+        self.assertEqual(
+            client.calls[0],
+            ("connect", {"card_ip": "192.168.0.1", "local_ip": "192.168.0.200"}, 15.0),
+        )
+
+    def test_connect_hardware_prefers_explicit_params_over_gateway_config(self) -> None:
+        client = _FakeClient([{"result": {"connected": True, "message": "ok"}}])
+        protocol = CommandProtocol(client)
+
+        with patch(
+            "hmi_client.client.protocol.load_gateway_connection_config",
+            return_value=MachineConnectionConfig(card_ip="192.168.0.1", local_ip="192.168.0.200"),
+        ):
+            ok, message = protocol.connect_hardware(card_ip="172.16.0.10", local_ip="172.16.0.20", timeout=5.0)
+
+        self.assertTrue(ok)
+        self.assertEqual(message, "ok")
+        self.assertEqual(
+            client.calls[0],
+            ("connect", {"card_ip": "172.16.0.10", "local_ip": "172.16.0.20"}, 5.0),
+        )
+
     def test_get_status_reads_backend_interlock_fields(self) -> None:
         client = _FakeClient(
             [
