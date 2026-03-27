@@ -3,6 +3,9 @@ cmake_minimum_required(VERSION 3.20)
 set(SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/application/include"
 )
+set(SILIGEN_WORKFLOW_CONTRACTS_PUBLIC_INCLUDE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/contracts/include"
+)
 set(SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/domain/include"
 )
@@ -49,15 +52,13 @@ set(PROCESS_RUNTIME_CORE_SOURCE_ROOT_INCLUDE_DIRS
 )
 set(PROCESS_RUNTIME_CORE_PUBLIC_INCLUDE_DIRS
     ${SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR}
+    ${SILIGEN_WORKFLOW_CONTRACTS_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_WORKFLOW_ADAPTERS_PUBLIC_INCLUDE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../job-ingest/application/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../dxf-geometry/application/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../runtime-execution/application/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../runtime-execution/contracts/runtime/include
-    ${SILIGEN_PROCESS_PATH_APPLICATION_PUBLIC_INCLUDE_DIR}
-    ${SILIGEN_MOTION_PLANNING_APPLICATION_PUBLIC_INCLUDE_DIR}
-    ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_WORKFLOW_PROCESS_CORE_DIR}/include
     ${SILIGEN_WORKFLOW_MOTION_CORE_DIR}/include
@@ -73,12 +74,10 @@ list(REMOVE_DUPLICATES PROCESS_RUNTIME_CORE_IMPLEMENTATION_INCLUDE_DIRS)
 foreach(required_dir
     IN ITEMS
         "${SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR}/application"
+        "${SILIGEN_WORKFLOW_CONTRACTS_PUBLIC_INCLUDE_DIR}/workflow/contracts"
         "${SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR}/domain"
         "${SILIGEN_WORKFLOW_ADAPTERS_PUBLIC_INCLUDE_DIR}/infrastructure"
         "${SILIGEN_WORKFLOW_ADAPTERS_PUBLIC_INCLUDE_DIR}/recipes"
-        "${SILIGEN_PROCESS_PATH_APPLICATION_PUBLIC_INCLUDE_DIR}/application"
-        "${SILIGEN_MOTION_PLANNING_APPLICATION_PUBLIC_INCLUDE_DIR}/application"
-        "${SILIGEN_DISPENSE_PACKAGING_APPLICATION_PUBLIC_INCLUDE_DIR}/application"
         "${SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR}/domain/motion"
 )
     if(NOT EXISTS "${required_dir}")
@@ -105,6 +104,7 @@ endif()
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/domain" "${CMAKE_BINARY_DIR}/modules/workflow/domain")
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/adapters" "${CMAKE_BINARY_DIR}/modules/workflow/adapters")
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/application" "${CMAKE_BINARY_DIR}/modules/workflow/application")
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/contracts" "${CMAKE_BINARY_DIR}/modules/workflow/contracts")
 
 function(process_runtime_core_stage_runtime_dependency target_name dependency_target)
     if(WIN32 AND TARGET ${dependency_target})
@@ -124,45 +124,70 @@ function(process_runtime_core_add_test_with_runtime_environment test_name test_t
         message(FATAL_ERROR "无法为不存在的 target 注册测试运行环境: ${test_target}")
     endif()
 
-    add_test(
-        NAME ${test_name}
-        COMMAND $<TARGET_FILE:${test_target}>
-    )
+    get_target_property(process_runtime_core_test_output_name ${test_target} OUTPUT_NAME)
+    if(NOT process_runtime_core_test_output_name OR process_runtime_core_test_output_name STREQUAL "process_runtime_core_test_output_name-NOTFOUND")
+        set(process_runtime_core_test_output_name ${test_target})
+    endif()
+
+    if(WIN32 AND CMAKE_CONFIGURATION_TYPES)
+        if(NOT DEFINED SILIGEN_DEFAULT_TEST_CONFIGURATION)
+            set(SILIGEN_DEFAULT_TEST_CONFIGURATION "Debug")
+        endif()
+        set(process_runtime_core_test_bin_dir "${CMAKE_BINARY_DIR}/bin/${SILIGEN_DEFAULT_TEST_CONFIGURATION}")
+        set(process_runtime_core_test_lib_dir "${CMAKE_BINARY_DIR}/lib/${SILIGEN_DEFAULT_TEST_CONFIGURATION}")
+        add_test(
+            NAME ${test_name}
+            COMMAND "${process_runtime_core_test_bin_dir}/${process_runtime_core_test_output_name}.exe"
+        )
+    else()
+        add_test(
+            NAME ${test_name}
+            COMMAND $<TARGET_FILE:${test_target}>
+        )
+    endif()
 
     if(WIN32)
-        set(test_runtime_path_entries
-            "PATH=path_list_prepend:$<TARGET_FILE_DIR:${test_target}>"
-            "PATH=path_list_prepend:${CMAKE_BINARY_DIR}"
-        )
-
-        if(TARGET gtest)
-            list(APPEND test_runtime_path_entries
-                "PATH=path_list_prepend:$<TARGET_FILE_DIR:gtest>"
+        if(CMAKE_CONFIGURATION_TYPES)
+            set(test_runtime_path_entries
+                "PATH=path_list_prepend:${process_runtime_core_test_bin_dir}"
+                "PATH=path_list_prepend:${CMAKE_BINARY_DIR}"
+                "PATH=path_list_prepend:${process_runtime_core_test_lib_dir}"
             )
-        endif()
-
-        if(TARGET gtest_main)
-            list(APPEND test_runtime_path_entries
-                "PATH=path_list_prepend:$<TARGET_FILE_DIR:gtest_main>"
+        else()
+            set(test_runtime_path_entries
+                "PATH=path_list_prepend:$<TARGET_FILE_DIR:${test_target}>"
+                "PATH=path_list_prepend:${CMAKE_BINARY_DIR}"
             )
-        endif()
 
-        if(TARGET abseil_dll)
-            list(APPEND test_runtime_path_entries
-                "PATH=path_list_prepend:$<TARGET_FILE_DIR:abseil_dll>"
-            )
-        endif()
+            if(TARGET gtest)
+                list(APPEND test_runtime_path_entries
+                    "PATH=path_list_prepend:$<TARGET_FILE_DIR:gtest>"
+                )
+            endif()
 
-        if(TARGET utf8_validity)
-            list(APPEND test_runtime_path_entries
-                "PATH=path_list_prepend:$<TARGET_FILE_DIR:utf8_validity>"
-            )
-        endif()
+            if(TARGET gtest_main)
+                list(APPEND test_runtime_path_entries
+                    "PATH=path_list_prepend:$<TARGET_FILE_DIR:gtest_main>"
+                )
+            endif()
 
-        if(TARGET ruckig)
-            list(APPEND test_runtime_path_entries
-                "PATH=path_list_prepend:$<TARGET_FILE_DIR:ruckig>"
-            )
+            if(TARGET abseil_dll)
+                list(APPEND test_runtime_path_entries
+                    "PATH=path_list_prepend:$<TARGET_FILE_DIR:abseil_dll>"
+                )
+            endif()
+
+            if(TARGET utf8_validity)
+                list(APPEND test_runtime_path_entries
+                    "PATH=path_list_prepend:$<TARGET_FILE_DIR:utf8_validity>"
+                )
+            endif()
+
+            if(TARGET ruckig)
+                list(APPEND test_runtime_path_entries
+                    "PATH=path_list_prepend:$<TARGET_FILE_DIR:ruckig>"
+                )
+            endif()
         endif()
 
         list(REMOVE_DUPLICATES test_runtime_path_entries)
@@ -292,10 +317,19 @@ if(TARGET siligen_domain)
 endif()
 target_compile_features(siligen_workflow_domain_public INTERFACE cxx_std_17)
 
+if(NOT TARGET siligen_workflow_contracts_public)
+    add_library(siligen_workflow_contracts_public INTERFACE)
+endif()
+target_link_libraries(siligen_workflow_contracts_public INTERFACE
+    siligen_workflow_contracts_headers
+)
+target_compile_features(siligen_workflow_contracts_public INTERFACE cxx_std_17)
+
 if(NOT TARGET siligen_workflow_application_public)
     add_library(siligen_workflow_application_public INTERFACE)
 endif()
 target_link_libraries(siligen_workflow_application_public INTERFACE
+    siligen_workflow_contracts_public
     siligen_workflow_domain_public
     siligen_workflow_application_headers
 )
@@ -373,6 +407,7 @@ if(NOT TARGET siligen_workflow_runtime_consumer_public)
     add_library(siligen_workflow_runtime_consumer_public INTERFACE)
 endif()
 target_link_libraries(siligen_workflow_runtime_consumer_public INTERFACE
+    siligen_workflow_contracts_public
     siligen_workflow_domain_public
     siligen_workflow_application_public
     siligen_workflow_adapters_public

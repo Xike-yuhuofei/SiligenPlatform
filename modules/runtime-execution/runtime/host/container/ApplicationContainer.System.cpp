@@ -3,8 +3,10 @@
 #include "application/usecases/motion/homing/HomeAxesUseCase.h"
 #include "application/usecases/system/EmergencyStopUseCase.h"
 #include "application/usecases/system/InitializeSystemUseCase.h"
-#include "domain/motion/domain-services/MotionControlServiceImpl.h"
-#include "domain/motion/domain-services/MotionStatusServiceImpl.h"
+#include "runtime/system/LegacyMachineExecutionStateAdapter.h"
+#include "runtime_execution/application/services/motion/MotionControlServiceImpl.h"
+#include "runtime_execution/application/services/motion/MotionStatusServiceImpl.h"
+#include "runtime_execution/contracts/system/IMachineExecutionStatePort.h"
 #include "shared/interfaces/ILoggingService.h"
 
 #include <memory>
@@ -21,8 +23,8 @@ void ApplicationContainer::ValidateSystemPorts() {
     if (!config_port_) {
         throw std::runtime_error("IConfigurationPort 未注册");
     }
-    if (!hardware_connection_port_) {
-        throw std::runtime_error("IHardwareConnectionPort 未注册");
+    if (!device_connection_port_) {
+        throw std::runtime_error("DeviceConnectionPort 未注册");
     }
     if (!event_port_) {
         SILIGEN_LOG_WARNING("IEventPublisherPort 未注册");
@@ -50,7 +52,7 @@ ApplicationContainer::CreateInstance<UseCases::System::InitializeSystemUseCase>(
     auto home_axes_usecase = Resolve<UseCases::Motion::Homing::HomeAxesUseCase>();
     return std::make_shared<UseCases::System::InitializeSystemUseCase>(
         config_port_,
-        hardware_connection_port_,
+        device_connection_port_,
         home_axes_usecase,
         diagnostics_port_,
         event_port_,
@@ -60,6 +62,10 @@ ApplicationContainer::CreateInstance<UseCases::System::InitializeSystemUseCase>(
 template<>
 std::shared_ptr<UseCases::System::EmergencyStopUseCase>
 ApplicationContainer::CreateInstance<UseCases::System::EmergencyStopUseCase>() {
+    if (!machine_execution_state_port_) {
+        RegisterPort<Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort>(
+            std::make_shared<Siligen::Runtime::Host::System::LegacyMachineExecutionStateAdapter>());
+    }
     auto position_control_port = motion_runtime_port_
         ? std::static_pointer_cast<Domain::Motion::Ports::IPositionControlPort>(motion_runtime_port_)
         : position_control_port_;
@@ -69,17 +75,18 @@ ApplicationContainer::CreateInstance<UseCases::System::EmergencyStopUseCase>() {
     auto cmp_service = std::make_shared<Domain::Dispensing::DomainServices::CMPService>(
         trigger_port_,
         logging_service_);
-    auto dispenser_model = std::make_shared<Domain::Machine::Aggregates::Legacy::DispenserModel>();
     auto motion_control_service =
-        std::make_shared<Domain::Motion::DomainServices::MotionControlServiceImpl>(position_control_port);
+        std::make_shared<Siligen::RuntimeExecution::Application::Services::Motion::MotionControlServiceImpl>(
+            position_control_port);
     auto motion_status_service =
-        std::make_shared<Domain::Motion::DomainServices::MotionStatusServiceImpl>(motion_state_port);
+        std::make_shared<Siligen::RuntimeExecution::Application::Services::Motion::MotionStatusServiceImpl>(
+            motion_state_port);
 
     return std::make_shared<UseCases::System::EmergencyStopUseCase>(
         motion_control_service,
         motion_status_service,
         cmp_service,
-        dispenser_model,
+        machine_execution_state_port_,
         logging_service_);
 }
 

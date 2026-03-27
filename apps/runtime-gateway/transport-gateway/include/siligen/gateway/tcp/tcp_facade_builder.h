@@ -2,12 +2,8 @@
 
 #include "siligen/gateway/tcp/tcp_facade_bundle.h"
 
-#include "application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
 #include "application/usecases/dispensing/valve/ValveCommandUseCase.h"
 #include "application/usecases/dispensing/valve/ValveQueryUseCase.h"
-#include "application/usecases/motion/homing/HomeAxesUseCase.h"
-#include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
-#include "application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
 #include "workflow/application/usecases/recipes/CompareRecipeVersionsUseCase.h"
 #include "workflow/application/usecases/recipes/CreateDraftVersionUseCase.h"
 #include "workflow/application/usecases/recipes/CreateRecipeUseCase.h"
@@ -20,11 +16,13 @@
 #include "workflow/application/usecases/recipes/UpdateRecipeUseCase.h"
 #include "application/usecases/system/EmergencyStopUseCase.h"
 #include "application/usecases/system/InitializeSystemUseCase.h"
-#include "domain/machine/ports/IHardwareConnectionPort.h"
-#include "job_ingest/application/usecases/dispensing/UploadFileUseCase.h"
+#include "siligen/device/contracts/ports/device_ports.h"
+#include "job_ingest/contracts/dispensing/UploadContracts.h"
+#include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
-#include "workflow/application/usecases/dispensing/DispensingWorkflowUseCase.h"
-#include "workflow/application/usecases/dispensing/PlanningUseCase.h"
+#include "application/usecases/dispensing/DispensingExecutionWorkflowUseCase.h"
+#include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
+#include "application/usecases/dispensing/PlanningUseCase.h"
 #include "facades/tcp/TcpDispensingFacade.h"
 #include "facades/tcp/TcpMotionFacade.h"
 #include "facades/tcp/TcpRecipeFacade.h"
@@ -43,17 +41,15 @@ TcpFacadeBundle BuildTcpFacadeBundle(Resolver& resolver) {
         resolver.template Resolve<Application::UseCases::System::EmergencyStopUseCase>());
 
     bundle.motion = std::make_shared<Application::Facades::Tcp::TcpMotionFacade>(
-        resolver.template Resolve<Application::UseCases::Motion::Homing::HomeAxesUseCase>(),
-        resolver.template Resolve<Application::UseCases::Motion::Homing::EnsureAxesReadyZeroUseCase>(),
-        resolver.template Resolve<Application::UseCases::Motion::Manual::ManualMotionControlUseCase>(),
-        resolver.template Resolve<Application::UseCases::Motion::Monitoring::MotionMonitoringUseCase>(),
-        resolver.template ResolvePort<Domain::Machine::Ports::IHardwareConnectionPort>());
+        resolver.template Resolve<Application::UseCases::Motion::MotionControlUseCase>(),
+        resolver.template ResolvePort<Siligen::Device::Contracts::Ports::DeviceConnectionPort>());
 
     bundle.dispensing = std::make_shared<Application::Facades::Tcp::TcpDispensingFacade>(
         resolver.template Resolve<Application::UseCases::Dispensing::Valve::ValveCommandUseCase>(),
         resolver.template Resolve<Application::UseCases::Dispensing::Valve::ValveQueryUseCase>(),
         resolver.template Resolve<Application::UseCases::Dispensing::DispensingExecutionUseCase>(),
-        resolver.template Resolve<Application::UseCases::Dispensing::UploadFileUseCase>(),
+        resolver.template Resolve<Application::UseCases::Dispensing::DispensingExecutionWorkflowUseCase>(),
+        resolver.template Resolve<Application::UseCases::Dispensing::IUploadFilePort>(),
         resolver.template Resolve<Application::UseCases::Dispensing::PlanningUseCase>(),
         resolver.template Resolve<Application::UseCases::Dispensing::DispensingWorkflowUseCase>());
 

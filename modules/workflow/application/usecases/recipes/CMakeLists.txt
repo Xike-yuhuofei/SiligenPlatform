@@ -33,8 +33,7 @@ target_link_libraries(siligen_recipe_core PUBLIC
 target_compile_features(siligen_recipe_core PUBLIC cxx_std_17)
 
 if(SILIGEN_USE_PCH)
-    target_precompile_headers(siligen_recipe_core PRIVATE ${SILIGEN_PCH_HEADER})
-    message(STATUS "[Application::Recipes] 预编译头已应用于 siligen_recipe_core")
+    message(STATUS "[Application::Recipes] siligen_recipe_core 跳过预编译头以规避 Windows/MSBuild 下的 PCH 文件锁竞争")
 endif()
 
 message(STATUS "[Application::Recipes] 独立库 siligen_recipe_core 配置完成")

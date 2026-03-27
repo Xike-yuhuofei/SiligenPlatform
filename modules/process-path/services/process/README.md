@@ -1,5 +1,5 @@
 # process
 
-承接流程内核、配方激活/校验基础规则和配置型过程约束。
+遗留目录，仅保留占位说明。
 
-当前对应公开 target：`siligen_process_runtime_core_process`
+`process-path` 的 canonical owner 逻辑不在此目录扩展；新增实现应落在 `domain/trajectory/` 或 `application/`，不得回流到历史 runtime core process 语义。

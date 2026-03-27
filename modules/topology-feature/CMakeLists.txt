@@ -1,3 +1,10 @@
+if(NOT TARGET siligen_topology_feature_contracts_public AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/contracts/CMakeLists.txt")
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/contracts"
+        "${CMAKE_BINARY_DIR}/modules/topology-feature/contracts"
+    )
+endif()
+
 if(NOT TARGET siligen_topology_feature_contour_augment_adapter)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/domain/geometry"
@@ -13,6 +20,11 @@ add_library(siligen_module_topology_feature INTERFACE)
 target_link_libraries(siligen_module_topology_feature INTERFACE
     siligen_topology_feature_contour_augment_adapter
 )
+if(TARGET siligen_topology_feature_contracts_public)
+    target_link_libraries(siligen_module_topology_feature INTERFACE
+        siligen_topology_feature_contracts_public
+    )
+endif()
 target_compile_features(siligen_module_topology_feature INTERFACE cxx_std_17)
 
 set_target_properties(siligen_module_topology_feature PROPERTIES

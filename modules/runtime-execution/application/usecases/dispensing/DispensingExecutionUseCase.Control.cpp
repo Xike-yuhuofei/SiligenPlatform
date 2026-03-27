@@ -48,6 +48,168 @@ void DispensingExecutionUseCase::StopExecution() {
     process_service_->StopExecution(&stop_requested_);
 }
 
+Result<void> DispensingExecutionUseCase::PauseJob(const JobID& job_id) {
+    std::shared_ptr<JobExecutionContext> context;
+    {
+        std::lock_guard<std::mutex> lock(jobs_mutex_);
+        auto it = jobs_.find(job_id);
+        if (it == jobs_.end()) {
+            return Result<void>::Failure(
+                Error(ErrorCode::NOT_FOUND, "job not found", "DispensingExecutionUseCase"));
+        }
+        context = it->second;
+    }
+
+    const auto state = context->state.load();
+    if (state == JobState::PAUSED) {
+        return Result<void>::Success();
+    }
+    if (state == JobState::STOPPING) {
+        return Result<void>::Failure(
+            Error(ErrorCode::INVALID_STATE, "job is stopping", "DispensingExecutionUseCase"));
+    }
+    if (IsTerminalJobState(state)) {
+        return Result<void>::Failure(
+            Error(ErrorCode::INVALID_STATE, "job already finished", "DispensingExecutionUseCase"));
+    }
+
+    context->pause_requested.store(true);
+    std::string active_task_id;
+    {
+        std::lock_guard<std::mutex> lock(context->mutex_);
+        active_task_id = context->active_task_id;
+    }
+    if (!active_task_id.empty()) {
+        auto pause_result = PauseTask(active_task_id);
+        if (pause_result.IsError()) {
+            return pause_result;
+        }
+    }
+    return Result<void>::Success();
+}
+
+Result<void> DispensingExecutionUseCase::ResumeJob(const JobID& job_id) {
+    std::shared_ptr<JobExecutionContext> context;
+    {
+        std::lock_guard<std::mutex> lock(jobs_mutex_);
+        auto it = jobs_.find(job_id);
+        if (it == jobs_.end()) {
+            return Result<void>::Failure(
+                Error(ErrorCode::NOT_FOUND, "job not found", "DispensingExecutionUseCase"));
+        }
+        context = it->second;
+    }
+
+    const auto state = context->state.load();
+    if (state == JobState::STOPPING) {
+        return Result<void>::Failure(
+            Error(ErrorCode::INVALID_STATE, "job is stopping", "DispensingExecutionUseCase"));
+    }
+    if (IsTerminalJobState(state)) {
+        return Result<void>::Failure(
+            Error(ErrorCode::INVALID_STATE, "job already finished", "DispensingExecutionUseCase"));
+    }
+
+    auto precondition_result = ValidateExecutionPreconditions();
+    if (precondition_result.IsError()) {
+        return Result<void>::Failure(precondition_result.GetError());
+    }
+
+    context->pause_requested.store(false);
+    std::string active_task_id;
+    {
+        std::lock_guard<std::mutex> lock(context->mutex_);
+        active_task_id = context->active_task_id;
+    }
+    if (!active_task_id.empty()) {
+        auto resume_result = ResumeTask(active_task_id);
+        if (resume_result.IsError()) {
+            return resume_result;
+        }
+    }
+    return Result<void>::Success();
+}
+
+Result<void> DispensingExecutionUseCase::StopJob(const JobID& job_id) {
+    std::shared_ptr<JobExecutionContext> context;
+    {
+        std::lock_guard<std::mutex> lock(jobs_mutex_);
+        auto it = jobs_.find(job_id);
+        if (it == jobs_.end()) {
+            return Result<void>::Failure(
+                Error(ErrorCode::NOT_FOUND, "job not found", "DispensingExecutionUseCase"));
+        }
+        context = it->second;
+    }
+
+    if (IsTerminalJobState(context->state.load())) {
+        return Result<void>::Success();
+    }
+
+    context->stop_requested.store(true);
+    context->pause_requested.store(false);
+    context->state.store(JobState::STOPPING);
+
+    std::string active_task_id;
+    {
+        std::lock_guard<std::mutex> lock(context->mutex_);
+        active_task_id = context->active_task_id;
+    }
+    if (!active_task_id.empty()) {
+        auto cancel_result = CancelTask(active_task_id);
+        if (cancel_result.IsError()) {
+            auto status_result = GetTaskStatus(active_task_id);
+            if (status_result.IsError()) {
+                if (IsTerminalJobState(context->state.load())) {
+                    return Result<void>::Success();
+                }
+                return Result<void>::Failure(
+                    Error(
+                        cancel_result.GetError().GetCode(),
+                        "failure_stage=stop_cancel_forward;failure_code=" +
+                            std::to_string(static_cast<int>(cancel_result.GetError().GetCode())) +
+                            ";message=" + cancel_result.GetError().GetMessage() +
+                            ";status_query_failure_code=" +
+                            std::to_string(static_cast<int>(status_result.GetError().GetCode())) +
+                            ";status_query_failure_message=" + status_result.GetError().GetMessage(),
+                        "DispensingExecutionUseCase"));
+            }
+
+            const auto& task_status = status_result.Value();
+            if (task_status.state == "cancelled") {
+                FinalizeJob(context, JobState::CANCELLED, task_status.error_message);
+                return Result<void>::Success();
+            }
+            if (task_status.state == "completed") {
+                FinalizeJob(context, JobState::COMPLETED, task_status.error_message);
+                return Result<void>::Success();
+            }
+            if (task_status.state == "failed") {
+                FinalizeJob(context, JobState::FAILED, task_status.error_message);
+                return Result<void>::Failure(
+                    Error(
+                        ErrorCode::HARDWARE_ERROR,
+                        "failure_stage=stop_cancel_forward;failure_code=TASK_FAILED;message=" +
+                            task_status.error_message,
+                        "DispensingExecutionUseCase"));
+            }
+
+            return Result<void>::Failure(
+                Error(
+                    cancel_result.GetError().GetCode(),
+                    "failure_stage=stop_cancel_forward;failure_code=" +
+                        std::to_string(static_cast<int>(cancel_result.GetError().GetCode())) +
+                        ";message=" + cancel_result.GetError().GetMessage() +
+                        ";task_state=" + task_status.state,
+                    "DispensingExecutionUseCase"));
+        }
+    } else {
+        FinalizeJob(context, JobState::CANCELLED, "job cancelled");
+    }
+
+    return Result<void>::Success();
+}
+
 Result<void> DispensingExecutionUseCase::PauseTask(const TaskID& task_id) {
     std::shared_ptr<TaskExecutionContext> context;
     {

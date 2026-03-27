@@ -1,44 +1,19 @@
 # Dispensing 子域 CMakeLists.txt
-# Phase 2: DXF Dispensing Execution UseCase 重构 - Domain Service
+# S2-A: workflow 不再承载 M8 dispensing/planning live implementation。
 
-add_library(domain_dispensing STATIC
-    domain-services/ArcTriggerPointCalculator.cpp
-    domain-services/DispenseCompensationService.cpp
-    domain-services/PathOptimizationStrategy.cpp
-    domain-services/TriggerPlanner.cpp
-    domain-services/DispensingController.cpp
-    domain-services/DispensingProcessService.cpp
-    planning/domain-services/ContourOptimizationService.cpp
-    planning/domain-services/UnifiedTrajectoryPlannerService.cpp
-    planning/domain-services/DispensingPlannerService.cpp
-)
+if(NOT TARGET domain_dispensing)
+    add_library(domain_dispensing INTERFACE)
+endif()
 
-target_sources(domain_dispensing PRIVATE
-    value-objects/DispenseCompensationProfile.h
-    value-objects/DispensingExecutionTypes.h
-    value-objects/DispensingPlan.h
-    value-objects/QualityMetrics.h
-    value-objects/SafetyBoundary.h
-    value-objects/TriggerPlan.h
-)
+if(TARGET siligen_dispense_packaging_domain_dispensing)
+    target_link_libraries(domain_dispensing INTERFACE
+        siligen_dispense_packaging_domain_dispensing
+    )
+endif()
 
-target_include_directories(domain_dispensing PUBLIC
+target_include_directories(domain_dispensing INTERFACE
     ${PROCESS_RUNTIME_CORE_PUBLIC_INCLUDE_DIRS}
 )
-target_include_directories(domain_dispensing PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/planning/domain-services
-    ${PROCESS_RUNTIME_CORE_IMPLEMENTATION_INCLUDE_DIRS}
-)
+target_compile_features(domain_dispensing INTERFACE cxx_std_17)
 
-target_link_libraries(domain_dispensing PUBLIC
-    siligen_process_runtime_core_boost_headers
-    siligen_types
-    siligen_utils
-    siligen_geometry
-    domain_trajectory
-)
-
-target_compile_features(domain_dispensing PUBLIC cxx_std_17)
-
-message(STATUS "[Domain::Dispensing] domain_dispensing 已添加")
+message(STATUS "[Domain::Dispensing] workflow compatibility target now forwards to M8 owner")

@@ -19,10 +19,23 @@ set(DXF_PROTO_SRCS)
 set(DXF_PROTO_OUT_DIR)
 set(DXF_ADAPTER_LINK_LIBRARIES
     siligen_types
-    siligen_domain
+    siligen_utils
+    siligen_process_path_domain_trajectory
 )
 
-if(SILIGEN_ENABLE_PROTOBUF)
+set(SILIGEN_DXF_ADAPTER_PROTOBUF_ENABLED OFF)
+if(SILIGEN_ENABLE_PROTOBUF AND TARGET protobuf::protoc AND TARGET protobuf::libprotobuf-lite)
+    set(SILIGEN_DXF_ADAPTER_PROTOBUF_ENABLED ON)
+endif()
+
+if(SILIGEN_ENABLE_PROTOBUF AND NOT SILIGEN_DXF_ADAPTER_PROTOBUF_ENABLED)
+    message(WARNING
+        "[Infrastructure] protobuf targets are unavailable; siligen_parsing_adapter "
+        "will fall back to SILIGEN_ENABLE_PROTOBUF=0 for this configure pass"
+    )
+endif()
+
+if(SILIGEN_DXF_ADAPTER_PROTOBUF_ENABLED)
     set(SILIGEN_SHARED_PROTO_ROOT "${SILIGEN_DXF_ADAPTER_WORKSPACE_ROOT}/shared/contracts/engineering/proto/v1")
     if(NOT EXISTS "${SILIGEN_SHARED_PROTO_ROOT}/dxf_primitives.proto")
         message(FATAL_ERROR "[Infrastructure] dxf_primitives.proto not found in shared/contracts/engineering/proto/v1")
@@ -74,7 +87,9 @@ add_library(siligen_parsing_adapter STATIC
 )
 
 target_include_directories(siligen_parsing_adapter PUBLIC
-    ${PROCESS_RUNTIME_CORE_PUBLIC_INCLUDE_DIRS}
+    ${SILIGEN_WORKFLOW_ADAPTERS_PUBLIC_INCLUDE_DIR}
+    ${SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR}
+    ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
 target_include_directories(siligen_parsing_adapter PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -85,7 +100,7 @@ target_include_directories(siligen_parsing_adapter PRIVATE
 
 target_link_libraries(siligen_parsing_adapter PUBLIC ${DXF_ADAPTER_LINK_LIBRARIES})
 
-if(SILIGEN_ENABLE_PROTOBUF)
+if(SILIGEN_DXF_ADAPTER_PROTOBUF_ENABLED)
     target_compile_definitions(siligen_parsing_adapter PRIVATE SILIGEN_ENABLE_PROTOBUF=1)
 else()
     target_compile_definitions(siligen_parsing_adapter PRIVATE SILIGEN_ENABLE_PROTOBUF=0)

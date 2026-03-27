@@ -11,12 +11,10 @@ namespace Siligen::Application::UseCases::Motion::Initialization {
 MotionInitializationUseCase::MotionInitializationUseCase(
     std::shared_ptr<Domain::Motion::Ports::IMotionConnectionPort> motion_connection_port,
     std::shared_ptr<Domain::Motion::Ports::IAxisControlPort> axis_control_port,
-    std::shared_ptr<Domain::Motion::Ports::IIOControlPort> io_port,
-    std::shared_ptr<Domain::Machine::Ports::IHardwareTestPort> hardware_test_port)
+    std::shared_ptr<Domain::Motion::Ports::IIOControlPort> io_port)
     : motion_connection_port_(std::move(motion_connection_port))
     , axis_control_port_(std::move(axis_control_port))
-    , io_port_(io_port)
-    , hardware_test_port_(hardware_test_port) {
+    , io_port_(std::move(io_port)) {
 }
 
 Result<void> MotionInitializationUseCase::ConnectToController(const std::string& card_ip,
@@ -55,10 +53,6 @@ Result<void> MotionInitializationUseCase::ResetController() {
 }
 
 Result<bool> MotionInitializationUseCase::IsControllerConnected() const {
-    if (hardware_test_port_) {
-        return Result<bool>::Success(hardware_test_port_->isConnected());
-    }
-
     if (motion_connection_port_) {
         auto result = motion_connection_port_->IsConnected();
         if (result.IsSuccess()) {

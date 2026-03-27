@@ -31,7 +31,7 @@ std::string JoinMessages(const std::vector<std::string>& messages, const std::st
 void PublishHardwareConnectionEvent(
     const std::shared_ptr<Siligen::Domain::System::Ports::IEventPublisherPort>& event_port,
     Siligen::Domain::System::Ports::EventType event_type,
-    const Siligen::Domain::Machine::Ports::HardwareConnectionConfig& config,
+    const Siligen::Device::Contracts::Commands::DeviceConnection& config,
     const Result<void>& connect_result) {
     if (!event_port) {
         return;
@@ -56,8 +56,8 @@ void PublishHardwareConnectionEvent(
 }
 
 Result<void> StartHeartbeatWithRetry(
-    const std::shared_ptr<Siligen::Domain::Machine::Ports::IHardwareConnectionPort>& connection_port,
-    const Siligen::Domain::Machine::Ports::HeartbeatConfig& config) {
+    const std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort>& connection_port,
+    const Siligen::Device::Contracts::State::HeartbeatSnapshot& config) {
     if (!connection_port) {
         return Result<void>::Failure(
             Error(ErrorCode::PORT_NOT_INITIALIZED, "Hardware connection port not initialized", "InitializeSystemUseCase"));
@@ -86,7 +86,7 @@ Result<void> StartHeartbeatWithRetry(
 
 InitializeSystemUseCase::InitializeSystemUseCase(
     std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port,
-    std::shared_ptr<Siligen::Domain::Machine::Ports::IHardwareConnectionPort> connection_port,
+    std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
     std::shared_ptr<Siligen::Application::UseCases::Motion::Homing::HomeAxesUseCase> home_axes_usecase,
     std::shared_ptr<Siligen::Domain::Diagnostics::Ports::IDiagnosticsPort> diagnostics_port,
     std::shared_ptr<Siligen::Domain::System::Ports::IEventPublisherPort> event_port,
@@ -195,7 +195,11 @@ Result<InitializeSystemResponse> InitializeSystemUseCase::Execute(const Initiali
         }
 
         response.hardware_connected = connection_port_->IsConnected();
-        response.connection_info = connection_port_->GetConnectionInfo();
+        auto connection_result = connection_port_->ReadConnection();
+        if (connection_result.IsError()) {
+            return Result<InitializeSystemResponse>::Failure(connection_result.GetError());
+        }
+        response.connection_info = connection_result.Value();
     }
 
     if (request.start_hard_limit_monitoring) {
@@ -245,8 +249,12 @@ Result<InitializeSystemResponse> InitializeSystemUseCase::Execute(const Initiali
     }
 
     if (connection_port_) {
-        response.connection_info = connection_port_->GetConnectionInfo();
-        response.heartbeat_status = connection_port_->GetHeartbeatStatus();
+        auto connection_result = connection_port_->ReadConnection();
+        if (connection_result.IsError()) {
+            return Result<InitializeSystemResponse>::Failure(connection_result.GetError());
+        }
+        response.connection_info = connection_result.Value();
+        response.heartbeat_status = connection_port_->ReadHeartbeat();
         response.hardware_connected = response.connection_info.IsConnected();
     }
 

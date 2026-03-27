@@ -29,12 +29,10 @@ Result<std::string> MissingPortString(const char* method, const char* dependency
 MotionCoordinationUseCase::MotionCoordinationUseCase(
     std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port,
     std::shared_ptr<Domain::Motion::Ports::IIOControlPort> io_port,
-    std::shared_ptr<Domain::Machine::Ports::IHardwareTestPort> hardware_test_port,
     std::shared_ptr<Domain::Motion::Ports::IAxisControlPort> axis_control_port,
     std::shared_ptr<Domain::Dispensing::Ports::ITriggerControllerPort> trigger_port,
     std::shared_ptr<Domain::Motion::Ports::IAdvancedMotionPort> advanced_motion_port)
     : interpolation_port_(std::move(interpolation_port))
-    , hardware_test_port_(std::move(hardware_test_port))
     , io_port_(std::move(io_port))
     , axis_control_port_(std::move(axis_control_port))
     , trigger_port_(std::move(trigger_port))

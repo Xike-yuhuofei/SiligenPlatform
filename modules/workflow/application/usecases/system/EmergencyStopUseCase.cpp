@@ -12,13 +12,13 @@ EmergencyStopUseCase::EmergencyStopUseCase(
     std::shared_ptr<Siligen::Domain::Motion::DomainServices::MotionControlService> motion_control_service,
     std::shared_ptr<Siligen::Domain::Motion::DomainServices::MotionStatusService> motion_status_service,
     std::shared_ptr<Siligen::Domain::Dispensing::DomainServices::CMPService> cmp_service,
-    std::shared_ptr<DispenserModel> dispenser_model,
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort> machine_execution_state_port,
     std::shared_ptr<Siligen::Shared::Interfaces::ILoggingService> logging_service)
     : emergency_stop_service_(std::make_shared<Siligen::Domain::Safety::DomainServices::EmergencyStopService>(
           std::move(motion_control_service),
           std::move(motion_status_service),
           std::move(cmp_service),
-          std::move(dispenser_model))),
+          std::move(machine_execution_state_port))),
       logging_service_(std::move(logging_service)) {}
 
 Result<EmergencyStopResponse> EmergencyStopUseCase::Execute(const EmergencyStopRequest& request) {

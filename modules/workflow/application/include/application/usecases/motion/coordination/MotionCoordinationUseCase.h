@@ -3,7 +3,6 @@
 #include "domain/dispensing/ports/ITriggerControllerPort.h"
 #include "domain/motion/ports/IAdvancedMotionPort.h"
 #include "domain/motion/ports/IAxisControlPort.h"
-#include "domain/machine/ports/IHardwareTestPort.h"
 #include "domain/motion/ports/IIOControlPort.h"
 #include "domain/motion/ports/IInterpolationPort.h"
 #include "shared/types/Error.h"
@@ -42,7 +41,6 @@ class MotionCoordinationUseCase {
    public:
     MotionCoordinationUseCase(std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port,
                               std::shared_ptr<Domain::Motion::Ports::IIOControlPort> io_port,
-                              std::shared_ptr<Domain::Machine::Ports::IHardwareTestPort> hardware_test_port,
                               std::shared_ptr<Domain::Motion::Ports::IAxisControlPort> axis_control_port = nullptr,
                               std::shared_ptr<Domain::Dispensing::Ports::ITriggerControllerPort> trigger_port = nullptr,
                               std::shared_ptr<Domain::Motion::Ports::IAdvancedMotionPort> advanced_motion_port = nullptr);
@@ -76,7 +74,6 @@ class MotionCoordinationUseCase {
 
    private:
     std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port_;
-    std::shared_ptr<Domain::Machine::Ports::IHardwareTestPort> hardware_test_port_;
     std::shared_ptr<Domain::Motion::Ports::IIOControlPort> io_port_;
     std::shared_ptr<Domain::Motion::Ports::IAxisControlPort> axis_control_port_;
     std::shared_ptr<Domain::Dispensing::Ports::ITriggerControllerPort> trigger_port_;

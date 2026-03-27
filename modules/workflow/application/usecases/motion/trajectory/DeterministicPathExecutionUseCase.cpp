@@ -1,7 +1,7 @@
 #include "DeterministicPathExecutionUseCase.h"
 
 #include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
-#include "application/services/motion_planning/MotionPlanningFacade.h"
+#include "domain/motion/domain-services/MotionPlanner.h"
 #include "domain/trajectory/value-objects/GeometryUtils.h"
 #include "shared/types/Error.h"
 
@@ -14,12 +14,12 @@ namespace Siligen::Application::UseCases::Motion::Trajectory {
 
 using Coordination::MotionCoordinationUseCase;
 using Siligen::Domain::Motion::DomainServices::InterpolationProgramPlanner;
+using Siligen::Domain::Motion::DomainServices::MotionPlanner;
 using Siligen::Domain::Motion::Ports::CoordinateSystemStatus;
 using Siligen::Domain::Motion::Ports::InterpolationData;
 using Siligen::Domain::Motion::Ports::MotionStatus;
 using Siligen::Domain::Motion::Ports::MotionState;
-using Siligen::Application::Services::MotionPlanning::MotionPlanningFacade;
-using Siligen::Domain::Trajectory::ValueObjects::MotionConfig;
+using Siligen::Domain::Motion::ValueObjects::TimePlanningConfig;
 using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
 using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
 using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
@@ -83,7 +83,7 @@ DeterministicPathExecutionUseCase::DeterministicPathExecutionUseCase(
     std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port)
     : interpolation_port_(std::move(interpolation_port)),
       motion_state_port_(std::move(motion_state_port)),
-      coordination_use_case_(interpolation_port_, nullptr, nullptr) {}
+      coordination_use_case_(interpolation_port_, nullptr) {}
 
 Result<DeterministicPathExecutionStatus> DeterministicPathExecutionUseCase::Start(
     const DeterministicPathExecutionRequest& request) {
@@ -288,7 +288,7 @@ bool DeterministicPathExecutionUseCase::HasActiveExecution() const noexcept {
 Result<DeterministicPathExecutionUseCase::ActiveExecution> DeterministicPathExecutionUseCase::BuildExecution(
     const DeterministicPathExecutionRequest& request,
     const Point2D& start_point) const {
-    MotionPlanningFacade motion_planner;
+    MotionPlanner motion_planner;
     InterpolationProgramPlanner program_planner;
 
     ProcessPath path;
@@ -349,7 +349,7 @@ Result<DeterministicPathExecutionUseCase::ActiveExecution> DeterministicPathExec
         cursor = segment_request.end_point;
     }
 
-    MotionConfig config;
+    TimePlanningConfig config;
     config.vmax = request.max_velocity_mm_s;
     config.amax = request.max_acceleration_mm_s2;
     config.sample_dt = request.sample_dt_s;

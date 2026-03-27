@@ -15,6 +15,16 @@ if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}/runtim
         "runtime-execution canonical runtime contracts require runtime_execution/contracts/dispensing/ITaskSchedulerPort.h"
     )
 endif()
+if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}/runtime_execution/contracts/motion/IMotionRuntimePort.h")
+    message(FATAL_ERROR
+        "runtime-execution canonical runtime contracts require runtime_execution/contracts/motion/IMotionRuntimePort.h"
+    )
+endif()
+if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}/runtime_execution/contracts/motion/IIOControlPort.h")
+    message(FATAL_ERROR
+        "runtime-execution canonical runtime contracts require runtime_execution/contracts/motion/IIOControlPort.h"
+    )
+endif()
 
 target_include_directories(siligen_runtime_execution_runtime_contracts INTERFACE
     ${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}

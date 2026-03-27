@@ -1,5 +1,19 @@
 cmake_minimum_required(VERSION 3.20)
 
+if(NOT TARGET siligen_process_planning_legacy_configuration_bridge_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../modules/process-planning/contracts"
+        "${CMAKE_BINARY_DIR}/_p/pc_ppc"
+    )
+endif()
+
+if(NOT TARGET siligen_topology_feature_legacy_contour_bridge_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../modules/topology-feature/contracts"
+        "${CMAKE_BINARY_DIR}/_p/pc_tfc"
+    )
+endif()
+
 if(NOT TARGET siligen_app_planner_cli)
     add_library(siligen_app_planner_cli INTERFACE)
 endif()
@@ -13,6 +27,8 @@ target_link_libraries(siligen_app_planner_cli INTERFACE
     siligen_runtime_execution_application_public
     siligen_runtime_host
     siligen_runtime_host_infrastructure
+    siligen_process_planning_legacy_configuration_bridge_public
+    siligen_topology_feature_legacy_contour_bridge_public
     siligen_shared
 )
 target_compile_features(siligen_app_planner_cli INTERFACE cxx_std_17)

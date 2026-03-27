@@ -1,5 +1,47 @@
 cmake_minimum_required(VERSION 3.20)
 
+if(NOT TARGET siligen_process_planning_legacy_configuration_bridge_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../process-planning/contracts"
+        "${CMAKE_BINARY_DIR}/_p/wa_ppc"
+    )
+endif()
+if(NOT TARGET siligen_dispense_packaging_contracts_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../dispense-packaging/contracts"
+        "${CMAKE_BINARY_DIR}/_p/wa_dpc"
+    )
+endif()
+if(NOT TARGET siligen_job_ingest_contracts)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../job-ingest/contracts"
+        "${CMAKE_BINARY_DIR}/_p/wa_jic"
+    )
+endif()
+if(NOT TARGET siligen_runtime_execution_runtime_contracts)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../runtime-execution/contracts/runtime"
+        "${CMAKE_BINARY_DIR}/_p/wa_rec"
+    )
+endif()
+if(NOT TARGET siligen_device_contracts)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../shared/contracts/device"
+        "${CMAKE_BINARY_DIR}/_p/wa_sdc"
+    )
+endif()
+
+# Bridge-only: workflow/application 当前仍为迁移期桥接层。
+# 允许保留的跨模块 include/target 仅限既有 owner 模块，禁止继续新增 sibling bridge。
+set(SILIGEN_WORKFLOW_APPLICATION_BRIDGE_ONLY_ALLOWED_MODULES
+    process-path
+    motion-planning
+    dispense-packaging
+    job-ingest
+    dxf-geometry
+    runtime-execution
+)
+
 set(SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
 if(NOT EXISTS "${SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR}/application")
     message(FATAL_ERROR "workflow canonical application include root missing: ${SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR}/application")
@@ -10,14 +52,49 @@ if(NOT TARGET siligen_workflow_application_headers)
 endif()
 target_include_directories(siligen_workflow_application_headers INTERFACE
     ${SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR}
-    ${SILIGEN_PROCESS_PATH_APPLICATION_PUBLIC_INCLUDE_DIR}
-    ${SILIGEN_MOTION_PLANNING_APPLICATION_PUBLIC_INCLUDE_DIR}
-    ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_PUBLIC_INCLUDE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../job-ingest/application/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../dxf-geometry/application/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../runtime-execution/application/include
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
+if(TARGET siligen_job_ingest_application_public)
+    target_link_libraries(siligen_workflow_application_headers INTERFACE
+        siligen_job_ingest_application_public
+    )
+elseif(TARGET siligen_job_ingest_contracts)
+    target_link_libraries(siligen_workflow_application_headers INTERFACE
+        siligen_job_ingest_contracts
+    )
+endif()
+if(TARGET siligen_dispense_packaging_contracts_public)
+    target_link_libraries(siligen_workflow_application_headers INTERFACE
+        siligen_dispense_packaging_contracts_public
+    )
+endif()
+if(TARGET siligen_process_path_contracts_public)
+    target_link_libraries(siligen_workflow_application_headers INTERFACE
+        siligen_process_path_contracts_public
+    )
+endif()
+if(TARGET siligen_motion_planning_contracts_public)
+    target_link_libraries(siligen_workflow_application_headers INTERFACE
+        siligen_motion_planning_contracts_public
+    )
+endif()
+if(TARGET siligen_process_planning_legacy_configuration_bridge_public)
+    target_link_libraries(siligen_workflow_application_headers INTERFACE
+        siligen_process_planning_legacy_configuration_bridge_public
+    )
+endif()
+if(TARGET siligen_device_contracts)
+    target_link_libraries(siligen_workflow_application_headers INTERFACE
+        siligen_device_contracts
+    )
+endif()
+if(TARGET siligen_runtime_execution_runtime_contracts)
+    target_link_libraries(siligen_workflow_application_headers INTERFACE
+        siligen_runtime_execution_runtime_contracts
+    )
+endif()
 target_compile_features(siligen_workflow_application_headers INTERFACE cxx_std_17)
 
 # Application层 - 应用协调和用例
@@ -47,11 +124,17 @@ target_include_directories(siligen_application_system PRIVATE
     ${SILIGEN_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_application_system PUBLIC
+    siligen_workflow_application_headers
     siligen_types
     siligen_utils
     siligen_domain
     siligen_domain_services
 )
+if(TARGET siligen_device_contracts)
+    target_link_libraries(siligen_application_system PUBLIC
+        siligen_device_contracts
+    )
+endif()
 target_compile_features(siligen_application_system PUBLIC cxx_std_17)
 
 add_library(siligen_application_motion STATIC
@@ -75,24 +158,22 @@ target_include_directories(siligen_application_motion PRIVATE
     ${SILIGEN_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_application_motion PUBLIC
+    siligen_workflow_application_headers
     siligen_types
     siligen_utils
     siligen_geometry
     siligen_domain
     siligen_domain_services
 )
-if(TARGET siligen_motion_planning_application_public)
-    target_link_libraries(siligen_application_motion PUBLIC
-        siligen_motion_planning_application_public
-    )
-endif()
 target_compile_features(siligen_application_motion PUBLIC cxx_std_17)
 
 add_library(siligen_application_dispensing STATIC
     usecases/dispensing/valve/coordination/ValveCoordinationUseCase.cpp
     usecases/dispensing/CleanupFilesUseCase.cpp
+    services/dispensing/DispensingExecutionCompatibilityService.cpp
     services/dispensing/PlanningPreviewAssemblyService.cpp
     services/dispensing/WorkflowPreviewSnapshotService.cpp
+    usecases/dispensing/DispensingExecutionWorkflowUseCase.cpp
     usecases/dispensing/PlanningUseCase.cpp
     usecases/dispensing/DispensingWorkflowUseCase.cpp
 )
@@ -103,30 +184,26 @@ target_include_directories(siligen_application_dispensing PRIVATE
     ${SILIGEN_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_application_dispensing PUBLIC
+    siligen_workflow_application_headers
     siligen_types
     siligen_utils
     siligen_geometry
     siligen_domain
     siligen_domain_services
 )
-if(TARGET siligen_process_path_application_public)
+if(TARGET siligen_device_contracts)
     target_link_libraries(siligen_application_dispensing PUBLIC
-        siligen_process_path_application_public
+        siligen_device_contracts
     )
 endif()
-if(TARGET siligen_motion_planning_application_public)
+if(TARGET siligen_dispense_packaging_contracts_public)
     target_link_libraries(siligen_application_dispensing PUBLIC
-        siligen_motion_planning_application_public
+        siligen_dispense_packaging_contracts_public
     )
 endif()
-if(TARGET siligen_dispense_packaging_application_public)
+if(TARGET siligen_job_ingest_contracts)
     target_link_libraries(siligen_application_dispensing PUBLIC
-        siligen_dispense_packaging_application_public
-    )
-endif()
-if(TARGET siligen_job_ingest_application_public)
-    target_link_libraries(siligen_application_dispensing PUBLIC
-        siligen_job_ingest_application_public
+        siligen_job_ingest_contracts
     )
 endif()
 if(TARGET siligen_dxf_geometry_application_public)
@@ -152,6 +229,7 @@ target_include_directories(siligen_application_redundancy PRIVATE
     ${SILIGEN_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_application_redundancy PUBLIC
+    siligen_workflow_application_headers
     siligen_types
     siligen_utils
     siligen_domain
@@ -173,6 +251,11 @@ target_link_libraries(siligen_control_application INTERFACE
     siligen_application_redundancy
     siligen_valve_core
 )
+if(TARGET siligen_device_contracts)
+    target_link_libraries(siligen_control_application INTERFACE
+        siligen_device_contracts
+    )
+endif()
 target_compile_features(siligen_control_application INTERFACE cxx_std_17)
 add_library(siligen_application ALIAS siligen_control_application)
 
@@ -181,11 +264,11 @@ target_compile_definitions(siligen_application_dispensing PRIVATE SILIGEN_ENABLE
 
 # 为应用层库添加预编译头
 if(SILIGEN_USE_PCH)
-    target_precompile_headers(siligen_application_system PRIVATE ${SILIGEN_PCH_HEADER})
-    target_precompile_headers(siligen_application_motion PRIVATE ${SILIGEN_PCH_HEADER})
-    target_precompile_headers(siligen_application_dispensing PRIVATE ${SILIGEN_PCH_HEADER})
-    target_precompile_headers(siligen_application_redundancy PRIVATE ${SILIGEN_PCH_HEADER})
-    message(STATUS "[Application Layer] 预编译头已应用于应用层库")
+    message(STATUS
+        "[Application Layer] workflow/application 全部目标跳过预编译头，"
+        "以规避 Windows/MSBuild 下的 PCH 文件锁竞争"
+    )
+    message(STATUS "[Application Layer] 预编译头已对 workflow/application 全部禁用")
 endif()
 
 message(STATUS "[Application Layer] 应用层配置完成")

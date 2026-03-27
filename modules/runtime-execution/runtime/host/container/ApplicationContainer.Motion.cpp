@@ -7,6 +7,7 @@
 #include "application/usecases/motion/interpolation/InterpolationPlanningUseCase.h"
 #include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
 #include "application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
+#include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
 #include "application/usecases/motion/safety/MotionSafetyUseCase.h"
 #include "application/usecases/motion/trajectory/ExecuteTrajectoryUseCase.h"
 #include "domain/motion/domain-services/JogController.h"
@@ -28,9 +29,6 @@ namespace Siligen::Application::Container {
 void ApplicationContainer::ValidateMotionPorts() {
     if (!motion_runtime_port_) {
         throw std::runtime_error("IMotionRuntimePort 未注册");
-    }
-    if (!hardware_test_port_) {
-        throw std::runtime_error("IHardwareTestPort 未注册");
     }
     if (!interpolation_port_) {
         throw std::runtime_error("IInterpolationPort 未注册");
@@ -111,6 +109,16 @@ ApplicationContainer::CreateInstance<UseCases::Motion::Homing::EnsureAxesReadyZe
 }
 
 template<>
+std::shared_ptr<UseCases::Motion::MotionControlUseCase>
+ApplicationContainer::CreateInstance<UseCases::Motion::MotionControlUseCase>() {
+    return std::make_shared<UseCases::Motion::MotionControlUseCase>(
+        Resolve<UseCases::Motion::Homing::HomeAxesUseCase>(),
+        Resolve<UseCases::Motion::Homing::EnsureAxesReadyZeroUseCase>(),
+        Resolve<UseCases::Motion::Manual::ManualMotionControlUseCase>(),
+        Resolve<UseCases::Motion::Monitoring::MotionMonitoringUseCase>());
+}
+
+template<>
 std::shared_ptr<UseCases::Motion::Trajectory::ExecuteTrajectoryUseCase>
 ApplicationContainer::CreateInstance<UseCases::Motion::Trajectory::ExecuteTrajectoryUseCase>() {
     auto position_control_port = motion_runtime_port_
@@ -152,8 +160,7 @@ ApplicationContainer::CreateInstance<UseCases::Motion::Initialization::MotionIni
     return std::make_shared<UseCases::Motion::Initialization::MotionInitializationUseCase>(
         motion_connection_port,
         axis_control_port,
-        io_control_port,
-        hardware_test_port_);
+        io_control_port);
 }
 
 template<>
@@ -162,9 +169,7 @@ ApplicationContainer::CreateInstance<UseCases::Motion::Safety::MotionSafetyUseCa
     auto position_control_port = motion_runtime_port_
         ? std::static_pointer_cast<Domain::Motion::Ports::IPositionControlPort>(motion_runtime_port_)
         : position_control_port_;
-    return std::make_shared<UseCases::Motion::Safety::MotionSafetyUseCase>(
-        position_control_port,
-        hardware_test_port_);
+    return std::make_shared<UseCases::Motion::Safety::MotionSafetyUseCase>(position_control_port);
 }
 
 template<>
@@ -198,7 +203,6 @@ ApplicationContainer::CreateInstance<UseCases::Motion::Coordination::MotionCoord
     return std::make_shared<UseCases::Motion::Coordination::MotionCoordinationUseCase>(
         interpolation_port_,
         io_control_port,
-        hardware_test_port_,
         axis_control_port,
         trigger_port_);
 }

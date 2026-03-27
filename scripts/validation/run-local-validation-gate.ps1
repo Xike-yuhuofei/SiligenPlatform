@@ -55,12 +55,11 @@ function Invoke-GateStep {
     try {
         $prevErrorActionPreference = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
+        $global:LASTEXITCODE = 0
         & $Step.Command[0] @($Step.Command[1..($Step.Command.Count - 1)]) *>&1 | Tee-Object -FilePath $logPath -Append | Out-Null
         $ErrorActionPreference = $prevErrorActionPreference
         if ($LASTEXITCODE -ne 0) {
             $exitCode = $LASTEXITCODE
-        } elseif (-not $?) {
-            $exitCode = 1
         }
     } catch {
         $ErrorActionPreference = "Stop"

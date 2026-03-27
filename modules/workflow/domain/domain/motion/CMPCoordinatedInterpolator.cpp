@@ -27,7 +27,7 @@
 namespace Siligen::Domain::Motion {
 
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectory;
-using Siligen::Domain::Trajectory::ValueObjects::MotionConfig;
+using Siligen::Domain::Motion::ValueObjects::TimePlanningConfig;
 using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
 using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
 using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
@@ -36,8 +36,8 @@ using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
 namespace {
 constexpr float32 kEpsilon = 1e-6f;
 
-MotionConfig BuildMotionConfig(const InterpolationConfig& config) {
-    MotionConfig motion_config;
+TimePlanningConfig BuildTimePlanningConfig(const InterpolationConfig& config) {
+    TimePlanningConfig motion_config;
     motion_config.vmax = config.max_velocity;
     motion_config.amax = config.max_acceleration;
     motion_config.jmax = config.max_jerk;
@@ -107,7 +107,7 @@ MotionTrajectory BuildUnifiedTrajectory(const ProcessPath& path, const Interpola
     }
 
     DomainServices::TimeTrajectoryPlanner planner;
-    return planner.Plan(path, BuildMotionConfig(config));
+    return planner.Plan(path, BuildTimePlanningConfig(config));
 }
 
 MotionTrajectory BuildUnifiedTrajectory(const std::vector<Point2D>& points, const InterpolationConfig& config) {

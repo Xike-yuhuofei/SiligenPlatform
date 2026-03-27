@@ -9,7 +9,6 @@ using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
 using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
 using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
 using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
-using Siligen::Domain::Trajectory::ValueObjects::MotionConfig;
 using Siligen::Domain::Motion::ValueObjects::SemanticSegment;
 using Siligen::Domain::Motion::ValueObjects::SemanticTag;
 
@@ -59,32 +58,40 @@ ProcessPath ConvertToProcessPath(const SemanticPath& path) {
     return out;
 }
 
-MotionConfig ConvertConfig(const TimePlanningConfig& config) {
-    MotionConfig out;
-    out.vmax = config.vmax;
-    out.amax = config.amax;
-    out.jmax = config.jmax;
-    out.sample_ds = config.sample_ds;
-    out.sample_dt = config.sample_dt;
-    out.curvature_speed_factor = config.curvature_speed_factor;
-    out.corner_speed_factor = config.corner_speed_factor;
-    out.start_speed_factor = config.start_speed_factor;
-    out.end_speed_factor = config.end_speed_factor;
-    out.rapid_speed_factor = config.rapid_speed_factor;
-    out.enforce_jerk_limit = config.enforce_jerk_limit;
-    return out;
-}
-
 }  // namespace
 
 MotionTrajectory TimeTrajectoryPlanner::Plan(const SemanticPath& path, const TimePlanningConfig& config) const {
     MotionPlanner planner;
-    return planner.Plan(ConvertToProcessPath(path), ConvertConfig(config));
+    return planner.Plan(ConvertToProcessPath(path), {
+        config.vmax,
+        config.amax,
+        config.jmax,
+        config.sample_ds,
+        config.sample_dt,
+        config.curvature_speed_factor,
+        config.corner_speed_factor,
+        config.start_speed_factor,
+        config.end_speed_factor,
+        config.rapid_speed_factor,
+        config.arc_tolerance_mm,
+        config.enforce_jerk_limit});
 }
 
-MotionTrajectory TimeTrajectoryPlanner::Plan(const ProcessPath& path, const MotionConfig& config) const {
+MotionTrajectory TimeTrajectoryPlanner::Plan(const ProcessPath& path, const TimePlanningConfig& config) const {
     MotionPlanner planner;
-    return planner.Plan(path, config);
+    return planner.Plan(path, {
+        config.vmax,
+        config.amax,
+        config.jmax,
+        config.sample_ds,
+        config.sample_dt,
+        config.curvature_speed_factor,
+        config.corner_speed_factor,
+        config.start_speed_factor,
+        config.end_speed_factor,
+        config.rapid_speed_factor,
+        config.arc_tolerance_mm,
+        config.enforce_jerk_limit});
 }
 
 }  // namespace Siligen::Domain::Motion::DomainServices

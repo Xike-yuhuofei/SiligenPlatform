@@ -1,6 +1,6 @@
 #include "TcpCommandDispatcher.h"
+#include "JsonProtocol.h"
 #include "MockIoControlService.h"
-#include "siligen/gateway/protocol/json_protocol.h"
 #include "shared/encoding/EncodingCodec.h"
 #include "shared/types/AxisTypes.h"
 #include "shared/interfaces/ILoggingService.h"
@@ -49,7 +49,7 @@ using Siligen::Infrastructure::Adapters::Recipes::RecipeJsonSerializer;
 using Siligen::Domain::Recipes::ValueObjects::ParameterValueEntry;
 using Siligen::Domain::Recipes::ValueObjects::ImportConflict;
 using Siligen::Domain::Recipes::ValueObjects::ConflictResolution;
-using GatewayJsonProtocol = Siligen::Gateway::Protocol::JsonProtocol;
+using GatewayJsonProtocol = Siligen::Adapters::Tcp::JsonProtocol;
 
 double ReadJsonDouble(const nlohmann::json& params, const char* key, double fallback) {
     if (!params.contains(key)) {
@@ -650,8 +650,8 @@ nlohmann::json ImportConflictToJson(const ImportConflict& conflict) {
     };
 }
 
-std::string ToConnectionStateLabel(Siligen::Domain::Machine::Ports::HardwareConnectionState state) {
-    using State = Siligen::Domain::Machine::Ports::HardwareConnectionState;
+std::string ToConnectionStateLabel(Siligen::Device::Contracts::State::DeviceConnectionState state) {
+    using State = Siligen::Device::Contracts::State::DeviceConnectionState;
     switch (state) {
         case State::Connected:
             return "connected";
@@ -1144,19 +1144,19 @@ std::string TcpCommandDispatcher::HandleStatus(const std::string& id, const nloh
         } else {
             connection_state = ToConnectionStateLabel(connection_info.state);
             switch (connection_info.state) {
-                case Domain::Machine::Ports::HardwareConnectionState::Connected:
+                case Siligen::Device::Contracts::State::DeviceConnectionState::Connected:
                     machine_state = "Idle";
                     machine_state_reason = "idle";
                     break;
-                case Domain::Machine::Ports::HardwareConnectionState::Connecting:
+                case Siligen::Device::Contracts::State::DeviceConnectionState::Connecting:
                     machine_state = "Unknown";
                     machine_state_reason = "hardware_connecting";
                     break;
-                case Domain::Machine::Ports::HardwareConnectionState::Error:
+                case Siligen::Device::Contracts::State::DeviceConnectionState::Error:
                     machine_state = "Fault";
                     machine_state_reason = "hardware_connection_error";
                     break;
-                case Domain::Machine::Ports::HardwareConnectionState::Disconnected:
+                case Siligen::Device::Contracts::State::DeviceConnectionState::Disconnected:
                 default:
                     machine_state = "Disconnected";
                     machine_state_reason = "hardware_disconnected";

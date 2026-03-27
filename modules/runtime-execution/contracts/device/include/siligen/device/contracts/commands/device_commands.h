@@ -62,7 +62,31 @@ struct DeviceConnection {
     unsigned short local_port = 0;
     std::string card_ip;
     unsigned short card_port = 0;
+    Siligen::SharedKernel::int32 timeout_ms = 3000;
     std::string backend_name;
+
+    bool IsValid() const {
+        if (local_ip.empty() || card_ip.empty()) {
+            return false;
+        }
+        if (timeout_ms <= 0 || timeout_ms >= 60000) {
+            return false;
+        }
+        return local_port == card_port;
+    }
+
+    std::string GetValidationError() const {
+        if (local_ip.empty() || card_ip.empty()) {
+            return "IP地址不能为空";
+        }
+        if (timeout_ms <= 0 || timeout_ms >= 60000) {
+            return "超时时间必须在1-60000ms之间";
+        }
+        if (local_port != card_port) {
+            return "PC端和控制卡端口必须一致";
+        }
+        return {};
+    }
 };
 
 }  // namespace Siligen::Device::Contracts::Commands

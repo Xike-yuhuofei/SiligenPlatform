@@ -1,5 +1,6 @@
 #pragma once
 
+#include "domain/motion/ports/IMotionRuntimePort.h"
 #include "shared/types/LogTypes.h"
 
 #include <memory>
@@ -11,6 +12,15 @@ namespace Interfaces {
 class ILoggingService;
 }  // namespace Interfaces
 }  // namespace Shared
+
+namespace Device {
+namespace Contracts {
+namespace Ports {
+class DeviceConnectionPort;
+class MachineHealthPort;
+}  // namespace Ports
+}  // namespace Contracts
+}  // namespace Device
 
 namespace Domain {
 namespace Safety {
@@ -26,22 +36,13 @@ class IFileStoragePort;
 }  // namespace Ports
 }  // namespace Configuration
 
-namespace Machine {
-namespace Ports {
-class IHardwareConnectionPort;
-class IHardwareTestPort;
-}  // namespace Ports
-}  // namespace Machine
-
 namespace Motion {
 namespace Ports {
 class IAxisControlPort;
 class IHomingPort;
 class IInterpolationPort;
-class IIOControlPort;
 class IJogControlPort;
 class IMotionConnectionPort;
-class IMotionRuntimePort;
 class IMotionStatePort;
 class IPositionControlPort;
 class IVelocityProfilePort;
@@ -101,10 +102,10 @@ struct InfrastructureBindings {
     std::shared_ptr<Shared::Interfaces::ILoggingService> logging_service;
 
     std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port;
-    std::shared_ptr<Domain::Machine::Ports::IHardwareTestPort> hardware_test_port;
+    std::shared_ptr<Device::Contracts::Ports::DeviceConnectionPort> device_connection_port;
+    std::shared_ptr<Device::Contracts::Ports::MachineHealthPort> machine_health_port;
     std::shared_ptr<Domain::Diagnostics::Ports::IDiagnosticsPort> diagnostics_port;
     std::shared_ptr<Domain::Dispensing::Ports::ITriggerControllerPort> trigger_port;
-    std::shared_ptr<Domain::Machine::Ports::IHardwareConnectionPort> hardware_connection_port;
     std::shared_ptr<Domain::Dispensing::Ports::IValvePort> valve_port;
     std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port;
     std::shared_ptr<Domain::Motion::Ports::IVelocityProfilePort> velocity_profile_port;

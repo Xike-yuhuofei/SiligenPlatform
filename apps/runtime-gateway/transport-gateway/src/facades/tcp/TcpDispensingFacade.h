@@ -2,11 +2,12 @@
 
 #include "application/usecases/dispensing/valve/ValveCommandUseCase.h"
 #include "application/usecases/dispensing/valve/ValveQueryUseCase.h"
-#include "job_ingest/application/usecases/dispensing/UploadFileUseCase.h"
+#include "job_ingest/contracts/dispensing/UploadContracts.h"
 #include "domain/safety/value-objects/InterlockTypes.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
-#include "workflow/application/usecases/dispensing/DispensingWorkflowUseCase.h"
-#include "workflow/application/usecases/dispensing/PlanningUseCase.h"
+#include "application/usecases/dispensing/DispensingExecutionWorkflowUseCase.h"
+#include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
+#include "application/usecases/dispensing/PlanningUseCase.h"
 
 #include <memory>
 
@@ -17,7 +18,8 @@ class TcpDispensingFacade {
     TcpDispensingFacade(std::shared_ptr<UseCases::Dispensing::Valve::ValveCommandUseCase> valve_command_use_case,
                         std::shared_ptr<UseCases::Dispensing::Valve::ValveQueryUseCase> valve_query_use_case,
                         std::shared_ptr<UseCases::Dispensing::DispensingExecutionUseCase> dxf_execute_use_case,
-                        std::shared_ptr<UseCases::Dispensing::UploadFileUseCase> dxf_upload_use_case,
+                        std::shared_ptr<UseCases::Dispensing::DispensingExecutionWorkflowUseCase> dxf_execution_workflow_use_case,
+                        std::shared_ptr<UseCases::Dispensing::IUploadFilePort> dxf_upload_use_case,
                         std::shared_ptr<UseCases::Dispensing::PlanningUseCase> dxf_planning_use_case,
                         std::shared_ptr<UseCases::Dispensing::DispensingWorkflowUseCase> dxf_workflow_use_case);
 
@@ -67,7 +69,8 @@ class TcpDispensingFacade {
     std::shared_ptr<UseCases::Dispensing::Valve::ValveCommandUseCase> valve_command_use_case_;
     std::shared_ptr<UseCases::Dispensing::Valve::ValveQueryUseCase> valve_query_use_case_;
     std::shared_ptr<UseCases::Dispensing::DispensingExecutionUseCase> dxf_execute_use_case_;
-    std::shared_ptr<UseCases::Dispensing::UploadFileUseCase> dxf_upload_use_case_;
+    std::shared_ptr<UseCases::Dispensing::DispensingExecutionWorkflowUseCase> dxf_execution_workflow_use_case_;
+    std::shared_ptr<UseCases::Dispensing::IUploadFilePort> dxf_upload_use_case_;
     std::shared_ptr<UseCases::Dispensing::PlanningUseCase> dxf_planning_use_case_;
     std::shared_ptr<UseCases::Dispensing::DispensingWorkflowUseCase> dxf_workflow_use_case_;
 };

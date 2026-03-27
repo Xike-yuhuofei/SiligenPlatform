@@ -1,160 +1,157 @@
 #include "TcpMotionFacade.h"
 
+#include <utility>
+
 namespace Siligen::Application::Facades::Tcp {
 
 TcpMotionFacade::TcpMotionFacade(
-    std::shared_ptr<UseCases::Motion::Homing::HomeAxesUseCase> home_use_case,
-    std::shared_ptr<UseCases::Motion::Homing::EnsureAxesReadyZeroUseCase> ensure_ready_zero_use_case,
-    std::shared_ptr<UseCases::Motion::Manual::ManualMotionControlUseCase> manual_use_case,
-    std::shared_ptr<UseCases::Motion::Monitoring::MotionMonitoringUseCase> monitoring_use_case,
-    std::shared_ptr<Domain::Machine::Ports::IHardwareConnectionPort> hardware_connection_port)
-    : home_use_case_(std::move(home_use_case)),
-      ensure_ready_zero_use_case_(std::move(ensure_ready_zero_use_case)),
-      manual_use_case_(std::move(manual_use_case)),
-      monitoring_use_case_(std::move(monitoring_use_case)),
+    std::shared_ptr<UseCases::Motion::MotionControlUseCase> motion_control_use_case,
+    std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> hardware_connection_port)
+    : motion_control_use_case_(std::move(motion_control_use_case)),
       hardware_connection_port_(std::move(hardware_connection_port)) {}
 
 Shared::Types::Result<UseCases::Motion::Homing::HomeAxesResponse> TcpMotionFacade::Home(
     const UseCases::Motion::Homing::HomeAxesRequest& request) {
-    if (!home_use_case_) {
+    if (!motion_control_use_case_) {
         return Shared::Types::Result<UseCases::Motion::Homing::HomeAxesResponse>::Failure(
-            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "HomeAxesUseCase not available"));
+            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionControlUseCase not available"));
     }
-    return home_use_case_->Execute(request);
+    return motion_control_use_case_->Home(request);
 }
 
 Shared::Types::Result<UseCases::Motion::Homing::EnsureAxesReadyZeroResponse> TcpMotionFacade::EnsureAxesReadyZero(
     const UseCases::Motion::Homing::EnsureAxesReadyZeroRequest& request) {
-    if (!ensure_ready_zero_use_case_) {
+    if (!motion_control_use_case_) {
         return Shared::Types::Result<UseCases::Motion::Homing::EnsureAxesReadyZeroResponse>::Failure(
             Shared::Types::Error(
                 Shared::Types::ErrorCode::PORT_NOT_INITIALIZED,
-                "EnsureAxesReadyZeroUseCase not available"));
+                "MotionControlUseCase not available"));
     }
-    return ensure_ready_zero_use_case_->Execute(request);
+    return motion_control_use_case_->EnsureAxesReadyZero(request);
 }
 
 Shared::Types::Result<bool> TcpMotionFacade::IsAxisHomed(Shared::Types::LogicalAxisId axis) const {
-    if (!home_use_case_) {
+    if (!motion_control_use_case_) {
         return Shared::Types::Result<bool>::Failure(
-            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "HomeAxesUseCase not available"));
+            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionControlUseCase not available"));
     }
-    return home_use_case_->IsAxisHomed(axis);
+    return motion_control_use_case_->IsAxisHomed(axis);
 }
 
 Shared::Types::Result<void> TcpMotionFacade::ExecutePointToPointMotion(
     const UseCases::Motion::Manual::ManualMotionCommand& command,
     bool invalidate_homing) {
-    if (!manual_use_case_) {
+    if (!motion_control_use_case_) {
         return Shared::Types::Result<void>::Failure(
-            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "ManualMotionControlUseCase not available"));
+            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionControlUseCase not available"));
     }
-    return manual_use_case_->ExecutePointToPointMotion(command, invalidate_homing);
+    return motion_control_use_case_->ExecutePointToPointMotion(command, invalidate_homing);
 }
 
 Shared::Types::Result<void> TcpMotionFacade::StartJog(
     Shared::Types::LogicalAxisId axis,
     int16 direction,
     float32 velocity) {
-    if (!manual_use_case_) {
+    if (!motion_control_use_case_) {
         return Shared::Types::Result<void>::Failure(
-            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "ManualMotionControlUseCase not available"));
+            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionControlUseCase not available"));
     }
-    return manual_use_case_->StartJogMotion(axis, direction, velocity);
+    return motion_control_use_case_->StartJog(axis, direction, velocity);
 }
 
 Shared::Types::Result<void> TcpMotionFacade::StopJog(Shared::Types::LogicalAxisId axis) {
-    if (!manual_use_case_) {
+    if (!motion_control_use_case_) {
         return Shared::Types::Result<void>::Failure(
-            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "ManualMotionControlUseCase not available"));
+            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionControlUseCase not available"));
     }
-    return manual_use_case_->StopJogMotion(axis);
+    return motion_control_use_case_->StopJog(axis);
 }
 
 Shared::Types::Result<Domain::Motion::Ports::MotionStatus> TcpMotionFacade::GetAxisMotionStatus(
     Shared::Types::LogicalAxisId axis) const {
-    if (!monitoring_use_case_) {
+    if (!motion_control_use_case_) {
         return Shared::Types::Result<Domain::Motion::Ports::MotionStatus>::Failure(
-            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionMonitoringUseCase not available"));
+            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionControlUseCase not available"));
     }
-    return monitoring_use_case_->GetAxisMotionStatus(axis);
+    return motion_control_use_case_->GetAxisMotionStatus(axis);
 }
 
 Shared::Types::Result<std::vector<Domain::Motion::Ports::MotionStatus>> TcpMotionFacade::GetAllAxesMotionStatus() const {
-    if (!monitoring_use_case_) {
+    if (!motion_control_use_case_) {
         return Shared::Types::Result<std::vector<Domain::Motion::Ports::MotionStatus>>::Failure(
-            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionMonitoringUseCase not available"));
+            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionControlUseCase not available"));
     }
-    return monitoring_use_case_->GetAllAxesMotionStatus();
+    return motion_control_use_case_->GetAllAxesMotionStatus();
 }
 
 Shared::Types::Result<Point2D> TcpMotionFacade::GetCurrentPosition() const {
-    if (!monitoring_use_case_) {
+    if (!motion_control_use_case_) {
         return Shared::Types::Result<Point2D>::Failure(
-            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionMonitoringUseCase not available"));
+            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionControlUseCase not available"));
     }
-    return monitoring_use_case_->GetCurrentPosition();
+    return motion_control_use_case_->GetCurrentPosition();
 }
 
 Shared::Types::Result<Domain::Motion::Ports::CoordinateSystemStatus> TcpMotionFacade::GetCoordinateSystemStatus(
     int16 coord_sys) const {
-    if (!monitoring_use_case_) {
+    if (!motion_control_use_case_) {
         return Shared::Types::Result<Domain::Motion::Ports::CoordinateSystemStatus>::Failure(
-            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionMonitoringUseCase not available"));
+            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionControlUseCase not available"));
     }
-    return monitoring_use_case_->GetCoordinateSystemStatus(coord_sys);
+    return motion_control_use_case_->GetCoordinateSystemStatus(coord_sys);
 }
 
 Shared::Types::Result<uint32> TcpMotionFacade::GetInterpolationBufferSpace(int16 coord_sys) const {
-    if (!monitoring_use_case_) {
+    if (!motion_control_use_case_) {
         return Shared::Types::Result<uint32>::Failure(
-            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionMonitoringUseCase not available"));
+            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionControlUseCase not available"));
     }
-    return monitoring_use_case_->GetInterpolationBufferSpace(coord_sys);
+    return motion_control_use_case_->GetInterpolationBufferSpace(coord_sys);
 }
 
 Shared::Types::Result<uint32> TcpMotionFacade::GetLookAheadBufferSpace(int16 coord_sys) const {
-    if (!monitoring_use_case_) {
+    if (!motion_control_use_case_) {
         return Shared::Types::Result<uint32>::Failure(
-            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionMonitoringUseCase not available"));
+            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionControlUseCase not available"));
     }
-    return monitoring_use_case_->GetLookAheadBufferSpace(coord_sys);
+    return motion_control_use_case_->GetLookAheadBufferSpace(coord_sys);
 }
 
 Shared::Types::Result<bool> TcpMotionFacade::ReadLimitStatus(
     Shared::Types::LogicalAxisId axis,
     bool positive) const {
-    if (!monitoring_use_case_) {
+    if (!motion_control_use_case_) {
         return Shared::Types::Result<bool>::Failure(
-            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionMonitoringUseCase not available"));
+            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionControlUseCase not available"));
     }
-    return monitoring_use_case_->ReadLimitStatus(axis, positive);
+    return motion_control_use_case_->ReadLimitStatus(axis, positive);
 }
 
 Shared::Types::Result<bool> TcpMotionFacade::ReadServoAlarmStatus(Shared::Types::LogicalAxisId axis) const {
-    if (!monitoring_use_case_) {
+    if (!motion_control_use_case_) {
         return Shared::Types::Result<bool>::Failure(
-            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionMonitoringUseCase not available"));
+            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionControlUseCase not available"));
     }
-    return monitoring_use_case_->ReadServoAlarmStatus(axis);
+    return motion_control_use_case_->ReadServoAlarmStatus(axis);
 }
 
 bool TcpMotionFacade::HasHardwareConnectionPort() const {
     return static_cast<bool>(hardware_connection_port_);
 }
 
-Domain::Machine::Ports::HardwareConnectionInfo TcpMotionFacade::GetHardwareConnectionInfo() const {
+Siligen::Device::Contracts::State::DeviceConnectionSnapshot TcpMotionFacade::GetHardwareConnectionInfo() const {
     if (!hardware_connection_port_) {
         return {};
     }
-    return hardware_connection_port_->GetConnectionInfo();
+    auto result = hardware_connection_port_->ReadConnection();
+    return result.IsSuccess() ? result.Value() : Siligen::Device::Contracts::State::DeviceConnectionSnapshot{};
 }
 
-Domain::Machine::Ports::HeartbeatStatus TcpMotionFacade::GetHeartbeatStatus() const {
+Siligen::Device::Contracts::State::HeartbeatSnapshot TcpMotionFacade::GetHeartbeatStatus() const {
     if (!hardware_connection_port_) {
         return {};
     }
-    return hardware_connection_port_->GetHeartbeatStatus();
+    return hardware_connection_port_->ReadHeartbeat();
 }
 
 bool TcpMotionFacade::IsHardwareReadyForMotion() const {
@@ -162,8 +159,8 @@ bool TcpMotionFacade::IsHardwareReadyForMotion() const {
         return true;
     }
 
-    const auto connection_info = hardware_connection_port_->GetConnectionInfo();
-    const auto heartbeat_status = hardware_connection_port_->GetHeartbeatStatus();
+    const auto connection_info = GetHardwareConnectionInfo();
+    const auto heartbeat_status = GetHeartbeatStatus();
     return connection_info.IsConnected() && !heartbeat_status.is_degraded;
 }
 

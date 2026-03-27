@@ -8,29 +8,36 @@
 
 namespace Siligen::Infrastructure::Adapters::Diagnostics {
 
-DiagnosticsPortAdapter::DiagnosticsPortAdapter(std::shared_ptr<IHardwareTestPort> hardware_test_port)
-    : hardware_test_port_(std::move(hardware_test_port)) {}
+DiagnosticsPortAdapter::DiagnosticsPortAdapter(std::shared_ptr<MachineHealthPort> machine_health_port)
+    : machine_health_port_(std::move(machine_health_port)) {}
 
 Result<HealthReport> DiagnosticsPortAdapter::GetHealthReport() const {
-    if (!hardware_test_port_) {
+    if (!machine_health_port_) {
         return Result<HealthReport>::Failure(
             Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED,
-                                 "Diagnostics hardware port not initialized",
+                                 "Diagnostics machine health port not initialized",
                                  "DiagnosticsPortAdapter"));
     }
 
-    HealthReport report;
-    report.active_connections = hardware_test_port_->isConnected() ? 1 : 0;
+    const auto health_result = machine_health_port_->ReadHealth();
+    if (health_result.IsError()) {
+        return Result<HealthReport>::Failure(
+            Shared::Types::Error(Shared::Types::ErrorCode::UNKNOWN_ERROR,
+                                 health_result.GetError().GetMessage(),
+                                 "DiagnosticsPortAdapter"));
+    }
+    const auto& health = health_result.Value();
 
-    const auto hardware_check = hardware_test_port_->checkHardwareConnection();
-    report.overall_state = EvaluateHealthState(hardware_check);
+    HealthReport report;
+    report.active_connections = health.connected ? 1 : 0;
+    report.overall_state = EvaluateHealthState(health);
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
         report.diagnostics = diagnostics_;
     }
 
-    AppendHardwareDiagnostics(hardware_check, report.diagnostics);
+    AppendHardwareDiagnostics(health, report.diagnostics);
     return Result<HealthReport>::Success(std::move(report));
 }
 
@@ -132,65 +139,66 @@ int DiagnosticsPortAdapter::LevelRank(DiagnosticLevel level) {
     }
 }
 
-HealthState DiagnosticsPortAdapter::EvaluateHealthState(const HardwareCheckResult& check) const {
-    if (!check.controllerConnected) {
+DiagnosticLevel DiagnosticsPortAdapter::ToDiagnosticLevel(DeviceFaultSeverity severity) {
+    switch (severity) {
+        case DeviceFaultSeverity::kInfo:
+            return DiagnosticLevel::INFO;
+        case DeviceFaultSeverity::kWarning:
+            return DiagnosticLevel::WARNING;
+        case DeviceFaultSeverity::kCritical:
+            return DiagnosticLevel::CRITICAL;
+        case DeviceFaultSeverity::kError:
+        default:
+            return DiagnosticLevel::ERR;
+    }
+}
+
+HealthState DiagnosticsPortAdapter::EvaluateHealthState(const MachineHealthSnapshot& health) const {
+    if (!health.connected) {
         return HealthState::CRITICAL;
     }
-
+    if (health.estop_active) {
+        return HealthState::CRITICAL;
+    }
     bool has_warning = false;
-    for (const auto& entry : check.limitSwitchOk) {
-        if (!entry.second) {
-            has_warning = true;
-            break;
+    for (const auto& fault : health.active_faults) {
+        switch (fault.severity) {
+            case DeviceFaultSeverity::kCritical:
+                return HealthState::CRITICAL;
+            case DeviceFaultSeverity::kError:
+                return HealthState::UNHEALTHY;
+            case DeviceFaultSeverity::kWarning:
+                has_warning = true;
+                break;
+            case DeviceFaultSeverity::kInfo:
+            default:
+                break;
         }
     }
-
-    for (const auto& entry : check.encoderOk) {
-        if (!entry.second) {
-            return HealthState::UNHEALTHY;
-        }
-    }
-
     if (has_warning) {
         return HealthState::DEGRADED;
     }
-
     return HealthState::HEALTHY;
 }
 
 void DiagnosticsPortAdapter::AppendHardwareDiagnostics(
-    const HardwareCheckResult& check,
+    const MachineHealthSnapshot& health,
     std::vector<DiagnosticInfo>& output) const {
-    if (!check.controllerConnected) {
+    for (const auto& fault : health.active_faults) {
+        DiagnosticInfo info;
+        info.level = ToDiagnosticLevel(fault.severity);
+        info.component = "hardware";
+        info.message = fault.message;
+        output.push_back(std::move(info));
+    }
+
+    if (health.estop_active) {
         DiagnosticInfo info;
         info.level = DiagnosticLevel::CRITICAL;
-        info.component = "hardware";
-        info.message = "Hardware controller not connected";
-        info.error_code = static_cast<int32>(Shared::Types::ErrorCode::HARDWARE_NOT_CONNECTED);
+        info.component = "safety";
+        info.message = "Emergency stop is active";
+        info.error_code = static_cast<int32>(Shared::Types::ErrorCode::EMERGENCY_STOP_ACTIVATED);
         output.push_back(std::move(info));
-        return;
-    }
-
-    for (const auto& entry : check.limitSwitchOk) {
-        if (!entry.second) {
-            DiagnosticInfo info;
-            info.level = DiagnosticLevel::WARNING;
-            info.component = "limit_switch";
-            info.message = "Limit switch abnormal on axis " +
-                           std::to_string(Siligen::Shared::Types::ToIndex(entry.first));
-            output.push_back(std::move(info));
-        }
-    }
-
-    for (const auto& entry : check.encoderOk) {
-        if (!entry.second) {
-            DiagnosticInfo info;
-            info.level = DiagnosticLevel::ERR;
-            info.component = "encoder";
-            info.message = "Encoder abnormal on axis " +
-                           std::to_string(Siligen::Shared::Types::ToIndex(entry.first));
-            output.push_back(std::move(info));
-        }
     }
 }
 

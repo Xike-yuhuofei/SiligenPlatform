@@ -16,8 +16,14 @@ target_include_directories(siligen_process_path_application_headers INTERFACE
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
 target_link_libraries(siligen_process_path_application_headers INTERFACE
+    siligen_process_path_contracts_public
     siligen_process_path_domain_trajectory
 )
+if(TARGET siligen_coordinate_alignment_contracts_public)
+    target_link_libraries(siligen_process_path_application_headers INTERFACE
+        siligen_coordinate_alignment_contracts_public
+    )
+endif()
 target_compile_features(siligen_process_path_application_headers INTERFACE cxx_std_17)
 
 set(SILIGEN_PROCESS_PATH_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS
@@ -38,10 +44,16 @@ target_include_directories(siligen_process_path_application PRIVATE
     ${SILIGEN_PROCESS_PATH_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_process_path_application PUBLIC
+    siligen_process_path_contracts_public
     siligen_process_path_domain_trajectory
     siligen_types
     siligen_utils
 )
+if(TARGET siligen_coordinate_alignment_contracts_public)
+    target_link_libraries(siligen_process_path_application PUBLIC
+        siligen_coordinate_alignment_contracts_public
+    )
+endif()
 target_compile_features(siligen_process_path_application PUBLIC cxx_std_17)
 
 if(NOT TARGET siligen_process_path_application_public)
@@ -56,11 +68,6 @@ target_compile_features(siligen_process_path_application_public INTERFACE cxx_st
 
 if(TARGET siligen_process_runtime_core_planning)
     target_link_libraries(siligen_process_runtime_core_planning INTERFACE
-        siligen_process_path_application_public
-    )
-endif()
-if(TARGET siligen_application_dispensing)
-    target_link_libraries(siligen_application_dispensing PUBLIC
         siligen_process_path_application_public
     )
 endif()

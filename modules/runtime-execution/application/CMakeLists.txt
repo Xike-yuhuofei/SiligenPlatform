@@ -1,5 +1,19 @@
 cmake_minimum_required(VERSION 3.20)
 
+if(NOT TARGET siligen_device_contracts AND EXISTS "${SILIGEN_WORKSPACE_ROOT}/shared/contracts/device/CMakeLists.txt")
+    add_subdirectory(
+        "${SILIGEN_WORKSPACE_ROOT}/shared/contracts/device"
+        "${CMAKE_BINARY_DIR}/_p/rea_sdc"
+    )
+endif()
+
+if(NOT TARGET siligen_process_planning_legacy_configuration_bridge_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../process-planning/contracts"
+        "${CMAKE_BINARY_DIR}/_p/rea_ppc"
+    )
+endif()
+
 set(SILIGEN_RUNTIME_EXECUTION_APPLICATION_PUBLIC_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
 if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_APPLICATION_PUBLIC_INCLUDE_DIR}/runtime_execution")
     message(FATAL_ERROR
@@ -13,16 +27,19 @@ if(NOT TARGET siligen_runtime_execution_application_headers)
 endif()
 target_include_directories(siligen_runtime_execution_application_headers INTERFACE
     ${SILIGEN_RUNTIME_EXECUTION_APPLICATION_PUBLIC_INCLUDE_DIR}
+    ${CMAKE_SOURCE_DIR}/modules/runtime-execution/contracts/device/include
 )
 target_link_libraries(siligen_runtime_execution_application_headers INTERFACE
     siligen_runtime_execution_runtime_contracts
+    siligen_dispense_packaging_contracts_public
     siligen_domain
-    siligen_process_planning_domain_configuration
-    siligen_process_path_application_public
-    siligen_motion_planning_application_public
-    siligen_dispense_packaging_application_public
-    siligen_dxf_geometry_application_public
+    siligen_process_planning_legacy_configuration_bridge_public
 )
+if(TARGET siligen_device_contracts)
+    target_link_libraries(siligen_runtime_execution_application_headers INTERFACE
+        siligen_device_contracts
+    )
+endif()
 target_compile_features(siligen_runtime_execution_application_headers INTERFACE cxx_std_17)
 
 set(SILIGEN_RUNTIME_EXECUTION_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS
@@ -30,11 +47,16 @@ set(SILIGEN_RUNTIME_EXECUTION_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS
     ${PROCESS_RUNTIME_CORE_IMPLEMENTATION_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/..
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../workflow/application/include
 )
 list(REMOVE_DUPLICATES SILIGEN_RUNTIME_EXECUTION_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS)
 
 if(NOT TARGET siligen_runtime_execution_application)
     add_library(siligen_runtime_execution_application STATIC
+        services/motion/MotionControlServiceImpl.cpp
+        services/motion/MotionStatusServiceImpl.cpp
+        services/calibration/CalibrationWorkflowService.cpp
+        usecases/motion/MotionControlUseCase.cpp
         usecases/dispensing/DispensingExecutionUseCase.cpp
         usecases/dispensing/DispensingExecutionUseCase.Setup.cpp
         usecases/dispensing/DispensingExecutionUseCase.Control.cpp
@@ -43,24 +65,27 @@ if(NOT TARGET siligen_runtime_execution_application)
 endif()
 target_include_directories(siligen_runtime_execution_application PUBLIC
     ${SILIGEN_RUNTIME_EXECUTION_APPLICATION_PUBLIC_INCLUDE_DIR}
+    ${CMAKE_SOURCE_DIR}/modules/runtime-execution/contracts/device/include
 )
 target_include_directories(siligen_runtime_execution_application PRIVATE
     ${SILIGEN_RUNTIME_EXECUTION_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_runtime_execution_application PUBLIC
     siligen_runtime_execution_runtime_contracts
+    siligen_dispense_packaging_contracts_public
     siligen_domain
-    siligen_process_planning_domain_configuration
-    siligen_process_path_application_public
-    siligen_motion_planning_application_public
-    siligen_dispense_packaging_application_public
-    siligen_dxf_geometry_application_public
+    siligen_process_planning_legacy_configuration_bridge_public
     siligen_types
     siligen_utils
     siligen_geometry
     siligen_domain
     siligen_domain_services
 )
+if(TARGET siligen_device_contracts)
+    target_link_libraries(siligen_runtime_execution_application PUBLIC
+        siligen_device_contracts
+    )
+endif()
 target_compile_features(siligen_runtime_execution_application PUBLIC cxx_std_17)
 set_target_properties(siligen_runtime_execution_application PROPERTIES
     SILIGEN_TARGET_TOPOLOGY_OWNER_ROOT "modules/runtime-execution"

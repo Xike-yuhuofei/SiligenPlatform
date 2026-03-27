@@ -1,11 +1,13 @@
 cmake_minimum_required(VERSION 3.20)
 
 set(RUNTIME_HOST_TEST_SOURCES
+    unit/runtime/calibration/CalibrationWorkflowServiceTest.cpp
     unit/runtime/configuration/InterlockConfigResolverTest.cpp
     unit/runtime/configuration/ConfigFileAdapterHardwareConfigurationTest.cpp
     unit/runtime/configuration/WorkspaceAssetPathsTest.cpp
     unit/runtime/motion/HardLimitMonitorServiceTest.cpp
     unit/runtime/motion/HomingPortAdapterTest.cpp
+    unit/runtime/motion/MotionControlMigrationTest.cpp
     unit/runtime/motion/MultiCardMotionAdapterTest.cpp
     unit/runtime/motion/MotionRuntimeFacadeTest.cpp
     unit/runtime/recipes/TemplateFileRepositoryTest.cpp
@@ -24,6 +26,7 @@ endif()
 target_link_libraries(siligen_runtime_host_unit_tests PRIVATE
     siligen_runtime_host_config
     siligen_runtime_host
+    siligen_runtime_execution_application_public
     siligen_device_adapters
     siligen_runtime_recipe_persistence
     siligen_workflow_recipe_serialization_public

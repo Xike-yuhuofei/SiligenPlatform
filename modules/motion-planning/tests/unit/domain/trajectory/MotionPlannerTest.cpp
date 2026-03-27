@@ -16,7 +16,7 @@ float SpeedMagnitude(const Siligen::Point3D& v) {
 TEST(MotionPlannerTest, RespectsArcCurvatureLimit) {
     using Siligen::Shared::Types::Point2D;
     using Siligen::Domain::Motion::DomainServices::MotionPlanner;
-    using Siligen::Domain::Trajectory::ValueObjects::MotionConfig;
+    using Siligen::Domain::Motion::ValueObjects::TimePlanningConfig;
     using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
     using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
     using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
@@ -38,7 +38,7 @@ TEST(MotionPlannerTest, RespectsArcCurvatureLimit) {
 
     path.segments.push_back(seg);
 
-    MotionConfig cfg;
+    TimePlanningConfig cfg;
     cfg.vmax = 100.0f;
     cfg.amax = 4.0f;
     cfg.sample_dt = 0.01f;
@@ -58,7 +58,7 @@ TEST(MotionPlannerTest, RespectsArcCurvatureLimit) {
 TEST(MotionPlannerTest, EmitsTrajectoryForPointSegment) {
     using Siligen::Shared::Types::Point2D;
     using Siligen::Domain::Motion::DomainServices::MotionPlanner;
-    using Siligen::Domain::Trajectory::ValueObjects::MotionConfig;
+    using Siligen::Domain::Motion::ValueObjects::TimePlanningConfig;
     using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
     using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
     using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
@@ -77,7 +77,7 @@ TEST(MotionPlannerTest, EmitsTrajectoryForPointSegment) {
 
     path.segments.push_back(seg);
 
-    MotionConfig cfg;
+    TimePlanningConfig cfg;
     cfg.sample_dt = 0.01f;
 
     MotionPlanner planner;

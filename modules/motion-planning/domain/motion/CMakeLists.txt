@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
 get_filename_component(MOTION_PLANNING_MODULE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
-get_filename_component(MOTION_PLANNING_MODULES_DIR "${MOTION_PLANNING_MODULE_DIR}/.." ABSOLUTE)
 
 if(NOT DEFINED SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR)
     set(SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR
@@ -17,11 +16,18 @@ if(NOT TARGET siligen_process_runtime_core_boost_headers)
     target_compile_features(siligen_process_runtime_core_boost_headers INTERFACE cxx_std_17)
 endif()
 
-if(NOT TARGET siligen_process_path_domain_trajectory)
-    add_subdirectory(
-        "${MOTION_PLANNING_MODULES_DIR}/process-path/domain/trajectory"
-        "${CMAKE_BINARY_DIR}/modules/process-path/domain/trajectory"
-    )
+set(SILIGEN_PROCESS_PATH_DEPENDENCY_TARGET "")
+if(TARGET siligen_module_process_path)
+    set(SILIGEN_PROCESS_PATH_DEPENDENCY_TARGET siligen_module_process_path)
+elseif(TARGET siligen_process_path_application_public)
+    set(SILIGEN_PROCESS_PATH_DEPENDENCY_TARGET siligen_process_path_application_public)
+elseif(TARGET siligen_process_path_domain_trajectory)
+    set(SILIGEN_PROCESS_PATH_DEPENDENCY_TARGET siligen_process_path_domain_trajectory)
+else()
+    message(FATAL_ERROR
+        "motion-planning requires an existing process-path dependency target "
+        "(expected one of: siligen_module_process_path, "
+        "siligen_process_path_application_public, siligen_process_path_domain_trajectory)")
 endif()
 
 add_library(siligen_motion STATIC
@@ -51,7 +57,6 @@ add_library(siligen_motion STATIC
 )
 
 target_include_directories(siligen_motion BEFORE PUBLIC
-    ${MOTION_PLANNING_MODULES_DIR}/process-path
     ${SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
@@ -65,7 +70,8 @@ target_link_libraries(siligen_motion PUBLIC
     siligen_process_runtime_core_boost_headers
     siligen_types
     siligen_utils
-    siligen_process_path_domain_trajectory
+    ${SILIGEN_PROCESS_PATH_DEPENDENCY_TARGET}
+    ruckig
 )
 
 target_compile_features(siligen_motion PUBLIC cxx_std_17)

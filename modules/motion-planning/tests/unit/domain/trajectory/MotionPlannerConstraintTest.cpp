@@ -16,7 +16,7 @@ float SpeedMagnitude(const Siligen::Point3D& v) {
 TEST(MotionPlannerConstraintTest, AppliesVelocityFactorConstraint) {
     using Siligen::Shared::Types::Point2D;
     using Siligen::Domain::Motion::DomainServices::MotionPlanner;
-    using Siligen::Domain::Trajectory::ValueObjects::MotionConfig;
+    using Siligen::Domain::Motion::ValueObjects::TimePlanningConfig;
     using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
     using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
     using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
@@ -36,7 +36,7 @@ TEST(MotionPlannerConstraintTest, AppliesVelocityFactorConstraint) {
     seg.geometry.length = 1000.0f;
     path.segments.push_back(seg);
 
-    MotionConfig cfg;
+    TimePlanningConfig cfg;
     cfg.vmax = 100.0f;
     cfg.amax = 1000.0f;
     cfg.sample_dt = 0.01f;

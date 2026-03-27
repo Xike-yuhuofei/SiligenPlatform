@@ -16,6 +16,7 @@ target_include_directories(siligen_motion_planning_application_headers INTERFACE
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
 target_link_libraries(siligen_motion_planning_application_headers INTERFACE
+    siligen_motion_planning_contracts_public
     siligen_motion
 )
 target_compile_features(siligen_motion_planning_application_headers INTERFACE cxx_std_17)
@@ -38,6 +39,7 @@ target_include_directories(siligen_motion_planning_application PRIVATE
     ${SILIGEN_MOTION_PLANNING_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_motion_planning_application PUBLIC
+    siligen_motion_planning_contracts_public
     siligen_motion
     siligen_types
     siligen_utils
@@ -56,16 +58,6 @@ target_compile_features(siligen_motion_planning_application_public INTERFACE cxx
 
 if(TARGET siligen_process_runtime_core_planning)
     target_link_libraries(siligen_process_runtime_core_planning INTERFACE
-        siligen_motion_planning_application_public
-    )
-endif()
-if(TARGET siligen_application_motion)
-    target_link_libraries(siligen_application_motion PUBLIC
-        siligen_motion_planning_application_public
-    )
-endif()
-if(TARGET siligen_application_dispensing)
-    target_link_libraries(siligen_application_dispensing PUBLIC
         siligen_motion_planning_application_public
     )
 endif()

@@ -1,5 +1,20 @@
 cmake_minimum_required(VERSION 3.20)
 
+if(NOT TARGET siligen_process_planning_legacy_configuration_bridge_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../process-planning/contracts"
+        "${CMAKE_BINARY_DIR}/_p/wd_ppc"
+    )
+endif()
+
+# Bridge-only: workflow/domain 当前仍为迁移期桥接层。
+# 允许保留的 sibling source 聚合仅限既有 owner 模块，禁止继续向外扩张。
+set(SILIGEN_WORKFLOW_DOMAIN_BRIDGE_ONLY_ALLOWED_MODULES
+    process-path
+    motion-planning
+    dispense-packaging
+)
+
 set(SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
 if(NOT EXISTS "${SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR}/domain")
     message(FATAL_ERROR "workflow canonical domain include root missing: ${SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR}/domain")
@@ -85,5 +100,6 @@ target_link_libraries(siligen_domain INTERFACE
     domain_recipes
     domain_machine
     siligen_dispense_packaging_domain_dispensing
+    siligen_process_planning_legacy_configuration_bridge_public
 )
 target_compile_features(siligen_domain INTERFACE cxx_std_17)

@@ -1,5 +1,6 @@
 #include "domain/safety/domain-services/EmergencyStopService.h"
-#include "domain/machine/aggregates/DispenserModel.h"
+#include "runtime_execution/contracts/system/IMachineExecutionStatePort.h"
+#include "runtime_execution/contracts/system/MachineExecutionSnapshot.h"
 #include "shared/types/CMPTypes.h"
 #include "shared/types/Error.h"
 #include "shared/types/Point2D.h"
@@ -22,8 +23,9 @@ using Siligen::Domain::Motion::DomainServices::MotionStatusService;
 using Siligen::Domain::Safety::DomainServices::EmergencyStopFailureKind;
 using Siligen::Domain::Safety::DomainServices::EmergencyStopOptions;
 using Siligen::Domain::Safety::DomainServices::EmergencyStopService;
-using Siligen::Domain::Machine::Aggregates::Legacy::DispensingTask;
-using Siligen::Domain::Machine::Aggregates::Legacy::DispenserModel;
+using Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort;
+using Siligen::RuntimeExecution::Contracts::System::MachineExecutionPhase;
+using Siligen::RuntimeExecution::Contracts::System::MachineExecutionSnapshot;
 
 class StubMotionControlService final : public MotionControlService {
 public:
@@ -85,18 +87,56 @@ public:
     }
 };
 
-DispensingTask BuildTask(const std::string& id) {
-    DispensingTask task;
-    task.task_id = id;
-    task.movement_speed = 1.0f;
-    task.path = {Point2D{0.0f, 0.0f}};
+class FakeMachineExecutionStatePort final : public IMachineExecutionStatePort {
+public:
+    Result<MachineExecutionSnapshot> ReadSnapshot() const override {
+        return snapshot_result;
+    }
 
-    Siligen::Shared::Types::CMPConfiguration cmp;
-    cmp.trigger_points.push_back(Siligen::Shared::Types::CMPTriggerPoint());
-    task.cmp_config = cmp;
+    Result<void> ClearPendingTasks() override {
+        ++clear_pending_tasks_calls;
+        if (clear_pending_tasks_result.IsSuccess()) {
+            snapshot.has_pending_tasks = false;
+            snapshot.pending_task_count = 0;
+            snapshot_result = Result<MachineExecutionSnapshot>::Success(snapshot);
+        }
+        return clear_pending_tasks_result;
+    }
 
-    return task;
-}
+    Result<void> TransitionToEmergencyStop() override {
+        ++transition_to_emergency_stop_calls;
+        if (transition_to_emergency_stop_result.IsSuccess()) {
+            snapshot.phase = MachineExecutionPhase::EmergencyStop;
+            snapshot.emergency_stopped = true;
+            snapshot.manual_motion_allowed = false;
+            snapshot.recent_error_summary = "machine_in_emergency_stop";
+            snapshot_result = Result<MachineExecutionSnapshot>::Success(snapshot);
+        }
+        return transition_to_emergency_stop_result;
+    }
+
+    Result<void> RecoverToUninitialized() override {
+        ++recover_to_uninitialized_calls;
+        if (recover_to_uninitialized_result.IsSuccess()) {
+            snapshot.phase = MachineExecutionPhase::Uninitialized;
+            snapshot.emergency_stopped = false;
+            snapshot.manual_motion_allowed = true;
+            snapshot.recent_error_summary.clear();
+            snapshot_result = Result<MachineExecutionSnapshot>::Success(snapshot);
+        }
+        return recover_to_uninitialized_result;
+    }
+
+    mutable MachineExecutionSnapshot snapshot{};
+    mutable Result<MachineExecutionSnapshot> snapshot_result =
+        Result<MachineExecutionSnapshot>::Success(snapshot);
+    Result<void> clear_pending_tasks_result = Result<void>::Success();
+    Result<void> transition_to_emergency_stop_result = Result<void>::Success();
+    Result<void> recover_to_uninitialized_result = Result<void>::Success();
+    int clear_pending_tasks_calls = 0;
+    int transition_to_emergency_stop_calls = 0;
+    int recover_to_uninitialized_calls = 0;
+};
 
 }  // namespace
 
@@ -104,12 +144,14 @@ TEST(EmergencyStopServiceTest, ExecuteRecordsActionsAndClearsTasks) {
     auto motion_control = std::make_shared<StubMotionControlService>();
     auto motion_status = std::make_shared<StubMotionStatusService>();
     auto cmp_service = std::make_shared<Siligen::Domain::Dispensing::DomainServices::CMPService>(nullptr, nullptr);
-    auto model = std::make_shared<DispenserModel>();
+    auto machine_state_port = std::make_shared<FakeMachineExecutionStatePort>();
+    machine_state_port->snapshot.phase = MachineExecutionPhase::Ready;
+    machine_state_port->snapshot.manual_motion_allowed = true;
+    machine_state_port->snapshot.has_pending_tasks = true;
+    machine_state_port->snapshot.pending_task_count = 2;
+    machine_state_port->snapshot_result = Result<MachineExecutionSnapshot>::Success(machine_state_port->snapshot);
 
-    EXPECT_TRUE(model->AddTask(BuildTask("t1")).IsSuccess());
-    EXPECT_TRUE(model->AddTask(BuildTask("t2")).IsSuccess());
-
-    EmergencyStopService service(motion_control, motion_status, cmp_service, model);
+    EmergencyStopService service(motion_control, motion_status, cmp_service, machine_state_port);
     EmergencyStopOptions options;
     auto outcome = service.Execute(options);
 
@@ -125,11 +167,11 @@ TEST(EmergencyStopServiceTest, ExecuteRecordsActionsAndClearsTasks) {
     EXPECT_TRUE(outcome.stop_position_available);
     EXPECT_FLOAT_EQ(outcome.stop_position.x, 1.0f);
     EXPECT_FLOAT_EQ(outcome.stop_position.y, 2.0f);
-
-    auto size_result = model->GetTaskQueueSize();
-    EXPECT_TRUE(size_result.IsSuccess());
-    EXPECT_EQ(size_result.Value(), 0);
-    EXPECT_EQ(model->GetState(), Siligen::DispenserState::EMERGENCY_STOP);
+    EXPECT_EQ(machine_state_port->clear_pending_tasks_calls, 1);
+    EXPECT_EQ(machine_state_port->transition_to_emergency_stop_calls, 1);
+    EXPECT_FALSE(machine_state_port->snapshot.has_pending_tasks);
+    EXPECT_EQ(machine_state_port->snapshot.pending_task_count, 0);
+    EXPECT_TRUE(machine_state_port->snapshot.emergency_stopped);
 }
 
 TEST(EmergencyStopServiceTest, ExecuteReportsMissingDependencies) {
@@ -147,22 +189,29 @@ TEST(EmergencyStopServiceTest, ExecuteReportsMissingDependencies) {
 }
 
 TEST(EmergencyStopServiceTest, RecoverFromEmergencyStopValidatesState) {
-    auto model = std::make_shared<DispenserModel>();
     auto motion_control = std::make_shared<StubMotionControlService>();
-    EmergencyStopService service(motion_control, nullptr, nullptr, model);
+    auto machine_state_port = std::make_shared<FakeMachineExecutionStatePort>();
+    machine_state_port->snapshot.phase = MachineExecutionPhase::Ready;
+    machine_state_port->snapshot.manual_motion_allowed = true;
+    machine_state_port->snapshot_result = Result<MachineExecutionSnapshot>::Success(machine_state_port->snapshot);
+    EmergencyStopService service(motion_control, nullptr, nullptr, machine_state_port);
 
     auto invalid_result = service.RecoverFromEmergencyStop();
     EXPECT_TRUE(invalid_result.IsError());
     EXPECT_EQ(invalid_result.GetError().GetCode(), ErrorCode::INVALID_STATE);
 
-    EXPECT_TRUE(model->SetState(Siligen::DispenserState::EMERGENCY_STOP).IsSuccess());
+    machine_state_port->snapshot.phase = MachineExecutionPhase::EmergencyStop;
+    machine_state_port->snapshot.emergency_stopped = true;
+    machine_state_port->snapshot.manual_motion_allowed = false;
+    machine_state_port->snapshot_result = Result<MachineExecutionSnapshot>::Success(machine_state_port->snapshot);
     auto check_result = service.IsInEmergencyStop();
     EXPECT_TRUE(check_result.IsSuccess());
     EXPECT_TRUE(check_result.Value());
 
     auto recover_result = service.RecoverFromEmergencyStop();
     EXPECT_TRUE(recover_result.IsSuccess());
-    EXPECT_EQ(model->GetState(), Siligen::DispenserState::UNINITIALIZED);
+    EXPECT_EQ(machine_state_port->recover_to_uninitialized_calls, 1);
+    EXPECT_EQ(machine_state_port->snapshot.phase, MachineExecutionPhase::Uninitialized);
     EXPECT_EQ(motion_control->recover_from_emergency_stop_calls, 1);
 }
 
@@ -170,15 +219,19 @@ TEST(EmergencyStopServiceTest, RecoverFromEmergencyStopKeepsEmergencyStopStateWh
     auto motion_control = std::make_shared<StubMotionControlService>();
     motion_control->recover_from_emergency_stop_result =
         Result<void>::Failure(Error(ErrorCode::MOTION_ERROR, "recover failed", "StubMotionControl"));
-    auto model = std::make_shared<DispenserModel>();
-    ASSERT_TRUE(model->SetState(Siligen::DispenserState::EMERGENCY_STOP).IsSuccess());
+    auto machine_state_port = std::make_shared<FakeMachineExecutionStatePort>();
+    machine_state_port->snapshot.phase = MachineExecutionPhase::EmergencyStop;
+    machine_state_port->snapshot.emergency_stopped = true;
+    machine_state_port->snapshot.manual_motion_allowed = false;
+    machine_state_port->snapshot_result = Result<MachineExecutionSnapshot>::Success(machine_state_port->snapshot);
 
-    EmergencyStopService service(motion_control, nullptr, nullptr, model);
+    EmergencyStopService service(motion_control, nullptr, nullptr, machine_state_port);
 
     auto recover_result = service.RecoverFromEmergencyStop();
 
     EXPECT_TRUE(recover_result.IsError());
     EXPECT_EQ(recover_result.GetError().GetCode(), ErrorCode::MOTION_ERROR);
-    EXPECT_EQ(model->GetState(), Siligen::DispenserState::EMERGENCY_STOP);
+    EXPECT_EQ(machine_state_port->recover_to_uninitialized_calls, 0);
+    EXPECT_TRUE(machine_state_port->snapshot.emergency_stopped);
     EXPECT_EQ(motion_control->recover_from_emergency_stop_calls, 1);
 }

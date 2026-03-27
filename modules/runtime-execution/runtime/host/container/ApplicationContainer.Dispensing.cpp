@@ -7,10 +7,13 @@
 #include "domain/dispensing/domain-services/ValveCoordinationService.h"
 #include "domain/safety/ports/IInterlockSignalPort.h"
 #include "domain/trajectory/ports/IPathSourcePort.h"
-#include "job_ingest/application/usecases/dispensing/UploadFileUseCase.h"
+#include "application/usecases/dispensing/UploadFileUseCase.h"
+#include "job_ingest/contracts/dispensing/UploadContracts.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
-#include "workflow/application/usecases/dispensing/DispensingWorkflowUseCase.h"
-#include "workflow/application/usecases/dispensing/PlanningUseCase.h"
+#include "runtime/planning/PlanningArtifactExportPortAdapter.h"
+#include "application/usecases/dispensing/DispensingExecutionWorkflowUseCase.h"
+#include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
+#include "application/usecases/dispensing/PlanningUseCase.h"
 #include "shared/interfaces/ILoggingService.h"
 
 #include <memory>
@@ -52,7 +55,7 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::Valve::ValveCommandUs
         valve_controller_,
         valve_port_,
         config_port_,
-        hardware_connection_port_);
+        device_connection_port_);
 }
 
 template<>
@@ -75,7 +78,9 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::PlanningUseCase>() {
 
     return std::make_shared<UseCases::Dispensing::PlanningUseCase>(
         planner,
-        config_port_);
+        config_port_,
+        nullptr,
+        std::make_shared<Siligen::RuntimeExecution::Host::Planning::PlanningArtifactExportPortAdapter>());
 }
 
 template<>
@@ -85,6 +90,21 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::UploadFileUseCase>() 
         file_storage_port_,
         10,
         config_port_);
+}
+
+template<>
+std::shared_ptr<UseCases::Dispensing::IUploadFilePort>
+ApplicationContainer::CreateInstance<UseCases::Dispensing::IUploadFilePort>() {
+    return std::static_pointer_cast<UseCases::Dispensing::IUploadFilePort>(
+        Resolve<UseCases::Dispensing::UploadFileUseCase>());
+}
+
+template<>
+std::shared_ptr<UseCases::Dispensing::DispensingExecutionWorkflowUseCase>
+ApplicationContainer::CreateInstance<UseCases::Dispensing::DispensingExecutionWorkflowUseCase>() {
+    return std::make_shared<UseCases::Dispensing::DispensingExecutionWorkflowUseCase>(
+        Resolve<UseCases::Dispensing::PlanningUseCase>(),
+        Resolve<UseCases::Dispensing::DispensingExecutionUseCase>());
 }
 
 template<>
@@ -98,33 +118,52 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::CleanupFilesUseCase>(
 template<>
 std::shared_ptr<UseCases::Dispensing::DispensingExecutionUseCase>
 ApplicationContainer::CreateInstance<UseCases::Dispensing::DispensingExecutionUseCase>() {
-    auto path_source = ResolvePort<Domain::Trajectory::Ports::IPathSourcePort>();
-    if (!path_source) {
-        throw std::runtime_error("IPathSourcePort 未注册");
-    }
-
-    auto planner = std::make_shared<UseCases::Dispensing::DispensingPlanner>(
-        path_source,
-        velocity_profile_service_);
-    return std::make_shared<UseCases::Dispensing::DispensingExecutionUseCase>(
-        planner,
+    auto execution_use_case = std::make_shared<UseCases::Dispensing::DispensingExecutionUseCase>(
         valve_port_,
         interpolation_port_,
         motion_state_port_,
-        hardware_connection_port_,
+        device_connection_port_,
         config_port_,
         event_port_,
-        task_scheduler_port_);
+        task_scheduler_port_,
+        homing_port_,
+        ResolvePort<Domain::Safety::Ports::IInterlockSignalPort>());
+
+    execution_use_case->SetLegacyExecutionForwarders(
+        [this](const UseCases::Dispensing::DispensingMVPRequest& request) {
+            auto workflow = Resolve<UseCases::Dispensing::DispensingExecutionWorkflowUseCase>();
+            if (!workflow) {
+                return Siligen::Shared::Types::Result<UseCases::Dispensing::DispensingMVPResult>::Failure(
+                    Siligen::Shared::Types::Error(
+                        Siligen::Shared::Types::ErrorCode::NOT_IMPLEMENTED,
+                        "legacy dispensing workflow use case unavailable",
+                        "ApplicationContainer"));
+            }
+            return workflow->Execute(request);
+        },
+        [this](const UseCases::Dispensing::DispensingMVPRequest& request) {
+            auto workflow = Resolve<UseCases::Dispensing::DispensingExecutionWorkflowUseCase>();
+            if (!workflow) {
+                return Siligen::Shared::Types::Result<UseCases::Dispensing::TaskID>::Failure(
+                    Siligen::Shared::Types::Error(
+                        Siligen::Shared::Types::ErrorCode::NOT_IMPLEMENTED,
+                        "legacy dispensing workflow use case unavailable",
+                        "ApplicationContainer"));
+            }
+            return workflow->ExecuteAsync(request);
+        });
+
+    return execution_use_case;
 }
 
 template<>
 std::shared_ptr<UseCases::Dispensing::DispensingWorkflowUseCase>
 ApplicationContainer::CreateInstance<UseCases::Dispensing::DispensingWorkflowUseCase>() {
     return std::make_shared<UseCases::Dispensing::DispensingWorkflowUseCase>(
-        Resolve<UseCases::Dispensing::UploadFileUseCase>(),
+        Resolve<UseCases::Dispensing::IUploadFilePort>(),
         Resolve<UseCases::Dispensing::PlanningUseCase>(),
         Resolve<UseCases::Dispensing::DispensingExecutionUseCase>(),
-        hardware_connection_port_,
+        device_connection_port_,
         motion_state_port_,
         homing_port_,
         ResolvePort<Domain::Safety::Ports::IInterlockSignalPort>());

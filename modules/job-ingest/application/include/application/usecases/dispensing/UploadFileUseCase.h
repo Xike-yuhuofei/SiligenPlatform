@@ -1,5 +1,7 @@
 #pragma once
 
+#include "job_ingest/contracts/dispensing/UploadContracts.h"
+
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -21,27 +23,7 @@ namespace Siligen::Application::UseCases::Dispensing {
 
 using Siligen::Shared::Types::Result;
 
-struct UploadRequest {
-    std::vector<uint8_t> file_content;
-    std::string original_filename;
-    size_t file_size;
-    std::string content_type;
-
-    bool Validate() const {
-        return !file_content.empty() && !original_filename.empty() && file_size > 0;
-    }
-};
-
-struct UploadResponse {
-    bool success;
-    std::string filepath;
-    std::string original_name;
-    size_t size;
-    std::string generated_filename;
-    int64_t timestamp;
-};
-
-class UploadFileUseCase {
+class UploadFileUseCase : public IUploadFilePort {
    public:
     UploadFileUseCase(std::shared_ptr<Domain::Configuration::Ports::IFileStoragePort> file_storage_port,
                       size_t max_file_size_mb = 10,
@@ -56,7 +38,7 @@ class UploadFileUseCase {
     UploadFileUseCase(UploadFileUseCase&&) = delete;
     UploadFileUseCase& operator=(UploadFileUseCase&&) = delete;
 
-    Result<UploadResponse> Execute(const UploadRequest& request);
+    Result<UploadResponse> Execute(const UploadRequest& request) override;
 
    private:
     std::shared_ptr<Domain::Configuration::Ports::IFileStoragePort> file_storage_port_;

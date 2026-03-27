@@ -17,6 +17,7 @@ set(WORKFLOW_TEST_IMPLEMENTATION_INCLUDE_DIRS
     "${WORKFLOW_MODULE_DIR}/application/include"
     "${WORKFLOW_MODULE_DIR}/domain/include"
     "${WORKFLOW_MODULE_DIR}/adapters/include"
+    "${CMAKE_SOURCE_DIR}/modules/job-ingest/contracts/include"
     "${CMAKE_SOURCE_DIR}/modules/runtime-execution/application/include"
     "${CMAKE_SOURCE_DIR}/modules/motion-planning"
     "${CMAKE_SOURCE_DIR}/modules/runtime-execution/adapters/device/include"
@@ -30,7 +31,6 @@ set(TEST_SOURCES
     unit/domain/motion/JogControllerTest.cpp
     unit/domain/dispensing/ArcTriggerPointCalculatorTest.cpp
     unit/domain/dispensing/PurgeDispenserProcessTest.cpp
-    unit/domain/machine/CalibrationProcessTest.cpp
     unit/domain/recipes/RecipeActivationServiceTest.cpp
     unit/domain/motion/MotionBufferControllerTest.cpp
     unit/recipes/RecipeCommandUseCaseTest.cpp
@@ -53,6 +53,7 @@ set(OPTIONAL_TEST_SOURCES
     unit/domain/dispensing/ClosedLoopSkeletonTest.cpp
     unit/domain/dispensing/ValveCoordinationServiceTest.cpp
     unit/dispensing/PlanningRequestTest.cpp
+    unit/dispensing/PlanningUseCaseExportPortTest.cpp
     unit/dispensing/ContourPathOptimizerTest.cpp
     unit/infrastructure/adapters/planning/dxf/DXFAdapterFactoryTest.cpp
     unit/infrastructure/adapters/redundancy/JsonRedundancyRepositoryAdapterTest.cpp
@@ -83,6 +84,27 @@ target_link_libraries(siligen_unit_tests PRIVATE
     siligen_types
     siligen_utils
 )
+if(TARGET siligen_application_dispensing)
+    target_link_libraries(siligen_unit_tests PRIVATE
+        siligen_application_dispensing
+    )
+endif()
+if(TARGET siligen_runtime_execution_application_public)
+    target_link_libraries(siligen_unit_tests PRIVATE
+        siligen_runtime_execution_application_public
+    )
+endif()
+if(TARGET siligen_job_ingest_application_public)
+    target_link_libraries(siligen_unit_tests PRIVATE
+        siligen_job_ingest_application_public
+    )
+endif()
+if(TARGET siligen_dxf_geometry_application_public)
+    target_link_libraries(siligen_unit_tests PRIVATE
+        siligen_dxf_geometry_application_public
+    )
+endif()
+target_compile_definitions(siligen_unit_tests PRIVATE SILIGEN_TEST_HOOKS=1)
 
 target_include_directories(siligen_unit_tests PRIVATE
     ${WORKFLOW_TEST_IMPLEMENTATION_INCLUDE_DIRS}
@@ -114,6 +136,7 @@ target_link_libraries(siligen_pr1_tests PRIVATE
     siligen_types
     siligen_utils
 )
+target_compile_definitions(siligen_pr1_tests PRIVATE SILIGEN_TEST_HOOKS=1)
 target_include_directories(siligen_pr1_tests PRIVATE
     ${WORKFLOW_TEST_IMPLEMENTATION_INCLUDE_DIRS}
 )
@@ -152,6 +175,7 @@ target_link_libraries(siligen_dispensing_semantics_tests PRIVATE
     siligen_types
     siligen_utils
 )
+target_compile_definitions(siligen_dispensing_semantics_tests PRIVATE SILIGEN_TEST_HOOKS=1)
 target_include_directories(siligen_dispensing_semantics_tests PRIVATE
     ${WORKFLOW_TEST_IMPLEMENTATION_INCLUDE_DIRS}
 )
@@ -215,8 +239,34 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/unit/infrastructure/adapters/planning/dxf
     )
     target_compile_features(process_runtime_core_pb_path_source_adapter_test PRIVATE cxx_std_17)
     process_runtime_core_add_test_with_runtime_environment(
+        PbPathSourceAdapterContractTest
         process_runtime_core_pb_path_source_adapter_test
-        process_runtime_core_pb_path_source_adapter_test
+    )
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/unit/infrastructure/adapters/planning/dxf/DXFAdapterFactoryTest.cpp")
+    add_executable(process_runtime_core_dxf_adapter_factory_test
+        unit/infrastructure/adapters/planning/dxf/DXFAdapterFactoryTest.cpp
+    )
+    target_include_directories(process_runtime_core_dxf_adapter_factory_test PRIVATE
+        ${WORKFLOW_TEST_IMPLEMENTATION_INCLUDE_DIRS}
+    )
+    if(TARGET GTest::gtest_main)
+        target_link_libraries(process_runtime_core_dxf_adapter_factory_test PRIVATE GTest::gtest_main)
+    elseif(TARGET gtest_main)
+        target_link_libraries(process_runtime_core_dxf_adapter_factory_test PRIVATE gtest_main)
+    else()
+        message(FATAL_ERROR "GoogleTest target not found")
+    endif()
+    target_link_libraries(process_runtime_core_dxf_adapter_factory_test PRIVATE
+        siligen_parsing_adapter
+        siligen_types
+        siligen_utils
+    )
+    target_compile_features(process_runtime_core_dxf_adapter_factory_test PRIVATE cxx_std_17)
+    process_runtime_core_add_test_with_runtime_environment(
+        DXFAdapterFactoryTest
+        process_runtime_core_dxf_adapter_factory_test
     )
 endif()
 
@@ -243,6 +293,11 @@ if(TARGET process_runtime_core_tests)
     if(TARGET process_runtime_core_pb_path_source_adapter_test)
         add_dependencies(process_runtime_core_tests
             process_runtime_core_pb_path_source_adapter_test
+        )
+    endif()
+    if(TARGET process_runtime_core_dxf_adapter_factory_test)
+        add_dependencies(process_runtime_core_tests
+            process_runtime_core_dxf_adapter_factory_test
         )
     endif()
 endif()

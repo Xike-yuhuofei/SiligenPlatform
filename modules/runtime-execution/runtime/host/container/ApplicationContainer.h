@@ -4,6 +4,7 @@
 #include "domain/configuration/ports/IConfigurationPort.h"
 #include "domain/motion/ports/IMotionRuntimePort.h"
 #include "runtime/configuration/WorkspaceAssetPaths.h"
+#include "siligen/device/contracts/ports/device_ports.h"
 #include <array>
 #include <cstdio>
 #include <memory>
@@ -176,6 +177,8 @@ private:
 
     // 端口实例(强类型)
     std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port_;
+    std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> device_connection_port_;
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort> machine_execution_state_port_;
     std::shared_ptr<Domain::Motion::Ports::IMotionRuntimePort> motion_runtime_port_;
     std::shared_ptr<Domain::Motion::Ports::IMotionConnectionPort> motion_connection_port_;
     std::shared_ptr<Domain::Motion::Ports::IAxisControlPort> axis_control_port_;
@@ -190,13 +193,10 @@ private:
 
     // State Machine (P0 Refactoring)
 
-    // 适配器层所需端口
-    std::shared_ptr<Domain::Machine::Ports::IHardwareTestPort> hardware_test_port_;
     std::shared_ptr<Domain::Diagnostics::Ports::ITestRecordRepository> test_record_repository_;
     std::shared_ptr<Domain::Diagnostics::Ports::ITestConfigurationPort> test_config_manager_;
 
     // Domain层端口（供适配器层使用）
-    std::shared_ptr<Domain::Machine::Ports::IHardwareConnectionPort> hardware_connection_port_;
     std::shared_ptr<Domain::Dispensing::Ports::IValvePort> valve_port_;
     std::shared_ptr<Domain::Configuration::Ports::IFileStoragePort> file_storage_port_;
     std::shared_ptr<Domain::Motion::Ports::IIOControlPort> io_control_port_;
@@ -233,8 +233,8 @@ private:
     int saved_stderr_fd_ = -1;
     FILE* log_file_ = nullptr;
 
-    // Phase 3: 六边形架构日志系统 - SpdlogLoggingAdapter
-    // 使用接口类型存储，避免暴露infrastructure层实现细节
+    // Phase 3: 六边形架构日志系统
+    // 使用接口类型存储，避免暴露具体日志适配实现细节
     std::shared_ptr<Shared::Interfaces::ILoggingService> logging_service_;
 
     /**
@@ -276,6 +276,10 @@ private:
     void CacheKnownPort(const std::shared_ptr<TPort>& port) {
         if constexpr (std::is_same_v<TPort, Domain::Configuration::Ports::IConfigurationPort>) {
             config_port_ = port;
+        } else if constexpr (std::is_same_v<TPort, Siligen::Device::Contracts::Ports::DeviceConnectionPort>) {
+            device_connection_port_ = port;
+        } else if constexpr (std::is_same_v<TPort, Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort>) {
+            machine_execution_state_port_ = port;
         } else if constexpr (std::is_same_v<TPort, Domain::Motion::Ports::IMotionRuntimePort>) {
             motion_runtime_port_ = port;
             CacheMotionRuntimeAliases(port);
@@ -301,14 +305,10 @@ private:
             event_port_ = port;
         } else if constexpr (std::is_same_v<TPort, Domain::Diagnostics::Ports::ICMPTestPresetPort>) {
             preset_port_ = port;
-        } else if constexpr (std::is_same_v<TPort, Domain::Machine::Ports::IHardwareTestPort>) {
-            hardware_test_port_ = port;
         } else if constexpr (std::is_same_v<TPort, Domain::Diagnostics::Ports::ITestRecordRepository>) {
             test_record_repository_ = port;
         } else if constexpr (std::is_same_v<TPort, Domain::Diagnostics::Ports::ITestConfigurationPort>) {
             test_config_manager_ = port;
-        } else if constexpr (std::is_same_v<TPort, Domain::Machine::Ports::IHardwareConnectionPort>) {
-            hardware_connection_port_ = port;
         } else if constexpr (std::is_same_v<TPort, Domain::Dispensing::Ports::IValvePort>) {
             valve_port_ = port;
         } else if constexpr (std::is_same_v<TPort, Domain::Configuration::Ports::IFileStoragePort>) {
@@ -425,6 +425,10 @@ std::shared_ptr<UseCases::Motion::Homing::EnsureAxesReadyZeroUseCase>
 ApplicationContainer::CreateInstance<UseCases::Motion::Homing::EnsureAxesReadyZeroUseCase>();
 
 template<>
+std::shared_ptr<UseCases::Motion::MotionControlUseCase>
+ApplicationContainer::CreateInstance<UseCases::Motion::MotionControlUseCase>();
+
+template<>
 std::shared_ptr<UseCases::Motion::Trajectory::ExecuteTrajectoryUseCase>
 ApplicationContainer::CreateInstance<UseCases::Motion::Trajectory::ExecuteTrajectoryUseCase>();
 
@@ -465,8 +469,16 @@ std::shared_ptr<UseCases::Dispensing::PlanningUseCase>
 ApplicationContainer::CreateInstance<UseCases::Dispensing::PlanningUseCase>();
 
 template<>
+std::shared_ptr<UseCases::Dispensing::DispensingExecutionWorkflowUseCase>
+ApplicationContainer::CreateInstance<UseCases::Dispensing::DispensingExecutionWorkflowUseCase>();
+
+template<>
 std::shared_ptr<UseCases::Dispensing::UploadFileUseCase>
 ApplicationContainer::CreateInstance<UseCases::Dispensing::UploadFileUseCase>();
+
+template<>
+std::shared_ptr<UseCases::Dispensing::IUploadFilePort>
+ApplicationContainer::CreateInstance<UseCases::Dispensing::IUploadFilePort>();
 
 // DXF Cleanup and Execution UseCase 特化声明
 template<>

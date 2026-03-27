@@ -15,12 +15,12 @@ namespace Siligen::Application::UseCases::System
 ### InitializeSystemUseCase
 - **职责**: 初始化系统，加载/验证配置，建立硬件连接并可选启动心跳/监控
 - **使用场景**: 系统启动时
-- **依赖**: IConfigurationPort / IHardwareConnectionPort / HomeAxesUseCase / IDiagnosticsPort / IEventPublisherPort(可选) / IHardLimitMonitor(可选)
+- **依赖**: IConfigurationPort / DeviceConnectionPort / HomeAxesUseCase / IDiagnosticsPort / IEventPublisherPort(可选) / IHardLimitMonitor(可选)
 
 ### EmergencyStopUseCase
 - **职责**: 紧急停止所有运动和点胶操作（规则由 EmergencyStopService 统一承载）
 - **使用场景**: 异常情况下紧急制动
-- **依赖**: MotionControlService / MotionStatusService / CMPService / DispenserModel / ILoggingService
+- **依赖**: MotionControlService / MotionStatusService / CMPService / IMachineExecutionStatePort / ILoggingService
 - **规则入口**: EmergencyStopService
 
 ## 设计原则

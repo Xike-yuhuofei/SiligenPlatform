@@ -15,7 +15,7 @@ ValveCommandUseCase::ValveCommandUseCase(
     std::shared_ptr<Domain::Dispensing::DomainServices::ValveCoordinationService> valve_service,
     std::shared_ptr<Domain::Dispensing::Ports::IValvePort> valve_port,
     std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port,
-    std::shared_ptr<Domain::Machine::Ports::IHardwareConnectionPort> connection_port)
+    std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port)
     : valve_service_(std::move(valve_service)),
       valve_port_(std::move(valve_port)),
       config_port_(std::move(config_port)),

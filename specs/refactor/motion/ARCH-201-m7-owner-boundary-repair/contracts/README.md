@@ -6,6 +6,8 @@
 
 - `m7-owner-boundary-report.md`: owner 归位目标与约束
 - `us1-owner-closure-evidence.md`: US1 实施证据
+- `us2-runtime-extraction-evidence.md`: Stage B / US2 最小闭环实施证据
+- `traceability-matrix.md`: Stage B 需求-实现-验证追踪矩阵
 
 约束：
 

@@ -17,6 +17,9 @@
 namespace Siligen::Infrastructure::Adapters::Hardware {
 
 using namespace Shared::Types;
+using Siligen::Device::Contracts::Faults::DeviceFault;
+using Siligen::Device::Contracts::Faults::DeviceFaultCategory;
+using Siligen::Device::Contracts::Faults::DeviceFaultSeverity;
 
 // ============ 系统诊断 ============
 
@@ -46,6 +49,65 @@ HardwareCheckResult HardwareTestAdapter::checkHardwareConnection() {
     }
 
     return result;
+}
+
+Siligen::SharedKernel::Result<Siligen::Device::Contracts::State::MachineHealthSnapshot>
+HardwareTestAdapter::ReadHealth() const {
+    Siligen::Device::Contracts::State::MachineHealthSnapshot snapshot;
+    snapshot.connected = isConnected();
+    snapshot.estop_active = isEmergencyStopActive();
+
+    if (!snapshot.connected) {
+        snapshot.active_faults.push_back(DeviceFault{
+            "hardware.connection.disconnected",
+            DeviceFaultSeverity::kCritical,
+            DeviceFaultCategory::kConnectivity,
+            "Hardware controller not connected",
+            "Reconnect the motion controller before executing runtime commands",
+            true});
+        return Siligen::SharedKernel::Result<Siligen::Device::Contracts::State::MachineHealthSnapshot>::Success(
+            std::move(snapshot));
+    }
+
+    auto health_check = const_cast<HardwareTestAdapter*>(this)->checkHardwareConnection();
+    if (snapshot.estop_active) {
+        snapshot.active_faults.push_back(DeviceFault{
+            "hardware.estop.active",
+            DeviceFaultSeverity::kCritical,
+            DeviceFaultCategory::kMotion,
+            "Emergency stop is active",
+            "Reset emergency stop before resuming motion or dispensing",
+            true});
+    }
+
+    for (const auto& [axis, limit_ok] : health_check.limitSwitchOk) {
+        if (limit_ok) {
+            continue;
+        }
+        snapshot.active_faults.push_back(DeviceFault{
+            "hardware.limit_switch.abnormal",
+            DeviceFaultSeverity::kWarning,
+            DeviceFaultCategory::kMotion,
+            "Limit switch abnormal on axis " + std::to_string(ToIndex(axis)),
+            "Inspect the axis limit inputs and wiring",
+            true});
+    }
+
+    for (const auto& [axis, encoder_ok] : health_check.encoderOk) {
+        if (encoder_ok) {
+            continue;
+        }
+        snapshot.active_faults.push_back(DeviceFault{
+            "hardware.encoder.abnormal",
+            DeviceFaultSeverity::kError,
+            DeviceFaultCategory::kMotion,
+            "Encoder abnormal on axis " + std::to_string(ToIndex(axis)),
+            "Verify encoder feedback before running closed-loop motion",
+            true});
+    }
+
+    return Siligen::SharedKernel::Result<Siligen::Device::Contracts::State::MachineHealthSnapshot>::Success(
+        std::move(snapshot));
 }
 
 CommunicationCheckResult HardwareTestAdapter::testCommunicationQuality(int testDurationMs) {

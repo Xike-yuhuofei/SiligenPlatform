@@ -9,11 +9,11 @@ namespace Siligen::Domain::Safety::DomainServices {
 EmergencyStopService::EmergencyStopService(std::shared_ptr<MotionControlService> motion_control_service,
                                            std::shared_ptr<MotionStatusService> motion_status_service,
                                            std::shared_ptr<CMPService> cmp_service,
-                                           std::shared_ptr<DispenserModel> dispenser_model) noexcept
+                                           std::shared_ptr<IMachineExecutionStatePort> machine_execution_state_port) noexcept
     : motion_control_service_(std::move(motion_control_service)),
       motion_status_service_(std::move(motion_status_service)),
       cmp_service_(std::move(cmp_service)),
-      dispenser_model_(std::move(dispenser_model)) {}
+      machine_execution_state_port_(std::move(machine_execution_state_port)) {}
 
 EmergencyStopStepResult EmergencyStopService::DependencyMissingResult(const char* message) noexcept {
     EmergencyStopStepResult result;
@@ -69,16 +69,16 @@ EmergencyStopOutcome EmergencyStopService::Execute(const EmergencyStopOptions& o
     }
 
     if (options.clear_task_queue) {
-        if (!dispenser_model_) {
-            outcome.task_queue_clear = DependencyMissingResult("Dispenser model not initialized");
+        if (!machine_execution_state_port_) {
+            outcome.task_queue_clear = DependencyMissingResult("Machine execution state port not initialized");
         } else {
-            auto size_result = dispenser_model_->GetTaskQueueSize();
-            if (size_result.IsSuccess()) {
+            auto snapshot_result = machine_execution_state_port_->ReadSnapshot();
+            if (snapshot_result.IsSuccess()) {
                 outcome.task_queue_size_available = true;
-                outcome.task_queue_size = size_result.Value();
+                outcome.task_queue_size = snapshot_result.Value().pending_task_count;
             }
 
-            auto clear_result = dispenser_model_->ClearAllTasks();
+            auto clear_result = machine_execution_state_port_->ClearPendingTasks();
             if (clear_result.IsSuccess()) {
                 outcome.task_queue_clear = SuccessResult();
             } else {
@@ -100,8 +100,8 @@ EmergencyStopOutcome EmergencyStopService::Execute(const EmergencyStopOptions& o
         }
     }
 
-    if (dispenser_model_) {
-        auto result = dispenser_model_->SetState(Siligen::DispenserState::EMERGENCY_STOP);
+    if (machine_execution_state_port_) {
+        auto result = machine_execution_state_port_->TransitionToEmergencyStop();
         if (result.IsSuccess()) {
             outcome.state_update = SuccessResult();
         } else {
@@ -121,22 +121,29 @@ EmergencyStopOutcome EmergencyStopService::Execute(const EmergencyStopOptions& o
 }
 
 Result<bool> EmergencyStopService::IsInEmergencyStop() const noexcept {
-    if (!dispenser_model_) {
+    if (!machine_execution_state_port_) {
         return Result<bool>::Failure(
-            Error(ErrorCode::PORT_NOT_INITIALIZED, "Dispenser model not initialized", "EmergencyStopService"));
+            Error(ErrorCode::PORT_NOT_INITIALIZED, "Machine execution state port not initialized", "EmergencyStopService"));
     }
 
-    return Result<bool>::Success(dispenser_model_->GetState() == Siligen::DispenserState::EMERGENCY_STOP);
+    auto snapshot_result = machine_execution_state_port_->ReadSnapshot();
+    if (snapshot_result.IsError()) {
+        return Result<bool>::Failure(snapshot_result.GetError());
+    }
+    return Result<bool>::Success(snapshot_result.Value().emergency_stopped);
 }
 
 Result<void> EmergencyStopService::RecoverFromEmergencyStop() noexcept {
-    if (!dispenser_model_) {
+    if (!machine_execution_state_port_) {
         return Result<void>::Failure(
-            Error(ErrorCode::PORT_NOT_INITIALIZED, "Dispenser model not initialized", "EmergencyStopService"));
+            Error(ErrorCode::PORT_NOT_INITIALIZED, "Machine execution state port not initialized", "EmergencyStopService"));
     }
 
-    auto current = dispenser_model_->GetState();
-    if (current != Siligen::DispenserState::EMERGENCY_STOP) {
+    auto snapshot_result = machine_execution_state_port_->ReadSnapshot();
+    if (snapshot_result.IsError()) {
+        return Result<void>::Failure(snapshot_result.GetError());
+    }
+    if (!snapshot_result.Value().emergency_stopped) {
         return Result<void>::Failure(
             Error(ErrorCode::INVALID_STATE, "System is not in emergency stop state", "EmergencyStopService"));
     }
@@ -151,7 +158,7 @@ Result<void> EmergencyStopService::RecoverFromEmergencyStop() noexcept {
         return recover_result;
     }
 
-    return dispenser_model_->SetState(Siligen::DispenserState::UNINITIALIZED);
+    return machine_execution_state_port_->RecoverToUninitialized();
 }
 
 }  // namespace Siligen::Domain::Safety::DomainServices

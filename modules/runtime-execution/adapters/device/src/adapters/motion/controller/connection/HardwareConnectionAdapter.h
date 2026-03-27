@@ -1,10 +1,11 @@
 #pragma once
 
+#include "siligen/device/adapters/drivers/multicard/IMultiCardWrapper.h"
+#include "siligen/device/contracts/ports/device_ports.h"
 #include "domain/machine/ports/IHardwareConnectionPort.h"
 #include "shared/types/Error.h"
 #include "shared/types/HardwareConfiguration.h"
 #include "shared/types/Types.h"
-#include "siligen/device/adapters/drivers/multicard/IMultiCardWrapper.h"
 
 #include <atomic>
 #include <chrono>
@@ -24,10 +25,10 @@ namespace Adapters {
 /**
  * @brief 硬件连接适配器
  *
- * 实现IHardwareConnectionPort接口，封装MultiCard硬件连接逻辑
- * 作为基础设施层的适配器，负责将领域接口转换为具体的硬件操作
+ * 稳定公开面实现 DeviceConnectionPort，旧 IHardwareConnectionPort 仅保留兼容桥。
  */
-class HardwareConnectionAdapter : public Siligen::Domain::Machine::Ports::IHardwareConnectionPort {
+class HardwareConnectionAdapter : public Siligen::Device::Contracts::Ports::DeviceConnectionPort,
+                                  public Siligen::Domain::Machine::Ports::IHardwareConnectionPort {
    public:
     /**
      * @brief 构造函数
@@ -50,7 +51,18 @@ class HardwareConnectionAdapter : public Siligen::Domain::Machine::Ports::IHardw
     HardwareConnectionAdapter(HardwareConnectionAdapter&&) = delete;
     HardwareConnectionAdapter& operator=(HardwareConnectionAdapter&&) = delete;
 
-    // IHardwareConnectionPort 接口实现
+    // DeviceConnectionPort 稳定公开面
+    Shared::Types::Result<void> Connect(
+        const Siligen::Device::Contracts::Commands::DeviceConnection& connection) override;
+    Shared::Types::Result<Siligen::Device::Contracts::State::DeviceConnectionSnapshot> ReadConnection()
+        const override;
+    void SetConnectionStateCallback(
+        std::function<void(const Siligen::Device::Contracts::State::DeviceConnectionSnapshot&)> callback) override;
+    Shared::Types::Result<void> StartHeartbeat(
+        const Siligen::Device::Contracts::State::HeartbeatSnapshot& config) override;
+    Siligen::Device::Contracts::State::HeartbeatSnapshot ReadHeartbeat() const override;
+
+    // IHardwareConnectionPort 历史兼容面
     Shared::Types::Result<void> Connect(const Siligen::Domain::Machine::Ports::HardwareConnectionConfig& config) override;
     Shared::Types::Result<void> Disconnect() override;
     Siligen::Domain::Machine::Ports::HardwareConnectionInfo GetConnectionInfo() const override;
@@ -124,7 +136,8 @@ class HardwareConnectionAdapter : public Siligen::Domain::Machine::Ports::IHardw
     Siligen::Domain::Machine::Ports::HeartbeatStatus heartbeat_status_;  ///< 心跳状态
 
     // 回调函数
-    std::function<void(const Siligen::Domain::Machine::Ports::HardwareConnectionInfo&)> state_change_callback_;  ///< 状态变化回调
+    std::function<void(const Siligen::Domain::Machine::Ports::HardwareConnectionInfo&)> legacy_state_change_callback_;  ///< 历史状态变化回调
+    std::function<void(const Siligen::Device::Contracts::State::DeviceConnectionSnapshot&)> state_change_callback_;  ///< 稳定状态变化回调
 };
 
 }  // namespace Adapters

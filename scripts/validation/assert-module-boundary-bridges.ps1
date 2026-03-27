@@ -34,6 +34,63 @@ function Get-RelativeRepoPath {
     }
 }
 
+function Get-FixedStringMatches {
+    param(
+        [string]$Pattern,
+        [string[]]$SearchRoots
+    )
+
+    $searchGlobs = @(
+        "CMakeLists.txt",
+        "*.cmake",
+        "*.h",
+        "*.hpp",
+        "*.cpp",
+        "*.cc",
+        "*.cxx",
+        "*.ps1"
+    )
+
+    try {
+        $rgArgs = @("-n", "--fixed-strings")
+        foreach ($glob in $searchGlobs) {
+            $rgArgs += @("-g", $glob)
+        }
+        $rgArgs += $Pattern
+        $rgArgs += $SearchRoots
+        $matches = & rg @rgArgs 2>$null
+        if ($LASTEXITCODE -le 1) {
+            return @($matches)
+        }
+    } catch {
+        # Fall back to PowerShell-native search when bundled rg is unavailable.
+    }
+
+    $results = New-Object System.Collections.Generic.List[string]
+    foreach ($root in $SearchRoots) {
+        $absoluteRoot = Resolve-AbsolutePath -BasePath $repoRoot -PathValue $root
+        if (-not (Test-Path $absoluteRoot)) {
+            continue
+        }
+
+        Get-ChildItem -Path $absoluteRoot -Recurse -File | Where-Object {
+            $_.Name -eq "CMakeLists.txt" -or
+            $_.Extension -in @(".cmake", ".h", ".hpp", ".cpp", ".cc", ".cxx", ".ps1")
+        } | ForEach-Object {
+            $relativePath = Get-RelativeRepoPath -BasePath $repoRoot -TargetPath $_.FullName
+            $lineNumber = 0
+            foreach ($line in Get-Content -Path $_.FullName) {
+                $lineNumber += 1
+                if ($line.Contains($Pattern)) {
+                    $results.Add(("{0}:{1}:{2}" -f $relativePath, $lineNumber, $line))
+                }
+            }
+        }
+    }
+
+    return @($results)
+}
+
 $repoRoot = Resolve-AbsolutePath -BasePath (Get-Location).Path -PathValue $WorkspaceRoot
 $resolvedReportDir = Resolve-AbsolutePath -BasePath $repoRoot -PathValue $ReportDir
 New-Item -ItemType Directory -Force -Path $resolvedReportDir | Out-Null
@@ -55,7 +112,7 @@ $allowedDirectWorkflowReferences = @(
 $requiredBridgeReferences = @(
     @{
         path = "modules/workflow/application/CMakeLists.txt"
-        pattern = "siligen_job_ingest_application_public"
+        pattern = "siligen_job_ingest_contracts"
     },
     @{
         path = "modules/workflow/application/CMakeLists.txt"
@@ -68,6 +125,46 @@ $requiredBridgeReferences = @(
     @{
         path = "modules/workflow/application/CMakeLists.txt"
         pattern = "siligen_runtime_execution_application_public"
+    },
+    @{
+        path = "modules/workflow/application/CMakeLists.txt"
+        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
+    },
+    @{
+        path = "modules/workflow/application/CMakeLists.txt"
+        pattern = "SILIGEN_WORKFLOW_APPLICATION_BRIDGE_ONLY_ALLOWED_MODULES"
+    },
+    @{
+        path = "modules/workflow/domain/CMakeLists.txt"
+        pattern = "SILIGEN_WORKFLOW_DOMAIN_BRIDGE_ONLY_ALLOWED_MODULES"
+    },
+    @{
+        path = "modules/workflow/domain/domain/CMakeLists.txt"
+        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
+    },
+    @{
+        path = "modules/workflow/domain/domain/CMakeLists.txt"
+        pattern = "SILIGEN_MOTION_PLANNING_DOMAIN_MOTION_DIR"
+    },
+    @{
+        path = "modules/workflow/domain/domain/dispensing/CMakeLists.txt"
+        pattern = "siligen_dispense_packaging_domain_dispensing"
+    },
+    @{
+        path = "modules/workflow/adapters/infrastructure/adapters/planning/geometry/CMakeLists.txt"
+        pattern = "siligen_topology_feature_legacy_contour_bridge_public"
+    },
+    @{
+        path = "modules/topology-feature/CMakeLists.txt"
+        pattern = "siligen_topology_feature_contracts_public"
+    },
+    @{
+        path = "modules/process-planning/CMakeLists.txt"
+        pattern = "siligen_process_planning_contracts_public"
+    },
+    @{
+        path = "modules/job-ingest/CMakeLists.txt"
+        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
     },
     @{
         path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
@@ -94,8 +191,28 @@ $requiredBridgeReferences = @(
         pattern = "usecases/dispensing/DispensingExecutionUseCase.cpp"
     },
     @{
+        path = "modules/runtime-execution/application/CMakeLists.txt"
+        pattern = "usecases/motion/MotionControlUseCase.cpp"
+    },
+    @{
+        path = "modules/runtime-execution/application/CMakeLists.txt"
+        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
+    },
+    @{
+        path = "modules/runtime-execution/contracts/runtime/CMakeLists.txt"
+        pattern = "runtime_execution/contracts/motion/IMotionRuntimePort.h"
+    },
+    @{
+        path = "modules/runtime-execution/contracts/runtime/CMakeLists.txt"
+        pattern = "runtime_execution/contracts/motion/IIOControlPort.h"
+    },
+    @{
         path = "modules/runtime-execution/adapters/device/CMakeLists.txt"
         pattern = "siligen_domain"
+    },
+    @{
+        path = "modules/runtime-execution/adapters/device/CMakeLists.txt"
+        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
     },
     @{
         path = "modules/runtime-execution/runtime/host/runtime/events/CMakeLists.txt"
@@ -122,6 +239,14 @@ $requiredBridgeReferences = @(
         pattern = "siligen_workflow_adapters_public"
     },
     @{
+        path = "apps/planner-cli/CMakeLists.txt"
+        pattern = "siligen_topology_feature_legacy_contour_bridge_public"
+    },
+    @{
+        path = "apps/planner-cli/CMakeLists.txt"
+        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
+    },
+    @{
         path = "apps/runtime-gateway/transport-gateway/CMakeLists.txt"
         pattern = "siligen_runtime_execution_application_public"
     },
@@ -139,11 +264,27 @@ $requiredBridgeReferences = @(
     },
     @{
         path = "apps/runtime-gateway/transport-gateway/CMakeLists.txt"
-        pattern = "siligen_module_job_ingest"
+        pattern = "siligen_job_ingest_application_public"
+    },
+    @{
+        path = "apps/runtime-gateway/transport-gateway/CMakeLists.txt"
+        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
     },
     @{
         path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
         pattern = "siligen_workflow_application_public"
+    },
+    @{
+        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
+        pattern = "runtime/motion/WorkflowMotionRuntimeServicesProvider.cpp"
+    },
+    @{
+        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
+        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
+    },
+    @{
+        path = "modules/dispense-packaging/domain/dispensing/CMakeLists.txt"
+        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
     },
     @{
         path = "modules/runtime-execution/runtime/host/tests/CMakeLists.txt"
@@ -326,7 +467,228 @@ $forbiddenCompatReferences = @(
     }
 )
 
+$forbiddenScopedSearches = @(
+    @{
+        rule_id = "workflow-application-still-leaks-dispenser-model"
+        pattern = "DispenserModel"
+        search_roots = @("modules/workflow/application")
+        detail = "workflow/application must consume runtime execution state contracts instead of DispenserModel"
+    },
+    @{
+        rule_id = "workflow-application-still-leaks-calibration-process"
+        pattern = "CalibrationProcess"
+        search_roots = @("modules/workflow/application")
+        detail = "workflow/application must not depend on legacy CalibrationProcess after calibration ownership moved to runtime-execution"
+    },
+    @{
+        rule_id = "workflow-application-still-leaks-legacy-calibration-port"
+        pattern = "ICalibrationDevicePort"
+        search_roots = @("modules/workflow/application")
+        detail = "workflow/application must not depend on legacy calibration device ports"
+    },
+    @{
+        rule_id = "workflow-application-still-leaks-legacy-calibration-port"
+        pattern = "ICalibrationResultPort"
+        search_roots = @("modules/workflow/application")
+        detail = "workflow/application must not depend on legacy calibration result ports"
+    },
+    @{
+        rule_id = "runtime-host-surface-still-leaks-dispenser-model"
+        pattern = "DispenserModel"
+        search_roots = @(
+            "modules/runtime-execution/runtime/host/ContainerBootstrap.cpp",
+            "modules/runtime-execution/runtime/host/container",
+            "modules/runtime-execution/runtime/host/bootstrap",
+            "modules/runtime-execution/runtime/host/tests"
+        )
+        detail = "runtime host surface must not directly depend on DispenserModel; legacy bridging is limited to internal adapters"
+    },
+    @{
+        rule_id = "runtime-host-surface-still-leaks-calibration-process"
+        pattern = "CalibrationProcess"
+        search_roots = @(
+            "modules/runtime-execution/runtime/host/ContainerBootstrap.cpp",
+            "modules/runtime-execution/runtime/host/container",
+            "modules/runtime-execution/runtime/host/bootstrap",
+            "modules/runtime-execution/runtime/host/tests"
+        )
+        detail = "runtime host surface must not depend on legacy CalibrationProcess"
+    },
+    @{
+        rule_id = "runtime-host-surface-still-leaks-legacy-calibration-port"
+        pattern = "ICalibrationDevicePort"
+        search_roots = @(
+            "modules/runtime-execution/runtime/host/ContainerBootstrap.cpp",
+            "modules/runtime-execution/runtime/host/container",
+            "modules/runtime-execution/runtime/host/bootstrap",
+            "modules/runtime-execution/runtime/host/tests"
+        )
+        detail = "runtime host surface must not depend on legacy calibration device ports"
+    },
+    @{
+        rule_id = "runtime-host-surface-still-leaks-legacy-calibration-port"
+        pattern = "ICalibrationResultPort"
+        search_roots = @(
+            "modules/runtime-execution/runtime/host/ContainerBootstrap.cpp",
+            "modules/runtime-execution/runtime/host/container",
+            "modules/runtime-execution/runtime/host/bootstrap",
+            "modules/runtime-execution/runtime/host/tests"
+        )
+        detail = "runtime host surface must not depend on legacy calibration result ports"
+    },
+    @{
+        rule_id = "runtime-application-still-includes-legacy-machine-port"
+        pattern = "IHardwareConnectionPort"
+        search_roots = @("modules/runtime-execution/application")
+        detail = "runtime-execution application must close over DeviceConnectionPort or runtime contracts instead of IHardwareConnectionPort"
+    },
+    @{
+        rule_id = "runtime-application-still-includes-legacy-machine-port"
+        pattern = "IHardwareTestPort"
+        search_roots = @("modules/runtime-execution/application")
+        detail = "runtime-execution application must not depend on IHardwareTestPort"
+    },
+    @{
+        rule_id = "runtime-host-surface-still-includes-legacy-machine-port"
+        pattern = "IHardwareConnectionPort"
+        search_roots = @(
+            "modules/runtime-execution/runtime/host/ContainerBootstrap.cpp",
+            "modules/runtime-execution/runtime/host/container",
+            "modules/runtime-execution/runtime/host/bootstrap",
+            "modules/runtime-execution/runtime/host/tests"
+        )
+        detail = "runtime host surface must not depend on IHardwareConnectionPort"
+    },
+    @{
+        rule_id = "runtime-host-surface-still-includes-legacy-machine-port"
+        pattern = "IHardwareTestPort"
+        search_roots = @(
+            "modules/runtime-execution/runtime/host/ContainerBootstrap.cpp",
+            "modules/runtime-execution/runtime/host/container",
+            "modules/runtime-execution/runtime/host/bootstrap",
+            "modules/runtime-execution/runtime/host/tests"
+        )
+        detail = "runtime host surface must not depend on IHardwareTestPort"
+    },
+    @{
+        rule_id = "apps-still-include-legacy-machine-port"
+        pattern = "IHardwareConnectionPort"
+        search_roots = @("apps")
+        detail = "apps must not depend on legacy machine connection ports"
+    },
+    @{
+        rule_id = "apps-still-include-legacy-machine-port"
+        pattern = "IHardwareTestPort"
+        search_roots = @("apps")
+        detail = "apps must not depend on legacy machine test ports"
+    },
+    @{
+        rule_id = "apps-still-leak-dispenser-model"
+        pattern = "DispenserModel"
+        search_roots = @("apps")
+        detail = "apps must not depend on legacy DispenserModel directly"
+    },
+    @{
+        rule_id = "apps-still-leak-calibration-process"
+        pattern = "CalibrationProcess"
+        search_roots = @("apps")
+        detail = "apps must not depend on legacy CalibrationProcess directly"
+    },
+    @{
+        rule_id = "apps-still-leak-legacy-calibration-port"
+        pattern = "ICalibrationDevicePort"
+        search_roots = @("apps")
+        detail = "apps must not depend on legacy calibration device ports"
+    },
+    @{
+        rule_id = "apps-still-leak-legacy-calibration-port"
+        pattern = "ICalibrationResultPort"
+        search_roots = @("apps")
+        detail = "apps must not depend on legacy calibration result ports"
+    },
+    @{
+        rule_id = "coordinate-alignment-public-surface-still-leaks-runtime-history"
+        pattern = "DispenserModel"
+        search_roots = @("modules/coordinate-alignment/contracts", "modules/coordinate-alignment/application")
+        detail = "coordinate-alignment public surface must not expose DispenserModel"
+    },
+    @{
+        rule_id = "coordinate-alignment-public-surface-still-leaks-runtime-history"
+        pattern = "CalibrationProcess"
+        search_roots = @("modules/coordinate-alignment/contracts", "modules/coordinate-alignment/application")
+        detail = "coordinate-alignment public surface must not expose CalibrationProcess"
+    },
+    @{
+        rule_id = "coordinate-alignment-public-surface-still-leaks-runtime-history"
+        pattern = "ICalibrationDevicePort"
+        search_roots = @("modules/coordinate-alignment/contracts", "modules/coordinate-alignment/application")
+        detail = "coordinate-alignment public surface must not expose legacy calibration ports"
+    },
+    @{
+        rule_id = "coordinate-alignment-public-surface-still-leaks-runtime-history"
+        pattern = "ICalibrationResultPort"
+        search_roots = @("modules/coordinate-alignment/contracts", "modules/coordinate-alignment/application")
+        detail = "coordinate-alignment public surface must not expose legacy calibration ports"
+    },
+    @{
+        rule_id = "coordinate-alignment-public-surface-still-leaks-runtime-history"
+        pattern = "IHardwareConnectionPort"
+        search_roots = @("modules/coordinate-alignment/contracts", "modules/coordinate-alignment/application")
+        detail = "coordinate-alignment public surface must not expose legacy machine connection ports"
+    },
+    @{
+        rule_id = "coordinate-alignment-public-surface-still-leaks-runtime-history"
+        pattern = "IHardwareTestPort"
+        search_roots = @("modules/coordinate-alignment/contracts", "modules/coordinate-alignment/application")
+        detail = "coordinate-alignment public surface must not expose legacy machine test ports"
+    },
+    @{
+        rule_id = "motion-planning-legacy-motion-port-still-declared"
+        pattern = "class IMotionRuntimePort"
+        search_roots = @(
+            "modules/motion-planning/domain/motion/ports",
+            "modules/workflow/domain/include/domain/motion/ports"
+        )
+        detail = "legacy motion runtime public headers must be compatibility shims and must not declare a new IMotionRuntimePort owner type"
+    },
+    @{
+        rule_id = "motion-planning-legacy-motion-port-still-declared"
+        pattern = "class IIOControlPort"
+        search_roots = @(
+            "modules/motion-planning/domain/motion/ports",
+            "modules/workflow/domain/include/domain/motion/ports"
+        )
+        detail = "legacy IO control public headers must be compatibility shims and must not declare a new IIOControlPort owner type"
+    },
+    @{
+        rule_id = "motion-planning-legacy-motion-service-still-declared"
+        pattern = "class MotionControlServiceImpl"
+        search_roots = @(
+            "modules/motion-planning/domain/motion/domain-services",
+            "modules/workflow/domain/include/domain/motion/domain-services"
+        )
+        detail = "legacy motion control service headers must be aliases to runtime-execution owner implementations instead of declaring new classes"
+    },
+    @{
+        rule_id = "motion-planning-legacy-motion-service-still-declared"
+        pattern = "class MotionStatusServiceImpl"
+        search_roots = @(
+            "modules/motion-planning/domain/motion/domain-services",
+            "modules/workflow/domain/include/domain/motion/domain-services"
+        )
+        detail = "legacy motion status service headers must be aliases to runtime-execution owner implementations instead of declaring new classes"
+    }
+)
+
 $requiredOwnerTargets = @(
+    @{
+        path = "modules/process-planning/CMakeLists.txt"
+        pattern = "siligen_process_planning_application_public"
+    },
+    @{
+        path = "modules/coordinate-alignment/CMakeLists.txt"
+        pattern = "siligen_coordinate_alignment_application_public"
+    },
     @{
         path = "modules/runtime-execution/application/CMakeLists.txt"
         pattern = "siligen_runtime_execution_application_public"
@@ -489,6 +851,18 @@ $forbiddenOwnershipReferences = @(
         detail = "runtime execution application headers must consume runtime-owned contracts instead of broad domain compat"
     },
     @{
+        path = "modules/motion-planning/domain/motion/CMakeLists.txt"
+        pattern = "domain-services/MotionControlServiceImpl.cpp"
+        rule_id = "motion-planning-still-compiles-runtime-control-impl"
+        detail = "motion-planning domain must not compile MotionControlServiceImpl after runtime/control ownership moved to runtime-execution"
+    },
+    @{
+        path = "modules/motion-planning/domain/motion/CMakeLists.txt"
+        pattern = "domain-services/MotionStatusServiceImpl.cpp"
+        rule_id = "motion-planning-still-compiles-runtime-control-impl"
+        detail = "motion-planning domain must not compile MotionStatusServiceImpl after runtime/control ownership moved to runtime-execution"
+    },
+    @{
         path = "modules/job-ingest/CMakeLists.txt"
         pattern = "siligen_application_dispensing"
         rule_id = "job-ingest-still-mutates-workflow-dispensing"
@@ -511,6 +885,60 @@ $forbiddenOwnershipReferences = @(
         pattern = "siligen_workflow_domain_public"
         rule_id = "job-ingest-still-links-workflow-domain-public"
         detail = "job-ingest must consume process-planning configuration ports instead of workflow domain public"
+    },
+    @{
+        path = "modules/motion-planning/application/CMakeLists.txt"
+        pattern = "siligen_application_motion"
+        rule_id = "motion-planning-application-still-mutates-workflow-motion"
+        detail = "motion-planning application must not mutate workflow motion target; workflow must declare owner dependencies itself"
+    },
+    @{
+        path = "modules/motion-planning/application/CMakeLists.txt"
+        pattern = "siligen_application_dispensing"
+        rule_id = "motion-planning-application-still-mutates-workflow-dispensing"
+        detail = "motion-planning application must not mutate workflow dispensing target; workflow must declare owner dependencies itself"
+    },
+    @{
+        path = "modules/dispense-packaging/application/CMakeLists.txt"
+        pattern = "siligen_application_dispensing"
+        rule_id = "dispense-packaging-application-still-mutates-workflow-dispensing"
+        detail = "dispense-packaging application must not mutate workflow dispensing target; workflow must declare owner dependencies itself"
+    },
+    @{
+        path = "modules/workflow/domain/domain/CMakeLists.txt"
+        pattern = "    motion/domain-services/MotionBufferController.cpp"
+        rule_id = "workflow-still-compiles-local-motion-execution-source"
+        detail = "workflow domain must compile motion execution services from the M7 owner path instead of local workflow/domain/domain/motion sources"
+    },
+    @{
+        path = "modules/workflow/domain/domain/CMakeLists.txt"
+        pattern = "    motion/domain-services/MotionControlServiceImpl.cpp"
+        rule_id = "workflow-still-compiles-local-motion-execution-source"
+        detail = "workflow domain must compile motion execution services from the M7 owner path instead of local workflow/domain/domain/motion sources"
+    },
+    @{
+        path = "modules/workflow/domain/domain/CMakeLists.txt"
+        pattern = "    motion/domain-services/MotionStatusServiceImpl.cpp"
+        rule_id = "workflow-still-compiles-local-motion-execution-source"
+        detail = "workflow domain must compile motion execution services from the M7 owner path instead of local workflow/domain/domain/motion sources"
+    },
+    @{
+        path = "modules/workflow/domain/domain/dispensing/CMakeLists.txt"
+        pattern = "planning/domain-services/ContourOptimizationService.cpp"
+        rule_id = "workflow-still-compiles-local-dispensing-planning-source"
+        detail = "workflow compatibility dispensing target must not compile local M8 planning sources"
+    },
+    @{
+        path = "modules/workflow/domain/domain/dispensing/CMakeLists.txt"
+        pattern = "planning/domain-services/UnifiedTrajectoryPlannerService.cpp"
+        rule_id = "workflow-still-compiles-local-dispensing-planning-source"
+        detail = "workflow compatibility dispensing target must not compile local M8 planning sources"
+    },
+    @{
+        path = "modules/workflow/domain/domain/dispensing/CMakeLists.txt"
+        pattern = "planning/domain-services/DispensingPlannerService.cpp"
+        rule_id = "workflow-still-compiles-local-dispensing-planning-source"
+        detail = "workflow compatibility dispensing target must not compile local M8 planning sources"
     },
     @{
         path = "modules/dxf-geometry/CMakeLists.txt"
@@ -639,6 +1067,54 @@ $forbiddenOwnershipReferences = @(
         detail = "transport-gateway builder must include workflow/application/usecases/recipes/* wrappers"
     },
     @{
+        path = "apps/runtime-gateway/transport-gateway/include/siligen/gateway/tcp/tcp_facade_builder.h"
+        pattern = "Resolve<Application::UseCases::Motion::Homing::HomeAxesUseCase>"
+        rule_id = "gateway-builder-still-resolves-legacy-motion-usecases"
+        detail = "transport-gateway builder must resolve the Stage B motion entry via MotionControlUseCase instead of individual workflow motion use cases"
+    },
+    @{
+        path = "apps/runtime-gateway/transport-gateway/include/siligen/gateway/tcp/tcp_facade_builder.h"
+        pattern = "Resolve<Application::UseCases::Motion::Homing::EnsureAxesReadyZeroUseCase>"
+        rule_id = "gateway-builder-still-resolves-legacy-motion-usecases"
+        detail = "transport-gateway builder must resolve the Stage B motion entry via MotionControlUseCase instead of individual workflow motion use cases"
+    },
+    @{
+        path = "apps/runtime-gateway/transport-gateway/include/siligen/gateway/tcp/tcp_facade_builder.h"
+        pattern = "Resolve<Application::UseCases::Motion::Manual::ManualMotionControlUseCase>"
+        rule_id = "gateway-builder-still-resolves-legacy-motion-usecases"
+        detail = "transport-gateway builder must resolve the Stage B motion entry via MotionControlUseCase instead of individual workflow motion use cases"
+    },
+    @{
+        path = "apps/runtime-gateway/transport-gateway/include/siligen/gateway/tcp/tcp_facade_builder.h"
+        pattern = "Resolve<Application::UseCases::Motion::Monitoring::MotionMonitoringUseCase>"
+        rule_id = "gateway-builder-still-resolves-legacy-motion-usecases"
+        detail = "transport-gateway builder must resolve the Stage B motion entry via MotionControlUseCase instead of individual workflow motion use cases"
+    },
+    @{
+        path = "apps/runtime-gateway/transport-gateway/src/facades/tcp/TcpMotionFacade.h"
+        pattern = "std::shared_ptr<UseCases::Motion::Homing::HomeAxesUseCase>"
+        rule_id = "gateway-motion-facade-still-holds-legacy-motion-usecases"
+        detail = "TcpMotionFacade must hold the Stage B MotionControlUseCase entry instead of per-use-case workflow motion dependencies"
+    },
+    @{
+        path = "apps/runtime-gateway/transport-gateway/src/facades/tcp/TcpMotionFacade.h"
+        pattern = "std::shared_ptr<UseCases::Motion::Homing::EnsureAxesReadyZeroUseCase>"
+        rule_id = "gateway-motion-facade-still-holds-legacy-motion-usecases"
+        detail = "TcpMotionFacade must hold the Stage B MotionControlUseCase entry instead of per-use-case workflow motion dependencies"
+    },
+    @{
+        path = "apps/runtime-gateway/transport-gateway/src/facades/tcp/TcpMotionFacade.h"
+        pattern = "std::shared_ptr<UseCases::Motion::Manual::ManualMotionControlUseCase>"
+        rule_id = "gateway-motion-facade-still-holds-legacy-motion-usecases"
+        detail = "TcpMotionFacade must hold the Stage B MotionControlUseCase entry instead of per-use-case workflow motion dependencies"
+    },
+    @{
+        path = "apps/runtime-gateway/transport-gateway/src/facades/tcp/TcpMotionFacade.h"
+        pattern = "std::shared_ptr<UseCases::Motion::Monitoring::MotionMonitoringUseCase>"
+        rule_id = "gateway-motion-facade-still-holds-legacy-motion-usecases"
+        detail = "TcpMotionFacade must hold the Stage B MotionControlUseCase entry instead of per-use-case workflow motion dependencies"
+    },
+    @{
         path = "apps/runtime-gateway/transport-gateway/src/facades/tcp/TcpRecipeFacade.h"
         pattern = '#include "application/usecases/recipes/'
         rule_id = "gateway-facade-still-includes-legacy-recipe-usecases"
@@ -691,10 +1167,7 @@ $forbiddenOwnershipReferences = @(
 $findings = New-Object System.Collections.Generic.List[object]
 
 foreach ($target in $directWorkflowTargets) {
-    $matches = & rg -n --fixed-strings $target modules apps
-    if ($LASTEXITCODE -gt 1) {
-        throw "rg failed while checking workflow target references: $target"
-    }
+    $matches = Get-FixedStringMatches -Pattern $target -SearchRoots @("modules", "apps")
 
     foreach ($match in $matches) {
         if ($match -notmatch "^(?<path>[^:]+):(?<line>\d+):(?<text>.*)$") {
@@ -821,6 +1294,24 @@ foreach ($forbiddenReference in $forbiddenCompatReferences) {
             file = $forbiddenReference.path
             line = $match.LineNumber
             detail = $forbiddenReference.detail
+        })
+    }
+}
+
+foreach ($searchRule in $forbiddenScopedSearches) {
+    $matches = Get-FixedStringMatches -Pattern $searchRule.pattern -SearchRoots $searchRule.search_roots
+    foreach ($match in $matches) {
+        if ($match -notmatch "^(?<path>[^:]+):(?<line>\d+):(?<text>.*)$") {
+            continue
+        }
+
+        $findings.Add([pscustomobject]@{
+            rule_id = $searchRule.rule_id
+            severity = "error"
+            target = $searchRule.pattern
+            file = $Matches.path
+            line = [int]$Matches.line
+            detail = $searchRule.detail
         })
     }
 }

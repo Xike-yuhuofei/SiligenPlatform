@@ -6,15 +6,16 @@
 #include "application/usecases/motion/ptp/MoveToPositionUseCase.h"
 #include "application/usecases/motion/safety/MotionSafetyUseCase.h"
 #include "application/usecases/motion/trajectory/DeterministicPathExecutionUseCase.h"
+#include "workflow/application/services/motion/runtime/IMotionRuntimeServicesProvider.h"
 #include "domain/configuration/ports/IConfigurationPort.h"
 #include "domain/dispensing/ports/ITriggerControllerPort.h"
-#include "domain/machine/ports/IHardwareTestPort.h"
 #include "domain/motion/domain-services/MotionControlService.h"
 #include "domain/motion/domain-services/MotionStatusService.h"
 #include "domain/motion/domain-services/MotionValidationService.h"
 #include "domain/motion/ports/IInterpolationPort.h"
 #include "domain/motion/ports/IMotionRuntimePort.h"
 #include "domain/system/ports/IEventPublisherPort.h"
+#include "runtime_execution/contracts/system/IMachineExecutionStatePort.h"
 
 #include <memory>
 
@@ -26,7 +27,8 @@ struct MotionRuntimeAssemblyDependencies {
     std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> configuration_port{};
     std::shared_ptr<Domain::System::Ports::IEventPublisherPort> event_publisher_port{};
     std::shared_ptr<Domain::Dispensing::Ports::ITriggerControllerPort> trigger_controller_port{};
-    std::shared_ptr<Domain::Machine::Ports::IHardwareTestPort> hardware_test_port{};
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort> machine_execution_state_port{};
+    std::shared_ptr<Siligen::Application::Services::Motion::Runtime::IMotionRuntimeServicesProvider> services_provider{};
 };
 
 struct MotionRuntimeAssembly {

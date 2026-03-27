@@ -8,9 +8,9 @@ MotionPlanningFacade::MotionPlanningFacade(
     std::shared_ptr<Siligen::Domain::Motion::DomainServices::VelocityProfileService> velocity_service)
     : velocity_service_(std::move(velocity_service)) {}
 
-Siligen::Domain::Motion::ValueObjects::MotionTrajectory MotionPlanningFacade::Plan(
-    const Siligen::Domain::Trajectory::ValueObjects::ProcessPath& path,
-    const Siligen::Domain::Trajectory::ValueObjects::MotionConfig& config) const {
+Siligen::MotionPlanning::Contracts::MotionPlan MotionPlanningFacade::Plan(
+    const Siligen::ProcessPath::Contracts::ProcessPath& path,
+    const Siligen::MotionPlanning::Contracts::TimePlanningConfig& config) const {
     Siligen::Domain::Motion::DomainServices::MotionPlanner planner(velocity_service_);
     return planner.Plan(path, config);
 }

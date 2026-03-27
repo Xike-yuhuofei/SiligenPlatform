@@ -8,4 +8,4 @@ allowed_dependencies:
   - coordinate-alignment/contracts
   - shared
 uniform_skeleton_ready: true
-notes: domain/trajectory 是唯一真实实现承载面；模块根 target 已切到 siligen_process_path_domain_trajectory
+notes: contracts/include + application/include 是当前 M6 正式 public surface；ProcessPathFacade request/result 是唯一 public contract，domain/trajectory 继续作为 owner implementation root

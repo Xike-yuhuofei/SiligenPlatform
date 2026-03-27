@@ -7,4 +7,4 @@ allowed_dependencies:
   - shared
   - */contracts
 uniform_skeleton_ready: true
-notes: application/include、domain/include、adapters/include 为 owner-backed canonical public surface；domain/application/adapters/tests 是唯一真实实现承载面，motion-core/process-core 通过 canonical public headers 暴露
+notes: contracts/include、application/include、domain/include、adapters/include 为 owner-backed canonical public surface；workflow/contracts 已落地 M0->M4 触发契约；domain/application 的 CMake 当前仅允许保留 bridge-only 聚合；workflow 已移除对 M6/M7/M8 application facade 的直接依赖，motion execution compatibility source 固定从 modules/motion-planning/domain/motion/ 解析，dispensing compatibility target 固定转发到 siligen_dispense_packaging_domain_dispensing；runtime concrete provider 与 planning artifact export concrete 固定由 runtime-execution 承接

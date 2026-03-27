@@ -6,11 +6,10 @@
 #include "domain/diagnostics/ports/IDiagnosticsPort.h"
 #include "domain/diagnostics/ports/ITestConfigurationPort.h"
 #include "domain/diagnostics/ports/ITestRecordRepository.h"
+#include "siligen/device/contracts/ports/device_ports.h"
 #include "runtime_execution/contracts/dispensing/ITaskSchedulerPort.h"
 #include "domain/dispensing/ports/ITriggerControllerPort.h"
 #include "domain/dispensing/ports/IValvePort.h"
-#include "domain/machine/ports/IHardwareConnectionPort.h"
-#include "domain/machine/ports/IHardwareTestPort.h"
 #include "domain/motion/ports/IAxisControlPort.h"
 #include "domain/motion/ports/IHomingPort.h"
 #include "domain/motion/ports/IInterpolationPort.h"
@@ -74,11 +73,15 @@ void ApplyBindings(
     if (bindings.config_port) {
         container.RegisterPort<Siligen::Domain::Configuration::Ports::IConfigurationPort>(bindings.config_port);
     }
-    if (bindings.hardware_test_port) {
-        container.RegisterPort<Siligen::Domain::Machine::Ports::IHardwareTestPort>(bindings.hardware_test_port);
+    if (bindings.device_connection_port) {
+        container.RegisterPort<Siligen::Device::Contracts::Ports::DeviceConnectionPort>(
+            bindings.device_connection_port);
     }
     if (bindings.trigger_port) {
         container.RegisterPort<Siligen::Domain::Dispensing::Ports::ITriggerControllerPort>(bindings.trigger_port);
+    }
+    if (bindings.machine_health_port) {
+        container.RegisterPort<Siligen::Device::Contracts::Ports::MachineHealthPort>(bindings.machine_health_port);
     }
     if (bindings.diagnostics_port) {
         container.RegisterPort<Siligen::Domain::Diagnostics::Ports::IDiagnosticsPort>(bindings.diagnostics_port);
@@ -93,10 +96,6 @@ void ApplyBindings(
     }
     if (bindings.preset_port) {
         container.RegisterPort<Siligen::Domain::Diagnostics::Ports::ICMPTestPresetPort>(bindings.preset_port);
-    }
-    if (bindings.hardware_connection_port) {
-        container.RegisterPort<Siligen::Domain::Machine::Ports::IHardwareConnectionPort>(
-            bindings.hardware_connection_port);
     }
     if (bindings.valve_port) {
         container.RegisterPort<Siligen::Domain::Dispensing::Ports::IValvePort>(bindings.valve_port);

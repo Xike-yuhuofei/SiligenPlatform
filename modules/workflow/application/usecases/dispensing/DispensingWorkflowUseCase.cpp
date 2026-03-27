@@ -2,8 +2,8 @@
 
 #include "DispensingWorkflowUseCase.h"
 
+#include "application/services/dispensing/DispensingExecutionCompatibilityService.h"
 #include "application/services/dispensing/WorkflowPreviewSnapshotService.h"
-#include "domain/safety/domain-services/InterlockPolicy.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
 #include "shared/types/Error.h"
@@ -14,29 +14,17 @@
 #include <ctime>
 #include <iomanip>
 #include <sstream>
-#include <thread>
 
 namespace Siligen::Application::UseCases::Dispensing {
 
-using Domain::Machine::Ports::IHardwareConnectionPort;
-using Domain::Machine::ValueObjects::MachineMode;
 using Domain::Motion::Ports::IMotionStatePort;
-using Domain::Motion::Ports::MotionState;
-using Domain::Motion::Ports::MotionStatus;
-using Domain::Dispensing::ValueObjects::JobExecutionMode;
-using Domain::Dispensing::ValueObjects::ProcessOutputPolicy;
-using Domain::Safety::DomainServices::InterlockPolicy;
 using Domain::Safety::Ports::IInterlockSignalPort;
-using Domain::Safety::ValueObjects::InterlockCause;
-using Domain::Safety::ValueObjects::InterlockPolicyConfig;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
-using Siligen::Shared::Types::LogicalAxisId;
 using Siligen::Shared::Types::Point2D;
 
 namespace {
 
-constexpr auto kJobPollInterval = std::chrono::milliseconds(100);
 constexpr double kPreviewGluePointSpacingMm = 3.0;
 constexpr double kPreviewDuplicateEpsilonMm = 1e-4;
 constexpr double kPreviewTailPositionEpsilonMm = 2e-2;
@@ -420,23 +408,17 @@ std::uint64_t Fnv1a64(const std::string& text) {
     return hash;
 }
 
-bool IsTerminal(DispensingWorkflowUseCase::WorkflowJobState state) {
-    return state == DispensingWorkflowUseCase::WorkflowJobState::COMPLETED ||
-           state == DispensingWorkflowUseCase::WorkflowJobState::FAILED ||
-           state == DispensingWorkflowUseCase::WorkflowJobState::CANCELLED;
-}
-
-bool IsTaskStateActive(const std::string& state) {
-    return state == "pending" || state == "running" || state == "paused";
+bool IsRuntimeTerminalState(const std::string& state) {
+    return state == "completed" || state == "failed" || state == "cancelled";
 }
 
 }  // namespace
 
 DispensingWorkflowUseCase::DispensingWorkflowUseCase(
-    std::shared_ptr<UploadFileUseCase> upload_use_case,
+    std::shared_ptr<IUploadFilePort> upload_use_case,
     std::shared_ptr<PlanningUseCase> planning_use_case,
     std::shared_ptr<DispensingExecutionUseCase> execution_use_case,
-    std::shared_ptr<IHardwareConnectionPort> connection_port,
+    std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
     std::shared_ptr<IMotionStatePort> motion_state_port,
     std::shared_ptr<Domain::Motion::Ports::IHomingPort> homing_port,
     std::shared_ptr<IInterlockSignalPort> interlock_signal_port)
@@ -452,28 +434,7 @@ DispensingWorkflowUseCase::DispensingWorkflowUseCase(
     }
 }
 
-DispensingWorkflowUseCase::~DispensingWorkflowUseCase() {
-    shutting_down_.store(true);
-    JobID active_job;
-    {
-        std::lock_guard<std::mutex> lock(jobs_mutex_);
-        active_job = active_job_id_;
-    }
-    if (!active_job.empty()) {
-        (void)StopJob(active_job);
-    }
-
-    std::thread worker_to_join;
-    {
-        std::lock_guard<std::mutex> lock(worker_mutex_);
-        if (worker_thread_.joinable()) {
-            worker_to_join = std::move(worker_thread_);
-        }
-    }
-    if (worker_to_join.joinable()) {
-        worker_to_join.join();
-    }
-}
+DispensingWorkflowUseCase::~DispensingWorkflowUseCase() = default;
 
 Result<CreateArtifactResponse> DispensingWorkflowUseCase::CreateArtifact(const UploadRequest& request) {
     auto upload_result = upload_use_case_->Execute(request);
@@ -504,6 +465,7 @@ Result<CreateArtifactResponse> DispensingWorkflowUseCase::CreateArtifact(const U
 }
 
 Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const PreparePlanRequest& request) {
+    Services::Dispensing::DispensingExecutionCompatibilityService compatibility_service;
     ArtifactRecord artifact;
     {
         std::lock_guard<std::mutex> lock(artifacts_mutex_);
@@ -515,25 +477,64 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
         artifact = it->second;
     }
 
-    auto execution_request = request.execution_request;
-    execution_request.dxf_filepath = artifact.upload_response.filepath;
-    auto validation = execution_request.Validate();
-    if (validation.IsError()) {
-        return Result<PreparePlanResponse>::Failure(validation.GetError());
+    auto planning_request_result =
+        compatibility_service.BuildPlanningRequest(request.execution_request, artifact.upload_response.filepath);
+    if (planning_request_result.IsError()) {
+        return Result<PreparePlanResponse>::Failure(planning_request_result.GetError());
     }
 
-    auto planning_request = BuildPlanningRequest(artifact.upload_response.filepath, execution_request);
-    auto planning_result = planning_use_case_->Execute(planning_request);
+    auto planning_result = planning_use_case_->Execute(planning_request_result.Value());
     if (planning_result.IsError()) {
         return Result<PreparePlanResponse>::Failure(planning_result.GetError());
     }
 
     const auto& planning = planning_result.Value();
+    if (!planning.execution_package) {
+        return Result<PreparePlanResponse>::Failure(
+            Error(ErrorCode::INVALID_STATE, "execution package unavailable", "DispensingWorkflowUseCase"));
+    }
+    auto execution_request_result =
+        compatibility_service.BuildExecutionRequest(planning, request.execution_request, artifact.upload_response.filepath);
+    if (execution_request_result.IsError()) {
+        return Result<PreparePlanResponse>::Failure(execution_request_result.GetError());
+    }
+
+    PlanExecutionLaunch execution_launch;
+    execution_launch.execution_package = execution_request_result.Value().execution_package;
+    execution_launch.runtime_overrides.source_path = execution_request_result.Value().source_path;
+    execution_launch.runtime_overrides.use_hardware_trigger = execution_request_result.Value().use_hardware_trigger;
+    execution_launch.runtime_overrides.dry_run = execution_request_result.Value().dry_run;
+    execution_launch.runtime_overrides.machine_mode = execution_request_result.Value().machine_mode;
+    execution_launch.runtime_overrides.execution_mode = execution_request_result.Value().execution_mode;
+    execution_launch.runtime_overrides.output_policy = execution_request_result.Value().output_policy;
+    execution_launch.runtime_overrides.max_jerk = execution_request_result.Value().max_jerk;
+    execution_launch.runtime_overrides.arc_tolerance_mm = execution_request_result.Value().arc_tolerance_mm;
+    execution_launch.runtime_overrides.dispensing_speed_mm_s = execution_request_result.Value().dispensing_speed_mm_s;
+    execution_launch.runtime_overrides.dry_run_speed_mm_s = execution_request_result.Value().dry_run_speed_mm_s;
+    execution_launch.runtime_overrides.rapid_speed_mm_s = execution_request_result.Value().rapid_speed_mm_s;
+    execution_launch.runtime_overrides.acceleration_mm_s2 = execution_request_result.Value().acceleration_mm_s2;
+    execution_launch.runtime_overrides.velocity_trace_enabled = execution_request_result.Value().velocity_trace_enabled;
+    execution_launch.runtime_overrides.velocity_trace_interval_ms =
+        execution_request_result.Value().velocity_trace_interval_ms;
+    execution_launch.runtime_overrides.velocity_trace_path = execution_request_result.Value().velocity_trace_path;
+    execution_launch.runtime_overrides.velocity_guard_enabled = execution_request_result.Value().velocity_guard_enabled;
+    execution_launch.runtime_overrides.velocity_guard_ratio = execution_request_result.Value().velocity_guard_ratio;
+    execution_launch.runtime_overrides.velocity_guard_abs_mm_s = execution_request_result.Value().velocity_guard_abs_mm_s;
+    execution_launch.runtime_overrides.velocity_guard_min_expected_mm_s =
+        execution_request_result.Value().velocity_guard_min_expected_mm_s;
+    execution_launch.runtime_overrides.velocity_guard_grace_ms = execution_request_result.Value().velocity_guard_grace_ms;
+    execution_launch.runtime_overrides.velocity_guard_interval_ms =
+        execution_request_result.Value().velocity_guard_interval_ms;
+    execution_launch.runtime_overrides.velocity_guard_max_consecutive =
+        execution_request_result.Value().velocity_guard_max_consecutive;
+    execution_launch.runtime_overrides.velocity_guard_stop_on_violation =
+        execution_request_result.Value().velocity_guard_stop_on_violation;
+
     PreparePlanResponse response;
     response.success = true;
     response.artifact_id = request.artifact_id;
     response.plan_id = GenerateId("plan");
-    response.plan_fingerprint = BuildPlanFingerprint(request.artifact_id, planning, execution_request);
+    response.plan_fingerprint = BuildPlanFingerprint(request.artifact_id, planning, execution_launch);
     response.filepath = artifact.upload_response.filepath;
     response.segment_count = static_cast<std::uint32_t>(std::max(0, planning.segment_count));
     response.point_count = static_cast<std::uint32_t>(planning.trajectory_points.size());
@@ -543,7 +544,7 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
 
     PlanRecord record;
     record.response = response;
-    record.execution_request = execution_request;
+    record.execution_launch = std::move(execution_launch);
     record.trajectory_points = planning.trajectory_points;
     record.preview_state = PlanPreviewState::PREPARED;
     record.latest = true;
@@ -673,7 +674,7 @@ Result<JobID> DispensingWorkflowUseCase::StartJob(const StartJobRequest& request
             Error(ErrorCode::INVALID_PARAMETER, "target_count must be greater than 0", "DispensingWorkflowUseCase"));
     }
 
-    PlanRecord plan_record;
+    PlanExecutionLaunch execution_launch;
     {
         std::lock_guard<std::mutex> lock(plans_mutex_);
         auto it = plans_.find(request.plan_id);
@@ -693,264 +694,88 @@ Result<JobID> DispensingWorkflowUseCase::StartJob(const StartJobRequest& request
             return Result<JobID>::Failure(
                 Error(ErrorCode::INVALID_PARAMETER, "plan fingerprint mismatch", "DispensingWorkflowUseCase"));
         }
-        plan_record = it->second;
+        execution_launch = it->second.execution_launch;
     }
 
-    auto precondition_result = ValidateExecutionPreconditions();
-    if (precondition_result.IsError()) {
-        return Result<JobID>::Failure(precondition_result.GetError());
+    RuntimeStartJobRequest runtime_request;
+    runtime_request.plan_id = request.plan_id;
+    runtime_request.execution_request = BuildExecutionRequest(execution_launch);
+    runtime_request.plan_fingerprint = request.plan_fingerprint;
+    runtime_request.target_count = request.target_count;
+
+    auto runtime_result = execution_use_case_->StartJob(runtime_request);
+    if (runtime_result.IsError()) {
+        return Result<JobID>::Failure(runtime_result.GetError());
     }
 
-    const auto job_id = GenerateId("job");
-    auto context = std::make_shared<JobContext>();
-    context->job_id = job_id;
-    context->plan_id = request.plan_id;
-    context->plan_fingerprint = plan_record.response.plan_fingerprint;
-    context->execution_request = plan_record.execution_request;
-    context->state.store(WorkflowJobState::PENDING);
-    context->target_count.store(request.target_count);
-    context->dry_run =
-        plan_record.execution_request.ResolveOutputPolicy() == ProcessOutputPolicy::Inhibited;
-    context->start_time = std::chrono::steady_clock::now();
-
+    const auto& job_id = runtime_result.Value();
     {
-        std::lock_guard<std::mutex> lock(jobs_mutex_);
-        if (!active_job_id_.empty()) {
-            auto active_it = jobs_.find(active_job_id_);
-            if (active_it != jobs_.end() && !IsTerminal(active_it->second->state.load())) {
-                return Result<JobID>::Failure(
-                    Error(ErrorCode::INVALID_STATE, "another job is already active", "DispensingWorkflowUseCase"));
-            }
+        std::lock_guard<std::mutex> lock(plans_mutex_);
+        auto it = plans_.find(request.plan_id);
+        if (it != plans_.end() && it->second.latest) {
+            it->second.runtime_job_id = job_id;
         }
-        jobs_[job_id] = context;
-        active_job_id_ = job_id;
     }
-
-    std::thread new_worker_thread;
-    try {
-        new_worker_thread = std::thread([this, context, plan_record]() { RunJob(context, plan_record); });
-    } catch (const std::exception& ex) {
-        {
-            std::lock_guard<std::mutex> lock(jobs_mutex_);
-            auto job_it = jobs_.find(job_id);
-            if (job_it != jobs_.end() && job_it->second == context) {
-                jobs_.erase(job_it);
-            }
-            if (active_job_id_ == job_id) {
-                active_job_id_.clear();
-            }
-        }
-        return Result<JobID>::Failure(
-            Error(
-                ErrorCode::THREAD_START_FAILED,
-                "failure_stage=start_job_thread_start;failure_code=THREAD_START_FAILED;message=" + std::string(ex.what()),
-                "DispensingWorkflowUseCase"));
-    } catch (...) {
-        {
-            std::lock_guard<std::mutex> lock(jobs_mutex_);
-            auto job_it = jobs_.find(job_id);
-            if (job_it != jobs_.end() && job_it->second == context) {
-                jobs_.erase(job_it);
-            }
-            if (active_job_id_ == job_id) {
-                active_job_id_.clear();
-            }
-        }
-        return Result<JobID>::Failure(
-            Error(
-                ErrorCode::THREAD_START_FAILED,
-                "failure_stage=start_job_thread_start;failure_code=THREAD_START_FAILED;message=unknown",
-                "DispensingWorkflowUseCase"));
-    }
-
-    std::thread worker_to_join;
     {
-        std::lock_guard<std::mutex> lock(worker_mutex_);
-        if (worker_thread_.joinable()) {
-            worker_to_join = std::move(worker_thread_);
-        }
-        worker_thread_ = std::move(new_worker_thread);
+        std::lock_guard<std::mutex> lock(job_plan_index_mutex_);
+        job_plan_index_[job_id] = request.plan_id;
     }
-    if (worker_to_join.joinable()) {
-        worker_to_join.join();
-    }
+
     return Result<JobID>::Success(job_id);
 }
 
 Result<JobStatusResponse> DispensingWorkflowUseCase::GetJobStatus(const JobID& job_id) const {
-    std::shared_ptr<JobContext> context;
-    {
-        std::lock_guard<std::mutex> lock(jobs_mutex_);
-        auto it = jobs_.find(job_id);
-        if (it == jobs_.end()) {
-            return Result<JobStatusResponse>::Failure(
-                Error(ErrorCode::NOT_FOUND, "job not found", "DispensingWorkflowUseCase"));
-        }
-        context = it->second;
+    auto runtime_result = execution_use_case_->GetJobStatus(job_id);
+    if (runtime_result.IsError()) {
+        return Result<JobStatusResponse>::Failure(runtime_result.GetError());
     }
-    return Result<JobStatusResponse>::Success(BuildJobStatusResponse(context));
+
+    const auto& runtime_status = runtime_result.Value();
+    SyncPlanStateFromRuntimeStatus(job_id, runtime_status);
+
+    JobStatusResponse response;
+    response.job_id = runtime_status.job_id;
+    response.plan_id = runtime_status.plan_id;
+    response.plan_fingerprint = runtime_status.plan_fingerprint;
+    response.state = runtime_status.state;
+    response.target_count = runtime_status.target_count;
+    response.completed_count = runtime_status.completed_count;
+    response.current_cycle = runtime_status.current_cycle;
+    response.current_segment = runtime_status.current_segment;
+    response.total_segments = runtime_status.total_segments;
+    response.cycle_progress_percent = runtime_status.cycle_progress_percent;
+    response.overall_progress_percent = runtime_status.overall_progress_percent;
+    response.elapsed_seconds = runtime_status.elapsed_seconds;
+    response.error_message = runtime_status.error_message;
+    response.active_task_id = runtime_status.active_task_id;
+    response.dry_run = runtime_status.dry_run;
+    return Result<JobStatusResponse>::Success(std::move(response));
 }
 
 Result<void> DispensingWorkflowUseCase::PauseJob(const JobID& job_id) {
-    std::shared_ptr<JobContext> context;
-    {
-        std::lock_guard<std::mutex> lock(jobs_mutex_);
-        auto it = jobs_.find(job_id);
-        if (it == jobs_.end()) {
-            return Result<void>::Failure(
-                Error(ErrorCode::NOT_FOUND, "job not found", "DispensingWorkflowUseCase"));
-        }
-        context = it->second;
-    }
-
-    const auto state = context->state.load();
-    if (state == WorkflowJobState::PAUSED) {
-        return Result<void>::Success();
-    }
-    if (state == WorkflowJobState::STOPPING) {
-        return Result<void>::Failure(
-            Error(ErrorCode::INVALID_STATE, "job is stopping", "DispensingWorkflowUseCase"));
-    }
-    if (IsTerminal(state)) {
-        return Result<void>::Failure(
-            Error(ErrorCode::INVALID_STATE, "job already finished", "DispensingWorkflowUseCase"));
-    }
-
-    context->pause_requested.store(true);
-    std::string active_task_id;
-    {
-        std::lock_guard<std::mutex> lock(context->mutex_);
-        active_task_id = context->active_task_id;
-    }
-    if (!active_task_id.empty()) {
-        auto pause_result = execution_use_case_->PauseTask(active_task_id);
-        if (pause_result.IsError()) {
-            return pause_result;
-        }
-    }
-    return Result<void>::Success();
+    return execution_use_case_->PauseJob(job_id);
 }
 
 Result<void> DispensingWorkflowUseCase::ResumeJob(const JobID& job_id) {
-    std::shared_ptr<JobContext> context;
-    {
-        std::lock_guard<std::mutex> lock(jobs_mutex_);
-        auto it = jobs_.find(job_id);
-        if (it == jobs_.end()) {
-            return Result<void>::Failure(
-                Error(ErrorCode::NOT_FOUND, "job not found", "DispensingWorkflowUseCase"));
-        }
-        context = it->second;
-    }
-
-    const auto state = context->state.load();
-    if (state == WorkflowJobState::STOPPING) {
-        return Result<void>::Failure(
-            Error(ErrorCode::INVALID_STATE, "job is stopping", "DispensingWorkflowUseCase"));
-    }
-    if (IsTerminal(state)) {
-        return Result<void>::Failure(
-            Error(ErrorCode::INVALID_STATE, "job already finished", "DispensingWorkflowUseCase"));
-    }
-
-    auto precondition_result = ValidateExecutionPreconditions();
-    if (precondition_result.IsError()) {
-        return Result<void>::Failure(precondition_result.GetError());
-    }
-
-    context->pause_requested.store(false);
-    std::string active_task_id;
-    {
-        std::lock_guard<std::mutex> lock(context->mutex_);
-        active_task_id = context->active_task_id;
-    }
-    if (!active_task_id.empty()) {
-        auto resume_result = execution_use_case_->ResumeTask(active_task_id);
-        if (resume_result.IsError()) {
-            return resume_result;
-        }
-    }
-    return Result<void>::Success();
+    return execution_use_case_->ResumeJob(job_id);
 }
 
 Result<void> DispensingWorkflowUseCase::StopJob(const JobID& job_id) {
-    std::shared_ptr<JobContext> context;
-    {
-        std::lock_guard<std::mutex> lock(jobs_mutex_);
-        auto it = jobs_.find(job_id);
-        if (it == jobs_.end()) {
-            return Result<void>::Failure(
-                Error(ErrorCode::NOT_FOUND, "job not found", "DispensingWorkflowUseCase"));
+    auto result = execution_use_case_->StopJob(job_id);
+    if (result.IsSuccess()) {
+        PlanID plan_id;
+        {
+            std::lock_guard<std::mutex> lock(job_plan_index_mutex_);
+            auto it = job_plan_index_.find(job_id);
+            if (it != job_plan_index_.end()) {
+                plan_id = it->second;
+            }
         }
-        context = it->second;
-    }
-
-    if (IsTerminal(context->state.load())) {
-        return Result<void>::Success();
-    }
-
-    context->stop_requested.store(true);
-    context->pause_requested.store(false);
-    context->state.store(WorkflowJobState::STOPPING);
-
-    std::string active_task_id;
-    {
-        std::lock_guard<std::mutex> lock(context->mutex_);
-        active_task_id = context->active_task_id;
-    }
-    if (!active_task_id.empty()) {
-        auto cancel_result = execution_use_case_->CancelTask(active_task_id);
-        if (cancel_result.IsError()) {
-            auto status_result = execution_use_case_->GetTaskStatus(active_task_id);
-            if (status_result.IsError()) {
-                if (IsTerminal(context->state.load())) {
-                    return Result<void>::Success();
-                }
-                return Result<void>::Failure(
-                    Error(
-                        cancel_result.GetError().GetCode(),
-                        "failure_stage=stop_cancel_forward;failure_code=" +
-                            std::to_string(static_cast<int>(cancel_result.GetError().GetCode())) +
-                            ";message=" + cancel_result.GetError().GetMessage() +
-                            ";status_query_failure_code=" +
-                            std::to_string(static_cast<int>(status_result.GetError().GetCode())) +
-                            ";status_query_failure_message=" + status_result.GetError().GetMessage(),
-                        "DispensingWorkflowUseCase"));
-            }
-
-            const auto& task_status = status_result.Value();
-            if (task_status.state == "cancelled") {
-                FinalizeJob(context, WorkflowJobState::CANCELLED, task_status.error_message);
-                return Result<void>::Success();
-            }
-            if (task_status.state == "completed") {
-                FinalizeJob(context, WorkflowJobState::COMPLETED, task_status.error_message);
-                return Result<void>::Success();
-            }
-            if (task_status.state == "failed") {
-                FinalizeJob(context, WorkflowJobState::FAILED, task_status.error_message);
-                return Result<void>::Failure(
-                    Error(
-                        ErrorCode::HARDWARE_ERROR,
-                        "failure_stage=stop_cancel_forward;failure_code=TASK_FAILED;message=" +
-                            task_status.error_message,
-                        "DispensingWorkflowUseCase"));
-            }
-
-            return Result<void>::Failure(
-                Error(
-                    cancel_result.GetError().GetCode(),
-                    "failure_stage=stop_cancel_forward;failure_code=" +
-                        std::to_string(static_cast<int>(cancel_result.GetError().GetCode())) +
-                        ";message=" + cancel_result.GetError().GetMessage() +
-                        ";task_state=" + task_status.state,
-                    "DispensingWorkflowUseCase"));
+        if (!plan_id.empty()) {
+            ReleaseConfirmedPreviewForPlan(plan_id, &job_id);
         }
-    } else {
-        FinalizeJob(context, WorkflowJobState::CANCELLED, "job cancelled");
     }
-
-    return Result<void>::Success();
+    return result;
 }
 
 Result<Domain::Safety::ValueObjects::InterlockSignals> DispensingWorkflowUseCase::ReadInterlockSignals() const {
@@ -966,170 +791,6 @@ bool DispensingWorkflowUseCase::IsInterlockLatched() const {
         return false;
     }
     return interlock_signal_port_->IsLatched();
-}
-
-Result<void> DispensingWorkflowUseCase::ValidateExecutionPreconditions() const {
-    if (!connection_port_) {
-        return Result<void>::Failure(
-            Error(ErrorCode::PORT_NOT_INITIALIZED, "hardware connection port not available", "DispensingWorkflowUseCase"));
-    }
-    if (!connection_port_->IsConnected()) {
-        return Result<void>::Failure(
-            Error(ErrorCode::HARDWARE_NOT_CONNECTED, "hardware not connected", "DispensingWorkflowUseCase"));
-    }
-    if (!motion_state_port_) {
-        return Result<void>::Failure(
-            Error(ErrorCode::PORT_NOT_INITIALIZED, "motion state port not available", "DispensingWorkflowUseCase"));
-    }
-
-    const LogicalAxisId required_axes[] = {LogicalAxisId::X, LogicalAxisId::Y};
-    for (LogicalAxisId axis : required_axes) {
-        auto status_result = motion_state_port_->GetAxisStatus(axis);
-        if (status_result.IsError()) {
-            return Result<void>::Failure(status_result.GetError());
-        }
-        const MotionStatus& status = status_result.Value();
-        if (status.state == MotionState::ESTOP) {
-            return Result<void>::Failure(
-                Error(ErrorCode::EMERGENCY_STOP_ACTIVATED, "axis in emergency stop state", "DispensingWorkflowUseCase"));
-        }
-        if (!status.enabled || status.state == MotionState::DISABLED) {
-            return Result<void>::Failure(
-                Error(ErrorCode::INVALID_STATE, "required axis not enabled", "DispensingWorkflowUseCase"));
-        }
-        bool axis_homed = false;
-        if (homing_port_) {
-            auto homed_result = homing_port_->IsAxisHomed(axis);
-            if (homed_result.IsError()) {
-                return Result<void>::Failure(homed_result.GetError());
-            }
-            axis_homed = homed_result.Value();
-        } else {
-            axis_homed = (status.state == MotionState::HOMED);
-        }
-        if (!axis_homed) {
-            return Result<void>::Failure(
-                Error(ErrorCode::AXIS_NOT_HOMED, "required axis not homed", "DispensingWorkflowUseCase"));
-        }
-        if (status.has_error || status.servo_alarm || status.following_error) {
-            return Result<void>::Failure(
-                Error(ErrorCode::HARDWARE_ERROR, "required axis has active error", "DispensingWorkflowUseCase"));
-        }
-    }
-
-    if (interlock_signal_port_) {
-        InterlockPolicyConfig interlock_config;
-        auto interlock_result = InterlockPolicy::Evaluate(*interlock_signal_port_, interlock_config);
-        if (interlock_result.IsError()) {
-            return Result<void>::Failure(interlock_result.GetError());
-        }
-
-        const auto& decision = interlock_result.Value();
-        if (decision.triggered) {
-            const std::string reason = decision.reason == nullptr ? "interlock triggered" : decision.reason;
-            switch (decision.cause) {
-                case InterlockCause::EMERGENCY_STOP:
-                    return Result<void>::Failure(
-                        Error(ErrorCode::EMERGENCY_STOP_ACTIVATED, reason, "DispensingWorkflowUseCase"));
-                case InterlockCause::SERVO_ALARM:
-                    return Result<void>::Failure(
-                        Error(ErrorCode::HARDWARE_ERROR, reason, "DispensingWorkflowUseCase"));
-                case InterlockCause::SAFETY_DOOR_OPEN:
-                case InterlockCause::PRESSURE_ABNORMAL:
-                case InterlockCause::TEMPERATURE_ABNORMAL:
-                case InterlockCause::VOLTAGE_ABNORMAL:
-                    return Result<void>::Failure(
-                        Error(ErrorCode::INVALID_STATE, reason, "DispensingWorkflowUseCase"));
-                case InterlockCause::NONE:
-                default:
-                    return Result<void>::Failure(
-                        Error(ErrorCode::INVALID_STATE, "interlock triggered", "DispensingWorkflowUseCase"));
-            }
-        }
-    }
-
-    return Result<void>::Success();
-}
-
-PlanningRequest DispensingWorkflowUseCase::BuildPlanningRequest(
-    const std::string& filepath,
-    const DispensingMVPRequest& request) const {
-    PlanningRequest planning_request;
-    planning_request.dxf_filepath = filepath;
-    planning_request.optimize_path = request.optimize_path;
-    planning_request.start_x = request.start_x;
-    planning_request.start_y = request.start_y;
-    planning_request.approximate_splines = request.approximate_splines;
-    planning_request.two_opt_iterations = request.two_opt_iterations;
-    planning_request.spline_max_step_mm = request.spline_max_step_mm;
-    planning_request.spline_max_error_mm = request.spline_max_error_mm;
-    planning_request.continuity_tolerance_mm = request.continuity_tolerance_mm;
-    planning_request.curve_chain_angle_deg = request.curve_chain_angle_deg;
-    planning_request.curve_chain_max_segment_mm = request.curve_chain_max_segment_mm;
-    planning_request.use_hardware_trigger = request.use_hardware_trigger;
-    planning_request.use_interpolation_planner = request.use_interpolation_planner;
-    planning_request.interpolation_algorithm = request.interpolation_algorithm;
-    planning_request.trajectory_config.arc_tolerance = request.arc_tolerance_mm > 0.0f
-                                                           ? request.arc_tolerance_mm
-                                                           : planning_request.trajectory_config.arc_tolerance;
-    planning_request.trajectory_config.max_jerk = request.max_jerk > 0.0f
-                                                      ? request.max_jerk
-                                                      : planning_request.trajectory_config.max_jerk;
-
-    if (request.acceleration_mm_s2.has_value() && request.acceleration_mm_s2.value() > 0.0f) {
-        planning_request.trajectory_config.max_acceleration = request.acceleration_mm_s2.value();
-    }
-
-    const auto execution_mode = request.ResolveExecutionMode();
-
-    if (execution_mode == JobExecutionMode::ValidationDryCycle &&
-        request.dry_run_speed_mm_s.has_value() &&
-        request.dry_run_speed_mm_s.value() > 0.0f) {
-        planning_request.trajectory_config.max_velocity = request.dry_run_speed_mm_s.value();
-    } else if (request.dispensing_speed_mm_s.has_value() && request.dispensing_speed_mm_s.value() > 0.0f) {
-        planning_request.trajectory_config.max_velocity = request.dispensing_speed_mm_s.value();
-    } else if (request.rapid_speed_mm_s.has_value() && request.rapid_speed_mm_s.value() > 0.0f) {
-        planning_request.trajectory_config.max_velocity = request.rapid_speed_mm_s.value();
-    }
-
-    return planning_request;
-}
-
-JobStatusResponse DispensingWorkflowUseCase::BuildJobStatusResponse(const std::shared_ptr<JobContext>& context) const {
-    JobStatusResponse response;
-    response.job_id = context->job_id;
-    response.plan_id = context->plan_id;
-    response.plan_fingerprint = context->plan_fingerprint;
-    response.state = JobStateToString(context->state.load());
-    response.target_count = context->target_count.load();
-    response.completed_count = context->completed_count.load();
-    response.current_cycle = context->current_cycle.load();
-    response.current_segment = context->current_segment.load();
-    response.total_segments = context->total_segments.load();
-    response.cycle_progress_percent = context->cycle_progress_percent.load();
-    response.dry_run = context->dry_run;
-
-    if (response.target_count > 0) {
-        const std::uint64_t numerator =
-            static_cast<std::uint64_t>(response.completed_count) * 100ULL + response.cycle_progress_percent;
-        response.overall_progress_percent = static_cast<std::uint32_t>(
-            std::min<std::uint64_t>(100ULL, numerator / response.target_count));
-    }
-    if (response.state == "completed") {
-        response.overall_progress_percent = 100;
-        response.cycle_progress_percent = 100;
-    }
-
-    const auto end_point = IsTerminal(context->state.load()) ? context->end_time : std::chrono::steady_clock::now();
-    response.elapsed_seconds =
-        std::chrono::duration<float32>(end_point - context->start_time).count();
-
-    {
-        std::lock_guard<std::mutex> lock(context->mutex_);
-        response.error_message = context->error_message;
-        response.active_task_id = context->active_task_id;
-    }
-    return response;
 }
 
 PreviewSnapshotResponse DispensingWorkflowUseCase::BuildPreviewSnapshotResponse(
@@ -1159,41 +820,84 @@ std::string DispensingWorkflowUseCase::GenerateId(const char* prefix) {
     return std::string(prefix) + "-" + std::to_string(millis) + "-" + std::to_string(seq);
 }
 
+DispensingExecutionRequest DispensingWorkflowUseCase::BuildExecutionRequest(const PlanExecutionLaunch& launch) const {
+    DispensingExecutionRequest request;
+    request.execution_package = launch.execution_package;
+    request.source_path = launch.runtime_overrides.source_path;
+    request.use_hardware_trigger = launch.runtime_overrides.use_hardware_trigger;
+    request.dry_run = launch.runtime_overrides.dry_run;
+    request.machine_mode = launch.runtime_overrides.machine_mode;
+    request.execution_mode = launch.runtime_overrides.execution_mode;
+    request.output_policy = launch.runtime_overrides.output_policy;
+    request.max_jerk = launch.runtime_overrides.max_jerk;
+    request.arc_tolerance_mm = launch.runtime_overrides.arc_tolerance_mm;
+    request.dispensing_speed_mm_s = launch.runtime_overrides.dispensing_speed_mm_s;
+    request.dry_run_speed_mm_s = launch.runtime_overrides.dry_run_speed_mm_s;
+    request.rapid_speed_mm_s = launch.runtime_overrides.rapid_speed_mm_s;
+    request.acceleration_mm_s2 = launch.runtime_overrides.acceleration_mm_s2;
+    request.velocity_trace_enabled = launch.runtime_overrides.velocity_trace_enabled;
+    request.velocity_trace_interval_ms = launch.runtime_overrides.velocity_trace_interval_ms;
+    request.velocity_trace_path = launch.runtime_overrides.velocity_trace_path;
+    request.velocity_guard_enabled = launch.runtime_overrides.velocity_guard_enabled;
+    request.velocity_guard_ratio = launch.runtime_overrides.velocity_guard_ratio;
+    request.velocity_guard_abs_mm_s = launch.runtime_overrides.velocity_guard_abs_mm_s;
+    request.velocity_guard_min_expected_mm_s = launch.runtime_overrides.velocity_guard_min_expected_mm_s;
+    request.velocity_guard_grace_ms = launch.runtime_overrides.velocity_guard_grace_ms;
+    request.velocity_guard_interval_ms = launch.runtime_overrides.velocity_guard_interval_ms;
+    request.velocity_guard_max_consecutive = launch.runtime_overrides.velocity_guard_max_consecutive;
+    request.velocity_guard_stop_on_violation = launch.runtime_overrides.velocity_guard_stop_on_violation;
+    return request;
+}
+
 std::string DispensingWorkflowUseCase::BuildPlanFingerprint(
     const ArtifactID& artifact_id,
     const PlanningResponse& planning,
-    const DispensingMVPRequest& execution_request) const {
+    const PlanExecutionLaunch& execution_launch) const {
     std::ostringstream oss;
-    const auto machine_mode = execution_request.ResolveMachineMode();
-    const auto execution_mode = execution_request.ResolveExecutionMode();
-    const auto output_policy = execution_request.ResolveOutputPolicy();
+    const auto runtime_request = BuildExecutionRequest(execution_launch);
+    const auto machine_mode = runtime_request.ResolveMachineMode();
+    const auto execution_mode = runtime_request.ResolveExecutionMode();
+    const auto output_policy = runtime_request.ResolveOutputPolicy();
+    const auto& package = execution_launch.execution_package;
+    const auto& execution_plan = package.execution_plan;
+
     oss << artifact_id << '|'
-        << execution_request.dry_run << '|'
+        << runtime_request.dry_run << '|'
         << Domain::Machine::ValueObjects::ToString(machine_mode) << '|'
         << Domain::Dispensing::ValueObjects::ToString(execution_mode) << '|'
         << Domain::Dispensing::ValueObjects::ToString(output_policy) << '|'
-        << execution_request.optimize_path << '|'
-        << execution_request.start_x << '|'
-        << execution_request.start_y << '|'
-        << execution_request.approximate_splines << '|'
-        << execution_request.two_opt_iterations << '|'
-        << execution_request.spline_max_step_mm << '|'
-        << execution_request.spline_max_error_mm << '|'
-        << execution_request.arc_tolerance_mm << '|'
-        << execution_request.continuity_tolerance_mm << '|'
-        << execution_request.curve_chain_angle_deg << '|'
-        << execution_request.curve_chain_max_segment_mm << '|'
-        << execution_request.use_hardware_trigger << '|'
-        << execution_request.use_interpolation_planner << '|'
-        << static_cast<int>(execution_request.interpolation_algorithm) << '|'
-        << execution_request.dispensing_speed_mm_s.value_or(0.0f) << '|'
-        << execution_request.dry_run_speed_mm_s.value_or(0.0f) << '|'
-        << execution_request.rapid_speed_mm_s.value_or(0.0f) << '|'
-        << execution_request.acceleration_mm_s2.value_or(0.0f) << '|'
         << planning.segment_count << '|'
         << planning.trajectory_points.size() << '|'
         << planning.total_length << '|'
-        << planning.estimated_time;
+        << planning.estimated_time << '|'
+        << package.total_length_mm << '|'
+        << package.estimated_time_s << '|'
+        << package.source_path << '|'
+        << package.source_fingerprint << '|'
+        << execution_plan.motion_trajectory.points.size() << '|'
+        << execution_plan.interpolation_segments.size() << '|'
+        << execution_plan.interpolation_points.size() << '|'
+        << execution_plan.trigger_distances_mm.size() << '|'
+        << execution_plan.trigger_interval_ms << '|'
+        << execution_plan.trigger_interval_mm << '|'
+        << runtime_request.use_hardware_trigger << '|'
+        << runtime_request.max_jerk << '|'
+        << runtime_request.arc_tolerance_mm << '|'
+        << runtime_request.dispensing_speed_mm_s.value_or(0.0f) << '|'
+        << runtime_request.dry_run_speed_mm_s.value_or(0.0f) << '|'
+        << runtime_request.rapid_speed_mm_s.value_or(0.0f) << '|'
+        << runtime_request.acceleration_mm_s2.value_or(0.0f) << '|'
+        << runtime_request.velocity_trace_enabled << '|'
+        << runtime_request.velocity_trace_interval_ms << '|'
+        << runtime_request.velocity_trace_path << '|'
+        << runtime_request.velocity_guard_enabled << '|'
+        << runtime_request.velocity_guard_ratio << '|'
+        << runtime_request.velocity_guard_abs_mm_s << '|'
+        << runtime_request.velocity_guard_min_expected_mm_s << '|'
+        << runtime_request.velocity_guard_grace_ms << '|'
+        << runtime_request.velocity_guard_interval_ms << '|'
+        << runtime_request.velocity_guard_max_consecutive << '|'
+        << runtime_request.velocity_guard_stop_on_violation;
     return HexEncodeUint64(Fnv1a64(oss.str()));
 }
 
@@ -1214,263 +918,55 @@ std::string DispensingWorkflowUseCase::PreviewStateToString(PlanPreviewState sta
     }
 }
 
-std::string DispensingWorkflowUseCase::JobStateToString(WorkflowJobState state) const {
-    switch (state) {
-        case WorkflowJobState::PENDING:
-            return "pending";
-        case WorkflowJobState::RUNNING:
-            return "running";
-        case WorkflowJobState::STOPPING:
-            return "stopping";
-        case WorkflowJobState::PAUSED:
-            return "paused";
-        case WorkflowJobState::COMPLETED:
-            return "completed";
-        case WorkflowJobState::FAILED:
-            return "failed";
-        case WorkflowJobState::CANCELLED:
-            return "cancelled";
-        default:
-            return "unknown";
-    }
-}
-
-void DispensingWorkflowUseCase::RunJob(
-    const std::shared_ptr<JobContext>& context,
-    const PlanRecord& plan_record) {
-    if (context->stop_requested.load()) {
-        FinalizeJob(context, WorkflowJobState::CANCELLED, "job cancelled");
+void DispensingWorkflowUseCase::ReleaseConfirmedPreviewForPlan(
+    const PlanID& plan_id,
+    const JobID* runtime_job_id) const {
+    if (plan_id.empty()) {
         return;
     }
 
-    const auto target_count = context->target_count.load();
-
-    for (std::uint32_t cycle = 0; cycle < target_count; ++cycle) {
-        if (context->final_state_committed.load()) {
-            return;
-        }
-        if (context->stop_requested.load()) {
-            FinalizeJob(context, WorkflowJobState::CANCELLED, "job cancelled");
-            return;
-        }
-
-        context->current_cycle.store(cycle + 1);
-        context->current_segment.store(0);
-        context->total_segments.store(0);
-        context->cycle_progress_percent.store(0);
-
-        while (context->pause_requested.load()) {
-            if (context->stop_requested.load()) {
-                FinalizeJob(context, WorkflowJobState::CANCELLED, "job cancelled");
-                return;
-            }
-            if (!context->final_state_committed.load()) {
-                context->state.store(WorkflowJobState::PAUSED);
-            }
-            std::this_thread::sleep_for(kJobPollInterval);
-        }
-
-        auto precondition_result = ValidateExecutionPreconditions();
-        if (precondition_result.IsError()) {
-            FinalizeJob(context, WorkflowJobState::FAILED, precondition_result.GetError().GetMessage());
-            return;
-        }
-        if (context->stop_requested.load()) {
-            FinalizeJob(context, WorkflowJobState::CANCELLED, "job cancelled");
-            return;
-        }
-        if (!context->final_state_committed.load()) {
-            context->state.store(WorkflowJobState::RUNNING);
-        }
-        if (context->final_state_committed.load()) {
-            return;
-        }
-        if (context->stop_requested.load()) {
-            FinalizeJob(context, WorkflowJobState::CANCELLED, "job cancelled");
-            return;
-        }
-
-        auto task_result = execution_use_case_->ExecuteAsync(plan_record.execution_request);
-        if (task_result.IsError()) {
-            FinalizeJob(context, WorkflowJobState::FAILED, task_result.GetError().GetMessage());
-            return;
-        }
-
-        const auto task_id = task_result.Value();
-        {
-            std::lock_guard<std::mutex> lock(context->mutex_);
-            context->active_task_id = task_id;
-        }
-
-        bool pause_forwarded = false;
-        bool cancel_forwarded = false;
-        while (true) {
-            if (context->final_state_committed.load()) {
-                return;
-            }
-            if (context->stop_requested.load() && !cancel_forwarded) {
-                if (!context->final_state_committed.load()) {
-                    context->state.store(WorkflowJobState::STOPPING);
-                }
-                auto cancel_result = execution_use_case_->CancelTask(task_id);
-                if (cancel_result.IsError()) {
-                    auto task_status_after_cancel_result = execution_use_case_->GetTaskStatus(task_id);
-                    if (task_status_after_cancel_result.IsError()) {
-                        FinalizeJob(
-                            context,
-                            WorkflowJobState::FAILED,
-                            "failure_stage=cancel_forward;cancel_failure_code=" +
-                                std::to_string(static_cast<int>(cancel_result.GetError().GetCode())) +
-                                ";cancel_failure_message=" + cancel_result.GetError().GetMessage() +
-                                ";status_query_failure_code=" +
-                                std::to_string(static_cast<int>(task_status_after_cancel_result.GetError().GetCode())) +
-                                ";status_query_failure_message=" + task_status_after_cancel_result.GetError().GetMessage());
-                        return;
-                    }
-
-                    const auto& task_status_after_cancel = task_status_after_cancel_result.Value();
-                    if (task_status_after_cancel.state == "cancelled") {
-                        FinalizeJob(context, WorkflowJobState::CANCELLED, task_status_after_cancel.error_message);
-                        return;
-                    }
-                    if (task_status_after_cancel.state == "completed") {
-                        context->completed_count.store(cycle + 1);
-                        context->cycle_progress_percent.store(100);
-                        if (cycle + 1 >= context->target_count.load()) {
-                            break;
-                        }
-                        FinalizeJob(context, WorkflowJobState::CANCELLED, "job cancelled");
-                        return;
-                    }
-                    if (task_status_after_cancel.state == "failed") {
-                        FinalizeJob(context, WorkflowJobState::FAILED, task_status_after_cancel.error_message);
-                        return;
-                    }
-                    if (IsTaskStateActive(task_status_after_cancel.state)) {
-                        FinalizeJob(
-                            context,
-                            WorkflowJobState::FAILED,
-                            "failure_stage=cancel_confirm;failure_code=TASK_STILL_ACTIVE;message=" +
-                                cancel_result.GetError().GetMessage() +
-                                ";task_state=" + task_status_after_cancel.state);
-                        return;
-                    }
-
-                    FinalizeJob(
-                        context,
-                        WorkflowJobState::FAILED,
-                        "failure_stage=cancel_confirm;failure_code=UNKNOWN_TASK_STATE;task_state=" +
-                            task_status_after_cancel.state);
-                    return;
-                }
-                cancel_forwarded = true;
-            }
-
-            auto task_status_result = execution_use_case_->GetTaskStatus(task_id);
-            if (task_status_result.IsError()) {
-                FinalizeJob(context, WorkflowJobState::FAILED, task_status_result.GetError().GetMessage());
-                return;
-            }
-            const auto& task_status = task_status_result.Value();
-            context->current_segment.store(task_status.executed_segments);
-            context->total_segments.store(task_status.total_segments);
-            context->cycle_progress_percent.store(task_status.progress_percent);
-
-            if (context->pause_requested.load()) {
-                if (!pause_forwarded && task_status.state == "running") {
-                    auto pause_result = execution_use_case_->PauseTask(task_id);
-                    if (pause_result.IsError()) {
-                        FinalizeJob(context, WorkflowJobState::FAILED, pause_result.GetError().GetMessage());
-                        return;
-                    }
-                    pause_forwarded = true;
-                }
-            } else if (pause_forwarded && task_status.state == "paused") {
-                auto resume_result = execution_use_case_->ResumeTask(task_id);
-                if (resume_result.IsError()) {
-                    FinalizeJob(context, WorkflowJobState::FAILED, resume_result.GetError().GetMessage());
-                    return;
-                }
-                pause_forwarded = false;
-            }
-
-            if (task_status.state == "paused") {
-                if (!context->final_state_committed.load()) {
-                    context->state.store(WorkflowJobState::PAUSED);
-                }
-            } else if (task_status.state == "running" || task_status.state == "pending") {
-                if (!context->final_state_committed.load()) {
-                    context->state.store(
-                        context->stop_requested.load() ? WorkflowJobState::STOPPING : WorkflowJobState::RUNNING);
-                }
-            } else if (task_status.state == "completed") {
-                context->completed_count.store(cycle + 1);
-                context->cycle_progress_percent.store(100);
-                if (context->stop_requested.load() && cycle + 1 < context->target_count.load()) {
-                    FinalizeJob(context, WorkflowJobState::CANCELLED, "job cancelled");
-                    return;
-                }
-                break;
-            } else if (task_status.state == "cancelled") {
-                FinalizeJob(context, WorkflowJobState::CANCELLED, task_status.error_message);
-                return;
-            } else if (task_status.state == "failed") {
-                FinalizeJob(context, WorkflowJobState::FAILED, task_status.error_message);
-                return;
-            }
-
-            std::this_thread::sleep_for(kJobPollInterval);
-        }
-
-        {
-            std::lock_guard<std::mutex> lock(context->mutex_);
-            context->active_task_id.clear();
-        }
-    }
-
-    FinalizeJob(context, WorkflowJobState::COMPLETED);
-}
-
-void DispensingWorkflowUseCase::FinalizeJob(
-    const std::shared_ptr<JobContext>& context,
-    WorkflowJobState final_state,
-    const std::string& error_message) {
-    bool expected = false;
-    if (!context->final_state_committed.compare_exchange_strong(expected, true)) {
+    std::lock_guard<std::mutex> lock(plans_mutex_);
+    auto plan_it = plans_.find(plan_id);
+    if (plan_it == plans_.end() || !plan_it->second.latest) {
         return;
     }
 
-    context->state.store(final_state);
-    context->end_time = std::chrono::steady_clock::now();
-    {
-        std::lock_guard<std::mutex> lock(context->mutex_);
-        context->active_task_id.clear();
-        context->error_message = error_message;
+    if (runtime_job_id != nullptr &&
+        !plan_it->second.runtime_job_id.empty() &&
+        plan_it->second.runtime_job_id != *runtime_job_id) {
+        return;
     }
-    if (final_state == WorkflowJobState::COMPLETED) {
-        context->cycle_progress_percent.store(100);
-        context->current_cycle.store(context->target_count.load());
-        context->completed_count.store(context->target_count.load());
+
+    if (plan_it->second.preview_state == PlanPreviewState::CONFIRMED) {
+        plan_it->second.preview_state = PlanPreviewState::SNAPSHOT_READY;
     }
+    plan_it->second.confirmed_at.clear();
+    if (runtime_job_id != nullptr && plan_it->second.runtime_job_id == *runtime_job_id) {
+        plan_it->second.runtime_job_id.clear();
+    }
+}
+
+void DispensingWorkflowUseCase::SyncPlanStateFromRuntimeStatus(
+    const JobID& job_id,
+    const RuntimeJobStatusResponse& runtime_status) const {
+    if (!IsRuntimeTerminalState(runtime_status.state)) {
+        return;
+    }
+
+    PlanID plan_id;
     {
-        std::lock_guard<std::mutex> lock(jobs_mutex_);
-        if (active_job_id_ == context->job_id) {
-            active_job_id_.clear();
+        std::lock_guard<std::mutex> lock(job_plan_index_mutex_);
+        auto it = job_plan_index_.find(job_id);
+        if (it != job_plan_index_.end()) {
+            plan_id = it->second;
+            job_plan_index_.erase(it);
         }
     }
 
-    if (final_state == WorkflowJobState::COMPLETED ||
-        final_state == WorkflowJobState::FAILED ||
-        final_state == WorkflowJobState::CANCELLED) {
-        std::lock_guard<std::mutex> lock(plans_mutex_);
-        auto plan_it = plans_.find(context->plan_id);
-        if (plan_it != plans_.end() && plan_it->second.latest) {
-            if (plan_it->second.preview_state == PlanPreviewState::CONFIRMED) {
-                plan_it->second.preview_state = PlanPreviewState::SNAPSHOT_READY;
-            }
-            plan_it->second.confirmed_at.clear();
-        }
+    if (plan_id.empty()) {
+        plan_id = runtime_status.plan_id;
     }
+    ReleaseConfirmedPreviewForPlan(plan_id, &job_id);
 }
 
 }  // namespace Siligen::Application::UseCases::Dispensing

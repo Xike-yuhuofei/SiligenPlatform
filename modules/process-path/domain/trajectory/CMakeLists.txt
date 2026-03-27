@@ -18,9 +18,6 @@ target_sources(siligen_process_path_domain_trajectory PRIVATE
     value-objects/Path.h
     value-objects/ProcessPath.h
     value-objects/ProcessConfig.h
-    value-objects/MotionConfig.h
-    value-objects/PlanningReport.h
-    value-objects/Trajectory.h
     ports/IPathSourcePort.h
 )
 
@@ -34,7 +31,6 @@ target_link_libraries(siligen_process_path_domain_trajectory PUBLIC
     siligen_process_runtime_core_boost_headers
     siligen_types
     siligen_geometry
-    ruckig
 )
 
 target_compile_features(siligen_process_path_domain_trajectory PUBLIC cxx_std_17)

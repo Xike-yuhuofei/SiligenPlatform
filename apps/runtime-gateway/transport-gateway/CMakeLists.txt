@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
 
+if(NOT TARGET siligen_process_planning_legacy_configuration_bridge_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../modules/process-planning/contracts"
+        "${CMAKE_BINARY_DIR}/_p/tg_ppc"
+    )
+endif()
+
 add_library(siligen_transport_gateway_protocol STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/protocol/json_protocol.cpp
 )
@@ -58,13 +65,15 @@ target_include_directories(siligen_transport_gateway PUBLIC
 
 target_link_libraries(siligen_transport_gateway PUBLIC
     siligen_transport_gateway_boost_headers
+    siligen_transport_gateway_json_headers
     siligen_transport_gateway_protocol
-    siligen_module_job_ingest
+    siligen_job_ingest_application_public
     siligen_workflow_application_public
     siligen_workflow_recipe_application_public
     siligen_workflow_recipe_serialization_public
     siligen_runtime_execution_application_public
     siligen_runtime_host_infrastructure
+    siligen_process_planning_legacy_configuration_bridge_public
     siligen_shared
     siligen_runtime_host_storage
 )

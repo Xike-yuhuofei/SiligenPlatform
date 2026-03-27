@@ -26,6 +26,16 @@
 #endif
 
 namespace {
+using DeviceConnection = Siligen::Device::Contracts::Commands::DeviceConnection;
+using DeviceConnectionSnapshot = Siligen::Device::Contracts::State::DeviceConnectionSnapshot;
+using DeviceConnectionState = Siligen::Device::Contracts::State::DeviceConnectionState;
+using HeartbeatSnapshot = Siligen::Device::Contracts::State::HeartbeatSnapshot;
+using HardwareConnectionConfig = Siligen::Domain::Machine::Ports::HardwareConnectionConfig;
+using HardwareConnectionInfo = Siligen::Domain::Machine::Ports::HardwareConnectionInfo;
+using HardwareConnectionState = Siligen::Domain::Machine::Ports::HardwareConnectionState;
+using HeartbeatConfig = Siligen::Domain::Machine::Ports::HeartbeatConfig;
+using HeartbeatStatus = Siligen::Domain::Machine::Ports::HeartbeatStatus;
+
 constexpr auto kConnectionGracePeriod = std::chrono::milliseconds(7000);
 
 bool IsGracePeriodActive(const std::chrono::steady_clock::time_point& last_connect_time) {
@@ -33,6 +43,65 @@ bool IsGracePeriodActive(const std::chrono::steady_clock::time_point& last_conne
         return false;
     }
     return (std::chrono::steady_clock::now() - last_connect_time) < kConnectionGracePeriod;
+}
+
+HardwareConnectionConfig ToLegacyConnectionConfig(const DeviceConnection& connection) {
+    HardwareConnectionConfig config;
+    config.local_ip = connection.local_ip;
+    config.local_port = connection.local_port;
+    config.card_ip = connection.card_ip;
+    config.card_port = connection.card_port;
+    config.timeout_ms = connection.timeout_ms;
+    return config;
+}
+
+DeviceConnectionSnapshot ToDeviceConnectionSnapshot(const HardwareConnectionInfo& info) {
+    DeviceConnectionSnapshot snapshot;
+    switch (info.state) {
+        case HardwareConnectionState::Connected:
+            snapshot.state = DeviceConnectionState::Connected;
+            break;
+        case HardwareConnectionState::Connecting:
+            snapshot.state = DeviceConnectionState::Connecting;
+            break;
+        case HardwareConnectionState::Error:
+            snapshot.state = DeviceConnectionState::Error;
+            break;
+        case HardwareConnectionState::Disconnected:
+        default:
+            snapshot.state = DeviceConnectionState::Disconnected;
+            break;
+    }
+    snapshot.device_type = info.device_type;
+    snapshot.firmware_version = info.firmware_version;
+    snapshot.serial_number = info.serial_number;
+    snapshot.error_message = info.error_message;
+    return snapshot;
+}
+
+HeartbeatConfig ToLegacyHeartbeatConfig(const HeartbeatSnapshot& snapshot) {
+    HeartbeatConfig config;
+    config.enabled = snapshot.enabled;
+    config.interval_ms = snapshot.interval_ms;
+    config.timeout_ms = snapshot.timeout_ms;
+    config.failure_threshold = snapshot.failure_threshold;
+    return config;
+}
+
+HeartbeatSnapshot ToHeartbeatSnapshot(const HeartbeatStatus& status) {
+    HeartbeatSnapshot snapshot;
+    snapshot.enabled = true;
+    snapshot.interval_ms = status.interval_ms;
+    snapshot.failure_threshold = status.failure_threshold;
+    snapshot.is_active = status.is_active;
+    snapshot.total_sent = status.total_sent;
+    snapshot.total_success = status.total_success;
+    snapshot.total_failure = status.total_failure;
+    snapshot.consecutive_failures = status.consecutive_failures;
+    snapshot.last_error = status.last_error;
+    snapshot.is_degraded = status.is_degraded;
+    snapshot.degraded_reason = status.degraded_reason;
+    return snapshot;
 }
 }  // namespace
 
@@ -68,6 +137,14 @@ HardwareConnectionAdapter::~HardwareConnectionAdapter() {
     Disconnect();
     StopStatusMonitoring();
     StopHeartbeat();  // 停止心跳
+}
+
+Shared::Types::Result<void> HardwareConnectionAdapter::Connect(const DeviceConnection& connection) {
+    return Connect(ToLegacyConnectionConfig(connection));
+}
+
+Shared::Types::Result<DeviceConnectionSnapshot> HardwareConnectionAdapter::ReadConnection() const {
+    return Shared::Types::Result<DeviceConnectionSnapshot>::Success(ToDeviceConnectionSnapshot(GetConnectionInfo()));
 }
 
 Shared::Types::Result<void> HardwareConnectionAdapter::Connect(const Siligen::Domain::Machine::Ports::HardwareConnectionConfig& config) {
@@ -282,6 +359,11 @@ Shared::Types::Result<void> HardwareConnectionAdapter::Reconnect() {
 
 void HardwareConnectionAdapter::SetConnectionStateCallback(
     std::function<void(const Siligen::Domain::Machine::Ports::HardwareConnectionInfo&)> callback) {
+    legacy_state_change_callback_ = std::move(callback);
+}
+
+void HardwareConnectionAdapter::SetConnectionStateCallback(
+    std::function<void(const DeviceConnectionSnapshot&)> callback) {
     state_change_callback_ = std::move(callback);
 }
 
@@ -345,10 +427,15 @@ void HardwareConnectionAdapter::MonitoringLoop(uint32 interval_ms) {
             }
 
             // 状态变化检测
-            if (last_state != current_state && state_change_callback_) {
+            if (last_state != current_state && (legacy_state_change_callback_ || state_change_callback_)) {
                 connection_info_.state = current_state;
                 connection_info_.error_message = last_error_;
-                state_change_callback_(connection_info_);
+                if (legacy_state_change_callback_) {
+                    legacy_state_change_callback_(connection_info_);
+                }
+                if (state_change_callback_) {
+                    state_change_callback_(ToDeviceConnectionSnapshot(connection_info_));
+                }
             }
 
             last_state = current_state;
@@ -390,6 +477,10 @@ void HardwareConnectionAdapter::UpdateDeviceInfo() {
 // ============================================================
 // 心跳监控实现
 // ============================================================
+
+Shared::Types::Result<void> HardwareConnectionAdapter::StartHeartbeat(const HeartbeatSnapshot& config) {
+    return StartHeartbeat(ToLegacyHeartbeatConfig(config));
+}
 
 Shared::Types::Result<void> HardwareConnectionAdapter::StartHeartbeat(const Siligen::Domain::Machine::Ports::HeartbeatConfig& config) {
     std::lock_guard<std::mutex> lock(connection_mutex_);
@@ -455,6 +546,10 @@ Siligen::Domain::Machine::Ports::HeartbeatStatus HardwareConnectionAdapter::GetH
     return status;
 }
 
+HeartbeatSnapshot HardwareConnectionAdapter::ReadHeartbeat() const {
+    return ToHeartbeatSnapshot(GetHeartbeatStatus());
+}
+
 void HardwareConnectionAdapter::HeartbeatLoop() {
     SILIGEN_LOG_INFO("Heartbeat thread started");
 
@@ -483,9 +578,14 @@ void HardwareConnectionAdapter::HeartbeatLoop() {
                     connection_info_.error_message.clear();
 
                     // 触发回调通知Application层
-                    if (state_change_callback_) {
+                    if (legacy_state_change_callback_ || state_change_callback_) {
                         try {
-                            state_change_callback_(connection_info_);
+                            if (legacy_state_change_callback_) {
+                                legacy_state_change_callback_(connection_info_);
+                            }
+                            if (state_change_callback_) {
+                                state_change_callback_(ToDeviceConnectionSnapshot(connection_info_));
+                            }
                         } catch (const std::exception& e) {
                             // 回调异常不应中断心跳循环
                             SILIGEN_LOG_WARNING(std::string("State change callback threw exception: ") + e.what());
@@ -536,10 +636,16 @@ void HardwareConnectionAdapter::HeartbeatLoop() {
                 connection_info_.state = connection_state_;  // 保持 Connected
                 connection_info_.error_message = "降级模式: 心跳不可用，连接保持活跃";
 
+                auto legacy_callback_copy = legacy_state_change_callback_;
                 auto callback_copy = state_change_callback_;
-                if (callback_copy) {
+                if (legacy_callback_copy || callback_copy) {
                     try {
-                        callback_copy(connection_info_);
+                        if (legacy_callback_copy) {
+                            legacy_callback_copy(connection_info_);
+                        }
+                        if (callback_copy) {
+                            callback_copy(ToDeviceConnectionSnapshot(connection_info_));
+                        }
                     } catch (const std::exception& e) {
                         SILIGEN_LOG_WARNING(std::string("Callback failed: ") + e.what());
                     }

@@ -10,6 +10,7 @@
 #include "application/usecases/motion/coordination/MotionCoordinationUseCase.h"
 #include "application/usecases/motion/ptp/MoveToPositionUseCase.h"
 #include "application/usecases/motion/runtime/MotionRuntimeAssemblyFactory.h"
+#include "application/services/motion/runtime/IMotionRuntimeServicesProvider.h"
 #include "domain/configuration/ports/IConfigurationPort.h"
 #include "domain/dispensing/ports/ITriggerControllerPort.h"
 #include "domain/motion/ports/IInterpolationPort.h"
@@ -22,6 +23,10 @@ namespace {
 using MotionRuntimeAssemblyDependencies =
     Siligen::Application::UseCases::Motion::Runtime::MotionRuntimeAssemblyDependencies;
 using MotionRuntimeAssemblyFactory = Siligen::Application::UseCases::Motion::Runtime::MotionRuntimeAssemblyFactory;
+using IMotionRuntimeServicesProvider =
+    Siligen::Application::Services::Motion::Runtime::IMotionRuntimeServicesProvider;
+using MotionRuntimeServicesBundle =
+    Siligen::Application::Services::Motion::Runtime::MotionRuntimeServicesBundle;
 using MotionIOCommand = Siligen::Application::UseCases::Motion::Coordination::MotionIOCommand;
 using MoveToPositionRequest = Siligen::Application::UseCases::Motion::PTP::MoveToPositionRequest;
 using DeterministicPathExecutionRequest =
@@ -49,6 +54,8 @@ using HomingState = Siligen::Domain::Motion::Ports::HomingState;
 using MotionCommand = Siligen::Domain::Motion::Ports::MotionCommand;
 using MotionState = Siligen::Domain::Motion::Ports::MotionState;
 using MotionStatus = Siligen::Domain::Motion::Ports::MotionStatus;
+using MotionControlService = Siligen::Domain::Motion::DomainServices::MotionControlService;
+using MotionStatusService = Siligen::Domain::Motion::DomainServices::MotionStatusService;
 using DomainEvent = Siligen::Domain::System::Ports::DomainEvent;
 using EventType = Siligen::Domain::System::Ports::EventType;
 using EventHandler = Siligen::Domain::System::Ports::EventHandler;
@@ -57,6 +64,8 @@ using Result = Siligen::Shared::Types::Result<T>;
 using ResultVoid = Siligen::Shared::Types::Result<void>;
 using Error = Siligen::Shared::Types::Error;
 using ErrorCode = Siligen::Shared::Types::ErrorCode;
+using AxisState = Siligen::Shared::Types::AxisState;
+using AxisStatus = Siligen::Shared::Types::AxisStatus;
 using LogicalAxisId = Siligen::Shared::Types::LogicalAxisId;
 using Point2D = Siligen::Shared::Types::Point2D;
 using float32 = Siligen::Shared::Types::float32;
@@ -404,6 +413,215 @@ public:
     int32 last_pulse_width_us = 0;
 };
 
+class FakeMotionControlService final : public MotionControlService {
+public:
+    explicit FakeMotionControlService(std::shared_ptr<IMotionRuntimePort> motion_runtime_port)
+        : motion_runtime_port_(std::move(motion_runtime_port)) {}
+
+    ResultVoid MoveToPosition(const Point2D& position, float speed = -1.0f) override {
+        if (!motion_runtime_port_) {
+            return ResultVoid::Failure(Error(
+                ErrorCode::PORT_NOT_INITIALIZED,
+                "motion runtime port unavailable",
+                "FakeMotionControlService"));
+        }
+        return motion_runtime_port_->MoveToPosition(position, speed);
+    }
+
+    ResultVoid MoveAxisToPosition(LogicalAxisId axis_id, float position, float speed = -1.0f) override {
+        if (!motion_runtime_port_) {
+            return ResultVoid::Failure(Error(
+                ErrorCode::PORT_NOT_INITIALIZED,
+                "motion runtime port unavailable",
+                "FakeMotionControlService"));
+        }
+        return motion_runtime_port_->MoveAxisToPosition(axis_id, position, speed);
+    }
+
+    ResultVoid MoveRelative(const Point2D& offset, float speed = -1.0f) override {
+        if (!motion_runtime_port_) {
+            return ResultVoid::Failure(Error(
+                ErrorCode::PORT_NOT_INITIALIZED,
+                "motion runtime port unavailable",
+                "FakeMotionControlService"));
+        }
+
+        auto current_position = motion_runtime_port_->GetCurrentPosition();
+        if (current_position.IsError()) {
+            return ResultVoid::Failure(current_position.GetError());
+        }
+        const auto target = current_position.Value() + offset;
+        return motion_runtime_port_->MoveToPosition(target, speed);
+    }
+
+    ResultVoid StopAllAxes() override {
+        if (!motion_runtime_port_) {
+            return ResultVoid::Failure(Error(
+                ErrorCode::PORT_NOT_INITIALIZED,
+                "motion runtime port unavailable",
+                "FakeMotionControlService"));
+        }
+        return motion_runtime_port_->StopAllAxes(true);
+    }
+
+    ResultVoid EmergencyStop() override {
+        if (!motion_runtime_port_) {
+            return ResultVoid::Failure(Error(
+                ErrorCode::PORT_NOT_INITIALIZED,
+                "motion runtime port unavailable",
+                "FakeMotionControlService"));
+        }
+        return motion_runtime_port_->EmergencyStop();
+    }
+
+    ResultVoid RecoverFromEmergencyStop() override {
+        if (!motion_runtime_port_) {
+            return ResultVoid::Failure(Error(
+                ErrorCode::PORT_NOT_INITIALIZED,
+                "motion runtime port unavailable",
+                "FakeMotionControlService"));
+        }
+        return motion_runtime_port_->RecoverFromEmergencyStop();
+    }
+
+private:
+    std::shared_ptr<IMotionRuntimePort> motion_runtime_port_;
+};
+
+class FakeMotionStatusService final : public MotionStatusService {
+public:
+    explicit FakeMotionStatusService(std::shared_ptr<IMotionRuntimePort> motion_runtime_port)
+        : motion_runtime_port_(std::move(motion_runtime_port)) {}
+
+    Result<Point2D> GetCurrentPosition() const override {
+        if (!motion_runtime_port_) {
+            return Result<Point2D>::Failure(Error(
+                ErrorCode::PORT_NOT_INITIALIZED,
+                "motion runtime port unavailable",
+                "FakeMotionStatusService"));
+        }
+        return motion_runtime_port_->GetCurrentPosition();
+    }
+
+    Result<AxisStatus> GetAxisStatus(LogicalAxisId axis_id) const override {
+        if (!motion_runtime_port_) {
+            return Result<AxisStatus>::Failure(Error(
+                ErrorCode::PORT_NOT_INITIALIZED,
+                "motion runtime port unavailable",
+                "FakeMotionStatusService"));
+        }
+
+        auto motion_status = motion_runtime_port_->GetAxisStatus(axis_id);
+        if (motion_status.IsError()) {
+            return Result<AxisStatus>::Failure(motion_status.GetError());
+        }
+
+        auto axis_position = motion_runtime_port_->GetAxisPosition(axis_id);
+        if (axis_position.IsError()) {
+            return Result<AxisStatus>::Failure(axis_position.GetError());
+        }
+
+        AxisStatus status;
+        status.state = motion_status.Value().state == MotionState::MOVING ? AxisState::MOVING : AxisState::ENABLED;
+        status.current_position = axis_position.Value();
+        status.target_position = axis_position.Value();
+        status.current_velocity = motion_status.Value().velocity;
+        status.is_homed = motion_status.Value().homing_state == "homed";
+        status.has_error = motion_status.Value().has_error;
+        if (motion_status.Value().has_error) {
+            status.state = AxisState::FAULT;
+        } else if (!motion_status.Value().enabled) {
+            status.state = AxisState::DISABLED;
+        }
+        return Result<AxisStatus>::Success(status);
+    }
+
+    Result<std::vector<AxisStatus>> GetAllAxisStatus() const override {
+        if (!motion_runtime_port_) {
+            return Result<std::vector<AxisStatus>>::Failure(Error(
+                ErrorCode::PORT_NOT_INITIALIZED,
+                "motion runtime port unavailable",
+                "FakeMotionStatusService"));
+        }
+
+        auto all_status = motion_runtime_port_->GetAllAxesStatus();
+        if (all_status.IsError()) {
+            return Result<std::vector<AxisStatus>>::Failure(all_status.GetError());
+        }
+
+        std::vector<AxisStatus> translated;
+        translated.reserve(all_status.Value().size());
+        for (size_t index = 0; index < all_status.Value().size(); ++index) {
+            AxisStatus status;
+            const auto& raw = all_status.Value()[index];
+            auto axis_id = static_cast<LogicalAxisId>(index);
+            auto axis_position = motion_runtime_port_->GetAxisPosition(axis_id);
+            if (axis_position.IsError()) {
+                return Result<std::vector<AxisStatus>>::Failure(axis_position.GetError());
+            }
+
+            status.state = raw.state == MotionState::MOVING ? AxisState::MOVING : AxisState::ENABLED;
+            status.current_position = axis_position.Value();
+            status.target_position = axis_position.Value();
+            status.current_velocity = raw.velocity;
+            status.is_homed = raw.homing_state == "homed";
+            status.has_error = raw.has_error;
+            if (raw.has_error) {
+                status.state = AxisState::FAULT;
+            } else if (!raw.enabled) {
+                status.state = AxisState::DISABLED;
+            }
+            translated.push_back(status);
+        }
+
+        return Result<std::vector<AxisStatus>>::Success(translated);
+    }
+
+    Result<bool> IsMoving() const override {
+        if (!motion_runtime_port_) {
+            return Result<bool>::Failure(Error(
+                ErrorCode::PORT_NOT_INITIALIZED,
+                "motion runtime port unavailable",
+                "FakeMotionStatusService"));
+        }
+        return motion_runtime_port_->IsAxisMoving(LogicalAxisId::X);
+    }
+
+    Result<bool> HasError() const override {
+        if (!motion_runtime_port_) {
+            return Result<bool>::Failure(Error(
+                ErrorCode::PORT_NOT_INITIALIZED,
+                "motion runtime port unavailable",
+                "FakeMotionStatusService"));
+        }
+
+        auto all_status = motion_runtime_port_->GetAllAxesStatus();
+        if (all_status.IsError()) {
+            return Result<bool>::Failure(all_status.GetError());
+        }
+        for (const auto& status : all_status.Value()) {
+            if (status.has_error) {
+                return Result<bool>::Success(true);
+            }
+        }
+        return Result<bool>::Success(false);
+    }
+
+private:
+    std::shared_ptr<IMotionRuntimePort> motion_runtime_port_;
+};
+
+class FakeMotionRuntimeServicesProvider final : public IMotionRuntimeServicesProvider {
+public:
+    MotionRuntimeServicesBundle CreateServices(
+        const std::shared_ptr<IMotionRuntimePort>& motion_runtime_port) const override {
+        MotionRuntimeServicesBundle bundle;
+        bundle.motion_control_service = std::make_shared<FakeMotionControlService>(motion_runtime_port);
+        bundle.motion_status_service = std::make_shared<FakeMotionStatusService>(motion_runtime_port);
+        return bundle;
+    }
+};
+
 MotionRuntimeAssemblyDependencies makeDependencies(
     const std::shared_ptr<FakeMotionRuntimePort>& motion_runtime_port,
     const std::shared_ptr<FakeInterpolationPort>& interpolation_port,
@@ -416,6 +634,7 @@ MotionRuntimeAssemblyDependencies makeDependencies(
     dependencies.configuration_port = configuration_port;
     dependencies.event_publisher_port = event_publisher;
     dependencies.trigger_controller_port = trigger_controller;
+    dependencies.services_provider = std::make_shared<FakeMotionRuntimeServicesProvider>();
     return dependencies;
 }
 

@@ -19,10 +19,10 @@
 namespace {
 
 using Siligen::Application::UseCases::Dispensing::DispensingExecutionUseCase;
+using Siligen::Application::UseCases::Dispensing::DispensingExecutionRequest;
 using Siligen::Application::UseCases::Dispensing::DispensingMVPRequest;
 using Siligen::Application::UseCases::Dispensing::TaskExecutionContext;
 using Siligen::Application::UseCases::Dispensing::TaskState;
-using Siligen::Application::Services::Dispensing::DispensePlanningFacade;
 using Siligen::Domain::Dispensing::ValueObjects::JobExecutionMode;
 using Siligen::Domain::Dispensing::ValueObjects::ProcessOutputPolicy;
 using Siligen::Domain::Machine::ValueObjects::MachineMode;
@@ -35,15 +35,13 @@ std::shared_ptr<T> MakeDummyShared() {
 
 DispensingExecutionUseCase CreateExecutionUseCase() {
     return DispensingExecutionUseCase(
-        MakeDummyShared<DispensePlanningFacade>(),
         nullptr,
         nullptr,
         nullptr,
         nullptr,
         nullptr,
         nullptr,
-        nullptr,
-        MakeDummyShared<Siligen::Application::Services::DXF::DxfPbPreparationService>());
+        nullptr);
 }
 
 }  // namespace
@@ -247,6 +245,16 @@ TEST(DispensingExecutionUseCaseProgressTest, RejectsConflictingLegacyAndExplicit
     request.dxf_filepath = "dummy.dxf";
     request.dry_run = true;
     request.output_policy = ProcessOutputPolicy::Enabled;
+    request.dispensing_speed_mm_s = 25.0f;
+    request.dry_run_speed_mm_s = 80.0f;
+
+    auto validation = request.Validate();
+    ASSERT_TRUE(validation.IsError());
+    EXPECT_EQ(validation.GetError().GetCode(), ErrorCode::INVALID_PARAMETER);
+}
+
+TEST(DispensingExecutionUseCaseProgressTest, PlannedExecutionRequestRequiresTrajectory) {
+    DispensingExecutionRequest request;
     request.dispensing_speed_mm_s = 25.0f;
     request.dry_run_speed_mm_s = 80.0f;
 

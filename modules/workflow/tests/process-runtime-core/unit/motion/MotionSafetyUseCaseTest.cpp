@@ -53,7 +53,7 @@ class FakePositionControlPort final : public IPositionControlPort {
 
 TEST(MotionSafetyUseCaseTest, UsesUnifiedPositionControlPortForEmergencyStop) {
     auto position_port = std::make_shared<FakePositionControlPort>();
-    MotionSafetyUseCase use_case(position_port, nullptr);
+    MotionSafetyUseCase use_case(position_port);
 
     auto result = use_case.EmergencyStop();
 
@@ -63,7 +63,7 @@ TEST(MotionSafetyUseCaseTest, UsesUnifiedPositionControlPortForEmergencyStop) {
 
 TEST(MotionSafetyUseCaseTest, StopsAllAxesViaUnifiedPositionControlPort) {
     auto position_port = std::make_shared<FakePositionControlPort>();
-    MotionSafetyUseCase use_case(position_port, nullptr);
+    MotionSafetyUseCase use_case(position_port);
 
     auto result = use_case.StopAllAxes(true);
 

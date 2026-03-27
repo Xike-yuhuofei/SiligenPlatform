@@ -3,16 +3,24 @@
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 
 #include "domain/dispensing/domain-services/DispensingProcessService.h"
+#include "modules/workflow/domain/domain/safety/domain-services/InterlockPolicy.h"
 #include "domain/safety/domain-services/SafetyOutputGuard.h"
 #include "shared/logging/PrintfLogFormatter.h"
 #include "shared/interfaces/ILoggingService.h"
 
 #include <algorithm>
 #include <limits>
+#include <utility>
 
 using namespace Siligen::Shared::Types;
 
 namespace Siligen::Application::UseCases::Dispensing {
+
+using Domain::Motion::Ports::MotionState;
+using Domain::Motion::Ports::MotionStatus;
+using Domain::Safety::DomainServices::InterlockPolicy;
+using Domain::Safety::ValueObjects::InterlockCause;
+using Domain::Safety::ValueObjects::InterlockPolicyConfig;
 
 Result<void> DispensingExecutionUseCase::ValidateHardwareConnection() noexcept {
     if (!process_service_) {
@@ -22,7 +30,91 @@ Result<void> DispensingExecutionUseCase::ValidateHardwareConnection() noexcept {
     return process_service_->ValidateHardwareConnection();
 }
 
-Result<void> DispensingExecutionUseCase::RefreshRuntimeParameters(const DispensingMVPRequest& request) noexcept {
+Result<void> DispensingExecutionUseCase::ValidateExecutionPreconditions() const noexcept {
+    if (!connection_port_) {
+        return Result<void>::Failure(
+            Error(ErrorCode::PORT_NOT_INITIALIZED, "hardware connection port not available", "DispensingExecutionUseCase"));
+    }
+    if (!connection_port_->IsConnected()) {
+        return Result<void>::Failure(
+            Error(ErrorCode::HARDWARE_NOT_CONNECTED, "hardware not connected", "DispensingExecutionUseCase"));
+    }
+    if (!motion_state_port_) {
+        return Result<void>::Failure(
+            Error(ErrorCode::PORT_NOT_INITIALIZED, "motion state port not available", "DispensingExecutionUseCase"));
+    }
+
+    const LogicalAxisId required_axes[] = {LogicalAxisId::X, LogicalAxisId::Y};
+    for (LogicalAxisId axis : required_axes) {
+        auto status_result = motion_state_port_->GetAxisStatus(axis);
+        if (status_result.IsError()) {
+            return Result<void>::Failure(status_result.GetError());
+        }
+        const MotionStatus& status = status_result.Value();
+        if (status.state == MotionState::ESTOP) {
+            return Result<void>::Failure(
+                Error(ErrorCode::EMERGENCY_STOP_ACTIVATED, "axis in emergency stop state", "DispensingExecutionUseCase"));
+        }
+        if (!status.enabled || status.state == MotionState::DISABLED) {
+            return Result<void>::Failure(
+                Error(ErrorCode::INVALID_STATE, "required axis not enabled", "DispensingExecutionUseCase"));
+        }
+
+        bool axis_homed = false;
+        if (homing_port_) {
+            auto homed_result = homing_port_->IsAxisHomed(axis);
+            if (homed_result.IsError()) {
+                return Result<void>::Failure(homed_result.GetError());
+            }
+            axis_homed = homed_result.Value();
+        } else {
+            axis_homed = (status.state == MotionState::HOMED);
+        }
+        if (!axis_homed) {
+            return Result<void>::Failure(
+                Error(ErrorCode::AXIS_NOT_HOMED, "required axis not homed", "DispensingExecutionUseCase"));
+        }
+        if (status.has_error || status.servo_alarm || status.following_error) {
+            return Result<void>::Failure(
+                Error(ErrorCode::HARDWARE_ERROR, "required axis has active error", "DispensingExecutionUseCase"));
+        }
+    }
+
+    if (interlock_signal_port_) {
+        InterlockPolicyConfig interlock_config;
+        auto interlock_result = InterlockPolicy::Evaluate(*interlock_signal_port_, interlock_config);
+        if (interlock_result.IsError()) {
+            return Result<void>::Failure(interlock_result.GetError());
+        }
+
+        const auto& decision = interlock_result.Value();
+        if (decision.triggered) {
+            const std::string reason = decision.reason == nullptr ? "interlock triggered" : decision.reason;
+            switch (decision.cause) {
+                case InterlockCause::EMERGENCY_STOP:
+                    return Result<void>::Failure(
+                        Error(ErrorCode::EMERGENCY_STOP_ACTIVATED, reason, "DispensingExecutionUseCase"));
+                case InterlockCause::SERVO_ALARM:
+                    return Result<void>::Failure(
+                        Error(ErrorCode::HARDWARE_ERROR, reason, "DispensingExecutionUseCase"));
+                case InterlockCause::SAFETY_DOOR_OPEN:
+                case InterlockCause::PRESSURE_ABNORMAL:
+                case InterlockCause::TEMPERATURE_ABNORMAL:
+                case InterlockCause::VOLTAGE_ABNORMAL:
+                    return Result<void>::Failure(
+                        Error(ErrorCode::INVALID_STATE, reason, "DispensingExecutionUseCase"));
+                case InterlockCause::NONE:
+                default:
+                    return Result<void>::Failure(
+                        Error(ErrorCode::INVALID_STATE, "interlock triggered", "DispensingExecutionUseCase"));
+            }
+        }
+    }
+
+    return Result<void>::Success();
+}
+
+Result<void> DispensingExecutionUseCase::RefreshRuntimeParameters(const DispensingExecutionRequest& request) noexcept {
     if (!process_service_) {
         return Result<void>::Failure(
             Error(ErrorCode::PORT_NOT_INITIALIZED, "点胶流程服务未初始化", "DispensingExecutionUseCase"));
@@ -70,78 +162,11 @@ Result<void> DispensingExecutionUseCase::RefreshRuntimeParameters(const Dispensi
     return Result<void>::Success();
 }
 
-DispensingPlanRequest DispensingExecutionUseCase::BuildPlanRequest(
-    const DispensingMVPRequest& request) const noexcept {
-    DispensingPlanRequest plan_request;
-    plan_request.dxf_filepath = request.dxf_filepath;
-    plan_request.optimize_path = request.optimize_path;
-    plan_request.start_x = request.start_x;
-    plan_request.start_y = request.start_y;
-    plan_request.approximate_splines = request.approximate_splines;
-    plan_request.two_opt_iterations = request.two_opt_iterations;
-    plan_request.spline_max_step_mm = request.spline_max_step_mm;
-    plan_request.spline_max_error_mm = request.spline_max_error_mm;
-    plan_request.continuity_tolerance_mm = request.continuity_tolerance_mm;
-    plan_request.curve_chain_angle_deg = request.curve_chain_angle_deg;
-    plan_request.curve_chain_max_segment_mm = request.curve_chain_max_segment_mm;
-    plan_request.use_hardware_trigger = request.use_hardware_trigger;
-    plan_request.dispensing_velocity = runtime_params_.dispensing_velocity;
-    plan_request.acceleration = runtime_params_.acceleration;
-    plan_request.dispenser_interval_ms = runtime_params_.dispenser_interval_ms;
-    plan_request.dispenser_duration_ms = runtime_params_.dispenser_duration_ms;
-    plan_request.trigger_spatial_interval_mm = runtime_params_.trigger_spatial_interval_mm;
-    plan_request.pulse_per_mm = runtime_params_.pulse_per_mm;
-    plan_request.valve_response_ms = runtime_params_.valve_response_ms;
-    plan_request.safety_margin_ms = runtime_params_.safety_margin_ms;
-    plan_request.min_interval_ms = runtime_params_.min_interval_ms;
-    plan_request.compensation_profile = runtime_params_.compensation_profile;
-    plan_request.sample_dt = runtime_params_.sample_dt;
-    plan_request.sample_ds = runtime_params_.sample_ds;
-    plan_request.arc_tolerance_mm = request.arc_tolerance_mm;
-    plan_request.max_jerk = (request.max_jerk > 0.0f) ? request.max_jerk : DispensingMVPRequest::JERK;
-    plan_request.use_interpolation_planner = request.use_interpolation_planner;
-    plan_request.interpolation_algorithm = request.interpolation_algorithm;
-
-    plan_request.dispensing_strategy = DispensingStrategy::BASELINE;
-    plan_request.subsegment_count = 8;
-    plan_request.dispense_only_cruise = false;
-    if (config_port_) {
-        auto system_result = config_port_->LoadConfiguration();
-        if (system_result.IsSuccess()) {
-            const auto& config = system_result.Value();
-            plan_request.dxf_offset = Point2D(config.dxf.offset_x, config.dxf.offset_y);
-            plan_request.bounds_check_enabled = true;
-            plan_request.bounds_x_min = config.machine.soft_limits.x_min;
-            plan_request.bounds_x_max = config.machine.soft_limits.x_max;
-            plan_request.bounds_y_min = config.machine.soft_limits.y_min;
-            plan_request.bounds_y_max = config.machine.soft_limits.y_max;
-        } else {
-            SILIGEN_LOG_WARNING("加载系统配置失败: " + system_result.GetError().GetMessage());
-        }
-
-        auto dispensing_result = config_port_->GetDispensingConfig();
-        if (dispensing_result.IsSuccess()) {
-            const auto& disp = dispensing_result.Value();
-            plan_request.dispensing_strategy = disp.strategy;
-            if (disp.subsegment_count > 0) {
-                plan_request.subsegment_count = disp.subsegment_count;
-            }
-            plan_request.dispense_only_cruise = disp.dispense_only_cruise;
-            plan_request.start_speed_factor = disp.start_speed_factor;
-            plan_request.end_speed_factor = disp.end_speed_factor;
-            plan_request.corner_speed_factor = disp.corner_speed_factor;
-            plan_request.rapid_speed_factor = disp.rapid_speed_factor;
-        }
-
-        auto traj_result = config_port_->GetDxfTrajectoryConfig();
-        if (traj_result.IsSuccess()) {
-            const auto& traj = traj_result.Value();
-            plan_request.python_ruckig_python = traj.python;
-            plan_request.python_ruckig_script = traj.script;
-        }
-    }
-
-    return plan_request;
+void DispensingExecutionUseCase::SetLegacyExecutionForwarders(
+    LegacyExecuteFn execute_fn,
+    LegacyExecuteAsyncFn execute_async_fn) {
+    legacy_execute_fn_ = std::move(execute_fn);
+    legacy_execute_async_fn_ = std::move(execute_async_fn);
 }
 
 }  // namespace Siligen::Application::UseCases::Dispensing

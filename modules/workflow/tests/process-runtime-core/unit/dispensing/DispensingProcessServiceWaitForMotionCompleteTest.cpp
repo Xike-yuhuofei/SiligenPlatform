@@ -6,7 +6,7 @@
 #include <utility>
 #include <vector>
 
-#include "domain/dispensing/domain-services/DispensingProcessService.h"
+#include "modules/dispense-packaging/domain/dispensing/domain-services/DispensingProcessService.h"
 
 #include "domain/motion/ports/IInterpolationPort.h"
 #include "domain/motion/ports/IMotionStatePort.h"

@@ -16,12 +16,12 @@ MoveToPositionUseCase::MoveToPositionUseCase(
     std::shared_ptr<Siligen::Domain::Motion::DomainServices::MotionControlService> motion_control_service,
     std::shared_ptr<Siligen::Domain::Motion::DomainServices::MotionStatusService> motion_status_service,
     std::shared_ptr<Siligen::Domain::Motion::DomainServices::MotionValidationService> motion_validation_service,
-    std::shared_ptr<DispenserModel> dispenser_model,
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort> machine_execution_state_port,
     std::shared_ptr<ILoggingService> logging_service)
     : motion_control_service_(std::move(motion_control_service)),
       motion_status_service_(std::move(motion_status_service)),
       motion_validation_service_(std::move(motion_validation_service)),
-      dispenser_model_(std::move(dispenser_model)),
+      machine_execution_state_port_(std::move(machine_execution_state_port)),
       logging_service_(std::move(logging_service)) {}
 
 Result<MoveToPositionResponse> MoveToPositionUseCase::Execute(const MoveToPositionRequest& request) {
@@ -33,7 +33,7 @@ Result<MoveToPositionResponse> MoveToPositionUseCase::Execute(const MoveToPositi
     }
 
     if (request.validate_state) {
-        auto state_result = CheckDispenserState();
+        auto state_result = CheckMachineExecutionState();
         if (state_result.IsError()) {
             return Result<MoveToPositionResponse>::Failure(state_result.GetError());
         }
@@ -93,16 +93,24 @@ Result<void> MoveToPositionUseCase::ValidateRequest(const MoveToPositionRequest&
     return Result<void>::Success();
 }
 
-Result<void> MoveToPositionUseCase::CheckDispenserState() {
-    if (!dispenser_model_) {
+Result<void> MoveToPositionUseCase::CheckMachineExecutionState() {
+    if (!machine_execution_state_port_) {
         return Result<void>::Success();
     }
 
-    auto state = dispenser_model_->GetState();
-    if (state == Siligen::DispenserState::EMERGENCY_STOP ||
-        state == Siligen::DispenserState::ERROR_STATE) {
+    auto snapshot_result = machine_execution_state_port_->ReadSnapshot();
+    if (snapshot_result.IsError()) {
+        return Result<void>::Failure(snapshot_result.GetError());
+    }
+
+    const auto& snapshot = snapshot_result.Value();
+    if (snapshot.emergency_stopped ||
+        snapshot.phase == Siligen::RuntimeExecution::Contracts::System::MachineExecutionPhase::Fault ||
+        !snapshot.manual_motion_allowed) {
         return Result<void>::Failure(
-            Error(ErrorCode::INVALID_STATE, "Dispenser in invalid state", "MoveToPositionUseCase"));
+            Error(ErrorCode::INVALID_STATE,
+                  "Machine execution state does not allow manual motion",
+                  "MoveToPositionUseCase"));
     }
 
     return Result<void>::Success();

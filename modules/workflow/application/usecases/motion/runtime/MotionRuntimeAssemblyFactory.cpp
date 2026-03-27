@@ -1,7 +1,5 @@
 #include "application/usecases/motion/runtime/MotionRuntimeAssemblyFactory.h"
 
-#include "domain/motion/domain-services/MotionControlServiceImpl.h"
-#include "domain/motion/domain-services/MotionStatusServiceImpl.h"
 #include "shared/types/Error.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
@@ -12,8 +10,6 @@
 namespace Siligen::Application::UseCases::Motion::Runtime {
 namespace {
 
-using MotionControlServiceImpl = Siligen::Domain::Motion::DomainServices::MotionControlServiceImpl;
-using MotionStatusServiceImpl = Siligen::Domain::Motion::DomainServices::MotionStatusServiceImpl;
 using MotionValidationService = Siligen::Domain::Motion::DomainServices::MotionValidationService;
 using Point2D = Siligen::Shared::Types::Point2D;
 using Error = Siligen::Shared::Types::Error;
@@ -56,15 +52,21 @@ MotionRuntimeAssembly MotionRuntimeAssemblyFactory::Create(MotionRuntimeAssembly
     if (!dependencies.motion_runtime_port ||
         !dependencies.interpolation_port ||
         !dependencies.configuration_port ||
-        !dependencies.event_publisher_port) {
+        !dependencies.event_publisher_port ||
+        !dependencies.services_provider) {
         return assembly;
     }
 
-    assembly.motion_control_service =
-        std::make_shared<MotionControlServiceImpl>(dependencies.motion_runtime_port);
-    assembly.motion_status_service =
-        std::make_shared<MotionStatusServiceImpl>(dependencies.motion_runtime_port);
-    assembly.motion_validation_service = std::make_shared<DefaultMotionRuntimeValidationService>();
+    auto provided_services = dependencies.services_provider->CreateServices(dependencies.motion_runtime_port);
+    assembly.motion_control_service = std::move(provided_services.motion_control_service);
+    assembly.motion_status_service = std::move(provided_services.motion_status_service);
+    assembly.motion_validation_service = std::move(provided_services.motion_validation_service);
+    if (!assembly.motion_validation_service) {
+        assembly.motion_validation_service = std::make_shared<DefaultMotionRuntimeValidationService>();
+    }
+    if (!assembly.motion_control_service || !assembly.motion_status_service) {
+        return MotionRuntimeAssembly();
+    }
 
     assembly.home_use_case = std::make_unique<Homing::HomeAxesUseCase>(
         dependencies.motion_runtime_port,
@@ -76,21 +78,18 @@ MotionRuntimeAssembly MotionRuntimeAssemblyFactory::Create(MotionRuntimeAssembly
         assembly.motion_control_service,
         assembly.motion_status_service,
         assembly.motion_validation_service,
-        nullptr,
+        dependencies.machine_execution_state_port,
         nullptr);
     assembly.coordination_use_case = std::make_unique<Coordination::MotionCoordinationUseCase>(
         dependencies.interpolation_port,
         dependencies.motion_runtime_port,
-        dependencies.hardware_test_port,
         dependencies.motion_runtime_port,
         dependencies.trigger_controller_port);
     assembly.monitoring_use_case = std::make_unique<Monitoring::MotionMonitoringUseCase>(
         dependencies.motion_runtime_port,
         dependencies.motion_runtime_port,
         dependencies.motion_runtime_port);
-    assembly.safety_use_case = std::make_unique<Safety::MotionSafetyUseCase>(
-        dependencies.motion_runtime_port,
-        dependencies.hardware_test_port);
+    assembly.safety_use_case = std::make_unique<Safety::MotionSafetyUseCase>(dependencies.motion_runtime_port);
     assembly.path_execution_use_case = std::make_unique<Trajectory::DeterministicPathExecutionUseCase>(
         dependencies.interpolation_port,
         dependencies.motion_runtime_port);

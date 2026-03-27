@@ -8,11 +8,11 @@
 
 #pragma once
 
-#include "domain/machine/aggregates/DispenserModel.h"
 #include "domain/dispensing/domain-services/CMPTriggerService.h"
 #include "domain/motion/domain-services/MotionControlService.h"
 #include "domain/motion/domain-services/MotionStatusService.h"
 #include "domain/safety/domain-services/EmergencyStopService.h"
+#include "runtime_execution/contracts/system/IMachineExecutionStatePort.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/types/Error.h"
 #include "shared/types/Result.h"
@@ -23,7 +23,6 @@
 #include <vector>
 
 namespace Siligen::Application::UseCases::System {
-using Siligen::Domain::Machine::Aggregates::Legacy::DispenserModel;
 
 /// @brief 紧急停止的原因枚举
 /// @details 记录触发紧急停止的具体原因
@@ -116,7 +115,7 @@ struct EmergencyStopResponse {
 /// 3. 禁用CMP触发输出
 /// 4. (可选)清空任务队列
 /// 5. (可选)禁用硬件
-/// 6. 更新点胶机状态为EMERGENCY_STOP
+/// 6. 通过运行时状态端口切换执行态到 EMERGENCY_STOP
 /// 7. 记录停止位置和响应时间
 ///
 /// 性能约束:
@@ -132,7 +131,7 @@ struct EmergencyStopResponse {
 /// 使用示例:
 /// @code
 /// auto useCase = std::make_shared<EmergencyStopUseCase>(
-///     motionControlService, motionStatusService, cmpService, dispenserModel, logger);
+///     motionControlService, motionStatusService, cmpService, machineExecutionStatePort, logger);
 /// EmergencyStopRequest request;
 /// request.reason = EmergencyStopReason::USER_REQUEST;
 /// request.detail_message = "User pressed emergency stop button";
@@ -148,13 +147,13 @@ class EmergencyStopUseCase {
     /// @param motion_control_service 运动控制领域服务
     /// @param motion_status_service 运动状态查询服务
     /// @param cmp_service CMP触发控制领域服务
-    /// @param dispenser_model 点胶机领域模型
+    /// @param machine_execution_state_port 运行时执行状态端口
     /// @param logging_service 日志服务
     explicit EmergencyStopUseCase(
         std::shared_ptr<Siligen::Domain::Motion::DomainServices::MotionControlService> motion_control_service,
         std::shared_ptr<Siligen::Domain::Motion::DomainServices::MotionStatusService> motion_status_service,
         std::shared_ptr<Siligen::Domain::Dispensing::DomainServices::CMPService> cmp_service,
-        std::shared_ptr<DispenserModel> dispenser_model,
+        std::shared_ptr<Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort> machine_execution_state_port,
         std::shared_ptr<Siligen::Shared::Interfaces::ILoggingService> logging_service);
 
     ~EmergencyStopUseCase() = default;

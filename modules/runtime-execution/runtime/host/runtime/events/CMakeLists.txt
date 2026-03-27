@@ -16,7 +16,6 @@ target_link_libraries(siligen_event_adapters PUBLIC
 target_link_libraries(siligen_event_adapters PRIVATE
     siligen_runtime_host_boost_headers
     siligen_types
-    siligen_spdlog_adapter  # Phase 3: 六边形架构日志系统
 )
 
 target_compile_features(siligen_event_adapters PUBLIC cxx_std_17)

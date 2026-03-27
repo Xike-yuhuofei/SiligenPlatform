@@ -1,12 +1,14 @@
 #pragma once
 
 #include "domain/configuration/ports/IConfigurationPort.h"
+#include "workflow/application/services/dispensing/IPlanningArtifactExportPort.h"
+#include "domain/motion/value-objects/MotionPlanningReport.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
 #include "shared/types/TrajectoryTypes.h"
-#include "domain/trajectory/value-objects/PlanningReport.h"
 #include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
-#include "application/services/dispensing/DispensePlanningFacade.h"
+#include "domain/dispensing/contracts/ExecutionPackage.h"
+#include "domain/dispensing/planning/domain-services/DispensingPlannerService.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -22,10 +24,11 @@ using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::TrajectoryConfig;
 using Siligen::Shared::Types::TrajectoryResult;
 using Siligen::TrajectoryPoint;
-using Siligen::Domain::Trajectory::ValueObjects::PlanningReport;
+using Siligen::Domain::Motion::ValueObjects::MotionPlanningReport;
+using Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated;
 using Siligen::Domain::Dispensing::DomainServices::DispensingPlan;
 using Siligen::Domain::Dispensing::DomainServices::DispensingPlanRequest;
-using DispensingPlanner = Siligen::Application::Services::Dispensing::DispensePlanningFacade;
+using DispensingPlanner = Siligen::Domain::Dispensing::DomainServices::DispensingPlanner;
 
 /**
  * @brief DXF 路径规划请求参数
@@ -135,7 +138,13 @@ struct PlanningResponse {
     int32 timestamp;                           ///< 生成时间戳
 
     // 规划报告
-    PlanningReport planning_report;            ///< 规划摘要指标
+    MotionPlanningReport planning_report;      ///< 规划摘要指标
+
+    // 过渡期执行载体：供 runtime-execution canonical API 直接消费
+    std::shared_ptr<ExecutionPackageValidated> execution_package;
+
+    // 兼容字段：保留内存态规划结果，供仍未迁移的调用链复用
+    std::shared_ptr<DispensingPlan> execution_plan;
 };
 
 /**
@@ -163,7 +172,9 @@ public:
         std::shared_ptr<DispensingPlanner> planner,
         std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port = nullptr,
         std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService>
-            pb_preparation_service = nullptr);
+            pb_preparation_service = nullptr,
+        std::shared_ptr<Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort>
+            artifact_export_port = nullptr);
 
     ~PlanningUseCase() = default;
 
@@ -184,6 +195,7 @@ private:
     std::shared_ptr<DispensingPlanner> planner_;
     std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port_;
     std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService> pb_preparation_service_;
+    std::shared_ptr<Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort> artifact_export_port_;
 
     /**
      * @brief 验证文件存在性

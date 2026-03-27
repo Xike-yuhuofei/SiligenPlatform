@@ -8,9 +8,9 @@
 #pragma once
 
 #include "domain/dispensing/domain-services/CMPTriggerService.h"
-#include "domain/machine/aggregates/DispenserModel.h"
 #include "domain/motion/domain-services/MotionControlService.h"
 #include "domain/motion/domain-services/MotionStatusService.h"
+#include "runtime_execution/contracts/system/IMachineExecutionStatePort.h"
 #include "shared/types/Error.h"
 #include "shared/types/Point2D.h"
 #include "shared/types/Result.h"
@@ -27,7 +27,7 @@ using Siligen::Shared::Types::Result;
 using Siligen::Domain::Motion::DomainServices::MotionControlService;
 using Siligen::Domain::Motion::DomainServices::MotionStatusService;
 using Siligen::Domain::Dispensing::DomainServices::CMPService;
-using Siligen::Domain::Machine::Aggregates::Legacy::DispenserModel;
+using Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort;
 
 enum class EmergencyStopFailureKind : uint8_t {
     None = 0,
@@ -67,7 +67,7 @@ public:
     EmergencyStopService(std::shared_ptr<MotionControlService> motion_control_service,
                          std::shared_ptr<MotionStatusService> motion_status_service,
                          std::shared_ptr<CMPService> cmp_service,
-                         std::shared_ptr<DispenserModel> dispenser_model) noexcept;
+                         std::shared_ptr<IMachineExecutionStatePort> machine_execution_state_port) noexcept;
 
     EmergencyStopOutcome Execute(const EmergencyStopOptions& options) noexcept;
     Result<bool> IsInEmergencyStop() const noexcept;
@@ -77,7 +77,7 @@ private:
     std::shared_ptr<MotionControlService> motion_control_service_;
     std::shared_ptr<MotionStatusService> motion_status_service_;
     std::shared_ptr<CMPService> cmp_service_;
-    std::shared_ptr<DispenserModel> dispenser_model_;
+    std::shared_ptr<IMachineExecutionStatePort> machine_execution_state_port_;
 
     static EmergencyStopStepResult DependencyMissingResult(const char* message) noexcept;
     static EmergencyStopStepResult OperationFailedResult(const Error& error) noexcept;

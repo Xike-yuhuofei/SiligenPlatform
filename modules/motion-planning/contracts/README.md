@@ -14,7 +14,15 @@
 - 运行时执行层设备适配与实时控制语义。
 - 未声明迁移路径与退出条件的 legacy 双写说明。
 
-## 当前事实来源
+## 当前 canonical 契约
 
-- `modules/motion-planning/domain/motion/`
-- `shared/contracts/engineering/`
+- `MotionPlan`
+- `TimePlanningConfig`
+- `MotionPlanningReport`
+- `MotionTrajectory`
+
+## Phase-1 冻结口径
+
+- 业务阶段名可以继续写作 `MotionPlan`。
+- 当前代码级 canonical payload 固定为 `MotionTrajectory`。
+- `MotionPlanningFacade` 的输出以 `MotionTrajectory` 承载 `MotionPlan` 业务语义。

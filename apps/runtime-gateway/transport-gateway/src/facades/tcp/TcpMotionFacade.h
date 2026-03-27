@@ -1,22 +1,23 @@
 #pragma once
 
-#include "domain/machine/ports/IHardwareConnectionPort.h"
 #include "application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
 #include "application/usecases/motion/homing/HomeAxesUseCase.h"
 #include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
-#include "application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
+#include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
+#include "shared/types/Point.h"
+#include "shared/types/Result.h"
+#include "shared/types/Types.h"
+#include "siligen/device/contracts/ports/device_ports.h"
 
 #include <memory>
+#include <vector>
 
 namespace Siligen::Application::Facades::Tcp {
 
 class TcpMotionFacade {
    public:
-    TcpMotionFacade(std::shared_ptr<UseCases::Motion::Homing::HomeAxesUseCase> home_use_case,
-                    std::shared_ptr<UseCases::Motion::Homing::EnsureAxesReadyZeroUseCase> ensure_ready_zero_use_case,
-                    std::shared_ptr<UseCases::Motion::Manual::ManualMotionControlUseCase> manual_use_case,
-                    std::shared_ptr<UseCases::Motion::Monitoring::MotionMonitoringUseCase> monitoring_use_case,
-                    std::shared_ptr<Domain::Machine::Ports::IHardwareConnectionPort> hardware_connection_port);
+    TcpMotionFacade(std::shared_ptr<UseCases::Motion::MotionControlUseCase> motion_control_use_case,
+                    std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> hardware_connection_port);
 
     Shared::Types::Result<UseCases::Motion::Homing::HomeAxesResponse> Home(
         const UseCases::Motion::Homing::HomeAxesRequest& request);
@@ -40,16 +41,13 @@ class TcpMotionFacade {
     Shared::Types::Result<bool> ReadLimitStatus(Shared::Types::LogicalAxisId axis, bool positive) const;
     Shared::Types::Result<bool> ReadServoAlarmStatus(Shared::Types::LogicalAxisId axis) const;
     bool HasHardwareConnectionPort() const;
-    Domain::Machine::Ports::HardwareConnectionInfo GetHardwareConnectionInfo() const;
-    Domain::Machine::Ports::HeartbeatStatus GetHeartbeatStatus() const;
+    Siligen::Device::Contracts::State::DeviceConnectionSnapshot GetHardwareConnectionInfo() const;
+    Siligen::Device::Contracts::State::HeartbeatSnapshot GetHeartbeatStatus() const;
     bool IsHardwareReadyForMotion() const;
 
    private:
-    std::shared_ptr<UseCases::Motion::Homing::HomeAxesUseCase> home_use_case_;
-    std::shared_ptr<UseCases::Motion::Homing::EnsureAxesReadyZeroUseCase> ensure_ready_zero_use_case_;
-    std::shared_ptr<UseCases::Motion::Manual::ManualMotionControlUseCase> manual_use_case_;
-    std::shared_ptr<UseCases::Motion::Monitoring::MotionMonitoringUseCase> monitoring_use_case_;
-    std::shared_ptr<Domain::Machine::Ports::IHardwareConnectionPort> hardware_connection_port_;
+    std::shared_ptr<UseCases::Motion::MotionControlUseCase> motion_control_use_case_;
+    std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> hardware_connection_port_;
 };
 
 }  // namespace Siligen::Application::Facades::Tcp

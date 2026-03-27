@@ -1,102 +1,88 @@
-# Feature Specification: M7 MotionPlan Owner Boundary Repair
+# Feature Specification: ARCH-201 Stage B - 边界收敛与 US2 最小闭环
 
-**Feature Branch**: `refactor/motion/ARCH-201-m7-owner-boundary-repair`  
-**Created**: 2026-03-27  
-**Status**: Draft  
-**Input**: User description: "基于 modules/motion-planning 审查报告执行结构性修复，先 owner 收口，再 runtime/control 剥离，最后 public surface 与目录骨架一致化"
+**Feature Branch**: `refactor/motion/ARCH-201-m7-owner-boundary-repair`
+**Created**: 2026-03-27
+**Status**: In Progress
+**Input**: User description: "先把当前混合工作树收敛回 ARCH-201 合法范围，再完成 US2 的最小闭环，让 M7 只保留规划职责，M9 承接 runtime/control"
+
+## Stage Scope
+
+- **目标**: 先完成当前工作树的 Stage B 范围收敛，再把 runtime/control owner seam 固定到 `modules/runtime-execution`。
+- **代码白名单**: `modules/motion-planning`、`modules/process-path`、`modules/runtime-execution`、`modules/workflow`、`scripts/validation`。
+- **compile-only collateral**: `shared/contracts/device`、`apps/runtime-gateway`。
+- **本阶段不包含**: US3 全量 public surface/骨架一致化收口；US4 CMP 最终收口；白名单外目录的恢复或继续实现。
+- **canonical 落点**:
+  - `modules/runtime-execution/contracts/runtime/include/runtime_execution/contracts/motion/`
+  - `modules/runtime-execution/application/include/runtime_execution/application/usecases/motion/`
+  - `modules/runtime-execution/runtime/host/runtime/motion/`
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - M7 Owner 事实收口 (Priority: P1)
+### User Story 1 - 范围收敛与 canonical 对齐 (Priority: P1)
 
-作为架构维护者，我需要 `MotionPlanner` 的源码归属、构建归属、调用归属都收敛在 `modules/motion-planning`，避免 `motion-planning` 直接编译 `process-path` 的实现文件。
+作为架构维护者，我需要先把当前 Stage B 的活动范围收敛回白名单目录，并让 `spec.md`、`plan.md`、`tasks.md`、门禁脚本和说明文档统一指向真实 canonical 路径，避免后续验证、提交和复审继续基于过期目录假设。
 
-**Why this priority**: 这是当前最高风险问题（P0），不解决无法开展后续边界治理。  
-**Independent Test**: 在仅完成 US1 的情况下，`siligen_motion` 不再编译 `modules/process-path/domain/trajectory/domain-services/MotionPlanner.cpp`，并且 `MotionPlanningFacade` 仍可产出 `MotionTrajectory`。  
+**Why this priority**: 如果范围和文档口径不收敛，US2 的最小闭环即使代码已落地，也会继续被旧任务、旧路径和错误门禁掩盖。
+**Independent Test**: 在仅完成本故事的情况下，活动工作树只保留 Stage B 白名单目录改动，且文档/门禁不再引用 `runtime/host/services/motion` 作为 M9 主 owner 路径。
 
 **Acceptance Scenarios**:
 
-1. **Given** 当前 M7 直接编译 M6 的 `MotionPlanner.cpp`，**When** 完成 owner 收口改造，**Then** `modules/motion-planning/domain/motion/CMakeLists.txt` 仅编译 M7 自有实现。  
-2. **Given** 应用层通过 `MotionPlanningFacade` 调用规划，**When** 切换到 M7 自有 `MotionPlanner`，**Then** 现有规划路径调用链保持可编译且行为不回归。  
+1. **Given** 当前工作树混杂多个阶段的未提交改动，**When** 形成 keep/park 边界，**Then** Stage B 仅保留白名单目录内改动进入实现与收尾。
+2. **Given** Stage B 已选择 `runtime-execution/runtime/host/runtime/motion` 作为 M9 canonical 落点，**When** 更新 spec/plan/tasks 与 quickstart，**Then** 旧 `runtime/host/services/motion` 路径不再作为 owner 计划项出现。
 
 ---
 
-### User Story 2 - Runtime/Control 语义剥离到 M9 (Priority: P2)
+### User Story 2 - M9 runtime/control 最小闭环 (Priority: P1)
 
-作为运行时维护者，我需要把回零、点动、控制、状态、IO 等执行语义从 M7 剥离到 `runtime-execution` owner 边界，确保 M7 仅产出规划事实。
+作为运行时维护者，我需要让 homing、ready-zero、jog、control/status/IO 的主 owner 入口迁移到 `modules/runtime-execution`，同时保留最小兼容 seam，使 `M7 motion-planning` 回归规划职责，`apps/runtime-gateway` 与 host/container 可以通过单一入口完成最小闭环。
 
-**Why this priority**: 这是第二个 P0 风险，决定 M7/M9 的长期可维护边界。  
-**Independent Test**: 在仅完成 US2 的情况下，运行时控制入口位于 `modules/runtime-execution`，M7 不再持有 runtime/control 主端口抽象。  
-
-**Acceptance Scenarios**:
-
-1. **Given** M7 内存在 `HomingProcess`、`JogController`、`MotionControlService` 等，**When** 完成迁移，**Then** 这些控制流程归位到 M9 并由 M9 application/runtime host 消费。  
-2. **Given** 运行时执行模块负责消费 M4-M8 结果，**When** 改造完成，**Then** M7 只提供规划结果，不承担设备控制职责。  
-
----
-
-### User Story 3 - Public Surface 与目录骨架一致化 (Priority: P3)
-
-作为模块集成者，我需要 `contracts/application/domain/adapters/tests` 与真实 owner 实现一致，避免“目录完整但核心散落/转发壳”的误导。
-
-**Why this priority**: 这是 P1 问题，影响认知成本、构建治理和后续迁移效率。  
-**Independent Test**: 在仅完成 US3 的情况下，M7 应用入口成为稳定边界，空壳目录不再承载虚假职责描述。  
+**Why this priority**: 这是 Stage B 的核心交付；如果 runtime/control owner 仍停留在 M7 或 workflow 内部散点，后续 US3/US4 无法建立稳定边界。
+**Independent Test**: 在仅完成本故事的情况下，`NoRuntimeControlLeakTest` 与 `MotionControlMigrationTest` 可以说明旧 M7/workflow 公开头已退化为 shim，且 gateway/host 已通过 `MotionControlUseCase` 接入 M9 runtime/control surface。
 
 **Acceptance Scenarios**:
 
-1. **Given** 当前 `services/`、`adapters/` 主要是说明文本，**When** 完成结构收敛，**Then** 文档、CMake 和真实实现职责保持一致。  
-2. **Given** 上层消费者依赖 M7 public surface，**When** 完成收敛，**Then** 依赖入口稳定且不再跨模块抓取内部实现。  
-
----
-
-### User Story 4 - CMP/触发边界显式化 (Priority: P3)
-
-作为工艺链路维护者，我需要明确 M7 输出的 CMP 规划事实与 M9 执行触发包装边界，避免语义继续漂移。
-
-**Why this priority**: 这是 P2 风险，当前尚可控，但若不治理会扩大后续拆分成本。  
-**Independent Test**: 在仅完成 US4 的情况下，CMP 输入输出契约明确，执行侧触发包装逻辑不再在 M7 膨胀。  
-
-**Acceptance Scenarios**:
-
-1. **Given** M7 内处理 `cmp_channel`、`pulse_width_us` 与触发时间线，**When** 完成边界整理，**Then** M7 仅保留规划必要语义，执行包装归位 M9。  
-2. **Given** 需要对外说明规划输出边界，**When** 更新 contracts 文档，**Then** 审查者可直接判定是否越界。  
+1. **Given** 旧 `domain/motion/ports/*.h` 与 `domain-services/*Impl.h` 仍被下游 include，**When** 完成迁移，**Then** 这些头文件只保留 shim/alias 到 `runtime-execution` owner，不再声明新的 runtime/control owner 类型。
+2. **Given** runtime host 需要从 motion runtime port 组装控制/状态服务，**When** 完成迁移，**Then** `runtime-execution/runtime/host/runtime/motion/WorkflowMotionRuntimeServicesProvider.*` 承接 host provider 装配。
+3. **Given** `apps/runtime-gateway` 需要维持既有外部协议行为，**When** 完成迁移，**Then** builder/facade 只重接到 `MotionControlUseCase`，不新增 TCP JSON 字段、不新增命令、不改变对外行为。
+4. **Given** `MotionPlanningFacade` 已作为 M7 规划入口，**When** Stage B 完成，**Then** `MotionTrajectory` 的规划主输出语义保持不变。
 
 ---
 
 ### Edge Cases
 
-- 旧 include 路径仍被其他模块引用时，兼容层必须可追踪且有退出条件。  
-- 若迁移期间出现 M6/M7 或 M7/M9 双向 include，必须阻断合入。  
-- 在无真实硬件依赖的本地/CI 环境下，验证门禁必须可执行并可复现。  
-- 并行开发分支可能继续引用旧路径，必须提供清晰的迁移告警。  
+- 旧 include 路径仍被其他模块引用时，只允许保留 shim/alias；不得恢复 owner 实现。
+- `workflow` 在本阶段允许保留 thin compatibility shell，但不得继续吸收新的 runtime/control 主实现。
+- 若白名单 park 导致顶层 superbuild 失配，证据文档必须记录具体阻塞目录和日期，不能伪报验证通过。
+- `shared/contracts/device` 仅允许做 compile-only contract 补位；不得借本阶段扩展设备语义。
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
-- **FR-001**: `MotionPlanner` 实现 MUST 归位到 `modules/motion-planning` owner 根。  
-- **FR-002**: `modules/motion-planning/domain/motion/CMakeLists.txt` MUST NOT 直接编译 `modules/process-path` 的 `.cpp`。  
-- **FR-003**: `modules/process-path/domain/trajectory/CMakeLists.txt` MUST NOT 反向暴露 `modules/motion-planning` 作为 PUBLIC include 根。  
-- **FR-004**: `MotionPlanningFacade` MUST 仅依赖 M7 自有规划实现或 M7 稳定契约。  
-- **FR-005**: 回零/点动/控制/状态/IO 语义 MUST 从 M7 剥离到 M9 owner 范围。  
-- **FR-006**: M7 contracts MUST 明确禁止 runtime/control 语义驻留。  
-- **FR-007**: 边界门禁脚本 MUST 能检测 M6<->M7 和 M7<->M9 违规依赖。  
-- **FR-008**: 相关单元测试与回归测试 MUST 覆盖 owner 收口与边界约束。  
-- **FR-009**: 模块 README/CMake/module.yaml MUST 与真实实现边界一致。  
+- **FR-001**: Stage B 活动工作树 MUST 收敛到白名单目录与 compile-only collateral。
+- **FR-002**: `spec.md`、`plan.md`、`tasks.md`、`quickstart.md` MUST 使用 `runtime-execution/runtime/host/runtime/motion` 作为 M9 host motion canonical 落点。
+- **FR-003**: `modules/runtime-execution/contracts/runtime` MUST owner `IMotionRuntimePort` 与 `IIOControlPort`。
+- **FR-004**: `modules/runtime-execution/application/usecases/motion` MUST owner `MotionControlUseCase`，作为 homing、ready-zero、jog、control/status/IO 的最小统一入口。
+- **FR-005**: `modules/runtime-execution/runtime/host/runtime/motion` MUST 提供 host 侧 provider/orchestrator 装配点。
+- **FR-006**: `modules/motion-planning/domain/motion/*` 与 `modules/workflow/domain/include/domain/motion/*` MUST NOT 再声明 runtime/control owner 端口或服务实现；只允许 shim/alias。
+- **FR-007**: `modules/process-path` 与 `modules/workflow` 在本阶段 MUST 仅保留路径事实或 thin compatibility shell，不得重新吸收 M9 owner 语义。
+- **FR-008**: `apps/runtime-gateway` MUST 只做 include、构造注入与 facade builder 重接，不得改变 TCP JSON 协议字段或外部行为。
+- **FR-009**: `scripts/validation/assert-module-boundary-bridges.ps1` MUST 覆盖 M7 -> M9 runtime/control owner 迁移后的 required/forbidden 规则。
+- **FR-010**: `NoRuntimeControlLeakTest`、`MotionControlMigrationTest`、US2 evidence、quickstart、traceability MUST 与 Stage B 实际落地保持一致。
 
 ### Key Entities *(include if feature involves data)*
 
-- **MotionPlannerOwnerAsset**: M7 内部唯一规划核心实现资产，包含输入 `ProcessPath + MotionConfig` 与输出 `MotionTrajectory` 的求解语义。  
-- **RuntimeControlOrchestrationAsset**: M9 执行链控制资产，包含回零、点动、控制、状态与 IO 协调能力。  
-- **BoundaryComplianceEvidence**: 边界门禁与测试报告资产，用于判定依赖/构建/职责是否合规。  
-- **CMPPlanningBoundaryContract**: CMP 规划事实与执行触发包装分界的契约描述资产。  
+- **MotionPlanningOwnerSurface**: `M7 motion-planning` 暴露的规划事实与求解入口，核心是 `MotionPlanner`、`MotionTrajectory`、`MotionPlanningReport`。
+- **MotionRuntimeOwnerSurface**: `M9 runtime-execution` 暴露的 runtime/control owner surface，核心是 `IMotionRuntimePort`、`IIOControlPort`、`MotionControlUseCase`。
+- **CompatibilityShim**: 旧 `motion-planning` / `workflow` 公开头上的短期 alias/forwarding seam，用于维持编译兼容但不再承载 owner 语义。
+- **BoundaryComplianceEvidence**: Stage B 的门禁报告、测试入口、quickstart、traceability 与 US2 证据文档。
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
-- **SC-001**: `assert-module-boundary-bridges` 对 M6/M7/M9 扫描结果为 0 个新增越界项。  
-- **SC-002**: `modules/motion-planning/tests` 与 `modules/runtime-execution/runtime/host/tests` 相关用例在 CI 配置下通过率 100%。  
-- **SC-003**: `test.ps1 -Profile CI -Suite contracts` 在本特性分支上通过，无新增 known failure。  
-- **SC-004**: `run-local-validation-gate.ps1` 产出完整报告且 `overall_status=passed`。  
-- **SC-005**: 审核者可从 README/CMake/module.yaml 在 5 分钟内定位 M7/M9 的 owner 边界，无歧义。  
+- **SC-001**: Stage B 文档、任务与 quickstart 不再把 `runtime/host/services/motion` 记作 M9 主 owner 路径。
+- **SC-002**: `modules/motion-planning` 与 `modules/workflow/domain/include` 下的 runtime/control 公开头均退化为 shim/alias。
+- **SC-003**: `apps/runtime-gateway` 与 runtime host/container 的 motion 接入统一收敛到 `MotionControlUseCase` 与 `runtime/host/runtime/motion` provider seam。
+- **SC-004**: `NoRuntimeControlLeakTest` 与 `MotionControlMigrationTest` 已加入 canonical CMake 测试入口。
+- **SC-005**: Stage B 证据文档能明确说明已完成项、未完成项和被工作树前置状态阻断的验证项，并给出具体阻断路径。

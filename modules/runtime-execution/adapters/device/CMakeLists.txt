@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
 
+if(NOT TARGET siligen_process_planning_legacy_configuration_bridge_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../process-planning/contracts"
+        "${CMAKE_BINARY_DIR}/_p/da_ppc"
+    )
+endif()
+
 if(NOT TARGET siligen_shared_kernel AND EXISTS "${SILIGEN_WORKSPACE_ROOT}/shared/kernel/CMakeLists.txt")
     add_subdirectory(
         "${SILIGEN_WORKSPACE_ROOT}/shared/kernel"
@@ -11,7 +18,7 @@ set(SILIGEN_DEVICE_CONTRACTS_CANONICAL_DIR "${SILIGEN_WORKSPACE_ROOT}/shared/con
 if(NOT TARGET siligen_device_contracts AND EXISTS "${SILIGEN_DEVICE_CONTRACTS_CANONICAL_DIR}/CMakeLists.txt")
     add_subdirectory(
         "${SILIGEN_DEVICE_CONTRACTS_CANONICAL_DIR}"
-        "${CMAKE_BINARY_DIR}/shared/contracts/device"
+        "${CMAKE_BINARY_DIR}/_p/da_sdc"
     )
 endif()
 
@@ -115,6 +122,7 @@ target_link_libraries(siligen_device_adapters PUBLIC
     siligen_device_contracts
     siligen_shared_kernel
     siligen_domain
+    siligen_process_planning_legacy_configuration_bridge_public
 )
 if(TARGET siligen_types)
     target_link_libraries(siligen_device_adapters PRIVATE siligen_types)

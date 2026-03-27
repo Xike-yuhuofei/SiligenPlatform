@@ -24,7 +24,6 @@ using Siligen::Shared::Types::int32;
 using Siligen::Shared::Types::uint32;
 using Siligen::Shared::Types::LogicalAxisId;
 using Siligen::Shared::Types::Point2D;
-using Siligen::Domain::Machine::Ports::HardwareConnectionState;
 
 namespace {
 constexpr float32 kDefaultAcceleration = 100.0f;
@@ -255,7 +254,7 @@ float32 ResolveCompletionPositionToleranceMm(const std::shared_ptr<IConfiguratio
 DispensingProcessService::DispensingProcessService(std::shared_ptr<IValvePort> valve_port,
                                                    std::shared_ptr<IInterpolationPort> interpolation_port,
                                                    std::shared_ptr<IMotionStatePort> motion_state_port,
-                                                   std::shared_ptr<IHardwareConnectionPort> connection_port,
+                                                   std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
                                                    std::shared_ptr<IConfigurationPort> config_port) noexcept
     : valve_port_(std::move(valve_port)),
       interpolation_port_(std::move(interpolation_port)),
@@ -268,9 +267,13 @@ Result<void> DispensingProcessService::ValidateHardwareConnection() noexcept {
         return Result<void>::Failure(
             Error(ErrorCode::PORT_NOT_INITIALIZED, "硬件连接端口未初始化", "DispensingProcessService"));
     }
-    auto conn_info = connection_port_->GetConnectionInfo();
-    if (conn_info.state != HardwareConnectionState::Connected) {
-        return Result<void>::Failure(Error(ErrorCode::HARDWARE_NOT_CONNECTED, "硬件未连接"));
+    auto conn_info = connection_port_->ReadConnection();
+    if (conn_info.IsError()) {
+        return Result<void>::Failure(conn_info.GetError());
+    }
+    if (conn_info.Value().state != Siligen::Device::Contracts::State::DeviceConnectionState::Connected) {
+        return Result<void>::Failure(
+            Error(ErrorCode::HARDWARE_NOT_CONNECTED, "硬件未连接", "DispensingProcessService"));
     }
     return Result<void>::Success();
 }

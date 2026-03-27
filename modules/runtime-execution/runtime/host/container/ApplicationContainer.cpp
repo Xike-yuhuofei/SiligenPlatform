@@ -52,10 +52,8 @@ ApplicationContainer::~ApplicationContainer() {
     io_control_port_.reset();
     file_storage_port_.reset();
     valve_port_.reset();
-    hardware_connection_port_.reset();
     test_config_manager_.reset();
     test_record_repository_.reset();
-    hardware_test_port_.reset();
     preset_port_.reset();
     event_port_.reset();
     diagnostics_port_.reset();

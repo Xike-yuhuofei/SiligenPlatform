@@ -5,9 +5,9 @@
 #include "domain/dispensing/ports/IDispensingExecutionObserver.h"
 #include "domain/dispensing/ports/IValvePort.h"
 #include "domain/dispensing/value-objects/DispensingExecutionTypes.h"
-#include "domain/machine/ports/IHardwareConnectionPort.h"
 #include "domain/motion/ports/IInterpolationPort.h"
 #include "domain/motion/ports/IMotionStatePort.h"
+#include "siligen/device/contracts/ports/device_ports.h"
 #include "shared/types/Result.h"
 
 #include <atomic>
@@ -20,7 +20,6 @@ using Siligen::Shared::Types::int32;
 using Siligen::Domain::Configuration::Ports::IConfigurationPort;
 using Siligen::Domain::Dispensing::Ports::IDispensingExecutionObserver;
 using Siligen::Domain::Dispensing::Ports::IValvePort;
-using Siligen::Domain::Machine::Ports::IHardwareConnectionPort;
 using Siligen::Domain::Motion::Ports::IInterpolationPort;
 using Siligen::Domain::Motion::Ports::IMotionStatePort;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionOptions;
@@ -34,7 +33,7 @@ class DispensingProcessService {
     DispensingProcessService(std::shared_ptr<IValvePort> valve_port,
                              std::shared_ptr<IInterpolationPort> interpolation_port,
                              std::shared_ptr<IMotionStatePort> motion_state_port,
-                             std::shared_ptr<IHardwareConnectionPort> connection_port,
+                             std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
                              std::shared_ptr<IConfigurationPort> config_port) noexcept;
 
     Result<void> ValidateHardwareConnection() noexcept;
@@ -84,7 +83,7 @@ class DispensingProcessService {
     std::shared_ptr<IValvePort> valve_port_;
     std::shared_ptr<IInterpolationPort> interpolation_port_;
     std::shared_ptr<IMotionStatePort> motion_state_port_;
-    std::shared_ptr<IHardwareConnectionPort> connection_port_;
+    std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port_;
     std::shared_ptr<IConfigurationPort> config_port_;
 };
 

@@ -9,6 +9,22 @@ set(SILIGEN_DOMAIN_IMPLEMENTATION_INCLUDE_DIRS
     ${PROCESS_RUNTIME_CORE_IMPLEMENTATION_INCLUDE_DIRS}
 )
 
+set(SILIGEN_MOTION_PLANNING_DOMAIN_MOTION_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../motion-planning/domain/motion"
+)
+set(SILIGEN_MOTION_EXECUTION_OWNER_IMPLEMENTATION_INCLUDE_DIRS
+    ${SILIGEN_MOTION_PLANNING_DOMAIN_MOTION_DIR}
+    ${SILIGEN_MOTION_PLANNING_DOMAIN_MOTION_DIR}/domain-services
+    ${SILIGEN_MOTION_PLANNING_DOMAIN_MOTION_DIR}/domain-services/interpolation
+    ${SILIGEN_DOMAIN_IMPLEMENTATION_INCLUDE_DIRS}
+)
+if(NOT EXISTS "${SILIGEN_MOTION_PLANNING_DOMAIN_MOTION_DIR}/domain-services/MotionBufferController.cpp")
+    message(FATAL_ERROR
+        "workflow motion execution compatibility target requires M7 owner motion sources under "
+        "${SILIGEN_MOTION_PLANNING_DOMAIN_MOTION_DIR}"
+    )
+endif()
+
 # 子域结构（占位，不影响现有构建）
 add_subdirectory(_shared)
 add_subdirectory(motion)
@@ -107,26 +123,14 @@ target_link_libraries(siligen_triggering
     siligen_utils
 )
 
-# 配置管理库
-add_library(siligen_configuration STATIC
-    configuration/DispensingConfig.cpp
-    configuration/MachineConfig.cpp
-    configuration/ValveTimingConfig.cpp
-    configuration/CMPPulseConfig.cpp
-    configuration/InterpolationConfig.cpp
-)
-
-target_include_directories(siligen_configuration PUBLIC
+# 配置管理兼容库
+# workflow 本地 configuration 仅保留兼容 target，真实实现切换到 M4 legacy configuration bridge。
+add_library(siligen_configuration INTERFACE)
+target_include_directories(siligen_configuration INTERFACE
     ${SILIGEN_DOMAIN_INTERFACE_INCLUDE_DIRS}
 )
-target_include_directories(siligen_configuration PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/configuration
-    ${SILIGEN_DOMAIN_IMPLEMENTATION_INCLUDE_DIRS}
-)
-
-target_link_libraries(siligen_configuration
-    siligen_types
-    siligen_utils
+target_link_libraries(siligen_configuration INTERFACE
+    siligen_process_planning_legacy_configuration_bridge_public
 )
 
 # 导出领域层库目标
@@ -174,17 +178,16 @@ target_link_libraries(siligen_dispensing_execution_services PRIVATE
 target_compile_features(siligen_dispensing_execution_services PUBLIC cxx_std_17)
 
 add_library(siligen_motion_execution_services STATIC
-    motion/domain-services/MotionBufferController.cpp
-    motion/domain-services/JogController.cpp
-    motion/domain-services/HomingProcess.cpp
-    motion/domain-services/ReadyZeroDecisionService.cpp
-    motion/domain-services/MotionControlServiceImpl.cpp
-    motion/domain-services/MotionStatusServiceImpl.cpp
+    ${SILIGEN_MOTION_PLANNING_DOMAIN_MOTION_DIR}/domain-services/MotionBufferController.cpp
+    ${SILIGEN_MOTION_PLANNING_DOMAIN_MOTION_DIR}/domain-services/JogController.cpp
+    ${SILIGEN_MOTION_PLANNING_DOMAIN_MOTION_DIR}/domain-services/HomingProcess.cpp
+    ${SILIGEN_MOTION_PLANNING_DOMAIN_MOTION_DIR}/domain-services/ReadyZeroDecisionService.cpp
 )
 target_include_directories(siligen_motion_execution_services PUBLIC
     ${SILIGEN_DOMAIN_INTERFACE_INCLUDE_DIRS}
 )
 target_include_directories(siligen_motion_execution_services PRIVATE
+    ${SILIGEN_MOTION_EXECUTION_OWNER_IMPLEMENTATION_INCLUDE_DIRS}
     ${SILIGEN_DOMAIN_SHARED_IMPLEMENTATION_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_motion_execution_services PUBLIC
@@ -277,7 +280,6 @@ if(SILIGEN_USE_PCH)
     # siligen_trajectory 现在是 INTERFACE 库,跳过预编译头
     # target_precompile_headers(siligen_trajectory PRIVATE ${SILIGEN_PCH_HEADER})
     target_precompile_headers(siligen_triggering PRIVATE ${SILIGEN_PCH_HEADER})
-    target_precompile_headers(siligen_configuration PRIVATE ${SILIGEN_PCH_HEADER})
     target_precompile_headers(siligen_dispensing_execution_services PRIVATE ${SILIGEN_PCH_HEADER})
     target_precompile_headers(siligen_motion_execution_services PRIVATE ${SILIGEN_PCH_HEADER})
     target_precompile_headers(siligen_recipe_domain_services PRIVATE ${SILIGEN_PCH_HEADER})

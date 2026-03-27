@@ -4,7 +4,6 @@
 #include "domain/motion/value-objects/SemanticPath.h"
 #include "domain/motion/value-objects/TimePlanningConfig.h"
 #include "domain/trajectory/value-objects/ProcessPath.h"
-#include "domain/trajectory/value-objects/MotionConfig.h"
 
 namespace Siligen::Domain::Motion::DomainServices {
 
@@ -12,7 +11,6 @@ using Siligen::Domain::Motion::ValueObjects::MotionTrajectory;
 using Siligen::Domain::Motion::ValueObjects::SemanticPath;
 using Siligen::Domain::Motion::ValueObjects::TimePlanningConfig;
 using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
-using Siligen::Domain::Trajectory::ValueObjects::MotionConfig;
 
 class TimeTrajectoryPlanner {
    public:
@@ -20,7 +18,7 @@ class TimeTrajectoryPlanner {
     ~TimeTrajectoryPlanner() = default;
 
     MotionTrajectory Plan(const SemanticPath& path, const TimePlanningConfig& config) const;
-    MotionTrajectory Plan(const ProcessPath& path, const MotionConfig& config) const;
+    MotionTrajectory Plan(const ProcessPath& path, const TimePlanningConfig& config) const;
 };
 
 }  // namespace Siligen::Domain::Motion::DomainServices

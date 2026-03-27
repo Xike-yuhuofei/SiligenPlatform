@@ -1,5 +1,8 @@
 #pragma once
 
+#include "domain/motion/ports/IIOControlPort.h"
+#include "domain/motion/ports/IMotionRuntimePort.h"
+
 namespace Siligen::Shared::Interfaces {
 class ILoggingService;
 }
@@ -11,19 +14,16 @@ struct ValveSupplyConfig;
 struct HomingConfig;
 }
 
-namespace Siligen::Domain::Machine::Ports {
-class IHardwareConnectionPort;
-class IHardwareTestPort;
+namespace Siligen::Device::Contracts::Ports {
+class MachineHealthPort;
 }
 
 namespace Siligen::Domain::Motion::Ports {
 class IAxisControlPort;
 class IHomingPort;
 class IInterpolationPort;
-class IIOControlPort;
 class IJogControlPort;
 class IMotionConnectionPort;
-class IMotionRuntimePort;
 class IMotionStatePort;
 class IPositionControlPort;
 class IVelocityProfilePort;
@@ -76,6 +76,10 @@ class HomeAxesUseCase;
 class EnsureAxesReadyZeroUseCase;
 }
 
+namespace Siligen::Application::UseCases::Motion {
+class MotionControlUseCase;
+}
+
 namespace Siligen::Application::UseCases::Motion::Trajectory {
 class ExecuteTrajectoryUseCase;
 }
@@ -112,7 +116,9 @@ class ValveQueryUseCase;
 namespace Siligen::Application::UseCases::Dispensing {
 class CleanupFilesUseCase;
 class DispensingExecutionUseCase;
+class DispensingExecutionWorkflowUseCase;
 class DispensingWorkflowUseCase;
+class IUploadFilePort;
 class PlanningUseCase;
 class UploadFileUseCase;
 }
@@ -128,5 +134,9 @@ class RecipeCommandUseCase;
 class RecipeQueryUseCase;
 class UpdateDraftVersionUseCase;
 class UpdateRecipeUseCase;
+}
+
+namespace Siligen::RuntimeExecution::Contracts::System {
+class IMachineExecutionStatePort;
 }
 

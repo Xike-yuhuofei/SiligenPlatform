@@ -6,10 +6,37 @@
 #include "siligen/device/contracts/faults/device_faults.h"
 #include "siligen/device/contracts/state/device_state.h"
 #include "siligen/shared/result_types.h"
+#include "shared/types/Result.h"
 
+#include <functional>
+#include <string>
 #include <vector>
 
 namespace Siligen::Device::Contracts::Ports {
+
+class DeviceConnectionPort {
+   public:
+    virtual ~DeviceConnectionPort() = default;
+
+    virtual Siligen::Shared::Types::Result<void> Connect(
+        const Siligen::Device::Contracts::Commands::DeviceConnection& connection) = 0;
+    virtual Siligen::Shared::Types::Result<void> Disconnect() = 0;
+    virtual Siligen::Shared::Types::Result<Siligen::Device::Contracts::State::DeviceConnectionSnapshot>
+    ReadConnection() const = 0;
+    virtual bool IsConnected() const = 0;
+    virtual Siligen::Shared::Types::Result<void> Reconnect() = 0;
+    virtual void SetConnectionStateCallback(
+        std::function<void(const Siligen::Device::Contracts::State::DeviceConnectionSnapshot&)> callback) = 0;
+    virtual Siligen::Shared::Types::Result<void> StartStatusMonitoring(std::uint32_t interval_ms = 1000) = 0;
+    virtual void StopStatusMonitoring() = 0;
+    virtual std::string GetLastError() const = 0;
+    virtual void ClearError() = 0;
+    virtual Siligen::Shared::Types::Result<void> StartHeartbeat(
+        const Siligen::Device::Contracts::State::HeartbeatSnapshot& config) = 0;
+    virtual void StopHeartbeat() = 0;
+    virtual Siligen::Device::Contracts::State::HeartbeatSnapshot ReadHeartbeat() const = 0;
+    virtual Siligen::Shared::Types::Result<bool> Ping() const = 0;
+};
 
 class MotionDevicePort {
    public:

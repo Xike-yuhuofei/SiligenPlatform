@@ -1,9 +1,23 @@
 cmake_minimum_required(VERSION 3.20)
 
+if(NOT TARGET siligen_process_planning_legacy_configuration_bridge_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../process-planning/contracts"
+        "${CMAKE_BINARY_DIR}/_p/ji_ppc"
+    )
+endif()
+
 if(NOT TARGET siligen_process_planning_domain_configuration)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../process-planning/domain/configuration"
-        "${CMAKE_BINARY_DIR}/modules/process-planning/domain/configuration"
+        "${CMAKE_BINARY_DIR}/_p/ji_pdc"
+    )
+endif()
+
+if(NOT TARGET siligen_job_ingest_contracts AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/contracts/CMakeLists.txt")
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/contracts"
+        "${CMAKE_BINARY_DIR}/modules/job-ingest/contracts"
     )
 endif()
 
@@ -24,6 +38,8 @@ target_include_directories(siligen_job_ingest_application_headers INTERFACE
 )
 target_link_libraries(siligen_job_ingest_application_headers INTERFACE
     siligen_process_planning_domain_configuration
+    siligen_process_planning_legacy_configuration_bridge_public
+    siligen_job_ingest_contracts
 )
 target_compile_features(siligen_job_ingest_application_headers INTERFACE cxx_std_17)
 
@@ -46,6 +62,8 @@ target_include_directories(siligen_job_ingest_application PRIVATE
 )
 target_link_libraries(siligen_job_ingest_application PUBLIC
     siligen_process_planning_domain_configuration
+    siligen_process_planning_legacy_configuration_bridge_public
+    siligen_job_ingest_contracts
     siligen_dxf_geometry_application_public
     siligen_types
     siligen_utils
@@ -57,6 +75,7 @@ if(NOT TARGET siligen_job_ingest_application_public)
 endif()
 target_link_libraries(siligen_job_ingest_application_public INTERFACE
     siligen_job_ingest_application_headers
+    siligen_job_ingest_contracts
     $<LINK_ONLY:siligen_job_ingest_application>
 )
 target_compile_features(siligen_job_ingest_application_public INTERFACE cxx_std_17)
@@ -67,6 +86,9 @@ endif()
 target_link_libraries(siligen_module_job_ingest INTERFACE
     siligen_job_ingest_application_public
 )
+if(TARGET siligen_job_ingest_contracts)
+    target_link_libraries(siligen_module_job_ingest INTERFACE siligen_job_ingest_contracts)
+endif()
 
 if(TARGET siligen_application_contracts)
     target_link_libraries(siligen_module_job_ingest INTERFACE siligen_application_contracts)

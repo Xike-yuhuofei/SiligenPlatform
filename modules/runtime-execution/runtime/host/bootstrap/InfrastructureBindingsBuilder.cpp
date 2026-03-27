@@ -9,7 +9,7 @@
 #include "domain/dispensing/value-objects/DispenseCompensationProfile.h"
 #include "domain/motion/domain-services/interpolation/ValidatedInterpolationPort.h"
 
-#include "logging/spdlog/SpdlogLoggingAdapter.h"
+#include "application/services/trace_diagnostics/LoggingServiceFactory.h"
 #include "siligen/device/adapters/hardware/HardwareTestAdapter.h"
 #include "siligen/device/adapters/dispensing/ValveAdapter.h"
 #include "siligen/device/adapters/dispensing/TriggerControllerAdapter.h"
@@ -137,9 +137,10 @@ void BuildMotionRuntimeBindings(
     auto motion_runtime = std::make_shared<Siligen::Infrastructure::Adapters::Motion::MotionRuntimeFacade>(
         motion_adapter_result.Value(),
         homing_port);
-    bindings.motion_runtime_port = motion_runtime;
-    bindings.hardware_connection_port =
+    auto connection_adapter =
         std::make_shared<Siligen::Infrastructure::Adapters::Motion::MotionRuntimeConnectionAdapter>(motion_runtime);
+    bindings.motion_runtime_port = motion_runtime;
+    bindings.device_connection_port = connection_adapter;
 }
 
 }  // namespace
@@ -150,13 +151,13 @@ InfrastructureBindings CreateInfrastructureBindings(const InfrastructureBootstra
     InfrastructureBindings bindings;
     const auto& resolved_config_path = config.config_file_path;
 
-    auto log_adapter = std::make_shared<Infrastructure::Adapters::Logging::SpdlogLoggingAdapter>("siligen");
-    auto log_config = config.log_config;
-    auto log_result = log_adapter->Configure(log_config);
-    if (log_result.IsError()) {
-        SILIGEN_LOG_WARNING("Failed to configure logging service: " + log_result.GetError().GetMessage());
+    auto log_bootstrap = TraceDiagnostics::Application::Services::CreateLoggingService(config.log_config, "siligen");
+    if (log_bootstrap.configuration_result.IsError()) {
+        SILIGEN_LOG_WARNING(
+            "Failed to configure logging service: " +
+            log_bootstrap.configuration_result.GetError().GetMessage());
     }
-    bindings.logging_service = log_adapter;
+    bindings.logging_service = log_bootstrap.service;
     Shared::DI::LoggingServiceLocator::GetInstance().SetService(bindings.logging_service);
 
     bindings.config_port = std::make_shared<Infrastructure::Adapters::ConfigFileAdapter>(resolved_config_path);
@@ -194,12 +195,12 @@ InfrastructureBindings CreateInfrastructureBindings(const InfrastructureBootstra
         multi_card,
         hw_config,
         homing_configs);
-    bindings.hardware_test_port = hw_test_adapter;
+    bindings.machine_health_port = hw_test_adapter;
     bindings.diagnostics_port =
-        std::make_shared<Infrastructure::Adapters::Diagnostics::DiagnosticsPortAdapter>(hw_test_adapter);
+        std::make_shared<Infrastructure::Adapters::Diagnostics::DiagnosticsPortAdapter>(bindings.machine_health_port);
 
     bindings.trigger_port = std::make_shared<Infrastructure::Adapters::Dispensing::TriggerControllerAdapter>(
-        bindings.hardware_test_port);
+        hw_test_adapter);
 
     auto valve_supply_result = bindings.config_port->GetValveSupplyConfig();
     if (valve_supply_result.IsError()) {

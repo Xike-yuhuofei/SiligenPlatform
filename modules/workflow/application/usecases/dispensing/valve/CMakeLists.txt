@@ -21,6 +21,11 @@ target_link_libraries(siligen_valve_core PUBLIC
     siligen_domain
     siligen_domain_services
 )
+if(TARGET siligen_device_contracts)
+    target_link_libraries(siligen_valve_core PUBLIC
+        siligen_device_contracts
+    )
+endif()
 
 target_compile_features(siligen_valve_core PUBLIC cxx_std_17)
 

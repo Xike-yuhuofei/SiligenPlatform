@@ -77,7 +77,7 @@ float32 SegmentCurvature(const Segment& segment) {
     return std::abs(1.0f / radius);
 }
 
-float32 ApplyTagLimit(ProcessTag tag, float32 vmax, const MotionConfig& config) {
+float32 ApplyTagLimit(ProcessTag tag, float32 vmax, const TimePlanningConfig& config) {
     switch (tag) {
         case ProcessTag::Corner:
             return vmax * config.corner_speed_factor;
@@ -154,7 +154,7 @@ float32 ClampTargetAccelerationForRuckig(float32 target_velocity,
     return 0.0f;
 }
 
-float32 ResolveSampleDs(const MotionConfig& config) {
+float32 ResolveSampleDs(const TimePlanningConfig& config) {
     if (config.sample_ds > kEpsilon) {
         return config.sample_ds;
     }
@@ -177,7 +177,7 @@ float32 ComputeChordStep(float32 radius, float32 tolerance) {
     return 2.0f * std::sqrt(term);
 }
 
-float32 ResolveSegmentSampleDs(const Segment& segment, float32 base_ds, const MotionConfig& config) {
+float32 ResolveSegmentSampleDs(const Segment& segment, float32 base_ds, const TimePlanningConfig& config) {
     if (base_ds <= kEpsilon || config.arc_tolerance_mm <= kEpsilon) {
         return base_ds;
     }
@@ -268,7 +268,7 @@ std::vector<float32> BuildDistanceSamples(const ProcessPath& path,
                                           const std::vector<float32>& lengths,
                                           float32 total_length,
                                           float32 ds,
-                                          const MotionConfig& config) {
+                                          const TimePlanningConfig& config) {
     std::vector<float32> s_samples;
     s_samples.reserve(static_cast<size_t>(total_length / ds) + path.segments.size() + 2);
     float32 s_accum = 0.0f;
@@ -302,7 +302,7 @@ std::vector<float32> BuildDistanceSamples(const ProcessPath& path,
 std::vector<float32> BuildVelocityLimits(const ProcessPath& path,
                                          const std::vector<float32>& lengths,
                                          const std::vector<float32>& s_samples,
-                                         const MotionConfig& config,
+                                         const TimePlanningConfig& config,
                                          float32 amax) {
     const size_t sample_count = s_samples.size();
     std::vector<float32> v_limits(sample_count, 0.0f);
@@ -492,9 +492,9 @@ std::vector<float32> ApplyJerkLimitedScan(const std::vector<float32>& v_in,
 MotionPlanner::MotionPlanner(std::shared_ptr<VelocityProfileService> velocity_service)
     : velocity_service_(std::move(velocity_service)) {}
 
-MotionTrajectory MotionPlanner::Plan(const ProcessPath& path, const MotionConfig& config) const {
+MotionTrajectory MotionPlanner::Plan(const ProcessPath& path, const TimePlanningConfig& config) const {
     MotionTrajectory trajectory;
-    Siligen::Domain::Trajectory::ValueObjects::PlanningReport report;
+    Siligen::Domain::Motion::ValueObjects::MotionPlanningReport report;
     if (path.segments.empty()) {
         return trajectory;
     }

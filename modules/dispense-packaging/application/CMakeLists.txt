@@ -53,14 +53,3 @@ target_link_libraries(siligen_dispense_packaging_application_public INTERFACE
     $<LINK_ONLY:siligen_dispense_packaging_application>
 )
 target_compile_features(siligen_dispense_packaging_application_public INTERFACE cxx_std_17)
-
-if(TARGET siligen_process_runtime_core_dispensing)
-    target_link_libraries(siligen_process_runtime_core_dispensing INTERFACE
-        siligen_dispense_packaging_application_public
-    )
-endif()
-if(TARGET siligen_application_dispensing)
-    target_link_libraries(siligen_application_dispensing PUBLIC
-        siligen_dispense_packaging_application_public
-    )
-endif()

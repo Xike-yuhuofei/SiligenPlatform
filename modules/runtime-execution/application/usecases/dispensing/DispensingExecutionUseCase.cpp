@@ -1,7 +1,6 @@
 #define MODULE_NAME "DispensingExecutionUseCase"
 
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
-#include "application/services/dxf/DxfPbPreparationService.h"
 
 #include "domain/dispensing/domain-services/DispensingProcessService.h"
 #include "domain/safety/domain-services/SafetyOutputGuard.h"
@@ -281,7 +280,7 @@ std::string ResolveVelocityTracePath(const std::string& dxf_path, const std::str
         std::filesystem::path dxf(dxf_path);
         std::string stem = dxf.stem().string();
         if (stem.empty()) {
-            stem = "dxf_velocity_trace";
+            stem = "dispensing_execution";
         }
         path /= (stem + "_velocity_trace.csv");
     }
@@ -310,6 +309,73 @@ bool PrepareVelocityTraceFile(const std::string& output_path,
 }
 
 }  // namespace
+
+MachineMode DispensingExecutionRequest::ResolveMachineMode() const noexcept {
+    if (machine_mode.has_value()) {
+        return machine_mode.value();
+    }
+    return dry_run ? MachineMode::Test : MachineMode::Production;
+}
+
+JobExecutionMode DispensingExecutionRequest::ResolveExecutionMode() const noexcept {
+    if (execution_mode.has_value()) {
+        return execution_mode.value();
+    }
+    return dry_run ? JobExecutionMode::ValidationDryCycle : JobExecutionMode::Production;
+}
+
+ProcessOutputPolicy DispensingExecutionRequest::ResolveOutputPolicy() const noexcept {
+    if (output_policy.has_value()) {
+        return output_policy.value();
+    }
+    return dry_run ? ProcessOutputPolicy::Inhibited : ProcessOutputPolicy::Enabled;
+}
+
+Result<void> DispensingExecutionRequest::Validate() const noexcept {
+    auto package_validation = execution_package.Validate();
+    if (package_validation.IsError()) {
+        return package_validation;
+    }
+    if (max_jerk < 0.0f) {
+        return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "max_jerk不能为负数"));
+    }
+    if (arc_tolerance_mm < 0.0f) {
+        return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "arc_tolerance_mm不能为负数"));
+    }
+
+    Domain::Dispensing::ValueObjects::DispensingRuntimeOverrides overrides;
+    overrides.dry_run = dry_run;
+    overrides.machine_mode = machine_mode;
+    overrides.execution_mode = execution_mode;
+    overrides.output_policy = output_policy;
+    overrides.dispensing_speed_mm_s = dispensing_speed_mm_s;
+    overrides.dry_run_speed_mm_s = dry_run_speed_mm_s;
+    overrides.rapid_speed_mm_s = rapid_speed_mm_s;
+    overrides.acceleration_mm_s2 = acceleration_mm_s2;
+    overrides.velocity_guard_enabled = velocity_guard_enabled;
+    overrides.velocity_guard_ratio = velocity_guard_ratio;
+    overrides.velocity_guard_abs_mm_s = velocity_guard_abs_mm_s;
+    overrides.velocity_guard_min_expected_mm_s = velocity_guard_min_expected_mm_s;
+    overrides.velocity_guard_grace_ms = velocity_guard_grace_ms;
+    overrides.velocity_guard_interval_ms = velocity_guard_interval_ms;
+    overrides.velocity_guard_max_consecutive = velocity_guard_max_consecutive;
+    overrides.velocity_guard_stop_on_violation = velocity_guard_stop_on_violation;
+
+    auto override_validation = ValidateRuntimeOverridesExplicit(overrides);
+    if (override_validation.IsError()) {
+        return Result<void>::Failure(override_validation.GetError());
+    }
+
+    auto guard_validation = SafetyOutputGuard::Evaluate(
+        ResolveMachineMode(),
+        ResolveExecutionMode(),
+        ResolveOutputPolicy());
+    if (guard_validation.IsError()) {
+        return Result<void>::Failure(guard_validation.GetError());
+    }
+
+    return Result<void>::Success();
+}
 
 MachineMode DispensingMVPRequest::ResolveMachineMode() const noexcept {
     if (machine_mode.has_value()) {
@@ -400,15 +466,15 @@ Result<void> DispensingMVPRequest::Validate() const noexcept {
 }
 
 DispensingExecutionUseCase::DispensingExecutionUseCase(
-    std::shared_ptr<DispensingPlanner> planner,
     std::shared_ptr<Domain::Dispensing::Ports::IValvePort> valve_port,
     std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port,
     std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port,
-    std::shared_ptr<Domain::Machine::Ports::IHardwareConnectionPort> connection_port,
+    std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
     std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port,
-    std::shared_ptr<Domain::System::Ports::IEventPublisherPort> event_port,
-    std::shared_ptr<Domain::Dispensing::Ports::ITaskSchedulerPort> task_scheduler_port,
-    std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService> pb_preparation_service)
+    std::shared_ptr<RuntimeEventPublisherPort> event_port,
+    std::shared_ptr<RuntimeTaskSchedulerPort> task_scheduler_port,
+    std::shared_ptr<RuntimeHomingPort> homing_port,
+    std::shared_ptr<RuntimeInterlockSignalPort> interlock_signal_port)
     : valve_port_(std::move(valve_port)),
       interpolation_port_(std::move(interpolation_port)),
       motion_state_port_(std::move(motion_state_port)),
@@ -416,24 +482,28 @@ DispensingExecutionUseCase::DispensingExecutionUseCase(
       config_port_(std::move(config_port)),
       event_port_(std::move(event_port)),
       task_scheduler_port_(std::move(task_scheduler_port)),
-      pb_preparation_service_(pb_preparation_service
-                                  ? std::move(pb_preparation_service)
-                                  : std::make_shared<Siligen::Application::Services::DXF::DxfPbPreparationService>(
-                                        config_port_)),
-      planner_(std::move(planner)),
+      homing_port_(std::move(homing_port)),
+      interlock_signal_port_(std::move(interlock_signal_port)),
       process_service_(std::make_shared<::Siligen::Domain::Dispensing::DomainServices::DispensingProcessService>(
           valve_port_,
           interpolation_port_,
           motion_state_port_,
           connection_port_,
           config_port_)) {
-    if (!planner_) {
-        throw std::invalid_argument("DispensingExecutionUseCase: planner cannot be null");
-    }
 }
 
 DispensingExecutionUseCase::~DispensingExecutionUseCase() {
     stop_requested_.store(true);
+    JobID active_job;
+    {
+        std::lock_guard<std::mutex> lock(jobs_mutex_);
+        active_job = active_job_id_;
+    }
+    if (!active_job.empty()) {
+        (void)StopJob(active_job);
+    }
+    JoinJobWorkerThread();
+
     std::shared_ptr<TaskExecutionContext> active_context;
     {
         std::lock_guard<std::mutex> lock(tasks_mutex_);
@@ -494,14 +564,30 @@ DispensingExecutionUseCase::~DispensingExecutionUseCase() {
     JoinWorkerThread();
 }
 
-Result<DispensingMVPResult> DispensingExecutionUseCase::Execute(const DispensingMVPRequest& request) {
+Result<DispensingMVPResult> DispensingExecutionUseCase::Execute(const DispensingExecutionRequest& request) {
     return ExecuteInternal(request, nullptr);
 }
 
+Result<DispensingMVPResult> DispensingExecutionUseCase::Execute(const DispensingMVPRequest& request) {
+    if (!legacy_execute_fn_) {
+        return Result<DispensingMVPResult>::Failure(
+            Error(
+                ErrorCode::NOT_IMPLEMENTED,
+                "legacy DXF execution entry is not configured",
+                "DispensingExecutionUseCase"));
+    }
+    return legacy_execute_fn_(request);
+}
+
 Result<DispensingMVPResult> DispensingExecutionUseCase::ExecuteInternal(
-    const DispensingMVPRequest& request,
+    const DispensingExecutionRequest& request,
     const std::shared_ptr<TaskExecutionContext>& context) {
-    SILIGEN_LOG_INFO("开始执行DXF点胶: " + request.dxf_filepath);
+    const std::string source_path = request.source_path.empty()
+                                        ? (request.execution_package.source_path.empty()
+                                               ? std::string("<planned-execution>")
+                                               : request.execution_package.source_path)
+                                        : request.source_path;
+    SILIGEN_LOG_INFO("开始执行点胶计划: " + source_path);
 
     std::lock_guard<std::mutex> lock(execution_mutex_);
     stop_requested_ = false;
@@ -531,22 +617,9 @@ Result<DispensingMVPResult> DispensingExecutionUseCase::ExecuteInternal(
         return Result<DispensingMVPResult>::Failure(runtime_result.GetError());
     }
 
-    auto pb_result = pb_preparation_service_->EnsurePbReady(request.dxf_filepath);
-    if (pb_result.IsError()) {
-        return Result<DispensingMVPResult>::Failure(pb_result.GetError());
-    }
-    const std::string prepared_pb_path = pb_result.Value();
-
-    auto plan_request = BuildPlanRequest(request);
-    plan_request.dxf_filepath = prepared_pb_path;
-    auto plan_result = planner_->Plan(plan_request);
-    if (!plan_result.IsSuccess()) {
-        SILIGEN_LOG_ERROR("DXF规划失败: " + plan_result.GetError().GetMessage());
-        return Result<DispensingMVPResult>::Failure(plan_result.GetError());
-    }
-
-    const auto& plan = plan_result.Value();
-    if (plan.motion_trajectory.points.size() < 2) {
+    const auto& execution_package = request.execution_package;
+    const auto& execution_plan = execution_package.execution_plan;
+    if (execution_plan.motion_trajectory.points.size() < 2 && execution_plan.interpolation_points.size() < 2) {
         return Result<DispensingMVPResult>::Failure(
             Error(ErrorCode::TRAJECTORY_GENERATION_FAILED, "轨迹点数量不足", "DispensingExecutionUseCase"));
     }
@@ -577,7 +650,7 @@ Result<DispensingMVPResult> DispensingExecutionUseCase::ExecuteInternal(
         if (trace_settings.output_path.empty()) {
             trace_settings.output_path = "logs/velocity_trace";
         }
-        trace_settings.output_path = ResolveVelocityTracePath(request.dxf_filepath, trace_settings.output_path);
+        trace_settings.output_path = ResolveVelocityTracePath(execution_package.source_path, trace_settings.output_path);
 
         SILIGEN_LOG_INFO_FMT_HELPER(
             "速度采样启用: interval_ms=%d, output_path=%s",
@@ -586,24 +659,29 @@ Result<DispensingMVPResult> DispensingExecutionUseCase::ExecuteInternal(
     }
 
     DispensingMVPResult result;
-    result.total_segments = static_cast<uint32>(plan.interpolation_segments.size());
+    result.total_segments = static_cast<uint32>(execution_plan.interpolation_segments.size());
     if (result.total_segments == 0) {
-        result.total_segments = static_cast<uint32>(plan.process_path.segments.size());
+        result.total_segments = static_cast<uint32>(execution_plan.interpolation_points.size() > 1
+                                                        ? execution_plan.interpolation_points.size() - 1
+                                                        : 0);
     }
-    if (result.total_segments == 0 && !plan.path.segments.empty()) {
-        result.total_segments = static_cast<uint32>(plan.path.segments.size());
+    if (result.total_segments == 0 && execution_plan.motion_trajectory.points.size() > 1) {
+        result.total_segments = static_cast<uint32>(execution_plan.motion_trajectory.points.size() - 1);
     }
-    if (result.total_segments == 0 && plan.motion_trajectory.points.size() > 1) {
-        result.total_segments = static_cast<uint32>(plan.motion_trajectory.points.size() - 1);
-    }
-    result.total_distance = plan.total_length_mm > 0.0f ? plan.total_length_mm : plan.motion_trajectory.total_length;
+    result.total_distance = execution_package.total_length_mm > 0.0f
+                                ? execution_package.total_length_mm
+                                : execution_plan.motion_trajectory.total_length;
     if (context) {
         context->total_segments.store(result.total_segments);
         context->executed_segments.store(0);
         context->reported_progress_percent.store(0);
         context->reported_executed_segments.store(0);
         const auto estimated_execution_ms = static_cast<uint32>(
-            std::max(0.0f, (plan.estimated_time_s > 0.0f ? plan.estimated_time_s : plan.motion_trajectory.total_time) * 1000.0f));
+            std::max(
+                0.0f,
+                (execution_package.estimated_time_s > 0.0f
+                     ? execution_package.estimated_time_s
+                     : execution_plan.motion_trajectory.total_time) * 1000.0f));
         context->estimated_execution_ms.store(estimated_execution_ms);
         if (!context->terminal_committed.load()) {
             context->state.store(TaskState::RUNNING);
@@ -630,15 +708,6 @@ Result<DispensingMVPResult> DispensingExecutionUseCase::ExecuteInternal(
     options.output_policy = resolved_execution_.output_policy;
     options.guard_decision = guard_decision;
 
-    Domain::Dispensing::ValueObjects::DispensingExecutionPlan exec_plan;
-    exec_plan.interpolation_segments = plan.interpolation_segments;
-    exec_plan.interpolation_points = plan.interpolation_points;
-    exec_plan.motion_trajectory = plan.motion_trajectory;
-    exec_plan.trigger_distances_mm = plan.trigger_distances_mm;
-    exec_plan.trigger_interval_ms = plan.trigger_interval_ms;
-    exec_plan.trigger_interval_mm = plan.trigger_interval_mm;
-    exec_plan.total_length_mm = plan.total_length_mm;
-
     std::unique_ptr<VelocityTraceObserver> trace_observer;
     if (trace_settings.enabled) {
         trace_observer = std::make_unique<VelocityTraceObserver>(
@@ -650,7 +719,7 @@ Result<DispensingMVPResult> DispensingExecutionUseCase::ExecuteInternal(
     TaskTrackingObserver task_observer(trace_observer ? trace_observer.get() : nullptr, context);
 
     auto start_time = std::chrono::steady_clock::now();
-    auto exec_result = process_service_->ExecuteProcess(exec_plan,
+    auto exec_result = process_service_->ExecuteProcess(execution_plan,
                                                         runtime_params_,
                                                         options,
                                                         &stop_requested_,

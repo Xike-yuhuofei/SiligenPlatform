@@ -9,6 +9,13 @@ if(NOT DEFINED SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR)
     )
 endif()
 
+if(NOT TARGET siligen_device_contracts AND EXISTS "${CMAKE_SOURCE_DIR}/shared/contracts/device/CMakeLists.txt")
+    add_subdirectory(
+        "${CMAKE_SOURCE_DIR}/shared/contracts/device"
+        "${CMAKE_BINARY_DIR}/_p/dpd_sdc"
+    )
+endif()
+
 include_directories(BEFORE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
@@ -52,6 +59,16 @@ target_link_libraries(siligen_dispense_packaging_domain_dispensing PUBLIC
     siligen_motion
     siligen_process_path_domain_trajectory
 )
+if(TARGET siligen_device_contracts)
+    target_link_libraries(siligen_dispense_packaging_domain_dispensing PUBLIC
+        siligen_device_contracts
+    )
+endif()
+if(TARGET siligen_process_planning_legacy_configuration_bridge_public)
+    target_link_libraries(siligen_dispense_packaging_domain_dispensing PUBLIC
+        siligen_process_planning_legacy_configuration_bridge_public
+    )
+endif()
 
 target_compile_features(siligen_dispense_packaging_domain_dispensing PUBLIC cxx_std_17)
 

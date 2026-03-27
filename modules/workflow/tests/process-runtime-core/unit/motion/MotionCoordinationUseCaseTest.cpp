@@ -290,7 +290,7 @@ TEST(MotionCoordinationUseCaseTest, ConfigureCoordinateSystemForwardsToInterpola
     auto interpolation_port = std::make_shared<FakeInterpolationPort>();
     auto io_port = std::make_shared<FakeIOControlPort>();
 
-    MotionCoordinationUseCase use_case(interpolation_port, io_port, nullptr);
+    MotionCoordinationUseCase use_case(interpolation_port, io_port);
 
     const auto result = use_case.ConfigureCoordinateSystem(
         2,
@@ -312,7 +312,7 @@ TEST(MotionCoordinationUseCaseTest, ControlDigitalOutputAndPulseUseIoPort) {
     auto interpolation_port = std::make_shared<FakeInterpolationPort>();
     auto io_port = std::make_shared<FakeIOControlPort>();
 
-    MotionCoordinationUseCase use_case(interpolation_port, io_port, nullptr);
+    MotionCoordinationUseCase use_case(interpolation_port, io_port);
 
     MotionIOCommand command;
     command.channel = 3;
@@ -338,7 +338,7 @@ TEST(MotionCoordinationUseCaseTest, DispatchCoordinateSystemSegmentUsesInterpola
     auto interpolation_port = std::make_shared<FakeInterpolationPort>();
     auto io_port = std::make_shared<FakeIOControlPort>();
 
-    MotionCoordinationUseCase use_case(interpolation_port, io_port, nullptr);
+    MotionCoordinationUseCase use_case(interpolation_port, io_port);
 
     InterpolationData segment;
     segment.type = Siligen::Domain::Motion::Ports::InterpolationType::LINEAR;
@@ -365,7 +365,7 @@ TEST(MotionCoordinationUseCaseTest, DispatchCoordinateSystemSegmentAppendsWhenBu
     auto interpolation_port = std::make_shared<FakeInterpolationPort>();
     auto io_port = std::make_shared<FakeIOControlPort>();
 
-    MotionCoordinationUseCase use_case(interpolation_port, io_port, nullptr);
+    MotionCoordinationUseCase use_case(interpolation_port, io_port);
 
     InterpolationData first_segment;
     first_segment.type = Siligen::Domain::Motion::Ports::InterpolationType::LINEAR;
@@ -402,7 +402,7 @@ TEST(MotionCoordinationUseCaseTest, ConfigureLimitEnableForwardsToAxisControlPor
     auto io_port = std::make_shared<FakeIOControlPort>();
     auto axis_control_port = std::make_shared<FakeAxisControlPort>();
 
-    MotionCoordinationUseCase use_case(interpolation_port, io_port, nullptr, axis_control_port);
+    MotionCoordinationUseCase use_case(interpolation_port, io_port, axis_control_port);
 
     const auto result = use_case.ConfigureLimitEnable(LogicalAxisId::Y, false, true);
 
@@ -417,7 +417,7 @@ TEST(MotionCoordinationUseCaseTest, ConfigureCompareOutputUsesTriggerPort) {
     auto io_port = std::make_shared<FakeIOControlPort>();
     auto trigger_port = std::make_shared<FakeTriggerControllerPort>();
 
-    MotionCoordinationUseCase use_case(interpolation_port, io_port, nullptr, nullptr, trigger_port);
+    MotionCoordinationUseCase use_case(interpolation_port, io_port, nullptr, trigger_port);
 
     MotionIOCommand command;
     command.channel = 2;
@@ -441,7 +441,7 @@ TEST(MotionCoordinationUseCaseTest, UnsupportedOrMissingDependenciesReturnFailur
     auto interpolation_port = std::make_shared<FakeInterpolationPort>();
     auto io_port = std::make_shared<FakeIOControlPort>();
 
-    MotionCoordinationUseCase use_case(interpolation_port, io_port, nullptr);
+    MotionCoordinationUseCase use_case(interpolation_port, io_port);
 
     const auto add_result = use_case.AddInterpolationSegment(Siligen::InterpolationConfig{});
     ASSERT_TRUE(add_result.IsError());

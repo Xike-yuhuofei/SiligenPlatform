@@ -2,7 +2,7 @@
 
 #include "shared/types/Point.h"
 #include "shared/types/Types.h"
-#include "domain/trajectory/value-objects/PlanningReport.h"
+#include "domain/motion/value-objects/MotionPlanningReport.h"
 #include "domain/trajectory/value-objects/ProcessPath.h"
 
 #include <vector>
@@ -26,7 +26,7 @@ struct MotionTrajectory {
     std::vector<MotionTrajectoryPoint> points;
     float32 total_time = 0.0f;
     float32 total_length = 0.0f;
-    Siligen::Domain::Trajectory::ValueObjects::PlanningReport planning_report{};
+    MotionPlanningReport planning_report{};
 };
 
 }  // namespace Siligen::Domain::Motion::ValueObjects

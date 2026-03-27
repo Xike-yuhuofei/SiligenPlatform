@@ -2,11 +2,11 @@
 
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "application/usecases/dispensing/PlanningUseCase.h"
-#include "job_ingest/application/usecases/dispensing/UploadFileUseCase.h"
-#include "domain/machine/ports/IHardwareConnectionPort.h"
+#include "job_ingest/contracts/dispensing/UploadContracts.h"
 #include "domain/motion/ports/IHomingPort.h"
 #include "domain/motion/ports/IMotionStatePort.h"
 #include "domain/safety/ports/IInterlockSignalPort.h"
+#include "siligen/device/contracts/ports/device_ports.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
 
@@ -16,8 +16,8 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
-#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -25,7 +25,6 @@ namespace Siligen::Application::UseCases::Dispensing {
 
 using ArtifactID = std::string;
 using PlanID = std::string;
-using JobID = std::string;
 
 struct CreateArtifactResponse {
     bool success = false;
@@ -121,16 +120,6 @@ struct JobStatusResponse {
 
 class DispensingWorkflowUseCase {
    public:
-    enum class WorkflowJobState {
-        PENDING,
-        RUNNING,
-        STOPPING,
-        PAUSED,
-        COMPLETED,
-        FAILED,
-        CANCELLED
-    };
-
     enum class PlanPreviewState {
         PREPARED,
         SNAPSHOT_READY,
@@ -140,10 +129,10 @@ class DispensingWorkflowUseCase {
     };
 
     DispensingWorkflowUseCase(
-        std::shared_ptr<UploadFileUseCase> upload_use_case,
+        std::shared_ptr<IUploadFilePort> upload_use_case,
         std::shared_ptr<PlanningUseCase> planning_use_case,
         std::shared_ptr<DispensingExecutionUseCase> execution_use_case,
-        std::shared_ptr<Domain::Machine::Ports::IHardwareConnectionPort> connection_port,
+        std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
         std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port,
         std::shared_ptr<Domain::Motion::Ports::IHomingPort> homing_port = nullptr,
         std::shared_ptr<Domain::Safety::Ports::IInterlockSignalPort> interlock_signal_port = nullptr);
@@ -171,9 +160,40 @@ class DispensingWorkflowUseCase {
         UploadResponse upload_response;
     };
 
+    struct RuntimeLaunchOverrides {
+        std::string source_path;
+        bool use_hardware_trigger = true;
+        bool dry_run = false;
+        std::optional<Domain::Machine::ValueObjects::MachineMode> machine_mode;
+        std::optional<Domain::Dispensing::ValueObjects::JobExecutionMode> execution_mode;
+        std::optional<Domain::Dispensing::ValueObjects::ProcessOutputPolicy> output_policy;
+        float32 max_jerk = 0.0f;
+        float32 arc_tolerance_mm = 0.0f;
+        std::optional<float32> dispensing_speed_mm_s;
+        std::optional<float32> dry_run_speed_mm_s;
+        std::optional<float32> rapid_speed_mm_s;
+        std::optional<float32> acceleration_mm_s2;
+        bool velocity_trace_enabled = false;
+        int32 velocity_trace_interval_ms = 0;
+        std::string velocity_trace_path;
+        bool velocity_guard_enabled = true;
+        float32 velocity_guard_ratio = 0.3f;
+        float32 velocity_guard_abs_mm_s = 5.0f;
+        float32 velocity_guard_min_expected_mm_s = 5.0f;
+        int32 velocity_guard_grace_ms = 800;
+        int32 velocity_guard_interval_ms = 200;
+        int32 velocity_guard_max_consecutive = 3;
+        bool velocity_guard_stop_on_violation = false;
+    };
+
+    struct PlanExecutionLaunch {
+        Domain::Dispensing::Contracts::ExecutionPackageValidated execution_package;
+        RuntimeLaunchOverrides runtime_overrides;
+    };
+
     struct PlanRecord {
         PreparePlanResponse response;
-        DispensingMVPRequest execution_request;
+        PlanExecutionLaunch execution_launch;
         std::vector<TrajectoryPoint> trajectory_points;
         PlanPreviewState preview_state = PlanPreviewState::PREPARED;
         std::string preview_snapshot_id;
@@ -181,36 +201,14 @@ class DispensingWorkflowUseCase {
         std::string preview_generated_at;
         std::string confirmed_at;
         std::string failure_message;
+        JobID runtime_job_id;
         bool latest = true;
     };
 
-    struct JobContext {
-        JobID job_id;
-        PlanID plan_id;
-        std::string plan_fingerprint;
-        DispensingMVPRequest execution_request;
-        std::atomic<WorkflowJobState> state{WorkflowJobState::PENDING};
-        std::atomic<std::uint32_t> target_count{0};
-        std::atomic<std::uint32_t> completed_count{0};
-        std::atomic<std::uint32_t> current_cycle{0};
-        std::atomic<std::uint32_t> current_segment{0};
-        std::atomic<std::uint32_t> total_segments{0};
-        std::atomic<std::uint32_t> cycle_progress_percent{0};
-        std::atomic<bool> stop_requested{false};
-        std::atomic<bool> pause_requested{false};
-        std::atomic<bool> final_state_committed{false};
-        bool dry_run = false;
-        std::chrono::steady_clock::time_point start_time{};
-        std::chrono::steady_clock::time_point end_time{};
-        mutable std::mutex mutex_;
-        std::string active_task_id;
-        std::string error_message;
-    };
-
-    std::shared_ptr<UploadFileUseCase> upload_use_case_;
+    std::shared_ptr<IUploadFilePort> upload_use_case_;
     std::shared_ptr<PlanningUseCase> planning_use_case_;
     std::shared_ptr<DispensingExecutionUseCase> execution_use_case_;
-    std::shared_ptr<Domain::Machine::Ports::IHardwareConnectionPort> connection_port_;
+    std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port_;
     std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port_;
     std::shared_ptr<Domain::Motion::Ports::IHomingPort> homing_port_;
     std::shared_ptr<Domain::Safety::Ports::IInterlockSignalPort> interlock_signal_port_;
@@ -219,37 +217,24 @@ class DispensingWorkflowUseCase {
     std::unordered_map<ArtifactID, ArtifactRecord> artifacts_;
 
     mutable std::mutex plans_mutex_;
-    std::unordered_map<PlanID, PlanRecord> plans_;
-
-    mutable std::mutex jobs_mutex_;
-    std::unordered_map<JobID, std::shared_ptr<JobContext>> jobs_;
-    JobID active_job_id_;
-    mutable std::mutex worker_mutex_;
-    std::thread worker_thread_;
-    std::atomic<bool> shutting_down_{false};
+    mutable std::unordered_map<PlanID, PlanRecord> plans_;
+    mutable std::mutex job_plan_index_mutex_;
+    mutable std::unordered_map<JobID, PlanID> job_plan_index_;
 
     std::atomic<std::uint64_t> id_sequence_{0};
 
-    Result<void> ValidateExecutionPreconditions() const;
-    PlanningRequest BuildPlanningRequest(
-        const std::string& filepath,
-        const DispensingMVPRequest& request) const;
-    JobStatusResponse BuildJobStatusResponse(const std::shared_ptr<JobContext>& context) const;
     PreviewSnapshotResponse BuildPreviewSnapshotResponse(const PlanRecord& plan_record, std::size_t max_polyline_points);
     std::string GenerateId(const char* prefix);
+    DispensingExecutionRequest BuildExecutionRequest(const PlanExecutionLaunch& launch) const;
     std::string BuildPlanFingerprint(
         const ArtifactID& artifact_id,
         const PlanningResponse& planning,
-        const DispensingMVPRequest& execution_request) const;
+        const PlanExecutionLaunch& execution_launch) const;
     std::string PreviewStateToString(PlanPreviewState state) const;
-    std::string JobStateToString(WorkflowJobState state) const;
-    void RunJob(
-        const std::shared_ptr<JobContext>& context,
-        const PlanRecord& plan_record);
-    void FinalizeJob(
-        const std::shared_ptr<JobContext>& context,
-        WorkflowJobState final_state,
-        const std::string& error_message = std::string());
+    void ReleaseConfirmedPreviewForPlan(const PlanID& plan_id, const JobID* runtime_job_id = nullptr) const;
+    void SyncPlanStateFromRuntimeStatus(
+        const JobID& job_id,
+        const RuntimeJobStatusResponse& runtime_status) const;
 };
 
 }  // namespace Siligen::Application::UseCases::Dispensing

@@ -2,11 +2,11 @@
 
 ## 概述
 
-用例(Use Cases)是应用层的核心组件,负责编排业务流程。每个用例代表一个完整的业务操作,通过调用领域端口来完成工作。
-涉及回零、点动、急停、安全互锁、插补、自动运行、点胶过程、胶路建压、配方生效、工艺结果、标定流程的业务规则与状态均在领域层实现，用例只负责流程编排与端口调用。
-标定流程用例必须以 `Domain::Machine::DomainServices::CalibrationProcess` 为统一入口，不得在应用层复写状态机或规则。
+用例(Use Cases)是应用层的核心组件,负责编排业务流程。每个用例代表一个完整的业务操作,通过调用领域端口或稳定 contract 完成工作。
+涉及回零、点动、急停、安全互锁、插补、点胶过程、胶路建压、配方生效、工艺结果的业务规则与状态均在领域层实现，用例只负责流程编排与端口调用。
+标定执行流程统一通过 `runtime_execution/contracts/system/ICalibrationExecutionPort` 与 `ICalibrationResultSink` 承接；`M5 coordinate-alignment` 仅负责测量事实到 `CoordinateTransformSet` 的结果收敛。
 插补相关规则（策略选择、参数校验、插补程序生成）统一在 Domain 层完成，用例只做参数映射与调用，禁止重复实现。
-自动运行/运行模式必须以 `Domain::Machine::Aggregates::Legacy::DispenserModel` 为统一入口，不得在应用层复写运行模式状态机或规则。
+运行时执行态、急停态、手动运动许可等跨模块状态必须通过 `runtime_execution/contracts/system/IMachineExecutionStatePort` 读取，不得在应用层直接依赖旧 machine 聚合或历史 calibration 兼容类型。
 安全互锁用例与监控的规则统一来源于 `motion-core`；用例与监控通过 `domain/safety/bridges/MotionCoreInterlockBridge.h` 调用模块能力，不得复写互锁判定逻辑。
 配方校验/生效规则统一来源于 `process-core`；用例通过 `recipes/RecipeUseCaseHelpers.h` 调用模块能力，不得直接修改配方生效状态或重复实现审计规则。
 胶路建压/稳压流程必须调用领域层统一入口（`Domain::Dispensing::DomainServices::PurgeDispenserProcess` /
@@ -51,7 +51,7 @@ Result<SomeResponse> Execute(const SomeRequest& request);
 
 **依赖**:
 - IConfigurationPort
-- IHardwareConnectionPort
+- DeviceConnectionPort
 - HomeAxesUseCase
 - IDiagnosticsPort
 - IEventPublisherPort (可选)
@@ -321,7 +321,7 @@ Result<NewOperationResponse> NewOperationUseCase::Execute(
 TEST(InitializeSystemUseCaseTest, SuccessfulInitialization) {
     // Arrange
     auto mock_config_port = std::make_shared<MockConfigurationPort>();
-    auto mock_connection_port = std::make_shared<MockHardwareConnectionPort>();
+    auto mock_connection_port = std::make_shared<MockDeviceConnectionPort>();
     // ... 其他mock
 
     auto usecase = std::make_shared<InitializeSystemUseCase>(

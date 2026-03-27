@@ -1,7 +1,5 @@
 #include "UnifiedTrajectoryPlannerService.h"
 
-#include "domain/trajectory/domain-services/MotionPlanner.h"
-
 #include <cmath>
 
 namespace Siligen::Domain::Dispensing::DomainServices {
@@ -103,7 +101,7 @@ UnifiedTrajectoryPlanResult UnifiedTrajectoryPlannerService::Plan(
     result.shaped_path = shaper.Shape(result.process_path, request.shaping);
 
     if (request.generate_motion_trajectory) {
-        Domain::Trajectory::DomainServices::MotionPlanner planner(velocity_service_);
+        Domain::Motion::DomainServices::MotionPlanner planner(velocity_service_);
         result.motion_trajectory = planner.Plan(result.shaped_path, request.motion);
     }
 

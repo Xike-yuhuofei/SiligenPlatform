@@ -8,10 +8,11 @@
 
 #pragma once
 
-#include "domain/machine/aggregates/DispenserModel.h"
 #include "domain/motion/domain-services/MotionControlService.h"
 #include "domain/motion/domain-services/MotionStatusService.h"
 #include "domain/motion/domain-services/MotionValidationService.h"
+#include "runtime_execution/contracts/system/IMachineExecutionStatePort.h"
+#include "runtime_execution/contracts/system/MachineExecutionSnapshot.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/types/Error.h"
 #include "shared/types/Point2D.h"
@@ -23,7 +24,6 @@
 #include <string>
 
 namespace Siligen::Application::UseCases::Motion::PTP {
-using Siligen::Domain::Machine::Aggregates::Legacy::DispenserModel;
 
 /// @brief 移动到指定位置的请求参数
 /// @details 封装用例输入参数
@@ -75,15 +75,15 @@ struct MoveToPositionResponse {
 };
 
 /// @brief 移动到指定位置用例
-/// @details 应用层用例,协调运动控制/状态/校验服务与DispenserModel完成位置移动业务流程
+/// @details 应用层用例,协调运动控制/状态/校验服务与运行时状态端口完成位置移动业务流程
 ///
 /// 业务流程:
 /// 1. 验证输入参数有效性
-/// 2. 检查点胶机状态是否允许移动
+/// 2. 检查运行时执行状态是否允许移动
 /// 3. 验证目标位置在安全范围内
 /// 4. 执行运动命令
 /// 5. (可选)等待运动完成并验证到达精度
-/// 6. 更新点胶机状态
+/// 6. 返回执行结果并保留领域层状态演化
 ///
 /// 错误处理:
 /// - 参数无效: 返回INVALID_PARAMETER错误
@@ -94,7 +94,7 @@ struct MoveToPositionResponse {
 /// 使用示例:
 /// @code
 /// auto useCase = std::make_shared<MoveToPositionUseCase>(
-///     motionControlService, motionStatusService, motionValidationService, dispenserModel, logger);
+///     motionControlService, motionStatusService, motionValidationService, machineExecutionStatePort, logger);
 /// MoveToPositionRequest request;
 /// request.target_position = Point2D(100.0f, 200.0f);
 /// request.movement_speed = 5.0f;
@@ -112,20 +112,20 @@ class MoveToPositionUseCase : public Siligen::Shared::Util::ApplicationModuleTag
                                                  Siligen::Domain::Motion::DomainServices::MotionControlService,
                                                  Siligen::Domain::Motion::DomainServices::MotionStatusService,
                                                  Siligen::Domain::Motion::DomainServices::MotionValidationService,
-                                                 DispenserModel,
+                                                 Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort,
                                                  Siligen::Shared::Interfaces::ILoggingService>();
 
     /// @brief 构造函数
     /// @param motion_control_service 运动控制领域服务
     /// @param motion_status_service 运动状态查询服务
     /// @param motion_validation_service 运动参数校验服务
-    /// @param dispenser_model 点胶机领域模型
+    /// @param machine_execution_state_port 运行时执行状态读取端口
     /// @param logging_service 日志服务
     explicit MoveToPositionUseCase(
         std::shared_ptr<Siligen::Domain::Motion::DomainServices::MotionControlService> motion_control_service,
         std::shared_ptr<Siligen::Domain::Motion::DomainServices::MotionStatusService> motion_status_service,
         std::shared_ptr<Siligen::Domain::Motion::DomainServices::MotionValidationService> motion_validation_service,
-        std::shared_ptr<DispenserModel> dispenser_model,
+        std::shared_ptr<Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort> machine_execution_state_port,
         std::shared_ptr<Siligen::Shared::Interfaces::ILoggingService> logging_service);
 
     ~MoveToPositionUseCase() = default;
@@ -152,12 +152,12 @@ class MoveToPositionUseCase : public Siligen::Shared::Util::ApplicationModuleTag
     std::shared_ptr<Siligen::Domain::Motion::DomainServices::MotionControlService> motion_control_service_;
     std::shared_ptr<Siligen::Domain::Motion::DomainServices::MotionStatusService> motion_status_service_;
     std::shared_ptr<Siligen::Domain::Motion::DomainServices::MotionValidationService> motion_validation_service_;
-    std::shared_ptr<DispenserModel> dispenser_model_;
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort> machine_execution_state_port_;
     std::shared_ptr<Siligen::Shared::Interfaces::ILoggingService> logging_service_;
 
     // 业务流程步骤
     Siligen::Shared::Types::Result<void> ValidateRequest(const MoveToPositionRequest& request);
-    Siligen::Shared::Types::Result<void> CheckDispenserState();
+    Siligen::Shared::Types::Result<void> CheckMachineExecutionState();
     Siligen::Shared::Types::Result<void> ExecuteMotion(const Siligen::Shared::Types::Point2D& target_position,
                                                        float speed);
     Siligen::Shared::Types::Result<void> WaitForMotionCompletion(int32_t timeout_ms);

@@ -9,9 +9,11 @@
 
 #include "application/usecases/system/IHardLimitMonitor.h"
 #include "domain/configuration/ports/IConfigurationPort.h"
-#include "domain/machine/ports/IHardwareConnectionPort.h"
 #include "domain/system/ports/IEventPublisherPort.h"
 #include "domain/diagnostics/ports/IDiagnosticsPort.h"
+#include "siligen/device/contracts/commands/device_commands.h"
+#include "siligen/device/contracts/ports/device_ports.h"
+#include "siligen/device/contracts/state/device_state.h"
 #include "shared/types/Result.h"
 
 #include <memory>
@@ -35,13 +37,13 @@ struct InitializeSystemRequest {
     // 硬件连接相关
     bool auto_connect_hardware = true;      // 是否自动连接硬件
     bool force_reconnect = false;           // 是否强制断开后重连
-    Siligen::Domain::Machine::Ports::HardwareConnectionConfig connection_config;
+    Siligen::Device::Contracts::Commands::DeviceConnection connection_config;
     bool start_status_monitoring = false;   // 是否启动连接状态监控
     uint32 status_monitor_interval_ms = 1000;
     bool require_status_monitoring = false; // 监控启动失败是否视为错误
 
     bool start_heartbeat = true;            // 是否启动心跳
-    Siligen::Domain::Machine::Ports::HeartbeatConfig heartbeat_config;
+    Siligen::Device::Contracts::State::HeartbeatSnapshot heartbeat_config;
     bool require_heartbeat = false;         // 心跳启动失败是否视为错误
 
     // 硬限位监控
@@ -60,7 +62,7 @@ struct InitializeSystemRequest {
         if (start_status_monitoring && status_monitor_interval_ms == 0) {
             return false;
         }
-        if (start_heartbeat && !heartbeat_config.IsValid()) {
+        if (start_heartbeat && !heartbeat_config.IsValidConfig()) {
             return false;
         }
         if (auto_connect_hardware && !connection_config.IsValid()) {
@@ -83,8 +85,8 @@ struct InitializeSystemResponse {
     bool diagnostics_performed; // 是否执行诊断
     bool diagnostics_ok;       // 诊断是否通过
     std::string status_message;
-    Siligen::Domain::Machine::Ports::HardwareConnectionInfo connection_info;
-    Siligen::Domain::Machine::Ports::HeartbeatStatus heartbeat_status;
+    Siligen::Device::Contracts::State::DeviceConnectionSnapshot connection_info;
+    Siligen::Device::Contracts::State::HeartbeatSnapshot heartbeat_status;
     std::vector<std::string> config_validation_errors;
 
     InitializeSystemResponse()
@@ -122,7 +124,7 @@ class InitializeSystemUseCase {
     /// @param event_port 事件发布端口(可选)
     explicit InitializeSystemUseCase(
         std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port,
-        std::shared_ptr<Siligen::Domain::Machine::Ports::IHardwareConnectionPort> connection_port,
+        std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
         std::shared_ptr<Siligen::Application::UseCases::Motion::Homing::HomeAxesUseCase> home_axes_usecase,
         std::shared_ptr<Siligen::Domain::Diagnostics::Ports::IDiagnosticsPort> diagnostics_port,
         std::shared_ptr<Siligen::Domain::System::Ports::IEventPublisherPort> event_port = nullptr,
@@ -143,7 +145,7 @@ class InitializeSystemUseCase {
 
    private:
     std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port_;
-    std::shared_ptr<Siligen::Domain::Machine::Ports::IHardwareConnectionPort> connection_port_;
+    std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port_;
     std::shared_ptr<Siligen::Application::UseCases::Motion::Homing::HomeAxesUseCase> home_axes_usecase_;
     std::shared_ptr<Siligen::Domain::Diagnostics::Ports::IDiagnosticsPort> diagnostics_port_;
     std::shared_ptr<Siligen::Domain::System::Ports::IEventPublisherPort> event_port_;

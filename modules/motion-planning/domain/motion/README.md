@@ -1,22 +1,21 @@
-# Motion 子域 - 运动控制
+# Motion 子域 - 运动规划
 
-**职责**: 负责多轴运动控制、回零/点动、轨迹规划与插补等核心运动逻辑
+**职责**: 负责运动规划事实、时间/轨迹/CMP 规划与插补算法，不再作为 runtime/control owner。
 
 ## 业务范围
 
-- 轴控制（使能、参数设置）
-- 位置控制（绝对/相对移动）
-- 运动缓冲管理
-- 点动（JOG）运动
-- 回零控制（Homing）
+- 轨迹规划与约束求解
 - 插补算法（直线、圆弧、样条）
-- 轨迹规划和执行
+- 时间规划、速度规划与触发时间线计算
+- `MotionTrajectory`、`TimePlanningConfig`、`MotionPlanningReport` 等规划事实输出
+- 面向后续阶段保留的少量兼容残余（仅供 thin compatibility shell 使用，不构成 owner public surface）
 
-## 点动统一入口规范
+## Stage B 边界
 
-- `DomainServices::JogController` 是点动规则唯一入口
-- `IJogControlPort` 仅承载硬件动作与参数下发，不包含业务校验
-- 应用层/适配层不得在点动路径重复实现校验或互锁判断
+- `IMotionRuntimePort`、`IIOControlPort` 的 owner 在 `modules/runtime-execution/contracts/runtime/include/runtime_execution/contracts/motion/`
+- `MotionControlServiceImpl`、`MotionStatusServiceImpl` 的 owner 在 `modules/runtime-execution/application/include/runtime_execution/application/services/motion/`
+- 本目录下同名头文件仅允许保留 shim/alias，禁止重新声明 runtime/control owner 类型
+- `JogController`、`HomingProcess`、`ReadyZeroDecisionService` 当前仍作为兼容残余存在，但后续阶段应继续收瘦，不得扩大 public 依赖面
 
 ## 目录结构
 
@@ -36,22 +35,23 @@ motion/
 │   │   ├── InterpolationProgramPlanner
 │   │   ├── InterpolationCommandValidator
 │   │   └── ValidatedInterpolationPort
-│   ├── TrajectoryPlanner          # 轨迹规划
-│   ├── BufferManager              # 缓冲管理
-│   ├── TriggerCalculator          # 触发计算
-│   ├── JogController              # JOG 控制
-│   ├── MotionControlService        # 运动控制服务（接口）
-│   ├── MotionControlServiceImpl    # 运动控制实现
-│   ├── MotionStatusService         # 状态服务（接口）
-│   ├── MotionStatusServiceImpl     # 状态服务实现
-│   └── MotionValidationService     # 运动校验服务
+│   ├── MotionPlanner             # 规划求解 owner
+│   ├── TrajectoryPlanner         # 轨迹规划
+│   ├── TimeTrajectoryPlanner     # 时间规划
+│   ├── TriggerCalculator         # 规划触发计算
+│   ├── SpeedPlanner              # 速度规划
+│   ├── MotionBufferController    # 兼容残余，仅供 thin shell 使用
+│   ├── JogController             # 兼容残余，仅供 thin shell 使用
+│   ├── HomingProcess             # 兼容残余，仅供 thin shell 使用
+│   ├── ReadyZeroDecisionService  # 兼容残余，仅供 thin shell 使用
+│   └── interpolation/            # 插补与程序生成
 ├── BezierCalculator.*             # 计算器与验证器（根目录文件）
 ├── BSplineCalculator.*
 ├── CircleCalculator.*
 ├── CMPValidator.*
 ├── CMPCompensation.*
 ├── CMPCoordinatedInterpolator.*
-└── ports/                          # 端口接口（8个）
+└── ports/                          # 规划相关端口；runtime/control 端口仅保留 shim
     ├── IMotionConnectionPort
     ├── IAxisControlPort
     ├── IPositionControlPort
@@ -59,7 +59,8 @@ motion/
     ├── IInterpolationPort
     ├── IMotionStatePort
     ├── IHomingPort
-    └── IAdvancedMotionPort
+    ├── IMotionRuntimePort  # shim -> M9 owner
+    └── IIOControlPort      # shim -> M9 owner
 ```
 
 ## 命名空间
@@ -86,4 +87,5 @@ namespace Siligen::Domain::Motion {
 
 ## 特殊约束
 
-本子域允许使用 `std::vector` 存储轨迹点（`.claude/rules/DOMAIN.md` 例外）
+- `M7` public surface 只能承诺规划事实，不得重新吸收 runtime/control owner 语义
+- 本子域允许使用 `std::vector` 存储轨迹点（`.claude/rules/DOMAIN.md` 例外）

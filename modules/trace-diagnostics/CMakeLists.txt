@@ -28,10 +28,25 @@ if(NOT TARGET siligen_spdlog_adapter AND EXISTS "${SILIGEN_TRACE_DIAGNOSTICS_SOU
     target_compile_features(siligen_spdlog_adapter PUBLIC cxx_std_17)
 endif()
 
+if(NOT TARGET siligen_trace_diagnostics_application_public AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/application/CMakeLists.txt")
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/application"
+        "${CMAKE_BINARY_DIR}/modules/trace-diagnostics/application"
+    )
+endif()
+
 if(NOT TARGET siligen_module_trace_diagnostics)
     add_library(siligen_module_trace_diagnostics INTERFACE)
 endif()
-target_link_libraries(siligen_module_trace_diagnostics INTERFACE siligen_spdlog_adapter)
+if(TARGET siligen_trace_diagnostics_application_public)
+    target_link_libraries(siligen_module_trace_diagnostics INTERFACE
+        siligen_trace_diagnostics_application_public
+    )
+else()
+    target_link_libraries(siligen_module_trace_diagnostics INTERFACE
+        siligen_spdlog_adapter
+    )
+endif()
 target_compile_features(siligen_module_trace_diagnostics INTERFACE cxx_std_17)
 
 set_target_properties(siligen_module_trace_diagnostics PROPERTIES

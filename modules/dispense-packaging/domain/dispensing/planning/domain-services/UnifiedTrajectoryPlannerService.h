@@ -5,9 +5,10 @@
 #include "domain/trajectory/domain-services/TrajectoryShaper.h"
 #include "domain/trajectory/value-objects/Primitive.h"
 #include "domain/trajectory/value-objects/ProcessConfig.h"
-#include "domain/trajectory/value-objects/MotionConfig.h"
 #include "domain/trajectory/value-objects/ProcessPath.h"
+#include "domain/motion/value-objects/TimePlanningConfig.h"
 #include "domain/motion/value-objects/MotionTrajectory.h"
+#include "domain/motion/domain-services/MotionPlanner.h"
 #include "domain/motion/domain-services/VelocityProfileService.h"
 
 #include <memory>
@@ -19,7 +20,7 @@ struct UnifiedTrajectoryPlanRequest {
     Domain::Trajectory::DomainServices::NormalizationConfig normalization;
     Domain::Trajectory::ValueObjects::ProcessConfig process;
     Domain::Trajectory::DomainServices::TrajectoryShaperConfig shaping;
-    Domain::Trajectory::ValueObjects::MotionConfig motion;
+    Domain::Motion::ValueObjects::TimePlanningConfig motion;
     bool generate_motion_trajectory = true;
 };
 

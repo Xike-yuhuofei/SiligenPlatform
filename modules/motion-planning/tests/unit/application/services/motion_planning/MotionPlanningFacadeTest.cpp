@@ -4,8 +4,8 @@
 
 TEST(MotionPlanningFacadeTest, PlansTrajectoryFromProcessPath) {
     using Siligen::Application::Services::MotionPlanning::MotionPlanningFacade;
+    using Siligen::Domain::Motion::ValueObjects::TimePlanningConfig;
     using Siligen::Shared::Types::Point2D;
-    using Siligen::Domain::Trajectory::ValueObjects::MotionConfig;
     using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
     using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
     using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
@@ -22,7 +22,7 @@ TEST(MotionPlanningFacadeTest, PlansTrajectoryFromProcessPath) {
     seg.geometry.length = 10.0f;
     path.segments.push_back(seg);
 
-    MotionConfig config;
+    TimePlanningConfig config;
     config.vmax = 50.0f;
     config.amax = 200.0f;
     config.sample_dt = 0.01f;

@@ -7,4 +7,4 @@ allowed_dependencies:
   - process-path/contracts
   - shared
 uniform_skeleton_ready: true
-notes: MotionPlanner canonical implementation 已归位至 modules/motion-planning/domain/motion/domain-services；process-path legacy 路径仅保留兼容包装并在 ARCH-201 阶段退出
+notes: contracts/include + application/include 是当前 M7 正式 public surface；业务阶段名保留 MotionPlan，但代码级 canonical payload 固定为 MotionTrajectory，siligen_motion 只编译规划相关实现；workflow 兼容链中的 motion execution source 也已固定从 modules/motion-planning/domain/motion/ 解析

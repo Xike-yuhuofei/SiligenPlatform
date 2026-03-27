@@ -1,21 +1,33 @@
 #pragma once
 
-#include "domain/machine/ports/IHardwareConnectionPort.h"
 #include "MotionRuntimeFacade.h"
+#include "domain/machine/ports/IHardwareConnectionPort.h"
+#include "siligen/device/contracts/ports/device_ports.h"
 
 #include <memory>
 
 namespace Siligen::Infrastructure::Adapters::Motion {
 
 /**
- * @brief IHardwareConnectionPort 兼容适配器
+ * @brief 连接契约兼容适配器
  *
- * 保留旧连接端口接口，但所有运行时逻辑都委托给统一 motion runtime。
+ * 稳定公开面实现 DeviceConnectionPort，旧 IHardwareConnectionPort 仅作兼容桥。
  */
-class MotionRuntimeConnectionAdapter final : public Domain::Machine::Ports::IHardwareConnectionPort {
+class MotionRuntimeConnectionAdapter final : public Siligen::Device::Contracts::Ports::DeviceConnectionPort,
+                                             public Domain::Machine::Ports::IHardwareConnectionPort {
    public:
     explicit MotionRuntimeConnectionAdapter(std::shared_ptr<MotionRuntimeFacade> runtime);
     ~MotionRuntimeConnectionAdapter() override = default;
+
+    Shared::Types::Result<void> Connect(
+        const Siligen::Device::Contracts::Commands::DeviceConnection& connection) override;
+    Shared::Types::Result<Siligen::Device::Contracts::State::DeviceConnectionSnapshot> ReadConnection()
+        const override;
+    void SetConnectionStateCallback(
+        std::function<void(const Siligen::Device::Contracts::State::DeviceConnectionSnapshot&)> callback) override;
+    Shared::Types::Result<void> StartHeartbeat(
+        const Siligen::Device::Contracts::State::HeartbeatSnapshot& config) override;
+    Siligen::Device::Contracts::State::HeartbeatSnapshot ReadHeartbeat() const override;
 
     Shared::Types::Result<void> Connect(const Domain::Machine::Ports::HardwareConnectionConfig& config) override;
     Shared::Types::Result<void> Disconnect() override;

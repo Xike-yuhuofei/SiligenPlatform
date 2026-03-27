@@ -1,9 +1,10 @@
 #pragma once
 
+#include "siligen/device/adapters/drivers/multicard/IMultiCardWrapper.h"
+#include "siligen/device/contracts/ports/device_ports.h"
+#include "domain/configuration/ports/IConfigurationPort.h"
 #include "domain/machine/ports/IHardwareTestPort.h"
 #include "shared/types/HardwareConfiguration.h"
-#include "domain/configuration/ports/IConfigurationPort.h"
-#include "siligen/device/adapters/drivers/multicard/IMultiCardWrapper.h"
 
 #include <memory>
 #include <mutex>
@@ -38,7 +39,8 @@ using Siligen::Domain::Configuration::Ports::HomingConfig;
  * 将IHardwareTestPort接口适配到MultiCard硬件控制器API。
  * 线程安全: 使用互斥锁保护硬件访问。
  */
-class HardwareTestAdapter : public IHardwareTestPort {
+class HardwareTestAdapter : public IHardwareTestPort,
+                            public Siligen::Device::Contracts::Ports::MachineHealthPort {
    public:
     /**
      * @brief 构造函数
@@ -115,6 +117,8 @@ class HardwareTestAdapter : public IHardwareTestPort {
     CommunicationCheckResult testCommunicationQuality(int testDurationMs) override;
     Result<double> measureAxisResponseTime(LogicalAxisId axis) override;
     Result<AccuracyCheckResult> testPositioningAccuracy(LogicalAxisId axis, int testCycles) override;
+    Siligen::SharedKernel::Result<Siligen::Device::Contracts::State::MachineHealthSnapshot> ReadHealth()
+        const override;
 
     // ============ 安全控制 ============
 

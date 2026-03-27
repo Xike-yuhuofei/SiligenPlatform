@@ -38,10 +38,35 @@ constexpr auto kTaskTerminalPoll = std::chrono::milliseconds(20);
 constexpr auto kCancelConfirmTimeout = std::chrono::seconds(3);
 constexpr auto kInflightReconcilePoll = std::chrono::milliseconds(100);
 
+const char* JobStateCode(JobState state) {
+    switch (state) {
+        case JobState::PENDING:
+            return "PENDING";
+        case JobState::RUNNING:
+            return "RUNNING";
+        case JobState::STOPPING:
+            return "STOPPING";
+        case JobState::PAUSED:
+            return "PAUSED";
+        case JobState::COMPLETED:
+            return "COMPLETED";
+        case JobState::FAILED:
+            return "FAILED";
+        case JobState::CANCELLED:
+            return "CANCELLED";
+        default:
+            return "UNKNOWN";
+    }
+}
+
 }  // namespace
 
 bool DispensingExecutionUseCase::IsTerminalState(TaskState state) {
     return state == TaskState::COMPLETED || state == TaskState::FAILED || state == TaskState::CANCELLED;
+}
+
+bool DispensingExecutionUseCase::IsTerminalJobState(JobState state) {
+    return state == JobState::COMPLETED || state == JobState::FAILED || state == JobState::CANCELLED;
 }
 
 TaskState DispensingExecutionUseCase::ResolveVisibleState(const std::shared_ptr<TaskExecutionContext>& context) {
@@ -84,6 +109,28 @@ bool DispensingExecutionUseCase::TryCommitTerminalState(
     return true;
 }
 
+bool DispensingExecutionUseCase::TryCommitJobTerminalState(
+    const std::shared_ptr<JobExecutionContext>& context,
+    JobState terminal_state,
+    const std::string& error_message) {
+    if (!context || !IsTerminalJobState(terminal_state)) {
+        return false;
+    }
+
+    bool expected = false;
+    if (!context->final_state_committed.compare_exchange_strong(expected, true)) {
+        return false;
+    }
+
+    context->state.store(terminal_state);
+    context->end_time = std::chrono::steady_clock::now();
+    if (!error_message.empty()) {
+        std::lock_guard<std::mutex> lock(context->mutex_);
+        context->error_message = error_message;
+    }
+    return true;
+}
+
 std::shared_ptr<TaskExecutionContext> DispensingExecutionUseCase::ResolveActiveContextLocked() const {
     if (active_task_id_.empty()) {
         return nullptr;
@@ -103,6 +150,20 @@ void DispensingExecutionUseCase::JoinWorkerThread() {
             return;
         }
         worker_to_join = std::move(worker_thread_);
+    }
+    if (worker_to_join.joinable()) {
+        worker_to_join.join();
+    }
+}
+
+void DispensingExecutionUseCase::JoinJobWorkerThread() {
+    std::thread worker_to_join;
+    {
+        std::lock_guard<std::mutex> lock(job_worker_mutex_);
+        if (!job_worker_thread_.joinable()) {
+            return;
+        }
+        worker_to_join = std::move(job_worker_thread_);
     }
     if (worker_to_join.joinable()) {
         worker_to_join.join();
@@ -337,7 +398,7 @@ std::string DispensingExecutionUseCase::ReadTaskErrorMessage(const std::shared_p
     return context->error_message;
 }
 
-Result<TaskID> DispensingExecutionUseCase::ExecuteAsync(const DispensingMVPRequest& request) {
+Result<TaskID> DispensingExecutionUseCase::ExecuteAsync(const DispensingExecutionRequest& request) {
     auto validation = request.Validate();
     if (!validation.IsSuccess()) {
         return Result<TaskID>::Failure(validation.GetError());
@@ -473,6 +534,127 @@ Result<TaskID> DispensingExecutionUseCase::ExecuteAsync(const DispensingMVPReque
     }
 
     return Result<TaskID>::Success(task_id);
+}
+
+Result<JobID> DispensingExecutionUseCase::StartJob(const RuntimeStartJobRequest& request) {
+    auto validation = request.execution_request.Validate();
+    if (!validation.IsSuccess()) {
+        return Result<JobID>::Failure(validation.GetError());
+    }
+    if (request.plan_fingerprint.empty()) {
+        return Result<JobID>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "plan_fingerprint is required", "DispensingExecutionUseCase"));
+    }
+    if (request.target_count == 0) {
+        return Result<JobID>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "target_count must be greater than 0", "DispensingExecutionUseCase"));
+    }
+
+    auto precondition_result = ValidateExecutionPreconditions();
+    if (precondition_result.IsError()) {
+        return Result<JobID>::Failure(precondition_result.GetError());
+    }
+
+    auto context = std::make_shared<JobExecutionContext>();
+    context->job_id = GenerateJobID();
+    context->plan_id = request.plan_id;
+    context->plan_fingerprint = request.plan_fingerprint;
+    context->execution_request = request.execution_request;
+    context->state.store(JobState::PENDING);
+    context->target_count.store(request.target_count);
+    context->dry_run =
+        request.execution_request.ResolveOutputPolicy() == ProcessOutputPolicy::Inhibited;
+    context->start_time = std::chrono::steady_clock::now();
+
+    {
+        std::lock_guard<std::mutex> lock(jobs_mutex_);
+        if (!active_job_id_.empty()) {
+            auto active_it = jobs_.find(active_job_id_);
+            if (active_it != jobs_.end() && !IsTerminalJobState(active_it->second->state.load())) {
+                return Result<JobID>::Failure(
+                    Error(ErrorCode::INVALID_STATE, "another job is already active", "DispensingExecutionUseCase"));
+            }
+        }
+        jobs_[context->job_id] = context;
+        active_job_id_ = context->job_id;
+    }
+
+    std::thread new_worker_thread;
+    try {
+        new_worker_thread = std::thread([this, context]() { RunJob(context); });
+    } catch (const std::exception& ex) {
+        {
+            std::lock_guard<std::mutex> lock(jobs_mutex_);
+            auto job_it = jobs_.find(context->job_id);
+            if (job_it != jobs_.end() && job_it->second == context) {
+                jobs_.erase(job_it);
+            }
+            if (active_job_id_ == context->job_id) {
+                active_job_id_.clear();
+            }
+        }
+        return Result<JobID>::Failure(
+            Error(
+                ErrorCode::THREAD_START_FAILED,
+                "failure_stage=start_job_thread_start;failure_code=THREAD_START_FAILED;message=" +
+                    std::string(ex.what()),
+                "DispensingExecutionUseCase"));
+    } catch (...) {
+        {
+            std::lock_guard<std::mutex> lock(jobs_mutex_);
+            auto job_it = jobs_.find(context->job_id);
+            if (job_it != jobs_.end() && job_it->second == context) {
+                jobs_.erase(job_it);
+            }
+            if (active_job_id_ == context->job_id) {
+                active_job_id_.clear();
+            }
+        }
+        return Result<JobID>::Failure(
+            Error(
+                ErrorCode::THREAD_START_FAILED,
+                "failure_stage=start_job_thread_start;failure_code=THREAD_START_FAILED;message=unknown",
+                "DispensingExecutionUseCase"));
+    }
+
+    std::thread worker_to_join;
+    {
+        std::lock_guard<std::mutex> lock(job_worker_mutex_);
+        if (job_worker_thread_.joinable()) {
+            worker_to_join = std::move(job_worker_thread_);
+        }
+        job_worker_thread_ = std::move(new_worker_thread);
+    }
+    if (worker_to_join.joinable()) {
+        worker_to_join.join();
+    }
+
+    return Result<JobID>::Success(context->job_id);
+}
+
+Result<TaskID> DispensingExecutionUseCase::ExecuteAsync(const DispensingMVPRequest& request) {
+    if (!legacy_execute_async_fn_) {
+        return Result<TaskID>::Failure(
+            Error(
+                ErrorCode::NOT_IMPLEMENTED,
+                "legacy DXF execution entry is not configured",
+                "DispensingExecutionUseCase"));
+    }
+    return legacy_execute_async_fn_(request);
+}
+
+Result<RuntimeJobStatusResponse> DispensingExecutionUseCase::GetJobStatus(const JobID& job_id) const {
+    std::shared_ptr<JobExecutionContext> context;
+    {
+        std::lock_guard<std::mutex> lock(jobs_mutex_);
+        auto it = jobs_.find(job_id);
+        if (it == jobs_.end()) {
+            return Result<RuntimeJobStatusResponse>::Failure(
+                Error(ErrorCode::NOT_FOUND, "job not found", "DispensingExecutionUseCase"));
+        }
+        context = it->second;
+    }
+    return Result<RuntimeJobStatusResponse>::Success(BuildJobStatusResponse(context));
 }
 
 Result<TaskStatusResponse> DispensingExecutionUseCase::GetTaskStatus(const TaskID& task_id) const {
@@ -672,6 +854,13 @@ TaskID DispensingExecutionUseCase::GenerateTaskID() {
     return "task-" + std::to_string(millis) + "-" + std::to_string(seq);
 }
 
+JobID DispensingExecutionUseCase::GenerateJobID() {
+    const auto seq = job_sequence_.fetch_add(1, std::memory_order_relaxed) + 1;
+    const auto now = std::chrono::system_clock::now().time_since_epoch();
+    const auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+    return "job-" + std::to_string(millis) + "-" + std::to_string(seq);
+}
+
 std::string DispensingExecutionUseCase::TaskStateToString(TaskState state) const {
     switch (state) {
         case TaskState::PENDING:
@@ -688,6 +877,266 @@ std::string DispensingExecutionUseCase::TaskStateToString(TaskState state) const
             return "cancelled";
         default:
             return "unknown";
+    }
+}
+
+std::string DispensingExecutionUseCase::JobStateToString(JobState state) const {
+    switch (state) {
+        case JobState::PENDING:
+            return "pending";
+        case JobState::RUNNING:
+            return "running";
+        case JobState::STOPPING:
+            return "stopping";
+        case JobState::PAUSED:
+            return "paused";
+        case JobState::COMPLETED:
+            return "completed";
+        case JobState::FAILED:
+            return "failed";
+        case JobState::CANCELLED:
+            return "cancelled";
+        default:
+            return "unknown";
+    }
+}
+
+RuntimeJobStatusResponse DispensingExecutionUseCase::BuildJobStatusResponse(
+    const std::shared_ptr<JobExecutionContext>& context) const {
+    RuntimeJobStatusResponse response;
+    response.job_id = context->job_id;
+    response.plan_id = context->plan_id;
+    response.plan_fingerprint = context->plan_fingerprint;
+    response.state = JobStateToString(context->state.load());
+    response.target_count = context->target_count.load();
+    response.completed_count = context->completed_count.load();
+    response.current_cycle = context->current_cycle.load();
+    response.current_segment = context->current_segment.load();
+    response.total_segments = context->total_segments.load();
+    response.cycle_progress_percent = context->cycle_progress_percent.load();
+    response.dry_run = context->dry_run;
+
+    if (response.target_count > 0) {
+        const std::uint64_t numerator =
+            static_cast<std::uint64_t>(response.completed_count) * 100ULL + response.cycle_progress_percent;
+        response.overall_progress_percent = static_cast<std::uint32_t>(
+            std::min<std::uint64_t>(100ULL, numerator / response.target_count));
+    }
+    if (response.state == "completed") {
+        response.overall_progress_percent = 100;
+        response.cycle_progress_percent = 100;
+    }
+
+    const auto end_point = IsTerminalJobState(context->state.load()) ? context->end_time : std::chrono::steady_clock::now();
+    response.elapsed_seconds =
+        std::chrono::duration<float>(end_point - context->start_time).count();
+
+    {
+        std::lock_guard<std::mutex> lock(context->mutex_);
+        response.error_message = context->error_message;
+        response.active_task_id = context->active_task_id;
+    }
+    return response;
+}
+
+void DispensingExecutionUseCase::RunJob(const std::shared_ptr<JobExecutionContext>& context) {
+    if (context->stop_requested.load()) {
+        FinalizeJob(context, JobState::CANCELLED, "job cancelled");
+        return;
+    }
+
+    const auto target_count = context->target_count.load();
+    for (std::uint32_t cycle = 0; cycle < target_count; ++cycle) {
+        if (context->final_state_committed.load()) {
+            return;
+        }
+        if (context->stop_requested.load()) {
+            FinalizeJob(context, JobState::CANCELLED, "job cancelled");
+            return;
+        }
+
+        context->current_cycle.store(cycle + 1);
+        context->current_segment.store(0);
+        context->total_segments.store(0);
+        context->cycle_progress_percent.store(0);
+
+        while (context->pause_requested.load()) {
+            if (context->stop_requested.load()) {
+                FinalizeJob(context, JobState::CANCELLED, "job cancelled");
+                return;
+            }
+            if (!context->final_state_committed.load()) {
+                context->state.store(JobState::PAUSED);
+            }
+            std::this_thread::sleep_for(kInflightReconcilePoll);
+        }
+
+        auto precondition_result = ValidateExecutionPreconditions();
+        if (precondition_result.IsError()) {
+            FinalizeJob(context, JobState::FAILED, precondition_result.GetError().GetMessage());
+            return;
+        }
+        if (context->stop_requested.load()) {
+            FinalizeJob(context, JobState::CANCELLED, "job cancelled");
+            return;
+        }
+        if (!context->final_state_committed.load()) {
+            context->state.store(JobState::RUNNING);
+        }
+
+        auto task_result = ExecuteAsync(context->execution_request);
+        if (task_result.IsError()) {
+            FinalizeJob(context, JobState::FAILED, task_result.GetError().GetMessage());
+            return;
+        }
+
+        const auto task_id = task_result.Value();
+        {
+            std::lock_guard<std::mutex> lock(context->mutex_);
+            context->active_task_id = task_id;
+        }
+
+        bool pause_forwarded = false;
+        bool cancel_forwarded = false;
+        while (true) {
+            if (context->final_state_committed.load()) {
+                return;
+            }
+            if (context->stop_requested.load() && !cancel_forwarded) {
+                if (!context->final_state_committed.load()) {
+                    context->state.store(JobState::STOPPING);
+                }
+                auto cancel_result = CancelTask(task_id);
+                if (cancel_result.IsError()) {
+                    auto task_status_after_cancel_result = GetTaskStatus(task_id);
+                    if (task_status_after_cancel_result.IsError()) {
+                        FinalizeJob(
+                            context,
+                            JobState::FAILED,
+                            "failure_stage=cancel_forward;cancel_failure_code=" +
+                                std::to_string(static_cast<int>(cancel_result.GetError().GetCode())) +
+                                ";cancel_failure_message=" + cancel_result.GetError().GetMessage() +
+                                ";status_query_failure_code=" +
+                                std::to_string(static_cast<int>(task_status_after_cancel_result.GetError().GetCode())) +
+                                ";status_query_failure_message=" + task_status_after_cancel_result.GetError().GetMessage());
+                        return;
+                    }
+
+                    const auto& task_status_after_cancel = task_status_after_cancel_result.Value();
+                    if (task_status_after_cancel.state == "cancelled") {
+                        FinalizeJob(context, JobState::CANCELLED, task_status_after_cancel.error_message);
+                        return;
+                    }
+                    if (task_status_after_cancel.state == "completed") {
+                        context->completed_count.store(cycle + 1);
+                        context->cycle_progress_percent.store(100);
+                        if (cycle + 1 >= context->target_count.load()) {
+                            break;
+                        }
+                        FinalizeJob(context, JobState::CANCELLED, "job cancelled");
+                        return;
+                    }
+                    if (task_status_after_cancel.state == "failed") {
+                        FinalizeJob(context, JobState::FAILED, task_status_after_cancel.error_message);
+                        return;
+                    }
+                    FinalizeJob(
+                        context,
+                        JobState::FAILED,
+                        "failure_stage=cancel_confirm;failure_code=TASK_STILL_ACTIVE;message=" +
+                            cancel_result.GetError().GetMessage() +
+                            ";task_state=" + task_status_after_cancel.state);
+                    return;
+                }
+                cancel_forwarded = true;
+            }
+
+            auto task_status_result = GetTaskStatus(task_id);
+            if (task_status_result.IsError()) {
+                FinalizeJob(context, JobState::FAILED, task_status_result.GetError().GetMessage());
+                return;
+            }
+            const auto& task_status = task_status_result.Value();
+            context->current_segment.store(task_status.executed_segments);
+            context->total_segments.store(task_status.total_segments);
+            context->cycle_progress_percent.store(task_status.progress_percent);
+
+            if (context->pause_requested.load()) {
+                if (!pause_forwarded && task_status.state == "running") {
+                    auto pause_result = PauseTask(task_id);
+                    if (pause_result.IsError()) {
+                        FinalizeJob(context, JobState::FAILED, pause_result.GetError().GetMessage());
+                        return;
+                    }
+                    pause_forwarded = true;
+                }
+            } else if (pause_forwarded && task_status.state == "paused") {
+                auto resume_result = ResumeTask(task_id);
+                if (resume_result.IsError()) {
+                    FinalizeJob(context, JobState::FAILED, resume_result.GetError().GetMessage());
+                    return;
+                }
+                pause_forwarded = false;
+            }
+
+            if (task_status.state == "paused") {
+                if (!context->final_state_committed.load()) {
+                    context->state.store(JobState::PAUSED);
+                }
+            } else if (task_status.state == "running" || task_status.state == "pending") {
+                if (!context->final_state_committed.load()) {
+                    context->state.store(context->stop_requested.load() ? JobState::STOPPING : JobState::RUNNING);
+                }
+            } else if (task_status.state == "completed") {
+                context->completed_count.store(cycle + 1);
+                context->cycle_progress_percent.store(100);
+                if (context->stop_requested.load() && cycle + 1 < context->target_count.load()) {
+                    FinalizeJob(context, JobState::CANCELLED, "job cancelled");
+                    return;
+                }
+                break;
+            } else if (task_status.state == "cancelled") {
+                FinalizeJob(context, JobState::CANCELLED, task_status.error_message);
+                return;
+            } else if (task_status.state == "failed") {
+                FinalizeJob(context, JobState::FAILED, task_status.error_message);
+                return;
+            }
+
+            std::this_thread::sleep_for(kInflightReconcilePoll);
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(context->mutex_);
+            context->active_task_id.clear();
+        }
+    }
+
+    FinalizeJob(context, JobState::COMPLETED);
+}
+
+void DispensingExecutionUseCase::FinalizeJob(
+    const std::shared_ptr<JobExecutionContext>& context,
+    JobState final_state,
+    const std::string& error_message) {
+    if (!TryCommitJobTerminalState(context, final_state, error_message)) {
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(context->mutex_);
+        context->active_task_id.clear();
+    }
+    if (final_state == JobState::COMPLETED) {
+        context->cycle_progress_percent.store(100);
+        context->current_cycle.store(context->target_count.load());
+        context->completed_count.store(context->target_count.load());
+    }
+    {
+        std::lock_guard<std::mutex> lock(jobs_mutex_);
+        if (active_job_id_ == context->job_id) {
+            active_job_id_.clear();
+        }
     }
 }
 

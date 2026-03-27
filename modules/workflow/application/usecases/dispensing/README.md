@@ -12,9 +12,9 @@ namespace Siligen::Application::UseCases::Dispensing
 
 ## Use Cases
 
-### UploadFileUseCase
-- **职责**: 上传和验证 DXF 文件
-- **使用场景**: 用户导入点胶路径
+### UploadFileUseCase（由 `job-ingest` owner）
+- **职责**: 上传和验证 DXF 文件的 owner 面已归位到 `modules/job-ingest/`
+- **workflow 定位**: workflow 通过 `job-ingest/contracts` 消费 `UploadRequest`、`UploadResponse` 与 `IUploadFilePort`，继续执行 `CreateArtifact -> PreparePlan -> Preview/Job` 编排链
 
 ### PlanningUseCase
 - **职责**: 解析 DXF 并生成点胶路径规划
@@ -55,7 +55,7 @@ namespace Siligen::Application::UseCases::Dispensing
 
 ## 设计原则
 
-1. DXF 解析由 Python 预处理生成 PB，应用层仅消费 PB 数据
+1. DXF 上传/归档 owner 面由 `job-ingest` 提供，workflow 只消费上传结果与文件事实
 2. 触发点/阀门时序与过程校验由 `DispensingProcessService` 统一实现
 3. 插补策略/校验/程序生成由 Domain 统一入口负责，基础设施仅硬件调用
 4. 提供点胶进度监控
@@ -68,7 +68,7 @@ namespace Siligen::Application::UseCases::Dispensing
 
 - `.pb` 是 **运行时中间格式**，由 DXF 预处理管线从 DXF 生成。
 - DXF 不是直接被 C++ 规划器消费；规划/预览/执行统一读取 `.pb`。
-- DXF 上传、预览、执行前，都会先通过统一的 `DxfPbPreparationService` 确保 `.pb` 已存在、非空且时间戳不落后于源 DXF。
+- DXF 上传 owner 面由 `job-ingest` 承载；workflow 只在预览、规划、执行前消费统一准备好的输入事实，并通过 `DxfPbPreparationService` 确保 `.pb` 已存在、非空且时间戳不落后于源 DXF。
 - `DxfPbPreparationService` 默认调用本仓库内的 `scripts/engineering-data/dxf_to_pb.py`；仅在显式设置 `SILIGEN_DXF_PROJECT_ROOT` 且路径有效时才调用外部 DXF 算法仓库，并向其 launcher 传递 canonical 子命令 `engineering-data-dxf-to-pb`。
 - `Domain::Dispensing::DomainServices::DispensingPlanner` 在主链路中接收 `EnsurePbReady` 返回的 `.pb` 路径，不再直接消费 `.dxf`。
 - `ContourAugmenterAdapter` 已下沉到 `infrastructure/adapters/planning/geometry`，应用层不再直接承载几何增广实现。
@@ -111,4 +111,3 @@ namespace Siligen::Application::UseCases::Dispensing
 ## 备注
 
 - DXFSegmentFilter 已移除，请使用轮廓级优化流程。 
-

@@ -4,7 +4,7 @@
 #include "domain/dispensing/domain-services/PurgeDispenserProcess.h"
 #include "domain/dispensing/domain-services/ValveCoordinationService.h"
 #include "domain/dispensing/ports/IValvePort.h"
-#include "domain/machine/ports/IHardwareConnectionPort.h"
+#include "siligen/device/contracts/ports/device_ports.h"
 #include "shared/types/Result.h"
 
 #include <memory>
@@ -20,7 +20,7 @@ class ValveCommandUseCase {
         std::shared_ptr<Domain::Dispensing::DomainServices::ValveCoordinationService> valve_service,
         std::shared_ptr<Domain::Dispensing::Ports::IValvePort> valve_port,
         std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port,
-        std::shared_ptr<Domain::Machine::Ports::IHardwareConnectionPort> connection_port);
+        std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port);
 
     Shared::Types::Result<Domain::Dispensing::Ports::DispenserValveState> StartDispenser(
         const Domain::Dispensing::Ports::DispenserValveParams& params);
@@ -37,7 +37,7 @@ class ValveCommandUseCase {
     std::shared_ptr<Domain::Dispensing::DomainServices::ValveCoordinationService> valve_service_;
     std::shared_ptr<Domain::Dispensing::Ports::IValvePort> valve_port_;
     std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port_;
-    std::shared_ptr<Domain::Machine::Ports::IHardwareConnectionPort> connection_port_;
+    std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port_;
 };
 
 }  // namespace Siligen::Application::UseCases::Dispensing::Valve

@@ -6,34 +6,33 @@ namespace {
 
 using Siligen::Application::UseCases::System::InitializeSystemRequest;
 using Siligen::Application::UseCases::System::InitializeSystemUseCase;
-using Siligen::Domain::Machine::Ports::HardwareConnectionConfig;
-using Siligen::Domain::Machine::Ports::HardwareConnectionInfo;
-using Siligen::Domain::Machine::Ports::HardwareConnectionState;
-using Siligen::Domain::Machine::Ports::HeartbeatConfig;
-using Siligen::Domain::Machine::Ports::HeartbeatStatus;
-using Siligen::Domain::Machine::Ports::IHardwareConnectionPort;
+using Siligen::Device::Contracts::Commands::DeviceConnection;
+using Siligen::Device::Contracts::Ports::DeviceConnectionPort;
+using Siligen::Device::Contracts::State::DeviceConnectionSnapshot;
+using Siligen::Device::Contracts::State::DeviceConnectionState;
+using Siligen::Device::Contracts::State::HeartbeatSnapshot;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
 
-class FakeHardwareConnectionPort final : public IHardwareConnectionPort {
+class FakeHardwareConnectionPort final : public DeviceConnectionPort {
    public:
-    Result<void> Connect(const HardwareConnectionConfig& config) override {
+    Result<void> Connect(const DeviceConnection& config) override {
         ++connect_calls;
         last_config = config;
         connected = true;
-        info.state = HardwareConnectionState::Connected;
+        info.state = DeviceConnectionState::Connected;
         return Result<void>::Success();
     }
 
     Result<void> Disconnect() override {
         connected = false;
-        info.state = HardwareConnectionState::Disconnected;
+        info.state = DeviceConnectionState::Disconnected;
         return Result<void>::Success();
     }
 
-    HardwareConnectionInfo GetConnectionInfo() const override {
-        return info;
+    Result<DeviceConnectionSnapshot> ReadConnection() const override {
+        return Result<DeviceConnectionSnapshot>::Success(info);
     }
 
     bool IsConnected() const override {
@@ -43,11 +42,11 @@ class FakeHardwareConnectionPort final : public IHardwareConnectionPort {
     Result<void> Reconnect() override {
         ++reconnect_calls;
         connected = true;
-        info.state = HardwareConnectionState::Connected;
+        info.state = DeviceConnectionState::Connected;
         return Result<void>::Success();
     }
 
-    void SetConnectionStateCallback(std::function<void(const HardwareConnectionInfo&)> /*callback*/) override {}
+    void SetConnectionStateCallback(std::function<void(const DeviceConnectionSnapshot&)> /*callback*/) override {}
 
     Result<void> StartStatusMonitoring(uint32 interval_ms = 1000) override {
         ++monitor_calls;
@@ -63,7 +62,7 @@ class FakeHardwareConnectionPort final : public IHardwareConnectionPort {
 
     void ClearError() override {}
 
-    Result<void> StartHeartbeat(const HeartbeatConfig& config) override {
+    Result<void> StartHeartbeat(const HeartbeatSnapshot& config) override {
         ++heartbeat_calls;
         heartbeat_status.is_active = true;
         heartbeat_status.interval_ms = config.interval_ms;
@@ -75,7 +74,7 @@ class FakeHardwareConnectionPort final : public IHardwareConnectionPort {
         heartbeat_status.is_active = false;
     }
 
-    HeartbeatStatus GetHeartbeatStatus() const override {
+    HeartbeatSnapshot ReadHeartbeat() const override {
         return heartbeat_status;
     }
 
@@ -89,9 +88,9 @@ class FakeHardwareConnectionPort final : public IHardwareConnectionPort {
     int heartbeat_calls = 0;
     uint32 last_monitor_interval_ms = 0;
     bool connected = false;
-    HardwareConnectionConfig last_config;
-    HardwareConnectionInfo info;
-    HeartbeatStatus heartbeat_status;
+    DeviceConnection last_config;
+    DeviceConnectionSnapshot info;
+    HeartbeatSnapshot heartbeat_status;
 };
 
 TEST(InitializeSystemUseCaseTest, StartsConnectionMonitoringAndHeartbeatFromSingleConnectionPort) {
