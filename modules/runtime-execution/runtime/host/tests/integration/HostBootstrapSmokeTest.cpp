@@ -1,6 +1,6 @@
 #include "ContainerBootstrap.h"
 #include "domain/configuration/ports/IConfigurationPort.h"
-#include "domain/dispensing/ports/ITaskSchedulerPort.h"
+#include "runtime_execution/contracts/dispensing/ITaskSchedulerPort.h"
 #include "domain/dispensing/ports/IValvePort.h"
 #include "domain/machine/ports/IHardwareConnectionPort.h"
 #include "domain/motion/ports/IMotionRuntimePort.h"
@@ -261,7 +261,7 @@ TEST(RuntimeExecutionIntegrationHostBootstrapSmokeTest, BuildsContainerFromCanon
         container->ResolvePort<Siligen::Domain::Dispensing::Ports::IValvePort>(),
         nullptr);
     EXPECT_NE(
-        container->ResolvePort<Siligen::Domain::Dispensing::Ports::ITaskSchedulerPort>(),
+        container->ResolvePort<Siligen::RuntimeExecution::Contracts::Dispensing::ITaskSchedulerPort>(),
         nullptr);
     EXPECT_NE(container->GetMultiCardInstance(), nullptr);
 

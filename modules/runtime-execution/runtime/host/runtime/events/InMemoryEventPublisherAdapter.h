@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/system/ports/IEventPublisherPort.h"
+#include "runtime_execution/contracts/system/IEventPublisherPort.h"
 
 #include <boost/signals2/connection.hpp>
 #include <boost/signals2/signal.hpp>
@@ -16,10 +16,10 @@ namespace Infrastructure {
 namespace Adapters {
 
 // 显式 using 声明
-using Siligen::Domain::System::Ports::IEventPublisherPort;
-using Siligen::Domain::System::Ports::DomainEvent;
-using Siligen::Domain::System::Ports::EventType;
-using Siligen::Domain::System::Ports::EventHandler;
+using Siligen::RuntimeExecution::Contracts::System::IEventPublisherPort;
+using Siligen::RuntimeExecution::Contracts::System::DomainEvent;
+using Siligen::RuntimeExecution::Contracts::System::EventType;
+using Siligen::RuntimeExecution::Contracts::System::EventHandler;
 
 /**
  * @brief 内存事件发布适配器 (MVP 实现)

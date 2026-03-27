@@ -12,7 +12,6 @@ set(SILIGEN_DOMAIN_IMPLEMENTATION_INCLUDE_DIRS
 # 子域结构（占位，不影响现有构建）
 add_subdirectory(_shared)
 add_subdirectory(motion)
-add_subdirectory(dispensing)
 add_subdirectory(recipes)
 add_subdirectory(machine)
 add_subdirectory(safety)
@@ -20,7 +19,6 @@ add_subdirectory(diagnostics)
 add_subdirectory(configuration)
 add_subdirectory(system)
 add_subdirectory(planning)
-add_subdirectory(trajectory)
 
 # 领域模型库 (header-only for now)
 # add_library(siligen_models STATIC
@@ -79,10 +77,6 @@ if(NOT TARGET siligen_motion)
         siligen_process_runtime_core_boost_headers
         siligen_process_path_domain_trajectory
     )
-endif()
-
-if(TARGET domain_dispensing)
-    target_link_libraries(domain_dispensing PUBLIC siligen_motion)
 endif()
 
 # 轨迹执行器库 (已合并到 siligen_motion)

@@ -201,10 +201,81 @@ def _validate_root_wiring(root: Path) -> list[str]:
     shared_contracts = root / "shared" / "contracts" / "CMakeLists.txt"
     if shared_contracts.exists():
         text = shared_contracts.read_text(encoding="utf-8", errors="ignore")
-        if "modules/runtime-execution/contracts/device" not in text:
-            issues.append("shared/contracts 仍未切换到 canonical runtime device contracts 根")
+        if 'set(SILIGEN_DEVICE_CONTRACTS_CANONICAL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/device")' not in text:
+            issues.append("shared/contracts 未从 shared/contracts/device canonical root 解析设备契约")
         if "modules/runtime-execution/device-contracts" in text:
             issues.append("shared/contracts 仍引用 runtime device-contracts bridge 根")
+        if "modules/runtime-execution/contracts/device" in text:
+            issues.append("shared/contracts 仍把 runtime-execution/contracts/device 当作 canonical device contracts 根")
+
+    shared_device_contracts = root / "shared" / "contracts" / "device" / "CMakeLists.txt"
+    if not shared_device_contracts.exists():
+        issues.append("missing closeout asset: shared/contracts/device/CMakeLists.txt")
+
+    workflow_application = root / "modules" / "workflow" / "application" / "CMakeLists.txt"
+    if workflow_application.exists():
+        workflow_application_text = workflow_application.read_text(encoding="utf-8", errors="ignore")
+        for required in (
+            "siligen_job_ingest_application_public",
+            "siligen_dxf_geometry_application_public",
+            "../../runtime-execution/application/include",
+            "siligen_runtime_execution_application_public",
+        ):
+            if required not in workflow_application_text:
+                issues.append(f"workflow application owner wiring missing: {required}")
+
+    forbidden_reverse_mutations = (
+        (
+            root / "modules" / "job-ingest" / "CMakeLists.txt",
+            (
+                "siligen_application_dispensing",
+                "siligen_process_runtime_core_application",
+                "siligen_workflow_application_public",
+            ),
+            "job-ingest must not mutate workflow targets",
+        ),
+        (
+            root / "modules" / "dxf-geometry" / "CMakeLists.txt",
+            (
+                "siligen_application_dispensing",
+                "siligen_process_runtime_core_application",
+                "siligen_workflow_application_public",
+            ),
+            "dxf-geometry must not mutate workflow targets",
+        ),
+        (
+            root / "modules" / "runtime-execution" / "application" / "CMakeLists.txt",
+            (
+                "siligen_workflow_application_headers",
+                "siligen_application_dispensing",
+                "siligen_process_runtime_core_application",
+            ),
+            "runtime-execution/application must not mutate workflow targets",
+        ),
+    )
+    for path, snippets, message in forbidden_reverse_mutations:
+        if not path.exists():
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for snippet in snippets:
+            if snippet in text:
+                issues.append(f"{message}: {path.relative_to(root).as_posix()} -> {snippet}")
+
+    workflow_dxf_wrapper = (
+        root
+        / "modules"
+        / "workflow"
+        / "application"
+        / "include"
+        / "application"
+        / "services"
+        / "dxf"
+        / "DxfPbPreparationService.h"
+    )
+    if workflow_dxf_wrapper.exists():
+        wrapper_text = workflow_dxf_wrapper.read_text(encoding="utf-8", errors="ignore")
+        if "dxf_geometry/application/services/dxf/DxfPbPreparationService.h" not in wrapper_text:
+            issues.append("workflow dxf wrapper must forward to dxf_geometry/application/services/dxf/DxfPbPreparationService.h")
 
     return issues
 

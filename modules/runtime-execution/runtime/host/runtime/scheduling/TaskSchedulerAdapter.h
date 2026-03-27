@@ -2,7 +2,7 @@
 // Phase 2: DXF Dispensing Execution UseCase 重构 - Infrastructure 层
 #pragma once
 
-#include "domain/dispensing/ports/ITaskSchedulerPort.h"
+#include "runtime_execution/contracts/dispensing/ITaskSchedulerPort.h"
 #include "shared/types/Result.h"
 
 #include <boost/asio/post.hpp>
@@ -28,10 +28,10 @@ using Shared::Types::uint32;
 using Shared::Types::uint64;
 using Shared::Types::Error;
 using Shared::Types::ErrorCode;
-using Domain::Dispensing::Ports::ITaskSchedulerPort;
-using Domain::Dispensing::Ports::TaskExecutor;
-using Domain::Dispensing::Ports::TaskStatus;
-using Domain::Dispensing::Ports::TaskStatusInfo;
+using Siligen::RuntimeExecution::Contracts::Dispensing::ITaskSchedulerPort;
+using Siligen::RuntimeExecution::Contracts::Dispensing::TaskExecutor;
+using Siligen::RuntimeExecution::Contracts::Dispensing::TaskStatus;
+using Siligen::RuntimeExecution::Contracts::Dispensing::TaskStatusInfo;
 
 /**
  * @brief 任务执行上下文

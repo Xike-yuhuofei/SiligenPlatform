@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.20)
 
 foreach(module_dir IN ITEMS
     workflow
-    job-ingest
     dxf-geometry
+    job-ingest
     topology-feature
     process-planning
     coordinate-alignment

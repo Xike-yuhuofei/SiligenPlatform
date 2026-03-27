@@ -252,8 +252,9 @@ function New-TemporaryGatewayLaunchSpec {
     }
 
     $exeItem = Get-Item $resolvedExe
-    $cwdPath = $exeItem.DirectoryName
-    $pathEntries = @($cwdPath)
+    $exeDir = $exeItem.DirectoryName
+    $cwdPath = $workspaceRoot
+    $pathEntries = @($exeDir)
     if ($exeItem.Directory.Parent -and $exeItem.Directory.Parent.Name -ieq "bin") {
         $libDir = Join-Path $exeItem.Directory.Parent.Parent.FullName ("lib\\" + $exeItem.Directory.Name)
         if (Test-Path $libDir) {
@@ -437,11 +438,16 @@ $ownsLaunchSpecPath = $false
 try {
     if (-not [string]::IsNullOrWhiteSpace($GatewayExe)) {
         $resolvedGatewayConfig = $GatewayConfig
-        if ($UseMockGatewayConfig -or $DoorInputIndex -ge 0) {
+        $effectiveDoorInputIndex = $DoorInputIndex
+        if ($ExerciseRuntimeActions -and $UseMockGatewayConfig -and $effectiveDoorInputIndex -lt 0) {
+            $effectiveDoorInputIndex = 0
+            Write-Host "[online-smoke] enabling safety_door_input=$effectiveDoorInputIndex for runtime action smoke"
+        }
+        if ($UseMockGatewayConfig -or $effectiveDoorInputIndex -ge 0) {
             $temporaryGatewayConfigPath = New-TemporaryGatewayConfig `
                 -SourcePath $GatewayConfig `
                 -EnableMockMode:$UseMockGatewayConfig `
-                -DoorInput $DoorInputIndex
+                -DoorInput $effectiveDoorInputIndex
             $resolvedGatewayConfig = $temporaryGatewayConfigPath
         }
         $launchSpecPath = New-TemporaryGatewayLaunchSpec `

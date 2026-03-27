@@ -11,17 +11,20 @@
 ## Git 分支命名（强制）
 - 所有新建分支必须使用统一格式：`<type>/<scope>/<ticket>-<short-desc>`。
 - 不符合该格式的分支禁止继续开发，必须先重命名为合规名称。
+- 详细规则、字段约束、示例与校验建议统一以 `docs/onboarding/git-branch-naming.md` 为准。
 
 ### 字段约束
-- `type`：`feat`、`fix`、`chore`、`refactor`、`docs`、`test`、`hotfix`、`spike`、`release`。
-- `scope`：受影响模块或域名，推荐短名，如 `hmi`、`runtime`、`cli`、`gateway`。
-- `ticket`：任务系统编号（如 `SS-142`）。若确实没有任务号，使用 `NOISSUE` 占位并尽快补齐。
+- `type`：使用 `docs/onboarding/git-branch-naming.md` 中批准的白名单，当前包含 `feat`、`fix`、`refactor`、`docs`、`test`、`chore`、`perf`、`build`、`ci`、`revert`、`spike`。
+- `scope`：使用稳定的小写模块或责任域名称，推荐优先采用 `docs/onboarding/git-branch-naming.md` 中的 project scopes。
+- `ticket`：优先使用任务系统编号（如 `MC-142`、`BUG-311`、`ARCH-057`、`SPEC-021`）；若无外部任务系统，使用文档中定义的内部 ticket 前缀。
 - `short-desc`：英文小写短描述，使用 kebab-case，例如 `debug-instrumentation`。
 
 ### 示例
 - `chore/hmi/SS-142-debug-instrumentation`
 - `fix/runtime/SS-205-startup-timeout`
-- `chore/hmi/NOISSUE-debug-instrumentation`
+- `chore/hmi/TASK-144-debug-instrumentation`
+- `build/infra/TASK-122-upgrade-clang-cl`
+- `ci/build/TASK-133-add-static-analysis`
 
 ## Codex 技能工作流（项目内）
 
@@ -63,6 +66,9 @@
 - Git-tracked Markdown/spec files plus repository filesystem assets under canonical roots; no database introduced by this feature (refactor/arch/NOISSUE-architecture-refactor-spec)
 - Markdown docs; PowerShell 7; Python 3.11; C++17 / CMake 3.20+ + Root entry points (`build.ps1`, `test.ps1`, `ci.ps1`); `scripts/migration/validate_workspace_layout.py`; `scripts/migration/legacy-exit-checks.py`; `scripts/validation/run-local-validation-gate.ps1`; module `CMakeLists.txt` + `module.yaml`; `shared/testing/test-kit`; protobuf; spdlog (refactor/arch/NOISSUE-dsp-e2e-full-migration)
 - Git-tracked repository filesystem assets under canonical roots plus validation reports under `tests/reports/` (refactor/arch/NOISSUE-dsp-e2e-full-migration)
+- Python 3.11（`apps/hmi-app`、测试与脚本）、C++17 / CMake 3.20+（`apps/planner-cli`、`apps/runtime-gateway`、`modules/workflow`）、PowerShell 7（根级入口与 smoke） + PyQt5 / PyQtWebEngine；`apps/planner-cli` DXF 命令面；`modules/workflow` 点胶规划/预览用例；`shared/contracts/application/commands/dxf.command-set.json`；`pytest` 与根级验证脚本 (test/hmi/TASK-001-offline-dxf-preview-consistency)
+- Git 跟踪的 DXF/契约/基线资产（`samples/`、`shared/contracts/`、`tests/baselines/`）以及验证输出目录 `tests/reports/`；无数据库 (test/hmi/TASK-001-offline-dxf-preview-consistency)
+- Python 3.11（`apps/hmi-app`、测试与脚本）、C++17 / CMake 3.20+（`apps/runtime-gateway`、`modules/workflow`）、PowerShell 7（根级入口与 smoke） + PyQt5 / PyQtWebEngine；`apps/runtime-gateway` 在线命令链；`modules/workflow` 点胶规划/预览用例；`shared/contracts/application/commands/dxf.command-set.json`；`pytest` 与根级验证脚本 (test/hmi/TASK-001-offline-dxf-preview-consistency)
 
 ## Recent Changes
 - refactor/arch/NOISSUE-architecture-refactor-spec: Added Markdown docs; PowerShell 7; Python 3.11; C++17/CMake 3.20+ + Root `build.ps1` / `test.ps1` / `ci.ps1`; CMake workspace targets; `application-contracts`; `engineering-contracts`; `engineering-data`; `test-kit`; protobuf; spdlog

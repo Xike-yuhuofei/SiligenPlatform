@@ -2,11 +2,11 @@
 #include "CommandHandlersInternal.h"
 
 #include "infrastructure/adapters/planning/geometry/ContourAugmenterAdapter.h"
-#include "application/usecases/dispensing/DispensingExecutionUseCase.h"
-#include "application/usecases/dispensing/PlanningUseCase.h"
 #include "application/usecases/motion/homing/HomeAxesUseCase.h"
 #include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
 #include "domain/trajectory/value-objects/PlanningReport.h"
+#include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
+#include "workflow/application/usecases/dispensing/PlanningUseCase.h"
 #include "shared/types/TrajectoryTypes.h"
 
 #include <algorithm>

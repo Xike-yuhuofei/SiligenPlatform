@@ -2,6 +2,9 @@
 
 `shared/contracts/device/` 是设备侧稳定跨模块契约的 canonical root。
 
+- 构建 target：`siligen_device_contracts`
+- public include root：`shared/contracts/device/include`
+
 ## 归位范围
 
 以下契约属于跨模块稳定面，应在该根统一维护：
@@ -26,7 +29,7 @@
 ## 当前对照面
 
 - 稳定跨模块设备契约：`shared/contracts/device/`
-- runtime 私有执行契约：`modules/runtime-execution/contracts/device/`
+- runtime 私有执行契约入口：`modules/runtime-execution/contracts/device/`（兼容装配入口，不再定义 canonical target）
 - 设备与协议适配实现：`modules/runtime-execution/adapters/device/`
 
 ## 验证要求

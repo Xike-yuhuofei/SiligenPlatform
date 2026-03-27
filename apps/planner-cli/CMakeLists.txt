@@ -6,10 +6,13 @@ endif()
 
 target_link_libraries(siligen_app_planner_cli INTERFACE
     siligen_module_job_ingest
+    siligen_workflow_application_public
+    siligen_workflow_adapters_public
+    siligen_workflow_recipe_application_public
     siligen_module_hmi_application
+    siligen_runtime_execution_application_public
     siligen_runtime_host
     siligen_runtime_host_infrastructure
-    siligen_workflow_runtime_consumer_public
     siligen_shared
 )
 target_compile_features(siligen_app_planner_cli INTERFACE cxx_std_17)

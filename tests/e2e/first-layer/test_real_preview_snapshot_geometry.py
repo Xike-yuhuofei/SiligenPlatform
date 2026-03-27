@@ -67,27 +67,52 @@ def test_real_preview_snapshot_matches_rect_diag_baseline(tmp_path: Path) -> Non
 
     report_dir = _single_report_dir(report_root)
     report_json_path = report_dir / "real-dxf-preview-snapshot.json"
+    plan_prepare_json_path = report_dir / "plan-prepare.json"
     snapshot_json_path = report_dir / "snapshot.json"
     polyline_json_path = report_dir / "trajectory_polyline.json"
+    preview_verdict_json_path = report_dir / "preview-verdict.json"
+    preview_evidence_md_path = report_dir / "preview-evidence.md"
 
     assert report_json_path.exists(), f"missing report artifact: {report_json_path}"
+    assert plan_prepare_json_path.exists(), f"missing report artifact: {plan_prepare_json_path}"
     assert snapshot_json_path.exists(), f"missing snapshot artifact: {snapshot_json_path}"
     assert polyline_json_path.exists(), f"missing polyline artifact: {polyline_json_path}"
+    assert preview_verdict_json_path.exists(), f"missing report artifact: {preview_verdict_json_path}"
+    assert preview_evidence_md_path.exists(), f"missing report artifact: {preview_evidence_md_path}"
 
     report = _load_json(report_json_path)
+    plan_prepare = _load_json(plan_prepare_json_path)
     snapshot = _load_json(snapshot_json_path)
     polyline = _load_json(polyline_json_path)
+    preview_verdict = _load_json(preview_verdict_json_path)
+    preview_evidence = preview_evidence_md_path.read_text(encoding="utf-8")
 
     assert report["overall_status"] == "passed"
     assert report["config_mode"] == baseline["config_mode"]
     assert report["preview_source"] == baseline["preview_source"]
     assert report["dxf_file"].endswith(str(baseline["dxf_file"]).replace("/", "\\"))
+    assert report["plan_id"] == plan_prepare["plan_id"]
+    assert report["plan_fingerprint"] == plan_prepare["plan_fingerprint"]
     assert snapshot["preview_state"] == baseline["snapshot"]["preview_state"]
+    assert snapshot["plan_id"] == plan_prepare["plan_id"]
+    assert snapshot["snapshot_hash"] == plan_prepare["plan_fingerprint"]
     assert snapshot["segment_count"] == baseline["snapshot"]["segment_count"]
     assert snapshot["point_count"] == baseline["snapshot"]["point_count"]
     assert snapshot["polyline_point_count"] == baseline["snapshot"]["polyline_point_count"]
     assert snapshot["polyline_source_point_count"] == baseline["snapshot"]["polyline_source_point_count"]
     assert snapshot["polyline_point_count"] == len(polyline)
+    assert preview_verdict["verdict"] == "passed"
+    assert preview_verdict["launch_mode"] == "online"
+    assert preview_verdict["online_ready"] is True
+    assert preview_verdict["preview_source"] == baseline["preview_source"]
+    assert preview_verdict["plan_id"] == plan_prepare["plan_id"]
+    assert preview_verdict["plan_fingerprint"] == plan_prepare["plan_fingerprint"]
+    assert preview_verdict["snapshot_hash"] == snapshot["snapshot_hash"]
+    assert preview_verdict["geometry_semantics_match"] is True
+    assert preview_verdict["order_semantics_match"] is True
+    assert preview_verdict["dispense_motion_semantics_match"] is True
+    assert "preview-verdict.json" in preview_evidence
+    assert "plan_fingerprint" in preview_evidence
 
     coordinate_tolerance = float(baseline["tolerances"]["coordinate_mm"])
     length_tolerance = float(baseline["tolerances"]["length_mm"])

@@ -39,10 +39,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\run-loc
 
 统一格式：`<type>/<scope>/<ticket>-<short-desc>`
 
-- `type`：`feat`、`fix`、`chore`、`refactor`、`docs`、`test`、`hotfix`、`spike`、`release`
-- `scope`：模块短名，例如 `hmi`、`runtime`、`cli`、`gateway`
-- `ticket`：任务号，如 `SS-142`；缺失时使用 `NOISSUE`
+- `type`：见 `docs/onboarding/git-branch-naming.md` 中的批准白名单
+- `scope`：使用稳定的小写模块/域名；推荐列表见 `docs/onboarding/git-branch-naming.md`
+- `ticket`：优先使用任务系统编号，如 `MC-142`、`BUG-311`、`ARCH-057`、`SPEC-021`
 - `short-desc`：英文小写 kebab-case
+- 详细规则文档：`docs/onboarding/git-branch-naming.md`
 
 ## Git 收口规则
 

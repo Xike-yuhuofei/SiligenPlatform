@@ -15,7 +15,7 @@
 #include "domain/configuration/ports/IConfigurationPort.h"
 #include "domain/configuration/services/ReadyZeroSpeedResolver.h"
 
-#include "recipes/serialization/RecipeJsonSerializer.h"
+#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
 
 #include <algorithm>
 #include <cctype>
@@ -2431,6 +2431,19 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
         return GatewayJsonProtocol::MakeErrorResponse(id, 3012, snapshot_result.GetError().GetMessage());
     }
     const auto& snapshot = snapshot_result.Value();
+    const std::string resolved_plan_id = snapshot.plan_id.empty() ? plan_id : snapshot.plan_id;
+    if (resolved_plan_id != plan_id) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 3012, "Preview plan_id mismatch");
+    }
+    if (snapshot.snapshot_hash.empty()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview snapshot hash is missing");
+    }
+    if (snapshot.preview_source.empty()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview source is missing");
+    }
+    if (snapshot.preview_source != "runtime_snapshot") {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview source must be runtime_snapshot");
+    }
 
     nlohmann::json trajectory_polyline = nlohmann::json::array();
     for (const auto& point : snapshot.trajectory_polyline) {
@@ -2454,7 +2467,7 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
         }
         dxf_cache_.segment_count = snapshot.segment_count;
         dxf_cache_.total_length = snapshot.total_length_mm;
-        dxf_cache_.plan_id = snapshot.plan_id.empty() ? plan_id : snapshot.plan_id;
+        dxf_cache_.plan_id = resolved_plan_id;
         dxf_cache_.plan_fingerprint = snapshot.snapshot_hash;
         dxf_cache_.preview_snapshot_id = snapshot.snapshot_id;
         dxf_cache_.preview_snapshot_hash = snapshot.snapshot_hash;
@@ -2474,7 +2487,7 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
     return GatewayJsonProtocol::MakeSuccessResponse(id, {
         {"snapshot_id", snapshot.snapshot_id},
         {"snapshot_hash", snapshot.snapshot_hash},
-        {"plan_id", snapshot.plan_id.empty() ? plan_id : snapshot.plan_id},
+        {"plan_id", resolved_plan_id},
         {"preview_state", snapshot.preview_state},
         {"preview_source", snapshot.preview_source},
         {"confirmed_at", snapshot.confirmed_at},

@@ -15,11 +15,11 @@
 #include "domain-services/TrajectoryPlanner.h"  // 必须包含完整定义以使用 unique_ptr
 #include "domain-services/TriggerCalculator.h"  // 必须包含完整定义以使用 unique_ptr
 #include "domain-services/TimeTrajectoryPlanner.h"
-#include "value-objects/SemanticPath.h"
 #include "shared/interfaces/ILoggingService.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <numeric>
 #include <stdexcept>
@@ -27,49 +27,91 @@
 namespace Siligen::Domain::Motion {
 
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectory;
+using Siligen::Domain::Trajectory::ValueObjects::MotionConfig;
+using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
+using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
+using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
+using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
 
 namespace {
 constexpr float32 kEpsilon = 1e-6f;
 
-MotionTrajectory BuildUnifiedTrajectory(const std::vector<Point2D>& points, const InterpolationConfig& config) {
-    MotionTrajectory empty;
-    if (points.size() < 2) {
-        return empty;
+MotionConfig BuildMotionConfig(const InterpolationConfig& config) {
+    MotionConfig motion_config;
+    motion_config.vmax = config.max_velocity;
+    motion_config.amax = config.max_acceleration;
+    motion_config.jmax = config.max_jerk;
+    motion_config.sample_dt = config.time_step;
+    motion_config.sample_ds = 0.0f;
+    motion_config.curvature_speed_factor = config.curvature_speed_factor;
+    motion_config.corner_speed_factor = 1.0f;
+    motion_config.start_speed_factor = 1.0f;
+    motion_config.end_speed_factor = 1.0f;
+    motion_config.rapid_speed_factor = 1.0f;
+    motion_config.arc_tolerance_mm = std::max(config.position_tolerance, 0.0f);
+    motion_config.enforce_jerk_limit = true;
+    return motion_config;
+}
+
+CMPConfiguration BuildValidationConfig(const CMPConfiguration& cmp_config,
+                                       const std::vector<DispensingTriggerPoint>& trigger_points) {
+    CMPConfiguration effective_config = cmp_config;
+    if (!effective_config.trigger_points.empty() || effective_config.trigger_mode == CMPTriggerMode::RANGE) {
+        return effective_config;
     }
 
-    ValueObjects::SemanticPath path;
+    effective_config.trigger_points.reserve(trigger_points.size());
+    for (const auto& trigger_point : trigger_points) {
+        CMPTriggerPoint cmp_trigger;
+        const long long rounded_distance =
+            std::llround(static_cast<double>(std::max(trigger_point.trigger_distance, 0.0f)));
+        cmp_trigger.position = static_cast<int32>(std::clamp<long long>(rounded_distance, 0, 1000000));
+        cmp_trigger.action = DispensingAction::PULSE;
+        cmp_trigger.pulse_width_us = static_cast<int32>(trigger_point.pulse_width_us);
+        cmp_trigger.delay_time_us =
+            static_cast<int32>(std::max(trigger_point.pre_trigger_delay_ms, 0.0f) * 1000.0f);
+        cmp_trigger.is_enabled = trigger_point.is_enabled;
+        effective_config.trigger_points.push_back(cmp_trigger);
+    }
+
+    return effective_config;
+}
+
+ProcessPath BuildLinearProcessPath(const std::vector<Point2D>& points) {
+    ProcessPath path;
+    if (points.size() < 2) {
+        return path;
+    }
+
     path.segments.reserve(points.size() - 1);
     for (size_t i = 1; i < points.size(); ++i) {
-        ValueObjects::SemanticSegment seg;
-        seg.geometry.type = ValueObjects::SegmentType::Line;
+        ProcessSegment seg;
+        seg.dispense_on = true;
+        seg.flow_rate = 1.0f;
+        seg.tag = ProcessTag::Normal;
+        seg.geometry.type = SegmentType::Line;
         seg.geometry.line.start = points[i - 1];
         seg.geometry.line.end = points[i];
         seg.geometry.length = points[i - 1].DistanceTo(points[i]);
-        seg.dispense_on = true;
-        seg.flow_rate = 1.0f;
-        seg.tag = ValueObjects::SemanticTag::Normal;
-        if (seg.geometry.length > 1e-6f) {
+        if (seg.geometry.length > kEpsilon) {
             path.segments.push_back(seg);
         }
     }
 
+    return path;
+}
+
+MotionTrajectory BuildUnifiedTrajectory(const ProcessPath& path, const InterpolationConfig& config) {
     if (path.segments.empty()) {
-        return empty;
+        return {};
     }
 
-    ValueObjects::TimePlanningConfig plan_cfg;
-    plan_cfg.vmax = config.max_velocity;
-    plan_cfg.amax = config.max_acceleration;
-    plan_cfg.jmax = config.max_jerk;
-    plan_cfg.sample_dt = config.time_step;
-    plan_cfg.sample_ds = 0.0f;
-    plan_cfg.curvature_speed_factor = config.curvature_speed_factor;
-    plan_cfg.corner_speed_factor = 1.0f;
-    plan_cfg.start_speed_factor = 1.0f;
-    plan_cfg.end_speed_factor = 1.0f;
-
     DomainServices::TimeTrajectoryPlanner planner;
-    return planner.Plan(path, plan_cfg);
+    return planner.Plan(path, BuildMotionConfig(config));
+}
+
+MotionTrajectory BuildUnifiedTrajectory(const std::vector<Point2D>& points, const InterpolationConfig& config) {
+    return BuildUnifiedTrajectory(BuildLinearProcessPath(points), config);
 }
 
 std::vector<TrajectoryPoint> ConvertToTrajectoryPoints(const MotionTrajectory& motion) {
@@ -92,14 +134,31 @@ Point2D ResolvePositionAtTime(const MotionTrajectory& motion, float32 trigger_ti
         return Point2D();
     }
 
-    size_t trajectory_index = 0;
-    for (size_t j = 0; j < motion.points.size(); ++j) {
-        if (motion.points[j].t >= trigger_time) {
-            trajectory_index = j;
-            break;
+    if (trigger_time <= motion.points.front().t + kEpsilon) {
+        const auto& pt = motion.points.front();
+        return Point2D(pt.position.x, pt.position.y);
+    }
+    if (trigger_time >= motion.points.back().t - kEpsilon) {
+        const auto& pt = motion.points.back();
+        return Point2D(pt.position.x, pt.position.y);
+    }
+
+    for (size_t j = 1; j < motion.points.size(); ++j) {
+        const auto& prev = motion.points[j - 1];
+        const auto& curr = motion.points[j];
+        if (trigger_time <= curr.t + kEpsilon) {
+            const float32 dt = curr.t - prev.t;
+            if (std::abs(dt) <= kEpsilon) {
+                return Point2D(curr.position.x, curr.position.y);
+            }
+
+            const float32 ratio = std::clamp((trigger_time - prev.t) / dt, 0.0f, 1.0f);
+            return Point2D(static_cast<float32>(prev.position.x + (curr.position.x - prev.position.x) * ratio),
+                           static_cast<float32>(prev.position.y + (curr.position.y - prev.position.y) * ratio));
         }
     }
-    const auto& pt = motion.points[trajectory_index];
+
+    const auto& pt = motion.points.back();
     return Point2D(pt.position.x, pt.position.y);
 }
 
@@ -184,7 +243,8 @@ std::vector<TrajectoryPoint> CMPCoordinatedInterpolator::PositionTriggeredDispen
     const std::vector<DispensingTriggerPoint>& trigger_points,
     const CMPConfiguration& cmp_config,
     const InterpolationConfig& config) {
-    if (!ValidateCMPConfiguration(cmp_config)) {
+    const CMPConfiguration effective_config = BuildValidationConfig(cmp_config, trigger_points);
+    if (!ValidateCMPConfiguration(effective_config)) {
         SILIGEN_LOG_ERROR("CMP配置验证失败");
         return {};
     }
@@ -201,10 +261,36 @@ std::vector<TrajectoryPoint> CMPCoordinatedInterpolator::PositionTriggeredDispen
     // 计算触发时间线(统一时间参数化轨迹)
     TriggerTimeline timeline = m_trigger_calculator->CalculateTriggerTimeline(motion_trajectory,
                                                                              trigger_points,
-                                                                             cmp_config);
+                                                                             effective_config);
 
     // 生成CMP协调轨迹
-    return GenerateCMPCoordinatedTrajectory(base_trajectory, timeline, cmp_config);
+    return GenerateCMPCoordinatedTrajectory(base_trajectory, timeline, effective_config);
+}
+
+std::vector<TrajectoryPoint> CMPCoordinatedInterpolator::PositionTriggeredDispensing(
+    const ProcessPath& path,
+    const std::vector<DispensingTriggerPoint>& trigger_points,
+    const CMPConfiguration& cmp_config,
+    const InterpolationConfig& config) {
+    const CMPConfiguration effective_config = BuildValidationConfig(cmp_config, trigger_points);
+    if (!ValidateCMPConfiguration(effective_config)) {
+        SILIGEN_LOG_ERROR("CMP配置验证失败");
+        return {};
+    }
+
+    MotionTrajectory motion_trajectory = BuildUnifiedTrajectory(path, config);
+    std::vector<TrajectoryPoint> base_trajectory = ConvertToTrajectoryPoints(motion_trajectory);
+
+    if (base_trajectory.empty()) {
+        SILIGEN_LOG_ERROR("基础轨迹生成失败");
+        return {};
+    }
+
+    TriggerTimeline timeline = m_trigger_calculator->CalculateTriggerTimeline(motion_trajectory,
+                                                                             trigger_points,
+                                                                             effective_config);
+
+    return GenerateCMPCoordinatedTrajectory(base_trajectory, timeline, effective_config);
 }
 
 std::vector<TrajectoryPoint> CMPCoordinatedInterpolator::TimeSynchronizedDispensing(const std::vector<Point2D>& points,

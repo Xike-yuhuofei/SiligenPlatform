@@ -22,6 +22,7 @@ env/
 
 # Build outputs and local runtime data
 build/
+/third_party/
 /bin/
 /obj/
 /out/

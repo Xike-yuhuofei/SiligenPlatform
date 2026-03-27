@@ -9,10 +9,35 @@ if(NOT TARGET siligen_dispense_packaging_domain_dispensing)
     message(FATAL_ERROR "dispense-packaging requires canonical domain/dispensing target: siligen_dispense_packaging_domain_dispensing")
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/contracts/CMakeLists.txt")
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/contracts"
+        "${CMAKE_BINARY_DIR}/modules/dispense-packaging/contracts"
+    )
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/application/CMakeLists.txt")
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/application"
+        "${CMAKE_BINARY_DIR}/modules/dispense-packaging/application"
+    )
+endif()
+
 add_library(siligen_module_dispense_packaging INTERFACE)
-target_link_libraries(siligen_module_dispense_packaging INTERFACE
-    siligen_dispense_packaging_domain_dispensing
-)
+if(TARGET siligen_dispense_packaging_application_public)
+    target_link_libraries(siligen_module_dispense_packaging INTERFACE
+        siligen_dispense_packaging_application_public
+    )
+else()
+    target_link_libraries(siligen_module_dispense_packaging INTERFACE
+        siligen_dispense_packaging_domain_dispensing
+    )
+endif()
+if(TARGET siligen_dispense_packaging_contracts_public)
+    target_link_libraries(siligen_module_dispense_packaging INTERFACE
+        siligen_dispense_packaging_contracts_public
+    )
+endif()
 target_compile_features(siligen_module_dispense_packaging INTERFACE cxx_std_17)
 
 set_target_properties(siligen_module_dispense_packaging PROPERTIES

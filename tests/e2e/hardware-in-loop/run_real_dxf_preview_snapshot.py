@@ -116,6 +116,146 @@ def summarize_polyline(polyline: list[dict[str, float]]) -> dict[str, Any]:
     }
 
 
+def write_json(path: Path, payload: Any) -> None:
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def normalize_preview_source(value: Any) -> str:
+    normalized = str(value or "").strip().lower()
+    return normalized or "unknown"
+
+
+def build_preview_verdict(
+    *,
+    launch_mode: str,
+    online_ready: bool,
+    dxf_file: Path,
+    artifact_id: str,
+    preview_source: str,
+    snapshot_hash: str,
+    plan_id: str,
+    snapshot_plan_id: str,
+    plan_fingerprint: str,
+    polyline: list[dict[str, float]],
+    snapshot_payload: dict[str, Any],
+    confirmed: bool,
+    error_message: str,
+) -> dict[str, Any]:
+    normalized_source = normalize_preview_source(preview_source)
+    effective_plan_id = str(snapshot_plan_id or plan_id).strip()
+    snapshot_result = snapshot_payload if isinstance(snapshot_payload, dict) else {}
+    polyline_point_count = int(snapshot_result.get("polyline_point_count", len(polyline)) or 0)
+    polyline_source_point_count = int(snapshot_result.get("polyline_source_point_count", 0) or 0)
+    geometry_match = (
+        normalized_source == "runtime_snapshot"
+        and bool(polyline)
+        and polyline_point_count == len(polyline)
+        and polyline_source_point_count >= polyline_point_count
+    )
+    order_match = bool(plan_id) and bool(effective_plan_id) and plan_id == effective_plan_id
+    dispatch_match = (
+        bool(plan_fingerprint)
+        and bool(snapshot_hash)
+        and plan_fingerprint == snapshot_hash
+        and confirmed
+    )
+    failure_reason = str(error_message or "").strip()
+
+    if not online_ready:
+        verdict = "not-ready"
+        if not failure_reason:
+            failure_reason = "online_ready=false"
+    elif normalized_source != "runtime_snapshot":
+        verdict = "invalid-source"
+        if not failure_reason:
+            failure_reason = f"preview_source={normalized_source}"
+    elif not artifact_id or not plan_id or not effective_plan_id or not plan_fingerprint or not snapshot_hash or not polyline:
+        verdict = "incomplete"
+        if not failure_reason:
+            failure_reason = "required evidence fields are missing"
+    elif not (geometry_match and order_match and dispatch_match):
+        verdict = "mismatch"
+        if not failure_reason:
+            failure_reason = "preview context did not correlate with prepare/confirm semantics"
+    else:
+        verdict = "passed"
+
+    verdict_payload = {
+        "verdict": verdict,
+        "launch_mode": launch_mode,
+        "online_ready": bool(online_ready),
+        "dxf_file": str(dxf_file),
+        "artifact_id": artifact_id,
+        "preview_source": normalized_source,
+        "snapshot_hash": snapshot_hash,
+        "plan_id": effective_plan_id,
+        "plan_fingerprint": plan_fingerprint,
+        "geometry_semantics_match": bool(geometry_match),
+        "order_semantics_match": bool(order_match),
+        "dispense_motion_semantics_match": bool(dispatch_match),
+        "polyline_point_count": polyline_point_count,
+        "polyline_source_point_count": polyline_source_point_count,
+        "preview_confirmed": bool(confirmed),
+    }
+    if failure_reason:
+        verdict_payload["failure_reason"] = failure_reason
+    return verdict_payload
+
+
+def build_preview_evidence_markdown(
+    *,
+    generated_at: str,
+    overall_status: str,
+    plan_payload: dict[str, Any],
+    snapshot_payload: dict[str, Any],
+    verdict_payload: dict[str, Any],
+    geometry_summary: dict[str, Any],
+) -> str:
+    lines: list[str] = []
+    lines.append("# Online Preview Evidence Bundle")
+    lines.append("")
+    lines.append(f"- generated_at: `{generated_at}`")
+    lines.append(f"- overall_status: `{overall_status}`")
+    lines.append(f"- verdict: `{verdict_payload.get('verdict', 'incomplete')}`")
+    lines.append(f"- plan_id: `{verdict_payload.get('plan_id', '')}`")
+    lines.append(f"- plan_fingerprint: `{verdict_payload.get('plan_fingerprint', '')}`")
+    lines.append(f"- snapshot_hash: `{verdict_payload.get('snapshot_hash', '')}`")
+    lines.append(f"- preview_source: `{verdict_payload.get('preview_source', '')}`")
+    lines.append("")
+    lines.append("## Evidence Files")
+    lines.append("")
+    lines.append("- `plan-prepare.json`")
+    lines.append("- `snapshot.json`")
+    lines.append("- `trajectory_polyline.json`")
+    lines.append("- `preview-verdict.json`")
+    lines.append("- `preview-evidence.md`")
+    lines.append("")
+    lines.append("## Prepare Summary")
+    lines.append("")
+    lines.append("```json")
+    lines.append(json.dumps(plan_payload, ensure_ascii=False, indent=2))
+    lines.append("```")
+    lines.append("")
+    lines.append("## Snapshot Summary")
+    lines.append("")
+    lines.append("```json")
+    lines.append(json.dumps(snapshot_payload, ensure_ascii=False, indent=2))
+    lines.append("```")
+    lines.append("")
+    lines.append("## Verdict")
+    lines.append("")
+    lines.append("```json")
+    lines.append(json.dumps(verdict_payload, ensure_ascii=False, indent=2))
+    lines.append("```")
+    lines.append("")
+    lines.append("## Geometry Summary")
+    lines.append("")
+    lines.append("```json")
+    lines.append(json.dumps(geometry_summary, ensure_ascii=False, indent=2))
+    lines.append("```")
+    return "\n".join(lines) + "\n"
+
+
 def build_report_markdown(report: dict[str, Any]) -> str:
     lines: list[str] = []
     lines.append("# Real DXF Preview Snapshot Report")
@@ -128,6 +268,12 @@ def build_report_markdown(report: dict[str, Any]) -> str:
     lines.append(f"- dxf_file: `{report['dxf_file']}`")
     lines.append(f"- preview_source: `{report['preview_source']}`")
     lines.append(f"- snapshot_hash: `{report['snapshot_hash']}`")
+    if report.get("plan_id"):
+        lines.append(f"- plan_id: `{report['plan_id']}`")
+    if report.get("plan_fingerprint"):
+        lines.append(f"- plan_fingerprint: `{report['plan_fingerprint']}`")
+    if report.get("preview_verdict"):
+        lines.append(f"- verdict: `{report['preview_verdict'].get('verdict', 'incomplete')}`")
     lines.append("")
     lines.append("## Geometry Summary")
     lines.append("")
@@ -166,13 +312,24 @@ def main() -> int:
     report_dir.mkdir(parents=True, exist_ok=True)
     report_json_path = report_dir / "real-dxf-preview-snapshot.json"
     report_md_path = report_dir / "real-dxf-preview-snapshot.md"
+    plan_prepare_json_path = report_dir / "plan-prepare.json"
     snapshot_json_path = report_dir / "snapshot.json"
     polyline_json_path = report_dir / "trajectory_polyline.json"
+    preview_verdict_json_path = report_dir / "preview-verdict.json"
+    preview_evidence_md_path = report_dir / "preview-evidence.md"
 
     steps: list[dict[str, str]] = []
     artifacts: dict[str, Any] = {}
+    artifact_id = ""
+    plan_id = ""
+    snapshot_plan_id = ""
+    plan_fingerprint = ""
     preview_source = ""
     snapshot_hash = ""
+    plan_result: dict[str, Any] = {}
+    snapshot_result: dict[str, Any] = {}
+    confirm_result: dict[str, Any] = {}
+    polyline: list[dict[str, float]] = []
     geometry_summary: dict[str, Any] = {}
     error_message = ""
     overall_status = "failed"
@@ -181,6 +338,8 @@ def main() -> int:
     process: subprocess.Popen[str] | None = None
     client = TcpJsonClient(args.host, args.port)
     connected = False
+    online_ready = False
+    preview_confirmed = False
     temp_dir = None
     effective_config_path = args.config_path
 
@@ -219,6 +378,7 @@ def main() -> int:
         artifacts["connect_response"] = connect_response
         if "error" in connect_response:
             raise RuntimeError("connect failed: " + truncate_json(connect_response))
+        online_ready = True
         add_step(steps, "tcp-connect", "passed", truncate_json(connect_response))
 
         dxf_bytes = args.dxf_file.read_bytes()
@@ -256,9 +416,25 @@ def main() -> int:
             raise RuntimeError("dxf.plan.prepare failed: " + truncate_json(plan_response))
         plan_result = status_result(plan_response)
         plan_id = str(plan_result.get("plan_id", "")).strip()
+        plan_fingerprint = str(plan_result.get("plan_fingerprint", "")).strip()
         if not plan_id:
             raise RuntimeError("dxf.plan.prepare missing plan_id")
-        add_step(steps, "dxf-plan-prepare", "passed", f"plan_id={plan_id}")
+        if not plan_fingerprint:
+            raise RuntimeError("dxf.plan.prepare missing plan_fingerprint")
+        write_json(plan_prepare_json_path, plan_result)
+        add_step(
+            steps,
+            "dxf-plan-prepare",
+            "passed",
+            json.dumps(
+                {
+                    "plan_id": plan_id,
+                    "plan_fingerprint": plan_fingerprint,
+                    "segment_count": plan_result.get("segment_count", 0),
+                },
+                ensure_ascii=False,
+            ),
+        )
 
         snapshot_response = client.send_request(
             "dxf.preview.snapshot",
@@ -269,11 +445,12 @@ def main() -> int:
         if "error" in snapshot_response:
             raise RuntimeError("dxf.preview.snapshot failed: " + truncate_json(snapshot_response))
         snapshot_result = status_result(snapshot_response)
-        preview_source = str(snapshot_result.get("preview_source", "")).strip()
+        snapshot_plan_id = str(snapshot_result.get("plan_id", "")).strip() or plan_id
+        preview_source = normalize_preview_source(snapshot_result.get("preview_source", ""))
         snapshot_hash = str(snapshot_result.get("snapshot_hash", "")).strip()
         if not snapshot_hash:
             raise RuntimeError("dxf.preview.snapshot missing snapshot_hash")
-        if not preview_source:
+        if preview_source == "unknown":
             raise RuntimeError("dxf.preview.snapshot missing preview_source")
         if preview_source != "runtime_snapshot":
             raise RuntimeError(f"unexpected preview_source: {preview_source}")
@@ -282,8 +459,8 @@ def main() -> int:
             raise RuntimeError("dxf.preview.snapshot missing trajectory_polyline")
 
         geometry_summary = summarize_polyline(polyline)
-        snapshot_json_path.write_text(json.dumps(snapshot_result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        polyline_json_path.write_text(json.dumps(polyline, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        write_json(snapshot_json_path, snapshot_result)
+        write_json(polyline_json_path, polyline)
         add_step(
             steps,
             "dxf-preview-snapshot",
@@ -291,9 +468,37 @@ def main() -> int:
             json.dumps(
                 {
                     "snapshot_hash": snapshot_hash,
+                    "plan_id": snapshot_plan_id,
+                    "plan_fingerprint": plan_fingerprint,
                     "preview_source": preview_source,
                     "polyline_point_count": snapshot_result.get("polyline_point_count", 0),
                     "geometry_summary": geometry_summary,
+                },
+                ensure_ascii=False,
+            ),
+        )
+
+        confirm_response = client.send_request(
+            "dxf.preview.confirm",
+            {"plan_id": plan_id, "snapshot_hash": snapshot_hash},
+            timeout_seconds=15.0,
+        )
+        artifacts["dxf_preview_confirm"] = confirm_response
+        if "error" in confirm_response:
+            raise RuntimeError("dxf.preview.confirm failed: " + truncate_json(confirm_response))
+        confirm_result = status_result(confirm_response)
+        preview_confirmed = bool(confirm_result.get("confirmed", False))
+        if not preview_confirmed:
+            raise RuntimeError("dxf.preview.confirm did not confirm snapshot")
+        add_step(
+            steps,
+            "dxf-preview-confirm",
+            "passed",
+            json.dumps(
+                {
+                    "plan_id": str(confirm_result.get("plan_id", "")).strip(),
+                    "snapshot_hash": str(confirm_result.get("snapshot_hash", "")).strip(),
+                    "preview_state": str(confirm_result.get("preview_state", "")).strip(),
                 },
                 ensure_ascii=False,
             ),
@@ -326,6 +531,32 @@ def main() -> int:
             artifacts["gateway_stderr"] = stderr
             artifacts["gateway_exit_code"] = process.returncode
 
+        preview_verdict = build_preview_verdict(
+            launch_mode="online",
+            online_ready=online_ready,
+            dxf_file=args.dxf_file,
+            artifact_id=artifact_id,
+            preview_source=preview_source,
+            snapshot_hash=snapshot_hash,
+            plan_id=plan_id,
+            snapshot_plan_id=snapshot_plan_id,
+            plan_fingerprint=plan_fingerprint,
+            polyline=polyline,
+            snapshot_payload=snapshot_result,
+            confirmed=preview_confirmed,
+            error_message=error_message,
+        )
+        write_json(preview_verdict_json_path, preview_verdict)
+        preview_evidence_markdown = build_preview_evidence_markdown(
+            generated_at=utc_now(),
+            overall_status=overall_status,
+            plan_payload=plan_result,
+            snapshot_payload=snapshot_result,
+            verdict_payload=preview_verdict,
+            geometry_summary=geometry_summary,
+        )
+        preview_evidence_md_path.write_text(preview_evidence_markdown, encoding="utf-8")
+
         report = {
             "generated_at": utc_now(),
             "overall_status": overall_status,
@@ -333,14 +564,18 @@ def main() -> int:
             "config_path": str(effective_config_path),
             "config_mode": args.config_mode,
             "dxf_file": str(args.dxf_file),
+            "artifact_id": artifact_id,
+            "plan_id": plan_id,
+            "plan_fingerprint": plan_fingerprint,
             "preview_source": preview_source,
             "snapshot_hash": snapshot_hash,
             "geometry_summary": geometry_summary,
+            "preview_verdict": preview_verdict,
             "steps": steps,
             "artifacts": artifacts,
             "error": error_message,
         }
-        report_json_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        write_json(report_json_path, report)
         report_md_path.write_text(build_report_markdown(report), encoding="utf-8")
 
         if temp_dir is not None:

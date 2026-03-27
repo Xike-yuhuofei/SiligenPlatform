@@ -15,11 +15,13 @@ class PreviewGateState(str, Enum):
 
 class StartBlockReason(str, Enum):
     NONE = ""
+    NOT_READY = "not_ready"
     PREVIEW_MISSING = "preview_missing"
     PREVIEW_GENERATING = "preview_generating"
     PREVIEW_FAILED = "preview_failed"
     PREVIEW_STALE = "preview_stale"
     CONFIRM_MISSING = "confirm_missing"
+    INVALID_SOURCE = "invalid_source"
     HASH_MISMATCH = "hash_mismatch"
 
 
@@ -100,6 +102,17 @@ class DispensePreviewGate:
     def get_confirmed_snapshot_hash(self) -> str:
         return self._confirmed_snapshot_hash
 
+    def validate_online_ready(self, online_ready: bool) -> PreviewGateDecision:
+        if not online_ready:
+            return PreviewGateDecision(False, StartBlockReason.NOT_READY)
+        return PreviewGateDecision(True, StartBlockReason.NONE)
+
+    def validate_preview_source(self, preview_source: str) -> PreviewGateDecision:
+        normalized = str(preview_source or "").strip().lower()
+        if normalized != "runtime_snapshot":
+            return PreviewGateDecision(False, StartBlockReason.INVALID_SOURCE)
+        return PreviewGateDecision(True, StartBlockReason.NONE)
+
     def validate_execution_snapshot_hash(self, runtime_hash: str) -> PreviewGateDecision:
         if not self._confirmed_snapshot_hash:
             return PreviewGateDecision(False, StartBlockReason.CONFIRM_MISSING)
@@ -119,4 +132,3 @@ class DispensePreviewGate:
         if self._state == PreviewGateState.READY_UNSIGNED:
             return PreviewGateDecision(False, StartBlockReason.CONFIRM_MISSING)
         return PreviewGateDecision(False, StartBlockReason.PREVIEW_MISSING)
-

@@ -1,15 +1,15 @@
 #pragma once
 
-#include "application/usecases/recipes/CompareRecipeVersionsUseCase.h"
-#include "application/usecases/recipes/CreateDraftVersionUseCase.h"
-#include "application/usecases/recipes/CreateRecipeUseCase.h"
-#include "application/usecases/recipes/CreateVersionFromPublishedUseCase.h"
-#include "application/usecases/recipes/ExportRecipeBundlePayloadUseCase.h"
-#include "application/usecases/recipes/ImportRecipeBundlePayloadUseCase.h"
-#include "application/usecases/recipes/RecipeCommandUseCase.h"
-#include "application/usecases/recipes/RecipeQueryUseCase.h"
-#include "application/usecases/recipes/UpdateDraftVersionUseCase.h"
-#include "application/usecases/recipes/UpdateRecipeUseCase.h"
+#include "workflow/application/usecases/recipes/CompareRecipeVersionsUseCase.h"
+#include "workflow/application/usecases/recipes/CreateDraftVersionUseCase.h"
+#include "workflow/application/usecases/recipes/CreateRecipeUseCase.h"
+#include "workflow/application/usecases/recipes/CreateVersionFromPublishedUseCase.h"
+#include "workflow/application/usecases/recipes/ExportRecipeBundlePayloadUseCase.h"
+#include "workflow/application/usecases/recipes/ImportRecipeBundlePayloadUseCase.h"
+#include "workflow/application/usecases/recipes/RecipeCommandUseCase.h"
+#include "workflow/application/usecases/recipes/RecipeQueryUseCase.h"
+#include "workflow/application/usecases/recipes/UpdateDraftVersionUseCase.h"
+#include "workflow/application/usecases/recipes/UpdateRecipeUseCase.h"
 
 #include <memory>
 

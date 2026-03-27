@@ -10,6 +10,12 @@ if(NOT TARGET siligen_workflow_application_headers)
 endif()
 target_include_directories(siligen_workflow_application_headers INTERFACE
     ${SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR}
+    ${SILIGEN_PROCESS_PATH_APPLICATION_PUBLIC_INCLUDE_DIR}
+    ${SILIGEN_MOTION_PLANNING_APPLICATION_PUBLIC_INCLUDE_DIR}
+    ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_PUBLIC_INCLUDE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../job-ingest/application/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../dxf-geometry/application/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../runtime-execution/application/include
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
 target_compile_features(siligen_workflow_application_headers INTERFACE cxx_std_17)
@@ -75,19 +81,20 @@ target_link_libraries(siligen_application_motion PUBLIC
     siligen_domain
     siligen_domain_services
 )
+if(TARGET siligen_motion_planning_application_public)
+    target_link_libraries(siligen_application_motion PUBLIC
+        siligen_motion_planning_application_public
+    )
+endif()
 target_compile_features(siligen_application_motion PUBLIC cxx_std_17)
 
 add_library(siligen_application_dispensing STATIC
     usecases/dispensing/valve/coordination/ValveCoordinationUseCase.cpp
-    usecases/dispensing/UploadFileUseCase.cpp
     usecases/dispensing/CleanupFilesUseCase.cpp
+    services/dispensing/PlanningPreviewAssemblyService.cpp
+    services/dispensing/WorkflowPreviewSnapshotService.cpp
     usecases/dispensing/PlanningUseCase.cpp
     usecases/dispensing/DispensingWorkflowUseCase.cpp
-    usecases/dispensing/DispensingExecutionUseCase.cpp
-    usecases/dispensing/DispensingExecutionUseCase.Setup.cpp
-    usecases/dispensing/DispensingExecutionUseCase.Control.cpp
-    usecases/dispensing/DispensingExecutionUseCase.Async.cpp
-    services/dxf/DxfPbPreparationService.cpp
 )
 target_include_directories(siligen_application_dispensing PUBLIC
     ${SILIGEN_APPLICATION_PUBLIC_INCLUDE_DIRS}
@@ -101,8 +108,37 @@ target_link_libraries(siligen_application_dispensing PUBLIC
     siligen_geometry
     siligen_domain
     siligen_domain_services
-    siligen_dispense_packaging_domain_dispensing
 )
+if(TARGET siligen_process_path_application_public)
+    target_link_libraries(siligen_application_dispensing PUBLIC
+        siligen_process_path_application_public
+    )
+endif()
+if(TARGET siligen_motion_planning_application_public)
+    target_link_libraries(siligen_application_dispensing PUBLIC
+        siligen_motion_planning_application_public
+    )
+endif()
+if(TARGET siligen_dispense_packaging_application_public)
+    target_link_libraries(siligen_application_dispensing PUBLIC
+        siligen_dispense_packaging_application_public
+    )
+endif()
+if(TARGET siligen_job_ingest_application_public)
+    target_link_libraries(siligen_application_dispensing PUBLIC
+        siligen_job_ingest_application_public
+    )
+endif()
+if(TARGET siligen_dxf_geometry_application_public)
+    target_link_libraries(siligen_application_dispensing PUBLIC
+        siligen_dxf_geometry_application_public
+    )
+endif()
+if(TARGET siligen_runtime_execution_application_public)
+    target_link_libraries(siligen_application_dispensing PUBLIC
+        siligen_runtime_execution_application_public
+    )
+endif()
 target_compile_features(siligen_application_dispensing PUBLIC cxx_std_17)
 
 add_library(siligen_application_redundancy STATIC
@@ -135,7 +171,6 @@ target_link_libraries(siligen_control_application INTERFACE
     siligen_application_motion
     siligen_application_dispensing
     siligen_application_redundancy
-    siligen_recipe_core
     siligen_valve_core
 )
 target_compile_features(siligen_control_application INTERFACE cxx_std_17)

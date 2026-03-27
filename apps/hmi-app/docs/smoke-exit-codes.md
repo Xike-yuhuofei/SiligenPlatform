@@ -18,6 +18,14 @@
 | `apps/hmi-app/scripts/online-smoke.ps1` | `20` | mock 启动失败 | 目标端口已被占用，或 mock 在进入可连接状态前提前退出。 |
 | `apps/hmi-app/scripts/online-smoke.ps1` | `21` | backend ready 超时映射 | 输出中必须包含 `failure_code=SUP_BACKEND_READY_TIMEOUT` 与 `failure_stage=backend_ready`。 |
 
+在线预览补充约束：
+
+- 当传入 `-ExerciseRuntimeActions` 时，GUI smoke 还必须驱动 canonical DXF 预览链路。
+- `-ExerciseRuntimeActions` 场景下，输出对应的 HMI 状态必须满足：
+  - 已生成 `plan_id` 与 `snapshot_hash`
+  - 预览来源显示为 `runtime_snapshot`
+  - 不得把 `mock_synthetic` 或未知来源记为真实在线预览通过
+
 Supervisor 诊断映射（P0 最小约束）：
 
 - 当 `online-smoke.ps1` 返回 `21` 时，输出必须包含：

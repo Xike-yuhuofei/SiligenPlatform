@@ -26,7 +26,7 @@ target_link_libraries(siligen_runtime_host_unit_tests PRIVATE
     siligen_runtime_host
     siligen_device_adapters
     siligen_runtime_recipe_persistence
-    siligen_recipe_json_codec
+    siligen_workflow_recipe_serialization_public
     siligen_types
     siligen_utils
 )

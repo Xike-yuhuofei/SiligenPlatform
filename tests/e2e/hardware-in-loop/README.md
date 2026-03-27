@@ -83,11 +83,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 `run_real_dxf_preview_snapshot.py` 说明：
 
 - 只走 preview-only 主链：`dxf.artifact.create -> dxf.plan.prepare -> dxf.preview.snapshot`
+- 预览成功后会继续执行 `dxf.preview.confirm`，用于固化 `plan_fingerprint <-> snapshot_hash` 相关性
 - 默认用 `--config-mode mock` 生成 mock 硬件配置，但预览数据源必须仍为 runtime `preview_source=runtime_snapshot`
 - 默认 DXF 为 `samples/dxf/rect_diag.dxf`
 - 默认报告目录为 `tests/reports/adhoc/real-dxf-preview-snapshot-canonical/<timestamp>/`
-- 输出 `snapshot.json`、`trajectory_polyline.json`、`real-dxf-preview-snapshot.json`、`real-dxf-preview-snapshot.md`
+- 输出 `plan-prepare.json`、`snapshot.json`、`trajectory_polyline.json`、`preview-verdict.json`、`preview-evidence.md`
+- 同时保留兼容报告 `real-dxf-preview-snapshot.json`、`real-dxf-preview-snapshot.md`
 - 若返回 `mock_synthetic` 或缺少 `preview_source`，脚本直接失败，禁止把结果当作真实轨迹预览证据
+- 若 `plan_id / plan_fingerprint / snapshot_hash` 无法回链，`preview-verdict.json` 必须落为 `mismatch` 或 `incomplete`
 - `rect_diag` 的当前几何基线固定在 `tests/baselines/preview/rect_diag.preview-snapshot-baseline.json`
 - 自动回归入口为 `python -m pytest tests/e2e/first-layer/test_real_preview_snapshot_geometry.py -q`
 

@@ -1,4 +1,4 @@
-#include "recipes/serialization/RecipeJsonSerializer.h"
+#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
 
 #include "shared/types/Error.h"
 

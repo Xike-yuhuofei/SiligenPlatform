@@ -1,16 +1,16 @@
 #include "ApplicationContainer.h"
 
 #include "application/usecases/dispensing/CleanupFilesUseCase.h"
-#include "application/usecases/dispensing/DispensingExecutionUseCase.h"
-#include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
-#include "application/usecases/dispensing/PlanningUseCase.h"
-#include "application/usecases/dispensing/UploadFileUseCase.h"
 #include "application/usecases/dispensing/valve/ValveCommandUseCase.h"
 #include "application/usecases/dispensing/valve/ValveQueryUseCase.h"
 #include "domain/dispensing/planning/domain-services/DispensingPlannerService.h"
 #include "domain/dispensing/domain-services/ValveCoordinationService.h"
 #include "domain/safety/ports/IInterlockSignalPort.h"
 #include "domain/trajectory/ports/IPathSourcePort.h"
+#include "job_ingest/application/usecases/dispensing/UploadFileUseCase.h"
+#include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
+#include "workflow/application/usecases/dispensing/DispensingWorkflowUseCase.h"
+#include "workflow/application/usecases/dispensing/PlanningUseCase.h"
 #include "shared/interfaces/ILoggingService.h"
 
 #include <memory>

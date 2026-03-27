@@ -30,6 +30,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\run-loc
 | `run-local-validation-gate.ps1` | `tests/reports/local-validation-gate/<timestamp>/` |
 | 冻结文档集校验 | `tests/reports/**/dsp-e2e-spec-docset/*.md`, `*.json` |
 | legacy 退出门禁 | `tests/reports/**/legacy-exit/legacy-exit-checks.*` |
+| 模块桥接边界门禁 | `tests/reports/**/module-boundary-bridges/module-boundary-bridges.*` |
 
 ## 4. S09 场景类
 

@@ -8,6 +8,14 @@ $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 Set-Location $repoRoot
 
+$thirdPartyBootstrap = Join-Path $repoRoot "scripts\bootstrap\bootstrap-third-party.ps1"
+if (-not (Test-Path $thirdPartyBootstrap)) {
+    throw "third-party bootstrap script not found: $thirdPartyBootstrap"
+}
+
+Write-Output "third-party bootstrap: powershell -NoProfile -ExecutionPolicy Bypass -File $thirdPartyBootstrap"
+& $thirdPartyBootstrap -WorkspaceRoot $repoRoot
+
 $formalGatewayContractGuard = Join-Path $repoRoot "scripts\validation\assert-hmi-formal-gateway-launch-contract.ps1"
 if (-not (Test-Path $formalGatewayContractGuard)) {
     throw "HMI formal gateway contract guard not found: $formalGatewayContractGuard"
@@ -85,11 +93,13 @@ $logsDir = Join-Path $runDir "logs"
 $workspaceValidationDir = Join-Path $runDir "workspace-validation"
 $dspE2ESpecDir = Join-Path $runDir "dsp-e2e-spec-docset"
 $legacyExitDir = Join-Path $runDir "legacy-exit"
+$moduleBoundaryDir = Join-Path $runDir "module-boundary-bridges"
 
 New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
 New-Item -ItemType Directory -Force -Path $workspaceValidationDir | Out-Null
 New-Item -ItemType Directory -Force -Path $dspE2ESpecDir | Out-Null
 New-Item -ItemType Directory -Force -Path $legacyExitDir | Out-Null
+New-Item -ItemType Directory -Force -Path $moduleBoundaryDir | Out-Null
 
 $env:SILIGEN_FREEZE_DOCSET_REPORT_DIR = $dspE2ESpecDir
 $env:SILIGEN_FREEZE_EVIDENCE_CASES = "success,block,rollback,recovery,archive"
@@ -129,9 +139,26 @@ $steps = @(
         )
     },
     @{
+        Id      = "module-boundary-bridges"
+        Name    = "Validate runtime module boundary bridges"
+        LogName = "04-module-boundary-bridges.log"
+        Command = @(
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            ".\scripts\validation\assert-module-boundary-bridges.ps1",
+            "-WorkspaceRoot",
+            $repoRoot,
+            "-ReportDir",
+            $moduleBoundaryDir
+        )
+    },
+    @{
         Id      = "test-contracts-ci"
         Name    = "Run contracts suite tests (CI profile)"
-        LogName = "04-test-contracts-ci.log"
+        LogName = "05-test-contracts-ci.log"
         Command = @(
             "powershell",
             "-NoProfile",
@@ -151,7 +178,7 @@ $steps = @(
     @{
         Id      = "build-validation-local-contracts"
         Name    = "Build validation (Local/contracts)"
-        LogName = "05-build-validation-local-contracts.log"
+        LogName = "06-build-validation-local-contracts.log"
         Command = @(
             "powershell",
             "-NoProfile",
@@ -168,7 +195,7 @@ $steps = @(
     @{
         Id      = "build-validation-ci-contracts"
         Name    = "Build validation (CI/contracts)"
-        LogName = "06-build-validation-ci-contracts.log"
+        LogName = "07-build-validation-ci-contracts.log"
         Command = @(
             "powershell",
             "-NoProfile",
@@ -200,6 +227,7 @@ $summary = [ordered]@{
     run_dir         = $runDir
     freeze_report_dir = $dspE2ESpecDir
     legacy_exit_dir = $legacyExitDir
+    module_boundary_dir = $moduleBoundaryDir
     workspace_validation_dir = $workspaceValidationDir
     overall_status  = $overallStatus
     total_steps     = $results.Count
@@ -222,6 +250,7 @@ $mdLines = @(
     "- run_dir: $($summary.run_dir)",
     "- freeze_report_dir: $($summary.freeze_report_dir)",
     "- legacy_exit_dir: $($summary.legacy_exit_dir)",
+    "- module_boundary_dir: $($summary.module_boundary_dir)",
     "- workspace_validation_dir: $($summary.workspace_validation_dir)",
     "- overall_status: $($summary.overall_status)",
     "- passed_steps: $($summary.passed_steps)/$($summary.total_steps)",
@@ -249,7 +278,9 @@ $requiredArtifacts = @(
     (Join-Path $dspE2ESpecDir "dsp-e2e-spec-docset.json"),
     (Join-Path $dspE2ESpecDir "dsp-e2e-spec-docset.md"),
     (Join-Path $legacyExitDir "legacy-exit-checks.json"),
-    (Join-Path $legacyExitDir "legacy-exit-checks.md")
+    (Join-Path $legacyExitDir "legacy-exit-checks.md"),
+    (Join-Path $moduleBoundaryDir "module-boundary-bridges.json"),
+    (Join-Path $moduleBoundaryDir "module-boundary-bridges.md")
 )
 foreach ($artifact in $requiredArtifacts) {
     if (-not (Test-Path $artifact)) {

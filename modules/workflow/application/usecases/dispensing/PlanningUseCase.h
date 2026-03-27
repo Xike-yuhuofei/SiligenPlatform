@@ -6,7 +6,7 @@
 #include "shared/types/TrajectoryTypes.h"
 #include "domain/trajectory/value-objects/PlanningReport.h"
 #include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
-#include "domain/dispensing/planning/domain-services/DispensingPlannerService.h"
+#include "application/services/dispensing/DispensePlanningFacade.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -24,8 +24,8 @@ using Siligen::Shared::Types::TrajectoryResult;
 using Siligen::TrajectoryPoint;
 using Siligen::Domain::Trajectory::ValueObjects::PlanningReport;
 using Siligen::Domain::Dispensing::DomainServices::DispensingPlan;
-using Siligen::Domain::Dispensing::DomainServices::DispensingPlanner;
 using Siligen::Domain::Dispensing::DomainServices::DispensingPlanRequest;
+using DispensingPlanner = Siligen::Application::Services::Dispensing::DispensePlanningFacade;
 
 /**
  * @brief DXF 路径规划请求参数

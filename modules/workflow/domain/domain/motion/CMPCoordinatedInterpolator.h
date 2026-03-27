@@ -19,6 +19,7 @@
 #include "shared/types/CMPTypes.h"
 #include "shared/types/Point.h"
 #include "shared/types/Types.h"
+#include "domain/trajectory/value-objects/ProcessPath.h"
 #include "../dispensing/domain-services/PositionTriggerController.h"
 #include "CMPCompensation.h"
 #include "CMPValidator.h"
@@ -84,6 +85,20 @@ class CMPCoordinatedInterpolator : public TrajectoryInterpolatorBase {
                                                              const std::vector<DispensingTriggerPoint>& trigger_points,
                                                              const CMPConfiguration& cmp_config,
                                                              const InterpolationConfig& config);
+
+    /**
+     * @brief 位置同步点胶插补（保留真实几何语义）
+     * @param path 工艺路径
+     * @param trigger_points 触发点列表
+     * @param cmp_config CMP配置
+     * @param config 插补配置
+     * @return CMP协调轨迹点
+     */
+    std::vector<TrajectoryPoint> PositionTriggeredDispensing(
+        const Siligen::Domain::Trajectory::ValueObjects::ProcessPath& path,
+        const std::vector<DispensingTriggerPoint>& trigger_points,
+        const CMPConfiguration& cmp_config,
+        const InterpolationConfig& config);
 
     /**
      * @brief 时间同步点胶插补

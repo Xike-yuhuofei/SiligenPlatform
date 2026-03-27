@@ -1,4 +1,4 @@
-#include "application/usecases/recipes/RecipeCommandUseCase.h"
+#include "workflow/application/usecases/recipes/RecipeCommandUseCase.h"
 
 #include "shared/types/Error.h"
 

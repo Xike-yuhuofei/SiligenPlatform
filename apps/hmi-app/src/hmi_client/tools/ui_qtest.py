@@ -22,6 +22,7 @@ from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication, QWidget
 
 import ui.main_window as main_window_module  # noqa: E402
+import ui.recipe_config_widget as recipe_config_widget_module  # noqa: E402
 from tools.mock_server import MockRequestHandler, MockState, MockTcpServer  # noqa: E402
 
 
@@ -45,8 +46,19 @@ def find_by_testid(root: QWidget, testid: str) -> Optional[QWidget]:
 def patch_launch_endpoints(host: str, port: int) -> Iterator[None]:
     original_tcp_client = main_window_module.TcpClient
     original_backend_manager = main_window_module.BackendManager
-    main_window_module.TcpClient = lambda: original_tcp_client(host=host, port=port)
-    main_window_module.BackendManager = lambda: original_backend_manager(host=host, port=port)
+
+    def _patched_tcp_client(*args, **kwargs):
+        kwargs.setdefault("host", host)
+        kwargs.setdefault("port", port)
+        return original_tcp_client(*args, **kwargs)
+
+    def _patched_backend_manager(*args, **kwargs):
+        kwargs.setdefault("host", host)
+        kwargs.setdefault("port", port)
+        return original_backend_manager(*args, **kwargs)
+
+    main_window_module.TcpClient = _patched_tcp_client
+    main_window_module.BackendManager = _patched_backend_manager
     try:
         yield
     finally:
@@ -56,8 +68,25 @@ def patch_launch_endpoints(host: str, port: int) -> Iterator[None]:
 def patch_headless_preview() -> Iterator[None]:
     original_web_view = getattr(main_window_module, "QWebEngineView", None)
     original_flag = getattr(main_window_module, "WEB_ENGINE_AVAILABLE", False)
-    main_window_module.QWebEngineView = None
-    main_window_module.WEB_ENGINE_AVAILABLE = False
+
+    class _DummyPage:
+        def setBackgroundColor(self, *_args, **_kwargs) -> None:
+            return None
+
+    class _DummyWebView(QWidget):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._page = _DummyPage()
+            self.last_html = ""
+
+        def page(self):
+            return self._page
+
+        def setHtml(self, html: str) -> None:
+            self.last_html = html
+
+    main_window_module.QWebEngineView = _DummyWebView
+    main_window_module.WEB_ENGINE_AVAILABLE = True
     try:
         yield
     finally:
@@ -68,15 +97,50 @@ def patch_headless_preview() -> Iterator[None]:
 @contextmanager
 def patch_modal_dialogs() -> Iterator[None]:
     original_critical = main_window_module.QMessageBox.critical
+    original_warning = main_window_module.QMessageBox.warning
+    original_information = main_window_module.QMessageBox.information
+    original_question = main_window_module.QMessageBox.question
+    recipe_original_critical = recipe_config_widget_module.QMessageBox.critical
+    recipe_original_warning = recipe_config_widget_module.QMessageBox.warning
+    recipe_original_information = recipe_config_widget_module.QMessageBox.information
+    recipe_original_question = recipe_config_widget_module.QMessageBox.question
 
-    def _critical_noop(*_args, **_kwargs):
+    def _dialog_noop(*_args, **_kwargs):
         return main_window_module.QMessageBox.Ok
 
-    main_window_module.QMessageBox.critical = _critical_noop
+    main_window_module.QMessageBox.critical = _dialog_noop
+    main_window_module.QMessageBox.warning = _dialog_noop
+    main_window_module.QMessageBox.information = _dialog_noop
+    main_window_module.QMessageBox.question = _dialog_noop
+    recipe_config_widget_module.QMessageBox.critical = _dialog_noop
+    recipe_config_widget_module.QMessageBox.warning = _dialog_noop
+    recipe_config_widget_module.QMessageBox.information = _dialog_noop
+    recipe_config_widget_module.QMessageBox.question = _dialog_noop
     try:
         yield
     finally:
         main_window_module.QMessageBox.critical = original_critical
+        main_window_module.QMessageBox.warning = original_warning
+        main_window_module.QMessageBox.information = original_information
+        main_window_module.QMessageBox.question = original_question
+        recipe_config_widget_module.QMessageBox.critical = recipe_original_critical
+        recipe_config_widget_module.QMessageBox.warning = recipe_original_warning
+        recipe_config_widget_module.QMessageBox.information = recipe_original_information
+        recipe_config_widget_module.QMessageBox.question = recipe_original_question
+
+
+@contextmanager
+def patch_recipe_context_loading() -> Iterator[None]:
+    original_load_recipe_context = recipe_config_widget_module.RecipeConfigWidget._load_recipe_context
+    original_show_error = recipe_config_widget_module.RecipeConfigWidget._show_error
+
+    recipe_config_widget_module.RecipeConfigWidget._load_recipe_context = lambda self: None
+    recipe_config_widget_module.RecipeConfigWidget._show_error = lambda self, _msg: None
+    try:
+        yield
+    finally:
+        recipe_config_widget_module.RecipeConfigWidget._load_recipe_context = original_load_recipe_context
+        recipe_config_widget_module.RecipeConfigWidget._show_error = original_show_error
 
 
 def start_mock_server(host: str, port: int, verbose: bool) -> Tuple[MockTcpServer, int]:
@@ -212,7 +276,7 @@ class GuiContractRunner:
         if cached is None:
             return
 
-        self._click_button("btn-home-all")
+        self._click_button("btn-production-home-all")
         self._wait_for(
             "runtime home completion",
             lambda: bool(self._axis_status("X"))
@@ -229,6 +293,24 @@ class GuiContractRunner:
             and abs(self._axis_status("Y").velocity) <= 1e-3,
             timeout_ms=10000,
         )
+
+        sample_dxf = Path(__file__).resolve().parents[5] / "samples" / "dxf" / "rect_diag.dxf"
+        self._expect(sample_dxf.exists(), f"Canonical preview sample should exist: {sample_dxf}")
+        if sample_dxf.exists():
+            self.window._dxf_filepath = str(sample_dxf)
+            self.window._on_dxf_load()
+            self._wait_for(
+                "runtime preview ready",
+                lambda: bool(self.window._preview_gate.snapshot)
+                and getattr(self.window, "_preview_source", "") == "runtime_snapshot"
+                and bool(getattr(self.window, "_current_plan_id", ""))
+                and bool(getattr(self.window, "_current_plan_fingerprint", "")),
+                timeout_ms=15000,
+            )
+            self._expect(
+                "来源: 运行时快照" in self.window._dxf_info_label.text(),
+                "DXF info label should show runtime_snapshot source",
+            )
 
         move_source = self._cached_status()
         self._expect(move_source is not None, "Cached status should exist before move_to")
@@ -622,6 +704,9 @@ class GuiContractRunner:
             if getattr(self.window, "_client", None) is not None:
                 self.window._client.disconnect()
             self.window.close()
+            exit_stack = getattr(self.window, "_qtest_exit_stack", None)
+            if exit_stack is not None:
+                exit_stack.close()
             if self.timed_out:
                 self.exit_code = EXIT_TIMEOUT
                 self.app.exit(EXIT_TIMEOUT)
@@ -631,15 +716,21 @@ class GuiContractRunner:
 
 
 def build_window(launch_mode: str, host: str, port: int) -> MainWindow:
-    with ExitStack() as stack:
-        stack.enter_context(patch_headless_preview())
-        stack.enter_context(patch_modal_dialogs())
-        if launch_mode == "online":
-            stack.enter_context(patch_launch_endpoints(host, port))
+    stack = ExitStack()
+    stack.enter_context(patch_headless_preview())
+    stack.enter_context(patch_modal_dialogs())
+    stack.enter_context(patch_recipe_context_loading())
+    if launch_mode == "online":
+        stack.enter_context(patch_launch_endpoints(host, port))
+    try:
         window = MainWindow(launch_mode=launch_mode)
-        # Startup failures may trigger modal error dialogs; disable them in smoke runs.
-        if hasattr(window, "_show_startup_error"):
-            window._show_startup_error = lambda *_args, **_kwargs: None
+    except Exception:
+        stack.close()
+        raise
+    # Startup failures may trigger modal error dialogs; disable them in smoke runs.
+    if hasattr(window, "_show_startup_error"):
+        window._show_startup_error = lambda *_args, **_kwargs: None
+    window._qtest_exit_stack = stack
     return window
 
 

@@ -15,10 +15,35 @@ if(NOT TARGET siligen_motion)
     message(FATAL_ERROR "motion-planning requires canonical domain/motion target: siligen_motion")
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/contracts/CMakeLists.txt")
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/contracts"
+        "${CMAKE_BINARY_DIR}/modules/motion-planning/contracts"
+    )
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/application/CMakeLists.txt")
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/application"
+        "${CMAKE_BINARY_DIR}/modules/motion-planning/application"
+    )
+endif()
+
 add_library(siligen_module_motion_planning INTERFACE)
-target_link_libraries(siligen_module_motion_planning INTERFACE
-    siligen_motion
-)
+if(TARGET siligen_motion_planning_application_public)
+    target_link_libraries(siligen_module_motion_planning INTERFACE
+        siligen_motion_planning_application_public
+    )
+else()
+    target_link_libraries(siligen_module_motion_planning INTERFACE
+        siligen_motion
+    )
+endif()
+if(TARGET siligen_motion_planning_contracts_public)
+    target_link_libraries(siligen_module_motion_planning INTERFACE
+        siligen_motion_planning_contracts_public
+    )
+endif()
 
 target_compile_features(siligen_module_motion_planning INTERFACE cxx_std_17)
 
