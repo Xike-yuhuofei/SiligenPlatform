@@ -66,6 +66,9 @@
 - Git-tracked Markdown/spec files plus repository filesystem assets under canonical roots; no database introduced by this feature (refactor/arch/NOISSUE-architecture-refactor-spec)
 - Markdown docs; PowerShell 7; Python 3.11; C++17 / CMake 3.20+ + Root entry points (`build.ps1`, `test.ps1`, `ci.ps1`); `scripts/migration/validate_workspace_layout.py`; `scripts/migration/legacy-exit-checks.py`; `scripts/validation/run-local-validation-gate.ps1`; module `CMakeLists.txt` + `module.yaml`; `shared/testing/test-kit`; protobuf; spdlog (refactor/arch/NOISSUE-dsp-e2e-full-migration)
 - Git-tracked repository filesystem assets under canonical roots plus validation reports under `tests/reports/` (refactor/arch/NOISSUE-dsp-e2e-full-migration)
+- Python 3.11（`apps/hmi-app`、测试与脚本）、C++17 / CMake 3.20+（`apps/planner-cli`、`apps/runtime-gateway`、`modules/workflow`）、PowerShell 7（根级入口与 smoke） + PyQt5 / PyQtWebEngine；`apps/planner-cli` DXF 命令面；`modules/workflow` 点胶规划/预览用例；`shared/contracts/application/commands/dxf.command-set.json`；`pytest` 与根级验证脚本 (test/hmi/TASK-001-offline-dxf-preview-consistency)
+- Git 跟踪的 DXF/契约/基线资产（`samples/`、`shared/contracts/`、`tests/baselines/`）以及验证输出目录 `tests/reports/`；无数据库 (test/hmi/TASK-001-offline-dxf-preview-consistency)
+- Python 3.11（`apps/hmi-app`、测试与脚本）、C++17 / CMake 3.20+（`apps/runtime-gateway`、`modules/workflow`）、PowerShell 7（根级入口与 smoke） + PyQt5 / PyQtWebEngine；`apps/runtime-gateway` 在线命令链；`modules/workflow` 点胶规划/预览用例；`shared/contracts/application/commands/dxf.command-set.json`；`pytest` 与根级验证脚本 (test/hmi/TASK-001-offline-dxf-preview-consistency)
 
 ## Recent Changes
 - refactor/arch/NOISSUE-architecture-refactor-spec: Added Markdown docs; PowerShell 7; Python 3.11; C++17/CMake 3.20+ + Root `build.ps1` / `test.ps1` / `ci.ps1`; CMake workspace targets; `application-contracts`; `engineering-contracts`; `engineering-data`; `test-kit`; protobuf; spdlog
