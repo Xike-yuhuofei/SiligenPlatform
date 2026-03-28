@@ -4,9 +4,9 @@
 
 ## Owner 范围
 
-- 工艺规划规则编排与 `ProcessPlan` 事实收敛。
-- 承接 `FeatureGraph -> ProcessPlan` 的规划阶段转换语义。
-- 为 `M5-M8` 提供规划链上游输出，不越权承担运行时执行职责。
+- 工艺配置、规划参数与运行前配置事实的 owner 收敛。
+- 为 `M5-M8` 提供 configuration owner 能力，不越权声明完整 `ProcessPlan` owner。
+- 不在本轮承担 `FeatureGraph -> ProcessPlan` 全链路规划实现口径。
 
 ## Owner 入口
 
@@ -28,4 +28,3 @@
 - 已补齐 module.yaml、domain、services、application、adapters、tests 与 examples 子目录。
 - `domain/configuration/` 已补齐 canonical 子域 target，模块根 target 已从历史聚合 target 切到该 canonical 子域。
 - 所有 live 实现与构建入口均已收敛到 canonical roots。
-

@@ -4,9 +4,9 @@
 
 ## Owner 范围
 
-- 追溯事件、诊断日志与审计线索的归档语义。
-- 面向 HMI、验证与运维读取场景的追溯查询口径。
-- 汇聚 `M10` owner 专属 contracts 与日志边界。
+- logging bootstrap、诊断日志接线与 `spdlog` adapter 语义。
+- 汇聚 `M10` owner 专属 logging/diagnostics contracts 边界。
+- 本轮不声明 trace/query/archive/audit 全量 owner 能力。
 
 ## Owner 入口
 
@@ -34,4 +34,3 @@
 - 已补齐 module.yaml、domain、services、application、adapters、tests 与 examples 子目录。
 - `adapters/logging/spdlog/` 是当前明确的日志适配实现承载面。
 - 终态实现必须继续落在该模块 canonical 骨架内，不再引入 bridge 目录。
-

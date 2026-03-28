@@ -1,3 +1,3 @@
 #pragma once
 
-#include "../../../../../../../domain/geometry/ContourAugmenterAdapter.h"
+#include "../../../../../../../adapters/infrastructure/adapters/planning/geometry/ContourAugmenterAdapter.h"
