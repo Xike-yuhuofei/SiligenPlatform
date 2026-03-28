@@ -12,13 +12,15 @@ $ExitGuiAssertionFailed = 10
 $ExitGuiTimeout = 11
 
 $projectRoot = Split-Path $PSScriptRoot -Parent
+$workspaceRoot = Split-Path (Split-Path $projectRoot -Parent) -Parent
 $sourceRoot = Join-Path $projectRoot "src"
+$hmiApplicationRoot = Join-Path $workspaceRoot "modules\hmi-application\application"
 $uiQtest = Join-Path $sourceRoot "hmi_client\tools\ui_qtest.py"
 
 if ([string]::IsNullOrWhiteSpace($env:PYTHONPATH)) {
-    $env:PYTHONPATH = $sourceRoot
+    $env:PYTHONPATH = "$hmiApplicationRoot$([IO.Path]::PathSeparator)$sourceRoot"
 } else {
-    $env:PYTHONPATH = "$sourceRoot$([IO.Path]::PathSeparator)$env:PYTHONPATH"
+    $env:PYTHONPATH = "$hmiApplicationRoot$([IO.Path]::PathSeparator)$sourceRoot$([IO.Path]::PathSeparator)$env:PYTHONPATH"
 }
 
 function Read-CombinedOutput {

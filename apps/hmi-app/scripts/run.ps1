@@ -8,6 +8,7 @@ $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $workspaceRoot = Split-Path (Split-Path $projectRoot -Parent) -Parent
 $sourceRoot = Join-Path $projectRoot "src"
+$hmiApplicationRoot = Join-Path $workspaceRoot "modules\hmi-application\application"
 
 function Resolve-LaunchMode {
     param([string[]]$Arguments)
@@ -40,9 +41,9 @@ if ([string]::IsNullOrWhiteSpace($env:SILIGEN_WORKSPACE_ROOT)) {
 }
 
 if ([string]::IsNullOrWhiteSpace($env:PYTHONPATH)) {
-    $env:PYTHONPATH = $sourceRoot
+    $env:PYTHONPATH = "$hmiApplicationRoot$([IO.Path]::PathSeparator)$sourceRoot"
 } else {
-    $env:PYTHONPATH = "$sourceRoot$([IO.Path]::PathSeparator)$env:PYTHONPATH"
+    $env:PYTHONPATH = "$hmiApplicationRoot$([IO.Path]::PathSeparator)$sourceRoot$([IO.Path]::PathSeparator)$env:PYTHONPATH"
 }
 
 $launchMode = Resolve-LaunchMode -Arguments $AppArgs
