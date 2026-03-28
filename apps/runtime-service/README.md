@@ -1,17 +1,52 @@
 # runtime-service
 
-运行时宿主入口（单轨 canonical）。
+`apps/runtime-service/` 是运行时进程的 app-local composition shell。它负责进程启动、容器装配与 host-local infrastructure 组合，但不新增业务 owner。
 
-- 目录职责：进程启动与宿主装配
-- 业务能力来源：`modules/runtime-execution/`、`modules/workflow/`、`shared/`
-- 构建产物：`siligen_runtime_service.exe`
+## 目录职责
+
+- `bootstrap/`：`BuildContainer(...)` 与 runtime bootstrap 入口实现
+- `container/`：`ApplicationContainer*` 进程级组合根
+- `factories/`：基础设施适配器工厂
+- `runtime/configuration/`：配置解析、`WorkspaceAssetPaths`、interlock/config validator
+- `runtime/recipes/`：recipe persistence wiring 与文件仓储适配
+- `runtime/storage/files/`：本地文件存储适配
+- `security/`：安全相关 host-local infrastructure
+- `include/runtime_process_bootstrap/`：canonical public surface
+- `tests/`：bootstrap / infra 的 app-local tests
+
+## Public Surface
+
+- public target：`siligen_runtime_process_bootstrap_public`
+- implementation target：`siligen_runtime_process_bootstrap`
+- canonical include root：`runtime_process_bootstrap/*`
+- 当前稳定入口：
+  - `runtime_process_bootstrap/ContainerBootstrap.h`
+  - `runtime_process_bootstrap/WorkspaceAssetPaths.h`
+
+`Siligen::Apps::Runtime::BuildContainer(...)` 的签名、返回类型和行为语义保持不变；调用方只迁移 include / link 落点，不改启动协议。
+
+## 与 M9 的边界
+
+- `modules/runtime-execution/runtime/host` 只保留 host core。
+- recipe persistence、config/storage、security、workflow/job-ingest/DXF wiring 都在本目录的 app-local shell 组合。
+- `workflow_recipe_*` 仍是 recipe owner surface；本目录只消费这些 public targets 进行 runtime wiring。
+
+## 调用方
+
+以下入口统一通过 `siligen_runtime_process_bootstrap_public` 消费 bootstrap public surface：
+
+- `apps/runtime-service/main.cpp`
+- `apps/planner-cli/main.cpp`
+- `apps/runtime-gateway/main.cpp`
+
+旧模块路径头只保留最小 deprecated forwarder，不再对应 live owner target。
 
 ## 启动脚本
 
 - 脚本：`apps/runtime-service/run.ps1`
 - 默认 machine config：`config/machine/machine_config.ini`
 - 默认 vendor 目录：`modules/runtime-execution/adapters/device/vendor/multicard`
-- 默认日志参数：`logs/control_runtime.log`（由可执行文件默认值决定，日志目录相对 exe 工作目录）
+- 默认日志参数：`logs/control_runtime.log`
 
 示例：
 
@@ -20,11 +55,3 @@
 ./apps/runtime-service/run.ps1 -ConfigPath config/machine/machine_config.ini -VendorDir D:\Vendor\MultiCard
 ./apps/runtime-service/run.ps1 -DryRun
 ```
-
-脚本行为：
-
-- 默认执行启动前检查，确认 canonical config 存在。
-- 当 `config/machine/machine_config.ini` 中 `[Hardware] mode=Real` 时，缺少 `MultiCard.dll` 会立即 fail-fast。
-- 若缺少 `MultiCard.lib`，脚本会给出告警，提示真实硬件版本重建仍不可执行。
-- 脚本启动时会把 `--config <路径>` 显式转发给 `siligen_runtime_service.exe`，避免依赖隐式工作目录解析。
-- 如现场临时跳过检查，只允许使用 `-SkipPreflight`；该选项只用于诊断，不改变 canonical 入口。

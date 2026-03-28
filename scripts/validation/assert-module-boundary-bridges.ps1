@@ -101,6 +101,7 @@ $allowedDirectWorkflowReferences = @(
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/workflow/CMakeLists.txt"),
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/runtime-execution/CMakeLists.txt"),
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/runtime-execution/runtime/host/CMakeLists.txt"),
+    (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "apps/runtime-service/CMakeLists.txt"),
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/dxf-geometry/CMakeLists.txt"),
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/job-ingest/CMakeLists.txt"),
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/dxf-geometry/tests/CMakeLists.txt"),
@@ -171,18 +172,6 @@ $requiredBridgeReferences = @(
         pattern = "siligen_runtime_execution_application_public"
     },
     @{
-        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
-        pattern = "siligen_workflow_recipe_domain_public"
-    },
-    @{
-        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
-        pattern = "siligen_workflow_recipe_serialization_public"
-    },
-    @{
-        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
-        pattern = "siligen_workflow_recipe_application_public"
-    },
-    @{
         path = "modules/runtime-execution/application/CMakeLists.txt"
         pattern = "siligen_runtime_execution_runtime_contracts"
     },
@@ -197,6 +186,14 @@ $requiredBridgeReferences = @(
     @{
         path = "modules/runtime-execution/application/CMakeLists.txt"
         pattern = "siligen_process_planning_legacy_configuration_bridge_public"
+    },
+    @{
+        path = "modules/process-path/application/CMakeLists.txt"
+        pattern = "siligen_process_path_contracts_public"
+    },
+    @{
+        path = "modules/motion-planning/domain/motion/CMakeLists.txt"
+        pattern = "siligen_process_path_contracts_public"
     },
     @{
         path = "modules/runtime-execution/contracts/runtime/CMakeLists.txt"
@@ -223,6 +220,58 @@ $requiredBridgeReferences = @(
         pattern = "siligen_runtime_execution_runtime_contracts"
     },
     @{
+        path = "apps/runtime-service/CMakeLists.txt"
+        pattern = "siligen_runtime_process_bootstrap_public"
+    },
+    @{
+        path = "apps/runtime-service/CMakeLists.txt"
+        pattern = "bootstrap/ContainerBootstrap.cpp"
+    },
+    @{
+        path = "apps/runtime-service/CMakeLists.txt"
+        pattern = "container/ApplicationContainer.cpp"
+    },
+    @{
+        path = "apps/runtime-service/CMakeLists.txt"
+        pattern = "runtime/configuration/InterlockConfigResolver.cpp"
+    },
+    @{
+        path = "apps/runtime-service/CMakeLists.txt"
+        pattern = "runtime/recipes/RecipeFileRepository.cpp"
+    },
+    @{
+        path = "apps/runtime-service/CMakeLists.txt"
+        pattern = "security/SecurityService.cpp"
+    },
+    @{
+        path = "apps/runtime-service/CMakeLists.txt"
+        pattern = "siligen_workflow_application_public"
+    },
+    @{
+        path = "apps/runtime-service/CMakeLists.txt"
+        pattern = "siligen_workflow_adapters_public"
+    },
+    @{
+        path = "apps/runtime-service/CMakeLists.txt"
+        pattern = "siligen_workflow_recipe_application_public"
+    },
+    @{
+        path = "apps/runtime-service/CMakeLists.txt"
+        pattern = "siligen_parsing_adapter"
+    },
+    @{
+        path = "apps/runtime-service/main.cpp"
+        pattern = '#include "runtime_process_bootstrap/ContainerBootstrap.h"'
+    },
+    @{
+        path = "apps/runtime-service/main.cpp"
+        pattern = '#include "runtime_process_bootstrap/WorkspaceAssetPaths.h"'
+    },
+    @{
+        path = "apps/planner-cli/CMakeLists.txt"
+        pattern = "siligen_runtime_process_bootstrap_public"
+    },
+    @{
         path = "apps/planner-cli/CMakeLists.txt"
         pattern = "siligen_runtime_execution_application_public"
     },
@@ -247,6 +296,26 @@ $requiredBridgeReferences = @(
         pattern = "siligen_process_planning_legacy_configuration_bridge_public"
     },
     @{
+        path = "apps/planner-cli/main.cpp"
+        pattern = '#include "runtime_process_bootstrap/ContainerBootstrap.h"'
+    },
+    @{
+        path = "apps/planner-cli/main.cpp"
+        pattern = '#include "runtime_process_bootstrap/WorkspaceAssetPaths.h"'
+    },
+    @{
+        path = "apps/runtime-gateway/CMakeLists.txt"
+        pattern = "siligen_runtime_process_bootstrap_public"
+    },
+    @{
+        path = "apps/runtime-gateway/main.cpp"
+        pattern = '#include "runtime_process_bootstrap/ContainerBootstrap.h"'
+    },
+    @{
+        path = "apps/runtime-gateway/main.cpp"
+        pattern = '#include "runtime_process_bootstrap/WorkspaceAssetPaths.h"'
+    },
+    @{
         path = "apps/runtime-gateway/transport-gateway/CMakeLists.txt"
         pattern = "siligen_runtime_execution_application_public"
     },
@@ -268,27 +337,27 @@ $requiredBridgeReferences = @(
     },
     @{
         path = "apps/runtime-gateway/transport-gateway/CMakeLists.txt"
-        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
+        pattern = "siligen_runtime_process_bootstrap_public"
     },
     @{
-        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
-        pattern = "siligen_workflow_application_public"
+        path = "apps/runtime-gateway/transport-gateway/CMakeLists.txt"
+        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
     },
     @{
         path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
         pattern = "runtime/motion/WorkflowMotionRuntimeServicesProvider.cpp"
     },
     @{
-        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
-        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
-    },
-    @{
         path = "modules/dispense-packaging/domain/dispensing/CMakeLists.txt"
         pattern = "siligen_process_planning_legacy_configuration_bridge_public"
     },
     @{
-        path = "modules/runtime-execution/runtime/host/tests/CMakeLists.txt"
-        pattern = "siligen_workflow_recipe_serialization_public"
+        path = "apps/runtime-service/tests/CMakeLists.txt"
+        pattern = "siligen_runtime_service_unit_tests"
+    },
+    @{
+        path = "apps/runtime-service/tests/CMakeLists.txt"
+        pattern = "runtime_service_integration_host_bootstrap_smoke"
     }
 )
 
@@ -376,10 +445,10 @@ $forbiddenCompatReferences = @(
         detail = "transport-gateway builder must include runtime_execution/application/* headers"
     },
     @{
-        path = "modules/runtime-execution/runtime/host/container/ApplicationContainer.Dispensing.cpp"
+        path = "apps/runtime-service/container/ApplicationContainer.Dispensing.cpp"
         pattern = '#include "application/usecases/dispensing/DispensingExecutionUseCase.h"'
-        rule_id = "runtime-host-still-includes-workflow-execution-header"
-        detail = "runtime host execution container must include runtime_execution/application/* headers"
+        rule_id = "runtime-bootstrap-still-includes-workflow-execution-header"
+        detail = "runtime bootstrap execution container must include runtime_execution/application/* headers"
     },
     @{
         path = "apps/planner-cli/CommandHandlers.Dxf.cpp"
@@ -424,22 +493,22 @@ $forbiddenCompatReferences = @(
         detail = "transport-gateway builder must include workflow/application/* headers"
     },
     @{
-        path = "modules/runtime-execution/runtime/host/container/ApplicationContainer.Dispensing.cpp"
+        path = "apps/runtime-service/container/ApplicationContainer.Dispensing.cpp"
         pattern = '#include "runtime_execution/application/usecases/dispensing/PlanningUseCase.h"'
-        rule_id = "runtime-host-still-uses-runtime-planning-wrapper"
-        detail = "runtime host planning consumer must include workflow/application/* headers"
+        rule_id = "runtime-bootstrap-still-uses-runtime-planning-wrapper"
+        detail = "runtime bootstrap planning consumer must include workflow/application/* headers"
     },
     @{
-        path = "modules/runtime-execution/runtime/host/container/ApplicationContainer.Dispensing.cpp"
+        path = "apps/runtime-service/container/ApplicationContainer.Dispensing.cpp"
         pattern = '#include "runtime_execution/application/usecases/dispensing/UploadFileUseCase.h"'
-        rule_id = "runtime-host-still-uses-runtime-upload-wrapper"
-        detail = "runtime host upload consumer must include job_ingest/application/* headers"
+        rule_id = "runtime-bootstrap-still-uses-runtime-upload-wrapper"
+        detail = "runtime bootstrap upload consumer must include job_ingest/application/* headers"
     },
     @{
-        path = "modules/runtime-execution/runtime/host/container/ApplicationContainer.Dispensing.cpp"
+        path = "apps/runtime-service/container/ApplicationContainer.Dispensing.cpp"
         pattern = '#include "runtime_execution/application/usecases/dispensing/DispensingWorkflowUseCase.h"'
-        rule_id = "runtime-host-still-uses-runtime-workflow-wrapper"
-        detail = "runtime host workflow consumer must include workflow/application/* headers"
+        rule_id = "runtime-bootstrap-still-uses-runtime-workflow-wrapper"
+        detail = "runtime bootstrap workflow consumer must include workflow/application/* headers"
     },
     @{
         path = "apps/planner-cli/CMakeLists.txt"
@@ -496,45 +565,45 @@ $forbiddenScopedSearches = @(
         rule_id = "runtime-host-surface-still-leaks-dispenser-model"
         pattern = "DispenserModel"
         search_roots = @(
-            "modules/runtime-execution/runtime/host/ContainerBootstrap.cpp",
-            "modules/runtime-execution/runtime/host/container",
-            "modules/runtime-execution/runtime/host/bootstrap",
-            "modules/runtime-execution/runtime/host/tests"
+            "modules/runtime-execution/runtime/host/runtime/diagnostics",
+            "modules/runtime-execution/runtime/host/runtime/motion",
+            "modules/runtime-execution/runtime/host/runtime/planning",
+            "modules/runtime-execution/runtime/host/services/motion"
         )
-        detail = "runtime host surface must not directly depend on DispenserModel; legacy bridging is limited to internal adapters"
+        detail = "runtime host core live diagnostics/motion/planning surfaces must not directly depend on DispenserModel"
     },
     @{
         rule_id = "runtime-host-surface-still-leaks-calibration-process"
         pattern = "CalibrationProcess"
         search_roots = @(
-            "modules/runtime-execution/runtime/host/ContainerBootstrap.cpp",
-            "modules/runtime-execution/runtime/host/container",
-            "modules/runtime-execution/runtime/host/bootstrap",
-            "modules/runtime-execution/runtime/host/tests"
+            "modules/runtime-execution/runtime/host/runtime/diagnostics",
+            "modules/runtime-execution/runtime/host/runtime/motion",
+            "modules/runtime-execution/runtime/host/runtime/planning",
+            "modules/runtime-execution/runtime/host/services/motion"
         )
-        detail = "runtime host surface must not depend on legacy CalibrationProcess"
+        detail = "runtime host core live diagnostics/motion/planning surfaces must not depend on legacy CalibrationProcess"
     },
     @{
         rule_id = "runtime-host-surface-still-leaks-legacy-calibration-port"
         pattern = "ICalibrationDevicePort"
         search_roots = @(
-            "modules/runtime-execution/runtime/host/ContainerBootstrap.cpp",
-            "modules/runtime-execution/runtime/host/container",
-            "modules/runtime-execution/runtime/host/bootstrap",
-            "modules/runtime-execution/runtime/host/tests"
+            "modules/runtime-execution/runtime/host/runtime/diagnostics",
+            "modules/runtime-execution/runtime/host/runtime/motion",
+            "modules/runtime-execution/runtime/host/runtime/planning",
+            "modules/runtime-execution/runtime/host/services/motion"
         )
-        detail = "runtime host surface must not depend on legacy calibration device ports"
+        detail = "runtime host core live diagnostics/motion/planning surfaces must not depend on legacy calibration device ports"
     },
     @{
         rule_id = "runtime-host-surface-still-leaks-legacy-calibration-port"
         pattern = "ICalibrationResultPort"
         search_roots = @(
-            "modules/runtime-execution/runtime/host/ContainerBootstrap.cpp",
-            "modules/runtime-execution/runtime/host/container",
-            "modules/runtime-execution/runtime/host/bootstrap",
-            "modules/runtime-execution/runtime/host/tests"
+            "modules/runtime-execution/runtime/host/runtime/diagnostics",
+            "modules/runtime-execution/runtime/host/runtime/motion",
+            "modules/runtime-execution/runtime/host/runtime/planning",
+            "modules/runtime-execution/runtime/host/services/motion"
         )
-        detail = "runtime host surface must not depend on legacy calibration result ports"
+        detail = "runtime host core live diagnostics/motion/planning surfaces must not depend on legacy calibration result ports"
     },
     @{
         rule_id = "runtime-application-still-includes-legacy-machine-port"
@@ -552,23 +621,23 @@ $forbiddenScopedSearches = @(
         rule_id = "runtime-host-surface-still-includes-legacy-machine-port"
         pattern = "IHardwareConnectionPort"
         search_roots = @(
-            "modules/runtime-execution/runtime/host/ContainerBootstrap.cpp",
-            "modules/runtime-execution/runtime/host/container",
-            "modules/runtime-execution/runtime/host/bootstrap",
-            "modules/runtime-execution/runtime/host/tests"
+            "modules/runtime-execution/runtime/host/runtime/diagnostics",
+            "modules/runtime-execution/runtime/host/runtime/motion",
+            "modules/runtime-execution/runtime/host/runtime/planning",
+            "modules/runtime-execution/runtime/host/services/motion"
         )
-        detail = "runtime host surface must not depend on IHardwareConnectionPort"
+        detail = "runtime host core live diagnostics/motion/planning surfaces must not depend on IHardwareConnectionPort"
     },
     @{
         rule_id = "runtime-host-surface-still-includes-legacy-machine-port"
         pattern = "IHardwareTestPort"
         search_roots = @(
-            "modules/runtime-execution/runtime/host/ContainerBootstrap.cpp",
-            "modules/runtime-execution/runtime/host/container",
-            "modules/runtime-execution/runtime/host/bootstrap",
-            "modules/runtime-execution/runtime/host/tests"
+            "modules/runtime-execution/runtime/host/runtime/diagnostics",
+            "modules/runtime-execution/runtime/host/runtime/motion",
+            "modules/runtime-execution/runtime/host/runtime/planning",
+            "modules/runtime-execution/runtime/host/services/motion"
         )
-        detail = "runtime host surface must not depend on IHardwareTestPort"
+        detail = "runtime host core live diagnostics/motion/planning surfaces must not depend on IHardwareTestPort"
     },
     @{
         rule_id = "apps-still-include-legacy-machine-port"
@@ -765,6 +834,30 @@ $forbiddenOwnershipReferences = @(
         pattern = '#include "domain/trajectory/domain-services/MotionPlanner.h"'
         rule_id = "motion-planning-facade-still-uses-legacy-motion-planner-include"
         detail = "MotionPlanningFacade must include domain/motion/domain-services/MotionPlanner.h"
+    },
+    @{
+        path = "modules/motion-planning/domain/motion/CMakeLists.txt"
+        pattern = "siligen_process_path_domain_trajectory"
+        rule_id = "motion-planning-still-falls-back-to-process-path-domain"
+        detail = "motion-planning domain target must not fall back to siligen_process_path_domain_trajectory"
+    },
+    @{
+        path = "modules/process-path/contracts/include/process_path/contracts/PathGenerationRequest.h"
+        pattern = 'domain/trajectory/domain-services/GeometryNormalizer.h'
+        rule_id = "process-path-request-contract-still-includes-domain-normalizer"
+        detail = "PathGenerationRequest must only include process_path/contracts/* headers"
+    },
+    @{
+        path = "modules/process-path/contracts/include/process_path/contracts/PathGenerationRequest.h"
+        pattern = 'domain/trajectory/domain-services/TrajectoryShaper.h'
+        rule_id = "process-path-request-contract-still-includes-domain-shaper"
+        detail = "PathGenerationRequest must only include process_path/contracts/* headers"
+    },
+    @{
+        path = "modules/process-path/contracts/include/process_path/contracts/PathGenerationResult.h"
+        pattern = 'domain/trajectory/domain-services/GeometryNormalizer.h'
+        rule_id = "process-path-result-contract-still-includes-domain-normalizer"
+        detail = "PathGenerationResult must only include process_path/contracts/* headers"
     },
     @{
         path = "modules/workflow/domain/domain/CMakeLists.txt"
@@ -1043,16 +1136,16 @@ $forbiddenOwnershipReferences = @(
         detail = "runtime scheduling adapter must include runtime_execution/contracts/dispensing/ITaskSchedulerPort.h"
     },
     @{
-        path = "modules/runtime-execution/runtime/host/ContainerBootstrap.cpp"
+        path = "apps/runtime-service/bootstrap/ContainerBootstrap.cpp"
         pattern = '#include "domain/system/ports/IEventPublisherPort.h"'
-        rule_id = "runtime-bootstrap-still-includes-workflow-event-port"
-        detail = "runtime bootstrap must include runtime_execution/contracts/system/IEventPublisherPort.h"
+        rule_id = "runtime-process-bootstrap-still-includes-workflow-event-port"
+        detail = "runtime process bootstrap must include runtime_execution/contracts/system/IEventPublisherPort.h"
     },
     @{
-        path = "modules/runtime-execution/runtime/host/ContainerBootstrap.cpp"
+        path = "apps/runtime-service/bootstrap/ContainerBootstrap.cpp"
         pattern = '#include "domain/dispensing/ports/ITaskSchedulerPort.h"'
-        rule_id = "runtime-bootstrap-still-includes-workflow-task-scheduler"
-        detail = "runtime bootstrap must include runtime_execution/contracts/dispensing/ITaskSchedulerPort.h"
+        rule_id = "runtime-process-bootstrap-still-includes-workflow-task-scheduler"
+        detail = "runtime process bootstrap must include runtime_execution/contracts/dispensing/ITaskSchedulerPort.h"
     },
     @{
         path = "apps/planner-cli/CommandHandlers.Recipe.cpp"
@@ -1121,10 +1214,10 @@ $forbiddenOwnershipReferences = @(
         detail = "transport-gateway recipe facade must include workflow/application/usecases/recipes/* wrappers"
     },
     @{
-        path = "modules/runtime-execution/runtime/host/container/ApplicationContainer.Recipes.cpp"
+        path = "apps/runtime-service/container/ApplicationContainer.Recipes.cpp"
         pattern = '#include "application/usecases/recipes/'
-        rule_id = "runtime-host-still-includes-legacy-recipe-usecases"
-        detail = "runtime-host recipe container must include workflow/application/usecases/recipes/* wrappers"
+        rule_id = "runtime-bootstrap-still-includes-legacy-recipe-usecases"
+        detail = "runtime bootstrap recipe container must include workflow/application/usecases/recipes/* wrappers"
     },
     @{
         path = "apps/runtime-gateway/transport-gateway/src/tcp/TcpCommandDispatcher.cpp"
@@ -1133,34 +1226,260 @@ $forbiddenOwnershipReferences = @(
         detail = "transport-gateway dispatcher must include workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
     },
     @{
-        path = "modules/runtime-execution/runtime/host/runtime/recipes/RecipeBundleSerializer.h"
+        path = "apps/runtime-service/runtime/recipes/RecipeBundleSerializer.h"
         pattern = '#include "recipes/serialization/RecipeJsonSerializer.h"'
-        rule_id = "runtime-recipe-serializer-still-includes-legacy-json-header"
-        detail = "runtime recipe persistence must include workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
+        rule_id = "runtime-bootstrap-recipe-serializer-still-includes-legacy-json-header"
+        detail = "runtime bootstrap recipe persistence must include workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
     },
     @{
-        path = "modules/runtime-execution/runtime/host/runtime/recipes/RecipeFileRepository.cpp"
+        path = "apps/runtime-service/runtime/recipes/RecipeFileRepository.cpp"
         pattern = '#include "recipes/serialization/RecipeJsonSerializer.h"'
-        rule_id = "runtime-recipe-repository-still-includes-legacy-json-header"
-        detail = "runtime recipe persistence must include workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
+        rule_id = "runtime-bootstrap-recipe-repository-still-includes-legacy-json-header"
+        detail = "runtime bootstrap recipe persistence must include workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
     },
     @{
-        path = "modules/runtime-execution/runtime/host/runtime/recipes/ParameterSchemaFileProvider.cpp"
+        path = "apps/runtime-service/runtime/recipes/ParameterSchemaFileProvider.cpp"
         pattern = '#include "recipes/serialization/RecipeJsonSerializer.h"'
-        rule_id = "runtime-parameter-schema-still-includes-legacy-json-header"
-        detail = "runtime recipe persistence must include workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
+        rule_id = "runtime-bootstrap-parameter-schema-still-includes-legacy-json-header"
+        detail = "runtime bootstrap recipe persistence must include workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
     },
     @{
-        path = "modules/runtime-execution/runtime/host/runtime/recipes/TemplateFileRepository.cpp"
+        path = "apps/runtime-service/runtime/recipes/TemplateFileRepository.cpp"
         pattern = '#include "recipes/serialization/RecipeJsonSerializer.h"'
-        rule_id = "runtime-template-repository-still-includes-legacy-json-header"
-        detail = "runtime recipe persistence must include workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
+        rule_id = "runtime-bootstrap-template-repository-still-includes-legacy-json-header"
+        detail = "runtime bootstrap recipe persistence must include workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
     },
     @{
-        path = "modules/runtime-execution/runtime/host/runtime/recipes/AuditFileRepository.cpp"
+        path = "apps/runtime-service/runtime/recipes/AuditFileRepository.cpp"
         pattern = '#include "recipes/serialization/RecipeJsonSerializer.h"'
-        rule_id = "runtime-audit-repository-still-includes-legacy-json-header"
-        detail = "runtime recipe persistence must include workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
+        rule_id = "runtime-bootstrap-audit-repository-still-includes-legacy-json-header"
+        detail = "runtime bootstrap recipe persistence must include workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
+    }
+)
+
+$forbiddenCompatReferences += @(
+    @{
+        path = "modules/runtime-execution/application/CMakeLists.txt"
+        pattern = "../../workflow/domain"
+        rule_id = "runtime-application-still-includes-workflow-domain-root"
+        detail = "runtime execution application implementation include dirs must not include ../../workflow/domain"
+    },
+    @{
+        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
+        pattern = "siligen_workflow_dispensing_planning_compat"
+        rule_id = "runtime-host-still-links-planner-compat"
+        detail = "runtime host live targets must not link siligen_workflow_dispensing_planning_compat"
+    },
+    @{
+        path = "modules/runtime-execution/application/CMakeLists.txt"
+        pattern = "siligen_workflow_dispensing_planning_compat"
+        rule_id = "runtime-application-still-links-planner-compat"
+        detail = "runtime execution application live target must not link siligen_workflow_dispensing_planning_compat"
+    },
+    @{
+        path = "modules/workflow/application/CMakeLists.txt"
+        pattern = "siligen_workflow_dispensing_planning_compat"
+        rule_id = "workflow-application-still-links-planner-compat"
+        detail = "workflow application live target must not link siligen_workflow_dispensing_planning_compat"
+    },
+    @{
+        path = "apps/planner-cli/CMakeLists.txt"
+        pattern = "siligen_workflow_dispensing_planning_compat"
+        rule_id = "planner-cli-still-links-planner-compat"
+        detail = "planner-cli live target must not link siligen_workflow_dispensing_planning_compat"
+    },
+    @{
+        path = "apps/runtime-gateway/transport-gateway/CMakeLists.txt"
+        pattern = "siligen_workflow_dispensing_planning_compat"
+        rule_id = "runtime-gateway-still-links-planner-compat"
+        detail = "runtime-gateway live target must not link siligen_workflow_dispensing_planning_compat"
+    },
+    @{
+        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
+        pattern = "ContainerBootstrap.cpp"
+        rule_id = "runtime-host-core-still-compiles-bootstrap"
+        detail = "runtime host core must not compile ContainerBootstrap.cpp after moving process bootstrap to apps/runtime-service"
+    },
+    @{
+        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
+        pattern = "bootstrap/InfrastructureBindings"
+        rule_id = "runtime-host-core-still-compiles-bootstrap"
+        detail = "runtime host core must not compile InfrastructureBindings after moving process bootstrap to apps/runtime-service"
+    },
+    @{
+        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
+        pattern = "container/ApplicationContainer"
+        rule_id = "runtime-host-core-still-compiles-app-container"
+        detail = "runtime host core must not compile ApplicationContainer sources after moving process composition to apps/runtime-service"
+    },
+    @{
+        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
+        pattern = "factories/InfrastructureAdapterFactory.cpp"
+        rule_id = "runtime-host-core-still-compiles-infra-factory"
+        detail = "runtime host core must not compile InfrastructureAdapterFactory after moving process composition to apps/runtime-service"
+    },
+    @{
+        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
+        pattern = "runtime/configuration/"
+        rule_id = "runtime-host-core-still-compiles-configuration"
+        detail = "runtime host core must not compile runtime/configuration sources"
+    },
+    @{
+        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
+        pattern = "runtime/recipes/"
+        rule_id = "runtime-host-core-still-compiles-recipe-persistence"
+        detail = "runtime host core must not compile runtime/recipes sources"
+    },
+    @{
+        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
+        pattern = "runtime/storage/files/"
+        rule_id = "runtime-host-core-still-compiles-storage"
+        detail = "runtime host core must not compile runtime/storage/files sources"
+    },
+    @{
+        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
+        pattern = "security/"
+        rule_id = "runtime-host-core-still-compiles-security"
+        detail = "runtime host core must not compile security sources"
+    },
+    @{
+        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
+        pattern = "siligen_job_ingest_application_public"
+        rule_id = "runtime-host-core-still-links-broad-app-surface"
+        detail = "siligen_runtime_host must not PUBLIC link job-ingest after S5"
+    },
+    @{
+        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
+        pattern = "siligen_workflow_application_public"
+        rule_id = "runtime-host-core-still-links-broad-app-surface"
+        detail = "siligen_runtime_host must not PUBLIC link workflow application after S5"
+    },
+    @{
+        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
+        pattern = "siligen_workflow_adapters_public"
+        rule_id = "runtime-host-core-still-links-broad-app-surface"
+        detail = "siligen_runtime_host must not PUBLIC link workflow adapters after S5"
+    },
+    @{
+        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
+        pattern = "siligen_workflow_recipe_domain_public"
+        rule_id = "runtime-host-core-still-links-recipe-owner-surface"
+        detail = "siligen_runtime_host must not PUBLIC link workflow_recipe domain after S5"
+    },
+    @{
+        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
+        pattern = "siligen_workflow_recipe_application_public"
+        rule_id = "runtime-host-core-still-links-recipe-owner-surface"
+        detail = "siligen_runtime_host must not PUBLIC link workflow_recipe application after S5"
+    },
+    @{
+        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
+        pattern = "siligen_workflow_recipe_serialization_public"
+        rule_id = "runtime-host-core-still-links-recipe-owner-surface"
+        detail = "siligen_runtime_host must not PUBLIC link workflow_recipe serialization after S5"
+    },
+    @{
+        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
+        pattern = "siligen_parsing_adapter"
+        rule_id = "runtime-host-core-still-links-dxf-adapter"
+        detail = "siligen_runtime_host must not PUBLIC link DXF/parsing adapters after S5"
+    },
+    @{
+        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
+        pattern = "siligen_runtime_host_storage"
+        rule_id = "runtime-host-core-still-links-storage-compat"
+        detail = "siligen_runtime_host must not PUBLIC link runtime host storage compatibility targets after S5"
+    },
+    @{
+        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
+        pattern = "siligen_runtime_recipe_persistence"
+        rule_id = "runtime-host-core-still-links-recipe-persistence-compat"
+        detail = "siligen_runtime_host must not PUBLIC link runtime recipe persistence compatibility targets after S5"
+    },
+    @{
+        path = "apps/planner-cli/CMakeLists.txt"
+        pattern = "siligen_runtime_host"
+        rule_id = "planner-cli-still-links-runtime-host-directly"
+        detail = "planner-cli must consume siligen_runtime_process_bootstrap_public instead of siligen_runtime_host"
+    },
+    @{
+        path = "apps/planner-cli/CMakeLists.txt"
+        pattern = "siligen_runtime_host_infrastructure"
+        rule_id = "planner-cli-still-links-runtime-host-infrastructure"
+        detail = "planner-cli must not link siligen_runtime_host_infrastructure"
+    },
+    @{
+        path = "apps/planner-cli/CMakeLists.txt"
+        pattern = "siligen_runtime_host_storage"
+        rule_id = "planner-cli-still-links-runtime-host-storage"
+        detail = "planner-cli must not link siligen_runtime_host_storage"
+    },
+    @{
+        path = "apps/runtime-gateway/CMakeLists.txt"
+        pattern = "siligen_runtime_host"
+        rule_id = "runtime-gateway-app-still-links-runtime-host-directly"
+        detail = "runtime-gateway app must consume siligen_runtime_process_bootstrap_public instead of siligen_runtime_host"
+    },
+    @{
+        path = "apps/runtime-gateway/CMakeLists.txt"
+        pattern = "siligen_runtime_host_infrastructure"
+        rule_id = "runtime-gateway-app-still-links-runtime-host-infrastructure"
+        detail = "runtime-gateway app must not link siligen_runtime_host_infrastructure"
+    },
+    @{
+        path = "apps/runtime-gateway/CMakeLists.txt"
+        pattern = "siligen_runtime_host_storage"
+        rule_id = "runtime-gateway-app-still-links-runtime-host-storage"
+        detail = "runtime-gateway app must not link siligen_runtime_host_storage"
+    },
+    @{
+        path = "apps/runtime-gateway/transport-gateway/CMakeLists.txt"
+        pattern = "siligen_runtime_host_infrastructure"
+        rule_id = "transport-gateway-still-links-runtime-host-infrastructure"
+        detail = "transport-gateway must not link siligen_runtime_host_infrastructure"
+    },
+    @{
+        path = "apps/runtime-gateway/transport-gateway/CMakeLists.txt"
+        pattern = "siligen_runtime_host_storage"
+        rule_id = "transport-gateway-still-links-runtime-host-storage"
+        detail = "transport-gateway must not link siligen_runtime_host_storage"
+    }
+)
+
+$forbiddenScopedSearches += @(
+    @{
+        rule_id = "motion-planning-live-headers-still-include-process-path-domain"
+        pattern = '#include "domain/trajectory/value-objects/ProcessPath.h"'
+        search_roots = @(
+            "modules/motion-planning/application/include",
+            "modules/motion-planning/domain/motion"
+        )
+        detail = "motion-planning live headers must include process_path/contracts/ProcessPath.h instead of M6 domain headers"
+    },
+    @{
+        rule_id = "live-targets-still-reference-process-runtime-core-planning"
+        pattern = "siligen_process_runtime_core_planning"
+        search_roots = @(
+            "modules/process-path/application",
+            "modules/motion-planning/application",
+            "modules/runtime-execution/application",
+            "modules/runtime-execution/runtime/host",
+            "apps/planner-cli",
+            "apps/runtime-gateway/transport-gateway"
+        )
+        detail = "live targets must not add deprecated siligen_process_runtime_core_planning references"
+    },
+    @{
+        rule_id = "live-targets-still-reference-planner-compat"
+        pattern = "siligen_workflow_dispensing_planning_compat"
+        search_roots = @(
+            "modules/workflow/application",
+            "modules/runtime-execution/application",
+            "modules/runtime-execution/runtime/host",
+            "apps/planner-cli",
+            "apps/runtime-gateway/transport-gateway"
+        )
+        detail = "live targets must not reference the deprecated siligen_workflow_dispensing_planning_compat target"
     }
 )
 
@@ -1420,7 +1739,11 @@ $summary = [ordered]@{
     status = if ($findings.Count -eq 0) { "passed" } else { "failed" }
     allowed_direct_workflow_references = @(
         "modules/workflow/CMakeLists.txt",
-        "modules/runtime-execution/CMakeLists.txt"
+        "modules/runtime-execution/CMakeLists.txt",
+        "modules/runtime-execution/runtime/host/CMakeLists.txt",
+        "apps/runtime-service/CMakeLists.txt",
+        "apps/planner-cli/CMakeLists.txt",
+        "apps/runtime-gateway/transport-gateway/CMakeLists.txt"
     )
     findings = $findings
 }

@@ -15,6 +15,7 @@ TCP_SERVER_HOST_HEADER = ROOT / "apps" / "runtime-gateway" / "transport-gateway"
 APP_MAIN = ROOT / "apps" / "runtime-gateway" / "main.cpp"
 TARGET_APP_CMAKE = ROOT / "apps" / "runtime-gateway" / "CMakeLists.txt"
 TRANSPORT_GATEWAY_CMAKE = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "CMakeLists.txt"
+RUNTIME_SERVICE_CMAKE = ROOT / "apps" / "runtime-service" / "CMakeLists.txt"
 ROOT_CMAKE = ROOT / "CMakeLists.txt"
 WORKSPACE_LAYOUT = ROOT / "cmake" / "workspace-layout.env"
 
@@ -88,17 +89,25 @@ def test_gateway_public_host_contract_does_not_expose_config_path():
 def test_canonical_targets_are_exported_without_legacy_aliases():
     target_app_cmake = TARGET_APP_CMAKE.read_text(encoding="utf-8")
     transport_gateway_cmake = TRANSPORT_GATEWAY_CMAKE.read_text(encoding="utf-8")
+    runtime_service_cmake = RUNTIME_SERVICE_CMAKE.read_text(encoding="utf-8")
     root_cmake = ROOT_CMAKE.read_text(encoding="utf-8")
     workspace_layout = load_workspace_layout()
 
     assert "siligen_app_runtime_gateway" in target_app_cmake
     assert "siligen_transport_gateway" in target_app_cmake
-    assert "siligen_runtime_host" in target_app_cmake
+    assert "siligen_runtime_process_bootstrap_public" in target_app_cmake
+    assert "siligen_runtime_host" not in target_app_cmake
+    assert "siligen_runtime_host_infrastructure" not in target_app_cmake
+    assert "siligen_runtime_host_storage" not in target_app_cmake
     assert "siligen_transport_gateway" in transport_gateway_cmake
     assert "siligen_transport_gateway_protocol" in transport_gateway_cmake
+    assert "siligen_runtime_process_bootstrap_public" in transport_gateway_cmake
+    assert "siligen_runtime_host_infrastructure" not in transport_gateway_cmake
+    assert "siligen_runtime_host_storage" not in transport_gateway_cmake
     assert "siligen_control_gateway_tcp_adapter" not in transport_gateway_cmake
     assert "siligen_tcp_adapter" not in transport_gateway_cmake
     assert "siligen_control_gateway" not in transport_gateway_cmake
+    assert "siligen_runtime_process_bootstrap_public" in runtime_service_cmake
     assert 'add_subdirectory("${SILIGEN_TRANSPORT_GATEWAY_DIR}"' not in root_cmake
     assert workspace_layout.get("SILIGEN_TRANSPORT_GATEWAY_DIR") is None
     assert 'add_subdirectory("${SILIGEN_APPS_ROOT}"' in root_cmake
@@ -118,9 +127,15 @@ def test_dxf_preview_gate_contract_is_wired():
     assert "GetDxfPreviewSnapshot(" in source
     assert "ConfirmDxfPreview(" in source
     assert '{"preview_source", snapshot.preview_source}' in source
-    assert '{"trajectory_polyline", trajectory_polyline}' in source
-    assert '{"polyline_point_count", snapshot.polyline_point_count}' in source
-    assert '{"polyline_source_point_count", snapshot.polyline_source_point_count}' in source
+    assert '{"preview_kind", snapshot.preview_kind}' in source
+    assert '{"glue_points", glue_points}' in source
+    assert '{"glue_point_count", snapshot.glue_point_count}' in source
+    assert '{"execution_polyline", execution_polyline}' in source
+    assert '{"execution_polyline_point_count", snapshot.execution_polyline_point_count}' in source
+    assert '{"execution_polyline_source_point_count", snapshot.execution_polyline_source_point_count}' in source
+    assert '{"trajectory_polyline", execution_polyline}' in source
+    assert '{"polyline_point_count", snapshot.execution_polyline_point_count}' in source
+    assert '{"polyline_source_point_count", snapshot.execution_polyline_source_point_count}' in source
     assert "dxf_cache_.preview_state = snapshot.preview_state;" in source
     assert 'request.snapshot_hash = snapshot_hash;' in source
     assert "dxf.preview.snapshot 使用了兼容回退路径（缺少 plan_id）" in source
@@ -130,7 +145,8 @@ def test_dxf_preview_gate_contract_is_wired():
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3012, "Preview plan_id mismatch")' in source
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview snapshot hash is missing")' in source
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview source is missing")' in source
-    assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview source must be runtime_snapshot")' in source
+    assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview source must be planned_glue_snapshot")' in source
+    assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview kind must be glue_points")' in source
     assert "Missing 'snapshot_hash'" in source
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3018, confirm_result.GetError().GetMessage())' in source
     assert "HandleDxfPreviewSnapshot" in source
@@ -308,8 +324,8 @@ def test_home_auto_command_is_registered_and_uses_supervisor_chain():
     assert "HandleHomeGo" in source
     assert "HandleHome(" in source
     assert "EnsureAxesReadyZero(" in facade_header
-    assert "ensure_ready_zero_use_case_" in facade_header
-    assert "ensure_ready_zero_use_case_->Execute(request)" in facade_impl
+    assert "motion_control_use_case_" in facade_header
+    assert "motion_control_use_case_->EnsureAxesReadyZero(request)" in facade_impl
 
 
 def test_home_go_uses_ready_zero_configuration_and_rejects_speed_override():
