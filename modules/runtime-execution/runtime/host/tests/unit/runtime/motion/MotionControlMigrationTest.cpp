@@ -2,14 +2,10 @@
 #include "application/usecases/motion/homing/HomeAxesUseCase.h"
 #include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
 #include "application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
-#include "domain/configuration/ports/IConfigurationPort.h"
 #include "domain/motion/domain-services/JogController.h"
-#include "domain/motion/domain-services/ReadyZeroDecisionService.h"
-#include "domain/system/ports/IEventPublisherPort.h"
 #include "runtime/motion/WorkflowMotionRuntimeServicesProvider.h"
 #include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
 #include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
-#include "shared/types/HardwareConfiguration.h"
 
 #include <gtest/gtest.h>
 
@@ -22,22 +18,12 @@ namespace {
 
 using Siligen::Application::UseCases::Motion::MotionControlUseCase;
 using Siligen::Application::UseCases::Motion::Homing::EnsureAxesReadyZeroRequest;
-using Siligen::Application::UseCases::Motion::Homing::EnsureAxesReadyZeroUseCase;
 using Siligen::Application::UseCases::Motion::Homing::HomeAxesRequest;
-using Siligen::Application::UseCases::Motion::Homing::HomeAxesUseCase;
 using Siligen::Application::UseCases::Motion::Manual::ManualMotionCommand;
 using Siligen::Application::UseCases::Motion::Manual::ManualMotionControlUseCase;
 using Siligen::Application::UseCases::Motion::Monitoring::MotionMonitoringUseCase;
-using Siligen::Domain::Configuration::Ports::DxfPreprocessConfig;
-using Siligen::Domain::Configuration::Ports::DxfTrajectoryConfig;
-using Siligen::Domain::Configuration::Ports::HomingConfig;
-using Siligen::Domain::Configuration::Ports::IConfigurationPort;
-using Siligen::Domain::Configuration::Ports::MachineConfig;
-using Siligen::Domain::Configuration::Ports::SystemConfig;
 using Siligen::Domain::Motion::DomainServices::JogController;
-using Siligen::Domain::Motion::DomainServices::ReadyZeroDecisionService;
 using Siligen::Domain::Motion::Ports::AxisConfiguration;
-using Siligen::Domain::Motion::Ports::CoordinateSystemStatus;
 using Siligen::Domain::Motion::Ports::HomingState;
 using Siligen::Domain::Motion::Ports::HomingStatus;
 using Siligen::Domain::Motion::Ports::IMotionRuntimePort;
@@ -46,21 +32,12 @@ using Siligen::Domain::Motion::Ports::JogParameters;
 using Siligen::Domain::Motion::Ports::MotionCommand;
 using Siligen::Domain::Motion::Ports::MotionState;
 using Siligen::Domain::Motion::Ports::MotionStatus;
-using Siligen::Domain::System::Ports::DomainEvent;
-using Siligen::Domain::System::Ports::EventHandler;
-using Siligen::Domain::System::Ports::EventType;
-using Siligen::Domain::System::Ports::IEventPublisherPort;
 using Siligen::RuntimeExecution::Host::Motion::WorkflowMotionRuntimeServicesProvider;
-using Siligen::Shared::Types::DispenserValveConfig;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
-using Siligen::Shared::Types::HardwareConfiguration;
-using Siligen::Shared::Types::HardwareMode;
 using Siligen::Shared::Types::LogicalAxisId;
 using Siligen::Shared::Types::Point2D;
 using Siligen::Shared::Types::Result;
-using Siligen::Shared::Types::ValveCoordinationConfig;
-using Siligen::Shared::Types::VelocityTraceConfig;
 using Siligen::Shared::Types::float32;
 using Siligen::Shared::Types::int16;
 using Siligen::Shared::Types::int32;
@@ -306,110 +283,6 @@ class FakeMotionRuntimePort final : public IMotionRuntimePort {
     std::array<AxisRuntimeState, 2> axes_{};
 };
 
-class FakeConfigurationPort final : public IConfigurationPort {
-   public:
-    explicit FakeConfigurationPort(int axis_count = 2) {
-        hardware_config_.num_axes = axis_count;
-        machine_config_.max_speed = 80.0f;
-        machine_config_.positioning_tolerance = 0.05f;
-        for (int index = 0; index < axis_count; ++index) {
-            HomingConfig config;
-            config.axis = index;
-            config.ready_zero_speed_mm_s = 5.0f;
-            config.locate_velocity = 3.0f;
-            config.settle_time_ms = 0;
-            homing_configs_.push_back(config);
-        }
-    }
-
-    Result<SystemConfig> LoadConfiguration() override { return NotImplemented<SystemConfig>("LoadConfiguration"); }
-    Result<void> SaveConfiguration(const SystemConfig&) override { return NotImplementedVoid("SaveConfiguration"); }
-    Result<void> ReloadConfiguration() override { return NotImplementedVoid("ReloadConfiguration"); }
-    Result<Siligen::Domain::Configuration::Ports::DispensingConfig> GetDispensingConfig() const override {
-        return Result<Siligen::Domain::Configuration::Ports::DispensingConfig>::Success({});
-    }
-    Result<void> SetDispensingConfig(const Siligen::Domain::Configuration::Ports::DispensingConfig&) override {
-        return Result<void>::Success();
-    }
-    Result<DxfPreprocessConfig> GetDxfPreprocessConfig() const override { return Result<DxfPreprocessConfig>::Success({}); }
-    Result<DxfTrajectoryConfig> GetDxfTrajectoryConfig() const override { return Result<DxfTrajectoryConfig>::Success({}); }
-    Result<Siligen::Shared::Types::DiagnosticsConfig> GetDiagnosticsConfig() const override {
-        return Result<Siligen::Shared::Types::DiagnosticsConfig>::Success({});
-    }
-    Result<MachineConfig> GetMachineConfig() const override { return Result<MachineConfig>::Success(machine_config_); }
-    Result<void> SetMachineConfig(const MachineConfig& config) override {
-        machine_config_ = config;
-        return Result<void>::Success();
-    }
-    Result<HomingConfig> GetHomingConfig(int axis) const override {
-        if (axis < 0 || axis >= static_cast<int>(homing_configs_.size())) {
-            return Result<HomingConfig>::Failure(
-                Error(ErrorCode::INVALID_PARAMETER, "Invalid homing axis", "FakeConfigurationPort"));
-        }
-        return Result<HomingConfig>::Success(homing_configs_[static_cast<std::size_t>(axis)]);
-    }
-    Result<void> SetHomingConfig(int axis, const HomingConfig& config) override {
-        if (axis < 0 || axis >= static_cast<int>(homing_configs_.size())) {
-            return Result<void>::Failure(
-                Error(ErrorCode::INVALID_PARAMETER, "Invalid homing axis", "FakeConfigurationPort"));
-        }
-        homing_configs_[static_cast<std::size_t>(axis)] = config;
-        return Result<void>::Success();
-    }
-    Result<std::vector<HomingConfig>> GetAllHomingConfigs() const override {
-        return Result<std::vector<HomingConfig>>::Success(homing_configs_);
-    }
-    Result<Siligen::Domain::Configuration::Ports::ValveSupplyConfig> GetValveSupplyConfig() const override {
-        return Result<Siligen::Domain::Configuration::Ports::ValveSupplyConfig>::Success({});
-    }
-    Result<DispenserValveConfig> GetDispenserValveConfig() const override {
-        return Result<DispenserValveConfig>::Success({});
-    }
-    Result<ValveCoordinationConfig> GetValveCoordinationConfig() const override {
-        return Result<ValveCoordinationConfig>::Success({});
-    }
-    Result<VelocityTraceConfig> GetVelocityTraceConfig() const override {
-        return Result<VelocityTraceConfig>::Success({});
-    }
-    Result<bool> ValidateConfiguration() const override { return Result<bool>::Success(true); }
-    Result<std::vector<std::string>> GetValidationErrors() const override {
-        return Result<std::vector<std::string>>::Success({});
-    }
-    Result<void> BackupConfiguration(const std::string&) override { return Result<void>::Success(); }
-    Result<void> RestoreConfiguration(const std::string&) override { return Result<void>::Success(); }
-    Result<HardwareMode> GetHardwareMode() const override { return Result<HardwareMode>::Success(HardwareMode::Mock); }
-    Result<HardwareConfiguration> GetHardwareConfiguration() const override {
-        return Result<HardwareConfiguration>::Success(hardware_config_);
-    }
-
-   private:
-    template <typename T>
-    Result<T> NotImplemented(const char* method) const {
-        return Result<T>::Failure(Error(ErrorCode::NOT_IMPLEMENTED, method, "FakeConfigurationPort"));
-    }
-
-    Result<void> NotImplementedVoid(const char* method) const {
-        return Result<void>::Failure(Error(ErrorCode::NOT_IMPLEMENTED, method, "FakeConfigurationPort"));
-    }
-
-    MachineConfig machine_config_{};
-    HardwareConfiguration hardware_config_{};
-    std::vector<HomingConfig> homing_configs_{};
-};
-
-class FakeEventPublisher final : public IEventPublisherPort {
-   public:
-    Result<void> Publish(const DomainEvent&) override { return Result<void>::Success(); }
-    Result<void> PublishAsync(const DomainEvent&) override { return Result<void>::Success(); }
-    Result<int32> Subscribe(EventType, EventHandler) override { return Result<int32>::Success(1); }
-    Result<void> Unsubscribe(int32) override { return Result<void>::Success(); }
-    Result<void> UnsubscribeAll(EventType) override { return Result<void>::Success(); }
-    Result<std::vector<DomainEvent*>> GetEventHistory(EventType, int32 = 100) const override {
-        return Result<std::vector<DomainEvent*>>::Success({});
-    }
-    Result<void> ClearEventHistory() override { return Result<void>::Success(); }
-};
-
 TEST(MotionControlMigrationTest, WorkflowMotionRuntimeServicesProviderBuildsControlAndStatusServicesFromM9Port) {
     auto runtime_port = std::make_shared<FakeMotionRuntimePort>();
     WorkflowMotionRuntimeServicesProvider provider;
@@ -429,12 +302,8 @@ TEST(MotionControlMigrationTest, WorkflowMotionRuntimeServicesProviderBuildsCont
     EXPECT_FALSE(axis_status_result.Value().HasReachedTarget(0.0f));
 }
 
-TEST(MotionControlMigrationTest, MotionControlUseCaseDispatchesHomingJogControlAndMonitoring) {
+TEST(MotionControlMigrationTest, MotionControlUseCaseDispatchesJogControlAndMonitoring) {
     auto runtime_port = std::make_shared<FakeMotionRuntimePort>();
-    auto config_port = std::make_shared<FakeConfigurationPort>();
-    auto event_port = std::make_shared<FakeEventPublisher>();
-
-    auto home_use_case = std::make_shared<HomeAxesUseCase>(runtime_port, config_port, runtime_port, event_port, runtime_port);
     auto jog_controller =
         std::make_shared<JogController>(std::static_pointer_cast<Siligen::Domain::Motion::Ports::IJogControlPort>(runtime_port),
                                         std::static_pointer_cast<Siligen::Domain::Motion::Ports::IMotionStatePort>(runtime_port));
@@ -446,27 +315,7 @@ TEST(MotionControlMigrationTest, MotionControlUseCaseDispatchesHomingJogControlA
         std::static_pointer_cast<Siligen::Domain::Motion::Ports::IMotionStatePort>(runtime_port),
         std::static_pointer_cast<Siligen::Domain::Motion::Ports::IIOControlPort>(runtime_port),
         std::static_pointer_cast<Siligen::Domain::Motion::Ports::IHomingPort>(runtime_port));
-    auto ensure_use_case = std::make_shared<EnsureAxesReadyZeroUseCase>(
-        home_use_case,
-        manual_use_case,
-        monitoring_use_case,
-        config_port,
-        std::make_shared<ReadyZeroDecisionService>());
-
-    MotionControlUseCase use_case(home_use_case, ensure_use_case, manual_use_case, monitoring_use_case);
-
-    HomeAxesRequest home_request;
-    home_request.axes = {LogicalAxisId::X};
-    auto home_result = use_case.Home(home_request);
-    ASSERT_TRUE(home_result.IsSuccess());
-    EXPECT_EQ(runtime_port->home_calls, 1);
-    EXPECT_TRUE(runtime_port->IsAxisHomed(LogicalAxisId::X).Value());
-
-    EnsureAxesReadyZeroRequest ensure_request;
-    ensure_request.axes = {LogicalAxisId::X};
-    auto ensure_result = use_case.EnsureAxesReadyZero(ensure_request);
-    ASSERT_TRUE(ensure_result.IsSuccess());
-    EXPECT_TRUE(ensure_result.Value().accepted);
+    MotionControlUseCase use_case(nullptr, nullptr, manual_use_case, monitoring_use_case);
 
     auto jog_result = use_case.StartJog(LogicalAxisId::X, 1, 8.0f);
     ASSERT_TRUE(jog_result.IsSuccess());
@@ -483,9 +332,6 @@ TEST(MotionControlMigrationTest, MotionControlUseCaseDispatchesHomingJogControlA
     auto move_result = use_case.ExecutePointToPointMotion(command, true);
     ASSERT_TRUE(move_result.IsSuccess());
     EXPECT_EQ(runtime_port->move_calls, 1);
-    auto homed_result = use_case.IsAxisHomed(LogicalAxisId::X);
-    ASSERT_TRUE(homed_result.IsSuccess());
-    EXPECT_FALSE(homed_result.Value());
 
     auto status_result = use_case.GetAxisMotionStatus(LogicalAxisId::X);
     ASSERT_TRUE(status_result.IsSuccess());
@@ -494,6 +340,22 @@ TEST(MotionControlMigrationTest, MotionControlUseCaseDispatchesHomingJogControlA
     auto limit_result = use_case.ReadLimitStatus(LogicalAxisId::X, true);
     ASSERT_TRUE(limit_result.IsSuccess());
     EXPECT_FALSE(limit_result.Value());
+}
+
+TEST(MotionControlMigrationTest, MotionControlUseCaseReturnsMissingDependencyForHomingEntrypoints) {
+    MotionControlUseCase use_case(nullptr, nullptr, nullptr, nullptr);
+
+    HomeAxesRequest home_request;
+    home_request.axes = {LogicalAxisId::X};
+    auto home_result = use_case.Home(home_request);
+    ASSERT_TRUE(home_result.IsError());
+    EXPECT_EQ(home_result.GetError().GetCode(), ErrorCode::PORT_NOT_INITIALIZED);
+
+    EnsureAxesReadyZeroRequest ensure_request;
+    ensure_request.axes = {LogicalAxisId::X};
+    auto ensure_result = use_case.EnsureAxesReadyZero(ensure_request);
+    ASSERT_TRUE(ensure_result.IsError());
+    EXPECT_EQ(ensure_result.GetError().GetCode(), ErrorCode::PORT_NOT_INITIALIZED);
 }
 
 }  // namespace

@@ -7,4 +7,4 @@ except ImportError:  # pragma: no cover - script-mode fallback
 
 ensure_hmi_application_path()
 
-from hmi_application.startup import *  # noqa: F401,F403
+from hmi_application.preview_session import *  # noqa: F401,F403

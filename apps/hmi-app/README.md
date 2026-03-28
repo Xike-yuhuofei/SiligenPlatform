@@ -29,6 +29,7 @@
 - `config/gateway-launch.sample.json` 仅用于示例/部署模板，不再作为运行时默认回退来源。
 - `config/gateway-launch.json` 是正式 launcher contract；用于验证/CI/release 和部署语义固化。
 - HMI 运行时只消费 launch spec；`-GatewayExe` 只作为 `run.ps1` 生成临时 spec 的输入，不再作为运行时直启旁路。
+- online 硬件探测阶段会从 launch spec 的 `--config` 指向的 `config/machine/machine_config.ini` 读取 `[Network] control_card_ip/local_ip`；若 contract 未显式传 `--config`，则回退到工作区 canonical 配置路径。
 - `test.ps1`、`scripts/validation/run-local-validation-gate.ps1`、`ci.ps1`、`release-check.ps1` 现在都会前置要求正式 `config/gateway-launch.json` 存在；缺失时直接失败，不再回退到开发态临时契约。
 - DXF 编辑保持为外部编辑器人工流程；HMI 只负责接入文件与展示状态，不承接编辑 owner。
 - 任何 online/offline 模式都不能改写 owner 边界。

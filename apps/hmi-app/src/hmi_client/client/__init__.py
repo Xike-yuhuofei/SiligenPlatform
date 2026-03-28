@@ -1,9 +1,54 @@
+try:
+    from hmi_client.module_paths import ensure_hmi_application_path
+except ImportError:  # pragma: no cover - script-mode fallback
+    from module_paths import ensure_hmi_application_path  # type: ignore
+
+ensure_hmi_application_path()
+
 from .tcp_client import TcpClient
 from .protocol import CommandProtocol, MachineStatus, AxisStatus
 from .auth import AuthManager, User
 from .recipe import Recipe, RecipeManager
 from .backend_manager import BackendManager
 from .gateway_launch import GatewayLaunchSpec, load_gateway_launch_spec
+try:
+    from hmi_client.features.dispense_preview_gate import (
+        DispensePreviewGate,
+        PreviewGateDecision,
+        PreviewGateState,
+        PreviewSnapshotMeta,
+        StartBlockReason,
+    )
+except ImportError:  # pragma: no cover - script-mode fallback
+    from features.dispense_preview_gate import (  # type: ignore
+        DispensePreviewGate,
+        PreviewGateDecision,
+        PreviewGateState,
+        PreviewSnapshotMeta,
+        StartBlockReason,
+    )
+from .launch_state import (
+    LaunchUiState,
+    RecoveryActionDecision,
+    RecoveryControlsState,
+    RuntimeDegradationResult,
+    build_launch_ui_state,
+    build_online_capability_message,
+    build_recovery_action_decision,
+    build_recovery_finished_message,
+    build_runtime_degradation_result,
+    build_startup_error_message,
+    detect_runtime_degradation_result,
+)
+from .preview_session import (
+    PreflightBlockReason,
+    PreflightDecision,
+    PreviewConfirmResult,
+    PreviewPayloadResult,
+    PreviewSessionOwner,
+    PreviewSessionState,
+    PreviewSnapshotWorker,
+)
 from .supervisor_contract import (
     FailureCode,
     FailureStage,
@@ -40,15 +85,38 @@ __all__ = [
     "BackendManager",
     "GatewayLaunchSpec",
     "load_gateway_launch_spec",
+    "DispensePreviewGate",
+    "LaunchUiState",
     "SessionSnapshot",
     "FailureCode",
     "FailureStage",
+    "PreflightBlockReason",
+    "PreflightDecision",
+    "PreviewConfirmResult",
+    "PreviewGateDecision",
+    "PreviewGateState",
+    "PreviewPayloadResult",
+    "PreviewSessionOwner",
+    "PreviewSessionState",
+    "PreviewSnapshotMeta",
+    "PreviewSnapshotWorker",
     "RecoveryAction",
+    "RecoveryActionDecision",
+    "RecoveryControlsState",
     "StageEventType",
     "snapshot_timestamp",
     "SessionStageEvent",
     "SupervisorSession",
     "SupervisorPolicy",
+    "RuntimeDegradationResult",
+    "StartBlockReason",
+    "build_launch_ui_state",
+    "build_online_capability_message",
+    "build_recovery_action_decision",
+    "build_recovery_finished_message",
+    "build_runtime_degradation_result",
+    "build_startup_error_message",
+    "detect_runtime_degradation_result",
     "is_online_ready",
     "LaunchMode",
     "LaunchResult",
