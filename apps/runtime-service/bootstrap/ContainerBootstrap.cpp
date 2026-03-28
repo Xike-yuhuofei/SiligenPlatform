@@ -1,5 +1,8 @@
 #include "ContainerBootstrap.h"
 
+#include "../container/ApplicationContainer.h"
+#include "InfrastructureBindings.h"
+
 #include "domain/configuration/ports/IConfigurationPort.h"
 #include "domain/configuration/ports/IFileStoragePort.h"
 #include "domain/diagnostics/ports/ICMPTestPresetPort.h"

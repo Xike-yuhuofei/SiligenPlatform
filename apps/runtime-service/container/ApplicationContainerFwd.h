@@ -140,3 +140,15 @@ namespace Siligen::RuntimeExecution::Contracts::System {
 class IMachineExecutionStatePort;
 }
 
+namespace Siligen::Application::Container {
+
+enum class LogMode {
+    Console,
+    File,
+    Silent
+};
+
+class ApplicationContainer;
+
+}  // namespace Siligen::Application::Container
+

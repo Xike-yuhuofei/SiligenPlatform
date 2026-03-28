@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "runtime/configuration/WorkspaceAssetPaths.h"
+#include "runtime_process_bootstrap/WorkspaceAssetPaths.h"
 
 namespace Siligen::Application {
 

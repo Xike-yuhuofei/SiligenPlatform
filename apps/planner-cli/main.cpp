@@ -2,12 +2,12 @@
 #include <memory>
 #include <string>
 
-#include "ContainerBootstrap.h"
 #include "CommandHandlers.h"
 #include "CommandHandlersInternal.h"
 #include "CommandLineParser.h"
 #include "domain/configuration/ports/IConfigurationPort.h"
-#include "runtime/configuration/WorkspaceAssetPaths.h"
+#include "runtime_process_bootstrap/ContainerBootstrap.h"
+#include "runtime_process_bootstrap/WorkspaceAssetPaths.h"
 #include "shared/types/Error.h"
 
 #ifndef SILIGEN_GIT_HASH

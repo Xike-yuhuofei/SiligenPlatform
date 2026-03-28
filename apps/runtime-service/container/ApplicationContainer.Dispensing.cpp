@@ -1,9 +1,11 @@
 #include "ApplicationContainer.h"
 
+#include "application/services/dispensing/DispensePlanningFacade.h"
+#include "application/services/motion_planning/MotionPlanningFacade.h"
+#include "application/services/process_path/ProcessPathFacade.h"
 #include "application/usecases/dispensing/CleanupFilesUseCase.h"
 #include "application/usecases/dispensing/valve/ValveCommandUseCase.h"
 #include "application/usecases/dispensing/valve/ValveQueryUseCase.h"
-#include "domain/dispensing/planning/domain-services/DispensingPlannerService.h"
 #include "domain/dispensing/domain-services/ValveCoordinationService.h"
 #include "domain/safety/ports/IInterlockSignalPort.h"
 #include "domain/trajectory/ports/IPathSourcePort.h"
@@ -72,12 +74,12 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::PlanningUseCase>() {
         throw std::runtime_error("IPathSourcePort 未注册");
     }
 
-    auto planner = std::make_shared<UseCases::Dispensing::DispensingPlanner>(
-        path_source,
-        velocity_profile_service_);
-
     return std::make_shared<UseCases::Dispensing::PlanningUseCase>(
-        planner,
+        path_source,
+        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
+        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(
+            velocity_profile_service_),
+        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
         config_port_,
         nullptr,
         std::make_shared<Siligen::RuntimeExecution::Host::Planning::PlanningArtifactExportPortAdapter>());

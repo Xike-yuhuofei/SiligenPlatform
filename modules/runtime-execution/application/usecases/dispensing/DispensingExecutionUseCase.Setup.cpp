@@ -3,8 +3,8 @@
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 
 #include "domain/dispensing/domain-services/DispensingProcessService.h"
-#include "modules/workflow/domain/domain/safety/domain-services/InterlockPolicy.h"
-#include "domain/safety/domain-services/SafetyOutputGuard.h"
+#include "runtime_execution/contracts/safety/InterlockPolicy.h"
+#include "runtime_execution/contracts/safety/SafetyOutputGuard.h"
 #include "shared/logging/PrintfLogFormatter.h"
 #include "shared/interfaces/ILoggingService.h"
 

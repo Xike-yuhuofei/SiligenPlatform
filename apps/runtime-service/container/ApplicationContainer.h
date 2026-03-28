@@ -1,9 +1,9 @@
 #pragma once
 
 #include "ApplicationContainerFwd.h"
+#include "../runtime/configuration/WorkspaceAssetPaths.h"
 #include "domain/configuration/ports/IConfigurationPort.h"
 #include "domain/motion/ports/IMotionRuntimePort.h"
-#include "runtime/configuration/WorkspaceAssetPaths.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 #include <array>
 #include <cstdio>
@@ -14,15 +14,6 @@
 #include <unordered_map>
 
 namespace Siligen::Application::Container {
-
-/**
- * @brief 日志输出模式
- */
-enum class LogMode {
-    Console,  // 输出到控制台(默认)
-    File,     // 输出到文件
-    Silent    // 静默模式，不输出日志（用于CLI交互模式）
-};
 
 /**
  * @brief 应用容器 - 依赖注入容器

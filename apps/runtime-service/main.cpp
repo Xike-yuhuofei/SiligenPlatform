@@ -9,8 +9,8 @@
 #include <string>
 #include <thread>
 
-#include "ContainerBootstrap.h"
-#include "runtime/configuration/WorkspaceAssetPaths.h"
+#include "runtime_process_bootstrap/ContainerBootstrap.h"
+#include "runtime_process_bootstrap/WorkspaceAssetPaths.h"
 
 #ifndef SILIGEN_GIT_HASH
 #define SILIGEN_GIT_HASH "unknown"

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "domain/motion/domain-services/MotionControlService.h"
-#include "domain/motion/ports/IPositionControlPort.h"
+#include "runtime_execution/contracts/motion/IPositionControlPort.h"
+#include "runtime_execution/contracts/motion/MotionControlService.h"
 
 #include <memory>
 
