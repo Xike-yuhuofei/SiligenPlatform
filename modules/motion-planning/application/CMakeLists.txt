@@ -55,9 +55,3 @@ target_link_libraries(siligen_motion_planning_application_public INTERFACE
     $<LINK_ONLY:siligen_motion_planning_application>
 )
 target_compile_features(siligen_motion_planning_application_public INTERFACE cxx_std_17)
-
-if(TARGET siligen_process_runtime_core_planning)
-    target_link_libraries(siligen_process_runtime_core_planning INTERFACE
-        siligen_motion_planning_application_public
-    )
-endif()

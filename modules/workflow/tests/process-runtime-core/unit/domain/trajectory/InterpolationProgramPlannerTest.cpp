@@ -1,5 +1,5 @@
 #include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
-#include "domain/trajectory/domain-services/MotionPlanner.h"
+#include "domain/motion/domain-services/MotionPlanner.h"
 
 #include <gtest/gtest.h>
 
@@ -11,12 +11,12 @@ TEST(InterpolationProgramPlannerTest, BuildsLinearProgramFromMotionPlannerTrajec
     using Siligen::Shared::Types::Point2D;
     using Siligen::Domain::Motion::DomainServices::InterpolationProgramPlanner;
     using Siligen::Domain::Motion::Ports::InterpolationType;
-    using Siligen::Domain::Trajectory::DomainServices::MotionPlanner;
-    using Siligen::Domain::Trajectory::ValueObjects::MotionConfig;
-    using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
-    using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
-    using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
-    using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
+    using Siligen::Domain::Motion::DomainServices::MotionPlanner;
+    using Siligen::MotionPlanning::Contracts::TimePlanningConfig;
+    using Siligen::ProcessPath::Contracts::ProcessPath;
+    using Siligen::ProcessPath::Contracts::ProcessSegment;
+    using Siligen::ProcessPath::Contracts::ProcessTag;
+    using Siligen::ProcessPath::Contracts::SegmentType;
 
     ProcessPath path;
     ProcessSegment seg;
@@ -29,7 +29,7 @@ TEST(InterpolationProgramPlannerTest, BuildsLinearProgramFromMotionPlannerTrajec
     seg.geometry.length = 10.0f;
     path.segments.push_back(seg);
 
-    MotionConfig cfg;
+    TimePlanningConfig cfg;
     cfg.vmax = 100.0f;
     cfg.amax = 200.0f;
     cfg.sample_dt = 0.01f;
@@ -52,12 +52,12 @@ TEST(InterpolationProgramPlannerTest, SplitsFullCircleArcIntoTwoSegments) {
     using Siligen::Shared::Types::Point2D;
     using Siligen::Domain::Motion::DomainServices::InterpolationProgramPlanner;
     using Siligen::Domain::Motion::Ports::InterpolationType;
-    using Siligen::Domain::Trajectory::DomainServices::MotionPlanner;
-    using Siligen::Domain::Trajectory::ValueObjects::MotionConfig;
-    using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
-    using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
-    using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
-    using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
+    using Siligen::Domain::Motion::DomainServices::MotionPlanner;
+    using Siligen::MotionPlanning::Contracts::TimePlanningConfig;
+    using Siligen::ProcessPath::Contracts::ProcessPath;
+    using Siligen::ProcessPath::Contracts::ProcessSegment;
+    using Siligen::ProcessPath::Contracts::ProcessTag;
+    using Siligen::ProcessPath::Contracts::SegmentType;
 
     ProcessPath path;
     ProcessSegment seg;
@@ -73,7 +73,7 @@ TEST(InterpolationProgramPlannerTest, SplitsFullCircleArcIntoTwoSegments) {
     seg.geometry.length = 0.0f;
     path.segments.push_back(seg);
 
-    MotionConfig cfg;
+    TimePlanningConfig cfg;
     cfg.vmax = 50.0f;
     cfg.amax = 100.0f;
     cfg.sample_dt = 0.01f;

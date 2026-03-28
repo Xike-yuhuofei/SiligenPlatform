@@ -17,9 +17,9 @@ namespace Siligen::Application::UseCases::Dispensing
 - **workflow 定位**: workflow 通过 `job-ingest/contracts` 消费 `UploadRequest`、`UploadResponse` 与 `IUploadFilePort`，继续执行 `CreateArtifact -> PreparePlan -> Preview/Job` 编排链
 
 ### PlanningUseCase
-- **职责**: 解析 DXF 并生成点胶路径规划
+- **职责**: 编排 `.pb -> process path -> motion plan -> execution package/preview` 生成链
 - **使用场景**: 路径预览和编辑
-- **补充**: 可选启用 Domain 插补算法（由 `Domain::Dispensing::DomainServices::DispensingPlanner` 内部直接调用 Domain 插补组件），用于生成插补轨迹点用于预览/分析
+- **补充**: 可选启用 Domain 插补算法，但 live 链已改为通过 `ProcessPathFacade`、`MotionPlanningFacade`、`DispensePlanningFacade` 组合完成，不再注入 `DispensingPlanner` concrete
 
 ### DispensingExecutionUseCase
 - **职责**: 执行 DXF 点胶任务
@@ -70,7 +70,7 @@ namespace Siligen::Application::UseCases::Dispensing
 - DXF 不是直接被 C++ 规划器消费；规划/预览/执行统一读取 `.pb`。
 - DXF 上传 owner 面由 `job-ingest` 承载；workflow 只在预览、规划、执行前消费统一准备好的输入事实，并通过 `DxfPbPreparationService` 确保 `.pb` 已存在、非空且时间戳不落后于源 DXF。
 - `DxfPbPreparationService` 默认调用本仓库内的 `scripts/engineering-data/dxf_to_pb.py`；仅在显式设置 `SILIGEN_DXF_PROJECT_ROOT` 且路径有效时才调用外部 DXF 算法仓库，并向其 launcher 传递 canonical 子命令 `engineering-data-dxf-to-pb`。
-- `Domain::Dispensing::DomainServices::DispensingPlanner` 在主链路中接收 `EnsurePbReady` 返回的 `.pb` 路径，不再直接消费 `.dxf`。
+- `PlanningUseCase` 在主链路中接收 `EnsurePbReady` 返回的 `.pb` 路径，并继续编排 `M6 -> M7 -> M8` owner facade；live 链不再直接消费 `DispensingPlannerService`。
 - `ContourAugmenterAdapter` 已下沉到 `infrastructure/adapters/planning/geometry`，应用层不再直接承载几何增广实现。
 - `AutoPathSourceAdapter` 的 legacy DXF 自动预处理分支默认禁用；仅在显式设置 `SILIGEN_DXF_AUTOPATH_LEGACY=1` 时允许临时回退。
 - 上传阶段的校验不只看扩展名或文件头，还会实际跑预处理；若 DXF 无法解析，或预处理后没有导出任何受支持图元，上传会直接失败。

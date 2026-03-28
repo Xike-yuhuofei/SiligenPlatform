@@ -62,9 +62,12 @@ def test_online_preview_evidence_bundle_contract(tmp_path: Path) -> None:
     required_paths = {
         "plan_prepare": report_dir / "plan-prepare.json",
         "snapshot": report_dir / "snapshot.json",
-        "trajectory_polyline": report_dir / "trajectory_polyline.json",
+        "glue_points": report_dir / "glue_points.json",
+        "execution_polyline": report_dir / "execution_polyline.json",
         "preview_verdict": report_dir / "preview-verdict.json",
         "preview_evidence": report_dir / "preview-evidence.md",
+        "hmi_preview": report_dir / "hmi-preview.png",
+        "online_smoke_log": report_dir / "online-smoke.log",
     }
     for label, path in required_paths.items():
         assert path.exists(), f"missing {label} artifact: {path}"
@@ -81,7 +84,9 @@ def test_online_preview_evidence_bundle_contract(tmp_path: Path) -> None:
         "plan_id",
         "preview_state",
         "preview_source",
-        "trajectory_polyline",
+        "preview_kind",
+        "glue_points",
+        "execution_polyline",
     }.issubset(snapshot.keys())
     assert {
         "verdict",
@@ -90,12 +95,17 @@ def test_online_preview_evidence_bundle_contract(tmp_path: Path) -> None:
         "dxf_file",
         "artifact_id",
         "preview_source",
+        "preview_kind",
         "snapshot_hash",
         "plan_id",
         "plan_fingerprint",
         "geometry_semantics_match",
         "order_semantics_match",
         "dispense_motion_semantics_match",
+        "glue_point_count",
+        "execution_polyline_source_point_count",
+        "glue_point_spacing_median_mm",
+        "corner_duplicate_point_count",
     }.issubset(preview_verdict.keys())
     assert preview_verdict["verdict"] in {
         "passed",
@@ -110,5 +120,13 @@ def test_online_preview_evidence_bundle_contract(tmp_path: Path) -> None:
     assert preview_verdict["plan_fingerprint"] == plan_prepare["plan_fingerprint"]
     assert preview_verdict["snapshot_hash"] == snapshot["snapshot_hash"]
     assert preview_verdict["preview_source"] == snapshot["preview_source"]
+    assert preview_verdict["preview_kind"] == snapshot["preview_kind"]
+    assert preview_verdict["preview_source"] == "planned_glue_snapshot"
+    assert preview_verdict["preview_kind"] == "glue_points"
+    assert preview_verdict["glue_point_count"] == snapshot["glue_point_count"]
+    assert preview_verdict["execution_polyline_source_point_count"] == snapshot["execution_polyline_source_point_count"]
     assert "plan-prepare.json" in preview_evidence
     assert "preview-verdict.json" in preview_evidence
+    assert "glue_points.json" in preview_evidence
+    assert "execution_polyline.json" in preview_evidence
+    assert "hmi-preview.png" in preview_evidence

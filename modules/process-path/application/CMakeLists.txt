@@ -17,7 +17,6 @@ target_include_directories(siligen_process_path_application_headers INTERFACE
 )
 target_link_libraries(siligen_process_path_application_headers INTERFACE
     siligen_process_path_contracts_public
-    siligen_process_path_domain_trajectory
 )
 if(TARGET siligen_coordinate_alignment_contracts_public)
     target_link_libraries(siligen_process_path_application_headers INTERFACE
@@ -45,9 +44,14 @@ target_include_directories(siligen_process_path_application PRIVATE
 )
 target_link_libraries(siligen_process_path_application PUBLIC
     siligen_process_path_contracts_public
-    siligen_process_path_domain_trajectory
     siligen_types
     siligen_utils
+)
+target_link_libraries(siligen_process_path_application PRIVATE
+    siligen_process_path_domain_trajectory
+)
+target_link_libraries(siligen_process_path_application INTERFACE
+    $<LINK_ONLY:siligen_process_path_domain_trajectory>
 )
 if(TARGET siligen_coordinate_alignment_contracts_public)
     target_link_libraries(siligen_process_path_application PUBLIC
@@ -65,9 +69,3 @@ target_link_libraries(siligen_process_path_application_public INTERFACE
     $<LINK_ONLY:siligen_process_path_application>
 )
 target_compile_features(siligen_process_path_application_public INTERFACE cxx_std_17)
-
-if(TARGET siligen_process_runtime_core_planning)
-    target_link_libraries(siligen_process_runtime_core_planning INTERFACE
-        siligen_process_path_application_public
-    )
-endif()

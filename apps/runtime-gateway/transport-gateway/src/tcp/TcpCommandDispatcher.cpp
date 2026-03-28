@@ -2441,19 +2441,30 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
     if (snapshot.preview_source.empty()) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview source is missing");
     }
-    if (snapshot.preview_source != "runtime_snapshot") {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview source must be runtime_snapshot");
+    if (snapshot.preview_source != "planned_glue_snapshot") {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview source must be planned_glue_snapshot");
+    }
+    if (snapshot.preview_kind != "glue_points") {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview kind must be glue_points");
     }
 
-    nlohmann::json trajectory_polyline = nlohmann::json::array();
-    for (const auto& point : snapshot.trajectory_polyline) {
-        trajectory_polyline.push_back({
+    nlohmann::json glue_points = nlohmann::json::array();
+    for (const auto& point : snapshot.glue_points) {
+        glue_points.push_back({
             {"x", static_cast<double>(point.x)},
             {"y", static_cast<double>(point.y)},
         });
     }
-    if (trajectory_polyline.empty()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview trajectory polyline is empty");
+    if (glue_points.empty()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview glue points are empty");
+    }
+
+    nlohmann::json execution_polyline = nlohmann::json::array();
+    for (const auto& point : snapshot.execution_polyline) {
+        execution_polyline.push_back({
+            {"x", static_cast<double>(point.x)},
+            {"y", static_cast<double>(point.y)},
+        });
     }
 
     {
@@ -2490,12 +2501,19 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
         {"plan_id", resolved_plan_id},
         {"preview_state", snapshot.preview_state},
         {"preview_source", snapshot.preview_source},
+        {"preview_kind", snapshot.preview_kind},
         {"confirmed_at", snapshot.confirmed_at},
         {"segment_count", snapshot.segment_count},
         {"point_count", snapshot.point_count},
-        {"polyline_point_count", snapshot.polyline_point_count},
-        {"polyline_source_point_count", snapshot.polyline_source_point_count},
-        {"trajectory_polyline", trajectory_polyline},
+        {"glue_point_count", snapshot.glue_point_count},
+        {"glue_points", glue_points},
+        {"execution_point_count", snapshot.execution_point_count},
+        {"execution_polyline_point_count", snapshot.execution_polyline_point_count},
+        {"execution_polyline_source_point_count", snapshot.execution_polyline_source_point_count},
+        {"execution_polyline", execution_polyline},
+        {"polyline_point_count", snapshot.execution_polyline_point_count},
+        {"polyline_source_point_count", snapshot.execution_polyline_source_point_count},
+        {"trajectory_polyline", execution_polyline},
         {"total_length_mm", snapshot.total_length_mm},
         {"estimated_time_s", snapshot.estimated_time_s},
         {"generated_at", snapshot.generated_at}

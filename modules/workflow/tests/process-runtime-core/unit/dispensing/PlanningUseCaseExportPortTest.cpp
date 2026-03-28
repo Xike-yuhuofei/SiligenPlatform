@@ -1,5 +1,8 @@
 #include "application/usecases/dispensing/PlanningUseCase.h"
 
+#include "application/services/dispensing/DispensePlanningFacade.h"
+#include "application/services/motion_planning/MotionPlanningFacade.h"
+#include "application/services/process_path/ProcessPathFacade.h"
 #include "application/services/dxf/DxfPbPreparationService.h"
 #include "domain/trajectory/ports/IPathSourcePort.h"
 #include "workflow/contracts/WorkflowContracts.h"
@@ -21,7 +24,6 @@ using Siligen::Application::UseCases::Dispensing::PlanningUseCase;
 using Siligen::Application::Services::Dispensing::PlanningArtifactExportRequest;
 using Siligen::Application::Services::Dispensing::PlanningArtifactExportResult;
 using Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort;
-using Siligen::Domain::Dispensing::DomainServices::DispensingPlanner;
 using Siligen::Domain::Configuration::Ports::IConfigurationPort;
 using Siligen::Domain::Configuration::Ports::HomingConfig;
 using Siligen::Domain::Trajectory::Ports::IPathSourcePort;
@@ -134,10 +136,16 @@ TEST(PlanningUseCaseExportPortTest, ExecuteBuildsExportRequestWithoutDirectFiles
     auto temp_pb = MakeTempPbPath();
     auto config_port = std::make_shared<FakeConfigurationPort>();
     auto path_source = std::make_shared<FakePathSourcePort>();
-    auto planner = std::make_shared<DispensingPlanner>(path_source);
     auto export_port = std::make_shared<FakePlanningArtifactExportPort>();
     auto pb_service = std::make_shared<DxfPbPreparationService>();
-    PlanningUseCase use_case(planner, config_port, pb_service, export_port);
+    PlanningUseCase use_case(
+        path_source,
+        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
+        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        config_port,
+        pb_service,
+        export_port);
 
     const auto result = use_case.Execute(MakePlanningRequest(temp_pb));
 

@@ -3,14 +3,14 @@
 #include "domain/motion/value-objects/MotionTrajectory.h"
 #include "domain/motion/value-objects/SemanticPath.h"
 #include "domain/motion/value-objects/TimePlanningConfig.h"
-#include "domain/trajectory/value-objects/ProcessPath.h"
+#include "process_path/contracts/ProcessPath.h"
 
 namespace Siligen::Domain::Motion::DomainServices {
 
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectory;
 using Siligen::Domain::Motion::ValueObjects::SemanticPath;
 using Siligen::Domain::Motion::ValueObjects::TimePlanningConfig;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
+using Siligen::ProcessPath::Contracts::ProcessPath;
 
 class TimeTrajectoryPlanner {
    public:

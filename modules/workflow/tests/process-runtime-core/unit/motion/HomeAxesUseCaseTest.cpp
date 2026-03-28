@@ -694,6 +694,10 @@ TEST(HomeAxesUseCaseTest, ExecutesHomingForConfiguredAxes) {
     EXPECT_EQ(response.successfully_homed_axes.size(), 1u);
     EXPECT_TRUE(response.failed_axes.empty());
     EXPECT_TRUE(response.all_completed);
+    ASSERT_EQ(response.axis_results.size(), 1u);
+    EXPECT_EQ(response.axis_results[0].axis, Siligen::Shared::Types::LogicalAxisId::X);
+    EXPECT_TRUE(response.axis_results[0].success);
+    EXPECT_EQ(response.axis_results[0].message, "Already homed");
 }
 
 TEST(HomeAxesUseCaseTest, RejectsInvalidRequest) {
@@ -746,6 +750,8 @@ TEST(HomeAxesUseCaseTest, SkipsAlreadyHomedAxes) {
     EXPECT_EQ(response.successfully_homed_axes.size(), 1u);
     EXPECT_TRUE(response.failed_axes.empty());
     EXPECT_TRUE(response.all_completed);
+    ASSERT_EQ(response.axis_results.size(), 1u);
+    EXPECT_EQ(response.axis_results[0].message, "Already homed");
 }
 
 TEST(HomeAxesUseCaseTest, ForcesRehomeWhenRequested) {
@@ -838,6 +844,7 @@ TEST(HomeAxesUseCaseTest, StartsAllRequestedAxesBeforeWaitingForCompletion) {
     EXPECT_EQ(result.Value().successfully_homed_axes.size(), 2u);
     EXPECT_TRUE(result.Value().failed_axes.empty());
     EXPECT_TRUE(result.Value().all_completed);
+    ASSERT_EQ(result.Value().axis_results.size(), 2u);
 }
 
 TEST(HomeAxesUseCaseTest, RetriesWhenHomingVerificationFails) {
@@ -963,6 +970,9 @@ TEST(HomeAxesUseCaseTest, StopsAndResetsAxisWhenHomingUltimatelyFails) {
     EXPECT_EQ(result.Value().failed_axes.size(), 1u);
     EXPECT_EQ(homing_port->StopCalls(), 1);
     EXPECT_EQ(homing_port->ResetCalls(), 1);
+    ASSERT_EQ(result.Value().axis_results.size(), 1u);
+    EXPECT_FALSE(result.Value().axis_results[0].success);
+    EXPECT_EQ(result.Value().axis_results[0].message, "Homing timeout");
 }
 
 TEST(HomeAxesUseCaseTest, TreatsLateHomedStatusAsSuccessAfterWaitFailure) {

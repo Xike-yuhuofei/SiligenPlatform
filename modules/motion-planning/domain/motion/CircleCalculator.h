@@ -11,8 +11,8 @@
 
 #include "shared/types/Point.h"
 #include "shared/types/Types.h"
-#include "ArcInterpolator.h"
-#include "TrajectoryInterpolatorBase.h"
+#include "domain/motion/domain-services/interpolation/ArcInterpolator.h"
+#include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
 
 namespace Siligen::Domain::Motion {
 

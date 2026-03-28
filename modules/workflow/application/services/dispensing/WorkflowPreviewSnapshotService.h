@@ -14,11 +14,12 @@ struct WorkflowPreviewSnapshotInput {
     std::string preview_state;
     std::string confirmed_at;
     std::uint32_t segment_count = 0;
-    std::uint32_t point_count = 0;
+    std::uint32_t execution_point_count = 0;
     float32 total_length_mm = 0.0f;
     float32 estimated_time_s = 0.0f;
     std::string generated_at;
-    const std::vector<Siligen::TrajectoryPoint>* trajectory_points = nullptr;
+    const std::vector<Siligen::TrajectoryPoint>* execution_trajectory_points = nullptr;
+    const std::vector<Siligen::Shared::Types::Point2D>* glue_points = nullptr;
 };
 
 class WorkflowPreviewSnapshotService {

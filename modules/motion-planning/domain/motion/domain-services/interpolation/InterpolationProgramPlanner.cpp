@@ -1,6 +1,6 @@
 #include "InterpolationProgramPlanner.h"
 
-#include "domain/trajectory/value-objects/GeometryUtils.h"
+#include "process_path/contracts/GeometryUtils.h"
 #include "shared/types/Error.h"
 
 #include <algorithm>
@@ -13,13 +13,13 @@ using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Point2D;
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectoryPoint;
 using Siligen::Domain::Motion::Ports::InterpolationType;
-using Siligen::Domain::Trajectory::ValueObjects::Segment;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
-using Siligen::Domain::Trajectory::ValueObjects::ArcPrimitive;
-using Siligen::Domain::Trajectory::ValueObjects::ComputeArcLength;
-using Siligen::Domain::Trajectory::ValueObjects::ComputeArcSweep;
-using Siligen::Domain::Trajectory::ValueObjects::ArcPoint;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentEnd;
+using Siligen::ProcessPath::Contracts::ArcPrimitive;
+using Siligen::ProcessPath::Contracts::Segment;
+using Siligen::ProcessPath::Contracts::SegmentType;
+using Siligen::ProcessPath::Contracts::ComputeArcLength;
+using Siligen::ProcessPath::Contracts::ComputeArcSweep;
+using Siligen::ProcessPath::Contracts::ArcPoint;
+using Siligen::ProcessPath::Contracts::SegmentEnd;
 
 namespace {
 constexpr float32 kEpsilon = 1e-6f;

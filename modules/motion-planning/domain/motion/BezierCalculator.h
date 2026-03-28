@@ -17,8 +17,8 @@
 
 #include "shared/types/Point.h"
 #include "shared/types/Types.h"
-#include "TrajectoryInterpolatorBase.h"
-#include "SplineInterpolator.h"
+#include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
+#include "domain/motion/domain-services/interpolation/SplineInterpolator.h"
 
 #include <vector>
 

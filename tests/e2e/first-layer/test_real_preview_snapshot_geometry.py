@@ -69,27 +69,35 @@ def test_real_preview_snapshot_matches_rect_diag_baseline(tmp_path: Path) -> Non
     report_json_path = report_dir / "real-dxf-preview-snapshot.json"
     plan_prepare_json_path = report_dir / "plan-prepare.json"
     snapshot_json_path = report_dir / "snapshot.json"
-    polyline_json_path = report_dir / "trajectory_polyline.json"
+    glue_points_json_path = report_dir / "glue_points.json"
+    execution_polyline_json_path = report_dir / "execution_polyline.json"
     preview_verdict_json_path = report_dir / "preview-verdict.json"
     preview_evidence_md_path = report_dir / "preview-evidence.md"
+    hmi_screenshot_path = report_dir / "hmi-preview.png"
+    online_smoke_log_path = report_dir / "online-smoke.log"
 
     assert report_json_path.exists(), f"missing report artifact: {report_json_path}"
     assert plan_prepare_json_path.exists(), f"missing report artifact: {plan_prepare_json_path}"
     assert snapshot_json_path.exists(), f"missing snapshot artifact: {snapshot_json_path}"
-    assert polyline_json_path.exists(), f"missing polyline artifact: {polyline_json_path}"
+    assert glue_points_json_path.exists(), f"missing glue artifact: {glue_points_json_path}"
+    assert execution_polyline_json_path.exists(), f"missing execution polyline artifact: {execution_polyline_json_path}"
     assert preview_verdict_json_path.exists(), f"missing report artifact: {preview_verdict_json_path}"
     assert preview_evidence_md_path.exists(), f"missing report artifact: {preview_evidence_md_path}"
+    assert hmi_screenshot_path.exists(), f"missing HMI screenshot artifact: {hmi_screenshot_path}"
+    assert online_smoke_log_path.exists(), f"missing online smoke log artifact: {online_smoke_log_path}"
 
     report = _load_json(report_json_path)
     plan_prepare = _load_json(plan_prepare_json_path)
     snapshot = _load_json(snapshot_json_path)
-    polyline = _load_json(polyline_json_path)
+    glue_points = _load_json(glue_points_json_path)
+    execution_polyline = _load_json(execution_polyline_json_path)
     preview_verdict = _load_json(preview_verdict_json_path)
     preview_evidence = preview_evidence_md_path.read_text(encoding="utf-8")
 
     assert report["overall_status"] == "passed"
     assert report["config_mode"] == baseline["config_mode"]
     assert report["preview_source"] == baseline["preview_source"]
+    assert report["preview_kind"] == baseline["preview_kind"]
     assert report["dxf_file"].endswith(str(baseline["dxf_file"]).replace("/", "\\"))
     assert report["plan_id"] == plan_prepare["plan_id"]
     assert report["plan_fingerprint"] == plan_prepare["plan_fingerprint"]
@@ -97,26 +105,40 @@ def test_real_preview_snapshot_matches_rect_diag_baseline(tmp_path: Path) -> Non
     assert snapshot["plan_id"] == plan_prepare["plan_id"]
     assert snapshot["snapshot_hash"] == plan_prepare["plan_fingerprint"]
     assert snapshot["segment_count"] == baseline["snapshot"]["segment_count"]
-    assert snapshot["point_count"] == baseline["snapshot"]["point_count"]
-    assert snapshot["polyline_point_count"] == baseline["snapshot"]["polyline_point_count"]
-    assert snapshot["polyline_source_point_count"] == baseline["snapshot"]["polyline_source_point_count"]
-    assert snapshot["polyline_point_count"] == len(polyline)
+    assert snapshot["preview_kind"] == baseline["preview_kind"]
+    assert snapshot["glue_point_count"] == baseline["snapshot"]["glue_point_count"]
+    assert snapshot["point_count"] == baseline["snapshot"]["glue_point_count"]
+    assert snapshot["glue_point_count"] == len(glue_points)
+    assert snapshot["execution_polyline_point_count"] == baseline["snapshot"]["execution_polyline_point_count"]
+    assert snapshot["execution_polyline_source_point_count"] == baseline["snapshot"]["execution_polyline_source_point_count"]
+    assert snapshot["execution_polyline_point_count"] == len(execution_polyline)
     assert preview_verdict["verdict"] == "passed"
     assert preview_verdict["launch_mode"] == "online"
     assert preview_verdict["online_ready"] is True
     assert preview_verdict["preview_source"] == baseline["preview_source"]
+    assert preview_verdict["preview_kind"] == baseline["preview_kind"]
     assert preview_verdict["plan_id"] == plan_prepare["plan_id"]
     assert preview_verdict["plan_fingerprint"] == plan_prepare["plan_fingerprint"]
     assert preview_verdict["snapshot_hash"] == snapshot["snapshot_hash"]
     assert preview_verdict["geometry_semantics_match"] is True
     assert preview_verdict["order_semantics_match"] is True
     assert preview_verdict["dispense_motion_semantics_match"] is True
+    assert preview_verdict["glue_point_count"] == baseline["snapshot"]["glue_point_count"]
+    assert (
+        preview_verdict["execution_polyline_source_point_count"]
+        == baseline["snapshot"]["execution_polyline_source_point_count"]
+    )
+    assert preview_verdict["corner_duplicate_point_count"] == 0
     assert "preview-verdict.json" in preview_evidence
     assert "plan_fingerprint" in preview_evidence
+    assert "glue_points.json" in preview_evidence
+    assert "execution_polyline.json" in preview_evidence
+    assert "hmi-preview.png" in preview_evidence
 
     coordinate_tolerance = float(baseline["tolerances"]["coordinate_mm"])
     length_tolerance = float(baseline["tolerances"]["length_mm"])
     time_tolerance = float(baseline["tolerances"]["time_s"])
+    spacing_tolerance = float(baseline["tolerances"]["spacing_mm"])
 
     _assert_close(
         float(snapshot["total_length_mm"]),
@@ -131,27 +153,87 @@ def test_real_preview_snapshot_matches_rect_diag_baseline(tmp_path: Path) -> Non
         "snapshot.estimated_time_s",
     )
 
-    geometry_summary = report["geometry_summary"]
-    baseline_geometry = baseline["geometry_summary"]
-    assert geometry_summary["point_count"] == baseline_geometry["point_count"]
-    assert geometry_summary["axis_aligned_segments"] == baseline_geometry["axis_aligned_segments"]
-    assert geometry_summary["diagonal_segments"] == baseline_geometry["diagonal_segments"]
+    glue_summary = report["glue_summary"]
+    baseline_glue = baseline["glue_summary"]
+    assert glue_summary["point_count"] == baseline_glue["point_count"]
+    assert glue_summary["corner_duplicate_point_count"] == baseline_glue["corner_duplicate_point_count"]
+    _assert_close(
+        float(glue_summary["adjacent_distance_median_mm"]),
+        float(baseline_glue["adjacent_distance_median_mm"]),
+        spacing_tolerance,
+        "glue_summary.adjacent_distance_median_mm",
+    )
 
     for axis_name in ("x_range", "y_range"):
-        actual_range = geometry_summary[axis_name]
-        expected_range = baseline_geometry[axis_name]
+        actual_range = glue_summary[axis_name]
+        expected_range = baseline_glue[axis_name]
         _assert_close(float(actual_range[0]), float(expected_range[0]), coordinate_tolerance, f"{axis_name}[0]")
         _assert_close(float(actual_range[1]), float(expected_range[1]), coordinate_tolerance, f"{axis_name}[1]")
 
     for point_name in ("first_point", "last_point"):
-        actual_point = geometry_summary[point_name]
-        expected_point = baseline_geometry[point_name]
+        actual_point = glue_summary[point_name]
+        expected_point = baseline_glue[point_name]
         _assert_close(float(actual_point["x"]), float(expected_point["x"]), coordinate_tolerance, f"{point_name}.x")
         _assert_close(float(actual_point["y"]), float(expected_point["y"]), coordinate_tolerance, f"{point_name}.y")
 
-    for expected_point in baseline["sample_points"]:
+    execution_summary = report["execution_geometry_summary"]
+    baseline_execution = baseline["execution_geometry_summary"]
+    assert execution_summary["point_count"] == baseline_execution["point_count"]
+    assert execution_summary["axis_aligned_segments"] == baseline_execution["axis_aligned_segments"]
+    assert execution_summary["diagonal_segments"] == baseline_execution["diagonal_segments"]
+
+    for axis_name in ("x_range", "y_range"):
+        actual_range = execution_summary[axis_name]
+        expected_range = baseline_execution[axis_name]
+        _assert_close(
+            float(actual_range[0]),
+            float(expected_range[0]),
+            coordinate_tolerance,
+            f"execution_{axis_name}[0]",
+        )
+        _assert_close(
+            float(actual_range[1]),
+            float(expected_range[1]),
+            coordinate_tolerance,
+            f"execution_{axis_name}[1]",
+        )
+
+    for point_name in ("first_point", "last_point"):
+        actual_point = execution_summary[point_name]
+        expected_point = baseline_execution[point_name]
+        _assert_close(
+            float(actual_point["x"]),
+            float(expected_point["x"]),
+            coordinate_tolerance,
+            f"execution_{point_name}.x",
+        )
+        _assert_close(
+            float(actual_point["y"]),
+            float(expected_point["y"]),
+            coordinate_tolerance,
+            f"execution_{point_name}.y",
+        )
+
+    for expected_point in baseline["glue_sample_points"]:
         index = int(expected_point["index"])
-        assert 0 <= index < len(polyline), f"sample index out of range: {index}"
-        actual_point = polyline[index]
-        _assert_close(float(actual_point["x"]), float(expected_point["x"]), coordinate_tolerance, f"polyline[{index}].x")
-        _assert_close(float(actual_point["y"]), float(expected_point["y"]), coordinate_tolerance, f"polyline[{index}].y")
+        assert 0 <= index < len(glue_points), f"glue sample index out of range: {index}"
+        actual_point = glue_points[index]
+        _assert_close(float(actual_point["x"]), float(expected_point["x"]), coordinate_tolerance, f"glue[{index}].x")
+        _assert_close(float(actual_point["y"]), float(expected_point["y"]), coordinate_tolerance, f"glue[{index}].y")
+
+    for expected_point in baseline["execution_sample_points"]:
+        index = int(expected_point["index"])
+        assert 0 <= index < len(execution_polyline), f"execution sample index out of range: {index}"
+        actual_point = execution_polyline[index]
+        _assert_close(
+            float(actual_point["x"]),
+            float(expected_point["x"]),
+            coordinate_tolerance,
+            f"execution_polyline[{index}].x",
+        )
+        _assert_close(
+            float(actual_point["y"]),
+            float(expected_point["y"]),
+            coordinate_tolerance,
+            f"execution_polyline[{index}].y",
+        )

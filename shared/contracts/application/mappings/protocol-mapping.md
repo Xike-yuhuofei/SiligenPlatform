@@ -23,7 +23,7 @@
 | `dxf.load` | 命令 | `CommandProtocol.dxf_load()` | `HandleDxfLoad` | `DXF_PLAN` / `DXF_DISPENSE` 前置 | `loaded` / `segment_count` / `filepath` | 同时接受 `filepath` / `file_path` |
 | `dxf.artifact.create` | 命令 | `CommandProtocol.dxf_create_artifact()` | `HandleDxfArtifactCreate` | 无独立 CLI facade | `artifact_id` / `filepath` / `size` | 生成 canonical artifact，作为后续 prepare 的唯一输入 |
 | `dxf.plan.prepare` | 命令 | `CommandProtocol.dxf_prepare_plan()` | `HandleDxfPlanPrepare` | `DXF_PLAN` | `plan_id` / `plan_fingerprint` / `estimated_time_s` | 允许省略 `artifact_id` 回退最近一次已加载 artifact，但新客户端应显式传入 |
-| `dxf.preview.snapshot` | 命令 | `CommandProtocol.dxf_preview_snapshot()` | `HandleDxfPreviewSnapshot` | 无独立 CLI facade | `snapshot_hash` / `plan_id` / `trajectory_polyline` | 新链要求显式 `plan_id`；缺省回退路径仅为过渡兼容 |
+| `dxf.preview.snapshot` | 命令 | `CommandProtocol.dxf_preview_snapshot()` | `HandleDxfPreviewSnapshot` | 无独立 CLI facade | `snapshot_hash` / `plan_id` / `preview_kind` / `glue_points` / `execution_polyline` | 主预览语义已切到 `glue_points`；`trajectory_polyline` 与 `polyline_*` 仅保留兼容别名 |
 | `dxf.preview.confirm` | 命令 | `CommandProtocol.dxf_preview_confirm()` | `HandleDxfPreviewConfirm` | 无独立 CLI facade | `confirmed` / `plan_id` / `snapshot_hash` | 预览确认后才能进入 `dxf.job.start` |
 | `dxf.job.start` | 命令 | `CommandProtocol.dxf_start_job()` | `HandleDxfJobStart` | `DXF_DISPENSE` | `started` / `job_id` / `plan_id` / `plan_fingerprint` | canonical 启动入口；旧 `dxf.execute` 已退役 |
 | `dxf.job.status` | 查询 | `CommandProtocol.dxf_get_job_status()` | `HandleDxfJobStatus` | 无 | `state` / `overall_progress_percent` / `completed_count` | 作为运行态查询主入口，替代旧 `dxf.progress` |

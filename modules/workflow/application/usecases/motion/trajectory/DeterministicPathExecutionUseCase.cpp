@@ -2,6 +2,7 @@
 
 #include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
 #include "domain/motion/domain-services/MotionPlanner.h"
+#include "process_path/contracts/ProcessPath.h"
 #include "domain/trajectory/value-objects/GeometryUtils.h"
 #include "shared/types/Error.h"
 
@@ -20,10 +21,10 @@ using Siligen::Domain::Motion::Ports::InterpolationData;
 using Siligen::Domain::Motion::Ports::MotionStatus;
 using Siligen::Domain::Motion::Ports::MotionState;
 using Siligen::Domain::Motion::ValueObjects::TimePlanningConfig;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
+using Siligen::ProcessPath::Contracts::ProcessPath;
+using Siligen::ProcessPath::Contracts::ProcessSegment;
+using Siligen::ProcessPath::Contracts::ProcessTag;
+using Siligen::ProcessPath::Contracts::SegmentType;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 

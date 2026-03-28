@@ -13,6 +13,36 @@
 
 namespace {
 constexpr float kEpsilon = 1e-4f;
+constexpr float kPi = 3.14159265358979323846f;
+
+float ComputeTestArcLength(const Siligen::ProcessPath::Contracts::ArcPrimitive& arc) {
+    float sweep_deg = arc.end_angle_deg - arc.start_angle_deg;
+    if (arc.clockwise && sweep_deg > 0.0f) {
+        sweep_deg -= 360.0f;
+    } else if (!arc.clockwise && sweep_deg < 0.0f) {
+        sweep_deg += 360.0f;
+    }
+    return std::abs(sweep_deg) * kPi / 180.0f * arc.radius;
+}
+
+Siligen::Shared::Types::Point2D ComputeTestArcPoint(
+    const Siligen::ProcessPath::Contracts::ArcPrimitive& arc,
+    float angle_deg) {
+    const float angle_rad = angle_deg * kPi / 180.0f;
+    return Siligen::Shared::Types::Point2D(
+        arc.center.x + arc.radius * std::cos(angle_rad),
+        arc.center.y + arc.radius * std::sin(angle_rad));
+}
+
+std::size_t CountTriggerMarkers(const std::vector<Siligen::TrajectoryPoint>& points) {
+    std::size_t count = 0;
+    for (const auto& point : points) {
+        if (point.enable_position_trigger) {
+            ++count;
+        }
+    }
+    return count;
+}
 
 class ArcPathSourceStub : public Siligen::Domain::Trajectory::Ports::IPathSourcePort {
    public:
@@ -75,13 +105,11 @@ TEST(CMPCoordinatedInterpolatorPrecisionTest, AcceptsExternalTriggerListForProce
     using Siligen::InterpolationConfig;
     using Siligen::Shared::Types::Point2D;
     using Siligen::Domain::Motion::CMPCoordinatedInterpolator;
-    using Siligen::Domain::Trajectory::ValueObjects::ArcPoint;
-    using Siligen::Domain::Trajectory::ValueObjects::ArcPrimitive;
-    using Siligen::Domain::Trajectory::ValueObjects::ComputeArcLength;
-    using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
-    using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
-    using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
-    using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
+    using Siligen::ProcessPath::Contracts::ArcPrimitive;
+    using Siligen::ProcessPath::Contracts::ProcessPath;
+    using Siligen::ProcessPath::Contracts::ProcessSegment;
+    using Siligen::ProcessPath::Contracts::ProcessTag;
+    using Siligen::ProcessPath::Contracts::SegmentType;
 
     ArcPrimitive arc;
     arc.center = Point2D(0.0f, 0.0f);
@@ -97,12 +125,12 @@ TEST(CMPCoordinatedInterpolatorPrecisionTest, AcceptsExternalTriggerListForProce
     seg.tag = ProcessTag::Normal;
     seg.geometry.type = SegmentType::Arc;
     seg.geometry.arc = arc;
-    seg.geometry.length = ComputeArcLength(arc);
+    seg.geometry.length = ComputeTestArcLength(arc);
     path.segments.push_back(seg);
 
     DispensingTriggerPoint trigger;
-    trigger.position = ArcPoint(arc, 45.0f);
-    trigger.trigger_distance = ComputeArcLength(arc) * 0.5f;
+    trigger.position = ComputeTestArcPoint(arc, 45.0f);
+    trigger.trigger_distance = ComputeTestArcLength(arc) * 0.5f;
     trigger.sequence_id = 0;
     trigger.pulse_width_us = 2000;
     trigger.is_enabled = true;
@@ -204,4 +232,73 @@ TEST(CMPCoordinatedInterpolatorPrecisionTest, DispensingPlannerKeepsArcTriggerOn
     EXPECT_NEAR(best_point.x, expected.x, kEpsilon);
     EXPECT_NEAR(best_point.y, expected.y, kEpsilon);
     EXPECT_LT(best_distance, 1e-3f);
+}
+
+TEST(CMPCoordinatedInterpolatorPrecisionTest, DispensingPlannerLinearInterpolationOnlyMarksRealTriggerDistances) {
+    using Siligen::Shared::Types::Point2D;
+    using Siligen::Domain::Dispensing::DomainServices::DispensingPlanRequest;
+    using Siligen::Domain::Dispensing::DomainServices::DispensingPlanner;
+    using Siligen::Domain::Motion::InterpolationAlgorithm;
+    using Siligen::Domain::Trajectory::ValueObjects::Primitive;
+
+    auto path_source =
+        std::make_shared<ArcPathSourceStub>(Primitive::MakeLine(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)));
+    DispensingPlanner planner(path_source);
+
+    DispensingPlanRequest request;
+    request.dxf_filepath = "line-test.dxf";
+    request.dispensing_velocity = 20.0f;
+    request.acceleration = 100.0f;
+    request.max_jerk = 500.0f;
+    request.sample_dt = 0.01f;
+    request.spline_max_step_mm = 100.0f;
+    request.trigger_spatial_interval_mm = 3.0f;
+    request.use_interpolation_planner = true;
+    request.interpolation_algorithm = InterpolationAlgorithm::LINEAR;
+    request.use_hardware_trigger = false;
+
+    auto plan_result = planner.Plan(request);
+    ASSERT_TRUE(plan_result.IsSuccess()) << plan_result.GetError().GetMessage();
+
+    const auto& plan = plan_result.Value();
+    ASSERT_FALSE(plan.interpolation_points.empty());
+    ASSERT_EQ(plan.trigger_distances_mm.size(), 3U);
+    EXPECT_EQ(CountTriggerMarkers(plan.interpolation_points), plan.trigger_distances_mm.size());
+    EXPECT_LT(plan.trigger_distances_mm.size(), plan.interpolation_points.size());
+}
+
+TEST(CMPCoordinatedInterpolatorPrecisionTest, BuildPreviewPointsUsesTriggerDistancesInsteadOfDispenseRegionFlags) {
+    using Siligen::Shared::Types::Point2D;
+    using Siligen::Domain::Dispensing::DomainServices::DispensingPlan;
+    using Siligen::Domain::Dispensing::DomainServices::DispensingPlanner;
+    using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
+    using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
+
+    DispensingPlan plan;
+    ProcessSegment process_segment;
+    process_segment.dispense_on = true;
+    process_segment.geometry.type = SegmentType::Line;
+    process_segment.geometry.line.start = Point2D(0.0f, 0.0f);
+    process_segment.geometry.line.end = Point2D(10.0f, 0.0f);
+    process_segment.geometry.length = 10.0f;
+    plan.process_path.segments.push_back(process_segment);
+    for (int index = 0; index <= 100; ++index) {
+        const float ratio = static_cast<float>(index) / 100.0f;
+        Siligen::TrajectoryPoint point(Point2D(ratio * 10.0f, 0.0f), 10.0f);
+        point.timestamp = ratio;
+        point.enable_position_trigger = true;
+        plan.interpolation_points.push_back(point);
+    }
+    plan.trigger_distances_mm = {3.0f, 6.0f, 9.0f};
+
+    DispensingPlanner planner(nullptr);
+    const auto preview = planner.BuildPreviewPoints(plan, 3.0f, 1024);
+
+    ASSERT_EQ(preview.size(), 3U);
+    EXPECT_TRUE(preview[0].enable_position_trigger);
+    EXPECT_TRUE(preview[1].enable_position_trigger);
+    EXPECT_TRUE(preview[2].enable_position_trigger);
+    EXPECT_NEAR(preview[0].position.x, 3.0f, kEpsilon);
+    EXPECT_NEAR(preview[1].position.x, 6.0f, kEpsilon);
+    EXPECT_NEAR(preview[2].position.x, 9.0f, kEpsilon);
 }

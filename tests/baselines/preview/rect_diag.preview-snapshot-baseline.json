@@ -1,20 +1,21 @@
 {
   "dxf_file": "samples/dxf/rect_diag.dxf",
   "config_mode": "mock",
-  "preview_source": "runtime_snapshot",
+  "preview_source": "planned_glue_snapshot",
+  "preview_kind": "glue_points",
   "snapshot": {
     "preview_state": "snapshot_ready",
     "segment_count": 9,
-    "point_count": 5463,
-    "polyline_point_count": 183,
-    "polyline_source_point_count": 5463,
-    "total_length_mm": 545.2704467773438,
-    "estimated_time_s": 54.616485595703125
+    "glue_point_count": 180,
+    "execution_polyline_point_count": 203,
+    "execution_polyline_source_point_count": 9617,
+    "total_length_mm": 540.9197387695312,
+    "estimated_time_s": 96.15668487548828
   },
-  "geometry_summary": {
-    "point_count": 183,
+  "glue_summary": {
+    "point_count": 180,
     "x_range": [
-      -0.5670820474624634,
+      0.0,
       100.0
     ],
     "y_range": [
@@ -22,66 +23,120 @@
       100.0
     ],
     "first_point": {
+      "x": 3.0,
+      "y": 0.0
+    },
+    "last_point": {
+      "x": 99.39960479736328,
+      "y": 99.39960479736328
+    },
+    "adjacent_distance_median_mm": 3.000003236111371,
+    "corner_duplicate_point_count": 0
+  },
+  "execution_geometry_summary": {
+    "point_count": 203,
+    "x_range": [
+      0.0,
+      100.00001525878906
+    ],
+    "y_range": [
+      0.0,
+      100.00001525878906
+    ],
+    "first_point": {
       "x": 0.0,
       "y": 0.0
     },
     "last_point": {
-      "x": 100.0,
-      "y": 100.0
+      "x": 100.00001525878906,
+      "y": 100.00001525878906
     },
-    "axis_aligned_segments": 129,
+    "axis_aligned_segments": 149,
     "diagonal_segments": 53
   },
-  "sample_points": [
+  "glue_sample_points": [
+    {
+      "index": 0,
+      "x": 3.0,
+      "y": 0.0
+    },
+    {
+      "index": 32,
+      "x": 99.0,
+      "y": 0.0
+    },
+    {
+      "index": 60,
+      "x": 100.0,
+      "y": 83.20013427734375
+    },
+    {
+      "index": 67,
+      "x": 95.59978485107422,
+      "y": 100.0
+    },
+    {
+      "index": 99,
+      "x": 0.0,
+      "y": 99.39923858642578
+    },
+    {
+      "index": 121,
+      "x": 0.0,
+      "y": 33.398963928222656
+    },
+    {
+      "index": 140,
+      "x": 16.668094635009766,
+      "y": 16.668094635009766
+    },
+    {
+      "index": 179,
+      "x": 99.39960479736328,
+      "y": 99.39960479736328
+    }
+  ],
+  "execution_sample_points": [
     {
       "index": 0,
       "x": 0.0,
       "y": 0.0
     },
     {
-      "index": 33,
-      "x": 99.0,
-      "y": 0.0
-    },
-    {
-      "index": 61,
+      "index": 34,
       "x": 100.0,
-      "y": 81.9330062866211
+      "y": 0.5769209265708923
     },
     {
       "index": 68,
-      "x": 98.13912200927734,
-      "y": 100.0
+      "x": 100.0,
+      "y": 86.7952651977539
     },
     {
       "index": 101,
-      "x": -0.5670820474624634,
-      "y": 99.59254455566406
-    },
-    {
-      "index": 122,
-      "x": 0.0,
-      "y": 37.20631408691406
-    },
-    {
-      "index": 140,
-      "x": 11.558696746826172,
-      "y": 11.558696746826172
-    },
-    {
-      "index": 152,
-      "x": 37.01454162597656,
-      "y": 37.01454162597656
-    },
-    {
-      "index": 182,
-      "x": 100.0,
+      "x": 35.034889221191406,
       "y": 100.0
+    },
+    {
+      "index": 134,
+      "x": 0.0,
+      "y": 53.774620056152344
+    },
+    {
+      "index": 168,
+      "x": 29.671682357788086,
+      "y": 29.671682357788086
+    },
+    {
+      "index": 202,
+      "x": 100.00001525878906,
+      "y": 100.00001525878906
     }
   ],
   "tolerances": {
     "coordinate_mm": 0.05,
     "length_mm": 0.05,
-    "time_s": 0.05
+    "time_s": 0.05,
+    "spacing_mm": 0.05
   }
 }

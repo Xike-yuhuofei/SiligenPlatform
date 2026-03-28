@@ -1864,9 +1864,10 @@ class MainWindow(QMainWindow):
         total_segments = info.get("total_segments")
         if total_segments is None:
             total_segments = getattr(self, "_dxf_segment_count_cache", 0)
+        self._dxf_segment_count_cache = int(total_segments or 0)
         self._preview_session.update_dxf_info(
             total_length_mm=float(info.get("total_length", 0.0) or 0.0),
-            total_segments=int(total_segments or 0),
+            total_segments=self._dxf_segment_count_cache,
             speed_mm_s=self._dxf_speed.value(),
         )
         self._sync_preview_session_fields()

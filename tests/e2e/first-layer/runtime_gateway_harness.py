@@ -128,6 +128,10 @@ def resolve_default_exe(*file_names: str) -> Path:
     for file_name in file_names:
         candidates.extend(
             (
+                ROOT / "build" / "bin" / file_name,
+                ROOT / "build" / "bin" / "Debug" / file_name,
+                ROOT / "build" / "bin" / "Release" / file_name,
+                ROOT / "build" / "bin" / "RelWithDebInfo" / file_name,
                 ROOT / "build" / "hmi-home-fix" / "bin" / file_name,
                 ROOT / "build" / "hmi-home-fix" / "bin" / "Debug" / file_name,
                 ROOT / "build" / "hmi-home-fix" / "bin" / "Release" / file_name,

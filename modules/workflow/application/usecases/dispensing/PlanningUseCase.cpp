@@ -1,7 +1,7 @@
 #include "PlanningUseCase.h"
 
-#include "application/services/dispensing/PlanningPreviewAssemblyService.h"
 #include "application/services/dxf/DxfPbPreparationService.h"
+#include "domain/trajectory/value-objects/GeometryUtils.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
 #include "workflow/contracts/WorkflowContracts.h"
@@ -19,6 +19,18 @@
 
 namespace Siligen::Application::UseCases::Dispensing {
 
+using Siligen::Application::Services::Dispensing::PlanningArtifactsBuildInput;
+using Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest;
+using Siligen::Application::Services::ProcessPath::ProcessPathBuildResult;
+using Siligen::Domain::Motion::ValueObjects::TimePlanningConfig;
+using Siligen::Domain::Trajectory::Ports::PathSourceResult;
+using Siligen::Domain::Trajectory::ValueObjects::ContourElement;
+using Siligen::Domain::Trajectory::ValueObjects::ContourElementType;
+using Siligen::Domain::Trajectory::ValueObjects::Primitive;
+using Siligen::Domain::Trajectory::ValueObjects::PrimitiveType;
+using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
+using Siligen::Domain::Trajectory::ValueObjects::Segment;
+using Siligen::MotionPlanning::Contracts::MotionPlan;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
@@ -70,7 +82,7 @@ WorkflowPlanningTriggerResponse BuildWorkflowPlanningTriggerResponse(
     response.failure_category = failure_category;
     response.stage_state.workflow_run_id = trigger_request.workflow_run_id;
     response.stage_state.source_artifact = trigger_request.source_artifact;
-    response.stage_state.stage_name = "M0->M4-planning-trigger";
+    response.stage_state.stage_name = "M0->M6/M7/M8-planning-trigger";
     response.stage_state.last_command = WorkflowCommand::PreparePlanning;
     response.stage_state.lifecycle = lifecycle;
     response.stage_state.failure_category = failure_category;
@@ -180,125 +192,284 @@ PreviewRuntimeParams BuildPreviewRuntimeParams(
     return params;
 }
 
-DispensingPlanRequest BuildPlanRequest(
+Siligen::Shared::Types::Point2D ResolveDxfOffset(
+    const std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort>& config_port) {
+    if (!config_port) {
+        return {};
+    }
+
+    auto config_result = config_port->LoadConfiguration();
+    if (config_result.IsError()) {
+        SILIGEN_LOG_WARNING("读取系统配置失败: " + config_result.GetError().GetMessage());
+        return {};
+    }
+
+    const auto& config = config_result.Value();
+    return Siligen::Shared::Types::Point2D(config.dxf.offset_x, config.dxf.offset_y);
+}
+
+void ApplyOffsetPoint(Siligen::Shared::Types::Point2D& point, const Siligen::Shared::Types::Point2D& offset) {
+    point = point + offset;
+}
+
+void ApplyOffsetToContourElement(ContourElement& element, const Siligen::Shared::Types::Point2D& offset) {
+    switch (element.type) {
+        case ContourElementType::Line:
+            ApplyOffsetPoint(element.line.start, offset);
+            ApplyOffsetPoint(element.line.end, offset);
+            break;
+        case ContourElementType::Arc:
+            ApplyOffsetPoint(element.arc.center, offset);
+            break;
+        case ContourElementType::Spline:
+            for (auto& point : element.spline.control_points) {
+                ApplyOffsetPoint(point, offset);
+            }
+            break;
+    }
+}
+
+void ApplyOffsetToPrimitive(Primitive& primitive, const Siligen::Shared::Types::Point2D& offset) {
+    switch (primitive.type) {
+        case PrimitiveType::Line:
+            ApplyOffsetPoint(primitive.line.start, offset);
+            ApplyOffsetPoint(primitive.line.end, offset);
+            break;
+        case PrimitiveType::Arc:
+            ApplyOffsetPoint(primitive.arc.center, offset);
+            break;
+        case PrimitiveType::Spline:
+            for (auto& point : primitive.spline.control_points) {
+                ApplyOffsetPoint(point, offset);
+            }
+            break;
+        case PrimitiveType::Circle:
+            ApplyOffsetPoint(primitive.circle.center, offset);
+            break;
+        case PrimitiveType::Ellipse:
+            ApplyOffsetPoint(primitive.ellipse.center, offset);
+            break;
+        case PrimitiveType::Point:
+            ApplyOffsetPoint(primitive.point.position, offset);
+            break;
+        case PrimitiveType::Contour:
+            for (auto& element : primitive.contour.elements) {
+                ApplyOffsetToContourElement(element, offset);
+            }
+            break;
+    }
+}
+
+void ApplyOffsetToPrimitives(
+    std::vector<Primitive>& primitives,
+    const Siligen::Shared::Types::Point2D& offset) {
+    if (std::abs(offset.x) <= kEpsilon && std::abs(offset.y) <= kEpsilon) {
+        return;
+    }
+    for (auto& primitive : primitives) {
+        ApplyOffsetToPrimitive(primitive, offset);
+    }
+    SILIGEN_LOG_INFO_FMT_HELPER("DXF坐标平移: offset=(%.6f, %.6f)", offset.x, offset.y);
+}
+
+ProcessPathBuildRequest BuildProcessPathRequest(
+    const PlanningRequest& request,
+    std::vector<Primitive> primitives,
+    const std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort>& config_port) {
+    ProcessPathBuildRequest process_path_request;
+    process_path_request.primitives = std::move(primitives);
+    process_path_request.normalization.approximate_splines = request.approximate_splines;
+    process_path_request.normalization.spline_max_step_mm = request.spline_max_step_mm;
+    process_path_request.normalization.spline_max_error_mm = request.spline_max_error_mm;
+    if (request.continuity_tolerance_mm > kEpsilon) {
+        process_path_request.normalization.continuity_tolerance = request.continuity_tolerance_mm;
+    }
+
+    process_path_request.process.default_flow = 1.0f;
+    process_path_request.process.lead_on_dist = 0.0f;
+    process_path_request.process.lead_off_dist = 0.0f;
+    process_path_request.process.corner_slowdown = true;
+    process_path_request.process.start_speed_factor = 0.5f;
+    process_path_request.process.end_speed_factor = 0.5f;
+    process_path_request.process.corner_speed_factor = 0.6f;
+    process_path_request.process.rapid_speed_factor = 1.0f;
+    if (request.curve_chain_angle_deg > kEpsilon) {
+        process_path_request.process.curve_chain_angle_deg = request.curve_chain_angle_deg;
+    }
+    if (request.curve_chain_max_segment_mm > kEpsilon) {
+        process_path_request.process.curve_chain_max_segment_mm = request.curve_chain_max_segment_mm;
+    }
+
+    if (config_port) {
+        auto dispensing_result = config_port->GetDispensingConfig();
+        if (dispensing_result.IsSuccess()) {
+            const auto& dispensing = dispensing_result.Value();
+            process_path_request.process.start_speed_factor = dispensing.start_speed_factor;
+            process_path_request.process.end_speed_factor = dispensing.end_speed_factor;
+            process_path_request.process.corner_speed_factor = dispensing.corner_speed_factor;
+            process_path_request.process.rapid_speed_factor = dispensing.rapid_speed_factor;
+        }
+    }
+
+    return process_path_request;
+}
+
+TimePlanningConfig BuildMotionPlanningConfig(
     const PlanningRequest& request,
     const PreviewRuntimeParams& runtime_params,
     const std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort>& config_port) {
-    DispensingPlanRequest plan_request;
-    plan_request.dxf_filepath = request.dxf_filepath;
-    plan_request.optimize_path = request.optimize_path;
-    plan_request.start_x = request.start_x;
-    plan_request.start_y = request.start_y;
-    plan_request.approximate_splines = request.approximate_splines;
-    plan_request.two_opt_iterations = request.two_opt_iterations;
-    plan_request.spline_max_step_mm = request.spline_max_step_mm;
-    plan_request.spline_max_error_mm = request.spline_max_error_mm;
-    plan_request.continuity_tolerance_mm = request.continuity_tolerance_mm;
-    plan_request.curve_chain_angle_deg = request.curve_chain_angle_deg;
-    plan_request.curve_chain_max_segment_mm = request.curve_chain_max_segment_mm;
-    plan_request.use_hardware_trigger = request.use_hardware_trigger;
-    plan_request.dispensing_velocity = runtime_params.dispensing_velocity;
-    plan_request.acceleration = runtime_params.acceleration;
-    plan_request.dispenser_interval_ms = runtime_params.dispenser_interval_ms;
-    plan_request.dispenser_duration_ms = runtime_params.dispenser_duration_ms;
-    plan_request.trigger_spatial_interval_mm = runtime_params.trigger_spatial_interval_mm;
-    plan_request.pulse_per_mm = runtime_params.pulse_per_mm;
-    plan_request.valve_response_ms = runtime_params.valve_response_ms;
-    plan_request.safety_margin_ms = runtime_params.safety_margin_ms;
-    plan_request.min_interval_ms = runtime_params.min_interval_ms;
-    plan_request.compensation_profile = runtime_params.compensation_profile;
-    plan_request.sample_dt = runtime_params.sample_dt;
-    plan_request.sample_ds = runtime_params.sample_ds;
-    plan_request.arc_tolerance_mm = request.trajectory_config.arc_tolerance;
-    plan_request.max_jerk = request.trajectory_config.max_jerk;
-    plan_request.use_interpolation_planner = request.use_interpolation_planner;
-    plan_request.interpolation_algorithm = request.interpolation_algorithm;
+    TimePlanningConfig config;
+    config.vmax = runtime_params.dispensing_velocity;
+    config.amax = runtime_params.acceleration;
+    config.jmax = request.trajectory_config.max_jerk;
+    config.sample_dt = runtime_params.sample_dt;
+    config.sample_ds = runtime_params.sample_ds;
+    config.arc_tolerance_mm = request.trajectory_config.arc_tolerance;
+    config.curvature_speed_factor = runtime_params.compensation_profile.curvature_speed_factor;
+    config.start_speed_factor = 0.5f;
+    config.end_speed_factor = 0.5f;
+    config.corner_speed_factor = 0.6f;
+    config.rapid_speed_factor = 1.0f;
+    config.enforce_jerk_limit = true;
 
-    if (!config_port) {
-        return plan_request;
+    if (config_port) {
+        auto dispensing_result = config_port->GetDispensingConfig();
+        if (dispensing_result.IsSuccess()) {
+            const auto& dispensing = dispensing_result.Value();
+            config.start_speed_factor = dispensing.start_speed_factor;
+            config.end_speed_factor = dispensing.end_speed_factor;
+            config.corner_speed_factor = dispensing.corner_speed_factor;
+            config.rapid_speed_factor = dispensing.rapid_speed_factor;
+        }
     }
 
-    auto system_result = config_port->LoadConfiguration();
-    if (system_result.IsSuccess()) {
-        const auto& config = system_result.Value();
-        plan_request.dxf_offset = Point2D(config.dxf.offset_x, config.dxf.offset_y);
-    } else {
-        SILIGEN_LOG_WARNING("读取系统配置失败: " + system_result.GetError().GetMessage());
+    return config;
+}
+
+float32 SegmentLength(const Segment& segment) {
+    if (segment.length > kEpsilon) {
+        return segment.length;
+    }
+    switch (segment.type) {
+        case Siligen::Domain::Trajectory::ValueObjects::SegmentType::Line:
+            return segment.line.start.DistanceTo(segment.line.end);
+        case Siligen::Domain::Trajectory::ValueObjects::SegmentType::Arc:
+            return Siligen::Domain::Trajectory::ValueObjects::ComputeArcLength(segment.arc);
+        case Siligen::Domain::Trajectory::ValueObjects::SegmentType::Spline: {
+            float32 total = 0.0f;
+            for (size_t i = 1; i < segment.spline.control_points.size(); ++i) {
+                total += segment.spline.control_points[i - 1].DistanceTo(segment.spline.control_points[i]);
+            }
+            return total;
+        }
+        default:
+            return 0.0f;
+    }
+}
+
+void PopulatePlanningReport(const ProcessPathBuildResult& path_result, MotionPlan& motion_plan) {
+    auto& report = motion_plan.planning_report;
+    report.segment_count = static_cast<int32>(path_result.shaped_path.segments.size());
+    report.discontinuity_count = path_result.normalized.report.discontinuity_count;
+
+    int32 rapid_count = 0;
+    int32 corner_count = 0;
+    float32 rapid_length = 0.0f;
+    for (const auto& segment : path_result.shaped_path.segments) {
+        if (segment.tag == ProcessTag::Rapid) {
+            ++rapid_count;
+            rapid_length += SegmentLength(segment.geometry);
+        } else if (segment.tag == ProcessTag::Corner) {
+            ++corner_count;
+        }
+    }
+
+    report.rapid_segment_count = rapid_count;
+    report.rapid_length_mm = rapid_length;
+    report.corner_segment_count = corner_count;
+}
+
+PlanningArtifactsBuildInput BuildPlanningArtifactsInput(
+    const PlanningRequest& request,
+    const ProcessPathBuildResult& path_result,
+    MotionPlan motion_plan,
+    const PreviewRuntimeParams& runtime_params,
+    const std::string& source_path,
+    const std::string& dxf_filename,
+    const std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort>& config_port) {
+    PlanningArtifactsBuildInput input;
+    input.process_path = path_result.shaped_path;
+    input.motion_plan = std::move(motion_plan);
+    input.source_path = source_path;
+    input.dxf_filename = dxf_filename;
+    input.dispensing_velocity = runtime_params.dispensing_velocity;
+    input.acceleration = runtime_params.acceleration;
+    input.dispenser_interval_ms = runtime_params.dispenser_interval_ms;
+    input.dispenser_duration_ms = runtime_params.dispenser_duration_ms;
+    input.trigger_spatial_interval_mm = runtime_params.trigger_spatial_interval_mm;
+    input.valve_response_ms = runtime_params.valve_response_ms;
+    input.safety_margin_ms = runtime_params.safety_margin_ms;
+    input.min_interval_ms = runtime_params.min_interval_ms;
+    input.max_jerk = request.trajectory_config.max_jerk;
+    input.sample_dt = runtime_params.sample_dt;
+    input.sample_ds = runtime_params.sample_ds;
+    input.spline_max_step_mm = request.spline_max_step_mm;
+    input.spline_max_error_mm = request.spline_max_error_mm;
+    input.estimated_time_s = motion_plan.total_time;
+    input.use_interpolation_planner = request.use_interpolation_planner;
+    input.interpolation_algorithm = request.interpolation_algorithm;
+    input.compensation_profile = runtime_params.compensation_profile;
+    input.spacing_tol_ratio = request.spacing_tol_ratio;
+    input.spacing_min_mm = request.spacing_min_mm;
+    input.spacing_max_mm = request.spacing_max_mm;
+
+    if (!config_port) {
+        return input;
     }
 
     auto dispensing_result = config_port->GetDispensingConfig();
     if (dispensing_result.IsSuccess()) {
-        const auto& disp = dispensing_result.Value();
-        plan_request.dispensing_strategy = disp.strategy;
-        if (disp.subsegment_count > 0) {
-            plan_request.subsegment_count = disp.subsegment_count;
+        const auto& dispensing = dispensing_result.Value();
+        input.dispensing_strategy = dispensing.strategy;
+        if (dispensing.subsegment_count > 0) {
+            input.subsegment_count = dispensing.subsegment_count;
         }
-        plan_request.dispense_only_cruise = disp.dispense_only_cruise;
-        plan_request.start_speed_factor = disp.start_speed_factor;
-        plan_request.end_speed_factor = disp.end_speed_factor;
-        plan_request.corner_speed_factor = disp.corner_speed_factor;
-        plan_request.rapid_speed_factor = disp.rapid_speed_factor;
+        input.dispense_only_cruise = dispensing.dispense_only_cruise;
     }
 
-    auto traj_result = config_port->GetDxfTrajectoryConfig();
-    if (traj_result.IsSuccess()) {
-        const auto& traj = traj_result.Value();
-        plan_request.python_ruckig_python = traj.python;
-        plan_request.python_ruckig_script = traj.script;
-    }
-
-    return plan_request;
-}
-
-float32 ResolveEstimatedTime(
-    const Siligen::Domain::Dispensing::DomainServices::DispensingPlan& plan,
-    float32 planned_estimated_time_s) {
-    if (planned_estimated_time_s > kEpsilon) {
-        return planned_estimated_time_s;
-    }
-    if (plan.estimated_time_s > kEpsilon) {
-        return plan.estimated_time_s;
-    }
-    return plan.motion_trajectory.total_time;
-}
-
-Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated BuildExecutionPackage(
-    const Siligen::Domain::Dispensing::DomainServices::DispensingPlan& plan,
-    const std::string& source_path,
-    float32 planned_estimated_time_s) {
-    using Siligen::Domain::Dispensing::Contracts::ExecutionPackageBuilt;
-    using Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated;
-
-    ExecutionPackageBuilt built;
-    built.execution_plan.interpolation_segments = plan.interpolation_segments;
-    built.execution_plan.interpolation_points = plan.interpolation_points;
-    built.execution_plan.motion_trajectory = plan.motion_trajectory;
-    built.execution_plan.trigger_distances_mm = plan.trigger_distances_mm;
-    built.execution_plan.trigger_interval_ms = plan.trigger_interval_ms;
-    built.execution_plan.trigger_interval_mm = plan.trigger_interval_mm;
-    built.execution_plan.total_length_mm = plan.total_length_mm;
-    built.total_length_mm = plan.total_length_mm > kEpsilon ? plan.total_length_mm : plan.motion_trajectory.total_length;
-    built.estimated_time_s = ResolveEstimatedTime(plan, planned_estimated_time_s);
-    built.source_path = source_path;
-    return ExecutionPackageValidated(built);
+    return input;
 }
 
 }  // namespace
 
 PlanningUseCase::PlanningUseCase(
-    std::shared_ptr<DispensingPlanner> planner,
+    std::shared_ptr<Siligen::Domain::Trajectory::Ports::IPathSourcePort> path_source,
+    std::shared_ptr<Siligen::Application::Services::ProcessPath::ProcessPathFacade> process_path_facade,
+    std::shared_ptr<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>
+        motion_planning_facade,
+    std::shared_ptr<Siligen::Application::Services::Dispensing::DispensePlanningFacade>
+        dispense_planning_facade,
     std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port,
     std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService> pb_preparation_service,
     std::shared_ptr<Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort> artifact_export_port)
-    : planner_(std::move(planner)),
+    : path_source_(std::move(path_source)),
+      process_path_facade_(process_path_facade
+                               ? std::move(process_path_facade)
+                               : std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>()),
+      motion_planning_facade_(motion_planning_facade
+                                  ? std::move(motion_planning_facade)
+                                  : std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>()),
+      dispense_planning_facade_(dispense_planning_facade
+                                    ? std::move(dispense_planning_facade)
+                                    : std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>()),
       config_port_(std::move(config_port)),
       pb_preparation_service_(pb_preparation_service
                                   ? std::move(pb_preparation_service)
                                   : std::make_shared<Siligen::Application::Services::DXF::DxfPbPreparationService>(
                                         config_port_)),
       artifact_export_port_(std::move(artifact_export_port)) {
-    if (!planner_) {
-        throw std::invalid_argument("PlanningUseCase: planner cannot be null");
+    if (!path_source_) {
+        throw std::invalid_argument("PlanningUseCase: path_source cannot be null");
     }
 }
 
@@ -331,56 +502,92 @@ Result<PlanningResponse> PlanningUseCase::Execute(const PlanningRequest& request
     }
     const std::string prepared_pb_path = pb_result.Value();
 
-    const auto runtime_params = BuildPreviewRuntimeParams(request, config_port_);
-    auto plan_request = BuildPlanRequest(request, runtime_params, config_port_);
-    plan_request.dxf_filepath = prepared_pb_path;
-
-    const auto plan_start = std::chrono::steady_clock::now();
-    auto plan_result = planner_->Plan(plan_request);
-    if (plan_result.IsError()) {
+    auto path_result = path_source_->LoadFromFile(prepared_pb_path);
+    if (path_result.IsError()) {
         const auto trigger_response = BuildWorkflowPlanningTriggerResponse(
             trigger_request,
             WorkflowStageLifecycle::Failed,
             WorkflowFailureCategory::PlanningUnavailable,
             prepared_pb_path,
-            plan_result.GetError().GetMessage());
+            path_result.GetError().GetMessage());
         SILIGEN_LOG_WARNING(
-            "workflow planning trigger failed during plan assembly: " + trigger_response.recovery_directive.reason);
-        return Result<PlanningResponse>::Failure(plan_result.GetError());
+            "workflow planning trigger failed during path load: " + trigger_response.recovery_directive.reason);
+        return Result<PlanningResponse>::Failure(path_result.GetError());
+    }
+
+    auto primitives = path_result.Value().primitives;
+    if (primitives.empty()) {
+        return Result<PlanningResponse>::Failure(
+            Error(ErrorCode::FILE_FORMAT_INVALID, "DXF无可用路径", "PlanningUseCase"));
+    }
+
+    ApplyOffsetToPrimitives(primitives, ResolveDxfOffset(config_port_));
+
+    const auto runtime_params = BuildPreviewRuntimeParams(request, config_port_);
+    const auto process_path_request = BuildProcessPathRequest(request, std::move(primitives), config_port_);
+    const auto process_path_result = process_path_facade_->Build(process_path_request);
+
+    const auto plan_start = std::chrono::steady_clock::now();
+    auto motion_plan = motion_planning_facade_->Plan(
+        process_path_result.shaped_path,
+        BuildMotionPlanningConfig(request, runtime_params, config_port_));
+    PopulatePlanningReport(process_path_result, motion_plan);
+    if (motion_plan.points.empty() || motion_plan.planning_report.jerk_plan_failed) {
+        const auto trigger_response = BuildWorkflowPlanningTriggerResponse(
+            trigger_request,
+            WorkflowStageLifecycle::Failed,
+            WorkflowFailureCategory::PlanningUnavailable,
+            prepared_pb_path,
+            "motion planning failed");
+        SILIGEN_LOG_WARNING(
+            "workflow planning trigger failed during motion planning: " + trigger_response.recovery_directive.reason);
+        return Result<PlanningResponse>::Failure(
+            Error(ErrorCode::INVALID_STATE, "轨迹规划失败", "PlanningUseCase"));
     }
     const auto plan_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - plan_start).count();
-
-    const auto& plan = plan_result.Value();
     SILIGEN_LOG_INFO_FMT_HELPER(
         "DXF规划完成: segments=%zu, time=%lldms",
-        plan.process_path.segments.size(),
+        process_path_result.shaped_path.segments.size(),
         static_cast<long long>(plan_elapsed_ms));
 
-    Siligen::Application::Services::Dispensing::PlanningPreviewAssemblyService preview_assembly_service;
-    auto response_result = preview_assembly_service.BuildResponse(
-        request,
-        plan,
-        plan_request,
-        ExtractFilename(request.dxf_filepath));
-    if (response_result.IsError()) {
+    auto assembly_result = dispense_planning_facade_->AssemblePlanningArtifacts(
+        BuildPlanningArtifactsInput(
+            request,
+            process_path_result,
+            std::move(motion_plan),
+            runtime_params,
+            request.dxf_filepath,
+            ExtractFilename(request.dxf_filepath),
+            config_port_));
+    if (assembly_result.IsError()) {
         const auto trigger_response = BuildWorkflowPlanningTriggerResponse(
             trigger_request,
             WorkflowStageLifecycle::Failed,
             WorkflowFailureCategory::BoundaryViolation,
             prepared_pb_path,
-            response_result.GetError().GetMessage());
+            assembly_result.GetError().GetMessage());
         SILIGEN_LOG_WARNING(
-            "workflow planning trigger failed during preview assembly: " + trigger_response.recovery_directive.reason);
-        return Result<PlanningResponse>::Failure(response_result.GetError());
+            "workflow planning trigger failed during package assembly: " + trigger_response.recovery_directive.reason);
+        return Result<PlanningResponse>::Failure(assembly_result.GetError());
     }
 
-    auto assembled = response_result.Value();
-    auto response = std::move(assembled.response);
+    auto assembled = assembly_result.Value();
+    PlanningResponse response;
+    response.success = true;
+    response.segment_count = assembled.segment_count;
+    response.total_length = assembled.total_length;
+    response.estimated_time = assembled.estimated_time;
+    response.execution_trajectory_points = assembled.trajectory_points;
+    response.glue_points = assembled.glue_points;
+    response.process_tags.assign(response.execution_trajectory_points.size(), 0);
+    response.trigger_count = assembled.trigger_count;
+    response.dxf_filename = assembled.dxf_filename;
+    response.timestamp = assembled.timestamp;
+    response.planning_report = assembled.planning_report;
     response.execution_package =
         std::make_shared<Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated>(
-            BuildExecutionPackage(plan, request.dxf_filepath, response.estimated_time));
-    response.execution_plan = std::make_shared<DispensingPlan>(plan);
+            assembled.execution_package);
 
     if (artifact_export_port_) {
         auto export_result = artifact_export_port_->Export(assembled.export_request);
@@ -399,8 +606,9 @@ Result<PlanningResponse> PlanningUseCase::Execute(const PlanningRequest& request
         "");
     SILIGEN_LOG_INFO("workflow planning trigger accepted: prepared_input=" + trigger_response.prepared_input_path);
     SILIGEN_LOG_INFO_FMT_HELPER(
-        "DXF预览数据准备完成: points=%zu, triggers=%d",
-        response.trajectory_points.size(),
+        "DXF预览数据准备完成: execution_points=%zu, glue_points=%zu, triggers=%d",
+        response.execution_trajectory_points.size(),
+        response.glue_points.size(),
         response.trigger_count);
 
     const auto total_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(

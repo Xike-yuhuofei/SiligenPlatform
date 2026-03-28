@@ -16,11 +16,11 @@ float SpeedMagnitude(const Siligen::Point3D& v) {
 TEST(MotionPlannerConstraintTest, AppliesVelocityFactorConstraint) {
     using Siligen::Shared::Types::Point2D;
     using Siligen::Domain::Motion::DomainServices::MotionPlanner;
-    using Siligen::Domain::Motion::ValueObjects::TimePlanningConfig;
-    using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
-    using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
-    using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
-    using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
+    using Siligen::MotionPlanning::Contracts::TimePlanningConfig;
+    using Siligen::ProcessPath::Contracts::ProcessPath;
+    using Siligen::ProcessPath::Contracts::ProcessSegment;
+    using Siligen::ProcessPath::Contracts::ProcessTag;
+    using Siligen::ProcessPath::Contracts::SegmentType;
 
     ProcessPath path;
     ProcessSegment seg;

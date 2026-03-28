@@ -214,19 +214,6 @@ std::vector<TrajectoryPoint> ArcInterpolator::GenerateArcTrajectory(const ArcPar
         trajectory.push_back(point);
     }
 
-    // 设置点胶触发位置
-    if (config.enable_look_ahead) {
-        std::vector<float32> trigger_positions = m_math_utils->CalculateArcTriggerPositions(params, config);
-        for (float32 trigger_pos : trigger_positions) {
-            int32 trigger_index = static_cast<int32>(trigger_pos * num_points);
-            if (trigger_index < static_cast<int32>(trajectory.size())) {
-                trajectory[trigger_index].enable_position_trigger = true;
-                trajectory[trigger_index].trigger_position_mm = trigger_pos * arc_length;
-                trajectory[trigger_index].trigger_pulse_width_us = 2000;  // 默认2ms
-            }
-        }
-    }
-
     return trajectory;
 }
 

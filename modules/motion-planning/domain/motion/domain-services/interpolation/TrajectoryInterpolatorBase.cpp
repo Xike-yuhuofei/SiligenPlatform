@@ -84,10 +84,15 @@ std::vector<TrajectoryPoint> TrajectoryInterpolatorBase::OptimizeTrajectoryDensi
                 pt.position.x = prev.position.x + r * (curr.position.x - prev.position.x);
                 pt.position.y = prev.position.y + r * (curr.position.y - prev.position.y);
                 pt.velocity = prev.velocity + r * (curr.velocity - prev.velocity);
-                pt.dispensing_time = prev.dispensing_time;
-                pt.enable_position_trigger = prev.enable_position_trigger;
-                pt.trigger_position_mm = prev.trigger_position_mm;
-                pt.trigger_pulse_width_us = prev.trigger_pulse_width_us;
+                pt.acceleration = prev.acceleration + r * (curr.acceleration - prev.acceleration);
+                pt.dispensing_time = prev.dispensing_time + r * (curr.dispensing_time - prev.dispensing_time);
+                pt.timestamp = prev.timestamp + r * (curr.timestamp - prev.timestamp);
+                pt.enable_position_trigger = false;
+                pt.trigger_position_mm = 0.0f;
+                pt.trigger_pulse_width_us = 0;
+                pt.segment_type = (r >= 0.5f) ? curr.segment_type : prev.segment_type;
+                pt.arc_center = (r >= 0.5f) ? curr.arc_center : prev.arc_center;
+                pt.arc_radius = (r >= 0.5f) ? curr.arc_radius : prev.arc_radius;
                 optimized.push_back(pt);
             }
             optimized.push_back(curr);

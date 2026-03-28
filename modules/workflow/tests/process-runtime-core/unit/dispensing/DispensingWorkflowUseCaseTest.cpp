@@ -14,7 +14,10 @@
 #define SILIGEN_TEST_HOOKS
 #endif
 #define private public
+#include "application/services/dispensing/DispensePlanningFacade.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
+#include "application/services/motion_planning/MotionPlanningFacade.h"
+#include "application/services/process_path/ProcessPathFacade.h"
 #include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
 #undef private
 #include "application/services/dispensing/DispensingExecutionCompatibilityService.h"
@@ -44,7 +47,6 @@ using Siligen::Device::Contracts::State::DeviceConnectionSnapshot;
 using Siligen::Device::Contracts::State::DeviceConnectionState;
 using Siligen::Device::Contracts::State::HeartbeatSnapshot;
 using Siligen::Domain::Dispensing::DomainServices::DispensingPlan;
-using Siligen::Domain::Dispensing::DomainServices::DispensingPlanner;
 using Siligen::Domain::Motion::Ports::HomingState;
 using Siligen::Domain::Motion::Ports::HomingStatus;
 using Siligen::Domain::Motion::Ports::IHomingPort;
@@ -174,8 +176,10 @@ PlanningResponse BuildPlanningResponseWithExecutionPlan() {
     response.segment_count = 1;
     response.total_length = 20.0f;
     response.estimated_time = 1.0f;
-    response.trajectory_points.emplace_back(0.0f, 0.0f, 10.0f);
-    response.trajectory_points.emplace_back(20.0f, 0.0f, 10.0f);
+    response.execution_trajectory_points.emplace_back(0.0f, 0.0f, 10.0f);
+    response.execution_trajectory_points.emplace_back(20.0f, 0.0f, 10.0f);
+    response.glue_points.emplace_back(0.0f, 0.0f);
+    response.glue_points.emplace_back(20.0f, 0.0f);
     response.execution_plan = std::make_shared<DispensingPlan>(plan);
 
     auto execution_package = BuildMinimalExecutionPackage();
@@ -188,9 +192,14 @@ PlanningResponse BuildPlanningResponseWithExecutionPlan() {
 
 std::shared_ptr<PlanningUseCase> CreateRealPlanningUseCase() {
     auto path_source = std::make_shared<LinePathSourceStub>();
-    auto facade = std::make_shared<DispensingPlanner>(path_source);
     auto pb_service = std::make_shared<DxfPbPreparationService>();
-    return std::make_shared<PlanningUseCase>(facade, nullptr, pb_service);
+    return std::make_shared<PlanningUseCase>(
+        path_source,
+        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
+        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        nullptr,
+        pb_service);
 }
 
 class FakeHardwareConnectionPort final : public DeviceConnectionPort {
@@ -380,7 +389,8 @@ DispensingWorkflowUseCase::PlanRecord BuildPreviewPlanRecord(
     plan_record.latest = true;
     plan_record.preview_snapshot_id = plan_id;
     for (const auto& point : points) {
-        plan_record.trajectory_points.emplace_back(point.x, point.y, 0.0f);
+        plan_record.execution_trajectory_points.emplace_back(point.x, point.y, 0.0f);
+        plan_record.glue_points.push_back(point);
     }
     return plan_record;
 }
@@ -390,7 +400,7 @@ bool SnapshotContainsPoint(
     float target_x,
     float target_y,
     float tolerance = 1e-3f) {
-    for (const auto& point : snapshot.trajectory_polyline) {
+    for (const auto& point : snapshot.execution_polyline) {
         if (std::abs(point.x - target_x) <= tolerance && std::abs(point.y - target_y) <= tolerance) {
             return true;
         }
@@ -646,8 +656,10 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotKeepsConfirmedStateWhenFin
     plan_record.preview_snapshot_hash = plan_record.response.plan_fingerprint;
     plan_record.confirmed_at = "2026-03-22T00:00:00Z";
     plan_record.latest = true;
-    plan_record.trajectory_points.emplace_back(0.0f, 0.0f, 0.0f);
-    plan_record.trajectory_points.emplace_back(10.0f, 0.0f, 0.0f);
+    plan_record.execution_trajectory_points.emplace_back(0.0f, 0.0f, 0.0f);
+    plan_record.execution_trajectory_points.emplace_back(10.0f, 0.0f, 0.0f);
+    plan_record.glue_points.emplace_back(0.0f, 0.0f);
+    plan_record.glue_points.emplace_back(10.0f, 0.0f);
     use_case.plans_[plan_record.response.plan_id] = plan_record;
 
     Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest request;
@@ -658,10 +670,13 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotKeepsConfirmedStateWhenFin
     ASSERT_TRUE(result.IsSuccess());
     const auto& snapshot = result.Value();
     EXPECT_EQ(snapshot.preview_state, "confirmed");
-    EXPECT_EQ(snapshot.preview_source, "runtime_snapshot");
+    EXPECT_EQ(snapshot.preview_source, "planned_glue_snapshot");
+    EXPECT_EQ(snapshot.preview_kind, "glue_points");
     EXPECT_EQ(snapshot.confirmed_at, "2026-03-22T00:00:00Z");
     EXPECT_EQ(snapshot.snapshot_hash, "fp-plan-confirmed");
     EXPECT_EQ(snapshot.plan_id, "plan-confirmed");
+    EXPECT_EQ(snapshot.glue_point_count, 2U);
+    EXPECT_EQ(snapshot.glue_points.size(), 2U);
 }
 
 TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotSuppressesShortABATailArtifacts) {
@@ -690,7 +705,7 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotSuppressesShortABATailArti
     ASSERT_TRUE(result.IsSuccess());
     const auto& snapshot = result.Value();
     EXPECT_FALSE(SnapshotContainsPoint(snapshot, 10.2f, 10.0f, 1e-4f));
-    EXPECT_TRUE(SnapshotContainsPoint(snapshot, 10.0f, 10.0f, 1e-4f));
+    EXPECT_FALSE(SnapshotContainsPoint(snapshot, 10.0f, 10.0f, 1e-4f));
     EXPECT_TRUE(SnapshotContainsPoint(snapshot, 0.0f, 0.0f, 1e-4f));
     EXPECT_TRUE(SnapshotContainsPoint(snapshot, 0.0f, 10.0f, 1e-4f));
 }
@@ -720,7 +735,7 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotKeepsCornerWhenDownsamplin
 
     ASSERT_TRUE(result.IsSuccess());
     const auto& snapshot = result.Value();
-    EXPECT_LE(snapshot.trajectory_polyline.size(), 6U);
+    EXPECT_LE(snapshot.execution_polyline.size(), 6U);
     EXPECT_TRUE(SnapshotContainsPoint(snapshot, 9.0f, 0.0f, 1e-4f));
 }
 
@@ -746,13 +761,13 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotUsesThreeMillimeterCenterS
 
     ASSERT_TRUE(result.IsSuccess());
     const auto& snapshot = result.Value();
-    ASSERT_GE(snapshot.trajectory_polyline.size(), 2U);
-    EXPECT_NEAR(snapshot.trajectory_polyline.front().x, 0.0f, 1e-4f);
-    EXPECT_NEAR(snapshot.trajectory_polyline.back().x, 30.0f, 1e-4f);
-    EXPECT_EQ(snapshot.trajectory_polyline.size(), 11U);
-    for (std::size_t i = 1; i < snapshot.trajectory_polyline.size(); ++i) {
-        const auto& prev = snapshot.trajectory_polyline[i - 1U];
-        const auto& curr = snapshot.trajectory_polyline[i];
+    ASSERT_GE(snapshot.execution_polyline.size(), 2U);
+    EXPECT_NEAR(snapshot.execution_polyline.front().x, 0.0f, 1e-4f);
+    EXPECT_NEAR(snapshot.execution_polyline.back().x, 30.0f, 1e-4f);
+    EXPECT_EQ(snapshot.execution_polyline.size(), 11U);
+    for (std::size_t i = 1; i < snapshot.execution_polyline.size(); ++i) {
+        const auto& prev = snapshot.execution_polyline[i - 1U];
+        const auto& curr = snapshot.execution_polyline[i];
         const double dx = static_cast<double>(curr.x) - static_cast<double>(prev.x);
         const double dy = static_cast<double>(curr.y) - static_cast<double>(prev.y);
         const double distance = std::sqrt(dx * dx + dy * dy);

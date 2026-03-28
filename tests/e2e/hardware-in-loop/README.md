@@ -16,8 +16,9 @@
 当前策略：
 
 - 默认验证 canonical `siligen_tcp_server.exe` 的最小启动闭环
-- 默认产物根按 `SILIGEN_CONTROL_APPS_BUILD_ROOT` -> `%LOCALAPPDATA%\SiligenSuite\control-apps-build` -> `<repo-root>\build\control-apps` 解析
-- 默认目标路径模式：`<CONTROL_APPS_BUILD_ROOT>\bin\<Config>\siligen_tcp_server.exe`
+- 默认优先使用当前工作区 `build\bin\<Config>\...` 的二进制；只有工作区未构建时才回退到 `SILIGEN_CONTROL_APPS_BUILD_ROOT`
+- 默认产物根按 `<repo-root>\build` -> `SILIGEN_CONTROL_APPS_BUILD_ROOT` -> `%LOCALAPPDATA%\SiligenSuite\control-apps-build` 解析
+- 默认目标路径模式：`<repo-root>\build\bin\<Config>\*.exe`
 - 可通过 `SILIGEN_HIL_GATEWAY_EXE` 显式覆盖可执行文件
 - 进程 `cwd` 使用仓库根，而不是 `control-core`
 - 若启动失败并命中当前已知模式，会归类为 `known_failure`
@@ -84,14 +85,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 
 - 只走 preview-only 主链：`dxf.artifact.create -> dxf.plan.prepare -> dxf.preview.snapshot`
 - 预览成功后会继续执行 `dxf.preview.confirm`，用于固化 `plan_fingerprint <-> snapshot_hash` 相关性
-- 默认用 `--config-mode mock` 生成 mock 硬件配置，但预览数据源必须仍为 runtime `preview_source=runtime_snapshot`
+- 默认用 `--config-mode mock` 生成 mock 硬件配置，但预览数据源必须仍为 `preview_source=planned_glue_snapshot`
 - 默认 DXF 为 `samples/dxf/rect_diag.dxf`
 - 默认报告目录为 `tests/reports/adhoc/real-dxf-preview-snapshot-canonical/<timestamp>/`
-- 输出 `plan-prepare.json`、`snapshot.json`、`trajectory_polyline.json`、`preview-verdict.json`、`preview-evidence.md`
+- 输出 `plan-prepare.json`、`snapshot.json`、`glue_points.json`、`execution_polyline.json`、`preview-verdict.json`、`preview-evidence.md`、`hmi-preview.png`、`online-smoke.log`
 - 同时保留兼容报告 `real-dxf-preview-snapshot.json`、`real-dxf-preview-snapshot.md`
-- 若返回 `mock_synthetic` 或缺少 `preview_source`，脚本直接失败，禁止把结果当作真实轨迹预览证据
+- 若返回 `mock_synthetic`、`runtime_snapshot` 或缺少 `preview_source/preview_kind`，脚本直接失败，禁止把结果当作真实规划胶点预览证据
 - 若 `plan_id / plan_fingerprint / snapshot_hash` 无法回链，`preview-verdict.json` 必须落为 `mismatch` 或 `incomplete`
 - `rect_diag` 的当前几何基线固定在 `tests/baselines/preview/rect_diag.preview-snapshot-baseline.json`
+- 自动 evidence 会追加一次 HMI 在线 smoke，把真实 `snapshot.json` 注入主窗口并截取 `hmi-preview.png`
 - 自动回归入口为 `python -m pytest tests/e2e/first-layer/test_real_preview_snapshot_geometry.py -q`
 
 `verify_hil_controlled_gate.py` 说明：

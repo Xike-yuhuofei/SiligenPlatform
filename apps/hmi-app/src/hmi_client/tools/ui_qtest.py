@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import re
 import sys
 import threading
 import time
@@ -17,7 +19,8 @@ from qt_env import configure_qt_environment
 
 configure_qt_environment(headless=True)
 
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import QSize, Qt, QTimer
+from PyQt5.QtGui import QColor, QPainter, QPen
 from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication, QWidget
 
@@ -78,12 +81,87 @@ def patch_headless_preview() -> Iterator[None]:
             super().__init__(*args, **kwargs)
             self._page = _DummyPage()
             self.last_html = ""
+            self._view_box = (920.0, 520.0)
+            self._polyline: list[tuple[float, float]] = []
+            self._circles: list[tuple[float, float, float, str]] = []
 
         def page(self):
             return self._page
 
         def setHtml(self, html: str) -> None:
             self.last_html = html
+            self._parse_html(html)
+            self.update()
+
+        def sizeHint(self) -> QSize:
+            width, height = self._view_box
+            return QSize(int(width), int(height))
+
+        def _parse_html(self, html: str) -> None:
+            view_box_match = re.search(r"viewBox='0 0 ([0-9.]+) ([0-9.]+)'", html)
+            if view_box_match:
+                self._view_box = (float(view_box_match.group(1)), float(view_box_match.group(2)))
+
+            self._polyline = []
+            polyline_match = re.search(r"<polyline points='([^']+)'", html)
+            if polyline_match:
+                for token in polyline_match.group(1).split():
+                    point_x, _, point_y = token.partition(",")
+                    if not point_x or not point_y:
+                        continue
+                    self._polyline.append((float(point_x), float(point_y)))
+
+            self._circles = []
+            for match in re.finditer(
+                r"<circle cx='([^']+)' cy='([^']+)' r='([^']+)' fill='([^']+)'",
+                html,
+            ):
+                self._circles.append(
+                    (
+                        float(match.group(1)),
+                        float(match.group(2)),
+                        float(match.group(3)),
+                        match.group(4),
+                    )
+                )
+
+        def paintEvent(self, _event) -> None:
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.Antialiasing, True)
+            painter.fillRect(self.rect(), QColor("#141414"))
+
+            if self.width() <= 0 or self.height() <= 0:
+                painter.end()
+                return
+
+            view_width, view_height = self._view_box
+            scale_x = self.width() / max(view_width, 1e-6)
+            scale_y = self.height() / max(view_height, 1e-6)
+
+            def _map_point(point_x: float, point_y: float) -> tuple[float, float]:
+                return point_x * scale_x, point_y * scale_y
+
+            if len(self._polyline) >= 2:
+                pen = QPen(QColor("#5b6472"))
+                pen.setWidthF(1.6 * min(scale_x, scale_y))
+                painter.setPen(pen)
+                for index in range(1, len(self._polyline)):
+                    prev_x, prev_y = _map_point(*self._polyline[index - 1])
+                    curr_x, curr_y = _map_point(*self._polyline[index])
+                    painter.drawLine(int(prev_x), int(prev_y), int(curr_x), int(curr_y))
+
+            painter.setPen(Qt.NoPen)
+            for point_x, point_y, radius, fill in self._circles:
+                mapped_x, mapped_y = _map_point(point_x, point_y)
+                mapped_radius = max(1.0, radius * min(scale_x, scale_y))
+                painter.setBrush(QColor(fill))
+                painter.drawEllipse(
+                    int(mapped_x - mapped_radius),
+                    int(mapped_y - mapped_radius),
+                    int(mapped_radius * 2),
+                    int(mapped_radius * 2),
+                )
+            painter.end()
 
     main_window_module.QWebEngineView = _DummyWebView
     main_window_module.WEB_ENGINE_AVAILABLE = True
@@ -165,6 +243,8 @@ class GuiContractRunner:
         expect_failure_stage: str = "",
         exercise_recovery: bool = False,
         exercise_runtime_actions: bool = False,
+        screenshot_path: str = "",
+        preview_payload_path: str = "",
     ):
         self.app = app
         self.window = window
@@ -174,6 +254,8 @@ class GuiContractRunner:
         self.expect_failure_stage = expect_failure_stage.strip()
         self.exercise_recovery = exercise_recovery
         self.exercise_runtime_actions = exercise_runtime_actions
+        self.screenshot_path = screenshot_path.strip()
+        self.preview_payload_path = preview_payload_path.strip()
         self.failed = False
         self.timed_out = False
         self.exit_code = EXIT_SUCCESS
@@ -252,6 +334,35 @@ class GuiContractRunner:
         QTest.mouseClick(widget, Qt.LeftButton)
         QTest.qWait(100)
 
+    def _capture_screenshot(self, description: str) -> None:
+        if not self.screenshot_path:
+            return
+        screenshot_path = Path(self.screenshot_path)
+        screenshot_path.parent.mkdir(parents=True, exist_ok=True)
+        self.app.processEvents()
+        self.window.repaint()
+        QTest.qWait(200)
+        pixmap = self.window.grab()
+        if not pixmap.save(str(screenshot_path)):
+            self._fail(f"Failed to save {description}: {screenshot_path}")
+            return
+        print(f"HMI_SCREENSHOT path={screenshot_path}", flush=True)
+
+    def _load_preview_payload(self) -> dict:
+        if not self.preview_payload_path:
+            return {}
+        payload_path = Path(self.preview_payload_path)
+        self._expect(payload_path.exists(), f"Preview payload should exist: {payload_path}")
+        if not payload_path.exists():
+            return {}
+        try:
+            payload = json.loads(payload_path.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            self._fail(f"Failed to load preview payload: {exc}")
+            return {}
+        self._expect(isinstance(payload, dict), "Preview payload should be a JSON object")
+        return payload if isinstance(payload, dict) else {}
+
     def _elevate_runtime_permissions(self) -> None:
         auth = getattr(self.window, "_auth", None)
         self._expect(auth is not None, "Runtime action chain requires auth manager")
@@ -276,6 +387,32 @@ class GuiContractRunner:
         if cached is None:
             return
 
+        if self.preview_payload_path:
+            sample_dxf = Path(__file__).resolve().parents[5] / "samples" / "dxf" / "rect_diag.dxf"
+            self._expect(sample_dxf.exists(), f"Canonical preview sample should exist: {sample_dxf}")
+            if sample_dxf.exists():
+                self.window._dxf_filepath = str(sample_dxf)
+                payload = self._load_preview_payload()
+                if payload:
+                    payload.setdefault("plan_id", payload.get("snapshot_id", "plan-from-evidence"))
+                    payload.setdefault("snapshot_id", payload.get("plan_id", "plan-from-evidence"))
+                    payload.setdefault("snapshot_hash", payload.get("snapshot_hash", "snapshot-from-evidence"))
+                    payload.setdefault("generated_at", "")
+                    self.window._on_preview_snapshot_completed(True, payload, "", source="worker")
+                self._wait_for(
+                    "planned glue preview ready",
+                    lambda: bool(self.window._preview_gate.snapshot)
+                    and getattr(self.window, "_preview_source", "") == "planned_glue_snapshot"
+                    and bool(getattr(self.window, "_current_plan_id", "")),
+                    timeout_ms=5000,
+                )
+                self._expect(
+                    "来源: 规划胶点快照" in self.window._dxf_info_label.text(),
+                    "DXF info label should show planned_glue_snapshot source",
+                )
+                self._capture_screenshot("planned glue preview screenshot")
+            return
+
         self._click_button("btn-production-home-all")
         self._wait_for(
             "runtime home completion",
@@ -298,19 +435,31 @@ class GuiContractRunner:
         self._expect(sample_dxf.exists(), f"Canonical preview sample should exist: {sample_dxf}")
         if sample_dxf.exists():
             self.window._dxf_filepath = str(sample_dxf)
-            self.window._on_dxf_load()
+            if self.preview_payload_path:
+                payload = self._load_preview_payload()
+                if payload:
+                    payload.setdefault("plan_id", payload.get("snapshot_id", "plan-from-evidence"))
+                    payload.setdefault("snapshot_id", payload.get("plan_id", "plan-from-evidence"))
+                    payload.setdefault("snapshot_hash", payload.get("plan_fingerprint", payload.get("snapshot_hash", "")))
+                    payload.setdefault("generated_at", "")
+                    self.window._on_preview_snapshot_completed(True, payload, "", source="worker")
+            else:
+                self.window._on_dxf_load()
             self._wait_for(
-                "runtime preview ready",
+                "planned glue preview ready",
                 lambda: bool(self.window._preview_gate.snapshot)
-                and getattr(self.window, "_preview_source", "") == "runtime_snapshot"
+                and getattr(self.window, "_preview_source", "") == "planned_glue_snapshot"
                 and bool(getattr(self.window, "_current_plan_id", ""))
                 and bool(getattr(self.window, "_current_plan_fingerprint", "")),
                 timeout_ms=15000,
             )
             self._expect(
-                "来源: 运行时快照" in self.window._dxf_info_label.text(),
-                "DXF info label should show runtime_snapshot source",
+                "来源: 规划胶点快照" in self.window._dxf_info_label.text(),
+                "DXF info label should show planned_glue_snapshot source",
             )
+            self._capture_screenshot("planned glue preview screenshot")
+            if self.screenshot_path:
+                return
 
         move_source = self._cached_status()
         self._expect(move_source is not None, "Cached status should exist before move_to")
@@ -746,6 +895,8 @@ def main() -> int:
     parser.add_argument("--expect-failure-stage", default="")
     parser.add_argument("--exercise-recovery", action="store_true")
     parser.add_argument("--exercise-runtime-actions", action="store_true")
+    parser.add_argument("--screenshot-path", default="")
+    parser.add_argument("--preview-payload-path", default="")
     args = parser.parse_args()
 
     server: Optional[MockTcpServer] = None
@@ -766,6 +917,8 @@ def main() -> int:
         expect_failure_stage=args.expect_failure_stage,
         exercise_recovery=args.exercise_recovery,
         exercise_runtime_actions=args.exercise_runtime_actions,
+        screenshot_path=args.screenshot_path,
+        preview_payload_path=args.preview_payload_path,
     )
     QTimer.singleShot(0, runner.run)
     QTimer.singleShot(args.timeout_ms, runner.request_timeout)

@@ -35,26 +35,6 @@ Result<DispensingMVPRequest> NormalizeLegacyRequest(
     return Result<DispensingMVPRequest>::Success(std::move(normalized));
 }
 
-Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated BuildExecutionPackageFromPlan(
-    const Siligen::Domain::Dispensing::DomainServices::DispensingPlan& plan,
-    const std::string& source_path) {
-    using Siligen::Domain::Dispensing::Contracts::ExecutionPackageBuilt;
-    using Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated;
-
-    ExecutionPackageBuilt built;
-    built.execution_plan.interpolation_segments = plan.interpolation_segments;
-    built.execution_plan.interpolation_points = plan.interpolation_points;
-    built.execution_plan.motion_trajectory = plan.motion_trajectory;
-    built.execution_plan.trigger_distances_mm = plan.trigger_distances_mm;
-    built.execution_plan.trigger_interval_ms = plan.trigger_interval_ms;
-    built.execution_plan.trigger_interval_mm = plan.trigger_interval_mm;
-    built.execution_plan.total_length_mm = plan.total_length_mm;
-    built.total_length_mm = plan.total_length_mm > 0.0f ? plan.total_length_mm : plan.motion_trajectory.total_length;
-    built.estimated_time_s = plan.estimated_time_s > 0.0f ? plan.estimated_time_s : plan.motion_trajectory.total_time;
-    built.source_path = source_path;
-    return ExecutionPackageValidated(built);
-}
-
 }  // namespace
 
 Result<PlanningRequest> DispensingExecutionCompatibilityService::BuildPlanningRequest(
@@ -115,7 +95,7 @@ Result<DispensingExecutionRequest> DispensingExecutionCompatibilityService::Buil
     if (normalized_result.IsError()) {
         return Result<DispensingExecutionRequest>::Failure(normalized_result.GetError());
     }
-    if (!planning_response.execution_package && !planning_response.execution_plan) {
+    if (!planning_response.execution_package) {
         return Result<DispensingExecutionRequest>::Failure(
             Error(
                 ErrorCode::INVALID_STATE,
@@ -126,12 +106,7 @@ Result<DispensingExecutionRequest> DispensingExecutionCompatibilityService::Buil
     const auto& normalized = normalized_result.Value();
 
     DispensingExecutionRequest execution_request;
-    if (planning_response.execution_package) {
-        execution_request.execution_package = *planning_response.execution_package;
-    } else {
-        execution_request.execution_package =
-            BuildExecutionPackageFromPlan(*planning_response.execution_plan, normalized.dxf_filepath);
-    }
+    execution_request.execution_package = *planning_response.execution_package;
     execution_request.source_path = execution_request.execution_package.source_path;
     execution_request.use_hardware_trigger = normalized.use_hardware_trigger;
     execution_request.dry_run = normalized.dry_run;

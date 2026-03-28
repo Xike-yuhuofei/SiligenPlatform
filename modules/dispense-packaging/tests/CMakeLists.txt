@@ -4,6 +4,7 @@ set(DISPENSE_PACKAGING_TEST_SOURCES
     unit/domain/dispensing/TriggerPlannerTest.cpp
     unit/domain/dispensing/DispensingControllerTest.cpp
     unit/application/services/dispensing/DispensePlanningFacadeTest.cpp
+    unit/application/services/dispensing/PreviewSnapshotServiceTest.cpp
 )
 
 add_executable(siligen_dispense_packaging_unit_tests ${DISPENSE_PACKAGING_TEST_SOURCES})

@@ -1,5 +1,5 @@
 #pragma once
 
-// Legacy bridge header; canonical public owner header lives under modules/workflow/.
+// Legacy compatibility shim. Runtime concrete owner lives in runtime-execution.
 #include "../../../include/domain/motion/domain-services/MotionStatusServiceImpl.h"
 
