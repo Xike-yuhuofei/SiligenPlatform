@@ -105,23 +105,35 @@ class MainWindowTabsTest(unittest.TestCase):
         self.window._last_status = status
         self.window._last_status_ts = time.monotonic()
 
-    def _arm_confirmed_preview(self, *, preview_source: str = "runtime_snapshot") -> None:
-        snapshot = main_window_module.PreviewSnapshotMeta(
-            snapshot_id="snapshot-1",
-            snapshot_hash="hash-1",
-            segment_count=2,
-            point_count=3,
-            total_length_mm=12.0,
-            estimated_time_s=1.5,
-            generated_at="2026-03-26T00:00:00Z",
+    def _arm_confirmed_preview(self, *, preview_source: str = "planned_glue_snapshot") -> None:
+        result = self.window._preview_session.process_snapshot_payload(
+            {
+                "snapshot_id": "snapshot-1",
+                "snapshot_hash": "hash-1",
+                "plan_id": "plan-1",
+                "preview_source": preview_source,
+                "preview_kind": "glue_points",
+                "segment_count": 2,
+                "glue_point_count": 3,
+                "glue_points": [
+                    {"x": 0.0, "y": 0.0},
+                    {"x": 6.0, "y": 0.0},
+                    {"x": 12.0, "y": 3.0},
+                ],
+                "execution_polyline": [
+                    {"x": 0.0, "y": 0.0},
+                    {"x": 12.0, "y": 3.0},
+                ],
+                "total_length_mm": 12.0,
+                "estimated_time_s": 1.5,
+                "generated_at": "2026-03-26T00:00:00Z",
+                "dry_run": False,
+            },
+            current_dry_run=False,
         )
-        self.window._preview_gate.begin_preview()
-        self.window._preview_gate.preview_ready(snapshot)
-        self.window._preview_gate.confirm_current_snapshot()
-        self.window._current_plan_id = "plan-1"
-        self.window._current_plan_fingerprint = "hash-1"
-        self.window._preview_plan_dry_run = False
-        self.window._preview_source = preview_source
+        self.assertTrue(result.ok)
+        self.window._preview_session.gate.confirm_current_snapshot()
+        self.window._sync_preview_session_fields()
 
     def _collect_testids(self) -> set[str]:
         return {
@@ -258,12 +270,39 @@ class MainWindowTabsTest(unittest.TestCase):
             speed_mm_s=12.0,
             dry_run=False,
             preview_source="mock_synthetic",
-            trajectory_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 3.0)],
+            glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 3.0)],
+            execution_polyline=[(0.0, 0.0), (12.0, 3.0)],
+            preview_kind="glue_points",
         )
 
         self.assertIn("当前为 Mock 模拟轨迹", html)
         self.assertIn("非真实几何", html)
         self.assertIn("来源</td><td>Mock模拟</td>", html)
+
+    def test_render_runtime_preview_html_renders_sampling_warning_banner(self) -> None:
+        snapshot = main_window_module.PreviewSnapshotMeta(
+            snapshot_id="snapshot-1",
+            snapshot_hash="hash-1",
+            segment_count=2,
+            point_count=3,
+            total_length_mm=12.0,
+            estimated_time_s=1.5,
+            generated_at="2026-03-26T00:00:00Z",
+        )
+
+        html = self.window._render_runtime_preview_html(
+            snapshot=snapshot,
+            speed_mm_s=12.0,
+            dry_run=False,
+            preview_source="planned_glue_snapshot",
+            glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 3.0)],
+            execution_polyline=[(0.0, 0.0), (12.0, 3.0)],
+            preview_kind="glue_points",
+            preview_warning="胶点预览疑似退化为轨迹采样点（胶点数 950，执行轨迹源点 1000）。",
+        )
+
+        self.assertIn("预览质量告警", html)
+        self.assertIn("胶点预览疑似退化为轨迹采样点", html)
 
     def test_check_production_preconditions_rejects_mock_preview_source(self) -> None:
         status = self._make_status(x_homed=True, y_homed=True)
@@ -302,8 +341,33 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertFalse(result)
         self.assertEqual(
             warnings[-1],
-            "当前预览来源不是 runtime_snapshot，不能作为真实在线预览通过依据",
+            "当前预览来源不是 planned_glue_snapshot，不能作为真实在线预览通过依据",
         )
+
+    def test_preview_snapshot_reports_legacy_backend_contract_when_glue_points_missing(self) -> None:
+        messages = []
+        self.window._set_preview_message_html = lambda title, detail="", is_error=False: messages.append((title, detail, is_error))
+
+        self.window._on_preview_snapshot_completed(
+            True,
+            {
+                "snapshot_id": "snapshot-legacy",
+                "snapshot_hash": "hash-legacy",
+                "plan_id": "plan-legacy",
+                "preview_source": "runtime_snapshot",
+                "trajectory_polyline": [
+                    {"x": 0.0, "y": 0.0},
+                    {"x": 10.0, "y": 0.0},
+                ],
+            },
+            "",
+        )
+
+        self.assertEqual(self.window._preview_gate.last_error_message, "运行时仍返回旧版轨迹预览契约")
+        self.assertTrue(messages)
+        self.assertEqual(messages[-1][0], "胶点预览生成失败")
+        self.assertIn("当前 HMI 连接的 runtime-gateway 很可能还是旧构建", messages[-1][1])
+        self.assertTrue(messages[-1][2])
 
 
 if __name__ == "__main__":
