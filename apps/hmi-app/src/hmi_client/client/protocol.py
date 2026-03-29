@@ -98,6 +98,8 @@ class MachineStatus:
 class CommandProtocol:
     """High-level command interface for motion controller."""
 
+    _DEFAULT_PREVIEW_MAX_POLYLINE_POINTS = 4000
+
     def __init__(self, client: TcpClient):
         self._client = client
 
@@ -413,23 +415,26 @@ class CommandProtocol:
     def dxf_preview_snapshot(
         self,
         plan_id: str,
-        max_polyline_points: int = 4000,
+        max_polyline_points: int = _DEFAULT_PREVIEW_MAX_POLYLINE_POINTS,
+        timeout: float = 15.0,
     ) -> tuple:
         ok, payload, error, _ = self.dxf_preview_snapshot_with_error_details(
             plan_id=plan_id,
             max_polyline_points=max_polyline_points,
+            timeout=timeout,
         )
         return ok, payload, error
 
     def dxf_preview_snapshot_with_error_details(
         self,
         plan_id: str,
-        max_polyline_points: int = 4000,
+        max_polyline_points: int = _DEFAULT_PREVIEW_MAX_POLYLINE_POINTS,
+        timeout: float = 15.0,
     ) -> tuple:
         params = {"plan_id": plan_id}
-        if max_polyline_points > 0:
+        if max_polyline_points > 0 and max_polyline_points != self._DEFAULT_PREVIEW_MAX_POLYLINE_POINTS:
             params["max_polyline_points"] = int(max_polyline_points)
-        resp = self._client.send_request("dxf.preview.snapshot", params, timeout=15.0)
+        resp = self._client.send_request("dxf.preview.snapshot", params, timeout=timeout)
         if "error" in resp:
             error_payload = resp.get("error", {}) or {}
             error_message = error_payload.get("message", "Unknown error")
@@ -454,6 +459,7 @@ class CommandProtocol:
         speed_mm_s: float,
         dry_run: bool = False,
         dry_run_speed_mm_s: float = 0.0,
+        timeout: float = 15.0,
     ) -> tuple:
         params = self._build_dxf_plan_params(
             dispensing_speed_mm_s=speed_mm_s,
@@ -462,7 +468,7 @@ class CommandProtocol:
             velocity_trace_enabled=False,
         )
         params["artifact_id"] = artifact_id
-        resp = self._client.send_request("dxf.plan.prepare", params, timeout=15.0)
+        resp = self._client.send_request("dxf.plan.prepare", params, timeout=timeout)
         if "error" in resp:
             return False, {}, resp["error"].get("message", "Unknown error")
         return True, resp.get("result", {}), ""

@@ -1,14 +1,16 @@
 import sys
+import types
 import unittest
 from dataclasses import dataclass
 from pathlib import Path
+from unittest.mock import patch
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(WORKSPACE_ROOT / "modules" / "hmi-application" / "application"))
 
 from hmi_application.preview_gate import PreviewGateState, StartBlockReason
-from hmi_application.preview_session import PreflightBlockReason, PreviewSessionOwner
+from hmi_application.preview_session import PreflightBlockReason, PreviewSessionOwner, PreviewSnapshotWorker
 
 
 @dataclass
@@ -67,6 +69,62 @@ def _valid_payload(
         "estimated_time_s": 1.0,
         "generated_at": "2026-03-28T00:00:00Z",
         "dry_run": dry_run,
+    }
+
+
+class _WorkerFakeClient:
+    def __init__(self, host: str = "127.0.0.1", port: int = 9527) -> None:
+        self.host = host
+        self.port = port
+        self.connected = False
+
+    def connect(self) -> bool:
+        self.connected = True
+        return True
+
+    def disconnect(self) -> None:
+        self.connected = False
+
+
+class _WorkerFakeProtocol:
+    calls: list[tuple] = []
+
+    def __init__(self, client) -> None:
+        self.client = client
+
+    def dxf_prepare_plan(
+        self,
+        artifact_id: str,
+        speed_mm_s: float,
+        dry_run: bool = False,
+        dry_run_speed_mm_s: float = 0.0,
+        timeout: float = 15.0,
+    ) -> tuple:
+        type(self).calls.append(
+            ("dxf.plan.prepare", artifact_id, speed_mm_s, dry_run, dry_run_speed_mm_s, timeout)
+        )
+        return True, {"plan_id": "plan-1", "plan_fingerprint": "fp-1"}, ""
+
+    def dxf_preview_snapshot(
+        self,
+        plan_id: str,
+        max_polyline_points: int = 4000,
+        timeout: float = 15.0,
+    ) -> tuple:
+        type(self).calls.append(("dxf.preview.snapshot", plan_id, max_polyline_points, timeout))
+        return True, {"snapshot_id": "snapshot-1", "preview_source": "planned_glue_snapshot", "preview_kind": "glue_points"}, ""
+
+
+def _worker_import_modules() -> dict[str, object]:
+    client_package = types.ModuleType("client")
+    tcp_module = types.ModuleType("client.tcp_client")
+    tcp_module.TcpClient = _WorkerFakeClient
+    protocol_module = types.ModuleType("client.protocol")
+    protocol_module.CommandProtocol = _WorkerFakeProtocol
+    return {
+        "client": client_package,
+        "client.tcp_client": tcp_module,
+        "client.protocol": protocol_module,
     }
 
 
@@ -286,6 +344,38 @@ class PreviewSessionOwnerTest(unittest.TestCase):
 
         self.assertTrue(first)
         self.assertFalse(second)
+
+
+class PreviewSnapshotWorkerTest(unittest.TestCase):
+    def setUp(self) -> None:
+        _WorkerFakeProtocol.calls = []
+
+    def test_worker_uses_100s_timeout_for_prepare_and_snapshot(self) -> None:
+        worker = PreviewSnapshotWorker(
+            host="127.0.0.1",
+            port=9527,
+            artifact_id="artifact-1",
+            speed_mm_s=20.0,
+            dry_run=False,
+            dry_run_speed_mm_s=20.0,
+        )
+        emitted = []
+        worker.completed.connect(lambda ok, payload, error: emitted.append((ok, payload, error)))
+
+        with patch.dict(sys.modules, _worker_import_modules(), clear=False):
+            worker.run()
+
+        self.assertEqual(
+            _WorkerFakeProtocol.calls,
+            [
+                ("dxf.plan.prepare", "artifact-1", 20.0, False, 20.0, 100.0),
+                ("dxf.preview.snapshot", "plan-1", 4000, 100.0),
+            ],
+        )
+        self.assertTrue(emitted)
+        self.assertTrue(emitted[0][0])
+        self.assertEqual(emitted[0][1]["plan_id"], "plan-1")
+        self.assertEqual(emitted[0][1]["snapshot_hash"], "fp-1")
 
 
 if __name__ == "__main__":
