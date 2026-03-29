@@ -8,6 +8,9 @@ from PyQt5.QtCore import QThread, pyqtSignal
 
 from .preview_gate import DispensePreviewGate, PreviewGateState, PreviewSnapshotMeta, StartBlockReason
 
+# DXF 打开后的自动预览允许更长等待窗口，但该预算不向 resync/confirm/job.start 扩散。
+DXF_OPEN_AUTO_PREVIEW_TIMEOUT_S = 100.0
+
 if TYPE_CHECKING:
     try:
         from hmi_client.client.protocol import MachineStatus, CommandProtocol
@@ -132,6 +135,7 @@ class PreviewSnapshotWorker(QThread):
                     speed_mm_s=self._speed_mm_s,
                     dry_run=self._dry_run,
                     dry_run_speed_mm_s=self._dry_run_speed_mm_s,
+                    timeout=DXF_OPEN_AUTO_PREVIEW_TIMEOUT_S,
                 )
                 if not plan_ok:
                     error = plan_error
@@ -143,6 +147,7 @@ class PreviewSnapshotWorker(QThread):
                         ok, payload, error = protocol.dxf_preview_snapshot(
                             plan_id=plan_id,
                             max_polyline_points=4000,
+                            timeout=DXF_OPEN_AUTO_PREVIEW_TIMEOUT_S,
                         )
                         if ok and isinstance(payload, dict):
                             payload.setdefault("plan_id", plan_id)

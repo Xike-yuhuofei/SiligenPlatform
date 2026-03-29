@@ -45,6 +45,14 @@ class FakeProtocol:
         return True
 
 
+class _FakePreviewView:
+    def __init__(self) -> None:
+        self.html = ""
+
+    def setHtml(self, html: str) -> None:
+        self.html = html
+
+
 class MainWindowTabsTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -386,6 +394,47 @@ class MainWindowTabsTest(unittest.TestCase):
             "预览快照与执行快照不一致，请重新生成并确认",
         )
 
+    def test_preview_snapshot_success_renders_authority_payload_without_timeout_side_effects(self) -> None:
+        messages = []
+        self.window._dxf_view = _FakePreviewView()
+        self.window._set_preview_message_html = lambda title, detail="", is_error=False: messages.append((title, detail, is_error))
+
+        self.window._on_preview_snapshot_completed(
+            True,
+            {
+                "snapshot_id": "snapshot-100s",
+                "snapshot_hash": "hash-100s",
+                "plan_id": "plan-100s",
+                "preview_source": "planned_glue_snapshot",
+                "preview_kind": "glue_points",
+                "segment_count": 2,
+                "glue_point_count": 2,
+                "glue_points": [
+                    {"x": 0.0, "y": 0.0},
+                    {"x": 10.0, "y": 0.0},
+                ],
+                "execution_polyline": [
+                    {"x": 0.0, "y": 0.0},
+                    {"x": 10.0, "y": 0.0},
+                ],
+                "total_length_mm": 10.0,
+                "estimated_time_s": 0.5,
+                "generated_at": "2026-03-29T00:00:00Z",
+                "dry_run": False,
+            },
+            "",
+        )
+
+        self.assertEqual(messages, [])
+        self.assertEqual(self.window._preview_source, "planned_glue_snapshot")
+        self.assertEqual(self.window._current_plan_id, "plan-100s")
+        self.assertEqual(self.window._current_plan_fingerprint, "hash-100s")
+        self.assertIsNotNone(self.window._preview_gate.snapshot)
+        self.assertEqual(self.window._preview_gate.snapshot.snapshot_hash, "hash-100s")
+        self.assertEqual(self.window.statusBar().currentMessage(), "胶点预览已更新，启动前需确认")
+        self.assertIn("规划胶点主预览", self.window._dxf_view.html)
+        self.assertIn("hash-100s", self.window._dxf_view.html)
+
     def test_preview_snapshot_rejects_non_authoritative_preview_source(self) -> None:
         messages = []
         self.window._set_preview_message_html = lambda title, detail="", is_error=False: messages.append((title, detail, is_error))
@@ -508,6 +557,30 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertTrue(messages)
         self.assertEqual(messages[-1][0], "胶点预览生成失败")
         self.assertIn("当前 HMI 连接的 runtime-gateway 很可能还是旧构建", messages[-1][1])
+        self.assertTrue(messages[-1][2])
+
+    def test_preview_snapshot_worker_error_preserves_timeout_detail(self) -> None:
+        messages = []
+        self.window._set_preview_message_html = lambda title, detail="", is_error=False: messages.append((title, detail, is_error))
+
+        self.window._on_preview_snapshot_completed(False, {}, "Request timed out (100.0s)")
+
+        self.assertEqual(self.window._preview_gate.last_error_message, "Request timed out (100.0s)")
+        self.assertTrue(messages)
+        self.assertEqual(messages[-1][0], "胶点预览生成失败")
+        self.assertEqual(messages[-1][1], "Request timed out (100.0s)")
+        self.assertTrue(messages[-1][2])
+
+    def test_preview_snapshot_worker_error_preserves_non_timeout_detail(self) -> None:
+        messages = []
+        self.window._set_preview_message_html = lambda title, detail="", is_error=False: messages.append((title, detail, is_error))
+
+        self.window._on_preview_snapshot_completed(False, {}, "plan not found")
+
+        self.assertEqual(self.window._preview_gate.last_error_message, "plan not found")
+        self.assertTrue(messages)
+        self.assertEqual(messages[-1][0], "胶点预览生成失败")
+        self.assertEqual(messages[-1][1], "plan not found")
         self.assertTrue(messages[-1][2])
 
 
