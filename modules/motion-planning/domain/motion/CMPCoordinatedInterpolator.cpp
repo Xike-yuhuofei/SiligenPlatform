@@ -28,10 +28,10 @@ namespace Siligen::Domain::Motion {
 
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectory;
 using Siligen::Domain::Motion::ValueObjects::TimePlanningConfig;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
+using Siligen::ProcessPath::Contracts::ProcessPath;
+using Siligen::ProcessPath::Contracts::ProcessSegment;
+using Siligen::ProcessPath::Contracts::ProcessTag;
+using Siligen::ProcessPath::Contracts::SegmentType;
 
 namespace {
 constexpr float32 kEpsilon = 1e-6f;
@@ -181,61 +181,8 @@ std::vector<TrajectoryPoint> CMPCoordinatedInterpolator::CalculateInterpolation(
     if (!ValidateParameters(points, config)) {
         return {};
     }
-
-    // 使用默认的CMP配置进行位置同步插补
-    CMPConfiguration default_config;
-    default_config.trigger_mode = CMPTriggerMode::POSITION_SYNC;
-    default_config.cmp_channel = 1;
-    default_config.pulse_width_us = 2000;
-    default_config.trigger_position_tolerance = 0.1f;
-    default_config.time_tolerance_ms = 1.0f;
-    default_config.enable_compensation = true;
-    default_config.compensation_factor = 1.0f;
-    default_config.enable_multi_channel = false;
-
-    // 生成默认触发点（等间距分布）
-    std::vector<DispensingTriggerPoint> trigger_points;
-    float32 total_length = 0.0f;
-    for (size_t i = 1; i < points.size(); ++i) {
-        total_length += points[i - 1].DistanceTo(points[i]);
-    }
-
-    float32 trigger_spacing = (config.trigger_spacing_mm > kEpsilon)
-                                  ? config.trigger_spacing_mm
-                                  : 10.0f;  // 每10mm一个触发点
-    int32 num_triggers = static_cast<int32>(std::floor(total_length / trigger_spacing));
-
-    float32 current_distance = 0.0f;
-    for (int32 i = 0; i < num_triggers; ++i) {
-        current_distance += trigger_spacing;
-
-        // 找到对应的路径点
-        float32 accumulated_distance = 0.0f;
-        Point2D trigger_position;
-
-        for (size_t j = 1; j < points.size(); ++j) {
-            float32 segment_length = points[j - 1].DistanceTo(points[j]);
-            if (accumulated_distance + segment_length >= current_distance) {
-                float32 ratio = (current_distance - accumulated_distance) / segment_length;
-                trigger_position = points[j - 1] + (points[j] - points[j - 1]) * ratio;
-                break;
-            }
-            accumulated_distance += segment_length;
-        }
-
-        DispensingTriggerPoint trigger_point;
-        trigger_point.position = trigger_position;
-        trigger_point.trigger_distance = current_distance;
-        trigger_point.sequence_id = static_cast<uint32>(i);
-        trigger_point.pulse_width_us = 2000;
-        trigger_point.pre_trigger_delay_ms = 0.0f;
-        trigger_point.post_trigger_delay_ms = 0.0f;
-        trigger_point.is_enabled = true;
-
-        trigger_points.push_back(trigger_point);
-    }
-
-    return PositionTriggeredDispensing(points, trigger_points, default_config, config);
+    SILIGEN_LOG_ERROR("CMP插补必须显式提供离散 trigger 列表，禁止退化为默认等间距触发");
+    return {};
 }
 
 std::vector<TrajectoryPoint> CMPCoordinatedInterpolator::PositionTriggeredDispensing(

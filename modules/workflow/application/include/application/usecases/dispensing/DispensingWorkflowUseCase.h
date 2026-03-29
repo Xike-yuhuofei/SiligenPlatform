@@ -70,12 +70,16 @@ struct PreviewSnapshotResponse {
     PlanID plan_id;
     std::string preview_state;
     std::string preview_source;
+    std::string preview_kind;
     std::string confirmed_at;
     std::uint32_t segment_count = 0;
     std::uint32_t point_count = 0;
-    std::uint32_t polyline_source_point_count = 0;
-    std::uint32_t polyline_point_count = 0;
-    std::vector<PreviewSnapshotPoint> trajectory_polyline;
+    std::uint32_t glue_point_count = 0;
+    std::uint32_t execution_point_count = 0;
+    std::uint32_t execution_polyline_source_point_count = 0;
+    std::uint32_t execution_polyline_point_count = 0;
+    std::vector<PreviewSnapshotPoint> glue_points;
+    std::vector<PreviewSnapshotPoint> execution_polyline;
     float32 total_length_mm = 0.0f;
     float32 estimated_time_s = 0.0f;
     std::string generated_at;
@@ -194,7 +198,13 @@ class DispensingWorkflowUseCase {
     struct PlanRecord {
         PreparePlanResponse response;
         PlanExecutionLaunch execution_launch;
-        std::vector<TrajectoryPoint> trajectory_points;
+        std::vector<TrajectoryPoint> execution_trajectory_points;
+        std::vector<Siligen::Shared::Types::Point2D> glue_points;
+        bool preview_authority_ready = false;
+        bool preview_authority_shared_with_execution = false;
+        bool preview_spacing_valid = false;
+        bool preview_has_short_segment_exceptions = false;
+        std::string preview_failure_reason;
         PlanPreviewState preview_state = PlanPreviewState::PREPARED;
         std::string preview_snapshot_id;
         std::string preview_snapshot_hash;

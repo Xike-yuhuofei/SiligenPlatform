@@ -7,10 +7,27 @@
     "snapshot_hash": "8b2649f36dcb4a79",
     "plan_id": "plan-8b2649f36dcb",
     "preview_state": "snapshot_ready",
-    "preview_source": "runtime_snapshot",
+    "preview_source": "planned_glue_snapshot",
+    "preview_kind": "glue_points",
     "confirmed_at": "",
     "segment_count": 128,
-    "point_count": 384,
+    "point_count": 3,
+    "glue_point_count": 3,
+    "glue_points": [
+      { "x": 0.0, "y": 0.0 },
+      { "x": 45.0, "y": 6.0 },
+      { "x": 90.0, "y": 0.0 }
+    ],
+    "execution_point_count": 384,
+    "execution_polyline_point_count": 5,
+    "execution_polyline_source_point_count": 384,
+    "execution_polyline": [
+      { "x": 0.0, "y": 0.0 },
+      { "x": 15.0, "y": 2.5 },
+      { "x": 35.0, "y": 8.0 },
+      { "x": 60.0, "y": 3.0 },
+      { "x": 90.0, "y": 0.0 }
+    ],
     "polyline_point_count": 5,
     "polyline_source_point_count": 384,
     "trajectory_polyline": [

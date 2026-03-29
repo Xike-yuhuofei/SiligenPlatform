@@ -16,4 +16,4 @@ target_include_directories(domain_dispensing INTERFACE
 )
 target_compile_features(domain_dispensing INTERFACE cxx_std_17)
 
-message(STATUS "[Domain::Dispensing] workflow compatibility target now forwards to M8 owner")
+message(STATUS "[Domain::Dispensing] workflow compatibility target now forwards to M8 owner only")

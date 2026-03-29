@@ -7,6 +7,10 @@ set(PROCESS_PATH_TEST_SOURCES
 
 add_executable(siligen_process_path_unit_tests ${PROCESS_PATH_TEST_SOURCES})
 
+target_include_directories(siligen_process_path_unit_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/..
+)
+
 if(TARGET GTest::gtest_main)
     target_link_libraries(siligen_process_path_unit_tests PRIVATE GTest::gtest_main)
 elseif(TARGET gtest_main)
@@ -17,6 +21,7 @@ endif()
 
 target_link_libraries(siligen_process_path_unit_tests PRIVATE
     siligen_process_path_application_public
+    siligen_process_path_domain_trajectory
     siligen_types
     siligen_utils
 )

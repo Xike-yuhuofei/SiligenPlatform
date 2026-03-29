@@ -2,6 +2,8 @@
 
 更新时间：`2026-03-27`
 
+> 修订说明：本稿为初版抽样审查。最终修正版结论与整改顺序以 [modules-owner-boundary-review-revised-2026-03-27.md](./modules-owner-boundary-review-revised-2026-03-27.md) 为准。
+
 ## 审查范围
 
 - 只审查 `modules/` 目录，以及为理解边界所必需的少量关联文件。

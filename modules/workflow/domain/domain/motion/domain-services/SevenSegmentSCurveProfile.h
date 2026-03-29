@@ -1,5 +1,4 @@
 #pragma once
 
-// Legacy bridge header; canonical owner header is provided by motion-planning public surface.
-#include "domain/motion/domain-services/SevenSegmentSCurveProfile.h"
-
+// Legacy compatibility shim. Canonical planning owner lives in motion-planning.
+#include "../../../../../motion-planning/domain/motion/domain-services/SevenSegmentSCurveProfile.h"

@@ -410,7 +410,7 @@ nlohmann::json BuildPreviewSignaturePayload(const std::string& filepath, const n
     payload["curve_chain_max_segment_mm"] = ReadJsonDouble(params, "curve_chain_max_segment_mm", 0.0);
     payload["max_jerk"] = ReadJsonDouble(params, "max_jerk", 0.0);
     payload["use_hardware_trigger"] = ReadJsonBool(params, "use_hardware_trigger", true);
-    payload["use_interpolation_planner"] = ReadJsonBool(params, "use_interpolation_planner", false);
+    payload["use_interpolation_planner"] = ReadJsonBool(params, "use_interpolation_planner", true);
     payload["interpolation_algorithm"] = ReadJsonInt(params, "interpolation_algorithm", 0);
     return payload;
 }
@@ -454,7 +454,7 @@ Application::UseCases::Dispensing::PlanningRequest BuildPreviewPlanningRequest(
     request.curve_chain_angle_deg = static_cast<float32>(ReadJsonDouble(params, "curve_chain_angle_deg", 0.0));
     request.curve_chain_max_segment_mm = static_cast<float32>(ReadJsonDouble(params, "curve_chain_max_segment_mm", 0.0));
     request.use_hardware_trigger = ReadJsonBool(params, "use_hardware_trigger", true);
-    request.use_interpolation_planner = ReadJsonBool(params, "use_interpolation_planner", false);
+    request.use_interpolation_planner = ReadJsonBool(params, "use_interpolation_planner", true);
     const int algorithm_raw = ReadJsonInt(params, "interpolation_algorithm", 0);
     if (algorithm_raw >= static_cast<int>(Siligen::Domain::Motion::InterpolationAlgorithm::LINEAR) &&
         algorithm_raw <= static_cast<int>(Siligen::Domain::Motion::InterpolationAlgorithm::CIRCULAR_ARRAY)) {
@@ -530,7 +530,7 @@ Application::UseCases::Dispensing::DispensingMVPRequest BuildPlanExecutionReques
         ReadJsonDouble(params, "velocity_guard_max_consecutive", request.velocity_guard_max_consecutive));
     request.velocity_guard_stop_on_violation =
         params.value("velocity_guard_stop_on_violation", request.velocity_guard_stop_on_violation);
-    request.use_interpolation_planner = params.value("use_interpolation_planner", false);
+    request.use_interpolation_planner = params.value("use_interpolation_planner", true);
     const int algorithm_raw = ReadJsonInt(params, "interpolation_algorithm", 0);
     if (algorithm_raw >= static_cast<int>(Siligen::Domain::Motion::InterpolationAlgorithm::LINEAR) &&
         algorithm_raw <= static_cast<int>(Siligen::Domain::Motion::InterpolationAlgorithm::CIRCULAR_ARRAY)) {
@@ -2441,19 +2441,30 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
     if (snapshot.preview_source.empty()) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview source is missing");
     }
-    if (snapshot.preview_source != "runtime_snapshot") {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview source must be runtime_snapshot");
+    if (snapshot.preview_source != "planned_glue_snapshot") {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview source must be planned_glue_snapshot");
+    }
+    if (snapshot.preview_kind != "glue_points") {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview kind must be glue_points");
     }
 
-    nlohmann::json trajectory_polyline = nlohmann::json::array();
-    for (const auto& point : snapshot.trajectory_polyline) {
-        trajectory_polyline.push_back({
+    nlohmann::json glue_points = nlohmann::json::array();
+    for (const auto& point : snapshot.glue_points) {
+        glue_points.push_back({
             {"x", static_cast<double>(point.x)},
             {"y", static_cast<double>(point.y)},
         });
     }
-    if (trajectory_polyline.empty()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview trajectory polyline is empty");
+    if (glue_points.empty()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview glue points are empty");
+    }
+
+    nlohmann::json execution_polyline = nlohmann::json::array();
+    for (const auto& point : snapshot.execution_polyline) {
+        execution_polyline.push_back({
+            {"x", static_cast<double>(point.x)},
+            {"y", static_cast<double>(point.y)},
+        });
     }
 
     {
@@ -2490,12 +2501,19 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
         {"plan_id", resolved_plan_id},
         {"preview_state", snapshot.preview_state},
         {"preview_source", snapshot.preview_source},
+        {"preview_kind", snapshot.preview_kind},
         {"confirmed_at", snapshot.confirmed_at},
         {"segment_count", snapshot.segment_count},
         {"point_count", snapshot.point_count},
-        {"polyline_point_count", snapshot.polyline_point_count},
-        {"polyline_source_point_count", snapshot.polyline_source_point_count},
-        {"trajectory_polyline", trajectory_polyline},
+        {"glue_point_count", snapshot.glue_point_count},
+        {"glue_points", glue_points},
+        {"execution_point_count", snapshot.execution_point_count},
+        {"execution_polyline_point_count", snapshot.execution_polyline_point_count},
+        {"execution_polyline_source_point_count", snapshot.execution_polyline_source_point_count},
+        {"execution_polyline", execution_polyline},
+        {"polyline_point_count", snapshot.execution_polyline_point_count},
+        {"polyline_source_point_count", snapshot.execution_polyline_source_point_count},
+        {"trajectory_polyline", execution_polyline},
         {"total_length_mm", snapshot.total_length_mm},
         {"estimated_time_s", snapshot.estimated_time_s},
         {"generated_at", snapshot.generated_at}

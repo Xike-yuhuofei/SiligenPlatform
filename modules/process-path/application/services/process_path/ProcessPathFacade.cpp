@@ -1,5 +1,9 @@
 #include "application/services/process_path/ProcessPathFacade.h"
 
+#include "domain/trajectory/domain-services/GeometryNormalizer.h"
+#include "domain/trajectory/domain-services/ProcessAnnotator.h"
+#include "domain/trajectory/domain-services/TrajectoryShaper.h"
+
 namespace Siligen::Application::Services::ProcessPath {
 
 ProcessPathBuildResult ProcessPathFacade::Build(const ProcessPathBuildRequest& request) const {

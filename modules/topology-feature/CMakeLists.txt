@@ -7,13 +7,13 @@ endif()
 
 if(NOT TARGET siligen_topology_feature_contour_augment_adapter)
     add_subdirectory(
-        "${CMAKE_CURRENT_SOURCE_DIR}/domain/geometry"
-        "${CMAKE_BINARY_DIR}/modules/topology-feature/domain/geometry"
+        "${CMAKE_CURRENT_SOURCE_DIR}/adapters/infrastructure/adapters/planning/geometry"
+        "${CMAKE_BINARY_DIR}/modules/topology-feature/adapters/infrastructure/adapters/planning/geometry"
     )
 endif()
 
 if(NOT TARGET siligen_topology_feature_contour_augment_adapter)
-    message(FATAL_ERROR "topology-feature requires canonical domain/geometry target: siligen_topology_feature_contour_augment_adapter")
+    message(FATAL_ERROR "topology-feature requires canonical adapter target: siligen_topology_feature_contour_augment_adapter")
 endif()
 
 add_library(siligen_module_topology_feature INTERFACE)

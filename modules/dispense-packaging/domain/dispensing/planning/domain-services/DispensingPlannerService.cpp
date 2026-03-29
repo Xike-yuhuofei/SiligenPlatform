@@ -4,12 +4,15 @@
 
 #include "domain/dispensing/domain-services/TriggerPlanner.h"
 #include "domain/motion/CMPCoordinatedInterpolator.h"
+#include "domain/motion/domain-services/TimeTrajectoryPlanner.h"
 #include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
+#include "process_path/contracts/ProcessPath.h"
 #include "domain/trajectory/value-objects/GeometryBoostAdapter.h"
 #include "domain/trajectory/value-objects/GeometryUtils.h"
 #include "shared/geometry/BoostGeometryAdapter.h"
 #include "shared/types/CMPTypes.h"
 #include "shared/types/Error.h"
+#include "shared/types/TrajectoryTriggerUtils.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
 
@@ -35,7 +38,6 @@ using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::int32;
 using Siligen::Shared::Types::uint32;
 using Siligen::Domain::Trajectory::ValueObjects::Primitive;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
 using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
 using Siligen::Domain::Motion::Ports::InterpolationData;
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectory;
@@ -44,6 +46,7 @@ using Siligen::Domain::Dispensing::DomainServices::UnifiedTrajectoryPlanRequest;
 using Siligen::Domain::Dispensing::DomainServices::UnifiedTrajectoryPlannerService;
 using Siligen::Domain::Dispensing::DomainServices::TriggerPlanner;
 using Siligen::Domain::Dispensing::ValueObjects::TriggerPlan;
+using Siligen::ProcessPath::Contracts::ProcessPath;
 using Siligen::Domain::Trajectory::Geometry::LineLength;
 using Siligen::Domain::Trajectory::ValueObjects::ArcPoint;
 using Siligen::Domain::Trajectory::ValueObjects::ComputeArcLength;
@@ -931,6 +934,39 @@ float32 SpeedMagnitude(const Siligen::Domain::Motion::ValueObjects::MotionTrajec
     return std::sqrt(vx * vx + vy * vy);
 }
 
+Domain::Motion::ValueObjects::TimePlanningConfig BuildInterpolationPlanningConfig(
+    const InterpolationConfig& config) {
+    Domain::Motion::ValueObjects::TimePlanningConfig motion_config;
+    motion_config.vmax = config.max_velocity;
+    motion_config.amax = config.max_acceleration;
+    motion_config.jmax = config.max_jerk;
+    motion_config.sample_dt = config.time_step;
+    motion_config.sample_ds = 0.0f;
+    motion_config.curvature_speed_factor = config.curvature_speed_factor;
+    motion_config.corner_speed_factor = 1.0f;
+    motion_config.start_speed_factor = 1.0f;
+    motion_config.end_speed_factor = 1.0f;
+    motion_config.rapid_speed_factor = 1.0f;
+    motion_config.arc_tolerance_mm = std::max(config.position_tolerance, 0.0f);
+    motion_config.enforce_jerk_limit = true;
+    return motion_config;
+}
+
+std::vector<TrajectoryPoint> ConvertMotionTrajectoryToTrajectoryPoints(const MotionTrajectory& trajectory) {
+    std::vector<TrajectoryPoint> points;
+    points.reserve(trajectory.points.size());
+    for (size_t index = 0; index < trajectory.points.size(); ++index) {
+        const auto& sample = trajectory.points[index];
+        TrajectoryPoint point;
+        point.position = Point2D(sample.position.x, sample.position.y);
+        point.timestamp = sample.t;
+        point.sequence_id = static_cast<uint32>(index);
+        point.velocity = SpeedMagnitude(sample);
+        points.push_back(point);
+    }
+    return points;
+}
+
 float32 ComputeTrajectoryPointLength(const MotionTrajectory& trajectory) {
     if (trajectory.points.size() < 2) {
         return 0.0f;
@@ -1358,6 +1394,8 @@ UnifiedTrajectoryPlanRequest BuildUnifiedPlanRequest(const DispensingPlanRequest
     plan_request.process.end_speed_factor = request.end_speed_factor;
     plan_request.process.corner_speed_factor = request.corner_speed_factor;
     plan_request.process.rapid_speed_factor = request.rapid_speed_factor;
+    plan_request.shaping.corner_smoothing_radius = 0.0f;
+    plan_request.shaping.corner_max_deviation_mm = 0.0f;
 
     plan_request.normalization.approximate_splines = request.approximate_splines;
     plan_request.normalization.spline_max_step_mm = request.spline_max_step_mm;
@@ -1522,19 +1560,57 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
         Domain::Motion::CMPCoordinatedInterpolator cmp_interpolator;
         points = cmp_interpolator.PositionTriggeredDispensing(path, triggers, cmp_config, config);
     } else {
+        if (request.interpolation_algorithm == InterpolationAlgorithm::CMP_COORDINATED) {
+            return Result<std::vector<TrajectoryPoint>>::Failure(
+                Error(ErrorCode::TRAJECTORY_GENERATION_FAILED,
+                      "CMP插补缺少 trigger_distances_mm，不能退化为默认轨迹采样触发",
+                      "DispensingPlanner"));
+        }
+
         auto seed_points = BuildInterpolationSeedPoints(path, ResolveInterpolationStep(request));
         if (seed_points.size() < 2) {
             return Result<std::vector<TrajectoryPoint>>::Failure(
                 Error(ErrorCode::INVALID_PARAMETER, "插补规划参数无效", "DispensingPlanner"));
         }
 
-        auto interpolator = Domain::Motion::TrajectoryInterpolatorFactory::CreateInterpolator(
-            request.interpolation_algorithm);
-        if (!interpolator) {
-            return Result<std::vector<TrajectoryPoint>>::Failure(
-                Error(ErrorCode::NOT_IMPLEMENTED, "插补算法未实现", "DispensingPlanner"));
+        if (request.interpolation_algorithm == InterpolationAlgorithm::LINEAR) {
+            Domain::Motion::DomainServices::TimeTrajectoryPlanner trajectory_planner;
+            points = ConvertMotionTrajectoryToTrajectoryPoints(
+                trajectory_planner.Plan(path, BuildInterpolationPlanningConfig(config)));
+        } else {
+            auto interpolator = Domain::Motion::TrajectoryInterpolatorFactory::CreateInterpolator(
+                request.interpolation_algorithm);
+            if (!interpolator) {
+                return Result<std::vector<TrajectoryPoint>>::Failure(
+                    Error(ErrorCode::NOT_IMPLEMENTED, "插补算法未实现", "DispensingPlanner"));
+            }
+            points = interpolator->CalculateInterpolation(seed_points, config);
         }
-        points = interpolator->CalculateInterpolation(seed_points, config);
+
+        auto targets = trigger_distances;
+        std::sort(targets.begin(), targets.end());
+        std::vector<Point2D> trigger_positions;
+        trigger_positions.reserve(targets.size());
+        for (float32 target : targets) {
+            Point2D trigger_pos;
+            if (!ResolveProcessPathPosition(path, target, trigger_pos)) {
+                return Result<std::vector<TrajectoryPoint>>::Failure(
+                    Error(ErrorCode::TRAJECTORY_GENERATION_FAILED,
+                          "trigger_distances_mm 解析为 process path 位置失败",
+                          "DispensingPlanner"));
+            }
+            trigger_positions.push_back(trigger_pos);
+        }
+
+        if (!Siligen::Shared::Types::ApplyTriggerMarkersByPosition(
+                points,
+                trigger_positions,
+                targets,
+                Siligen::Shared::Types::kTriggerMarkerDedupToleranceMm,
+                std::max(config.position_tolerance, Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm))) {
+            return Result<std::vector<TrajectoryPoint>>::Failure(
+                Error(ErrorCode::TRAJECTORY_GENERATION_FAILED, "trigger_distances_mm 映射到插补轨迹失败", "DispensingPlanner"));
+        }
     }
 
     if (points.empty()) {
@@ -1834,7 +1910,7 @@ Result<DispensingPlan> DispensingPlanner::Plan(const DispensingPlanRequest& requ
     LogBoundsReport("motion.trajectory", ComputeBoundsForMotionTrajectory(plan_result.motion_trajectory));
     LogFirstNegativePoint("motion.trajectory", plan_result.motion_trajectory);
 
-    auto trigger_artifacts_result = BuildTriggerArtifacts(plan_result.shaped_path, request);
+    auto trigger_artifacts_result = BuildTriggerArtifacts(plan_result.process_path, request);
     if (trigger_artifacts_result.IsError()) {
         return Result<DispensingPlan>::Failure(trigger_artifacts_result.GetError());
     }
@@ -1890,131 +1966,39 @@ Result<DispensingPlan> DispensingPlanner::Plan(const DispensingPlanRequest& requ
     return Result<DispensingPlan>::Success(plan);
 }
 
-namespace {
-
-bool HasMonotonicTime(const std::vector<TrajectoryPoint>& points) {
-    float32 last_time = -std::numeric_limits<float32>::infinity();
-    bool has_time = false;
-    for (const auto& pt : points) {
-        if (pt.timestamp <= kEpsilon) {
-            continue;
-        }
-        has_time = true;
-        if (pt.timestamp + kEpsilon < last_time) {
-            return false;
-        }
-        last_time = pt.timestamp;
-    }
-    return has_time;
-}
-
-std::vector<TrajectoryPoint> ResampleByDistance(const std::vector<TrajectoryPoint>& source,
-                                                float32 spacing_mm,
-                                                size_t max_points) {
-    if (source.size() < 2) {
-        return source;
-    }
-
-    if (spacing_mm <= kEpsilon) {
-        return source;
-    }
-
-    std::vector<float32> cumulative;
-    cumulative.reserve(source.size());
-    cumulative.push_back(0.0f);
-    for (size_t i = 1; i < source.size(); ++i) {
-        cumulative.push_back(cumulative.back() + Distance(source[i - 1].position, source[i].position));
-    }
-
-    float32 total_length = cumulative.back();
-    if (total_length <= kEpsilon) {
-        return {source.front()};
-    }
-
-    float32 step = spacing_mm;
-    if (max_points > 1) {
-        float32 min_step = total_length / static_cast<float32>(max_points - 1);
-        if (min_step > step) {
-            step = min_step;
-        }
-    }
-
-    if (step <= kEpsilon) {
-        step = spacing_mm;
-    }
-
-    std::vector<TrajectoryPoint> preview;
-    preview.reserve(source.size());
-
-    float32 next_dist = 0.0f;
-    size_t seg_idx = 1;
-    while (next_dist <= total_length + kEpsilon && seg_idx < source.size()) {
-        while (seg_idx < source.size() && cumulative[seg_idx] + kEpsilon < next_dist) {
-            ++seg_idx;
-        }
-        if (seg_idx >= source.size()) {
-            break;
-        }
-
-        float32 seg_len = cumulative[seg_idx] - cumulative[seg_idx - 1];
-        float32 ratio = (seg_len > kEpsilon) ? (next_dist - cumulative[seg_idx - 1]) / seg_len : 0.0f;
-
-        const auto& a = source[seg_idx - 1];
-        const auto& b = source[seg_idx];
-        TrajectoryPoint out;
-        out.position = a.position + (b.position - a.position) * ratio;
-        out.velocity = a.velocity + (b.velocity - a.velocity) * ratio;
-        out.timestamp = a.timestamp + (b.timestamp - a.timestamp) * ratio;
-        out.enable_position_trigger = (ratio >= 0.5f) ? b.enable_position_trigger : a.enable_position_trigger;
-        preview.push_back(out);
-
-        if (max_points > 0 && preview.size() >= max_points) {
-            break;
-        }
-        next_dist += step;
-    }
-
-    if (!preview.empty()) {
-        const auto& last = source.back();
-        if (max_points > 0 && preview.size() >= max_points) {
-            preview.back() = last;
-        } else if (Distance(preview.back().position, last.position) > 1e-4f ||
-                   preview.back().timestamp + kEpsilon < last.timestamp) {
-            preview.push_back(last);
-        }
-    }
-
-    return preview;
-}
-
-}  // namespace
-
 std::vector<TrajectoryPoint> DispensingPlanner::BuildPreviewPoints(const DispensingPlan& plan,
-                                                                      float32 spacing_mm,
-                                                                      size_t max_points) const {
-    if (!plan.interpolation_points.empty()) {
-        if (!HasMonotonicTime(plan.interpolation_points)) {
-            return plan.interpolation_points;
-        }
-        return ResampleByDistance(plan.interpolation_points, spacing_mm, max_points);
-    }
+                                                                   float32 spacing_mm,
+                                                                   size_t max_points) const {
+    (void)spacing_mm;
+    (void)max_points;
 
-    if (plan.motion_trajectory.points.empty()) {
+    if (plan.trigger_distances_mm.empty()) {
         return {};
     }
 
-    std::vector<TrajectoryPoint> base_points;
-    base_points.reserve(plan.motion_trajectory.points.size());
-    for (const auto& pt : plan.motion_trajectory.points) {
-        TrajectoryPoint out;
-        out.position = Point2D(pt.position);
-        out.velocity = std::sqrt(pt.velocity.x * pt.velocity.x + pt.velocity.y * pt.velocity.y);
-        out.timestamp = pt.t;
-        out.enable_position_trigger = pt.dispense_on;
-        base_points.push_back(out);
+    std::vector<float32> targets = plan.trigger_distances_mm;
+    std::sort(targets.begin(), targets.end());
+
+    std::vector<TrajectoryPoint> preview;
+    preview.reserve(targets.size());
+    for (float32 target : targets) {
+        Point2D trigger_position;
+        if (!ResolveProcessPathPosition(plan.process_path, target, trigger_position)) {
+            return {};
+        }
+        if (!preview.empty() && preview.back().position.DistanceTo(trigger_position) <= 1e-4f) {
+            continue;
+        }
+
+        TrajectoryPoint point;
+        point.position = trigger_position;
+        point.enable_position_trigger = true;
+        point.trigger_position_mm = target;
+        point.trigger_pulse_width_us = Siligen::Shared::Types::kDefaultTriggerPulseWidthUs;
+        preview.push_back(point);
     }
 
-    return ResampleByDistance(base_points, spacing_mm, max_points);
+    return preview;
 }
 
 }  // namespace Siligen::Domain::Dispensing::DomainServices

@@ -37,15 +37,20 @@
 
 - `workflow/contracts` 已落地 `WorkflowStageState`、`WorkflowCommand`、`WorkflowPlanningTriggerRequest`、`WorkflowPlanningTriggerResponse`、`WorkflowFailureCategory`、`WorkflowRecoveryDirective`。
 - `MotionRuntimeAssemblyFactory` 已改为依赖 runtime services provider，不再直接实例化 motion concrete。
-- `PlanningUseCase` 已改为通过 `IPlanningArtifactExportPort` 发出导出意图；CSV/JSON 工件落盘由 `runtime-execution` concrete 承担。
+- `PlanningUseCase` 已改为编排 `IPathSourcePort + ProcessPathFacade + MotionPlanningFacade + DispensePlanningFacade`；CSV/JSON 工件落盘继续通过 `IPlanningArtifactExportPort` 交给 `runtime-execution` concrete 承担。
 - `assert-module-boundary-bridges.ps1` 已接入 bridge-only 收口标记，并在 `rg` 不可用时回退到 PowerShell 原生搜索。
 
 ## S2-A 完成态
 
-- `workflow/application` 已不再直接依赖 `M7/M8` application facade；motion 规划调用改为直接消费 `M7` domain，dispensing planning 改为直接消费 `M8` domain + contracts。
+- `workflow/application` 的 live planning 链已改为显式编排 `M6 process-path`、`M7 motion-planning`、`M8 dispense-packaging` 的 public facade，不再注入 `DispensingPlannerService` concrete。
 - `workflow/domain/domain/CMakeLists.txt` 中的 `siligen_motion_execution_services` 已改为从 `modules/motion-planning/domain/motion/` 编译 owner source，`workflow/domain/domain/dispensing/CMakeLists.txt` 已降格为转发到 `siligen_dispense_packaging_domain_dispensing` 的兼容 target。
 - `motion-planning/application` 与 `dispense-packaging/application` 不再反向修改 `workflow` target，`workflow` 自身负责声明 owner 依赖。
 - bridge 报告已恢复绿色，见 `tests/reports/module-boundary-bridges-s2a/`。
+
+## S3 当前口径
+
+- `siligen_workflow_dispensing_planning_compat` 仅保留给 deprecated compatibility tests，不再进入 live 装配链。
+- `siligen_process_runtime_core_*` 聚合 target 仅作为 deprecated compatibility target 保留，不再作为 owner 证据或 live public surface。
 
 ## S2 准入清单
 

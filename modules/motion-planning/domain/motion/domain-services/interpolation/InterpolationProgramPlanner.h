@@ -2,7 +2,7 @@
 
 #include "domain/motion/ports/IInterpolationPort.h"
 #include "domain/motion/value-objects/MotionTrajectory.h"
-#include "domain/trajectory/value-objects/ProcessPath.h"
+#include "process_path/contracts/ProcessPath.h"
 #include "shared/types/Result.h"
 
 #include <vector>
@@ -13,7 +13,7 @@ using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::float32;
 using Siligen::Domain::Motion::Ports::InterpolationData;
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectory;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
+using Siligen::ProcessPath::Contracts::ProcessPath;
 
 class InterpolationProgramPlanner {
 public:

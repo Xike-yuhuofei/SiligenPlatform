@@ -3,6 +3,8 @@ import re
 import sys
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[4]
 CONTRACTS = ROOT / "shared" / "contracts" / "application"
@@ -26,6 +28,11 @@ def load_operations():
                     raise AssertionError(f"duplicate contract method: {method}")
                 operations[method] = op
     return operations
+
+
+@pytest.fixture
+def operations():
+    return load_operations()
 
 
 def extract_hmi_methods():
@@ -105,7 +112,15 @@ def test_known_compatibility_gaps_are_recorded():
     assert "if total_segments is None:" in hmi_ui
     assert 'total_segments = getattr(self, "_dxf_segment_count_cache", 0)' in hmi_ui
     assert 'self._dxf_segment_count_cache = int(total_segments or 0)' in hmi_ui
-    assert "segments = getattr(self, '_dxf_segment_count_cache', 0)" in hmi_ui
+    info_label_match = re.search(
+        r"def _update_info_label\(self\):(?P<body>.*?)(?:\n    def |\Z)",
+        hmi_ui,
+        re.S,
+    )
+    assert info_label_match, "cannot locate _update_info_label body"
+    info_label_body = info_label_match.group("body")
+    assert "self._sync_preview_session_fields()" in info_label_body
+    assert "self._dxf_info_label.setText(self._preview_session.info_label_text())" in info_label_body
 
     dxf_info_match = re.search(
         r"std::string TcpCommandDispatcher::HandleDxfInfo.*?return GatewayJsonProtocol::MakeSuccessResponse",
@@ -161,8 +176,15 @@ def test_dxf_preview_and_job_contract():
     assert "plan_id" in preview["resultSchema"]["required"]
     assert "preview_state" in preview["resultSchema"]["required"]
     assert "preview_source" in preview["resultSchema"]["required"]
+    assert "preview_kind" in preview["resultSchema"]["required"]
     preview_result_properties = preview["resultSchema"]["properties"]
     assert "preview_source" in preview_result_properties
+    assert "preview_kind" in preview_result_properties
+    assert "glue_points" in preview_result_properties
+    assert "glue_point_count" in preview_result_properties
+    assert "execution_polyline" in preview_result_properties
+    assert "execution_polyline_point_count" in preview_result_properties
+    assert "execution_polyline_source_point_count" in preview_result_properties
     assert "trajectory_polyline" in preview_result_properties
     assert "polyline_point_count" in preview_result_properties
     assert "polyline_source_point_count" in preview_result_properties

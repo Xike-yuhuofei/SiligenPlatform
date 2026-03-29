@@ -7,7 +7,7 @@ TEST(ProcessPathFacadeTest, BuildsNormalizedAnnotatedAndShapedPath) {
     using Siligen::Application::Services::ProcessPath::ProcessPathFacade;
     using Siligen::CoordinateAlignment::Contracts::CoordinateTransform;
     using Siligen::CoordinateAlignment::Contracts::CoordinateTransformSet;
-    using Siligen::Domain::Trajectory::ValueObjects::Primitive;
+    using Siligen::ProcessPath::Contracts::Primitive;
     using Siligen::Shared::Types::Point2D;
 
     ProcessPathBuildRequest request;

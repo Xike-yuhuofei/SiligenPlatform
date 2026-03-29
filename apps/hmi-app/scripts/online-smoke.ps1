@@ -14,6 +14,8 @@ param(
     [string]$ExpectFailureStage = "",
     [switch]$UseSupervisorInjection,
     [switch]$ExerciseRuntimeActions,
+    [string]$ScreenshotPath = "",
+    [string]$PreviewPayloadPath = "",
     [switch]$VerboseMock
 )
 
@@ -35,14 +37,15 @@ if ($hasExpectedSupervisorFailure -and -not $UseSupervisorInjection) {
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $workspaceRoot = Split-Path (Split-Path $projectRoot -Parent) -Parent
 $sourceRoot = Join-Path $projectRoot "src"
+$hmiApplicationRoot = Join-Path $workspaceRoot "modules\hmi-application\application"
 $uiQtest = Join-Path $sourceRoot "hmi_client\\tools\\ui_qtest.py"
 $mockServer = Join-Path $sourceRoot "hmi_client\\tools\\mock_server.py"
 $hangingServer = Join-Path $sourceRoot "hmi_client\\tools\\fake_hanging_server.py"
 
 if ([string]::IsNullOrWhiteSpace($env:PYTHONPATH)) {
-    $env:PYTHONPATH = $sourceRoot
+    $env:PYTHONPATH = "$hmiApplicationRoot$([IO.Path]::PathSeparator)$sourceRoot"
 } else {
-    $env:PYTHONPATH = "$sourceRoot$([IO.Path]::PathSeparator)$env:PYTHONPATH"
+    $env:PYTHONPATH = "$hmiApplicationRoot$([IO.Path]::PathSeparator)$sourceRoot$([IO.Path]::PathSeparator)$env:PYTHONPATH"
 }
 
 function Get-FreeTcpPort {
@@ -313,6 +316,12 @@ function Invoke-UiSmoke {
     }
     if ($ExerciseRuntimeActions) {
         $uiArgs += "--exercise-runtime-actions"
+        if (-not [string]::IsNullOrWhiteSpace($ScreenshotPath)) {
+            $uiArgs += @("--screenshot-path", $ScreenshotPath)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($PreviewPayloadPath)) {
+            $uiArgs += @("--preview-payload-path", $PreviewPayloadPath)
+        }
     }
 
     $uiStdoutLog = Join-Path ([IO.Path]::GetTempPath()) ("siligen-online-qtest-{0}-stdout.log" -f [guid]::NewGuid().ToString("N"))

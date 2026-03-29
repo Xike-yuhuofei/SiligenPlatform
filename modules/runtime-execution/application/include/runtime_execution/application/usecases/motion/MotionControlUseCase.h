@@ -1,8 +1,8 @@
 #pragma once
 
-#include "domain/motion/domain-services/HomingProcess.h"
-#include "domain/motion/ports/IInterpolationPort.h"
-#include "domain/motion/ports/IMotionStatePort.h"
+#include "runtime_execution/contracts/motion/HomingProcess.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
+#include "runtime_execution/contracts/motion/IMotionStatePort.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
 #include "shared/types/Types.h"

@@ -620,12 +620,12 @@ int CLICommandHandlers::HandleDXFPlan(const CommandLineConfig& config) {
     std::cout << "总长度: " << response.total_length << " mm" << std::endl;
     std::cout << "预计时间: " << response.estimated_time << " s" << std::endl;
     std::cout << "触发点数: " << response.trigger_count << std::endl;
-    std::cout << "轨迹点数: " << response.trajectory_points.size() << std::endl;
+    std::cout << "执行轨迹点数: " << response.execution_trajectory_points.size() << std::endl;
 
     if (resolved.velocity_trace) {
         const std::string trace_path = ResolveVelocityTracePath(resolved.dxf_file_path, resolved);
         auto trace_result = WriteVelocityTraceCsv(
-            response.trajectory_points,
+        response.execution_trajectory_points,
             resolved.velocity_trace_interval_ms,
             trace_path);
         if (trace_result.ok) {

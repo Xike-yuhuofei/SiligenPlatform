@@ -41,6 +41,7 @@
     "include/shared/types/Result.h",
     "include/shared/types/SerializationTypes.h",
     "include/shared/types/TraceContext.h",
+    "include/shared/types/TrajectoryTriggerUtils.h",
     "include/shared/types/TrajectoryTypes.h",
     "include/shared/types/Types.h",
     "include/shared/types/VisualizationTypes.h",

@@ -9,9 +9,10 @@
 #include <iostream>
 #include <memory>
 
-#include "ContainerBootstrap.h"
+#include "container/ApplicationContainer.h"
 #include "domain/configuration/ports/IConfigurationPort.h"
-#include "runtime/configuration/WorkspaceAssetPaths.h"
+#include "runtime_process_bootstrap/ContainerBootstrap.h"
+#include "runtime_process_bootstrap/WorkspaceAssetPaths.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
 #include "tcp/MockIoControlService.h"

@@ -6,12 +6,23 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+WORKSPACE_ROOT = PROJECT_ROOT.parents[1]
 POWERSHELL = "powershell"
 OFFICIAL_RUNNER = PROJECT_ROOT / "run.ps1"
 INTERNAL_RUNNER = PROJECT_ROOT / "scripts" / "run.ps1"
+RUNTIME_RUNNER = WORKSPACE_ROOT / "apps" / "runtime-gateway" / "run.ps1"
 
 
 class HmiRunScriptContractTest(unittest.TestCase):
+    def _ensure_workspace_gateway_exe(self) -> tuple[Path, bool]:
+        exe_path = WORKSPACE_ROOT / "build" / "bin" / "Debug" / "siligen_runtime_gateway.exe"
+        if exe_path.exists():
+            return exe_path, False
+
+        exe_path.parent.mkdir(parents=True, exist_ok=True)
+        exe_path.write_text("", encoding="utf-8")
+        return exe_path, True
+
     def test_internal_online_runner_requires_official_entrypoint_or_explicit_contract(self) -> None:
         env = os.environ.copy()
         env.pop("SILIGEN_GATEWAY_LAUNCH_SPEC", None)
@@ -104,6 +115,45 @@ class HmiRunScriptContractTest(unittest.TestCase):
         self.assertIn("gateway contract source: generated-dev", completed.stdout)
         self.assertIn(str(exe_path), completed.stdout)
 
+    def test_runtime_gateway_runner_dryrun_prefers_workspace_build_over_localappdata_by_default(self) -> None:
+        workspace_exe, created_workspace_exe = self._ensure_workspace_gateway_exe()
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_root = Path(temp_dir)
+                local_app_data = temp_root / "localappdata"
+                localappdata_exe = local_app_data / "SiligenSuite" / "control-apps-build" / "bin" / "Debug" / "siligen_runtime_gateway.exe"
+                localappdata_exe.parent.mkdir(parents=True, exist_ok=True)
+                localappdata_exe.write_text("", encoding="utf-8")
+
+                env = os.environ.copy()
+                env.pop("SILIGEN_CONTROL_APPS_BUILD_ROOT", None)
+                env["LOCALAPPDATA"] = str(local_app_data)
+
+                completed = subprocess.run(
+                    [
+                        POWERSHELL,
+                        "-NoProfile",
+                        "-ExecutionPolicy",
+                        "Bypass",
+                        "-File",
+                        str(RUNTIME_RUNNER),
+                        "-DryRun",
+                        "-BuildConfig",
+                        "Debug",
+                    ],
+                    cwd=str(WORKSPACE_ROOT),
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                )
+        finally:
+            if created_workspace_exe and workspace_exe.exists():
+                workspace_exe.unlink()
+
+        self.assertEqual(completed.returncode, 0, msg=completed.stderr)
+        self.assertIn(str(workspace_exe), completed.stdout)
+        self.assertNotIn(str(localappdata_exe), completed.stdout)
+
     def test_contract_builder_dryrun_parses_runtime_gateway_output_without_path_format_error(self) -> None:
         contract_builder = PROJECT_ROOT / "scripts" / "new-gateway-launch-contract.ps1"
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -136,6 +186,48 @@ class HmiRunScriptContractTest(unittest.TestCase):
 
         self.assertEqual(completed.returncode, 0, msg=completed.stderr)
         self.assertIn(str(exe_path), completed.stdout)
+
+    def test_official_runner_dryrun_prefers_workspace_build_over_localappdata_by_default(self) -> None:
+        workspace_exe, created_workspace_exe = self._ensure_workspace_gateway_exe()
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_root = Path(temp_dir)
+                local_app_data = temp_root / "localappdata"
+                localappdata_exe = local_app_data / "SiligenSuite" / "control-apps-build" / "bin" / "Debug" / "siligen_runtime_gateway.exe"
+                localappdata_exe.parent.mkdir(parents=True, exist_ok=True)
+                localappdata_exe.write_text("", encoding="utf-8")
+
+                env = os.environ.copy()
+                env.pop("SILIGEN_CONTROL_APPS_BUILD_ROOT", None)
+                env.pop("SILIGEN_GATEWAY_LAUNCH_SPEC", None)
+                env.pop("SILIGEN_GATEWAY_EXE", None)
+                env["LOCALAPPDATA"] = str(local_app_data)
+
+                completed = subprocess.run(
+                    [
+                        POWERSHELL,
+                        "-NoProfile",
+                        "-ExecutionPolicy",
+                        "Bypass",
+                        "-File",
+                        str(OFFICIAL_RUNNER),
+                        "-DryRun",
+                        "-BuildConfig",
+                        "Debug",
+                    ],
+                    cwd=str(PROJECT_ROOT),
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                )
+        finally:
+            if created_workspace_exe and workspace_exe.exists():
+                workspace_exe.unlink()
+
+        self.assertEqual(completed.returncode, 0, msg=completed.stderr)
+        self.assertIn("gateway contract source: generated-dev", completed.stdout)
+        self.assertIn(str(workspace_exe), completed.stdout)
+        self.assertNotIn(str(localappdata_exe), completed.stdout)
 
     def test_official_runner_dryrun_reports_app_default_when_autostart_disabled(self) -> None:
         completed = subprocess.run(

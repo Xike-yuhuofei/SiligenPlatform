@@ -4,12 +4,12 @@
 
 TEST(MotionPlanningFacadeTest, PlansTrajectoryFromProcessPath) {
     using Siligen::Application::Services::MotionPlanning::MotionPlanningFacade;
-    using Siligen::Domain::Motion::ValueObjects::TimePlanningConfig;
+    using Siligen::MotionPlanning::Contracts::TimePlanningConfig;
+    using Siligen::ProcessPath::Contracts::ProcessPath;
+    using Siligen::ProcessPath::Contracts::ProcessSegment;
+    using Siligen::ProcessPath::Contracts::ProcessTag;
+    using Siligen::ProcessPath::Contracts::SegmentType;
     using Siligen::Shared::Types::Point2D;
-    using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
-    using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
-    using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
-    using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
 
     ProcessPath path;
     ProcessSegment seg;

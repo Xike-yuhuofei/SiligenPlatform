@@ -7,6 +7,7 @@
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
 #include "shared/types/Error.h"
+#include "shared/types/TrajectoryTriggerUtils.h"
 
 #include <algorithm>
 #include <cmath>
@@ -155,6 +156,13 @@ Result<InterpolationPlanningResult> InterpolationPlanningUseCase::Execute(
                                                      cmp_config.pulse_width_us);
         points = cmp_interpolator.PositionTriggeredDispensing(request.points, triggers, cmp_config, request.config);
     } else {
+        if (request.algorithm == InterpolationAlgorithm::CMP_COORDINATED) {
+            return Result<InterpolationPlanningResult>::Failure(
+                Error(ErrorCode::TRAJECTORY_GENERATION_FAILED,
+                      "CMP插补缺少 trigger_distances_mm，不能退化为默认轨迹采样触发",
+                      "InterpolationPlanningUseCase"));
+        }
+
         auto interpolator = Domain::Motion::TrajectoryInterpolatorFactory::CreateInterpolator(request.algorithm);
         if (!interpolator) {
             return Result<InterpolationPlanningResult>::Failure(
@@ -163,6 +171,12 @@ Result<InterpolationPlanningResult> InterpolationPlanningUseCase::Execute(
         points = interpolator->CalculateInterpolation(request.points, request.config);
         if (request.optimize_density && request.max_step_size_mm > kEpsilon) {
             points = interpolator->OptimizeTrajectoryDensity(points, request.max_step_size_mm);
+        }
+        if (!Siligen::Shared::Types::ApplyTriggerMarkersByDistance(points, request.trigger_distances_mm)) {
+            return Result<InterpolationPlanningResult>::Failure(
+                Error(ErrorCode::TRAJECTORY_GENERATION_FAILED,
+                      "trigger_distances_mm 映射到插补轨迹失败",
+                      "InterpolationPlanningUseCase"));
         }
     }
 

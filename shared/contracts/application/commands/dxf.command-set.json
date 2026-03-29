@@ -162,16 +162,45 @@
       },
       "resultSchema": {
         "type": "object",
-        "required": ["snapshot_id", "snapshot_hash", "plan_id", "preview_state", "preview_source", "confirmed_at", "segment_count", "point_count", "polyline_point_count", "polyline_source_point_count", "trajectory_polyline", "total_length_mm", "estimated_time_s", "generated_at"],
+        "required": ["snapshot_id", "snapshot_hash", "plan_id", "preview_state", "preview_source", "preview_kind", "confirmed_at", "segment_count", "point_count", "glue_point_count", "glue_points", "execution_point_count", "execution_polyline_point_count", "execution_polyline_source_point_count", "execution_polyline", "total_length_mm", "estimated_time_s", "generated_at"],
         "properties": {
           "snapshot_id": { "type": "string" },
           "snapshot_hash": { "type": "string" },
           "plan_id": { "type": "string" },
           "preview_state": { "type": "string" },
           "preview_source": { "type": "string" },
+          "preview_kind": { "type": "string" },
           "confirmed_at": { "type": "string" },
           "segment_count": { "type": "integer" },
           "point_count": { "type": "integer" },
+          "glue_point_count": { "type": "integer" },
+          "glue_points": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["x", "y"],
+              "properties": {
+                "x": { "type": "number" },
+                "y": { "type": "number" }
+              },
+              "additionalProperties": false
+            }
+          },
+          "execution_point_count": { "type": "integer" },
+          "execution_polyline_point_count": { "type": "integer" },
+          "execution_polyline_source_point_count": { "type": "integer" },
+          "execution_polyline": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["x", "y"],
+              "properties": {
+                "x": { "type": "number" },
+                "y": { "type": "number" }
+              },
+              "additionalProperties": false
+            }
+          },
           "polyline_point_count": { "type": "integer" },
           "polyline_source_point_count": { "type": "integer" },
           "trajectory_polyline": {

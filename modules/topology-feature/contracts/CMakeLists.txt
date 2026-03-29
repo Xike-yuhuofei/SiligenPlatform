@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 
 if(NOT TARGET siligen_topology_feature_contour_augment_adapter)
     add_subdirectory(
-        "${CMAKE_CURRENT_SOURCE_DIR}/../domain/geometry"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../adapters/infrastructure/adapters/planning/geometry"
         "${CMAKE_CURRENT_BINARY_DIR}/odg"
     )
 endif()

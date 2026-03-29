@@ -5,12 +5,12 @@
 namespace Siligen::Domain::Motion::DomainServices {
 
 using Siligen::Domain::Motion::DomainServices::MotionPlanner;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
 using Siligen::Domain::Motion::ValueObjects::SemanticSegment;
 using Siligen::Domain::Motion::ValueObjects::SemanticTag;
+using Siligen::ProcessPath::Contracts::ProcessPath;
+using Siligen::ProcessPath::Contracts::ProcessSegment;
+using Siligen::ProcessPath::Contracts::ProcessTag;
+using Siligen::ProcessPath::Contracts::SegmentType;
 
 namespace {
 ProcessTag MapProcessTag(SemanticTag tag) {

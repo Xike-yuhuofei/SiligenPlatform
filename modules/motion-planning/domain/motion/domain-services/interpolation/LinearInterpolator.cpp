@@ -117,9 +117,6 @@ std::vector<TrajectoryPoint> LinearInterpolator::ContinuousLinearInterpolation(
                 if (prog >= tuned_segments[i].dispensing_start_offset &&
                     prog <= (1.0f - tuned_segments[i].dispensing_end_offset)) {
                     pt.dispensing_time = config.time_step;
-                    pt.enable_position_trigger = true;
-                    pt.trigger_position_mm = prog * tuned_segments[i].length;
-                    pt.trigger_pulse_width_us = 2000;
                 }
             }
         }

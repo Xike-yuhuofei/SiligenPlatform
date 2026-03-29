@@ -72,10 +72,11 @@ target_link_libraries(siligen_transport_gateway PUBLIC
     siligen_workflow_recipe_application_public
     siligen_workflow_recipe_serialization_public
     siligen_runtime_execution_application_public
-    siligen_runtime_host_infrastructure
     siligen_process_planning_legacy_configuration_bridge_public
     siligen_shared
-    siligen_runtime_host_storage
+)
+target_link_libraries(siligen_transport_gateway PRIVATE
+    siligen_runtime_process_bootstrap_public
 )
 
 target_compile_definitions(siligen_transport_gateway PUBLIC

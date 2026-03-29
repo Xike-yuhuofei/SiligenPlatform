@@ -147,6 +147,9 @@ def test_dxf_preview_gate_contract_is_wired():
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview source is missing")' in source
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview source must be planned_glue_snapshot")' in source
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview kind must be glue_points")' in source
+    assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview glue points are empty")' in source
+    assert 'ReadJsonBool(params, "use_interpolation_planner", true)' in source
+    assert 'params.value("use_interpolation_planner", true)' in source
     assert "Missing 'snapshot_hash'" in source
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3018, confirm_result.GetError().GetMessage())' in source
     assert "HandleDxfPreviewSnapshot" in source

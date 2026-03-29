@@ -105,21 +105,35 @@ class MainWindowTabsTest(unittest.TestCase):
         self.window._last_status = status
         self.window._last_status_ts = time.monotonic()
 
-    def _arm_confirmed_preview(self, *, preview_source: str = "planned_glue_snapshot") -> None:
+    def _arm_confirmed_preview(
+        self,
+        *,
+        preview_source: str = "planned_glue_snapshot",
+        preview_kind: str = "glue_points",
+        glue_points=None,
+        plan_id: str = "plan-1",
+        snapshot_hash: str = "hash-1",
+        expect_ok: bool = True,
+    ):
+        glue_point_payload = (
+            [
+                {"x": 0.0, "y": 0.0},
+                {"x": 6.0, "y": 0.0},
+                {"x": 12.0, "y": 3.0},
+            ]
+            if glue_points is None
+            else glue_points
+        )
         result = self.window._preview_session.process_snapshot_payload(
             {
                 "snapshot_id": "snapshot-1",
-                "snapshot_hash": "hash-1",
-                "plan_id": "plan-1",
+                "snapshot_hash": snapshot_hash,
+                "plan_id": plan_id,
                 "preview_source": preview_source,
-                "preview_kind": "glue_points",
+                "preview_kind": preview_kind,
                 "segment_count": 2,
-                "glue_point_count": 3,
-                "glue_points": [
-                    {"x": 0.0, "y": 0.0},
-                    {"x": 6.0, "y": 0.0},
-                    {"x": 12.0, "y": 3.0},
-                ],
+                "glue_point_count": len(glue_point_payload),
+                "glue_points": glue_point_payload,
                 "execution_polyline": [
                     {"x": 0.0, "y": 0.0},
                     {"x": 12.0, "y": 3.0},
@@ -131,9 +145,11 @@ class MainWindowTabsTest(unittest.TestCase):
             },
             current_dry_run=False,
         )
-        self.assertTrue(result.ok)
-        self.window._preview_session.gate.confirm_current_snapshot()
-        self.window._sync_preview_session_fields()
+        self.assertEqual(result.ok, expect_ok)
+        if expect_ok:
+            self.window._preview_session.gate.confirm_current_snapshot()
+            self.window._sync_preview_session_fields()
+        return result
 
     def _collect_testids(self) -> set[str]:
         return {
@@ -312,7 +328,9 @@ class MainWindowTabsTest(unittest.TestCase):
         self.window._connected = True
         self.window._hw_connected = True
         self.window._runtime_status_fault = False
-        self._arm_confirmed_preview(preview_source="mock_synthetic")
+        self._arm_confirmed_preview()
+        self.window._preview_session.state.preview_source = "mock_synthetic"
+        self.window._sync_preview_session_fields()
         warnings = []
         self.window._show_preflight_warning = warnings.append
 
@@ -324,7 +342,7 @@ class MainWindowTabsTest(unittest.TestCase):
             "当前预览来源为 mock_synthetic，不能作为真实在线预览通过依据",
         )
 
-    def test_check_production_preconditions_rejects_unknown_preview_source(self) -> None:
+    def test_check_production_preconditions_rejects_invalid_preview_kind(self) -> None:
         status = self._make_status(x_homed=True, y_homed=True)
         self.window._require_online_mode = lambda capability: True
         self.window._is_online_ready = lambda: True
@@ -332,7 +350,9 @@ class MainWindowTabsTest(unittest.TestCase):
         self.window._connected = True
         self.window._hw_connected = True
         self.window._runtime_status_fault = False
-        self._arm_confirmed_preview(preview_source="unknown")
+        self._arm_confirmed_preview()
+        self.window._preview_session.state.preview_kind = "trajectory_polyline"
+        self.window._sync_preview_session_fields()
         warnings = []
         self.window._show_preflight_warning = warnings.append
 
@@ -341,8 +361,129 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertFalse(result)
         self.assertEqual(
             warnings[-1],
-            "当前预览来源不是 planned_glue_snapshot，不能作为真实在线预览通过依据",
+            "当前预览语义为 trajectory_polyline，不是 glue_points，不能作为真实在线预览通过依据",
         )
+
+    def test_check_production_preconditions_rejects_authority_hash_mismatch(self) -> None:
+        status = self._make_status(x_homed=True, y_homed=True)
+        self.window._require_online_mode = lambda capability: True
+        self.window._is_online_ready = lambda: True
+        self.window._protocol = FakeProtocol(status)
+        self.window._connected = True
+        self.window._hw_connected = True
+        self.window._runtime_status_fault = False
+        self._arm_confirmed_preview()
+        self.window._preview_session.state.current_plan_fingerprint = "hash-2"
+        self.window._sync_preview_session_fields()
+        warnings = []
+        self.window._show_preflight_warning = warnings.append
+
+        result = self.window._check_production_preconditions(dry_run=False)
+
+        self.assertFalse(result)
+        self.assertEqual(
+            warnings[-1],
+            "预览快照与执行快照不一致，请重新生成并确认",
+        )
+
+    def test_preview_snapshot_rejects_non_authoritative_preview_source(self) -> None:
+        messages = []
+        self.window._set_preview_message_html = lambda title, detail="", is_error=False: messages.append((title, detail, is_error))
+
+        self.window._on_preview_snapshot_completed(
+            True,
+            {
+                "snapshot_id": "snapshot-invalid-source",
+                "snapshot_hash": "hash-invalid-source",
+                "plan_id": "plan-invalid-source",
+                "preview_source": "mock_synthetic",
+                "preview_kind": "glue_points",
+                "glue_point_count": 2,
+                "glue_points": [
+                    {"x": 0.0, "y": 0.0},
+                    {"x": 10.0, "y": 0.0},
+                ],
+                "execution_polyline": [
+                    {"x": 0.0, "y": 0.0},
+                    {"x": 10.0, "y": 0.0},
+                ],
+            },
+            "",
+        )
+
+        self.assertEqual(
+            self.window._preview_gate.last_error_message,
+            "当前预览来源为 mock_synthetic，不能作为真实在线预览通过依据",
+        )
+        self.assertTrue(messages)
+        self.assertEqual(messages[-1][0], "胶点预览生成失败")
+        self.assertIn("preview_source=mock_synthetic", messages[-1][1])
+        self.assertTrue(messages[-1][2])
+
+    def test_preview_snapshot_rejects_non_glue_points_preview_kind(self) -> None:
+        messages = []
+        self.window._set_preview_message_html = lambda title, detail="", is_error=False: messages.append((title, detail, is_error))
+
+        self.window._on_preview_snapshot_completed(
+            True,
+            {
+                "snapshot_id": "snapshot-invalid-kind",
+                "snapshot_hash": "hash-invalid-kind",
+                "plan_id": "plan-invalid-kind",
+                "preview_source": "planned_glue_snapshot",
+                "preview_kind": "trajectory_polyline",
+                "glue_point_count": 2,
+                "glue_points": [
+                    {"x": 0.0, "y": 0.0},
+                    {"x": 10.0, "y": 0.0},
+                ],
+                "execution_polyline": [
+                    {"x": 0.0, "y": 0.0},
+                    {"x": 10.0, "y": 0.0},
+                ],
+            },
+            "",
+        )
+
+        self.assertEqual(
+            self.window._preview_gate.last_error_message,
+            "当前预览语义为 trajectory_polyline，不是 glue_points，不能作为真实在线预览通过依据",
+        )
+        self.assertTrue(messages)
+        self.assertEqual(messages[-1][0], "胶点预览生成失败")
+        self.assertIn("preview_kind=trajectory_polyline", messages[-1][1])
+        self.assertTrue(messages[-1][2])
+
+    def test_preview_snapshot_rejects_empty_authority_glue_points(self) -> None:
+        messages = []
+        self.window._set_preview_message_html = lambda title, detail="", is_error=False: messages.append((title, detail, is_error))
+
+        self.window._on_preview_snapshot_completed(
+            True,
+            {
+                "snapshot_id": "snapshot-empty",
+                "snapshot_hash": "hash-empty",
+                "plan_id": "plan-empty",
+                "preview_source": "planned_glue_snapshot",
+                "preview_kind": "glue_points",
+                "glue_point_count": 0,
+                "glue_points": [],
+                "execution_polyline": [
+                    {"x": 0.0, "y": 0.0},
+                    {"x": 10.0, "y": 0.0},
+                ],
+            },
+            "",
+        )
+
+        self.assertEqual(
+            self.window._preview_gate.last_error_message,
+            "当前预览缺少非空 glue_points，不能作为真实在线预览通过依据",
+        )
+        self.assertTrue(messages)
+        self.assertEqual(messages[-1][0], "胶点预览生成失败")
+        self.assertIn("缺少非空 glue_points", messages[-1][1])
+        self.assertTrue(messages[-1][2])
 
     def test_preview_snapshot_reports_legacy_backend_contract_when_glue_points_missing(self) -> None:
         messages = []

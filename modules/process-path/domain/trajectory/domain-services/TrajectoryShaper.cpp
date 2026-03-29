@@ -354,7 +354,10 @@ bool CanBlendLineLine(const ProcessSegment& prev,
     Point2D prev_end = junction - dir1 * trim;
     Point2D next_start = junction + dir2 * trim;
 
-    Point2D bis = (dir1 + dir2);
+    // The blend center lies on the bisector between the reversed incoming
+    // direction and the outgoing direction. Using dir1 + dir2 pushes the
+    // center outside the corner and can produce a major arc sweep.
+    Point2D bis = (dir2 - dir1);
     float32 bis_len = bis.Length();
     if (bis_len < kEpsilon) {
         return false;

@@ -2,6 +2,8 @@
 
 更新时间：`2026-03-27`
 
+> 收束说明：本稿用于审核旧审查稿的证据强度，不是最终边界结论。最终修正版请见 [modules-owner-boundary-review-revised-2026-03-27.md](./modules-owner-boundary-review-revised-2026-03-27.md)。
+
 ## 1. 审查边界
 
 - 审查对象：`docs/architecture/modules-review.md`

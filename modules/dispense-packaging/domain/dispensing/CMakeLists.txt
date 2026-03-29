@@ -1,13 +1,5 @@
 # Dispensing 子域 CMakeLists.txt
-# Phase 2: DXF Dispensing Execution UseCase 重构 - Domain Service
-
-if(NOT DEFINED SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR)
-    get_filename_component(
-        SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../../motion-planning"
-        ABSOLUTE
-    )
-endif()
+# Phase 2: M8 仅承接 packaging/validation owner，规划实现不再在本模块编译。
 
 if(NOT TARGET siligen_device_contracts AND EXISTS "${CMAKE_SOURCE_DIR}/shared/contracts/device/CMakeLists.txt")
     add_subdirectory(
@@ -28,9 +20,6 @@ add_library(siligen_dispense_packaging_domain_dispensing STATIC
     domain-services/TriggerPlanner.cpp
     domain-services/DispensingController.cpp
     domain-services/DispensingProcessService.cpp
-    planning/domain-services/ContourOptimizationService.cpp
-    planning/domain-services/UnifiedTrajectoryPlannerService.cpp
-    planning/domain-services/DispensingPlannerService.cpp
 )
 
 target_sources(siligen_dispense_packaging_domain_dispensing PRIVATE
@@ -45,8 +34,6 @@ target_sources(siligen_dispense_packaging_domain_dispensing PRIVATE
 target_include_directories(siligen_dispense_packaging_domain_dispensing BEFORE PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
-    ${CMAKE_SOURCE_DIR}/modules/process-path
-    ${SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
@@ -57,7 +44,6 @@ target_link_libraries(siligen_dispense_packaging_domain_dispensing PUBLIC
     siligen_utils
     siligen_geometry
     siligen_motion
-    siligen_process_path_domain_trajectory
 )
 if(TARGET siligen_device_contracts)
     target_link_libraries(siligen_dispense_packaging_domain_dispensing PUBLIC

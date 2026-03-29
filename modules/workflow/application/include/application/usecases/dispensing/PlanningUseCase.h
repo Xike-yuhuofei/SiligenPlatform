@@ -1,20 +1,28 @@
 #pragma once
 
+#include "application/services/dispensing/DispensePlanningFacade.h"
+#include "application/services/motion_planning/MotionPlanningFacade.h"
+#include "application/services/process_path/ProcessPathFacade.h"
 #include "domain/configuration/ports/IConfigurationPort.h"
-#include "workflow/application/services/dispensing/IPlanningArtifactExportPort.h"
+#include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
 #include "domain/motion/value-objects/MotionPlanningReport.h"
+#include "domain/trajectory/ports/IPathSourcePort.h"
+#include "domain/dispensing/contracts/ExecutionPackage.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
 #include "shared/types/TrajectoryTypes.h"
-#include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
-#include "domain/dispensing/contracts/ExecutionPackage.h"
-#include "domain/dispensing/planning/domain-services/DispensingPlannerService.h"
+#include "workflow/application/services/dispensing/IPlanningArtifactExportPort.h"
+
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace Siligen::Application::Services::DXF {
 class DxfPbPreparationService;
+}
+
+namespace Siligen::Domain::Dispensing::DomainServices {
+struct DispensingPlan;
 }
 
 namespace Siligen::Application::UseCases::Dispensing {
@@ -26,9 +34,6 @@ using Siligen::Shared::Types::TrajectoryResult;
 using Siligen::TrajectoryPoint;
 using Siligen::Domain::Motion::ValueObjects::MotionPlanningReport;
 using Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated;
-using Siligen::Domain::Dispensing::DomainServices::DispensingPlan;
-using Siligen::Domain::Dispensing::DomainServices::DispensingPlanRequest;
-using DispensingPlanner = Siligen::Domain::Dispensing::DomainServices::DispensingPlanner;
 
 /**
  * @brief DXF 路径规划请求参数
@@ -126,25 +131,35 @@ struct PlanningResponse {
     float32 total_length = 0.0f;               ///< 总路径长度 (mm)
     float32 estimated_time = 0.0f;             ///< 预计执行时间 (s)
 
-    // 轨迹数据
-    std::vector<TrajectoryPoint> trajectory_points;  ///< 轨迹点序列
-    std::vector<int32> process_tags;                 ///< 轨迹点工艺标签(与轨迹点索引对齐)
+    // 预览数据
+    std::vector<TrajectoryPoint> execution_trajectory_points;   ///< 执行轨迹点序列
+    std::vector<Siligen::Shared::Types::Point2D> glue_points;   ///< 胶点触发点序列
+    std::vector<int32> process_tags;                            ///< 执行轨迹点工艺标签(与执行轨迹点索引对齐)
 
     // CMP 触发统计
     int trigger_count = 0;                     ///< CMP 触发点数量
 
     // 元数据
     std::string dxf_filename;                  ///< 原始 DXF 文件名
-    int32 timestamp;                           ///< 生成时间戳
+    int32 timestamp = 0;                       ///< 生成时间戳
 
     // 规划报告
     MotionPlanningReport planning_report;      ///< 规划摘要指标
+
+    // authority / preview gate 元数据
+    bool preview_authority_ready = false;
+    bool preview_authority_shared_with_execution = false;
+    bool preview_spacing_valid = false;
+    bool preview_has_short_segment_exceptions = false;
+    std::string preview_failure_reason;
+    std::vector<Siligen::Application::Services::Dispensing::AuthorityTriggerPoint> authority_trigger_points;
+    std::vector<Siligen::Application::Services::Dispensing::SpacingValidationGroup> spacing_validation_groups;
 
     // 过渡期执行载体：供 runtime-execution canonical API 直接消费
     std::shared_ptr<ExecutionPackageValidated> execution_package;
 
     // 兼容字段：保留内存态规划结果，供仍未迁移的调用链复用
-    std::shared_ptr<DispensingPlan> execution_plan;
+    std::shared_ptr<Siligen::Domain::Dispensing::DomainServices::DispensingPlan> execution_plan;
 };
 
 /**
@@ -152,13 +167,12 @@ struct PlanningResponse {
  *
  * 业务流程:
  * 1. 验证请求参数
- * 2. 调用统一规划器解析 DXF 并生成点胶规划
- * 3. 可选：应用路径优化
- * 4. 生成执行轨迹与触发统计
+ * 2. 通过 M6/M7 facade 完成 process path 与 motion plan 编排
+ * 3. 通过 M8 facade 组装 preview payload 与 execution package
  * 5. 返回完整的规划结果
  *
  * 架构合规性:
- * - 组合现有组件（DispensingPlanner）
+ * - workflow 仅编排 owner facade，不再注入 planner concrete
  * - 单一职责：仅编排 DXF 路径规划流程
  */
 class PlanningUseCase {
@@ -169,7 +183,12 @@ public:
      * @param generator 轨迹生成器
      */
     PlanningUseCase(
-        std::shared_ptr<DispensingPlanner> planner,
+        std::shared_ptr<Siligen::Domain::Trajectory::Ports::IPathSourcePort> path_source,
+        std::shared_ptr<Siligen::Application::Services::ProcessPath::ProcessPathFacade> process_path_facade,
+        std::shared_ptr<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>
+            motion_planning_facade,
+        std::shared_ptr<Siligen::Application::Services::Dispensing::DispensePlanningFacade>
+            dispense_planning_facade,
         std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port = nullptr,
         std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService>
             pb_preparation_service = nullptr,
@@ -192,7 +211,12 @@ public:
     Result<PlanningResponse> Execute(const PlanningRequest& request);
 
 private:
-    std::shared_ptr<DispensingPlanner> planner_;
+    std::shared_ptr<Siligen::Domain::Trajectory::Ports::IPathSourcePort> path_source_;
+    std::shared_ptr<Siligen::Application::Services::ProcessPath::ProcessPathFacade> process_path_facade_;
+    std::shared_ptr<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>
+        motion_planning_facade_;
+    std::shared_ptr<Siligen::Application::Services::Dispensing::DispensePlanningFacade>
+        dispense_planning_facade_;
     std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port_;
     std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService> pb_preparation_service_;
     std::shared_ptr<Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort> artifact_export_port_;

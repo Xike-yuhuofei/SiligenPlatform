@@ -1,18 +1,21 @@
 cmake_minimum_required(VERSION 3.20)
 
-set(SILIGEN_RUNTIME_EXECUTION_INTEGRATION_CANONICAL_DIR
-    "${SILIGEN_WORKSPACE_ROOT}/modules/runtime-execution/runtime/host/tests/integration"
-)
-
 if(NOT TARGET runtime_execution_integration_host_bootstrap_smoke)
-    if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_INTEGRATION_CANONICAL_DIR}/CMakeLists.txt")
+    if(NOT TARGET runtime_service_integration_host_bootstrap_smoke)
         message(FATAL_ERROR
-            "runtime-execution integration entry requires canonical runtime/host/tests/integration/CMakeLists.txt"
+            "runtime-execution integration compatibility target requires apps/runtime-service/tests to be configured first"
         )
     endif()
 
-    add_subdirectory(
-        "${SILIGEN_RUNTIME_EXECUTION_INTEGRATION_CANONICAL_DIR}"
-        "${CMAKE_BINARY_DIR}/rtx-host-int"
+    add_custom_target(runtime_execution_integration_host_bootstrap_smoke
+        DEPENDS runtime_service_integration_host_bootstrap_smoke
     )
 endif()
+
+if(NOT TARGET runtime_execution_integration_tests)
+    add_custom_target(runtime_execution_integration_tests)
+endif()
+
+add_dependencies(runtime_execution_integration_tests
+    runtime_execution_integration_host_bootstrap_smoke
+)

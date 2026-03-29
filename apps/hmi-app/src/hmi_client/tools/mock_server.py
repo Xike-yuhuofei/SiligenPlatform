@@ -695,15 +695,22 @@ class MockState:
                 generated_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
                 self.dxf.preview_snapshot_id = plan_id
                 self.dxf.preview_generated_at = generated_at
-                point_count = max(self.dxf.segment_count * 2, 0)
-                polyline_source_point_count = max(point_count, 2)
-                polyline_point_count = min(polyline_source_point_count, max_polyline_points)
-                trajectory_polyline = []
-                for i in range(polyline_point_count):
-                    t = i / float(max(polyline_point_count - 1, 1))
+                glue_point_count = max(self.dxf.segment_count * 2, 0)
+                execution_point_count = max(glue_point_count, 2)
+                execution_polyline_source_point_count = execution_point_count
+                execution_polyline_point_count = min(execution_polyline_source_point_count, max_polyline_points)
+                glue_points = []
+                for i in range(glue_point_count):
+                    t = i / float(max(glue_point_count - 1, 1))
                     x = t * self.dxf.total_length
                     y = 6.0 * math.sin(t * 4.0 * math.pi)
-                    trajectory_polyline.append({"x": x, "y": y})
+                    glue_points.append({"x": x, "y": y})
+                execution_polyline = []
+                for i in range(execution_polyline_point_count):
+                    t = i / float(max(execution_polyline_point_count - 1, 1))
+                    x = t * self.dxf.total_length
+                    y = 6.0 * math.sin(t * 4.0 * math.pi)
+                    execution_polyline.append({"x": x, "y": y})
                 self.dxf.preview_state = "snapshot_ready"
                 self.dxf.preview_confirmed_at = ""
                 return {
@@ -712,13 +719,20 @@ class MockState:
                         "snapshot_hash": self.dxf.preview_snapshot_hash,
                         "plan_id": self.dxf.current_plan_id,
                         "preview_state": self.dxf.preview_state,
-                        "preview_source": "mock_synthetic",
+                        "preview_source": "planned_glue_snapshot",
+                        "preview_kind": "glue_points",
                         "confirmed_at": self.dxf.preview_confirmed_at,
                         "segment_count": self.dxf.segment_count,
-                        "point_count": point_count,
-                        "polyline_point_count": polyline_point_count,
-                        "polyline_source_point_count": polyline_source_point_count,
-                        "trajectory_polyline": trajectory_polyline,
+                        "point_count": glue_point_count,
+                        "glue_point_count": glue_point_count,
+                        "glue_points": glue_points,
+                        "execution_point_count": execution_point_count,
+                        "execution_polyline_point_count": execution_polyline_point_count,
+                        "execution_polyline_source_point_count": execution_polyline_source_point_count,
+                        "execution_polyline": execution_polyline,
+                        "polyline_point_count": execution_polyline_point_count,
+                        "polyline_source_point_count": execution_polyline_source_point_count,
+                        "trajectory_polyline": execution_polyline,
                         "total_length_mm": self.dxf.total_length,
                         "estimated_time_s": self.dxf.total_length / max(0.1, self.dxf.plan_speed_mm_s),
                         "generated_at": generated_at,

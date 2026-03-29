@@ -2,7 +2,7 @@
 
 #include "domain/dispensing/ports/IValvePort.h"
 #include "domain/motion/ports/IMotionStatePort.h"
-#include "runtime/configuration/WorkspaceAssetPaths.h"
+#include "runtime_process_bootstrap/WorkspaceAssetPaths.h"
 #include "shared/Strings/StringManipulator.h"
 #include "shared/types/AxisTypes.h"
 #include "shared/types/Error.h"

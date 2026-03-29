@@ -22,6 +22,8 @@ class StartBlockReason(str, Enum):
     PREVIEW_STALE = "preview_stale"
     CONFIRM_MISSING = "confirm_missing"
     INVALID_SOURCE = "invalid_source"
+    INVALID_KIND = "invalid_kind"
+    EMPTY_GLUE_POINTS = "empty_glue_points"
     HASH_MISMATCH = "hash_mismatch"
 
 
@@ -112,6 +114,32 @@ class DispensePreviewGate:
         if normalized != "planned_glue_snapshot":
             return PreviewGateDecision(False, StartBlockReason.INVALID_SOURCE)
         return PreviewGateDecision(True, StartBlockReason.NONE)
+
+    def validate_preview_kind(self, preview_kind: str) -> PreviewGateDecision:
+        normalized = str(preview_kind or "").strip().lower()
+        if normalized != "glue_points":
+            return PreviewGateDecision(False, StartBlockReason.INVALID_KIND)
+        return PreviewGateDecision(True, StartBlockReason.NONE)
+
+    def validate_glue_points(self, glue_point_count: int) -> PreviewGateDecision:
+        if int(glue_point_count or 0) <= 0:
+            return PreviewGateDecision(False, StartBlockReason.EMPTY_GLUE_POINTS)
+        return PreviewGateDecision(True, StartBlockReason.NONE)
+
+    def validate_preview_contract(
+        self,
+        *,
+        preview_source: str,
+        preview_kind: str,
+        glue_point_count: int,
+    ) -> PreviewGateDecision:
+        source_decision = self.validate_preview_source(preview_source)
+        if not source_decision.allowed:
+            return source_decision
+        kind_decision = self.validate_preview_kind(preview_kind)
+        if not kind_decision.allowed:
+            return kind_decision
+        return self.validate_glue_points(glue_point_count)
 
     def validate_execution_snapshot_hash(self, runtime_hash: str) -> PreviewGateDecision:
         if not self._confirmed_snapshot_hash:

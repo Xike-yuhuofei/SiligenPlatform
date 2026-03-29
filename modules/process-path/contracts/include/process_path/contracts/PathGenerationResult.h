@@ -1,12 +1,12 @@
 #pragma once
 
-#include "domain/trajectory/domain-services/GeometryNormalizer.h"
+#include "process_path/contracts/NormalizedPath.h"
 #include "process_path/contracts/ProcessPath.h"
 
 namespace Siligen::ProcessPath::Contracts {
 
 struct PathGenerationResult {
-    Siligen::Domain::Trajectory::DomainServices::NormalizedPath normalized;
+    NormalizedPath normalized;
     ProcessPath process_path;
     ProcessPath shaped_path;
 };

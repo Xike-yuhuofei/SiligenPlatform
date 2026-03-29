@@ -1,10 +1,17 @@
 cmake_minimum_required(VERSION 3.20)
 
 get_filename_component(MOTION_PLANNING_MODULE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
-
+set(MOTION_PLANNING_CONTRACTS_INCLUDE_DIR "${MOTION_PLANNING_MODULE_DIR}/contracts/include")
 if(NOT DEFINED SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR)
     set(SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR
         "${MOTION_PLANNING_MODULE_DIR}"
+    )
+endif()
+
+if(NOT TARGET siligen_process_path_contracts_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../process-path/contracts"
+        "${CMAKE_BINARY_DIR}/_p/mp_ppc"
     )
 endif()
 
@@ -16,18 +23,10 @@ if(NOT TARGET siligen_process_runtime_core_boost_headers)
     target_compile_features(siligen_process_runtime_core_boost_headers INTERFACE cxx_std_17)
 endif()
 
-set(SILIGEN_PROCESS_PATH_DEPENDENCY_TARGET "")
-if(TARGET siligen_module_process_path)
-    set(SILIGEN_PROCESS_PATH_DEPENDENCY_TARGET siligen_module_process_path)
-elseif(TARGET siligen_process_path_application_public)
-    set(SILIGEN_PROCESS_PATH_DEPENDENCY_TARGET siligen_process_path_application_public)
-elseif(TARGET siligen_process_path_domain_trajectory)
-    set(SILIGEN_PROCESS_PATH_DEPENDENCY_TARGET siligen_process_path_domain_trajectory)
-else()
+if(NOT TARGET siligen_process_path_contracts_public)
     message(FATAL_ERROR
-        "motion-planning requires an existing process-path dependency target "
-        "(expected one of: siligen_module_process_path, "
-        "siligen_process_path_application_public, siligen_process_path_domain_trajectory)")
+        "motion-planning requires siligen_process_path_contracts_public "
+        "as the canonical M6 consumer surface")
 endif()
 
 add_library(siligen_motion STATIC
@@ -58,6 +57,7 @@ add_library(siligen_motion STATIC
 
 target_include_directories(siligen_motion BEFORE PUBLIC
     ${SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR}
+    ${MOTION_PLANNING_CONTRACTS_INCLUDE_DIR}
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
 target_include_directories(siligen_motion PRIVATE
@@ -70,7 +70,7 @@ target_link_libraries(siligen_motion PUBLIC
     siligen_process_runtime_core_boost_headers
     siligen_types
     siligen_utils
-    ${SILIGEN_PROCESS_PATH_DEPENDENCY_TARGET}
+    siligen_process_path_contracts_public
     ruckig
 )
 

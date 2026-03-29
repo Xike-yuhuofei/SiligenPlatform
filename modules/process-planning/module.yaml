@@ -1,10 +1,10 @@
 module_id: M4
 module_name: process-planning
-owner_artifact: ProcessPlan
+owner_artifact: PlanningConfiguration
 group: planning
 target_root: modules/process-planning
 allowed_dependencies:
   - topology-feature/contracts
   - shared
 uniform_skeleton_ready: true
-notes: domain/configuration 是唯一真实实现承载面；模块根 target 直接链接 siligen_process_planning_domain_configuration
+notes: domain/configuration 是唯一真实实现承载面；application/contracts 仅暴露 configuration owner surface；模块根 target 直接链接 siligen_process_planning_domain_configuration

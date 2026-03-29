@@ -46,6 +46,7 @@ set(SILIGEN_CANONICAL_TEST_ROOTS
     "${SILIGEN_MODULES_ROOT}/process-path/tests"
     "${SILIGEN_MODULES_ROOT}/motion-planning/tests"
     "${SILIGEN_MODULES_ROOT}/dispense-packaging/tests"
+    "${SILIGEN_APPS_ROOT}/runtime-service/tests"
     "${SILIGEN_MODULES_ROOT}/runtime-execution/tests"
 )
 

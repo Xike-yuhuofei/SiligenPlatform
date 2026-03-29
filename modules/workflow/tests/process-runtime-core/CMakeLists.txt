@@ -30,6 +30,7 @@ set(TEST_SOURCES
     unit/domain/safety/SafetyOutputGuardTest.cpp
     unit/domain/motion/JogControllerTest.cpp
     unit/domain/dispensing/ArcTriggerPointCalculatorTest.cpp
+    unit/domain/trajectory/TrajectoryShaperTest.cpp
     unit/domain/dispensing/PurgeDispenserProcessTest.cpp
     unit/domain/recipes/RecipeActivationServiceTest.cpp
     unit/domain/motion/MotionBufferControllerTest.cpp
@@ -87,6 +88,21 @@ target_link_libraries(siligen_unit_tests PRIVATE
 if(TARGET siligen_application_dispensing)
     target_link_libraries(siligen_unit_tests PRIVATE
         siligen_application_dispensing
+    )
+endif()
+if(TARGET siligen_process_path_application_public)
+    target_link_libraries(siligen_unit_tests PRIVATE
+        siligen_process_path_application_public
+    )
+endif()
+if(TARGET siligen_motion_planning_application_public)
+    target_link_libraries(siligen_unit_tests PRIVATE
+        siligen_motion_planning_application_public
+    )
+endif()
+if(TARGET siligen_workflow_dispensing_planning_compat)
+    target_link_libraries(siligen_unit_tests PRIVATE
+        siligen_workflow_dispensing_planning_compat
     )
 endif()
 if(TARGET siligen_runtime_execution_application_public)
@@ -175,6 +191,16 @@ target_link_libraries(siligen_dispensing_semantics_tests PRIVATE
     siligen_types
     siligen_utils
 )
+if(TARGET siligen_process_path_application_public)
+    target_link_libraries(siligen_dispensing_semantics_tests PRIVATE
+        siligen_process_path_application_public
+    )
+endif()
+if(TARGET siligen_motion_planning_application_public)
+    target_link_libraries(siligen_dispensing_semantics_tests PRIVATE
+        siligen_motion_planning_application_public
+    )
+endif()
 target_compile_definitions(siligen_dispensing_semantics_tests PRIVATE SILIGEN_TEST_HOOKS=1)
 target_include_directories(siligen_dispensing_semantics_tests PRIVATE
     ${WORKFLOW_TEST_IMPLEMENTATION_INCLUDE_DIRS}

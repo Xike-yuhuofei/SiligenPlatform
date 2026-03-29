@@ -23,7 +23,7 @@
 - 当传入 `-ExerciseRuntimeActions` 时，GUI smoke 还必须驱动 canonical DXF 预览链路。
 - `-ExerciseRuntimeActions` 场景下，输出对应的 HMI 状态必须满足：
   - 已生成 `plan_id` 与 `snapshot_hash`
-  - 预览来源显示为 `runtime_snapshot`
+  - 预览来源显示为 `planned_glue_snapshot`
   - 不得把 `mock_synthetic` 或未知来源记为真实在线预览通过
 
 Supervisor 诊断映射（P0 最小约束）：

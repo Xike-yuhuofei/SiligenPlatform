@@ -225,10 +225,19 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
                     "result": {
                         "snapshot_id": "s1",
                         "snapshot_hash": "h1",
-                        "preview_source": "runtime_snapshot",
+                        "preview_source": "planned_glue_snapshot",
+                        "preview_kind": "glue_points",
                         "segment_count": 12,
                         "point_count": 36,
-                        "trajectory_polyline": [
+                        "glue_point_count": 36,
+                        "glue_points": [
+                            {"x": 0.0, "y": 0.0},
+                            {"x": 10.0, "y": 2.0},
+                        ],
+                        "execution_point_count": 48,
+                        "execution_polyline_source_point_count": 48,
+                        "execution_polyline_point_count": 2,
+                        "execution_polyline": [
                             {"x": 0.0, "y": 0.0},
                             {"x": 10.0, "y": 2.0},
                         ],
@@ -246,9 +255,124 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(error, "")
         self.assertEqual(payload["snapshot_hash"], "h1")
-        self.assertEqual(payload["preview_source"], "runtime_snapshot")
-        self.assertEqual(len(payload["trajectory_polyline"]), 2)
+        self.assertEqual(payload["preview_source"], "planned_glue_snapshot")
+        self.assertEqual(payload["preview_kind"], "glue_points")
+        self.assertEqual(len(payload["glue_points"]), 2)
+        self.assertEqual(len(payload["execution_polyline"]), 2)
         self.assertEqual(client.calls[0][0], "dxf.preview.snapshot")
+        self.assertEqual(client.calls[0][1]["plan_id"], "plan-1")
+
+    def test_preview_snapshot_preserves_non_authoritative_source_payload(self) -> None:
+        client = _FakeClient(
+            [
+                {
+                    "result": {
+                        "snapshot_id": "s-invalid-source",
+                        "snapshot_hash": "h-invalid-source",
+                        "plan_id": "plan-1",
+                        "preview_source": "mock_synthetic",
+                        "preview_kind": "glue_points",
+                        "glue_point_count": 2,
+                        "glue_points": [
+                            {"x": 0.0, "y": 0.0},
+                            {"x": 10.0, "y": 2.0},
+                        ],
+                    }
+                }
+            ]
+        )
+        protocol = CommandProtocol(client)
+
+        ok, payload, error = protocol.dxf_preview_snapshot(plan_id="plan-1")
+
+        self.assertTrue(ok)
+        self.assertEqual(error, "")
+        self.assertEqual(payload["preview_source"], "mock_synthetic")
+        self.assertEqual(payload["preview_kind"], "glue_points")
+        self.assertEqual(client.calls[0][1]["plan_id"], "plan-1")
+
+    def test_preview_snapshot_preserves_non_glue_points_payload(self) -> None:
+        client = _FakeClient(
+            [
+                {
+                    "result": {
+                        "snapshot_id": "s-invalid-kind",
+                        "snapshot_hash": "h-invalid-kind",
+                        "plan_id": "plan-1",
+                        "preview_source": "planned_glue_snapshot",
+                        "preview_kind": "trajectory_polyline",
+                        "glue_point_count": 2,
+                        "glue_points": [
+                            {"x": 0.0, "y": 0.0},
+                            {"x": 10.0, "y": 2.0},
+                        ],
+                    }
+                }
+            ]
+        )
+        protocol = CommandProtocol(client)
+
+        ok, payload, error = protocol.dxf_preview_snapshot(plan_id="plan-1")
+
+        self.assertTrue(ok)
+        self.assertEqual(error, "")
+        self.assertEqual(payload["preview_source"], "planned_glue_snapshot")
+        self.assertEqual(payload["preview_kind"], "trajectory_polyline")
+        self.assertEqual(client.calls[0][1]["plan_id"], "plan-1")
+
+    def test_preview_snapshot_preserves_empty_authority_payload(self) -> None:
+        client = _FakeClient(
+            [
+                {
+                    "result": {
+                        "snapshot_id": "s-empty",
+                        "snapshot_hash": "h-empty",
+                        "plan_id": "plan-1",
+                        "preview_source": "planned_glue_snapshot",
+                        "preview_kind": "glue_points",
+                        "glue_point_count": 0,
+                        "glue_points": [],
+                    }
+                }
+            ]
+        )
+        protocol = CommandProtocol(client)
+
+        ok, payload, error = protocol.dxf_preview_snapshot(plan_id="plan-1")
+
+        self.assertTrue(ok)
+        self.assertEqual(error, "")
+        self.assertEqual(payload["glue_points"], [])
+        self.assertEqual(payload["glue_point_count"], 0)
+        self.assertEqual(client.calls[0][1]["plan_id"], "plan-1")
+
+    def test_preview_snapshot_preserves_authority_plan_mismatch_payload(self) -> None:
+        client = _FakeClient(
+            [
+                {
+                    "result": {
+                        "snapshot_id": "s-mismatch",
+                        "snapshot_hash": "h-mismatch",
+                        "plan_id": "plan-other",
+                        "preview_source": "planned_glue_snapshot",
+                        "preview_kind": "glue_points",
+                        "glue_point_count": 2,
+                        "glue_points": [
+                            {"x": 0.0, "y": 0.0},
+                            {"x": 10.0, "y": 2.0},
+                        ],
+                    }
+                }
+            ]
+        )
+        protocol = CommandProtocol(client)
+
+        ok, payload, error = protocol.dxf_preview_snapshot(plan_id="plan-1")
+
+        self.assertTrue(ok)
+        self.assertEqual(error, "")
+        self.assertEqual(payload["plan_id"], "plan-other")
+        self.assertEqual(payload["snapshot_hash"], "h-mismatch")
         self.assertEqual(client.calls[0][1]["plan_id"], "plan-1")
 
     def test_preview_snapshot_error_contract(self) -> None:
@@ -262,14 +386,15 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertIn("DXF not loaded", error)
 
     def test_preview_snapshot_accepts_max_polyline_points(self) -> None:
-        client = _FakeClient([{"result": {"snapshot_id": "s2", "snapshot_hash": "h2", "plan_id": "plan-2", "preview_source": "runtime_snapshot"}}])
+        client = _FakeClient([{"result": {"snapshot_id": "s2", "snapshot_hash": "h2", "plan_id": "plan-2", "preview_source": "planned_glue_snapshot", "preview_kind": "glue_points"}}])
         protocol = CommandProtocol(client)
 
         ok, payload, _ = protocol.dxf_preview_snapshot(plan_id="plan-2", max_polyline_points=128)
 
         self.assertTrue(ok)
         self.assertEqual(payload["snapshot_hash"], "h2")
-        self.assertEqual(payload["preview_source"], "runtime_snapshot")
+        self.assertEqual(payload["preview_source"], "planned_glue_snapshot")
+        self.assertEqual(payload["preview_kind"], "glue_points")
         self.assertEqual(client.calls[0][1]["plan_id"], "plan-2")
         self.assertEqual(client.calls[0][1]["max_polyline_points"], 128)
 
@@ -347,6 +472,8 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertEqual(payload["plan_id"], "plan-1")
         self.assertEqual(client.calls[0][0], "dxf.plan.prepare")
         self.assertEqual(client.calls[0][1]["artifact_id"], "artifact-1")
+        self.assertTrue(client.calls[0][1]["use_interpolation_planner"])
+        self.assertEqual(client.calls[0][1]["interpolation_algorithm"], 0)
 
     def test_dxf_start_job_contract(self) -> None:
         client = _FakeClient([{"result": {"job_id": "job-1"}}])

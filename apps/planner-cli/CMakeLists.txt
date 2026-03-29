@@ -25,8 +25,7 @@ target_link_libraries(siligen_app_planner_cli INTERFACE
     siligen_workflow_recipe_application_public
     siligen_module_hmi_application
     siligen_runtime_execution_application_public
-    siligen_runtime_host
-    siligen_runtime_host_infrastructure
+    siligen_runtime_process_bootstrap_public
     siligen_process_planning_legacy_configuration_bridge_public
     siligen_topology_feature_legacy_contour_bridge_public
     siligen_shared
@@ -58,7 +57,6 @@ if(
     target_include_directories(siligen_planner_cli PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
-        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}
     )
 
     target_link_libraries(siligen_planner_cli PRIVATE siligen_app_planner_cli)

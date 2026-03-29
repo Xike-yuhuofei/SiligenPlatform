@@ -1,5 +1,8 @@
 #include "application/usecases/dispensing/PlanningUseCase.h"
 
+#include "application/services/dispensing/DispensePlanningFacade.h"
+#include "application/services/motion_planning/MotionPlanningFacade.h"
+#include "application/services/process_path/ProcessPathFacade.h"
 #include "application/services/dxf/DxfPbPreparationService.h"
 #include "domain/trajectory/ports/IPathSourcePort.h"
 #include "workflow/contracts/WorkflowContracts.h"
@@ -21,7 +24,6 @@ using Siligen::Application::UseCases::Dispensing::PlanningUseCase;
 using Siligen::Application::Services::Dispensing::PlanningArtifactExportRequest;
 using Siligen::Application::Services::Dispensing::PlanningArtifactExportResult;
 using Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort;
-using Siligen::Domain::Dispensing::DomainServices::DispensingPlanner;
 using Siligen::Domain::Configuration::Ports::IConfigurationPort;
 using Siligen::Domain::Configuration::Ports::HomingConfig;
 using Siligen::Domain::Trajectory::Ports::IPathSourcePort;
@@ -92,6 +94,22 @@ public:
     std::vector<std::string> loaded_paths;
 };
 
+class SharedVertexPathSourcePort final : public IPathSourcePort {
+public:
+    ResultT<PathSourceResult> LoadFromFile(const std::string& filepath) override {
+        loaded_paths.push_back(filepath);
+        PathSourceResult result;
+        result.success = true;
+        result.primitives.push_back(Primitive::MakeLine(Point2D{0.0f, 0.0f}, Point2D{9.0f, 0.0f}));
+        result.primitives.push_back(Primitive::MakeLine(Point2D{9.0f, 0.0f}, Point2D{9.0f, 9.0f}));
+        result.metadata.push_back({});
+        result.metadata.push_back({});
+        return ResultT<PathSourceResult>::Success(result);
+    }
+
+    std::vector<std::string> loaded_paths;
+};
+
 class FakePlanningArtifactExportPort final : public IPlanningArtifactExportPort {
 public:
     ResultT<PlanningArtifactExportResult> Export(const PlanningArtifactExportRequest& request) override {
@@ -124,8 +142,20 @@ PlanningRequest MakePlanningRequest(const std::filesystem::path& pb_path) {
     request.trajectory_config.max_acceleration = 500.0f;
     request.trajectory_config.time_step = 0.01f;
     request.trajectory_config.trigger_pulse_us = 1000;
+    request.trajectory_config.dispensing_interval = 3.0f;
     request.optimize_path = true;
+    request.use_interpolation_planner = true;
     return request;
+}
+
+std::size_t CountPointsNear(const std::vector<Point2D>& points, const Point2D& target, float tolerance_mm) {
+    std::size_t count = 0;
+    for (const auto& point : points) {
+        if (point.DistanceTo(target) <= tolerance_mm) {
+            ++count;
+        }
+    }
+    return count;
 }
 
 }  // namespace
@@ -134,10 +164,16 @@ TEST(PlanningUseCaseExportPortTest, ExecuteBuildsExportRequestWithoutDirectFiles
     auto temp_pb = MakeTempPbPath();
     auto config_port = std::make_shared<FakeConfigurationPort>();
     auto path_source = std::make_shared<FakePathSourcePort>();
-    auto planner = std::make_shared<DispensingPlanner>(path_source);
     auto export_port = std::make_shared<FakePlanningArtifactExportPort>();
     auto pb_service = std::make_shared<DxfPbPreparationService>();
-    PlanningUseCase use_case(planner, config_port, pb_service, export_port);
+    PlanningUseCase use_case(
+        path_source,
+        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
+        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        config_port,
+        pb_service,
+        export_port);
 
     const auto result = use_case.Execute(MakePlanningRequest(temp_pb));
 
@@ -161,4 +197,39 @@ TEST(PlanningUseCaseExportPortTest, WorkflowContractsRemainConstructibleForPlann
     EXPECT_EQ(request.workflow_run_id, "run-1");
     EXPECT_EQ(request.source_artifact, "WorkflowRun");
     EXPECT_TRUE(request.optimize_path);
+}
+
+TEST(PlanningUseCaseExportPortTest, ExecuteKeepsSharedVertexExportStableAcrossRepeatedPlanning) {
+    auto temp_pb = MakeTempPbPath();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto path_source = std::make_shared<SharedVertexPathSourcePort>();
+    auto export_port = std::make_shared<FakePlanningArtifactExportPort>();
+    auto pb_service = std::make_shared<DxfPbPreparationService>();
+    PlanningUseCase use_case(
+        path_source,
+        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
+        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        config_port,
+        pb_service,
+        export_port);
+
+    const auto first = use_case.Execute(MakePlanningRequest(temp_pb));
+    ASSERT_TRUE(first.IsSuccess()) << first.GetError().ToString();
+    const auto first_glue_points = export_port->last_request.glue_points;
+
+    const auto second = use_case.Execute(MakePlanningRequest(temp_pb));
+    ASSERT_TRUE(second.IsSuccess()) << second.GetError().ToString();
+    const auto& second_glue_points = export_port->last_request.glue_points;
+
+    EXPECT_EQ(first_glue_points.size(), second_glue_points.size());
+    ASSERT_FALSE(second_glue_points.empty());
+    EXPECT_EQ(CountPointsNear(second_glue_points, Point2D{9.0f, 0.0f}, 1e-4f), 1U);
+    for (std::size_t index = 0; index < first_glue_points.size(); ++index) {
+        EXPECT_NEAR(first_glue_points[index].x, second_glue_points[index].x, 1e-4f);
+        EXPECT_NEAR(first_glue_points[index].y, second_glue_points[index].y, 1e-4f);
+    }
+
+    std::error_code ec;
+    std::filesystem::remove(temp_pb, ec);
 }

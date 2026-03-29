@@ -8,6 +8,13 @@ from pathlib import Path
 # Add hmi directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
+try:
+    from hmi_client.module_paths import ensure_hmi_application_path
+except ImportError:  # pragma: no cover - script-mode fallback
+    from module_paths import ensure_hmi_application_path  # type: ignore
+
+ensure_hmi_application_path()
+
 from qt_env import configure_qt_environment
 from client import normalize_launch_mode
 from client.gateway_launch import load_gateway_launch_spec

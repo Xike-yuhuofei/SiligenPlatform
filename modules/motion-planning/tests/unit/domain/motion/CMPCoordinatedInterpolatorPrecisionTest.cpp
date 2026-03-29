@@ -10,7 +10,7 @@ namespace {
 constexpr float kEpsilon = 1e-4f;
 constexpr float kPi = 3.14159265358979323846f;
 
-float ComputeTestArcLength(const Siligen::Domain::Trajectory::ValueObjects::ArcPrimitive& arc) {
+float ComputeTestArcLength(const Siligen::ProcessPath::Contracts::ArcPrimitive& arc) {
     float sweep_deg = arc.end_angle_deg - arc.start_angle_deg;
     if (arc.clockwise && sweep_deg > 0.0f) {
         sweep_deg -= 360.0f;
@@ -21,7 +21,7 @@ float ComputeTestArcLength(const Siligen::Domain::Trajectory::ValueObjects::ArcP
 }
 
 Siligen::Shared::Types::Point2D ComputeTestArcPoint(
-    const Siligen::Domain::Trajectory::ValueObjects::ArcPrimitive& arc,
+    const Siligen::ProcessPath::Contracts::ArcPrimitive& arc,
     float angle_deg) {
     const float angle_rad = angle_deg * kPi / 180.0f;
     return Siligen::Shared::Types::Point2D(
@@ -67,11 +67,11 @@ TEST(CMPCoordinatedInterpolatorPrecisionTest, AcceptsExternalTriggerListForProce
     using Siligen::InterpolationConfig;
     using Siligen::Shared::Types::Point2D;
     using Siligen::Domain::Motion::CMPCoordinatedInterpolator;
-    using Siligen::Domain::Trajectory::ValueObjects::ArcPrimitive;
-    using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
-    using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
-    using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
-    using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
+    using Siligen::ProcessPath::Contracts::ArcPrimitive;
+    using Siligen::ProcessPath::Contracts::ProcessPath;
+    using Siligen::ProcessPath::Contracts::ProcessSegment;
+    using Siligen::ProcessPath::Contracts::ProcessTag;
+    using Siligen::ProcessPath::Contracts::SegmentType;
 
     ArcPrimitive arc;
     arc.center = Point2D(0.0f, 0.0f);

@@ -1,6 +1,6 @@
 #include "MotionPlanner.h"
 
-#include "domain/trajectory/value-objects/GeometryUtils.h"
+#include "process_path/contracts/GeometryUtils.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
 
@@ -18,19 +18,19 @@
 
 namespace Siligen::Domain::Motion::DomainServices {
 
-using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
-using Siligen::Domain::Trajectory::ValueObjects::Segment;
-using Siligen::Domain::Trajectory::ValueObjects::ArcPrimitive;
-using Siligen::Domain::Trajectory::ValueObjects::LinePrimitive;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectoryPoint;
-using Siligen::Domain::Trajectory::ValueObjects::ArcPoint;
-using Siligen::Domain::Trajectory::ValueObjects::ArcTangent;
-using Siligen::Domain::Trajectory::ValueObjects::Clamp;
-using Siligen::Domain::Trajectory::ValueObjects::ComputeArcLength;
-using Siligen::Domain::Trajectory::ValueObjects::LineDirection;
-using Siligen::Domain::Trajectory::ValueObjects::NormalizeAngle;
+using Siligen::ProcessPath::Contracts::ArcPrimitive;
+using Siligen::ProcessPath::Contracts::LinePrimitive;
+using Siligen::ProcessPath::Contracts::ProcessSegment;
+using Siligen::ProcessPath::Contracts::ProcessTag;
+using Siligen::ProcessPath::Contracts::Segment;
+using Siligen::ProcessPath::Contracts::SegmentType;
+using Siligen::ProcessPath::Contracts::ArcPoint;
+using Siligen::ProcessPath::Contracts::ArcTangent;
+using Siligen::ProcessPath::Contracts::Clamp;
+using Siligen::ProcessPath::Contracts::ComputeArcLength;
+using Siligen::ProcessPath::Contracts::LineDirection;
+using Siligen::ProcessPath::Contracts::NormalizeAngle;
 using Siligen::Shared::Types::Point2D;
 using Siligen::Point3D;
 using Siligen::Shared::Types::float32;
@@ -492,8 +492,8 @@ std::vector<float32> ApplyJerkLimitedScan(const std::vector<float32>& v_in,
 MotionPlanner::MotionPlanner(std::shared_ptr<VelocityProfileService> velocity_service)
     : velocity_service_(std::move(velocity_service)) {}
 
-MotionTrajectory MotionPlanner::Plan(const ProcessPath& path, const TimePlanningConfig& config) const {
-    MotionTrajectory trajectory;
+MotionPlan MotionPlanner::Plan(const ProcessPath& path, const TimePlanningConfig& config) const {
+    MotionPlan trajectory;
     Siligen::Domain::Motion::ValueObjects::MotionPlanningReport report;
     if (path.segments.empty()) {
         return trajectory;

@@ -20,7 +20,7 @@ endif()
 
 target_link_libraries(siligen_app_runtime_gateway INTERFACE
     siligen_transport_gateway
-    siligen_runtime_host
+    siligen_runtime_process_bootstrap_public
     siligen_job_ingest_contracts
     siligen_process_planning_legacy_configuration_bridge_public
 )

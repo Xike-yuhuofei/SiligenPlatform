@@ -46,6 +46,7 @@ enum class SegmentType : int8 { LINEAR = 0, ARC_CW = 1, ARC_CCW = 2 };
 struct TrajectoryPoint {
     Point2D position;
     float32 velocity = 0, acceleration = 0, dispensing_time = 0, trigger_position_mm = 0, timestamp = 0;
+    // Only marks a real discrete trigger event. Continuous glue-on regions must not set this flag.
     bool enable_position_trigger = false;
     uint16 trigger_pulse_width_us = 0;
     uint32 sequence_id = 0;
