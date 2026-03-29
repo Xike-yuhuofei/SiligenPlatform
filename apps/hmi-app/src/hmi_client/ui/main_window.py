@@ -2042,6 +2042,9 @@ class MainWindow(QMainWindow):
         execution_polyline: list,
         preview_kind: str,
         preview_warning: str = "",
+        preview_validation_classification: str = "",
+        preview_exception_reason: str = "",
+        preview_failure_reason: str = "",
     ) -> str:
         mode_text = "空跑" if dry_run else "生产"
         generated_at = html.escape(snapshot.generated_at or "-")
@@ -2083,6 +2086,22 @@ class MainWindow(QMainWindow):
                 "<div style='margin-bottom:14px;padding:12px 14px;border:1px solid #854d0e;"
                 "background:#3b2a12;color:#fde68a;'>"
                 f"<strong>预览质量告警。</strong> {html.escape(preview_warning)}"
+                "</div>"
+            )
+        validation_banner = ""
+        if preview_validation_classification == "pass_with_exception" and preview_exception_reason:
+            validation_banner = (
+                "<div style='margin-bottom:14px;padding:12px 14px;border:1px solid #854d0e;"
+                "background:#2d2110;color:#fde68a;'>"
+                f"<strong>非阻断提示。</strong> {html.escape(preview_exception_reason)}"
+                "</div>"
+            )
+        elif preview_validation_classification == "fail":
+            blocking_text = preview_failure_reason or preview_exception_reason or "authority 校验失败"
+            validation_banner = (
+                "<div style='margin-bottom:14px;padding:12px 14px;border:1px solid #7f1d1d;"
+                "background:#3a1717;color:#ffd5d5;'>"
+                f"<strong>阻断原因。</strong> {html.escape(blocking_text)}"
                 "</div>"
             )
         all_points = list(glue_points) + list(execution_polyline)
@@ -2139,6 +2158,7 @@ class MainWindow(QMainWindow):
             "<html><body style='background:#1e1e1e;color:#e8e8e8;font-family:Segoe UI;padding:18px;'>"
             f"{source_banner}"
             f"{warning_banner}"
+            f"{validation_banner}"
             "<p style='color:#b8b8b8;'>"
             "主图展示胶点触发点；执行轨迹仅作为辅助叠加层用于核对路径走向。执行前确认与哈希校验仍生效。"
             "</p>"
@@ -2150,6 +2170,7 @@ class MainWindow(QMainWindow):
             f"<tr><td style='padding:4px 16px 4px 0;'>来源</td><td>{source_text}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>来源说明</td><td>{source_warning}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>主预览语义</td><td>{html.escape(normalized_kind)}</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>校验分类</td><td>{html.escape(preview_validation_classification or 'pass')}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>模式</td><td>{mode_text}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>速度</td><td>{speed_mm_s:.3f} mm/s</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>段数</td><td>{snapshot.segment_count}</td></tr>"
@@ -2207,6 +2228,9 @@ class MainWindow(QMainWindow):
             execution_polyline=list(result.execution_polyline),
             preview_kind=result.preview_kind,
             preview_warning=result.preview_warning,
+            preview_validation_classification=self._preview_session.state.preview_validation_classification,
+            preview_exception_reason=self._preview_session.state.preview_exception_reason,
+            preview_failure_reason=self._preview_session.state.preview_failure_reason,
         )
         self._dxf_view.setHtml(html_content)
         if result.preview_warning and result.snapshot is not None:

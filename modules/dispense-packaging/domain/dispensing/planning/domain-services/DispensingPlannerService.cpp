@@ -1,5 +1,6 @@
 #include "DispensingPlannerService.h"
 #include "ContourOptimizationService.h"
+#include "AuthorityTriggerLayoutPlanner.h"
 #include "UnifiedTrajectoryPlannerService.h"
 
 #include "domain/dispensing/domain-services/TriggerPlanner.h"
@@ -1432,6 +1433,44 @@ struct TriggerArtifacts {
 
 Result<TriggerArtifacts> BuildTriggerArtifacts(const ProcessPath& path, const DispensingPlanRequest& request) {
     TriggerArtifacts artifacts;
+    if (path.segments.empty()) {
+        return Result<TriggerArtifacts>::Success(std::move(artifacts));
+    }
+
+    AuthorityTriggerLayoutPlanner layout_planner;
+    AuthorityTriggerLayoutPlannerRequest layout_request;
+    layout_request.process_path = path;
+    layout_request.plan_id = request.dxf_filepath;
+    layout_request.plan_fingerprint = request.dxf_filepath;
+    layout_request.layout_id_seed =
+        request.dxf_filepath + "|" + std::to_string(path.segments.size()) + "|" +
+        std::to_string(request.trigger_spatial_interval_mm);
+    layout_request.target_spacing_mm = request.trigger_spatial_interval_mm;
+    layout_request.dispensing_velocity = request.dispensing_velocity;
+    layout_request.acceleration = request.acceleration;
+    layout_request.dispenser_interval_ms = request.dispenser_interval_ms;
+    layout_request.dispenser_duration_ms = request.dispenser_duration_ms;
+    layout_request.valve_response_ms = request.valve_response_ms;
+    layout_request.safety_margin_ms = request.safety_margin_ms;
+    layout_request.min_interval_ms = request.min_interval_ms;
+    layout_request.downgrade_on_violation = request.downgrade_on_violation;
+    layout_request.dispensing_strategy = request.dispensing_strategy;
+    layout_request.subsegment_count = request.subsegment_count;
+    layout_request.dispense_only_cruise = request.dispense_only_cruise;
+    layout_request.compensation_profile = request.compensation_profile;
+    layout_request.spline_max_error_mm = request.spline_max_error_mm;
+
+    auto layout_result = layout_planner.Plan(layout_request);
+    if (layout_result.IsError()) {
+        return Result<TriggerArtifacts>::Failure(layout_result.GetError());
+    }
+
+    const auto& layout = layout_result.Value();
+    artifacts.distances.reserve(layout.trigger_points.size());
+    for (const auto& trigger : layout.trigger_points) {
+        artifacts.distances.push_back(trigger.distance_mm_global);
+    }
+
     TriggerPlan trigger_plan;
     trigger_plan.strategy = request.dispensing_strategy;
     trigger_plan.interval_mm = request.trigger_spatial_interval_mm;
@@ -1442,43 +1481,30 @@ Result<TriggerArtifacts> BuildTriggerArtifacts(const ProcessPath& path, const Di
     trigger_plan.safety.margin_ms = static_cast<int32>(request.safety_margin_ms);
     trigger_plan.safety.min_interval_ms = static_cast<int32>(request.min_interval_ms);
     trigger_plan.safety.downgrade_on_violation = request.downgrade_on_violation;
-
-    float32 residual_mm = 0.0f;
-    float32 path_offset_mm = 0.0f;
     TriggerPlanner trigger_planner;
-    for (const auto& segment : path.segments) {
-        float32 length_mm = SegmentLength(segment.geometry);
-        if (length_mm <= kEpsilon) {
-            if (segment.geometry.is_point && segment.dispense_on) {
-                artifacts.distances.push_back(path_offset_mm);
-            }
-            continue;
+    for (const auto& span : layout.spans) {
+        auto trigger_plan_result = trigger_planner.Plan(span.total_length_mm,
+                                                        request.dispensing_velocity,
+                                                        request.acceleration,
+                                                        request.trigger_spatial_interval_mm,
+                                                        request.dispenser_interval_ms,
+                                                        0.0f,
+                                                        trigger_plan,
+                                                        request.compensation_profile);
+        if (trigger_plan_result.IsError()) {
+            return Result<TriggerArtifacts>::Failure(trigger_plan_result.GetError());
         }
+        const auto& trigger_result = trigger_plan_result.Value();
+        artifacts.interval_ms = std::max<uint32>(artifacts.interval_ms, trigger_result.interval_ms);
+        artifacts.interval_mm = std::max(artifacts.interval_mm, trigger_result.plan.interval_mm);
+        artifacts.downgraded = artifacts.downgraded || trigger_result.downgrade_applied;
+    }
 
-        if (segment.dispense_on) {
-            auto trigger_plan_result = trigger_planner.Plan(length_mm,
-                                                            request.dispensing_velocity,
-                                                            request.acceleration,
-                                                            request.trigger_spatial_interval_mm,
-                                                            request.dispenser_interval_ms,
-                                                            residual_mm,
-                                                            trigger_plan,
-                                                            request.compensation_profile);
-            if (trigger_plan_result.IsError()) {
-                return Result<TriggerArtifacts>::Failure(trigger_plan_result.GetError());
-            }
-            const auto& trigger_result = trigger_plan_result.Value();
-            for (float32 dist : trigger_result.spacing.distances_mm) {
-                artifacts.distances.push_back(path_offset_mm + dist);
-            }
-            residual_mm = trigger_result.spacing.residual_mm;
-            artifacts.interval_ms = std::max<uint32>(artifacts.interval_ms, trigger_result.interval_ms);
-            artifacts.interval_mm = std::max(artifacts.interval_mm, trigger_result.plan.interval_mm);
-            artifacts.downgraded = artifacts.downgraded || trigger_result.downgrade_applied;
-        } else {
-            residual_mm = 0.0f;
-        }
-        path_offset_mm += length_mm;
+    if (artifacts.interval_mm <= kEpsilon) {
+        artifacts.interval_mm = request.trigger_spatial_interval_mm;
+    }
+    if (artifacts.interval_ms == 0U) {
+        artifacts.interval_ms = request.dispenser_interval_ms;
     }
     return Result<TriggerArtifacts>::Success(artifacts);
 }
@@ -1972,6 +1998,7 @@ std::vector<TrajectoryPoint> DispensingPlanner::BuildPreviewPoints(const Dispens
     (void)spacing_mm;
     (void)max_points;
 
+    // Compatibility helper only: preview markers are derived from authority-backed trigger distances.
     if (plan.trigger_distances_mm.empty()) {
         return {};
     }

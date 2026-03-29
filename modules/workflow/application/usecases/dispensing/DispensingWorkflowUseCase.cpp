@@ -185,6 +185,9 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
     response.point_count = static_cast<std::uint32_t>(planning.execution_trajectory_points.size());
     response.total_length_mm = planning.total_length;
     response.estimated_time_s = planning.estimated_time;
+    response.preview_validation_classification = planning.preview_validation_classification;
+    response.preview_exception_reason = planning.preview_exception_reason;
+    response.preview_failure_reason = planning.preview_failure_reason;
     response.generated_at = ToIso8601UtcNow();
 
     PlanRecord record;
@@ -192,10 +195,14 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
     record.execution_launch = std::move(execution_launch);
     record.execution_trajectory_points = planning.execution_trajectory_points;
     record.glue_points = planning.glue_points;
+    record.authority_trigger_layout = planning.authority_trigger_layout;
     record.preview_authority_ready = planning.preview_authority_ready;
     record.preview_authority_shared_with_execution = planning.preview_authority_shared_with_execution;
+    record.preview_binding_ready = planning.preview_binding_ready;
     record.preview_spacing_valid = planning.preview_spacing_valid;
     record.preview_has_short_segment_exceptions = planning.preview_has_short_segment_exceptions;
+    record.preview_validation_classification = planning.preview_validation_classification;
+    record.preview_exception_reason = planning.preview_exception_reason;
     record.preview_failure_reason = planning.preview_failure_reason;
     record.preview_state = PlanPreviewState::PREPARED;
     record.latest = true;
@@ -236,22 +243,10 @@ Result<PreviewSnapshotResponse> DispensingWorkflowUseCase::GetPreviewSnapshot(co
             return Result<PreviewSnapshotResponse>::Failure(
                 Error(ErrorCode::INVALID_STATE, "plan is stale", "DispensingWorkflowUseCase"));
         }
-        std::string preview_failure_reason;
-        if (!it->second.preview_authority_ready) {
-            preview_failure_reason = it->second.preview_failure_reason.empty()
-                ? "preview authority unavailable"
-                : it->second.preview_failure_reason;
-        } else if (!it->second.preview_authority_shared_with_execution) {
-            preview_failure_reason = "preview authority is not shared with execution";
-        } else if (!it->second.preview_spacing_valid) {
-            preview_failure_reason = it->second.preview_failure_reason.empty()
-                ? "preview spacing validation failed"
-                : it->second.preview_failure_reason;
-        } else if (it->second.glue_points.empty()) {
-            preview_failure_reason = "glue points unavailable";
-        }
+        const std::string preview_failure_reason = ResolvePreviewGateFailure(it->second);
         if (!preview_failure_reason.empty()) {
             it->second.preview_state = PlanPreviewState::FAILED;
+            it->second.confirmed_at.clear();
             it->second.failure_message = preview_failure_reason;
             return Result<PreviewSnapshotResponse>::Failure(
                 Error(ErrorCode::INVALID_STATE, preview_failure_reason, "DispensingWorkflowUseCase"));
@@ -308,6 +303,14 @@ Result<ConfirmPreviewResponse> DispensingWorkflowUseCase::ConfirmPreview(const C
             return Result<ConfirmPreviewResponse>::Failure(
                 Error(ErrorCode::INVALID_PARAMETER, "snapshot hash mismatch", "DispensingWorkflowUseCase"));
         }
+        const std::string preview_failure_reason = ResolvePreviewGateFailure(it->second);
+        if (!preview_failure_reason.empty()) {
+            it->second.preview_state = PlanPreviewState::FAILED;
+            it->second.confirmed_at.clear();
+            it->second.failure_message = preview_failure_reason;
+            return Result<ConfirmPreviewResponse>::Failure(
+                Error(ErrorCode::INVALID_STATE, preview_failure_reason, "DispensingWorkflowUseCase"));
+        }
 
         it->second.preview_state = PlanPreviewState::CONFIRMED;
         if (it->second.confirmed_at.empty()) {
@@ -355,31 +358,10 @@ Result<JobID> DispensingWorkflowUseCase::StartJob(const StartJobRequest& request
             return Result<JobID>::Failure(
                 Error(ErrorCode::INVALID_STATE, "preview not confirmed", "DispensingWorkflowUseCase"));
         }
-        if (!it->second.preview_authority_ready) {
+        const std::string preview_failure_reason = ResolvePreviewGateFailure(it->second);
+        if (!preview_failure_reason.empty()) {
             return Result<JobID>::Failure(
-                Error(ErrorCode::INVALID_STATE,
-                      it->second.preview_failure_reason.empty()
-                          ? "preview authority unavailable"
-                          : it->second.preview_failure_reason,
-                      "DispensingWorkflowUseCase"));
-        }
-        if (!it->second.preview_authority_shared_with_execution) {
-            return Result<JobID>::Failure(
-                Error(ErrorCode::INVALID_STATE,
-                      "preview authority is not shared with execution",
-                      "DispensingWorkflowUseCase"));
-        }
-        if (!it->second.preview_spacing_valid) {
-            return Result<JobID>::Failure(
-                Error(ErrorCode::INVALID_STATE,
-                      it->second.preview_failure_reason.empty()
-                          ? "preview spacing validation failed"
-                          : it->second.preview_failure_reason,
-                      "DispensingWorkflowUseCase"));
-        }
-        if (it->second.glue_points.empty()) {
-            return Result<JobID>::Failure(
-                Error(ErrorCode::INVALID_STATE, "glue points unavailable", "DispensingWorkflowUseCase"));
+                Error(ErrorCode::INVALID_STATE, preview_failure_reason, "DispensingWorkflowUseCase"));
         }
         if (it->second.preview_snapshot_hash != it->second.response.plan_fingerprint) {
             return Result<JobID>::Failure(
@@ -504,6 +486,10 @@ PreviewSnapshotResponse DispensingWorkflowUseCase::BuildPreviewSnapshotResponse(
     input.generated_at = plan_record.preview_generated_at;
     input.execution_trajectory_points = &plan_record.execution_trajectory_points;
     input.glue_points = &plan_record.glue_points;
+    input.authority_layout_id = plan_record.authority_trigger_layout.layout_id;
+    input.binding_ready = plan_record.preview_binding_ready;
+    input.validation_classification = plan_record.preview_validation_classification;
+    input.exception_reason = plan_record.preview_exception_reason;
 
     Siligen::Application::Services::Dispensing::WorkflowPreviewSnapshotService snapshot_service;
     return snapshot_service.BuildResponse(input, max_polyline_points);
@@ -567,8 +553,12 @@ std::string DispensingWorkflowUseCase::BuildPlanFingerprint(
         << planning.glue_points.size() << '|'
         << planning.preview_authority_ready << '|'
         << planning.preview_authority_shared_with_execution << '|'
+        << planning.preview_binding_ready << '|'
         << planning.preview_spacing_valid << '|'
         << planning.preview_has_short_segment_exceptions << '|'
+        << planning.preview_validation_classification << '|'
+        << planning.preview_exception_reason << '|'
+        << planning.authority_trigger_layout.layout_id << '|'
         << planning.authority_trigger_points.size() << '|'
         << planning.total_length << '|'
         << planning.estimated_time << '|'
@@ -601,6 +591,39 @@ std::string DispensingWorkflowUseCase::BuildPlanFingerprint(
         << runtime_request.velocity_guard_max_consecutive << '|'
         << runtime_request.velocity_guard_stop_on_violation;
     return HexEncodeUint64(Fnv1a64(oss.str()));
+}
+
+std::string DispensingWorkflowUseCase::ResolvePreviewGateFailure(const PlanRecord& plan_record) const {
+    if (plan_record.authority_trigger_layout.layout_id.empty()) {
+        return "preview authority layout id unavailable";
+    }
+    if (!plan_record.preview_authority_ready) {
+        return plan_record.preview_failure_reason.empty()
+            ? "preview authority unavailable"
+            : plan_record.preview_failure_reason;
+    }
+    if (!plan_record.preview_binding_ready) {
+        return plan_record.preview_failure_reason.empty()
+            ? "preview binding unavailable"
+            : plan_record.preview_failure_reason;
+    }
+    if (!plan_record.preview_authority_shared_with_execution) {
+        return "preview authority is not shared with execution";
+    }
+    if (!plan_record.preview_spacing_valid || plan_record.preview_validation_classification == "fail") {
+        if (!plan_record.preview_failure_reason.empty()) {
+            return plan_record.preview_failure_reason;
+        }
+        if (plan_record.preview_validation_classification == "fail" &&
+            !plan_record.preview_exception_reason.empty()) {
+            return plan_record.preview_exception_reason;
+        }
+        return "preview spacing validation failed";
+    }
+    if (plan_record.glue_points.empty()) {
+        return "glue points unavailable";
+    }
+    return {};
 }
 
 std::string DispensingWorkflowUseCase::PreviewStateToString(PlanPreviewState state) const {
@@ -672,3 +695,5 @@ void DispensingWorkflowUseCase::SyncPlanStateFromRuntimeStatus(
 }
 
 }  // namespace Siligen::Application::UseCases::Dispensing
+
+

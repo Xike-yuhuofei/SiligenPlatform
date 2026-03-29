@@ -26,6 +26,9 @@ class PreviewSessionState:
     preview_source: str = ""
     preview_kind: str = ""
     glue_point_count: int = 0
+    preview_validation_classification: str = ""
+    preview_exception_reason: str = ""
+    preview_failure_reason: str = ""
     current_plan_id: str = ""
     current_plan_fingerprint: str = ""
     preview_plan_dry_run: bool | None = None
@@ -155,6 +158,18 @@ class PreviewSnapshotWorker(QThread):
                             payload.setdefault("plan_fingerprint", plan_fingerprint)
                             payload.setdefault("snapshot_hash", plan_fingerprint)
                             payload.setdefault("dry_run", bool(self._dry_run))
+                            payload.setdefault(
+                                "preview_validation_classification",
+                                str(plan_payload.get("preview_validation_classification", "")),
+                            )
+                            payload.setdefault(
+                                "preview_exception_reason",
+                                str(plan_payload.get("preview_exception_reason", "")),
+                            )
+                            payload.setdefault(
+                                "preview_failure_reason",
+                                str(plan_payload.get("preview_failure_reason", "")),
+                            )
         except Exception as exc:  # pragma: no cover - defensive path
             error = str(exc) or "预览快照生成异常"
         finally:
@@ -259,6 +274,9 @@ class PreviewSessionOwner:
         self._state.preview_source = ""
         self._state.preview_kind = ""
         self._state.glue_point_count = 0
+        self._state.preview_validation_classification = ""
+        self._state.preview_exception_reason = ""
+        self._state.preview_failure_reason = ""
 
     @staticmethod
     def _map_preview_contract_reason(reason: StartBlockReason) -> PreflightBlockReason:
@@ -319,18 +337,31 @@ class PreviewSessionOwner:
         snapshot = self.gate.snapshot
         if snapshot is None:
             return ""
-        return (
+        summary = (
             f"段数: {snapshot.segment_count}\n"
             f"点数: {snapshot.point_count}\n"
             f"长度: {snapshot.total_length_mm:.1f}mm\n"
             f"预估: {snapshot.estimated_time_s:.1f}s\n\n"
             "确认以上胶点预览后继续执行？"
         )
+        if self._state.preview_validation_classification == "pass_with_exception" and self._state.preview_exception_reason:
+            summary = (
+                f"{summary}\n\n"
+                f"非阻断提示: {self._state.preview_exception_reason}"
+            )
+        return summary
 
     def validate_before_confirmation(self) -> PreviewConfirmResult:
         snapshot = self.gate.snapshot
         if snapshot is None:
             return PreviewConfirmResult(False, "请先生成胶点预览")
+        if self._state.preview_validation_classification == "fail":
+            return PreviewConfirmResult(
+                False,
+                self._state.preview_failure_reason
+                or self._state.preview_exception_reason
+                or "当前预览已被阻断，请先修复 authority 问题",
+            )
         contract_decision = self.gate.validate_preview_contract(
             preview_source=self._state.preview_source,
             preview_kind=self._state.preview_kind,
@@ -410,12 +441,28 @@ class PreviewSessionOwner:
         preview_kind = str(payload.get("preview_kind", "glue_points")).strip().lower() or "glue_points"
         preview_dry_run = bool(payload.get("dry_run", False))
         backend_preview_state = str(payload.get("preview_state", "snapshot_ready")).strip().lower()
+        preview_validation_classification = str(
+            payload.get(
+                "preview_validation_classification",
+                self._state.preview_validation_classification or "pass",
+            )
+            or "pass"
+        ).strip().lower()
+        preview_exception_reason = str(
+            payload.get("preview_exception_reason", self._state.preview_exception_reason or "")
+        ).strip()
+        preview_failure_reason = str(
+            payload.get("preview_failure_reason", self._state.preview_failure_reason or "")
+        ).strip()
         self._state.current_plan_id = str(payload.get("plan_id", snapshot_id)).strip() or snapshot_id
         self._state.current_plan_fingerprint = snapshot_hash
         self._state.preview_plan_dry_run = preview_dry_run
         self._state.preview_source = preview_source
         self._state.preview_kind = preview_kind
         self._state.glue_point_count = len(glue_points)
+        self._state.preview_validation_classification = preview_validation_classification
+        self._state.preview_exception_reason = preview_exception_reason
+        self._state.preview_failure_reason = preview_failure_reason
         self._state.dxf_segment_count = int(payload.get("segment_count", 0) or 0)
         self._state.dxf_total_length_mm = float(payload.get("total_length_mm", 0.0) or 0.0)
         estimated_time = float(payload.get("estimated_time_s", 0.0) or 0.0)
@@ -491,11 +538,15 @@ class PreviewSessionOwner:
         elif self.gate.state == PreviewGateState.READY_SIGNED:
             if preview_source == "mock_synthetic":
                 status_message = "模拟胶点预览已更新（仅供联调，非真实几何）"
+            elif preview_validation_classification == "fail":
+                status_message = preview_failure_reason or "胶点预览已更新，但当前结果存在阻断原因"
             else:
                 status_message = "胶点预览已更新（运行时已确认）"
         else:
             if preview_source == "mock_synthetic":
                 status_message = "模拟胶点预览已更新，非真实几何"
+            elif preview_validation_classification == "fail":
+                status_message = preview_failure_reason or "胶点预览已更新，但当前结果存在阻断原因"
             else:
                 status_message = "胶点预览已更新，启动前需确认"
 
@@ -554,6 +605,15 @@ class PreviewSessionOwner:
         if bool(dry_run) != bool(self._state.preview_plan_dry_run):
             self.invalidate_plan()
             return PreflightDecision(False, PreflightBlockReason.PREVIEW_MODE_MISMATCH, "运行模式已变更，请刷新预览并重新确认")
+
+        if self._state.preview_validation_classification == "fail":
+            return PreflightDecision(
+                False,
+                PreflightBlockReason.PREVIEW_FAILED,
+                self._state.preview_failure_reason
+                or self._state.preview_exception_reason
+                or "当前预览 authority 校验失败，禁止启动",
+            )
 
         contract_decision = self.gate.validate_preview_contract(
             preview_source=self._state.preview_source,
@@ -615,6 +675,12 @@ class PreviewSessionOwner:
             payload.setdefault("dry_run", bool(self._state.preview_plan_dry_run))
         else:
             payload.setdefault("dry_run", bool(current_dry_run))
+        payload.setdefault(
+            "preview_validation_classification",
+            self._state.preview_validation_classification,
+        )
+        payload.setdefault("preview_exception_reason", self._state.preview_exception_reason)
+        payload.setdefault("preview_failure_reason", self._state.preview_failure_reason)
         return payload
 
     def handle_invalid_resync_payload(self) -> PreviewPayloadResult:

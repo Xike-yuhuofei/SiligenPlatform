@@ -6,6 +6,18 @@ namespace Siligen::Application::Services::Dispensing {
 
 using Siligen::Application::UseCases::Dispensing::PreviewSnapshotResponse;
 
+namespace {
+
+bool HasAuthoritativeGluePoints(const WorkflowPreviewSnapshotInput& input) {
+    return !input.authority_layout_id.empty() &&
+           input.binding_ready &&
+           input.validation_classification != "fail" &&
+           input.glue_points != nullptr &&
+           !input.glue_points->empty();
+}
+
+}  // namespace
+
 PreviewSnapshotResponse WorkflowPreviewSnapshotService::BuildResponse(
     const WorkflowPreviewSnapshotInput& input,
     std::size_t max_points) const {
@@ -40,7 +52,7 @@ PreviewSnapshotResponse WorkflowPreviewSnapshotService::BuildResponse(
     response.total_length_mm = payload.total_length_mm;
     response.estimated_time_s = payload.estimated_time_s;
     response.generated_at = payload.generated_at;
-    if (input.glue_points) {
+    if (HasAuthoritativeGluePoints(input)) {
         response.glue_point_count = static_cast<std::uint32_t>(input.glue_points->size());
         response.point_count = response.glue_point_count;
         response.glue_points.reserve(input.glue_points->size());

@@ -3,6 +3,7 @@
 #include "application/services/dispensing/PlanningArtifactExportPort.h"
 #include "domain/dispensing/contracts/ExecutionPackage.h"
 #include "domain/dispensing/value-objects/DispenseCompensationProfile.h"
+#include "domain/dispensing/value-objects/AuthorityTriggerLayout.h"
 #include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
 #include "domain/motion/value-objects/MotionPlanningReport.h"
 #include "motion_planning/contracts/MotionPlan.h"
@@ -80,9 +81,13 @@ struct PlanningArtifactsBuildResult {
     Siligen::Domain::Motion::ValueObjects::MotionPlanningReport planning_report;
     bool preview_authority_ready = false;
     bool preview_authority_shared_with_execution = false;
+    bool preview_binding_ready = false;
     bool preview_spacing_valid = false;
     bool preview_has_short_segment_exceptions = false;
+    std::string preview_validation_classification;
+    std::string preview_exception_reason;
     std::string preview_failure_reason;
+    Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
     std::vector<AuthorityTriggerPoint> authority_trigger_points;
     std::vector<SpacingValidationGroup> spacing_validation_groups;
     PlanningArtifactExportRequest export_request;
@@ -95,3 +100,4 @@ class DispensePlanningFacade {
 };
 
 }  // namespace Siligen::Application::Services::Dispensing
+
