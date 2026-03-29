@@ -1394,6 +1394,8 @@ UnifiedTrajectoryPlanRequest BuildUnifiedPlanRequest(const DispensingPlanRequest
     plan_request.process.end_speed_factor = request.end_speed_factor;
     plan_request.process.corner_speed_factor = request.corner_speed_factor;
     plan_request.process.rapid_speed_factor = request.rapid_speed_factor;
+    plan_request.shaping.corner_smoothing_radius = 0.0f;
+    plan_request.shaping.corner_max_deviation_mm = 0.0f;
 
     plan_request.normalization.approximate_splines = request.approximate_splines;
     plan_request.normalization.spline_max_step_mm = request.spline_max_step_mm;
@@ -1600,7 +1602,12 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
             trigger_positions.push_back(trigger_pos);
         }
 
-        if (!Siligen::Shared::Types::ApplyTriggerMarkersByPosition(points, trigger_positions, targets)) {
+        if (!Siligen::Shared::Types::ApplyTriggerMarkersByPosition(
+                points,
+                trigger_positions,
+                targets,
+                Siligen::Shared::Types::kTriggerMarkerDedupToleranceMm,
+                std::max(config.position_tolerance, Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm))) {
             return Result<std::vector<TrajectoryPoint>>::Failure(
                 Error(ErrorCode::TRAJECTORY_GENERATION_FAILED, "trigger_distances_mm 映射到插补轨迹失败", "DispensingPlanner"));
         }
@@ -1903,7 +1910,7 @@ Result<DispensingPlan> DispensingPlanner::Plan(const DispensingPlanRequest& requ
     LogBoundsReport("motion.trajectory", ComputeBoundsForMotionTrajectory(plan_result.motion_trajectory));
     LogFirstNegativePoint("motion.trajectory", plan_result.motion_trajectory);
 
-    auto trigger_artifacts_result = BuildTriggerArtifacts(plan_result.shaped_path, request);
+    auto trigger_artifacts_result = BuildTriggerArtifacts(plan_result.process_path, request);
     if (trigger_artifacts_result.IsError()) {
         return Result<DispensingPlan>::Failure(trigger_artifacts_result.GetError());
     }

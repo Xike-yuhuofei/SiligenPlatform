@@ -149,6 +149,12 @@ DispensingPlan BuildMinimalPlan() {
     plan.motion_trajectory.total_time = 1.0f;
     plan.interpolation_points.emplace_back(0.0f, 0.0f, 10.0f);
     plan.interpolation_points.emplace_back(20.0f, 0.0f, 10.0f);
+    plan.interpolation_points.front().enable_position_trigger = true;
+    plan.interpolation_points.back().enable_position_trigger = true;
+    plan.trigger_distances_mm = {0.0f, 20.0f};
+    plan.preview_authority_ready = true;
+    plan.preview_authority_shared_with_execution = true;
+    plan.preview_spacing_valid = true;
     return plan;
 }
 
@@ -180,6 +186,9 @@ PlanningResponse BuildPlanningResponseWithExecutionPlan() {
     response.execution_trajectory_points.emplace_back(20.0f, 0.0f, 10.0f);
     response.glue_points.emplace_back(0.0f, 0.0f);
     response.glue_points.emplace_back(20.0f, 0.0f);
+    response.preview_authority_ready = true;
+    response.preview_authority_shared_with_execution = true;
+    response.preview_spacing_valid = true;
     response.execution_plan = std::make_shared<DispensingPlan>(plan);
 
     auto execution_package = BuildMinimalExecutionPackage();
@@ -316,6 +325,13 @@ void SeedPlan(DispensingWorkflowUseCase& use_case, const std::string& plan_id) {
     plan_record.execution_launch.runtime_overrides.dry_run = true;
     plan_record.execution_launch.runtime_overrides.dispensing_speed_mm_s = 22.0f;
     plan_record.execution_launch.runtime_overrides.dry_run_speed_mm_s = 88.0f;
+    plan_record.execution_trajectory_points.emplace_back(0.0f, 0.0f, 10.0f);
+    plan_record.execution_trajectory_points.emplace_back(20.0f, 0.0f, 10.0f);
+    plan_record.glue_points.emplace_back(0.0f, 0.0f);
+    plan_record.glue_points.emplace_back(20.0f, 0.0f);
+    plan_record.preview_authority_ready = true;
+    plan_record.preview_authority_shared_with_execution = true;
+    plan_record.preview_spacing_valid = true;
     plan_record.preview_state = DispensingWorkflowUseCase::PlanPreviewState::CONFIRMED;
     plan_record.preview_snapshot_hash = plan_record.response.plan_fingerprint;
     plan_record.latest = true;
@@ -384,6 +400,9 @@ DispensingWorkflowUseCase::PlanRecord BuildPreviewPlanRecord(
     plan_record.response.point_count = static_cast<std::uint32_t>(points.size());
     plan_record.response.total_length_mm = 0.0f;
     plan_record.response.estimated_time_s = 1.0f;
+    plan_record.preview_authority_ready = true;
+    plan_record.preview_authority_shared_with_execution = true;
+    plan_record.preview_spacing_valid = true;
     plan_record.preview_state = DispensingWorkflowUseCase::PlanPreviewState::SNAPSHOT_READY;
     plan_record.preview_snapshot_hash = plan_record.response.plan_fingerprint;
     plan_record.latest = true;
@@ -652,6 +671,9 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotKeepsConfirmedStateWhenFin
     plan_record.response.point_count = 2;
     plan_record.response.total_length_mm = 10.0f;
     plan_record.response.estimated_time_s = 1.0f;
+    plan_record.preview_authority_ready = true;
+    plan_record.preview_authority_shared_with_execution = true;
+    plan_record.preview_spacing_valid = true;
     plan_record.preview_state = DispensingWorkflowUseCase::PlanPreviewState::CONFIRMED;
     plan_record.preview_snapshot_hash = plan_record.response.plan_fingerprint;
     plan_record.confirmed_at = "2026-03-22T00:00:00Z";
@@ -775,6 +797,62 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotUsesThreeMillimeterCenterS
     }
 }
 
+TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFailsWhenPreviewAuthorityIsUnavailable) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+
+    DispensingWorkflowUseCase::PlanRecord plan_record;
+    plan_record.response.plan_id = "plan-missing-authority";
+    plan_record.response.plan_fingerprint = "fp-plan-missing-authority";
+    plan_record.preview_authority_ready = false;
+    plan_record.preview_authority_shared_with_execution = false;
+    plan_record.preview_spacing_valid = true;
+    plan_record.preview_failure_reason = "preview authority unavailable";
+    plan_record.preview_state = DispensingWorkflowUseCase::PlanPreviewState::PREPARED;
+    plan_record.latest = true;
+    use_case.plans_[plan_record.response.plan_id] = plan_record;
+
+    Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest request;
+    request.plan_id = "plan-missing-authority";
+    auto result = use_case.GetPreviewSnapshot(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+    EXPECT_EQ(use_case.plans_.at("plan-missing-authority").preview_state,
+              DispensingWorkflowUseCase::PlanPreviewState::FAILED);
+}
+
+TEST(DispensingWorkflowUseCaseTest, StartJobRejectsPreviewAuthorityMismatchBeforeRuntimeLaunch) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_use_case =
+        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
+    motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
+    homing_port->homed[LogicalAxisId::X] = true;
+    homing_port->homed[LogicalAxisId::Y] = true;
+
+    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port, execution_use_case);
+    SeedPlan(use_case, "plan-authority-mismatch");
+    auto& plan_record = use_case.plans_.at("plan-authority-mismatch");
+    plan_record.preview_authority_shared_with_execution = false;
+
+    Siligen::Application::UseCases::Dispensing::StartJobRequest request;
+    request.plan_id = "plan-authority-mismatch";
+    request.plan_fingerprint = "fp-plan-authority-mismatch";
+    request.target_count = 1;
+    auto result = use_case.StartJob(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+    EXPECT_NE(result.GetError().GetMessage().find("not shared"), std::string::npos);
+}
+
 TEST(DispensingWorkflowUseCaseTest, FinalizeJobClearsConfirmedPreviewState) {
     auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
@@ -787,6 +865,9 @@ TEST(DispensingWorkflowUseCaseTest, FinalizeJobClearsConfirmedPreviewState) {
     DispensingWorkflowUseCase::PlanRecord plan_record;
     plan_record.response.plan_id = "plan-finish";
     plan_record.response.plan_fingerprint = "fp-plan-finish";
+    plan_record.preview_authority_ready = true;
+    plan_record.preview_authority_shared_with_execution = true;
+    plan_record.preview_spacing_valid = true;
     plan_record.preview_state = DispensingWorkflowUseCase::PlanPreviewState::CONFIRMED;
     plan_record.preview_snapshot_hash = "fp-plan-finish";
     plan_record.confirmed_at = "2026-03-22T00:00:00Z";

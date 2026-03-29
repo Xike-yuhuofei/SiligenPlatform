@@ -410,7 +410,7 @@ nlohmann::json BuildPreviewSignaturePayload(const std::string& filepath, const n
     payload["curve_chain_max_segment_mm"] = ReadJsonDouble(params, "curve_chain_max_segment_mm", 0.0);
     payload["max_jerk"] = ReadJsonDouble(params, "max_jerk", 0.0);
     payload["use_hardware_trigger"] = ReadJsonBool(params, "use_hardware_trigger", true);
-    payload["use_interpolation_planner"] = ReadJsonBool(params, "use_interpolation_planner", false);
+    payload["use_interpolation_planner"] = ReadJsonBool(params, "use_interpolation_planner", true);
     payload["interpolation_algorithm"] = ReadJsonInt(params, "interpolation_algorithm", 0);
     return payload;
 }
@@ -454,7 +454,7 @@ Application::UseCases::Dispensing::PlanningRequest BuildPreviewPlanningRequest(
     request.curve_chain_angle_deg = static_cast<float32>(ReadJsonDouble(params, "curve_chain_angle_deg", 0.0));
     request.curve_chain_max_segment_mm = static_cast<float32>(ReadJsonDouble(params, "curve_chain_max_segment_mm", 0.0));
     request.use_hardware_trigger = ReadJsonBool(params, "use_hardware_trigger", true);
-    request.use_interpolation_planner = ReadJsonBool(params, "use_interpolation_planner", false);
+    request.use_interpolation_planner = ReadJsonBool(params, "use_interpolation_planner", true);
     const int algorithm_raw = ReadJsonInt(params, "interpolation_algorithm", 0);
     if (algorithm_raw >= static_cast<int>(Siligen::Domain::Motion::InterpolationAlgorithm::LINEAR) &&
         algorithm_raw <= static_cast<int>(Siligen::Domain::Motion::InterpolationAlgorithm::CIRCULAR_ARRAY)) {
@@ -530,7 +530,7 @@ Application::UseCases::Dispensing::DispensingMVPRequest BuildPlanExecutionReques
         ReadJsonDouble(params, "velocity_guard_max_consecutive", request.velocity_guard_max_consecutive));
     request.velocity_guard_stop_on_violation =
         params.value("velocity_guard_stop_on_violation", request.velocity_guard_stop_on_violation);
-    request.use_interpolation_planner = params.value("use_interpolation_planner", false);
+    request.use_interpolation_planner = params.value("use_interpolation_planner", true);
     const int algorithm_raw = ReadJsonInt(params, "interpolation_algorithm", 0);
     if (algorithm_raw >= static_cast<int>(Siligen::Domain::Motion::InterpolationAlgorithm::LINEAR) &&
         algorithm_raw <= static_cast<int>(Siligen::Domain::Motion::InterpolationAlgorithm::CIRCULAR_ARRAY)) {

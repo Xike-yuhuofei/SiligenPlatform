@@ -293,6 +293,8 @@ ProcessPathBuildRequest BuildProcessPathRequest(
     process_path_request.process.end_speed_factor = 0.5f;
     process_path_request.process.corner_speed_factor = 0.6f;
     process_path_request.process.rapid_speed_factor = 1.0f;
+    process_path_request.shaping.corner_smoothing_radius = 0.0f;
+    process_path_request.shaping.corner_max_deviation_mm = 0.0f;
     if (request.curve_chain_angle_deg > kEpsilon) {
         process_path_request.process.curve_chain_angle_deg = request.curve_chain_angle_deg;
     }
@@ -399,6 +401,7 @@ PlanningArtifactsBuildInput BuildPlanningArtifactsInput(
     const std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort>& config_port) {
     PlanningArtifactsBuildInput input;
     input.process_path = path_result.shaped_path;
+    input.authority_process_path = path_result.process_path;
     input.motion_plan = std::move(motion_plan);
     input.source_path = source_path;
     input.dxf_filename = dxf_filename;
@@ -585,6 +588,13 @@ Result<PlanningResponse> PlanningUseCase::Execute(const PlanningRequest& request
     response.dxf_filename = assembled.dxf_filename;
     response.timestamp = assembled.timestamp;
     response.planning_report = assembled.planning_report;
+    response.preview_authority_ready = assembled.preview_authority_ready;
+    response.preview_authority_shared_with_execution = assembled.preview_authority_shared_with_execution;
+    response.preview_spacing_valid = assembled.preview_spacing_valid;
+    response.preview_has_short_segment_exceptions = assembled.preview_has_short_segment_exceptions;
+    response.preview_failure_reason = assembled.preview_failure_reason;
+    response.authority_trigger_points = assembled.authority_trigger_points;
+    response.spacing_validation_groups = assembled.spacing_validation_groups;
     response.execution_package =
         std::make_shared<Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated>(
             assembled.execution_package);

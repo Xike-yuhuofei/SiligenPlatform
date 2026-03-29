@@ -146,6 +146,15 @@ struct PlanningResponse {
     // 规划报告
     MotionPlanningReport planning_report;      ///< 规划摘要指标
 
+    // authority / preview gate 元数据
+    bool preview_authority_ready = false;
+    bool preview_authority_shared_with_execution = false;
+    bool preview_spacing_valid = false;
+    bool preview_has_short_segment_exceptions = false;
+    std::string preview_failure_reason;
+    std::vector<Siligen::Application::Services::Dispensing::AuthorityTriggerPoint> authority_trigger_points;
+    std::vector<Siligen::Application::Services::Dispensing::SpacingValidationGroup> spacing_validation_groups;
+
     // 过渡期执行载体：供 runtime-execution canonical API 直接消费
     std::shared_ptr<ExecutionPackageValidated> execution_package;
 

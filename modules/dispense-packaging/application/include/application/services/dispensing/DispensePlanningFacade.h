@@ -11,13 +11,31 @@
 #include "shared/types/Result.h"
 #include "shared/types/TrajectoryTypes.h"
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
 namespace Siligen::Application::Services::Dispensing {
 
+struct AuthorityTriggerPoint {
+    Siligen::Shared::Types::Point2D position;
+    Siligen::Shared::Types::float32 trigger_distance_mm = 0.0f;
+    std::size_t segment_index = 0;
+    bool short_segment_exception = false;
+    bool shared_vertex = false;
+};
+
+struct SpacingValidationGroup {
+    std::size_t segment_index = 0;
+    std::vector<Siligen::Shared::Types::Point2D> points;
+    Siligen::Shared::Types::float32 actual_spacing_mm = 0.0f;
+    bool short_segment_exception = false;
+    bool within_window = false;
+};
+
 struct PlanningArtifactsBuildInput {
     Siligen::ProcessPath::Contracts::ProcessPath process_path;
+    Siligen::ProcessPath::Contracts::ProcessPath authority_process_path;
     Siligen::MotionPlanning::Contracts::MotionPlan motion_plan;
     std::string source_path;
     std::string dxf_filename;
@@ -60,6 +78,13 @@ struct PlanningArtifactsBuildResult {
     std::string dxf_filename;
     Siligen::Shared::Types::int32 timestamp = 0;
     Siligen::Domain::Motion::ValueObjects::MotionPlanningReport planning_report;
+    bool preview_authority_ready = false;
+    bool preview_authority_shared_with_execution = false;
+    bool preview_spacing_valid = false;
+    bool preview_has_short_segment_exceptions = false;
+    std::string preview_failure_reason;
+    std::vector<AuthorityTriggerPoint> authority_trigger_points;
+    std::vector<SpacingValidationGroup> spacing_validation_groups;
     PlanningArtifactExportRequest export_request;
 };
 

@@ -192,6 +192,11 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
     record.execution_launch = std::move(execution_launch);
     record.execution_trajectory_points = planning.execution_trajectory_points;
     record.glue_points = planning.glue_points;
+    record.preview_authority_ready = planning.preview_authority_ready;
+    record.preview_authority_shared_with_execution = planning.preview_authority_shared_with_execution;
+    record.preview_spacing_valid = planning.preview_spacing_valid;
+    record.preview_has_short_segment_exceptions = planning.preview_has_short_segment_exceptions;
+    record.preview_failure_reason = planning.preview_failure_reason;
     record.preview_state = PlanPreviewState::PREPARED;
     record.latest = true;
 
@@ -231,11 +236,25 @@ Result<PreviewSnapshotResponse> DispensingWorkflowUseCase::GetPreviewSnapshot(co
             return Result<PreviewSnapshotResponse>::Failure(
                 Error(ErrorCode::INVALID_STATE, "plan is stale", "DispensingWorkflowUseCase"));
         }
-        if (it->second.glue_points.empty()) {
+        std::string preview_failure_reason;
+        if (!it->second.preview_authority_ready) {
+            preview_failure_reason = it->second.preview_failure_reason.empty()
+                ? "preview authority unavailable"
+                : it->second.preview_failure_reason;
+        } else if (!it->second.preview_authority_shared_with_execution) {
+            preview_failure_reason = "preview authority is not shared with execution";
+        } else if (!it->second.preview_spacing_valid) {
+            preview_failure_reason = it->second.preview_failure_reason.empty()
+                ? "preview spacing validation failed"
+                : it->second.preview_failure_reason;
+        } else if (it->second.glue_points.empty()) {
+            preview_failure_reason = "glue points unavailable";
+        }
+        if (!preview_failure_reason.empty()) {
             it->second.preview_state = PlanPreviewState::FAILED;
-            it->second.failure_message = "glue points unavailable";
+            it->second.failure_message = preview_failure_reason;
             return Result<PreviewSnapshotResponse>::Failure(
-                Error(ErrorCode::INVALID_STATE, "glue points unavailable", "DispensingWorkflowUseCase"));
+                Error(ErrorCode::INVALID_STATE, preview_failure_reason, "DispensingWorkflowUseCase"));
         }
 
         const bool keep_confirmed_state =
@@ -335,6 +354,36 @@ Result<JobID> DispensingWorkflowUseCase::StartJob(const StartJobRequest& request
         if (it->second.preview_state != PlanPreviewState::CONFIRMED) {
             return Result<JobID>::Failure(
                 Error(ErrorCode::INVALID_STATE, "preview not confirmed", "DispensingWorkflowUseCase"));
+        }
+        if (!it->second.preview_authority_ready) {
+            return Result<JobID>::Failure(
+                Error(ErrorCode::INVALID_STATE,
+                      it->second.preview_failure_reason.empty()
+                          ? "preview authority unavailable"
+                          : it->second.preview_failure_reason,
+                      "DispensingWorkflowUseCase"));
+        }
+        if (!it->second.preview_authority_shared_with_execution) {
+            return Result<JobID>::Failure(
+                Error(ErrorCode::INVALID_STATE,
+                      "preview authority is not shared with execution",
+                      "DispensingWorkflowUseCase"));
+        }
+        if (!it->second.preview_spacing_valid) {
+            return Result<JobID>::Failure(
+                Error(ErrorCode::INVALID_STATE,
+                      it->second.preview_failure_reason.empty()
+                          ? "preview spacing validation failed"
+                          : it->second.preview_failure_reason,
+                      "DispensingWorkflowUseCase"));
+        }
+        if (it->second.glue_points.empty()) {
+            return Result<JobID>::Failure(
+                Error(ErrorCode::INVALID_STATE, "glue points unavailable", "DispensingWorkflowUseCase"));
+        }
+        if (it->second.preview_snapshot_hash != it->second.response.plan_fingerprint) {
+            return Result<JobID>::Failure(
+                Error(ErrorCode::INVALID_STATE, "preview fingerprint mismatch", "DispensingWorkflowUseCase"));
         }
         if (request.plan_fingerprint != it->second.response.plan_fingerprint) {
             return Result<JobID>::Failure(
@@ -516,6 +565,11 @@ std::string DispensingWorkflowUseCase::BuildPlanFingerprint(
         << planning.segment_count << '|'
         << planning.execution_trajectory_points.size() << '|'
         << planning.glue_points.size() << '|'
+        << planning.preview_authority_ready << '|'
+        << planning.preview_authority_shared_with_execution << '|'
+        << planning.preview_spacing_valid << '|'
+        << planning.preview_has_short_segment_exceptions << '|'
+        << planning.authority_trigger_points.size() << '|'
         << planning.total_length << '|'
         << planning.estimated_time << '|'
         << package.total_length_mm << '|'

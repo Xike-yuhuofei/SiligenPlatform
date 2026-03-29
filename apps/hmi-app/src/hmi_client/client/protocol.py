@@ -112,6 +112,8 @@ class CommandProtocol:
         velocity_trace_path: str = "",
     ) -> dict:
         params = {"dispensing_speed_mm_s": float(dispensing_speed_mm_s), "dry_run": bool(dry_run)}
+        params["use_interpolation_planner"] = True
+        params["interpolation_algorithm"] = 0
         if dry_run and dry_run_speed_mm_s > 0.0:
             params["dry_run_speed_mm_s"] = float(dry_run_speed_mm_s)
         params["velocity_trace_enabled"] = bool(velocity_trace_enabled)

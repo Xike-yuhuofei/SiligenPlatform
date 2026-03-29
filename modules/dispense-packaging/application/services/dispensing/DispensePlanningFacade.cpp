@@ -2,6 +2,7 @@
 
 #include "domain/dispensing/domain-services/TriggerPlanner.h"
 #include "domain/motion/CMPCoordinatedInterpolator.h"
+#include "domain/motion/domain-services/TimeTrajectoryPlanner.h"
 #include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
 #include "domain/trajectory/value-objects/GeometryUtils.h"
 #include "shared/interfaces/ILoggingService.h"
@@ -14,6 +15,7 @@
 #include <cmath>
 #include <ctime>
 #include <limits>
+#include <sstream>
 
 namespace Siligen::Application::Services::Dispensing {
 
@@ -25,10 +27,14 @@ using Siligen::Domain::Motion::CMPCoordinatedInterpolator;
 using Siligen::Domain::Motion::InterpolationAlgorithm;
 using Siligen::Domain::Motion::TrajectoryInterpolatorFactory;
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectory;
+using Siligen::Domain::Motion::ValueObjects::MotionTrajectoryPoint;
+using Siligen::Domain::Motion::DomainServices::TimeTrajectoryPlanner;
 using Siligen::Domain::Trajectory::ValueObjects::ArcPoint;
 using Siligen::Domain::Trajectory::ValueObjects::ComputeArcLength;
 using Siligen::Domain::Trajectory::ValueObjects::ComputeArcSweep;
 using Siligen::Domain::Trajectory::ValueObjects::Segment;
+using Siligen::Domain::Trajectory::ValueObjects::SegmentEnd;
+using Siligen::Domain::Trajectory::ValueObjects::SegmentStart;
 using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
 using Siligen::MotionPlanning::Contracts::MotionPlan;
 using Siligen::ProcessPath::Contracts::ProcessPath;
@@ -43,29 +49,23 @@ namespace {
 constexpr float32 kEpsilon = 1e-6f;
 constexpr float32 kGluePointDedupEpsilonMm = 1e-4f;
 
-struct GluePointSegment {
-    std::vector<Siligen::Shared::Types::Point2D> points;
-};
-
-struct SpacingStats {
-    size_t count = 0;
-    size_t within_tol = 0;
-    size_t below_min = 0;
-    size_t above_max = 0;
-    float32 min_dist = std::numeric_limits<float32>::max();
-    float32 max_dist = 0.0f;
-};
-
 struct TriggerArtifacts {
     std::vector<float32> distances;
+    std::vector<Point2D> positions;
+    std::vector<AuthorityTriggerPoint> authority_trigger_points;
+    std::vector<SpacingValidationGroup> spacing_validation_groups;
     uint32 interval_ms = 0;
     float32 interval_mm = 0.0f;
     bool downgraded = false;
+    bool spacing_valid = false;
+    bool has_short_segment_exceptions = false;
+    std::string failure_reason;
 };
 
 struct ExecutionTrajectorySelection {
     std::vector<TrajectoryPoint> motion_trajectory_points;
     const std::vector<TrajectoryPoint>* execution_trajectory = nullptr;
+    bool authority_shared = false;
 };
 
 float32 SegmentLength(const Segment& segment) {
@@ -101,109 +101,189 @@ float32 ComputeProcessPathLength(const ProcessPath& process_path) {
     return total_length;
 }
 
-SpacingStats EvaluateSpacing(
-    const std::vector<GluePointSegment>& segments,
-    float32 target_mm,
-    float32 tol_ratio,
-    float32 min_allowed,
-    float32 max_allowed) {
-    SpacingStats stats;
-    if (target_mm <= kEpsilon) {
-        return stats;
+bool PointsNear(const Point2D& lhs, const Point2D& rhs, float32 epsilon_mm) {
+    return lhs.DistanceTo(rhs) <= epsilon_mm;
+}
+
+bool ContainsNearPoint(const std::vector<Point2D>& points, const Point2D& point, float32 epsilon_mm) {
+    for (const auto& existing : points) {
+        if (PointsNear(existing, point, epsilon_mm)) {
+            return true;
+        }
     }
-    for (const auto& seg : segments) {
-        if (seg.points.size() < 2) {
+    return false;
+}
+
+float32 ResolveSpacingMin(const PlanningArtifactsBuildInput& input, float32 target_spacing) {
+    if (input.spacing_min_mm > 0.0f) {
+        return input.spacing_min_mm;
+    }
+    (void)target_spacing;
+    return 2.7f;
+}
+
+float32 ResolveSpacingMax(const PlanningArtifactsBuildInput& input, float32 target_spacing) {
+    if (input.spacing_max_mm > 0.0f) {
+        return input.spacing_max_mm;
+    }
+    (void)target_spacing;
+    return 3.3f;
+}
+
+bool ResolveSplinePosition(const Segment& segment, float32 local_distance, Point2D& out) {
+    if (segment.spline.control_points.empty()) {
+        out = SegmentEnd(segment);
+        return true;
+    }
+    if (segment.spline.control_points.size() == 1) {
+        out = segment.spline.control_points.front();
+        return true;
+    }
+
+    const float32 total_length = SegmentLength(segment);
+    if (total_length <= kEpsilon) {
+        out = segment.spline.control_points.back();
+        return true;
+    }
+
+    float32 accumulated = 0.0f;
+    for (size_t index = 1; index < segment.spline.control_points.size(); ++index) {
+        const auto& start = segment.spline.control_points[index - 1];
+        const auto& end = segment.spline.control_points[index];
+        const float32 edge_length = start.DistanceTo(end);
+        if (edge_length <= kEpsilon) {
             continue;
         }
-        for (size_t i = 1; i < seg.points.size(); ++i) {
-            const float32 distance = seg.points[i - 1].DistanceTo(seg.points[i]);
-            stats.count++;
-            stats.min_dist = std::min(stats.min_dist, distance);
-            stats.max_dist = std::max(stats.max_dist, distance);
-            if (std::abs(distance - target_mm) <= target_mm * tol_ratio) {
-                stats.within_tol++;
-            }
-            if (distance < min_allowed) {
-                stats.below_min++;
-            }
-            if (distance > max_allowed) {
-                stats.above_max++;
-            }
+        if (accumulated + edge_length >= local_distance - kEpsilon) {
+            const float32 ratio = std::clamp((local_distance - accumulated) / edge_length, 0.0f, 1.0f);
+            out = start + (end - start) * ratio;
+            return true;
         }
+        accumulated += edge_length;
     }
-    if (stats.count == 0) {
-        stats.min_dist = 0.0f;
-    }
-    return stats;
+
+    out = segment.spline.control_points.back();
+    return true;
 }
 
-std::vector<Siligen::Shared::Types::Point2D> BuildTriggerPointsFromDistances(
-    const std::vector<Point2D>& path_points,
-    const std::vector<float32>& distances_mm) {
-    std::vector<Siligen::Shared::Types::Point2D> points;
-    if (path_points.size() < 2 || distances_mm.empty()) {
-        return points;
+bool ResolveSegmentPosition(const Segment& segment, float32 local_distance, Point2D& out) {
+    const float32 segment_length = SegmentLength(segment);
+    if (segment_length <= kEpsilon) {
+        out = SegmentEnd(segment);
+        return true;
     }
 
-    std::vector<float32> cumulative(path_points.size(), 0.0f);
-    for (size_t i = 1; i < path_points.size(); ++i) {
-        cumulative[i] = cumulative[i - 1] + path_points[i - 1].DistanceTo(path_points[i]);
-    }
-
-    auto sorted = distances_mm;
-    std::sort(sorted.begin(), sorted.end());
-
-    size_t idx = 1;
-    for (const float32 target : sorted) {
-        while (idx < cumulative.size() && cumulative[idx] + kEpsilon < target) {
-            ++idx;
+    const float32 ratio = std::clamp(local_distance / segment_length, 0.0f, 1.0f);
+    switch (segment.type) {
+        case SegmentType::Line:
+            out = segment.line.start + (segment.line.end - segment.line.start) * ratio;
+            return true;
+        case SegmentType::Arc: {
+            const float32 sweep = ComputeArcSweep(segment.arc.start_angle_deg,
+                                                  segment.arc.end_angle_deg,
+                                                  segment.arc.clockwise);
+            const float32 direction = segment.arc.clockwise ? -1.0f : 1.0f;
+            const float32 angle = segment.arc.start_angle_deg + direction * sweep * ratio;
+            out = ArcPoint(segment.arc, angle);
+            return true;
         }
-        if (idx >= cumulative.size()) {
-            break;
-        }
-
-        const float32 seg_len = cumulative[idx] - cumulative[idx - 1];
-        const float32 ratio = (seg_len > kEpsilon) ? (target - cumulative[idx - 1]) / seg_len : 0.0f;
-        const auto& start = path_points[idx - 1];
-        const auto& end = path_points[idx];
-        points.push_back(start + (end - start) * ratio);
+        case SegmentType::Spline:
+            return ResolveSplinePosition(segment, local_distance, out);
+        default:
+            out = SegmentEnd(segment);
+            return true;
     }
-
-    return points;
 }
 
-std::vector<Siligen::Shared::Types::Point2D> RemoveConsecutiveNearDuplicatePoints(
-    const std::vector<Siligen::Shared::Types::Point2D>& points,
-    float32 epsilon_mm) {
-    std::vector<Siligen::Shared::Types::Point2D> deduped;
-    deduped.reserve(points.size());
-    for (const auto& point : points) {
-        if (deduped.empty() || deduped.back().DistanceTo(point) > epsilon_mm) {
-            deduped.push_back(point);
+void AppendAuthorityPoint(TriggerArtifacts& artifacts, AuthorityTriggerPoint point) {
+    if (!artifacts.authority_trigger_points.empty()) {
+        auto& previous = artifacts.authority_trigger_points.back();
+        if (PointsNear(previous.position, point.position, kGluePointDedupEpsilonMm) &&
+            std::fabs(previous.trigger_distance_mm - point.trigger_distance_mm) <= kEpsilon) {
+            previous.shared_vertex = true;
+            return;
+        }
+        if (PointsNear(previous.position, point.position, kGluePointDedupEpsilonMm)) {
+            previous.shared_vertex = true;
+            point.shared_vertex = true;
         }
     }
-    return deduped;
+
+    artifacts.distances.push_back(point.trigger_distance_mm);
+    artifacts.positions.push_back(point.position);
+    artifacts.authority_trigger_points.push_back(std::move(point));
+}
+
+Result<void> AppendAnchoredAuthorityForSegment(
+    TriggerArtifacts& artifacts,
+    const Segment& segment,
+    std::size_t segment_index,
+    float32 path_offset_mm,
+    float32 target_spacing_mm,
+    float32 spacing_min_mm,
+    float32 spacing_max_mm) {
+    const float32 segment_length = SegmentLength(segment);
+    if (segment_length <= kEpsilon) {
+        return Result<void>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "dispense_on 几何线段长度为0", "DispensePlanningFacade"));
+    }
+    if (target_spacing_mm <= kEpsilon) {
+        return Result<void>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "trigger_spatial_interval_mm 无效", "DispensePlanningFacade"));
+    }
+
+    const int division_count = std::max(1, static_cast<int>(std::lround(segment_length / target_spacing_mm)));
+    const float32 actual_spacing_mm = segment_length / static_cast<float32>(division_count);
+
+    SpacingValidationGroup group;
+    group.segment_index = segment_index;
+    group.actual_spacing_mm = actual_spacing_mm;
+    group.short_segment_exception =
+        actual_spacing_mm < spacing_min_mm - kEpsilon || actual_spacing_mm > spacing_max_mm + kEpsilon;
+    group.within_window =
+        actual_spacing_mm >= spacing_min_mm - kEpsilon && actual_spacing_mm <= spacing_max_mm + kEpsilon;
+
+    group.points.reserve(static_cast<std::size_t>(division_count) + 1U);
+    for (int division = 0; division <= division_count; ++division) {
+        const float32 local_distance =
+            (division == division_count) ? segment_length : actual_spacing_mm * static_cast<float32>(division);
+        Point2D point;
+        if (!ResolveSegmentPosition(segment, local_distance, point)) {
+            return Result<void>::Failure(
+                Error(ErrorCode::TRAJECTORY_GENERATION_FAILED, "authority trigger 位置解析失败", "DispensePlanningFacade"));
+        }
+        group.points.push_back(point);
+
+        AuthorityTriggerPoint authority_point;
+        authority_point.position = point;
+        authority_point.trigger_distance_mm = path_offset_mm + local_distance;
+        authority_point.segment_index = segment_index;
+        authority_point.short_segment_exception = group.short_segment_exception;
+        AppendAuthorityPoint(artifacts, std::move(authority_point));
+    }
+
+    artifacts.spacing_validation_groups.push_back(std::move(group));
+    return Result<void>::Success();
 }
 
 std::vector<VisualizationTriggerPoint> BuildPlannedTriggerPoints(
-    const std::vector<Point2D>& preview_path_points,
-    const std::vector<float32>& trigger_distances_mm) {
+    const std::vector<TrajectoryPoint>& interpolation_points) {
     std::vector<VisualizationTriggerPoint> triggers;
-    if (preview_path_points.size() < 2 || trigger_distances_mm.empty()) {
+    if (interpolation_points.empty()) {
         return triggers;
     }
 
-    auto trigger_points = RemoveConsecutiveNearDuplicatePoints(
-        BuildTriggerPointsFromDistances(preview_path_points, trigger_distances_mm),
-        kGluePointDedupEpsilonMm);
-    if (trigger_points.empty()) {
-        return triggers;
-    }
-
-    triggers.reserve(trigger_points.size());
+    std::vector<Point2D> preview_positions;
     const float32 nan_value = std::numeric_limits<float32>::quiet_NaN();
-    for (const auto& pt : trigger_points) {
-        triggers.emplace_back(pt, nan_value);
+    for (const auto& point : interpolation_points) {
+        if (!point.enable_position_trigger) {
+            continue;
+        }
+        if (ContainsNearPoint(preview_positions, point.position, kGluePointDedupEpsilonMm)) {
+            continue;
+        }
+        preview_positions.push_back(point.position);
+        triggers.emplace_back(point.position, nan_value);
     }
     return triggers;
 }
@@ -234,9 +314,9 @@ ExecutionTrajectorySelection SelectExecutionTrajectory(
     selection.motion_trajectory_points = BuildTrajectoryFromMotion(execution_package.execution_plan.motion_trajectory);
     if (!execution_package.execution_plan.interpolation_points.empty()) {
         selection.execution_trajectory = &execution_package.execution_plan.interpolation_points;
+        selection.authority_shared = true;
         return selection;
     }
-    selection.execution_trajectory = &selection.motion_trajectory_points;
     return selection;
 }
 
@@ -250,33 +330,54 @@ std::vector<Siligen::Shared::Types::Point2D> CollectTriggerPositions(
     return final_glue_points;
 }
 
-void ValidateGlueSpacing(
+const ProcessPath& ResolveAuthorityProcessPath(const PlanningArtifactsBuildInput& input) {
+    if (!input.authority_process_path.segments.empty()) {
+        return input.authority_process_path;
+    }
+    return input.process_path;
+}
+
+bool ValidateGlueSpacing(
     const PlanningArtifactsBuildInput& input,
-    const std::vector<GluePointSegment>& glue_segments,
-    float32 target_spacing) {
-    if (glue_segments.empty() || target_spacing <= kEpsilon) {
-        return;
+    TriggerArtifacts& artifacts,
+    float32 target_spacing_mm) {
+    if (artifacts.spacing_validation_groups.empty()) {
+        artifacts.spacing_valid = false;
+        if (artifacts.failure_reason.empty()) {
+            artifacts.failure_reason = "authority spacing groups unavailable";
+        }
+        return false;
     }
 
-    const float32 tol_ratio = input.spacing_tol_ratio > 0.0f ? input.spacing_tol_ratio : 0.1f;
-    const float32 min_allowed = input.spacing_min_mm > 0.0f ? input.spacing_min_mm : 0.5f;
-    const float32 max_allowed = input.spacing_max_mm > 0.0f ? input.spacing_max_mm : 10.0f;
-    const auto stats = EvaluateSpacing(glue_segments, target_spacing, tol_ratio, min_allowed, max_allowed);
-    if (stats.count == 0) {
-        return;
+    const float32 min_allowed = ResolveSpacingMin(input, target_spacing_mm);
+    const float32 max_allowed = ResolveSpacingMax(input, target_spacing_mm);
+
+    bool valid = true;
+    std::size_t invalid_group_count = 0;
+    std::size_t short_exception_count = 0;
+    for (const auto& group : artifacts.spacing_validation_groups) {
+        if (group.short_segment_exception) {
+            ++short_exception_count;
+            continue;
+        }
+        if (!group.within_window) {
+            valid = false;
+            ++invalid_group_count;
+        }
     }
 
-    const float32 within_ratio = static_cast<float32>(stats.within_tol) / static_cast<float32>(stats.count);
-    if (within_ratio < 0.9f || stats.below_min > 0 || stats.above_max > 0) {
-        SILIGEN_LOG_WARNING_FMT_HELPER(
-            "Glue点距复核未达标: within=%.1f%% min=%.4f max=%.4f below=%zu above=%zu target=%.3f",
-            within_ratio * 100.0f,
-            stats.min_dist,
-            stats.max_dist,
-            stats.below_min,
-            stats.above_max,
-            target_spacing);
+    artifacts.has_short_segment_exceptions = short_exception_count > 0;
+    artifacts.spacing_valid = valid;
+    if (!valid) {
+        std::ostringstream oss;
+        oss << "spacing validation failed: invalid_groups=" << invalid_group_count
+            << ", exceptions=" << short_exception_count
+            << ", target=" << target_spacing_mm
+            << ", window=[" << min_allowed << ',' << max_allowed << ']';
+        artifacts.failure_reason = oss.str();
+        SILIGEN_LOG_WARNING(artifacts.failure_reason);
     }
+    return valid;
 }
 
 float32 EstimateExecutionTime(
@@ -323,6 +424,45 @@ float32 ResolveInterpolationStep(const PlanningArtifactsBuildInput& input) {
         return input.spline_max_step_mm;
     }
     return 1.0f;
+}
+
+float32 SpeedMagnitude(const MotionTrajectoryPoint& point) {
+    const float32 vx = point.velocity.x;
+    const float32 vy = point.velocity.y;
+    return std::sqrt(vx * vx + vy * vy);
+}
+
+Siligen::Domain::Motion::ValueObjects::TimePlanningConfig BuildInterpolationPlanningConfig(
+    const Siligen::InterpolationConfig& config) {
+    Siligen::Domain::Motion::ValueObjects::TimePlanningConfig motion_config;
+    motion_config.vmax = config.max_velocity;
+    motion_config.amax = config.max_acceleration;
+    motion_config.jmax = config.max_jerk;
+    motion_config.sample_dt = config.time_step;
+    motion_config.sample_ds = 0.0f;
+    motion_config.curvature_speed_factor = config.curvature_speed_factor;
+    motion_config.corner_speed_factor = 1.0f;
+    motion_config.start_speed_factor = 1.0f;
+    motion_config.end_speed_factor = 1.0f;
+    motion_config.rapid_speed_factor = 1.0f;
+    motion_config.arc_tolerance_mm = std::max(config.position_tolerance, 0.0f);
+    motion_config.enforce_jerk_limit = true;
+    return motion_config;
+}
+
+std::vector<TrajectoryPoint> ConvertMotionTrajectoryToTrajectoryPoints(const MotionTrajectory& trajectory) {
+    std::vector<TrajectoryPoint> points;
+    points.reserve(trajectory.points.size());
+    for (size_t index = 0; index < trajectory.points.size(); ++index) {
+        const auto& sample = trajectory.points[index];
+        TrajectoryPoint point;
+        point.position = Point2D(sample.position.x, sample.position.y);
+        point.timestamp = sample.t;
+        point.sequence_id = static_cast<uint32>(index);
+        point.velocity = SpeedMagnitude(sample);
+        points.push_back(point);
+    }
+    return points;
 }
 
 void AppendUniquePoint(std::vector<Point2D>& points, const Point2D& point) {
@@ -406,6 +546,11 @@ Result<TriggerArtifacts> BuildTriggerArtifacts(
     const ProcessPath& path,
     const PlanningArtifactsBuildInput& input) {
     TriggerArtifacts artifacts;
+    if (path.segments.empty()) {
+        artifacts.failure_reason = "process path is empty";
+        return Result<TriggerArtifacts>::Success(std::move(artifacts));
+    }
+
     TriggerPlan trigger_plan;
     trigger_plan.strategy = input.dispensing_strategy;
     trigger_plan.interval_mm = input.trigger_spatial_interval_mm;
@@ -417,55 +562,72 @@ Result<TriggerArtifacts> BuildTriggerArtifacts(
     trigger_plan.safety.min_interval_ms = static_cast<int32>(input.min_interval_ms);
     trigger_plan.safety.downgrade_on_violation = input.downgrade_on_violation;
 
-    float32 residual_mm = 0.0f;
-    float32 path_offset_mm = 0.0f;
     TriggerPlanner trigger_planner;
+    const float32 spacing_min_mm = ResolveSpacingMin(input, input.trigger_spatial_interval_mm);
+    const float32 spacing_max_mm = ResolveSpacingMax(input, input.trigger_spatial_interval_mm);
 
-    for (const auto& segment : path.segments) {
+    float32 path_offset_mm = 0.0f;
+    for (std::size_t segment_index = 0; segment_index < path.segments.size(); ++segment_index) {
+        const auto& segment = path.segments[segment_index];
         const float32 length_mm = SegmentLength(segment.geometry);
-        if (length_mm <= kEpsilon) {
-            if (segment.geometry.is_point && segment.dispense_on) {
-                artifacts.distances.push_back(path_offset_mm);
-            }
-            continue;
-        }
 
         if (segment.dispense_on) {
-            auto trigger_plan_result = trigger_planner.Plan(
-                length_mm,
-                input.dispensing_velocity,
-                input.acceleration,
-                input.trigger_spatial_interval_mm,
-                input.dispenser_interval_ms,
-                residual_mm,
-                trigger_plan,
-                input.compensation_profile);
+            if (length_mm <= kEpsilon) {
+                return Result<TriggerArtifacts>::Failure(
+                    Error(ErrorCode::INVALID_PARAMETER, "dispense_on 几何线段长度为0", "DispensePlanningFacade"));
+            }
+
+            auto trigger_plan_result = trigger_planner.Plan(length_mm,
+                                                            input.dispensing_velocity,
+                                                            input.acceleration,
+                                                            input.trigger_spatial_interval_mm,
+                                                            input.dispenser_interval_ms,
+                                                            0.0f,
+                                                            trigger_plan,
+                                                            input.compensation_profile);
             if (trigger_plan_result.IsError()) {
                 return Result<TriggerArtifacts>::Failure(trigger_plan_result.GetError());
             }
 
             const auto& trigger_result = trigger_plan_result.Value();
-            for (float32 dist : trigger_result.spacing.distances_mm) {
-                artifacts.distances.push_back(path_offset_mm + dist);
-            }
-            residual_mm = trigger_result.spacing.residual_mm;
             artifacts.interval_ms = std::max<uint32>(artifacts.interval_ms, trigger_result.interval_ms);
             artifacts.interval_mm = std::max(artifacts.interval_mm, trigger_result.plan.interval_mm);
             artifacts.downgraded = artifacts.downgraded || trigger_result.downgrade_applied;
-        } else {
-            residual_mm = 0.0f;
+
+            auto append_result = AppendAnchoredAuthorityForSegment(artifacts,
+                                                                   segment.geometry,
+                                                                   segment_index,
+                                                                   path_offset_mm,
+                                                                   input.trigger_spatial_interval_mm,
+                                                                   spacing_min_mm,
+                                                                   spacing_max_mm);
+            if (append_result.IsError()) {
+                return Result<TriggerArtifacts>::Failure(append_result.GetError());
+            }
         }
 
-        path_offset_mm += length_mm;
+        if (length_mm > kEpsilon) {
+            path_offset_mm += length_mm;
+        }
     }
 
+    if (artifacts.interval_mm <= kEpsilon) {
+        artifacts.interval_mm = input.trigger_spatial_interval_mm;
+    }
+    if (artifacts.interval_ms == 0) {
+        artifacts.interval_ms = input.dispenser_interval_ms;
+    }
+    if (artifacts.authority_trigger_points.empty()) {
+        artifacts.failure_reason = "explicit trigger authority unavailable";
+    }
+    ValidateGlueSpacing(input, artifacts, artifacts.interval_mm);
     return Result<TriggerArtifacts>::Success(std::move(artifacts));
 }
 
 Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
     const PlanningArtifactsBuildInput& input,
     const ProcessPath& path,
-    const std::vector<float32>& trigger_distances) {
+    const TriggerArtifacts& trigger_artifacts) {
     if (!input.use_interpolation_planner) {
         return Result<std::vector<TrajectoryPoint>>::Success({});
     }
@@ -507,7 +669,8 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
     }
 
     std::vector<TrajectoryPoint> points;
-    if (input.interpolation_algorithm == InterpolationAlgorithm::CMP_COORDINATED && !trigger_distances.empty()) {
+    if (input.interpolation_algorithm == InterpolationAlgorithm::CMP_COORDINATED &&
+        !trigger_artifacts.positions.empty()) {
         Siligen::CMPConfiguration cmp_config;
         cmp_config.trigger_mode = Siligen::CMPTriggerMode::POSITION_SYNC;
         cmp_config.cmp_channel = 1;
@@ -518,34 +681,13 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
         cmp_config.compensation_factor = 1.0f;
         cmp_config.enable_multi_channel = false;
 
-        std::vector<float32> cumulative(seed_points.size(), 0.0f);
-        for (size_t i = 1; i < seed_points.size(); ++i) {
-            cumulative[i] = cumulative[i - 1] + seed_points[i - 1].DistanceTo(seed_points[i]);
-        }
-
-        auto targets = trigger_distances;
-        std::sort(targets.begin(), targets.end());
-
         std::vector<Siligen::DispensingTriggerPoint> triggers;
-        triggers.reserve(targets.size());
-        size_t idx = 1;
-        uint32 seq = 0;
-        for (float32 target : targets) {
-            while (idx < cumulative.size() && cumulative[idx] + kEpsilon < target) {
-                ++idx;
-            }
-            if (idx >= cumulative.size()) {
-                break;
-            }
-
-            const float32 seg_len = cumulative[idx] - cumulative[idx - 1];
-            const float32 ratio = (seg_len > kEpsilon) ? (target - cumulative[idx - 1]) / seg_len : 0.0f;
-            const Point2D trigger_pos = seed_points[idx - 1] + (seed_points[idx] - seed_points[idx - 1]) * ratio;
-
+        triggers.reserve(trigger_artifacts.positions.size());
+        for (std::size_t index = 0; index < trigger_artifacts.positions.size(); ++index) {
             Siligen::DispensingTriggerPoint trigger;
-            trigger.position = trigger_pos;
-            trigger.trigger_distance = target;
-            trigger.sequence_id = seq++;
+            trigger.position = trigger_artifacts.positions[index];
+            trigger.trigger_distance = trigger_artifacts.distances[index];
+            trigger.sequence_id = static_cast<uint32>(index);
             trigger.pulse_width_us = cmp_config.pulse_width_us;
             trigger.is_enabled = true;
             triggers.push_back(trigger);
@@ -557,28 +699,37 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
         if (input.interpolation_algorithm == InterpolationAlgorithm::CMP_COORDINATED) {
             return Result<std::vector<TrajectoryPoint>>::Failure(
                 Error(ErrorCode::TRAJECTORY_GENERATION_FAILED,
-                      "CMP插补缺少 trigger_distances_mm，不能退化为默认轨迹采样触发",
+                      "CMP插补缺少显式 trigger authority，不能退化为默认轨迹采样触发",
                       "DispensePlanningFacade"));
         }
 
-        auto interpolator = TrajectoryInterpolatorFactory::CreateInterpolator(input.interpolation_algorithm);
-        if (!interpolator) {
-            return Result<std::vector<TrajectoryPoint>>::Failure(
-                Error(ErrorCode::NOT_IMPLEMENTED, "插补算法未实现", "DispensePlanningFacade"));
+        if (input.interpolation_algorithm == InterpolationAlgorithm::LINEAR) {
+            TimeTrajectoryPlanner trajectory_planner;
+            points = ConvertMotionTrajectoryToTrajectoryPoints(
+                trajectory_planner.Plan(path, BuildInterpolationPlanningConfig(config)));
+        } else {
+            auto interpolator = TrajectoryInterpolatorFactory::CreateInterpolator(input.interpolation_algorithm);
+            if (!interpolator) {
+                return Result<std::vector<TrajectoryPoint>>::Failure(
+                    Error(ErrorCode::NOT_IMPLEMENTED, "插补算法未实现", "DispensePlanningFacade"));
+            }
+            if (!interpolator->ValidateParameters(seed_points, config)) {
+                return Result<std::vector<TrajectoryPoint>>::Failure(
+                    Error(ErrorCode::INVALID_PARAMETER, "插补规划参数无效", "DispensePlanningFacade"));
+            }
+            points = interpolator->CalculateInterpolation(seed_points, config);
         }
-        if (!interpolator->ValidateParameters(seed_points, config)) {
-            return Result<std::vector<TrajectoryPoint>>::Failure(
-                Error(ErrorCode::INVALID_PARAMETER, "插补规划参数无效", "DispensePlanningFacade"));
-        }
-        points = interpolator->CalculateInterpolation(seed_points, config);
 
-        auto targets = trigger_distances;
-        std::sort(targets.begin(), targets.end());
-        const auto trigger_positions = BuildTriggerPointsFromDistances(seed_points, targets);
-        if (!Siligen::Shared::Types::ApplyTriggerMarkersByPosition(points, trigger_positions, targets)) {
+        if (!trigger_artifacts.positions.empty() &&
+            !Siligen::Shared::Types::ApplyTriggerMarkersByPosition(
+                points,
+                trigger_artifacts.positions,
+                trigger_artifacts.distances,
+                Siligen::Shared::Types::kTriggerMarkerDedupToleranceMm,
+                std::max(config.position_tolerance, Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm))) {
             return Result<std::vector<TrajectoryPoint>>::Failure(
                 Error(ErrorCode::TRAJECTORY_GENERATION_FAILED,
-                      "trigger_distances_mm 映射到插补轨迹失败",
+                      "显式 trigger authority 映射到插补轨迹失败",
                       "DispensePlanningFacade"));
         }
     }
@@ -604,14 +755,16 @@ Result<PlanningArtifactsBuildResult> DispensePlanningFacade::AssemblePlanningArt
             Error(ErrorCode::TRAJECTORY_GENERATION_FAILED, "motion plan为空", "DispensePlanningFacade"));
     }
 
-    auto trigger_artifacts_result = BuildTriggerArtifacts(input.process_path, input);
+    const auto& authority_process_path = ResolveAuthorityProcessPath(input);
+
+    auto trigger_artifacts_result = BuildTriggerArtifacts(authority_process_path, input);
     if (trigger_artifacts_result.IsError()) {
         return Result<PlanningArtifactsBuildResult>::Failure(trigger_artifacts_result.GetError());
     }
     auto trigger_artifacts = trigger_artifacts_result.Value();
 
     auto interpolation_points_result =
-        BuildInterpolationPoints(input, input.process_path, trigger_artifacts.distances);
+        BuildInterpolationPoints(input, input.process_path, trigger_artifacts);
     if (interpolation_points_result.IsError()) {
         return Result<PlanningArtifactsBuildResult>::Failure(interpolation_points_result.GetError());
     }
@@ -646,29 +799,10 @@ Result<PlanningArtifactsBuildResult> DispensePlanningFacade::AssemblePlanningArt
     }
 
     const auto selection = SelectExecutionTrajectory(execution_package);
-    float32 preview_trigger_spacing_mm = execution_package.execution_plan.trigger_interval_mm;
-    if (preview_trigger_spacing_mm <= kEpsilon) {
-        preview_trigger_spacing_mm = input.trigger_spatial_interval_mm;
-    }
-
-    const auto preview_path_points = BuildInterpolationSeedPoints(input.process_path, ResolveInterpolationStep(input));
-    const auto preview_triggers = BuildPlannedTriggerPoints(
-        preview_path_points,
-        execution_package.execution_plan.trigger_distances_mm);
-    if (preview_triggers.empty()) {
-        return Result<PlanningArtifactsBuildResult>::Failure(
-            Error(
-                ErrorCode::CMP_TRIGGER_SETUP_FAILED,
-                "位置触发不可用，禁止回退为定时触发",
-                "DispensePlanningFacade"));
-    }
-
+    const auto preview_triggers = selection.execution_trajectory
+        ? BuildPlannedTriggerPoints(*selection.execution_trajectory)
+        : std::vector<VisualizationTriggerPoint>{};
     const auto glue_points = CollectTriggerPositions(preview_triggers);
-    const auto glue_segments = glue_points.empty()
-        ? std::vector<GluePointSegment>{}
-        : std::vector<GluePointSegment>{GluePointSegment{glue_points}};
-
-    ValidateGlueSpacing(input, glue_segments, preview_trigger_spacing_mm);
 
     PlanningArtifactsBuildResult result;
     result.execution_package = execution_package;
@@ -683,6 +817,18 @@ Result<PlanningArtifactsBuildResult> DispensePlanningFacade::AssemblePlanningArt
     result.dxf_filename = input.dxf_filename;
     result.timestamp = static_cast<int32>(std::time(nullptr));
     result.planning_report = input.motion_plan.planning_report;
+    result.preview_authority_ready = !trigger_artifacts.authority_trigger_points.empty() &&
+                                     selection.authority_shared &&
+                                     !preview_triggers.empty();
+    result.preview_authority_shared_with_execution = selection.authority_shared;
+    result.preview_spacing_valid = trigger_artifacts.spacing_valid;
+    result.preview_has_short_segment_exceptions = trigger_artifacts.has_short_segment_exceptions;
+    result.preview_failure_reason = trigger_artifacts.failure_reason;
+    if (!result.preview_authority_ready && result.preview_failure_reason.empty()) {
+        result.preview_failure_reason = "explicit trigger authority unavailable";
+    }
+    result.authority_trigger_points = trigger_artifacts.authority_trigger_points;
+    result.spacing_validation_groups = trigger_artifacts.spacing_validation_groups;
     result.export_request = BuildExportRequest(input, execution_package, selection, glue_points);
     return Result<PlanningArtifactsBuildResult>::Success(std::move(result));
 }

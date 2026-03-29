@@ -35,6 +35,7 @@ class _FakeStatus:
 def _valid_payload(
     *,
     preview_source: str = "planned_glue_snapshot",
+    preview_kind: str = "glue_points",
     dry_run: bool = False,
     glue_point_count: int = 3,
     execution_source_point_count: int = 10,
@@ -44,14 +45,16 @@ def _valid_payload(
         {"x": 3.0, "y": 0.0},
         {"x": 6.0, "y": 0.0},
     ]
-    if glue_point_count > len(glue_points):
+    if glue_point_count <= 0:
+        glue_points = []
+    elif glue_point_count > len(glue_points):
         glue_points.extend({"x": float(index), "y": 0.0} for index in range(len(glue_points), glue_point_count))
     return {
         "snapshot_id": "snapshot-1",
         "snapshot_hash": "hash-1",
         "plan_id": "plan-1",
         "preview_source": preview_source,
-        "preview_kind": "glue_points",
+        "preview_kind": preview_kind,
         "segment_count": 2,
         "glue_point_count": glue_point_count,
         "glue_points": glue_points,
@@ -72,20 +75,44 @@ class PreviewSessionOwnerTest(unittest.TestCase):
         self.owner = PreviewSessionOwner()
 
     def test_process_snapshot_payload_rejects_missing_glue_points(self) -> None:
-        result = self.owner.process_snapshot_payload(
-            {
-                "snapshot_id": "snapshot-1",
-                "snapshot_hash": "hash-1",
-                "plan_id": "plan-1",
-                "preview_source": "planned_glue_snapshot",
-            },
-            current_dry_run=False,
-        )
+        result = self.owner.process_snapshot_payload(_valid_payload(glue_point_count=0), current_dry_run=False)
 
         self.assertFalse(result.ok)
         self.assertEqual(result.title, "胶点预览生成失败")
         self.assertEqual(self.owner.gate.state, PreviewGateState.FAILED)
-        self.assertIn("缺少 glue_points", result.detail)
+        self.assertEqual(
+            self.owner.gate.last_error_message,
+            "当前预览缺少非空 glue_points，不能作为真实在线预览通过依据",
+        )
+        self.assertIn("缺少非空 glue_points", result.detail)
+
+    def test_process_snapshot_payload_rejects_non_authoritative_preview_source(self) -> None:
+        result = self.owner.process_snapshot_payload(
+            _valid_payload(preview_source="mock_synthetic"),
+            current_dry_run=False,
+        )
+
+        self.assertFalse(result.ok)
+        self.assertEqual(self.owner.gate.state, PreviewGateState.FAILED)
+        self.assertEqual(
+            self.owner.gate.last_error_message,
+            "当前预览来源为 mock_synthetic，不能作为真实在线预览通过依据",
+        )
+        self.assertIn("preview_source=mock_synthetic", result.detail)
+
+    def test_process_snapshot_payload_rejects_non_glue_points_preview_kind(self) -> None:
+        result = self.owner.process_snapshot_payload(
+            _valid_payload(preview_kind="trajectory_polyline"),
+            current_dry_run=False,
+        )
+
+        self.assertFalse(result.ok)
+        self.assertEqual(self.owner.gate.state, PreviewGateState.FAILED)
+        self.assertEqual(
+            self.owner.gate.last_error_message,
+            "当前预览语义为 trajectory_polyline，不是 glue_points，不能作为真实在线预览通过依据",
+        )
+        self.assertIn("preview_kind=trajectory_polyline", result.detail)
 
     def test_process_snapshot_payload_rejects_legacy_runtime_snapshot_contract(self) -> None:
         result = self.owner.process_snapshot_payload(
@@ -145,12 +172,10 @@ class PreviewSessionOwnerTest(unittest.TestCase):
         self.assertEqual(self.owner.gate.decision_for_start().reason, StartBlockReason.CONFIRM_MISSING)
 
     def test_build_preflight_decision_rejects_mock_preview_source(self) -> None:
-        payload_result = self.owner.process_snapshot_payload(
-            _valid_payload(preview_source="mock_synthetic"),
-            current_dry_run=False,
-        )
+        payload_result = self.owner.process_snapshot_payload(_valid_payload(), current_dry_run=False)
         self.assertTrue(payload_result.ok)
         self.owner.gate.confirm_current_snapshot()
+        self.owner.state.preview_source = "mock_synthetic"
 
         decision = self.owner.build_preflight_decision(
             online_ready=True,
@@ -164,6 +189,63 @@ class PreviewSessionOwnerTest(unittest.TestCase):
         self.assertFalse(decision.allowed)
         self.assertEqual(decision.reason, PreflightBlockReason.INVALID_SOURCE)
         self.assertIn("mock_synthetic", decision.message)
+
+    def test_build_preflight_decision_rejects_non_glue_points_preview_kind(self) -> None:
+        payload_result = self.owner.process_snapshot_payload(_valid_payload(), current_dry_run=False)
+        self.assertTrue(payload_result.ok)
+        self.owner.gate.confirm_current_snapshot()
+        self.owner.state.preview_kind = "trajectory_polyline"
+
+        decision = self.owner.build_preflight_decision(
+            online_ready=True,
+            connected=True,
+            hardware_connected=True,
+            runtime_status_fault=False,
+            status=_FakeStatus(),
+            dry_run=False,
+        )
+
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, PreflightBlockReason.INVALID_KIND)
+        self.assertIn("trajectory_polyline", decision.message)
+
+    def test_build_preflight_decision_rejects_empty_glue_points(self) -> None:
+        payload_result = self.owner.process_snapshot_payload(_valid_payload(), current_dry_run=False)
+        self.assertTrue(payload_result.ok)
+        self.owner.gate.confirm_current_snapshot()
+        self.owner.state.glue_point_count = 0
+
+        decision = self.owner.build_preflight_decision(
+            online_ready=True,
+            connected=True,
+            hardware_connected=True,
+            runtime_status_fault=False,
+            status=_FakeStatus(),
+            dry_run=False,
+        )
+
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, PreflightBlockReason.EMPTY_GLUE_POINTS)
+        self.assertIn("非空 glue_points", decision.message)
+
+    def test_build_preflight_decision_rejects_authority_hash_mismatch(self) -> None:
+        payload_result = self.owner.process_snapshot_payload(_valid_payload(), current_dry_run=False)
+        self.assertTrue(payload_result.ok)
+        self.owner.gate.confirm_current_snapshot()
+        self.owner.state.current_plan_fingerprint = "hash-2"
+
+        decision = self.owner.build_preflight_decision(
+            online_ready=True,
+            connected=True,
+            hardware_connected=True,
+            runtime_status_fault=False,
+            status=_FakeStatus(),
+            dry_run=False,
+        )
+
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, PreflightBlockReason.HASH_MISMATCH)
+        self.assertIn("执行快照不一致", decision.message)
 
     def test_handle_resync_error_clears_owner_state_for_unrecoverable_runtime_loss(self) -> None:
         payload_result = self.owner.process_snapshot_payload(_valid_payload(), current_dry_run=False)

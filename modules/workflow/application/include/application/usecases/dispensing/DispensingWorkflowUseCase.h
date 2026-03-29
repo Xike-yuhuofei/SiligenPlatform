@@ -200,6 +200,11 @@ class DispensingWorkflowUseCase {
         PlanExecutionLaunch execution_launch;
         std::vector<TrajectoryPoint> execution_trajectory_points;
         std::vector<Siligen::Shared::Types::Point2D> glue_points;
+        bool preview_authority_ready = false;
+        bool preview_authority_shared_with_execution = false;
+        bool preview_spacing_valid = false;
+        bool preview_has_short_segment_exceptions = false;
+        std::string preview_failure_reason;
         PlanPreviewState preview_state = PlanPreviewState::PREPARED;
         std::string preview_snapshot_id;
         std::string preview_snapshot_hash;

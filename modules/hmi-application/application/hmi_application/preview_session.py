@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 class PreviewSessionState:
     gate: DispensePreviewGate
     preview_source: str = ""
+    preview_kind: str = ""
+    glue_point_count: int = 0
     current_plan_id: str = ""
     current_plan_fingerprint: str = ""
     preview_plan_dry_run: bool | None = None
@@ -46,6 +48,8 @@ class PreflightBlockReason(str, Enum):
     PREVIEW_MODE_UNKNOWN = "preview_mode_unknown"
     PREVIEW_MODE_MISMATCH = "preview_mode_mismatch"
     INVALID_SOURCE = "invalid_source"
+    INVALID_KIND = "invalid_kind"
+    EMPTY_GLUE_POINTS = "empty_glue_points"
     PREVIEW_CONFIRM_REQUIRED = "preview_confirm_required"
     PREVIEW_FAILED = "preview_failed"
     PREVIEW_STALE = "preview_stale"
@@ -236,9 +240,30 @@ class PreviewSessionOwner:
             if self._state.preview_source == "mock_synthetic":
                 return "当前预览来源为 mock_synthetic，不能作为真实在线预览通过依据"
             return "当前预览来源不是 planned_glue_snapshot，不能作为真实在线预览通过依据"
+        if reason == StartBlockReason.INVALID_KIND:
+            if self._state.preview_kind:
+                return f"当前预览语义为 {self._state.preview_kind}，不是 glue_points，不能作为真实在线预览通过依据"
+            return "当前预览语义不是 glue_points，不能作为真实在线预览通过依据"
+        if reason == StartBlockReason.EMPTY_GLUE_POINTS:
+            return "当前预览缺少非空 glue_points，不能作为真实在线预览通过依据"
         if reason == StartBlockReason.HASH_MISMATCH:
             return "预览快照与执行快照不一致，请重新生成并确认"
         return "预检失败"
+
+    def _clear_preview_contract_state(self) -> None:
+        self._state.preview_source = ""
+        self._state.preview_kind = ""
+        self._state.glue_point_count = 0
+
+    @staticmethod
+    def _map_preview_contract_reason(reason: StartBlockReason) -> PreflightBlockReason:
+        if reason == StartBlockReason.INVALID_SOURCE:
+            return PreflightBlockReason.INVALID_SOURCE
+        if reason == StartBlockReason.INVALID_KIND:
+            return PreflightBlockReason.INVALID_KIND
+        if reason == StartBlockReason.EMPTY_GLUE_POINTS:
+            return PreflightBlockReason.EMPTY_GLUE_POINTS
+        return PreflightBlockReason.PREVIEW_FAILED
 
     def info_label_text(self) -> str:
         return (
@@ -263,7 +288,7 @@ class PreviewSessionOwner:
 
     def reset_for_loaded_dxf(self, *, segment_count: int = 0) -> None:
         self.gate.reset_for_loaded_dxf()
-        self._state.preview_source = ""
+        self._clear_preview_contract_state()
         self._state.current_plan_id = ""
         self._state.current_plan_fingerprint = ""
         self._state.preview_plan_dry_run = None
@@ -278,7 +303,7 @@ class PreviewSessionOwner:
         self._state.current_plan_id = ""
         self._state.current_plan_fingerprint = ""
         self._state.preview_plan_dry_run = None
-        self._state.preview_source = ""
+        self._clear_preview_contract_state()
         self._state.preview_state_resync_pending = False
         self._state.last_preview_resync_attempt_ts = 0.0
 
@@ -301,9 +326,13 @@ class PreviewSessionOwner:
         snapshot = self.gate.snapshot
         if snapshot is None:
             return PreviewConfirmResult(False, "请先生成胶点预览")
-        source_decision = self.gate.validate_preview_source(self._state.preview_source)
-        if not source_decision.allowed:
-            return PreviewConfirmResult(False, self.preview_block_message(source_decision.reason))
+        contract_decision = self.gate.validate_preview_contract(
+            preview_source=self._state.preview_source,
+            preview_kind=self._state.preview_kind,
+            glue_point_count=self._state.glue_point_count,
+        )
+        if not contract_decision.allowed:
+            return PreviewConfirmResult(False, self.preview_block_message(contract_decision.reason))
         return PreviewConfirmResult(True)
 
     def apply_confirmation_payload(self, payload: dict) -> PreviewConfirmResult:
@@ -325,7 +354,7 @@ class PreviewSessionOwner:
         return PreviewConfirmResult(True)
 
     def handle_worker_error(self, error_message: str) -> PreviewPayloadResult:
-        self._state.preview_source = ""
+        self._clear_preview_contract_state()
         self.gate.preview_failed(error_message)
         return PreviewPayloadResult(
             ok=False,
@@ -344,7 +373,7 @@ class PreviewSessionOwner:
         clear_source: bool = False,
     ) -> PreviewPayloadResult:
         if clear_source:
-            self._state.preview_source = ""
+            self._clear_preview_contract_state()
         self.gate.preview_failed(gate_error_message)
         return PreviewPayloadResult(
             ok=False,
@@ -372,35 +401,56 @@ class PreviewSessionOwner:
 
         glue_points = self.extract_points(payload, "glue_points")
         execution_polyline = self.extract_points(payload, "execution_polyline")
-        preview_kind = str(payload.get("preview_kind", "glue_points")).strip().lower() or "glue_points"
-        if not glue_points:
-            legacy_runtime_snapshot = str(payload.get("preview_source", "")).strip().lower() == "runtime_snapshot"
-            legacy_polyline_present = "trajectory_polyline" in payload
-            failure_message = "运行时快照缺少胶点点集"
-            detail_message = "返回结果缺少 glue_points。请核对 runtime-gateway 是否已升级到 planned_glue_snapshot 契约。"
-            if legacy_runtime_snapshot or legacy_polyline_present:
-                failure_message = "运行时仍返回旧版轨迹预览契约"
-                detail_message = (
-                    "返回结果缺少 glue_points，并检测到旧版 trajectory_polyline/runtime_snapshot；"
-                    "当前 HMI 连接的 runtime-gateway 很可能还是旧构建。"
-                )
-            return self.handle_local_failure(
-                gate_error_message=failure_message,
-                title="胶点预览生成失败",
-                detail=detail_message,
-            )
-
-        backend_preview_state = str(payload.get("preview_state", "snapshot_ready")).strip().lower()
         preview_source = str(payload.get("preview_source", "")).strip().lower() or "unknown"
+        preview_kind = str(payload.get("preview_kind", "glue_points")).strip().lower() or "glue_points"
         preview_dry_run = bool(payload.get("dry_run", False))
+        backend_preview_state = str(payload.get("preview_state", "snapshot_ready")).strip().lower()
         self._state.current_plan_id = str(payload.get("plan_id", snapshot_id)).strip() or snapshot_id
         self._state.current_plan_fingerprint = snapshot_hash
         self._state.preview_plan_dry_run = preview_dry_run
         self._state.preview_source = preview_source
+        self._state.preview_kind = preview_kind
+        self._state.glue_point_count = len(glue_points)
         self._state.dxf_segment_count = int(payload.get("segment_count", 0) or 0)
         self._state.dxf_total_length_mm = float(payload.get("total_length_mm", 0.0) or 0.0)
         estimated_time = float(payload.get("estimated_time_s", 0.0) or 0.0)
         self._state.dxf_estimated_time_text = f"{estimated_time:.1f}s" if estimated_time > 0 else "-"
+
+        legacy_runtime_snapshot = preview_source == "runtime_snapshot"
+        legacy_polyline_present = "trajectory_polyline" in payload
+        if not glue_points and (legacy_runtime_snapshot or legacy_polyline_present):
+            return self.handle_local_failure(
+                gate_error_message="运行时仍返回旧版轨迹预览契约",
+                title="胶点预览生成失败",
+                detail=(
+                    "返回结果缺少 glue_points，并检测到旧版 trajectory_polyline/runtime_snapshot；"
+                    "当前 HMI 连接的 runtime-gateway 很可能还是旧构建。"
+                ),
+            )
+
+        source_decision = self.gate.validate_preview_source(preview_source)
+        if not source_decision.allowed:
+            return self.handle_local_failure(
+                gate_error_message=self.preview_block_message(source_decision.reason),
+                title="胶点预览生成失败",
+                detail=f"返回结果的 preview_source={preview_source}，不属于 planned_glue_snapshot 权威预览契约。",
+            )
+
+        kind_decision = self.gate.validate_preview_kind(preview_kind)
+        if not kind_decision.allowed:
+            return self.handle_local_failure(
+                gate_error_message=self.preview_block_message(kind_decision.reason),
+                title="胶点预览生成失败",
+                detail=f"返回结果的 preview_kind={preview_kind}，不属于 glue_points 主预览语义。",
+            )
+
+        glue_point_decision = self.gate.validate_glue_points(len(glue_points))
+        if not glue_point_decision.allowed:
+            return self.handle_local_failure(
+                gate_error_message=self.preview_block_message(glue_point_decision.reason),
+                title="胶点预览生成失败",
+                detail="返回结果缺少非空 glue_points。请核对 runtime-gateway 是否已升级到 planned_glue_snapshot 契约。",
+            )
 
         snapshot = PreviewSnapshotMeta(
             snapshot_id=snapshot_id,
@@ -417,8 +467,7 @@ class PreviewSessionOwner:
             execution_source_point_count=execution_source_point_count,
         )
         self.gate.preview_ready(snapshot)
-        source_decision = self.gate.validate_preview_source(preview_source)
-        if backend_preview_state == "confirmed" and source_decision.allowed:
+        if backend_preview_state == "confirmed":
             if not self.gate.confirm_current_snapshot():
                 return self.handle_local_failure(
                     gate_error_message="运行时状态同步失败：confirmed 快照无效",
@@ -501,9 +550,17 @@ class PreviewSessionOwner:
             self.invalidate_plan()
             return PreflightDecision(False, PreflightBlockReason.PREVIEW_MODE_MISMATCH, "运行模式已变更，请刷新预览并重新确认")
 
-        source_decision = self.gate.validate_preview_source(self._state.preview_source)
-        if not source_decision.allowed:
-            return PreflightDecision(False, PreflightBlockReason.INVALID_SOURCE, self.preview_block_message(source_decision.reason))
+        contract_decision = self.gate.validate_preview_contract(
+            preview_source=self._state.preview_source,
+            preview_kind=self._state.preview_kind,
+            glue_point_count=self._state.glue_point_count,
+        )
+        if not contract_decision.allowed:
+            return PreflightDecision(
+                False,
+                self._map_preview_contract_reason(contract_decision.reason),
+                self.preview_block_message(contract_decision.reason),
+            )
 
         gate_decision = self.gate.decision_for_start()
         if gate_decision.reason == StartBlockReason.CONFIRM_MISSING:
@@ -557,6 +614,7 @@ class PreviewSessionOwner:
 
     def handle_invalid_resync_payload(self) -> PreviewPayloadResult:
         self.clear_resync_pending()
+        self._clear_preview_contract_state()
         self.gate.preview_failed("运行时预览同步返回异常，请手动刷新预览")
         return PreviewPayloadResult(
             ok=False,
@@ -573,7 +631,7 @@ class PreviewSessionOwner:
         self._state.current_plan_id = ""
         self._state.current_plan_fingerprint = ""
         self._state.preview_plan_dry_run = None
-        self._state.preview_source = ""
+        self._clear_preview_contract_state()
         self.gate.preview_failed("运行时预览已失效，请重新生成并确认")
         return PreviewPayloadResult(
             ok=False,
