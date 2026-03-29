@@ -20,6 +20,10 @@ struct WorkflowPreviewSnapshotInput {
     std::string generated_at;
     const std::vector<Siligen::TrajectoryPoint>* execution_trajectory_points = nullptr;
     const std::vector<Siligen::Shared::Types::Point2D>* glue_points = nullptr;
+    std::string authority_layout_id;
+    bool binding_ready = false;
+    std::string validation_classification;
+    std::string exception_reason;
 };
 
 class WorkflowPreviewSnapshotService {
@@ -30,3 +34,4 @@ public:
 };
 
 }  // namespace Siligen::Application::Services::Dispensing
+

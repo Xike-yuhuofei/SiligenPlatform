@@ -51,6 +51,9 @@ struct PreparePlanResponse {
     std::uint32_t point_count = 0;
     float32 total_length_mm = 0.0f;
     float32 estimated_time_s = 0.0f;
+    std::string preview_validation_classification;
+    std::string preview_exception_reason;
+    std::string preview_failure_reason;
     std::string generated_at;
 };
 
@@ -200,10 +203,14 @@ class DispensingWorkflowUseCase {
         PlanExecutionLaunch execution_launch;
         std::vector<TrajectoryPoint> execution_trajectory_points;
         std::vector<Siligen::Shared::Types::Point2D> glue_points;
+        Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
         bool preview_authority_ready = false;
         bool preview_authority_shared_with_execution = false;
+        bool preview_binding_ready = false;
         bool preview_spacing_valid = false;
         bool preview_has_short_segment_exceptions = false;
+        std::string preview_validation_classification;
+        std::string preview_exception_reason;
         std::string preview_failure_reason;
         PlanPreviewState preview_state = PlanPreviewState::PREPARED;
         std::string preview_snapshot_id;
@@ -240,6 +247,7 @@ class DispensingWorkflowUseCase {
         const ArtifactID& artifact_id,
         const PlanningResponse& planning,
         const PlanExecutionLaunch& execution_launch) const;
+    std::string ResolvePreviewGateFailure(const PlanRecord& plan_record) const;
     std::string PreviewStateToString(PlanPreviewState state) const;
     void ReleaseConfirmedPreviewForPlan(const PlanID& plan_id, const JobID* runtime_job_id = nullptr) const;
     void SyncPlanStateFromRuntimeStatus(
@@ -248,3 +256,4 @@ class DispensingWorkflowUseCase {
 };
 
 }  // namespace Siligen::Application::UseCases::Dispensing
+

@@ -47,6 +47,7 @@ set(TEST_SOURCES
     unit/dispensing/DispensingWorkflowModeResolutionTest.cpp
     unit/dispensing/DispensingExecutionUseCaseProgressTest.cpp
     unit/dispensing/DispensingProcessServiceWaitForMotionCompleteTest.cpp
+    unit/dispensing/PlanningUseCaseExportPortTest.cpp
 )
 
 set(OPTIONAL_TEST_SOURCES
@@ -168,6 +169,7 @@ set(DISPENSING_SEMANTICS_TEST_SOURCES
     unit/dispensing/DispensingWorkflowUseCaseTest.cpp
     unit/dispensing/DispensingWorkflowModeResolutionTest.cpp
     unit/dispensing/DispensingProcessServiceWaitForMotionCompleteTest.cpp
+    unit/dispensing/PlanningUseCaseExportPortTest.cpp
 )
 
 add_executable(siligen_dispensing_semantics_tests ${DISPENSING_SEMANTICS_TEST_SOURCES})
@@ -327,3 +329,4 @@ if(TARGET process_runtime_core_tests)
         )
     endif()
 endif()
+

@@ -121,6 +121,9 @@ class MainWindowTabsTest(unittest.TestCase):
         glue_points=None,
         plan_id: str = "plan-1",
         snapshot_hash: str = "hash-1",
+        preview_validation_classification: str = "pass",
+        preview_exception_reason: str = "",
+        preview_failure_reason: str = "",
         expect_ok: bool = True,
     ):
         glue_point_payload = (
@@ -146,6 +149,9 @@ class MainWindowTabsTest(unittest.TestCase):
                     {"x": 0.0, "y": 0.0},
                     {"x": 12.0, "y": 3.0},
                 ],
+                "preview_validation_classification": preview_validation_classification,
+                "preview_exception_reason": preview_exception_reason,
+                "preview_failure_reason": preview_failure_reason,
                 "total_length_mm": 12.0,
                 "estimated_time_s": 1.5,
                 "generated_at": "2026-03-26T00:00:00Z",
@@ -328,6 +334,45 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertIn("预览质量告警", html)
         self.assertIn("胶点预览疑似退化为轨迹采样点", html)
 
+    def test_render_runtime_preview_html_renders_exception_banner(self) -> None:
+        snapshot = main_window_module.PreviewSnapshotMeta(
+            snapshot_id="snapshot-1",
+            snapshot_hash="hash-1",
+            segment_count=2,
+            point_count=3,
+            total_length_mm=12.0,
+            estimated_time_s=1.5,
+            generated_at="2026-03-26T00:00:00Z",
+        )
+
+        html = self.window._render_runtime_preview_html(
+            snapshot=snapshot,
+            speed_mm_s=12.0,
+            dry_run=False,
+            preview_source="planned_glue_snapshot",
+            glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 3.0)],
+            execution_polyline=[(0.0, 0.0), (12.0, 3.0)],
+            preview_kind="glue_points",
+            preview_warning="",
+            preview_validation_classification="pass_with_exception",
+            preview_exception_reason="短闭环按例外保留，仍允许确认与启动。",
+            preview_failure_reason="",
+        )
+
+        self.assertIn("非阻断提示", html)
+        self.assertIn("短闭环按例外保留", html)
+
+    def test_confirmation_summary_includes_pass_with_exception_reason(self) -> None:
+        self._arm_confirmed_preview(
+            preview_validation_classification="pass_with_exception",
+            preview_exception_reason="短闭环按例外保留，仍允许确认与启动。",
+        )
+
+        summary = self.window._preview_session.build_confirmation_summary()
+
+        self.assertIn("非阻断提示", summary)
+        self.assertIn("短闭环按例外保留", summary)
+
     def test_check_production_preconditions_rejects_mock_preview_source(self) -> None:
         status = self._make_status(x_homed=True, y_homed=True)
         self.window._require_online_mode = lambda capability: True
@@ -392,6 +437,56 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertEqual(
             warnings[-1],
             "预览快照与执行快照不一致，请重新生成并确认",
+        )
+
+    def test_check_production_preconditions_rejects_failed_preview_gate(self) -> None:
+        status = self._make_status(x_homed=True, y_homed=True)
+        self.window._require_online_mode = lambda capability: True
+        self.window._is_online_ready = lambda: True
+        self.window._protocol = FakeProtocol(status)
+        self.window._connected = True
+        self.window._hw_connected = True
+        self.window._runtime_status_fault = False
+        self.window._preview_session.state.current_plan_id = "plan-failed"
+        self.window._preview_session.state.current_plan_fingerprint = "hash-failed"
+        self.window._preview_session.state.preview_plan_dry_run = False
+        self.window._preview_session.state.preview_source = "planned_glue_snapshot"
+        self.window._preview_session.state.preview_kind = "glue_points"
+        self.window._preview_session.state.glue_point_count = 2
+        self.window._preview_session.gate.preview_failed("preview authority is not shared with execution")
+        self.window._sync_preview_session_fields()
+        warnings = []
+        self.window._show_preflight_warning = warnings.append
+
+        result = self.window._check_production_preconditions(dry_run=False)
+
+        self.assertFalse(result)
+        self.assertEqual(
+            warnings[-1],
+            "胶点预览失败: preview authority is not shared with execution",
+        )
+
+    def test_check_production_preconditions_blocks_fail_preview_reason_from_metadata(self) -> None:
+        status = self._make_status(x_homed=True, y_homed=True)
+        self.window._require_online_mode = lambda capability: True
+        self.window._is_online_ready = lambda: True
+        self.window._protocol = FakeProtocol(status)
+        self.window._connected = True
+        self.window._hw_connected = True
+        self.window._runtime_status_fault = False
+        self._arm_confirmed_preview(
+            preview_validation_classification="fail",
+            preview_failure_reason="authority layout missing for preview/execution share check",
+        )
+        warnings = []
+        self.window._show_preflight_warning = warnings.append
+
+        result = self.window._check_production_preconditions(dry_run=False)
+
+        self.assertFalse(result)
+        self.assertEqual(
+            warnings[-1],
+            "authority layout missing for preview/execution share check",
         )
 
     def test_preview_snapshot_success_renders_authority_payload_without_timeout_side_effects(self) -> None:

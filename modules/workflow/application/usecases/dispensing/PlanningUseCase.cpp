@@ -590,9 +590,13 @@ Result<PlanningResponse> PlanningUseCase::Execute(const PlanningRequest& request
     response.planning_report = assembled.planning_report;
     response.preview_authority_ready = assembled.preview_authority_ready;
     response.preview_authority_shared_with_execution = assembled.preview_authority_shared_with_execution;
+    response.preview_binding_ready = assembled.preview_binding_ready;
     response.preview_spacing_valid = assembled.preview_spacing_valid;
     response.preview_has_short_segment_exceptions = assembled.preview_has_short_segment_exceptions;
+    response.preview_validation_classification = assembled.preview_validation_classification;
+    response.preview_exception_reason = assembled.preview_exception_reason;
     response.preview_failure_reason = assembled.preview_failure_reason;
+    response.authority_trigger_layout = assembled.authority_trigger_layout;
     response.authority_trigger_points = assembled.authority_trigger_points;
     response.spacing_validation_groups = assembled.spacing_validation_groups;
     response.execution_package =
@@ -646,3 +650,4 @@ std::string PlanningUseCase::ExtractFilename(const std::string& filepath) {
 }
 
 }  // namespace Siligen::Application::UseCases::Dispensing
+

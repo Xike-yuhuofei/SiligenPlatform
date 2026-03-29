@@ -188,7 +188,10 @@ PlanningResponse BuildPlanningResponseWithExecutionPlan() {
     response.glue_points.emplace_back(20.0f, 0.0f);
     response.preview_authority_ready = true;
     response.preview_authority_shared_with_execution = true;
+    response.preview_binding_ready = true;
     response.preview_spacing_valid = true;
+    response.preview_validation_classification = "pass";
+    response.authority_trigger_layout.layout_id = "layout-planning-response";
     response.execution_plan = std::make_shared<DispensingPlan>(plan);
 
     auto execution_package = BuildMinimalExecutionPackage();
@@ -315,6 +318,18 @@ MotionStatus ReadyAxisStatus() {
     return status;
 }
 
+void SeedAuthorityMetadata(
+    DispensingWorkflowUseCase::PlanRecord& plan_record,
+    const std::string& layout_id) {
+    plan_record.preview_binding_ready = true;
+    plan_record.preview_validation_classification = "pass";
+    plan_record.authority_trigger_layout.layout_id = layout_id;
+    plan_record.authority_trigger_layout.plan_id = plan_record.response.plan_id;
+    plan_record.authority_trigger_layout.plan_fingerprint = plan_record.response.plan_fingerprint;
+    plan_record.authority_trigger_layout.authority_ready = true;
+    plan_record.authority_trigger_layout.binding_ready = true;
+}
+
 void SeedPlan(DispensingWorkflowUseCase& use_case, const std::string& plan_id) {
     DispensingWorkflowUseCase::PlanRecord plan_record;
     plan_record.response.plan_id = plan_id;
@@ -335,6 +350,7 @@ void SeedPlan(DispensingWorkflowUseCase& use_case, const std::string& plan_id) {
     plan_record.preview_state = DispensingWorkflowUseCase::PlanPreviewState::CONFIRMED;
     plan_record.preview_snapshot_hash = plan_record.response.plan_fingerprint;
     plan_record.latest = true;
+    SeedAuthorityMetadata(plan_record, "layout-" + plan_id);
     use_case.plans_[plan_id] = plan_record;
 }
 
@@ -407,6 +423,7 @@ DispensingWorkflowUseCase::PlanRecord BuildPreviewPlanRecord(
     plan_record.preview_snapshot_hash = plan_record.response.plan_fingerprint;
     plan_record.latest = true;
     plan_record.preview_snapshot_id = plan_id;
+    SeedAuthorityMetadata(plan_record, "layout-" + plan_id);
     for (const auto& point : points) {
         plan_record.execution_trajectory_points.emplace_back(point.x, point.y, 0.0f);
         plan_record.glue_points.push_back(point);
@@ -678,6 +695,7 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotKeepsConfirmedStateWhenFin
     plan_record.preview_snapshot_hash = plan_record.response.plan_fingerprint;
     plan_record.confirmed_at = "2026-03-22T00:00:00Z";
     plan_record.latest = true;
+    SeedAuthorityMetadata(plan_record, "layout-plan-confirmed");
     plan_record.execution_trajectory_points.emplace_back(0.0f, 0.0f, 0.0f);
     plan_record.execution_trajectory_points.emplace_back(10.0f, 0.0f, 0.0f);
     plan_record.glue_points.emplace_back(0.0f, 0.0f);
@@ -699,6 +717,83 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotKeepsConfirmedStateWhenFin
     EXPECT_EQ(snapshot.plan_id, "plan-confirmed");
     EXPECT_EQ(snapshot.glue_point_count, 2U);
     EXPECT_EQ(snapshot.glue_points.size(), 2U);
+}
+
+TEST(DispensingWorkflowUseCaseTest, ConfirmPreviewRejectsMissingAuthorityLayoutId) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+
+    auto plan_record = BuildPreviewPlanRecord(
+        "plan-missing-layout",
+        {Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)});
+    plan_record.authority_trigger_layout.layout_id.clear();
+    use_case.plans_[plan_record.response.plan_id] = plan_record;
+
+    Siligen::Application::UseCases::Dispensing::ConfirmPreviewRequest request;
+    request.plan_id = "plan-missing-layout";
+    request.snapshot_hash = "fp-plan-missing-layout";
+    auto result = use_case.ConfirmPreview(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+    EXPECT_NE(result.GetError().GetMessage().find("layout"), std::string::npos);
+}
+
+TEST(DispensingWorkflowUseCaseTest, ConfirmPreviewAllowsPassWithExceptionMetadata) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+
+    auto plan_record = BuildPreviewPlanRecord(
+        "plan-exception",
+        {Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)});
+    plan_record.preview_validation_classification = "pass_with_exception";
+    plan_record.preview_exception_reason = "short closed span kept as explicit exception";
+    plan_record.preview_spacing_valid = true;
+    use_case.plans_[plan_record.response.plan_id] = plan_record;
+
+    Siligen::Application::UseCases::Dispensing::ConfirmPreviewRequest request;
+    request.plan_id = "plan-exception";
+    request.snapshot_hash = "fp-plan-exception";
+    const auto result = use_case.ConfirmPreview(request);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    EXPECT_EQ(result.Value().preview_state, "confirmed");
+}
+
+TEST(DispensingWorkflowUseCaseTest, StartJobRejectsFailPreviewUsingFailureReason) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_use_case =
+        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
+    motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
+    homing_port->homed[LogicalAxisId::X] = true;
+    homing_port->homed[LogicalAxisId::Y] = true;
+
+    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port, execution_use_case);
+    SeedPlan(use_case, "plan-authority-fail");
+    auto& plan_record = use_case.plans_.at("plan-authority-fail");
+    plan_record.preview_validation_classification = "fail";
+    plan_record.preview_spacing_valid = false;
+    plan_record.preview_failure_reason = "authority locator failed on degenerate spline";
+
+    Siligen::Application::UseCases::Dispensing::StartJobRequest request;
+    request.plan_id = "plan-authority-fail";
+    request.plan_fingerprint = "fp-plan-authority-fail";
+    request.target_count = 1;
+    const auto result = use_case.StartJob(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+    EXPECT_EQ(result.GetError().GetMessage(), "authority locator failed on degenerate spline");
 }
 
 TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotSuppressesShortABATailArtifacts) {
@@ -853,6 +948,34 @@ TEST(DispensingWorkflowUseCaseTest, StartJobRejectsPreviewAuthorityMismatchBefor
     EXPECT_NE(result.GetError().GetMessage().find("not shared"), std::string::npos);
 }
 
+TEST(DispensingWorkflowUseCaseTest, StartJobRejectsPreviewBindingUnavailableBeforeRuntimeLaunch) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_use_case =
+        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
+    motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
+    homing_port->homed[LogicalAxisId::X] = true;
+    homing_port->homed[LogicalAxisId::Y] = true;
+
+    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port, execution_use_case);
+    SeedPlan(use_case, "plan-binding-mismatch");
+    auto& plan_record = use_case.plans_.at("plan-binding-mismatch");
+    plan_record.preview_binding_ready = false;
+
+    Siligen::Application::UseCases::Dispensing::StartJobRequest request;
+    request.plan_id = "plan-binding-mismatch";
+    request.plan_fingerprint = "fp-plan-binding-mismatch";
+    request.target_count = 1;
+    auto result = use_case.StartJob(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+    EXPECT_NE(result.GetError().GetMessage().find("binding"), std::string::npos);
+}
+
 TEST(DispensingWorkflowUseCaseTest, FinalizeJobClearsConfirmedPreviewState) {
     auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
@@ -873,6 +996,7 @@ TEST(DispensingWorkflowUseCaseTest, FinalizeJobClearsConfirmedPreviewState) {
     plan_record.confirmed_at = "2026-03-22T00:00:00Z";
     plan_record.latest = true;
     plan_record.runtime_job_id = "job-finish";
+    SeedAuthorityMetadata(plan_record, "layout-plan-finish");
     use_case.plans_[plan_record.response.plan_id] = plan_record;
     use_case.job_plan_index_["job-finish"] = "plan-finish";
 

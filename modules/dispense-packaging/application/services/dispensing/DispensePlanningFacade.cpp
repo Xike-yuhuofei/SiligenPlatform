@@ -1,5 +1,8 @@
 #include "application/services/dispensing/DispensePlanningFacade.h"
 
+#include "domain/dispensing/planning/domain-services/AuthorityTriggerLayoutPlanner.h"
+#include "domain/dispensing/planning/domain-services/CurveFlatteningService.h"
+
 #include "domain/dispensing/domain-services/TriggerPlanner.h"
 #include "domain/motion/CMPCoordinatedInterpolator.h"
 #include "domain/motion/domain-services/TimeTrajectoryPlanner.h"
@@ -20,8 +23,15 @@
 namespace Siligen::Application::Services::Dispensing {
 
 using Siligen::Domain::Dispensing::Contracts::ExecutionPackageBuilt;
+using Siligen::Domain::Dispensing::DomainServices::AuthorityTriggerLayoutPlanner;
+using Siligen::Domain::Dispensing::DomainServices::AuthorityTriggerLayoutPlannerRequest;
 using Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated;
 using Siligen::Domain::Dispensing::DomainServices::TriggerPlanner;
+using Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout;
+using Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayoutState;
+using Siligen::Domain::Dispensing::ValueObjects::InterpolationTriggerBinding;
+using Siligen::Domain::Dispensing::ValueObjects::LayoutTriggerPoint;
+using Siligen::Domain::Dispensing::ValueObjects::SpacingValidationClassification;
 using Siligen::Domain::Dispensing::ValueObjects::TriggerPlan;
 using Siligen::Domain::Motion::CMPCoordinatedInterpolator;
 using Siligen::Domain::Motion::InterpolationAlgorithm;
@@ -54,11 +64,15 @@ struct TriggerArtifacts {
     std::vector<Point2D> positions;
     std::vector<AuthorityTriggerPoint> authority_trigger_points;
     std::vector<SpacingValidationGroup> spacing_validation_groups;
+    AuthorityTriggerLayout authority_trigger_layout;
     uint32 interval_ms = 0;
     float32 interval_mm = 0.0f;
     bool downgraded = false;
+    bool binding_ready = false;
     bool spacing_valid = false;
     bool has_short_segment_exceptions = false;
+    std::string validation_classification;
+    std::string exception_reason;
     std::string failure_reason;
 };
 
@@ -368,7 +382,7 @@ bool ValidateGlueSpacing(
 
     artifacts.has_short_segment_exceptions = short_exception_count > 0;
     artifacts.spacing_valid = valid;
-    if (!valid) {
+    if (!valid && artifacts.failure_reason.empty()) {
         std::ostringstream oss;
         oss << "spacing validation failed: invalid_groups=" << invalid_group_count
             << ", exceptions=" << short_exception_count
@@ -519,27 +533,114 @@ void SampleArcPoints(
     }
 }
 
-std::vector<Point2D> BuildInterpolationSeedPoints(const ProcessPath& path, float32 step) {
+Result<std::vector<Point2D>> BuildInterpolationSeedPoints(
+    const ProcessPath& path,
+    float32 spline_max_error_mm,
+    float32 step_mm) {
     std::vector<Point2D> points;
+    Siligen::Domain::Dispensing::DomainServices::CurveFlatteningService flattening_service;
+    const float32 sample_step_mm = step_mm > kEpsilon ? step_mm : 1.0f;
     for (const auto& segment : path.segments) {
         const auto& geometry = segment.geometry;
         if (geometry.is_point) {
             AppendUniquePoint(points, geometry.line.start);
-        } else if (geometry.type == SegmentType::Line) {
-            SampleLinePoints(geometry.line.start, geometry.line.end, step, points);
-        } else if (geometry.type == SegmentType::Arc) {
-            SampleArcPoints(geometry.arc, step, points);
-        } else if (!geometry.spline.control_points.empty()) {
-            for (size_t i = 1; i < geometry.spline.control_points.size(); ++i) {
-                SampleLinePoints(
-                    geometry.spline.control_points[i - 1],
-                    geometry.spline.control_points[i],
-                    step,
-                    points);
-            }
+            continue;
+        }
+
+        auto flattened_result = flattening_service.Flatten(geometry, spline_max_error_mm, step_mm);
+        if (flattened_result.IsError()) {
+            return Result<std::vector<Point2D>>::Failure(flattened_result.GetError());
+        }
+        const auto& flattened_points = flattened_result.Value().points;
+        if (flattened_points.empty()) {
+            continue;
+        }
+        AppendUniquePoint(points, flattened_points.front());
+        for (std::size_t index = 1; index < flattened_points.size(); ++index) {
+            SampleLinePoints(flattened_points[index - 1], flattened_points[index], sample_step_mm, points);
         }
     }
+    return Result<std::vector<Point2D>>::Success(std::move(points));
+}
+
+std::vector<AuthorityTriggerPoint> ConvertAuthorityTriggerPoints(const AuthorityTriggerLayout& layout) {
+    std::vector<AuthorityTriggerPoint> points;
+    points.reserve(layout.trigger_points.size());
+    for (const auto& trigger : layout.trigger_points) {
+        AuthorityTriggerPoint point;
+        point.position = trigger.position;
+        point.trigger_distance_mm = trigger.distance_mm_global;
+        point.segment_index = trigger.source_segment_index;
+        point.short_segment_exception = false;
+        point.shared_vertex = trigger.shared_vertex;
+        points.push_back(point);
+    }
     return points;
+}
+
+std::vector<SpacingValidationGroup> ConvertSpacingValidationGroups(const AuthorityTriggerLayout& layout) {
+    std::vector<SpacingValidationGroup> groups;
+    groups.reserve(layout.validation_outcomes.size());
+    for (const auto& outcome : layout.validation_outcomes) {
+        SpacingValidationGroup group;
+        auto span_it = std::find_if(
+            layout.spans.begin(),
+            layout.spans.end(),
+            [&](const auto& span) { return span.span_id == outcome.span_ref; });
+        if (span_it != layout.spans.end() && !span_it->source_segment_indices.empty()) {
+            group.segment_index = span_it->source_segment_indices.front();
+            group.actual_spacing_mm = span_it->actual_spacing_mm;
+        }
+        group.points = outcome.points;
+        group.short_segment_exception =
+            outcome.classification == SpacingValidationClassification::PassWithException;
+        group.within_window = outcome.classification == SpacingValidationClassification::Pass;
+        groups.push_back(std::move(group));
+    }
+    return groups;
+}
+
+std::string ResolveValidationClassification(const AuthorityTriggerLayout& layout) {
+    if (layout.validation_outcomes.empty()) {
+        return layout.authority_ready ? "pass" : "fail";
+    }
+    bool has_exception = false;
+    for (const auto& outcome : layout.validation_outcomes) {
+        if (outcome.classification == SpacingValidationClassification::Fail) {
+            return "fail";
+        }
+        if (outcome.classification == SpacingValidationClassification::PassWithException) {
+            has_exception = true;
+        }
+    }
+    return has_exception ? "pass_with_exception" : "pass";
+}
+
+std::string ResolveExceptionReason(const AuthorityTriggerLayout& layout) {
+    for (const auto& outcome : layout.validation_outcomes) {
+        if (!outcome.exception_reason.empty()) {
+            return outcome.exception_reason;
+        }
+    }
+    return {};
+}
+
+std::string ResolveBlockingReason(const AuthorityTriggerLayout& layout) {
+    for (const auto& outcome : layout.validation_outcomes) {
+        if (!outcome.blocking_reason.empty()) {
+            return outcome.blocking_reason;
+        }
+    }
+    return {};
+}
+
+std::vector<Point2D> CollectAuthorityPositions(const AuthorityTriggerLayout& layout) {
+    std::vector<Point2D> positions;
+    positions.reserve(layout.trigger_points.size());
+    for (const auto& trigger : layout.trigger_points) {
+        positions.push_back(trigger.position);
+    }
+    return positions;
 }
 
 Result<TriggerArtifacts> BuildTriggerArtifacts(
@@ -549,6 +650,47 @@ Result<TriggerArtifacts> BuildTriggerArtifacts(
     if (path.segments.empty()) {
         artifacts.failure_reason = "process path is empty";
         return Result<TriggerArtifacts>::Success(std::move(artifacts));
+    }
+
+    AuthorityTriggerLayoutPlanner planner;
+    AuthorityTriggerLayoutPlannerRequest request;
+    request.process_path = path;
+    request.plan_id = input.source_path;
+    request.plan_fingerprint = input.dxf_filename;
+    request.layout_id_seed = input.source_path + "|" + input.dxf_filename + "|" + std::to_string(path.segments.size());
+    request.target_spacing_mm = input.trigger_spatial_interval_mm;
+    request.min_spacing_mm = ResolveSpacingMin(input, input.trigger_spatial_interval_mm);
+    request.max_spacing_mm = ResolveSpacingMax(input, input.trigger_spatial_interval_mm);
+    request.dispensing_velocity = input.dispensing_velocity;
+    request.acceleration = input.acceleration;
+    request.dispenser_interval_ms = input.dispenser_interval_ms;
+    request.dispenser_duration_ms = input.dispenser_duration_ms;
+    request.valve_response_ms = input.valve_response_ms;
+    request.safety_margin_ms = input.safety_margin_ms;
+    request.min_interval_ms = input.min_interval_ms;
+    request.downgrade_on_violation = input.downgrade_on_violation;
+    request.dispensing_strategy = input.dispensing_strategy;
+    request.subsegment_count = input.subsegment_count;
+    request.dispense_only_cruise = input.dispense_only_cruise;
+    request.compensation_profile = input.compensation_profile;
+    request.spline_max_error_mm = input.spline_max_error_mm;
+    request.spline_max_step_mm = input.spline_max_step_mm;
+
+    auto layout_result = planner.Plan(request);
+    if (layout_result.IsError()) {
+        return Result<TriggerArtifacts>::Failure(layout_result.GetError());
+    }
+
+    artifacts.authority_trigger_layout = layout_result.Value();
+    artifacts.authority_trigger_points = ConvertAuthorityTriggerPoints(artifacts.authority_trigger_layout);
+    artifacts.spacing_validation_groups = ConvertSpacingValidationGroups(artifacts.authority_trigger_layout);
+    artifacts.positions = CollectAuthorityPositions(artifacts.authority_trigger_layout);
+    artifacts.validation_classification = ResolveValidationClassification(artifacts.authority_trigger_layout);
+    artifacts.exception_reason = ResolveExceptionReason(artifacts.authority_trigger_layout);
+    artifacts.failure_reason = ResolveBlockingReason(artifacts.authority_trigger_layout);
+
+    for (const auto& trigger : artifacts.authority_trigger_points) {
+        artifacts.distances.push_back(trigger.trigger_distance_mm);
     }
 
     TriggerPlan trigger_plan;
@@ -563,52 +705,23 @@ Result<TriggerArtifacts> BuildTriggerArtifacts(
     trigger_plan.safety.downgrade_on_violation = input.downgrade_on_violation;
 
     TriggerPlanner trigger_planner;
-    const float32 spacing_min_mm = ResolveSpacingMin(input, input.trigger_spatial_interval_mm);
-    const float32 spacing_max_mm = ResolveSpacingMax(input, input.trigger_spatial_interval_mm);
-
-    float32 path_offset_mm = 0.0f;
-    for (std::size_t segment_index = 0; segment_index < path.segments.size(); ++segment_index) {
-        const auto& segment = path.segments[segment_index];
-        const float32 length_mm = SegmentLength(segment.geometry);
-
-        if (segment.dispense_on) {
-            if (length_mm <= kEpsilon) {
-                return Result<TriggerArtifacts>::Failure(
-                    Error(ErrorCode::INVALID_PARAMETER, "dispense_on 几何线段长度为0", "DispensePlanningFacade"));
-            }
-
-            auto trigger_plan_result = trigger_planner.Plan(length_mm,
-                                                            input.dispensing_velocity,
-                                                            input.acceleration,
-                                                            input.trigger_spatial_interval_mm,
-                                                            input.dispenser_interval_ms,
-                                                            0.0f,
-                                                            trigger_plan,
-                                                            input.compensation_profile);
-            if (trigger_plan_result.IsError()) {
-                return Result<TriggerArtifacts>::Failure(trigger_plan_result.GetError());
-            }
-
-            const auto& trigger_result = trigger_plan_result.Value();
-            artifacts.interval_ms = std::max<uint32>(artifacts.interval_ms, trigger_result.interval_ms);
-            artifacts.interval_mm = std::max(artifacts.interval_mm, trigger_result.plan.interval_mm);
-            artifacts.downgraded = artifacts.downgraded || trigger_result.downgrade_applied;
-
-            auto append_result = AppendAnchoredAuthorityForSegment(artifacts,
-                                                                   segment.geometry,
-                                                                   segment_index,
-                                                                   path_offset_mm,
-                                                                   input.trigger_spatial_interval_mm,
-                                                                   spacing_min_mm,
-                                                                   spacing_max_mm);
-            if (append_result.IsError()) {
-                return Result<TriggerArtifacts>::Failure(append_result.GetError());
-            }
+    for (const auto& span : artifacts.authority_trigger_layout.spans) {
+        auto timing_result = trigger_planner.Plan(
+            span.total_length_mm,
+            input.dispensing_velocity,
+            input.acceleration,
+            input.trigger_spatial_interval_mm,
+            input.dispenser_interval_ms,
+            0.0f,
+            trigger_plan,
+            input.compensation_profile);
+        if (timing_result.IsError()) {
+            return Result<TriggerArtifacts>::Failure(timing_result.GetError());
         }
-
-        if (length_mm > kEpsilon) {
-            path_offset_mm += length_mm;
-        }
+        const auto& trigger_result = timing_result.Value();
+        artifacts.interval_ms = std::max<uint32>(artifacts.interval_ms, trigger_result.interval_ms);
+        artifacts.interval_mm = std::max(artifacts.interval_mm, trigger_result.plan.interval_mm);
+        artifacts.downgraded = artifacts.downgraded || trigger_result.downgrade_applied;
     }
 
     if (artifacts.interval_mm <= kEpsilon) {
@@ -617,7 +730,7 @@ Result<TriggerArtifacts> BuildTriggerArtifacts(
     if (artifacts.interval_ms == 0) {
         artifacts.interval_ms = input.dispenser_interval_ms;
     }
-    if (artifacts.authority_trigger_points.empty()) {
+    if (artifacts.authority_trigger_points.empty() && artifacts.failure_reason.empty()) {
         artifacts.failure_reason = "explicit trigger authority unavailable";
     }
     ValidateGlueSpacing(input, artifacts, artifacts.interval_mm);
@@ -632,7 +745,18 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
         return Result<std::vector<TrajectoryPoint>>::Success({});
     }
 
-    const auto seed_points = BuildInterpolationSeedPoints(path, ResolveInterpolationStep(input));
+    if (trigger_artifacts.validation_classification == "fail") {
+        return Result<std::vector<TrajectoryPoint>>::Success({});
+    }
+
+    const auto seed_points_result = BuildInterpolationSeedPoints(
+        path,
+        input.spline_max_error_mm,
+        ResolveInterpolationStep(input));
+    if (seed_points_result.IsError()) {
+        return Result<std::vector<TrajectoryPoint>>::Failure(seed_points_result.GetError());
+    }
+    const auto& seed_points = seed_points_result.Value();
     if (seed_points.size() < 2) {
         return Result<std::vector<TrajectoryPoint>>::Failure(
             Error(ErrorCode::INVALID_PARAMETER, "插补规划参数无效", "DispensePlanningFacade"));
@@ -742,6 +866,65 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
     return Result<std::vector<TrajectoryPoint>>::Success(std::move(points));
 }
 
+void BindAuthorityLayoutToExecutionTrajectory(
+    TriggerArtifacts& artifacts,
+    const std::vector<TrajectoryPoint>* execution_trajectory) {
+    artifacts.authority_trigger_layout.bindings.clear();
+    artifacts.binding_ready = false;
+    artifacts.authority_trigger_layout.binding_ready = false;
+
+    if (execution_trajectory == nullptr || artifacts.authority_trigger_layout.trigger_points.empty()) {
+        return;
+    }
+
+    std::size_t trigger_index = 0;
+    std::size_t last_interpolation_index = 0;
+    for (std::size_t interpolation_index = 0;
+         interpolation_index < execution_trajectory->size() &&
+         trigger_index < artifacts.authority_trigger_layout.trigger_points.size();
+         ++interpolation_index) {
+        const auto& trajectory_point = (*execution_trajectory)[interpolation_index];
+        if (!trajectory_point.enable_position_trigger) {
+            continue;
+        }
+
+        const auto& trigger = artifacts.authority_trigger_layout.trigger_points[trigger_index];
+        InterpolationTriggerBinding binding;
+        binding.binding_id = artifacts.authority_trigger_layout.layout_id + "-binding-" + std::to_string(trigger_index);
+        binding.layout_ref = artifacts.authority_trigger_layout.layout_id;
+        binding.trigger_ref = trigger.trigger_id;
+        binding.interpolation_index = interpolation_index;
+        binding.execution_position = trajectory_point.position;
+        binding.match_error_mm = trajectory_point.position.DistanceTo(trigger.position);
+        binding.monotonic = interpolation_index >= last_interpolation_index;
+        binding.bound =
+            std::fabs(trajectory_point.trigger_position_mm - trigger.distance_mm_global) <=
+                Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm &&
+            binding.match_error_mm <= std::max(
+                kGluePointDedupEpsilonMm,
+                Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm);
+
+        artifacts.authority_trigger_layout.bindings.push_back(binding);
+        if (!binding.bound) {
+            artifacts.failure_reason = "authority trigger binding unavailable";
+            return;
+        }
+
+        last_interpolation_index = interpolation_index;
+        ++trigger_index;
+    }
+
+    artifacts.binding_ready =
+        trigger_index == artifacts.authority_trigger_layout.trigger_points.size() &&
+        artifacts.authority_trigger_layout.bindings.size() == artifacts.authority_trigger_layout.trigger_points.size();
+    artifacts.authority_trigger_layout.binding_ready = artifacts.binding_ready;
+    if (artifacts.binding_ready) {
+        artifacts.authority_trigger_layout.state = AuthorityTriggerLayoutState::BindingReady;
+    } else if (artifacts.failure_reason.empty()) {
+        artifacts.failure_reason = "authority trigger binding unavailable";
+    }
+}
+
 }  // namespace
 
 Result<PlanningArtifactsBuildResult> DispensePlanningFacade::AssemblePlanningArtifacts(
@@ -773,12 +956,14 @@ Result<PlanningArtifactsBuildResult> DispensePlanningFacade::AssemblePlanningArt
     Siligen::Domain::Motion::DomainServices::InterpolationProgramPlanner program_planner;
     auto interpolation_program =
         program_planner.BuildProgram(input.process_path, input.motion_plan, input.acceleration);
-    if (interpolation_program.IsError()) {
+    if (interpolation_program.IsError() && trigger_artifacts.validation_classification != "fail") {
         return Result<PlanningArtifactsBuildResult>::Failure(interpolation_program.GetError());
     }
 
     ExecutionPackageBuilt built;
-    built.execution_plan.interpolation_segments = std::move(interpolation_program.Value());
+    if (interpolation_program.IsSuccess()) {
+        built.execution_plan.interpolation_segments = std::move(interpolation_program.Value());
+    }
     built.execution_plan.interpolation_points = std::move(interpolation_points);
     built.execution_plan.motion_trajectory = input.motion_plan;
     built.execution_plan.trigger_distances_mm = trigger_artifacts.distances;
@@ -799,10 +984,8 @@ Result<PlanningArtifactsBuildResult> DispensePlanningFacade::AssemblePlanningArt
     }
 
     const auto selection = SelectExecutionTrajectory(execution_package);
-    const auto preview_triggers = selection.execution_trajectory
-        ? BuildPlannedTriggerPoints(*selection.execution_trajectory)
-        : std::vector<VisualizationTriggerPoint>{};
-    const auto glue_points = CollectTriggerPositions(preview_triggers);
+    BindAuthorityLayoutToExecutionTrajectory(trigger_artifacts, selection.execution_trajectory);
+    const auto glue_points = CollectAuthorityPositions(trigger_artifacts.authority_trigger_layout);
 
     PlanningArtifactsBuildResult result;
     result.execution_package = execution_package;
@@ -818,15 +1001,21 @@ Result<PlanningArtifactsBuildResult> DispensePlanningFacade::AssemblePlanningArt
     result.timestamp = static_cast<int32>(std::time(nullptr));
     result.planning_report = input.motion_plan.planning_report;
     result.preview_authority_ready = !trigger_artifacts.authority_trigger_points.empty() &&
-                                     selection.authority_shared &&
-                                     !preview_triggers.empty();
-    result.preview_authority_shared_with_execution = selection.authority_shared;
+                                     trigger_artifacts.binding_ready &&
+                                     !glue_points.empty();
+    result.preview_authority_shared_with_execution = trigger_artifacts.binding_ready;
+    result.preview_binding_ready = trigger_artifacts.binding_ready;
     result.preview_spacing_valid = trigger_artifacts.spacing_valid;
     result.preview_has_short_segment_exceptions = trigger_artifacts.has_short_segment_exceptions;
+    result.preview_validation_classification = trigger_artifacts.validation_classification;
+    result.preview_exception_reason = trigger_artifacts.exception_reason;
     result.preview_failure_reason = trigger_artifacts.failure_reason;
     if (!result.preview_authority_ready && result.preview_failure_reason.empty()) {
-        result.preview_failure_reason = "explicit trigger authority unavailable";
+        result.preview_failure_reason = trigger_artifacts.authority_trigger_points.empty()
+            ? "explicit trigger authority unavailable"
+            : "authority trigger binding unavailable";
     }
+    result.authority_trigger_layout = trigger_artifacts.authority_trigger_layout;
     result.authority_trigger_points = trigger_artifacts.authority_trigger_points;
     result.spacing_validation_groups = trigger_artifacts.spacing_validation_groups;
     result.export_request = BuildExportRequest(input, execution_package, selection, glue_points);
@@ -834,3 +1023,8 @@ Result<PlanningArtifactsBuildResult> DispensePlanningFacade::AssemblePlanningArt
 }
 
 }  // namespace Siligen::Application::Services::Dispensing
+
+
+
+
+

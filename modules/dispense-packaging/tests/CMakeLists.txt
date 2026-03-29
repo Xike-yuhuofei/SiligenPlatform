@@ -3,6 +3,8 @@ cmake_minimum_required(VERSION 3.20)
 set(DISPENSE_PACKAGING_TEST_SOURCES
     unit/domain/dispensing/TriggerPlannerTest.cpp
     unit/domain/dispensing/DispensingControllerTest.cpp
+    unit/domain/dispensing/AuthorityTriggerLayoutPlannerTest.cpp
+    unit/domain/dispensing/PathArcLengthLocatorTest.cpp
     unit/application/services/dispensing/DispensePlanningFacadeTest.cpp
     unit/application/services/dispensing/PreviewSnapshotServiceTest.cpp
 )
@@ -32,3 +34,4 @@ if(COMMAND process_runtime_core_add_test_with_runtime_environment)
 else()
     add_test(NAME siligen_dispense_packaging_unit_tests COMMAND siligen_dispense_packaging_unit_tests)
 endif()
+

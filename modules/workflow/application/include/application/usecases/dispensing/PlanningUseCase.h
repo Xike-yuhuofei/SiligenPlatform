@@ -149,9 +149,13 @@ struct PlanningResponse {
     // authority / preview gate 元数据
     bool preview_authority_ready = false;
     bool preview_authority_shared_with_execution = false;
+    bool preview_binding_ready = false;
     bool preview_spacing_valid = false;
     bool preview_has_short_segment_exceptions = false;
+    std::string preview_validation_classification;
+    std::string preview_exception_reason;
     std::string preview_failure_reason;
+    Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
     std::vector<Siligen::Application::Services::Dispensing::AuthorityTriggerPoint> authority_trigger_points;
     std::vector<Siligen::Application::Services::Dispensing::SpacingValidationGroup> spacing_validation_groups;
 
@@ -237,6 +241,7 @@ private:
 };
 
 }  // namespace Siligen::Application::UseCases::Dispensing
+
 
 
 

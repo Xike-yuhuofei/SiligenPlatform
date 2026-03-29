@@ -20,10 +20,14 @@ add_library(siligen_dispense_packaging_domain_dispensing STATIC
     domain-services/TriggerPlanner.cpp
     domain-services/DispensingController.cpp
     domain-services/DispensingProcessService.cpp
+    planning/domain-services/AuthorityTriggerLayoutPlanner.cpp
+    planning/domain-services/PathArcLengthLocator.cpp
+    planning/domain-services/CurveFlatteningService.cpp
 )
 
 target_sources(siligen_dispense_packaging_domain_dispensing PRIVATE
     value-objects/DispenseCompensationProfile.h
+    value-objects/AuthorityTriggerLayout.h
     value-objects/DispensingExecutionTypes.h
     value-objects/DispensingPlan.h
     value-objects/QualityMetrics.h
@@ -59,3 +63,4 @@ endif()
 target_compile_features(siligen_dispense_packaging_domain_dispensing PUBLIC cxx_std_17)
 
 message(STATUS "[DispensePackaging::Domain::Dispensing] canonical dispensing target 已添加")
+

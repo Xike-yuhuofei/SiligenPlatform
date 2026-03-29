@@ -110,6 +110,21 @@ public:
     std::vector<std::string> loaded_paths;
 };
 
+class EquivalentSubdivisionPathSourcePort final : public IPathSourcePort {
+public:
+    ResultT<PathSourceResult> LoadFromFile(const std::string& filepath) override {
+        loaded_paths.push_back(filepath);
+        PathSourceResult result;
+        result.success = true;
+        result.primitives.push_back(Primitive::MakeLine(Point2D{0.0f, 0.0f}, Point2D{5.0f, 0.0f}));
+        result.primitives.push_back(Primitive::MakeLine(Point2D{5.0f, 0.0f}, Point2D{10.0f, 0.0f}));
+        result.metadata.push_back({});
+        result.metadata.push_back({});
+        return ResultT<PathSourceResult>::Success(result);
+    }
+
+    std::vector<std::string> loaded_paths;
+};
 class FakePlanningArtifactExportPort final : public IPlanningArtifactExportPort {
 public:
     ResultT<PlanningArtifactExportResult> Export(const PlanningArtifactExportRequest& request) override {
@@ -182,11 +197,51 @@ TEST(PlanningUseCaseExportPortTest, ExecuteBuildsExportRequestWithoutDirectFiles
     EXPECT_EQ(export_port->last_request.source_path, temp_pb.string());
     EXPECT_FALSE(export_port->last_request.execution_trajectory_points.empty());
     EXPECT_FALSE(export_port->last_request.glue_points.empty());
+    EXPECT_EQ(result.Value().glue_points.size(), result.Value().authority_trigger_layout.trigger_points.size());
 
     std::error_code ec;
     std::filesystem::remove(temp_pb, ec);
 }
 
+TEST(PlanningUseCaseExportPortTest, ExecuteExportsEquivalentGluePointsForSubdividedOpenSpan) {
+    auto temp_pb = MakeTempPbPath();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto export_port = std::make_shared<FakePlanningArtifactExportPort>();
+    auto pb_service = std::make_shared<DxfPbPreparationService>();
+
+    PlanningUseCase single_use_case(
+        std::make_shared<FakePathSourcePort>(),
+        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
+        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        config_port,
+        pb_service,
+        export_port);
+    const auto single = single_use_case.Execute(MakePlanningRequest(temp_pb));
+    ASSERT_TRUE(single.IsSuccess()) << single.GetError().ToString();
+    const auto single_glue_points = export_port->last_request.glue_points;
+
+    PlanningUseCase subdivided_use_case(
+        std::make_shared<EquivalentSubdivisionPathSourcePort>(),
+        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
+        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        config_port,
+        pb_service,
+        export_port);
+    const auto subdivided = subdivided_use_case.Execute(MakePlanningRequest(temp_pb));
+    ASSERT_TRUE(subdivided.IsSuccess()) << subdivided.GetError().ToString();
+    const auto& subdivided_glue_points = export_port->last_request.glue_points;
+
+    ASSERT_EQ(single_glue_points.size(), subdivided_glue_points.size());
+    for (std::size_t index = 0; index < single_glue_points.size(); ++index) {
+        EXPECT_NEAR(single_glue_points[index].x, subdivided_glue_points[index].x, 1e-4f);
+        EXPECT_NEAR(single_glue_points[index].y, subdivided_glue_points[index].y, 1e-4f);
+    }
+
+    std::error_code ec;
+    std::filesystem::remove(temp_pb, ec);
+}
 TEST(PlanningUseCaseExportPortTest, WorkflowContractsRemainConstructibleForPlanningTrigger) {
     WorkflowPlanningTriggerRequest request;
     request.workflow_run_id = "run-1";
@@ -233,3 +288,7 @@ TEST(PlanningUseCaseExportPortTest, ExecuteKeepsSharedVertexExportStableAcrossRe
     std::error_code ec;
     std::filesystem::remove(temp_pb, ec);
 }
+
+
+
+

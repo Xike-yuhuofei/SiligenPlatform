@@ -6,6 +6,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
 CONTRACTS = ROOT / "shared" / "contracts" / "application"
+DXF_COMMAND_SET = CONTRACTS / "commands" / "dxf.command-set.json"
+DXF_PREVIEW_SUCCESS_FIXTURE = CONTRACTS / "fixtures" / "responses" / "dxf.preview.snapshot.success.json"
+PROTOCOL_MAPPING = CONTRACTS / "mappings" / "protocol-mapping.md"
 TCP_DISPATCHER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "tcp" / "TcpCommandDispatcher.cpp"
 TCP_DISPATCHER_HEADER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "tcp" / "TcpCommandDispatcher.h"
 MOCK_IO_CONTROL_SERVICE = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "tcp" / "MockIoControlService.cpp"
@@ -153,6 +156,21 @@ def test_dxf_preview_gate_contract_is_wired():
     assert "Missing 'snapshot_hash'" in source
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3018, confirm_result.GetError().GetMessage())' in source
     assert "HandleDxfPreviewSnapshot" in source
+
+
+def test_dxf_preview_contract_docs_freeze_shared_authority_semantics():
+    command_set = load_json(DXF_COMMAND_SET)
+    preview_operation = next(op for op in command_set["operations"] if op["method"] == "dxf.preview.snapshot")
+    notes = "\n".join(preview_operation.get("compatibility", {}).get("notes", []))
+    fixture = load_json(DXF_PREVIEW_SUCCESS_FIXTURE)
+    mapping = PROTOCOL_MAPPING.read_text(encoding="utf-8")
+
+    assert "shared authority" in notes.lower()
+    assert fixture["result"]["preview_source"] == "planned_glue_snapshot"
+    assert fixture["result"]["preview_kind"] == "glue_points"
+    assert fixture["result"]["glue_point_count"] > 0
+    assert len(fixture["result"]["glue_points"]) == fixture["result"]["glue_point_count"]
+    assert "shared authority" in mapping.lower()
 
 
 def test_status_reads_backend_interlock_signals():
@@ -371,6 +389,7 @@ def main():
         test_gateway_public_host_contract_does_not_expose_config_path,
         test_canonical_targets_are_exported_without_legacy_aliases,
         test_dxf_preview_gate_contract_is_wired,
+        test_dxf_preview_contract_docs_freeze_shared_authority_semantics,
         test_status_reads_backend_interlock_signals,
         test_status_publishes_effective_interlocks_and_supervision_contract,
         test_motion_coord_status_exposes_feedback_diagnostics,
