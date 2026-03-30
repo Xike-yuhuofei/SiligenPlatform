@@ -28,13 +28,13 @@ $ARGUMENTS
 1. 在任何生成动作前，先运行：
 
 ```powershell
-tools/scripts/resolve-workflow-context.ps1
+scripts/validation/resolve-workflow-context.ps1
 ```
 
 2. 高风险命令必须通过：
 
 ```powershell
-tools/scripts/invoke-guarded-command.ps1 -Command "<your command>"
+scripts/validation/invoke-guarded-command.ps1 -Command "<your command>"
 ```
 
 3. `tasks.md` 仅允许主线程维护，子任务不得修改。
@@ -109,4 +109,3 @@ SESSION_SUMMARY_END
 - `references/prompt-template.md`
 - `references/phase-summary-template.md`
 - `references/session-summary-protocol-template.md`
-

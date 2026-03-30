@@ -9,5 +9,5 @@
 
 约定：
 
-1. `branchSafe` 使用 `tools/scripts/resolve-workflow-context.ps1` 的输出
+1. `branchSafe` 使用 `scripts/validation/resolve-workflow-context.ps1` 的输出
 2. 不允许直接使用原始分支名写文件

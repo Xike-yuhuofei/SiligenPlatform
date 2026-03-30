@@ -11,8 +11,8 @@ Execute a fixed closeout workflow for completed changes. Keep scope narrow, stop
 
 1. Use simplified Chinese in user-facing communication.
 2. Treat this skill as post-change closeout only. Do not continue implementation inside this workflow.
-3. Run `tools/scripts/resolve-workflow-context.ps1` before closeout work when the repository context needs normalized `ticket/branchSafe/timestamp`.
-4. Route high-risk commands through `tools/scripts/invoke-guarded-command.ps1`.
+3. Run `scripts/validation/resolve-workflow-context.ps1` before closeout work when the repository context needs normalized `ticket/branchSafe/timestamp`.
+4. Route high-risk commands through `scripts/validation/invoke-guarded-command.ps1`.
 5. Do not commit or push if unrelated changes, merge conflicts, failed validation, or unclear task boundaries are present.
 6. Do not rewrite unrelated docs or expand scope with opportunistic refactors.
 
