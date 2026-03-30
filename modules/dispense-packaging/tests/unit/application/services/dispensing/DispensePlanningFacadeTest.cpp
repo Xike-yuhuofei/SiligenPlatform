@@ -359,6 +359,45 @@ TEST(DispensePlanningFacadeTest, AssemblePlanningArtifactsUsesStableClosedLoopPh
         1e-4f);
 }
 
+TEST(DispensePlanningFacadeTest, AssemblePlanningArtifactsBindsAuthorityAcrossClosedLoopPhaseShiftedExecution) {
+    DispensePlanningFacade facade;
+
+    auto authority_square = BuildPolylineInput({
+        Point2D(0.0f, 0.0f),
+        Point2D(10.0f, 0.0f),
+        Point2D(10.0f, 10.0f),
+        Point2D(0.0f, 10.0f),
+        Point2D(0.0f, 0.0f),
+    }, 5.0f);
+    authority_square.spline_max_step_mm = 1.0f;
+
+    auto rotated_execution_square = BuildPolylineInput({
+        Point2D(10.0f, 0.0f),
+        Point2D(10.0f, 10.0f),
+        Point2D(0.0f, 10.0f),
+        Point2D(0.0f, 0.0f),
+        Point2D(10.0f, 0.0f),
+    }, 5.0f);
+    rotated_execution_square.spline_max_step_mm = 1.0f;
+    rotated_execution_square.authority_process_path = authority_square.process_path;
+
+    const auto result = facade.AssemblePlanningArtifacts(rotated_execution_square);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    const auto& payload = result.Value();
+    EXPECT_TRUE(payload.preview_authority_ready);
+    EXPECT_TRUE(payload.preview_binding_ready);
+    ASSERT_EQ(
+        payload.authority_trigger_layout.trigger_points.size(),
+        payload.authority_trigger_layout.bindings.size());
+    EXPECT_GT(
+        std::count_if(
+            payload.authority_trigger_layout.bindings.begin(),
+            payload.authority_trigger_layout.bindings.end(),
+            [](const auto& binding) { return !binding.monotonic; }),
+        0U);
+}
+
 TEST(DispensePlanningFacadeTest, AssemblePlanningArtifactsReturnsFailClassificationForDegenerateSplineAuthority) {
     auto input = BuildInput();
     input.process_path.segments.clear();

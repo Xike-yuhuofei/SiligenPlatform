@@ -920,6 +920,34 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFailsWhenPreviewAuthorityI
               DispensingWorkflowUseCase::PlanPreviewState::FAILED);
 }
 
+TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFailsAtSnapshotStageWhenBindingUnavailable) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+
+    SeedPlan(use_case, "plan-binding-unavailable");
+    auto& plan_record = use_case.plans_.at("plan-binding-unavailable");
+    plan_record.preview_state = DispensingWorkflowUseCase::PlanPreviewState::PREPARED;
+    plan_record.preview_binding_ready = false;
+    plan_record.preview_failure_reason = "authority trigger binding unavailable";
+
+    Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest request;
+    request.plan_id = "plan-binding-unavailable";
+    const auto result = use_case.GetPreviewSnapshot(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+    EXPECT_EQ(result.GetError().GetMessage(), "authority trigger binding unavailable");
+    EXPECT_EQ(
+        use_case.plans_.at("plan-binding-unavailable").preview_state,
+        DispensingWorkflowUseCase::PlanPreviewState::FAILED);
+    EXPECT_EQ(
+        use_case.plans_.at("plan-binding-unavailable").failure_message,
+        "authority trigger binding unavailable");
+}
+
 TEST(DispensingWorkflowUseCaseTest, StartJobRejectsPreviewAuthorityMismatchBeforeRuntimeLaunch) {
     auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();

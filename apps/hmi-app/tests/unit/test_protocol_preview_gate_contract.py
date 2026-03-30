@@ -406,6 +406,20 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertEqual(client.calls[0][1]["plan_id"], "plan-x")
         self.assertEqual(client.calls[0][2], 15.0)
 
+    def test_preview_snapshot_binding_failure_error_details_contract(self) -> None:
+        client = _FakeClient([{"error": {"code": 3012, "message": "authority trigger binding unavailable"}}])
+        protocol = CommandProtocol(client)
+
+        ok, payload, error, error_code = protocol.dxf_preview_snapshot_with_error_details(plan_id="plan-binding")
+
+        self.assertFalse(ok)
+        self.assertEqual(payload, {})
+        self.assertEqual(error, "authority trigger binding unavailable")
+        self.assertEqual(error_code, 3012)
+        self.assertEqual(client.calls[0][0], "dxf.preview.snapshot")
+        self.assertEqual(client.calls[0][1]["plan_id"], "plan-binding")
+        self.assertEqual(client.calls[0][2], 15.0)
+
     def test_preview_snapshot_error_details_accepts_timeout_override(self) -> None:
         client = _FakeClient([{"error": {"code": 3012, "message": "plan not found"}}])
         protocol = CommandProtocol(client)
