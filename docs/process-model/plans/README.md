@@ -8,5 +8,5 @@
 
 约定：
 
-1. `ticket` 通过 `tools/scripts/resolve-workflow-context.ps1` 提取；失败时固定 `NOISSUE`
+1. `ticket` 通过 `scripts/validation/resolve-workflow-context.ps1` 提取；失败时固定 `NOISSUE`
 2. `timestamp` 格式：`yyyyMMdd-HHmmss`

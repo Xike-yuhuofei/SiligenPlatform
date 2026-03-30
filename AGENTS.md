@@ -58,8 +58,8 @@
 
 执行约束补充：
 
-1. 运行技能前，先执行 `tools/scripts/resolve-workflow-context.ps1` 统一 `ticket/branchSafe/timestamp`
-2. 高风险命令必须通过 `tools/scripts/invoke-guarded-command.ps1` 执行
+1. 运行技能前，先执行 `scripts/validation/resolve-workflow-context.ps1` 统一 `ticket/branchSafe/timestamp`
+2. 高风险命令必须通过 `scripts/validation/invoke-guarded-command.ps1` 执行
 
 ## Active Technologies
 - Markdown docs; PowerShell 7; Python 3.11; C++17/CMake 3.20+ + Root `build.ps1` / `test.ps1` / `ci.ps1`; CMake workspace targets; `application-contracts`; `engineering-contracts`; `engineering-data`; `test-kit`; protobuf; spdlog (refactor/arch/NOISSUE-architecture-refactor-spec)
