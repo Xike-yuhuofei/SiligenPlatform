@@ -7,8 +7,16 @@
 namespace {
 
 using Siligen::Shared::Types::ApplyTriggerMarkersByPosition;
+using Siligen::Shared::Types::BuildTrajectoryCumulativeDistances;
+using Siligen::Shared::Types::BuildTriggerMarkerPointIndex;
 using Siligen::Shared::Types::CountTriggerMarkers;
 using Siligen::Shared::Types::Point2D;
+using Siligen::Shared::Types::ResolveDistanceGuidedTriggerMarkerPlan;
+using Siligen::Shared::Types::ResolveIndexedPointTriggerMarkerPlan;
+using Siligen::Shared::Types::ResolveSequentialSegmentTriggerMarkerPlan;
+using Siligen::Shared::Types::TriggerMarkerCandidateKind;
+using Siligen::Shared::Types::TriggerMarkerPlan;
+using Siligen::Shared::Types::TriggerMarkerRequest;
 using Siligen::Shared::Types::float32;
 
 Siligen::TrajectoryPoint BuildPoint(float32 x, float32 y) {
@@ -90,4 +98,63 @@ TEST(TrajectoryTriggerUtilsTest, ApplyTriggerMarkersByPositionKeepsConsecutiveSa
     ASSERT_EQ(actual_distances.size(), 2U);
     EXPECT_NEAR(actual_distances[0], 0.0f, 1e-4f);
     EXPECT_NEAR(actual_distances[1], 20.0f, 1e-4f);
+}
+
+TEST(TrajectoryTriggerUtilsTest, ResolveIndexedPointTriggerMarkerPlanFindsLaterExactPointOutsideDistanceNeighborhood) {
+    std::vector<Siligen::TrajectoryPoint> points{
+        BuildPoint(0.0f, 0.0f),
+        BuildPoint(10.0f, 0.0f),
+        BuildPoint(10.0f, 10.0f),
+        BuildPoint(0.0f, 10.0f),
+        BuildPoint(0.0f, 0.0f),
+    };
+    const auto cumulative = BuildTrajectoryCumulativeDistances(points);
+    const auto point_index = BuildTriggerMarkerPointIndex(points, 1e-3f);
+
+    TriggerMarkerRequest request;
+    request.position = Point2D(0.0f, 0.0f);
+    request.trigger_distance_mm = 25.0f;
+    request.pulse_width_us = 3456;
+    request.order_index = 2U;
+
+    TriggerMarkerPlan plan;
+    EXPECT_FALSE(ResolveDistanceGuidedTriggerMarkerPlan(points, cumulative, request, 1e-3f, plan));
+    ASSERT_TRUE(ResolveIndexedPointTriggerMarkerPlan(points, cumulative, point_index, request, 1e-3f, 1U, plan));
+    EXPECT_EQ(plan.kind, TriggerMarkerCandidateKind::ExistingPoint);
+    EXPECT_EQ(plan.index, 4U);
+    EXPECT_NEAR(plan.ratio, 0.0f, 1e-4f);
+    EXPECT_NEAR(plan.position.x, 0.0f, 1e-4f);
+    EXPECT_NEAR(plan.position.y, 0.0f, 1e-4f);
+    EXPECT_NEAR(plan.trigger_distance_mm, 25.0f, 1e-4f);
+    EXPECT_EQ(plan.pulse_width_us, 3456U);
+    EXPECT_EQ(plan.order_index, 2U);
+}
+
+TEST(TrajectoryTriggerUtilsTest, ResolveSequentialSegmentTriggerMarkerPlanFindsLaterSegmentOutsideDistanceNeighborhood) {
+    std::vector<Siligen::TrajectoryPoint> points{
+        BuildPoint(0.0f, 0.0f),
+        BuildPoint(10.0f, 0.0f),
+        BuildPoint(10.0f, 10.0f),
+        BuildPoint(0.0f, 10.0f),
+        BuildPoint(0.0f, 0.0f),
+    };
+    const auto cumulative = BuildTrajectoryCumulativeDistances(points);
+
+    TriggerMarkerRequest request;
+    request.position = Point2D(0.0f, 5.0f);
+    request.trigger_distance_mm = 25.0f;
+    request.pulse_width_us = 4567;
+    request.order_index = 3U;
+
+    TriggerMarkerPlan plan;
+    EXPECT_FALSE(ResolveDistanceGuidedTriggerMarkerPlan(points, cumulative, request, 1e-3f, plan));
+    ASSERT_TRUE(ResolveSequentialSegmentTriggerMarkerPlan(points, cumulative, request, 1e-3f, 1U, plan));
+    EXPECT_EQ(plan.kind, TriggerMarkerCandidateKind::SegmentProjection);
+    EXPECT_EQ(plan.index, 4U);
+    EXPECT_NEAR(plan.ratio, 0.5f, 1e-4f);
+    EXPECT_NEAR(plan.position.x, 0.0f, 1e-4f);
+    EXPECT_NEAR(plan.position.y, 5.0f, 1e-4f);
+    EXPECT_NEAR(plan.trigger_distance_mm, 25.0f, 1e-4f);
+    EXPECT_EQ(plan.pulse_width_us, 4567U);
+    EXPECT_EQ(plan.order_index, 3U);
 }

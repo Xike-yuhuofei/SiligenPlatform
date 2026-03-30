@@ -2,7 +2,7 @@
 
 ## 1. 模型目标
 
-本数据模型描述的是“打开 DXF 自动触发的胶点预览链路如何在不改变 wire payload 的前提下，将本地等待预算从 15 秒收敛到 100 秒，并把真实超时值传播到用户可见错误”。它不是数据库设计，而是为 `apps/hmi-app` 与 `modules/hmi-application` 中的 transport、worker、UI 失败传播提供统一语义。
+本数据模型描述的是“打开 DXF 自动触发的胶点预览链路如何在不改变 wire payload 的前提下，将本地等待预算从 15 秒收敛到 300 秒，并把真实超时值传播到用户可见错误”。它不是数据库设计，而是为 `apps/hmi-app` 与 `modules/hmi-application` 中的 transport、worker、UI 失败传播提供统一语义。
 
 ## 2. 实体总览
 
@@ -47,13 +47,13 @@
 | `artifact_ref` | string | 必填 |
 | `speed_mm_s` | number | 必须 > 0 |
 | `dry_run` | boolean | 必填 |
-| `timeout_s` | number | 在本特性范围内固定为 `100.0` |
+| `timeout_s` | number | 在本特性范围内固定为 `300.0` |
 | `result_plan_id` | string/null | 成功时必填 |
 | `error_message` | string/null | 失败时必填 |
 
 **规则**
 
-- 对于 `initiated_from=dxf_open_auto_preview` 的 flow，`timeout_s` 必须为 `100.0`。
+- 对于 `initiated_from=dxf_open_auto_preview` 的 flow，`timeout_s` 必须为 `300.0`。
 - `result_plan_id` 为空时，不允许继续发起 `PreviewSnapshotRequest`。
 - 非超时失败必须保留原始错误文本，不得被重写为 timeout。
 
@@ -67,7 +67,7 @@
 | `flow_ref` | string | 引用 `AutoPreviewGenerationFlow.flow_id` |
 | `plan_ref` | string | 引用 `PreviewPrepareRequest.result_plan_id` |
 | `max_polyline_points` | integer | 必须 >= 2 |
-| `timeout_s` | number | 在本特性范围内固定为 `100.0` |
+| `timeout_s` | number | 在本特性范围内固定为 `300.0` |
 | `preview_source` | string/null | 成功时应为 `planned_glue_snapshot` |
 | `preview_kind` | string/null | 成功时应为 `glue_points` |
 | `error_message` | string/null | 失败时必填 |
@@ -75,7 +75,7 @@
 **规则**
 
 - `plan_ref` 缺失时，snapshot 请求不得启动。
-- 对于 `initiated_from=dxf_open_auto_preview` 的 flow，`timeout_s` 必须为 `100.0`。
+- 对于 `initiated_from=dxf_open_auto_preview` 的 flow，`timeout_s` 必须为 `300.0`。
 - 成功 payload 仍必须满足既有 preview authority 规则；本特性不改变 `preview_source` / `preview_kind` 的合法值。
 
 ### 3.4 `PreviewTimeoutPolicy`
@@ -86,8 +86,8 @@
 |---|---|---|
 | `policy_id` | string | 唯一 |
 | `scope` | enum | `dxf_open_auto_preview` |
-| `prepare_timeout_s` | number | 固定为 `100.0` |
-| `snapshot_timeout_s` | number | 固定为 `100.0` |
+| `prepare_timeout_s` | number | 固定为 `300.0` |
+| `snapshot_timeout_s` | number | 固定为 `300.0` |
 | `apply_to_resync` | boolean | 固定为 `false` |
 | `apply_to_preview_confirm` | boolean | 固定为 `false` |
 | `apply_to_job_start` | boolean | 固定为 `false` |
@@ -96,7 +96,7 @@
 **规则**
 
 - `PreviewTimeoutPolicy` 只绑定“打开 DXF 自动预览”这一个 scope。
-- 任何未显式声明在 scope 内的请求，都不得自动继承 `100.0s`。
+- 任何未显式声明在 scope 内的请求，都不得自动继承 `300.0s`。
 - 同一 policy 下，prepare 与 snapshot 的 timeout 必须保持一致，以避免链路内局部 15 秒残留。
 
 ### 3.5 `UserVisiblePreviewFailure`
@@ -152,14 +152,14 @@ pending -> surfaced
 pending -> suppressed
 ```
 
-说明：本特性只允许在“请求实际失败”时进入 `surfaced`；不允许把仍在 100 秒预算内执行的请求过早归类为失败。
+说明：本特性只允许在“请求实际失败”时进入 `surfaced`；不允许把仍在 300 秒预算内执行的请求过早归类为失败。
 
 ## 6. 完成判定闭环
 
 一次“打开 DXF 自动预览”只有在以下条件全部满足时，才允许视为设计完成：
 
 1. `PreviewTimeoutPolicy.scope = dxf_open_auto_preview`
-2. `PreviewPrepareRequest.timeout_s = 100.0`
-3. `PreviewSnapshotRequest.timeout_s = 100.0`
-4. `UserVisiblePreviewFailure.detail` 在 timeout 场景下明确反映 `100.0s` 或等价 100 秒新阈值
-5. runtime resync、`dxf.preview.confirm`、`dxf.job.start`、`connect` 等其他入口不被被动扩展到 `100s`
+2. `PreviewPrepareRequest.timeout_s = 300.0`
+3. `PreviewSnapshotRequest.timeout_s = 300.0`
+4. `UserVisiblePreviewFailure.detail` 在 timeout 场景下明确反映 `300.0s` 或等价 300 秒新阈值
+5. runtime resync、`dxf.preview.confirm`、`dxf.job.start`、`connect` 等其他入口不被被动扩展到 `300s`

@@ -350,7 +350,7 @@ class PreviewSnapshotWorkerTest(unittest.TestCase):
     def setUp(self) -> None:
         _WorkerFakeProtocol.calls = []
 
-    def test_worker_uses_100s_timeout_for_prepare_and_snapshot(self) -> None:
+    def test_worker_uses_300s_timeout_for_prepare_and_snapshot(self) -> None:
         worker = PreviewSnapshotWorker(
             host="127.0.0.1",
             port=9527,
@@ -368,8 +368,8 @@ class PreviewSnapshotWorkerTest(unittest.TestCase):
         self.assertEqual(
             _WorkerFakeProtocol.calls,
             [
-                ("dxf.plan.prepare", "artifact-1", 20.0, False, 20.0, 100.0),
-                ("dxf.preview.snapshot", "plan-1", 4000, 100.0),
+                ("dxf.plan.prepare", "artifact-1", 20.0, False, 20.0, 300.0),
+                ("dxf.preview.snapshot", "plan-1", 4000, 300.0),
             ],
         )
         self.assertTrue(emitted)
