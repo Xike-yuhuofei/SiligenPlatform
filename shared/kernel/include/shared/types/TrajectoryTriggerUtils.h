@@ -66,6 +66,46 @@ inline TrajectoryPoint InterpolateTrajectoryPoint(const TrajectoryPoint& start,
     return point;
 }
 
+enum class TriggerMarkerCandidateKind {
+    ExistingPoint,
+    SegmentProjection,
+};
+
+struct TriggerMarkerCandidate {
+    bool found = false;
+    TriggerMarkerCandidateKind kind = TriggerMarkerCandidateKind::ExistingPoint;
+    size_t index = 0;
+    float32 ratio = 0.0f;
+    float32 position_error_mm = std::numeric_limits<float32>::max();
+    float32 distance_error_mm = std::numeric_limits<float32>::max();
+};
+
+inline bool IsBetterTriggerMarkerCandidate(
+    const TriggerMarkerCandidate& candidate,
+    const TriggerMarkerCandidate& current,
+    float32 compare_tolerance_mm = kTriggerMarkerMatchToleranceMm) {
+    if (!candidate.found) {
+        return false;
+    }
+    if (!current.found) {
+        return true;
+    }
+    if (candidate.distance_error_mm + compare_tolerance_mm < current.distance_error_mm) {
+        return true;
+    }
+    if (std::fabs(candidate.distance_error_mm - current.distance_error_mm) > compare_tolerance_mm) {
+        return false;
+    }
+    if (candidate.position_error_mm + compare_tolerance_mm < current.position_error_mm) {
+        return true;
+    }
+    if (std::fabs(candidate.position_error_mm - current.position_error_mm) > compare_tolerance_mm) {
+        return false;
+    }
+    return candidate.kind == TriggerMarkerCandidateKind::ExistingPoint &&
+           current.kind == TriggerMarkerCandidateKind::SegmentProjection;
+}
+
 inline bool InsertTriggerMarkerByDistance(std::vector<TrajectoryPoint>& points,
                                           float32 target_distance_mm,
                                           float32 match_tolerance_mm = kTriggerMarkerMatchToleranceMm,
@@ -156,25 +196,28 @@ inline bool InsertTriggerMarkerByPosition(std::vector<TrajectoryPoint>& points,
         return false;
     }
 
-    size_t nearest_index = 0;
-    float32 nearest_distance = std::numeric_limits<float32>::max();
+    const auto cumulative = BuildTrajectoryCumulativeDistances(points);
+    const bool use_distance_hint = std::isfinite(trigger_distance_mm);
+    TriggerMarkerCandidate best_candidate;
+
     for (size_t index = 0; index < points.size(); ++index) {
-        const float32 distance = points[index].position.DistanceTo(target_position);
-        if (distance < nearest_distance) {
-            nearest_distance = distance;
-            nearest_index = index;
+        const float32 position_error = points[index].position.DistanceTo(target_position);
+        if (position_error > position_tolerance_mm) {
+            continue;
+        }
+
+        TriggerMarkerCandidate candidate;
+        candidate.found = true;
+        candidate.kind = TriggerMarkerCandidateKind::ExistingPoint;
+        candidate.index = index;
+        candidate.position_error_mm = position_error;
+        candidate.distance_error_mm =
+            use_distance_hint ? std::fabs(cumulative[index] - trigger_distance_mm) : 0.0f;
+        if (IsBetterTriggerMarkerCandidate(candidate, best_candidate)) {
+            best_candidate = candidate;
         }
     }
-    if (nearest_distance <= position_tolerance_mm) {
-        points[nearest_index].position = target_position;
-        MarkTriggerPoint(points[nearest_index], trigger_distance_mm, pulse_width_us);
-        ReassignTrajectorySequenceIds(points);
-        return true;
-    }
 
-    size_t best_segment_index = points.size();
-    float32 best_ratio = 0.0f;
-    float32 best_distance = std::numeric_limits<float32>::max();
     for (size_t index = 1; index < points.size(); ++index) {
         const Point2D start = points[index - 1].position;
         const Point2D end = points[index].position;
@@ -188,25 +231,44 @@ inline bool InsertTriggerMarkerByPosition(std::vector<TrajectoryPoint>& points,
         const float32 raw_ratio = (offset.x * delta.x + offset.y * delta.y) / length_sq;
         const float32 ratio = std::clamp(raw_ratio, 0.0f, 1.0f);
         const Point2D projected = start + delta * ratio;
-        const float32 distance = projected.DistanceTo(target_position);
-        if (distance < best_distance) {
-            best_distance = distance;
-            best_segment_index = index;
-            best_ratio = ratio;
+        const float32 position_error = projected.DistanceTo(target_position);
+        if (position_error > position_tolerance_mm) {
+            continue;
+        }
+
+        TriggerMarkerCandidate candidate;
+        candidate.found = true;
+        candidate.kind = TriggerMarkerCandidateKind::SegmentProjection;
+        candidate.index = index;
+        candidate.ratio = ratio;
+        candidate.position_error_mm = position_error;
+        candidate.distance_error_mm =
+            use_distance_hint
+                ? std::fabs((cumulative[index - 1] + std::sqrt(length_sq) * ratio) - trigger_distance_mm)
+                : 0.0f;
+        if (IsBetterTriggerMarkerCandidate(candidate, best_candidate)) {
+            best_candidate = candidate;
         }
     }
 
-    if (best_segment_index >= points.size() || best_distance > position_tolerance_mm) {
+    if (!best_candidate.found) {
         return false;
     }
 
+    if (best_candidate.kind == TriggerMarkerCandidateKind::ExistingPoint) {
+        points[best_candidate.index].position = target_position;
+        MarkTriggerPoint(points[best_candidate.index], trigger_distance_mm, pulse_width_us);
+        ReassignTrajectorySequenceIds(points);
+        return true;
+    }
+
     TrajectoryPoint inserted = InterpolateTrajectoryPoint(
-        points[best_segment_index - 1],
-        points[best_segment_index],
-        best_ratio);
+        points[best_candidate.index - 1],
+        points[best_candidate.index],
+        best_candidate.ratio);
     inserted.position = target_position;
     MarkTriggerPoint(inserted, trigger_distance_mm, pulse_width_us);
-    points.insert(points.begin() + static_cast<std::ptrdiff_t>(best_segment_index), inserted);
+    points.insert(points.begin() + static_cast<std::ptrdiff_t>(best_candidate.index), inserted);
     ReassignTrajectorySequenceIds(points);
     return true;
 }
@@ -226,19 +288,26 @@ inline bool ApplyTriggerMarkersByPosition(std::vector<TrajectoryPoint>& points,
 
     Point2D last_position;
     bool has_last_position = false;
+    float32 last_distance_mm = 0.0f;
+    bool has_last_distance = false;
     for (size_t index = 0; index < trigger_positions.size(); ++index) {
         const auto& position = trigger_positions[index];
-        if (has_last_position && last_position.DistanceTo(position) <= dedup_tolerance_mm) {
-            continue;
-        }
         const float32 trigger_distance_mm =
             trigger_distances_mm.empty() ? 0.0f : trigger_distances_mm[index];
+        if (has_last_position && last_position.DistanceTo(position) <= dedup_tolerance_mm) {
+            if (trigger_distances_mm.empty() ||
+                (has_last_distance && std::fabs(trigger_distance_mm - last_distance_mm) <= dedup_tolerance_mm)) {
+                continue;
+            }
+        }
         if (!InsertTriggerMarkerByPosition(
                 points, position, trigger_distance_mm, position_tolerance_mm, pulse_width_us)) {
             return false;
         }
         last_position = position;
         has_last_position = true;
+        last_distance_mm = trigger_distance_mm;
+        has_last_distance = true;
     }
 
     return true;

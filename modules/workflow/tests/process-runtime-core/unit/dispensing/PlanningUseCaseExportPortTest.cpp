@@ -125,6 +125,23 @@ public:
 
     std::vector<std::string> loaded_paths;
 };
+
+class PointNoisePathSourcePort final : public IPathSourcePort {
+public:
+    ResultT<PathSourceResult> LoadFromFile(const std::string& filepath) override {
+        loaded_paths.push_back(filepath);
+        PathSourceResult result;
+        result.success = true;
+        result.primitives.push_back(Primitive::MakeLine(Point2D{0.0f, 0.0f}, Point2D{10.0f, 0.0f}));
+        result.primitives.push_back(Primitive::MakePoint(Point2D{5.0f, 5.0f}));
+        result.metadata.push_back({});
+        result.metadata.push_back({});
+        return ResultT<PathSourceResult>::Success(result);
+    }
+
+    std::vector<std::string> loaded_paths;
+};
+
 class FakePlanningArtifactExportPort final : public IPlanningArtifactExportPort {
 public:
     ResultT<PlanningArtifactExportResult> Export(const PlanningArtifactExportRequest& request) override {
@@ -242,6 +259,48 @@ TEST(PlanningUseCaseExportPortTest, ExecuteExportsEquivalentGluePointsForSubdivi
     std::error_code ec;
     std::filesystem::remove(temp_pb, ec);
 }
+
+TEST(PlanningUseCaseExportPortTest, ExecuteIgnoresPointNoiseForPreviewGlueSemantics) {
+    auto temp_pb = MakeTempPbPath();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto export_port = std::make_shared<FakePlanningArtifactExportPort>();
+    auto pb_service = std::make_shared<DxfPbPreparationService>();
+
+    PlanningUseCase baseline_use_case(
+        std::make_shared<FakePathSourcePort>(),
+        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
+        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        config_port,
+        pb_service,
+        export_port);
+    const auto baseline = baseline_use_case.Execute(MakePlanningRequest(temp_pb));
+    ASSERT_TRUE(baseline.IsSuccess()) << baseline.GetError().ToString();
+    const auto baseline_glue_points = export_port->last_request.glue_points;
+
+    PlanningUseCase noisy_use_case(
+        std::make_shared<PointNoisePathSourcePort>(),
+        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
+        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        config_port,
+        pb_service,
+        export_port);
+    const auto noisy = noisy_use_case.Execute(MakePlanningRequest(temp_pb));
+    ASSERT_TRUE(noisy.IsSuccess()) << noisy.GetError().ToString();
+    const auto& noisy_glue_points = export_port->last_request.glue_points;
+
+    ASSERT_EQ(baseline_glue_points.size(), noisy_glue_points.size());
+    EXPECT_EQ(CountPointsNear(noisy_glue_points, Point2D{5.0f, 5.0f}, 1e-4f), 0U);
+    for (std::size_t index = 0; index < baseline_glue_points.size(); ++index) {
+        EXPECT_NEAR(baseline_glue_points[index].x, noisy_glue_points[index].x, 1e-4f);
+        EXPECT_NEAR(baseline_glue_points[index].y, noisy_glue_points[index].y, 1e-4f);
+    }
+
+    std::error_code ec;
+    std::filesystem::remove(temp_pb, ec);
+}
+
 TEST(PlanningUseCaseExportPortTest, WorkflowContractsRemainConstructibleForPlanningTrigger) {
     WorkflowPlanningTriggerRequest request;
     request.workflow_run_id = "run-1";

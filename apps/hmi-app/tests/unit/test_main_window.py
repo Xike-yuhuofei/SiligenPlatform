@@ -678,6 +678,18 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertEqual(messages[-1][1], "plan not found")
         self.assertTrue(messages[-1][2])
 
+    def test_preview_snapshot_worker_error_preserves_binding_failure_detail(self) -> None:
+        messages = []
+        self.window._set_preview_message_html = lambda title, detail="", is_error=False: messages.append((title, detail, is_error))
+
+        self.window._on_preview_snapshot_completed(False, {}, "authority trigger binding unavailable")
+
+        self.assertEqual(self.window._preview_gate.last_error_message, "authority trigger binding unavailable")
+        self.assertTrue(messages)
+        self.assertEqual(messages[-1][0], "胶点预览生成失败")
+        self.assertEqual(messages[-1][1], "authority trigger binding unavailable")
+        self.assertTrue(messages[-1][2])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -145,6 +145,7 @@ def test_dxf_preview_gate_contract_is_wired():
     assert "dxf.preview.snapshot max_polyline_points 超过上限，已夹断" in source
     assert "std::min<std::size_t>(" in source
     assert "kPreviewPolylineMaxPoints" in source
+    assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3012, snapshot_result.GetError().GetMessage())' in source
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3012, "Preview plan_id mismatch")' in source
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview snapshot hash is missing")' in source
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview source is missing")' in source

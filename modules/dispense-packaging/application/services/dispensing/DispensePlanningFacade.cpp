@@ -82,6 +82,49 @@ struct ExecutionTrajectorySelection {
     bool authority_shared = false;
 };
 
+struct TriggerBindingCandidate {
+    bool found = false;
+    std::size_t interpolation_index = 0;
+    float32 distance_error_mm = std::numeric_limits<float32>::max();
+    float32 match_error_mm = std::numeric_limits<float32>::max();
+    bool monotonic = true;
+};
+
+bool IsBetterTriggerBindingCandidate(
+    const TriggerBindingCandidate& candidate,
+    const TriggerBindingCandidate& current) {
+    if (!candidate.found) {
+        return false;
+    }
+    if (!current.found) {
+        return true;
+    }
+
+    if (candidate.distance_error_mm + Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm <
+        current.distance_error_mm) {
+        return true;
+    }
+    if (std::fabs(candidate.distance_error_mm - current.distance_error_mm) >
+        Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm) {
+        return false;
+    }
+
+    if (candidate.match_error_mm + Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm <
+        current.match_error_mm) {
+        return true;
+    }
+    if (std::fabs(candidate.match_error_mm - current.match_error_mm) >
+        Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm) {
+        return false;
+    }
+
+    if (candidate.monotonic != current.monotonic) {
+        return candidate.monotonic;
+    }
+
+    return candidate.interpolation_index < current.interpolation_index;
+}
+
 float32 SegmentLength(const Segment& segment) {
     if (segment.length > kEpsilon) {
         return segment.length;
@@ -877,45 +920,68 @@ void BindAuthorityLayoutToExecutionTrajectory(
         return;
     }
 
-    std::size_t trigger_index = 0;
     std::size_t last_interpolation_index = 0;
-    for (std::size_t interpolation_index = 0;
-         interpolation_index < execution_trajectory->size() &&
+    std::vector<bool> consumed(execution_trajectory->size(), false);
+    for (std::size_t trigger_index = 0;
          trigger_index < artifacts.authority_trigger_layout.trigger_points.size();
-         ++interpolation_index) {
-        const auto& trajectory_point = (*execution_trajectory)[interpolation_index];
-        if (!trajectory_point.enable_position_trigger) {
-            continue;
+         ++trigger_index) {
+        const auto& trigger = artifacts.authority_trigger_layout.trigger_points[trigger_index];
+        TriggerBindingCandidate best_candidate;
+        for (std::size_t interpolation_index = 0;
+             interpolation_index < execution_trajectory->size();
+             ++interpolation_index) {
+            if (consumed[interpolation_index]) {
+                continue;
+            }
+
+            const auto& trajectory_point = (*execution_trajectory)[interpolation_index];
+            if (!trajectory_point.enable_position_trigger) {
+                continue;
+            }
+
+            const float32 distance_error_mm =
+                std::fabs(trajectory_point.trigger_position_mm - trigger.distance_mm_global);
+            const float32 match_error_mm = trajectory_point.position.DistanceTo(trigger.position);
+            if (distance_error_mm > Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm ||
+                match_error_mm > std::max(
+                    kGluePointDedupEpsilonMm,
+                    Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm)) {
+                continue;
+            }
+
+            TriggerBindingCandidate candidate;
+            candidate.found = true;
+            candidate.interpolation_index = interpolation_index;
+            candidate.distance_error_mm = distance_error_mm;
+            candidate.match_error_mm = match_error_mm;
+            candidate.monotonic = interpolation_index >= last_interpolation_index;
+            if (IsBetterTriggerBindingCandidate(candidate, best_candidate)) {
+                best_candidate = candidate;
+            }
         }
 
-        const auto& trigger = artifacts.authority_trigger_layout.trigger_points[trigger_index];
-        InterpolationTriggerBinding binding;
-        binding.binding_id = artifacts.authority_trigger_layout.layout_id + "-binding-" + std::to_string(trigger_index);
-        binding.layout_ref = artifacts.authority_trigger_layout.layout_id;
-        binding.trigger_ref = trigger.trigger_id;
-        binding.interpolation_index = interpolation_index;
-        binding.execution_position = trajectory_point.position;
-        binding.match_error_mm = trajectory_point.position.DistanceTo(trigger.position);
-        binding.monotonic = interpolation_index >= last_interpolation_index;
-        binding.bound =
-            std::fabs(trajectory_point.trigger_position_mm - trigger.distance_mm_global) <=
-                Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm &&
-            binding.match_error_mm <= std::max(
-                kGluePointDedupEpsilonMm,
-                Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm);
-
-        artifacts.authority_trigger_layout.bindings.push_back(binding);
-        if (!binding.bound) {
+        if (!best_candidate.found) {
             artifacts.failure_reason = "authority trigger binding unavailable";
             return;
         }
 
-        last_interpolation_index = interpolation_index;
-        ++trigger_index;
+        const auto& trajectory_point = (*execution_trajectory)[best_candidate.interpolation_index];
+        InterpolationTriggerBinding binding;
+        binding.binding_id = artifacts.authority_trigger_layout.layout_id + "-binding-" + std::to_string(trigger_index);
+        binding.layout_ref = artifacts.authority_trigger_layout.layout_id;
+        binding.trigger_ref = trigger.trigger_id;
+        binding.interpolation_index = best_candidate.interpolation_index;
+        binding.execution_position = trajectory_point.position;
+        binding.match_error_mm = best_candidate.match_error_mm;
+        binding.monotonic = best_candidate.monotonic;
+        binding.bound = true;
+
+        artifacts.authority_trigger_layout.bindings.push_back(binding);
+        consumed[best_candidate.interpolation_index] = true;
+        last_interpolation_index = best_candidate.interpolation_index;
     }
 
     artifacts.binding_ready =
-        trigger_index == artifacts.authority_trigger_layout.trigger_points.size() &&
         artifacts.authority_trigger_layout.bindings.size() == artifacts.authority_trigger_layout.trigger_points.size();
     artifacts.authority_trigger_layout.binding_ready = artifacts.binding_ready;
     if (artifacts.binding_ready) {

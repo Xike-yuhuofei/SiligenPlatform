@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import io
 import json
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
+
+import ezdxf
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
@@ -18,6 +22,7 @@ from engineering_data.contracts.preview import PreviewRequest  # noqa: E402
 from engineering_data.contracts.simulation_input import bundle_to_simulation_payload, load_path_bundle  # noqa: E402
 from engineering_data.preview.html_preview import generate_preview  # noqa: E402
 from engineering_data.processing import dxf_to_pb  # noqa: E402
+from engineering_data.proto import dxf_primitives_pb2 as pb  # noqa: E402
 
 
 def _load_json(path: Path) -> dict:
@@ -51,6 +56,40 @@ class EngineeringDataCompatibilityTest(unittest.TestCase):
         actual.header.source_path = ""
         expected.header.source_path = ""
         self.assertEqual(actual.SerializeToString(), expected.SerializeToString())
+
+    def test_dxf_to_pb_skips_text_and_insert_without_affecting_supported_entities(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            dxf_path = Path(tmp_dir) / "mixed_noise.dxf"
+            output_path = Path(tmp_dir) / "mixed_noise.pb"
+
+            doc = ezdxf.new("R12")
+            modelspace = doc.modelspace()
+            modelspace.add_line((0.0, 0.0), (10.0, 0.0))
+            modelspace.add_point((5.0, 5.0))
+            modelspace.add_text("IGNORE", dxfattribs={"height": 1.0}).set_placement((2.0, 2.0))
+            block = doc.blocks.new(name="NOISE_BLOCK")
+            block.add_line((0.0, 0.0), (1.0, 0.0))
+            modelspace.add_blockref("NOISE_BLOCK", (7.0, 7.0))
+            doc.saveas(dxf_path)
+
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                exit_code = dxf_to_pb.main([
+                    "--input", str(dxf_path),
+                    "--output", str(output_path),
+                ])
+
+            self.assertEqual(exit_code, 0)
+            actual = load_path_bundle(output_path)
+
+        entity_types = [meta.entity_type for meta in actual.metadata]
+        self.assertEqual(len(actual.primitives), 2)
+        self.assertEqual(entity_types.count(pb.DXF_ENTITY_LINE), 1)
+        self.assertEqual(entity_types.count(pb.DXF_ENTITY_POINT), 1)
+        warning_text = stderr.getvalue()
+        self.assertIn("Unsupported DXF entities will be skipped", warning_text)
+        self.assertIn("INSERT=1", warning_text)
+        self.assertIn("TEXT=1", warning_text)
 
     def test_generate_preview_matches_fixture(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
