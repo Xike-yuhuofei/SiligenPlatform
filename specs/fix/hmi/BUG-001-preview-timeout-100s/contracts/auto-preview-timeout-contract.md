@@ -2,7 +2,7 @@
 
 ## 1. 目的
 
-冻结“打开 DXF 自动触发的胶点预览”在本特性中的本地等待边界，确保 HMI 只在这条用户链路上将超时阈值调整为 `100s`，而不会把变更悄悄扩散到其他入口。
+冻结“打开 DXF 自动触发的胶点预览”在本特性中的本地等待边界，确保 HMI 只在这条用户链路上将超时阈值调整为 `300s`，而不会把变更悄悄扩散到其他入口。
 
 ## 2. 适用边界
 
@@ -25,8 +25,8 @@
 
 | 请求 | 本特性要求 |
 |---|---|
-| `dxf.plan.prepare` | 在 DXF 打开自动预览链路上必须使用 `100s` 本地等待预算 |
-| `dxf.preview.snapshot` | 在 DXF 打开自动预览链路上必须使用 `100s` 本地等待预算 |
+| `dxf.plan.prepare` | 在 DXF 打开自动预览链路上必须使用 `300s` 本地等待预算 |
+| `dxf.preview.snapshot` | 在 DXF 打开自动预览链路上必须使用 `300s` 本地等待预算 |
 | `dxf.preview.confirm` | 不在本特性范围内，保持既有预算 |
 | runtime resync `dxf.preview.snapshot` | 不在本特性范围内，保持既有预算 |
 | `dxf.job.start` / `connect` / `dxf.load` | 不在本特性范围内，保持既有预算 |
@@ -36,9 +36,9 @@
 以下条件全部满足时，本 contract 视为成功：
 
 1. 自动预览链路中的 prepare 与 snapshot 都不再在 `15.0s` 时过早失败。
-2. 任一阶段在 `100s` 内完成时，链路能够继续推进或成功展示预览。
-3. 任一阶段超过 `100s` 时，链路在达到预算后才返回 timeout。
-4. 不在本 contract 范围内的其他请求，未被动继承 `100s`。
+2. 任一阶段在 `300s` 内完成时，链路能够继续推进或成功展示预览。
+3. 任一阶段超过 `300s` 时，链路在达到预算后才返回 timeout。
+4. 不在本 contract 范围内的其他请求，未被动继承 `300s`。
 
 ## 6. 失败边界
 
@@ -46,8 +46,8 @@
 
 1. prepare 仍使用 `15.0s` 或其他旧阈值。
 2. snapshot 仍使用 `15.0s` 或其他旧阈值。
-3. runtime resync、`dxf.preview.confirm`、`dxf.job.start` 等无关入口被一并放大到 `100s`。
-4. 为了实现 `100s` 而修改了 `dxf.command-set.json` 的 wire schema。
+3. runtime resync、`dxf.preview.confirm`、`dxf.job.start` 等无关入口被一并放大到 `300s`。
+4. 为了实现 `300s` 而修改了 `dxf.command-set.json` 的 wire schema。
 
 ## 7. 与正式协议的关系
 

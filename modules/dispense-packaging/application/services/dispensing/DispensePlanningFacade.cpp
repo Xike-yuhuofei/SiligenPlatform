@@ -15,6 +15,7 @@
 #include "shared/types/VisualizationTypes.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <ctime>
 #include <limits>
@@ -31,6 +32,7 @@ using Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout;
 using Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayoutState;
 using Siligen::Domain::Dispensing::ValueObjects::InterpolationTriggerBinding;
 using Siligen::Domain::Dispensing::ValueObjects::LayoutTriggerPoint;
+using Siligen::Domain::Dispensing::ValueObjects::LayoutTriggerSourceKind;
 using Siligen::Domain::Dispensing::ValueObjects::SpacingValidationClassification;
 using Siligen::Domain::Dispensing::ValueObjects::TriggerPlan;
 using Siligen::Domain::Motion::CMPCoordinatedInterpolator;
@@ -89,6 +91,162 @@ struct TriggerBindingCandidate {
     float32 match_error_mm = std::numeric_limits<float32>::max();
     bool monotonic = true;
 };
+
+struct TriggerBindingTraceRow {
+    std::size_t trigger_index = 0;
+    std::string trigger_id;
+    std::string span_ref;
+    std::size_t source_segment_index = 0;
+    LayoutTriggerSourceKind source_kind = LayoutTriggerSourceKind::Generated;
+    Point2D trigger_position;
+    float32 authority_distance_mm = 0.0f;
+    bool matched = false;
+    std::size_t interpolation_index = 0;
+    uint32 execution_sequence_id = 0;
+    Point2D execution_position;
+    float32 execution_trigger_position_mm = 0.0f;
+    float32 distance_delta_mm = 0.0f;
+    float32 position_delta_mm = 0.0f;
+    bool monotonic = false;
+    Siligen::SegmentType execution_segment_type = Siligen::SegmentType::LINEAR;
+};
+
+std::string FormatPoint(const Point2D& point) {
+    std::ostringstream oss;
+    oss << '(' << point.x << ',' << point.y << ')';
+    return oss.str();
+}
+
+const char* ToString(LayoutTriggerSourceKind source_kind) {
+    switch (source_kind) {
+        case LayoutTriggerSourceKind::Anchor:
+            return "anchor";
+        case LayoutTriggerSourceKind::Generated:
+            return "generated";
+        case LayoutTriggerSourceKind::SharedVertex:
+            return "shared_vertex";
+    }
+    return "generated";
+}
+
+const char* ToString(Siligen::SegmentType segment_type) {
+    switch (segment_type) {
+        case Siligen::SegmentType::LINEAR:
+            return "linear";
+        case Siligen::SegmentType::ARC_CW:
+            return "arc_cw";
+        case Siligen::SegmentType::ARC_CCW:
+            return "arc_ccw";
+    }
+    return "linear";
+}
+
+template <typename ClockPoint>
+long long ElapsedMs(const ClockPoint& start_time) {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now() - start_time)
+        .count();
+}
+
+void LogBindingTraceWindow(const AuthorityTriggerLayout& layout,
+                           const std::vector<TriggerBindingTraceRow>& rows,
+                           std::size_t failure_index) {
+    if (rows.empty()) {
+        return;
+    }
+
+    const std::size_t window_start = 0;
+    const std::size_t requested_end = std::max<std::size_t>(failure_index + 1, 30);
+    const std::size_t window_end = std::min(rows.size(), requested_end);
+
+    {
+        std::ostringstream oss;
+        oss << "preview_binding_trace_window"
+            << " layout_id=" << layout.layout_id
+            << " failed_trigger_index=" << failure_index
+            << " row_start=" << window_start
+            << " row_end=" << window_end
+            << " available_rows=" << rows.size()
+            << " total_triggers=" << layout.trigger_points.size();
+        SILIGEN_LOG_INFO(oss.str());
+    }
+
+    for (std::size_t row_index = window_start; row_index < window_end; ++row_index) {
+        const auto& row = rows[row_index];
+        std::ostringstream oss;
+        oss << "preview_binding_trace"
+            << " trigger_index=" << row.trigger_index
+            << " trigger_id=" << row.trigger_id
+            << " span_ref=" << row.span_ref
+            << " source_segment_index=" << row.source_segment_index
+            << " source_kind=" << ToString(row.source_kind)
+            << " trigger_position=" << FormatPoint(row.trigger_position)
+            << " authority_distance_mm=" << row.authority_distance_mm
+            << " matched=" << (row.matched ? 1 : 0);
+        if (row.matched) {
+            oss << " execution_index=" << row.interpolation_index
+                << " execution_sequence_id=" << row.execution_sequence_id
+                << " execution_position=" << FormatPoint(row.execution_position)
+                << " execution_trigger_position_mm=" << row.execution_trigger_position_mm
+                << " distance_delta_mm=" << row.distance_delta_mm
+                << " position_delta_mm=" << row.position_delta_mm
+                << " monotonic=" << (row.monotonic ? 1 : 0)
+                << " execution_segment_type=" << ToString(row.execution_segment_type);
+        }
+        SILIGEN_LOG_INFO(oss.str());
+    }
+}
+
+bool ApplyTriggerMarkersByPositionWithDiagnostics(std::vector<TrajectoryPoint>& points,
+                                                  const std::vector<Point2D>& trigger_positions,
+                                                  const std::vector<float32>& trigger_distances_mm,
+                                                  float32 dedup_tolerance_mm,
+                                                  float32 position_tolerance_mm,
+                                                  uint16 pulse_width_us =
+                                                      Siligen::Shared::Types::kDefaultTriggerPulseWidthUs) {
+    if (!trigger_distances_mm.empty() && trigger_positions.size() != trigger_distances_mm.size()) {
+        SILIGEN_LOG_WARNING("build_interp_marker_stage=invalid_input trigger_positions and trigger_distances size mismatch");
+        return false;
+    }
+
+    const auto started_at = std::chrono::steady_clock::now();
+    {
+        std::ostringstream oss;
+        oss << "build_interp_marker_stage=start"
+            << " trajectory_points=" << points.size()
+            << " trigger_positions=" << trigger_positions.size()
+            << " strategy=batch_distance_guided"
+            << " dedup_tolerance_mm=" << dedup_tolerance_mm
+            << " position_tolerance_mm=" << position_tolerance_mm;
+        SILIGEN_LOG_INFO(oss.str());
+    }
+
+    if (!Siligen::Shared::Types::ApplyTriggerMarkersByPosition(
+            points,
+            trigger_positions,
+            trigger_distances_mm,
+            dedup_tolerance_mm,
+            position_tolerance_mm,
+            pulse_width_us)) {
+        std::ostringstream oss;
+        oss << "build_interp_marker_stage=failed"
+            << " trigger_positions=" << trigger_positions.size()
+            << " final_points=" << points.size()
+            << " elapsed_ms=" << ElapsedMs(started_at);
+        SILIGEN_LOG_WARNING(oss.str());
+        return false;
+    }
+
+    {
+        std::ostringstream oss;
+        oss << "build_interp_marker_stage=complete"
+            << " inserted_markers=" << Siligen::Shared::Types::CountTriggerMarkers(points)
+            << " final_points=" << points.size()
+            << " elapsed_ms=" << ElapsedMs(started_at);
+        SILIGEN_LOG_INFO(oss.str());
+    }
+    return true;
+}
 
 bool IsBetterTriggerBindingCandidate(
     const TriggerBindingCandidate& candidate,
@@ -583,24 +741,36 @@ Result<std::vector<Point2D>> BuildInterpolationSeedPoints(
     std::vector<Point2D> points;
     Siligen::Domain::Dispensing::DomainServices::CurveFlatteningService flattening_service;
     const float32 sample_step_mm = step_mm > kEpsilon ? step_mm : 1.0f;
-    for (const auto& segment : path.segments) {
+    const auto started_at = std::chrono::steady_clock::now();
+    const std::size_t total_segments = path.segments.size();
+    for (std::size_t segment_index = 0; segment_index < total_segments; ++segment_index) {
+        const auto& segment = path.segments[segment_index];
         const auto& geometry = segment.geometry;
         if (geometry.is_point) {
             AppendUniquePoint(points, geometry.line.start);
-            continue;
+        } else {
+            auto flattened_result = flattening_service.Flatten(geometry, spline_max_error_mm, step_mm);
+            if (flattened_result.IsError()) {
+                return Result<std::vector<Point2D>>::Failure(flattened_result.GetError());
+            }
+            const auto& flattened_points = flattened_result.Value().points;
+            if (!flattened_points.empty()) {
+                AppendUniquePoint(points, flattened_points.front());
+                for (std::size_t index = 1; index < flattened_points.size(); ++index) {
+                    SampleLinePoints(flattened_points[index - 1], flattened_points[index], sample_step_mm, points);
+                }
+            }
         }
 
-        auto flattened_result = flattening_service.Flatten(geometry, spline_max_error_mm, step_mm);
-        if (flattened_result.IsError()) {
-            return Result<std::vector<Point2D>>::Failure(flattened_result.GetError());
-        }
-        const auto& flattened_points = flattened_result.Value().points;
-        if (flattened_points.empty()) {
-            continue;
-        }
-        AppendUniquePoint(points, flattened_points.front());
-        for (std::size_t index = 1; index < flattened_points.size(); ++index) {
-            SampleLinePoints(flattened_points[index - 1], flattened_points[index], sample_step_mm, points);
+        if (total_segments >= 200 &&
+            (((segment_index + 1) % 100U) == 0U || (segment_index + 1) == total_segments)) {
+            std::ostringstream oss;
+            oss << "build_interp_seed_stage=progress"
+                << " processed_segments=" << (segment_index + 1)
+                << " total_segments=" << total_segments
+                << " sampled_points=" << points.size()
+                << " elapsed_ms=" << ElapsedMs(started_at);
+            SILIGEN_LOG_INFO(oss.str());
         }
     }
     return Result<std::vector<Point2D>>::Success(std::move(points));
@@ -784,22 +954,46 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
     const PlanningArtifactsBuildInput& input,
     const ProcessPath& path,
     const TriggerArtifacts& trigger_artifacts) {
+    auto log_stage = [&](const char* stage, const std::string& detail = std::string()) {
+        std::ostringstream oss;
+        oss << "build_interp_stage=" << stage
+            << " dxf=" << input.dxf_filename
+            << " algorithm=" << static_cast<int>(input.interpolation_algorithm)
+            << " process_segments=" << path.segments.size()
+            << " authority_triggers=" << trigger_artifacts.positions.size();
+        if (!detail.empty()) {
+            oss << ' ' << detail;
+        }
+        SILIGEN_LOG_INFO(oss.str());
+    };
+    const auto started_at = std::chrono::steady_clock::now();
+    log_stage("enter");
+
     if (!input.use_interpolation_planner) {
+        log_stage("skip_interpolation_planner_disabled");
         return Result<std::vector<TrajectoryPoint>>::Success({});
     }
 
     if (trigger_artifacts.validation_classification == "fail") {
+        log_stage("skip_validation_fail");
         return Result<std::vector<TrajectoryPoint>>::Success({});
     }
 
+    const auto seed_started_at = std::chrono::steady_clock::now();
+    log_stage("seed_start");
     const auto seed_points_result = BuildInterpolationSeedPoints(
         path,
         input.spline_max_error_mm,
         ResolveInterpolationStep(input));
     if (seed_points_result.IsError()) {
+        log_stage("seed_failed", "elapsed_ms=" + std::to_string(ElapsedMs(seed_started_at)) +
+                                     " reason=" + seed_points_result.GetError().GetMessage());
         return Result<std::vector<TrajectoryPoint>>::Failure(seed_points_result.GetError());
     }
     const auto& seed_points = seed_points_result.Value();
+    log_stage("seed_done",
+              "seed_points=" + std::to_string(seed_points.size()) +
+                  " elapsed_ms=" + std::to_string(ElapsedMs(seed_started_at)));
     if (seed_points.size() < 2) {
         return Result<std::vector<TrajectoryPoint>>::Failure(
             Error(ErrorCode::INVALID_PARAMETER, "插补规划参数无效", "DispensePlanningFacade"));
@@ -861,7 +1055,12 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
         }
 
         CMPCoordinatedInterpolator cmp_interpolator;
+        const auto cmp_started_at = std::chrono::steady_clock::now();
+        log_stage("cmp_plan_start", "seed_points=" + std::to_string(seed_points.size()));
         points = cmp_interpolator.PositionTriggeredDispensing(path, triggers, cmp_config, config);
+        log_stage("cmp_plan_done",
+                  "points=" + std::to_string(points.size()) +
+                      " elapsed_ms=" + std::to_string(ElapsedMs(cmp_started_at)));
     } else {
         if (input.interpolation_algorithm == InterpolationAlgorithm::CMP_COORDINATED) {
             return Result<std::vector<TrajectoryPoint>>::Failure(
@@ -872,8 +1071,19 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
 
         if (input.interpolation_algorithm == InterpolationAlgorithm::LINEAR) {
             TimeTrajectoryPlanner trajectory_planner;
+            const auto linear_plan_started_at = std::chrono::steady_clock::now();
+            log_stage("linear_plan_start", "seed_points=" + std::to_string(seed_points.size()));
+            auto planned_trajectory = trajectory_planner.Plan(path, BuildInterpolationPlanningConfig(config));
+            log_stage("linear_plan_done",
+                      "motion_points=" + std::to_string(planned_trajectory.points.size()) +
+                          " elapsed_ms=" + std::to_string(ElapsedMs(linear_plan_started_at)));
+            const auto convert_started_at = std::chrono::steady_clock::now();
+            log_stage("linear_convert_start");
             points = ConvertMotionTrajectoryToTrajectoryPoints(
-                trajectory_planner.Plan(path, BuildInterpolationPlanningConfig(config)));
+                planned_trajectory);
+            log_stage("linear_convert_done",
+                      "points=" + std::to_string(points.size()) +
+                          " elapsed_ms=" + std::to_string(ElapsedMs(convert_started_at)));
         } else {
             auto interpolator = TrajectoryInterpolatorFactory::CreateInterpolator(input.interpolation_algorithm);
             if (!interpolator) {
@@ -888,7 +1098,7 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
         }
 
         if (!trigger_artifacts.positions.empty() &&
-            !Siligen::Shared::Types::ApplyTriggerMarkersByPosition(
+            !ApplyTriggerMarkersByPositionWithDiagnostics(
                 points,
                 trigger_artifacts.positions,
                 trigger_artifacts.distances,
@@ -906,6 +1116,9 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
             Error(ErrorCode::TRAJECTORY_GENERATION_FAILED, "插补结果为空", "DispensePlanningFacade"));
     }
 
+    log_stage("complete",
+              "points=" + std::to_string(points.size()) +
+                  " elapsed_ms=" + std::to_string(ElapsedMs(started_at)));
     return Result<std::vector<TrajectoryPoint>>::Success(std::move(points));
 }
 
@@ -917,16 +1130,49 @@ void BindAuthorityLayoutToExecutionTrajectory(
     artifacts.authority_trigger_layout.binding_ready = false;
 
     if (execution_trajectory == nullptr || artifacts.authority_trigger_layout.trigger_points.empty()) {
+        std::ostringstream oss;
+        oss << "preview_binding_stage=skipped"
+            << " layout_id=" << artifacts.authority_trigger_layout.layout_id
+            << " trigger_points=" << artifacts.authority_trigger_layout.trigger_points.size()
+            << " execution_points=" << (execution_trajectory ? execution_trajectory->size() : 0U);
+        SILIGEN_LOG_INFO(oss.str());
         return;
+    }
+
+    {
+        std::ostringstream oss;
+        oss << "preview_binding_stage=start"
+            << " layout_id=" << artifacts.authority_trigger_layout.layout_id
+            << " trigger_points=" << artifacts.authority_trigger_layout.trigger_points.size()
+            << " execution_points=" << execution_trajectory->size();
+        SILIGEN_LOG_INFO(oss.str());
     }
 
     std::size_t last_interpolation_index = 0;
     std::vector<bool> consumed(execution_trajectory->size(), false);
+    std::vector<TriggerBindingTraceRow> binding_trace_rows;
+    binding_trace_rows.reserve(artifacts.authority_trigger_layout.trigger_points.size());
     for (std::size_t trigger_index = 0;
          trigger_index < artifacts.authority_trigger_layout.trigger_points.size();
          ++trigger_index) {
         const auto& trigger = artifacts.authority_trigger_layout.trigger_points[trigger_index];
+        TriggerBindingTraceRow trace_row;
+        trace_row.trigger_index = trigger_index;
+        trace_row.trigger_id = trigger.trigger_id;
+        trace_row.span_ref = trigger.span_ref;
+        trace_row.source_segment_index = trigger.source_segment_index;
+        trace_row.source_kind = trigger.source_kind;
+        trace_row.trigger_position = trigger.position;
+        trace_row.authority_distance_mm = trigger.distance_mm_global;
         TriggerBindingCandidate best_candidate;
+        std::size_t enabled_trigger_points = 0;
+        std::size_t nearest_distance_index = execution_trajectory->size();
+        std::size_t nearest_match_index = execution_trajectory->size();
+        float32 nearest_distance_error_mm = std::numeric_limits<float32>::max();
+        float32 nearest_match_error_mm = std::numeric_limits<float32>::max();
+        const float32 match_tolerance_mm = std::max(
+            kGluePointDedupEpsilonMm,
+            Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm);
         for (std::size_t interpolation_index = 0;
              interpolation_index < execution_trajectory->size();
              ++interpolation_index) {
@@ -938,14 +1184,21 @@ void BindAuthorityLayoutToExecutionTrajectory(
             if (!trajectory_point.enable_position_trigger) {
                 continue;
             }
+            ++enabled_trigger_points;
 
             const float32 distance_error_mm =
                 std::fabs(trajectory_point.trigger_position_mm - trigger.distance_mm_global);
             const float32 match_error_mm = trajectory_point.position.DistanceTo(trigger.position);
+            if (distance_error_mm < nearest_distance_error_mm) {
+                nearest_distance_error_mm = distance_error_mm;
+                nearest_distance_index = interpolation_index;
+            }
+            if (match_error_mm < nearest_match_error_mm) {
+                nearest_match_error_mm = match_error_mm;
+                nearest_match_index = interpolation_index;
+            }
             if (distance_error_mm > Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm ||
-                match_error_mm > std::max(
-                    kGluePointDedupEpsilonMm,
-                    Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm)) {
+                match_error_mm > match_tolerance_mm) {
                 continue;
             }
 
@@ -961,11 +1214,61 @@ void BindAuthorityLayoutToExecutionTrajectory(
         }
 
         if (!best_candidate.found) {
+            std::ostringstream oss;
+            oss << "preview_binding_stage=failed_first_trigger"
+                << " layout_id=" << artifacts.authority_trigger_layout.layout_id
+                << " trigger_index=" << trigger_index
+                << " trigger_id=" << trigger.trigger_id
+                << " trigger_distance_mm=" << trigger.distance_mm_global
+                << " trigger_position=" << FormatPoint(trigger.position)
+                << " execution_points=" << execution_trajectory->size()
+                << " enabled_trigger_points=" << enabled_trigger_points
+                << " last_interpolation_index=" << last_interpolation_index
+                << " distance_tolerance_mm="
+                << Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm
+                << " match_tolerance_mm=" << match_tolerance_mm;
+            if (nearest_distance_index < execution_trajectory->size()) {
+                const auto& nearest_distance_point = (*execution_trajectory)[nearest_distance_index];
+                oss << " nearest_distance={index=" << nearest_distance_index
+                    << ",trigger_position_mm=" << nearest_distance_point.trigger_position_mm
+                    << ",distance_error_mm=" << nearest_distance_error_mm
+                    << ",match_error_mm=" << nearest_distance_point.position.DistanceTo(trigger.position)
+                    << ",position=" << FormatPoint(nearest_distance_point.position)
+                    << ",monotonic=" << (nearest_distance_index >= last_interpolation_index ? 1 : 0)
+                    << '}';
+            }
+            if (nearest_match_index < execution_trajectory->size()) {
+                const auto& nearest_match_point = (*execution_trajectory)[nearest_match_index];
+                oss << " nearest_match={index=" << nearest_match_index
+                    << ",trigger_position_mm=" << nearest_match_point.trigger_position_mm
+                    << ",distance_error_mm="
+                    << std::fabs(nearest_match_point.trigger_position_mm - trigger.distance_mm_global)
+                    << ",match_error_mm=" << nearest_match_error_mm
+                    << ",position=" << FormatPoint(nearest_match_point.position)
+                    << ",monotonic=" << (nearest_match_index >= last_interpolation_index ? 1 : 0)
+                    << '}';
+            }
+            SILIGEN_LOG_WARNING(oss.str());
+            binding_trace_rows.push_back(std::move(trace_row));
+            LogBindingTraceWindow(
+                artifacts.authority_trigger_layout,
+                binding_trace_rows,
+                trigger_index);
             artifacts.failure_reason = "authority trigger binding unavailable";
             return;
         }
 
         const auto& trajectory_point = (*execution_trajectory)[best_candidate.interpolation_index];
+        trace_row.matched = true;
+        trace_row.interpolation_index = best_candidate.interpolation_index;
+        trace_row.execution_sequence_id = trajectory_point.sequence_id;
+        trace_row.execution_position = trajectory_point.position;
+        trace_row.execution_trigger_position_mm = trajectory_point.trigger_position_mm;
+        trace_row.distance_delta_mm = trajectory_point.trigger_position_mm - trigger.distance_mm_global;
+        trace_row.position_delta_mm = trajectory_point.position.DistanceTo(trigger.position);
+        trace_row.monotonic = best_candidate.monotonic;
+        trace_row.execution_segment_type = trajectory_point.segment_type;
+        binding_trace_rows.push_back(std::move(trace_row));
         InterpolationTriggerBinding binding;
         binding.binding_id = artifacts.authority_trigger_layout.layout_id + "-binding-" + std::to_string(trigger_index);
         binding.layout_ref = artifacts.authority_trigger_layout.layout_id;
@@ -986,6 +1289,12 @@ void BindAuthorityLayoutToExecutionTrajectory(
     artifacts.authority_trigger_layout.binding_ready = artifacts.binding_ready;
     if (artifacts.binding_ready) {
         artifacts.authority_trigger_layout.state = AuthorityTriggerLayoutState::BindingReady;
+        std::ostringstream oss;
+        oss << "preview_binding_stage=complete"
+            << " layout_id=" << artifacts.authority_trigger_layout.layout_id
+            << " bindings=" << artifacts.authority_trigger_layout.bindings.size()
+            << " trigger_points=" << artifacts.authority_trigger_layout.trigger_points.size();
+        SILIGEN_LOG_INFO(oss.str());
     } else if (artifacts.failure_reason.empty()) {
         artifacts.failure_reason = "authority trigger binding unavailable";
     }
@@ -995,6 +1304,20 @@ void BindAuthorityLayoutToExecutionTrajectory(
 
 Result<PlanningArtifactsBuildResult> DispensePlanningFacade::AssemblePlanningArtifacts(
     const PlanningArtifactsBuildInput& input) const {
+    auto log_stage = [&](const char* stage, const std::string& detail = std::string()) {
+        std::ostringstream oss;
+        oss << "planning_artifacts_stage=" << stage
+            << " dxf=" << input.dxf_filename
+            << " process_segments=" << input.process_path.segments.size()
+            << " motion_points=" << input.motion_plan.points.size();
+        if (!detail.empty()) {
+            oss << ' ' << detail;
+        }
+        SILIGEN_LOG_INFO(oss.str());
+    };
+
+    log_stage("start");
+
     if (input.process_path.segments.empty()) {
         return Result<PlanningArtifactsBuildResult>::Failure(
             Error(ErrorCode::INVALID_PARAMETER, "process path为空", "DispensePlanningFacade"));
@@ -1011,6 +1334,15 @@ Result<PlanningArtifactsBuildResult> DispensePlanningFacade::AssemblePlanningArt
         return Result<PlanningArtifactsBuildResult>::Failure(trigger_artifacts_result.GetError());
     }
     auto trigger_artifacts = trigger_artifacts_result.Value();
+    {
+        std::ostringstream oss;
+        oss << "authority_points=" << trigger_artifacts.authority_trigger_points.size()
+            << " layout_id=" << trigger_artifacts.authority_trigger_layout.layout_id
+            << " validation=" << trigger_artifacts.validation_classification
+            << " spacing_valid=" << (trigger_artifacts.spacing_valid ? 1 : 0)
+            << " failure_reason=" << trigger_artifacts.failure_reason;
+        log_stage("trigger_artifacts_ready", oss.str());
+    }
 
     auto interpolation_points_result =
         BuildInterpolationPoints(input, input.process_path, trigger_artifacts);
@@ -1018,12 +1350,23 @@ Result<PlanningArtifactsBuildResult> DispensePlanningFacade::AssemblePlanningArt
         return Result<PlanningArtifactsBuildResult>::Failure(interpolation_points_result.GetError());
     }
     auto interpolation_points = interpolation_points_result.Value();
+    {
+        std::ostringstream oss;
+        oss << "interpolation_points=" << interpolation_points.size();
+        log_stage("interpolation_points_ready", oss.str());
+    }
 
     Siligen::Domain::Motion::DomainServices::InterpolationProgramPlanner program_planner;
     auto interpolation_program =
         program_planner.BuildProgram(input.process_path, input.motion_plan, input.acceleration);
     if (interpolation_program.IsError() && trigger_artifacts.validation_classification != "fail") {
         return Result<PlanningArtifactsBuildResult>::Failure(interpolation_program.GetError());
+    }
+    {
+        std::ostringstream oss;
+        oss << "interpolation_program_ok=" << (interpolation_program.IsSuccess() ? 1 : 0)
+            << " validation=" << trigger_artifacts.validation_classification;
+        log_stage("interpolation_program_built", oss.str());
     }
 
     ExecutionPackageBuilt built;
@@ -1048,10 +1391,36 @@ Result<PlanningArtifactsBuildResult> DispensePlanningFacade::AssemblePlanningArt
     if (package_validation.IsError()) {
         return Result<PlanningArtifactsBuildResult>::Failure(package_validation.GetError());
     }
+    {
+        std::ostringstream oss;
+        oss << "trajectory_points=" << execution_package.execution_plan.motion_trajectory.points.size()
+            << " interpolation_segments=" << execution_package.execution_plan.interpolation_segments.size()
+            << " interpolation_points=" << execution_package.execution_plan.interpolation_points.size();
+        log_stage("package_validated", oss.str());
+    }
 
     const auto selection = SelectExecutionTrajectory(execution_package);
+    {
+        std::ostringstream oss;
+        oss << "authority_shared=" << (selection.authority_shared ? 1 : 0)
+            << " execution_points="
+            << (selection.execution_trajectory ? selection.execution_trajectory->size() : 0U);
+        log_stage("trajectory_selected", oss.str());
+    }
     BindAuthorityLayoutToExecutionTrajectory(trigger_artifacts, selection.execution_trajectory);
+    {
+        std::ostringstream oss;
+        oss << "binding_ready=" << (trigger_artifacts.binding_ready ? 1 : 0)
+            << " bindings=" << trigger_artifacts.authority_trigger_layout.bindings.size()
+            << " failure_reason=" << trigger_artifacts.failure_reason;
+        log_stage("binding_resolved", oss.str());
+    }
     const auto glue_points = CollectAuthorityPositions(trigger_artifacts.authority_trigger_layout);
+    {
+        std::ostringstream oss;
+        oss << "glue_points=" << glue_points.size();
+        log_stage("glue_points_collected", oss.str());
+    }
 
     PlanningArtifactsBuildResult result;
     result.execution_package = execution_package;
@@ -1085,6 +1454,14 @@ Result<PlanningArtifactsBuildResult> DispensePlanningFacade::AssemblePlanningArt
     result.authority_trigger_points = trigger_artifacts.authority_trigger_points;
     result.spacing_validation_groups = trigger_artifacts.spacing_validation_groups;
     result.export_request = BuildExportRequest(input, execution_package, selection, glue_points);
+    {
+        std::ostringstream oss;
+        oss << "preview_authority_ready=" << (result.preview_authority_ready ? 1 : 0)
+            << " preview_binding_ready=" << (result.preview_binding_ready ? 1 : 0)
+            << " preview_failure_reason=" << result.preview_failure_reason
+            << " trigger_count=" << result.trigger_count;
+        log_stage("complete", oss.str());
+    }
     return Result<PlanningArtifactsBuildResult>::Success(std::move(result));
 }
 

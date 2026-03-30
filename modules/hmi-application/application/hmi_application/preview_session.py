@@ -9,7 +9,9 @@ from PyQt5.QtCore import QThread, pyqtSignal
 from .preview_gate import DispensePreviewGate, PreviewGateState, PreviewSnapshotMeta, StartBlockReason
 
 # DXF 打开后的自动预览允许更长等待窗口，但该预算不向 resync/confirm/job.start 扩散。
-DXF_OPEN_AUTO_PREVIEW_TIMEOUT_S = 100.0
+# 真实复杂 DXF 的 plan.prepare 在 mock 链路下可稳定超过 100s，因此自动预览预算提升到 300s 并与 TCP
+# 复测窗口对齐，避免 HMI 先超时而后端仍在正常规划。
+DXF_OPEN_AUTO_PREVIEW_TIMEOUT_S = 300.0
 
 if TYPE_CHECKING:
     try:

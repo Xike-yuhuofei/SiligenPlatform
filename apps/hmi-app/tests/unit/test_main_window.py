@@ -497,9 +497,9 @@ class MainWindowTabsTest(unittest.TestCase):
         self.window._on_preview_snapshot_completed(
             True,
             {
-                "snapshot_id": "snapshot-100s",
-                "snapshot_hash": "hash-100s",
-                "plan_id": "plan-100s",
+                "snapshot_id": "snapshot-300s",
+                "snapshot_hash": "hash-300s",
+                "plan_id": "plan-300s",
                 "preview_source": "planned_glue_snapshot",
                 "preview_kind": "glue_points",
                 "segment_count": 2,
@@ -522,13 +522,13 @@ class MainWindowTabsTest(unittest.TestCase):
 
         self.assertEqual(messages, [])
         self.assertEqual(self.window._preview_source, "planned_glue_snapshot")
-        self.assertEqual(self.window._current_plan_id, "plan-100s")
-        self.assertEqual(self.window._current_plan_fingerprint, "hash-100s")
+        self.assertEqual(self.window._current_plan_id, "plan-300s")
+        self.assertEqual(self.window._current_plan_fingerprint, "hash-300s")
         self.assertIsNotNone(self.window._preview_gate.snapshot)
-        self.assertEqual(self.window._preview_gate.snapshot.snapshot_hash, "hash-100s")
+        self.assertEqual(self.window._preview_gate.snapshot.snapshot_hash, "hash-300s")
         self.assertEqual(self.window.statusBar().currentMessage(), "胶点预览已更新，启动前需确认")
         self.assertIn("规划胶点主预览", self.window._dxf_view.html)
-        self.assertIn("hash-100s", self.window._dxf_view.html)
+        self.assertIn("hash-300s", self.window._dxf_view.html)
 
     def test_preview_snapshot_rejects_non_authoritative_preview_source(self) -> None:
         messages = []
@@ -658,12 +658,12 @@ class MainWindowTabsTest(unittest.TestCase):
         messages = []
         self.window._set_preview_message_html = lambda title, detail="", is_error=False: messages.append((title, detail, is_error))
 
-        self.window._on_preview_snapshot_completed(False, {}, "Request timed out (100.0s)")
+        self.window._on_preview_snapshot_completed(False, {}, "Request timed out (300.0s)")
 
-        self.assertEqual(self.window._preview_gate.last_error_message, "Request timed out (100.0s)")
+        self.assertEqual(self.window._preview_gate.last_error_message, "Request timed out (300.0s)")
         self.assertTrue(messages)
         self.assertEqual(messages[-1][0], "胶点预览生成失败")
-        self.assertEqual(messages[-1][1], "Request timed out (100.0s)")
+        self.assertEqual(messages[-1][1], "Request timed out (300.0s)")
         self.assertTrue(messages[-1][2])
 
     def test_preview_snapshot_worker_error_preserves_non_timeout_detail(self) -> None:

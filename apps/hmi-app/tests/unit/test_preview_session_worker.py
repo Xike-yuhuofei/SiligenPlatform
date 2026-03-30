@@ -1,0 +1,96 @@
+import sys
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+WORKSPACE_ROOT = PROJECT_ROOT.parents[1]
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
+sys.path.insert(0, str(WORKSPACE_ROOT / "modules" / "hmi-application" / "application"))
+
+from hmi_application.preview_session import DXF_OPEN_AUTO_PREVIEW_TIMEOUT_S, PreviewSnapshotWorker
+
+
+class _FakeTcpClient:
+    instances = []
+
+    def __init__(self, host: str, port: int):
+        self.host = host
+        self.port = port
+        self.connected = False
+        self.disconnected = False
+        self.__class__.instances.append(self)
+
+    def connect(self) -> bool:
+        self.connected = True
+        return True
+
+    def disconnect(self) -> None:
+        self.disconnected = True
+
+
+class _FakeCommandProtocol:
+    instances = []
+
+    def __init__(self, client):
+        self.client = client
+        self.prepare_timeout = None
+        self.snapshot_timeout = None
+        self.__class__.instances.append(self)
+
+    def dxf_prepare_plan(self, artifact_id, speed_mm_s, dry_run=False, dry_run_speed_mm_s=0.0, timeout=15.0):
+        self.prepare_timeout = timeout
+        return True, {"plan_id": "plan-1", "plan_fingerprint": "fp-1"}, ""
+
+    def dxf_preview_snapshot(self, plan_id, max_polyline_points=4000, timeout=15.0):
+        self.snapshot_timeout = timeout
+        return True, {
+            "snapshot_id": "snapshot-1",
+            "snapshot_hash": "fp-1",
+            "plan_id": plan_id,
+            "preview_source": "planned_glue_snapshot",
+            "preview_kind": "glue_points",
+            "glue_point_count": 2,
+            "glue_points": [{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
+            "execution_polyline": [{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
+        }, ""
+
+
+class PreviewSnapshotWorkerTimeoutTest(unittest.TestCase):
+    def setUp(self) -> None:
+        _FakeTcpClient.instances.clear()
+        _FakeCommandProtocol.instances.clear()
+
+    def test_worker_uses_extended_timeout_for_plan_and_snapshot(self) -> None:
+        worker = PreviewSnapshotWorker(
+            host="127.0.0.1",
+            port=9527,
+            artifact_id="artifact-1",
+            speed_mm_s=20.0,
+            dry_run=False,
+            dry_run_speed_mm_s=20.0,
+        )
+        completed = []
+        worker.completed.connect(lambda ok, payload, error: completed.append((ok, payload, error)))
+
+        with patch("hmi_client.client.tcp_client.TcpClient", _FakeTcpClient), patch(
+            "hmi_client.client.protocol.CommandProtocol", _FakeCommandProtocol
+        ):
+            worker.run()
+
+        self.assertEqual(len(_FakeTcpClient.instances), 1)
+        self.assertTrue(_FakeTcpClient.instances[0].connected)
+        self.assertTrue(_FakeTcpClient.instances[0].disconnected)
+        self.assertEqual(len(_FakeCommandProtocol.instances), 1)
+        self.assertEqual(_FakeCommandProtocol.instances[0].prepare_timeout, DXF_OPEN_AUTO_PREVIEW_TIMEOUT_S)
+        self.assertEqual(_FakeCommandProtocol.instances[0].snapshot_timeout, DXF_OPEN_AUTO_PREVIEW_TIMEOUT_S)
+        self.assertEqual(len(completed), 1)
+        self.assertTrue(completed[0][0])
+        self.assertEqual(completed[0][2], "")
+        self.assertEqual(completed[0][1]["plan_id"], "plan-1")
+        self.assertEqual(completed[0][1]["snapshot_hash"], "fp-1")
+
+
+if __name__ == "__main__":
+    unittest.main()

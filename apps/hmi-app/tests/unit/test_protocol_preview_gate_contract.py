@@ -385,12 +385,12 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         )
         protocol = CommandProtocol(client)
 
-        ok, payload, error = protocol.dxf_preview_snapshot(plan_id="plan-1", timeout=100.0)
+        ok, payload, error = protocol.dxf_preview_snapshot(plan_id="plan-1", timeout=300.0)
 
         self.assertTrue(ok)
         self.assertEqual(error, "")
         self.assertEqual(payload["snapshot_hash"], "h-timeout")
-        self.assertEqual(client.calls[0], ("dxf.preview.snapshot", {"plan_id": "plan-1",}, 100.0))
+        self.assertEqual(client.calls[0], ("dxf.preview.snapshot", {"plan_id": "plan-1",}, 300.0))
 
     def test_preview_snapshot_error_details_contract(self) -> None:
         client = _FakeClient([{"error": {"code": 3012, "message": "plan not found"}}])
@@ -426,14 +426,14 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
 
         ok, payload, error, error_code = protocol.dxf_preview_snapshot_with_error_details(
             plan_id="plan-x",
-            timeout=100.0,
+            timeout=300.0,
         )
 
         self.assertFalse(ok)
         self.assertEqual(payload, {})
         self.assertEqual(error, "plan not found")
         self.assertEqual(error_code, 3012)
-        self.assertEqual(client.calls[0], ("dxf.preview.snapshot", {"plan_id": "plan-x"}, 100.0))
+        self.assertEqual(client.calls[0], ("dxf.preview.snapshot", {"plan_id": "plan-x"}, 300.0))
 
     def test_preview_confirm_contract(self) -> None:
         client = _FakeClient([{"result": {"confirmed": True, "plan_id": "plan-1", "snapshot_hash": "h1"}}])
@@ -505,13 +505,13 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         client = _FakeClient([{"result": {"plan_id": "plan-1", "plan_fingerprint": "fp-1"}}])
         protocol = CommandProtocol(client)
 
-        ok, payload, error = protocol.dxf_prepare_plan("artifact-1", speed_mm_s=20.0, timeout=100.0)
+        ok, payload, error = protocol.dxf_prepare_plan("artifact-1", speed_mm_s=20.0, timeout=300.0)
 
         self.assertTrue(ok)
         self.assertEqual(error, "")
         self.assertEqual(payload["plan_id"], "plan-1")
         self.assertEqual(client.calls[0][0], "dxf.plan.prepare")
-        self.assertEqual(client.calls[0][2], 100.0)
+        self.assertEqual(client.calls[0][2], 300.0)
 
     def test_dxf_start_job_contract(self) -> None:
         client = _FakeClient([{"result": {"job_id": "job-1"}}])

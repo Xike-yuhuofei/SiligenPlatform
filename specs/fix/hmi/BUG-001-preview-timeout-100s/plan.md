@@ -1,11 +1,11 @@
 # Implementation Plan: HMI 胶点预览超时窗口调整
 
-**Branch**: `fix/hmi/BUG-001-preview-timeout-100s` | **Date**: 2026-03-29 | **Spec**: `D:\Projects\SiligenSuite\specs\fix\hmi\BUG-001-preview-timeout-100s\spec.md`
+**Branch**: `fix/hmi/BUG-001-preview-timeout-300s` | **Date**: 2026-03-29 | **Spec**: `D:\Projects\SiligenSuite\specs\fix\hmi\BUG-001-preview-timeout-100s\spec.md`
 **Input**: Feature specification from `D:\Projects\SiligenSuite\specs\fix\hmi\BUG-001-preview-timeout-100s\spec.md`
 
 ## Summary
 
-将“打开 DXF 后自动触发的胶点预览”从当前每个关键请求 `15.0s` 的本地 transport wait，改为仅在该自动预览链路上使用 `100.0s` 等待预算。具体上，`PreviewSnapshotWorker` 发起的 `dxf.plan.prepare` 和 `dxf.preview.snapshot` 必须共享新的 `100s` 超时上限；`TcpClient.send_request(...)` 继续作为超时文案唯一来源，使用户最终看到的失败信息自动反映 `100.0s`；同时保持 runtime resync、`dxf.preview.confirm`、`dxf.job.start`、`connect` 等其他入口原有超时不变，避免范围扩散。
+将“打开 DXF 后自动触发的胶点预览”从当前每个关键请求 `15.0s` 的本地 transport wait，改为仅在该自动预览链路上使用 `300.0s` 等待预算。具体上，`PreviewSnapshotWorker` 发起的 `dxf.plan.prepare` 和 `dxf.preview.snapshot` 必须共享新的 `300s` 超时上限；`TcpClient.send_request(...)` 继续作为超时文案唯一来源，使用户最终看到的失败信息自动反映 `300.0s`；同时保持 runtime resync、`dxf.preview.confirm`、`dxf.job.start`、`connect` 等其他入口原有超时不变，避免范围扩散。
 
 ## Technical Context
 
@@ -15,7 +15,7 @@
 **Testing**: 根级 `.\build.ps1 -Profile Local -Suite all`、`.\test.ps1 -Profile CI -Suite all`；定向 `python -m pytest .\apps\hmi-app\tests\unit\test_protocol_preview_gate_contract.py -q`；`python -m pytest .\apps\hmi-app\tests\unit\test_main_window.py -q`  
 **Target Platform**: Windows 桌面 HMI，通过 TCP 连接 runtime-gateway  
 **Project Type**: Python 桌面 HMI 宿主 + 可复用 HMI application 模块  
-**Performance Goals**: DXF 打开后的自动预览链路在 `dxf.plan.prepare` 与 `dxf.preview.snapshot` 阶段都允许最多等待 `100s`；超时失败必须反映新阈值；与本链路无关的请求等待预算保持不变  
+**Performance Goals**: DXF 打开后的自动预览链路在 `dxf.plan.prepare` 与 `dxf.preview.snapshot` 阶段都允许最多等待 `300s`；超时失败必须反映新阈值；与本链路无关的请求等待预算保持不变  
 **Constraints**: 范围锁定在“打开 DXF 自动触发的胶点预览链路”；不向 `dxf.command-set.json` 新增请求/响应字段；不默认扩大到 runtime resync、`dxf.preview.confirm`、`dxf.job.start`、`dxf.load` 或 `connect`；超时文案必须来自真实等待预算而不是重复硬编码 UI 文案；仅使用 canonical workspace roots  
 **Scale/Scope**: 小型 feature slice，覆盖 `apps/hmi-app`、`modules/hmi-application`、feature 契约文档与 Python 单元/UI 回归
 

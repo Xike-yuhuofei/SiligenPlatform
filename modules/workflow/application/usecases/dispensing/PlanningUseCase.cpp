@@ -554,6 +554,16 @@ Result<PlanningResponse> PlanningUseCase::Execute(const PlanningRequest& request
         process_path_result.shaped_path.segments.size(),
         static_cast<long long>(plan_elapsed_ms));
 
+    {
+        std::ostringstream oss;
+        oss << "planning_window_stage=assemble_start"
+            << " dxf=" << request.dxf_filepath
+            << " shaped_segments=" << process_path_result.shaped_path.segments.size()
+            << " motion_points=" << motion_plan.points.size()
+            << " prepared_input=" << prepared_pb_path;
+        SILIGEN_LOG_INFO(oss.str());
+    }
+
     auto assembly_result = dispense_planning_facade_->AssemblePlanningArtifacts(
         BuildPlanningArtifactsInput(
             request,
@@ -564,6 +574,11 @@ Result<PlanningResponse> PlanningUseCase::Execute(const PlanningRequest& request
             ExtractFilename(request.dxf_filepath),
             config_port_));
     if (assembly_result.IsError()) {
+        std::ostringstream oss;
+        oss << "planning_window_stage=assemble_failed"
+            << " dxf=" << request.dxf_filepath
+            << " reason=" << assembly_result.GetError().GetMessage();
+        SILIGEN_LOG_WARNING(oss.str());
         const auto trigger_response = BuildWorkflowPlanningTriggerResponse(
             trigger_request,
             WorkflowStageLifecycle::Failed,
@@ -576,6 +591,18 @@ Result<PlanningResponse> PlanningUseCase::Execute(const PlanningRequest& request
     }
 
     auto assembled = assembly_result.Value();
+    {
+        std::ostringstream oss;
+        oss << "planning_window_stage=assemble_done"
+            << " dxf=" << request.dxf_filepath
+            << " trajectory_points=" << assembled.trajectory_points.size()
+            << " glue_points=" << assembled.glue_points.size()
+            << " preview_authority_ready=" << (assembled.preview_authority_ready ? 1 : 0)
+            << " preview_binding_ready=" << (assembled.preview_binding_ready ? 1 : 0)
+            << " preview_failure_reason=" << assembled.preview_failure_reason;
+        SILIGEN_LOG_INFO(oss.str());
+    }
+
     PlanningResponse response;
     response.success = true;
     response.segment_count = assembled.segment_count;
@@ -604,11 +631,33 @@ Result<PlanningResponse> PlanningUseCase::Execute(const PlanningRequest& request
             assembled.execution_package);
 
     if (artifact_export_port_) {
+        {
+            std::ostringstream oss;
+            oss << "planning_window_stage=export_start"
+                << " dxf=" << request.dxf_filepath
+                << " plan_glue_points=" << assembled.glue_points.size()
+                << " plan_segments=" << assembled.segment_count;
+            SILIGEN_LOG_INFO(oss.str());
+        }
         auto export_result = artifact_export_port_->Export(assembled.export_request);
         if (export_result.IsError()) {
             SILIGEN_LOG_WARNING("planning artifact export failed: " + export_result.GetError().GetMessage());
         } else if (export_result.Value().export_requested && !export_result.Value().success) {
             SILIGEN_LOG_WARNING("planning artifact export reported failure: " + export_result.Value().message);
+        }
+        {
+            std::ostringstream oss;
+            oss << "planning_window_stage=export_done"
+                << " dxf=" << request.dxf_filepath
+                << " export_error=" << (export_result.IsError() ? 1 : 0);
+            if (export_result.IsError()) {
+                oss << " message=" << export_result.GetError().GetMessage();
+            } else {
+                oss << " export_requested=" << (export_result.Value().export_requested ? 1 : 0)
+                    << " export_success=" << (export_result.Value().success ? 1 : 0)
+                    << " message=" << export_result.Value().message;
+            }
+            SILIGEN_LOG_INFO(oss.str());
         }
     }
 
