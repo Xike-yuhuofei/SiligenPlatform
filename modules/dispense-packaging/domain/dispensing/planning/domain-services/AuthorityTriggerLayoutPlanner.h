@@ -37,6 +37,13 @@ struct AuthorityTriggerLayoutPlannerRequest {
     DispensingStrategy dispensing_strategy = DispensingStrategy::BASELINE;
     int subsegment_count = 8;
     bool dispense_only_cruise = false;
+    bool enable_branch_revisit_split = true;
+    bool enable_closed_loop_corner_anchors = true;
+    bool emit_topology_diagnostics = true;
+    float32 topology_vertex_tolerance_mm = 0.0f;
+    float32 closed_loop_corner_angle_threshold_deg = 30.0f;
+    float32 closed_loop_corner_cluster_distance_mm = 0.0f;
+    float32 closed_loop_anchor_tolerance_mm = 0.0f;
     DispenseCompensationProfile compensation_profile{};
     float32 spline_max_error_mm = 0.0f;
     float32 spline_max_step_mm = 0.0f;

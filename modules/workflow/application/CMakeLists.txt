@@ -302,7 +302,10 @@ target_compile_features(siligen_control_application INTERFACE cxx_std_17)
 add_library(siligen_application ALIAS siligen_control_application)
 
 # CGAL (填充算法)
-target_compile_definitions(siligen_application_dispensing PRIVATE SILIGEN_ENABLE_CGAL=0)
+target_compile_definitions(siligen_application_dispensing PRIVATE
+    SILIGEN_ENABLE_CGAL=0
+    SILIGEN_TEST_HOOKS=1
+)
 
 # 为应用层库添加预编译头
 if(SILIGEN_USE_PCH)

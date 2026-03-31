@@ -103,15 +103,24 @@ class _WorkerFakeProtocol:
         type(self).calls.append(
             ("dxf.plan.prepare", artifact_id, speed_mm_s, dry_run, dry_run_speed_mm_s, timeout)
         )
-        return True, {"plan_id": "plan-1", "plan_fingerprint": "fp-1"}, ""
+        return True, {
+            "plan_id": "plan-1",
+            "plan_fingerprint": "fp-1",
+            "performance_profile": {
+                "authority_cache_hit": False,
+                "authority_joined_inflight": True,
+                "prepare_total_ms": 123,
+            },
+        }, ""
 
     def dxf_preview_snapshot(
         self,
         plan_id: str,
         max_polyline_points: int = 4000,
+        max_glue_points: int = 5000,
         timeout: float = 15.0,
     ) -> tuple:
-        type(self).calls.append(("dxf.preview.snapshot", plan_id, max_polyline_points, timeout))
+        type(self).calls.append(("dxf.preview.snapshot", plan_id, max_polyline_points, max_glue_points, timeout))
         return True, {"snapshot_id": "snapshot-1", "preview_source": "planned_glue_snapshot", "preview_kind": "glue_points"}, ""
 
 
@@ -379,13 +388,33 @@ class PreviewSnapshotWorkerTest(unittest.TestCase):
             _WorkerFakeProtocol.calls,
             [
                 ("dxf.plan.prepare", "artifact-1", 20.0, False, 20.0, 300.0),
-                ("dxf.preview.snapshot", "plan-1", 4000, 300.0),
+                ("dxf.preview.snapshot", "plan-1", 4000, 5000, 300.0),
             ],
         )
         self.assertTrue(emitted)
         self.assertTrue(emitted[0][0])
         self.assertEqual(emitted[0][1]["plan_id"], "plan-1")
         self.assertEqual(emitted[0][1]["snapshot_hash"], "fp-1")
+        self.assertEqual(emitted[0][1]["performance_profile"]["prepare_total_ms"], 123)
+        self.assertEqual(emitted[0][1]["worker_profile"]["plan_prepare_rpc_ms"] >= 0, True)
+
+    def test_worker_cancelled_before_run_does_not_emit_result(self) -> None:
+        worker = PreviewSnapshotWorker(
+            host="127.0.0.1",
+            port=9527,
+            artifact_id="artifact-1",
+            speed_mm_s=20.0,
+            dry_run=False,
+            dry_run_speed_mm_s=20.0,
+        )
+        emitted = []
+        worker.completed.connect(lambda ok, payload, error: emitted.append((ok, payload, error)))
+
+        worker.cancel()
+        with patch.dict(sys.modules, _worker_import_modules(), clear=False):
+            worker.run()
+
+        self.assertEqual(emitted, [])
 
 
 if __name__ == "__main__":

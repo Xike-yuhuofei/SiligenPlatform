@@ -110,7 +110,7 @@ Result<void> DispensingExecutionUseCase::Impl::ResumeJob(const JobID& job_id) {
             Error(ErrorCode::INVALID_STATE, "job already finished", "DispensingExecutionUseCase"));
     }
 
-    auto precondition_result = ValidateExecutionPreconditions();
+    auto precondition_result = ValidateExecutionPreconditions(context->execution_request.dry_run);
     if (precondition_result.IsError()) {
         return Result<void>::Failure(precondition_result.GetError());
     }

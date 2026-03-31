@@ -7,6 +7,8 @@
 
 将计划胶点预览收敛为一条从 dispensing planning owner service 产生、同时被 execution package 与 preview snapshot 共用的权威结果链。实现重点是：在 owner planning 层按每条应出胶几何线段执行首尾双锚定和段内均匀分布，写回显式 `enable_position_trigger`，把 `trigger_distances_mm` 降级为派生兼容产物，移除 preview 对 `motion_trajectory_points`、距离回推和固定间隔采样的隐式 fallback，按真实几何分组复核 spacing，并保持 gateway/HMI 继续只接受 `planned_glue_snapshot + glue_points` 作为执行前门禁。
 
+项目级补充：自 2026-03-31 起，DXF authority layout 的上位策略以 `D:\Projects\SiligenSuite\docs\architecture\dxf-authority-layout-global-strategy-v1.md` 为准。本文中的“按每条应出胶几何线段执行首尾双锚定”仅适用于归一化/分派后边界被判定为硬锚点，或路径被切分为独立 `open_chain` 的场景；它不应被解释为所有 DXF 默认按原始几何段独立布点。
+
 ## Technical Context
 
 **Language/Version**: C++17 / CMake 3.20+（`modules/dispense-packaging`、`modules/workflow`、`apps/runtime-gateway`）、Python 3.11（`apps/hmi-app` 与 Python 协议/GUI 测试）、PowerShell 7（根级 `build.ps1` / `test.ps1` / `ci.ps1` 与 workflow 脚本）  

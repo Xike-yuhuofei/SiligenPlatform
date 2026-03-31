@@ -28,6 +28,42 @@ enum class DispenseSpanCurveMode {
     FlattenedCurve,
 };
 
+enum class DispenseSpanTopologyType {
+    OpenChain,
+    ClosedLoop,
+};
+
+enum class TopologyDispatchType {
+    SingleOpenChain,
+    SingleClosedLoop,
+    BranchOrRevisit,
+    MultiContour,
+    ExplicitProcessBoundary,
+    AuxiliaryGeometry,
+    UnsupportedMixedTopology,
+};
+
+enum class DispenseSpanSplitReason {
+    None,
+    BranchOrRevisit,
+    MultiContourBoundary,
+    ExplicitProcessBoundary,
+    ExceptionFeature,
+};
+
+enum class DispenseSpanAnchorPolicy {
+    PreserveEndpoints,
+    PreserveStrongAnchors,
+    ClosedLoopPhaseSearch,
+    ClosedLoopAnchorConstrained,
+};
+
+enum class DispenseSpanPhaseStrategy {
+    FixedZero,
+    DeterministicSearch,
+    AnchorConstrained,
+};
+
 enum class SpacingValidationClassification {
     Pass,
     PassWithException,
@@ -38,6 +74,25 @@ enum class LayoutTriggerSourceKind {
     Anchor,
     Generated,
     SharedVertex,
+};
+
+enum class StrongAnchorRole {
+    OpenStart,
+    OpenEnd,
+    SplitBoundary,
+    ExceptionBoundary,
+    ClosedLoopCorner,
+};
+
+struct StrongAnchor {
+    std::string anchor_id;
+    std::string span_ref;
+    Point2D position;
+    float32 distance_mm_span = 0.0f;
+    float32 significance_angle_deg = 0.0f;
+    std::size_t source_segment_index = 0;
+    StrongAnchorRole role = StrongAnchorRole::SplitBoundary;
+    bool required = true;
 };
 
 struct LayoutTriggerPoint {
@@ -70,27 +125,61 @@ struct SpacingValidationOutcome {
     std::string outcome_id;
     std::string layout_ref;
     std::string span_ref;
+    std::string component_id;
+    std::size_t component_index = 0;
     std::vector<std::string> trigger_refs;
     std::vector<Point2D> points;
+    DispenseSpanTopologyType topology_type = DispenseSpanTopologyType::OpenChain;
+    TopologyDispatchType dispatch_type = TopologyDispatchType::SingleOpenChain;
+    DispenseSpanSplitReason split_reason = DispenseSpanSplitReason::None;
+    DispenseSpanAnchorPolicy anchor_policy = DispenseSpanAnchorPolicy::PreserveEndpoints;
+    DispenseSpanPhaseStrategy phase_strategy = DispenseSpanPhaseStrategy::FixedZero;
     SpacingValidationClassification classification = SpacingValidationClassification::Pass;
     float32 min_observed_spacing_mm = 0.0f;
     float32 max_observed_spacing_mm = 0.0f;
+    std::string anchor_constraint_state;
     std::string exception_reason;
+    std::string anchor_exception_reason;
     std::string blocking_reason;
 };
 
 struct DispenseSpan {
     std::string span_id;
     std::string layout_ref;
+    std::string component_id;
+    std::size_t component_index = 0;
     std::vector<std::size_t> source_segment_indices;
     std::size_t order_index = 0;
     bool closed = false;
+    DispenseSpanTopologyType topology_type = DispenseSpanTopologyType::OpenChain;
+    TopologyDispatchType dispatch_type = TopologyDispatchType::SingleOpenChain;
+    DispenseSpanSplitReason split_reason = DispenseSpanSplitReason::None;
+    DispenseSpanAnchorPolicy anchor_policy = DispenseSpanAnchorPolicy::PreserveEndpoints;
+    DispenseSpanPhaseStrategy phase_strategy = DispenseSpanPhaseStrategy::FixedZero;
     float32 total_length_mm = 0.0f;
     float32 actual_spacing_mm = 0.0f;
     std::size_t interval_count = 0;
     float32 phase_mm = 0.0f;
     DispenseSpanCurveMode curve_mode = DispenseSpanCurveMode::Line;
     SpacingValidationClassification validation_state = SpacingValidationClassification::Pass;
+    std::size_t candidate_corner_count = 0;
+    std::size_t accepted_corner_count = 0;
+    std::size_t suppressed_corner_count = 0;
+    std::size_t dense_corner_cluster_count = 0;
+    bool anchor_constraints_satisfied = false;
+    std::vector<StrongAnchor> strong_anchors;
+};
+
+struct AuthorityLayoutComponent {
+    std::string component_id;
+    std::string layout_ref;
+    std::size_t component_index = 0;
+    TopologyDispatchType dispatch_type = TopologyDispatchType::SingleOpenChain;
+    bool ignored = false;
+    std::string ignored_reason;
+    std::string blocking_reason;
+    std::vector<std::size_t> source_segment_indices;
+    std::vector<std::string> span_refs;
 };
 
 struct AuthorityTriggerLayout {
@@ -106,6 +195,12 @@ struct AuthorityTriggerLayout {
     AuthorityTriggerLayoutState state = AuthorityTriggerLayoutState::Blocked;
     bool authority_ready = false;
     bool binding_ready = false;
+    bool topology_dispatch_applied = false;
+    bool branch_revisit_split_applied = false;
+    TopologyDispatchType dispatch_type = TopologyDispatchType::SingleOpenChain;
+    std::size_t effective_component_count = 0;
+    std::size_t ignored_component_count = 0;
+    std::vector<AuthorityLayoutComponent> components;
     std::vector<DispenseSpan> spans;
     std::vector<LayoutTriggerPoint> trigger_points;
     std::vector<InterpolationTriggerBinding> bindings;
@@ -140,6 +235,94 @@ inline const char* ToString(SpacingValidationClassification classification) {
             return "fail";
     }
     return "fail";
+}
+
+inline const char* ToString(DispenseSpanTopologyType topology_type) {
+    switch (topology_type) {
+        case DispenseSpanTopologyType::OpenChain:
+            return "open_chain";
+        case DispenseSpanTopologyType::ClosedLoop:
+            return "closed_loop";
+    }
+    return "open_chain";
+}
+
+inline const char* ToString(TopologyDispatchType dispatch_type) {
+    switch (dispatch_type) {
+        case TopologyDispatchType::SingleOpenChain:
+            return "single_open_chain";
+        case TopologyDispatchType::SingleClosedLoop:
+            return "single_closed_loop";
+        case TopologyDispatchType::BranchOrRevisit:
+            return "branch_or_revisit";
+        case TopologyDispatchType::MultiContour:
+            return "multi_contour";
+        case TopologyDispatchType::ExplicitProcessBoundary:
+            return "explicit_process_boundary";
+        case TopologyDispatchType::AuxiliaryGeometry:
+            return "auxiliary_geometry";
+        case TopologyDispatchType::UnsupportedMixedTopology:
+            return "unsupported_mixed_topology";
+    }
+    return "unsupported_mixed_topology";
+}
+
+inline const char* ToString(DispenseSpanSplitReason split_reason) {
+    switch (split_reason) {
+        case DispenseSpanSplitReason::None:
+            return "none";
+        case DispenseSpanSplitReason::BranchOrRevisit:
+            return "branch_or_revisit";
+        case DispenseSpanSplitReason::MultiContourBoundary:
+            return "multi_contour_boundary";
+        case DispenseSpanSplitReason::ExplicitProcessBoundary:
+            return "explicit_process_boundary";
+        case DispenseSpanSplitReason::ExceptionFeature:
+            return "exception_feature";
+    }
+    return "none";
+}
+
+inline const char* ToString(DispenseSpanAnchorPolicy anchor_policy) {
+    switch (anchor_policy) {
+        case DispenseSpanAnchorPolicy::PreserveEndpoints:
+            return "preserve_endpoints";
+        case DispenseSpanAnchorPolicy::PreserveStrongAnchors:
+            return "preserve_strong_anchors";
+        case DispenseSpanAnchorPolicy::ClosedLoopPhaseSearch:
+            return "closed_loop_phase_search";
+        case DispenseSpanAnchorPolicy::ClosedLoopAnchorConstrained:
+            return "closed_loop_anchor_constrained";
+    }
+    return "preserve_endpoints";
+}
+
+inline const char* ToString(DispenseSpanPhaseStrategy phase_strategy) {
+    switch (phase_strategy) {
+        case DispenseSpanPhaseStrategy::FixedZero:
+            return "fixed_zero";
+        case DispenseSpanPhaseStrategy::DeterministicSearch:
+            return "deterministic_search";
+        case DispenseSpanPhaseStrategy::AnchorConstrained:
+            return "anchor_constrained";
+    }
+    return "fixed_zero";
+}
+
+inline const char* ToString(StrongAnchorRole role) {
+    switch (role) {
+        case StrongAnchorRole::OpenStart:
+            return "open_start";
+        case StrongAnchorRole::OpenEnd:
+            return "open_end";
+        case StrongAnchorRole::SplitBoundary:
+            return "split_boundary";
+        case StrongAnchorRole::ExceptionBoundary:
+            return "exception_boundary";
+        case StrongAnchorRole::ClosedLoopCorner:
+            return "closed_loop_corner";
+    }
+    return "split_boundary";
 }
 
 }  // namespace Siligen::Domain::Dispensing::ValueObjects

@@ -430,7 +430,7 @@ Result<TaskID> DispensingExecutionUseCase::Impl::ExecuteAsync(const DispensingEx
     if (!validation.IsSuccess()) {
         return Result<TaskID>::Failure(validation.GetError());
     }
-    auto conn_check = ValidateHardwareConnection();
+    auto conn_check = ValidateHardwareConnection(request.dry_run);
     if (!conn_check.IsSuccess()) {
         return Result<TaskID>::Failure(conn_check.GetError());
     }
@@ -577,7 +577,7 @@ Result<JobID> DispensingExecutionUseCase::Impl::StartJob(const RuntimeStartJobRe
             Error(ErrorCode::INVALID_PARAMETER, "target_count must be greater than 0", "DispensingExecutionUseCase"));
     }
 
-    auto precondition_result = ValidateExecutionPreconditions();
+    auto precondition_result = ValidateExecutionPreconditions(request.execution_request.dry_run);
     if (precondition_result.IsError()) {
         return Result<JobID>::Failure(precondition_result.GetError());
     }
@@ -986,7 +986,7 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
             std::this_thread::sleep_for(kInflightReconcilePoll);
         }
 
-        auto precondition_result = ValidateExecutionPreconditions();
+        auto precondition_result = ValidateExecutionPreconditions(context->execution_request.dry_run);
         if (precondition_result.IsError()) {
             FinalizeJob(context, JobState::FAILED, precondition_result.GetError().GetMessage());
             return;
