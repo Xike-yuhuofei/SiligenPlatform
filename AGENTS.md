@@ -73,6 +73,8 @@
 - Git 跟踪的仓库源码、spec 产物、契约文档、测试与基线资产；无数据库 (fix/workflow/SPEC-001-glue-point-alignment)
 - C++17 / CMake 3.20+（`modules/dispense-packaging`、`modules/workflow`、`apps/runtime-gateway`）、Python 3.11（`apps/hmi-app` 测试与 mock 工具）、PowerShell 7（根级 `build.ps1` / `test.ps1` / `ci.ps1` 与 spec-kit 脚本） + `modules/dispense-packaging` `DispensePlanningFacade`、`DispensingPlannerService`、`TriggerPlanner`、`PreviewSnapshotService`、`TrajectoryTriggerUtils`；计划新增 `AuthorityTriggerLayoutPlanner`、`PathArcLengthLocator`、`CurveFlatteningService`、`AuthorityTriggerLayout`；`modules/workflow` `PlanningUseCase`、`DispensingWorkflowUseCase`、`WorkflowPreviewSnapshotService`；`apps/runtime-gateway` `TcpCommandDispatcher`；`apps/hmi-app` `main_window.py`；`shared/contracts/application/commands/dxf.command-set.json` 与 fixtures；GoogleTest / CTest；`pytest` (fix/workflow/SPEC-002-global-glue-spacing)
 - Git 跟踪的仓库源码、spec 产物、协议契约、fixture 与测试资产；无数据库 (fix/workflow/SPEC-002-global-glue-spacing)
+- C++17、CMake 3.20+、Python 3.11、PowerShell 7、Markdown + GoogleTest、pytest、PyQt5/PyQtWebEngine、protobuf、spdlog、仓库根级验证脚本 (refactor/process/ARCH-203-process-model-owner-repair)
+- N/A（仅 Git 跟踪仓库文件与 `tests/reports/` 报告目录） (refactor/process/ARCH-203-process-model-owner-repair)
 
 ## Recent Changes
 - refactor/arch/NOISSUE-architecture-refactor-spec: Added Markdown docs; PowerShell 7; Python 3.11; C++17/CMake 3.20+ + Root `build.ps1` / `test.ps1` / `ci.ps1`; CMake workspace targets; `application-contracts`; `engineering-contracts`; `engineering-data`; `test-kit`; protobuf; spdlog
