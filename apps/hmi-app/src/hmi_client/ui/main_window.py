@@ -4,6 +4,7 @@ import sys
 import time
 import logging
 import html
+import threading
 from pathlib import Path
 
 try:
@@ -20,7 +21,7 @@ from PyQt5.QtWidgets import (
     QProgressBar, QListWidget, QListWidgetItem, QMessageBox, QDialog, QDialogButtonBox,
     QComboBox, QFormLayout, QScrollArea, QRadioButton, QStatusBar, QPlainTextEdit
 )
-from PyQt5.QtCore import QTimer, Qt, QSize, QEvent
+from PyQt5.QtCore import QTimer, Qt, QSize, QEvent, QThread, pyqtSignal
 from PyQt5.QtGui import QFont, QColor
 
 try:
@@ -241,6 +242,78 @@ class AspectRatioContainer(QWidget):
         super().resizeEvent(event)
 
 
+class HomeAutoWorker(QThread):
+    completed = pyqtSignal(bool, str)
+
+    def __init__(
+        self,
+        *,
+        host: str,
+        port: int,
+        axes: list[str] | None,
+        force_rehome: bool,
+        timeout_ms: int = 0,
+    ) -> None:
+        super().__init__()
+        self._host = host
+        self._port = port
+        self._axes = list(axes) if axes else None
+        self._force_rehome = force_rehome
+        self._timeout_ms = timeout_ms
+        self._cancel_lock = threading.Lock()
+        self._cancelled = False
+        self._client_ref = None
+
+    def cancel(self) -> None:
+        with self._cancel_lock:
+            self._cancelled = True
+            client = self._client_ref
+        if client is not None:
+            try:
+                client.disconnect()
+            except Exception:
+                pass
+
+    def _is_cancelled(self) -> bool:
+        with self._cancel_lock:
+            return self._cancelled
+
+    def run(self) -> None:
+        client = None
+        ok = False
+        message = ""
+        try:
+            if self._is_cancelled():
+                return
+            client = TcpClient(host=self._host, port=self._port)
+            with self._cancel_lock:
+                self._client_ref = client
+            if not client.connect():
+                message = "无法连接后端，请检查TCP链路"
+            else:
+                protocol = CommandProtocol(client)
+                ok, message = protocol.home_auto(
+                    self._axes,
+                    force=self._force_rehome,
+                    wait_for_completion=True,
+                    timeout_ms=self._timeout_ms,
+                )
+                if self._is_cancelled():
+                    return
+        except Exception as exc:
+            message = str(exc) or "回零执行异常"
+        finally:
+            if client is not None:
+                try:
+                    client.disconnect()
+                except Exception:
+                    pass
+            with self._cancel_lock:
+                self._client_ref = None
+        if not self._is_cancelled():
+            self.completed.emit(ok, message)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, launch_mode: str = "online"):
         super().__init__()
@@ -280,6 +353,8 @@ class MainWindow(QMainWindow):
         self._preview_gate = self._preview_session.gate
         self._preview_plan_dry_run = None
         self._preview_source = ""
+        self._home_auto_worker = None
+        self._home_request_generation = 0
         self._preview_snapshot_worker = None
         self._preview_request_generation = 0
         self._preview_refresh_inflight = False
@@ -1328,6 +1403,29 @@ class MainWindow(QMainWindow):
     def _has_online_capability(self) -> bool:
         return not self._is_offline_mode() and self._is_online_ready()
 
+    def _has_runtime_command_channel(self) -> bool:
+        snapshot = self._current_session_snapshot()
+        return snapshot is not None and snapshot.mode == "online" and snapshot.tcp_state == "ready"
+
+    def _require_runtime_command_channel(self, capability: str) -> bool:
+        if self._is_offline_mode():
+            self.statusBar().showMessage(f"Offline 模式下不可用: {capability}")
+            return False
+
+        snapshot = self._current_session_snapshot()
+        if snapshot is None:
+            self.statusBar().showMessage(f"系统启动中: {capability} 暂不可用")
+            return False
+
+        if snapshot.tcp_state == "ready":
+            return True
+
+        if self._launch_result is not None and self._launch_result.failure_code:
+            self.statusBar().showMessage(f"TCP 未就绪({self._launch_result.failure_code}): {capability} 暂不可用")
+        else:
+            self.statusBar().showMessage(f"TCP 未就绪: {capability} 暂不可用")
+        return False
+
     def _is_session_operation_running(self) -> bool:
         startup_running = self._startup_worker is not None and self._startup_worker.isRunning()
         recovery_running = self._recovery_worker is not None and self._recovery_worker.isRunning()
@@ -1576,7 +1674,7 @@ class MainWindow(QMainWindow):
         )
 
     def _update_home_controls_state(self):
-        enabled = self._is_online_ready()
+        enabled = self._is_online_ready() and not self._is_home_worker_running()
         if hasattr(self, "_home_all_btn"):
             self._home_all_btn.setEnabled(enabled)
         if hasattr(self, "_prod_home_btn"):
@@ -1584,6 +1682,23 @@ class MainWindow(QMainWindow):
         if hasattr(self, "_home_axis_buttons"):
             for btn in self._home_axis_buttons:
                 btn.setEnabled(enabled)
+
+    def _is_home_worker_running(self) -> bool:
+        return self._home_auto_worker is not None and self._home_auto_worker.isRunning()
+
+    def _cancel_active_home_worker(self, *, reason: str) -> None:
+        worker = self._home_auto_worker
+        self._home_auto_worker = None
+        if worker is None:
+            return
+        self._home_request_generation += 1
+        try:
+            worker.cancel()
+        except Exception as exc:
+            _UI_LOGGER.warning("home_worker_cancel_failed reason=%s error=%s", reason, exc)
+        else:
+            _UI_LOGGER.info("home_worker_cancelled reason=%s generation=%s", reason, self._home_request_generation)
+        self._update_home_controls_state()
 
     def _check_home_preconditions(self) -> bool:
         if not self._require_online_mode("回零"):
@@ -1660,13 +1775,52 @@ class MainWindow(QMainWindow):
 
     def _on_home(self, axes, force_rehome=False, allow_go_home=True):
         self._auth.record_activity()
+        if self._is_home_worker_running():
+            self.statusBar().showMessage("回零进行中，请稍候")
+            return
         if not self._check_home_preconditions():
             return
         _ = allow_go_home
-        ok, msg = self._protocol.home_auto(axes, force=force_rehome)
-        if not ok and msg:
-            QMessageBox.warning(self, "回零失败", msg)
-        self.statusBar().showMessage(f"回零: {msg}" if msg else ("回零完成" if ok else "回零失败"))
+        self._home_request_generation += 1
+        request_token = self._home_request_generation
+        worker = HomeAutoWorker(
+            host=self._client.host,
+            port=self._client.port,
+            axes=axes,
+            force_rehome=force_rehome,
+        )
+        worker.completed.connect(
+            lambda ok, message, token=request_token: self._on_home_auto_completed(
+                ok,
+                message,
+                request_token=token,
+            )
+        )
+        worker.finished.connect(worker.deleteLater)
+        self._home_auto_worker = worker
+        self._update_home_controls_state()
+        self.statusBar().showMessage("回零进行中...")
+        try:
+            worker.start()
+        except Exception as exc:
+            self._home_auto_worker = None
+            self._update_home_controls_state()
+            QMessageBox.warning(self, "回零失败", str(exc) or "回零启动失败")
+            self.statusBar().showMessage("回零启动失败")
+
+    def _on_home_auto_completed(self, ok: bool, message: str, *, request_token: int) -> None:
+        if request_token != self._home_request_generation:
+            _UI_LOGGER.info(
+                "home_result_ignored reason=stale_worker_result request_token=%s active_generation=%s",
+                request_token,
+                self._home_request_generation,
+            )
+            return
+        self._home_auto_worker = None
+        self._update_home_controls_state()
+        if not ok and message:
+            QMessageBox.warning(self, "回零失败", message)
+        self.statusBar().showMessage(f"回零: {message}" if message else ("回零完成" if ok else "回零失败"))
 
     def _on_speed_changed(self, value):
         self._jog_speed = float(value)
@@ -1771,6 +1925,7 @@ class MainWindow(QMainWindow):
         if axis:
             self._log_motion_snapshot("Stop pre", axis)
         self._jog_press_time = None
+        self._cancel_active_home_worker(reason=f"stop:{reason}")
         ok = self._protocol.stop()
         if not ok:
             _UI_LOGGER.warning("Stop request failed reason=%s", reason)
@@ -1778,13 +1933,14 @@ class MainWindow(QMainWindow):
             self._log_motion_snapshot("Stop post", axis)
 
     def _on_estop(self):
-        if not self._require_online_mode("急停"):
+        if not self._require_runtime_command_channel("急停"):
             return
+        self._cancel_active_home_worker(reason="estop")
         ok, msg = self._protocol.emergency_stop()
         self.statusBar().showMessage(f"急停: {msg}" if ok else (f"急停失败: {msg}" if msg else "急停失败"))
 
     def _on_estop_reset(self):
-        if not self._require_online_mode("急停复位"):
+        if not self._require_runtime_command_channel("急停复位"):
             return
         ok, msg = self._protocol.estop_reset()
         self.statusBar().showMessage(f"急停复位: {msg}" if ok else (f"急停复位失败: {msg}" if msg else "急停复位失败"))
@@ -3006,6 +3162,11 @@ class MainWindow(QMainWindow):
                 return
 
         self._cleanup_temp_preview()
+        home_worker = self._home_auto_worker
+        if home_worker is not None:
+            self._cancel_active_home_worker(reason="window_close")
+            if home_worker.isRunning():
+                home_worker.wait(1000)
         if self._preview_snapshot_worker and self._preview_snapshot_worker.isRunning():
             self._preview_snapshot_worker.wait(1000)
         if self._backend:

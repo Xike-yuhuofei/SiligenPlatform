@@ -147,6 +147,7 @@ def build_launch_ui_state(
     connected = session_snapshot.tcp_state == "ready"
     hardware_connected = session_snapshot.hardware_state == "ready"
     allow_online_actions = is_online_ready(session_snapshot)
+    command_channel_ready = effective_mode == "online" and connected
 
     if allow_online_actions:
         operation_status = "空闲"
@@ -178,9 +179,9 @@ def build_launch_ui_state(
         hardware_led_state=_led_state_for_hardware(session_snapshot.hardware_state),
         allow_online_actions=allow_online_actions,
         system_panel_enabled=True,
-        stop_enabled=allow_online_actions,
+        stop_enabled=command_channel_ready,
         hw_connect_enabled=allow_online_actions and not session_operation_running,
-        global_estop_enabled=allow_online_actions,
+        global_estop_enabled=command_channel_ready,
         recovery_controls=recovery_controls,
     )
 

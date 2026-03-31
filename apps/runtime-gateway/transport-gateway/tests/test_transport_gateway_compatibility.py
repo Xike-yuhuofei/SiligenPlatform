@@ -340,6 +340,29 @@ def test_estop_reset_and_disconnect_semantics_are_wired():
     assert "emergency_stop_use_case_->RecoverFromEmergencyStop()" in facade_impl
 
 
+def test_stop_command_uses_unified_non_estop_motion_stop_path():
+    source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    facade_header = (ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "facades" / "tcp" / "TcpMotionFacade.h").read_text(encoding="utf-8")
+    facade_impl = (ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "facades" / "tcp" / "TcpMotionFacade.cpp").read_text(encoding="utf-8")
+    builder = TCP_FACADE_BUILDER.read_text(encoding="utf-8")
+
+    stop_match = re.search(
+        r"std::string TcpCommandDispatcher::HandleStop.*?return GatewayJsonProtocol::MakeSuccessResponse",
+        source,
+        re.S,
+    )
+    assert stop_match, "cannot locate HandleStop body"
+    stop_body = stop_match.group(0)
+
+    assert "Shared::Types::Result<void> StopAllAxes(bool immediate = false);" in facade_header
+    assert "motion_safety_use_case_" in facade_header
+    assert "motion_safety_use_case_->StopAllAxes(immediate)" in facade_impl
+    assert "Resolve<Application::UseCases::Motion::Safety::MotionSafetyUseCase>()" in builder
+    assert "motionFacade_->StopAllAxes(false)" in stop_body
+    assert "StopJog(axis_id)" not in stop_body
+    assert "axis_index < 4" not in stop_body
+
+
 def test_mock_io_set_is_registered_and_wired():
     source = TCP_DISPATCHER.read_text(encoding="utf-8")
     mock_io_service = MOCK_IO_CONTROL_SERVICE.read_text(encoding="utf-8")
