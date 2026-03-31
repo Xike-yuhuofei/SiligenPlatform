@@ -460,10 +460,6 @@ std::shared_ptr<UseCases::Dispensing::PlanningUseCase>
 ApplicationContainer::CreateInstance<UseCases::Dispensing::PlanningUseCase>();
 
 template<>
-std::shared_ptr<UseCases::Dispensing::DispensingExecutionWorkflowUseCase>
-ApplicationContainer::CreateInstance<UseCases::Dispensing::DispensingExecutionWorkflowUseCase>();
-
-template<>
 std::shared_ptr<UseCases::Dispensing::UploadFileUseCase>
 ApplicationContainer::CreateInstance<UseCases::Dispensing::UploadFileUseCase>();
 

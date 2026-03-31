@@ -2,7 +2,7 @@
 
 - 状态：Ready
 - 日期：2026-03-27
-- 目标：只接受 `runtime_snapshot` 作为真实在线轨迹预览通过来源，并证明其与执行准备数据语义一致
+- 目标：只接受 `planned_glue_snapshot + glue_points` 作为真实在线轨迹预览通过来源，并证明其与执行准备数据语义一致
 
 ## 1. 在线就绪门禁
 
@@ -25,12 +25,15 @@
 - [ ] `plan-prepare.json` 中记录了 `plan_id` 与 `plan_fingerprint`。
 - [ ] `snapshot.json` 中记录了 `snapshot_id`、`snapshot_hash`、`plan_id`、`preview_source`。
 - [ ] `preview-verdict.json` 中记录了同一 `plan_id / plan_fingerprint / snapshot_hash`。
+- [ ] 若证据包包含运行态标识，只允许记录 `job_id`；不得再以 `task_id` / `active_task_id` 作为 live 执行回链键。
 - [ ] `snapshot_hash == plan_fingerprint`，可证明预览与执行准备属于同一上下文。
 
 ## 4. 来源边界
 
-- [ ] `preview_source == runtime_snapshot`。
+- [ ] `preview_source == planned_glue_snapshot`。
+- [ ] `preview_kind == glue_points` 且 `glue_points` 非空。
 - [ ] 若 `preview_source == mock_synthetic`，结论必须为 `invalid-source`。
+- [ ] 若 `preview_source == runtime_snapshot`，结论必须为 `invalid-source` 或诊断-only，不得记为通过。
 - [ ] 若来源缺失、未知或无法回链到当前 plan，结论必须为 `invalid-source` 或 `mismatch`。
 - [ ] HMI 必须明确展示来源标签，不得把 mock 或未知来源文案伪装成真实通过。
 

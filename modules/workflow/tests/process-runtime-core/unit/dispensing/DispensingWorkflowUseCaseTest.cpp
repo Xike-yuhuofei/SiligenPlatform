@@ -20,25 +20,19 @@
 #include "application/services/process_path/ProcessPathFacade.h"
 #include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
 #undef private
-#include "application/services/dispensing/DispensingExecutionCompatibilityService.h"
-#include "application/usecases/dispensing/DispensingExecutionWorkflowUseCase.h"
 #include "domain/dispensing/planning/domain-services/DispensingPlannerService.h"
 #include "dxf_geometry/application/services/dxf/DxfPbPreparationService.h"
 
 namespace {
 
-using Siligen::Application::Services::Dispensing::DispensingExecutionCompatibilityService;
 using Siligen::Application::UseCases::Dispensing::DispensingExecutionUseCase;
-using Siligen::Application::UseCases::Dispensing::DispensingExecutionRequest;
-using Siligen::Application::UseCases::Dispensing::DispensingExecutionWorkflowUseCase;
-using Siligen::Application::UseCases::Dispensing::DispensingMVPRequest;
 using Siligen::Application::UseCases::Dispensing::DispensingWorkflowUseCase;
-using Siligen::Application::UseCases::Dispensing::JobExecutionContext;
-using Siligen::Application::UseCases::Dispensing::JobState;
 using Siligen::Application::UseCases::Dispensing::PlanningUseCase;
 using Siligen::Application::UseCases::Dispensing::PlanningRequest;
 using Siligen::Application::UseCases::Dispensing::PlanningResponse;
 using Siligen::Application::UseCases::Dispensing::PreparePlanRequest;
+using Siligen::Application::UseCases::Dispensing::PreparePlanRuntimeOverrides;
+using Siligen::Application::UseCases::Dispensing::RuntimeJobStatusResponse;
 using Siligen::Application::UseCases::Dispensing::IUploadFilePort;
 using Siligen::Application::Services::DXF::DxfPbPreparationService;
 using Siligen::Device::Contracts::Commands::DeviceConnection;
@@ -102,8 +96,8 @@ class ScopedTempPbFile {
     std::filesystem::path path_;
 };
 
-DispensingMVPRequest BuildLegacyRequest(const std::string& filepath = "legacy.dxf") {
-    DispensingMVPRequest request;
+PlanningRequest BuildCanonicalPlanningRequest(const std::string& filepath = "canonical.dxf") {
+    PlanningRequest request;
     request.dxf_filepath = filepath;
     request.optimize_path = true;
     request.start_x = 12.5f;
@@ -116,27 +110,37 @@ DispensingMVPRequest BuildLegacyRequest(const std::string& filepath = "legacy.dx
     request.curve_chain_angle_deg = 15.0f;
     request.curve_chain_max_segment_mm = 1.5f;
     request.use_hardware_trigger = false;
-    request.dry_run = true;
-    request.max_jerk = 500.0f;
-    request.arc_tolerance_mm = 0.1f;
     request.use_interpolation_planner = true;
     request.interpolation_algorithm = Siligen::Domain::Motion::InterpolationAlgorithm::SPLINE;
-    request.dispensing_speed_mm_s = 22.0f;
-    request.dry_run_speed_mm_s = 88.0f;
-    request.rapid_speed_mm_s = 120.0f;
-    request.acceleration_mm_s2 = 350.0f;
-    request.velocity_trace_enabled = true;
-    request.velocity_trace_interval_ms = 25;
-    request.velocity_trace_path = "logs/trace.csv";
-    request.velocity_guard_enabled = true;
-    request.velocity_guard_ratio = 0.2f;
-    request.velocity_guard_abs_mm_s = 4.0f;
-    request.velocity_guard_min_expected_mm_s = 6.0f;
-    request.velocity_guard_grace_ms = 300;
-    request.velocity_guard_interval_ms = 150;
-    request.velocity_guard_max_consecutive = 4;
-    request.velocity_guard_stop_on_violation = true;
+    request.trajectory_config.max_velocity = 88.0f;
+    request.trajectory_config.max_acceleration = 350.0f;
+    request.trajectory_config.max_jerk = 500.0f;
+    request.trajectory_config.arc_tolerance = 0.1f;
     return request;
+}
+
+PreparePlanRuntimeOverrides BuildPreparePlanRuntimeOverrides() {
+    PreparePlanRuntimeOverrides overrides;
+    overrides.use_hardware_trigger = false;
+    overrides.dry_run = true;
+    overrides.max_jerk = 500.0f;
+    overrides.arc_tolerance_mm = 0.1f;
+    overrides.dispensing_speed_mm_s = 22.0f;
+    overrides.dry_run_speed_mm_s = 88.0f;
+    overrides.rapid_speed_mm_s = 120.0f;
+    overrides.acceleration_mm_s2 = 350.0f;
+    overrides.velocity_trace_enabled = true;
+    overrides.velocity_trace_interval_ms = 25;
+    overrides.velocity_trace_path = "logs/trace.csv";
+    overrides.velocity_guard_enabled = true;
+    overrides.velocity_guard_ratio = 0.2f;
+    overrides.velocity_guard_abs_mm_s = 4.0f;
+    overrides.velocity_guard_min_expected_mm_s = 6.0f;
+    overrides.velocity_guard_grace_ms = 300;
+    overrides.velocity_guard_interval_ms = 150;
+    overrides.velocity_guard_max_consecutive = 4;
+    overrides.velocity_guard_stop_on_violation = true;
+    return overrides;
 }
 
 DispensingPlan BuildMinimalPlan() {
@@ -173,33 +177,6 @@ Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated BuildMinimalEx
     built.source_path = "artifact.pb";
     built.source_fingerprint = "artifact-fingerprint";
     return Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated(built);
-}
-
-PlanningResponse BuildPlanningResponseWithExecutionPlan() {
-    PlanningResponse response;
-    const auto plan = BuildMinimalPlan();
-    response.success = true;
-    response.segment_count = 1;
-    response.total_length = 20.0f;
-    response.estimated_time = 1.0f;
-    response.execution_trajectory_points.emplace_back(0.0f, 0.0f, 10.0f);
-    response.execution_trajectory_points.emplace_back(20.0f, 0.0f, 10.0f);
-    response.glue_points.emplace_back(0.0f, 0.0f);
-    response.glue_points.emplace_back(20.0f, 0.0f);
-    response.preview_authority_ready = true;
-    response.preview_authority_shared_with_execution = true;
-    response.preview_binding_ready = true;
-    response.preview_spacing_valid = true;
-    response.preview_validation_classification = "pass";
-    response.authority_trigger_layout.layout_id = "layout-planning-response";
-    response.execution_plan = std::make_shared<DispensingPlan>(plan);
-
-    auto execution_package = BuildMinimalExecutionPackage();
-    execution_package.total_length_mm = response.total_length;
-    execution_package.estimated_time_s = response.estimated_time;
-    response.execution_package =
-        std::make_shared<Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated>(execution_package);
-    return response;
 }
 
 std::shared_ptr<PlanningUseCase> CreateRealPlanningUseCase() {
@@ -473,93 +450,7 @@ TEST(DispensingWorkflowUseCaseTest, StartJobRejectsSafetyDoor) {
     EXPECT_FALSE(result.GetError().GetMessage().empty());
 }
 
-TEST(DispensingWorkflowUseCaseTest, CompatibilityServiceBuildPlanningRequestMapsLegacyFieldsAndOverrideSourcePath) {
-    DispensingExecutionCompatibilityService service;
-    auto request = BuildLegacyRequest("original.dxf");
-
-    auto result = service.BuildPlanningRequest(request, "prepared.pb");
-    ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
-
-    const auto& planning_request = result.Value();
-    EXPECT_EQ(planning_request.dxf_filepath, "prepared.pb");
-    EXPECT_EQ(planning_request.optimize_path, request.optimize_path);
-    EXPECT_FLOAT_EQ(planning_request.start_x, request.start_x);
-    EXPECT_FLOAT_EQ(planning_request.start_y, request.start_y);
-    EXPECT_EQ(planning_request.approximate_splines, request.approximate_splines);
-    EXPECT_EQ(planning_request.two_opt_iterations, request.two_opt_iterations);
-    EXPECT_FLOAT_EQ(planning_request.spline_max_step_mm, request.spline_max_step_mm);
-    EXPECT_FLOAT_EQ(planning_request.spline_max_error_mm, request.spline_max_error_mm);
-    EXPECT_FLOAT_EQ(planning_request.continuity_tolerance_mm, request.continuity_tolerance_mm);
-    EXPECT_FLOAT_EQ(planning_request.curve_chain_angle_deg, request.curve_chain_angle_deg);
-    EXPECT_FLOAT_EQ(planning_request.curve_chain_max_segment_mm, request.curve_chain_max_segment_mm);
-    EXPECT_EQ(planning_request.use_hardware_trigger, request.use_hardware_trigger);
-    EXPECT_EQ(planning_request.use_interpolation_planner, request.use_interpolation_planner);
-    EXPECT_EQ(planning_request.interpolation_algorithm, request.interpolation_algorithm);
-    EXPECT_FLOAT_EQ(planning_request.trajectory_config.max_velocity, request.dry_run_speed_mm_s.value());
-    EXPECT_FLOAT_EQ(planning_request.trajectory_config.max_acceleration, request.acceleration_mm_s2.value());
-    EXPECT_FLOAT_EQ(planning_request.trajectory_config.arc_tolerance, request.arc_tolerance_mm);
-    EXPECT_FLOAT_EQ(planning_request.trajectory_config.max_jerk, request.max_jerk);
-}
-
-TEST(DispensingWorkflowUseCaseTest, CompatibilityServiceRejectsMissingExecutionPlan) {
-    DispensingExecutionCompatibilityService service;
-    PlanningResponse planning_response;
-    auto request = BuildLegacyRequest();
-
-    auto result = service.BuildExecutionRequest(planning_response, request, "artifact.pb");
-    ASSERT_TRUE(result.IsError());
-    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
-    EXPECT_NE(result.GetError().GetMessage().find("missing execution package"), std::string::npos);
-}
-
-TEST(DispensingWorkflowUseCaseTest, CompatibilityServiceBuildsCanonicalExecutionRequest) {
-    DispensingExecutionCompatibilityService service;
-    auto request = BuildLegacyRequest("legacy-path.dxf");
-    auto planning_response = BuildPlanningResponseWithExecutionPlan();
-
-    auto result = service.BuildExecutionRequest(planning_response, request, "artifact.pb");
-    ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
-
-    const auto& execution_request = result.Value();
-    EXPECT_EQ(execution_request.source_path, "artifact.pb");
-    EXPECT_EQ(execution_request.use_hardware_trigger, request.use_hardware_trigger);
-    EXPECT_EQ(execution_request.dry_run, request.dry_run);
-    EXPECT_EQ(execution_request.max_jerk, request.max_jerk);
-    EXPECT_EQ(execution_request.arc_tolerance_mm, request.arc_tolerance_mm);
-    ASSERT_TRUE(execution_request.dispensing_speed_mm_s.has_value());
-    EXPECT_FLOAT_EQ(execution_request.dispensing_speed_mm_s.value(), request.dispensing_speed_mm_s.value());
-    ASSERT_TRUE(execution_request.dry_run_speed_mm_s.has_value());
-    EXPECT_FLOAT_EQ(execution_request.dry_run_speed_mm_s.value(), request.dry_run_speed_mm_s.value());
-    ASSERT_TRUE(execution_request.acceleration_mm_s2.has_value());
-    EXPECT_FLOAT_EQ(execution_request.acceleration_mm_s2.value(), request.acceleration_mm_s2.value());
-    EXPECT_TRUE(execution_request.velocity_trace_enabled);
-    EXPECT_EQ(execution_request.velocity_trace_interval_ms, request.velocity_trace_interval_ms);
-    EXPECT_EQ(execution_request.velocity_trace_path, request.velocity_trace_path);
-    EXPECT_TRUE(execution_request.velocity_guard_stop_on_violation);
-    EXPECT_GE(execution_request.execution_package.execution_plan.interpolation_points.size(), 2U);
-}
-
-TEST(DispensingWorkflowUseCaseTest, ExecutionWorkflowUseCasePlansThenDelegatesToExecutionLayer) {
-    ScopedTempPbFile temp_pb_file;
-    auto planning_use_case = CreateRealPlanningUseCase();
-    auto execution_use_case = std::make_shared<DispensingExecutionUseCase>(
-        nullptr,
-        nullptr,
-        nullptr,
-        nullptr,
-        nullptr,
-        nullptr,
-        nullptr);
-    DispensingExecutionWorkflowUseCase use_case(planning_use_case, execution_use_case);
-
-    auto request = BuildLegacyRequest(temp_pb_file.string());
-    auto result = use_case.Execute(request);
-
-    ASSERT_TRUE(result.IsError());
-    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::PORT_NOT_INITIALIZED);
-}
-
-TEST(DispensingWorkflowUseCaseTest, PreparePlanStoresCanonicalExecutionRequestAndArtifactSourcePath) {
+TEST(DispensingWorkflowUseCaseTest, PreparePlanUsesCanonicalPlanningInputAndRuntimeOverrides) {
     ScopedTempPbFile temp_pb_file;
     auto planning_use_case = CreateRealPlanningUseCase();
     auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
@@ -581,7 +472,9 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanStoresCanonicalExecutionRequestAn
 
     PreparePlanRequest request;
     request.artifact_id = artifact_record.response.artifact_id;
-    request.execution_request = BuildLegacyRequest("legacy-input.dxf");
+    request.planning_request = BuildCanonicalPlanningRequest();
+    request.planning_request.dxf_filepath.clear();
+    request.runtime_overrides = BuildPreparePlanRuntimeOverrides();
 
     auto result = use_case.PreparePlan(request);
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
@@ -605,6 +498,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanStoresCanonicalExecutionRequestAn
     EXPECT_GE(stored_launch.execution_package.execution_plan.motion_trajectory.points.size() +
                   stored_launch.execution_package.execution_plan.interpolation_points.size(),
               2U);
+    EXPECT_EQ(prepared.filepath, temp_pb_file.string());
 }
 
 TEST(DispensingWorkflowUseCaseTest, StartJobRejectsUnhomedAxis) {
@@ -660,13 +554,13 @@ TEST(DispensingWorkflowUseCaseTest, StartAndResumeUseSameInterlockPreconditions)
     ASSERT_TRUE(start_result.IsError());
     EXPECT_EQ(start_result.GetError().GetCode(), ErrorCode::EMERGENCY_STOP_ACTIVATED);
 
-    auto runtime_context = std::make_shared<JobExecutionContext>();
-    runtime_context->job_id = "job-1";
-    runtime_context->plan_id = "plan-1";
-    runtime_context->plan_fingerprint = "fp-plan-1";
-    runtime_context->state.store(JobState::PAUSED);
-    runtime_context->pause_requested.store(true);
-    execution_use_case->RegisterJobContextForTesting(runtime_context);
+    RuntimeJobStatusResponse runtime_status;
+    runtime_status.job_id = "job-1";
+    runtime_status.plan_id = "plan-1";
+    runtime_status.plan_fingerprint = "fp-plan-1";
+    runtime_status.state = "paused";
+    runtime_status.target_count = 1;
+    execution_use_case->SeedJobStateForTesting(runtime_status, true);
     execution_use_case->SetActiveJobForTesting("job-1");
 
     auto resume_result = use_case.ResumeJob("job-1");
@@ -948,6 +842,69 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFailsAtSnapshotStageWhenBi
         "authority trigger binding unavailable");
 }
 
+TEST(DispensingWorkflowUseCaseTest, PreviewGateFailureReasonIsConsistentAcrossSnapshotConfirmAndStart) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_use_case =
+        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
+    motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
+    homing_port->homed[LogicalAxisId::X] = true;
+    homing_port->homed[LogicalAxisId::Y] = true;
+
+    auto snapshot_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    auto confirm_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    auto start_case =
+        CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port, execution_use_case);
+
+    const std::string expected_reason = "authority trigger binding unavailable";
+
+    auto snapshot_plan = BuildPreviewPlanRecord(
+        "plan-gate-snapshot",
+        {Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)});
+    snapshot_plan.preview_state = DispensingWorkflowUseCase::PlanPreviewState::PREPARED;
+    snapshot_plan.preview_binding_ready = false;
+    snapshot_plan.preview_failure_reason = expected_reason;
+    snapshot_case.plans_[snapshot_plan.response.plan_id] = snapshot_plan;
+
+    auto confirm_plan = BuildPreviewPlanRecord(
+        "plan-gate-confirm",
+        {Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)});
+    confirm_plan.preview_state = DispensingWorkflowUseCase::PlanPreviewState::SNAPSHOT_READY;
+    confirm_plan.preview_binding_ready = false;
+    confirm_plan.preview_failure_reason = expected_reason;
+    confirm_case.plans_[confirm_plan.response.plan_id] = confirm_plan;
+
+    SeedPlan(start_case, "plan-gate-start");
+    auto& start_plan = start_case.plans_.at("plan-gate-start");
+    start_plan.preview_binding_ready = false;
+    start_plan.preview_failure_reason = expected_reason;
+
+    Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest snapshot_request;
+    snapshot_request.plan_id = "plan-gate-snapshot";
+    const auto snapshot_result = snapshot_case.GetPreviewSnapshot(snapshot_request);
+
+    Siligen::Application::UseCases::Dispensing::ConfirmPreviewRequest confirm_request;
+    confirm_request.plan_id = "plan-gate-confirm";
+    confirm_request.snapshot_hash = "fp-plan-gate-confirm";
+    const auto confirm_result = confirm_case.ConfirmPreview(confirm_request);
+
+    Siligen::Application::UseCases::Dispensing::StartJobRequest start_request;
+    start_request.plan_id = "plan-gate-start";
+    start_request.plan_fingerprint = "fp-plan-gate-start";
+    start_request.target_count = 1;
+    const auto start_result = start_case.StartJob(start_request);
+
+    ASSERT_TRUE(snapshot_result.IsError());
+    ASSERT_TRUE(confirm_result.IsError());
+    ASSERT_TRUE(start_result.IsError());
+    EXPECT_EQ(snapshot_result.GetError().GetMessage(), expected_reason);
+    EXPECT_EQ(confirm_result.GetError().GetMessage(), expected_reason);
+    EXPECT_EQ(start_result.GetError().GetMessage(), expected_reason);
+}
+
 TEST(DispensingWorkflowUseCaseTest, StartJobRejectsPreviewAuthorityMismatchBeforeRuntimeLaunch) {
     auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
@@ -1028,16 +985,16 @@ TEST(DispensingWorkflowUseCaseTest, FinalizeJobClearsConfirmedPreviewState) {
     use_case.plans_[plan_record.response.plan_id] = plan_record;
     use_case.job_plan_index_["job-finish"] = "plan-finish";
 
-    auto runtime_context = std::make_shared<JobExecutionContext>();
-    runtime_context->job_id = "job-finish";
-    runtime_context->plan_id = "plan-finish";
-    runtime_context->plan_fingerprint = "fp-plan-finish";
-    runtime_context->target_count.store(1);
-    runtime_context->state.store(JobState::RUNNING);
-    execution_use_case->RegisterJobContextForTesting(runtime_context);
+    RuntimeJobStatusResponse runtime_status;
+    runtime_status.job_id = "job-finish";
+    runtime_status.plan_id = "plan-finish";
+    runtime_status.plan_fingerprint = "fp-plan-finish";
+    runtime_status.state = "running";
+    runtime_status.target_count = 1;
+    execution_use_case->SeedJobStateForTesting(runtime_status);
     execution_use_case->SetActiveJobForTesting("job-finish");
 
-    auto stop_result = use_case.StopJob(runtime_context->job_id);
+    auto stop_result = use_case.StopJob(runtime_status.job_id);
     ASSERT_TRUE(stop_result.IsSuccess());
 
     ASSERT_TRUE(use_case.plans_.find("plan-finish") != use_case.plans_.end());

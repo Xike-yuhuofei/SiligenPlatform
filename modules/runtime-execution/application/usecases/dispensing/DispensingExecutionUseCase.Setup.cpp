@@ -1,6 +1,6 @@
 #define MODULE_NAME "DispensingExecutionUseCase"
 
-#include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
+#include "DispensingExecutionUseCase.Internal.h"
 
 #include "domain/dispensing/domain-services/DispensingProcessService.h"
 #include "runtime_execution/contracts/safety/InterlockPolicy.h"
@@ -22,7 +22,7 @@ using Domain::Safety::DomainServices::InterlockPolicy;
 using Domain::Safety::ValueObjects::InterlockCause;
 using Domain::Safety::ValueObjects::InterlockPolicyConfig;
 
-Result<void> DispensingExecutionUseCase::ValidateHardwareConnection() noexcept {
+Result<void> DispensingExecutionUseCase::Impl::ValidateHardwareConnection() noexcept {
     if (!process_service_) {
         return Result<void>::Failure(
             Error(ErrorCode::PORT_NOT_INITIALIZED, "点胶流程服务未初始化", "DispensingExecutionUseCase"));
@@ -30,7 +30,7 @@ Result<void> DispensingExecutionUseCase::ValidateHardwareConnection() noexcept {
     return process_service_->ValidateHardwareConnection();
 }
 
-Result<void> DispensingExecutionUseCase::ValidateExecutionPreconditions() const noexcept {
+Result<void> DispensingExecutionUseCase::Impl::ValidateExecutionPreconditions() const noexcept {
     if (!connection_port_) {
         return Result<void>::Failure(
             Error(ErrorCode::PORT_NOT_INITIALIZED, "hardware connection port not available", "DispensingExecutionUseCase"));
@@ -114,7 +114,8 @@ Result<void> DispensingExecutionUseCase::ValidateExecutionPreconditions() const 
     return Result<void>::Success();
 }
 
-Result<void> DispensingExecutionUseCase::RefreshRuntimeParameters(const DispensingExecutionRequest& request) noexcept {
+Result<void> DispensingExecutionUseCase::Impl::RefreshRuntimeParameters(
+    const DispensingExecutionRequest& request) noexcept {
     if (!process_service_) {
         return Result<void>::Failure(
             Error(ErrorCode::PORT_NOT_INITIALIZED, "点胶流程服务未初始化", "DispensingExecutionUseCase"));
@@ -160,13 +161,6 @@ Result<void> DispensingExecutionUseCase::RefreshRuntimeParameters(const Dispensi
     resolved_execution_.output_policy = resolved_output_policy;
     resolved_execution_.guard_decision = guard_result.Value();
     return Result<void>::Success();
-}
-
-void DispensingExecutionUseCase::SetLegacyExecutionForwarders(
-    LegacyExecuteFn execute_fn,
-    LegacyExecuteAsyncFn execute_async_fn) {
-    legacy_execute_fn_ = std::move(execute_fn);
-    legacy_execute_async_fn_ = std::move(execute_async_fn);
 }
 
 }  // namespace Siligen::Application::UseCases::Dispensing

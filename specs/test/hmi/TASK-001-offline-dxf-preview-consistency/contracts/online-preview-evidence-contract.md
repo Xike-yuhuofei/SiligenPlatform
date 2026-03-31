@@ -6,7 +6,7 @@
 
 1. 输入确实是真实 DXF
 2. HMI 运行在 `online` 模式，且当时已经处于 `online_ready`
-3. 预览来源是权威 `runtime_snapshot` 而不是 mock 或历史残留结果
+3. 预览来源是权威 `planned_glue_snapshot + glue_points` 而不是旧版 `runtime_snapshot`、mock 或历史残留结果
 4. 预览与上位机准备下发到运动控制卡的数据在业务语义上保持一致
 
 ## 2. 证据目录
@@ -44,7 +44,8 @@ D:\Projects\SiligenSuite\tests\reports\adhoc\real-dxf-preview-snapshot-canonical
 | `online_ready` | 是 | 必须为 `true` 才允许通过 |
 | `dxf_file` | 是 | 被验收的 DXF |
 | `artifact_id` | 是 | 当前 DXF 对应 artifact |
-| `preview_source` | 是 | 必须为 `runtime_snapshot` |
+| `preview_source` | 是 | 必须为 `planned_glue_snapshot` |
+| `preview_kind` | 是 | 必须为 `glue_points` |
 | `snapshot_hash` | 是 | 快照签名 |
 | `plan_id` | 是 | 执行准备标识 |
 | `plan_fingerprint` | 是 | 执行准备签名 |
@@ -59,23 +60,29 @@ D:\Projects\SiligenSuite\tests\reports\adhoc\real-dxf-preview-snapshot-canonical
 
 1. `launch_mode == online`
 2. `online_ready == true`
-3. `preview_source == runtime_snapshot`
-4. `snapshot_hash`、`plan_id`、`plan_fingerprint` 全部存在
-5. `geometry_semantics_match == true`
-6. `order_semantics_match == true`
-7. `dispense_motion_semantics_match == true`
-8. `trajectory_polyline.json` 与 `snapshot.json` 中的点数和摘要字段可互相校验
+3. `preview_source == planned_glue_snapshot`
+4. `preview_kind == glue_points`
+5. `snapshot_hash`、`plan_id`、`plan_fingerprint` 全部存在
+6. `geometry_semantics_match == true`
+7. `order_semantics_match == true`
+8. `dispense_motion_semantics_match == true`
+9. `trajectory_polyline.json` 与 `snapshot.json` 中的点数和摘要字段可互相校验
 
 ## 6. 失败边界
 
 以下情况必须落为非通过结论：
 
 1. `preview_source == mock_synthetic`
-2. 当前上下文未达到 `online_ready`
-3. 证据包缺失 `plan-prepare.json`、`snapshot.json` 或 `trajectory_polyline.json`
-4. 预览结果无法回链到同一 DXF、同一 `plan_id`、同一 `plan_fingerprint`
-5. 只证明了几何外观相似，但不能证明执行顺序或点胶运动语义一致
-6. UI 截图存在，但原始快照、plan 准备结果或 verdict 丢失
+2. `preview_source == runtime_snapshot`
+3. 当前上下文未达到 `online_ready`
+4. 证据包缺失 `plan-prepare.json`、`snapshot.json` 或 `trajectory_polyline.json`
+5. 预览结果无法回链到同一 DXF、同一 `plan_id`、同一 `plan_fingerprint`
+6. 只证明了几何外观相似，但不能证明执行顺序或点胶运动语义一致
+7. UI 截图存在，但原始快照、plan 准备结果或 verdict 丢失
+
+补充约束：
+
+1. 若证据包扩展记录运行态标识，live 语义只允许使用 `job_id`，不得回写 `task_id` / `active_task_id`。
 
 ## 7. 与现有仓内验证资产的关系
 

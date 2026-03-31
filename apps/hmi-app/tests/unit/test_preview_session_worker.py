@@ -35,15 +35,18 @@ class _FakeCommandProtocol:
 
     def __init__(self, client):
         self.client = client
+        self.calls = []
         self.prepare_timeout = None
         self.snapshot_timeout = None
         self.__class__.instances.append(self)
 
     def dxf_prepare_plan(self, artifact_id, speed_mm_s, dry_run=False, dry_run_speed_mm_s=0.0, timeout=15.0):
+        self.calls.append(("dxf.plan.prepare", artifact_id))
         self.prepare_timeout = timeout
         return True, {"plan_id": "plan-1", "plan_fingerprint": "fp-1"}, ""
 
     def dxf_preview_snapshot(self, plan_id, max_polyline_points=4000, timeout=15.0):
+        self.calls.append(("dxf.preview.snapshot", plan_id))
         self.snapshot_timeout = timeout
         return True, {
             "snapshot_id": "snapshot-1",
@@ -90,6 +93,11 @@ class PreviewSnapshotWorkerTimeoutTest(unittest.TestCase):
         self.assertEqual(completed[0][2], "")
         self.assertEqual(completed[0][1]["plan_id"], "plan-1")
         self.assertEqual(completed[0][1]["snapshot_hash"], "fp-1")
+        protocol = _FakeCommandProtocol.instances[0]
+        self.assertEqual(protocol.client, _FakeTcpClient.instances[0])
+        self.assertEqual(protocol.prepare_timeout, DXF_OPEN_AUTO_PREVIEW_TIMEOUT_S)
+        self.assertEqual(protocol.snapshot_timeout, DXF_OPEN_AUTO_PREVIEW_TIMEOUT_S)
+        self.assertEqual(protocol.calls, [("dxf.plan.prepare", "artifact-1"), ("dxf.preview.snapshot", "plan-1")])
 
 
 if __name__ == "__main__":

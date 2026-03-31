@@ -303,7 +303,7 @@
     },
     "dxfJobStatus": {
       "type": "object",
-      "required": ["job_id", "plan_id", "plan_fingerprint", "state", "target_count", "completed_count", "current_cycle", "current_segment", "total_segments", "cycle_progress_percent", "overall_progress_percent", "elapsed_seconds", "error_message", "active_task_id", "dry_run"],
+      "required": ["job_id", "plan_id", "plan_fingerprint", "state", "target_count", "completed_count", "current_cycle", "current_segment", "total_segments", "cycle_progress_percent", "overall_progress_percent", "elapsed_seconds", "error_message", "dry_run"],
       "properties": {
         "job_id": { "type": "string" },
         "plan_id": { "type": "string" },
@@ -321,7 +321,6 @@
         "overall_progress_percent": { "type": "integer" },
         "elapsed_seconds": { "type": "number" },
         "error_message": { "type": "string" },
-        "active_task_id": { "type": "string" },
         "dry_run": { "type": "boolean" }
       },
       "additionalProperties": false

@@ -5,7 +5,7 @@
 
 ## Summary
 
-围绕“机台已就绪的在线预览”冻结一条可验收的真实链路：HMI 必须在 `online` 模式且 Supervisor 达到 `online_ready` 后，基于真实 DXF 触发在线预览，并将其与上位机准备下发到运动控制卡的数据按业务语义对齐。权威预览来源直接复用现有 `dxf.preview.snapshot -> runtime_snapshot` 链路，不再引入额外的本地权威提供者；验证闭环采用在线 GUI smoke、协议契约校验、真实 DXF 几何回归和 HIL 快照脚本。
+围绕“机台已就绪的在线预览”冻结一条可验收的真实链路：HMI 必须在 `online` 模式且 Supervisor 达到 `online_ready` 后，基于真实 DXF 触发在线预览，并将其与上位机准备下发到运动控制卡的数据按业务语义对齐。权威预览来源复用现有 `dxf.artifact.create -> dxf.plan.prepare -> dxf.preview.snapshot` 主链，正式成功语义固定为 `planned_glue_snapshot + glue_points`；验证闭环采用在线 GUI smoke、协议契约校验、真实 DXF 几何回归和 HIL 快照脚本。
 
 ## Technical Context
 
@@ -16,7 +16,7 @@
 **Target Platform**: Windows 桌面工作站；HMI 以在线模式启动；机台、控制链和必要安全前提已准备就绪
 **Project Type**: 桌面 HMI + runtime/gateway 在线预览链 + 契约与验证资产
 **Performance Goals**: canonical DXF 的在线预览判断流程在 3 分钟内完成；预览生成保持在现有 HIL / first-layer 测试超时窗口内；几何基线在重复运行中可复现
-**Constraints**: 真实验收仅接受真实 DXF 输入；HMI 必须在 `online_ready` 前提下生成预览；权威预览来源必须是 `runtime_snapshot`；`mock_synthetic`、历史残留或不可追溯结果不得进入通过结论；预览与控制卡下发准备数据按业务语义比对而非字节格式比对；仅使用 canonical workspace roots
+**Constraints**: 真实验收仅接受真实 DXF 输入；HMI 必须在 `online_ready` 前提下生成预览；权威预览来源必须是 `planned_glue_snapshot + glue_points`；旧版 `runtime_snapshot`、`mock_synthetic`、历史残留或不可追溯结果不得进入通过结论；预览与控制卡下发准备数据按业务语义比对而非字节格式比对；仅使用 canonical workspace roots
 **Scale/Scope**: 一个 feature slice，覆盖 `apps/hmi-app` 在线门禁、runtime/gateway DXF 预览契约、`modules/workflow` 执行准备语义对齐、`samples/dxf/rect_diag.dxf` 强制基线，以及相关契约/回归/证据资产
 
 ## Constitution Check

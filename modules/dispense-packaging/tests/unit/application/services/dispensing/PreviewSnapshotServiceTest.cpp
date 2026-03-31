@@ -68,7 +68,7 @@ std::size_t CountSnapshotPointsNear(
 
 }  // namespace
 
-TEST(PreviewSnapshotServiceTest, BuildPayloadPreservesMetadataAndBuildsRuntimeSnapshot) {
+TEST(PreviewSnapshotServiceTest, BuildPayloadPreservesMetadataAndBuildsPreviewPolyline) {
     PreviewSnapshotService service;
     const auto trajectory = BuildTrajectory({Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)});
     const auto input = BuildInput(trajectory);
@@ -79,7 +79,6 @@ TEST(PreviewSnapshotServiceTest, BuildPayloadPreservesMetadataAndBuildsRuntimeSn
     EXPECT_EQ(payload.snapshot_hash, "fp-snapshot-1");
     EXPECT_EQ(payload.plan_id, "plan-1");
     EXPECT_EQ(payload.preview_state, "snapshot_ready");
-    EXPECT_EQ(payload.preview_source, "runtime_snapshot");
     EXPECT_EQ(payload.confirmed_at, "2026-03-28T00:00:00Z");
     EXPECT_EQ(payload.polyline_source_point_count, 2U);
     EXPECT_EQ(payload.polyline_point_count, payload.trajectory_polyline.size());

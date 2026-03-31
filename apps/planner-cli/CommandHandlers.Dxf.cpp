@@ -33,9 +33,10 @@
 namespace Siligen::Adapters::CLI {
 
 using Siligen::Application::CommandLineConfig;
+using Siligen::Application::UseCases::Dispensing::DispensingExecutionRequest;
 using Siligen::Application::UseCases::Dispensing::DispensingExecutionUseCase;
-using Siligen::Application::UseCases::Dispensing::DispensingMVPRequest;
 using Siligen::Application::UseCases::Dispensing::PlanningRequest;
+using Siligen::Application::UseCases::Dispensing::PlanningResponse;
 using Siligen::Application::UseCases::Dispensing::PlanningUseCase;
 using Siligen::Infrastructure::Adapters::Planning::Geometry::ContourAugmentConfig;
 using Siligen::Infrastructure::Adapters::Planning::Geometry::ContourAugmenterAdapter;
@@ -553,6 +554,90 @@ bool ResolveTrajectoryConfig(const CommandLineConfig& config, TrajectoryConfig& 
     return true;
 }
 
+bool TryBuildCliPlanningRequest(
+    const CommandLineConfig& config,
+    PlanningRequest& request,
+    std::string& error_message) {
+    if (config.dxf_file_path.empty()) {
+        error_message = "请提供 DXF 文件路径 (--file)";
+        return false;
+    }
+
+    TrajectoryConfig trajectory;
+    if (!ResolveTrajectoryConfig(config, trajectory, error_message)) {
+        return false;
+    }
+
+    request = PlanningRequest{};
+    request.dxf_filepath = config.dxf_file_path;
+    request.trajectory_config = trajectory;
+    request.optimize_path = config.optimize_path;
+    request.start_x = static_cast<float32>(config.start_x);
+    request.start_y = static_cast<float32>(config.start_y);
+    request.approximate_splines = config.approximate_splines;
+    request.two_opt_iterations = config.two_opt_iterations;
+    request.spline_max_step_mm = static_cast<float32>(config.spline_step_mm);
+    request.spline_max_error_mm = static_cast<float32>(config.spline_error_mm);
+    request.continuity_tolerance_mm = static_cast<float32>(config.continuity_tolerance_mm);
+    request.curve_chain_angle_deg = static_cast<float32>(config.curve_chain_angle_deg);
+    request.curve_chain_max_segment_mm = static_cast<float32>(config.curve_chain_max_segment_mm);
+    request.use_hardware_trigger = config.use_hardware_trigger;
+    request.use_interpolation_planner = config.use_interpolation_planner;
+    request.spacing_tol_ratio = static_cast<float32>(config.spacing_tol_ratio);
+    request.spacing_min_mm = static_cast<float32>(config.spacing_min_mm);
+    request.spacing_max_mm = static_cast<float32>(config.spacing_max_mm);
+
+    if (!config.interpolation_algorithm.empty()) {
+        InterpolationAlgorithm algorithm;
+        if (!TryParseInterpolationAlgorithm(config.interpolation_algorithm, algorithm)) {
+            error_message = "插补算法无效: " + config.interpolation_algorithm;
+            return false;
+        }
+        request.interpolation_algorithm = algorithm;
+    }
+
+    return true;
+}
+
+bool TryBuildCliExecutionRequest(
+    const CommandLineConfig& config,
+    const PlanningResponse& planning_response,
+    DispensingExecutionRequest& request,
+    std::string& error_message) {
+    if (!planning_response.execution_package) {
+        error_message = "规划结果缺少 execution package";
+        return false;
+    }
+
+    request = DispensingExecutionRequest{};
+    request.execution_package = *planning_response.execution_package;
+    request.source_path = request.execution_package.source_path;
+    request.use_hardware_trigger = config.use_hardware_trigger;
+    request.velocity_trace_enabled = config.velocity_trace;
+    request.velocity_trace_interval_ms = config.velocity_trace_interval_ms;
+    request.velocity_trace_path = config.velocity_trace_path;
+
+    if (config.max_jerk > 0.0) {
+        request.max_jerk = static_cast<float32>(config.max_jerk);
+    }
+    if (config.arc_tolerance >= 0.0) {
+        request.arc_tolerance_mm = static_cast<float32>(config.arc_tolerance);
+    }
+    if (config.dxf_speed > 0.0) {
+        request.dispensing_speed_mm_s = static_cast<float32>(config.dxf_speed);
+    }
+    if (config.dxf_dry_run_speed > 0.0) {
+        request.dry_run_speed_mm_s = static_cast<float32>(config.dxf_dry_run_speed);
+    }
+
+    auto validation = request.Validate();
+    if (validation.IsError()) {
+        error_message = validation.GetError().ToString();
+        return false;
+    }
+    return true;
+}
+
 }  // namespace
 
 int CLICommandHandlers::HandleDXFPlan(const CommandLineConfig& config) {
@@ -574,38 +659,11 @@ int CLICommandHandlers::HandleDXFPlan(const CommandLineConfig& config) {
         return 1;
     }
 
-    TrajectoryConfig trajectory;
-    std::string trajectory_error;
-    if (!ResolveTrajectoryConfig(resolved, trajectory, trajectory_error)) {
-        std::cout << "轨迹参数无效: " << trajectory_error << std::endl;
-        return 1;
-    }
-
     PlanningRequest request;
-    request.dxf_filepath = resolved.dxf_file_path;
-    request.trajectory_config = trajectory;
-    request.optimize_path = resolved.optimize_path;
-    request.start_x = static_cast<float32>(resolved.start_x);
-    request.start_y = static_cast<float32>(resolved.start_y);
-    request.approximate_splines = resolved.approximate_splines;
-    request.two_opt_iterations = resolved.two_opt_iterations;
-    request.spline_max_step_mm = static_cast<float32>(resolved.spline_step_mm);
-    request.spline_max_error_mm = static_cast<float32>(resolved.spline_error_mm);
-    request.continuity_tolerance_mm = static_cast<float32>(resolved.continuity_tolerance_mm);
-    request.curve_chain_angle_deg = static_cast<float32>(resolved.curve_chain_angle_deg);
-    request.curve_chain_max_segment_mm = static_cast<float32>(resolved.curve_chain_max_segment_mm);
-    request.use_hardware_trigger = resolved.use_hardware_trigger;
-    request.use_interpolation_planner = resolved.use_interpolation_planner;
-    request.spacing_tol_ratio = static_cast<float32>(resolved.spacing_tol_ratio);
-    request.spacing_min_mm = static_cast<float32>(resolved.spacing_min_mm);
-    request.spacing_max_mm = static_cast<float32>(resolved.spacing_max_mm);
-    if (!resolved.interpolation_algorithm.empty()) {
-        InterpolationAlgorithm algorithm;
-        if (!TryParseInterpolationAlgorithm(resolved.interpolation_algorithm, algorithm)) {
-            std::cout << "插补算法无效: " << resolved.interpolation_algorithm << std::endl;
-            return 1;
-        }
-        request.interpolation_algorithm = algorithm;
+    std::string build_error;
+    if (!TryBuildCliPlanningRequest(resolved, request, build_error)) {
+        std::cout << "轨迹参数无效: " << build_error << std::endl;
+        return 1;
     }
 
     auto result = usecase->Execute(request);
@@ -837,51 +895,38 @@ int CLICommandHandlers::HandleDXFDispense(const CommandLineConfig& config) {
         }
     }
 
-    auto usecase = container_->Resolve<DispensingExecutionUseCase>();
-    if (!usecase) {
+    auto planning_usecase = container_->Resolve<PlanningUseCase>();
+    if (!planning_usecase) {
+        std::cout << "无法解析 DXF 规划用例" << std::endl;
+        return 1;
+    }
+
+    auto execution_usecase = container_->Resolve<DispensingExecutionUseCase>();
+    if (!execution_usecase) {
         std::cout << "无法解析 DXF 点胶执行用例" << std::endl;
         return 1;
     }
 
-    DispensingMVPRequest request;
-    request.dxf_filepath = resolved.dxf_file_path;
-    request.optimize_path = resolved.optimize_path;
-    request.start_x = static_cast<float32>(resolved.start_x);
-    request.start_y = static_cast<float32>(resolved.start_y);
-    request.approximate_splines = resolved.approximate_splines;
-    request.two_opt_iterations = resolved.two_opt_iterations;
-    request.spline_max_step_mm = static_cast<float32>(resolved.spline_step_mm);
-    request.spline_max_error_mm = static_cast<float32>(resolved.spline_error_mm);
-    request.continuity_tolerance_mm = static_cast<float32>(resolved.continuity_tolerance_mm);
-    request.curve_chain_angle_deg = static_cast<float32>(resolved.curve_chain_angle_deg);
-    request.curve_chain_max_segment_mm = static_cast<float32>(resolved.curve_chain_max_segment_mm);
-    request.use_hardware_trigger = resolved.use_hardware_trigger;
-    request.use_interpolation_planner = resolved.use_interpolation_planner;
-    request.velocity_trace_enabled = resolved.velocity_trace;
-    request.velocity_trace_interval_ms = resolved.velocity_trace_interval_ms;
-    request.velocity_trace_path = resolved.velocity_trace_path;
-    if (!resolved.interpolation_algorithm.empty()) {
-        InterpolationAlgorithm algorithm;
-        if (!TryParseInterpolationAlgorithm(resolved.interpolation_algorithm, algorithm)) {
-            std::cout << "插补算法无效: " << resolved.interpolation_algorithm << std::endl;
-            return 1;
-        }
-        request.interpolation_algorithm = algorithm;
-    }
-    if (resolved.max_jerk > 0.0) {
-        request.max_jerk = static_cast<float32>(resolved.max_jerk);
-    }
-    if (resolved.arc_tolerance >= 0.0) {
-        request.arc_tolerance_mm = static_cast<float32>(resolved.arc_tolerance);
-    }
-    if (resolved.dxf_speed > 0.0) {
-        request.dispensing_speed_mm_s = static_cast<float32>(resolved.dxf_speed);
-    }
-    if (resolved.dxf_dry_run_speed > 0.0) {
-        request.dry_run_speed_mm_s = static_cast<float32>(resolved.dxf_dry_run_speed);
+    PlanningRequest planning_request;
+    std::string build_error;
+    if (!TryBuildCliPlanningRequest(resolved, planning_request, build_error)) {
+        std::cout << "轨迹参数无效: " << build_error << std::endl;
+        return 1;
     }
 
-    auto result = usecase->Execute(request);
+    auto planning_result = planning_usecase->Execute(planning_request);
+    if (planning_result.IsError()) {
+        PrintError(planning_result.GetError());
+        return 1;
+    }
+
+    DispensingExecutionRequest execution_request;
+    if (!TryBuildCliExecutionRequest(resolved, planning_result.Value(), execution_request, build_error)) {
+        std::cout << "执行参数无效: " << build_error << std::endl;
+        return 1;
+    }
+
+    auto result = execution_usecase->Execute(execution_request);
     if (result.IsError()) {
         PrintError(result.GetError());
         return 1;

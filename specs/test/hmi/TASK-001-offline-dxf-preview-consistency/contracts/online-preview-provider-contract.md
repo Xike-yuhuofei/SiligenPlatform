@@ -44,24 +44,28 @@
 | `snapshot_hash` | 是 | 当前快照签名 |
 | `plan_id` | 是 | 对应执行准备标识 |
 | `preview_state` | 是 | 例如 `snapshot_ready` |
-| `preview_source` | 是 | 真实验收必须为 `runtime_snapshot` |
+| `preview_source` | 是 | 真实验收必须为 `planned_glue_snapshot` |
+| `preview_kind` | 是 | 真实验收必须为 `glue_points` |
 | `confirmed_at` | 是 | 当前快照确认时间 |
 | `segment_count` | 是 | 段数 |
 | `point_count` | 是 | 原始规划点数 |
-| `polyline_point_count` | 是 | 输出点数 |
-| `polyline_source_point_count` | 是 | 输出前点数 |
-| `trajectory_polyline` | 是 | HMI 用于渲染的点列 |
+| `glue_point_count` | 是 | 权威胶点数量 |
+| `glue_points` | 是 | HMI 主预览胶点序列 |
+| `polyline_point_count` | 是 | 辅助执行折线输出点数 |
+| `polyline_source_point_count` | 是 | 辅助执行折线输出前点数 |
+| `trajectory_polyline` | 是 | HMI 用于叠加渲染的执行折线 |
 | `total_length_mm` | 是 | 总长度 |
 | `estimated_time_s` | 是 | 预估时间 |
 | `generated_at` | 是 | 生成时间 |
 
 ## 6. 语义规则
 
-1. `preview_source` 必须显式存在；真实验收只接受 `runtime_snapshot`。
-2. 当前快照必须与同一 `plan_id` 关联；HMI 必须保留来自 `dxf.plan.prepare` 的 `plan_fingerprint`，用于证明它与待下发到运动控制卡的数据属于同一执行准备上下文。
-3. `trajectory_polyline` 可以为了 UI 展示而采样，但其几何路径、路径顺序和点胶相关运动语义不得与执行准备结果漂移。
-4. 当提供者无法证明当前结果对应当前 DXF、当前 plan 或当前在线就绪上下文时，必须返回失败，而不是回退历史结果或其他渲染链。
-5. `mock_synthetic`、历史缓存点列、脱离当前在线上下文的 HTML 预览都不能作为本契约的成功输出。
+1. `preview_source` 必须显式存在；真实验收只接受 `planned_glue_snapshot`。
+2. `preview_kind` 必须显式存在，且必须为 `glue_points`；`glue_points` 必须非空。
+3. 当前快照必须与同一 `plan_id` 关联；HMI 必须保留来自 `dxf.plan.prepare` 的 `plan_fingerprint`，用于证明它与待下发到运动控制卡的数据属于同一执行准备上下文。
+4. `trajectory_polyline` 可以为了 UI 展示而采样，但其几何路径、路径顺序和点胶相关运动语义不得与执行准备结果漂移。
+5. 当提供者无法证明当前结果对应当前 DXF、当前 plan 或当前在线就绪上下文时，必须返回失败，而不是回退历史结果或其他渲染链。
+6. `runtime_snapshot`、`mock_synthetic`、历史缓存点列、脱离当前在线上下文的 HTML 预览都不能作为本契约的成功输出。
 
 ## 7. 与现有正式协议的关系
 
@@ -69,8 +73,8 @@
 |---|---|---|
 | 协议源 | `shared/contracts/application/commands/dxf.command-set.json` | 在线真实预览验收补充约束 |
 | 权威快照入口 | `dxf.preview.snapshot` | 同一入口 |
-| 可接受来源 | `runtime_snapshot` | `runtime_snapshot` |
-| 禁止来源 | `mock_synthetic`、空来源、不可追溯来源 | 同左，并补充“非当前在线就绪上下文” |
+| 可接受来源 | `planned_glue_snapshot + glue_points` | `planned_glue_snapshot + glue_points` |
+| 禁止来源 | `runtime_snapshot`、`mock_synthetic`、空来源、不可追溯来源 | 同左，并补充“非当前在线就绪上下文” |
 
 规则：
 
@@ -84,5 +88,5 @@
 1. `launch_mode != online`
 2. 当前上下文未达到 `online_ready`
 3. `plan_id` 缺失，或无法回链到同一 `dxf.plan.prepare` 结果
-4. `preview_source` 为空、为 `unknown`、为 `mock_synthetic` 或不属于当前 DXF / 当前 plan
+4. `preview_source` 为空、为 `unknown`、为 `runtime_snapshot`、为 `mock_synthetic`、`preview_kind != glue_points`、`glue_points` 为空，或不属于当前 DXF / 当前 plan
 5. 无法证明结果与准备下发到运动控制卡的数据语义一致

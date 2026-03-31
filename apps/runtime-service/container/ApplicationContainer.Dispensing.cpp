@@ -13,7 +13,6 @@
 #include "job_ingest/contracts/dispensing/UploadContracts.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "runtime/planning/PlanningArtifactExportPortAdapter.h"
-#include "application/usecases/dispensing/DispensingExecutionWorkflowUseCase.h"
 #include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
 #include "application/usecases/dispensing/PlanningUseCase.h"
 #include "shared/interfaces/ILoggingService.h"
@@ -102,14 +101,6 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::IUploadFilePort>() {
 }
 
 template<>
-std::shared_ptr<UseCases::Dispensing::DispensingExecutionWorkflowUseCase>
-ApplicationContainer::CreateInstance<UseCases::Dispensing::DispensingExecutionWorkflowUseCase>() {
-    return std::make_shared<UseCases::Dispensing::DispensingExecutionWorkflowUseCase>(
-        Resolve<UseCases::Dispensing::PlanningUseCase>(),
-        Resolve<UseCases::Dispensing::DispensingExecutionUseCase>());
-}
-
-template<>
 std::shared_ptr<UseCases::Dispensing::CleanupFilesUseCase>
 ApplicationContainer::CreateInstance<UseCases::Dispensing::CleanupFilesUseCase>() {
     return std::make_shared<UseCases::Dispensing::CleanupFilesUseCase>(
@@ -120,7 +111,7 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::CleanupFilesUseCase>(
 template<>
 std::shared_ptr<UseCases::Dispensing::DispensingExecutionUseCase>
 ApplicationContainer::CreateInstance<UseCases::Dispensing::DispensingExecutionUseCase>() {
-    auto execution_use_case = std::make_shared<UseCases::Dispensing::DispensingExecutionUseCase>(
+    return std::make_shared<UseCases::Dispensing::DispensingExecutionUseCase>(
         valve_port_,
         interpolation_port_,
         motion_state_port_,
@@ -130,32 +121,6 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::DispensingExecutionUs
         task_scheduler_port_,
         homing_port_,
         ResolvePort<Domain::Safety::Ports::IInterlockSignalPort>());
-
-    execution_use_case->SetLegacyExecutionForwarders(
-        [this](const UseCases::Dispensing::DispensingMVPRequest& request) {
-            auto workflow = Resolve<UseCases::Dispensing::DispensingExecutionWorkflowUseCase>();
-            if (!workflow) {
-                return Siligen::Shared::Types::Result<UseCases::Dispensing::DispensingMVPResult>::Failure(
-                    Siligen::Shared::Types::Error(
-                        Siligen::Shared::Types::ErrorCode::NOT_IMPLEMENTED,
-                        "legacy dispensing workflow use case unavailable",
-                        "ApplicationContainer"));
-            }
-            return workflow->Execute(request);
-        },
-        [this](const UseCases::Dispensing::DispensingMVPRequest& request) {
-            auto workflow = Resolve<UseCases::Dispensing::DispensingExecutionWorkflowUseCase>();
-            if (!workflow) {
-                return Siligen::Shared::Types::Result<UseCases::Dispensing::TaskID>::Failure(
-                    Siligen::Shared::Types::Error(
-                        Siligen::Shared::Types::ErrorCode::NOT_IMPLEMENTED,
-                        "legacy dispensing workflow use case unavailable",
-                        "ApplicationContainer"));
-            }
-            return workflow->ExecuteAsync(request);
-        });
-
-    return execution_use_case;
 }
 
 template<>

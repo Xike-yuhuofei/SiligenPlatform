@@ -85,9 +85,9 @@
 - 一致性验收：
   - 几何一致、顺序一致口径成立。
   - 数据来源唯一且可追溯。
-  - 预览响应必须能区分 `runtime_snapshot` 与 `mock_synthetic`。
+  - 预览响应必须能区分 `planned_glue_snapshot`、旧版 `runtime_snapshot` 与 `mock_synthetic`。
 - 真实轨迹验收：
-  - 涉及真实轨迹外观、几何或顺序签收时，只接受 `runtime_snapshot` 数据源。
+  - 涉及真实轨迹外观、几何或顺序签收时，只接受 `planned_glue_snapshot + glue_points` 数据源。
   - `mock_synthetic` 仅可用于联调和 smoke，不得作为真实轨迹签收依据。
 - 范围验收：
   - 严格限定在冻结范围内，无新增未评审目标。
@@ -107,13 +107,14 @@
 ## 12. P2 优先级调整（2026-03-21）
 
 - 暂停仿真链路的轨迹图渲染作为执行前门禁依赖。
-- HMI 预览优先走真实链路 `dxf.preview.snapshot` 生成的运行时快照。
-- 当前阶段在预览区展示真实链路快照轨迹（由运行时点集直接绘制）与快照摘要（段数/点数/长度/时长/快照哈希），确认签核与执行前哈希复验保持不变。
+- HMI 预览优先走真实链路 `dxf.preview.snapshot` 生成的 `planned_glue_snapshot + glue_points`。
+- 当前阶段在预览区展示真实链路胶点主预览与辅助执行折线摘要（段数/点数/长度/时长/快照哈希），确认签核与执行前哈希复验保持不变。
 
 ## 13. P3 数据源标识补充（2026-03-26）
 
 - `dxf.preview.snapshot` 响应新增 `preview_source` 字段：
-  - `runtime_snapshot`：来自 runtime 权威快照，可进入真实轨迹验收口径。
+  - `planned_glue_snapshot`：来自 planning/workflow 共享 authority 的正式胶点快照，可进入真实轨迹验收口径。
+  - `runtime_snapshot`：旧版轨迹快照，仅保留给诊断/兼容链，不得进入成功主预览。
   - `mock_synthetic`：来自 mock 占位数据，仅可用于联调，不代表真实 DXF 几何或真实点胶轨迹。
 - HMI 必须显式显示 `preview_source`，并在 `mock_synthetic` 时给出强提示。
 - 验收流程必须拒绝仅凭 `mock_synthetic` 结果签收“真实轨迹预览通过”。

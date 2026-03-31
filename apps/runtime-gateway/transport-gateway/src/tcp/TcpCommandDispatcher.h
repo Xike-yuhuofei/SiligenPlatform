@@ -96,7 +96,7 @@ private:
 
     mutable std::mutex dxf_mutex_;
     DxfCache dxf_cache_;
-    std::string dxf_task_id_;
+    std::string active_dxf_job_id_;
 
     mutable std::mutex alarms_mutex_;
     std::unordered_set<std::string> acknowledged_alarm_ids_;

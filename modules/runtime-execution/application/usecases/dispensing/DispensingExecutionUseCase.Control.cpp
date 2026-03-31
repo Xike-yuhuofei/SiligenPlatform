@@ -1,6 +1,6 @@
 #define MODULE_NAME "DispensingExecutionUseCase"
 
-#include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
+#include "DispensingExecutionUseCase.Internal.h"
 
 #include "domain/dispensing/domain-services/DispensingProcessService.h"
 #include "shared/logging/PrintfLogFormatter.h"
@@ -40,7 +40,7 @@ const char* TaskStateCode(TaskState state) {
 
 }  // namespace
 
-void DispensingExecutionUseCase::StopExecution() {
+void DispensingExecutionUseCase::Impl::StopExecution() {
     stop_requested_.store(true);
     if (!process_service_) {
         return;
@@ -48,7 +48,7 @@ void DispensingExecutionUseCase::StopExecution() {
     process_service_->StopExecution(&stop_requested_);
 }
 
-Result<void> DispensingExecutionUseCase::PauseJob(const JobID& job_id) {
+Result<void> DispensingExecutionUseCase::Impl::PauseJob(const JobID& job_id) {
     std::shared_ptr<JobExecutionContext> context;
     {
         std::lock_guard<std::mutex> lock(jobs_mutex_);
@@ -88,7 +88,7 @@ Result<void> DispensingExecutionUseCase::PauseJob(const JobID& job_id) {
     return Result<void>::Success();
 }
 
-Result<void> DispensingExecutionUseCase::ResumeJob(const JobID& job_id) {
+Result<void> DispensingExecutionUseCase::Impl::ResumeJob(const JobID& job_id) {
     std::shared_ptr<JobExecutionContext> context;
     {
         std::lock_guard<std::mutex> lock(jobs_mutex_);
@@ -130,7 +130,7 @@ Result<void> DispensingExecutionUseCase::ResumeJob(const JobID& job_id) {
     return Result<void>::Success();
 }
 
-Result<void> DispensingExecutionUseCase::StopJob(const JobID& job_id) {
+Result<void> DispensingExecutionUseCase::Impl::StopJob(const JobID& job_id) {
     std::shared_ptr<JobExecutionContext> context;
     {
         std::lock_guard<std::mutex> lock(jobs_mutex_);
@@ -210,7 +210,7 @@ Result<void> DispensingExecutionUseCase::StopJob(const JobID& job_id) {
     return Result<void>::Success();
 }
 
-Result<void> DispensingExecutionUseCase::PauseTask(const TaskID& task_id) {
+Result<void> DispensingExecutionUseCase::Impl::PauseTask(const TaskID& task_id) {
     std::shared_ptr<TaskExecutionContext> context;
     {
         std::lock_guard<std::mutex> lock(tasks_mutex_);
@@ -275,7 +275,7 @@ Result<void> DispensingExecutionUseCase::PauseTask(const TaskID& task_id) {
             "DispensingExecutionUseCase"));
 }
 
-Result<void> DispensingExecutionUseCase::ResumeTask(const TaskID& task_id) {
+Result<void> DispensingExecutionUseCase::Impl::ResumeTask(const TaskID& task_id) {
     std::shared_ptr<TaskExecutionContext> context;
     {
         std::lock_guard<std::mutex> lock(tasks_mutex_);

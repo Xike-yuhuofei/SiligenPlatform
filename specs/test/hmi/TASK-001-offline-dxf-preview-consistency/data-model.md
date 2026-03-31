@@ -100,7 +100,7 @@
 
 **校验规则**
 
-- `preview_source=runtime_snapshot` 是进入真实在线验收通过结论的必要条件。
+- `preview_source=planned_glue_snapshot` 且 `preview_kind=glue_points` 是进入真实在线验收通过结论的必要条件。
 - `preview_source=mock_synthetic`、`unknown` 或空值时，快照不得进入真实验收通过结论。
 - `trajectory_polyline` 为空或不足 2 点时，视为预览失败。
 
@@ -131,7 +131,8 @@
 
 | `source_kind` | 含义 | 可否作为真实验收来源 |
 |---|---|---|
-| `runtime_snapshot` | 在线 runtime/gateway 链生成的权威快照 | 是 |
+| `planned_glue_snapshot` | 在线 planning/workflow/gateway 链生成的权威胶点快照 | 是 |
+| `runtime_snapshot` | 旧版 runtime/gateway 轨迹快照，仅用于诊断/兼容 | 否 |
 | `mock_synthetic` | mock 或占位生成的模拟轨迹 | 否 |
 | `unknown` | 来源不明或字段缺失 | 否 |
 
@@ -212,6 +213,6 @@ pending -> incomplete
 
 1. `OnlineReadyCapabilityState.online_ready = true`，且能证明属于当前验收上下文。
 2. `RealDxfArtifact.validated_as_real_dxf = true`。
-3. `RuntimePreviewSnapshot.preview_source = runtime_snapshot`。
+3. `RuntimePreviewSnapshot.preview_source = planned_glue_snapshot` 且 `preview_kind = glue_points`。
 4. `ExecutionDispatchAlignmentRecord` 中三项语义匹配均为 `true`。
 5. `PreviewEvidenceBundle` 必需文件齐全，并可回链到同一 DXF、同一 plan、同一在线就绪上下文。

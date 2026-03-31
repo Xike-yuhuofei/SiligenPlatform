@@ -648,10 +648,11 @@ class MainWindowTabsTest(unittest.TestCase):
             "",
         )
 
-        self.assertEqual(self.window._preview_gate.last_error_message, "运行时仍返回旧版轨迹预览契约")
+        self.assertEqual(self.window._preview_gate.last_error_message, "旧版 runtime_snapshot 预览契约仍在返回")
         self.assertTrue(messages)
         self.assertEqual(messages[-1][0], "胶点预览生成失败")
         self.assertIn("当前 HMI 连接的 runtime-gateway 很可能还是旧构建", messages[-1][1])
+        self.assertIn("plan_id=plan-legacy", messages[-1][1])
         self.assertTrue(messages[-1][2])
 
     def test_preview_snapshot_worker_error_preserves_timeout_detail(self) -> None:
@@ -684,10 +685,16 @@ class MainWindowTabsTest(unittest.TestCase):
 
         self.window._on_preview_snapshot_completed(False, {}, "authority trigger binding unavailable")
 
-        self.assertEqual(self.window._preview_gate.last_error_message, "authority trigger binding unavailable")
+        self.assertEqual(
+            self.window._preview_gate.last_error_message,
+            "preview binding unavailable (authority trigger binding unavailable)",
+        )
         self.assertTrue(messages)
         self.assertEqual(messages[-1][0], "胶点预览生成失败")
-        self.assertEqual(messages[-1][1], "authority trigger binding unavailable")
+        self.assertEqual(
+            messages[-1][1],
+            "preview binding unavailable (authority trigger binding unavailable)",
+        )
         self.assertTrue(messages[-1][2])
 
 
