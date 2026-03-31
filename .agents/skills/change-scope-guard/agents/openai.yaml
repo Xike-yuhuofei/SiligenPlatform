@@ -1,0 +1,4 @@
+interface:
+  display_name: "Change Scope Guard"
+  short_description: "Bound allowed edits and stop scope creep; alias: 变更边界、范围门禁"
+  default_prompt: "Use $change-scope-guard to define allowed edits, forbidden areas, cross-module rules, and out-of-scope stop conditions. 中文别名：变更边界、范围门禁。"

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Feature Spec And Plan"
+  short_description: "Turn features into spec and plan; alias: 功能规格、结构方案"
+  default_prompt: "Use $feature-spec-and-plan to produce behavior spec, contract impact, owner placement, dependency rules, and implementation order. 中文别名：功能规格、结构方案。"

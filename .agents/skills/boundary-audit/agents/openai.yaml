@@ -1,0 +1,4 @@
+interface:
+  display_name: "Boundary Audit"
+  short_description: "Audit ownership and boundaries; alias: 边界审计、职责审查"
+  default_prompt: "Use $boundary-audit to inspect ownership, dependency direction, boundary clarity, and bridge or compat pollution. 中文别名：边界审计、职责审查。"

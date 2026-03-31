@@ -1,0 +1,4 @@
+interface:
+  display_name: "Incident Intake"
+  short_description: "Formalize incident scope and facts; alias: 故障受理、异常受理"
+  default_prompt: "Use $incident-intake to formalize the current incident, including symptom, impact scope, severity, reproducibility, and known facts. 中文别名：故障受理、异常受理。"

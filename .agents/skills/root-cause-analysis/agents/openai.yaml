@@ -1,0 +1,4 @@
+interface:
+  display_name: "Root Cause Analysis"
+  short_description: "Find causes from evidence; alias: 根因分析、定位原因"
+  default_prompt: "Use $root-cause-analysis to generate competing hypotheses, collect evidence and counter-evidence, and propose minimal falsification steps. 中文别名：根因分析、定位原因。"
