@@ -1,7 +1,7 @@
 #include "CommandHandlers.h"
 #include "CommandHandlersInternal.h"
 
-#include "infrastructure/adapters/planning/geometry/ContourAugmenterAdapter.h"
+#include "topology_feature/contracts/ContourAugmentContracts.h"
 #include "application/usecases/motion/homing/HomeAxesUseCase.h"
 #include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
 #include "domain/motion/value-objects/MotionPlanningReport.h"

@@ -12,7 +12,7 @@
 #include "facades/tcp/TcpMotionFacade.h"
 #include "facades/tcp/TcpRecipeFacade.h"
 #include "facades/tcp/TcpSystemFacade.h"
-#include "domain/configuration/ports/IConfigurationPort.h"
+#include "process_planning/contracts/ConfigurationContracts.h"
 #include "domain/configuration/services/ReadyZeroSpeedResolver.h"
 
 #include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"

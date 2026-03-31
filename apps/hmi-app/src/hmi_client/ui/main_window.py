@@ -13,6 +13,13 @@ except ImportError:  # pragma: no cover - script-mode fallback
 
 configure_qt_environment(headless=False)
 
+try:
+    from hmi_client.module_paths import ensure_hmi_application_path
+except ImportError:  # pragma: no cover - script-mode fallback
+    from module_paths import ensure_hmi_application_path  # type: ignore
+
+ensure_hmi_application_path()
+
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QGroupBox, QLabel, QPushButton, QLineEdit, QGridLayout, QFrame,
@@ -35,9 +42,6 @@ from client import (
     CommandProtocol,
     LaunchUiState,
     LaunchResult,
-    PreviewSnapshotMeta,
-    PreviewSessionOwner,
-    PreviewSnapshotWorker,
     RecoveryWorker,
     StartupWorker,
     TcpClient,
@@ -53,6 +57,7 @@ from client import (
     normalize_launch_mode,
 )
 from client.auth import AuthManager
+from hmi_application import PreviewSnapshotMeta, PreviewSessionOwner, PreviewSnapshotWorker
 from .dxf_default_paths import build_default_dxf_candidates
 from .styles import DARK_THEME
 from .recipe_config_widget import RecipeConfigWidget

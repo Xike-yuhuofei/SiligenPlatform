@@ -93,18 +93,37 @@ $workspaceValidationDir = Join-Path $runDir "workspace-validation"
 $dspE2ESpecDir = Join-Path $runDir "dsp-e2e-spec-docset"
 $legacyExitDir = Join-Path $runDir "legacy-exit"
 $moduleBoundaryDir = Join-Path $runDir "module-boundary-bridges"
+$reviewBaselineDir = Join-Path $runDir "review-baseline"
 
 New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
 New-Item -ItemType Directory -Force -Path $workspaceValidationDir | Out-Null
 New-Item -ItemType Directory -Force -Path $dspE2ESpecDir | Out-Null
 New-Item -ItemType Directory -Force -Path $legacyExitDir | Out-Null
 New-Item -ItemType Directory -Force -Path $moduleBoundaryDir | Out-Null
+New-Item -ItemType Directory -Force -Path $reviewBaselineDir | Out-Null
 
 $env:SILIGEN_FREEZE_DOCSET_REPORT_DIR = $dspE2ESpecDir
 $env:SILIGEN_FREEZE_EVIDENCE_CASES = "success,block,rollback,recovery,archive"
 $env:SILIGEN_LEGACY_EXIT_REPORT_DIR = $legacyExitDir
 
 $steps = @(
+    @{
+        Id      = "review-baseline"
+        Name    = "Validate ARCH-203 review baseline completeness"
+        LogName = "00-review-baseline.log"
+        Command = @(
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            ".\scripts\validation\assert-review-baseline-completeness.ps1",
+            "-WorkspaceRoot",
+            $repoRoot,
+            "-ReportDir",
+            $reviewBaselineDir
+        )
+    },
     @{
         Id      = "workspace-layout"
         Name    = "Validate workspace layout"
@@ -279,7 +298,9 @@ $requiredArtifacts = @(
     (Join-Path $legacyExitDir "legacy-exit-checks.json"),
     (Join-Path $legacyExitDir "legacy-exit-checks.md"),
     (Join-Path $moduleBoundaryDir "module-boundary-bridges.json"),
-    (Join-Path $moduleBoundaryDir "module-boundary-bridges.md")
+    (Join-Path $moduleBoundaryDir "module-boundary-bridges.md"),
+    (Join-Path $reviewBaselineDir "review-baseline-completeness.json"),
+    (Join-Path $reviewBaselineDir "review-baseline-completeness.md")
 )
 foreach ($artifact in $requiredArtifacts) {
     if (-not (Test-Path $artifact)) {

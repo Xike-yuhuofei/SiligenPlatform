@@ -2,7 +2,7 @@
 
 #include "ApplicationContainerFwd.h"
 #include "../runtime/configuration/WorkspaceAssetPaths.h"
-#include "domain/configuration/ports/IConfigurationPort.h"
+#include "process_planning/contracts/ConfigurationContracts.h"
 #include "domain/motion/ports/IMotionRuntimePort.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 #include <array>

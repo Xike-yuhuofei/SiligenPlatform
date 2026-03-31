@@ -3,7 +3,7 @@
 #include "../container/ApplicationContainer.h"
 #include "InfrastructureBindings.h"
 
-#include "domain/configuration/ports/IConfigurationPort.h"
+#include "process_planning/contracts/ConfigurationContracts.h"
 #include "domain/configuration/ports/IFileStoragePort.h"
 #include "domain/diagnostics/ports/ICMPTestPresetPort.h"
 #include "domain/diagnostics/ports/IDiagnosticsPort.h"
