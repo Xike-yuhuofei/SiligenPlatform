@@ -1,9 +1,9 @@
 ---
-name: root-cause-debug
+name: xike-clarify
 description: 用于无痕内衣点胶机上位机开发中的需求澄清、问题定义、根因定位、方案收敛与回归分析。强制使用苏格拉底式提问、第一性原理、奥卡姆剃须刀，禁止未定义问题就直接改代码。
 ---
 
-# Root Cause Debug Skill
+# Xike Clarify Skill
 
 ## 1. 目的
 

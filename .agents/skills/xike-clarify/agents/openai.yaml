@@ -1,0 +1,4 @@
+interface:
+  display_name: "Xike Clarify"
+  short_description: "以证据链驱动故障调查、主链路拆解、根因排序与最小证伪"
+  default_prompt: "Use $xike-clarify 对当前异常做问题定义、主链路拆解、候选根因排序和最小证伪动作设计，证据不足时不要直接改代码。"

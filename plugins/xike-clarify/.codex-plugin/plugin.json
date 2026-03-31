@@ -1,0 +1,36 @@
+{
+  "name": "xike-clarify",
+  "version": "0.1.0",
+  "description": "用于无痕内衣点胶机上位机开发中的需求澄清、问题定义、根因定位、方案收敛与回归分析。",
+  "author": {
+    "name": "Xike",
+    "email": "Xike-yuhuofei@users.noreply.github.com",
+    "url": "https://github.com/Xike-yuhuofei"
+  },
+  "homepage": "https://github.com/Xike-yuhuofei/SiligenPlatform/tree/main/plugins/xike-clarify",
+  "repository": "https://github.com/Xike-yuhuofei/SiligenPlatform.git",
+  "keywords": [
+    "root-cause-analysis",
+    "industrial-hmi",
+    "dispensing-machine",
+    "failure-isolation"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Xike Clarify",
+    "shortDescription": "面向点胶机上位机问题定义、根因定位与方案收敛的调试技能。",
+    "longDescription": "用于无痕内衣点胶机上位机开发中的需求澄清、问题定义、根因定位、方案收敛与回归分析。强制先定义问题、拆解主链路、建立假设并设计最小证伪动作，禁止未定义问题就直接改代码。",
+    "developerName": "SiligenSuite",
+    "category": "Coding",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/Xike-yuhuofei/SiligenPlatform/tree/main/plugins/xike-clarify",
+    "defaultPrompt": [
+      "Use $xike-clarify 先定义当前异常，不要直接改代码。",
+      "对这条故障链路做主链路拆解并给出 3 个候选根因。",
+      "为当前回归问题设计最小证伪动作和排查清单。"
+    ]
+  }
+}
