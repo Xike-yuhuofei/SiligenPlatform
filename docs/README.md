@@ -10,6 +10,7 @@
 - `machine-model/`：机型级 IO、接线、限位/回零假设与现场复核事实
 - `machine-model/backend-cpp-library/`：外部 `Backend_CPP` 文档库中与 MultiCard 真机诊断直接相关的精选副本
 - `onboarding/`：开发者入场、工作方式、分支命名等协作文档
+- `process-model/reviews/`：架构评审、复核报告与 closeout 补档证据；`ARCH-203` 的 2026-03-31 baseline review pack 也在此目录冻结
 - 其余目录先作为后续稳定落位
 
 子项目内部文档暂时继续保留在各自仓内，不做整批搬迁。
