@@ -599,6 +599,7 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
     }
 
     constexpr uint32 kMinBufferSpace = 20;
+    constexpr uint32 kZeroSpaceWarmupBatch = kMinBufferSpace;
     constexpr auto kBufferPollInterval = std::chrono::milliseconds(5);
     constexpr auto kBufferStallTimeout = std::chrono::seconds(10);
     constexpr float32 kMinMovingVelocityMmS = 0.1f;
@@ -637,19 +638,46 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
         return Result<void>::Success();
     };
 
+    auto resolve_batch_size = [&](uint32 space, size_t remaining_segments) -> size_t {
+        if (space == 0U || remaining_segments == 0U) {
+            return 0U;
+        }
+
+        const auto remaining = static_cast<uint32>(remaining_segments);
+        if (remaining <= space) {
+            return remaining_segments;
+        }
+
+        if (space > kMinBufferSpace) {
+            return static_cast<size_t>(std::min<uint32>(remaining, space - kMinBufferSpace));
+        }
+
+        return 1U;
+    };
+
     auto initial_space_result = query_buffer_space();
     if (initial_space_result.IsError()) {
         return Result<DispensingExecutionReport>::Failure(initial_space_result.GetError());
     }
 
     const auto initial_space = initial_space_result.Value();
-    const auto initial_batch = static_cast<size_t>(
-        std::min<uint32>(static_cast<uint32>(total_segments),
-                         initial_space > kMinBufferSpace ? (initial_space - kMinBufferSpace) : 0U));
+    const auto initial_batch = [&]() -> size_t {
+        if (total_segments == 0U) {
+            return 0U;
+        }
 
-    if (initial_batch == 0 && total_segments > 0) {
-        return Result<DispensingExecutionReport>::Failure(
-            Error(ErrorCode::HARDWARE_ERROR, "插补缓冲区空间不足，无法发送初始数据", "DispensingProcessService"));
+        if (initial_space == 0U) {
+            return std::min<std::size_t>(total_segments, static_cast<size_t>(kZeroSpaceWarmupBatch));
+        }
+
+        return std::max<std::size_t>(1U, resolve_batch_size(initial_space, total_segments));
+    }();
+
+    if (total_segments > 0U && initial_space == 0U) {
+        SILIGEN_LOG_INFO_FMT_HELPER(
+            "预启动插补空间为0，执行 warmup 预装载: batch=%zu, total_segments=%zu",
+            initial_batch,
+            total_segments);
     }
 
     if (initial_batch > 0) {
@@ -741,7 +769,7 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
         }
 
         const auto space = space_result.Value();
-        if (space <= kMinBufferSpace) {
+        if (space == 0U) {
             if (IsStopRequested(stop_flag)) {
                 SILIGEN_LOG_INFO("缓冲区等待期间检测到停止请求，中止执行");
                 return Result<DispensingExecutionReport>::Failure(
@@ -798,8 +826,7 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
             continue;
         }
 
-        const auto batch_size = static_cast<size_t>(
-            std::min<uint32>(static_cast<uint32>(total_segments - cursor), space - kMinBufferSpace));
+        const auto batch_size = resolve_batch_size(space, total_segments - cursor);
         if (batch_size == 0) {
             std::this_thread::sleep_for(kBufferPollInterval);
             continue;
@@ -884,6 +911,7 @@ Result<void> DispensingProcessService::WaitForMotionComplete(int32 timeout_ms,
     bool has_last_position = false;
     Point2D last_position{};
     bool observed_motion = false;
+    bool observed_progress_signal = false;
     while (true) {
         auto pause_result = WaitWhilePaused(stop_flag, pause_flag, pause_applied_flag, dispense_enabled, observer);
         if (pause_result.IsError()) {
@@ -905,6 +933,9 @@ Result<void> DispensingProcessService::WaitForMotionComplete(int32 timeout_ms,
         auto executed_segments = TryResolveExecutedSegmentsForProgress(status, total_segments);
         if (executed_segments.has_value()) {
             PublishProgress(observer, executed_segments.value(), total_segments);
+            if (executed_segments.value() > 0U) {
+                observed_progress_signal = true;
+            }
         }
         const bool coord_completed = IsCoordinateSystemCompleted(status);
 
@@ -930,8 +961,7 @@ Result<void> DispensingProcessService::WaitForMotionComplete(int32 timeout_ms,
                     y_velocity <= kCompletionVelocityToleranceMmS;
                 if ((has_initial_position && current_position.DistanceTo(initial_position) > position_tolerance_mm) ||
                     x_velocity > kCompletionVelocityToleranceMmS ||
-                    y_velocity > kCompletionVelocityToleranceMmS ||
-                    (executed_segments.has_value() && executed_segments.value() > 0U)) {
+                    y_velocity > kCompletionVelocityToleranceMmS) {
                     observed_motion = true;
                 }
 
@@ -942,7 +972,8 @@ Result<void> DispensingProcessService::WaitForMotionComplete(int32 timeout_ms,
                     } else if (now - settled_since >= kCompletionSettleWindow) {
                         SILIGEN_LOG_INFO_FMT_HELPER(
                             "运动完成采用权威反馈收敛: pos=(%.3f, %.3f), target=(%.3f, %.3f), "
-                            "distance=%.4f, delta=%.4f, vx=%.4f, vy=%.4f, observed_motion=%d, raw_status=%d, raw_segment=%d",
+                            "distance=%.4f, delta=%.4f, vx=%.4f, vy=%.4f, observed_motion=%d, "
+                            "observed_progress=%d, raw_status=%d, raw_segment=%d",
                             current_position.x,
                             current_position.y,
                             final_target_position->x,
@@ -952,6 +983,7 @@ Result<void> DispensingProcessService::WaitForMotionComplete(int32 timeout_ms,
                             x_velocity,
                             y_velocity,
                             observed_motion ? 1 : 0,
+                            observed_progress_signal ? 1 : 0,
                             status.raw_status_word,
                             status.raw_segment);
                         PublishProgress(observer, total_segments, total_segments);
@@ -976,6 +1008,7 @@ Result<void> DispensingProcessService::WaitForMotionComplete(int32 timeout_ms,
             int raw_segment = 0;
             int mc_ret = 0;
             int state = -1;
+            int coord_completed_flag = 0;
             int is_moving = 0;
             unsigned remaining_segments = 0;
             float current_velocity = 0.0f;
@@ -1011,6 +1044,7 @@ Result<void> DispensingProcessService::WaitForMotionComplete(int32 timeout_ms,
                 raw_segment = timeout_status.raw_segment;
                 mc_ret = timeout_status.mc_status_ret;
                 state = static_cast<int>(timeout_status.state);
+                coord_completed_flag = IsCoordinateSystemCompleted(timeout_status) ? 1 : 0;
                 is_moving = timeout_status.is_moving ? 1 : 0;
                 remaining_segments = timeout_status.remaining_segments;
                 current_velocity = timeout_status.current_velocity;
@@ -1064,11 +1098,14 @@ Result<void> DispensingProcessService::WaitForMotionComplete(int32 timeout_ms,
             }
 
             SILIGEN_LOG_ERROR_FMT_HELPER(
-                "等待运动完成超时: elapsed_ms=%lld, observed_motion=%d, state=%d, moving=%d, remaining=%u, "
-                "coord_vel=%.4f, raw_status=%d, raw_segment=%d, mc_ret=%d, pos=(%.3f, %.3f), "
-                "axis_vel=(%.4f, %.4f), target=(%.3f, %.3f), distance=%.4f, has_pos=%d",
+                "等待运动完成超时: elapsed_ms=%lld, observed_motion=%d, observed_progress=%d, "
+                "coord_completed=%d, state=%d, moving=%d, remaining=%u, coord_vel=%.4f, "
+                "raw_status=%d, raw_segment=%d, mc_ret=%d, pos=(%.3f, %.3f), axis_vel=(%.4f, %.4f), "
+                "target=(%.3f, %.3f), distance=%.4f, has_pos=%d",
                 static_cast<long long>(elapsed),
                 observed_motion ? 1 : 0,
+                observed_progress_signal ? 1 : 0,
+                coord_completed_flag,
                 state,
                 is_moving,
                 remaining_segments,

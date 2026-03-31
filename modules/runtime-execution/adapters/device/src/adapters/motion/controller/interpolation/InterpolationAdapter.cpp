@@ -20,6 +20,41 @@ constexpr int kRetriableExecutionFailedErrorCode = 1;
 constexpr int kConfigureCrdClearMaxAttempts = 20;
 constexpr auto kConfigureCrdClearRetryDelay = std::chrono::milliseconds(10);
 
+struct CrdDiagnosticsSnapshot {
+    short status = 0;
+    long segment = 0;
+    long fifo_space = 0;
+    long lookahead_space = 0;
+    int status_result = -1;
+    int fifo_result = -1;
+    int lookahead_result = -1;
+};
+
+CrdDiagnosticsSnapshot QueryCrdDiagnostics(
+    const std::shared_ptr<Siligen::Infrastructure::Hardware::IMultiCardWrapper>& wrapper,
+    int16 coord_sys) {
+    CrdDiagnosticsSnapshot snapshot;
+    if (!wrapper) {
+        return snapshot;
+    }
+
+    snapshot.status_result = wrapper->MC_CrdStatus(coord_sys, &snapshot.status, &snapshot.segment, 0);
+    snapshot.fifo_result = wrapper->MC_CrdSpace(coord_sys, &snapshot.fifo_space, 0);
+    snapshot.lookahead_result = wrapper->MC_GetLookAheadSpace(coord_sys, &snapshot.lookahead_space, 0);
+    return snapshot;
+}
+
+std::string FormatCrdDiagnostics(int16 coord_sys, const CrdDiagnosticsSnapshot& snapshot) {
+    return "coord_sys=" + std::to_string(coord_sys) +
+           ", status=" + std::to_string(snapshot.status) +
+           ", segment=" + std::to_string(snapshot.segment) +
+           ", fifo_space=" + std::to_string(snapshot.fifo_space) +
+           ", lookahead_space=" + std::to_string(snapshot.lookahead_space) +
+           ", status_ret=" + std::to_string(snapshot.status_result) +
+           ", fifo_ret=" + std::to_string(snapshot.fifo_result) +
+           ", lookahead_ret=" + std::to_string(snapshot.lookahead_result);
+}
+
 void LogCrdDiagnostics(const std::shared_ptr<Siligen::Infrastructure::Hardware::IMultiCardWrapper>& wrapper,
                        int16 coord_sys,
                        const std::string& tag) {
@@ -28,24 +63,8 @@ void LogCrdDiagnostics(const std::shared_ptr<Siligen::Infrastructure::Hardware::
         return;
     }
 
-    short crd_status = 0;
-    long segment = 0;
-    int status_result = wrapper->MC_CrdStatus(coord_sys, &crd_status, &segment, 0);
-
-    long fifo_space = 0;
-    int fifo_result = wrapper->MC_CrdSpace(coord_sys, &fifo_space, 0);
-
-    long lookahead_space = 0;
-    int lookahead_result = wrapper->MC_GetLookAheadSpace(coord_sys, &lookahead_space, 0);
-
-    SILIGEN_LOG_DEBUG("CrdDiag[" + tag + "]: coord_sys=" + std::to_string(coord_sys) +
-                      ", status=" + std::to_string(crd_status) +
-                      ", segment=" + std::to_string(segment) +
-                      ", fifo_space=" + std::to_string(fifo_space) +
-                      ", lookahead_space=" + std::to_string(lookahead_space) +
-                      ", status_ret=" + std::to_string(status_result) +
-                      ", fifo_ret=" + std::to_string(fifo_result) +
-                      ", lookahead_ret=" + std::to_string(lookahead_result));
+    const auto snapshot = QueryCrdDiagnostics(wrapper, coord_sys);
+    SILIGEN_LOG_DEBUG("CrdDiag[" + tag + "]: " + FormatCrdDiagnostics(coord_sys, snapshot));
 }
 
 long BuildCoordinateMask(int16 coord_sys) {
@@ -319,6 +338,9 @@ Result<void> InterpolationAdapter::FlushInterpolationData(int16 coord_sys) {
         return ConvertError(error_code, "FlushInterpolationData: CrdData failed");
     }
 
+    const auto flush_snapshot = QueryCrdDiagnostics(wrapper_, coord_sys);
+    SILIGEN_LOG_INFO("FlushInterpolationData: data_ret=" + std::to_string(error_code) +
+                     ", " + FormatCrdDiagnostics(coord_sys, flush_snapshot));
     LogCrdDiagnostics(wrapper_, coord_sys, "Flush:after");
     return Result<void>::Success();
 }
@@ -336,11 +358,8 @@ Result<void> InterpolationAdapter::StartCoordinateSystemMotion(uint32 coord_sys_
     }
 
     // 启动前检查坐标系状态
-    short crd_status_before = 0;
-    long segment_before = 0;
-    int status_result = wrapper_->MC_CrdStatus(coord_sys, &crd_status_before, &segment_before, 0);
-    SILIGEN_LOG_DEBUG("Before CrdStart: status=" + std::to_string(crd_status_before) +
-                      ", segment=" + std::to_string(segment_before) + ", result=" + std::to_string(status_result));
+    const auto before_snapshot = QueryCrdDiagnostics(wrapper_, coord_sys);
+    SILIGEN_LOG_DEBUG("Before CrdStart: " + FormatCrdDiagnostics(coord_sys, before_snapshot));
     LogCrdDiagnostics(wrapper_, coord_sys, "Start:before_data");
 
     // 发送数据流结束标识，确保前瞻缓冲区数据下发到板卡
@@ -355,19 +374,25 @@ Result<void> InterpolationAdapter::StartCoordinateSystemMotion(uint32 coord_sys_
     int error_code = wrapper_->MC_CrdStart(coord_sys, 0);
 
     // 启动后检查坐标系状态
-    short crd_status_after = 0;
-    long segment_after = 0;
-    wrapper_->MC_CrdStatus(coord_sys, &crd_status_after, &segment_after, 0);
+    const auto after_snapshot = QueryCrdDiagnostics(wrapper_, coord_sys);
     SILIGEN_LOG_DEBUG("After CrdStart: error=" + std::to_string(error_code) +
-                      ", status=" + std::to_string(crd_status_after) + ", segment=" + std::to_string(segment_after));
+                      ", " + FormatCrdDiagnostics(coord_sys, after_snapshot));
     LogCrdDiagnostics(wrapper_, coord_sys, "Start:after_start");
     SILIGEN_LOG_INFO("CrdStart: coord_sys=" + std::to_string(coord_sys) +
+                     ", coord_sys_mask=" + std::to_string(coord_sys_mask) +
                      ", crd_data_ret=" + std::to_string(data_result) +
                      ", crd_start_ret=" + std::to_string(error_code) +
-                     ", status_before=" + std::to_string(crd_status_before) +
-                     ", status_after=" + std::to_string(crd_status_after) +
-                     ", segment_before=" + std::to_string(segment_before) +
-                     ", segment_after=" + std::to_string(segment_after));
+                     ", before={" + FormatCrdDiagnostics(coord_sys, before_snapshot) + "}" +
+                     ", after={" + FormatCrdDiagnostics(coord_sys, after_snapshot) + "}");
+
+    if (error_code == 0 &&
+        after_snapshot.status == 0 &&
+        after_snapshot.segment == 0 &&
+        after_snapshot.status_result == 0) {
+        SILIGEN_LOG_WARNING(
+            "CrdStart returned success but coordinate state still reports idle-empty immediately after start: " +
+            FormatCrdDiagnostics(coord_sys, after_snapshot));
+    }
 
     if (error_code != 0) {
         return ConvertError(error_code, "StartCoordinateSystemMotion failed");
