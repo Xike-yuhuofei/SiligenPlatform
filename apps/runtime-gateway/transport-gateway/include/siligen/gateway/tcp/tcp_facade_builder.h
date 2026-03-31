@@ -20,7 +20,6 @@
 #include "job_ingest/contracts/dispensing/UploadContracts.h"
 #include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
-#include "application/usecases/dispensing/DispensingExecutionWorkflowUseCase.h"
 #include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
 #include "application/usecases/dispensing/PlanningUseCase.h"
 #include "facades/tcp/TcpDispensingFacade.h"
@@ -48,7 +47,6 @@ TcpFacadeBundle BuildTcpFacadeBundle(Resolver& resolver) {
         resolver.template Resolve<Application::UseCases::Dispensing::Valve::ValveCommandUseCase>(),
         resolver.template Resolve<Application::UseCases::Dispensing::Valve::ValveQueryUseCase>(),
         resolver.template Resolve<Application::UseCases::Dispensing::DispensingExecutionUseCase>(),
-        resolver.template Resolve<Application::UseCases::Dispensing::DispensingExecutionWorkflowUseCase>(),
         resolver.template Resolve<Application::UseCases::Dispensing::IUploadFilePort>(),
         resolver.template Resolve<Application::UseCases::Dispensing::PlanningUseCase>(),
         resolver.template Resolve<Application::UseCases::Dispensing::DispensingWorkflowUseCase>());

@@ -39,7 +39,7 @@
 
 **Goal**: 让 HMI 只在 `online_ready` 且机台已准备好的上下文中加载真实 DXF，并稳定展示来自 runtime 的权威预览
 
-**Independent Test**: 运行 `D:\Projects\SiligenSuite\apps\hmi-app\scripts\online-smoke.ps1` 到达 `online_ready=true` 后，在 HMI 中加载 `D:\Projects\SiligenSuite\samples\dxf\rect_diag.dxf`，连续两次触发预览都能看到来源为 `runtime_snapshot` 的可复现轨迹
+**Independent Test**: 运行 `D:\Projects\SiligenSuite\apps\hmi-app\scripts\online-smoke.ps1` 到达 `online_ready=true` 后，在 HMI 中加载 `D:\Projects\SiligenSuite\samples\dxf\rect_diag.dxf`，连续两次触发预览都能看到来源为 `planned_glue_snapshot` 且 `preview_kind=glue_points` 的可复现结果
 
 ### Tests for User Story 1
 
@@ -83,7 +83,7 @@
 
 ## Phase 5: User Story 3 - 识别非权威预览结果 (Priority: P3)
 
-**Goal**: 明确区分 `runtime_snapshot` 与 mock、未知来源、历史残留或上下文不匹配结果，并阻止后者被记为真实预览通过
+**Goal**: 明确区分 `planned_glue_snapshot` 与旧版 `runtime_snapshot`、mock、未知来源、历史残留或上下文不匹配结果，并阻止后者被记为真实预览通过
 
 **Independent Test**: 对 `mock_synthetic`、来源缺失、`online_ready=false`、DXF/plan 不匹配和历史缓存场景分别执行验证时，HMI、transport/gateway 和 HIL 证据都只能输出 `invalid-source`、`not-ready`、`mismatch` 或 `incomplete`，不得出现 `passed`
 
@@ -128,7 +128,7 @@
 ### User Story Dependencies
 
 - **User Story 1 (P1)**: Foundational 完成后即可开始；不依赖其他用户故事
-- **User Story 2 (P2)**: 依赖 `US1` 已能稳定生成真实 `runtime_snapshot`，否则无从比较执行准备语义
+- **User Story 2 (P2)**: 依赖 `US1` 已能稳定生成真实 `planned_glue_snapshot + glue_points`，否则无从比较执行准备语义
 - **User Story 3 (P3)**: 依赖 `US1` 的在线权威预览基线；可与 `US2` 并行，只要不覆盖同一未完成文件
 
 ### Parallel Opportunities
@@ -170,7 +170,7 @@ T020 + T021 + T022
 
 ### Incremental Delivery
 
-1. 先交付 `US1`，冻结“在线就绪 + 真实 DXF + runtime_snapshot”最小闭环
+1. 先交付 `US1`，冻结“在线就绪 + 真实 DXF + planned_glue_snapshot + glue_points”最小闭环
 2. 再交付 `US2`，补齐与控制卡下发准备数据的语义一致性证据
 3. 最后交付 `US3`，把 mock、历史残留和上下文不匹配结果全部降为非通过
 
@@ -185,7 +185,7 @@ T020 + T021 + T022
 ## Notes
 
 - 所有测试任务都必须先写并先失败，再进行对应实现任务
-- `US2` 和 `US3` 只接受 `preview_source == runtime_snapshot` 作为真实验收通过来源
+- `US2` 和 `US3` 只接受 `preview_source == planned_glue_snapshot` 且 `preview_kind == glue_points` 作为真实验收通过来源
 - `D:\Projects\SiligenSuite\samples\dxf\rect_diag.dxf` 是本特性的强制基线输入，不得替换为 synthetic/mock 几何
 - `D:\Projects\SiligenSuite\tests\reports\` 下的证据必须由脚本运行生成，不手工伪造
 - 分支必须持续保持 `<type>/<scope>/<ticket>-<short-desc>` 合规

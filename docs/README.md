@@ -5,6 +5,7 @@
 当前阶段优先内容：
 
 - `architecture/`：工作区治理、目录职责、依赖规则、迁移原则
+- `architecture/dsp-e2e-spec/project-chain-standard-v1.md`：项目内正式对象链、live 控制链与支撑链冻结标准
 - `architecture/`：同时承接模拟器可视化界面的数据契约与开发执行基线
 - `decisions/`：工作区级 ADR、边界冻结和关键治理决策
 - `machine-model/`：机型级 IO、接线、限位/回零假设与现场复核事实

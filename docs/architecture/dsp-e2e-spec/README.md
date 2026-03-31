@@ -22,6 +22,15 @@
 | `S09` | `dsp-e2e-spec-s09-test-matrix-acceptance-baseline.md` | 测试矩阵、验收基线、自动化优先级 |
 | `S10` | `dsp-e2e-spec-s10-frozen-directory-index.md` | 索引入口、审阅顺序、统一冻结关键词 |
 
+## 2.1 冻结补充标准
+
+以下文件位于同一正式冻结目录内，作为 `S01-S10` 的冻结补充标准使用：
+
+| 类型 | 文件 | 正式用途 |
+|---|---|---|
+| 补充标准 | `project-chain-standard-v1.md` | 冻结项目内正式对象链、live 控制链与支撑链的统一定义与分类边界 |
+| 补充契约 | `internal_execution_contract_v_1.md` | 冻结内部执行契约与执行语义边界 |
+
 ## 3. 历史迁移映射
 
 | 历史路径或来源 | 当前正式目标 |

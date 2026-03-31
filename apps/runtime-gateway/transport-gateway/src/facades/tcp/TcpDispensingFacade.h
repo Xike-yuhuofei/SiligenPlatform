@@ -5,7 +5,6 @@
 #include "job_ingest/contracts/dispensing/UploadContracts.h"
 #include "domain/safety/value-objects/InterlockTypes.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
-#include "application/usecases/dispensing/DispensingExecutionWorkflowUseCase.h"
 #include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
 #include "application/usecases/dispensing/PlanningUseCase.h"
 
@@ -18,7 +17,6 @@ class TcpDispensingFacade {
     TcpDispensingFacade(std::shared_ptr<UseCases::Dispensing::Valve::ValveCommandUseCase> valve_command_use_case,
                         std::shared_ptr<UseCases::Dispensing::Valve::ValveQueryUseCase> valve_query_use_case,
                         std::shared_ptr<UseCases::Dispensing::DispensingExecutionUseCase> dxf_execute_use_case,
-                        std::shared_ptr<UseCases::Dispensing::DispensingExecutionWorkflowUseCase> dxf_execution_workflow_use_case,
                         std::shared_ptr<UseCases::Dispensing::IUploadFilePort> dxf_upload_use_case,
                         std::shared_ptr<UseCases::Dispensing::PlanningUseCase> dxf_planning_use_case,
                         std::shared_ptr<UseCases::Dispensing::DispensingWorkflowUseCase> dxf_workflow_use_case);
@@ -39,14 +37,6 @@ class TcpDispensingFacade {
         const UseCases::Dispensing::UploadRequest& request);
     Shared::Types::Result<UseCases::Dispensing::PlanningResponse> PlanDxf(
         const UseCases::Dispensing::PlanningRequest& request);
-    Shared::Types::Result<UseCases::Dispensing::TaskID> ExecuteDxfAsync(
-        const UseCases::Dispensing::DispensingMVPRequest& request);
-    Shared::Types::Result<UseCases::Dispensing::TaskStatusResponse> GetDxfTaskStatus(
-        const UseCases::Dispensing::TaskID& task_id) const;
-    Shared::Types::Result<void> PauseDxfTask(const UseCases::Dispensing::TaskID& task_id);
-    Shared::Types::Result<void> ResumeDxfTask(const UseCases::Dispensing::TaskID& task_id);
-    Shared::Types::Result<void> CancelDxfTask(const UseCases::Dispensing::TaskID& task_id);
-    void StopDxfExecution();
     Shared::Types::Result<UseCases::Dispensing::CreateArtifactResponse> CreateDxfArtifact(
         const UseCases::Dispensing::UploadRequest& request);
     Shared::Types::Result<UseCases::Dispensing::PreparePlanResponse> PrepareDxfPlan(
@@ -69,7 +59,6 @@ class TcpDispensingFacade {
     std::shared_ptr<UseCases::Dispensing::Valve::ValveCommandUseCase> valve_command_use_case_;
     std::shared_ptr<UseCases::Dispensing::Valve::ValveQueryUseCase> valve_query_use_case_;
     std::shared_ptr<UseCases::Dispensing::DispensingExecutionUseCase> dxf_execute_use_case_;
-    std::shared_ptr<UseCases::Dispensing::DispensingExecutionWorkflowUseCase> dxf_execution_workflow_use_case_;
     std::shared_ptr<UseCases::Dispensing::IUploadFilePort> dxf_upload_use_case_;
     std::shared_ptr<UseCases::Dispensing::PlanningUseCase> dxf_planning_use_case_;
     std::shared_ptr<UseCases::Dispensing::DispensingWorkflowUseCase> dxf_workflow_use_case_;

@@ -116,12 +116,21 @@ class _WorkerFakeProtocol:
 
 
 def _worker_import_modules() -> dict[str, object]:
+    hmi_client_package = types.ModuleType("hmi_client")
+    hmi_client_package.__path__ = []  # type: ignore[attr-defined]
+    hmi_client_client_package = types.ModuleType("hmi_client.client")
+    hmi_client_client_package.__path__ = []  # type: ignore[attr-defined]
     client_package = types.ModuleType("client")
+    client_package.__path__ = []  # type: ignore[attr-defined]
     tcp_module = types.ModuleType("client.tcp_client")
     tcp_module.TcpClient = _WorkerFakeClient
     protocol_module = types.ModuleType("client.protocol")
     protocol_module.CommandProtocol = _WorkerFakeProtocol
     return {
+        "hmi_client": hmi_client_package,
+        "hmi_client.client": hmi_client_client_package,
+        "hmi_client.client.tcp_client": tcp_module,
+        "hmi_client.client.protocol": protocol_module,
         "client": client_package,
         "client.tcp_client": tcp_module,
         "client.protocol": protocol_module,
@@ -185,8 +194,9 @@ class PreviewSessionOwnerTest(unittest.TestCase):
         )
 
         self.assertFalse(result.ok)
-        self.assertEqual(self.owner.gate.last_error_message, "运行时仍返回旧版轨迹预览契约")
+        self.assertEqual(self.owner.gate.last_error_message, "旧版 runtime_snapshot 预览契约仍在返回")
         self.assertIn("trajectory_polyline/runtime_snapshot", result.detail)
+        self.assertIn("plan_id=plan-legacy", result.detail)
 
     def test_process_snapshot_payload_reports_sampling_warning_from_source_counts(self) -> None:
         result = self.owner.process_snapshot_payload(

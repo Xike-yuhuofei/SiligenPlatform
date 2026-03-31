@@ -2070,7 +2070,7 @@ class MainWindow(QMainWindow):
             source_banner = (
                 "<div style='margin-bottom:14px;padding:12px 14px;border:1px solid #854d0e;"
                 "background:#2d2110;color:#fde68a;'>"
-                "<strong>当前为旧版轨迹快照。</strong> 该结果仅表示执行轨迹抽样点，不等价于胶点触发预览。"
+                "<strong>当前为旧版 runtime_snapshot。</strong> 该结果仅表示执行轨迹抽样点，不等价于胶点触发预览。"
                 "</div>"
             )
         else:

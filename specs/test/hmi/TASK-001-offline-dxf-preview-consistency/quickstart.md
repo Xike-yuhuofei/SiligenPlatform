@@ -65,7 +65,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\apps\hmi-app\run.ps1 -Mode
 
 4. 在 HMI 中加载 `D:\Projects\SiligenSuite\samples\dxf\rect_diag.dxf`。
 5. 触发在线预览生成，并确认当前上下文属于在线就绪状态。
-6. 确认预览来源标签为 `runtime_snapshot`。
+6. 确认预览来源标签为 `planned_glue_snapshot`，且 `preview_kind == glue_points`。
 7. 确认当前预览可回链到同一 `plan_id / plan_fingerprint / snapshot_hash`，并且与准备下发到运动控制卡的数据在语义上无无法解释差异。
 8. 检查 `preview-verdict.json`，确认其结论为 `passed`，且三项语义匹配均为 `true`。
 9. 保存本次在线预览证据。若复用 HIL 脚本，默认报告目录为 `tests\reports\adhoc\real-dxf-preview-snapshot-canonical\<timestamp>\`；若补充人工验收包，推荐保存到 `tests\reports\online-preview\<timestamp>\`。
@@ -75,7 +75,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\apps\hmi-app\run.ps1 -Mode
 本特性完成后的在线预览通过标准：
 
 1. 预览输入来自真实 DXF，而不是 mock / synthetic 几何。
-2. `preview_source` 明确存在，且等于 `runtime_snapshot`。
+2. `preview_source` 明确存在，且等于 `planned_glue_snapshot`。
 3. 快照可回链到同一 `plan_id / plan_fingerprint / snapshot_hash`。
 4. 与执行准备结果在几何路径、路径顺序和点胶相关运动语义上无无法解释差异。
 5. 对 `rect_diag.dxf`，应能辨认矩形边段与对角线段，并与 `rect_diag.preview-snapshot-baseline.json` 保持容差内一致。
@@ -86,5 +86,5 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\apps\hmi-app\run.ps1 -Mode
 满足以下条件后即可进入 `speckit-tasks`：
 
 1. `plan.md`、`research.md`、`data-model.md`、`contracts\*` 已冻结。
-2. 已明确在线就绪前提与预览权威来源的边界，不再混淆 `runtime_snapshot`、`mock_synthetic` 与历史残留结果。
+2. 已明确在线就绪前提与预览权威来源的边界，不再混淆 `planned_glue_snapshot`、旧版 `runtime_snapshot`、`mock_synthetic` 与历史残留结果。
 3. 验证命令与证据目录已固定到 canonical roots。

@@ -353,7 +353,6 @@ PreviewSnapshotPayload PreviewSnapshotService::BuildPayload(
     payload.snapshot_hash = input.snapshot_hash;
     payload.plan_id = input.plan_id;
     payload.preview_state = input.preview_state;
-    payload.preview_source = "runtime_snapshot";
     payload.confirmed_at = input.confirmed_at;
     payload.segment_count = input.segment_count;
     payload.point_count = input.point_count;

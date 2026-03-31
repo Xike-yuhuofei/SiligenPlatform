@@ -821,7 +821,6 @@ class MockState:
                     "result": {
                         "started": True,
                         "job_id": self.dxf.current_job_id,
-                        "task_id": self.dxf.current_job_id,
                         "plan_id": self.dxf.current_plan_id,
                         "plan_fingerprint": self.dxf.preview_snapshot_hash,
                         "target_count": self.dxf.target_count,
@@ -848,7 +847,6 @@ class MockState:
                         ),
                         "elapsed_seconds": 0.0,
                         "error_message": "",
-                        "active_task_id": self.dxf.current_job_id,
                         "dry_run": self.dxf.job_dry_run,
                     }
                 }
