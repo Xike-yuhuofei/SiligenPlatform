@@ -172,6 +172,9 @@ def test_dxf_preview_and_job_contract():
     preview = operations["dxf.preview.snapshot"]
     preview_params = preview["paramsSchema"]
     assert "plan_id" in preview_params["required"]
+    preview_notes = " ".join(preview.get("compatibility", {}).get("notes", []))
+    assert "显式 plan_id" in preview_notes
+    assert "缺少 plan_id 时必须直接失败" in preview_notes
     assert "snapshot_hash" in preview["resultSchema"]["required"]
     assert "plan_id" in preview["resultSchema"]["required"]
     assert "preview_state" in preview["resultSchema"]["required"]
@@ -194,8 +197,19 @@ def test_dxf_preview_and_job_contract():
     plan_prepare = operations["dxf.plan.prepare"]
     assert "preview_request_signature" not in plan_prepare["resultSchema"]["required"]
 
+    job_start = operations["dxf.job.start"]
+    assert {"started", "job_id", "plan_id", "plan_fingerprint", "target_count"}.issubset(
+        set(job_start["resultSchema"]["required"])
+    )
+    assert "task_id" not in job_start["resultSchema"]["required"]
+    assert "task_id" not in job_start["resultSchema"]["properties"]
+
     job_status = operations["dxf.job.status"]
     assert job_status["resultRef"].endswith("#/definitions/dxfJobStatus")
+    states = load_json(CONTRACTS / "models" / "states.json")
+    dxf_job_status = states["definitions"]["dxfJobStatus"]
+    assert "active_task_id" not in dxf_job_status["required"]
+    assert "active_task_id" not in dxf_job_status["properties"]
 
 
 def test_core_estop_reset_contract_and_disconnect_semantics():

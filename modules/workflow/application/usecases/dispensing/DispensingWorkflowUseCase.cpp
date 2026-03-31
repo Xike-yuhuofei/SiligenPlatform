@@ -2,11 +2,9 @@
 
 #include "DispensingWorkflowUseCase.h"
 
-#include "application/services/dispensing/DispensingExecutionCompatibilityService.h"
 #include "application/services/dispensing/WorkflowPreviewSnapshotService.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
-#include "shared/types/Error.h"
 
 #include <algorithm>
 #include <chrono>
@@ -110,7 +108,6 @@ Result<CreateArtifactResponse> DispensingWorkflowUseCase::CreateArtifact(const U
 }
 
 Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const PreparePlanRequest& request) {
-    Services::Dispensing::DispensingExecutionCompatibilityService compatibility_service;
     ArtifactRecord artifact;
     {
         std::lock_guard<std::mutex> lock(artifacts_mutex_);
@@ -122,13 +119,11 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
         artifact = it->second;
     }
 
-    auto planning_request_result =
-        compatibility_service.BuildPlanningRequest(request.execution_request, artifact.upload_response.filepath);
-    if (planning_request_result.IsError()) {
-        return Result<PreparePlanResponse>::Failure(planning_request_result.GetError());
+    auto planning_request = request.planning_request;
+    if (planning_request.dxf_filepath.empty()) {
+        planning_request.dxf_filepath = artifact.upload_response.filepath;
     }
-
-    auto planning_result = planning_use_case_->Execute(planning_request_result.Value());
+    auto planning_result = planning_use_case_->Execute(planning_request);
     if (planning_result.IsError()) {
         return Result<PreparePlanResponse>::Failure(planning_result.GetError());
     }
@@ -138,42 +133,18 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
         return Result<PreparePlanResponse>::Failure(
             Error(ErrorCode::INVALID_STATE, "execution package unavailable", "DispensingWorkflowUseCase"));
     }
-    auto execution_request_result =
-        compatibility_service.BuildExecutionRequest(planning, request.execution_request, artifact.upload_response.filepath);
-    if (execution_request_result.IsError()) {
-        return Result<PreparePlanResponse>::Failure(execution_request_result.GetError());
-    }
 
     PlanExecutionLaunch execution_launch;
-    execution_launch.execution_package = execution_request_result.Value().execution_package;
-    execution_launch.runtime_overrides.source_path = execution_request_result.Value().source_path;
-    execution_launch.runtime_overrides.use_hardware_trigger = execution_request_result.Value().use_hardware_trigger;
-    execution_launch.runtime_overrides.dry_run = execution_request_result.Value().dry_run;
-    execution_launch.runtime_overrides.machine_mode = execution_request_result.Value().machine_mode;
-    execution_launch.runtime_overrides.execution_mode = execution_request_result.Value().execution_mode;
-    execution_launch.runtime_overrides.output_policy = execution_request_result.Value().output_policy;
-    execution_launch.runtime_overrides.max_jerk = execution_request_result.Value().max_jerk;
-    execution_launch.runtime_overrides.arc_tolerance_mm = execution_request_result.Value().arc_tolerance_mm;
-    execution_launch.runtime_overrides.dispensing_speed_mm_s = execution_request_result.Value().dispensing_speed_mm_s;
-    execution_launch.runtime_overrides.dry_run_speed_mm_s = execution_request_result.Value().dry_run_speed_mm_s;
-    execution_launch.runtime_overrides.rapid_speed_mm_s = execution_request_result.Value().rapid_speed_mm_s;
-    execution_launch.runtime_overrides.acceleration_mm_s2 = execution_request_result.Value().acceleration_mm_s2;
-    execution_launch.runtime_overrides.velocity_trace_enabled = execution_request_result.Value().velocity_trace_enabled;
-    execution_launch.runtime_overrides.velocity_trace_interval_ms =
-        execution_request_result.Value().velocity_trace_interval_ms;
-    execution_launch.runtime_overrides.velocity_trace_path = execution_request_result.Value().velocity_trace_path;
-    execution_launch.runtime_overrides.velocity_guard_enabled = execution_request_result.Value().velocity_guard_enabled;
-    execution_launch.runtime_overrides.velocity_guard_ratio = execution_request_result.Value().velocity_guard_ratio;
-    execution_launch.runtime_overrides.velocity_guard_abs_mm_s = execution_request_result.Value().velocity_guard_abs_mm_s;
-    execution_launch.runtime_overrides.velocity_guard_min_expected_mm_s =
-        execution_request_result.Value().velocity_guard_min_expected_mm_s;
-    execution_launch.runtime_overrides.velocity_guard_grace_ms = execution_request_result.Value().velocity_guard_grace_ms;
-    execution_launch.runtime_overrides.velocity_guard_interval_ms =
-        execution_request_result.Value().velocity_guard_interval_ms;
-    execution_launch.runtime_overrides.velocity_guard_max_consecutive =
-        execution_request_result.Value().velocity_guard_max_consecutive;
-    execution_launch.runtime_overrides.velocity_guard_stop_on_violation =
-        execution_request_result.Value().velocity_guard_stop_on_violation;
+    execution_launch.execution_package = *planning.execution_package;
+    execution_launch.runtime_overrides = request.runtime_overrides;
+    if (execution_launch.runtime_overrides.source_path.empty()) {
+        execution_launch.runtime_overrides.source_path = artifact.upload_response.filepath;
+    }
+    const auto execution_request = BuildExecutionRequest(execution_launch);
+    auto execution_validation = execution_request.Validate();
+    if (execution_validation.IsError()) {
+        return Result<PreparePlanResponse>::Failure(execution_validation.GetError());
+    }
 
     PreparePlanResponse response;
     response.success = true;
@@ -243,13 +214,8 @@ Result<PreviewSnapshotResponse> DispensingWorkflowUseCase::GetPreviewSnapshot(co
             return Result<PreviewSnapshotResponse>::Failure(
                 Error(ErrorCode::INVALID_STATE, "plan is stale", "DispensingWorkflowUseCase"));
         }
-        const std::string preview_failure_reason = ResolvePreviewGateFailure(it->second);
-        if (!preview_failure_reason.empty()) {
-            it->second.preview_state = PlanPreviewState::FAILED;
-            it->second.confirmed_at.clear();
-            it->second.failure_message = preview_failure_reason;
-            return Result<PreviewSnapshotResponse>::Failure(
-                Error(ErrorCode::INVALID_STATE, preview_failure_reason, "DispensingWorkflowUseCase"));
+        if (auto preview_gate_error = BuildPreviewGateError(it->second, true); preview_gate_error.has_value()) {
+            return Result<PreviewSnapshotResponse>::Failure(preview_gate_error.value());
         }
 
         const bool keep_confirmed_state =
@@ -303,13 +269,8 @@ Result<ConfirmPreviewResponse> DispensingWorkflowUseCase::ConfirmPreview(const C
             return Result<ConfirmPreviewResponse>::Failure(
                 Error(ErrorCode::INVALID_PARAMETER, "snapshot hash mismatch", "DispensingWorkflowUseCase"));
         }
-        const std::string preview_failure_reason = ResolvePreviewGateFailure(it->second);
-        if (!preview_failure_reason.empty()) {
-            it->second.preview_state = PlanPreviewState::FAILED;
-            it->second.confirmed_at.clear();
-            it->second.failure_message = preview_failure_reason;
-            return Result<ConfirmPreviewResponse>::Failure(
-                Error(ErrorCode::INVALID_STATE, preview_failure_reason, "DispensingWorkflowUseCase"));
+        if (auto preview_gate_error = BuildPreviewGateError(it->second, true); preview_gate_error.has_value()) {
+            return Result<ConfirmPreviewResponse>::Failure(preview_gate_error.value());
         }
 
         it->second.preview_state = PlanPreviewState::CONFIRMED;
@@ -358,10 +319,8 @@ Result<JobID> DispensingWorkflowUseCase::StartJob(const StartJobRequest& request
             return Result<JobID>::Failure(
                 Error(ErrorCode::INVALID_STATE, "preview not confirmed", "DispensingWorkflowUseCase"));
         }
-        const std::string preview_failure_reason = ResolvePreviewGateFailure(it->second);
-        if (!preview_failure_reason.empty()) {
-            return Result<JobID>::Failure(
-                Error(ErrorCode::INVALID_STATE, preview_failure_reason, "DispensingWorkflowUseCase"));
+        if (auto preview_gate_error = BuildPreviewGateError(it->second, false); preview_gate_error.has_value()) {
+            return Result<JobID>::Failure(preview_gate_error.value());
         }
         if (it->second.preview_snapshot_hash != it->second.response.plan_fingerprint) {
             return Result<JobID>::Failure(
@@ -424,7 +383,6 @@ Result<JobStatusResponse> DispensingWorkflowUseCase::GetJobStatus(const JobID& j
     response.overall_progress_percent = runtime_status.overall_progress_percent;
     response.elapsed_seconds = runtime_status.elapsed_seconds;
     response.error_message = runtime_status.error_message;
-    response.active_task_id = runtime_status.active_task_id;
     response.dry_run = runtime_status.dry_run;
     return Result<JobStatusResponse>::Success(std::move(response));
 }
@@ -593,37 +551,78 @@ std::string DispensingWorkflowUseCase::BuildPlanFingerprint(
     return HexEncodeUint64(Fnv1a64(oss.str()));
 }
 
-std::string DispensingWorkflowUseCase::ResolvePreviewGateFailure(const PlanRecord& plan_record) const {
-    if (plan_record.authority_trigger_layout.layout_id.empty()) {
-        return "preview authority layout id unavailable";
+DispensingWorkflowUseCase::PreviewGateDiagnostic DispensingWorkflowUseCase::BuildPreviewGateDiagnostic(
+    const PlanRecord& plan_record) const {
+    PreviewGateDiagnostic diagnostic;
+    diagnostic.layout_id = plan_record.authority_trigger_layout.layout_id;
+    diagnostic.authority_ready = plan_record.preview_authority_ready;
+    diagnostic.authority_shared_with_execution = plan_record.preview_authority_shared_with_execution;
+    diagnostic.binding_ready = plan_record.preview_binding_ready;
+    diagnostic.spacing_valid = plan_record.preview_spacing_valid;
+    diagnostic.validation_classification = plan_record.preview_validation_classification;
+    diagnostic.exception_reason = plan_record.preview_exception_reason;
+    diagnostic.failure_reason = plan_record.preview_failure_reason;
+    diagnostic.glue_point_count = plan_record.glue_points.size();
+
+    if (diagnostic.layout_id.empty()) {
+        diagnostic.owner_message = "preview authority layout id unavailable";
+        return diagnostic;
     }
-    if (!plan_record.preview_authority_ready) {
-        return plan_record.preview_failure_reason.empty()
+    if (!diagnostic.authority_ready) {
+        diagnostic.owner_message = diagnostic.failure_reason.empty()
             ? "preview authority unavailable"
-            : plan_record.preview_failure_reason;
+            : diagnostic.failure_reason;
+        return diagnostic;
     }
-    if (!plan_record.preview_binding_ready) {
-        return plan_record.preview_failure_reason.empty()
+    if (!diagnostic.binding_ready) {
+        diagnostic.owner_message = diagnostic.failure_reason.empty()
             ? "preview binding unavailable"
-            : plan_record.preview_failure_reason;
+            : diagnostic.failure_reason;
+        return diagnostic;
     }
-    if (!plan_record.preview_authority_shared_with_execution) {
-        return "preview authority is not shared with execution";
+    if (!diagnostic.authority_shared_with_execution) {
+        diagnostic.owner_message = "preview authority is not shared with execution";
+        return diagnostic;
     }
-    if (!plan_record.preview_spacing_valid || plan_record.preview_validation_classification == "fail") {
-        if (!plan_record.preview_failure_reason.empty()) {
-            return plan_record.preview_failure_reason;
+    if (!diagnostic.spacing_valid || diagnostic.validation_classification == "fail") {
+        if (!diagnostic.failure_reason.empty()) {
+            diagnostic.owner_message = diagnostic.failure_reason;
+            return diagnostic;
         }
-        if (plan_record.preview_validation_classification == "fail" &&
-            !plan_record.preview_exception_reason.empty()) {
-            return plan_record.preview_exception_reason;
+        if (diagnostic.validation_classification == "fail" && !diagnostic.exception_reason.empty()) {
+            diagnostic.owner_message = diagnostic.exception_reason;
+            return diagnostic;
         }
-        return "preview spacing validation failed";
+        diagnostic.owner_message = "preview spacing validation failed";
+        return diagnostic;
     }
-    if (plan_record.glue_points.empty()) {
-        return "glue points unavailable";
+    if (diagnostic.glue_point_count == 0U) {
+        diagnostic.owner_message = "glue points unavailable";
     }
-    return {};
+    return diagnostic;
+}
+
+std::optional<Siligen::Shared::Types::Error> DispensingWorkflowUseCase::BuildPreviewGateError(
+    PlanRecord& plan_record,
+    bool mark_failed) const {
+    const auto diagnostic = BuildPreviewGateDiagnostic(plan_record);
+    if (diagnostic.owner_message.empty()) {
+        return std::nullopt;
+    }
+
+    if (mark_failed) {
+        plan_record.preview_state = PlanPreviewState::FAILED;
+        plan_record.confirmed_at.clear();
+    }
+    plan_record.failure_message = diagnostic.owner_message;
+    return Error(
+        ErrorCode::INVALID_STATE,
+        diagnostic.owner_message,
+        "DispensingWorkflowUseCase");
+}
+
+std::string DispensingWorkflowUseCase::ResolvePreviewGateFailure(const PlanRecord& plan_record) const {
+    return BuildPreviewGateDiagnostic(plan_record).owner_message;
 }
 
 std::string DispensingWorkflowUseCase::PreviewStateToString(PlanPreviewState state) const {

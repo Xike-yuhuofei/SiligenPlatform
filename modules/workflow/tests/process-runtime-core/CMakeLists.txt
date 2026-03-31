@@ -45,7 +45,6 @@ set(TEST_SOURCES
     unit/dispensing/CleanupFilesUseCaseTest.cpp
     unit/dispensing/DispensingWorkflowUseCaseTest.cpp
     unit/dispensing/DispensingWorkflowModeResolutionTest.cpp
-    unit/dispensing/DispensingExecutionUseCaseProgressTest.cpp
     unit/dispensing/DispensingProcessServiceWaitForMotionCompleteTest.cpp
     unit/dispensing/PlanningUseCaseExportPortTest.cpp
 )
@@ -165,7 +164,6 @@ process_runtime_core_add_test_with_runtime_environment(
 
 set(DISPENSING_SEMANTICS_TEST_SOURCES
     unit/domain/safety/SafetyOutputGuardTest.cpp
-    unit/dispensing/DispensingExecutionUseCaseProgressTest.cpp
     unit/dispensing/DispensingWorkflowUseCaseTest.cpp
     unit/dispensing/DispensingWorkflowModeResolutionTest.cpp
     unit/dispensing/DispensingProcessServiceWaitForMotionCompleteTest.cpp

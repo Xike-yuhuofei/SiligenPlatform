@@ -11,6 +11,15 @@ DXF_PREVIEW_SUCCESS_FIXTURE = CONTRACTS / "fixtures" / "responses" / "dxf.previe
 PROTOCOL_MAPPING = CONTRACTS / "mappings" / "protocol-mapping.md"
 TCP_DISPATCHER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "tcp" / "TcpCommandDispatcher.cpp"
 TCP_DISPATCHER_HEADER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "tcp" / "TcpCommandDispatcher.h"
+TCP_DISPENSING_FACADE_HEADER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "facades" / "tcp" / "TcpDispensingFacade.h"
+TCP_DISPENSING_FACADE_CPP = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "facades" / "tcp" / "TcpDispensingFacade.cpp"
+TCP_FACADE_BUILDER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "include" / "siligen" / "gateway" / "tcp" / "tcp_facade_builder.h"
+APPLICATION_CONTAINER_DISPENSING = ROOT / "apps" / "runtime-service" / "container" / "ApplicationContainer.Dispensing.cpp"
+RUNTIME_EXECUTION_UC_HEADER = ROOT / "modules" / "runtime-execution" / "application" / "include" / "runtime_execution" / "application" / "usecases" / "dispensing" / "DispensingExecutionUseCase.h"
+LEGACY_EXECUTION_WORKFLOW_HEADER = ROOT / "modules" / "workflow" / "application" / "include" / "application" / "usecases" / "dispensing" / "DispensingExecutionWorkflowUseCase.h"
+LEGACY_EXECUTION_WORKFLOW_CPP = ROOT / "modules" / "workflow" / "application" / "usecases" / "dispensing" / "DispensingExecutionWorkflowUseCase.cpp"
+LEGACY_COMPATIBILITY_SERVICE_HEADER = ROOT / "modules" / "workflow" / "application" / "services" / "dispensing" / "DispensingExecutionCompatibilityService.h"
+LEGACY_COMPATIBILITY_SERVICE_CPP = ROOT / "modules" / "workflow" / "application" / "services" / "dispensing" / "DispensingExecutionCompatibilityService.cpp"
 MOCK_IO_CONTROL_SERVICE = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "tcp" / "MockIoControlService.cpp"
 TCP_SYSTEM_FACADE_HEADER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "facades" / "tcp" / "TcpSystemFacade.h"
 TCP_SYSTEM_FACADE_CPP = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "facades" / "tcp" / "TcpSystemFacade.cpp"
@@ -141,7 +150,10 @@ def test_dxf_preview_gate_contract_is_wired():
     assert '{"polyline_source_point_count", snapshot.execution_polyline_source_point_count}' in source
     assert "dxf_cache_.preview_state = snapshot.preview_state;" in source
     assert 'request.snapshot_hash = snapshot_hash;' in source
-    assert "dxf.preview.snapshot 使用了兼容回退路径（缺少 plan_id）" in source
+    assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3011, "Missing plan_id")' in source
+    assert "PrepareDeprecatedPreviewSnapshotPlan(" not in source
+    assert "deprecated_path_used=true" not in source
+    assert "removal_target=" not in source
     assert "dxf.preview.snapshot max_polyline_points 超过上限，已夹断" in source
     assert "std::min<std::size_t>(" in source
     assert "kPreviewPolylineMaxPoints" in source
@@ -152,8 +164,12 @@ def test_dxf_preview_gate_contract_is_wired():
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview source must be planned_glue_snapshot")' in source
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview kind must be glue_points")' in source
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview glue points are empty")' in source
+    assert 'LogPreviewGateFailure("dxf.preview.snapshot"' in source
+    assert 'LogPreviewGateFailure("dxf.preview.confirm"' in source
+    assert 'LogPreviewGateFailure("dxf.job.start"' in source
     assert 'ReadJsonBool(params, "use_interpolation_planner", true)' in source
-    assert 'params.value("use_interpolation_planner", true)' in source
+    assert "BuildPreparePlanRequest(" in source
+    assert "BuildPreparePlanRuntimeOverrides(" in source
     assert "Missing 'snapshot_hash'" in source
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3018, confirm_result.GetError().GetMessage())' in source
     assert "HandleDxfPreviewSnapshot" in source
@@ -167,11 +183,87 @@ def test_dxf_preview_contract_docs_freeze_shared_authority_semantics():
     mapping = PROTOCOL_MAPPING.read_text(encoding="utf-8")
 
     assert "shared authority" in notes.lower()
+    assert "显式 plan_id" in notes
+    assert "deprecated" not in notes.lower()
+    assert "2026-04" not in notes
     assert fixture["result"]["preview_source"] == "planned_glue_snapshot"
     assert fixture["result"]["preview_kind"] == "glue_points"
     assert fixture["result"]["glue_point_count"] > 0
     assert len(fixture["result"]["glue_points"]) == fixture["result"]["glue_point_count"]
     assert "shared authority" in mapping.lower()
+
+
+def test_legacy_execute_and_task_surface_are_removed():
+    dispatcher_source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    dispatcher_header = TCP_DISPATCHER_HEADER.read_text(encoding="utf-8")
+    facade_header = TCP_DISPENSING_FACADE_HEADER.read_text(encoding="utf-8")
+    facade_impl = TCP_DISPENSING_FACADE_CPP.read_text(encoding="utf-8")
+    builder = TCP_FACADE_BUILDER.read_text(encoding="utf-8")
+    container = APPLICATION_CONTAINER_DISPENSING.read_text(encoding="utf-8")
+    runtime_execution_header = RUNTIME_EXECUTION_UC_HEADER.read_text(encoding="utf-8")
+    command_set = load_json(DXF_COMMAND_SET)
+    states = load_json(CONTRACTS / "models" / "states.json")
+
+    assert "std::string active_dxf_job_id_" in dispatcher_header
+    assert "dxf_task_id_" not in dispatcher_header
+    assert "dxf_task_id_" not in dispatcher_source
+    assert '{"task_id", job_id}' not in dispatcher_source
+    assert '{"active_task_id", status.active_task_id}' not in dispatcher_source
+    assert "CancelDxfTask(" not in dispatcher_source
+    assert "StopDxfExecution(" not in dispatcher_source
+
+    assert "ExecuteDxfAsync(" not in facade_header
+    assert "GetDxfTaskStatus(" not in facade_header
+    assert "PauseDxfTask(" not in facade_header
+    assert "ResumeDxfTask(" not in facade_header
+    assert "CancelDxfTask(" not in facade_header
+    assert "StopDxfExecution(" not in facade_header
+    assert "DispensingExecutionWorkflowUseCase" not in facade_header
+    assert "DispensingExecutionWorkflowUseCase" not in facade_impl
+    assert "active_task_id" not in facade_impl
+
+    assert "DispensingExecutionWorkflowUseCase" not in builder
+    assert "DispensingExecutionCompatibilityService" not in container
+    assert "DispensingExecutionWorkflowUseCase" not in container
+    assert "SetLegacyExecutionForwarders(" not in container
+
+    assert "SetLegacyExecutionForwarders(" not in runtime_execution_header
+    assert "LegacyExecuteFn" not in runtime_execution_header
+    assert "LegacyExecuteAsyncFn" not in runtime_execution_header
+    assert "DispensingMVPRequest" not in runtime_execution_header
+    assert "DispensingMVPResult" not in runtime_execution_header
+    assert "TaskID" not in runtime_execution_header
+    assert "TaskState" not in runtime_execution_header
+    assert "TaskExecutionContext" not in runtime_execution_header
+    assert "TaskStatusResponse" not in runtime_execution_header
+    assert "Execute(const DispensingMVPRequest& request)" not in runtime_execution_header
+    assert "ExecuteAsync(const DispensingMVPRequest& request)" not in runtime_execution_header
+    assert "ExecuteAsync(" not in runtime_execution_header
+    assert "GetTaskStatus(" not in runtime_execution_header
+    assert "PauseTask(" not in runtime_execution_header
+    assert "ResumeTask(" not in runtime_execution_header
+    assert "CancelTask(" not in runtime_execution_header
+    assert "CleanupExpiredTasks(" not in runtime_execution_header
+    assert "StopExecution(" not in runtime_execution_header
+    assert "DispensingExecutionResult" in runtime_execution_header
+    runtime_job_status_match = re.search(
+        r"struct RuntimeJobStatusResponse \{(?P<body>.*?)\n\};",
+        runtime_execution_header,
+        re.S,
+    )
+    assert runtime_job_status_match, "cannot locate RuntimeJobStatusResponse"
+    assert "active_task_id" not in runtime_job_status_match.group("body")
+
+    assert not LEGACY_EXECUTION_WORKFLOW_HEADER.exists()
+    assert not LEGACY_EXECUTION_WORKFLOW_CPP.exists()
+    assert not LEGACY_COMPATIBILITY_SERVICE_HEADER.exists()
+    assert not LEGACY_COMPATIBILITY_SERVICE_CPP.exists()
+
+    job_start = next(op for op in command_set["operations"] if op["method"] == "dxf.job.start")
+    assert "task_id" not in job_start["resultSchema"]["required"]
+    assert "task_id" not in job_start["resultSchema"]["properties"]
+    assert "active_task_id" not in states["definitions"]["dxfJobStatus"]["required"]
+    assert "active_task_id" not in states["definitions"]["dxfJobStatus"]["properties"]
 
 
 def test_status_reads_backend_interlock_signals():
@@ -391,6 +483,7 @@ def main():
         test_canonical_targets_are_exported_without_legacy_aliases,
         test_dxf_preview_gate_contract_is_wired,
         test_dxf_preview_contract_docs_freeze_shared_authority_semantics,
+        test_legacy_execute_and_task_surface_are_removed,
         test_status_reads_backend_interlock_signals,
         test_status_publishes_effective_interlocks_and_supervision_contract,
         test_motion_coord_status_exposes_feedback_diagnostics,

@@ -1,6 +1,6 @@
 #define MODULE_NAME "DispensingExecutionUseCase"
 
-#include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
+#include "DispensingExecutionUseCase.Internal.h"
 
 #include "domain/dispensing/domain-services/DispensingProcessService.h"
 #include "runtime_execution/contracts/safety/SafetyOutputGuard.h"
@@ -377,95 +377,66 @@ Result<void> DispensingExecutionRequest::Validate() const noexcept {
     return Result<void>::Success();
 }
 
-MachineMode DispensingMVPRequest::ResolveMachineMode() const noexcept {
-    if (machine_mode.has_value()) {
-        return machine_mode.value();
-    }
-    return dry_run ? MachineMode::Test : MachineMode::Production;
-}
-
-JobExecutionMode DispensingMVPRequest::ResolveExecutionMode() const noexcept {
-    if (execution_mode.has_value()) {
-        return execution_mode.value();
-    }
-    return dry_run ? JobExecutionMode::ValidationDryCycle : JobExecutionMode::Production;
-}
-
-ProcessOutputPolicy DispensingMVPRequest::ResolveOutputPolicy() const noexcept {
-    if (output_policy.has_value()) {
-        return output_policy.value();
-    }
-    return dry_run ? ProcessOutputPolicy::Inhibited : ProcessOutputPolicy::Enabled;
-}
-
-Result<void> DispensingMVPRequest::Validate() const noexcept {
-    if (dxf_filepath.empty()) {
-        return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "DXF文件路径不能为空"));
-    }
-    if (dispensing_velocity != 0.0f) {
-        return Result<void>::Failure(
-            Error(ErrorCode::INVALID_PARAMETER, "dispensing_velocity已弃用，请使用dispensing_speed_mm_s"));
-    }
-    if (dry_run_velocity != 0.0f) {
-        return Result<void>::Failure(
-            Error(ErrorCode::INVALID_PARAMETER, "dry_run_velocity已弃用，请使用dry_run_speed_mm_s"));
-    }
-    if (max_jerk < 0.0f) {
-        return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "max_jerk不能为负数"));
-    }
-    if (arc_tolerance_mm < 0.0f) {
-        return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "arc_tolerance_mm不能为负数"));
-    }
-    if (continuity_tolerance_mm < 0.0f) {
-        return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "continuity_tolerance_mm不能为负数"));
-    }
-    if (curve_chain_angle_deg < 0.0f || curve_chain_angle_deg > 180.0f) {
-        return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "curve_chain_angle_deg超出范围(0-180)"));
-    }
-    if (curve_chain_max_segment_mm < 0.0f) {
-        return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "curve_chain_max_segment_mm不能为负数"));
-    }
-    Domain::Dispensing::ValueObjects::DispensingRuntimeOverrides overrides;
-    overrides.dry_run = dry_run;
-    overrides.machine_mode = machine_mode;
-    overrides.execution_mode = execution_mode;
-    overrides.output_policy = output_policy;
-    if (dispensing_speed_mm_s.has_value()) {
-        overrides.dispensing_speed_mm_s = *dispensing_speed_mm_s;
-    }
-    if (dry_run_speed_mm_s.has_value()) {
-        overrides.dry_run_speed_mm_s = *dry_run_speed_mm_s;
-    }
-    if (rapid_speed_mm_s.has_value()) {
-        overrides.rapid_speed_mm_s = *rapid_speed_mm_s;
-    }
-    if (acceleration_mm_s2.has_value()) {
-        overrides.acceleration_mm_s2 = *acceleration_mm_s2;
-    }
-    overrides.velocity_guard_enabled = velocity_guard_enabled;
-    overrides.velocity_guard_ratio = velocity_guard_ratio;
-    overrides.velocity_guard_abs_mm_s = velocity_guard_abs_mm_s;
-    overrides.velocity_guard_min_expected_mm_s = velocity_guard_min_expected_mm_s;
-    overrides.velocity_guard_grace_ms = velocity_guard_grace_ms;
-    overrides.velocity_guard_interval_ms = velocity_guard_interval_ms;
-    overrides.velocity_guard_max_consecutive = velocity_guard_max_consecutive;
-    overrides.velocity_guard_stop_on_violation = velocity_guard_stop_on_violation;
-
-    auto override_validation = ValidateRuntimeOverridesExplicit(overrides);
-    if (override_validation.IsError()) {
-        return Result<void>::Failure(override_validation.GetError());
-    }
-    auto guard_validation = SafetyOutputGuard::Evaluate(
-        ResolveMachineMode(),
-        ResolveExecutionMode(),
-        ResolveOutputPolicy());
-    if (guard_validation.IsError()) {
-        return Result<void>::Failure(guard_validation.GetError());
-    }
-    return Result<void>::Success();
-}
-
 DispensingExecutionUseCase::DispensingExecutionUseCase(
+    std::shared_ptr<Domain::Dispensing::Ports::IValvePort> valve_port,
+    std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port,
+    std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port,
+    std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
+    std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port,
+    std::shared_ptr<RuntimeEventPublisherPort> event_port,
+    std::shared_ptr<RuntimeTaskSchedulerPort> task_scheduler_port,
+    std::shared_ptr<RuntimeHomingPort> homing_port,
+    std::shared_ptr<RuntimeInterlockSignalPort> interlock_signal_port)
+    : impl_(std::make_unique<Impl>(
+          std::move(valve_port),
+          std::move(interpolation_port),
+          std::move(motion_state_port),
+          std::move(connection_port),
+          std::move(config_port),
+          std::move(event_port),
+          std::move(task_scheduler_port),
+          std::move(homing_port),
+          std::move(interlock_signal_port))) {}
+
+DispensingExecutionUseCase::~DispensingExecutionUseCase() = default;
+
+Result<DispensingExecutionResult> DispensingExecutionUseCase::Execute(const DispensingExecutionRequest& request) {
+    return impl_->Execute(request);
+}
+
+Result<JobID> DispensingExecutionUseCase::StartJob(const RuntimeStartJobRequest& request) {
+    return impl_->StartJob(request);
+}
+
+Result<RuntimeJobStatusResponse> DispensingExecutionUseCase::GetJobStatus(const JobID& job_id) const {
+    return impl_->GetJobStatus(job_id);
+}
+
+Result<void> DispensingExecutionUseCase::PauseJob(const JobID& job_id) {
+    return impl_->PauseJob(job_id);
+}
+
+Result<void> DispensingExecutionUseCase::ResumeJob(const JobID& job_id) {
+    return impl_->ResumeJob(job_id);
+}
+
+Result<void> DispensingExecutionUseCase::StopJob(const JobID& job_id) {
+    return impl_->StopJob(job_id);
+}
+
+#ifdef SILIGEN_TEST_HOOKS
+void DispensingExecutionUseCase::SeedJobStateForTesting(
+    const RuntimeJobStatusResponse& status,
+    bool pause_requested) {
+    impl_->SeedJobStateForTesting(status, pause_requested);
+}
+
+void DispensingExecutionUseCase::SetActiveJobForTesting(const JobID& job_id) {
+    impl_->SetActiveJobForTesting(job_id);
+}
+#endif
+
+DispensingExecutionUseCase::Impl::Impl(
     std::shared_ptr<Domain::Dispensing::Ports::IValvePort> valve_port,
     std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port,
     std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port,
@@ -492,7 +463,7 @@ DispensingExecutionUseCase::DispensingExecutionUseCase(
           config_port_)) {
 }
 
-DispensingExecutionUseCase::~DispensingExecutionUseCase() {
+DispensingExecutionUseCase::Impl::~Impl() {
     stop_requested_.store(true);
     JobID active_job;
     {
@@ -564,22 +535,12 @@ DispensingExecutionUseCase::~DispensingExecutionUseCase() {
     JoinWorkerThread();
 }
 
-Result<DispensingMVPResult> DispensingExecutionUseCase::Execute(const DispensingExecutionRequest& request) {
+Result<DispensingExecutionResult> DispensingExecutionUseCase::Impl::Execute(
+    const DispensingExecutionRequest& request) {
     return ExecuteInternal(request, nullptr);
 }
 
-Result<DispensingMVPResult> DispensingExecutionUseCase::Execute(const DispensingMVPRequest& request) {
-    if (!legacy_execute_fn_) {
-        return Result<DispensingMVPResult>::Failure(
-            Error(
-                ErrorCode::NOT_IMPLEMENTED,
-                "legacy DXF execution entry is not configured",
-                "DispensingExecutionUseCase"));
-    }
-    return legacy_execute_fn_(request);
-}
-
-Result<DispensingMVPResult> DispensingExecutionUseCase::ExecuteInternal(
+Result<DispensingExecutionResult> DispensingExecutionUseCase::Impl::ExecuteInternal(
     const DispensingExecutionRequest& request,
     const std::shared_ptr<TaskExecutionContext>& context) {
     const std::string source_path = request.source_path.empty()
@@ -599,28 +560,28 @@ Result<DispensingMVPResult> DispensingExecutionUseCase::ExecuteInternal(
     auto validation = request.Validate();
     if (!validation.IsSuccess()) {
         SILIGEN_LOG_ERROR("请求参数验证失败: " + validation.GetError().GetMessage());
-        return Result<DispensingMVPResult>::Failure(validation.GetError());
+        return Result<DispensingExecutionResult>::Failure(validation.GetError());
     }
     if (!process_service_) {
-        return Result<DispensingMVPResult>::Failure(
+        return Result<DispensingExecutionResult>::Failure(
             Error(ErrorCode::PORT_NOT_INITIALIZED, "点胶流程服务未初始化", "DispensingExecutionUseCase"));
     }
 
     auto conn_check = ValidateHardwareConnection();
     if (!conn_check.IsSuccess()) {
         SILIGEN_LOG_ERROR("硬件连接验证失败: " + conn_check.GetError().GetMessage());
-        return Result<DispensingMVPResult>::Failure(conn_check.GetError());
+        return Result<DispensingExecutionResult>::Failure(conn_check.GetError());
     }
 
     auto runtime_result = RefreshRuntimeParameters(request);
     if (runtime_result.IsError()) {
-        return Result<DispensingMVPResult>::Failure(runtime_result.GetError());
+        return Result<DispensingExecutionResult>::Failure(runtime_result.GetError());
     }
 
     const auto& execution_package = request.execution_package;
     const auto& execution_plan = execution_package.execution_plan;
     if (execution_plan.motion_trajectory.points.size() < 2 && execution_plan.interpolation_points.size() < 2) {
-        return Result<DispensingMVPResult>::Failure(
+        return Result<DispensingExecutionResult>::Failure(
             Error(ErrorCode::TRAJECTORY_GENERATION_FAILED, "轨迹点数量不足", "DispensingExecutionUseCase"));
     }
 
@@ -658,7 +619,7 @@ Result<DispensingMVPResult> DispensingExecutionUseCase::ExecuteInternal(
             trace_settings.output_path.c_str());
     }
 
-    DispensingMVPResult result;
+    DispensingExecutionResult result;
     result.total_segments = static_cast<uint32>(execution_plan.interpolation_segments.size());
     if (result.total_segments == 0) {
         result.total_segments = static_cast<uint32>(execution_plan.interpolation_points.size() > 1
@@ -737,7 +698,7 @@ Result<DispensingMVPResult> DispensingExecutionUseCase::ExecuteInternal(
         result.quality_metrics.run_count = 1;
         result.quality_metrics.interruption_count = 1;
         result.quality_metrics_available = true;
-        return Result<DispensingMVPResult>::Failure(exec_result.GetError());
+        return Result<DispensingExecutionResult>::Failure(exec_result.GetError());
     }
 
     result.executed_segments = exec_result.Value().executed_segments;
@@ -757,7 +718,7 @@ Result<DispensingMVPResult> DispensingExecutionUseCase::ExecuteInternal(
         result.total_distance,
         result.execution_time_seconds);
 
-    return Result<DispensingMVPResult>::Success(result);
+    return Result<DispensingExecutionResult>::Success(result);
 }
 
 }  // namespace Siligen::Application::UseCases::Dispensing

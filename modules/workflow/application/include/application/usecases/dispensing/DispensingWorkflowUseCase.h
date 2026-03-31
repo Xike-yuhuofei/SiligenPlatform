@@ -7,6 +7,7 @@
 #include "domain/motion/ports/IMotionStatePort.h"
 #include "domain/safety/ports/IInterlockSignalPort.h"
 #include "siligen/device/contracts/ports/device_ports.h"
+#include "shared/types/Error.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
 
@@ -36,9 +37,36 @@ struct CreateArtifactResponse {
     int64_t timestamp = 0;
 };
 
+struct PreparePlanRuntimeOverrides {
+    std::string source_path;
+    bool use_hardware_trigger = true;
+    bool dry_run = false;
+    std::optional<Domain::Machine::ValueObjects::MachineMode> machine_mode;
+    std::optional<Domain::Dispensing::ValueObjects::JobExecutionMode> execution_mode;
+    std::optional<Domain::Dispensing::ValueObjects::ProcessOutputPolicy> output_policy;
+    float32 max_jerk = 0.0f;
+    float32 arc_tolerance_mm = 0.0f;
+    std::optional<float32> dispensing_speed_mm_s;
+    std::optional<float32> dry_run_speed_mm_s;
+    std::optional<float32> rapid_speed_mm_s;
+    std::optional<float32> acceleration_mm_s2;
+    bool velocity_trace_enabled = false;
+    int32 velocity_trace_interval_ms = 0;
+    std::string velocity_trace_path;
+    bool velocity_guard_enabled = true;
+    float32 velocity_guard_ratio = 0.3f;
+    float32 velocity_guard_abs_mm_s = 5.0f;
+    float32 velocity_guard_min_expected_mm_s = 5.0f;
+    int32 velocity_guard_grace_ms = 800;
+    int32 velocity_guard_interval_ms = 200;
+    int32 velocity_guard_max_consecutive = 3;
+    bool velocity_guard_stop_on_violation = false;
+};
+
 struct PreparePlanRequest {
     ArtifactID artifact_id;
-    DispensingMVPRequest execution_request;
+    PlanningRequest planning_request;
+    PreparePlanRuntimeOverrides runtime_overrides;
 };
 
 struct PreparePlanResponse {
@@ -121,7 +149,6 @@ struct JobStatusResponse {
     std::uint32_t overall_progress_percent = 0;
     float32 elapsed_seconds = 0.0f;
     std::string error_message;
-    std::string active_task_id;
     bool dry_run = false;
 };
 
@@ -167,35 +194,9 @@ class DispensingWorkflowUseCase {
         UploadResponse upload_response;
     };
 
-    struct RuntimeLaunchOverrides {
-        std::string source_path;
-        bool use_hardware_trigger = true;
-        bool dry_run = false;
-        std::optional<Domain::Machine::ValueObjects::MachineMode> machine_mode;
-        std::optional<Domain::Dispensing::ValueObjects::JobExecutionMode> execution_mode;
-        std::optional<Domain::Dispensing::ValueObjects::ProcessOutputPolicy> output_policy;
-        float32 max_jerk = 0.0f;
-        float32 arc_tolerance_mm = 0.0f;
-        std::optional<float32> dispensing_speed_mm_s;
-        std::optional<float32> dry_run_speed_mm_s;
-        std::optional<float32> rapid_speed_mm_s;
-        std::optional<float32> acceleration_mm_s2;
-        bool velocity_trace_enabled = false;
-        int32 velocity_trace_interval_ms = 0;
-        std::string velocity_trace_path;
-        bool velocity_guard_enabled = true;
-        float32 velocity_guard_ratio = 0.3f;
-        float32 velocity_guard_abs_mm_s = 5.0f;
-        float32 velocity_guard_min_expected_mm_s = 5.0f;
-        int32 velocity_guard_grace_ms = 800;
-        int32 velocity_guard_interval_ms = 200;
-        int32 velocity_guard_max_consecutive = 3;
-        bool velocity_guard_stop_on_violation = false;
-    };
-
     struct PlanExecutionLaunch {
         Domain::Dispensing::Contracts::ExecutionPackageValidated execution_package;
-        RuntimeLaunchOverrides runtime_overrides;
+        PreparePlanRuntimeOverrides runtime_overrides;
     };
 
     struct PlanRecord {
@@ -220,6 +221,19 @@ class DispensingWorkflowUseCase {
         std::string failure_message;
         JobID runtime_job_id;
         bool latest = true;
+    };
+
+    struct PreviewGateDiagnostic {
+        std::string owner_message;
+        std::string layout_id;
+        bool authority_ready = false;
+        bool authority_shared_with_execution = false;
+        bool binding_ready = false;
+        bool spacing_valid = false;
+        std::string validation_classification;
+        std::string exception_reason;
+        std::string failure_reason;
+        std::size_t glue_point_count = 0;
     };
 
     std::shared_ptr<IUploadFilePort> upload_use_case_;
@@ -247,6 +261,10 @@ class DispensingWorkflowUseCase {
         const ArtifactID& artifact_id,
         const PlanningResponse& planning,
         const PlanExecutionLaunch& execution_launch) const;
+    PreviewGateDiagnostic BuildPreviewGateDiagnostic(const PlanRecord& plan_record) const;
+    std::optional<Siligen::Shared::Types::Error> BuildPreviewGateError(
+        PlanRecord& plan_record,
+        bool mark_failed) const;
     std::string ResolvePreviewGateFailure(const PlanRecord& plan_record) const;
     std::string PreviewStateToString(PlanPreviewState state) const;
     void ReleaseConfirmedPreviewForPlan(const PlanID& plan_id, const JobID* runtime_job_id = nullptr) const;

@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.20)
 set(RUNTIME_HOST_TEST_SOURCES
     unit/runtime/calibration/CalibrationWorkflowServiceTest.cpp
     unit/runtime/diagnostics/DiagnosticsPortAdapterTest.cpp
+    unit/runtime/dispensing/DispensingExecutionUseCaseInternalTest.cpp
     unit/runtime/motion/HardLimitMonitorServiceTest.cpp
     unit/runtime/motion/HomingPortAdapterTest.cpp
     unit/runtime/motion/MotionControlMigrationTest.cpp
@@ -34,7 +35,12 @@ target_link_libraries(siligen_runtime_host_unit_tests PRIVATE
     siligen_utils
 )
 
+target_include_directories(siligen_runtime_host_unit_tests PRIVATE
+    "${CMAKE_SOURCE_DIR}/modules/runtime-execution/application"
+)
+
 target_compile_features(siligen_runtime_host_unit_tests PRIVATE cxx_std_17)
+target_compile_definitions(siligen_runtime_host_unit_tests PRIVATE SILIGEN_INTERNAL_RUNTIME_EXECUTION_TESTS=1)
 
 add_test(NAME siligen_runtime_host_unit_tests COMMAND siligen_runtime_host_unit_tests)
 

@@ -226,7 +226,7 @@ class PreviewSessionOwner:
         if normalized == "planned_glue_snapshot":
             return "规划胶点快照"
         if normalized == "runtime_snapshot":
-            return "旧版轨迹快照"
+            return "旧版 runtime_snapshot"
         if normalized == "mock_synthetic":
             return "Mock模拟"
         if normalized:
@@ -240,8 +240,31 @@ class PreviewSessionOwner:
         if normalized == "planned_glue_snapshot":
             return "胶点主预览，执行轨迹仅作辅助叠加"
         if normalized == "runtime_snapshot":
-            return "旧版轨迹预览，不能直接视为胶点触发预览"
+            return "旧版 runtime_snapshot，不能直接视为胶点触发预览"
         return "预览来源未知"
+
+    @staticmethod
+    def normalize_preview_gate_message(message: str) -> str:
+        normalized = str(message or "").strip()
+        lowered = normalized.lower()
+        if not normalized:
+            return ""
+        if "layout" in lowered and "unavailable" in lowered:
+            canonical = "preview authority layout id unavailable"
+        elif "binding" in lowered and "unavailable" in lowered:
+            canonical = "preview binding unavailable"
+        elif "authority" in lowered and "unavailable" in lowered:
+            canonical = "preview authority unavailable"
+        elif "not shared" in lowered and "execution" in lowered:
+            canonical = "preview authority is not shared with execution"
+        elif "runtime_snapshot" in lowered:
+            canonical = "旧版 runtime_snapshot"
+        else:
+            canonical = ""
+
+        if not canonical or normalized.lower() == canonical:
+            return normalized
+        return f"{canonical} ({normalized})"
 
     def preview_block_message(self, reason: StartBlockReason) -> str:
         if reason == StartBlockReason.NOT_READY:
@@ -392,12 +415,13 @@ class PreviewSessionOwner:
         return PreviewConfirmResult(True)
 
     def handle_worker_error(self, error_message: str) -> PreviewPayloadResult:
+        normalized_error = self.normalize_preview_gate_message(error_message)
         self._clear_preview_contract_state()
-        self.gate.preview_failed(error_message)
+        self.gate.preview_failed(normalized_error)
         return PreviewPayloadResult(
             ok=False,
             title="胶点预览生成失败",
-            detail=error_message,
+            detail=normalized_error,
             status_message=self.preview_block_message(StartBlockReason.PREVIEW_FAILED),
             is_error=True,
         )
@@ -453,9 +477,9 @@ class PreviewSessionOwner:
         preview_exception_reason = str(
             payload.get("preview_exception_reason", self._state.preview_exception_reason or "")
         ).strip()
-        preview_failure_reason = str(
-            payload.get("preview_failure_reason", self._state.preview_failure_reason or "")
-        ).strip()
+        preview_failure_reason = self.normalize_preview_gate_message(
+            str(payload.get("preview_failure_reason", self._state.preview_failure_reason or "")).strip()
+        )
         self._state.current_plan_id = str(payload.get("plan_id", snapshot_id)).strip() or snapshot_id
         self._state.current_plan_fingerprint = snapshot_hash
         self._state.preview_plan_dry_run = preview_dry_run
@@ -474,10 +498,11 @@ class PreviewSessionOwner:
         legacy_polyline_present = "trajectory_polyline" in payload
         if not glue_points and (legacy_runtime_snapshot or legacy_polyline_present):
             return self.handle_local_failure(
-                gate_error_message="运行时仍返回旧版轨迹预览契约",
+                gate_error_message="旧版 runtime_snapshot 预览契约仍在返回",
                 title="胶点预览生成失败",
                 detail=(
                     "返回结果缺少 glue_points，并检测到旧版 trajectory_polyline/runtime_snapshot；"
+                    f"plan_id={self._state.current_plan_id or snapshot_id}。"
                     "当前 HMI 连接的 runtime-gateway 很可能还是旧构建。"
                 ),
             )

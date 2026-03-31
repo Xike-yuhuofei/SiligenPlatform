@@ -201,8 +201,19 @@ def test_dxf_preview_and_job_contract():
     plan_prepare = operations["dxf.plan.prepare"]
     assert "preview_request_signature" not in plan_prepare["resultSchema"]["required"]
 
+    job_start = operations["dxf.job.start"]
+    assert {"started", "job_id", "plan_id", "plan_fingerprint", "target_count"}.issubset(
+        set(job_start["resultSchema"]["required"])
+    )
+    assert "task_id" not in job_start["resultSchema"]["required"]
+    assert "task_id" not in job_start["resultSchema"]["properties"]
+
     job_status = operations["dxf.job.status"]
     assert job_status["resultRef"].endswith("#/definitions/dxfJobStatus")
+    states = load_json(CONTRACTS / "models" / "states.json")
+    dxf_job_status = states["definitions"]["dxfJobStatus"]
+    assert "active_task_id" not in dxf_job_status["required"]
+    assert "active_task_id" not in dxf_job_status["properties"]
 
 
 def test_status_contract_describes_backend_interlock_authority():

@@ -200,9 +200,7 @@ target_compile_features(siligen_application_motion PUBLIC cxx_std_17)
 add_library(siligen_application_dispensing STATIC
     usecases/dispensing/valve/coordination/ValveCoordinationUseCase.cpp
     usecases/dispensing/CleanupFilesUseCase.cpp
-    services/dispensing/DispensingExecutionCompatibilityService.cpp
     services/dispensing/WorkflowPreviewSnapshotService.cpp
-    usecases/dispensing/DispensingExecutionWorkflowUseCase.cpp
     usecases/dispensing/PlanningUseCase.cpp
     usecases/dispensing/DispensingWorkflowUseCase.cpp
 )

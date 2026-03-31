@@ -227,7 +227,7 @@
       ],
       "compatibility": {
         "notes": [
-          "过渡期允许服务端在缺省 plan_id 时走兼容链路（prepare+snapshot），新客户端必须显式传 plan_id。",
+          "live chain 仅接受显式 plan_id；dxf.preview.snapshot 缺少 plan_id 时必须直接失败，不得在 snapshot 内部隐式 prepare。",
           "成功响应仅适用于 shared authority 预览：preview、confirm、start-job 必须共享同一 authority layout、layout_id 与 binding gate 结果。",
           "成功形态固定为 preview_source=planned_glue_snapshot + preview_kind=glue_points + 非空 glue_points；authority 缺失、binding 缺失或 preview/execution 不共享 layout 时必须返回失败，而不是伪装成可显示 preview。"
         ]
@@ -277,11 +277,10 @@
       },
       "resultSchema": {
         "type": "object",
-        "required": ["started", "job_id", "task_id", "plan_id", "plan_fingerprint", "target_count"],
+        "required": ["started", "job_id", "plan_id", "plan_fingerprint", "target_count"],
         "properties": {
           "started": { "type": "boolean" },
           "job_id": { "type": "string" },
-          "task_id": { "type": "string" },
           "plan_id": { "type": "string" },
           "plan_fingerprint": { "type": "string" },
           "target_count": { "type": "integer" }
