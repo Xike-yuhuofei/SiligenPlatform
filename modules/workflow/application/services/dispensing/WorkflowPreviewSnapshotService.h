@@ -30,7 +30,8 @@ class WorkflowPreviewSnapshotService {
 public:
     UseCases::Dispensing::PreviewSnapshotResponse BuildResponse(
         const WorkflowPreviewSnapshotInput& input,
-        std::size_t max_points) const;
+        std::size_t max_polyline_points,
+        std::size_t max_glue_points) const;
 };
 
 }  // namespace Siligen::Application::Services::Dispensing

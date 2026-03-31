@@ -63,6 +63,10 @@ from .startup_sequence import (
     run_recovery_action,
     run_launch_sequence,
 )
+try:
+    from hmi_application.preview_session import PreviewSessionOwner, PreviewSnapshotWorker
+except ImportError:  # pragma: no cover - script-mode fallback
+    from preview_session import PreviewSessionOwner, PreviewSnapshotWorker  # type: ignore
 
 __all__ = [
     "TcpClient",
@@ -94,6 +98,8 @@ __all__ = [
     "SupervisorPolicy",
     "RuntimeDegradationResult",
     "StartBlockReason",
+    "PreviewSessionOwner",
+    "PreviewSnapshotWorker",
     "build_launch_ui_state",
     "build_online_capability_message",
     "build_recovery_action_decision",

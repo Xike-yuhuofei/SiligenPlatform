@@ -22,20 +22,23 @@ using Domain::Safety::DomainServices::InterlockPolicy;
 using Domain::Safety::ValueObjects::InterlockCause;
 using Domain::Safety::ValueObjects::InterlockPolicyConfig;
 
-Result<void> DispensingExecutionUseCase::Impl::ValidateHardwareConnection() noexcept {
+Result<void> DispensingExecutionUseCase::Impl::ValidateHardwareConnection(bool allow_disconnected) noexcept {
     if (!process_service_) {
         return Result<void>::Failure(
             Error(ErrorCode::PORT_NOT_INITIALIZED, "点胶流程服务未初始化", "DispensingExecutionUseCase"));
     }
+    if (allow_disconnected) {
+        return Result<void>::Success();
+    }
     return process_service_->ValidateHardwareConnection();
 }
 
-Result<void> DispensingExecutionUseCase::Impl::ValidateExecutionPreconditions() const noexcept {
+Result<void> DispensingExecutionUseCase::Impl::ValidateExecutionPreconditions(bool allow_disconnected) const noexcept {
     if (!connection_port_) {
         return Result<void>::Failure(
             Error(ErrorCode::PORT_NOT_INITIALIZED, "hardware connection port not available", "DispensingExecutionUseCase"));
     }
-    if (!connection_port_->IsConnected()) {
+    if (!allow_disconnected && !connection_port_->IsConnected()) {
         return Result<void>::Failure(
             Error(ErrorCode::HARDWARE_NOT_CONNECTED, "hardware not connected", "DispensingExecutionUseCase"));
     }

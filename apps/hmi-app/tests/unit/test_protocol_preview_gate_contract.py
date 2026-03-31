@@ -514,7 +514,22 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertEqual(client.calls[0][2], 300.0)
 
     def test_dxf_start_job_contract(self) -> None:
-        client = _FakeClient([{"result": {"job_id": "job-1"}}])
+        client = _FakeClient([
+            {
+                "result": {
+                    "job_id": "job-1",
+                    "performance_profile": {
+                        "execution_cache_hit": False,
+                        "execution_joined_inflight": True,
+                        "execution_wait_ms": 12,
+                        "motion_plan_ms": 30,
+                        "assembly_ms": 40,
+                        "export_ms": 5,
+                        "execution_total_ms": 75,
+                    },
+                }
+            }
+        ])
         protocol = CommandProtocol(client)
 
         ok, payload, error = protocol.dxf_start_job("plan-1", target_count=3, plan_fingerprint="fp-1")
@@ -526,6 +541,7 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertEqual(client.calls[0][1]["plan_id"], "plan-1")
         self.assertEqual(client.calls[0][1]["target_count"], 3)
         self.assertEqual(client.calls[0][1]["plan_fingerprint"], "fp-1")
+        self.assertEqual(payload["performance_profile"]["execution_total_ms"], 75)
         self.assertEqual(client.calls[0][2], 15.0)
 
     def test_dxf_start_job_returns_backend_error(self) -> None:

@@ -23,6 +23,10 @@
 
 namespace Siligen::Application::Services::Dispensing {
 
+using Siligen::Application::Services::Dispensing::AuthorityPreviewBuildInput;
+using Siligen::Application::Services::Dispensing::AuthorityPreviewBuildResult;
+using Siligen::Application::Services::Dispensing::ExecutionAssemblyBuildInput;
+using Siligen::Application::Services::Dispensing::ExecutionAssemblyBuildResult;
 using Siligen::Domain::Dispensing::Contracts::ExecutionPackageBuilt;
 using Siligen::Domain::Dispensing::DomainServices::AuthorityTriggerLayoutPlanner;
 using Siligen::Domain::Dispensing::DomainServices::AuthorityTriggerLayoutPlannerRequest;
@@ -552,6 +556,13 @@ const ProcessPath& ResolveAuthorityProcessPath(const PlanningArtifactsBuildInput
     return input.process_path;
 }
 
+const ProcessPath& ResolveAuthorityProcessPath(const AuthorityPreviewBuildInput& input) {
+    if (!input.authority_process_path.segments.empty()) {
+        return input.authority_process_path;
+    }
+    return input.process_path;
+}
+
 bool ValidateGlueSpacing(
     const PlanningArtifactsBuildInput& input,
     TriggerArtifacts& artifacts,
@@ -776,6 +787,28 @@ Result<std::vector<Point2D>> BuildInterpolationSeedPoints(
     return Result<std::vector<Point2D>>::Success(std::move(points));
 }
 
+std::vector<TrajectoryPoint> ConvertPreviewPointsToTrajectory(
+    const std::vector<Point2D>& preview_points) {
+    std::vector<TrajectoryPoint> points;
+    points.reserve(preview_points.size());
+    for (std::size_t index = 0; index < preview_points.size(); ++index) {
+        TrajectoryPoint point;
+        point.position = preview_points[index];
+        point.sequence_id = static_cast<uint32>(index);
+        points.push_back(point);
+    }
+    return points;
+}
+
+float32 EstimatePreviewTime(
+    const AuthorityPreviewBuildInput& input,
+    float32 total_length_mm) {
+    if (input.dispensing_velocity <= kEpsilon || total_length_mm <= kEpsilon) {
+        return 0.0f;
+    }
+    return total_length_mm / input.dispensing_velocity;
+}
+
 std::vector<AuthorityTriggerPoint> ConvertAuthorityTriggerPoints(const AuthorityTriggerLayout& layout) {
     std::vector<AuthorityTriggerPoint> points;
     points.reserve(layout.trigger_points.size());
@@ -856,6 +889,160 @@ std::vector<Point2D> CollectAuthorityPositions(const AuthorityTriggerLayout& lay
     return positions;
 }
 
+void LogAuthoritySpanDiagnostics(const AuthorityTriggerLayout& layout) {
+    {
+        std::ostringstream oss;
+        oss << "authority_layout_diagnostic"
+            << " layout_id=" << layout.layout_id
+            << " dispatch_type=" << Siligen::Domain::Dispensing::ValueObjects::ToString(layout.dispatch_type)
+            << " effective_components=" << layout.effective_component_count
+            << " ignored_components=" << layout.ignored_component_count
+            << " total_components=" << layout.components.size()
+            << " spans=" << layout.spans.size();
+        SILIGEN_LOG_INFO(oss.str());
+    }
+    for (const auto& component : layout.components) {
+        std::ostringstream oss;
+        oss << "authority_component_diagnostic"
+            << " layout_id=" << layout.layout_id
+            << " component_id=" << component.component_id
+            << " component_index=" << component.component_index
+            << " dispatch_type=" << Siligen::Domain::Dispensing::ValueObjects::ToString(component.dispatch_type)
+            << " ignored=" << (component.ignored ? 1 : 0)
+            << " ignored_reason="
+            << (component.ignored_reason.empty() ? "none" : component.ignored_reason)
+            << " source_segments=" << component.source_segment_indices.size()
+            << " span_refs=" << component.span_refs.size();
+        SILIGEN_LOG_INFO(oss.str());
+    }
+    for (const auto& span : layout.spans) {
+        const auto outcome_it = std::find_if(
+            layout.validation_outcomes.begin(),
+            layout.validation_outcomes.end(),
+            [&](const auto& outcome) { return outcome.span_ref == span.span_id; });
+        std::ostringstream oss;
+        oss << "authority_span_diagnostic"
+            << " layout_id=" << layout.layout_id
+            << " layout_dispatch_type=" << Siligen::Domain::Dispensing::ValueObjects::ToString(layout.dispatch_type)
+            << " component_id=" << span.component_id
+            << " component_index=" << span.component_index
+            << " component_dispatch_type="
+            << Siligen::Domain::Dispensing::ValueObjects::ToString(span.dispatch_type)
+            << " span_id=" << span.span_id
+            << " order_index=" << span.order_index
+            << " topology_type=" << Siligen::Domain::Dispensing::ValueObjects::ToString(span.topology_type)
+            << " split_reason=" << Siligen::Domain::Dispensing::ValueObjects::ToString(span.split_reason)
+            << " anchor_policy=" << Siligen::Domain::Dispensing::ValueObjects::ToString(span.anchor_policy)
+            << " phase_strategy=" << Siligen::Domain::Dispensing::ValueObjects::ToString(span.phase_strategy)
+            << " curve_mode=" << static_cast<int>(span.curve_mode)
+            << " closed=" << (span.closed ? 1 : 0)
+            << " source_segments=" << span.source_segment_indices.size()
+            << " strong_anchors=" << span.strong_anchors.size()
+            << " candidate_corners=" << span.candidate_corner_count
+            << " accepted_corners=" << span.accepted_corner_count
+            << " suppressed_corners=" << span.suppressed_corner_count
+            << " dense_corner_clusters=" << span.dense_corner_cluster_count
+            << " anchor_constraints_satisfied=" << (span.anchor_constraints_satisfied ? 1 : 0)
+            << " validation_state=" << Siligen::Domain::Dispensing::ValueObjects::ToString(span.validation_state)
+            << " anchor_constraint_state="
+            << (outcome_it != layout.validation_outcomes.end() && !outcome_it->anchor_constraint_state.empty()
+                    ? outcome_it->anchor_constraint_state
+                    : "not_applicable")
+            << " total_length_mm=" << span.total_length_mm
+            << " actual_spacing_mm=" << span.actual_spacing_mm
+            << " phase_mm=" << span.phase_mm;
+        if (!span.strong_anchors.empty()) {
+            oss << " anchor_roles=";
+            for (std::size_t index = 0; index < span.strong_anchors.size(); ++index) {
+                if (index > 0) {
+                    oss << ',';
+                }
+                oss << Siligen::Domain::Dispensing::ValueObjects::ToString(span.strong_anchors[index].role);
+            }
+        }
+        SILIGEN_LOG_INFO(oss.str());
+    }
+}
+
+TriggerArtifacts BuildTriggerArtifactsFromAuthorityPreview(
+    const AuthorityPreviewBuildResult& authority_preview) {
+    TriggerArtifacts artifacts;
+    artifacts.authority_trigger_layout = authority_preview.authority_trigger_layout;
+    artifacts.authority_trigger_points = authority_preview.authority_trigger_points;
+    artifacts.spacing_validation_groups = authority_preview.spacing_validation_groups;
+    artifacts.positions = authority_preview.glue_points;
+    artifacts.validation_classification = authority_preview.preview_validation_classification;
+    artifacts.exception_reason = authority_preview.preview_exception_reason;
+    artifacts.failure_reason = authority_preview.preview_failure_reason;
+    artifacts.spacing_valid = authority_preview.preview_spacing_valid;
+    artifacts.has_short_segment_exceptions = authority_preview.preview_has_short_segment_exceptions;
+    artifacts.binding_ready = authority_preview.preview_binding_ready;
+    artifacts.authority_trigger_layout.binding_ready = authority_preview.preview_binding_ready;
+    for (const auto& trigger : authority_preview.authority_trigger_points) {
+        artifacts.distances.push_back(trigger.trigger_distance_mm);
+    }
+    return artifacts;
+}
+
+AuthorityPreviewBuildInput BuildAuthorityPreviewBuildInput(
+    const PlanningArtifactsBuildInput& input) {
+    AuthorityPreviewBuildInput authority_input;
+    authority_input.process_path = input.process_path;
+    authority_input.authority_process_path = input.authority_process_path;
+    authority_input.source_path = input.source_path;
+    authority_input.dxf_filename = input.dxf_filename;
+    authority_input.dispensing_velocity = input.dispensing_velocity;
+    authority_input.acceleration = input.acceleration;
+    authority_input.dispenser_interval_ms = input.dispenser_interval_ms;
+    authority_input.dispenser_duration_ms = input.dispenser_duration_ms;
+    authority_input.trigger_spatial_interval_mm = input.trigger_spatial_interval_mm;
+    authority_input.valve_response_ms = input.valve_response_ms;
+    authority_input.safety_margin_ms = input.safety_margin_ms;
+    authority_input.min_interval_ms = input.min_interval_ms;
+    authority_input.sample_dt = input.sample_dt;
+    authority_input.sample_ds = input.sample_ds;
+    authority_input.spline_max_step_mm = input.spline_max_step_mm;
+    authority_input.spline_max_error_mm = input.spline_max_error_mm;
+    authority_input.dispensing_strategy = input.dispensing_strategy;
+    authority_input.subsegment_count = input.subsegment_count;
+    authority_input.dispense_only_cruise = input.dispense_only_cruise;
+    authority_input.downgrade_on_violation = input.downgrade_on_violation;
+    authority_input.compensation_profile = input.compensation_profile;
+    authority_input.spacing_tol_ratio = input.spacing_tol_ratio;
+    authority_input.spacing_min_mm = input.spacing_min_mm;
+    authority_input.spacing_max_mm = input.spacing_max_mm;
+    return authority_input;
+}
+
+ExecutionAssemblyBuildInput BuildExecutionAssemblyBuildInput(
+    const PlanningArtifactsBuildInput& input,
+    AuthorityPreviewBuildResult authority_preview) {
+    ExecutionAssemblyBuildInput execution_input;
+    execution_input.process_path = input.process_path;
+    execution_input.motion_plan = input.motion_plan;
+    execution_input.source_path = input.source_path;
+    execution_input.dxf_filename = input.dxf_filename;
+    execution_input.dispensing_velocity = input.dispensing_velocity;
+    execution_input.acceleration = input.acceleration;
+    execution_input.dispenser_interval_ms = input.dispenser_interval_ms;
+    execution_input.dispenser_duration_ms = input.dispenser_duration_ms;
+    execution_input.trigger_spatial_interval_mm = input.trigger_spatial_interval_mm;
+    execution_input.valve_response_ms = input.valve_response_ms;
+    execution_input.safety_margin_ms = input.safety_margin_ms;
+    execution_input.min_interval_ms = input.min_interval_ms;
+    execution_input.max_jerk = input.max_jerk;
+    execution_input.sample_dt = input.sample_dt;
+    execution_input.sample_ds = input.sample_ds;
+    execution_input.spline_max_step_mm = input.spline_max_step_mm;
+    execution_input.spline_max_error_mm = input.spline_max_error_mm;
+    execution_input.estimated_time_s = input.estimated_time_s;
+    execution_input.use_interpolation_planner = input.use_interpolation_planner;
+    execution_input.interpolation_algorithm = input.interpolation_algorithm;
+    execution_input.compensation_profile = input.compensation_profile;
+    execution_input.authority_preview = std::move(authority_preview);
+    return execution_input;
+}
+
 Result<TriggerArtifacts> BuildTriggerArtifacts(
     const ProcessPath& path,
     const PlanningArtifactsBuildInput& input) {
@@ -885,6 +1072,8 @@ Result<TriggerArtifacts> BuildTriggerArtifacts(
     request.dispensing_strategy = input.dispensing_strategy;
     request.subsegment_count = input.subsegment_count;
     request.dispense_only_cruise = input.dispense_only_cruise;
+    request.enable_branch_revisit_split = true;
+    request.emit_topology_diagnostics = true;
     request.compensation_profile = input.compensation_profile;
     request.spline_max_error_mm = input.spline_max_error_mm;
     request.spline_max_step_mm = input.spline_max_step_mm;
@@ -901,6 +1090,7 @@ Result<TriggerArtifacts> BuildTriggerArtifacts(
     artifacts.validation_classification = ResolveValidationClassification(artifacts.authority_trigger_layout);
     artifacts.exception_reason = ResolveExceptionReason(artifacts.authority_trigger_layout);
     artifacts.failure_reason = ResolveBlockingReason(artifacts.authority_trigger_layout);
+    LogAuthoritySpanDiagnostics(artifacts.authority_trigger_layout);
 
     for (const auto& trigger : artifacts.authority_trigger_points) {
         artifacts.distances.push_back(trigger.trigger_distance_mm);
@@ -1302,14 +1492,14 @@ void BindAuthorityLayoutToExecutionTrajectory(
 
 }  // namespace
 
-Result<PlanningArtifactsBuildResult> DispensePlanningFacade::AssemblePlanningArtifacts(
-    const PlanningArtifactsBuildInput& input) const {
+Result<AuthorityPreviewBuildResult> DispensePlanningFacade::BuildAuthorityPreviewArtifacts(
+    const AuthorityPreviewBuildInput& input) const {
     auto log_stage = [&](const char* stage, const std::string& detail = std::string()) {
         std::ostringstream oss;
         oss << "planning_artifacts_stage=" << stage
             << " dxf=" << input.dxf_filename
             << " process_segments=" << input.process_path.segments.size()
-            << " motion_points=" << input.motion_plan.points.size();
+            << " preview_mode=authority_only";
         if (!detail.empty()) {
             oss << ' ' << detail;
         }
@@ -1319,19 +1509,41 @@ Result<PlanningArtifactsBuildResult> DispensePlanningFacade::AssemblePlanningArt
     log_stage("start");
 
     if (input.process_path.segments.empty()) {
-        return Result<PlanningArtifactsBuildResult>::Failure(
+        return Result<AuthorityPreviewBuildResult>::Failure(
             Error(ErrorCode::INVALID_PARAMETER, "process path为空", "DispensePlanningFacade"));
-    }
-    if (input.motion_plan.points.empty()) {
-        return Result<PlanningArtifactsBuildResult>::Failure(
-            Error(ErrorCode::TRAJECTORY_GENERATION_FAILED, "motion plan为空", "DispensePlanningFacade"));
     }
 
     const auto& authority_process_path = ResolveAuthorityProcessPath(input);
 
-    auto trigger_artifacts_result = BuildTriggerArtifacts(authority_process_path, input);
+    PlanningArtifactsBuildInput authority_input;
+    authority_input.process_path = input.process_path;
+    authority_input.authority_process_path = input.authority_process_path;
+    authority_input.source_path = input.source_path;
+    authority_input.dxf_filename = input.dxf_filename;
+    authority_input.dispensing_velocity = input.dispensing_velocity;
+    authority_input.acceleration = input.acceleration;
+    authority_input.dispenser_interval_ms = input.dispenser_interval_ms;
+    authority_input.dispenser_duration_ms = input.dispenser_duration_ms;
+    authority_input.trigger_spatial_interval_mm = input.trigger_spatial_interval_mm;
+    authority_input.valve_response_ms = input.valve_response_ms;
+    authority_input.safety_margin_ms = input.safety_margin_ms;
+    authority_input.min_interval_ms = input.min_interval_ms;
+    authority_input.sample_dt = input.sample_dt;
+    authority_input.sample_ds = input.sample_ds;
+    authority_input.spline_max_step_mm = input.spline_max_step_mm;
+    authority_input.spline_max_error_mm = input.spline_max_error_mm;
+    authority_input.dispensing_strategy = input.dispensing_strategy;
+    authority_input.subsegment_count = input.subsegment_count;
+    authority_input.dispense_only_cruise = input.dispense_only_cruise;
+    authority_input.downgrade_on_violation = input.downgrade_on_violation;
+    authority_input.compensation_profile = input.compensation_profile;
+    authority_input.spacing_tol_ratio = input.spacing_tol_ratio;
+    authority_input.spacing_min_mm = input.spacing_min_mm;
+    authority_input.spacing_max_mm = input.spacing_max_mm;
+
+    auto trigger_artifacts_result = BuildTriggerArtifacts(authority_process_path, authority_input);
     if (trigger_artifacts_result.IsError()) {
-        return Result<PlanningArtifactsBuildResult>::Failure(trigger_artifacts_result.GetError());
+        return Result<AuthorityPreviewBuildResult>::Failure(trigger_artifacts_result.GetError());
     }
     auto trigger_artifacts = trigger_artifacts_result.Value();
     {
@@ -1344,29 +1556,150 @@ Result<PlanningArtifactsBuildResult> DispensePlanningFacade::AssemblePlanningArt
         log_stage("trigger_artifacts_ready", oss.str());
     }
 
+    std::vector<TrajectoryPoint> preview_trajectory_points;
+    auto preview_points_result =
+        BuildInterpolationSeedPoints(
+            input.process_path,
+            input.spline_max_error_mm,
+            ResolveInterpolationStep(authority_input));
+    if (preview_points_result.IsError()) {
+        if (trigger_artifacts.validation_classification == "fail") {
+            std::ostringstream oss;
+            oss << "preview_polyline_seed_fallback"
+                << " layout_id=" << trigger_artifacts.authority_trigger_layout.layout_id
+                << " reason=" << preview_points_result.GetError().GetMessage();
+            log_stage("preview_polyline_failed_non_blocking", oss.str());
+        } else {
+            return Result<AuthorityPreviewBuildResult>::Failure(preview_points_result.GetError());
+        }
+    } else {
+        preview_trajectory_points = ConvertPreviewPointsToTrajectory(preview_points_result.Value());
+    }
+    {
+        std::ostringstream oss;
+        oss << "preview_points=" << preview_trajectory_points.size();
+        log_stage("preview_polyline_ready", oss.str());
+    }
+
+    const auto glue_points = CollectAuthorityPositions(trigger_artifacts.authority_trigger_layout);
+    const auto total_length = ComputeProcessPathLength(input.process_path);
+
+    AuthorityPreviewBuildResult result;
+    result.segment_count = static_cast<int>(input.process_path.segments.size());
+    result.total_length = total_length;
+    result.estimated_time = EstimatePreviewTime(input, total_length);
+    result.preview_trajectory_points = std::move(preview_trajectory_points);
+    result.glue_points = glue_points;
+    result.trigger_count = static_cast<int>(glue_points.size());
+    result.dxf_filename = input.dxf_filename;
+    result.timestamp = static_cast<int32>(std::time(nullptr));
+    result.preview_authority_ready = !trigger_artifacts.authority_trigger_points.empty() && !glue_points.empty();
+    result.preview_binding_ready = result.preview_authority_ready;
+    result.preview_spacing_valid = trigger_artifacts.spacing_valid;
+    result.preview_has_short_segment_exceptions = trigger_artifacts.has_short_segment_exceptions;
+    result.preview_validation_classification = trigger_artifacts.validation_classification;
+    result.preview_exception_reason = trigger_artifacts.exception_reason;
+    result.preview_failure_reason = trigger_artifacts.failure_reason;
+    if (!result.preview_authority_ready && result.preview_failure_reason.empty()) {
+        result.preview_failure_reason = trigger_artifacts.authority_trigger_points.empty()
+            ? "explicit trigger authority unavailable"
+            : "authority preview unavailable";
+    }
+    result.authority_trigger_layout = trigger_artifacts.authority_trigger_layout;
+    result.authority_trigger_points = trigger_artifacts.authority_trigger_points;
+    result.spacing_validation_groups = trigger_artifacts.spacing_validation_groups;
+    {
+        std::ostringstream oss;
+        oss << "preview_authority_ready=" << (result.preview_authority_ready ? 1 : 0)
+            << " preview_binding_ready=" << (result.preview_binding_ready ? 1 : 0)
+            << " preview_failure_reason=" << result.preview_failure_reason
+            << " trigger_count=" << result.trigger_count;
+        log_stage("complete", oss.str());
+    }
+    return Result<AuthorityPreviewBuildResult>::Success(std::move(result));
+}
+
+Result<ExecutionAssemblyBuildResult> DispensePlanningFacade::BuildExecutionArtifactsFromAuthority(
+    const ExecutionAssemblyBuildInput& input) const {
+    auto log_stage = [&](const char* stage, const std::string& detail = std::string()) {
+        std::ostringstream oss;
+        oss << "planning_artifacts_stage=" << stage
+            << " dxf=" << input.dxf_filename
+            << " process_segments=" << input.process_path.segments.size()
+            << " motion_points=" << input.motion_plan.points.size()
+            << " preview_layout=" << input.authority_preview.authority_trigger_layout.layout_id;
+        if (!detail.empty()) {
+            oss << ' ' << detail;
+        }
+        SILIGEN_LOG_INFO(oss.str());
+    };
+
+    log_stage("execution_assembly_start");
+
+    if (input.process_path.segments.empty()) {
+        return Result<ExecutionAssemblyBuildResult>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "process path为空", "DispensePlanningFacade"));
+    }
+    if (input.motion_plan.points.empty()) {
+        return Result<ExecutionAssemblyBuildResult>::Failure(
+            Error(ErrorCode::TRAJECTORY_GENERATION_FAILED, "motion plan为空", "DispensePlanningFacade"));
+    }
+
+    auto trigger_artifacts = BuildTriggerArtifactsFromAuthorityPreview(input.authority_preview);
+    {
+        std::ostringstream oss;
+        oss << "authority_points=" << trigger_artifacts.authority_trigger_points.size()
+            << " spacing_valid=" << (trigger_artifacts.spacing_valid ? 1 : 0)
+            << " failure_reason=" << trigger_artifacts.failure_reason;
+        log_stage("authority_preview_loaded", oss.str());
+    }
+
+    PlanningArtifactsBuildInput execution_input;
+    execution_input.process_path = input.process_path;
+    execution_input.motion_plan = input.motion_plan;
+    execution_input.source_path = input.source_path;
+    execution_input.dxf_filename = input.dxf_filename;
+    execution_input.dispensing_velocity = input.dispensing_velocity;
+    execution_input.acceleration = input.acceleration;
+    execution_input.dispenser_interval_ms = input.dispenser_interval_ms;
+    execution_input.dispenser_duration_ms = input.dispenser_duration_ms;
+    execution_input.trigger_spatial_interval_mm = input.trigger_spatial_interval_mm;
+    execution_input.valve_response_ms = input.valve_response_ms;
+    execution_input.safety_margin_ms = input.safety_margin_ms;
+    execution_input.min_interval_ms = input.min_interval_ms;
+    execution_input.max_jerk = input.max_jerk;
+    execution_input.sample_dt = input.sample_dt;
+    execution_input.sample_ds = input.sample_ds;
+    execution_input.spline_max_step_mm = input.spline_max_step_mm;
+    execution_input.spline_max_error_mm = input.spline_max_error_mm;
+    execution_input.estimated_time_s = input.estimated_time_s;
+    execution_input.use_interpolation_planner = input.use_interpolation_planner;
+    execution_input.interpolation_algorithm = input.interpolation_algorithm;
+    execution_input.compensation_profile = input.compensation_profile;
+
     auto interpolation_points_result =
-        BuildInterpolationPoints(input, input.process_path, trigger_artifacts);
+        BuildInterpolationPoints(execution_input, input.process_path, trigger_artifacts);
     if (interpolation_points_result.IsError()) {
-        return Result<PlanningArtifactsBuildResult>::Failure(interpolation_points_result.GetError());
+        return Result<ExecutionAssemblyBuildResult>::Failure(interpolation_points_result.GetError());
     }
     auto interpolation_points = interpolation_points_result.Value();
     {
         std::ostringstream oss;
         oss << "interpolation_points=" << interpolation_points.size();
-        log_stage("interpolation_points_ready", oss.str());
+        log_stage("execution_interpolation_ready", oss.str());
     }
 
     Siligen::Domain::Motion::DomainServices::InterpolationProgramPlanner program_planner;
     auto interpolation_program =
         program_planner.BuildProgram(input.process_path, input.motion_plan, input.acceleration);
     if (interpolation_program.IsError() && trigger_artifacts.validation_classification != "fail") {
-        return Result<PlanningArtifactsBuildResult>::Failure(interpolation_program.GetError());
+        return Result<ExecutionAssemblyBuildResult>::Failure(interpolation_program.GetError());
     }
     {
         std::ostringstream oss;
         oss << "interpolation_program_ok=" << (interpolation_program.IsSuccess() ? 1 : 0)
             << " validation=" << trigger_artifacts.validation_classification;
-        log_stage("interpolation_program_built", oss.str());
+        log_stage("execution_program_ready", oss.str());
     }
 
     ExecutionPackageBuilt built;
@@ -1383,20 +1716,21 @@ Result<PlanningArtifactsBuildResult> DispensePlanningFacade::AssemblePlanningArt
     built.total_length_mm = built.execution_plan.total_length_mm;
     built.estimated_time_s = input.estimated_time_s;
     built.source_path = input.source_path;
+    built.source_fingerprint = input.authority_preview.authority_trigger_layout.layout_id;
 
-    built.estimated_time_s = EstimateExecutionTime(input, built);
+    built.estimated_time_s = EstimateExecutionTime(execution_input, built);
 
     ExecutionPackageValidated execution_package(std::move(built));
     auto package_validation = execution_package.Validate();
     if (package_validation.IsError()) {
-        return Result<PlanningArtifactsBuildResult>::Failure(package_validation.GetError());
+        return Result<ExecutionAssemblyBuildResult>::Failure(package_validation.GetError());
     }
     {
         std::ostringstream oss;
         oss << "trajectory_points=" << execution_package.execution_plan.motion_trajectory.points.size()
             << " interpolation_segments=" << execution_package.execution_plan.interpolation_segments.size()
             << " interpolation_points=" << execution_package.execution_plan.interpolation_points.size();
-        log_stage("package_validated", oss.str());
+        log_stage("execution_package_ready", oss.str());
     }
 
     const auto selection = SelectExecutionTrajectory(execution_package);
@@ -1405,7 +1739,7 @@ Result<PlanningArtifactsBuildResult> DispensePlanningFacade::AssemblePlanningArt
         oss << "authority_shared=" << (selection.authority_shared ? 1 : 0)
             << " execution_points="
             << (selection.execution_trajectory ? selection.execution_trajectory->size() : 0U);
-        log_stage("trajectory_selected", oss.str());
+        log_stage("execution_trajectory_selected", oss.str());
     }
     BindAuthorityLayoutToExecutionTrajectory(trigger_artifacts, selection.execution_trajectory);
     {
@@ -1413,54 +1747,80 @@ Result<PlanningArtifactsBuildResult> DispensePlanningFacade::AssemblePlanningArt
         oss << "binding_ready=" << (trigger_artifacts.binding_ready ? 1 : 0)
             << " bindings=" << trigger_artifacts.authority_trigger_layout.bindings.size()
             << " failure_reason=" << trigger_artifacts.failure_reason;
-        log_stage("binding_resolved", oss.str());
-    }
-    const auto glue_points = CollectAuthorityPositions(trigger_artifacts.authority_trigger_layout);
-    {
-        std::ostringstream oss;
-        oss << "glue_points=" << glue_points.size();
-        log_stage("glue_points_collected", oss.str());
+        log_stage("execution_binding_resolved", oss.str());
     }
 
-    PlanningArtifactsBuildResult result;
+    ExecutionAssemblyBuildResult result;
     result.execution_package = execution_package;
-    result.segment_count = static_cast<int>(input.process_path.segments.size());
-    result.total_length = execution_package.total_length_mm;
-    result.estimated_time = execution_package.estimated_time_s;
     if (selection.execution_trajectory) {
-        result.trajectory_points = *selection.execution_trajectory;
+        result.execution_trajectory_points = *selection.execution_trajectory;
     }
-    result.glue_points = glue_points;
-    result.trigger_count = static_cast<int>(glue_points.size());
-    result.dxf_filename = input.dxf_filename;
-    result.timestamp = static_cast<int32>(std::time(nullptr));
-    result.planning_report = input.motion_plan.planning_report;
-    result.preview_authority_ready = !trigger_artifacts.authority_trigger_points.empty() &&
-                                     trigger_artifacts.binding_ready &&
-                                     !glue_points.empty();
     result.preview_authority_shared_with_execution = trigger_artifacts.binding_ready;
-    result.preview_binding_ready = trigger_artifacts.binding_ready;
-    result.preview_spacing_valid = trigger_artifacts.spacing_valid;
-    result.preview_has_short_segment_exceptions = trigger_artifacts.has_short_segment_exceptions;
-    result.preview_validation_classification = trigger_artifacts.validation_classification;
-    result.preview_exception_reason = trigger_artifacts.exception_reason;
-    result.preview_failure_reason = trigger_artifacts.failure_reason;
-    if (!result.preview_authority_ready && result.preview_failure_reason.empty()) {
-        result.preview_failure_reason = trigger_artifacts.authority_trigger_points.empty()
-            ? "explicit trigger authority unavailable"
-            : "authority trigger binding unavailable";
-    }
+    result.execution_binding_ready = trigger_artifacts.binding_ready;
+    result.execution_failure_reason = trigger_artifacts.failure_reason;
     result.authority_trigger_layout = trigger_artifacts.authority_trigger_layout;
-    result.authority_trigger_points = trigger_artifacts.authority_trigger_points;
-    result.spacing_validation_groups = trigger_artifacts.spacing_validation_groups;
-    result.export_request = BuildExportRequest(input, execution_package, selection, glue_points);
+    result.export_request = BuildExportRequest(
+        execution_input,
+        execution_package,
+        selection,
+        input.authority_preview.glue_points);
     {
         std::ostringstream oss;
-        oss << "preview_authority_ready=" << (result.preview_authority_ready ? 1 : 0)
-            << " preview_binding_ready=" << (result.preview_binding_ready ? 1 : 0)
-            << " preview_failure_reason=" << result.preview_failure_reason
-            << " trigger_count=" << result.trigger_count;
-        log_stage("complete", oss.str());
+        oss << "execution_binding_ready=" << (result.execution_binding_ready ? 1 : 0)
+            << " execution_failure_reason=" << result.execution_failure_reason;
+        log_stage("execution_assembly_complete", oss.str());
+    }
+    return Result<ExecutionAssemblyBuildResult>::Success(std::move(result));
+}
+
+Result<PlanningArtifactsBuildResult> DispensePlanningFacade::AssemblePlanningArtifacts(
+    const PlanningArtifactsBuildInput& input) const {
+    auto authority_result = BuildAuthorityPreviewArtifacts(BuildAuthorityPreviewBuildInput(input));
+    if (authority_result.IsError()) {
+        return Result<PlanningArtifactsBuildResult>::Failure(authority_result.GetError());
+    }
+
+    auto authority_preview = authority_result.Value();
+    auto execution_result = BuildExecutionArtifactsFromAuthority(
+        BuildExecutionAssemblyBuildInput(input, authority_preview));
+    if (execution_result.IsError()) {
+        return Result<PlanningArtifactsBuildResult>::Failure(execution_result.GetError());
+    }
+
+    const auto& execution = execution_result.Value();
+
+    PlanningArtifactsBuildResult result;
+    result.execution_package = execution.execution_package;
+    result.segment_count = authority_preview.segment_count;
+    result.total_length = execution.execution_package.total_length_mm;
+    result.estimated_time = execution.execution_package.estimated_time_s;
+    result.trajectory_points = execution.execution_trajectory_points;
+    result.glue_points = authority_preview.glue_points;
+    result.trigger_count = authority_preview.trigger_count;
+    result.dxf_filename = authority_preview.dxf_filename;
+    result.timestamp = authority_preview.timestamp;
+    result.planning_report = input.motion_plan.planning_report;
+    result.preview_authority_ready = authority_preview.preview_authority_ready;
+    result.preview_authority_shared_with_execution = execution.preview_authority_shared_with_execution;
+    result.preview_binding_ready = execution.execution_binding_ready;
+    result.preview_spacing_valid = authority_preview.preview_spacing_valid;
+    result.preview_has_short_segment_exceptions = authority_preview.preview_has_short_segment_exceptions;
+    result.preview_validation_classification = authority_preview.preview_validation_classification;
+    result.preview_exception_reason = authority_preview.preview_exception_reason;
+    result.preview_failure_reason =
+        execution.execution_failure_reason.empty()
+            ? authority_preview.preview_failure_reason
+            : execution.execution_failure_reason;
+    result.authority_trigger_layout = execution.authority_trigger_layout;
+    result.authority_trigger_points = authority_preview.authority_trigger_points;
+    result.spacing_validation_groups = authority_preview.spacing_validation_groups;
+    result.export_request = execution.export_request;
+    if (result.preview_failure_reason.empty() &&
+        !execution.execution_failure_reason.empty()) {
+        result.preview_failure_reason = execution.execution_failure_reason;
+    }
+    if (result.preview_authority_shared_with_execution) {
+        result.preview_binding_ready = execution.execution_binding_ready;
     }
     return Result<PlanningArtifactsBuildResult>::Success(std::move(result));
 }

@@ -1,12 +1,16 @@
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <cstdlib>
 #include <cmath>
+#include <chrono>
 #include <filesystem>
 #include <functional>
 #include <fstream>
 #include <memory>
+#include <sstream>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -31,9 +35,14 @@ using Siligen::Application::UseCases::Dispensing::PlanningUseCase;
 using Siligen::Application::UseCases::Dispensing::PlanningRequest;
 using Siligen::Application::UseCases::Dispensing::PlanningResponse;
 using Siligen::Application::UseCases::Dispensing::PreparePlanRequest;
+using Siligen::Application::UseCases::Dispensing::PreparePlanResponse;
 using Siligen::Application::UseCases::Dispensing::PreparePlanRuntimeOverrides;
 using Siligen::Application::UseCases::Dispensing::RuntimeJobStatusResponse;
+using Siligen::Application::UseCases::Dispensing::StartJobResponse;
 using Siligen::Application::UseCases::Dispensing::IUploadFilePort;
+using Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort;
+using Siligen::Application::Services::Dispensing::PlanningArtifactExportRequest;
+using Siligen::Application::Services::Dispensing::PlanningArtifactExportResult;
 using Siligen::Application::Services::DXF::DxfPbPreparationService;
 using Siligen::Device::Contracts::Commands::DeviceConnection;
 using Siligen::Device::Contracts::Ports::DeviceConnectionPort;
@@ -74,6 +83,53 @@ class LinePathSourceStub final : public Siligen::Domain::Trajectory::Ports::IPat
         result.metadata.push_back(PathPrimitiveMeta{});
         return Result<PathSourceResult>::Success(result);
     }
+};
+
+class SlowCountingLinePathSourceStub final : public Siligen::Domain::Trajectory::Ports::IPathSourcePort {
+   public:
+    explicit SlowCountingLinePathSourceStub(
+        std::shared_ptr<std::atomic<int>> load_calls,
+        std::chrono::milliseconds delay = std::chrono::milliseconds(75))
+        : load_calls_(std::move(load_calls)), delay_(delay) {}
+
+    Result<Siligen::Domain::Trajectory::Ports::PathSourceResult> LoadFromFile(const std::string&) override {
+        load_calls_->fetch_add(1);
+        std::this_thread::sleep_for(delay_);
+        using Siligen::Domain::Trajectory::Ports::PathPrimitiveMeta;
+        using Siligen::Domain::Trajectory::Ports::PathSourceResult;
+        using Siligen::Domain::Trajectory::ValueObjects::Primitive;
+
+        PathSourceResult result;
+        result.success = true;
+        result.primitives.push_back(Primitive::MakeLine(Point2D(0.0f, 0.0f), Point2D(20.0f, 0.0f)));
+        result.metadata.push_back(PathPrimitiveMeta{});
+        return Result<PathSourceResult>::Success(result);
+    }
+
+   private:
+    std::shared_ptr<std::atomic<int>> load_calls_;
+    std::chrono::milliseconds delay_;
+};
+
+class SlowExportPortStub final : public IPlanningArtifactExportPort {
+   public:
+    explicit SlowExportPortStub(
+        std::shared_ptr<std::atomic<int>> export_calls,
+        std::chrono::milliseconds delay = std::chrono::milliseconds(120))
+        : export_calls_(std::move(export_calls)), delay_(delay) {}
+
+    Result<PlanningArtifactExportResult> Export(const PlanningArtifactExportRequest&) override {
+        export_calls_->fetch_add(1);
+        std::this_thread::sleep_for(delay_);
+        PlanningArtifactExportResult result;
+        result.export_requested = true;
+        result.success = true;
+        return Result<PlanningArtifactExportResult>::Success(result);
+    }
+
+   private:
+    std::shared_ptr<std::atomic<int>> export_calls_;
+    std::chrono::milliseconds delay_;
 };
 
 class ScopedTempPbFile {
@@ -179,8 +235,55 @@ Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated BuildMinimalEx
     return Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated(built);
 }
 
+bool SpinUntil(
+    const std::function<bool()>& predicate,
+    std::chrono::milliseconds timeout = std::chrono::milliseconds(500)) {
+    const auto start = std::chrono::steady_clock::now();
+    while (!predicate()) {
+        if (std::chrono::steady_clock::now() - start >= timeout) {
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    return true;
+}
+
+std::string GluePointsFingerprint(const std::vector<Point2D>& points) {
+    std::ostringstream oss;
+    for (const auto& point : points) {
+        oss << point.x << ',' << point.y << ';';
+    }
+    return oss.str();
+}
+
 std::shared_ptr<PlanningUseCase> CreateRealPlanningUseCase() {
     auto path_source = std::make_shared<LinePathSourceStub>();
+    auto pb_service = std::make_shared<DxfPbPreparationService>();
+    return std::make_shared<PlanningUseCase>(
+        path_source,
+        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
+        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        nullptr,
+        pb_service);
+}
+
+std::shared_ptr<PlanningUseCase> CreatePlanningUseCaseWithPathSourceAndExport(
+    const std::shared_ptr<Siligen::Domain::Trajectory::Ports::IPathSourcePort>& path_source,
+    const std::shared_ptr<IPlanningArtifactExportPort>& export_port) {
+    auto pb_service = std::make_shared<DxfPbPreparationService>();
+    return std::make_shared<PlanningUseCase>(
+        path_source,
+        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
+        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        nullptr,
+        pb_service,
+        export_port);
+}
+
+std::shared_ptr<PlanningUseCase> CreatePlanningUseCaseWithPathSource(
+    const std::shared_ptr<Siligen::Domain::Trajectory::Ports::IPathSourcePort>& path_source) {
     auto pb_service = std::make_shared<DxfPbPreparationService>();
     return std::make_shared<PlanningUseCase>(
         path_source,
@@ -311,7 +414,9 @@ void SeedPlan(DispensingWorkflowUseCase& use_case, const std::string& plan_id) {
     DispensingWorkflowUseCase::PlanRecord plan_record;
     plan_record.response.plan_id = plan_id;
     plan_record.response.plan_fingerprint = "fp-" + plan_id;
-    plan_record.execution_launch.execution_package = BuildMinimalExecutionPackage();
+    plan_record.execution_launch.execution_package =
+        std::make_shared<Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated>(
+            BuildMinimalExecutionPackage());
     plan_record.execution_launch.runtime_overrides.source_path = "artifact.pb";
     plan_record.execution_launch.runtime_overrides.use_hardware_trigger = false;
     plan_record.execution_launch.runtime_overrides.dry_run = true;
@@ -323,11 +428,19 @@ void SeedPlan(DispensingWorkflowUseCase& use_case, const std::string& plan_id) {
     plan_record.glue_points.emplace_back(20.0f, 0.0f);
     plan_record.preview_authority_ready = true;
     plan_record.preview_authority_shared_with_execution = true;
+    plan_record.execution_authority_shared_with_execution = true;
+    plan_record.execution_binding_ready = true;
     plan_record.preview_spacing_valid = true;
     plan_record.preview_state = DispensingWorkflowUseCase::PlanPreviewState::CONFIRMED;
     plan_record.preview_snapshot_hash = plan_record.response.plan_fingerprint;
     plan_record.latest = true;
     SeedAuthorityMetadata(plan_record, "layout-" + plan_id);
+    plan_record.execution_assembly.success = true;
+    plan_record.execution_assembly.execution_trajectory_points = plan_record.execution_trajectory_points;
+    plan_record.execution_assembly.preview_authority_shared_with_execution = true;
+    plan_record.execution_assembly.execution_binding_ready = true;
+    plan_record.execution_assembly.execution_package = plan_record.execution_launch.execution_package;
+    plan_record.execution_assembly.authority_trigger_layout = plan_record.authority_trigger_layout;
     use_case.plans_[plan_id] = plan_record;
 }
 
@@ -360,6 +473,23 @@ DispensingWorkflowUseCase CreateUseCaseWithPlanning(
         MakeDummyShared<IUploadFilePort>(),
         planning_use_case,
         MakeDummyShared<DispensingExecutionUseCase>(),
+        connection_port,
+        motion_state_port,
+        homing_port,
+        interlock_port);
+}
+
+DispensingWorkflowUseCase CreateUseCaseWithPlanningAndExecution(
+    const std::shared_ptr<PlanningUseCase>& planning_use_case,
+    const std::shared_ptr<DispensingExecutionUseCase>& execution_use_case,
+    const std::shared_ptr<FakeHardwareConnectionPort>& connection_port,
+    const std::shared_ptr<FakeMotionStatePort>& motion_state_port,
+    const std::shared_ptr<FakeHomingPort>& homing_port,
+    const std::shared_ptr<FakeInterlockSignalPort>& interlock_port) {
+    return DispensingWorkflowUseCase(
+        MakeDummyShared<IUploadFilePort>(),
+        planning_use_case,
+        execution_use_case,
         connection_port,
         motion_state_port,
         homing_port,
@@ -495,10 +625,333 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanUsesCanonicalPlanningInputAndRunt
     EXPECT_EQ(stored_launch.runtime_overrides.velocity_trace_interval_ms, 25);
     EXPECT_EQ(stored_launch.runtime_overrides.velocity_trace_path, "logs/trace.csv");
     EXPECT_TRUE(stored_launch.runtime_overrides.velocity_guard_stop_on_violation);
-    EXPECT_GE(stored_launch.execution_package.execution_plan.motion_trajectory.points.size() +
-                  stored_launch.execution_package.execution_plan.interpolation_points.size(),
-              2U);
-    EXPECT_EQ(prepared.filepath, temp_pb_file.string());
+    EXPECT_FALSE(stored_launch.execution_package);
+    EXPECT_TRUE(stored_launch.authority_preview.success);
+    EXPECT_FALSE(stored_launch.authority_preview.glue_points.empty());
+   EXPECT_FALSE(stored_launch.authority_cache_key.empty());
+   EXPECT_EQ(prepared.filepath, temp_pb_file.string());
+}
+
+TEST(DispensingWorkflowUseCaseTest, PreparePlanReusesLatestPlanForIdenticalAuthorityAndRuntimeFingerprint) {
+    ScopedTempPbFile temp_pb_file;
+    auto planning_use_case = CreateRealPlanningUseCase();
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto use_case = CreateUseCaseWithPlanning(
+        planning_use_case,
+        connection_port,
+        motion_state_port,
+        homing_port,
+        interlock_port);
+
+    DispensingWorkflowUseCase::ArtifactRecord artifact_record;
+    artifact_record.response.artifact_id = "artifact-cache-hit";
+    artifact_record.upload_response.filepath = temp_pb_file.string();
+    artifact_record.upload_response.success = true;
+    use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
+
+    PreparePlanRequest request;
+    request.artifact_id = artifact_record.response.artifact_id;
+    request.planning_request = BuildCanonicalPlanningRequest();
+    request.planning_request.dxf_filepath.clear();
+    request.runtime_overrides = BuildPreparePlanRuntimeOverrides();
+
+    const auto first = use_case.PreparePlan(request);
+    ASSERT_TRUE(first.IsSuccess()) << first.GetError().ToString();
+    auto& stored_record = use_case.plans_.at(first.Value().plan_id);
+    stored_record.response.segment_count = 999U;
+    stored_record.response.point_count = 999U;
+    stored_record.response.total_length_mm = 999.0f;
+    stored_record.response.estimated_time_s = 999.0f;
+
+    const auto second = use_case.PreparePlan(request);
+    ASSERT_TRUE(second.IsSuccess()) << second.GetError().ToString();
+    EXPECT_EQ(first.Value().plan_id, second.Value().plan_id);
+    EXPECT_EQ(use_case.plans_.size(), 1U);
+    EXPECT_EQ(second.Value().segment_count, first.Value().segment_count);
+    EXPECT_EQ(second.Value().point_count, first.Value().point_count);
+    EXPECT_FLOAT_EQ(second.Value().total_length_mm, first.Value().total_length_mm);
+    EXPECT_FLOAT_EQ(second.Value().estimated_time_s, first.Value().estimated_time_s);
+}
+
+TEST(DispensingWorkflowUseCaseTest, PreparePlanSingleFlightsConcurrentAuthorityPreviewRequests) {
+    ScopedTempPbFile temp_pb_file;
+    auto load_calls = std::make_shared<std::atomic<int>>(0);
+    auto planning_use_case =
+        CreatePlanningUseCaseWithPathSource(std::make_shared<SlowCountingLinePathSourceStub>(load_calls));
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto use_case = CreateUseCaseWithPlanning(
+        planning_use_case,
+        connection_port,
+        motion_state_port,
+        homing_port,
+        interlock_port);
+
+    DispensingWorkflowUseCase::ArtifactRecord artifact_record;
+    artifact_record.response.artifact_id = "artifact-single-flight";
+    artifact_record.upload_response.filepath = temp_pb_file.string();
+    artifact_record.upload_response.success = true;
+    use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
+
+    PreparePlanRequest request;
+    request.artifact_id = artifact_record.response.artifact_id;
+    request.planning_request = BuildCanonicalPlanningRequest();
+    request.planning_request.dxf_filepath.clear();
+    request.runtime_overrides = BuildPreparePlanRuntimeOverrides();
+
+    Result<PreparePlanResponse> first_result;
+    Result<PreparePlanResponse> second_result;
+    std::thread first_thread([&]() { first_result = use_case.PreparePlan(request); });
+    std::thread second_thread([&]() { second_result = use_case.PreparePlan(request); });
+    first_thread.join();
+    second_thread.join();
+
+    ASSERT_TRUE(first_result.IsSuccess()) << first_result.GetError().ToString();
+    ASSERT_TRUE(second_result.IsSuccess()) << second_result.GetError().ToString();
+    EXPECT_EQ(load_calls->load(), 1);
+    EXPECT_EQ(use_case.plans_.size(), 1U);
+    EXPECT_EQ(first_result.Value().plan_id, second_result.Value().plan_id);
+    EXPECT_GT(first_result.Value().performance_profile.prepare_total_ms, 0U);
+    EXPECT_GT(second_result.Value().performance_profile.prepare_total_ms, 0U);
+    EXPECT_TRUE(
+        first_result.Value().performance_profile.authority_joined_inflight ||
+        second_result.Value().performance_profile.authority_joined_inflight ||
+        first_result.Value().performance_profile.authority_cache_hit ||
+        second_result.Value().performance_profile.authority_cache_hit);
+}
+
+TEST(DispensingWorkflowUseCaseTest, StartJobReturnsStructuredResponseWithExecutionProfile) {
+    ScopedTempPbFile temp_pb_file;
+    auto export_calls = std::make_shared<std::atomic<int>>(0);
+    auto planning_use_case = CreatePlanningUseCaseWithPathSourceAndExport(
+        std::make_shared<LinePathSourceStub>(),
+        std::make_shared<SlowExportPortStub>(export_calls, std::chrono::milliseconds(10)));
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_use_case =
+        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
+    motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
+    homing_port->homed[LogicalAxisId::X] = true;
+    homing_port->homed[LogicalAxisId::Y] = true;
+    auto use_case = CreateUseCaseWithPlanningAndExecution(
+        planning_use_case,
+        execution_use_case,
+        connection_port,
+        motion_state_port,
+        homing_port,
+        interlock_port);
+
+    DispensingWorkflowUseCase::ArtifactRecord artifact_record;
+    artifact_record.response.artifact_id = "artifact-start-profile";
+    artifact_record.upload_response.filepath = temp_pb_file.string();
+    artifact_record.upload_response.success = true;
+    use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
+
+    PreparePlanRequest prepare_request;
+    prepare_request.artifact_id = artifact_record.response.artifact_id;
+    prepare_request.planning_request = BuildCanonicalPlanningRequest();
+    prepare_request.planning_request.dxf_filepath.clear();
+    prepare_request.runtime_overrides = BuildPreparePlanRuntimeOverrides();
+
+    const auto prepare_result = use_case.PreparePlan(prepare_request);
+    ASSERT_TRUE(prepare_result.IsSuccess()) << prepare_result.GetError().ToString();
+
+    Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest snapshot_request;
+    snapshot_request.plan_id = prepare_result.Value().plan_id;
+    const auto snapshot_result = use_case.GetPreviewSnapshot(snapshot_request);
+    ASSERT_TRUE(snapshot_result.IsSuccess()) << snapshot_result.GetError().ToString();
+
+    Siligen::Application::UseCases::Dispensing::ConfirmPreviewRequest confirm_request;
+    confirm_request.plan_id = prepare_result.Value().plan_id;
+    confirm_request.snapshot_hash = snapshot_result.Value().snapshot_hash;
+    const auto confirm_result = use_case.ConfirmPreview(confirm_request);
+    ASSERT_TRUE(confirm_result.IsSuccess()) << confirm_result.GetError().ToString();
+
+    Siligen::Application::UseCases::Dispensing::StartJobRequest start_request;
+    start_request.plan_id = prepare_result.Value().plan_id;
+    start_request.plan_fingerprint = prepare_result.Value().plan_fingerprint;
+    start_request.target_count = 2;
+    const auto start_result = use_case.StartJob(start_request);
+
+    ASSERT_TRUE(start_result.IsSuccess()) << start_result.GetError().ToString();
+    const auto& response = start_result.Value();
+    EXPECT_TRUE(response.started);
+    EXPECT_FALSE(response.job_id.empty());
+    EXPECT_EQ(response.plan_id, prepare_result.Value().plan_id);
+    EXPECT_EQ(response.plan_fingerprint, prepare_result.Value().plan_fingerprint);
+    EXPECT_EQ(response.target_count, 2U);
+    EXPECT_GE(response.performance_profile.motion_plan_ms, 0U);
+    EXPECT_GE(response.performance_profile.assembly_ms, 0U);
+    EXPECT_GE(response.performance_profile.export_ms, 0U);
+    EXPECT_GT(response.performance_profile.execution_total_ms, 0U);
+    EXPECT_EQ(export_calls->load(), 1);
+}
+
+TEST(DispensingWorkflowUseCaseTest, StartJobAllowsDryRunWithoutConnectedHardware) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    connection_port->connected = false;
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
+    motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    homing_port->homed[LogicalAxisId::X] = true;
+    homing_port->homed[LogicalAxisId::Y] = true;
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_use_case =
+        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port, execution_use_case);
+    SeedPlan(use_case, "plan-dry-run-offline");
+
+    Siligen::Application::UseCases::Dispensing::StartJobRequest request;
+    request.plan_id = "plan-dry-run-offline";
+    request.plan_fingerprint = "fp-plan-dry-run-offline";
+    request.target_count = 1;
+    const auto start_result = use_case.StartJob(request);
+
+    ASSERT_TRUE(start_result.IsSuccess()) << start_result.GetError().ToString();
+    const auto& response = start_result.Value();
+    EXPECT_TRUE(response.started);
+    EXPECT_FALSE(response.job_id.empty());
+
+    const auto status_result = use_case.GetJobStatus(response.job_id);
+    ASSERT_TRUE(status_result.IsSuccess()) << status_result.GetError().ToString();
+    EXPECT_EQ(status_result.Value().plan_id, request.plan_id);
+    EXPECT_EQ(status_result.Value().plan_fingerprint, request.plan_fingerprint);
+    EXPECT_TRUE(status_result.Value().dry_run);
+    EXPECT_TRUE(use_case.StopJob(response.job_id).IsSuccess());
+}
+
+TEST(DispensingWorkflowUseCaseTest, EnsureExecutionAssemblySingleFlightsConcurrentRequests) {
+    ScopedTempPbFile temp_pb_file;
+    auto export_calls = std::make_shared<std::atomic<int>>(0);
+    auto planning_use_case = CreatePlanningUseCaseWithPathSourceAndExport(
+        std::make_shared<LinePathSourceStub>(),
+        std::make_shared<SlowExportPortStub>(export_calls));
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto use_case = CreateUseCaseWithPlanning(
+        planning_use_case,
+        connection_port,
+        motion_state_port,
+        homing_port,
+        interlock_port);
+
+    DispensingWorkflowUseCase::ArtifactRecord artifact_record;
+    artifact_record.response.artifact_id = "artifact-exec-single-flight";
+    artifact_record.upload_response.filepath = temp_pb_file.string();
+    artifact_record.upload_response.success = true;
+    use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
+
+    PreparePlanRequest prepare_request;
+    prepare_request.artifact_id = artifact_record.response.artifact_id;
+    prepare_request.planning_request = BuildCanonicalPlanningRequest();
+    prepare_request.planning_request.dxf_filepath.clear();
+    prepare_request.runtime_overrides = BuildPreparePlanRuntimeOverrides();
+
+    const auto prepare_result = use_case.PreparePlan(prepare_request);
+    ASSERT_TRUE(prepare_result.IsSuccess()) << prepare_result.GetError().ToString();
+    const auto plan_id = prepare_result.Value().plan_id;
+    const auto expected_fingerprint = prepare_result.Value().plan_fingerprint;
+    const auto expected_layout_id = use_case.plans_.at(plan_id).authority_trigger_layout.layout_id;
+
+    Result<Siligen::Application::UseCases::Dispensing::ExecutionAssemblyTestProbe> first_result;
+    Result<Siligen::Application::UseCases::Dispensing::ExecutionAssemblyTestProbe> second_result;
+    std::thread first_thread([&]() { first_result = use_case.EnsureExecutionAssemblyReadyForTesting(plan_id); });
+    ASSERT_TRUE(SpinUntil([&]() { return export_calls->load() > 0; }, std::chrono::milliseconds(3000)))
+        << "leader execution assembly did not enter export";
+    std::thread second_thread([&]() { second_result = use_case.EnsureExecutionAssemblyReadyForTesting(plan_id); });
+    first_thread.join();
+    second_thread.join();
+
+    ASSERT_TRUE(first_result.IsSuccess()) << first_result.GetError().ToString();
+    ASSERT_TRUE(second_result.IsSuccess()) << second_result.GetError().ToString();
+    EXPECT_EQ(export_calls->load(), 1);
+    EXPECT_TRUE(
+        first_result.Value().joined_inflight ||
+        second_result.Value().joined_inflight ||
+        first_result.Value().cache_hit ||
+        second_result.Value().cache_hit);
+
+    const auto waiter = first_result.Value().joined_inflight ? first_result.Value() : second_result.Value();
+    EXPECT_TRUE(waiter.joined_inflight || waiter.cache_hit);
+    if (waiter.joined_inflight) {
+        EXPECT_GT(waiter.wait_ms, 0U);
+    }
+    EXPECT_EQ(first_result.Value().authority_layout_id, expected_layout_id);
+    EXPECT_EQ(second_result.Value().authority_layout_id, expected_layout_id);
+    EXPECT_EQ(first_result.Value().plan_fingerprint, expected_fingerprint);
+    EXPECT_EQ(second_result.Value().plan_fingerprint, expected_fingerprint);
+    EXPECT_TRUE(first_result.Value().execution_authority_shared_with_execution);
+    EXPECT_TRUE(second_result.Value().execution_authority_shared_with_execution);
+    EXPECT_TRUE(first_result.Value().execution_binding_ready);
+    EXPECT_TRUE(second_result.Value().execution_binding_ready);
+    EXPECT_EQ(use_case.plans_.at(plan_id).response.plan_fingerprint, expected_fingerprint);
+    EXPECT_EQ(use_case.plans_.at(plan_id).authority_trigger_layout.layout_id, expected_layout_id);
+}
+
+TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotResolvesExecutionAssemblyForPreparedPlan) {
+    ScopedTempPbFile temp_pb_file;
+    auto planning_use_case = CreateRealPlanningUseCase();
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto use_case = CreateUseCaseWithPlanning(
+        planning_use_case,
+        connection_port,
+        motion_state_port,
+        homing_port,
+        interlock_port);
+
+    DispensingWorkflowUseCase::ArtifactRecord artifact_record;
+    artifact_record.response.artifact_id = "artifact-preview-execution-alignment";
+    artifact_record.upload_response.filepath = temp_pb_file.string();
+    artifact_record.upload_response.success = true;
+    use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
+
+    PreparePlanRequest prepare_request;
+    prepare_request.artifact_id = artifact_record.response.artifact_id;
+    prepare_request.planning_request = BuildCanonicalPlanningRequest();
+    prepare_request.planning_request.dxf_filepath.clear();
+    prepare_request.runtime_overrides = BuildPreparePlanRuntimeOverrides();
+
+    const auto prepare_result = use_case.PreparePlan(prepare_request);
+    ASSERT_TRUE(prepare_result.IsSuccess()) << prepare_result.GetError().ToString();
+    const auto plan_id = prepare_result.Value().plan_id;
+
+    const auto& prepared_plan = use_case.plans_.at(plan_id);
+    EXPECT_FALSE(prepared_plan.preview_authority_shared_with_execution);
+    EXPECT_FALSE(prepared_plan.execution_authority_shared_with_execution);
+    EXPECT_FALSE(prepared_plan.execution_binding_ready);
+    EXPECT_FALSE(static_cast<bool>(prepared_plan.execution_launch.execution_package));
+
+    Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest snapshot_request;
+    snapshot_request.plan_id = plan_id;
+    snapshot_request.max_polyline_points = 128;
+    const auto snapshot_result = use_case.GetPreviewSnapshot(snapshot_request);
+
+    ASSERT_TRUE(snapshot_result.IsSuccess()) << snapshot_result.GetError().ToString();
+    const auto& resolved_plan = use_case.plans_.at(plan_id);
+    EXPECT_TRUE(resolved_plan.preview_authority_shared_with_execution);
+    EXPECT_TRUE(resolved_plan.preview_binding_ready);
+    EXPECT_TRUE(resolved_plan.execution_authority_shared_with_execution);
+    EXPECT_TRUE(resolved_plan.execution_binding_ready);
+    EXPECT_TRUE(static_cast<bool>(resolved_plan.execution_launch.execution_package));
+    EXPECT_FALSE(resolved_plan.execution_trajectory_points.empty());
+    EXPECT_EQ(
+        resolved_plan.response.point_count,
+        static_cast<std::uint32_t>(resolved_plan.execution_trajectory_points.size()));
+    EXPECT_EQ(resolved_plan.preview_snapshot_hash, prepare_result.Value().plan_fingerprint);
 }
 
 TEST(DispensingWorkflowUseCaseTest, StartJobRejectsUnhomedAxis) {
@@ -750,6 +1203,33 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotKeepsCornerWhenDownsamplin
     EXPECT_TRUE(SnapshotContainsPoint(snapshot, 9.0f, 0.0f, 1e-4f));
 }
 
+TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotSamplesGluePointsWithoutChangingAuthorityCount) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+
+    std::vector<Point2D> raw_points;
+    for (int i = 0; i < 12; ++i) {
+        raw_points.emplace_back(static_cast<float>(i), 0.0f);
+    }
+
+    auto plan_record = BuildPreviewPlanRecord("plan-glue-sampled", raw_points);
+    use_case.plans_[plan_record.response.plan_id] = plan_record;
+
+    Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest request;
+    request.plan_id = "plan-glue-sampled";
+    request.max_polyline_points = 32;
+    request.max_glue_points = 3;
+    const auto result = use_case.GetPreviewSnapshot(request);
+
+    ASSERT_TRUE(result.IsSuccess());
+    EXPECT_EQ(result.Value().glue_point_count, 12U);
+    EXPECT_EQ(result.Value().point_count, 12U);
+    EXPECT_EQ(result.Value().glue_points.size(), 3U);
+}
+
 TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotUsesThreeMillimeterCenterSpacing) {
     auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
@@ -905,6 +1385,137 @@ TEST(DispensingWorkflowUseCaseTest, PreviewGateFailureReasonIsConsistentAcrossSn
     EXPECT_EQ(start_result.GetError().GetMessage(), expected_reason);
 }
 
+TEST(DispensingWorkflowUseCaseTest, StartJobPreservesAuthorityFingerprintAndGluePoints) {
+    ScopedTempPbFile temp_pb_file;
+    auto planning_use_case = CreateRealPlanningUseCase();
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_use_case =
+        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
+    motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
+    homing_port->homed[LogicalAxisId::X] = true;
+    homing_port->homed[LogicalAxisId::Y] = true;
+    auto use_case = CreateUseCaseWithPlanningAndExecution(
+        planning_use_case,
+        execution_use_case,
+        connection_port,
+        motion_state_port,
+        homing_port,
+        interlock_port);
+
+    DispensingWorkflowUseCase::ArtifactRecord artifact_record;
+    artifact_record.response.artifact_id = "artifact-consistency";
+    artifact_record.upload_response.filepath = temp_pb_file.string();
+    artifact_record.upload_response.success = true;
+    use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
+
+    PreparePlanRequest prepare_request;
+    prepare_request.artifact_id = artifact_record.response.artifact_id;
+    prepare_request.planning_request = BuildCanonicalPlanningRequest();
+    prepare_request.planning_request.dxf_filepath.clear();
+    prepare_request.runtime_overrides = BuildPreparePlanRuntimeOverrides();
+
+    const auto prepare_result = use_case.PreparePlan(prepare_request);
+    ASSERT_TRUE(prepare_result.IsSuccess()) << prepare_result.GetError().ToString();
+    const auto plan_id = prepare_result.Value().plan_id;
+
+    Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest snapshot_request;
+    snapshot_request.plan_id = plan_id;
+    const auto snapshot_result = use_case.GetPreviewSnapshot(snapshot_request);
+    ASSERT_TRUE(snapshot_result.IsSuccess()) << snapshot_result.GetError().ToString();
+
+    Siligen::Application::UseCases::Dispensing::ConfirmPreviewRequest confirm_request;
+    confirm_request.plan_id = plan_id;
+    confirm_request.snapshot_hash = snapshot_result.Value().snapshot_hash;
+    const auto confirm_result = use_case.ConfirmPreview(confirm_request);
+    ASSERT_TRUE(confirm_result.IsSuccess()) << confirm_result.GetError().ToString();
+
+    const auto before_glue_fingerprint = GluePointsFingerprint(use_case.plans_.at(plan_id).glue_points);
+    const auto before_layout_id = use_case.plans_.at(plan_id).authority_trigger_layout.layout_id;
+
+    Siligen::Application::UseCases::Dispensing::StartJobRequest start_request;
+    start_request.plan_id = plan_id;
+    start_request.plan_fingerprint = prepare_result.Value().plan_fingerprint;
+    start_request.target_count = 1;
+    const auto start_result = use_case.StartJob(start_request);
+
+    ASSERT_TRUE(start_result.IsSuccess()) << start_result.GetError().ToString();
+    const auto& response = start_result.Value();
+    EXPECT_EQ(response.plan_id, plan_id);
+    EXPECT_EQ(response.plan_fingerprint, prepare_result.Value().plan_fingerprint);
+    EXPECT_EQ(snapshot_result.Value().snapshot_hash, prepare_result.Value().plan_fingerprint);
+    EXPECT_EQ(use_case.plans_.at(plan_id).preview_snapshot_hash, response.plan_fingerprint);
+    EXPECT_EQ(use_case.plans_.at(plan_id).authority_trigger_layout.layout_id, before_layout_id);
+    EXPECT_EQ(GluePointsFingerprint(use_case.plans_.at(plan_id).glue_points), before_glue_fingerprint);
+}
+
+TEST(DispensingWorkflowUseCaseTest, PreparePlanParameterChangeInvalidatesPreviouslyConfirmedPreview) {
+    ScopedTempPbFile temp_pb_file;
+    auto planning_use_case = CreateRealPlanningUseCase();
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_use_case =
+        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
+    motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
+    homing_port->homed[LogicalAxisId::X] = true;
+    homing_port->homed[LogicalAxisId::Y] = true;
+    auto use_case = CreateUseCaseWithPlanningAndExecution(
+        planning_use_case,
+        execution_use_case,
+        connection_port,
+        motion_state_port,
+        homing_port,
+        interlock_port);
+
+    DispensingWorkflowUseCase::ArtifactRecord artifact_record;
+    artifact_record.response.artifact_id = "artifact-preview-stale";
+    artifact_record.upload_response.filepath = temp_pb_file.string();
+    artifact_record.upload_response.success = true;
+    use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
+
+    PreparePlanRequest first_prepare_request;
+    first_prepare_request.artifact_id = artifact_record.response.artifact_id;
+    first_prepare_request.planning_request = BuildCanonicalPlanningRequest();
+    first_prepare_request.planning_request.dxf_filepath.clear();
+    first_prepare_request.runtime_overrides = BuildPreparePlanRuntimeOverrides();
+
+    const auto first_prepare = use_case.PreparePlan(first_prepare_request);
+    ASSERT_TRUE(first_prepare.IsSuccess()) << first_prepare.GetError().ToString();
+
+    Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest snapshot_request;
+    snapshot_request.plan_id = first_prepare.Value().plan_id;
+    const auto snapshot_result = use_case.GetPreviewSnapshot(snapshot_request);
+    ASSERT_TRUE(snapshot_result.IsSuccess()) << snapshot_result.GetError().ToString();
+
+    Siligen::Application::UseCases::Dispensing::ConfirmPreviewRequest confirm_request;
+    confirm_request.plan_id = first_prepare.Value().plan_id;
+    confirm_request.snapshot_hash = snapshot_result.Value().snapshot_hash;
+    const auto confirm_result = use_case.ConfirmPreview(confirm_request);
+    ASSERT_TRUE(confirm_result.IsSuccess()) << confirm_result.GetError().ToString();
+
+    PreparePlanRequest second_prepare_request = first_prepare_request;
+    second_prepare_request.planning_request.spacing_max_mm = 1.5f;
+    const auto second_prepare = use_case.PreparePlan(second_prepare_request);
+    ASSERT_TRUE(second_prepare.IsSuccess()) << second_prepare.GetError().ToString();
+    EXPECT_NE(second_prepare.Value().plan_fingerprint, first_prepare.Value().plan_fingerprint);
+
+    Siligen::Application::UseCases::Dispensing::StartJobRequest stale_start_request;
+    stale_start_request.plan_id = first_prepare.Value().plan_id;
+    stale_start_request.plan_fingerprint = first_prepare.Value().plan_fingerprint;
+    stale_start_request.target_count = 1;
+    const auto stale_start_result = use_case.StartJob(stale_start_request);
+
+    ASSERT_TRUE(stale_start_result.IsError());
+    EXPECT_EQ(stale_start_result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+    EXPECT_EQ(stale_start_result.GetError().GetMessage(), "plan is stale");
+}
+
 TEST(DispensingWorkflowUseCaseTest, StartJobRejectsPreviewAuthorityMismatchBeforeRuntimeLaunch) {
     auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
@@ -920,7 +1531,8 @@ TEST(DispensingWorkflowUseCaseTest, StartJobRejectsPreviewAuthorityMismatchBefor
     auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port, execution_use_case);
     SeedPlan(use_case, "plan-authority-mismatch");
     auto& plan_record = use_case.plans_.at("plan-authority-mismatch");
-    plan_record.preview_authority_shared_with_execution = false;
+    plan_record.execution_authority_shared_with_execution = false;
+    plan_record.execution_assembly.preview_authority_shared_with_execution = false;
 
     Siligen::Application::UseCases::Dispensing::StartJobRequest request;
     request.plan_id = "plan-authority-mismatch";
@@ -948,7 +1560,9 @@ TEST(DispensingWorkflowUseCaseTest, StartJobRejectsPreviewBindingUnavailableBefo
     auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port, execution_use_case);
     SeedPlan(use_case, "plan-binding-mismatch");
     auto& plan_record = use_case.plans_.at("plan-binding-mismatch");
-    plan_record.preview_binding_ready = false;
+    plan_record.execution_binding_ready = false;
+    plan_record.execution_assembly.execution_binding_ready = false;
+    plan_record.preview_failure_reason = "authority trigger binding unavailable";
 
     Siligen::Application::UseCases::Dispensing::StartJobRequest request;
     request.plan_id = "plan-binding-mismatch";

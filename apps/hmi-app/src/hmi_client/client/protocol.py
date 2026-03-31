@@ -99,6 +99,7 @@ class CommandProtocol:
     """High-level command interface for motion controller."""
 
     _DEFAULT_PREVIEW_MAX_POLYLINE_POINTS = 4000
+    _DEFAULT_PREVIEW_MAX_GLUE_POINTS = 5000
 
     def __init__(self, client: TcpClient):
         self._client = client
@@ -416,11 +417,13 @@ class CommandProtocol:
         self,
         plan_id: str,
         max_polyline_points: int = _DEFAULT_PREVIEW_MAX_POLYLINE_POINTS,
+        max_glue_points: int = _DEFAULT_PREVIEW_MAX_GLUE_POINTS,
         timeout: float = 15.0,
     ) -> tuple:
         ok, payload, error, _ = self.dxf_preview_snapshot_with_error_details(
             plan_id=plan_id,
             max_polyline_points=max_polyline_points,
+            max_glue_points=max_glue_points,
             timeout=timeout,
         )
         return ok, payload, error
@@ -429,11 +432,14 @@ class CommandProtocol:
         self,
         plan_id: str,
         max_polyline_points: int = _DEFAULT_PREVIEW_MAX_POLYLINE_POINTS,
+        max_glue_points: int = _DEFAULT_PREVIEW_MAX_GLUE_POINTS,
         timeout: float = 15.0,
     ) -> tuple:
         params = {"plan_id": plan_id}
         if max_polyline_points > 0 and max_polyline_points != self._DEFAULT_PREVIEW_MAX_POLYLINE_POINTS:
             params["max_polyline_points"] = int(max_polyline_points)
+        if max_glue_points > 0 and max_glue_points != self._DEFAULT_PREVIEW_MAX_GLUE_POINTS:
+            params["max_glue_points"] = int(max_glue_points)
         resp = self._client.send_request("dxf.preview.snapshot", params, timeout=timeout)
         if "error" in resp:
             error_payload = resp.get("error", {}) or {}

@@ -12,7 +12,7 @@
 #include "facades/tcp/TcpMotionFacade.h"
 #include "facades/tcp/TcpRecipeFacade.h"
 #include "facades/tcp/TcpSystemFacade.h"
-#include "process_planning/contracts/ConfigurationContracts.h"
+#include "domain/configuration/ports/IConfigurationPort.h"
 #include "domain/configuration/services/ReadyZeroSpeedResolver.h"
 
 #include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
@@ -251,6 +251,7 @@ DxfBounds ComputeBounds(const std::vector<Siligen::TrajectoryPoint>& points) {
 }
 
 constexpr size_t kPreviewPolylineMaxPoints = 4000;
+constexpr size_t kPreviewGlueMaxPoints = 5000;
 
 nlohmann::json BuildPreviewPolyline(const std::vector<Siligen::TrajectoryPoint>& points, size_t max_points) {
     nlohmann::json polyline = nlohmann::json::array();
@@ -2084,6 +2085,18 @@ std::string TcpCommandDispatcher::HandleDxfPlanPrepare(const std::string& id, co
         active_dxf_job_id_.clear();
     }
 
+    nlohmann::json performance_profile = {
+        {"authority_cache_hit", plan.performance_profile.authority_cache_hit},
+        {"authority_joined_inflight", plan.performance_profile.authority_joined_inflight},
+        {"authority_wait_ms", plan.performance_profile.authority_wait_ms},
+        {"pb_prepare_ms", plan.performance_profile.pb_prepare_ms},
+        {"path_load_ms", plan.performance_profile.path_load_ms},
+        {"process_path_ms", plan.performance_profile.process_path_ms},
+        {"authority_build_ms", plan.performance_profile.authority_build_ms},
+        {"authority_total_ms", plan.performance_profile.authority_total_ms},
+        {"prepare_total_ms", plan.performance_profile.prepare_total_ms}
+    };
+
     return GatewayJsonProtocol::MakeSuccessResponse(id, {
         {"plan_id", plan.plan_id},
         {"plan_fingerprint", plan.plan_fingerprint},
@@ -2096,7 +2109,8 @@ std::string TcpCommandDispatcher::HandleDxfPlanPrepare(const std::string& id, co
         {"snapshot_id", ""},
         {"snapshot_hash", ""},
         {"preview_request_signature", request_signature},
-        {"preview_state", "prepared"}
+        {"preview_state", "prepared"},
+        {"performance_profile", performance_profile}
     });
 }
 
@@ -2146,18 +2160,29 @@ std::string TcpCommandDispatcher::HandleDxfJobStart(const std::string& id, const
         return GatewayJsonProtocol::MakeErrorResponse(id, 2901, start_result.GetError().GetMessage());
     }
 
-    const auto& job_id = start_result.Value();
+    const auto& start_response = start_result.Value();
     {
         std::lock_guard<std::mutex> lock(dxf_mutex_);
-        active_dxf_job_id_ = job_id;
+        active_dxf_job_id_ = start_response.job_id;
     }
 
+    nlohmann::json performance_profile = {
+        {"execution_cache_hit", start_response.performance_profile.execution_cache_hit},
+        {"execution_joined_inflight", start_response.performance_profile.execution_joined_inflight},
+        {"execution_wait_ms", start_response.performance_profile.execution_wait_ms},
+        {"motion_plan_ms", start_response.performance_profile.motion_plan_ms},
+        {"assembly_ms", start_response.performance_profile.assembly_ms},
+        {"export_ms", start_response.performance_profile.export_ms},
+        {"execution_total_ms", start_response.performance_profile.execution_total_ms}
+    };
+
     return GatewayJsonProtocol::MakeSuccessResponse(id, {
-        {"started", true},
-        {"job_id", job_id},
-        {"plan_id", plan_id},
-        {"plan_fingerprint", expected_plan_fingerprint},
-        {"target_count", request.target_count}
+        {"started", start_response.started},
+        {"job_id", start_response.job_id},
+        {"plan_id", start_response.plan_id},
+        {"plan_fingerprint", start_response.plan_fingerprint},
+        {"target_count", start_response.target_count},
+        {"performance_profile", performance_profile}
     });
 }
 
@@ -2398,6 +2423,17 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
     snapshot_request.max_polyline_points = std::min<std::size_t>(
         kPreviewPolylineMaxPoints,
         std::max<std::size_t>(2, requested_polyline_points));
+    const std::size_t requested_glue_points =
+        ReadJsonSizeT(params, "max_glue_points", kPreviewGlueMaxPoints);
+    if (requested_glue_points > kPreviewGlueMaxPoints) {
+        SILIGEN_LOG_WARNING(
+            "dxf.preview.snapshot max_glue_points 超过上限，已夹断。request_id=" + id +
+            ", requested=" + std::to_string(requested_glue_points) +
+            ", capped=" + std::to_string(kPreviewGlueMaxPoints));
+    }
+    snapshot_request.max_glue_points = std::min<std::size_t>(
+        kPreviewGlueMaxPoints,
+        std::max<std::size_t>(1, requested_glue_points));
     auto snapshot_result = dispensingFacade_->GetDxfPreviewSnapshot(snapshot_request);
     if (snapshot_result.IsError()) {
         LogPreviewGateFailure("dxf.preview.snapshot", id, plan_id, snapshot_result.GetError().GetMessage());

@@ -13,19 +13,12 @@ except ImportError:  # pragma: no cover - script-mode fallback
 
 configure_qt_environment(headless=False)
 
-try:
-    from hmi_client.module_paths import ensure_hmi_application_path
-except ImportError:  # pragma: no cover - script-mode fallback
-    from module_paths import ensure_hmi_application_path  # type: ignore
-
-ensure_hmi_application_path()
-
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QGroupBox, QLabel, QPushButton, QLineEdit, QGridLayout, QFrame,
     QSlider, QSpinBox, QDoubleSpinBox, QCheckBox, QTabWidget, QFileDialog,
     QProgressBar, QListWidget, QListWidgetItem, QMessageBox, QDialog, QDialogButtonBox,
-    QComboBox, QFormLayout, QScrollArea, QRadioButton, QStatusBar
+    QComboBox, QFormLayout, QScrollArea, QRadioButton, QStatusBar, QPlainTextEdit
 )
 from PyQt5.QtCore import QTimer, Qt, QSize, QEvent
 from PyQt5.QtGui import QFont, QColor
@@ -42,6 +35,9 @@ from client import (
     CommandProtocol,
     LaunchUiState,
     LaunchResult,
+    PreviewSnapshotMeta,
+    PreviewSessionOwner,
+    PreviewSnapshotWorker,
     RecoveryWorker,
     StartupWorker,
     TcpClient,
@@ -57,7 +53,6 @@ from client import (
     normalize_launch_mode,
 )
 from client.auth import AuthManager
-from hmi_application import PreviewSnapshotMeta, PreviewSessionOwner, PreviewSnapshotWorker
 from .dxf_default_paths import build_default_dxf_candidates
 from .styles import DARK_THEME
 from .recipe_config_widget import RecipeConfigWidget
@@ -78,6 +73,7 @@ if not _UI_LOGGER.handlers:
 DEFAULT_ASPECT_RATIO = 16 / 9
 DEFAULT_BASE_WIDTH = 1600
 ASPECT_RATIO_ENV = "SILIGEN_HMI_ASPECT_RATIO"
+STATUS_LOG_HISTORY_LIMIT = 200
 
 
 def _parse_aspect_ratio(value: str):
@@ -285,6 +281,7 @@ class MainWindow(QMainWindow):
         self._preview_plan_dry_run = None
         self._preview_source = ""
         self._preview_snapshot_worker = None
+        self._preview_request_generation = 0
         self._preview_refresh_inflight = False
         self._preview_state_resync_pending = False
         self._last_preview_resync_attempt_ts = 0.0
@@ -315,6 +312,8 @@ class MainWindow(QMainWindow):
         self._last_purge_time = time.time()
         self._maintenance_threshold = 10000
         self._last_alarms_snapshot = []
+        self._status_log_entries = []
+        self._last_status_log_message = ""
 
         # User permission management
         self._auth = AuthManager(auto_logout_minutes=5)
@@ -376,6 +375,7 @@ class MainWindow(QMainWindow):
 
         # Custom Bottom Status Bar
         self.setStatusBar(self._create_custom_bottom_bar())
+        self.statusBar().messageChanged.connect(self._on_status_message_changed)
         self.statusBar().showMessage("系统就绪")
 
     def _create_custom_bottom_bar(self) -> QStatusBar:
@@ -1229,9 +1229,53 @@ class MainWindow(QMainWindow):
         list_layout.addLayout(btn_layout)
 
         layout.addWidget(list_group)
+
+        status_log_group = QGroupBox("状态栏日志")
+        status_log_layout = QVBoxLayout(status_log_group)
+
+        self._status_log_view = QPlainTextEdit()
+        self._status_log_view.setProperty("data-testid", "status-log-view")
+        self._status_log_view.setReadOnly(True)
+        self._status_log_view.setMinimumHeight(180)
+        self._status_log_view.setPlaceholderText("底部左侧状态栏消息会在此保留，便于回看和复制。")
+        status_log_layout.addWidget(self._status_log_view)
+
+        status_log_btn_layout = QHBoxLayout()
+        self._copy_status_log_btn = QPushButton("复制日志")
+        self._copy_status_log_btn.setProperty("data-testid", "btn-status-log-copy")
+        self._copy_status_log_btn.clicked.connect(self._on_copy_status_log)
+        status_log_btn_layout.addWidget(self._copy_status_log_btn)
+        status_log_btn_layout.addStretch()
+        status_log_layout.addLayout(status_log_btn_layout)
+
+        layout.addWidget(status_log_group)
         layout.addStretch()
 
         return widget
+
+    def _on_status_message_changed(self, message: str) -> None:
+        text = (message or "").strip()
+        if not text or text == self._last_status_log_message:
+            return
+
+        entry = f"[{time.strftime('%H:%M:%S')}] {text}"
+        self._status_log_entries.append(entry)
+        if len(self._status_log_entries) > STATUS_LOG_HISTORY_LIMIT:
+            self._status_log_entries = self._status_log_entries[-STATUS_LOG_HISTORY_LIMIT:]
+            self._status_log_view.setPlainText("\n".join(self._status_log_entries))
+        elif self._status_log_view.toPlainText():
+            self._status_log_view.appendPlainText(entry)
+        else:
+            self._status_log_view.setPlainText(entry)
+        self._last_status_log_message = text
+
+    def _on_copy_status_log(self) -> None:
+        history = "\n".join(self._status_log_entries)
+        if not history:
+            self.statusBar().showMessage("暂无可复制的状态栏日志")
+            return
+        QApplication.clipboard().setText(history)
+        self.statusBar().showMessage("状态栏日志已复制")
 
     def _sync_preview_session_fields(self) -> None:
         state = self._preview_session.state
@@ -1855,14 +1899,40 @@ class MainWindow(QMainWindow):
         if not checked:
             return
         self._update_start_button_state()
-        if self._dxf_loaded:
-            self._invalidate_preview_plan()
+        if not self._dxf_loaded:
+            return
+        self._invalidate_preview_plan()
+        if not self._auto_regenerate_preview_after_mode_change():
             self.statusBar().showMessage("运行模式已变更，请刷新预览并重新确认")
 
     def _invalidate_preview_plan(self):
+        self._cancel_active_preview_worker(reason="preview_input_changed")
         self._preview_session.invalidate_plan()
         self._sync_preview_session_fields()
         self._update_info_label()
+
+    def _auto_regenerate_preview_after_mode_change(self) -> bool:
+        if not self._dxf_loaded or not self._dxf_artifact_id:
+            return False
+        if self._is_offline_mode() or not bool(getattr(self, "_connected", False)):
+            return False
+        if not WEB_ENGINE_AVAILABLE or not self._dxf_view:
+            return False
+        self._generate_dxf_preview()
+        return True
+
+    def _cancel_active_preview_worker(self, *, reason: str, keep_refresh_inflight: bool = False):
+        self._preview_request_generation += 1
+        worker = self._preview_snapshot_worker
+        self._preview_snapshot_worker = None
+        if worker is not None:
+            try:
+                worker.cancel()
+            except Exception as exc:
+                _UI_LOGGER.warning("preview_worker_cancel_failed reason=%s error=%s", reason, exc)
+        if not keep_refresh_inflight:
+            self._set_preview_refresh_inflight(False)
+        _UI_LOGGER.info("preview_worker_cancelled reason=%s generation=%s", reason, self._preview_request_generation)
 
     def _update_dxf_info(self):
         info = self._protocol.dxf_get_info()
@@ -1994,6 +2064,7 @@ class MainWindow(QMainWindow):
             ok, payload, error, error_code = self._protocol.dxf_preview_snapshot_with_error_details(
                 plan_id=plan_id,
                 max_polyline_points=4000,
+                max_glue_points=5000,
             )
         except Exception as exc:
             _UI_LOGGER.warning("preview_resync_failed plan_id=%s error=%s", plan_id, exc)
@@ -2194,7 +2265,22 @@ class MainWindow(QMainWindow):
             "</body></html>"
         )
 
-    def _on_preview_snapshot_completed(self, ok: bool, payload: dict, error: str, source: str = "worker"):
+    def _on_preview_snapshot_completed(
+        self,
+        ok: bool,
+        payload: dict,
+        error: str,
+        source: str = "worker",
+        request_token: int | None = None,
+    ):
+        if request_token is not None and request_token != self._preview_request_generation:
+            _UI_LOGGER.info(
+                "preview_result_ignored reason=stale_worker_result request_token=%s active_generation=%s",
+                request_token,
+                self._preview_request_generation,
+            )
+            return
+
         self._preview_snapshot_worker = None
         self._set_preview_refresh_inflight(False)
 
@@ -2224,6 +2310,7 @@ class MainWindow(QMainWindow):
 
         self._update_info_label()
 
+        render_started_at = time.perf_counter()
         html_content = self._render_runtime_preview_html(
             snapshot=result.snapshot,
             speed_mm_s=self._dxf_speed.value(),
@@ -2238,6 +2325,30 @@ class MainWindow(QMainWindow):
             preview_failure_reason=self._preview_session.state.preview_failure_reason,
         )
         self._dxf_view.setHtml(html_content)
+        render_elapsed_ms = int(round((time.perf_counter() - render_started_at) * 1000.0))
+        performance_profile = payload.get("performance_profile", {})
+        worker_profile = payload.get("worker_profile", {})
+        if isinstance(performance_profile, dict) or isinstance(worker_profile, dict):
+            _UI_LOGGER.info(
+                "preview_performance_profile snapshot_id=%s authority_cache_hit=%s authority_joined_inflight=%s "
+                "authority_wait_ms=%s pb_ms=%s load_ms=%s process_path_ms=%s authority_build_ms=%s "
+                "authority_total_ms=%s prepare_total_ms=%s plan_prepare_rpc_ms=%s snapshot_rpc_ms=%s "
+                "worker_total_ms=%s render_html_ms=%s",
+                result.snapshot.snapshot_id if result.snapshot is not None else "",
+                performance_profile.get("authority_cache_hit", "") if isinstance(performance_profile, dict) else "",
+                performance_profile.get("authority_joined_inflight", "") if isinstance(performance_profile, dict) else "",
+                performance_profile.get("authority_wait_ms", "") if isinstance(performance_profile, dict) else "",
+                performance_profile.get("pb_prepare_ms", "") if isinstance(performance_profile, dict) else "",
+                performance_profile.get("path_load_ms", "") if isinstance(performance_profile, dict) else "",
+                performance_profile.get("process_path_ms", "") if isinstance(performance_profile, dict) else "",
+                performance_profile.get("authority_build_ms", "") if isinstance(performance_profile, dict) else "",
+                performance_profile.get("authority_total_ms", "") if isinstance(performance_profile, dict) else "",
+                performance_profile.get("prepare_total_ms", "") if isinstance(performance_profile, dict) else "",
+                worker_profile.get("plan_prepare_rpc_ms", "") if isinstance(worker_profile, dict) else "",
+                worker_profile.get("snapshot_rpc_ms", "") if isinstance(worker_profile, dict) else "",
+                worker_profile.get("worker_total_ms", "") if isinstance(worker_profile, dict) else "",
+                render_elapsed_ms,
+            )
         if result.preview_warning and result.snapshot is not None:
             _UI_LOGGER.warning(
                 "preview_sampling_warning snapshot_id=%s glue_points=%d execution_source_points=%d",
@@ -2261,6 +2372,7 @@ class MainWindow(QMainWindow):
         if not self._dxf_filepath:
             self.statusBar().showMessage("未选择DXF文件")
             return
+        self._cancel_active_preview_worker(reason="dxf_reload")
         ok, payload, error = self._protocol.dxf_create_artifact(self._dxf_filepath)
         if ok:
             self._dxf_artifact_id = str(payload.get("artifact_id", "")).strip()
@@ -2339,6 +2451,9 @@ class MainWindow(QMainWindow):
         self._set_preview_message_html("胶点预览生成中", "正在请求规划胶点快照和执行轨迹辅助层，请稍候。")
         self.statusBar().showMessage("胶点预览生成中...")
         _UI_LOGGER.info("preview_requested speed_mm_s=%.3f file=%s", speed, self._dxf_filepath)
+        self._cancel_active_preview_worker(reason="preview_restart", keep_refresh_inflight=True)
+        self._preview_request_generation += 1
+        request_token = self._preview_request_generation
 
         worker = PreviewSnapshotWorker(
             host=self._client.host,
@@ -2348,7 +2463,14 @@ class MainWindow(QMainWindow):
             dry_run=dry_run_mode,
             dry_run_speed_mm_s=speed,
         )
-        worker.completed.connect(self._on_preview_snapshot_completed)
+        worker.completed.connect(
+            lambda ok, payload, error, token=request_token: self._on_preview_snapshot_completed(
+                ok,
+                payload,
+                error,
+                request_token=token,
+            )
+        )
         worker.finished.connect(worker.deleteLater)
         self._preview_snapshot_worker = worker
         try:
@@ -2534,6 +2656,23 @@ class MainWindow(QMainWindow):
         self._operation_status.setText(f"{mode_text}运行中")
         self._update_production_stats()
         self.statusBar().showMessage(f"{mode_text}已启动")
+        performance_profile = payload.get("performance_profile", {})
+        if isinstance(performance_profile, dict):
+            _UI_LOGGER.info(
+                "job_start_performance_profile plan_id=%s plan_fingerprint=%s job_id=%s "
+                "execution_cache_hit=%s execution_joined_inflight=%s execution_wait_ms=%s "
+                "motion_plan_ms=%s assembly_ms=%s export_ms=%s execution_total_ms=%s",
+                self._current_plan_id,
+                self._current_plan_fingerprint,
+                self._current_job_id,
+                performance_profile.get("execution_cache_hit", ""),
+                performance_profile.get("execution_joined_inflight", ""),
+                performance_profile.get("execution_wait_ms", ""),
+                performance_profile.get("motion_plan_ms", ""),
+                performance_profile.get("assembly_ms", ""),
+                performance_profile.get("export_ms", ""),
+                performance_profile.get("execution_total_ms", ""),
+            )
         _UI_LOGGER.info(
             "job_started plan_id=%s plan_fingerprint=%s job_id=%s target=%s dry_run=%s",
             self._current_plan_id,

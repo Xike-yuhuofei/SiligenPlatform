@@ -34,3 +34,27 @@ TEST(ProcessPathFacadeTest, BuildsNormalizedAnnotatedAndShapedPath) {
     ASSERT_TRUE(request.alignment.has_value());
     EXPECT_EQ(request.alignment->owner_module, "M5");
 }
+
+TEST(ProcessPathFacadeTest, PreservesBranchRevisitLikePrimitiveSequenceThroughBuild) {
+    using Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest;
+    using Siligen::Application::Services::ProcessPath::ProcessPathFacade;
+    using Siligen::ProcessPath::Contracts::Primitive;
+    using Siligen::Shared::Types::Point2D;
+
+    ProcessPathBuildRequest request;
+    request.normalization.continuity_tolerance = 0.1f;
+    request.primitives.push_back(Primitive::MakeLine(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)));
+    request.primitives.push_back(Primitive::MakeLine(Point2D(10.0f, 0.0f), Point2D(10.0f, 10.0f)));
+    request.primitives.push_back(Primitive::MakeLine(Point2D(10.0f, 10.0f), Point2D(0.0f, 10.0f)));
+    request.primitives.push_back(Primitive::MakeLine(Point2D(0.0f, 10.0f), Point2D(0.0f, 0.0f)));
+    request.primitives.push_back(Primitive::MakeLine(Point2D(0.0f, 0.0f), Point2D(10.0f, 10.0f)));
+
+    ProcessPathFacade facade;
+    const auto result = facade.Build(request);
+
+    ASSERT_EQ(result.normalized.path.segments.size(), 5u);
+    ASSERT_EQ(result.process_path.segments.size(), 5u);
+    ASSERT_GE(result.shaped_path.segments.size(), 5u);
+    EXPECT_TRUE(result.process_path.segments.front().dispense_on);
+    EXPECT_TRUE(result.process_path.segments.back().dispense_on);
+}

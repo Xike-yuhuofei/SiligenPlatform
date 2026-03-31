@@ -19,6 +19,7 @@
 ## Decision 3: 分布算法按“几何线段首尾双锚定 + 段内均分”执行
 
 - Decision: 对每条 `dispense_on` 几何线段独立执行首尾双锚定。设线段长度为 `L`，目标间距为 `3.0 mm`，分段数取 `n = max(1, round(L / 3.0))`，实际间距为 `L / n`，在该线段上生成包含首尾在内的 `n + 1` 个锚点；共享顶点按几何容差去重，只保留一个公共坐标。
+- Scope note: 本决策是 `SPEC-001` 范围内的局部策略，不是项目级默认 span 形成规则。项目级上位策略以 `D:\Projects\SiligenSuite\docs\architecture\dxf-authority-layout-global-strategy-v1.md` 为准；当归一化结果识别为连续 span 且中间顶点属于软顶点时，应先由上位策略决定是否切分，再决定是否应用本决策。
 - Rationale: 当前 trigger 计划和 preview 重建更偏向全局累计距离模型，无法从机制上保证角点命中与共享顶点共点。按线段独立锚定后，端点重合、非整倍数边长的均分稳定性，以及共享顶点去重都能被统一处理。
 - Alternatives considered:
   - 从路径首点按固定步距全局累计分布: 拒绝。会在角点产生前后漂移。

@@ -24,6 +24,23 @@ class FakeProtocol:
         self.home_auto_calls = []
         self.jog_calls = []
         self.stop_calls = 0
+        self.start_job_calls = []
+        self.start_job_response = (
+            True,
+            {
+                "job_id": "job-1",
+                "performance_profile": {
+                    "execution_cache_hit": False,
+                    "execution_joined_inflight": False,
+                    "execution_wait_ms": 0,
+                    "motion_plan_ms": 0,
+                    "assembly_ms": 0,
+                    "export_ms": 0,
+                    "execution_total_ms": 0,
+                },
+            },
+            "",
+        )
 
     def get_status(self) -> MachineStatus:
         return self.status
@@ -44,6 +61,10 @@ class FakeProtocol:
         self.stop_calls += 1
         return True
 
+    def dxf_start_job(self, plan_id: str, target_count: int = 1, plan_fingerprint: str = ""):
+        self.start_job_calls.append((plan_id, target_count, plan_fingerprint))
+        return self.start_job_response
+
 
 class _FakePreviewView:
     def __init__(self) -> None:
@@ -51,6 +72,14 @@ class _FakePreviewView:
 
     def setHtml(self, html: str) -> None:
         self.html = html
+
+
+class _CancellableWorker:
+    def __init__(self) -> None:
+        self.cancel_called = False
+
+    def cancel(self) -> None:
+        self.cancel_called = True
 
 
 class MainWindowTabsTest(unittest.TestCase):
@@ -64,6 +93,7 @@ class MainWindowTabsTest(unittest.TestCase):
         main_window_module.QWebEngineView = None
         main_window_module.WEB_ENGINE_AVAILABLE = False
         self.window = main_window_module.MainWindow(launch_mode="offline")
+        QApplication.clipboard().clear()
 
     def tearDown(self) -> None:
         self.window.close()
@@ -180,6 +210,32 @@ class MainWindowTabsTest(unittest.TestCase):
 
         self.assertEqual(labels, ["生产", "设置", "配置", "报警"])
         self.assertNotIn("仿真观察", labels)
+
+    def test_alarm_panel_exposes_status_log_view_and_copy_action(self) -> None:
+        testids = self._collect_testids()
+
+        self.assertIn("status-log-view", testids)
+        self.assertIn("btn-status-log-copy", testids)
+
+    def test_status_bar_messages_are_recorded_in_alarm_panel(self) -> None:
+        self.window.statusBar().showMessage("测试状态栏归档")
+        QApplication.processEvents()
+
+        entries = self.window._status_log_view.toPlainText().splitlines()
+
+        self.assertTrue(any(line.endswith("系统就绪") for line in entries))
+        self.assertTrue(any(line.endswith("测试状态栏归档") for line in entries))
+
+    def test_copy_status_log_copies_recorded_messages(self) -> None:
+        self.window.statusBar().showMessage("复制测试消息")
+        QApplication.processEvents()
+
+        self.window._on_copy_status_log()
+        QApplication.processEvents()
+        copied = QApplication.clipboard().text()
+
+        self.assertIn("系统就绪", copied)
+        self.assertIn("复制测试消息", copied)
 
     def test_check_home_preconditions_rejects_estop(self) -> None:
         self.window._require_online_mode = lambda capability: True
@@ -489,6 +545,48 @@ class MainWindowTabsTest(unittest.TestCase):
             "authority layout missing for preview/execution share check",
         )
 
+    def test_start_production_logs_job_start_performance_profile(self) -> None:
+        status = self._make_status(x_homed=True, y_homed=True)
+        fake_protocol = FakeProtocol(status)
+        fake_protocol.start_job_response = (
+            True,
+            {
+                "job_id": "job-42",
+                "performance_profile": {
+                    "execution_cache_hit": True,
+                    "execution_joined_inflight": False,
+                    "execution_wait_ms": 3,
+                    "motion_plan_ms": 12,
+                    "assembly_ms": 8,
+                    "export_ms": 2,
+                    "execution_total_ms": 22,
+                },
+            },
+            "",
+        )
+        self.window._protocol = fake_protocol
+        self.window._require_online_mode = lambda capability: True
+        self.window._connected = True
+        self.window._hw_connected = True
+        self.window._runtime_status_fault = False
+        self.window._dxf_loaded = True
+        self.window._target_count = 2
+        self.window._check_production_preconditions = lambda dry_run=False: True
+        self._arm_confirmed_preview()
+        self._set_cached_status(status)
+
+        with self.assertLogs(main_window_module._UI_LOGGER.name, level="INFO") as captured:
+            self.window._start_production_process(dry_run=False)
+
+        self.assertEqual(fake_protocol.start_job_calls, [("plan-1", 2, "hash-1")])
+        self.assertEqual(self.window._current_job_id, "job-42")
+        log_text = "\n".join(captured.output)
+        self.assertIn("job_start_performance_profile", log_text)
+        self.assertIn("execution_total_ms=22", log_text)
+        self.assertIn("job_started", log_text)
+        self.window._production_running = False
+        self.window._current_job_id = ""
+
     def test_preview_snapshot_success_renders_authority_payload_without_timeout_side_effects(self) -> None:
         messages = []
         self.window._dxf_view = _FakePreviewView()
@@ -696,6 +794,79 @@ class MainWindowTabsTest(unittest.TestCase):
             "preview binding unavailable (authority trigger binding unavailable)",
         )
         self.assertTrue(messages[-1][2])
+
+    def test_invalidate_preview_plan_cancels_active_worker(self) -> None:
+        worker = _CancellableWorker()
+        self.window._preview_snapshot_worker = worker
+        self.window._preview_session.state.current_plan_id = "plan-1"
+        self.window._preview_session.state.current_plan_fingerprint = "fp-1"
+        self.window._set_preview_refresh_inflight(True)
+
+        self.window._invalidate_preview_plan()
+
+        self.assertTrue(worker.cancel_called)
+        self.assertEqual(self.window._preview_session.state.current_plan_id, "")
+        self.assertEqual(self.window._preview_session.state.current_plan_fingerprint, "")
+        self.assertFalse(self.window._preview_session.state.preview_refresh_inflight)
+
+    def test_mode_toggle_auto_regenerates_preview_when_runtime_preview_is_available(self) -> None:
+        generated = []
+        self.window._dxf_loaded = True
+        self.window._dxf_artifact_id = "artifact-1"
+        self.window._connected = True
+        self.window._dxf_view = _FakePreviewView()
+        self.window._is_offline_mode = lambda: False
+        main_window_module.WEB_ENGINE_AVAILABLE = True
+        self.window._preview_session.state.current_plan_id = "plan-1"
+        self.window._preview_session.state.current_plan_fingerprint = "fp-1"
+        self.window._generate_dxf_preview = lambda: generated.append("preview")
+
+        self.window._on_mode_toggled(True)
+
+        self.assertEqual(generated, ["preview"])
+        self.assertEqual(self.window._preview_session.state.current_plan_id, "")
+        self.assertEqual(self.window._preview_session.state.current_plan_fingerprint, "")
+
+    def test_mode_toggle_prompts_manual_refresh_when_auto_preview_is_unavailable(self) -> None:
+        self.window._dxf_loaded = True
+        self.window._dxf_artifact_id = ""
+        self.window._connected = True
+        self.window._preview_session.state.current_plan_id = "plan-1"
+        self.window._preview_session.state.current_plan_fingerprint = "fp-1"
+
+        self.window._on_mode_toggled(True)
+
+        self.assertEqual(self.window.statusBar().currentMessage(), "运行模式已变更，请刷新预览并重新确认")
+        self.assertEqual(self.window._preview_session.state.current_plan_id, "")
+        self.assertEqual(self.window._preview_session.state.current_plan_fingerprint, "")
+
+    def test_preview_snapshot_ignores_stale_worker_completion(self) -> None:
+        messages = []
+        self.window._dxf_view = _FakePreviewView()
+        self.window._set_preview_message_html = lambda title, detail="", is_error=False: messages.append((title, detail, is_error))
+        self.window._preview_request_generation = 4
+        self.window._set_preview_refresh_inflight(True)
+
+        self.window._on_preview_snapshot_completed(
+            True,
+            {
+                "snapshot_id": "snapshot-stale",
+                "snapshot_hash": "hash-stale",
+                "plan_id": "plan-stale",
+                "preview_source": "planned_glue_snapshot",
+                "preview_kind": "glue_points",
+                "glue_point_count": 2,
+                "glue_points": [{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
+                "execution_polyline": [{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
+            },
+            "",
+            request_token=3,
+        )
+
+        self.assertEqual(messages, [])
+        self.assertEqual(self.window._current_plan_id, "")
+        self.assertIsNone(self.window._preview_gate.snapshot)
+        self.assertTrue(self.window._preview_session.state.preview_refresh_inflight)
 
 
 if __name__ == "__main__":

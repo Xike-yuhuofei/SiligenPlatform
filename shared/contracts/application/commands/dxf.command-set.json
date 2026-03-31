@@ -128,7 +128,22 @@
           "snapshot_id": { "type": "string" },
           "snapshot_hash": { "type": "string" },
           "preview_request_signature": { "type": "string" },
-          "preview_state": { "type": "string" }
+          "preview_state": { "type": "string" },
+          "performance_profile": {
+            "type": "object",
+            "properties": {
+              "authority_cache_hit": { "type": "boolean" },
+              "authority_joined_inflight": { "type": "boolean" },
+              "authority_wait_ms": { "type": "integer" },
+              "pb_prepare_ms": { "type": "integer" },
+              "path_load_ms": { "type": "integer" },
+              "process_path_ms": { "type": "integer" },
+              "authority_build_ms": { "type": "integer" },
+              "authority_total_ms": { "type": "integer" },
+              "prepare_total_ms": { "type": "integer" }
+            },
+            "additionalProperties": false
+          }
         },
         "additionalProperties": false
       },
@@ -156,7 +171,8 @@
         "required": ["plan_id"],
         "properties": {
           "plan_id": { "type": "string" },
-          "max_polyline_points": { "type": "integer", "minimum": 2 }
+          "max_polyline_points": { "type": "integer", "minimum": 2 },
+          "max_glue_points": { "type": "integer", "minimum": 1 }
         },
         "additionalProperties": false
       },
@@ -277,13 +293,26 @@
       },
       "resultSchema": {
         "type": "object",
-        "required": ["started", "job_id", "plan_id", "plan_fingerprint", "target_count"],
+        "required": ["started", "job_id", "plan_id", "plan_fingerprint", "target_count", "performance_profile"],
         "properties": {
           "started": { "type": "boolean" },
           "job_id": { "type": "string" },
           "plan_id": { "type": "string" },
           "plan_fingerprint": { "type": "string" },
-          "target_count": { "type": "integer" }
+          "target_count": { "type": "integer" },
+          "performance_profile": {
+            "type": "object",
+            "properties": {
+              "execution_cache_hit": { "type": "boolean" },
+              "execution_joined_inflight": { "type": "boolean" },
+              "execution_wait_ms": { "type": "integer" },
+              "motion_plan_ms": { "type": "integer" },
+              "assembly_ms": { "type": "integer" },
+              "export_ms": { "type": "integer" },
+              "execution_total_ms": { "type": "integer" }
+            },
+            "additionalProperties": false
+          }
         },
         "additionalProperties": false
       },

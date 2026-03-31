@@ -6,7 +6,9 @@
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/types/AxisTypes.h"
 
+#include <chrono>
 #include <cmath>
+#include <thread>
 
 namespace {
 constexpr int kCrdStatusProgRun = 0x00000001;
@@ -14,6 +16,9 @@ constexpr int kCrdStatusProgEstop = 0x00000004;
 constexpr int kCrdStatusFifoFinish0 = 0x00000010;
 constexpr int kCrdStatusAlarm = 0x00000040;
 constexpr float kCoordinateVelocityIdleToleranceMmS = 0.001f;
+constexpr int kRetriableExecutionFailedErrorCode = 1;
+constexpr int kConfigureCrdClearMaxAttempts = 20;
+constexpr auto kConfigureCrdClearRetryDelay = std::chrono::milliseconds(10);
 
 void LogCrdDiagnostics(const std::shared_ptr<Siligen::Infrastructure::Hardware::IMultiCardWrapper>& wrapper,
                        int16 coord_sys,
@@ -41,6 +46,59 @@ void LogCrdDiagnostics(const std::shared_ptr<Siligen::Infrastructure::Hardware::
                       ", status_ret=" + std::to_string(status_result) +
                       ", fifo_ret=" + std::to_string(fifo_result) +
                       ", lookahead_ret=" + std::to_string(lookahead_result));
+}
+
+long BuildCoordinateMask(int16 coord_sys) {
+    if (coord_sys <= 0 || coord_sys > 32) {
+        return 0;
+    }
+    return 1L << (coord_sys - 1);
+}
+
+int RetryConfigureCrdClear(const std::shared_ptr<Siligen::Infrastructure::Hardware::IMultiCardWrapper>& wrapper,
+                           int16 coord_sys,
+                           const std::string& phase) {
+    if (!wrapper) {
+        return -1;
+    }
+
+    int error_code = wrapper->MC_CrdClear(coord_sys, 0);
+    if (error_code == 0) {
+        return 0;
+    }
+    if (error_code != kRetriableExecutionFailedErrorCode) {
+        return error_code;
+    }
+
+    const long crd_mask = BuildCoordinateMask(coord_sys);
+    for (int attempt = 2; attempt <= kConfigureCrdClearMaxAttempts; ++attempt) {
+        SILIGEN_LOG_WARNING("MC_CrdClear returned ExecutionFailed, retrying: phase=" + phase +
+                            ", coord_sys=" + std::to_string(coord_sys) +
+                            ", attempt=" + std::to_string(attempt));
+        LogCrdDiagnostics(wrapper, coord_sys, phase + ":retry:" + std::to_string(attempt));
+
+        if (crd_mask != 0) {
+            const int stop_result = wrapper->MC_StopEx(crd_mask, 0);
+            if (stop_result != 0) {
+                SILIGEN_LOG_WARNING("MC_StopEx during CrdClear retry returned: " + std::to_string(stop_result));
+            }
+        }
+
+        std::this_thread::sleep_for(kConfigureCrdClearRetryDelay);
+
+        error_code = wrapper->MC_CrdClear(coord_sys, 0);
+        if (error_code == 0) {
+            SILIGEN_LOG_INFO("MC_CrdClear recovered after retry: phase=" + phase +
+                             ", coord_sys=" + std::to_string(coord_sys) +
+                             ", attempt=" + std::to_string(attempt));
+            return 0;
+        }
+        if (error_code != kRetriableExecutionFailedErrorCode) {
+            return error_code;
+        }
+    }
+
+    return error_code;
 }
 }
 
@@ -91,7 +149,7 @@ Result<void> InterpolationAdapter::ConfigureCoordinateSystem(int16 coord_sys,
         }
     }
 
-    int pre_clear_result = wrapper_->MC_CrdClear(coord_sys, 0);
+    int pre_clear_result = RetryConfigureCrdClear(wrapper_, coord_sys, "ConfigureCoordinateSystem: pre_clear");
     if (pre_clear_result != 0) {
         SILIGEN_LOG_WARNING("预清空 MC_CrdClear 返回: " + std::to_string(pre_clear_result));
     } else {
@@ -106,7 +164,7 @@ Result<void> InterpolationAdapter::ConfigureCoordinateSystem(int16 coord_sys,
     SILIGEN_LOG_DEBUG("MC_SetCrdPrm 返回: 0 (成功)");
 
     // 2. 清空坐标系缓冲区（FIFO 0）
-    error_code = wrapper_->MC_CrdClear(coord_sys, 0);
+    error_code = RetryConfigureCrdClear(wrapper_, coord_sys, "ConfigureCoordinateSystem: post_set_prm_clear");
     if (error_code != 0) {
         SILIGEN_LOG_ERROR("MC_CrdClear 返回: " + std::to_string(error_code));
         return ConvertError(error_code, "ConfigureCoordinateSystem: CrdClear failed");

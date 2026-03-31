@@ -179,8 +179,8 @@ struct DispensingExecutionUseCase::Impl {
     mutable std::mutex jobs_mutex_;
     JobID active_job_id_;
 
-    Shared::Types::Result<void> ValidateHardwareConnection() noexcept;
-    Shared::Types::Result<void> ValidateExecutionPreconditions() const noexcept;
+    Shared::Types::Result<void> ValidateHardwareConnection(bool allow_disconnected = false) noexcept;
+    Shared::Types::Result<void> ValidateExecutionPreconditions(bool allow_disconnected = false) const noexcept;
     Shared::Types::Result<void> RefreshRuntimeParameters(const DispensingExecutionRequest& request) noexcept;
     Shared::Types::Result<DispensingExecutionResult> ExecuteInternal(
         const DispensingExecutionRequest& request,

@@ -6,6 +6,7 @@ set(RUNTIME_HOST_TEST_SOURCES
     unit/runtime/dispensing/DispensingExecutionUseCaseInternalTest.cpp
     unit/runtime/motion/HardLimitMonitorServiceTest.cpp
     unit/runtime/motion/HomingPortAdapterTest.cpp
+    unit/runtime/motion/InterpolationAdapterTest.cpp
     unit/runtime/motion/MotionControlMigrationTest.cpp
     unit/runtime/motion/MultiCardMotionAdapterTest.cpp
     unit/runtime/motion/MotionRuntimeFacadeTest.cpp

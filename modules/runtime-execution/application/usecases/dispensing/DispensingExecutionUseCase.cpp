@@ -567,7 +567,7 @@ Result<DispensingExecutionResult> DispensingExecutionUseCase::Impl::ExecuteInter
             Error(ErrorCode::PORT_NOT_INITIALIZED, "点胶流程服务未初始化", "DispensingExecutionUseCase"));
     }
 
-    auto conn_check = ValidateHardwareConnection();
+    auto conn_check = ValidateHardwareConnection(request.dry_run);
     if (!conn_check.IsSuccess()) {
         SILIGEN_LOG_ERROR("硬件连接验证失败: " + conn_check.GetError().GetMessage());
         return Result<DispensingExecutionResult>::Failure(conn_check.GetError());

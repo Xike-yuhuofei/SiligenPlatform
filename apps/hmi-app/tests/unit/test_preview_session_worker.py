@@ -43,9 +43,17 @@ class _FakeCommandProtocol:
     def dxf_prepare_plan(self, artifact_id, speed_mm_s, dry_run=False, dry_run_speed_mm_s=0.0, timeout=15.0):
         self.calls.append(("dxf.plan.prepare", artifact_id))
         self.prepare_timeout = timeout
-        return True, {"plan_id": "plan-1", "plan_fingerprint": "fp-1"}, ""
+        return True, {
+            "plan_id": "plan-1",
+            "plan_fingerprint": "fp-1",
+            "performance_profile": {
+                "authority_cache_hit": True,
+                "authority_joined_inflight": False,
+                "prepare_total_ms": 42,
+            },
+        }, ""
 
-    def dxf_preview_snapshot(self, plan_id, max_polyline_points=4000, timeout=15.0):
+    def dxf_preview_snapshot(self, plan_id, max_polyline_points=4000, max_glue_points=5000, timeout=15.0):
         self.calls.append(("dxf.preview.snapshot", plan_id))
         self.snapshot_timeout = timeout
         return True, {
@@ -93,11 +101,33 @@ class PreviewSnapshotWorkerTimeoutTest(unittest.TestCase):
         self.assertEqual(completed[0][2], "")
         self.assertEqual(completed[0][1]["plan_id"], "plan-1")
         self.assertEqual(completed[0][1]["snapshot_hash"], "fp-1")
+        self.assertEqual(completed[0][1]["performance_profile"]["prepare_total_ms"], 42)
+        self.assertIn("worker_profile", completed[0][1])
         protocol = _FakeCommandProtocol.instances[0]
         self.assertEqual(protocol.client, _FakeTcpClient.instances[0])
         self.assertEqual(protocol.prepare_timeout, DXF_OPEN_AUTO_PREVIEW_TIMEOUT_S)
         self.assertEqual(protocol.snapshot_timeout, DXF_OPEN_AUTO_PREVIEW_TIMEOUT_S)
         self.assertEqual(protocol.calls, [("dxf.plan.prepare", "artifact-1"), ("dxf.preview.snapshot", "plan-1")])
+
+    def test_worker_cancelled_before_run_does_not_emit_result(self) -> None:
+        worker = PreviewSnapshotWorker(
+            host="127.0.0.1",
+            port=9527,
+            artifact_id="artifact-1",
+            speed_mm_s=20.0,
+            dry_run=False,
+            dry_run_speed_mm_s=20.0,
+        )
+        completed = []
+        worker.completed.connect(lambda ok, payload, error: completed.append((ok, payload, error)))
+
+        worker.cancel()
+        with patch("hmi_client.client.tcp_client.TcpClient", _FakeTcpClient), patch(
+            "hmi_client.client.protocol.CommandProtocol", _FakeCommandProtocol
+        ):
+            worker.run()
+
+        self.assertEqual(completed, [])
 
 
 if __name__ == "__main__":
