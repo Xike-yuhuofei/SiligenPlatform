@@ -1,0 +1,4 @@
+interface:
+  display_name: "Online Validation Gate"
+  short_description: "Gate online validation and evidence; alias: 联机准入、联机证据"
+  default_prompt: "Use $online-validation-gate-and-evidence to decide online readiness, define limited validation steps, observation points, abort conditions, and evidence capture. 中文别名：联机准入、联机证据。"

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Targeted Fix And Regression"
+  short_description: "Apply minimal fixes and regression; alias: 最小修复、针对性回归"
+  default_prompt: "Use $targeted-fix-and-regression to apply the smallest valid fix, verify the main path, and run adjacent regression checks. 中文别名：最小修复、针对性回归。"

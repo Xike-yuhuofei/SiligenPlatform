@@ -1,0 +1,4 @@
+interface:
+  display_name: "Refactor Plan And Migrate"
+  short_description: "Plan staged refactors and migration; alias: 重构迁移、阶段化治理"
+  default_prompt: "Use $refactor-plan-and-migrate to produce a staged refactor or migration plan with validation gates, compatibility steps, and rollback paths. 中文别名：重构迁移、阶段化治理。"

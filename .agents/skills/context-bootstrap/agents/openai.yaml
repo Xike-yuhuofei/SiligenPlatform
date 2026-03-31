@@ -1,0 +1,4 @@
+interface:
+  display_name: "Context Bootstrap"
+  short_description: "Normalize repo context and entry points; alias: 上下文引导、上下文归一"
+  default_prompt: "Use $context-bootstrap to normalize the current repo context, relevant modules, docs, entry points, and validation paths. 中文别名：上下文引导、上下文归一。"

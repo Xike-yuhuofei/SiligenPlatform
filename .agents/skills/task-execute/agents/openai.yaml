@@ -1,0 +1,4 @@
+interface:
+  display_name: "Task Execute"
+  short_description: "Execute scoped tasks with validation; alias: 任务执行、实施推进"
+  default_prompt: "Use $task-execute to implement the current scoped tasks, keep changes bounded, and report minimal validation results. 中文别名：任务执行、实施推进。"

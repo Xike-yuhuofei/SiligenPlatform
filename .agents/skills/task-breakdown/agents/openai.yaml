@@ -1,0 +1,4 @@
+interface:
+  display_name: "Task Breakdown"
+  short_description: "Break plans into executable tasks; alias: 任务拆分、任务分解"
+  default_prompt: "Use $task-breakdown to break the current feature plan into executable tasks with dependencies, validation steps, and stop conditions. 中文别名：任务拆分、任务分解。"

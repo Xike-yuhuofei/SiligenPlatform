@@ -1,0 +1,4 @@
+interface:
+  display_name: "Feature Clarify"
+  short_description: "Clarify feature intent and success criteria; alias: 功能澄清、需求澄清"
+  default_prompt: "Use $feature-clarify to clarify feature goals, non-goals, success criteria, boundaries, and user-visible outcomes. 中文别名：功能澄清、需求澄清。"

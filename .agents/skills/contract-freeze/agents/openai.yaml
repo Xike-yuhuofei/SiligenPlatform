@@ -1,0 +1,4 @@
+interface:
+  display_name: "Contract Freeze"
+  short_description: "Freeze authority and owner boundaries; alias: 契约冻结、真值冻结"
+  default_prompt: "Use $contract-freeze to identify the semantic object, authority artifact, owner layer, and consumer-only layers before changes. 中文别名：契约冻结、真值冻结。"

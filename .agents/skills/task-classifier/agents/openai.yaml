@@ -1,0 +1,4 @@
+interface:
+  display_name: "Task Classifier"
+  short_description: "Route tasks into the right workflow; alias: 任务归类、流程分流"
+  default_prompt: "Use $task-classifier to classify the current request, assign risk tags, and route it to the right workflow. 中文别名：任务归类、流程分流。"
