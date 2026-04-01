@@ -223,6 +223,7 @@ def test_status_contract_describes_backend_interlock_authority():
     assert {"estop_known", "door_known"}.issubset(io_required)
     assert "后端权威" in io_props["estop"]["description"]
     assert "运行时互锁端口" in io_props["door"]["description"]
+    assert "断线且无有效采样时必须为 false" in io_props["estop_known"]["description"]
 
 
 def test_status_contract_exposes_effective_interlocks_and_supervision():
@@ -257,6 +258,7 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
         "updated_at",
     }.issubset(supervision_required)
     assert "控制器有效保护，不等同于原始负限位输入" in states["definitions"]["effectiveInterlocks"]["properties"]["home_boundary_x_active"]["description"]
+    assert "断线且无权威急停来源时必须为 false" in states["definitions"]["effectiveInterlocks"]["properties"]["estop_known"]["description"]
     assert "监督层当前目标状态" in states["definitions"]["supervisionStatus"]["properties"]["requested_state"]["description"]
 
     fixture_result = fixture["result"]

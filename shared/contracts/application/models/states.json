@@ -38,7 +38,7 @@
         },
         "estop_known": {
           "type": "boolean",
-          "description": "急停信号是否可靠可判定；false 表示来源不可判定。"
+          "description": "急停信号是否可靠可判定；仅当后端当前持有权威急停来源时为 true，断线且无有效采样时必须为 false。"
         },
         "door_known": {
           "type": "boolean",
@@ -61,7 +61,10 @@
       ],
       "properties": {
         "estop_active": { "type": "boolean" },
-        "estop_known": { "type": "boolean" },
+        "estop_known": {
+          "type": "boolean",
+          "description": "effective interlock 视角下急停是否可靠可判定；断线且无权威急停来源时必须为 false。"
+        },
         "door_open_active": { "type": "boolean" },
         "door_open_known": { "type": "boolean" },
         "home_boundary_x_active": {

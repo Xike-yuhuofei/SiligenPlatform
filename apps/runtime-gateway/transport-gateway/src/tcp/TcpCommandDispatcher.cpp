@@ -1066,7 +1066,7 @@ std::string TcpCommandDispatcher::HandleStatus(const std::string& id, const nloh
     }
     if (systemFacade_) {
         auto estopStateResult = systemFacade_->IsInEmergencyStop();
-        if (estopStateResult.IsSuccess()) {
+        if (estopStateResult.IsSuccess() && connected) {
             estop_state_known = true;
             estop_active = estop_active || estopStateResult.Value();
         }
@@ -1098,7 +1098,7 @@ std::string TcpCommandDispatcher::HandleStatus(const std::string& id, const nloh
         }
     }
 
-    bool estop_known = connected || estop_state_known;
+    bool estop_known = connected;
     bool door_known = false;
     bool door_open = false;
     bool interlock_latched = false;

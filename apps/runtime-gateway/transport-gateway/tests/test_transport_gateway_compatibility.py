@@ -270,6 +270,8 @@ def test_status_reads_backend_interlock_signals():
     source = TCP_DISPATCHER.read_text(encoding="utf-8")
     assert "ReadInterlockSignals()" in source
     assert "IsInEmergencyStop()" in source
+    assert "if (estopStateResult.IsSuccess() && connected)" in source
+    assert "bool estop_known = connected;" in source
     assert 'ioJson["door"] = signals.safety_door_open' in source
     assert 'ioJson["estop"] = estop_active || signals.emergency_stop_triggered' in source
     assert '"estop_known"' in source
