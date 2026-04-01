@@ -681,11 +681,6 @@ std::string ToConnectionStateLabel(Siligen::Device::Contracts::State::DeviceConn
 using RuntimeSupervisionSnapshot = Siligen::RuntimeExecution::Contracts::System::RuntimeSupervisionSnapshot;
 using RuntimeStatusSnapshot = Siligen::RuntimeExecution::Contracts::System::RuntimeStatusSnapshot;
 
-struct CompatMachineState {
-    std::string state;
-    std::string reason;
-};
-
 nlohmann::json BuildRawIoJson(const RuntimeSupervisionSnapshot& snapshot) {
     return {
         {"limit_x_pos", snapshot.io.limit_x_pos},
@@ -753,13 +748,6 @@ nlohmann::json BuildDispenserJson(const RuntimeStatusSnapshot& snapshot) {
     return {
         {"valve_open", snapshot.dispenser.valve_open},
         {"supply_open", snapshot.dispenser.supply_open}
-    };
-}
-
-CompatMachineState BuildCompatMachineState(const RuntimeSupervisionSnapshot& snapshot) {
-    return {
-        snapshot.supervision.current_state,
-        snapshot.supervision.state_reason
     };
 }
 
@@ -1113,15 +1101,12 @@ std::string TcpCommandDispatcher::HandleStatus(const std::string& id, const nloh
     const nlohmann::json ioJson = BuildRawIoJson(supervision_snapshot);
     const nlohmann::json effectiveInterlocksJson = BuildEffectiveInterlocksJson(supervision_snapshot);
     const nlohmann::json supervisionJson = BuildSupervisionJson(supervision_snapshot);
-    const auto compat_machine_state = BuildCompatMachineState(supervision_snapshot);
-    const std::string machine_state = compat_machine_state.state;
-    const std::string machine_state_reason = compat_machine_state.reason;
 
     nlohmann::json resultJson = {
         {"connected", supervision_snapshot.connected},
         {"connection_state", supervision_snapshot.connection_state},
-        {"machine_state", machine_state},
-        {"machine_state_reason", machine_state_reason},
+        {"machine_state", status_snapshot.machine_state},
+        {"machine_state_reason", status_snapshot.machine_state_reason},
         {"supervision", supervisionJson},
         {"interlock_latched", supervision_snapshot.interlock_latched},
         {"active_job_id", supervision_snapshot.active_job_id},

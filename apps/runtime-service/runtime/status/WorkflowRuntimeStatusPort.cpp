@@ -78,6 +78,8 @@ Result<RuntimeStatusSnapshot> WorkflowRuntimeStatusPort::ReadSnapshot() const {
 
     RuntimeStatusSnapshot snapshot;
     snapshot.supervision = supervision_result.Value();
+    snapshot.machine_state = snapshot.supervision.supervision.current_state;
+    snapshot.machine_state_reason = snapshot.supervision.supervision.state_reason;
 
     if (snapshot.supervision.connected) {
         auto all_status_result = motion_control_use_case_->GetAllAxesMotionStatus();

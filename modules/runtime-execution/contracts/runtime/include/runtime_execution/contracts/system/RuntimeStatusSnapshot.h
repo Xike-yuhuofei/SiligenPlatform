@@ -27,6 +27,8 @@ struct RuntimeDispenserStatusSnapshot {
 
 struct RuntimeStatusSnapshot {
     RuntimeSupervisionSnapshot supervision;
+    std::string machine_state = "Unknown";
+    std::string machine_state_reason = "unknown";
     std::map<std::string, RuntimeAxisStatusSnapshot> axes;
     bool has_position = false;
     RuntimePositionSnapshot position;

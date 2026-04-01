@@ -163,6 +163,8 @@ TEST(WorkflowRuntimeStatusPortTest, ConnectedSnapshotIncludesAxesPositionAndComp
 
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
     const auto& snapshot = result.Value();
+    EXPECT_EQ(snapshot.machine_state, "Idle");
+    EXPECT_EQ(snapshot.machine_state_reason, "idle");
     ASSERT_EQ(snapshot.axes.size(), 2U);
     EXPECT_TRUE(snapshot.axes.at("X").homed);
     EXPECT_EQ(snapshot.axes.at("X").homing_state, "homed");
@@ -185,6 +187,8 @@ TEST(WorkflowRuntimeStatusPortTest, DisconnectedSnapshotSkipsMotionReads) {
     auto result = port.ReadSnapshot();
 
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    EXPECT_EQ(result.Value().machine_state, "Unknown");
+    EXPECT_EQ(result.Value().machine_state_reason, "unknown");
     EXPECT_TRUE(result.Value().axes.empty());
     EXPECT_FALSE(result.Value().has_position);
     EXPECT_EQ(monitoring->all_status_reads, 0);

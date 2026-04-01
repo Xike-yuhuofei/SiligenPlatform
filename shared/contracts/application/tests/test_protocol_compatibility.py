@@ -298,7 +298,8 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
     assert "BuildAxesJson(status_snapshot)" in tcp_source
     assert "BuildPositionJson(status_snapshot)" in tcp_source
     assert "BuildDispenserJson(status_snapshot)" in tcp_source
-    assert "BuildCompatMachineState(supervision_snapshot)" in tcp_source
+    assert '{"machine_state", status_snapshot.machine_state}' in tcp_source
+    assert '{"machine_state_reason", status_snapshot.machine_state_reason}' in tcp_source
     assert "BuildSupervisionJson(supervision_snapshot)" in tcp_source
     assert "{\"supervision\", supervisionJson}" in tcp_source
     assert "{\"effective_interlocks\", effectiveInterlocksJson}" in tcp_source
@@ -306,6 +307,8 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
     assert "motion_control_use_case_->GetCurrentPosition()" in status_port
     assert "valve_query_use_case_->GetDispenserStatus()" in status_port
     assert "valve_query_use_case_->GetSupplyStatus()" in status_port
+    assert "snapshot.machine_state = snapshot.supervision.supervision.current_state;" in status_port
+    assert "snapshot.machine_state_reason = snapshot.supervision.supervision.state_reason;" in status_port
     assert 'snapshot.requested_state = "Idle";' in supervision_adapter
     assert 'snapshot.requested_state = "Estop";' in supervision_adapter
     assert 'snapshot.requested_state = "Fault";' in supervision_adapter

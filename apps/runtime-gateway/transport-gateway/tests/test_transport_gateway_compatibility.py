@@ -318,9 +318,8 @@ def test_status_dispatcher_only_serializes_snapshot_and_compat_projection():
     assert "BuildRawIoJson(supervision_snapshot)" in source
     assert "BuildEffectiveInterlocksJson(supervision_snapshot)" in source
     assert "BuildSupervisionJson(supervision_snapshot)" in source
-    assert "BuildCompatMachineState(supervision_snapshot)" in source
-    assert 'const std::string machine_state = compat_machine_state.state;' in source
-    assert 'const std::string machine_state_reason = compat_machine_state.reason;' in source
+    assert '{"machine_state", status_snapshot.machine_state}' in source
+    assert '{"machine_state_reason", status_snapshot.machine_state_reason}' in source
     assert '{"supervision", supervisionJson}' in source
     assert '{"effective_interlocks", effectiveInterlocksJson}' in source
 
