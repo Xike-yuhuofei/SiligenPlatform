@@ -32,6 +32,7 @@ except ImportError:
 
 from client import (
     BackendManager,
+    build_offline_launch_result,
     CommandProtocol,
     LaunchUiState,
     LaunchResult,
@@ -289,8 +290,6 @@ class MainWindow(QMainWindow):
         self._last_status_error_notice_ts = 0.0
         self._last_status = None
         self._last_status_ts = 0.0
-        self._connected = False
-        self._hw_connected = False
         self._launch_ui_state = None
         self._sync_preview_session_fields()
 
@@ -322,21 +321,11 @@ class MainWindow(QMainWindow):
         self._setup_timer()
         self._refresh_launch_status_ui()
         self._apply_mode_capabilities()
+        self._show_initial_session_message()
         if self._requested_launch_mode == "online":
             self._auto_startup()
         else:
-            self._apply_launch_result(
-                LaunchResult(
-                    requested_mode="offline",
-                    effective_mode="offline",
-                    phase="offline",
-                    success=True,
-                    backend_started=False,
-                    tcp_connected=False,
-                    hardware_ready=False,
-                    user_message="Offline 模式已启用，本次启动不会尝试连接 gateway。",
-                )
-            )
+            self._apply_launch_result(build_offline_launch_result())
         self._update_home_controls_state()
         self._update_preview_refresh_button_state()
         self._set_preview_message_html("胶点预览待生成", "请先加载DXF文件，再点击“刷新预览”。")
@@ -376,7 +365,7 @@ class MainWindow(QMainWindow):
         # Custom Bottom Status Bar
         self.setStatusBar(self._create_custom_bottom_bar())
         self.statusBar().messageChanged.connect(self._on_status_message_changed)
-        self.statusBar().showMessage("系统就绪")
+        self.statusBar().showMessage("状态初始化中")
 
     def _create_custom_bottom_bar(self) -> QStatusBar:
         bar = QStatusBar()
@@ -1293,8 +1282,6 @@ class MainWindow(QMainWindow):
 
     def _apply_launch_ui_state(self, ui_state: LaunchUiState) -> None:
         self._launch_ui_state = ui_state
-        self._connected = ui_state.connected
-        self._hw_connected = ui_state.hardware_connected
         self._preview_state_resync_pending = ui_state.preview_resync_pending
         self._preview_session.set_resync_pending(ui_state.preview_resync_pending)
         self._launch_mode_label.setText(ui_state.launch_mode_label)
@@ -1315,8 +1302,6 @@ class MainWindow(QMainWindow):
         return self._requested_launch_mode
 
     def _current_session_snapshot(self):
-        if self._launch_result is not None:
-            return self._launch_result.session_snapshot
         return self._session_snapshot
 
     def _is_offline_mode(self) -> bool:
@@ -1324,6 +1309,24 @@ class MainWindow(QMainWindow):
 
     def _is_online_ready(self) -> bool:
         return is_online_ready(self._current_session_snapshot())
+
+    def _previous_launch_connected(self) -> bool:
+        ui_state = self._launch_ui_state
+        return bool(ui_state.connected) if ui_state is not None else False
+
+    def _is_launch_connected(self) -> bool:
+        ui_state = self._launch_ui_state
+        if ui_state is not None:
+            return bool(ui_state.connected)
+        snapshot = self._current_session_snapshot()
+        return bool(snapshot is not None and snapshot.tcp_state == "ready")
+
+    def _is_launch_hardware_ready(self) -> bool:
+        ui_state = self._launch_ui_state
+        if ui_state is not None:
+            return bool(ui_state.hardware_connected)
+        snapshot = self._current_session_snapshot()
+        return bool(snapshot is not None and snapshot.hardware_state == "ready")
 
     def _has_online_capability(self) -> bool:
         return not self._is_offline_mode() and self._is_online_ready()
@@ -1343,7 +1346,7 @@ class MainWindow(QMainWindow):
             self._requested_launch_mode,
             self._launch_result,
             self._current_session_snapshot(),
-            previous_connected=bool(getattr(self, "_connected", False)),
+            previous_connected=self._previous_launch_connected(),
             has_current_plan=bool(self._preview_session.state.current_plan_id),
             preview_resync_pending=self._preview_session.state.preview_state_resync_pending,
             session_operation_running=self._is_session_operation_running(),
@@ -1354,7 +1357,7 @@ class MainWindow(QMainWindow):
         self._stop_session_btn.setEnabled(controls.stop_enabled)
 
     def _refresh_launch_status_ui(self) -> None:
-        previous_connected = bool(getattr(self, "_connected", False))
+        previous_connected = self._previous_launch_connected()
         ui_state = build_launch_ui_state(
             self._requested_launch_mode,
             self._launch_result,
@@ -1392,6 +1395,13 @@ class MainWindow(QMainWindow):
         if hasattr(self, "_global_estop_btn"):
             self._global_estop_btn.setEnabled(ui_state.global_estop_enabled)
         self._update_recovery_controls_state()
+
+    def _show_initial_session_message(self) -> None:
+        if self._requested_launch_mode == "online" and self._current_session_snapshot() is None:
+            self.statusBar().showMessage("启动中，等待 Supervisor 首个快照")
+            return
+        if self._requested_launch_mode == "offline" and self._launch_result is None:
+            self.statusBar().showMessage("正在初始化离线会话")
 
     def _apply_launch_result(self, result: LaunchResult) -> None:
         self._launch_result = result
@@ -1914,7 +1924,7 @@ class MainWindow(QMainWindow):
     def _auto_regenerate_preview_after_mode_change(self) -> bool:
         if not self._dxf_loaded or not self._dxf_artifact_id:
             return False
-        if self._is_offline_mode() or not bool(getattr(self, "_connected", False)):
+        if self._is_offline_mode() or not self._is_launch_connected():
             return False
         if not WEB_ENGINE_AVAILABLE or not self._dxf_view:
             return False
@@ -2029,7 +2039,7 @@ class MainWindow(QMainWindow):
             return
         enabled = self._preview_session.should_enable_refresh(
             offline_mode=self._is_offline_mode(),
-            connected=bool(getattr(self, "_connected", False)),
+            connected=self._is_launch_connected(),
             dxf_loaded=self._dxf_loaded,
         )
         self._refresh_preview_btn.setEnabled(enabled)
@@ -2051,7 +2061,7 @@ class MainWindow(QMainWindow):
         now = time.monotonic()
         if not self._preview_session.should_request_runtime_resync(
             offline_mode=self._is_offline_mode(),
-            connected=self._connected,
+            connected=self._is_launch_connected(),
             production_running=self._production_running,
             current_job_id=self._current_job_id,
             now_monotonic=now,
@@ -2518,8 +2528,8 @@ class MainWindow(QMainWindow):
         self._runtime_status_fault = False
         decision = self._preview_session.build_preflight_decision(
             online_ready=self._is_online_ready(),
-            connected=self._connected,
-            hardware_connected=self._hw_connected,
+            connected=self._is_launch_connected(),
+            hardware_connected=self._is_launch_hardware_ready(),
             runtime_status_fault=self._runtime_status_fault,
             status=status,
             dry_run=dry_run,
@@ -2531,8 +2541,8 @@ class MainWindow(QMainWindow):
                 return False
             decision = self._preview_session.build_preflight_decision(
                 online_ready=self._is_online_ready(),
-                connected=self._connected,
-                hardware_connected=self._hw_connected,
+                connected=self._is_launch_connected(),
+                hardware_connected=self._is_launch_hardware_ready(),
                 runtime_status_fault=self._runtime_status_fault,
                 status=status,
                 dry_run=dry_run,
@@ -2828,10 +2838,6 @@ class MainWindow(QMainWindow):
             self._runtime_status_fault = False
             self._last_status_error_notice_ts = 0.0
             self._state_label.setText(status.machine_state)
-            backend_hw_connected = bool(status.connected)
-            if backend_hw_connected != self._hw_connected:
-                self._hw_connected = backend_hw_connected
-                self._refresh_launch_status_ui()
 
             # Update Dispenser Status
             is_dispensing = status.dispenser_valve_open

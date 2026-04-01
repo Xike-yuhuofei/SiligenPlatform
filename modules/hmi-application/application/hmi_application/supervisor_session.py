@@ -177,13 +177,7 @@ class SupervisorSession:
         snapshot_callback: SnapshotCallback | None = None,
         event_callback: EventCallback | None = None,
     ) -> SessionSnapshot:
-        if (
-            snapshot.mode != "online"
-            or snapshot.session_state != "failed"
-            or not snapshot.recoverable
-            or snapshot.failure_stage is None
-        ):
-            return snapshot
+        self._assert_recovery_allowed("retry_stage", snapshot)
 
         session_id = self._active_session_id or uuid4().hex
         self._emit_stage_event(
@@ -239,6 +233,7 @@ class SupervisorSession:
         snapshot_callback: SnapshotCallback | None = None,
         event_callback: EventCallback | None = None,
     ) -> SessionSnapshot:
+        self._assert_recovery_allowed("restart_session", snapshot)
         session_id = self._active_session_id or uuid4().hex
         stage = snapshot.failure_stage or BACKEND_STARTING_STAGE
         self._emit_stage_event(
@@ -266,6 +261,7 @@ class SupervisorSession:
         snapshot_callback: SnapshotCallback | None = None,
         event_callback: EventCallback | None = None,
     ) -> SessionSnapshot:
+        self._assert_recovery_allowed("stop_session", snapshot)
         mode = snapshot.mode
         session_id = self._active_session_id or uuid4().hex
         stage = snapshot.failure_stage or ONLINE_READY_STAGE
@@ -308,6 +304,21 @@ class SupervisorSession:
             updated_at=snapshot_timestamp(),
         )
         return self._emit_snapshot(idle, snapshot_callback)
+
+    @staticmethod
+    def _assert_recovery_allowed(action: RecoveryAction, snapshot: SessionSnapshot) -> None:
+        if snapshot.mode != "online":
+            raise ValueError("Recovery actions are only supported for online session snapshots.")
+        if action == "stop_session":
+            if snapshot.session_state not in ("ready", "failed"):
+                raise ValueError("stop_session requires a ready or failed online session snapshot.")
+            return
+        if snapshot.session_state != "failed":
+            raise ValueError(f"{action} requires a failed online session snapshot.")
+        if not snapshot.recoverable:
+            raise ValueError(f"{action} requires a recoverable failed session snapshot.")
+        if snapshot.failure_stage is None:
+            raise ValueError(f"{action} requires failure_stage on the failed session snapshot.")
 
     def _run_online_flow(
         self,

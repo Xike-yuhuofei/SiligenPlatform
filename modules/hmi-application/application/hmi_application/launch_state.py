@@ -57,8 +57,6 @@ def current_effective_mode(
     launch_result: LaunchResult | None,
     session_snapshot: SessionSnapshot | None,
 ) -> str:
-    if launch_result is not None and launch_result.session_snapshot is not None:
-        return launch_result.session_snapshot.mode
     if session_snapshot is not None:
         return session_snapshot.mode
     if launch_result is not None:
@@ -297,8 +295,11 @@ def build_recovery_action_decision(
             return RecoveryActionDecision(False, "当前会话未处于失败态，恢复动作不可用")
         if not snapshot.recoverable:
             return RecoveryActionDecision(False, "当前失败不可恢复，仅允许停止会话")
-    if action == "stop_session" and snapshot.mode != "online":
-        return RecoveryActionDecision(False, "仅在线会话支持停止动作")
+    if action == "stop_session":
+        if snapshot.mode != "online":
+            return RecoveryActionDecision(False, "仅在线会话支持停止动作")
+        if snapshot.session_state not in ("ready", "failed"):
+            return RecoveryActionDecision(False, "当前会话未处于可停止态，停止动作不可用")
     return RecoveryActionDecision(True)
 
 

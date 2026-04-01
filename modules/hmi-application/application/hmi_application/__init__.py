@@ -28,6 +28,7 @@ from .preview_session import (
     PreviewSnapshotWorker,
 )
 from .startup import (
+    build_offline_launch_result,
     LaunchMode,
     LaunchResult,
     RecoveryWorker,
@@ -82,6 +83,7 @@ __all__ = [
     "SupervisorPolicy",
     "SupervisorSession",
     "build_launch_ui_state",
+    "build_offline_launch_result",
     "build_online_capability_message",
     "build_recovery_action_decision",
     "build_recovery_finished_message",
