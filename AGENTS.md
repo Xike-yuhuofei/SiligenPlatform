@@ -42,6 +42,11 @@
 - 不符合该格式的分支禁止继续开发，必须先重命名为合规名称。
 - 详细规则、字段约束、示例与校验建议统一以 `docs/onboarding/git-branch-naming.md` 为准。
 
+## Git Worktree 命名（强制）
+- 所有临时 `worktree` 名称长度必须 `<= 15` 个字符。
+- 超过 15 个字符的 `worktree` 名称禁止使用，必须先重命名为合规名称再继续。
+- 详细规则统一以 `docs/onboarding/git-branch-naming.md` 为准。
+
 ### 字段约束
 - `type`：使用 `docs/onboarding/git-branch-naming.md` 中批准的白名单，当前包含 `feat`、`fix`、`refactor`、`docs`、`test`、`chore`、`perf`、`build`、`ci`、`revert`、`spike`。
 - `scope`：使用稳定的小写模块或责任域名称，推荐优先采用 `docs/onboarding/git-branch-naming.md` 中的 project scopes。

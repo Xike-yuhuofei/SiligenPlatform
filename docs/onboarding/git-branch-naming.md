@@ -420,3 +420,25 @@ fix/hmi/BUG-311-fix-startup-freeze
 refactor/runtime/ARCH-057-extract-session-snapshot
 docs/protocol/SPEC-021-update-frame-contract
 ```
+
+---
+
+## 11. Worktree Naming Rule
+
+When creating additional local Git worktrees for temporary isolation, the worktree name MUST satisfy:
+
+* length MUST be less than or equal to 15 characters
+
+Invalid examples:
+
+```text
+feature-debug-long01
+runtime-regression-fix
+```
+
+Valid examples:
+
+```text
+wt-bug311
+rt-hotfix-01
+```
