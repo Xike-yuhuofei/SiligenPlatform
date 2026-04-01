@@ -45,7 +45,6 @@ set(TEST_SOURCES
     unit/dispensing/CleanupFilesUseCaseTest.cpp
     unit/dispensing/DispensingWorkflowUseCaseTest.cpp
     unit/dispensing/DispensingWorkflowModeResolutionTest.cpp
-    unit/dispensing/DispensingProcessServiceBufferingTest.cpp
     unit/dispensing/DispensingProcessServiceWaitForMotionCompleteTest.cpp
     unit/dispensing/PlanningUseCaseExportPortTest.cpp
 )
@@ -54,6 +53,7 @@ set(OPTIONAL_TEST_SOURCES
     unit/domain/diagnostics/ProcessResultServiceTest.cpp
     unit/domain/dispensing/ClosedLoopSkeletonTest.cpp
     unit/domain/dispensing/ValveCoordinationServiceTest.cpp
+    unit/dispensing/DispensingProcessServiceBufferingTest.cpp
     unit/dispensing/PlanningRequestTest.cpp
     unit/dispensing/PlanningUseCaseExportPortTest.cpp
     unit/dispensing/ContourPathOptimizerTest.cpp

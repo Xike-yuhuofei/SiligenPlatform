@@ -52,18 +52,12 @@ class FakeMachineExecutionStateBackend final : public ILegacyMachineExecutionSta
     mutable MachineExecutionSnapshot snapshot_{};
 };
 
-TEST(LegacyMachineExecutionStateAdapterTest, DefaultAdapterStartsFromUninitializedSnapshot) {
-    LegacyMachineExecutionStateAdapter adapter;
+TEST(LegacyMachineExecutionStateAdapterTest, MissingBackendReturnsNotInitializedError) {
+    LegacyMachineExecutionStateAdapter adapter(nullptr);
 
     auto snapshot_result = adapter.ReadSnapshot();
-    ASSERT_TRUE(snapshot_result.IsSuccess()) << snapshot_result.GetError().GetMessage();
-
-    const auto& snapshot = snapshot_result.Value();
-    EXPECT_EQ(snapshot.phase, MachineExecutionPhase::Uninitialized);
-    EXPECT_FALSE(snapshot.emergency_stopped);
-    EXPECT_TRUE(snapshot.manual_motion_allowed);
-    EXPECT_FALSE(snapshot.has_pending_tasks);
-    EXPECT_EQ(snapshot.pending_task_count, 0);
+    ASSERT_TRUE(snapshot_result.IsError());
+    EXPECT_EQ(snapshot_result.GetError().GetCode(), Siligen::Shared::Types::ErrorCode::PORT_NOT_INITIALIZED);
 }
 
 TEST(LegacyMachineExecutionStateAdapterTest, CanTransitionToEmergencyStopAndRecover) {
