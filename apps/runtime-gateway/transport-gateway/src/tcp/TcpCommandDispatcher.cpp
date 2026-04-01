@@ -1027,6 +1027,9 @@ std::string TcpCommandDispatcher::HandleStatus(const std::string& id, const nloh
     const bool has_hardware_connection_port = motionFacade_->HasHardwareConnectionPort();
     const auto connection_info = motionFacade_->GetHardwareConnectionInfo();
     const auto heartbeat_status = motionFacade_->GetHeartbeatStatus();
+    const bool heartbeat_degraded_while_connected =
+        connection_info.state == Siligen::Device::Contracts::State::DeviceConnectionState::Connected &&
+        heartbeat_status.is_degraded;
     const bool hardware_ready =
         !has_hardware_connection_port || (connection_info.IsConnected() && !heartbeat_status.is_degraded);
     const bool can_query_motion_state = !has_hardware_connection_port || hardware_ready;
@@ -1149,31 +1152,31 @@ std::string TcpCommandDispatcher::HandleStatus(const std::string& id, const nloh
     std::string machine_state = "Disconnected";
     std::string machine_state_reason = connected ? "idle" : "motion_status_unavailable";
     if (has_hardware_connection_port) {
-        if (heartbeat_status.is_degraded) {
+        connection_state = ToConnectionStateLabel(connection_info.state);
+        switch (connection_info.state) {
+            case Siligen::Device::Contracts::State::DeviceConnectionState::Connected:
+                machine_state = "Idle";
+                machine_state_reason = "idle";
+                break;
+            case Siligen::Device::Contracts::State::DeviceConnectionState::Connecting:
+                machine_state = "Unknown";
+                machine_state_reason = "hardware_connecting";
+                break;
+            case Siligen::Device::Contracts::State::DeviceConnectionState::Error:
+                machine_state = "Fault";
+                machine_state_reason = "hardware_connection_error";
+                break;
+            case Siligen::Device::Contracts::State::DeviceConnectionState::Disconnected:
+            default:
+                machine_state = "Disconnected";
+                machine_state_reason = "hardware_disconnected";
+                break;
+        }
+
+        if (heartbeat_degraded_while_connected) {
             connection_state = "degraded";
             machine_state = "Degraded";
             machine_state_reason = "heartbeat_degraded";
-        } else {
-            connection_state = ToConnectionStateLabel(connection_info.state);
-            switch (connection_info.state) {
-                case Siligen::Device::Contracts::State::DeviceConnectionState::Connected:
-                    machine_state = "Idle";
-                    machine_state_reason = "idle";
-                    break;
-                case Siligen::Device::Contracts::State::DeviceConnectionState::Connecting:
-                    machine_state = "Unknown";
-                    machine_state_reason = "hardware_connecting";
-                    break;
-                case Siligen::Device::Contracts::State::DeviceConnectionState::Error:
-                    machine_state = "Fault";
-                    machine_state_reason = "hardware_connection_error";
-                    break;
-                case Siligen::Device::Contracts::State::DeviceConnectionState::Disconnected:
-                default:
-                    machine_state = "Disconnected";
-                    machine_state_reason = "hardware_disconnected";
-                    break;
-            }
         }
     }
 
