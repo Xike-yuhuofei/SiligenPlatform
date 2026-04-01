@@ -40,7 +40,7 @@ function Resolve-HilSummaryPath {
     throw "missing hil report artifact: $FileName under $ResolvedReportDir"
 }
 
-$workspaceRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+$workspaceRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
 $buildScript = Join-Path $workspaceRoot "build.ps1"
 $testScript = Join-Path $workspaceRoot "test.ps1"
 $gateScript = Join-Path $PSScriptRoot "verify_hil_controlled_gate.py"
