@@ -32,6 +32,7 @@ from .launch_state import (
     RecoveryActionDecision,
     RecoveryControlsState,
     RuntimeDegradationResult,
+    RuntimeRequalificationResult,
     build_launch_ui_state,
     build_online_capability_message,
     build_recovery_action_decision,
@@ -39,6 +40,7 @@ from .launch_state import (
     build_runtime_degradation_result,
     build_startup_error_message,
     detect_runtime_degradation_result,
+    detect_runtime_requalification_result,
 )
 from .supervisor_contract import (
     FailureCode,
@@ -97,6 +99,7 @@ __all__ = [
     "SupervisorSession",
     "SupervisorPolicy",
     "RuntimeDegradationResult",
+    "RuntimeRequalificationResult",
     "StartBlockReason",
     "PreviewSessionOwner",
     "PreviewSnapshotWorker",
@@ -107,6 +110,7 @@ __all__ = [
     "build_runtime_degradation_result",
     "build_startup_error_message",
     "detect_runtime_degradation_result",
+    "detect_runtime_requalification_result",
     "is_online_ready",
     "LaunchMode",
     "LaunchResult",
