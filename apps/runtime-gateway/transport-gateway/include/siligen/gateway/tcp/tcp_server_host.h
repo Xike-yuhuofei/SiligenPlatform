@@ -17,6 +17,10 @@ namespace Siligen::Domain::Configuration::Ports {
 class IConfigurationPort;
 }
 
+namespace Siligen::RuntimeExecution::Contracts::System {
+class IRuntimeSupervisionPort;
+}
+
 namespace Siligen::Gateway::Tcp {
 
 struct TcpServerHostOptions {
@@ -29,6 +33,7 @@ class TcpServerHost {
         boost::asio::io_context& io_context,
         const TcpFacadeBundle& facades,
         std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port,
+        std::shared_ptr<RuntimeExecution::Contracts::System::IRuntimeSupervisionPort> runtime_supervision_port,
         std::shared_ptr<Adapters::Tcp::MockIoControlService> mock_io_control,
         TcpServerHostOptions options);
 

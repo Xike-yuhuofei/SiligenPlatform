@@ -243,6 +243,7 @@ private:
      * 在ConfigurePorts()之后调用，因为Service依赖Port
      */
     void ConfigureServices();
+    void ConfigureSystemOwnerPorts();
 
     void ValidateSystemPorts();
     void ValidateDiagnosticsPorts();

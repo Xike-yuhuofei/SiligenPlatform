@@ -54,12 +54,15 @@ add_library(siligen_runtime_process_bootstrap STATIC
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/configuration/ConfigFileAdapter.Sections.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/configuration/ConfigFileAdapter.System.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/configuration/InterlockConfigResolver.cpp
+    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/dispensing/WorkflowDispensingProcessPortAdapter.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/configuration/validators/ConfigValidator.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/recipes/AuditFileRepository.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/recipes/ParameterSchemaFileProvider.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/recipes/RecipeBundleSerializer.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/recipes/RecipeFileRepository.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/recipes/TemplateFileRepository.cpp
+    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/supervision/WorkflowRuntimeSupervisionBackend.cpp
+    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/system/DispenserModelMachineExecutionStateBackend.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/storage/files/LocalFileStorageAdapter.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/security/AuditLogger.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/security/InterlockMonitor.cpp

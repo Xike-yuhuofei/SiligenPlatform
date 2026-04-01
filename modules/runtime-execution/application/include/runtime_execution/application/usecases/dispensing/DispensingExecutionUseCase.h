@@ -2,6 +2,7 @@
 
 #include "domain/dispensing/contracts/ExecutionPackage.h"
 #include "runtime_execution/contracts/configuration/IConfigurationPort.h"
+#include "runtime_execution/contracts/dispensing/IDispensingProcessPort.h"
 #include "runtime_execution/contracts/dispensing/ITaskSchedulerPort.h"
 #include "runtime_execution/contracts/dispensing/IValvePort.h"
 #include "runtime_execution/contracts/dispensing/QualityMetrics.h"
@@ -27,6 +28,7 @@ using Siligen::Domain::Machine::ValueObjects::MachineMode;
 using Siligen::Shared::Types::float32;
 using Siligen::Shared::Types::int32;
 using RuntimeEventPublisherPort = Siligen::RuntimeExecution::Contracts::System::IEventPublisherPort;
+using RuntimeDispensingProcessPort = Siligen::RuntimeExecution::Contracts::Dispensing::IDispensingProcessPort;
 using RuntimeTaskSchedulerPort = Siligen::RuntimeExecution::Contracts::Dispensing::ITaskSchedulerPort;
 using RuntimeHomingPort = Siligen::Domain::Motion::Ports::IHomingPort;
 using RuntimeInterlockSignalPort = Siligen::Domain::Safety::Ports::IInterlockSignalPort;
@@ -115,6 +117,7 @@ class DispensingExecutionUseCase {
         std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port,
         std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
         std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port,
+        std::shared_ptr<RuntimeDispensingProcessPort> process_port,
         std::shared_ptr<RuntimeEventPublisherPort> event_port = nullptr,
         std::shared_ptr<RuntimeTaskSchedulerPort> task_scheduler_port = nullptr,
         std::shared_ptr<RuntimeHomingPort> homing_port = nullptr,
@@ -128,6 +131,7 @@ class DispensingExecutionUseCase {
     Shared::Types::Result<DispensingExecutionResult> Execute(const DispensingExecutionRequest& request);
     Shared::Types::Result<JobID> StartJob(const RuntimeStartJobRequest& request);
     Shared::Types::Result<RuntimeJobStatusResponse> GetJobStatus(const JobID& job_id) const;
+    JobID GetActiveJobId() const;
     Shared::Types::Result<void> PauseJob(const JobID& job_id);
     Shared::Types::Result<void> ResumeJob(const JobID& job_id);
     Shared::Types::Result<void> StopJob(const JobID& job_id);

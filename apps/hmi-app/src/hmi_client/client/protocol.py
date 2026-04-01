@@ -194,12 +194,24 @@ class CommandProtocol:
 
         compat_state = str(result.get("machine_state", "Unknown"))
         compat_reason = str(result.get("machine_state_reason", "unknown"))
-        supervision_data = result.get("supervision", {})
-        current_state = str(supervision_data.get("current_state", compat_state))
-        current_reason = str(supervision_data.get("state_reason", compat_reason))
+        supervision_data = result.get("supervision")
+        if not isinstance(supervision_data, dict):
+            supervision_data = {
+                "current_state": compat_state,
+                "requested_state": compat_state,
+                "state_change_in_process": False,
+                "state_reason": compat_reason,
+                "failure_code": "",
+                "failure_stage": "",
+                "recoverable": True,
+                "updated_at": "",
+            }
+
+        current_state = str(supervision_data.get("current_state", "Unknown") or "Unknown")
+        current_reason = str(supervision_data.get("state_reason", "unknown") or "unknown")
         supervision = SupervisionStatus(
             current_state=current_state,
-            requested_state=str(supervision_data.get("requested_state", current_state)),
+            requested_state=str(supervision_data.get("requested_state", current_state) or current_state),
             state_change_in_process=bool(supervision_data.get("state_change_in_process", False)),
             state_reason=current_reason,
             failure_code=str(supervision_data.get("failure_code", "") or ""),

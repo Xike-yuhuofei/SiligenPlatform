@@ -20,7 +20,6 @@ class ILegacyMachineExecutionStateBackend {
 class LegacyMachineExecutionStateAdapter final
     : public Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort {
    public:
-    LegacyMachineExecutionStateAdapter();
     explicit LegacyMachineExecutionStateAdapter(std::shared_ptr<ILegacyMachineExecutionStateBackend> backend);
 
     Siligen::Shared::Types::Result<Siligen::RuntimeExecution::Contracts::System::MachineExecutionSnapshot>

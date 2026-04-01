@@ -2,7 +2,6 @@
 
 #include "DispensingExecutionUseCase.Internal.h"
 
-#include "modules/dispense-packaging/domain/dispensing/domain-services/DispensingProcessService.h"
 #include "shared/logging/PrintfLogFormatter.h"
 #include "shared/interfaces/ILoggingService.h"
 
@@ -42,10 +41,10 @@ const char* TaskStateCode(TaskState state) {
 
 void DispensingExecutionUseCase::Impl::StopExecution() {
     stop_requested_.store(true);
-    if (!process_service_) {
+    if (!process_port_) {
         return;
     }
-    process_service_->StopExecution(&stop_requested_);
+    process_port_->StopExecution(&stop_requested_);
 }
 
 Result<void> DispensingExecutionUseCase::Impl::PauseJob(const JobID& job_id) {

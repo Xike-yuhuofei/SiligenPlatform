@@ -2,7 +2,6 @@
 
 #include "DispensingExecutionUseCase.Internal.h"
 
-#include "modules/dispense-packaging/domain/dispensing/domain-services/DispensingProcessService.h"
 #include "runtime_execution/contracts/safety/SafetyOutputGuard.h"
 #include "shared/logging/PrintfLogFormatter.h"
 #include "shared/interfaces/ILoggingService.h"
@@ -383,6 +382,7 @@ DispensingExecutionUseCase::DispensingExecutionUseCase(
     std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port,
     std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
     std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port,
+    std::shared_ptr<RuntimeDispensingProcessPort> process_port,
     std::shared_ptr<RuntimeEventPublisherPort> event_port,
     std::shared_ptr<RuntimeTaskSchedulerPort> task_scheduler_port,
     std::shared_ptr<RuntimeHomingPort> homing_port,
@@ -393,6 +393,7 @@ DispensingExecutionUseCase::DispensingExecutionUseCase(
           std::move(motion_state_port),
           std::move(connection_port),
           std::move(config_port),
+          std::move(process_port),
           std::move(event_port),
           std::move(task_scheduler_port),
           std::move(homing_port),
@@ -412,6 +413,10 @@ Result<RuntimeJobStatusResponse> DispensingExecutionUseCase::GetJobStatus(const 
     return impl_->GetJobStatus(job_id);
 }
 
+JobID DispensingExecutionUseCase::GetActiveJobId() const {
+    return impl_->GetActiveJobId();
+}
+
 Result<void> DispensingExecutionUseCase::PauseJob(const JobID& job_id) {
     return impl_->PauseJob(job_id);
 }
@@ -422,6 +427,11 @@ Result<void> DispensingExecutionUseCase::ResumeJob(const JobID& job_id) {
 
 Result<void> DispensingExecutionUseCase::StopJob(const JobID& job_id) {
     return impl_->StopJob(job_id);
+}
+
+JobID DispensingExecutionUseCase::Impl::GetActiveJobId() const {
+    std::lock_guard<std::mutex> lock(jobs_mutex_);
+    return active_job_id_;
 }
 
 #ifdef SILIGEN_TEST_HOOKS
@@ -442,6 +452,7 @@ DispensingExecutionUseCase::Impl::Impl(
     std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port,
     std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
     std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port,
+    std::shared_ptr<RuntimeDispensingProcessPort> process_port,
     std::shared_ptr<RuntimeEventPublisherPort> event_port,
     std::shared_ptr<RuntimeTaskSchedulerPort> task_scheduler_port,
     std::shared_ptr<RuntimeHomingPort> homing_port,
@@ -451,17 +462,11 @@ DispensingExecutionUseCase::Impl::Impl(
       motion_state_port_(std::move(motion_state_port)),
       connection_port_(std::move(connection_port)),
       config_port_(std::move(config_port)),
+      process_port_(std::move(process_port)),
       event_port_(std::move(event_port)),
       task_scheduler_port_(std::move(task_scheduler_port)),
       homing_port_(std::move(homing_port)),
-      interlock_signal_port_(std::move(interlock_signal_port)),
-      process_service_(std::make_shared<::Siligen::Domain::Dispensing::DomainServices::DispensingProcessService>(
-          valve_port_,
-          interpolation_port_,
-          motion_state_port_,
-          connection_port_,
-          config_port_)) {
-}
+      interlock_signal_port_(std::move(interlock_signal_port)) {}
 
 DispensingExecutionUseCase::Impl::~Impl() {
     stop_requested_.store(true);
@@ -505,8 +510,8 @@ DispensingExecutionUseCase::Impl::~Impl() {
             }
         }
     }
-    if (process_service_) {
-        process_service_->StopExecution(&stop_requested_);
+    if (process_port_) {
+        process_port_->StopExecution(&stop_requested_);
     }
 
     constexpr auto kInflightDrainTimeout = std::chrono::seconds(5);
@@ -562,7 +567,7 @@ Result<DispensingExecutionResult> DispensingExecutionUseCase::Impl::ExecuteInter
         SILIGEN_LOG_ERROR("请求参数验证失败: " + validation.GetError().GetMessage());
         return Result<DispensingExecutionResult>::Failure(validation.GetError());
     }
-    if (!process_service_) {
+    if (!process_port_) {
         return Result<DispensingExecutionResult>::Failure(
             Error(ErrorCode::PORT_NOT_INITIALIZED, "点胶流程服务未初始化", "DispensingExecutionUseCase"));
     }
@@ -680,13 +685,13 @@ Result<DispensingExecutionResult> DispensingExecutionUseCase::Impl::ExecuteInter
     TaskTrackingObserver task_observer(trace_observer ? trace_observer.get() : nullptr, context);
 
     auto start_time = std::chrono::steady_clock::now();
-    auto exec_result = process_service_->ExecuteProcess(execution_plan,
-                                                        runtime_params_,
-                                                        options,
-                                                        &stop_requested_,
-                                                        context ? &context->pause_requested : nullptr,
-                                                        context ? &context->pause_applied : nullptr,
-                                                        &task_observer);
+    auto exec_result = process_port_->ExecuteProcess(execution_plan,
+                                                     runtime_params_,
+                                                     options,
+                                                     &stop_requested_,
+                                                     context ? &context->pause_requested : nullptr,
+                                                     context ? &context->pause_applied : nullptr,
+                                                     &task_observer);
     auto end_time = std::chrono::steady_clock::now();
 
     result.execution_time_seconds = std::chrono::duration<float32>(end_time - start_time).count();
