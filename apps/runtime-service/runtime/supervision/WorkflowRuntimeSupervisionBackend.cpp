@@ -88,14 +88,14 @@ Result<RuntimeSupervisionInputs> WorkflowRuntimeSupervisionBackend::ReadInputs()
 
     if (emergency_stop_use_case_) {
         auto estop_state_result = emergency_stop_use_case_->IsInEmergencyStop();
-        if (estop_state_result.IsSuccess()) {
+        if (estop_state_result.IsSuccess() && inputs.connected) {
             inputs.estop_state_known = true;
             inputs.estop_active = inputs.estop_active || estop_state_result.Value();
         }
     }
 
     inputs.io.estop = inputs.estop_active;
-    inputs.io.estop_known = inputs.connected || inputs.estop_state_known;
+    inputs.io.estop_known = inputs.connected;
 
     if (dispensing_workflow_use_case_) {
         auto interlock_result = dispensing_workflow_use_case_->ReadInterlockSignals();

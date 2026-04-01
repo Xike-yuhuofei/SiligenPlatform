@@ -13,7 +13,6 @@ TCP_DISPATCHER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src"
 TCP_DISPATCHER_HEADER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "tcp" / "TcpCommandDispatcher.h"
 RUNTIME_SUPERVISION_ADAPTER = ROOT / "modules" / "runtime-execution" / "runtime" / "host" / "runtime" / "supervision" / "RuntimeSupervisionPortAdapter.cpp"
 RUNTIME_SUPERVISION_BACKEND = ROOT / "apps" / "runtime-service" / "runtime" / "supervision" / "WorkflowRuntimeSupervisionBackend.cpp"
-RUNTIME_STATUS_PORT = ROOT / "apps" / "runtime-service" / "runtime" / "status" / "WorkflowRuntimeStatusPort.cpp"
 TCP_DISPENSING_FACADE_HEADER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "facades" / "tcp" / "TcpDispensingFacade.h"
 TCP_DISPENSING_FACADE_CPP = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "facades" / "tcp" / "TcpDispensingFacade.cpp"
 TCP_FACADE_BUILDER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "include" / "siligen" / "gateway" / "tcp" / "tcp_facade_builder.h"
@@ -83,12 +82,12 @@ def test_app_entry_is_thin():
     host_header = TCP_SERVER_HOST_HEADER.read_text(encoding="utf-8")
     assert '#include "siligen/gateway/tcp/tcp_facade_builder.h"' in source
     assert '#include "siligen/gateway/tcp/tcp_server_host.h"' in source
-    assert '#include "runtime_execution/contracts/system/IRuntimeStatusPort.h"' in source
+    assert '#include "runtime_execution/contracts/system/IRuntimeSupervisionPort.h"' in source
     assert 'BuildTcpFacadeBundle(*container)' in source
     assert 'TcpServerHost server_host(' in source
     assert "TcpServerHostOptions{port}" in source
-    assert "ResolvePort<Siligen::RuntimeExecution::Contracts::System::IRuntimeStatusPort>()" in source
-    assert "std::shared_ptr<RuntimeExecution::Contracts::System::IRuntimeStatusPort> runtime_status_port" in host_header
+    assert "ResolvePort<Siligen::RuntimeExecution::Contracts::System::IRuntimeSupervisionPort>()" in source
+    assert "std::shared_ptr<RuntimeExecution::Contracts::System::IRuntimeSupervisionPort> runtime_supervision_port" in host_header
     assert 'TcpCommandDispatcher' not in source
     assert 'modules/control-gateway/src/' not in source
 
@@ -277,6 +276,9 @@ def test_status_reads_backend_interlock_signals():
     source = RUNTIME_SUPERVISION_BACKEND.read_text(encoding="utf-8")
     assert "ReadInterlockSignals()" in source
     assert "IsInEmergencyStop()" in source
+    assert "if (estop_state_result.IsSuccess() && inputs.connected)" in source
+    assert "inputs.io.estop_known = inputs.connected;" in source
+    assert "inputs.io.estop = inputs.estop_active || signals.emergency_stop_triggered;" in source
     assert "GetActiveJobId()" in source
     assert "GetJobStatus(inputs.active_job_id)" in source
     assert "motion_control_use_case->ReadLimitStatus(axis, positive)" in source
@@ -286,18 +288,10 @@ def test_status_reads_backend_interlock_signals():
     assert "ReadLimitIfAvailable(motion_control_use_case_, LogicalAxisId::Y, false, inputs.io.limit_y_neg);" in source
 
 
-def test_status_owner_port_reads_motion_and_dispenser_snapshots():
-    source = RUNTIME_STATUS_PORT.read_text(encoding="utf-8")
-    assert "runtime_supervision_port_->ReadSnapshot()" in source
-    assert "motion_control_use_case_->GetAllAxesMotionStatus()" in source
-    assert "motion_control_use_case_->GetCurrentPosition()" in source
-    assert "valve_query_use_case_->GetDispenserStatus()" in source
-    assert "valve_query_use_case_->GetSupplyStatus()" in source
-    assert 'snapshot.homed = status.homing_state == "homed";' in source
-
-
 def test_status_supervision_contract_is_derived_by_runtime_supervision_adapter():
     source = RUNTIME_SUPERVISION_ADAPTER.read_text(encoding="utf-8")
+    assert "const bool heartbeat_degraded_while_connected =" in source
+    assert "inputs.connection_info.state == Siligen::Device::Contracts::State::DeviceConnectionState::Connected &&" in source
     assert 'connection_state = "degraded";' in source
     assert 'state_reason = "heartbeat_degraded";' in source
     assert 'snapshot.sources["estop"] =' in source
@@ -311,15 +305,13 @@ def test_status_supervision_contract_is_derived_by_runtime_supervision_adapter()
 
 def test_status_dispatcher_only_serializes_snapshot_and_compat_projection():
     source = TCP_DISPATCHER.read_text(encoding="utf-8")
-    assert "runtimeStatusPort_->ReadSnapshot()" in source
-    assert "BuildAxesJson(status_snapshot)" in source
-    assert "BuildPositionJson(status_snapshot)" in source
-    assert "BuildDispenserJson(status_snapshot)" in source
+    assert "runtimeSupervisionPort_->ReadSnapshot()" in source
     assert "BuildRawIoJson(supervision_snapshot)" in source
     assert "BuildEffectiveInterlocksJson(supervision_snapshot)" in source
     assert "BuildSupervisionJson(supervision_snapshot)" in source
-    assert '{"machine_state", status_snapshot.machine_state}' in source
-    assert '{"machine_state_reason", status_snapshot.machine_state_reason}' in source
+    assert "BuildCompatMachineState(supervision_snapshot)" in source
+    assert 'const std::string machine_state = compat_machine_state.state;' in source
+    assert 'const std::string machine_state_reason = compat_machine_state.reason;' in source
     assert '{"supervision", supervisionJson}' in source
     assert '{"effective_interlocks", effectiveInterlocksJson}' in source
 
@@ -405,7 +397,6 @@ def test_mock_io_set_is_registered_and_wired():
 
 def test_homed_semantics_follow_homing_state_only():
     source = TCP_DISPATCHER.read_text(encoding="utf-8")
-    status_port_source = RUNTIME_STATUS_PORT.read_text(encoding="utf-8")
 
     status_match = re.search(
         r"std::string TcpCommandDispatcher::HandleStatus.*?return GatewayJsonProtocol::MakeSuccessResponse",
@@ -414,8 +405,7 @@ def test_homed_semantics_follow_homing_state_only():
     )
     assert status_match, "cannot locate HandleStatus body"
     status_body = status_match.group(0)
-    assert "BuildAxesJson(status_snapshot)" in status_body
-    assert 'snapshot.homed = status.homing_state == "homed";' in status_port_source
+    assert 'const bool is_homed = IsAxisStatusHomed(status);' in status_body
     assert "MotionState::HOMED" not in status_body
 
     coord_match = re.search(
@@ -532,7 +522,6 @@ def main():
         test_dxf_preview_contract_docs_freeze_shared_authority_semantics,
         test_legacy_execute_and_task_surface_are_removed,
         test_status_reads_backend_interlock_signals,
-        test_status_owner_port_reads_motion_and_dispenser_snapshots,
         test_status_supervision_contract_is_derived_by_runtime_supervision_adapter,
         test_status_dispatcher_only_serializes_snapshot_and_compat_projection,
         test_motion_coord_status_exposes_feedback_diagnostics,

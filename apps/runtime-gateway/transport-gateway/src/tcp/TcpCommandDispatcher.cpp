@@ -14,7 +14,7 @@
 #include "facades/tcp/TcpSystemFacade.h"
 #include "domain/configuration/ports/IConfigurationPort.h"
 #include "domain/configuration/services/ReadyZeroSpeedResolver.h"
-#include "runtime_execution/contracts/system/IRuntimeStatusPort.h"
+#include "runtime_execution/contracts/system/IRuntimeSupervisionPort.h"
 
 #include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
 
@@ -678,8 +678,16 @@ std::string ToConnectionStateLabel(Siligen::Device::Contracts::State::DeviceConn
     }
 }
 
+bool IsAxisStatusHomed(const Siligen::Domain::Motion::Ports::MotionStatus& status) {
+    return status.homing_state == "homed";
+}
+
 using RuntimeSupervisionSnapshot = Siligen::RuntimeExecution::Contracts::System::RuntimeSupervisionSnapshot;
-using RuntimeStatusSnapshot = Siligen::RuntimeExecution::Contracts::System::RuntimeStatusSnapshot;
+
+struct CompatMachineState {
+    std::string state;
+    std::string reason;
+};
 
 nlohmann::json BuildRawIoJson(const RuntimeSupervisionSnapshot& snapshot) {
     return {
@@ -720,34 +728,10 @@ nlohmann::json BuildSupervisionJson(const RuntimeSupervisionSnapshot& snapshot) 
     };
 }
 
-nlohmann::json BuildAxesJson(const RuntimeStatusSnapshot& snapshot) {
-    nlohmann::json axes_json = nlohmann::json::object();
-    for (const auto& [axis_name, axis_status] : snapshot.axes) {
-        axes_json[axis_name] = {
-            {"position", axis_status.position},
-            {"velocity", axis_status.velocity},
-            {"enabled", axis_status.enabled},
-            {"homed", axis_status.homed},
-            {"homing_state", axis_status.homing_state}
-        };
-    }
-    return axes_json;
-}
-
-nlohmann::json BuildPositionJson(const RuntimeStatusSnapshot& snapshot) {
-    if (!snapshot.has_position) {
-        return nlohmann::json::object();
-    }
+CompatMachineState BuildCompatMachineState(const RuntimeSupervisionSnapshot& snapshot) {
     return {
-        {"x", snapshot.position.x},
-        {"y", snapshot.position.y}
-    };
-}
-
-nlohmann::json BuildDispenserJson(const RuntimeStatusSnapshot& snapshot) {
-    return {
-        {"valve_open", snapshot.dispenser.valve_open},
-        {"supply_open", snapshot.dispenser.supply_open}
+        snapshot.supervision.current_state,
+        snapshot.supervision.state_reason
     };
 }
 
@@ -822,14 +806,14 @@ TcpCommandDispatcher::TcpCommandDispatcher(
     std::shared_ptr<Application::Facades::Tcp::TcpDispensingFacade> dispensingFacade,
     std::shared_ptr<Application::Facades::Tcp::TcpRecipeFacade> recipeFacade,
     std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> configPort,
-    std::shared_ptr<RuntimeExecution::Contracts::System::IRuntimeStatusPort> runtimeStatusPort,
+    std::shared_ptr<RuntimeExecution::Contracts::System::IRuntimeSupervisionPort> runtimeSupervisionPort,
     std::shared_ptr<MockIoControlService> mockIoControl)
     : systemFacade_(std::move(systemFacade))
     , motionFacade_(std::move(motionFacade))
     , dispensingFacade_(std::move(dispensingFacade))
     , recipeFacade_(std::move(recipeFacade))
     , configPort_(std::move(configPort))
-    , runtimeStatusPort_(std::move(runtimeStatusPort))
+    , runtimeSupervisionPort_(std::move(runtimeSupervisionPort))
     , mockIoControl_(std::move(mockIoControl))
 {
     RegisterCommands();
@@ -1084,29 +1068,80 @@ std::string TcpCommandDispatcher::HandleMockIoSet(const std::string& id, const n
 }
 
 std::string TcpCommandDispatcher::HandleStatus(const std::string& id, const nlohmann::json& /*params*/) {
-    if (!runtimeStatusPort_) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 2100, "RuntimeStatusPort not available");
+    if (!motionFacade_) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2100, "TcpMotionFacade not available");
+    }
+    if (!runtimeSupervisionPort_) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2101, "RuntimeSupervisionPort not available");
     }
 
-    const auto status_result = runtimeStatusPort_->ReadSnapshot();
-    if (status_result.IsError()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 2101, status_result.GetError().GetMessage());
+    nlohmann::json axesJson = nlohmann::json::object();
+    const auto supervision_result = runtimeSupervisionPort_->ReadSnapshot();
+    if (supervision_result.IsError()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2101, supervision_result.GetError().GetMessage());
     }
-    const auto& status_snapshot = status_result.Value();
-    const auto& supervision_snapshot = status_snapshot.supervision;
-    const nlohmann::json axesJson = BuildAxesJson(status_snapshot);
-    const nlohmann::json positionJson = BuildPositionJson(status_snapshot);
-    const nlohmann::json dispenserJson = BuildDispenserJson(status_snapshot);
+    const auto& supervision_snapshot = supervision_result.Value();
+    const bool connected = supervision_snapshot.connected;
+    const bool can_query_motion_state = connected;
+
+    // 获取各轴状态。连接降级时优先使用连接端口结论，避免继续把不可靠的监控数据当作在线状态。
+    if (can_query_motion_state) {
+        auto allStatusResult = motionFacade_->GetAllAxesMotionStatus();
+        if (allStatusResult.IsSuccess()) {
+            const auto& statuses = allStatusResult.Value();
+            const char* axisNames[] = {"X", "Y", "Z", "U"};
+            for (size_t i = 0; i < statuses.size() && i < 4; ++i) {
+                const auto& status = statuses[i];
+                const bool is_homed = IsAxisStatusHomed(status);
+                nlohmann::json axisJson = {
+                    {"position", status.position.x},
+                    {"velocity", status.velocity},
+                    {"enabled", status.enabled},
+                    {"homed", is_homed},
+                    {"homing_state", status.homing_state}
+                };
+                axesJson[axisNames[i]] = axisJson;
+            }
+        }
+    }
+    // 获取当前位置
+    nlohmann::json positionJson = nlohmann::json::object();
+    if (can_query_motion_state) {
+        auto posResult = motionFacade_->GetCurrentPosition();
+        if (posResult.IsSuccess()) {
+            auto pos = posResult.Value();
+            positionJson = {{"x", pos.x}, {"y", pos.y}};
+        }
+    }
+
+    // 获取点胶阀状态
+    nlohmann::json dispenserJson = {{"valve_open", false}, {"supply_open", false}};
+    if (dispensingFacade_) {
+        auto statusResult = dispensingFacade_->GetDispenserStatus();
+        if (statusResult.IsSuccess()) {
+            auto status = statusResult.Value();
+            dispenserJson["valve_open"] = status.IsRunning();
+        }
+
+        auto supplyResult = dispensingFacade_->GetSupplyStatus();
+        if (supplyResult.IsSuccess()) {
+            auto supply = supplyResult.Value();
+            dispenserJson["supply_open"] = supply.IsOpen();
+        }
+    }
 
     const nlohmann::json ioJson = BuildRawIoJson(supervision_snapshot);
     const nlohmann::json effectiveInterlocksJson = BuildEffectiveInterlocksJson(supervision_snapshot);
     const nlohmann::json supervisionJson = BuildSupervisionJson(supervision_snapshot);
+    const auto compat_machine_state = BuildCompatMachineState(supervision_snapshot);
+    const std::string machine_state = compat_machine_state.state;
+    const std::string machine_state_reason = compat_machine_state.reason;
 
     nlohmann::json resultJson = {
         {"connected", supervision_snapshot.connected},
         {"connection_state", supervision_snapshot.connection_state},
-        {"machine_state", status_snapshot.machine_state},
-        {"machine_state_reason", status_snapshot.machine_state_reason},
+        {"machine_state", machine_state},
+        {"machine_state_reason", machine_state_reason},
         {"supervision", supervisionJson},
         {"interlock_latched", supervision_snapshot.interlock_latched},
         {"active_job_id", supervision_snapshot.active_job_id},
@@ -1411,7 +1446,7 @@ std::string TcpCommandDispatcher::HandleJog(const std::string& id, const nlohman
         return GatewayJsonProtocol::MakeErrorResponse(id, 2304, axis_status_result.GetError().GetMessage());
     }
     const auto& axis_status = axis_status_result.Value();
-    const bool is_homed = axis_status.homing_state == "homed";
+    const bool is_homed = IsAxisStatusHomed(axis_status);
     const bool positive_escape_from_home = axis_status.home_signal && direction > 0;
 
     if (axis_status.state == Siligen::Domain::Motion::Ports::MotionState::HOMING) {

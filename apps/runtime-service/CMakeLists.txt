@@ -61,7 +61,6 @@ add_library(siligen_runtime_process_bootstrap STATIC
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/recipes/RecipeBundleSerializer.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/recipes/RecipeFileRepository.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/recipes/TemplateFileRepository.cpp
-    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/status/WorkflowRuntimeStatusPort.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/supervision/WorkflowRuntimeSupervisionBackend.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/system/DispenserModelMachineExecutionStateBackend.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/storage/files/LocalFileStorageAdapter.cpp

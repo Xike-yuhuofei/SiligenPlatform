@@ -12,7 +12,6 @@ HMI_PROTOCOL = ROOT / "apps" / "hmi-app" / "src" / "hmi_client" / "client" / "pr
 HMI_MAIN_WINDOW = ROOT / "apps" / "hmi-app" / "src" / "hmi_client" / "ui" / "main_window.py"
 TCP_DISPATCHER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "tcp" / "TcpCommandDispatcher.cpp"
 RUNTIME_SUPERVISION_ADAPTER = ROOT / "modules" / "runtime-execution" / "runtime" / "host" / "runtime" / "supervision" / "RuntimeSupervisionPortAdapter.cpp"
-RUNTIME_STATUS_PORT = ROOT / "apps" / "runtime-service" / "runtime" / "status" / "WorkflowRuntimeStatusPort.cpp"
 
 
 def load_json(path: Path):
@@ -225,6 +224,7 @@ def test_status_contract_describes_backend_interlock_authority():
     assert {"estop_known", "door_known"}.issubset(io_required)
     assert "后端权威" in io_props["estop"]["description"]
     assert "运行时互锁端口" in io_props["door"]["description"]
+    assert "断线且无有效采样时必须为 false" in io_props["estop_known"]["description"]
 
 
 def test_status_contract_exposes_effective_interlocks_and_supervision():
@@ -233,7 +233,6 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
     protocol_source = HMI_PROTOCOL.read_text(encoding="utf-8")
     tcp_source = TCP_DISPATCHER.read_text(encoding="utf-8")
     supervision_adapter = RUNTIME_SUPERVISION_ADAPTER.read_text(encoding="utf-8")
-    status_port = RUNTIME_STATUS_PORT.read_text(encoding="utf-8")
 
     machine_required = set(states["definitions"]["machineStatus"]["required"])
     effective_interlocks_required = set(states["definitions"]["effectiveInterlocks"]["required"])
@@ -261,6 +260,7 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
         "updated_at",
     }.issubset(supervision_required)
     assert "控制器有效保护，不等同于原始负限位输入" in states["definitions"]["effectiveInterlocks"]["properties"]["home_boundary_x_active"]["description"]
+    assert "断线且无权威急停来源时必须为 false" in states["definitions"]["effectiveInterlocks"]["properties"]["estop_known"]["description"]
     assert "监督层当前目标状态" in states["definitions"]["supervisionStatus"]["properties"]["requested_state"]["description"]
     assert "兼容导出状态枚举" in states["definitions"]["machineStatus"]["properties"]["machine_state"]["description"]
     assert "单向派生" in states["definitions"]["machineStatus"]["properties"]["machine_state_reason"]["description"]
@@ -294,21 +294,11 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
     assert "def gate_estop_active" in protocol_source
     assert "def gate_door_active" in protocol_source
     assert "def home_boundary_active" in protocol_source
-    assert "runtimeStatusPort_->ReadSnapshot()" in tcp_source
-    assert "BuildAxesJson(status_snapshot)" in tcp_source
-    assert "BuildPositionJson(status_snapshot)" in tcp_source
-    assert "BuildDispenserJson(status_snapshot)" in tcp_source
-    assert '{"machine_state", status_snapshot.machine_state}' in tcp_source
-    assert '{"machine_state_reason", status_snapshot.machine_state_reason}' in tcp_source
+    assert "runtimeSupervisionPort_->ReadSnapshot()" in tcp_source
+    assert "BuildCompatMachineState(supervision_snapshot)" in tcp_source
     assert "BuildSupervisionJson(supervision_snapshot)" in tcp_source
     assert "{\"supervision\", supervisionJson}" in tcp_source
     assert "{\"effective_interlocks\", effectiveInterlocksJson}" in tcp_source
-    assert "motion_control_use_case_->GetAllAxesMotionStatus()" in status_port
-    assert "motion_control_use_case_->GetCurrentPosition()" in status_port
-    assert "valve_query_use_case_->GetDispenserStatus()" in status_port
-    assert "valve_query_use_case_->GetSupplyStatus()" in status_port
-    assert "snapshot.machine_state = snapshot.supervision.supervision.current_state;" in status_port
-    assert "snapshot.machine_state_reason = snapshot.supervision.supervision.state_reason;" in status_port
     assert 'snapshot.requested_state = "Idle";' in supervision_adapter
     assert 'snapshot.requested_state = "Estop";' in supervision_adapter
     assert 'snapshot.requested_state = "Fault";' in supervision_adapter

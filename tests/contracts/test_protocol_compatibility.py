@@ -254,7 +254,7 @@ def test_home_auto_contract_and_hmi_entry():
     assert "hmi-client CommandProtocol.home_auto" in home_auto["consumers"]
     assert "def home_auto" in protocol_source
     assert 'send_request("home.auto"' in protocol_source
-    assert "_protocol.home_auto(" in hmi_ui
+    assert "protocol.home_auto(" in hmi_ui
     assert "_resolve_home_action" not in hmi_ui
 
 

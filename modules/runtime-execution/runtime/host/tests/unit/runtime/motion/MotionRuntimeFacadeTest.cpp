@@ -10,7 +10,11 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <chrono>
+#include <condition_variable>
 #include <memory>
+#include <mutex>
+#include <vector>
 
 namespace {
 
@@ -27,6 +31,7 @@ using HardwareConfiguration = Siligen::Shared::Types::HardwareConfiguration;
 using LogicalAxisId = Siligen::Shared::Types::LogicalAxisId;
 using ResultVoid = Siligen::Shared::Types::Result<void>;
 using int32 = Siligen::Shared::Types::int32;
+using HeartbeatConfig = Siligen::Domain::Machine::Ports::HeartbeatConfig;
 
 class NoOpHomingPort final : public Siligen::Domain::Motion::Ports::IHomingPort {
    public:
@@ -163,6 +168,161 @@ TEST(MotionRuntimeFacadeTest, DefaultMockHomeCompletesAndExposesHomedStatus) {
     auto axis_homed = runtime->IsAxisHomed(LogicalAxisId::X);
     ASSERT_TRUE(axis_homed.IsSuccess()) << axis_homed.GetError().GetMessage();
     EXPECT_TRUE(axis_homed.Value());
+}
+
+TEST(MotionRuntimeFacadeTest, InvokesConnectionStateCallbackOnConnectAndDisconnect) {
+    auto mock_card = std::make_shared<MockMultiCard>();
+    auto wrapper = std::make_shared<MockMultiCardWrapper>(mock_card);
+    auto motion_adapter_result = MultiCardMotionAdapter::Create(wrapper);
+    ASSERT_TRUE(motion_adapter_result.IsSuccess());
+
+    auto runtime = std::make_shared<MotionRuntimeFacade>(
+        motion_adapter_result.Value(),
+        std::make_shared<NoOpHomingPort>());
+
+    std::vector<HardwareConnectionState> states;
+    runtime->SetRuntimeConnectionStateCallback(
+        [&states](const auto& info) {
+            states.push_back(info.state);
+        });
+
+    auto connect_result = runtime->Connect("192.168.10.20", "192.168.10.10", 5000);
+    ASSERT_TRUE(connect_result.IsSuccess()) << connect_result.GetError().GetMessage();
+
+    auto disconnect_result = runtime->Disconnect();
+    ASSERT_TRUE(disconnect_result.IsSuccess()) << disconnect_result.GetError().GetMessage();
+
+    ASSERT_EQ(states.size(), 2u);
+    EXPECT_EQ(states[0], HardwareConnectionState::Connected);
+    EXPECT_EQ(states[1], HardwareConnectionState::Disconnected);
+}
+
+TEST(MotionRuntimeFacadeTest, PassiveDisconnectNotifiesCallbackWhenStatusMonitoringIsActive) {
+    auto mock_card = std::make_shared<MockMultiCard>();
+    auto wrapper = std::make_shared<MockMultiCardWrapper>(mock_card);
+    auto motion_adapter_result = MultiCardMotionAdapter::Create(wrapper);
+    ASSERT_TRUE(motion_adapter_result.IsSuccess());
+
+    auto runtime = std::make_shared<MotionRuntimeFacade>(
+        motion_adapter_result.Value(),
+        std::make_shared<NoOpHomingPort>());
+
+    std::condition_variable states_changed;
+    std::mutex states_mutex;
+    std::vector<HardwareConnectionState> states;
+    runtime->SetRuntimeConnectionStateCallback(
+        [&states, &states_changed, &states_mutex](const auto& info) {
+            {
+                std::lock_guard<std::mutex> lock(states_mutex);
+                states.push_back(info.state);
+            }
+            states_changed.notify_all();
+        });
+
+    auto connect_result = runtime->Connect("192.168.10.20", "192.168.10.10", 5000);
+    ASSERT_TRUE(connect_result.IsSuccess()) << connect_result.GetError().GetMessage();
+
+    auto monitoring_result = runtime->StartRuntimeStatusMonitoring(50);
+    ASSERT_TRUE(monitoring_result.IsSuccess()) << monitoring_result.GetError().GetMessage();
+
+    mock_card->ResetGetStsCounter();
+    mock_card->SimulateDisconnect();
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1600);
+    {
+        std::unique_lock<std::mutex> lock(states_mutex);
+        (void)states_changed.wait_until(lock, deadline, [&states] {
+            return states.size() >= 2u;
+        });
+    }
+
+    runtime->StopRuntimeStatusMonitoring();
+
+    std::vector<HardwareConnectionState> observed_states;
+    {
+        std::lock_guard<std::mutex> lock(states_mutex);
+        observed_states = states;
+    }
+
+    ASSERT_GE(observed_states.size(), 2u);
+    EXPECT_EQ(observed_states[0], HardwareConnectionState::Connected);
+    EXPECT_EQ(observed_states.back(), HardwareConnectionState::Disconnected);
+    EXPECT_FALSE(runtime->IsRuntimeConnected());
+}
+
+TEST(MotionRuntimeFacadeTest, PassiveDisconnectStillTransitionsToDisconnectedAfterHeartbeatDegrades) {
+    auto mock_card = std::make_shared<MockMultiCard>();
+    auto wrapper = std::make_shared<MockMultiCardWrapper>(mock_card);
+    auto motion_adapter_result = MultiCardMotionAdapter::Create(wrapper);
+    ASSERT_TRUE(motion_adapter_result.IsSuccess());
+
+    auto runtime = std::make_shared<MotionRuntimeFacade>(
+        motion_adapter_result.Value(),
+        std::make_shared<NoOpHomingPort>());
+
+    std::condition_variable states_changed;
+    std::mutex states_mutex;
+    std::vector<HardwareConnectionState> states;
+    runtime->SetRuntimeConnectionStateCallback(
+        [&states, &states_changed, &states_mutex](const auto& info) {
+            {
+                std::lock_guard<std::mutex> lock(states_mutex);
+                states.push_back(info.state);
+            }
+            states_changed.notify_all();
+        });
+
+    auto connect_result = runtime->Connect("192.168.10.20", "192.168.10.10", 5000);
+    ASSERT_TRUE(connect_result.IsSuccess()) << connect_result.GetError().GetMessage();
+
+    HeartbeatConfig heartbeat_config;
+    heartbeat_config.interval_ms = 100;
+    heartbeat_config.timeout_ms = 100;
+    heartbeat_config.failure_threshold = 1;
+    auto heartbeat_result = runtime->StartRuntimeHeartbeat(heartbeat_config);
+    ASSERT_TRUE(heartbeat_result.IsSuccess()) << heartbeat_result.GetError().GetMessage();
+
+    auto monitoring_result = runtime->StartRuntimeStatusMonitoring(250);
+    ASSERT_TRUE(monitoring_result.IsSuccess()) << monitoring_result.GetError().GetMessage();
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    wrapper->ResetConnectionSimulation();
+    mock_card->SimulateDisconnect();
+
+    const auto heartbeat_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1200);
+    bool degraded_seen = false;
+    while (std::chrono::steady_clock::now() < heartbeat_deadline) {
+        if (runtime->GetRuntimeHeartbeatStatus().is_degraded) {
+            degraded_seen = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    ASSERT_TRUE(degraded_seen);
+
+    const auto disconnect_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1800);
+    {
+        std::unique_lock<std::mutex> lock(states_mutex);
+        (void)states_changed.wait_until(lock, disconnect_deadline, [&states] {
+            return std::find(states.begin(), states.end(), HardwareConnectionState::Disconnected) != states.end();
+        });
+    }
+
+    runtime->StopRuntimeStatusMonitoring();
+    runtime->StopRuntimeHeartbeat();
+
+    std::vector<HardwareConnectionState> observed_states;
+    {
+        std::lock_guard<std::mutex> lock(states_mutex);
+        observed_states = states;
+    }
+
+    ASSERT_GE(observed_states.size(), 2u);
+    EXPECT_EQ(observed_states[0], HardwareConnectionState::Connected);
+    EXPECT_EQ(observed_states.back(), HardwareConnectionState::Disconnected);
+    EXPECT_EQ(runtime->GetRuntimeConnectionInfo().state, HardwareConnectionState::Disconnected);
+    EXPECT_FALSE(runtime->IsRuntimeConnected());
 }
 
 }  // namespace

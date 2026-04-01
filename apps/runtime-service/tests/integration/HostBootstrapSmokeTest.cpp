@@ -1,9 +1,12 @@
 #include "runtime_process_bootstrap/ContainerBootstrap.h"
 #include "container/ApplicationContainer.h"
 #include "domain/configuration/ports/IConfigurationPort.h"
+#include "domain/safety/ports/IInterlockSignalPort.h"
+#include "siligen/device/adapters/drivers/multicard/MockMultiCardWrapper.h"
 #include "runtime_execution/contracts/dispensing/ITaskSchedulerPort.h"
 #include "domain/dispensing/ports/IValvePort.h"
 #include "domain/motion/ports/IMotionRuntimePort.h"
+#include "siligen/device/contracts/commands/device_commands.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 #include "runtime_process_bootstrap/WorkspaceAssetPaths.h"
 
@@ -14,6 +17,7 @@
 #include <fstream>
 #include <string>
 #include <system_error>
+#include <thread>
 
 namespace {
 
@@ -223,6 +227,16 @@ std::string BuildMockMachineIni() {
         "min_duration_ms=5\n"
         "max_duration_ms=500\n"
         "abs_position_flag=1\n"
+        "\n"
+        "[Safety]\n"
+        "emergency_stop_enabled=true\n"
+        "\n"
+        "[Interlock]\n"
+        "enabled=true\n"
+        "emergency_stop_input=7\n"
+        "emergency_stop_active_low=false\n"
+        "safety_door_input=-1\n"
+        "poll_interval_ms=10\n"
     );
 }
 
@@ -267,4 +281,215 @@ TEST(RuntimeExecutionIntegrationHostBootstrapSmokeTest, BuildsContainerFromCanon
     EXPECT_NE(container->GetMultiCardInstance(), nullptr);
 
     EXPECT_TRUE(std::filesystem::exists(workspace.root() / "data" / "schemas" / "recipes"));
+}
+
+TEST(RuntimeExecutionIntegrationHostBootstrapSmokeTest, InterlockSignalsFollowConnectionLifecycle) {
+    using DeviceConnection = Siligen::Device::Contracts::Commands::DeviceConnection;
+    using DeviceConnectionPort = Siligen::Device::Contracts::Ports::DeviceConnectionPort;
+    using IInterlockSignalPort = Siligen::Domain::Safety::Ports::IInterlockSignalPort;
+
+    ScopedTempWorkspace workspace("interlock_lifecycle");
+    workspace.WriteFile(kCanonicalMachineConfigRelativePath, BuildMockMachineIni());
+    const auto runtime_service_dir = workspace.root() / "apps" / "runtime-service";
+
+    ScopedCurrentPath scoped_cwd(runtime_service_dir);
+
+    auto container = BuildContainer(
+        kCanonicalMachineConfigRelativePath,
+        LogMode::Silent,
+        "runtime_host_smoke.log",
+        1);
+
+    ASSERT_NE(container, nullptr);
+
+    auto connection_port = container->ResolvePort<DeviceConnectionPort>();
+    auto interlock_port = container->ResolvePort<IInterlockSignalPort>();
+    ASSERT_NE(connection_port, nullptr);
+    ASSERT_NE(interlock_port, nullptr);
+
+    const auto initial_signals = interlock_port->ReadSignals();
+    EXPECT_TRUE(initial_signals.IsError());
+
+    DeviceConnection connection;
+    connection.local_ip = "192.168.10.10";
+    connection.card_ip = "192.168.10.20";
+    connection.local_port = 5000;
+    connection.card_port = 5000;
+    connection.timeout_ms = 3000;
+
+    const auto connect_result = connection_port->Connect(connection);
+    ASSERT_TRUE(connect_result.IsSuccess()) << connect_result.GetError().GetMessage();
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+
+    const auto connected_signals = interlock_port->ReadSignals();
+    ASSERT_TRUE(connected_signals.IsSuccess()) << connected_signals.GetError().GetMessage();
+    EXPECT_FALSE(connected_signals.Value().emergency_stop_triggered);
+    EXPECT_FALSE(connected_signals.Value().safety_door_open);
+
+    const auto disconnect_result = connection_port->Disconnect();
+    ASSERT_TRUE(disconnect_result.IsSuccess()) << disconnect_result.GetError().GetMessage();
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+    const auto disconnected_signals = interlock_port->ReadSignals();
+    EXPECT_TRUE(disconnected_signals.IsError());
+}
+
+TEST(RuntimeExecutionIntegrationHostBootstrapSmokeTest, InterlockMonitorStopsAfterPassiveDisconnect) {
+    using DeviceConnection = Siligen::Device::Contracts::Commands::DeviceConnection;
+    using DeviceConnectionPort = Siligen::Device::Contracts::Ports::DeviceConnectionPort;
+    using DeviceConnectionState = Siligen::Device::Contracts::State::DeviceConnectionState;
+    using IInterlockSignalPort = Siligen::Domain::Safety::Ports::IInterlockSignalPort;
+    using MockMultiCardWrapper = Siligen::Infrastructure::Hardware::MockMultiCardWrapper;
+
+    ScopedTempWorkspace workspace("interlock_passive_disconnect");
+    workspace.WriteFile(kCanonicalMachineConfigRelativePath, BuildMockMachineIni());
+    const auto runtime_service_dir = workspace.root() / "apps" / "runtime-service";
+
+    ScopedCurrentPath scoped_cwd(runtime_service_dir);
+
+    auto container = BuildContainer(
+        kCanonicalMachineConfigRelativePath,
+        LogMode::Silent,
+        "runtime_host_smoke.log",
+        1);
+
+    ASSERT_NE(container, nullptr);
+
+    auto connection_port = container->ResolvePort<DeviceConnectionPort>();
+    auto interlock_port = container->ResolvePort<IInterlockSignalPort>();
+    ASSERT_NE(connection_port, nullptr);
+    ASSERT_NE(interlock_port, nullptr);
+
+    auto* mock_wrapper = static_cast<MockMultiCardWrapper*>(container->GetMultiCardInstance());
+    ASSERT_NE(mock_wrapper, nullptr);
+
+    DeviceConnection connection;
+    connection.local_ip = "192.168.10.10";
+    connection.card_ip = "192.168.10.20";
+    connection.local_port = 5000;
+    connection.card_port = 5000;
+    connection.timeout_ms = 3000;
+
+    const auto connect_result = connection_port->Connect(connection);
+    ASSERT_TRUE(connect_result.IsSuccess()) << connect_result.GetError().GetMessage();
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    ASSERT_TRUE(interlock_port->ReadSignals().IsSuccess());
+
+    mock_wrapper->ResetConnectionSimulation();
+    mock_wrapper->SimulateDisconnect();
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1800);
+    bool interlock_stopped = false;
+    while (std::chrono::steady_clock::now() < deadline) {
+        const auto signals_result = interlock_port->ReadSignals();
+        if (signals_result.IsError()) {
+            interlock_stopped = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+
+    ASSERT_TRUE(interlock_stopped);
+
+    const auto connection_snapshot = connection_port->ReadConnection();
+    ASSERT_TRUE(connection_snapshot.IsSuccess()) << connection_snapshot.GetError().GetMessage();
+    EXPECT_EQ(connection_snapshot.Value().state, DeviceConnectionState::Disconnected);
+}
+
+TEST(RuntimeExecutionIntegrationHostBootstrapSmokeTest, InterlockMonitorStopsAfterPassiveDisconnectWhenHeartbeatDegradesFirst) {
+    using DeviceConnection = Siligen::Device::Contracts::Commands::DeviceConnection;
+    using DeviceConnectionPort = Siligen::Device::Contracts::Ports::DeviceConnectionPort;
+    using DeviceConnectionState = Siligen::Device::Contracts::State::DeviceConnectionState;
+    using HeartbeatSnapshot = Siligen::Device::Contracts::State::HeartbeatSnapshot;
+    using IInterlockSignalPort = Siligen::Domain::Safety::Ports::IInterlockSignalPort;
+    using MockMultiCardWrapper = Siligen::Infrastructure::Hardware::MockMultiCardWrapper;
+
+    ScopedTempWorkspace workspace("interlock_passive_disconnect_heartbeat");
+    workspace.WriteFile(kCanonicalMachineConfigRelativePath, BuildMockMachineIni());
+    const auto runtime_service_dir = workspace.root() / "apps" / "runtime-service";
+
+    ScopedCurrentPath scoped_cwd(runtime_service_dir);
+
+    auto container = BuildContainer(
+        kCanonicalMachineConfigRelativePath,
+        LogMode::Silent,
+        "runtime_host_smoke.log",
+        1);
+
+    ASSERT_NE(container, nullptr);
+
+    auto connection_port = container->ResolvePort<DeviceConnectionPort>();
+    auto interlock_port = container->ResolvePort<IInterlockSignalPort>();
+    ASSERT_NE(connection_port, nullptr);
+    ASSERT_NE(interlock_port, nullptr);
+
+    auto* mock_wrapper = static_cast<MockMultiCardWrapper*>(container->GetMultiCardInstance());
+    ASSERT_NE(mock_wrapper, nullptr);
+
+    DeviceConnection connection;
+    connection.local_ip = "192.168.10.10";
+    connection.card_ip = "192.168.10.20";
+    connection.local_port = 5000;
+    connection.card_port = 5000;
+    connection.timeout_ms = 3000;
+
+    const auto connect_result = connection_port->Connect(connection);
+    ASSERT_TRUE(connect_result.IsSuccess()) << connect_result.GetError().GetMessage();
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    ASSERT_TRUE(interlock_port->ReadSignals().IsSuccess());
+
+    HeartbeatSnapshot heartbeat_config;
+    heartbeat_config.interval_ms = 100;
+    heartbeat_config.timeout_ms = 100;
+    heartbeat_config.failure_threshold = 1;
+    const auto heartbeat_result = connection_port->StartHeartbeat(heartbeat_config);
+    ASSERT_TRUE(heartbeat_result.IsSuccess()) << heartbeat_result.GetError().GetMessage();
+
+    const auto monitoring_result = connection_port->StartStatusMonitoring(250);
+    ASSERT_TRUE(monitoring_result.IsSuccess()) << monitoring_result.GetError().GetMessage();
+
+    mock_wrapper->ResetConnectionSimulation();
+    mock_wrapper->SimulateDisconnect();
+
+    const auto degraded_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1200);
+    bool degraded_seen = false;
+    while (std::chrono::steady_clock::now() < degraded_deadline) {
+        if (connection_port->ReadHeartbeat().is_degraded) {
+            degraded_seen = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    ASSERT_TRUE(degraded_seen);
+
+    const auto disconnect_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1800);
+    bool interlock_stopped = false;
+    bool connection_disconnected = false;
+    while (std::chrono::steady_clock::now() < disconnect_deadline) {
+        if (!interlock_stopped && interlock_port->ReadSignals().IsError()) {
+            interlock_stopped = true;
+        }
+
+        const auto connection_snapshot = connection_port->ReadConnection();
+        ASSERT_TRUE(connection_snapshot.IsSuccess()) << connection_snapshot.GetError().GetMessage();
+        if (connection_snapshot.Value().state == DeviceConnectionState::Disconnected) {
+            connection_disconnected = true;
+        }
+
+        if (interlock_stopped && connection_disconnected) {
+            break;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+
+    connection_port->StopHeartbeat();
+    connection_port->StopStatusMonitoring();
+
+    ASSERT_TRUE(interlock_stopped);
+    ASSERT_TRUE(connection_disconnected);
 }

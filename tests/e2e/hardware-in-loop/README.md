@@ -1,6 +1,6 @@
 # hardware-in-loop
 
-更新时间：`2026-03-22`
+更新时间：`2026-04-01`
 
 这里统一放硬件冒烟和机台联调入口。
 
@@ -8,7 +8,9 @@
 
 - `run_hardware_smoke.py`
 - `run_real_dxf_machine_dryrun.py`
+- `run_real_dxf_preview_snapshot.py`
 - `run_hil_closed_loop.py`
+- `run_case_matrix.py`
 - `run_hil_controlled_test.ps1`
 - `verify_hil_controlled_gate.py`
 - `render_hil_controlled_release_summary.py`
@@ -25,6 +27,7 @@
 - 若未来接入真实机台，可通过环境变量替换目标可执行程序
 - `run_hil_controlled_test.ps1` 在 `passed` 且门禁满足时，会将本次时间戳目录证据同步到固定目录 `tests/reports/hil-controlled-test`
 - 固定目录会写入 `latest-source.txt`，用于追溯来源时间戳目录（双轨证据）
+- 联机测试矩阵基线统一见 `docs/validation/online-test-matrix-v1.md`
 
 推荐命令：
 
@@ -38,6 +41,18 @@ python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun.py
 
 ```powershell
 python .\tests\e2e\hardware-in-loop\run_real_dxf_preview_snapshot.py
+```
+
+```powershell
+python .\tests\e2e\hardware-in-loop\run_case_matrix.py --mode both --rounds 20
+```
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\test.ps1 -Profile CI -Suite e2e -IncludeHilCaseMatrix -ReportDir .\tests\reports\verify\hil-case-matrix -FailOnKnownFailure
+```
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop\run_hil_controlled_test.ps1 -Profile Local -UseTimestampedReportDir
 ```
 
 ```powershell
@@ -65,7 +80,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 
 `run_hil_closed_loop.py` 说明：
 
-- 预检阶段执行一次 `dxf.load`，循环阶段按 `tcp connect -> status -> dispenser start/pause/resume -> dispenser.stop -> disconnect` 执行闭环
+- 预检阶段执行一次 `dxf.load`，循环阶段按 `tcp connect -> status -> supply.open -> dispenser.start/pause/resume -> dispenser.stop -> supply.close -> disconnect` 执行闭环
 - 默认对 `Running/Paused/Running` 状态做等待门控，避免 pause/resume 竞态误判
 - `dispenser.start` 未观测到 `Running` 视为失败，不再按 `skipped` 兼容通过
 - 默认输出 `hil-closed-loop-summary.json` 与 `hil-closed-loop-summary.md`
@@ -125,6 +140,17 @@ python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun.py `
 - `rect_diag` 的当前几何基线固定在 `tests/baselines/preview/rect_diag.preview-snapshot-baseline.json`
 - 自动 evidence 会追加一次 HMI 在线 smoke，把真实 `snapshot.json` 注入主窗口并截取 `hmi-preview.png`
 - 自动回归入口为 `python -m pytest tests/e2e/first-layer/test_real_preview_snapshot_geometry.py -q`
+
+`run_case_matrix.py` 说明：
+
+- 当前用于 `home` / `closed_loop` 的多轮补充矩阵，不替代 `run_hil_controlled_test.ps1`
+- 默认输出 `case-matrix-summary.json` 与 `case-matrix-summary.md`
+- 默认报告目录为 `tests/reports/adhoc/hil-case-matrix/`
+- 当前支持 `--mode home|closed_loop|both` 与 `--rounds <N>`
+- `closed_loop` 路径与 `run_hil_closed_loop.py` 对齐，当前会显式执行 `supply.open -> dispenser.start -> dispenser.stop -> supply.close`
+- 已接入根级 `test.ps1` / `ci.ps1` / `run-local-validation-gate.ps1` 的 opt-in 开关 `-IncludeHilCaseMatrix`
+- `run_hil_controlled_test.ps1` 与 `release-check.ps1` 当前默认纳入 `hil-case-matrix`
+- 如需临时隔离矩阵影响，可显式传 `-IncludeHilCaseMatrix:$false`
 
 `verify_hil_controlled_gate.py` 说明：
 

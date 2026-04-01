@@ -121,6 +121,7 @@ Get-Content $ConfigPath | Set-Content (Join-Path $EvidenceRoot "machine_config.s
 判定规则：
 
 - `[脚本]` `MultiCard.dll` 缺失：硬停止，不允许继续。
+- `[脚本]` `MultiCard.dll` / `MultiCard.lib` 在 fresh clone 中本应已随仓库到位；若缺失，先按仓库完整性问题处理，再继续现场 bring-up。
 - `[脚本]` `MultiCard.lib` 缺失：若本次需要现场重建或替换二进制，硬停止；若只验证既有 `Debug` 二进制，可记录偏差后提交 `A4` 审核。
 
 ### 6.4 二进制与 dry-run 检查

@@ -23,7 +23,7 @@ class IConfigurationPort;
 }
 
 namespace Siligen::RuntimeExecution::Contracts::System {
-class IRuntimeStatusPort;
+class IRuntimeSupervisionPort;
 }
 
 namespace Siligen::Adapters::Tcp {
@@ -54,7 +54,7 @@ public:
         std::shared_ptr<Application::Facades::Tcp::TcpDispensingFacade> dispensingFacade,
         std::shared_ptr<Application::Facades::Tcp::TcpRecipeFacade> recipeFacade,
         std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> configPort,
-        std::shared_ptr<RuntimeExecution::Contracts::System::IRuntimeStatusPort> runtimeStatusPort,
+        std::shared_ptr<RuntimeExecution::Contracts::System::IRuntimeSupervisionPort> runtimeSupervisionPort,
         std::shared_ptr<MockIoControlService> mockIoControl
     );
 
@@ -74,7 +74,7 @@ private:
     std::shared_ptr<Application::Facades::Tcp::TcpDispensingFacade> dispensingFacade_;
     std::shared_ptr<Application::Facades::Tcp::TcpRecipeFacade> recipeFacade_;
     std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> configPort_;
-    std::shared_ptr<RuntimeExecution::Contracts::System::IRuntimeStatusPort> runtimeStatusPort_;
+    std::shared_ptr<RuntimeExecution::Contracts::System::IRuntimeSupervisionPort> runtimeSupervisionPort_;
     std::shared_ptr<MockIoControlService> mockIoControl_;
     Shared::Types::DiagnosticsConfig diagnostics_config_;
 

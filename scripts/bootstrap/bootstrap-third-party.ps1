@@ -32,6 +32,12 @@ if ([string]::IsNullOrWhiteSpace($ThirdPartyRoot)) {
 if ([string]::IsNullOrWhiteSpace($ArtifactRoot) -and -not [string]::IsNullOrWhiteSpace($env:SILIGEN_THIRD_PARTY_ARTIFACT_ROOT)) {
     $ArtifactRoot = $env:SILIGEN_THIRD_PARTY_ARTIFACT_ROOT
 }
+if ([string]::IsNullOrWhiteSpace($ArtifactRoot)) {
+    $repoTrackedArtifactRoot = Join-Path $PSScriptRoot "bundles"
+    if (Test-Path $repoTrackedArtifactRoot) {
+        $ArtifactRoot = $repoTrackedArtifactRoot
+    }
+}
 if (-not [string]::IsNullOrWhiteSpace($ArtifactRoot) -and -not [System.IO.Path]::IsPathRooted($ArtifactRoot)) {
     $ArtifactRoot = [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot $ArtifactRoot))
 }
@@ -241,7 +247,7 @@ foreach ($package in $requiredPackages) {
     $source = Resolve-ArchiveSource -Package $package
     if ($null -eq $source) {
         throw ("third-party package '{0}' is missing locally and no artifact source is configured. " +
-            "Set SILIGEN_THIRD_PARTY_ARTIFACT_ROOT or SILIGEN_THIRD_PARTY_BASE_URI, " +
+            "Track bundles under scripts/bootstrap/bundles, or set SILIGEN_THIRD_PARTY_ARTIFACT_ROOT / SILIGEN_THIRD_PARTY_BASE_URI, " +
             "or export bundles with scripts/bootstrap/export-third-party-bundles.ps1.") -f $package.name
     }
 

@@ -198,6 +198,8 @@ class MockMultiCardWrapper : public IMultiCardWrapper {
 
     // Mock-only 测试控制
     void SetDigitalInputRaw(short card_index, long value) noexcept;
+    void SimulateDisconnect() noexcept;
+    void ResetConnectionSimulation() noexcept;
 
    private:
     std::shared_ptr<MockMultiCard> mockMulticard_;  ///< Mock MultiCard 对象

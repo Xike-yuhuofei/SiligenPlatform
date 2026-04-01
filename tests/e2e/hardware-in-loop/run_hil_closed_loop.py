@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import configparser
 import json
 import os
 import socket
 import subprocess
+import sys
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -15,6 +17,13 @@ from typing import Any
 KNOWN_FAILURE_EXIT_CODE = 10
 SKIPPED_EXIT_CODE = 11
 ROOT = Path(__file__).resolve().parents[3]
+FIRST_LAYER_DIR = ROOT / "tests" / "e2e" / "first-layer"
+if str(FIRST_LAYER_DIR) not in sys.path:
+    sys.path.insert(0, str(FIRST_LAYER_DIR))
+
+from runtime_gateway_harness import build_process_env  # noqa: E402
+from runtime_gateway_harness import resolve_default_exe as _resolve_harness_default_exe  # noqa: E402
+
 CONTROL_APPS_BUILD_ROOT = Path(
     os.getenv(
         "SILIGEN_CONTROL_APPS_BUILD_ROOT",
@@ -22,6 +31,7 @@ CONTROL_APPS_BUILD_ROOT = Path(
     )
 )
 DEFAULT_DXF_FILE = ROOT / "samples" / "dxf" / "rect_diag.dxf"
+DEFAULT_CONFIG_PATH = ROOT / "config" / "machine" / "machine_config.ini"
 
 KNOWN_FAILURE_PATTERNS = (
     "IDiagnosticsPort 未注册",
@@ -127,21 +137,24 @@ def _truncate(text: str, limit: int = 2000) -> str:
     return text[:limit] + "\n...[truncated]..."
 
 
+def _load_connection_params(config_path: Path) -> dict[str, str]:
+    parser = configparser.ConfigParser(interpolation=None, strict=False)
+    with config_path.open("r", encoding="utf-8") as handle:
+        parser.read_file(handle)
+
+    card_ip = parser.get("Network", "control_card_ip", fallback=parser.get("Network", "card_ip", fallback="")).strip()
+    local_ip = parser.get("Network", "local_ip", fallback="").strip()
+
+    params: dict[str, str] = {}
+    if card_ip:
+        params["card_ip"] = card_ip
+    if local_ip:
+        params["local_ip"] = local_ip
+    return params
+
+
 def _resolve_default_exe(*file_names: str) -> Path:
-    candidates: list[Path] = []
-    for file_name in file_names:
-        candidates.extend(
-            (
-                CONTROL_APPS_BUILD_ROOT / "bin" / file_name,
-                CONTROL_APPS_BUILD_ROOT / "bin" / "Debug" / file_name,
-                CONTROL_APPS_BUILD_ROOT / "bin" / "Release" / file_name,
-                CONTROL_APPS_BUILD_ROOT / "bin" / "RelWithDebInfo" / file_name,
-            )
-        )
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return candidates[0]
+    return _resolve_harness_default_exe(*file_names)
 
 
 def _matches_known_failure(text: str) -> bool:
@@ -428,11 +441,13 @@ def _build_sequence(
     dispenser_count: int,
     dispenser_interval_ms: int,
     dispenser_duration_ms: int,
+    connect_params: dict[str, Any],
 ) -> list[tuple[str, str, dict[str, Any]]]:
     _ = dxf_file
     sequence: list[tuple[str, str, dict[str, Any]]] = [
-        ("tcp-connect", "connect", {}),
+        ("tcp-connect", "connect", connect_params),
         ("tcp-status", "status", {}),
+        ("tcp-supply-open", "supply.open", {}),
         (
             "tcp-dispenser-start",
             "dispenser.start",
@@ -449,6 +464,7 @@ def _build_sequence(
     sequence.extend(
         [
             ("tcp-dispenser-stop", "dispenser.stop", {}),
+            ("tcp-supply-close", "supply.close", {}),
             ("tcp-stop", "stop", {}),
             ("tcp-disconnect", "disconnect", {}),
         ]
@@ -674,6 +690,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--duration-seconds", type=int, default=300)
     parser.add_argument("--host", default=os.getenv("SILIGEN_HIL_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.getenv("SILIGEN_HIL_PORT", "9527")))
+    parser.add_argument("--config-path", type=Path, default=DEFAULT_CONFIG_PATH)
     parser.add_argument(
         "--gateway-exe",
         default=os.getenv(
@@ -802,13 +819,15 @@ def main() -> int:
         return 1
 
     started = time.perf_counter()
+    connect_params = _load_connection_params(args.config_path)
     process = subprocess.Popen(
-        [str(gateway_exe)],
+        [str(gateway_exe), "--config", str(args.config_path), "--port", str(args.port)],
         cwd=str(ROOT),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
+        env=build_process_env(gateway_exe),
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
 
@@ -892,6 +911,7 @@ def main() -> int:
             dispenser_count=args.dispenser_count,
             dispenser_interval_ms=args.dispenser_interval_ms,
             dispenser_duration_ms=args.dispenser_duration_ms,
+            connect_params=connect_params,
         )
 
         dxf_step, _ = _run_tcp_step(

@@ -126,6 +126,7 @@ class MotionRuntimeFacade final : public Domain::Motion::Ports::IMotionRuntimePo
     std::thread monitoring_thread_;
     std::atomic<bool> should_monitor_{false};
     std::atomic<bool> monitoring_active_{false};
+    Shared::Types::uint32 monitoring_interval_ms_ = 0;
 
     std::thread heartbeat_thread_;
     std::atomic<bool> should_heartbeat_{false};
