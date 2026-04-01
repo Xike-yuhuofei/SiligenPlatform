@@ -70,6 +70,16 @@ class MachineStatus:
     dispenser_valve_open: bool = False
     supply_valve_open: bool = False
 
+    @property
+    def runtime_state(self) -> str:
+        current = str(self.supervision.current_state or "").strip()
+        return current or self.machine_state
+
+    @property
+    def runtime_state_reason(self) -> str:
+        reason = str(self.supervision.state_reason or "").strip()
+        return reason or self.machine_state_reason
+
     def gate_estop_known(self) -> bool:
         return bool(self.effective_interlocks.estop_known or self.io.estop_known)
 
@@ -182,9 +192,11 @@ class CommandProtocol:
             sources=dict(effective_interlocks_data.get("sources", {})),
         )
 
+        compat_state = str(result.get("machine_state", "Unknown"))
+        compat_reason = str(result.get("machine_state_reason", "unknown"))
         supervision_data = result.get("supervision", {})
-        current_state = str(supervision_data.get("current_state", result.get("machine_state", "Unknown")))
-        current_reason = str(supervision_data.get("state_reason", result.get("machine_state_reason", "unknown")))
+        current_state = str(supervision_data.get("current_state", compat_state))
+        current_reason = str(supervision_data.get("state_reason", compat_reason))
         supervision = SupervisionStatus(
             current_state=current_state,
             requested_state=str(supervision_data.get("requested_state", current_state)),
@@ -201,8 +213,8 @@ class CommandProtocol:
             connection_state=result.get(
                 "connection_state", "connected" if result.get("connected", False) else "disconnected"
             ),
-            machine_state=current_state,
-            machine_state_reason=current_reason,
+            machine_state=compat_state,
+            machine_state_reason=compat_reason,
             interlock_latched=result.get("interlock_latched", False),
             active_job_id=str(result.get("active_job_id", "")),
             active_job_state=str(result.get("active_job_state", "")),

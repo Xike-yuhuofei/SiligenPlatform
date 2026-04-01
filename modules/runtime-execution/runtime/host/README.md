@@ -8,6 +8,7 @@
 - 执行域任务调度桥接：`runtime/scheduling/*`
 - 执行域 diagnostics 适配：`runtime/diagnostics/*`
 - 执行域 motion/runtime provider：`runtime/motion/WorkflowMotionRuntimeServicesProvider.*`
+  - canonical provider contract：`runtime_execution/application/services/motion/runtime/IMotionRuntimeServicesProvider.h`
 - 执行态适配与 planning artifact 导出桥：`runtime/system/*`、`runtime/planning/*`
 - 执行期硬限位 / 软限位监控：`services/motion/*`
 

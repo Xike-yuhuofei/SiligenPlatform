@@ -2,7 +2,7 @@
 
 #include "DispensingExecutionUseCase.Internal.h"
 
-#include "domain/dispensing/domain-services/DispensingProcessService.h"
+#include "modules/dispense-packaging/domain/dispensing/domain-services/DispensingProcessService.h"
 #include "runtime_execution/contracts/safety/InterlockPolicy.h"
 #include "runtime_execution/contracts/safety/SafetyOutputGuard.h"
 #include "shared/logging/PrintfLogFormatter.h"

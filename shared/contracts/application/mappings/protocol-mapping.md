@@ -6,7 +6,7 @@
 
 | 方法 | 类型 | HMI 调用点 | TCP 处理器 | CLI 对应语义 | 结果字段 | 兼容说明 |
 |---|---|---|---|---|---|---|
-| `status` | 查询 | `CommandProtocol.get_status()` | `HandleStatus` | `HandleStatus` | `connected` / `machine_state` / `axes` / `position` / `io` / `dispenser` / `alarms` | HMI 当前主要消费 `machine_state`、`axes`、`io`、`dispenser.*` |
+| `status` | 查询 | `CommandProtocol.get_status()` | `HandleStatus` | `HandleStatus` | `connected` / `machine_state` / `supervision` / `effective_interlocks` / `axes` / `position` / `io` / `dispenser` / `alarms` | `machine_state` 保留兼容导出；HMI 主消费已转向 `supervision`、`effective_interlocks`、`axes`、`io`、`dispenser.*` |
 
 ## `alarms.*`
 

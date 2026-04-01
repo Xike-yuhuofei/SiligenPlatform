@@ -21,6 +21,7 @@
 - 模块构建根：`modules/runtime-execution/CMakeLists.txt`
 - application public：`modules/runtime-execution/application/CMakeLists.txt`
   target: `siligen_runtime_execution_application_public`
+  runtime provider contract: `application/include/runtime_execution/application/services/motion/runtime/IMotionRuntimeServicesProvider.h`
 - runtime contracts：`modules/runtime-execution/contracts/runtime/CMakeLists.txt`
   target: `siligen_runtime_execution_runtime_contracts`
 - host core：`modules/runtime-execution/runtime/host/CMakeLists.txt`

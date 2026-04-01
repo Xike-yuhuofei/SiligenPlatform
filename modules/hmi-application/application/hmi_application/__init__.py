@@ -42,7 +42,7 @@ from .startup import (
     run_launch_sequence,
     run_recovery_action,
 )
-from .supervisor_contract import (
+from .launch_supervision_contract import (
     FailureCode,
     FailureStage,
     RecoveryAction,
@@ -52,7 +52,7 @@ from .supervisor_contract import (
     is_online_ready,
     snapshot_timestamp,
 )
-from .supervisor_session import SupervisorPolicy, SupervisorSession
+from .launch_supervision_session import SupervisorPolicy, SupervisorSession
 
 __all__ = [
     "DispensePreviewGate",

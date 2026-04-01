@@ -282,6 +282,7 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
     }
     assert "effective_interlocks_data = result.get(\"effective_interlocks\", {})" in protocol_source
     assert "supervision_data = result.get(\"supervision\", {})" in protocol_source
+    assert "def runtime_state" in protocol_source
     assert "def gate_estop_active" in protocol_source
     assert "def gate_door_active" in protocol_source
     assert "def home_boundary_active" in protocol_source
