@@ -57,6 +57,8 @@ Makefile
 *.idb
 *.ilk
 *.bin
+!modules/runtime-execution/adapters/device/vendor/multicard/MultiCard.dll
+!modules/runtime-execution/adapters/device/vendor/multicard/MultiCard.lib
 
 # Python packaging
 *.egg-info/

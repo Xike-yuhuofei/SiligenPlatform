@@ -3,7 +3,7 @@ param(
     [string]$WorkspaceRoot = "",
     [string]$ManifestPath = "",
     [string]$ThirdPartyRoot = "",
-    [string]$OutputRoot = "build\\third-party-bundles",
+    [string]$OutputRoot = "scripts\\bootstrap\\bundles",
     [string]$ManifestOutPath = "",
     [switch]$Force
 )
