@@ -276,6 +276,9 @@ def test_status_reads_backend_interlock_signals():
     source = RUNTIME_SUPERVISION_BACKEND.read_text(encoding="utf-8")
     assert "ReadInterlockSignals()" in source
     assert "IsInEmergencyStop()" in source
+    assert "if (estop_state_result.IsSuccess() && inputs.connected)" in source
+    assert "inputs.io.estop_known = inputs.connected;" in source
+    assert "inputs.io.estop = inputs.estop_active || signals.emergency_stop_triggered;" in source
     assert "GetActiveJobId()" in source
     assert "GetJobStatus(inputs.active_job_id)" in source
     assert "motion_control_use_case->ReadLimitStatus(axis, positive)" in source

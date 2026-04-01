@@ -94,4 +94,27 @@ TEST(RuntimeSupervisionPortAdapterTest, DoorInterlockOverridesPausedStateAndBuil
     EXPECT_EQ(snapshot.effective_interlocks.positive_escape_only_axes.front(), "X");
 }
 
+TEST(RuntimeSupervisionPortAdapterTest, DisconnectedUnknownEstopRemainsUnknownInSnapshot) {
+    auto backend = std::make_shared<FakeRuntimeSupervisionBackend>();
+    backend->next_inputs.has_hardware_connection_port = true;
+    backend->next_inputs.connected = false;
+    backend->next_inputs.connection_info.state = Siligen::Device::Contracts::State::DeviceConnectionState::Disconnected;
+    backend->next_inputs.io.estop = false;
+    backend->next_inputs.io.estop_known = false;
+    backend->next_inputs.io.door = false;
+    backend->next_inputs.io.door_known = false;
+
+    RuntimeSupervisionPortAdapter adapter(backend);
+    auto snapshot_result = adapter.ReadSnapshot();
+
+    ASSERT_TRUE(snapshot_result.IsSuccess()) << snapshot_result.GetError().GetMessage();
+    const auto& snapshot = snapshot_result.Value();
+    EXPECT_EQ(snapshot.connection_state, "disconnected");
+    EXPECT_FALSE(snapshot.io.estop_known);
+    EXPECT_FALSE(snapshot.effective_interlocks.estop_known);
+    EXPECT_EQ(snapshot.effective_interlocks.sources.at("estop"), "unknown");
+    EXPECT_EQ(snapshot.supervision.current_state, "Disconnected");
+    EXPECT_EQ(snapshot.supervision.state_reason, "hardware_disconnected");
+}
+
 }  // namespace

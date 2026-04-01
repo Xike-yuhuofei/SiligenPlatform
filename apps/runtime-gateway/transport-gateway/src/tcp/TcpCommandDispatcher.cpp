@@ -1104,7 +1104,6 @@ std::string TcpCommandDispatcher::HandleStatus(const std::string& id, const nloh
             }
         }
     }
-
     // 获取当前位置
     nlohmann::json positionJson = nlohmann::json::object();
     if (can_query_motion_state) {
