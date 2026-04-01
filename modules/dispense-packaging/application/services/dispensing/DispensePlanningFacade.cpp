@@ -90,6 +90,7 @@ struct ExecutionTrajectorySelection {
 
 struct TriggerBindingCandidate {
     bool found = false;
+    std::size_t enabled_position = 0;
     std::size_t interpolation_index = 0;
     float32 distance_error_mm = std::numeric_limits<float32>::max();
     float32 match_error_mm = std::numeric_limits<float32>::max();
@@ -1329,19 +1330,68 @@ void BindAuthorityLayoutToExecutionTrajectory(
         return;
     }
 
+    const auto started_at = std::chrono::steady_clock::now();
+    std::vector<std::size_t> enabled_trigger_indices;
+    enabled_trigger_indices.reserve(artifacts.authority_trigger_layout.trigger_points.size());
+    for (std::size_t interpolation_index = 0;
+         interpolation_index < execution_trajectory->size();
+         ++interpolation_index) {
+        if ((*execution_trajectory)[interpolation_index].enable_position_trigger) {
+            enabled_trigger_indices.push_back(interpolation_index);
+        }
+    }
+
     {
         std::ostringstream oss;
         oss << "preview_binding_stage=start"
             << " layout_id=" << artifacts.authority_trigger_layout.layout_id
             << " trigger_points=" << artifacts.authority_trigger_layout.trigger_points.size()
-            << " execution_points=" << execution_trajectory->size();
+            << " execution_points=" << execution_trajectory->size()
+            << " enabled_trigger_points=" << enabled_trigger_indices.size();
         SILIGEN_LOG_INFO(oss.str());
     }
 
     std::size_t last_interpolation_index = 0;
-    std::vector<bool> consumed(execution_trajectory->size(), false);
+    std::size_t preferred_enabled_position = 0;
+    std::vector<bool> consumed_enabled(enabled_trigger_indices.size(), false);
     std::vector<TriggerBindingTraceRow> binding_trace_rows;
     binding_trace_rows.reserve(artifacts.authority_trigger_layout.trigger_points.size());
+    artifacts.authority_trigger_layout.bindings.reserve(
+        artifacts.authority_trigger_layout.trigger_points.size());
+    const float32 distance_tolerance_mm = Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm;
+    const float32 match_tolerance_mm =
+        std::max(kGluePointDedupEpsilonMm, distance_tolerance_mm);
+
+    auto bind_candidate = [&](std::size_t trigger_index,
+                              const auto& trigger,
+                              const TriggerBindingCandidate& candidate,
+                              TriggerBindingTraceRow&& trace_row) {
+        const auto& trajectory_point = (*execution_trajectory)[candidate.interpolation_index];
+        trace_row.matched = true;
+        trace_row.interpolation_index = candidate.interpolation_index;
+        trace_row.execution_sequence_id = trajectory_point.sequence_id;
+        trace_row.execution_position = trajectory_point.position;
+        trace_row.execution_trigger_position_mm = trajectory_point.trigger_position_mm;
+        trace_row.distance_delta_mm = trajectory_point.trigger_position_mm - trigger.distance_mm_global;
+        trace_row.position_delta_mm = trajectory_point.position.DistanceTo(trigger.position);
+        trace_row.monotonic = candidate.monotonic;
+        trace_row.execution_segment_type = trajectory_point.segment_type;
+        binding_trace_rows.push_back(std::move(trace_row));
+
+        InterpolationTriggerBinding binding;
+        binding.binding_id =
+            artifacts.authority_trigger_layout.layout_id + "-binding-" + std::to_string(trigger_index);
+        binding.layout_ref = artifacts.authority_trigger_layout.layout_id;
+        binding.trigger_ref = trigger.trigger_id;
+        binding.interpolation_index = candidate.interpolation_index;
+        binding.execution_position = trajectory_point.position;
+        binding.match_error_mm = candidate.match_error_mm;
+        binding.monotonic = candidate.monotonic;
+        binding.bound = true;
+        artifacts.authority_trigger_layout.bindings.push_back(std::move(binding));
+        last_interpolation_index = candidate.interpolation_index;
+    };
+
     for (std::size_t trigger_index = 0;
          trigger_index < artifacts.authority_trigger_layout.trigger_points.size();
          ++trigger_index) {
@@ -1355,51 +1405,83 @@ void BindAuthorityLayoutToExecutionTrajectory(
         trace_row.trigger_position = trigger.position;
         trace_row.authority_distance_mm = trigger.distance_mm_global;
         TriggerBindingCandidate best_candidate;
-        std::size_t enabled_trigger_points = 0;
-        std::size_t nearest_distance_index = execution_trajectory->size();
-        std::size_t nearest_match_index = execution_trajectory->size();
+        std::size_t nearest_distance_enabled_position = enabled_trigger_indices.size();
+        std::size_t nearest_match_enabled_position = enabled_trigger_indices.size();
         float32 nearest_distance_error_mm = std::numeric_limits<float32>::max();
         float32 nearest_match_error_mm = std::numeric_limits<float32>::max();
-        const float32 match_tolerance_mm = std::max(
-            kGluePointDedupEpsilonMm,
-            Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm);
-        for (std::size_t interpolation_index = 0;
-             interpolation_index < execution_trajectory->size();
-             ++interpolation_index) {
-            if (consumed[interpolation_index]) {
-                continue;
+
+        auto evaluate_candidate = [&](std::size_t enabled_position) {
+            if (enabled_position >= enabled_trigger_indices.size() || consumed_enabled[enabled_position]) {
+                return;
             }
 
+            const std::size_t interpolation_index = enabled_trigger_indices[enabled_position];
             const auto& trajectory_point = (*execution_trajectory)[interpolation_index];
-            if (!trajectory_point.enable_position_trigger) {
-                continue;
-            }
-            ++enabled_trigger_points;
-
             const float32 distance_error_mm =
                 std::fabs(trajectory_point.trigger_position_mm - trigger.distance_mm_global);
             const float32 match_error_mm = trajectory_point.position.DistanceTo(trigger.position);
             if (distance_error_mm < nearest_distance_error_mm) {
                 nearest_distance_error_mm = distance_error_mm;
-                nearest_distance_index = interpolation_index;
+                nearest_distance_enabled_position = enabled_position;
             }
             if (match_error_mm < nearest_match_error_mm) {
                 nearest_match_error_mm = match_error_mm;
-                nearest_match_index = interpolation_index;
+                nearest_match_enabled_position = enabled_position;
             }
-            if (distance_error_mm > Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm ||
+            if (distance_error_mm > distance_tolerance_mm ||
                 match_error_mm > match_tolerance_mm) {
-                continue;
+                return;
             }
 
             TriggerBindingCandidate candidate;
             candidate.found = true;
+            candidate.enabled_position = enabled_position;
             candidate.interpolation_index = interpolation_index;
             candidate.distance_error_mm = distance_error_mm;
             candidate.match_error_mm = match_error_mm;
             candidate.monotonic = interpolation_index >= last_interpolation_index;
             if (IsBetterTriggerBindingCandidate(candidate, best_candidate)) {
                 best_candidate = candidate;
+            }
+        };
+
+        while (preferred_enabled_position < enabled_trigger_indices.size()) {
+            if (consumed_enabled[preferred_enabled_position]) {
+                ++preferred_enabled_position;
+                continue;
+            }
+            const auto& trajectory_point =
+                (*execution_trajectory)[enabled_trigger_indices[preferred_enabled_position]];
+            if (trajectory_point.trigger_position_mm + distance_tolerance_mm <
+                trigger.distance_mm_global) {
+                ++preferred_enabled_position;
+                continue;
+            }
+            break;
+        }
+
+        for (std::size_t enabled_position = preferred_enabled_position;
+             enabled_position < enabled_trigger_indices.size();
+             ++enabled_position) {
+            if (consumed_enabled[enabled_position]) {
+                continue;
+            }
+
+            const auto& trajectory_point =
+                (*execution_trajectory)[enabled_trigger_indices[enabled_position]];
+            evaluate_candidate(enabled_position);
+
+            if (trajectory_point.trigger_position_mm >
+                trigger.distance_mm_global + distance_tolerance_mm) {
+                break;
+            }
+        }
+
+        if (!best_candidate.found) {
+            for (std::size_t enabled_position = 0;
+                 enabled_position < enabled_trigger_indices.size();
+                 ++enabled_position) {
+                evaluate_candidate(enabled_position);
             }
         }
 
@@ -1412,12 +1494,14 @@ void BindAuthorityLayoutToExecutionTrajectory(
                 << " trigger_distance_mm=" << trigger.distance_mm_global
                 << " trigger_position=" << FormatPoint(trigger.position)
                 << " execution_points=" << execution_trajectory->size()
-                << " enabled_trigger_points=" << enabled_trigger_points
+                << " enabled_trigger_points=" << enabled_trigger_indices.size()
                 << " last_interpolation_index=" << last_interpolation_index
-                << " distance_tolerance_mm="
-                << Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm
-                << " match_tolerance_mm=" << match_tolerance_mm;
-            if (nearest_distance_index < execution_trajectory->size()) {
+                << " distance_tolerance_mm=" << distance_tolerance_mm
+                << " match_tolerance_mm=" << match_tolerance_mm
+                << " elapsed_ms=" << ElapsedMs(started_at);
+            if (nearest_distance_enabled_position < enabled_trigger_indices.size()) {
+                const std::size_t nearest_distance_index =
+                    enabled_trigger_indices[nearest_distance_enabled_position];
                 const auto& nearest_distance_point = (*execution_trajectory)[nearest_distance_index];
                 oss << " nearest_distance={index=" << nearest_distance_index
                     << ",trigger_position_mm=" << nearest_distance_point.trigger_position_mm
@@ -1427,7 +1511,9 @@ void BindAuthorityLayoutToExecutionTrajectory(
                     << ",monotonic=" << (nearest_distance_index >= last_interpolation_index ? 1 : 0)
                     << '}';
             }
-            if (nearest_match_index < execution_trajectory->size()) {
+            if (nearest_match_enabled_position < enabled_trigger_indices.size()) {
+                const std::size_t nearest_match_index =
+                    enabled_trigger_indices[nearest_match_enabled_position];
                 const auto& nearest_match_point = (*execution_trajectory)[nearest_match_index];
                 oss << " nearest_match={index=" << nearest_match_index
                     << ",trigger_position_mm=" << nearest_match_point.trigger_position_mm
@@ -1444,34 +1530,14 @@ void BindAuthorityLayoutToExecutionTrajectory(
                 artifacts.authority_trigger_layout,
                 binding_trace_rows,
                 trigger_index);
-            artifacts.failure_reason = "authority trigger binding unavailable";
+                artifacts.failure_reason = "authority trigger binding unavailable";
             return;
         }
 
-        const auto& trajectory_point = (*execution_trajectory)[best_candidate.interpolation_index];
-        trace_row.matched = true;
-        trace_row.interpolation_index = best_candidate.interpolation_index;
-        trace_row.execution_sequence_id = trajectory_point.sequence_id;
-        trace_row.execution_position = trajectory_point.position;
-        trace_row.execution_trigger_position_mm = trajectory_point.trigger_position_mm;
-        trace_row.distance_delta_mm = trajectory_point.trigger_position_mm - trigger.distance_mm_global;
-        trace_row.position_delta_mm = trajectory_point.position.DistanceTo(trigger.position);
-        trace_row.monotonic = best_candidate.monotonic;
-        trace_row.execution_segment_type = trajectory_point.segment_type;
-        binding_trace_rows.push_back(std::move(trace_row));
-        InterpolationTriggerBinding binding;
-        binding.binding_id = artifacts.authority_trigger_layout.layout_id + "-binding-" + std::to_string(trigger_index);
-        binding.layout_ref = artifacts.authority_trigger_layout.layout_id;
-        binding.trigger_ref = trigger.trigger_id;
-        binding.interpolation_index = best_candidate.interpolation_index;
-        binding.execution_position = trajectory_point.position;
-        binding.match_error_mm = best_candidate.match_error_mm;
-        binding.monotonic = best_candidate.monotonic;
-        binding.bound = true;
-
-        artifacts.authority_trigger_layout.bindings.push_back(binding);
-        consumed[best_candidate.interpolation_index] = true;
-        last_interpolation_index = best_candidate.interpolation_index;
+        bind_candidate(trigger_index, trigger, best_candidate, std::move(trace_row));
+        consumed_enabled[best_candidate.enabled_position] = true;
+        preferred_enabled_position =
+            std::max(preferred_enabled_position, best_candidate.enabled_position + 1U);
     }
 
     artifacts.binding_ready =
@@ -1483,7 +1549,9 @@ void BindAuthorityLayoutToExecutionTrajectory(
         oss << "preview_binding_stage=complete"
             << " layout_id=" << artifacts.authority_trigger_layout.layout_id
             << " bindings=" << artifacts.authority_trigger_layout.bindings.size()
-            << " trigger_points=" << artifacts.authority_trigger_layout.trigger_points.size();
+            << " trigger_points=" << artifacts.authority_trigger_layout.trigger_points.size()
+            << " enabled_trigger_points=" << enabled_trigger_indices.size()
+            << " elapsed_ms=" << ElapsedMs(started_at);
         SILIGEN_LOG_INFO(oss.str());
     } else if (artifacts.failure_reason.empty()) {
         artifacts.failure_reason = "authority trigger binding unavailable";
