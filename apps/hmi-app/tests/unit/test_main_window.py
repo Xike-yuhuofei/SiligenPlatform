@@ -14,12 +14,14 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "src" / "hmi_client"))
 
 import ui.main_window as main_window_module
+from client import SessionSnapshot, launch_result_from_snapshot
 from client.protocol import AxisStatus, EffectiveInterlocks, IOStatus, MachineStatus, SupervisionStatus
 
 
 class FakeProtocol:
     def __init__(self, status: MachineStatus):
         self.status = status
+        self.status_calls = 0
         self.home_calls = []
         self.home_auto_calls = []
         self.jog_calls = []
@@ -47,7 +49,11 @@ class FakeProtocol:
         )
 
     def get_status(self) -> MachineStatus:
+        self.status_calls += 1
         return self.status
+
+    def get_alarms(self) -> list:
+        return []
 
     def home(self, axes=None, force=False):
         self.home_calls.append((axes, force))
@@ -360,6 +366,44 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertFalse(worker.isRunning())
         self.assertTrue(worker.delete_later_called)
         self.assertEqual(self.window.statusBar().currentMessage(), "回零: Axes ready at zero")
+
+    def test_on_home_completion_requalifies_recoverable_runtime_failure(self) -> None:
+        status = self._make_status(x_homed=True, y_homed=True)
+        fake_protocol = FakeProtocol(status)
+        failed_snapshot = SessionSnapshot(
+            mode="online",
+            session_state="failed",
+            backend_state="ready",
+            tcp_state="ready",
+            hardware_state="failed",
+            failure_code="SUP_HARDWARE_CONNECT_FAILED",
+            failure_stage="hardware_ready",
+            recoverable=True,
+            last_error_message="运行中硬件状态不可用，在线能力已收敛。",
+            updated_at="2026-04-01T07:58:49Z",
+        )
+        self.window._requested_launch_mode = "online"
+        self.window._protocol = fake_protocol
+        self.window._session_snapshot = failed_snapshot
+        self.window._launch_result = launch_result_from_snapshot("online", failed_snapshot)
+        self.window._home_request_generation = 1
+
+        self.window._on_home_auto_completed(True, "Axes ready at zero", request_token=1)
+
+        self.assertEqual(fake_protocol.status_calls, 1)
+        self.assertTrue(self.window._is_online_ready())
+        self.assertIsNotNone(self.window._launch_result)
+        assert self.window._launch_result is not None
+        self.assertTrue(self.window._launch_result.online_ready)
+        self.assertIsNone(self.window._launch_result.failure_code)
+        self.assertEqual(self.window.statusBar().currentMessage(), "回零: Axes ready at zero")
+        self.assertTrue(
+            any(
+                getattr(event, "event_type", "") == "stage_succeeded"
+                and getattr(event, "stage", "") == "online_ready"
+                for event in self.window._supervisor_stage_events
+            )
+        )
 
     def test_on_home_rejects_duplicate_request_while_worker_is_running(self) -> None:
         status = self._make_status(x_homed=False, y_homed=True)

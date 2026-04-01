@@ -10,6 +10,7 @@ from hmi_application.launch_state import (
     build_launch_ui_state,
     build_runtime_degradation_result,
     detect_runtime_degradation_result,
+    detect_runtime_requalification_result,
 )
 from hmi_application.startup import launch_result_from_snapshot
 from hmi_application.supervisor_contract import SessionSnapshot, SessionStageEvent, snapshot_timestamp
@@ -204,6 +205,35 @@ class LaunchStateOwnerTest(unittest.TestCase):
         self.assertEqual(result.degraded_snapshot.failure_stage, "tcp_ready")
         self.assertEqual(result.stage_event.event_type, "stage_failed")
         self.assertIn("socket closed", result.status_message)
+
+    def test_detect_runtime_requalification_result_restores_ready_launch(self) -> None:
+        failed_snapshot = _snapshot(
+            session_state="failed",
+            hardware_state="failed",
+            failure_code="SUP_HARDWARE_CONNECT_FAILED",
+            failure_stage="hardware_ready",
+            recoverable=True,
+            last_error_message="运行中硬件状态不可用，在线能力已收敛。",
+        )
+        launch_result = launch_result_from_snapshot("online", failed_snapshot)
+
+        result = detect_runtime_requalification_result(
+            launch_result,
+            failed_snapshot,
+            [_stage_event(stage="hardware_ready")],
+            tcp_connected=True,
+            hardware_ready=True,
+        )
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result.recovered_snapshot.session_state, "ready")
+        self.assertEqual(result.recovered_snapshot.hardware_state, "ready")
+        self.assertIsNone(result.recovered_snapshot.failure_code)
+        self.assertIsNone(result.recovered_snapshot.failure_stage)
+        self.assertTrue(result.launch_result.online_ready)
+        self.assertEqual(result.stage_event.event_type, "stage_succeeded")
+        self.assertEqual(result.stage_event.stage, "online_ready")
 
 
 if __name__ == "__main__":

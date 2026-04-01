@@ -49,6 +49,7 @@ from client import (
     build_runtime_degradation_result,
     build_startup_error_message,
     detect_runtime_degradation_result,
+    detect_runtime_requalification_result,
     is_online_ready,
     load_supervisor_policy_from_env,
     normalize_launch_mode,
@@ -1533,6 +1534,18 @@ class MainWindow(QMainWindow):
         self._apply_permissions()
         self.statusBar().showMessage(runtime_result.status_message)
 
+    def _apply_runtime_requalification_result(self, runtime_result) -> None:
+        if runtime_result is None:
+            return
+        self._on_supervisor_stage_event(runtime_result.stage_event)
+        self._session_snapshot = runtime_result.recovered_snapshot
+        self._launch_result = runtime_result.launch_result
+        self._refresh_launch_status_ui()
+        self._apply_mode_capabilities()
+        self._update_home_controls_state()
+        self._apply_permissions()
+        self.statusBar().showMessage(runtime_result.status_message)
+
     def _detect_runtime_degradation(
         self,
         *,
@@ -1547,6 +1560,22 @@ class MainWindow(QMainWindow):
             tcp_connected=tcp_connected,
             hardware_ready=hardware_ready,
             error_message=error_message,
+        )
+
+    def _detect_runtime_requalification(
+        self,
+        *,
+        tcp_connected: bool | None = None,
+        hardware_ready: bool | None = None,
+        success_message: str | None = None,
+    ):
+        return detect_runtime_requalification_result(
+            self._launch_result,
+            self._current_session_snapshot(),
+            self._supervisor_stage_events,
+            tcp_connected=tcp_connected,
+            hardware_ready=hardware_ready,
+            success_message=success_message,
         )
 
     def _require_online_mode(self, capability: str) -> bool:
@@ -1818,6 +1847,18 @@ class MainWindow(QMainWindow):
             return
         self._home_auto_worker = None
         self._update_home_controls_state()
+        if ok:
+            status = self._protocol.get_status()
+            if status.connected:
+                self._last_status = status
+                self._last_status_ts = time.monotonic()
+                self._runtime_status_fault = False
+                requalification = self._detect_runtime_requalification(
+                    tcp_connected=True,
+                    hardware_ready=True,
+                )
+                if requalification is not None:
+                    self._apply_runtime_requalification_result(requalification)
         if not ok and message:
             QMessageBox.warning(self, "回零失败", message)
         self.statusBar().showMessage(f"回零: {message}" if message else ("回零完成" if ok else "回零失败"))

@@ -1,10 +1,16 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal, Sequence
 
 from .startup import LaunchResult, launch_result_from_snapshot
-from .supervisor_contract import RecoveryAction, SessionSnapshot, SessionStageEvent, is_online_ready
+from .supervisor_contract import (
+    RecoveryAction,
+    SessionSnapshot,
+    SessionStageEvent,
+    is_online_ready,
+    snapshot_timestamp,
+)
 from .supervisor_session import SupervisorSession
 
 LedState = Literal["off", "green", "red"]
@@ -47,6 +53,14 @@ class LaunchUiState:
 @dataclass(frozen=True)
 class RuntimeDegradationResult:
     degraded_snapshot: SessionSnapshot
+    launch_result: LaunchResult
+    stage_event: SessionStageEvent
+    status_message: str
+
+
+@dataclass(frozen=True)
+class RuntimeRequalificationResult:
+    recovered_snapshot: SessionSnapshot
     launch_result: LaunchResult
     stage_event: SessionStageEvent
     status_message: str
@@ -258,6 +272,62 @@ def detect_runtime_degradation_result(
         ),
         stage_event=stage_event,
         status_message=degraded_snapshot.last_error_message or "运行态退化，在线能力已收敛。",
+    )
+
+
+def detect_runtime_requalification_result(
+    launch_result: LaunchResult | None,
+    session_snapshot: SessionSnapshot | None,
+    stage_events: Sequence[SessionStageEvent],
+    *,
+    tcp_connected: bool | None = None,
+    hardware_ready: bool | None = None,
+    success_message: str | None = None,
+) -> RuntimeRequalificationResult | None:
+    if launch_result is None or session_snapshot is None:
+        return None
+    if session_snapshot.mode != "online":
+        return None
+    if session_snapshot.session_state != "failed" or not session_snapshot.recoverable:
+        return None
+    if session_snapshot.failure_code != "SUP_HARDWARE_CONNECT_FAILED":
+        return None
+    if session_snapshot.failure_stage not in ("hardware_probing", "hardware_ready", "online_ready"):
+        return None
+    if session_snapshot.backend_state != "ready" or session_snapshot.tcp_state != "ready":
+        return None
+    if tcp_connected is False or hardware_ready is not True:
+        return None
+
+    message = success_message or "运行态已恢复，系统已就绪。"
+    recovered_snapshot = replace(
+        session_snapshot,
+        session_state="ready",
+        hardware_state="ready",
+        failure_code=None,
+        failure_stage=None,
+        recoverable=True,
+        last_error_message=message,
+        updated_at=snapshot_timestamp(),
+    )
+    stage_event = SessionStageEvent(
+        event_type="stage_succeeded",
+        session_id=_current_supervisor_session_id(stage_events),
+        stage="online_ready",
+        timestamp=recovered_snapshot.updated_at,
+        failure_code=None,
+        recoverable=recovered_snapshot.recoverable,
+        message=message,
+    )
+    return RuntimeRequalificationResult(
+        recovered_snapshot=recovered_snapshot,
+        launch_result=launch_result_from_snapshot(
+            requested_mode=launch_result.requested_mode,
+            snapshot=recovered_snapshot,
+            user_message=message,
+        ),
+        stage_event=stage_event,
+        status_message=message,
     )
 
 
