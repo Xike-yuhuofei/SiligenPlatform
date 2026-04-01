@@ -29,7 +29,7 @@
 
 ## 当前未对齐但已记录
 
-- `status.machine_state` / `machine_state_reason` 仍保留为兼容导出面；当前由 `status.supervision` 单向派生，HMI 主显示与门禁已优先消费 `status.supervision` 与 `effective_interlocks`，不再把 `machine_state` 视为主真相。
-- `status.supervision` / `effective_interlocks` / `io` 的 owner 数据面当前来自 `IRuntimeSupervisionPort` snapshot；`runtime-gateway` 只承担协议序列化和 `machine_state` compat 投影，不再内联监督态推导。
+- `status.machine_state` / `machine_state_reason` 仍保留为兼容导出面；当前由 `IRuntimeStatusExportPort` snapshot 内的 `supervision` 单向派生，HMI 主显示与门禁已优先消费 `status.supervision` 与 `effective_interlocks`，不再把 `machine_state` 视为主真相。
+- `status` 的 owner 数据面当前来自 `IRuntimeStatusExportPort` snapshot；其中 `connected` / `connection_state` / `interlock_latched` / `active_job_*` / `supervision` / `effective_interlocks` / `io` 由 export snapshot 统一导出，底层 supervision 语义仍来自 `IRuntimeSupervisionPort` 输入，`runtime-gateway` 只承担协议序列化。
 - HMI 仅在 `status.supervision` 整体缺失时回退到 `machine_state` compat 面，避免对 `supervision` 单字段回填形成双向真相。
 - 当前事件 envelope 已存在，但未发现已稳定发布的具体事件名。
