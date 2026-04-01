@@ -66,6 +66,6 @@
 - `dxf.*` 当前正式执行链已收敛到 `artifact.create -> plan.prepare -> preview.snapshot -> preview.confirm -> job.start -> job.status`。
 - runtime-execution 对跨模块公开面已收敛为 `DispensingExecutionRequest + DispensingExecutionResult + job API`；`task` 只允许留在 runtime-execution 内部实现或内部测试语境。
 - `status.machine_state` / `machine_state_reason` 仍需保留，但语义上已经降级为由 `supervision.current_state` / `state_reason` 单向派生的 compat 面。
-- `status.supervision` / `effective_interlocks` / `io` 当前由 `IRuntimeSupervisionPort` snapshot 提供；`runtime-gateway` 只负责 transport 序列化，以及 `machine_state` / `machine_state_reason` compat 投影。
+- `status` 当前整体由 `IRuntimeStatusPort` snapshot 提供；其中 `supervision` / `effective_interlocks` / `io` 继续来自内嵌 `IRuntimeSupervisionPort` owner 面，`runtime-gateway` 只负责 transport 序列化，以及 `machine_state` / `machine_state_reason` compat 投影。
 - HMI 仅在 `status.supervision` 整体缺失时回退读取 `machine_state` compat 字段；不会再对 `supervision` 单个字段做 compat 回填。
 - `status` 与 `alarms.*` 结构已被 HMI UI 直接依赖，字段改名风险高。

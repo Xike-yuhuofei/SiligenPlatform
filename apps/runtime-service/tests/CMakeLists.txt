@@ -5,6 +5,7 @@ set(RUNTIME_PROCESS_BOOTSTRAP_UNIT_TEST_SOURCES
     unit/runtime/configuration/InterlockConfigResolverTest.cpp
     unit/runtime/configuration/WorkspaceAssetPathsTest.cpp
     unit/runtime/recipes/TemplateFileRepositoryTest.cpp
+    unit/runtime/status/WorkflowRuntimeStatusPortTest.cpp
 )
 
 add_executable(siligen_runtime_service_unit_tests
