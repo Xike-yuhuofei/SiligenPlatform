@@ -1,6 +1,6 @@
 # Release Process
 
-更新时间：`2026-03-26`
+更新时间：`2026-04-01`
 
 ## 1. 适用范围
 
@@ -55,11 +55,20 @@ Set-Location <repo-root>
 .\release-check.ps1 -Version <version>
 ```
 
+`release-check.ps1` 当前默认纳入 `hil-case-matrix`。
+
 正式发布版必须显式启用硬件 smoke：
 
 ```powershell
 Set-Location <repo-root>
 .\release-check.ps1 -Version <x.y.z> -IncludeHardwareSmoke
+```
+
+如需临时隔离 `hil-case-matrix` 影响，可显式关闭：
+
+```powershell
+Set-Location <repo-root>
+.\release-check.ps1 -Version <version> -IncludeHilCaseMatrix:$false
 ```
 
 `release-check.ps1` 会执行：
@@ -72,7 +81,8 @@ Set-Location <repo-root>
 6. 执行根级 `test.ps1 -Profile CI -Suite all -FailOnKnownFailure`
 7. 检查性能基线证据存在
 8. 生成 release evidence 到 `tests\reports\releases\<version>\`
-9. 执行以下 app dry-run 并固化输出：
+9. 默认检查 `ci\hil-case-matrix\case-matrix-summary.json/.md`
+10. 执行以下 app dry-run 并固化输出：
    - `apps\hmi-app\run.ps1 -DryRun -DisableGatewayAutostart`
    - `apps\runtime-gateway\run.ps1 -DryRun`
    - `apps\planner-cli\run.ps1 -DryRun`
@@ -83,6 +93,7 @@ Set-Location <repo-root>
 - 仓库已弃用 GitHub Actions 作为默认门禁，不再要求云端 checks 才能给出发布结论。
 - 验收以本地门禁实跑证据为准。
 - `release-check.ps1` 只能证明仓内自动化门禁通过，不替代仓外观察、HIL 与真机门禁。
+- `hil-case-matrix` 现在是默认 release 自动化证据的一部分；若显式使用 `-IncludeHilCaseMatrix:$false`，该结果只可用于临时隔离排障，不应作为默认放行口径。
 
 ## 4. 正式发布前的附加硬门禁
 
