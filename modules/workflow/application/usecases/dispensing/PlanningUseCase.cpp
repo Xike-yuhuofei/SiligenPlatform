@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <chrono>
 #include <fstream>
+#include <iomanip>
+#include <sstream>
 #include <stdexcept>
 #include <utility>
 
@@ -46,6 +48,7 @@ using Siligen::Workflow::Contracts::WorkflowStageLifecycle;
 namespace {
 
 constexpr float32 kEpsilon = 1e-6f;
+constexpr float32 kBoundsToleranceMm = 1e-4f;
 
 struct PreviewRuntimeParams {
     float32 dispensing_velocity = 0.0f;
@@ -60,6 +63,22 @@ struct PreviewRuntimeParams {
     float32 sample_dt = 0.01f;
     float32 sample_ds = 0.0f;
     Siligen::Domain::Dispensing::ValueObjects::DispenseCompensationProfile compensation_profile{};
+};
+
+struct MachineBounds {
+    bool enabled = false;
+    float32 x_min = 0.0f;
+    float32 x_max = 0.0f;
+    float32 y_min = 0.0f;
+    float32 y_max = 0.0f;
+};
+
+struct PrimitiveBounds {
+    bool has = false;
+    float32 min_x = 0.0f;
+    float32 max_x = 0.0f;
+    float32 min_y = 0.0f;
+    float32 max_y = 0.0f;
 };
 
 WorkflowPlanningTriggerRequest BuildWorkflowPlanningTriggerRequest(const PlanningRequest& request) {
@@ -208,6 +227,203 @@ Siligen::Shared::Types::Point2D ResolveDxfOffset(
 
     const auto& config = config_result.Value();
     return Siligen::Shared::Types::Point2D(config.dxf.offset_x, config.dxf.offset_y);
+}
+
+MachineBounds ResolveMachineBounds(
+    const std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort>& config_port) {
+    if (!config_port) {
+        return {};
+    }
+
+    auto machine_result = config_port->GetMachineConfig();
+    if (machine_result.IsError()) {
+        SILIGEN_LOG_WARNING("读取机器配置失败: " + machine_result.GetError().GetMessage());
+        return {};
+    }
+
+    const auto& machine = machine_result.Value();
+    if (machine.soft_limits.x_max <= machine.soft_limits.x_min ||
+        machine.soft_limits.y_max <= machine.soft_limits.y_min) {
+        SILIGEN_LOG_WARNING("Machine soft limits 无效，跳过DXF范围归位");
+        return {};
+    }
+
+    MachineBounds bounds;
+    bounds.enabled = true;
+    bounds.x_min = machine.soft_limits.x_min;
+    bounds.x_max = machine.soft_limits.x_max;
+    bounds.y_min = machine.soft_limits.y_min;
+    bounds.y_max = machine.soft_limits.y_max;
+    return bounds;
+}
+
+void ApplyOffsetToPrimitives(
+    std::vector<Primitive>& primitives,
+    const Siligen::Shared::Types::Point2D& offset);
+
+void UpdateBounds(PrimitiveBounds& bounds, const Point2D& point) {
+    if (!bounds.has) {
+        bounds.has = true;
+        bounds.min_x = point.x;
+        bounds.max_x = point.x;
+        bounds.min_y = point.y;
+        bounds.max_y = point.y;
+        return;
+    }
+
+    bounds.min_x = std::min(bounds.min_x, point.x);
+    bounds.max_x = std::max(bounds.max_x, point.x);
+    bounds.min_y = std::min(bounds.min_y, point.y);
+    bounds.max_y = std::max(bounds.max_y, point.y);
+}
+
+bool IsAngleOnArc(float32 start_angle, float32 end_angle, bool clockwise, float32 angle) {
+    const float32 total = Siligen::Domain::Trajectory::ValueObjects::ComputeArcSweep(start_angle, end_angle, clockwise);
+    const float32 sweep = Siligen::Domain::Trajectory::ValueObjects::ComputeArcSweep(start_angle, angle, clockwise);
+    return sweep <= total + 1e-3f;
+}
+
+void UpdateBoundsForArc(
+    const Siligen::Domain::Trajectory::ValueObjects::ArcPrimitive& arc,
+    PrimitiveBounds& bounds) {
+    const float32 start_angle = Siligen::Domain::Trajectory::ValueObjects::NormalizeAngle(arc.start_angle_deg);
+    const float32 end_angle = Siligen::Domain::Trajectory::ValueObjects::NormalizeAngle(arc.end_angle_deg);
+    UpdateBounds(bounds, Siligen::Domain::Trajectory::ValueObjects::ArcPoint(arc, start_angle));
+    UpdateBounds(bounds, Siligen::Domain::Trajectory::ValueObjects::ArcPoint(arc, end_angle));
+
+    const float32 cardinal_angles[] = {0.0f, 90.0f, 180.0f, 270.0f};
+    for (float32 angle : cardinal_angles) {
+        const float32 normalized = Siligen::Domain::Trajectory::ValueObjects::NormalizeAngle(angle);
+        if (IsAngleOnArc(start_angle, end_angle, arc.clockwise, normalized)) {
+            UpdateBounds(bounds, Siligen::Domain::Trajectory::ValueObjects::ArcPoint(arc, normalized));
+        }
+    }
+}
+
+void UpdateBoundsForEllipse(
+    const Siligen::Domain::Trajectory::ValueObjects::EllipsePrimitive& ellipse,
+    PrimitiveBounds& bounds) {
+    const Point2D major = ellipse.major_axis;
+    const float32 a = major.Length();
+    const float32 b = a * ellipse.ratio;
+    if (a <= kEpsilon || b <= kEpsilon) {
+        UpdateBounds(bounds, ellipse.center);
+        return;
+    }
+
+    const float32 theta = std::atan2(major.y, major.x);
+    const float32 cos_t = std::cos(theta);
+    const float32 sin_t = std::sin(theta);
+    const Point2D ex(cos_t, sin_t);
+    const Point2D ey(-sin_t, cos_t);
+    UpdateBounds(bounds, ellipse.center + ex * a);
+    UpdateBounds(bounds, ellipse.center - ex * a);
+    UpdateBounds(bounds, ellipse.center + ey * b);
+    UpdateBounds(bounds, ellipse.center - ey * b);
+}
+
+void UpdateBoundsForSpline(const std::vector<Point2D>& control_points, PrimitiveBounds& bounds) {
+    for (const auto& point : control_points) {
+        UpdateBounds(bounds, point);
+    }
+}
+
+PrimitiveBounds ComputePrimitiveBounds(const std::vector<Primitive>& primitives) {
+    PrimitiveBounds bounds;
+    for (const auto& primitive : primitives) {
+        switch (primitive.type) {
+            case PrimitiveType::Line:
+                UpdateBounds(bounds, primitive.line.start);
+                UpdateBounds(bounds, primitive.line.end);
+                break;
+            case PrimitiveType::Arc:
+                UpdateBoundsForArc(primitive.arc, bounds);
+                break;
+            case PrimitiveType::Spline:
+                UpdateBoundsForSpline(primitive.spline.control_points, bounds);
+                break;
+            case PrimitiveType::Circle:
+                UpdateBounds(bounds, Point2D(primitive.circle.center.x + primitive.circle.radius, primitive.circle.center.y));
+                UpdateBounds(bounds, Point2D(primitive.circle.center.x - primitive.circle.radius, primitive.circle.center.y));
+                UpdateBounds(bounds, Point2D(primitive.circle.center.x, primitive.circle.center.y + primitive.circle.radius));
+                UpdateBounds(bounds, Point2D(primitive.circle.center.x, primitive.circle.center.y - primitive.circle.radius));
+                break;
+            case PrimitiveType::Ellipse:
+                UpdateBoundsForEllipse(primitive.ellipse, bounds);
+                break;
+            case PrimitiveType::Point:
+                UpdateBounds(bounds, primitive.point.position);
+                break;
+            case PrimitiveType::Contour:
+                for (const auto& element : primitive.contour.elements) {
+                    switch (element.type) {
+                        case ContourElementType::Line:
+                            UpdateBounds(bounds, element.line.start);
+                            UpdateBounds(bounds, element.line.end);
+                            break;
+                        case ContourElementType::Arc:
+                            UpdateBoundsForArc(element.arc, bounds);
+                            break;
+                        case ContourElementType::Spline:
+                            UpdateBoundsForSpline(element.spline.control_points, bounds);
+                            break;
+                    }
+                }
+                break;
+        }
+    }
+    return bounds;
+}
+
+Result<void> AutoFitPrimitivesIntoMachineBounds(
+    std::vector<Primitive>& primitives,
+    const MachineBounds& bounds) {
+    if (!bounds.enabled) {
+        return Result<void>::Success();
+    }
+
+    PrimitiveBounds primitive_bounds = ComputePrimitiveBounds(primitives);
+    if (!primitive_bounds.has) {
+        return Result<void>::Success();
+    }
+
+    const float32 bounds_width = bounds.x_max - bounds.x_min;
+    const float32 bounds_height = bounds.y_max - bounds.y_min;
+    const float32 shape_width = primitive_bounds.max_x - primitive_bounds.min_x;
+    const float32 shape_height = primitive_bounds.max_y - primitive_bounds.min_y;
+    const bool fits_x = (shape_width <= bounds_width + kBoundsToleranceMm);
+    const bool fits_y = (shape_height <= bounds_height + kBoundsToleranceMm);
+
+    if (fits_x && fits_y) {
+        const float32 tx_min = bounds.x_min - primitive_bounds.min_x;
+        const float32 tx_max = bounds.x_max - primitive_bounds.max_x;
+        const float32 ty_min = bounds.y_min - primitive_bounds.min_y;
+        const float32 ty_max = bounds.y_max - primitive_bounds.max_y;
+        const float32 tx = std::clamp(0.0f, std::min(tx_min, tx_max), std::max(tx_min, tx_max));
+        const float32 ty = std::clamp(0.0f, std::min(ty_min, ty_max), std::max(ty_min, ty_max));
+        if (std::abs(tx) > kEpsilon || std::abs(ty) > kEpsilon) {
+            ApplyOffsetToPrimitives(primitives, Point2D(tx, ty));
+            SILIGEN_LOG_WARNING_FMT_HELPER("DXF坐标自动平移至行程内: offset=(%.6f, %.6f)", tx, ty);
+            primitive_bounds = ComputePrimitiveBounds(primitives);
+        }
+    }
+
+    const bool out_x = (primitive_bounds.min_x < bounds.x_min - kBoundsToleranceMm) ||
+                       (primitive_bounds.max_x > bounds.x_max + kBoundsToleranceMm);
+    const bool out_y = (primitive_bounds.min_y < bounds.y_min - kBoundsToleranceMm) ||
+                       (primitive_bounds.max_y > bounds.y_max + kBoundsToleranceMm);
+    if (!out_x && !out_y) {
+        return Result<void>::Success();
+    }
+
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(3);
+    oss << "DXF超出行程范围: "
+        << "x=[" << primitive_bounds.min_x << "," << primitive_bounds.max_x << "] "
+        << "y=[" << primitive_bounds.min_y << "," << primitive_bounds.max_y << "] "
+        << "limits x=[" << bounds.x_min << "," << bounds.x_max << "] "
+        << "y=[" << bounds.y_min << "," << bounds.y_max << "]";
+    return Result<void>::Failure(Error(ErrorCode::POSITION_OUT_OF_RANGE, oss.str(), "PlanningUseCase"));
 }
 
 void ApplyOffsetPoint(Siligen::Shared::Types::Point2D& point, const Siligen::Shared::Types::Point2D& offset) {
@@ -653,6 +869,7 @@ Result<PlanningResponse> PlanningUseCase::Execute(const PlanningRequest& request
 std::string PlanningUseCase::BuildAuthorityCacheKey(const PlanningRequest& request) const {
     const auto runtime_params = BuildPreviewRuntimeParams(request, config_port_);
     const auto offset = ResolveDxfOffset(config_port_);
+    const auto bounds = ResolveMachineBounds(config_port_);
 
     Siligen::Shared::Types::DispensingStrategy strategy = Siligen::Shared::Types::DispensingStrategy::BASELINE;
     int subsegment_count = 8;
@@ -708,7 +925,12 @@ std::string PlanningUseCase::BuildAuthorityCacheKey(const PlanningRequest& reque
         << subsegment_count << '|'
         << dispense_only_cruise << '|'
         << offset.x << '|'
-        << offset.y;
+        << offset.y << '|'
+        << bounds.enabled << '|'
+        << bounds.x_min << '|'
+        << bounds.x_max << '|'
+        << bounds.y_min << '|'
+        << bounds.y_max;
     return oss.str();
 }
 
@@ -748,6 +970,10 @@ Result<PreparedAuthorityPreview> PlanningUseCase::PrepareAuthorityPreview(const 
     }
 
     ApplyOffsetToPrimitives(primitives, ResolveDxfOffset(config_port_));
+    auto fit_bounds_result = AutoFitPrimitivesIntoMachineBounds(primitives, ResolveMachineBounds(config_port_));
+    if (fit_bounds_result.IsError()) {
+        return Result<PreparedAuthorityPreview>::Failure(fit_bounds_result.GetError());
+    }
 
     const auto runtime_params = BuildPreviewRuntimeParams(request, config_port_);
     const auto process_path_start = std::chrono::steady_clock::now();
