@@ -7,7 +7,8 @@ namespace Siligen::RuntimeExecution::Host::Motion {
 
 Siligen::Application::Services::Motion::Runtime::MotionRuntimeServicesBundle
 WorkflowMotionRuntimeServicesProvider::CreateServices(
-    const std::shared_ptr<Siligen::Domain::Motion::Ports::IMotionRuntimePort>& motion_runtime_port) const {
+    const std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IMotionRuntimePort>& motion_runtime_port)
+    const {
     Siligen::Application::Services::Motion::Runtime::MotionRuntimeServicesBundle bundle;
     if (!motion_runtime_port) {
         return bundle;

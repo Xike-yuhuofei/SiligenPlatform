@@ -4,14 +4,14 @@ from dataclasses import dataclass, replace
 from typing import Literal, Sequence
 
 from .startup import LaunchResult, launch_result_from_snapshot
-from .supervisor_contract import (
+from .launch_supervision_contract import (
     RecoveryAction,
     SessionSnapshot,
     SessionStageEvent,
     is_online_ready,
     snapshot_timestamp,
 )
-from .supervisor_session import SupervisorSession
+from .launch_supervision_session import SupervisorSession
 
 LedState = Literal["off", "green", "red"]
 

@@ -14,6 +14,13 @@ if(NOT TARGET siligen_process_planning_legacy_configuration_bridge_public)
     )
 endif()
 
+if(NOT TARGET siligen_dispense_packaging_domain_dispensing)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../dispense-packaging/domain/dispensing"
+        "${CMAKE_BINARY_DIR}/_p/rea_dpd"
+    )
+endif()
+
 set(SILIGEN_RUNTIME_EXECUTION_APPLICATION_PUBLIC_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
 if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_APPLICATION_PUBLIC_INCLUDE_DIR}/runtime_execution")
     message(FATAL_ERROR
@@ -72,6 +79,7 @@ target_include_directories(siligen_runtime_execution_application PRIVATE
 target_link_libraries(siligen_runtime_execution_application PUBLIC
     siligen_runtime_execution_runtime_contracts
     siligen_dispense_packaging_contracts_public
+    siligen_dispense_packaging_domain_dispensing
     siligen_domain
     siligen_process_planning_legacy_configuration_bridge_public
     siligen_types

@@ -9,14 +9,14 @@ from typing import TYPE_CHECKING, Callable, Literal
 
 from PyQt5.QtCore import QThread, pyqtSignal
 
-from .supervisor_contract import (
+from .launch_supervision_contract import (
     RecoveryAction,
     SessionSnapshot,
     SessionStageEvent,
     is_online_ready,
     snapshot_timestamp,
 )
-from .supervisor_session import SupervisorPolicy, SupervisorSession
+from .launch_supervision_session import SupervisorPolicy, SupervisorSession
 
 if TYPE_CHECKING:
     try:

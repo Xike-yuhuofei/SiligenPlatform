@@ -14,8 +14,8 @@ from hmi_application.launch_state import (
     detect_runtime_degradation_result,
     detect_runtime_requalification_result,
 )
+from hmi_application.launch_supervision_contract import SessionSnapshot, SessionStageEvent, snapshot_timestamp
 from hmi_application.startup import launch_result_from_snapshot
-from hmi_application.supervisor_contract import SessionSnapshot, SessionStageEvent, snapshot_timestamp
 
 
 def _snapshot(

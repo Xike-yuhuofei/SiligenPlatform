@@ -42,7 +42,7 @@ from .launch_state import (
     detect_runtime_degradation_result,
     detect_runtime_requalification_result,
 )
-from .supervisor_contract import (
+from .launch_supervision_contract import (
     FailureCode,
     FailureStage,
     RecoveryAction,
@@ -52,7 +52,7 @@ from .supervisor_contract import (
     is_online_ready,
     snapshot_timestamp,
 )
-from .supervisor_session import SupervisorPolicy, SupervisorSession
+from .launch_supervision_session import SupervisorPolicy, SupervisorSession
 from .startup_sequence import (
     build_offline_launch_result,
     LaunchResult,
@@ -66,10 +66,6 @@ from .startup_sequence import (
     run_recovery_action,
     run_launch_sequence,
 )
-try:
-    from hmi_application.preview_session import PreviewSessionOwner, PreviewSnapshotWorker
-except ImportError:  # pragma: no cover - script-mode fallback
-    from preview_session import PreviewSessionOwner, PreviewSnapshotWorker  # type: ignore
 
 __all__ = [
     "TcpClient",
@@ -102,8 +98,6 @@ __all__ = [
     "RuntimeDegradationResult",
     "RuntimeRequalificationResult",
     "StartBlockReason",
-    "PreviewSessionOwner",
-    "PreviewSnapshotWorker",
     "build_launch_ui_state",
     "build_offline_launch_result",
     "build_online_capability_message",

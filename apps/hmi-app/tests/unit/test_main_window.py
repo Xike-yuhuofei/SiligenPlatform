@@ -84,6 +84,9 @@ class FakeProtocol:
         self.start_job_calls.append((plan_id, target_count, plan_fingerprint))
         return self.start_job_response
 
+    def get_alarms(self):
+        return []
+
 
 class _FakePreviewView:
     def __init__(self) -> None:
@@ -479,6 +482,20 @@ class MainWindowTabsTest(unittest.TestCase):
 
         self.assertFalse(result)
         self.assertEqual(self.window.statusBar().currentMessage(), "安全门打开，无法点动")
+
+    def test_update_status_prefers_runtime_supervision_state_over_compat_machine_state(self) -> None:
+        status = self._make_status()
+        status.machine_state = "Idle"
+        status.machine_state_reason = "idle"
+        status.supervision.current_state = "Running"
+        status.supervision.state_reason = "job_running"
+        fake_protocol = FakeProtocol(status)
+        self.window._protocol = fake_protocol
+        self.window._is_online_ready = lambda: True
+
+        self.window._update_status()
+
+        self.assertEqual(self.window._state_label.text(), "Running")
 
     def test_on_jog_sends_protocol_request_when_preconditions_pass(self) -> None:
         status = self._make_status(x_homed=True, y_homed=True)

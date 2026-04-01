@@ -45,6 +45,7 @@ set(TEST_SOURCES
     unit/dispensing/CleanupFilesUseCaseTest.cpp
     unit/dispensing/DispensingWorkflowUseCaseTest.cpp
     unit/dispensing/DispensingWorkflowModeResolutionTest.cpp
+    unit/dispensing/DispensingProcessServiceBufferingTest.cpp
     unit/dispensing/DispensingProcessServiceWaitForMotionCompleteTest.cpp
     unit/dispensing/PlanningUseCaseExportPortTest.cpp
 )
@@ -327,4 +328,3 @@ if(TARGET process_runtime_core_tests)
         )
     endif()
 endif()
-

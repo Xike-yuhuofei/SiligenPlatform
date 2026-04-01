@@ -11,8 +11,8 @@ sys.path.insert(0, str(WORKSPACE_ROOT / "modules" / "hmi-application" / "applica
 
 from hmi_application.preview_gate import DispensePreviewGate as OwnerPreviewGate
 from hmi_application.launch_state import LaunchUiState as OwnerLaunchUiState
+from hmi_application.launch_supervision_session import SupervisorSession as OwnerSupervisorSession
 from hmi_application.startup import LaunchResult as OwnerLaunchResult
-from hmi_application.supervisor_session import SupervisorSession as OwnerSupervisorSession
 from hmi_client.client.launch_state import LaunchUiState as CompatLaunchUiState
 from hmi_client.client.startup_sequence import LaunchResult as CompatLaunchResult
 from hmi_client.client.supervisor_session import SupervisorSession as CompatSupervisorSession
