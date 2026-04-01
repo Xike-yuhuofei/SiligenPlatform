@@ -11,6 +11,7 @@ CONTRACTS = ROOT / "shared" / "contracts" / "application"
 HMI_PROTOCOL = ROOT / "apps" / "hmi-app" / "src" / "hmi_client" / "client" / "protocol.py"
 HMI_MAIN_WINDOW = ROOT / "apps" / "hmi-app" / "src" / "hmi_client" / "ui" / "main_window.py"
 TCP_DISPATCHER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "tcp" / "TcpCommandDispatcher.cpp"
+RUNTIME_STATUS_EXPORT_PORT = ROOT / "apps" / "runtime-service" / "runtime" / "status" / "WorkflowRuntimeStatusExportPort.cpp"
 
 
 def load_json(path: Path):
@@ -332,10 +333,21 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
     assert fixture_result["supervision"]["state_change_in_process"] is False
 
     assert "effective_interlocks_data = result.get(\"effective_interlocks\", {})" in protocol_source
-    assert "supervision_data = result.get(\"supervision\", {})" in protocol_source
+    assert "supervision_data = result.get(\"supervision\")" in protocol_source
+    assert "if not isinstance(supervision_data, dict):" in protocol_source
     assert "def gate_estop_active" in protocol_source
     assert "def gate_door_active" in protocol_source
     assert "def home_boundary_active" in protocol_source
+    assert "runtimeStatusExportPort_->ReadSnapshot()" in tcp_source
+    assert "BuildRawIoJson(status_snapshot)" in tcp_source
+    assert "BuildEffectiveInterlocksJson(status_snapshot)" in tcp_source
+    assert "BuildSupervisionJson(status_snapshot)" in tcp_source
+    status_source = RUNTIME_STATUS_EXPORT_PORT.read_text(encoding="utf-8")
+    assert "snapshot.machine_state = supervision.supervision.current_state;" in status_source
+    assert "snapshot.machine_state_reason = supervision.supervision.state_reason;" in status_source
+    assert "snapshot.io = supervision.io;" in status_source
+    assert "snapshot.effective_interlocks = supervision.effective_interlocks;" in status_source
+    assert "snapshot.supervision = supervision.supervision;" in status_source
     assert "{\"supervision\", supervisionJson}" in tcp_source
     assert "{\"effective_interlocks\", effectiveInterlocksJson}" in tcp_source
 

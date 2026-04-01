@@ -11,7 +11,7 @@ DXF_PREVIEW_SUCCESS_FIXTURE = CONTRACTS / "fixtures" / "responses" / "dxf.previe
 PROTOCOL_MAPPING = CONTRACTS / "mappings" / "protocol-mapping.md"
 TCP_DISPATCHER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "tcp" / "TcpCommandDispatcher.cpp"
 TCP_DISPATCHER_HEADER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "tcp" / "TcpCommandDispatcher.h"
-RUNTIME_SUPERVISION_ADAPTER = ROOT / "modules" / "runtime-execution" / "runtime" / "host" / "runtime" / "supervision" / "RuntimeSupervisionPortAdapter.cpp"
+RUNTIME_STATUS_EXPORT_PORT = ROOT / "apps" / "runtime-service" / "runtime" / "status" / "WorkflowRuntimeStatusExportPort.cpp"
 RUNTIME_SUPERVISION_BACKEND = ROOT / "apps" / "runtime-service" / "runtime" / "supervision" / "WorkflowRuntimeSupervisionBackend.cpp"
 TCP_DISPENSING_FACADE_HEADER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "facades" / "tcp" / "TcpDispensingFacade.h"
 TCP_DISPENSING_FACADE_CPP = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "facades" / "tcp" / "TcpDispensingFacade.cpp"
@@ -82,12 +82,12 @@ def test_app_entry_is_thin():
     host_header = TCP_SERVER_HOST_HEADER.read_text(encoding="utf-8")
     assert '#include "siligen/gateway/tcp/tcp_facade_builder.h"' in source
     assert '#include "siligen/gateway/tcp/tcp_server_host.h"' in source
-    assert '#include "runtime_execution/contracts/system/IRuntimeSupervisionPort.h"' in source
+    assert '#include "runtime_execution/contracts/system/IRuntimeStatusExportPort.h"' in source
     assert 'BuildTcpFacadeBundle(*container)' in source
     assert 'TcpServerHost server_host(' in source
     assert "TcpServerHostOptions{port}" in source
-    assert "ResolvePort<Siligen::RuntimeExecution::Contracts::System::IRuntimeSupervisionPort>()" in source
-    assert "std::shared_ptr<RuntimeExecution::Contracts::System::IRuntimeSupervisionPort> runtime_supervision_port" in host_header
+    assert "ResolvePort<Siligen::RuntimeExecution::Contracts::System::IRuntimeStatusExportPort>()" in source
+    assert "std::shared_ptr<RuntimeExecution::Contracts::System::IRuntimeStatusExportPort> runtime_status_export_port" in host_header
     assert 'TcpCommandDispatcher' not in source
     assert 'modules/control-gateway/src/' not in source
 
@@ -289,7 +289,7 @@ def test_status_reads_backend_interlock_signals():
 
 
 def test_status_supervision_contract_is_derived_by_runtime_supervision_adapter():
-    source = RUNTIME_SUPERVISION_ADAPTER.read_text(encoding="utf-8")
+    source = (ROOT / "modules" / "runtime-execution" / "runtime" / "host" / "runtime" / "supervision" / "RuntimeSupervisionPortAdapter.cpp").read_text(encoding="utf-8")
     assert "const bool heartbeat_degraded_while_connected =" in source
     assert "inputs.connection_info.state == Siligen::Device::Contracts::State::DeviceConnectionState::Connected &&" in source
     assert 'connection_state = "degraded";' in source
@@ -305,13 +305,14 @@ def test_status_supervision_contract_is_derived_by_runtime_supervision_adapter()
 
 def test_status_dispatcher_only_serializes_snapshot_and_compat_projection():
     source = TCP_DISPATCHER.read_text(encoding="utf-8")
-    assert "runtimeSupervisionPort_->ReadSnapshot()" in source
-    assert "BuildRawIoJson(supervision_snapshot)" in source
-    assert "BuildEffectiveInterlocksJson(supervision_snapshot)" in source
-    assert "BuildSupervisionJson(supervision_snapshot)" in source
-    assert "BuildCompatMachineState(supervision_snapshot)" in source
-    assert 'const std::string machine_state = compat_machine_state.state;' in source
-    assert 'const std::string machine_state_reason = compat_machine_state.reason;' in source
+    status_source = RUNTIME_STATUS_EXPORT_PORT.read_text(encoding="utf-8")
+    assert "runtimeStatusExportPort_->ReadSnapshot()" in source
+    assert "BuildRawIoJson(status_snapshot)" in source
+    assert "BuildEffectiveInterlocksJson(status_snapshot)" in source
+    assert "BuildSupervisionJson(status_snapshot)" in source
+    assert "BuildCompatMachineState(" not in source
+    assert "snapshot.machine_state = supervision.supervision.current_state;" in status_source
+    assert "snapshot.machine_state_reason = supervision.supervision.state_reason;" in status_source
     assert '{"supervision", supervisionJson}' in source
     assert '{"effective_interlocks", effectiveInterlocksJson}' in source
 
@@ -405,7 +406,7 @@ def test_homed_semantics_follow_homing_state_only():
     )
     assert status_match, "cannot locate HandleStatus body"
     status_body = status_match.group(0)
-    assert 'const bool is_homed = IsAxisStatusHomed(status);' in status_body
+    assert "BuildAxesJson(status_snapshot)" in status_body
     assert "MotionState::HOMED" not in status_body
 
     coord_match = re.search(
