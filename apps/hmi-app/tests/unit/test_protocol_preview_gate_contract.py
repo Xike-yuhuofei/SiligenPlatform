@@ -363,6 +363,38 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertEqual(message, "X: Timeout waiting for settle")
         self.assertEqual(client.calls[0][0], "home.auto")
 
+    def test_home_uses_extended_transport_timeout(self) -> None:
+        client = _FakeClient([{"result": {"completed": True, "message": "Homing completed"}}])
+        protocol = CommandProtocol(client)
+
+        ok, message = protocol.home()
+
+        self.assertTrue(ok)
+        self.assertEqual(message, "Homing completed")
+        self.assertEqual(client.calls[0], ("home", {}, 90.0))
+
+    def test_home_auto_extends_transport_timeout_from_requested_timeout(self) -> None:
+        client = _FakeClient(
+            [
+                {
+                    "result": {
+                        "accepted": True,
+                        "summary_state": "completed",
+                        "message": "Axes ready at zero",
+                        "axis_results": [],
+                        "total_time_ms": 123,
+                    }
+                }
+            ]
+        )
+        protocol = CommandProtocol(client)
+
+        ok, message = protocol.home_auto(["X"], timeout_ms=120000)
+
+        self.assertTrue(ok)
+        self.assertEqual(message, "Axes ready at zero")
+        self.assertEqual(client.calls[0], ("home.auto", {"axes": ["X"], "timeout_ms": 120000}, 130.0))
+
     def test_preview_snapshot_success_contract(self) -> None:
         client = _FakeClient(
             [

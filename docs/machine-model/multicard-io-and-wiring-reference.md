@@ -188,7 +188,8 @@ MHE3 系列是 FESTO 的高速微型阀, 专为快速切换应用设计:
 | 供胶压力下限 | - | bar | 供胶允许条件 | 系统无压力传感器,通过气压表人工监控 |
 | 点胶阀响应时间 | 5 | ms | 阀门开启/关闭机械延迟 | [ValveTiming] valve_response_time |
 | 点胶开启时间 | 100 | ms | 单次点胶持续时间 | [Dispensing] dispensing_time |
-| 回零超时 | 30 | s | 轴回零 | [Homing_Axis*] timeout_ms (所有轴) |
+| 回零统一速度 | 8.0 | mm/s | 轴回零与回零后二阶段归零 | [Homing_Axis*] ready_zero_speed_mm_s (所有轴) |
+| 回零超时 | 80 | s | 轴回零 | [Homing_Axis*] timeout_ms (所有轴) |
 | 运动超时 | - | s | 单段运动 | 由MultiCard SDK内部管理,未显式配置 |
 | 连接超时 | 5000 | ms | 控制卡连接超时 | [Network] timeout_ms |
 | 状态监控间隔 | 100 | ms | 轴状态轮询周期 | [Safety] status_monitor_interval |

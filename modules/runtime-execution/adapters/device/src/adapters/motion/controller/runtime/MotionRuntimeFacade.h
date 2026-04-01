@@ -87,7 +87,7 @@ class MotionRuntimeFacade final : public Domain::Motion::Ports::IMotionRuntimePo
     Result<Domain::Motion::Ports::HomingStatus> GetHomingStatus(LogicalAxisId axis) const override;
     Result<bool> IsAxisHomed(LogicalAxisId axis) const override;
     Result<bool> IsHomingInProgress(LogicalAxisId axis) const override;
-    Result<void> WaitForHomingComplete(LogicalAxisId axis, int32 timeout_ms = 30000) override;
+    Result<void> WaitForHomingComplete(LogicalAxisId axis, int32 timeout_ms = 80000) override;
 
     Result<void> ConnectRuntime(const Domain::Machine::Ports::HardwareConnectionConfig& config);
     Domain::Machine::Ports::HardwareConnectionInfo GetRuntimeConnectionInfo() const;

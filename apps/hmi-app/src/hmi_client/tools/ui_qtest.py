@@ -420,7 +420,7 @@ class GuiContractRunner:
             and bool(self._axis_status("Y"))
             and bool(self._axis_status("X").homed)
             and bool(self._axis_status("Y").homed),
-            timeout_ms=30000,
+            timeout_ms=80000,
         )
         self._wait_for(
             "runtime home settles velocity",

@@ -481,7 +481,7 @@ def ensure_mock_execution_runtime_ready(protocol: CommandProtocol) -> None:
         for axis in axes
     )
     if needs_ready_zero:
-        ok, message = protocol.home_auto(axes, force=True, wait_for_completion=True, timeout_ms=30000)
+        ok, message = protocol.home_auto(axes, force=True, wait_for_completion=True, timeout_ms=80000)
         if not ok:
             raise RuntimeError(f"mock ready-zero failed: {message or 'unknown'}")
         status = protocol.get_status()

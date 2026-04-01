@@ -3,6 +3,7 @@
 
 #include "ConfigValidator.h"
 
+#include <cmath>
 #include <iomanip>
 #include <sstream>
 #include "shared/interfaces/ILoggingService.h"
@@ -138,6 +139,20 @@ ValidationResult ConfigValidator::ValidateHomingConfigDetailed(const HomingConfi
     if (config.escape_timeout_ms < 0 ||
         (config.escape_timeout_ms > 0 && !ValidateTimeout(config.escape_timeout_ms))) {
         result.AddError(FormatRangeError("逃离超时", config.escape_timeout_ms, 100, 300000));
+    }
+
+    const float32 effective_ready_zero_speed =
+        has_ready_zero_speed ? config.ready_zero_speed_mm_s : config.locate_velocity;
+    if (config.search_distance > 0.0f && effective_ready_zero_speed > 0.0f) {
+        const auto travel_timeout_ms = static_cast<int32>(
+            std::ceil(static_cast<double>(config.search_distance) / static_cast<double>(effective_ready_zero_speed) *
+                      1000.0));
+        const int32 minimum_timeout_ms = travel_timeout_ms + std::max<int32>(config.settle_time_ms, 0);
+        if (config.timeout_ms < minimum_timeout_ms) {
+            result.AddError("超时时间不能小于搜索距离/回零速度 + 稳定时间: timeout_ms=" +
+                            std::to_string(config.timeout_ms) +
+                            ", minimum_required_ms=" + std::to_string(minimum_timeout_ms));
+        }
     }
 
     if (!ValidateRange(config.escape_max_attempts, 1, 3)) {

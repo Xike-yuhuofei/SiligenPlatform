@@ -57,7 +57,7 @@ class IHomingPort {
     virtual Result<bool> IsHomingInProgress(LogicalAxisId axis) const = 0;
 
     // 等待回零完成
-    virtual Result<void> WaitForHomingComplete(LogicalAxisId axis, int32 timeout_ms = 30000) = 0;
+    virtual Result<void> WaitForHomingComplete(LogicalAxisId axis, int32 timeout_ms = 80000) = 0;
 };
 
 }  // namespace Siligen::Domain::Motion::Ports
