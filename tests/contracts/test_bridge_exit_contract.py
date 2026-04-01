@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+import json
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
@@ -26,7 +27,7 @@ FORBIDDEN_CMAKE_SNIPPETS = LEGACY_FACT_CATALOG.snippets_for_rule(
 
 
 def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8", errors="ignore")
+    return path.read_text(encoding="utf-8-sig", errors="ignore")
 
 
 class BridgeExitContractTest(unittest.TestCase):
@@ -116,6 +117,24 @@ class BridgeExitContractTest(unittest.TestCase):
         self.assertIn("validate_workspace_layout.py", build_validation)
         self.assertIn("legacy-exit-checks.py", local_gate)
         self.assertIn("legacy-exit-checks.py", ci_entry)
+
+    def test_third_party_bootstrap_defaults_to_repo_tracked_bundles(self) -> None:
+        bootstrap_script = _read(WORKSPACE_ROOT / "scripts" / "bootstrap" / "bootstrap-third-party.ps1")
+        self.assertIn('Join-Path $PSScriptRoot "bundles"', bootstrap_script)
+
+        manifest = json.loads(_read(WORKSPACE_ROOT / "scripts" / "bootstrap" / "third-party-manifest.json"))
+        bundle_root = WORKSPACE_ROOT / "scripts" / "bootstrap" / "bundles"
+        self.assertTrue(bundle_root.exists(), msg="scripts/bootstrap/bundles is required for fresh clones")
+        for package in manifest["packages"]:
+            if not package.get("required", False):
+                continue
+            archive_name = package["archiveFileName"]
+            self.assertTrue((bundle_root / archive_name).exists(), msg=f"missing repo-tracked third-party bundle: {archive_name}")
+
+    def test_multicard_vendor_sdk_assets_are_tracked_in_canonical_dir(self) -> None:
+        vendor_root = WORKSPACE_ROOT / "modules" / "runtime-execution" / "adapters" / "device" / "vendor" / "multicard"
+        self.assertTrue((vendor_root / "MultiCard.dll").exists(), msg="canonical vendor dir must track MultiCard.dll")
+        self.assertTrue((vendor_root / "MultiCard.lib").exists(), msg="canonical vendor dir must track MultiCard.lib")
 
 
 if __name__ == "__main__":

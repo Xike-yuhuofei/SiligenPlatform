@@ -8,9 +8,11 @@ Canonical path:
 Current in-repo assets:
 - `MultiCard.def`
 - `MultiCard.exp`
+- `MultiCard.dll`
+- `MultiCard.lib`
 - `README.md`
 
-Required external vendor assets for real hardware:
+Tracked real-hardware vendor assets:
 - `MultiCard.dll`
 - `MultiCard.lib`
 
@@ -18,6 +20,7 @@ Bring-up rules:
 - `config/machine/machine_config.ini` is the only canonical machine config entry; do not introduce alternate bridge config paths.
 - `apps/runtime-service/run.ps1` and `apps/runtime-gateway/run.ps1` default to this canonical vendor directory and fail fast when `[Hardware] mode=Real` but `MultiCard.dll` is missing.
 - Missing `MultiCard.lib` does not block launching an already-built executable, but it does block rebuilding real-hardware binaries and must be treated as a bring-up prerequisite.
+- Fresh clones are expected to receive both files from the repository; if they are missing locally, treat it as repository integrity drift or an incomplete checkout.
 - External override is allowed only by passing `-VendorDir <path>` to the run script or by exporting `SILIGEN_MULTICARD_VENDOR_DIR` for the current shell session.
 - New vendor binaries must land in this canonical directory or in the explicitly provided external override path; do not restore payloads into any bridge directory.
 

@@ -249,7 +249,10 @@ function Invoke-ControlAppsBuild {
     }
 
     $buildTestsFlag = if ($EnableTests) { "ON" } else { "OFF" }
-    $usePchFlag = "ON"
+    # Validation builds favor determinism over compile acceleration. Several
+    # workspace targets already opt out of PCH on Windows/MSBuild to avoid
+    # intermittent file-lock failures under parallel builds.
+    $usePchFlag = "OFF"
     $parallelCompileFlag = "ON"
     Reset-ControlAppsBuildIfSourceRootChanged
     & cmake -S $workspaceSourceRoot -B $controlAppsBuild `
