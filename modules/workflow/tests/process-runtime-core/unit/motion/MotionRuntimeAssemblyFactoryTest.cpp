@@ -10,12 +10,12 @@
 #include "application/usecases/motion/coordination/MotionCoordinationUseCase.h"
 #include "application/usecases/motion/ptp/MoveToPositionUseCase.h"
 #include "application/usecases/motion/runtime/MotionRuntimeAssemblyFactory.h"
-#include "application/services/motion/runtime/IMotionRuntimeServicesProvider.h"
 #include "domain/configuration/ports/IConfigurationPort.h"
 #include "domain/dispensing/ports/ITriggerControllerPort.h"
 #include "domain/motion/ports/IInterpolationPort.h"
-#include "domain/motion/ports/IMotionRuntimePort.h"
 #include "domain/system/ports/IEventPublisherPort.h"
+#include "runtime_execution/application/services/motion/runtime/IMotionRuntimeServicesProvider.h"
+#include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
 #include "shared/types/Error.h"
 
 namespace {
@@ -43,7 +43,6 @@ using TriggerStatus = Siligen::Domain::Dispensing::Ports::TriggerStatus;
 using CoordinateSystemConfig = Siligen::Domain::Motion::Ports::CoordinateSystemConfig;
 using CoordinateSystemStatus = Siligen::Domain::Motion::Ports::CoordinateSystemStatus;
 using CoordinateSystemState = Siligen::Domain::Motion::Ports::CoordinateSystemState;
-using IMotionRuntimePort = Siligen::Domain::Motion::Ports::IMotionRuntimePort;
 using IInterpolationPort = Siligen::Domain::Motion::Ports::IInterpolationPort;
 using InterpolationData = Siligen::Domain::Motion::Ports::InterpolationData;
 using JogParameters = Siligen::Domain::Motion::Ports::JogParameters;
@@ -56,6 +55,7 @@ using MotionState = Siligen::Domain::Motion::Ports::MotionState;
 using MotionStatus = Siligen::Domain::Motion::Ports::MotionStatus;
 using MotionControlService = Siligen::Domain::Motion::DomainServices::MotionControlService;
 using MotionStatusService = Siligen::Domain::Motion::DomainServices::MotionStatusService;
+using IMotionRuntimePort = Siligen::RuntimeExecution::Contracts::Motion::IMotionRuntimePort;
 using DomainEvent = Siligen::Domain::System::Ports::DomainEvent;
 using EventType = Siligen::Domain::System::Ports::EventType;
 using EventHandler = Siligen::Domain::System::Ports::EventHandler;

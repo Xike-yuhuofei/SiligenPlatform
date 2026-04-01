@@ -1,6 +1,6 @@
 # 正式发版前测试执行清单
 
-更新时间：`2026-03-26`
+更新时间：`2026-04-01`
 
 ## 1. 目的
 
@@ -150,8 +150,9 @@ New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
   ```powershell
   .\release-check.ps1 -Version $RcVersion -ReportDir (Join-Path $EvidenceRootRelative "phase3-rc-release-check")
   ```
-  通过标准：工作树干净；`build/test/release-check` 全部通过；dry-run 无 `BLOCKED`；RC evidence 生成成功。  
+  通过标准：工作树干净；`build/test/release-check` 全部通过；dry-run 无 `BLOCKED`；`hil-case-matrix/case-matrix-summary.json/.md` 存在且通过；RC evidence 生成成功。
   证据：`$EvidenceRoot\phase3-rc-release-check\`
+  默认已纳入 HIL case matrix；仅在临时隔离排障时显式使用：`-IncludeHilCaseMatrix:$false`
 
 - [ ] `P3-02` 复核 RC 证据完整性  
   复核范围：
@@ -231,7 +232,8 @@ New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
     -HilPauseResumeCycles 3 `
     -PublishLatestOnPass:$false
   ```
-  通过标准：`workspace-validation`、`hardware-smoke`、`hil-closed-loop` 全部通过；`failed=0`、`known_failure=0`、`skipped=0`。
+  通过标准：`workspace-validation`、`hardware-smoke`、`hil-closed-loop`、`hil-case-matrix` 全部通过；`failed=0`、`known_failure=0`、`skipped=0`。
+  默认已纳入多轮矩阵；仅在临时隔离排障时显式使用：`-IncludeHilCaseMatrix:$false`
 
 - [ ] `P5-04` 执行 HIL 正式门禁（1800s）  
   命令：
@@ -242,8 +244,9 @@ New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
     -HilDurationSeconds 1800 `
     -HilPauseResumeCycles 3
   ```
-  通过标准：`overall_status=passed`，`timeout_count=0`，`pause/resume=3` 达标。  
+  通过标准：`overall_status=passed`，`timeout_count=0`，`pause/resume=3` 达标，且 `hil-case-matrix` 通过。
   证据：`tests\reports\hil-controlled-test\<timestamp>\` 和 `tests\reports\hil-controlled-test\latest-source.txt`
+  默认已纳入多轮矩阵；仅在临时隔离排障时显式使用：`-IncludeHilCaseMatrix:$false`
 
 - [ ] `P5-05` 完成真机多批次回归记录  
   参考模板：  
@@ -287,8 +290,9 @@ New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
   ```powershell
   .\release-check.ps1 -Version $Version -IncludeHardwareSmoke -ReportDir (Join-Path $EvidenceRootRelative "phase6-formal-release-check")
   ```
-  通过标准：正式版 release evidence 生成成功；不使用 `blocked` 豁免；性能基线和 app dry-run 全部满足要求。  
+  通过标准：正式版 release evidence 生成成功；不使用 `blocked` 豁免；性能基线、app dry-run、`hil-case-matrix/case-matrix-summary.json/.md` 全部满足要求。
   证据：`$EvidenceRoot\phase6-formal-release-check\`
+  默认已纳入 HIL case matrix；仅在临时隔离排障时显式使用：`-IncludeHilCaseMatrix:$false`
 
 - [ ] `P6-03` 按 `G1-G8` 完成最终放行复核  
   参考文档：  

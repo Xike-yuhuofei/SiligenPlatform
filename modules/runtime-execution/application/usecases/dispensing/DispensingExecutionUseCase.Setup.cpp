@@ -2,7 +2,6 @@
 
 #include "DispensingExecutionUseCase.Internal.h"
 
-#include "domain/dispensing/domain-services/DispensingProcessService.h"
 #include "runtime_execution/contracts/safety/InterlockPolicy.h"
 #include "runtime_execution/contracts/safety/SafetyOutputGuard.h"
 #include "shared/logging/PrintfLogFormatter.h"
@@ -23,14 +22,14 @@ using Domain::Safety::ValueObjects::InterlockCause;
 using Domain::Safety::ValueObjects::InterlockPolicyConfig;
 
 Result<void> DispensingExecutionUseCase::Impl::ValidateHardwareConnection(bool allow_disconnected) noexcept {
-    if (!process_service_) {
+    if (!process_port_) {
         return Result<void>::Failure(
             Error(ErrorCode::PORT_NOT_INITIALIZED, "点胶流程服务未初始化", "DispensingExecutionUseCase"));
     }
     if (allow_disconnected) {
         return Result<void>::Success();
     }
-    return process_service_->ValidateHardwareConnection();
+    return process_port_->ValidateHardwareConnection();
 }
 
 Result<void> DispensingExecutionUseCase::Impl::ValidateExecutionPreconditions(bool allow_disconnected) const noexcept {
@@ -119,7 +118,7 @@ Result<void> DispensingExecutionUseCase::Impl::ValidateExecutionPreconditions(bo
 
 Result<void> DispensingExecutionUseCase::Impl::RefreshRuntimeParameters(
     const DispensingExecutionRequest& request) noexcept {
-    if (!process_service_) {
+    if (!process_port_) {
         return Result<void>::Failure(
             Error(ErrorCode::PORT_NOT_INITIALIZED, "点胶流程服务未初始化", "DispensingExecutionUseCase"));
     }
@@ -153,7 +152,7 @@ Result<void> DispensingExecutionUseCase::Impl::RefreshRuntimeParameters(
     overrides.velocity_guard_max_consecutive = request.velocity_guard_max_consecutive;
     overrides.velocity_guard_stop_on_violation = request.velocity_guard_stop_on_violation;
 
-    auto runtime_result = process_service_->BuildRuntimeParams(overrides);
+    auto runtime_result = process_port_->BuildRuntimeParams(overrides);
     if (runtime_result.IsError()) {
         return Result<void>::Failure(runtime_result.GetError());
     }

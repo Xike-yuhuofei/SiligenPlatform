@@ -11,6 +11,7 @@ param(
     [double]$HilStateWaitTimeoutSeconds = 8,
     [switch]$AllowSkipOnMissingHardware,
     [switch]$SkipBuild,
+    [switch]$IncludeHilCaseMatrix = $true,
     [bool]$PublishLatestOnPass = $true,
     [string]$PublishLatestReportDir = "tests\\reports\\hil-controlled-test",
     [string]$PythonExe = "python",
@@ -39,7 +40,7 @@ function Resolve-HilSummaryPath {
     throw "missing hil report artifact: $FileName under $ResolvedReportDir"
 }
 
-$workspaceRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+$workspaceRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
 $buildScript = Join-Path $workspaceRoot "build.ps1"
 $testScript = Join-Path $workspaceRoot "test.ps1"
 $gateScript = Join-Path $PSScriptRoot "verify_hil_controlled_gate.py"
@@ -99,9 +100,13 @@ Write-Output "  dispenser_duration_ms=$HilDispenserDurationMs"
 Write-Output "  state_wait_timeout_seconds=$HilStateWaitTimeoutSeconds"
 Write-Output "  allow_skip_on_missing_hardware=$([bool]$AllowSkipOnMissingHardware)"
 Write-Output "  skip_build=$([bool]$SkipBuild)"
+Write-Output "  include_hil_case_matrix=$([bool]$IncludeHilCaseMatrix)"
 Write-Output "  publish_latest_on_pass=$PublishLatestOnPass"
 Write-Output "  publish_latest_report_dir=$resolvedPublishLatestReportDir"
 Write-Output "  python_exe=$PythonExe"
+if (-not $IncludeHilCaseMatrix) {
+    Write-Warning "hil controlled test: hil-case-matrix disabled via explicit override; this run does not satisfy the default controlled-gate baseline."
+}
 
 if ($SkipBuild) {
     Write-Output "hil controlled test: skip build apps (SkipBuild=true)"
@@ -122,6 +127,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File $testScript `
     -ReportDir $resolvedReportDir `
     -IncludeHardwareSmoke `
     -IncludeHilClosedLoop `
+    -IncludeHilCaseMatrix:$IncludeHilCaseMatrix `
     -FailOnKnownFailure
 $testExitCode = $LASTEXITCODE
 if ($testExitCode -ne 0) {
@@ -133,15 +139,35 @@ $workspaceValidationJsonPath = Join-Path $resolvedReportDir "workspace-validatio
 $workspaceValidationMdPath = Join-Path $resolvedReportDir "workspace-validation.md"
 $hilSummaryJsonPath = Resolve-HilSummaryPath -ResolvedReportDir $resolvedReportDir -FileName "hil-closed-loop-summary.json"
 $hilSummaryMdPath = Resolve-HilSummaryPath -ResolvedReportDir $resolvedReportDir -FileName "hil-closed-loop-summary.md"
+$hilCaseMatrixSummaryJsonPath = Join-Path (Join-Path $resolvedReportDir "hil-case-matrix") "case-matrix-summary.json"
+$hilCaseMatrixSummaryMdPath = Join-Path (Join-Path $resolvedReportDir "hil-case-matrix") "case-matrix-summary.md"
 $gateSummaryJsonPath = Join-Path $resolvedReportDir "hil-controlled-gate-summary.json"
 $gateSummaryMdPath = Join-Path $resolvedReportDir "hil-controlled-gate-summary.md"
 $releaseSummaryMdPath = Join-Path $resolvedReportDir "hil-controlled-release-summary.md"
 
+if ($IncludeHilCaseMatrix) {
+    if (-not (Test-Path $hilCaseMatrixSummaryJsonPath)) {
+        throw "missing hil case matrix summary json: $hilCaseMatrixSummaryJsonPath"
+    }
+    if (-not (Test-Path $hilCaseMatrixSummaryMdPath)) {
+        throw "missing hil case matrix summary markdown: $hilCaseMatrixSummaryMdPath"
+    }
+}
+
 Write-Output "hil controlled test: verify controlled gate"
-& $PythonExe $gateScript `
-    --report-dir $resolvedReportDir `
-    --workspace-validation-json $workspaceValidationJsonPath `
-    --hil-closed-loop-summary-json $hilSummaryJsonPath
+$gateArgs = @(
+    $gateScript,
+    "--report-dir", $resolvedReportDir,
+    "--workspace-validation-json", $workspaceValidationJsonPath,
+    "--hil-closed-loop-summary-json", $hilSummaryJsonPath
+)
+if ($IncludeHilCaseMatrix) {
+    $gateArgs += @(
+        "--require-hil-case-matrix",
+        "--hil-case-matrix-summary-json", $hilCaseMatrixSummaryJsonPath
+    )
+}
+& $PythonExe @gateArgs
 $gateExitCode = $LASTEXITCODE
 
 Write-Output "hil controlled test: render release summary"
@@ -164,6 +190,10 @@ Write-Output "workspace validation json: $workspaceValidationJsonPath"
 Write-Output "workspace validation markdown: $workspaceValidationMdPath"
 Write-Output "hil closed-loop summary json: $hilSummaryJsonPath"
 Write-Output "hil closed-loop summary markdown: $hilSummaryMdPath"
+if ($IncludeHilCaseMatrix) {
+    Write-Output "hil case matrix summary json: $hilCaseMatrixSummaryJsonPath"
+    Write-Output "hil case matrix summary markdown: $hilCaseMatrixSummaryMdPath"
+}
 Write-Output "gate summary json: $gateSummaryJsonPath"
 Write-Output "gate summary markdown: $gateSummaryMdPath"
 Write-Output "release summary markdown: $releaseSummaryMdPath"
@@ -185,14 +215,18 @@ if (-not $PublishLatestOnPass) {
 if ($resolvedReportDir -ieq $resolvedPublishLatestReportDir) {
     Write-Output "latest reports already in canonical dir: $resolvedPublishLatestReportDir"
     $manifestPathSameDir = Join-Path $resolvedPublishLatestReportDir "latest-source.txt"
-    $manifestLinesSameDir = @(
+    $manifestLinesSameDir = [System.Collections.Generic.List[string]]::new()
+    @(
         "updated_at_utc=$((Get-Date).ToUniversalTime().ToString('o'))",
         "source_report_dir=$resolvedReportDir",
         "source_workspace_validation_json=$workspaceValidationJsonPath",
         "source_hil_summary_json=$hilSummaryJsonPath",
         "source_gate_summary_json=$gateSummaryJsonPath",
         "source_release_summary_md=$releaseSummaryMdPath"
-    )
+    ) | ForEach-Object { $manifestLinesSameDir.Add($_) | Out-Null }
+    if ($IncludeHilCaseMatrix) {
+        $manifestLinesSameDir.Add("source_hil_case_matrix_summary_json=$hilCaseMatrixSummaryJsonPath") | Out-Null
+    }
     $manifestLinesSameDir | Set-Content -Path $manifestPathSameDir -Encoding UTF8
     Write-Output "publish manifest: $manifestPathSameDir"
     exit 0
@@ -203,19 +237,29 @@ Copy-Item -Path $workspaceValidationJsonPath -Destination (Join-Path $resolvedPu
 Copy-Item -Path $workspaceValidationMdPath -Destination (Join-Path $resolvedPublishLatestReportDir "workspace-validation.md") -Force
 Copy-Item -Path $hilSummaryJsonPath -Destination (Join-Path $resolvedPublishLatestReportDir "hil-closed-loop-summary.json") -Force
 Copy-Item -Path $hilSummaryMdPath -Destination (Join-Path $resolvedPublishLatestReportDir "hil-closed-loop-summary.md") -Force
+if ($IncludeHilCaseMatrix) {
+    $publishHilCaseMatrixDir = Join-Path $resolvedPublishLatestReportDir "hil-case-matrix"
+    New-Item -ItemType Directory -Path $publishHilCaseMatrixDir -Force | Out-Null
+    Copy-Item -Path $hilCaseMatrixSummaryJsonPath -Destination (Join-Path $publishHilCaseMatrixDir "case-matrix-summary.json") -Force
+    Copy-Item -Path $hilCaseMatrixSummaryMdPath -Destination (Join-Path $publishHilCaseMatrixDir "case-matrix-summary.md") -Force
+}
 Copy-Item -Path $gateSummaryJsonPath -Destination (Join-Path $resolvedPublishLatestReportDir "hil-controlled-gate-summary.json") -Force
 Copy-Item -Path $gateSummaryMdPath -Destination (Join-Path $resolvedPublishLatestReportDir "hil-controlled-gate-summary.md") -Force
 Copy-Item -Path $releaseSummaryMdPath -Destination (Join-Path $resolvedPublishLatestReportDir "hil-controlled-release-summary.md") -Force
 
 $manifestPath = Join-Path $resolvedPublishLatestReportDir "latest-source.txt"
-$manifestLines = @(
+$manifestLines = [System.Collections.Generic.List[string]]::new()
+@(
     "updated_at_utc=$((Get-Date).ToUniversalTime().ToString('o'))",
     "source_report_dir=$resolvedReportDir",
     "source_workspace_validation_json=$workspaceValidationJsonPath",
     "source_hil_summary_json=$hilSummaryJsonPath",
     "source_gate_summary_json=$gateSummaryJsonPath",
     "source_release_summary_md=$releaseSummaryMdPath"
-)
+ ) | ForEach-Object { $manifestLines.Add($_) | Out-Null }
+if ($IncludeHilCaseMatrix) {
+    $manifestLines.Add("source_hil_case_matrix_summary_json=$hilCaseMatrixSummaryJsonPath") | Out-Null
+}
 $manifestLines | Set-Content -Path $manifestPath -Encoding UTF8
 
 Write-Output "published latest reports to: $resolvedPublishLatestReportDir"

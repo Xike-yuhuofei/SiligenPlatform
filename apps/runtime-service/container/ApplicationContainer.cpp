@@ -79,6 +79,7 @@ ApplicationContainer::~ApplicationContainer() {
 void ApplicationContainer::Configure() {
     ConfigurePorts();
     ConfigureServices();
+    ConfigureSystemOwnerPorts();
     ConfigureUseCases();
 }
 

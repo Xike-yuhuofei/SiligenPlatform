@@ -11,8 +11,13 @@ try:
     from hmi_client.qt_env import configure_qt_environment
 except ImportError:  # pragma: no cover - script-mode fallback
     from qt_env import configure_qt_environment
+try:
+    from hmi_client.module_paths import ensure_hmi_application_path
+except ImportError:  # pragma: no cover - script-mode fallback
+    from module_paths import ensure_hmi_application_path  # type: ignore
 
 configure_qt_environment(headless=False)
+ensure_hmi_application_path()
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -38,8 +43,6 @@ from client import (
     LaunchUiState,
     LaunchResult,
     PreviewSnapshotMeta,
-    PreviewSessionOwner,
-    PreviewSnapshotWorker,
     RecoveryWorker,
     StartupWorker,
     TcpClient,
@@ -55,6 +58,7 @@ from client import (
     load_supervisor_policy_from_env,
     normalize_launch_mode,
 )
+from hmi_application.preview_session import PreviewSessionOwner, PreviewSnapshotWorker
 from client.auth import AuthManager
 from .dxf_default_paths import build_default_dxf_candidates
 from .styles import DARK_THEME
@@ -3034,7 +3038,7 @@ class MainWindow(QMainWindow):
             self._last_status_ts = time.monotonic()
             self._runtime_status_fault = False
             self._last_status_error_notice_ts = 0.0
-            self._state_label.setText(status.machine_state)
+            self._state_label.setText(status.runtime_state)
 
             # Update Dispenser Status
             is_dispensing = status.dispenser_valve_open

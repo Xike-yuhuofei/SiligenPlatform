@@ -7,8 +7,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from hmi_client.client.backend_manager import BackendStepResult
-from hmi_client.client.supervisor_contract import SessionSnapshot
-from hmi_client.client.supervisor_session import SupervisorPolicy, SupervisorSession
+from hmi_client.client.launch_supervision_contract import SessionSnapshot
+from hmi_client.client.launch_supervision_session import SupervisorPolicy, SupervisorSession
 
 
 class _FakeBackend:

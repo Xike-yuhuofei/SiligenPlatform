@@ -6,7 +6,8 @@ param(
     [string]$ReportDir = "tests\\reports",
     [switch]$FailOnKnownFailure,
     [switch]$IncludeHardwareSmoke,
-    [switch]$IncludeHilClosedLoop
+    [switch]$IncludeHilClosedLoop,
+    [switch]$IncludeHilCaseMatrix
 )
 
 $ErrorActionPreference = "Stop"
@@ -35,4 +36,5 @@ $runner = Resolve-RootRunner `
     -ReportDir $ReportDir `
     -FailOnKnownFailure:$FailOnKnownFailure `
     -IncludeHardwareSmoke:$IncludeHardwareSmoke `
-    -IncludeHilClosedLoop:$IncludeHilClosedLoop
+    -IncludeHilClosedLoop:$IncludeHilClosedLoop `
+    -IncludeHilCaseMatrix:$IncludeHilCaseMatrix

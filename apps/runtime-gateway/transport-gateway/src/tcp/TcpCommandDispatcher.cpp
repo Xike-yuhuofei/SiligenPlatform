@@ -14,6 +14,7 @@
 #include "facades/tcp/TcpSystemFacade.h"
 #include "domain/configuration/ports/IConfigurationPort.h"
 #include "domain/configuration/services/ReadyZeroSpeedResolver.h"
+#include "runtime_execution/contracts/system/IRuntimeSupervisionPort.h"
 
 #include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
 
@@ -681,6 +682,59 @@ bool IsAxisStatusHomed(const Siligen::Domain::Motion::Ports::MotionStatus& statu
     return status.homing_state == "homed";
 }
 
+using RuntimeSupervisionSnapshot = Siligen::RuntimeExecution::Contracts::System::RuntimeSupervisionSnapshot;
+
+struct CompatMachineState {
+    std::string state;
+    std::string reason;
+};
+
+nlohmann::json BuildRawIoJson(const RuntimeSupervisionSnapshot& snapshot) {
+    return {
+        {"limit_x_pos", snapshot.io.limit_x_pos},
+        {"limit_x_neg", snapshot.io.limit_x_neg},
+        {"limit_y_pos", snapshot.io.limit_y_pos},
+        {"limit_y_neg", snapshot.io.limit_y_neg},
+        {"estop", snapshot.io.estop},
+        {"estop_known", snapshot.io.estop_known},
+        {"door", snapshot.io.door},
+        {"door_known", snapshot.io.door_known}
+    };
+}
+
+nlohmann::json BuildEffectiveInterlocksJson(const RuntimeSupervisionSnapshot& snapshot) {
+    return {
+        {"estop_active", snapshot.effective_interlocks.estop_active},
+        {"estop_known", snapshot.effective_interlocks.estop_known},
+        {"door_open_active", snapshot.effective_interlocks.door_open_active},
+        {"door_open_known", snapshot.effective_interlocks.door_open_known},
+        {"home_boundary_x_active", snapshot.effective_interlocks.home_boundary_x_active},
+        {"home_boundary_y_active", snapshot.effective_interlocks.home_boundary_y_active},
+        {"positive_escape_only_axes", snapshot.effective_interlocks.positive_escape_only_axes},
+        {"sources", snapshot.effective_interlocks.sources}
+    };
+}
+
+nlohmann::json BuildSupervisionJson(const RuntimeSupervisionSnapshot& snapshot) {
+    return {
+        {"current_state", snapshot.supervision.current_state},
+        {"requested_state", snapshot.supervision.requested_state},
+        {"state_change_in_process", snapshot.supervision.state_change_in_process},
+        {"state_reason", snapshot.supervision.state_reason},
+        {"failure_code", snapshot.supervision.failure_code},
+        {"failure_stage", snapshot.supervision.failure_stage},
+        {"recoverable", snapshot.supervision.recoverable},
+        {"updated_at", snapshot.supervision.updated_at}
+    };
+}
+
+CompatMachineState BuildCompatMachineState(const RuntimeSupervisionSnapshot& snapshot) {
+    return {
+        snapshot.supervision.current_state,
+        snapshot.supervision.state_reason
+    };
+}
+
 struct ManualInterlockSnapshot {
     bool emergency_stop_active = false;
     bool safety_door_open = false;
@@ -752,12 +806,14 @@ TcpCommandDispatcher::TcpCommandDispatcher(
     std::shared_ptr<Application::Facades::Tcp::TcpDispensingFacade> dispensingFacade,
     std::shared_ptr<Application::Facades::Tcp::TcpRecipeFacade> recipeFacade,
     std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> configPort,
+    std::shared_ptr<RuntimeExecution::Contracts::System::IRuntimeSupervisionPort> runtimeSupervisionPort,
     std::shared_ptr<MockIoControlService> mockIoControl)
     : systemFacade_(std::move(systemFacade))
     , motionFacade_(std::move(motionFacade))
     , dispensingFacade_(std::move(dispensingFacade))
     , recipeFacade_(std::move(recipeFacade))
     , configPort_(std::move(configPort))
+    , runtimeSupervisionPort_(std::move(runtimeSupervisionPort))
     , mockIoControl_(std::move(mockIoControl))
 {
     RegisterCommands();
@@ -1015,44 +1071,28 @@ std::string TcpCommandDispatcher::HandleStatus(const std::string& id, const nloh
     if (!motionFacade_) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 2100, "TcpMotionFacade not available");
     }
+    if (!runtimeSupervisionPort_) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2101, "RuntimeSupervisionPort not available");
+    }
 
     nlohmann::json axesJson = nlohmann::json::object();
-    bool connected = false;
-    bool estop_active = false;
-    bool estop_state_known = false;
-    bool any_axis_fault = false;
-    bool any_axis_moving = false;
-    bool home_boundary_x_active = false;
-    bool home_boundary_y_active = false;
-    const bool has_hardware_connection_port = motionFacade_->HasHardwareConnectionPort();
-    const auto connection_info = motionFacade_->GetHardwareConnectionInfo();
-    const auto heartbeat_status = motionFacade_->GetHeartbeatStatus();
-    const bool heartbeat_degraded_while_connected =
-        connection_info.state == Siligen::Device::Contracts::State::DeviceConnectionState::Connected &&
-        heartbeat_status.is_degraded;
-    const bool hardware_ready =
-        !has_hardware_connection_port || (connection_info.IsConnected() && !heartbeat_status.is_degraded);
-    const bool can_query_motion_state = !has_hardware_connection_port || hardware_ready;
+    const auto supervision_result = runtimeSupervisionPort_->ReadSnapshot();
+    if (supervision_result.IsError()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2101, supervision_result.GetError().GetMessage());
+    }
+    const auto& supervision_snapshot = supervision_result.Value();
+    const bool connected = supervision_snapshot.connected;
+    const bool can_query_motion_state = connected;
 
     // 获取各轴状态。连接降级时优先使用连接端口结论，避免继续把不可靠的监控数据当作在线状态。
     if (can_query_motion_state) {
         auto allStatusResult = motionFacade_->GetAllAxesMotionStatus();
         if (allStatusResult.IsSuccess()) {
-            connected = true;
             const auto& statuses = allStatusResult.Value();
             const char* axisNames[] = {"X", "Y", "Z", "U"};
             for (size_t i = 0; i < statuses.size() && i < 4; ++i) {
                 const auto& status = statuses[i];
                 const bool is_homed = IsAxisStatusHomed(status);
-                estop_active = estop_active || (status.state == Domain::Motion::Ports::MotionState::ESTOP);
-                any_axis_fault = any_axis_fault || status.has_error || status.servo_alarm || status.following_error ||
-                                 status.state == Domain::Motion::Ports::MotionState::FAULT;
-                any_axis_moving = any_axis_moving || status.state == Domain::Motion::Ports::MotionState::MOVING;
-                if (i == 0) {
-                    home_boundary_x_active = status.home_signal;
-                } else if (i == 1) {
-                    home_boundary_y_active = status.home_signal;
-                }
                 nlohmann::json axisJson = {
                     {"position", status.position.x},
                     {"velocity", status.velocity},
@@ -1064,17 +1104,6 @@ std::string TcpCommandDispatcher::HandleStatus(const std::string& id, const nloh
             }
         }
     }
-    if (has_hardware_connection_port) {
-        connected = hardware_ready;
-    }
-    if (systemFacade_) {
-        auto estopStateResult = systemFacade_->IsInEmergencyStop();
-        if (estopStateResult.IsSuccess()) {
-            estop_state_known = true;
-            estop_active = estop_active || estopStateResult.Value();
-        }
-    }
-
     // 获取当前位置
     nlohmann::json positionJson = nlohmann::json::object();
     if (can_query_motion_state) {
@@ -1101,209 +1130,22 @@ std::string TcpCommandDispatcher::HandleStatus(const std::string& id, const nloh
         }
     }
 
-    bool estop_known = connected || estop_state_known;
-    bool door_known = false;
-    bool door_open = false;
-    bool interlock_latched = false;
-    nlohmann::json ioJson = {
-        {"limit_x_pos", false},
-        {"limit_x_neg", false},
-        {"limit_y_pos", false},
-        {"limit_y_neg", false},
-        {"estop", estop_active},
-        {"estop_known", estop_known},
-        {"door", door_open},
-        {"door_known", door_known}
-    };
-    if (can_query_motion_state) {
-        auto limitXPos = motionFacade_->ReadLimitStatus(LogicalAxisId::X, true);
-        if (limitXPos.IsSuccess()) {
-            ioJson["limit_x_pos"] = limitXPos.Value();
-        }
-        auto limitXNeg = motionFacade_->ReadLimitStatus(LogicalAxisId::X, false);
-        if (limitXNeg.IsSuccess()) {
-            ioJson["limit_x_neg"] = limitXNeg.Value();
-        }
-        auto limitYPos = motionFacade_->ReadLimitStatus(LogicalAxisId::Y, true);
-        if (limitYPos.IsSuccess()) {
-            ioJson["limit_y_pos"] = limitYPos.Value();
-        }
-        auto limitYNeg = motionFacade_->ReadLimitStatus(LogicalAxisId::Y, false);
-        if (limitYNeg.IsSuccess()) {
-            ioJson["limit_y_neg"] = limitYNeg.Value();
-        }
-    }
-    if (dispensingFacade_) {
-        auto interlockResult = dispensingFacade_->ReadInterlockSignals();
-        if (interlockResult.IsSuccess()) {
-            const auto& signals = interlockResult.Value();
-            estop_known = true;
-            door_known = true;
-            door_open = signals.safety_door_open;
-            ioJson["estop"] = estop_active || signals.emergency_stop_triggered;
-            ioJson["estop_known"] = estop_known;
-            ioJson["door"] = signals.safety_door_open;
-            ioJson["door_known"] = door_known;
-        }
-        interlock_latched = dispensingFacade_->IsInterlockLatched();
-    }
-
-    std::string connection_state = connected ? "connected" : "disconnected";
-    std::string machine_state = "Disconnected";
-    std::string machine_state_reason = connected ? "idle" : "motion_status_unavailable";
-    if (has_hardware_connection_port) {
-        connection_state = ToConnectionStateLabel(connection_info.state);
-        switch (connection_info.state) {
-            case Siligen::Device::Contracts::State::DeviceConnectionState::Connected:
-                machine_state = "Idle";
-                machine_state_reason = "idle";
-                break;
-            case Siligen::Device::Contracts::State::DeviceConnectionState::Connecting:
-                machine_state = "Unknown";
-                machine_state_reason = "hardware_connecting";
-                break;
-            case Siligen::Device::Contracts::State::DeviceConnectionState::Error:
-                machine_state = "Fault";
-                machine_state_reason = "hardware_connection_error";
-                break;
-            case Siligen::Device::Contracts::State::DeviceConnectionState::Disconnected:
-            default:
-                machine_state = "Disconnected";
-                machine_state_reason = "hardware_disconnected";
-                break;
-        }
-
-        if (heartbeat_degraded_while_connected) {
-            connection_state = "degraded";
-            machine_state = "Degraded";
-            machine_state_reason = "heartbeat_degraded";
-        }
-    }
-
-    std::string active_job_id;
-    std::string active_job_state;
-    if (connected) {
-        machine_state = "Idle";
-        {
-            std::lock_guard<std::mutex> lock(dxf_mutex_);
-            active_job_id = active_dxf_job_id_;
-        }
-        if (!active_job_id.empty() && dispensingFacade_) {
-            auto job_status_result = dispensingFacade_->GetDxfJobStatus(active_job_id);
-            if (job_status_result.IsSuccess()) {
-                const auto& job_status = job_status_result.Value();
-                active_job_state = job_status.state;
-                if (job_status.state == "paused") {
-                    machine_state = "Paused";
-                    machine_state_reason = "job_paused";
-                } else if (job_status.state == "pending" || job_status.state == "running" || job_status.state == "stopping") {
-                    machine_state = "Running";
-                    machine_state_reason = std::string("job_") + job_status.state;
-                } else if (job_status.state == "failed") {
-                    machine_state = "Fault";
-                    machine_state_reason = "job_failed";
-                }
-                if (job_status.state == "completed" || job_status.state == "failed" || job_status.state == "cancelled") {
-                    std::lock_guard<std::mutex> lock(dxf_mutex_);
-                    if (active_dxf_job_id_ == active_job_id) {
-                        active_dxf_job_id_.clear();
-                    }
-                }
-            } else {
-                active_job_state = "unknown";
-                machine_state_reason = "job_status_unavailable";
-            }
-        }
-
-        if (machine_state == "Idle" && any_axis_moving) {
-            machine_state = "Running";
-            machine_state_reason = "axis_motion";
-        }
-        if (any_axis_fault) {
-            machine_state = "Fault";
-            machine_state_reason = "axis_fault";
-        }
-        if (ioJson.value("estop", false)) {
-            machine_state = "Estop";
-            machine_state_reason = "interlock_estop";
-        } else if (door_known && door_open && machine_state != "Fault") {
-            machine_state = "Fault";
-            machine_state_reason = "interlock_door_open";
-        } else if (!door_known) {
-            machine_state = "Unknown";
-            machine_state_reason = "door_signal_unknown";
-        }
-    }
-
-    nlohmann::json positiveEscapeOnlyAxes = nlohmann::json::array();
-    if (home_boundary_x_active) {
-        positiveEscapeOnlyAxes.push_back("X");
-    }
-    if (home_boundary_y_active) {
-        positiveEscapeOnlyAxes.push_back("Y");
-    }
-
-    nlohmann::json effectiveInterlocksJson = {
-        {"estop_active", ioJson.value("estop", false)},
-        {"estop_known", estop_known},
-        {"door_open_active", door_known && door_open},
-        {"door_open_known", door_known},
-        {"home_boundary_x_active", home_boundary_x_active},
-        {"home_boundary_y_active", home_boundary_y_active},
-        {"positive_escape_only_axes", positiveEscapeOnlyAxes},
-        {"sources", {
-            {"estop", estop_state_known ? "system_interlock" : (connected ? "motion_status" : "unknown")},
-            {"door_open", door_known ? "dispensing_interlock" : "unknown"},
-            {"home_boundary_x", home_boundary_x_active ? "motion_home_signal" : "none"},
-            {"home_boundary_y", home_boundary_y_active ? "motion_home_signal" : "none"}
-        }}
-    };
-
-    std::string requested_state = machine_state;
-    bool state_change_in_process = false;
-    if (connection_state == "connecting") {
-        requested_state = "Idle";
-        state_change_in_process = true;
-    }
-    if (connected && ioJson.value("estop", false) && machine_state_reason != "interlock_estop") {
-        requested_state = "Estop";
-        state_change_in_process = true;
-    } else if (connected && door_known && door_open && machine_state_reason != "interlock_door_open") {
-        requested_state = "Fault";
-        state_change_in_process = true;
-    } else if (connected && door_known && !door_open && machine_state_reason == "interlock_door_open") {
-        requested_state = "Idle";
-        state_change_in_process = true;
-    }
-
-    std::string failure_code;
-    if (connection_state == "degraded") {
-        failure_code = "heartbeat_degraded";
-    } else if (machine_state == "Fault" || machine_state == "Estop" || machine_state == "Degraded") {
-        failure_code = machine_state_reason;
-    }
-    const std::string failure_stage = failure_code.empty() ? "" : "runtime_status";
-
-    nlohmann::json supervisionJson = {
-        {"current_state", machine_state},
-        {"requested_state", requested_state},
-        {"state_change_in_process", state_change_in_process},
-        {"state_reason", machine_state_reason},
-        {"failure_code", failure_code},
-        {"failure_stage", failure_stage},
-        {"recoverable", true},
-        {"updated_at", ToIso8601UtcNow()}
-    };
+    const nlohmann::json ioJson = BuildRawIoJson(supervision_snapshot);
+    const nlohmann::json effectiveInterlocksJson = BuildEffectiveInterlocksJson(supervision_snapshot);
+    const nlohmann::json supervisionJson = BuildSupervisionJson(supervision_snapshot);
+    const auto compat_machine_state = BuildCompatMachineState(supervision_snapshot);
+    const std::string machine_state = compat_machine_state.state;
+    const std::string machine_state_reason = compat_machine_state.reason;
 
     nlohmann::json resultJson = {
-        {"connected", connected},
-        {"connection_state", connection_state},
+        {"connected", supervision_snapshot.connected},
+        {"connection_state", supervision_snapshot.connection_state},
         {"machine_state", machine_state},
         {"machine_state_reason", machine_state_reason},
         {"supervision", supervisionJson},
-        {"interlock_latched", interlock_latched},
-        {"active_job_id", active_job_id},
-        {"active_job_state", active_job_state},
+        {"interlock_latched", supervision_snapshot.interlock_latched},
+        {"active_job_id", supervision_snapshot.active_job_id},
+        {"active_job_state", supervision_snapshot.active_job_state},
         {"axes", axesJson},
         {"position", positionJson},
         {"effective_interlocks", effectiveInterlocksJson},

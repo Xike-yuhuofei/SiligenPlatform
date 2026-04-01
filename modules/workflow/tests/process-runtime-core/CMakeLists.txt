@@ -53,6 +53,7 @@ set(OPTIONAL_TEST_SOURCES
     unit/domain/diagnostics/ProcessResultServiceTest.cpp
     unit/domain/dispensing/ClosedLoopSkeletonTest.cpp
     unit/domain/dispensing/ValveCoordinationServiceTest.cpp
+    unit/dispensing/DispensingProcessServiceBufferingTest.cpp
     unit/dispensing/PlanningRequestTest.cpp
     unit/dispensing/PlanningUseCaseExportPortTest.cpp
     unit/dispensing/ContourPathOptimizerTest.cpp
@@ -327,4 +328,3 @@ if(TARGET process_runtime_core_tests)
         )
     endif()
 endif()
-

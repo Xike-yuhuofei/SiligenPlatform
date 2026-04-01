@@ -4,6 +4,7 @@ param(
     [string]$Version,
     [string]$ReportDir,
     [switch]$IncludeHardwareSmoke,
+    [switch]$IncludeHilCaseMatrix = $true,
     [switch]$AllowRuntimeBlocked,
     [switch]$AllowCliBlocked
 )
@@ -133,6 +134,9 @@ Assert-VersionPolicy `
     -IncludeHardwareSmoke:$IncludeHardwareSmoke `
     -AllowRuntimeBlocked:$AllowRuntimeBlocked `
     -AllowCliBlocked:$AllowCliBlocked
+if (-not $IncludeHilCaseMatrix) {
+    Write-Warning "hil-case-matrix release gate disabled via explicit override; this run does not satisfy the default release evidence baseline."
+}
 
 $changelogPath = Join-Path $workspaceRoot "CHANGELOG.md"
 Assert-ChangelogEntry -ChangelogPath $changelogPath -ExpectedVersion $Version
@@ -146,6 +150,7 @@ Write-Output "hmi formal gateway contract gate: powershell -NoProfile -Execution
 & $formalGatewayContractGuard -WorkspaceRoot $workspaceRoot
 
 $ciReportDir = Join-Path $ReportDir "ci"
+$resolvedCiReportDir = Join-Path $workspaceRoot $ciReportDir
 $legacyExitReportDir = Join-Path $ReportDir "legacy-exit"
 
 Write-Section "legacy-exit"
@@ -160,10 +165,15 @@ Write-Section "test"
     -Suite all `
     -ReportDir $ciReportDir `
     -FailOnKnownFailure `
-    -IncludeHardwareSmoke:$IncludeHardwareSmoke
+    -IncludeHardwareSmoke:$IncludeHardwareSmoke `
+    -IncludeHilCaseMatrix:$IncludeHilCaseMatrix
 
 Assert-FileExists -Path (Join-Path $workspaceRoot "tests\\reports\\performance\\latest.json") -Label "性能基线 JSON 证据"
 Assert-FileExists -Path (Join-Path $workspaceRoot "tests\\reports\\performance\\latest.md") -Label "性能基线 Markdown 证据"
+if ($IncludeHilCaseMatrix) {
+    Assert-FileExists -Path (Join-Path $resolvedCiReportDir "hil-case-matrix\\case-matrix-summary.json") -Label "HIL case matrix JSON 证据"
+    Assert-FileExists -Path (Join-Path $resolvedCiReportDir "hil-case-matrix\\case-matrix-summary.md") -Label "HIL case matrix Markdown 证据"
+}
 
 $hmiOutput = Invoke-And-Capture `
     -Label "hmi-app dry-run" `
@@ -199,6 +209,7 @@ $manifest = @(
     "ci-report-dir: $ciReportDir",
     "legacy-exit-report-dir: $legacyExitReportDir",
     "include-hardware-smoke: $($IncludeHardwareSmoke.IsPresent)",
+    "include-hil-case-matrix: $([bool]$IncludeHilCaseMatrix)",
     "allow-cli-blocked: $($AllowCliBlocked.IsPresent)",
     "allow-runtime-blocked: $($AllowRuntimeBlocked.IsPresent)",
     "worktree-clean-at-start: True"

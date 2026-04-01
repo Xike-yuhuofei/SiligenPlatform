@@ -33,6 +33,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--report-dir", default=str(DEFAULT_REPORT_DIR))
     parser.add_argument("--workspace-validation-json", default="")
     parser.add_argument("--hil-closed-loop-summary-json", default="")
+    parser.add_argument("--hil-case-matrix-summary-json", default="")
+    parser.add_argument("--require-hil-case-matrix", action="store_true")
     return parser.parse_args()
 
 
@@ -63,7 +65,13 @@ def _compute_overall_status(checks: list[GateCheck]) -> str:
     return "passed"
 
 
-def _resolve_paths(args: argparse.Namespace) -> tuple[Path, Path, Path]:
+def _resolve_case_matrix_summary_path(report_dir: Path, explicit_path: str) -> Path:
+    if explicit_path:
+        return Path(explicit_path).resolve()
+    return (report_dir / "hil-case-matrix" / "case-matrix-summary.json").resolve()
+
+
+def _resolve_paths(args: argparse.Namespace) -> tuple[Path, Path, Path, Path]:
     report_dir = Path(args.report_dir).resolve()
     workspace_validation_json = (
         Path(args.workspace_validation_json).resolve()
@@ -82,7 +90,14 @@ def _resolve_paths(args: argparse.Namespace) -> tuple[Path, Path, Path]:
             if candidate.exists():
                 hil_closed_loop_summary_json = candidate
                 break
-    return report_dir, workspace_validation_json, hil_closed_loop_summary_json
+    hil_case_matrix_summary_json = _resolve_case_matrix_summary_path(report_dir, args.hil_case_matrix_summary_json)
+    return report_dir, workspace_validation_json, hil_closed_loop_summary_json, hil_case_matrix_summary_json
+
+
+def _required_workspace_cases(require_hil_case_matrix: bool) -> tuple[str, ...]:
+    if require_hil_case_matrix:
+        return (*REQUIRED_WORKSPACE_CASES, "hil-case-matrix")
+    return REQUIRED_WORKSPACE_CASES
 
 
 def _check_workspace_counts(payload: dict[str, Any]) -> GateCheck:
@@ -107,7 +122,7 @@ def _check_workspace_counts(payload: dict[str, Any]) -> GateCheck:
     )
 
 
-def _check_required_workspace_cases(payload: dict[str, Any]) -> GateCheck:
+def _check_required_workspace_cases(payload: dict[str, Any], required_cases: tuple[str, ...]) -> GateCheck:
     results = payload.get("results", [])
     status_by_name: dict[str, str] = {}
     for item in results:
@@ -116,8 +131,8 @@ def _check_required_workspace_cases(payload: dict[str, Any]) -> GateCheck:
         if name:
             status_by_name[name] = status
 
-    missing = [name for name in REQUIRED_WORKSPACE_CASES if name not in status_by_name]
-    non_passed = [name for name in REQUIRED_WORKSPACE_CASES if status_by_name.get(name) != "passed"]
+    missing = [name for name in required_cases if name not in status_by_name]
+    non_passed = [name for name in required_cases if status_by_name.get(name) != "passed"]
     if not missing and not non_passed:
         return GateCheck(
             name="workspace-required-cases",
@@ -140,6 +155,24 @@ def _check_required_workspace_cases(payload: dict[str, Any]) -> GateCheck:
         expected="all required cases passed",
         actual="; ".join(details),
         note="required HIL cases are incomplete or non-passed",
+    )
+
+
+def _check_case_matrix_overall(payload: dict[str, Any]) -> GateCheck:
+    overall_status = str(payload.get("overall_status", ""))
+    if overall_status == "passed":
+        return GateCheck(
+            name="hil-case-matrix-overall-status",
+            status="passed",
+            expected="overall_status=passed",
+            actual=f"overall_status={overall_status}",
+        )
+    return GateCheck(
+        name="hil-case-matrix-overall-status",
+        status="failed",
+        expected="overall_status=passed",
+        actual=f"overall_status={overall_status}",
+        note="hil case matrix summary indicates non-passed terminal status",
     )
 
 
@@ -246,6 +279,9 @@ def _write_report(report_dir: Path, report: dict[str, Any]) -> tuple[Path, Path]
         f"- overall_status: `{report['overall_status']}`",
         f"- workspace_validation_json: `{report['workspace_validation_json']}`",
         f"- hil_closed_loop_summary_json: `{report['hil_closed_loop_summary_json']}`",
+        f"- hil_case_matrix_summary_json: `{report['hil_case_matrix_summary_json']}`",
+        f"- require_hil_case_matrix: `{report['require_hil_case_matrix']}`",
+        f"- required_workspace_cases: `{','.join(report['required_workspace_cases'])}`",
         "",
         "## Checks",
         "",
@@ -263,25 +299,31 @@ def _write_report(report_dir: Path, report: dict[str, Any]) -> tuple[Path, Path]
 
 def main() -> int:
     args = parse_args()
-    report_dir, workspace_validation_json, hil_closed_loop_summary_json = _resolve_paths(args)
+    report_dir, workspace_validation_json, hil_closed_loop_summary_json, hil_case_matrix_summary_json = _resolve_paths(args)
 
     checks: list[GateCheck] = []
     error: str = ""
+    required_cases = _required_workspace_cases(bool(args.require_hil_case_matrix))
 
     if not workspace_validation_json.exists():
         error = f"missing workspace validation json: {workspace_validation_json}"
     elif not hil_closed_loop_summary_json.exists():
         error = f"missing HIL closed-loop summary json: {hil_closed_loop_summary_json}"
+    elif args.require_hil_case_matrix and not hil_case_matrix_summary_json.exists():
+        error = f"missing HIL case matrix summary json: {hil_case_matrix_summary_json}"
 
     if not error:
         workspace_payload = _load_json(workspace_validation_json)
         hil_payload = _load_json(hil_closed_loop_summary_json)
         checks.append(_check_workspace_counts(workspace_payload))
-        checks.append(_check_required_workspace_cases(workspace_payload))
+        checks.append(_check_required_workspace_cases(workspace_payload, required_cases))
         checks.append(_check_hil_overall(hil_payload))
         checks.append(_check_state_transition(hil_payload))
         checks.append(_check_timeout_count(hil_payload))
         checks.append(_check_duration_threshold(hil_payload))
+        if args.require_hil_case_matrix:
+            hil_case_matrix_payload = _load_json(hil_case_matrix_summary_json)
+            checks.append(_check_case_matrix_overall(hil_case_matrix_payload))
 
     if error:
         checks.append(
@@ -300,6 +342,9 @@ def main() -> int:
         "workspace_root": str(ROOT),
         "workspace_validation_json": str(workspace_validation_json),
         "hil_closed_loop_summary_json": str(hil_closed_loop_summary_json),
+        "hil_case_matrix_summary_json": str(hil_case_matrix_summary_json) if args.require_hil_case_matrix else "",
+        "require_hil_case_matrix": bool(args.require_hil_case_matrix),
+        "required_workspace_cases": list(required_cases),
         "overall_status": overall_status,
         "checks": [asdict(item) for item in checks],
     }

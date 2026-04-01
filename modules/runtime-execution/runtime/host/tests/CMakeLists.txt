@@ -11,6 +11,7 @@ set(RUNTIME_HOST_TEST_SOURCES
     unit/runtime/motion/MultiCardMotionAdapterTest.cpp
     unit/runtime/motion/MotionRuntimeFacadeTest.cpp
     unit/runtime/motion/WorkflowMotionRuntimeServicesProviderTest.cpp
+    unit/runtime/supervision/RuntimeSupervisionPortAdapterTest.cpp
     unit/runtime/system/LegacyMachineExecutionStateAdapterTest.cpp
 )
 

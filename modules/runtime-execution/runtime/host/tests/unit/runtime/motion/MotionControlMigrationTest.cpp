@@ -1,8 +1,6 @@
 #include "application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
 #include "application/usecases/motion/homing/HomeAxesUseCase.h"
 #include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
-#include "application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
-#include "domain/motion/domain-services/JogController.h"
 #include "runtime/motion/WorkflowMotionRuntimeServicesProvider.h"
 #include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
 #include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
@@ -18,20 +16,22 @@ namespace {
 
 using Siligen::Application::UseCases::Motion::MotionControlUseCase;
 using Siligen::Application::UseCases::Motion::Homing::EnsureAxesReadyZeroRequest;
+using Siligen::Application::UseCases::Motion::Homing::EnsureAxesReadyZeroResponse;
 using Siligen::Application::UseCases::Motion::Homing::HomeAxesRequest;
+using Siligen::Application::UseCases::Motion::Homing::HomeAxesResponse;
+using Siligen::Application::UseCases::Motion::IMotionHomingOperations;
+using Siligen::Application::UseCases::Motion::IMotionManualOperations;
+using Siligen::Application::UseCases::Motion::IMotionMonitoringOperations;
 using Siligen::Application::UseCases::Motion::Manual::ManualMotionCommand;
-using Siligen::Application::UseCases::Motion::Manual::ManualMotionControlUseCase;
-using Siligen::Application::UseCases::Motion::Monitoring::MotionMonitoringUseCase;
-using Siligen::Domain::Motion::DomainServices::JogController;
 using Siligen::Domain::Motion::Ports::AxisConfiguration;
 using Siligen::Domain::Motion::Ports::HomingState;
 using Siligen::Domain::Motion::Ports::HomingStatus;
-using Siligen::Domain::Motion::Ports::IMotionRuntimePort;
 using Siligen::Domain::Motion::Ports::IOStatus;
 using Siligen::Domain::Motion::Ports::JogParameters;
 using Siligen::Domain::Motion::Ports::MotionCommand;
 using Siligen::Domain::Motion::Ports::MotionState;
 using Siligen::Domain::Motion::Ports::MotionStatus;
+using Siligen::RuntimeExecution::Contracts::Motion::IMotionRuntimePort;
 using Siligen::RuntimeExecution::Host::Motion::WorkflowMotionRuntimeServicesProvider;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
@@ -283,6 +283,141 @@ class FakeMotionRuntimePort final : public IMotionRuntimePort {
     std::array<AxisRuntimeState, 2> axes_{};
 };
 
+class FakeMotionHomingOperations final : public IMotionHomingOperations {
+   public:
+    explicit FakeMotionHomingOperations(std::shared_ptr<FakeMotionRuntimePort> runtime_port)
+        : runtime_port_(std::move(runtime_port)) {}
+
+    Result<HomeAxesResponse> Home(const HomeAxesRequest& request) override {
+        HomeAxesResponse response;
+        auto axes = request.axes;
+        if (request.home_all_axes || axes.empty()) {
+            axes = {LogicalAxisId::X, LogicalAxisId::Y};
+        }
+
+        response.all_completed = true;
+        for (const auto axis : axes) {
+            auto home_result = runtime_port_->HomeAxis(axis);
+            HomeAxesResponse::AxisResult axis_result;
+            axis_result.axis = axis;
+            axis_result.success = home_result.IsSuccess();
+            axis_result.message = home_result.IsSuccess()
+                ? "homed"
+                : home_result.GetError().GetMessage();
+            response.axis_results.push_back(axis_result);
+            if (home_result.IsSuccess()) {
+                response.successfully_homed_axes.push_back(axis);
+                continue;
+            }
+            response.all_completed = false;
+            response.failed_axes.push_back(axis);
+            response.error_messages.push_back(home_result.GetError().GetMessage());
+        }
+        response.status_message = response.all_completed ? "completed" : "failed";
+        return Result<HomeAxesResponse>::Success(std::move(response));
+    }
+
+    Result<EnsureAxesReadyZeroResponse> EnsureAxesReadyZero(const EnsureAxesReadyZeroRequest& request) override {
+        EnsureAxesReadyZeroResponse response;
+        response.accepted = true;
+        response.summary_state = "completed";
+        response.message = "ready_zero_completed";
+
+        auto axes = request.axes;
+        if (request.home_all_axes || axes.empty()) {
+            axes = {LogicalAxisId::X, LogicalAxisId::Y};
+        }
+
+        for (const auto axis : axes) {
+            EnsureAxesReadyZeroResponse::AxisResult axis_result;
+            axis_result.axis = axis;
+            axis_result.supervisor_state = "ready";
+            axis_result.planned_action = "noop";
+            axis_result.executed = true;
+            axis_result.success = true;
+            axis_result.reason_code = "ready";
+            axis_result.message = "ready";
+            response.axis_results.push_back(std::move(axis_result));
+        }
+        return Result<EnsureAxesReadyZeroResponse>::Success(std::move(response));
+    }
+
+    Result<bool> IsAxisHomed(LogicalAxisId axis) const override {
+        return runtime_port_->IsAxisHomed(axis);
+    }
+
+   private:
+    std::shared_ptr<FakeMotionRuntimePort> runtime_port_;
+};
+
+class FakeMotionManualOperations final : public IMotionManualOperations {
+   public:
+    explicit FakeMotionManualOperations(std::shared_ptr<FakeMotionRuntimePort> runtime_port)
+        : runtime_port_(std::move(runtime_port)) {}
+
+    Result<void> ExecutePointToPointMotion(const ManualMotionCommand& command, bool) override {
+        if (command.relative_move) {
+            return runtime_port_->RelativeMove(command.axis, command.position, command.velocity);
+        }
+        return runtime_port_->MoveAxisToPosition(command.axis, command.position, command.velocity);
+    }
+
+    Result<void> StartJog(LogicalAxisId axis, int16 direction, float32 velocity) override {
+        return runtime_port_->StartJog(axis, direction, velocity);
+    }
+
+    Result<void> StopJog(LogicalAxisId axis) override {
+        return runtime_port_->StopJog(axis);
+    }
+
+   private:
+    std::shared_ptr<FakeMotionRuntimePort> runtime_port_;
+};
+
+class FakeMotionMonitoringOperations final : public IMotionMonitoringOperations {
+   public:
+    explicit FakeMotionMonitoringOperations(std::shared_ptr<FakeMotionRuntimePort> runtime_port)
+        : runtime_port_(std::move(runtime_port)) {}
+
+    Result<MotionStatus> GetAxisMotionStatus(LogicalAxisId axis) const override {
+        return runtime_port_->GetAxisStatus(axis);
+    }
+
+    Result<std::vector<MotionStatus>> GetAllAxesMotionStatus() const override {
+        return runtime_port_->GetAllAxesStatus();
+    }
+
+    Result<Point2D> GetCurrentPosition() const override {
+        return runtime_port_->GetCurrentPosition();
+    }
+
+    Result<Siligen::Domain::Motion::Ports::CoordinateSystemStatus> GetCoordinateSystemStatus(int16 coord_sys)
+        const override {
+        Siligen::Domain::Motion::Ports::CoordinateSystemStatus status;
+        status.raw_status_word = coord_sys;
+        return Result<Siligen::Domain::Motion::Ports::CoordinateSystemStatus>::Success(status);
+    }
+
+    Result<uint32> GetInterpolationBufferSpace(int16 coord_sys) const override {
+        return Result<uint32>::Success(static_cast<uint32>(coord_sys >= 0 ? 64 : 0));
+    }
+
+    Result<uint32> GetLookAheadBufferSpace(int16 coord_sys) const override {
+        return Result<uint32>::Success(static_cast<uint32>(coord_sys >= 0 ? 32 : 0));
+    }
+
+    Result<bool> ReadLimitStatus(LogicalAxisId axis, bool positive) const override {
+        return runtime_port_->ReadLimitStatus(axis, positive);
+    }
+
+    Result<bool> ReadServoAlarmStatus(LogicalAxisId axis) const override {
+        return runtime_port_->ReadServoAlarm(axis);
+    }
+
+   private:
+    std::shared_ptr<FakeMotionRuntimePort> runtime_port_;
+};
+
 TEST(MotionControlMigrationTest, WorkflowMotionRuntimeServicesProviderBuildsControlAndStatusServicesFromM9Port) {
     auto runtime_port = std::make_shared<FakeMotionRuntimePort>();
     WorkflowMotionRuntimeServicesProvider provider;
@@ -304,18 +439,10 @@ TEST(MotionControlMigrationTest, WorkflowMotionRuntimeServicesProviderBuildsCont
 
 TEST(MotionControlMigrationTest, MotionControlUseCaseDispatchesJogControlAndMonitoring) {
     auto runtime_port = std::make_shared<FakeMotionRuntimePort>();
-    auto jog_controller =
-        std::make_shared<JogController>(std::static_pointer_cast<Siligen::Domain::Motion::Ports::IJogControlPort>(runtime_port),
-                                        std::static_pointer_cast<Siligen::Domain::Motion::Ports::IMotionStatePort>(runtime_port));
-    auto manual_use_case = std::make_shared<ManualMotionControlUseCase>(
-        std::static_pointer_cast<Siligen::Domain::Motion::Ports::IPositionControlPort>(runtime_port),
-        jog_controller,
-        std::static_pointer_cast<Siligen::Domain::Motion::Ports::IHomingPort>(runtime_port));
-    auto monitoring_use_case = std::make_shared<MotionMonitoringUseCase>(
-        std::static_pointer_cast<Siligen::Domain::Motion::Ports::IMotionStatePort>(runtime_port),
-        std::static_pointer_cast<Siligen::Domain::Motion::Ports::IIOControlPort>(runtime_port),
-        std::static_pointer_cast<Siligen::Domain::Motion::Ports::IHomingPort>(runtime_port));
-    MotionControlUseCase use_case(nullptr, nullptr, manual_use_case, monitoring_use_case);
+    auto homing_operations = std::make_shared<FakeMotionHomingOperations>(runtime_port);
+    auto manual_operations = std::make_shared<FakeMotionManualOperations>(runtime_port);
+    auto monitoring_operations = std::make_shared<FakeMotionMonitoringOperations>(runtime_port);
+    MotionControlUseCase use_case(homing_operations, manual_operations, monitoring_operations);
 
     auto jog_result = use_case.StartJog(LogicalAxisId::X, 1, 8.0f);
     ASSERT_TRUE(jog_result.IsSuccess());
@@ -343,7 +470,7 @@ TEST(MotionControlMigrationTest, MotionControlUseCaseDispatchesJogControlAndMoni
 }
 
 TEST(MotionControlMigrationTest, MotionControlUseCaseReturnsMissingDependencyForHomingEntrypoints) {
-    MotionControlUseCase use_case(nullptr, nullptr, nullptr, nullptr);
+    MotionControlUseCase use_case(nullptr, nullptr, nullptr);
 
     HomeAxesRequest home_request;
     home_request.axes = {LogicalAxisId::X};

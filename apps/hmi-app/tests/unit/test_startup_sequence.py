@@ -15,8 +15,8 @@ from hmi_client.client.startup_sequence import (
     run_launch_sequence,
     run_recovery_action,
 )
-from hmi_client.client.supervisor_session import SupervisorPolicy
-from hmi_client.client.supervisor_contract import SessionSnapshot, snapshot_timestamp
+from hmi_client.client.launch_supervision_session import SupervisorPolicy
+from hmi_client.client.launch_supervision_contract import SessionSnapshot, snapshot_timestamp
 
 
 class _FakeBackend:

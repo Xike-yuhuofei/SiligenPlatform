@@ -20,6 +20,7 @@
 #define private public
 #include "application/services/dispensing/DispensePlanningFacade.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
+#include "runtime_execution/contracts/dispensing/IDispensingProcessPort.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/process_path/ProcessPathFacade.h"
 #include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
@@ -50,6 +51,12 @@ using Siligen::Device::Contracts::State::DeviceConnectionSnapshot;
 using Siligen::Device::Contracts::State::DeviceConnectionState;
 using Siligen::Device::Contracts::State::HeartbeatSnapshot;
 using Siligen::Domain::Dispensing::DomainServices::DispensingPlan;
+using Siligen::Domain::Dispensing::Ports::IDispensingExecutionObserver;
+using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionOptions;
+using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionPlan;
+using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionReport;
+using Siligen::Domain::Dispensing::ValueObjects::DispensingRuntimeOverrides;
+using Siligen::Domain::Dispensing::ValueObjects::DispensingRuntimeParams;
 using Siligen::Domain::Motion::Ports::HomingState;
 using Siligen::Domain::Motion::Ports::HomingStatus;
 using Siligen::Domain::Motion::Ports::IHomingPort;
@@ -64,6 +71,7 @@ using Siligen::Shared::Types::Point2D;
 using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::float32;
 using Siligen::Shared::Types::uint32;
+using RuntimeDispensingProcessPort = Siligen::RuntimeExecution::Contracts::Dispensing::IDispensingProcessPort;
 
 template <typename T>
 std::shared_ptr<T> MakeDummyShared() {
@@ -390,6 +398,112 @@ class FakeHomingPort final : public IHomingPort {
     }
 };
 
+class FakeDispensingProcessPort final : public RuntimeDispensingProcessPort {
+   public:
+    Result<void> ValidateHardwareConnection() noexcept override {
+        return Result<void>::Success();
+    }
+
+    Result<DispensingRuntimeParams> BuildRuntimeParams(const DispensingRuntimeOverrides& overrides) noexcept override {
+        DispensingRuntimeParams params;
+        params.dispensing_velocity =
+            overrides.dispensing_speed_mm_s.value_or(overrides.dry_run_speed_mm_s.value_or(0.0f));
+        params.rapid_velocity = overrides.rapid_speed_mm_s.value_or(0.0f);
+        params.acceleration = overrides.acceleration_mm_s2.value_or(0.0f);
+        params.velocity_guard_enabled = overrides.velocity_guard_enabled;
+        params.velocity_guard_ratio = overrides.velocity_guard_ratio;
+        params.velocity_guard_abs_mm_s = overrides.velocity_guard_abs_mm_s;
+        params.velocity_guard_min_expected_mm_s = overrides.velocity_guard_min_expected_mm_s;
+        params.velocity_guard_grace_ms = overrides.velocity_guard_grace_ms;
+        params.velocity_guard_interval_ms = overrides.velocity_guard_interval_ms;
+        params.velocity_guard_max_consecutive = overrides.velocity_guard_max_consecutive;
+        params.velocity_guard_stop_on_violation = overrides.velocity_guard_stop_on_violation;
+        return Result<DispensingRuntimeParams>::Success(params);
+    }
+
+    Result<DispensingExecutionReport> ExecuteProcess(
+        const DispensingExecutionPlan& plan,
+        const DispensingRuntimeParams&,
+        const DispensingExecutionOptions&,
+        std::atomic<bool>* stop_flag,
+        std::atomic<bool>* pause_flag,
+        std::atomic<bool>* pause_applied_flag,
+        IDispensingExecutionObserver* observer = nullptr) noexcept override {
+        DispensingExecutionReport report;
+        report.total_distance = plan.total_length_mm;
+        const uint32 total_segments = !plan.interpolation_segments.empty()
+                                          ? static_cast<uint32>(plan.interpolation_segments.size())
+                                          : (plan.interpolation_points.size() > 1U
+                                                 ? static_cast<uint32>(plan.interpolation_points.size() - 1U)
+                                                 : 0U);
+
+        if (observer != nullptr) {
+            observer->OnMotionStart();
+        }
+
+        for (uint32 index = 0; index < total_segments; ++index) {
+            if (stop_flag != nullptr && stop_flag->load()) {
+                if (observer != nullptr) {
+                    observer->OnMotionStop();
+                }
+                return Result<DispensingExecutionReport>::Failure(
+                    Siligen::Shared::Types::Error(
+                        ErrorCode::INVALID_STATE,
+                        "execution cancelled",
+                        "FakeDispensingProcessPort"));
+            }
+
+            while (pause_flag != nullptr && pause_flag->load()) {
+                if (pause_applied_flag != nullptr) {
+                    pause_applied_flag->store(true);
+                }
+                if (observer != nullptr) {
+                    observer->OnPauseStateChanged(true);
+                }
+                if (stop_flag != nullptr && stop_flag->load()) {
+                    if (pause_applied_flag != nullptr) {
+                        pause_applied_flag->store(false);
+                    }
+                    if (observer != nullptr) {
+                        observer->OnPauseStateChanged(false);
+                        observer->OnMotionStop();
+                    }
+                    return Result<DispensingExecutionReport>::Failure(
+                        Siligen::Shared::Types::Error(
+                            ErrorCode::INVALID_STATE,
+                            "execution cancelled",
+                            "FakeDispensingProcessPort"));
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            }
+
+            if (pause_applied_flag != nullptr) {
+                pause_applied_flag->store(false);
+            }
+            if (observer != nullptr) {
+                observer->OnPauseStateChanged(false);
+                observer->OnProgress(index + 1U, total_segments);
+            }
+            report.executed_segments = index + 1U;
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+
+        if (observer != nullptr) {
+            observer->OnMotionStop();
+        }
+        return Result<DispensingExecutionReport>::Success(report);
+    }
+
+    void StopExecution(std::atomic<bool>* stop_flag, std::atomic<bool>* pause_flag = nullptr) noexcept override {
+        if (stop_flag != nullptr) {
+            stop_flag->store(true);
+        }
+        if (pause_flag != nullptr) {
+            pause_flag->store(false);
+        }
+    }
+};
+
 MotionStatus ReadyAxisStatus() {
     MotionStatus status;
     status.state = MotionState::HOMED;
@@ -501,12 +615,14 @@ std::shared_ptr<DispensingExecutionUseCase> CreateRuntimeExecutionUseCase(
     const std::shared_ptr<FakeMotionStatePort>& motion_state_port,
     const std::shared_ptr<FakeHomingPort>& homing_port,
     const std::shared_ptr<FakeInterlockSignalPort>& interlock_port) {
+    auto process_port = std::make_shared<FakeDispensingProcessPort>();
     return std::make_shared<DispensingExecutionUseCase>(
         nullptr,
         nullptr,
         motion_state_port,
         connection_port,
         nullptr,
+        process_port,
         nullptr,
         nullptr,
         homing_port,

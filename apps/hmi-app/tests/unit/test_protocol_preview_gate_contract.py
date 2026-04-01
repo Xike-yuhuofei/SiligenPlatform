@@ -120,6 +120,54 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertTrue(status.gate_estop_active())
         self.assertTrue(status.gate_door_active())
 
+    def test_get_status_keeps_machine_state_as_compat_and_prefers_supervision_for_runtime_state(self) -> None:
+        client = _FakeClient(
+            [
+                {
+                    "result": {
+                        "connected": True,
+                        "connection_state": "connected",
+                        "machine_state": "Idle",
+                        "machine_state_reason": "idle",
+                        "supervision": {
+                            "current_state": "Running",
+                            "requested_state": "Running",
+                            "state_change_in_process": False,
+                            "state_reason": "job_running",
+                            "failure_code": "",
+                            "failure_stage": "",
+                            "recoverable": True,
+                            "updated_at": "2026-04-01T00:00:00Z",
+                        },
+                        "effective_interlocks": {
+                            "estop_active": False,
+                            "estop_known": True,
+                            "door_open_active": False,
+                            "door_open_known": True,
+                            "home_boundary_x_active": False,
+                            "home_boundary_y_active": False,
+                            "positive_escape_only_axes": [],
+                            "sources": {},
+                        },
+                        "interlock_latched": False,
+                        "active_job_id": "job-1",
+                        "active_job_state": "running",
+                        "axes": {},
+                        "io": {"estop": False, "estop_known": True, "door": False, "door_known": True},
+                        "dispenser": {"valve_open": False, "supply_open": False},
+                    }
+                }
+            ]
+        )
+        protocol = CommandProtocol(client)
+
+        status = protocol.get_status()
+
+        self.assertEqual(status.machine_state, "Idle")
+        self.assertEqual(status.machine_state_reason, "idle")
+        self.assertEqual(status.runtime_state, "Running")
+        self.assertEqual(status.runtime_state_reason, "job_running")
+
     def test_get_status_preserves_degraded_connection_state(self) -> None:
         client = _FakeClient(
             [
@@ -142,7 +190,104 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
 
         self.assertFalse(status.connected)
         self.assertEqual(status.connection_state, "degraded")
+        self.assertEqual(status.runtime_state, "Degraded")
+        self.assertEqual(status.runtime_state_reason, "heartbeat_degraded")
         self.assertEqual(status.machine_state_reason, "heartbeat_degraded")
+
+    def test_get_status_marks_estop_unknown_when_disconnected_and_no_authoritative_signal(self) -> None:
+        client = _FakeClient(
+            [
+                {
+                    "result": {
+                        "connected": False,
+                        "connection_state": "disconnected",
+                        "machine_state": "Disconnected",
+                        "machine_state_reason": "hardware_disconnected",
+                        "supervision": {
+                            "current_state": "Disconnected",
+                            "requested_state": "Disconnected",
+                            "state_change_in_process": False,
+                            "state_reason": "hardware_disconnected",
+                            "failure_code": "",
+                            "failure_stage": "",
+                            "recoverable": True,
+                            "updated_at": "2026-04-01T00:00:00Z",
+                        },
+                        "effective_interlocks": {
+                            "estop_active": False,
+                            "estop_known": False,
+                            "door_open_active": False,
+                            "door_open_known": False,
+                            "home_boundary_x_active": False,
+                            "home_boundary_y_active": False,
+                            "positive_escape_only_axes": [],
+                            "sources": {
+                                "estop": "unknown",
+                                "door_open": "unknown",
+                                "home_boundary_x": "none",
+                                "home_boundary_y": "none",
+                            },
+                        },
+                        "interlock_latched": False,
+                        "active_job_id": "",
+                        "active_job_state": "",
+                        "axes": {},
+                        "io": {"estop": False, "estop_known": False, "door": False, "door_known": False},
+                        "dispenser": {"valve_open": False, "supply_open": False},
+                    }
+                }
+            ]
+        )
+        protocol = CommandProtocol(client)
+
+        status = protocol.get_status()
+
+        self.assertFalse(status.connected)
+        self.assertEqual(status.runtime_state, "Disconnected")
+        self.assertEqual(status.runtime_state_reason, "hardware_disconnected")
+        self.assertFalse(status.io.estop_known)
+        self.assertFalse(status.effective_interlocks.estop_known)
+        self.assertFalse(status.gate_estop_known())
+        self.assertFalse(status.gate_estop_active())
+        self.assertEqual(status.effective_interlocks.sources["estop"], "unknown")
+
+    def test_get_status_only_falls_back_to_compat_when_supervision_is_missing(self) -> None:
+        client = _FakeClient(
+            [
+                {
+                    "result": {
+                        "connected": True,
+                        "connection_state": "connected",
+                        "machine_state": "Idle",
+                        "machine_state_reason": "idle",
+                        "axes": {},
+                        "io": {},
+                        "dispenser": {"valve_open": False, "supply_open": False},
+                    }
+                },
+                {
+                    "result": {
+                        "connected": True,
+                        "connection_state": "connected",
+                        "machine_state": "Idle",
+                        "machine_state_reason": "idle",
+                        "supervision": {},
+                        "axes": {},
+                        "io": {},
+                        "dispenser": {"valve_open": False, "supply_open": False},
+                    }
+                },
+            ]
+        )
+        protocol = CommandProtocol(client)
+
+        fallback_status = protocol.get_status()
+        explicit_supervision_status = protocol.get_status()
+
+        self.assertEqual(fallback_status.runtime_state, "Idle")
+        self.assertEqual(fallback_status.runtime_state_reason, "idle")
+        self.assertEqual(explicit_supervision_status.runtime_state, "Unknown")
+        self.assertEqual(explicit_supervision_status.runtime_state_reason, "unknown")
 
     def test_home_prefers_axis_level_error_messages(self) -> None:
         client = _FakeClient(

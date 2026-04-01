@@ -10,6 +10,11 @@ if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}/runtim
         "runtime-execution canonical runtime contracts require runtime_execution/contracts/system/IEventPublisherPort.h"
     )
 endif()
+if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}/runtime_execution/contracts/system/IRuntimeSupervisionPort.h")
+    message(FATAL_ERROR
+        "runtime-execution canonical runtime contracts require runtime_execution/contracts/system/IRuntimeSupervisionPort.h"
+    )
+endif()
 if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}/runtime_execution/contracts/dispensing/ITaskSchedulerPort.h")
     message(FATAL_ERROR
         "runtime-execution canonical runtime contracts require runtime_execution/contracts/dispensing/ITaskSchedulerPort.h"
