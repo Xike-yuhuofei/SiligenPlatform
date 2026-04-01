@@ -26,6 +26,7 @@
 #include "facades/tcp/TcpMotionFacade.h"
 #include "facades/tcp/TcpRecipeFacade.h"
 #include "facades/tcp/TcpSystemFacade.h"
+#include "application/usecases/motion/safety/MotionSafetyUseCase.h"
 
 #include <memory>
 
@@ -41,6 +42,7 @@ TcpFacadeBundle BuildTcpFacadeBundle(Resolver& resolver) {
 
     bundle.motion = std::make_shared<Application::Facades::Tcp::TcpMotionFacade>(
         resolver.template Resolve<Application::UseCases::Motion::MotionControlUseCase>(),
+        resolver.template Resolve<Application::UseCases::Motion::Safety::MotionSafetyUseCase>(),
         resolver.template ResolvePort<Siligen::Device::Contracts::Ports::DeviceConnectionPort>());
 
     bundle.dispensing = std::make_shared<Application::Facades::Tcp::TcpDispensingFacade>(

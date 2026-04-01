@@ -1780,19 +1780,18 @@ std::string TcpCommandDispatcher::HandleStop(const std::string& id, const nlohma
         SILIGEN_LOG_INFO("Stop deep request received");
     }
 
-    // 停止所有轴的JOG运动
-    for (int16_t axis_index = 0; axis_index < 4; ++axis_index) {
-        auto axis_id = FromIndex(axis_index);
-        if (!IsValid(axis_id)) {
-            continue;
-        }
+    const std::vector<LogicalAxisId> axes_to_log = {LogicalAxisId::X, LogicalAxisId::Y};
+    for (const auto axis_id : axes_to_log) {
         LogAxisSnapshot("Stop pre", motionFacade_, axis_id);
-        auto stop_result = motionFacade_->StopJog(axis_id);
-        if (!stop_result.IsSuccess()) {
-            SILIGEN_LOG_WARNING_FMT_HELPER("Stop failed axis=%s reason=%s",
-                                           Siligen::Shared::Types::AxisName(axis_id),
-                                           stop_result.GetError().GetMessage().c_str());
-        }
+    }
+
+    auto stop_result = motionFacade_->StopAllAxes(false);
+    if (!stop_result.IsSuccess()) {
+        SILIGEN_LOG_WARNING_FMT_HELPER("Stop all axes failed reason=%s", stop_result.GetError().GetMessage().c_str());
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2500, stop_result.GetError().GetMessage());
+    }
+
+    for (const auto axis_id : axes_to_log) {
         LogAxisSnapshot("Stop post", motionFacade_, axis_id);
         if (IsDeepMotionLoggingEnabled() && diagnostics_config_.snapshot_after_stop_ms > 0) {
             std::this_thread::sleep_for(std::chrono::milliseconds(diagnostics_config_.snapshot_after_stop_ms));

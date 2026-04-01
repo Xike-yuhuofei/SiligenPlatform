@@ -15,17 +15,23 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "src" / "hmi_client"))
 
 import ui.main_window as main_window_module
+from client import SessionSnapshot, launch_result_from_snapshot
 from client.protocol import AxisStatus, EffectiveInterlocks, IOStatus, MachineStatus, SupervisionStatus
 
 
 class FakeProtocol:
     def __init__(self, status: MachineStatus):
         self.status = status
+        self.status_calls = 0
         self.home_calls = []
         self.home_auto_calls = []
         self.jog_calls = []
         self.stop_calls = 0
+        self.emergency_stop_calls = 0
+        self.estop_reset_calls = 0
         self.start_job_calls = []
+        self.emergency_stop_result = (True, "E-Stop")
+        self.estop_reset_result = (True, "E-Stop reset")
         self.start_job_response = (
             True,
             {
@@ -44,7 +50,11 @@ class FakeProtocol:
         )
 
     def get_status(self) -> MachineStatus:
+        self.status_calls += 1
         return self.status
+
+    def get_alarms(self) -> list:
+        return []
 
     def home(self, axes=None, force=False):
         self.home_calls.append((axes, force))
@@ -61,6 +71,14 @@ class FakeProtocol:
     def stop(self) -> bool:
         self.stop_calls += 1
         return True
+
+    def emergency_stop(self):
+        self.emergency_stop_calls += 1
+        return self.emergency_stop_result
+
+    def estop_reset(self):
+        self.estop_reset_calls += 1
+        return self.estop_reset_result
 
     def dxf_start_job(self, plan_id: str, target_count: int = 1, plan_fingerprint: str = ""):
         self.start_job_calls.append((plan_id, target_count, plan_fingerprint))
@@ -83,6 +101,69 @@ class _CancellableWorker:
         self.cancel_called = True
 
 
+class _FakeSignal:
+    def __init__(self) -> None:
+        self._callbacks = []
+
+    def connect(self, callback) -> None:
+        self._callbacks.append(callback)
+
+    def emit(self, *args, **kwargs) -> None:
+        for callback in list(self._callbacks):
+            callback(*args, **kwargs)
+
+
+class _FakeHomeAutoWorker:
+    instances = []
+
+    def __init__(
+        self,
+        *,
+        host: str,
+        port: int,
+        axes,
+        force_rehome: bool,
+        timeout_ms: int = 0,
+    ) -> None:
+        self.host = host
+        self.port = port
+        self.axes = list(axes) if axes else None
+        self.force_rehome = force_rehome
+        self.timeout_ms = timeout_ms
+        self.completed = _FakeSignal()
+        self.finished = _FakeSignal()
+        self.start_called = False
+        self.cancel_called = False
+        self.delete_later_called = False
+        self.wait_calls = []
+        self._running = False
+        type(self).instances.append(self)
+
+    def start(self) -> None:
+        self.start_called = True
+        self._running = True
+
+    def cancel(self) -> None:
+        self.cancel_called = True
+        self._running = False
+
+    def isRunning(self) -> bool:
+        return self._running
+
+    def wait(self, timeout_ms: int = 0) -> bool:
+        self.wait_calls.append(timeout_ms)
+        self._running = False
+        return True
+
+    def deleteLater(self) -> None:
+        self.delete_later_called = True
+
+    def complete(self, ok: bool, message: str) -> None:
+        self.completed.emit(ok, message)
+        self._running = False
+        self.finished.emit()
+
+
 class MainWindowTabsTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -91,8 +172,11 @@ class MainWindowTabsTest(unittest.TestCase):
     def setUp(self) -> None:
         self._original_web_view = getattr(main_window_module, "QWebEngineView", None)
         self._original_web_engine_flag = getattr(main_window_module, "WEB_ENGINE_AVAILABLE", False)
+        self._original_home_auto_worker = getattr(main_window_module, "HomeAutoWorker")
         main_window_module.QWebEngineView = None
         main_window_module.WEB_ENGINE_AVAILABLE = False
+        _FakeHomeAutoWorker.instances = []
+        main_window_module.HomeAutoWorker = _FakeHomeAutoWorker
         self.window = main_window_module.MainWindow(launch_mode="offline")
         QApplication.clipboard().clear()
 
@@ -101,6 +185,7 @@ class MainWindowTabsTest(unittest.TestCase):
         self.window.deleteLater()
         main_window_module.QWebEngineView = self._original_web_view
         main_window_module.WEB_ENGINE_AVAILABLE = self._original_web_engine_flag
+        main_window_module.HomeAutoWorker = self._original_home_auto_worker
 
     def _make_status(
         self,
@@ -296,29 +381,86 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertFalse(result)
         self.assertEqual(self.window.statusBar().currentMessage(), "安全门打开，无法回零")
 
-    def test_on_home_uses_home_auto_when_target_axes_are_already_homed(self) -> None:
+    def test_on_home_starts_background_worker_and_updates_status_on_completion(self) -> None:
         status = self._make_status(x_homed=True, y_homed=True)
         fake_protocol = FakeProtocol(status)
         self.window._protocol = fake_protocol
         self.window._check_home_preconditions = lambda: True
 
         self.window._on_home(["X", "Y"])
+        worker = _FakeHomeAutoWorker.instances[-1]
 
         self.assertEqual(fake_protocol.home_calls, [])
-        self.assertEqual(fake_protocol.home_auto_calls, [(["X", "Y"], False, True, 0)])
+        self.assertEqual(fake_protocol.home_auto_calls, [])
+        self.assertEqual(len(_FakeHomeAutoWorker.instances), 1)
+        self.assertTrue(worker.start_called)
+        self.assertTrue(worker.isRunning())
+        self.assertEqual(worker.host, self.window._client.host)
+        self.assertEqual(worker.port, self.window._client.port)
+        self.assertEqual(worker.axes, ["X", "Y"])
+        self.assertFalse(worker.force_rehome)
+        self.assertEqual(self.window.statusBar().currentMessage(), "回零进行中...")
+
+        worker.complete(True, "Axes ready at zero")
+
+        self.assertIsNone(self.window._home_auto_worker)
+        self.assertFalse(worker.isRunning())
+        self.assertTrue(worker.delete_later_called)
         self.assertEqual(self.window.statusBar().currentMessage(), "回零: Axes ready at zero")
 
-    def test_on_home_uses_home_auto_when_target_axis_is_not_homed(self) -> None:
+    def test_on_home_completion_requalifies_recoverable_runtime_failure(self) -> None:
+        status = self._make_status(x_homed=True, y_homed=True)
+        fake_protocol = FakeProtocol(status)
+        failed_snapshot = SessionSnapshot(
+            mode="online",
+            session_state="failed",
+            backend_state="ready",
+            tcp_state="ready",
+            hardware_state="failed",
+            failure_code="SUP_HARDWARE_CONNECT_FAILED",
+            failure_stage="hardware_ready",
+            recoverable=True,
+            last_error_message="运行中硬件状态不可用，在线能力已收敛。",
+            updated_at="2026-04-01T07:58:49Z",
+        )
+        self.window._requested_launch_mode = "online"
+        self.window._protocol = fake_protocol
+        self.window._session_snapshot = failed_snapshot
+        self.window._launch_result = launch_result_from_snapshot("online", failed_snapshot)
+        self.window._home_request_generation = 1
+
+        self.window._on_home_auto_completed(True, "Axes ready at zero", request_token=1)
+
+        self.assertEqual(fake_protocol.status_calls, 1)
+        self.assertTrue(self.window._is_online_ready())
+        self.assertIsNotNone(self.window._launch_result)
+        assert self.window._launch_result is not None
+        self.assertTrue(self.window._launch_result.online_ready)
+        self.assertIsNone(self.window._launch_result.failure_code)
+        self.assertEqual(self.window.statusBar().currentMessage(), "回零: Axes ready at zero")
+        self.assertTrue(
+            any(
+                getattr(event, "event_type", "") == "stage_succeeded"
+                and getattr(event, "stage", "") == "online_ready"
+                for event in self.window._supervisor_stage_events
+            )
+        )
+
+    def test_on_home_rejects_duplicate_request_while_worker_is_running(self) -> None:
         status = self._make_status(x_homed=False, y_homed=True)
         fake_protocol = FakeProtocol(status)
         self.window._protocol = fake_protocol
         self.window._check_home_preconditions = lambda: True
 
         self.window._on_home(["X"])
+        worker = _FakeHomeAutoWorker.instances[-1]
+        self.window._on_home(["Y"])
 
         self.assertEqual(fake_protocol.home_calls, [])
-        self.assertEqual(fake_protocol.home_auto_calls, [(["X"], False, True, 0)])
-        self.assertEqual(self.window.statusBar().currentMessage(), "回零: Axes ready at zero")
+        self.assertEqual(fake_protocol.home_auto_calls, [])
+        self.assertEqual(len(_FakeHomeAutoWorker.instances), 1)
+        self.assertTrue(worker.isRunning())
+        self.assertEqual(self.window.statusBar().currentMessage(), "回零进行中，请稍候")
 
     def test_check_motion_preconditions_rejects_degraded_connection(self) -> None:
         self.window._require_online_mode = lambda capability: True
@@ -364,6 +506,62 @@ class MainWindowTabsTest(unittest.TestCase):
 
         self.assertEqual(fake_protocol.stop_calls, 1)
         self.assertIsNone(self.window._jog_press_time)
+
+    def test_on_stop_cancels_active_home_worker_and_sends_stop(self) -> None:
+        status = self._make_status()
+        fake_protocol = FakeProtocol(status)
+        self.window._protocol = fake_protocol
+        self.window._check_home_preconditions = lambda: True
+        self.window._on_home(["X"])
+
+        worker = _FakeHomeAutoWorker.instances[-1]
+        self.window._on_stop("manual")
+
+        self.assertTrue(worker.cancel_called)
+        self.assertIsNone(self.window._home_auto_worker)
+        self.assertEqual(fake_protocol.stop_calls, 1)
+
+    def test_on_estop_cancels_active_home_worker_and_uses_runtime_command_channel_gate(self) -> None:
+        status = self._make_status()
+        fake_protocol = FakeProtocol(status)
+        self.window._protocol = fake_protocol
+        self.window._check_home_preconditions = lambda: True
+        self.window._require_runtime_command_channel = lambda capability: True
+        self.window._on_home(["X"])
+
+        worker = _FakeHomeAutoWorker.instances[-1]
+        self.window._on_estop()
+
+        self.assertTrue(worker.cancel_called)
+        self.assertIsNone(self.window._home_auto_worker)
+        self.assertEqual(fake_protocol.emergency_stop_calls, 1)
+        self.assertEqual(self.window.statusBar().currentMessage(), "急停: E-Stop")
+
+    def test_on_estop_ignores_stale_home_worker_completion(self) -> None:
+        status = self._make_status()
+        fake_protocol = FakeProtocol(status)
+        self.window._protocol = fake_protocol
+        self.window._check_home_preconditions = lambda: True
+        self.window._require_runtime_command_channel = lambda capability: True
+        self.window._on_home(["X"])
+
+        worker = _FakeHomeAutoWorker.instances[-1]
+        self.window._on_estop()
+        worker.complete(True, "Axes ready at zero")
+
+        self.assertEqual(fake_protocol.emergency_stop_calls, 1)
+        self.assertEqual(self.window.statusBar().currentMessage(), "急停: E-Stop")
+
+    def test_on_estop_reset_uses_runtime_command_channel_gate(self) -> None:
+        status = self._make_status()
+        fake_protocol = FakeProtocol(status)
+        self.window._protocol = fake_protocol
+        self.window._require_runtime_command_channel = lambda capability: True
+
+        self.window._on_estop_reset()
+
+        self.assertEqual(fake_protocol.estop_reset_calls, 1)
+        self.assertEqual(self.window.statusBar().currentMessage(), "急停复位: E-Stop reset")
 
     def test_system_panel_does_not_render_home_buttons(self) -> None:
         testids = self._collect_testids()

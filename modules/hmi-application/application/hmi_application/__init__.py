@@ -10,6 +10,7 @@ from .launch_state import (
     RecoveryActionDecision,
     RecoveryControlsState,
     RuntimeDegradationResult,
+    RuntimeRequalificationResult,
     build_launch_ui_state,
     build_online_capability_message,
     build_recovery_action_decision,
@@ -17,6 +18,7 @@ from .launch_state import (
     build_runtime_degradation_result,
     build_startup_error_message,
     detect_runtime_degradation_result,
+    detect_runtime_requalification_result,
 )
 from .preview_session import (
     PreflightBlockReason,
@@ -74,6 +76,7 @@ __all__ = [
     "RecoveryControlsState",
     "RecoveryWorker",
     "RuntimeDegradationResult",
+    "RuntimeRequalificationResult",
     "SessionSnapshot",
     "SessionStageEvent",
     "StageEventType",
@@ -90,6 +93,7 @@ __all__ = [
     "build_runtime_degradation_result",
     "build_startup_error_message",
     "detect_runtime_degradation_result",
+    "detect_runtime_requalification_result",
     "is_online_ready",
     "launch_result_from_snapshot",
     "load_supervisor_policy_from_env",
