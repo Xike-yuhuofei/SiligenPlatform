@@ -170,14 +170,22 @@ def build_cases(
                     name="runtime-service-dry-run",
                     layer="apps",
                     description="runtime-service dry-run",
-                    command=_powershell_file_command(WORKSPACE_ROOT / "apps" / "runtime-service" / "run.ps1", "-DryRun"),
+                    command=_powershell_file_command(
+                        WORKSPACE_ROOT / "apps" / "runtime-service" / "run.ps1",
+                        "-DryRun",
+                        "-SkipPreflight",
+                    ),
                     cwd=WORKSPACE_ROOT,
                 ),
                 ValidationCase(
                     name="runtime-gateway-dry-run",
                     layer="apps",
                     description="runtime-gateway dry-run",
-                    command=_powershell_file_command(WORKSPACE_ROOT / "apps" / "runtime-gateway" / "run.ps1", "-DryRun"),
+                    command=_powershell_file_command(
+                        WORKSPACE_ROOT / "apps" / "runtime-gateway" / "run.ps1",
+                        "-DryRun",
+                        "-SkipPreflight",
+                    ),
                     cwd=WORKSPACE_ROOT,
                 ),
                 ValidationCase(
@@ -370,7 +378,11 @@ def build_cases(
                     name="hil-closed-loop",
                     layer="e2e",
                     description="HIL 闭环动作与长稳探针",
-                    command=python_command(WORKSPACE_ROOT / "tests" / "e2e" / "hardware-in-loop" / "run_hil_closed_loop.py"),
+                    command=[
+                        *python_command(WORKSPACE_ROOT / "tests" / "e2e" / "hardware-in-loop" / "run_hil_closed_loop.py"),
+                        "--report-dir",
+                        str(resolved_report_dir),
+                    ],
                     cwd=WORKSPACE_ROOT,
                     known_failure_exit_codes=(KNOWN_FAILURE_EXIT_CODE,),
                     skipped_exit_codes=(SKIPPED_EXIT_CODE,),

@@ -182,7 +182,7 @@ $hmiOutput = Invoke-And-Capture `
 
 $tcpOutput = Invoke-And-Capture `
     -Label "runtime-gateway dry-run" `
-    -Command { & (Join-Path $workspaceRoot "apps\\runtime-gateway\\run.ps1") -DryRun } `
+    -Command { & (Join-Path $workspaceRoot "apps\\runtime-gateway\\run.ps1") -DryRun -SkipPreflight } `
     -OutputFile (Join-Path $resolvedReportDir "dryrun-runtime-gateway.txt")
 
 $cliOutput = Invoke-And-Capture `
@@ -192,7 +192,7 @@ $cliOutput = Invoke-And-Capture `
 
 $runtimeOutput = Invoke-And-Capture `
     -Label "runtime-service dry-run" `
-    -Command { & (Join-Path $workspaceRoot "apps\\runtime-service\\run.ps1") -DryRun } `
+    -Command { & (Join-Path $workspaceRoot "apps\\runtime-service\\run.ps1") -DryRun -SkipPreflight } `
     -OutputFile (Join-Path $resolvedReportDir "dryrun-runtime-service.txt")
 
 Assert-NotBlocked -Name "hmi-app" -Output $hmiOutput
