@@ -506,7 +506,7 @@ inline bool ResolveDistanceGuidedTriggerMarkerPlan(
     plan.index = best_candidate.index;
     plan.ratio = best_candidate.ratio;
     plan.position = request.position;
-    plan.trigger_distance_mm = clamped_target;
+    plan.trigger_distance_mm = request.trigger_distance_mm;
     plan.pulse_width_us = request.pulse_width_us;
     plan.order_index = request.order_index;
     return true;
@@ -564,7 +564,7 @@ inline bool ResolveIndexedPointTriggerMarkerPlan(const std::vector<TrajectoryPoi
     plan.index = best_candidate.index;
     plan.ratio = best_candidate.ratio;
     plan.position = request.position;
-    plan.trigger_distance_mm = clamped_target;
+    plan.trigger_distance_mm = request.trigger_distance_mm;
     plan.pulse_width_us = request.pulse_width_us;
     plan.order_index = request.order_index;
     return true;
@@ -607,7 +607,7 @@ inline bool ResolveSequentialSegmentTriggerMarkerPlan(const std::vector<Trajecto
             plan.index = candidate.index;
             plan.ratio = candidate.ratio;
             plan.position = request.position;
-            plan.trigger_distance_mm = clamped_target;
+            plan.trigger_distance_mm = request.trigger_distance_mm;
             plan.pulse_width_us = request.pulse_width_us;
             plan.order_index = request.order_index;
             return true;
@@ -620,6 +620,72 @@ inline bool ResolveSequentialSegmentTriggerMarkerPlan(const std::vector<Trajecto
         return true;
     }
     return forward_start > 1 && try_scan_range(1, forward_start - 1);
+}
+
+inline bool ResolveDistanceOnlyTriggerMarkerPlan(const std::vector<TrajectoryPoint>& points,
+                                                 const std::vector<float32>& cumulative,
+                                                 const TriggerMarkerRequest& request,
+                                                 float32 compare_tolerance_mm,
+                                                 TriggerMarkerPlan& plan) {
+    if (points.size() < 2 || cumulative.empty() || !std::isfinite(request.trigger_distance_mm)) {
+        return false;
+    }
+
+    const float32 total_length = cumulative.back();
+    const float32 clamped_target = std::clamp(request.trigger_distance_mm, 0.0f, total_length);
+    const auto lower = std::lower_bound(cumulative.begin(), cumulative.end(), clamped_target);
+    size_t right_index = static_cast<size_t>(std::distance(cumulative.begin(), lower));
+    if (right_index == 0) {
+        right_index = std::min<size_t>(1, points.size() - 1);
+    } else if (right_index >= points.size()) {
+        right_index = points.size() - 1;
+    }
+
+    if (std::fabs(cumulative[right_index - 1] - clamped_target) <= compare_tolerance_mm) {
+        plan.kind = TriggerMarkerCandidateKind::ExistingPoint;
+        plan.index = right_index - 1;
+        plan.ratio = 0.0f;
+        plan.position = request.position;
+        plan.trigger_distance_mm = request.trigger_distance_mm;
+        plan.pulse_width_us = request.pulse_width_us;
+        plan.order_index = request.order_index;
+        return true;
+    }
+
+    if (std::fabs(cumulative[right_index] - clamped_target) <= compare_tolerance_mm) {
+        plan.kind = TriggerMarkerCandidateKind::ExistingPoint;
+        plan.index = right_index;
+        plan.ratio = 0.0f;
+        plan.position = request.position;
+        plan.trigger_distance_mm = request.trigger_distance_mm;
+        plan.pulse_width_us = request.pulse_width_us;
+        plan.order_index = request.order_index;
+        return true;
+    }
+
+    const float32 segment_length = cumulative[right_index] - cumulative[right_index - 1];
+    if (segment_length <= compare_tolerance_mm) {
+        plan.kind = TriggerMarkerCandidateKind::ExistingPoint;
+        plan.index = right_index;
+        plan.ratio = 0.0f;
+        plan.position = request.position;
+        plan.trigger_distance_mm = request.trigger_distance_mm;
+        plan.pulse_width_us = request.pulse_width_us;
+        plan.order_index = request.order_index;
+        return true;
+    }
+
+    plan.kind = TriggerMarkerCandidateKind::SegmentProjection;
+    plan.index = right_index;
+    plan.ratio = std::clamp(
+        (clamped_target - cumulative[right_index - 1]) / segment_length,
+        0.0f,
+        1.0f);
+    plan.position = request.position;
+    plan.trigger_distance_mm = request.trigger_distance_mm;
+    plan.pulse_width_us = request.pulse_width_us;
+    plan.order_index = request.order_index;
+    return true;
 }
 
 inline std::vector<TrajectoryPoint> MaterializeTriggerMarkerPlans(
@@ -772,6 +838,12 @@ inline bool ApplyTriggerMarkersByPosition(std::vector<TrajectoryPoint>& points,
                         request,
                         position_tolerance_mm,
                         preferred_start_index,
+                        plan) &&
+                    !ResolveDistanceOnlyTriggerMarkerPlan(
+                        base_points,
+                        cumulative,
+                        request,
+                        position_tolerance_mm,
                         plan)) {
                     batch_resolved = false;
                     break;

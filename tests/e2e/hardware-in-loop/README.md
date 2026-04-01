@@ -80,6 +80,36 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 - 默认报告目录为 `tests/reports/adhoc/real-dxf-machine-dryrun-canonical/<timestamp>/`
 - 运行前会检查急停/门/限位，并在需要时先执行回零
 - 默认参数为 `dispensing=10mm/s`、`dry_run=10mm/s`、`rapid=20mm/s`、`velocity_trace_interval_ms=50`
+- `--job-timeout` 现在表示最小超时下限，不再直接等于最终等待时长；脚本会基于 `dxf.plan.prepare.estimated_time_s` 计算动态预算：`max(job_timeout, estimated_time_s * job_timeout_scale + job_timeout_buffer_seconds)`
+- 当前动态超时默认参数为：`--job-timeout=120`、`--job-timeout-scale=2.0`、`--job-timeout-buffer-seconds=15`
+- 从 `BUG-312` 起，dry-run 报告除兼容保留的 `job_status_history` 外，还会并列输出 `machine_status_history`、`coord_status_history`、`phase_timeline`、`verdict`、`evidence_contract`
+- 报告 `artifacts.job_timeout_budget` 和 `observation_summary.effective_job_timeout_seconds` 会落本次实际采用的等待预算，便于区分“真实执行超时”与“预算过紧”
+- 当前 authority 口径固定为：`status=safety gate only`、`dxf.job.status=display progress only`、`motion.coord.status + axis feedback=physical execution`
+- 当前阶段枚举固定为：`prepare -> binding -> start -> coord_running -> axis_motion -> terminal`
+- 当前 verdict 枚举固定为：`completed`、`canonical_step_failed`、`motion_timeout_unclassified`、`state_contradiction`
+- 若连续窗口内出现“`dxf.job.status` 高进度/高分段推进，但 `motion.coord.status` idle-empty，且轴速度与位移保持近零”，脚本会直接落 `state_contradiction` 并输出 `first_contradiction_sample`
+- 当前 `state_contradiction` 默认阈值参数为：`--contradiction-progress-threshold-percent=95`、`--contradiction-consecutive-samples=5`、`--contradiction-grace-seconds=0.5`、`--position-epsilon-mm=0.001`、`--velocity-epsilon-mm-s=0.001`
+- 当前能力先作为 `BUG-312` 专项诊断入口使用，默认不直接接入 `verify_hil_controlled_gate.py`
+- 自动离线回归入口为 `python -m pytest tests/e2e/first-layer/test_real_dxf_machine_dryrun_observation_contract.py -q`
+
+`BUG-312` 受控联机命令建议：
+
+```powershell
+python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun.py `
+  --report-root .\tests\reports\adhoc\live-hmi-bug312 `
+  --contradiction-progress-threshold-percent 95 `
+  --contradiction-consecutive-samples 5 `
+  --contradiction-grace-seconds 0.5 `
+  --position-epsilon-mm 0.001 `
+  --velocity-epsilon-mm-s 0.001
+```
+
+联机观察点：
+
+- 先看 `verdict.kind` 是否直接落为 `state_contradiction`
+- 再看 `phase_timeline` 是否停在 `start` 之后且长期未进入 `coord_running` / `axis_motion`
+- 若 `verdict.kind=state_contradiction`，优先看 `first_contradiction_sample` 中 `job.current_segment`、`job.cycle_progress_percent`、`coord.raw_status_word`、`coord.raw_segment`、`coord.axes.X/Y.velocity`
+- 若最终仍是 timeout 但未落矛盾，则按 `motion_timeout_unclassified` 处理，不要直接宣称根因已闭环
 
 `run_real_dxf_preview_snapshot.py` 说明：
 
