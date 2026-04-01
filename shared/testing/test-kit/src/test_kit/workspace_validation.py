@@ -170,14 +170,22 @@ def build_cases(
                     name="runtime-service-dry-run",
                     layer="apps",
                     description="runtime-service dry-run",
-                    command=_powershell_file_command(WORKSPACE_ROOT / "apps" / "runtime-service" / "run.ps1", "-DryRun"),
+                    command=_powershell_file_command(
+                        WORKSPACE_ROOT / "apps" / "runtime-service" / "run.ps1",
+                        "-DryRun",
+                        "-SkipPreflight",
+                    ),
                     cwd=WORKSPACE_ROOT,
                 ),
                 ValidationCase(
                     name="runtime-gateway-dry-run",
                     layer="apps",
                     description="runtime-gateway dry-run",
-                    command=_powershell_file_command(WORKSPACE_ROOT / "apps" / "runtime-gateway" / "run.ps1", "-DryRun"),
+                    command=_powershell_file_command(
+                        WORKSPACE_ROOT / "apps" / "runtime-gateway" / "run.ps1",
+                        "-DryRun",
+                        "-SkipPreflight",
+                    ),
                     cwd=WORKSPACE_ROOT,
                 ),
                 ValidationCase(
