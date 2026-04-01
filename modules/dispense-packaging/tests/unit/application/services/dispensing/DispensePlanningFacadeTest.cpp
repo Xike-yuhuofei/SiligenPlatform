@@ -364,7 +364,8 @@ TEST(DispensePlanningFacadeTest, AssemblePlanningArtifactsUsesStableClosedLoopPh
         square_span.interval_count);
     EXPECT_EQ(square_span.phase_strategy,
               Siligen::Domain::Dispensing::ValueObjects::DispenseSpanPhaseStrategy::AnchorConstrained);
-    EXPECT_FLOAT_EQ(square_span.phase_mm, 0.0f);
+    EXPECT_GE(square_span.phase_mm, 0.0f);
+    EXPECT_LT(square_span.phase_mm, square_span.actual_spacing_mm);
     EXPECT_EQ(CountAnchorRoles(square_span, StrongAnchorRole::ClosedLoopCorner), 4U);
     EXPECT_GT(
         square_payload.glue_points.front().DistanceTo(square_payload.glue_points.back()),
@@ -447,8 +448,15 @@ TEST(DispensePlanningFacadeTest, AssemblePlanningArtifactsSplitsRectDiagBranchRe
             return span.split_reason ==
                 Siligen::Domain::Dispensing::ValueObjects::DispenseSpanSplitReason::BranchOrRevisit;
         }));
-    EXPECT_EQ(CountPointsNear(payload.glue_points, Point2D(0.0f, 0.0f), 1e-4f), 2U);
-    EXPECT_EQ(CountPointsNear(payload.glue_points, Point2D(10.0f, 10.0f), 1e-4f), 2U);
+    std::vector<Point2D> authority_points;
+    authority_points.reserve(payload.authority_trigger_layout.trigger_points.size());
+    for (const auto& trigger : payload.authority_trigger_layout.trigger_points) {
+        authority_points.push_back(trigger.position);
+    }
+    EXPECT_EQ(CountPointsNear(payload.glue_points, Point2D(0.0f, 0.0f), 1e-4f),
+              CountPointsNear(authority_points, Point2D(0.0f, 0.0f), 1e-4f));
+    EXPECT_EQ(CountPointsNear(payload.glue_points, Point2D(10.0f, 10.0f), 1e-4f),
+              CountPointsNear(authority_points, Point2D(10.0f, 10.0f), 1e-4f));
 }
 
 TEST(DispensePlanningFacadeTest, AssemblePlanningArtifactsIgnoresAuxiliaryGeometryWithoutBreakingGluePointTruth) {
@@ -584,6 +592,70 @@ TEST(DispensePlanningFacadeTest, AssemblePlanningArtifactsSupportsSharedVertexRe
     EXPECT_TRUE(payload.preview_spacing_valid);
     EXPECT_EQ(payload.glue_points.size(), layout.trigger_points.size());
     EXPECT_EQ(CountPointsNear(payload.glue_points, Point2D(0.0f, 0.0f), 1e-4f), 2U);
+}
+
+TEST(DispensePlanningFacadeTest, AssemblePlanningArtifactsSupportsMixedOpenChainAndExplicitBoundaryFamily) {
+    auto input = BuildInput();
+    input.trigger_spatial_interval_mm = 5.0f;
+    input.process_path.segments.clear();
+    input.process_path.segments.push_back(BuildLineSegment(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)));
+    input.process_path.segments.push_back(BuildLineSegment(Point2D(10.0f, 0.0f), Point2D(20.0f, 0.0f)));
+    input.process_path.segments.push_back(BuildLineSegment(Point2D(20.0f, 0.0f), Point2D(0.0f, 0.0f), false));
+    input.process_path.segments.push_back(BuildLineSegment(Point2D(0.0f, 0.0f), Point2D(0.0f, 10.0f)));
+    input.authority_process_path = input.process_path;
+    input.motion_plan.points = {
+        BuildMotionPoint(0.0f, 0.0f, 0.0f, true),
+        BuildMotionPoint(1.0f, 10.0f, 0.0f, true),
+        BuildMotionPoint(2.0f, 20.0f, 0.0f, true),
+        BuildMotionPoint(3.0f, 0.0f, 0.0f, false),
+        BuildMotionPoint(4.0f, 0.0f, 10.0f, true),
+    };
+    input.motion_plan.total_length = 50.0f;
+    input.motion_plan.total_time = 4.0f;
+    input.estimated_time_s = 4.0f;
+
+    DispensePlanningFacade facade;
+    const auto result = facade.AssemblePlanningArtifacts(input);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    const auto& payload = result.Value();
+    const auto& layout = payload.authority_trigger_layout;
+    EXPECT_TRUE(layout.authority_ready);
+    EXPECT_EQ(layout.dispatch_type, TopologyDispatchType::ExplicitProcessBoundary);
+    EXPECT_EQ(layout.effective_component_count, 1U);
+    EXPECT_EQ(layout.ignored_component_count, 0U);
+    ASSERT_EQ(layout.components.size(), 1U);
+    ASSERT_EQ(layout.spans.size(), 2U);
+    ASSERT_EQ(layout.validation_outcomes.size(), 2U);
+    ASSERT_EQ(layout.trigger_points.size(), 8U);
+    EXPECT_EQ(layout.components.front().dispatch_type, TopologyDispatchType::ExplicitProcessBoundary);
+    EXPECT_TRUE(layout.components.front().blocking_reason.empty());
+    EXPECT_EQ(layout.spans[0].dispatch_type, TopologyDispatchType::ExplicitProcessBoundary);
+    EXPECT_EQ(layout.spans[1].dispatch_type, TopologyDispatchType::ExplicitProcessBoundary);
+    EXPECT_EQ(layout.spans[0].split_reason,
+              Siligen::Domain::Dispensing::ValueObjects::DispenseSpanSplitReason::None);
+    EXPECT_EQ(layout.spans[1].split_reason,
+              Siligen::Domain::Dispensing::ValueObjects::DispenseSpanSplitReason::ExplicitProcessBoundary);
+    EXPECT_TRUE(payload.preview_authority_ready);
+    EXPECT_TRUE(payload.preview_binding_ready);
+    EXPECT_TRUE(payload.preview_authority_shared_with_execution);
+    EXPECT_TRUE(payload.preview_spacing_valid);
+    EXPECT_TRUE(payload.preview_failure_reason.empty());
+    EXPECT_EQ(payload.glue_points.size(), layout.trigger_points.size());
+    EXPECT_EQ(CountPointsNear(payload.glue_points, Point2D(0.0f, 0.0f), 1e-4f), 2U);
+    const bool has_exception = std::any_of(
+        layout.validation_outcomes.begin(),
+        layout.validation_outcomes.end(),
+        [](const auto& outcome) {
+            return outcome.classification ==
+                Siligen::Domain::Dispensing::ValueObjects::SpacingValidationClassification::PassWithException;
+        });
+    EXPECT_EQ(payload.preview_validation_classification, has_exception ? "pass_with_exception" : "pass");
+    for (const auto& outcome : layout.validation_outcomes) {
+        EXPECT_EQ(outcome.dispatch_type, TopologyDispatchType::ExplicitProcessBoundary);
+        EXPECT_TRUE(outcome.blocking_reason.empty());
+        EXPECT_EQ(outcome.component_id, layout.components.front().component_id);
+    }
 }
 
 TEST(DispensePlanningFacadeTest, AssemblePlanningArtifactsKeepsExplicitBoundaryMixedWithReorderedBranchFamilyBlocked) {

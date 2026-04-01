@@ -245,6 +245,28 @@ ComponentDispatchResolution ResolveComponentDispatch(
         return {TopologyDispatchType::BranchOrRevisit, {}};
     }
 
+    const bool has_explicit_boundary =
+        AnySpanUsesSplitReason(spans, DispenseSpanSplitReason::ExplicitProcessBoundary);
+    const bool has_unsplit_open_chain =
+        AnySpanUsesSplitReason(spans, DispenseSpanSplitReason::None);
+    const bool only_explicit_boundary_family =
+        has_explicit_boundary &&
+        has_unsplit_open_chain &&
+        std::all_of(
+            spans.begin(),
+            spans.end(),
+            [](const auto& span) {
+                return span.split_reason == DispenseSpanSplitReason::None ||
+                    span.split_reason == DispenseSpanSplitReason::ExplicitProcessBoundary;
+            });
+    if (only_explicit_boundary_family) {
+        // A single open-chain candidate can share a vertex with rapid-separated
+        // explicit boundary spans in the same connected component. The component
+        // is still one explicit process-boundary family and should preserve that
+        // dispatch instead of being blocked as a mixed topology.
+        return {TopologyDispatchType::ExplicitProcessBoundary, {}};
+    }
+
     if (AllSpansUseSplitReason(spans, DispenseSpanSplitReason::ExplicitProcessBoundary)) {
         return {TopologyDispatchType::ExplicitProcessBoundary, {}};
     }

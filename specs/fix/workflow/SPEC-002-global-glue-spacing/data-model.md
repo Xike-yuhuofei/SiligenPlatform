@@ -300,16 +300,18 @@ ready -> blocked
 6. `SpacingValidationOutcome` 不存在 `fail`
 7. `ExecutionLaunchGate.start_allowed = true`
 
-## 7. Current Residual Blocked Set
+## 7. Mixed-Family Normalization
 
-当前阶段仍保留一个明确阻断的 mixed component 残余集合，只允许在 `modules/dispense-packaging` 的 authority/planner owner 层内做内部诊断，不上提为 HMI / gateway 成功 payload 字段：
+当前阶段只对已知、可解释的 mixed open-chain family 做最小归一化：
 
-- 残余阻断样例：`ExplicitProcessBoundary + reordered branch family`
-- 固定 `blocking_reason`：`mixed_explicit_boundary_with_reordered_branch_family`
-- 组件级 `blocking_reason` 只用于 authority 内部诊断与测试；span 级失败仍以 `SpacingValidationOutcome.blocking_reason` 作为唯一外部可消费的失败真值链
-- 当前阶段不继续放行该 residual family，不生成 trigger points，不在 facade 成功路径中产出 `glue_points`
+- `none + explicit_process_boundary`
+  - 组件级 `dispatch_type` 归一为 `explicit_process_boundary`
+  - 该 family 表示普通 open-chain 与 rapid 分隔得到的显式边界 span 共用顶点，但仍属于同一显式工艺边界家族
+  - 该 family 必须继续生成 authority `trigger_points`、`glue_points` 与 `SpacingValidationOutcome`
+  - 对该 family，组件级 `blocking_reason` 不再输出 `mixed_explicit_boundary_with_reordered_branch_family`
 
-若后续要继续消化该 blocked set，下一阶段只允许二选一：
+下列 residual blocked family 仍保持阻断，不得沿用本条规则隐式放行，必须重新冻结契约后再处理：
 
-1. 冻结 `hole / nested contour / contour hierarchy` 契约
-2. 将 `process-path` 相关语义合同上游化
+1. `explicit_process_boundary + reordered branch family`
+2. `hole / nested contour / contour hierarchy`
+3. `exception_feature` 与其他拓扑 family 的混合重解释

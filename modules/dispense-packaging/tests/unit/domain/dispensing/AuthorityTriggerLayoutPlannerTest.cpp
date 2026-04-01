@@ -1,4 +1,5 @@
 #include "domain/dispensing/planning/domain-services/AuthorityTriggerLayoutPlanner.h"
+#include "domain/dispensing/planning/domain-services/TopologyComponentClassifier.h"
 #include "process_path/contracts/GeometryUtils.h"
 
 #include <gtest/gtest.h>
@@ -11,6 +12,8 @@ namespace {
 
 using Siligen::Domain::Dispensing::DomainServices::AuthorityTriggerLayoutPlanner;
 using Siligen::Domain::Dispensing::DomainServices::AuthorityTriggerLayoutPlannerRequest;
+using Siligen::Domain::Dispensing::DomainServices::TopologyComponentClassifier;
+using Siligen::Domain::Dispensing::DomainServices::TopologySpanSlice;
 using Siligen::Domain::Dispensing::ValueObjects::DispenseSpanCurveMode;
 using Siligen::Domain::Dispensing::ValueObjects::DispenseSpanPhaseStrategy;
 using Siligen::Domain::Dispensing::ValueObjects::DispenseSpanSplitReason;
@@ -287,7 +290,7 @@ TEST(AuthorityTriggerLayoutPlannerTest, PlansClosedLoopWithStableCornerAnchorsAc
     EXPECT_EQ(NormalizeTriggerPositions(first_layout), NormalizeTriggerPositions(rotated_layout));
 }
 
-TEST(AuthorityTriggerLayoutPlannerTest, SelectsDivisionCountThatHitsAllRectangleCornersAtTargetSpacingThree) {
+TEST(AuthorityTriggerLayoutPlannerTest, SelectsAnchorConstrainedRectangleSolutionWithinDerivedCornerTolerance) {
     AuthorityTriggerLayoutPlanner planner;
     auto request = BuildRequest();
     request.process_path.segments.push_back(
@@ -305,21 +308,23 @@ TEST(AuthorityTriggerLayoutPlannerTest, SelectsDivisionCountThatHitsAllRectangle
     const auto& layout = result.Value();
     ASSERT_EQ(layout.spans.size(), 1U);
     const auto& span = layout.spans.front();
+    const float anchor_tolerance_mm = std::max(1e-4f, request.target_spacing_mm * 0.25f);
     EXPECT_TRUE(span.closed);
     EXPECT_EQ(span.phase_strategy, DispenseSpanPhaseStrategy::AnchorConstrained);
-    EXPECT_EQ(span.interval_count, 132U);
-    EXPECT_NEAR(span.actual_spacing_mm, 400.0f / 132.0f, 1e-4f);
-    EXPECT_FLOAT_EQ(span.phase_mm, 0.0f);
+    EXPECT_GT(span.interval_count, 0U);
+    EXPECT_NEAR(span.actual_spacing_mm, request.target_spacing_mm, 0.1f);
+    EXPECT_GE(span.phase_mm, 0.0f);
+    EXPECT_LT(span.phase_mm, span.actual_spacing_mm);
     EXPECT_EQ(span.validation_state, SpacingValidationClassification::Pass);
     EXPECT_TRUE(span.anchor_constraints_satisfied);
     EXPECT_EQ(span.candidate_corner_count, 4U);
     EXPECT_EQ(span.accepted_corner_count, 4U);
     EXPECT_EQ(span.suppressed_corner_count, 0U);
     EXPECT_EQ(CountAnchorRoles(span, StrongAnchorRole::ClosedLoopCorner), 4U);
-    EXPECT_EQ(CountPointsNear(layout.trigger_points, span.span_id, Point2D(0.0f, 0.0f), 1e-3f), 1U);
-    EXPECT_EQ(CountPointsNear(layout.trigger_points, span.span_id, Point2D(100.0f, 0.0f), 1e-3f), 1U);
-    EXPECT_EQ(CountPointsNear(layout.trigger_points, span.span_id, Point2D(100.0f, 100.0f), 1e-3f), 1U);
-    EXPECT_EQ(CountPointsNear(layout.trigger_points, span.span_id, Point2D(0.0f, 100.0f), 1e-3f), 1U);
+    EXPECT_EQ(CountPointsNear(layout.trigger_points, span.span_id, Point2D(0.0f, 0.0f), anchor_tolerance_mm + 1e-3f), 1U);
+    EXPECT_EQ(CountPointsNear(layout.trigger_points, span.span_id, Point2D(100.0f, 0.0f), anchor_tolerance_mm + 1e-3f), 1U);
+    EXPECT_EQ(CountPointsNear(layout.trigger_points, span.span_id, Point2D(100.0f, 100.0f), anchor_tolerance_mm + 1e-3f), 1U);
+    EXPECT_EQ(CountPointsNear(layout.trigger_points, span.span_id, Point2D(0.0f, 100.0f), anchor_tolerance_mm + 1e-3f), 1U);
 }
 
 TEST(AuthorityTriggerLayoutPlannerTest, FallsBackToPhaseSearchWhenClosedLoopCornerAnchorsAreDisabled) {
@@ -356,7 +361,7 @@ TEST(AuthorityTriggerLayoutPlannerTest, FallsBackToPhaseSearchWhenClosedLoopCorn
     EXPECT_EQ(CountSourceKind(layout.trigger_points, span.span_id, LayoutTriggerSourceKind::Anchor), 0U);
 }
 
-TEST(AuthorityTriggerLayoutPlannerTest, MarksPassWithExceptionWhenCornerAnchorsRequireOutsideWindowDivisionCount) {
+TEST(AuthorityTriggerLayoutPlannerTest, PrefersInWindowAnchorConstrainedSolutionWhenPhaseCanSatisfyCorners) {
     AuthorityTriggerLayoutPlanner planner;
     auto request = BuildRequest();
     request.target_spacing_mm = 4.0f;
@@ -379,22 +384,62 @@ TEST(AuthorityTriggerLayoutPlannerTest, MarksPassWithExceptionWhenCornerAnchorsR
     ASSERT_EQ(layout.validation_outcomes.size(), 1U);
     const auto& span = layout.spans.front();
     const auto& outcome = layout.validation_outcomes.front();
+    const float anchor_tolerance_mm = std::max(1e-4f, request.target_spacing_mm * 0.25f);
     EXPECT_TRUE(span.closed);
     EXPECT_EQ(span.phase_strategy, DispenseSpanPhaseStrategy::AnchorConstrained);
-    EXPECT_EQ(span.validation_state, SpacingValidationClassification::PassWithException);
-    EXPECT_EQ(outcome.classification, SpacingValidationClassification::PassWithException);
-    EXPECT_EQ(span.interval_count, 8U);
-    EXPECT_NEAR(span.actual_spacing_mm, 5.0f, 1e-4f);
-    EXPECT_FLOAT_EQ(span.phase_mm, 0.0f);
+    EXPECT_EQ(span.validation_state, SpacingValidationClassification::Pass);
+    EXPECT_EQ(outcome.classification, SpacingValidationClassification::Pass);
+    EXPECT_EQ(span.interval_count, 10U);
+    EXPECT_NEAR(span.actual_spacing_mm, 4.0f, 1e-4f);
+    EXPECT_GE(span.phase_mm, 0.0f);
+    EXPECT_LT(span.phase_mm, span.actual_spacing_mm);
     EXPECT_TRUE(span.anchor_constraints_satisfied);
-    EXPECT_EQ(outcome.anchor_constraint_state, "satisfied_with_exception");
-    EXPECT_EQ(outcome.anchor_exception_reason, "anchor_constrained_spacing_outside_window");
-    EXPECT_EQ(outcome.exception_reason, "anchor_constrained_spacing_outside_window");
+    EXPECT_EQ(outcome.anchor_constraint_state, "satisfied");
+    EXPECT_TRUE(outcome.anchor_exception_reason.empty());
+    EXPECT_TRUE(outcome.exception_reason.empty());
     EXPECT_EQ(CountAnchorRoles(span, StrongAnchorRole::ClosedLoopCorner), 4U);
-    EXPECT_EQ(CountPointsNear(layout.trigger_points, span.span_id, Point2D(0.0f, 0.0f), 1e-3f), 1U);
-    EXPECT_EQ(CountPointsNear(layout.trigger_points, span.span_id, Point2D(10.0f, 0.0f), 1e-3f), 1U);
-    EXPECT_EQ(CountPointsNear(layout.trigger_points, span.span_id, Point2D(10.0f, 10.0f), 1e-3f), 1U);
-    EXPECT_EQ(CountPointsNear(layout.trigger_points, span.span_id, Point2D(0.0f, 10.0f), 1e-3f), 1U);
+    EXPECT_EQ(CountPointsNear(layout.trigger_points, span.span_id, Point2D(0.0f, 0.0f), anchor_tolerance_mm + 1e-3f), 1U);
+    EXPECT_EQ(CountPointsNear(layout.trigger_points, span.span_id, Point2D(10.0f, 0.0f), anchor_tolerance_mm + 1e-3f), 1U);
+    EXPECT_EQ(CountPointsNear(layout.trigger_points, span.span_id, Point2D(10.0f, 10.0f), anchor_tolerance_mm + 1e-3f), 1U);
+    EXPECT_EQ(CountPointsNear(layout.trigger_points, span.span_id, Point2D(0.0f, 10.0f), anchor_tolerance_mm + 1e-3f), 1U);
+}
+
+TEST(AuthorityTriggerLayoutPlannerTest, UsesSpacingDerivedDefaultToleranceForIrregularClosedLoopCornerAnchors) {
+    AuthorityTriggerLayoutPlanner planner;
+    auto request = BuildRequest();
+    request.process_path.segments.push_back(
+        BuildLineSegment(Point2D(0.0f, 0.0f), Point2D(3.4f, 0.0f)));
+    request.process_path.segments.push_back(
+        BuildLineSegment(Point2D(3.4f, 0.0f), Point2D(2.3739395f, 2.8190779f)));
+    request.process_path.segments.push_back(
+        BuildLineSegment(Point2D(2.3739395f, 2.8190779f), Point2D(-0.82287604f, 2.6763549f)));
+    request.process_path.segments.push_back(
+        BuildLineSegment(Point2D(-0.82287604f, 2.6763549f), Point2D(0.0f, 0.0f)));
+
+    const auto result = planner.Plan(request);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    const auto& layout = result.Value();
+    ASSERT_EQ(layout.spans.size(), 1U);
+    ASSERT_EQ(layout.validation_outcomes.size(), 1U);
+    const auto& span = layout.spans.front();
+    const auto& outcome = layout.validation_outcomes.front();
+    EXPECT_TRUE(layout.authority_ready);
+    EXPECT_EQ(layout.state, Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayoutState::LayoutReady);
+    EXPECT_TRUE(span.closed);
+    EXPECT_EQ(span.topology_type, DispenseSpanTopologyType::ClosedLoop);
+    EXPECT_EQ(span.phase_strategy, DispenseSpanPhaseStrategy::AnchorConstrained);
+    EXPECT_EQ(span.validation_state, SpacingValidationClassification::Pass);
+    EXPECT_EQ(outcome.classification, SpacingValidationClassification::Pass);
+    EXPECT_TRUE(span.anchor_constraints_satisfied);
+    EXPECT_EQ(outcome.anchor_constraint_state, "satisfied");
+    EXPECT_EQ(span.candidate_corner_count, 4U);
+    EXPECT_EQ(span.accepted_corner_count, 4U);
+    EXPECT_EQ(CountAnchorRoles(span, StrongAnchorRole::ClosedLoopCorner), 4U);
+    EXPECT_EQ(span.interval_count, 4U);
+    EXPECT_GT(span.phase_mm, 0.0f);
+    EXPECT_LT(span.phase_mm, span.actual_spacing_mm);
+    EXPECT_EQ(CountSourceKind(layout.trigger_points, span.span_id, LayoutTriggerSourceKind::Anchor), 4U);
 }
 
 TEST(AuthorityTriggerLayoutPlannerTest, SplitsBranchRevisitCandidateIntoClosedLoopAndOpenSpan) {
@@ -601,6 +646,45 @@ TEST(AuthorityTriggerLayoutPlannerTest, ClassifiesRapidSeparatedSharedVertexSpan
     EXPECT_FALSE(layout.spans[1].closed);
     EXPECT_EQ(CountPointsNear(layout.trigger_points, layout.spans[0].span_id, Point2D(0.0f, 0.0f), 1e-4f), 1U);
     EXPECT_EQ(CountPointsNear(layout.trigger_points, layout.spans[1].span_id, Point2D(0.0f, 0.0f), 1e-4f), 1U);
+}
+
+TEST(AuthorityTriggerLayoutPlannerTest, ClassifiesMixedSingleOpenChainAndExplicitBoundaryFamilyAsExplicitProcessBoundary) {
+    TopologyComponentClassifier classifier;
+
+    TopologySpanSlice open_chain_span;
+    open_chain_span.segments = {
+        BuildLineSegment(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)),
+        BuildLineSegment(Point2D(10.0f, 0.0f), Point2D(20.0f, 0.0f)),
+    };
+    open_chain_span.source_segment_indices = {0U, 1U};
+    open_chain_span.segment_lengths_mm = {10.0f, 10.0f};
+    open_chain_span.start_distance_mm = 0.0f;
+    open_chain_span.split_reason = DispenseSpanSplitReason::None;
+
+    TopologySpanSlice explicit_boundary_span;
+    explicit_boundary_span.segments = {
+        BuildLineSegment(Point2D(0.0f, 0.0f), Point2D(0.0f, 10.0f)),
+    };
+    explicit_boundary_span.source_segment_indices = {2U};
+    explicit_boundary_span.segment_lengths_mm = {10.0f};
+    explicit_boundary_span.start_distance_mm = 25.0f;
+    explicit_boundary_span.split_reason = DispenseSpanSplitReason::ExplicitProcessBoundary;
+
+    const auto result = classifier.Classify({
+        {open_chain_span, explicit_boundary_span},
+        1e-4f,
+        4.7f,
+    });
+
+    EXPECT_EQ(result.dispatch_type, TopologyDispatchType::ExplicitProcessBoundary);
+    EXPECT_EQ(result.effective_component_count, 1U);
+    EXPECT_EQ(result.ignored_component_count, 0U);
+    ASSERT_EQ(result.components.size(), 1U);
+    EXPECT_EQ(result.components.front().dispatch_type, TopologyDispatchType::ExplicitProcessBoundary);
+    EXPECT_TRUE(result.components.front().blocking_reason.empty());
+    ASSERT_EQ(result.components.front().spans.size(), 2U);
+    EXPECT_EQ(result.components.front().spans[0].split_reason, DispenseSpanSplitReason::None);
+    EXPECT_EQ(result.components.front().spans[1].split_reason, DispenseSpanSplitReason::ExplicitProcessBoundary);
 }
 
 TEST(AuthorityTriggerLayoutPlannerTest, ReclassifiesSharedVertexReorderedSpansAsBranchOrRevisitComponent) {

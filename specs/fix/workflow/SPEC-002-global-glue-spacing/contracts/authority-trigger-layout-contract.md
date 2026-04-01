@@ -110,6 +110,7 @@
 3. `anchor_constrained` 的求解对象必须同时包含 `interval_count` 和 `phase_mm`。
 4. 若某个可接受解能命中全部必保角点，则优先选择与 `target_spacing_mm` 偏差最小的解。
 5. 若只能通过例外接受解满足锚点约束，则必须显式输出例外原因。
+6. 未显式配置 `closed_loop_anchor_tolerance_mm` 时，默认锚点容差不得退化为纯几何顶点判等；应至少按 `max(vertex_tolerance_mm, target_spacing_mm * 0.25)` 推导闭环求解容差。
 
 ### 9.5 最小诊断输出
 

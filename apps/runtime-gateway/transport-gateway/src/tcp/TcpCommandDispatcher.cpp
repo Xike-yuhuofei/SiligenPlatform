@@ -95,6 +95,7 @@ size_t ReadJsonSizeT(const nlohmann::json& params, const char* key, size_t fallb
 }
 
 constexpr float kMovePrecheckEpsilon = 1e-4f;
+constexpr double kPreviewJsonCoordinatePrecisionMm = 1e-3;
 
 std::optional<std::string> CheckMoveAxisLimitBeforeDispatch(
     const std::shared_ptr<TcpFacades::TcpMotionFacade>& motion_facade,
@@ -288,6 +289,17 @@ nlohmann::json BuildPreviewPolyline(const std::vector<Siligen::TrajectoryPoint>&
         });
     }
     return polyline;
+}
+
+double QuantizePreviewCoordinate(double value) {
+    return std::round(value / kPreviewJsonCoordinatePrecisionMm) * kPreviewJsonCoordinatePrecisionMm;
+}
+
+nlohmann::json BuildPreviewPointJson(float32 x, float32 y) {
+    return {
+        {"x", QuantizePreviewCoordinate(static_cast<double>(x))},
+        {"y", QuantizePreviewCoordinate(static_cast<double>(y))}
+    };
 }
 
 bool ReadJsonBool(const nlohmann::json& params, const char* key, bool fallback) {
@@ -2269,10 +2281,7 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
 
     nlohmann::json glue_points = nlohmann::json::array();
     for (const auto& point : snapshot.glue_points) {
-        glue_points.push_back({
-            {"x", static_cast<double>(point.x)},
-            {"y", static_cast<double>(point.y)},
-        });
+        glue_points.push_back(BuildPreviewPointJson(point.x, point.y));
     }
     if (glue_points.empty()) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview glue points are empty");
@@ -2280,10 +2289,7 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
 
     nlohmann::json execution_polyline = nlohmann::json::array();
     for (const auto& point : snapshot.execution_polyline) {
-        execution_polyline.push_back({
-            {"x", static_cast<double>(point.x)},
-            {"y", static_cast<double>(point.y)},
-        });
+        execution_polyline.push_back(BuildPreviewPointJson(point.x, point.y));
     }
 
     {

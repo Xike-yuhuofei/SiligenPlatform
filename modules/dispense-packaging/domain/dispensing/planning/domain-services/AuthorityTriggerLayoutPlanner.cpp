@@ -92,9 +92,14 @@ float32 ResolveClosedLoopCornerClusterDistance(
 float32 ResolveClosedLoopAnchorTolerance(
     const AuthorityTriggerLayoutPlannerRequest& request,
     float32 vertex_tolerance_mm) {
+    // Closed-loop corner anchors are solved against a uniform spacing lattice, not
+    // raw topology vertex equality. Falling back to vertex tolerance makes real DXF
+    // loops fail unless every corner residue is bitwise aligned with one phase.
+    const float32 derived_anchor_tolerance_mm =
+        std::max(vertex_tolerance_mm, request.target_spacing_mm * 0.25f);
     return request.closed_loop_anchor_tolerance_mm > 0.0f
         ? request.closed_loop_anchor_tolerance_mm
-        : vertex_tolerance_mm;
+        : derived_anchor_tolerance_mm;
 }
 
 bool PointsNear(const Siligen::Shared::Types::Point2D& lhs,

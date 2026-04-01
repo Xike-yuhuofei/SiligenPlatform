@@ -50,6 +50,7 @@ set(TEST_SOURCES
 )
 
 set(OPTIONAL_TEST_SOURCES
+    unit/dispensing/DispensingProcessServiceBufferingTest.cpp
     unit/domain/diagnostics/ProcessResultServiceTest.cpp
     unit/domain/dispensing/ClosedLoopSkeletonTest.cpp
     unit/domain/dispensing/ValveCoordinationServiceTest.cpp
