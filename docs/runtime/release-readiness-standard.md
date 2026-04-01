@@ -1,6 +1,6 @@
 # Release Readiness Standard
 
-更新时间：`2026-03-25`
+更新时间：`2026-04-01`
 
 ## 1. 目的
 
@@ -96,6 +96,10 @@ Set-Location <repo-root>
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\run-local-validation-gate.ps1
 .\release-check.ps1 -Version <x.y.z> -IncludeHardwareSmoke
 ```
+
+上述 `release-check.ps1` 当前默认纳入 `hil-case-matrix`，要求 `hil-case-matrix/case-matrix-summary.json/.md` 作为同批自动化证据。
+
+如需临时隔离矩阵影响，可显式传 `-IncludeHilCaseMatrix:$false`；该结果仅可用于排障，不构成本节定义的默认执行链，也不替代 `G8` 所要求的 HIL / 真机 / 现场验证闭环。
 
 在此基础上，还必须补齐：
 

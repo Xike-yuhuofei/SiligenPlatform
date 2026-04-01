@@ -10,7 +10,8 @@ param(
     [string]$FreezeDocsetReportDir = "",
     [switch]$FailOnKnownFailure,
     [switch]$IncludeHardwareSmoke,
-    [switch]$IncludeHilClosedLoop
+    [switch]$IncludeHilClosedLoop,
+    [switch]$IncludeHilCaseMatrix
 )
 
 $ErrorActionPreference = "Stop"
@@ -94,6 +95,10 @@ if ($IncludeHardwareSmoke) {
 
 if ($IncludeHilClosedLoop) {
     $argsList += "--include-hil-closed-loop"
+}
+
+if ($IncludeHilCaseMatrix) {
+    $argsList += "--include-hil-case-matrix"
 }
 
 if ($FailOnKnownFailure) {

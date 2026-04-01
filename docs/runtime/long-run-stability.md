@@ -1,6 +1,6 @@
 # Long Run Stability
 
-更新时间：`2026-03-25`
+更新时间：`2026-04-01`
 
 ## 1. 长稳策略
 
@@ -20,6 +20,18 @@
   -HilPauseResumeCycles 3
 ```
 
+当前默认把多轮 `home + closed_loop` 稳定性矩阵纳入同一批 gate：
+
+```powershell
+.\tests\e2e\hardware-in-loop\run_hil_controlled_test.ps1 `
+  -Profile Local `
+  -UseTimestampedReportDir `
+  -HilDurationSeconds 1800 `
+  -HilPauseResumeCycles 3
+```
+
+如需临时隔离矩阵影响，可显式传：`-IncludeHilCaseMatrix:$false`
+
 ## 3. 报告与发布
 
 - 时间戳报告：`tests/reports/hil-controlled-test/<timestamp>/`
@@ -32,6 +44,7 @@
 - `hil-closed-loop-summary.json/.md`
 - `hil-controlled-gate-summary.json/.md`
 - `hil-controlled-release-summary.md`
+- 默认额外包含 `hil-case-matrix/case-matrix-summary.json/.md`
 
 ## 4. 判定基线
 
@@ -39,6 +52,7 @@
 - `hil-closed-loop`：`overall_status=passed`
 - `pause_resume_cycles`：达到预设门槛（默认 `3`）
 - `timeout_count`：`0`
+- `hil-case-matrix` workspace case 为 `passed`，且 `case-matrix-summary.overall_status=passed`
 
 ## 5. 下一阶段建议
 

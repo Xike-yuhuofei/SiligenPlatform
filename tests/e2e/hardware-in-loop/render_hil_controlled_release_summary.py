@@ -94,6 +94,11 @@ def _render_summary(
     gate_status = str(gate_payload.get("overall_status", "failed"))
     workspace_counts = workspace_payload.get("counts", {})
     workspace_map = _status_map_from_workspace(workspace_payload)
+    gate_checks = {str(item.get("name", "")): item for item in gate_payload.get("checks", [])}
+    required_workspace_cases = set(str(item) for item in gate_payload.get("required_workspace_cases", []))
+    hil_case_matrix_required = "hil-case-matrix" in required_workspace_cases
+    hil_case_matrix_path_text = str(gate_payload.get("hil_case_matrix_summary_json", "")).strip()
+    hil_case_matrix_path = Path(hil_case_matrix_path_text) if hil_case_matrix_path_text else None
 
     hil_overall_status = str(hil_payload.get("overall_status", "failed"))
     duration_seconds = _to_float(hil_payload.get("duration_seconds", 0))
@@ -112,6 +117,8 @@ def _render_summary(
         _to_int(workspace_counts.get("known_failure", 0)) == 0
         and _to_int(workspace_counts.get("skipped", 0)) == 0
     )
+    hil_case_matrix_workspace_ok = workspace_map.get("hil-case-matrix") == "passed"
+    hil_case_matrix_gate_ok = str(gate_checks.get("hil-case-matrix-overall-status", {}).get("status", "")) == "passed"
 
     conclusion = _determine_conclusion(gate_status)
     executor_text = executor.strip() if executor.strip() else "待填写"
@@ -141,39 +148,56 @@ def _render_summary(
         f"- `hil-closed-loop-summary.md`：`{hil_md}`",
         f"- `hil-controlled-gate-summary.json`：`{gate_path}`",
         f"- `hil-controlled-gate-summary.md`：`{gate_md}`",
-        "",
-        "## 3. 判定摘要",
-        "",
-        "| 项目 | 结果 | 说明 |",
-        "| --- | --- | --- |",
-        f"| hardware smoke | `{_format_result(hardware_smoke_ok)}` | workspace case `hardware-smoke` |",
-        f"| hil-closed-loop | `{_format_result(hil_closed_loop_ok)}` | workspace case + overall_status=`{hil_overall_status}` |",
-        f"| long soak duration | `{_format_result(duration_ok)}` | duration_seconds=`{duration_seconds}` elapsed_seconds=`{elapsed_seconds}` |",
-        f"| state transition checks | `{_format_result(transition_ok)}` | checks=`{len(transition_checks)}` 全部 status=passed |",
-        f"| timeout_count | `{_format_result(timeout_ok)}` | timeout_count=`{timeout_count}` |",
-        f"| reconnect_count | `{_format_result(reconnect_ok)}` | reconnect_count=`{reconnect_count}` |",
-        f"| known failure / skipped | `{_format_result(no_known_failure_skipped)}` | known_failure=`{workspace_counts.get('known_failure', 0)}` skipped=`{workspace_counts.get('skipped', 0)}` |",
-        f"| controlled gate | `{_format_result(gate_status == 'passed')}` | gate overall_status=`{gate_status}` |",
-        "",
-        "## 4. 结论",
-        "",
-        f"- 结论：`{conclusion}`",
-        "- 判定规则：",
-        "  - Gate 为 `passed` 时，结论为 `通过`",
-        "  - 否则结论为 `阻塞`",
-        "",
-        "## 5. 范围声明",
-        "",
-        "本结论只代表：",
-        "",
-        "- `HIL` 受控测试通过/未通过",
-        "",
-        "本结论不代表：",
-        "",
-        "- 工艺质量签收完成",
-        "- 整机产能签收完成",
-        "",
     ]
+    if hil_case_matrix_path_text:
+        lines.append(f"- `case-matrix-summary.json`：`{hil_case_matrix_path}`")
+        lines.append(f"- `case-matrix-summary.md`：`{hil_case_matrix_path.with_suffix('.md')}`")
+
+    lines.extend(
+        [
+            "",
+            "## 3. 判定摘要",
+            "",
+            "| 项目 | 结果 | 说明 |",
+            "| --- | --- | --- |",
+            f"| hardware smoke | `{_format_result(hardware_smoke_ok)}` | workspace case `hardware-smoke` |",
+            f"| hil-closed-loop | `{_format_result(hil_closed_loop_ok)}` | workspace case + overall_status=`{hil_overall_status}` |",
+            f"| long soak duration | `{_format_result(duration_ok)}` | duration_seconds=`{duration_seconds}` elapsed_seconds=`{elapsed_seconds}` |",
+            f"| state transition checks | `{_format_result(transition_ok)}` | checks=`{len(transition_checks)}` 全部 status=passed |",
+            f"| timeout_count | `{_format_result(timeout_ok)}` | timeout_count=`{timeout_count}` |",
+            f"| reconnect_count | `{_format_result(reconnect_ok)}` | reconnect_count=`{reconnect_count}` |",
+            f"| known failure / skipped | `{_format_result(no_known_failure_skipped)}` | known_failure=`{workspace_counts.get('known_failure', 0)}` skipped=`{workspace_counts.get('skipped', 0)}` |",
+        ]
+    )
+    if hil_case_matrix_required or hil_case_matrix_path_text:
+        lines.append(
+            f"| hil-case-matrix | `{_format_result(hil_case_matrix_workspace_ok and hil_case_matrix_gate_ok)}` | "
+            f"workspace case=`{workspace_map.get('hil-case-matrix', 'missing')}` gate_check=`{gate_checks.get('hil-case-matrix-overall-status', {}).get('status', 'missing')}` |"
+        )
+    lines.extend(
+        [
+            f"| controlled gate | `{_format_result(gate_status == 'passed')}` | gate overall_status=`{gate_status}` |",
+            "",
+            "## 4. 结论",
+            "",
+            f"- 结论：`{conclusion}`",
+            "- 判定规则：",
+            "  - Gate 为 `passed` 时，结论为 `通过`",
+            "  - 否则结论为 `阻塞`",
+            "",
+            "## 5. 范围声明",
+            "",
+            "本结论只代表：",
+            "",
+            "- `HIL` 受控测试通过/未通过",
+            "",
+            "本结论不代表：",
+            "",
+            "- 工艺质量签收完成",
+            "- 整机产能签收完成",
+            "",
+        ]
+    )
     return "\n".join(lines)
 
 
