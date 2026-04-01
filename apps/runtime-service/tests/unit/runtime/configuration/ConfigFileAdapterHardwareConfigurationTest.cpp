@@ -99,7 +99,7 @@ std::string BuildBaseIni(const std::string& hardware_suffix = "") {
         "home_input_bit=0\n"
         "home_active_low=false\n"
         "home_debounce_ms=0\n"
-        "ready_zero_speed_mm_s=5.0\n"
+        "ready_zero_speed_mm_s=8.0\n"
         "rapid_velocity=50.0\n"
         "locate_velocity=10.0\n"
         "index_velocity=5.0\n"
@@ -110,7 +110,7 @@ std::string BuildBaseIni(const std::string& hardware_suffix = "") {
         "search_distance=200.0\n"
         "escape_distance=5.0\n"
         "escape_velocity=10.0\n"
-        "timeout_ms=30000\n"
+        "timeout_ms=80000\n"
         "settle_time_ms=50\n"
         "escape_timeout_ms=5000\n"
         "retry_count=1\n"
@@ -126,7 +126,7 @@ std::string BuildBaseIni(const std::string& hardware_suffix = "") {
         "home_input_bit=1\n"
         "home_active_low=false\n"
         "home_debounce_ms=0\n"
-        "ready_zero_speed_mm_s=5.0\n"
+        "ready_zero_speed_mm_s=8.0\n"
         "rapid_velocity=50.0\n"
         "locate_velocity=10.0\n"
         "index_velocity=5.0\n"
@@ -137,7 +137,7 @@ std::string BuildBaseIni(const std::string& hardware_suffix = "") {
         "search_distance=200.0\n"
         "escape_distance=5.0\n"
         "escape_velocity=10.0\n"
-        "timeout_ms=30000\n"
+        "timeout_ms=80000\n"
         "settle_time_ms=50\n"
         "escape_timeout_ms=5000\n"
         "retry_count=1\n"
@@ -195,10 +195,10 @@ TEST(ConfigFileAdapterHardwareConfigurationTest, LoadsHomeBackoffFlagFromHomingS
     auto ini = BuildBaseIni();
     ini = ReplaceAll(ini,
                      "escape_velocity=10.0\n"
-                     "timeout_ms=30000\n",
+                     "timeout_ms=80000\n",
                      "escape_velocity=10.0\n"
                      "home_backoff_enabled=false\n"
-                     "timeout_ms=30000\n");
+                     "timeout_ms=80000\n");
 
     const auto ini_path = WriteTempIni("home_backoff_flag", ini);
 
@@ -237,15 +237,15 @@ TEST(ConfigFileAdapterHardwareConfigurationTest, LoadsReadyZeroSpeedFromHomingSe
 
     ASSERT_TRUE(result.IsSuccess());
     ASSERT_GE(result.Value().homing_configs.size(), 2u);
-    EXPECT_FLOAT_EQ(result.Value().homing_configs[0].ready_zero_speed_mm_s, 5.0f);
-    EXPECT_FLOAT_EQ(result.Value().homing_configs[1].ready_zero_speed_mm_s, 5.0f);
+    EXPECT_FLOAT_EQ(result.Value().homing_configs[0].ready_zero_speed_mm_s, 8.0f);
+    EXPECT_FLOAT_EQ(result.Value().homing_configs[1].ready_zero_speed_mm_s, 8.0f);
 
     std::error_code ec;
     std::filesystem::remove(ini_path, ec);
 }
 
 TEST(ConfigFileAdapterHardwareConfigurationTest, KeepsReadyZeroFallbackUnsetWhenFieldMissing) {
-    auto ini = ReplaceAll(BuildBaseIni(), "ready_zero_speed_mm_s=5.0\n", "");
+    auto ini = ReplaceAll(BuildBaseIni(), "ready_zero_speed_mm_s=8.0\n", "");
     const auto ini_path = WriteTempIni("ready_zero_speed_missing", ini);
 
     ConfigFileAdapter adapter(ini_path.string());

@@ -22,7 +22,7 @@ struct EnsureAxesReadyZeroRequest {
     std::vector<LogicalAxisId> axes;
     bool home_all_axes = false;
     bool wait_for_completion = true;
-    int32 timeout_ms = 30000;
+    int32 timeout_ms = 80000;
     bool force_rehome = false;
 
     bool Validate() const {

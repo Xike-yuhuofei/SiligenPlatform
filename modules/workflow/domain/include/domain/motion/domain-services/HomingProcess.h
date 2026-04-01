@@ -26,7 +26,7 @@ struct HomeAxesRequest {
     bool home_all_axes = false;
     bool force_rehome = false;  // 强制重新回零(忽略已回零状态)
     bool wait_for_completion = true;
-    int32 timeout_ms = 30000;  // 每个轴的超时时间
+    int32 timeout_ms = 80000;  // 每个轴的超时时间
 
     bool Validate() const {
         if (home_all_axes && !axes.empty()) {

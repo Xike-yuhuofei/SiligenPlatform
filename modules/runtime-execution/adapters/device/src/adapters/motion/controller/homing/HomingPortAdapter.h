@@ -45,7 +45,7 @@ class HomingPortAdapter final : public IHomingPort {
     Result<bool> IsAxisHomed(LogicalAxisId axis) const override;
     Result<bool> IsHomingInProgress(LogicalAxisId axis) const override;
 
-    Result<void> WaitForHomingComplete(LogicalAxisId axis, int32 timeout_ms = 30000) override;
+    Result<void> WaitForHomingComplete(LogicalAxisId axis, int32 timeout_ms = 80000) override;
 
    private:
     struct Units {
