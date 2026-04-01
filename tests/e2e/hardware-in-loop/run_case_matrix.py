@@ -11,14 +11,17 @@ from pathlib import Path
 from typing import Any
 
 from run_hil_closed_loop import (
+    DEFAULT_CONFIG_PATH,
     DEFAULT_DXF_FILE,
     KNOWN_FAILURE_EXIT_CODE,
     SKIPPED_EXIT_CODE,
     TcpJsonClient,
+    _load_connection_params,
     _resolve_default_exe,
     _run_tcp_step,
     _wait_for_dispenser_state,
     _wait_gateway_ready,
+    build_process_env,
 )
 
 
@@ -200,6 +203,7 @@ def _run_closed_loop_case(
         raise RuntimeError(status_step.note or "status failed before closed loop")
 
     sequence: list[tuple[str, str, dict[str, Any], float]] = [
+        ("tcp-supply-open", "supply.open", {}, 15.0),
         (
             "tcp-dispenser-start",
             "dispenser.start",
@@ -217,6 +221,7 @@ def _run_closed_loop_case(
     sequence.extend(
         [
             ("tcp-dispenser-stop", "dispenser.stop", {}, 15.0),
+            ("tcp-supply-close", "supply.close", {}, 15.0),
             ("tcp-stop", "stop", {}, 15.0),
             ("tcp-disconnect", "disconnect", {}, 8.0),
         ]
@@ -272,13 +277,15 @@ def _run_closed_loop_case(
 def _run_round(args: argparse.Namespace, round_index: int, selected_modes: tuple[str, ...]) -> MatrixRoundReport:
     round_report = MatrixRoundReport(round_index=round_index, cases_executed=list(selected_modes))
     gateway_exe = Path(args.gateway_exe)
+    connect_params = _load_connection_params(args.config_path)
     process = subprocess.Popen(
-        [str(gateway_exe)],
+        [str(gateway_exe), "--config", str(args.config_path), "--port", str(args.port)],
         cwd=str(ROOT),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
+        env=build_process_env(gateway_exe),
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     client = TcpJsonClient(args.host, args.port)
@@ -317,7 +324,7 @@ def _run_round(args: argparse.Namespace, round_index: int, selected_modes: tuple
             name="tcp-connect",
             client=client,
             method="connect",
-            params={},
+            params=connect_params,
             timeout_seconds=15.0,
         )
         round_report.steps.append(asdict(connect_step))
@@ -438,7 +445,7 @@ def _write_report(report_dir: Path, report: dict[str, Any]) -> tuple[Path, Path]
 
     counts = report["counts"]
     lines = [
-        "# Wave7 Case Matrix Summary",
+        "# Hardware Online Case Matrix Summary",
         "",
         f"- generated_at: `{report['generated_at']}`",
         f"- mode: `{report['mode']}`",
@@ -488,12 +495,13 @@ def _write_report(report_dir: Path, report: dict[str, Any]) -> tuple[Path, Path]
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run wave7 hardware case matrix and write structured reports.")
+    parser = argparse.ArgumentParser(description="Run hardware online case matrix and write structured reports.")
     parser.add_argument("--mode", choices=("home", "closed_loop", "both"), default="both")
     parser.add_argument("--rounds", type=int, default=20)
-    parser.add_argument("--report-dir", default=str(ROOT / "docs" / "process-model" / "wave7" / "outputs"))
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=9527)
+    parser.add_argument("--report-dir", default=str(ROOT / "tests" / "reports" / "adhoc" / "hil-case-matrix"))
+    parser.add_argument("--host", default=os.getenv("SILIGEN_HIL_HOST", "127.0.0.1"))
+    parser.add_argument("--port", type=int, default=int(os.getenv("SILIGEN_HIL_PORT", "9527")))
+    parser.add_argument("--config-path", type=Path, default=DEFAULT_CONFIG_PATH)
     parser.add_argument(
         "--gateway-exe",
         default=str(_resolve_default_exe("siligen_runtime_gateway.exe", "siligen_tcp_server.exe")),

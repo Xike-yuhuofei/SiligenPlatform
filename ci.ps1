@@ -2,7 +2,8 @@ param(
     [ValidateSet("all", "apps", "contracts", "e2e", "protocol-compatibility", "performance")]
     [string[]]$Suite = @("all"),
     [string]$ReportDir = "tests\\reports\\ci",
-    [switch]$IncludeHardwareSmoke
+    [switch]$IncludeHardwareSmoke,
+    [switch]$IncludeHilCaseMatrix
 )
 
 $ErrorActionPreference = "Stop"
@@ -65,10 +66,12 @@ if ($LASTEXITCODE -ne 0) {
     -Suite $Suite `
     -ReportDir $resolvedReportDir `
     -FailOnKnownFailure `
-    -IncludeHardwareSmoke:$IncludeHardwareSmoke
+    -IncludeHardwareSmoke:$IncludeHardwareSmoke `
+    -IncludeHilCaseMatrix:$IncludeHilCaseMatrix
 
 & (Join-Path $PSScriptRoot "scripts\\validation\\run-local-validation-gate.ps1") `
-    -ReportRoot $localGateDir
+    -ReportRoot $localGateDir `
+    -IncludeHilCaseMatrix:$IncludeHilCaseMatrix
 
 if (-not (Test-Path (Join-Path $resolvedReportDir "workspace-validation.md"))) {
     throw "CI 报告缺失 workspace-validation.md: $resolvedReportDir"

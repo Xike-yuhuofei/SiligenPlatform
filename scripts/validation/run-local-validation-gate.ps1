@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$PythonExe = "python",
-    [string]$ReportRoot = "tests/reports/local-validation-gate"
+    [string]$ReportRoot = "tests/reports/local-validation-gate",
+    [switch]$IncludeHilCaseMatrix
 )
 
 $ErrorActionPreference = "Stop"
@@ -90,6 +91,7 @@ $resolvedRoot = Resolve-OutputPath -PathValue $ReportRoot
 $runDir = Join-Path $resolvedRoot $timestamp
 $logsDir = Join-Path $runDir "logs"
 $workspaceValidationDir = Join-Path $runDir "workspace-validation"
+$workspaceValidationHilMatrixDir = Join-Path $runDir "workspace-validation-hil-case-matrix"
 $dspE2ESpecDir = Join-Path $runDir "dsp-e2e-spec-docset"
 $legacyExitDir = Join-Path $runDir "legacy-exit"
 $moduleBoundaryDir = Join-Path $runDir "module-boundary-bridges"
@@ -97,6 +99,9 @@ $reviewBaselineDir = Join-Path $runDir "review-baseline"
 
 New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
 New-Item -ItemType Directory -Force -Path $workspaceValidationDir | Out-Null
+if ($IncludeHilCaseMatrix) {
+    New-Item -ItemType Directory -Force -Path $workspaceValidationHilMatrixDir | Out-Null
+}
 New-Item -ItemType Directory -Force -Path $dspE2ESpecDir | Out-Null
 New-Item -ItemType Directory -Force -Path $legacyExitDir | Out-Null
 New-Item -ItemType Directory -Force -Path $moduleBoundaryDir | Out-Null
@@ -192,11 +197,38 @@ $steps = @(
             $workspaceValidationDir,
             "-FailOnKnownFailure"
         )
-    },
+    }
+)
+
+if ($IncludeHilCaseMatrix) {
+    $steps += @{
+        Id      = "test-e2e-hil-case-matrix"
+        Name    = "Run e2e HIL case matrix via root test entry"
+        LogName = "06-test-e2e-hil-case-matrix.log"
+        Command = @(
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            ".\test.ps1",
+            "-Profile",
+            "CI",
+            "-Suite",
+            "e2e",
+            "-ReportDir",
+            $workspaceValidationHilMatrixDir,
+            "-FailOnKnownFailure",
+            "-IncludeHilCaseMatrix"
+        )
+    }
+}
+
+$steps += @(
     @{
         Id      = "build-validation-local-contracts"
         Name    = "Build validation (Local/contracts)"
-        LogName = "06-build-validation-local-contracts.log"
+        LogName = "07-build-validation-local-contracts.log"
         Command = @(
             "powershell",
             "-NoProfile",
@@ -213,7 +245,7 @@ $steps = @(
     @{
         Id      = "build-validation-ci-contracts"
         Name    = "Build validation (CI/contracts)"
-        LogName = "07-build-validation-ci-contracts.log"
+        LogName = "08-build-validation-ci-contracts.log"
         Command = @(
             "powershell",
             "-NoProfile",
@@ -247,6 +279,7 @@ $summary = [ordered]@{
     legacy_exit_dir = $legacyExitDir
     module_boundary_dir = $moduleBoundaryDir
     workspace_validation_dir = $workspaceValidationDir
+    workspace_validation_hil_matrix_dir = $(if ($IncludeHilCaseMatrix) { $workspaceValidationHilMatrixDir } else { "" })
     overall_status  = $overallStatus
     total_steps     = $results.Count
     passed_steps    = $passedCount
@@ -270,6 +303,7 @@ $mdLines = @(
     "- legacy_exit_dir: $($summary.legacy_exit_dir)",
     "- module_boundary_dir: $($summary.module_boundary_dir)",
     "- workspace_validation_dir: $($summary.workspace_validation_dir)",
+    "- workspace_validation_hil_matrix_dir: $($summary.workspace_validation_hil_matrix_dir)",
     "- overall_status: $($summary.overall_status)",
     "- passed_steps: $($summary.passed_steps)/$($summary.total_steps)",
     "",
@@ -302,6 +336,14 @@ $requiredArtifacts = @(
     (Join-Path $reviewBaselineDir "review-baseline-completeness.json"),
     (Join-Path $reviewBaselineDir "review-baseline-completeness.md")
 )
+if ($IncludeHilCaseMatrix) {
+    $requiredArtifacts += @(
+        (Join-Path $workspaceValidationHilMatrixDir "workspace-validation.json"),
+        (Join-Path $workspaceValidationHilMatrixDir "workspace-validation.md"),
+        (Join-Path (Join-Path $workspaceValidationHilMatrixDir "hil-case-matrix") "case-matrix-summary.json"),
+        (Join-Path (Join-Path $workspaceValidationHilMatrixDir "hil-case-matrix") "case-matrix-summary.md")
+    )
+}
 foreach ($artifact in $requiredArtifacts) {
     if (-not (Test-Path $artifact)) {
         Write-Error "根级门禁未发布预期报告: $artifact"
