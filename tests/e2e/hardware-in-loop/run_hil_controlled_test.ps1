@@ -121,14 +121,21 @@ if ($SkipBuild) {
 }
 
 Write-Output "hil controlled test: run e2e validation with hardware-smoke + hil-closed-loop (serial)"
-powershell -NoProfile -ExecutionPolicy Bypass -File $testScript `
-    -Profile $Profile `
-    -Suite e2e `
-    -ReportDir $resolvedReportDir `
-    -IncludeHardwareSmoke `
-    -IncludeHilClosedLoop `
-    -IncludeHilCaseMatrix:$IncludeHilCaseMatrix `
-    -FailOnKnownFailure
+$testArgs = @(
+    "-NoProfile",
+    "-ExecutionPolicy", "Bypass",
+    "-File", $testScript,
+    "-Profile", $Profile,
+    "-Suite", "e2e",
+    "-ReportDir", $resolvedReportDir,
+    "-IncludeHardwareSmoke",
+    "-IncludeHilClosedLoop",
+    "-FailOnKnownFailure"
+)
+if ($IncludeHilCaseMatrix) {
+    $testArgs += "-IncludeHilCaseMatrix"
+}
+powershell @testArgs
 $testExitCode = $LASTEXITCODE
 if ($testExitCode -ne 0) {
     Write-Output "hil controlled test failed: e2e validation exit_code=$testExitCode"
