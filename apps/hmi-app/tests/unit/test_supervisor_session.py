@@ -399,6 +399,29 @@ class SupervisorSessionTest(unittest.TestCase):
         self.assertEqual(backend.start_calls, 1)
         self.assertEqual(backend.ready_calls, 2)
 
+    def test_retry_stage_rejects_unrecoverable_failed_snapshot(self) -> None:
+        session = SupervisorSession(
+            backend=_FakeBackend(),
+            client=_FakeClient(),
+            protocol=_FakeProtocol(),
+            launch_mode="online",
+        )
+        failed = SessionSnapshot(
+            mode="online",
+            session_state="failed",
+            backend_state="ready",
+            tcp_state="failed",
+            hardware_state="unavailable",
+            failure_code="SUP_TCP_CONNECT_FAILED",
+            failure_stage="tcp_ready",
+            recoverable=False,
+            last_error_message="tcp lost",
+            updated_at="2026-03-20T00:00:00Z",
+        )
+
+        with self.assertRaisesRegex(ValueError, "recoverable failed session snapshot"):
+            session.retry_stage(failed)
+
     def test_restart_session_invokes_cleanup_then_restarts(self) -> None:
         backend = _FakeBackend(start_result=(False, "boom"), ready_result=(True, "ready"))
         client = _FakeClient()
@@ -416,6 +439,58 @@ class SupervisorSessionTest(unittest.TestCase):
         self.assertTrue(restarted.online_ready)
         self.assertEqual(backend.stop_calls, 1)
         self.assertEqual(client.disconnect_calls, 1)
+
+    def test_restart_session_rejects_ready_snapshot(self) -> None:
+        backend = _FakeBackend()
+        client = _FakeClient()
+        session = SupervisorSession(
+            backend=backend,
+            client=client,
+            protocol=_FakeProtocol(),
+            launch_mode="online",
+        )
+        ready = SessionSnapshot(
+            mode="online",
+            session_state="ready",
+            backend_state="ready",
+            tcp_state="ready",
+            hardware_state="ready",
+            failure_code=None,
+            failure_stage=None,
+            recoverable=True,
+            last_error_message="System ready",
+            updated_at="2026-03-20T00:00:00Z",
+        )
+
+        with self.assertRaisesRegex(ValueError, "failed online session snapshot"):
+            session.restart_session(ready)
+
+        self.assertEqual(backend.stop_calls, 0)
+        self.assertEqual(backend.start_calls, 0)
+        self.assertEqual(client.disconnect_calls, 0)
+
+    def test_stop_session_rejects_starting_snapshot(self) -> None:
+        session = SupervisorSession(
+            backend=_FakeBackend(),
+            client=_FakeClient(),
+            protocol=_FakeProtocol(),
+            launch_mode="online",
+        )
+        starting = SessionSnapshot(
+            mode="online",
+            session_state="starting",
+            backend_state="starting",
+            tcp_state="disconnected",
+            hardware_state="unavailable",
+            failure_code=None,
+            failure_stage=None,
+            recoverable=True,
+            last_error_message="Starting backend...",
+            updated_at="2026-03-20T00:00:00Z",
+        )
+
+        with self.assertRaisesRegex(ValueError, "ready or failed online session snapshot"):
+            session.stop_session(starting)
 
     def test_stop_session_transitions_to_idle(self) -> None:
         session = SupervisorSession(

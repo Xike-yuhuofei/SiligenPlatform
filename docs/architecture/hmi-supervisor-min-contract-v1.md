@@ -59,6 +59,11 @@ Supervisor 必须对外暴露统一快照对象 `SessionSnapshot`：
 }
 ```
 
+补充约束：
+
+1. `offline` 路径同样必须通过 `SessionSnapshot` 对外表达，不得在 HMI 内部额外构造“无快照 launch result”作为替代真相。
+2. `LaunchResult`、UI label state、按钮状态仅允许作为 `SessionSnapshot` 的派生结果，不得成为并行真值源。
+
 ### 3.2 字段约束
 
 1. `mode`：
@@ -170,12 +175,19 @@ Supervisor 至少支持以下恢复动作语义：
 
 恢复动作执行后必须更新 `SessionSnapshot`，并在失败时刷新 `failure_code/failure_stage/last_error_message`。
 
+恢复动作边界补充约束：
+
+1. `retry_stage` 与 `restart_session` 必须由 Supervisor 自身校验 `mode=online`、`session_state=failed`、`recoverable=true` 后才允许执行。
+2. `stop_session` 必须由 Supervisor 自身校验当前会话处于 `ready` 或 `failed` 后才允许执行。
+3. UI 层按钮禁用或提示文案只能作为外层防呆，不能替代 Supervisor 对恢复动作合法性的最终校验。
+
 ## 8. HMI 消费与能力门禁
 
 ### 8.1 消费规则
 
 1. HMI 只读 Supervisor 快照，不直接推导 backend/TCP/hardware 真相。
 2. HMI 顶部状态区、按钮可用性、错误弹窗均以 `SessionSnapshot` 为唯一输入。
+3. HMI 在首个可解析 `SessionSnapshot` 到达前，必须呈现非 ready 观测；不得预设“系统就绪”“空闲”“在线已完成”等文案。
 
 ### 8.2 门禁规则
 
@@ -226,4 +238,6 @@ Supervisor 必须输出最小诊断事件（可写日志或结构化输出）：
 2. `online_ready` 判定唯一且可重复验证。
 3. `online-smoke` 与 `verify-online-ready-timeout` 可稳定回归，退出码不变。
 4. 任意启动失败都可定位到固定 `failure_code/failure_stage`。
-5. 未引入方案 C 范围内的新平台化抽象。
+5. offline 与 online 均通过统一 `SessionSnapshot` 对外表达。
+6. 恢复动作的非法状态跃迁由 Supervisor owner 层显式拒绝，而不是仅靠 UI 边界层拦截。
+7. 未引入方案 C 范围内的新平台化抽象。

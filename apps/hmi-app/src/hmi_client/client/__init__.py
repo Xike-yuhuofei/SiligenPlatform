@@ -54,6 +54,7 @@ from .supervisor_contract import (
 )
 from .supervisor_session import SupervisorPolicy, SupervisorSession
 from .startup_sequence import (
+    build_offline_launch_result,
     LaunchResult,
     LaunchMode,
     RecoveryWorker,
@@ -104,6 +105,7 @@ __all__ = [
     "PreviewSessionOwner",
     "PreviewSnapshotWorker",
     "build_launch_ui_state",
+    "build_offline_launch_result",
     "build_online_capability_message",
     "build_recovery_action_decision",
     "build_recovery_finished_message",

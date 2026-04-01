@@ -134,6 +134,9 @@ P0 仅允许以下动作：
 1. 任何恢复动作执行前，必须先退出 `online_ready`。
 2. `recoverable=false` 时禁止自动 `retry_stage` 循环。
 3. 单阶段重试达到上限后，不得继续隐式重试，必须显式转 `failed` 并暴露恢复动作入口。
+4. `retry_stage` 与 `restart_session` 仅允许在 `mode=online`、`session_state=failed`、`recoverable=true` 时执行。
+5. `stop_session` 仅允许在 `mode=online` 且 `session_state in {ready, failed}` 时执行。
+6. 上述合法性必须由 Supervisor owner 层自身校验；HMI 禁用按钮不能替代该校验。
 
 ## 8. HMI 可观测点定义
 
@@ -156,6 +159,7 @@ HMI 必须消费并展示以下 Supervisor 观测字段：
 2. 在线按钮可用性仅由 `online_ready` 结果控制。
 3. `session_state != ready` 或 `failure_code != null` 时，在线按钮必须全部禁用。
 4. HMI 不得使用本地 TCP socket 状态覆盖 Supervisor 状态。
+5. 在首个可解析快照到达前，HMI 必须显示非 ready 初始态，不得默认显示“系统就绪”“空闲”或其他完成态文案。
 
 ## 9. smoke 对应观察点
 
@@ -194,6 +198,7 @@ HMI 必须消费并展示以下 Supervisor 观测字段：
 1. HMI 以“TCP 已连接”替代 `online_ready`。
 2. HMI 以“backend 进程仍在”替代 `online_ready`。
 3. HMI 在 `starting/degraded/failed/stopping` 阶段放行在线操作。
+4. HMI 在启动空窗期以默认文案显示“系统就绪”“空闲”或其他 ready/complete 语义。
 
 ## 11. 验收判定
 

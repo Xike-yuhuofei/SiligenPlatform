@@ -14,6 +14,7 @@ from .supervisor_contract import (
     SessionSnapshot,
     SessionStageEvent,
     is_online_ready,
+    snapshot_timestamp,
 )
 from .supervisor_session import SupervisorPolicy, SupervisorSession
 
@@ -186,6 +187,26 @@ def run_launch_sequence(
     result = _build_launch_result(mode, snapshot)
     _log_launch_result(result)
     return result
+
+
+def build_offline_launch_result(user_message: str | None = None) -> LaunchResult:
+    snapshot = SessionSnapshot(
+        mode="offline",
+        session_state="idle",
+        backend_state="stopped",
+        tcp_state="disconnected",
+        hardware_state="unavailable",
+        failure_code=None,
+        failure_stage=None,
+        recoverable=True,
+        last_error_message="Offline mode active: startup sequence skipped.",
+        updated_at=snapshot_timestamp(),
+    )
+    return launch_result_from_snapshot(
+        requested_mode="offline",
+        snapshot=snapshot,
+        user_message=user_message or "Offline 模式已启用，本次启动不会尝试连接 gateway。",
+    )
 
 
 def run_recovery_action(

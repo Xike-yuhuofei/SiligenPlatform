@@ -645,6 +645,7 @@ class GuiContractRunner:
     def _assert_gui_shell_present(self) -> None:
         print("STEP: gui shell", flush=True)
         self._expect(self.window.isVisible(), "Main window should be visible")
+        self._expect(self._status_message() != "系统就绪", "GUI shell must not expose a fake ready status before supervisor state settles")
         for testid in (
             "indicator-global-status",
             "label-launch-mode",
@@ -674,6 +675,7 @@ class GuiContractRunner:
         if result is not None:
             self._expect(result.effective_mode == "offline", "Effective mode should stay offline")
             self._expect(result.success, "Offline launch should succeed")
+            self._expect(result.session_snapshot is not None, "Offline launch result should expose a session snapshot")
             if result.session_snapshot is not None:
                 self._expect(result.session_snapshot.mode == "offline", "Offline snapshot mode should be offline")
                 self._expect(result.session_snapshot.failure_code is None, "Offline snapshot should not carry failure code")

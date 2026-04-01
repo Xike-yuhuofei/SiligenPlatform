@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 
@@ -228,6 +229,18 @@ class MainWindowTabsTest(unittest.TestCase):
         self.window._last_status = status
         self.window._last_status_ts = time.monotonic()
 
+    def _set_launch_connectivity(self, *, connected: bool, hardware_connected: bool | None = None) -> None:
+        ui_state = self.window._launch_ui_state
+        self.assertIsNotNone(ui_state)
+        if hardware_connected is None:
+            hardware_connected = connected
+        assert ui_state is not None
+        self.window._launch_ui_state = replace(
+            ui_state,
+            connected=connected,
+            hardware_connected=hardware_connected,
+        )
+
     def _arm_confirmed_preview(
         self,
         *,
@@ -308,7 +321,9 @@ class MainWindowTabsTest(unittest.TestCase):
 
         entries = self.window._status_log_view.toPlainText().splitlines()
 
-        self.assertTrue(any(line.endswith("系统就绪") for line in entries))
+        self.assertTrue(any(line.endswith("状态初始化中") for line in entries))
+        self.assertTrue(any(line.endswith("Offline 模式已启用，本次启动不会尝试连接 gateway。") for line in entries))
+        self.assertFalse(any(line.endswith("系统就绪") for line in entries))
         self.assertTrue(any(line.endswith("测试状态栏归档") for line in entries))
 
     def test_copy_status_log_copies_recorded_messages(self) -> None:
@@ -319,8 +334,34 @@ class MainWindowTabsTest(unittest.TestCase):
         QApplication.processEvents()
         copied = QApplication.clipboard().text()
 
-        self.assertIn("系统就绪", copied)
+        self.assertIn("状态初始化中", copied)
+        self.assertIn("Offline 模式已启用，本次启动不会尝试连接 gateway。", copied)
+        self.assertNotIn("系统就绪", copied)
         self.assertIn("复制测试消息", copied)
+
+    def test_offline_window_uses_snapshot_backed_launch_result(self) -> None:
+        self.assertIsNotNone(self.window._launch_result)
+        assert self.window._launch_result is not None
+        self.assertIsNotNone(self.window._launch_result.session_snapshot)
+        assert self.window._launch_result.session_snapshot is not None
+        self.assertEqual(self.window._launch_result.session_snapshot.mode, "offline")
+        self.assertEqual(self.window._launch_result.session_snapshot.session_state, "idle")
+
+    def test_online_window_does_not_report_system_ready_before_first_snapshot(self) -> None:
+        original_auto_startup = main_window_module.MainWindow._auto_startup
+        main_window_module.MainWindow._auto_startup = lambda self: None
+        online_window = None
+        try:
+            online_window = main_window_module.MainWindow(launch_mode="online")
+            self.assertIsNone(online_window._launch_result)
+            self.assertIsNone(online_window._session_snapshot)
+            self.assertEqual(online_window._operation_status.text(), "启动中")
+            self.assertEqual(online_window.statusBar().currentMessage(), "启动中，等待 Supervisor 首个快照")
+        finally:
+            if online_window is not None:
+                online_window.close()
+                online_window.deleteLater()
+            main_window_module.MainWindow._auto_startup = original_auto_startup
 
     def test_check_home_preconditions_rejects_estop(self) -> None:
         self.window._require_online_mode = lambda capability: True
@@ -632,8 +673,7 @@ class MainWindowTabsTest(unittest.TestCase):
         self.window._require_online_mode = lambda capability: True
         self.window._is_online_ready = lambda: True
         self.window._protocol = FakeProtocol(status)
-        self.window._connected = True
-        self.window._hw_connected = True
+        self._set_launch_connectivity(connected=True, hardware_connected=True)
         self.window._runtime_status_fault = False
         self._arm_confirmed_preview()
         self.window._preview_session.state.preview_source = "mock_synthetic"
@@ -654,8 +694,7 @@ class MainWindowTabsTest(unittest.TestCase):
         self.window._require_online_mode = lambda capability: True
         self.window._is_online_ready = lambda: True
         self.window._protocol = FakeProtocol(status)
-        self.window._connected = True
-        self.window._hw_connected = True
+        self._set_launch_connectivity(connected=True, hardware_connected=True)
         self.window._runtime_status_fault = False
         self._arm_confirmed_preview()
         self.window._preview_session.state.preview_kind = "trajectory_polyline"
@@ -676,8 +715,7 @@ class MainWindowTabsTest(unittest.TestCase):
         self.window._require_online_mode = lambda capability: True
         self.window._is_online_ready = lambda: True
         self.window._protocol = FakeProtocol(status)
-        self.window._connected = True
-        self.window._hw_connected = True
+        self._set_launch_connectivity(connected=True, hardware_connected=True)
         self.window._runtime_status_fault = False
         self._arm_confirmed_preview()
         self.window._preview_session.state.current_plan_fingerprint = "hash-2"
@@ -698,8 +736,7 @@ class MainWindowTabsTest(unittest.TestCase):
         self.window._require_online_mode = lambda capability: True
         self.window._is_online_ready = lambda: True
         self.window._protocol = FakeProtocol(status)
-        self.window._connected = True
-        self.window._hw_connected = True
+        self._set_launch_connectivity(connected=True, hardware_connected=True)
         self.window._runtime_status_fault = False
         self.window._preview_session.state.current_plan_id = "plan-failed"
         self.window._preview_session.state.current_plan_fingerprint = "hash-failed"
@@ -725,8 +762,7 @@ class MainWindowTabsTest(unittest.TestCase):
         self.window._require_online_mode = lambda capability: True
         self.window._is_online_ready = lambda: True
         self.window._protocol = FakeProtocol(status)
-        self.window._connected = True
-        self.window._hw_connected = True
+        self._set_launch_connectivity(connected=True, hardware_connected=True)
         self.window._runtime_status_fault = False
         self._arm_confirmed_preview(
             preview_validation_classification="fail",
@@ -764,8 +800,7 @@ class MainWindowTabsTest(unittest.TestCase):
         )
         self.window._protocol = fake_protocol
         self.window._require_online_mode = lambda capability: True
-        self.window._connected = True
-        self.window._hw_connected = True
+        self._set_launch_connectivity(connected=True, hardware_connected=True)
         self.window._runtime_status_fault = False
         self.window._dxf_loaded = True
         self.window._target_count = 2
@@ -1011,7 +1046,7 @@ class MainWindowTabsTest(unittest.TestCase):
         generated = []
         self.window._dxf_loaded = True
         self.window._dxf_artifact_id = "artifact-1"
-        self.window._connected = True
+        self._set_launch_connectivity(connected=True)
         self.window._dxf_view = _FakePreviewView()
         self.window._is_offline_mode = lambda: False
         main_window_module.WEB_ENGINE_AVAILABLE = True
@@ -1028,7 +1063,7 @@ class MainWindowTabsTest(unittest.TestCase):
     def test_mode_toggle_prompts_manual_refresh_when_auto_preview_is_unavailable(self) -> None:
         self.window._dxf_loaded = True
         self.window._dxf_artifact_id = ""
-        self.window._connected = True
+        self._set_launch_connectivity(connected=True)
         self.window._preview_session.state.current_plan_id = "plan-1"
         self.window._preview_session.state.current_plan_fingerprint = "fp-1"
 

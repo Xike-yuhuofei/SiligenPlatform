@@ -7,8 +7,10 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(WORKSPACE_ROOT / "modules" / "hmi-application" / "application"))
 
 from hmi_application.launch_state import (
+    build_recovery_action_decision,
     build_launch_ui_state,
     build_runtime_degradation_result,
+    current_effective_mode,
     detect_runtime_degradation_result,
     detect_runtime_requalification_result,
 )
@@ -52,6 +54,14 @@ def _stage_event(stage: str = "online_ready") -> SessionStageEvent:
 
 
 class LaunchStateOwnerTest(unittest.TestCase):
+    def test_current_effective_mode_prefers_explicit_session_snapshot(self) -> None:
+        offline_result = launch_result_from_snapshot("offline", _snapshot(mode="offline", session_state="idle"))
+        online_snapshot = _snapshot(mode="online", session_state="starting", tcp_state="connecting", hardware_state="unavailable")
+
+        mode = current_effective_mode("online", offline_result, online_snapshot)
+
+        self.assertEqual(mode, "online")
+
     def test_offline_ui_state_keeps_preview_resync_pending_when_plan_exists(self) -> None:
         state = build_launch_ui_state(
             "offline",
@@ -137,6 +147,34 @@ class LaunchStateOwnerTest(unittest.TestCase):
         self.assertTrue(state.recovery_controls.retry_enabled)
         self.assertTrue(state.recovery_controls.restart_enabled)
         self.assertTrue(state.recovery_controls.stop_enabled)
+
+    def test_stop_session_decision_rejects_starting_snapshot(self) -> None:
+        decision = build_recovery_action_decision(
+            "stop_session",
+            _snapshot(
+                session_state="starting",
+                backend_state="starting",
+                tcp_state="disconnected",
+                hardware_state="unavailable",
+                last_error_message="Starting backend...",
+            ),
+            effective_mode="online",
+            session_operation_running=False,
+        )
+
+        self.assertFalse(decision.allowed)
+        self.assertIn("可停止态", decision.message)
+
+    def test_restart_session_decision_rejects_ready_snapshot(self) -> None:
+        decision = build_recovery_action_decision(
+            "restart_session",
+            _snapshot(),
+            effective_mode="online",
+            session_operation_running=False,
+        )
+
+        self.assertFalse(decision.allowed)
+        self.assertIn("未处于失败态", decision.message)
 
     def test_tcp_ready_failure_state_keeps_stop_and_estop_controls_enabled(self) -> None:
         failed_snapshot = _snapshot(
