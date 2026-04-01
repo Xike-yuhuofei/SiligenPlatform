@@ -588,13 +588,37 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertNotIn("btn-home-Y", testids)
         self.assertIn("btn-production-home-all", testids)
 
-    def test_system_panel_does_not_render_recovery_region(self) -> None:
+    def test_system_panel_renders_recovery_region(self) -> None:
         testids = self._collect_testids()
 
-        self.assertNotIn("panel-session-recovery", testids)
-        self.assertNotIn("btn-recovery-retry", testids)
-        self.assertNotIn("btn-recovery-restart", testids)
-        self.assertNotIn("btn-recovery-stop", testids)
+        self.assertIn("panel-session-recovery", testids)
+        self.assertIn("btn-recovery-retry", testids)
+        self.assertIn("btn-recovery-restart", testids)
+        self.assertIn("btn-recovery-stop", testids)
+
+    def test_runtime_hardware_degradation_enables_recovery_buttons(self) -> None:
+        failed_snapshot = SessionSnapshot(
+            mode="online",
+            session_state="failed",
+            backend_state="ready",
+            tcp_state="ready",
+            hardware_state="failed",
+            failure_code="SUP_HARDWARE_CONNECT_FAILED",
+            failure_stage="hardware_ready",
+            recoverable=True,
+            last_error_message="运行中硬件状态不可用，在线能力已收敛。",
+            updated_at="2026-04-01T07:58:49Z",
+        )
+        self.window._requested_launch_mode = "online"
+        self.window._session_snapshot = failed_snapshot
+        self.window._launch_result = launch_result_from_snapshot("online", failed_snapshot)
+
+        self.window._refresh_launch_status_ui()
+        self.window._apply_mode_capabilities()
+
+        self.assertTrue(self.window._retry_stage_btn.isEnabled())
+        self.assertTrue(self.window._restart_session_btn.isEnabled())
+        self.assertTrue(self.window._stop_session_btn.isEnabled())
 
     def test_render_runtime_preview_html_marks_mock_source_as_non_real_geometry(self) -> None:
         snapshot = main_window_module.PreviewSnapshotMeta(
