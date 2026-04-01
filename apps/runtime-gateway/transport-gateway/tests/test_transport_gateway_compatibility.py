@@ -290,6 +290,8 @@ def test_status_reads_backend_interlock_signals():
 
 def test_status_supervision_contract_is_derived_by_runtime_supervision_adapter():
     source = RUNTIME_SUPERVISION_ADAPTER.read_text(encoding="utf-8")
+    assert "const bool heartbeat_degraded_while_connected =" in source
+    assert "inputs.connection_info.state == Siligen::Device::Contracts::State::DeviceConnectionState::Connected &&" in source
     assert 'connection_state = "degraded";' in source
     assert 'state_reason = "heartbeat_degraded";' in source
     assert 'snapshot.sources["estop"] =' in source

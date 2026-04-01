@@ -12,12 +12,23 @@
 namespace {
 
 constexpr auto kConnectionGracePeriod = std::chrono::milliseconds(7000);
+constexpr auto kStatusMonitoringGracePeriod = std::chrono::milliseconds(1000);
 
-bool IsGracePeriodActive(const std::chrono::steady_clock::time_point& last_connect_time) {
+bool IsGracePeriodActive(
+    const std::chrono::steady_clock::time_point& last_connect_time,
+    const std::chrono::milliseconds grace_period) {
     if (last_connect_time == std::chrono::steady_clock::time_point{}) {
         return false;
     }
-    return (std::chrono::steady_clock::now() - last_connect_time) < kConnectionGracePeriod;
+    return (std::chrono::steady_clock::now() - last_connect_time) < grace_period;
+}
+
+bool IsConnectionGracePeriodActive(const std::chrono::steady_clock::time_point& last_connect_time) {
+    return IsGracePeriodActive(last_connect_time, kConnectionGracePeriod);
+}
+
+bool IsStatusMonitoringGracePeriodActive(const std::chrono::steady_clock::time_point& last_connect_time) {
+    return IsGracePeriodActive(last_connect_time, kStatusMonitoringGracePeriod);
 }
 
 void SanitizeTransientCommunicationFault(Siligen::Domain::Motion::Ports::MotionStatus& status, bool suppress_fault) {
@@ -80,27 +91,48 @@ Result<void> MotionRuntimeFacade::Disconnect() {
     StopRuntimeStatusMonitoring();
     StopRuntimeHeartbeat();
 
-    std::lock_guard<std::mutex> lock(connection_mutex_);
-    if (!motion_adapter_) {
-        connection_state_ = HardwareConnectionState::Disconnected;
-        return Result<void>::Success();
+    HardwareConnectionInfo callback_info;
+    std::function<void(const HardwareConnectionInfo&)> callback;
+    auto disconnect_result = Result<void>::Success();
+
+    {
+        std::lock_guard<std::mutex> lock(connection_mutex_);
+        if (!motion_adapter_) {
+            connection_state_ = HardwareConnectionState::Disconnected;
+            last_error_.clear();
+            last_connect_time_ = std::chrono::steady_clock::time_point{};
+            connection_info_.state = connection_state_;
+            connection_info_.error_message.clear();
+            callback_info = connection_info_;
+            callback = state_change_callback_;
+        } else {
+            auto result = motion_adapter_->Disconnect();
+            if (result.IsError()) {
+                connection_state_ = HardwareConnectionState::Error;
+                last_error_ = result.GetError().GetMessage();
+                connection_info_.state = connection_state_;
+                connection_info_.error_message = last_error_;
+                callback_info = connection_info_;
+                callback = state_change_callback_;
+                disconnect_result = result;
+            } else {
+                connection_state_ = HardwareConnectionState::Disconnected;
+                last_error_.clear();
+                last_connect_time_ = std::chrono::steady_clock::time_point{};
+                connection_info_.state = connection_state_;
+                connection_info_.error_message.clear();
+                connection_info_.firmware_version.clear();
+                connection_info_.serial_number.clear();
+                callback_info = connection_info_;
+                callback = state_change_callback_;
+            }
+        }
     }
 
-    auto result = motion_adapter_->Disconnect();
-    if (result.IsError()) {
-        connection_state_ = HardwareConnectionState::Error;
-        last_error_ = result.GetError().GetMessage();
-        return result;
+    if (callback) {
+        callback(callback_info);
     }
-
-    connection_state_ = HardwareConnectionState::Disconnected;
-    last_error_.clear();
-    last_connect_time_ = std::chrono::steady_clock::time_point{};
-    connection_info_.state = connection_state_;
-    connection_info_.error_message.clear();
-    connection_info_.firmware_version.clear();
-    connection_info_.serial_number.clear();
-    return Result<void>::Success();
+    return disconnect_result;
 }
 
 Result<bool> MotionRuntimeFacade::IsConnected() const {
@@ -302,43 +334,61 @@ Result<void> MotionRuntimeFacade::WaitForHomingComplete(LogicalAxisId axis, int3
 }
 
 Result<void> MotionRuntimeFacade::ConnectRuntime(const HardwareConnectionConfig& config) {
-    std::lock_guard<std::mutex> lock(connection_mutex_);
+    HardwareConnectionInfo callback_info;
+    std::function<void(const HardwareConnectionInfo&)> callback;
+    auto result = Result<void>::Success();
 
-    if (connection_state_ == HardwareConnectionState::Connecting) {
-        return Result<void>::Failure(
-            Error(ErrorCode::INVALID_STATE, "正在连接中，请勿重复操作", "MotionRuntimeFacade"));
-    }
-    if (connection_state_ == HardwareConnectionState::Connected) {
-        return Result<void>::Success();
-    }
-    if (!config.IsValid()) {
-        return Result<void>::Failure(
-            Error(ErrorCode::INVALID_PARAMETER, "连接配置无效: " + config.GetValidationError(), "MotionRuntimeFacade"));
-    }
-    if (!motion_adapter_) {
-        return Result<void>::Failure(
-            Error(ErrorCode::PORT_NOT_INITIALIZED, "Motion runtime未初始化", "MotionRuntimeFacade"));
+    {
+        std::lock_guard<std::mutex> lock(connection_mutex_);
+
+        if (connection_state_ == HardwareConnectionState::Connecting) {
+            return Result<void>::Failure(
+                Error(ErrorCode::INVALID_STATE, "正在连接中，请勿重复操作", "MotionRuntimeFacade"));
+        }
+        if (connection_state_ == HardwareConnectionState::Connected) {
+            return Result<void>::Success();
+        }
+        if (!config.IsValid()) {
+            return Result<void>::Failure(
+                Error(ErrorCode::INVALID_PARAMETER, "连接配置无效: " + config.GetValidationError(), "MotionRuntimeFacade"));
+        }
+        if (!motion_adapter_) {
+            return Result<void>::Failure(
+                Error(ErrorCode::PORT_NOT_INITIALIZED, "Motion runtime未初始化", "MotionRuntimeFacade"));
+        }
+
+        connection_state_ = HardwareConnectionState::Connecting;
+        last_error_.clear();
+
+        auto connect_result = motion_adapter_->Connect(
+            config.card_ip,
+            config.local_ip,
+            static_cast<int16>(config.card_port));
+        if (connect_result.IsError()) {
+            connection_state_ = HardwareConnectionState::Error;
+            last_error_ = connect_result.GetError().GetMessage();
+            connection_info_.state = connection_state_;
+            connection_info_.error_message = last_error_;
+            callback_info = connection_info_;
+            callback = state_change_callback_;
+            result = Result<void>::Failure(Error(ErrorCode::CONNECTION_FAILED, last_error_, "MotionRuntimeFacade"));
+        } else {
+            connection_state_ = HardwareConnectionState::Connected;
+            last_connection_config_ = config;
+            has_last_connection_config_ = true;
+            last_connect_time_ = std::chrono::steady_clock::now();
+            UpdateDeviceInfo();
+            connection_info_.state = connection_state_;
+            connection_info_.error_message.clear();
+            callback_info = connection_info_;
+            callback = state_change_callback_;
+        }
     }
 
-    connection_state_ = HardwareConnectionState::Connecting;
-    last_error_.clear();
-
-    auto connect_result = motion_adapter_->Connect(
-        config.card_ip,
-        config.local_ip,
-        static_cast<int16>(config.card_port));
-    if (connect_result.IsError()) {
-        connection_state_ = HardwareConnectionState::Error;
-        last_error_ = connect_result.GetError().GetMessage();
-        return Result<void>::Failure(Error(ErrorCode::CONNECTION_FAILED, last_error_, "MotionRuntimeFacade"));
+    if (callback) {
+        callback(callback_info);
     }
-
-    connection_state_ = HardwareConnectionState::Connected;
-    last_connection_config_ = config;
-    has_last_connection_config_ = true;
-    last_connect_time_ = std::chrono::steady_clock::now();
-    UpdateDeviceInfo();
-    return Result<void>::Success();
+    return result;
 }
 
 HardwareConnectionInfo MotionRuntimeFacade::GetRuntimeConnectionInfo() const {
@@ -346,7 +396,7 @@ HardwareConnectionInfo MotionRuntimeFacade::GetRuntimeConnectionInfo() const {
     if (connection_state_ == HardwareConnectionState::Connected) {
         std::lock_guard<std::mutex> hb_lock(heartbeat_mutex_);
         const bool is_degraded = heartbeat_status_.is_degraded;
-        const bool in_grace_period = IsGracePeriodActive(last_connect_time_);
+        const bool in_grace_period = IsConnectionGracePeriodActive(last_connect_time_);
         if (!is_degraded && !in_grace_period && motion_adapter_) {
             auto result = motion_adapter_->IsConnected();
             if (result.IsError() || !result.Value()) {
@@ -369,7 +419,7 @@ bool MotionRuntimeFacade::ShouldSuppressTransientStatusCommunicationErrors() con
         return false;
     }
 
-    if (IsGracePeriodActive(last_connect_time_)) {
+    if (IsConnectionGracePeriodActive(last_connect_time_)) {
         return true;
     }
 
@@ -383,7 +433,7 @@ bool MotionRuntimeFacade::IsRuntimeConnected() const {
         return false;
     }
 
-    if (IsGracePeriodActive(last_connect_time_)) {
+    if (IsConnectionGracePeriodActive(last_connect_time_)) {
         return true;
     }
 
@@ -426,10 +476,19 @@ void MotionRuntimeFacade::SetRuntimeConnectionStateCallback(
 }
 
 Result<void> MotionRuntimeFacade::StartRuntimeStatusMonitoring(Shared::Types::uint32 interval_ms) {
-    if (monitoring_active_) {
-        return Result<void>::Success();
+    if (interval_ms == 0) {
+        return Result<void>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "状态监控周期必须大于 0", "MotionRuntimeFacade"));
     }
 
+    if (monitoring_active_) {
+        if (monitoring_interval_ms_ == interval_ms) {
+            return Result<void>::Success();
+        }
+        StopRuntimeStatusMonitoring();
+    }
+
+    monitoring_interval_ms_ = interval_ms;
     should_monitor_ = true;
     monitoring_active_ = true;
     monitoring_thread_ = std::thread([this, interval_ms]() { MonitoringLoop(interval_ms); });
@@ -442,6 +501,7 @@ void MotionRuntimeFacade::StopRuntimeStatusMonitoring() {
         monitoring_thread_.join();
     }
     monitoring_active_ = false;
+    monitoring_interval_ms_ = 0;
 }
 
 std::string MotionRuntimeFacade::GetRuntimeLastError() const {
@@ -520,19 +580,16 @@ void MotionRuntimeFacade::MonitoringLoop(Shared::Types::uint32 interval_ms) {
         std::string current_error;
         std::function<void(const HardwareConnectionInfo&)> callback;
         HardwareConnectionInfo info;
+        std::chrono::steady_clock::time_point last_connect_time;
 
         {
             std::lock_guard<std::mutex> lock(connection_mutex_);
             current_state = connection_state_;
             current_error = last_error_;
+            last_connect_time = last_connect_time_;
         }
 
-        bool skip_check = false;
-        {
-            std::lock_guard<std::mutex> hb_lock(heartbeat_mutex_);
-            skip_check = heartbeat_status_.is_degraded;
-        }
-        skip_check = skip_check || IsGracePeriodActive(last_connect_time_);
+        const bool skip_check = IsStatusMonitoringGracePeriodActive(last_connect_time);
 
         if (current_state == HardwareConnectionState::Connected && !skip_check && motion_adapter_) {
             auto connected_result = motion_adapter_->IsConnected();

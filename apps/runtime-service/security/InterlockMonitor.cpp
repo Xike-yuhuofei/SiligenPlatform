@@ -15,6 +15,9 @@ using DomainPriority = Siligen::Domain::Safety::ValueObjects::InterlockPriority;
 constexpr short kGeneralPurposeInputGroup = 4;  // MultiCard MC_GPI: X0~X15 通用输入
 constexpr int16 kGeneralPurposeInputMin = 0;
 constexpr int16 kGeneralPurposeInputMax = 15;
+constexpr auto kReadFailureLogThrottle = std::chrono::seconds(1);
+constexpr int kMissingMulticardErrorCode = -10001;
+constexpr int kInvalidEmergencyInputErrorCode = -10002;
 
 bool IsGeneralPurposeInputIndexValid(int16 index) noexcept {
     return index >= kGeneralPurposeInputMin && index <= kGeneralPurposeInputMax;
@@ -39,6 +42,7 @@ InterlockMonitor::InterlockMonitor(
     AuditLogger& audit_logger,
     std::shared_ptr<Infrastructure::Hardware::IMultiCardWrapper> multicard)
     : running_(false),
+      sample_available_(false),
       triggered_(false),
       audit_logger_(audit_logger),
       multicard_(std::move(multicard)),
@@ -51,6 +55,10 @@ InterlockMonitor::~InterlockMonitor() {
 bool InterlockMonitor::Initialize(const InterlockConfig& config) {
     std::lock_guard<std::mutex> lock(state_mutex_);
     config_ = config;
+    last_sample_error_active_ = false;
+    last_sample_error_code_ = 0;
+    last_sample_error_log_time_ = std::chrono::steady_clock::time_point{};
+    last_logged_signal_state_valid_ = false;
     policy_config_ = Domain::Safety::ValueObjects::InterlockPolicyConfig();
     policy_config_.enabled = config.enabled;
 
@@ -74,10 +82,19 @@ void InterlockMonitor::Start() {
     }
 
     if (!config_.enabled) {
+        sample_available_.store(false);
         SecurityLogHelper::Log(LogLevel::INFO, "InterlockMonitor", "连锁监控器未启用");
         return;
     }
 
+    {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        last_sample_error_active_ = false;
+        last_sample_error_code_ = 0;
+        last_sample_error_log_time_ = std::chrono::steady_clock::time_point{};
+        last_logged_signal_state_valid_ = false;
+    }
+    sample_available_.store(false);
     running_.store(true);
     triggered_.store(false);
     monitor_thread_ = std::thread(&InterlockMonitor::MonitoringLoop, this);
@@ -94,13 +111,28 @@ void InterlockMonitor::Start() {
 }
 
 void InterlockMonitor::Stop() {
+    sample_available_.store(false);
+    triggered_.store(false);
     if (!running_.load()) {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        last_sample_error_active_ = false;
+        last_sample_error_code_ = 0;
+        last_sample_error_log_time_ = std::chrono::steady_clock::time_point{};
+        last_logged_signal_state_valid_ = false;
         return;
     }
 
     running_.store(false);
     if (monitor_thread_.joinable()) {
         monitor_thread_.join();
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        last_sample_error_active_ = false;
+        last_sample_error_code_ = 0;
+        last_sample_error_log_time_ = std::chrono::steady_clock::time_point{};
+        last_logged_signal_state_valid_ = false;
     }
 
     SecurityLogHelper::Log(LogLevel::INFO, "InterlockMonitor", "连锁监控器已停止");
@@ -120,6 +152,27 @@ void InterlockMonitor::SetCallback(InterlockCallback callback) {
 }
 
 Shared::Types::Result<Domain::Safety::ValueObjects::InterlockSignals> InterlockMonitor::ReadSignals() const noexcept {
+    if (!config_.enabled) {
+        return Shared::Types::Result<Domain::Safety::ValueObjects::InterlockSignals>::Success(
+            Domain::Safety::ValueObjects::InterlockSignals{});
+    }
+
+    if (!running_.load()) {
+        return Shared::Types::Result<Domain::Safety::ValueObjects::InterlockSignals>::Failure(
+            Shared::Types::Error(
+                Shared::Types::ErrorCode::HARDWARE_NOT_CONNECTED,
+                "Interlock monitor is not active",
+                "InterlockMonitor"));
+    }
+
+    if (!sample_available_.load()) {
+        return Shared::Types::Result<Domain::Safety::ValueObjects::InterlockSignals>::Failure(
+            Shared::Types::Error(
+                Shared::Types::ErrorCode::HARDWARE_NOT_CONNECTED,
+                "Interlock signals are unavailable",
+                "InterlockMonitor"));
+    }
+
     std::lock_guard<std::mutex> lock(state_mutex_);
 
     Domain::Safety::ValueObjects::InterlockSignals signals;
@@ -141,12 +194,10 @@ void InterlockMonitor::MonitoringLoop() {
         auto start_time = std::chrono::steady_clock::now();
 
         // 读取传感器状态
-        if (!ReadSensorStates()) {
-            SecurityLogHelper::Log(LogLevel::ERR, "InterlockMonitor", "读取传感器状态失败");
+        if (ReadSensorStates()) {
+            // 仅在采样有效时执行连锁判定，避免将 unknown/unavailable 误判为急停触发。
+            CheckInterlockConditions();
         }
-
-        // 检查连锁条件
-        CheckInterlockConditions();
 
         // 定期自检 (T070)
         auto now = std::chrono::system_clock::now();
@@ -167,15 +218,46 @@ void InterlockMonitor::MonitoringLoop() {
 bool InterlockMonitor::ReadSensorStates() {
     std::lock_guard<std::mutex> lock(state_mutex_);
     state_.last_update = std::chrono::system_clock::now();
+    const auto now = std::chrono::steady_clock::now();
 
-    if (!multicard_) {
-        SecurityLogHelper::Log(LogLevel::ERR, "InterlockMonitor", "MultiCardWrapper 未注入，无法读取互锁输入");
-        state_.emergency_stop_triggered = true;
+    const auto clear_state = [this]() {
+        state_.emergency_stop_triggered = false;
         state_.safety_door_open = false;
         state_.pressure_abnormal = false;
         state_.temperature_abnormal = false;
         state_.voltage_abnormal = false;
         state_.servo_alarm = false;
+    };
+
+    const auto mark_sample_failure =
+        [this, &now, &clear_state](int error_code, const std::string& message) {
+            clear_state();
+            sample_available_.store(false);
+            last_logged_signal_state_valid_ = false;
+
+            const bool should_log =
+                !last_sample_error_active_ ||
+                last_sample_error_code_ != error_code ||
+                (now - last_sample_error_log_time_) >= kReadFailureLogThrottle;
+            if (should_log) {
+                SecurityLogHelper::Log(LogLevel::ERR, "InterlockMonitor", message);
+                last_sample_error_log_time_ = now;
+            }
+
+            last_sample_error_active_ = true;
+            last_sample_error_code_ = error_code;
+        };
+
+    const auto mark_sample_success = [this]() {
+        if (last_sample_error_active_) {
+            SecurityLogHelper::Log(LogLevel::INFO, "InterlockMonitor", "互锁输入读取恢复");
+        }
+        last_sample_error_active_ = false;
+        last_sample_error_code_ = 0;
+    };
+
+    if (!multicard_) {
+        mark_sample_failure(kMissingMulticardErrorCode, "MultiCardWrapper 未注入，无法读取互锁输入");
         return false;
     }
 
@@ -184,17 +266,10 @@ bool InterlockMonitor::ReadSensorStates() {
     const int ret = multicard_->MC_GetDiRaw(kGeneralPurposeInputGroup, &diValue);
     if (ret == 0) {
         if (!IsGeneralPurposeInputIndexValid(config_.emergency_stop_input)) {
-            SecurityLogHelper::Log(
-                LogLevel::ERR,
-                "InterlockMonitor",
-                "急停输入位越界，进入fail-safe: emergency_stop_input=" +
+            mark_sample_failure(
+                kInvalidEmergencyInputErrorCode,
+                "急停输入位越界，互锁采样不可用: emergency_stop_input=" +
                     std::to_string(config_.emergency_stop_input) + ", valid_range=0..15");
-            state_.emergency_stop_triggered = true;
-            state_.safety_door_open = false;
-            state_.pressure_abnormal = false;
-            state_.temperature_abnormal = false;
-            state_.voltage_abnormal = false;
-            state_.servo_alarm = false;
             return false;
         }
 
@@ -219,16 +294,25 @@ bool InterlockMonitor::ReadSensorStates() {
             state_.safety_door_open = false;
         }
 
-        SecurityLogHelper::Log(
-            LogLevel::INFO,
-            "InterlockMonitor",
-            "互锁状态读取: estop=" + std::string(state_.emergency_stop_triggered ? "触发" : "正常") +
-                ", door=" + std::string(state_.safety_door_open ? "打开" : "关闭"));
+        mark_sample_success();
+        sample_available_.store(true);
+        const bool state_changed =
+            !last_logged_signal_state_valid_ ||
+            last_logged_estop_state_ != state_.emergency_stop_triggered ||
+            last_logged_door_state_ != state_.safety_door_open;
+        if (state_changed) {
+            SecurityLogHelper::Log(
+                LogLevel::INFO,
+                "InterlockMonitor",
+                "互锁状态读取: estop=" + std::string(state_.emergency_stop_triggered ? "触发" : "正常") +
+                    ", door=" + std::string(state_.safety_door_open ? "打开" : "关闭"));
+            last_logged_signal_state_valid_ = true;
+            last_logged_estop_state_ = state_.emergency_stop_triggered;
+            last_logged_door_state_ = state_.safety_door_open;
+        }
     } else {
-        SecurityLogHelper::Log(LogLevel::ERR, "InterlockMonitor", "急停状态读取失败，错误码: " + std::to_string(ret));
-        // 读取失败时保守处理，假设急停已触发
-        state_.emergency_stop_triggered = true;
-        state_.safety_door_open = false;
+        mark_sample_failure(ret, "急停状态读取失败，错误码: " + std::to_string(ret));
+        return false;
     }
 
     // 其他传感器暂时保持默认值（待硬件连接）
@@ -242,6 +326,10 @@ bool InterlockMonitor::ReadSensorStates() {
 
 // T069: 安全连锁触发逻辑 (优先级: 急停 > 硬件限位 > 软限位 > 温度/气压)
 void InterlockMonitor::CheckInterlockConditions() {
+    if (!sample_available_.load()) {
+        return;
+    }
+
     auto decision_result = Domain::Safety::Bridges::EvaluateWithMotionCore(*this, policy_config_);
     if (decision_result.IsError()) {
         SecurityLogHelper::Log(LogLevel::ERR, "InterlockMonitor", "连锁判定失败: " + decision_result.GetError().GetMessage());

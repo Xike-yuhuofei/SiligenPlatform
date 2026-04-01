@@ -417,6 +417,14 @@ void MockMultiCardWrapper::SetDigitalInputRaw(short card_index, long value) noex
     mockMulticard_->SetDigitalInputRaw(card_index, value);
 }
 
+void MockMultiCardWrapper::SimulateDisconnect() noexcept {
+    mockMulticard_->SimulateDisconnect();
+}
+
+void MockMultiCardWrapper::ResetConnectionSimulation() noexcept {
+    mockMulticard_->ResetGetStsCounter();
+}
+
 }  // namespace Hardware
 }  // namespace Infrastructure
 }  // namespace Siligen

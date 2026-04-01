@@ -47,6 +47,25 @@ TEST(RuntimeSupervisionPortAdapterTest, MapsHeartbeatDegradedIntoSupervisionSnap
     EXPECT_EQ(snapshot.supervision.failure_code, "heartbeat_degraded");
 }
 
+TEST(RuntimeSupervisionPortAdapterTest, DisconnectedHeartbeatDegradedRemainsDisconnected) {
+    auto backend = std::make_shared<FakeRuntimeSupervisionBackend>();
+    backend->next_inputs.has_hardware_connection_port = true;
+    backend->next_inputs.connected = false;
+    backend->next_inputs.connection_info.state = Siligen::Device::Contracts::State::DeviceConnectionState::Disconnected;
+    backend->next_inputs.heartbeat_status.is_degraded = true;
+    backend->next_inputs.io.door_known = false;
+
+    RuntimeSupervisionPortAdapter adapter(backend);
+    auto snapshot_result = adapter.ReadSnapshot();
+
+    ASSERT_TRUE(snapshot_result.IsSuccess()) << snapshot_result.GetError().GetMessage();
+    const auto& snapshot = snapshot_result.Value();
+    EXPECT_EQ(snapshot.connection_state, "disconnected");
+    EXPECT_EQ(snapshot.supervision.current_state, "Disconnected");
+    EXPECT_EQ(snapshot.supervision.state_reason, "hardware_disconnected");
+    EXPECT_TRUE(snapshot.supervision.failure_code.empty());
+}
+
 TEST(RuntimeSupervisionPortAdapterTest, MapsPausedJobIntoPausedSupervisionState) {
     auto backend = std::make_shared<FakeRuntimeSupervisionBackend>();
     backend->next_inputs.has_hardware_connection_port = true;

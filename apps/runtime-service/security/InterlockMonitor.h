@@ -108,7 +108,14 @@ class InterlockMonitor : public Domain::Safety::Ports::IInterlockSignalPort {
     InterlockState state_;
     mutable std::mutex state_mutex_;
     std::atomic<bool> running_;
+    std::atomic<bool> sample_available_;
     std::atomic<bool> triggered_;
+    bool last_sample_error_active_ = false;
+    int last_sample_error_code_ = 0;
+    std::chrono::steady_clock::time_point last_sample_error_log_time_{};
+    bool last_logged_signal_state_valid_ = false;
+    bool last_logged_estop_state_ = false;
+    bool last_logged_door_state_ = false;
     std::thread monitor_thread_;
     InterlockCallback callback_;
     AuditLogger& audit_logger_;

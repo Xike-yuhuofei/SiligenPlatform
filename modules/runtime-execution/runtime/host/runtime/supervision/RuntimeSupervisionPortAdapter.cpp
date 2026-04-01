@@ -89,9 +89,12 @@ SupervisionStatusSnapshot BuildSupervisionSnapshot(const RuntimeSupervisionInput
     std::string current_state = "Disconnected";
     std::string state_reason = inputs.connected ? "idle" : "motion_status_unavailable";
     std::string connection_state = inputs.connected ? "connected" : "disconnected";
+    const bool heartbeat_degraded_while_connected =
+        inputs.connection_info.state == Siligen::Device::Contracts::State::DeviceConnectionState::Connected &&
+        inputs.heartbeat_status.is_degraded;
 
     if (inputs.has_hardware_connection_port) {
-        if (inputs.heartbeat_status.is_degraded) {
+        if (heartbeat_degraded_while_connected) {
             connection_state = "degraded";
             current_state = "Degraded";
             state_reason = "heartbeat_degraded";
@@ -211,7 +214,10 @@ Result<RuntimeSupervisionSnapshot> RuntimeSupervisionPortAdapter::ReadSnapshot()
     snapshot.connected = inputs.connected;
     snapshot.connection_state = inputs.connected ? "connected" : "disconnected";
     if (inputs.has_hardware_connection_port) {
-        snapshot.connection_state = inputs.heartbeat_status.is_degraded
+        const bool heartbeat_degraded_while_connected =
+            inputs.connection_info.state == Siligen::Device::Contracts::State::DeviceConnectionState::Connected &&
+            inputs.heartbeat_status.is_degraded;
+        snapshot.connection_state = heartbeat_degraded_while_connected
             ? "degraded"
             : ToConnectionStateLabel(inputs.connection_info.state);
     }
