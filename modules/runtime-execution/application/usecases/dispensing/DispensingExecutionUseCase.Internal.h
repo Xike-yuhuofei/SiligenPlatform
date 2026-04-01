@@ -12,16 +12,6 @@
 #include <thread>
 #include <unordered_map>
 
-namespace Siligen {
-namespace Domain {
-namespace Dispensing {
-namespace DomainServices {
-class DispensingProcessService;
-}  // namespace DomainServices
-}  // namespace Dispensing
-}  // namespace Domain
-}  // namespace Siligen
-
 namespace Siligen::Application::UseCases::Dispensing {
 
 using Siligen::Shared::Types::LogicalAxisId;
@@ -114,6 +104,7 @@ struct DispensingExecutionUseCase::Impl {
         std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port,
         std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
         std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port,
+        std::shared_ptr<RuntimeDispensingProcessPort> process_port,
         std::shared_ptr<RuntimeEventPublisherPort> event_port,
         std::shared_ptr<RuntimeTaskSchedulerPort> task_scheduler_port,
         std::shared_ptr<RuntimeHomingPort> homing_port,
@@ -124,6 +115,7 @@ struct DispensingExecutionUseCase::Impl {
     Shared::Types::Result<DispensingExecutionResult> Execute(const DispensingExecutionRequest& request);
     Shared::Types::Result<JobID> StartJob(const RuntimeStartJobRequest& request);
     Shared::Types::Result<RuntimeJobStatusResponse> GetJobStatus(const JobID& job_id) const;
+    JobID GetActiveJobId() const;
     Shared::Types::Result<void> PauseJob(const JobID& job_id);
     Shared::Types::Result<void> ResumeJob(const JobID& job_id);
     Shared::Types::Result<void> StopJob(const JobID& job_id);
@@ -138,11 +130,11 @@ struct DispensingExecutionUseCase::Impl {
     std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port_;
     std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port_;
     std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port_;
+    std::shared_ptr<RuntimeDispensingProcessPort> process_port_;
     std::shared_ptr<RuntimeEventPublisherPort> event_port_;
     std::shared_ptr<RuntimeTaskSchedulerPort> task_scheduler_port_;
     std::shared_ptr<RuntimeHomingPort> homing_port_;
     std::shared_ptr<RuntimeInterlockSignalPort> interlock_signal_port_;
-    std::shared_ptr<::Siligen::Domain::Dispensing::DomainServices::DispensingProcessService> process_service_;
 
     struct VelocityTraceSettings {
         bool enabled = false;

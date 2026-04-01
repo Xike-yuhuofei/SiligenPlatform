@@ -124,9 +124,12 @@
         "connection_state": { "type": "string" },
         "machine_state": {
           "type": "string",
-          "description": "权威状态枚举：Disconnected / Idle / Running / Paused / Interlock / Estop / Fault / Unknown。"
+          "description": "兼容导出状态枚举；当前由 supervision.current_state 单向派生，保留给旧消费者读取。"
         },
-        "machine_state_reason": { "type": "string" },
+        "machine_state_reason": {
+          "type": "string",
+          "description": "兼容导出原因字段；当前由 supervision.state_reason 单向派生。"
+        },
         "interlock_latched": { "type": "boolean" },
         "active_job_id": { "type": "string" },
         "active_job_state": { "type": "string" },
