@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 THIS_DIR = Path(__file__).resolve().parent
-ROOT = THIS_DIR.parents[2]
+ROOT = THIS_DIR.parents[3]
 FIRST_LAYER_DIR = THIS_DIR
 HIL_DIR = ROOT / "tests" / "e2e" / "hardware-in-loop"
 

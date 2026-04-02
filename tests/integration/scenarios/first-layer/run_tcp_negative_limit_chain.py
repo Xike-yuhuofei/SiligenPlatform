@@ -3,11 +3,18 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import sys
 import time
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+THIS_DIR = Path(__file__).resolve().parent
+ROOT = THIS_DIR.parents[4]
+HIL_DIR = ROOT / "tests" / "e2e" / "hardware-in-loop"
+if str(HIL_DIR) not in sys.path:
+    sys.path.insert(0, str(HIL_DIR))
 
 from runtime_gateway_harness import (
     KNOWN_FAILURE_EXIT_CODE,

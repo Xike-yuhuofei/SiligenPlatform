@@ -9,9 +9,10 @@ import pytest
 
 
 THIS_DIR = Path(__file__).resolve().parent
-ROOT = THIS_DIR.parents[2]
-if str(THIS_DIR) not in sys.path:
-    sys.path.insert(0, str(THIS_DIR))
+ROOT = THIS_DIR.parents[3]
+HIL_DIR = ROOT / "tests" / "e2e" / "hardware-in-loop"
+if str(HIL_DIR) not in sys.path:
+    sys.path.insert(0, str(HIL_DIR))
 
 from runtime_gateway_harness import resolve_default_exe
 
