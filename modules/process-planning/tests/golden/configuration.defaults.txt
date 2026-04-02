@@ -22,6 +22,6 @@ homing.mode=1
 homing.direction=0
 homing.search_distance=520.000000
 homing.escape_distance=5.000000
-homing.timeout_ms=80000
+homing.timeout_ms=30000
 homing.home_backoff_enabled=true
 homing.enable_limit_switch=true

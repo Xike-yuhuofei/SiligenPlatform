@@ -558,6 +558,15 @@ def build_cases(
                     cwd=WORKSPACE_ROOT,
                 ),
                 ValidationCase(
+                    name="performance-threshold-gate-contract",
+                    layer="contracts",
+                    description="performance threshold gate contract",
+                    command=python_command(
+                        WORKSPACE_ROOT / "tests" / "contracts" / "test_performance_threshold_gate_contract.py"
+                    ),
+                    cwd=WORKSPACE_ROOT,
+                ),
+                ValidationCase(
                     name="fault-scenario-contract",
                     layer="contracts",
                     description="fault scenario schema contract",
@@ -792,6 +801,17 @@ def build_cases(
                 description="shared asset reuse smoke",
                 command=python_command(
                     WORKSPACE_ROOT / "tests" / "integration" / "scenarios" / "run_shared_asset_reuse_smoke.py"
+                ),
+                cwd=WORKSPACE_ROOT,
+            )
+        )
+        cases.append(
+            ValidationCase(
+                name="baseline-governance-smoke",
+                layer="protocol-compatibility",
+                description="baseline manifest and second-source governance smoke",
+                command=python_command(
+                    WORKSPACE_ROOT / "tests" / "integration" / "scenarios" / "run_baseline_governance_smoke.py"
                 ),
                 cwd=WORKSPACE_ROOT,
             )

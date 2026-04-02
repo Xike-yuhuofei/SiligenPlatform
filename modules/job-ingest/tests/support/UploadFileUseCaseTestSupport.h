@@ -1,7 +1,7 @@
 #pragma once
 
 #include "job_ingest/application/usecases/dispensing/UploadFileUseCase.h"
-#include "domain/configuration/ports/IFileStoragePort.h"
+#include "job_ingest/contracts/storage/IFileStoragePort.h"
 #include "shared/types/Error.h"
 #include "shared/types/Result.h"
 
@@ -20,8 +20,8 @@ namespace Siligen::JobIngest::Tests::Support {
 
 using Siligen::Application::UseCases::Dispensing::UploadRequest;
 using Siligen::Application::UseCases::Dispensing::UploadResponse;
-using Siligen::Domain::Configuration::Ports::FileData;
-using Siligen::Domain::Configuration::Ports::IFileStoragePort;
+using Siligen::JobIngest::Contracts::Storage::FileData;
+using Siligen::JobIngest::Contracts::Storage::IFileStoragePort;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;

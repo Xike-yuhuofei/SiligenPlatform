@@ -9,14 +9,14 @@
 
 ## Technical Context
 
-**Language/Version**: PowerShell 7（根级入口与 validation scripts）、Python 3.11（`shared/testing/test-kit`、validation/performance tooling）、C++17 / CMake 3.20+（canonical test roots 与 repo build graph）、Markdown（设计与验证文档）  
-**Primary Dependencies**: `build.ps1` / `test.ps1` / `ci.ps1`；`scripts/validation/invoke-workspace-tests.ps1`；`scripts/validation/run-local-validation-gate.ps1`；`shared/testing/test-kit`；`python -m test_kit.workspace_validation`；`scripts/migration/validate_workspace_layout.py`；`tests/performance/collect_dxf_preview_profiles.py`  
-**Storage**: Git 跟踪的 `tests/`、`samples/`、`docs/validation/`、`shared/contracts/` 资产，以及运行期输出目录 `tests/reports/`；无数据库  
-**Testing**: 根级 `.\build.ps1`、`.\test.ps1`、`.\ci.ps1`；`python -m test_kit.workspace_validation`；仓库级承载面 `tests/integration/`、`tests/e2e/`、`tests/performance/`；`tests/CMakeLists.txt` 聚合的 canonical module test roots  
-**Target Platform**: Windows 开发机与 CI 代理；默认离线 / 模拟验证；真实硬件 smoke 与 HIL 仅显式 opt-in  
-**Project Type**: 工业自动化多模块工作区上的 spec-driven repository validation platform  
-**Performance Goals**: 常规改动快速门禁在 15 分钟内返回；完整验证必须产出 canonical evidence；性能层能比较 `small / medium / large` DXF 基线与漂移  
-**Constraints**: 只能使用 canonical workspace roots；必须遵循“先离线、后联机”；不得引入隐藏 fallback 或第二真值；失败必须输出结构化证据与必要 trace 字段；HIL 不能成为默认通过路径  
+**Language/Version**: PowerShell 7（根级入口与 validation scripts）、Python 3.11（`shared/testing/test-kit`、validation/performance tooling）、C++17 / CMake 3.20+（canonical test roots 与 repo build graph）、Markdown（设计与验证文档）
+**Primary Dependencies**: `build.ps1` / `test.ps1` / `ci.ps1`；`scripts/validation/invoke-workspace-tests.ps1`；`scripts/validation/run-local-validation-gate.ps1`；`shared/testing/test-kit`；`python -m test_kit.workspace_validation`；`scripts/migration/validate_workspace_layout.py`；`tests/performance/collect_dxf_preview_profiles.py`
+**Storage**: Git 跟踪的 `tests/`、`samples/`、`docs/validation/`、`shared/contracts/` 资产，以及运行期输出目录 `tests/reports/`；无数据库
+**Testing**: 根级 `.\build.ps1`、`.\test.ps1`、`.\ci.ps1`；`python -m test_kit.workspace_validation`；仓库级承载面 `tests/integration/`、`tests/e2e/`、`tests/performance/`；`tests/CMakeLists.txt` 聚合的 canonical module test roots
+**Target Platform**: Windows 开发机与 CI 代理；默认离线 / 模拟验证；真实硬件 smoke 与 HIL 仅显式 opt-in
+**Project Type**: 工业自动化多模块工作区上的 spec-driven repository validation platform
+**Performance Goals**: 常规改动快速门禁在 15 分钟内返回；完整验证必须产出 canonical evidence；性能层能比较 `small / medium / large` DXF 基线与漂移
+**Constraints**: 只能使用 canonical workspace roots；必须遵循“先离线、后联机”；不得引入隐藏 fallback 或第二真值；失败必须输出结构化证据与必要 trace 字段；HIL 不能成为默认通过路径
 **Scale/Scope**: 覆盖 root scripts、`shared/testing/`、`tests/`、`samples/`、`docs/validation/`，以及 `workflow`、`job-ingest`、`dxf-geometry`、`process-path`、`motion-planning`、`dispense-packaging`、`runtime-execution` 和 `apps/runtime-service/tests` 等 canonical test surfaces
 
 ## Constitution Check

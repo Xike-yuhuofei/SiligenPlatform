@@ -9,9 +9,10 @@ enum class EvidenceResult {
     Pass,
     Fail,
     Blocked,
+    Skipped,
 };
 
-inline std::string EvidenceResultToString(EvidenceResult result) {
+inline const char* EvidenceResultToString(EvidenceResult result) {
     switch (result) {
         case EvidenceResult::Pass:
             return "pass";
@@ -19,19 +20,13 @@ inline std::string EvidenceResultToString(EvidenceResult result) {
             return "fail";
         case EvidenceResult::Blocked:
             return "blocked";
+        case EvidenceResult::Skipped:
+            return "skipped";
     }
     return "unknown";
 }
 
-struct EvidenceTimelineEntry {
-    int sequence = 0;
-    std::string event_name;
-    std::string source;
-    std::string state;
-    bool fault_trigger = false;
-};
-
-struct ValidationEvidenceSummary {
+struct EvidenceSummary {
     std::string suite;
     std::string case_id;
     EvidenceResult result = EvidenceResult::Blocked;
@@ -42,9 +37,17 @@ struct ValidationEvidenceSummary {
     std::string primary_cause;
 };
 
+struct EvidenceTimelineEvent {
+    int sequence = 0;
+    std::string event_name;
+    std::string source;
+    std::string state;
+    bool fault_trigger = false;
+};
+
 struct ValidationEvidenceBundle {
-    ValidationEvidenceSummary summary;
-    std::vector<EvidenceTimelineEntry> timeline;
+    EvidenceSummary summary;
+    std::vector<EvidenceTimelineEvent> timeline;
     std::vector<std::string> artifacts;
     std::string report_path;
 };

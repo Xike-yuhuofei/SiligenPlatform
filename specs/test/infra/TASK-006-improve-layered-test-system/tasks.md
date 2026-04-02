@@ -1,9 +1,9 @@
 # Tasks: Layered Test System
 
-**Input**: 设计文档来自 `D:\Projects\ss-e\specs\test\infra\TASK-006-improve-layered-test-system\`  
+**Input**: 设计文档来自 `D:\Projects\ss-e\specs\test\infra\TASK-006-improve-layered-test-system\`
 **Prerequisites**: `plan.md`、`spec.md`、`research.md`、`data-model.md`、`contracts/`、`quickstart.md`
 
-**Tests**: 本特性本身就是测试体系建设，且规格明确要求通过分层验证、共享资产、故障注入、模拟全链路和受限 HIL 来证明价值，因此每个用户故事与后续治理阶段都包含先行测试或验证任务。  
+**Tests**: 本特性本身就是测试体系建设，且规格明确要求通过分层验证、共享资产、故障注入、模拟全链路和受限 HIL 来证明价值，因此每个用户故事与后续治理阶段都包含先行测试或验证任务。
 **Organization**: 任务按用户故事组织，先冻结共享分层骨架与根级入口，再分别交付风险分层路由、共享测试资产与故障场景、以及模拟/HIL 证据闭环三个可独立验收的增量，最后补执行治理、迁移清理、故障注入底座与 HIL/evidence 治理收口。
 
 **Follow-up**: Phase 11 后的正式 `nightly-performance` 激活与 `limited-hil` 受控验证已转入 `D:\Projects\ss-e\specs\test\infra\TASK-007-activate-performance-and-controlled-hil\`，本任务不再继续追加新的平台语义。

@@ -1,4 +1,4 @@
-#include "domain/configuration/services/ReadyZeroSpeedResolver.h"
+#include "process_planning/contracts/configuration/ReadyZeroSpeedResolver.h"
 
 #include <gtest/gtest.h>
 

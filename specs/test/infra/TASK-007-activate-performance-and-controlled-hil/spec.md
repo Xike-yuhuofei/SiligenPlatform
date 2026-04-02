@@ -1,8 +1,8 @@
 # Feature Specification: Activate Nightly Performance And Controlled HIL
 
-**Feature Branch**: `test/infra/TASK-007-activate-performance-and-controlled-hil`  
-**Created**: 2026-04-01  
-**Status**: Completed  
+**Feature Branch**: `test/infra/TASK-007-activate-performance-and-controlled-hil`
+**Created**: 2026-04-01
+**Status**: Completed
 **Input**: User description: "在 TASK-006 平台建设完成后，把 nightly-performance 和 limited-hil 作为正式通道激活，并留下可审计证据"
 
 ## User Scenarios & Testing

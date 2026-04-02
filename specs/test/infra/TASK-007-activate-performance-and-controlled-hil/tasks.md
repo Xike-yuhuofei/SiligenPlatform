@@ -1,9 +1,9 @@
 # Tasks: Activate Nightly Performance And Controlled HIL
 
-**Input**: 设计文档来自 `D:\Projects\ss-e\specs\test\infra\TASK-007-activate-performance-and-controlled-hil\`  
+**Input**: 设计文档来自 `D:\Projects\ss-e\specs\test\infra\TASK-007-activate-performance-and-controlled-hil\`
 **Prerequisites**: `spec.md`、`plan.md`、`D:\Projects\ss-e\docs\validation\layered-test-matrix.md`、`D:\Projects\ss-e\docs\architecture\build-and-test.md`
 
-**Tests**: 本波次以正式 authority 运行结果为主，因此合同测试、正式 `nightly-performance` 运行和正式 `limited-hil` quick gate 都必须形成可回链证据。  
+**Tests**: 本波次以正式 authority 运行结果为主，因此合同测试、正式 `nightly-performance` 运行和正式 `limited-hil` quick gate 都必须形成可回链证据。
 **Organization**: 任务按“性能正式化 -> 受控 HIL 激活 -> closeout 真值同步”组织，不再扩展新的平台语义。
 
 ## Format: `[ID] [P?] [Story] Description`

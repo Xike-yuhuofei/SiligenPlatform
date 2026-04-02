@@ -1,5 +1,4 @@
 #include "process_planning/contracts/ConfigurationContracts.h"
-#include "domain/configuration/services/ReadyZeroSpeedResolver.h"
 
 #include <gtest/gtest.h>
 

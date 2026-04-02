@@ -12,12 +12,12 @@
 
 ## Technical Context
 
-**Language/Version**: PowerShell 7、Python 3.11+、Markdown  
-**Primary Dependencies**: `build.ps1`、`test.ps1`、`tests/performance/collect_dxf_preview_profiles.py`、`tests/e2e/hardware-in-loop/run_hil_controlled_test.ps1`、`verify_hil_controlled_gate.py`、`render_hil_controlled_release_summary.py`  
-**Storage**: `tests/baselines/performance/`、`tests/reports/performance/`、`tests/reports/verify/`、`docs/validation/`、`specs/test/infra/`  
-**Testing**: `tests/contracts/test_performance_threshold_gate_contract.py`、正式 `nightly-performance` 运行、正式 `limited-hil` quick gate 运行  
-**Target Platform**: Windows 开发机；`nightly-performance` 使用 mock runtime；`limited-hil` 依赖真实控制卡/联机环境  
-**Constraints**: 不新增 lane / runner / schema；不改业务模块；HIL quick gate 未通过时不得进入 formal `1800s` gate  
+**Language/Version**: PowerShell 7、Python 3.11+、Markdown
+**Primary Dependencies**: `build.ps1`、`test.ps1`、`tests/performance/collect_dxf_preview_profiles.py`、`tests/e2e/hardware-in-loop/run_hil_controlled_test.ps1`、`verify_hil_controlled_gate.py`、`render_hil_controlled_release_summary.py`
+**Storage**: `tests/baselines/performance/`、`tests/reports/performance/`、`tests/reports/verify/`、`docs/validation/`、`specs/test/infra/`
+**Testing**: `tests/contracts/test_performance_threshold_gate_contract.py`、正式 `nightly-performance` 运行、正式 `limited-hil` quick gate 运行
+**Target Platform**: Windows 开发机；`nightly-performance` 使用 mock runtime；`limited-hil` 依赖真实控制卡/联机环境
+**Constraints**: 不新增 lane / runner / schema；不改业务模块；HIL quick gate 未通过时不得进入 formal `1800s` gate
 
 ## Contract Freeze
 

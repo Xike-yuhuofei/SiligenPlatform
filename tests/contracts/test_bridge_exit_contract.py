@@ -78,7 +78,6 @@ class BridgeExitContractTest(unittest.TestCase):
         workflow_application = _read(WORKSPACE_ROOT / "modules" / "workflow" / "application" / "CMakeLists.txt")
         self.assertIn("siligen_job_ingest_application_public", workflow_application)
         self.assertIn("siligen_dxf_geometry_application_public", workflow_application)
-        self.assertIn("../../runtime-execution/application/include", workflow_application)
         self.assertIn("siligen_runtime_execution_application_public", workflow_application)
 
         for relative, forbidden in (

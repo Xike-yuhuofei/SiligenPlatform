@@ -1,8 +1,8 @@
 # Feature Specification: Layered Test System
 
-**Feature Branch**: `test/infra/TASK-006-improve-layered-test-system`  
-**Created**: 2026-04-01  
-**Status**: Draft  
+**Feature Branch**: `test/infra/TASK-006-improve-layered-test-system`
+**Created**: 2026-04-01
+**Status**: Draft
 **Input**: User description: "根据文档 `C:\Users\Xike\Downloads\自动化测试套件搭建_2026-04-01_17-34.md` 搭建分层测试体系"
 
 ## User Scenarios & Testing *(mandatory)*

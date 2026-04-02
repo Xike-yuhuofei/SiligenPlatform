@@ -1,7 +1,7 @@
 #pragma once
 
 #include "dxf_geometry/application/services/dxf/DxfPbPreparationService.h"
-#include "domain/configuration/ports/IConfigurationPort.h"
+#include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "shared/types/Error.h"
 #include "shared/types/HardwareConfiguration.h"
 

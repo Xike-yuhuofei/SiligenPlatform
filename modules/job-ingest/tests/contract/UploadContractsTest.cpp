@@ -1,5 +1,5 @@
 #include "job_ingest/contracts/dispensing/UploadContracts.h"
-#include "domain/configuration/ports/IFileStoragePort.h"
+#include "job_ingest/contracts/storage/IFileStoragePort.h"
 #include "shared/types/Result.h"
 
 #include <gtest/gtest.h>
@@ -13,8 +13,8 @@ namespace {
 using Siligen::Application::UseCases::Dispensing::IUploadFilePort;
 using Siligen::Application::UseCases::Dispensing::UploadRequest;
 using Siligen::Application::UseCases::Dispensing::UploadResponse;
-using Siligen::Domain::Configuration::Ports::FileData;
-using Siligen::Domain::Configuration::Ports::IFileStoragePort;
+using Siligen::JobIngest::Contracts::Storage::FileData;
+using Siligen::JobIngest::Contracts::Storage::IFileStoragePort;
 using Siligen::Shared::Types::Result;
 
 static_assert(std::is_default_constructible_v<UploadRequest>);

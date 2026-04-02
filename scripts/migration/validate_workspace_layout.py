@@ -11,6 +11,7 @@ if str(TEST_KIT_SRC) not in sys.path:
     sys.path.insert(0, str(TEST_KIT_SRC))
 
 from test_kit.legacy_fact_catalog import load_legacy_fact_catalog
+from test_kit.asset_catalog import advisory_baseline_governance_issues, baseline_governance_summary, blocking_baseline_governance_issues
 from test_kit.workspace_layout import load_workspace_layout
 
 
@@ -218,7 +219,6 @@ def _validate_root_wiring(root: Path) -> list[str]:
         for required in (
             "siligen_job_ingest_application_public",
             "siligen_dxf_geometry_application_public",
-            "../../runtime-execution/application/include",
             "siligen_runtime_execution_application_public",
         ):
             if required not in workflow_application_text:
@@ -314,6 +314,9 @@ def main() -> int:
     module_failures = _validate_module_skeleton(ROOT)
     bridge_root_failures = _validate_bridge_roots_absent(ROOT)
     root_wiring_failures = _validate_root_wiring(ROOT)
+    baseline_governance = baseline_governance_summary(ROOT)
+    baseline_blocking_failures = blocking_baseline_governance_issues(baseline_governance)
+    baseline_advisory_failures = advisory_baseline_governance_issues(baseline_governance)
 
     print("[wave]")
     print(f"  - requested_wave={args.wave}")
@@ -330,6 +333,8 @@ def main() -> int:
     print(f"  - module_failure_count={len(module_failures)}")
     print(f"  - bridge_root_failure_count={len(bridge_root_failures)}")
     print(f"  - root_wiring_failure_count={len(root_wiring_failures)}")
+    print(f"  - baseline_blocking_issue_count={len(baseline_blocking_failures)}")
+    print(f"  - baseline_advisory_issue_count={len(baseline_advisory_failures)}")
 
     issues: list[str] = []
     issues.extend(f"missing key: {item}" for item in missing_keys)
@@ -339,6 +344,7 @@ def main() -> int:
     issues.extend(module_failures)
     issues.extend(bridge_root_failures)
     issues.extend(root_wiring_failures)
+    issues.extend(baseline_blocking_failures)
 
     print("[issues]")
     if issues:
@@ -347,6 +353,12 @@ def main() -> int:
         return 1
 
     print("  - none")
+    print("[advisory-issues]")
+    if baseline_advisory_failures:
+        for issue in baseline_advisory_failures:
+            print(f"  - {issue}")
+    else:
+        print("  - none")
     return 0
 
 
