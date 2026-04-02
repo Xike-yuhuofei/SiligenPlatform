@@ -70,6 +70,7 @@ def test_real_preview_snapshot_matches_rect_diag_baseline(tmp_path: Path) -> Non
     plan_prepare_json_path = report_dir / "plan-prepare.json"
     snapshot_json_path = report_dir / "snapshot.json"
     glue_points_json_path = report_dir / "glue_points.json"
+    motion_preview_json_path = report_dir / "motion_preview.json"
     execution_polyline_json_path = report_dir / "execution_polyline.json"
     preview_verdict_json_path = report_dir / "preview-verdict.json"
     preview_evidence_md_path = report_dir / "preview-evidence.md"
@@ -80,6 +81,7 @@ def test_real_preview_snapshot_matches_rect_diag_baseline(tmp_path: Path) -> Non
     assert plan_prepare_json_path.exists(), f"missing report artifact: {plan_prepare_json_path}"
     assert snapshot_json_path.exists(), f"missing snapshot artifact: {snapshot_json_path}"
     assert glue_points_json_path.exists(), f"missing glue artifact: {glue_points_json_path}"
+    assert motion_preview_json_path.exists(), f"missing motion preview artifact: {motion_preview_json_path}"
     assert execution_polyline_json_path.exists(), f"missing execution polyline artifact: {execution_polyline_json_path}"
     assert preview_verdict_json_path.exists(), f"missing report artifact: {preview_verdict_json_path}"
     assert preview_evidence_md_path.exists(), f"missing report artifact: {preview_evidence_md_path}"
@@ -90,6 +92,7 @@ def test_real_preview_snapshot_matches_rect_diag_baseline(tmp_path: Path) -> Non
     plan_prepare = _load_json(plan_prepare_json_path)
     snapshot = _load_json(snapshot_json_path)
     glue_points = _load_json(glue_points_json_path)
+    motion_preview = _load_json(motion_preview_json_path)
     execution_polyline = _load_json(execution_polyline_json_path)
     preview_verdict = _load_json(preview_verdict_json_path)
     preview_evidence = preview_evidence_md_path.read_text(encoding="utf-8")
@@ -109,6 +112,19 @@ def test_real_preview_snapshot_matches_rect_diag_baseline(tmp_path: Path) -> Non
     assert snapshot["glue_point_count"] == baseline["snapshot"]["glue_point_count"]
     assert snapshot["point_count"] == baseline["snapshot"]["glue_point_count"]
     assert snapshot["glue_point_count"] == len(glue_points)
+    assert snapshot["motion_preview"]["source"] == baseline["snapshot"]["motion_preview_source"]
+    assert snapshot["motion_preview"]["kind"] == baseline["snapshot"]["motion_preview_kind"]
+    assert snapshot["motion_preview"]["point_count"] == baseline["snapshot"]["motion_preview_point_count"]
+    assert (
+        snapshot["motion_preview"]["source_point_count"]
+        == baseline["snapshot"]["motion_preview_source_point_count"]
+    )
+    assert snapshot["motion_preview"]["is_sampled"] == baseline["snapshot"]["motion_preview_is_sampled"]
+    assert (
+        snapshot["motion_preview"]["sampling_strategy"]
+        == baseline["snapshot"]["motion_preview_sampling_strategy"]
+    )
+    assert snapshot["motion_preview"]["point_count"] == len(motion_preview)
     assert snapshot["execution_polyline_point_count"] == baseline["snapshot"]["execution_polyline_point_count"]
     assert snapshot["execution_polyline_source_point_count"] == baseline["snapshot"]["execution_polyline_source_point_count"]
     assert snapshot["execution_polyline_point_count"] == len(execution_polyline)
@@ -124,6 +140,18 @@ def test_real_preview_snapshot_matches_rect_diag_baseline(tmp_path: Path) -> Non
     assert preview_verdict["order_semantics_match"] is True
     assert preview_verdict["dispense_motion_semantics_match"] is True
     assert preview_verdict["glue_point_count"] == baseline["snapshot"]["glue_point_count"]
+    assert preview_verdict["motion_preview_source"] == baseline["snapshot"]["motion_preview_source"]
+    assert preview_verdict["motion_preview_kind"] == baseline["snapshot"]["motion_preview_kind"]
+    assert preview_verdict["motion_preview_point_count"] == baseline["snapshot"]["motion_preview_point_count"]
+    assert (
+        preview_verdict["motion_preview_source_point_count"]
+        == baseline["snapshot"]["motion_preview_source_point_count"]
+    )
+    assert preview_verdict["motion_preview_is_sampled"] == baseline["snapshot"]["motion_preview_is_sampled"]
+    assert (
+        preview_verdict["motion_preview_sampling_strategy"]
+        == baseline["snapshot"]["motion_preview_sampling_strategy"]
+    )
     assert (
         preview_verdict["execution_polyline_source_point_count"]
         == baseline["snapshot"]["execution_polyline_source_point_count"]
@@ -132,6 +160,7 @@ def test_real_preview_snapshot_matches_rect_diag_baseline(tmp_path: Path) -> Non
     assert "preview-verdict.json" in preview_evidence
     assert "plan_fingerprint" in preview_evidence
     assert "glue_points.json" in preview_evidence
+    assert "motion_preview.json" in preview_evidence
     assert "execution_polyline.json" in preview_evidence
     assert "hmi-preview.png" in preview_evidence
 
@@ -214,6 +243,44 @@ def test_real_preview_snapshot_matches_rect_diag_baseline(tmp_path: Path) -> Non
             f"execution_{point_name}.y",
         )
 
+    motion_preview_summary = report["motion_preview_summary"]
+    baseline_motion_preview = baseline["motion_preview_summary"]
+    assert motion_preview_summary["point_count"] == baseline_motion_preview["point_count"]
+    assert motion_preview_summary["axis_aligned_segments"] == baseline_motion_preview["axis_aligned_segments"]
+    assert motion_preview_summary["diagonal_segments"] == baseline_motion_preview["diagonal_segments"]
+
+    for axis_name in ("x_range", "y_range"):
+        actual_range = motion_preview_summary[axis_name]
+        expected_range = baseline_motion_preview[axis_name]
+        _assert_close(
+            float(actual_range[0]),
+            float(expected_range[0]),
+            coordinate_tolerance,
+            f"motion_preview_{axis_name}[0]",
+        )
+        _assert_close(
+            float(actual_range[1]),
+            float(expected_range[1]),
+            coordinate_tolerance,
+            f"motion_preview_{axis_name}[1]",
+        )
+
+    for point_name in ("first_point", "last_point"):
+        actual_point = motion_preview_summary[point_name]
+        expected_point = baseline_motion_preview[point_name]
+        _assert_close(
+            float(actual_point["x"]),
+            float(expected_point["x"]),
+            coordinate_tolerance,
+            f"motion_preview_{point_name}.x",
+        )
+        _assert_close(
+            float(actual_point["y"]),
+            float(expected_point["y"]),
+            coordinate_tolerance,
+            f"motion_preview_{point_name}.y",
+        )
+
     for expected_point in baseline["glue_sample_points"]:
         index = int(expected_point["index"])
         assert 0 <= index < len(glue_points), f"glue sample index out of range: {index}"
@@ -236,4 +303,21 @@ def test_real_preview_snapshot_matches_rect_diag_baseline(tmp_path: Path) -> Non
             float(expected_point["y"]),
             coordinate_tolerance,
             f"execution_polyline[{index}].y",
+        )
+
+    for expected_point in baseline["motion_preview_sample_points"]:
+        index = int(expected_point["index"])
+        assert 0 <= index < len(motion_preview), f"motion preview sample index out of range: {index}"
+        actual_point = motion_preview[index]
+        _assert_close(
+            float(actual_point["x"]),
+            float(expected_point["x"]),
+            coordinate_tolerance,
+            f"motion_preview[{index}].x",
+        )
+        _assert_close(
+            float(actual_point["y"]),
+            float(expected_point["y"]),
+            coordinate_tolerance,
+            f"motion_preview[{index}].y",
         )

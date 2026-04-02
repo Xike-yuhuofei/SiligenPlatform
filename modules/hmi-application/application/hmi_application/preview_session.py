@@ -30,6 +30,12 @@ class PreviewSessionState:
     preview_source: str = ""
     preview_kind: str = ""
     glue_point_count: int = 0
+    motion_preview_source: str = ""
+    motion_preview_kind: str = ""
+    motion_preview_point_count: int = 0
+    motion_preview_source_point_count: int = 0
+    motion_preview_sampling_strategy: str = ""
+    motion_preview_is_sampled: bool = False
     preview_validation_classification: str = ""
     preview_exception_reason: str = ""
     preview_failure_reason: str = ""
@@ -82,6 +88,16 @@ class PreviewConfirmResult:
 
 
 @dataclass(frozen=True)
+class MotionPreviewMeta:
+    source: str = ""
+    kind: str = ""
+    point_count: int = 0
+    source_point_count: int = 0
+    is_sampled: bool = False
+    sampling_strategy: str = ""
+
+
+@dataclass(frozen=True)
 class PreviewPayloadResult:
     ok: bool
     title: str
@@ -92,10 +108,13 @@ class PreviewPayloadResult:
     snapshot: PreviewSnapshotMeta | None = None
     glue_points: tuple[tuple[float, float], ...] = ()
     execution_polyline: tuple[tuple[float, float], ...] = ()
+    motion_preview: tuple[tuple[float, float], ...] = ()
+    motion_preview_meta: MotionPreviewMeta | None = None
     preview_source: str = ""
     preview_kind: str = "glue_points"
     dry_run: bool = False
     preview_warning: str = ""
+    motion_preview_warning: str = ""
     execution_polyline_source_point_count: int = 0
 
 
@@ -285,10 +304,22 @@ class PreviewSessionOwner:
         if normalized == "mock_synthetic":
             return "模拟轨迹，非真实几何"
         if normalized == "planned_glue_snapshot":
-            return "胶点主预览，执行轨迹仅作辅助叠加"
+            return "胶点主预览仍是启动 gate 真值；运动轨迹预览用于离线观察路径"
         if normalized == "runtime_snapshot":
             return "旧版 runtime_snapshot，不能直接视为胶点触发预览"
         return "预览来源未知"
+
+    def motion_preview_source_text(self, motion_preview_source: str | None = None) -> str:
+        normalized = str(
+            self._state.motion_preview_source if motion_preview_source is None else motion_preview_source
+        ).strip().lower()
+        if normalized == "execution_trajectory_snapshot":
+            return "执行轨迹快照"
+        if normalized == "legacy_execution_polyline":
+            return "execution_polyline 兼容层"
+        if normalized:
+            return normalized
+        return "-"
 
     @staticmethod
     def normalize_preview_gate_message(message: str) -> str:
@@ -346,6 +377,12 @@ class PreviewSessionOwner:
         self._state.preview_source = ""
         self._state.preview_kind = ""
         self._state.glue_point_count = 0
+        self._state.motion_preview_source = ""
+        self._state.motion_preview_kind = ""
+        self._state.motion_preview_point_count = 0
+        self._state.motion_preview_source_point_count = 0
+        self._state.motion_preview_sampling_strategy = ""
+        self._state.motion_preview_is_sampled = False
         self._state.preview_validation_classification = ""
         self._state.preview_exception_reason = ""
         self._state.preview_failure_reason = ""
@@ -510,6 +547,9 @@ class PreviewSessionOwner:
 
         glue_points = self.extract_points(payload, "glue_points")
         execution_polyline = self.extract_points(payload, "execution_polyline")
+        motion_preview_payload = payload.get("motion_preview")
+        motion_preview_block = motion_preview_payload if isinstance(motion_preview_payload, dict) else {}
+        motion_preview = self.extract_points(motion_preview_block, "polyline")
         preview_source = str(payload.get("preview_source", "")).strip().lower() or "unknown"
         preview_kind = str(payload.get("preview_kind", "glue_points")).strip().lower() or "glue_points"
         preview_dry_run = bool(payload.get("dry_run", False))
@@ -527,12 +567,58 @@ class PreviewSessionOwner:
         preview_failure_reason = self.normalize_preview_gate_message(
             str(payload.get("preview_failure_reason", self._state.preview_failure_reason or "")).strip()
         )
+        motion_preview_source = str(motion_preview_block.get("source", "")).strip().lower()
+        motion_preview_kind = str(motion_preview_block.get("kind", "")).strip().lower()
+        motion_preview_source_point_count = int(motion_preview_block.get("source_point_count", 0) or 0)
+        motion_preview_point_count = int(motion_preview_block.get("point_count", len(motion_preview)) or len(motion_preview))
+        motion_preview_is_sampled = bool(
+            motion_preview_block.get(
+                "is_sampled",
+                motion_preview_point_count < motion_preview_source_point_count if motion_preview_source_point_count > 0 else False,
+            )
+        )
+        motion_preview_sampling_strategy = str(motion_preview_block.get("sampling_strategy", "")).strip().lower()
+        motion_preview_warning = ""
+        if not motion_preview:
+            motion_preview = list(execution_polyline)
+            if motion_preview:
+                motion_preview_source = "legacy_execution_polyline"
+                motion_preview_kind = "polyline"
+                motion_preview_source_point_count = int(
+                    payload.get("execution_polyline_source_point_count", len(motion_preview)) or len(motion_preview)
+                )
+                motion_preview_point_count = int(
+                    payload.get("execution_polyline_point_count", len(motion_preview)) or len(motion_preview)
+                )
+                motion_preview_is_sampled = motion_preview_point_count < motion_preview_source_point_count
+                motion_preview_sampling_strategy = "legacy_execution_polyline_compat"
+                motion_preview_warning = "当前结果未显式返回 motion_preview，HMI 已回退到 execution_polyline 兼容字段。"
+        if motion_preview and not motion_preview_kind:
+            motion_preview_kind = "polyline"
+        if motion_preview and motion_preview_point_count <= 0:
+            motion_preview_point_count = len(motion_preview)
+        if motion_preview and motion_preview_source_point_count <= 0:
+            motion_preview_source_point_count = motion_preview_point_count
+        motion_preview_meta = MotionPreviewMeta(
+            source=motion_preview_source,
+            kind=motion_preview_kind,
+            point_count=motion_preview_point_count,
+            source_point_count=motion_preview_source_point_count,
+            is_sampled=motion_preview_is_sampled,
+            sampling_strategy=motion_preview_sampling_strategy,
+        )
         self._state.current_plan_id = str(payload.get("plan_id", snapshot_id)).strip() or snapshot_id
         self._state.current_plan_fingerprint = snapshot_hash
         self._state.preview_plan_dry_run = preview_dry_run
         self._state.preview_source = preview_source
         self._state.preview_kind = preview_kind
         self._state.glue_point_count = len(glue_points)
+        self._state.motion_preview_source = motion_preview_meta.source
+        self._state.motion_preview_kind = motion_preview_meta.kind
+        self._state.motion_preview_point_count = motion_preview_meta.point_count
+        self._state.motion_preview_source_point_count = motion_preview_meta.source_point_count
+        self._state.motion_preview_sampling_strategy = motion_preview_meta.sampling_strategy
+        self._state.motion_preview_is_sampled = motion_preview_meta.is_sampled
         self._state.preview_validation_classification = preview_validation_classification
         self._state.preview_exception_reason = preview_exception_reason
         self._state.preview_failure_reason = preview_failure_reason
@@ -634,10 +720,13 @@ class PreviewSessionOwner:
             snapshot=snapshot,
             glue_points=tuple(glue_points),
             execution_polyline=tuple(execution_polyline),
+            motion_preview=tuple(motion_preview),
+            motion_preview_meta=motion_preview_meta,
             preview_source=preview_source,
             preview_kind=preview_kind,
             dry_run=preview_dry_run,
             preview_warning=preview_warning,
+            motion_preview_warning=motion_preview_warning,
             execution_polyline_source_point_count=execution_source_point_count,
         )
 

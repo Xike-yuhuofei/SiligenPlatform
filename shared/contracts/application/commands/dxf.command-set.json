@@ -162,7 +162,7 @@
       },
       "resultSchema": {
         "type": "object",
-        "required": ["snapshot_id", "snapshot_hash", "plan_id", "preview_state", "preview_source", "preview_kind", "confirmed_at", "segment_count", "point_count", "glue_point_count", "glue_points", "execution_point_count", "execution_polyline_point_count", "execution_polyline_source_point_count", "execution_polyline", "total_length_mm", "estimated_time_s", "generated_at"],
+        "required": ["snapshot_id", "snapshot_hash", "plan_id", "preview_state", "preview_source", "preview_kind", "confirmed_at", "segment_count", "point_count", "glue_point_count", "glue_points", "execution_point_count", "motion_preview", "execution_polyline_point_count", "execution_polyline_source_point_count", "execution_polyline", "total_length_mm", "estimated_time_s", "generated_at"],
         "properties": {
           "snapshot_id": { "type": "string" },
           "snapshot_hash": { "type": "string" },
@@ -187,6 +187,31 @@
             }
           },
           "execution_point_count": { "type": "integer" },
+          "motion_preview": {
+            "type": "object",
+            "required": ["source", "kind", "source_point_count", "point_count", "is_sampled", "sampling_strategy", "polyline"],
+            "properties": {
+              "source": { "type": "string" },
+              "kind": { "type": "string" },
+              "source_point_count": { "type": "integer" },
+              "point_count": { "type": "integer" },
+              "is_sampled": { "type": "boolean" },
+              "sampling_strategy": { "type": "string" },
+              "polyline": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["x", "y"],
+                  "properties": {
+                    "x": { "type": "number" },
+                    "y": { "type": "number" }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          },
           "execution_polyline_point_count": { "type": "integer" },
           "execution_polyline_source_point_count": { "type": "integer" },
           "execution_polyline": {
@@ -229,7 +254,9 @@
         "notes": [
           "live chain 仅接受显式 plan_id；dxf.preview.snapshot 缺少 plan_id 时必须直接失败，不得在 snapshot 内部隐式 prepare。",
           "成功响应仅适用于 shared authority 预览：preview、confirm、start-job 必须共享同一 authority layout、layout_id 与 binding gate 结果。",
-          "成功形态固定为 preview_source=planned_glue_snapshot + preview_kind=glue_points + 非空 glue_points；authority 缺失、binding 缺失或 preview/execution 不共享 layout 时必须返回失败，而不是伪装成可显示 preview。"
+          "成功形态固定为 preview_source=planned_glue_snapshot + preview_kind=glue_points + 非空 glue_points；authority 缺失、binding 缺失或 preview/execution 不共享 layout 时必须返回失败，而不是伪装成可显示 preview。",
+          "motion_preview 是正式运动轨迹预览语义；dxf.preview.confirm 与 dxf.job.start 的 gate 真值仍固定为 planned_glue_snapshot + glue_points + 非空 glue_points。",
+          "execution_polyline、trajectory_polyline 与 polyline_* 仅保留给兼容消费者，不得升格为 authority 或 confirm/start 放行依据。"
         ]
       }
     },

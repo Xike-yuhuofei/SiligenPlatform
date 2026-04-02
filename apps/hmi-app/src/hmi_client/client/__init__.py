@@ -41,6 +41,7 @@ from .launch_state import (
     detect_runtime_degradation_result,
 )
 from .preview_session import (
+    MotionPreviewMeta,
     PreflightBlockReason,
     PreflightDecision,
     PreviewConfirmResult,

@@ -149,6 +149,18 @@ class MainWindowTabsTest(unittest.TestCase):
                     {"x": 0.0, "y": 0.0},
                     {"x": 12.0, "y": 3.0},
                 ],
+                "motion_preview": {
+                    "source": "execution_trajectory_snapshot",
+                    "kind": "polyline",
+                    "source_point_count": 8,
+                    "point_count": 2,
+                    "is_sampled": True,
+                    "sampling_strategy": "fixed_spacing_corner_preserving",
+                    "polyline": [
+                        {"x": 0.0, "y": 0.0},
+                        {"x": 12.0, "y": 3.0},
+                    ],
+                },
                 "preview_validation_classification": preview_validation_classification,
                 "preview_exception_reason": preview_exception_reason,
                 "preview_failure_reason": preview_failure_reason,
@@ -538,6 +550,18 @@ class MainWindowTabsTest(unittest.TestCase):
                     {"x": 0.0, "y": 0.0},
                     {"x": 10.0, "y": 0.0},
                 ],
+                "motion_preview": {
+                    "source": "execution_trajectory_snapshot",
+                    "kind": "polyline",
+                    "source_point_count": 8,
+                    "point_count": 2,
+                    "is_sampled": True,
+                    "sampling_strategy": "fixed_spacing_corner_preserving",
+                    "polyline": [
+                        {"x": 0.0, "y": 0.0},
+                        {"x": 10.0, "y": 0.0},
+                    ],
+                },
                 "total_length_mm": 10.0,
                 "estimated_time_s": 0.5,
                 "generated_at": "2026-03-29T00:00:00Z",
@@ -554,6 +578,8 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertEqual(self.window._preview_gate.snapshot.snapshot_hash, "hash-300s")
         self.assertEqual(self.window.statusBar().currentMessage(), "胶点预览已更新，启动前需确认")
         self.assertIn("规划胶点主预览", self.window._dxf_view.html)
+        self.assertIn("运动轨迹来源</td><td>执行轨迹快照</td>", self.window._dxf_view.html)
+        self.assertIn("运动轨迹采样策略</td><td>fixed_spacing_corner_preserving</td>", self.window._dxf_view.html)
         self.assertIn("hash-300s", self.window._dxf_view.html)
 
     def test_preview_snapshot_rejects_non_authoritative_preview_source(self) -> None:

@@ -35,6 +35,7 @@ from client import (
     CommandProtocol,
     LaunchUiState,
     LaunchResult,
+    MotionPreviewMeta,
     PreviewSnapshotMeta,
     PreviewSessionOwner,
     PreviewSnapshotWorker,
@@ -1884,6 +1885,9 @@ class MainWindow(QMainWindow):
     def _preview_source_warning(self, preview_source: str | None = None) -> str:
         return self._preview_session.preview_source_warning(preview_source)
 
+    def _motion_preview_source_text(self, motion_preview_source: str | None = None) -> str:
+        return self._preview_session.motion_preview_source_text(motion_preview_source)
+
     def _confirm_preview_gate(self) -> bool:
         snapshot = self._preview_gate.snapshot
         if snapshot is None:
@@ -2041,7 +2045,10 @@ class MainWindow(QMainWindow):
         glue_points: list,
         execution_polyline: list,
         preview_kind: str,
+        motion_preview: list | None = None,
+        motion_preview_meta: MotionPreviewMeta | None = None,
         preview_warning: str = "",
+        motion_preview_warning: str = "",
         preview_validation_classification: str = "",
         preview_exception_reason: str = "",
         preview_failure_reason: str = "",
@@ -2050,8 +2057,33 @@ class MainWindow(QMainWindow):
         generated_at = html.escape(snapshot.generated_at or "-")
         normalized_source = str(preview_source or "").strip().lower()
         normalized_kind = str(preview_kind or "").strip().lower() or "glue_points"
+        explicit_motion_preview = list(motion_preview or [])
+        effective_motion_preview = list(explicit_motion_preview or execution_polyline)
+        effective_motion_preview_meta = motion_preview_meta
+        if effective_motion_preview_meta is None and effective_motion_preview:
+            effective_motion_preview_meta = MotionPreviewMeta(
+                source="legacy_execution_polyline",
+                kind="polyline",
+                point_count=len(effective_motion_preview),
+                source_point_count=len(effective_motion_preview),
+                is_sampled=False,
+                sampling_strategy="legacy_execution_polyline_compat",
+            )
+        effective_motion_preview_meta = effective_motion_preview_meta or MotionPreviewMeta()
         source_text = html.escape(self._preview_source_text(normalized_source))
         source_warning = html.escape(self._preview_source_warning(normalized_source))
+        motion_preview_source_text = html.escape(self._motion_preview_source_text(effective_motion_preview_meta.source))
+        motion_preview_kind = html.escape(effective_motion_preview_meta.kind or ("polyline" if effective_motion_preview else "-"))
+        motion_preview_point_count = effective_motion_preview_meta.point_count or len(effective_motion_preview)
+        motion_preview_source_point_count = (
+            effective_motion_preview_meta.source_point_count or motion_preview_point_count
+        )
+        motion_preview_sampling_text = (
+            f"是（显示 {motion_preview_point_count} / 源 {motion_preview_source_point_count}）"
+            if effective_motion_preview_meta.is_sampled
+            else "否"
+        )
+        motion_preview_sampling_strategy = html.escape(effective_motion_preview_meta.sampling_strategy or "-")
         if normalized_source == "mock_synthetic":
             source_banner = (
                 "<div style='margin-bottom:14px;padding:12px 14px;border:1px solid #7f1d1d;"
@@ -2063,7 +2095,8 @@ class MainWindow(QMainWindow):
             source_banner = (
                 "<div style='margin-bottom:14px;padding:12px 14px;border:1px solid #14532d;"
                 "background:#10261a;color:#c7f9d3;'>"
-                "<strong>当前为规划胶点主预览。</strong> 绿色圆点来自 `glue_points`，`execution_polyline` 辅助层默认隐藏。"
+                "<strong>当前为规划胶点主预览。</strong> 绿色圆点来自 `glue_points`，"
+                "`execution_polyline` 辅助层默认隐藏；灰色路径来自独立 `motion_preview` 运动轨迹预览。"
                 "</div>"
             )
         elif normalized_source == "runtime_snapshot":
@@ -2088,6 +2121,14 @@ class MainWindow(QMainWindow):
                 f"<strong>预览质量告警。</strong> {html.escape(preview_warning)}"
                 "</div>"
             )
+        motion_warning_banner = ""
+        if motion_preview_warning:
+            motion_warning_banner = (
+                "<div style='margin-bottom:14px;padding:12px 14px;border:1px solid #854d0e;"
+                "background:#2d2110;color:#fde68a;'>"
+                f"<strong>运动轨迹预览提示。</strong> {html.escape(motion_preview_warning)}"
+                "</div>"
+            )
         validation_banner = ""
         if preview_validation_classification == "pass_with_exception" and preview_exception_reason:
             validation_banner = (
@@ -2104,7 +2145,7 @@ class MainWindow(QMainWindow):
                 f"<strong>阻断原因。</strong> {html.escape(blocking_text)}"
                 "</div>"
             )
-        all_points = list(glue_points)
+        all_points = list(glue_points) + list(explicit_motion_preview)
         min_x = min(point[0] for point in all_points)
         max_x = max(point[0] for point in all_points)
         min_y = min(point[1] for point in all_points)
@@ -2138,6 +2179,16 @@ class MainWindow(QMainWindow):
             return mapped_points
 
         display_points = _map_points(glue_points)
+        display_motion_preview = _map_points(explicit_motion_preview)
+        motion_preview_markup = ""
+        if len(display_motion_preview) >= 2:
+            motion_preview_polyline_markup = " ".join(
+                f"{point_x:.2f},{point_y:.2f}" for point_x, point_y in display_motion_preview
+            )
+            motion_preview_markup = (
+                f"<polyline points='{motion_preview_polyline_markup}' fill='none' stroke='#5b6472' "
+                "stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round' opacity='0.9' />"
+            )
         points_markup = []
         for point_x, point_y in display_points:
             points_markup.append(
@@ -2148,22 +2199,31 @@ class MainWindow(QMainWindow):
             "<html><body style='background:#1e1e1e;color:#e8e8e8;font-family:Segoe UI;padding:18px;'>"
             f"{source_banner}"
             f"{warning_banner}"
+            f"{motion_warning_banner}"
             f"{validation_banner}"
             "<p style='color:#b8b8b8;'>"
-            "主图默认只展示胶点触发点；`execution_polyline` 辅助层不在主界面默认显示。执行前确认与哈希校验仍生效。"
+            "主图展示胶点触发点与 `motion_preview` 运动轨迹路径；`execution_polyline` 仅保留兼容用途，"
+            "不在主界面默认显示。执行前确认与哈希校验仍只基于胶点主预览。"
             "</p>"
             f"<svg viewBox='0 0 {width:.0f} {height:.0f}' style='width:100%;height:56vh;background:#141414;border:1px solid #333;'>"
+            f"{motion_preview_markup}"
             f"{point_cloud_svg}"
             "</svg>"
             "<table style='border-collapse:collapse;'>"
             f"<tr><td style='padding:4px 16px 4px 0;'>来源</td><td>{source_text}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>来源说明</td><td>{source_warning}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>主预览语义</td><td>{html.escape(normalized_kind)}</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>运动轨迹来源</td><td>{motion_preview_source_text}</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>运动轨迹语义</td><td>{motion_preview_kind}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>校验分类</td><td>{html.escape(preview_validation_classification or 'pass')}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>模式</td><td>{mode_text}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>速度</td><td>{speed_mm_s:.3f} mm/s</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>段数</td><td>{snapshot.segment_count}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>胶点数</td><td>{snapshot.point_count}</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>运动轨迹预览点</td><td>{motion_preview_point_count}</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>运动轨迹源点数</td><td>{motion_preview_source_point_count}</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>运动轨迹已采样</td><td>{motion_preview_sampling_text}</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>运动轨迹采样策略</td><td>{motion_preview_sampling_strategy}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>胶点圆心距</td><td>{glue_point_spacing_mm:.1f} mm</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>胶点直径</td><td>{glue_dot_diameter_mm:.1f} mm</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>总长度</td><td>{snapshot.total_length_mm:.3f} mm</td></tr>"
@@ -2214,8 +2274,11 @@ class MainWindow(QMainWindow):
             preview_source=result.preview_source,
             glue_points=list(result.glue_points),
             execution_polyline=list(result.execution_polyline),
+            motion_preview=list(result.motion_preview),
+            motion_preview_meta=result.motion_preview_meta,
             preview_kind=result.preview_kind,
             preview_warning=result.preview_warning,
+            motion_preview_warning=result.motion_preview_warning,
             preview_validation_classification=self._preview_session.state.preview_validation_classification,
             preview_exception_reason=self._preview_session.state.preview_exception_reason,
             preview_failure_reason=self._preview_session.state.preview_failure_reason,
@@ -2228,13 +2291,21 @@ class MainWindow(QMainWindow):
                 result.snapshot.point_count,
                 result.execution_polyline_source_point_count,
             )
+        if result.motion_preview_warning and result.snapshot is not None:
+            _UI_LOGGER.warning(
+                "motion_preview_warning snapshot_id=%s motion_source=%s detail=%s",
+                result.snapshot.snapshot_id,
+                result.motion_preview_meta.source if result.motion_preview_meta is not None else "",
+                result.motion_preview_warning,
+            )
         self.statusBar().showMessage(result.status_message)
         _UI_LOGGER.info(
-            "preview_ready snapshot_id=%s snapshot_hash=%s preview_source=%s glue_points=%d execution_points=%d",
+            "preview_ready snapshot_id=%s snapshot_hash=%s preview_source=%s glue_points=%d motion_points=%d execution_points=%d",
             result.snapshot.snapshot_id if result.snapshot is not None else "",
             result.snapshot.snapshot_hash if result.snapshot is not None else "",
             result.preview_source,
             len(result.glue_points),
+            len(result.motion_preview),
             len(result.execution_polyline),
         )
 

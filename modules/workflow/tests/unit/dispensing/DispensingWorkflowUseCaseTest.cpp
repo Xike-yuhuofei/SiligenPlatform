@@ -524,6 +524,19 @@ bool SnapshotContainsPoint(
     return false;
 }
 
+bool MotionPreviewContainsPoint(
+    const Siligen::Application::UseCases::Dispensing::PreviewSnapshotResponse& snapshot,
+    float target_x,
+    float target_y,
+    float tolerance = 1e-3f) {
+    for (const auto& point : snapshot.motion_preview.polyline) {
+        if (std::abs(point.x - target_x) <= tolerance && std::abs(point.y - target_y) <= tolerance) {
+            return true;
+        }
+    }
+    return false;
+}
+
 }  // namespace
 
 TEST(DispensingWorkflowUseCaseTest, StartJobRejectsSafetyDoor) {
@@ -845,9 +858,45 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotKeepsCornerWhenDownsamplin
     ASSERT_TRUE(result.IsSuccess());
     const auto& snapshot = result.Value();
     EXPECT_LE(snapshot.execution_polyline.size(), 6U);
+    EXPECT_EQ(snapshot.motion_preview.source, "execution_trajectory_snapshot");
+    EXPECT_EQ(snapshot.motion_preview.kind, "polyline");
+    EXPECT_EQ(snapshot.motion_preview.source_point_count, snapshot.execution_polyline_source_point_count);
+    EXPECT_EQ(snapshot.motion_preview.point_count, snapshot.execution_polyline_point_count);
+    EXPECT_EQ(snapshot.motion_preview.polyline.size(), snapshot.execution_polyline.size());
+    EXPECT_TRUE(snapshot.motion_preview.is_sampled);
+    EXPECT_EQ(snapshot.motion_preview.sampling_strategy, "fixed_spacing_corner_preserving");
     EXPECT_TRUE(SnapshotContainsPoint(snapshot, 9.0f, 0.0f, 1e-4f));
+    EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 9.0f, 0.0f, 1e-4f));
 }
 
+TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotSamplesGluePointsWithoutChangingAuthorityCount) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+
+    std::vector<Point2D> raw_points;
+    for (int i = 0; i < 12; ++i) {
+        raw_points.emplace_back(static_cast<float>(i), 0.0f);
+    }
+
+    auto plan_record = BuildPreviewPlanRecord("plan-glue-sampled", raw_points);
+    use_case.plans_[plan_record.response.plan_id] = plan_record;
+
+    Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest request;
+    request.plan_id = "plan-glue-sampled";
+    request.max_polyline_points = 32;
+    request.max_glue_points = 3;
+    const auto result = use_case.GetPreviewSnapshot(request);
+
+    ASSERT_TRUE(result.IsSuccess());
+    EXPECT_EQ(result.Value().glue_point_count, 12U);
+    EXPECT_EQ(result.Value().point_count, 12U);
+    EXPECT_EQ(result.Value().glue_points.size(), 3U);
+    EXPECT_EQ(result.Value().motion_preview.point_count, result.Value().execution_polyline_point_count);
+    EXPECT_EQ(result.Value().motion_preview.source_point_count, result.Value().execution_polyline_source_point_count);
+}
 TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotUsesThreeMillimeterCenterSpacing) {
     auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
@@ -871,8 +920,17 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotUsesThreeMillimeterCenterS
     ASSERT_TRUE(result.IsSuccess());
     const auto& snapshot = result.Value();
     ASSERT_GE(snapshot.execution_polyline.size(), 2U);
+    ASSERT_GE(snapshot.motion_preview.polyline.size(), 2U);
+    EXPECT_EQ(snapshot.motion_preview.source, "execution_trajectory_snapshot");
+    EXPECT_EQ(snapshot.motion_preview.kind, "polyline");
+    EXPECT_EQ(snapshot.motion_preview.source_point_count, 31U);
+    EXPECT_EQ(snapshot.motion_preview.point_count, 11U);
+    EXPECT_TRUE(snapshot.motion_preview.is_sampled);
+    EXPECT_EQ(snapshot.motion_preview.sampling_strategy, "fixed_spacing_corner_preserving");
     EXPECT_NEAR(snapshot.execution_polyline.front().x, 0.0f, 1e-4f);
     EXPECT_NEAR(snapshot.execution_polyline.back().x, 30.0f, 1e-4f);
+    EXPECT_NEAR(snapshot.motion_preview.polyline.front().x, 0.0f, 1e-4f);
+    EXPECT_NEAR(snapshot.motion_preview.polyline.back().x, 30.0f, 1e-4f);
     EXPECT_EQ(snapshot.execution_polyline.size(), 11U);
     for (std::size_t i = 1; i < snapshot.execution_polyline.size(); ++i) {
         const auto& prev = snapshot.execution_polyline[i - 1U];
