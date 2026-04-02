@@ -7,4 +7,4 @@ allowed_dependencies:
   - topology-feature/contracts
   - shared
 uniform_skeleton_ready: true
-notes: configuration 四件套 public header 的 physical owner 已迁到 contracts/include/process_planning/contracts/configuration；domain/configuration 仅保留实现与 deprecated wrapper；application/contracts 统一暴露 configuration owner surface
+notes: domain/configuration 是唯一真实实现承载面；application/contracts 仅暴露 configuration owner surface；模块根 target 直接链接 siligen_process_planning_domain_configuration

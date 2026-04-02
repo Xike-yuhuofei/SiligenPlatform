@@ -1,7 +1,6 @@
 #include "ApplicationContainer.h"
 
-#include "application/services/dispensing/AuthorityPreviewAssemblyService.h"
-#include "application/services/dispensing/ExecutionAssemblyService.h"
+#include "application/services/dispensing/DispensePlanningFacade.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/process_path/ProcessPathFacade.h"
 #include "application/usecases/dispensing/CleanupFilesUseCase.h"
@@ -80,11 +79,10 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::PlanningUseCase>() {
         std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
         std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(
             velocity_profile_service_),
-        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
         config_port_,
         nullptr,
-        std::make_shared<Siligen::RuntimeExecution::Host::Planning::PlanningArtifactExportPortAdapter>());
+        Siligen::RuntimeExecution::Host::Planning::CreatePlanningArtifactExportPort());
 }
 
 template<>

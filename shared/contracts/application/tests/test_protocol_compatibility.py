@@ -11,6 +11,8 @@ CONTRACTS = ROOT / "shared" / "contracts" / "application"
 HMI_PROTOCOL = ROOT / "apps" / "hmi-app" / "src" / "hmi_client" / "client" / "protocol.py"
 HMI_MAIN_WINDOW = ROOT / "apps" / "hmi-app" / "src" / "hmi_client" / "ui" / "main_window.py"
 TCP_DISPATCHER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "tcp" / "TcpCommandDispatcher.cpp"
+RUNTIME_STATUS_EXPORT_PORT = ROOT / "apps" / "runtime-service" / "runtime" / "status" / "WorkflowRuntimeStatusExportPort.cpp"
+RUNTIME_SUPERVISION_ADAPTER = ROOT / "modules" / "runtime-execution" / "runtime" / "host" / "runtime" / "supervision" / "RuntimeSupervisionPortAdapter.cpp"
 
 
 def load_json(path: Path):
@@ -223,6 +225,7 @@ def test_status_contract_describes_backend_interlock_authority():
     assert {"estop_known", "door_known"}.issubset(io_required)
     assert "后端权威" in io_props["estop"]["description"]
     assert "运行时互锁端口" in io_props["door"]["description"]
+    assert "断线且无有效采样时必须为 false" in io_props["estop_known"]["description"]
 
 
 def test_status_contract_exposes_effective_interlocks_and_supervision():
@@ -230,6 +233,8 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
     fixture = load_json(CONTRACTS / "fixtures" / "responses" / "status.success.json")
     protocol_source = HMI_PROTOCOL.read_text(encoding="utf-8")
     tcp_source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    status_source = RUNTIME_STATUS_EXPORT_PORT.read_text(encoding="utf-8")
+    supervision_adapter = RUNTIME_SUPERVISION_ADAPTER.read_text(encoding="utf-8")
 
     machine_required = set(states["definitions"]["machineStatus"]["required"])
     effective_interlocks_required = set(states["definitions"]["effectiveInterlocks"]["required"])
@@ -257,7 +262,10 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
         "updated_at",
     }.issubset(supervision_required)
     assert "控制器有效保护，不等同于原始负限位输入" in states["definitions"]["effectiveInterlocks"]["properties"]["home_boundary_x_active"]["description"]
+    assert "断线且无权威急停来源时必须为 false" in states["definitions"]["effectiveInterlocks"]["properties"]["estop_known"]["description"]
     assert "监督层当前目标状态" in states["definitions"]["supervisionStatus"]["properties"]["requested_state"]["description"]
+    assert "兼容导出状态枚举" in states["definitions"]["machineStatus"]["properties"]["machine_state"]["description"]
+    assert "单向派生" in states["definitions"]["machineStatus"]["properties"]["machine_state_reason"]["description"]
 
     fixture_result = fixture["result"]
     assert set(fixture_result["effective_interlocks"].keys()) == {
@@ -281,12 +289,30 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
         "updated_at",
     }
     assert "effective_interlocks_data = result.get(\"effective_interlocks\", {})" in protocol_source
-    assert "supervision_data = result.get(\"supervision\", {})" in protocol_source
+    assert "supervision_data = result.get(\"supervision\")" in protocol_source
+    assert "if not isinstance(supervision_data, dict):" in protocol_source
+    assert "\"current_state\": compat_state" in protocol_source
+    assert "def runtime_state" in protocol_source
     assert "def gate_estop_active" in protocol_source
     assert "def gate_door_active" in protocol_source
     assert "def home_boundary_active" in protocol_source
+    assert "runtimeStatusExportPort_->ReadSnapshot()" in tcp_source
+    assert "BuildRawIoJson(status_snapshot)" in tcp_source
+    assert "BuildEffectiveInterlocksJson(status_snapshot)" in tcp_source
+    assert "BuildSupervisionJson(status_snapshot)" in tcp_source
+    assert "BuildCompatMachineState(" not in tcp_source
     assert "{\"supervision\", supervisionJson}" in tcp_source
     assert "{\"effective_interlocks\", effectiveInterlocksJson}" in tcp_source
+    assert "snapshot.machine_state = supervision.supervision.current_state;" in status_source
+    assert "snapshot.machine_state_reason = supervision.supervision.state_reason;" in status_source
+    assert "snapshot.io = supervision.io;" in status_source
+    assert "snapshot.effective_interlocks = supervision.effective_interlocks;" in status_source
+    assert "snapshot.supervision = supervision.supervision;" in status_source
+    assert 'snapshot.requested_state = "Idle";' in supervision_adapter
+    assert 'snapshot.requested_state = "Estop";' in supervision_adapter
+    assert 'snapshot.requested_state = "Fault";' in supervision_adapter
+    assert 'snapshot.state_change_in_process = true;' in supervision_adapter
+    assert 'snapshot.failure_stage = snapshot.failure_code.empty() ? "" : "runtime_status";' in supervision_adapter
 
 
 def test_mock_io_set_contract_and_hmi_helper():

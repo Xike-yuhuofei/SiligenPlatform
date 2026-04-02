@@ -16,6 +16,21 @@ $workspaceRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $canonicalConfigPath = Join-Path $workspaceRoot "config\machine\machine_config.ini"
 $defaultVendorDir = Join-Path $workspaceRoot "modules\runtime-execution\adapters\device\vendor\multicard"
 
+function Get-WorkspaceBuildToken {
+    param([string]$WorkspaceRoot)
+
+    $normalizedRoot = [System.IO.Path]::GetFullPath($WorkspaceRoot).ToLowerInvariant()
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($normalizedRoot)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hashBytes = $sha256.ComputeHash($bytes)
+    } finally {
+        $sha256.Dispose()
+    }
+
+    return -join ($hashBytes[0..5] | ForEach-Object { $_.ToString("x2") })
+}
+
 function Resolve-FullPath {
     param(
         [Parameter(Mandatory = $true)]
@@ -59,6 +74,32 @@ function Get-IniValue {
     }
 
     return $null
+}
+
+function Get-RuntimeServiceSearchRoots {
+    param(
+        [string]$WorkspaceRoot
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($env:SILIGEN_CONTROL_APPS_BUILD_ROOT)) {
+        return @(Resolve-FullPath -PathValue $env:SILIGEN_CONTROL_APPS_BUILD_ROOT)
+    }
+
+    $roots = @()
+    $workspaceBuildToken = Get-WorkspaceBuildToken -WorkspaceRoot $WorkspaceRoot
+    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        $roots += [System.IO.Path]::GetFullPath((Join-Path (Join-Path $env:LOCALAPPDATA "SS") ("cab-" + $workspaceBuildToken)))
+        $roots += [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA "SiligenSuite\control-apps-build"))
+    }
+
+    $roots += [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build\control-apps"))
+    $roots += [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build"))
+
+    return @(
+        $roots |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Select-Object -Unique
+    )
 }
 
 function Invoke-Preflight {
@@ -108,25 +149,32 @@ if (-not $SkipPreflight) {
     Invoke-Preflight -ResolvedConfigPath $resolvedConfigPath -ResolvedVendorDir $resolvedVendorDir
 }
 
-$controlAppsBuildRoot = if (-not [string]::IsNullOrWhiteSpace($env:SILIGEN_CONTROL_APPS_BUILD_ROOT)) {
-    $env:SILIGEN_CONTROL_APPS_BUILD_ROOT
-} elseif (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
-    Join-Path $env:LOCALAPPDATA "SiligenSuite\control-apps-build"
-} else {
-    Join-Path $workspaceRoot "build\control-apps"
-}
-
-$candidates = @(
-    (Join-Path $controlAppsBuildRoot "bin\$BuildConfig\siligen_runtime_service.exe"),
-    (Join-Path $controlAppsBuildRoot "bin\siligen_runtime_service.exe"),
-    (Join-Path $controlAppsBuildRoot "bin\Debug\siligen_runtime_service.exe"),
-    (Join-Path $controlAppsBuildRoot "bin\Release\siligen_runtime_service.exe"),
-    (Join-Path $controlAppsBuildRoot "bin\RelWithDebInfo\siligen_runtime_service.exe")
+$controlAppsBuildRoots = Get-RuntimeServiceSearchRoots -WorkspaceRoot $workspaceRoot
+$candidateRelativePaths = @(
+    "bin\$BuildConfig\siligen_runtime_service.exe",
+    "bin\siligen_runtime_service.exe",
+    "bin\Debug\siligen_runtime_service.exe",
+    "bin\Release\siligen_runtime_service.exe",
+    "bin\RelWithDebInfo\siligen_runtime_service.exe"
 )
 
-$exePath = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+$exePath = $null
+foreach ($controlAppsBuildRoot in $controlAppsBuildRoots) {
+    foreach ($relativePath in $candidateRelativePaths) {
+        $candidate = Join-Path $controlAppsBuildRoot $relativePath
+        if (Test-Path $candidate) {
+            $exePath = $candidate
+            break
+        }
+    }
+    if ($exePath) {
+        break
+    }
+}
+
 if (-not $exePath) {
-    throw "runtime-service executable not found under '$controlAppsBuildRoot'"
+    $rootsText = ($controlAppsBuildRoots -join "', '")
+    throw "runtime-service executable not found under any configured root: '$rootsText'"
 }
 
 $env:SILIGEN_MULTICARD_VENDOR_DIR = $resolvedVendorDir

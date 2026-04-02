@@ -22,6 +22,7 @@
 - application public：`modules/runtime-execution/application/CMakeLists.txt`
   target: `siligen_runtime_execution_application_public`
   runtime provider contract: `application/include/runtime_execution/application/services/motion/runtime/IMotionRuntimeServicesProvider.h`
+  planning export contract: `application/include/runtime_execution/application/services/dispensing/PlanningArtifactExportPort.h`
 - runtime contracts：`modules/runtime-execution/contracts/runtime/CMakeLists.txt`
   target: `siligen_runtime_execution_runtime_contracts`
 - host core：`modules/runtime-execution/runtime/host/CMakeLists.txt`
@@ -35,6 +36,8 @@
 - `runtime/scheduling/*`
 - `runtime/diagnostics/*`
 - `runtime/motion/WorkflowMotionRuntimeServicesProvider.*`
+- `runtime/system/DispenserModelMachineExecutionStateBackend.*`
+  app-facing neutral alias: `runtime/system/WorkflowMachineExecutionStateBackend.h`
 - `runtime/system/LegacyMachineExecutionStateAdapter.*`
 - `runtime/planning/PlanningArtifactExportPortAdapter.*`
 - `services/motion/HardLimitMonitorService.*`
