@@ -38,7 +38,11 @@ add_library(siligen_dispense_packaging_domain_dispensing STATIC
     domain-services/DispensingController.cpp
     domain-services/DispensingProcessService.cpp
     planning/domain-services/AuthorityTriggerLayoutPlanner.cpp
+    planning/domain-services/ClosedLoopAnchorConstraintSolver.cpp
+    planning/domain-services/ClosedLoopCornerAnchorResolver.cpp
     planning/domain-services/PathArcLengthLocator.cpp
+    planning/domain-services/TopologyComponentClassifier.cpp
+    planning/domain-services/TopologySpanSplitter.cpp
     planning/domain-services/CurveFlatteningService.cpp
     planning/domain-services/ClosedLoopAnchorConstraintSolver.cpp
     planning/domain-services/ClosedLoopCornerAnchorResolver.cpp
@@ -64,7 +68,6 @@ target_include_directories(siligen_dispense_packaging_domain_dispensing BEFORE P
 )
 
 target_link_libraries(siligen_dispense_packaging_domain_dispensing PUBLIC
-    siligen_shared_boost_headers
     siligen_types
     siligen_utils
     siligen_geometry
