@@ -4,6 +4,15 @@ param(
     [string]$Profile = "Local",
     [ValidateSet("all", "apps", "contracts", "e2e", "protocol-compatibility", "performance")]
     [string[]]$Suite = @("all"),
+    [ValidateSet("auto", "quick-gate", "full-offline-gate", "nightly-performance", "limited-hil")]
+    [string]$Lane = "auto",
+    [ValidateSet("low", "medium", "high", "hardware-sensitive")]
+    [string]$RiskProfile = "medium",
+    [ValidateSet("auto", "quick", "full-offline", "nightly", "hil")]
+    [string]$DesiredDepth = "auto",
+    [string[]]$ChangedScope = @(),
+    [string[]]$SkipLayer = @(),
+    [string]$SkipJustification = "",
     [switch]$SkipHeavyTargets
 )
 
@@ -319,6 +328,12 @@ foreach ($targetName in ($controlAppTargets | Select-Object -Unique)) {
 
 Write-Output "workspace build complete"
 Write-Output "profile: $Profile"
+Write-Output "lane: $Lane"
+Write-Output "risk_profile: $RiskProfile"
+Write-Output "desired_depth: $DesiredDepth"
+Write-Output "changed_scopes: $($ChangedScope -join ', ')"
+Write-Output "skip_layers: $($SkipLayer -join ', ')"
+Write-Output "skip_justification: $SkipJustification"
 Write-Output "suites: $($resolvedSuites -join ', ')"
 Write-Output "workspace root: $resolvedWorkspaceRoot"
 Write-Output "control-apps source root: $workspaceSourceRoot"

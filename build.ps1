@@ -3,6 +3,15 @@ param(
     [string]$Profile = "Local",
     [ValidateSet("all", "apps", "contracts", "e2e", "protocol-compatibility", "performance")]
     [string[]]$Suite = @("all"),
+    [ValidateSet("auto", "quick-gate", "full-offline-gate", "nightly-performance", "limited-hil")]
+    [string]$Lane = "auto",
+    [ValidateSet("low", "medium", "high", "hardware-sensitive")]
+    [string]$RiskProfile = "medium",
+    [ValidateSet("auto", "quick", "full-offline", "nightly", "hil")]
+    [string]$DesiredDepth = "auto",
+    [string[]]$ChangedScope = @(),
+    [string[]]$SkipLayer = @(),
+    [string]$SkipJustification = "",
     [switch]$SkipHeavyTargets
 )
 
@@ -26,4 +35,13 @@ $runner = Resolve-RootRunner `
     -CanonicalRelativePath "scripts\\build\\build-validation.ps1" `
     -EntryName "build"
 
-& $runner -Profile $Profile -Suite $Suite -SkipHeavyTargets:$SkipHeavyTargets
+& $runner `
+    -Profile $Profile `
+    -Suite $Suite `
+    -Lane $Lane `
+    -RiskProfile $RiskProfile `
+    -DesiredDepth $DesiredDepth `
+    -ChangedScope $ChangedScope `
+    -SkipLayer $SkipLayer `
+    -SkipJustification $SkipJustification `
+    -SkipHeavyTargets:$SkipHeavyTargets
