@@ -6,11 +6,11 @@
 
 namespace {
 
-using Siligen::Domain::Motion::MotionBufferController;
 using Siligen::Domain::Motion::Ports::CoordinateSystemStatus;
 using Siligen::Domain::Motion::Ports::IInterpolationPort;
 using Siligen::Domain::Motion::Ports::InterpolationData;
 using Siligen::Domain::Motion::Ports::CoordinateSystemConfig;
+using Siligen::Domain::Motion::MotionBufferController;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;

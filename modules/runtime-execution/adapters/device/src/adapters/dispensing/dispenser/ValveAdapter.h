@@ -1,7 +1,7 @@
 #pragma once
 
 #include "domain/dispensing/ports/IValvePort.h"
-#include "domain/configuration/ports/ValveConfig.h"
+#include "process_planning/contracts/configuration/ValveConfig.h"
 #include "domain/dispensing/value-objects/DispenseCompensationProfile.h"
 #include "shared/types/Error.h"
 #include "shared/types/Types.h"

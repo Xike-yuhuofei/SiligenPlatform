@@ -9,7 +9,7 @@ namespace {
 
 std::filesystem::path RepoRoot() {
     auto path = std::filesystem::absolute(__FILE__);
-    for (int i = 0; i < 7; ++i) {
+    for (int i = 0; i < 6; ++i) {
         path = path.parent_path();
     }
     return path;

@@ -188,6 +188,7 @@ target_link_libraries(siligen_motion_execution_services PUBLIC
     siligen_utils
     siligen_motion
     siligen_motion_core
+    siligen_process_planning_contracts_public
 )
 target_compile_features(siligen_motion_execution_services PUBLIC cxx_std_17)
 

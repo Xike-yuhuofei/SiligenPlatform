@@ -9,11 +9,11 @@
 
 namespace {
 
-using Siligen::Domain::Motion::DomainServices::JogController;
 using Siligen::Domain::Motion::Ports::IJogControlPort;
 using Siligen::Domain::Motion::Ports::IMotionStatePort;
 using Siligen::Domain::Motion::Ports::MotionState;
 using Siligen::Domain::Motion::Ports::MotionStatus;
+using Siligen::Domain::Motion::DomainServices::JogController;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::LogicalAxisId;

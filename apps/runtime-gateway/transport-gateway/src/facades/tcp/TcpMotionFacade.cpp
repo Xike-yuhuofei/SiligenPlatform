@@ -6,10 +6,8 @@ namespace Siligen::Application::Facades::Tcp {
 
 TcpMotionFacade::TcpMotionFacade(
     std::shared_ptr<UseCases::Motion::MotionControlUseCase> motion_control_use_case,
-    std::shared_ptr<UseCases::Motion::Safety::MotionSafetyUseCase> motion_safety_use_case,
     std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> hardware_connection_port)
     : motion_control_use_case_(std::move(motion_control_use_case)),
-      motion_safety_use_case_(std::move(motion_safety_use_case)),
       hardware_connection_port_(std::move(hardware_connection_port)) {}
 
 Shared::Types::Result<UseCases::Motion::Homing::HomeAxesResponse> TcpMotionFacade::Home(
@@ -67,14 +65,6 @@ Shared::Types::Result<void> TcpMotionFacade::StopJog(Shared::Types::LogicalAxisI
             Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionControlUseCase not available"));
     }
     return motion_control_use_case_->StopJog(axis);
-}
-
-Shared::Types::Result<void> TcpMotionFacade::StopAllAxes(bool immediate) {
-    if (!motion_safety_use_case_) {
-        return Shared::Types::Result<void>::Failure(
-            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionSafetyUseCase not available"));
-    }
-    return motion_safety_use_case_->StopAllAxes(immediate);
 }
 
 Shared::Types::Result<Domain::Motion::Ports::MotionStatus> TcpMotionFacade::GetAxisMotionStatus(

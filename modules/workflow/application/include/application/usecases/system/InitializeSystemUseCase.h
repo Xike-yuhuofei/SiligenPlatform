@@ -8,7 +8,7 @@
 #pragma once
 
 #include "application/usecases/system/IHardLimitMonitor.h"
-#include "domain/configuration/ports/IConfigurationPort.h"
+#include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "domain/system/ports/IEventPublisherPort.h"
 #include "domain/diagnostics/ports/IDiagnosticsPort.h"
 #include "siligen/device/contracts/commands/device_commands.h"

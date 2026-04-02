@@ -11,8 +11,6 @@ class SmokeTest(unittest.TestCase):
             project_root / 'src' / 'hmi_client' / 'client' / 'tcp_client.py',
             project_root / 'src' / 'hmi_client' / 'client' / 'backend_manager.py',
             project_root / 'src' / 'hmi_client' / 'client' / 'gateway_launch.py',
-            project_root / 'src' / 'hmi_client' / 'client' / 'launch_supervision_contract.py',
-            project_root / 'src' / 'hmi_client' / 'client' / 'launch_supervision_session.py',
             project_root / 'src' / 'hmi_client' / 'client' / 'supervisor_contract.py',
             project_root / 'src' / 'hmi_client' / 'client' / 'supervisor_session.py',
         ]

@@ -540,7 +540,3 @@ TEST(PlanningUseCaseExportPortTest, AuthorityCacheKeyIncludesMachineSoftLimits) 
     std::filesystem::remove(temp_pb, ec);
 }
 
-
-
-
-

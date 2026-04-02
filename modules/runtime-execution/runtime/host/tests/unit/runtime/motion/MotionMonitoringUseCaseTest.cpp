@@ -1,4 +1,5 @@
 #include "application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
+#include "runtime_execution/contracts/motion/IIOControlPort.h"
 
 #include "gtest/gtest.h"
 
@@ -12,16 +13,16 @@ using Siligen::Application::UseCases::Motion::Monitoring::MotionMonitoringUseCas
 using Siligen::Domain::Motion::Ports::HomingState;
 using Siligen::Domain::Motion::Ports::HomingStatus;
 using Siligen::Domain::Motion::Ports::IHomingPort;
-using Siligen::Domain::Motion::Ports::IIOControlPort;
 using Siligen::Domain::Motion::Ports::IInterpolationPort;
 using Siligen::Domain::Motion::Ports::IMotionStatePort;
-using Siligen::Domain::Motion::Ports::IOStatus;
 using Siligen::Domain::Motion::Ports::CoordinateSystemState;
 using Siligen::Domain::Motion::Ports::CoordinateSystemStatus;
 using Siligen::Domain::Motion::Ports::CoordinateSystemConfig;
 using Siligen::Domain::Motion::Ports::InterpolationData;
 using Siligen::Domain::Motion::Ports::MotionState;
 using Siligen::Domain::Motion::Ports::MotionStatus;
+using Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort;
+using Siligen::RuntimeExecution::Contracts::Motion::IOStatus;
 using Siligen::Shared::Types::LogicalAxisId;
 using Siligen::Shared::Types::Point2D;
 using Siligen::Shared::Types::Result;

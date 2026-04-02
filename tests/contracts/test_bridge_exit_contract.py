@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 from pathlib import Path
 
@@ -171,6 +172,94 @@ class BridgeExitContractTest(unittest.TestCase):
         validator_header = _read("modules/workflow/domain/domain/safety/domain-services/SoftLimitValidator.h")
         self.assertIn("process_planning/contracts/configuration/ConfigTypes.h", validator_header)
         self.assertNotIn("domain/configuration/value-objects/ConfigTypes.h", validator_header)
+
+    def test_workflow_tests_root_is_canonical(self) -> None:
+        workflow_tests_root = _read("modules/workflow/tests/CMakeLists.txt")
+        workflow_unit_tests = _read("modules/workflow/tests/unit/CMakeLists.txt")
+
+        self.assertIn('"${CMAKE_CURRENT_SOURCE_DIR}/unit"', workflow_tests_root)
+        self.assertIn('"${CMAKE_CURRENT_SOURCE_DIR}/integration"', workflow_tests_root)
+        self.assertIn('"${CMAKE_CURRENT_SOURCE_DIR}/regression"', workflow_tests_root)
+        self.assertNotIn("process-runtime-core", workflow_tests_root)
+        self.assertFalse(
+            (WORKSPACE_ROOT / "modules" / "workflow" / "tests" / "process-runtime-core").exists(),
+            msg="workflow legacy process-runtime-core tests root must be removed",
+        )
+        for expected in (
+            "siligen_unit_tests",
+            "siligen_pr1_tests",
+            "siligen_dispensing_semantics_tests",
+        ):
+            self.assertIn(expected, workflow_unit_tests)
+
+    def test_workflow_regression_and_integration_roots_match_post_cutover_state(self) -> None:
+        workflow_regression_cmake = _read("modules/workflow/tests/regression/CMakeLists.txt")
+        workflow_regression_readme = _read("modules/workflow/tests/regression/README.md")
+        workflow_integration_cmake = _read("modules/workflow/tests/integration/CMakeLists.txt")
+        workflow_integration_readme = _read("modules/workflow/tests/integration/README.md")
+
+        for expected in (
+            "workflow_regression_deterministic_path_execution_smoke",
+            "workflow_regression_boundary_cutover_smoke",
+            "workflow_regression_planning_ingress_smoke",
+        ):
+            self.assertIn(expected, workflow_regression_cmake)
+            self.assertIn(expected, workflow_regression_readme)
+
+        self.assertNotIn("workflow_integration_motion_runtime_assembly_smoke", workflow_integration_cmake)
+        self.assertNotIn("workflow_integration_motion_runtime_assembly_smoke", workflow_integration_readme)
+
+    def test_build_validation_and_workspace_validation_track_workflow_regression_assets(self) -> None:
+        build_validation = _read("scripts/build/build-validation.ps1")
+        workspace_validation = _read("shared/testing/test-kit/src/test_kit/workspace_validation.py")
+
+        self.assertIn("function Get-WorkspaceBuildToken", build_validation)
+        self.assertIn('Join-Path (Join-Path $env:LOCALAPPDATA "SS") ("cab-" + $workspaceBuildToken)', build_validation)
+        self.assertIn("WORKSPACE_BUILD_TOKEN = hashlib.sha256", workspace_validation)
+        self.assertIn('/ "SS"', workspace_validation)
+        self.assertIn('f"cab-{WORKSPACE_BUILD_TOKEN}"', workspace_validation)
+
+        for expected in (
+            "siligen_dispensing_semantics_tests",
+            "workflow_regression_deterministic_path_execution_smoke",
+            "workflow_regression_boundary_cutover_smoke",
+            "workflow_regression_planning_ingress_smoke",
+        ):
+            self.assertIn(expected, build_validation)
+            self.assertIn(expected, workspace_validation)
+
+    def test_layout_validator_enforces_current_workflow_boundary(self) -> None:
+        validator = _read("scripts/migration/validate_workspace_layout.py")
+        self.assertIn(
+            "workflow application motion target must not link: siligen_runtime_execution_application_public",
+            validator,
+        )
+        self.assertIn(
+            "workflow application headers must not re-export: siligen_runtime_execution_application_public",
+            validator,
+        )
+
+    def test_hmi_formal_gateway_contract_file_exists(self) -> None:
+        gateway_contract = WORKSPACE_ROOT / "apps" / "hmi-app" / "config" / "gateway-launch.json"
+        gateway_sample = WORKSPACE_ROOT / "apps" / "hmi-app" / "config" / "gateway-launch.sample.json"
+
+        self.assertTrue(gateway_contract.exists(), msg="formal gateway launch contract must exist")
+        payload = json.loads(gateway_contract.read_text(encoding="utf-8"))
+        sample_payload = json.loads(gateway_sample.read_text(encoding="utf-8"))
+
+        self.assertEqual(payload["env"]["SILIGEN_TCP_SERVER_PORT"], "9527")
+        self.assertEqual(payload["env"]["SILIGEN_TCP_SERVER_HOST"], "127.0.0.1")
+        self.assertEqual(payload["args"], sample_payload["args"])
+        self.assertEqual(payload["env"], sample_payload["env"])
+
+    def test_root_entries_run_bridge_exit_gate(self) -> None:
+        build_validation = _read("scripts/build/build-validation.ps1")
+        local_gate = _read("scripts/validation/run-local-validation-gate.ps1")
+        ci_entry = _read("ci.ps1")
+
+        self.assertIn("validate_workspace_layout.py", build_validation)
+        self.assertIn("legacy-exit-checks.py", local_gate)
+        self.assertIn("legacy-exit-checks.py", ci_entry)
 
 
 if __name__ == "__main__":

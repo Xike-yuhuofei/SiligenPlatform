@@ -4,23 +4,18 @@
 
 #include <memory>
 
+namespace Siligen::Domain::Machine::Aggregates::Legacy {
+class DispenserModel;
+}
+
 namespace Siligen::Runtime::Host::System {
-
-class ILegacyMachineExecutionStateBackend {
-   public:
-    virtual ~ILegacyMachineExecutionStateBackend() = default;
-
-    virtual Siligen::Shared::Types::Result<Siligen::RuntimeExecution::Contracts::System::MachineExecutionSnapshot>
-    ReadSnapshot() const = 0;
-    virtual Siligen::Shared::Types::Result<void> ClearPendingTasks() = 0;
-    virtual Siligen::Shared::Types::Result<void> TransitionToEmergencyStop() = 0;
-    virtual Siligen::Shared::Types::Result<void> RecoverToUninitialized() = 0;
-};
 
 class LegacyMachineExecutionStateAdapter final
     : public Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort {
    public:
-    explicit LegacyMachineExecutionStateAdapter(std::shared_ptr<ILegacyMachineExecutionStateBackend> backend);
+    LegacyMachineExecutionStateAdapter();
+    explicit LegacyMachineExecutionStateAdapter(
+        std::shared_ptr<Siligen::Domain::Machine::Aggregates::Legacy::DispenserModel> dispenser_model);
 
     Siligen::Shared::Types::Result<Siligen::RuntimeExecution::Contracts::System::MachineExecutionSnapshot>
     ReadSnapshot() const override;
@@ -29,7 +24,7 @@ class LegacyMachineExecutionStateAdapter final
     Siligen::Shared::Types::Result<void> RecoverToUninitialized() override;
 
    private:
-    std::shared_ptr<ILegacyMachineExecutionStateBackend> backend_;
+    std::shared_ptr<Siligen::Domain::Machine::Aggregates::Legacy::DispenserModel> dispenser_model_;
 };
 
 }  // namespace Siligen::Runtime::Host::System
