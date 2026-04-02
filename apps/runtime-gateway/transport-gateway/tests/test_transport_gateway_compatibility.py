@@ -148,6 +148,7 @@ def test_dxf_preview_gate_contract_is_wired():
     assert '{"preview_kind", snapshot.preview_kind}' in source
     assert '{"glue_points", glue_points}' in source
     assert '{"glue_point_count", snapshot.glue_point_count}' in source
+    assert '{"motion_preview", motion_preview}' in source
     assert '{"execution_polyline", execution_polyline}' in source
     assert '{"execution_polyline_point_count", snapshot.execution_polyline_point_count}' in source
     assert '{"execution_polyline_source_point_count", snapshot.execution_polyline_source_point_count}' in source

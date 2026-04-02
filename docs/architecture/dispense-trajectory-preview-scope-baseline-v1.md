@@ -108,7 +108,10 @@
 
 - 暂停仿真链路的轨迹图渲染作为执行前门禁依赖。
 - HMI 预览优先走真实链路 `dxf.preview.snapshot` 生成的 `planned_glue_snapshot + glue_points`。
-- 当前阶段在预览区展示真实链路胶点主预览与辅助执行折线摘要（段数/点数/长度/时长/快照哈希），确认签核与执行前哈希复验保持不变。
+- 当前阶段在预览区展示双层语义：
+  - `glue_points`：生产 gate / confirm / start 的 authority 主预览。
+  - `motion_preview`：正式运动轨迹预览，用于离线观察与运动算法优化。
+- `execution_polyline`、`trajectory_polyline` 与 `polyline_*` 仅保留为兼容消费者导出，不改变确认签核与执行前哈希复验语义。
 
 ## 13. P3 数据源标识补充（2026-03-26）
 
@@ -118,3 +121,9 @@
   - `mock_synthetic`：来自 mock 占位数据，仅可用于联调，不代表真实 DXF 几何或真实点胶轨迹。
 - HMI 必须显式显示 `preview_source`，并在 `mock_synthetic` 时给出强提示。
 - 验收流程必须拒绝仅凭 `mock_synthetic` 结果签收“真实轨迹预览通过”。
+- `motion_preview` 作为正式运动轨迹预览块返回：
+  - `source` 当前固定为 `execution_trajectory_snapshot`
+  - `kind` 当前固定为 `polyline`
+  - `source_point_count` / `point_count` / `is_sampled` / `sampling_strategy` 用于说明轨迹预览抽样语义
+  - `polyline` 用于 HMI 路径显示
+- `motion_preview` 不影响 `dxf.preview.confirm` / `dxf.job.start` 放行；生产 gate 仍仅认 `planned_glue_snapshot + glue_points`。
