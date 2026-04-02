@@ -1,9 +1,9 @@
 #include "application/usecases/dispensing/UploadFileUseCase.h"
 #include "application/services/dxf/DxfPbPreparationService.h"
-#include "job_ingest/contracts/storage/IFileStoragePort.h"
 #include "shared/interfaces/ILoggingService.h"
 
-#include "process_planning/contracts/configuration/IConfigurationPort.h"
+#include "domain/configuration/ports/IConfigurationPort.h"
+#include "domain/configuration/ports/IFileStoragePort.h"
 
 // Phase 3: 六边形架构日志系统 - 定义模块名称供日志宏使用
 #ifdef MODULE_NAME
@@ -26,11 +26,11 @@ using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
 
-UploadFileUseCase::UploadFileUseCase(
-    std::shared_ptr<JobIngest::Contracts::Storage::IFileStoragePort> file_storage_port,
-    size_t max_file_size_mb,
-    std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port,
-    std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService> pb_preparation_service)
+UploadFileUseCase::UploadFileUseCase(std::shared_ptr<Domain::Configuration::Ports::IFileStoragePort> file_storage_port,
+                                           size_t max_file_size_mb,
+                                           std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port,
+                                           std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService>
+                                               pb_preparation_service)
     : file_storage_port_(std::move(file_storage_port)),
       max_file_size_mb_(max_file_size_mb),
       config_port_(std::move(config_port)),
@@ -64,7 +64,7 @@ Result<UploadResponse> UploadFileUseCase::Execute(const UploadRequest& request) 
     SILIGEN_LOG_INFO("Generated safe filename: " + safe_filename);
 
     // 4. 构造文件数据
-    JobIngest::Contracts::Storage::FileData file_data{
+    Domain::Configuration::Ports::FileData file_data{
         request.file_content,       // content
         safe_filename,              // original_name (使用生成的安全文件名)
         request.file_size,          // size

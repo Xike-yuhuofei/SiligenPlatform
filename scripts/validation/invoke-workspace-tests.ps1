@@ -97,6 +97,10 @@ if ($IncludeHilClosedLoop) {
     $argsList += "--include-hil-closed-loop"
 }
 
+if ($IncludeHilCaseMatrix) {
+    $argsList += "--include-hil-case-matrix"
+}
+
 if ($FailOnKnownFailure) {
     $argsList += "--fail-on-known-failure"
 }

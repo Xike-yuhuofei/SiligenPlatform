@@ -1,14 +1,14 @@
 #pragma once
 
-#include "workflow/application/services/dispensing/PlanningArtifactExportPort.h"
+#include <memory>
+
+namespace Siligen::Application::Services::Dispensing {
+class IPlanningArtifactExportPort;
+}
 
 namespace Siligen::RuntimeExecution::Host::Planning {
 
-class PlanningArtifactExportPortAdapter final
-    : public Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort {
-public:
-    Siligen::Shared::Types::Result<Siligen::Application::Services::Dispensing::PlanningArtifactExportResult> Export(
-        const Siligen::Application::Services::Dispensing::PlanningArtifactExportRequest& request) override;
-};
+std::shared_ptr<Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort>
+CreatePlanningArtifactExportPort();
 
 }  // namespace Siligen::RuntimeExecution::Host::Planning

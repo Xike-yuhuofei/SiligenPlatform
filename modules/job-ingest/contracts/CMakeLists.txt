@@ -7,12 +7,6 @@ if(NOT EXISTS "${SILIGEN_JOB_INGEST_CONTRACTS_PUBLIC_INCLUDE_DIR}/job_ingest/con
         "${SILIGEN_JOB_INGEST_CONTRACTS_PUBLIC_INCLUDE_DIR}/job_ingest/contracts/dispensing/UploadContracts.h"
     )
 endif()
-if(NOT EXISTS "${SILIGEN_JOB_INGEST_CONTRACTS_PUBLIC_INCLUDE_DIR}/job_ingest/contracts/storage/IFileStoragePort.h")
-    message(FATAL_ERROR
-        "job-ingest canonical storage contracts header missing: "
-        "${SILIGEN_JOB_INGEST_CONTRACTS_PUBLIC_INCLUDE_DIR}/job_ingest/contracts/storage/IFileStoragePort.h"
-    )
-endif()
 
 if(NOT TARGET siligen_job_ingest_contracts)
     add_library(siligen_job_ingest_contracts INTERFACE)

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "process_planning/contracts/configuration/IConfigurationPort.h"
+#include "domain/configuration/ports/IConfigurationPort.h"
 #include "domain/motion/ports/IHomingPort.h"
 #include "domain/motion/ports/IMotionConnectionPort.h"
 #include "domain/motion/ports/IMotionStatePort.h"

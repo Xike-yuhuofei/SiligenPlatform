@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-if(NOT TARGET siligen_process_planning_contracts_public)
+if(NOT TARGET siligen_process_planning_legacy_configuration_bridge_public)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../../process-planning/contracts"
         "${CMAKE_BINARY_DIR}/_p/wa_ppc"
@@ -110,14 +110,19 @@ if(TARGET siligen_motion_planning_contracts_public)
         siligen_motion_planning_contracts_public
     )
 endif()
-if(TARGET siligen_process_planning_contracts_public)
+if(TARGET siligen_process_planning_legacy_configuration_bridge_public)
     target_link_libraries(siligen_workflow_application_headers INTERFACE
-        siligen_process_planning_contracts_public
+        siligen_process_planning_legacy_configuration_bridge_public
     )
 endif()
 if(TARGET siligen_device_contracts)
     target_link_libraries(siligen_workflow_application_headers INTERFACE
         siligen_device_contracts
+    )
+endif()
+if(TARGET siligen_runtime_execution_application_headers)
+    target_link_libraries(siligen_workflow_application_headers INTERFACE
+        siligen_runtime_execution_application_headers
     )
 endif()
 if(TARGET siligen_runtime_execution_runtime_contracts)
@@ -195,12 +200,16 @@ target_link_libraries(siligen_application_motion PUBLIC
     siligen_domain
     siligen_domain_services
 )
+if(TARGET siligen_runtime_execution_application_headers)
+    target_link_libraries(siligen_application_motion PUBLIC
+        siligen_runtime_execution_application_headers
+    )
+endif()
 target_compile_features(siligen_application_motion PUBLIC cxx_std_17)
 
 add_library(siligen_application_dispensing STATIC
     usecases/dispensing/valve/coordination/ValveCoordinationUseCase.cpp
     usecases/dispensing/CleanupFilesUseCase.cpp
-    services/dispensing/PlanningArtifactExportAssemblyService.cpp
     services/dispensing/WorkflowPreviewSnapshotService.cpp
     usecases/dispensing/PlanningUseCase.cpp
     usecases/dispensing/DispensingWorkflowUseCase.cpp

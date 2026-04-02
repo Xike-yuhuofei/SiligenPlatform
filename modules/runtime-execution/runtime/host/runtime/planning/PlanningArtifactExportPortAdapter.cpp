@@ -1,5 +1,7 @@
 #include "PlanningArtifactExportPortAdapter.h"
 
+#include "workflow/application/services/dispensing/IPlanningArtifactExportPort.h"
+
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/types/Error.h"
 
@@ -16,11 +18,17 @@ namespace Siligen::RuntimeExecution::Host::Planning {
 
 using Siligen::Application::Services::Dispensing::PlanningArtifactExportRequest;
 using Siligen::Application::Services::Dispensing::PlanningArtifactExportResult;
+using Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
 
 namespace {
+
+class PlanningArtifactExportPortAdapter final : public IPlanningArtifactExportPort {
+   public:
+    Result<PlanningArtifactExportResult> Export(const PlanningArtifactExportRequest& request) override;
+};
 
 bool IsTruthyEnv(const char* value) {
     if (!value || *value == '\0') {
@@ -363,6 +371,10 @@ Result<PlanningArtifactExportResult> PlanningArtifactExportPortAdapter::Export(
     result.message = "planning artifacts exported";
     SILIGEN_LOG_INFO("Planning artifacts exported: count=" + std::to_string(result.exported_paths.size()));
     return Result<PlanningArtifactExportResult>::Success(std::move(result));
+}
+
+std::shared_ptr<IPlanningArtifactExportPort> CreatePlanningArtifactExportPort() {
+    return std::make_shared<PlanningArtifactExportPortAdapter>();
 }
 
 }  // namespace Siligen::RuntimeExecution::Host::Planning

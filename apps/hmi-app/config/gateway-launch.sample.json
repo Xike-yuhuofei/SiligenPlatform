@@ -1,9 +1,9 @@
 {
-  "executable": "D:\\Deploy\\Siligen\\siligen_runtime_gateway.exe",
-  "cwd": "D:\\Deploy\\Siligen",
+  "executable": "build\\bin\\Debug\\siligen_runtime_gateway.exe",
+  "cwd": "build\\bin\\Debug",
   "args": [],
   "pathEntries": [
-    "D:\\Deploy\\Siligen"
+    "build\\bin\\Debug"
   ],
   "env": {
     "SILIGEN_TCP_SERVER_HOST": "127.0.0.1",

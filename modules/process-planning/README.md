@@ -26,5 +26,5 @@
 ## 统一骨架状态
 
 - 已补齐 module.yaml、domain、services、application、adapters、tests 与 examples 子目录。
-- `domain/configuration/` 保留为模块内 configuration 实现库；`siligen_module_process_planning` 现在固定透传 `siligen_process_planning_application_public + siligen_process_planning_contracts_public`，不再回退到 `domain_configuration` public fallback。
+- `domain/configuration/` 已补齐 canonical 子域 target，模块根 target 已从历史聚合 target 切到该 canonical 子域。
 - 所有 live 实现与构建入口均已收敛到 canonical roots。

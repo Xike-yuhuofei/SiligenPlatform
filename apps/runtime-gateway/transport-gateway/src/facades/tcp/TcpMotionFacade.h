@@ -1,7 +1,9 @@
 #pragma once
 
 #include "application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
+#include "application/usecases/motion/homing/HomeAxesUseCase.h"
 #include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
+#include "application/usecases/motion/safety/MotionSafetyUseCase.h"
 #include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
@@ -16,6 +18,7 @@ namespace Siligen::Application::Facades::Tcp {
 class TcpMotionFacade {
    public:
     TcpMotionFacade(std::shared_ptr<UseCases::Motion::MotionControlUseCase> motion_control_use_case,
+                    std::shared_ptr<UseCases::Motion::Safety::MotionSafetyUseCase> motion_safety_use_case,
                     std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> hardware_connection_port);
 
     Shared::Types::Result<UseCases::Motion::Homing::HomeAxesResponse> Home(
@@ -29,6 +32,7 @@ class TcpMotionFacade {
         bool invalidate_homing = false);
     Shared::Types::Result<void> StartJog(Shared::Types::LogicalAxisId axis, int16 direction, float32 velocity);
     Shared::Types::Result<void> StopJog(Shared::Types::LogicalAxisId axis);
+    Shared::Types::Result<void> StopAllAxes(bool immediate = false);
 
     Shared::Types::Result<Domain::Motion::Ports::MotionStatus> GetAxisMotionStatus(
         Shared::Types::LogicalAxisId axis) const;
@@ -46,6 +50,7 @@ class TcpMotionFacade {
 
    private:
     std::shared_ptr<UseCases::Motion::MotionControlUseCase> motion_control_use_case_;
+    std::shared_ptr<UseCases::Motion::Safety::MotionSafetyUseCase> motion_safety_use_case_;
     std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> hardware_connection_port_;
 };
 

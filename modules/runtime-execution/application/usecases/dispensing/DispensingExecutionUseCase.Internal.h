@@ -1,101 +1,17 @@
 #pragma once
 
+#include "ExecutionObserverSupport.h"
+#include "ExecutionSessionStore.h"
+#include "ExecutionWorkerCoordinator.h"
+
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 
-#include <atomic>
-#include <chrono>
-#include <condition_variable>
-#include <cstdint>
 #include <memory>
-#include <mutex>
 #include <string>
-#include <thread>
-#include <unordered_map>
 
 namespace Siligen::Application::UseCases::Dispensing {
 
 using Siligen::Shared::Types::LogicalAxisId;
-
-using TaskID = std::string;
-
-enum class TaskState {
-    PENDING,
-    RUNNING,
-    PAUSED,
-    COMPLETED,
-    FAILED,
-    CANCELLED
-};
-
-enum class JobState {
-    PENDING,
-    RUNNING,
-    STOPPING,
-    PAUSED,
-    COMPLETED,
-    FAILED,
-    CANCELLED
-};
-
-struct TaskStatusResponse {
-    TaskID task_id;
-    std::string state;
-    uint32 progress_percent = 0;
-    uint32 executed_segments = 0;
-    uint32 total_segments = 0;
-    float32 elapsed_seconds = 0.0f;
-    std::string error_message;
-};
-
-struct TaskExecutionContext {
-    TaskID task_id;
-    std::atomic<TaskState> state{TaskState::PENDING};
-    std::atomic<TaskState> committed_terminal_state{TaskState::PENDING};
-    DispensingExecutionRequest request;
-    DispensingExecutionResult result;
-
-    std::atomic<uint32> total_segments{0};
-    std::atomic<uint32> executed_segments{0};
-    std::atomic<uint32> reported_progress_percent{0};
-    std::atomic<uint32> reported_executed_segments{0};
-    std::atomic<uint32> estimated_execution_ms{0};
-    std::atomic<bool> cancel_requested{false};
-    std::atomic<bool> pause_requested{false};
-    std::atomic<bool> pause_applied{false};
-    std::atomic<bool> terminal_committed{false};
-    std::atomic<bool> execution_started{false};
-    std::atomic<bool> inflight_registered{false};
-    std::atomic<bool> inflight_released{false};
-
-    std::chrono::steady_clock::time_point start_time{};
-    std::chrono::steady_clock::time_point end_time{};
-    mutable std::mutex mutex_;
-    std::string scheduler_task_id;
-    std::string error_message;
-};
-
-struct JobExecutionContext {
-    JobID job_id;
-    std::string plan_id;
-    std::string plan_fingerprint;
-    DispensingExecutionRequest execution_request;
-    std::atomic<JobState> state{JobState::PENDING};
-    std::atomic<uint32> target_count{0};
-    std::atomic<uint32> completed_count{0};
-    std::atomic<uint32> current_cycle{0};
-    std::atomic<uint32> current_segment{0};
-    std::atomic<uint32> total_segments{0};
-    std::atomic<uint32> cycle_progress_percent{0};
-    std::atomic<bool> stop_requested{false};
-    std::atomic<bool> pause_requested{false};
-    std::atomic<bool> final_state_committed{false};
-    bool dry_run = false;
-    std::chrono::steady_clock::time_point start_time{};
-    std::chrono::steady_clock::time_point end_time{};
-    mutable std::mutex mutex_;
-    std::string active_task_id;
-    std::string error_message;
-};
 
 struct DispensingExecutionUseCase::Impl {
     explicit Impl(
@@ -154,22 +70,8 @@ struct DispensingExecutionUseCase::Impl {
 
     std::atomic<bool> stop_requested_{false};
     std::mutex execution_mutex_;
-    mutable std::mutex worker_mutex_;
-    std::thread worker_thread_;
-    mutable std::mutex job_worker_mutex_;
-    std::thread job_worker_thread_;
-    std::atomic<std::uint64_t> task_sequence_{0};
-    std::atomic<std::uint64_t> job_sequence_{0};
-    std::atomic<std::uint32_t> inflight_tasks_{0};
-    mutable std::mutex inflight_mutex_;
-    std::condition_variable inflight_cv_;
-
-    std::unordered_map<TaskID, std::shared_ptr<TaskExecutionContext>> tasks_;
-    mutable std::mutex tasks_mutex_;
-    TaskID active_task_id_;
-    std::unordered_map<JobID, std::shared_ptr<JobExecutionContext>> jobs_;
-    mutable std::mutex jobs_mutex_;
-    JobID active_job_id_;
+    ExecutionWorkerCoordinator worker_coordinator_;
+    ExecutionSessionStore session_store_;
 
     Shared::Types::Result<void> ValidateHardwareConnection(bool allow_disconnected = false) noexcept;
     Shared::Types::Result<void> ValidateExecutionPreconditions(bool allow_disconnected = false) const noexcept;

@@ -4,8 +4,8 @@
 #include "shared/di/LoggingServiceLocator.h"
 #include "shared/interfaces/ILoggingService.h"
 
-#include "process_planning/contracts/configuration/IConfigurationPort.h"
-#include "process_planning/contracts/configuration/ValveConfig.h"
+#include "domain/configuration/ports/IConfigurationPort.h"
+#include "domain/configuration/ports/ValveConfig.h"
 #include "domain/dispensing/value-objects/DispenseCompensationProfile.h"
 #include "domain/motion/domain-services/interpolation/ValidatedInterpolationPort.h"
 
@@ -18,6 +18,7 @@
 #include "siligen/device/adapters/motion/HomingPortAdapter.h"
 #include "siligen/device/adapters/motion/MotionRuntimeConnectionAdapter.h"
 #include "siligen/device/adapters/motion/MotionRuntimeFacade.h"
+#include "siligen/device/contracts/ports/device_ports.h"
 #include "siligen/device/adapters/drivers/multicard/IMultiCardWrapper.h"
 #include "runtime/configuration/ConfigFileAdapter.h"
 #include "runtime/configuration/InterlockConfigResolver.h"
@@ -60,6 +61,7 @@
 
 namespace {
 namespace RuntimeConfig = Siligen::Infrastructure::Configuration;
+constexpr Siligen::Shared::Types::uint32 kInterlockStatusMonitorIntervalMs = 100;
 
 class RuntimeInterlockSignalPort final : public Siligen::Domain::Safety::Ports::IInterlockSignalPort {
    public:
@@ -74,11 +76,15 @@ class RuntimeInterlockSignalPort final : public Siligen::Domain::Safety::Ports::
     }
 
     bool Initialize(const Siligen::InterlockConfig& config) {
-        if (!monitor_.Initialize(config)) {
-            return false;
-        }
+        return monitor_.Initialize(config);
+    }
+
+    void StartMonitoring() {
         monitor_.Start();
-        return true;
+    }
+
+    void StopMonitoring() {
+        monitor_.Stop();
     }
 
     Siligen::Shared::Types::Result<Siligen::Domain::Safety::ValueObjects::InterlockSignals> ReadSignals()
@@ -280,6 +286,36 @@ InfrastructureBindings CreateInfrastructureBindings(const InfrastructureBootstra
     if (!interlock_port->Initialize(interlock_resolution.config)) {
         SILIGEN_LOG_WARNING("Failed to initialize interlock monitor; runtime interlock checks disabled");
     } else {
+        if (bindings.device_connection_port) {
+            std::weak_ptr<RuntimeInterlockSignalPort> weak_interlock = interlock_port;
+            bindings.device_connection_port->SetConnectionStateCallback(
+                [weak_interlock](const Siligen::Device::Contracts::State::DeviceConnectionSnapshot& snapshot) {
+                    auto interlock = weak_interlock.lock();
+                    if (!interlock) {
+                        return;
+                    }
+
+                    if (snapshot.IsConnected()) {
+                        interlock->StartMonitoring();
+                        return;
+                    }
+                    interlock->StopMonitoring();
+                });
+
+            const auto connection_snapshot = bindings.device_connection_port->ReadConnection();
+            if (connection_snapshot.IsSuccess() && connection_snapshot.Value().IsConnected()) {
+                interlock_port->StartMonitoring();
+            }
+            if (interlock_resolution.config.enabled) {
+                const auto monitoring_result =
+                    bindings.device_connection_port->StartStatusMonitoring(kInterlockStatusMonitorIntervalMs);
+                if (monitoring_result.IsError()) {
+                    SILIGEN_LOG_WARNING(
+                        "Failed to start connection monitoring for interlock lifecycle: " +
+                        monitoring_result.GetError().GetMessage());
+                }
+            }
+        }
         bindings.interlock_signal_port = interlock_port;
     }
 

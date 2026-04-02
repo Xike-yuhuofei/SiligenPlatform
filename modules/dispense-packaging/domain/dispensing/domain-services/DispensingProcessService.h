@@ -1,6 +1,6 @@
 #pragma once
 
-#include "process_planning/contracts/configuration/IConfigurationPort.h"
+#include "domain/configuration/ports/IConfigurationPort.h"
 #include "domain/dispensing/domain-services/DispensingController.h"
 #include "domain/dispensing/ports/IDispensingExecutionObserver.h"
 #include "domain/dispensing/ports/IValvePort.h"

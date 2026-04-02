@@ -14,7 +14,7 @@
 - `workflow` 仅承载 `M0` 编排职责，不直接承载 `M4-M8` 的模块内事实实现。
 - 跨模块稳定公共契约应维护在 `shared/contracts/`，`M0` 专属契约放在 `modules/workflow/contracts/`。
 - `domain/CMakeLists.txt` 与 `application/CMakeLists.txt` 当前仅允许保留已登记的 bridge-only 聚合，禁止继续新增 sibling source bridge。
-- runtime service 装配 concrete 与 planning 工件落盘 concrete 固定由 `modules/runtime-execution/` 承接，`workflow` 只保留契约、编排和端口。
+- planning artifact export 的 `result/interface` consumer port 固定由 `workflow/application/**` 持有；`request` 载荷固定消费 `dispense-packaging/contracts`；runtime concrete 与 planning 工件落盘 concrete 固定由 `modules/runtime-execution/` 承接；具体装配固定在 `apps/runtime-service`。
 
 ## 迁移来源（当前事实）
 
@@ -37,7 +37,7 @@
 
 - `workflow/contracts` 已落地 `WorkflowStageState`、`WorkflowCommand`、`WorkflowPlanningTriggerRequest`、`WorkflowPlanningTriggerResponse`、`WorkflowFailureCategory`、`WorkflowRecoveryDirective`。
 - `MotionRuntimeAssemblyFactory` 已改为依赖 runtime services provider，不再直接实例化 motion concrete。
-- `PlanningUseCase` 已改为编排 `IPathSourcePort + ProcessPathFacade + MotionPlanningFacade + AuthorityPreviewAssemblyService + ExecutionAssemblyService`；planning artifact export request 由 `workflow` owner contract 组装，并继续通过 `IPlanningArtifactExportPort` 交给 `runtime-execution` concrete 承担。
+- `PlanningUseCase` 已改为编排 `IPathSourcePort + ProcessPathFacade + MotionPlanningFacade + DispensePlanningFacade`；CSV/JSON 工件落盘继续通过 `workflow/application/services/dispensing/IPlanningArtifactExportPort.h`（`request` 来自 `dispense-packaging/contracts`）交给 `runtime-execution` concrete 承担，并由 `apps/runtime-service` 完成装配。
 - `assert-module-boundary-bridges.ps1` 已接入 bridge-only 收口标记，并在 `rg` 不可用时回退到 PowerShell 原生搜索。
 
 ## S2-A 完成态

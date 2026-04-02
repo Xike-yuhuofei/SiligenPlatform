@@ -7,6 +7,12 @@ if(NOT EXISTS "${SILIGEN_DISPENSE_PACKAGING_CONTRACTS_PUBLIC_INCLUDE_DIR}/domain
         "${SILIGEN_DISPENSE_PACKAGING_CONTRACTS_PUBLIC_INCLUDE_DIR}/domain/dispensing/contracts/ExecutionPackage.h"
     )
 endif()
+if(NOT EXISTS "${SILIGEN_DISPENSE_PACKAGING_CONTRACTS_PUBLIC_INCLUDE_DIR}/domain/dispensing/contracts/PlanningArtifactExportRequest.h")
+    message(FATAL_ERROR
+        "dispense-packaging canonical contracts header missing: "
+        "${SILIGEN_DISPENSE_PACKAGING_CONTRACTS_PUBLIC_INCLUDE_DIR}/domain/dispensing/contracts/PlanningArtifactExportRequest.h"
+    )
+endif()
 
 if(NOT TARGET siligen_dispense_packaging_contracts_public)
     add_library(siligen_dispense_packaging_contracts_public INTERFACE)

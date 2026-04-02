@@ -27,6 +27,12 @@
 - host core：`modules/runtime-execution/runtime/host/CMakeLists.txt`
   target: `siligen_runtime_host`
 
+## 目录落点现状
+
+- `application/` 是当前 job API、session lifecycle 与 control orchestration 的 live owner / build surface。
+- `runtime/` 当前 live build root 仅为 `runtime/host/`；`runtime/README.md` 只记录后续 owner 收口方向，不代表 job/session/control 已迁入该目录。
+- `domain/`、`services/` 仍是预留目录；在专门迁移启动前，不得把它们解读成已承接 live owner 的正式落点。
+
 ## Host Core 边界
 
 `siligen_runtime_host` 现在只保留：
@@ -41,11 +47,13 @@
 - `services/motion/SoftLimitMonitorService.*`
 
 `siligen_runtime_host` 不再 `PUBLIC` 聚合 `job-ingest`、`workflow`、`workflow_recipe`、DXF adapter、host storage 或 recipe persistence。
+`PlanningArtifactExportPortAdapter` 仅作为 `workflow/application` consumer port 的 concrete 实现保留在 host core；完整 `workflow` 依赖已封进 implementation，header 只暴露 factory，装配固定由 `apps/runtime-service` 承担。
 
 ## App 边界
 
 - `apps/runtime-service` 持有 runtime process bootstrap public surface：
   target: `siligen_runtime_process_bootstrap_public`
   include root: `runtime_process_bootstrap/*`
+- `apps/runtime-service/runtime/dispensing/*`、`runtime/status/*`、`runtime/supervision/*` 负责 app-local wiring、snapshot/export 组装与 terminal side effect 协同；这些残留不属于 `M9` owner，不得迁回 `modules/runtime-execution` 作为执行域真实实现。
 - `apps/planner-cli`、`apps/runtime-gateway`、`apps/runtime-service` 对 `BuildContainer(...)` / `WorkspaceAssetPaths` 的消费统一经 `runtime_process_bootstrap/*`。
 - `modules/runtime-execution/runtime/host/ContainerBootstrap.h` 与 `modules/runtime-execution/runtime/host/runtime/configuration/WorkspaceAssetPaths.h` 只保留 deprecated forwarder 兼容壳，不再承载 live owner 实现。

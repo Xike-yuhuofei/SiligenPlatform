@@ -1,5 +1,7 @@
 #pragma once
 
+#include "runtime_execution/application/usecases/motion/homing/EnsureAxesReadyZeroTypes.h"
+#include "runtime_execution/application/usecases/motion/manual/ManualMotionCommand.h"
 #include "runtime_execution/contracts/motion/HomingProcess.h"
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "runtime_execution/contracts/motion/IMotionStatePort.h"
@@ -11,15 +13,9 @@
 #include <vector>
 
 namespace Siligen::Application::UseCases::Motion::Homing {
-struct EnsureAxesReadyZeroRequest;
-struct EnsureAxesReadyZeroResponse;
 using HomeAxesRequest = Siligen::Domain::Motion::DomainServices::HomeAxesRequest;
 using HomeAxesResponse = Siligen::Domain::Motion::DomainServices::HomeAxesResponse;
 }  // namespace Siligen::Application::UseCases::Motion::Homing
-
-namespace Siligen::Application::UseCases::Motion::Manual {
-struct ManualMotionCommand;
-}  // namespace Siligen::Application::UseCases::Motion::Manual
 
 namespace Siligen::Application::UseCases::Motion {
 

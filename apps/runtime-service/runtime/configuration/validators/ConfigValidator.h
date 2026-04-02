@@ -1,6 +1,6 @@
 #pragma once
 
-#include "process_planning/contracts/configuration/IConfigurationPort.h"
+#include "domain/configuration/ports/IConfigurationPort.h"
 
 #include <string>
 #include <vector>

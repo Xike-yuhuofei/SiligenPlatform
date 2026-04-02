@@ -50,9 +50,9 @@ void DispensingExecutionUseCase::Impl::StopExecution() {
 Result<void> DispensingExecutionUseCase::Impl::PauseJob(const JobID& job_id) {
     std::shared_ptr<JobExecutionContext> context;
     {
-        std::lock_guard<std::mutex> lock(jobs_mutex_);
-        auto it = jobs_.find(job_id);
-        if (it == jobs_.end()) {
+        std::lock_guard<std::mutex> lock(session_store_.jobs_mutex_);
+        auto it = session_store_.jobs_.find(job_id);
+        if (it == session_store_.jobs_.end()) {
             return Result<void>::Failure(
                 Error(ErrorCode::NOT_FOUND, "job not found", "DispensingExecutionUseCase"));
         }
@@ -90,9 +90,9 @@ Result<void> DispensingExecutionUseCase::Impl::PauseJob(const JobID& job_id) {
 Result<void> DispensingExecutionUseCase::Impl::ResumeJob(const JobID& job_id) {
     std::shared_ptr<JobExecutionContext> context;
     {
-        std::lock_guard<std::mutex> lock(jobs_mutex_);
-        auto it = jobs_.find(job_id);
-        if (it == jobs_.end()) {
+        std::lock_guard<std::mutex> lock(session_store_.jobs_mutex_);
+        auto it = session_store_.jobs_.find(job_id);
+        if (it == session_store_.jobs_.end()) {
             return Result<void>::Failure(
                 Error(ErrorCode::NOT_FOUND, "job not found", "DispensingExecutionUseCase"));
         }
@@ -132,9 +132,9 @@ Result<void> DispensingExecutionUseCase::Impl::ResumeJob(const JobID& job_id) {
 Result<void> DispensingExecutionUseCase::Impl::StopJob(const JobID& job_id) {
     std::shared_ptr<JobExecutionContext> context;
     {
-        std::lock_guard<std::mutex> lock(jobs_mutex_);
-        auto it = jobs_.find(job_id);
-        if (it == jobs_.end()) {
+        std::lock_guard<std::mutex> lock(session_store_.jobs_mutex_);
+        auto it = session_store_.jobs_.find(job_id);
+        if (it == session_store_.jobs_.end()) {
             return Result<void>::Failure(
                 Error(ErrorCode::NOT_FOUND, "job not found", "DispensingExecutionUseCase"));
         }
@@ -212,13 +212,13 @@ Result<void> DispensingExecutionUseCase::Impl::StopJob(const JobID& job_id) {
 Result<void> DispensingExecutionUseCase::Impl::PauseTask(const TaskID& task_id) {
     std::shared_ptr<TaskExecutionContext> context;
     {
-        std::lock_guard<std::mutex> lock(tasks_mutex_);
-        auto it = tasks_.find(task_id);
-        if (it == tasks_.end()) {
+        std::lock_guard<std::mutex> lock(session_store_.tasks_mutex_);
+        auto it = session_store_.tasks_.find(task_id);
+        if (it == session_store_.tasks_.end()) {
             return Result<void>::Failure(
                 Error(ErrorCode::INVALID_STATE, "Task not found", "DispensingExecutionUseCase"));
         }
-        if (task_id != active_task_id_) {
+        if (task_id != session_store_.active_task_id_) {
             return Result<void>::Failure(
                 Error(ErrorCode::INVALID_STATE, "Task is not active", "DispensingExecutionUseCase"));
         }
@@ -277,13 +277,13 @@ Result<void> DispensingExecutionUseCase::Impl::PauseTask(const TaskID& task_id) 
 Result<void> DispensingExecutionUseCase::Impl::ResumeTask(const TaskID& task_id) {
     std::shared_ptr<TaskExecutionContext> context;
     {
-        std::lock_guard<std::mutex> lock(tasks_mutex_);
-        auto it = tasks_.find(task_id);
-        if (it == tasks_.end()) {
+        std::lock_guard<std::mutex> lock(session_store_.tasks_mutex_);
+        auto it = session_store_.tasks_.find(task_id);
+        if (it == session_store_.tasks_.end()) {
             return Result<void>::Failure(
                 Error(ErrorCode::INVALID_STATE, "Task not found", "DispensingExecutionUseCase"));
         }
-        if (task_id != active_task_id_) {
+        if (task_id != session_store_.active_task_id_) {
             return Result<void>::Failure(
                 Error(ErrorCode::INVALID_STATE, "Task is not active", "DispensingExecutionUseCase"));
         }

@@ -8,6 +8,7 @@
 - 执行域任务调度桥接：`runtime/scheduling/*`
 - 执行域 diagnostics 适配：`runtime/diagnostics/*`
 - 执行域 motion/runtime provider：`runtime/motion/WorkflowMotionRuntimeServicesProvider.*`
+  - canonical provider contract：`runtime_execution/application/services/motion/runtime/IMotionRuntimeServicesProvider.h`
 - 执行态适配与 planning artifact 导出桥：`runtime/system/*`、`runtime/planning/*`
 - 执行期硬限位 / 软限位监控：`services/motion/*`
 
@@ -36,8 +37,11 @@
   - `siligen_domain`
   - `siligen_shared`
 - 不再 `PUBLIC` 聚合 `job-ingest`、`workflow`、`workflow_recipe`、DXF adapter、host storage、recipe persistence。
+- `runtime/planning/PlanningArtifactExportPortAdapter.*` 目前仅通过 factory 暴露 `workflow/application` consumer port concrete；完整 `workflow` 依赖已封进 implementation，request 载荷继续消费 `dispense-packaging/contracts`，装配固定由 `apps/runtime-service` 承担。
 
 ## 兼容壳
 
-- 模块内旧路径头已全部删除。
-- 真实实现与 canonical public surface 固定为 `runtime_process_bootstrap/*`。
+- `ContainerBootstrap.h`
+- `runtime/configuration/WorkspaceAssetPaths.h`
+
+这两个模块内旧路径头仅保留 forwarder 兼容用途，真实实现与 canonical public surface 已迁到 `runtime_process_bootstrap/*`。

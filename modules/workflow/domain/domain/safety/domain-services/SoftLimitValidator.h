@@ -1,8 +1,8 @@
 #pragma once
 
-#include "process_planning/contracts/configuration/ConfigTypes.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
+#include "../../configuration/value-objects/ConfigTypes.h"
 
 #include <cstddef>
 #include <cstdint>

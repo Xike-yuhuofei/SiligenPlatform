@@ -7,6 +7,13 @@ if(NOT TARGET siligen_process_planning_contracts_public)
     )
 endif()
 
+if(NOT TARGET siligen_process_planning_domain_configuration)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../domain/configuration"
+        "${CMAKE_CURRENT_BINARY_DIR}/odc"
+    )
+endif()
+
 set(SILIGEN_PROCESS_PLANNING_APPLICATION_PUBLIC_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
 if(NOT EXISTS "${SILIGEN_PROCESS_PLANNING_APPLICATION_PUBLIC_INCLUDE_DIR}/process_planning/application")
     message(FATAL_ERROR
@@ -24,6 +31,7 @@ target_include_directories(siligen_process_planning_application_headers INTERFAC
 )
 target_link_libraries(siligen_process_planning_application_headers INTERFACE
     siligen_process_planning_contracts_public
+    siligen_process_planning_domain_configuration
 )
 target_compile_features(siligen_process_planning_application_headers INTERFACE cxx_std_17)
 
@@ -33,5 +41,6 @@ endif()
 target_link_libraries(siligen_process_planning_application_public INTERFACE
     siligen_process_planning_application_headers
     siligen_process_planning_contracts_public
+    siligen_process_planning_domain_configuration
 )
 target_compile_features(siligen_process_planning_application_public INTERFACE cxx_std_17)

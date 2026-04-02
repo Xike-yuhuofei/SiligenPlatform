@@ -71,8 +71,9 @@ list(REMOVE_DUPLICATES RUNTIME_HOST_PUBLIC_INCLUDE_DIRS)
 
 add_library(siligen_runtime_host STATIC
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/diagnostics/DiagnosticsPortAdapter.cpp
-    ${RUNTIME_HOST_SOURCE_ROOT}/runtime/system/LegacyMachineExecutionStateAdapter.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/supervision/RuntimeSupervisionPortAdapter.cpp
+    ${RUNTIME_HOST_SOURCE_ROOT}/runtime/system/LegacyMachineExecutionStateAdapter.cpp
+    ${RUNTIME_HOST_SOURCE_ROOT}/runtime/system/WorkflowMachineExecutionStateBackend.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/motion/WorkflowMotionRuntimeServicesProvider.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/planning/PlanningArtifactExportPortAdapter.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/services/motion/HardLimitMonitorService.cpp

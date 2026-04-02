@@ -1,6 +1,6 @@
 #pragma once
 
-#include "job_ingest/contracts/storage/IFileStoragePort.h"
+#include "domain/configuration/ports/IFileStoragePort.h"
 #include "shared/types/Result.h"
 #include <functional>
 #include <memory>
@@ -61,7 +61,7 @@ public:
      * @param file_storage_port 文件存储端口
      */
     explicit CleanupFilesUseCase(
-        std::shared_ptr<JobIngest::Contracts::Storage::IFileStoragePort> file_storage_port,
+        std::shared_ptr<Domain::Configuration::Ports::IFileStoragePort> file_storage_port,
         std::string base_directory = "uploads/dxf/",
         FileInUseChecker file_in_use_checker = {});
 
@@ -79,7 +79,7 @@ public:
     Result<CleanupFilesResult> Execute(const CleanupFilesRequest& request);
 
 private:
-    std::shared_ptr<JobIngest::Contracts::Storage::IFileStoragePort> file_storage_port_;
+    std::shared_ptr<Domain::Configuration::Ports::IFileStoragePort> file_storage_port_;
     std::string base_directory_;
     FileInUseChecker file_in_use_checker_;
 

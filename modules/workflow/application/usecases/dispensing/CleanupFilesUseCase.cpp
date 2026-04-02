@@ -14,7 +14,7 @@
 namespace Siligen::Application::UseCases::Dispensing {
 
 CleanupFilesUseCase::CleanupFilesUseCase(
-    std::shared_ptr<JobIngest::Contracts::Storage::IFileStoragePort> file_storage_port,
+    std::shared_ptr<Domain::Configuration::Ports::IFileStoragePort> file_storage_port,
     std::string base_directory,
     FileInUseChecker file_in_use_checker)
     : file_storage_port_(std::move(file_storage_port)),

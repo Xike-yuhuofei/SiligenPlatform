@@ -63,7 +63,6 @@ def test_online_preview_evidence_bundle_contract(tmp_path: Path) -> None:
         "plan_prepare": report_dir / "plan-prepare.json",
         "snapshot": report_dir / "snapshot.json",
         "glue_points": report_dir / "glue_points.json",
-        "motion_preview": report_dir / "motion_preview.json",
         "execution_polyline": report_dir / "execution_polyline.json",
         "preview_verdict": report_dir / "preview-verdict.json",
         "preview_evidence": report_dir / "preview-evidence.md",
@@ -75,7 +74,6 @@ def test_online_preview_evidence_bundle_contract(tmp_path: Path) -> None:
 
     plan_prepare = _load_json(required_paths["plan_prepare"])
     snapshot = _load_json(required_paths["snapshot"])
-    motion_preview = json.loads(required_paths["motion_preview"].read_text(encoding="utf-8"))
     preview_verdict = _load_json(required_paths["preview_verdict"])
     preview_evidence = required_paths["preview_evidence"].read_text(encoding="utf-8")
 
@@ -88,18 +86,8 @@ def test_online_preview_evidence_bundle_contract(tmp_path: Path) -> None:
         "preview_source",
         "preview_kind",
         "glue_points",
-        "motion_preview",
         "execution_polyline",
     }.issubset(snapshot.keys())
-    assert {
-        "source",
-        "kind",
-        "source_point_count",
-        "point_count",
-        "is_sampled",
-        "sampling_strategy",
-        "polyline",
-    }.issubset(snapshot["motion_preview"].keys())
     assert {
         "verdict",
         "launch_mode",
@@ -115,12 +103,6 @@ def test_online_preview_evidence_bundle_contract(tmp_path: Path) -> None:
         "order_semantics_match",
         "dispense_motion_semantics_match",
         "glue_point_count",
-        "motion_preview_source",
-        "motion_preview_kind",
-        "motion_preview_point_count",
-        "motion_preview_source_point_count",
-        "motion_preview_is_sampled",
-        "motion_preview_sampling_strategy",
         "execution_polyline_source_point_count",
         "glue_point_spacing_median_mm",
         "corner_duplicate_point_count",
@@ -142,23 +124,9 @@ def test_online_preview_evidence_bundle_contract(tmp_path: Path) -> None:
     assert preview_verdict["preview_source"] == "planned_glue_snapshot"
     assert preview_verdict["preview_kind"] == "glue_points"
     assert preview_verdict["glue_point_count"] == snapshot["glue_point_count"]
-    assert preview_verdict["motion_preview_source"] == snapshot["motion_preview"]["source"]
-    assert preview_verdict["motion_preview_kind"] == snapshot["motion_preview"]["kind"]
-    assert preview_verdict["motion_preview_point_count"] == snapshot["motion_preview"]["point_count"]
-    assert (
-        preview_verdict["motion_preview_source_point_count"]
-        == snapshot["motion_preview"]["source_point_count"]
-    )
-    assert preview_verdict["motion_preview_is_sampled"] == snapshot["motion_preview"]["is_sampled"]
-    assert (
-        preview_verdict["motion_preview_sampling_strategy"]
-        == snapshot["motion_preview"]["sampling_strategy"]
-    )
-    assert snapshot["motion_preview"]["point_count"] == len(motion_preview)
     assert preview_verdict["execution_polyline_source_point_count"] == snapshot["execution_polyline_source_point_count"]
     assert "plan-prepare.json" in preview_evidence
     assert "preview-verdict.json" in preview_evidence
     assert "glue_points.json" in preview_evidence
-    assert "motion_preview.json" in preview_evidence
     assert "execution_polyline.json" in preview_evidence
     assert "hmi-preview.png" in preview_evidence

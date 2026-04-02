@@ -3,12 +3,12 @@
 #include "shared/types/Error.h"
 
 #include <cstddef>
+#include <string>
 #include <utility>
 
 namespace Siligen::Runtime::Service::Status {
 namespace {
 
-using MotionControlUseCase = Siligen::Application::UseCases::Motion::MotionControlUseCase;
 using IRuntimeSupervisionPort = Siligen::RuntimeExecution::Contracts::System::IRuntimeSupervisionPort;
 using RuntimeAxisStatusExportSnapshot =
     Siligen::RuntimeExecution::Contracts::System::RuntimeAxisStatusExportSnapshot;
@@ -30,17 +30,6 @@ Result<std::shared_ptr<IRuntimeSupervisionPort>> EnsureSupervisionPort(
     return Result<std::shared_ptr<IRuntimeSupervisionPort>>::Success(runtime_supervision_port);
 }
 
-Result<std::shared_ptr<MotionControlUseCase>> EnsureMotionControlUseCase(
-    const std::shared_ptr<MotionControlUseCase>& motion_control_use_case) {
-    if (!motion_control_use_case) {
-        return Result<std::shared_ptr<MotionControlUseCase>>::Failure(Error(
-            ErrorCode::PORT_NOT_INITIALIZED,
-            "motion control use case not initialized",
-            kErrorSource));
-    }
-    return Result<std::shared_ptr<MotionControlUseCase>>::Success(motion_control_use_case);
-}
-
 RuntimeAxisStatusExportSnapshot BuildAxisStatusSnapshot(const Siligen::Domain::Motion::Ports::MotionStatus& status) {
     RuntimeAxisStatusExportSnapshot snapshot;
     snapshot.position = status.position.x;
@@ -55,21 +44,16 @@ RuntimeAxisStatusExportSnapshot BuildAxisStatusSnapshot(const Siligen::Domain::M
 
 WorkflowRuntimeStatusExportPort::WorkflowRuntimeStatusExportPort(
     std::shared_ptr<IRuntimeSupervisionPort> runtime_supervision_port,
-    std::shared_ptr<MotionControlUseCase> motion_control_use_case,
-    std::shared_ptr<Siligen::Application::UseCases::Dispensing::Valve::ValveQueryUseCase> valve_query_use_case)
+    RuntimeMotionStatusReader motion_status_reader,
+    RuntimeDispenserStatusReader dispenser_status_reader)
     : runtime_supervision_port_(std::move(runtime_supervision_port)),
-      motion_control_use_case_(std::move(motion_control_use_case)),
-      valve_query_use_case_(std::move(valve_query_use_case)) {}
+      motion_status_reader_(std::move(motion_status_reader)),
+      dispenser_status_reader_(std::move(dispenser_status_reader)) {}
 
 Result<RuntimeStatusExportSnapshot> WorkflowRuntimeStatusExportPort::ReadSnapshot() const {
     auto supervision_port_result = EnsureSupervisionPort(runtime_supervision_port_);
     if (supervision_port_result.IsError()) {
         return Result<RuntimeStatusExportSnapshot>::Failure(supervision_port_result.GetError());
-    }
-
-    auto motion_use_case_result = EnsureMotionControlUseCase(motion_control_use_case_);
-    if (motion_use_case_result.IsError()) {
-        return Result<RuntimeStatusExportSnapshot>::Failure(motion_use_case_result.GetError());
     }
 
     auto supervision_result = runtime_supervision_port_->ReadSnapshot();
@@ -90,8 +74,8 @@ Result<RuntimeStatusExportSnapshot> WorkflowRuntimeStatusExportPort::ReadSnapsho
     snapshot.effective_interlocks = supervision.effective_interlocks;
     snapshot.supervision = supervision.supervision;
 
-    if (snapshot.connected) {
-        auto all_status_result = motion_control_use_case_->GetAllAxesMotionStatus();
+    if (snapshot.connected && motion_status_reader_.read_all_axes_motion_status) {
+        auto all_status_result = motion_status_reader_.read_all_axes_motion_status();
         if (all_status_result.IsSuccess()) {
             const auto& statuses = all_status_result.Value();
             const char* axis_names[] = {"X", "Y", "Z", "U"};
@@ -99,8 +83,10 @@ Result<RuntimeStatusExportSnapshot> WorkflowRuntimeStatusExportPort::ReadSnapsho
                 snapshot.axes[axis_names[i]] = BuildAxisStatusSnapshot(statuses[i]);
             }
         }
+    }
 
-        auto position_result = motion_control_use_case_->GetCurrentPosition();
+    if (snapshot.connected && motion_status_reader_.read_current_position) {
+        auto position_result = motion_status_reader_.read_current_position();
         if (position_result.IsSuccess()) {
             const auto position = position_result.Value();
             snapshot.has_position = true;
@@ -109,13 +95,15 @@ Result<RuntimeStatusExportSnapshot> WorkflowRuntimeStatusExportPort::ReadSnapsho
         }
     }
 
-    if (valve_query_use_case_) {
-        auto dispenser_result = valve_query_use_case_->GetDispenserStatus();
+    if (dispenser_status_reader_.read_dispenser_status) {
+        auto dispenser_result = dispenser_status_reader_.read_dispenser_status();
         if (dispenser_result.IsSuccess()) {
             snapshot.dispenser.valve_open = dispenser_result.Value().IsRunning();
         }
+    }
 
-        auto supply_result = valve_query_use_case_->GetSupplyStatus();
+    if (dispenser_status_reader_.read_supply_status) {
+        auto supply_result = dispenser_status_reader_.read_supply_status();
         if (supply_result.IsSuccess()) {
             snapshot.dispenser.supply_open = supply_result.Value().IsOpen();
         }
