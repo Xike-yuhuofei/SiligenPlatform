@@ -39,7 +39,5 @@
 
 ## 兼容壳
 
-- `ContainerBootstrap.h`
-- `runtime/configuration/WorkspaceAssetPaths.h`
-
-这两个模块内旧路径头仅保留 forwarder 兼容用途，真实实现与 canonical public surface 已迁到 `runtime_process_bootstrap/*`。
+- 模块内旧路径头已全部删除。
+- 真实实现与 canonical public surface 固定为 `runtime_process_bootstrap/*`。

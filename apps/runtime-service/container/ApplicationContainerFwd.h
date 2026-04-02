@@ -1,7 +1,7 @@
 #pragma once
 
-#include "domain/motion/ports/IIOControlPort.h"
-#include "domain/motion/ports/IMotionRuntimePort.h"
+#include "runtime_execution/contracts/motion/IIOControlPort.h"
+#include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
 
 namespace Siligen::Shared::Interfaces {
 class ILoggingService;
@@ -9,9 +9,12 @@ class ILoggingService;
 
 namespace Siligen::Domain::Configuration::Ports {
 class IConfigurationPort;
-class IFileStoragePort;
 struct ValveSupplyConfig;
 struct HomingConfig;
+}
+
+namespace Siligen::JobIngest::Contracts::Storage {
+class IFileStoragePort;
 }
 
 namespace Siligen::Device::Contracts::Ports {
@@ -59,6 +62,11 @@ class JogController;
 class MotionControlService;
 class MotionStatusService;
 class VelocityProfileService;
+}
+
+namespace Siligen::RuntimeExecution::Application::Services::Motion {
+class JogController;
+class ReadyZeroDecisionService;
 }
 
 namespace Siligen::Domain::Dispensing::DomainServices {

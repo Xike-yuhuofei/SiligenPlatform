@@ -141,7 +141,7 @@ Result<bool> LocalFileStorageAdapter::FileExists(const std::string& filepath) {
 }
 
 
-Result<std::string> LocalFileStorageAdapter::StoreFile(const Domain::Configuration::Ports::FileData& file_data,
+Result<std::string> LocalFileStorageAdapter::StoreFile(const JobIngest::Contracts::Storage::FileData& file_data,
                                                        const std::string& filename) {
     std::lock_guard<std::mutex> lock(file_mutex_);
 
@@ -193,7 +193,7 @@ Result<std::string> LocalFileStorageAdapter::StoreFile(const Domain::Configurati
 
 }
 
-Result<void> LocalFileStorageAdapter::ValidateFile(const Domain::Configuration::Ports::FileData& file_data,
+Result<void> LocalFileStorageAdapter::ValidateFile(const JobIngest::Contracts::Storage::FileData& file_data,
                                                    size_t max_size_mb,
                                                    const std::vector<std::string>& allowed_extensions) {
     // 检查文件数据

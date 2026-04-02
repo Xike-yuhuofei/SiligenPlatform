@@ -3,7 +3,7 @@
 #include "application/services/dispensing/DispensePlanningFacade.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/process_path/ProcessPathFacade.h"
-#include "domain/configuration/ports/IConfigurationPort.h"
+#include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
 #include "domain/motion/value-objects/MotionPlanningReport.h"
 #include "domain/trajectory/ports/IPathSourcePort.h"

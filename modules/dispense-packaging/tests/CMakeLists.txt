@@ -27,12 +27,11 @@ target_link_libraries(siligen_dispense_packaging_unit_tests PRIVATE
 )
 target_compile_features(siligen_dispense_packaging_unit_tests PRIVATE cxx_std_17)
 
-if(COMMAND process_runtime_core_add_test_with_runtime_environment)
-    process_runtime_core_add_test_with_runtime_environment(
+if(COMMAND siligen_add_test_with_runtime_environment)
+    siligen_add_test_with_runtime_environment(
         siligen_dispense_packaging_unit_tests
         siligen_dispense_packaging_unit_tests
     )
 else()
     add_test(NAME siligen_dispense_packaging_unit_tests COMMAND siligen_dispense_packaging_unit_tests)
 endif()
-

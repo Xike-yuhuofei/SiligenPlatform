@@ -231,10 +231,10 @@ Result<void> MotionRuntimeFacade::SetJogParameters(LogicalAxisId axis,
     return motion_adapter_->SetJogParameters(axis, params);
 }
 
-Result<Domain::Motion::Ports::IOStatus> MotionRuntimeFacade::ReadDigitalInput(int16 channel) {
+Result<Siligen::RuntimeExecution::Contracts::Motion::IOStatus> MotionRuntimeFacade::ReadDigitalInput(int16 channel) {
     return motion_adapter_->ReadDigitalInput(channel);
 }
-Result<Domain::Motion::Ports::IOStatus> MotionRuntimeFacade::ReadDigitalOutput(int16 channel) {
+Result<Siligen::RuntimeExecution::Contracts::Motion::IOStatus> MotionRuntimeFacade::ReadDigitalOutput(int16 channel) {
     return motion_adapter_->ReadDigitalOutput(channel);
 }
 Result<void> MotionRuntimeFacade::WriteDigitalOutput(int16 channel, bool value) {

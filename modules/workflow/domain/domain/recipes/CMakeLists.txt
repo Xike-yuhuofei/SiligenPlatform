@@ -3,7 +3,7 @@
 add_library(domain_recipes INTERFACE)
 
 target_include_directories(domain_recipes INTERFACE
-    ${PROCESS_RUNTIME_CORE_PUBLIC_INCLUDE_DIRS}
+    ${WORKFLOW_MODULE_PUBLIC_INCLUDE_DIRS}
 )
 
 target_link_libraries(domain_recipes INTERFACE

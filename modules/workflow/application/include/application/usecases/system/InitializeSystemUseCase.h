@@ -8,7 +8,7 @@
 #pragma once
 
 #include "application/usecases/system/IHardLimitMonitor.h"
-#include "domain/configuration/ports/IConfigurationPort.h"
+#include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "domain/system/ports/IEventPublisherPort.h"
 #include "domain/diagnostics/ports/IDiagnosticsPort.h"
 #include "siligen/device/contracts/commands/device_commands.h"
@@ -20,8 +20,8 @@
 #include <string>
 #include <vector>
 
-namespace Siligen::Application::UseCases::Motion::Homing {
-class HomeAxesUseCase;
+namespace Siligen::RuntimeExecution::Contracts::Motion {
+class IHomeAxesExecutionPort;
 }
 
 namespace Siligen::Application::UseCases::System {
@@ -119,13 +119,13 @@ class InitializeSystemUseCase {
     /// @brief 构造函数
     /// @param config_port 配置管理端口
     /// @param connection_port 硬件连接端口
-    /// @param home_axes_usecase 回零用例
+    /// @param home_axes_execution_port 回零执行端口
     /// @param diagnostics_port 诊断端口
     /// @param event_port 事件发布端口(可选)
     explicit InitializeSystemUseCase(
         std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port,
         std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
-        std::shared_ptr<Siligen::Application::UseCases::Motion::Homing::HomeAxesUseCase> home_axes_usecase,
+        std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IHomeAxesExecutionPort> home_axes_execution_port,
         std::shared_ptr<Siligen::Domain::Diagnostics::Ports::IDiagnosticsPort> diagnostics_port,
         std::shared_ptr<Siligen::Domain::System::Ports::IEventPublisherPort> event_port = nullptr,
         std::shared_ptr<Siligen::Application::UseCases::System::IHardLimitMonitor> hard_limit_monitor = nullptr);
@@ -146,7 +146,7 @@ class InitializeSystemUseCase {
    private:
     std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port_;
     std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port_;
-    std::shared_ptr<Siligen::Application::UseCases::Motion::Homing::HomeAxesUseCase> home_axes_usecase_;
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IHomeAxesExecutionPort> home_axes_execution_port_;
     std::shared_ptr<Siligen::Domain::Diagnostics::Ports::IDiagnosticsPort> diagnostics_port_;
     std::shared_ptr<Siligen::Domain::System::Ports::IEventPublisherPort> event_port_;
     std::shared_ptr<Siligen::Application::UseCases::System::IHardLimitMonitor> hard_limit_monitor_;

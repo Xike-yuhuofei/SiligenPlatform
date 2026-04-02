@@ -9,7 +9,7 @@ if(DEFINED SILIGEN_MULTICARD_VENDOR_DIR AND EXISTS "${SILIGEN_MULTICARD_VENDOR_D
     set(RUNTIME_PROCESS_BOOTSTRAP_DEVICE_VENDOR_DIR "${SILIGEN_MULTICARD_VENDOR_DIR}")
 endif()
 
-if(NOT TARGET siligen_process_planning_legacy_configuration_bridge_public)
+if(NOT TARGET siligen_process_planning_contracts_public)
     add_subdirectory(
         "${SILIGEN_WORKSPACE_ROOT}/modules/process-planning/contracts"
         "${CMAKE_BINARY_DIR}/_p/rtsvc_ppc"
@@ -25,8 +25,8 @@ endif()
 
 if(NOT TARGET siligen_parsing_adapter)
     add_subdirectory(
-        "${SILIGEN_WORKSPACE_ROOT}/modules/workflow/adapters/infrastructure/adapters/planning/dxf"
-        "${CMAKE_BINARY_DIR}/apps/runtime-service/workflow-dxf-adapter"
+        "${SILIGEN_WORKSPACE_ROOT}/modules/dxf-geometry/adapters/dxf"
+        "${CMAKE_BINARY_DIR}/apps/runtime-service/dxf-geometry-adapter"
     )
 endif()
 
@@ -94,14 +94,13 @@ target_link_libraries(siligen_runtime_process_bootstrap PUBLIC
     siligen_device_contracts
     siligen_job_ingest_application_public
     siligen_workflow_application_public
-    siligen_workflow_adapters_public
     siligen_workflow_recipe_domain_public
     siligen_workflow_recipe_application_public
     siligen_workflow_recipe_serialization_public
     siligen_runtime_execution_application_public
     siligen_trace_diagnostics_application_public
     siligen_parsing_adapter
-    siligen_process_planning_legacy_configuration_bridge_public
+    siligen_process_planning_contracts_public
     siligen_shared
     siligen_types
     siligen_utils

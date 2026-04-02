@@ -1,8 +1,8 @@
 #include "InitializeSystemUseCase.h"
 
-#include "application/usecases/motion/homing/HomeAxesUseCase.h"
 #include "shared/types/Error.h"
 #include "shared/types/Types.h"
+#include "runtime_execution/contracts/motion/IHomeAxesExecutionPort.h"
 
 #include <chrono>
 #include <sstream>
@@ -87,13 +87,13 @@ Result<void> StartHeartbeatWithRetry(
 InitializeSystemUseCase::InitializeSystemUseCase(
     std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port,
     std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
-    std::shared_ptr<Siligen::Application::UseCases::Motion::Homing::HomeAxesUseCase> home_axes_usecase,
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IHomeAxesExecutionPort> home_axes_execution_port,
     std::shared_ptr<Siligen::Domain::Diagnostics::Ports::IDiagnosticsPort> diagnostics_port,
     std::shared_ptr<Siligen::Domain::System::Ports::IEventPublisherPort> event_port,
     std::shared_ptr<Siligen::Application::UseCases::System::IHardLimitMonitor> hard_limit_monitor)
     : config_port_(std::move(config_port)),
       connection_port_(std::move(connection_port)),
-      home_axes_usecase_(std::move(home_axes_usecase)),
+      home_axes_execution_port_(std::move(home_axes_execution_port)),
       diagnostics_port_(std::move(diagnostics_port)),
       event_port_(std::move(event_port)),
       hard_limit_monitor_(std::move(hard_limit_monitor)) {}
@@ -282,16 +282,19 @@ Result<InitializeSystemResponse> InitializeSystemUseCase::Execute(const Initiali
 
     // 3. 回零（可选）
     if (request.auto_home_axes) {
-        if (!home_axes_usecase_) {
+        if (!home_axes_execution_port_) {
             return Result<InitializeSystemResponse>::Failure(
-                Error(ErrorCode::PORT_NOT_INITIALIZED, "Home axes usecase not initialized", "InitializeSystemUseCase"));
+                Error(
+                    ErrorCode::PORT_NOT_INITIALIZED,
+                    "Home axes execution port not initialized",
+                    "InitializeSystemUseCase"));
         }
 
-        Siligen::Application::UseCases::Motion::Homing::HomeAxesRequest home_request;
+        Siligen::RuntimeExecution::Contracts::Motion::HomeAxesExecutionRequest home_request;
         home_request.home_all_axes = true;
         home_request.wait_for_completion = true;
 
-        auto homing_result = home_axes_usecase_->Execute(home_request);
+        auto homing_result = home_axes_execution_port_->Execute(home_request);
         if (homing_result.IsError()) {
             return Result<InitializeSystemResponse>::Failure(homing_result.GetError());
         }

@@ -10,7 +10,7 @@
 #include <memory>
 
 #include "container/ApplicationContainer.h"
-#include "domain/configuration/ports/IConfigurationPort.h"
+#include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "runtime_process_bootstrap/ContainerBootstrap.h"
 #include "runtime_process_bootstrap/WorkspaceAssetPaths.h"
 #include "shared/interfaces/ILoggingService.h"

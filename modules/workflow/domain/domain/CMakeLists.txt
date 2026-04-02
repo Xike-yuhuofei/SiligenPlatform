@@ -3,30 +3,14 @@
 # ============================================================
 
 set(SILIGEN_DOMAIN_INTERFACE_INCLUDE_DIRS
-    ${PROCESS_RUNTIME_CORE_PUBLIC_INCLUDE_DIRS}
+    ${WORKFLOW_MODULE_PUBLIC_INCLUDE_DIRS}
 )
 set(SILIGEN_DOMAIN_IMPLEMENTATION_INCLUDE_DIRS
-    ${PROCESS_RUNTIME_CORE_IMPLEMENTATION_INCLUDE_DIRS}
-)
-
-set(SILIGEN_MOTION_EXECUTION_DOMAIN_MOTION_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/motion"
+    ${WORKFLOW_MODULE_IMPLEMENTATION_INCLUDE_DIRS}
 )
 set(SILIGEN_MOTION_PLANNING_DOMAIN_MOTION_DIR
     "${SILIGEN_WORKSPACE_ROOT}/modules/motion-planning/domain/motion"
 )
-set(SILIGEN_MOTION_EXECUTION_OWNER_IMPLEMENTATION_INCLUDE_DIRS
-    ${SILIGEN_MOTION_EXECUTION_DOMAIN_MOTION_DIR}
-    ${SILIGEN_MOTION_EXECUTION_DOMAIN_MOTION_DIR}/domain-services
-    ${SILIGEN_MOTION_EXECUTION_DOMAIN_MOTION_DIR}/domain-services/interpolation
-    ${SILIGEN_DOMAIN_IMPLEMENTATION_INCLUDE_DIRS}
-)
-if(NOT EXISTS "${SILIGEN_MOTION_EXECUTION_DOMAIN_MOTION_DIR}/domain-services/MotionBufferController.cpp")
-    message(FATAL_ERROR
-        "workflow motion execution target requires workflow motion sources under "
-        "${SILIGEN_MOTION_EXECUTION_DOMAIN_MOTION_DIR}"
-    )
-endif()
 
 # 子域结构（占位，不影响现有构建）
 add_subdirectory(_shared)
@@ -89,13 +73,13 @@ target_link_libraries(siligen_triggering
 )
 
 # 配置管理兼容库
-# workflow 本地 configuration 仅保留兼容 target，真实实现切换到 M4 legacy configuration bridge。
+# workflow 本地 configuration 仅保留兼容 target，真实实现切换到 M4 canonical contracts。
 add_library(siligen_configuration INTERFACE)
 target_include_directories(siligen_configuration INTERFACE
     ${SILIGEN_DOMAIN_INTERFACE_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_configuration INTERFACE
-    siligen_process_planning_legacy_configuration_bridge_public
+    siligen_process_planning_contracts_public
 )
 
 # 导出领域层库目标
@@ -138,58 +122,9 @@ target_link_libraries(siligen_dispensing_execution_services PUBLIC
     siligen_process_core
 )
 target_link_libraries(siligen_dispensing_execution_services PRIVATE
-    siligen_process_runtime_core_json_headers
+    siligen_shared_json_headers
 )
 target_compile_features(siligen_dispensing_execution_services PUBLIC cxx_std_17)
-
-add_library(siligen_workflow_dispensing_planning_compat STATIC
-    dispensing/planning/domain-services/ContourOptimizationService.cpp
-    dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp
-    dispensing/planning/domain-services/DispensingPlannerService.cpp
-)
-target_include_directories(siligen_workflow_dispensing_planning_compat PUBLIC
-    ${SILIGEN_DOMAIN_INTERFACE_INCLUDE_DIRS}
-)
-target_include_directories(siligen_workflow_dispensing_planning_compat PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/dispensing/planning/domain-services
-    ${SILIGEN_DOMAIN_SHARED_IMPLEMENTATION_INCLUDE_DIRS}
-)
-target_link_libraries(siligen_workflow_dispensing_planning_compat PUBLIC
-    siligen_process_runtime_core_boost_headers
-    siligen_types
-    siligen_utils
-    siligen_motion
-    siligen_triggering
-    siligen_configuration
-    siligen_process_path_domain_trajectory
-    siligen_dispensing_execution_services
-    siligen_process_planning_legacy_configuration_bridge_public
-)
-target_compile_features(siligen_workflow_dispensing_planning_compat PUBLIC cxx_std_17)
-
-add_library(siligen_motion_execution_services STATIC
-    # workflow runtime execution must use the workflow-owned motion services.
-    # Pulling the motion-planning HomingProcess here reintroduces an ODR/layout
-    # mismatch because its HomeAxesResponse omits workflow-only fields.
-    ${SILIGEN_MOTION_EXECUTION_DOMAIN_MOTION_DIR}/domain-services/MotionBufferController.cpp
-    ${SILIGEN_MOTION_EXECUTION_DOMAIN_MOTION_DIR}/domain-services/JogController.cpp
-    ${SILIGEN_MOTION_EXECUTION_DOMAIN_MOTION_DIR}/domain-services/HomingProcess.cpp
-    ${SILIGEN_MOTION_EXECUTION_DOMAIN_MOTION_DIR}/domain-services/ReadyZeroDecisionService.cpp
-)
-target_include_directories(siligen_motion_execution_services PUBLIC
-    ${SILIGEN_DOMAIN_INTERFACE_INCLUDE_DIRS}
-)
-target_include_directories(siligen_motion_execution_services PRIVATE
-    ${SILIGEN_MOTION_EXECUTION_OWNER_IMPLEMENTATION_INCLUDE_DIRS}
-    ${SILIGEN_DOMAIN_SHARED_IMPLEMENTATION_INCLUDE_DIRS}
-)
-target_link_libraries(siligen_motion_execution_services PUBLIC
-    siligen_types
-    siligen_utils
-    siligen_motion
-    siligen_motion_core
-)
-target_compile_features(siligen_motion_execution_services PUBLIC cxx_std_17)
 
 add_library(siligen_recipe_domain_services STATIC
     recipes/domain-services/RecipeActivationService.cpp
@@ -219,7 +154,7 @@ target_include_directories(siligen_diagnostics_domain_services PRIVATE
     ${SILIGEN_DOMAIN_SHARED_IMPLEMENTATION_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_diagnostics_domain_services PUBLIC
-    siligen_process_runtime_core_boost_headers
+    siligen_shared_boost_headers
     siligen_types
     siligen_utils
 )
@@ -238,6 +173,7 @@ target_include_directories(siligen_safety_domain_services PRIVATE
     ${SILIGEN_DOMAIN_SHARED_IMPLEMENTATION_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_safety_domain_services PUBLIC
+    siligen_process_planning_contracts_public
     siligen_types
     siligen_utils
     siligen_motion_core
@@ -250,7 +186,6 @@ target_include_directories(siligen_domain_services INTERFACE
 )
 target_link_libraries(siligen_domain_services INTERFACE
     siligen_dispensing_execution_services
-    siligen_motion_execution_services
     siligen_recipe_domain_services
     siligen_diagnostics_domain_services
     siligen_safety_domain_services
@@ -260,7 +195,6 @@ target_compile_features(siligen_domain_services INTERFACE cxx_std_17)
 # 更新导出库列表
 list(APPEND DOMAIN_LIBRARIES
     siligen_dispensing_execution_services
-    siligen_motion_execution_services
     siligen_recipe_domain_services
     siligen_diagnostics_domain_services
     siligen_safety_domain_services
@@ -274,8 +208,6 @@ if(SILIGEN_USE_PCH)
     # target_precompile_headers(siligen_trajectory PRIVATE ${SILIGEN_PCH_HEADER})
     target_precompile_headers(siligen_triggering PRIVATE ${SILIGEN_PCH_HEADER})
     target_precompile_headers(siligen_dispensing_execution_services PRIVATE ${SILIGEN_PCH_HEADER})
-    target_precompile_headers(siligen_workflow_dispensing_planning_compat PRIVATE ${SILIGEN_PCH_HEADER})
-    target_precompile_headers(siligen_motion_execution_services PRIVATE ${SILIGEN_PCH_HEADER})
     target_precompile_headers(siligen_recipe_domain_services PRIVATE ${SILIGEN_PCH_HEADER})
     target_precompile_headers(siligen_diagnostics_domain_services PRIVATE ${SILIGEN_PCH_HEADER})
     target_precompile_headers(siligen_safety_domain_services PRIVATE ${SILIGEN_PCH_HEADER})

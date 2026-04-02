@@ -3,7 +3,7 @@
 #include "domain/motion/domain-services/MotionControlService.h"
 #include "domain/motion/domain-services/MotionStatusService.h"
 #include "domain/motion/domain-services/MotionValidationService.h"
-#include "domain/motion/ports/IMotionRuntimePort.h"
+#include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
 
 #include <memory>
 
@@ -20,7 +20,8 @@ public:
     virtual ~IMotionRuntimeServicesProvider() = default;
 
     virtual MotionRuntimeServicesBundle CreateServices(
-        const std::shared_ptr<Domain::Motion::Ports::IMotionRuntimePort>& motion_runtime_port) const = 0;
+        const std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IMotionRuntimePort>& motion_runtime_port)
+        const = 0;
 };
 
 }  // namespace Siligen::Application::Services::Motion::Runtime

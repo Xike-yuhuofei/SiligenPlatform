@@ -3,8 +3,8 @@
 #include "domain/dispensing/ports/ITriggerControllerPort.h"
 #include "domain/motion/ports/IAdvancedMotionPort.h"
 #include "domain/motion/ports/IAxisControlPort.h"
-#include "domain/motion/ports/IIOControlPort.h"
 #include "domain/motion/ports/IInterpolationPort.h"
+#include "runtime_execution/contracts/motion/IIOControlPort.h"
 #include "shared/types/Error.h"
 #include "shared/types/Result.h"
 #include "shared/types/Point.h"
@@ -40,7 +40,7 @@ struct MotionIOCommand {
 class MotionCoordinationUseCase {
    public:
     MotionCoordinationUseCase(std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port,
-                              std::shared_ptr<Domain::Motion::Ports::IIOControlPort> io_port,
+                              std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort> io_port,
                               std::shared_ptr<Domain::Motion::Ports::IAxisControlPort> axis_control_port = nullptr,
                               std::shared_ptr<Domain::Dispensing::Ports::ITriggerControllerPort> trigger_port = nullptr,
                               std::shared_ptr<Domain::Motion::Ports::IAdvancedMotionPort> advanced_motion_port = nullptr);
@@ -74,7 +74,7 @@ class MotionCoordinationUseCase {
 
    private:
     std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port_;
-    std::shared_ptr<Domain::Motion::Ports::IIOControlPort> io_port_;
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort> io_port_;
     std::shared_ptr<Domain::Motion::Ports::IAxisControlPort> axis_control_port_;
     std::shared_ptr<Domain::Dispensing::Ports::ITriggerControllerPort> trigger_port_;
     std::shared_ptr<Domain::Motion::Ports::IAdvancedMotionPort> advanced_motion_port_;

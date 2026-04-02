@@ -2,8 +2,8 @@
 
 #include "siligen/device/adapters/drivers/multicard/IMultiCardWrapper.h"
 #include "siligen/device/contracts/ports/device_ports.h"
-#include "domain/configuration/ports/IConfigurationPort.h"
-#include "domain/machine/ports/IHardwareTestPort.h"
+#include "runtime_execution/contracts/configuration/IConfigurationPort.h"
+#include "runtime_execution/contracts/system/IHardwareTestPort.h"
 #include "shared/types/HardwareConfiguration.h"
 
 #include <memory>

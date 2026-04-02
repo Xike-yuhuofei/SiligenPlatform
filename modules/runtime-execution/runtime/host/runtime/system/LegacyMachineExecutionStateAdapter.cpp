@@ -1,6 +1,6 @@
 #include "runtime/system/LegacyMachineExecutionStateAdapter.h"
 
-#include "domain/machine/aggregates/DispenserModel.h"
+#include "runtime_execution/application/system/LegacyDispenserModel.h"
 #include "shared/types/Error.h"
 #include "shared/types/Types.h"
 
@@ -9,9 +9,9 @@
 namespace Siligen::Runtime::Host::System {
 namespace {
 
-using Siligen::Domain::Machine::Aggregates::Legacy::DispenserModel;
 using Siligen::RuntimeExecution::Contracts::System::MachineExecutionPhase;
 using Siligen::RuntimeExecution::Contracts::System::MachineExecutionSnapshot;
+using Siligen::RuntimeExecution::Application::System::LegacyDispenserModel;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
@@ -39,22 +39,22 @@ MachineExecutionPhase MapPhase(const Siligen::DispenserState state) {
     }
 }
 
-Result<std::shared_ptr<DispenserModel>> EnsureModel(
-    const std::shared_ptr<DispenserModel>& dispenser_model) {
+Result<std::shared_ptr<LegacyDispenserModel>> EnsureModel(
+    const std::shared_ptr<LegacyDispenserModel>& dispenser_model) {
     if (!dispenser_model) {
-        return Result<std::shared_ptr<DispenserModel>>::Failure(
+        return Result<std::shared_ptr<LegacyDispenserModel>>::Failure(
             Error(ErrorCode::PORT_NOT_INITIALIZED, "machine execution state model not initialized", kErrorSource));
     }
-    return Result<std::shared_ptr<DispenserModel>>::Success(dispenser_model);
+    return Result<std::shared_ptr<LegacyDispenserModel>>::Success(dispenser_model);
 }
 
 }  // namespace
 
 LegacyMachineExecutionStateAdapter::LegacyMachineExecutionStateAdapter()
-    : dispenser_model_(std::make_shared<DispenserModel>()) {}
+    : dispenser_model_(std::make_shared<LegacyDispenserModel>()) {}
 
 LegacyMachineExecutionStateAdapter::LegacyMachineExecutionStateAdapter(
-    std::shared_ptr<DispenserModel> dispenser_model)
+    std::shared_ptr<LegacyDispenserModel> dispenser_model)
     : dispenser_model_(std::move(dispenser_model)) {}
 
 Result<MachineExecutionSnapshot> LegacyMachineExecutionStateAdapter::ReadSnapshot() const {

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "application/usecases/dispensing/PlanningUseCase.h"
 #include "job_ingest/contracts/dispensing/UploadContracts.h"
 #include "domain/motion/ports/IHomingPort.h"
@@ -10,6 +9,7 @@
 #include "shared/types/Error.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
+#include "workflow/contracts/WorkflowExecutionPort.h"
 
 #include <atomic>
 #include <chrono>
@@ -26,6 +26,7 @@ namespace Siligen::Application::UseCases::Dispensing {
 
 using ArtifactID = std::string;
 using PlanID = std::string;
+using JobID = Siligen::Workflow::Contracts::WorkflowJobId;
 
 struct CreateArtifactResponse {
     bool success = false;
@@ -37,31 +38,7 @@ struct CreateArtifactResponse {
     int64_t timestamp = 0;
 };
 
-struct PreparePlanRuntimeOverrides {
-    std::string source_path;
-    bool use_hardware_trigger = true;
-    bool dry_run = false;
-    std::optional<Domain::Machine::ValueObjects::MachineMode> machine_mode;
-    std::optional<Domain::Dispensing::ValueObjects::JobExecutionMode> execution_mode;
-    std::optional<Domain::Dispensing::ValueObjects::ProcessOutputPolicy> output_policy;
-    float32 max_jerk = 0.0f;
-    float32 arc_tolerance_mm = 0.0f;
-    std::optional<float32> dispensing_speed_mm_s;
-    std::optional<float32> dry_run_speed_mm_s;
-    std::optional<float32> rapid_speed_mm_s;
-    std::optional<float32> acceleration_mm_s2;
-    bool velocity_trace_enabled = false;
-    int32 velocity_trace_interval_ms = 0;
-    std::string velocity_trace_path;
-    bool velocity_guard_enabled = true;
-    float32 velocity_guard_ratio = 0.3f;
-    float32 velocity_guard_abs_mm_s = 5.0f;
-    float32 velocity_guard_min_expected_mm_s = 5.0f;
-    int32 velocity_guard_grace_ms = 800;
-    int32 velocity_guard_interval_ms = 200;
-    int32 velocity_guard_max_consecutive = 3;
-    bool velocity_guard_stop_on_violation = false;
-};
+using PreparePlanRuntimeOverrides = Siligen::Workflow::Contracts::WorkflowExecutionRuntimeOverrides;
 
 struct PreparePlanRequest {
     ArtifactID artifact_id;
@@ -165,7 +142,7 @@ class DispensingWorkflowUseCase {
     DispensingWorkflowUseCase(
         std::shared_ptr<IUploadFilePort> upload_use_case,
         std::shared_ptr<PlanningUseCase> planning_use_case,
-        std::shared_ptr<DispensingExecutionUseCase> execution_use_case,
+        std::shared_ptr<Siligen::Workflow::Contracts::IWorkflowExecutionPort> execution_port,
         std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
         std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port,
         std::shared_ptr<Domain::Motion::Ports::IHomingPort> homing_port = nullptr,
@@ -189,14 +166,11 @@ class DispensingWorkflowUseCase {
     bool IsInterlockLatched() const;
 
    private:
+    using PlanExecutionLaunch = Siligen::Workflow::Contracts::WorkflowExecutionLaunch;
+
     struct ArtifactRecord {
         CreateArtifactResponse response;
         UploadResponse upload_response;
-    };
-
-    struct PlanExecutionLaunch {
-        Domain::Dispensing::Contracts::ExecutionPackageValidated execution_package;
-        PreparePlanRuntimeOverrides runtime_overrides;
     };
 
     struct PlanRecord {
@@ -238,7 +212,7 @@ class DispensingWorkflowUseCase {
 
     std::shared_ptr<IUploadFilePort> upload_use_case_;
     std::shared_ptr<PlanningUseCase> planning_use_case_;
-    std::shared_ptr<DispensingExecutionUseCase> execution_use_case_;
+    std::shared_ptr<Siligen::Workflow::Contracts::IWorkflowExecutionPort> execution_port_;
     std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port_;
     std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port_;
     std::shared_ptr<Domain::Motion::Ports::IHomingPort> homing_port_;
@@ -256,7 +230,11 @@ class DispensingWorkflowUseCase {
 
     PreviewSnapshotResponse BuildPreviewSnapshotResponse(const PlanRecord& plan_record, std::size_t max_polyline_points);
     std::string GenerateId(const char* prefix);
-    DispensingExecutionRequest BuildExecutionRequest(const PlanExecutionLaunch& launch) const;
+    Siligen::Workflow::Contracts::WorkflowExecutionStartRequest BuildExecutionStartRequest(
+        const PlanID& plan_id,
+        const std::string& plan_fingerprint,
+        std::uint32_t target_count,
+        const PlanExecutionLaunch& launch) const;
     std::string BuildPlanFingerprint(
         const ArtifactID& artifact_id,
         const PlanningResponse& planning,
@@ -270,7 +248,7 @@ class DispensingWorkflowUseCase {
     void ReleaseConfirmedPreviewForPlan(const PlanID& plan_id, const JobID* runtime_job_id = nullptr) const;
     void SyncPlanStateFromRuntimeStatus(
         const JobID& job_id,
-        const RuntimeJobStatusResponse& runtime_status) const;
+        const Siligen::Workflow::Contracts::WorkflowExecutionStatus& runtime_status) const;
 };
 
 }  // namespace Siligen::Application::UseCases::Dispensing

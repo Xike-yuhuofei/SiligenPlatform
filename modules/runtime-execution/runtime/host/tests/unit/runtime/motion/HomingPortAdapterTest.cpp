@@ -1,6 +1,6 @@
 #include "siligen/device/adapters/motion/HomingPortAdapter.h"
 
-#include "domain/configuration/ports/IConfigurationPort.h"
+#include "runtime_execution/contracts/configuration/IConfigurationPort.h"
 #include "siligen/device/adapters/drivers/multicard/MockMultiCard.h"
 #include "siligen/device/adapters/drivers/multicard/MockMultiCardWrapper.h"
 #include "shared/types/HardwareConfiguration.h"

@@ -1,11 +1,11 @@
 #pragma once
 
 #include "domain/motion/ports/IAxisControlPort.h"
-#include "domain/motion/ports/IIOControlPort.h"
 #include "domain/motion/ports/IJogControlPort.h"
 #include "domain/motion/ports/IMotionConnectionPort.h"
 #include "domain/motion/ports/IMotionStatePort.h"
 #include "domain/motion/ports/IPositionControlPort.h"
+#include "runtime_execution/contracts/motion/IIOControlPort.h"
 #include "shared/types/HardwareConfiguration.h"
 #include "shared/types/DiagnosticsConfig.h"
 #include "siligen/device/adapters/drivers/multicard/IMultiCardWrapper.h"
@@ -38,7 +38,7 @@ class MultiCardMotionAdapter : public Siligen::Domain::Motion::Ports::IMotionCon
                                public Siligen::Domain::Motion::Ports::IPositionControlPort,
                                public Siligen::Domain::Motion::Ports::IMotionStatePort,
                                public Siligen::Domain::Motion::Ports::IJogControlPort,
-                               public Siligen::Domain::Motion::Ports::IIOControlPort {
+                               public Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort {
    public:
     /**
      * @brief 构造函数
@@ -119,8 +119,8 @@ class MultiCardMotionAdapter : public Siligen::Domain::Motion::Ports::IMotionCon
     Result<void> SetHardLimitPolarity(LogicalAxisId axis, short positive_polarity, short negative_polarity) override;
 
     // IO控制 (IIOControlPort)
-    Result<Siligen::Domain::Motion::Ports::IOStatus> ReadDigitalInput(int16 channel) override;
-    Result<Siligen::Domain::Motion::Ports::IOStatus> ReadDigitalOutput(int16 channel) override;
+    Result<Siligen::RuntimeExecution::Contracts::Motion::IOStatus> ReadDigitalInput(int16 channel) override;
+    Result<Siligen::RuntimeExecution::Contracts::Motion::IOStatus> ReadDigitalOutput(int16 channel) override;
     Result<void> WriteDigitalOutput(int16 channel, bool value) override;
     Result<bool> ReadLimitStatus(LogicalAxisId axis, bool positive) override;
     Result<bool> ReadServoAlarm(LogicalAxisId axis) override;

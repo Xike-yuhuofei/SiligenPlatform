@@ -2,7 +2,7 @@
 
 #include "siligen/device/adapters/drivers/multicard/IMultiCardWrapper.h"
 #include "siligen/device/contracts/ports/device_ports.h"
-#include "domain/machine/ports/IHardwareConnectionPort.h"
+#include "runtime_execution/contracts/system/IHardwareConnectionPort.h"
 #include "shared/types/Error.h"
 #include "shared/types/HardwareConfiguration.h"
 #include "shared/types/Types.h"

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/configuration/ports/IConfigurationPort.h"
+#include "runtime_execution/contracts/configuration/IConfigurationPort.h"
 #include "domain/motion/ports/IHomingPort.h"
 #include "domain/motion/value-objects/HardwareTestTypes.h"
 #include "siligen/device/adapters/drivers/multicard/IMultiCardWrapper.h"

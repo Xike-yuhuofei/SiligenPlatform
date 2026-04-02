@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/machine/ports/IHardwareTestPort.h"
+#include "runtime_execution/contracts/system/IHardwareTestPort.h"
 #include "domain/dispensing/ports/ITriggerControllerPort.h"
 #include "domain/motion/value-objects/HardwareTestTypes.h"
 #include "shared/types/Result.h"

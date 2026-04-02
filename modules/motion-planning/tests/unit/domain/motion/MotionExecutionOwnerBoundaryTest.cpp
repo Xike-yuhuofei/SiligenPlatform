@@ -1,7 +1,8 @@
-#include "domain/motion/domain-services/HomingProcess.h"
-#include "domain/motion/domain-services/JogController.h"
-#include "domain/motion/domain-services/MotionBufferController.h"
-#include "domain/motion/domain-services/ReadyZeroDecisionService.h"
+#include "runtime_execution/application/services/motion/HomingProcess.h"
+#include "runtime_execution/application/services/motion/JogController.h"
+#include "runtime_execution/application/services/motion/MotionBufferController.h"
+#include "runtime_execution/application/services/motion/ReadyZeroDecisionService.h"
+#include "runtime_execution/application/usecases/motion/homing/HomeAxesUseCase.h"
 
 #include <gtest/gtest.h>
 
@@ -47,9 +48,12 @@ std::size_t CountOccurrences(const std::string& haystack, const std::string& nee
     return count;
 }
 
-TEST(MotionExecutionOwnerBoundaryTest, LegacyExecutionHeadersRemainResolvableAndExposeWorkflowLayout) {
-    using Siligen::Domain::Motion::MotionBufferController;
-    using namespace Siligen::Domain::Motion::DomainServices;
+TEST(MotionExecutionOwnerBoundaryTest, RuntimeExecutionCanonicalHeadersRemainResolvable) {
+    using Siligen::Application::UseCases::Motion::Homing::HomeAxesResponse;
+    using Siligen::RuntimeExecution::Application::Services::Motion::HomingProcess;
+    using Siligen::RuntimeExecution::Application::Services::Motion::JogController;
+    using Siligen::RuntimeExecution::Application::Services::Motion::MotionBufferController;
+    using Siligen::RuntimeExecution::Application::Services::Motion::ReadyZeroDecisionService;
 
     static_assert(std::is_class_v<HomingProcess>);
     static_assert(std::is_class_v<JogController>);
@@ -61,44 +65,41 @@ TEST(MotionExecutionOwnerBoundaryTest, LegacyExecutionHeadersRemainResolvableAnd
         std::vector<HomeAxesResponse::AxisResult>>));
 }
 
-TEST(MotionExecutionOwnerBoundaryTest, MotionPlanningExecutionHeadersAreThinCompatibilityShims) {
+TEST(MotionExecutionOwnerBoundaryTest, MotionPlanningLegacyExecutionHeadersAreRemoved) {
     const fs::path repo_root = RepoRoot();
-    const std::array<std::pair<fs::path, std::string>, 4> expectations = {{
-        {repo_root / "modules/motion-planning/domain/motion/domain-services/HomingProcess.h",
-         "#include \"../../../../workflow/domain/include/domain/motion/domain-services/HomingProcess.h\""},
-        {repo_root / "modules/motion-planning/domain/motion/domain-services/JogController.h",
-         "#include \"../../../../workflow/domain/include/domain/motion/domain-services/JogController.h\""},
-        {repo_root / "modules/motion-planning/domain/motion/domain-services/MotionBufferController.h",
-         "#include \"../../../../workflow/domain/include/domain/motion/domain-services/MotionBufferController.h\""},
-        {repo_root / "modules/motion-planning/domain/motion/domain-services/ReadyZeroDecisionService.h",
-         "#include \"../../../../workflow/domain/include/domain/motion/domain-services/ReadyZeroDecisionService.h\""},
+    const std::array<fs::path, 6> legacy_headers = {{
+        repo_root / "modules/motion-planning/domain/motion/domain-services/HomingProcess.h",
+        repo_root / "modules/motion-planning/domain/motion/domain-services/JogController.h",
+        repo_root / "modules/motion-planning/domain/motion/domain-services/MotionBufferController.h",
+        repo_root / "modules/motion-planning/domain/motion/domain-services/ReadyZeroDecisionService.h",
+        repo_root / "modules/motion-planning/domain/motion/domain-services/MotionControlServiceImpl.h",
+        repo_root / "modules/motion-planning/domain/motion/domain-services/MotionStatusServiceImpl.h",
     }};
 
-    for (const auto& [path, include_line] : expectations) {
-        const std::string content = ReadTextFile(path);
-        EXPECT_NE(content.find("Legacy compatibility shim"), std::string::npos) << path.string();
-        EXPECT_NE(content.find(include_line), std::string::npos) << path.string();
+    for (const auto& header : legacy_headers) {
+        EXPECT_FALSE(fs::exists(header)) << header.string();
     }
 }
 
-TEST(MotionExecutionOwnerBoundaryTest, WorkflowLegacyRuntimeConcreteHeadersRemainThinShims) {
+TEST(MotionExecutionOwnerBoundaryTest, WorkflowLegacyExecutionHeadersAreRemoved) {
     const fs::path repo_root = RepoRoot();
-    const std::array<std::pair<fs::path, std::string>, 4> expectations = {{
-        {repo_root / "modules/workflow/domain/domain/motion/domain-services/MotionControlServiceImpl.h",
-         "#include \"../../../include/domain/motion/domain-services/MotionControlServiceImpl.h\""},
-        {repo_root / "modules/workflow/domain/domain/motion/domain-services/MotionStatusServiceImpl.h",
-         "#include \"../../../include/domain/motion/domain-services/MotionStatusServiceImpl.h\""},
-        {repo_root / "modules/workflow/domain/include/domain/motion/domain-services/MotionControlServiceImpl.h",
-         "#include \"runtime_execution/application/services/motion/MotionControlServiceImpl.h\""},
-        {repo_root / "modules/workflow/domain/include/domain/motion/domain-services/MotionStatusServiceImpl.h",
-         "#include \"runtime_execution/application/services/motion/MotionStatusServiceImpl.h\""},
+    const std::array<fs::path, 12> legacy_headers = {{
+        repo_root / "modules/workflow/domain/include/domain/motion/domain-services/HomingProcess.h",
+        repo_root / "modules/workflow/domain/include/domain/motion/domain-services/JogController.h",
+        repo_root / "modules/workflow/domain/include/domain/motion/domain-services/MotionBufferController.h",
+        repo_root / "modules/workflow/domain/include/domain/motion/domain-services/ReadyZeroDecisionService.h",
+        repo_root / "modules/workflow/domain/include/domain/motion/domain-services/MotionControlServiceImpl.h",
+        repo_root / "modules/workflow/domain/include/domain/motion/domain-services/MotionStatusServiceImpl.h",
+        repo_root / "modules/workflow/domain/domain/motion/domain-services/HomingProcess.h",
+        repo_root / "modules/workflow/domain/domain/motion/domain-services/JogController.h",
+        repo_root / "modules/workflow/domain/domain/motion/domain-services/MotionBufferController.h",
+        repo_root / "modules/workflow/domain/domain/motion/domain-services/ReadyZeroDecisionService.h",
+        repo_root / "modules/workflow/domain/domain/motion/domain-services/MotionControlServiceImpl.h",
+        repo_root / "modules/workflow/domain/domain/motion/domain-services/MotionStatusServiceImpl.h",
     }};
 
-    for (const auto& [path, include_line] : expectations) {
-        const std::string content = ReadTextFile(path);
-        EXPECT_NE(content.find("Runtime concrete owner lives in runtime-execution"), std::string::npos)
-            << path.string();
-        EXPECT_NE(content.find(include_line), std::string::npos) << path.string();
+    for (const auto& header : legacy_headers) {
+        EXPECT_FALSE(fs::exists(header)) << header.string();
     }
 }
 
@@ -130,23 +131,16 @@ TEST(MotionExecutionOwnerBoundaryTest, NonOwnerRuntimeConcreteImplementationsAre
     }
 }
 
-TEST(MotionExecutionOwnerBoundaryTest, WorkflowExecutionTargetOnlyUsesWorkflowOwnerSources) {
+TEST(MotionExecutionOwnerBoundaryTest, WorkflowNoLongerDefinesMotionExecutionCompatibilityTarget) {
     const fs::path repo_root = RepoRoot();
     const std::string workflow_cmake =
         ReadTextFile(repo_root / "modules/workflow/domain/domain/CMakeLists.txt");
 
-    EXPECT_NE(workflow_cmake.find("add_library(siligen_motion_execution_services STATIC"), std::string::npos);
-    EXPECT_NE(workflow_cmake.find("${SILIGEN_MOTION_EXECUTION_DOMAIN_MOTION_DIR}/domain-services/MotionBufferController.cpp"),
-              std::string::npos);
-    EXPECT_NE(workflow_cmake.find("${SILIGEN_MOTION_EXECUTION_DOMAIN_MOTION_DIR}/domain-services/JogController.cpp"),
-              std::string::npos);
-    EXPECT_NE(workflow_cmake.find("${SILIGEN_MOTION_EXECUTION_DOMAIN_MOTION_DIR}/domain-services/HomingProcess.cpp"),
-              std::string::npos);
-    EXPECT_NE(workflow_cmake.find("${SILIGEN_MOTION_EXECUTION_DOMAIN_MOTION_DIR}/domain-services/ReadyZeroDecisionService.cpp"),
-              std::string::npos);
+    EXPECT_EQ(workflow_cmake.find("add_library(siligen_motion_execution_services STATIC"), std::string::npos);
+    EXPECT_NE(workflow_cmake.find("target_link_libraries(siligen_domain_services INTERFACE"), std::string::npos);
+    EXPECT_EQ(workflow_cmake.find("siligen_motion_execution_services"), std::string::npos);
     EXPECT_EQ(workflow_cmake.find("MotionControlServiceImpl.cpp"), std::string::npos);
     EXPECT_EQ(workflow_cmake.find("MotionStatusServiceImpl.cpp"), std::string::npos);
-    EXPECT_EQ(workflow_cmake.find("motion-planning/domain/motion/domain-services"), std::string::npos);
 }
 
 TEST(MotionExecutionOwnerBoundaryTest, RuntimeExecutionApplicationTargetOwnsConcreteMotionSources) {
@@ -156,10 +150,20 @@ TEST(MotionExecutionOwnerBoundaryTest, RuntimeExecutionApplicationTargetOwnsConc
 
     EXPECT_NE(runtime_cmake.find("set_target_properties(siligen_runtime_execution_application PROPERTIES"),
               std::string::npos);
+    EXPECT_NE(runtime_cmake.find("add_library(siligen_runtime_execution_motion_services STATIC"),
+              std::string::npos);
     EXPECT_NE(runtime_cmake.find("SILIGEN_TARGET_TOPOLOGY_OWNER_ROOT \"modules/runtime-execution\""),
               std::string::npos);
+    EXPECT_EQ(CountOccurrences(runtime_cmake, "MotionBufferController.cpp"), 1U);
+    EXPECT_EQ(CountOccurrences(runtime_cmake, "JogController.cpp"), 1U);
+    EXPECT_EQ(CountOccurrences(runtime_cmake, "HomingProcess.cpp"), 1U);
+    EXPECT_EQ(CountOccurrences(runtime_cmake, "ReadyZeroDecisionService.cpp"), 1U);
     EXPECT_EQ(CountOccurrences(runtime_cmake, "MotionControlServiceImpl.cpp"), 1U);
     EXPECT_EQ(CountOccurrences(runtime_cmake, "MotionStatusServiceImpl.cpp"), 1U);
+    EXPECT_NE(runtime_cmake.find("services/motion/MotionBufferController.cpp"), std::string::npos);
+    EXPECT_NE(runtime_cmake.find("services/motion/JogController.cpp"), std::string::npos);
+    EXPECT_NE(runtime_cmake.find("services/motion/HomingProcess.cpp"), std::string::npos);
+    EXPECT_NE(runtime_cmake.find("services/motion/ReadyZeroDecisionService.cpp"), std::string::npos);
     EXPECT_NE(runtime_cmake.find("services/motion/MotionControlServiceImpl.cpp"), std::string::npos);
     EXPECT_NE(runtime_cmake.find("services/motion/MotionStatusServiceImpl.cpp"), std::string::npos);
     EXPECT_EQ(runtime_cmake.find("domain/motion/domain-services/MotionControlServiceImpl.cpp"), std::string::npos);
@@ -179,6 +183,17 @@ TEST(MotionExecutionOwnerBoundaryTest, PlanningTargetRetainsPlanningOwnersButNot
     EXPECT_EQ(planning_cmake.find("domain-services/ReadyZeroDecisionService.cpp"), std::string::npos);
     EXPECT_EQ(planning_cmake.find("domain-services/MotionControlServiceImpl.cpp"), std::string::npos);
     EXPECT_EQ(planning_cmake.find("domain-services/MotionStatusServiceImpl.cpp"), std::string::npos);
+}
+
+TEST(MotionExecutionOwnerBoundaryTest, WorkflowDomainRootNoLongerLinksMachineCompatibilityTarget) {
+    const fs::path repo_root = RepoRoot();
+    const std::string workflow_domain_root =
+        ReadTextFile(repo_root / "modules/workflow/domain/CMakeLists.txt");
+    const std::string workflow_machine_cmake =
+        ReadTextFile(repo_root / "modules/workflow/domain/domain/machine/CMakeLists.txt");
+
+    EXPECT_EQ(workflow_domain_root.find("domain_machine"), std::string::npos);
+    EXPECT_EQ(workflow_machine_cmake.find("add_library(domain_machine STATIC"), std::string::npos);
 }
 
 }  // namespace

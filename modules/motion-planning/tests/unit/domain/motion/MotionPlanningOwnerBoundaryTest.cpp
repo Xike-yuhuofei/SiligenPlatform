@@ -205,7 +205,7 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowPlanningImplementationsAreRemoved)
 TEST(MotionPlanningOwnerBoundaryTest, WorkflowCmpPrecisionTestUsesContractsProcessPathSemantics) {
     const fs::path repo_root = RepoRoot();
     const std::string workflow_cmp_test = ReadTextFile(
-        repo_root / "modules/workflow/tests/process-runtime-core/unit/domain/motion/CMPCoordinatedInterpolatorPrecisionTest.cpp");
+        repo_root / "modules/workflow/tests/unit/domain/motion/CMPCoordinatedInterpolatorPrecisionTest.cpp");
 
     EXPECT_NE(workflow_cmp_test.find("using Siligen::ProcessPath::Contracts::ProcessPath;"), std::string::npos);
     EXPECT_NE(workflow_cmp_test.find("using Siligen::ProcessPath::Contracts::ArcPrimitive;"), std::string::npos);
@@ -215,7 +215,7 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowCmpPrecisionTestUsesContractsProce
 TEST(MotionPlanningOwnerBoundaryTest, InterpolationProgramPlannerConsumersUseContractsProcessPathSemantics) {
     const fs::path repo_root = RepoRoot();
     const std::array<fs::path, 4> sources = {{
-        repo_root / "modules/workflow/tests/process-runtime-core/unit/domain/trajectory/InterpolationProgramPlannerTest.cpp",
+        repo_root / "modules/workflow/tests/unit/domain/trajectory/InterpolationProgramPlannerTest.cpp",
         repo_root / "modules/workflow/application/usecases/motion/trajectory/DeterministicPathExecutionUseCase.cpp",
         repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp",
         repo_root / "modules/dispense-packaging/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp",

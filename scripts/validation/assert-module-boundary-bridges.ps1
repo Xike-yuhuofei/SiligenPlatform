@@ -101,6 +101,8 @@ $allowedDirectWorkflowReferences = @(
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/workflow/CMakeLists.txt"),
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/runtime-execution/CMakeLists.txt"),
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/runtime-execution/runtime/host/CMakeLists.txt"),
+    (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/runtime-execution/runtime/host/tests/CMakeLists.txt"),
+    (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/workflow/tests/unit/CMakeLists.txt"),
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "apps/runtime-service/CMakeLists.txt"),
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/dxf-geometry/CMakeLists.txt"),
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/job-ingest/CMakeLists.txt"),
@@ -121,15 +123,11 @@ $requiredBridgeReferences = @(
     },
     @{
         path = "modules/workflow/application/CMakeLists.txt"
-        pattern = "../../runtime-execution/application/include"
-        },
-    @{
-        path = "modules/workflow/application/CMakeLists.txt"
-        pattern = "siligen_runtime_execution_application_public"
+        pattern = "siligen_runtime_execution_runtime_contracts"
     },
     @{
         path = "modules/workflow/application/CMakeLists.txt"
-        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
+        pattern = "siligen_process_planning_contracts_public"
     },
     @{
         path = "modules/workflow/application/CMakeLists.txt"
@@ -141,7 +139,7 @@ $requiredBridgeReferences = @(
     },
     @{
         path = "modules/workflow/domain/domain/CMakeLists.txt"
-        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
+        pattern = "siligen_process_planning_contracts_public"
     },
     @{
         path = "modules/workflow/domain/domain/CMakeLists.txt"
@@ -165,7 +163,11 @@ $requiredBridgeReferences = @(
     },
     @{
         path = "modules/job-ingest/CMakeLists.txt"
-        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
+        pattern = "siligen_process_planning_contracts_public"
+    },
+    @{
+        path = "modules/dxf-geometry/CMakeLists.txt"
+        pattern = "siligen_process_planning_contracts_public"
     },
     @{
         path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
@@ -185,7 +187,7 @@ $requiredBridgeReferences = @(
     },
     @{
         path = "modules/runtime-execution/application/CMakeLists.txt"
-        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
+        pattern = "siligen_process_planning_contracts_public"
     },
     @{
         path = "modules/process-path/application/CMakeLists.txt"
@@ -209,7 +211,7 @@ $requiredBridgeReferences = @(
     },
     @{
         path = "modules/runtime-execution/adapters/device/CMakeLists.txt"
-        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
+        pattern = "siligen_process_planning_contracts_public"
     },
     @{
         path = "modules/runtime-execution/runtime/host/runtime/events/CMakeLists.txt"
@@ -245,11 +247,11 @@ $requiredBridgeReferences = @(
     },
     @{
         path = "apps/runtime-service/CMakeLists.txt"
-        pattern = "siligen_workflow_application_public"
+        pattern = "siligen_process_planning_contracts_public"
     },
     @{
         path = "apps/runtime-service/CMakeLists.txt"
-        pattern = "siligen_workflow_adapters_public"
+        pattern = "siligen_workflow_application_public"
     },
     @{
         path = "apps/runtime-service/CMakeLists.txt"
@@ -285,15 +287,11 @@ $requiredBridgeReferences = @(
     },
     @{
         path = "apps/planner-cli/CMakeLists.txt"
-        pattern = "siligen_workflow_adapters_public"
-    },
-    @{
-        path = "apps/planner-cli/CMakeLists.txt"
         pattern = "siligen_topology_feature_legacy_contour_bridge_public"
     },
     @{
         path = "apps/planner-cli/CMakeLists.txt"
-        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
+        pattern = "siligen_process_planning_contracts_public"
     },
     @{
         path = "apps/planner-cli/main.cpp"
@@ -306,6 +304,10 @@ $requiredBridgeReferences = @(
     @{
         path = "apps/runtime-gateway/CMakeLists.txt"
         pattern = "siligen_runtime_process_bootstrap_public"
+    },
+    @{
+        path = "apps/runtime-gateway/CMakeLists.txt"
+        pattern = "siligen_process_planning_contracts_public"
     },
     @{
         path = "apps/runtime-gateway/main.cpp"
@@ -341,7 +343,7 @@ $requiredBridgeReferences = @(
     },
     @{
         path = "apps/runtime-gateway/transport-gateway/CMakeLists.txt"
-        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
+        pattern = "siligen_process_planning_contracts_public"
     },
     @{
         path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
@@ -349,7 +351,7 @@ $requiredBridgeReferences = @(
     },
     @{
         path = "modules/dispense-packaging/domain/dispensing/CMakeLists.txt"
-        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
+        pattern = "siligen_process_planning_contracts_public"
     },
     @{
         path = "apps/runtime-service/tests/CMakeLists.txt"
@@ -363,9 +365,7 @@ $requiredBridgeReferences = @(
 
 $directWorkflowTargets = @(
     "siligen_workflow_domain_public",
-    "siligen_workflow_application_public",
-    "siligen_workflow_adapters_public",
-    "siligen_workflow_runtime_consumer_public"
+    "siligen_workflow_application_public"
 )
 
 $recipeCanonicalUseCaseHeaderDir = Resolve-AbsolutePath -BasePath $repoRoot -PathValue `
@@ -376,6 +376,93 @@ $recipeCanonicalSerializerHeader = Resolve-AbsolutePath -BasePath $repoRoot -Pat
     "modules/workflow/adapters/include/workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
 $recipeLegacySerializerHeader = Resolve-AbsolutePath -BasePath $repoRoot -PathValue `
     "modules/workflow/adapters/include/recipes/serialization/RecipeJsonSerializer.h"
+$removedConfigurationCompatPaths = @(
+    @{
+        path = "modules/process-planning/contracts/legacy-bridge/include/domain/configuration/ports/IConfigurationPort.h"
+        rule_id = "process-planning-legacy-configuration-bridge-header-must-be-removed"
+        detail = "process-planning legacy configuration bridge header must be removed after canonical contract cutover"
+    },
+    @{
+        path = "modules/process-planning/domain/configuration/ports/IConfigurationPort.h"
+        rule_id = "process-planning-configuration-port-wrapper-must-be-removed"
+        detail = "process-planning domain configuration must not retain the deprecated configuration port wrapper"
+    },
+    @{
+        path = "modules/process-planning/domain/configuration/ports/IFileStoragePort.h"
+        rule_id = "process-planning-legacy-file-storage-wrapper-must-be-removed"
+        detail = "process-planning domain configuration must not retain the job-ingest file-storage wrapper"
+    },
+    @{
+        path = "modules/process-planning/domain/configuration/ports/ValveConfig.h"
+        rule_id = "process-planning-valve-config-wrapper-must-be-removed"
+        detail = "process-planning domain configuration must not retain the deprecated valve configuration wrapper"
+    },
+    @{
+        path = "modules/process-planning/domain/configuration/services/ReadyZeroSpeedResolver.h"
+        rule_id = "process-planning-ready-zero-wrapper-must-be-removed"
+        detail = "process-planning domain configuration must not retain the deprecated ready-zero compatibility wrapper"
+    },
+    @{
+        path = "modules/process-planning/domain/configuration/value-objects/ConfigTypes.h"
+        rule_id = "process-planning-config-types-wrapper-must-be-removed"
+        detail = "process-planning domain configuration must not retain the deprecated ConfigTypes wrapper"
+    },
+    @{
+        path = "modules/workflow/domain/include/domain/configuration/ports/IConfigurationPort.h"
+        rule_id = "workflow-public-configuration-port-wrapper-must-be-removed"
+        detail = "workflow public configuration port wrapper must be removed after canonical contract cutover"
+    },
+    @{
+        path = "modules/workflow/domain/include/domain/configuration/ports/IFileStoragePort.h"
+        rule_id = "workflow-public-file-storage-wrapper-must-be-removed"
+        detail = "workflow public file-storage wrapper must be removed after canonical job-ingest contract cutover"
+    },
+    @{
+        path = "modules/workflow/domain/include/domain/configuration/ports/ValveConfig.h"
+        rule_id = "workflow-public-valve-config-wrapper-must-be-removed"
+        detail = "workflow public valve configuration wrapper must be removed after canonical contract cutover"
+    },
+    @{
+        path = "modules/workflow/domain/include/domain/configuration/services/ReadyZeroSpeedResolver.h"
+        rule_id = "workflow-public-ready-zero-wrapper-must-be-removed"
+        detail = "workflow public ready-zero wrapper must be removed after canonical contract cutover"
+    },
+    @{
+        path = "modules/workflow/domain/domain/configuration/ports/IConfigurationPort.h"
+        rule_id = "workflow-private-configuration-port-wrapper-must-be-removed"
+        detail = "workflow private configuration port wrapper must be removed after canonical contract cutover"
+    },
+    @{
+        path = "modules/workflow/domain/domain/configuration/ports/IFileStoragePort.h"
+        rule_id = "workflow-private-file-storage-wrapper-must-be-removed"
+        detail = "workflow private file-storage wrapper must be removed after canonical job-ingest contract cutover"
+    },
+    @{
+        path = "modules/workflow/domain/domain/configuration/ports/ValveConfig.h"
+        rule_id = "workflow-private-valve-config-wrapper-must-be-removed"
+        detail = "workflow private valve configuration wrapper must be removed after canonical contract cutover"
+    },
+    @{
+        path = "modules/workflow/domain/domain/configuration/value-objects/ConfigTypes.h"
+        rule_id = "workflow-private-config-types-wrapper-must-be-removed"
+        detail = "workflow private ConfigTypes wrapper must be removed after canonical process-planning cutover"
+    },
+    @{
+        path = "modules/runtime-execution/runtime/host/ContainerBootstrap.h"
+        rule_id = "runtime-host-bootstrap-forwarder-must-be-removed"
+        detail = "runtime-execution host must not retain the deprecated ContainerBootstrap forwarder after app-local bootstrap cutover"
+    },
+    @{
+        path = "modules/runtime-execution/runtime/host/runtime/configuration/WorkspaceAssetPaths.h"
+        rule_id = "runtime-host-workspace-asset-paths-forwarder-must-be-removed"
+        detail = "runtime-execution host must not retain the deprecated WorkspaceAssetPaths forwarder after app-local bootstrap cutover"
+    },
+    @{
+        path = "modules/workflow/tests/process-runtime-core"
+        rule_id = "workflow-legacy-tests-root-must-be-removed"
+        detail = "workflow legacy process-runtime-core tests root must be physically removed after unit test cutover"
+    }
+)
 
 $forbiddenCompatReferences = @(
     @{
@@ -812,7 +899,7 @@ $forbiddenOwnershipReferences = @(
         detail = "workflow DXF service wrapper must include dxf_geometry/application/services/dxf/DxfPbPreparationService.h instead of a relative owner path"
     },
     @{
-        path = "modules/workflow/tests/process-runtime-core/CMakeLists.txt"
+        path = "modules/workflow/tests/unit/CMakeLists.txt"
         pattern = "unit/dispensing/UploadFileUseCaseTest.cpp"
         rule_id = "workflow-still-owns-upload-tests"
         detail = "workflow tests must not compile Upload/PB owner tests"
@@ -872,43 +959,43 @@ $forbiddenOwnershipReferences = @(
         detail = "workflow bridge domain must not compile process-path planning implementations"
     },
     @{
-        path = "modules/workflow/tests/process-runtime-core/CMakeLists.txt"
+        path = "modules/workflow/tests/unit/CMakeLists.txt"
         pattern = "unit/domain/dispensing/DispensingControllerTest.cpp"
         rule_id = "workflow-still-owns-dispense-packaging-domain-tests"
         detail = "workflow tests must not compile dispense-packaging owner domain tests"
     },
     @{
-        path = "modules/workflow/tests/process-runtime-core/CMakeLists.txt"
+        path = "modules/workflow/tests/unit/CMakeLists.txt"
         pattern = "unit/domain/dispensing/TriggerPlannerTest.cpp"
         rule_id = "workflow-still-owns-dispense-packaging-domain-tests"
         detail = "workflow tests must not compile dispense-packaging owner domain tests"
     },
     @{
-        path = "modules/workflow/tests/process-runtime-core/CMakeLists.txt"
+        path = "modules/workflow/tests/unit/CMakeLists.txt"
         pattern = "unit/domain/motion/CMPCoordinatedInterpolatorPrecisionTest.cpp"
         rule_id = "workflow-still-owns-motion-planning-domain-tests"
         detail = "workflow tests must not compile motion-planning owner domain tests"
     },
     @{
-        path = "modules/workflow/tests/process-runtime-core/CMakeLists.txt"
+        path = "modules/workflow/tests/unit/CMakeLists.txt"
         pattern = "unit/domain/trajectory/MotionPlannerTest.cpp"
         rule_id = "workflow-still-owns-motion-planning-domain-tests"
         detail = "workflow tests must not compile motion-planning owner domain tests"
     },
     @{
-        path = "modules/workflow/tests/process-runtime-core/CMakeLists.txt"
+        path = "modules/workflow/tests/unit/CMakeLists.txt"
         pattern = "unit/domain/trajectory/MotionPlannerConstraintTest.cpp"
         rule_id = "workflow-still-owns-motion-planning-domain-tests"
         detail = "workflow tests must not compile motion-planning owner domain tests"
     },
     @{
-        path = "modules/workflow/tests/process-runtime-core/CMakeLists.txt"
+        path = "modules/workflow/tests/unit/CMakeLists.txt"
         pattern = "unit/domain/trajectory/InterpolationProgramPlannerTest.cpp"
         rule_id = "workflow-still-owns-motion-planning-domain-tests"
         detail = "workflow tests must not compile motion-planning owner domain tests"
     },
     @{
-        path = "modules/workflow/tests/process-runtime-core/CMakeLists.txt"
+        path = "modules/workflow/tests/unit/CMakeLists.txt"
         pattern = "unit/domain/trajectory/PathRegularizerTest.cpp"
         rule_id = "workflow-still-owns-process-path-domain-tests"
         detail = "workflow tests must not compile process-path owner domain tests"
@@ -936,6 +1023,60 @@ $forbiddenOwnershipReferences = @(
         pattern = "siligen_process_runtime_core_application"
         rule_id = "runtime-application-still-mutates-workflow-process-runtime-core"
         detail = "runtime execution application must not mutate workflow process runtime application target"
+    },
+    @{
+        path = "modules/workflow/application/CMakeLists.txt"
+        pattern = "../../runtime-execution/application/include"
+        rule_id = "workflow-application-still-reexports-runtime-application-headers"
+        detail = "workflow application public headers must not re-export runtime_execution/application/include"
+    },
+    @{
+        path = "modules/workflow/CMakeLists.txt"
+        pattern = "add_library(siligen_workflow_adapters_public"
+        rule_id = "workflow-module-still-defines-adapters-public"
+        detail = "workflow module must not define siligen_workflow_adapters_public after compat final cutover"
+    },
+    @{
+        path = "modules/workflow/CMakeLists.txt"
+        pattern = "add_library(siligen_workflow_runtime_consumer_public"
+        rule_id = "workflow-module-still-defines-runtime-consumer-public"
+        detail = "workflow module must not define siligen_workflow_runtime_consumer_public after compat final cutover"
+    },
+    @{
+        path = "modules/workflow/CMakeLists.txt"
+        pattern = "function(siligen_process_runtime_core_interface"
+        rule_id = "workflow-module-still-defines-process-runtime-core-compat"
+        detail = "workflow module must not define deprecated siligen_process_runtime_core compatibility targets"
+    },
+    @{
+        path = "modules/workflow/CMakeLists.txt"
+        pattern = "PROCESS_RUNTIME_CORE_"
+        rule_id = "workflow-module-still-uses-process-runtime-core-include-vars"
+        detail = "workflow module CMake must not retain PROCESS_RUNTIME_CORE_* include variable names after test/runtime closeout"
+    },
+    @{
+        path = "modules/workflow/tests/CMakeLists.txt"
+        pattern = "process-runtime-core"
+        rule_id = "workflow-tests-root-still-uses-legacy-process-runtime-core-path"
+        detail = "workflow tests root must register unit as the canonical test directory"
+    },
+    @{
+        path = "modules/workflow/tests/unit/CMakeLists.txt"
+        pattern = "process_runtime_core_"
+        rule_id = "workflow-unit-tests-still-use-process-runtime-core-target-names"
+        detail = "workflow unit tests must not retain process_runtime_core_* helper or target names after cutover"
+    },
+    @{
+        path = "modules/workflow/tests/regression/CMakeLists.txt"
+        pattern = "process-runtime-core"
+        rule_id = "workflow-regression-still-references-legacy-tests-root"
+        detail = "workflow regression must consume unit test sources instead of the removed process-runtime-core tests root"
+    },
+    @{
+        path = "modules/workflow/domain/domain/CMakeLists.txt"
+        pattern = "add_library(siligen_workflow_dispensing_planning_compat"
+        rule_id = "workflow-domain-still-defines-planner-compat"
+        detail = "workflow domain must not define siligen_workflow_dispensing_planning_compat after compat final cutover"
     },
     @{
         path = "modules/runtime-execution/application/CMakeLists.txt"
@@ -1350,12 +1491,6 @@ $forbiddenCompatReferences += @(
     },
     @{
         path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
-        pattern = "siligen_workflow_application_public"
-        rule_id = "runtime-host-core-still-links-broad-app-surface"
-        detail = "siligen_runtime_host must not PUBLIC link workflow application after S5"
-    },
-    @{
-        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
         pattern = "siligen_workflow_adapters_public"
         rule_id = "runtime-host-core-still-links-broad-app-surface"
         detail = "siligen_runtime_host must not PUBLIC link workflow adapters after S5"
@@ -1443,6 +1578,24 @@ $forbiddenCompatReferences += @(
         pattern = "siligen_runtime_host_storage"
         rule_id = "transport-gateway-still-links-runtime-host-storage"
         detail = "transport-gateway must not link siligen_runtime_host_storage"
+    },
+    @{
+        path = "modules/workflow/domain/domain/CMakeLists.txt"
+        pattern = "siligen_motion_execution_services"
+        rule_id = "workflow-domain-still-defines-motion-compat-target"
+        detail = "workflow/domain/domain must not define the legacy motion execution compatibility target after hard exit"
+    },
+    @{
+        path = "modules/workflow/domain/CMakeLists.txt"
+        pattern = "domain_machine"
+        rule_id = "workflow-domain-root-still-links-machine-compat-target"
+        detail = "workflow/domain root must not link the legacy machine compatibility target after hard exit"
+    },
+    @{
+        path = "modules/workflow/domain/domain/machine/CMakeLists.txt"
+        pattern = "add_library(domain_machine STATIC"
+        rule_id = "workflow-machine-subdomain-still-defines-machine-compat-target"
+        detail = "workflow/domain/domain/machine must not define domain_machine after hard exit"
     }
 )
 
@@ -1480,6 +1633,202 @@ $forbiddenScopedSearches += @(
             "apps/runtime-gateway/transport-gateway"
         )
         detail = "live targets must not reference the deprecated siligen_workflow_dispensing_planning_compat target"
+    },
+    @{
+        rule_id = "live-targets-still-reference-process-planning-config-legacy-bridge"
+        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
+        search_roots = @(
+            "apps/planner-cli",
+            "apps/runtime-gateway",
+            "apps/runtime-service",
+            "modules/dxf-geometry",
+            "modules/dispense-packaging",
+            "modules/job-ingest",
+            "modules/runtime-execution",
+            "modules/workflow"
+        )
+        detail = "live targets must consume canonical process-planning contracts or runtime-execution config contracts instead of the deprecated configuration legacy bridge"
+    },
+    @{
+        rule_id = "live-sources-still-include-legacy-configuration-port"
+        pattern = '#include "domain/configuration/ports/IConfigurationPort.h"'
+        search_roots = @(
+            "apps/planner-cli",
+            "apps/runtime-gateway",
+            "apps/runtime-service",
+            "modules/dxf-geometry",
+            "modules/dispense-packaging",
+            "modules/job-ingest",
+            "modules/runtime-execution",
+            "modules/workflow"
+        )
+        detail = "live sources must include process_planning/contracts/configuration/IConfigurationPort.h or runtime_execution/contracts/configuration/IConfigurationPort.h"
+    },
+    @{
+        rule_id = "live-sources-still-include-legacy-valve-config"
+        pattern = '#include "domain/configuration/ports/ValveConfig.h"'
+        search_roots = @(
+            "apps/runtime-service",
+            "modules/runtime-execution",
+            "modules/workflow"
+        )
+        detail = "live sources must include process_planning/contracts/configuration/ValveConfig.h instead of the legacy domain/configuration valve header"
+    },
+    @{
+        rule_id = "live-sources-still-include-legacy-ready-zero-resolver"
+        pattern = '#include "domain/configuration/services/ReadyZeroSpeedResolver.h"'
+        search_roots = @(
+            "apps/runtime-gateway",
+            "modules/runtime-execution",
+            "modules/workflow"
+        )
+        detail = "live sources must include process_planning/contracts/configuration/ReadyZeroSpeedResolver.h instead of the legacy workflow configuration helper"
+    },
+    @{
+        rule_id = "workflow-live-sources-still-include-residual-config-types"
+        pattern = '#include "domain/configuration/value-objects/ConfigTypes.h"'
+        search_roots = @(
+            "modules/workflow/tests",
+            "modules/workflow/domain/domain/safety"
+        )
+        detail = "workflow live sources must include process_planning/contracts/configuration/ConfigTypes.h instead of the residual workflow ConfigTypes wrapper"
+    },
+    @{
+        rule_id = "workflow-live-sources-still-include-relative-config-types"
+        pattern = '#include "../../configuration/value-objects/ConfigTypes.h"'
+        search_roots = @(
+            "modules/workflow/domain/domain/safety"
+        )
+        detail = "workflow live domain sources must include process_planning/contracts/configuration/ConfigTypes.h instead of relative residual ConfigTypes includes"
+    },
+    @{
+        rule_id = "live-targets-still-reference-process-planning-domain-configuration"
+        pattern = "siligen_process_planning_domain_configuration"
+        search_roots = @(
+            "apps/runtime-service",
+            "modules/job-ingest",
+            "modules/workflow"
+        )
+        detail = "live targets must consume siligen_job_ingest_contracts or canonical owner public surfaces instead of process-planning domain/configuration"
+    },
+    @{
+        rule_id = "live-sources-still-include-legacy-file-storage-port"
+        pattern = '#include "domain/configuration/ports/IFileStoragePort.h"'
+        search_roots = @(
+            "apps/runtime-service/bootstrap",
+            "apps/runtime-service/container",
+            "apps/runtime-service/runtime/storage/files",
+            "modules/job-ingest/application",
+            "modules/job-ingest/tests",
+            "modules/workflow/application",
+            "modules/workflow/tests"
+        )
+        detail = "live sources must include job_ingest/contracts/storage/IFileStoragePort.h instead of the legacy configuration file-storage header"
+    },
+    @{
+        rule_id = "live-sources-still-reference-legacy-file-storage-port"
+        pattern = "Domain::Configuration::Ports::IFileStoragePort"
+        search_roots = @(
+            "apps/runtime-service/bootstrap",
+            "apps/runtime-service/container",
+            "apps/runtime-service/runtime/storage/files",
+            "modules/job-ingest/application",
+            "modules/job-ingest/tests",
+            "modules/workflow/application",
+            "modules/workflow/tests"
+        )
+        detail = "live sources must reference Siligen::JobIngest::Contracts::Storage::IFileStoragePort instead of the legacy configuration namespace"
+    },
+    @{
+        rule_id = "live-sources-still-reference-legacy-file-storage-data"
+        pattern = "Domain::Configuration::Ports::FileData"
+        search_roots = @(
+            "apps/runtime-service/runtime/storage/files",
+            "modules/job-ingest/application",
+            "modules/job-ingest/tests",
+            "modules/workflow/tests"
+        )
+        detail = "live sources must reference Siligen::JobIngest::Contracts::Storage::FileData instead of the legacy configuration namespace"
+    }
+)
+
+$requiredBridgeReferences += @(
+    @{
+        path = "modules/process-planning/contracts/include/process_planning/contracts/configuration/ConfigTypes.h"
+        pattern = "struct Position3D"
+    },
+    @{
+        path = "modules/process-planning/contracts/include/process_planning/contracts/configuration/ConfigTypes.h"
+        pattern = "struct InterlockConfig"
+    },
+    @{
+        path = "modules/process-planning/contracts/include/process_planning/contracts/configuration/ConfigTypes.h"
+        pattern = "struct SystemConfiguration"
+    },
+    @{
+        path = "modules/process-planning/application/CMakeLists.txt"
+        pattern = "siligen_process_planning_contracts_public"
+    },
+    @{
+        path = "modules/dxf-geometry/tests/CMakeLists.txt"
+        pattern = "siligen_process_planning_contracts_public"
+    }
+)
+
+$forbiddenCompatReferences += @(
+    @{
+        path = "modules/process-planning/contracts/include/process_planning/contracts/configuration/ConfigTypes.h"
+        pattern = "domain/configuration/value-objects/ConfigTypes.h"
+        rule_id = "canonical-config-types-still-wraps-domain-config-types"
+        detail = "canonical process-planning ConfigTypes header must own the configuration type definitions instead of forwarding to the legacy domain/value-objects path"
+    },
+    @{
+        path = "modules/process-planning/contracts/include/process_planning/contracts/configuration/ConfigTypes.h"
+        pattern = "domain/motion/value-objects/MotionTypes.h"
+        rule_id = "canonical-config-types-still-imports-motion-owner-types"
+        detail = "canonical process-planning ConfigTypes header must not import motion-planning owner types after the M4 type cutover"
+    },
+    @{
+        path = "modules/process-planning/contracts/include/process_planning/contracts/configuration/ConfigTypes.h"
+        pattern = "domain/safety/value-objects/InterlockTypes.h"
+        rule_id = "canonical-config-types-still-imports-workflow-safety-types"
+        detail = "canonical process-planning ConfigTypes header must not import workflow safety owner types after the M4 type cutover"
+    },
+    @{
+        path = "modules/process-planning/CMakeLists.txt"
+        pattern = "target_link_libraries(siligen_module_process_planning INTERFACE`n        siligen_process_planning_domain_configuration"
+        rule_id = "process-planning-module-root-still-falls-back-to-domain-configuration"
+        detail = "process-planning module root must export the canonical application/contracts surface instead of falling back to domain_configuration"
+    },
+    @{
+        path = "modules/process-planning/contracts/CMakeLists.txt"
+        pattern = "siligen_process_planning_domain_configuration"
+        rule_id = "process-planning-contracts-still-link-domain-configuration"
+        detail = "process-planning contracts must not add_subdirectory or link siligen_process_planning_domain_configuration after the configuration contract cutover"
+    },
+    @{
+        path = "modules/process-planning/contracts/CMakeLists.txt"
+        pattern = "SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR"
+        rule_id = "process-planning-contracts-still-export-motion-public-root"
+        detail = "process-planning contracts must not export the motion-planning public include root after the M4 type cutover"
+    },
+    @{
+        path = "modules/process-planning/contracts/CMakeLists.txt"
+        pattern = "SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR"
+        rule_id = "process-planning-contracts-still-export-workflow-domain-root"
+        detail = "process-planning contracts must not export the workflow domain public include root after the M4 type cutover"
+    },
+    @{
+        path = "modules/process-planning/application/CMakeLists.txt"
+        pattern = "siligen_process_planning_domain_configuration"
+        rule_id = "process-planning-application-still-links-domain-configuration"
+        detail = "process-planning application public surface must consume siligen_process_planning_contracts_public instead of siligen_process_planning_domain_configuration"
+    },
+    @{
+        path = "modules/dxf-geometry/tests/CMakeLists.txt"
+        pattern = "siligen_process_planning_domain_configuration"
+        rule_id = "dxf-geometry-tests-still-link-domain-configuration"
+        detail = "dxf-geometry tests must consume siligen_process_planning_contracts_public instead of siligen_process_planning_domain_configuration"
     }
 )
 
@@ -1531,7 +1880,7 @@ foreach ($expectation in $requiredBridgeReferences) {
             target = $expectation.pattern
             file = $expectation.path
             line = 0
-            detail = "expected runtime-execution compatibility bridge reference is missing"
+            detail = "expected canonical boundary reference is missing"
         })
     }
 }
@@ -1708,25 +2057,27 @@ if (-not (Test-Path $recipeCanonicalSerializerHeader)) {
     }
 }
 
-if (-not (Test-Path $recipeLegacySerializerHeader)) {
+if (Test-Path $recipeLegacySerializerHeader) {
     $findings.Add([pscustomobject]@{
-        rule_id = "missing-legacy-recipe-serializer-header"
+        rule_id = "legacy-recipe-serializer-header-must-be-removed"
         severity = "error"
         target = $recipeLegacySerializerHeader
         file = Get-RelativeRepoPath -BasePath $repoRoot -TargetPath $recipeLegacySerializerHeader
         line = 0
-        detail = "legacy workflow recipe serializer public header does not exist"
+        detail = "legacy workflow recipe serializer public header must be removed after recipe public surface cutover"
     })
-} else {
-    $expectedSerializerInclude = '#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"'
-    if (-not (Select-String -Path $recipeLegacySerializerHeader -Pattern ([regex]::Escape($expectedSerializerInclude)) -Quiet)) {
+}
+
+foreach ($removedPath in $removedConfigurationCompatPaths) {
+    $fullPath = Resolve-AbsolutePath -BasePath $repoRoot -PathValue $removedPath.path
+    if (Test-Path $fullPath) {
         $findings.Add([pscustomobject]@{
-            rule_id = "legacy-recipe-serializer-header-must-forward-to-canonical"
+            rule_id = $removedPath.rule_id
             severity = "error"
-            target = $expectedSerializerInclude
-            file = Get-RelativeRepoPath -BasePath $repoRoot -TargetPath $recipeLegacySerializerHeader
+            target = $removedPath.path
+            file = Get-RelativeRepoPath -BasePath $repoRoot -TargetPath $fullPath
             line = 0
-            detail = "legacy workflow recipe serializer public header must forward to workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
+            detail = $removedPath.detail
         })
     }
 }

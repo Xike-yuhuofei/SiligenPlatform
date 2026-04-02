@@ -1,7 +1,7 @@
 #pragma once
 
 #include "MotionRuntimeFacade.h"
-#include "domain/machine/ports/IHardwareConnectionPort.h"
+#include "runtime_execution/contracts/system/IHardwareConnectionPort.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 
 #include <memory>

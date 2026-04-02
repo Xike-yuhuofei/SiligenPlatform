@@ -4,8 +4,8 @@
 #include "shared/di/LoggingServiceLocator.h"
 #include "shared/interfaces/ILoggingService.h"
 
-#include "domain/configuration/ports/IConfigurationPort.h"
-#include "domain/configuration/ports/ValveConfig.h"
+#include "process_planning/contracts/configuration/IConfigurationPort.h"
+#include "process_planning/contracts/configuration/ValveConfig.h"
 #include "domain/dispensing/value-objects/DispenseCompensationProfile.h"
 #include "domain/motion/domain-services/interpolation/ValidatedInterpolationPort.h"
 

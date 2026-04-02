@@ -1,6 +1,6 @@
 # Configuration 子域 - 配置管理
 
-**职责**: 负责系统配置管理、参数验证、配置迁移、文件存储，并承载标定/工艺结果相关配置
+**职责**: 保留 configuration implementation `.cpp` 与子域占位，不再承载 private compat header 或重复配置模型残余
 
 ## 业务范围
 
@@ -23,11 +23,7 @@ configuration/
 ├── ValveTimingConfig.cpp
 ├── CMPPulseConfig.cpp
 ├── InterpolationConfig.cpp
-├── value-objects/
-│   └── ConfigTypes.h
-└── ports/                      # 端口接口（2个）
-    ├── IConfigurationPort
-    └── IFileStoragePort
+└── ports/                      # private compat headers 已移除
 ```
 
 ## 命名空间
@@ -52,3 +48,8 @@ namespace Siligen::Domain::Configuration {
 
 - ✅ 依赖: `shared/types`, `shared/utils`, `domain/_shared`
 - ❌ 不依赖: `infrastructure`, `application`, 其他子域
+
+## 兼容约束
+
+- `workflow/domain/include/domain/configuration/**` 已全部退役；live consumer 必须直接包含 canonical owner contracts。
+- `workflow/domain/domain/configuration/**` 不再允许恢复 `IConfigurationPort`、`IFileStoragePort`、`ValveConfig`、`ConfigTypes` private wrapper。

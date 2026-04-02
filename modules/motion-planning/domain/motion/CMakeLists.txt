@@ -15,14 +15,6 @@ if(NOT TARGET siligen_process_path_contracts_public)
     )
 endif()
 
-if(NOT TARGET siligen_process_runtime_core_boost_headers)
-    add_library(siligen_process_runtime_core_boost_headers INTERFACE)
-    target_include_directories(siligen_process_runtime_core_boost_headers INTERFACE
-        ${SILIGEN_BOOST_INCLUDE_DIR}
-    )
-    target_compile_features(siligen_process_runtime_core_boost_headers INTERFACE cxx_std_17)
-endif()
-
 if(NOT TARGET siligen_process_path_contracts_public)
     message(FATAL_ERROR
         "motion-planning requires siligen_process_path_contracts_public "
@@ -67,7 +59,7 @@ target_include_directories(siligen_motion PRIVATE
 )
 
 target_link_libraries(siligen_motion PUBLIC
-    siligen_process_runtime_core_boost_headers
+    siligen_shared_boost_headers
     siligen_types
     siligen_utils
     siligen_process_path_contracts_public

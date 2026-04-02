@@ -29,6 +29,66 @@ using Domain::Safety::DomainServices::SafetyOutputGuard;
 
 namespace {
 
+DispensingExecutionRequest BuildExecutionRequestFromWorkflowLaunch(
+    const Siligen::Workflow::Contracts::WorkflowExecutionLaunch& launch) {
+    DispensingExecutionRequest request;
+    request.execution_package = launch.execution_package;
+    request.source_path = launch.runtime_overrides.source_path;
+    request.use_hardware_trigger = launch.runtime_overrides.use_hardware_trigger;
+    request.dry_run = launch.runtime_overrides.dry_run;
+    request.machine_mode = launch.runtime_overrides.machine_mode;
+    request.execution_mode = launch.runtime_overrides.execution_mode;
+    request.output_policy = launch.runtime_overrides.output_policy;
+    request.max_jerk = launch.runtime_overrides.max_jerk;
+    request.arc_tolerance_mm = launch.runtime_overrides.arc_tolerance_mm;
+    request.dispensing_speed_mm_s = launch.runtime_overrides.dispensing_speed_mm_s;
+    request.dry_run_speed_mm_s = launch.runtime_overrides.dry_run_speed_mm_s;
+    request.rapid_speed_mm_s = launch.runtime_overrides.rapid_speed_mm_s;
+    request.acceleration_mm_s2 = launch.runtime_overrides.acceleration_mm_s2;
+    request.velocity_trace_enabled = launch.runtime_overrides.velocity_trace_enabled;
+    request.velocity_trace_interval_ms = launch.runtime_overrides.velocity_trace_interval_ms;
+    request.velocity_trace_path = launch.runtime_overrides.velocity_trace_path;
+    request.velocity_guard_enabled = launch.runtime_overrides.velocity_guard_enabled;
+    request.velocity_guard_ratio = launch.runtime_overrides.velocity_guard_ratio;
+    request.velocity_guard_abs_mm_s = launch.runtime_overrides.velocity_guard_abs_mm_s;
+    request.velocity_guard_min_expected_mm_s = launch.runtime_overrides.velocity_guard_min_expected_mm_s;
+    request.velocity_guard_grace_ms = launch.runtime_overrides.velocity_guard_grace_ms;
+    request.velocity_guard_interval_ms = launch.runtime_overrides.velocity_guard_interval_ms;
+    request.velocity_guard_max_consecutive = launch.runtime_overrides.velocity_guard_max_consecutive;
+    request.velocity_guard_stop_on_violation = launch.runtime_overrides.velocity_guard_stop_on_violation;
+    return request;
+}
+
+RuntimeStartJobRequest BuildRuntimeStartJobRequest(
+    const Siligen::Workflow::Contracts::WorkflowExecutionStartRequest& request) {
+    RuntimeStartJobRequest runtime_request;
+    runtime_request.plan_id = request.plan_id;
+    runtime_request.execution_request = BuildExecutionRequestFromWorkflowLaunch(request.launch);
+    runtime_request.plan_fingerprint = request.plan_fingerprint;
+    runtime_request.target_count = request.target_count;
+    return runtime_request;
+}
+
+Siligen::Workflow::Contracts::WorkflowExecutionStatus BuildWorkflowExecutionStatus(
+    const RuntimeJobStatusResponse& runtime_status) {
+    Siligen::Workflow::Contracts::WorkflowExecutionStatus status;
+    status.job_id = runtime_status.job_id;
+    status.plan_id = runtime_status.plan_id;
+    status.plan_fingerprint = runtime_status.plan_fingerprint;
+    status.state = runtime_status.state;
+    status.target_count = runtime_status.target_count;
+    status.completed_count = runtime_status.completed_count;
+    status.current_cycle = runtime_status.current_cycle;
+    status.current_segment = runtime_status.current_segment;
+    status.total_segments = runtime_status.total_segments;
+    status.cycle_progress_percent = runtime_status.cycle_progress_percent;
+    status.overall_progress_percent = runtime_status.overall_progress_percent;
+    status.elapsed_seconds = runtime_status.elapsed_seconds;
+    status.error_message = runtime_status.error_message;
+    status.dry_run = runtime_status.dry_run;
+    return status;
+}
+
 bool PrepareVelocityTraceFile(const std::string& output_path,
                               std::ofstream& file,
                               std::string& error);
@@ -408,20 +468,50 @@ Result<JobID> DispensingExecutionUseCase::StartJob(const RuntimeStartJobRequest&
     return impl_->StartJob(request);
 }
 
+Result<Siligen::Workflow::Contracts::WorkflowJobId> DispensingExecutionUseCase::StartWorkflowExecution(
+    const Siligen::Workflow::Contracts::WorkflowExecutionStartRequest& request) {
+    return StartJob(BuildRuntimeStartJobRequest(request));
+}
+
 Result<RuntimeJobStatusResponse> DispensingExecutionUseCase::GetJobStatus(const JobID& job_id) const {
     return impl_->GetJobStatus(job_id);
+}
+
+Result<Siligen::Workflow::Contracts::WorkflowExecutionStatus> DispensingExecutionUseCase::GetWorkflowExecutionStatus(
+    const Siligen::Workflow::Contracts::WorkflowJobId& job_id) const {
+    auto result = GetJobStatus(job_id);
+    if (result.IsError()) {
+        return Result<Siligen::Workflow::Contracts::WorkflowExecutionStatus>::Failure(result.GetError());
+    }
+    return Result<Siligen::Workflow::Contracts::WorkflowExecutionStatus>::Success(
+        BuildWorkflowExecutionStatus(result.Value()));
 }
 
 Result<void> DispensingExecutionUseCase::PauseJob(const JobID& job_id) {
     return impl_->PauseJob(job_id);
 }
 
+Result<void> DispensingExecutionUseCase::PauseWorkflowExecution(
+    const Siligen::Workflow::Contracts::WorkflowJobId& job_id) {
+    return PauseJob(job_id);
+}
+
 Result<void> DispensingExecutionUseCase::ResumeJob(const JobID& job_id) {
     return impl_->ResumeJob(job_id);
 }
 
+Result<void> DispensingExecutionUseCase::ResumeWorkflowExecution(
+    const Siligen::Workflow::Contracts::WorkflowJobId& job_id) {
+    return ResumeJob(job_id);
+}
+
 Result<void> DispensingExecutionUseCase::StopJob(const JobID& job_id) {
     return impl_->StopJob(job_id);
+}
+
+Result<void> DispensingExecutionUseCase::StopWorkflowExecution(
+    const Siligen::Workflow::Contracts::WorkflowJobId& job_id) {
+    return StopJob(job_id);
 }
 
 #ifdef SILIGEN_TEST_HOOKS

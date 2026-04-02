@@ -8,6 +8,10 @@ namespace Siligen::Domain::Machine::Aggregates::Legacy {
 class DispenserModel;
 }
 
+namespace Siligen::RuntimeExecution::Application::System {
+class LegacyDispenserModel;
+}
+
 namespace Siligen::Runtime::Host::System {
 
 class LegacyMachineExecutionStateAdapter final
@@ -15,7 +19,7 @@ class LegacyMachineExecutionStateAdapter final
    public:
     LegacyMachineExecutionStateAdapter();
     explicit LegacyMachineExecutionStateAdapter(
-        std::shared_ptr<Siligen::Domain::Machine::Aggregates::Legacy::DispenserModel> dispenser_model);
+        std::shared_ptr<Siligen::RuntimeExecution::Application::System::LegacyDispenserModel> dispenser_model);
 
     Siligen::Shared::Types::Result<Siligen::RuntimeExecution::Contracts::System::MachineExecutionSnapshot>
     ReadSnapshot() const override;
@@ -24,7 +28,7 @@ class LegacyMachineExecutionStateAdapter final
     Siligen::Shared::Types::Result<void> RecoverToUninitialized() override;
 
    private:
-    std::shared_ptr<Siligen::Domain::Machine::Aggregates::Legacy::DispenserModel> dispenser_model_;
+    std::shared_ptr<Siligen::RuntimeExecution::Application::System::LegacyDispenserModel> dispenser_model_;
 };
 
 }  // namespace Siligen::Runtime::Host::System

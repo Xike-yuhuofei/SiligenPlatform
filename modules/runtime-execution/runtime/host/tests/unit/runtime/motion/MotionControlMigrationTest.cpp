@@ -1,10 +1,10 @@
-#include "application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
-#include "application/usecases/motion/homing/HomeAxesUseCase.h"
-#include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
-#include "application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
-#include "domain/motion/domain-services/JogController.h"
 #include "runtime/motion/WorkflowMotionRuntimeServicesProvider.h"
+#include "runtime_execution/application/services/motion/JogController.h"
 #include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
+#include "runtime_execution/application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
+#include "runtime_execution/application/usecases/motion/homing/HomeAxesUseCase.h"
+#include "runtime_execution/application/usecases/motion/manual/ManualMotionControlUseCase.h"
+#include "runtime_execution/application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
 #include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
 
 #include <gtest/gtest.h>
@@ -22,17 +22,18 @@ using Siligen::Application::UseCases::Motion::Homing::HomeAxesRequest;
 using Siligen::Application::UseCases::Motion::Manual::ManualMotionCommand;
 using Siligen::Application::UseCases::Motion::Manual::ManualMotionControlUseCase;
 using Siligen::Application::UseCases::Motion::Monitoring::MotionMonitoringUseCase;
-using Siligen::Domain::Motion::DomainServices::JogController;
 using Siligen::Domain::Motion::Ports::AxisConfiguration;
 using Siligen::Domain::Motion::Ports::HomingState;
 using Siligen::Domain::Motion::Ports::HomingStatus;
-using Siligen::Domain::Motion::Ports::IMotionRuntimePort;
-using Siligen::Domain::Motion::Ports::IOStatus;
 using Siligen::Domain::Motion::Ports::JogParameters;
 using Siligen::Domain::Motion::Ports::MotionCommand;
 using Siligen::Domain::Motion::Ports::MotionState;
 using Siligen::Domain::Motion::Ports::MotionStatus;
 using Siligen::RuntimeExecution::Host::Motion::WorkflowMotionRuntimeServicesProvider;
+using Siligen::RuntimeExecution::Application::Services::Motion::JogController;
+using Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort;
+using Siligen::RuntimeExecution::Contracts::Motion::IMotionRuntimePort;
+using Siligen::RuntimeExecution::Contracts::Motion::IOStatus;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::LogicalAxisId;
@@ -313,7 +314,7 @@ TEST(MotionControlMigrationTest, MotionControlUseCaseDispatchesJogControlAndMoni
         std::static_pointer_cast<Siligen::Domain::Motion::Ports::IHomingPort>(runtime_port));
     auto monitoring_use_case = std::make_shared<MotionMonitoringUseCase>(
         std::static_pointer_cast<Siligen::Domain::Motion::Ports::IMotionStatePort>(runtime_port),
-        std::static_pointer_cast<Siligen::Domain::Motion::Ports::IIOControlPort>(runtime_port),
+        std::static_pointer_cast<IIOControlPort>(runtime_port),
         std::static_pointer_cast<Siligen::Domain::Motion::Ports::IHomingPort>(runtime_port));
     MotionControlUseCase use_case(nullptr, nullptr, manual_use_case, monitoring_use_case);
 

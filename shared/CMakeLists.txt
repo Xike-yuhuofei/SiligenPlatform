@@ -48,10 +48,28 @@ foreach(shared_target IN ITEMS
     list(APPEND SILIGEN_SHARED_PUBLIC_TARGETS "${shared_target}")
 endforeach()
 
+if(NOT TARGET siligen_shared_boost_headers)
+    add_library(siligen_shared_boost_headers INTERFACE)
+    target_include_directories(siligen_shared_boost_headers INTERFACE
+        ${SILIGEN_BOOST_INCLUDE_DIR}
+    )
+    target_compile_features(siligen_shared_boost_headers INTERFACE cxx_std_17)
+endif()
+
+if(NOT TARGET siligen_shared_json_headers)
+    add_library(siligen_shared_json_headers INTERFACE)
+    target_include_directories(siligen_shared_json_headers INTERFACE
+        ${SILIGEN_NLOHMANN_INCLUDE_DIR}
+    )
+    target_compile_features(siligen_shared_json_headers INTERFACE cxx_std_17)
+endif()
+
 if(NOT TARGET siligen_shared)
     add_library(siligen_shared INTERFACE)
     target_link_libraries(siligen_shared INTERFACE
         ${SILIGEN_SHARED_PUBLIC_TARGETS}
+        siligen_shared_boost_headers
+        siligen_shared_json_headers
     )
     target_compile_features(siligen_shared INTERFACE cxx_std_17)
 endif()

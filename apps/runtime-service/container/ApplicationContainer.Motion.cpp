@@ -1,17 +1,17 @@
 #include "ApplicationContainer.h"
 
 #include "application/usecases/motion/coordination/MotionCoordinationUseCase.h"
-#include "application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
-#include "application/usecases/motion/homing/HomeAxesUseCase.h"
 #include "application/usecases/motion/initialization/MotionInitializationUseCase.h"
 #include "application/usecases/motion/interpolation/InterpolationPlanningUseCase.h"
-#include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
-#include "application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
 #include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
+#include "runtime_execution/application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
+#include "runtime_execution/application/usecases/motion/homing/HomeAxesUseCase.h"
+#include "runtime_execution/application/usecases/motion/manual/ManualMotionControlUseCase.h"
+#include "runtime_execution/application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
+#include "runtime_execution/application/services/motion/JogController.h"
+#include "runtime_execution/application/services/motion/ReadyZeroDecisionService.h"
 #include "application/usecases/motion/safety/MotionSafetyUseCase.h"
 #include "application/usecases/motion/trajectory/ExecuteTrajectoryUseCase.h"
-#include "domain/motion/domain-services/JogController.h"
-#include "domain/motion/domain-services/ReadyZeroDecisionService.h"
 #include "domain/motion/domain-services/VelocityProfileService.h"
 #include "services/motion/HardLimitMonitorService.h"
 #include "shared/interfaces/ILoggingService.h"
@@ -46,15 +46,15 @@ void ApplicationContainer::ConfigureMotionServices() {
         ? std::static_pointer_cast<Domain::Motion::Ports::IMotionStatePort>(motion_runtime_port_)
         : motion_state_port_;
     auto io_control_port = motion_runtime_port_
-        ? std::static_pointer_cast<Domain::Motion::Ports::IIOControlPort>(motion_runtime_port_)
+        ? std::static_pointer_cast<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort>(motion_runtime_port_)
         : io_control_port_;
     auto position_control_port = motion_runtime_port_
         ? std::static_pointer_cast<Domain::Motion::Ports::IPositionControlPort>(motion_runtime_port_)
         : position_control_port_;
-    jog_controller_ = std::make_shared<Domain::Motion::DomainServices::JogController>(
+    jog_controller_ = std::make_shared<Siligen::RuntimeExecution::Application::Services::Motion::JogController>(
         motion_jog_port,
         motion_state_port);
-    RegisterService<Domain::Motion::DomainServices::JogController>(jog_controller_);
+    RegisterService<Siligen::RuntimeExecution::Application::Services::Motion::JogController>(jog_controller_);
     SILIGEN_LOG_INFO("JogController registered");
 
     if (velocity_profile_port_) {
@@ -105,7 +105,7 @@ ApplicationContainer::CreateInstance<UseCases::Motion::Homing::EnsureAxesReadyZe
         Resolve<UseCases::Motion::Manual::ManualMotionControlUseCase>(),
         Resolve<UseCases::Motion::Monitoring::MotionMonitoringUseCase>(),
         config_port_,
-        std::make_shared<Domain::Motion::DomainServices::ReadyZeroDecisionService>());
+        std::make_shared<Siligen::RuntimeExecution::Application::Services::Motion::ReadyZeroDecisionService>());
 }
 
 template<>
@@ -155,7 +155,7 @@ ApplicationContainer::CreateInstance<UseCases::Motion::Initialization::MotionIni
         ? std::static_pointer_cast<Domain::Motion::Ports::IAxisControlPort>(motion_runtime_port_)
         : axis_control_port_;
     auto io_control_port = motion_runtime_port_
-        ? std::static_pointer_cast<Domain::Motion::Ports::IIOControlPort>(motion_runtime_port_)
+        ? std::static_pointer_cast<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort>(motion_runtime_port_)
         : io_control_port_;
     return std::make_shared<UseCases::Motion::Initialization::MotionInitializationUseCase>(
         motion_connection_port,
@@ -179,7 +179,7 @@ ApplicationContainer::CreateInstance<UseCases::Motion::Monitoring::MotionMonitor
         ? std::static_pointer_cast<Domain::Motion::Ports::IMotionStatePort>(motion_runtime_port_)
         : motion_state_port_;
     auto io_control_port = motion_runtime_port_
-        ? std::static_pointer_cast<Domain::Motion::Ports::IIOControlPort>(motion_runtime_port_)
+        ? std::static_pointer_cast<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort>(motion_runtime_port_)
         : io_control_port_;
     auto homing_port = motion_runtime_port_
         ? std::static_pointer_cast<Domain::Motion::Ports::IHomingPort>(motion_runtime_port_)
@@ -195,7 +195,7 @@ template<>
 std::shared_ptr<UseCases::Motion::Coordination::MotionCoordinationUseCase>
 ApplicationContainer::CreateInstance<UseCases::Motion::Coordination::MotionCoordinationUseCase>() {
     auto io_control_port = motion_runtime_port_
-        ? std::static_pointer_cast<Domain::Motion::Ports::IIOControlPort>(motion_runtime_port_)
+        ? std::static_pointer_cast<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort>(motion_runtime_port_)
         : io_control_port_;
     auto axis_control_port = motion_runtime_port_
         ? std::static_pointer_cast<Domain::Motion::Ports::IAxisControlPort>(motion_runtime_port_)

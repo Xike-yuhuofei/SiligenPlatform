@@ -3,8 +3,8 @@
 
 #include "application/usecases/dispensing/valve/ValveQueryUseCase.h"
 #include "application/usecases/motion/initialization/MotionInitializationUseCase.h"
-#include "application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
 #include "application/usecases/system/InitializeSystemUseCase.h"
+#include "runtime_execution/application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
 
 namespace Siligen::Adapters::CLI {
 

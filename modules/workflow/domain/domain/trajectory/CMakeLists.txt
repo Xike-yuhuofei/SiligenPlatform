@@ -21,15 +21,15 @@ target_sources(domain_trajectory PRIVATE
 )
 
 target_include_directories(domain_trajectory PUBLIC
-    ${PROCESS_RUNTIME_CORE_PUBLIC_INCLUDE_DIRS}
+    ${WORKFLOW_MODULE_PUBLIC_INCLUDE_DIRS}
 )
 target_include_directories(domain_trajectory PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${PROCESS_RUNTIME_CORE_IMPLEMENTATION_INCLUDE_DIRS}
+    ${WORKFLOW_MODULE_IMPLEMENTATION_INCLUDE_DIRS}
 )
 
 target_link_libraries(domain_trajectory PUBLIC
-    siligen_process_runtime_core_boost_headers
+    siligen_shared_boost_headers
     siligen_types
     siligen_geometry
     ruckig

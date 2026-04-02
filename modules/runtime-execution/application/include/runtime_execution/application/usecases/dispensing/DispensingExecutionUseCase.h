@@ -13,6 +13,7 @@
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
 #include "siligen/device/contracts/ports/device_ports.h"
+#include "workflow/contracts/WorkflowExecutionPort.h"
 
 #include <memory>
 #include <optional>
@@ -107,7 +108,7 @@ struct RuntimeJobStatusResponse {
     bool dry_run = false;
 };
 
-class DispensingExecutionUseCase {
+class DispensingExecutionUseCase : public Siligen::Workflow::Contracts::IWorkflowExecutionPort {
    public:
     explicit DispensingExecutionUseCase(
         std::shared_ptr<Domain::Dispensing::Ports::IValvePort> valve_port,
@@ -131,6 +132,17 @@ class DispensingExecutionUseCase {
     Shared::Types::Result<void> PauseJob(const JobID& job_id);
     Shared::Types::Result<void> ResumeJob(const JobID& job_id);
     Shared::Types::Result<void> StopJob(const JobID& job_id);
+
+    Shared::Types::Result<Siligen::Workflow::Contracts::WorkflowJobId> StartWorkflowExecution(
+        const Siligen::Workflow::Contracts::WorkflowExecutionStartRequest& request) override;
+    Shared::Types::Result<Siligen::Workflow::Contracts::WorkflowExecutionStatus> GetWorkflowExecutionStatus(
+        const Siligen::Workflow::Contracts::WorkflowJobId& job_id) const override;
+    Shared::Types::Result<void> PauseWorkflowExecution(
+        const Siligen::Workflow::Contracts::WorkflowJobId& job_id) override;
+    Shared::Types::Result<void> ResumeWorkflowExecution(
+        const Siligen::Workflow::Contracts::WorkflowJobId& job_id) override;
+    Shared::Types::Result<void> StopWorkflowExecution(
+        const Siligen::Workflow::Contracts::WorkflowJobId& job_id) override;
 
 #ifdef SILIGEN_TEST_HOOKS
     void SeedJobStateForTesting(const RuntimeJobStatusResponse& status, bool pause_requested = false);

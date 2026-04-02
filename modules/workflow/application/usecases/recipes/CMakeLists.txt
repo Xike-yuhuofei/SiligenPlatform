@@ -17,10 +17,10 @@ add_library(siligen_recipe_core STATIC
 )
 
 target_include_directories(siligen_recipe_core PUBLIC
-    ${PROCESS_RUNTIME_CORE_PUBLIC_INCLUDE_DIRS}
+    ${WORKFLOW_MODULE_PUBLIC_INCLUDE_DIRS}
 )
 target_include_directories(siligen_recipe_core PRIVATE
-    ${PROCESS_RUNTIME_CORE_IMPLEMENTATION_INCLUDE_DIRS}
+    ${WORKFLOW_MODULE_IMPLEMENTATION_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 

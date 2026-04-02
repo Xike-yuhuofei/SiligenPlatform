@@ -12,8 +12,8 @@
 #include "facades/tcp/TcpMotionFacade.h"
 #include "facades/tcp/TcpRecipeFacade.h"
 #include "facades/tcp/TcpSystemFacade.h"
-#include "domain/configuration/ports/IConfigurationPort.h"
-#include "domain/configuration/services/ReadyZeroSpeedResolver.h"
+#include "process_planning/contracts/configuration/IConfigurationPort.h"
+#include "process_planning/contracts/configuration/ReadyZeroSpeedResolver.h"
 
 #include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
 

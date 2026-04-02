@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-if(NOT TARGET siligen_process_planning_legacy_configuration_bridge_public)
+if(NOT TARGET siligen_process_planning_contracts_public)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../../process-planning/contracts"
         "${CMAKE_BINARY_DIR}/_p/wa_ppc"
@@ -68,7 +68,6 @@ target_include_directories(siligen_workflow_application_headers INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../motion-planning/application/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../dispense-packaging/application/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../dxf-geometry/application/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../runtime-execution/application/include
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
 if(TARGET siligen_job_ingest_application_public)
@@ -110,9 +109,9 @@ if(TARGET siligen_motion_planning_contracts_public)
         siligen_motion_planning_contracts_public
     )
 endif()
-if(TARGET siligen_process_planning_legacy_configuration_bridge_public)
+if(TARGET siligen_process_planning_contracts_public)
     target_link_libraries(siligen_workflow_application_headers INTERFACE
-        siligen_process_planning_legacy_configuration_bridge_public
+        siligen_process_planning_contracts_public
     )
 endif()
 if(TARGET siligen_device_contracts)
@@ -136,10 +135,10 @@ add_subdirectory(usecases/recipes)
 add_subdirectory(usecases/dispensing/valve)
 
 set(SILIGEN_APPLICATION_PUBLIC_INCLUDE_DIRS
-    ${PROCESS_RUNTIME_CORE_PUBLIC_INCLUDE_DIRS}
+    ${WORKFLOW_MODULE_PUBLIC_INCLUDE_DIRS}
 )
 set(SILIGEN_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS
-    ${PROCESS_RUNTIME_CORE_IMPLEMENTATION_INCLUDE_DIRS}
+    ${WORKFLOW_MODULE_IMPLEMENTATION_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
@@ -168,15 +167,10 @@ endif()
 target_compile_features(siligen_application_system PUBLIC cxx_std_17)
 
 add_library(siligen_application_motion STATIC
-    usecases/motion/manual/ManualMotionControlUseCase.cpp
     usecases/motion/initialization/MotionInitializationUseCase.cpp
     usecases/motion/safety/MotionSafetyUseCase.cpp
-    usecases/motion/monitoring/MotionMonitoringUseCase.cpp
     usecases/motion/coordination/MotionCoordinationUseCase.cpp
-    usecases/motion/homing/HomeAxesUseCase.cpp
-    usecases/motion/homing/EnsureAxesReadyZeroUseCase.cpp
     usecases/motion/ptp/MoveToPositionUseCase.cpp
-    usecases/motion/runtime/MotionRuntimeAssemblyFactory.cpp
     usecases/motion/trajectory/DeterministicPathExecutionUseCase.cpp
     usecases/motion/trajectory/ExecuteTrajectoryUseCase.cpp
     usecases/motion/interpolation/InterpolationPlanningUseCase.cpp
@@ -251,11 +245,6 @@ endif()
 if(TARGET siligen_dxf_geometry_application_public)
     target_link_libraries(siligen_application_dispensing PUBLIC
         siligen_dxf_geometry_application_public
-    )
-endif()
-if(TARGET siligen_runtime_execution_application_public)
-    target_link_libraries(siligen_application_dispensing PUBLIC
-        siligen_runtime_execution_application_public
     )
 endif()
 target_compile_features(siligen_application_dispensing PUBLIC cxx_std_17)

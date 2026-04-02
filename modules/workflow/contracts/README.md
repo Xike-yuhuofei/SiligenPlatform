@@ -21,7 +21,7 @@
 
 - 仅放置 `workflow` owner 专属契约，不放跨模块公共稳定契约。
 - 跨模块长期稳定契约应维护在 `shared/contracts/`。
-- `process-runtime-core/` 与 `src/` 仅作为 shell-only bridge，不再承载 `M0` 终态 owner 契约。
+- 历史 `process-runtime-core/` 与 `src/` bridge root 已退役，不再承载 `M0` 终态 owner 契约。
 - 契约字段仅表达编排、阶段推进、失败分类与恢复指令，不承载 motion / recipe / planning 的内部算法参数或状态机细节。
 
 ## 迁移来源（当前事实）

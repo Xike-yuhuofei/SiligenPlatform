@@ -4,15 +4,33 @@
 
 | workflow compatibility target | owner path | note |
 |---|---|---|
-| `siligen_motion_execution_services` | `modules/workflow/domain/domain/motion/domain-services/MotionBufferController.cpp` | execution owner 已冻结到 workflow |
-| `siligen_motion_execution_services` | `modules/workflow/domain/domain/motion/domain-services/JogController.cpp` | execution owner 已冻结到 workflow |
-| `siligen_motion_execution_services` | `modules/workflow/domain/domain/motion/domain-services/HomingProcess.cpp` | execution owner 已冻结到 workflow |
-| `siligen_motion_execution_services` | `modules/workflow/domain/domain/motion/domain-services/ReadyZeroDecisionService.cpp` | execution owner 已冻结到 workflow |
+| `runtime-execution motion services leaf target` | `modules/runtime-execution/application/services/motion/MotionBufferController.cpp` | `siligen_runtime_execution_motion_services` 是唯一 execution-owner build target；workflow compat target 已删除 |
+| `runtime-execution motion services leaf target` | `modules/runtime-execution/application/services/motion/JogController.cpp` | `siligen_runtime_execution_motion_services` 是唯一 execution-owner build target；workflow compat target 已删除 |
+| `runtime-execution motion services leaf target` | `modules/runtime-execution/application/services/motion/HomingProcess.cpp` | `siligen_runtime_execution_motion_services` 是唯一 execution-owner build target；workflow compat target 已删除 |
+| `runtime-execution motion services leaf target` | `modules/runtime-execution/application/services/motion/ReadyZeroDecisionService.cpp` | `siligen_runtime_execution_motion_services` 是唯一 execution-owner build target；workflow compat target 已删除 |
 | `siligen_motion` | `modules/motion-planning/domain/motion/*.cpp` | planning owner 已冻结到 motion-planning，workflow 不再保留 fallback |
-| `domain/motion/*` workflow legacy paths | `modules/motion-planning/domain/motion/*.h` | 仅保留 thin shim header，不再持有 live `.cpp` |
+| `domain/motion/*` legacy include | `modules/motion-planning/domain/motion/*.h` | 仅 planning owner header 保留；runtime port alias 与 execution service shim 已删除 |
 | `domain/motion/{BezierCalculator,BSplineCalculator,CircleCalculator,CMPValidator,CMPCompensation}` | `modules/motion-planning/domain/motion/*.h` | workflow legacy root helper 已改为 shim-only，duplicate `.cpp` 已移除 |
 | `domain/motion/domain-services/interpolation/*` | `modules/motion-planning/domain/motion/domain-services/interpolation/*.h` | workflow legacy interpolation surface 已改为 shim-only，禁止再保留第二份实现 |
-| `domain/motion/domain-services/{MotionControlServiceImpl,MotionStatusServiceImpl}` | `modules/runtime-execution/application/include/runtime_execution/application/services/motion/*.h` | runtime concrete owner 已冻结到 runtime-execution；motion-planning / workflow duplicate `.cpp` 已移除 |
+| `domain/motion/ports/{IMotionRuntimePort,IIOControlPort}` | `modules/runtime-execution/contracts/runtime/include/runtime_execution/contracts/motion/*` | motion-planning / workflow legacy port alias header 已删除；live consumer 必须切 canonical runtime contract path |
+| `domain/motion/domain-services/{HomingProcess,JogController,MotionBufferController,ReadyZeroDecisionService,MotionControlServiceImpl,MotionStatusServiceImpl}` | `modules/runtime-execution/application/include/runtime_execution/application/services/motion/*.h` | motion-planning / workflow legacy shim header 已删除；仅保留 canonical runtime path |
+
+## Machine / Calibration -> Runtime Execution
+
+| workflow compatibility target / surface | owner path | note |
+|---|---|---|
+| `runtime-execution machine model leaf target` | `modules/runtime-execution/application/system/LegacyDispenserModel.cpp` | `siligen_runtime_execution_machine_model` 是唯一 machine aggregate build target；workflow `domain_machine` 已删除 |
+| `domain/machine/aggregates/DispenserModel.h` | `modules/runtime-execution/application/include/runtime_execution/application/system/LegacyDispenserModel.h` | workflow public header 已删除；live consumer 需切 canonical runtime path |
+| `domain/machine/domain-services/CalibrationProcess.h` | `modules/runtime-execution/application/include/runtime_execution/application/services/calibration/CalibrationWorkflowService.h` | workflow calibration alias 已删除；runtime canonical test 已接管验证 |
+| `domain/machine/value-objects/CalibrationTypes.h` | `modules/runtime-execution/contracts/runtime/include/runtime_execution/contracts/system/CalibrationExecutionTypes.h` | workflow calibration types alias 已删除 |
+| `domain/machine/ports/{ICalibrationDevicePort,ICalibrationResultPort}.h` | `modules/runtime-execution/contracts/runtime/include/runtime_execution/contracts/system/*` | workflow calibration port alias 已删除 |
+
+## Recipe Serialization Surface
+
+| compatibility surface | owner path | note |
+|---|---|---|
+| `workflow/adapters/include/workflow/adapters/recipes/serialization/RecipeJsonSerializer.h` | canonical public serializer header | live consumer 统一包含 canonical workflow/adapters path |
+| `workflow/adapters/include/recipes/serialization/RecipeJsonSerializer.h` | removed | legacy public wrapper 已删除，不再保留第二个 public truth |
 
 ## Dispensing Planning / Execution Package -> M8
 
@@ -35,7 +53,9 @@
 
 - `modules/motion-planning/application/CMakeLists.txt` 不再反向修改 `siligen_application_motion` / `siligen_application_dispensing`
 - `modules/dispense-packaging/application/CMakeLists.txt` 不再反向修改 `siligen_application_dispensing`
-- `siligen_workflow_dispensing_planning_compat` 仅保留为 deprecated compatibility target，live target 禁止新增依赖
+- `siligen_workflow_dispensing_planning_compat` 已删除，live target 禁止新增任何同类 compat target
 - `modules/workflow/domain/domain/CMakeLists.txt` 不再提供 `siligen_motion` 本地 fallback，缺少 canonical owner target 时显式失败
-- `siligen_process_runtime_core_*` 仅保留为 deprecated compatibility target，README 与后续 owner 论证不得再将其视为 live public surface
+- `modules/workflow/application/CMakeLists.txt` 不再链接 `siligen_runtime_execution_application_public`；`MotionRuntimeAssemblyFactory` 已删除
+- `modules/workflow/tests/unit` 是 workflow 自有 canonical tests root；runtime-owned motion/device tests 固定到 `modules/runtime-execution/runtime/host/tests`
+- workflow test helper / smoke target 已去掉 `process_runtime_core_*` 历史命名，不再把该命名空间当作 live public surface 或 owner 证据
 - `tests/reports/module-boundary-bridges-s2a/module-boundary-bridges.md` 当前状态为 `passed`

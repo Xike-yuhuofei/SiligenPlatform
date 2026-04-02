@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-if(NOT TARGET siligen_process_planning_legacy_configuration_bridge_public)
+if(NOT TARGET siligen_process_planning_contracts_public)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../../modules/process-planning/contracts"
         "${CMAKE_BINARY_DIR}/_p/arg_ppc"
@@ -22,7 +22,7 @@ target_link_libraries(siligen_app_runtime_gateway INTERFACE
     siligen_transport_gateway
     siligen_runtime_process_bootstrap_public
     siligen_job_ingest_contracts
-    siligen_process_planning_legacy_configuration_bridge_public
+    siligen_process_planning_contracts_public
 )
 target_compile_features(siligen_app_runtime_gateway INTERFACE cxx_std_17)
 

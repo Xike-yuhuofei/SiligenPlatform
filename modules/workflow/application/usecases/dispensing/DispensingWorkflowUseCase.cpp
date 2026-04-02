@@ -3,6 +3,8 @@
 #include "DispensingWorkflowUseCase.h"
 
 #include "application/services/dispensing/WorkflowPreviewSnapshotService.h"
+#include "domain/safety/domain-services/InterlockPolicy.h"
+#include "domain/safety/domain-services/SafetyOutputGuard.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
 
@@ -16,9 +18,16 @@
 namespace Siligen::Application::UseCases::Dispensing {
 
 using Domain::Motion::Ports::IMotionStatePort;
+using Domain::Motion::Ports::MotionState;
+using Domain::Motion::Ports::MotionStatus;
+using Domain::Safety::DomainServices::InterlockPolicy;
 using Domain::Safety::Ports::IInterlockSignalPort;
+using Domain::Safety::ValueObjects::InterlockCause;
+using Domain::Safety::ValueObjects::InterlockPolicyConfig;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
+using Siligen::Workflow::Contracts::WorkflowExecutionStartRequest;
+using Siligen::Workflow::Contracts::WorkflowExecutionStatus;
 
 namespace {
 
@@ -55,24 +64,229 @@ bool IsRuntimeTerminalState(const std::string& state) {
     return state == "completed" || state == "failed" || state == "cancelled";
 }
 
+Domain::Machine::ValueObjects::MachineMode ResolveWorkflowMachineMode(
+    const Siligen::Workflow::Contracts::WorkflowExecutionRuntimeOverrides& overrides) {
+    if (overrides.machine_mode.has_value()) {
+        return overrides.machine_mode.value();
+    }
+    return overrides.dry_run
+        ? Domain::Machine::ValueObjects::MachineMode::Test
+        : Domain::Machine::ValueObjects::MachineMode::Production;
+}
+
+Domain::Dispensing::ValueObjects::JobExecutionMode ResolveWorkflowExecutionMode(
+    const Siligen::Workflow::Contracts::WorkflowExecutionRuntimeOverrides& overrides) {
+    if (overrides.execution_mode.has_value()) {
+        return overrides.execution_mode.value();
+    }
+    return overrides.dry_run
+        ? Domain::Dispensing::ValueObjects::JobExecutionMode::ValidationDryCycle
+        : Domain::Dispensing::ValueObjects::JobExecutionMode::Production;
+}
+
+Domain::Dispensing::ValueObjects::ProcessOutputPolicy ResolveWorkflowOutputPolicy(
+    const Siligen::Workflow::Contracts::WorkflowExecutionRuntimeOverrides& overrides) {
+    if (overrides.output_policy.has_value()) {
+        return overrides.output_policy.value();
+    }
+    return overrides.dry_run
+        ? Domain::Dispensing::ValueObjects::ProcessOutputPolicy::Inhibited
+        : Domain::Dispensing::ValueObjects::ProcessOutputPolicy::Enabled;
+}
+
+Result<void> ValidateWorkflowExecutionLaunch(
+    const Siligen::Workflow::Contracts::WorkflowExecutionLaunch& launch) {
+    auto package_validation = launch.execution_package.Validate();
+    if (package_validation.IsError()) {
+        return package_validation;
+    }
+
+    const auto& overrides = launch.runtime_overrides;
+    const float32 dispensing_speed = overrides.dispensing_speed_mm_s.value_or(0.0f);
+    const float32 dry_run_speed = overrides.dry_run_speed_mm_s.value_or(0.0f);
+    const float32 rapid_speed = overrides.rapid_speed_mm_s.value_or(0.0f);
+    const float32 acceleration = overrides.acceleration_mm_s2.value_or(0.0f);
+
+    if (overrides.max_jerk < 0.0f) {
+        return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "max_jerk不能为负数"));
+    }
+    if (overrides.arc_tolerance_mm < 0.0f) {
+        return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "arc_tolerance_mm不能为负数"));
+    }
+    if (overrides.dispensing_speed_mm_s.has_value() && dispensing_speed < 0.0f) {
+        return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "dispensing_speed_mm_s不能为负数"));
+    }
+    if (overrides.dry_run_speed_mm_s.has_value() && dry_run_speed < 0.0f) {
+        return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "dry_run_speed_mm_s不能为负数"));
+    }
+    if (overrides.rapid_speed_mm_s.has_value() && rapid_speed < 0.0f) {
+        return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "rapid_speed_mm_s不能为负数"));
+    }
+    if (dispensing_speed <= 0.0f && dry_run_speed <= 0.0f) {
+        return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "点胶速度与空走速度至少提供一个"));
+    }
+    if (overrides.acceleration_mm_s2.has_value() && acceleration < 0.0f) {
+        return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "acceleration_mm_s2不能为负数"));
+    }
+    if (overrides.velocity_guard_ratio < 0.0f || overrides.velocity_guard_ratio > 1.0f) {
+        return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "velocity_guard_ratio超出范围(0-1)"));
+    }
+    if (overrides.velocity_guard_abs_mm_s < 0.0f || overrides.velocity_guard_min_expected_mm_s < 0.0f) {
+        return Result<void>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "velocity_guard_abs_mm_s/velocity_guard_min_expected_mm_s不能为负数"));
+    }
+    if (overrides.velocity_guard_grace_ms < 0 ||
+        overrides.velocity_guard_interval_ms < 0 ||
+        overrides.velocity_guard_max_consecutive < 0) {
+        return Result<void>::Failure(
+            Error(
+                ErrorCode::INVALID_PARAMETER,
+                "velocity_guard_grace_ms/velocity_guard_interval_ms/velocity_guard_max_consecutive不能为负数"));
+    }
+    if (overrides.velocity_guard_enabled) {
+        if (overrides.velocity_guard_ratio <= 0.0f && overrides.velocity_guard_abs_mm_s <= 0.0f) {
+            return Result<void>::Failure(
+                Error(ErrorCode::INVALID_PARAMETER, "速度保护阈值无效(比例/绝对阈值需至少一个>0)"));
+        }
+        if (overrides.velocity_guard_interval_ms == 0 || overrides.velocity_guard_max_consecutive == 0) {
+            return Result<void>::Failure(
+                Error(ErrorCode::INVALID_PARAMETER, "速度保护interval/max_consecutive必须大于0"));
+        }
+    }
+    if (overrides.dry_run) {
+        if (overrides.machine_mode.has_value() &&
+            overrides.machine_mode.value() != Domain::Machine::ValueObjects::MachineMode::Test) {
+            return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "dry_run与machine_mode语义冲突"));
+        }
+        if (overrides.execution_mode.has_value() &&
+            overrides.execution_mode.value() != Domain::Dispensing::ValueObjects::JobExecutionMode::ValidationDryCycle) {
+            return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "dry_run与execution_mode语义冲突"));
+        }
+        if (overrides.output_policy.has_value() &&
+            overrides.output_policy.value() != Domain::Dispensing::ValueObjects::ProcessOutputPolicy::Inhibited) {
+            return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "dry_run与output_policy语义冲突"));
+        }
+    }
+
+    auto guard_validation = Domain::Safety::DomainServices::SafetyOutputGuard::Evaluate(
+        ResolveWorkflowMachineMode(overrides),
+        ResolveWorkflowExecutionMode(overrides),
+        ResolveWorkflowOutputPolicy(overrides));
+    if (guard_validation.IsError()) {
+        return Result<void>::Failure(guard_validation.GetError());
+    }
+
+    return Result<void>::Success();
+}
+
+Result<void> ValidateWorkflowExecutionPreconditions(
+    const std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort>& connection_port,
+    const std::shared_ptr<IMotionStatePort>& motion_state_port,
+    const std::shared_ptr<Domain::Motion::Ports::IHomingPort>& homing_port,
+    const std::shared_ptr<IInterlockSignalPort>& interlock_signal_port) {
+    if (!connection_port) {
+        return Result<void>::Failure(
+            Error(ErrorCode::PORT_NOT_INITIALIZED, "hardware connection port not available", "DispensingWorkflowUseCase"));
+    }
+    if (!connection_port->IsConnected()) {
+        return Result<void>::Failure(
+            Error(ErrorCode::HARDWARE_NOT_CONNECTED, "hardware not connected", "DispensingWorkflowUseCase"));
+    }
+    if (!motion_state_port) {
+        return Result<void>::Failure(
+            Error(ErrorCode::PORT_NOT_INITIALIZED, "motion state port not available", "DispensingWorkflowUseCase"));
+    }
+
+    const LogicalAxisId required_axes[] = {LogicalAxisId::X, LogicalAxisId::Y};
+    for (LogicalAxisId axis : required_axes) {
+        auto status_result = motion_state_port->GetAxisStatus(axis);
+        if (status_result.IsError()) {
+            return Result<void>::Failure(status_result.GetError());
+        }
+
+        const MotionStatus& status = status_result.Value();
+        if (status.state == MotionState::ESTOP) {
+            return Result<void>::Failure(
+                Error(ErrorCode::EMERGENCY_STOP_ACTIVATED, "axis in emergency stop state", "DispensingWorkflowUseCase"));
+        }
+        if (!status.enabled || status.state == MotionState::DISABLED) {
+            return Result<void>::Failure(
+                Error(ErrorCode::INVALID_STATE, "required axis not enabled", "DispensingWorkflowUseCase"));
+        }
+
+        bool axis_homed = false;
+        if (homing_port) {
+            auto homed_result = homing_port->IsAxisHomed(axis);
+            if (homed_result.IsError()) {
+                return Result<void>::Failure(homed_result.GetError());
+            }
+            axis_homed = homed_result.Value();
+        } else {
+            axis_homed = (status.state == MotionState::HOMED);
+        }
+
+        if (!axis_homed) {
+            return Result<void>::Failure(
+                Error(ErrorCode::AXIS_NOT_HOMED, "required axis not homed", "DispensingWorkflowUseCase"));
+        }
+        if (status.has_error || status.servo_alarm || status.following_error) {
+            return Result<void>::Failure(
+                Error(ErrorCode::HARDWARE_ERROR, "required axis has active error", "DispensingWorkflowUseCase"));
+        }
+    }
+
+    if (interlock_signal_port) {
+        InterlockPolicyConfig interlock_config;
+        auto interlock_result = InterlockPolicy::Evaluate(*interlock_signal_port, interlock_config);
+        if (interlock_result.IsError()) {
+            return Result<void>::Failure(interlock_result.GetError());
+        }
+
+        const auto& decision = interlock_result.Value();
+        if (decision.triggered) {
+            const std::string reason = decision.reason == nullptr ? "interlock triggered" : decision.reason;
+            switch (decision.cause) {
+                case InterlockCause::EMERGENCY_STOP:
+                    return Result<void>::Failure(
+                        Error(ErrorCode::EMERGENCY_STOP_ACTIVATED, reason, "DispensingWorkflowUseCase"));
+                case InterlockCause::SERVO_ALARM:
+                    return Result<void>::Failure(
+                        Error(ErrorCode::HARDWARE_ERROR, reason, "DispensingWorkflowUseCase"));
+                case InterlockCause::SAFETY_DOOR_OPEN:
+                case InterlockCause::PRESSURE_ABNORMAL:
+                case InterlockCause::TEMPERATURE_ABNORMAL:
+                case InterlockCause::VOLTAGE_ABNORMAL:
+                    return Result<void>::Failure(
+                        Error(ErrorCode::INVALID_STATE, reason, "DispensingWorkflowUseCase"));
+                case InterlockCause::NONE:
+                default:
+                    return Result<void>::Failure(
+                        Error(ErrorCode::INVALID_STATE, "interlock triggered", "DispensingWorkflowUseCase"));
+            }
+        }
+    }
+
+    return Result<void>::Success();
+}
+
 }  // namespace
 
 DispensingWorkflowUseCase::DispensingWorkflowUseCase(
     std::shared_ptr<IUploadFilePort> upload_use_case,
     std::shared_ptr<PlanningUseCase> planning_use_case,
-    std::shared_ptr<DispensingExecutionUseCase> execution_use_case,
+    std::shared_ptr<Siligen::Workflow::Contracts::IWorkflowExecutionPort> execution_port,
     std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
     std::shared_ptr<IMotionStatePort> motion_state_port,
     std::shared_ptr<Domain::Motion::Ports::IHomingPort> homing_port,
     std::shared_ptr<IInterlockSignalPort> interlock_signal_port)
     : upload_use_case_(std::move(upload_use_case)),
       planning_use_case_(std::move(planning_use_case)),
-      execution_use_case_(std::move(execution_use_case)),
+      execution_port_(std::move(execution_port)),
       connection_port_(std::move(connection_port)),
       motion_state_port_(std::move(motion_state_port)),
       homing_port_(std::move(homing_port)),
       interlock_signal_port_(std::move(interlock_signal_port)) {
-    if (!upload_use_case_ || !planning_use_case_ || !execution_use_case_) {
+    if (!upload_use_case_ || !planning_use_case_ || !execution_port_) {
         throw std::invalid_argument("DispensingWorkflowUseCase: dependencies cannot be null");
     }
 }
@@ -140,8 +354,7 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
     if (execution_launch.runtime_overrides.source_path.empty()) {
         execution_launch.runtime_overrides.source_path = artifact.upload_response.filepath;
     }
-    const auto execution_request = BuildExecutionRequest(execution_launch);
-    auto execution_validation = execution_request.Validate();
+    auto execution_validation = ValidateWorkflowExecutionLaunch(execution_launch);
     if (execution_validation.IsError()) {
         return Result<PreparePlanResponse>::Failure(execution_validation.GetError());
     }
@@ -333,13 +546,21 @@ Result<JobID> DispensingWorkflowUseCase::StartJob(const StartJobRequest& request
         execution_launch = it->second.execution_launch;
     }
 
-    RuntimeStartJobRequest runtime_request;
-    runtime_request.plan_id = request.plan_id;
-    runtime_request.execution_request = BuildExecutionRequest(execution_launch);
-    runtime_request.plan_fingerprint = request.plan_fingerprint;
-    runtime_request.target_count = request.target_count;
+    auto precondition_result = ValidateWorkflowExecutionPreconditions(
+        connection_port_,
+        motion_state_port_,
+        homing_port_,
+        interlock_signal_port_);
+    if (precondition_result.IsError()) {
+        return Result<JobID>::Failure(precondition_result.GetError());
+    }
 
-    auto runtime_result = execution_use_case_->StartJob(runtime_request);
+    auto runtime_result = execution_port_->StartWorkflowExecution(
+        BuildExecutionStartRequest(
+            request.plan_id,
+            request.plan_fingerprint,
+            request.target_count,
+            execution_launch));
     if (runtime_result.IsError()) {
         return Result<JobID>::Failure(runtime_result.GetError());
     }
@@ -361,7 +582,7 @@ Result<JobID> DispensingWorkflowUseCase::StartJob(const StartJobRequest& request
 }
 
 Result<JobStatusResponse> DispensingWorkflowUseCase::GetJobStatus(const JobID& job_id) const {
-    auto runtime_result = execution_use_case_->GetJobStatus(job_id);
+    auto runtime_result = execution_port_->GetWorkflowExecutionStatus(job_id);
     if (runtime_result.IsError()) {
         return Result<JobStatusResponse>::Failure(runtime_result.GetError());
     }
@@ -388,15 +609,23 @@ Result<JobStatusResponse> DispensingWorkflowUseCase::GetJobStatus(const JobID& j
 }
 
 Result<void> DispensingWorkflowUseCase::PauseJob(const JobID& job_id) {
-    return execution_use_case_->PauseJob(job_id);
+    return execution_port_->PauseWorkflowExecution(job_id);
 }
 
 Result<void> DispensingWorkflowUseCase::ResumeJob(const JobID& job_id) {
-    return execution_use_case_->ResumeJob(job_id);
+    auto precondition_result = ValidateWorkflowExecutionPreconditions(
+        connection_port_,
+        motion_state_port_,
+        homing_port_,
+        interlock_signal_port_);
+    if (precondition_result.IsError()) {
+        return Result<void>::Failure(precondition_result.GetError());
+    }
+    return execution_port_->ResumeWorkflowExecution(job_id);
 }
 
 Result<void> DispensingWorkflowUseCase::StopJob(const JobID& job_id) {
-    auto result = execution_use_case_->StopJob(job_id);
+    auto result = execution_port_->StopWorkflowExecution(job_id);
     if (result.IsSuccess()) {
         PlanID plan_id;
         {
@@ -460,32 +689,16 @@ std::string DispensingWorkflowUseCase::GenerateId(const char* prefix) {
     return std::string(prefix) + "-" + std::to_string(millis) + "-" + std::to_string(seq);
 }
 
-DispensingExecutionRequest DispensingWorkflowUseCase::BuildExecutionRequest(const PlanExecutionLaunch& launch) const {
-    DispensingExecutionRequest request;
-    request.execution_package = launch.execution_package;
-    request.source_path = launch.runtime_overrides.source_path;
-    request.use_hardware_trigger = launch.runtime_overrides.use_hardware_trigger;
-    request.dry_run = launch.runtime_overrides.dry_run;
-    request.machine_mode = launch.runtime_overrides.machine_mode;
-    request.execution_mode = launch.runtime_overrides.execution_mode;
-    request.output_policy = launch.runtime_overrides.output_policy;
-    request.max_jerk = launch.runtime_overrides.max_jerk;
-    request.arc_tolerance_mm = launch.runtime_overrides.arc_tolerance_mm;
-    request.dispensing_speed_mm_s = launch.runtime_overrides.dispensing_speed_mm_s;
-    request.dry_run_speed_mm_s = launch.runtime_overrides.dry_run_speed_mm_s;
-    request.rapid_speed_mm_s = launch.runtime_overrides.rapid_speed_mm_s;
-    request.acceleration_mm_s2 = launch.runtime_overrides.acceleration_mm_s2;
-    request.velocity_trace_enabled = launch.runtime_overrides.velocity_trace_enabled;
-    request.velocity_trace_interval_ms = launch.runtime_overrides.velocity_trace_interval_ms;
-    request.velocity_trace_path = launch.runtime_overrides.velocity_trace_path;
-    request.velocity_guard_enabled = launch.runtime_overrides.velocity_guard_enabled;
-    request.velocity_guard_ratio = launch.runtime_overrides.velocity_guard_ratio;
-    request.velocity_guard_abs_mm_s = launch.runtime_overrides.velocity_guard_abs_mm_s;
-    request.velocity_guard_min_expected_mm_s = launch.runtime_overrides.velocity_guard_min_expected_mm_s;
-    request.velocity_guard_grace_ms = launch.runtime_overrides.velocity_guard_grace_ms;
-    request.velocity_guard_interval_ms = launch.runtime_overrides.velocity_guard_interval_ms;
-    request.velocity_guard_max_consecutive = launch.runtime_overrides.velocity_guard_max_consecutive;
-    request.velocity_guard_stop_on_violation = launch.runtime_overrides.velocity_guard_stop_on_violation;
+WorkflowExecutionStartRequest DispensingWorkflowUseCase::BuildExecutionStartRequest(
+    const PlanID& plan_id,
+    const std::string& plan_fingerprint,
+    std::uint32_t target_count,
+    const PlanExecutionLaunch& launch) const {
+    WorkflowExecutionStartRequest request;
+    request.plan_id = plan_id;
+    request.launch = launch;
+    request.plan_fingerprint = plan_fingerprint;
+    request.target_count = target_count;
     return request;
 }
 
@@ -494,10 +707,10 @@ std::string DispensingWorkflowUseCase::BuildPlanFingerprint(
     const PlanningResponse& planning,
     const PlanExecutionLaunch& execution_launch) const {
     std::ostringstream oss;
-    const auto runtime_request = BuildExecutionRequest(execution_launch);
-    const auto machine_mode = runtime_request.ResolveMachineMode();
-    const auto execution_mode = runtime_request.ResolveExecutionMode();
-    const auto output_policy = runtime_request.ResolveOutputPolicy();
+    const auto& runtime_request = execution_launch.runtime_overrides;
+    const auto machine_mode = ResolveWorkflowMachineMode(runtime_request);
+    const auto execution_mode = ResolveWorkflowExecutionMode(runtime_request);
+    const auto output_policy = ResolveWorkflowOutputPolicy(runtime_request);
     const auto& package = execution_launch.execution_package;
     const auto& execution_plan = package.execution_plan;
 
@@ -672,7 +885,7 @@ void DispensingWorkflowUseCase::ReleaseConfirmedPreviewForPlan(
 
 void DispensingWorkflowUseCase::SyncPlanStateFromRuntimeStatus(
     const JobID& job_id,
-    const RuntimeJobStatusResponse& runtime_status) const {
+    const WorkflowExecutionStatus& runtime_status) const {
     if (!IsRuntimeTerminalState(runtime_status.state)) {
         return;
     }

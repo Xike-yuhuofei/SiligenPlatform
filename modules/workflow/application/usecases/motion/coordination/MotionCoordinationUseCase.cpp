@@ -28,7 +28,7 @@ Result<std::string> MissingPortString(const char* method, const char* dependency
 
 MotionCoordinationUseCase::MotionCoordinationUseCase(
     std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port,
-    std::shared_ptr<Domain::Motion::Ports::IIOControlPort> io_port,
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort> io_port,
     std::shared_ptr<Domain::Motion::Ports::IAxisControlPort> axis_control_port,
     std::shared_ptr<Domain::Dispensing::Ports::ITriggerControllerPort> trigger_port,
     std::shared_ptr<Domain::Motion::Ports::IAdvancedMotionPort> advanced_motion_port)

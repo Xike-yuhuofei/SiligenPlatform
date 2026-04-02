@@ -8,27 +8,27 @@
 - 插补算法（直线、圆弧、样条）
 - 时间规划、速度规划与触发时间线计算
 - `MotionTrajectory`、`TimePlanningConfig`、`MotionPlanningReport` 等规划事实输出
-- 面向后续阶段保留的少量兼容残余（仅供 thin compatibility shell 使用，不构成 owner public surface）
+- 不再承接 runtime/control owner 的兼容入口；live consumer 必须直连 canonical owner
 
 ## Stage B 边界
 
 - `IMotionRuntimePort`、`IIOControlPort` 的 owner 在 `modules/runtime-execution/contracts/runtime/include/runtime_execution/contracts/motion/`
 - `MotionControlServiceImpl`、`MotionStatusServiceImpl` 的 owner 在 `modules/runtime-execution/application/include/runtime_execution/application/services/motion/`
-- 本目录下同名头文件仅允许保留 shim/alias，禁止重新声明 runtime/control owner 类型
-- `MotionBufferController`、`JogController`、`HomingProcess`、`ReadyZeroDecisionService` 在本目录下仅保留 compatibility header；live implementation owner 已冻结到 `modules/workflow/domain/domain/motion/domain-services/`
-- 上述四类 execution-owner 服务禁止在 `modules/motion-planning/domain/motion/domain-services/` 下保留可被 target 误编译的 `.cpp`
+- `HomingProcess`、`JogController`、`MotionBufferController`、`ReadyZeroDecisionService` 的 owner 在 `modules/runtime-execution/application/include/runtime_execution/application/services/motion/`
+- 本目录不再保留 runtime/control owner 的 shim/alias header；live consumer 必须使用 canonical runtime path
+- execution-owner 服务禁止在 `modules/motion-planning/domain/motion/domain-services/` 下保留可被 target 误编译的 `.cpp` 或 `.h`
 
 ## Execution Owner 审计
 
-- `siligen_motion_execution_services` 的 live source root 固定为 workflow motion root，只允许从 `modules/workflow/domain/domain/motion/domain-services/` 取 `MotionBufferController`、`JogController`、`HomingProcess`、`ReadyZeroDecisionService`
-- `modules/motion-planning/domain/motion/domain-services/` 下这四个旧路径只保留 thin compatibility shell，用于兼容历史 include，不再持有 live `.cpp`
+- `siligen_runtime_execution_motion_services` 是唯一 execution-owner build target，live source root 固定为 `modules/runtime-execution/application/services/motion/`
+- `modules/motion-planning/domain/motion/domain-services/` 下旧 execution shim header 已删除；`modules/workflow/domain/**` 下对应 execution shim 同样已删除
 
 ## Planning Owner 审计
 
 - `siligen_motion` 的 live source root 固定为 `modules/motion-planning/domain/motion/`
 - `CMPCoordinatedInterpolator`、`TimeTrajectoryPlanner`、`TrajectoryPlanner`、`TriggerCalculator`、`SpeedPlanner`、`GeometryBlender`、`VelocityProfileService`、`SevenSegmentSCurveProfile` 的 owner 固定为 motion-planning
 - `BezierCalculator`、`BSplineCalculator`、`CircleCalculator`、`CMPValidator`、`CMPCompensation` 与 interpolation 子目录实现同样固定为 motion-planning owner
-- `modules/workflow/domain/domain/motion/` 与 `modules/workflow/domain/domain/motion/domain-services/` 下对应旧路径只保留 thin compatibility shell，不再持有 live `.cpp`
+- `modules/workflow/domain/domain/motion/` 不再保留 execution 兼容构建入口；planning owner 不再受 workflow fallback 干扰
 - workflow domain 不再提供 `siligen_motion` 本地 fallback；缺少 canonical owner target 时构建显式失败
 
 ## 目录结构
@@ -54,10 +54,6 @@ motion/
 │   ├── TimeTrajectoryPlanner     # 时间规划
 │   ├── TriggerCalculator         # 规划触发计算
 │   ├── SpeedPlanner              # 速度规划
-│   ├── MotionBufferController    # compatibility header only
-│   ├── JogController             # compatibility header only
-│   ├── HomingProcess             # compatibility header only
-│   ├── ReadyZeroDecisionService  # compatibility header only
 │   └── interpolation/            # 插补与程序生成
 ├── BezierCalculator.*             # 计算器与验证器（根目录文件）
 ├── BSplineCalculator.*
@@ -65,16 +61,14 @@ motion/
 ├── CMPValidator.*
 ├── CMPCompensation.*
 ├── CMPCoordinatedInterpolator.*
-└── ports/                          # 规划相关端口；runtime/control 端口仅保留 shim
+└── ports/                          # 规划相关端口
     ├── IMotionConnectionPort
     ├── IAxisControlPort
     ├── IPositionControlPort
     ├── IJogControlPort
     ├── IInterpolationPort
     ├── IMotionStatePort
-    ├── IHomingPort
-    ├── IMotionRuntimePort  # shim -> M9 owner
-    └── IIOControlPort      # shim -> M9 owner
+    └── IHomingPort
 ```
 
 ## 命名空间

@@ -1,32 +1,15 @@
 #pragma once
 
-#include "runtime_execution/contracts/motion/HomingProcess.h"
-#include "runtime_execution/contracts/motion/IInterpolationPort.h"
-#include "runtime_execution/contracts/motion/IMotionStatePort.h"
+#include "runtime_execution/application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
+#include "runtime_execution/application/usecases/motion/homing/HomeAxesUseCase.h"
+#include "runtime_execution/application/usecases/motion/manual/ManualMotionControlUseCase.h"
+#include "runtime_execution/application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
 #include "shared/types/Types.h"
 
 #include <memory>
 #include <vector>
-
-namespace Siligen::Application::UseCases::Motion::Homing {
-struct EnsureAxesReadyZeroRequest;
-struct EnsureAxesReadyZeroResponse;
-using HomeAxesRequest = Siligen::Domain::Motion::DomainServices::HomeAxesRequest;
-using HomeAxesResponse = Siligen::Domain::Motion::DomainServices::HomeAxesResponse;
-class EnsureAxesReadyZeroUseCase;
-class HomeAxesUseCase;
-}  // namespace Siligen::Application::UseCases::Motion::Homing
-
-namespace Siligen::Application::UseCases::Motion::Manual {
-struct ManualMotionCommand;
-class ManualMotionControlUseCase;
-}  // namespace Siligen::Application::UseCases::Motion::Manual
-
-namespace Siligen::Application::UseCases::Motion::Monitoring {
-class MotionMonitoringUseCase;
-}  // namespace Siligen::Application::UseCases::Motion::Monitoring
 
 namespace Siligen::Application::UseCases::Motion {
 

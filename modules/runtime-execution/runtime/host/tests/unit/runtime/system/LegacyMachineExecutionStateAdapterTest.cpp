@@ -1,6 +1,6 @@
 #include "runtime/system/LegacyMachineExecutionStateAdapter.h"
 
-#include "domain/machine/aggregates/DispenserModel.h"
+#include "runtime_execution/application/system/LegacyDispenserModel.h"
 
 #include <gtest/gtest.h>
 
@@ -8,7 +8,7 @@
 
 namespace {
 
-using DispenserModel = Siligen::Domain::Machine::Aggregates::Legacy::DispenserModel;
+using DispenserModel = Siligen::RuntimeExecution::Application::System::LegacyDispenserModel;
 using LegacyMachineExecutionStateAdapter = Siligen::Runtime::Host::System::LegacyMachineExecutionStateAdapter;
 using MachineExecutionPhase = Siligen::RuntimeExecution::Contracts::System::MachineExecutionPhase;
 

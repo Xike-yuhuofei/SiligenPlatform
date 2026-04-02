@@ -5,7 +5,7 @@
 #include "siligen/device/adapters/drivers/multicard/MockMultiCardWrapper.h"
 #include "siligen/device/adapters/motion/HomingPortAdapter.h"
 #include "shared/types/HardwareConfiguration.h"
-#include "domain/configuration/ports/IConfigurationPort.h"
+#include "runtime_execution/contracts/configuration/IConfigurationPort.h"
 
 #include <gtest/gtest.h>
 

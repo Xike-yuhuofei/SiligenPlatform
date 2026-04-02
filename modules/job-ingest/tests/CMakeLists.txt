@@ -17,14 +17,13 @@ endif()
 target_link_libraries(siligen_job_ingest_unit_tests PRIVATE
     siligen_job_ingest_application_public
     siligen_dxf_geometry_application_public
-    siligen_process_planning_domain_configuration
     siligen_types
     siligen_utils
 )
 target_compile_features(siligen_job_ingest_unit_tests PRIVATE cxx_std_17)
 
-if(COMMAND process_runtime_core_add_test_with_runtime_environment)
-    process_runtime_core_add_test_with_runtime_environment(
+if(COMMAND siligen_add_test_with_runtime_environment)
+    siligen_add_test_with_runtime_environment(
         siligen_job_ingest_unit_tests
         siligen_job_ingest_unit_tests
     )

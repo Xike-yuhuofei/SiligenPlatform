@@ -4,7 +4,7 @@ set(SILIGEN_WORKFLOW_ADAPTERS_PUBLIC_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/in
 foreach(required_dir
     IN ITEMS
         "${SILIGEN_WORKFLOW_ADAPTERS_PUBLIC_INCLUDE_DIR}/infrastructure"
-        "${SILIGEN_WORKFLOW_ADAPTERS_PUBLIC_INCLUDE_DIR}/recipes"
+        "${SILIGEN_WORKFLOW_ADAPTERS_PUBLIC_INCLUDE_DIR}/workflow/adapters/recipes"
 )
     if(NOT EXISTS "${required_dir}")
         message(FATAL_ERROR "workflow canonical adapters include root missing: ${required_dir}")

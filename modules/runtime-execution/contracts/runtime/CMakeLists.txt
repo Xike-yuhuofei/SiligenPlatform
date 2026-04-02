@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
 
+if(NOT TARGET siligen_process_planning_contracts_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../process-planning/contracts"
+        "${CMAKE_BINARY_DIR}/_p/rr_ppc"
+    )
+endif()
+
 if(NOT TARGET siligen_runtime_execution_runtime_contracts)
     add_library(siligen_runtime_execution_runtime_contracts INTERFACE)
 endif()
@@ -25,11 +32,27 @@ if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}/runtim
         "runtime-execution canonical runtime contracts require runtime_execution/contracts/motion/IIOControlPort.h"
     )
 endif()
+if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}/runtime_execution/contracts/motion/IHomeAxesExecutionPort.h")
+    message(FATAL_ERROR
+        "runtime-execution canonical runtime contracts require runtime_execution/contracts/motion/IHomeAxesExecutionPort.h"
+    )
+endif()
+if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}/runtime_execution/contracts/system/IHardwareConnectionPort.h")
+    message(FATAL_ERROR
+        "runtime-execution canonical runtime contracts require runtime_execution/contracts/system/IHardwareConnectionPort.h"
+    )
+endif()
+if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}/runtime_execution/contracts/system/IHardwareTestPort.h")
+    message(FATAL_ERROR
+        "runtime-execution canonical runtime contracts require runtime_execution/contracts/system/IHardwareTestPort.h"
+    )
+endif()
 
 target_include_directories(siligen_runtime_execution_runtime_contracts INTERFACE
     ${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}
 )
 target_link_libraries(siligen_runtime_execution_runtime_contracts INTERFACE
+    siligen_process_planning_contracts_public
     siligen_domain
 )
 target_compile_features(siligen_runtime_execution_runtime_contracts INTERFACE cxx_std_17)

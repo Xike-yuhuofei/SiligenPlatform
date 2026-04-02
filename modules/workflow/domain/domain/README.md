@@ -49,15 +49,15 @@
 
 ### 标定流程统一规范
 
-- `Machine::DomainServices::CalibrationProcess` 是标定流程唯一规则来源
+- `Machine::DomainServices::CalibrationProcess` 仍是 legacy include 入口，但 concrete owner 已迁到 `RuntimeExecution::Application::Services::Calibration::CalibrationWorkflowService`
 - 应用层仅负责编排调用，禁止在用例中复写标定状态机或规则
-- 标定设备与结果存储通过端口接入（`ICalibrationDevicePort` / `ICalibrationResultPort`）
+- 标定设备与结果存储端口已收敛到 runtime-execution contracts；workflow 旧端口仅保留 compatibility alias
 
 ### 自动运行/运行模式统一规范
 
-- `Machine::Aggregates::Legacy::DispenserModel` 是自动运行/运行模式唯一规则来源
+- `Machine::Aggregates::Legacy::DispenserModel` 仍是 legacy include 入口，但 concrete owner 已迁到 `RuntimeExecution::Application::System::LegacyDispenserModel`
 - 应用层仅负责编排调用，禁止在用例中复写运行模式状态机或规则
-- 与自动运行相关的状态变化事件由领域层产生并通过端口发布
+- workflow machine 目录只保留 compatibility shell，不再持有本地 live `.cpp`
 
 ### 点动统一规范
 

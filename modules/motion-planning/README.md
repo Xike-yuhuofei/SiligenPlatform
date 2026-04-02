@@ -19,8 +19,8 @@
 - `modules/motion-planning/` 是 `M7` 的唯一终态 owner 根。
 - `MotionPlanningFacade -> MotionPlanner -> MotionTrajectory` 是当前唯一 canonical 规划调用链。
 - 业务阶段名保留 `MotionPlan`，但本阶段代码级 canonical payload 固定为 `MotionTrajectory`。
-- `IMotionRuntimePort`、`IIOControlPort`、`MotionControlServiceImpl`、`MotionStatusServiceImpl` 的 owner 已迁移到 `modules/runtime-execution`；`M7` 下同名头文件仅保留 shim/alias。
-- `workflow` 侧仍可通过 thin compatibility shell 消费 `MotionBufferController`、`JogController`、`HomingProcess`、`ReadyZeroDecisionService` 等残余资产，但这些不再构成 `M7` 的 public owner surface。
+- `IMotionRuntimePort`、`IIOControlPort`、`MotionControlServiceImpl`、`MotionStatusServiceImpl` 的 owner 已迁移到 `modules/runtime-execution`；`M7` 下对应 alias/shim header 已删除。
+- `MotionBufferController`、`JogController`、`HomingProcess`、`ReadyZeroDecisionService` 也只允许从 `runtime-execution` canonical path 消费；不再保留 `M7` compat shell。
 
 ## 统一骨架状态
 

@@ -1,60 +1,22 @@
-# Machine 子域 - 设备管理
+# Machine 兼容壳
 
-**职责**: 负责点胶机设备整体状态管理、任务编排、标定流程与硬件连接管理
+`modules/workflow/domain/domain/machine/` 不再持有 machine aggregate / calibration flow 的 live 实现。
 
-## 业务范围
+## 当前 owner 边界
 
-- 设备状态与运行模式管理（由 DispenserModel 统一维护）
-- 状态流转（UNINITIALIZED → INITIALIZING → READY → DISPENSING → PAUSED → ERROR）
-- 标定/校准流程管理
-- 任务队列管理
-- 任务生命周期控制
-- 硬件连接管理
-- 设备配置管理
-- 统计信息收集
+- `DispenserModel` concrete owner 固定在 `modules/runtime-execution/application/system/LegacyDispenserModel.*`
+- `CalibrationWorkflowService` concrete owner 固定在 `modules/runtime-execution/application/services/calibration/`
+- `CalibrationExecutionTypes`、`ICalibrationExecutionPort`、`ICalibrationResultSink` owner 固定在 `modules/runtime-execution/contracts/runtime/include/runtime_execution/contracts/system/`
+- workflow 不再为 machine/calibration 暴露 compatibility header 或 compatibility target
 
-## 自动运行/运行模式规范
+## 兼容规则
 
-- 统一入口: `Aggregates::Legacy::DispenserModel` 为自动运行/运行模式唯一规则来源
-- 应用层仅编排调用，不得实现或复制运行模式状态机/规则
-- 新增状态/规则必须落在 DispenserModel（或其协作的领域服务）内
+- `Aggregates::Legacy::DispenserModel` 的 workflow shim 已删除，不允许恢复
+- `DomainServices::CalibrationProcess` 的 workflow alias 已删除，不允许恢复
+- `CalibrationTypes.h`、`ICalibrationDevicePort.h`、`ICalibrationResultPort.h` 的 workflow alias 已删除，不允许恢复
+- 禁止在本目录重新新增 live `.cpp`
 
-## 标定流程规范
+## 构建约束
 
-- 统一入口: `DomainServices::CalibrationProcess` 为标定流程唯一规则来源
-- 应用层仅编排调用，不得实现或复制标定状态/规则
-- 设备与结果通过端口接入：`ICalibrationDevicePort` / `ICalibrationResultPort`
-
-## 目录结构
-
-```
-machine/
-├── aggregates/                # 聚合根
-│   └── DispenserModel.*       # 点胶机聚合根
-├── domain-services/           # 领域服务
-│   └── CalibrationProcess.*   # 标定流程
-├── value-objects/             # 值对象
-│   └── CalibrationTypes.h
-└── ports/                     # 端口接口
-    ├── IHardwareConnectionPort
-    ├── IHardwareTestPort
-    ├── ICalibrationDevicePort
-    └── ICalibrationResultPort
-```
-
-## 命名空间
-
-```cpp
-namespace Siligen::Domain::Machine {
-    namespace Aggregates { ... }
-    namespace ValueObjects { ... }
-    namespace DomainServices { ... }
-    namespace Ports { ... }
-}
-```
-
-## 依赖关系
-
-- ✅ 依赖: `shared/types`, `shared/utils`, `domain/_shared`
-- ⚠️ 协调依赖: `domain/motion`, `domain/dispensing`（通过 Port 接口）
-- ❌ 不依赖: `infrastructure`, `application`
+- `modules/workflow/domain/domain/machine/CMakeLists.txt` 不再定义 `domain_machine`
+- 缺少 canonical owner target 时必须显式失败，禁止回退到 workflow 本地实现

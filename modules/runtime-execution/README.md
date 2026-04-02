@@ -47,4 +47,4 @@
   target: `siligen_runtime_process_bootstrap_public`
   include root: `runtime_process_bootstrap/*`
 - `apps/planner-cli`、`apps/runtime-gateway`、`apps/runtime-service` 对 `BuildContainer(...)` / `WorkspaceAssetPaths` 的消费统一经 `runtime_process_bootstrap/*`。
-- `modules/runtime-execution/runtime/host/ContainerBootstrap.h` 与 `modules/runtime-execution/runtime/host/runtime/configuration/WorkspaceAssetPaths.h` 只保留 deprecated forwarder 兼容壳，不再承载 live owner 实现。
+- `modules/runtime-execution/runtime/host/ContainerBootstrap.h` 与 `modules/runtime-execution/runtime/host/runtime/configuration/WorkspaceAssetPaths.h` 已删除；live caller 只能经 `runtime_process_bootstrap/*` 消费进程 bootstrap 入口。

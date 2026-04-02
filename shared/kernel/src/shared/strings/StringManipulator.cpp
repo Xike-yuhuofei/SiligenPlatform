@@ -1,4 +1,4 @@
-#include "shared/Strings/StringManipulator.h"
+#include "shared/strings/StringManipulator.h"
 
 #include "siligen/shared/strings/string_manipulator.h"
 

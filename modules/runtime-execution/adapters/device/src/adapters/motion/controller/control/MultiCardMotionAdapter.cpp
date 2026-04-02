@@ -474,9 +474,9 @@ Result<void> MultiCardMotionAdapter::SetJogParameters(
 
 // === IIOControlPort 接口实现（补充） ===
 
-Result<Siligen::Domain::Motion::Ports::IOStatus> MultiCardMotionAdapter::ReadDigitalInput(int16 channel) {
+Result<Siligen::RuntimeExecution::Contracts::Motion::IOStatus> MultiCardMotionAdapter::ReadDigitalInput(int16 channel) {
     if (channel < 0 || channel >= 16) {
-        return Result<Siligen::Domain::Motion::Ports::IOStatus>(Shared::Types::Error(
+        return Result<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>(Shared::Types::Error(
             Shared::Types::ErrorCode::INVALID_PARAMETER,
             "ReadDigitalInput: channel out of range"));
     }
@@ -484,23 +484,24 @@ Result<Siligen::Domain::Motion::Ports::IOStatus> MultiCardMotionAdapter::ReadDig
     long raw = 0;
     short ret = hardware_wrapper_->MC_GetDiRaw(MC_GPI, &raw);
     if (ret != 0) {
-        return Result<Siligen::Domain::Motion::Ports::IOStatus>(Shared::Types::Error(
+        return Result<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>(Shared::Types::Error(
             Shared::Types::ErrorCode::HARDWARE_OPERATION_FAILED,
             "MC_GetDiRaw failed with error code: " + std::to_string(ret)));
     }
 
-    Siligen::Domain::Motion::Ports::IOStatus status;
+    Siligen::RuntimeExecution::Contracts::Motion::IOStatus status;
     status.channel = channel;
     status.signal_active = (raw & (1L << channel)) != 0;
     status.value = status.signal_active ? 1 : 0;
     status.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
-    return Result<Siligen::Domain::Motion::Ports::IOStatus>(status);
+    return Result<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>(status);
 }
 
-Result<Siligen::Domain::Motion::Ports::IOStatus> MultiCardMotionAdapter::ReadDigitalOutput(int16 channel) {
+Result<Siligen::RuntimeExecution::Contracts::Motion::IOStatus> MultiCardMotionAdapter::ReadDigitalOutput(
+    int16 channel) {
     if (channel < 0 || channel >= 16) {
-        return Result<Siligen::Domain::Motion::Ports::IOStatus>(Shared::Types::Error(
+        return Result<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>(Shared::Types::Error(
             Shared::Types::ErrorCode::INVALID_PARAMETER,
             "ReadDigitalOutput: channel out of range"));
     }
@@ -508,18 +509,18 @@ Result<Siligen::Domain::Motion::Ports::IOStatus> MultiCardMotionAdapter::ReadDig
     unsigned long raw = 0;
     short ret = hardware_wrapper_->MC_GetExtDoValue(0, &raw);
     if (ret != 0) {
-        return Result<Siligen::Domain::Motion::Ports::IOStatus>(Shared::Types::Error(
+        return Result<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>(Shared::Types::Error(
             Shared::Types::ErrorCode::HARDWARE_OPERATION_FAILED,
             "MC_GetExtDoValue failed with error code: " + std::to_string(ret)));
     }
 
-    Siligen::Domain::Motion::Ports::IOStatus status;
+    Siligen::RuntimeExecution::Contracts::Motion::IOStatus status;
     status.channel = channel;
     status.signal_active = (raw & (1UL << channel)) != 0;
     status.value = status.signal_active ? 1 : 0;
     status.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
-    return Result<Siligen::Domain::Motion::Ports::IOStatus>(status);
+    return Result<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>(status);
 }
 
 Result<void> MultiCardMotionAdapter::WriteDigitalOutput(int16 channel, bool value) {

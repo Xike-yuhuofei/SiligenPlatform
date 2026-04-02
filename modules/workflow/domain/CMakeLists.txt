@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-if(NOT TARGET siligen_process_planning_legacy_configuration_bridge_public)
+if(NOT TARGET siligen_process_planning_contracts_public)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../../process-planning/contracts"
         "${CMAKE_BINARY_DIR}/_p/wd_ppc"
@@ -37,6 +37,9 @@ target_include_directories(siligen_workflow_domain_headers INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/process-core/include
     ${CMAKE_CURRENT_SOURCE_DIR}/motion-core/include
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
+)
+target_link_libraries(siligen_workflow_domain_headers INTERFACE
+    siligen_process_planning_contracts_public
 )
 target_compile_features(siligen_workflow_domain_headers INTERFACE cxx_std_17)
 
@@ -86,10 +89,10 @@ if(NOT TARGET siligen_domain)
     add_library(siligen_domain INTERFACE)
 endif()
 target_include_directories(siligen_domain INTERFACE
-    ${PROCESS_RUNTIME_CORE_PUBLIC_INCLUDE_DIRS}
+    ${WORKFLOW_MODULE_PUBLIC_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_domain INTERFACE
-    siligen_process_runtime_core_boost_headers
+    siligen_shared_boost_headers
     siligen_motion
     siligen_triggering
     siligen_configuration
@@ -98,8 +101,7 @@ target_link_libraries(siligen_domain INTERFACE
     siligen_motion_core
     siligen_process_path_domain_trajectory
     domain_recipes
-    domain_machine
     siligen_dispense_packaging_domain_dispensing
-    siligen_process_planning_legacy_configuration_bridge_public
+    siligen_process_planning_contracts_public
 )
 target_compile_features(siligen_domain INTERFACE cxx_std_17)
