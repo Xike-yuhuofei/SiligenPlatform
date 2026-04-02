@@ -309,9 +309,13 @@ ready -> blocked
   - 该 family 表示普通 open-chain 与 rapid 分隔得到的显式边界 span 共用顶点，但仍属于同一显式工艺边界家族
   - 该 family 必须继续生成 authority `trigger_points`、`glue_points` 与 `SpacingValidationOutcome`
   - 对该 family，组件级 `blocking_reason` 不再输出 `mixed_explicit_boundary_with_reordered_branch_family`
+- `explicit_process_boundary + reordered branch family`
+  - 组件级 `dispatch_type` 归一为 `branch_or_revisit`
+  - 该 family 表示显式工艺边界 span 与共享顶点的重排分支子 span 落在同一 connected component；组件主语义以 branch/revisit 为准
+  - 该 family 必须继续生成 authority `trigger_points`、`glue_points` 与 `SpacingValidationOutcome`
+  - 每个 span 的 `split_reason` 继续保留 `explicit_process_boundary` / `multi_contour_boundary` 诊断来源，不新增第二真值
 
 下列 residual blocked family 仍保持阻断，不得沿用本条规则隐式放行，必须重新冻结契约后再处理：
 
-1. `explicit_process_boundary + reordered branch family`
-2. `hole / nested contour / contour hierarchy`
-3. `exception_feature` 与其他拓扑 family 的混合重解释
+1. `hole / nested contour / contour hierarchy`
+2. `exception_feature` 与其他拓扑 family 的混合重解释
