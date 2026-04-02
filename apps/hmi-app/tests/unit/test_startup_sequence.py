@@ -271,17 +271,15 @@ class StartupSequenceContractTest(unittest.TestCase):
         protocol = _FakeProtocol(hardware_result=(True, "ready"))
         original = self._failed_snapshot(recoverable=False, stage="backend_starting")
 
-        result = run_recovery_action(
-            action="retry_stage",
-            snapshot=original,
-            backend=backend,
-            client=client,
-            protocol=protocol,
-        )
+        with self.assertRaisesRegex(ValueError, "recoverable failed session snapshot"):
+            run_recovery_action(
+                action="retry_stage",
+                snapshot=original,
+                backend=backend,
+                client=client,
+                protocol=protocol,
+            )
 
-        self.assertFalse(result.success)
-        self.assertEqual(result.failure_code, "SUP_TCP_CONNECT_FAILED")
-        self.assertEqual(result.failure_stage, "backend_starting")
         self.assertEqual(backend.start_calls, 0)
         self.assertEqual(client.connect_calls, 0)
         self.assertEqual(protocol.hardware_calls, 0)

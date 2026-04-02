@@ -10,7 +10,28 @@ ROOT = Path(__file__).resolve().parents[3]
 
 def main() -> int:
     commands = [
-        ("application-contracts", [sys.executable, str(ROOT / "tests" / "contracts" / "test_protocol_compatibility.py")]),
+        (
+            "application-contracts",
+            [sys.executable, str(ROOT / "tests" / "contracts" / "test_protocol_compatibility.py")],
+        ),
+        (
+            "shared-application-contracts",
+            [
+                sys.executable,
+                str(
+                    ROOT
+                    / "shared"
+                    / "contracts"
+                    / "application"
+                    / "tests"
+                    / "test_application_contracts_compatibility.py"
+                ),
+            ],
+        ),
+        (
+            "hmi-preview-gate-contract",
+            [sys.executable, str(ROOT / "apps" / "hmi-app" / "tests" / "unit" / "test_protocol_preview_gate_contract.py")],
+        ),
         ("engineering-contracts", [sys.executable, str(ROOT / "tests" / "contracts" / "test_engineering_contracts.py")]),
         ("engineering-data", [sys.executable, str(ROOT / "tests" / "contracts" / "test_engineering_data_compatibility.py")]),
         (

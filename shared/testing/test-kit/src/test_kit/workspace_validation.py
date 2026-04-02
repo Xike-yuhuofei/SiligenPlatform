@@ -200,6 +200,37 @@ def build_cases(
                     command=_powershell_file_command(WORKSPACE_ROOT / "apps" / "hmi-app" / "scripts" / "offline-smoke.ps1"),
                     cwd=WORKSPACE_ROOT,
                 ),
+                ValidationCase(
+                    name="hmi-app-unit",
+                    layer="apps",
+                    description="hmi-app unit tests",
+                    command=_powershell_file_command(WORKSPACE_ROOT / "apps" / "hmi-app" / "scripts" / "test.ps1"),
+                    cwd=WORKSPACE_ROOT,
+                ),
+                ValidationCase(
+                    name="hmi-application-preview-session-unit",
+                    layer="apps",
+                    description="hmi-application preview session unit tests",
+                    command=[
+                        *python_command(
+                            WORKSPACE_ROOT / "modules" / "hmi-application" / "tests" / "unit" / "test_preview_session.py"
+                        ),
+                        "-q",
+                    ],
+                    cwd=WORKSPACE_ROOT,
+                ),
+                ValidationCase(
+                    name="hmi-app-online-smoke",
+                    layer="apps",
+                    description="hmi-app 在线 mock smoke",
+                    command=_powershell_file_command(
+                        WORKSPACE_ROOT / "apps" / "hmi-app" / "scripts" / "online-smoke.ps1",
+                        "-TimeoutMs",
+                        "45000",
+                        "-ExerciseRuntimeActions",
+                    ),
+                    cwd=WORKSPACE_ROOT,
+                ),
             ]
         )
 

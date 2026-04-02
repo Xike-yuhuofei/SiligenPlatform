@@ -163,7 +163,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prepare-timeout", type=float, default=300.0)
     parser.add_argument("--snapshot-timeout", type=float, default=300.0)
     parser.add_argument("--max-polyline-points", type=int, default=4000)
-    parser.add_argument("--max-glue-points", type=int, default=5000)
     parser.add_argument(
         "--include-start-job",
         action=argparse.BooleanOptionalAction,
@@ -652,7 +651,6 @@ def prepare_and_snapshot_once(
     snapshot_ok, snapshot_payload, snapshot_error = protocol.dxf_preview_snapshot(
         plan_id=plan_id,
         max_polyline_points=args.max_polyline_points,
-        max_glue_points=args.max_glue_points,
         timeout=args.snapshot_timeout,
     )
     snapshot_elapsed_ms = (time.perf_counter() - snapshot_started) * 1000.0
@@ -1706,7 +1704,6 @@ def main() -> int:
             "prepare_timeout": args.prepare_timeout,
             "snapshot_timeout": args.snapshot_timeout,
             "max_polyline_points": args.max_polyline_points,
-            "max_glue_points": args.max_glue_points,
             "include_start_job": args.include_start_job,
             "baseline_json": args.baseline_json,
             "regression_threshold_pct": args.regression_threshold_pct,
