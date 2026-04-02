@@ -10,22 +10,38 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import sys
+
 from run_hil_closed_loop import (
     DEFAULT_CONFIG_PATH,
     DEFAULT_DXF_FILE,
     KNOWN_FAILURE_EXIT_CODE,
     SKIPPED_EXIT_CODE,
     TcpJsonClient,
+    _evaluate_offline_admission,
+    _evaluate_safety_preflight,
     _load_connection_params,
     _resolve_default_exe,
     _run_tcp_step,
+    _status_snapshot_from_response,
     _wait_for_dispenser_state,
     _wait_gateway_ready,
     build_process_env,
 )
 
-
 ROOT = Path(__file__).resolve().parents[3]
+TEST_KIT_SRC = ROOT / "shared" / "testing" / "test-kit" / "src"
+if str(TEST_KIT_SRC) not in sys.path:
+    sys.path.insert(0, str(TEST_KIT_SRC))
+
+from test_kit.evidence_bundle import (
+    EvidenceBundle,
+    EvidenceCaseRecord,
+    EvidenceLink,
+    default_failure_classification,
+    trace_fields,
+    write_bundle_artifacts,
+)
 
 
 @dataclass
@@ -459,9 +475,62 @@ def _write_report(report_dir: Path, report: dict[str, Any]) -> tuple[Path, Path]
         f"- limit_occurrences: `{counts['limit_occurrences']}`",
         f"- inferred_collision_occurrences: `{counts['inferred_collision_occurrences']}`",
         "",
-        "## Rounds",
-        "",
     ]
+
+    admission = report.get("admission")
+    if isinstance(admission, dict):
+        lines.extend(
+            [
+                "## Admission",
+                "",
+                f"- offline_prerequisites_source: `{admission.get('offline_prerequisites_source', '')}`",
+                f"- offline_prerequisites_passed: `{admission.get('offline_prerequisites_passed', False)}`",
+                f"- operator_override_used: `{admission.get('operator_override_used', False)}`",
+                f"- operator_override_reason: `{admission.get('operator_override_reason', '')}`",
+                f"- admission_decision: `{admission.get('admission_decision', '')}`",
+                f"- safety_preflight_passed: `{admission.get('safety_preflight_passed', False)}`",
+                "",
+            ]
+        )
+        checks = admission.get("checks", [])
+        if isinstance(checks, list) and checks:
+            lines.extend(["### Admission Checks", ""])
+            for check in checks:
+                lines.append(
+                    f"- `{check.get('status', 'unknown')}` `{check.get('name', 'unknown')}` "
+                    f"expected=`{check.get('expected', '')}` actual=`{check.get('actual', '')}`"
+                )
+                if check.get("note"):
+                    lines.append(f"  note: {check['note']}")
+            lines.append("")
+
+    failure_classification = report.get("failure_classification")
+    if isinstance(failure_classification, dict):
+        lines.extend(
+            [
+                "## Failure Classification",
+                "",
+                f"- category: `{failure_classification.get('category', '')}`",
+                f"- code: `{failure_classification.get('code', '')}`",
+                f"- blocking: `{failure_classification.get('blocking', False)}`",
+                f"- message: `{failure_classification.get('message', '')}`",
+                "",
+            ]
+        )
+
+    preflight_round = report.get("preflight_round")
+    if isinstance(preflight_round, dict):
+        lines.extend(
+            [
+                "## Preflight Round",
+                "",
+                f"- status: `{preflight_round.get('status', '')}`",
+                f"- error: `{preflight_round.get('error', '')}`",
+                "",
+            ]
+        )
+
+    lines.extend(["## Rounds", ""])
 
     for round_report in report["rounds"]:
         lines.append(
@@ -491,7 +560,80 @@ def _write_report(report_dir: Path, report: dict[str, Any]) -> tuple[Path, Path]
             lines.append(f"  inferred_collision_axes: `{','.join(round_report['inferred_collision_axes'])}`")
     lines.append("")
     md_path.write_text("\n".join(lines), encoding="utf-8")
+    _write_evidence_bundle(report_dir, report, json_path, md_path)
     return json_path, md_path
+
+
+def _bundle_verdict(overall_status: str) -> str:
+    if overall_status == "known_failure":
+        return "known-failure"
+    return overall_status
+
+
+def _write_evidence_bundle(report_dir: Path, report: dict[str, Any], summary_json_path: Path, summary_md_path: Path) -> None:
+    overall_status = _bundle_verdict(str(report.get("overall_status", "incomplete")))
+    failed_round = next((round_report for round_report in report.get("rounds", []) if round_report.get("status") != "passed"), {})
+    admission = report.get("admission", {}) if isinstance(report.get("admission"), dict) else {}
+    failure_classification = report.get("failure_classification", {}) if isinstance(report.get("failure_classification"), dict) else {}
+    bundle = EvidenceBundle(
+        bundle_id=f"hil-case-matrix-{report['generated_at']}",
+        request_ref="hil-case-matrix",
+        producer_lane_ref="limited-hil",
+        report_root=str(report_dir.resolve()),
+        summary_file=str(summary_md_path.resolve()),
+        machine_file=str(summary_json_path.resolve()),
+        verdict=overall_status,
+        linked_asset_refs=("sample.dxf.rect_diag",),
+        offline_prerequisites=tuple(admission.get("required_layers", ("L0-structure-gate", "L2-offline-integration", "L3-simulated-e2e"))),
+        abort_metadata={
+            "failed_round": failed_round,
+            "admission": admission,
+        },
+        metadata={
+            "mode": report.get("mode", ""),
+            "rounds_requested": report.get("rounds_requested", 0),
+            "rounds_executed": report.get("rounds_executed", 0),
+            "admission": admission,
+        },
+        case_records=[
+            EvidenceCaseRecord(
+                case_id="hil-case-matrix",
+                name="hil-case-matrix",
+                suite_ref="e2e",
+                owner_scope="runtime-execution",
+                primary_layer="L5-limited-hil",
+                producer_lane_ref="limited-hil",
+                status=overall_status,
+                evidence_profile="hil-report",
+                stability_state="stable",
+                required_assets=("sample.dxf.rect_diag",),
+                required_fixtures=("fixture.hil-closed-loop", "fixture.validation-evidence-bundle"),
+                risk_tags=("hardware", "state-machine"),
+                note=str(failed_round.get("error", "")),
+                failure_classification=failure_classification,
+                trace_fields=trace_fields(
+                    stage_id="L5-limited-hil",
+                    artifact_id="hil-case-matrix",
+                    module_id="runtime-execution",
+                    workflow_state="executed",
+                    execution_state=overall_status,
+                    event_name="hil-case-matrix",
+                    failure_code=f"hil.{overall_status}" if overall_status != "passed" else "",
+                    evidence_path=str(summary_json_path.resolve()),
+                ),
+            )
+        ],
+    )
+    write_bundle_artifacts(
+        bundle=bundle,
+        report_root=report_dir,
+        summary_json_path=summary_json_path,
+        summary_md_path=summary_md_path,
+        evidence_links=[
+            EvidenceLink(label="case-matrix-summary.json", path=str(summary_json_path.resolve()), role="machine-summary"),
+            EvidenceLink(label="case-matrix-summary.md", path=str(summary_md_path.resolve()), role="human-summary"),
+        ],
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -514,15 +656,68 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dispenser-duration-ms", type=int, default=int(os.getenv("SILIGEN_HIL_DISPENSER_DURATION_MS", "80")))
     parser.add_argument("--state-wait-timeout-seconds", type=float, default=float(os.getenv("SILIGEN_HIL_STATE_WAIT_TIMEOUT_SECONDS", "8")))
     parser.add_argument("--force-home", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--offline-prereq-report", default="")
+    parser.add_argument("--operator-override-reason", default="")
     return parser.parse_args()
+
+
+def _has_known_failure_steps(round_report: MatrixRoundReport) -> bool:
+    return any(str(step.get("status", "")) == "known_failure" for step in round_report.steps)
+
+
+def _missing_preflight_snapshot_failure() -> dict[str, Any]:
+    return {
+        "passed": False,
+        "snapshot": {},
+        "limit_blockers": [],
+        "estop_active": False,
+        "checks": [],
+        "failure_classification": {
+            "category": "safety",
+            "code": "preflight_snapshot_missing",
+            "blocking": True,
+            "message": "safety preflight could not collect a baseline snapshot before case-matrix execution",
+        },
+    }
 
 
 def main() -> int:
     args = parse_args()
     report_dir = Path(args.report_dir)
     selected_modes = ("home", "closed_loop") if args.mode == "both" else (args.mode,)
+    admission = _evaluate_offline_admission(
+        offline_prereq_report=args.offline_prereq_report,
+        operator_override_reason=args.operator_override_reason,
+    )
 
     gateway_exe = Path(args.gateway_exe)
+    if admission.get("admission_decision") not in {"admitted", "override-admitted"}:
+        report = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "workspace_root": str(ROOT),
+            "mode": args.mode,
+            "rounds_requested": args.rounds,
+            "rounds_executed": 0,
+            "overall_status": "failed",
+            "error": "limited-hil case-matrix admission blocked",
+            "counts": {
+                "passed_rounds": 0,
+                "failed_rounds": 0,
+                "home_failed_occurrences": 0,
+                "estop_occurrences": 0,
+                "limit_occurrences": 0,
+                "inferred_collision_occurrences": 0,
+            },
+            "admission": admission,
+            "failure_classification": admission.get("failure_classification"),
+            "rounds": [],
+        }
+        json_path, md_path = _write_report(report_dir, report)
+        print(f"case matrix complete: status={report['overall_status']}")
+        print(f"json report: {json_path}")
+        print(f"markdown report: {md_path}")
+        return 1
+
     if not gateway_exe.exists():
         report = {
             "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -540,6 +735,12 @@ def main() -> int:
                 "limit_occurrences": 0,
                 "inferred_collision_occurrences": 0,
             },
+            "admission": admission,
+            "failure_classification": default_failure_classification(
+                status="known_failure",
+                failure_code="hil.known_failure",
+                note=f"gateway executable missing: {gateway_exe}",
+            ),
             "rounds": [],
         }
         json_path, md_path = _write_report(report_dir, report)
@@ -547,6 +748,51 @@ def main() -> int:
         print(f"json report: {json_path}")
         print(f"markdown report: {md_path}")
         return KNOWN_FAILURE_EXIT_CODE
+
+    preflight_round = _run_round(args, 0, ())
+    preflight_snapshot = preflight_round.snapshots[0] if preflight_round.snapshots else {}
+    safety_preflight = (
+        _evaluate_safety_preflight(preflight_snapshot)
+        if isinstance(preflight_snapshot, dict) and preflight_snapshot
+        else _missing_preflight_snapshot_failure()
+    )
+    admission["safety_preflight_passed"] = bool(safety_preflight.get("passed", False))
+    admission["safety_preflight"] = safety_preflight
+    if preflight_round.status != "passed" or not safety_preflight.get("passed", False):
+        failure_classification = safety_preflight.get("failure_classification")
+        if preflight_round.status != "passed" and not _has_known_failure_steps(preflight_round):
+            failure_classification = failure_classification or default_failure_classification(
+                status="failed",
+                failure_code="hil.failed",
+                note=preflight_round.error,
+            )
+        overall_status = "known_failure" if _has_known_failure_steps(preflight_round) else "failed"
+        report = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "workspace_root": str(ROOT),
+            "mode": args.mode,
+            "rounds_requested": args.rounds,
+            "rounds_executed": 0,
+            "overall_status": overall_status,
+            "error": preflight_round.error or str(failure_classification.get("message", "case-matrix preflight failed")),
+            "counts": {
+                "passed_rounds": 0,
+                "failed_rounds": 0,
+                "home_failed_occurrences": 0,
+                "estop_occurrences": 0,
+                "limit_occurrences": 0,
+                "inferred_collision_occurrences": 0,
+            },
+            "admission": admission,
+            "failure_classification": failure_classification,
+            "preflight_round": asdict(preflight_round),
+            "rounds": [],
+        }
+        json_path, md_path = _write_report(report_dir, report)
+        print(f"case matrix complete: status={report['overall_status']}")
+        print(f"json report: {json_path}")
+        print(f"markdown report: {md_path}")
+        return KNOWN_FAILURE_EXIT_CODE if overall_status == "known_failure" else 1
 
     rounds: list[MatrixRoundReport] = []
     for round_index in range(1, args.rounds + 1):
@@ -566,8 +812,11 @@ def main() -> int:
         "limit_occurrences": sum(len(item.limit_blockers) for item in rounds),
         "inferred_collision_occurrences": sum(len(item.inferred_collision_axes) for item in rounds),
     }
+    known_failure_round = next((item for item in rounds if _has_known_failure_steps(item)), None)
     overall_status = (
-        "passed"
+        "known_failure"
+        if known_failure_round is not None
+        else "passed"
         if passed_rounds == args.rounds
         and counts["home_failed_occurrences"] == 0
         and counts["estop_occurrences"] == 0
@@ -575,6 +824,13 @@ def main() -> int:
         and counts["inferred_collision_occurrences"] == 0
         else "failed"
     )
+    failure_classification: dict[str, Any] = default_failure_classification(status=overall_status)
+    if overall_status != "passed":
+        failure_classification = default_failure_classification(
+            status=overall_status,
+            failure_code=f"hil.{overall_status}",
+            note=str((known_failure_round or next((item for item in rounds if item.status != "passed"), MatrixRoundReport(round_index=0))).error),
+        )
 
     report = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -594,6 +850,9 @@ def main() -> int:
         "state_wait_timeout_seconds": args.state_wait_timeout_seconds,
         "home_timeout_seconds": args.home_timeout_seconds,
         "overall_status": overall_status,
+        "admission": admission,
+        "failure_classification": failure_classification,
+        "preflight_round": asdict(preflight_round),
         "counts": counts,
         "rounds": [asdict(item) for item in rounds],
     }
@@ -604,6 +863,8 @@ def main() -> int:
 
     if overall_status == "passed":
         return 0
+    if overall_status == "known_failure":
+        return KNOWN_FAILURE_EXIT_CODE
     if not rounds:
         return SKIPPED_EXIT_CODE
     return 1

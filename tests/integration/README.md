@@ -4,6 +4,15 @@
 
 当前 canonical 子域：`tests/integration/scenarios/`、`tests/integration/protocol-compatibility/`
 
+## Layered Validation
+
+- `tests/integration/scenarios/` 对应 `L2-offline-integration`
+- `run_engineering_regression.py` 是离线工程回归正式入口
+- `tests/integration/scenarios/first-layer/` 承载 HIL 前置所需的离线负例与观测契约，不升格为独立 e2e surface
+- `run_layered_validation_smoke.py` 负责校验 root request -> layer/lane 路由
+- `run_shared_asset_reuse_smoke.py` 负责校验 `samples/`、`tests/baselines/`、`shared/testing/` 的共享复用边界
+- 这两类 smoke 默认可被 `quick-gate` 或 `full-offline-gate` 消费，不依赖 HIL
+
 ## Wave 2 上游链回链检查点（US3 / M1-M3）
 
 | Checkpoint | 通过标准 | 证据入口 |

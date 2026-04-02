@@ -4,8 +4,6 @@ set(RUNTIME_HOST_DEVICE_ADAPTERS_CANONICAL_DIR "${SILIGEN_WORKSPACE_ROOT}/module
 set(RUNTIME_HOST_DEVICE_CONTRACTS_CANONICAL_DIR "${SILIGEN_WORKSPACE_ROOT}/shared/contracts/device")
 set(RUNTIME_HOST_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 set(RUNTIME_HOST_TRACEABILITY_DIR "${SILIGEN_WORKSPACE_ROOT}/modules/trace-diagnostics")
-set(RUNTIME_HOST_WORKFLOW_APPLICATION_INCLUDE_DIR
-    "${SILIGEN_WORKSPACE_ROOT}/modules/workflow/application/include")
 set(RUNTIME_HOST_DEVICE_ADAPTERS_INCLUDE_DIR "${RUNTIME_HOST_DEVICE_ADAPTERS_CANONICAL_DIR}/include")
 set(RUNTIME_HOST_DEVICE_CONTRACTS_INCLUDE_DIR "${RUNTIME_HOST_DEVICE_CONTRACTS_CANONICAL_DIR}/include")
 
@@ -61,13 +59,13 @@ endif()
 set(RUNTIME_HOST_PUBLIC_INCLUDE_DIRS
     ${RUNTIME_HOST_SOURCE_ROOT}
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
-    ${RUNTIME_HOST_WORKFLOW_APPLICATION_INCLUDE_DIR}
 )
 list(REMOVE_DUPLICATES RUNTIME_HOST_PUBLIC_INCLUDE_DIRS)
 
 add_library(siligen_runtime_host STATIC
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/diagnostics/DiagnosticsPortAdapter.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/supervision/RuntimeSupervisionPortAdapter.cpp
+    ${RUNTIME_HOST_SOURCE_ROOT}/runtime/system/DispenserModelMachineExecutionStateBackend.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/system/LegacyMachineExecutionStateAdapter.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/motion/WorkflowMotionRuntimeServicesProvider.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/planning/PlanningArtifactExportPortAdapter.cpp

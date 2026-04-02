@@ -1,6 +1,6 @@
 #pragma once
 
-#include "workflow/application/services/dispensing/PlanningArtifactExportPort.h"
+#include "runtime_execution/application/services/dispensing/PlanningArtifactExportPort.h"
 
 namespace Siligen::RuntimeExecution::Host::Planning {
 

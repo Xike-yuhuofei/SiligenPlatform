@@ -10,7 +10,7 @@
 #include "application/usecases/motion/coordination/MotionCoordinationUseCase.h"
 #include "application/usecases/motion/ptp/MoveToPositionUseCase.h"
 #include "application/usecases/motion/runtime/MotionRuntimeAssemblyFactory.h"
-#include "domain/configuration/ports/IConfigurationPort.h"
+#include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "domain/dispensing/ports/ITriggerControllerPort.h"
 #include "domain/motion/ports/IInterpolationPort.h"
 #include "domain/system/ports/IEventPublisherPort.h"

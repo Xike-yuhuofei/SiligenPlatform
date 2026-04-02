@@ -10,6 +10,9 @@
 - 执行域 motion/runtime provider：`runtime/motion/WorkflowMotionRuntimeServicesProvider.*`
   - canonical provider contract：`runtime_execution/application/services/motion/runtime/IMotionRuntimeServicesProvider.h`
 - 执行态适配与 planning artifact 导出桥：`runtime/system/*`、`runtime/planning/*`
+  - machine execution state backend owner：`runtime/system/DispenserModelMachineExecutionStateBackend.*`
+  - app-facing neutral alias：`runtime/system/WorkflowMachineExecutionStateBackend.h`
+  - canonical planning export contract：`runtime_execution/application/services/dispensing/PlanningArtifactExportPort.h`
 - 执行期硬限位 / 软限位监控：`services/motion/*`
 
 ## 已迁出到 app-local shell
@@ -44,3 +47,5 @@
 - `runtime/configuration/WorkspaceAssetPaths.h`
 
 这两个模块内旧路径头仅保留 forwarder 兼容用途，真实实现与 canonical public surface 已迁到 `runtime_process_bootstrap/*`。
+
+`workflow/application` 侧的 planning export / motion runtime provider 兼容头现在通过相对路径直接 forward 到 `runtime_execution/application/*` canonical header；`runtime-host` 不再依赖 `workflow/application/CMakeLists.txt` 扩散 `../../runtime-execution/application/include`。

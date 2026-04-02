@@ -7,12 +7,21 @@
 ## DXF 预览画像脚本
 
 - `tests/performance/collect_dxf_preview_profiles.py`
-- 默认采集三档 DXF：`small=rect_diag.dxf`、`medium=bra.dxf`、`large=Demo.dxf`
+- 默认采集当前仓库已跟踪的 DXF samples：`small=rect_diag.dxf`、`medium=rect_medium_ladder.dxf`、`large=rect_large_ladder.dxf`
+- canonical `medium` / `large` 由 `tests/performance/generate_canonical_dxf_samples.py` 生成并固化在 `samples/dxf/`
+- 如需临时覆盖某个 sample，仍可显式通过 `--sample <label>=<PATH>` 提供，但正式 `nightly-performance` blocking gate 只认仓库内 canonical samples
 - 输出 `JSON + Markdown` 到 `tests/reports/performance/dxf-preview-profiles/`
+- `tests/performance/collect_dxf_preview_profiles.py` 同时是 `nightly-performance` 的正式 authority；当显式传 `--gate-mode nightly-performance --threshold-config tests/baselines/performance/dxf-preview-profile-thresholds.json` 时，threshold gate 为 blocking
+- 默认 gateway executable 解析顺序与根级 build 保持一致：`<repo-root>\build\bin\*` -> `%LOCALAPPDATA%\SiligenSuite\control-apps-build\bin\*`
 - 固定输出三张表：
   - `Preview`：authority 侧 `artifact.create -> plan.prepare -> preview.snapshot`
   - `Execution`：开启 `--include-start-job` 后的 `preview.confirm -> dxf.job.start -> dxf.job.status -> dxf.job.stop`
   - `Single Flight`：同一 artifact 并发发起 `plan.prepare`，观测 authority single-flight
+- 并补充 shared evidence bundle：
+  - `case-index.json`
+  - `validation-evidence-bundle.json`
+  - `evidence-links.md`
+  - `failure-details.json`（仅失败/阻断等非通过结论）
 
 ### 场景语义
 
@@ -28,7 +37,7 @@
 
 - 若显式传入 `--launch-spec`，脚本完全尊重该契约，不额外改写启动配置。
 - 若未传入 `--launch-spec` 且同时开启 `--include-start-job --dry-run`：
-  - 脚本固定使用工作区内 `--gateway-exe/--config-path` 解析出的 gateway，而不是 HMI 外部 launch spec。
+  - 脚本固定使用当前工作区解析出的 `--gateway-exe/--config-path`，优先取 `<repo-root>\build\bin\*`，其次取 `%LOCALAPPDATA%\SiligenSuite\control-apps-build\bin\*`，而不是 HMI 外部 launch spec。
   - 当 `--config-path` 指向的配置仍是 `Hardware.mode=Real` 时，脚本会在 `tests/reports/performance/dxf-preview-profiles/_runtime/` 下自动生成临时 mock 配置，并以该配置启动 gateway。
   - gateway 启动后，脚本会在采样前执行一次 mock `connect -> home.auto`，确保 `dxf.job.start` 的 dry-run/mock 路径具备可复跑前置条件。
 - 上述 bootstrap 只负责把 mock runtime 拉到可执行状态；其耗时不计入 `Execution` 表。
@@ -44,6 +53,19 @@
     --hot-iterations 1 `
     --singleflight-rounds 1 `
     --singleflight-fanout 3
+  ```
+- `nightly-performance` threshold gate
+  ```powershell
+  python tests/performance/collect_dxf_preview_profiles.py `
+    --sample-labels small medium large `
+    --cold-iterations 1 `
+    --hot-warmup-iterations 1 `
+    --hot-iterations 2 `
+    --singleflight-rounds 2 `
+    --singleflight-fanout 4 `
+    --include-start-job `
+    --gate-mode nightly-performance `
+    --threshold-config tests/baselines/performance/dxf-preview-profile-thresholds.json
   ```
 - `small` + execution smoke
   ```powershell
@@ -95,6 +117,45 @@
 - `baseline-json`
   - 只做漂移对比与告警，不默认让脚本失败
   - 超过 `--regression-threshold-pct` 的正向漂移会写入 JSON `baseline_comparison.entries[].status=regression`
+- `threshold-config`
+  - canonical 路径固定为 `tests/baselines/performance/dxf-preview-profile-thresholds.json`
+  - 当前正式 blocking 样本为 `small`、`medium`、`large`
+  - 当前冻结场景为 `cold`、`hot`、`singleflight`
+  - 当前正式 gate 需要 `--include-start-job`，因为 threshold config 已包含 execution thresholds
+  - 只有 `threshold_gate` 会在 `nightly-performance` 下成为 blocking 判定
+  - `threshold_gate` 结果会同时写入 `report.json/.md`、`validation-evidence-bundle.json`、`report-manifest.json` 与 `report-index.json`
+
+## Phase 12 Calibration Evidence
+
+- 正式校准批次：`tests/reports/performance/dxf-preview-profiles/20260401T153350Z/`
+- 当前校准结果：
+  - `small.cold.artifact_ms.p95_ms = 443.282`
+  - `small.cold.prepare_total_ms.p95_ms = 33.9`
+  - `small.hot.prepare_total_ms.p95_ms = 16.85`
+  - `small.hot.execution_total_ms.p95_ms = 312.0`
+  - `small.singleflight.prepare_total_ms.p95_ms = 31.25`
+- 当前结论：`threshold_gate=passed`
+
+## Phase 13 Multi-Sample Evidence
+
+- 正式多样本 gate：`tests/reports/performance/dxf-preview-profiles/20260402T023650Z/`
+- 当前多样本结果：
+  - `small.cold.artifact_ms.p95_ms = 454.733`
+  - `small.cold.prepare_total_ms.p95_ms = 35.0`
+  - `small.hot.prepare_total_ms.p95_ms = 20.8`
+  - `small.hot.execution_total_ms.p95_ms = 330.0`
+  - `small.singleflight.prepare_total_ms.p95_ms = 34.3`
+  - `medium.cold.artifact_ms.p95_ms = 454.877`
+  - `medium.cold.prepare_total_ms.p95_ms = 119.0`
+  - `medium.hot.prepare_total_ms.p95_ms = 21.8`
+  - `medium.hot.execution_total_ms.p95_ms = 2245.0`
+  - `medium.singleflight.prepare_total_ms.p95_ms = 120.95`
+  - `large.cold.artifact_ms.p95_ms = 541.127`
+  - `large.cold.prepare_total_ms.p95_ms = 1522.0`
+  - `large.hot.prepare_total_ms.p95_ms = 20.9`
+  - `large.hot.execution_total_ms.p95_ms = 27917.0`
+  - `large.singleflight.prepare_total_ms.p95_ms = 1505.6`
+- 当前结论：`threshold_gate=passed`
 
 ## Wave 5 仓库级 performance 回链检查点（US6 / M10-M11）
 
@@ -103,3 +164,8 @@
 | `US6-PERF-CP1-surface-anchored` | performance 验证入口稳定承载于 `tests/performance/`，并纳入 `tests/CMakeLists.txt` 的仓库级验证锚点校验 | `tests/performance/README.md`、`tests/CMakeLists.txt` |
 | `US6-PERF-CP2-wave5-gates-aligned` | 仓库级性能验证遵循 Wave 5 门禁口径，入口统一通过根级验证链路触发 | `.\\test.ps1`、`python .\\scripts\\migration\\validate_workspace_layout.py`、`python -m test_kit.workspace_validation`、`validation-gates.md` |
 | `US6-PERF-CP3-legacy-source-downgraded` | 不再存在平行的 legacy performance 验证根，仓库级 performance owner 已完全收敛到 `tests/performance/` | `tests/performance/README.md`、`wave-mapping.md`、`dsp-e2e-spec-s10-frozen-directory-index.md` |
+
+## Closeout Notes
+
+- `baseline-json` 仍然保留，但只表达 advisory drift compare。
+- `nightly-performance` 的正式 blocking 语义已经切到 `threshold_gate`，不能再把 `baseline-json` 当作唯一 gate。

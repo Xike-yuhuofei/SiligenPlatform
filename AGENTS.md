@@ -424,3 +424,10 @@
 - 残余风险
 - 文档影响
 - 下一步建议
+
+## Active Technologies
+- PowerShell 7（根级入口与 validation scripts）、Python 3.11（`shared/testing/test-kit`、validation/performance tooling）、C++17 / CMake 3.20+（canonical test roots 与 repo build graph）、Markdown（设计与验证文档） + `build.ps1` / `test.ps1` / `ci.ps1`；`scripts/validation/invoke-workspace-tests.ps1`；`scripts/validation/run-local-validation-gate.ps1`；`shared/testing/test-kit`；`python -m test_kit.workspace_validation`；`scripts/migration/validate_workspace_layout.py`；`tests/performance/collect_dxf_preview_profiles.py` (test/infra/TASK-006-improve-layered-test-system)
+- Git 跟踪的 `tests/`、`samples/`、`docs/validation/`、`shared/contracts/` 资产，以及运行期输出目录 `tests/reports/`；无数据库 (test/infra/TASK-006-improve-layered-test-system)
+
+## Recent Changes
+- test/infra/TASK-006-improve-layered-test-system: Added PowerShell 7（根级入口与 validation scripts）、Python 3.11（`shared/testing/test-kit`、validation/performance tooling）、C++17 / CMake 3.20+（canonical test roots 与 repo build graph）、Markdown（设计与验证文档） + `build.ps1` / `test.ps1` / `ci.ps1`；`scripts/validation/invoke-workspace-tests.ps1`；`scripts/validation/run-local-validation-gate.ps1`；`shared/testing/test-kit`；`python -m test_kit.workspace_validation`；`scripts/migration/validate_workspace_layout.py`；`tests/performance/collect_dxf_preview_profiles.py`

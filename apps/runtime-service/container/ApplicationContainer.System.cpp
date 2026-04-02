@@ -10,7 +10,7 @@
 #include "runtime/status/WorkflowRuntimeStatusExportPort.h"
 #include "runtime/supervision/WorkflowRuntimeSupervisionBackend.h"
 #include "runtime/supervision/RuntimeSupervisionPortAdapter.h"
-#include "runtime/system/DispenserModelMachineExecutionStateBackend.h"
+#include "runtime/system/WorkflowMachineExecutionStateBackend.h"
 #include "runtime/system/LegacyMachineExecutionStateAdapter.h"
 #include "runtime_execution/application/services/motion/MotionControlServiceImpl.h"
 #include "runtime_execution/application/services/motion/MotionStatusServiceImpl.h"
@@ -97,7 +97,7 @@ template<>
 std::shared_ptr<UseCases::System::EmergencyStopUseCase>
 ApplicationContainer::CreateInstance<UseCases::System::EmergencyStopUseCase>() {
     if (!machine_execution_state_port_) {
-        auto backend = std::make_shared<Siligen::Runtime::Service::System::DispenserModelMachineExecutionStateBackend>();
+        auto backend = std::make_shared<Siligen::Runtime::Service::System::WorkflowMachineExecutionStateBackend>();
         RegisterPort<Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort>(
             std::make_shared<Siligen::Runtime::Host::System::LegacyMachineExecutionStateAdapter>(backend));
     }

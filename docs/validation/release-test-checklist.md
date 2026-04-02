@@ -1,6 +1,6 @@
 # 正式发版前测试执行清单
 
-更新时间：`2026-04-01`
+更新时间：`2026-04-02`
 
 ## 1. 目的
 
@@ -64,7 +64,7 @@ New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
 - [x] `P1-04` 工程数据回归  
   命令：
   ```powershell
-  python .\tests\e2e\scenarios\run_engineering_regression.py
+  python .\tests\integration\scenarios\run_engineering_regression.py
   ```
   通过标准：`DXF -> .pb -> simulation-input.json -> preview` 全链路通过，输出与 canonical fixture 一致。
 
@@ -79,7 +79,7 @@ New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
 - [x] `P1-06` 第一层 TCP 预条件矩阵  
   命令：
   ```powershell
-  python .\tests\e2e\first-layer\run_tcp_precondition_matrix.py --report-dir (Join-Path $EvidenceRootRelative "phase1-tcp-precondition")
+  python .\tests\integration\scenarios\first-layer\run_tcp_precondition_matrix.py --report-dir (Join-Path $EvidenceRootRelative "phase1-tcp-precondition")
   ```
   通过标准：未回零不得 `home.go`，未加载 DXF 不得执行，缺少激活配方时必须按预期阻断。  
   说明：脚本当前会在报告目录下自动生成隔离空配方工作区并启动 gateway，排除真实工作区激活配方对 `S2` 的污染；本次证据中的 `gateway_cwd` 为 `phase1-tcp-precondition\isolated-empty-recipe-workspace`。  
@@ -88,7 +88,7 @@ New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
 - [x] `P1-07` 第一层 TCP 急停链探针  
   命令：
   ```powershell
-  python .\tests\e2e\first-layer\run_tcp_estop_chain.py --report-dir (Join-Path $EvidenceRootRelative "phase1-tcp-estop")
+  python .\tests\integration\scenarios\first-layer\run_tcp_estop_chain.py --report-dir (Join-Path $EvidenceRootRelative "phase1-tcp-estop")
   ```
   通过标准：`connect -> estop -> status(estop 可见) -> estop.reset -> status(estop 清除) -> disconnect(disconnected=true)` 全链通过。  
   说明：脚本当前默认自动选择空闲端口并把 `--port` 显式传给 gateway，避免本机已有 `9527` listener 污染测试会话；本次证据在端口 `57415` 上通过。该项仅验证无机台第一层协议与状态收敛，不可替代 HIL/真机异常恢复放行。  
@@ -232,7 +232,8 @@ New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
     -HilPauseResumeCycles 3 `
     -PublishLatestOnPass:$false
   ```
-  通过标准：`workspace-validation`、`hardware-smoke`、`hil-closed-loop`、`hil-case-matrix` 全部通过；`failed=0`、`known_failure=0`、`skipped=0`。
+ 通过标准：`hil-controlled-gate-summary.json` 的 `overall_status=passed`；`offline-prereq/workspace-validation`、`hardware-smoke`、`hil-closed-loop` 全部通过；若保留默认 `hil-case-matrix`，则其 `overall_status=passed`；evidence bundle/manifest/index 兼容；若使用 override，必须显式记录 `-OperatorOverrideReason`。
+  若 `P5-03` 阻塞：保留 `hil-controlled-gate-summary.*` 与 `hil-controlled-release-summary.md` 作为 blocked evidence，记录阻断原因后停止 `P5-04`，不得直接升级到 1800s formal gate。
   默认已纳入多轮矩阵；仅在临时隔离排障时显式使用：`-IncludeHilCaseMatrix:$false`
 
 - [ ] `P5-04` 执行 HIL 正式门禁（1800s）  
@@ -242,9 +243,12 @@ New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
     -Profile Local `
     -UseTimestampedReportDir `
     -HilDurationSeconds 1800 `
-    -HilPauseResumeCycles 3
+    -HilPauseResumeCycles 3 `
+    -Executor "<operator>"
   ```
-  通过标准：`overall_status=passed`，`timeout_count=0`，`pause/resume=3` 达标，且 `hil-case-matrix` 通过。
+ 通过标准：`hil-controlled-gate-summary.json` 的 `overall_status=passed`，`hil-controlled-release-summary.md` 给出 `通过`；`timeout_count=0`，`pause/resume=3` 达标；`admission` / `safety_preflight` 均为通过；若保留默认 `hil-case-matrix`，则其 `overall_status=passed`。
+  发布约束：正式 latest publish 必须带非空 `-Executor`，否则不得覆盖 `tests\reports\hil-controlled-test\latest-source.txt`。
+  前置条件：`P5-03` 必须已通过；若 `P5-03` 为 blocked / failed / known_failure，则本项不得执行。
   证据：`tests\reports\hil-controlled-test\<timestamp>\` 和 `tests\reports\hil-controlled-test\latest-source.txt`
   默认已纳入多轮矩阵；仅在临时隔离排障时显式使用：`-IncludeHilCaseMatrix:$false`
 

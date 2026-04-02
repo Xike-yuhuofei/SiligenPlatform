@@ -19,25 +19,73 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 REPORT_ROOT = ROOT / "tests" / "reports" / "performance" / "dxf-preview-profiles"
+DEFAULT_THRESHOLD_CONFIG = ROOT / "tests" / "baselines" / "performance" / "dxf-preview-profile-thresholds.json"
 DEFAULT_MACHINE_CONFIG = ROOT / "config" / "machine" / "machine_config.ini"
 DEFAULT_VENDOR_DIR = ROOT / "modules" / "runtime-execution" / "adapters" / "device" / "vendor" / "multicard"
-DEFAULT_GATEWAY_EXE = ROOT / "build" / "bin" / "Debug" / "siligen_runtime_gateway.exe"
+CONTROL_APPS_BUILD_ROOT = Path(
+    os.getenv(
+        "SILIGEN_CONTROL_APPS_BUILD_ROOT",
+        str(Path(os.getenv("LOCALAPPDATA", str(ROOT))) / "SiligenSuite" / "control-apps-build"),
+    )
+)
 HMI_SRC = ROOT / "apps" / "hmi-app" / "src"
+TEST_KIT_SRC = ROOT / "shared" / "testing" / "test-kit" / "src"
 TERMINAL_JOB_STATES = {"completed", "failed", "cancelled", "stopped"}
-
-DEFAULT_SAMPLES: dict[str, Path] = {
-    "small": ROOT / "samples" / "dxf" / "rect_diag.dxf",
-    "medium": ROOT / "uploads" / "dxf" / "archive" / "bra.dxf",
-    "large": ROOT / "uploads" / "dxf" / "archive" / "Demo.dxf",
-}
 
 if str(HMI_SRC) not in sys.path:
     sys.path.insert(0, str(HMI_SRC))
+if str(TEST_KIT_SRC) not in sys.path:
+    sys.path.insert(0, str(TEST_KIT_SRC))
 
 from hmi_client.client.backend_manager import BackendManager  # noqa: E402
 from hmi_client.client.gateway_launch import GatewayLaunchSpec, load_gateway_launch_spec  # noqa: E402
 from hmi_client.client.protocol import CommandProtocol  # noqa: E402
 from hmi_client.client.tcp_client import TcpClient  # noqa: E402
+from test_kit.asset_catalog import default_performance_samples, performance_sample_asset_refs  # noqa: E402
+from test_kit.evidence_bundle import EvidenceBundle, EvidenceCaseRecord, EvidenceLink, trace_fields, write_bundle_artifacts  # noqa: E402
+
+
+DEFAULT_SAMPLES: dict[str, Path] = default_performance_samples(ROOT)
+
+
+def gateway_executable_candidates(
+    *,
+    workspace_root: Path,
+    control_apps_build_root: Path,
+) -> tuple[Path, ...]:
+    file_name = "siligen_runtime_gateway.exe"
+    return (
+        workspace_root / "build" / "bin" / file_name,
+        workspace_root / "build" / "bin" / "Debug" / file_name,
+        workspace_root / "build" / "bin" / "Release" / file_name,
+        workspace_root / "build" / "bin" / "RelWithDebInfo" / file_name,
+        workspace_root / "build" / "hmi-home-fix" / "bin" / file_name,
+        workspace_root / "build" / "hmi-home-fix" / "bin" / "Debug" / file_name,
+        workspace_root / "build" / "hmi-home-fix" / "bin" / "Release" / file_name,
+        workspace_root / "build" / "hmi-home-fix" / "bin" / "RelWithDebInfo" / file_name,
+        control_apps_build_root / "bin" / file_name,
+        control_apps_build_root / "bin" / "Debug" / file_name,
+        control_apps_build_root / "bin" / "Release" / file_name,
+        control_apps_build_root / "bin" / "RelWithDebInfo" / file_name,
+    )
+
+
+def resolve_default_gateway_executable(
+    *,
+    workspace_root: Path = ROOT,
+    control_apps_build_root: Path = CONTROL_APPS_BUILD_ROOT,
+) -> Path:
+    candidates = gateway_executable_candidates(
+        workspace_root=workspace_root,
+        control_apps_build_root=control_apps_build_root,
+    )
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[1]
+
+
+DEFAULT_GATEWAY_EXE = resolve_default_gateway_executable()
 
 
 @dataclass(frozen=True)
@@ -188,6 +236,8 @@ def parse_args() -> argparse.Namespace:
         help="Reuse an already listening gateway instead of failing.",
     )
     parser.add_argument("--report-dir", default=str(REPORT_ROOT))
+    parser.add_argument("--gate-mode", choices=("adhoc", "nightly-performance"), default="adhoc")
+    parser.add_argument("--threshold-config", default=str(DEFAULT_THRESHOLD_CONFIG))
     return parser.parse_args()
 
 
@@ -1472,6 +1522,120 @@ def compare_against_baseline(
     }
 
 
+def _lookup_path(payload: dict[str, Any], dotted_path: str) -> tuple[Any, str]:
+    current: Any = payload
+    for segment in dotted_path.split("."):
+        if not isinstance(current, dict) or segment not in current:
+            return None, f"missing:{dotted_path}"
+        current = current[segment]
+    return current, "ok"
+
+
+def evaluate_threshold_gate(payload: dict[str, Any], gate_mode: str, threshold_config_path: str) -> dict[str, Any]:
+    if gate_mode == "adhoc":
+        return {
+            "status": "skipped",
+            "gate_mode": gate_mode,
+            "threshold_config": "",
+            "checks": [],
+            "message": "threshold gate disabled for adhoc sampling",
+        }
+
+    config_path = Path(threshold_config_path).expanduser().resolve()
+    if not config_path.exists():
+        return {
+            "status": "failed",
+            "gate_mode": gate_mode,
+            "threshold_config": str(config_path),
+            "checks": [],
+            "message": "threshold config missing for nightly-performance gate",
+        }
+
+    config_payload = json.loads(config_path.read_text(encoding="utf-8"))
+    if str(config_payload.get("schema_version", "")) != "dxf-preview-profile-thresholds.v1":
+        return {
+            "status": "failed",
+            "gate_mode": gate_mode,
+            "threshold_config": str(config_path),
+            "checks": [],
+            "message": "threshold config schema_version mismatch",
+        }
+
+    checks: list[dict[str, Any]] = []
+    required_samples = config_payload.get("required_samples", [])
+    for sample_label in required_samples:
+        present = str(sample_label) in payload.get("results", {})
+        checks.append(
+            {
+                "name": f"required-sample:{sample_label}",
+                "status": "passed" if present else "failed",
+                "expected": "sample present in payload.results",
+                "actual": "present" if present else "missing",
+            }
+        )
+
+    required_scenarios = config_payload.get("required_scenarios", [])
+    for entry in required_scenarios:
+        sample_label = str(entry.get("sample_label", ""))
+        scenario = str(entry.get("scenario", ""))
+        expected_status = str(entry.get("expected_status", "ok"))
+        scenario_payload = payload.get("results", {}).get(sample_label, {}).get(scenario, {})
+        actual_status = str(scenario_payload.get("status", "missing")) if isinstance(scenario_payload, dict) else "missing"
+        checks.append(
+            {
+                "name": f"required-scenario:{sample_label}:{scenario}",
+                "status": "passed" if actual_status == expected_status else "failed",
+                "expected": f"status={expected_status}",
+                "actual": f"status={actual_status}",
+            }
+        )
+
+    numeric_thresholds = config_payload.get("numeric_thresholds", [])
+    for entry in numeric_thresholds:
+        name = str(entry.get("name", entry.get("path", "threshold")))
+        dotted_path = str(entry.get("path", ""))
+        value, lookup_status = _lookup_path(payload, dotted_path)
+        if lookup_status != "ok" or not isinstance(value, (int, float)):
+            checks.append(
+                {
+                    "name": name,
+                    "status": "failed",
+                    "expected": "numeric value present",
+                    "actual": lookup_status,
+                }
+            )
+            continue
+        min_value = entry.get("min")
+        max_value = entry.get("max")
+        passed = True
+        expected_parts: list[str] = []
+        if isinstance(min_value, (int, float)):
+            expected_parts.append(f">={float(min_value)}")
+            passed = passed and float(value) >= float(min_value)
+        if isinstance(max_value, (int, float)):
+            expected_parts.append(f"<={float(max_value)}")
+            passed = passed and float(value) <= float(max_value)
+        checks.append(
+            {
+                "name": name,
+                "status": "passed" if passed and expected_parts else "failed",
+                "expected": " and ".join(expected_parts) if expected_parts else "configured threshold",
+                "actual": f"value={float(value)}",
+                "path": dotted_path,
+            }
+        )
+
+    status = "passed" if checks and all(check["status"] == "passed" for check in checks) else "failed"
+    return {
+        "status": status,
+        "gate_mode": gate_mode,
+        "threshold_config": str(config_path),
+        "threshold_config_schema_version": str(config_payload.get("schema_version", "")),
+        "checks": checks,
+        "message": "threshold gate passed" if status == "passed" else "threshold gate failed",
+    }
+
+
 def preview_row(sample_label: str, scenario_name: str, scenario: dict[str, Any] | None) -> str:
     if not scenario:
         return f"| {sample_label} | {scenario_name} | missing | - | - | - | - | - | - | - |"
@@ -1639,6 +1803,33 @@ def render_markdown(payload: dict[str, Any]) -> str:
         else:
             lines.append("| - | - | - | - | - | - | - | no comparable metrics |")
 
+    threshold_gate = payload.get("threshold_gate")
+    if isinstance(threshold_gate, dict):
+        lines.extend(
+            [
+                "",
+                "## Threshold Gate",
+                "",
+                f"- gate_mode: `{threshold_gate.get('gate_mode', '')}`",
+                f"- status: `{threshold_gate.get('status', '')}`",
+                f"- threshold_config: `{threshold_gate.get('threshold_config', '')}`",
+                f"- message: `{threshold_gate.get('message', '')}`",
+                "",
+            ]
+        )
+        checks = threshold_gate.get("checks", [])
+        if isinstance(checks, list) and checks:
+            lines.extend(
+                [
+                    "| Check | Status | Expected | Actual |",
+                    "|---|---|---|---|",
+                ]
+            )
+            for check in checks:
+                lines.append(
+                    f"| {check.get('name', '')} | {check.get('status', '')} | {check.get('expected', '')} | {check.get('actual', '')} |"
+                )
+
     lines.extend(
         [
             "",
@@ -1650,10 +1841,96 @@ def render_markdown(payload: dict[str, Any]) -> str:
             "- `--include-start-job` extends each preview cycle with `preview.confirm -> dxf.job.start -> dxf.job.status -> dxf.job.stop`, and the execution table surfaces the structured `dxf.job.start.performance_profile`.",
             "- When `--include-start-job` runs in dry-run mode without an explicit `--launch-spec`, the script pins to the workspace gateway, auto-materializes a temporary `Hardware.mode=Mock` config if needed, then performs `connect -> home.auto` before sampling. That bootstrap time is excluded from the execution table.",
             "- If a single-flight run shows `joined_inflight_rate=0` but cache hit is high, the sample likely completed too quickly and followers landed on hot cache instead of the inflight join window.",
-            "- Baseline comparison is advisory only in this script. Regressions are flagged in report JSON and Markdown but do not fail the run.",
+            "- Baseline comparison remains advisory. `threshold_gate` is the only blocking mechanism when `--gate-mode nightly-performance` is used.",
         ]
     )
     return "\n".join(lines) + "\n"
+
+
+def _performance_case_status(result: dict[str, Any]) -> str:
+    raw_statuses: list[str] = []
+    for key in ("cold", "hot", "singleflight"):
+        block = result.get(key)
+        if isinstance(block, dict):
+            raw_statuses.append(str(block.get("status", "unknown")))
+    normalized = ["passed" if status == "ok" else "skipped" if status == "skipped" else "failed" for status in raw_statuses]
+    if not normalized:
+        return "incomplete"
+    if "failed" in normalized:
+        return "failed"
+    if all(status == "skipped" for status in normalized):
+        return "skipped"
+    if any(status == "passed" for status in normalized):
+        return "passed"
+    return "incomplete"
+
+
+def _write_evidence_bundle(payload: dict[str, Any], run_dir: Path, summary_json_path: Path, summary_md_path: Path) -> None:
+    case_records: list[EvidenceCaseRecord] = []
+    linked_assets: set[str] = set()
+    for sample_label, sample_info in payload.get("samples", {}).items():
+        sample_path = str(sample_info.get("path", ""))
+        asset_refs = performance_sample_asset_refs(ROOT, sample_path)
+        linked_assets.update(asset_refs)
+        case_status = _performance_case_status(payload.get("results", {}).get(sample_label, {}))
+        case_records.append(
+            EvidenceCaseRecord(
+                case_id=f"performance-{sample_label}",
+                name=f"performance-{sample_label}",
+                suite_ref="performance",
+                owner_scope="tests/performance",
+                primary_layer="L4-performance",
+                producer_lane_ref="nightly-performance",
+                status=case_status,
+                evidence_profile="performance-report",
+                stability_state="stable",
+                required_assets=asset_refs,
+                required_fixtures=("fixture.dxf-preview-profiler", "fixture.validation-evidence-bundle"),
+                risk_tags=("performance", "single-flight"),
+                trace_fields=trace_fields(
+                    stage_id="L4-performance",
+                    artifact_id=f"performance-{sample_label}",
+                    module_id="tests/performance",
+                    workflow_state="executed",
+                    execution_state=case_status,
+                    event_name=f"performance-{sample_label}",
+                    failure_code=f"performance.{case_status}" if case_status != "passed" else "",
+                    evidence_path=str(summary_json_path.resolve()),
+                ),
+            )
+        )
+
+    bundle = EvidenceBundle(
+        bundle_id=f"performance-{payload['environment']['generated_at']}",
+        request_ref="nightly-performance",
+        producer_lane_ref="nightly-performance",
+        report_root=str(run_dir.resolve()),
+        summary_file=str(summary_md_path.resolve()),
+        machine_file=str(summary_json_path.resolve()),
+        verdict=(
+            "failed"
+            if any(record.status == "failed" for record in case_records)
+            or str(payload.get("threshold_gate", {}).get("status", "")) == "failed"
+            else "passed"
+        ),
+        linked_asset_refs=tuple(sorted(linked_assets)),
+        metadata={
+            "sample_labels": payload.get("sampling", {}).get("sample_labels", []),
+            "include_start_job": payload.get("sampling", {}).get("include_start_job", False),
+            "threshold_gate": payload.get("threshold_gate", {}),
+        },
+        case_records=case_records,
+    )
+    write_bundle_artifacts(
+        bundle=bundle,
+        report_root=run_dir,
+        summary_json_path=summary_json_path,
+        summary_md_path=summary_md_path,
+        evidence_links=[
+            EvidenceLink(label="report.json", path=str(summary_json_path.resolve()), role="machine-summary"),
+            EvidenceLink(label="report.md", path=str(summary_md_path.resolve()), role="human-summary"),
+        ],
+    )
 
 
 def write_reports(payload: dict[str, Any], report_dir: Path) -> dict[str, str]:
@@ -1672,7 +1949,9 @@ def write_reports(payload: dict[str, Any], report_dir: Path) -> dict[str, str]:
     markdown_path.write_text(markdown_text, encoding="utf-8")
     latest_json.write_text(json_text, encoding="utf-8")
     latest_markdown.write_text(markdown_text, encoding="utf-8")
+    _write_evidence_bundle(payload, run_dir, json_path, markdown_path)
     return {
+        "run_dir": str(run_dir),
         "json": str(json_path),
         "markdown": str(markdown_path),
         "latest_json": str(latest_json),
@@ -1710,6 +1989,8 @@ def main() -> int:
             "include_start_job": args.include_start_job,
             "baseline_json": args.baseline_json,
             "regression_threshold_pct": args.regression_threshold_pct,
+            "gate_mode": args.gate_mode,
+            "threshold_config": args.threshold_config,
         },
         "samples": {
             label: {
@@ -1731,8 +2012,12 @@ def main() -> int:
             args.regression_threshold_pct,
         )
 
+    payload["threshold_gate"] = evaluate_threshold_gate(payload, args.gate_mode, args.threshold_config)
+
     written = write_reports(payload, Path(args.report_dir))
     print(json.dumps(written, ensure_ascii=False, indent=2))
+    if str(payload["threshold_gate"].get("status", "")) == "failed" and args.gate_mode != "adhoc":
+        return 1
     return 0
 
 

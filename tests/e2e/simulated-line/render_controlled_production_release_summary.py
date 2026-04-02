@@ -7,12 +7,12 @@ from pathlib import Path
 from typing import Any
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_REPORT_DIR = ROOT / "tests" / "reports" / "controlled-production-test"
 
 REQUIRED_RUNTIME_CASES = (
-    "simulation-runtime-core-contracts",
-    "simulation-engine-scheme-c",
+    "engineering-regression",
+    "simulated-line",
 )
 
 
@@ -80,13 +80,18 @@ def _render_summary(
         and int(workspace_counts.get("known_failure", 0)) == 0
         and int(workspace_counts.get("skipped", 0)) == 0
     )
-    runtime_contracts_ok = all(workspace_map.get(case_name) == "passed" for case_name in REQUIRED_RUNTIME_CASES)
+    runtime_contracts_ok = workspace_map.get("engineering-regression") == "passed"
     simulated_compat_ok = workspace_map.get("simulated-line") == "passed"
     simulated_scheme_c_ok = simulated_status == "passed"
-    deterministic_replay_ok = all(bool(item.get("deterministic_replay_passed", False)) for item in scenario_items)
+    deterministic_replay_ok = bool(scenario_items) and all(
+        bool(item.get("deterministic_replay_passed", False)) for item in scenario_items
+    )
     no_known_failure_skipped = (
         int(workspace_counts.get("known_failure", 0)) == 0 and int(workspace_counts.get("skipped", 0)) == 0
     )
+    fault_plan = simulated_payload.get("fault_plan", {})
+    fault_matrix_ok = fault_plan.get("matrix_id") == "fault-matrix.simulated-line.v1"
+    selected_fault_ids = fault_plan.get("selected_fault_ids", [])
 
     conclusion = _determine_conclusion(gate_status)
 
@@ -121,11 +126,12 @@ def _render_summary(
         "",
         "| 项目 | 结果 | 说明 |",
         "| --- | --- | --- |",
-        f"| simulation suite | `{_format_result(simulation_suite_ok)}` | failed=`{workspace_counts.get('failed', 0)}` known_failure=`{workspace_counts.get('known_failure', 0)}` skipped=`{workspace_counts.get('skipped', 0)}` |",
-        f"| runtime contracts | `{_format_result(runtime_contracts_ok)}` | simulation-runtime-core-contracts / simulation-engine-scheme-c |",
-        f"| simulated-line compat | `{_format_result(simulated_compat_ok)}` | workspace case `simulated-line` |",
+        f"| e2e workspace gate | `{_format_result(simulation_suite_ok)}` | failed=`{workspace_counts.get('failed', 0)}` known_failure=`{workspace_counts.get('known_failure', 0)}` skipped=`{workspace_counts.get('skipped', 0)}` |",
+        f"| engineering regression | `{_format_result(runtime_contracts_ok)}` | workspace case `engineering-regression` |",
+        f"| simulated-line workspace case | `{_format_result(simulated_compat_ok)}` | workspace case `simulated-line` |",
         f"| simulated-line scheme C | `{_format_result(simulated_scheme_c_ok)}` | overall_status=`{simulated_status}` |",
-        f"| deterministic replay | `{_format_result(deterministic_replay_ok)}` | scenarios=`{len(scenario_items)}` 全部 deterministic_replay_passed=true |",
+        f"| deterministic replay | `{_format_result(deterministic_replay_ok)}` | scenarios=`{len(scenario_items)}` 且全部 deterministic_replay_passed=true |",
+        f"| fault matrix metadata | `{_format_result(fault_matrix_ok)}` | matrix_id=`{fault_plan.get('matrix_id', '')}` selected_fault_ids=`{','.join(selected_fault_ids)}` |",
         f"| known failure / skipped | `{_format_result(no_known_failure_skipped)}` | known_failure=`{workspace_counts.get('known_failure', 0)}` skipped=`{workspace_counts.get('skipped', 0)}` |",
         f"| controlled-production gate | `{_format_result(gate_status == 'passed')}` | gate overall_status=`{gate_status}` |",
         "",
@@ -140,7 +146,7 @@ def _render_summary(
         "",
         "本结论只代表：",
         "",
-        "- `simulation` 受控生产测试通过/未通过",
+        "- `e2e/simulated-line` 受控生产测试通过/未通过",
         "",
         "本结论不代表：",
         "",

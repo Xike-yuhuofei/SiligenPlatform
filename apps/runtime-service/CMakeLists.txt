@@ -63,7 +63,6 @@ add_library(siligen_runtime_process_bootstrap STATIC
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/recipes/TemplateFileRepository.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/status/WorkflowRuntimeStatusExportPort.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/supervision/WorkflowRuntimeSupervisionBackend.cpp
-    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/system/DispenserModelMachineExecutionStateBackend.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/storage/files/LocalFileStorageAdapter.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/security/AuditLogger.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/security/InterlockMonitor.cpp

@@ -43,7 +43,7 @@
 - [ ] `preview-verdict.json` 中 `order_semantics_match == true`。
 - [ ] `preview-verdict.json` 中 `dispense_motion_semantics_match == true`。
 - [ ] 对 `samples/dxf/rect_diag.dxf`，可辨认矩形边段与对角线段。
-- [ ] 已运行 `python -m pytest tests/e2e/first-layer/test_real_preview_snapshot_geometry.py -q`，且结果通过。
+- [ ] 已运行 `python -m pytest tests/integration/scenarios/first-layer/test_real_preview_snapshot_geometry.py -q`，且结果通过。
 
 ## 6. 非通过边界
 
