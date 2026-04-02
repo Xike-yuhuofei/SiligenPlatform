@@ -133,10 +133,9 @@ class _WorkerFakeProtocol:
         self,
         plan_id: str,
         max_polyline_points: int = 4000,
-        max_glue_points: int = 5000,
         timeout: float = 15.0,
     ) -> tuple:
-        type(self).calls.append(("dxf.preview.snapshot", plan_id, max_polyline_points, max_glue_points, timeout))
+        type(self).calls.append(("dxf.preview.snapshot", plan_id, max_polyline_points, timeout))
         return True, {"snapshot_id": "snapshot-1", "preview_source": "planned_glue_snapshot", "preview_kind": "glue_points"}, ""
 
 
@@ -446,7 +445,7 @@ class PreviewSnapshotWorkerTest(unittest.TestCase):
             _WorkerFakeProtocol.calls,
             [
                 ("dxf.plan.prepare", "artifact-1", 20.0, False, 20.0, 300.0),
-                ("dxf.preview.snapshot", "plan-1", 4000, 5000, 300.0),
+                ("dxf.preview.snapshot", "plan-1", 4000, 300.0),
             ],
         )
         self.assertTrue(emitted)
