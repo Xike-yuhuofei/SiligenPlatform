@@ -334,6 +334,32 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertIn("预览质量告警", html)
         self.assertIn("胶点预览疑似退化为轨迹采样点", html)
 
+    def test_render_runtime_preview_html_hides_execution_polyline_by_default(self) -> None:
+        snapshot = main_window_module.PreviewSnapshotMeta(
+            snapshot_id="snapshot-1",
+            snapshot_hash="hash-1",
+            segment_count=2,
+            point_count=3,
+            total_length_mm=12.0,
+            estimated_time_s=1.5,
+            generated_at="2026-03-26T00:00:00Z",
+        )
+
+        html = self.window._render_runtime_preview_html(
+            snapshot=snapshot,
+            speed_mm_s=12.0,
+            dry_run=False,
+            preview_source="planned_glue_snapshot",
+            glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 3.0)],
+            execution_polyline=[(0.0, 0.0), (12.0, 3.0)],
+            preview_kind="glue_points",
+        )
+
+        self.assertIn("execution_polyline` 辅助层默认隐藏", html)
+        self.assertIn("不在主界面默认显示", html)
+        self.assertNotIn("<polyline points='", html)
+        self.assertNotIn("执行轨迹叠加点", html)
+
     def test_render_runtime_preview_html_renders_exception_banner(self) -> None:
         snapshot = main_window_module.PreviewSnapshotMeta(
             snapshot_id="snapshot-1",
