@@ -1,24 +1,13 @@
 #pragma once
 
-#include "process_path/contracts/ProcessPath.h"
-#include "shared/types/Point.h"
+// Compat forwarder: canonical planning artifact export request/result contract
+// lives in dispense-packaging contracts public surface.
+#include "domain/dispensing/contracts/PlanningArtifactExportRequest.h"
 #include "shared/types/Result.h"
-#include "shared/types/TrajectoryTypes.h"
 
-#include <string>
 #include <vector>
 
 namespace Siligen::Application::Services::Dispensing {
-
-struct PlanningArtifactExportRequest {
-    std::string source_path;
-    std::string dxf_filename;
-    Siligen::ProcessPath::Contracts::ProcessPath process_path;
-    std::vector<TrajectoryPoint> execution_trajectory_points;
-    std::vector<TrajectoryPoint> interpolation_trajectory_points;
-    std::vector<TrajectoryPoint> motion_trajectory_points;
-    std::vector<Shared::Types::Point2D> glue_points;
-};
 
 struct PlanningArtifactExportResult {
     bool export_requested = false;
