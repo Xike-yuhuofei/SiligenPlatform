@@ -1,0 +1,137 @@
+{
+  "schema_version": "dxf-preview-profile-thresholds.v1",
+  "owner_scope": "tests/performance",
+  "reviewer_guidance": "Tune only with attached nightly-performance evidence covering small, medium, and large canonical DXF samples, include-start-job enabled, and owner review.",
+  "calibrated_at_utc": "2026-04-02T02:36:50+00:00",
+  "calibration_evidence_report": "tests/reports/performance/dxf-preview-profiles/20260402T023650Z/report.json",
+  "required_runtime_mode": "mock-runtime-auto-provisioned",
+  "required_samples": [
+    "small",
+    "medium",
+    "large"
+  ],
+  "required_scenarios": [
+    {
+      "sample_label": "small",
+      "scenario": "cold",
+      "expected_status": "ok"
+    },
+    {
+      "sample_label": "small",
+      "scenario": "hot",
+      "expected_status": "ok"
+    },
+    {
+      "sample_label": "small",
+      "scenario": "singleflight",
+      "expected_status": "ok"
+    },
+    {
+      "sample_label": "medium",
+      "scenario": "cold",
+      "expected_status": "ok"
+    },
+    {
+      "sample_label": "medium",
+      "scenario": "hot",
+      "expected_status": "ok"
+    },
+    {
+      "sample_label": "medium",
+      "scenario": "singleflight",
+      "expected_status": "ok"
+    },
+    {
+      "sample_label": "large",
+      "scenario": "cold",
+      "expected_status": "ok"
+    },
+    {
+      "sample_label": "large",
+      "scenario": "hot",
+      "expected_status": "ok"
+    },
+    {
+      "sample_label": "large",
+      "scenario": "singleflight",
+      "expected_status": "ok"
+    }
+  ],
+  "numeric_thresholds": [
+    {
+      "name": "small.cold.artifact_ms.p95_ms",
+      "path": "results.small.cold.preview_summary.artifact_ms.p95_ms",
+      "max": 650.0
+    },
+    {
+      "name": "small.cold.prepare_total_ms.p95_ms",
+      "path": "results.small.cold.preview_summary.prepare_total_ms.p95_ms",
+      "max": 55.0
+    },
+    {
+      "name": "small.hot.prepare_total_ms.p95_ms",
+      "path": "results.small.hot.preview_summary.prepare_total_ms.p95_ms",
+      "max": 25.0
+    },
+    {
+      "name": "small.hot.execution_total_ms.p95_ms",
+      "path": "results.small.hot.execution.summary.execution_total_ms.p95_ms",
+      "max": 400.0
+    },
+    {
+      "name": "small.singleflight.prepare_total_ms.p95_ms",
+      "path": "results.small.singleflight.summary.prepare_total_ms.p95_ms",
+      "max": 45.0
+    },
+    {
+      "name": "medium.cold.artifact_ms.p95_ms",
+      "path": "results.medium.cold.preview_summary.artifact_ms.p95_ms",
+      "max": 650.0
+    },
+    {
+      "name": "medium.cold.prepare_total_ms.p95_ms",
+      "path": "results.medium.cold.preview_summary.prepare_total_ms.p95_ms",
+      "max": 180.0
+    },
+    {
+      "name": "medium.hot.prepare_total_ms.p95_ms",
+      "path": "results.medium.hot.preview_summary.prepare_total_ms.p95_ms",
+      "max": 25.0
+    },
+    {
+      "name": "medium.hot.execution_total_ms.p95_ms",
+      "path": "results.medium.hot.execution.summary.execution_total_ms.p95_ms",
+      "max": 2800.0
+    },
+    {
+      "name": "medium.singleflight.prepare_total_ms.p95_ms",
+      "path": "results.medium.singleflight.summary.prepare_total_ms.p95_ms",
+      "max": 160.0
+    },
+    {
+      "name": "large.cold.artifact_ms.p95_ms",
+      "path": "results.large.cold.preview_summary.artifact_ms.p95_ms",
+      "max": 700.0
+    },
+    {
+      "name": "large.cold.prepare_total_ms.p95_ms",
+      "path": "results.large.cold.preview_summary.prepare_total_ms.p95_ms",
+      "max": 1800.0
+    },
+    {
+      "name": "large.hot.prepare_total_ms.p95_ms",
+      "path": "results.large.hot.preview_summary.prepare_total_ms.p95_ms",
+      "max": 30.0
+    },
+    {
+      "name": "large.hot.execution_total_ms.p95_ms",
+      "path": "results.large.hot.execution.summary.execution_total_ms.p95_ms",
+      "max": 32000.0
+    },
+    {
+      "name": "large.singleflight.prepare_total_ms.p95_ms",
+      "path": "results.large.singleflight.summary.prepare_total_ms.p95_ms",
+      "max": 1800.0
+    }
+  ]
+}

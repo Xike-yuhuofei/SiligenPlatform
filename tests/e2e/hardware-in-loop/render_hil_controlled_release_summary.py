@@ -12,13 +12,15 @@ DEFAULT_REPORT_DIR = ROOT / "tests" / "reports" / "hil-controlled-test"
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Render HIL controlled release summary from gate/report artifacts.")
+    parser = argparse.ArgumentParser(description="Render HIL controlled release summary from controlled gate artifacts.")
     parser.add_argument("--report-dir", default=str(DEFAULT_REPORT_DIR))
     parser.add_argument("--profile", default="Local")
     parser.add_argument("--executor", default="")
     parser.add_argument("--gate-summary-json", default="")
-    parser.add_argument("--workspace-validation-json", default="")
+    parser.add_argument("--offline-prereq-json", default="")
+    parser.add_argument("--hardware-smoke-summary-json", default="")
     parser.add_argument("--hil-closed-loop-summary-json", default="")
+    parser.add_argument("--hil-case-matrix-summary-json", default="")
     return parser.parse_args()
 
 
@@ -26,57 +28,17 @@ def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _to_int(value: Any, default: int = 0) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
+def _resolve(explicit: str, fallback: Path) -> Path:
+    return Path(explicit).resolve() if explicit else fallback.resolve()
 
 
-def _to_float(value: Any, default: float = 0.0) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _resolve_path(explicit_path: str, fallback_path: Path) -> Path:
-    if explicit_path:
-        return Path(explicit_path).resolve()
-    return fallback_path.resolve()
-
-
-def _resolve_hil_summary_path(report_dir: Path, explicit_path: str) -> Path:
-    if explicit_path:
-        return Path(explicit_path).resolve()
-    candidates = (
-        report_dir / "hil-closed-loop-summary.json",
-        report_dir / "hil-controlled-test" / "hil-closed-loop-summary.json",
-    )
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate.resolve()
-    return candidates[0].resolve()
-
-
-def _status_map_from_workspace(payload: dict[str, Any]) -> dict[str, str]:
-    mapping: dict[str, str] = {}
-    for item in payload.get("results", []):
-        name = str(item.get("name", ""))
-        status = str(item.get("status", ""))
-        if name:
-            mapping[name] = status
-    return mapping
+def _check_status(checks: list[dict[str, Any]], name: str) -> str:
+    item = next((entry for entry in checks if str(entry.get("name", "")) == name), {})
+    return str(item.get("status", "missing"))
 
 
 def _format_result(ok: bool) -> str:
     return "通过" if ok else "阻塞"
-
-
-def _determine_conclusion(gate_status: str) -> str:
-    if gate_status == "passed":
-        return "通过"
-    return "阻塞"
 
 
 def _render_summary(
@@ -85,48 +47,40 @@ def _render_summary(
     profile: str,
     executor: str,
     gate_payload: dict[str, Any],
-    workspace_payload: dict[str, Any],
+    offline_payload: dict[str, Any],
+    hardware_payload: dict[str, Any],
     hil_payload: dict[str, Any],
+    case_matrix_payload: dict[str, Any] | None,
     gate_path: Path,
-    workspace_path: Path,
+    offline_path: Path,
+    hardware_path: Path,
     hil_path: Path,
+    case_matrix_path: Path | None,
 ) -> str:
-    gate_status = str(gate_payload.get("overall_status", "failed"))
-    workspace_counts = workspace_payload.get("counts", {})
-    workspace_map = _status_map_from_workspace(workspace_payload)
-    gate_checks = {str(item.get("name", "")): item for item in gate_payload.get("checks", [])}
-    required_workspace_cases = set(str(item) for item in gate_payload.get("required_workspace_cases", []))
-    hil_case_matrix_required = "hil-case-matrix" in required_workspace_cases
-    hil_case_matrix_path_text = str(gate_payload.get("hil_case_matrix_summary_json", "")).strip()
-    hil_case_matrix_path = Path(hil_case_matrix_path_text) if hil_case_matrix_path_text else None
+    checks = gate_payload.get("checks", [])
+    overall_status = str(gate_payload.get("overall_status", "failed"))
+    admission = hil_payload.get("admission", {}) if isinstance(hil_payload.get("admission"), dict) else {}
+    safety_preflight = admission.get("safety_preflight", {}) if isinstance(admission.get("safety_preflight"), dict) else {}
+    failure_classification = hil_payload.get("failure_classification", {}) if isinstance(hil_payload.get("failure_classification"), dict) else {}
 
-    hil_overall_status = str(hil_payload.get("overall_status", "failed"))
-    duration_seconds = _to_float(hil_payload.get("duration_seconds", 0))
-    elapsed_seconds = _to_float(hil_payload.get("elapsed_seconds", 0))
-    timeout_count = _to_int(hil_payload.get("timeout_count", 0))
-    reconnect_count = _to_int(hil_payload.get("reconnect_count", 0))
-    transition_checks = hil_payload.get("state_transition_checks", [])
+    offline_ok = _check_status(checks, "offline-prereq-counts") == "passed" and _check_status(checks, "offline-prereq-required-cases") == "passed"
+    hardware_ok = _check_status(checks, "hardware-smoke-overall-status") == "passed"
+    hil_ok = _check_status(checks, "hil-closed-loop-overall-status") == "passed"
+    bundle_schema_ok = _check_status(checks, "hil-bundle-schema-version") == "passed"
+    bundle_manifest_ok = _check_status(checks, "hil-bundle-report-manifest") == "passed"
+    bundle_index_ok = _check_status(checks, "hil-bundle-report-index") == "passed"
+    admission_ok = _check_status(checks, "hil-bundle-admission-metadata") == "passed"
+    preflight_ok = _check_status(checks, "hil-bundle-safety-preflight") == "passed"
+    override_ok = _check_status(checks, "hil-bundle-operator-override") == "passed"
+    case_matrix_required = bool(gate_payload.get("require_hil_case_matrix", False))
+    case_matrix_ok = (not case_matrix_required) or _check_status(checks, "hil-case-matrix-overall-status") == "passed"
 
-    hardware_smoke_ok = workspace_map.get("hardware-smoke") == "passed"
-    hil_closed_loop_ok = workspace_map.get("hil-closed-loop") == "passed" and hil_overall_status == "passed"
-    duration_ok = duration_seconds > 0 and elapsed_seconds >= duration_seconds
-    transition_ok = bool(transition_checks) and all(str(item.get("status", "")) == "passed" for item in transition_checks)
-    timeout_ok = timeout_count == 0
-    reconnect_ok = reconnect_count > 0
-    no_known_failure_skipped = (
-        _to_int(workspace_counts.get("known_failure", 0)) == 0
-        and _to_int(workspace_counts.get("skipped", 0)) == 0
-    )
-    hil_case_matrix_workspace_ok = workspace_map.get("hil-case-matrix") == "passed"
-    hil_case_matrix_gate_ok = str(gate_checks.get("hil-case-matrix-overall-status", {}).get("status", "")) == "passed"
-
-    conclusion = _determine_conclusion(gate_status)
-    executor_text = executor.strip() if executor.strip() else "待填写"
     generated_at = datetime.now(timezone.utc).isoformat()
-
-    workspace_md = workspace_path.with_suffix(".md")
-    hil_md = hil_path.with_suffix(".md")
+    executor_text = executor.strip() or "待填写"
     gate_md = gate_path.with_suffix(".md")
+    offline_md = offline_path.with_suffix(".md")
+    hardware_md = hardware_path.with_suffix(".md")
+    hil_md = hil_path.with_suffix(".md")
 
     lines = [
         "# HIL 受控测试发布结论",
@@ -142,16 +96,18 @@ def _render_summary(
         "",
         "## 2. 自动化证据",
         "",
-        f"- `workspace-validation.json`：`{workspace_path}`",
-        f"- `workspace-validation.md`：`{workspace_md}`",
+        f"- `offline-prereq/workspace-validation.json`：`{offline_path}`",
+        f"- `offline-prereq/workspace-validation.md`：`{offline_md}`",
+        f"- `hardware-smoke-summary.json`：`{hardware_path}`",
+        f"- `hardware-smoke-summary.md`：`{hardware_md}`",
         f"- `hil-closed-loop-summary.json`：`{hil_path}`",
         f"- `hil-closed-loop-summary.md`：`{hil_md}`",
         f"- `hil-controlled-gate-summary.json`：`{gate_path}`",
         f"- `hil-controlled-gate-summary.md`：`{gate_md}`",
     ]
-    if hil_case_matrix_path_text:
-        lines.append(f"- `case-matrix-summary.json`：`{hil_case_matrix_path}`")
-        lines.append(f"- `case-matrix-summary.md`：`{hil_case_matrix_path.with_suffix('.md')}`")
+    if case_matrix_path is not None:
+        lines.append(f"- `hil-case-matrix/case-matrix-summary.json`：`{case_matrix_path}`")
+        lines.append(f"- `hil-case-matrix/case-matrix-summary.md`：`{case_matrix_path.with_suffix('.md')}`")
 
     lines.extend(
         [
@@ -160,36 +116,36 @@ def _render_summary(
             "",
             "| 项目 | 结果 | 说明 |",
             "| --- | --- | --- |",
-            f"| hardware smoke | `{_format_result(hardware_smoke_ok)}` | workspace case `hardware-smoke` |",
-            f"| hil-closed-loop | `{_format_result(hil_closed_loop_ok)}` | workspace case + overall_status=`{hil_overall_status}` |",
-            f"| long soak duration | `{_format_result(duration_ok)}` | duration_seconds=`{duration_seconds}` elapsed_seconds=`{elapsed_seconds}` |",
-            f"| state transition checks | `{_format_result(transition_ok)}` | checks=`{len(transition_checks)}` 全部 status=passed |",
-            f"| timeout_count | `{_format_result(timeout_ok)}` | timeout_count=`{timeout_count}` |",
-            f"| reconnect_count | `{_format_result(reconnect_ok)}` | reconnect_count=`{reconnect_count}` |",
-            f"| known failure / skipped | `{_format_result(no_known_failure_skipped)}` | known_failure=`{workspace_counts.get('known_failure', 0)}` skipped=`{workspace_counts.get('skipped', 0)}` |",
+            f"| offline prerequisites | `{_format_result(offline_ok)}` | required cases={','.join(gate_payload.get('required_offline_cases', []))} |",
+            f"| hardware smoke | `{_format_result(hardware_ok)}` | overall_status=`{hardware_payload.get('overall_status', '')}` |",
+            f"| hil-closed-loop | `{_format_result(hil_ok)}` | overall_status=`{hil_payload.get('overall_status', '')}` |",
+            f"| admission metadata | `{_format_result(admission_ok)}` | admission_decision=`{admission.get('admission_decision', '')}` |",
+            f"| safety preflight | `{_format_result(preflight_ok)}` | passed=`{admission.get('safety_preflight_passed', False)}` estop=`{safety_preflight.get('estop_active', False)}` limits=`{','.join(safety_preflight.get('limit_blockers', []))}` |",
+            f"| operator override | `{_format_result(override_ok)}` | used=`{admission.get('operator_override_used', False)}` reason=`{admission.get('operator_override_reason', '')}` |",
+            f"| evidence schema | `{_format_result(bundle_schema_ok and bundle_manifest_ok and bundle_index_ok)}` | bundle/manifest/index compatibility |",
+            f"| failure classification | `{failure_classification.get('category', '')}:{failure_classification.get('code', '')}` | blocking=`{failure_classification.get('blocking', False)}` |",
         ]
     )
-    if hil_case_matrix_required or hil_case_matrix_path_text:
+    if case_matrix_required:
         lines.append(
-            f"| hil-case-matrix | `{_format_result(hil_case_matrix_workspace_ok and hil_case_matrix_gate_ok)}` | "
-            f"workspace case=`{workspace_map.get('hil-case-matrix', 'missing')}` gate_check=`{gate_checks.get('hil-case-matrix-overall-status', {}).get('status', 'missing')}` |"
+            f"| hil-case-matrix | `{_format_result(case_matrix_ok)}` | overall_status=`{(case_matrix_payload or {}).get('overall_status', 'missing')}` |"
         )
     lines.extend(
         [
-            f"| controlled gate | `{_format_result(gate_status == 'passed')}` | gate overall_status=`{gate_status}` |",
+            f"| controlled gate | `{_format_result(overall_status == 'passed')}` | gate overall_status=`{overall_status}` |",
             "",
             "## 4. 结论",
             "",
-            f"- 结论：`{conclusion}`",
+            f"- 结论：`{'通过' if overall_status == 'passed' else '阻塞'}`",
             "- 判定规则：",
-            "  - Gate 为 `passed` 时，结论为 `通过`",
-            "  - 否则结论为 `阻塞`",
+            "  - offline prerequisites、hardware smoke、hil-closed-loop、admission/preflight、evidence schema 均通过时，结论为 `通过`。",
+            "  - 任一 blocking gate 失败时，结论为 `阻塞`。",
             "",
             "## 5. 范围声明",
             "",
             "本结论只代表：",
             "",
-            "- `HIL` 受控测试通过/未通过",
+            "- `limited-hil` 受控测试门禁是否满足发布前提",
             "",
             "本结论不代表：",
             "",
@@ -204,31 +160,41 @@ def _render_summary(
 def main() -> int:
     args = parse_args()
     report_dir = Path(args.report_dir).resolve()
+    gate_path = _resolve(args.gate_summary_json, report_dir / "hil-controlled-gate-summary.json")
+    offline_path = _resolve(args.offline_prereq_json, report_dir / "offline-prereq" / "workspace-validation.json")
+    hardware_path = _resolve(args.hardware_smoke_summary_json, report_dir / "hardware-smoke" / "hardware-smoke-summary.json")
+    hil_path = _resolve(args.hil_closed_loop_summary_json, report_dir / "hil-closed-loop-summary.json")
+    case_matrix_required = False
+    case_matrix_path: Path | None = None
 
-    gate_path = _resolve_path(args.gate_summary_json, report_dir / "hil-controlled-gate-summary.json")
-    workspace_path = _resolve_path(args.workspace_validation_json, report_dir / "workspace-validation.json")
-    hil_path = _resolve_hil_summary_path(report_dir, args.hil_closed_loop_summary_json)
-
-    missing = [path for path in (gate_path, workspace_path, hil_path) if not path.exists()]
+    missing = [path for path in (gate_path, offline_path, hardware_path, hil_path) if not path.exists()]
     if missing:
         for path in missing:
             print(f"missing required artifact: {path}")
         return 1
 
     gate_payload = _load_json(gate_path)
-    workspace_payload = _load_json(workspace_path)
-    hil_payload = _load_json(hil_path)
+    case_matrix_required = bool(gate_payload.get("require_hil_case_matrix", False))
+    if case_matrix_required:
+        case_matrix_path = _resolve(args.hil_case_matrix_summary_json, report_dir / "hil-case-matrix" / "case-matrix-summary.json")
+        if not case_matrix_path.exists():
+            print(f"missing required case-matrix artifact: {case_matrix_path}")
+            return 1
 
     markdown = _render_summary(
         report_dir=report_dir,
         profile=args.profile,
         executor=args.executor,
         gate_payload=gate_payload,
-        workspace_payload=workspace_payload,
-        hil_payload=hil_payload,
+        offline_payload=_load_json(offline_path),
+        hardware_payload=_load_json(hardware_path),
+        hil_payload=_load_json(hil_path),
+        case_matrix_payload=_load_json(case_matrix_path) if case_matrix_path is not None else None,
         gate_path=gate_path,
-        workspace_path=workspace_path,
+        offline_path=offline_path,
+        hardware_path=hardware_path,
         hil_path=hil_path,
+        case_matrix_path=case_matrix_path,
     )
 
     output_path = report_dir / "hil-controlled-release-summary.md"
