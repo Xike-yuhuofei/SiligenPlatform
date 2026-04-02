@@ -6,7 +6,7 @@
 
 | 方法 | 类型 | HMI 调用点 | TCP 处理器 | CLI 对应语义 | 结果字段 | 兼容说明 |
 |---|---|---|---|---|---|---|
-| `status` | 查询 | `CommandProtocol.get_status()` | `HandleStatus` | `HandleStatus` | `connected` / `machine_state` / `axes` / `position` / `io` / `dispenser` / `alarms` | HMI 当前主要消费 `machine_state`、`axes`、`io`、`dispenser.*` |
+| `status` | 查询 | `CommandProtocol.get_status()` | `HandleStatus` | `HandleStatus` | `connected` / `machine_state` / `supervision` / `effective_interlocks` / `axes` / `position` / `io` / `dispenser` / `alarms` | `supervision` 是当前监督态 owner 面；`machine_state` 仅保留 compat 单向导出，且连同 `connected` / `connection_state` / `active_job_*` / `io` / `effective_interlocks` 一并并入 `IRuntimeStatusExportPort` snapshot；HMI 主消费已转向 `supervision`、`effective_interlocks`、`axes`、`io`、`dispenser.*` |
 
 ## `alarms.*`
 
@@ -23,7 +23,7 @@
 | `dxf.load` | 命令 | `CommandProtocol.dxf_load()` | `HandleDxfLoad` | `DXF_PLAN` / `DXF_DISPENSE` 前置 | `loaded` / `segment_count` / `filepath` | 同时接受 `filepath` / `file_path` |
 | `dxf.artifact.create` | 命令 | `CommandProtocol.dxf_create_artifact()` | `HandleDxfArtifactCreate` | 无独立 CLI facade | `artifact_id` / `filepath` / `size` | 生成 canonical artifact，作为后续 prepare 的唯一输入 |
 | `dxf.plan.prepare` | 命令 | `CommandProtocol.dxf_prepare_plan()` | `HandleDxfPlanPrepare` | `DXF_PLAN` | `plan_id` / `plan_fingerprint` / `estimated_time_s` | 允许省略 `artifact_id` 回退最近一次已加载 artifact，但新客户端应显式传入 |
-| `dxf.preview.snapshot` | 命令 | `CommandProtocol.dxf_preview_snapshot()` | `HandleDxfPreviewSnapshot` | 无独立 CLI facade | `snapshot_hash` / `plan_id` / `preview_kind` / `glue_points` / `motion_preview` / `execution_polyline` | 唯一 shared authority success shape 是 `preview_source=planned_glue_snapshot` + `preview_kind=glue_points` + 非空 `glue_points`；`motion_preview` 是正式运动轨迹预览语义，`execution_polyline`、`trajectory_polyline` 与 `polyline_*` 仅保留兼容别名 |
+| `dxf.preview.snapshot` | 命令 | `CommandProtocol.dxf_preview_snapshot()` | `HandleDxfPreviewSnapshot` | 无独立 CLI facade | `snapshot_hash` / `plan_id` / `preview_kind` / `glue_points` / `execution_polyline` | 唯一 shared authority success shape 是 `preview_source=planned_glue_snapshot` + `preview_kind=glue_points` + 非空 `glue_points`；`trajectory_polyline` 与 `polyline_*` 仅保留兼容别名 |
 | `dxf.preview.confirm` | 命令 | `CommandProtocol.dxf_preview_confirm()` | `HandleDxfPreviewConfirm` | 无独立 CLI facade | `confirmed` / `plan_id` / `snapshot_hash` | 预览确认必须绑定当前 `plan_id + snapshot_hash`，确认后才能进入 `dxf.job.start` |
 | `dxf.job.start` | 命令 | `CommandProtocol.dxf_start_job()` | `HandleDxfJobStart` | `DXF_DISPENSE` | `started` / `job_id` / `plan_id` / `plan_fingerprint` | canonical 启动入口；旧 `dxf.execute` 已退役；仅在 preview confirmed、source valid、authority shared 时允许启动 |
 | `dxf.job.status` | 查询 | `CommandProtocol.dxf_get_job_status()` | `HandleDxfJobStatus` | 无 | `state` / `overall_progress_percent` / `completed_count` | 作为运行态查询主入口，替代旧 `dxf.progress` |
@@ -34,9 +34,7 @@
 
 ### `dxf.preview` authority gate
 
-- `dxf.preview.snapshot` 的唯一成功主预览语义是 shared authority 下的 `planned_glue_snapshot + glue_points`；`motion_preview` 是正式运动轨迹预览语义，但不参与 authority 判定。
-- `dxf.preview.confirm` / `dxf.job.start` 的 gate 真值保持不变，仍固定依赖 `preview_source=planned_glue_snapshot`、`preview_kind=glue_points` 与非空 `glue_points`。
-- `execution_polyline`、`trajectory_polyline` 与 `polyline_*` 仅为兼容消费者保留，不得升格为 authority 或执行放行真值。
+- `dxf.preview.snapshot` 的唯一成功主预览语义是 shared authority 下的 `planned_glue_snapshot + glue_points`；`execution_polyline` 只用于辅助叠加，不参与 authority 判定。
 - 以下场景必须按失败边界处理，不得进入 HMI 成功渲染或执行前通过路径：non-`planned_glue_snapshot`、non-`glue_points`、空 `glue_points`、缺少或无效 `snapshot_hash`、`plan_id` / authority mismatch、legacy `runtime_snapshot` / `trajectory_polyline`。
 - `dxf.preview.confirm` 负责把当前 `plan_id + snapshot_hash` 绑定到已确认预览；`dxf.job.start` 继续依赖该确认结果与 `plan_fingerprint` 一致，避免 preview 与 execution 消费不同 shared authority 结果。
 
@@ -67,4 +65,7 @@
 - `recipe.*` 是当前别名兼容最密集的一组协议。
 - `dxf.*` 当前正式执行链已收敛到 `artifact.create -> plan.prepare -> preview.snapshot -> preview.confirm -> job.start -> job.status`。
 - runtime-execution 对跨模块公开面已收敛为 `DispensingExecutionRequest + DispensingExecutionResult + job API`；`task` 只允许留在 runtime-execution 内部实现或内部测试语境。
+- `status.machine_state` / `machine_state_reason` 仍需保留，但语义上已经降级为由 `supervision.current_state` / `state_reason` 单向派生的 compat 面，并已收敛到 `IRuntimeStatusExportPort` snapshot。
+- `status` 当前整体由 `IRuntimeStatusExportPort` snapshot 提供；其中 `connected` / `connection_state` / `interlock_latched` / `active_job_*` / `supervision` / `effective_interlocks` / `io` 由 export snapshot 统一导出，底层 supervision 语义来自 `IRuntimeSupervisionPort` 输入，`runtime-gateway` 只负责 transport 序列化。
+- HMI 仅在 `status.supervision` 整体缺失时回退读取 `machine_state` compat 字段；不会再对 `supervision` 单个字段做 compat 回填。
 - `status` 与 `alarms.*` 结构已被 HMI UI 直接依赖，字段改名风险高。
