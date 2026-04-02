@@ -121,10 +121,6 @@ $requiredBridgeReferences = @(
     },
     @{
         path = "modules/workflow/application/CMakeLists.txt"
-        pattern = "../../runtime-execution/application/include"
-        },
-    @{
-        path = "modules/workflow/application/CMakeLists.txt"
         pattern = "siligen_runtime_execution_application_public"
     },
     @{

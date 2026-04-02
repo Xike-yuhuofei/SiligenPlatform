@@ -1,12 +1,59 @@
 [CmdletBinding()]
 param(
     [string]$PythonExe = "python",
-    [string]$ReportRoot = "tests/reports/local-validation-gate"
+    [string]$ReportRoot = "tests/reports/local-validation-gate",
+    [ValidateSet("auto", "quick-gate", "full-offline-gate", "nightly-performance", "limited-hil")]
+    [string]$Lane = "quick-gate",
+    [ValidateSet("low", "medium", "high", "hardware-sensitive")]
+    [string]$RiskProfile = "medium",
+    [ValidateSet("auto", "quick", "full-offline", "nightly", "hil")]
+    [string]$DesiredDepth = "quick",
+    [string[]]$ChangedScope = @(),
+    [string[]]$SkipLayer = @(),
+    [string]$SkipJustification = "",
+    [switch]$IncludeHilCaseMatrix
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 Set-Location $repoRoot
+
+function Resolve-LanePolicy {
+    param([string]$LaneId)
+
+    switch ($LaneId) {
+        "quick-gate" {
+            return @{ GateDecision = "blocking"; DefaultFailPolicy = "fail-fast"; TimeoutBudgetSeconds = 900; RetryBudget = 0; FailFastCaseLimit = 1 }
+        }
+        "full-offline-gate" {
+            return @{ GateDecision = "blocking"; DefaultFailPolicy = "collect-and-report"; TimeoutBudgetSeconds = 2700; RetryBudget = 1; FailFastCaseLimit = 0 }
+        }
+        "nightly-performance" {
+            return @{ GateDecision = "blocking"; DefaultFailPolicy = "collect-and-report"; TimeoutBudgetSeconds = 3600; RetryBudget = 1; FailFastCaseLimit = 0 }
+        }
+        "limited-hil" {
+            return @{ GateDecision = "blocking"; DefaultFailPolicy = "manual-signoff-required"; TimeoutBudgetSeconds = 1800; RetryBudget = 0; FailFastCaseLimit = 1 }
+        }
+        default {
+            throw "Unsupported lane policy request: $LaneId"
+        }
+    }
+}
+
+if ($SkipLayer.Count -gt 0 -and [string]::IsNullOrWhiteSpace($SkipJustification)) {
+    throw "SkipJustification is required when SkipLayer is not empty."
+}
+
+$lanePolicy = Resolve-LanePolicy -LaneId $Lane
+Write-Output (
+    "local gate lane policy: lane={0} gate_decision={1} fail_policy={2} timeout_budget_seconds={3} retry_budget={4} fail_fast_case_limit={5}" -f
+    $Lane,
+    $lanePolicy.GateDecision,
+    $lanePolicy.DefaultFailPolicy,
+    $lanePolicy.TimeoutBudgetSeconds,
+    $lanePolicy.RetryBudget,
+    $lanePolicy.FailFastCaseLimit
+)
 
 $thirdPartyBootstrap = Join-Path $repoRoot "scripts\bootstrap\bootstrap-third-party.ps1"
 if (-not (Test-Path $thirdPartyBootstrap)) {
@@ -90,21 +137,44 @@ $resolvedRoot = Resolve-OutputPath -PathValue $ReportRoot
 $runDir = Join-Path $resolvedRoot $timestamp
 $logsDir = Join-Path $runDir "logs"
 $workspaceValidationDir = Join-Path $runDir "workspace-validation"
+$workspaceValidationHilMatrixDir = Join-Path $runDir "workspace-validation-hil-case-matrix"
 $dspE2ESpecDir = Join-Path $runDir "dsp-e2e-spec-docset"
 $legacyExitDir = Join-Path $runDir "legacy-exit"
 $moduleBoundaryDir = Join-Path $runDir "module-boundary-bridges"
+$reviewBaselineDir = Join-Path $runDir "review-baseline"
 
 New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
 New-Item -ItemType Directory -Force -Path $workspaceValidationDir | Out-Null
+if ($IncludeHilCaseMatrix) {
+    New-Item -ItemType Directory -Force -Path $workspaceValidationHilMatrixDir | Out-Null
+}
 New-Item -ItemType Directory -Force -Path $dspE2ESpecDir | Out-Null
 New-Item -ItemType Directory -Force -Path $legacyExitDir | Out-Null
 New-Item -ItemType Directory -Force -Path $moduleBoundaryDir | Out-Null
+New-Item -ItemType Directory -Force -Path $reviewBaselineDir | Out-Null
 
 $env:SILIGEN_FREEZE_DOCSET_REPORT_DIR = $dspE2ESpecDir
 $env:SILIGEN_FREEZE_EVIDENCE_CASES = "success,block,rollback,recovery,archive"
 $env:SILIGEN_LEGACY_EXIT_REPORT_DIR = $legacyExitDir
 
 $steps = @(
+    @{
+        Id      = "review-baseline"
+        Name    = "Validate ARCH-203 review baseline completeness"
+        LogName = "00-review-baseline.log"
+        Command = @(
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            ".\scripts\validation\assert-review-baseline-completeness.ps1",
+            "-WorkspaceRoot",
+            $repoRoot,
+            "-ReportDir",
+            $reviewBaselineDir
+        )
+    },
     @{
         Id      = "workspace-layout"
         Name    = "Validate workspace layout"
@@ -171,13 +241,80 @@ $steps = @(
             "contracts",
             "-ReportDir",
             $workspaceValidationDir,
+            "-Lane",
+            $Lane,
+            "-RiskProfile",
+            $RiskProfile,
+            "-DesiredDepth",
+            $DesiredDepth,
             "-FailOnKnownFailure"
         )
-    },
+    }
+)
+
+foreach ($scopeName in $ChangedScope) {
+    if (-not [string]::IsNullOrWhiteSpace($scopeName)) {
+        $steps[-1].Command += @("-ChangedScope", $scopeName)
+    }
+}
+foreach ($layerName in $SkipLayer) {
+    if (-not [string]::IsNullOrWhiteSpace($layerName)) {
+        $steps[-1].Command += @("-SkipLayer", $layerName)
+    }
+}
+if (-not [string]::IsNullOrWhiteSpace($SkipJustification)) {
+    $steps[-1].Command += @("-SkipJustification", $SkipJustification)
+}
+
+if ($IncludeHilCaseMatrix) {
+    $steps += @{
+        Id      = "test-e2e-hil-case-matrix"
+        Name    = "Run e2e HIL case matrix via root test entry"
+        LogName = "06-test-e2e-hil-case-matrix.log"
+        Command = @(
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            ".\test.ps1",
+            "-Profile",
+            "CI",
+            "-Suite",
+            "e2e",
+            "-ReportDir",
+            $workspaceValidationHilMatrixDir,
+            "-Lane",
+            $Lane,
+            "-RiskProfile",
+            $RiskProfile,
+            "-DesiredDepth",
+            $DesiredDepth,
+            "-FailOnKnownFailure",
+            "-IncludeHilCaseMatrix"
+        )
+    }
+
+    foreach ($scopeName in $ChangedScope) {
+        if (-not [string]::IsNullOrWhiteSpace($scopeName)) {
+            $steps[-1].Command += @("-ChangedScope", $scopeName)
+        }
+    }
+    foreach ($layerName in $SkipLayer) {
+        if (-not [string]::IsNullOrWhiteSpace($layerName)) {
+            $steps[-1].Command += @("-SkipLayer", $layerName)
+        }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($SkipJustification)) {
+        $steps[-1].Command += @("-SkipJustification", $SkipJustification)
+    }
+}
+
+$steps += @(
     @{
         Id      = "build-validation-local-contracts"
         Name    = "Build validation (Local/contracts)"
-        LogName = "06-build-validation-local-contracts.log"
+        LogName = "07-build-validation-local-contracts.log"
         Command = @(
             "powershell",
             "-NoProfile",
@@ -194,7 +331,7 @@ $steps = @(
     @{
         Id      = "build-validation-ci-contracts"
         Name    = "Build validation (CI/contracts)"
-        LogName = "07-build-validation-ci-contracts.log"
+        LogName = "08-build-validation-ci-contracts.log"
         Command = @(
             "powershell",
             "-NoProfile",
@@ -222,12 +359,19 @@ $overallStatus = if ($failedCount -eq 0) { "passed" } else { "failed" }
 $summary = [ordered]@{
     generated_at    = (Get-Date).ToString("s")
     branch          = (git branch --show-current)
+    lane            = $Lane
+    lane_gate_decision = $lanePolicy.GateDecision
+    lane_fail_policy = $lanePolicy.DefaultFailPolicy
+    lane_timeout_budget_seconds = $lanePolicy.TimeoutBudgetSeconds
+    lane_retry_budget = $lanePolicy.RetryBudget
+    lane_fail_fast_case_limit = $lanePolicy.FailFastCaseLimit
     report_root     = $resolvedRoot
     run_dir         = $runDir
     freeze_report_dir = $dspE2ESpecDir
     legacy_exit_dir = $legacyExitDir
     module_boundary_dir = $moduleBoundaryDir
     workspace_validation_dir = $workspaceValidationDir
+    workspace_validation_hil_matrix_dir = $(if ($IncludeHilCaseMatrix) { $workspaceValidationHilMatrixDir } else { "" })
     overall_status  = $overallStatus
     total_steps     = $results.Count
     passed_steps    = $passedCount
@@ -251,6 +395,7 @@ $mdLines = @(
     "- legacy_exit_dir: $($summary.legacy_exit_dir)",
     "- module_boundary_dir: $($summary.module_boundary_dir)",
     "- workspace_validation_dir: $($summary.workspace_validation_dir)",
+    "- workspace_validation_hil_matrix_dir: $($summary.workspace_validation_hil_matrix_dir)",
     "- overall_status: $($summary.overall_status)",
     "- passed_steps: $($summary.passed_steps)/$($summary.total_steps)",
     "",
@@ -279,8 +424,18 @@ $requiredArtifacts = @(
     (Join-Path $legacyExitDir "legacy-exit-checks.json"),
     (Join-Path $legacyExitDir "legacy-exit-checks.md"),
     (Join-Path $moduleBoundaryDir "module-boundary-bridges.json"),
-    (Join-Path $moduleBoundaryDir "module-boundary-bridges.md")
+    (Join-Path $moduleBoundaryDir "module-boundary-bridges.md"),
+    (Join-Path $reviewBaselineDir "review-baseline-completeness.json"),
+    (Join-Path $reviewBaselineDir "review-baseline-completeness.md")
 )
+if ($IncludeHilCaseMatrix) {
+    $requiredArtifacts += @(
+        (Join-Path $workspaceValidationHilMatrixDir "workspace-validation.json"),
+        (Join-Path $workspaceValidationHilMatrixDir "workspace-validation.md"),
+        (Join-Path (Join-Path $workspaceValidationHilMatrixDir "hil-case-matrix") "case-matrix-summary.json"),
+        (Join-Path (Join-Path $workspaceValidationHilMatrixDir "hil-case-matrix") "case-matrix-summary.md")
+    )
+}
 foreach ($artifact in $requiredArtifacts) {
     if (-not (Test-Path $artifact)) {
         Write-Error "根级门禁未发布预期报告: $artifact"
