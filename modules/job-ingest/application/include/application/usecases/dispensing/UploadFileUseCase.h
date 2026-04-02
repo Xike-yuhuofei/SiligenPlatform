@@ -8,8 +8,10 @@
 #include <vector>
 
 namespace Siligen::Domain::Configuration::Ports {
-class IFileStoragePort;
 class IConfigurationPort;
+}
+namespace Siligen::JobIngest::Contracts::Storage {
+class IFileStoragePort;
 }
 namespace Siligen::Application::Services::DXF {
 class DxfPbPreparationService;
@@ -25,7 +27,7 @@ using Siligen::Shared::Types::Result;
 
 class UploadFileUseCase : public IUploadFilePort {
    public:
-    UploadFileUseCase(std::shared_ptr<Domain::Configuration::Ports::IFileStoragePort> file_storage_port,
+    UploadFileUseCase(std::shared_ptr<JobIngest::Contracts::Storage::IFileStoragePort> file_storage_port,
                       size_t max_file_size_mb = 10,
                       std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port = nullptr,
                       std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService>
@@ -41,7 +43,7 @@ class UploadFileUseCase : public IUploadFilePort {
     Result<UploadResponse> Execute(const UploadRequest& request) override;
 
    private:
-    std::shared_ptr<Domain::Configuration::Ports::IFileStoragePort> file_storage_port_;
+    std::shared_ptr<JobIngest::Contracts::Storage::IFileStoragePort> file_storage_port_;
     size_t max_file_size_mb_;
     std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port_;
     std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService> pb_preparation_service_;

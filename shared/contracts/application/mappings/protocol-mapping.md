@@ -6,7 +6,7 @@
 
 | 方法 | 类型 | HMI 调用点 | TCP 处理器 | CLI 对应语义 | 结果字段 | 兼容说明 |
 |---|---|---|---|---|---|---|
-| `status` | 查询 | `CommandProtocol.get_status()` | `HandleStatus` | `HandleStatus` | `connected` / `machine_state` / `supervision` / `effective_interlocks` / `axes` / `position` / `io` / `dispenser` / `alarms` | `supervision` 是当前监督态 owner 面；`machine_state` 仅保留 compat 单向导出，且连同 `connected` / `connection_state` / `active_job_*` / `io` / `effective_interlocks` 一并并入 `IRuntimeStatusExportPort` snapshot；HMI 主消费已转向 `supervision`、`effective_interlocks`、`axes`、`io`、`dispenser.*` |
+| `status` | 查询 | `CommandProtocol.get_status()` | `HandleStatus` | `HandleStatus` | `connected` / `machine_state` / `axes` / `position` / `io` / `dispenser` / `alarms` | HMI 当前主要消费 `machine_state`、`axes`、`io`、`dispenser.*` |
 
 ## `alarms.*`
 
@@ -67,7 +67,4 @@
 - `recipe.*` 是当前别名兼容最密集的一组协议。
 - `dxf.*` 当前正式执行链已收敛到 `artifact.create -> plan.prepare -> preview.snapshot -> preview.confirm -> job.start -> job.status`。
 - runtime-execution 对跨模块公开面已收敛为 `DispensingExecutionRequest + DispensingExecutionResult + job API`；`task` 只允许留在 runtime-execution 内部实现或内部测试语境。
-- `status.machine_state` / `machine_state_reason` 仍需保留，但语义上已经降级为由 `supervision.current_state` / `state_reason` 单向派生的 compat 面，并已收敛到 `IRuntimeStatusExportPort` snapshot。
-- `status` 当前整体由 `IRuntimeStatusExportPort` snapshot 提供；其中 `connected` / `connection_state` / `interlock_latched` / `active_job_*` / `supervision` / `effective_interlocks` / `io` 由 export snapshot 统一导出，底层 supervision 语义来自 `IRuntimeSupervisionPort` 输入，`runtime-gateway` 只负责 transport 序列化。
-- HMI 仅在 `status.supervision` 整体缺失时回退读取 `machine_state` compat 字段；不会再对 `supervision` 单个字段做 compat 回填。
 - `status` 与 `alarms.*` 结构已被 HMI UI 直接依赖，字段改名风险高。

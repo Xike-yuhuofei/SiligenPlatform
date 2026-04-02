@@ -64,7 +64,7 @@ list(REMOVE_DUPLICATES SILIGEN_DISPENSE_PACKAGING_APPLICATION_IMPLEMENTATION_INC
 
 if(NOT TARGET siligen_dispense_packaging_application)
     add_library(siligen_dispense_packaging_application STATIC
-        services/dispensing/DispensePlanningFacade.cpp
+        services/dispensing/PlanningAssemblyServices.cpp
         services/dispensing/PreviewSnapshotService.cpp
     )
 endif()

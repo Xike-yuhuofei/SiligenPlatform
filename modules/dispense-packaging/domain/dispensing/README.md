@@ -1,28 +1,24 @@
-# Dispensing 子域 - 点胶工艺
+# Dispensing 子域 - 当前 live domain 面
 
-**职责**: 负责点胶过程与工艺逻辑、触发控制、阀门协调、胶路建压等高层业务流程
+**当前事实**: 本目录仍是 `dispense-packaging` 的主 domain 承载面，但尚未完成 packaging owner 与 planning / process-control residual 的拆分。
 
-## 业务范围
+## 当前 live 事实
 
-- CMP 触发控制（单点、连续、范围）
-- 位置触发计算
-- 阀门开关协调
-- 点胶路径管理
-- 工艺参数配置
-- 流量控制
-- 点胶过程编排与状态管理
-- 胶路建压/稳压流程
-- 工艺结果评估与记录
+- 当前 target `siligen_dispense_packaging_domain_dispensing` 同时编译 packaging、trigger/timing planning、拓扑/曲线辅助以及部分 process-control residual。
+- 目录中的全部源文件不等于 live owner 面；存在未进入 target 的 parked / legacy-candidate 文件。
+- 具体清单见 `LIVE_OWNER_BOUNDARY_INVENTORY.md`。
 
-> 触发约束：CMP 位置触发使用规划位置（Profile Position）作为比较源，不使用编码器反馈。
+## 结构判断
 
-### 胶路建压/稳压架构规范
+- `domain-services/` 当前同时包含 live residual 与 parked residual。
+- `planning/domain-services/` 当前同时包含 live planner residual 与未编译的 parked planner residual。
+- 本 README 不再把这些目录误写成“已完成收口后的单一工艺 domain”。
 
-- 胶路建压/稳压规则统一由 Domain 层提供，应用层不得实现等待、超时或时序规则。
-- 供胶阀稳压时间来源：`IConfigurationPort::GetDispensingConfig().supply_stabilization_ms`。
-- 允许用例传入覆盖值，但必须经过 `SupplyStabilizationPolicy` 校验：
-  - 取值范围：0-5000 ms
-  - 0 表示使用配置默认值
+## 当前边界约束
+
+- 本阶段不在本目录内继续扩张新的 planning / process-control 语义。
+- 若需搬迁 residual 源文件，必须先在后续阶段冻结目标 owner 与 consumer 迁移路径。
+- 应用层和外部 consumer 只能依赖当前显式公开 surface，不得把本目录中的 residual 文件默认视为稳定 public contract。
 
 ## 目录结构
 
@@ -46,28 +42,8 @@ dispensing/
     └── IDispensingExecutionObserver
 ```
 
-## 命名空间
+## 备注
 
-```cpp
-namespace Siligen::Domain::Dispensing {
-    namespace Entities { ... }
-    namespace ValueObjects { ... }
-    namespace DomainServices { ... }
-    namespace Ports { ... }
-}
-```
-
-## 依赖关系
-
-- ✅ 依赖: `shared/types`, `shared/utils`, `domain/_shared`
-- ⚠️ 可选依赖: `domain/motion`（触发计算）
-- ❌ 不依赖: `infrastructure`, `application`
-
-## 架构规范（点胶过程）
-
-- 点胶执行流程（阀门控制、触发配置、流程顺序与校验）必须由 `DispensingProcessService` 统一入口负责。
-- 触发点/规划位置触发计算必须由 `DispensingController` 统一实现，禁止在应用层或基础设施层重复实现。
-- 定时触发仅用于阀门单独控制（HMI 设置/调试链路），不参与 DXF 执行。
-- 硬件插补程序由 Motion 子域统一生成与校验，点胶流程仅消费插补程序结果。
-- 运行参数校验通过 `DispensingRuntimeOverrides::Validate` 完成，用例仅做请求映射与调用。
-- 监控/采样仅通过 `IDispensingExecutionObserver` 扩展，禁止在应用层插入业务规则。
+- 以上目录树仅表示目录中存在的文件，不代表全部都是当前 live owner 面。
+- 若需要判断哪些文件当前参与编译，请优先查看 `domain/dispensing/CMakeLists.txt`。
+- 若需要判断哪些外部模块直接消费本模块，请查看 `LIVE_OWNER_BOUNDARY_INVENTORY.md`。

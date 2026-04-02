@@ -32,7 +32,6 @@ class IInterlockSignalPort;
 namespace Configuration {
 namespace Ports {
 class IConfigurationPort;
-class IFileStoragePort;
 }  // namespace Ports
 }  // namespace Configuration
 
@@ -90,6 +89,14 @@ class IDXFPathSourcePort;
 }  // namespace Trajectory
 }  // namespace Domain
 
+namespace JobIngest {
+namespace Contracts {
+namespace Storage {
+class IFileStoragePort;
+}  // namespace Storage
+}  // namespace Contracts
+}  // namespace JobIngest
+
 namespace Bootstrap {
 
 struct InfrastructureBootstrapConfig {
@@ -110,7 +117,7 @@ struct InfrastructureBindings {
     std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port;
     std::shared_ptr<Domain::Motion::Ports::IVelocityProfilePort> velocity_profile_port;
     std::shared_ptr<Domain::Motion::Ports::IMotionRuntimePort> motion_runtime_port;
-    std::shared_ptr<Domain::Configuration::Ports::IFileStoragePort> file_storage_port;
+    std::shared_ptr<JobIngest::Contracts::Storage::IFileStoragePort> file_storage_port;
     std::shared_ptr<Domain::Diagnostics::Ports::ITestRecordRepository> test_record_repository;
     std::shared_ptr<Domain::Diagnostics::Ports::ITestConfigurationPort> test_config_manager;
     std::shared_ptr<Domain::Diagnostics::Ports::ICMPTestPresetPort> preset_port;

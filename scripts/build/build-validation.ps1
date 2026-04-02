@@ -4,10 +4,24 @@ param(
     [string]$Profile = "Local",
     [ValidateSet("all", "apps", "contracts", "e2e", "protocol-compatibility", "performance")]
     [string[]]$Suite = @("all"),
-    [switch]$SkipHeavyTargets
+[switch]$SkipHeavyTargets
 )
 
 $ErrorActionPreference = "Stop"
+
+function Get-WorkspaceBuildToken {
+    param([string]$WorkspaceRoot)
+
+    $normalizedRoot = [System.IO.Path]::GetFullPath($WorkspaceRoot).ToLowerInvariant()
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($normalizedRoot)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hashBytes = $sha256.ComputeHash($bytes)
+    } finally {
+        $sha256.Dispose()
+    }
+    return -join ($hashBytes[0..5] | ForEach-Object { $_.ToString("x2") })
+}
 
 $workspaceRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $thirdPartyBootstrap = Join-Path $workspaceRoot "scripts\bootstrap\bootstrap-third-party.ps1"
@@ -151,12 +165,17 @@ if ($LASTEXITCODE -ne 0) {
     throw "workspace layout gate failed (exit: $LASTEXITCODE)."
 }
 
-$controlAppsBuild = if (-not [string]::IsNullOrWhiteSpace($env:SILIGEN_CONTROL_APPS_BUILD_ROOT)) {
-    $env:SILIGEN_CONTROL_APPS_BUILD_ROOT
-} elseif (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
-    Join-Path $env:LOCALAPPDATA "SiligenSuite\control-apps-build"
+$workspaceBuildToken = Get-WorkspaceBuildToken -WorkspaceRoot $workspaceRoot
+$defaultControlAppsBuild = if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+    Join-Path (Join-Path $env:LOCALAPPDATA "SS") ("cab-" + $workspaceBuildToken)
 } else {
     Join-Path $workspaceRoot "build\control-apps"
+}
+
+$controlAppsBuild = if (-not [string]::IsNullOrWhiteSpace($env:SILIGEN_CONTROL_APPS_BUILD_ROOT)) {
+    $env:SILIGEN_CONTROL_APPS_BUILD_ROOT
+} else {
+    $defaultControlAppsBuild
 }
 $controlAppsCmakeHomeDirectory = ""
 
@@ -249,10 +268,7 @@ function Invoke-ControlAppsBuild {
     }
 
     $buildTestsFlag = if ($EnableTests) { "ON" } else { "OFF" }
-    # Validation builds favor determinism over compile acceleration. Several
-    # workspace targets already opt out of PCH on Windows/MSBuild to avoid
-    # intermittent file-lock failures under parallel builds.
-    $usePchFlag = "OFF"
+    $usePchFlag = "ON"
     $parallelCompileFlag = "ON"
     Reset-ControlAppsBuildIfSourceRootChanged
     & cmake -S $workspaceSourceRoot -B $controlAppsBuild `
@@ -292,7 +308,11 @@ if (($resolvedSuites -contains "contracts") -and $localProfile -and (-not $SkipH
         "siligen_dxf_geometry_unit_tests",
         "siligen_job_ingest_unit_tests",
         "siligen_unit_tests",
-        "siligen_pr1_tests"
+        "siligen_pr1_tests",
+        "siligen_dispensing_semantics_tests",
+        "workflow_regression_deterministic_path_execution_smoke",
+        "workflow_regression_boundary_cutover_smoke",
+        "workflow_regression_planning_ingress_smoke"
     )
     $enableControlAppTests = $true
 }
@@ -309,6 +329,10 @@ $controlAppArtifactMap = @{
     "siligen_job_ingest_unit_tests" = "siligen_job_ingest_unit_tests.exe"
     "siligen_unit_tests" = "siligen_unit_tests.exe"
     "siligen_pr1_tests" = "siligen_pr1_tests.exe"
+    "siligen_dispensing_semantics_tests" = "siligen_dispensing_semantics_tests.exe"
+    "workflow_regression_deterministic_path_execution_smoke" = "workflow_regression_deterministic_path_execution_smoke.exe"
+    "workflow_regression_boundary_cutover_smoke" = "workflow_regression_boundary_cutover_smoke.exe"
+    "workflow_regression_planning_ingress_smoke" = "workflow_regression_planning_ingress_smoke.exe"
 }
 
 foreach ($targetName in ($controlAppTargets | Select-Object -Unique)) {

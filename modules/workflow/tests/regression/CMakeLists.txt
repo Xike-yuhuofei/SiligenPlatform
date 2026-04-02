@@ -5,7 +5,13 @@ if(NOT TARGET siligen_application_motion)
 endif()
 
 set(WORKFLOW_REGRESSION_PATH_EXECUTION_TEST_SOURCE
-    "${CMAKE_CURRENT_SOURCE_DIR}/../process-runtime-core/unit/motion/DeterministicPathExecutionUseCaseTest.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../unit/motion/DeterministicPathExecutionUseCaseTest.cpp"
+)
+set(WORKFLOW_REGRESSION_BOUNDARY_CUTOVER_SMOKE_SOURCE
+    "${CMAKE_CURRENT_SOURCE_DIR}/WorkflowBoundaryCutoverSmoke.cpp"
+)
+set(WORKFLOW_REGRESSION_PLANNING_INGRESS_SMOKE_SOURCE
+    "${CMAKE_CURRENT_SOURCE_DIR}/WorkflowPlanningIngressSmoke.cpp"
 )
 
 if(EXISTS "${WORKFLOW_REGRESSION_PATH_EXECUTION_TEST_SOURCE}")
@@ -23,15 +29,41 @@ if(EXISTS "${WORKFLOW_REGRESSION_PATH_EXECUTION_TEST_SOURCE}")
     )
     target_compile_features(workflow_regression_deterministic_path_execution_smoke PRIVATE cxx_std_17)
 
-    process_runtime_core_stage_runtime_dependency(
+    siligen_stage_runtime_dependency(
         workflow_regression_deterministic_path_execution_smoke
         ruckig
     )
-    process_runtime_core_add_test_with_runtime_environment(
+    siligen_add_test_with_runtime_environment(
         workflow_regression_deterministic_path_execution_smoke
         workflow_regression_deterministic_path_execution_smoke
     )
 endif()
+
+add_executable(workflow_regression_boundary_cutover_smoke
+    "${WORKFLOW_REGRESSION_BOUNDARY_CUTOVER_SMOKE_SOURCE}"
+)
+target_compile_features(workflow_regression_boundary_cutover_smoke PRIVATE cxx_std_17)
+siligen_add_test_with_runtime_environment(
+    workflow_regression_boundary_cutover_smoke
+    workflow_regression_boundary_cutover_smoke
+)
+
+add_executable(workflow_regression_planning_ingress_smoke
+    "${WORKFLOW_REGRESSION_PLANNING_INGRESS_SMOKE_SOURCE}"
+)
+target_include_directories(workflow_regression_planning_ingress_smoke PRIVATE
+    ${WORKFLOW_TEST_IMPLEMENTATION_INCLUDE_DIRS}
+)
+target_link_libraries(workflow_regression_planning_ingress_smoke PRIVATE
+    siligen_parsing_adapter
+    siligen_types
+    siligen_utils
+)
+target_compile_features(workflow_regression_planning_ingress_smoke PRIVATE cxx_std_17)
+siligen_add_test_with_runtime_environment(
+    workflow_regression_planning_ingress_smoke
+    workflow_regression_planning_ingress_smoke
+)
 
 if(NOT TARGET workflow_regression_tests)
     add_custom_target(workflow_regression_tests)
@@ -42,3 +74,8 @@ if(TARGET workflow_regression_deterministic_path_execution_smoke)
         workflow_regression_deterministic_path_execution_smoke
     )
 endif()
+
+add_dependencies(workflow_regression_tests
+    workflow_regression_boundary_cutover_smoke
+    workflow_regression_planning_ingress_smoke
+)

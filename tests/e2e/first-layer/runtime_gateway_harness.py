@@ -128,6 +128,10 @@ def resolve_default_exe(*file_names: str) -> Path:
     for file_name in file_names:
         candidates.extend(
             (
+                CONTROL_APPS_BUILD_ROOT / "bin" / file_name,
+                CONTROL_APPS_BUILD_ROOT / "bin" / "Debug" / file_name,
+                CONTROL_APPS_BUILD_ROOT / "bin" / "Release" / file_name,
+                CONTROL_APPS_BUILD_ROOT / "bin" / "RelWithDebInfo" / file_name,
                 ROOT / "build" / "bin" / file_name,
                 ROOT / "build" / "bin" / "Debug" / file_name,
                 ROOT / "build" / "bin" / "Release" / file_name,
@@ -136,10 +140,6 @@ def resolve_default_exe(*file_names: str) -> Path:
                 ROOT / "build" / "hmi-home-fix" / "bin" / "Debug" / file_name,
                 ROOT / "build" / "hmi-home-fix" / "bin" / "Release" / file_name,
                 ROOT / "build" / "hmi-home-fix" / "bin" / "RelWithDebInfo" / file_name,
-                CONTROL_APPS_BUILD_ROOT / "bin" / file_name,
-                CONTROL_APPS_BUILD_ROOT / "bin" / "Debug" / file_name,
-                CONTROL_APPS_BUILD_ROOT / "bin" / "Release" / file_name,
-                CONTROL_APPS_BUILD_ROOT / "bin" / "RelWithDebInfo" / file_name,
             )
         )
     for candidate in candidates:

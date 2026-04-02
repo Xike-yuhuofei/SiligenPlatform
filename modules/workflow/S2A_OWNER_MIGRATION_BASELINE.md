@@ -19,7 +19,7 @@
 | workflow compatibility surface | owner path | note |
 |---|---|---|
 | `domain_dispensing` | `siligen_dispense_packaging_domain_dispensing` | `workflow/domain/domain/dispensing/CMakeLists.txt` 已改为纯转发 |
-| `PlanningUseCase` live planning dependency | `IPathSourcePort + ProcessPathFacade + MotionPlanningFacade + DispensePlanningFacade` | workflow live 链已不再注入 `DispensingPlannerService` concrete |
+| `PlanningUseCase` live planning dependency | `IPathSourcePort + ProcessPathFacade + MotionPlanningFacade + AuthorityPreviewAssemblyService + ExecutionAssemblyService` | workflow live 链已不再注入 `DispensingPlannerService` concrete，M8 façade 已拆为窄 assembly service |
 | `PlanningUseCase` execution package dependency | `domain/dispensing/contracts/ExecutionPackage.h` | 继续通过 M8 contracts 消费执行包契约 |
 
 ## HMI Application -> M11

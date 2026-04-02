@@ -198,6 +198,14 @@ function(process_runtime_core_add_test_with_runtime_environment test_name test_t
     endif()
 endfunction()
 
+function(siligen_stage_runtime_dependency target_name dependency_target)
+    process_runtime_core_stage_runtime_dependency(${target_name} ${dependency_target})
+endfunction()
+
+function(siligen_add_test_with_runtime_environment test_name test_target)
+    process_runtime_core_add_test_with_runtime_environment(${test_name} ${test_target})
+endfunction()
+
 function(siligen_process_runtime_core_interface target_name)
     add_library(${target_name} INTERFACE)
     target_include_directories(${target_name} INTERFACE

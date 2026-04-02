@@ -37,7 +37,7 @@
 
 - `workflow/contracts` 已落地 `WorkflowStageState`、`WorkflowCommand`、`WorkflowPlanningTriggerRequest`、`WorkflowPlanningTriggerResponse`、`WorkflowFailureCategory`、`WorkflowRecoveryDirective`。
 - `MotionRuntimeAssemblyFactory` 已改为依赖 runtime services provider，不再直接实例化 motion concrete。
-- `PlanningUseCase` 已改为编排 `IPathSourcePort + ProcessPathFacade + MotionPlanningFacade + DispensePlanningFacade`；CSV/JSON 工件落盘继续通过 `IPlanningArtifactExportPort` 交给 `runtime-execution` concrete 承担。
+- `PlanningUseCase` 已改为编排 `IPathSourcePort + ProcessPathFacade + MotionPlanningFacade + AuthorityPreviewAssemblyService + ExecutionAssemblyService`；planning artifact export request 由 `workflow` owner contract 组装，并继续通过 `IPlanningArtifactExportPort` 交给 `runtime-execution` concrete 承担。
 - `assert-module-boundary-bridges.ps1` 已接入 bridge-only 收口标记，并在 `rg` 不可用时回退到 PowerShell 原生搜索。
 
 ## S2-A 完成态

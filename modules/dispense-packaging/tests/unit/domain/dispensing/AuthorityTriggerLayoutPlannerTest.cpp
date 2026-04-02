@@ -30,9 +30,6 @@ using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
 using Siligen::Shared::Types::DispensingStrategy;
 using Siligen::Shared::Types::Point2D;
 
-constexpr char kMixedExplicitBoundaryWithReorderedBranchFamily[] =
-    "mixed_explicit_boundary_with_reordered_branch_family";
-
 ProcessSegment BuildLineSegment(const Point2D& start, const Point2D& end, bool dispense_on = true) {
     Segment segment;
     segment.type = SegmentType::Line;
@@ -687,6 +684,60 @@ TEST(AuthorityTriggerLayoutPlannerTest, ClassifiesMixedSingleOpenChainAndExplici
     EXPECT_EQ(result.components.front().spans[1].split_reason, DispenseSpanSplitReason::ExplicitProcessBoundary);
 }
 
+TEST(AuthorityTriggerLayoutPlannerTest, ClassifiesExplicitBoundaryMixedWithReorderedBranchFamilyAsBranchOrRevisit) {
+    TopologyComponentClassifier classifier;
+
+    TopologySpanSlice explicit_boundary_span;
+    explicit_boundary_span.segments = {
+        BuildLineSegment(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)),
+    };
+    explicit_boundary_span.source_segment_indices = {0U};
+    explicit_boundary_span.segment_lengths_mm = {10.0f};
+    explicit_boundary_span.start_distance_mm = 0.0f;
+    explicit_boundary_span.split_reason = DispenseSpanSplitReason::ExplicitProcessBoundary;
+
+    TopologySpanSlice reordered_branch_span_a;
+    reordered_branch_span_a.segments = {
+        BuildLineSegment(Point2D(0.0f, 0.0f), Point2D(0.0f, 10.0f)),
+    };
+    reordered_branch_span_a.source_segment_indices = {2U};
+    reordered_branch_span_a.segment_lengths_mm = {10.0f};
+    reordered_branch_span_a.start_distance_mm = 20.0f;
+    reordered_branch_span_a.split_reason = DispenseSpanSplitReason::MultiContourBoundary;
+
+    TopologySpanSlice reordered_branch_span_b;
+    reordered_branch_span_b.segments = {
+        BuildLineSegment(Point2D(0.0f, 0.0f), Point2D(-10.0f, 0.0f)),
+    };
+    reordered_branch_span_b.source_segment_indices = {3U};
+    reordered_branch_span_b.segment_lengths_mm = {10.0f};
+    reordered_branch_span_b.start_distance_mm = 30.0f;
+    reordered_branch_span_b.split_reason = DispenseSpanSplitReason::MultiContourBoundary;
+
+    const auto result = classifier.Classify({
+        {explicit_boundary_span, reordered_branch_span_a, reordered_branch_span_b},
+        1e-4f,
+        4.7f,
+    });
+
+    EXPECT_EQ(result.dispatch_type, TopologyDispatchType::BranchOrRevisit);
+    EXPECT_EQ(result.effective_component_count, 1U);
+    EXPECT_EQ(result.ignored_component_count, 0U);
+    ASSERT_EQ(result.components.size(), 1U);
+    EXPECT_EQ(result.components.front().dispatch_type, TopologyDispatchType::BranchOrRevisit);
+    EXPECT_TRUE(result.components.front().blocking_reason.empty());
+    ASSERT_EQ(result.components.front().spans.size(), 3U);
+    EXPECT_EQ(
+        result.components.front().spans[0].split_reason,
+        DispenseSpanSplitReason::ExplicitProcessBoundary);
+    EXPECT_EQ(
+        result.components.front().spans[1].split_reason,
+        DispenseSpanSplitReason::MultiContourBoundary);
+    EXPECT_EQ(
+        result.components.front().spans[2].split_reason,
+        DispenseSpanSplitReason::MultiContourBoundary);
+}
+
 TEST(AuthorityTriggerLayoutPlannerTest, ReclassifiesSharedVertexReorderedSpansAsBranchOrRevisitComponent) {
     AuthorityTriggerLayoutPlanner planner;
     auto request = BuildRequest();
@@ -727,7 +778,7 @@ TEST(AuthorityTriggerLayoutPlannerTest, ReclassifiesSharedVertexReorderedSpansAs
     EXPECT_EQ(CountPointsNear(layout.trigger_points, layout.spans[1].span_id, Point2D(0.0f, 0.0f), 1e-4f), 1U);
 }
 
-TEST(AuthorityTriggerLayoutPlannerTest, KeepsExplicitBoundaryMixedWithSharedVertexReorderBlocked) {
+TEST(AuthorityTriggerLayoutPlannerTest, AllowsExplicitBoundaryMixedWithSharedVertexReorderAsBranchOrRevisit) {
     AuthorityTriggerLayoutPlanner planner;
     auto request = BuildRequest();
     request.target_spacing_mm = 5.0f;
@@ -746,23 +797,32 @@ TEST(AuthorityTriggerLayoutPlannerTest, KeepsExplicitBoundaryMixedWithSharedVert
 
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
     const auto& layout = result.Value();
-    EXPECT_FALSE(layout.authority_ready);
-    EXPECT_EQ(layout.state, Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayoutState::Blocked);
-    EXPECT_EQ(layout.dispatch_type, TopologyDispatchType::UnsupportedMixedTopology);
+    EXPECT_TRUE(layout.authority_ready);
+    EXPECT_EQ(layout.state, Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayoutState::LayoutReady);
+    EXPECT_EQ(layout.dispatch_type, TopologyDispatchType::BranchOrRevisit);
     EXPECT_EQ(layout.effective_component_count, 1U);
     EXPECT_EQ(layout.ignored_component_count, 0U);
     ASSERT_EQ(layout.components.size(), 1U);
     ASSERT_EQ(layout.spans.size(), 3U);
     ASSERT_EQ(layout.validation_outcomes.size(), 3U);
-    EXPECT_TRUE(layout.trigger_points.empty());
-    EXPECT_EQ(layout.components.front().dispatch_type, TopologyDispatchType::UnsupportedMixedTopology);
+    ASSERT_EQ(layout.trigger_points.size(), 9U);
+    EXPECT_EQ(layout.components.front().dispatch_type, TopologyDispatchType::BranchOrRevisit);
     EXPECT_FALSE(layout.components.front().ignored);
-    EXPECT_EQ(layout.components.front().blocking_reason, kMixedExplicitBoundaryWithReorderedBranchFamily);
+    EXPECT_TRUE(layout.components.front().blocking_reason.empty());
     EXPECT_EQ(layout.components.front().span_refs.size(), 3U);
+    EXPECT_EQ(layout.spans[0].split_reason, DispenseSpanSplitReason::ExplicitProcessBoundary);
+    EXPECT_EQ(layout.spans[1].split_reason, DispenseSpanSplitReason::MultiContourBoundary);
+    EXPECT_EQ(layout.spans[2].split_reason, DispenseSpanSplitReason::MultiContourBoundary);
+    EXPECT_EQ(layout.spans[0].dispatch_type, TopologyDispatchType::BranchOrRevisit);
+    EXPECT_EQ(layout.spans[1].dispatch_type, TopologyDispatchType::BranchOrRevisit);
+    EXPECT_EQ(layout.spans[2].dispatch_type, TopologyDispatchType::BranchOrRevisit);
+    EXPECT_EQ(CountPointsNear(layout.trigger_points, layout.spans[0].span_id, Point2D(0.0f, 0.0f), 1e-4f), 1U);
+    EXPECT_EQ(CountPointsNear(layout.trigger_points, layout.spans[1].span_id, Point2D(0.0f, 0.0f), 1e-4f), 1U);
+    EXPECT_EQ(CountPointsNear(layout.trigger_points, layout.spans[2].span_id, Point2D(0.0f, 0.0f), 1e-4f), 1U);
     for (const auto& outcome : layout.validation_outcomes) {
-        EXPECT_EQ(outcome.classification, SpacingValidationClassification::Fail);
-        EXPECT_EQ(outcome.dispatch_type, TopologyDispatchType::UnsupportedMixedTopology);
-        EXPECT_EQ(outcome.blocking_reason, kMixedExplicitBoundaryWithReorderedBranchFamily);
+        EXPECT_EQ(outcome.classification, SpacingValidationClassification::Pass);
+        EXPECT_EQ(outcome.dispatch_type, TopologyDispatchType::BranchOrRevisit);
+        EXPECT_TRUE(outcome.blocking_reason.empty());
         EXPECT_EQ(outcome.component_id, layout.components.front().component_id);
     }
 }

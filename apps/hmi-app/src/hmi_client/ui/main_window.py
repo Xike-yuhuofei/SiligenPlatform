@@ -4,29 +4,23 @@ import sys
 import time
 import logging
 import html
-import threading
 from pathlib import Path
 
 try:
     from hmi_client.qt_env import configure_qt_environment
 except ImportError:  # pragma: no cover - script-mode fallback
     from qt_env import configure_qt_environment
-try:
-    from hmi_client.module_paths import ensure_hmi_application_path
-except ImportError:  # pragma: no cover - script-mode fallback
-    from module_paths import ensure_hmi_application_path  # type: ignore
 
 configure_qt_environment(headless=False)
-ensure_hmi_application_path()
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QGroupBox, QLabel, QPushButton, QLineEdit, QGridLayout, QFrame,
     QSlider, QSpinBox, QDoubleSpinBox, QCheckBox, QTabWidget, QFileDialog,
     QProgressBar, QListWidget, QListWidgetItem, QMessageBox, QDialog, QDialogButtonBox,
-    QComboBox, QFormLayout, QScrollArea, QRadioButton, QStatusBar, QPlainTextEdit
+    QComboBox, QFormLayout, QScrollArea, QRadioButton, QStatusBar
 )
-from PyQt5.QtCore import QTimer, Qt, QSize, QEvent, QThread, pyqtSignal
+from PyQt5.QtCore import QTimer, Qt, QSize, QEvent
 from PyQt5.QtGui import QFont, QColor
 
 try:
@@ -38,11 +32,13 @@ except ImportError:
 
 from client import (
     BackendManager,
-    build_offline_launch_result,
     CommandProtocol,
     LaunchUiState,
     LaunchResult,
+    MotionPreviewMeta,
     PreviewSnapshotMeta,
+    PreviewSessionOwner,
+    PreviewSnapshotWorker,
     RecoveryWorker,
     StartupWorker,
     TcpClient,
@@ -53,12 +49,10 @@ from client import (
     build_runtime_degradation_result,
     build_startup_error_message,
     detect_runtime_degradation_result,
-    detect_runtime_requalification_result,
     is_online_ready,
     load_supervisor_policy_from_env,
     normalize_launch_mode,
 )
-from hmi_application.preview_session import MotionPreviewMeta, PreviewSessionOwner, PreviewSnapshotWorker
 from client.auth import AuthManager
 from .dxf_default_paths import build_default_dxf_candidates
 from .styles import DARK_THEME
@@ -80,7 +74,6 @@ if not _UI_LOGGER.handlers:
 DEFAULT_ASPECT_RATIO = 16 / 9
 DEFAULT_BASE_WIDTH = 1600
 ASPECT_RATIO_ENV = "SILIGEN_HMI_ASPECT_RATIO"
-STATUS_LOG_HISTORY_LIMIT = 200
 
 
 def _parse_aspect_ratio(value: str):
@@ -248,78 +241,6 @@ class AspectRatioContainer(QWidget):
         super().resizeEvent(event)
 
 
-class HomeAutoWorker(QThread):
-    completed = pyqtSignal(bool, str)
-
-    def __init__(
-        self,
-        *,
-        host: str,
-        port: int,
-        axes: list[str] | None,
-        force_rehome: bool,
-        timeout_ms: int = 0,
-    ) -> None:
-        super().__init__()
-        self._host = host
-        self._port = port
-        self._axes = list(axes) if axes else None
-        self._force_rehome = force_rehome
-        self._timeout_ms = timeout_ms
-        self._cancel_lock = threading.Lock()
-        self._cancelled = False
-        self._client_ref = None
-
-    def cancel(self) -> None:
-        with self._cancel_lock:
-            self._cancelled = True
-            client = self._client_ref
-        if client is not None:
-            try:
-                client.disconnect()
-            except Exception:
-                pass
-
-    def _is_cancelled(self) -> bool:
-        with self._cancel_lock:
-            return self._cancelled
-
-    def run(self) -> None:
-        client = None
-        ok = False
-        message = ""
-        try:
-            if self._is_cancelled():
-                return
-            client = TcpClient(host=self._host, port=self._port)
-            with self._cancel_lock:
-                self._client_ref = client
-            if not client.connect():
-                message = "无法连接后端，请检查TCP链路"
-            else:
-                protocol = CommandProtocol(client)
-                ok, message = protocol.home_auto(
-                    self._axes,
-                    force=self._force_rehome,
-                    wait_for_completion=True,
-                    timeout_ms=self._timeout_ms,
-                )
-                if self._is_cancelled():
-                    return
-        except Exception as exc:
-            message = str(exc) or "回零执行异常"
-        finally:
-            if client is not None:
-                try:
-                    client.disconnect()
-                except Exception:
-                    pass
-            with self._cancel_lock:
-                self._client_ref = None
-        if not self._is_cancelled():
-            self.completed.emit(ok, message)
-
-
 class MainWindow(QMainWindow):
     def __init__(self, launch_mode: str = "online"):
         super().__init__()
@@ -359,10 +280,7 @@ class MainWindow(QMainWindow):
         self._preview_gate = self._preview_session.gate
         self._preview_plan_dry_run = None
         self._preview_source = ""
-        self._home_auto_worker = None
-        self._home_request_generation = 0
         self._preview_snapshot_worker = None
-        self._preview_request_generation = 0
         self._preview_refresh_inflight = False
         self._preview_state_resync_pending = False
         self._last_preview_resync_attempt_ts = 0.0
@@ -370,6 +288,8 @@ class MainWindow(QMainWindow):
         self._last_status_error_notice_ts = 0.0
         self._last_status = None
         self._last_status_ts = 0.0
+        self._connected = False
+        self._hw_connected = False
         self._launch_ui_state = None
         self._sync_preview_session_fields()
 
@@ -391,8 +311,6 @@ class MainWindow(QMainWindow):
         self._last_purge_time = time.time()
         self._maintenance_threshold = 10000
         self._last_alarms_snapshot = []
-        self._status_log_entries = []
-        self._last_status_log_message = ""
 
         # User permission management
         self._auth = AuthManager(auto_logout_minutes=5)
@@ -401,11 +319,21 @@ class MainWindow(QMainWindow):
         self._setup_timer()
         self._refresh_launch_status_ui()
         self._apply_mode_capabilities()
-        self._show_initial_session_message()
         if self._requested_launch_mode == "online":
             self._auto_startup()
         else:
-            self._apply_launch_result(build_offline_launch_result())
+            self._apply_launch_result(
+                LaunchResult(
+                    requested_mode="offline",
+                    effective_mode="offline",
+                    phase="offline",
+                    success=True,
+                    backend_started=False,
+                    tcp_connected=False,
+                    hardware_ready=False,
+                    user_message="Offline 模式已启用，本次启动不会尝试连接 gateway。",
+                )
+            )
         self._update_home_controls_state()
         self._update_preview_refresh_button_state()
         self._set_preview_message_html("胶点预览待生成", "请先加载DXF文件，再点击“刷新预览”。")
@@ -444,8 +372,7 @@ class MainWindow(QMainWindow):
 
         # Custom Bottom Status Bar
         self.setStatusBar(self._create_custom_bottom_bar())
-        self.statusBar().messageChanged.connect(self._on_status_message_changed)
-        self.statusBar().showMessage("状态初始化中")
+        self.statusBar().showMessage("系统就绪")
 
     def _create_custom_bottom_bar(self) -> QStatusBar:
         bar = QStatusBar()
@@ -871,7 +798,6 @@ class MainWindow(QMainWindow):
         group = QGroupBox("系统")
         group.setProperty("data-testid", "panel-system")
         layout = QVBoxLayout(group)
-        layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
 
         self._hw_connect_btn = QPushButton("初始化硬件")
@@ -879,76 +805,31 @@ class MainWindow(QMainWindow):
         self._hw_connect_btn.setCursor(Qt.PointingHandCursor)
         self._hw_connect_btn.clicked.connect(self._on_hw_connect)
         self._hw_connect_btn.setEnabled(False)
-        self._hw_connect_btn.setMinimumHeight(36)
         layout.addWidget(self._hw_connect_btn)
-
-        recovery_group = QGroupBox("会话恢复")
-        recovery_group.setProperty("data-testid", "panel-session-recovery")
-        recovery_layout = QGridLayout(recovery_group)
-        recovery_layout.setContentsMargins(10, 12, 10, 10)
-        recovery_layout.setHorizontalSpacing(8)
-        recovery_layout.setVerticalSpacing(8)
-
-        self._retry_stage_btn = QPushButton("重试阶段")
-        self._retry_stage_btn.setProperty("data-testid", "btn-recovery-retry")
-        self._retry_stage_btn.setCursor(Qt.PointingHandCursor)
-        self._retry_stage_btn.clicked.connect(self._on_recovery_retry_stage)
-        self._retry_stage_btn.setEnabled(False)
-        self._retry_stage_btn.setToolTip("重试当前失败阶段")
-        self._retry_stage_btn.setMinimumHeight(34)
-        recovery_layout.addWidget(self._retry_stage_btn, 0, 0)
-
-        self._restart_session_btn = QPushButton("重启会话")
-        self._restart_session_btn.setProperty("data-testid", "btn-recovery-restart")
-        self._restart_session_btn.setCursor(Qt.PointingHandCursor)
-        self._restart_session_btn.clicked.connect(self._on_recovery_restart_session)
-        self._restart_session_btn.setEnabled(False)
-        self._restart_session_btn.setToolTip("重新启动在线会话")
-        self._restart_session_btn.setMinimumHeight(34)
-        recovery_layout.addWidget(self._restart_session_btn, 0, 1)
-
-        self._stop_session_btn = QPushButton("停止会话")
-        self._stop_session_btn.setProperty("data-testid", "btn-recovery-stop")
-        self._stop_session_btn.setProperty("role", "warning")
-        self._stop_session_btn.setCursor(Qt.PointingHandCursor)
-        self._stop_session_btn.clicked.connect(self._on_recovery_stop_session)
-        self._stop_session_btn.setEnabled(False)
-        self._stop_session_btn.setToolTip("停止当前在线会话")
-        self._stop_session_btn.setMinimumHeight(34)
-        recovery_layout.addWidget(self._stop_session_btn, 1, 0, 1, 2)
-
-        layout.addWidget(recovery_group)
-
-        action_layout = QGridLayout()
-        action_layout.setContentsMargins(0, 0, 0, 0)
-        action_layout.setHorizontalSpacing(8)
-        action_layout.setVerticalSpacing(8)
 
         self._stop_btn = QPushButton("停止")
         self._stop_btn.setProperty("data-testid", "btn-stop")
         self._stop_btn.setProperty("role", "warning")
         self._stop_btn.setCursor(Qt.PointingHandCursor)
-        self._stop_btn.setMinimumHeight(38)
+        self._stop_btn.setMinimumHeight(40)
         self._stop_btn.clicked.connect(lambda: self._on_stop("manual_stop_button"))
-        action_layout.addWidget(self._stop_btn, 0, 0)
-
-        self._estop_reset_btn = QPushButton("急停复位")
-        self._estop_reset_btn.setProperty("data-testid", "btn-estop-reset")
-        self._estop_reset_btn.setProperty("role", "warning")
-        self._estop_reset_btn.setCursor(Qt.PointingHandCursor)
-        self._estop_reset_btn.setMinimumHeight(38)
-        self._estop_reset_btn.clicked.connect(self._on_estop_reset)
-        action_layout.addWidget(self._estop_reset_btn, 0, 1)
+        layout.addWidget(self._stop_btn)
 
         self._estop_btn = QPushButton("急停")
         self._estop_btn.setProperty("data-testid", "btn-estop")
         self._estop_btn.setProperty("role", "danger")
         self._estop_btn.setCursor(Qt.PointingHandCursor)
-        self._estop_btn.setMinimumHeight(38)
+        self._estop_btn.setMinimumHeight(50)
         self._estop_btn.clicked.connect(self._on_estop)
-        action_layout.addWidget(self._estop_btn, 1, 0, 1, 2)
+        layout.addWidget(self._estop_btn)
 
-        layout.addLayout(action_layout)
+        self._estop_reset_btn = QPushButton("急停复位")
+        self._estop_reset_btn.setProperty("data-testid", "btn-estop-reset")
+        self._estop_reset_btn.setProperty("role", "warning")
+        self._estop_reset_btn.setCursor(Qt.PointingHandCursor)
+        self._estop_reset_btn.setMinimumHeight(40)
+        self._estop_reset_btn.clicked.connect(self._on_estop_reset)
+        layout.addWidget(self._estop_reset_btn)
 
         return group
 
@@ -1344,53 +1225,9 @@ class MainWindow(QMainWindow):
         list_layout.addLayout(btn_layout)
 
         layout.addWidget(list_group)
-
-        status_log_group = QGroupBox("状态栏日志")
-        status_log_layout = QVBoxLayout(status_log_group)
-
-        self._status_log_view = QPlainTextEdit()
-        self._status_log_view.setProperty("data-testid", "status-log-view")
-        self._status_log_view.setReadOnly(True)
-        self._status_log_view.setMinimumHeight(180)
-        self._status_log_view.setPlaceholderText("底部左侧状态栏消息会在此保留，便于回看和复制。")
-        status_log_layout.addWidget(self._status_log_view)
-
-        status_log_btn_layout = QHBoxLayout()
-        self._copy_status_log_btn = QPushButton("复制日志")
-        self._copy_status_log_btn.setProperty("data-testid", "btn-status-log-copy")
-        self._copy_status_log_btn.clicked.connect(self._on_copy_status_log)
-        status_log_btn_layout.addWidget(self._copy_status_log_btn)
-        status_log_btn_layout.addStretch()
-        status_log_layout.addLayout(status_log_btn_layout)
-
-        layout.addWidget(status_log_group)
         layout.addStretch()
 
         return widget
-
-    def _on_status_message_changed(self, message: str) -> None:
-        text = (message or "").strip()
-        if not text or text == self._last_status_log_message:
-            return
-
-        entry = f"[{time.strftime('%H:%M:%S')}] {text}"
-        self._status_log_entries.append(entry)
-        if len(self._status_log_entries) > STATUS_LOG_HISTORY_LIMIT:
-            self._status_log_entries = self._status_log_entries[-STATUS_LOG_HISTORY_LIMIT:]
-            self._status_log_view.setPlainText("\n".join(self._status_log_entries))
-        elif self._status_log_view.toPlainText():
-            self._status_log_view.appendPlainText(entry)
-        else:
-            self._status_log_view.setPlainText(entry)
-        self._last_status_log_message = text
-
-    def _on_copy_status_log(self) -> None:
-        history = "\n".join(self._status_log_entries)
-        if not history:
-            self.statusBar().showMessage("暂无可复制的状态栏日志")
-            return
-        QApplication.clipboard().setText(history)
-        self.statusBar().showMessage("状态栏日志已复制")
 
     def _sync_preview_session_fields(self) -> None:
         state = self._preview_session.state
@@ -1408,6 +1245,8 @@ class MainWindow(QMainWindow):
 
     def _apply_launch_ui_state(self, ui_state: LaunchUiState) -> None:
         self._launch_ui_state = ui_state
+        self._connected = ui_state.connected
+        self._hw_connected = ui_state.hardware_connected
         self._preview_state_resync_pending = ui_state.preview_resync_pending
         self._preview_session.set_resync_pending(ui_state.preview_resync_pending)
         self._launch_mode_label.setText(ui_state.launch_mode_label)
@@ -1428,6 +1267,8 @@ class MainWindow(QMainWindow):
         return self._requested_launch_mode
 
     def _current_session_snapshot(self):
+        if self._launch_result is not None:
+            return self._launch_result.session_snapshot
         return self._session_snapshot
 
     def _is_offline_mode(self) -> bool:
@@ -1436,49 +1277,8 @@ class MainWindow(QMainWindow):
     def _is_online_ready(self) -> bool:
         return is_online_ready(self._current_session_snapshot())
 
-    def _previous_launch_connected(self) -> bool:
-        ui_state = self._launch_ui_state
-        return bool(ui_state.connected) if ui_state is not None else False
-
-    def _is_launch_connected(self) -> bool:
-        ui_state = self._launch_ui_state
-        if ui_state is not None:
-            return bool(ui_state.connected)
-        snapshot = self._current_session_snapshot()
-        return bool(snapshot is not None and snapshot.tcp_state == "ready")
-
-    def _is_launch_hardware_ready(self) -> bool:
-        ui_state = self._launch_ui_state
-        if ui_state is not None:
-            return bool(ui_state.hardware_connected)
-        snapshot = self._current_session_snapshot()
-        return bool(snapshot is not None and snapshot.hardware_state == "ready")
-
     def _has_online_capability(self) -> bool:
         return not self._is_offline_mode() and self._is_online_ready()
-
-    def _has_runtime_command_channel(self) -> bool:
-        snapshot = self._current_session_snapshot()
-        return snapshot is not None and snapshot.mode == "online" and snapshot.tcp_state == "ready"
-
-    def _require_runtime_command_channel(self, capability: str) -> bool:
-        if self._is_offline_mode():
-            self.statusBar().showMessage(f"Offline 模式下不可用: {capability}")
-            return False
-
-        snapshot = self._current_session_snapshot()
-        if snapshot is None:
-            self.statusBar().showMessage(f"系统启动中: {capability} 暂不可用")
-            return False
-
-        if snapshot.tcp_state == "ready":
-            return True
-
-        if self._launch_result is not None and self._launch_result.failure_code:
-            self.statusBar().showMessage(f"TCP 未就绪({self._launch_result.failure_code}): {capability} 暂不可用")
-        else:
-            self.statusBar().showMessage(f"TCP 未就绪: {capability} 暂不可用")
-        return False
 
     def _is_session_operation_running(self) -> bool:
         startup_running = self._startup_worker is not None and self._startup_worker.isRunning()
@@ -1495,7 +1295,7 @@ class MainWindow(QMainWindow):
             self._requested_launch_mode,
             self._launch_result,
             self._current_session_snapshot(),
-            previous_connected=self._previous_launch_connected(),
+            previous_connected=bool(getattr(self, "_connected", False)),
             has_current_plan=bool(self._preview_session.state.current_plan_id),
             preview_resync_pending=self._preview_session.state.preview_state_resync_pending,
             session_operation_running=self._is_session_operation_running(),
@@ -1506,7 +1306,7 @@ class MainWindow(QMainWindow):
         self._stop_session_btn.setEnabled(controls.stop_enabled)
 
     def _refresh_launch_status_ui(self) -> None:
-        previous_connected = self._previous_launch_connected()
+        previous_connected = bool(getattr(self, "_connected", False))
         ui_state = build_launch_ui_state(
             self._requested_launch_mode,
             self._launch_result,
@@ -1544,13 +1344,6 @@ class MainWindow(QMainWindow):
         if hasattr(self, "_global_estop_btn"):
             self._global_estop_btn.setEnabled(ui_state.global_estop_enabled)
         self._update_recovery_controls_state()
-
-    def _show_initial_session_message(self) -> None:
-        if self._requested_launch_mode == "online" and self._current_session_snapshot() is None:
-            self.statusBar().showMessage("启动中，等待 Supervisor 首个快照")
-            return
-        if self._requested_launch_mode == "offline" and self._launch_result is None:
-            self.statusBar().showMessage("正在初始化离线会话")
 
     def _apply_launch_result(self, result: LaunchResult) -> None:
         self._launch_result = result
@@ -1594,18 +1387,6 @@ class MainWindow(QMainWindow):
         self._apply_permissions()
         self.statusBar().showMessage(runtime_result.status_message)
 
-    def _apply_runtime_requalification_result(self, runtime_result) -> None:
-        if runtime_result is None:
-            return
-        self._on_supervisor_stage_event(runtime_result.stage_event)
-        self._session_snapshot = runtime_result.recovered_snapshot
-        self._launch_result = runtime_result.launch_result
-        self._refresh_launch_status_ui()
-        self._apply_mode_capabilities()
-        self._update_home_controls_state()
-        self._apply_permissions()
-        self.statusBar().showMessage(runtime_result.status_message)
-
     def _detect_runtime_degradation(
         self,
         *,
@@ -1620,22 +1401,6 @@ class MainWindow(QMainWindow):
             tcp_connected=tcp_connected,
             hardware_ready=hardware_ready,
             error_message=error_message,
-        )
-
-    def _detect_runtime_requalification(
-        self,
-        *,
-        tcp_connected: bool | None = None,
-        hardware_ready: bool | None = None,
-        success_message: str | None = None,
-    ):
-        return detect_runtime_requalification_result(
-            self._launch_result,
-            self._current_session_snapshot(),
-            self._supervisor_stage_events,
-            tcp_connected=tcp_connected,
-            hardware_ready=hardware_ready,
-            success_message=success_message,
         )
 
     def _require_online_mode(self, capability: str) -> bool:
@@ -1763,7 +1528,7 @@ class MainWindow(QMainWindow):
         )
 
     def _update_home_controls_state(self):
-        enabled = self._is_online_ready() and not self._is_home_worker_running()
+        enabled = self._is_online_ready()
         if hasattr(self, "_home_all_btn"):
             self._home_all_btn.setEnabled(enabled)
         if hasattr(self, "_prod_home_btn"):
@@ -1771,23 +1536,6 @@ class MainWindow(QMainWindow):
         if hasattr(self, "_home_axis_buttons"):
             for btn in self._home_axis_buttons:
                 btn.setEnabled(enabled)
-
-    def _is_home_worker_running(self) -> bool:
-        return self._home_auto_worker is not None and self._home_auto_worker.isRunning()
-
-    def _cancel_active_home_worker(self, *, reason: str) -> None:
-        worker = self._home_auto_worker
-        self._home_auto_worker = None
-        if worker is None:
-            return
-        self._home_request_generation += 1
-        try:
-            worker.cancel()
-        except Exception as exc:
-            _UI_LOGGER.warning("home_worker_cancel_failed reason=%s error=%s", reason, exc)
-        else:
-            _UI_LOGGER.info("home_worker_cancelled reason=%s generation=%s", reason, self._home_request_generation)
-        self._update_home_controls_state()
 
     def _check_home_preconditions(self) -> bool:
         if not self._require_online_mode("回零"):
@@ -1864,64 +1612,13 @@ class MainWindow(QMainWindow):
 
     def _on_home(self, axes, force_rehome=False, allow_go_home=True):
         self._auth.record_activity()
-        if self._is_home_worker_running():
-            self.statusBar().showMessage("回零进行中，请稍候")
-            return
         if not self._check_home_preconditions():
             return
         _ = allow_go_home
-        self._home_request_generation += 1
-        request_token = self._home_request_generation
-        worker = HomeAutoWorker(
-            host=self._client.host,
-            port=self._client.port,
-            axes=axes,
-            force_rehome=force_rehome,
-        )
-        worker.completed.connect(
-            lambda ok, message, token=request_token: self._on_home_auto_completed(
-                ok,
-                message,
-                request_token=token,
-            )
-        )
-        worker.finished.connect(worker.deleteLater)
-        self._home_auto_worker = worker
-        self._update_home_controls_state()
-        self.statusBar().showMessage("回零进行中...")
-        try:
-            worker.start()
-        except Exception as exc:
-            self._home_auto_worker = None
-            self._update_home_controls_state()
-            QMessageBox.warning(self, "回零失败", str(exc) or "回零启动失败")
-            self.statusBar().showMessage("回零启动失败")
-
-    def _on_home_auto_completed(self, ok: bool, message: str, *, request_token: int) -> None:
-        if request_token != self._home_request_generation:
-            _UI_LOGGER.info(
-                "home_result_ignored reason=stale_worker_result request_token=%s active_generation=%s",
-                request_token,
-                self._home_request_generation,
-            )
-            return
-        self._home_auto_worker = None
-        self._update_home_controls_state()
-        if ok:
-            status = self._protocol.get_status()
-            if status.connected:
-                self._last_status = status
-                self._last_status_ts = time.monotonic()
-                self._runtime_status_fault = False
-                requalification = self._detect_runtime_requalification(
-                    tcp_connected=True,
-                    hardware_ready=True,
-                )
-                if requalification is not None:
-                    self._apply_runtime_requalification_result(requalification)
-        if not ok and message:
-            QMessageBox.warning(self, "回零失败", message)
-        self.statusBar().showMessage(f"回零: {message}" if message else ("回零完成" if ok else "回零失败"))
+        ok, msg = self._protocol.home_auto(axes, force=force_rehome)
+        if not ok and msg:
+            QMessageBox.warning(self, "回零失败", msg)
+        self.statusBar().showMessage(f"回零: {msg}" if msg else ("回零完成" if ok else "回零失败"))
 
     def _on_speed_changed(self, value):
         self._jog_speed = float(value)
@@ -2026,7 +1723,6 @@ class MainWindow(QMainWindow):
         if axis:
             self._log_motion_snapshot("Stop pre", axis)
         self._jog_press_time = None
-        self._cancel_active_home_worker(reason=f"stop:{reason}")
         ok = self._protocol.stop()
         if not ok:
             _UI_LOGGER.warning("Stop request failed reason=%s", reason)
@@ -2034,14 +1730,13 @@ class MainWindow(QMainWindow):
             self._log_motion_snapshot("Stop post", axis)
 
     def _on_estop(self):
-        if not self._require_runtime_command_channel("急停"):
+        if not self._require_online_mode("急停"):
             return
-        self._cancel_active_home_worker(reason="estop")
         ok, msg = self._protocol.emergency_stop()
         self.statusBar().showMessage(f"急停: {msg}" if ok else (f"急停失败: {msg}" if msg else "急停失败"))
 
     def _on_estop_reset(self):
-        if not self._require_runtime_command_channel("急停复位"):
+        if not self._require_online_mode("急停复位"):
             return
         ok, msg = self._protocol.estop_reset()
         self.statusBar().showMessage(f"急停复位: {msg}" if ok else (f"急停复位失败: {msg}" if msg else "急停复位失败"))
@@ -2156,40 +1851,14 @@ class MainWindow(QMainWindow):
         if not checked:
             return
         self._update_start_button_state()
-        if not self._dxf_loaded:
-            return
-        self._invalidate_preview_plan()
-        if not self._auto_regenerate_preview_after_mode_change():
+        if self._dxf_loaded:
+            self._invalidate_preview_plan()
             self.statusBar().showMessage("运行模式已变更，请刷新预览并重新确认")
 
     def _invalidate_preview_plan(self):
-        self._cancel_active_preview_worker(reason="preview_input_changed")
         self._preview_session.invalidate_plan()
         self._sync_preview_session_fields()
         self._update_info_label()
-
-    def _auto_regenerate_preview_after_mode_change(self) -> bool:
-        if not self._dxf_loaded or not self._dxf_artifact_id:
-            return False
-        if self._is_offline_mode() or not self._is_launch_connected():
-            return False
-        if not WEB_ENGINE_AVAILABLE or not self._dxf_view:
-            return False
-        self._generate_dxf_preview()
-        return True
-
-    def _cancel_active_preview_worker(self, *, reason: str, keep_refresh_inflight: bool = False):
-        self._preview_request_generation += 1
-        worker = self._preview_snapshot_worker
-        self._preview_snapshot_worker = None
-        if worker is not None:
-            try:
-                worker.cancel()
-            except Exception as exc:
-                _UI_LOGGER.warning("preview_worker_cancel_failed reason=%s error=%s", reason, exc)
-        if not keep_refresh_inflight:
-            self._set_preview_refresh_inflight(False)
-        _UI_LOGGER.info("preview_worker_cancelled reason=%s generation=%s", reason, self._preview_request_generation)
 
     def _update_dxf_info(self):
         info = self._protocol.dxf_get_info()
@@ -2289,7 +1958,7 @@ class MainWindow(QMainWindow):
             return
         enabled = self._preview_session.should_enable_refresh(
             offline_mode=self._is_offline_mode(),
-            connected=self._is_launch_connected(),
+            connected=bool(getattr(self, "_connected", False)),
             dxf_loaded=self._dxf_loaded,
         )
         self._refresh_preview_btn.setEnabled(enabled)
@@ -2311,7 +1980,7 @@ class MainWindow(QMainWindow):
         now = time.monotonic()
         if not self._preview_session.should_request_runtime_resync(
             offline_mode=self._is_offline_mode(),
-            connected=self._is_launch_connected(),
+            connected=self._connected,
             production_running=self._production_running,
             current_job_id=self._current_job_id,
             now_monotonic=now,
@@ -2324,7 +1993,6 @@ class MainWindow(QMainWindow):
             ok, payload, error, error_code = self._protocol.dxf_preview_snapshot_with_error_details(
                 plan_id=plan_id,
                 max_polyline_points=4000,
-                max_glue_points=5000,
             )
         except Exception as exc:
             _UI_LOGGER.warning("preview_resync_failed plan_id=%s error=%s", plan_id, exc)
@@ -2389,7 +2057,8 @@ class MainWindow(QMainWindow):
         generated_at = html.escape(snapshot.generated_at or "-")
         normalized_source = str(preview_source or "").strip().lower()
         normalized_kind = str(preview_kind or "").strip().lower() or "glue_points"
-        effective_motion_preview = list(motion_preview or execution_polyline)
+        explicit_motion_preview = list(motion_preview or [])
+        effective_motion_preview = list(explicit_motion_preview or execution_polyline)
         effective_motion_preview_meta = motion_preview_meta
         if effective_motion_preview_meta is None and effective_motion_preview:
             effective_motion_preview_meta = MotionPreviewMeta(
@@ -2426,7 +2095,8 @@ class MainWindow(QMainWindow):
             source_banner = (
                 "<div style='margin-bottom:14px;padding:12px 14px;border:1px solid #14532d;"
                 "background:#10261a;color:#c7f9d3;'>"
-                "<strong>当前为规划胶点主预览。</strong> 绿色圆点来自 `glue_points`，灰色路径来自独立 `motion_preview` 运动轨迹预览。"
+                "<strong>当前为规划胶点主预览。</strong> 绿色圆点来自 `glue_points`，"
+                "`execution_polyline` 辅助层默认隐藏；灰色路径来自独立 `motion_preview` 运动轨迹预览。"
                 "</div>"
             )
         elif normalized_source == "runtime_snapshot":
@@ -2475,7 +2145,7 @@ class MainWindow(QMainWindow):
                 f"<strong>阻断原因。</strong> {html.escape(blocking_text)}"
                 "</div>"
             )
-        all_points = list(glue_points) + list(effective_motion_preview)
+        all_points = list(glue_points) + list(explicit_motion_preview)
         min_x = min(point[0] for point in all_points)
         max_x = max(point[0] for point in all_points)
         min_y = min(point[1] for point in all_points)
@@ -2509,7 +2179,7 @@ class MainWindow(QMainWindow):
             return mapped_points
 
         display_points = _map_points(glue_points)
-        display_motion_preview = _map_points(effective_motion_preview)
+        display_motion_preview = _map_points(explicit_motion_preview)
         motion_preview_markup = ""
         if len(display_motion_preview) >= 2:
             motion_preview_polyline_markup = " ".join(
@@ -2532,7 +2202,8 @@ class MainWindow(QMainWindow):
             f"{motion_warning_banner}"
             f"{validation_banner}"
             "<p style='color:#b8b8b8;'>"
-            "主图同时展示胶点触发点与运动轨迹路径，便于离线优化运动算法。执行前确认与哈希校验仍只基于胶点主预览。"
+            "主图展示胶点触发点与 `motion_preview` 运动轨迹路径；`execution_polyline` 仅保留兼容用途，"
+            "不在主界面默认显示。执行前确认与哈希校验仍只基于胶点主预览。"
             "</p>"
             f"<svg viewBox='0 0 {width:.0f} {height:.0f}' style='width:100%;height:56vh;background:#141414;border:1px solid #333;'>"
             f"{motion_preview_markup}"
@@ -2566,22 +2237,7 @@ class MainWindow(QMainWindow):
             "</body></html>"
         )
 
-    def _on_preview_snapshot_completed(
-        self,
-        ok: bool,
-        payload: dict,
-        error: str,
-        source: str = "worker",
-        request_token: int | None = None,
-    ):
-        if request_token is not None and request_token != self._preview_request_generation:
-            _UI_LOGGER.info(
-                "preview_result_ignored reason=stale_worker_result request_token=%s active_generation=%s",
-                request_token,
-                self._preview_request_generation,
-            )
-            return
-
+    def _on_preview_snapshot_completed(self, ok: bool, payload: dict, error: str, source: str = "worker"):
         self._preview_snapshot_worker = None
         self._set_preview_refresh_inflight(False)
 
@@ -2611,7 +2267,6 @@ class MainWindow(QMainWindow):
 
         self._update_info_label()
 
-        render_started_at = time.perf_counter()
         html_content = self._render_runtime_preview_html(
             snapshot=result.snapshot,
             speed_mm_s=self._dxf_speed.value(),
@@ -2629,30 +2284,6 @@ class MainWindow(QMainWindow):
             preview_failure_reason=self._preview_session.state.preview_failure_reason,
         )
         self._dxf_view.setHtml(html_content)
-        render_elapsed_ms = int(round((time.perf_counter() - render_started_at) * 1000.0))
-        performance_profile = payload.get("performance_profile", {})
-        worker_profile = payload.get("worker_profile", {})
-        if isinstance(performance_profile, dict) or isinstance(worker_profile, dict):
-            _UI_LOGGER.info(
-                "preview_performance_profile snapshot_id=%s authority_cache_hit=%s authority_joined_inflight=%s "
-                "authority_wait_ms=%s pb_ms=%s load_ms=%s process_path_ms=%s authority_build_ms=%s "
-                "authority_total_ms=%s prepare_total_ms=%s plan_prepare_rpc_ms=%s snapshot_rpc_ms=%s "
-                "worker_total_ms=%s render_html_ms=%s",
-                result.snapshot.snapshot_id if result.snapshot is not None else "",
-                performance_profile.get("authority_cache_hit", "") if isinstance(performance_profile, dict) else "",
-                performance_profile.get("authority_joined_inflight", "") if isinstance(performance_profile, dict) else "",
-                performance_profile.get("authority_wait_ms", "") if isinstance(performance_profile, dict) else "",
-                performance_profile.get("pb_prepare_ms", "") if isinstance(performance_profile, dict) else "",
-                performance_profile.get("path_load_ms", "") if isinstance(performance_profile, dict) else "",
-                performance_profile.get("process_path_ms", "") if isinstance(performance_profile, dict) else "",
-                performance_profile.get("authority_build_ms", "") if isinstance(performance_profile, dict) else "",
-                performance_profile.get("authority_total_ms", "") if isinstance(performance_profile, dict) else "",
-                performance_profile.get("prepare_total_ms", "") if isinstance(performance_profile, dict) else "",
-                worker_profile.get("plan_prepare_rpc_ms", "") if isinstance(worker_profile, dict) else "",
-                worker_profile.get("snapshot_rpc_ms", "") if isinstance(worker_profile, dict) else "",
-                worker_profile.get("worker_total_ms", "") if isinstance(worker_profile, dict) else "",
-                render_elapsed_ms,
-            )
         if result.preview_warning and result.snapshot is not None:
             _UI_LOGGER.warning(
                 "preview_sampling_warning snapshot_id=%s glue_points=%d execution_source_points=%d",
@@ -2684,7 +2315,6 @@ class MainWindow(QMainWindow):
         if not self._dxf_filepath:
             self.statusBar().showMessage("未选择DXF文件")
             return
-        self._cancel_active_preview_worker(reason="dxf_reload")
         ok, payload, error = self._protocol.dxf_create_artifact(self._dxf_filepath)
         if ok:
             self._dxf_artifact_id = str(payload.get("artifact_id", "")).strip()
@@ -2763,9 +2393,6 @@ class MainWindow(QMainWindow):
         self._set_preview_message_html("胶点预览生成中", "正在请求规划胶点快照和执行轨迹辅助层，请稍候。")
         self.statusBar().showMessage("胶点预览生成中...")
         _UI_LOGGER.info("preview_requested speed_mm_s=%.3f file=%s", speed, self._dxf_filepath)
-        self._cancel_active_preview_worker(reason="preview_restart", keep_refresh_inflight=True)
-        self._preview_request_generation += 1
-        request_token = self._preview_request_generation
 
         worker = PreviewSnapshotWorker(
             host=self._client.host,
@@ -2775,14 +2402,7 @@ class MainWindow(QMainWindow):
             dry_run=dry_run_mode,
             dry_run_speed_mm_s=speed,
         )
-        worker.completed.connect(
-            lambda ok, payload, error, token=request_token: self._on_preview_snapshot_completed(
-                ok,
-                payload,
-                error,
-                request_token=token,
-            )
-        )
+        worker.completed.connect(self._on_preview_snapshot_completed)
         worker.finished.connect(worker.deleteLater)
         self._preview_snapshot_worker = worker
         try:
@@ -2830,8 +2450,8 @@ class MainWindow(QMainWindow):
         self._runtime_status_fault = False
         decision = self._preview_session.build_preflight_decision(
             online_ready=self._is_online_ready(),
-            connected=self._is_launch_connected(),
-            hardware_connected=self._is_launch_hardware_ready(),
+            connected=self._connected,
+            hardware_connected=self._hw_connected,
             runtime_status_fault=self._runtime_status_fault,
             status=status,
             dry_run=dry_run,
@@ -2843,8 +2463,8 @@ class MainWindow(QMainWindow):
                 return False
             decision = self._preview_session.build_preflight_decision(
                 online_ready=self._is_online_ready(),
-                connected=self._is_launch_connected(),
-                hardware_connected=self._is_launch_hardware_ready(),
+                connected=self._connected,
+                hardware_connected=self._hw_connected,
                 runtime_status_fault=self._runtime_status_fault,
                 status=status,
                 dry_run=dry_run,
@@ -2968,23 +2588,6 @@ class MainWindow(QMainWindow):
         self._operation_status.setText(f"{mode_text}运行中")
         self._update_production_stats()
         self.statusBar().showMessage(f"{mode_text}已启动")
-        performance_profile = payload.get("performance_profile", {})
-        if isinstance(performance_profile, dict):
-            _UI_LOGGER.info(
-                "job_start_performance_profile plan_id=%s plan_fingerprint=%s job_id=%s "
-                "execution_cache_hit=%s execution_joined_inflight=%s execution_wait_ms=%s "
-                "motion_plan_ms=%s assembly_ms=%s export_ms=%s execution_total_ms=%s",
-                self._current_plan_id,
-                self._current_plan_fingerprint,
-                self._current_job_id,
-                performance_profile.get("execution_cache_hit", ""),
-                performance_profile.get("execution_joined_inflight", ""),
-                performance_profile.get("execution_wait_ms", ""),
-                performance_profile.get("motion_plan_ms", ""),
-                performance_profile.get("assembly_ms", ""),
-                performance_profile.get("export_ms", ""),
-                performance_profile.get("execution_total_ms", ""),
-            )
         _UI_LOGGER.info(
             "job_started plan_id=%s plan_fingerprint=%s job_id=%s target=%s dry_run=%s",
             self._current_plan_id,
@@ -3139,7 +2742,11 @@ class MainWindow(QMainWindow):
             self._last_status_ts = time.monotonic()
             self._runtime_status_fault = False
             self._last_status_error_notice_ts = 0.0
-            self._state_label.setText(status.runtime_state)
+            self._state_label.setText(status.machine_state)
+            backend_hw_connected = bool(status.connected)
+            if backend_hw_connected != self._hw_connected:
+                self._hw_connected = backend_hw_connected
+                self._refresh_launch_status_ui()
 
             # Update Dispenser Status
             is_dispensing = status.dispenser_valve_open
@@ -3314,11 +2921,6 @@ class MainWindow(QMainWindow):
                 return
 
         self._cleanup_temp_preview()
-        home_worker = self._home_auto_worker
-        if home_worker is not None:
-            self._cancel_active_home_worker(reason="window_close")
-            if home_worker.isRunning():
-                home_worker.wait(1000)
         if self._preview_snapshot_worker and self._preview_snapshot_worker.isRunning():
             self._preview_snapshot_worker.wait(1000)
         if self._backend:
