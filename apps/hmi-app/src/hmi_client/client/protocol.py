@@ -7,6 +7,14 @@ from typing import Optional, Dict
 from .gateway_launch import load_gateway_connection_config
 from .tcp_client import TcpClient
 
+DEFAULT_HOMING_TIMEOUT_MS = 80000
+HOMING_RPC_GRACE_S = 10.0
+
+
+def _resolve_homing_rpc_timeout_s(timeout_ms: int = 0) -> float:
+    effective_timeout_ms = int(timeout_ms) if timeout_ms and timeout_ms > 0 else DEFAULT_HOMING_TIMEOUT_MS
+    return max(30.0, effective_timeout_ms / 1000.0 + HOMING_RPC_GRACE_S)
+
 
 @dataclass
 class AxisStatus:
@@ -70,6 +78,16 @@ class MachineStatus:
     dispenser_valve_open: bool = False
     supply_valve_open: bool = False
 
+    @property
+    def runtime_state(self) -> str:
+        current = str(self.supervision.current_state or "").strip()
+        return current or self.machine_state
+
+    @property
+    def runtime_state_reason(self) -> str:
+        reason = str(self.supervision.state_reason or "").strip()
+        return reason or self.machine_state_reason
+
     def gate_estop_known(self) -> bool:
         return bool(self.effective_interlocks.estop_known or self.io.estop_known)
 
@@ -99,6 +117,7 @@ class CommandProtocol:
     """High-level command interface for motion controller."""
 
     _DEFAULT_PREVIEW_MAX_POLYLINE_POINTS = 4000
+    _DEFAULT_PREVIEW_MAX_GLUE_POINTS = 5000
 
     def __init__(self, client: TcpClient):
         self._client = client
@@ -214,8 +233,8 @@ class CommandProtocol:
             connection_state=result.get(
                 "connection_state", "connected" if result.get("connected", False) else "disconnected"
             ),
-            machine_state=current_state,
-            machine_state_reason=current_reason,
+            machine_state=compat_state,
+            machine_state_reason=compat_reason,
             interlock_latched=result.get("interlock_latched", False),
             active_job_id=str(result.get("active_job_id", "")),
             active_job_state=str(result.get("active_job_state", "")),
@@ -239,7 +258,7 @@ class CommandProtocol:
         params = {"axes": axes} if axes else {}
         if force:
             params["force"] = True
-        resp = self._client.send_request("home", params, timeout=30.0)
+        resp = self._client.send_request("home", params, timeout=_resolve_homing_rpc_timeout_s())
         if "error" in resp:
             return False, resp["error"].get("message", "Unknown error")
         result = resp.get("result", {})
@@ -294,7 +313,7 @@ class CommandProtocol:
             params["wait_for_completion"] = False
         if timeout_ms > 0:
             params["timeout_ms"] = int(timeout_ms)
-        resp = self._client.send_request("home.auto", params, timeout=30.0)
+        resp = self._client.send_request("home.auto", params, timeout=_resolve_homing_rpc_timeout_s(timeout_ms))
         if "error" in resp:
             return False, resp["error"].get("message", "Unknown error")
 
@@ -430,11 +449,13 @@ class CommandProtocol:
         self,
         plan_id: str,
         max_polyline_points: int = _DEFAULT_PREVIEW_MAX_POLYLINE_POINTS,
+        max_glue_points: int = _DEFAULT_PREVIEW_MAX_GLUE_POINTS,
         timeout: float = 15.0,
     ) -> tuple:
         ok, payload, error, _ = self.dxf_preview_snapshot_with_error_details(
             plan_id=plan_id,
             max_polyline_points=max_polyline_points,
+            max_glue_points=max_glue_points,
             timeout=timeout,
         )
         return ok, payload, error
@@ -443,11 +464,14 @@ class CommandProtocol:
         self,
         plan_id: str,
         max_polyline_points: int = _DEFAULT_PREVIEW_MAX_POLYLINE_POINTS,
+        max_glue_points: int = _DEFAULT_PREVIEW_MAX_GLUE_POINTS,
         timeout: float = 15.0,
     ) -> tuple:
         params = {"plan_id": plan_id}
         if max_polyline_points > 0 and max_polyline_points != self._DEFAULT_PREVIEW_MAX_POLYLINE_POINTS:
             params["max_polyline_points"] = int(max_polyline_points)
+        if max_glue_points > 0 and max_glue_points != self._DEFAULT_PREVIEW_MAX_GLUE_POINTS:
+            params["max_glue_points"] = int(max_glue_points)
         resp = self._client.send_request("dxf.preview.snapshot", params, timeout=timeout)
         if "error" in resp:
             error_payload = resp.get("error", {}) or {}
