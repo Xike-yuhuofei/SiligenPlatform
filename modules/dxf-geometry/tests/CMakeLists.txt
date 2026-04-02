@@ -1,10 +1,18 @@
 cmake_minimum_required(VERSION 3.20)
 
 set(DXF_GEOMETRY_TEST_SOURCES
+    contract/DxfPbPreparationServiceContractsTest.cpp
+    golden/DxfPbPreparationServiceCommandGoldenTest.cpp
+    integration/DxfPbPreparationServiceIntegrationTest.cpp
     unit/services/dxf/DxfPbPreparationServiceTest.cpp
 )
 
 add_executable(siligen_dxf_geometry_unit_tests ${DXF_GEOMETRY_TEST_SOURCES})
+
+target_include_directories(siligen_dxf_geometry_unit_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/..
+)
 
 if(TARGET GTest::gtest_main)
     target_link_libraries(siligen_dxf_geometry_unit_tests PRIVATE GTest::gtest_main)

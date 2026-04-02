@@ -5,7 +5,7 @@
 #include "CommandHandlers.h"
 #include "CommandHandlersInternal.h"
 #include "CommandLineParser.h"
-#include "process_planning/contracts/configuration/IConfigurationPort.h"
+#include "domain/configuration/ports/IConfigurationPort.h"
 #include "runtime_process_bootstrap/ContainerBootstrap.h"
 #include "runtime_process_bootstrap/WorkspaceAssetPaths.h"
 #include "shared/types/Error.h"

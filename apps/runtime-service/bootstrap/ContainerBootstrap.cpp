@@ -3,8 +3,8 @@
 #include "../container/ApplicationContainer.h"
 #include "InfrastructureBindings.h"
 
-#include "job_ingest/contracts/storage/IFileStoragePort.h"
-#include "process_planning/contracts/configuration/IConfigurationPort.h"
+#include "process_planning/contracts/ConfigurationContracts.h"
+#include "domain/configuration/ports/IFileStoragePort.h"
 #include "domain/diagnostics/ports/ICMPTestPresetPort.h"
 #include "domain/diagnostics/ports/IDiagnosticsPort.h"
 #include "domain/diagnostics/ports/ITestConfigurationPort.h"
@@ -104,7 +104,7 @@ void ApplyBindings(
         container.RegisterPort<Siligen::Domain::Dispensing::Ports::IValvePort>(bindings.valve_port);
     }
     if (bindings.file_storage_port) {
-        container.RegisterPort<Siligen::JobIngest::Contracts::Storage::IFileStoragePort>(bindings.file_storage_port);
+        container.RegisterPort<Siligen::Domain::Configuration::Ports::IFileStoragePort>(bindings.file_storage_port);
     }
     if (bindings.interpolation_port) {
         container.RegisterPort<Siligen::Domain::Motion::Ports::IInterpolationPort>(bindings.interpolation_port);

@@ -342,19 +342,21 @@ class MockState:
                     else:
                         active_job_state = "completed"
                 if not self.hardware_connected:
-                    machine_state = "Disconnected"
-                    machine_state_reason = "hardware_disconnected"
+                    supervision_current_state = "Disconnected"
+                    supervision_reason = "hardware_disconnected"
                 elif self.io.estop:
-                    machine_state = "Estop"
-                    machine_state_reason = "interlock_estop"
+                    supervision_current_state = "Estop"
+                    supervision_reason = "interlock_estop"
                 elif self.io.door:
-                    machine_state = "Fault"
-                    machine_state_reason = "interlock_door_open"
+                    supervision_current_state = "Fault"
+                    supervision_reason = "interlock_door_open"
                 else:
-                    machine_state = "Running" if self.dxf.running else ("Paused" if self.dxf.paused else "Idle")
-                    machine_state_reason = (
+                    supervision_current_state = "Running" if self.dxf.running else ("Paused" if self.dxf.paused else "Idle")
+                    supervision_reason = (
                         "job_running" if self.dxf.running else ("job_paused" if self.dxf.paused else "idle")
                     )
+                machine_state = supervision_current_state
+                machine_state_reason = supervision_reason
                 effective_interlocks = {
                     "estop_active": self.io.estop,
                     "estop_known": True,
@@ -375,12 +377,12 @@ class MockState:
                     },
                 }
                 supervision = {
-                    "current_state": machine_state,
-                    "requested_state": machine_state,
+                    "current_state": supervision_current_state,
+                    "requested_state": supervision_current_state,
                     "state_change_in_process": False,
-                    "state_reason": machine_state_reason,
-                    "failure_code": machine_state_reason if machine_state in ("Fault", "Estop", "Degraded") else "",
-                    "failure_stage": "runtime_status" if machine_state in ("Fault", "Estop", "Degraded") else "",
+                    "state_reason": supervision_reason,
+                    "failure_code": supervision_reason if supervision_current_state in ("Fault", "Estop", "Degraded") else "",
+                    "failure_stage": "runtime_status" if supervision_current_state in ("Fault", "Estop", "Degraded") else "",
                     "recoverable": True,
                     "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 }

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../usecases/dispensing/DispensingWorkflowUseCase.h"
+#include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
 
 #include <cstddef>
 #include <string>

@@ -15,6 +15,7 @@
 - 跨模块稳定公共契约应维护在 `shared/contracts/`，`M0` 专属契约放在 `modules/workflow/contracts/`。
 - `domain/CMakeLists.txt` 与 `application/CMakeLists.txt` 当前仅允许保留已登记的 bridge-only 聚合，禁止继续新增 sibling source bridge。
 - runtime service 装配 concrete 与 planning 工件落盘 concrete 固定由 `modules/runtime-execution/` 承接，`workflow` 只保留契约、编排和端口。
+- `workflow/application` 不再通过 `CMakeLists.txt` 的 public include root 扩散 `../../runtime-execution/application/include`；兼容头改为直接 forward 到 `runtime_execution/application/*` canonical header。
 
 ## 迁移来源（当前事实）
 
@@ -38,6 +39,7 @@
 - `workflow/contracts` 已落地 `WorkflowStageState`、`WorkflowCommand`、`WorkflowPlanningTriggerRequest`、`WorkflowPlanningTriggerResponse`、`WorkflowFailureCategory`、`WorkflowRecoveryDirective`。
 - `MotionRuntimeAssemblyFactory` 已改为依赖 runtime services provider，不再直接实例化 motion concrete。
 - `PlanningUseCase` 已改为编排 `IPathSourcePort + ProcessPathFacade + MotionPlanningFacade + AuthorityPreviewAssemblyService + ExecutionAssemblyService`；planning artifact export request 由 `workflow` owner contract 组装，并继续通过 `IPlanningArtifactExportPort` 交给 `runtime-execution` concrete 承担。
+- `IPlanningArtifactExportPort` 与 `IMotionRuntimeServicesProvider` 的 canonical contract 已归到 `runtime-execution/application/include/runtime_execution/application/*`，`workflow/application` 仅保留兼容转发头。
 - `assert-module-boundary-bridges.ps1` 已接入 bridge-only 收口标记，并在 `rg` 不可用时回退到 PowerShell 原生搜索。
 
 ## S2-A 完成态

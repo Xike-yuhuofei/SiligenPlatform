@@ -45,7 +45,7 @@ class TcpDispensingFacade {
         const UseCases::Dispensing::PreviewSnapshotRequest& request);
     Shared::Types::Result<UseCases::Dispensing::ConfirmPreviewResponse> ConfirmDxfPreview(
         const UseCases::Dispensing::ConfirmPreviewRequest& request);
-    Shared::Types::Result<UseCases::Dispensing::JobID> StartDxfJob(
+    Shared::Types::Result<UseCases::Dispensing::StartJobResponse> StartDxfJob(
         const UseCases::Dispensing::StartJobRequest& request);
     Shared::Types::Result<UseCases::Dispensing::JobStatusResponse> GetDxfJobStatus(
         const UseCases::Dispensing::JobID& job_id) const;

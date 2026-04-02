@@ -1,8 +1,8 @@
 #pragma once
 
 #include "application/usecases/system/IHardLimitMonitor.h"
+#include "domain/motion/ports/IIOControlPort.h"
 #include "domain/motion/ports/IPositionControlPort.h"
-#include "runtime_execution/contracts/motion/IIOControlPort.h"
 #include "shared/types/Result.h"
 
 #include <atomic>
@@ -36,7 +36,7 @@ struct HardLimitMonitorConfig {
 class HardLimitMonitorService : public UseCases::System::IHardLimitMonitor {
    public:
     explicit HardLimitMonitorService(
-        std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort> io_port,
+        std::shared_ptr<Domain::Motion::Ports::IIOControlPort> io_port,
         std::shared_ptr<Domain::Motion::Ports::IPositionControlPort> position_control_port,
         const HardLimitMonitorConfig& config = HardLimitMonitorConfig{});
 
@@ -57,7 +57,7 @@ class HardLimitMonitorService : public UseCases::System::IHardLimitMonitor {
    private:
     void MonitoringLoop() noexcept;
 
-    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort> io_port_;
+    std::shared_ptr<Domain::Motion::Ports::IIOControlPort> io_port_;
     std::shared_ptr<Domain::Motion::Ports::IPositionControlPort> position_control_port_;
     HardLimitMonitorConfig config_;
 

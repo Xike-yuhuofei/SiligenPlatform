@@ -59,6 +59,7 @@ class TcpClient:
             except:
                 pass
             self._socket = None
+        self._fail_pending_requests("TCP disconnected")
 
     def is_connected(self) -> bool:
         return self._running and self._socket is not None
@@ -78,7 +79,8 @@ class TcpClient:
             request["params"] = params
 
         response_queue: Queue = Queue()
-        self._pending[req_id] = response_queue
+        with self._lock:
+            self._pending[req_id] = response_queue
 
         try:
             msg = json.dumps(request) + "\n"
@@ -102,7 +104,8 @@ class TcpClient:
             msg = str(e) or "Unknown socket error"
             return {"error": {"code": -1, "message": msg}}
         finally:
-            self._pending.pop(req_id, None)
+            with self._lock:
+                self._pending.pop(req_id, None)
 
     def _recv_loop(self):
         buffer = ""
@@ -126,9 +129,22 @@ class TcpClient:
         try:
             msg = json.loads(line)
             msg_id = msg.get("id")
-            if msg_id and msg_id in self._pending:
-                self._pending[msg_id].put(msg)
+            queue = None
+            if msg_id:
+                with self._lock:
+                    queue = self._pending.get(msg_id)
+            if queue is not None:
+                queue.put(msg)
             elif self._on_event:
                 self._on_event(msg)
         except json.JSONDecodeError as e:
             print(f"JSON parse error: {e}")
+
+    def _fail_pending_requests(self, message: str) -> None:
+        with self._lock:
+            pending_queues = list(self._pending.values())
+        for response_queue in pending_queues:
+            try:
+                response_queue.put_nowait({"error": {"code": -1, "message": message}})
+            except Exception:
+                pass

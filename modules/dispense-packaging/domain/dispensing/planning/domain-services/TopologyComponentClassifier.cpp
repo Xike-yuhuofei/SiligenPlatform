@@ -247,8 +247,6 @@ ComponentDispatchResolution ResolveComponentDispatch(
 
     const bool has_explicit_boundary =
         AnySpanUsesSplitReason(spans, DispenseSpanSplitReason::ExplicitProcessBoundary);
-    const bool has_multi_contour_boundary =
-        AnySpanUsesSplitReason(spans, DispenseSpanSplitReason::MultiContourBoundary);
     const bool has_unsplit_open_chain =
         AnySpanUsesSplitReason(spans, DispenseSpanSplitReason::None);
     const bool only_explicit_boundary_family =
@@ -267,23 +265,6 @@ ComponentDispatchResolution ResolveComponentDispatch(
         // is still one explicit process-boundary family and should preserve that
         // dispatch instead of being blocked as a mixed topology.
         return {TopologyDispatchType::ExplicitProcessBoundary, {}};
-    }
-
-    const bool only_explicit_boundary_with_reordered_branch_family =
-        has_explicit_boundary &&
-        has_multi_contour_boundary &&
-        std::all_of(
-            spans.begin(),
-            spans.end(),
-            [](const auto& span) {
-                return span.split_reason == DispenseSpanSplitReason::ExplicitProcessBoundary ||
-                    span.split_reason == DispenseSpanSplitReason::MultiContourBoundary;
-            });
-    if (only_explicit_boundary_with_reordered_branch_family) {
-        // Once a shared-vertex component contains reordered branch children,
-        // branch/revisit semantics dominate the component-level dispatch even if
-        // one or more spans originated from explicit process boundaries.
-        return {TopologyDispatchType::BranchOrRevisit, {}};
     }
 
     if (AllSpansUseSplitReason(spans, DispenseSpanSplitReason::ExplicitProcessBoundary)) {
