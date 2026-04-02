@@ -67,6 +67,7 @@ add_library(siligen_runtime_process_bootstrap STATIC
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/supervision/RuntimeExecutionSupervisionBackend.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/supervision/WorkflowRuntimeJobTerminalSync.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/supervision/WorkflowRuntimeSupervisionPort.cpp
+    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/supervision/WorkflowRuntimeSupervisionBackend.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/storage/files/LocalFileStorageAdapter.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/security/AuditLogger.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/security/InterlockMonitor.cpp

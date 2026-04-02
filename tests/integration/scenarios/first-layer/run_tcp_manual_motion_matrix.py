@@ -16,7 +16,7 @@ from typing import Any
 KNOWN_FAILURE_EXIT_CODE = 10
 SKIPPED_EXIT_CODE = 11
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[4]
 CANONICAL_CONFIG = ROOT / "config" / "machine" / "machine_config.ini"
 CONTROL_APPS_BUILD_ROOT = Path(
     os.getenv(
