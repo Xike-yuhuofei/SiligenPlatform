@@ -55,6 +55,15 @@ target_link_libraries(runtime_service_integration_host_bootstrap_smoke PRIVATE
 )
 target_compile_features(runtime_service_integration_host_bootstrap_smoke PRIVATE cxx_std_17)
 
+if(EXISTS "${SILIGEN_MULTICARD_VENDOR_DIR}/MultiCard.dll")
+    add_custom_command(TARGET runtime_service_integration_host_bootstrap_smoke POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${SILIGEN_MULTICARD_VENDOR_DIR}/MultiCard.dll"
+            "$<TARGET_FILE_DIR:runtime_service_integration_host_bootstrap_smoke>"
+        COMMENT "拷贝 MultiCard.dll 到 runtime-service smoke 输出目录"
+    )
+endif()
+
 add_test(
     NAME runtime_service_integration_host_bootstrap_smoke
     COMMAND runtime_service_integration_host_bootstrap_smoke
