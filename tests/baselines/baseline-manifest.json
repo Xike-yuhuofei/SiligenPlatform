@@ -1,0 +1,197 @@
+{
+  "schema_version": "baseline-manifest.v1",
+  "manifest_owner": "shared/testing",
+  "reviewer_workflow": {
+    "required_reviewers": [
+      "owner-scope",
+      "shared/testing"
+    ],
+    "required_evidence": [
+      "tests/reports/**/workspace-validation.json",
+      "tests/reports/**/validation-evidence-bundle.json"
+    ],
+    "disallowed_sources": [
+      "tests/reports/**",
+      "data/baselines/**"
+    ],
+    "steps": [
+      "Run the owning regression producer against canonical samples and baselines.",
+      "Explain the semantic delta before touching any golden file.",
+      "Update this manifest in the same change with refreshed review_by and provenance.",
+      "Request review from the owner scope and shared/testing before merge."
+    ]
+  },
+  "baselines": [
+    {
+      "baseline_id": "baseline.simulation.compat_rect_diag",
+      "canonical_path": "tests/baselines/rect_diag.simulation-baseline.json",
+      "baseline_kind": "simulation-summary",
+      "owner_scope": "runtime-execution",
+      "source_asset_refs": [
+        "protocol.fixture.rect_diag_engineering"
+      ],
+      "consumer_layers": [
+        "L2-offline-integration",
+        "L3-simulated-e2e"
+      ],
+      "update_runner": "tests/e2e/simulated-line/run_simulated_line.py",
+      "update_reviewers": [
+        "runtime-execution",
+        "shared/testing"
+      ],
+      "reviewer_guidance": "Only refresh when compat simulation producer output changed intentionally and evidence is attached.",
+      "lifecycle": {
+        "state": "active",
+        "review_by": "2026-06-30"
+      },
+      "deprecated_source_paths": [
+        "data/baselines/simulation/rect_diag.simulation-baseline.json"
+      ]
+    },
+    {
+      "baseline_id": "baseline.simulation.scheme_c_rect_diag",
+      "canonical_path": "tests/baselines/rect_diag.scheme_c.recording-baseline.json",
+      "baseline_kind": "recording-summary",
+      "owner_scope": "runtime-execution",
+      "source_asset_refs": [
+        "sample.simulation.rect_diag",
+        "sample.replay.rect_diag_recording"
+      ],
+      "consumer_layers": [
+        "L3-simulated-e2e"
+      ],
+      "update_runner": "tests/e2e/simulated-line/run_simulated_line.py",
+      "update_reviewers": [
+        "runtime-execution",
+        "shared/testing"
+      ],
+      "reviewer_guidance": "Keep scheme C rect_diag recording aligned with the canonical simulated-line route and replay evidence.",
+      "lifecycle": {
+        "state": "active",
+        "review_by": "2026-06-30"
+      },
+      "deprecated_source_paths": []
+    },
+    {
+      "baseline_id": "baseline.simulation.sample_trajectory",
+      "canonical_path": "tests/baselines/sample_trajectory.scheme_c.recording-baseline.json",
+      "baseline_kind": "recording-summary",
+      "owner_scope": "runtime-execution",
+      "source_asset_refs": [
+        "sample.simulation.sample_trajectory",
+        "sample.replay.sample_trajectory_recording"
+      ],
+      "consumer_layers": [
+        "L3-simulated-e2e"
+      ],
+      "update_runner": "tests/e2e/simulated-line/run_simulated_line.py",
+      "update_reviewers": [
+        "runtime-execution",
+        "shared/testing"
+      ],
+      "reviewer_guidance": "Refresh only when mixed line-arc replay semantics changed intentionally.",
+      "lifecycle": {
+        "state": "active",
+        "review_by": "2026-07-15"
+      },
+      "deprecated_source_paths": []
+    },
+    {
+      "baseline_id": "baseline.simulation.invalid_empty_segments",
+      "canonical_path": "tests/baselines/invalid_empty_segments.scheme_c.recording-baseline.json",
+      "baseline_kind": "fault-summary",
+      "owner_scope": "runtime-execution",
+      "source_asset_refs": [
+        "sample.simulation.invalid_empty_segments"
+      ],
+      "consumer_layers": [
+        "L2-offline-integration",
+        "L3-simulated-e2e"
+      ],
+      "update_runner": "tests/e2e/simulated-line/run_simulated_line.py",
+      "update_reviewers": [
+        "runtime-execution",
+        "shared/testing"
+      ],
+      "reviewer_guidance": "The failure shape is contractual; refresh only if failure taxonomy or evidence schema changed intentionally.",
+      "lifecycle": {
+        "state": "active",
+        "review_by": "2026-07-15"
+      },
+      "deprecated_source_paths": []
+    },
+    {
+      "baseline_id": "baseline.simulation.following_error_quantized",
+      "canonical_path": "tests/baselines/following_error_quantized.scheme_c.recording-baseline.json",
+      "baseline_kind": "fault-summary",
+      "owner_scope": "runtime-execution",
+      "source_asset_refs": [
+        "sample.simulation.following_error_quantized"
+      ],
+      "consumer_layers": [
+        "L3-simulated-e2e",
+        "L4-performance"
+      ],
+      "update_runner": "tests/e2e/simulated-line/run_simulated_line.py",
+      "update_reviewers": [
+        "runtime-execution",
+        "shared/testing"
+      ],
+      "reviewer_guidance": "Quantized following error metrics must remain replayable; refresh only with new motion realism intent and attached evidence.",
+      "lifecycle": {
+        "state": "active",
+        "review_by": "2026-07-15"
+      },
+      "deprecated_source_paths": []
+    },
+    {
+      "baseline_id": "baseline.preview.rect_diag_snapshot",
+      "canonical_path": "tests/baselines/preview/rect_diag.preview-snapshot-baseline.json",
+      "baseline_kind": "preview-snapshot",
+      "owner_scope": "hmi-application",
+      "source_asset_refs": [
+        "sample.dxf.rect_diag"
+      ],
+      "consumer_layers": [
+        "L3-simulated-e2e",
+        "L5-limited-hil"
+      ],
+      "update_runner": "tests/integration/scenarios/first-layer/test_real_preview_snapshot_geometry.py",
+      "update_reviewers": [
+        "hmi-application",
+        "shared/testing"
+      ],
+      "reviewer_guidance": "Preview geometry deltas must cite visual and machine-readable evidence before baseline refresh.",
+      "lifecycle": {
+        "state": "active",
+        "review_by": "2026-07-31"
+      },
+      "deprecated_source_paths": []
+    },
+    {
+      "baseline_id": "baseline.performance.dxf_preview_thresholds",
+      "canonical_path": "tests/baselines/performance/dxf-preview-profile-thresholds.json",
+      "baseline_kind": "performance-threshold-config",
+      "owner_scope": "tests/performance",
+      "source_asset_refs": [
+        "sample.dxf.rect_diag",
+        "sample.dxf.rect_medium_ladder",
+        "sample.dxf.rect_large_ladder"
+      ],
+      "consumer_layers": [
+        "L4-performance"
+      ],
+      "update_runner": "tests/performance/collect_dxf_preview_profiles.py",
+      "update_reviewers": [
+        "tests/performance",
+        "shared/testing"
+      ],
+      "reviewer_guidance": "Refresh only with attached nightly-performance calibration evidence covering small, medium, and large samples with include-start-job enabled.",
+      "lifecycle": {
+        "state": "active",
+        "review_by": "2026-07-31"
+      },
+      "deprecated_source_paths": []
+    }
+  ]
+}

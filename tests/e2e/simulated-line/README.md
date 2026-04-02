@@ -6,15 +6,19 @@
 
 - `run_simulated_line.py`
 - `run_controlled_production_test.ps1`
+- `run_controlled_production_test.py`
+- `verify_controlled_production_test.py`
 
 它当前验证以下回归链：
 
-- compatibility engine：`simulate_dxf_path.exe`
-  仅保留 `rect_diag.simulation-baseline.json` 历史对照
-- scheme C minimal closed-loop：`simulate_scheme_c_closed_loop.exe`
-  对齐以下 scheme C 基线：
-  - `rect_diag.scheme_c.recording-baseline.json`
-  - `sample_trajectory.scheme_c.recording-baseline.json`
+- compat historical summary：
+  优先消费 `simulate_dxf_path.exe`；若 legacy executable 缺失，则回退到
+  `rect_diag.simulation-baseline.json` 的 canonical summary fixture，
+  仅保留历史兼容回归，不再阻断于已移除的 legacy binary。
+- scheme C canonical replay / summary：
+  优先消费 `simulate_scheme_c_closed_loop.exe`；若 legacy executable 缺失，则回退到：
+  - `samples/replay-data/rect_diag.scheme_c.recording.json`
+  - `samples/replay-data/sample_trajectory.scheme_c.recording.json`
   - `invalid_empty_segments.scheme_c.recording-baseline.json`
   - `following_error_quantized.scheme_c.recording-baseline.json`
 
@@ -27,9 +31,60 @@ scheme C 每个场景都会执行两次并比较输出 JSON，确保 repeated ru
 - `summary.mean_following_error_mm`
 
 默认输入优先复用根级 `samples/simulation/*.json`，不依赖额外 bridge 根或已删除 legacy 宿主。
+共享样本、baseline 与 fault scenario 必须回链到：
+
+- `samples/simulation/`
+- `tests/baselines/`
+- `shared/testing/`
+
+Phase 9 起，simulated-line fault/injector authority 固定在 `shared/testing/test-kit/src/test_kit/fault_injection.py`。
+默认 matrix id 为 `fault-matrix.simulated-line.v1`，双替身 surface 固定为：
+
+- `fake_controller`: `readiness`、`abort`
+- `fake_io`: `disconnect`
+
+`run_simulated_line.py` 现在支持：
+
+- `--fault-id <fault_id>` 可重复，用于只运行指定 fault 场景
+- `--seed <int>`
+- `--clock-profile <profile>`
+- `--hook-readiness ready|not-ready`
+- `--hook-abort none|before-run|after-first-pass`
+- `--hook-disconnect none|after-first-pass`
+
+`run_controlled_production_test.py` 会把这些选项透传为环境变量：
+
+- `SILIGEN_SIMULATED_LINE_FAULT_IDS`
+- `SILIGEN_SIMULATED_LINE_SEED`
+- `SILIGEN_SIMULATED_LINE_CLOCK_PROFILE`
+- `SILIGEN_SIMULATED_LINE_READINESS`
+- `SILIGEN_SIMULATED_LINE_ABORT`
+- `SILIGEN_SIMULATED_LINE_DISCONNECT`
+
 `run_simulated_line.py` 支持通过 `--report-dir <dir>` 同步落盘：
 
 - `simulated-line-summary.json`
 - `simulated-line-summary.md`
+- `case-index.json`
+- `validation-evidence-bundle.json`
+- `evidence-links.md`
+- `failure-details.json`（失败、阻断、已知失败、跳过或延后时）
 
-`run_controlled_production_test.ps1` 会串行执行 root `simulation` build/test，并把 `workspace-validation.*` 与 `simulated-line-summary.*` 一起输出到统一报告目录。
+每条 case record 还必须带上：
+
+- `fault_ids`
+- `deterministic_replay.seed`
+- `deterministic_replay.clock_profile`
+- `deterministic_replay.repeat_count`
+- `deterministic_replay.passed`
+
+bundle metadata 必须带上：
+
+- `fault_matrix_id`
+- `selected_fault_ids`
+- `deterministic_seed`
+- `clock_profile`
+- `double_surface`
+- `hooks`
+
+`run_controlled_production_test.ps1` 会串行执行 root `e2e` build/test，并把 `workspace-validation.*` 与 `simulated-line-summary.*` 一起输出到统一报告目录。

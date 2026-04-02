@@ -17,12 +17,23 @@ from typing import Any
 KNOWN_FAILURE_EXIT_CODE = 10
 SKIPPED_EXIT_CODE = 11
 ROOT = Path(__file__).resolve().parents[3]
-FIRST_LAYER_DIR = ROOT / "tests" / "e2e" / "first-layer"
-if str(FIRST_LAYER_DIR) not in sys.path:
-    sys.path.insert(0, str(FIRST_LAYER_DIR))
+HIL_DIR = ROOT / "tests" / "e2e" / "hardware-in-loop"
+if str(HIL_DIR) not in sys.path:
+    sys.path.insert(0, str(HIL_DIR))
+TEST_KIT_SRC = ROOT / "shared" / "testing" / "test-kit" / "src"
+if str(TEST_KIT_SRC) not in sys.path:
+    sys.path.insert(0, str(TEST_KIT_SRC))
 
 from runtime_gateway_harness import build_process_env  # noqa: E402
 from runtime_gateway_harness import resolve_default_exe as _resolve_harness_default_exe  # noqa: E402
+from test_kit.evidence_bundle import (
+    EvidenceBundle,
+    EvidenceCaseRecord,
+    EvidenceLink,
+    default_failure_classification,
+    trace_fields,
+    write_bundle_artifacts,
+)  # noqa: E402
 
 CONTROL_APPS_BUILD_ROOT = Path(
     os.getenv(
@@ -32,6 +43,12 @@ CONTROL_APPS_BUILD_ROOT = Path(
 )
 DEFAULT_DXF_FILE = ROOT / "samples" / "dxf" / "rect_diag.dxf"
 DEFAULT_CONFIG_PATH = ROOT / "config" / "machine" / "machine_config.ini"
+HIL_ADMISSION_SCHEMA_VERSION = "hil-admission.v1"
+REQUIRED_OFFLINE_CASES = (
+    "protocol-compatibility",
+    "engineering-regression",
+    "simulated-line",
+)
 
 KNOWN_FAILURE_PATTERNS = (
     "IDiagnosticsPort 未注册",
@@ -151,6 +168,243 @@ def _load_connection_params(config_path: Path) -> dict[str, str]:
     if local_ip:
         params["local_ip"] = local_ip
     return params
+
+
+def _load_json(path: Path) -> dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _build_admission_check(
+    *,
+    name: str,
+    status: str,
+    expected: str,
+    actual: str,
+    note: str = "",
+) -> dict[str, str]:
+    return {
+        "name": name,
+        "status": status,
+        "expected": expected,
+        "actual": actual,
+        "note": note,
+    }
+
+
+def _evaluate_offline_admission(
+    *,
+    offline_prereq_report: str,
+    operator_override_reason: str,
+) -> dict[str, Any]:
+    trimmed_reason = operator_override_reason.strip()
+    trimmed_report = offline_prereq_report.strip()
+    checks: list[dict[str, str]] = []
+    payload: dict[str, Any] = {
+        "schema_version": HIL_ADMISSION_SCHEMA_VERSION,
+        "required_layers": ["L0-structure-gate", "L2-offline-integration", "L3-simulated-e2e"],
+        "required_cases": list(REQUIRED_OFFLINE_CASES),
+        "offline_prerequisites_source": trimmed_report,
+        "offline_prerequisites_passed": False,
+        "operator_override_used": False,
+        "operator_override_reason": trimmed_reason,
+        "admission_decision": "blocked",
+        "checks": checks,
+    }
+
+    if not trimmed_report:
+        checks.append(
+            _build_admission_check(
+                name="offline-prereq-report",
+                status="failed",
+                expected="workspace-validation report path is provided",
+                actual="missing",
+                note="limited-hil requires an offline prerequisite report or explicit operator override",
+            )
+        )
+        if trimmed_reason:
+            payload["operator_override_used"] = True
+            payload["admission_decision"] = "override-admitted"
+            payload["failure_classification"] = {
+                "category": "validation",
+                "code": "override-admitted",
+                "blocking": False,
+                "message": trimmed_reason,
+            }
+            return payload
+        payload["failure_classification"] = {
+            "category": "prerequisite",
+            "code": "operator_override_required",
+            "blocking": True,
+            "message": "limited-hil requires operator override when offline prerequisite evidence is missing",
+        }
+        return payload
+
+    report_path = Path(trimmed_report).resolve()
+    payload["offline_prerequisites_source"] = str(report_path)
+    if not report_path.exists():
+        checks.append(
+            _build_admission_check(
+                name="offline-prereq-report",
+                status="failed",
+                expected="workspace-validation report exists on disk",
+                actual=f"missing={report_path}",
+            )
+        )
+        if trimmed_reason:
+            payload["operator_override_used"] = True
+            payload["admission_decision"] = "override-admitted"
+            payload["failure_classification"] = {
+                "category": "validation",
+                "code": "override-admitted",
+                "blocking": False,
+                "message": trimmed_reason,
+            }
+            return payload
+        payload["failure_classification"] = {
+            "category": "prerequisite",
+            "code": "offline_gate_missing",
+            "blocking": True,
+            "message": f"offline prerequisite report missing: {report_path}",
+        }
+        return payload
+
+    prereq_payload = _load_json(report_path)
+    counts = prereq_payload.get("counts", {})
+    failed = int(counts.get("failed", 0))
+    known_failure = int(counts.get("known_failure", 0))
+    skipped = int(counts.get("skipped", 0))
+    counts_ok = failed == 0 and known_failure == 0 and skipped == 0
+    checks.append(
+        _build_admission_check(
+            name="offline-prereq-counts",
+            status="passed" if counts_ok else "failed",
+            expected="failed=0, known_failure=0, skipped=0",
+            actual=f"failed={failed}, known_failure={known_failure}, skipped={skipped}",
+        )
+    )
+
+    status_by_name: dict[str, str] = {}
+    for item in prereq_payload.get("results", []):
+        name = str(item.get("name", ""))
+        status = str(item.get("status", ""))
+        if name:
+            status_by_name[name] = status
+    missing_cases = [name for name in REQUIRED_OFFLINE_CASES if name not in status_by_name]
+    non_passed_cases = [name for name in REQUIRED_OFFLINE_CASES if status_by_name.get(name) != "passed"]
+    cases_ok = not missing_cases and not non_passed_cases
+    actual_parts: list[str] = []
+    if missing_cases:
+        actual_parts.append("missing=" + ",".join(missing_cases))
+    if non_passed_cases:
+        actual_parts.append("non_passed=" + ",".join(f"{name}:{status_by_name.get(name, 'missing')}" for name in non_passed_cases))
+    checks.append(
+        _build_admission_check(
+            name="offline-prereq-required-cases",
+            status="passed" if cases_ok else "failed",
+            expected="protocol-compatibility, engineering-regression, simulated-line all passed",
+            actual="all passed" if cases_ok else "; ".join(actual_parts),
+        )
+    )
+
+    payload["offline_prerequisites_passed"] = counts_ok and cases_ok
+    if payload["offline_prerequisites_passed"]:
+        payload["admission_decision"] = "admitted"
+        payload["failure_classification"] = default_failure_classification(status="passed")
+        return payload
+
+    if trimmed_reason:
+        payload["operator_override_used"] = True
+        payload["admission_decision"] = "override-admitted"
+        payload["failure_classification"] = {
+            "category": "validation",
+            "code": "override-admitted",
+            "blocking": False,
+            "message": trimmed_reason,
+        }
+        return payload
+
+    payload["failure_classification"] = {
+        "category": "prerequisite",
+        "code": "operator_override_required",
+        "blocking": True,
+        "message": "limited-hil requires an explicit operator override when offline prerequisites are not fully passed",
+    }
+    return payload
+
+
+def _status_snapshot_from_response(response: dict[str, Any] | None) -> dict[str, Any]:
+    result = response.get("result", {}) if isinstance(response, dict) else {}
+    if not isinstance(result, dict):
+        result = {}
+    io_payload = result.get("io", {})
+    if not isinstance(io_payload, dict):
+        io_payload = {}
+    return {
+        "machine_state": str(result.get("machine_state", "")),
+        "machine_state_reason": str(result.get("machine_state_reason", "")),
+        "connected": bool(result.get("connected", False)),
+        "io": {
+            "estop": bool(io_payload.get("estop", False)),
+            "limit_x_pos": bool(io_payload.get("limit_x_pos", False)),
+            "limit_x_neg": bool(io_payload.get("limit_x_neg", False)),
+            "limit_y_pos": bool(io_payload.get("limit_y_pos", False)),
+            "limit_y_neg": bool(io_payload.get("limit_y_neg", False)),
+        },
+    }
+
+
+def _evaluate_safety_preflight(snapshot: dict[str, Any]) -> dict[str, Any]:
+    io_payload = snapshot.get("io", {}) if isinstance(snapshot, dict) else {}
+    limit_blockers = [
+        name
+        for name, active in (
+            ("limit_x_pos", bool(io_payload.get("limit_x_pos", False))),
+            ("limit_x_neg", bool(io_payload.get("limit_x_neg", False))),
+            ("limit_y_pos", bool(io_payload.get("limit_y_pos", False))),
+            ("limit_y_neg", bool(io_payload.get("limit_y_neg", False))),
+        )
+        if active
+    ]
+    estop_active = bool(io_payload.get("estop", False))
+    checks = [
+        _build_admission_check(
+            name="safety-preflight-estop",
+            status="passed" if not estop_active else "failed",
+            expected="estop=false",
+            actual=f"estop={estop_active}",
+        ),
+        _build_admission_check(
+            name="safety-preflight-limits",
+            status="passed" if not limit_blockers else "failed",
+            expected="no active limit blockers",
+            actual="none" if not limit_blockers else ",".join(limit_blockers),
+        ),
+    ]
+    passed = (not estop_active) and (not limit_blockers)
+    if estop_active:
+        failure = {
+            "category": "safety",
+            "code": "estop_active",
+            "blocking": True,
+            "message": "safety preflight detected estop=true before limited-hil execution",
+        }
+    elif limit_blockers:
+        failure = {
+            "category": "safety",
+            "code": "limit_active",
+            "blocking": True,
+            "message": "safety preflight detected active limit blocker before limited-hil execution",
+        }
+    else:
+        failure = default_failure_classification(status="passed")
+    return {
+        "passed": passed,
+        "snapshot": snapshot,
+        "limit_blockers": limit_blockers,
+        "estop_active": estop_active,
+        "checks": checks,
+        "failure_classification": failure,
+    }
 
 
 def _resolve_default_exe(*file_names: str) -> Path:
@@ -535,6 +789,77 @@ def _build_failure_context(
     }
 
 
+def _bundle_verdict(overall_status: str) -> str:
+    if overall_status == "known_failure":
+        return "known-failure"
+    return overall_status
+
+
+def _write_evidence_bundle(report: dict[str, Any], report_dir: Path, summary_json_path: Path, summary_md_path: Path) -> None:
+    overall_status = _bundle_verdict(str(report.get("overall_status", "incomplete")))
+    admission = report.get("admission", {}) if isinstance(report.get("admission"), dict) else {}
+    failure_classification = report.get("failure_classification", {}) if isinstance(report.get("failure_classification"), dict) else {}
+    bundle = EvidenceBundle(
+        bundle_id=f"hil-closed-loop-{report['generated_at']}",
+        request_ref="hil-closed-loop",
+        producer_lane_ref="limited-hil",
+        report_root=str(report_dir.resolve()),
+        summary_file=str(summary_md_path.resolve()),
+        machine_file=str(summary_json_path.resolve()),
+        verdict=overall_status,
+        linked_asset_refs=("sample.dxf.rect_diag",),
+        offline_prerequisites=tuple(admission.get("required_layers", ("L0-structure-gate", "L2-offline-integration", "L3-simulated-e2e"))),
+        abort_metadata={
+            "failure_context": report.get("failure_context", {}),
+            "admission": admission,
+        },
+        metadata={
+            "duration_seconds": report.get("duration_seconds", 0),
+            "iterations": report.get("iterations", 0),
+            "timeout_count": report.get("timeout_count", 0),
+            "admission": admission,
+        },
+        case_records=[
+            EvidenceCaseRecord(
+                case_id="hil-closed-loop",
+                name="hil-closed-loop",
+                suite_ref="e2e",
+                owner_scope="runtime-execution",
+                primary_layer="L5-limited-hil",
+                producer_lane_ref="limited-hil",
+                status=overall_status,
+                evidence_profile="hil-report",
+                stability_state="stable",
+                required_assets=("sample.dxf.rect_diag",),
+                required_fixtures=("fixture.hil-closed-loop", "fixture.validation-evidence-bundle"),
+                risk_tags=("hardware", "state-machine"),
+                note=str(report.get("failure_context", {}).get("error_message", "")),
+                failure_classification=failure_classification,
+                trace_fields=trace_fields(
+                    stage_id="L5-limited-hil",
+                    artifact_id="hil-closed-loop",
+                    module_id="runtime-execution",
+                    workflow_state="executed",
+                    execution_state=overall_status,
+                    event_name="hil-closed-loop",
+                    failure_code=f"hil.{overall_status}" if overall_status != "passed" else "",
+                    evidence_path=str(summary_json_path.resolve()),
+                ),
+            )
+        ],
+    )
+    write_bundle_artifacts(
+        bundle=bundle,
+        report_root=report_dir,
+        summary_json_path=summary_json_path,
+        summary_md_path=summary_md_path,
+        evidence_links=[
+            EvidenceLink(label="hil-closed-loop-summary.json", path=str(summary_json_path.resolve()), role="machine-summary"),
+            EvidenceLink(label="hil-closed-loop-summary.md", path=str(summary_md_path.resolve()), role="human-summary"),
+        ],
+    )
+
+
 def _write_reports(report: dict, report_dir: Path) -> tuple[Path, Path]:
     report_dir.mkdir(parents=True, exist_ok=True)
     json_path = report_dir / "hil-closed-loop-summary.json"
@@ -559,6 +884,61 @@ def _write_reports(report: dict, report_dir: Path) -> tuple[Path, Path]:
         f"- state_wait_timeout_seconds: `{report['state_wait_timeout_seconds']}`",
         "",
     ]
+
+    admission = report.get("admission")
+    if isinstance(admission, dict):
+        lines.extend(
+            [
+                "## Admission",
+                "",
+                f"- schema_version: `{admission.get('schema_version', '')}`",
+                f"- offline_prerequisites_source: `{admission.get('offline_prerequisites_source', '')}`",
+                f"- offline_prerequisites_passed: `{admission.get('offline_prerequisites_passed', False)}`",
+                f"- operator_override_used: `{admission.get('operator_override_used', False)}`",
+                f"- operator_override_reason: `{admission.get('operator_override_reason', '')}`",
+                f"- admission_decision: `{admission.get('admission_decision', '')}`",
+                f"- safety_preflight_passed: `{admission.get('safety_preflight_passed', False)}`",
+                "",
+            ]
+        )
+        checks = admission.get("checks", [])
+        if isinstance(checks, list) and checks:
+            lines.extend(["### Admission Checks", ""])
+            for check in checks:
+                lines.append(
+                    f"- `{check.get('status', 'unknown')}` `{check.get('name', 'unknown')}` "
+                    f"expected=`{check.get('expected', '')}` actual=`{check.get('actual', '')}`"
+                )
+                if check.get("note"):
+                    lines.append(f"  note: {check['note']}")
+            lines.append("")
+
+        safety_preflight = admission.get("safety_preflight")
+        if isinstance(safety_preflight, dict):
+            lines.extend(
+                [
+                    "### Safety Preflight",
+                    "",
+                    f"- passed: `{safety_preflight.get('passed', False)}`",
+                    f"- estop_active: `{safety_preflight.get('estop_active', False)}`",
+                    f"- limit_blockers: `{','.join(safety_preflight.get('limit_blockers', []))}`",
+                    "",
+                ]
+            )
+
+    failure_classification = report.get("failure_classification")
+    if isinstance(failure_classification, dict):
+        lines.extend(
+            [
+                "## Failure Classification",
+                "",
+                f"- category: `{failure_classification.get('category', '')}`",
+                f"- code: `{failure_classification.get('code', '')}`",
+                f"- blocking: `{failure_classification.get('blocking', False)}`",
+                f"- message: `{failure_classification.get('message', '')}`",
+                "",
+            ]
+        )
 
     failure_context = report.get("failure_context")
     if isinstance(failure_context, dict):
@@ -619,6 +999,7 @@ def _write_reports(report: dict, report_dir: Path) -> tuple[Path, Path]:
             lines.append("  ```")
     lines.append("")
     md_path.write_text("\n".join(lines), encoding="utf-8")
+    _write_evidence_bundle(report, report_dir, json_path, md_path)
     return json_path, md_path
 
 
@@ -635,6 +1016,8 @@ def _build_report(
     state_transition_checks: list[dict],
     socket_connected: bool | None = None,
     failure_context: dict[str, Any] | None = None,
+    admission: dict[str, Any] | None = None,
+    failure_classification: dict[str, Any] | None = None,
 ) -> dict:
     statuses = [step.status for step in steps]
     overall_status = "passed"
@@ -651,6 +1034,14 @@ def _build_report(
             steps=steps,
             iterations=iterations,
             socket_connected=socket_connected,
+        )
+
+    resolved_failure_classification = failure_classification
+    if resolved_failure_classification is None:
+        resolved_failure_classification = default_failure_classification(
+            status=overall_status,
+            failure_code=f"hil.{overall_status}" if overall_status != "passed" else "",
+            note=str((resolved_failure_context or {}).get("error_message", "")),
         )
 
     payload = {
@@ -676,6 +1067,8 @@ def _build_report(
         "timeout_count": timeout_count,
         "elapsed_seconds": round(elapsed_seconds, 3),
         "overall_status": overall_status,
+        "admission": admission or {},
+        "failure_classification": resolved_failure_classification,
         "state_transition_checks": state_transition_checks,
         "steps": [asdict(step) for step in steps],
     }
@@ -718,6 +1111,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--allow-skip-on-missing-gateway", action="store_true")
     parser.add_argument("--allow-skip-on-missing-cli", action="store_true")
+    parser.add_argument("--offline-prereq-report", default="")
+    parser.add_argument("--operator-override-reason", default="")
     return parser.parse_args()
 
 
@@ -731,6 +1126,71 @@ def main() -> int:
     reconnect_count = 0
     timeout_count = 0
     state_transition_checks: list[dict] = []
+    admission = _evaluate_offline_admission(
+        offline_prereq_report=args.offline_prereq_report,
+        operator_override_reason=args.operator_override_reason,
+    )
+    started: float | None = None
+
+    def _finalize(
+        exit_code: int,
+        *,
+        socket_connected: bool | None = None,
+        failure_context: dict[str, Any] | None = None,
+        failure_classification: dict[str, Any] | None = None,
+    ) -> int:
+        report = _build_report(
+            args=args,
+            gateway_exe=gateway_exe,
+            cli_exe=cli_exe,
+            steps=steps,
+            iterations=iterations,
+            reconnect_count=reconnect_count,
+            timeout_count=timeout_count,
+            elapsed_seconds=0.0 if started is None else (time.perf_counter() - started),
+            state_transition_checks=state_transition_checks,
+            socket_connected=socket_connected,
+            failure_context=failure_context,
+            admission=admission,
+            failure_classification=failure_classification,
+        )
+        json_path, md_path = _write_reports(report, report_dir)
+        print(f"hil closed-loop complete: status={report['overall_status']} iterations={iterations}")
+        print(f"json report: {json_path}")
+        print(f"markdown report: {md_path}")
+        return exit_code
+
+    admission_step_status = "passed" if admission.get("admission_decision") in {"admitted", "override-admitted"} else "failed"
+    steps.append(
+        StepResult(
+            name="hil-admission",
+            status=admission_step_status,
+            duration_seconds=0.0,
+            return_code=0 if admission_step_status == "passed" else 1,
+            command=["hil-admission", admission.get("offline_prerequisites_source", "")],
+            note=f"decision={admission.get('admission_decision', 'blocked')}",
+        )
+    )
+    if admission_step_status != "passed":
+        return _finalize(
+            1,
+            failure_context={
+                "iteration": iterations,
+                "step_name": "hil-admission",
+                "method": "admission",
+                "error_message": str(admission.get("failure_classification", {}).get("message", "limited-hil admission blocked")),
+                "last_success_step": "",
+                "socket_connected": False,
+                "recent_status_snapshot": [
+                    {
+                        "name": "hil-admission",
+                        "status": admission_step_status,
+                        "note": str(admission.get("failure_classification", {}).get("message", "")),
+                    }
+                ],
+            },
+            failure_classification=admission.get("failure_classification"),
+        )
 
     if not gateway_exe.exists():
         status = "skipped" if args.allow_skip_on_missing_gateway else "known_failure"
@@ -744,22 +1204,7 @@ def main() -> int:
                 note=f"gateway executable missing: {gateway_exe}",
             )
         )
-        report = _build_report(
-            args=args,
-            gateway_exe=gateway_exe,
-            cli_exe=cli_exe,
-            steps=steps,
-            iterations=iterations,
-            reconnect_count=reconnect_count,
-            timeout_count=timeout_count,
-            elapsed_seconds=0.0,
-            state_transition_checks=state_transition_checks,
-        )
-        json_path, md_path = _write_reports(report, report_dir)
-        print(f"hil closed-loop complete: status={report['overall_status']} iterations={iterations}")
-        print(f"json report: {json_path}")
-        print(f"markdown report: {md_path}")
-        return SKIPPED_EXIT_CODE if status == "skipped" else KNOWN_FAILURE_EXIT_CODE
+        return _finalize(SKIPPED_EXIT_CODE if status == "skipped" else KNOWN_FAILURE_EXIT_CODE)
 
     if cli_exe.exists():
         steps.append(
@@ -801,22 +1246,7 @@ def main() -> int:
                 note=f"dxf file missing: {args.dxf_file}",
             )
         )
-        report = _build_report(
-            args=args,
-            gateway_exe=gateway_exe,
-            cli_exe=cli_exe,
-            steps=steps,
-            iterations=iterations,
-            reconnect_count=reconnect_count,
-            timeout_count=timeout_count,
-            elapsed_seconds=0.0,
-            state_transition_checks=state_transition_checks,
-        )
-        json_path, md_path = _write_reports(report, report_dir)
-        print(f"hil closed-loop complete: status={report['overall_status']} iterations={iterations}")
-        print(f"json report: {json_path}")
-        print(f"markdown report: {md_path}")
-        return 1
+        return _finalize(1)
 
     started = time.perf_counter()
     connect_params = _load_connection_params(args.config_path)
@@ -847,26 +1277,11 @@ def main() -> int:
         if ready_status != "passed":
             if "timeout" in ready_note.lower():
                 timeout_count += 1
-            report = _build_report(
-                args=args,
-                gateway_exe=gateway_exe,
-                cli_exe=cli_exe,
-                steps=steps,
-                iterations=iterations,
-                reconnect_count=reconnect_count,
-                timeout_count=timeout_count,
-                elapsed_seconds=time.perf_counter() - started,
-                state_transition_checks=state_transition_checks,
-            )
-            json_path, md_path = _write_reports(report, report_dir)
-            print(f"hil closed-loop complete: status={report['overall_status']} iterations={iterations}")
-            print(f"json report: {json_path}")
-            print(f"markdown report: {md_path}")
             if ready_status == "known_failure":
-                return KNOWN_FAILURE_EXIT_CODE
+                return _finalize(KNOWN_FAILURE_EXIT_CODE)
             if ready_status == "skipped":
-                return SKIPPED_EXIT_CODE
-            return 1
+                return _finalize(SKIPPED_EXIT_CODE)
+            return _finalize(1)
 
         session_started = time.perf_counter()
         session_note = ""
@@ -888,22 +1303,58 @@ def main() -> int:
             )
         )
         if session_status != "passed":
-            report = _build_report(
-                args=args,
-                gateway_exe=gateway_exe,
-                cli_exe=cli_exe,
-                steps=steps,
-                iterations=iterations,
-                reconnect_count=reconnect_count,
-                timeout_count=timeout_count,
-                elapsed_seconds=time.perf_counter() - started,
-                state_transition_checks=state_transition_checks,
+            return _finalize(1)
+
+        status_preflight_step, status_preflight_response = _run_tcp_step(
+            name="tcp-status-preflight",
+            client=client,
+            method="status",
+            params={},
+            timeout_seconds=8.0,
+        )
+        steps.append(status_preflight_step)
+        if status_preflight_step.status == "known_failure":
+            return _finalize(KNOWN_FAILURE_EXIT_CODE)
+        if status_preflight_step.status != "passed":
+            return _finalize(1)
+
+        safety_preflight = _evaluate_safety_preflight(_status_snapshot_from_response(status_preflight_response))
+        admission["safety_preflight_passed"] = bool(safety_preflight.get("passed", False))
+        admission["safety_preflight"] = safety_preflight
+        steps.append(
+            StepResult(
+                name="safety-preflight",
+                status="passed" if safety_preflight["passed"] else "failed",
+                duration_seconds=0.0,
+                return_code=0 if safety_preflight["passed"] else 1,
+                command=["safety-preflight", "status"],
+                note="safety preflight passed"
+                if safety_preflight["passed"]
+                else str(safety_preflight.get("failure_classification", {}).get("message", "safety preflight failed")),
+                stdout=_truncate(json.dumps(safety_preflight.get("snapshot", {}), ensure_ascii=True)),
             )
-            json_path, md_path = _write_reports(report, report_dir)
-            print(f"hil closed-loop complete: status={report['overall_status']} iterations={iterations}")
-            print(f"json report: {json_path}")
-            print(f"markdown report: {md_path}")
-            return 1
+        )
+        if not safety_preflight["passed"]:
+            return _finalize(
+                1,
+                failure_context={
+                    "iteration": iterations,
+                    "step_name": "safety-preflight",
+                    "method": "status",
+                    "error_message": str(safety_preflight.get("failure_classification", {}).get("message", "safety preflight failed")),
+                    "last_success_step": "tcp-status-preflight",
+                    "socket_connected": client.is_connected(),
+                    "recent_status_snapshot": [
+                        {
+                            "name": "safety-preflight",
+                            "status": "failed",
+                            "note": str(safety_preflight.get("failure_classification", {}).get("message", "")),
+                        }
+                    ],
+                },
+                failure_classification=safety_preflight.get("failure_classification"),
+                socket_connected=client.is_connected(),
+            )
 
         sequence = _build_sequence(
             dxf_file=args.dxf_file,
@@ -923,39 +1374,9 @@ def main() -> int:
         )
         steps.append(dxf_step)
         if dxf_step.status == "failed":
-            report = _build_report(
-                args=args,
-                gateway_exe=gateway_exe,
-                cli_exe=cli_exe,
-                steps=steps,
-                iterations=iterations,
-                reconnect_count=reconnect_count,
-                timeout_count=timeout_count,
-                elapsed_seconds=time.perf_counter() - started,
-                state_transition_checks=state_transition_checks,
-            )
-            json_path, md_path = _write_reports(report, report_dir)
-            print(f"hil closed-loop complete: status={report['overall_status']} iterations={iterations}")
-            print(f"json report: {json_path}")
-            print(f"markdown report: {md_path}")
-            return 1
+            return _finalize(1, socket_connected=client.is_connected())
         if dxf_step.status == "known_failure":
-            report = _build_report(
-                args=args,
-                gateway_exe=gateway_exe,
-                cli_exe=cli_exe,
-                steps=steps,
-                iterations=iterations,
-                reconnect_count=reconnect_count,
-                timeout_count=timeout_count,
-                elapsed_seconds=time.perf_counter() - started,
-                state_transition_checks=state_transition_checks,
-            )
-            json_path, md_path = _write_reports(report, report_dir)
-            print(f"hil closed-loop complete: status={report['overall_status']} iterations={iterations}")
-            print(f"json report: {json_path}")
-            print(f"markdown report: {md_path}")
-            return KNOWN_FAILURE_EXIT_CODE
+            return _finalize(KNOWN_FAILURE_EXIT_CODE, socket_connected=client.is_connected())
 
         deadline = time.perf_counter() + max(1, args.duration_seconds)
         while time.perf_counter() < deadline:
@@ -1014,45 +1435,15 @@ def main() -> int:
                         step = wait_step
 
                 if step.status == "failed":
-                    report = _build_report(
-                        args=args,
-                        gateway_exe=gateway_exe,
-                        cli_exe=cli_exe,
-                        steps=steps,
-                        iterations=iterations,
-                        reconnect_count=reconnect_count,
-                        timeout_count=timeout_count,
-                        elapsed_seconds=time.perf_counter() - started,
-                        state_transition_checks=state_transition_checks,
-                    )
-                    json_path, md_path = _write_reports(report, report_dir)
-                    print(f"hil closed-loop complete: status={report['overall_status']} iterations={iterations}")
-                    print(f"json report: {json_path}")
-                    print(f"markdown report: {md_path}")
-                    return 1
+                    return _finalize(1, socket_connected=client.is_connected())
                 if step.status == "known_failure":
-                    report = _build_report(
-                        args=args,
-                        gateway_exe=gateway_exe,
-                        cli_exe=cli_exe,
-                        steps=steps,
-                        iterations=iterations,
-                        reconnect_count=reconnect_count,
-                        timeout_count=timeout_count,
-                        elapsed_seconds=time.perf_counter() - started,
-                        state_transition_checks=state_transition_checks,
-                    )
-                    json_path, md_path = _write_reports(report, report_dir)
-                    print(f"hil closed-loop complete: status={report['overall_status']} iterations={iterations}")
-                    print(f"json report: {json_path}")
-                    print(f"markdown report: {md_path}")
-                    return KNOWN_FAILURE_EXIT_CODE
+                    return _finalize(KNOWN_FAILURE_EXIT_CODE, socket_connected=client.is_connected())
             if args.max_iterations > 0 and iterations >= args.max_iterations:
                 break
             if time.perf_counter() >= deadline:
                 break
 
-        report = _build_report(
+        final_report = _build_report(
             args=args,
             gateway_exe=gateway_exe,
             cli_exe=cli_exe,
@@ -1062,16 +1453,17 @@ def main() -> int:
             timeout_count=timeout_count,
             elapsed_seconds=time.perf_counter() - started,
             state_transition_checks=state_transition_checks,
+            admission=admission,
         )
-        json_path, md_path = _write_reports(report, report_dir)
-        print(f"hil closed-loop complete: status={report['overall_status']} iterations={iterations}")
+        json_path, md_path = _write_reports(final_report, report_dir)
+        print(f"hil closed-loop complete: status={final_report['overall_status']} iterations={iterations}")
         print(f"json report: {json_path}")
         print(f"markdown report: {md_path}")
-        if report["overall_status"] == "passed":
+        if final_report["overall_status"] == "passed":
             return 0
-        if report["overall_status"] == "known_failure":
+        if final_report["overall_status"] == "known_failure":
             return KNOWN_FAILURE_EXIT_CODE
-        if report["overall_status"] == "skipped":
+        if final_report["overall_status"] == "skipped":
             return SKIPPED_EXIT_CODE
         return 1
     finally:
