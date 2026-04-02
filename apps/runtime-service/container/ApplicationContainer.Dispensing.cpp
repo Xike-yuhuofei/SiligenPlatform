@@ -1,5 +1,7 @@
 #include "ApplicationContainer.h"
 
+#include "application/services/dispensing/AuthorityPreviewAssemblyService.h"
+#include "application/services/dispensing/ExecutionAssemblyService.h"
 #include "application/services/dispensing/DispensePlanningFacade.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/process_path/ProcessPathFacade.h"
@@ -14,6 +16,7 @@
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "runtime/dispensing/WorkflowDispensingProcessPortAdapter.h"
 #include "runtime/planning/PlanningArtifactExportPortAdapter.h"
+#include "runtime/storage/files/LocalFileStorageAdapter.h"
 #include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
 #include "application/usecases/dispensing/PlanningUseCase.h"
 #include "shared/interfaces/ILoggingService.h"
@@ -79,7 +82,8 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::PlanningUseCase>() {
         std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
         std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(
             velocity_profile_service_),
-        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
         config_port_,
         nullptr,
         Siligen::RuntimeExecution::Host::Planning::CreatePlanningArtifactExportPort());
@@ -104,8 +108,10 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::IUploadFilePort>() {
 template<>
 std::shared_ptr<UseCases::Dispensing::CleanupFilesUseCase>
 ApplicationContainer::CreateInstance<UseCases::Dispensing::CleanupFilesUseCase>() {
+    auto local_file_storage =
+        std::dynamic_pointer_cast<Siligen::Infrastructure::Adapters::LocalFileStorageAdapter>(file_storage_port_);
     return std::make_shared<UseCases::Dispensing::CleanupFilesUseCase>(
-        file_storage_port_,
+        std::static_pointer_cast<Siligen::JobIngest::Contracts::Storage::IFileStoragePort>(local_file_storage),
         upload_base_dir_);
 }
 

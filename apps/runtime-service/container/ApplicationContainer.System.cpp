@@ -127,7 +127,7 @@ template<>
 std::shared_ptr<UseCases::System::EmergencyStopUseCase>
 ApplicationContainer::CreateInstance<UseCases::System::EmergencyStopUseCase>() {
     if (!machine_execution_state_port_) {
-        auto backend = std::make_shared<Siligen::Runtime::Host::System::WorkflowMachineExecutionStateBackend>();
+        auto backend = std::make_shared<Siligen::Runtime::Service::System::WorkflowMachineExecutionStateBackend>();
         RegisterPort<Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort>(
             std::make_shared<Siligen::Runtime::Host::System::LegacyMachineExecutionStateAdapter>(backend));
     }

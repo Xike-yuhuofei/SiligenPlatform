@@ -66,7 +66,7 @@ namespace {
 constexpr float32 kEpsilon = 1e-6f;
 constexpr float32 kGluePointDedupEpsilonMm = 1e-4f;
 
-struct PlanningArtifactsBuildInput {
+struct PlanningArtifactsAssemblyInput {
     ProcessPath process_path;
     ProcessPath authority_process_path;
     MotionPlan motion_plan;
@@ -368,7 +368,7 @@ bool ContainsNearPoint(const std::vector<Point2D>& points, const Point2D& point,
     return false;
 }
 
-float32 ResolveSpacingMin(const PlanningArtifactsBuildInput& input, float32 target_spacing) {
+float32 ResolveSpacingMin(const PlanningArtifactsAssemblyInput& input, float32 target_spacing) {
     if (input.spacing_min_mm > 0.0f) {
         return input.spacing_min_mm;
     }
@@ -376,7 +376,7 @@ float32 ResolveSpacingMin(const PlanningArtifactsBuildInput& input, float32 targ
     return 2.7f;
 }
 
-float32 ResolveSpacingMax(const PlanningArtifactsBuildInput& input, float32 target_spacing) {
+float32 ResolveSpacingMax(const PlanningArtifactsAssemblyInput& input, float32 target_spacing) {
     if (input.spacing_max_mm > 0.0f) {
         return input.spacing_max_mm;
     }
@@ -584,7 +584,7 @@ std::vector<Siligen::Shared::Types::Point2D> CollectTriggerPositions(
     return final_glue_points;
 }
 
-const ProcessPath& ResolveAuthorityProcessPath(const PlanningArtifactsBuildInput& input) {
+const ProcessPath& ResolveAuthorityProcessPath(const PlanningArtifactsAssemblyInput& input) {
     if (!input.authority_process_path.segments.empty()) {
         return input.authority_process_path;
     }
@@ -599,7 +599,7 @@ const ProcessPath& ResolveAuthorityProcessPath(const AuthorityPreviewBuildInput&
 }
 
 bool ValidateGlueSpacing(
-    const PlanningArtifactsBuildInput& input,
+    const PlanningArtifactsAssemblyInput& input,
     TriggerArtifacts& artifacts,
     float32 target_spacing_mm) {
     if (artifacts.spacing_validation_groups.empty()) {
@@ -642,7 +642,7 @@ bool ValidateGlueSpacing(
 }
 
 float32 EstimateExecutionTime(
-    const PlanningArtifactsBuildInput& input,
+    const PlanningArtifactsAssemblyInput& input,
     const ExecutionPackageBuilt& built) {
     if (input.estimated_time_s > kEpsilon) {
         return input.estimated_time_s;
@@ -659,7 +659,7 @@ float32 EstimateExecutionTime(
     return 0.0f;
 }
 
-float32 ResolveInterpolationStep(const PlanningArtifactsBuildInput& input) {
+float32 ResolveInterpolationStep(const PlanningArtifactsAssemblyInput& input) {
     if (input.sample_ds > kEpsilon) {
         return input.sample_ds;
     }
@@ -1003,7 +1003,7 @@ TriggerArtifacts BuildTriggerArtifactsFromAuthorityPreview(
 
 Result<TriggerArtifacts> BuildTriggerArtifacts(
     const ProcessPath& path,
-    const PlanningArtifactsBuildInput& input) {
+    const PlanningArtifactsAssemblyInput& input) {
     TriggerArtifacts artifacts;
     if (path.segments.empty()) {
         artifacts.failure_reason = "process path is empty";
@@ -1099,7 +1099,7 @@ Result<TriggerArtifacts> BuildTriggerArtifacts(
 }
 
 Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
-    const PlanningArtifactsBuildInput& input,
+    const PlanningArtifactsAssemblyInput& input,
     const ProcessPath& path,
     const TriggerArtifacts& trigger_artifacts) {
     auto log_stage = [&](const char* stage, const std::string& detail = std::string()) {
@@ -1540,7 +1540,7 @@ Result<AuthorityPreviewBuildResult> AuthorityPreviewAssemblyService::BuildAuthor
 
     const auto& authority_process_path = ResolveAuthorityProcessPath(input);
 
-    PlanningArtifactsBuildInput authority_input;
+    PlanningArtifactsAssemblyInput authority_input;
     authority_input.process_path = input.process_path;
     authority_input.authority_process_path = input.authority_process_path;
     authority_input.source_path = input.source_path;
@@ -1679,7 +1679,7 @@ Result<ExecutionAssemblyBuildResult> ExecutionAssemblyService::BuildExecutionArt
         log_stage("authority_preview_loaded", oss.str());
     }
 
-    PlanningArtifactsBuildInput execution_input;
+    PlanningArtifactsAssemblyInput execution_input;
     execution_input.process_path = input.process_path;
     execution_input.motion_plan = input.motion_plan;
     execution_input.source_path = input.source_path;

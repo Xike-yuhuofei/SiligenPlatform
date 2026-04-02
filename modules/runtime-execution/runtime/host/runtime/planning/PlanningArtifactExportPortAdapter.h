@@ -11,4 +11,6 @@ public:
         const Application::Services::Dispensing::PlanningArtifactExportRequest& request) override;
 };
 
+std::shared_ptr<Application::Services::Dispensing::IPlanningArtifactExportPort> CreatePlanningArtifactExportPort();
+
 }  // namespace Siligen::RuntimeExecution::Host::Planning
