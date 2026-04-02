@@ -30,7 +30,11 @@ add_library(siligen_dispense_packaging_domain_dispensing STATIC
     domain-services/DispensingController.cpp
     domain-services/DispensingProcessService.cpp
     planning/domain-services/AuthorityTriggerLayoutPlanner.cpp
+    planning/domain-services/ClosedLoopAnchorConstraintSolver.cpp
+    planning/domain-services/ClosedLoopCornerAnchorResolver.cpp
     planning/domain-services/PathArcLengthLocator.cpp
+    planning/domain-services/TopologyComponentClassifier.cpp
+    planning/domain-services/TopologySpanSplitter.cpp
     planning/domain-services/CurveFlatteningService.cpp
 )
 
