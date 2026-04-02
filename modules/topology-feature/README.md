@@ -7,6 +7,7 @@
 owner 入口：
 - 构建入口：`modules/topology-feature/CMakeLists.txt`（target：`siligen_module_topology_feature`）
 - 契约入口：`modules/topology-feature/contracts/README.md`
+- 测试入口：`modules/topology-feature/tests/CMakeLists.txt`
 
 ## 统一骨架状态
 
@@ -14,3 +15,14 @@ owner 入口：
 - `adapters/infrastructure/adapters/planning/geometry/` 已成为当前唯一真实实现承载面，模块根 target 直接链接 canonical adapter target。
 - `domain/geometry/` 仅保留迁移期兼容转发壳，不再承载 live owner 实现。
 - 所有 live 实现与构建入口都已收敛到 canonical roots。
+
+## 当前测试面
+
+- `tests/unit/`
+  - 冻结 `ContourAugmentConfig` 默认值
+- `tests/contract/`
+  - 冻结 canonical contract header / legacy bridge 的公开面
+- `tests/golden/`
+  - 冻结默认配置快照 golden
+- `tests/integration/`
+  - 冻结 `ConvertFile` 的最小错误面与文件输出行为

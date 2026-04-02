@@ -84,12 +84,6 @@ PreviewSnapshotResponse WorkflowPreviewSnapshotService::BuildResponse(
     response.execution_point_count = payload.point_count;
     response.execution_polyline_source_point_count = payload.polyline_source_point_count;
     response.execution_polyline_point_count = payload.polyline_point_count;
-    response.motion_preview.source = "execution_trajectory_snapshot";
-    response.motion_preview.kind = "polyline";
-    response.motion_preview.source_point_count = payload.polyline_source_point_count;
-    response.motion_preview.point_count = payload.polyline_point_count;
-    response.motion_preview.is_sampled = payload.polyline_point_count < payload.polyline_source_point_count;
-    response.motion_preview.sampling_strategy = "fixed_spacing_corner_preserving";
     response.total_length_mm = payload.total_length_mm;
     response.estimated_time_s = payload.estimated_time_s;
     response.generated_at = payload.generated_at;
@@ -105,14 +99,13 @@ PreviewSnapshotResponse WorkflowPreviewSnapshotService::BuildResponse(
             response.glue_points.push_back(snapshot_point);
         }
     }
-    response.motion_preview.polyline.reserve(payload.trajectory_polyline.size());
+    response.execution_polyline.reserve(payload.trajectory_polyline.size());
     for (const auto& point : payload.trajectory_polyline) {
         Siligen::Application::UseCases::Dispensing::PreviewSnapshotPoint snapshot_point;
         snapshot_point.x = point.x;
         snapshot_point.y = point.y;
-        response.motion_preview.polyline.push_back(snapshot_point);
+        response.execution_polyline.push_back(snapshot_point);
     }
-    response.execution_polyline = response.motion_preview.polyline;
     return response;
 }
 

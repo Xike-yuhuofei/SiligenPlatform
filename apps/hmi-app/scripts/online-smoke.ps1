@@ -16,6 +16,7 @@ param(
     [switch]$ExerciseRuntimeActions,
     [string]$ScreenshotPath = "",
     [string]$PreviewPayloadPath = "",
+    [string]$RuntimeActionProfile = "",
     [switch]$VerboseMock
 )
 
@@ -321,6 +322,9 @@ function Invoke-UiSmoke {
         }
         if (-not [string]::IsNullOrWhiteSpace($PreviewPayloadPath)) {
             $uiArgs += @("--preview-payload-path", $PreviewPayloadPath)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($RuntimeActionProfile)) {
+            $uiArgs += @("--runtime-action-profile", $RuntimeActionProfile)
         }
     }
 

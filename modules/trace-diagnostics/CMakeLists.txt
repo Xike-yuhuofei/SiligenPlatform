@@ -2,6 +2,13 @@ set(SILIGEN_TRACE_DIAGNOSTICS_SOURCE_ROOT
     "${CMAKE_CURRENT_SOURCE_DIR}/adapters"
 )
 
+if(NOT TARGET siligen_trace_diagnostics_contracts_public AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/contracts/CMakeLists.txt")
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/contracts"
+        "${CMAKE_BINARY_DIR}/modules/trace-diagnostics/contracts"
+    )
+endif()
+
 if(NOT TARGET siligen_spdlog_adapter AND EXISTS "${SILIGEN_TRACE_DIAGNOSTICS_SOURCE_ROOT}/logging/spdlog/SpdlogLoggingAdapter.cpp")
     add_library(siligen_spdlog_adapter STATIC
         "${SILIGEN_TRACE_DIAGNOSTICS_SOURCE_ROOT}/logging/spdlog/SpdlogLoggingAdapter.cpp"
@@ -45,6 +52,11 @@ if(TARGET siligen_trace_diagnostics_application_public)
 else()
     target_link_libraries(siligen_module_trace_diagnostics INTERFACE
         siligen_spdlog_adapter
+    )
+endif()
+if(TARGET siligen_trace_diagnostics_contracts_public)
+    target_link_libraries(siligen_module_trace_diagnostics INTERFACE
+        siligen_trace_diagnostics_contracts_public
     )
 endif()
 target_compile_features(siligen_module_trace_diagnostics INTERFACE cxx_std_17)

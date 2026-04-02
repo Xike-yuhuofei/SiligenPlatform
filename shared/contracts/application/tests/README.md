@@ -1,7 +1,7 @@
 # 兼容性测试
 
 ```powershell
-python tests/contracts/test_protocol_compatibility.py
+python shared/contracts/application/tests/test_application_contracts_compatibility.py
 ```
 
 测试覆盖：

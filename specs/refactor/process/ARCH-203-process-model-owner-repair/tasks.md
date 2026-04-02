@@ -97,7 +97,7 @@
 
 ### Tests for User Story 3
 
-- [X] T028 [P] [US3] Add consumer-cutover regressions in `apps/runtime-gateway/transport-gateway/tests/test_transport_gateway_compatibility.py`, `apps/hmi-app/tests/unit/test_main_window.py`, `apps/hmi-app/tests/unit/test_m11_owner_imports.py`, and `shared/contracts/application/tests/test_protocol_compatibility.py`
+- [X] T028 [P] [US3] Add consumer-cutover regressions in `apps/runtime-gateway/transport-gateway/tests/test_transport_gateway_compatibility.py`, `apps/hmi-app/tests/unit/test_main_window.py`, `apps/hmi-app/tests/unit/test_m11_owner_imports.py`, and `shared/contracts/application/tests/test_application_contracts_compatibility.py`
 - [X] T029 [P] [US3] Add review-traceability supplement gates in `scripts/validation/run-local-validation-gate.ps1` and `specs/refactor/process/ARCH-203-process-model-owner-repair/contracts/traceability-matrix.md`
 
 ### Implementation for User Story 3

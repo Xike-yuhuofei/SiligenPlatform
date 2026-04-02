@@ -21,10 +21,23 @@ class ValidationCase:
     command: list[str]
     cwd: Path
     description: str
+    case_id: str = ""
+    owner_scope: str = "shared/testing"
+    primary_layer: str = ""
+    suite_ref: str = ""
+    risk_tags: tuple[str, ...] = ()
+    required_assets: tuple[str, ...] = ()
+    required_fixtures: tuple[str, ...] = ()
+    evidence_profile: str = "workspace-validation"
+    stability_state: str = "stable"
+    size_label: str = ""
+    label_refs: tuple[str, ...] = ()
     known_failure_patterns: tuple[str, ...] = ()
     known_failure_exit_codes: tuple[int, ...] = ()
     skipped_exit_codes: tuple[int, ...] = ()
     allow_missing: bool = False
+    timeout_seconds: int | None = None
+    retry_budget: int = 0
 
 
 @dataclass
@@ -40,6 +53,17 @@ class ValidationResult:
     stdout: str = ""
     stderr: str = ""
     note: str = ""
+    case_id: str = ""
+    owner_scope: str = "shared/testing"
+    primary_layer: str = ""
+    suite_ref: str = ""
+    risk_tags: tuple[str, ...] = ()
+    required_assets: tuple[str, ...] = ()
+    required_fixtures: tuple[str, ...] = ()
+    evidence_profile: str = "workspace-validation"
+    stability_state: str = "stable"
+    size_label: str = ""
+    label_refs: tuple[str, ...] = ()
 
 
 @dataclass
@@ -92,7 +116,6 @@ def _classify_success(case: ValidationCase, stdout: str, stderr: str) -> tuple[s
 
 
 def run_case(case: ValidationCase) -> ValidationResult:
-    start = time.perf_counter()
     executable = case.command[0]
     if case.allow_missing and not Path(executable).exists():
         return ValidationResult(
@@ -105,38 +128,106 @@ def run_case(case: ValidationCase) -> ValidationResult:
             command=case.command,
             cwd=str(case.cwd),
             note=f"missing executable: {executable}",
+            case_id=case.case_id,
+            owner_scope=case.owner_scope,
+            primary_layer=case.primary_layer,
+            suite_ref=case.suite_ref,
+            risk_tags=case.risk_tags,
+            required_assets=case.required_assets,
+            required_fixtures=case.required_fixtures,
+            evidence_profile=case.evidence_profile,
+            stability_state=case.stability_state,
+            size_label=case.size_label,
+            label_refs=case.label_refs,
         )
 
-    completed = subprocess.run(
-        case.command,
-        cwd=str(case.cwd),
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        env=os.environ.copy(),
-    )
-    duration = time.perf_counter() - start
-    stdout = _truncate(completed.stdout or "")
-    stderr = _truncate(completed.stderr or "")
-    if completed.returncode == 0:
-        status, note = _classify_success(case, stdout, stderr)
-    else:
-        status, note = _classify_failure(case, completed.returncode, stdout, stderr)
+    total_duration = 0.0
+    attempts = max(1, case.retry_budget + 1)
+    attempt_notes: list[str] = []
 
-    return ValidationResult(
-        name=case.name,
-        layer=case.layer,
-        description=case.description,
-        status=status,
-        return_code=completed.returncode,
-        duration_seconds=duration,
-        command=case.command,
-        cwd=str(case.cwd),
-        stdout=stdout,
-        stderr=stderr,
-        note=note,
-    )
+    for attempt_index in range(1, attempts + 1):
+        start = time.perf_counter()
+        try:
+            completed = subprocess.run(
+                case.command,
+                cwd=str(case.cwd),
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                env=os.environ.copy(),
+                timeout=case.timeout_seconds,
+            )
+            total_duration += time.perf_counter() - start
+            stdout = _truncate(completed.stdout or "")
+            stderr = _truncate(completed.stderr or "")
+            if completed.returncode == 0:
+                status, note = _classify_success(case, stdout, stderr)
+            else:
+                status, note = _classify_failure(case, completed.returncode, stdout, stderr)
+            if attempt_index < attempts and status == "failed":
+                attempt_notes.append(f"attempt {attempt_index}/{attempts} failed; retrying")
+                continue
+            final_note = "; ".join(item for item in [*attempt_notes, note] if item)
+            return ValidationResult(
+                name=case.name,
+                layer=case.layer,
+                description=case.description,
+                status=status,
+                return_code=completed.returncode,
+                duration_seconds=total_duration,
+                command=case.command,
+                cwd=str(case.cwd),
+                stdout=stdout,
+                stderr=stderr,
+                note=final_note,
+                case_id=case.case_id,
+                owner_scope=case.owner_scope,
+                primary_layer=case.primary_layer,
+                suite_ref=case.suite_ref,
+                risk_tags=case.risk_tags,
+                required_assets=case.required_assets,
+                required_fixtures=case.required_fixtures,
+                evidence_profile=case.evidence_profile,
+                stability_state=case.stability_state,
+                size_label=case.size_label,
+                label_refs=case.label_refs,
+            )
+        except subprocess.TimeoutExpired as exc:
+            total_duration += time.perf_counter() - start
+            stdout = _truncate((exc.stdout or "") if isinstance(exc.stdout, str) else "")
+            stderr = _truncate((exc.stderr or "") if isinstance(exc.stderr, str) else "")
+            timeout_note = f"command timed out after {case.timeout_seconds}s"
+            if attempt_index < attempts:
+                attempt_notes.append(f"attempt {attempt_index}/{attempts} timed out; retrying")
+                continue
+            final_note = "; ".join(item for item in [*attempt_notes, timeout_note] if item)
+            return ValidationResult(
+                name=case.name,
+                layer=case.layer,
+                description=case.description,
+                status="failed",
+                return_code=124,
+                duration_seconds=total_duration,
+                command=case.command,
+                cwd=str(case.cwd),
+                stdout=stdout,
+                stderr=stderr,
+                note=final_note,
+                case_id=case.case_id,
+                owner_scope=case.owner_scope,
+                primary_layer=case.primary_layer,
+                suite_ref=case.suite_ref,
+                risk_tags=case.risk_tags,
+                required_assets=case.required_assets,
+                required_fixtures=case.required_fixtures,
+                evidence_profile=case.evidence_profile,
+                stability_state=case.stability_state,
+                size_label=case.size_label,
+                label_refs=case.label_refs,
+            )
+
+    raise RuntimeError(f"unreachable validation result for case {case.name}")
 
 
 def report_to_json(report: ValidationReport, path: Path) -> None:
@@ -196,7 +287,19 @@ def report_to_markdown(report: ValidationReport, path: Path) -> None:
             lines.append("")
             continue
         for result in layer_results:
-            lines.append(f"- `{result.status}` `{result.name}`: {result.description}")
+            case_suffix = f" [{result.case_id}]" if result.case_id else ""
+            descriptor = result.description
+            if result.primary_layer:
+                descriptor = f"{descriptor} | primary_layer={result.primary_layer}"
+            if result.owner_scope:
+                descriptor = f"{descriptor} | owner_scope={result.owner_scope}"
+            if result.suite_ref:
+                descriptor = f"{descriptor} | suite={result.suite_ref}"
+            if result.size_label:
+                descriptor = f"{descriptor} | size={result.size_label}"
+            if result.label_refs:
+                descriptor = f"{descriptor} | labels={','.join(result.label_refs)}"
+            lines.append(f"- `{result.status}` `{result.name}`{case_suffix}: {descriptor}")
             lines.append(f"  command: `{subprocess.list2cmdline(result.command)}`")
             lines.append(f"  duration_seconds: `{result.duration_seconds:.3f}`")
             if result.note:

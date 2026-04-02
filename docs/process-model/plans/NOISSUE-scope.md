@@ -42,7 +42,7 @@
 10. `packages/process-runtime-core/src/application/usecases/dispensing/DispensingWorkflowUseCase.cpp`
 11. `packages/application-contracts/commands/dxf.command-set.json`
 12. `packages/application-contracts/fixtures/responses/dxf.preview.snapshot.success.json`
-13. `packages/application-contracts/tests/test_protocol_compatibility.py`
+13. `shared/contracts/application/tests/test_application_contracts_compatibility.py`
 
 说明：4-13 是否全部进入改动取决于“点状数据从何处提供”的最终契约决策；本文件仅冻结范围，不强行绑定实现路径。
 

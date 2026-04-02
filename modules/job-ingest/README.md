@@ -25,3 +25,8 @@
 - 已补齐 module.yaml、domain、services、application、adapters、tests 与 examples 子目录。
 - 终态实现必须只落在该模块 canonical 骨架内，不再引入桥接目录或旁路 owner 面。
 
+## 测试基线
+
+- `modules/job-ingest/tests/` 负责 `job-ingest` owner 级 `unit + contracts + golden + integration` 证明。
+- 当前最小正式矩阵聚焦 `UploadFileUseCase` 的上传校验、PB 生成闭环与失败清理。
+- 仓库级 `tests/` 只消费跨 owner 场景，不替代 `job-ingest` 模块内 contract。

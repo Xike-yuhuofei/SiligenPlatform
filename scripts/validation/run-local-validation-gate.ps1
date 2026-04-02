@@ -2,12 +2,58 @@
 param(
     [string]$PythonExe = "python",
     [string]$ReportRoot = "tests/reports/local-validation-gate",
+    [ValidateSet("auto", "quick-gate", "full-offline-gate", "nightly-performance", "limited-hil")]
+    [string]$Lane = "quick-gate",
+    [ValidateSet("low", "medium", "high", "hardware-sensitive")]
+    [string]$RiskProfile = "medium",
+    [ValidateSet("auto", "quick", "full-offline", "nightly", "hil")]
+    [string]$DesiredDepth = "quick",
+    [string[]]$ChangedScope = @(),
+    [string[]]$SkipLayer = @(),
+    [string]$SkipJustification = "",
     [switch]$IncludeHilCaseMatrix
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 Set-Location $repoRoot
+
+function Resolve-LanePolicy {
+    param([string]$LaneId)
+
+    switch ($LaneId) {
+        "quick-gate" {
+            return @{ GateDecision = "blocking"; DefaultFailPolicy = "fail-fast"; TimeoutBudgetSeconds = 900; RetryBudget = 0; FailFastCaseLimit = 1 }
+        }
+        "full-offline-gate" {
+            return @{ GateDecision = "blocking"; DefaultFailPolicy = "collect-and-report"; TimeoutBudgetSeconds = 2700; RetryBudget = 1; FailFastCaseLimit = 0 }
+        }
+        "nightly-performance" {
+            return @{ GateDecision = "blocking"; DefaultFailPolicy = "collect-and-report"; TimeoutBudgetSeconds = 3600; RetryBudget = 1; FailFastCaseLimit = 0 }
+        }
+        "limited-hil" {
+            return @{ GateDecision = "blocking"; DefaultFailPolicy = "manual-signoff-required"; TimeoutBudgetSeconds = 1800; RetryBudget = 0; FailFastCaseLimit = 1 }
+        }
+        default {
+            throw "Unsupported lane policy request: $LaneId"
+        }
+    }
+}
+
+if ($SkipLayer.Count -gt 0 -and [string]::IsNullOrWhiteSpace($SkipJustification)) {
+    throw "SkipJustification is required when SkipLayer is not empty."
+}
+
+$lanePolicy = Resolve-LanePolicy -LaneId $Lane
+Write-Output (
+    "local gate lane policy: lane={0} gate_decision={1} fail_policy={2} timeout_budget_seconds={3} retry_budget={4} fail_fast_case_limit={5}" -f
+    $Lane,
+    $lanePolicy.GateDecision,
+    $lanePolicy.DefaultFailPolicy,
+    $lanePolicy.TimeoutBudgetSeconds,
+    $lanePolicy.RetryBudget,
+    $lanePolicy.FailFastCaseLimit
+)
 
 $thirdPartyBootstrap = Join-Path $repoRoot "scripts\bootstrap\bootstrap-third-party.ps1"
 if (-not (Test-Path $thirdPartyBootstrap)) {
@@ -195,10 +241,30 @@ $steps = @(
             "contracts",
             "-ReportDir",
             $workspaceValidationDir,
+            "-Lane",
+            $Lane,
+            "-RiskProfile",
+            $RiskProfile,
+            "-DesiredDepth",
+            $DesiredDepth,
             "-FailOnKnownFailure"
         )
     }
 )
+
+foreach ($scopeName in $ChangedScope) {
+    if (-not [string]::IsNullOrWhiteSpace($scopeName)) {
+        $steps[-1].Command += @("-ChangedScope", $scopeName)
+    }
+}
+foreach ($layerName in $SkipLayer) {
+    if (-not [string]::IsNullOrWhiteSpace($layerName)) {
+        $steps[-1].Command += @("-SkipLayer", $layerName)
+    }
+}
+if (-not [string]::IsNullOrWhiteSpace($SkipJustification)) {
+    $steps[-1].Command += @("-SkipJustification", $SkipJustification)
+}
 
 if ($IncludeHilCaseMatrix) {
     $steps += @{
@@ -218,9 +284,29 @@ if ($IncludeHilCaseMatrix) {
             "e2e",
             "-ReportDir",
             $workspaceValidationHilMatrixDir,
+            "-Lane",
+            $Lane,
+            "-RiskProfile",
+            $RiskProfile,
+            "-DesiredDepth",
+            $DesiredDepth,
             "-FailOnKnownFailure",
             "-IncludeHilCaseMatrix"
         )
+    }
+
+    foreach ($scopeName in $ChangedScope) {
+        if (-not [string]::IsNullOrWhiteSpace($scopeName)) {
+            $steps[-1].Command += @("-ChangedScope", $scopeName)
+        }
+    }
+    foreach ($layerName in $SkipLayer) {
+        if (-not [string]::IsNullOrWhiteSpace($layerName)) {
+            $steps[-1].Command += @("-SkipLayer", $layerName)
+        }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($SkipJustification)) {
+        $steps[-1].Command += @("-SkipJustification", $SkipJustification)
     }
 }
 
@@ -273,6 +359,12 @@ $overallStatus = if ($failedCount -eq 0) { "passed" } else { "failed" }
 $summary = [ordered]@{
     generated_at    = (Get-Date).ToString("s")
     branch          = (git branch --show-current)
+    lane            = $Lane
+    lane_gate_decision = $lanePolicy.GateDecision
+    lane_fail_policy = $lanePolicy.DefaultFailPolicy
+    lane_timeout_budget_seconds = $lanePolicy.TimeoutBudgetSeconds
+    lane_retry_budget = $lanePolicy.RetryBudget
+    lane_fail_fast_case_limit = $lanePolicy.FailFastCaseLimit
     report_root     = $resolvedRoot
     run_dir         = $runDir
     freeze_report_dir = $dspE2ESpecDir
