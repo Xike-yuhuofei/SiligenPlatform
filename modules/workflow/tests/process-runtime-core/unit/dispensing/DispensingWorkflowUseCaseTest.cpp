@@ -18,7 +18,8 @@
 #define SILIGEN_TEST_HOOKS
 #endif
 #define private public
-#include "application/services/dispensing/DispensePlanningFacade.h"
+#include "application/services/dispensing/AuthorityPreviewAssemblyService.h"
+#include "application/services/dispensing/ExecutionAssemblyService.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "runtime_execution/contracts/dispensing/IDispensingProcessPort.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
@@ -271,7 +272,8 @@ std::shared_ptr<PlanningUseCase> CreateRealPlanningUseCase() {
         path_source,
         std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
         std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
         nullptr,
         pb_service);
 }
@@ -284,7 +286,8 @@ std::shared_ptr<PlanningUseCase> CreatePlanningUseCaseWithPathSourceAndExport(
         path_source,
         std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
         std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
         nullptr,
         pb_service,
         export_port);
@@ -297,7 +300,8 @@ std::shared_ptr<PlanningUseCase> CreatePlanningUseCaseWithPathSource(
         path_source,
         std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
         std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
         nullptr,
         pb_service);
 }
@@ -1733,3 +1737,4 @@ TEST(DispensingWorkflowUseCaseTest, FinalizeJobClearsConfirmedPreviewState) {
         DispensingWorkflowUseCase::PlanPreviewState::SNAPSHOT_READY);
     EXPECT_TRUE(use_case.plans_.at("plan-finish").confirmed_at.empty());
 }
+
