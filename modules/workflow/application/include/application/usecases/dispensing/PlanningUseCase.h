@@ -1,6 +1,7 @@
 #pragma once
 
-#include "application/services/dispensing/DispensePlanningFacade.h"
+#include "application/services/dispensing/AuthorityPreviewAssemblyService.h"
+#include "application/services/dispensing/ExecutionAssemblyService.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/process_path/ProcessPathFacade.h"
 #include "domain/configuration/ports/IConfigurationPort.h"
@@ -11,7 +12,7 @@
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
 #include "shared/types/TrajectoryTypes.h"
-#include "workflow/application/services/dispensing/IPlanningArtifactExportPort.h"
+#include "workflow/application/services/dispensing/PlanningArtifactExportPort.h"
 
 #include <cstdint>
 #include <memory>
@@ -231,7 +232,7 @@ struct ExecutionAssemblyResponse {
  * 业务流程:
  * 1. 验证请求参数
  * 2. 通过 M6/M7 facade 完成 process path 与 motion plan 编排
- * 3. 通过 M8 facade 组装 preview payload 与 execution package
+ * 3. 通过 M8 窄 assembly service 组装 preview payload 与 execution package
  * 5. 返回完整的规划结果
  *
  * 架构合规性:
@@ -250,8 +251,10 @@ public:
         std::shared_ptr<Siligen::Application::Services::ProcessPath::ProcessPathFacade> process_path_facade,
         std::shared_ptr<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>
             motion_planning_facade,
-        std::shared_ptr<Siligen::Application::Services::Dispensing::DispensePlanningFacade>
-            dispense_planning_facade,
+        std::shared_ptr<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>
+            authority_preview_assembly_service,
+        std::shared_ptr<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>
+            execution_assembly_service,
         std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port = nullptr,
         std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService>
             pb_preparation_service = nullptr,
@@ -283,8 +286,10 @@ private:
     std::shared_ptr<Siligen::Application::Services::ProcessPath::ProcessPathFacade> process_path_facade_;
     std::shared_ptr<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>
         motion_planning_facade_;
-    std::shared_ptr<Siligen::Application::Services::Dispensing::DispensePlanningFacade>
-        dispense_planning_facade_;
+    std::shared_ptr<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>
+        authority_preview_assembly_service_;
+    std::shared_ptr<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>
+        execution_assembly_service_;
     std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port_;
     std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService> pb_preparation_service_;
     std::shared_ptr<Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort> artifact_export_port_;

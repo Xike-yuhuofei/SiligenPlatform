@@ -8,4 +8,4 @@ allowed_dependencies:
   - process-planning/contracts
   - shared
 uniform_skeleton_ready: true
-notes: domain/dispensing 是唯一真实实现承载面；模块根 target 已切到 siligen_dispense_packaging_domain_dispensing
+notes: domain/dispensing 是当前主实现承载面，但仍混有 planning/process-control residual；live-vs-parked 事实以 LIVE_OWNER_BOUNDARY_INVENTORY.md 为准
