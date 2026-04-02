@@ -7,6 +7,7 @@
 - logging bootstrap 输入、logger naming 与初始化结果的最小契约口径。
 - `spdlog` adapter 接线所需的配置兼容语义。
 - 诊断日志基础字段的命名约束，不扩张为 trace/query/archive/audit 数据模型。
+- `trace_diagnostics/contracts/ValidationEvidenceBundle.h` 冻结最小 evidence bundle 结构。
 
 ## 边界约束
 

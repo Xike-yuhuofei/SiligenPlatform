@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
 
+if(NOT TARGET siligen_trace_diagnostics_contracts_public AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../contracts/CMakeLists.txt")
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../contracts"
+        "${CMAKE_CURRENT_BINARY_DIR}/tdc"
+    )
+endif()
+
 set(SILIGEN_TRACE_DIAGNOSTICS_ADAPTERS_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../adapters")
 if(NOT TARGET siligen_spdlog_adapter AND EXISTS "${SILIGEN_TRACE_DIAGNOSTICS_ADAPTERS_SOURCE_ROOT}/logging/spdlog/SpdlogLoggingAdapter.cpp")
     add_library(siligen_spdlog_adapter STATIC
@@ -50,6 +57,11 @@ target_link_libraries(siligen_trace_diagnostics_application PUBLIC
     siligen_types
     siligen_spdlog_adapter
 )
+if(TARGET siligen_trace_diagnostics_contracts_public)
+    target_link_libraries(siligen_trace_diagnostics_application PUBLIC
+        siligen_trace_diagnostics_contracts_public
+    )
+endif()
 target_compile_features(siligen_trace_diagnostics_application PUBLIC cxx_std_17)
 
 if(NOT TARGET siligen_trace_diagnostics_application_public)
@@ -62,4 +74,9 @@ target_include_directories(siligen_trace_diagnostics_application_public INTERFAC
     ${SILIGEN_TRACE_DIAGNOSTICS_APPLICATION_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
+if(TARGET siligen_trace_diagnostics_contracts_public)
+    target_link_libraries(siligen_trace_diagnostics_application_public INTERFACE
+        siligen_trace_diagnostics_contracts_public
+    )
+endif()
 target_compile_features(siligen_trace_diagnostics_application_public INTERFACE cxx_std_17)

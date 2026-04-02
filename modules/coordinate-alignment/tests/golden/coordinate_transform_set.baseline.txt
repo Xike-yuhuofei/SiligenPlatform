@@ -1,0 +1,11 @@
+alignment_id=baseline-alignment
+plan_id=plan-origin-rotation
+valid=true
+owner_module=M5
+transform_count=2
+transform[0].id=origin-offset
+transform[0].source=machine-origin
+transform[0].target=alignment-origin
+transform[1].id=rotation-z
+transform[1].source=alignment-origin
+transform[1].target=process-frame

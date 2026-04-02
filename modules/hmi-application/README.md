@@ -12,6 +12,7 @@
 
 - 构建入口：`modules/hmi-application/CMakeLists.txt`（target：`siligen_module_hmi_application`）。
 - 模块契约入口：`modules/hmi-application/contracts/README.md`。
+- 测试入口：`modules/hmi-application/tests/CMakeLists.txt`。
 
 ## 边界约束
 
@@ -34,3 +35,10 @@
 - 已补齐 module.yaml、domain、services、application、adapters、tests 与 examples 子目录。
 - `modules/hmi-application/tests/unit/` 为 `M11` owner 规则 canonical 测试面；`apps/hmi-app/tests/unit/` 只保留 thin-host 集成断言。
 - 终态实现必须只落在该模块 canonical 骨架内，不再引入桥接目录或旁路 owner 面。
+
+## 当前测试面
+
+- `tests/unit/`
+  - 冻结 launch state projection、startup-state 与 preview protocol consumption
+- `tests/contract/`
+  - 冻结 `launch_supervision_contract.py` 的快照/事件不变量

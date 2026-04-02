@@ -12,6 +12,7 @@
 
 - 构建入口：`modules/trace-diagnostics/CMakeLists.txt`（target：`siligen_module_trace_diagnostics`）。
 - 模块契约入口：`modules/trace-diagnostics/contracts/README.md`。
+- 测试入口：`modules/trace-diagnostics/tests/CMakeLists.txt`。
 
 ## 结构归位
 
@@ -34,3 +35,12 @@
 - 已补齐 module.yaml、domain、services、application、adapters、tests 与 examples 子目录。
 - `adapters/logging/spdlog/` 是当前明确的日志适配实现承载面。
 - 终态实现必须继续落在该模块 canonical 骨架内，不再引入 bridge 目录。
+
+## 当前测试面
+
+- `tests/contract/`
+  - 冻结最小 evidence bundle contract
+- `tests/evidence/`
+  - 冻结 `summary/timeline/artifacts/report_path` baseline 样本
+- `tests/observability/`
+  - 冻结 `CreateLoggingService` bootstrap 与日志可观测回归
