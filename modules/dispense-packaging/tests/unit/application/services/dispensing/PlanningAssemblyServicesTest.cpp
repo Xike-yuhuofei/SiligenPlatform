@@ -34,9 +34,6 @@ using Siligen::Shared::Types::float32;
 using Siligen::Shared::Types::int32;
 using Siligen::Shared::Types::uint32;
 
-constexpr char kMixedExplicitBoundaryWithReorderedBranchFamily[] =
-    "mixed_explicit_boundary_with_reordered_branch_family";
-
 struct PlanningAssemblyTestInput {
     ProcessPath process_path;
     ProcessPath authority_process_path;
@@ -821,7 +818,7 @@ TEST(PlanningAssemblyServicesTest, AssemblePlanningArtifactsSupportsMixedOpenCha
     }
 }
 
-TEST(PlanningAssemblyServicesTest, AssemblePlanningArtifactsKeepsExplicitBoundaryMixedWithReorderedBranchFamilyBlocked) {
+TEST(PlanningAssemblyServicesTest, AssemblePlanningArtifactsSupportsExplicitBoundaryMixedWithReorderedBranchFamily) {
     auto input = BuildInput();
     input.trigger_spatial_interval_mm = 5.0f;
     input.process_path.segments.clear();
@@ -848,25 +845,40 @@ TEST(PlanningAssemblyServicesTest, AssemblePlanningArtifactsKeepsExplicitBoundar
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
     const auto& payload = result.Value();
     const auto& layout = payload.authority_trigger_layout;
-    EXPECT_FALSE(layout.authority_ready);
-    EXPECT_EQ(layout.dispatch_type, TopologyDispatchType::UnsupportedMixedTopology);
+    EXPECT_TRUE(layout.authority_ready);
+    EXPECT_EQ(layout.dispatch_type, TopologyDispatchType::BranchOrRevisit);
     EXPECT_EQ(layout.effective_component_count, 1U);
     EXPECT_EQ(layout.ignored_component_count, 0U);
     ASSERT_EQ(layout.components.size(), 1U);
     ASSERT_EQ(layout.spans.size(), 3U);
     ASSERT_EQ(layout.validation_outcomes.size(), 3U);
-    EXPECT_TRUE(layout.trigger_points.empty());
-    EXPECT_EQ(layout.components.front().dispatch_type, TopologyDispatchType::UnsupportedMixedTopology);
-    EXPECT_EQ(layout.components.front().blocking_reason, kMixedExplicitBoundaryWithReorderedBranchFamily);
-    EXPECT_FALSE(payload.preview_authority_ready);
-    EXPECT_FALSE(payload.preview_binding_ready);
-    EXPECT_FALSE(payload.preview_spacing_valid);
-    EXPECT_EQ(payload.preview_validation_classification, "fail");
-    EXPECT_TRUE(payload.glue_points.empty());
-    EXPECT_EQ(payload.preview_failure_reason, kMixedExplicitBoundaryWithReorderedBranchFamily);
+    ASSERT_EQ(layout.trigger_points.size(), 9U);
+    EXPECT_EQ(layout.components.front().dispatch_type, TopologyDispatchType::BranchOrRevisit);
+    EXPECT_TRUE(layout.components.front().blocking_reason.empty());
+    EXPECT_EQ(layout.spans[0].split_reason,
+              Siligen::Domain::Dispensing::ValueObjects::DispenseSpanSplitReason::ExplicitProcessBoundary);
+    EXPECT_EQ(layout.spans[1].split_reason,
+              Siligen::Domain::Dispensing::ValueObjects::DispenseSpanSplitReason::MultiContourBoundary);
+    EXPECT_EQ(layout.spans[2].split_reason,
+              Siligen::Domain::Dispensing::ValueObjects::DispenseSpanSplitReason::MultiContourBoundary);
+    EXPECT_TRUE(payload.preview_authority_ready);
+    EXPECT_TRUE(payload.preview_binding_ready);
+    EXPECT_TRUE(payload.preview_authority_shared_with_execution);
+    EXPECT_TRUE(payload.preview_spacing_valid);
+    EXPECT_TRUE(payload.preview_failure_reason.empty());
+    EXPECT_EQ(payload.glue_points.size(), layout.trigger_points.size());
+    EXPECT_EQ(CountPointsNear(payload.glue_points, Point2D(0.0f, 0.0f), 1e-4f), 3U);
+    const bool has_exception = std::any_of(
+        layout.validation_outcomes.begin(),
+        layout.validation_outcomes.end(),
+        [](const auto& outcome) {
+            return outcome.classification ==
+                Siligen::Domain::Dispensing::ValueObjects::SpacingValidationClassification::PassWithException;
+        });
+    EXPECT_EQ(payload.preview_validation_classification, has_exception ? "pass_with_exception" : "pass");
     for (const auto& outcome : layout.validation_outcomes) {
-        EXPECT_EQ(outcome.dispatch_type, TopologyDispatchType::UnsupportedMixedTopology);
-        EXPECT_EQ(outcome.blocking_reason, kMixedExplicitBoundaryWithReorderedBranchFamily);
+        EXPECT_EQ(outcome.dispatch_type, TopologyDispatchType::BranchOrRevisit);
+        EXPECT_TRUE(outcome.blocking_reason.empty());
         EXPECT_EQ(outcome.component_id, layout.components.front().component_id);
     }
 }
