@@ -7,17 +7,10 @@ if(NOT TARGET siligen_device_contracts AND EXISTS "${SILIGEN_WORKSPACE_ROOT}/sha
     )
 endif()
 
-if(NOT TARGET siligen_process_planning_contracts_public)
+if(NOT TARGET siligen_process_planning_legacy_configuration_bridge_public)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../../process-planning/contracts"
         "${CMAKE_BINARY_DIR}/_p/rea_ppc"
-    )
-endif()
-
-if(NOT TARGET siligen_dispense_packaging_domain_dispensing)
-    add_subdirectory(
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../dispense-packaging/domain/dispensing"
-        "${CMAKE_BINARY_DIR}/_p/rea_dpd"
     )
 endif()
 
@@ -40,7 +33,7 @@ target_link_libraries(siligen_runtime_execution_application_headers INTERFACE
     siligen_runtime_execution_runtime_contracts
     siligen_dispense_packaging_contracts_public
     siligen_domain
-    siligen_process_planning_contracts_public
+    siligen_process_planning_legacy_configuration_bridge_public
 )
 if(TARGET siligen_device_contracts)
     target_link_libraries(siligen_runtime_execution_application_headers INTERFACE
@@ -63,6 +56,7 @@ if(NOT TARGET siligen_runtime_execution_application)
         services/motion/MotionStatusServiceImpl.cpp
         services/calibration/CalibrationWorkflowService.cpp
         usecases/motion/MotionControlUseCase.cpp
+        usecases/dispensing/ExecutionObserverSupport.cpp
         usecases/dispensing/DispensingExecutionUseCase.cpp
         usecases/dispensing/DispensingExecutionUseCase.Setup.cpp
         usecases/dispensing/DispensingExecutionUseCase.Control.cpp
@@ -79,9 +73,8 @@ target_include_directories(siligen_runtime_execution_application PRIVATE
 target_link_libraries(siligen_runtime_execution_application PUBLIC
     siligen_runtime_execution_runtime_contracts
     siligen_dispense_packaging_contracts_public
-    siligen_dispense_packaging_domain_dispensing
     siligen_domain
-    siligen_process_planning_contracts_public
+    siligen_process_planning_legacy_configuration_bridge_public
     siligen_types
     siligen_utils
     siligen_geometry

@@ -313,11 +313,7 @@ class CommandProtocol:
             params["wait_for_completion"] = False
         if timeout_ms > 0:
             params["timeout_ms"] = int(timeout_ms)
-        resp = self._client.send_request(
-            "home.auto",
-            params,
-            timeout=_resolve_homing_rpc_timeout_s(timeout_ms),
-        )
+        resp = self._client.send_request("home.auto", params, timeout=_resolve_homing_rpc_timeout_s(timeout_ms))
         if "error" in resp:
             return False, resp["error"].get("message", "Unknown error")
 

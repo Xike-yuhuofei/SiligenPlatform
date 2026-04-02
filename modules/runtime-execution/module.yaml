@@ -5,6 +5,8 @@ group: runtime
 target_root: modules/runtime-execution
 allowed_dependencies:
   - dispense-packaging/contracts
+  - process-planning/contracts
   - shared
+  - workflow/application
 uniform_skeleton_ready: true
-notes: contracts/device、adapters/device、runtime/host 是唯一真实实现与构建承载面；planner-cli 与 transport-gateway 仅消费 canonical runtime surfaces
+notes: application、contracts/device、contracts/runtime、adapters/device、runtime/host 是当前 live build surfaces，tests 是 canonical validation surface；domain、services 仍为预留目录，不得被解读为已承接 live owner。job/session/control 当前 live owner 位于 application/usecases/**；runtime/host 仅允许私有消费 workflow/application 的 planning artifact export consumer port，并消费 dispense-packaging/contracts 的 request 载荷；apps/runtime-service/runtime/{dispensing,status,supervision} 仅允许保留 app-local wiring、snapshot/export 组装与 terminal side effect 协同，不得回流为 M9 owner；不得恢复 broad workflow public surface 或重新直连 dispense-packaging domain implementation；planner-cli 与 transport-gateway 仅消费 canonical runtime surfaces

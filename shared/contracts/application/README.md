@@ -10,7 +10,7 @@
 - 状态、错误、事件模型：`models/*.json`
 - 协议版本与兼容策略：`docs/protocol-versioning.md`
 - 事实样例：`fixtures/`
-- 兼容性测试：`tests/test_protocol_compatibility.py`
+- 兼容性测试：`tests/test_application_contracts_compatibility.py`
 - 现状映射与兼容差异：`mappings/`
 
 ## 设计原则
@@ -23,5 +23,5 @@
 ## 快速验证
 
 ```powershell
-python tests/contracts/test_protocol_compatibility.py
+python shared/contracts/application/tests/test_application_contracts_compatibility.py
 ```

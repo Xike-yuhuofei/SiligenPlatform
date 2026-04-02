@@ -41,6 +41,7 @@ def _valid_payload(
     dry_run: bool = False,
     glue_point_count: int = 3,
     execution_source_point_count: int = 10,
+    include_motion_preview: bool = True,
 ) -> dict:
     glue_points = [
         {"x": 0.0, "y": 0.0},
@@ -51,7 +52,7 @@ def _valid_payload(
         glue_points = []
     elif glue_point_count > len(glue_points):
         glue_points.extend({"x": float(index), "y": 0.0} for index in range(len(glue_points), glue_point_count))
-    return {
+    payload = {
         "snapshot_id": "snapshot-1",
         "snapshot_hash": "hash-1",
         "plan_id": "plan-1",
@@ -61,6 +62,7 @@ def _valid_payload(
         "glue_point_count": glue_point_count,
         "glue_points": glue_points,
         "execution_polyline_source_point_count": execution_source_point_count,
+        "execution_polyline_point_count": 2,
         "execution_polyline": [
             {"x": 0.0, "y": 0.0},
             {"x": 6.0, "y": 0.0},
@@ -70,6 +72,20 @@ def _valid_payload(
         "generated_at": "2026-03-28T00:00:00Z",
         "dry_run": dry_run,
     }
+    if include_motion_preview:
+        payload["motion_preview"] = {
+            "source": "execution_trajectory_snapshot",
+            "kind": "polyline",
+            "source_point_count": execution_source_point_count,
+            "point_count": 2,
+            "is_sampled": execution_source_point_count > 2,
+            "sampling_strategy": "fixed_spacing_corner_preserving",
+            "polyline": [
+                {"x": 0.0, "y": 0.0},
+                {"x": 6.0, "y": 0.0},
+            ],
+        }
+    return payload
 
 
 class _WorkerFakeClient:
@@ -117,10 +133,9 @@ class _WorkerFakeProtocol:
         self,
         plan_id: str,
         max_polyline_points: int = 4000,
-        max_glue_points: int = 5000,
         timeout: float = 15.0,
     ) -> tuple:
-        type(self).calls.append(("dxf.preview.snapshot", plan_id, max_polyline_points, max_glue_points, timeout))
+        type(self).calls.append(("dxf.preview.snapshot", plan_id, max_polyline_points, timeout))
         return True, {"snapshot_id": "snapshot-1", "preview_source": "planned_glue_snapshot", "preview_kind": "glue_points"}, ""
 
 
@@ -216,8 +231,50 @@ class PreviewSessionOwnerTest(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.execution_polyline_source_point_count, 1000)
         self.assertIn("胶点预览疑似退化为轨迹采样点", result.preview_warning)
+        self.assertIsNotNone(result.motion_preview_meta)
+        self.assertEqual(self.owner.state.motion_preview_source, "execution_trajectory_snapshot")
+        self.assertEqual(self.owner.state.motion_preview_source_point_count, 1000)
+        self.assertTrue(self.owner.state.motion_preview_is_sampled)
         self.assertEqual(self.owner.state.current_plan_id, "plan-1")
         self.assertEqual(self.owner.gate.state, PreviewGateState.READY_UNSIGNED)
+
+    def test_process_snapshot_payload_prefers_nested_motion_preview_contract(self) -> None:
+        payload = _valid_payload()
+        payload["motion_preview"] = {
+            "source": "execution_trajectory_snapshot",
+            "kind": "polyline",
+            "source_point_count": 12,
+            "point_count": 3,
+            "is_sampled": True,
+            "sampling_strategy": "fixed_spacing_corner_preserving",
+            "polyline": [
+                {"x": 1.0, "y": 1.0},
+                {"x": 4.0, "y": 2.0},
+                {"x": 6.0, "y": 3.0},
+            ],
+        }
+
+        result = self.owner.process_snapshot_payload(payload, current_dry_run=False)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.motion_preview[0], (1.0, 1.0))
+        self.assertEqual(result.motion_preview[-1], (6.0, 3.0))
+        self.assertEqual(self.owner.state.motion_preview_source, "execution_trajectory_snapshot")
+        self.assertEqual(self.owner.state.motion_preview_point_count, 3)
+        self.assertEqual(self.owner.state.motion_preview_sampling_strategy, "fixed_spacing_corner_preserving")
+        self.assertEqual(result.motion_preview_warning, "")
+
+    def test_process_snapshot_payload_falls_back_to_execution_polyline_when_motion_preview_missing(self) -> None:
+        result = self.owner.process_snapshot_payload(
+            _valid_payload(include_motion_preview=False),
+            current_dry_run=False,
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.motion_preview, result.execution_polyline)
+        self.assertIn("回退到 execution_polyline", result.motion_preview_warning)
+        self.assertEqual(self.owner.state.motion_preview_source, "legacy_execution_polyline")
+        self.assertEqual(self.owner.state.motion_preview_kind, "polyline")
 
     def test_process_snapshot_payload_invalidates_plan_when_dry_run_mode_changes(self) -> None:
         result = self.owner.process_snapshot_payload(
@@ -388,7 +445,7 @@ class PreviewSnapshotWorkerTest(unittest.TestCase):
             _WorkerFakeProtocol.calls,
             [
                 ("dxf.plan.prepare", "artifact-1", 20.0, False, 20.0, 300.0),
-                ("dxf.preview.snapshot", "plan-1", 4000, 5000, 300.0),
+                ("dxf.preview.snapshot", "plan-1", 4000, 300.0),
             ],
         )
         self.assertTrue(emitted)

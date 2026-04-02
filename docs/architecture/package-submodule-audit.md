@@ -48,7 +48,7 @@
 | `commands/` | `保留` | 当前应用命令事实源 |
 | `queries/` | `保留` | 当前应用查询事实源 |
 | `models/` | `保留` | 状态、错误、事件模型事实源 |
-| `fixtures/` | `保留` | 被 `tests/test_protocol_compatibility.py` 直接消费 |
+| `fixtures/` | `保留` | 被 `tests/test_application_contracts_compatibility.py` 直接消费 |
 | `tests/` | `保留` | 当前契约兼容性验证入口 |
 | `mappings/` | `冻结` | 记录兼容别名与 override，不应演化为第二套协议 owner |
 | `docs/` | `冻结` | 版本与兼容策略说明，保留但不承接运行逻辑 |

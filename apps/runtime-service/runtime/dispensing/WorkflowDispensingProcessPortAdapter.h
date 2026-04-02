@@ -1,6 +1,7 @@
 #pragma once
 
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
+#include "runtime/dispensing/WorkflowDispensingProcessOperations.h"
 #include "runtime_execution/contracts/dispensing/IDispensingProcessPort.h"
 #include "runtime_execution/contracts/dispensing/IValvePort.h"
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
@@ -9,21 +10,24 @@
 
 #include <memory>
 
-namespace Siligen::Domain::Dispensing::DomainServices {
-class DispensingProcessService;
-}
-
 namespace Siligen::Runtime::Service::Dispensing {
 
 class WorkflowDispensingProcessPortAdapter final
     : public Siligen::RuntimeExecution::Contracts::Dispensing::IDispensingProcessPort {
    public:
+    ~WorkflowDispensingProcessPortAdapter() override;
+
     WorkflowDispensingProcessPortAdapter(
         std::shared_ptr<Siligen::Domain::Dispensing::Ports::IValvePort> valve_port,
         std::shared_ptr<Siligen::Domain::Motion::Ports::IInterpolationPort> interpolation_port,
         std::shared_ptr<Siligen::Domain::Motion::Ports::IMotionStatePort> motion_state_port,
         std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
         std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port);
+
+#ifdef SILIGEN_TEST_HOOKS
+    explicit WorkflowDispensingProcessPortAdapter(
+        std::shared_ptr<IWorkflowDispensingProcessOperations> process_operations);
+#endif
 
     Siligen::Shared::Types::Result<void> ValidateHardwareConnection() noexcept override;
     Siligen::Shared::Types::Result<Siligen::Domain::Dispensing::ValueObjects::DispensingRuntimeParams>
@@ -41,7 +45,7 @@ class WorkflowDispensingProcessPortAdapter final
     void StopExecution(std::atomic<bool>* stop_flag, std::atomic<bool>* pause_flag = nullptr) noexcept override;
 
    private:
-    std::shared_ptr<Siligen::Domain::Dispensing::DomainServices::DispensingProcessService> service_;
+    std::shared_ptr<IWorkflowDispensingProcessOperations> process_operations_;
 };
 
 }  // namespace Siligen::Runtime::Service::Dispensing

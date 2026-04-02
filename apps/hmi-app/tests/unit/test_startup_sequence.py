@@ -281,6 +281,7 @@ class StartupSequenceContractTest(unittest.TestCase):
             )
 
         self.assertEqual(backend.start_calls, 0)
+        self.assertEqual(client.disconnect_calls, 0)
         self.assertEqual(client.connect_calls, 0)
         self.assertEqual(protocol.hardware_calls, 0)
 
@@ -311,10 +312,6 @@ class StartupSequenceContractTest(unittest.TestCase):
             )
 
         self.assertEqual(backend.stop_calls, 0)
-        self.assertEqual(backend.start_calls, 0)
-        self.assertEqual(client.disconnect_calls, 0)
-        self.assertEqual(client.connect_calls, 0)
-        self.assertEqual(protocol.hardware_calls, 0)
 
     def test_recovery_stop_session_transitions_to_idle(self) -> None:
         backend = _FakeBackend()

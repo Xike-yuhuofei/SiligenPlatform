@@ -9,12 +9,9 @@ class ILoggingService;
 
 namespace Siligen::Domain::Configuration::Ports {
 class IConfigurationPort;
+class IFileStoragePort;
 struct ValveSupplyConfig;
 struct HomingConfig;
-}
-
-namespace Siligen::JobIngest::Contracts::Storage {
-class IFileStoragePort;
 }
 
 namespace Siligen::Device::Contracts::Ports {

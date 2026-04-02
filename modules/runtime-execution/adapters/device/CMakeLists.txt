@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-if(NOT TARGET siligen_process_planning_contracts_public)
+if(NOT TARGET siligen_process_planning_legacy_configuration_bridge_public)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../../../process-planning/contracts"
         "${CMAKE_BINARY_DIR}/_p/da_ppc"
@@ -122,7 +122,7 @@ target_link_libraries(siligen_device_adapters PUBLIC
     siligen_device_contracts
     siligen_shared_kernel
     siligen_domain
-    siligen_process_planning_contracts_public
+    siligen_process_planning_legacy_configuration_bridge_public
 )
 if(TARGET siligen_types)
     target_link_libraries(siligen_device_adapters PRIVATE siligen_types)
