@@ -16,14 +16,14 @@ endif()
 
 target_link_libraries(siligen_dxf_geometry_unit_tests PRIVATE
     siligen_dxf_geometry_application_public
-    siligen_process_planning_contracts_public
+    siligen_process_planning_domain_configuration
     siligen_types
     siligen_utils
 )
 target_compile_features(siligen_dxf_geometry_unit_tests PRIVATE cxx_std_17)
 
-if(COMMAND siligen_add_test_with_runtime_environment)
-    siligen_add_test_with_runtime_environment(
+if(COMMAND process_runtime_core_add_test_with_runtime_environment)
+    process_runtime_core_add_test_with_runtime_environment(
         siligen_dxf_geometry_unit_tests
         siligen_dxf_geometry_unit_tests
     )

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "process_planning/contracts/configuration/IConfigurationPort.h"
+#include "domain/configuration/ports/IConfigurationPort.h"
 #include "shared/types/Error.h"
 #include "shared/types/Result.h"
 #include "shared/types/Types.h"

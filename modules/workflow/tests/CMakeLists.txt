@@ -14,10 +14,11 @@ set(WORKFLOW_TEST_IMPLEMENTATION_INCLUDE_DIRS
     "${WORKFLOW_MODULE_DIR}/domain/include"
     "${WORKFLOW_MODULE_DIR}/adapters/include"
     "${CMAKE_SOURCE_DIR}/modules/motion-planning"
+    "${CMAKE_SOURCE_DIR}/modules/runtime-execution/adapters/device/include"
 )
 
 set(WORKFLOW_REQUIRED_TEST_ROOTS
-    "${CMAKE_CURRENT_SOURCE_DIR}/unit/CMakeLists.txt"
+    "${CMAKE_CURRENT_SOURCE_DIR}/process-runtime-core/CMakeLists.txt"
     "${CMAKE_CURRENT_SOURCE_DIR}/integration/CMakeLists.txt"
     "${CMAKE_CURRENT_SOURCE_DIR}/regression/CMakeLists.txt"
 )
@@ -29,8 +30,8 @@ foreach(WORKFLOW_REQUIRED_TEST_ROOT IN LISTS WORKFLOW_REQUIRED_TEST_ROOTS)
 endforeach()
 
 add_subdirectory(
-    "${CMAKE_CURRENT_SOURCE_DIR}/unit"
-    "${CMAKE_BINARY_DIR}/tests/workflow-unit"
+    "${CMAKE_CURRENT_SOURCE_DIR}/process-runtime-core"
+    "${CMAKE_BINARY_DIR}/tests/process-runtime-core-canonical"
 )
 
 add_subdirectory(

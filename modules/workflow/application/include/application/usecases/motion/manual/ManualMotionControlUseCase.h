@@ -5,6 +5,7 @@
 #include "domain/motion/ports/IIOControlPort.h"
 #include "domain/motion/ports/IMotionStatePort.h"
 #include "domain/motion/ports/IPositionControlPort.h"
+#include "runtime_execution/application/usecases/motion/manual/ManualMotionCommand.h"
 #include "shared/types/Result.h"
 #include "shared/types/Types.h"
 
@@ -12,19 +13,6 @@
 #include <memory>
 
 namespace Siligen::Application::UseCases::Motion::Manual {
-
-/**
- * @brief 手动运动控制命令参数
- */
-struct ManualMotionCommand {
-    Siligen::Shared::Types::LogicalAxisId axis = Siligen::Shared::Types::LogicalAxisId::X;  // 轴号 (0-based)
-    float32 position = 0.0f;        // 目标位置
-    float32 velocity = 0.0f;        // 运动速度
-    float32 acceleration = 0.0f;    // 加速度
-    bool relative_move = false;     // 相对运动标志
-};
-
-// 使用已存在的 InterpolationConfig (定义在 shared/types/Point.h)
 
 /**
  * @brief 手动手轮控制命令参数

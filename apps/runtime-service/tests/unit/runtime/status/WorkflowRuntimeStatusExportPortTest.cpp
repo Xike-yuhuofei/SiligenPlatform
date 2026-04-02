@@ -1,21 +1,24 @@
 #include "runtime/status/WorkflowRuntimeStatusExportPort.h"
-#include "application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
 
 #include <gtest/gtest.h>
 
-#include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace {
 
-using MotionControlUseCase = Siligen::Application::UseCases::Motion::MotionControlUseCase;
-using RuntimeStatusExportPort = Siligen::Runtime::Service::Status::WorkflowRuntimeStatusExportPort;
-using RuntimeStatusExportSnapshot = Siligen::RuntimeExecution::Contracts::System::RuntimeStatusExportSnapshot;
-using RuntimeSupervisionPort = Siligen::RuntimeExecution::Contracts::System::IRuntimeSupervisionPort;
-using RuntimeSupervisionSnapshot = Siligen::RuntimeExecution::Contracts::System::RuntimeSupervisionSnapshot;
+using DispenserValveState = Siligen::Domain::Dispensing::Ports::DispenserValveState;
+using DispenserValveStatus = Siligen::Domain::Dispensing::Ports::DispenserValveStatus;
 using MotionStatus = Siligen::Domain::Motion::Ports::MotionStatus;
 using Point2D = Siligen::Shared::Types::Point2D;
+using RuntimeDispenserStatusReader = Siligen::Runtime::Service::Status::RuntimeDispenserStatusReader;
+using RuntimeMotionStatusReader = Siligen::Runtime::Service::Status::RuntimeMotionStatusReader;
+using RuntimeStatusExportPort = Siligen::Runtime::Service::Status::WorkflowRuntimeStatusExportPort;
+using RuntimeSupervisionPort = Siligen::RuntimeExecution::Contracts::System::IRuntimeSupervisionPort;
+using RuntimeSupervisionSnapshot = Siligen::RuntimeExecution::Contracts::System::RuntimeSupervisionSnapshot;
+using SupplyValveState = Siligen::Domain::Dispensing::Ports::SupplyValveState;
+using SupplyValveStatusDetail = Siligen::Domain::Dispensing::Ports::SupplyValveStatusDetail;
 
 class FakeRuntimeSupervisionPort final : public RuntimeSupervisionPort {
    public:
@@ -26,110 +29,69 @@ class FakeRuntimeSupervisionPort final : public RuntimeSupervisionPort {
     }
 };
 
-class FakeMotionHomingOperations final : public Siligen::Application::UseCases::Motion::IMotionHomingOperations {
-   public:
-    Siligen::Shared::Types::Result<Siligen::Application::UseCases::Motion::Homing::HomeAxesResponse> Home(
-        const Siligen::Application::UseCases::Motion::Homing::HomeAxesRequest&) override {
-        return Siligen::Shared::Types::Result<Siligen::Application::UseCases::Motion::Homing::HomeAxesResponse>::Failure(
-            Siligen::Shared::Types::Error(Siligen::Shared::Types::ErrorCode::NOT_IMPLEMENTED, "unused"));
-    }
-
-    Siligen::Shared::Types::Result<Siligen::Application::UseCases::Motion::Homing::EnsureAxesReadyZeroResponse>
-    EnsureAxesReadyZero(const Siligen::Application::UseCases::Motion::Homing::EnsureAxesReadyZeroRequest&) override {
-        return Siligen::Shared::Types::Result<
-            Siligen::Application::UseCases::Motion::Homing::EnsureAxesReadyZeroResponse>::Failure(
-            Siligen::Shared::Types::Error(Siligen::Shared::Types::ErrorCode::NOT_IMPLEMENTED, "unused"));
-    }
-
-    Siligen::Shared::Types::Result<bool> IsAxisHomed(Siligen::Shared::Types::LogicalAxisId) const override {
-        return Siligen::Shared::Types::Result<bool>::Success(false);
-    }
-};
-
-class FakeMotionManualOperations final : public Siligen::Application::UseCases::Motion::IMotionManualOperations {
-   public:
-    Siligen::Shared::Types::Result<void> ExecutePointToPointMotion(
-        const Siligen::Application::UseCases::Motion::Manual::ManualMotionCommand&,
-        bool) override {
-        return Siligen::Shared::Types::Result<void>::Failure(
-            Siligen::Shared::Types::Error(Siligen::Shared::Types::ErrorCode::NOT_IMPLEMENTED, "unused"));
-    }
-
-    Siligen::Shared::Types::Result<void> StartJog(
-        Siligen::Shared::Types::LogicalAxisId,
-        int16_t,
-        Siligen::Shared::Types::float32) override {
-        return Siligen::Shared::Types::Result<void>::Failure(
-            Siligen::Shared::Types::Error(Siligen::Shared::Types::ErrorCode::NOT_IMPLEMENTED, "unused"));
-    }
-
-    Siligen::Shared::Types::Result<void> StopJog(Siligen::Shared::Types::LogicalAxisId) override {
-        return Siligen::Shared::Types::Result<void>::Failure(
-            Siligen::Shared::Types::Error(Siligen::Shared::Types::ErrorCode::NOT_IMPLEMENTED, "unused"));
-    }
-};
-
-class FakeMotionMonitoringOperations final : public Siligen::Application::UseCases::Motion::IMotionMonitoringOperations {
-   public:
+struct FakeMotionReaderState {
     std::vector<MotionStatus> next_statuses;
     Point2D next_position{0.0f, 0.0f};
+    bool fail_all_axes = false;
+    bool fail_position = false;
     mutable int all_status_reads = 0;
     mutable int current_position_reads = 0;
-
-    Siligen::Shared::Types::Result<MotionStatus> GetAxisMotionStatus(Siligen::Shared::Types::LogicalAxisId) const override {
-        return Siligen::Shared::Types::Result<MotionStatus>::Failure(
-            Siligen::Shared::Types::Error(Siligen::Shared::Types::ErrorCode::NOT_IMPLEMENTED, "unused"));
-    }
-
-    Siligen::Shared::Types::Result<std::vector<MotionStatus>> GetAllAxesMotionStatus() const override {
-        ++all_status_reads;
-        return Siligen::Shared::Types::Result<std::vector<MotionStatus>>::Success(next_statuses);
-    }
-
-    Siligen::Shared::Types::Result<Point2D> GetCurrentPosition() const override {
-        ++current_position_reads;
-        return Siligen::Shared::Types::Result<Point2D>::Success(next_position);
-    }
-
-    Siligen::Shared::Types::Result<Siligen::Domain::Motion::Ports::CoordinateSystemStatus> GetCoordinateSystemStatus(
-        int16_t) const override {
-        return Siligen::Shared::Types::Result<Siligen::Domain::Motion::Ports::CoordinateSystemStatus>::Failure(
-            Siligen::Shared::Types::Error(Siligen::Shared::Types::ErrorCode::NOT_IMPLEMENTED, "unused"));
-    }
-
-    Siligen::Shared::Types::Result<uint32_t> GetInterpolationBufferSpace(int16_t) const override {
-        return Siligen::Shared::Types::Result<uint32_t>::Failure(
-            Siligen::Shared::Types::Error(Siligen::Shared::Types::ErrorCode::NOT_IMPLEMENTED, "unused"));
-    }
-
-    Siligen::Shared::Types::Result<uint32_t> GetLookAheadBufferSpace(int16_t) const override {
-        return Siligen::Shared::Types::Result<uint32_t>::Failure(
-            Siligen::Shared::Types::Error(Siligen::Shared::Types::ErrorCode::NOT_IMPLEMENTED, "unused"));
-    }
-
-    Siligen::Shared::Types::Result<bool> ReadLimitStatus(
-        Siligen::Shared::Types::LogicalAxisId,
-        bool) const override {
-        return Siligen::Shared::Types::Result<bool>::Failure(
-            Siligen::Shared::Types::Error(Siligen::Shared::Types::ErrorCode::NOT_IMPLEMENTED, "unused"));
-    }
-
-    Siligen::Shared::Types::Result<bool> ReadServoAlarmStatus(Siligen::Shared::Types::LogicalAxisId) const override {
-        return Siligen::Shared::Types::Result<bool>::Failure(
-            Siligen::Shared::Types::Error(Siligen::Shared::Types::ErrorCode::NOT_IMPLEMENTED, "unused"));
-    }
 };
 
-std::shared_ptr<MotionControlUseCase> BuildMotionControlUseCase(
-    const std::shared_ptr<FakeMotionMonitoringOperations>& monitoring) {
-    return std::make_shared<MotionControlUseCase>(
-        std::make_shared<FakeMotionHomingOperations>(),
-        std::make_shared<FakeMotionManualOperations>(),
-        monitoring);
+struct FakeDispenserReaderState {
+    DispenserValveState dispenser_state{};
+    SupplyValveStatusDetail supply_state{};
+    bool fail_dispenser = false;
+    bool fail_supply = false;
+    mutable int dispenser_reads = 0;
+    mutable int supply_reads = 0;
+};
+
+Siligen::Shared::Types::Error BuildTestError(const std::string& message) {
+    return Siligen::Shared::Types::Error(Siligen::Shared::Types::ErrorCode::NOT_IMPLEMENTED, message, "status-test");
+}
+
+RuntimeMotionStatusReader BuildMotionStatusReader(const std::shared_ptr<FakeMotionReaderState>& state) {
+    RuntimeMotionStatusReader reader;
+    reader.read_all_axes_motion_status = [state]() {
+        ++state->all_status_reads;
+        if (state->fail_all_axes) {
+            return Siligen::Shared::Types::Result<std::vector<MotionStatus>>::Failure(BuildTestError("axes failed"));
+        }
+        return Siligen::Shared::Types::Result<std::vector<MotionStatus>>::Success(state->next_statuses);
+    };
+    reader.read_current_position = [state]() {
+        ++state->current_position_reads;
+        if (state->fail_position) {
+            return Siligen::Shared::Types::Result<Point2D>::Failure(BuildTestError("position failed"));
+        }
+        return Siligen::Shared::Types::Result<Point2D>::Success(state->next_position);
+    };
+    return reader;
+}
+
+RuntimeDispenserStatusReader BuildDispenserStatusReader(const std::shared_ptr<FakeDispenserReaderState>& state) {
+    RuntimeDispenserStatusReader reader;
+    reader.read_dispenser_status = [state]() {
+        ++state->dispenser_reads;
+        if (state->fail_dispenser) {
+            return Siligen::Shared::Types::Result<DispenserValveState>::Failure(
+                BuildTestError("dispenser failed"));
+        }
+        return Siligen::Shared::Types::Result<DispenserValveState>::Success(state->dispenser_state);
+    };
+    reader.read_supply_status = [state]() {
+        ++state->supply_reads;
+        if (state->fail_supply) {
+            return Siligen::Shared::Types::Result<SupplyValveStatusDetail>::Failure(BuildTestError("supply failed"));
+        }
+        return Siligen::Shared::Types::Result<SupplyValveStatusDetail>::Success(state->supply_state);
+    };
+    return reader;
 }
 
 TEST(WorkflowRuntimeStatusExportPortTest, MissingSupervisionPortReturnsNotInitializedError) {
-    RuntimeStatusExportPort port(nullptr, nullptr, nullptr);
+    RuntimeStatusExportPort port(nullptr);
 
     auto result = port.ReadSnapshot();
 
@@ -137,14 +99,17 @@ TEST(WorkflowRuntimeStatusExportPortTest, MissingSupervisionPortReturnsNotInitia
     EXPECT_EQ(result.GetError().GetCode(), Siligen::Shared::Types::ErrorCode::PORT_NOT_INITIALIZED);
 }
 
-TEST(WorkflowRuntimeStatusExportPortTest, ConnectedSnapshotIncludesAxesPositionAndCompatDispenserDefaults) {
+TEST(WorkflowRuntimeStatusExportPortTest, ConnectedSnapshotIncludesAuthorityAndOptionalEnrichment) {
     auto supervision_port = std::make_shared<FakeRuntimeSupervisionPort>();
     supervision_port->next_snapshot.connected = true;
     supervision_port->next_snapshot.connection_state = "connected";
-    supervision_port->next_snapshot.supervision.current_state = "Idle";
-    supervision_port->next_snapshot.supervision.state_reason = "idle";
+    supervision_port->next_snapshot.interlock_latched = true;
+    supervision_port->next_snapshot.active_job_id = "job-42";
+    supervision_port->next_snapshot.active_job_state = "running";
+    supervision_port->next_snapshot.supervision.current_state = "Running";
+    supervision_port->next_snapshot.supervision.state_reason = "executing";
 
-    auto monitoring = std::make_shared<FakeMotionMonitoringOperations>();
+    auto motion_reader_state = std::make_shared<FakeMotionReaderState>();
     MotionStatus x_status;
     x_status.position.x = 12.5f;
     x_status.velocity = 4.0f;
@@ -155,20 +120,30 @@ TEST(WorkflowRuntimeStatusExportPortTest, ConnectedSnapshotIncludesAxesPositionA
     y_status.velocity = 1.5f;
     y_status.enabled = false;
     y_status.homing_state = "searching";
-    monitoring->next_statuses = {x_status, y_status};
-    monitoring->next_position = Point2D{12.5f, 8.0f};
+    motion_reader_state->next_statuses = {x_status, y_status};
+    motion_reader_state->next_position = Point2D{12.5f, 8.0f};
 
-    RuntimeStatusExportPort port(supervision_port, BuildMotionControlUseCase(monitoring), nullptr);
+    auto dispenser_reader_state = std::make_shared<FakeDispenserReaderState>();
+    dispenser_reader_state->dispenser_state.status = DispenserValveStatus::Running;
+    dispenser_reader_state->supply_state.state = SupplyValveState::Open;
+
+    RuntimeStatusExportPort port(
+        supervision_port,
+        BuildMotionStatusReader(motion_reader_state),
+        BuildDispenserStatusReader(dispenser_reader_state));
     auto result = port.ReadSnapshot();
 
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
     const auto& snapshot = result.Value();
     EXPECT_TRUE(snapshot.connected);
     EXPECT_EQ(snapshot.connection_state, "connected");
-    EXPECT_EQ(snapshot.machine_state, "Idle");
-    EXPECT_EQ(snapshot.machine_state_reason, "idle");
-    EXPECT_EQ(snapshot.supervision.current_state, "Idle");
-    EXPECT_EQ(snapshot.supervision.state_reason, "idle");
+    EXPECT_EQ(snapshot.machine_state, "Running");
+    EXPECT_EQ(snapshot.machine_state_reason, "executing");
+    EXPECT_TRUE(snapshot.interlock_latched);
+    EXPECT_EQ(snapshot.active_job_id, "job-42");
+    EXPECT_EQ(snapshot.active_job_state, "running");
+    EXPECT_EQ(snapshot.supervision.current_state, "Running");
+    EXPECT_EQ(snapshot.supervision.state_reason, "executing");
     ASSERT_EQ(snapshot.axes.size(), 2U);
     EXPECT_TRUE(snapshot.axes.at("X").homed);
     EXPECT_EQ(snapshot.axes.at("X").homing_state, "homed");
@@ -177,8 +152,8 @@ TEST(WorkflowRuntimeStatusExportPortTest, ConnectedSnapshotIncludesAxesPositionA
     EXPECT_TRUE(snapshot.has_position);
     EXPECT_DOUBLE_EQ(snapshot.position.x, 12.5);
     EXPECT_DOUBLE_EQ(snapshot.position.y, 8.0);
-    EXPECT_FALSE(snapshot.dispenser.valve_open);
-    EXPECT_FALSE(snapshot.dispenser.supply_open);
+    EXPECT_TRUE(snapshot.dispenser.valve_open);
+    EXPECT_TRUE(snapshot.dispenser.supply_open);
 }
 
 TEST(WorkflowRuntimeStatusExportPortTest, DisconnectedSnapshotSkipsMotionReads) {
@@ -186,8 +161,8 @@ TEST(WorkflowRuntimeStatusExportPortTest, DisconnectedSnapshotSkipsMotionReads) 
     supervision_port->next_snapshot.connected = false;
     supervision_port->next_snapshot.connection_state = "degraded";
 
-    auto monitoring = std::make_shared<FakeMotionMonitoringOperations>();
-    RuntimeStatusExportPort port(supervision_port, BuildMotionControlUseCase(monitoring), nullptr);
+    auto motion_reader_state = std::make_shared<FakeMotionReaderState>();
+    RuntimeStatusExportPort port(supervision_port, BuildMotionStatusReader(motion_reader_state));
     auto result = port.ReadSnapshot();
 
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
@@ -197,8 +172,61 @@ TEST(WorkflowRuntimeStatusExportPortTest, DisconnectedSnapshotSkipsMotionReads) 
     EXPECT_EQ(result.Value().machine_state_reason, "unknown");
     EXPECT_TRUE(result.Value().axes.empty());
     EXPECT_FALSE(result.Value().has_position);
-    EXPECT_EQ(monitoring->all_status_reads, 0);
-    EXPECT_EQ(monitoring->current_position_reads, 0);
+    EXPECT_EQ(motion_reader_state->all_status_reads, 0);
+    EXPECT_EQ(motion_reader_state->current_position_reads, 0);
+}
+
+TEST(WorkflowRuntimeStatusExportPortTest, MissingOptionalReadersStillReturnsAuthoritySnapshot) {
+    auto supervision_port = std::make_shared<FakeRuntimeSupervisionPort>();
+    supervision_port->next_snapshot.connected = true;
+    supervision_port->next_snapshot.connection_state = "connected";
+    supervision_port->next_snapshot.supervision.current_state = "Idle";
+    supervision_port->next_snapshot.supervision.state_reason = "ready";
+
+    RuntimeStatusExportPort port(supervision_port);
+    auto result = port.ReadSnapshot();
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    EXPECT_EQ(result.Value().machine_state, "Idle");
+    EXPECT_EQ(result.Value().machine_state_reason, "ready");
+    EXPECT_TRUE(result.Value().axes.empty());
+    EXPECT_FALSE(result.Value().has_position);
+    EXPECT_FALSE(result.Value().dispenser.valve_open);
+    EXPECT_FALSE(result.Value().dispenser.supply_open);
+}
+
+TEST(WorkflowRuntimeStatusExportPortTest, OptionalReaderFailuresDoNotFailSnapshot) {
+    auto supervision_port = std::make_shared<FakeRuntimeSupervisionPort>();
+    supervision_port->next_snapshot.connected = true;
+    supervision_port->next_snapshot.connection_state = "connected";
+    supervision_port->next_snapshot.supervision.current_state = "Running";
+    supervision_port->next_snapshot.supervision.state_reason = "authoritative";
+
+    auto motion_reader_state = std::make_shared<FakeMotionReaderState>();
+    motion_reader_state->fail_all_axes = true;
+    motion_reader_state->fail_position = true;
+
+    auto dispenser_reader_state = std::make_shared<FakeDispenserReaderState>();
+    dispenser_reader_state->fail_dispenser = true;
+    dispenser_reader_state->fail_supply = true;
+
+    RuntimeStatusExportPort port(
+        supervision_port,
+        BuildMotionStatusReader(motion_reader_state),
+        BuildDispenserStatusReader(dispenser_reader_state));
+    auto result = port.ReadSnapshot();
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    EXPECT_EQ(result.Value().machine_state, "Running");
+    EXPECT_EQ(result.Value().machine_state_reason, "authoritative");
+    EXPECT_TRUE(result.Value().axes.empty());
+    EXPECT_FALSE(result.Value().has_position);
+    EXPECT_FALSE(result.Value().dispenser.valve_open);
+    EXPECT_FALSE(result.Value().dispenser.supply_open);
+    EXPECT_EQ(motion_reader_state->all_status_reads, 1);
+    EXPECT_EQ(motion_reader_state->current_position_reads, 1);
+    EXPECT_EQ(dispenser_reader_state->dispenser_reads, 1);
+    EXPECT_EQ(dispenser_reader_state->supply_reads, 1);
 }
 
 }  // namespace

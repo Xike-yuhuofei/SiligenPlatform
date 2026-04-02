@@ -3,20 +3,17 @@ cmake_minimum_required(VERSION 3.20)
 set(RUNTIME_HOST_TEST_SOURCES
     unit/runtime/calibration/CalibrationWorkflowServiceTest.cpp
     unit/runtime/diagnostics/DiagnosticsPortAdapterTest.cpp
-    unit/runtime/dispensing/DispensingExecutionUseCaseInternalTest.cpp
     unit/runtime/motion/HardLimitMonitorServiceTest.cpp
-    unit/runtime/motion/HomingSupportTest.cpp
     unit/runtime/motion/HomingPortAdapterTest.cpp
-    unit/runtime/motion/HomeAxesUseCaseTest.cpp
-    unit/runtime/motion/EnsureAxesReadyZeroUseCaseTest.cpp
-    unit/runtime/motion/JogControllerTest.cpp
-    unit/runtime/motion/MotionBufferControllerTest.cpp
+    unit/runtime/motion/InterpolationAdapterTest.cpp
     unit/runtime/motion/MotionControlMigrationTest.cpp
-    unit/runtime/motion/MotionMonitoringUseCaseTest.cpp
     unit/runtime/motion/MultiCardMotionAdapterTest.cpp
     unit/runtime/motion/MotionRuntimeFacadeTest.cpp
+    unit/runtime/planning/PlanningArtifactExportPortAdapterTest.cpp
     unit/runtime/motion/WorkflowMotionRuntimeServicesProviderTest.cpp
+    unit/runtime/supervision/RuntimeSupervisionPortAdapterTest.cpp
     unit/runtime/system/LegacyMachineExecutionStateAdapterTest.cpp
+    unit/runtime/system/WorkflowMachineExecutionStateBackendTest.cpp
 )
 
 add_executable(siligen_runtime_host_unit_tests ${RUNTIME_HOST_TEST_SOURCES})
@@ -32,6 +29,7 @@ endif()
 target_link_libraries(siligen_runtime_host_unit_tests PRIVATE
     siligen_runtime_host
     siligen_runtime_execution_application_public
+    siligen_application_motion
     siligen_device_adapters
     siligen_device_contracts
     siligen_domain
@@ -42,6 +40,7 @@ target_link_libraries(siligen_runtime_host_unit_tests PRIVATE
 
 target_include_directories(siligen_runtime_host_unit_tests PRIVATE
     "${CMAKE_SOURCE_DIR}/modules/runtime-execution/application"
+    "${CMAKE_SOURCE_DIR}/modules/workflow/application/include"
 )
 
 target_compile_features(siligen_runtime_host_unit_tests PRIVATE cxx_std_17)

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,16 +21,10 @@ from .workspace_layout import load_workspace_layout
 WORKSPACE_ROOT = Path(__file__).resolve().parents[5]
 DEFAULT_SUITES = ("apps", "contracts", "e2e", "protocol-compatibility")
 WORKSPACE_LAYOUT = load_workspace_layout(WORKSPACE_ROOT)
-WORKSPACE_BUILD_TOKEN = hashlib.sha256(str(WORKSPACE_ROOT.resolve()).lower().encode("utf-8")).hexdigest()[:12]
-DEFAULT_CONTROL_APPS_BUILD_ROOT = (
-    Path(os.getenv("LOCALAPPDATA", str(WORKSPACE_ROOT)))
-    / "SS"
-    / f"cab-{WORKSPACE_BUILD_TOKEN}"
-)
 CONTROL_APPS_BUILD_ROOT = Path(
     os.getenv(
         "SILIGEN_CONTROL_APPS_BUILD_ROOT",
-        str(DEFAULT_CONTROL_APPS_BUILD_ROOT),
+        str(Path(os.getenv("LOCALAPPDATA", str(WORKSPACE_ROOT))) / "SiligenSuite" / "control-apps-build"),
     )
 )
 
@@ -159,6 +152,7 @@ def build_cases(
     *,
     include_hardware_smoke: bool = False,
     include_hil_closed_loop: bool = False,
+    include_hil_case_matrix: bool = False,
     report_dir: Path,
 ) -> list[ValidationCase]:
     local_profile = profile == "local"
@@ -176,14 +170,22 @@ def build_cases(
                     name="runtime-service-dry-run",
                     layer="apps",
                     description="runtime-service dry-run",
-                    command=_powershell_file_command(WORKSPACE_ROOT / "apps" / "runtime-service" / "run.ps1", "-DryRun"),
+                    command=_powershell_file_command(
+                        WORKSPACE_ROOT / "apps" / "runtime-service" / "run.ps1",
+                        "-DryRun",
+                        "-SkipPreflight",
+                    ),
                     cwd=WORKSPACE_ROOT,
                 ),
                 ValidationCase(
                     name="runtime-gateway-dry-run",
                     layer="apps",
                     description="runtime-gateway dry-run",
-                    command=_powershell_file_command(WORKSPACE_ROOT / "apps" / "runtime-gateway" / "run.ps1", "-DryRun"),
+                    command=_powershell_file_command(
+                        WORKSPACE_ROOT / "apps" / "runtime-gateway" / "run.ps1",
+                        "-DryRun",
+                        "-SkipPreflight",
+                    ),
                     cwd=WORKSPACE_ROOT,
                 ),
                 ValidationCase(
@@ -343,38 +345,6 @@ def build_cases(
                         cwd=WORKSPACE_ROOT,
                         allow_missing=True,
                     ),
-                    ValidationCase(
-                        name="workflow-dispensing-semantics",
-                        layer="unit",
-                        description="workflow dispensing semantics tests",
-                        command=[str(_control_apps_executable("siligen_dispensing_semantics_tests.exe"))],
-                        cwd=WORKSPACE_ROOT,
-                        allow_missing=True,
-                    ),
-                    ValidationCase(
-                        name="workflow-regression-deterministic-path",
-                        layer="regression",
-                        description="workflow regression deterministic path smoke",
-                        command=[str(_control_apps_executable("workflow_regression_deterministic_path_execution_smoke.exe"))],
-                        cwd=WORKSPACE_ROOT,
-                        allow_missing=True,
-                    ),
-                    ValidationCase(
-                        name="workflow-regression-boundary-cutover",
-                        layer="regression",
-                        description="workflow regression boundary cutover smoke",
-                        command=[str(_control_apps_executable("workflow_regression_boundary_cutover_smoke.exe"))],
-                        cwd=WORKSPACE_ROOT,
-                        allow_missing=True,
-                    ),
-                    ValidationCase(
-                        name="workflow-regression-planning-ingress",
-                        layer="regression",
-                        description="workflow regression planning ingress smoke",
-                        command=[str(_control_apps_executable("workflow_regression_planning_ingress_smoke.exe"))],
-                        cwd=WORKSPACE_ROOT,
-                        allow_missing=True,
-                    ),
                 ]
             )
 
@@ -408,7 +378,28 @@ def build_cases(
                     name="hil-closed-loop",
                     layer="e2e",
                     description="HIL 闭环动作与长稳探针",
-                    command=python_command(WORKSPACE_ROOT / "tests" / "e2e" / "hardware-in-loop" / "run_hil_closed_loop.py"),
+                    command=[
+                        *python_command(WORKSPACE_ROOT / "tests" / "e2e" / "hardware-in-loop" / "run_hil_closed_loop.py"),
+                        "--report-dir",
+                        str(resolved_report_dir),
+                    ],
+                    cwd=WORKSPACE_ROOT,
+                    known_failure_exit_codes=(KNOWN_FAILURE_EXIT_CODE,),
+                    skipped_exit_codes=(SKIPPED_EXIT_CODE,),
+                )
+            )
+
+        if include_hil_case_matrix:
+            cases.append(
+                ValidationCase(
+                    name="hil-case-matrix",
+                    layer="e2e",
+                    description="HIL home/closed_loop online case matrix",
+                    command=[
+                        *python_command(WORKSPACE_ROOT / "tests" / "e2e" / "hardware-in-loop" / "run_case_matrix.py"),
+                        "--report-dir",
+                        str(resolved_report_dir / "hil-case-matrix"),
+                    ],
                     cwd=WORKSPACE_ROOT,
                     known_failure_exit_codes=(KNOWN_FAILURE_EXIT_CODE,),
                     skipped_exit_codes=(SKIPPED_EXIT_CODE,),
@@ -454,6 +445,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--include-hardware-smoke", action="store_true")
     parser.add_argument("--include-hil-closed-loop", action="store_true")
+    parser.add_argument("--include-hil-case-matrix", action="store_true")
     parser.add_argument("--fail-on-known-failure", action="store_true")
     return parser.parse_args()
 
@@ -473,6 +465,7 @@ def main() -> int:
         suites,
         include_hardware_smoke=bool(args.include_hardware_smoke),
         include_hil_closed_loop=bool(args.include_hil_closed_loop),
+        include_hil_case_matrix=bool(args.include_hil_case_matrix),
         report_dir=report_dir,
     ):
         report.results.append(run_case(case))

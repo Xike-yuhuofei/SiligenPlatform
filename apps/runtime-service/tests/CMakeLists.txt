@@ -4,9 +4,12 @@ set(RUNTIME_PROCESS_BOOTSTRAP_UNIT_TEST_SOURCES
     unit/runtime/configuration/ConfigValidatorTest.cpp
     unit/runtime/configuration/ConfigFileAdapterHardwareConfigurationTest.cpp
     unit/runtime/configuration/InterlockConfigResolverTest.cpp
+    unit/runtime/dispensing/WorkflowDispensingProcessPortAdapterTest.cpp
     unit/runtime/configuration/WorkspaceAssetPathsTest.cpp
     unit/runtime/recipes/TemplateFileRepositoryTest.cpp
     unit/runtime/status/WorkflowRuntimeStatusExportPortTest.cpp
+    unit/runtime/supervision/RuntimeExecutionSupervisionBackendTest.cpp
+    unit/runtime/supervision/WorkflowRuntimeSupervisionPortTest.cpp
 )
 
 add_executable(siligen_runtime_service_unit_tests
@@ -27,6 +30,9 @@ target_include_directories(siligen_runtime_service_unit_tests PRIVATE
 )
 target_link_libraries(siligen_runtime_service_unit_tests PRIVATE
     siligen_runtime_process_bootstrap
+)
+target_compile_definitions(siligen_runtime_service_unit_tests PRIVATE
+    SILIGEN_TEST_HOOKS=1
 )
 target_compile_features(siligen_runtime_service_unit_tests PRIVATE cxx_std_17)
 

@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
 
-if(NOT TARGET siligen_process_planning_contracts_public)
+if(NOT TARGET siligen_process_planning_domain_configuration)
     add_subdirectory(
-        "${CMAKE_CURRENT_SOURCE_DIR}/../process-planning/contracts"
-        "${CMAKE_BINARY_DIR}/modules/process-planning/contracts"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../process-planning/domain/configuration"
+        "${CMAKE_BINARY_DIR}/modules/process-planning/domain/configuration"
     )
 endif()
 
@@ -23,13 +23,13 @@ target_include_directories(siligen_dxf_geometry_application_headers INTERFACE
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
 target_link_libraries(siligen_dxf_geometry_application_headers INTERFACE
-    siligen_process_planning_contracts_public
+    siligen_process_planning_domain_configuration
 )
 target_compile_features(siligen_dxf_geometry_application_headers INTERFACE cxx_std_17)
 
 set(SILIGEN_DXF_GEOMETRY_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS
-    ${WORKFLOW_MODULE_PUBLIC_INCLUDE_DIRS}
-    ${WORKFLOW_MODULE_IMPLEMENTATION_INCLUDE_DIRS}
+    ${PROCESS_RUNTIME_CORE_PUBLIC_INCLUDE_DIRS}
+    ${PROCESS_RUNTIME_CORE_IMPLEMENTATION_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/application
 )
@@ -45,7 +45,7 @@ target_include_directories(siligen_dxf_geometry_application PRIVATE
     ${SILIGEN_DXF_GEOMETRY_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_dxf_geometry_application PUBLIC
-    siligen_process_planning_contracts_public
+    siligen_process_planning_domain_configuration
     siligen_types
     siligen_utils
 )

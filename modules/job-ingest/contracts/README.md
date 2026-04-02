@@ -7,7 +7,6 @@
 - 任务接入阶段的输入对象约束
 - ingest 请求与校验结果的模块内语义约定
 - 对上游 `M1 -> M2` 交接所需的最小字段口径
-- 文件接入 / 存储抽象的 canonical owner 契约：`job_ingest/contracts/storage/IFileStoragePort.h`
 
 ## 边界约束
 
