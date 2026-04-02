@@ -1,5 +1,5 @@
 #include "domain/safety/domain-services/SoftLimitValidator.h"
-#include "domain/configuration/value-objects/ConfigTypes.h"
+#include "process_planning/contracts/configuration/ConfigTypes.h"
 #include "shared/types/Error.h"
 #include "shared/types/Point.h"
 

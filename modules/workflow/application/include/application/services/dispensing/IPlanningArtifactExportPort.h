@@ -1,4 +1,3 @@
 #pragma once
 
-// Deprecated compatibility forwarder. Prefer the canonical workflow include.
-#include "workflow/application/services/dispensing/IPlanningArtifactExportPort.h"
+#include "runtime_execution/application/services/dispensing/PlanningArtifactExportPort.h"

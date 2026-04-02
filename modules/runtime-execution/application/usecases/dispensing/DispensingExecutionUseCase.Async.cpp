@@ -87,50 +87,139 @@ JobState ParseJobStateForTesting(const std::string& state) {
 }  // namespace
 
 bool DispensingExecutionUseCase::Impl::IsTerminalState(TaskState state) {
-    return ExecutionSessionStore::IsTerminalState(state);
+    return state == TaskState::COMPLETED || state == TaskState::FAILED || state == TaskState::CANCELLED;
 }
 
 bool DispensingExecutionUseCase::Impl::IsTerminalJobState(JobState state) {
-    return ExecutionSessionStore::IsTerminalJobState(state);
+    return state == JobState::COMPLETED || state == JobState::FAILED || state == JobState::CANCELLED;
 }
 
 TaskState DispensingExecutionUseCase::Impl::ResolveVisibleState(
     const std::shared_ptr<TaskExecutionContext>& context) {
-    return ExecutionSessionStore::ResolveVisibleState(context);
+    if (!context) {
+        return TaskState::FAILED;
+    }
+
+    const auto state = context->state.load();
+    if (!context->terminal_committed.load()) {
+        return state;
+    }
+
+    const auto committed = context->committed_terminal_state.load();
+    if (IsTerminalState(committed)) {
+        return committed;
+    }
+    return state;
 }
 
 bool DispensingExecutionUseCase::Impl::TryCommitTerminalState(
     const std::shared_ptr<TaskExecutionContext>& context,
     TaskState terminal_state,
     const std::string& error_message) {
-    return ExecutionSessionStore::TryCommitTerminalState(context, terminal_state, error_message);
+    if (!context || !IsTerminalState(terminal_state)) {
+        return false;
+    }
+
+    bool expected = false;
+    if (!context->terminal_committed.compare_exchange_strong(expected, true)) {
+        return false;
+    }
+
+    context->committed_terminal_state.store(terminal_state);
+    context->state.store(terminal_state);
+    context->end_time = std::chrono::steady_clock::now();
+    if (!error_message.empty()) {
+        std::lock_guard<std::mutex> lock(context->mutex_);
+        context->error_message = error_message;
+    }
+    return true;
 }
 
 bool DispensingExecutionUseCase::Impl::TryCommitJobTerminalState(
     const std::shared_ptr<JobExecutionContext>& context,
     JobState terminal_state,
     const std::string& error_message) {
-    return ExecutionSessionStore::TryCommitJobTerminalState(context, terminal_state, error_message);
+    if (!context || !IsTerminalJobState(terminal_state)) {
+        return false;
+    }
+
+    bool expected = false;
+    if (!context->final_state_committed.compare_exchange_strong(expected, true)) {
+        return false;
+    }
+
+    context->state.store(terminal_state);
+    context->end_time = std::chrono::steady_clock::now();
+    if (!error_message.empty()) {
+        std::lock_guard<std::mutex> lock(context->mutex_);
+        context->error_message = error_message;
+    }
+    return true;
 }
 
 std::shared_ptr<TaskExecutionContext> DispensingExecutionUseCase::Impl::ResolveActiveContextLocked() const {
-    return session_store_.ResolveActiveContextLocked();
+    if (active_task_id_.empty()) {
+        return nullptr;
+    }
+    auto it = tasks_.find(active_task_id_);
+    if (it == tasks_.end()) {
+        return nullptr;
+    }
+    return it->second;
 }
 
 void DispensingExecutionUseCase::Impl::JoinWorkerThread() {
-    worker_coordinator_.JoinWorkerThread();
+    std::thread worker_to_join;
+    {
+        std::lock_guard<std::mutex> lock(worker_mutex_);
+        if (!worker_thread_.joinable()) {
+            return;
+        }
+        worker_to_join = std::move(worker_thread_);
+    }
+    if (worker_to_join.joinable()) {
+        worker_to_join.join();
+    }
 }
 
 void DispensingExecutionUseCase::Impl::JoinJobWorkerThread() {
-    worker_coordinator_.JoinJobWorkerThread();
+    std::thread worker_to_join;
+    {
+        std::lock_guard<std::mutex> lock(job_worker_mutex_);
+        if (!job_worker_thread_.joinable()) {
+            return;
+        }
+        worker_to_join = std::move(job_worker_thread_);
+    }
+    if (worker_to_join.joinable()) {
+        worker_to_join.join();
+    }
 }
 
 void DispensingExecutionUseCase::Impl::RegisterTaskInflight(const std::shared_ptr<TaskExecutionContext>& context) {
-    worker_coordinator_.RegisterTaskInflight(context);
+    if (!context) {
+        return;
+    }
+    context->inflight_released.store(false);
+    context->inflight_registered.store(true);
+    inflight_tasks_.fetch_add(1, std::memory_order_relaxed);
 }
 
 void DispensingExecutionUseCase::Impl::ReleaseTaskInflight(const std::shared_ptr<TaskExecutionContext>& context) {
-    worker_coordinator_.ReleaseTaskInflight(context);
+    if (!context || !context->inflight_registered.load()) {
+        return;
+    }
+
+    bool expected = false;
+    if (!context->inflight_released.compare_exchange_strong(expected, true)) {
+        return;
+    }
+
+    const auto remaining = inflight_tasks_.fetch_sub(1, std::memory_order_relaxed);
+    if (remaining <= 1U) {
+        std::lock_guard<std::mutex> lock(inflight_mutex_);
+        inflight_cv_.notify_all();
+    }
 }
 
 bool DispensingExecutionUseCase::Impl::WaitForTaskTerminalState(
@@ -166,12 +255,34 @@ bool DispensingExecutionUseCase::Impl::WaitForTaskTerminalState(
 bool DispensingExecutionUseCase::Impl::WaitForAllInflightTasks(
     std::chrono::milliseconds timeout,
     std::string* diagnostics_out) {
-    return worker_coordinator_.WaitForAllInflightTasks(
-        timeout,
-        kInflightReconcilePoll,
-        [this]() { ReconcileStalledInflightTasks(); },
-        [this]() { return BuildInflightDiagnostics(); },
-        diagnostics_out);
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        {
+            std::unique_lock<std::mutex> lock(inflight_mutex_);
+            if (inflight_cv_.wait_for(
+                    lock,
+                    kInflightReconcilePoll,
+                    [this]() { return inflight_tasks_.load(std::memory_order_relaxed) == 0U; })) {
+                return true;
+            }
+        }
+        ReconcileStalledInflightTasks();
+    }
+
+    ReconcileStalledInflightTasks();
+    {
+        std::unique_lock<std::mutex> lock(inflight_mutex_);
+        if (inflight_cv_.wait_for(
+                lock,
+                kInflightReconcilePoll,
+                [this]() { return inflight_tasks_.load(std::memory_order_relaxed) == 0U; })) {
+            return true;
+        }
+    }
+    if (diagnostics_out != nullptr) {
+        *diagnostics_out = BuildInflightDiagnostics();
+    }
+    return inflight_tasks_.load(std::memory_order_relaxed) == 0U;
 }
 
 void DispensingExecutionUseCase::Impl::ReconcileStalledInflightTasks() {
@@ -181,9 +292,9 @@ void DispensingExecutionUseCase::Impl::ReconcileStalledInflightTasks() {
 
     std::vector<std::pair<TaskID, std::shared_ptr<TaskExecutionContext>>> stalled_tasks;
     {
-        std::lock_guard<std::mutex> lock(session_store_.tasks_mutex_);
-        stalled_tasks.reserve(session_store_.tasks_.size());
-        for (const auto& entry : session_store_.tasks_) {
+        std::lock_guard<std::mutex> lock(tasks_mutex_);
+        stalled_tasks.reserve(tasks_.size());
+        for (const auto& entry : tasks_) {
             const auto& context = entry.second;
             if (!context) {
                 continue;
@@ -264,13 +375,13 @@ void DispensingExecutionUseCase::Impl::ReconcileStalledInflightTasks() {
 
 std::string DispensingExecutionUseCase::Impl::BuildInflightDiagnostics() const {
     std::ostringstream oss;
-    oss << "inflight_count=" << worker_coordinator_.inflight_tasks_.load(std::memory_order_relaxed);
+    oss << "inflight_count=" << inflight_tasks_.load(std::memory_order_relaxed);
 
     std::vector<std::string> task_summaries;
     {
-        std::lock_guard<std::mutex> lock(session_store_.tasks_mutex_);
-        task_summaries.reserve(session_store_.tasks_.size());
-        for (const auto& entry : session_store_.tasks_) {
+        std::lock_guard<std::mutex> lock(tasks_mutex_);
+        task_summaries.reserve(tasks_.size());
+        for (const auto& entry : tasks_) {
             const auto& task_id = entry.first;
             const auto& context = entry.second;
             if (!context) {
@@ -332,17 +443,17 @@ Result<TaskID> DispensingExecutionUseCase::Impl::ExecuteAsync(const DispensingEx
     context->start_time = std::chrono::steady_clock::now();
 
     {
-        std::lock_guard<std::mutex> lock(session_store_.tasks_mutex_);
+        std::lock_guard<std::mutex> lock(tasks_mutex_);
         auto active = ResolveActiveContextLocked();
-        if (!active && !session_store_.active_task_id_.empty()) {
-            session_store_.active_task_id_.clear();
+        if (!active && !active_task_id_.empty()) {
+            active_task_id_.clear();
         }
         if (active && !IsTerminalState(ResolveVisibleState(active))) {
             return Result<TaskID>::Failure(
                 Error(ErrorCode::INVALID_STATE, "another task is already active", "DispensingExecutionUseCase"));
         }
-        session_store_.tasks_[task_id] = context;
-        session_store_.active_task_id_ = task_id;
+        tasks_[task_id] = context;
+        active_task_id_ = task_id;
     }
 
     stop_requested_.store(false);
@@ -421,8 +532,8 @@ Result<TaskID> DispensingExecutionUseCase::Impl::ExecuteAsync(const DispensingEx
         try {
             JoinWorkerThread();
             {
-                std::lock_guard<std::mutex> lock(worker_coordinator_.worker_mutex_);
-                worker_coordinator_.worker_thread_ = std::thread(std::move(runner));
+                std::lock_guard<std::mutex> lock(worker_mutex_);
+                worker_thread_ = std::thread(std::move(runner));
             }
         } catch (const std::exception& ex) {
             TryCommitTerminalState(
@@ -483,16 +594,16 @@ Result<JobID> DispensingExecutionUseCase::Impl::StartJob(const RuntimeStartJobRe
     context->start_time = std::chrono::steady_clock::now();
 
     {
-        std::lock_guard<std::mutex> lock(session_store_.jobs_mutex_);
-        if (!session_store_.active_job_id_.empty()) {
-            auto active_it = session_store_.jobs_.find(session_store_.active_job_id_);
-            if (active_it != session_store_.jobs_.end() && !IsTerminalJobState(active_it->second->state.load())) {
+        std::lock_guard<std::mutex> lock(jobs_mutex_);
+        if (!active_job_id_.empty()) {
+            auto active_it = jobs_.find(active_job_id_);
+            if (active_it != jobs_.end() && !IsTerminalJobState(active_it->second->state.load())) {
                 return Result<JobID>::Failure(
                     Error(ErrorCode::INVALID_STATE, "another job is already active", "DispensingExecutionUseCase"));
             }
         }
-        session_store_.jobs_[context->job_id] = context;
-        session_store_.active_job_id_ = context->job_id;
+        jobs_[context->job_id] = context;
+        active_job_id_ = context->job_id;
     }
 
     std::thread new_worker_thread;
@@ -500,13 +611,13 @@ Result<JobID> DispensingExecutionUseCase::Impl::StartJob(const RuntimeStartJobRe
         new_worker_thread = std::thread([this, context]() { RunJob(context); });
     } catch (const std::exception& ex) {
         {
-            std::lock_guard<std::mutex> lock(session_store_.jobs_mutex_);
-            auto job_it = session_store_.jobs_.find(context->job_id);
-            if (job_it != session_store_.jobs_.end() && job_it->second == context) {
-                session_store_.jobs_.erase(job_it);
+            std::lock_guard<std::mutex> lock(jobs_mutex_);
+            auto job_it = jobs_.find(context->job_id);
+            if (job_it != jobs_.end() && job_it->second == context) {
+                jobs_.erase(job_it);
             }
-            if (session_store_.active_job_id_ == context->job_id) {
-                session_store_.active_job_id_.clear();
+            if (active_job_id_ == context->job_id) {
+                active_job_id_.clear();
             }
         }
         return Result<JobID>::Failure(
@@ -517,13 +628,13 @@ Result<JobID> DispensingExecutionUseCase::Impl::StartJob(const RuntimeStartJobRe
                 "DispensingExecutionUseCase"));
     } catch (...) {
         {
-            std::lock_guard<std::mutex> lock(session_store_.jobs_mutex_);
-            auto job_it = session_store_.jobs_.find(context->job_id);
-            if (job_it != session_store_.jobs_.end() && job_it->second == context) {
-                session_store_.jobs_.erase(job_it);
+            std::lock_guard<std::mutex> lock(jobs_mutex_);
+            auto job_it = jobs_.find(context->job_id);
+            if (job_it != jobs_.end() && job_it->second == context) {
+                jobs_.erase(job_it);
             }
-            if (session_store_.active_job_id_ == context->job_id) {
-                session_store_.active_job_id_.clear();
+            if (active_job_id_ == context->job_id) {
+                active_job_id_.clear();
             }
         }
         return Result<JobID>::Failure(
@@ -535,11 +646,11 @@ Result<JobID> DispensingExecutionUseCase::Impl::StartJob(const RuntimeStartJobRe
 
     std::thread worker_to_join;
     {
-        std::lock_guard<std::mutex> lock(worker_coordinator_.job_worker_mutex_);
-        if (worker_coordinator_.job_worker_thread_.joinable()) {
-            worker_to_join = std::move(worker_coordinator_.job_worker_thread_);
+        std::lock_guard<std::mutex> lock(job_worker_mutex_);
+        if (job_worker_thread_.joinable()) {
+            worker_to_join = std::move(job_worker_thread_);
         }
-        worker_coordinator_.job_worker_thread_ = std::move(new_worker_thread);
+        job_worker_thread_ = std::move(new_worker_thread);
     }
     if (worker_to_join.joinable()) {
         worker_to_join.join();
@@ -551,9 +662,9 @@ Result<JobID> DispensingExecutionUseCase::Impl::StartJob(const RuntimeStartJobRe
 Result<RuntimeJobStatusResponse> DispensingExecutionUseCase::Impl::GetJobStatus(const JobID& job_id) const {
     std::shared_ptr<JobExecutionContext> context;
     {
-        std::lock_guard<std::mutex> lock(session_store_.jobs_mutex_);
-        auto it = session_store_.jobs_.find(job_id);
-        if (it == session_store_.jobs_.end()) {
+        std::lock_guard<std::mutex> lock(jobs_mutex_);
+        auto it = jobs_.find(job_id);
+        if (it == jobs_.end()) {
             return Result<RuntimeJobStatusResponse>::Failure(
                 Error(ErrorCode::NOT_FOUND, "job not found", "DispensingExecutionUseCase"));
         }
@@ -563,14 +674,14 @@ Result<RuntimeJobStatusResponse> DispensingExecutionUseCase::Impl::GetJobStatus(
 }
 
 Result<TaskStatusResponse> DispensingExecutionUseCase::Impl::GetTaskStatus(const TaskID& task_id) const {
-    std::lock_guard<std::mutex> lock(session_store_.tasks_mutex_);
+    std::lock_guard<std::mutex> lock(tasks_mutex_);
 
-    auto it = session_store_.tasks_.find(task_id);
-    if (it == session_store_.tasks_.end()) {
+    auto it = tasks_.find(task_id);
+    if (it == tasks_.end()) {
         return Result<TaskStatusResponse>::Failure(
             Error(ErrorCode::INVALID_STATE, "Task not found", "DispensingExecutionUseCase"));
     }
-    if (task_id != session_store_.active_task_id_) {
+    if (task_id != active_task_id_) {
         return Result<TaskStatusResponse>::Failure(
             Error(ErrorCode::INVALID_STATE, "Task is not active", "DispensingExecutionUseCase"));
     }
@@ -627,13 +738,13 @@ Result<TaskStatusResponse> DispensingExecutionUseCase::Impl::GetTaskStatus(const
 Result<void> DispensingExecutionUseCase::Impl::CancelTask(const TaskID& task_id) {
     std::shared_ptr<TaskExecutionContext> context;
     {
-        std::lock_guard<std::mutex> lock(session_store_.tasks_mutex_);
-        auto it = session_store_.tasks_.find(task_id);
-        if (it == session_store_.tasks_.end()) {
+        std::lock_guard<std::mutex> lock(tasks_mutex_);
+        auto it = tasks_.find(task_id);
+        if (it == tasks_.end()) {
             return Result<void>::Failure(
                 Error(ErrorCode::INVALID_STATE, "Task not found", "DispensingExecutionUseCase"));
         }
-        if (task_id != session_store_.active_task_id_) {
+        if (task_id != active_task_id_) {
             return Result<void>::Failure(
                 Error(ErrorCode::INVALID_STATE, "Task is not active", "DispensingExecutionUseCase"));
         }
@@ -711,11 +822,11 @@ void DispensingExecutionUseCase::Impl::CleanupExpiredTasks() {
         task_scheduler_port_->CleanupExpiredTasks();
     }
 
-    std::lock_guard<std::mutex> lock(session_store_.tasks_mutex_);
+    std::lock_guard<std::mutex> lock(tasks_mutex_);
 
     auto now = std::chrono::steady_clock::now();
-    auto it = session_store_.tasks_.begin();
-    while (it != session_store_.tasks_.end()) {
+    auto it = tasks_.begin();
+    while (it != tasks_.end()) {
         auto context = it->second;
         bool should_remove = false;
 
@@ -742,10 +853,10 @@ void DispensingExecutionUseCase::Impl::CleanupExpiredTasks() {
         }
 
         if (should_remove) {
-            if (it->first == session_store_.active_task_id_) {
-                session_store_.active_task_id_.clear();
+            if (it->first == active_task_id_) {
+                active_task_id_.clear();
             }
-            it = session_store_.tasks_.erase(it);
+            it = tasks_.erase(it);
         } else {
             ++it;
         }
@@ -753,11 +864,17 @@ void DispensingExecutionUseCase::Impl::CleanupExpiredTasks() {
 }
 
 TaskID DispensingExecutionUseCase::Impl::GenerateTaskID() {
-    return session_store_.GenerateTaskID();
+    const auto seq = task_sequence_.fetch_add(1, std::memory_order_relaxed) + 1;
+    const auto now = std::chrono::system_clock::now().time_since_epoch();
+    const auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+    return "task-" + std::to_string(millis) + "-" + std::to_string(seq);
 }
 
 JobID DispensingExecutionUseCase::Impl::GenerateJobID() {
-    return session_store_.GenerateJobID();
+    const auto seq = job_sequence_.fetch_add(1, std::memory_order_relaxed) + 1;
+    const auto now = std::chrono::system_clock::now().time_since_epoch();
+    const auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+    return "job-" + std::to_string(millis) + "-" + std::to_string(seq);
 }
 
 std::string DispensingExecutionUseCase::Impl::TaskStateToString(TaskState state) const {
@@ -1031,9 +1148,9 @@ void DispensingExecutionUseCase::Impl::FinalizeJob(
         context->completed_count.store(context->target_count.load());
     }
     {
-        std::lock_guard<std::mutex> lock(session_store_.jobs_mutex_);
-        if (session_store_.active_job_id_ == context->job_id) {
-            session_store_.active_job_id_.clear();
+        std::lock_guard<std::mutex> lock(jobs_mutex_);
+        if (active_job_id_ == context->job_id) {
+            active_job_id_.clear();
         }
     }
 }
@@ -1066,13 +1183,13 @@ void DispensingExecutionUseCase::Impl::SeedJobStateForTesting(
         context->end_time = std::chrono::steady_clock::now();
     }
 
-    std::lock_guard<std::mutex> lock(session_store_.jobs_mutex_);
-    session_store_.jobs_[status.job_id] = context;
+    std::lock_guard<std::mutex> lock(jobs_mutex_);
+    jobs_[status.job_id] = context;
 }
 
 void DispensingExecutionUseCase::Impl::SetActiveJobForTesting(const JobID& job_id) {
-    std::lock_guard<std::mutex> lock(session_store_.jobs_mutex_);
-    session_store_.active_job_id_ = job_id;
+    std::lock_guard<std::mutex> lock(jobs_mutex_);
+    active_job_id_ = job_id;
 }
 #endif
 
