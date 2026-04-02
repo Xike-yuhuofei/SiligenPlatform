@@ -14,6 +14,30 @@
 - 为上游工程链、集成验证与验收基线提供稳定样本事实源。
 - 提供 `examples/` 历史样本根的目标收敛面。
 
+## 分层测试体系下的 canonical taxonomy
+
+- `samples/dxf/`：DXF 输入样本。当前仓库内已跟踪 DXF canonical samples 为 `rect_diag.dxf`、`rect_medium_ladder.dxf`、`rect_large_ladder.dxf`
+- `samples/simulation/`：simulated-line / fault scenario 输入
+- `samples/replay-data/`：recording / preview 相关回放工件
+- `samples/recipes/`：recipe/import-export 样本
+
+## 当前 inventory
+
+- `samples/dxf/rect_diag.dxf`：默认 DXF regression sample
+- `samples/dxf/rect_medium_ladder.dxf`：canonical medium nightly-performance DXF sample
+- `samples/dxf/rect_large_ladder.dxf`：canonical large nightly-performance DXF sample
+- `samples/simulation/rect_diag.simulation-input.json`：compat / scheme C 主输入
+- `samples/simulation/sample_trajectory.json`：混合轨迹输入
+- `samples/simulation/invalid_empty_segments.simulation-input.json`：结构化失败输入
+- `samples/simulation/following_error_quantized.simulation-input.json`：跟随误差输入
+- `samples/replay-data/rect_diag.scheme_c.recording.json`：rect_diag replay canonical export
+- `samples/replay-data/sample_trajectory.scheme_c.recording.json`：sample_trajectory replay canonical export
+
+## 迁移治理
+
+- `samples/` 是正式样本真值根，禁止再把长期样本落回 `examples/` 或 `data/baselines/`。
+- replay / simulation / dxf 样本必须在 README 或 manifest 中可回链，不允许无 owner 的孤立文件。
+
 ## 非职责边界
 
 - 不承载临时实验产物与一次性调试输出。

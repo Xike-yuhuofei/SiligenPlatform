@@ -1,7 +1,7 @@
 #pragma once
 
 #include "shared/types/HardwareConfiguration.h"
-#include "process_planning/contracts/configuration/IConfigurationPort.h"
+#include "domain/configuration/ports/IConfigurationPort.h"
 #include "domain/motion/ports/IVelocityProfilePort.h"
 #include "siligen/device/adapters/hardware/HardwareConnectionAdapter.h"
 #include "siligen/device/adapters/hardware/HardwareTestAdapter.h"

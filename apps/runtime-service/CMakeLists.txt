@@ -9,7 +9,7 @@ if(DEFINED SILIGEN_MULTICARD_VENDOR_DIR AND EXISTS "${SILIGEN_MULTICARD_VENDOR_D
     set(RUNTIME_PROCESS_BOOTSTRAP_DEVICE_VENDOR_DIR "${SILIGEN_MULTICARD_VENDOR_DIR}")
 endif()
 
-if(NOT TARGET siligen_process_planning_contracts_public)
+if(NOT TARGET siligen_process_planning_legacy_configuration_bridge_public)
     add_subdirectory(
         "${SILIGEN_WORKSPACE_ROOT}/modules/process-planning/contracts"
         "${CMAKE_BINARY_DIR}/_p/rtsvc_ppc"
@@ -54,7 +54,9 @@ add_library(siligen_runtime_process_bootstrap STATIC
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/configuration/ConfigFileAdapter.Sections.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/configuration/ConfigFileAdapter.System.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/configuration/InterlockConfigResolver.cpp
+    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/dispensing/WorkflowDispensingProcessOperations.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/dispensing/WorkflowDispensingProcessPortAdapter.cpp
+    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/motion/WorkflowMotionControlOperationsBridge.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/configuration/validators/ConfigValidator.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/recipes/AuditFileRepository.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/recipes/ParameterSchemaFileProvider.cpp
@@ -62,8 +64,10 @@ add_library(siligen_runtime_process_bootstrap STATIC
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/recipes/RecipeFileRepository.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/recipes/TemplateFileRepository.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/status/WorkflowRuntimeStatusExportPort.cpp
+    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/supervision/RuntimeExecutionSupervisionBackend.cpp
+    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/supervision/WorkflowRuntimeJobTerminalSync.cpp
+    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/supervision/WorkflowRuntimeSupervisionPort.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/supervision/WorkflowRuntimeSupervisionBackend.cpp
-    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/system/DispenserModelMachineExecutionStateBackend.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/storage/files/LocalFileStorageAdapter.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/security/AuditLogger.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/security/InterlockMonitor.cpp
@@ -87,6 +91,7 @@ target_include_directories(siligen_runtime_process_bootstrap PRIVATE
 target_compile_definitions(siligen_runtime_process_bootstrap PRIVATE
     HAS_REAL_MULTICARD=${RUNTIME_PROCESS_BOOTSTRAP_HAS_REAL_MULTICARD}
     SILIGEN_ENABLE_MOCK_MULTICARD=$<BOOL:${SILIGEN_ENABLE_MOCK_MULTICARD}>
+    SILIGEN_TEST_HOOKS=1
     _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING
 )
 
@@ -105,7 +110,7 @@ target_link_libraries(siligen_runtime_process_bootstrap PUBLIC
     siligen_runtime_execution_application_public
     siligen_trace_diagnostics_application_public
     siligen_parsing_adapter
-    siligen_process_planning_contracts_public
+    siligen_process_planning_legacy_configuration_bridge_public
     siligen_shared
     siligen_types
     siligen_utils

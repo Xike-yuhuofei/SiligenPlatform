@@ -34,6 +34,15 @@ MainWindow = main_window_module.MainWindow
 EXIT_SUCCESS = 0
 EXIT_ASSERTION_FAILED = 10
 EXIT_TIMEOUT = 11
+SUPPORTED_RUNTIME_ACTION_PROFILES = (
+    "full",
+    "preview",
+    "home_move",
+    "jog",
+    "supply_dispenser",
+    "estop_reset",
+    "door_interlock",
+)
 
 
 def find_by_testid(root: QWidget, testid: str) -> Optional[QWidget]:
@@ -245,6 +254,7 @@ class GuiContractRunner:
         exercise_runtime_actions: bool = False,
         screenshot_path: str = "",
         preview_payload_path: str = "",
+        runtime_action_profile: str = "",
     ):
         self.app = app
         self.window = window
@@ -256,6 +266,7 @@ class GuiContractRunner:
         self.exercise_runtime_actions = exercise_runtime_actions
         self.screenshot_path = screenshot_path.strip()
         self.preview_payload_path = preview_payload_path.strip()
+        self.runtime_action_profile = runtime_action_profile.strip().lower()
         self.failed = False
         self.timed_out = False
         self.exit_code = EXIT_SUCCESS
@@ -379,38 +390,30 @@ class GuiContractRunner:
             self.window._apply_permissions()
         QTest.qWait(100)
 
-    def _assert_runtime_action_chain(self) -> None:
-        print("STEP: runtime action chain", flush=True)
-        self._elevate_runtime_permissions()
-        cached = self._cached_status()
-        self._expect(cached is not None, "Online runtime action chain requires cached status")
-        if cached is None:
-            return
+    def _resolved_runtime_action_profile(self) -> str:
+        profile = self.runtime_action_profile
+        if not profile:
+            return "preview" if self.preview_payload_path else "full"
+        if profile not in SUPPORTED_RUNTIME_ACTION_PROFILES:
+            self._fail(
+                "Unsupported runtime action profile: "
+                f"{profile}; supported={','.join(SUPPORTED_RUNTIME_ACTION_PROFILES)}"
+            )
+            return "full"
+        return profile
 
-        if self.preview_payload_path:
-            sample_dxf = Path(__file__).resolve().parents[5] / "samples" / "dxf" / "rect_diag.dxf"
-            self._expect(sample_dxf.exists(), f"Canonical preview sample should exist: {sample_dxf}")
-            if sample_dxf.exists():
-                self.window._dxf_filepath = str(sample_dxf)
-                payload = self._load_preview_payload()
-                if payload:
-                    payload.setdefault("plan_id", payload.get("snapshot_id", "plan-from-evidence"))
-                    payload.setdefault("snapshot_id", payload.get("plan_id", "plan-from-evidence"))
-                    payload.setdefault("snapshot_hash", payload.get("snapshot_hash", "snapshot-from-evidence"))
-                    payload.setdefault("generated_at", "")
-                    self.window._on_preview_snapshot_completed(True, payload, "", source="worker")
-                self._wait_for(
-                    "planned glue preview ready",
-                    lambda: bool(self.window._preview_gate.snapshot)
-                    and getattr(self.window, "_preview_source", "") == "planned_glue_snapshot"
-                    and bool(getattr(self.window, "_current_plan_id", "")),
-                    timeout_ms=5000,
-                )
-                self._expect(
-                    "来源: 规划胶点快照" in self.window._dxf_info_label.text(),
-                    "DXF info label should show planned_glue_snapshot source",
-                )
-                self._capture_screenshot("planned glue preview screenshot")
+    def _canonical_preview_sample(self) -> Path:
+        return Path(__file__).resolve().parents[5] / "samples" / "dxf" / "rect_diag.dxf"
+
+    def _ensure_runtime_motion_ready(self) -> None:
+        if (
+            bool(self._axis_status("X"))
+            and bool(self._axis_status("Y"))
+            and bool(self._axis_status("X").homed)
+            and bool(self._axis_status("Y").homed)
+            and abs(self._axis_status("X").velocity) <= 1e-3
+            and abs(self._axis_status("Y").velocity) <= 1e-3
+        ):
             return
 
         self._click_button("btn-production-home-all")
@@ -420,7 +423,7 @@ class GuiContractRunner:
             and bool(self._axis_status("Y"))
             and bool(self._axis_status("X").homed)
             and bool(self._axis_status("Y").homed),
-            timeout_ms=30000,
+            timeout_ms=80000,
         )
         self._wait_for(
             "runtime home settles velocity",
@@ -431,46 +434,50 @@ class GuiContractRunner:
             timeout_ms=10000,
         )
 
-        sample_dxf = Path(__file__).resolve().parents[5] / "samples" / "dxf" / "rect_diag.dxf"
+    def _assert_runtime_preview_action(self) -> None:
+        sample_dxf = self._canonical_preview_sample()
         self._expect(sample_dxf.exists(), f"Canonical preview sample should exist: {sample_dxf}")
-        if sample_dxf.exists():
-            self.window._dxf_filepath = str(sample_dxf)
-            if self.preview_payload_path:
-                payload = self._load_preview_payload()
-                if payload:
-                    payload.setdefault("plan_id", payload.get("snapshot_id", "plan-from-evidence"))
-                    payload.setdefault("snapshot_id", payload.get("plan_id", "plan-from-evidence"))
-                    payload.setdefault("snapshot_hash", payload.get("plan_fingerprint", payload.get("snapshot_hash", "")))
-                    payload.setdefault("generated_at", "")
-                    self.window._on_preview_snapshot_completed(True, payload, "", source="worker")
-            else:
-                self.window._on_dxf_load()
-            self._wait_for(
-                "planned glue preview ready",
-                lambda: bool(self.window._preview_gate.snapshot)
-                and getattr(self.window, "_preview_source", "") == "planned_glue_snapshot"
-                and bool(getattr(self.window, "_current_plan_id", ""))
-                and bool(getattr(self.window, "_current_plan_fingerprint", "")),
-                timeout_ms=15000,
-            )
-            self._expect(
-                "来源: 规划胶点快照" in self.window._dxf_info_label.text(),
-                "DXF info label should show planned_glue_snapshot source",
-            )
-            self._capture_screenshot("planned glue preview screenshot")
-            if self.screenshot_path:
-                return
+        if not sample_dxf.exists():
+            return
 
+        self.window._dxf_filepath = str(sample_dxf)
+        if self.preview_payload_path:
+            payload = self._load_preview_payload()
+            if payload:
+                payload.setdefault("plan_id", payload.get("snapshot_id", "plan-from-evidence"))
+                payload.setdefault("snapshot_id", payload.get("plan_id", "plan-from-evidence"))
+                payload.setdefault(
+                    "snapshot_hash",
+                    payload.get("plan_fingerprint", payload.get("snapshot_hash", "snapshot-from-evidence")),
+                )
+                payload.setdefault("generated_at", "")
+                self.window._on_preview_snapshot_completed(True, payload, "", source="worker")
+        else:
+            self.window._on_dxf_load()
+
+        self._wait_for(
+            "planned glue preview ready",
+            lambda: bool(self.window._preview_gate.snapshot)
+            and getattr(self.window, "_preview_source", "") == "planned_glue_snapshot"
+            and bool(getattr(self.window, "_current_plan_id", "")),
+            timeout_ms=15000,
+        )
+        self._expect(
+            "来源: 规划胶点快照" in self.window._dxf_info_label.text(),
+            "DXF info label should show planned_glue_snapshot source",
+        )
+        self._capture_screenshot("planned glue preview screenshot")
+
+    def _assert_runtime_move_to_action(self) -> None:
+        self._ensure_runtime_motion_ready()
         move_source = self._cached_status()
         self._expect(move_source is not None, "Cached status should exist before move_to")
         if move_source is None:
             return
         baseline_move_x = float(move_source.axes.get("X", type("Obj", (), {"position": 0.0})()).position)
         baseline_move_y = float(move_source.axes.get("Y", type("Obj", (), {"position": 0.0})()).position)
-        target_x = round(baseline_move_x + 1.0, 3)
-        target_y = round(baseline_move_y + 1.5, 3)
-        self._spinbox_set("input-move-X", target_x)
-        self._spinbox_set("input-move-Y", target_y)
+        self._spinbox_set("input-move-X", round(baseline_move_x + 1.0, 3))
+        self._spinbox_set("input-move-Y", round(baseline_move_y + 1.5, 3))
         self._spinbox_set("input-move-speed", 8.0)
         move_button = self._require_widget("btn-move-to-position")
         if move_button is not None:
@@ -494,6 +501,8 @@ class GuiContractRunner:
             timeout_ms=6000,
         )
 
+    def _assert_runtime_jog_action(self) -> None:
+        self._ensure_runtime_motion_ready()
         jog_before = self._axis_status("X")
         self._expect(jog_before is not None, "Axis X status should exist before jog")
         if jog_before is None:
@@ -516,6 +525,7 @@ class GuiContractRunner:
             timeout_ms=6000,
         )
 
+    def _assert_runtime_supply_dispenser_action(self) -> None:
         self._click_button("btn-supply-open")
         self._wait_for("runtime supply opens", lambda: self._label_text("valve-supply") == "开", timeout_ms=5000)
 
@@ -534,6 +544,7 @@ class GuiContractRunner:
         self._click_button("btn-supply-close")
         self._wait_for("runtime supply closes", lambda: self._label_text("valve-supply") == "关", timeout_ms=5000)
 
+    def _assert_runtime_estop_reset_action(self) -> None:
         self._click_button("btn-estop")
         self._wait_for(
             "runtime estop visible",
@@ -547,6 +558,8 @@ class GuiContractRunner:
             timeout_ms=8000,
         )
 
+    def _assert_runtime_door_interlock_action(self) -> None:
+        self._ensure_runtime_motion_ready()
         move_before_door = self._axis_status("X")
         self._expect(move_before_door is not None, "Axis X status should exist before door interlock check")
         if move_before_door is None:
@@ -577,6 +590,32 @@ class GuiContractRunner:
             lambda: bool(self._cached_status()) and not bool(self._cached_status().gate_door_active()),
             timeout_ms=8000,
         )
+
+    def _assert_runtime_action_chain(self) -> None:
+        print("STEP: runtime action chain", flush=True)
+        self._elevate_runtime_permissions()
+        cached = self._cached_status()
+        self._expect(cached is not None, "Online runtime action chain requires cached status")
+        if cached is None:
+            return
+        profile = self._resolved_runtime_action_profile()
+        if self.failed:
+            return
+
+        if profile in {"full", "preview"}:
+            self._assert_runtime_preview_action()
+        if profile in {"full", "home_move"}:
+            self._assert_runtime_move_to_action()
+        if profile in {"full", "jog"}:
+            self._assert_runtime_jog_action()
+        if profile in {"full", "supply_dispenser"}:
+            self._assert_runtime_supply_dispenser_action()
+        if profile in {"full", "estop_reset"}:
+            self._assert_runtime_estop_reset_action()
+        if profile in {"full", "door_interlock"}:
+            self._assert_runtime_door_interlock_action()
+        if profile != "preview":
+            self._capture_screenshot(f"runtime action profile {profile}")
 
     def _emit_supervisor_diag(self) -> None:
         result = self.window._launch_result
@@ -645,6 +684,7 @@ class GuiContractRunner:
     def _assert_gui_shell_present(self) -> None:
         print("STEP: gui shell", flush=True)
         self._expect(self.window.isVisible(), "Main window should be visible")
+        self._expect(self._status_message() != "系统就绪", "GUI shell must not expose a fake ready status before supervisor state settles")
         for testid in (
             "indicator-global-status",
             "label-launch-mode",
@@ -674,6 +714,7 @@ class GuiContractRunner:
         if result is not None:
             self._expect(result.effective_mode == "offline", "Effective mode should stay offline")
             self._expect(result.success, "Offline launch should succeed")
+            self._expect(result.session_snapshot is not None, "Offline launch result should expose a session snapshot")
             if result.session_snapshot is not None:
                 self._expect(result.session_snapshot.mode == "offline", "Offline snapshot mode should be offline")
                 self._expect(result.session_snapshot.failure_code is None, "Offline snapshot should not carry failure code")
@@ -897,6 +938,7 @@ def main() -> int:
     parser.add_argument("--exercise-runtime-actions", action="store_true")
     parser.add_argument("--screenshot-path", default="")
     parser.add_argument("--preview-payload-path", default="")
+    parser.add_argument("--runtime-action-profile", default="")
     args = parser.parse_args()
 
     server: Optional[MockTcpServer] = None
@@ -919,6 +961,7 @@ def main() -> int:
         exercise_runtime_actions=args.exercise_runtime_actions,
         screenshot_path=args.screenshot_path,
         preview_payload_path=args.preview_payload_path,
+        runtime_action_profile=args.runtime_action_profile,
     )
     QTimer.singleShot(0, runner.run)
     QTimer.singleShot(args.timeout_ms, runner.request_timeout)

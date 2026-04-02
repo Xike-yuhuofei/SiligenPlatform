@@ -5,18 +5,12 @@
   "preview_kind": "glue_points",
   "snapshot": {
     "preview_state": "snapshot_ready",
-    "segment_count": 5,
+    "segment_count": 9,
     "glue_point_count": 180,
-    "motion_preview_source": "execution_trajectory_snapshot",
-    "motion_preview_kind": "polyline",
-    "motion_preview_point_count": 184,
-    "motion_preview_source_point_count": 10078,
-    "motion_preview_is_sampled": true,
-    "motion_preview_sampling_strategy": "fixed_spacing_corner_preserving",
-    "execution_polyline_point_count": 184,
-    "execution_polyline_source_point_count": 10078,
-    "total_length_mm": 541.42138671875,
-    "estimated_time_s": 54.14213943481445
+    "execution_polyline_point_count": 203,
+    "execution_polyline_source_point_count": 9617,
+    "total_length_mm": 540.9197387695312,
+    "estimated_time_s": 96.15668487548828
   },
   "glue_summary": {
     "point_count": 180,
@@ -29,135 +23,77 @@
       100.0
     ],
     "first_point": {
-      "x": 0.0,
+      "x": 3.0,
       "y": 0.0
     },
     "last_point": {
-      "x": 100.0,
-      "y": 100.0
+      "x": 99.39960479736328,
+      "y": 99.39960479736328
     },
-    "adjacent_distance_median_mm": 3.030000000000001,
+    "adjacent_distance_median_mm": 3.000003236111371,
     "corner_duplicate_point_count": 0
   },
   "execution_geometry_summary": {
-    "point_count": 184,
+    "point_count": 203,
     "x_range": [
       0.0,
-      100.0
+      100.00001525878906
     ],
     "y_range": [
       0.0,
-      100.0
+      100.00001525878906
     ],
     "first_point": {
       "x": 0.0,
       "y": 0.0
     },
     "last_point": {
-      "x": 100.0,
-      "y": 100.0
+      "x": 100.00001525878906,
+      "y": 100.00001525878906
     },
-    "axis_aligned_segments": 131,
-    "diagonal_segments": 52
-  },
-  "motion_preview_summary": {
-    "point_count": 184,
-    "x_range": [
-      0.0,
-      100.0
-    ],
-    "y_range": [
-      0.0,
-      100.0
-    ],
-    "first_point": {
-      "x": 0.0,
-      "y": 0.0
-    },
-    "last_point": {
-      "x": 100.0,
-      "y": 100.0
-    },
-    "axis_aligned_segments": 131,
-    "diagonal_segments": 52
+    "axis_aligned_segments": 149,
+    "diagonal_segments": 53
   },
   "glue_sample_points": [
     {
       "index": 0,
-      "x": 0.0,
+      "x": 3.0,
       "y": 0.0
     },
     {
       "index": 32,
-      "x": 96.97,
+      "x": 99.0,
       "y": 0.0
     },
     {
       "index": 60,
       "x": 100.0,
-      "y": 81.818
+      "y": 83.20013427734375
     },
     {
       "index": 67,
-      "x": 96.97,
+      "x": 95.59978485107422,
       "y": 100.0
     },
     {
       "index": 99,
       "x": 0.0,
-      "y": 100.0
+      "y": 99.39923858642578
     },
     {
       "index": 121,
       "x": 0.0,
-      "y": 33.333
+      "y": 33.398963928222656
     },
     {
       "index": 140,
-      "x": 17.021,
-      "y": 17.021
+      "x": 16.668094635009766,
+      "y": 16.668094635009766
     },
     {
       "index": 179,
-      "x": 100.0,
-      "y": 100.0
-    }
-  ],
-  "motion_preview_sample_points": [
-    {
-      "index": 0,
-      "x": 0.0,
-      "y": 0.0
-    },
-    {
-      "index": 34,
-      "x": 100.0,
-      "y": 0.263
-    },
-    {
-      "index": 68,
-      "x": 99.349,
-      "y": 100.0
-    },
-    {
-      "index": 101,
-      "x": 1.008,
-      "y": 100.0
-    },
-    {
-      "index": 134,
-      "x": 0.0,
-      "y": 2.954
-    },
-    {
-      "index": 168,
-      "x": 69.361,
-      "y": 69.361
-    },
-    {
-      "index": 183,
-      "x": 100.0,
-      "y": 100.0
+      "x": 99.39960479736328,
+      "y": 99.39960479736328
     }
   ],
   "execution_sample_points": [
@@ -169,32 +105,32 @@
     {
       "index": 34,
       "x": 100.0,
-      "y": 0.263
+      "y": 0.5769209265708923
     },
     {
       "index": 68,
-      "x": 99.349,
-      "y": 100.0
+      "x": 100.0,
+      "y": 86.7952651977539
     },
     {
       "index": 101,
-      "x": 1.008,
+      "x": 35.034889221191406,
       "y": 100.0
     },
     {
       "index": 134,
       "x": 0.0,
-      "y": 2.954
+      "y": 53.774620056152344
     },
     {
       "index": 168,
-      "x": 69.361,
-      "y": 69.361
+      "x": 29.671682357788086,
+      "y": 29.671682357788086
     },
     {
-      "index": 183,
-      "x": 100.0,
-      "y": 100.0
+      "index": 202,
+      "x": 100.00001525878906,
+      "y": 100.00001525878906
     }
   ],
   "tolerances": {

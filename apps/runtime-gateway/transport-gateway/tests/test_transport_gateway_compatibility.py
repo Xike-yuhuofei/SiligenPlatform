@@ -11,6 +11,8 @@ DXF_PREVIEW_SUCCESS_FIXTURE = CONTRACTS / "fixtures" / "responses" / "dxf.previe
 PROTOCOL_MAPPING = CONTRACTS / "mappings" / "protocol-mapping.md"
 TCP_DISPATCHER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "tcp" / "TcpCommandDispatcher.cpp"
 TCP_DISPATCHER_HEADER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "tcp" / "TcpCommandDispatcher.h"
+RUNTIME_STATUS_EXPORT_PORT = ROOT / "apps" / "runtime-service" / "runtime" / "status" / "WorkflowRuntimeStatusExportPort.cpp"
+RUNTIME_SUPERVISION_BACKEND = ROOT / "apps" / "runtime-service" / "runtime" / "supervision" / "WorkflowRuntimeSupervisionBackend.cpp"
 TCP_DISPENSING_FACADE_HEADER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "facades" / "tcp" / "TcpDispensingFacade.h"
 TCP_DISPENSING_FACADE_CPP = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "facades" / "tcp" / "TcpDispensingFacade.cpp"
 TCP_FACADE_BUILDER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "include" / "siligen" / "gateway" / "tcp" / "tcp_facade_builder.h"
@@ -77,11 +79,15 @@ def test_dispatcher_matches_contracts():
 
 def test_app_entry_is_thin():
     source = APP_MAIN.read_text(encoding="utf-8")
+    host_header = TCP_SERVER_HOST_HEADER.read_text(encoding="utf-8")
     assert '#include "siligen/gateway/tcp/tcp_facade_builder.h"' in source
     assert '#include "siligen/gateway/tcp/tcp_server_host.h"' in source
+    assert '#include "runtime_execution/contracts/system/IRuntimeStatusExportPort.h"' in source
     assert 'BuildTcpFacadeBundle(*container)' in source
     assert 'TcpServerHost server_host(' in source
     assert "TcpServerHostOptions{port}" in source
+    assert "ResolvePort<Siligen::RuntimeExecution::Contracts::System::IRuntimeStatusExportPort>()" in source
+    assert "std::shared_ptr<RuntimeExecution::Contracts::System::IRuntimeStatusExportPort> runtime_status_export_port" in host_header
     assert 'TcpCommandDispatcher' not in source
     assert 'modules/control-gateway/src/' not in source
 
@@ -268,37 +274,46 @@ def test_legacy_execute_and_task_surface_are_removed():
 
 
 def test_status_reads_backend_interlock_signals():
-    source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    source = RUNTIME_SUPERVISION_BACKEND.read_text(encoding="utf-8")
     assert "ReadInterlockSignals()" in source
     assert "IsInEmergencyStop()" in source
-    assert 'ioJson["door"] = signals.safety_door_open' in source
-    assert 'ioJson["estop"] = estop_active || signals.emergency_stop_triggered' in source
-    assert '"estop_known"' in source
-    assert '"door_known"' in source
-    assert 'connection_state = "degraded"' in source
-    assert 'machine_state_reason = "heartbeat_degraded"' in source
-    assert "IsHardwareReadyForMotion()" in source
+    assert "if (estop_state_result.IsSuccess() && inputs.connected)" in source
+    assert "inputs.io.estop_known = inputs.connected;" in source
+    assert "inputs.io.estop = inputs.estop_active || signals.emergency_stop_triggered;" in source
+    assert "GetActiveJobId()" in source
+    assert "GetJobStatus(inputs.active_job_id)" in source
+    assert "motion_control_use_case->ReadLimitStatus(axis, positive)" in source
+    assert "ReadLimitIfAvailable(motion_control_use_case_, LogicalAxisId::X, true, inputs.io.limit_x_pos);" in source
+    assert "ReadLimitIfAvailable(motion_control_use_case_, LogicalAxisId::X, false, inputs.io.limit_x_neg);" in source
+    assert "ReadLimitIfAvailable(motion_control_use_case_, LogicalAxisId::Y, true, inputs.io.limit_y_pos);" in source
+    assert "ReadLimitIfAvailable(motion_control_use_case_, LogicalAxisId::Y, false, inputs.io.limit_y_neg);" in source
 
 
-def test_status_publishes_effective_interlocks_and_supervision_contract():
+def test_status_supervision_contract_is_derived_by_runtime_supervision_adapter():
+    source = (ROOT / "modules" / "runtime-execution" / "runtime" / "host" / "runtime" / "supervision" / "RuntimeSupervisionPortAdapter.cpp").read_text(encoding="utf-8")
+    assert "const bool heartbeat_degraded_while_connected =" in source
+    assert "inputs.connection_info.state == Siligen::Device::Contracts::State::DeviceConnectionState::Connected &&" in source
+    assert 'connection_state = "degraded";' in source
+    assert 'state_reason = "heartbeat_degraded";' in source
+    assert 'snapshot.sources["estop"] =' in source
+    assert 'snapshot.sources["door_open"] =' in source
+    assert 'snapshot.requested_state = "Idle";' in source
+    assert 'snapshot.requested_state = "Estop";' in source
+    assert 'snapshot.requested_state = "Fault";' in source
+    assert 'snapshot.failure_code = "heartbeat_degraded";' in source
+    assert 'snapshot.failure_stage = snapshot.failure_code.empty() ? "" : "runtime_status";' in source
+
+
+def test_status_dispatcher_only_serializes_snapshot_and_compat_projection():
     source = TCP_DISPATCHER.read_text(encoding="utf-8")
-    assert '{"estop_active", ioJson.value("estop", false)}' in source
-    assert '{"door_open_active", door_known && door_open}' in source
-    assert '{"home_boundary_x_active", home_boundary_x_active}' in source
-    assert '{"home_boundary_y_active", home_boundary_y_active}' in source
-    assert '{"positive_escape_only_axes", positiveEscapeOnlyAxes}' in source
-    assert '{"estop", estop_state_known ? "system_interlock" : (connected ? "motion_status" : "unknown")}' in source
-    assert '{"door_open", door_known ? "dispensing_interlock" : "unknown"}' in source
-    assert '{"home_boundary_x", home_boundary_x_active ? "motion_home_signal" : "none"}' in source
-    assert '{"home_boundary_y", home_boundary_y_active ? "motion_home_signal" : "none"}' in source
-    assert 'requested_state = "Idle";' in source
-    assert 'requested_state = "Estop";' in source
-    assert 'requested_state = "Fault";' in source
-    assert '{"current_state", machine_state}' in source
-    assert '{"requested_state", requested_state}' in source
-    assert '{"state_change_in_process", state_change_in_process}' in source
-    assert '{"failure_code", failure_code}' in source
-    assert '{"failure_stage", failure_stage}' in source
+    status_source = RUNTIME_STATUS_EXPORT_PORT.read_text(encoding="utf-8")
+    assert "runtimeStatusExportPort_->ReadSnapshot()" in source
+    assert "BuildRawIoJson(status_snapshot)" in source
+    assert "BuildEffectiveInterlocksJson(status_snapshot)" in source
+    assert "BuildSupervisionJson(status_snapshot)" in source
+    assert "BuildCompatMachineState(" not in source
+    assert "snapshot.machine_state = supervision.supervision.current_state;" in status_source
+    assert "snapshot.machine_state_reason = supervision.supervision.state_reason;" in status_source
     assert '{"supervision", supervisionJson}' in source
     assert '{"effective_interlocks", effectiveInterlocksJson}' in source
 
@@ -341,6 +356,29 @@ def test_estop_reset_and_disconnect_semantics_are_wired():
     assert "emergency_stop_use_case_->RecoverFromEmergencyStop()" in facade_impl
 
 
+def test_stop_command_uses_unified_non_estop_motion_stop_path():
+    source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    facade_header = (ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "facades" / "tcp" / "TcpMotionFacade.h").read_text(encoding="utf-8")
+    facade_impl = (ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "facades" / "tcp" / "TcpMotionFacade.cpp").read_text(encoding="utf-8")
+    builder = TCP_FACADE_BUILDER.read_text(encoding="utf-8")
+
+    stop_match = re.search(
+        r"std::string TcpCommandDispatcher::HandleStop.*?return GatewayJsonProtocol::MakeSuccessResponse",
+        source,
+        re.S,
+    )
+    assert stop_match, "cannot locate HandleStop body"
+    stop_body = stop_match.group(0)
+
+    assert "Shared::Types::Result<void> StopAllAxes(bool immediate = false);" in facade_header
+    assert "motion_safety_use_case_" in facade_header
+    assert "motion_safety_use_case_->StopAllAxes(immediate)" in facade_impl
+    assert "Resolve<Application::UseCases::Motion::Safety::MotionSafetyUseCase>()" in builder
+    assert "motionFacade_->StopAllAxes(false)" in stop_body
+    assert "StopJog(axis_id)" not in stop_body
+    assert "axis_index < 4" not in stop_body
+
+
 def test_mock_io_set_is_registered_and_wired():
     source = TCP_DISPATCHER.read_text(encoding="utf-8")
     mock_io_service = MOCK_IO_CONTROL_SERVICE.read_text(encoding="utf-8")
@@ -369,7 +407,7 @@ def test_homed_semantics_follow_homing_state_only():
     )
     assert status_match, "cannot locate HandleStatus body"
     status_body = status_match.group(0)
-    assert 'const bool is_homed = IsAxisStatusHomed(status);' in status_body
+    assert "BuildAxesJson(status_snapshot)" in status_body
     assert "MotionState::HOMED" not in status_body
 
     coord_match = re.search(
@@ -486,7 +524,8 @@ def main():
         test_dxf_preview_contract_docs_freeze_shared_authority_semantics,
         test_legacy_execute_and_task_surface_are_removed,
         test_status_reads_backend_interlock_signals,
-        test_status_publishes_effective_interlocks_and_supervision_contract,
+        test_status_supervision_contract_is_derived_by_runtime_supervision_adapter,
+        test_status_dispatcher_only_serializes_snapshot_and_compat_projection,
         test_motion_coord_status_exposes_feedback_diagnostics,
         test_estop_reset_and_disconnect_semantics_are_wired,
         test_mock_io_set_is_registered_and_wired,

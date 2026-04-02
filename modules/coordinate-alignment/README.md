@@ -18,6 +18,7 @@
 
 - 构建入口：`CMakeLists.txt`（目标：`siligen_module_coordinate_alignment`）。
 - 契约入口：`contracts/README.md`。
+- 测试入口：`tests/CMakeLists.txt`。
 
 ## 当前事实来源
 
@@ -30,3 +31,11 @@
 - `domain/machine/` 已成为当前唯一真实实现承载面，模块根 target 直接链接 canonical 子域 target。
 - 所有 live 实现与构建入口均已收敛到 canonical roots。
 
+## 当前测试面
+
+- `tests/unit/`
+  - 冻结 `CalibrationProcess` 的 happy-path 与 missing-device 失败链路
+- `tests/contract/`
+  - 冻结 `CoordinateTransformSet` 默认公开面与基线变换样本
+- `tests/golden/`
+  - 冻结包含 `origin-offset`、`rotation-z` 的对齐基线样本

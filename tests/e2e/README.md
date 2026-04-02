@@ -4,6 +4,14 @@
 
 当前 canonical 子域：`tests/e2e/simulated-line/`、`tests/e2e/hardware-in-loop/`
 
+## Layered Validation
+
+- `tests/e2e/simulated-line/` 对应 `L3-simulated-e2e`
+- `tests/e2e/hardware-in-loop/` 对应 `L5-limited-hil`
+- 离线工程回归与 HIL 前置负例已收敛到 `tests/integration/scenarios/`
+- simulated-line 和 HIL 都必须额外产出 `case-index.json`、`validation-evidence-bundle.json`、`evidence-links.md`
+- HIL evidence 必须声明离线前置层、观察点和 abort metadata
+
 ## Wave 5 仓库级 e2e 回链检查点（US6 / M10-M11）
 
 | Checkpoint | 通过标准 | 证据入口 |

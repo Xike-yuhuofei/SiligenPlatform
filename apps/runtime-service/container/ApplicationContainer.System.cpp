@@ -1,16 +1,21 @@
 #include "ApplicationContainer.h"
 
 #include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
-#include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
-#include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
+#include "application/usecases/dispensing/valve/ValveQueryUseCase.h"
 #include "application/usecases/motion/homing/HomeAxesUseCase.h"
+#include "application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
 #include "application/usecases/system/EmergencyStopUseCase.h"
 #include "application/usecases/system/InitializeSystemUseCase.h"
-#include "application/usecases/dispensing/valve/ValveQueryUseCase.h"
+#include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
+#include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
+#include "domain/safety/ports/IInterlockSignalPort.h"
 #include "runtime/status/WorkflowRuntimeStatusExportPort.h"
-#include "runtime/supervision/WorkflowRuntimeSupervisionBackend.h"
+#include "runtime/supervision/RuntimeExecutionSupervisionBackend.h"
 #include "runtime/supervision/RuntimeSupervisionPortAdapter.h"
-#include "runtime/system/DispenserModelMachineExecutionStateBackend.h"
+#include "runtime/supervision/WorkflowRuntimeJobTerminalSync.h"
+#include "runtime/supervision/WorkflowRuntimeSupervisionPort.h"
+#include "runtime/system/LegacyMachineExecutionStateAdapter.h"
+#include "runtime/system/WorkflowMachineExecutionStateBackend.h"
 #include "runtime_execution/application/services/motion/MotionControlServiceImpl.h"
 #include "runtime_execution/application/services/motion/MotionStatusServiceImpl.h"
 #include "runtime_execution/contracts/system/IMachineExecutionStatePort.h"
@@ -59,23 +64,49 @@ void ApplicationContainer::ConfigureSystemOwnerPorts() {
     auto runtime_supervision_port =
         ResolvePort<Siligen::RuntimeExecution::Contracts::System::IRuntimeSupervisionPort>();
     if (!runtime_supervision_port) {
-        auto backend = std::make_shared<Siligen::Runtime::Service::Supervision::WorkflowRuntimeSupervisionBackend>(
+        auto dispensing_execution_use_case = Resolve<UseCases::Dispensing::DispensingExecutionUseCase>();
+        auto terminal_job_sync =
+            std::make_shared<Siligen::Runtime::Service::Supervision::WorkflowRuntimeJobTerminalSync>(
+                Resolve<UseCases::Dispensing::DispensingWorkflowUseCase>());
+        auto backend = std::make_shared<Siligen::Runtime::Service::Supervision::RuntimeExecutionSupervisionBackend>(
             Resolve<UseCases::Motion::MotionControlUseCase>(),
             Resolve<UseCases::System::EmergencyStopUseCase>(),
-            Resolve<UseCases::Dispensing::DispensingWorkflowUseCase>(),
-            Resolve<UseCases::Dispensing::DispensingExecutionUseCase>(),
+            dispensing_execution_use_case,
+            ResolvePort<Domain::Safety::Ports::IInterlockSignalPort>(),
             device_connection_port_);
-        runtime_supervision_port =
-            std::make_shared<Siligen::Runtime::Host::Supervision::RuntimeSupervisionPortAdapter>(backend);
+        runtime_supervision_port = std::make_shared<Siligen::Runtime::Service::Supervision::WorkflowRuntimeSupervisionPort>(
+            std::make_shared<Siligen::Runtime::Host::Supervision::RuntimeSupervisionPortAdapter>(backend),
+            dispensing_execution_use_case,
+            terminal_job_sync);
         RegisterPort<Siligen::RuntimeExecution::Contracts::System::IRuntimeSupervisionPort>(runtime_supervision_port);
     }
 
     if (!ResolvePort<Siligen::RuntimeExecution::Contracts::System::IRuntimeStatusExportPort>()) {
+        Siligen::Runtime::Service::Status::RuntimeMotionStatusReader motion_status_reader;
+        if (auto monitoring_use_case = Resolve<UseCases::Motion::Monitoring::MotionMonitoringUseCase>()) {
+            motion_status_reader.read_all_axes_motion_status = [monitoring_use_case]() {
+                return monitoring_use_case->GetAllAxesMotionStatus();
+            };
+            motion_status_reader.read_current_position = [monitoring_use_case]() {
+                return monitoring_use_case->GetCurrentPosition();
+            };
+        }
+
+        Siligen::Runtime::Service::Status::RuntimeDispenserStatusReader dispenser_status_reader;
+        if (auto valve_query_use_case = Resolve<UseCases::Dispensing::Valve::ValveQueryUseCase>()) {
+            dispenser_status_reader.read_dispenser_status = [valve_query_use_case]() {
+                return valve_query_use_case->GetDispenserStatus();
+            };
+            dispenser_status_reader.read_supply_status = [valve_query_use_case]() {
+                return valve_query_use_case->GetSupplyStatus();
+            };
+        }
+
         RegisterPort<Siligen::RuntimeExecution::Contracts::System::IRuntimeStatusExportPort>(
             std::make_shared<Siligen::Runtime::Service::Status::WorkflowRuntimeStatusExportPort>(
                 runtime_supervision_port,
-                Resolve<UseCases::Motion::MotionControlUseCase>(),
-                Resolve<UseCases::Dispensing::Valve::ValveQueryUseCase>()));
+                std::move(motion_status_reader),
+                std::move(dispenser_status_reader)));
     }
 }
 
@@ -96,8 +127,9 @@ template<>
 std::shared_ptr<UseCases::System::EmergencyStopUseCase>
 ApplicationContainer::CreateInstance<UseCases::System::EmergencyStopUseCase>() {
     if (!machine_execution_state_port_) {
+        auto backend = std::make_shared<Siligen::Runtime::Host::System::WorkflowMachineExecutionStateBackend>();
         RegisterPort<Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort>(
-            std::make_shared<Siligen::Runtime::Service::System::DispenserModelMachineExecutionStateBackend>());
+            std::make_shared<Siligen::Runtime::Host::System::LegacyMachineExecutionStateAdapter>(backend));
     }
     auto position_control_port = motion_runtime_port_
         ? std::static_pointer_cast<Domain::Motion::Ports::IPositionControlPort>(motion_runtime_port_)

@@ -15,78 +15,98 @@ param(
     [bool]$PublishLatestOnPass = $true,
     [string]$PublishLatestReportDir = "tests\\reports\\hil-controlled-test",
     [string]$PythonExe = "python",
-    [string]$Executor = ""
+    [string]$Executor = "",
+    [string]$OperatorOverrideReason = ""
 )
 
 $ErrorActionPreference = "Stop"
 
-function Resolve-HilSummaryPath {
+function Resolve-AbsolutePath {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$ResolvedReportDir,
+        [string]$WorkspaceRoot,
         [Parameter(Mandatory = $true)]
-        [string]$FileName
+        [string]$PathValue
     )
 
-    $candidates = @(
-        (Join-Path $ResolvedReportDir $FileName),
-        (Join-Path (Join-Path $ResolvedReportDir "hil-controlled-test") $FileName)
-    )
-    foreach ($candidate in $candidates) {
-        if (Test-Path $candidate) {
-            return $candidate
-        }
+    if ([System.IO.Path]::IsPathRooted($PathValue)) {
+        return [System.IO.Path]::GetFullPath($PathValue)
     }
-    throw "missing hil report artifact: $FileName under $ResolvedReportDir"
+    return [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot $PathValue))
+}
+
+function Copy-PathIfPresent {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Source,
+        [Parameter(Mandatory = $true)]
+        [string]$Destination
+    )
+
+    if (-not (Test-Path $Source)) {
+        return
+    }
+
+    $item = Get-Item -LiteralPath $Source
+    if ($item.PSIsContainer) {
+        if (Test-Path $Destination) {
+            Remove-Item -LiteralPath $Destination -Recurse -Force
+        }
+        Copy-Item -LiteralPath $Source -Destination $Destination -Recurse -Force
+        return
+    }
+
+    $parent = Split-Path -Parent $Destination
+    if (-not [string]::IsNullOrWhiteSpace($parent)) {
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    }
+    Copy-Item -LiteralPath $Source -Destination $Destination -Force
 }
 
 $workspaceRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
 $buildScript = Join-Path $workspaceRoot "build.ps1"
 $testScript = Join-Path $workspaceRoot "test.ps1"
+$hardwareSmokeScript = Join-Path $PSScriptRoot "run_hardware_smoke.py"
+$hilClosedLoopScript = Join-Path $PSScriptRoot "run_hil_closed_loop.py"
+$hilCaseMatrixScript = Join-Path $PSScriptRoot "run_case_matrix.py"
 $gateScript = Join-Path $PSScriptRoot "verify_hil_controlled_gate.py"
 $renderSummaryScript = Join-Path $PSScriptRoot "render_hil_controlled_release_summary.py"
 
-if (-not (Test-Path $buildScript)) {
-    throw "missing build entry: $buildScript"
-}
-if (-not (Test-Path $testScript)) {
-    throw "missing test entry: $testScript"
-}
-if (-not (Test-Path $gateScript)) {
-    throw "missing gate script: $gateScript"
-}
-if (-not (Test-Path $renderSummaryScript)) {
-    throw "missing release summary renderer: $renderSummaryScript"
+foreach ($requiredPath in @($buildScript, $testScript, $hardwareSmokeScript, $hilClosedLoopScript, $hilCaseMatrixScript, $gateScript, $renderSummaryScript)) {
+    if (-not (Test-Path $requiredPath)) {
+        throw "missing required controlled-hil entry: $requiredPath"
+    }
 }
 
-$resolvedReportDir = if ([System.IO.Path]::IsPathRooted($ReportDir)) {
-    [System.IO.Path]::GetFullPath($ReportDir)
-} else {
-    [System.IO.Path]::GetFullPath((Join-Path $workspaceRoot $ReportDir))
-}
-
+$resolvedReportDir = Resolve-AbsolutePath -WorkspaceRoot $workspaceRoot -PathValue $ReportDir
 if ($UseTimestampedReportDir) {
     $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ")
     $resolvedReportDir = Join-Path $resolvedReportDir $stamp
 }
 
-$resolvedPublishLatestReportDir = if ([System.IO.Path]::IsPathRooted($PublishLatestReportDir)) {
-    [System.IO.Path]::GetFullPath($PublishLatestReportDir)
-} else {
-    [System.IO.Path]::GetFullPath((Join-Path $workspaceRoot $PublishLatestReportDir))
-}
+$resolvedPublishLatestReportDir = Resolve-AbsolutePath -WorkspaceRoot $workspaceRoot -PathValue $PublishLatestReportDir
+$offlinePrereqDir = Join-Path $resolvedReportDir "offline-prereq"
+$hardwareSmokeDir = Join-Path $resolvedReportDir "hardware-smoke"
+$hilCaseMatrixDir = Join-Path $resolvedReportDir "hil-case-matrix"
+$offlinePrereqJsonPath = Join-Path $offlinePrereqDir "workspace-validation.json"
+$offlinePrereqMdPath = Join-Path $offlinePrereqDir "workspace-validation.md"
+$hardwareSmokeSummaryJsonPath = Join-Path $hardwareSmokeDir "hardware-smoke-summary.json"
+$hardwareSmokeSummaryMdPath = Join-Path $hardwareSmokeDir "hardware-smoke-summary.md"
+$hilSummaryJsonPath = Join-Path $resolvedReportDir "hil-closed-loop-summary.json"
+$hilSummaryMdPath = Join-Path $resolvedReportDir "hil-closed-loop-summary.md"
+$hilBundleJsonPath = Join-Path $resolvedReportDir "validation-evidence-bundle.json"
+$hilManifestJsonPath = Join-Path $resolvedReportDir "report-manifest.json"
+$hilIndexJsonPath = Join-Path $resolvedReportDir "report-index.json"
+$hilCaseIndexJsonPath = Join-Path $resolvedReportDir "case-index.json"
+$hilEvidenceLinksMdPath = Join-Path $resolvedReportDir "evidence-links.md"
+$hilFailureDetailsJsonPath = Join-Path $resolvedReportDir "failure-details.json"
+$hilCaseMatrixSummaryJsonPath = Join-Path $hilCaseMatrixDir "case-matrix-summary.json"
+$hilCaseMatrixSummaryMdPath = Join-Path $hilCaseMatrixDir "case-matrix-summary.md"
+$gateSummaryJsonPath = Join-Path $resolvedReportDir "hil-controlled-gate-summary.json"
+$gateSummaryMdPath = Join-Path $resolvedReportDir "hil-controlled-gate-summary.md"
+$releaseSummaryMdPath = Join-Path $resolvedReportDir "hil-controlled-release-summary.md"
 
-$env:SILIGEN_HIL_DURATION_SECONDS = [string]$HilDurationSeconds
-$env:SILIGEN_HIL_PAUSE_RESUME_CYCLES = [string]$HilPauseResumeCycles
-$env:SILIGEN_HIL_DISPENSER_COUNT = [string]$HilDispenserCount
-$env:SILIGEN_HIL_DISPENSER_INTERVAL_MS = [string]$HilDispenserIntervalMs
-$env:SILIGEN_HIL_DISPENSER_DURATION_MS = [string]$HilDispenserDurationMs
-$env:SILIGEN_HIL_STATE_WAIT_TIMEOUT_SECONDS = [string]$HilStateWaitTimeoutSeconds
-if ($AllowSkipOnMissingHardware) {
-    $env:SILIGEN_HIL_ALLOW_SKIP_ON_MISSING = "1"
-} else {
-    $env:SILIGEN_HIL_ALLOW_SKIP_ON_MISSING = "0"
-}
+New-Item -ItemType Directory -Path $resolvedReportDir -Force | Out-Null
 
 Write-Output "hil controlled test: parameter snapshot"
 Write-Output "  profile=$Profile"
@@ -99,65 +119,110 @@ Write-Output "  dispenser_interval_ms=$HilDispenserIntervalMs"
 Write-Output "  dispenser_duration_ms=$HilDispenserDurationMs"
 Write-Output "  state_wait_timeout_seconds=$HilStateWaitTimeoutSeconds"
 Write-Output "  allow_skip_on_missing_hardware=$([bool]$AllowSkipOnMissingHardware)"
-Write-Output "  skip_build=$([bool]$SkipBuild)"
 Write-Output "  include_hil_case_matrix=$([bool]$IncludeHilCaseMatrix)"
 Write-Output "  publish_latest_on_pass=$PublishLatestOnPass"
 Write-Output "  publish_latest_report_dir=$resolvedPublishLatestReportDir"
-Write-Output "  python_exe=$PythonExe"
-if (-not $IncludeHilCaseMatrix) {
-    Write-Warning "hil controlled test: hil-case-matrix disabled via explicit override; this run does not satisfy the default controlled-gate baseline."
+Write-Output "  executor=$Executor"
+Write-Output "  operator_override_reason=$OperatorOverrideReason"
+
+if ($PublishLatestOnPass -and [string]::IsNullOrWhiteSpace($Executor)) {
+    throw "hil controlled test requires -Executor when PublishLatestOnPass=true so the latest authority stays signed"
 }
 
 if ($SkipBuild) {
     Write-Output "hil controlled test: skip build apps (SkipBuild=true)"
 } else {
     Write-Output "hil controlled test: build apps (serial)"
-    powershell -NoProfile -ExecutionPolicy Bypass -File $buildScript -Profile $Profile -Suite apps
-    $buildExitCode = $LASTEXITCODE
+    try {
+        & $buildScript -Profile $Profile -Suite @("apps")
+        $buildExitCode = 0
+    } catch {
+        $buildExitCode = if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { $LASTEXITCODE } else { 1 }
+        Write-Error $_
+    }
     if ($buildExitCode -ne 0) {
         Write-Output "hil controlled test failed: build step exit_code=$buildExitCode"
         exit $buildExitCode
     }
 }
 
-Write-Output "hil controlled test: run e2e validation with hardware-smoke + hil-closed-loop (serial)"
-$testArgs = @(
-    "-NoProfile",
-    "-ExecutionPolicy", "Bypass",
-    "-File", $testScript,
-    "-Profile", $Profile,
-    "-Suite", "e2e",
-    "-ReportDir", $resolvedReportDir,
-    "-IncludeHardwareSmoke",
-    "-IncludeHilClosedLoop",
-    "-FailOnKnownFailure"
+Write-Output "hil controlled test: run offline prerequisites"
+try {
+    & $testScript `
+        -Profile $Profile `
+        -Suite @("contracts", "e2e", "protocol-compatibility") `
+        -ReportDir $offlinePrereqDir `
+        -Lane "full-offline-gate" `
+        -DesiredDepth "full-offline" `
+        -FailOnKnownFailure
+    $offlineExitCode = 0
+} catch {
+    $offlineExitCode = if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { $LASTEXITCODE } else { 1 }
+    Write-Error $_
+}
+if ($offlineExitCode -ne 0) {
+    Write-Output "hil controlled test failed: offline prerequisite validation exit_code=$offlineExitCode"
+    exit $offlineExitCode
+}
+
+Write-Output "hil controlled test: run hardware smoke"
+$hardwareSmokeArgs = @(
+    $hardwareSmokeScript,
+    "--report-dir", $hardwareSmokeDir
 )
-if ($IncludeHilCaseMatrix) {
-    $testArgs += "-IncludeHilCaseMatrix"
+if ($AllowSkipOnMissingHardware) {
+    $hardwareSmokeArgs += "--allow-skip-on-missing-gateway"
 }
-powershell @testArgs
-$testExitCode = $LASTEXITCODE
-if ($testExitCode -ne 0) {
-    Write-Output "hil controlled test failed: e2e validation exit_code=$testExitCode"
-    exit $testExitCode
+& $PythonExe @hardwareSmokeArgs
+$hardwareSmokeExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+if ($hardwareSmokeExitCode -ne 0) {
+    Write-Output "hil controlled test: hardware smoke produced non-pass exit_code=$hardwareSmokeExitCode"
 }
 
-$workspaceValidationJsonPath = Join-Path $resolvedReportDir "workspace-validation.json"
-$workspaceValidationMdPath = Join-Path $resolvedReportDir "workspace-validation.md"
-$hilSummaryJsonPath = Resolve-HilSummaryPath -ResolvedReportDir $resolvedReportDir -FileName "hil-closed-loop-summary.json"
-$hilSummaryMdPath = Resolve-HilSummaryPath -ResolvedReportDir $resolvedReportDir -FileName "hil-closed-loop-summary.md"
-$hilCaseMatrixSummaryJsonPath = Join-Path (Join-Path $resolvedReportDir "hil-case-matrix") "case-matrix-summary.json"
-$hilCaseMatrixSummaryMdPath = Join-Path (Join-Path $resolvedReportDir "hil-case-matrix") "case-matrix-summary.md"
-$gateSummaryJsonPath = Join-Path $resolvedReportDir "hil-controlled-gate-summary.json"
-$gateSummaryMdPath = Join-Path $resolvedReportDir "hil-controlled-gate-summary.md"
-$releaseSummaryMdPath = Join-Path $resolvedReportDir "hil-controlled-release-summary.md"
+Write-Output "hil controlled test: run hil closed-loop"
+$hilClosedLoopArgs = @(
+    $hilClosedLoopScript,
+    "--report-dir", $resolvedReportDir,
+    "--duration-seconds", $HilDurationSeconds,
+    "--pause-resume-cycles", $HilPauseResumeCycles,
+    "--dispenser-count", $HilDispenserCount,
+    "--dispenser-interval-ms", $HilDispenserIntervalMs,
+    "--dispenser-duration-ms", $HilDispenserDurationMs,
+    "--state-wait-timeout-seconds", $HilStateWaitTimeoutSeconds,
+    "--offline-prereq-report", $offlinePrereqJsonPath
+)
+if (-not [string]::IsNullOrWhiteSpace($OperatorOverrideReason)) {
+    $hilClosedLoopArgs += @("--operator-override-reason", $OperatorOverrideReason)
+}
+if ($AllowSkipOnMissingHardware) {
+    $hilClosedLoopArgs += "--allow-skip-on-missing-gateway"
+}
+& $PythonExe @hilClosedLoopArgs
+$hilClosedLoopExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+if ($hilClosedLoopExitCode -ne 0) {
+    Write-Output "hil controlled test: hil closed-loop produced non-pass exit_code=$hilClosedLoopExitCode"
+}
 
+$hilCaseMatrixExitCode = 0
 if ($IncludeHilCaseMatrix) {
-    if (-not (Test-Path $hilCaseMatrixSummaryJsonPath)) {
-        throw "missing hil case matrix summary json: $hilCaseMatrixSummaryJsonPath"
+    Write-Output "hil controlled test: run hil case matrix"
+    $hilCaseMatrixArgs = @(
+        $hilCaseMatrixScript,
+        "--report-dir", $hilCaseMatrixDir,
+        "--pause-resume-cycles", $HilPauseResumeCycles,
+        "--dispenser-count", $HilDispenserCount,
+        "--dispenser-interval-ms", $HilDispenserIntervalMs,
+        "--dispenser-duration-ms", $HilDispenserDurationMs,
+        "--state-wait-timeout-seconds", $HilStateWaitTimeoutSeconds,
+        "--offline-prereq-report", $offlinePrereqJsonPath
+    )
+    if (-not [string]::IsNullOrWhiteSpace($OperatorOverrideReason)) {
+        $hilCaseMatrixArgs += @("--operator-override-reason", $OperatorOverrideReason)
     }
-    if (-not (Test-Path $hilCaseMatrixSummaryMdPath)) {
-        throw "missing hil case matrix summary markdown: $hilCaseMatrixSummaryMdPath"
+    & $PythonExe @hilCaseMatrixArgs
+    $hilCaseMatrixExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+    if ($hilCaseMatrixExitCode -ne 0) {
+        Write-Output "hil controlled test: hil case matrix produced non-pass exit_code=$hilCaseMatrixExitCode"
     }
 }
 
@@ -165,8 +230,10 @@ Write-Output "hil controlled test: verify controlled gate"
 $gateArgs = @(
     $gateScript,
     "--report-dir", $resolvedReportDir,
-    "--workspace-validation-json", $workspaceValidationJsonPath,
-    "--hil-closed-loop-summary-json", $hilSummaryJsonPath
+    "--offline-prereq-json", $offlinePrereqJsonPath,
+    "--hardware-smoke-summary-json", $hardwareSmokeSummaryJsonPath,
+    "--hil-closed-loop-summary-json", $hilSummaryJsonPath,
+    "--hil-evidence-bundle-json", $hilBundleJsonPath
 )
 if ($IncludeHilCaseMatrix) {
     $gateArgs += @(
@@ -182,19 +249,25 @@ $renderArgs = @(
     $renderSummaryScript,
     "--report-dir", $resolvedReportDir,
     "--profile", $Profile,
-    "--workspace-validation-json", $workspaceValidationJsonPath,
-    "--hil-closed-loop-summary-json", $hilSummaryJsonPath,
-    "--gate-summary-json", $gateSummaryJsonPath
+    "--gate-summary-json", $gateSummaryJsonPath,
+    "--offline-prereq-json", $offlinePrereqJsonPath,
+    "--hardware-smoke-summary-json", $hardwareSmokeSummaryJsonPath,
+    "--hil-closed-loop-summary-json", $hilSummaryJsonPath
 )
 if (-not [string]::IsNullOrWhiteSpace($Executor)) {
     $renderArgs += @("--executor", $Executor)
+}
+if ($IncludeHilCaseMatrix) {
+    $renderArgs += @("--hil-case-matrix-summary-json", $hilCaseMatrixSummaryJsonPath)
 }
 & $PythonExe @renderArgs
 $renderExitCode = $LASTEXITCODE
 
 Write-Output "hil controlled test complete"
-Write-Output "workspace validation json: $workspaceValidationJsonPath"
-Write-Output "workspace validation markdown: $workspaceValidationMdPath"
+Write-Output "offline prereq json: $offlinePrereqJsonPath"
+Write-Output "offline prereq markdown: $offlinePrereqMdPath"
+Write-Output "hardware smoke json: $hardwareSmokeSummaryJsonPath"
+Write-Output "hardware smoke markdown: $hardwareSmokeSummaryMdPath"
 Write-Output "hil closed-loop summary json: $hilSummaryJsonPath"
 Write-Output "hil closed-loop summary markdown: $hilSummaryMdPath"
 if ($IncludeHilCaseMatrix) {
@@ -207,11 +280,30 @@ Write-Output "release summary markdown: $releaseSummaryMdPath"
 
 if ($gateExitCode -ne 0) {
     Write-Output "hil controlled test failed: gate verification exit_code=$gateExitCode"
+    if ($hilCaseMatrixExitCode -ne 0) {
+        exit $hilCaseMatrixExitCode
+    }
+    if ($hilClosedLoopExitCode -ne 0) {
+        exit $hilClosedLoopExitCode
+    }
+    if ($hardwareSmokeExitCode -ne 0) {
+        exit $hardwareSmokeExitCode
+    }
     exit $gateExitCode
 }
 if ($renderExitCode -ne 0) {
     Write-Output "hil controlled test failed: release summary rendering exit_code=$renderExitCode"
     exit $renderExitCode
+}
+
+if ($hilCaseMatrixExitCode -ne 0) {
+    exit $hilCaseMatrixExitCode
+}
+if ($hilClosedLoopExitCode -ne 0) {
+    exit $hilClosedLoopExitCode
+}
+if ($hardwareSmokeExitCode -ne 0) {
+    exit $hardwareSmokeExitCode
 }
 
 if (-not $PublishLatestOnPass) {
@@ -220,13 +312,13 @@ if (-not $PublishLatestOnPass) {
 }
 
 if ($resolvedReportDir -ieq $resolvedPublishLatestReportDir) {
-    Write-Output "latest reports already in canonical dir: $resolvedPublishLatestReportDir"
     $manifestPathSameDir = Join-Path $resolvedPublishLatestReportDir "latest-source.txt"
     $manifestLinesSameDir = [System.Collections.Generic.List[string]]::new()
     @(
         "updated_at_utc=$((Get-Date).ToUniversalTime().ToString('o'))",
         "source_report_dir=$resolvedReportDir",
-        "source_workspace_validation_json=$workspaceValidationJsonPath",
+        "source_offline_prereq_json=$offlinePrereqJsonPath",
+        "source_hardware_smoke_summary_json=$hardwareSmokeSummaryJsonPath",
         "source_hil_summary_json=$hilSummaryJsonPath",
         "source_gate_summary_json=$gateSummaryJsonPath",
         "source_release_summary_md=$releaseSummaryMdPath"
@@ -240,30 +332,42 @@ if ($resolvedReportDir -ieq $resolvedPublishLatestReportDir) {
 }
 
 New-Item -ItemType Directory -Path $resolvedPublishLatestReportDir -Force | Out-Null
-Copy-Item -Path $workspaceValidationJsonPath -Destination (Join-Path $resolvedPublishLatestReportDir "workspace-validation.json") -Force
-Copy-Item -Path $workspaceValidationMdPath -Destination (Join-Path $resolvedPublishLatestReportDir "workspace-validation.md") -Force
-Copy-Item -Path $hilSummaryJsonPath -Destination (Join-Path $resolvedPublishLatestReportDir "hil-closed-loop-summary.json") -Force
-Copy-Item -Path $hilSummaryMdPath -Destination (Join-Path $resolvedPublishLatestReportDir "hil-closed-loop-summary.md") -Force
+Copy-PathIfPresent -Source $offlinePrereqDir -Destination (Join-Path $resolvedPublishLatestReportDir "offline-prereq")
+Copy-PathIfPresent -Source $hardwareSmokeDir -Destination (Join-Path $resolvedPublishLatestReportDir "hardware-smoke")
 if ($IncludeHilCaseMatrix) {
-    $publishHilCaseMatrixDir = Join-Path $resolvedPublishLatestReportDir "hil-case-matrix"
-    New-Item -ItemType Directory -Path $publishHilCaseMatrixDir -Force | Out-Null
-    Copy-Item -Path $hilCaseMatrixSummaryJsonPath -Destination (Join-Path $publishHilCaseMatrixDir "case-matrix-summary.json") -Force
-    Copy-Item -Path $hilCaseMatrixSummaryMdPath -Destination (Join-Path $publishHilCaseMatrixDir "case-matrix-summary.md") -Force
+    Copy-PathIfPresent -Source $hilCaseMatrixDir -Destination (Join-Path $resolvedPublishLatestReportDir "hil-case-matrix")
 }
-Copy-Item -Path $gateSummaryJsonPath -Destination (Join-Path $resolvedPublishLatestReportDir "hil-controlled-gate-summary.json") -Force
-Copy-Item -Path $gateSummaryMdPath -Destination (Join-Path $resolvedPublishLatestReportDir "hil-controlled-gate-summary.md") -Force
-Copy-Item -Path $releaseSummaryMdPath -Destination (Join-Path $resolvedPublishLatestReportDir "hil-controlled-release-summary.md") -Force
+
+foreach ($relativeFile in @(
+    "hil-closed-loop-summary.json",
+    "hil-closed-loop-summary.md",
+    "validation-evidence-bundle.json",
+    "report-manifest.json",
+    "report-index.json",
+    "case-index.json",
+    "evidence-links.md",
+    "failure-details.json",
+    "hil-controlled-gate-summary.json",
+    "hil-controlled-gate-summary.md",
+    "hil-controlled-release-summary.md"
+)) {
+    Copy-PathIfPresent `
+        -Source (Join-Path $resolvedReportDir $relativeFile) `
+        -Destination (Join-Path $resolvedPublishLatestReportDir $relativeFile)
+}
 
 $manifestPath = Join-Path $resolvedPublishLatestReportDir "latest-source.txt"
 $manifestLines = [System.Collections.Generic.List[string]]::new()
 @(
     "updated_at_utc=$((Get-Date).ToUniversalTime().ToString('o'))",
     "source_report_dir=$resolvedReportDir",
-    "source_workspace_validation_json=$workspaceValidationJsonPath",
+    "source_offline_prereq_json=$offlinePrereqJsonPath",
+    "source_hardware_smoke_summary_json=$hardwareSmokeSummaryJsonPath",
     "source_hil_summary_json=$hilSummaryJsonPath",
+    "source_hil_evidence_bundle_json=$hilBundleJsonPath",
     "source_gate_summary_json=$gateSummaryJsonPath",
     "source_release_summary_md=$releaseSummaryMdPath"
- ) | ForEach-Object { $manifestLines.Add($_) | Out-Null }
+) | ForEach-Object { $manifestLines.Add($_) | Out-Null }
 if ($IncludeHilCaseMatrix) {
     $manifestLines.Add("source_hil_case_matrix_summary_json=$hilCaseMatrixSummaryJsonPath") | Out-Null
 }

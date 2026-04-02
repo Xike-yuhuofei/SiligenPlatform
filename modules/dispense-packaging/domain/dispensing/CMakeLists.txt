@@ -17,14 +17,6 @@ if(NOT TARGET siligen_process_planning_contracts_public)
     )
 endif()
 
-if(NOT TARGET siligen_shared_boost_headers)
-    add_library(siligen_shared_boost_headers INTERFACE)
-    target_include_directories(siligen_shared_boost_headers INTERFACE
-        ${SILIGEN_BOOST_INCLUDE_DIR}
-    )
-    target_compile_features(siligen_shared_boost_headers INTERFACE cxx_std_17)
-endif()
-
 include_directories(BEFORE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
@@ -38,12 +30,12 @@ add_library(siligen_dispense_packaging_domain_dispensing STATIC
     domain-services/DispensingController.cpp
     domain-services/DispensingProcessService.cpp
     planning/domain-services/AuthorityTriggerLayoutPlanner.cpp
-    planning/domain-services/PathArcLengthLocator.cpp
-    planning/domain-services/CurveFlatteningService.cpp
     planning/domain-services/ClosedLoopAnchorConstraintSolver.cpp
     planning/domain-services/ClosedLoopCornerAnchorResolver.cpp
-    planning/domain-services/TopologySpanSplitter.cpp
+    planning/domain-services/PathArcLengthLocator.cpp
     planning/domain-services/TopologyComponentClassifier.cpp
+    planning/domain-services/TopologySpanSplitter.cpp
+    planning/domain-services/CurveFlatteningService.cpp
 )
 
 target_sources(siligen_dispense_packaging_domain_dispensing PRIVATE
@@ -64,7 +56,6 @@ target_include_directories(siligen_dispense_packaging_domain_dispensing BEFORE P
 )
 
 target_link_libraries(siligen_dispense_packaging_domain_dispensing PUBLIC
-    siligen_shared_boost_headers
     siligen_types
     siligen_utils
     siligen_geometry

@@ -3,7 +3,6 @@
 #include "ApplicationContainerFwd.h"
 #include "../runtime/configuration/WorkspaceAssetPaths.h"
 #include "process_planning/contracts/ConfigurationContracts.h"
-#include "job_ingest/contracts/storage/IFileStoragePort.h"
 #include "domain/motion/ports/IMotionRuntimePort.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 #include <array>
@@ -190,7 +189,7 @@ private:
 
     // Domain层端口（供适配器层使用）
     std::shared_ptr<Domain::Dispensing::Ports::IValvePort> valve_port_;
-    std::shared_ptr<JobIngest::Contracts::Storage::IFileStoragePort> file_storage_port_;
+    std::shared_ptr<Domain::Configuration::Ports::IFileStoragePort> file_storage_port_;
     std::shared_ptr<Domain::Motion::Ports::IIOControlPort> io_control_port_;
     std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port_;
     std::shared_ptr<Domain::Motion::Ports::IVelocityProfilePort> velocity_profile_port_;
@@ -304,7 +303,7 @@ private:
             test_config_manager_ = port;
         } else if constexpr (std::is_same_v<TPort, Domain::Dispensing::Ports::IValvePort>) {
             valve_port_ = port;
-        } else if constexpr (std::is_same_v<TPort, JobIngest::Contracts::Storage::IFileStoragePort>) {
+        } else if constexpr (std::is_same_v<TPort, Domain::Configuration::Ports::IFileStoragePort>) {
             file_storage_port_ = port;
         } else if constexpr (std::is_same_v<TPort, Domain::Motion::Ports::IInterpolationPort>) {
             interpolation_port_ = port;

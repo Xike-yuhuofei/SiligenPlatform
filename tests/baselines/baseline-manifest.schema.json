@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://siligensuite.local/tests/baselines/baseline-manifest.schema.json",
+  "title": "SiligenSuite Baseline Manifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "manifest_owner",
+    "reviewer_workflow",
+    "baselines"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "baseline-manifest.v1"
+    },
+    "manifest_owner": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reviewer_workflow": {
+      "type": "object",
+      "required": [
+        "required_reviewers",
+        "required_evidence",
+        "disallowed_sources",
+        "steps"
+      ],
+      "properties": {
+        "required_reviewers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required_evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "disallowed_sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "baselines": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/baselineEntry"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "baselineEntry": {
+      "type": "object",
+      "required": [
+        "baseline_id",
+        "canonical_path",
+        "baseline_kind",
+        "owner_scope",
+        "source_asset_refs",
+        "consumer_layers",
+        "update_runner",
+        "update_reviewers",
+        "reviewer_guidance",
+        "lifecycle",
+        "deprecated_source_paths"
+      ],
+      "properties": {
+        "baseline_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.-]+$"
+        },
+        "canonical_path": {
+          "type": "string",
+          "pattern": "^tests/baselines/.+"
+        },
+        "baseline_kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner_scope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_asset_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "consumer_layers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^L[0-9]-"
+          }
+        },
+        "update_runner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "update_reviewers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "reviewer_guidance": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lifecycle": {
+          "type": "object",
+          "required": [
+            "state",
+            "review_by"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "minLength": 1
+            },
+            "review_by": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          "additionalProperties": false
+        },
+        "deprecated_source_paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

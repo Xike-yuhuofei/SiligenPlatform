@@ -15,8 +15,8 @@ from hmi_client.client.startup_sequence import (
     run_launch_sequence,
     run_recovery_action,
 )
-from hmi_client.client.supervisor_session import SupervisorPolicy
-from hmi_client.client.supervisor_contract import SessionSnapshot, snapshot_timestamp
+from hmi_client.client.launch_supervision_session import SupervisorPolicy
+from hmi_client.client.launch_supervision_contract import SessionSnapshot, snapshot_timestamp
 
 
 class _FakeBackend:
@@ -281,8 +281,37 @@ class StartupSequenceContractTest(unittest.TestCase):
             )
 
         self.assertEqual(backend.start_calls, 0)
+        self.assertEqual(client.disconnect_calls, 0)
         self.assertEqual(client.connect_calls, 0)
         self.assertEqual(protocol.hardware_calls, 0)
+
+    def test_recovery_restart_session_rejects_ready_snapshot(self) -> None:
+        backend = _FakeBackend()
+        client = _FakeClient(connect_result=True)
+        protocol = _FakeProtocol(hardware_result=(True, "ready"))
+        ready_snapshot = SessionSnapshot(
+            mode="online",
+            session_state="ready",
+            backend_state="ready",
+            tcp_state="ready",
+            hardware_state="ready",
+            failure_code=None,
+            failure_stage=None,
+            recoverable=True,
+            last_error_message="System ready",
+            updated_at=snapshot_timestamp(),
+        )
+
+        with self.assertRaisesRegex(ValueError, "failed online session snapshot"):
+            run_recovery_action(
+                action="restart_session",
+                snapshot=ready_snapshot,
+                backend=backend,
+                client=client,
+                protocol=protocol,
+            )
+
+        self.assertEqual(backend.stop_calls, 0)
 
     def test_recovery_stop_session_transitions_to_idle(self) -> None:
         backend = _FakeBackend()

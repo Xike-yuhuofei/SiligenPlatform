@@ -15,9 +15,9 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[3]
-FIRST_LAYER_DIR = ROOT / "tests" / "e2e" / "first-layer"
-if str(FIRST_LAYER_DIR) not in sys.path:
-    sys.path.insert(0, str(FIRST_LAYER_DIR))
+HIL_DIR = ROOT / "tests" / "e2e" / "hardware-in-loop"
+if str(HIL_DIR) not in sys.path:
+    sys.path.insert(0, str(HIL_DIR))
 
 from runtime_gateway_harness import (  # noqa: E402
     KNOWN_FAILURE_EXIT_CODE,
@@ -80,6 +80,22 @@ STATE_CONTRADICTION_SIGNAL_FIELDS = (
     "coord.axes.Y.position",
     "coord.axes.Y.velocity",
 )
+SUPPORTED_MOCK_IO_KEYS = (
+    "estop",
+    "door",
+    "limit_x_pos",
+    "limit_x_neg",
+    "limit_y_pos",
+    "limit_y_neg",
+)
+MOCK_IO_TO_SAFETY_FIELD = {
+    "estop": "estop",
+    "door": "door_open",
+    "limit_x_pos": "limit_x_pos",
+    "limit_x_neg": "home_boundary_x_active",
+    "limit_y_pos": "limit_y_pos",
+    "limit_y_neg": "home_boundary_y_active",
+}
 
 
 @dataclass
@@ -130,6 +146,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--position-epsilon-mm", type=float, default=DEFAULT_POSITION_EPSILON_MM)
     parser.add_argument("--velocity-epsilon-mm-s", type=float, default=DEFAULT_VELOCITY_EPSILON_MM_S)
+    parser.add_argument("--mock-io-json", default="")
+    parser.add_argument("--mock-io-settle-timeout-seconds", type=float, default=5.0)
     return parser.parse_args()
 
 
@@ -154,6 +172,31 @@ def add_step(
 def ensure_exists(path: Path, label: str) -> None:
     if not path.exists():
         raise FileNotFoundError(f"{label} missing: {path}")
+
+
+def parse_mock_io_json(raw_text: str) -> dict[str, bool]:
+    payload_text = str(raw_text or "").strip()
+    if not payload_text:
+        return {}
+
+    try:
+        payload = json.loads(payload_text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid --mock-io-json: {exc}") from exc
+
+    if not isinstance(payload, dict):
+        raise ValueError("--mock-io-json must decode to an object")
+
+    normalized: dict[str, bool] = {}
+    for raw_key, raw_value in payload.items():
+        key = str(raw_key).strip()
+        if key not in SUPPORTED_MOCK_IO_KEYS:
+            raise ValueError(
+                "--mock-io-json contains unsupported key: "
+                f"{key}; supported={','.join(SUPPORTED_MOCK_IO_KEYS)}"
+            )
+        normalized[key] = bool(raw_value)
+    return normalized
 
 
 def load_connection_params(config_path: Path) -> dict[str, str]:
@@ -783,6 +826,32 @@ def summarize_safety(status_payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def wait_for_mock_io_state(
+    client: TcpJsonClient,
+    *,
+    requested_io: dict[str, bool],
+    timeout_seconds: float,
+) -> dict[str, Any]:
+    deadline = time.time() + timeout_seconds
+    last_status: dict[str, Any] = {}
+
+    while time.time() < deadline:
+        last_status = client.send_request("status", None, timeout_seconds=5.0)
+        safety = summarize_safety(last_status)
+        if all(
+            bool(safety.get(MOCK_IO_TO_SAFETY_FIELD[key], False)) == expected
+            for key, expected in requested_io.items()
+        ):
+            return last_status
+        time.sleep(0.1)
+
+    observed = summarize_safety(last_status)
+    raise TimeoutError(
+        "mock.io.set did not settle before dry-run preflight: "
+        f"requested={requested_io} observed={observed}"
+    )
+
+
 def non_homed_axes(status_payload: dict[str, Any]) -> list[str]:
     result = status_result(status_payload)
     axes = result.get("axes", {})
@@ -808,6 +877,8 @@ def require_safe_for_motion(status_payload: dict[str, Any]) -> None:
             "limit_x_neg",
             "limit_y_pos",
             "limit_y_neg",
+            "home_boundary_x_active",
+            "home_boundary_y_active",
         )
         if safety.get(key)
     ]
@@ -892,6 +963,7 @@ def main() -> int:
     ensure_exists(args.gateway_exe, "gateway executable")
     ensure_exists(args.config_path, "config")
     ensure_exists(args.dxf_file, "dxf file")
+    requested_mock_io = parse_mock_io_json(args.mock_io_json)
 
     report_dir = args.report_root / time.strftime("%Y%m%d-%H%M%S")
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -953,7 +1025,31 @@ def main() -> int:
             json.dumps({"params": connect_params, "result": status_result(connect_response)}, ensure_ascii=False),
         )
 
-        status_before = client.send_request("status", None, timeout_seconds=5.0)
+        if requested_mock_io:
+            mock_io_response = client.send_request("mock.io.set", requested_mock_io, timeout_seconds=10.0)
+            artifacts["mock_io_set"] = mock_io_response
+            if "error" in mock_io_response:
+                raise RuntimeError("mock.io.set failed: " + truncate_json(mock_io_response))
+            status_before = wait_for_mock_io_state(
+                client,
+                requested_io=requested_mock_io,
+                timeout_seconds=args.mock_io_settle_timeout_seconds,
+            )
+            artifacts["status_after_mock_io"] = status_before
+            add_step(
+                steps,
+                "mock-io-set",
+                "passed",
+                json.dumps(
+                    {
+                        "requested": requested_mock_io,
+                        "observed_safety": summarize_safety(status_before),
+                    },
+                    ensure_ascii=True,
+                ),
+            )
+        else:
+            status_before = client.send_request("status", None, timeout_seconds=5.0)
         artifacts["status_before"] = status_before
         safety_before = summarize_safety(status_before)
         add_step(

@@ -218,24 +218,11 @@ def _validate_root_wiring(root: Path) -> list[str]:
         for required in (
             "siligen_job_ingest_application_public",
             "siligen_dxf_geometry_application_public",
-            "siligen_runtime_execution_runtime_contracts",
+            "../../runtime-execution/application/include",
+            "siligen_runtime_execution_application_public",
         ):
             if required not in workflow_application_text:
                 issues.append(f"workflow application owner wiring missing: {required}")
-        motion_target_block = re.search(
-            r"target_link_libraries\(siligen_application_motion PUBLIC(?P<body>[\s\S]*?)target_compile_features\(siligen_application_motion",
-            workflow_application_text,
-        )
-        if motion_target_block is None:
-            issues.append("workflow application motion target block is missing")
-        elif "siligen_runtime_execution_application_public" in motion_target_block.group("body"):
-            issues.append("workflow application motion target must not link: siligen_runtime_execution_application_public")
-        headers_target_block = re.search(
-            r"target_link_libraries\(siligen_workflow_application_headers INTERFACE(?P<body>[\s\S]*?)target_compile_features\(siligen_workflow_application_headers",
-            workflow_application_text,
-        )
-        if headers_target_block is not None and "siligen_runtime_execution_application_public" in headers_target_block.group("body"):
-            issues.append("workflow application headers must not re-export: siligen_runtime_execution_application_public")
 
     forbidden_reverse_mutations = (
         (

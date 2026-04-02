@@ -68,7 +68,6 @@ target_include_directories(siligen_workflow_application_headers INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../motion-planning/application/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../dispense-packaging/application/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../dxf-geometry/application/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../runtime-execution/application/include
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
 if(TARGET siligen_job_ingest_application_public)
