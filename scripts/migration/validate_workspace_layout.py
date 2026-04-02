@@ -218,11 +218,51 @@ def _validate_root_wiring(root: Path) -> list[str]:
         for required in (
             "siligen_job_ingest_application_public",
             "siligen_dxf_geometry_application_public",
-            "../../runtime-execution/application/include",
-            "siligen_runtime_execution_application_public",
+            "siligen_runtime_execution_runtime_contracts",
         ):
             if required not in workflow_application_text:
                 issues.append(f"workflow application owner wiring missing: {required}")
+        if "../../runtime-execution/application/include" in workflow_application_text:
+            issues.append("workflow application owner wiring must not reference: ../../runtime-execution/application/include")
+        motion_target_block = re.search(
+            r"target_link_libraries\(siligen_application_motion PUBLIC(?P<body>[\s\S]*?)target_compile_features\(siligen_application_motion",
+            workflow_application_text,
+        )
+        if motion_target_block is None:
+            issues.append("workflow application motion target block is missing")
+        elif "siligen_runtime_execution_application_public" in motion_target_block.group("body"):
+            issues.append("workflow application motion target must not link: siligen_runtime_execution_application_public")
+        headers_target_block = re.search(
+            r"target_link_libraries\(siligen_workflow_application_headers INTERFACE(?P<body>[\s\S]*?)target_compile_features\(siligen_workflow_application_headers",
+            workflow_application_text,
+        )
+        if headers_target_block is not None and "siligen_runtime_execution_application_public" in headers_target_block.group("body"):
+            issues.append("workflow application headers must not re-export: siligen_runtime_execution_application_public")
+
+    workflow_module = root / "modules" / "workflow" / "CMakeLists.txt"
+    if workflow_module.exists():
+        workflow_module_text = workflow_module.read_text(encoding="utf-8", errors="ignore")
+        for forbidden in (
+            "siligen_workflow_adapters_public",
+            "siligen_workflow_runtime_consumer_public",
+            "siligen_process_runtime_core_interface",
+        ):
+            if forbidden in workflow_module_text:
+                issues.append(f"workflow module compat surface must be removed: {forbidden}")
+
+    workflow_domain = root / "modules" / "workflow" / "domain" / "domain" / "CMakeLists.txt"
+    if workflow_domain.exists():
+        workflow_domain_text = workflow_domain.read_text(encoding="utf-8", errors="ignore")
+        if "siligen_workflow_dispensing_planning_compat" in workflow_domain_text:
+            issues.append("workflow domain planner compat target must be removed")
+        if "siligen_motion_execution_services" in workflow_domain_text:
+            issues.append("workflow domain motion execution compat target must be removed")
+
+    workflow_domain_root = root / "modules" / "workflow" / "domain" / "CMakeLists.txt"
+    if workflow_domain_root.exists():
+        workflow_domain_root_text = workflow_domain_root.read_text(encoding="utf-8", errors="ignore")
+        if "domain_machine" in workflow_domain_root_text:
+            issues.append("workflow domain root machine compat target must be removed")
 
     forbidden_reverse_mutations = (
         (

@@ -1,6 +1,6 @@
 #include "domain/dispensing/domain-services/PurgeDispenserProcess.h"
 
-#include "domain/configuration/ports/IConfigurationPort.h"
+#include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "shared/types/Error.h"
 
 #include <gtest/gtest.h>

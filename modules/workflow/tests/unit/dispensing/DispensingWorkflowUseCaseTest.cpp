@@ -6,6 +6,7 @@
 #include <functional>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -15,7 +16,6 @@
 #endif
 #define private public
 #include "application/services/dispensing/DispensePlanningFacade.h"
-#include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/process_path/ProcessPathFacade.h"
 #include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
@@ -25,14 +25,12 @@
 
 namespace {
 
-using Siligen::Application::UseCases::Dispensing::DispensingExecutionUseCase;
 using Siligen::Application::UseCases::Dispensing::DispensingWorkflowUseCase;
 using Siligen::Application::UseCases::Dispensing::PlanningUseCase;
 using Siligen::Application::UseCases::Dispensing::PlanningRequest;
 using Siligen::Application::UseCases::Dispensing::PlanningResponse;
 using Siligen::Application::UseCases::Dispensing::PreparePlanRequest;
 using Siligen::Application::UseCases::Dispensing::PreparePlanRuntimeOverrides;
-using Siligen::Application::UseCases::Dispensing::RuntimeJobStatusResponse;
 using Siligen::Application::UseCases::Dispensing::IUploadFilePort;
 using Siligen::Application::Services::DXF::DxfPbPreparationService;
 using Siligen::Device::Contracts::Commands::DeviceConnection;
@@ -49,10 +47,15 @@ using Siligen::Domain::Motion::Ports::MotionState;
 using Siligen::Domain::Motion::Ports::MotionStatus;
 using Siligen::Domain::Safety::Ports::IInterlockSignalPort;
 using Siligen::Domain::Safety::ValueObjects::InterlockSignals;
+using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::LogicalAxisId;
 using Siligen::Shared::Types::Point2D;
 using Siligen::Shared::Types::Result;
+using Siligen::Workflow::Contracts::IWorkflowExecutionPort;
+using Siligen::Workflow::Contracts::WorkflowExecutionStartRequest;
+using Siligen::Workflow::Contracts::WorkflowExecutionStatus;
+using Siligen::Workflow::Contracts::WorkflowJobId;
 using Siligen::Shared::Types::float32;
 using Siligen::Shared::Types::uint32;
 
@@ -287,6 +290,90 @@ class FakeHomingPort final : public IHomingPort {
     }
 };
 
+class FakeWorkflowExecutionPort final : public IWorkflowExecutionPort {
+   public:
+    Result<WorkflowJobId> StartWorkflowExecution(const WorkflowExecutionStartRequest& request) override {
+        ++start_calls;
+        last_start_request = request;
+        if (start_error.has_value()) {
+            return Result<WorkflowJobId>::Failure(start_error.value());
+        }
+
+        WorkflowExecutionStatus status;
+        status.job_id = next_job_id;
+        status.plan_id = request.plan_id;
+        status.plan_fingerprint = request.plan_fingerprint;
+        status.state = start_state;
+        status.target_count = request.target_count;
+        status.dry_run = request.launch.runtime_overrides.dry_run;
+        statuses[status.job_id] = status;
+        return Result<WorkflowJobId>::Success(status.job_id);
+    }
+
+    Result<WorkflowExecutionStatus> GetWorkflowExecutionStatus(const WorkflowJobId& job_id) const override {
+        ++status_calls;
+        if (status_error.has_value()) {
+            return Result<WorkflowExecutionStatus>::Failure(status_error.value());
+        }
+
+        auto it = statuses.find(job_id);
+        if (it == statuses.end()) {
+            return Result<WorkflowExecutionStatus>::Failure(
+                Error(ErrorCode::NOT_FOUND, "job not found", "FakeWorkflowExecutionPort"));
+        }
+        return Result<WorkflowExecutionStatus>::Success(it->second);
+    }
+
+    Result<void> PauseWorkflowExecution(const WorkflowJobId& job_id) override {
+        ++pause_calls;
+        last_paused_job_id = job_id;
+        if (pause_error.has_value()) {
+            return Result<void>::Failure(pause_error.value());
+        }
+        return Result<void>::Success();
+    }
+
+    Result<void> ResumeWorkflowExecution(const WorkflowJobId& job_id) override {
+        ++resume_calls;
+        last_resumed_job_id = job_id;
+        if (resume_error.has_value()) {
+            return Result<void>::Failure(resume_error.value());
+        }
+        return Result<void>::Success();
+    }
+
+    Result<void> StopWorkflowExecution(const WorkflowJobId& job_id) override {
+        ++stop_calls;
+        last_stopped_job_id = job_id;
+        if (stop_error.has_value()) {
+            return Result<void>::Failure(stop_error.value());
+        }
+        return Result<void>::Success();
+    }
+
+    void SeedStatusForTesting(const WorkflowExecutionStatus& status) {
+        statuses[status.job_id] = status;
+    }
+
+    WorkflowJobId next_job_id = "job-1";
+    std::string start_state = "running";
+    std::optional<Error> start_error;
+    std::optional<Error> status_error;
+    std::optional<Error> pause_error;
+    std::optional<Error> resume_error;
+    std::optional<Error> stop_error;
+    mutable int status_calls = 0;
+    int start_calls = 0;
+    int pause_calls = 0;
+    int resume_calls = 0;
+    int stop_calls = 0;
+    WorkflowExecutionStartRequest last_start_request{};
+    WorkflowJobId last_paused_job_id;
+    WorkflowJobId last_resumed_job_id;
+    WorkflowJobId last_stopped_job_id;
+    mutable std::unordered_map<WorkflowJobId, WorkflowExecutionStatus> statuses;
+};
+
 MotionStatus ReadyAxisStatus() {
     MotionStatus status;
     status.state = MotionState::HOMED;
@@ -336,14 +423,14 @@ DispensingWorkflowUseCase CreateUseCase(
     const std::shared_ptr<FakeMotionStatePort>& motion_state_port,
     const std::shared_ptr<FakeHomingPort>& homing_port,
     const std::shared_ptr<FakeInterlockSignalPort>& interlock_port,
-    std::shared_ptr<DispensingExecutionUseCase> execution_use_case = nullptr) {
-    if (!execution_use_case) {
-        execution_use_case = MakeDummyShared<DispensingExecutionUseCase>();
+    std::shared_ptr<FakeWorkflowExecutionPort> execution_port = nullptr) {
+    if (!execution_port) {
+        execution_port = std::make_shared<FakeWorkflowExecutionPort>();
     }
     return DispensingWorkflowUseCase(
         MakeDummyShared<IUploadFilePort>(),
         MakeDummyShared<PlanningUseCase>(),
-        execution_use_case,
+        execution_port,
         connection_port,
         motion_state_port,
         homing_port,
@@ -359,28 +446,15 @@ DispensingWorkflowUseCase CreateUseCaseWithPlanning(
     return DispensingWorkflowUseCase(
         MakeDummyShared<IUploadFilePort>(),
         planning_use_case,
-        MakeDummyShared<DispensingExecutionUseCase>(),
+        std::make_shared<FakeWorkflowExecutionPort>(),
         connection_port,
         motion_state_port,
         homing_port,
         interlock_port);
 }
 
-std::shared_ptr<DispensingExecutionUseCase> CreateRuntimeExecutionUseCase(
-    const std::shared_ptr<FakeHardwareConnectionPort>& connection_port,
-    const std::shared_ptr<FakeMotionStatePort>& motion_state_port,
-    const std::shared_ptr<FakeHomingPort>& homing_port,
-    const std::shared_ptr<FakeInterlockSignalPort>& interlock_port) {
-    return std::make_shared<DispensingExecutionUseCase>(
-        nullptr,
-        nullptr,
-        motion_state_port,
-        connection_port,
-        nullptr,
-        nullptr,
-        nullptr,
-        homing_port,
-        interlock_port);
+std::shared_ptr<FakeWorkflowExecutionPort> CreateWorkflowExecutionPort() {
+    return std::make_shared<FakeWorkflowExecutionPort>();
 }
 
 DispensingWorkflowUseCase::PlanRecord BuildPreviewPlanRecord(
@@ -428,8 +502,7 @@ TEST(DispensingWorkflowUseCaseTest, StartJobRejectsSafetyDoor) {
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
     auto homing_port = std::make_shared<FakeHomingPort>();
     auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
-    auto execution_use_case =
-        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    auto execution_use_case = CreateWorkflowExecutionPort();
     motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
     motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
     homing_port->homed[LogicalAxisId::X] = true;
@@ -506,8 +579,7 @@ TEST(DispensingWorkflowUseCaseTest, StartJobRejectsUnhomedAxis) {
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
     auto homing_port = std::make_shared<FakeHomingPort>();
     auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
-    auto execution_use_case =
-        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    auto execution_use_case = CreateWorkflowExecutionPort();
     motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
     auto y_status = ReadyAxisStatus();
     y_status.state = MotionState::IDLE;
@@ -534,8 +606,7 @@ TEST(DispensingWorkflowUseCaseTest, StartAndResumeUseSameInterlockPreconditions)
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
     auto homing_port = std::make_shared<FakeHomingPort>();
     auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
-    auto execution_use_case =
-        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    auto execution_use_case = CreateWorkflowExecutionPort();
     motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
     motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
     homing_port->homed[LogicalAxisId::X] = true;
@@ -554,14 +625,13 @@ TEST(DispensingWorkflowUseCaseTest, StartAndResumeUseSameInterlockPreconditions)
     ASSERT_TRUE(start_result.IsError());
     EXPECT_EQ(start_result.GetError().GetCode(), ErrorCode::EMERGENCY_STOP_ACTIVATED);
 
-    RuntimeJobStatusResponse runtime_status;
+    WorkflowExecutionStatus runtime_status;
     runtime_status.job_id = "job-1";
     runtime_status.plan_id = "plan-1";
     runtime_status.plan_fingerprint = "fp-plan-1";
     runtime_status.state = "paused";
     runtime_status.target_count = 1;
-    execution_use_case->SeedJobStateForTesting(runtime_status, true);
-    execution_use_case->SetActiveJobForTesting("job-1");
+    execution_use_case->SeedStatusForTesting(runtime_status);
 
     auto resume_result = use_case.ResumeJob("job-1");
     ASSERT_TRUE(resume_result.IsError());
@@ -665,8 +735,7 @@ TEST(DispensingWorkflowUseCaseTest, StartJobRejectsFailPreviewUsingFailureReason
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
     auto homing_port = std::make_shared<FakeHomingPort>();
     auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
-    auto execution_use_case =
-        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    auto execution_use_case = CreateWorkflowExecutionPort();
     motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
     motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
     homing_port->homed[LogicalAxisId::X] = true;
@@ -847,8 +916,7 @@ TEST(DispensingWorkflowUseCaseTest, PreviewGateFailureReasonIsConsistentAcrossSn
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
     auto homing_port = std::make_shared<FakeHomingPort>();
     auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
-    auto execution_use_case =
-        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    auto execution_use_case = CreateWorkflowExecutionPort();
     motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
     motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
     homing_port->homed[LogicalAxisId::X] = true;
@@ -910,8 +978,7 @@ TEST(DispensingWorkflowUseCaseTest, StartJobRejectsPreviewAuthorityMismatchBefor
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
     auto homing_port = std::make_shared<FakeHomingPort>();
     auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
-    auto execution_use_case =
-        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    auto execution_use_case = CreateWorkflowExecutionPort();
     motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
     motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
     homing_port->homed[LogicalAxisId::X] = true;
@@ -938,8 +1005,7 @@ TEST(DispensingWorkflowUseCaseTest, StartJobRejectsPreviewBindingUnavailableBefo
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
     auto homing_port = std::make_shared<FakeHomingPort>();
     auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
-    auto execution_use_case =
-        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    auto execution_use_case = CreateWorkflowExecutionPort();
     motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
     motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
     homing_port->homed[LogicalAxisId::X] = true;
@@ -966,8 +1032,7 @@ TEST(DispensingWorkflowUseCaseTest, FinalizeJobClearsConfirmedPreviewState) {
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
     auto homing_port = std::make_shared<FakeHomingPort>();
     auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
-    auto execution_use_case =
-        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    auto execution_use_case = CreateWorkflowExecutionPort();
     auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port, execution_use_case);
 
     DispensingWorkflowUseCase::PlanRecord plan_record;
@@ -985,14 +1050,13 @@ TEST(DispensingWorkflowUseCaseTest, FinalizeJobClearsConfirmedPreviewState) {
     use_case.plans_[plan_record.response.plan_id] = plan_record;
     use_case.job_plan_index_["job-finish"] = "plan-finish";
 
-    RuntimeJobStatusResponse runtime_status;
+    WorkflowExecutionStatus runtime_status;
     runtime_status.job_id = "job-finish";
     runtime_status.plan_id = "plan-finish";
     runtime_status.plan_fingerprint = "fp-plan-finish";
     runtime_status.state = "running";
     runtime_status.target_count = 1;
-    execution_use_case->SeedJobStateForTesting(runtime_status);
-    execution_use_case->SetActiveJobForTesting("job-finish");
+    execution_use_case->SeedStatusForTesting(runtime_status);
 
     auto stop_result = use_case.StopJob(runtime_status.job_id);
     ASSERT_TRUE(stop_result.IsSuccess());

@@ -151,12 +151,16 @@ if ($LASTEXITCODE -ne 0) {
     throw "workspace layout gate failed (exit: $LASTEXITCODE)."
 }
 
-$controlAppsBuild = if (-not [string]::IsNullOrWhiteSpace($env:SILIGEN_CONTROL_APPS_BUILD_ROOT)) {
-    $env:SILIGEN_CONTROL_APPS_BUILD_ROOT
-} elseif (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
-    Join-Path $env:LOCALAPPDATA "SiligenSuite\control-apps-build"
+$defaultControlAppsBuild = if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+    Join-Path $env:LOCALAPPDATA ("SiligenSuite\control-apps-build-" + (Split-Path $workspaceRoot -Leaf))
 } else {
     Join-Path $workspaceRoot "build\control-apps"
+}
+
+$controlAppsBuild = if (-not [string]::IsNullOrWhiteSpace($env:SILIGEN_CONTROL_APPS_BUILD_ROOT)) {
+    $env:SILIGEN_CONTROL_APPS_BUILD_ROOT
+} else {
+    $defaultControlAppsBuild
 }
 $controlAppsCmakeHomeDirectory = ""
 
@@ -289,7 +293,11 @@ if (($resolvedSuites -contains "contracts") -and $localProfile -and (-not $SkipH
         "siligen_dxf_geometry_unit_tests",
         "siligen_job_ingest_unit_tests",
         "siligen_unit_tests",
-        "siligen_pr1_tests"
+        "siligen_pr1_tests",
+        "siligen_dispensing_semantics_tests",
+        "workflow_regression_deterministic_path_execution_smoke",
+        "workflow_regression_boundary_cutover_smoke",
+        "workflow_regression_planning_ingress_smoke"
     )
     $enableControlAppTests = $true
 }
@@ -306,6 +314,10 @@ $controlAppArtifactMap = @{
     "siligen_job_ingest_unit_tests" = "siligen_job_ingest_unit_tests.exe"
     "siligen_unit_tests" = "siligen_unit_tests.exe"
     "siligen_pr1_tests" = "siligen_pr1_tests.exe"
+    "siligen_dispensing_semantics_tests" = "siligen_dispensing_semantics_tests.exe"
+    "workflow_regression_deterministic_path_execution_smoke" = "workflow_regression_deterministic_path_execution_smoke.exe"
+    "workflow_regression_boundary_cutover_smoke" = "workflow_regression_boundary_cutover_smoke.exe"
+    "workflow_regression_planning_ingress_smoke" = "workflow_regression_planning_ingress_smoke.exe"
 }
 
 foreach ($targetName in ($controlAppTargets | Select-Object -Unique)) {

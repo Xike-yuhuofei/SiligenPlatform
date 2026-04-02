@@ -21,10 +21,15 @@ from .workspace_layout import load_workspace_layout
 WORKSPACE_ROOT = Path(__file__).resolve().parents[5]
 DEFAULT_SUITES = ("apps", "contracts", "e2e", "protocol-compatibility")
 WORKSPACE_LAYOUT = load_workspace_layout(WORKSPACE_ROOT)
+DEFAULT_CONTROL_APPS_BUILD_ROOT = (
+    Path(os.getenv("LOCALAPPDATA", str(WORKSPACE_ROOT)))
+    / "SiligenSuite"
+    / f"control-apps-build-{WORKSPACE_ROOT.name}"
+)
 CONTROL_APPS_BUILD_ROOT = Path(
     os.getenv(
         "SILIGEN_CONTROL_APPS_BUILD_ROOT",
-        str(Path(os.getenv("LOCALAPPDATA", str(WORKSPACE_ROOT))) / "SiligenSuite" / "control-apps-build"),
+        str(DEFAULT_CONTROL_APPS_BUILD_ROOT),
     )
 )
 
@@ -333,6 +338,38 @@ def build_cases(
                         layer="unit",
                         description="workflow core unit tests",
                         command=[str(_control_apps_executable("siligen_unit_tests.exe"))],
+                        cwd=WORKSPACE_ROOT,
+                        allow_missing=True,
+                    ),
+                    ValidationCase(
+                        name="workflow-dispensing-semantics",
+                        layer="unit",
+                        description="workflow dispensing semantics tests",
+                        command=[str(_control_apps_executable("siligen_dispensing_semantics_tests.exe"))],
+                        cwd=WORKSPACE_ROOT,
+                        allow_missing=True,
+                    ),
+                    ValidationCase(
+                        name="workflow-regression-deterministic-path",
+                        layer="regression",
+                        description="workflow regression deterministic path smoke",
+                        command=[str(_control_apps_executable("workflow_regression_deterministic_path_execution_smoke.exe"))],
+                        cwd=WORKSPACE_ROOT,
+                        allow_missing=True,
+                    ),
+                    ValidationCase(
+                        name="workflow-regression-boundary-cutover",
+                        layer="regression",
+                        description="workflow regression boundary cutover smoke",
+                        command=[str(_control_apps_executable("workflow_regression_boundary_cutover_smoke.exe"))],
+                        cwd=WORKSPACE_ROOT,
+                        allow_missing=True,
+                    ),
+                    ValidationCase(
+                        name="workflow-regression-planning-ingress",
+                        layer="regression",
+                        description="workflow regression planning ingress smoke",
+                        command=[str(_control_apps_executable("workflow_regression_planning_ingress_smoke.exe"))],
                         cwd=WORKSPACE_ROOT,
                         allow_missing=True,
                     ),

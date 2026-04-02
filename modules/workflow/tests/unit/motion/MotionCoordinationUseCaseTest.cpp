@@ -1,4 +1,5 @@
 #include "application/usecases/motion/coordination/MotionCoordinationUseCase.h"
+#include "runtime_execution/contracts/motion/IIOControlPort.h"
 
 #include <gtest/gtest.h>
 
@@ -19,11 +20,11 @@ using Siligen::Domain::Motion::Ports::CoordinateSystemConfig;
 using Siligen::Domain::Motion::Ports::CoordinateSystemStatus;
 using Siligen::Domain::Motion::Ports::IAdvancedMotionPort;
 using Siligen::Domain::Motion::Ports::IAxisControlPort;
-using Siligen::Domain::Motion::Ports::IIOControlPort;
 using Siligen::Domain::Motion::Ports::IInterpolationPort;
 using Siligen::Domain::Motion::Ports::InterpolationData;
-using Siligen::Domain::Motion::Ports::IOStatus;
 using Siligen::Domain::Motion::Ports::MotionMode;
+using Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort;
+using Siligen::RuntimeExecution::Contracts::Motion::IOStatus;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::LogicalAxisId;

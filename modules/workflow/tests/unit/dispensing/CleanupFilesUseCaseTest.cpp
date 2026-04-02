@@ -1,5 +1,5 @@
 #include "application/usecases/dispensing/CleanupFilesUseCase.h"
-#include "domain/configuration/ports/IFileStoragePort.h"
+#include "job_ingest/contracts/storage/IFileStoragePort.h"
 #include "shared/types/Error.h"
 
 #include <gtest/gtest.h>
@@ -15,8 +15,8 @@ namespace {
 
 using Siligen::Application::UseCases::Dispensing::CleanupFilesRequest;
 using Siligen::Application::UseCases::Dispensing::CleanupFilesUseCase;
-using Siligen::Domain::Configuration::Ports::FileData;
-using Siligen::Domain::Configuration::Ports::IFileStoragePort;
+using Siligen::JobIngest::Contracts::Storage::FileData;
+using Siligen::JobIngest::Contracts::Storage::IFileStoragePort;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
