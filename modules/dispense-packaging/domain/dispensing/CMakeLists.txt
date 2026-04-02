@@ -1,5 +1,7 @@
 # Dispensing 子域 CMakeLists.txt
-# Phase 2: M8 仅承接 packaging/validation owner，规划实现不再在本模块编译。
+# ARCH-205 Phase 1 current fact:
+# 当前 target 仍同时编译 packaging owner、planning residual 与 process-control residual。
+# owner 迁移尚未完成，本文件只反映 live build 事实。
 
 if(NOT TARGET siligen_device_contracts AND EXISTS "${CMAKE_SOURCE_DIR}/shared/contracts/device/CMakeLists.txt")
     add_subdirectory(

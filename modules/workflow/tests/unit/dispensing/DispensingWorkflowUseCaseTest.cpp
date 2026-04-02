@@ -15,7 +15,8 @@
 #define SILIGEN_TEST_HOOKS
 #endif
 #define private public
-#include "application/services/dispensing/DispensePlanningFacade.h"
+#include "application/services/dispensing/AuthorityPreviewAssemblyService.h"
+#include "application/services/dispensing/ExecutionAssemblyService.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/process_path/ProcessPathFacade.h"
 #include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
@@ -189,11 +190,39 @@ std::shared_ptr<PlanningUseCase> CreateRealPlanningUseCase() {
         path_source,
         std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
         std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
         nullptr,
         pb_service);
 }
 
+std::shared_ptr<PlanningUseCase> CreatePlanningUseCaseWithPathSourceAndExport(
+    const std::shared_ptr<Siligen::Domain::Trajectory::Ports::IPathSourcePort>& path_source,
+    const std::shared_ptr<IPlanningArtifactExportPort>& export_port) {
+    auto pb_service = std::make_shared<DxfPbPreparationService>();
+    return std::make_shared<PlanningUseCase>(
+        path_source,
+        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
+        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
+        nullptr,
+        pb_service,
+        export_port);
+}
+
+std::shared_ptr<PlanningUseCase> CreatePlanningUseCaseWithPathSource(
+    const std::shared_ptr<Siligen::Domain::Trajectory::Ports::IPathSourcePort>& path_source) {
+    auto pb_service = std::make_shared<DxfPbPreparationService>();
+    return std::make_shared<PlanningUseCase>(
+        path_source,
+        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
+        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
+        nullptr,
+        pb_service);
+}
 class FakeHardwareConnectionPort final : public DeviceConnectionPort {
    public:
     Result<void> Connect(const DeviceConnection&) override { return Result<void>::Success(); }

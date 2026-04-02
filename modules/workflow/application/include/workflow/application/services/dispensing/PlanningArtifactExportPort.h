@@ -28,7 +28,7 @@ struct PlanningArtifactExportResult {
 };
 
 class IPlanningArtifactExportPort {
-   public:
+public:
     virtual ~IPlanningArtifactExportPort() = default;
 
     virtual Shared::Types::Result<PlanningArtifactExportResult> Export(

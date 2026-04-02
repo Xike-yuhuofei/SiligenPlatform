@@ -104,12 +104,6 @@ target_link_libraries(siligen_runtime_host PUBLIC
     siligen_shared
 )
 
-if(TARGET siligen_dispense_packaging_application_public)
-    target_link_libraries(siligen_runtime_host PUBLIC
-        siligen_dispense_packaging_application_public
-    )
-endif()
-
 target_link_libraries(siligen_runtime_host PRIVATE
     siligen_types
     siligen_utils
