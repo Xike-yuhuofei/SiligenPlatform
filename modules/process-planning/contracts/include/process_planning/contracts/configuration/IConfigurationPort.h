@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ValveConfig.h"
+#include "process_planning/contracts/configuration/ValveConfig.h"
 #include "shared/types/ConfigTypes.h"
 #include "shared/types/DiagnosticsConfig.h"
 #include "shared/types/HardwareConfiguration.h"
@@ -176,7 +176,7 @@ struct HomingConfig {
     bool home_backoff_enabled = true;     ///< 启用板卡原生HOME触发后二次回退
 
     // 时间参数 (ms)
-    int32 timeout_ms = 80000;             ///< 超时时间
+    int32 timeout_ms = 30000;             ///< 超时时间
     int32 settle_time_ms = 500;           ///< 稳定时间
     int32 escape_timeout_ms = 0;          ///< 回退超时(0=跟随回零超时)
 
@@ -402,4 +402,3 @@ class IConfigurationPort {
 };
 
 }  // namespace Siligen::Domain::Configuration::Ports
-

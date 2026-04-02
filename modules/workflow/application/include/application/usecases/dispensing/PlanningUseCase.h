@@ -3,7 +3,7 @@
 #include "application/services/dispensing/DispensePlanningFacade.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/process_path/ProcessPathFacade.h"
-#include "domain/configuration/ports/IConfigurationPort.h"
+#include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
 #include "domain/motion/value-objects/MotionPlanningReport.h"
 #include "domain/trajectory/ports/IPathSourcePort.h"
@@ -13,7 +13,6 @@
 #include "shared/types/TrajectoryTypes.h"
 #include "workflow/application/services/dispensing/IPlanningArtifactExportPort.h"
 
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -35,21 +34,6 @@ using Siligen::Shared::Types::TrajectoryResult;
 using Siligen::TrajectoryPoint;
 using Siligen::Domain::Motion::ValueObjects::MotionPlanningReport;
 using Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated;
-
-struct AuthorityPreviewPerformanceProfile {
-    std::uint32_t pb_prepare_ms = 0;
-    std::uint32_t path_load_ms = 0;
-    std::uint32_t process_path_ms = 0;
-    std::uint32_t authority_build_ms = 0;
-    std::uint32_t total_ms = 0;
-};
-
-struct ExecutionAssemblyPerformanceProfile {
-    std::uint32_t motion_plan_ms = 0;
-    std::uint32_t assembly_ms = 0;
-    std::uint32_t export_ms = 0;
-    std::uint32_t total_ms = 0;
-};
 
 /**
  * @brief DXF 路径规划请求参数
@@ -174,55 +158,12 @@ struct PlanningResponse {
     Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
     std::vector<Siligen::Application::Services::Dispensing::AuthorityTriggerPoint> authority_trigger_points;
     std::vector<Siligen::Application::Services::Dispensing::SpacingValidationGroup> spacing_validation_groups;
-    AuthorityPreviewPerformanceProfile authority_profile;
-    ExecutionAssemblyPerformanceProfile execution_profile;
 
     // 过渡期执行载体：供 runtime-execution canonical API 直接消费
     std::shared_ptr<ExecutionPackageValidated> execution_package;
 
     // 兼容字段：保留内存态规划结果，供仍未迁移的调用链复用
     std::shared_ptr<Siligen::Domain::Dispensing::DomainServices::DispensingPlan> execution_plan;
-};
-
-struct PreparedAuthorityPreview {
-    bool success = false;
-    std::string source_path;
-    std::string prepared_pb_path;
-    std::string dxf_filename;
-    Siligen::ProcessPath::Contracts::ProcessPath process_path;
-    Siligen::ProcessPath::Contracts::ProcessPath authority_process_path;
-    int32 discontinuity_count = 0;
-    int segment_count = 0;
-    float32 total_length = 0.0f;
-    float32 estimated_time = 0.0f;
-    std::vector<TrajectoryPoint> preview_trajectory_points;
-    std::vector<Siligen::Shared::Types::Point2D> glue_points;
-    int trigger_count = 0;
-    int32 timestamp = 0;
-    bool preview_authority_ready = false;
-    bool preview_binding_ready = false;
-    bool preview_spacing_valid = false;
-    bool preview_has_short_segment_exceptions = false;
-    std::string preview_validation_classification;
-    std::string preview_exception_reason;
-    std::string preview_failure_reason;
-    Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
-    std::vector<Siligen::Application::Services::Dispensing::AuthorityTriggerPoint> authority_trigger_points;
-    std::vector<Siligen::Application::Services::Dispensing::SpacingValidationGroup> spacing_validation_groups;
-    AuthorityPreviewPerformanceProfile authority_profile;
-};
-
-struct ExecutionAssemblyResponse {
-    bool success = false;
-    std::vector<TrajectoryPoint> execution_trajectory_points;
-    MotionPlanningReport planning_report;
-    bool preview_authority_shared_with_execution = false;
-    bool execution_binding_ready = false;
-    std::string execution_failure_reason;
-    std::shared_ptr<ExecutionPackageValidated> execution_package;
-    Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
-    Siligen::Application::Services::Dispensing::PlanningArtifactExportRequest export_request;
-    ExecutionAssemblyPerformanceProfile execution_profile;
 };
 
 /**
@@ -271,11 +212,6 @@ public:
      * @param request 规划请求参数
      * @return Result<PlanningResponse> 规划结果
      */
-    Result<PreparedAuthorityPreview> PrepareAuthorityPreview(const PlanningRequest& request);
-    Result<ExecutionAssemblyResponse> AssembleExecutionFromAuthority(
-        const PlanningRequest& request,
-        const PreparedAuthorityPreview& authority_preview);
-    std::string BuildAuthorityCacheKey(const PlanningRequest& request) const;
     Result<PlanningResponse> Execute(const PlanningRequest& request);
 
 private:

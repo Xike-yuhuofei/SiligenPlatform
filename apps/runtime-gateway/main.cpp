@@ -10,10 +10,9 @@
 #include <memory>
 
 #include "container/ApplicationContainer.h"
-#include "domain/configuration/ports/IConfigurationPort.h"
+#include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "runtime_process_bootstrap/ContainerBootstrap.h"
 #include "runtime_process_bootstrap/WorkspaceAssetPaths.h"
-#include "runtime_execution/contracts/system/IRuntimeStatusExportPort.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
 #include "tcp/MockIoControlService.h"
@@ -107,8 +106,6 @@ int main(int argc, char* argv[]) {
         std::cout << "[TCP Server] 构建 TCP 应用门面..." << std::endl;
         auto facades = BuildTcpFacadeBundle(*container);
         auto configPort = container->ResolvePort<Siligen::Domain::Configuration::Ports::IConfigurationPort>();
-        auto runtimeStatusExportPort =
-            container->ResolvePort<Siligen::RuntimeExecution::Contracts::System::IRuntimeStatusExportPort>();
         auto hardwareMode = Siligen::Shared::Types::HardwareMode::Real;
         if (configPort) {
             auto hardwareModeResult = configPort->GetHardwareMode();
@@ -137,7 +134,6 @@ int main(int argc, char* argv[]) {
             io_context,
             facades,
             configPort,
-            runtimeStatusExportPort,
             mockIoControl,
             TcpServerHostOptions{port}
         );

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-if(NOT TARGET siligen_process_planning_legacy_configuration_bridge_public)
+if(NOT TARGET siligen_process_planning_contracts_public)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../../process-planning/contracts"
         "${CMAKE_BINARY_DIR}/_p/wa_ppc"
@@ -110,9 +110,9 @@ if(TARGET siligen_motion_planning_contracts_public)
         siligen_motion_planning_contracts_public
     )
 endif()
-if(TARGET siligen_process_planning_legacy_configuration_bridge_public)
+if(TARGET siligen_process_planning_contracts_public)
     target_link_libraries(siligen_workflow_application_headers INTERFACE
-        siligen_process_planning_legacy_configuration_bridge_public
+        siligen_process_planning_contracts_public
     )
 endif()
 if(TARGET siligen_device_contracts)
