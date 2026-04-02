@@ -95,7 +95,7 @@ target_include_directories(siligen_configuration INTERFACE
     ${SILIGEN_DOMAIN_INTERFACE_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_configuration INTERFACE
-    siligen_process_planning_legacy_configuration_bridge_public
+    siligen_process_planning_contracts_public
 )
 
 # 导出领域层库目标
@@ -163,7 +163,7 @@ target_link_libraries(siligen_workflow_dispensing_planning_compat PUBLIC
     siligen_configuration
     siligen_process_path_domain_trajectory
     siligen_dispensing_execution_services
-    siligen_process_planning_legacy_configuration_bridge_public
+    siligen_process_planning_contracts_public
 )
 target_compile_features(siligen_workflow_dispensing_planning_compat PUBLIC cxx_std_17)
 
@@ -241,6 +241,7 @@ target_link_libraries(siligen_safety_domain_services PUBLIC
     siligen_types
     siligen_utils
     siligen_motion_core
+    siligen_process_planning_contracts_public
 )
 target_compile_features(siligen_safety_domain_services PUBLIC cxx_std_17)
 

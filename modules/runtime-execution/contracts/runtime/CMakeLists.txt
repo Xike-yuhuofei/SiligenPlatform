@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
 
+if(NOT TARGET siligen_process_planning_contracts_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../process-planning/contracts"
+        "${CMAKE_BINARY_DIR}/_p/rec_ppc"
+    )
+endif()
+
 if(NOT TARGET siligen_runtime_execution_runtime_contracts)
     add_library(siligen_runtime_execution_runtime_contracts INTERFACE)
 endif()
@@ -36,6 +43,7 @@ target_include_directories(siligen_runtime_execution_runtime_contracts INTERFACE
 )
 target_link_libraries(siligen_runtime_execution_runtime_contracts INTERFACE
     siligen_domain
+    siligen_process_planning_contracts_public
 )
 target_compile_features(siligen_runtime_execution_runtime_contracts INTERFACE cxx_std_17)
 set_target_properties(siligen_runtime_execution_runtime_contracts PROPERTIES

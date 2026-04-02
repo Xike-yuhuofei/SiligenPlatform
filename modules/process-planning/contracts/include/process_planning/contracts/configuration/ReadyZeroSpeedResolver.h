@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/configuration/ports/IConfigurationPort.h"
+#include "process_planning/contracts/configuration/IConfigurationPort.h"
 
 #include <memory>
 #include <utility>
@@ -21,8 +21,9 @@ struct ReadyZeroSpeedResolution {
     bool used_fallback = false;
 };
 
-inline Result<ReadyZeroSpeedResolution> ResolveReadyZeroSpeed(const HomingConfig& homing_config,
-                                                              const char* error_source = "ReadyZeroSpeedResolver") {
+inline Result<ReadyZeroSpeedResolution> ResolveReadyZeroSpeed(
+    const HomingConfig& homing_config,
+    const char* error_source = "ReadyZeroSpeedResolver") {
     ReadyZeroSpeedResolution resolution;
     resolution.speed_mm_s = homing_config.ready_zero_speed_mm_s;
     if (resolution.speed_mm_s <= 0.0f) {
@@ -38,9 +39,10 @@ inline Result<ReadyZeroSpeedResolution> ResolveReadyZeroSpeed(const HomingConfig
     return Result<ReadyZeroSpeedResolution>::Success(resolution);
 }
 
-inline Result<ReadyZeroSpeedResolution> ResolveReadyZeroSpeed(const HomingConfig& homing_config,
-                                                              const MachineConfig& machine_config,
-                                                              const char* error_source = "ReadyZeroSpeedResolver") {
+inline Result<ReadyZeroSpeedResolution> ResolveReadyZeroSpeed(
+    const HomingConfig& homing_config,
+    const MachineConfig& machine_config,
+    const char* error_source = "ReadyZeroSpeedResolver") {
     auto resolution_result = ResolveReadyZeroSpeed(homing_config, error_source);
     if (resolution_result.IsError()) {
         return resolution_result;
@@ -79,8 +81,9 @@ inline Result<ReadyZeroSpeedResolution> ResolveReadyZeroSpeed(
     return ResolveReadyZeroSpeed(homing_result.Value(), machine_result.Value(), error_source);
 }
 
-inline Result<HomingConfig> ApplyUnifiedReadyZeroSpeed(const HomingConfig& homing_config,
-                                                       const char* error_source = "ReadyZeroSpeedResolver") {
+inline Result<HomingConfig> ApplyUnifiedReadyZeroSpeed(
+    const HomingConfig& homing_config,
+    const char* error_source = "ReadyZeroSpeedResolver") {
     auto resolution_result = ResolveReadyZeroSpeed(homing_config, error_source);
     if (resolution_result.IsError()) {
         return Result<HomingConfig>::Failure(resolution_result.GetError());

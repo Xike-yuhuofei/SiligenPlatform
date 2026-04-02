@@ -9,7 +9,7 @@ if(DEFINED SILIGEN_MULTICARD_VENDOR_DIR AND EXISTS "${SILIGEN_MULTICARD_VENDOR_D
     set(RUNTIME_PROCESS_BOOTSTRAP_DEVICE_VENDOR_DIR "${SILIGEN_MULTICARD_VENDOR_DIR}")
 endif()
 
-if(NOT TARGET siligen_process_planning_legacy_configuration_bridge_public)
+if(NOT TARGET siligen_process_planning_contracts_public)
     add_subdirectory(
         "${SILIGEN_WORKSPACE_ROOT}/modules/process-planning/contracts"
         "${CMAKE_BINARY_DIR}/_p/rtsvc_ppc"
@@ -105,7 +105,7 @@ target_link_libraries(siligen_runtime_process_bootstrap PUBLIC
     siligen_runtime_execution_application_public
     siligen_trace_diagnostics_application_public
     siligen_parsing_adapter
-    siligen_process_planning_legacy_configuration_bridge_public
+    siligen_process_planning_contracts_public
     siligen_shared
     siligen_types
     siligen_utils

@@ -1,7 +1,6 @@
 #pragma once
 
-#include "../../motion/value-objects/MotionTypes.h"
-#include "../../safety/value-objects/InterlockTypes.h"
+#include "shared/types/AxisTypes.h"
 #include "shared/types/DispensingStrategy.h"
 
 #include <cstdint>
@@ -15,8 +14,20 @@ namespace Domain {
 namespace Configuration {
 namespace ValueObjects {
 
-using Siligen::Domain::Motion::ValueObjects::Position3D;
 using Siligen::Shared::Types::DispensingStrategy;
+
+/**
+ * @brief 三维位置
+ */
+struct Position3D {
+    double x;
+    double y;
+    double z;
+
+    Position3D() : x(0.0), y(0.0), z(0.0) {}
+
+    Position3D(double xVal, double yVal, double zVal) : x(xVal), y(yVal), z(zVal) {}
+};
 
 /**
  * @brief 轴软限位
@@ -117,9 +128,26 @@ struct EmergencyStopConfig {
 };
 
 /**
- * @brief 联锁配置（与 Safety 子域互锁策略配置对齐）
+ * @brief 联锁配置
  */
-using InterlockConfig = Siligen::Domain::Safety::ValueObjects::InterlockPolicyConfig;
+struct InterlockConfig {
+    bool enabled;
+    bool check_emergency_stop;
+    bool check_servo_alarm;
+    bool check_safety_door;
+    bool check_pressure;
+    bool check_temperature;
+    bool check_voltage;
+
+    InterlockConfig()
+        : enabled(true),
+          check_emergency_stop(true),
+          check_servo_alarm(true),
+          check_safety_door(true),
+          check_pressure(true),
+          check_temperature(true),
+          check_voltage(true) {}
+};
 
 /**
  * @brief 警告配置
