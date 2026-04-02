@@ -12,6 +12,8 @@
 #include "facades/tcp/TcpMotionFacade.h"
 #include "facades/tcp/TcpRecipeFacade.h"
 #include "facades/tcp/TcpSystemFacade.h"
+#include "application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
+#include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
 #include "domain/configuration/ports/IConfigurationPort.h"
 #include "domain/configuration/services/ReadyZeroSpeedResolver.h"
 #include "runtime_execution/contracts/system/IRuntimeStatusExportPort.h"

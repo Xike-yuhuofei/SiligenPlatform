@@ -1,5 +1,6 @@
 #pragma once
 
+#include "runtime_execution/contracts/system/IMachineExecutionStatePort.h"
 #include "runtime/system/LegacyMachineExecutionStateAdapter.h"
 
 #include <memory>

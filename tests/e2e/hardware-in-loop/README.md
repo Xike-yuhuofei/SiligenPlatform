@@ -133,8 +133,7 @@ python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun.py `
 - 默认用 `--config-mode mock` 生成 mock 硬件配置，但预览数据源必须仍为 `preview_source=planned_glue_snapshot`
 - 默认 DXF 为 `samples/dxf/rect_diag.dxf`
 - 默认报告目录为 `tests/reports/adhoc/real-dxf-preview-snapshot-canonical/<timestamp>/`
-- 输出 `plan-prepare.json`、`snapshot.json`、`glue_points.json`、`motion_preview.json`、`execution_polyline.json`、`preview-verdict.json`、`preview-evidence.md`、`hmi-preview.png`、`online-smoke.log`
-- `motion_preview.json` 是正式运动轨迹预览证据；`execution_polyline.json` 仅保留为兼容输出，不改变 `dxf.preview.confirm` / `dxf.job.start` gate
+- 输出 `plan-prepare.json`、`snapshot.json`、`glue_points.json`、`execution_polyline.json`、`preview-verdict.json`、`preview-evidence.md`、`hmi-preview.png`、`online-smoke.log`
 - 同时保留兼容报告 `real-dxf-preview-snapshot.json`、`real-dxf-preview-snapshot.md`
 - 若返回 `mock_synthetic`、`runtime_snapshot` 或缺少 `preview_source/preview_kind`，脚本直接失败，禁止把结果当作真实规划胶点预览证据
 - 若 `plan_id / plan_fingerprint / snapshot_hash` 无法回链，`preview-verdict.json` 必须落为 `mismatch` 或 `incomplete`

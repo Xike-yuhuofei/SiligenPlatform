@@ -6,6 +6,8 @@ set(RUNTIME_HOST_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 set(RUNTIME_HOST_TRACEABILITY_DIR "${SILIGEN_WORKSPACE_ROOT}/modules/trace-diagnostics")
 set(RUNTIME_HOST_DEVICE_ADAPTERS_INCLUDE_DIR "${RUNTIME_HOST_DEVICE_ADAPTERS_CANONICAL_DIR}/include")
 set(RUNTIME_HOST_DEVICE_CONTRACTS_INCLUDE_DIR "${RUNTIME_HOST_DEVICE_CONTRACTS_CANONICAL_DIR}/include")
+set(RUNTIME_HOST_WORKFLOW_APPLICATION_FALLBACK_INCLUDE_DIR
+    "${CMAKE_SOURCE_DIR}/modules/workflow/application/include")
 
 if(NOT EXISTS "${RUNTIME_HOST_SOURCE_ROOT}/runtime/diagnostics/DiagnosticsPortAdapter.cpp")
     message(FATAL_ERROR
@@ -39,6 +41,11 @@ if(NOT TARGET siligen_runtime_host_boost_headers)
     target_include_directories(siligen_runtime_host_boost_headers INTERFACE
         ${SILIGEN_BOOST_INCLUDE_DIR}
     )
+    if(WIN32)
+        target_compile_definitions(siligen_runtime_host_boost_headers INTERFACE
+            _WIN32_WINNT=0x0601
+        )
+    endif()
     target_compile_features(siligen_runtime_host_boost_headers INTERFACE cxx_std_17)
 endif()
 
@@ -81,9 +88,15 @@ set_target_properties(siligen_runtime_host PROPERTIES
 target_include_directories(siligen_runtime_host PUBLIC
     ${RUNTIME_HOST_PUBLIC_INCLUDE_DIRS}
 )
-target_include_directories(siligen_runtime_host PRIVATE
-    "${CMAKE_SOURCE_DIR}/modules/workflow/application/include"
-)
+if(TARGET siligen_workflow_application_public)
+    target_link_libraries(siligen_runtime_host PRIVATE
+        siligen_workflow_application_public
+    )
+elseif(EXISTS "${RUNTIME_HOST_WORKFLOW_APPLICATION_FALLBACK_INCLUDE_DIR}/application")
+    target_include_directories(siligen_runtime_host PRIVATE
+        ${RUNTIME_HOST_WORKFLOW_APPLICATION_FALLBACK_INCLUDE_DIR}
+    )
+endif()
 
 target_link_libraries(siligen_runtime_host PUBLIC
     siligen_runtime_execution_application_public
