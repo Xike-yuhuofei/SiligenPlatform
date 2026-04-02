@@ -2063,7 +2063,7 @@ class MainWindow(QMainWindow):
             source_banner = (
                 "<div style='margin-bottom:14px;padding:12px 14px;border:1px solid #14532d;"
                 "background:#10261a;color:#c7f9d3;'>"
-                "<strong>当前为规划胶点主预览。</strong> 绿色圆点来自 `glue_points`，灰色线框为 `execution_polyline` 辅助层。"
+                "<strong>当前为规划胶点主预览。</strong> 绿色圆点来自 `glue_points`，`execution_polyline` 辅助层默认隐藏。"
                 "</div>"
             )
         elif normalized_source == "runtime_snapshot":
@@ -2104,7 +2104,7 @@ class MainWindow(QMainWindow):
                 f"<strong>阻断原因。</strong> {html.escape(blocking_text)}"
                 "</div>"
             )
-        all_points = list(glue_points) + list(execution_polyline)
+        all_points = list(glue_points)
         min_x = min(point[0] for point in all_points)
         max_x = max(point[0] for point in all_points)
         min_y = min(point[1] for point in all_points)
@@ -2138,16 +2138,6 @@ class MainWindow(QMainWindow):
             return mapped_points
 
         display_points = _map_points(glue_points)
-        display_execution_polyline = _map_points(execution_polyline)
-        execution_markup = ""
-        if len(display_execution_polyline) >= 2:
-            execution_polyline_markup = " ".join(
-                f"{point_x:.2f},{point_y:.2f}" for point_x, point_y in display_execution_polyline
-            )
-            execution_markup = (
-                f"<polyline points='{execution_polyline_markup}' fill='none' stroke='#5b6472' "
-                "stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round' opacity='0.9' />"
-            )
         points_markup = []
         for point_x, point_y in display_points:
             points_markup.append(
@@ -2160,10 +2150,9 @@ class MainWindow(QMainWindow):
             f"{warning_banner}"
             f"{validation_banner}"
             "<p style='color:#b8b8b8;'>"
-            "主图展示胶点触发点；执行轨迹仅作为辅助叠加层用于核对路径走向。执行前确认与哈希校验仍生效。"
+            "主图默认只展示胶点触发点；`execution_polyline` 辅助层不在主界面默认显示。执行前确认与哈希校验仍生效。"
             "</p>"
             f"<svg viewBox='0 0 {width:.0f} {height:.0f}' style='width:100%;height:56vh;background:#141414;border:1px solid #333;'>"
-            f"{execution_markup}"
             f"{point_cloud_svg}"
             "</svg>"
             "<table style='border-collapse:collapse;'>"
@@ -2175,7 +2164,6 @@ class MainWindow(QMainWindow):
             f"<tr><td style='padding:4px 16px 4px 0;'>速度</td><td>{speed_mm_s:.3f} mm/s</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>段数</td><td>{snapshot.segment_count}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>胶点数</td><td>{snapshot.point_count}</td></tr>"
-            f"<tr><td style='padding:4px 16px 4px 0;'>执行轨迹叠加点</td><td>{len(display_execution_polyline)}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>胶点圆心距</td><td>{glue_point_spacing_mm:.1f} mm</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>胶点直径</td><td>{glue_dot_diameter_mm:.1f} mm</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>总长度</td><td>{snapshot.total_length_mm:.3f} mm</td></tr>"
