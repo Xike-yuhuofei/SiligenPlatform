@@ -1,0 +1,8 @@
+success=true
+original_name=golden upload.dxf
+size=64
+generated_filename=<uuid>_<timestamp>_goldenupload.dxf
+stored_filename=<uuid>_<timestamp>_goldenupload.dxf
+pb_filename=<uuid>_<timestamp>_goldenupload.pb
+pb_size=2
+pb_contents=pb

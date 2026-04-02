@@ -19,3 +19,8 @@
 - 已补齐 module.yaml、domain、services、application、adapters、tests 与 examples 子目录。
 - 历史 bridge 与 owner-local 目录已退出 live owner graph；新增终态实现不得回落到桥接路径。
 
+## 测试基线
+
+- `modules/dxf-geometry/tests/` 负责 `dxf-geometry` owner 级 `unit + contracts + golden + integration` 证明。
+- 当前最小正式矩阵聚焦 `DxfPbPreparationService` 的命令装配、脚本解析与 PB 生成闭环。
+- 仓库级 `tests/` 只消费跨 owner 场景，不替代本模块内 contract。

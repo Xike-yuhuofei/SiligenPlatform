@@ -35,3 +35,9 @@
 - `ProcessPathFacade` 是唯一对外应用入口；新 consumer 不得直连 workflow 下的 trajectory 历史副本。
 - `domain/trajectory/` 承载 `M6` 领域规则与值对象，作为 owner implementation root 继续保留。
 - 本模块不再对外公开运动配置、规划报告、轨迹别名或运动规划服务。
+
+## 测试基线
+
+- `modules/process-path/tests/` 负责 `process-path` owner 级 `unit + contracts + golden + integration` 证明。
+- 当前最小正式矩阵聚焦 `ProcessPathFacade` 的 request/result contract、lead-on/lead-off 语义和到 `motion-planning` 的公共链路交接。
+- 仓库级 `tests/` 只消费跨 owner 场景，不替代本模块内 contract。
