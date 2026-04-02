@@ -1,4 +1,4 @@
-#include "domain/motion/domain-services/JogController.h"
+#include "runtime_execution/application/services/motion/JogController.h"
 #include "domain/motion/ports/IMotionStatePort.h"
 #include "shared/types/Error.h"
 
@@ -9,11 +9,11 @@
 
 namespace {
 
-using Siligen::Domain::Motion::DomainServices::JogController;
 using Siligen::Domain::Motion::Ports::IJogControlPort;
 using Siligen::Domain::Motion::Ports::IMotionStatePort;
 using Siligen::Domain::Motion::Ports::MotionState;
 using Siligen::Domain::Motion::Ports::MotionStatus;
+using Siligen::RuntimeExecution::Application::Services::Motion::JogController;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::LogicalAxisId;

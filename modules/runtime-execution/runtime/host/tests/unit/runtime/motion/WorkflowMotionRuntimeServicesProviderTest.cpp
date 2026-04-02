@@ -1,10 +1,10 @@
 #include "runtime/motion/WorkflowMotionRuntimeServicesProvider.h"
 
 #include "domain/motion/ports/IHomingPort.h"
-#include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
 #include "siligen/device/adapters/drivers/multicard/MockMultiCard.h"
 #include "siligen/device/adapters/drivers/multicard/MockMultiCardWrapper.h"
 #include "siligen/device/adapters/motion/MotionRuntimeFacade.h"
+#include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
 
 #include <gtest/gtest.h>
 
@@ -21,9 +21,9 @@ using MockMultiCardWrapper = Siligen::Infrastructure::Hardware::MockMultiCardWra
 using IHomingPort = Siligen::Domain::Motion::Ports::IHomingPort;
 using LogicalAxisId = Siligen::Shared::Types::LogicalAxisId;
 using HomingStatus = Siligen::Domain::Motion::Ports::HomingStatus;
+using IMotionRuntimePort = Siligen::RuntimeExecution::Contracts::Motion::IMotionRuntimePort;
 using ResultVoid = Siligen::Shared::Types::Result<void>;
 using int32 = Siligen::Shared::Types::int32;
-using IMotionRuntimePort = Siligen::RuntimeExecution::Contracts::Motion::IMotionRuntimePort;
 
 class NoOpHomingPort final : public IHomingPort {
    public:

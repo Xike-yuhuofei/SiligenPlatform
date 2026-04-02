@@ -20,7 +20,7 @@ using Siligen::Shared::Types::ToUserDisplay;
 using Siligen::Shared::Types::int16;
 
 HardLimitMonitorService::HardLimitMonitorService(
-    std::shared_ptr<Domain::Motion::Ports::IIOControlPort> io_port,
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort> io_port,
     std::shared_ptr<Domain::Motion::Ports::IPositionControlPort> position_control_port,
     const HardLimitMonitorConfig& config)
     : io_port_(std::move(io_port))

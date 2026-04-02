@@ -11,7 +11,6 @@
 - 脚本：`apps/runtime-gateway/run.ps1`
 - 默认 machine config：`config/machine/machine_config.ini`
 - 默认 vendor 目录：`modules/runtime-execution/adapters/device/vendor/multicard`
-- 默认 vendor 目录现在跟踪 `MultiCard.dll` / `MultiCard.lib`，fresh clone 不应再要求额外手工补 SDK 才能走默认 dry-run / build 链路
 - 默认日志参数：`logs/tcp_server.log`（由可执行文件固定传入，日志目录相对 exe 工作目录）
 
 示例：

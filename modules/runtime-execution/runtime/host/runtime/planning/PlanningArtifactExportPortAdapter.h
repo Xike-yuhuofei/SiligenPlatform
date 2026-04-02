@@ -5,10 +5,10 @@
 namespace Siligen::RuntimeExecution::Host::Planning {
 
 class PlanningArtifactExportPortAdapter final
-    : public Application::Services::Dispensing::IPlanningArtifactExportPort {
+    : public Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort {
 public:
-    Shared::Types::Result<Application::Services::Dispensing::PlanningArtifactExportResult> Export(
-        const Application::Services::Dispensing::PlanningArtifactExportRequest& request) override;
+    Siligen::Shared::Types::Result<Siligen::Application::Services::Dispensing::PlanningArtifactExportResult> Export(
+        const Siligen::Application::Services::Dispensing::PlanningArtifactExportRequest& request) override;
 };
 
 }  // namespace Siligen::RuntimeExecution::Host::Planning

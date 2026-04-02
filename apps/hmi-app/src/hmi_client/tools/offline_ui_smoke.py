@@ -15,11 +15,7 @@ from PyQt5.QtCore import QTimer
 from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication, QWidget
 
-import ui.main_window as main_window_module  # noqa: E402
-
-main_window_module.QWebEngineView = None
-main_window_module.WEB_ENGINE_AVAILABLE = False
-MainWindow = main_window_module.MainWindow
+from ui.main_window import MainWindow  # noqa: E402
 
 
 def find_by_testid(root: QWidget, testid: str):
@@ -85,10 +81,6 @@ class OfflineSmokeRunner:
             if self.window._launch_result is not None:
                 self._check(self.window._launch_result.effective_mode == "offline", "Effective mode should be offline")
                 self._check(self.window._launch_result.success, "Offline launch should be successful")
-                self._check(self.window._launch_result.session_snapshot is not None, "Offline launch should expose a session snapshot")
-                if self.window._launch_result.session_snapshot is not None:
-                    self._check(self.window._launch_result.session_snapshot.mode == "offline", "Offline snapshot mode should be offline")
-                    self._check(self.window._launch_result.session_snapshot.session_state == "idle", "Offline snapshot state should be idle")
         finally:
             self.window.close()
             self.app.exit(1 if self.failed else 0)

@@ -1,5 +1,5 @@
-#include "application/usecases/motion/homing/HomeAxesUseCase.h"
-#include "domain/configuration/ports/IConfigurationPort.h"
+#include "runtime_execution/application/usecases/motion/homing/HomeAxesUseCase.h"
+#include "runtime_execution/contracts/configuration/IConfigurationPort.h"
 #include "domain/motion/ports/IHomingPort.h"
 #include "domain/system/ports/IEventPublisherPort.h"
 #include "shared/types/Error.h"

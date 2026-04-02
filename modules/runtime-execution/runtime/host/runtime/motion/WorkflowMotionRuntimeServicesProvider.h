@@ -1,6 +1,6 @@
 #pragma once
 
-#include "runtime_execution/application/services/motion/runtime/IMotionRuntimeServicesProvider.h"
+#include "workflow/application/services/motion/runtime/IMotionRuntimeServicesProvider.h"
 
 namespace Siligen::RuntimeExecution::Host::Motion {
 

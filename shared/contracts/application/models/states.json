@@ -38,7 +38,7 @@
         },
         "estop_known": {
           "type": "boolean",
-          "description": "急停信号是否可靠可判定；仅当后端当前持有权威急停来源时为 true，断线且无有效采样时必须为 false。"
+          "description": "急停信号是否可靠可判定；false 表示来源不可判定。"
         },
         "door_known": {
           "type": "boolean",
@@ -61,10 +61,7 @@
       ],
       "properties": {
         "estop_active": { "type": "boolean" },
-        "estop_known": {
-          "type": "boolean",
-          "description": "effective interlock 视角下急停是否可靠可判定；断线且无权威急停来源时必须为 false。"
-        },
+        "estop_known": { "type": "boolean" },
         "door_open_active": { "type": "boolean" },
         "door_open_known": { "type": "boolean" },
         "home_boundary_x_active": {
@@ -124,12 +121,9 @@
         "connection_state": { "type": "string" },
         "machine_state": {
           "type": "string",
-          "description": "兼容导出状态枚举；当前由 supervision.current_state 单向派生，保留给旧消费者读取。"
+          "description": "权威状态枚举：Disconnected / Idle / Running / Paused / Interlock / Estop / Fault / Unknown。"
         },
-        "machine_state_reason": {
-          "type": "string",
-          "description": "兼容导出原因字段；当前由 supervision.state_reason 单向派生。"
-        },
+        "machine_state_reason": { "type": "string" },
         "interlock_latched": { "type": "boolean" },
         "active_job_id": { "type": "string" },
         "active_job_state": { "type": "string" },
