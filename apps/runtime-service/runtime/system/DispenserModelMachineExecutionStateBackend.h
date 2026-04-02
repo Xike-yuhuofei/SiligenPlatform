@@ -1,5 +1,6 @@
 #pragma once
 
+#include "runtime_execution/contracts/system/IMachineExecutionStatePort.h"
 #include "runtime/system/LegacyMachineExecutionStateAdapter.h"
 
 #include <memory>
@@ -11,7 +12,7 @@ class DispenserModel;
 namespace Siligen::Runtime::Service::System {
 
 class DispenserModelMachineExecutionStateBackend final
-    : public Siligen::Runtime::Host::System::ILegacyMachineExecutionStateBackend {
+    : public Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort {
    public:
     DispenserModelMachineExecutionStateBackend();
     explicit DispenserModelMachineExecutionStateBackend(

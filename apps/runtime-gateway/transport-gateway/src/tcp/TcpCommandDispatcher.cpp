@@ -12,6 +12,8 @@
 #include "facades/tcp/TcpMotionFacade.h"
 #include "facades/tcp/TcpRecipeFacade.h"
 #include "facades/tcp/TcpSystemFacade.h"
+#include "application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
+#include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "process_planning/contracts/configuration/ReadyZeroSpeedResolver.h"
 
@@ -286,6 +288,13 @@ nlohmann::json BuildPreviewPolyline(const std::vector<Siligen::TrajectoryPoint>&
         });
     }
     return polyline;
+}
+
+nlohmann::json BuildPreviewPointJson(double x, double y) {
+    return {
+        {"x", x},
+        {"y", y}
+    };
 }
 
 bool ReadJsonBool(const nlohmann::json& params, const char* key, bool fallback) {
@@ -2146,18 +2155,19 @@ std::string TcpCommandDispatcher::HandleDxfJobStart(const std::string& id, const
         return GatewayJsonProtocol::MakeErrorResponse(id, 2901, start_result.GetError().GetMessage());
     }
 
-    const auto& job_id = start_result.Value();
+    const auto& start_response = start_result.Value();
+    const auto& job_id = start_response.job_id;
     {
         std::lock_guard<std::mutex> lock(dxf_mutex_);
         active_dxf_job_id_ = job_id;
     }
 
     return GatewayJsonProtocol::MakeSuccessResponse(id, {
-        {"started", true},
+        {"started", start_response.started},
         {"job_id", job_id},
         {"plan_id", plan_id},
         {"plan_fingerprint", expected_plan_fingerprint},
-        {"target_count", request.target_count}
+        {"target_count", start_response.target_count}
     });
 }
 

@@ -96,7 +96,7 @@ Shared::Types::Result<UseCases::Dispensing::ConfirmPreviewResponse> TcpDispensin
     return dxf_workflow_use_case_->ConfirmPreview(request);
 }
 
-Shared::Types::Result<UseCases::Dispensing::JobID> TcpDispensingFacade::StartDxfJob(
+Shared::Types::Result<UseCases::Dispensing::StartJobResponse> TcpDispensingFacade::StartDxfJob(
     const UseCases::Dispensing::StartJobRequest& request) {
     return dxf_workflow_use_case_->StartJob(request);
 }
