@@ -11,16 +11,14 @@ from typing import Any
 
 KNOWN_FAILURE_EXIT_CODE = 10
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_REPORT_DIR = ROOT / "tests" / "reports" / "controlled-production-test"
 
 REQUIRED_WORKSPACE_CASES = (
-    "simulation-engine-smoke",
-    "simulation-engine-json-io",
-    "simulation-engine-scheme-c",
-    "simulation-runtime-core-contracts",
+    "engineering-regression",
     "simulated-line",
 )
+EXPECTED_FAULT_MATRIX_ID = "fault-matrix.simulated-line.v1"
 
 
 @dataclass
@@ -37,6 +35,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--report-dir", default=str(DEFAULT_REPORT_DIR))
     parser.add_argument("--workspace-validation-json", default="")
     parser.add_argument("--simulated-line-summary-json", default="")
+    parser.add_argument("--simulated-line-bundle-json", default="")
     return parser.parse_args()
 
 
@@ -53,7 +52,7 @@ def _compute_overall_status(checks: list[GateCheck]) -> str:
     return "passed"
 
 
-def _resolve_paths(args: argparse.Namespace) -> tuple[Path, Path, Path]:
+def _resolve_paths(args: argparse.Namespace) -> tuple[Path, Path, Path, Path]:
     report_dir = Path(args.report_dir).resolve()
     workspace_validation_json = (
         Path(args.workspace_validation_json).resolve()
@@ -65,7 +64,12 @@ def _resolve_paths(args: argparse.Namespace) -> tuple[Path, Path, Path]:
         if args.simulated_line_summary_json
         else report_dir / "e2e" / "simulated-line" / "simulated-line-summary.json"
     )
-    return report_dir, workspace_validation_json, simulated_line_summary_json
+    simulated_line_bundle_json = (
+        Path(args.simulated_line_bundle_json).resolve()
+        if args.simulated_line_bundle_json
+        else report_dir / "e2e" / "simulated-line" / "validation-evidence-bundle.json"
+    )
+    return report_dir, workspace_validation_json, simulated_line_summary_json, simulated_line_bundle_json
 
 
 def _check_workspace_counts(payload: dict[str, Any]) -> GateCheck:
@@ -151,6 +155,18 @@ def _check_simulated_line(payload: dict[str, Any]) -> list[GateCheck]:
         )
 
     scenarios = payload.get("scenarios", [])
+    if not scenarios:
+        checks.append(
+            GateCheck(
+                name="simulated-line-scenarios",
+                status="failed",
+                expected="at least one scenario executed and all deterministic_replay_passed=true",
+                actual="scenario_count=0",
+                note="simulated-line exited before any scenario evidence was produced",
+            )
+        )
+        return checks
+
     non_passed: list[str] = []
     replay_failed: list[str] = []
     for item in scenarios:
@@ -167,7 +183,7 @@ def _check_simulated_line(payload: dict[str, Any]) -> list[GateCheck]:
             GateCheck(
                 name="simulated-line-scenarios",
                 status="passed",
-                expected="all scenarios passed and deterministic_replay_passed=true",
+                expected="at least one scenario executed and all deterministic_replay_passed=true",
                 actual=f"scenario_count={len(scenarios)} all passed",
             )
         )
@@ -181,11 +197,63 @@ def _check_simulated_line(payload: dict[str, Any]) -> list[GateCheck]:
             GateCheck(
                 name="simulated-line-scenarios",
                 status="failed",
-                expected="all scenarios passed and deterministic_replay_passed=true",
+                expected="at least one scenario executed and all deterministic_replay_passed=true",
                 actual="; ".join(parts),
                 note="simulated-line scenario gate failed",
             )
         )
+    return checks
+
+
+def _check_simulated_line_bundle(payload: dict[str, Any]) -> list[GateCheck]:
+    checks: list[GateCheck] = []
+    metadata = payload.get("metadata", {})
+    matrix_id = str(metadata.get("fault_matrix_id", ""))
+    checks.append(
+        GateCheck(
+            name="simulated-line-fault-matrix",
+            status="passed" if matrix_id == EXPECTED_FAULT_MATRIX_ID else "failed",
+            expected=f"fault_matrix_id={EXPECTED_FAULT_MATRIX_ID}",
+            actual=f"fault_matrix_id={matrix_id}",
+            note="" if matrix_id == EXPECTED_FAULT_MATRIX_ID else "simulated-line bundle metadata is missing canonical fault matrix id",
+        )
+    )
+
+    required_metadata = {
+        "selected_fault_ids": isinstance(metadata.get("selected_fault_ids"), list),
+        "deterministic_seed": metadata.get("deterministic_seed") is not None,
+        "clock_profile": bool(metadata.get("clock_profile")),
+        "double_surface": isinstance(metadata.get("double_surface"), dict),
+    }
+    missing = [name for name, present in required_metadata.items() if not present]
+    checks.append(
+        GateCheck(
+            name="simulated-line-bundle-metadata",
+            status="passed" if not missing else "failed",
+            expected="selected_fault_ids, deterministic_seed, clock_profile, double_surface are present",
+            actual="all present" if not missing else "missing=" + ",".join(missing),
+            note="" if not missing else "phase9 replay/fault metadata is incomplete",
+        )
+    )
+
+    records = payload.get("case_records", [])
+    incomplete_records: list[str] = []
+    for record in records:
+        case_id = str(record.get("case_id", "unknown"))
+        if "fault_ids" not in record:
+            incomplete_records.append(f"{case_id}:fault_ids")
+        deterministic_replay = record.get("deterministic_replay")
+        if not isinstance(deterministic_replay, dict) or "passed" not in deterministic_replay:
+            incomplete_records.append(f"{case_id}:deterministic_replay")
+    checks.append(
+        GateCheck(
+            name="simulated-line-case-replay-metadata",
+            status="passed" if not incomplete_records else "failed",
+            expected="all case records include fault_ids and deterministic_replay",
+            actual="all present" if not incomplete_records else "; ".join(incomplete_records),
+            note="" if not incomplete_records else "case-level replay metadata is incomplete",
+        )
+    )
     return checks
 
 
@@ -220,7 +288,7 @@ def _write_report(report_dir: Path, report: dict[str, Any]) -> tuple[Path, Path]
 
 def main() -> int:
     args = parse_args()
-    report_dir, workspace_validation_json, simulated_line_summary_json = _resolve_paths(args)
+    report_dir, workspace_validation_json, simulated_line_summary_json, simulated_line_bundle_json = _resolve_paths(args)
 
     checks: list[GateCheck] = []
     error: str = ""
@@ -229,13 +297,17 @@ def main() -> int:
         error = f"missing workspace validation json: {workspace_validation_json}"
     elif not simulated_line_summary_json.exists():
         error = f"missing simulated-line summary json: {simulated_line_summary_json}"
+    elif not simulated_line_bundle_json.exists():
+        error = f"missing simulated-line bundle json: {simulated_line_bundle_json}"
 
     if not error:
         workspace_payload = _load_json(workspace_validation_json)
         simulated_line_payload = _load_json(simulated_line_summary_json)
+        simulated_line_bundle_payload = _load_json(simulated_line_bundle_json)
         checks.append(_check_workspace_counts(workspace_payload))
         checks.append(_check_required_workspace_cases(workspace_payload))
         checks.extend(_check_simulated_line(simulated_line_payload))
+        checks.extend(_check_simulated_line_bundle(simulated_line_bundle_payload))
 
     if error:
         checks.append(
@@ -254,6 +326,7 @@ def main() -> int:
         "workspace_root": str(ROOT),
         "workspace_validation_json": str(workspace_validation_json),
         "simulated_line_summary_json": str(simulated_line_summary_json),
+        "simulated_line_bundle_json": str(simulated_line_bundle_json),
         "overall_status": overall_status,
         "checks": [asdict(item) for item in checks],
     }

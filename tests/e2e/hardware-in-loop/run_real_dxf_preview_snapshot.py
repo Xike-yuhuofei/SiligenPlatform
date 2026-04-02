@@ -15,9 +15,9 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[3]
-FIRST_LAYER_DIR = ROOT / "tests" / "e2e" / "first-layer"
-if str(FIRST_LAYER_DIR) not in sys.path:
-    sys.path.insert(0, str(FIRST_LAYER_DIR))
+HIL_DIR = ROOT / "tests" / "e2e" / "hardware-in-loop"
+if str(HIL_DIR) not in sys.path:
+    sys.path.insert(0, str(HIL_DIR))
 
 from runtime_gateway_harness import (  # noqa: E402
     KNOWN_FAILURE_EXIT_CODE,

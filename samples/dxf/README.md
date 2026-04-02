@@ -14,6 +14,17 @@
 - 可复现场景输入：与 DXF 直接绑定的解析前置素材（若有）
 - 样本索引与说明文档
 
+## 当前 canonical samples
+
+- `rect_diag.dxf`：默认 `small` regression sample
+- `rect_medium_ladder.dxf`：默认 `medium` nightly-performance sample，line-only serpentine，`383` segments
+- `rect_large_ladder.dxf`：默认 `large` nightly-performance sample，line-only serpentine，`1919` segments
+
+## 生成规则
+
+- `rect_medium_ladder.dxf` 与 `rect_large_ladder.dxf` 由 `tests/performance/generate_canonical_dxf_samples.py` 生成。
+- 生成规则固定为 line-only serpentine，不允许引入 arc/spline 或外部未审计 DXF 来源。
+
 ## 来源与归位约束
 
 - 历史来源 `examples/dxf/` 仅作为迁移来源，不再是正式 owner 面。

@@ -1,6 +1,6 @@
 # 联机测试矩阵 v1
 
-更新时间：`2026-04-01`
+更新时间：`2026-04-02`
 
 ## 1. 目标与非目标
 
@@ -21,6 +21,7 @@
 | 场景簇 | authority artifact | owner 层 | consumer-only 层 |
 | --- | --- | --- | --- |
 | HIL 状态机闭环 | `hil-closed-loop-summary.json` | `tests/e2e/hardware-in-loop/` | `docs/runtime/`、发布收尾文档 |
+| HIL TCP recovery | `hil-tcp-recovery-summary.json` | `tests/e2e/hardware-in-loop/` | `docs/validation/`、专项 closeout |
 | HIL controlled gate | `hil-controlled-gate-summary.json` | `tests/e2e/hardware-in-loop/verify_hil_controlled_gate.py` | `docs/runtime/field-acceptance.md`、发布流程 |
 | DXF 真机 dry-run 主链 | `real-dxf-machine-dryrun.json` 及同批次观测工件 | `tests/e2e/hardware-in-loop/` | 诊断/回归说明文档 |
 | 在线预览证据 | `preview-verdict.json` + `plan-prepare.json` + `snapshot.json` | `tests/e2e/hardware-in-loop/` + `tests/contracts/` | HMI 展示、验证汇总 |
@@ -38,13 +39,14 @@
 | --- | --- | --- | --- |
 | TCP 最小联机 smoke | `tests/e2e/hardware-in-loop/run_hardware_smoke.py` | `hardware-smoke` 报告、退出码 | P0 正式入口 |
 | HIL 闭环 | `tests/e2e/hardware-in-loop/run_hil_closed_loop.py` | `hil-closed-loop-summary.json/md` | P0 正式入口 |
-| HIL controlled gate | `tests/e2e/hardware-in-loop/run_hil_controlled_test.ps1` + `verify_hil_controlled_gate.py` | workspace / HIL / gate / release summary | P0 正式入口 |
+| HIL controlled gate | `tests/e2e/hardware-in-loop/run_hil_controlled_test.ps1` + `verify_hil_controlled_gate.py` | offline-prereq / hardware-smoke / HIL / gate / release summary | P0 正式入口 |
 | DXF canonical dry-run | `tests/e2e/hardware-in-loop/run_real_dxf_machine_dryrun.py` | dry-run 报告目录、状态观测工件 | P0 正式入口 |
 | 在线预览证据 | `tests/e2e/hardware-in-loop/run_real_dxf_preview_snapshot.py` | `plan-prepare.json`、`snapshot.json`、`preview-verdict.json` 等 | P0 正式入口 |
 | HMI online smoke | `apps/hmi-app/scripts/online-smoke.ps1` | `online-smoke.log`、qtest stdout/stderr、截图 | P0 正式入口 |
 | HMI failure stage 注入 | `apps/hmi-app/scripts/verify-online-ready-timeout.ps1` | `SUPERVISOR_DIAG` / `SUPERVISOR_EVENT` 映射证据 | P0 正式入口 |
 | HMI recovery | `apps/hmi-app/scripts/verify-online-recovery-loop.ps1` | 恢复前后事件与最终 `online_ready=true` | P0 正式入口 |
 | 多轮 home/closed-loop matrix | `tests/e2e/hardware-in-loop/run_case_matrix.py`，或根级 `test.ps1 -IncludeHilCaseMatrix` | `case-matrix-summary.json/md` | P1 补充入口，已接 root validation opt-in，已接 controlled gate / release-check 默认门禁 |
+| HIL TCP recovery | `tests/e2e/hardware-in-loop/run_hil_tcp_recovery.py` | `hil-tcp-recovery-summary.json/md` | P1 补充入口，当前不接 controlled gate / release-check |
 
 ## 4. 联机测试矩阵
 
@@ -56,7 +58,7 @@
 | `P0-02` | L2 | 单轮 `start/pause/resume/stop` 闭环 | `run_hil_closed_loop.py` | `hil-closed-loop-summary.json/md`、`state_transition_checks`、`failure_context` | `existing` |
 | `P0-03` | L2 | 多轮 `home + closed_loop` 稳定性 | `run_case_matrix.py`、`test.ps1 -IncludeHilCaseMatrix`、`run_hil_controlled_test.ps1` | `case-matrix-summary.json/md`、round 级 snapshots | `existing`：已接 root validation opt-in，已接 controlled gate / release-check 默认门禁 |
 | `P0-04` | L3 | canonical DXF dry-run 主链 | `run_real_dxf_machine_dryrun.py` | dry-run 报告、`phase_timeline`、`verdict`、`evidence_contract` | `existing` |
-| `P0-05` | L3 | 设备前提条件阻断 | `run_real_dxf_machine_dryrun.py` + `tests/e2e/first-layer/run_tcp_precondition_matrix.py` | 阻断原因、状态快照、失败上下文 | `partial`：first-layer 已有，canonical dry-run 负例矩阵未完全收敛 |
+| `P0-05` | L3 | 设备前提条件阻断 | `tests/e2e/hardware-in-loop/run_real_dxf_machine_dryrun_negative_matrix.py` + `run_real_dxf_machine_dryrun.py` + `tests/integration/scenarios/first-layer/run_tcp_precondition_matrix.py` | `real-dxf-machine-dryrun-negative-matrix.json/md`、per-case dry-run 报告、阻断原因、状态快照、失败上下文 | `existing`：canonical dry-run negative matrix 已收敛到 `estop`、`door_open`、`home_boundary_x_active`、`home_boundary_y_active` |
 | `P0-06` | L4 | 在线预览证据主干 | `run_real_dxf_preview_snapshot.py` + `tests/contracts/test_online_preview_evidence_contract.py` | `plan-prepare.json`、`snapshot.json`、`glue_points.json`、`execution_polyline.json`、`preview-verdict.json`、`preview-evidence.md`、`hmi-preview.png`、`online-smoke.log` | `existing` |
 | `P0-07` | L5 | HMI online 启动成功 | `apps/hmi-app/scripts/online-smoke.ps1` | `online-smoke.log`、截图、`SUPERVISOR_EVENT` 最小阶段序列 | `existing` |
 | `P0-08` | L5 | HMI failure stage/code 识别 | `apps/hmi-app/scripts/verify-online-ready-timeout.ps1` | `failure_code`、`failure_stage`、阶段失败事件 | `existing` |
@@ -67,10 +69,10 @@
 
 | ID | 层级 | 场景 | 建议落点 | 当前状态 |
 | --- | --- | --- | --- | --- |
-| `P1-01` | L2 | 断连恢复 | 新增或扩展 HIL TCP recovery 脚本 | `planned` |
+| `P1-01` | L2 | 断连恢复 | `tests/e2e/hardware-in-loop/run_hil_tcp_recovery.py` | `existing`：独立 authority，仅覆盖 TCP session disconnect/reconnect recovery，不接 formal gate |
 | `P1-02` | L3 | 门/急停/限位阻断专项 | 扩 `run_real_dxf_machine_dryrun.py` 的负例参数矩阵 | `planned` |
 | `P1-03` | L4 | DXF 基线集批量在线预览 | 扩 `run_real_dxf_preview_snapshot.py` 批量模式 | `planned` |
-| `P1-04` | L5 | HMI runtime actions 批量在线回归 | 扩 `online-smoke.ps1` / `ui_qtest.py` 参数矩阵 | `partial` |
+| `P1-04` | L5 | HMI runtime actions 批量在线回归 | `apps/hmi-app/scripts/run_online_runtime_action_matrix.py` + `online-smoke.ps1` / `ui_qtest.py` | `existing` |
 | `P1-05` | L6 | 30 分钟以上 soak | `run_hil_closed_loop.py --duration-seconds` + gate 汇总 | `existing` 但未纳入统一矩阵文档前一直视为专项 |
 
 ### 4.3 P2：发布前与容量边界
@@ -83,15 +85,18 @@
 
 ## 5. 必须证据标准
 
-### 5.1 HIL 状态机类
+### 5.1 HIL 状态机 / recovery 类
 
 至少保留：
 
 - `hil-closed-loop-summary.json`
 - `hil-closed-loop-summary.md`
-- `state_transition_checks`
+- `hil-tcp-recovery-summary.json`
+- `hil-tcp-recovery-summary.md`
 - `failure_context`
 - `recent_status_snapshot`
+- `state_transition_checks`（`hil-closed-loop`）
+- `rounds[].baseline_status/probe_before_disconnect/disconnect_ack/post_reconnect_status/probe_after_reconnect`（`hil-tcp-recovery`）
 
 ### 5.2 在线预览类
 
@@ -116,21 +121,62 @@
 - `failure_code` / `failure_stage` 断言结果
 - 恢复前后 `SUPERVISOR_EVENT` / `SUPERVISOR_DIAG`
 
-### 5.4 controlled gate 类
+### 5.4 HMI runtime actions matrix
 
 至少保留：
 
-- `workspace-validation.json/md`
+- `online-runtime-action-matrix-summary.json`
+- `online-runtime-action-matrix-summary.md`
+- 每个 profile 的 `online-smoke.log`
+- 每个 profile 的 screenshot
+
+### 5.5 controlled gate 类
+
+至少保留：
+
+- `offline-prereq/workspace-validation.json/md`
+- `hardware-smoke/hardware-smoke-summary.json/md`
 - `hil-closed-loop-summary.json/md`
 - `hil-controlled-gate-summary.json/md`
 - `hil-controlled-release-summary.md`
+- optional `hil-case-matrix/case-matrix-summary.json/md`
+
+### 5.6 canonical dry-run negative matrix
+
+至少保留：
+
+- `real-dxf-machine-dryrun-negative-matrix.json`
+- `real-dxf-machine-dryrun-negative-matrix.md`
+- 每个 negative case 的 `real-dxf-machine-dryrun-canonical.json/.md`
+- 每个 negative case 的 `launcher.log`
+
+### 5.7 分层 evidence bundle 约束
+
+受限 HIL 与联机相关 evidence 还必须补充：
+
+- `case-index.json`
+- `validation-evidence-bundle.json`
+- `evidence-links.md`
+- `report-manifest.json`
+- `report-index.json`
+- `failure-details.json`（存在非通过结论时）
+
+其中 `validation-evidence-bundle.json` 必须声明：
+
+- `producer_lane_ref=limited-hil`
+- 离线前置层（至少 `L0` / `L2`，必要时含 `L3`）
+- `metadata.admission`
+- `metadata.admission.safety_preflight_passed`
+- `metadata.admission.operator_override_reason`（仅当 `operator_override_used=true` 时必填）
+- `skip_justification`
+- `abort_metadata`
 
 ## 6. 项目落地规则
 
 1. 新的联机场景优先扩现有入口参数，不优先新增新的总入口脚本。
 2. 正式矩阵定义沉到 `docs/validation/`；脚本入口说明沉到各自 owner README。
 3. 只有当场景输出已经形成稳定 `authority artifact` 时，才允许接入 `verify_hil_controlled_gate.py` 或发布流程。
-4. `tests/contracts/` 与 `tests/e2e/first-layer/` 继续承担离线契约与负例验证；不得让联机脚本独自承担契约真值。
+4. `tests/contracts/` 与 `tests/integration/scenarios/first-layer/` 继续承担离线契约与负例验证；不得让联机脚本独自承担契约真值。
 5. 任何需要真实设备动作的新增场景，先补观察点、证据和停机条件，再补脚本。
 
 ## 7. 推荐推进顺序
@@ -142,12 +188,13 @@
 
 ### 第二阶段
 
-- 收敛 `P0-05` 的 canonical dry-run 负例矩阵。
-- 把 `P1-04` 的 runtime actions 回归从单点 smoke 扩成参数矩阵。
+- 已完成 `P0-05` 的 canonical dry-run 负例矩阵收敛。
+- 已完成 `P1-04` 的 runtime actions 回归矩阵化。
 
 ### 第三阶段
 
-- 再推进 `P1-01`、`P1-03`、`P1-05` 与 `P2` 套件化建设。
+- 已完成 `P1-01` 的独立 HIL TCP recovery authority。
+- 后续继续推进 `P1-03`、`P1-05` 与 `P2` 套件化建设。
 
 ## 8. 关联入口
 

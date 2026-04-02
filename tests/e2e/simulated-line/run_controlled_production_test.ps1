@@ -13,7 +13,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $false
 
-$workspaceRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+$workspaceRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
 $buildScript = Join-Path $workspaceRoot "build.ps1"
 $testScript = Join-Path $workspaceRoot "test.ps1"
 $gateScript = Join-Path $PSScriptRoot "verify_controlled_production_gate.py"
@@ -73,15 +73,32 @@ if ($buildExitCode -ne 0) {
 }
 
 Write-Output "controlled-production-test: test e2e suite (serial)"
-& $testScript `
-    -Profile $Profile `
-    -Suite e2e `
-    -ReportDir $resolvedReportDir `
-    -FailOnKnownFailure
-$testExitCode = $LASTEXITCODE
+$testExitCode = 0
+$testExceptionMessage = ""
+try {
+    & $testScript `
+        -Profile $Profile `
+        -Suite e2e `
+        -ReportDir $resolvedReportDir `
+        -FailOnKnownFailure
+    if ($null -ne $LASTEXITCODE) {
+        $testExitCode = [int]$LASTEXITCODE
+    }
+} catch {
+    $testExceptionMessage = $_.Exception.Message
+    if ($LASTEXITCODE -is [int] -and $LASTEXITCODE -ne 0) {
+        $testExitCode = [int]$LASTEXITCODE
+    } elseif ($testExceptionMessage -match "exit:\s*(\d+)") {
+        $testExitCode = [int]$Matches[1]
+    } else {
+        $testExitCode = 1
+    }
+}
 if ($testExitCode -ne 0) {
-    Write-Output "controlled-production-test failed: test step exit_code=$testExitCode"
-    exit $testExitCode
+    Write-Output "controlled-production-test: test step returned exit_code=$testExitCode, continue to gate/report generation"
+    if (-not [string]::IsNullOrWhiteSpace($testExceptionMessage)) {
+        Write-Output "controlled-production-test: captured test exception=$testExceptionMessage"
+    }
 }
 
 Write-Output "controlled-production-test: verify controlled-production gate"
@@ -116,6 +133,10 @@ if ($gateExitCode -ne 0) {
 if ($renderExitCode -ne 0) {
     Write-Output "controlled-production-test failed: release summary rendering exit_code=$renderExitCode"
     exit $renderExitCode
+}
+if ($testExitCode -ne 0) {
+    Write-Output "controlled-production-test blocked: test step exit_code=$testExitCode"
+    exit $testExitCode
 }
 
 if (-not $PublishLatestOnPass) {
