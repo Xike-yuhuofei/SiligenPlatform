@@ -1,14 +1,14 @@
-#include "runtime_execution/application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
-#include "runtime_execution/application/usecases/motion/homing/HomeAxesUseCase.h"
-#include "runtime_execution/application/usecases/motion/manual/ManualMotionControlUseCase.h"
-#include "runtime_execution/application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
+#include "application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
+#include "application/usecases/motion/homing/HomeAxesUseCase.h"
+#include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
+#include "application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
 #include "runtime_execution/contracts/configuration/IConfigurationPort.h"
 #include "domain/motion/ports/IHomingPort.h"
 #include "domain/motion/ports/IMotionConnectionPort.h"
 #include "domain/motion/ports/IMotionStatePort.h"
 #include "domain/motion/ports/IPositionControlPort.h"
 #include "domain/system/ports/IEventPublisherPort.h"
-#include "runtime_execution/application/services/motion/ReadyZeroDecisionService.h"
+#include "domain/motion/domain-services/ReadyZeroDecisionService.h"
 #include "runtime_execution/contracts/motion/IIOControlPort.h"
 #include "shared/types/Error.h"
 #include "shared/types/HardwareConfiguration.h"
@@ -62,7 +62,7 @@ using Siligen::Shared::Types::float32;
 using Siligen::Shared::Types::int16;
 using Siligen::Shared::Types::int32;
 using Siligen::Shared::Types::uint32;
-using Siligen::RuntimeExecution::Application::Services::Motion::ReadyZeroDecisionService;
+using Siligen::Domain::Motion::DomainServices::ReadyZeroDecisionService;
 using Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort;
 using Siligen::RuntimeExecution::Contracts::Motion::IOStatus;
 

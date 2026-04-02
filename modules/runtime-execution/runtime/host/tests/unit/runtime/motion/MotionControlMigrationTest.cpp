@@ -1,10 +1,10 @@
 #include "runtime/motion/WorkflowMotionRuntimeServicesProvider.h"
-#include "runtime_execution/application/services/motion/JogController.h"
+#include "domain/motion/domain-services/JogController.h"
 #include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
-#include "runtime_execution/application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
-#include "runtime_execution/application/usecases/motion/homing/HomeAxesUseCase.h"
-#include "runtime_execution/application/usecases/motion/manual/ManualMotionControlUseCase.h"
-#include "runtime_execution/application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
+#include "application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
+#include "application/usecases/motion/homing/HomeAxesUseCase.h"
+#include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
+#include "application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
 #include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
 
 #include <gtest/gtest.h>
@@ -30,7 +30,7 @@ using Siligen::Domain::Motion::Ports::MotionCommand;
 using Siligen::Domain::Motion::Ports::MotionState;
 using Siligen::Domain::Motion::Ports::MotionStatus;
 using Siligen::RuntimeExecution::Host::Motion::WorkflowMotionRuntimeServicesProvider;
-using Siligen::RuntimeExecution::Application::Services::Motion::JogController;
+using Siligen::Domain::Motion::DomainServices::JogController;
 using Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort;
 using Siligen::RuntimeExecution::Contracts::Motion::IMotionRuntimePort;
 using Siligen::RuntimeExecution::Contracts::Motion::IOStatus;
@@ -284,6 +284,70 @@ class FakeMotionRuntimePort final : public IMotionRuntimePort {
     std::array<AxisRuntimeState, 2> axes_{};
 };
 
+class ManualOperationsAdapter final : public Siligen::Application::UseCases::Motion::IMotionManualOperations {
+   public:
+    explicit ManualOperationsAdapter(std::shared_ptr<ManualMotionControlUseCase> manual_use_case)
+        : manual_use_case_(std::move(manual_use_case)) {}
+
+    Result<void> ExecutePointToPointMotion(const ManualMotionCommand& command, bool invalidate_homing) override {
+        return manual_use_case_->ExecutePointToPointMotion(command, invalidate_homing);
+    }
+
+    Result<void> StartJog(LogicalAxisId axis, int16 direction, float32 velocity) override {
+        return manual_use_case_->StartJogMotion(axis, direction, velocity);
+    }
+
+    Result<void> StopJog(LogicalAxisId axis) override {
+        return manual_use_case_->StopJogMotion(axis);
+    }
+
+   private:
+    std::shared_ptr<ManualMotionControlUseCase> manual_use_case_;
+};
+
+class MonitoringOperationsAdapter final
+    : public Siligen::Application::UseCases::Motion::IMotionMonitoringOperations {
+   public:
+    explicit MonitoringOperationsAdapter(std::shared_ptr<MotionMonitoringUseCase> monitoring_use_case)
+        : monitoring_use_case_(std::move(monitoring_use_case)) {}
+
+    Result<MotionStatus> GetAxisMotionStatus(LogicalAxisId axis) const override {
+        return monitoring_use_case_->GetAxisMotionStatus(axis);
+    }
+
+    Result<std::vector<MotionStatus>> GetAllAxesMotionStatus() const override {
+        return monitoring_use_case_->GetAllAxesMotionStatus();
+    }
+
+    Result<Point2D> GetCurrentPosition() const override {
+        return monitoring_use_case_->GetCurrentPosition();
+    }
+
+    Result<Siligen::Domain::Motion::Ports::CoordinateSystemStatus> GetCoordinateSystemStatus(int16 coord_sys)
+        const override {
+        return monitoring_use_case_->GetCoordinateSystemStatus(coord_sys);
+    }
+
+    Result<uint32> GetInterpolationBufferSpace(int16 coord_sys) const override {
+        return monitoring_use_case_->GetInterpolationBufferSpace(coord_sys);
+    }
+
+    Result<uint32> GetLookAheadBufferSpace(int16 coord_sys) const override {
+        return monitoring_use_case_->GetLookAheadBufferSpace(coord_sys);
+    }
+
+    Result<bool> ReadLimitStatus(LogicalAxisId axis, bool positive) const override {
+        return monitoring_use_case_->ReadLimitStatus(axis, positive);
+    }
+
+    Result<bool> ReadServoAlarmStatus(LogicalAxisId axis) const override {
+        return monitoring_use_case_->ReadServoAlarmStatus(axis);
+    }
+
+   private:
+    std::shared_ptr<MotionMonitoringUseCase> monitoring_use_case_;
+};
+
 TEST(MotionControlMigrationTest, WorkflowMotionRuntimeServicesProviderBuildsControlAndStatusServicesFromM9Port) {
     auto runtime_port = std::make_shared<FakeMotionRuntimePort>();
     WorkflowMotionRuntimeServicesProvider provider;
@@ -316,7 +380,10 @@ TEST(MotionControlMigrationTest, MotionControlUseCaseDispatchesJogControlAndMoni
         std::static_pointer_cast<Siligen::Domain::Motion::Ports::IMotionStatePort>(runtime_port),
         std::static_pointer_cast<IIOControlPort>(runtime_port),
         std::static_pointer_cast<Siligen::Domain::Motion::Ports::IHomingPort>(runtime_port));
-    MotionControlUseCase use_case(nullptr, nullptr, manual_use_case, monitoring_use_case);
+    MotionControlUseCase use_case(
+        nullptr,
+        std::make_shared<ManualOperationsAdapter>(manual_use_case),
+        std::make_shared<MonitoringOperationsAdapter>(monitoring_use_case));
 
     auto jog_result = use_case.StartJog(LogicalAxisId::X, 1, 8.0f);
     ASSERT_TRUE(jog_result.IsSuccess());
@@ -344,7 +411,7 @@ TEST(MotionControlMigrationTest, MotionControlUseCaseDispatchesJogControlAndMoni
 }
 
 TEST(MotionControlMigrationTest, MotionControlUseCaseReturnsMissingDependencyForHomingEntrypoints) {
-    MotionControlUseCase use_case(nullptr, nullptr, nullptr, nullptr);
+    MotionControlUseCase use_case(nullptr, nullptr, nullptr);
 
     HomeAxesRequest home_request;
     home_request.axes = {LogicalAxisId::X};

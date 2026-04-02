@@ -4,10 +4,24 @@ param(
     [string]$Profile = "Local",
     [ValidateSet("all", "apps", "contracts", "e2e", "protocol-compatibility", "performance")]
     [string[]]$Suite = @("all"),
-    [switch]$SkipHeavyTargets
+[switch]$SkipHeavyTargets
 )
 
 $ErrorActionPreference = "Stop"
+
+function Get-WorkspaceBuildToken {
+    param([string]$WorkspaceRoot)
+
+    $normalizedRoot = [System.IO.Path]::GetFullPath($WorkspaceRoot).ToLowerInvariant()
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($normalizedRoot)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hashBytes = $sha256.ComputeHash($bytes)
+    } finally {
+        $sha256.Dispose()
+    }
+    return -join ($hashBytes[0..5] | ForEach-Object { $_.ToString("x2") })
+}
 
 $workspaceRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $thirdPartyBootstrap = Join-Path $workspaceRoot "scripts\bootstrap\bootstrap-third-party.ps1"
@@ -151,8 +165,9 @@ if ($LASTEXITCODE -ne 0) {
     throw "workspace layout gate failed (exit: $LASTEXITCODE)."
 }
 
+$workspaceBuildToken = Get-WorkspaceBuildToken -WorkspaceRoot $workspaceRoot
 $defaultControlAppsBuild = if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
-    Join-Path $env:LOCALAPPDATA ("SiligenSuite\control-apps-build-" + (Split-Path $workspaceRoot -Leaf))
+    Join-Path (Join-Path $env:LOCALAPPDATA "SS") ("cab-" + $workspaceBuildToken)
 } else {
     Join-Path $workspaceRoot "build\control-apps"
 }

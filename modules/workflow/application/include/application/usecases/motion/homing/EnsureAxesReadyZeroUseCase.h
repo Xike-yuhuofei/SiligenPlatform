@@ -3,7 +3,7 @@
 #include "application/usecases/motion/homing/HomeAxesUseCase.h"
 #include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
 #include "application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
-#include "domain/configuration/ports/IConfigurationPort.h"
+#include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "domain/motion/domain-services/ReadyZeroDecisionService.h"
 #include "shared/types/AxisTypes.h"
 #include "shared/types/Result.h"

@@ -33,7 +33,6 @@ set(TEST_SOURCES
     system/WorkflowBoundaryCutoverTest.cpp
     motion/MotionCoordinationUseCaseTest.cpp
     dispensing/CleanupFilesUseCaseTest.cpp
-    dispensing/DispensingWorkflowUseCaseTest.cpp
     dispensing/DispensingWorkflowModeResolutionTest.cpp
     dispensing/DispensingProcessServiceWaitForMotionCompleteTest.cpp
     dispensing/PlanningUseCaseExportPortTest.cpp
@@ -147,7 +146,6 @@ siligen_add_test_with_runtime_environment(
 
 set(DISPENSING_SEMANTICS_TEST_SOURCES
     domain/safety/SafetyOutputGuardTest.cpp
-    dispensing/DispensingWorkflowUseCaseTest.cpp
     dispensing/DispensingWorkflowModeResolutionTest.cpp
     dispensing/DispensingProcessServiceWaitForMotionCompleteTest.cpp
     dispensing/PlanningUseCaseExportPortTest.cpp

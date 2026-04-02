@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,10 +22,11 @@ from .workspace_layout import load_workspace_layout
 WORKSPACE_ROOT = Path(__file__).resolve().parents[5]
 DEFAULT_SUITES = ("apps", "contracts", "e2e", "protocol-compatibility")
 WORKSPACE_LAYOUT = load_workspace_layout(WORKSPACE_ROOT)
+WORKSPACE_BUILD_TOKEN = hashlib.sha256(str(WORKSPACE_ROOT.resolve()).lower().encode("utf-8")).hexdigest()[:12]
 DEFAULT_CONTROL_APPS_BUILD_ROOT = (
     Path(os.getenv("LOCALAPPDATA", str(WORKSPACE_ROOT)))
-    / "SiligenSuite"
-    / f"control-apps-build-{WORKSPACE_ROOT.name}"
+    / "SS"
+    / f"cab-{WORKSPACE_BUILD_TOKEN}"
 )
 CONTROL_APPS_BUILD_ROOT = Path(
     os.getenv(

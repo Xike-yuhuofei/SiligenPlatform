@@ -1,4 +1,4 @@
-#include "runtime_execution/application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
+#include "application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
 #include "runtime_execution/contracts/motion/IIOControlPort.h"
 
 #include "gtest/gtest.h"

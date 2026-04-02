@@ -213,8 +213,11 @@ class BridgeExitContractTest(unittest.TestCase):
         build_validation = _read("scripts/build/build-validation.ps1")
         workspace_validation = _read("shared/testing/test-kit/src/test_kit/workspace_validation.py")
 
-        self.assertIn('control-apps-build-" + (Split-Path $workspaceRoot -Leaf)', build_validation)
-        self.assertIn("control-apps-build-{WORKSPACE_ROOT.name}", workspace_validation)
+        self.assertIn("function Get-WorkspaceBuildToken", build_validation)
+        self.assertIn('Join-Path (Join-Path $env:LOCALAPPDATA "SS") ("cab-" + $workspaceBuildToken)', build_validation)
+        self.assertIn("WORKSPACE_BUILD_TOKEN = hashlib.sha256", workspace_validation)
+        self.assertIn('/ "SS"', workspace_validation)
+        self.assertIn('f"cab-{WORKSPACE_BUILD_TOKEN}"', workspace_validation)
 
         for expected in (
             "siligen_dispensing_semantics_tests",
