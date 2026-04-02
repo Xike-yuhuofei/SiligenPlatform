@@ -52,7 +52,6 @@ target_include_directories(siligen_dispense_packaging_domain_dispensing BEFORE P
 )
 
 target_link_libraries(siligen_dispense_packaging_domain_dispensing PUBLIC
-    siligen_shared_boost_headers
     siligen_types
     siligen_utils
     siligen_geometry
