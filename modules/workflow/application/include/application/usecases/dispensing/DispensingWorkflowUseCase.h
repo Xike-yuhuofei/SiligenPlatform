@@ -110,16 +110,6 @@ struct PreviewSnapshotPoint {
     float32 y = 0.0f;
 };
 
-struct MotionPreviewResponse {
-    std::string source;
-    std::string kind;
-    std::uint32_t source_point_count = 0;
-    std::uint32_t point_count = 0;
-    bool is_sampled = false;
-    std::string sampling_strategy;
-    std::vector<PreviewSnapshotPoint> polyline;
-};
-
 struct PreviewSnapshotResponse {
     std::string snapshot_id;
     std::string snapshot_hash;
@@ -135,7 +125,6 @@ struct PreviewSnapshotResponse {
     std::uint32_t execution_polyline_source_point_count = 0;
     std::uint32_t execution_polyline_point_count = 0;
     std::vector<PreviewSnapshotPoint> glue_points;
-    MotionPreviewResponse motion_preview;
     std::vector<PreviewSnapshotPoint> execution_polyline;
     float32 total_length_mm = 0.0f;
     float32 estimated_time_s = 0.0f;

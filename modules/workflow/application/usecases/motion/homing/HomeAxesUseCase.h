@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/configuration/ports/IConfigurationPort.h"
+#include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "domain/motion/domain-services/HomingProcess.h"
 #include "domain/motion/ports/IHomingPort.h"
 #include "domain/motion/ports/IMotionStatePort.h"

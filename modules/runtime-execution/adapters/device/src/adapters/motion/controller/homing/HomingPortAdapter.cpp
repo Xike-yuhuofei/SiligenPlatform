@@ -5,7 +5,7 @@
 #include "shared/types/Error.h"
 #include "shared/logging/PrintfLogFormatter.h"
 #include "adapters/motion/controller/homing/HomingSupport.h"
-#include "domain/configuration/services/ReadyZeroSpeedResolver.h"
+#include "process_planning/contracts/configuration/ReadyZeroSpeedResolver.h"
 
 #include <algorithm>
 #include <chrono>

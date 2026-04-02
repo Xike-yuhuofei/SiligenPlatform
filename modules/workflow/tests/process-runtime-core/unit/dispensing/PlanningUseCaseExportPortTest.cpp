@@ -1,6 +1,7 @@
 #include "application/usecases/dispensing/PlanningUseCase.h"
 
-#include "application/services/dispensing/DispensePlanningFacade.h"
+#include "application/services/dispensing/AuthorityPreviewAssemblyService.h"
+#include "application/services/dispensing/ExecutionAssemblyService.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/process_path/ProcessPathFacade.h"
 #include "application/services/dxf/DxfPbPreparationService.h"
@@ -294,7 +295,8 @@ TEST(PlanningUseCaseExportPortTest, ExecuteBuildsExportRequestWithoutDirectFiles
         path_source,
         std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
         std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
         config_port,
         pb_service,
         export_port);
@@ -322,7 +324,8 @@ TEST(PlanningUseCaseExportPortTest, ExecuteExportsEquivalentGluePointsForSubdivi
         std::make_shared<FakePathSourcePort>(),
         std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
         std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
         config_port,
         pb_service,
         export_port);
@@ -334,7 +337,8 @@ TEST(PlanningUseCaseExportPortTest, ExecuteExportsEquivalentGluePointsForSubdivi
         std::make_shared<EquivalentSubdivisionPathSourcePort>(),
         std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
         std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
         config_port,
         pb_service,
         export_port);
@@ -362,7 +366,8 @@ TEST(PlanningUseCaseExportPortTest, ExecuteIgnoresPointNoiseForPreviewGlueSemant
         std::make_shared<FakePathSourcePort>(),
         std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
         std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
         config_port,
         pb_service,
         export_port);
@@ -374,7 +379,8 @@ TEST(PlanningUseCaseExportPortTest, ExecuteIgnoresPointNoiseForPreviewGlueSemant
         std::make_shared<PointNoisePathSourcePort>(),
         std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
         std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
         config_port,
         pb_service,
         export_port);
@@ -415,7 +421,8 @@ TEST(PlanningUseCaseExportPortTest, ExecuteKeepsSharedVertexExportStableAcrossRe
         path_source,
         std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
         std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
         config_port,
         pb_service,
         export_port);
@@ -451,7 +458,8 @@ TEST(PlanningUseCaseExportPortTest, ExecuteAutoFitsOutOfStrokeGeometryIntoMachin
         std::make_shared<FittableOutOfStrokePathSourcePort>(),
         std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
         std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
         config_port,
         pb_service,
         export_port);
@@ -482,7 +490,8 @@ TEST(PlanningUseCaseExportPortTest, ExecuteRejectsGeometryWhoseSizeExceedsMachin
         std::make_shared<TooWidePathSourcePort>(),
         std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
         std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
         config_port,
         pb_service,
         export_port);
@@ -510,7 +519,8 @@ TEST(PlanningUseCaseExportPortTest, AuthorityCacheKeyIncludesMachineSoftLimits) 
         std::make_shared<FakePathSourcePort>(),
         std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
         std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
         left_config,
         pb_service,
         nullptr);
@@ -518,7 +528,8 @@ TEST(PlanningUseCaseExportPortTest, AuthorityCacheKeyIncludesMachineSoftLimits) 
         std::make_shared<FakePathSourcePort>(),
         std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
         std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::DispensePlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
         right_config,
         pb_service,
         nullptr);
@@ -528,6 +539,7 @@ TEST(PlanningUseCaseExportPortTest, AuthorityCacheKeyIncludesMachineSoftLimits) 
     std::error_code ec;
     std::filesystem::remove(temp_pb, ec);
 }
+
 
 
 
