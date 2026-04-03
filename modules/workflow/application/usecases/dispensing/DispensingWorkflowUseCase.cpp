@@ -368,7 +368,13 @@ Result<PreviewSnapshotResponse> DispensingWorkflowUseCase::GetPreviewSnapshot(co
         snapshot_record = it->second;
     }
 
-    if (snapshot_record.execution_assembly.motion_trajectory_points.empty()) {
+    const bool has_export_process_path =
+        !snapshot_record.execution_assembly.export_request.process_path.segments.empty();
+    const bool has_authority_process_path =
+        !snapshot_record.execution_launch.authority_preview.process_path.segments.empty();
+    if (snapshot_record.execution_assembly.motion_trajectory_points.empty() &&
+        !has_export_process_path &&
+        !has_authority_process_path) {
         return Result<PreviewSnapshotResponse>::Failure(
             Error(
                 ErrorCode::INVALID_STATE,
@@ -710,6 +716,7 @@ PreviewSnapshotResponse DispensingWorkflowUseCase::BuildPreviewSnapshotResponse(
     std::size_t max_polyline_points,
     std::size_t max_glue_points) {
     Siligen::Application::Services::Dispensing::WorkflowPreviewSnapshotInput input;
+    const auto& retained_authority_process_path = plan_record.execution_launch.authority_preview.process_path;
     input.snapshot_id = plan_record.preview_snapshot_id;
     input.snapshot_hash = plan_record.preview_snapshot_hash;
     input.plan_id = plan_record.response.plan_id;
@@ -721,6 +728,11 @@ PreviewSnapshotResponse DispensingWorkflowUseCase::BuildPreviewSnapshotResponse(
     input.estimated_time_s = plan_record.response.estimated_time_s;
     input.generated_at = plan_record.preview_generated_at;
     input.execution_trajectory_points = &plan_record.execution_trajectory_points;
+    if (!plan_record.execution_assembly.export_request.process_path.segments.empty()) {
+        input.process_path = &plan_record.execution_assembly.export_request.process_path;
+    } else if (!retained_authority_process_path.segments.empty()) {
+        input.process_path = &retained_authority_process_path;
+    }
     if (!plan_record.execution_assembly.motion_trajectory_points.empty()) {
         input.motion_trajectory_points = &plan_record.execution_assembly.motion_trajectory_points;
     }

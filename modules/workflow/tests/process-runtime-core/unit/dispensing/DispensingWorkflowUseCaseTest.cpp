@@ -1526,7 +1526,7 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotClampsLongExecutionTraject
     EXPECT_FALSE(MotionPreviewHasUnexpectedSegmentAngle(snapshot, {0.0, 90.0, -135.0}));
 }
 
-TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFailsWhenMotionTrajectorySnapshotMissingEvenIfProcessPathExists) {
+TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotUsesProcessPathWhenMotionTrajectorySnapshotMissing) {
     auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
     auto homing_port = std::make_shared<FakeHomingPort>();
@@ -1555,9 +1555,43 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFailsWhenMotionTrajectoryS
     request.max_polyline_points = 64;
     const auto result = use_case.GetPreviewSnapshot(request);
 
-    ASSERT_TRUE(result.IsError());
-    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
-    EXPECT_EQ(result.GetError().GetMessage(), "motion trajectory snapshot unavailable for preview");
+    ASSERT_TRUE(result.IsSuccess());
+    const auto& snapshot = result.Value();
+    EXPECT_EQ(snapshot.motion_preview_source, "process_path_snapshot");
+    EXPECT_EQ(snapshot.motion_preview_kind, "polyline");
+    EXPECT_EQ(snapshot.motion_preview_sampling_strategy, "process_path_geometry_preserving");
+    EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 0.0f, 0.0f, 1e-4f));
+    EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 0.0f, 25.0f, 1e-4f));
+    EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 25.0f, 25.0f, 1e-4f));
+}
+
+TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFallsBackToAuthorityProcessPathWhenExportRequestIsReleased) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+
+    SeedPlan(use_case, "plan-authority-process-path-fallback");
+    auto& plan_record = use_case.plans_.at("plan-authority-process-path-fallback");
+    plan_record.execution_launch.authority_preview.success = true;
+    plan_record.execution_launch.authority_preview.process_path.segments = {
+        BuildLineProcessSegment(Point2D(0.0f, 0.0f), Point2D(100.0f, 0.0f)),
+        BuildLineProcessSegment(Point2D(100.0f, 0.0f), Point2D(100.0f, 100.0f)),
+    };
+    plan_record.execution_assembly.export_request = {};
+
+    Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest request;
+    request.plan_id = "plan-authority-process-path-fallback";
+    request.max_polyline_points = 64;
+    const auto result = use_case.GetPreviewSnapshot(request);
+
+    ASSERT_TRUE(result.IsSuccess());
+    const auto& snapshot = result.Value();
+    EXPECT_EQ(snapshot.motion_preview_source, "process_path_snapshot");
+    EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 0.0f, 0.0f, 1e-4f));
+    EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 100.0f, 0.0f, 1e-4f));
+    EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 100.0f, 100.0f, 1e-4f));
 }
 
 TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFailsWhenMotionTrajectorySnapshotMissingAndOnlyExecutionPolylineExists) {
