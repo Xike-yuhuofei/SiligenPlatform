@@ -1,6 +1,6 @@
 # hardware-in-loop
 
-更新时间：`2026-04-02`
+更新时间：`2026-04-03`
 
 这里统一放硬件冒烟和机台联调入口。
 
@@ -120,6 +120,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 - 默认报告目录为 `tests/reports/adhoc/real-dxf-machine-dryrun-canonical/<timestamp>/`
 - 运行前会检查急停/门/限位，并在需要时先执行回零
 - dry-run preflight 现在同时消费 `effective_interlocks.home_boundary_x_active/home_boundary_y_active`，避免把 HOME boundary 误判成“无 blocker”
+- canonical `machine_config.ini` 的 `[Homing_Axis1..4]` 已收敛到 validator 允许范围：`ready_zero_speed_mm_s=8.0`、`rapid_velocity=10.0`
+- 当未使用 `--mock-io-json` 时，dry-run preflight 会自动归一化真实机台的 HOME boundary 起始态：若未回零或 `home_boundary_x/y_active=true` 会先 `home`；若 `home` 成功后仍停在 HOME boundary，脚本会把该状态记录为“post-home HOME signal latched”并继续 canonical 主链，不再执行物理逃逸去平移整条轨迹
+- 上述自动归一化只对真实 preflight 生效；negative matrix 里由 `--mock-io-json` 注入的 `home_boundary_x_active/home_boundary_y_active` 仍必须直接阻断 preflight
+- gateway 监听端口默认改为自动分配空闲端口，并在 dry-run 报告根字段 `gateway_port` 中固化本次实际端口
 - 支持 `--mock-io-json`，用于在 `Hardware.mode=Mock` 下对受控 negative case 注入 `estop`、`door`、`limit_x_neg`、`limit_y_neg`
 - 默认参数为 `dispensing=10mm/s`、`dry_run=10mm/s`、`rapid=20mm/s`、`velocity_trace_interval_ms=50`
 - `--job-timeout` 现在表示最小超时下限，不再直接等于最终等待时长；脚本会基于 `dxf.plan.prepare.estimated_time_s` 计算动态预算：`max(job_timeout, estimated_time_s * job_timeout_scale + job_timeout_buffer_seconds)`
