@@ -90,6 +90,9 @@ FORBIDDEN_CMAKE_SNIPPETS = LEGACY_FACT_CATALOG.snippets_for_rule(
     "bridge-metadata",
     target_glob="modules/**/CMakeLists.txt",
 )
+ALLOWED_TOOLS_ROOT_FILES = {
+    "testing/check_no_loose_mock.py",
+}
 
 
 def _contains(path: Path, snippet: str) -> bool:
@@ -171,6 +174,26 @@ def _validate_bridge_roots_absent(root: Path) -> list[str]:
         if (root / relative).exists():
             issues.append(f"bridge root must be physically deleted: {relative}")
     return issues
+
+
+def _is_allowed_tools_testing_root(root: Path) -> bool:
+    tools_root = root / "tools"
+    if not tools_root.exists():
+        return False
+
+    allowed_relatives = set(ALLOWED_TOOLS_ROOT_FILES)
+    for path in tools_root.rglob("*"):
+        relative = path.relative_to(tools_root).as_posix()
+        if path.is_dir():
+            if relative in {"testing", "testing/__pycache__"}:
+                continue
+            return False
+        if relative in allowed_relatives:
+            continue
+        if relative.startswith("testing/__pycache__/"):
+            continue
+        return False
+    return True
 
 
 def _validate_root_wiring(root: Path) -> list[str]:
@@ -308,6 +331,8 @@ def main() -> int:
             present_legacy_keys.append(key)
 
     for root_name in LEGACY_ROOTS:
+        if root_name == "tools" and _is_allowed_tools_testing_root(ROOT):
+            continue
         if (ROOT / root_name).exists():
             present_legacy_roots.append(root_name)
 

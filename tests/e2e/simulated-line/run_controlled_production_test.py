@@ -29,6 +29,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hook-readiness", choices=("ready", "not-ready"), default="ready")
     parser.add_argument("--hook-abort", choices=("none", "before-run", "after-first-pass"), default="none")
     parser.add_argument("--hook-disconnect", choices=("none", "after-first-pass"), default="none")
+    parser.add_argument("--hook-preflight", choices=("none", "fail-after-preview-ready"), default="none")
+    parser.add_argument("--hook-alarm", choices=("none", "during-execution"), default="none")
+    parser.add_argument(
+        "--hook-control-cycle",
+        choices=("none", "pause-resume-once", "stop-reset-rerun"),
+        default="none",
+    )
     return parser.parse_args()
 
 
@@ -90,6 +97,9 @@ def main() -> int:
     env["SILIGEN_SIMULATED_LINE_READINESS"] = args.hook_readiness
     env["SILIGEN_SIMULATED_LINE_ABORT"] = args.hook_abort
     env["SILIGEN_SIMULATED_LINE_DISCONNECT"] = args.hook_disconnect
+    env["SILIGEN_SIMULATED_LINE_PREFLIGHT"] = args.hook_preflight
+    env["SILIGEN_SIMULATED_LINE_ALARM"] = args.hook_alarm
+    env["SILIGEN_SIMULATED_LINE_CONTROL_CYCLE"] = args.hook_control_cycle
 
     completed = subprocess.run(command, cwd=str(ROOT), check=False, env=env)
     if completed.returncode != 0:

@@ -14,17 +14,27 @@ from hmi_application.launch_state import (
     detect_runtime_degradation_result,
     detect_runtime_requalification_result,
 )
-from hmi_application.launch_supervision_contract import SessionSnapshot, SessionStageEvent, snapshot_timestamp
+from hmi_application.launch_supervision_contract import (
+    BackendState,
+    FailureStage,
+    HardwareState,
+    LaunchMode,
+    SessionSnapshot,
+    SessionStageEvent,
+    SessionState,
+    TcpState,
+    snapshot_timestamp,
+)
 from hmi_application.startup import launch_result_from_snapshot
 
 
 def _snapshot(
     *,
-    mode: str = "online",
-    session_state: str = "ready",
-    backend_state: str = "ready",
-    tcp_state: str = "ready",
-    hardware_state: str = "ready",
+    mode: LaunchMode = "online",
+    session_state: SessionState = "ready",
+    backend_state: BackendState = "ready",
+    tcp_state: TcpState = "ready",
+    hardware_state: HardwareState = "ready",
     failure_code=None,
     failure_stage=None,
     recoverable: bool = True,
@@ -44,7 +54,7 @@ def _snapshot(
     )
 
 
-def _stage_event(stage: str = "online_ready") -> SessionStageEvent:
+def _stage_event(stage: FailureStage = "online_ready") -> SessionStageEvent:
     return SessionStageEvent(
         event_type="stage_succeeded",
         session_id="session-1",

@@ -185,6 +185,18 @@ struct ExecutionAssemblyTestProbe {
     std::string authority_layout_id;
     bool execution_authority_shared_with_execution = false;
     bool execution_binding_ready = false;
+    bool has_execution_launch_package = false;
+    bool has_execution_assembly_package = false;
+    std::size_t plan_execution_trajectory_point_count = 0;
+    std::size_t execution_launch_interpolation_segment_count = 0;
+    std::size_t execution_launch_interpolation_point_count = 0;
+    std::size_t execution_launch_motion_point_count = 0;
+    std::size_t execution_assembly_trajectory_point_count = 0;
+    std::size_t execution_assembly_interpolation_segment_count = 0;
+    std::size_t execution_assembly_interpolation_point_count = 0;
+    std::size_t execution_assembly_motion_point_count = 0;
+    std::size_t execution_cache_entry_count = 0;
+    bool execution_cache_contains_plan = false;
 };
 
 struct JobStatusResponse {
@@ -390,6 +402,8 @@ class DispensingWorkflowUseCase {
         bool require_execution_binding) const;
     std::string ResolvePreviewGateFailure(const PlanRecord& plan_record) const;
     std::string PreviewStateToString(PlanPreviewState state) const;
+    void ReleaseRetainedExecutionState(PlanRecord& plan_record) const;
+    void EraseExecutionAssemblyCacheEntry(const std::string& execution_cache_key) const;
     void ReleaseConfirmedPreviewForPlan(const PlanID& plan_id, const JobID* runtime_job_id = nullptr) const;
     void SyncPlanStateFromRuntimeStatus(
         const JobID& job_id,

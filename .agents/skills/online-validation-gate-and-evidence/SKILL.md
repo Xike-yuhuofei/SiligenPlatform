@@ -122,7 +122,7 @@ description: "Gate real-hardware validation with readiness checks, limited-motio
 - 需补强的测试 / 文档：
 
 ## 建议下一步
-- 通过后：`post-change-closeout`
+- 通过后：`branch-closeout`
 - 未通过：转 `incident-intake` 或返回离线修复流
 
 # Handoff
@@ -132,5 +132,5 @@ description: "Gate real-hardware validation with readiness checks, limited-motio
   - `context-bootstrap`
   - 离线验证结果
 - 下游：
-  - `post-change-closeout`
+  - `branch-closeout`
   - `incident-intake`

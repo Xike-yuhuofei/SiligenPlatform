@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# pyright: reportPrivateImportUsage=false
+
 import hashlib
 import html
 import math

@@ -18,13 +18,13 @@ class LayeredValidationContractTest(unittest.TestCase):
         self.assertEqual(
             list(VALIDATION_LAYERS.keys()),
             [
-                "L0-structure-gate",
-                "L1-module-contract",
-                "L2-offline-integration",
-                "L3-simulated-e2e",
-                "L4-performance",
-                "L5-limited-hil",
-                "L6-closeout",
+                "L0",
+                "L1",
+                "L2",
+                "L3",
+                "L4",
+                "L5",
+                "L6",
             ],
         )
         self.assertEqual(
@@ -34,7 +34,7 @@ class LayeredValidationContractTest(unittest.TestCase):
 
     def test_quick_request_routes_to_quick_gate(self) -> None:
         request = build_request(
-            requested_suites=["contracts", "protocol-compatibility"],
+            requested_suites=["apps", "contracts", "protocol-compatibility"],
             changed_scopes=["shared/testing", "tests/integration"],
             risk_profile="medium",
             desired_depth="quick",
@@ -43,7 +43,7 @@ class LayeredValidationContractTest(unittest.TestCase):
         self.assertEqual(routed.selected_lane_ref, "quick-gate")
         self.assertEqual(
             routed.selected_layer_refs,
-            ("L0-structure-gate", "L1-module-contract", "L2-offline-integration"),
+            ("L0", "L1", "L2"),
         )
         self.assertEqual(routed.skipped_layer_refs, ())
 
@@ -58,16 +58,17 @@ class LayeredValidationContractTest(unittest.TestCase):
         )
         routed = route_validation_request(request)
         self.assertEqual(routed.selected_lane_ref, "limited-hil")
-        self.assertIn("L2-offline-integration", routed.selected_layer_refs)
-        self.assertIn("L3-simulated-e2e", routed.selected_layer_refs)
-        self.assertIn("L5-limited-hil", routed.selected_layer_refs)
+        self.assertIn("L2", routed.selected_layer_refs)
+        self.assertIn("L3", routed.selected_layer_refs)
+        self.assertIn("L4", routed.selected_layer_refs)
+        self.assertIn("L5", routed.selected_layer_refs)
         self.assertEqual(routed.upgrade_recommendation, "limited-hil")
 
     def test_skip_layer_requires_justification(self) -> None:
         request = build_request(
             requested_suites=["contracts"],
             changed_scopes=["shared/testing"],
-            skip_layers=["L1-module-contract"],
+            skip_layers=["L2"],
         )
         with self.assertRaises(ValueError):
             route_validation_request(request)

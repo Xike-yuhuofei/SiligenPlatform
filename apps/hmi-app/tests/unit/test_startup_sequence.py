@@ -16,7 +16,7 @@ from hmi_client.client.startup_sequence import (
     run_recovery_action,
 )
 from hmi_client.client.launch_supervision_session import SupervisorPolicy
-from hmi_client.client.launch_supervision_contract import SessionSnapshot, snapshot_timestamp
+from hmi_client.client.launch_supervision_contract import FailureStage, SessionSnapshot, snapshot_timestamp
 
 
 class _FakeBackend:
@@ -31,7 +31,7 @@ class _FakeBackend:
         self.start_calls += 1
         return self.start_result
 
-    def wait_ready(self):
+    def wait_ready(self, timeout: float = 5.0):
         self.wait_calls += 1
         return self.wait_result
 
@@ -45,7 +45,7 @@ class _FakeClient:
         self.connect_calls = 0
         self.disconnect_calls = 0
 
-    def connect(self):
+    def connect(self, timeout: float = 3.0):
         self.connect_calls += 1
         return self.connect_result
 
@@ -58,14 +58,14 @@ class _FakeProtocol:
         self.hardware_result = hardware_result
         self.hardware_calls = 0
 
-    def connect_hardware(self):
+    def connect_hardware(self, card_ip: str = "", local_ip: str = "", timeout: float = 15.0):
         self.hardware_calls += 1
         return self.hardware_result
 
 
 class StartupSequenceContractTest(unittest.TestCase):
     @staticmethod
-    def _failed_snapshot(*, recoverable: bool = True, stage: str = "tcp_ready") -> SessionSnapshot:
+    def _failed_snapshot(*, recoverable: bool = True, stage: FailureStage = "tcp_ready") -> SessionSnapshot:
         return SessionSnapshot(
             mode="online",
             session_state="failed",

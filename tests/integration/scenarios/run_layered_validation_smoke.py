@@ -15,7 +15,7 @@ from test_kit.validation_layers import build_request, route_validation_request
 
 def _assert_quick_route() -> dict[str, object]:
     request = build_request(
-        requested_suites=["contracts", "protocol-compatibility"],
+        requested_suites=["apps", "contracts", "protocol-compatibility"],
         changed_scopes=["shared/testing", "tests/integration"],
         risk_profile="medium",
         desired_depth="quick",
@@ -23,9 +23,9 @@ def _assert_quick_route() -> dict[str, object]:
     routed = route_validation_request(request)
     assert routed.selected_lane_ref == "quick-gate"
     assert routed.selected_layer_refs == (
-        "L0-structure-gate",
-        "L1-module-contract",
-        "L2-offline-integration",
+        "L0",
+        "L1",
+        "L2",
     )
     return routed.to_metadata()
 
@@ -41,9 +41,10 @@ def _assert_hil_route() -> dict[str, object]:
     )
     routed = route_validation_request(request)
     assert routed.selected_lane_ref == "limited-hil"
-    assert "L2-offline-integration" in routed.selected_layer_refs
-    assert "L3-simulated-e2e" in routed.selected_layer_refs
-    assert "L5-limited-hil" in routed.selected_layer_refs
+    assert "L2" in routed.selected_layer_refs
+    assert "L3" in routed.selected_layer_refs
+    assert "L4" in routed.selected_layer_refs
+    assert "L5" in routed.selected_layer_refs
     return routed.to_metadata()
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+from typing import cast
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
@@ -61,7 +62,7 @@ class MigrationAlignmentMatrixContractTest(unittest.TestCase):
         rows = _table_rows(MATRIX_PATH.read_text(encoding="utf-8"))
         header = next((row for row in rows if row and row[0] == "module_id"), None)
         self.assertIsNotNone(header, msg="matrix header row missing")
-        self.assertEqual(tuple(header), REQUIRED_COLUMNS)
+        self.assertEqual(tuple(cast(list[str], header)), REQUIRED_COLUMNS)
 
     def test_matrix_covers_all_modules_and_cross_root_assets(self) -> None:
         rows = _table_rows(MATRIX_PATH.read_text(encoding="utf-8"))

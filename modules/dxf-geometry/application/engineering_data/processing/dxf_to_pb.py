@@ -1,8 +1,11 @@
+# pyright: reportPrivateImportUsage=false
+
 import argparse
 from collections import Counter
 import math
 from pathlib import Path
 import sys
+from typing import Any, Iterable, cast
 
 import ezdxf
 
@@ -333,11 +336,13 @@ def process_r12_polyline(entity, entity_id, bundle, scale, snap_eps, layer, colo
     points = []
     bulges = []
     vertices_attr = getattr(entity, "vertices", [])
-    vertices = list(vertices_attr() if callable(vertices_attr) else vertices_attr)
+    vertices_value = vertices_attr() if callable(vertices_attr) else vertices_attr
+    vertices = list(cast(Iterable[object], vertices_value))
     for v in vertices:
-        loc = v.dxf.location
+        vertex = cast(Any, v)
+        loc = vertex.dxf.location
         points.append(transform_point((float(loc.x), float(loc.y)), scale, snap_eps))
-        bulges.append(float(v.dxf.get("bulge", 0.0)))
+        bulges.append(float(vertex.dxf.get("bulge", 0.0)))
     closed = bool(entity.is_closed)
     contour = build_contour(points, bulges, closed)
     add_contour(bundle, contour,

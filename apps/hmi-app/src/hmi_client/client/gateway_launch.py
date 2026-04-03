@@ -5,6 +5,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, cast
 
 
 _APP_ROOT = Path(__file__).resolve().parents[3]
@@ -18,7 +19,7 @@ class GatewayLaunchSpec:
     executable: Path
     args: tuple[str, ...] = ()
     cwd: Path | None = None
-    env: dict[str, str] = field(default_factory=dict)
+    env: dict[str, str] = field(default_factory=lambda: {})
     path_entries: tuple[Path, ...] = ()
 
     def command(self) -> list[str]:
@@ -45,25 +46,29 @@ def _resolve_spec_arg_path(raw_value: str, launch_spec: GatewayLaunchSpec) -> Pa
 
 
 def _load_spec_file(path: Path) -> GatewayLaunchSpec:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
+    payload_raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload_raw, dict):
         raise ValueError(f"gateway launch spec 必须是对象: {path}")
+    payload = cast(dict[str, Any], payload_raw)
 
     executable = str(payload.get("executable", "")).strip()
     if not executable:
         raise ValueError(f"gateway launch spec 缺少 executable: {path}")
 
-    args = payload.get("args", [])
-    if args and not isinstance(args, list):
+    args_raw = payload.get("args", [])
+    if args_raw and not isinstance(args_raw, list):
         raise ValueError(f"gateway launch spec args 必须是数组: {path}")
+    args = cast(list[object], args_raw) if isinstance(args_raw, list) else []
 
-    env_payload = payload.get("env", {})
-    if env_payload and not isinstance(env_payload, dict):
+    env_payload_raw = payload.get("env", {})
+    if env_payload_raw and not isinstance(env_payload_raw, dict):
         raise ValueError(f"gateway launch spec env 必须是对象: {path}")
+    env_payload = cast(dict[str, Any], env_payload_raw) if isinstance(env_payload_raw, dict) else {}
 
-    path_entries = payload.get("pathEntries", [])
-    if path_entries and not isinstance(path_entries, list):
+    path_entries_raw = payload.get("pathEntries", [])
+    if path_entries_raw and not isinstance(path_entries_raw, list):
         raise ValueError(f"gateway launch spec pathEntries 必须是数组: {path}")
+    path_entries = cast(list[object], path_entries_raw) if isinstance(path_entries_raw, list) else []
 
     cwd = str(payload.get("cwd", "")).strip()
     return GatewayLaunchSpec(

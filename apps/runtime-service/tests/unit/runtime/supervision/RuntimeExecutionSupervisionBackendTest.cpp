@@ -194,7 +194,27 @@ TEST(RuntimeExecutionSupervisionBackendTest, ReadsActiveJobStateDirectlyFromRunt
     EXPECT_EQ(result.Value().active_job_state, "paused");
 }
 
-TEST(RuntimeExecutionSupervisionBackendTest, MissingRuntimeJobStatusFallsBackToUnknown) {
+TEST(RuntimeExecutionSupervisionBackendTest, TerminalRuntimeJobStateIsNotExposedAsActiveJob) {
+    auto execution_use_case = BuildExecutionUseCase();
+    execution_use_case->SeedJobStateForTesting(MakeJobStatus("job-terminal", "completed"));
+    execution_use_case->SetActiveJobForTesting("job-terminal");
+
+    auto backend = RuntimeExecutionSupervisionBackend(
+        BuildMotionControlUseCase(),
+        std::shared_ptr<EmergencyStopUseCase>(),
+        execution_use_case,
+        nullptr,
+        nullptr);
+
+    auto result = backend.ReadInputs();
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    EXPECT_TRUE(result.Value().active_job_id.empty());
+    EXPECT_FALSE(result.Value().active_job_status_available);
+    EXPECT_TRUE(result.Value().active_job_state.empty());
+}
+
+TEST(RuntimeExecutionSupervisionBackendTest, MissingRuntimeJobStatusDropsStaleActiveJobId) {
     auto execution_use_case = BuildExecutionUseCase();
     execution_use_case->SetActiveJobForTesting("job-missing");
 
@@ -208,9 +228,9 @@ TEST(RuntimeExecutionSupervisionBackendTest, MissingRuntimeJobStatusFallsBackToU
     auto result = backend.ReadInputs();
 
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
-    EXPECT_EQ(result.Value().active_job_id, "job-missing");
+    EXPECT_TRUE(result.Value().active_job_id.empty());
     EXPECT_FALSE(result.Value().active_job_status_available);
-    EXPECT_EQ(result.Value().active_job_state, "unknown");
+    EXPECT_TRUE(result.Value().active_job_state.empty());
 }
 
 TEST(RuntimeExecutionSupervisionBackendTest, ReadsInterlockSignalsDirectlyFromInterlockPort) {

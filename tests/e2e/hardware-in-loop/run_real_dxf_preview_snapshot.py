@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import configparser
 import json
 import math
 import socket
@@ -24,9 +23,12 @@ from runtime_gateway_harness import (  # noqa: E402
     KNOWN_FAILURE_EXIT_CODE,
     TcpJsonClient,
     build_process_env,
+    load_connection_params,
     prepare_mock_config,
     read_process_output,
     resolve_default_exe,
+    result_payload,
+    tcp_connect_and_ensure_ready,
     truncate_json,
     wait_gateway_ready,
 )
@@ -72,27 +74,8 @@ def resolve_listen_port(host: str, requested_port: int) -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind((host, 0))
         return int(sock.getsockname()[1])
-
-
-def load_connection_params(config_path: Path) -> dict[str, str]:
-    parser = configparser.ConfigParser(interpolation=None, strict=False)
-    with config_path.open("r", encoding="utf-8") as handle:
-        parser.read_file(handle)
-
-    card_ip = parser.get("Network", "control_card_ip", fallback=parser.get("Network", "card_ip", fallback="")).strip()
-    local_ip = parser.get("Network", "local_ip", fallback="").strip()
-
-    params: dict[str, str] = {}
-    if card_ip:
-        params["card_ip"] = card_ip
-    if local_ip:
-        params["local_ip"] = local_ip
-    return params
-
-
 def status_result(payload: dict[str, Any]) -> dict[str, Any]:
-    result = payload.get("result", {})
-    return result if isinstance(result, dict) else {}
+    return result_payload(payload)
 
 
 def normalize_preview_source(value: Any) -> str:
@@ -567,17 +550,42 @@ def main() -> int:
         connected = True
         add_step(steps, "tcp-session-open", "passed", f"connected to {args.host}:{effective_port}")
 
-        connect_params = load_connection_params(Path(effective_config_path))
-        connect_response = client.send_request("connect", connect_params, timeout_seconds=args.connect_timeout)
+        admission = tcp_connect_and_ensure_ready(
+            client,
+            config_path=Path(effective_config_path),
+            connect_timeout_seconds=args.connect_timeout,
+            status_timeout_seconds=min(8.0, args.connect_timeout),
+            ready_timeout_seconds=3.0,
+        )
+        connect_params = admission.connect_params
+        connect_response = admission.connect_response or {}
         artifacts["connect_response"] = connect_response
-        if "error" in connect_response:
-            raise RuntimeError("connect failed: " + truncate_json(connect_response))
+        artifacts["connect_status_response"] = admission.status_response or {}
+        if admission.status != "passed":
+            raise RuntimeError(
+                "connect failed: "
+                + truncate_json(
+                    {
+                        "note": admission.note,
+                        "connect_params": admission.connect_params,
+                        "connect_response": admission.connect_response,
+                        "status_response": admission.status_response,
+                    }
+                )
+            )
         online_ready = True
         add_step(
             steps,
             "tcp-connect",
             "passed",
-            json.dumps({"params": connect_params, "result": status_result(connect_response)}, ensure_ascii=False),
+            json.dumps(
+                {
+                    "params": connect_params,
+                    "result": status_result(connect_response),
+                    "status": status_result(admission.status_response or {}),
+                },
+                ensure_ascii=False,
+            ),
         )
 
         dxf_bytes = args.dxf_file.read_bytes()

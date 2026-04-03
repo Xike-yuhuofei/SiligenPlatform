@@ -38,6 +38,16 @@ constexpr auto kTaskTerminalPoll = std::chrono::milliseconds(20);
 constexpr auto kCancelConfirmTimeout = std::chrono::seconds(3);
 constexpr auto kInflightReconcilePoll = std::chrono::milliseconds(100);
 
+void TrimRetainedMotionTrajectoryPoints(DispensingExecutionRequest& request) {
+    auto& plan = request.execution_package.execution_plan;
+    if (plan.interpolation_points.size() < 2U || plan.motion_trajectory.points.empty()) {
+        return;
+    }
+
+    decltype(plan.motion_trajectory.points) empty_points;
+    plan.motion_trajectory.points.swap(empty_points);
+}
+
 const char* JobStateCode(JobState state) {
     switch (state) {
         case JobState::PENDING:
@@ -166,6 +176,36 @@ std::shared_ptr<TaskExecutionContext> DispensingExecutionUseCase::Impl::ResolveA
         return nullptr;
     }
     return it->second;
+}
+
+void DispensingExecutionUseCase::Impl::CleanupTerminalTasksLocked() {
+    auto it = tasks_.begin();
+    while (it != tasks_.end()) {
+        const auto& context = it->second;
+        if (!context || !IsTerminalState(ResolveVisibleState(context))) {
+            ++it;
+            continue;
+        }
+        if (active_task_id_ == it->first) {
+            active_task_id_.clear();
+        }
+        it = tasks_.erase(it);
+    }
+}
+
+void DispensingExecutionUseCase::Impl::CleanupTerminalJobsLocked() {
+    auto it = jobs_.begin();
+    while (it != jobs_.end()) {
+        const auto& context = it->second;
+        if (!context || !IsTerminalJobState(context->state.load())) {
+            ++it;
+            continue;
+        }
+        if (active_job_id_ == it->first) {
+            active_job_id_.clear();
+        }
+        it = jobs_.erase(it);
+    }
 }
 
 void DispensingExecutionUseCase::Impl::JoinWorkerThread() {
@@ -426,11 +466,23 @@ std::string DispensingExecutionUseCase::Impl::ReadTaskErrorMessage(
 }
 
 Result<TaskID> DispensingExecutionUseCase::Impl::ExecuteAsync(const DispensingExecutionRequest& request) {
-    auto validation = request.Validate();
+    return ExecuteAsync(std::make_shared<DispensingExecutionRequest>(request));
+}
+
+Result<TaskID> DispensingExecutionUseCase::Impl::ExecuteAsync(SharedExecutionRequest request) {
+    if (!request) {
+        return Result<TaskID>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "execution request is required", "DispensingExecutionUseCase"));
+    }
+
+    auto mutable_request = std::const_pointer_cast<DispensingExecutionRequest>(request);
+    TrimRetainedMotionTrajectoryPoints(*mutable_request);
+
+    auto validation = request->Validate();
     if (!validation.IsSuccess()) {
         return Result<TaskID>::Failure(validation.GetError());
     }
-    auto conn_check = ValidateHardwareConnection(request.dry_run);
+    auto conn_check = ValidateHardwareConnection(request->dry_run);
     if (!conn_check.IsSuccess()) {
         return Result<TaskID>::Failure(conn_check.GetError());
     }
@@ -438,12 +490,13 @@ Result<TaskID> DispensingExecutionUseCase::Impl::ExecuteAsync(const DispensingEx
     TaskID task_id = GenerateTaskID();
     auto context = std::make_shared<TaskExecutionContext>();
     context->task_id = task_id;
-    context->request = request;
+    context->request = std::move(request);
     context->state.store(TaskState::PENDING);
     context->start_time = std::chrono::steady_clock::now();
 
     {
         std::lock_guard<std::mutex> lock(tasks_mutex_);
+        CleanupTerminalTasksLocked();
         auto active = ResolveActiveContextLocked();
         if (!active && !active_task_id_.empty()) {
             active_task_id_.clear();
@@ -481,7 +534,7 @@ Result<TaskID> DispensingExecutionUseCase::Impl::ExecuteAsync(const DispensingEx
             if (!context->terminal_committed.load()) {
                 context->state.store(TaskState::RUNNING);
             }
-            auto exec_result = this->ExecuteInternal(context->request, context);
+            auto exec_result = this->ExecuteInternal(*context->request, context);
 
             if (context->cancel_requested.load() || stop_requested_.load()) {
                 TryCommitTerminalState(
@@ -518,6 +571,7 @@ Result<TaskID> DispensingExecutionUseCase::Impl::ExecuteAsync(const DispensingEx
 
     bool submitted_to_scheduler = false;
     if (task_scheduler_port_) {
+        task_scheduler_port_->CleanupExpiredTasks();
         auto submit_result = task_scheduler_port_->SubmitTask(runner);
         if (submit_result.IsSuccess()) {
             std::lock_guard<std::mutex> context_lock(context->mutex_);
@@ -577,7 +631,10 @@ Result<JobID> DispensingExecutionUseCase::Impl::StartJob(const RuntimeStartJobRe
             Error(ErrorCode::INVALID_PARAMETER, "target_count must be greater than 0", "DispensingExecutionUseCase"));
     }
 
-    auto precondition_result = ValidateExecutionPreconditions(request.execution_request.dry_run);
+    const auto execution_request = std::make_shared<DispensingExecutionRequest>(request.execution_request);
+    TrimRetainedMotionTrajectoryPoints(*execution_request);
+
+    auto precondition_result = ValidateExecutionPreconditions(execution_request->dry_run);
     if (precondition_result.IsError()) {
         return Result<JobID>::Failure(precondition_result.GetError());
     }
@@ -586,15 +643,16 @@ Result<JobID> DispensingExecutionUseCase::Impl::StartJob(const RuntimeStartJobRe
     context->job_id = GenerateJobID();
     context->plan_id = request.plan_id;
     context->plan_fingerprint = request.plan_fingerprint;
-    context->execution_request = request.execution_request;
+    context->execution_request = execution_request;
     context->state.store(JobState::PENDING);
     context->target_count.store(request.target_count);
     context->dry_run =
-        request.execution_request.ResolveOutputPolicy() == ProcessOutputPolicy::Inhibited;
+        execution_request->ResolveOutputPolicy() == ProcessOutputPolicy::Inhibited;
     context->start_time = std::chrono::steady_clock::now();
 
     {
         std::lock_guard<std::mutex> lock(jobs_mutex_);
+        CleanupTerminalJobsLocked();
         if (!active_job_id_.empty()) {
             auto active_it = jobs_.find(active_job_id_);
             if (active_it != jobs_.end() && !IsTerminalJobState(active_it->second->state.load())) {
@@ -670,23 +728,36 @@ Result<RuntimeJobStatusResponse> DispensingExecutionUseCase::Impl::GetJobStatus(
         }
         context = it->second;
     }
-    return Result<RuntimeJobStatusResponse>::Success(BuildJobStatusResponse(context));
+    const auto response = BuildJobStatusResponse(context);
+    if (IsTerminalJobState(context->state.load())) {
+        std::lock_guard<std::mutex> lock(jobs_mutex_);
+        auto it = jobs_.find(job_id);
+        if (it != jobs_.end() && it->second == context) {
+            jobs_.erase(it);
+        }
+        if (active_job_id_ == job_id) {
+            active_job_id_.clear();
+        }
+    }
+    return Result<RuntimeJobStatusResponse>::Success(response);
 }
 
 Result<TaskStatusResponse> DispensingExecutionUseCase::Impl::GetTaskStatus(const TaskID& task_id) const {
-    std::lock_guard<std::mutex> lock(tasks_mutex_);
-
-    auto it = tasks_.find(task_id);
-    if (it == tasks_.end()) {
-        return Result<TaskStatusResponse>::Failure(
-            Error(ErrorCode::INVALID_STATE, "Task not found", "DispensingExecutionUseCase"));
+    std::shared_ptr<TaskExecutionContext> context;
+    {
+        std::lock_guard<std::mutex> lock(tasks_mutex_);
+        auto it = tasks_.find(task_id);
+        if (it == tasks_.end()) {
+            return Result<TaskStatusResponse>::Failure(
+                Error(ErrorCode::INVALID_STATE, "Task not found", "DispensingExecutionUseCase"));
+        }
+        if (task_id != active_task_id_) {
+            return Result<TaskStatusResponse>::Failure(
+                Error(ErrorCode::INVALID_STATE, "Task is not active", "DispensingExecutionUseCase"));
+        }
+        context = it->second;
     }
-    if (task_id != active_task_id_) {
-        return Result<TaskStatusResponse>::Failure(
-            Error(ErrorCode::INVALID_STATE, "Task is not active", "DispensingExecutionUseCase"));
-    }
 
-    const auto& context = it->second;
     TaskStatusResponse response;
     response.task_id = task_id;
     const auto state = ResolveVisibleState(context);
@@ -730,6 +801,17 @@ Result<TaskStatusResponse> DispensingExecutionUseCase::Impl::GetTaskStatus(const
     {
         std::lock_guard<std::mutex> context_lock(context->mutex_);
         response.error_message = context->error_message;
+    }
+
+    if (IsTerminalState(state)) {
+        std::lock_guard<std::mutex> lock(tasks_mutex_);
+        auto it = tasks_.find(task_id);
+        if (it != tasks_.end() && it->second == context) {
+            tasks_.erase(it);
+        }
+        if (active_task_id_ == task_id) {
+            active_task_id_.clear();
+        }
     }
 
     return Result<TaskStatusResponse>::Success(response);
@@ -955,6 +1037,11 @@ RuntimeJobStatusResponse DispensingExecutionUseCase::Impl::BuildJobStatusRespons
 }
 
 void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecutionContext>& context) {
+    if (!context->execution_request) {
+        FinalizeJob(context, JobState::FAILED, "failure_stage=job_precheck;failure_code=MISSING_REQUEST;message=execution_request_unavailable");
+        return;
+    }
+
     if (context->stop_requested.load()) {
         FinalizeJob(context, JobState::CANCELLED, "job cancelled");
         return;
@@ -986,7 +1073,7 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
             std::this_thread::sleep_for(kInflightReconcilePoll);
         }
 
-        auto precondition_result = ValidateExecutionPreconditions(context->execution_request.dry_run);
+        auto precondition_result = ValidateExecutionPreconditions(context->execution_request->dry_run);
         if (precondition_result.IsError()) {
             FinalizeJob(context, JobState::FAILED, precondition_result.GetError().GetMessage());
             return;
@@ -1160,9 +1247,12 @@ void DispensingExecutionUseCase::Impl::SeedJobStateForTesting(
     const RuntimeJobStatusResponse& status,
     bool pause_requested) {
     auto context = std::make_shared<JobExecutionContext>();
+    auto execution_request = std::make_shared<DispensingExecutionRequest>();
+    execution_request->dry_run = status.dry_run;
     context->job_id = status.job_id;
     context->plan_id = status.plan_id;
     context->plan_fingerprint = status.plan_fingerprint;
+    context->execution_request = execution_request;
     context->state.store(ParseJobStateForTesting(status.state));
     context->target_count.store(status.target_count);
     context->completed_count.store(status.completed_count);

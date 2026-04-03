@@ -1,4 +1,0 @@
-interface:
-  display_name: "Post Change Closeout"
-  short_description: "Close finished work with evidence; alias: 变更收尾、闭环报告"
-  default_prompt: "Use $post-change-closeout to summarize finished changes, validation evidence, residual risks, document impact, and next steps. 中文别名：变更收尾、闭环报告。"

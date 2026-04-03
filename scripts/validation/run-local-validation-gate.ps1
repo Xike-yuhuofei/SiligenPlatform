@@ -11,6 +11,7 @@ param(
     [string[]]$ChangedScope = @(),
     [string[]]$SkipLayer = @(),
     [string]$SkipJustification = "",
+    [switch]$IncludeHilClosedLoop,
     [switch]$IncludeHilCaseMatrix
 )
 
@@ -137,6 +138,7 @@ $resolvedRoot = Resolve-OutputPath -PathValue $ReportRoot
 $runDir = Join-Path $resolvedRoot $timestamp
 $logsDir = Join-Path $runDir "logs"
 $workspaceValidationDir = Join-Path $runDir "workspace-validation"
+$workspaceValidationHilClosedLoopDir = Join-Path $runDir "workspace-validation-hil-closed-loop"
 $workspaceValidationHilMatrixDir = Join-Path $runDir "workspace-validation-hil-case-matrix"
 $dspE2ESpecDir = Join-Path $runDir "dsp-e2e-spec-docset"
 $legacyExitDir = Join-Path $runDir "legacy-exit"
@@ -145,6 +147,9 @@ $reviewBaselineDir = Join-Path $runDir "review-baseline"
 
 New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
 New-Item -ItemType Directory -Force -Path $workspaceValidationDir | Out-Null
+if ($IncludeHilClosedLoop) {
+    New-Item -ItemType Directory -Force -Path $workspaceValidationHilClosedLoopDir | Out-Null
+}
 if ($IncludeHilCaseMatrix) {
     New-Item -ItemType Directory -Force -Path $workspaceValidationHilMatrixDir | Out-Null
 }
@@ -156,6 +161,43 @@ New-Item -ItemType Directory -Force -Path $reviewBaselineDir | Out-Null
 $env:SILIGEN_FREEZE_DOCSET_REPORT_DIR = $dspE2ESpecDir
 $env:SILIGEN_FREEZE_EVIDENCE_CASES = "success,block,rollback,recovery,archive"
 $env:SILIGEN_LEGACY_EXIT_REPORT_DIR = $legacyExitDir
+
+$offlinePrereqStepId = "test-contracts-ci"
+$offlinePrereqStepName = "Run contracts suite tests (CI profile)"
+$offlinePrereqLogName = "05-test-contracts-ci.log"
+$offlinePrereqSuites = @("contracts")
+$offlinePrereqLane = $Lane
+$offlinePrereqDesiredDepth = $DesiredDepth
+$hilOfflinePrereqReport = Join-Path $workspaceValidationDir "workspace-validation.json"
+if ($IncludeHilClosedLoop -or $IncludeHilCaseMatrix) {
+    $offlinePrereqStepId = "test-offline-prereq-ci"
+    $offlinePrereqStepName = "Run limited-hil offline prerequisites via root test entry"
+    $offlinePrereqLogName = "05-test-offline-prereq-ci.log"
+    $offlinePrereqSuites = @("contracts", "integration", "e2e", "protocol-compatibility")
+    $offlinePrereqLane = "full-offline-gate"
+    $offlinePrereqDesiredDepth = "full-offline"
+    $env:SILIGEN_HIL_OFFLINE_PREREQ_REPORT = $hilOfflinePrereqReport
+}
+
+$offlinePrereqCommand = @(
+    "powershell",
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-Command",
+    (
+        "& { " +
+        ".\test.ps1 " +
+        "-Profile 'CI' " +
+        "-Suite @('" + ($offlinePrereqSuites -join "','") + "') " +
+        "-ReportDir '" + $workspaceValidationDir + "' " +
+        "-Lane '" + $offlinePrereqLane + "' " +
+        "-RiskProfile '" + $RiskProfile + "' " +
+        "-DesiredDepth '" + $offlinePrereqDesiredDepth + "' " +
+        "-FailOnKnownFailure" +
+        " }"
+    )
+)
 
 $steps = @(
     @{
@@ -225,30 +267,10 @@ $steps = @(
         )
     },
     @{
-        Id      = "test-contracts-ci"
-        Name    = "Run contracts suite tests (CI profile)"
-        LogName = "05-test-contracts-ci.log"
-        Command = @(
-            "powershell",
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            ".\test.ps1",
-            "-Profile",
-            "CI",
-            "-Suite",
-            "contracts",
-            "-ReportDir",
-            $workspaceValidationDir,
-            "-Lane",
-            $Lane,
-            "-RiskProfile",
-            $RiskProfile,
-            "-DesiredDepth",
-            $DesiredDepth,
-            "-FailOnKnownFailure"
-        )
+        Id      = $offlinePrereqStepId
+        Name    = $offlinePrereqStepName
+        LogName = $offlinePrereqLogName
+        Command = $offlinePrereqCommand
     }
 )
 
@@ -266,11 +288,55 @@ if (-not [string]::IsNullOrWhiteSpace($SkipJustification)) {
     $steps[-1].Command += @("-SkipJustification", $SkipJustification)
 }
 
+if ($IncludeHilClosedLoop) {
+    $steps += @{
+        Id      = "test-e2e-hil-closed-loop"
+        Name    = "Run e2e HIL closed loop via root test entry"
+        LogName = "06-test-e2e-hil-closed-loop.log"
+        Command = @(
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            ".\\test.ps1",
+            "-Profile",
+            "CI",
+            "-Suite",
+            "e2e",
+            "-ReportDir",
+            $workspaceValidationHilClosedLoopDir,
+            "-Lane",
+            $Lane,
+            "-RiskProfile",
+            $RiskProfile,
+            "-DesiredDepth",
+            $DesiredDepth,
+            "-FailOnKnownFailure",
+            "-IncludeHilClosedLoop"
+        )
+    }
+
+    foreach ($scopeName in $ChangedScope) {
+        if (-not [string]::IsNullOrWhiteSpace($scopeName)) {
+            $steps[-1].Command += @("-ChangedScope", $scopeName)
+        }
+    }
+    foreach ($layerName in $SkipLayer) {
+        if (-not [string]::IsNullOrWhiteSpace($layerName)) {
+            $steps[-1].Command += @("-SkipLayer", $layerName)
+        }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($SkipJustification)) {
+        $steps[-1].Command += @("-SkipJustification", $SkipJustification)
+    }
+}
+
 if ($IncludeHilCaseMatrix) {
     $steps += @{
         Id      = "test-e2e-hil-case-matrix"
         Name    = "Run e2e HIL case matrix via root test entry"
-        LogName = "06-test-e2e-hil-case-matrix.log"
+        LogName = "07-test-e2e-hil-case-matrix.log"
         Command = @(
             "powershell",
             "-NoProfile",
@@ -314,7 +380,7 @@ $steps += @(
     @{
         Id      = "build-validation-local-contracts"
         Name    = "Build validation (Local/contracts)"
-        LogName = "07-build-validation-local-contracts.log"
+        LogName = "08-build-validation-local-contracts.log"
         Command = @(
             "powershell",
             "-NoProfile",
@@ -371,6 +437,7 @@ $summary = [ordered]@{
     legacy_exit_dir = $legacyExitDir
     module_boundary_dir = $moduleBoundaryDir
     workspace_validation_dir = $workspaceValidationDir
+    workspace_validation_hil_closed_loop_dir = $(if ($IncludeHilClosedLoop) { $workspaceValidationHilClosedLoopDir } else { "" })
     workspace_validation_hil_matrix_dir = $(if ($IncludeHilCaseMatrix) { $workspaceValidationHilMatrixDir } else { "" })
     overall_status  = $overallStatus
     total_steps     = $results.Count
@@ -395,6 +462,7 @@ $mdLines = @(
     "- legacy_exit_dir: $($summary.legacy_exit_dir)",
     "- module_boundary_dir: $($summary.module_boundary_dir)",
     "- workspace_validation_dir: $($summary.workspace_validation_dir)",
+    "- workspace_validation_hil_closed_loop_dir: $($summary.workspace_validation_hil_closed_loop_dir)",
     "- workspace_validation_hil_matrix_dir: $($summary.workspace_validation_hil_matrix_dir)",
     "- overall_status: $($summary.overall_status)",
     "- passed_steps: $($summary.passed_steps)/$($summary.total_steps)",
@@ -434,6 +502,14 @@ if ($IncludeHilCaseMatrix) {
         (Join-Path $workspaceValidationHilMatrixDir "workspace-validation.md"),
         (Join-Path (Join-Path $workspaceValidationHilMatrixDir "hil-case-matrix") "case-matrix-summary.json"),
         (Join-Path (Join-Path $workspaceValidationHilMatrixDir "hil-case-matrix") "case-matrix-summary.md")
+    )
+}
+if ($IncludeHilClosedLoop) {
+    $requiredArtifacts += @(
+        (Join-Path $workspaceValidationHilClosedLoopDir "workspace-validation.json"),
+        (Join-Path $workspaceValidationHilClosedLoopDir "workspace-validation.md"),
+        (Join-Path $workspaceValidationHilClosedLoopDir "hil-closed-loop-summary.json"),
+        (Join-Path $workspaceValidationHilClosedLoopDir "hil-closed-loop-summary.md")
     )
 }
 foreach ($artifact in $requiredArtifacts) {

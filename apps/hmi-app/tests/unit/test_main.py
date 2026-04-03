@@ -41,7 +41,7 @@ class HmiMainContractGuardTest(unittest.TestCase):
             SILIGEN_GATEWAY_EXE=None,
             SILIGEN_GATEWAY_AUTOSTART="1",
         ):
-            with mock.patch.object(hmi_main, "load_gateway_launch_spec", return_value=None):
+            with mock.patch.object(hmi_main, "load_gateway_launch_spec", autospec=True, return_value=None):
                 with self.assertRaisesRegex(SystemExit, "apps/hmi-app/run.ps1"):
                     hmi_main._validate_online_launch_contract("online")
 
@@ -50,7 +50,7 @@ class HmiMainContractGuardTest(unittest.TestCase):
             SILIGEN_HMI_OFFICIAL_ENTRYPOINT=None,
             SILIGEN_GATEWAY_AUTOSTART="1",
         ):
-            with mock.patch.object(hmi_main, "load_gateway_launch_spec", return_value=object()):
+            with mock.patch.object(hmi_main, "load_gateway_launch_spec", autospec=True, return_value=object()):
                 hmi_main._validate_online_launch_contract("online")
 
     def test_offline_launch_does_not_require_gateway_contract(self) -> None:
@@ -60,5 +60,5 @@ class HmiMainContractGuardTest(unittest.TestCase):
             SILIGEN_GATEWAY_EXE=None,
             SILIGEN_GATEWAY_AUTOSTART="1",
         ):
-            with mock.patch.object(hmi_main, "load_gateway_launch_spec", return_value=None):
+            with mock.patch.object(hmi_main, "load_gateway_launch_spec", autospec=True, return_value=None):
                 hmi_main._validate_online_launch_contract("offline")

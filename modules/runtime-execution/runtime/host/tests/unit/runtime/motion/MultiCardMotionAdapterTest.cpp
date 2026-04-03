@@ -267,4 +267,44 @@ TEST(MockMultiCardCharacterizationTest, GetStsStaysAvailableUntilExplicitDisconn
     EXPECT_NE(mock_card->MC_GetSts(1, &status), 0);
 }
 
+TEST(MockMultiCardCharacterizationTest, CrdClearDropsBufferedTrajectoryBeforeNextRun) {
+    auto mock_card = std::make_shared<MockMultiCard>();
+
+    long axis_map[4] = {1, 2, 0, 0};
+    ASSERT_EQ(mock_card->MC_CrdSpace(0, axis_map, 0), 0);
+    ASSERT_EQ(mock_card->MC_SetPos(1, 0), 0);
+    ASSERT_EQ(mock_card->MC_SetPos(2, 0), 0);
+
+    ASSERT_EQ(mock_card->MC_LnXY(0, 100, 0, 0.0, 0.0, 0.0, 0), 0);
+    ASSERT_EQ(mock_card->MC_LnXY(0, 200, 0, 0.0, 0.0, 0.0, 0), 0);
+    ASSERT_EQ(mock_card->MC_CrdStart(0, 0), 0);
+    mock_card->TickMs(20.0);
+
+    long pos_x = 0;
+    long pos_y = 0;
+    ASSERT_EQ(mock_card->MC_GetPos(1, &pos_x), 0);
+    ASSERT_EQ(mock_card->MC_GetPos(2, &pos_y), 0);
+    EXPECT_EQ(pos_x, 200);
+    EXPECT_EQ(pos_y, 0);
+
+    ASSERT_EQ(mock_card->MC_SetPos(1, 0), 0);
+    ASSERT_EQ(mock_card->MC_SetPos(2, 0), 0);
+    ASSERT_EQ(mock_card->MC_CrdClear(0, 0), 0);
+
+    ASSERT_EQ(mock_card->MC_LnXY(0, 50, 25, 0.0, 0.0, 0.0, 0), 0);
+    ASSERT_EQ(mock_card->MC_CrdStart(0, 0), 0);
+    mock_card->TickMs(10.0);
+
+    ASSERT_EQ(mock_card->MC_GetPos(1, &pos_x), 0);
+    ASSERT_EQ(mock_card->MC_GetPos(2, &pos_y), 0);
+    EXPECT_EQ(pos_x, 50);
+    EXPECT_EQ(pos_y, 25);
+
+    mock_card->TickMs(10.0);
+    ASSERT_EQ(mock_card->MC_GetPos(1, &pos_x), 0);
+    ASSERT_EQ(mock_card->MC_GetPos(2, &pos_y), 0);
+    EXPECT_EQ(pos_x, 50);
+    EXPECT_EQ(pos_y, 25);
+}
+
 }  // namespace

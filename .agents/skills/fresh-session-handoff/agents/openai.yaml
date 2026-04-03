@@ -1,0 +1,4 @@
+interface:
+  display_name: "Fresh Session Handoff"
+  short_description: "整理当前窗口工作、写交接摘要并启动新的 Codex 会话"
+  default_prompt: "Use $fresh-session-handoff to write a factual handoff note for the current worktree and launch a fresh Codex session in a Windows Terminal tab or window."

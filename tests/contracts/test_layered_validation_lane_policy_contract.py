@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+from typing import Any, cast
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
@@ -10,13 +11,7 @@ TEST_KIT_SRC = WORKSPACE_ROOT / "shared" / "testing" / "test-kit" / "src"
 if str(TEST_KIT_SRC) not in sys.path:
     sys.path.insert(0, str(TEST_KIT_SRC))
 
-from test_kit.validation_layers import (
-    EXECUTION_LANES,
-    SUITE_TAXONOMY,
-    build_request,
-    lane_policy_metadata,
-    route_validation_request,
-)
+from test_kit.validation_layers import SUITE_TAXONOMY, build_request, lane_policy_metadata, route_validation_request
 
 
 class LayeredValidationLanePolicyContractTest(unittest.TestCase):
@@ -37,10 +32,12 @@ class LayeredValidationLanePolicyContractTest(unittest.TestCase):
     def test_suite_taxonomy_is_frozen(self) -> None:
         self.assertEqual(
             list(SUITE_TAXONOMY.keys()),
-            ["apps", "contracts", "protocol-compatibility", "e2e", "performance"],
+            ["static", "apps", "contracts", "protocol-compatibility", "integration", "e2e", "performance"],
         )
+        self.assertEqual(SUITE_TAXONOMY["static"].default_size_label, "small")
         self.assertEqual(SUITE_TAXONOMY["contracts"].default_size_label, "small")
         self.assertEqual(SUITE_TAXONOMY["protocol-compatibility"].default_size_label, "medium")
+        self.assertEqual(SUITE_TAXONOMY["integration"].default_size_label, "medium")
         self.assertEqual(SUITE_TAXONOMY["e2e"].default_size_label, "large")
         self.assertIn("suite:performance", SUITE_TAXONOMY["performance"].label_refs)
 
@@ -52,7 +49,7 @@ class LayeredValidationLanePolicyContractTest(unittest.TestCase):
             desired_depth="nightly",
         )
         nightly_routed = route_validation_request(nightly_request)
-        nightly_metadata = nightly_routed.to_metadata()
+        nightly_metadata = cast(dict[str, Any], nightly_routed.to_metadata())
         self.assertEqual(nightly_metadata["selected_lane_ref"], "nightly-performance")
         self.assertEqual(nightly_metadata["selected_lane_gate_decision"], "blocking")
         self.assertEqual(nightly_metadata["selected_lane_retry_budget"], 1)
@@ -60,7 +57,7 @@ class LayeredValidationLanePolicyContractTest(unittest.TestCase):
         self.assertIn("size:large", nightly_metadata["requested_suite_label_refs"])
 
         quick_request = build_request(
-            requested_suites=["contracts", "protocol-compatibility"],
+            requested_suites=["apps", "contracts", "protocol-compatibility"],
             changed_scopes=["shared/testing"],
             risk_profile="medium",
             desired_depth="quick",
@@ -79,6 +76,17 @@ class LayeredValidationLanePolicyContractTest(unittest.TestCase):
             self.assertIn("GateDecision", text, msg=f"{relative} must surface gate decision handling")
             self.assertIn("TimeoutBudgetSeconds", text, msg=f"{relative} must surface timeout budget")
             self.assertIn("RetryBudget", text, msg=f"{relative} must surface retry budget")
+
+    def test_local_gate_wires_offline_prereq_report_for_hil_opt_in_steps(self) -> None:
+        local_gate = (WORKSPACE_ROOT / "scripts" / "validation" / "run-local-validation-gate.ps1").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("SILIGEN_HIL_OFFLINE_PREREQ_REPORT", local_gate)
+        self.assertIn("Run limited-hil offline prerequisites via root test entry", local_gate)
+        self.assertIn('@("contracts", "integration", "e2e", "protocol-compatibility")', local_gate)
+        self.assertIn('"full-offline-gate"', local_gate)
+        self.assertIn('"full-offline"', local_gate)
 
 
 if __name__ == "__main__":

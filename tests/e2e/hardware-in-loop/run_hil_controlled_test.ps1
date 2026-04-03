@@ -150,7 +150,7 @@ Write-Output "hil controlled test: run offline prerequisites"
 try {
     & $testScript `
         -Profile $Profile `
-        -Suite @("contracts", "e2e", "protocol-compatibility") `
+        -Suite @("contracts", "integration", "e2e", "protocol-compatibility") `
         -ReportDir $offlinePrereqDir `
         -Lane "full-offline-gate" `
         -DesiredDepth "full-offline" `

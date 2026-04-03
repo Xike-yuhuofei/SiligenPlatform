@@ -530,8 +530,19 @@ int MockMultiCard::MC_CrdSpace(short crd, long* space, short fifo) {
 
 int MockMultiCard::MC_CrdClear(short crd, short fifo) {
     std::lock_guard<std::mutex> lock(state_mutex_);
-    (void)crd;
     (void)fifo;
+
+    auto it = coordinate_systems_.find(crd);
+    if (it == coordinate_systems_.end()) {
+        return 0;
+    }
+
+    CoordinateSystem& crd_sys = it->second;
+    crd_sys.trajectory_x.clear();
+    crd_sys.trajectory_y.clear();
+    crd_sys.arc_segments.clear();
+    crd_sys.current_segment = 0;
+    crd_sys.is_running = false;
     return 0;
 }
 

@@ -19,6 +19,19 @@ from test_kit.evidence_bundle import REQUIRED_TRACE_FIELDS
 
 
 class FaultScenarioContractTest(unittest.TestCase):
+    def test_allowed_hook_surface_is_frozen(self) -> None:
+        self.assertEqual(
+            FAULT_SCENARIO_ALLOWED_HOOKS,
+            (
+                "controller.readiness",
+                "controller.abort",
+                "controller.preflight",
+                "controller.control_cycle",
+                "io.disconnect",
+                "io.alarm",
+            ),
+        )
+
     def test_fault_scenarios_publish_schema_and_replay_metadata(self) -> None:
         catalog = build_asset_catalog(WORKSPACE_ROOT)
         self.assertIn("fault.simulated.invalid-empty-segments", catalog.faults)
@@ -39,17 +52,29 @@ class FaultScenarioContractTest(unittest.TestCase):
 
     def test_simulated_faults_do_not_bleed_into_hil_only_layers(self) -> None:
         catalog = build_asset_catalog(WORKSPACE_ROOT)
-        for fault_id in ("fault.simulated.invalid-empty-segments", "fault.simulated.following_error_quantized"):
-            fault = catalog.faults[fault_id]
-            self.assertEqual(fault.safety_level, "simulated-safe")
-            self.assertTrue(fault.injector_id.startswith("simulated-line."))
-            self.assertNotIn("L5-limited-hil", fault.applicable_layers)
+        invalid_fault = catalog.faults["fault.simulated.invalid-empty-segments"]
+        self.assertEqual(invalid_fault.safety_level, "simulated-safe")
+        self.assertTrue(invalid_fault.injector_id.startswith("simulated-line."))
+        self.assertNotIn("L5", invalid_fault.applicable_layers)
+        self.assertEqual(
+            invalid_fault.supported_hooks,
+            ("controller.readiness", "controller.preflight", "controller.control_cycle"),
+        )
+
+        following_fault = catalog.faults["fault.simulated.following_error_quantized"]
+        self.assertEqual(following_fault.safety_level, "simulated-safe")
+        self.assertTrue(following_fault.injector_id.startswith("simulated-line."))
+        self.assertNotIn("L5", following_fault.applicable_layers)
+        self.assertEqual(
+            following_fault.supported_hooks,
+            ("controller.abort", "controller.control_cycle", "io.disconnect", "io.alarm"),
+        )
 
         for fault_id in ("fault.hil.tcp-disconnect", "fault.hil.dispenser-state-timeout"):
             fault = catalog.faults[fault_id]
             self.assertEqual(fault.safety_level, "hardware-bounded")
             self.assertFalse(fault.injector_id.startswith("simulated-line."))
-            self.assertEqual(fault.applicable_layers, ("L5-limited-hil",))
+            self.assertEqual(fault.applicable_layers, ("L5",))
 
 
 if __name__ == "__main__":

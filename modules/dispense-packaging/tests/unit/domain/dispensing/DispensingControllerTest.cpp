@@ -30,6 +30,7 @@ TEST(DispensingControllerTest, MonotonicTriggerUsesHardware) {
     const auto output = result.Value();
     EXPECT_TRUE(output.use_hardware_trigger);
     EXPECT_FALSE(output.trigger_positions.empty());
+    EXPECT_TRUE(output.interpolation.empty());
 }
 
 TEST(DispensingControllerTest, NonMonotonicTriggerUsesHardware) {
@@ -54,4 +55,5 @@ TEST(DispensingControllerTest, NonMonotonicTriggerUsesHardware) {
     const auto output = result.Value();
     EXPECT_TRUE(output.use_hardware_trigger);
     EXPECT_FALSE(output.trigger_positions.empty());
+    EXPECT_TRUE(output.interpolation.empty());
 }

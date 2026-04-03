@@ -1072,6 +1072,20 @@ TEST(DispensingWorkflowUseCaseTest, EnsureExecutionAssemblySingleFlightsConcurre
     EXPECT_TRUE(second_result.Value().execution_authority_shared_with_execution);
     EXPECT_TRUE(first_result.Value().execution_binding_ready);
     EXPECT_TRUE(second_result.Value().execution_binding_ready);
+    EXPECT_TRUE(first_result.Value().has_execution_launch_package);
+    EXPECT_TRUE(second_result.Value().has_execution_launch_package);
+    EXPECT_TRUE(first_result.Value().has_execution_assembly_package);
+    EXPECT_TRUE(second_result.Value().has_execution_assembly_package);
+    EXPECT_GT(first_result.Value().plan_execution_trajectory_point_count, 0U);
+    EXPECT_GT(first_result.Value().execution_launch_interpolation_segment_count, 0U);
+    EXPECT_GT(first_result.Value().execution_launch_interpolation_point_count, 0U);
+    EXPECT_GT(first_result.Value().execution_launch_motion_point_count, 0U);
+    EXPECT_GT(first_result.Value().execution_assembly_trajectory_point_count, 0U);
+    EXPECT_GT(first_result.Value().execution_assembly_interpolation_segment_count, 0U);
+    EXPECT_GT(first_result.Value().execution_assembly_interpolation_point_count, 0U);
+    EXPECT_GT(first_result.Value().execution_assembly_motion_point_count, 0U);
+    EXPECT_TRUE(first_result.Value().execution_cache_contains_plan);
+    EXPECT_GE(first_result.Value().execution_cache_entry_count, 1U);
     EXPECT_EQ(use_case.plans_.at(plan_id).response.plan_fingerprint, expected_fingerprint);
     EXPECT_EQ(use_case.plans_.at(plan_id).authority_trigger_layout.layout_id, expected_layout_id);
 }
@@ -1825,14 +1839,33 @@ TEST(DispensingWorkflowUseCaseTest, FinalizeJobClearsConfirmedPreviewState) {
     plan_record.response.plan_fingerprint = "fp-plan-finish";
     plan_record.preview_authority_ready = true;
     plan_record.preview_authority_shared_with_execution = true;
+    plan_record.execution_authority_shared_with_execution = true;
+    plan_record.execution_binding_ready = true;
     plan_record.preview_spacing_valid = true;
     plan_record.preview_state = DispensingWorkflowUseCase::PlanPreviewState::CONFIRMED;
     plan_record.preview_snapshot_hash = "fp-plan-finish";
     plan_record.confirmed_at = "2026-03-22T00:00:00Z";
     plan_record.latest = true;
     plan_record.runtime_job_id = "job-finish";
+    plan_record.execution_launch.execution_package =
+        std::make_shared<Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated>(
+            BuildMinimalExecutionPackage());
+    plan_record.execution_trajectory_points.emplace_back(0.0f, 0.0f, 0.0f);
+    plan_record.execution_trajectory_points.emplace_back(10.0f, 0.0f, 0.0f);
+    plan_record.glue_points.emplace_back(0.0f, 0.0f);
+    plan_record.glue_points.emplace_back(10.0f, 0.0f);
     SeedAuthorityMetadata(plan_record, "layout-plan-finish");
+    plan_record.execution_assembly.success = true;
+    plan_record.execution_assembly.execution_trajectory_points = plan_record.execution_trajectory_points;
+    plan_record.execution_assembly.preview_authority_shared_with_execution = true;
+    plan_record.execution_assembly.execution_binding_ready = true;
+    plan_record.execution_assembly.execution_package = plan_record.execution_launch.execution_package;
+    plan_record.execution_assembly.authority_trigger_layout = plan_record.authority_trigger_layout;
+    const std::size_t retained_glue_points = plan_record.glue_points.size();
+    const std::size_t retained_preview_points = plan_record.execution_trajectory_points.size();
     use_case.plans_[plan_record.response.plan_id] = plan_record;
+    use_case.execution_assembly_cache_[plan_record.response.plan_fingerprint] =
+        DispensingWorkflowUseCase::ExecutionAssemblyCacheEntry{plan_record.execution_assembly};
     use_case.job_plan_index_["job-finish"] = "plan-finish";
 
     RuntimeJobStatusResponse runtime_status;
@@ -1852,5 +1885,149 @@ TEST(DispensingWorkflowUseCaseTest, FinalizeJobClearsConfirmedPreviewState) {
         use_case.plans_.at("plan-finish").preview_state,
         DispensingWorkflowUseCase::PlanPreviewState::SNAPSHOT_READY);
     EXPECT_TRUE(use_case.plans_.at("plan-finish").confirmed_at.empty());
+    EXPECT_TRUE(use_case.plans_.at("plan-finish").runtime_job_id.empty());
+    EXPECT_FALSE(use_case.plans_.at("plan-finish").execution_launch.execution_package);
+    EXPECT_FALSE(use_case.plans_.at("plan-finish").execution_assembly.execution_package);
+    EXPECT_FALSE(use_case.plans_.at("plan-finish").preview_authority_shared_with_execution);
+    EXPECT_FALSE(use_case.plans_.at("plan-finish").execution_authority_shared_with_execution);
+    EXPECT_FALSE(use_case.plans_.at("plan-finish").execution_binding_ready);
+    EXPECT_EQ(use_case.plans_.at("plan-finish").glue_points.size(), retained_glue_points);
+    EXPECT_EQ(use_case.plans_.at("plan-finish").execution_trajectory_points.size(), retained_preview_points);
+    EXPECT_TRUE(use_case.execution_assembly_cache_.find("fp-plan-finish") == use_case.execution_assembly_cache_.end());
+}
+
+TEST(DispensingWorkflowUseCaseTest, ReleaseConfirmedPreviewSkipsExecutionReleaseForMismatchedRuntimeJobId) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_use_case =
+        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port, execution_use_case);
+
+    SeedPlan(use_case, "plan-mismatch");
+    auto& plan_record = use_case.plans_.at("plan-mismatch");
+    plan_record.runtime_job_id = "job-real";
+    plan_record.confirmed_at = "2026-03-22T00:00:00Z";
+    use_case.execution_assembly_cache_[plan_record.response.plan_fingerprint] =
+        DispensingWorkflowUseCase::ExecutionAssemblyCacheEntry{plan_record.execution_assembly};
+    use_case.job_plan_index_["job-other"] = "plan-mismatch";
+
+    RuntimeJobStatusResponse runtime_status;
+    runtime_status.job_id = "job-other";
+    runtime_status.plan_id = "plan-mismatch";
+    runtime_status.plan_fingerprint = "fp-plan-mismatch";
+    runtime_status.state = "running";
+    runtime_status.target_count = 1;
+    execution_use_case->SeedJobStateForTesting(runtime_status);
+    execution_use_case->SetActiveJobForTesting("job-other");
+
+    const auto stop_result = use_case.StopJob("job-other");
+    ASSERT_TRUE(stop_result.IsSuccess());
+
+    ASSERT_TRUE(use_case.plans_.find("plan-mismatch") != use_case.plans_.end());
+    EXPECT_EQ(use_case.plans_.at("plan-mismatch").runtime_job_id, "job-real");
+    EXPECT_TRUE(static_cast<bool>(use_case.plans_.at("plan-mismatch").execution_launch.execution_package));
+    EXPECT_TRUE(static_cast<bool>(use_case.plans_.at("plan-mismatch").execution_assembly.execution_package));
+    EXPECT_EQ(
+        use_case.plans_.at("plan-mismatch").preview_state,
+        DispensingWorkflowUseCase::PlanPreviewState::CONFIRMED);
+    EXPECT_FALSE(use_case.plans_.at("plan-mismatch").confirmed_at.empty());
+    EXPECT_TRUE(use_case.execution_assembly_cache_.find("fp-plan-mismatch") != use_case.execution_assembly_cache_.end());
+}
+
+TEST(DispensingWorkflowUseCaseTest, ReleaseConfirmedPreviewDropsRetainedExecutionStateAndAllowsReassembly) {
+    ScopedTempPbFile temp_pb_file;
+    auto planning_use_case = CreateRealPlanningUseCase();
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_use_case =
+        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    auto use_case = CreateUseCaseWithPlanningAndExecution(
+        planning_use_case,
+        execution_use_case,
+        connection_port,
+        motion_state_port,
+        homing_port,
+        interlock_port);
+
+    DispensingWorkflowUseCase::ArtifactRecord artifact_record;
+    artifact_record.response.artifact_id = "artifact-release-rebuild";
+    artifact_record.upload_response.filepath = temp_pb_file.string();
+    artifact_record.upload_response.success = true;
+    use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
+
+    PreparePlanRequest prepare_request;
+    prepare_request.artifact_id = artifact_record.response.artifact_id;
+    prepare_request.planning_request = BuildCanonicalPlanningRequest();
+    prepare_request.planning_request.dxf_filepath.clear();
+    prepare_request.runtime_overrides = BuildPreparePlanRuntimeOverrides();
+
+    const auto prepare_result = use_case.PreparePlan(prepare_request);
+    ASSERT_TRUE(prepare_result.IsSuccess()) << prepare_result.GetError().ToString();
+    const auto plan_id = prepare_result.Value().plan_id;
+    const auto plan_fingerprint = prepare_result.Value().plan_fingerprint;
+
+    const auto first_probe = use_case.EnsureExecutionAssemblyReadyForTesting(plan_id);
+    ASSERT_TRUE(first_probe.IsSuccess()) << first_probe.GetError().ToString();
+    EXPECT_TRUE(first_probe.Value().has_execution_launch_package);
+    EXPECT_TRUE(first_probe.Value().has_execution_assembly_package);
+    EXPECT_TRUE(first_probe.Value().execution_cache_contains_plan);
+    EXPECT_GT(first_probe.Value().execution_launch_interpolation_segment_count, 0U);
+    EXPECT_GT(first_probe.Value().execution_launch_interpolation_point_count, 0U);
+    EXPECT_GT(first_probe.Value().execution_launch_motion_point_count, 0U);
+
+    auto& plan_record = use_case.plans_.at(plan_id);
+    plan_record.preview_state = DispensingWorkflowUseCase::PlanPreviewState::CONFIRMED;
+    plan_record.confirmed_at = "2026-03-22T00:00:00Z";
+    plan_record.runtime_job_id = "job-release";
+    use_case.job_plan_index_["job-release"] = plan_id;
+
+    const std::size_t retained_preview_points = plan_record.execution_trajectory_points.size();
+    const std::size_t retained_glue_points = plan_record.glue_points.size();
+    ASSERT_GT(retained_preview_points, 0U);
+    ASSERT_GT(retained_glue_points, 0U);
+
+    RuntimeJobStatusResponse runtime_status;
+    runtime_status.job_id = "job-release";
+    runtime_status.plan_id = plan_id;
+    runtime_status.plan_fingerprint = plan_fingerprint;
+    runtime_status.state = "running";
+    runtime_status.target_count = 1;
+    execution_use_case->SeedJobStateForTesting(runtime_status);
+    execution_use_case->SetActiveJobForTesting("job-release");
+
+    const auto stop_result = use_case.StopJob("job-release");
+    ASSERT_TRUE(stop_result.IsSuccess());
+
+    ASSERT_TRUE(use_case.plans_.find(plan_id) != use_case.plans_.end());
+    EXPECT_EQ(
+        use_case.plans_.at(plan_id).preview_state,
+        DispensingWorkflowUseCase::PlanPreviewState::SNAPSHOT_READY);
+    EXPECT_TRUE(use_case.plans_.at(plan_id).confirmed_at.empty());
+    EXPECT_TRUE(use_case.plans_.at(plan_id).runtime_job_id.empty());
+    EXPECT_FALSE(use_case.plans_.at(plan_id).execution_launch.execution_package);
+    EXPECT_FALSE(use_case.plans_.at(plan_id).execution_assembly.execution_package);
+    EXPECT_FALSE(use_case.plans_.at(plan_id).preview_authority_shared_with_execution);
+    EXPECT_FALSE(use_case.plans_.at(plan_id).execution_authority_shared_with_execution);
+    EXPECT_FALSE(use_case.plans_.at(plan_id).execution_binding_ready);
+    EXPECT_EQ(use_case.plans_.at(plan_id).execution_trajectory_points.size(), retained_preview_points);
+    EXPECT_EQ(use_case.plans_.at(plan_id).glue_points.size(), retained_glue_points);
+    EXPECT_TRUE(use_case.execution_assembly_cache_.find(plan_fingerprint) == use_case.execution_assembly_cache_.end());
+
+    const auto second_probe = use_case.EnsureExecutionAssemblyReadyForTesting(plan_id);
+    ASSERT_TRUE(second_probe.IsSuccess()) << second_probe.GetError().ToString();
+    EXPECT_FALSE(second_probe.Value().cache_hit);
+    EXPECT_TRUE(second_probe.Value().has_execution_launch_package);
+    EXPECT_TRUE(second_probe.Value().has_execution_assembly_package);
+    EXPECT_TRUE(second_probe.Value().execution_cache_contains_plan);
+    EXPECT_GT(second_probe.Value().execution_launch_interpolation_segment_count, 0U);
+    EXPECT_GT(second_probe.Value().execution_launch_interpolation_point_count, 0U);
+    EXPECT_GT(second_probe.Value().execution_launch_motion_point_count, 0U);
+    EXPECT_GT(second_probe.Value().execution_assembly_interpolation_segment_count, 0U);
+    EXPECT_GT(second_probe.Value().execution_assembly_interpolation_point_count, 0U);
+    EXPECT_GT(second_probe.Value().execution_assembly_motion_point_count, 0U);
 }
 

@@ -2,8 +2,8 @@
   "schema_version": "dxf-preview-profile-thresholds.v1",
   "owner_scope": "tests/performance",
   "reviewer_guidance": "Tune only with attached nightly-performance evidence covering small, medium, and large canonical DXF samples, include-start-job enabled, and owner review.",
-  "calibrated_at_utc": "2026-04-02T02:36:50+00:00",
-  "calibration_evidence_report": "tests/reports/performance/dxf-preview-profiles/20260402T023650Z/report.json",
+  "calibrated_at_utc": "2026-04-03T08:17:28+00:00",
+  "calibration_evidence_report": "tests/reports/performance/dxf-preview-profiles/20260403T083352Z/report.json",
   "required_runtime_mode": "mock-runtime-auto-provisioned",
   "required_samples": [
     "small",
@@ -54,6 +54,26 @@
     {
       "sample_label": "large",
       "scenario": "singleflight",
+      "expected_status": "ok"
+    },
+    {
+      "sample_label": "small",
+      "scenario": "control_cycle",
+      "expected_status": "ok"
+    },
+    {
+      "sample_label": "medium",
+      "scenario": "control_cycle",
+      "expected_status": "ok"
+    },
+    {
+      "sample_label": "large",
+      "scenario": "control_cycle",
+      "expected_status": "ok"
+    },
+    {
+      "sample_label": "small",
+      "scenario": "long_run",
       "expected_status": "ok"
     }
   ],
@@ -132,6 +152,156 @@
       "name": "large.singleflight.prepare_total_ms.p95_ms",
       "path": "results.large.singleflight.summary.prepare_total_ms.p95_ms",
       "max": 1800.0
+    },
+    {
+      "name": "small.control_cycle.pause_to_running_ms.p95_ms",
+      "path": "results.small.control_cycle.summary.pause_to_running_ms.p95_ms",
+      "max": 500.0
+    },
+    {
+      "name": "small.control_cycle.stop_to_idle_ms.p95_ms",
+      "path": "results.small.control_cycle.summary.stop_to_idle_ms.p95_ms",
+      "max": 500.0
+    },
+    {
+      "name": "small.control_cycle.rerun_total_ms.p95_ms",
+      "path": "results.small.control_cycle.summary.rerun_total_ms.p95_ms",
+      "max": 500.0
+    },
+    {
+      "name": "small.control_cycle.execution_total_ms.p95_ms",
+      "path": "results.small.control_cycle.summary.execution_total_ms.p95_ms",
+      "max": 400.0
+    },
+    {
+      "name": "small.control_cycle.working_set_mb.delta_max",
+      "path": "results.small.control_cycle.summary.working_set_mb.delta_max",
+      "max": 32.0
+    },
+    {
+      "name": "small.control_cycle.private_memory_mb.delta_max",
+      "path": "results.small.control_cycle.summary.private_memory_mb.delta_max",
+      "max": 32.0
+    },
+    {
+      "name": "small.control_cycle.handle_count.delta_max",
+      "path": "results.small.control_cycle.summary.handle_count.delta_max",
+      "max": 10.0
+    },
+    {
+      "name": "small.control_cycle.timeout_count",
+      "path": "results.small.control_cycle.summary.timeout_count",
+      "max": 0.0
+    },
+    {
+      "name": "medium.control_cycle.pause_to_running_ms.p95_ms",
+      "path": "results.medium.control_cycle.summary.pause_to_running_ms.p95_ms",
+      "max": 800.0
+    },
+    {
+      "name": "medium.control_cycle.stop_to_idle_ms.p95_ms",
+      "path": "results.medium.control_cycle.summary.stop_to_idle_ms.p95_ms",
+      "max": 800.0
+    },
+    {
+      "name": "medium.control_cycle.rerun_total_ms.p95_ms",
+      "path": "results.medium.control_cycle.summary.rerun_total_ms.p95_ms",
+      "max": 3200.0
+    },
+    {
+      "name": "medium.control_cycle.execution_total_ms.p95_ms",
+      "path": "results.medium.control_cycle.summary.execution_total_ms.p95_ms",
+      "max": 3000.0
+    },
+    {
+      "name": "medium.control_cycle.working_set_mb.delta_max",
+      "path": "results.medium.control_cycle.summary.working_set_mb.delta_max",
+      "max": 64.0
+    },
+    {
+      "name": "medium.control_cycle.private_memory_mb.delta_max",
+      "path": "results.medium.control_cycle.summary.private_memory_mb.delta_max",
+      "max": 64.0
+    },
+    {
+      "name": "medium.control_cycle.handle_count.delta_max",
+      "path": "results.medium.control_cycle.summary.handle_count.delta_max",
+      "max": 16.0
+    },
+    {
+      "name": "medium.control_cycle.timeout_count",
+      "path": "results.medium.control_cycle.summary.timeout_count",
+      "max": 0.0
+    },
+    {
+      "name": "large.control_cycle.pause_to_running_ms.p95_ms",
+      "path": "results.large.control_cycle.summary.pause_to_running_ms.p95_ms",
+      "max": 1000.0
+    },
+    {
+      "name": "large.control_cycle.stop_to_idle_ms.p95_ms",
+      "path": "results.large.control_cycle.summary.stop_to_idle_ms.p95_ms",
+      "max": 1000.0
+    },
+    {
+      "name": "large.control_cycle.rerun_total_ms.p95_ms",
+      "path": "results.large.control_cycle.summary.rerun_total_ms.p95_ms",
+      "max": 34000.0
+    },
+    {
+      "name": "large.control_cycle.execution_total_ms.p95_ms",
+      "path": "results.large.control_cycle.summary.execution_total_ms.p95_ms",
+      "max": 33000.0
+    },
+    {
+      "name": "large.control_cycle.working_set_mb.delta_max",
+      "path": "results.large.control_cycle.summary.working_set_mb.delta_max",
+      "max": 96.0
+    },
+    {
+      "name": "large.control_cycle.private_memory_mb.delta_max",
+      "path": "results.large.control_cycle.summary.private_memory_mb.delta_max",
+      "max": 96.0
+    },
+    {
+      "name": "large.control_cycle.handle_count.delta_max",
+      "path": "results.large.control_cycle.summary.handle_count.delta_max",
+      "max": 24.0
+    },
+    {
+      "name": "large.control_cycle.timeout_count",
+      "path": "results.large.control_cycle.summary.timeout_count",
+      "max": 0.0
+    },
+    {
+      "name": "small.long_run.execution_total_ms.p95_ms",
+      "path": "results.small.long_run.summary.execution_total_ms.p95_ms",
+      "max": 400.0
+    },
+    {
+      "name": "small.long_run.working_set_mb.delta_max",
+      "path": "results.small.long_run.summary.working_set_mb.delta_max",
+      "max": 32.0
+    },
+    {
+      "name": "small.long_run.private_memory_mb.delta_max",
+      "path": "results.small.long_run.summary.private_memory_mb.delta_max",
+      "max": 32.0
+    },
+    {
+      "name": "small.long_run.handle_count.delta_max",
+      "path": "results.small.long_run.summary.handle_count.delta_max",
+      "max": 10.0
+    },
+    {
+      "name": "small.long_run.thread_count.max",
+      "path": "results.small.long_run.summary.thread_count.max",
+      "max": 32.0
+    },
+    {
+      "name": "small.long_run.timeout_count",
+      "path": "results.small.long_run.summary.timeout_count",
+      "max": 0.0
     }
   ]
 }

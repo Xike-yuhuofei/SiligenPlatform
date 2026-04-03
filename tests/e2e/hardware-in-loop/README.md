@@ -240,7 +240,7 @@ python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun.py `
 - `-SkipBuild` 只影响构建步骤，不改变 test/gate/release/publish 语义
 - 当 `PublishLatestOnPass=true` 时，必须提供非空 `-Executor`，latest publish 才会被允许
 - 支持 `-OperatorOverrideReason "<reason>"`；只有离线前置层不满足且现场负责人明确批准时才允许使用
-- offline prerequisites 直接以 `-Suite @("contracts","e2e","protocol-compatibility")` 调用根级 `test.ps1`，避免子 `powershell -File` 多 `-Suite` 绑定歧义
+- offline prerequisites 直接以 `-Suite @("contracts","integration","e2e","protocol-compatibility")` 调用根级 `test.ps1`，覆盖 `engineering-regression`，并避免子 `powershell -File` 多 `-Suite` 绑定歧义
 - 默认会把 `offline-prereq`、`hardware-smoke`、`hil-closed-loop`、`hil-controlled-gate`、`hil-controlled-release-summary` 聚合到同一报告根
 - 默认 `-IncludeHilCaseMatrix:$true`；如需隔离排障可显式关闭，但正式 release path 应优先保留
 - 若 offline prerequisites 已通过，但后续 HIL 步骤阻塞，脚本仍会继续渲染 gate/release summary，并保留原始失败退出码
