@@ -60,7 +60,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\run-loc
 ## 6. 分支与 Worktree 收口
 
 - 默认长期分支只有 `main`；日常开发结束后，仓库应回到 `main...origin/main` 的干净状态。
-- 临时开发分支必须使用项目级 skill `.agents/skills/new-task/SKILL.md` 规定的命名格式；`AGENTS.md`、`README.md` 等摘要说明均以该 skill 为准。
-- 若创建额外 `worktree`，其命名与长度约束必须遵循项目级 skill `.agents/skills/new-task/SKILL.md`。
+- 临时开发分支必须使用项目级 skill `.agents/skills/git-create/SKILL.md` 规定的命名格式；`AGENTS.md`、`README.md` 等摘要说明均以该 skill 为准。
+- 若创建额外 `worktree`，其命名与长度约束必须遵循项目级 skill `.agents/skills/git-create/SKILL.md`。
 - 若为隔离验证临时创建了额外 worktree，合并或放弃该任务后必须同步删除该 worktree 以及对应本地/远端分支。
 - 发布、release-check、现场 SOP 和交付清单中的仓库根统一使用 `D:\Projects\SiligenSuite`。

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Git Cleanup"
+  short_description: "Prune non-whitelisted worktrees and branches safely."
+  default_prompt: "Use $git-cleanup to read the local whitelist file, dry-run cleanup candidates, and then safely remove non-whitelisted local worktrees, local branches, and remote branches."

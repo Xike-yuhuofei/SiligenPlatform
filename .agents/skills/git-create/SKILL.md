@@ -1,9 +1,9 @@
 ---
-name: new-task
-description: Create, validate, and repair the repository task setup for a new unit of work. For this repository, a new task means a compliant Git branch name in the format type/scope/ticket-short-desc plus a paired new worktree created at the same time; the worktree name must follow wt-<ticket-compact>[-n] and be 15 characters or fewer. Use when the user asks to start a new task, create a compliant branch name, validate an existing branch name, rename a branch to match policy, derive type, scope, ticket, and short-desc from task context, repair a branch-and-worktree pair, or apply repository-specific task naming rules.
+name: git-create
+description: Create, validate, and repair the repository task setup for a new unit of work. For this repository, a new task means a compliant Git branch name in the format type/scope/ticket-short-desc plus a paired new worktree created at the same time; the worktree name must follow the wt-ticketcompact[-n] pattern and be 15 characters or fewer. Use when Codex needs to create or validate a repository-compliant Git branch and worktree pair, start a new task, rename a branch to match policy, derive type, scope, ticket, and short-desc from task context, repair a branch-and-worktree pair, or apply repository-specific task naming rules.
 ---
 
-# New Task
+# Git Create
 
 Generate, validate, or repair the repository task setup for this repository. In this repository, starting a new task means creating both a compliant branch and a paired worktree. Use the bundled generic reference only as a fallback for examples and validation details.
 

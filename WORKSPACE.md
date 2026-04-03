@@ -61,4 +61,4 @@
 1. 根级命令只认 `build.ps1`、`test.ps1`、`ci.ps1` 与 `scripts/validation/run-local-validation-gate.ps1`。
 2. `docs/architecture/dsp-e2e-spec/` 是阶段、对象、模块、控制语义和 acceptance baseline 的唯一正式入口。
 3. 任何目录调整必须先更新 `S05`、`S06`、`S09`、`S10` 和对应验证脚本。
-4. 分支命名必须符合 `<type>/<scope>/<ticket>-<short-desc>`，并统一以项目级 skill `.agents/skills/new-task/SKILL.md` 为准。
+4. 分支命名必须符合 `<type>/<scope>/<ticket>-<short-desc>`，并统一以项目级 skill `.agents/skills/git-create/SKILL.md` 为准。

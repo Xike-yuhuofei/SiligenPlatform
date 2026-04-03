@@ -1,0 +1,26 @@
+{
+  "remote": "origin",
+  "base_branch": "origin/main",
+  "protect_current_worktree": true,
+  "protect_current_branch": true,
+  "protect_default_branch": true,
+  "protected_branch_patterns": [
+    "main",
+    "master",
+    "develop",
+    "dev",
+    "release/*",
+    "hotfix/*"
+  ],
+  "worktrees": [
+    "D:/Projects/wt-task152"
+  ],
+  "local_branches": [
+    "main",
+    "chore/workflow/TASK-152-maintain-skills"
+  ],
+  "remote_branches": [
+    "origin/main",
+    "origin/chore/workflow/TASK-152-maintain-skills"
+  ]
+}
