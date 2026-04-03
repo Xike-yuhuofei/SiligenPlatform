@@ -225,8 +225,7 @@ def _resolve_executable(build_root: Path, name: str) -> Path:
 def _run_env(build_root: Path) -> dict[str, str]:
     env = os.environ.copy()
     bin_root = build_root / "Debug"
-    ruckig_root = build_root / "third_party" / "ruckig" / "Debug"
-    env["PATH"] = os.pathsep.join((str(bin_root), str(ruckig_root), env.get("PATH", "")))
+    env["PATH"] = os.pathsep.join((str(bin_root), env.get("PATH", "")))
     return env
 
 

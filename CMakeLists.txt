@@ -120,10 +120,6 @@ set(SILIGEN_SPDLOG_INCLUDE_DIR
     "${SILIGEN_THIRD_PARTY_DIR}/spdlog/include"
     CACHE INTERNAL "Explicit spdlog include root used by traceability-observability"
 )
-set(SILIGEN_RUCKIG_SOURCE_DIR
-    "${SILIGEN_THIRD_PARTY_DIR}/ruckig"
-    CACHE INTERNAL "Explicit Ruckig source root used by process-runtime-core"
-)
 set(SILIGEN_PROTOBUF_SOURCE_DIR
     "${SILIGEN_THIRD_PARTY_DIR}/protobuf"
     CACHE INTERNAL "Explicit Protobuf source root used by process-runtime-core"
@@ -358,20 +354,6 @@ if(SILIGEN_ENABLE_PROTOBUF)
     endif()
 endif()
 
-set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
-set(BUILD_PYTHON_MODULE OFF CACHE BOOL "" FORCE)
-set(BUILD_ONLINE_CLIENT OFF CACHE BOOL "" FORCE)
-if(EXISTS "${SILIGEN_THIRD_PARTY_DIR}/ruckig/CMakeLists.txt")
-    siligen_add_static_vendor_subdirectory(
-        "${SILIGEN_THIRD_PARTY_DIR}/ruckig"
-        "${CMAKE_BINARY_DIR}/third_party/ruckig"
-    )
-    message(STATUS "[ThirdParty] Ruckig 库已添加")
-else()
-    message(WARNING "[ThirdParty] Ruckig 库未找到 (${SILIGEN_THIRD_PARTY_DIR}/ruckig)")
-endif()
 message(STATUS "=== 第三方库配置完成 ===")
 message(STATUS "")
 
