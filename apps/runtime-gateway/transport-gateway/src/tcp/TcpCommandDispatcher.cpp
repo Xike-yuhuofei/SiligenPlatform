@@ -2294,16 +2294,16 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
         execution_polyline.push_back(BuildPreviewPointJson(point.x, point.y));
     }
     nlohmann::json motion_preview_polyline = nlohmann::json::array();
-    for (const auto& point : snapshot.execution_polyline) {
+    for (const auto& point : snapshot.motion_preview_polyline) {
         motion_preview_polyline.push_back(BuildPreviewPointJson(point.x, point.y));
     }
     nlohmann::json motion_preview = {
-        {"source", "execution_polyline"},
-        {"kind", "polyline"},
-        {"source_point_count", snapshot.execution_polyline_source_point_count},
-        {"point_count", snapshot.execution_polyline_point_count},
-        {"is_sampled", snapshot.execution_polyline_source_point_count != snapshot.execution_polyline_point_count},
-        {"sampling_strategy", "workflow_preview_snapshot"},
+        {"source", snapshot.motion_preview_source},
+        {"kind", snapshot.motion_preview_kind},
+        {"source_point_count", snapshot.motion_preview_source_point_count},
+        {"point_count", snapshot.motion_preview_point_count},
+        {"is_sampled", snapshot.motion_preview_is_sampled},
+        {"sampling_strategy", snapshot.motion_preview_sampling_strategy},
         {"polyline", motion_preview_polyline}
     };
 

@@ -7,8 +7,11 @@
 #include "domain/motion/value-objects/MotionPlanningReport.h"
 #include "domain/trajectory/value-objects/PlanningReport.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
+#include "workflow/application/usecases/dispensing/DispensingWorkflowUseCase.h"
 #include "workflow/application/usecases/dispensing/PlanningUseCase.h"
 #include "shared/types/TrajectoryTypes.h"
+
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -35,6 +38,7 @@ namespace Siligen::Adapters::CLI {
 using Siligen::Application::CommandLineConfig;
 using Siligen::Application::UseCases::Dispensing::DispensingExecutionRequest;
 using Siligen::Application::UseCases::Dispensing::DispensingExecutionUseCase;
+using Siligen::Application::UseCases::Dispensing::DispensingWorkflowUseCase;
 using Siligen::Application::UseCases::Dispensing::PlanningRequest;
 using Siligen::Application::UseCases::Dispensing::PlanningResponse;
 using Siligen::Application::UseCases::Dispensing::PlanningUseCase;
@@ -55,6 +59,8 @@ constexpr float32 kMaxAccelerationUpper = 10000.0f;
 constexpr float32 kMaxTimeStep = 0.1f;
 constexpr float32 kEpsilon = 1e-6f;
 constexpr const char* kForbiddenOverrideMetaChars = "&|;<>`";
+constexpr size_t kPreviewPolylineMaxPoints = 4000;
+constexpr size_t kPreviewGlueMaxPoints = 5000;
 
 bool HasForbiddenMetaChar(const std::string& value) {
     return value.find_first_of(kForbiddenOverrideMetaChars) != std::string::npos;
@@ -638,6 +644,101 @@ bool TryBuildCliExecutionRequest(
     return true;
 }
 
+bool TryReadFileBytes(
+    const std::filesystem::path& input_path,
+    std::vector<uint8_t>& file_content,
+    std::string& error_message) {
+    std::ifstream file(input_path, std::ios::binary | std::ios::ate);
+    if (!file) {
+        error_message = "文件不存在或无法访问: " + input_path.string();
+        return false;
+    }
+
+    const auto size = file.tellg();
+    if (size <= 0) {
+        error_message = "DXF文件为空: " + input_path.string();
+        return false;
+    }
+
+    file_content.resize(static_cast<size_t>(size));
+    file.seekg(0, std::ios::beg);
+    file.read(reinterpret_cast<char*>(file_content.data()), size);
+    if (!file) {
+        error_message = "读取DXF文件失败: " + input_path.string();
+        return false;
+    }
+    return true;
+}
+
+bool TryBuildPreviewUploadRequest(
+    const std::filesystem::path& input_path,
+    Siligen::Application::UseCases::Dispensing::UploadRequest& request,
+    std::string& error_message) {
+    std::vector<uint8_t> file_content;
+    if (!TryReadFileBytes(input_path, file_content, error_message)) {
+        return false;
+    }
+
+    request = Siligen::Application::UseCases::Dispensing::UploadRequest{};
+    request.file_content = std::move(file_content);
+    request.original_filename = input_path.filename().string();
+    request.file_size = request.file_content.size();
+    request.content_type = "application/dxf";
+    if (!request.Validate()) {
+        error_message = "DXF上传请求无效";
+        return false;
+    }
+    return true;
+}
+
+bool TryBuildWorkflowPrepareRequest(
+    const CommandLineConfig& config,
+    const std::string& artifact_id,
+    Siligen::Application::UseCases::Dispensing::PreparePlanRequest& request,
+    std::string& error_message) {
+    PlanningRequest planning_request;
+    if (!TryBuildCliPlanningRequest(config, planning_request, error_message)) {
+        return false;
+    }
+
+    auto runtime_overrides = Siligen::Application::UseCases::Dispensing::PreparePlanRuntimeOverrides{};
+    runtime_overrides.source_path = planning_request.dxf_filepath;
+    runtime_overrides.use_hardware_trigger = config.use_hardware_trigger;
+    runtime_overrides.dry_run = config.dry_run;
+    runtime_overrides.velocity_trace_enabled = false;
+    runtime_overrides.arc_tolerance_mm = static_cast<float32>(config.arc_tolerance);
+    if (config.max_jerk > 0.0) {
+        runtime_overrides.max_jerk = static_cast<float32>(config.max_jerk);
+    }
+    if (config.dxf_speed > 0.0) {
+        runtime_overrides.dispensing_speed_mm_s = static_cast<float32>(config.dxf_speed);
+    }
+    if (config.dry_run && config.dxf_dry_run_speed > 0.0) {
+        runtime_overrides.dry_run_speed_mm_s = static_cast<float32>(config.dxf_dry_run_speed);
+    }
+    if (config.max_acceleration > 0.0) {
+        runtime_overrides.acceleration_mm_s2 = static_cast<float32>(config.max_acceleration);
+    }
+
+    request = Siligen::Application::UseCases::Dispensing::PreparePlanRequest{};
+    request.artifact_id = artifact_id;
+    request.planning_request = std::move(planning_request);
+    request.runtime_overrides = std::move(runtime_overrides);
+    return true;
+}
+
+double QuantizePreviewCoordinate(double value) {
+    constexpr double kPreviewJsonCoordinatePrecisionMm = 1e-3;
+    return std::round(value / kPreviewJsonCoordinatePrecisionMm) * kPreviewJsonCoordinatePrecisionMm;
+}
+
+nlohmann::json BuildPreviewPointJson(float32 x, float32 y) {
+    return {
+        {"x", QuantizePreviewCoordinate(static_cast<double>(x))},
+        {"y", QuantizePreviewCoordinate(static_cast<double>(y))},
+    };
+}
+
 }  // namespace
 
 int CLICommandHandlers::HandleDXFPlan(const CommandLineConfig& config) {
@@ -833,6 +934,147 @@ int CLICommandHandlers::HandleDXFPreview(const CommandLineConfig& config) {
     if (!resolved.preview_json) {
         std::cout << "DXF 预览生成完成，输出目录: " << output_dir.string() << std::endl;
     }
+    return 0;
+}
+
+int CLICommandHandlers::HandleDXFPreviewSnapshot(const CommandLineConfig& config) {
+    const auto resolved = ApplyDxfDefaults(config);
+    if (resolved.dxf_file_path.empty()) {
+        std::cout << "请提供 DXF 文件路径 (--file)" << std::endl;
+        return 1;
+    }
+
+    const std::filesystem::path input_path(resolved.dxf_file_path);
+    if (!std::filesystem::exists(input_path)) {
+        std::cout << "文件不存在或无法访问: " << resolved.dxf_file_path << std::endl;
+        return 1;
+    }
+
+    auto workflow_usecase = container_->Resolve<DispensingWorkflowUseCase>();
+    if (!workflow_usecase) {
+        std::cout << "无法解析离线 DXF 预览工作流用例" << std::endl;
+        return 1;
+    }
+
+    Siligen::Application::UseCases::Dispensing::UploadRequest upload_request;
+    std::string build_error;
+    if (!TryBuildPreviewUploadRequest(input_path, upload_request, build_error)) {
+        std::cout << build_error << std::endl;
+        return 1;
+    }
+
+    auto create_artifact_result = workflow_usecase->CreateArtifact(upload_request);
+    if (create_artifact_result.IsError()) {
+        PrintError(create_artifact_result.GetError());
+        return 1;
+    }
+
+    const auto& artifact = create_artifact_result.Value();
+    Siligen::Application::UseCases::Dispensing::PreparePlanRequest prepare_request;
+    if (!TryBuildWorkflowPrepareRequest(resolved, artifact.artifact_id, prepare_request, build_error)) {
+        std::cout << "轨迹参数无效: " << build_error << std::endl;
+        return 1;
+    }
+
+    auto prepare_result = workflow_usecase->PreparePlan(prepare_request);
+    if (prepare_result.IsError()) {
+        PrintError(prepare_result.GetError());
+        return 1;
+    }
+
+    Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest snapshot_request;
+    snapshot_request.plan_id = prepare_result.Value().plan_id;
+    snapshot_request.max_polyline_points = std::min<std::size_t>(
+        kPreviewPolylineMaxPoints,
+        std::max<std::size_t>(2, ResolvePreviewMaxPoints(resolved)));
+    snapshot_request.max_glue_points = kPreviewGlueMaxPoints;
+
+    auto snapshot_result = workflow_usecase->GetPreviewSnapshot(snapshot_request);
+    if (snapshot_result.IsError()) {
+        PrintError(snapshot_result.GetError());
+        return 1;
+    }
+
+    const auto& prepare = prepare_result.Value();
+    const auto& snapshot = snapshot_result.Value();
+
+    nlohmann::json glue_points = nlohmann::json::array();
+    for (const auto& point : snapshot.glue_points) {
+        glue_points.push_back(BuildPreviewPointJson(point.x, point.y));
+    }
+
+    nlohmann::json execution_polyline = nlohmann::json::array();
+    for (const auto& point : snapshot.execution_polyline) {
+        execution_polyline.push_back(BuildPreviewPointJson(point.x, point.y));
+    }
+    nlohmann::json motion_preview_polyline = nlohmann::json::array();
+    for (const auto& point : snapshot.motion_preview_polyline) {
+        motion_preview_polyline.push_back(BuildPreviewPointJson(point.x, point.y));
+    }
+
+    nlohmann::json motion_preview = {
+        {"source", snapshot.motion_preview_source},
+        {"kind", snapshot.motion_preview_kind},
+        {"source_point_count", snapshot.motion_preview_source_point_count},
+        {"point_count", snapshot.motion_preview_point_count},
+        {"is_sampled", snapshot.motion_preview_is_sampled},
+        {"sampling_strategy", snapshot.motion_preview_sampling_strategy},
+        {"polyline", motion_preview_polyline},
+    };
+
+    nlohmann::json performance_profile = {
+        {"authority_cache_hit", prepare.performance_profile.authority_cache_hit},
+        {"authority_joined_inflight", prepare.performance_profile.authority_joined_inflight},
+        {"authority_wait_ms", prepare.performance_profile.authority_wait_ms},
+        {"pb_prepare_ms", prepare.performance_profile.pb_prepare_ms},
+        {"path_load_ms", prepare.performance_profile.path_load_ms},
+        {"process_path_ms", prepare.performance_profile.process_path_ms},
+        {"authority_build_ms", prepare.performance_profile.authority_build_ms},
+        {"authority_total_ms", prepare.performance_profile.authority_total_ms},
+        {"prepare_total_ms", prepare.performance_profile.prepare_total_ms},
+    };
+
+    nlohmann::json response = {
+        {"snapshot_id", snapshot.snapshot_id},
+        {"snapshot_hash", snapshot.snapshot_hash},
+        {"plan_id", snapshot.plan_id},
+        {"plan_fingerprint", prepare.plan_fingerprint},
+        {"preview_state", snapshot.preview_state},
+        {"preview_source", snapshot.preview_source},
+        {"preview_kind", snapshot.preview_kind},
+        {"confirmed_at", snapshot.confirmed_at},
+        {"segment_count", snapshot.segment_count},
+        {"point_count", snapshot.point_count},
+        {"glue_point_count", snapshot.glue_point_count},
+        {"glue_points", glue_points},
+        {"motion_preview", motion_preview},
+        {"execution_point_count", snapshot.execution_point_count},
+        {"execution_polyline_point_count", snapshot.execution_polyline_point_count},
+        {"execution_polyline_source_point_count", snapshot.execution_polyline_source_point_count},
+        {"execution_polyline", execution_polyline},
+        {"polyline_point_count", snapshot.execution_polyline_point_count},
+        {"polyline_source_point_count", snapshot.execution_polyline_source_point_count},
+        {"trajectory_polyline", execution_polyline},
+        {"total_length_mm", snapshot.total_length_mm},
+        {"estimated_time_s", snapshot.estimated_time_s},
+        {"generated_at", snapshot.generated_at},
+        {"dry_run", resolved.dry_run},
+        {"preview_validation_classification", prepare.preview_validation_classification},
+        {"preview_exception_reason", prepare.preview_exception_reason},
+        {"preview_failure_reason", prepare.preview_failure_reason},
+        {"performance_profile", performance_profile},
+    };
+
+    if (resolved.preview_json) {
+        std::cout << response.dump() << std::endl;
+        return 0;
+    }
+
+    std::cout << "DXF 同源预览快照生成成功" << std::endl;
+    std::cout << "plan_id: " << snapshot.plan_id << std::endl;
+    std::cout << "snapshot_hash: " << snapshot.snapshot_hash << std::endl;
+    std::cout << "胶点数: " << snapshot.glue_point_count << std::endl;
+    std::cout << "运动轨迹预览点数: " << snapshot.motion_preview_point_count << std::endl;
     return 0;
 }
 

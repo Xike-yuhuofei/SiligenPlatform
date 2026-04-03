@@ -5,6 +5,7 @@ import base64
 import configparser
 import json
 import math
+import socket
 import statistics
 import subprocess
 import sys
@@ -49,7 +50,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config-mode", choices=("mock", "real"), default="mock")
     parser.add_argument("--dxf-file", type=Path, default=DEFAULT_DXF_FILE)
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=9527)
+    parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--gateway-ready-timeout", type=float, default=8.0)
     parser.add_argument("--connect-timeout", type=float, default=15.0)
     parser.add_argument("--report-root", type=Path, default=DEFAULT_REPORT_ROOT)
@@ -62,6 +63,15 @@ def parse_args() -> argparse.Namespace:
 def ensure_exists(path: Path, label: str) -> None:
     if not path.exists():
         raise FileNotFoundError(f"{label} missing: {path}")
+
+
+def resolve_listen_port(host: str, requested_port: int) -> int:
+    if requested_port > 0:
+        return requested_port
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind((host, 0))
+        return int(sock.getsockname()[1])
 
 
 def load_connection_params(config_path: Path) -> dict[str, str]:
@@ -517,8 +527,9 @@ def main() -> int:
     overall_status = "failed"
     return_code = 1
 
+    effective_port = resolve_listen_port(args.host, args.port)
     process: subprocess.Popen[str] | None = None
-    client = TcpJsonClient(args.host, args.port)
+    client = TcpJsonClient(args.host, effective_port)
     connected = False
     online_ready = False
     preview_confirmed = False
@@ -533,7 +544,7 @@ def main() -> int:
             add_step(steps, "config-prepare", "passed", f"using real config {effective_config_path}")
 
         process = subprocess.Popen(
-            [str(args.gateway_exe), "--config", str(effective_config_path), "--port", str(args.port)],
+            [str(args.gateway_exe), "--config", str(effective_config_path), "--port", str(effective_port)],
             cwd=str(ROOT),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -544,7 +555,7 @@ def main() -> int:
         )
         add_step(steps, "gateway-launch", "passed", f"pid={process.pid}")
 
-        ready_status, ready_note = wait_gateway_ready(process, args.host, args.port, args.gateway_ready_timeout)
+        ready_status, ready_note = wait_gateway_ready(process, args.host, effective_port, args.gateway_ready_timeout)
         add_step(steps, "gateway-ready", ready_status, ready_note)
         if ready_status != "passed":
             overall_status = ready_status
@@ -554,7 +565,7 @@ def main() -> int:
 
         client.connect(timeout_seconds=args.connect_timeout)
         connected = True
-        add_step(steps, "tcp-session-open", "passed", f"connected to {args.host}:{args.port}")
+        add_step(steps, "tcp-session-open", "passed", f"connected to {args.host}:{effective_port}")
 
         connect_params = load_connection_params(Path(effective_config_path))
         connect_response = client.send_request("connect", connect_params, timeout_seconds=args.connect_timeout)
@@ -797,6 +808,7 @@ def main() -> int:
             "generated_at": utc_now(),
             "overall_status": overall_status,
             "gateway_exe": str(args.gateway_exe),
+            "gateway_port": effective_port,
             "config_path": str(effective_config_path),
             "config_mode": args.config_mode,
             "dxf_file": str(args.dxf_file),

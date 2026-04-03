@@ -155,6 +155,9 @@ def test_dxf_preview_gate_contract_is_wired():
     assert '{"trajectory_polyline", execution_polyline}' in source
     assert '{"polyline_point_count", snapshot.execution_polyline_point_count}' in source
     assert '{"polyline_source_point_count", snapshot.execution_polyline_source_point_count}' in source
+    assert '{"source", snapshot.motion_preview_source}' in source
+    assert '{"point_count", snapshot.motion_preview_point_count}' in source
+    assert 'for (const auto& point : snapshot.motion_preview_polyline)' in source
     assert "dxf_cache_.preview_state = snapshot.preview_state;" in source
     assert 'request.snapshot_hash = snapshot_hash;' in source
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3011, "Missing plan_id")' in source

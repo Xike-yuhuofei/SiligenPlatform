@@ -217,6 +217,31 @@
               "additionalProperties": false
             }
           },
+          "motion_preview": {
+            "type": "object",
+            "required": ["source", "kind", "source_point_count", "point_count", "is_sampled", "sampling_strategy", "polyline"],
+            "properties": {
+              "source": { "type": "string" },
+              "kind": { "type": "string" },
+              "source_point_count": { "type": "integer" },
+              "point_count": { "type": "integer" },
+              "is_sampled": { "type": "boolean" },
+              "sampling_strategy": { "type": "string" },
+              "polyline": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["x", "y"],
+                  "properties": {
+                    "x": { "type": "number" },
+                    "y": { "type": "number" }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          },
           "polyline_point_count": { "type": "integer" },
           "polyline_source_point_count": { "type": "integer" },
           "trajectory_polyline": {

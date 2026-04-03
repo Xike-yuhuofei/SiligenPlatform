@@ -129,6 +129,11 @@ void ParsePrimaryCommand(CommandLineConfig& config, int argc, char* argv[], int&
         command_set = true;
         return;
     }
+    if (arg == "dxf-preview-snapshot") {
+        config.command = CommandType::DXF_PREVIEW_SNAPSHOT;
+        command_set = true;
+        return;
+    }
     if (arg == "dxf-augment") {
         config.command = CommandType::DXF_AUGMENT;
         command_set = true;

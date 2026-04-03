@@ -671,6 +671,63 @@ bool SnapshotContainsPoint(
     return false;
 }
 
+bool MotionPreviewContainsPoint(
+    const Siligen::Application::UseCases::Dispensing::PreviewSnapshotResponse& snapshot,
+    float target_x,
+    float target_y,
+    float tolerance = 1e-3f) {
+    for (const auto& point : snapshot.motion_preview_polyline) {
+        if (std::abs(point.x - target_x) <= tolerance && std::abs(point.y - target_y) <= tolerance) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool MotionPreviewHasUnexpectedSegmentAngle(
+    const Siligen::Application::UseCases::Dispensing::PreviewSnapshotResponse& snapshot,
+    const std::vector<double>& expected_angles_deg,
+    double tolerance_deg = 0.5) {
+    constexpr double kRadiansToDegrees = 180.0 / 3.14159265358979323846;
+    for (std::size_t i = 1; i < snapshot.motion_preview_polyline.size(); ++i) {
+        const auto& prev = snapshot.motion_preview_polyline[i - 1U];
+        const auto& curr = snapshot.motion_preview_polyline[i];
+        const double dx = static_cast<double>(curr.x) - static_cast<double>(prev.x);
+        const double dy = static_cast<double>(curr.y) - static_cast<double>(prev.y);
+        if (std::abs(dx) <= 1e-9 && std::abs(dy) <= 1e-9) {
+            continue;
+        }
+
+        const double angle_deg = std::atan2(dy, dx) * kRadiansToDegrees;
+        bool matched = false;
+        for (const auto expected_angle_deg : expected_angles_deg) {
+            if (std::abs(angle_deg - expected_angle_deg) <= tolerance_deg) {
+                matched = true;
+                break;
+            }
+        }
+        if (!matched) {
+            return true;
+        }
+    }
+    return false;
+}
+
+Siligen::Domain::Trajectory::ValueObjects::ProcessSegment BuildLineProcessSegment(
+    const Point2D& start,
+    const Point2D& end) {
+    Siligen::Domain::Trajectory::ValueObjects::Segment segment;
+    segment.type = Siligen::Domain::Trajectory::ValueObjects::SegmentType::Line;
+    segment.line.start = start;
+    segment.line.end = end;
+    segment.length = start.DistanceTo(end);
+
+    Siligen::Domain::Trajectory::ValueObjects::ProcessSegment process_segment;
+    process_segment.geometry = segment;
+    process_segment.dispense_on = true;
+    return process_segment;
+}
+
 }  // namespace
 
 TEST(DispensingWorkflowUseCaseTest, StartJobRejectsSafetyDoor) {
@@ -1384,6 +1441,65 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotUsesThreeMillimeterCenterS
         const double distance = std::sqrt(dx * dx + dy * dy);
         EXPECT_NEAR(distance, 3.0, 1e-2) << "spacing at segment index " << i;
     }
+}
+
+TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotUsesProcessPathForNestedMotionPreviewAndKeepsLegacyExecutionPolyline) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+
+    auto plan_record = BuildPreviewPlanRecord(
+        "plan-motion-preview",
+        {
+            Point2D(0.0f, 0.0f),
+            Point2D(100.0f, 0.0f),
+            Point2D(100.0f, 100.0f),
+            Point2D(0.0f, 100.0f),
+            Point2D(0.0f, 0.0f),
+            Point2D(100.0f, 100.0f),
+        });
+    plan_record.execution_trajectory_points = {
+        Siligen::TrajectoryPoint(0.0f, 100.0f, 0.0f),
+        Siligen::TrajectoryPoint(100.0f, 0.0f, 0.0f),
+        Siligen::TrajectoryPoint(0.0f, 0.0f, 0.0f),
+    };
+    plan_record.response.point_count = static_cast<std::uint32_t>(plan_record.execution_trajectory_points.size());
+    plan_record.execution_assembly.export_request.motion_trajectory_points = {
+        Siligen::TrajectoryPoint(0.0f, 0.0f, 0.0f),
+        Siligen::TrajectoryPoint(100.0f, 0.0f, 0.0f),
+        Siligen::TrajectoryPoint(100.0f, 100.0f, 0.0f),
+        Siligen::TrajectoryPoint(0.0f, 100.0f, 0.0f),
+        Siligen::TrajectoryPoint(0.0f, 0.0f, 0.0f),
+        Siligen::TrajectoryPoint(100.0f, 100.0f, 0.0f),
+    };
+    plan_record.execution_assembly.export_request.process_path.segments = {
+        BuildLineProcessSegment(Point2D(0.0f, 0.0f), Point2D(100.0f, 0.0f)),
+        BuildLineProcessSegment(Point2D(100.0f, 0.0f), Point2D(100.0f, 100.0f)),
+        BuildLineProcessSegment(Point2D(100.0f, 100.0f), Point2D(0.0f, 100.0f)),
+        BuildLineProcessSegment(Point2D(0.0f, 100.0f), Point2D(0.0f, 0.0f)),
+        BuildLineProcessSegment(Point2D(0.0f, 0.0f), Point2D(100.0f, 100.0f)),
+    };
+    use_case.plans_[plan_record.response.plan_id] = plan_record;
+
+    Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest request;
+    request.plan_id = "plan-motion-preview";
+    request.max_polyline_points = 64;
+    const auto result = use_case.GetPreviewSnapshot(request);
+
+    ASSERT_TRUE(result.IsSuccess());
+    const auto& snapshot = result.Value();
+    EXPECT_EQ(snapshot.motion_preview_source, "process_path_snapshot");
+    EXPECT_EQ(snapshot.motion_preview_kind, "polyline");
+    EXPECT_EQ(snapshot.motion_preview_sampling_strategy, "process_path_geometry_preserving");
+    EXPECT_FALSE(snapshot.motion_preview_is_sampled);
+    EXPECT_FALSE(SnapshotContainsPoint(snapshot, 100.0f, 100.0f, 1e-4f));
+    EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 100.0f, 0.0f, 1e-4f));
+    EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 100.0f, 100.0f, 1e-4f));
+    EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 0.0f, 100.0f, 1e-4f));
+    EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 0.0f, 0.0f, 1e-4f));
+    EXPECT_FALSE(MotionPreviewHasUnexpectedSegmentAngle(snapshot, {0.0, 90.0, 180.0, -90.0, 45.0}));
 }
 
 TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFailsWhenPreviewAuthorityIsUnavailable) {

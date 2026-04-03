@@ -187,6 +187,7 @@ def test_dxf_preview_and_job_contract():
     assert "execution_polyline" in preview_result_properties
     assert "execution_polyline_point_count" in preview_result_properties
     assert "execution_polyline_source_point_count" in preview_result_properties
+    assert "motion_preview" in preview_result_properties
     assert "trajectory_polyline" in preview_result_properties
     assert "polyline_point_count" in preview_result_properties
     assert "polyline_source_point_count" in preview_result_properties

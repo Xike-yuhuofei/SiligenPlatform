@@ -1,6 +1,7 @@
 #include "WorkflowPreviewSnapshotService.h"
 
 #include "application/services/dispensing/PreviewSnapshotService.h"
+#include "domain/dispensing/planning/domain-services/CurveFlatteningService.h"
 
 #include <algorithm>
 #include <cmath>
@@ -10,6 +11,10 @@ namespace Siligen::Application::Services::Dispensing {
 using Siligen::Application::UseCases::Dispensing::PreviewSnapshotResponse;
 
 namespace {
+
+constexpr double kPreviewDuplicateEpsilonMm = 1e-4;
+constexpr double kPreviewCornerMinTurnDeg = 20.0;
+constexpr double kPreviewCornerMinLegMm = 2e-1;
 
 bool HasAuthoritativeGluePoints(const WorkflowPreviewSnapshotInput& input) {
     return !input.authority_layout_id.empty() &&
@@ -48,6 +53,217 @@ std::vector<Siligen::Shared::Types::Point2D> SampleGluePoints(
     }
     sampled.push_back(points.back());
     return sampled;
+}
+
+double DistanceSquared(
+    const Siligen::Shared::Types::Point2D& lhs,
+    const Siligen::Shared::Types::Point2D& rhs) {
+    const double dx = static_cast<double>(lhs.x) - static_cast<double>(rhs.x);
+    const double dy = static_cast<double>(lhs.y) - static_cast<double>(rhs.y);
+    return dx * dx + dy * dy;
+}
+
+double Distance(
+    const Siligen::Shared::Types::Point2D& lhs,
+    const Siligen::Shared::Types::Point2D& rhs) {
+    return std::sqrt(DistanceSquared(lhs, rhs));
+}
+
+bool NearlyEqualPoint(
+    const Siligen::Shared::Types::Point2D& lhs,
+    const Siligen::Shared::Types::Point2D& rhs,
+    double epsilon_mm) {
+    const double epsilon_sq = epsilon_mm * epsilon_mm;
+    return DistanceSquared(lhs, rhs) <= epsilon_sq;
+}
+
+void AppendDistinctPoint(
+    std::vector<Siligen::Shared::Types::Point2D>& points,
+    const Siligen::Shared::Types::Point2D& candidate) {
+    if (points.empty() || !NearlyEqualPoint(points.back(), candidate, kPreviewDuplicateEpsilonMm)) {
+        points.push_back(candidate);
+    }
+}
+
+std::vector<std::size_t> DetectCornerAnchorIndices(
+    const std::vector<Siligen::Shared::Types::Point2D>& points) {
+    std::vector<std::size_t> anchors;
+    if (points.size() < 3U) {
+        return anchors;
+    }
+
+    anchors.reserve(points.size() / 4U + 2U);
+    for (std::size_t i = 1; i + 1 < points.size(); ++i) {
+        const auto& prev = points[i - 1U];
+        const auto& cur = points[i];
+        const auto& next = points[i + 1U];
+        const double leg1 = Distance(prev, cur);
+        const double leg2 = Distance(cur, next);
+        if (leg1 < kPreviewCornerMinLegMm || leg2 < kPreviewCornerMinLegMm) {
+            continue;
+        }
+
+        const double vx1 = static_cast<double>(cur.x) - static_cast<double>(prev.x);
+        const double vy1 = static_cast<double>(cur.y) - static_cast<double>(prev.y);
+        const double vx2 = static_cast<double>(next.x) - static_cast<double>(cur.x);
+        const double vy2 = static_cast<double>(next.y) - static_cast<double>(cur.y);
+        const double dot = vx1 * vx2 + vy1 * vy2;
+        const double cos_theta = std::clamp(dot / (leg1 * leg2), -1.0, 1.0);
+        const double turn_deg = std::acos(cos_theta) * 180.0 / 3.14159265358979323846;
+        if (turn_deg >= kPreviewCornerMinTurnDeg) {
+            anchors.push_back(i);
+        }
+    }
+
+    return anchors;
+}
+
+std::vector<std::size_t> PickUniformIndices(
+    const std::vector<std::size_t>& candidates,
+    std::size_t target_count) {
+    if (target_count == 0U || candidates.empty()) {
+        return {};
+    }
+    if (candidates.size() <= target_count) {
+        return candidates;
+    }
+    if (target_count == 1U) {
+        return {candidates.front()};
+    }
+
+    std::vector<std::size_t> picked;
+    picked.reserve(target_count);
+    const std::size_t last_pos = candidates.size() - 1U;
+    for (std::size_t i = 0; i < target_count; ++i) {
+        const double ratio = static_cast<double>(i) / static_cast<double>(target_count - 1U);
+        const std::size_t pos = static_cast<std::size_t>(std::llround(ratio * static_cast<double>(last_pos)));
+        const std::size_t value = candidates[pos];
+        if (picked.empty() || picked.back() != value) {
+            picked.push_back(value);
+        }
+    }
+    if (picked.size() < target_count) {
+        for (const auto value : candidates) {
+            if (picked.size() >= target_count) {
+                break;
+            }
+            if (std::find(picked.begin(), picked.end(), value) == picked.end()) {
+                picked.push_back(value);
+            }
+        }
+        std::sort(picked.begin(), picked.end());
+    }
+    if (picked.size() > target_count) {
+        picked.resize(target_count);
+    }
+    return picked;
+}
+
+std::vector<Siligen::Shared::Types::Point2D> ClampPolylineByMaxPointsPreserveCorners(
+    const std::vector<Siligen::Shared::Types::Point2D>& points,
+    std::size_t max_points) {
+    if (points.empty() || max_points == 0U) {
+        return {};
+    }
+
+    const std::size_t safe_max_points = std::max<std::size_t>(2U, max_points);
+    if (points.size() <= safe_max_points) {
+        return points;
+    }
+
+    const auto corner_anchors = DetectCornerAnchorIndices(points);
+    std::vector<std::size_t> mandatory_indices;
+    mandatory_indices.reserve(corner_anchors.size() + 2U);
+    mandatory_indices.push_back(0U);
+    mandatory_indices.insert(mandatory_indices.end(), corner_anchors.begin(), corner_anchors.end());
+    mandatory_indices.push_back(points.size() - 1U);
+    std::sort(mandatory_indices.begin(), mandatory_indices.end());
+    mandatory_indices.erase(std::unique(mandatory_indices.begin(), mandatory_indices.end()), mandatory_indices.end());
+
+    std::vector<std::size_t> sample_indices;
+    if (mandatory_indices.size() >= safe_max_points) {
+        sample_indices = PickUniformIndices(mandatory_indices, safe_max_points);
+    } else {
+        sample_indices = mandatory_indices;
+        std::vector<bool> is_mandatory(points.size(), false);
+        for (const auto idx : mandatory_indices) {
+            if (idx < is_mandatory.size()) {
+                is_mandatory[idx] = true;
+            }
+        }
+        std::vector<std::size_t> supplemental_indices;
+        supplemental_indices.reserve(points.size() - mandatory_indices.size());
+        for (std::size_t idx = 0U; idx < points.size(); ++idx) {
+            if (!is_mandatory[idx]) {
+                supplemental_indices.push_back(idx);
+            }
+        }
+        const std::size_t remaining = safe_max_points - sample_indices.size();
+        const auto picked_supplemental = PickUniformIndices(supplemental_indices, remaining);
+        sample_indices.insert(sample_indices.end(), picked_supplemental.begin(), picked_supplemental.end());
+        std::sort(sample_indices.begin(), sample_indices.end());
+        sample_indices.erase(std::unique(sample_indices.begin(), sample_indices.end()), sample_indices.end());
+    }
+
+    std::vector<Siligen::Shared::Types::Point2D> polyline;
+    polyline.reserve(sample_indices.size());
+    for (const auto idx : sample_indices) {
+        if (idx < points.size()) {
+            polyline.push_back(points[idx]);
+        }
+    }
+    return polyline;
+}
+
+std::vector<Siligen::Shared::Types::Point2D> BuildPointVectorFromProcessPath(
+    const Siligen::ProcessPath::Contracts::ProcessPath& process_path) {
+    std::vector<Siligen::Shared::Types::Point2D> points;
+    Siligen::Domain::Dispensing::DomainServices::CurveFlatteningService flattening_service;
+    constexpr float32 kProcessPathSplineErrorMm = 0.05f;
+    constexpr float32 kProcessPathSampleStepMm = 1.0f;
+
+    for (const auto& process_segment : process_path.segments) {
+        const auto& geometry = process_segment.geometry;
+        if (geometry.is_point) {
+            AppendDistinctPoint(points, geometry.line.start);
+            continue;
+        }
+
+        const auto flatten_result =
+            flattening_service.Flatten(geometry, kProcessPathSplineErrorMm, kProcessPathSampleStepMm);
+        if (flatten_result.IsError()) {
+            continue;
+        }
+        for (const auto& point : flatten_result.Value().points) {
+            AppendDistinctPoint(points, point);
+        }
+    }
+
+    return points;
+}
+
+void CopyPreviewPolyline(
+    const std::vector<Siligen::Application::Services::Dispensing::PreviewSnapshotPoint>& points,
+    std::vector<Siligen::Application::UseCases::Dispensing::PreviewSnapshotPoint>& target) {
+    target.reserve(points.size());
+    for (const auto& point : points) {
+        Siligen::Application::UseCases::Dispensing::PreviewSnapshotPoint snapshot_point;
+        snapshot_point.x = point.x;
+        snapshot_point.y = point.y;
+        target.push_back(snapshot_point);
+    }
+}
+
+void CopyPreviewPolyline(
+    const std::vector<Siligen::Shared::Types::Point2D>& points,
+    std::vector<Siligen::Application::UseCases::Dispensing::PreviewSnapshotPoint>& target) {
+    target.reserve(points.size());
+    for (const auto& point : points) {
+        Siligen::Application::UseCases::Dispensing::PreviewSnapshotPoint snapshot_point;
+        snapshot_point.x = point.x;
+        snapshot_point.y = point.y;
+        target.push_back(snapshot_point);
+    }
 }
 
 }  // namespace
@@ -99,12 +315,44 @@ PreviewSnapshotResponse WorkflowPreviewSnapshotService::BuildResponse(
             response.glue_points.push_back(snapshot_point);
         }
     }
-    response.execution_polyline.reserve(payload.trajectory_polyline.size());
-    for (const auto& point : payload.trajectory_polyline) {
-        Siligen::Application::UseCases::Dispensing::PreviewSnapshotPoint snapshot_point;
-        snapshot_point.x = point.x;
-        snapshot_point.y = point.y;
-        response.execution_polyline.push_back(snapshot_point);
+    CopyPreviewPolyline(payload.trajectory_polyline, response.execution_polyline);
+
+    if (input.process_path != nullptr && !input.process_path->segments.empty()) {
+        const auto process_path_points = BuildPointVectorFromProcessPath(*input.process_path);
+        const auto process_path_polyline =
+            ClampPolylineByMaxPointsPreserveCorners(process_path_points, max_polyline_points);
+        response.motion_preview_source = "process_path_snapshot";
+        response.motion_preview_kind = "polyline";
+        response.motion_preview_source_point_count = static_cast<std::uint32_t>(process_path_points.size());
+        response.motion_preview_point_count = static_cast<std::uint32_t>(process_path_polyline.size());
+        response.motion_preview_is_sampled =
+            response.motion_preview_source_point_count != response.motion_preview_point_count;
+        response.motion_preview_sampling_strategy = response.motion_preview_is_sampled
+            ? "process_path_geometry_preserving_clamp"
+            : "process_path_geometry_preserving";
+        CopyPreviewPolyline(process_path_polyline, response.motion_preview_polyline);
+    } else if (input.motion_trajectory_points != nullptr && !input.motion_trajectory_points->empty()) {
+        PreviewSnapshotInput motion_input = owner_input;
+        motion_input.point_count = static_cast<std::uint32_t>(input.motion_trajectory_points->size());
+        motion_input.trajectory_points = input.motion_trajectory_points;
+        const auto motion_payload = owner_service.BuildPayload(motion_input, max_polyline_points);
+        response.motion_preview_source = "execution_trajectory_snapshot";
+        response.motion_preview_kind = "polyline";
+        response.motion_preview_source_point_count = motion_payload.polyline_source_point_count;
+        response.motion_preview_point_count = motion_payload.polyline_point_count;
+        response.motion_preview_is_sampled =
+            motion_payload.polyline_source_point_count != motion_payload.polyline_point_count;
+        response.motion_preview_sampling_strategy = "fixed_spacing_corner_preserving";
+        CopyPreviewPolyline(motion_payload.trajectory_polyline, response.motion_preview_polyline);
+    } else {
+        response.motion_preview_source = "execution_polyline";
+        response.motion_preview_kind = "polyline";
+        response.motion_preview_source_point_count = response.execution_polyline_source_point_count;
+        response.motion_preview_point_count = response.execution_polyline_point_count;
+        response.motion_preview_is_sampled =
+            response.execution_polyline_source_point_count != response.execution_polyline_point_count;
+        response.motion_preview_sampling_strategy = "legacy_execution_polyline_compat";
+        response.motion_preview_polyline = response.execution_polyline;
     }
     return response;
 }
