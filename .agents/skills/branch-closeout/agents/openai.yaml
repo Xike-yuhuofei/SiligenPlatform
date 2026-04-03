@@ -1,0 +1,4 @@
+interface:
+  display_name: "Branch Closeout"
+  short_description: "Close out one finished task branch safely"
+  default_prompt: "Use $branch-closeout to validate one finished task branch, commit task-related changes, push safely, handle trivial conflicts, open or update the PR, and move it to ready for review."
