@@ -40,6 +40,7 @@ void PrintUsage() {
         << "  siligen_planner_cli dxf-plan --file <path> [...]\n"
         << "  siligen_planner_cli dxf-dispense --file <path> [...]\n"
         << "  siligen_planner_cli dxf-preview --file <path> [--output-dir <dir>] [--preview-max-points <n>] [--json]\n"
+        << "  siligen_planner_cli dxf-preview-snapshot --file <path> [--dxf-speed <mm/s>] [--dry-run] [--json]\n"
         << "  siligen_planner_cli dxf-augment --file <path> [--output <path>] [--dxf-r12]\n"
         << "  siligen_planner_cli recipe create|update|draft|draft-update|publish [...]\n"
         << "  siligen_planner_cli recipe list|get|versions|archive|version-create|compare|rollback|activate|audit|export|import [...]\n"

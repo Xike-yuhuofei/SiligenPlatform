@@ -91,9 +91,16 @@ class FakeProtocol:
 class _FakePreviewView:
     def __init__(self) -> None:
         self.html = ""
+        self.scripts = []
 
     def setHtml(self, html: str) -> None:
         self.html = html
+
+    def page(self):
+        return self
+
+    def runJavaScript(self, script: str) -> None:
+        self.scripts.append(script)
 
 
 class _CancellableWorker:
@@ -652,10 +659,20 @@ class MainWindowTabsTest(unittest.TestCase):
             execution_polyline=[(0.0, 0.0), (12.0, 3.0)],
             preview_kind="glue_points",
         )
+        debug_html = self.window._render_preview_debug_html(
+            snapshot=snapshot,
+            speed_mm_s=12.0,
+            dry_run=False,
+            preview_source="mock_synthetic",
+            glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 3.0)],
+            execution_polyline=[(0.0, 0.0), (12.0, 3.0)],
+            preview_kind="glue_points",
+        )
 
-        self.assertIn("当前为 Mock 模拟轨迹", html)
-        self.assertIn("非真实几何", html)
-        self.assertIn("来源</td><td>Mock模拟</td>", html)
+        self.assertNotIn("当前为 Mock 模拟轨迹", html)
+        self.assertNotIn("来源</td><td>Mock模拟</td>", html)
+        self.assertIn("来源</td><td>Mock模拟</td>", debug_html)
+        self.assertIn("来源说明</td><td>模拟轨迹，非真实几何</td>", debug_html)
 
     def test_render_runtime_preview_html_renders_sampling_warning_banner(self) -> None:
         snapshot = main_window_module.PreviewSnapshotMeta(
@@ -709,6 +726,91 @@ class MainWindowTabsTest(unittest.TestCase):
 
         self.assertIn("非阻断提示", html)
         self.assertIn("短闭环按例外保留", html)
+
+    def test_render_runtime_preview_html_contains_dynamic_playback_overlay(self) -> None:
+        snapshot = main_window_module.PreviewSnapshotMeta(
+            snapshot_id="snapshot-dyn",
+            snapshot_hash="hash-dyn",
+            segment_count=4,
+            point_count=4,
+            total_length_mm=18.0,
+            estimated_time_s=2.0,
+            generated_at="2026-04-03T00:00:00Z",
+        )
+
+        html = self.window._render_runtime_preview_html(
+            snapshot=snapshot,
+            speed_mm_s=12.0,
+            dry_run=False,
+            preview_source="planned_glue_snapshot",
+            glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
+            execution_polyline=[(0.0, 0.0), (12.0, 6.0)],
+            motion_preview=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
+            preview_kind="glue_points",
+        )
+
+        self.assertIn("id='preview-played-line'", html)
+        self.assertIn("id='preview-head'", html)
+        self.assertIn("window.updatePreviewPlayback", html)
+        self.assertIn(".preview-canvas svg{width:100%;height:100%;display:block;}", html)
+        self.assertIn("轨迹层显示点胶头运动路径，可能包含非点胶移动；绿色胶点仅表示图纸/工艺几何。", html)
+        self.assertEqual(self.window._preview_tabs.tabText(0), "轨迹预览")
+        self.assertEqual(self.window._preview_tabs.tabText(1), "调试信息")
+
+    def test_render_preview_debug_html_contains_runtime_debug_fields(self) -> None:
+        snapshot = main_window_module.PreviewSnapshotMeta(
+            snapshot_id="snapshot-debug",
+            snapshot_hash="hash-debug",
+            segment_count=4,
+            point_count=4,
+            total_length_mm=18.0,
+            estimated_time_s=2.0,
+            generated_at="2026-04-03T00:00:00Z",
+        )
+
+        debug_html = self.window._render_preview_debug_html(
+            snapshot=snapshot,
+            speed_mm_s=12.0,
+            dry_run=False,
+            preview_source="planned_glue_snapshot",
+            glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
+            execution_polyline=[(0.0, 0.0), (12.0, 6.0)],
+            motion_preview=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
+            preview_kind="glue_points",
+            preview_validation_classification="pass",
+        )
+
+        self.assertIn("预览调试参数", debug_html)
+        self.assertIn("来源说明</td><td>胶点主预览仍是启动 gate 真值；运动轨迹预览用于离线观察路径</td>", debug_html)
+        self.assertIn("运动轨迹预览点</td><td>4</td>", debug_html)
+        self.assertIn("快照哈希</td><td>hash-debug</td>", debug_html)
+
+    def test_preview_tabs_stay_above_playback_controls(self) -> None:
+        preview_layout = self.window._preview_tabs.parentWidget().layout()
+
+        self.assertIs(preview_layout.itemAt(0).widget(), self.window._preview_tabs)
+        self.assertIs(preview_layout.itemAt(1).layout().itemAt(0).widget(), self.window._preview_play_btn)
+
+    def test_preview_playback_controls_follow_local_playback_state(self) -> None:
+        self.window._dxf_loaded = True
+        self.window._production_tab.setEnabled(True)
+        self.window._dxf_view = _FakePreviewView()
+        main_window_module.WEB_ENGINE_AVAILABLE = True
+        self.window._preview_session.load_local_playback(((0.0, 0.0), (10.0, 0.0)), 1.0)
+
+        self.window._apply_preview_playback_status(sync_dom=False)
+        self.assertTrue(self.window._preview_play_btn.isEnabled())
+        self.assertFalse(self.window._preview_pause_btn.isEnabled())
+        self.assertIn("未播放", self.window._preview_playback_status_label.text())
+
+        self.window._preview_dom_ready = True
+        self.window._on_preview_play()
+
+        self.assertFalse(self.window._preview_play_btn.isEnabled())
+        self.assertTrue(self.window._preview_pause_btn.isEnabled())
+        self.assertIn("播放中", self.window._preview_playback_status_label.text())
+        self.assertTrue(self.window._dxf_view.scripts)
+        self.assertIn("window.updatePreviewPlayback", self.window._dxf_view.scripts[-1])
 
     def test_confirmation_summary_includes_pass_with_exception_reason(self) -> None:
         self._arm_confirmed_preview(
@@ -923,10 +1025,18 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertIsNotNone(self.window._preview_gate.snapshot)
         self.assertEqual(self.window._preview_gate.snapshot.snapshot_hash, "hash-300s")
         self.assertEqual(self.window.statusBar().currentMessage(), "胶点预览已更新，启动前需确认")
-        self.assertIn("规划胶点主预览", self.window._dxf_view.html)
-        self.assertIn("运动轨迹来源</td><td>执行轨迹快照</td>", self.window._dxf_view.html)
-        self.assertIn("运动轨迹采样策略</td><td>fixed_spacing_corner_preserving</td>", self.window._dxf_view.html)
-        self.assertIn("hash-300s", self.window._dxf_view.html)
+        self.assertNotIn("规划胶点主预览", self.window._dxf_view.html)
+        self.assertNotIn(">运动轨迹<", self.window._dxf_view.html)
+        self.assertIn("预览调试参数", self.window._preview_debug_view.toHtml())
+        self.assertIn("快照哈希", self.window._preview_debug_view.toPlainText())
+        self.assertNotIn(">胶点<", self.window._dxf_view.html)
+        self.assertIn("stroke='#8fd3ff'", self.window._dxf_view.html)
+        self.assertIn("stroke-dasharray='7 4'", self.window._dxf_view.html)
+        self.assertIn("运动轨迹来源", self.window._preview_debug_view.toPlainText())
+        self.assertIn("执行轨迹快照", self.window._preview_debug_view.toPlainText())
+        self.assertIn("fixed_spacing_corner_preserving", self.window._preview_debug_view.toPlainText())
+        self.assertIn("hash-300s", self.window._preview_debug_view.toPlainText())
+        self.assertIn("轨迹: 执行轨迹快照(2/8)", self.window._dxf_info_label.text())
 
     def test_preview_snapshot_rejects_non_authoritative_preview_source(self) -> None:
         messages = []

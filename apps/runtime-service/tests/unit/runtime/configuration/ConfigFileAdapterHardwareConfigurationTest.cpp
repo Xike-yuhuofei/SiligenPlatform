@@ -1,4 +1,5 @@
 #include "runtime/configuration/ConfigFileAdapter.h"
+#include "runtime/configuration/validators/ConfigValidator.h"
 
 #include <gtest/gtest.h>
 
@@ -10,6 +11,7 @@
 namespace {
 
 using Siligen::Infrastructure::Adapters::ConfigFileAdapter;
+using Siligen::ConfigValidator;
 
 std::filesystem::path WriteTempIni(const std::string& suffix, const std::string& content) {
     const auto now = std::chrono::steady_clock::now().time_since_epoch().count();
@@ -159,6 +161,24 @@ std::string BuildValveConfigIni(const std::string& cmp_section,
            "\n";
 }
 
+std::filesystem::path LocateWorkspaceRootFromSourcePath() {
+    std::filesystem::path candidate = std::filesystem::weakly_canonical(std::filesystem::path(__FILE__)).parent_path();
+    while (!candidate.empty()) {
+        std::error_code ec;
+        if (std::filesystem::exists(candidate / "WORKSPACE.md", ec) &&
+            std::filesystem::exists(candidate / "AGENTS.md", ec) &&
+            std::filesystem::exists(candidate / "cmake" / "workspace-layout.env", ec)) {
+            return candidate;
+        }
+        const auto parent = candidate.parent_path();
+        if (parent == candidate) {
+            break;
+        }
+        candidate = parent;
+    }
+    return {};
+}
+
 }  // namespace
 
 TEST(ConfigFileAdapterHardwareConfigurationTest, LoadsExplicitAxisEncoderFlags) {
@@ -259,6 +279,27 @@ TEST(ConfigFileAdapterHardwareConfigurationTest, KeepsReadyZeroFallbackUnsetWhen
 
     std::error_code ec;
     std::filesystem::remove(ini_path, ec);
+}
+
+TEST(ConfigFileAdapterHardwareConfigurationTest, CanonicalMachineConfigUsesValidatorSafeHomingVelocities) {
+    const auto workspace_root = LocateWorkspaceRootFromSourcePath();
+    ASSERT_FALSE(workspace_root.empty());
+
+    const auto config_path = workspace_root / "config" / "machine" / "machine_config.ini";
+    ASSERT_TRUE(std::filesystem::exists(config_path));
+
+    ConfigFileAdapter adapter(config_path.string());
+    auto result = adapter.LoadConfiguration();
+
+    ASSERT_TRUE(result.IsSuccess());
+    ASSERT_GE(result.Value().homing_configs.size(), 2u);
+    for (const auto& homing_config : result.Value().homing_configs) {
+        EXPECT_LE(homing_config.ready_zero_speed_mm_s, 10.0f);
+        EXPECT_LE(homing_config.rapid_velocity, 10.0f);
+
+        const auto validation = ConfigValidator::ValidateHomingConfigDetailed(homing_config);
+        EXPECT_TRUE(validation.is_valid) << "axis=" << homing_config.axis;
+    }
 }
 
 TEST(ConfigFileAdapterHardwareConfigurationTest, UsesValveDispenserAsAuthoritativeCmpConfigSource) {

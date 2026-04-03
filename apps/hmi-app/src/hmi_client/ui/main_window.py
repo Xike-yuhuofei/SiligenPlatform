@@ -4,6 +4,7 @@ import sys
 import time
 import logging
 import html
+import json
 import threading
 from pathlib import Path
 
@@ -24,7 +25,8 @@ from PyQt5.QtWidgets import (
     QGroupBox, QLabel, QPushButton, QLineEdit, QGridLayout, QFrame,
     QSlider, QSpinBox, QDoubleSpinBox, QCheckBox, QTabWidget, QFileDialog,
     QProgressBar, QListWidget, QListWidgetItem, QMessageBox, QDialog, QDialogButtonBox,
-    QComboBox, QFormLayout, QScrollArea, QRadioButton, QStatusBar, QPlainTextEdit
+    QComboBox, QFormLayout, QScrollArea, QRadioButton, QStatusBar, QPlainTextEdit,
+    QTextBrowser
 )
 from PyQt5.QtCore import QTimer, Qt, QSize, QEvent, QThread, pyqtSignal
 from PyQt5.QtGui import QFont, QColor
@@ -61,6 +63,7 @@ from client import (
 from hmi_application.preview_session import MotionPreviewMeta, PreviewSessionOwner, PreviewSnapshotWorker
 from client.auth import AuthManager
 from .dxf_default_paths import build_default_dxf_candidates
+from .offline_preview_builder import build_offline_preview_payload
 from .styles import DARK_THEME
 from .recipe_config_widget import RecipeConfigWidget
 
@@ -366,6 +369,7 @@ class MainWindow(QMainWindow):
         self._preview_refresh_inflight = False
         self._preview_state_resync_pending = False
         self._last_preview_resync_attempt_ts = 0.0
+        self._preview_dom_ready = False
         self._runtime_status_fault = False
         self._last_status_error_notice_ts = 0.0
         self._last_status = None
@@ -408,6 +412,7 @@ class MainWindow(QMainWindow):
             self._apply_launch_result(build_offline_launch_result())
         self._update_home_controls_state()
         self._update_preview_refresh_button_state()
+        self._update_preview_playback_controls()
         self._set_preview_message_html("胶点预览待生成", "请先加载DXF文件，再点击“刷新预览”。")
 
     def _setup_ui(self):
@@ -807,17 +812,68 @@ class MainWindow(QMainWindow):
         preview_container = QWidget()
         preview_layout = QVBoxLayout(preview_container)
         preview_layout.setContentsMargins(0, 0, 0, 0)
-        
+        preview_layout.setSpacing(10)
+
+        self._preview_tabs = QTabWidget()
+        self._preview_tabs.setProperty("data-testid", "tabs-preview-detail")
+        preview_layout.addWidget(self._preview_tabs, 1)
+
+        preview_view_page = QWidget()
+        preview_view_layout = QVBoxLayout(preview_view_page)
+        preview_view_layout.setContentsMargins(0, 0, 0, 0)
+
         if WEB_ENGINE_AVAILABLE:
             self._dxf_view = QWebEngineView()
             self._dxf_view.page().setBackgroundColor(QColor("#1E1E1E"))
-            preview_layout.addWidget(self._dxf_view)
+            if hasattr(self._dxf_view, "loadFinished"):
+                self._dxf_view.loadFinished.connect(self._on_preview_view_load_finished)
+            preview_view_layout.addWidget(self._dxf_view)
         else:
             self._dxf_view = None
             hint = QLabel("预览组件不可用\n请安装 PyQtWebEngine")
             hint.setAlignment(Qt.AlignCenter)
             hint.setStyleSheet("color: gray; font-size: 14px;")
-            preview_layout.addWidget(hint)
+            preview_view_layout.addWidget(hint)
+        self._preview_tabs.addTab(preview_view_page, "轨迹预览")
+
+        debug_page = QWidget()
+        debug_layout = QVBoxLayout(debug_page)
+        debug_layout.setContentsMargins(0, 0, 0, 0)
+        self._preview_debug_view = QTextBrowser()
+        self._preview_debug_view.setProperty("data-testid", "browser-preview-debug")
+        self._preview_debug_view.setOpenExternalLinks(False)
+        debug_layout.addWidget(self._preview_debug_view)
+        self._preview_tabs.addTab(debug_page, "调试信息")
+
+        playback_controls_layout = QHBoxLayout()
+        playback_controls_layout.setContentsMargins(0, 0, 0, 0)
+        playback_controls_layout.setSpacing(8)
+        self._preview_play_btn = QPushButton("播放")
+        self._preview_play_btn.setProperty("data-testid", "btn-preview-play")
+        self._preview_play_btn.clicked.connect(self._on_preview_play)
+        playback_controls_layout.addWidget(self._preview_play_btn)
+        self._preview_pause_btn = QPushButton("暂停")
+        self._preview_pause_btn.setProperty("data-testid", "btn-preview-pause")
+        self._preview_pause_btn.clicked.connect(self._on_preview_pause)
+        playback_controls_layout.addWidget(self._preview_pause_btn)
+        self._preview_replay_btn = QPushButton("重播")
+        self._preview_replay_btn.setProperty("data-testid", "btn-preview-replay")
+        self._preview_replay_btn.clicked.connect(self._on_preview_replay)
+        playback_controls_layout.addWidget(self._preview_replay_btn)
+        self._preview_speed_combo = QComboBox()
+        self._preview_speed_combo.setProperty("data-testid", "combo-preview-speed")
+        self._preview_speed_combo.addItem("0.5x", 0.5)
+        self._preview_speed_combo.addItem("1.0x", 1.0)
+        self._preview_speed_combo.addItem("2.0x", 2.0)
+        self._preview_speed_combo.addItem("4.0x", 4.0)
+        self._preview_speed_combo.setCurrentIndex(1)
+        self._preview_speed_combo.currentIndexChanged.connect(self._on_preview_speed_changed)
+        playback_controls_layout.addWidget(self._preview_speed_combo)
+        self._preview_playback_status_label = QLabel("动态预览: 不可用")
+        self._preview_playback_status_label.setProperty("data-testid", "label-preview-playback-state")
+        self._preview_playback_status_label.setProperty("class", "sub-text")
+        playback_controls_layout.addWidget(self._preview_playback_status_label, 1)
+        preview_layout.addLayout(playback_controls_layout)
 
         # Add to main layout
         main_layout.addWidget(sidebar)
@@ -1406,6 +1462,79 @@ class MainWindow(QMainWindow):
         self._dxf_total_length_val = state.dxf_total_length_mm
         self._dxf_est_time_val = state.dxf_estimated_time_text
 
+    def _current_preview_playback_status(self):
+        return self._preview_session.local_playback_status()
+
+    def _update_preview_playback_controls(self) -> None:
+        if not hasattr(self, "_preview_play_btn"):
+            return
+        status = self._current_preview_playback_status()
+        available = bool(status.available and self._dxf_loaded)
+        self._preview_play_btn.setEnabled(available and status.state in ("idle", "paused", "finished"))
+        self._preview_pause_btn.setEnabled(available and status.state == "playing")
+        self._preview_replay_btn.setEnabled(available)
+        self._preview_speed_combo.setEnabled(available)
+        if not available:
+            self._preview_playback_status_label.setText("动态预览: 不可用")
+            return
+        self._preview_playback_status_label.setText(
+            f"动态预览: {self._preview_session.local_playback_state_text()} | "
+            f"{status.elapsed_s:.1f}/{status.duration_s:.1f}s | {status.speed_ratio:.1f}x"
+        )
+
+    def _on_preview_view_load_finished(self, ok: bool = True) -> None:
+        self._preview_dom_ready = bool(ok)
+        if self._preview_dom_ready:
+            self._sync_preview_playback_visual_state()
+
+    def _run_preview_script(self, script: str) -> None:
+        if not WEB_ENGINE_AVAILABLE or not self._dxf_view or not self._preview_dom_ready:
+            return
+        page = self._dxf_view.page() if hasattr(self._dxf_view, "page") else None
+        if page is None or not hasattr(page, "runJavaScript"):
+            return
+        page.runJavaScript(script)
+
+    def _sync_preview_playback_visual_state(self) -> None:
+        status = self._current_preview_playback_status()
+        if not status.available:
+            return
+        self._run_preview_script(
+            f"window.updatePreviewPlayback({status.progress:.6f}, {json.dumps(status.state)});"
+        )
+
+    def _apply_preview_playback_status(self, status=None, *, sync_dom: bool = True) -> None:
+        if status is None:
+            status = self._current_preview_playback_status()
+        self._sync_preview_session_fields()
+        self._update_preview_playback_controls()
+        if sync_dom:
+            self._sync_preview_playback_visual_state()
+
+    def _on_preview_play(self) -> None:
+        status = self._preview_session.play_local_playback(time.monotonic())
+        self._apply_preview_playback_status(status)
+
+    def _on_preview_pause(self) -> None:
+        status = self._preview_session.pause_local_playback(time.monotonic())
+        self._apply_preview_playback_status(status)
+
+    def _on_preview_replay(self) -> None:
+        status = self._preview_session.replay_local_playback(time.monotonic())
+        self._apply_preview_playback_status(status)
+
+    def _on_preview_speed_changed(self, _index: int) -> None:
+        ratio = float(self._preview_speed_combo.currentData() or 1.0)
+        status = self._preview_session.set_local_playback_speed_ratio(ratio, now_monotonic=time.monotonic())
+        self._apply_preview_playback_status(status)
+
+    def _tick_preview_playback(self, now_monotonic: float) -> None:
+        status = self._preview_session.tick_local_playback(now_monotonic)
+        if not status.available:
+            self._update_preview_playback_controls()
+            return
+        self._apply_preview_playback_status(status, sync_dom=status.state in ("idle", "playing", "paused", "finished"))
+
     def _apply_launch_ui_state(self, ui_state: LaunchUiState) -> None:
         self._launch_ui_state = ui_state
         self._preview_state_resync_pending = ui_state.preview_resync_pending
@@ -1527,7 +1656,6 @@ class MainWindow(QMainWindow):
         if ui_state is None:
             return
         for widget_name in (
-            "_production_tab",
             "_motion_control_panel",
             "_dispenser_control_panel",
             "_recipe_tab",
@@ -1535,6 +1663,8 @@ class MainWindow(QMainWindow):
             widget = getattr(self, widget_name, None)
             if widget is not None:
                 widget.setEnabled(ui_state.allow_online_actions)
+        if hasattr(self, "_production_tab"):
+            self._production_tab.setEnabled(True)
         if hasattr(self, "_system_panel"):
             self._system_panel.setEnabled(ui_state.system_panel_enabled)
         if hasattr(self, "_stop_btn"):
@@ -1543,7 +1673,20 @@ class MainWindow(QMainWindow):
             self._hw_connect_btn.setEnabled(ui_state.hw_connect_enabled)
         if hasattr(self, "_global_estop_btn"):
             self._global_estop_btn.setEnabled(ui_state.global_estop_enabled)
+        self._apply_production_action_capabilities(ui_state.allow_online_actions)
         self._update_recovery_controls_state()
+
+    def _apply_production_action_capabilities(self, online_actions_allowed: bool) -> None:
+        if hasattr(self, "_prod_start_btn"):
+            self._prod_start_btn.setEnabled(bool(online_actions_allowed))
+        if hasattr(self, "_prod_pause_btn"):
+            self._prod_pause_btn.setEnabled(bool(online_actions_allowed))
+        if hasattr(self, "_prod_resume_btn"):
+            self._prod_resume_btn.setEnabled(bool(online_actions_allowed))
+        if hasattr(self, "_prod_stop_btn"):
+            self._prod_stop_btn.setEnabled(bool(online_actions_allowed))
+        if hasattr(self, "_target_input"):
+            self._target_input.setEnabled(bool(online_actions_allowed))
 
     def _show_initial_session_message(self) -> None:
         if self._requested_launch_mode == "online" and self._current_session_snapshot() is None:
@@ -2113,8 +2256,6 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("清洗启动失败")
 
     def _on_dxf_browse(self):
-        if not self._require_online_mode("DXF加载"):
-            return
         import os
         start_dir = ""
         if self._dxf_filepath:
@@ -2169,9 +2310,16 @@ class MainWindow(QMainWindow):
         self._update_info_label()
 
     def _auto_regenerate_preview_after_mode_change(self) -> bool:
-        if not self._dxf_loaded or not self._dxf_artifact_id:
+        if not self._dxf_loaded:
             return False
-        if self._is_offline_mode() or not self._is_launch_connected():
+        if self._is_offline_mode():
+            if not self._dxf_filepath or not WEB_ENGINE_AVAILABLE or not self._dxf_view:
+                return False
+            self._generate_dxf_preview()
+            return True
+        if not self._dxf_artifact_id:
+            return False
+        if not self._is_launch_connected():
             return False
         if not WEB_ENGINE_AVAILABLE or not self._dxf_view:
             return False
@@ -2266,14 +2414,33 @@ class MainWindow(QMainWindow):
     def _update_info_label(self):
         self._sync_preview_session_fields()
         self._dxf_info_label.setText(self._preview_session.info_label_text())
+        self._update_preview_playback_controls()
 
     def _set_preview_message_html(self, title: str, detail: str = "", is_error: bool = False):
         if not WEB_ENGINE_AVAILABLE or not self._dxf_view:
+            self._set_preview_debug_html(title, detail, is_error=is_error)
+            self._update_preview_playback_controls()
             return
         title_color = "#ff7b72" if is_error else "#8be9fd"
         detail_html = html.escape(detail) if detail else " "
-        self._dxf_view.setHtml(
+        message_html = (
             "<html><body style='background:#141414;color:#e8e8e8;font-family:Segoe UI;padding:24px;'>"
+            f"<h3 style='margin-top:0;color:{title_color};'>{html.escape(title)}</h3>"
+            f"<p style='color:#b8b8b8;line-height:1.6;'>{detail_html}</p>"
+            "</body></html>"
+        )
+        self._preview_dom_ready = False
+        self._dxf_view.setHtml(message_html)
+        self._set_preview_debug_html(title, detail, is_error=is_error)
+        self._update_preview_playback_controls()
+
+    def _set_preview_debug_html(self, title: str, detail: str = "", is_error: bool = False) -> None:
+        if not hasattr(self, "_preview_debug_view"):
+            return
+        title_color = "#ff7b72" if is_error else "#8be9fd"
+        detail_html = html.escape(detail) if detail else "暂无额外信息。"
+        self._preview_debug_view.setHtml(
+            "<html><body style='background:#1e1e1e;color:#e8e8e8;font-family:Segoe UI;padding:18px;'>"
             f"<h3 style='margin-top:0;color:{title_color};'>{html.escape(title)}</h3>"
             f"<p style='color:#b8b8b8;line-height:1.6;'>{detail_html}</p>"
             "</body></html>"
@@ -2287,11 +2454,14 @@ class MainWindow(QMainWindow):
     def _update_preview_refresh_button_state(self):
         if not hasattr(self, "_refresh_preview_btn"):
             return
-        enabled = self._preview_session.should_enable_refresh(
-            offline_mode=self._is_offline_mode(),
-            connected=self._is_launch_connected(),
-            dxf_loaded=self._dxf_loaded,
-        )
+        if self._is_offline_mode():
+            enabled = bool(self._dxf_loaded and WEB_ENGINE_AVAILABLE and self._dxf_view and (not self._preview_refresh_inflight))
+        else:
+            enabled = self._preview_session.should_enable_refresh(
+                offline_mode=self._is_offline_mode(),
+                connected=self._is_launch_connected(),
+                dxf_loaded=self._dxf_loaded,
+            )
         self._refresh_preview_btn.setEnabled(enabled)
 
     def _is_unrecoverable_preview_resync_error(self, error_message: str, error_code=None) -> bool:
@@ -2385,10 +2555,7 @@ class MainWindow(QMainWindow):
         preview_exception_reason: str = "",
         preview_failure_reason: str = "",
     ) -> str:
-        mode_text = "空跑" if dry_run else "生产"
-        generated_at = html.escape(snapshot.generated_at or "-")
         normalized_source = str(preview_source or "").strip().lower()
-        normalized_kind = str(preview_kind or "").strip().lower() or "glue_points"
         effective_motion_preview = list(motion_preview or execution_polyline)
         effective_motion_preview_meta = motion_preview_meta
         if effective_motion_preview_meta is None and effective_motion_preview:
@@ -2401,48 +2568,6 @@ class MainWindow(QMainWindow):
                 sampling_strategy="legacy_execution_polyline_compat",
             )
         effective_motion_preview_meta = effective_motion_preview_meta or MotionPreviewMeta()
-        source_text = html.escape(self._preview_source_text(normalized_source))
-        source_warning = html.escape(self._preview_source_warning(normalized_source))
-        motion_preview_source_text = html.escape(self._motion_preview_source_text(effective_motion_preview_meta.source))
-        motion_preview_kind = html.escape(effective_motion_preview_meta.kind or ("polyline" if effective_motion_preview else "-"))
-        motion_preview_point_count = effective_motion_preview_meta.point_count or len(effective_motion_preview)
-        motion_preview_source_point_count = (
-            effective_motion_preview_meta.source_point_count or motion_preview_point_count
-        )
-        motion_preview_sampling_text = (
-            f"是（显示 {motion_preview_point_count} / 源 {motion_preview_source_point_count}）"
-            if effective_motion_preview_meta.is_sampled
-            else "否"
-        )
-        motion_preview_sampling_strategy = html.escape(effective_motion_preview_meta.sampling_strategy or "-")
-        if normalized_source == "mock_synthetic":
-            source_banner = (
-                "<div style='margin-bottom:14px;padding:12px 14px;border:1px solid #7f1d1d;"
-                "background:#3a1717;color:#ffd5d5;'>"
-                "<strong>当前为 Mock 模拟轨迹。</strong> 该结果仅用于联调，不代表真实 DXF 几何或真实点胶轨迹。"
-                "</div>"
-            )
-        elif normalized_source == "planned_glue_snapshot":
-            source_banner = (
-                "<div style='margin-bottom:14px;padding:12px 14px;border:1px solid #14532d;"
-                "background:#10261a;color:#c7f9d3;'>"
-                "<strong>当前为规划胶点主预览。</strong> 绿色圆点来自 `glue_points`，灰色路径来自独立 `motion_preview` 运动轨迹预览。"
-                "</div>"
-            )
-        elif normalized_source == "runtime_snapshot":
-            source_banner = (
-                "<div style='margin-bottom:14px;padding:12px 14px;border:1px solid #854d0e;"
-                "background:#2d2110;color:#fde68a;'>"
-                "<strong>当前为旧版 runtime_snapshot。</strong> 该结果仅表示执行轨迹抽样点，不等价于胶点触发预览。"
-                "</div>"
-            )
-        else:
-            source_banner = (
-                "<div style='margin-bottom:14px;padding:12px 14px;border:1px solid #854d0e;"
-                "background:#2d2110;color:#fde68a;'>"
-                "<strong>预览来源未知。</strong> 请勿将当前画面作为真实轨迹验收依据。"
-                "</div>"
-            )
         warning_banner = ""
         if preview_warning:
             warning_banner = (
@@ -2459,6 +2584,26 @@ class MainWindow(QMainWindow):
                 f"<strong>运动轨迹预览提示。</strong> {html.escape(motion_preview_warning)}"
                 "</div>"
             )
+        legend_markup = (
+            "<div style='display:flex;flex-wrap:wrap;gap:10px;align-items:center;"
+            "padding:10px 12px;border:1px solid #2f3640;background:#171717;color:#d5d5d5;'>"
+            "<span style='display:inline-flex;align-items:center;gap:6px;'>"
+            "<span style='width:10px;height:10px;border-radius:999px;background:#00d084;display:inline-block;'></span>"
+            "胶点几何"
+            "</span>"
+            "<span style='display:inline-flex;align-items:center;gap:6px;'>"
+            "<span style='width:18px;height:0;border-top:2px dashed #8fd3ff;display:inline-block;'></span>"
+            "点胶头运动轨迹"
+            "</span>"
+            "<span style='display:inline-flex;align-items:center;gap:6px;'>"
+            "<span style='width:18px;height:0;border-top:3px solid #f59e0b;display:inline-block;'></span>"
+            "当前播放进度"
+            "</span>"
+            "</div>"
+            "<div style='margin-top:8px;color:#9ca3af;font-size:12px;line-height:1.5;'>"
+            "轨迹层显示点胶头运动路径，可能包含非点胶移动；绿色胶点仅表示图纸/工艺几何。"
+            "</div>"
+        )
         validation_banner = ""
         if preview_validation_classification == "pass_with_exception" and preview_exception_reason:
             validation_banner = (
@@ -2511,13 +2656,70 @@ class MainWindow(QMainWindow):
         display_points = _map_points(glue_points)
         display_motion_preview = _map_points(effective_motion_preview)
         motion_preview_markup = ""
+        playback_data_markup = ""
+        playback_overlay_markup = ""
         if len(display_motion_preview) >= 2:
             motion_preview_polyline_markup = " ".join(
                 f"{point_x:.2f},{point_y:.2f}" for point_x, point_y in display_motion_preview
             )
             motion_preview_markup = (
-                f"<polyline points='{motion_preview_polyline_markup}' fill='none' stroke='#5b6472' "
-                "stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round' opacity='0.9' />"
+                f"<polyline id='preview-base-shadow' points='{motion_preview_polyline_markup}' fill='none' stroke='#27445f' "
+                "stroke-width='5.2' stroke-linecap='round' stroke-linejoin='round' opacity='0.85' />"
+                f"<polyline id='preview-base-line' points='{motion_preview_polyline_markup}' fill='none' stroke='#8fd3ff' "
+                "stroke-width='2.8' stroke-linecap='round' stroke-linejoin='round' "
+                "stroke-dasharray='7 4' opacity='1.0' />"
+            )
+            playback_overlay_markup = (
+                "<polyline id='preview-played-shadow' points='' fill='none' stroke='#3f2a06' "
+                "stroke-width='6.8' stroke-linecap='round' stroke-linejoin='round' opacity='0.95' />"
+                "<polyline id='preview-played-line' points='' fill='none' stroke='#f59e0b' "
+                "stroke-width='3.6' stroke-linecap='round' stroke-linejoin='round' opacity='1.0' />"
+                "<circle id='preview-head-shadow' cx='0' cy='0' r='8.2' fill='#3f2a06' opacity='0.92' />"
+                "<circle id='preview-head' cx='0' cy='0' r='5.2' fill='#f59e0b' stroke='#fff4d6' stroke-width='1.2' />"
+            )
+            playback_points_json = json.dumps([[round(point_x, 3), round(point_y, 3)] for point_x, point_y in display_motion_preview])
+            cumulative_lengths = [0.0]
+            total_display_length = 0.0
+            for index in range(1, len(display_motion_preview)):
+                prev_x, prev_y = display_motion_preview[index - 1]
+                curr_x, curr_y = display_motion_preview[index]
+                total_display_length += ((curr_x - prev_x) ** 2 + (curr_y - prev_y) ** 2) ** 0.5
+                cumulative_lengths.append(round(total_display_length, 6))
+            playback_lengths_json = json.dumps(cumulative_lengths)
+            playback_data_markup = (
+                "<script>"
+                f"window.previewPlaybackData={{points:{playback_points_json},cumulativeLengths:{playback_lengths_json},"
+                f"totalLength:{total_display_length:.6f}}};"
+                "window.updatePreviewPlayback=function(progress,playbackState){"
+                "const data=window.previewPlaybackData||{};"
+                "const pts=Array.isArray(data.points)?data.points:[];"
+                "const cumulative=Array.isArray(data.cumulativeLengths)?data.cumulativeLengths:[];"
+                "const totalLength=Number(data.totalLength||0);"
+                "const normalized=Math.max(0,Math.min(1,Number(progress||0)));"
+                "const head=document.getElementById('preview-head');"
+                "const headShadow=document.getElementById('preview-head-shadow');"
+                "const playedShadow=document.getElementById('preview-played-shadow');"
+                "const playedLine=document.getElementById('preview-played-line');"
+                "if(!head||!headShadow||!playedShadow||!playedLine||pts.length===0){return;}"
+                "const setMarker=function(point){head.setAttribute('cx',point[0].toFixed(2));head.setAttribute('cy',point[1].toFixed(2));"
+                "headShadow.setAttribute('cx',point[0].toFixed(2));headShadow.setAttribute('cy',point[1].toFixed(2));};"
+                "if(pts.length===1||totalLength<=0){playedShadow.setAttribute('points','');playedLine.setAttribute('points','');setMarker(pts[0]);return;}"
+                "const traveled=normalized*totalLength;"
+                "const traveledPoints=[pts[0]];"
+                "let marker=pts[0];"
+                "for(let index=1;index<pts.length;index+=1){"
+                "const prev=pts[index-1];const curr=pts[index];"
+                "const prevLength=Number(cumulative[index-1]||0);const currLength=Number(cumulative[index]||prevLength);"
+                "if(traveled>=currLength-1e-6){traveledPoints.push(curr);marker=curr;continue;}"
+                "const segmentLength=Math.max(currLength-prevLength,1e-9);"
+                "const ratio=Math.max(0,Math.min(1,(traveled-prevLength)/segmentLength));"
+                "marker=[prev[0]+((curr[0]-prev[0])*ratio),prev[1]+((curr[1]-prev[1])*ratio)];"
+                "traveledPoints.push(marker);break;}"
+                "const pointString=traveledPoints.map(function(point){return point[0].toFixed(2)+','+point[1].toFixed(2);}).join(' ');"
+                "playedShadow.setAttribute('points',pointString);playedLine.setAttribute('points',pointString);setMarker(marker);"
+                "};"
+                "document.addEventListener('DOMContentLoaded',function(){window.updatePreviewPlayback(0,'idle');});"
+                "</script>"
             )
         points_markup = []
         for point_x, point_y in display_points:
@@ -2526,18 +2728,82 @@ class MainWindow(QMainWindow):
             )
         point_cloud_svg = "".join(points_markup)
         return (
-            "<html><body style='background:#1e1e1e;color:#e8e8e8;font-family:Segoe UI;padding:18px;'>"
-            f"{source_banner}"
+            "<html><head>"
+            "<style>"
+            "html,body{height:100%;margin:0;background:#1e1e1e;color:#e8e8e8;font-family:Segoe UI;}"
+            "body{display:flex;min-height:100%;}"
+            ".preview-root{box-sizing:border-box;display:flex;flex-direction:column;gap:14px;"
+            "height:100%;width:100%;padding:18px;}"
+            ".preview-canvas{flex:1 1 auto;min-height:0;background:#141414;border:1px solid #333;}"
+            ".preview-canvas svg{width:100%;height:100%;display:block;}"
+            "</style>"
+            "</head><body>"
+            "<div class='preview-root'>"
             f"{warning_banner}"
             f"{motion_warning_banner}"
             f"{validation_banner}"
-            "<p style='color:#b8b8b8;'>"
-            "主图同时展示胶点触发点与运动轨迹路径，便于离线优化运动算法。执行前确认与哈希校验仍只基于胶点主预览。"
-            "</p>"
-            f"<svg viewBox='0 0 {width:.0f} {height:.0f}' style='width:100%;height:56vh;background:#141414;border:1px solid #333;'>"
+            f"{legend_markup}"
+            f"<div class='preview-canvas'><svg viewBox='0 0 {width:.0f} {height:.0f}' preserveAspectRatio='xMidYMid meet'>"
             f"{motion_preview_markup}"
             f"{point_cloud_svg}"
-            "</svg>"
+            f"{playback_overlay_markup}"
+            "</svg></div>"
+            "</div>"
+            f"{playback_data_markup}"
+            "</body></html>"
+        )
+
+    def _render_preview_debug_html(
+        self,
+        snapshot: PreviewSnapshotMeta,
+        speed_mm_s: float,
+        dry_run: bool,
+        preview_source: str,
+        glue_points: list,
+        execution_polyline: list,
+        preview_kind: str,
+        motion_preview: list | None = None,
+        motion_preview_meta: MotionPreviewMeta | None = None,
+        preview_validation_classification: str = "",
+    ) -> str:
+        mode_text = "空跑" if dry_run else "生产"
+        generated_at = html.escape(snapshot.generated_at or "-")
+        normalized_source = str(preview_source or "").strip().lower()
+        normalized_kind = str(preview_kind or "").strip().lower() or "glue_points"
+        effective_motion_preview = list(motion_preview or execution_polyline)
+        effective_motion_preview_meta = motion_preview_meta
+        if effective_motion_preview_meta is None and effective_motion_preview:
+            effective_motion_preview_meta = MotionPreviewMeta(
+                source="legacy_execution_polyline",
+                kind="polyline",
+                point_count=len(effective_motion_preview),
+                source_point_count=len(effective_motion_preview),
+                is_sampled=False,
+                sampling_strategy="legacy_execution_polyline_compat",
+            )
+        effective_motion_preview_meta = effective_motion_preview_meta or MotionPreviewMeta()
+        source_text = html.escape(self._preview_source_text(normalized_source))
+        source_warning = html.escape(self._preview_source_warning(normalized_source))
+        motion_preview_source_text = html.escape(self._motion_preview_source_text(effective_motion_preview_meta.source))
+        motion_preview_kind = html.escape(effective_motion_preview_meta.kind or ("polyline" if effective_motion_preview else "-"))
+        motion_preview_point_count = effective_motion_preview_meta.point_count or len(effective_motion_preview)
+        motion_preview_source_point_count = (
+            effective_motion_preview_meta.source_point_count or motion_preview_point_count
+        )
+        motion_preview_sampling_text = (
+            f"是（显示 {motion_preview_point_count} / 源 {motion_preview_source_point_count}）"
+            if effective_motion_preview_meta.is_sampled
+            else "否"
+        )
+        motion_preview_sampling_strategy = html.escape(effective_motion_preview_meta.sampling_strategy or "-")
+        all_points = list(glue_points) + list(effective_motion_preview)
+        min_x = min(point[0] for point in all_points)
+        max_x = max(point[0] for point in all_points)
+        min_y = min(point[1] for point in all_points)
+        max_y = max(point[1] for point in all_points)
+        return (
+            "<html><body style='background:#1e1e1e;color:#e8e8e8;font-family:Segoe UI;padding:18px;'>"
+            "<h3 style='margin-top:0;color:#8be9fd;'>预览调试参数</h3>"
             "<table style='border-collapse:collapse;'>"
             f"<tr><td style='padding:4px 16px 4px 0;'>来源</td><td>{source_text}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>来源说明</td><td>{source_warning}</td></tr>"
@@ -2553,8 +2819,8 @@ class MainWindow(QMainWindow):
             f"<tr><td style='padding:4px 16px 4px 0;'>运动轨迹源点数</td><td>{motion_preview_source_point_count}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>运动轨迹已采样</td><td>{motion_preview_sampling_text}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>运动轨迹采样策略</td><td>{motion_preview_sampling_strategy}</td></tr>"
-            f"<tr><td style='padding:4px 16px 4px 0;'>胶点圆心距</td><td>{glue_point_spacing_mm:.1f} mm</td></tr>"
-            f"<tr><td style='padding:4px 16px 4px 0;'>胶点直径</td><td>{glue_dot_diameter_mm:.1f} mm</td></tr>"
+            "<tr><td style='padding:4px 16px 4px 0;'>胶点圆心距</td><td>3.0 mm</td></tr>"
+            "<tr><td style='padding:4px 16px 4px 0;'>胶点直径</td><td>1.5 mm</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>总长度</td><td>{snapshot.total_length_mm:.3f} mm</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>预估时长</td><td>{snapshot.estimated_time_s:.3f} s</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>X范围</td><td>{min_x:.3f} ~ {max_x:.3f}</td></tr>"
@@ -2628,7 +2894,25 @@ class MainWindow(QMainWindow):
             preview_exception_reason=self._preview_session.state.preview_exception_reason,
             preview_failure_reason=self._preview_session.state.preview_failure_reason,
         )
+        debug_html = self._render_preview_debug_html(
+            snapshot=result.snapshot,
+            speed_mm_s=self._dxf_speed.value(),
+            dry_run=result.dry_run,
+            preview_source=result.preview_source,
+            glue_points=list(result.glue_points),
+            execution_polyline=list(result.execution_polyline),
+            motion_preview=list(result.motion_preview),
+            motion_preview_meta=result.motion_preview_meta,
+            preview_kind=result.preview_kind,
+            preview_validation_classification=self._preview_session.state.preview_validation_classification,
+        )
+        self._preview_dom_ready = False
         self._dxf_view.setHtml(html_content)
+        self._preview_debug_view.setHtml(debug_html)
+        if not hasattr(self._dxf_view, "loadFinished"):
+            self._preview_dom_ready = True
+            self._sync_preview_playback_visual_state()
+        self._apply_preview_playback_status(sync_dom=False)
         render_elapsed_ms = int(round((time.perf_counter() - render_started_at) * 1000.0))
         performance_profile = payload.get("performance_profile", {})
         worker_profile = payload.get("worker_profile", {})
@@ -2679,12 +2963,24 @@ class MainWindow(QMainWindow):
         )
 
     def _on_dxf_load(self):
-        if not self._require_online_mode("DXF加载"):
-            return
         if not self._dxf_filepath:
             self.statusBar().showMessage("未选择DXF文件")
             return
         self._cancel_active_preview_worker(reason="dxf_reload")
+        if self._is_offline_mode():
+            self._dxf_artifact_id = "offline-local"
+            self._current_job_id = ""
+            self._dxf_loaded = True
+            self._preview_session.reset_for_loaded_dxf()
+            self._sync_preview_session_fields()
+            filename = os.path.basename(self._dxf_filepath)
+            self._dxf_filename_display.setText(filename)
+            self._dxf_filename_display.setToolTip(self._dxf_filepath)
+            self._update_info_label()
+            self.statusBar().showMessage("DXF已加载，正在生成离线预览")
+            self._update_preview_refresh_button_state()
+            self._generate_dxf_preview()
+            return
         ok, payload, error = self._protocol.dxf_create_artifact(self._dxf_filepath)
         if ok:
             self._dxf_artifact_id = str(payload.get("artifact_id", "")).strip()
@@ -2697,7 +2993,6 @@ class MainWindow(QMainWindow):
             self._dxf_segments_label = None # Deprecated, clear ref if any
             
             # Update filename display (Basename only)
-            import os
             filename = os.path.basename(self._dxf_filepath)
             self._dxf_filename_display.setText(filename)
             self._dxf_filename_display.setToolTip(self._dxf_filepath)
@@ -2721,7 +3016,7 @@ class MainWindow(QMainWindow):
 
     def _generate_dxf_preview(self):
         """Generate and display DXF preview in embedded view."""
-        if not self._require_online_mode("DXF预览"):
+        if not self._is_offline_mode() and not self._require_online_mode("DXF预览"):
             return
         if self._preview_refresh_inflight:
             self.statusBar().showMessage("胶点预览仍在生成中，请稍后")
@@ -2760,9 +3055,29 @@ class MainWindow(QMainWindow):
         self._update_info_label()
         self._set_preview_refresh_inflight(True)
         self._cleanup_temp_preview()
-        self._set_preview_message_html("胶点预览生成中", "正在请求规划胶点快照和执行轨迹辅助层，请稍候。")
+        if self._is_offline_mode():
+            self._set_preview_message_html("胶点预览生成中", "正在生成离线动态预览，请稍候。")
+        else:
+            self._set_preview_message_html("胶点预览生成中", "正在请求规划胶点快照和执行轨迹辅助层，请稍候。")
         self.statusBar().showMessage("胶点预览生成中...")
         _UI_LOGGER.info("preview_requested speed_mm_s=%.3f file=%s", speed, self._dxf_filepath)
+        if self._is_offline_mode():
+            try:
+                payload = build_offline_preview_payload(
+                    self._dxf_filepath,
+                    speed_mm_s=speed,
+                    dry_run=bool(dry_run_mode),
+                )
+            except Exception as exc:
+                self._set_preview_refresh_inflight(False)
+                result = self._preview_session.handle_worker_error(str(exc))
+                self._sync_preview_session_fields()
+                self._update_info_label()
+                self.statusBar().showMessage(result.status_message)
+                self._set_preview_message_html(result.title, result.detail, is_error=result.is_error)
+                return
+            self._on_preview_snapshot_completed(True, payload, "", source="offline_local")
+            return
         self._cancel_active_preview_worker(reason="preview_restart", keep_refresh_inflight=True)
         self._preview_request_generation += 1
         request_token = self._preview_request_generation
@@ -3113,6 +3428,8 @@ class MainWindow(QMainWindow):
         self._runtime_label.setText(f"{hours}:{minutes:02d}:{seconds:02d}")
 
     def _update_status(self):
+        self._tick_preview_playback(time.monotonic())
+
         # Check auto-logout
         if not self._auth.check_activity():
             self._user_label.setText("操作员")

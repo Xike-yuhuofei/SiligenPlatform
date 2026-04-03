@@ -40,6 +40,7 @@ enum class CommandType {
     DXF_PLAN,
     DXF_DISPENSE,
     DXF_PREVIEW,
+    DXF_PREVIEW_SNAPSHOT,
     DXF_AUGMENT,
     RECIPE_CREATE,
     RECIPE_UPDATE,

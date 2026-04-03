@@ -113,6 +113,7 @@ def test_real_preview_snapshot_matches_rect_diag_baseline(tmp_path: Path) -> Non
     assert snapshot["execution_polyline_point_count"] == baseline["snapshot"]["execution_polyline_point_count"]
     assert snapshot["execution_polyline_source_point_count"] == baseline["snapshot"]["execution_polyline_source_point_count"]
     assert snapshot["execution_polyline_point_count"] == len(execution_polyline)
+    assert report["gateway_port"] > 0
     assert preview_verdict["verdict"] == "passed"
     assert preview_verdict["launch_mode"] == "online"
     assert preview_verdict["online_ready"] is True
@@ -135,6 +136,16 @@ def test_real_preview_snapshot_matches_rect_diag_baseline(tmp_path: Path) -> Non
     assert "glue_points.json" in preview_evidence
     assert "execution_polyline.json" in preview_evidence
     assert "hmi-preview.png" in preview_evidence
+
+    motion_preview = snapshot["motion_preview"]
+    baseline_motion_preview = baseline["motion_preview"]
+    assert motion_preview["source"] == baseline_motion_preview["source"]
+    assert motion_preview["kind"] == baseline_motion_preview["kind"]
+    assert motion_preview["source_point_count"] == baseline_motion_preview["source_point_count"]
+    assert motion_preview["point_count"] == baseline_motion_preview["point_count"]
+    assert motion_preview["is_sampled"] == baseline_motion_preview["is_sampled"]
+    assert motion_preview["sampling_strategy"] == baseline_motion_preview["sampling_strategy"]
+    assert len(motion_preview["polyline"]) == baseline_motion_preview["point_count"]
 
     coordinate_tolerance = float(baseline["tolerances"]["coordinate_mm"])
     length_tolerance = float(baseline["tolerances"]["length_mm"])
@@ -237,4 +248,21 @@ def test_real_preview_snapshot_matches_rect_diag_baseline(tmp_path: Path) -> Non
             float(expected_point["y"]),
             coordinate_tolerance,
             f"execution_polyline[{index}].y",
+        )
+
+    for expected_point in baseline["motion_preview_sample_points"]:
+        index = int(expected_point["index"])
+        assert 0 <= index < len(motion_preview["polyline"]), f"motion preview sample index out of range: {index}"
+        actual_point = motion_preview["polyline"][index]
+        _assert_close(
+            float(actual_point["x"]),
+            float(expected_point["x"]),
+            coordinate_tolerance,
+            f"motion_preview[{index}].x",
+        )
+        _assert_close(
+            float(actual_point["y"]),
+            float(expected_point["y"]),
+            coordinate_tolerance,
+            f"motion_preview[{index}].y",
         )

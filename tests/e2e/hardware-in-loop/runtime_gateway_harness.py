@@ -149,6 +149,10 @@ def resolve_default_exe(*file_names: str) -> Path:
     for file_name in file_names:
         candidates.extend(
             (
+                ROOT / "build" / "control-apps" / "bin" / file_name,
+                ROOT / "build" / "control-apps" / "bin" / "Debug" / file_name,
+                ROOT / "build" / "control-apps" / "bin" / "Release" / file_name,
+                ROOT / "build" / "control-apps" / "bin" / "RelWithDebInfo" / file_name,
                 ROOT / "build" / "bin" / file_name,
                 ROOT / "build" / "bin" / "Debug" / file_name,
                 ROOT / "build" / "bin" / "Release" / file_name,

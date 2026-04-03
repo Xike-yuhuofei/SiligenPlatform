@@ -263,6 +263,57 @@ class PreviewSessionOwnerTest(unittest.TestCase):
         self.assertEqual(self.owner.state.motion_preview_point_count, 3)
         self.assertEqual(self.owner.state.motion_preview_sampling_strategy, "fixed_spacing_corner_preserving")
         self.assertEqual(result.motion_preview_warning, "")
+        self.assertIn("轨迹: 执行轨迹快照(3/12)", self.owner.info_label_text())
+
+    def test_process_snapshot_payload_builds_local_playback_model_from_motion_preview(self) -> None:
+        result = self.owner.process_snapshot_payload(_valid_payload(), current_dry_run=False)
+
+        self.assertTrue(result.ok)
+        playback = self.owner.local_playback_status()
+        self.assertTrue(playback.available)
+        self.assertEqual(playback.state, "idle")
+        self.assertEqual(playback.progress, 0.0)
+        self.assertEqual(playback.point_count, 2)
+        self.assertEqual(playback.duration_s, 1.0)
+
+    def test_local_playback_supports_play_pause_resume_and_finish(self) -> None:
+        self.owner.process_snapshot_payload(_valid_payload(), current_dry_run=False)
+
+        self.owner.play_local_playback(10.0)
+        playing = self.owner.tick_local_playback(10.25)
+        paused = self.owner.pause_local_playback(10.25)
+        resumed = self.owner.play_local_playback(10.25)
+        finished = self.owner.tick_local_playback(11.5)
+
+        self.assertEqual(playing.state, "playing")
+        self.assertGreater(playing.progress, 0.2)
+        self.assertEqual(paused.state, "paused")
+        self.assertGreater(paused.progress, 0.2)
+        self.assertEqual(resumed.state, "playing")
+        self.assertEqual(finished.state, "finished")
+        self.assertEqual(finished.progress, 1.0)
+
+    def test_local_playback_speed_ratio_retimes_progress(self) -> None:
+        self.owner.process_snapshot_payload(_valid_payload(), current_dry_run=False)
+
+        self.owner.play_local_playback(20.0)
+        self.owner.set_local_playback_speed_ratio(2.0, now_monotonic=20.0)
+        playback = self.owner.tick_local_playback(20.25)
+
+        self.assertEqual(playback.speed_ratio, 2.0)
+        self.assertGreater(playback.progress, 0.45)
+
+    def test_reset_for_loaded_dxf_clears_local_playback_state(self) -> None:
+        self.owner.process_snapshot_payload(_valid_payload(), current_dry_run=False)
+        self.owner.play_local_playback(30.0)
+        self.owner.tick_local_playback(30.2)
+
+        self.owner.reset_for_loaded_dxf(segment_count=5)
+
+        playback = self.owner.local_playback_status()
+        self.assertFalse(playback.available)
+        self.assertEqual(playback.state, "idle")
+        self.assertEqual(playback.progress, 0.0)
 
     def test_process_snapshot_payload_falls_back_to_execution_polyline_when_motion_preview_missing(self) -> None:
         result = self.owner.process_snapshot_payload(
@@ -275,6 +326,7 @@ class PreviewSessionOwnerTest(unittest.TestCase):
         self.assertIn("回退到 execution_polyline", result.motion_preview_warning)
         self.assertEqual(self.owner.state.motion_preview_source, "legacy_execution_polyline")
         self.assertEqual(self.owner.state.motion_preview_kind, "polyline")
+        self.assertIn("轨迹: execution_polyline 兼容层(2/10)", self.owner.info_label_text())
 
     def test_process_snapshot_payload_invalidates_plan_when_dry_run_mode_changes(self) -> None:
         result = self.owner.process_snapshot_payload(

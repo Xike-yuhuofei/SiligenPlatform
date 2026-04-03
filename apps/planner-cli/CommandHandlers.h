@@ -50,6 +50,7 @@ class CLICommandHandlers {
     int HandleDXFPlan(const Siligen::Application::CommandLineConfig& config);
     int HandleDXFDispense(const Siligen::Application::CommandLineConfig& config);
     int HandleDXFPreview(const Siligen::Application::CommandLineConfig& config);
+    int HandleDXFPreviewSnapshot(const Siligen::Application::CommandLineConfig& config);
     int HandleDXFAugment(const Siligen::Application::CommandLineConfig& config);
     int HandleRecipeCreate(const Siligen::Application::CommandLineConfig& config);
     int HandleRecipeUpdate(const Siligen::Application::CommandLineConfig& config);

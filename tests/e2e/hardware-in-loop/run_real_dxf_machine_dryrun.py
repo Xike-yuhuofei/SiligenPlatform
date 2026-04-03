@@ -5,6 +5,7 @@ import base64
 import configparser
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -117,7 +118,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config-path", type=Path, default=DEFAULT_CONFIG_PATH)
     parser.add_argument("--dxf-file", type=Path, default=DEFAULT_DXF_FILE)
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=9527)
+    parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--gateway-ready-timeout", type=float, default=8.0)
     parser.add_argument("--connect-timeout", type=float, default=15.0)
     parser.add_argument("--home-timeout", type=float, default=60.0)
@@ -172,6 +173,15 @@ def add_step(
 def ensure_exists(path: Path, label: str) -> None:
     if not path.exists():
         raise FileNotFoundError(f"{label} missing: {path}")
+
+
+def resolve_listen_port(host: str, requested_port: int) -> int:
+    if requested_port > 0:
+        return requested_port
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind((host, 0))
+        return int(sock.getsockname()[1])
 
 
 def parse_mock_io_json(raw_text: str) -> dict[str, bool]:
@@ -763,6 +773,8 @@ def build_report(
         "generated_at": utc_now(),
         "workspace_root": str(ROOT),
         "gateway_exe": str(args.gateway_exe),
+        "gateway_host": str(artifacts.get("gateway_host", args.host)),
+        "gateway_port": int(artifacts.get("gateway_port", args.port)),
         "config_path": str(args.config_path),
         "dxf_file": str(args.dxf_file),
         "overall_status": overall_status,
@@ -796,7 +808,10 @@ def build_report(
         "safety": {
             "before": summarize_safety(artifacts.get("status_before", {})),
             "non_homed_before": non_homed_axes(artifacts.get("status_before", {})),
+            "after_home": summarize_safety(artifacts.get("status_after_home", {})),
             "non_homed_after_home": non_homed_axes(artifacts.get("status_after_home", {})),
+            "after_home_boundary_escape": summarize_safety(artifacts.get("status_after_escape", {})),
+            "after_preflight_normalization": summarize_safety(artifacts.get("status_after_preflight_normalization", {})),
             "after": summarize_safety(artifacts.get("status_after", {})),
         },
         "job_status_history": job_status_history,
@@ -866,8 +881,49 @@ def non_homed_axes(status_payload: dict[str, Any]) -> list[str]:
     return pending
 
 
-def require_safe_for_motion(status_payload: dict[str, Any]) -> None:
+def active_home_boundary_axes(status_payload: dict[str, Any]) -> list[str]:
     safety = summarize_safety(status_payload)
+    active_axes: list[str] = []
+    if safety.get("home_boundary_x_active", False):
+        active_axes.append("X")
+    if safety.get("home_boundary_y_active", False):
+        active_axes.append("Y")
+    return active_axes
+
+
+def extract_machine_position(status_payload: dict[str, Any]) -> dict[str, float]:
+    result = status_result(status_payload)
+    position_payload = result.get("position", {})
+    axes_payload = result.get("axes", {})
+    if not isinstance(position_payload, dict):
+        position_payload = {}
+    if not isinstance(axes_payload, dict):
+        axes_payload = {}
+
+    x = parse_float(position_payload.get("x"))
+    y = parse_float(position_payload.get("y"))
+    if x is None:
+        axis_payload = axes_payload.get("X")
+        if isinstance(axis_payload, dict):
+            x = parse_float(axis_payload.get("position"))
+    if y is None:
+        axis_payload = axes_payload.get("Y")
+        if isinstance(axis_payload, dict):
+            y = parse_float(axis_payload.get("position"))
+
+    return {
+        "x": float(x if x is not None else 0.0),
+        "y": float(y if y is not None else 0.0),
+    }
+
+
+def require_safe_for_motion(
+    status_payload: dict[str, Any],
+    *,
+    ignore_home_boundaries: bool = False,
+) -> None:
+    safety = summarize_safety(status_payload)
+    ignored = {"home_boundary_x_active", "home_boundary_y_active"} if ignore_home_boundaries else set()
     blocking = [
         key
         for key in (
@@ -880,7 +936,7 @@ def require_safe_for_motion(status_payload: dict[str, Any]) -> None:
             "home_boundary_x_active",
             "home_boundary_y_active",
         )
-        if safety.get(key)
+        if safety.get(key) and key not in ignored
     ]
     if blocking:
         raise RuntimeError("unsafe machine state before dry-run: " + ",".join(blocking))
@@ -907,6 +963,8 @@ def build_report_markdown(report: dict[str, Any]) -> str:
     lines.append(f"- overall_status: `{report['overall_status']}`")
     lines.append(f"- verdict: `{report.get('verdict', {}).get('kind', 'canonical_step_failed')}`")
     lines.append(f"- gateway_exe: `{report['gateway_exe']}`")
+    lines.append(f"- gateway_host: `{report.get('gateway_host', '')}`")
+    lines.append(f"- gateway_port: `{report.get('gateway_port', '')}`")
     lines.append(f"- config_path: `{report['config_path']}`")
     lines.append(f"- dxf_file: `{report['dxf_file']}`")
     job_timeout_budget = report.get("artifacts", {}).get("job_timeout_budget", {})
@@ -964,6 +1022,7 @@ def main() -> int:
     ensure_exists(args.config_path, "config")
     ensure_exists(args.dxf_file, "dxf file")
     requested_mock_io = parse_mock_io_json(args.mock_io_json)
+    effective_port = resolve_listen_port(args.host, args.port)
 
     report_dir = args.report_root / time.strftime("%Y%m%d-%H%M%S")
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -980,7 +1039,7 @@ def main() -> int:
     overall_status = "failed"
     verdict_kind = "canonical_step_failed"
     process: subprocess.Popen[str] | None = None
-    client = TcpJsonClient(args.host, args.port)
+    client = TcpJsonClient(args.host, effective_port)
     connected = False
     final_job_status: dict[str, Any] | None = None
     final_machine_status: dict[str, Any] | None = None
@@ -988,10 +1047,13 @@ def main() -> int:
     first_contradiction_sample: dict[str, Any] | None = None
     coord_running_recorded = False
     axis_motion_recorded = False
+    artifacts["gateway_host"] = args.host
+    artifacts["gateway_port"] = effective_port
+    artifacts["home_boundary_auto_normalization_enabled"] = not bool(requested_mock_io)
 
     try:
         process = subprocess.Popen(
-            [str(args.gateway_exe), "--config", str(args.config_path), "--port", str(args.port)],
+            [str(args.gateway_exe), "--config", str(args.config_path), "--port", str(effective_port)],
             cwd=str(ROOT),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -1002,7 +1064,7 @@ def main() -> int:
         )
         add_step(steps, "gateway-launch", "passed", f"pid={process.pid}")
 
-        ready_status, ready_note = wait_gateway_ready(process, args.host, args.port, args.gateway_ready_timeout)
+        ready_status, ready_note = wait_gateway_ready(process, args.host, effective_port, args.gateway_ready_timeout)
         add_step(steps, "gateway-ready", ready_status, ready_note)
         if ready_status != "passed":
             overall_status = ready_status
@@ -1011,7 +1073,7 @@ def main() -> int:
 
         client.connect(timeout_seconds=args.connect_timeout)
         connected = True
-        add_step(steps, "tcp-session-open", "passed", f"connected to {args.host}:{args.port}")
+        add_step(steps, "tcp-session-open", "passed", f"connected to {args.host}:{effective_port}")
 
         connect_params = load_connection_params(args.config_path)
         connect_response = client.send_request("connect", connect_params, timeout_seconds=args.connect_timeout)
@@ -1065,10 +1127,31 @@ def main() -> int:
                 ensure_ascii=True,
             ),
         )
-        require_safe_for_motion(status_before)
         non_homed_before = non_homed_axes(status_before)
+        home_boundary_before = active_home_boundary_axes(status_before)
 
-        if non_homed_before:
+        if requested_mock_io:
+            require_safe_for_motion(status_before)
+        else:
+            require_safe_for_motion(status_before, ignore_home_boundaries=True)
+
+        should_home = bool(non_homed_before or home_boundary_before)
+        add_step(
+            steps,
+            "preflight-home-normalization-decision",
+            "passed",
+            json.dumps(
+                {
+                    "requested_mock_io": requested_mock_io,
+                    "non_homed_axes": non_homed_before,
+                    "home_boundary_axes": home_boundary_before,
+                    "should_home": should_home,
+                },
+                ensure_ascii=True,
+            ),
+        )
+
+        if should_home:
             home_response = client.send_request("home", None, timeout_seconds=args.home_timeout)
             artifacts["home_response"] = home_response
             if "error" in home_response:
@@ -1078,6 +1161,18 @@ def main() -> int:
             status_after_home = client.send_request("status", None, timeout_seconds=5.0)
             artifacts["status_after_home"] = status_after_home
             non_homed_after_home = non_homed_axes(status_after_home)
+            add_step(
+                steps,
+                "status-after-home",
+                "passed",
+                json.dumps(
+                    {
+                        "non_homed_axes": non_homed_after_home,
+                        "safety": summarize_safety(status_after_home),
+                    },
+                    ensure_ascii=True,
+                ),
+            )
             if non_homed_after_home:
                 raise RuntimeError("axes still not homed after home: " + ",".join(non_homed_after_home))
         else:
@@ -1085,6 +1180,71 @@ def main() -> int:
             artifacts["status_after_home"] = status_after_home
             non_homed_after_home = []
             add_step(steps, "home", "passed", "already homed; no homing command sent")
+            add_step(
+                steps,
+                "status-after-home",
+                "passed",
+                json.dumps(
+                    {
+                        "non_homed_axes": non_homed_after_home,
+                        "safety": summarize_safety(status_after_home),
+                    },
+                    ensure_ascii=True,
+                ),
+            )
+
+        status_for_motion = status_after_home
+        home_boundary_after_home = active_home_boundary_axes(status_after_home)
+        if home_boundary_after_home and not requested_mock_io:
+            artifacts["post_home_boundary_latched"] = {
+                "active_axes": home_boundary_after_home,
+                "position_after_home": extract_machine_position(status_after_home),
+                "accepted_for_real_preflight": True,
+                "reason": "successful home on real hardware may still leave HOME signal active at machine origin",
+            }
+            add_step(
+                steps,
+                "home-boundary-post-home-observed",
+                "passed",
+                json.dumps(artifacts["post_home_boundary_latched"], ensure_ascii=True),
+            )
+        else:
+            artifacts["post_home_boundary_latched"] = {
+                "active_axes": home_boundary_after_home,
+                "position_after_home": extract_machine_position(status_after_home),
+                "accepted_for_real_preflight": False,
+            }
+
+        artifacts["status_after_escape"] = status_after_home
+        add_step(
+            steps,
+            "status-after-home-boundary-observation",
+            "passed",
+            json.dumps(
+                {
+                    "safety": summarize_safety(status_after_home),
+                    "position": extract_machine_position(status_after_home),
+                    "post_home_boundary_axes": home_boundary_after_home,
+                    "accepted_for_real_preflight": bool(home_boundary_after_home and not requested_mock_io),
+                },
+                ensure_ascii=True,
+            ),
+        )
+
+        require_safe_for_motion(status_for_motion, ignore_home_boundaries=not requested_mock_io)
+        artifacts["status_after_preflight_normalization"] = status_for_motion
+        add_step(
+            steps,
+            "preflight-safe-for-motion",
+            "passed",
+            json.dumps(
+                {
+                    "safety": summarize_safety(status_for_motion),
+                    "non_homed_axes": non_homed_axes(status_for_motion),
+                },
+                ensure_ascii=True,
+            ),
+        )
 
         dxf_bytes = args.dxf_file.read_bytes()
         artifact_response = client.send_request(

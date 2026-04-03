@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import math
 import threading
 import time
 from typing import TYPE_CHECKING, Protocol
@@ -60,6 +61,12 @@ class PreviewSessionState:
     dxf_segment_count: int = 0
     dxf_total_length_mm: float = 0.0
     dxf_estimated_time_text: str = "-"
+    local_playback_state: str = "idle"
+    local_playback_speed_ratio: float = 1.0
+    local_playback_progress: float = 0.0
+    local_playback_elapsed_s: float = 0.0
+    local_playback_duration_s: float = 0.0
+    local_playback_point_count: int = 0
 
 
 class PreflightBlockReason(str, Enum):
@@ -107,6 +114,32 @@ class MotionPreviewMeta:
     source_point_count: int = 0
     is_sampled: bool = False
     sampling_strategy: str = ""
+
+
+class PreviewPlaybackState(str, Enum):
+    IDLE = "idle"
+    PLAYING = "playing"
+    PAUSED = "paused"
+    FINISHED = "finished"
+
+
+@dataclass(frozen=True)
+class PreviewPlaybackModel:
+    points: tuple[tuple[float, float], ...] = ()
+    cumulative_lengths: tuple[float, ...] = ()
+    total_length_mm: float = 0.0
+    duration_s: float = 0.0
+
+
+@dataclass(frozen=True)
+class PreviewPlaybackStatus:
+    available: bool
+    state: str
+    progress: float = 0.0
+    elapsed_s: float = 0.0
+    duration_s: float = 0.0
+    speed_ratio: float = 1.0
+    point_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -259,9 +292,13 @@ class PreviewSnapshotWorker(QThread):
 
 class PreviewSessionOwner:
     RESYNC_RETRY_INTERVAL_S = 2.0
+    DEFAULT_LOCAL_PLAYBACK_SPEED_MM_S = 20.0
 
     def __init__(self, gate: DispensePreviewGate | None = None) -> None:
         self._state = PreviewSessionState(gate=gate or DispensePreviewGate())
+        self._playback_model = PreviewPlaybackModel()
+        self._playback_started_at_monotonic: float | None = None
+        self._playback_elapsed_anchor_s = 0.0
 
     @property
     def gate(self) -> DispensePreviewGate:
@@ -326,6 +363,12 @@ class PreviewSessionOwner:
         ).strip().lower()
         if normalized == "execution_trajectory_snapshot":
             return "执行轨迹快照"
+        if normalized == "process_path_snapshot":
+            return "工艺路径快照"
+        if normalized == "execution_polyline":
+            return "执行轨迹快照"
+        if normalized == "offline_local_preview":
+            return "离线本地轨迹"
         if normalized == "legacy_execution_polyline":
             return "execution_polyline 兼容层"
         if normalized:
@@ -397,6 +440,131 @@ class PreviewSessionOwner:
         self._state.preview_validation_classification = ""
         self._state.preview_exception_reason = ""
         self._state.preview_failure_reason = ""
+        self._clear_local_playback_state()
+
+    def _clear_local_playback_state(self) -> None:
+        self._playback_model = PreviewPlaybackModel()
+        self._playback_started_at_monotonic = None
+        self._playback_elapsed_anchor_s = 0.0
+        self._state.local_playback_state = PreviewPlaybackState.IDLE.value
+        self._state.local_playback_speed_ratio = 1.0
+        self._state.local_playback_progress = 0.0
+        self._state.local_playback_elapsed_s = 0.0
+        self._state.local_playback_duration_s = 0.0
+        self._state.local_playback_point_count = 0
+
+    @staticmethod
+    def _build_local_playback_model(
+        points: tuple[tuple[float, float], ...],
+        estimated_time_s: float,
+    ) -> PreviewPlaybackModel:
+        if len(points) < 2:
+            return PreviewPlaybackModel()
+        cumulative_lengths = [0.0]
+        total_length_mm = 0.0
+        for index in range(1, len(points)):
+            prev_x, prev_y = points[index - 1]
+            curr_x, curr_y = points[index]
+            total_length_mm += math.hypot(curr_x - prev_x, curr_y - prev_y)
+            cumulative_lengths.append(total_length_mm)
+        duration_s = float(estimated_time_s or 0.0)
+        if duration_s <= 0.0:
+            duration_s = max(total_length_mm / PreviewSessionOwner.DEFAULT_LOCAL_PLAYBACK_SPEED_MM_S, 0.1)
+        return PreviewPlaybackModel(
+            points=tuple(points),
+            cumulative_lengths=tuple(cumulative_lengths),
+            total_length_mm=total_length_mm,
+            duration_s=duration_s,
+        )
+
+    def load_local_playback(self, points: tuple[tuple[float, float], ...], estimated_time_s: float) -> None:
+        self._clear_local_playback_state()
+        model = self._build_local_playback_model(points, estimated_time_s)
+        self._playback_model = model
+        self._state.local_playback_duration_s = model.duration_s
+        self._state.local_playback_point_count = len(model.points)
+
+    def local_playback_status(self) -> PreviewPlaybackStatus:
+        return PreviewPlaybackStatus(
+            available=len(self._playback_model.points) >= 2,
+            state=self._state.local_playback_state,
+            progress=self._state.local_playback_progress,
+            elapsed_s=self._state.local_playback_elapsed_s,
+            duration_s=self._state.local_playback_duration_s,
+            speed_ratio=self._state.local_playback_speed_ratio,
+            point_count=self._state.local_playback_point_count,
+        )
+
+    def local_playback_state_text(self) -> str:
+        state_map = {
+            PreviewPlaybackState.IDLE.value: "未播放",
+            PreviewPlaybackState.PLAYING.value: "播放中",
+            PreviewPlaybackState.PAUSED.value: "已暂停",
+            PreviewPlaybackState.FINISHED.value: "已完成",
+        }
+        return state_map.get(self._state.local_playback_state, self._state.local_playback_state or "未播放")
+
+    def _sync_local_playback_timing(self, now_monotonic: float) -> None:
+        if self._state.local_playback_state != PreviewPlaybackState.PLAYING.value:
+            return
+        if self._playback_started_at_monotonic is None or self._playback_model.duration_s <= 0.0:
+            return
+        elapsed_s = self._playback_elapsed_anchor_s + (
+            max(0.0, now_monotonic - self._playback_started_at_monotonic) * self._state.local_playback_speed_ratio
+        )
+        duration_s = self._playback_model.duration_s
+        if elapsed_s >= duration_s:
+            elapsed_s = duration_s
+            self._state.local_playback_state = PreviewPlaybackState.FINISHED.value
+            self._playback_started_at_monotonic = None
+            self._playback_elapsed_anchor_s = elapsed_s
+        self._state.local_playback_elapsed_s = elapsed_s
+        self._state.local_playback_progress = min(1.0, max(0.0, elapsed_s / duration_s))
+
+    def play_local_playback(self, now_monotonic: float) -> PreviewPlaybackStatus:
+        if len(self._playback_model.points) < 2:
+            return self.local_playback_status()
+        if self._state.local_playback_state == PreviewPlaybackState.PLAYING.value:
+            return self.local_playback_status()
+        if self._state.local_playback_state == PreviewPlaybackState.FINISHED.value:
+            self.replay_local_playback(now_monotonic)
+            return self.local_playback_status()
+        self._playback_elapsed_anchor_s = self._state.local_playback_elapsed_s
+        self._playback_started_at_monotonic = now_monotonic
+        self._state.local_playback_state = PreviewPlaybackState.PLAYING.value
+        return self.local_playback_status()
+
+    def pause_local_playback(self, now_monotonic: float) -> PreviewPlaybackStatus:
+        self._sync_local_playback_timing(now_monotonic)
+        if self._state.local_playback_state == PreviewPlaybackState.PLAYING.value:
+            self._playback_elapsed_anchor_s = self._state.local_playback_elapsed_s
+            self._playback_started_at_monotonic = None
+            self._state.local_playback_state = PreviewPlaybackState.PAUSED.value
+        return self.local_playback_status()
+
+    def replay_local_playback(self, now_monotonic: float) -> PreviewPlaybackStatus:
+        if len(self._playback_model.points) < 2:
+            return self.local_playback_status()
+        self._playback_elapsed_anchor_s = 0.0
+        self._state.local_playback_elapsed_s = 0.0
+        self._state.local_playback_progress = 0.0
+        self._playback_started_at_monotonic = now_monotonic
+        self._state.local_playback_state = PreviewPlaybackState.PLAYING.value
+        return self.local_playback_status()
+
+    def tick_local_playback(self, now_monotonic: float) -> PreviewPlaybackStatus:
+        self._sync_local_playback_timing(now_monotonic)
+        return self.local_playback_status()
+
+    def set_local_playback_speed_ratio(self, ratio: float, now_monotonic: float | None = None) -> PreviewPlaybackStatus:
+        clamped = min(4.0, max(0.25, float(ratio or 1.0)))
+        if now_monotonic is not None:
+            self._sync_local_playback_timing(now_monotonic)
+        self._playback_elapsed_anchor_s = self._state.local_playback_elapsed_s
+        if self._state.local_playback_state == PreviewPlaybackState.PLAYING.value and now_monotonic is not None:
+            self._playback_started_at_monotonic = now_monotonic
+        self._state.local_playback_speed_ratio = clamped
+        return self.local_playback_status()
 
     @staticmethod
     def _map_preview_contract_reason(reason: StartBlockReason) -> PreflightBlockReason:
@@ -412,8 +580,24 @@ class PreviewSessionOwner:
         return (
             f"段数: {self._state.dxf_segment_count} | 长度: {self._state.dxf_total_length_mm:.1f}mm | "
             f"预估: {self._state.dxf_estimated_time_text} | 预览: {self.preview_state_text()} | "
-            f"来源: {self.preview_source_text()}"
+            f"来源: {self.preview_source_text()} | 轨迹: {self.motion_preview_summary_text()}"
         )
+
+    def motion_preview_summary_text(self) -> str:
+        source_text = self.motion_preview_source_text()
+        if source_text == "-" or self._state.motion_preview_point_count <= 0:
+            return "-"
+
+        if (
+            self._state.motion_preview_is_sampled and
+            self._state.motion_preview_source_point_count > self._state.motion_preview_point_count
+        ):
+            return (
+                f"{source_text}({self._state.motion_preview_point_count}/"
+                f"{self._state.motion_preview_source_point_count})"
+            )
+
+        return f"{source_text}({self._state.motion_preview_point_count}点)"
 
     def should_enable_refresh(self, *, offline_mode: bool, connected: bool, dxf_loaded: bool) -> bool:
         return (not offline_mode) and connected and dxf_loaded and (not self._state.preview_refresh_inflight)
@@ -440,6 +624,7 @@ class PreviewSessionOwner:
         self._state.dxf_segment_count = int(segment_count or 0)
         self._state.dxf_total_length_mm = 0.0
         self._state.dxf_estimated_time_text = "-"
+        self._clear_local_playback_state()
 
     def invalidate_plan(self) -> None:
         self.gate.mark_input_changed()
@@ -531,6 +716,8 @@ class PreviewSessionOwner:
     ) -> PreviewPayloadResult:
         if clear_source:
             self._clear_preview_contract_state()
+        else:
+            self._clear_local_playback_state()
         self.gate.preview_failed(gate_error_message)
         return PreviewPayloadResult(
             ok=False,
@@ -684,6 +871,7 @@ class PreviewSessionOwner:
             estimated_time_s=float(payload.get("estimated_time_s", 0.0) or 0.0),
             generated_at=str(payload.get("generated_at", "")),
         )
+        self.load_local_playback(tuple(motion_preview), snapshot.estimated_time_s)
         execution_source_point_count = int(payload.get("execution_polyline_source_point_count", 0) or 0)
         preview_warning = self.sampling_warning(
             glue_point_count=snapshot.point_count,
