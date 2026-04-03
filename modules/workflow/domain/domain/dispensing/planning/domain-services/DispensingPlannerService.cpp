@@ -16,8 +16,6 @@
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
 
-#include <ruckig/ruckig.hpp>
-
 #include <array>
 #include <algorithm>
 #include <cmath>
@@ -1194,160 +1192,6 @@ void ApplyProcessInfoToTrajectory(const ProcessPath& path, float32 vmax, MotionT
     }
 }
 
-Result<MotionTrajectory> TryPlanWithRuckig(const ProcessPath& path, const DispensingPlanRequest& request) {
-    const float32 step = ResolveInterpolationStep(request);
-    auto points = BuildInterpolationSeedPoints(path, step);
-    if (points.size() < 2) {
-        return Result<MotionTrajectory>::Failure(
-            Error(ErrorCode::INVALID_PARAMETER, "路径点不足，无法生成Ruckig轨迹", "DispensingPlanner"));
-    }
-
-    auto cumulative = BuildCumulativeLengths(points);
-    if (cumulative.empty()) {
-        return Result<MotionTrajectory>::Failure(
-            Error(ErrorCode::INVALID_PARAMETER, "路径长度为0，无法生成Ruckig轨迹", "DispensingPlanner"));
-    }
-
-    const double total_length = cumulative.back();
-    if (total_length <= static_cast<double>(kEpsilon)) {
-        return Result<MotionTrajectory>::Failure(
-            Error(ErrorCode::INVALID_PARAMETER, "路径长度为0，无法生成Ruckig轨迹", "DispensingPlanner"));
-    }
-
-    float32 vmax = request.dispensing_velocity;
-    float32 amax = request.acceleration;
-    float32 jmax = request.max_jerk;
-    const bool jerk_enforced = (jmax > 0.0f);
-    if (jmax <= 0.0f) {
-        jmax = 5000.0f;
-    }
-
-    const float32 sample_dt = (request.sample_dt <= 0.0f) ? 0.01f : request.sample_dt;
-
-    ruckig::Ruckig<1> otg {static_cast<double>(sample_dt)};
-    ruckig::InputParameter<1> input;
-    input.current_position[0] = 0.0;
-    input.current_velocity[0] = 0.0;
-    input.current_acceleration[0] = 0.0;
-    input.target_position[0] = total_length;
-    input.target_velocity[0] = 0.0;
-    input.target_acceleration[0] = 0.0;
-    input.max_velocity[0] = vmax;
-    input.max_acceleration[0] = amax;
-    input.max_jerk[0] = jmax;
-
-    ruckig::Trajectory<1> traj;
-    auto result = otg.calculate(input, traj);
-    if (result != ruckig::Result::Working && result != ruckig::Result::Finished) {
-        return Result<MotionTrajectory>::Failure(
-            Error(ErrorCode::INVALID_STATE,
-                  "Ruckig计算失败: result=" + std::to_string(static_cast<int>(result)),
-                  "DispensingPlanner"));
-    }
-
-    const double duration = traj.get_duration();
-    std::vector<double> times;
-    if (request.sample_ds > 0.0f) {
-        for (double s = 0.0; s <= total_length + 1e-9; s += request.sample_ds) {
-            double t = 0.0;
-            if (!traj.get_first_time_at_position(0, s, t)) {
-                break;
-            }
-            times.push_back(t);
-        }
-    } else {
-        const double dt = static_cast<double>(sample_dt);
-        for (double t = 0.0; t <= duration + 1e-9; t += dt) {
-            times.push_back(t);
-        }
-        if (times.empty() || times.back() < duration - 1e-6) {
-            times.push_back(duration);
-        }
-    }
-
-    MotionTrajectory trajectory;
-    trajectory.total_time = static_cast<float32>(duration);
-    trajectory.total_length = static_cast<float32>(total_length);
-
-    trajectory.points.reserve(times.size());
-
-    float32 max_v = 0.0f;
-    float32 max_a = 0.0f;
-    float32 max_j = 0.0f;
-    int32 violations = 0;
-    bool has_prev = false;
-    float32 prev_acc = 0.0f;
-    float32 prev_t = 0.0f;
-
-    for (double t : times) {
-        std::array<double, 1> pos {};
-        std::array<double, 1> vel {};
-        std::array<double, 1> acc {};
-        traj.at_time(t, pos, vel, acc);
-
-        const double s = pos[0];
-        const size_t seg_idx = FindSegmentIndex(cumulative, s);
-        const double seg_start = cumulative[seg_idx];
-        const double seg_len = std::max(1e-9, cumulative[seg_idx + 1] - seg_start);
-        const double ratio = (s - seg_start) / seg_len;
-
-        const Point2D& p0 = points[seg_idx];
-        const Point2D& p1 = points[seg_idx + 1];
-        const double x = static_cast<double>(p0.x) + (static_cast<double>(p1.x) - p0.x) * ratio;
-        const double y = static_cast<double>(p0.y) + (static_cast<double>(p1.y) - p0.y) * ratio;
-
-        const double dx = (static_cast<double>(p1.x) - p0.x) / seg_len;
-        const double dy = (static_cast<double>(p1.y) - p0.y) / seg_len;
-
-        const float32 speed = static_cast<float32>(vel[0]);
-        const float32 accel = static_cast<float32>(acc[0]);
-
-        MotionTrajectoryPoint point;
-        point.t = static_cast<float32>(t);
-        point.position = Point3D(static_cast<float32>(x), static_cast<float32>(y), 0.0f);
-        point.velocity = Point3D(static_cast<float32>(dx * vel[0]), static_cast<float32>(dy * vel[0]), 0.0f);
-        trajectory.points.push_back(point);
-
-        const float32 speed_abs = std::abs(speed);
-        const float32 accel_abs = std::abs(accel);
-        max_v = std::max(max_v, speed_abs);
-        max_a = std::max(max_a, accel_abs);
-
-        if (has_prev) {
-            const float32 dt_step = std::max(1e-9f, static_cast<float32>(t) - prev_t);
-            const float32 jerk = (accel - prev_acc) / dt_step;
-            const float32 jerk_abs = std::abs(jerk);
-            max_j = std::max(max_j, jerk_abs);
-            if (jerk_enforced && jerk_abs > jmax + 1e-6f) {
-                ++violations;
-            }
-        }
-
-        if (speed_abs > vmax + 1e-6f || accel_abs > amax + 1e-6f) {
-            ++violations;
-        }
-
-        prev_acc = accel;
-        prev_t = static_cast<float32>(t);
-        has_prev = true;
-    }
-
-    auto& report = trajectory.planning_report;
-    report.total_length_mm = static_cast<float32>(total_length);
-    report.total_time_s = static_cast<float32>(duration);
-    report.max_velocity_observed = max_v;
-    report.max_acceleration_observed = max_a;
-    report.max_jerk_observed = max_j;
-    report.constraint_violations = violations;
-    report.time_integration_error_s = 0.0f;
-    report.time_integration_fallbacks = 0;
-    report.jerk_limit_enforced = jerk_enforced;
-    report.jerk_plan_failed = false;
-
-    ApplyProcessInfoToTrajectory(path, request.dispensing_velocity, trajectory);
-    return Result<MotionTrajectory>::Success(trajectory);
-}
-
 UnifiedTrajectoryPlanRequest BuildUnifiedPlanRequest(const DispensingPlanRequest& request) {
     UnifiedTrajectoryPlanRequest plan_request{};
     plan_request.process.default_flow = 1.0f;
@@ -1389,7 +1233,7 @@ UnifiedTrajectoryPlanRequest BuildUnifiedPlanRequest(const DispensingPlanRequest
     if (!plan_request.process.corner_slowdown) {
         plan_request.motion.corner_speed_factor = 1.0f;
     }
-    plan_request.generate_motion_trajectory = false;
+    plan_request.generate_motion_trajectory = true;
     return plan_request;
 }
 
@@ -1957,12 +1801,6 @@ Result<DispensingPlan> DispensingPlanner::Plan(const DispensingPlanRequest& requ
     UnifiedTrajectoryPlannerService planner(velocity_profile_service_);
     auto plan_request = BuildUnifiedPlanRequest(request);
     auto plan_result = planner.Plan(primitives, plan_request);
-    auto py_result = TryPlanWithRuckig(plan_result.shaped_path, request);
-    if (py_result.IsError()) {
-        SILIGEN_LOG_ERROR("Ruckig轨迹生成失败: " + py_result.GetError().ToString());
-        return Result<DispensingPlan>::Failure(py_result.GetError());
-    }
-    plan_result.motion_trajectory = py_result.Value();
     {
         auto& report = plan_result.motion_trajectory.planning_report;
         report.segment_count = static_cast<int32>(plan_result.process_path.segments.size());
