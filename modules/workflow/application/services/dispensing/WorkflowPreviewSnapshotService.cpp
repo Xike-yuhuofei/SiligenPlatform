@@ -1,6 +1,7 @@
 #include "WorkflowPreviewSnapshotService.h"
 
 #include "application/services/dispensing/PreviewSnapshotService.h"
+#include "domain/dispensing/planning/domain-services/CurveFlatteningService.h"
 
 #include <algorithm>
 #include <cmath>
@@ -257,6 +258,33 @@ std::vector<Siligen::Shared::Types::Point2D> BuildPointVectorFromTrajectory(
     return points;
 }
 
+std::vector<Siligen::Shared::Types::Point2D> BuildPointVectorFromProcessPath(
+    const Siligen::ProcessPath::Contracts::ProcessPath& process_path) {
+    std::vector<Siligen::Shared::Types::Point2D> points;
+    Siligen::Domain::Dispensing::DomainServices::CurveFlatteningService flattening_service;
+    constexpr float32 kProcessPathSplineErrorMm = 0.05f;
+    constexpr float32 kProcessPathSampleStepMm = 1.0f;
+
+    for (const auto& process_segment : process_path.segments) {
+        const auto& geometry = process_segment.geometry;
+        if (geometry.is_point) {
+            AppendDistinctPoint(points, geometry.line.start);
+            continue;
+        }
+
+        const auto flatten_result =
+            flattening_service.Flatten(geometry, kProcessPathSplineErrorMm, kProcessPathSampleStepMm);
+        if (flatten_result.IsError()) {
+            continue;
+        }
+        for (const auto& point : flatten_result.Value().points) {
+            AppendDistinctPoint(points, point);
+        }
+    }
+
+    return points;
+}
+
 void CopyPreviewPolyline(
     const std::vector<Siligen::Application::Services::Dispensing::PreviewSnapshotPoint>& points,
     std::vector<Siligen::Application::UseCases::Dispensing::PreviewSnapshotPoint>& target) {
@@ -329,7 +357,21 @@ PreviewSnapshotResponse WorkflowPreviewSnapshotService::BuildResponse(
         }
     }
 
-    if (input.motion_trajectory_points != nullptr && !input.motion_trajectory_points->empty()) {
+    if (input.process_path != nullptr && !input.process_path->segments.empty()) {
+        const auto process_path_points = BuildPointVectorFromProcessPath(*input.process_path);
+        const auto process_path_polyline =
+            ClampPolylineByMaxPointsPreserveCorners(process_path_points, max_polyline_points);
+        response.motion_preview_source = "process_path_snapshot";
+        response.motion_preview_kind = "polyline";
+        response.motion_preview_source_point_count = static_cast<std::uint32_t>(process_path_points.size());
+        response.motion_preview_point_count = static_cast<std::uint32_t>(process_path_polyline.size());
+        response.motion_preview_is_sampled =
+            response.motion_preview_source_point_count != response.motion_preview_point_count;
+        response.motion_preview_sampling_strategy = response.motion_preview_is_sampled
+            ? "process_path_geometry_preserving_clamp"
+            : "process_path_geometry_preserving";
+        CopyPreviewPolyline(process_path_polyline, response.motion_preview_polyline);
+    } else if (input.motion_trajectory_points != nullptr && !input.motion_trajectory_points->empty()) {
         const auto motion_points = BuildPointVectorFromTrajectory(*input.motion_trajectory_points);
         const auto motion_polyline =
             ClampPolylineByMaxPointsPreserveCorners(motion_points, max_polyline_points);

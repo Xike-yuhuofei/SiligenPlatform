@@ -769,12 +769,14 @@ def build_report(
     verdict: dict[str, Any],
     first_contradiction_sample: dict[str, Any] | None,
 ) -> dict[str, Any]:
+    gateway_host = artifacts.get("gateway_host", getattr(args, "host", ""))
+    gateway_port = artifacts.get("gateway_port", getattr(args, "port", 0))
     return {
         "generated_at": utc_now(),
         "workspace_root": str(ROOT),
         "gateway_exe": str(args.gateway_exe),
-        "gateway_host": str(artifacts.get("gateway_host", args.host)),
-        "gateway_port": int(artifacts.get("gateway_port", args.port)),
+        "gateway_host": str(gateway_host),
+        "gateway_port": int(parse_int(gateway_port) or 0),
         "config_path": str(args.config_path),
         "dxf_file": str(args.dxf_file),
         "overall_status": overall_status,
