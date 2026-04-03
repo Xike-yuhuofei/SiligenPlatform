@@ -133,88 +133,92 @@ class RoutedValidationRequest:
         }
 
 
-LAYER_SEQUENCE = (
-    "L0-structure-gate",
-    "L1-module-contract",
-    "L2-offline-integration",
-    "L3-simulated-e2e",
-    "L4-performance",
-    "L5-limited-hil",
-    "L6-closeout",
-)
+LAYER_SEQUENCE = ("L0", "L1", "L2", "L3", "L4", "L5", "L6")
 
 SIZE_LABELS = ("small", "medium", "large")
 
 
 VALIDATION_LAYERS: dict[str, ValidationLayerDefinition] = {
-    "L0-structure-gate": ValidationLayerDefinition(
-        layer_id="L0-structure-gate",
-        layer_kind="structure-gate",
-        owner_surface="scripts/migration + scripts/validation root gates",
+    "L0": ValidationLayerDefinition(
+        layer_id="L0",
+        layer_kind="static-and-build-gate",
+        owner_surface="root build/test/ci + scripts/validation + static reports",
         default_entry_refs=(
-            "scripts/migration/validate_workspace_layout.py",
+            "build.ps1",
+            "test.ps1",
+            "ci.ps1",
             "scripts/validation/run-local-validation-gate.ps1",
+            "pyrightconfig.json",
+            "tools/testing/check_no_loose_mock.py",
         ),
         allowed_environments=("offline", "ci"),
         upgrade_prerequisites=(),
         required_evidence_profile="gate-summary",
     ),
-    "L1-module-contract": ValidationLayerDefinition(
-        layer_id="L1-module-contract",
-        layer_kind="module-contract",
-        owner_surface="module tests + contract regressions",
-        default_entry_refs=("tests/CMakeLists.txt", "tests/contracts/"),
+    "L1": ValidationLayerDefinition(
+        layer_id="L1",
+        layer_kind="unit-tests",
+        owner_surface="apps/*/tests/unit + modules/*/tests/unit",
+        default_entry_refs=(
+            "apps/hmi-app/tests/unit/",
+            "modules/hmi-application/tests/unit/",
+        ),
         allowed_environments=("offline", "ci"),
-        upgrade_prerequisites=("L0-structure-gate",),
+        upgrade_prerequisites=("L0",),
+        required_evidence_profile="unit-report",
+    ),
+    "L2": ValidationLayerDefinition(
+        layer_id="L2",
+        layer_kind="module-contract-tests",
+        owner_surface="tests/contracts/ + tests/integration/protocol-compatibility/",
+        default_entry_refs=(
+            "tests/contracts/",
+            "tests/integration/protocol-compatibility/",
+        ),
+        allowed_environments=("offline", "ci"),
+        upgrade_prerequisites=("L0", "L1"),
         required_evidence_profile="contract-report",
     ),
-    "L2-offline-integration": ValidationLayerDefinition(
-        layer_id="L2-offline-integration",
-        layer_kind="offline-integration",
-        owner_surface="tests/integration/",
-        default_entry_refs=("tests/integration/", "tests/integration/scenarios/"),
+    "L3": ValidationLayerDefinition(
+        layer_id="L3",
+        layer_kind="integration-tests",
+        owner_surface="tests/integration/scenarios/",
+        default_entry_refs=(
+            "tests/integration/scenarios/run_engineering_regression.py",
+        ),
         allowed_environments=("offline", "simulated", "ci"),
-        upgrade_prerequisites=("L0-structure-gate", "L1-module-contract"),
+        upgrade_prerequisites=("L0", "L1", "L2"),
         required_evidence_profile="integration-report",
     ),
-    "L3-simulated-e2e": ValidationLayerDefinition(
-        layer_id="L3-simulated-e2e",
+    "L4": ValidationLayerDefinition(
+        layer_id="L4",
         layer_kind="simulated-e2e",
         owner_surface="tests/e2e/simulated-line/",
         default_entry_refs=("tests/e2e/simulated-line/run_simulated_line.py",),
         allowed_environments=("simulated", "ci"),
-        upgrade_prerequisites=("L0-structure-gate", "L2-offline-integration"),
+        upgrade_prerequisites=("L0", "L1", "L2", "L3"),
         required_evidence_profile="simulated-e2e-report",
     ),
-    "L4-performance": ValidationLayerDefinition(
-        layer_id="L4-performance",
-        layer_kind="performance",
-        owner_surface="tests/performance/",
-        default_entry_refs=("tests/performance/collect_dxf_preview_profiles.py",),
-        allowed_environments=("offline", "simulated", "ci"),
-        upgrade_prerequisites=("L0-structure-gate", "L2-offline-integration"),
-        required_evidence_profile="performance-report",
-    ),
-    "L5-limited-hil": ValidationLayerDefinition(
-        layer_id="L5-limited-hil",
-        layer_kind="limited-hil",
+    "L5": ValidationLayerDefinition(
+        layer_id="L5",
+        layer_kind="hil-closed-loop",
         owner_surface="tests/e2e/hardware-in-loop/",
         default_entry_refs=(
             "tests/e2e/hardware-in-loop/run_hil_closed_loop.py",
             "tests/e2e/hardware-in-loop/run_case_matrix.py",
         ),
         allowed_environments=("hardware-limited",),
-        upgrade_prerequisites=("L0-structure-gate", "L2-offline-integration", "L3-simulated-e2e"),
+        upgrade_prerequisites=("L0", "L1", "L2", "L3", "L4"),
         required_evidence_profile="hil-report",
     ),
-    "L6-closeout": ValidationLayerDefinition(
-        layer_id="L6-closeout",
-        layer_kind="closeout",
-        owner_surface="tests/reports/ + closeout docs",
-        default_entry_refs=("tests/reports/", "docs/validation/layered-test-matrix.md"),
-        allowed_environments=("offline", "ci", "hardware-limited"),
-        upgrade_prerequisites=("L0-structure-gate",),
-        required_evidence_profile="closeout-summary",
+    "L6": ValidationLayerDefinition(
+        layer_id="L6",
+        layer_kind="performance-and-stability",
+        owner_surface="tests/performance/",
+        default_entry_refs=("tests/performance/collect_dxf_preview_profiles.py",),
+        allowed_environments=("offline", "simulated", "ci", "hardware-limited"),
+        upgrade_prerequisites=("L0", "L1", "L2", "L3", "L4"),
+        required_evidence_profile="performance-report",
     ),
 }
 
@@ -225,7 +229,7 @@ EXECUTION_LANES: dict[str, ExecutionLaneDefinition] = {
         lane_kind="quick-gate",
         entrypoint_refs=("build.ps1", "test.ps1", "scripts/validation/run-local-validation-gate.ps1"),
         default_suite_set=("apps", "contracts", "protocol-compatibility"),
-        allowed_layer_refs=("L0-structure-gate", "L1-module-contract", "L2-offline-integration"),
+        allowed_layer_refs=("L0", "L1", "L2"),
         report_root="tests/reports/",
         gate_decision="blocking",
         default_fail_policy="fail-fast",
@@ -238,14 +242,8 @@ EXECUTION_LANES: dict[str, ExecutionLaneDefinition] = {
         lane_id="full-offline-gate",
         lane_kind="full-offline-gate",
         entrypoint_refs=("test.ps1", "ci.ps1"),
-        default_suite_set=("contracts", "e2e", "protocol-compatibility", "performance"),
-        allowed_layer_refs=(
-            "L0-structure-gate",
-            "L1-module-contract",
-            "L2-offline-integration",
-            "L3-simulated-e2e",
-            "L4-performance",
-        ),
+        default_suite_set=("apps", "contracts", "protocol-compatibility", "integration", "e2e"),
+        allowed_layer_refs=("L0", "L1", "L2", "L3", "L4"),
         report_root="tests/reports/",
         gate_decision="blocking",
         default_fail_policy="collect-and-report",
@@ -258,8 +256,8 @@ EXECUTION_LANES: dict[str, ExecutionLaneDefinition] = {
         lane_id="nightly-performance",
         lane_kind="nightly-performance",
         entrypoint_refs=("ci.ps1", "tests/performance/collect_dxf_preview_profiles.py"),
-        default_suite_set=("protocol-compatibility", "performance"),
-        allowed_layer_refs=("L0-structure-gate", "L2-offline-integration", "L3-simulated-e2e", "L4-performance"),
+        default_suite_set=("contracts", "protocol-compatibility", "integration", "e2e", "performance"),
+        allowed_layer_refs=("L0", "L1", "L2", "L3", "L4", "L6"),
         report_root="tests/reports/performance/",
         gate_decision="blocking",
         default_fail_policy="collect-and-report",
@@ -276,14 +274,8 @@ EXECUTION_LANES: dict[str, ExecutionLaneDefinition] = {
             "tests/e2e/hardware-in-loop/run_hil_closed_loop.py",
             "tests/e2e/hardware-in-loop/run_case_matrix.py",
         ),
-        default_suite_set=("e2e",),
-        allowed_layer_refs=(
-            "L0-structure-gate",
-            "L2-offline-integration",
-            "L3-simulated-e2e",
-            "L5-limited-hil",
-            "L6-closeout",
-        ),
+        default_suite_set=("apps", "contracts", "protocol-compatibility", "integration", "e2e"),
+        allowed_layer_refs=("L0", "L1", "L2", "L3", "L4", "L5", "L6"),
         report_root="tests/reports/",
         gate_decision="blocking",
         default_fail_policy="manual-signoff-required",
@@ -294,48 +286,66 @@ EXECUTION_LANES: dict[str, ExecutionLaneDefinition] = {
     ),
 }
 
+
 SUITE_TAXONOMY: dict[str, SuiteTaxonomyDefinition] = {
+    "static": SuiteTaxonomyDefinition(
+        suite_id="static",
+        primary_layer_refs=("L0",),
+        default_size_label="small",
+        owner_surface="root build/test/ci + scripts/validation",
+        allowed_lane_refs=("quick-gate", "full-offline-gate", "nightly-performance", "limited-hil"),
+        label_refs=("suite:static", "kind:static", "size:small"),
+    ),
     "apps": SuiteTaxonomyDefinition(
         suite_id="apps",
-        primary_layer_refs=("L0-structure-gate",),
+        primary_layer_refs=("L0", "L1"),
         default_size_label="small",
         owner_surface="apps/",
-        allowed_lane_refs=("quick-gate", "full-offline-gate"),
+        allowed_lane_refs=("quick-gate", "full-offline-gate", "limited-hil"),
         label_refs=("suite:apps", "kind:entrypoint", "size:small"),
     ),
     "contracts": SuiteTaxonomyDefinition(
         suite_id="contracts",
-        primary_layer_refs=("L0-structure-gate", "L1-module-contract"),
+        primary_layer_refs=("L2",),
         default_size_label="small",
         owner_surface="tests/contracts + module */tests",
-        allowed_lane_refs=("quick-gate", "full-offline-gate"),
+        allowed_lane_refs=("quick-gate", "full-offline-gate", "nightly-performance", "limited-hil"),
         label_refs=("suite:contracts", "kind:contract", "size:small"),
     ),
     "protocol-compatibility": SuiteTaxonomyDefinition(
         suite_id="protocol-compatibility",
-        primary_layer_refs=("L2-offline-integration",),
+        primary_layer_refs=("L2",),
         default_size_label="medium",
-        owner_surface="tests/integration/",
-        allowed_lane_refs=("quick-gate", "full-offline-gate", "nightly-performance"),
-        label_refs=("suite:protocol-compatibility", "kind:integration", "size:medium"),
+        owner_surface="tests/integration/protocol-compatibility/",
+        allowed_lane_refs=("quick-gate", "full-offline-gate", "nightly-performance", "limited-hil"),
+        label_refs=("suite:protocol-compatibility", "kind:contract", "size:medium"),
+    ),
+    "integration": SuiteTaxonomyDefinition(
+        suite_id="integration",
+        primary_layer_refs=("L3",),
+        default_size_label="medium",
+        owner_surface="tests/integration/scenarios/",
+        allowed_lane_refs=("full-offline-gate", "nightly-performance", "limited-hil"),
+        label_refs=("suite:integration", "kind:integration", "size:medium"),
     ),
     "e2e": SuiteTaxonomyDefinition(
         suite_id="e2e",
-        primary_layer_refs=("L3-simulated-e2e",),
+        primary_layer_refs=("L4",),
         default_size_label="large",
         owner_surface="tests/e2e/",
-        allowed_lane_refs=("full-offline-gate", "limited-hil"),
+        allowed_lane_refs=("full-offline-gate", "nightly-performance", "limited-hil"),
         label_refs=("suite:e2e", "kind:e2e", "size:large"),
     ),
     "performance": SuiteTaxonomyDefinition(
         suite_id="performance",
-        primary_layer_refs=("L4-performance",),
+        primary_layer_refs=("L6",),
         default_size_label="large",
         owner_surface="tests/performance/",
-        allowed_lane_refs=("full-offline-gate", "nightly-performance"),
+        allowed_lane_refs=("nightly-performance", "limited-hil"),
         label_refs=("suite:performance", "kind:performance", "size:large"),
     ),
 }
+
 
 SUITE_TO_PRIMARY_LAYERS: dict[str, tuple[str, ...]] = {
     suite_id: definition.primary_layer_refs
@@ -370,7 +380,7 @@ def suites_to_layers(requested_suites: tuple[str, ...]) -> tuple[str, ...]:
             if layer_id not in layers:
                 layers.append(layer_id)
     if not layers:
-        layers.append("L0-structure-gate")
+        layers.append("L0")
     return ensure_known_layer_ids(tuple(layers))
 
 
@@ -390,18 +400,20 @@ def _base_lane_for_request(request: ValidationRequest) -> str:
 
 def _augment_layers_for_request(request: ValidationRequest, base_layers: tuple[str, ...]) -> tuple[str, ...]:
     resolved = list(base_layers)
-    if "L0-structure-gate" not in resolved:
-        resolved.append("L0-structure-gate")
-    if request.risk_profile in {"high", "hardware-sensitive"} and "L2-offline-integration" not in resolved:
-        resolved.append("L2-offline-integration")
-    if "performance" in request.requested_suites and "L4-performance" not in resolved:
-        resolved.append("L4-performance")
+    if "L0" not in resolved:
+        resolved.append("L0")
+    if request.risk_profile in {"high", "hardware-sensitive"} and "L3" not in resolved:
+        resolved.append("L3")
+    if "performance" in request.requested_suites and "L6" not in resolved:
+        resolved.append("L6")
     if request.include_hardware_smoke or request.include_hil_closed_loop or request.include_hil_case_matrix:
-        for layer_id in ("L2-offline-integration", "L3-simulated-e2e", "L5-limited-hil"):
+        for layer_id in ("L1", "L2", "L3", "L4", "L5"):
             if layer_id not in resolved:
                 resolved.append(layer_id)
-    if request.desired_depth == "hil" and "L5-limited-hil" not in resolved:
-        resolved.append("L5-limited-hil")
+    if request.desired_depth == "hil" and "L5" not in resolved:
+        for layer_id in ("L1", "L2", "L3", "L4", "L5"):
+            if layer_id not in resolved:
+                resolved.append(layer_id)
     return ensure_known_layer_ids(tuple(resolved))
 
 
@@ -458,9 +470,9 @@ def route_validation_request(request: ValidationRequest) -> RoutedValidationRequ
         upgrade_recommendation = "limited-hil"
     elif request.risk_profile in {"high", "hardware-sensitive"} and selected_lane == "quick-gate":
         upgrade_recommendation = "full-offline-gate"
-    elif selected_lane == "quick-gate" and "L3-simulated-e2e" in deferred_layers:
+    elif selected_lane == "quick-gate" and any(layer_id in deferred_layers for layer_id in ("L3", "L4")):
         upgrade_recommendation = "full-offline-gate"
-    elif selected_lane in {"quick-gate", "full-offline-gate"} and "L4-performance" in deferred_layers:
+    elif selected_lane in {"quick-gate", "full-offline-gate"} and "L6" in deferred_layers:
         upgrade_recommendation = "nightly-performance"
 
     return RoutedValidationRequest(

@@ -313,8 +313,11 @@ class _PathProjectionArc:
         return best_position, best_distance
 
 
-def _build_projection_segments(segments: Sequence[dict]) -> List[object]:
-    projection_segments: List[object] = []
+ProjectionSegment = _PathProjectionLine | _PathProjectionArc
+
+
+def _build_projection_segments(segments: Sequence[dict]) -> List[ProjectionSegment]:
+    projection_segments: List[ProjectionSegment] = []
     offset = 0.0
     for segment in segments:
         if segment["type"] == "LINE":

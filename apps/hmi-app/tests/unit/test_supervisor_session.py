@@ -23,7 +23,7 @@ class _FakeBackend:
         self.start_calls += 1
         return self.start_result
 
-    def wait_ready(self):
+    def wait_ready(self, timeout: float = 5.0):
         self.ready_calls += 1
         return self.ready_result
 
@@ -59,7 +59,7 @@ class _FakeProtocol:
         self.hardware_result = hardware_result
         self.hardware_calls = 0
 
-    def connect_hardware(self):
+    def connect_hardware(self, card_ip: str = "", local_ip: str = "", timeout: float = 15.0):
         self.hardware_calls += 1
         return self.hardware_result
 
@@ -80,7 +80,7 @@ class _TimeoutAwareProtocol(_FakeProtocol):
         super().__init__(hardware_result=hardware_result)
         self.hardware_timeouts = []
 
-    def connect_hardware(self, timeout=15.0):
+    def connect_hardware(self, card_ip: str = "", local_ip: str = "", timeout: float = 15.0):
         self.hardware_calls += 1
         self.hardware_timeouts.append(timeout)
         return self.hardware_result
@@ -97,7 +97,7 @@ class _DetailedBackend:
         self.start_calls += 1
         return self.start_detail
 
-    def wait_ready_detailed(self):
+    def wait_ready_detailed(self, timeout: float = 5.0):
         self.ready_calls += 1
         return self.ready_detail
 
@@ -254,9 +254,10 @@ class SupervisorSessionTest(unittest.TestCase):
         self.assertEqual(snapshots[-1].failure_stage, "backend_ready")
 
     def test_tcp_failure_uses_tcp_failure_code(self) -> None:
+        client = _FakeClient(connect_result=False, connect_error="connection refused")
         session = SupervisorSession(
             backend=_FakeBackend(),
-            client=_FakeClient(connect_result=False, connect_error="connection refused"),
+            client=client,
             protocol=_FakeProtocol(),
             launch_mode="online",
         )
@@ -265,7 +266,7 @@ class SupervisorSessionTest(unittest.TestCase):
         self.assertEqual(snapshot.session_state, "failed")
         self.assertEqual(snapshot.failure_stage, "tcp_connecting")
         self.assertEqual(snapshot.failure_code, "SUP_TCP_CONNECT_FAILED")
-        self.assertEqual(session._client.connect_timeouts, [3.0])
+        self.assertEqual(client.connect_timeouts, [3.0])
 
     def test_supervisor_policy_overrides_stage_timeouts(self) -> None:
         backend = _TimeoutAwareBackend()

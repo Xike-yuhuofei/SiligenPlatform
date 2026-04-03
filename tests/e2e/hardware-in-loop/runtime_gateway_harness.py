@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import configparser
 import json
 import os
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import dataclass
@@ -15,6 +17,12 @@ KNOWN_FAILURE_EXIT_CODE = 10
 SKIPPED_EXIT_CODE = 11
 
 ROOT = Path(__file__).resolve().parents[3]
+TEST_KIT_SRC = ROOT / "shared" / "testing" / "test-kit" / "src"
+if str(TEST_KIT_SRC) not in sys.path:
+    sys.path.insert(0, str(TEST_KIT_SRC))
+
+from test_kit.control_apps_build import valid_control_apps_build_roots
+
 CANONICAL_CONFIG = ROOT / "config" / "machine" / "machine_config.ini"
 CONTROL_APPS_BUILD_ROOT = Path(
     os.getenv(
@@ -48,6 +56,15 @@ class StepRecord:
     step_id: str
     method: str
     response: str
+
+
+@dataclass
+class TcpAdmissionResult:
+    status: str
+    note: str
+    connect_params: dict[str, str]
+    connect_response: dict[str, Any] | None = None
+    status_response: dict[str, Any] | None = None
 
 
 class TcpJsonClient:
@@ -124,6 +141,10 @@ class TcpJsonClient:
 
 
 def resolve_default_exe(*file_names: str) -> Path:
+    valid_roots = valid_control_apps_build_roots(
+        ROOT,
+        explicit_build_root=os.getenv("SILIGEN_CONTROL_APPS_BUILD_ROOT"),
+    )
     candidates: list[Path] = []
     for file_name in file_names:
         candidates.extend(
@@ -136,12 +157,26 @@ def resolve_default_exe(*file_names: str) -> Path:
                 ROOT / "build" / "hmi-home-fix" / "bin" / "Debug" / file_name,
                 ROOT / "build" / "hmi-home-fix" / "bin" / "Release" / file_name,
                 ROOT / "build" / "hmi-home-fix" / "bin" / "RelWithDebInfo" / file_name,
-                CONTROL_APPS_BUILD_ROOT / "bin" / file_name,
-                CONTROL_APPS_BUILD_ROOT / "bin" / "Debug" / file_name,
-                CONTROL_APPS_BUILD_ROOT / "bin" / "Release" / file_name,
-                CONTROL_APPS_BUILD_ROOT / "bin" / "RelWithDebInfo" / file_name,
             )
         )
+        for build_root in valid_roots:
+            candidates.extend(
+                (
+                    build_root / "bin" / file_name,
+                    build_root / "bin" / "Debug" / file_name,
+                    build_root / "bin" / "Release" / file_name,
+                    build_root / "bin" / "RelWithDebInfo" / file_name,
+                )
+            )
+        if CONTROL_APPS_BUILD_ROOT not in valid_roots:
+            candidates.extend(
+                (
+                    CONTROL_APPS_BUILD_ROOT / "bin" / file_name,
+                    CONTROL_APPS_BUILD_ROOT / "bin" / "Debug" / file_name,
+                    CONTROL_APPS_BUILD_ROOT / "bin" / "Release" / file_name,
+                    CONTROL_APPS_BUILD_ROOT / "bin" / "RelWithDebInfo" / file_name,
+                )
+            )
     for candidate in candidates:
         if candidate.exists():
             return candidate
@@ -181,6 +216,117 @@ def truncate_json(payload: dict[str, Any] | None, max_chars: int = 1600) -> str:
     if len(text) <= max_chars:
         return text
     return text[:max_chars] + "...[truncated]"
+
+
+def load_connection_params(config_path: Path) -> dict[str, str]:
+    parser = configparser.ConfigParser(interpolation=None, strict=False)
+    with config_path.open("r", encoding="utf-8") as handle:
+        parser.read_file(handle)
+
+    card_ip = parser.get("Network", "control_card_ip", fallback=parser.get("Network", "card_ip", fallback="")).strip()
+    local_ip = parser.get("Network", "local_ip", fallback="").strip()
+
+    params: dict[str, str] = {}
+    if card_ip:
+        params["card_ip"] = card_ip
+    if local_ip:
+        params["local_ip"] = local_ip
+    return params
+
+
+def result_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {}
+    result = payload.get("result", {})
+    return result if isinstance(result, dict) else {}
+
+
+def tcp_connect_and_ensure_ready(
+    client: Any,
+    *,
+    config_path: Path,
+    connect_timeout_seconds: float,
+    status_timeout_seconds: float = 5.0,
+    ready_timeout_seconds: float = 3.0,
+    poll_interval_seconds: float = 0.2,
+) -> TcpAdmissionResult:
+    connect_params = load_connection_params(config_path)
+
+    try:
+        connect_response = client.send_request("connect", connect_params, timeout_seconds=connect_timeout_seconds)
+    except Exception as exc:  # pragma: no cover - runtime path
+        text = str(exc)
+        status = "known_failure" if matches_known_failure(text) else "failed"
+        return TcpAdmissionResult(
+            status=status,
+            note=f"connect request exception: {text}",
+            connect_params=connect_params,
+        )
+
+    if "error" in connect_response:
+        message = str(connect_response.get("error", {}).get("message", "unknown tcp error"))
+        combined = f"{message}\n{truncate_json(connect_response)}"
+        status = "known_failure" if matches_known_failure(combined) else "failed"
+        return TcpAdmissionResult(
+            status=status,
+            note=f"connect returned error: {message}",
+            connect_params=connect_params,
+            connect_response=connect_response,
+        )
+
+    connect_result = result_payload(connect_response)
+    if not bool(connect_result.get("connected", False)):
+        return TcpAdmissionResult(
+            status="failed",
+            note="connect completed but result.connected=false",
+            connect_params=connect_params,
+            connect_response=connect_response,
+        )
+
+    last_status_response: dict[str, Any] | None = None
+    deadline = time.perf_counter() + max(ready_timeout_seconds, poll_interval_seconds)
+    while time.perf_counter() < deadline:
+        try:
+            last_status_response = client.send_request("status", {}, timeout_seconds=status_timeout_seconds)
+        except Exception as exc:  # pragma: no cover - runtime path
+            text = str(exc)
+            status = "known_failure" if matches_known_failure(text) else "failed"
+            return TcpAdmissionResult(
+                status=status,
+                note=f"status request exception after connect: {text}",
+                connect_params=connect_params,
+                connect_response=connect_response,
+            )
+
+        if last_status_response is not None and "error" in last_status_response:
+            message = str(last_status_response.get("error", {}).get("message", "unknown tcp error"))
+            combined = f"{message}\n{truncate_json(last_status_response)}"
+            status = "known_failure" if matches_known_failure(combined) else "failed"
+            return TcpAdmissionResult(
+                status=status,
+                note=f"status returned error after connect: {message}",
+                connect_params=connect_params,
+                connect_response=connect_response,
+                status_response=last_status_response,
+            )
+
+        if bool(result_payload(last_status_response).get("connected", False)):
+            return TcpAdmissionResult(
+                status="passed",
+                note="connect completed and status.connected=true",
+                connect_params=connect_params,
+                connect_response=connect_response,
+                status_response=last_status_response,
+            )
+        time.sleep(max(0.05, poll_interval_seconds))
+
+    return TcpAdmissionResult(
+        status="failed",
+        note="status.connected did not become true after connect",
+        connect_params=connect_params,
+        connect_response=connect_response,
+        status_response=last_status_response,
+    )
 
 
 def read_process_output(process: subprocess.Popen[str]) -> tuple[str, str]:

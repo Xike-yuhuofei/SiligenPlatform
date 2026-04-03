@@ -5,9 +5,13 @@ from typing import Literal, Sequence
 
 from .startup import LaunchResult, launch_result_from_snapshot
 from .launch_supervision_contract import (
+    HardwareState,
+    FailureCode,
+    FailureStage,
     RecoveryAction,
     SessionSnapshot,
     SessionStageEvent,
+    TcpState,
     is_online_ready,
     snapshot_timestamp,
 )
@@ -88,7 +92,7 @@ def build_recovery_controls_state(
         return RecoveryControlsState(False, False, False)
 
     failed = snapshot is not None and snapshot.session_state == "failed"
-    recoverable = bool(snapshot.recoverable) if failed else False
+    recoverable = bool(snapshot.recoverable) if snapshot is not None and failed else False
     ready = snapshot is not None and is_online_ready(snapshot)
     return RecoveryControlsState(
         retry_enabled=failed and recoverable,
@@ -203,11 +207,11 @@ def build_runtime_degradation_result(
     session_snapshot: SessionSnapshot | None,
     stage_events: Sequence[SessionStageEvent],
     *,
-    failure_code: str,
-    failure_stage: str,
+    failure_code: FailureCode,
+    failure_stage: FailureStage,
     message: str,
-    tcp_state: str | None = None,
-    hardware_state: str | None = None,
+    tcp_state: TcpState | None = None,
+    hardware_state: HardwareState | None = None,
 ) -> RuntimeDegradationResult | None:
     if launch_result is None or session_snapshot is None:
         return None
@@ -224,7 +228,7 @@ def build_runtime_degradation_result(
     stage_event = SessionStageEvent(
         event_type="stage_failed",
         session_id=session_id,
-        stage=degraded_snapshot.failure_stage,
+        stage=degraded_snapshot.failure_stage or failure_stage,
         timestamp=degraded_snapshot.updated_at,
         failure_code=degraded_snapshot.failure_code,
         recoverable=degraded_snapshot.recoverable,

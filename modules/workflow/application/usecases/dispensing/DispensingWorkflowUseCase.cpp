@@ -646,7 +646,30 @@ Result<ExecutionAssemblyTestProbe> DispensingWorkflowUseCase::EnsureExecutionAss
         const auto it = plans_.find(plan_id);
         if (it != plans_.end()) {
             probe.plan_fingerprint = it->second.response.plan_fingerprint;
+            probe.has_execution_launch_package = static_cast<bool>(it->second.execution_launch.execution_package);
+            probe.has_execution_assembly_package = static_cast<bool>(it->second.execution_assembly.execution_package);
+            probe.plan_execution_trajectory_point_count = it->second.execution_trajectory_points.size();
+            probe.execution_assembly_trajectory_point_count =
+                it->second.execution_assembly.execution_trajectory_points.size();
+            if (it->second.execution_launch.execution_package) {
+                const auto& launch_plan = it->second.execution_launch.execution_package->execution_plan;
+                probe.execution_launch_interpolation_segment_count = launch_plan.interpolation_segments.size();
+                probe.execution_launch_interpolation_point_count = launch_plan.interpolation_points.size();
+                probe.execution_launch_motion_point_count = launch_plan.motion_trajectory.points.size();
+            }
+            if (it->second.execution_assembly.execution_package) {
+                const auto& assembly_plan = it->second.execution_assembly.execution_package->execution_plan;
+                probe.execution_assembly_interpolation_segment_count = assembly_plan.interpolation_segments.size();
+                probe.execution_assembly_interpolation_point_count = assembly_plan.interpolation_points.size();
+                probe.execution_assembly_motion_point_count = assembly_plan.motion_trajectory.points.size();
+            }
         }
+    }
+    {
+        std::lock_guard<std::mutex> lock(execution_assembly_cache_mutex_);
+        probe.execution_cache_entry_count = execution_assembly_cache_.size();
+        probe.execution_cache_contains_plan = execution_assembly_cache_.find(probe.plan_fingerprint) !=
+            execution_assembly_cache_.end();
     }
     probe.authority_layout_id = resolved.assembly.authority_trigger_layout.layout_id;
     probe.execution_authority_shared_with_execution = resolved.assembly.preview_authority_shared_with_execution;
@@ -1210,6 +1233,23 @@ std::string DispensingWorkflowUseCase::PreviewStateToString(PlanPreviewState sta
     }
 }
 
+void DispensingWorkflowUseCase::ReleaseRetainedExecutionState(PlanRecord& plan_record) const {
+    plan_record.execution_launch.execution_package.reset();
+    plan_record.execution_assembly = {};
+    plan_record.preview_authority_shared_with_execution = false;
+    plan_record.execution_authority_shared_with_execution = false;
+    plan_record.execution_binding_ready = false;
+}
+
+void DispensingWorkflowUseCase::EraseExecutionAssemblyCacheEntry(const std::string& execution_cache_key) const {
+    if (execution_cache_key.empty()) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(execution_assembly_cache_mutex_);
+    execution_assembly_cache_.erase(execution_cache_key);
+}
+
 void DispensingWorkflowUseCase::ReleaseConfirmedPreviewForPlan(
     const PlanID& plan_id,
     const JobID* runtime_job_id) const {
@@ -1217,24 +1257,37 @@ void DispensingWorkflowUseCase::ReleaseConfirmedPreviewForPlan(
         return;
     }
 
-    std::lock_guard<std::mutex> lock(plans_mutex_);
-    auto plan_it = plans_.find(plan_id);
-    if (plan_it == plans_.end() || !plan_it->second.latest) {
-        return;
+    std::string execution_cache_key;
+    bool release_execution_state = false;
+    {
+        std::lock_guard<std::mutex> lock(plans_mutex_);
+        auto plan_it = plans_.find(plan_id);
+        if (plan_it == plans_.end() || !plan_it->second.latest) {
+            return;
+        }
+
+        if (runtime_job_id != nullptr &&
+            !plan_it->second.runtime_job_id.empty() &&
+            plan_it->second.runtime_job_id != *runtime_job_id) {
+            return;
+        }
+
+        if (plan_it->second.preview_state == PlanPreviewState::CONFIRMED) {
+            plan_it->second.preview_state = PlanPreviewState::SNAPSHOT_READY;
+        }
+        plan_it->second.confirmed_at.clear();
+        if (runtime_job_id != nullptr && plan_it->second.runtime_job_id == *runtime_job_id) {
+            plan_it->second.runtime_job_id.clear();
+            execution_cache_key = plan_it->second.response.plan_fingerprint;
+            ReleaseRetainedExecutionState(plan_it->second);
+            release_execution_state = true;
+        }
     }
 
-    if (runtime_job_id != nullptr &&
-        !plan_it->second.runtime_job_id.empty() &&
-        plan_it->second.runtime_job_id != *runtime_job_id) {
-        return;
-    }
-
-    if (plan_it->second.preview_state == PlanPreviewState::CONFIRMED) {
-        plan_it->second.preview_state = PlanPreviewState::SNAPSHOT_READY;
-    }
-    plan_it->second.confirmed_at.clear();
-    if (runtime_job_id != nullptr && plan_it->second.runtime_job_id == *runtime_job_id) {
-        plan_it->second.runtime_job_id.clear();
+    if (release_execution_state) {
+        // execution_package/execution_assembly are rebuildable from authority preview;
+        // dropping them here prevents terminal jobs from pinning large execution buffers.
+        EraseExecutionAssemblyCacheEntry(execution_cache_key);
     }
 }
 

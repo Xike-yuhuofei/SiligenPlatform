@@ -2,6 +2,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
+from typing import Any, cast
 
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -10,9 +11,10 @@ from PyQt5.QtWidgets import QApplication, QWidget
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
 sys.path.insert(0, str(PROJECT_ROOT / "src" / "hmi_client"))
 
-import ui.main_window as main_window_module
+from hmi_client.ui import main_window as main_window_module
 
 
 class _DummyPage:
@@ -153,34 +155,35 @@ class PreviewFlowIntegrationTest(unittest.TestCase):
         main_window_module.PreviewSnapshotWorker = self._original_worker
 
     def test_on_dxf_load_runs_import_to_preview_update_chain(self) -> None:
-        self.window._require_online_mode = lambda _capability: True
-        self.window._protocol = _FakeProtocol()
-        self.window._client = _FakeClient()
-        self.window._connected = True
-        self.window._mode_production.setChecked(True)
-        self.window._mode_dryrun.setChecked(False)
-        self.window._dxf_filepath = str(PROJECT_ROOT.parent.parent / "samples" / "dxf" / "rect_diag.dxf")
+        runtime_window = cast(Any, self.window)
+        runtime_window._require_online_mode = lambda _capability: True
+        runtime_window._protocol = _FakeProtocol()
+        runtime_window._client = _FakeClient()
+        runtime_window._connected = True
+        runtime_window._mode_production.setChecked(True)
+        runtime_window._mode_dryrun.setChecked(False)
+        runtime_window._dxf_filepath = str(PROJECT_ROOT.parent.parent / "samples" / "dxf" / "rect_diag.dxf")
 
-        self.window._on_dxf_load()
+        runtime_window._on_dxf_load()
 
-        self.assertTrue(self.window._dxf_loaded)
-        self.assertEqual(self.window._dxf_artifact_id, "artifact-it")
-        self.assertEqual(self.window._current_plan_id, "plan-it")
-        self.assertEqual(self.window._current_plan_fingerprint, "hash-it")
-        self.assertEqual(self.window._preview_source, "planned_glue_snapshot")
-        self.assertEqual(self.window._preview_session.state.preview_kind, "glue_points")
-        self.assertEqual(self.window._preview_session.state.glue_point_count, 2)
-        self.assertEqual(self.window._preview_session.state.current_plan_id, "plan-it")
-        self.assertEqual(self.window._preview_session.state.current_plan_fingerprint, "hash-it")
-        self.assertEqual(self.window._preview_gate.snapshot.snapshot_hash, "hash-it")
-        self.assertEqual(self.window.statusBar().currentMessage(), "胶点预览已更新，启动前需确认")
-        self.assertEqual(self.window._dxf_filename_display.text(), "rect_diag.dxf")
-        self.assertIn("规划胶点主预览", self.window._dxf_view.html)
-        self.assertIn("hash-it", self.window._dxf_view.html)
+        self.assertTrue(runtime_window._dxf_loaded)
+        self.assertEqual(runtime_window._dxf_artifact_id, "artifact-it")
+        self.assertEqual(runtime_window._current_plan_id, "plan-it")
+        self.assertEqual(runtime_window._current_plan_fingerprint, "hash-it")
+        self.assertEqual(runtime_window._preview_source, "planned_glue_snapshot")
+        self.assertEqual(runtime_window._preview_session.state.preview_kind, "glue_points")
+        self.assertEqual(runtime_window._preview_session.state.glue_point_count, 2)
+        self.assertEqual(runtime_window._preview_session.state.current_plan_id, "plan-it")
+        self.assertEqual(runtime_window._preview_session.state.current_plan_fingerprint, "hash-it")
+        self.assertEqual(runtime_window._preview_gate.snapshot.snapshot_hash, "hash-it")
+        self.assertEqual(runtime_window.statusBar().currentMessage(), "胶点预览已更新，启动前需确认")
+        self.assertEqual(runtime_window._dxf_filename_display.text(), "rect_diag.dxf")
+        self.assertIn("规划胶点主预览", runtime_window._dxf_view.html)
+        self.assertIn("hash-it", runtime_window._dxf_view.html)
         self.assertEqual(
-            self.window._protocol.calls,
+            runtime_window._protocol.calls,
             [
-                ("dxf.artifact.create", self.window._dxf_filepath),
+                ("dxf.artifact.create", runtime_window._dxf_filepath),
                 ("dxf.info",),
             ],
         )
@@ -189,11 +192,11 @@ class PreviewFlowIntegrationTest(unittest.TestCase):
         self.assertEqual(worker.host, "127.0.0.1")
         self.assertEqual(worker.port, 9527)
         self.assertEqual(worker.artifact_id, "artifact-it")
-        self.assertEqual(worker.speed_mm_s, self.window._dxf_speed.value())
+        self.assertEqual(worker.speed_mm_s, runtime_window._dxf_speed.value())
         self.assertFalse(worker.dry_run)
-        self.assertEqual(worker.dry_run_speed_mm_s, self.window._dxf_speed.value())
-        self.assertIsNone(self.window._preview_snapshot_worker)
-        self.assertFalse(self.window._preview_refresh_inflight)
+        self.assertEqual(worker.dry_run_speed_mm_s, runtime_window._dxf_speed.value())
+        self.assertIsNone(runtime_window._preview_snapshot_worker)
+        self.assertFalse(runtime_window._preview_refresh_inflight)
 
 
 if __name__ == "__main__":

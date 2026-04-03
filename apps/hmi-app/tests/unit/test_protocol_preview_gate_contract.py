@@ -30,6 +30,7 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
 
         with patch(
             "hmi_client.client.protocol.load_gateway_connection_config",
+            autospec=True,
             return_value=MachineConnectionConfig(card_ip="192.168.0.1", local_ip="192.168.0.200"),
         ):
             ok, message = protocol.connect_hardware()
@@ -47,6 +48,7 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
 
         with patch(
             "hmi_client.client.protocol.load_gateway_connection_config",
+            autospec=True,
             return_value=MachineConnectionConfig(card_ip="192.168.0.1", local_ip="192.168.0.200"),
         ):
             ok, message = protocol.connect_hardware(card_ip="172.16.0.10", local_ip="172.16.0.20", timeout=5.0)
@@ -583,6 +585,13 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertEqual(payload["snapshot_hash"], "h-timeout")
         self.assertEqual(client.calls[0], ("dxf.preview.snapshot", {"plan_id": "plan-1",}, 300.0))
 
+    def test_preview_snapshot_rejects_unknown_kwarg_immediately(self) -> None:
+        client = _FakeClient([])
+        protocol = CommandProtocol(client)
+
+        with self.assertRaisesRegex(TypeError, "unexpected keyword argument"):
+            protocol.dxf_preview_snapshot(plan_id="plan-1", unknown_kwarg=True)  # type: ignore[call-arg]
+
     def test_preview_snapshot_error_details_contract(self) -> None:
         client = _FakeClient([{"error": {"code": 3012, "message": "plan not found"}}])
         protocol = CommandProtocol(client)
@@ -658,6 +667,7 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
 
         self.assertTrue(ok)
         self.assertEqual(error, "")
+        assert isinstance(payload, dict)
         self.assertTrue(payload["door"])
         self.assertTrue(payload["limit_x_neg"])
         self.assertEqual(client.calls[0][0], "mock.io.set")
@@ -667,7 +677,7 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         client = _FakeClient([{"result": {"artifact_id": "artifact-1"}}])
         protocol = CommandProtocol(client)
         sample_path = PROJECT_ROOT / "sample.dxf"
-        with patch.object(Path, "read_bytes", return_value=b"0\nSECTION\n"):
+        with patch.object(Path, "read_bytes", autospec=True, return_value=b"0\nSECTION\n"):
             ok, payload, error = protocol.dxf_create_artifact(str(sample_path))
 
         self.assertTrue(ok)

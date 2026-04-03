@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("all", "apps", "contracts", "e2e", "protocol-compatibility", "performance")]
+    [ValidateSet("all", "apps", "contracts", "protocol-compatibility", "integration", "e2e", "performance")]
     [string[]]$Suite = @("all"),
     [string]$ReportDir = "tests\\reports\\ci",
     [ValidateSet("auto", "quick-gate", "full-offline-gate", "nightly-performance", "limited-hil")]
@@ -12,6 +12,7 @@ param(
     [string[]]$SkipLayer = @(),
     [string]$SkipJustification = "",
     [switch]$IncludeHardwareSmoke,
+    [switch]$IncludeHilClosedLoop,
     [switch]$IncludeHilCaseMatrix
 )
 
@@ -57,9 +58,13 @@ function Invoke-LaneStep {
     )
 
     & $Action
+    $stepSucceeded = $?
     $exitCode = $LASTEXITCODE
     if ($null -eq $exitCode) {
         $exitCode = 0
+    }
+    if (-not $stepSucceeded -and $exitCode -eq 0) {
+        $exitCode = 1
     }
     if ($exitCode -eq 0) {
         return
@@ -91,7 +96,7 @@ Write-Output (
     $lanePolicy.FailFastCaseLimit
 )
 
-$requireHmiFormalGatewayContract = ($Suite -contains "all") -or ($Suite -contains "apps") -or ($Suite -contains "contracts") -or ($Suite -contains "e2e")
+$requireHmiFormalGatewayContract = ($Suite -contains "all") -or ($Suite -contains "apps") -or ($Suite -contains "contracts") -or ($Suite -contains "integration") -or ($Suite -contains "e2e")
 if ($requireHmiFormalGatewayContract) {
     $formalGatewayContractGuard = Join-Path $PSScriptRoot "scripts\\validation\\assert-hmi-formal-gateway-launch-contract.ps1"
     if (-not (Test-Path $formalGatewayContractGuard)) {
@@ -154,19 +159,49 @@ Invoke-LaneStep -StepName "test.ps1" -LanePolicy $lanePolicy -Action {
         -SkipJustification $SkipJustification `
         -FailOnKnownFailure `
         -IncludeHardwareSmoke:$IncludeHardwareSmoke `
+        -IncludeHilClosedLoop:$IncludeHilClosedLoop `
         -IncludeHilCaseMatrix:$IncludeHilCaseMatrix
 }
 
 Invoke-LaneStep -StepName "run-local-validation-gate.ps1" -LanePolicy $lanePolicy -Action {
-    & (Join-Path $PSScriptRoot "scripts\\validation\\run-local-validation-gate.ps1") `
-        -ReportRoot $localGateDir `
-        -Lane $Lane `
-        -RiskProfile $RiskProfile `
-        -DesiredDepth $DesiredDepth `
-        -ChangedScope $ChangedScope `
-        -SkipLayer $SkipLayer `
-        -SkipJustification $SkipJustification `
-        -IncludeHilCaseMatrix:$IncludeHilCaseMatrix
+    $gateScript = Join-Path $PSScriptRoot "scripts\\validation\\run-local-validation-gate.ps1"
+    $gateArgs = @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $gateScript,
+        "-ReportRoot",
+        $localGateDir,
+        "-Lane",
+        $Lane,
+        "-RiskProfile",
+        $RiskProfile,
+        "-DesiredDepth",
+        $DesiredDepth
+    )
+
+    foreach ($scopeName in $ChangedScope) {
+        if (-not [string]::IsNullOrWhiteSpace($scopeName)) {
+            $gateArgs += @("-ChangedScope", $scopeName)
+        }
+    }
+    foreach ($layerName in $SkipLayer) {
+        if (-not [string]::IsNullOrWhiteSpace($layerName)) {
+            $gateArgs += @("-SkipLayer", $layerName)
+        }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($SkipJustification)) {
+        $gateArgs += @("-SkipJustification", $SkipJustification)
+    }
+    if ($IncludeHilClosedLoop) {
+        $gateArgs += "-IncludeHilClosedLoop"
+    }
+    if ($IncludeHilCaseMatrix) {
+        $gateArgs += "-IncludeHilCaseMatrix"
+    }
+
+    & powershell @gateArgs
 }
 
 if (-not (Test-Path (Join-Path $resolvedReportDir "workspace-validation.md"))) {

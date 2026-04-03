@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import configparser
 import json
 import os
 import socket
@@ -25,7 +24,9 @@ if str(TEST_KIT_SRC) not in sys.path:
     sys.path.insert(0, str(TEST_KIT_SRC))
 
 from runtime_gateway_harness import build_process_env  # noqa: E402
+from runtime_gateway_harness import load_connection_params as _shared_load_connection_params  # noqa: E402
 from runtime_gateway_harness import resolve_default_exe as _resolve_harness_default_exe  # noqa: E402
+from runtime_gateway_harness import tcp_connect_and_ensure_ready  # noqa: E402
 from test_kit.evidence_bundle import (
     EvidenceBundle,
     EvidenceCaseRecord,
@@ -155,19 +156,7 @@ def _truncate(text: str, limit: int = 2000) -> str:
 
 
 def _load_connection_params(config_path: Path) -> dict[str, str]:
-    parser = configparser.ConfigParser(interpolation=None, strict=False)
-    with config_path.open("r", encoding="utf-8") as handle:
-        parser.read_file(handle)
-
-    card_ip = parser.get("Network", "control_card_ip", fallback=parser.get("Network", "card_ip", fallback="")).strip()
-    local_ip = parser.get("Network", "local_ip", fallback="").strip()
-
-    params: dict[str, str] = {}
-    if card_ip:
-        params["card_ip"] = card_ip
-    if local_ip:
-        params["local_ip"] = local_ip
-    return params
+    return _shared_load_connection_params(config_path)
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -201,7 +190,7 @@ def _evaluate_offline_admission(
     checks: list[dict[str, str]] = []
     payload: dict[str, Any] = {
         "schema_version": HIL_ADMISSION_SCHEMA_VERSION,
-        "required_layers": ["L0-structure-gate", "L2-offline-integration", "L3-simulated-e2e"],
+        "required_layers": ["L0", "L1", "L2", "L3", "L4"],
         "required_cases": list(REQUIRED_OFFLINE_CASES),
         "offline_prerequisites_source": trimmed_report,
         "offline_prerequisites_passed": False,
@@ -508,6 +497,57 @@ def _run_tcp_step(
     )
 
 
+def _run_connect_step(
+    *,
+    name: str,
+    client: TcpJsonClient,
+    config_path: Path,
+    timeout_seconds: float,
+    ready_timeout_seconds: float = 3.0,
+) -> tuple[StepResult, dict[str, Any] | None]:
+    started = time.perf_counter()
+    admission = tcp_connect_and_ensure_ready(
+        client,
+        config_path=config_path,
+        connect_timeout_seconds=timeout_seconds,
+        status_timeout_seconds=min(timeout_seconds, 8.0),
+        ready_timeout_seconds=ready_timeout_seconds,
+    )
+    elapsed = time.perf_counter() - started
+    payload = {
+        "connect_params": admission.connect_params,
+        "connect_response": admission.connect_response,
+        "status_response": admission.status_response,
+    }
+    stdout = _truncate(json.dumps(payload, ensure_ascii=True))
+    if admission.status != "passed":
+        return (
+            StepResult(
+                name=name,
+                status=admission.status,
+                duration_seconds=elapsed,
+                return_code=1,
+                command=["tcp", "connect", json.dumps(admission.connect_params, ensure_ascii=True)],
+                note=admission.note,
+                stdout=stdout,
+            ),
+            admission.status_response,
+        )
+
+    return (
+        StepResult(
+            name=name,
+            status="passed",
+            duration_seconds=elapsed,
+            return_code=0,
+            command=["tcp", "connect", json.dumps(admission.connect_params, ensure_ascii=True)],
+            note=admission.note,
+            stdout=stdout,
+        ),
+        admission.status_response,
+    )
+
+
 def _normalize_dispenser_state(value: str | None) -> str | None:
     if not value:
         return None
@@ -808,7 +848,7 @@ def _write_evidence_bundle(report: dict[str, Any], report_dir: Path, summary_jso
         machine_file=str(summary_json_path.resolve()),
         verdict=overall_status,
         linked_asset_refs=("sample.dxf.rect_diag",),
-        offline_prerequisites=tuple(admission.get("required_layers", ("L0-structure-gate", "L2-offline-integration", "L3-simulated-e2e"))),
+        offline_prerequisites=tuple(admission.get("required_layers", ("L0", "L1", "L2", "L3", "L4"))),
         abort_metadata={
             "failure_context": report.get("failure_context", {}),
             "admission": admission,
@@ -825,7 +865,7 @@ def _write_evidence_bundle(report: dict[str, Any], report_dir: Path, summary_jso
                 name="hil-closed-loop",
                 suite_ref="e2e",
                 owner_scope="runtime-execution",
-                primary_layer="L5-limited-hil",
+                primary_layer="L5",
                 producer_lane_ref="limited-hil",
                 status=overall_status,
                 evidence_profile="hil-report",
@@ -836,7 +876,7 @@ def _write_evidence_bundle(report: dict[str, Any], report_dir: Path, summary_jso
                 note=str(report.get("failure_context", {}).get("error_message", "")),
                 failure_classification=failure_classification,
                 trace_fields=trace_fields(
-                    stage_id="L5-limited-hil",
+                    stage_id="L5",
                     artifact_id="hil-closed-loop",
                     module_id="runtime-execution",
                     workflow_state="executed",
@@ -1382,13 +1422,21 @@ def main() -> int:
         while time.perf_counter() < deadline:
             iterations += 1
             for name, method, params in sequence:
-                step, _ = _run_tcp_step(
-                    name=name,
-                    client=client,
-                    method=method,
-                    params=params,
-                    timeout_seconds=15.0,
-                )
+                if method == "connect":
+                    step, _ = _run_connect_step(
+                        name=name,
+                        client=client,
+                        config_path=args.config_path,
+                        timeout_seconds=15.0,
+                    )
+                else:
+                    step, _ = _run_tcp_step(
+                        name=name,
+                        client=client,
+                        method=method,
+                        params=params,
+                        timeout_seconds=15.0,
+                    )
                 steps.append(step)
                 if step.status == "passed" and name == "tcp-connect":
                     reconnect_count += 1

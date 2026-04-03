@@ -4,7 +4,7 @@ import threading
 import json
 import logging
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable, Mapping, Optional, cast
 from queue import Queue, Empty
 
 
@@ -20,6 +20,9 @@ if not _LOGGER.handlers:
     _LOGGER.propagate = False
 
 
+JsonDict = dict[str, Any]
+
+
 class TcpClient:
     """Async TCP client with callback-based message handling."""
 
@@ -31,8 +34,8 @@ class TcpClient:
         self._running = False
         self.last_connect_error: str = ""
         self._request_id = 0
-        self._pending: dict[str, Queue] = {}
-        self._on_event: Optional[Callable[[dict], None]] = None
+        self._pending: dict[str, Queue[JsonDict]] = {}
+        self._on_event: Optional[Callable[[JsonDict], None]] = None
         self._lock = threading.Lock()
 
     def connect(self, timeout: float = 3.0) -> bool:
@@ -64,21 +67,21 @@ class TcpClient:
     def is_connected(self) -> bool:
         return self._running and self._socket is not None
 
-    def set_event_handler(self, handler: Callable[[dict], None]):
+    def set_event_handler(self, handler: Callable[[JsonDict], None]) -> None:
         self._on_event = handler
 
-    def send_request(self, method: str, params: dict = None, timeout: float = 5.0) -> dict:
+    def send_request(self, method: str, params: Mapping[str, object] | None = None, timeout: float = 5.0) -> JsonDict:
         if not self.is_connected():
             return {"error": {"code": -1, "message": "TCP未连接"}}
         with self._lock:
             self._request_id += 1
             req_id = str(self._request_id)
 
-        request = {"id": req_id, "method": method}
+        request: JsonDict = {"id": req_id, "method": method}
         if params:
-            request["params"] = params
+            request["params"] = dict(params)
 
-        response_queue: Queue = Queue()
+        response_queue: Queue[JsonDict] = Queue()
         with self._lock:
             self._pending[req_id] = response_queue
 
@@ -86,7 +89,10 @@ class TcpClient:
             msg = json.dumps(request) + "\n"
             if method in ("dxf.load", "home", "home.go", "home.auto"):
                 _LOGGER.info("TX %s id=%s payload=%s", method, req_id, msg.strip())
-            self._socket.sendall(msg.encode("utf-8"))
+            sock = self._socket
+            if sock is None:
+                return {"error": {"code": -1, "message": "TCP未连接"}}
+            sock.sendall(msg.encode("utf-8"))
             response = response_queue.get(timeout=timeout)
             if method in ("dxf.load", "home", "home.go", "home.auto"):
                 _LOGGER.info(
@@ -107,11 +113,14 @@ class TcpClient:
             with self._lock:
                 self._pending.pop(req_id, None)
 
-    def _recv_loop(self):
+    def _recv_loop(self) -> None:
         buffer = ""
         while self._running:
             try:
-                data = self._socket.recv(4096)
+                sock = self._socket
+                if sock is None:
+                    break
+                data = sock.recv(4096)
                 if not data:
                     break
                 buffer += data.decode("utf-8")
@@ -125,9 +134,12 @@ class TcpClient:
                 break
         self._running = False
 
-    def _handle_message(self, line: str):
+    def _handle_message(self, line: str) -> None:
         try:
-            msg = json.loads(line)
+            msg_raw = json.loads(line)
+            if not isinstance(msg_raw, dict):
+                return
+            msg = cast(JsonDict, msg_raw)
             msg_id = msg.get("id")
             queue = None
             if msg_id:

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 import threading
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from PyQt5.QtCore import QThread, pyqtSignal
 
@@ -17,11 +17,23 @@ DXF_OPEN_AUTO_PREVIEW_TIMEOUT_S = 300.0
 
 if TYPE_CHECKING:
     try:
-        from hmi_client.client.protocol import MachineStatus, CommandProtocol
+        from hmi_client.client.protocol import CommandProtocol
         from hmi_client.client.tcp_client import TcpClient
     except ImportError:  # pragma: no cover - script-mode fallback
-        from client.protocol import MachineStatus, CommandProtocol  # type: ignore
+        from client.protocol import CommandProtocol  # type: ignore
         from client.tcp_client import TcpClient  # type: ignore
+
+
+class PreviewStatusLike(Protocol):
+    connected: bool
+
+    def gate_estop_known(self) -> bool: ...
+
+    def gate_door_known(self) -> bool: ...
+
+    def gate_estop_active(self) -> bool: ...
+
+    def gate_door_active(self) -> bool: ...
 
 
 @dataclass
@@ -736,7 +748,7 @@ class PreviewSessionOwner:
         connected: bool,
         hardware_connected: bool,
         runtime_status_fault: bool,
-        status: MachineStatus,
+        status: PreviewStatusLike,
         dry_run: bool,
     ) -> PreflightDecision:
         if not connected:
@@ -875,14 +887,21 @@ class PreviewSessionOwner:
         )
 
     @staticmethod
-    def extract_points(payload: dict, field_name: str) -> list[tuple[float, float]]:
+    def extract_points(payload: dict[str, object], field_name: str) -> list[tuple[float, float]]:
         points: list[tuple[float, float]] = []
-        for raw in payload.get(field_name, []) or []:
+        raw_points = payload.get(field_name, [])
+        if not isinstance(raw_points, list):
+            return points
+        for raw in raw_points:
             if not isinstance(raw, dict):
                 continue
+            x_raw = raw.get("x")
+            y_raw = raw.get("y")
+            if x_raw is None or y_raw is None:
+                continue
             try:
-                x_value = float(raw.get("x"))
-                y_value = float(raw.get("y"))
+                x_value = float(x_raw)
+                y_value = float(y_raw)
             except (TypeError, ValueError):
                 continue
             points.append((x_value, y_value))

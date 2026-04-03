@@ -1,7 +1,7 @@
 param(
     [ValidateSet("Local", "CI")]
     [string]$Profile = "Local",
-    [ValidateSet("all", "apps", "contracts", "e2e", "protocol-compatibility", "performance")]
+    [ValidateSet("all", "apps", "contracts", "protocol-compatibility", "integration", "e2e", "performance")]
     [string[]]$Suite = @("all"),
     [ValidateSet("auto", "quick-gate", "full-offline-gate", "nightly-performance", "limited-hil")]
     [string]$Lane = "auto",

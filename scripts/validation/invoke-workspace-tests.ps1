@@ -2,7 +2,7 @@
 param(
     [ValidateSet("Local", "CI")]
     [string]$Profile = "Local",
-    [ValidateSet("all", "apps", "contracts", "e2e", "protocol-compatibility", "performance")]
+    [ValidateSet("all", "apps", "contracts", "protocol-compatibility", "integration", "e2e", "performance")]
     [string[]]$Suite = @("all"),
     [string]$ReportDir = "tests\\reports",
     [ValidateSet("auto", "quick-gate", "full-offline-gate", "nightly-performance", "limited-hil")]
@@ -90,7 +90,7 @@ $resolvedReportDir = if ([System.IO.Path]::IsPathRooted($ReportDir)) {
     [System.IO.Path]::GetFullPath((Join-Path $workspaceRoot $ReportDir))
 }
 
-$requireHmiFormalGatewayContract = ($Suite -contains "all") -or ($Suite -contains "apps") -or ($Suite -contains "contracts") -or ($Suite -contains "e2e")
+$requireHmiFormalGatewayContract = ($Suite -contains "all") -or ($Suite -contains "apps") -or ($Suite -contains "contracts") -or ($Suite -contains "integration") -or ($Suite -contains "e2e")
 if ($requireHmiFormalGatewayContract) {
     $formalGatewayContractGuard = Join-Path $workspaceRoot "scripts\\validation\\assert-hmi-formal-gateway-launch-contract.ps1"
     if (-not (Test-Path $formalGatewayContractGuard)) {

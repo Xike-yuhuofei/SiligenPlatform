@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[3]
@@ -40,8 +41,8 @@ def _fault_projection(matrix: dict[str, object]) -> dict[str, dict[str, object]]
 
 
 def main() -> int:
-    integration_matrix = build_fault_matrix(WORKSPACE_ROOT, consumer_scope="tests/integration")
-    runtime_matrix = build_fault_matrix(WORKSPACE_ROOT, consumer_scope="runtime-execution")
+    integration_matrix = cast(dict[str, Any], build_fault_matrix(WORKSPACE_ROOT, consumer_scope="tests/integration"))
+    runtime_matrix = cast(dict[str, Any], build_fault_matrix(WORKSPACE_ROOT, consumer_scope="runtime-execution"))
 
     assert integration_matrix["matrix_id"] == runtime_matrix["matrix_id"]
     assert integration_matrix["matrix_id"] == "fault-matrix.simulated-line.v1"

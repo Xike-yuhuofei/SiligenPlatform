@@ -608,6 +608,51 @@
         "REF-004",
         "REF-005"
       ]
+    },
+    {
+      "exception_id": "EXC-903",
+      "status": "active",
+      "linked_residual_ids": [
+        "RES-001",
+        "RES-004"
+      ],
+      "allowed_locations": [
+        "tools",
+        "shared/testing/test-kit/src/test_kit/validation_layers.py",
+        "shared/testing/test-kit/src/test_kit/workspace_validation.py",
+        "scripts/build/build-validation.ps1"
+      ],
+      "owner_scope": "shared/testing",
+      "justification": "L0 static gate requires a single workspace-level mock discipline checker under tools/testing while the rest of the legacy tools root remains forbidden.",
+      "exit_condition": "Remove once the checker is relocated to the canonical automation root and all references are cut over.",
+      "reference_ids": [
+        "REF-003",
+        "REF-004"
+      ]
+    },
+    {
+      "exception_id": "EXC-904",
+      "status": "active",
+      "linked_residual_ids": [
+        "RES-004"
+      ],
+      "allowed_locations": [
+        "modules/dxf-geometry/tests/CMakeLists.txt",
+        "modules/dxf-geometry/tests/README.md",
+        "modules/job-ingest/tests/CMakeLists.txt",
+        "modules/job-ingest/tests/README.md",
+        "modules/process-path/tests/CMakeLists.txt",
+        "modules/process-path/tests/README.md",
+        "modules/topology-feature/tests/CMakeLists.txt",
+        "modules/topology-feature/tests/README.md"
+      ],
+      "owner_scope": "modules/*/tests",
+      "justification": "Module-local canonical test directories legitimately use unit/contract/golden/integration subfolders and must not be misclassified as the retired repository-level integration root.",
+      "exit_condition": "Remove once the legacy-path regex distinguishes repository roots from module-local canonical test subdirectories.",
+      "reference_ids": [
+        "REF-003",
+        "REF-004"
+      ]
     }
   ],
   "gate_profile_registry": [

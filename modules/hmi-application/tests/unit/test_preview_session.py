@@ -147,9 +147,9 @@ def _worker_import_modules() -> dict[str, object]:
     client_package = types.ModuleType("client")
     client_package.__path__ = []  # type: ignore[attr-defined]
     tcp_module = types.ModuleType("client.tcp_client")
-    tcp_module.TcpClient = _WorkerFakeClient
+    setattr(tcp_module, "TcpClient", _WorkerFakeClient)
     protocol_module = types.ModuleType("client.protocol")
-    protocol_module.CommandProtocol = _WorkerFakeProtocol
+    setattr(protocol_module, "CommandProtocol", _WorkerFakeProtocol)
     return {
         "hmi_client": hmi_client_package,
         "hmi_client.client": hmi_client_client_package,

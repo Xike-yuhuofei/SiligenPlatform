@@ -1071,6 +1071,10 @@ Result<ExecutionAssemblyResponse> PlanningUseCase::AssembleExecutionFromAuthorit
             SILIGEN_LOG_WARNING("planning artifact export reported failure: " + export_result.Value().message);
         }
     }
+    // export_request only feeds the export port. Keeping it inside the returned
+    // assembly response retains large duplicate trajectory buffers in workflow
+    // plan state and execution-assembly cache after export has already finished.
+    response.export_request = {};
     response.execution_profile.export_ms = export_elapsed_ms;
     response.execution_profile.total_ms = ToElapsedMs(total_start);
 

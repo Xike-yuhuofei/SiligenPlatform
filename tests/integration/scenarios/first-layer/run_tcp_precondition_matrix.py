@@ -6,6 +6,7 @@ import os
 import shutil
 import socket
 import subprocess
+import sys
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -17,6 +18,24 @@ KNOWN_FAILURE_EXIT_CODE = 10
 SKIPPED_EXIT_CODE = 11
 
 ROOT = Path(__file__).resolve().parents[4]
+TEST_KIT_SRC = ROOT / "shared" / "testing" / "test-kit" / "src"
+if str(TEST_KIT_SRC) not in sys.path:
+    sys.path.insert(0, str(TEST_KIT_SRC))
+HIL_DIR = ROOT / "tests" / "e2e" / "hardware-in-loop"
+if str(HIL_DIR) not in sys.path:
+    sys.path.insert(0, str(HIL_DIR))
+
+from test_kit.evidence_bundle import (  # noqa: E402
+    EvidenceBundle,
+    EvidenceCaseRecord,
+    EvidenceLink,
+    default_deterministic_replay,
+    infer_verdict,
+    trace_fields,
+    write_bundle_artifacts,
+)
+from runtime_gateway_harness import load_connection_params, tcp_connect_and_ensure_ready  # noqa: E402
+
 CONTROL_APPS_BUILD_ROOT = Path(
     os.getenv(
         "SILIGEN_CONTROL_APPS_BUILD_ROOT",
@@ -266,17 +285,25 @@ def _prepare_isolated_workspace(report_dir: Path) -> Path:
     trajectory_script = str(DEFAULT_DXF_TRAJECTORY_SCRIPT.resolve())
     rewritten_lines: list[str] = []
     in_hardware = False
+    in_homing = False
     mock_mode_rewritten = False
     for line in config_text.splitlines():
         stripped = line.strip()
         if stripped.startswith("[") and stripped.endswith("]"):
             in_hardware = stripped.lower() == "[hardware]"
+            in_homing = stripped.lower().startswith("[homing_axis")
             rewritten_lines.append(line)
             continue
         if in_hardware and stripped.lower().startswith("mode="):
             indent = line[: len(line) - len(line.lstrip())]
             rewritten_lines.append(f"{indent}mode=Mock")
             mock_mode_rewritten = True
+        elif in_homing and stripped.lower().startswith("ready_zero_speed_mm_s="):
+            indent = line[: len(line) - len(line.lstrip())]
+            rewritten_lines.append(f"{indent}ready_zero_speed_mm_s=8.0")
+        elif in_homing and stripped.lower().startswith("rapid_velocity="):
+            indent = line[: len(line) - len(line.lstrip())]
+            rewritten_lines.append(f"{indent}rapid_velocity=8.0")
         elif line.startswith("script="):
             rewritten_lines.append(f"script={trajectory_script}")
         else:
@@ -509,9 +536,97 @@ def _write_report(report_dir: Path, report: dict[str, Any]) -> tuple[Path, Path]
     return json_path, md_path
 
 
+def _asset_refs_for_scenario(scenario_id: str) -> tuple[str, ...]:
+    if scenario_id in {"S4-dxf-job-start-without-plan", "S2-dxf-job-start-without-preview-confirm"}:
+        return ("sample.dxf.rect_diag",)
+    return ()
+
+
+def _write_bundle(report_dir: Path, report: dict[str, Any], json_path: Path, md_path: Path) -> None:
+    results = report.get("results", [])
+    bundle = EvidenceBundle(
+        bundle_id="tcp-precondition-matrix",
+        request_ref="tcp-precondition-matrix",
+        producer_lane_ref="full-offline-gate",
+        report_root=str(report_dir.resolve()),
+        summary_file=str(md_path.resolve()),
+        machine_file=str(json_path.resolve()),
+        verdict=infer_verdict([str(item.get("status", "")) for item in results]),
+        linked_asset_refs=tuple(
+            sorted(
+                {
+                    asset_id
+                    for item in results
+                    for asset_id in _asset_refs_for_scenario(str(item.get("scenario_id", "")))
+                }
+            )
+        ),
+        metadata={
+            "overall_status": report.get("overall_status", ""),
+            "host": report.get("host", ""),
+            "port": report.get("port", 0),
+            "gateway_exe": report.get("gateway_exe", ""),
+        },
+        case_records=[
+            EvidenceCaseRecord(
+                case_id=str(item.get("scenario_id", "")),
+                name=str(item.get("scenario_id", "")),
+                suite_ref="integration",
+                owner_scope="tests/integration",
+                primary_layer="L3",
+                producer_lane_ref="full-offline-gate",
+                status=str(item.get("status", "failed")),
+                evidence_profile="integration-report",
+                stability_state="stable",
+                size_label="medium",
+                label_refs=("suite:integration", "kind:integration", "size:medium", "layer:L3"),
+                required_assets=_asset_refs_for_scenario(str(item.get("scenario_id", ""))),
+                required_fixtures=("fixture.tcp-precondition-matrix", "fixture.validation-evidence-bundle"),
+                deterministic_replay=default_deterministic_replay(
+                    passed=str(item.get("status", "")) == "passed",
+                    seed=0,
+                    clock_profile="runtime",
+                    repeat_count=1,
+                ),
+                note=str(item.get("note", "")),
+                trace_fields=trace_fields(
+                    stage_id="L3",
+                    artifact_id=str(item.get("scenario_id", "")),
+                    module_id="tests/integration",
+                    workflow_state="executed",
+                    execution_state=str(item.get("status", "failed")),
+                    event_name=str(item.get("scenario_id", "")),
+                    failure_code="" if str(item.get("status", "")) == "passed" else f"tcp-precondition.{item.get('scenario_id', '')}",
+                    evidence_path=str(json_path.resolve()),
+                ),
+            )
+            for item in results
+        ],
+    )
+    write_bundle_artifacts(
+        bundle=bundle,
+        report_root=report_dir,
+        summary_json_path=json_path,
+        summary_md_path=md_path,
+        evidence_links=[
+            EvidenceLink(label="machine_config.ini", path=str((Path(report["gateway_cwd"]) / "config" / "machine" / "machine_config.ini").resolve()), role="config"),
+            EvidenceLink(label="rect_diag.dxf", path=str(Path(report["dxf_file"]).resolve()), role="sample"),
+        ],
+    )
+
+
+def _emit_report_and_print(report_dir: Path, report: dict[str, Any]) -> tuple[Path, Path]:
+    json_path, md_path = _write_report(report_dir, report)
+    _write_bundle(report_dir, report, json_path, md_path)
+    print(f"tcp precondition matrix complete: status={report['overall_status']}")
+    print(f"json report: {json_path}")
+    print(f"markdown report: {md_path}")
+    return json_path, md_path
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run S2/S3/S4 TCP precondition matrix and write a report.")
-    parser.add_argument("--report-dir", default=str(ROOT / "tests" / "reports" / "first-layer" / "s2-s4-precondition"))
+    parser.add_argument("--report-dir", default=str(ROOT / "tests" / "reports" / "integration" / "tcp-precondition-matrix"))
     parser.add_argument("--host", default=os.getenv("SILIGEN_HIL_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=None)
     parser.add_argument(
@@ -562,10 +677,7 @@ def main() -> int:
             "overall_status": _compute_overall_status(results),
             "results": [asdict(item) for item in results],
         }
-        json_path, md_path = _write_report(report_dir, report)
-        print(f"tcp precondition matrix complete: status={report['overall_status']}")
-        print(f"json report: {json_path}")
-        print(f"markdown report: {md_path}")
+        _emit_report_and_print(report_dir, report)
         if status == "skipped":
             return SKIPPED_EXIT_CODE
         return KNOWN_FAILURE_EXIT_CODE
@@ -591,10 +703,7 @@ def main() -> int:
             "overall_status": _compute_overall_status(results),
             "results": [asdict(item) for item in results],
         }
-        json_path, md_path = _write_report(report_dir, report)
-        print(f"tcp precondition matrix complete: status={report['overall_status']}")
-        print(f"json report: {json_path}")
-        print(f"markdown report: {md_path}")
+        _emit_report_and_print(report_dir, report)
         return 1
 
     if not args.dxf_file.exists():
@@ -618,10 +727,7 @@ def main() -> int:
             "overall_status": _compute_overall_status(results),
             "results": [asdict(item) for item in results],
         }
-        json_path, md_path = _write_report(report_dir, report)
-        print(f"tcp precondition matrix complete: status={report['overall_status']}")
-        print(f"json report: {json_path}")
-        print(f"markdown report: {md_path}")
+        _emit_report_and_print(report_dir, report)
         return 1
 
     process_env = _build_process_env(gateway_exe)
@@ -649,10 +755,7 @@ def main() -> int:
             "overall_status": _compute_overall_status(results),
             "results": [asdict(item) for item in results],
         }
-        json_path, md_path = _write_report(report_dir, report)
-        print(f"tcp precondition matrix complete: status={report['overall_status']}")
-        print(f"json report: {json_path}")
-        print(f"markdown report: {md_path}")
+        _emit_report_and_print(report_dir, report)
         return 1
 
     process = subprocess.Popen(
@@ -689,16 +792,51 @@ def main() -> int:
                 "overall_status": _compute_overall_status(results),
                 "results": [asdict(item) for item in results],
             }
-            json_path, md_path = _write_report(report_dir, report)
-            print(f"tcp precondition matrix complete: status={report['overall_status']}")
-            print(f"json report: {json_path}")
-            print(f"markdown report: {md_path}")
+            _emit_report_and_print(report_dir, report)
             if ready_status == "known_failure":
                 return KNOWN_FAILURE_EXIT_CODE
             return 1
 
         client.connect(timeout_seconds=3.0)
-        client.send_request("connect", {}, timeout_seconds=5.0)
+        admission = tcp_connect_and_ensure_ready(
+            client,
+            config_path=gateway_config,
+            connect_timeout_seconds=5.0,
+            status_timeout_seconds=5.0,
+            ready_timeout_seconds=3.0,
+        )
+        if admission.status != "passed":
+            bootstrap_response = {
+                "connect_params": admission.connect_params,
+                "connect_response": admission.connect_response,
+                "status_response": admission.status_response,
+            }
+            results.append(
+                ScenarioResult(
+                    scenario_id="S2-S4-bootstrap",
+                    status=admission.status,
+                    expected="connect returns connected=true and status.connected=true",
+                    actual=admission.note,
+                    note=f"gateway admission failed; config={gateway_config}",
+                    response=_truncate_json(bootstrap_response, max_chars=2000),
+                )
+            )
+            report = {
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "workspace_root": str(ROOT),
+                "gateway_exe": str(gateway_exe),
+                "gateway_cwd": str(gateway_cwd),
+                "host": args.host,
+                "port": port,
+                "dxf_file": str(args.dxf_file),
+                "overall_status": _compute_overall_status(results),
+                "results": [asdict(item) for item in results],
+            }
+            _emit_report_and_print(report_dir, report)
+            if admission.status == "known_failure":
+                return KNOWN_FAILURE_EXIT_CODE
+            return 1
+
         baseline_status, baseline_note = _stabilize_runtime_state(client)
         baseline_homed, _, baseline_inconsistent_axes = _all_axes_homed_consistently(baseline_status)
         baseline_active_job_id = _extract_active_job_id(baseline_status)
@@ -914,10 +1052,7 @@ def main() -> int:
         "overall_status": _compute_overall_status(results),
         "results": [asdict(item) for item in results],
     }
-    json_path, md_path = _write_report(report_dir, report)
-    print(f"tcp precondition matrix complete: status={report['overall_status']}")
-    print(f"json report: {json_path}")
-    print(f"markdown report: {md_path}")
+    _emit_report_and_print(report_dir, report)
 
     if report["overall_status"] == "passed":
         return 0

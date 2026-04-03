@@ -32,6 +32,14 @@
 - `singleflight`
   - 同一 artifact 并发发起 `plan.prepare`
   - 单测才是 execution single-flight 的硬证据；这里的 real-runtime 并发结果只作为观测性证据
+- `control_cycle`
+  - 仅在 `--include-start-job --include-control-cycles` 下采集
+  - 复用同一 authority / artifact，记录 `pause/resume` 与 `stop/reset/rerun` 的控制环耗时
+  - 当前正式摘要字段固定为 `pause_to_running_ms`、`stop_to_idle_ms`、`rerun_total_ms`、`execution_total_ms`、`working_set_mb`、`private_memory_mb`、`handle_count`、`timeout_count`
+- `long_run`
+  - 在同一 backend 和 artifact 上持续复跑到 `--long-run-minutes` 指定时长
+  - 先执行一次 `plan.prepare -> preview.snapshot` 建立 preview setup，随后在循环内仅执行 `preview.confirm -> dxf.job.start -> dxf.job.status -> dxf.job.stop`
+  - 当前正式摘要字段固定为 `execution_total_ms`、`working_set_mb`、`private_memory_mb`、`handle_count`、`thread_count`、`timeout_count`
 
 ### `--include-start-job` 启动约定
 
@@ -64,6 +72,10 @@
     --singleflight-rounds 2 `
     --singleflight-fanout 4 `
     --include-start-job `
+    --include-control-cycles `
+    --pause-resume-cycles 3 `
+    --stop-reset-rounds 3 `
+    --long-run-minutes 5 `
     --gate-mode nightly-performance `
     --threshold-config tests/baselines/performance/dxf-preview-profile-thresholds.json
   ```
@@ -112,6 +124,9 @@
 - `dxf.job.start.performance_profile`
   - 是 execution 画像的唯一公开出口
   - 固定字段：`execution_cache_hit`、`execution_joined_inflight`、`execution_wait_ms`、`motion_plan_ms`、`assembly_ms`、`export_ms`、`execution_total_ms`
+- `control_cycle.summary` / `long_run.summary`
+  - 顶层 `count` 固定表示控制环轮次或 long-run 迭代数
+  - 顶层 `sample_count` 固定表示资源采样点数量，不再覆盖 `count` 语义
 - 报告环境头
   - `gateway_config_path` / `gateway_hardware_mode` / `gateway_auto_provisioned_mock` 用于说明本次 execution smoke 是否走了自动 mock 配置
 - `baseline-json`
@@ -120,8 +135,10 @@
 - `threshold-config`
   - canonical 路径固定为 `tests/baselines/performance/dxf-preview-profile-thresholds.json`
   - 当前正式 blocking 样本为 `small`、`medium`、`large`
-  - 当前冻结场景为 `cold`、`hot`、`singleflight`
+  - 当前冻结场景为 `cold`、`hot`、`singleflight`、`control_cycle`
+  - `small.long_run` 已纳入正式阈值冻结面，用于守住长稳资源趋势与 timeout 漂移
   - 当前正式 gate 需要 `--include-start-job`，因为 threshold config 已包含 execution thresholds
+  - `nightly-performance` 正式入口还要求 `--include-control-cycles --pause-resume-cycles 3 --stop-reset-rounds 3 --long-run-minutes 5`
   - 只有 `threshold_gate` 会在 `nightly-performance` 下成为 blocking 判定
   - `threshold_gate` 结果会同时写入 `report.json/.md`、`validation-evidence-bundle.json`、`report-manifest.json` 与 `report-index.json`
 
@@ -155,6 +172,18 @@
   - `large.hot.prepare_total_ms.p95_ms = 20.9`
   - `large.hot.execution_total_ms.p95_ms = 27917.0`
   - `large.singleflight.prepare_total_ms.p95_ms = 1505.6`
+- 当前结论：`threshold_gate=passed`
+
+## Phase 14 Long-Run Memory Repair Evidence
+
+- 正式修复回归批次：`tests/reports/performance/dxf-preview-profiles/20260403T083352Z/`
+- 当前多样本 `long_run` 结果：
+  - `small.long_run.working_set_mb.delta_max = 11.461`
+  - `small.long_run.private_memory_mb.delta_max = 10.047`
+  - `medium.long_run.working_set_mb.delta_max = 19.855`
+  - `medium.long_run.private_memory_mb.delta_max = 18.406`
+  - `large.long_run.working_set_mb.delta_max = 66.429`
+  - `large.long_run.private_memory_mb.delta_max = 65.832`
 - 当前结论：`threshold_gate=passed`
 
 ## Wave 5 仓库级 performance 回链检查点（US6 / M10-M11）

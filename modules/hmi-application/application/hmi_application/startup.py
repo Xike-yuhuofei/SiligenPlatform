@@ -16,7 +16,13 @@ from .launch_supervision_contract import (
     is_online_ready,
     snapshot_timestamp,
 )
-from .launch_supervision_session import SupervisorPolicy, SupervisorSession
+from .launch_supervision_session import (
+    BackendController,
+    HardwareProtocolLike,
+    SupervisorPolicy,
+    SupervisorSession,
+    TcpClientLike,
+)
 
 if TYPE_CHECKING:
     try:
@@ -161,9 +167,9 @@ StartupResult = LaunchResult
 
 def run_launch_sequence(
     launch_mode: str,
-    backend: BackendManager,
-    client: TcpClient,
-    protocol: CommandProtocol,
+    backend: "BackendController",
+    client: "TcpClientLike",
+    protocol: "HardwareProtocolLike",
     progress_callback: Callable[[str, int], None] | None = None,
     snapshot_callback: Callable[[SessionSnapshot], None] | None = None,
     event_callback: Callable[[SessionStageEvent], None] | None = None,
@@ -212,9 +218,9 @@ def build_offline_launch_result(user_message: str | None = None) -> LaunchResult
 def run_recovery_action(
     action: RecoveryAction,
     snapshot: SessionSnapshot,
-    backend: BackendManager,
-    client: TcpClient,
-    protocol: CommandProtocol,
+    backend: "BackendController",
+    client: "TcpClientLike",
+    protocol: "HardwareProtocolLike",
     progress_callback: Callable[[str, int], None] | None = None,
     snapshot_callback: Callable[[SessionSnapshot], None] | None = None,
     event_callback: Callable[[SessionStageEvent], None] | None = None,
@@ -359,7 +365,7 @@ class RecoveryWorker(QThread):
         policy: SupervisorPolicy | None = None,
     ):
         super().__init__()
-        self._action = action
+        self._action: RecoveryAction = action
         self._recovery_snapshot = recovery_snapshot
         self._backend = backend
         self._client = client

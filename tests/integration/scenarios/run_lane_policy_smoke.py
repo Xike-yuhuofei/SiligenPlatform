@@ -4,6 +4,7 @@ import json
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any, cast
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[3]
@@ -26,13 +27,13 @@ from test_kit.validation_layers import build_request, lane_policy_metadata, rout
 def _assert_quick_gate_policy() -> dict[str, object]:
     routed = route_validation_request(
         build_request(
-            requested_suites=["contracts", "protocol-compatibility"],
+            requested_suites=["apps", "contracts", "protocol-compatibility"],
             changed_scopes=["shared/testing", "tests/integration"],
             risk_profile="medium",
             desired_depth="quick",
         )
     )
-    metadata = routed.to_metadata()
+    metadata = cast(dict[str, Any], routed.to_metadata())
     assert metadata["selected_lane_ref"] == "quick-gate"
     assert metadata["selected_lane_gate_decision"] == "blocking"
     assert metadata["selected_lane_default_fail_policy"] == "fail-fast"
@@ -49,7 +50,7 @@ def _assert_nightly_policy() -> dict[str, object]:
             desired_depth="nightly",
         )
     )
-    metadata = routed.to_metadata()
+    metadata = cast(dict[str, Any], routed.to_metadata())
     assert metadata["selected_lane_ref"] == "nightly-performance"
     assert metadata["selected_lane_gate_decision"] == "blocking"
     assert "suite:performance" in metadata["requested_suite_label_refs"]
@@ -67,7 +68,7 @@ def _assert_limited_hil_policy() -> dict[str, object]:
             include_hil_closed_loop=True,
         )
     )
-    metadata = routed.to_metadata()
+    metadata = cast(dict[str, Any], routed.to_metadata())
     assert metadata["selected_lane_ref"] == "limited-hil"
     assert metadata["selected_lane_gate_decision"] == "blocking"
     assert metadata["selected_lane_timeout_budget_seconds"] == lane_policy_metadata("limited-hil")["timeout_budget_seconds"]
@@ -97,17 +98,17 @@ def _assert_bundle_manifest_smoke() -> dict[str, object]:
                     name="performance-small",
                     suite_ref="performance",
                     owner_scope="tests/performance",
-                    primary_layer="L4-performance",
+                    primary_layer="L6",
                     producer_lane_ref="nightly-performance",
                     status="passed",
                     evidence_profile="performance-report",
                     stability_state="stable",
                     size_label="large",
-                    label_refs=("suite:performance", "size:large", "layer:L4-performance"),
+                    label_refs=("suite:performance", "size:large", "layer:L6"),
                     deterministic_replay={"passed": True, "seed": 0, "clock_profile": "deterministic-monotonic", "repeat_count": 1},
                     failure_classification=default_failure_classification(status="passed"),
                     trace_fields=trace_fields(
-                        stage_id="L4-performance",
+                        stage_id="L6",
                         artifact_id="performance-small",
                         module_id="tests/performance",
                         workflow_state="executed",

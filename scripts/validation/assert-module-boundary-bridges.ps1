@@ -125,7 +125,7 @@ $requiredBridgeReferences = @(
     },
     @{
         path = "modules/workflow/application/CMakeLists.txt"
-        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
+        pattern = "siligen_process_planning_contracts_public"
     },
     @{
         path = "modules/workflow/application/CMakeLists.txt"
@@ -137,7 +137,7 @@ $requiredBridgeReferences = @(
     },
     @{
         path = "modules/workflow/domain/domain/CMakeLists.txt"
-        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
+        pattern = "siligen_process_planning_contracts_public"
     },
     @{
         path = "modules/workflow/domain/domain/CMakeLists.txt"
@@ -345,7 +345,7 @@ $requiredBridgeReferences = @(
     },
     @{
         path = "modules/dispense-packaging/domain/dispensing/CMakeLists.txt"
-        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
+        pattern = "siligen_process_planning_contracts_public"
     },
     @{
         path = "apps/runtime-service/tests/CMakeLists.txt"

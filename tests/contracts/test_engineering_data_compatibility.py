@@ -62,7 +62,7 @@ class EngineeringDataCompatibilityTest(unittest.TestCase):
             dxf_path = Path(tmp_dir) / "mixed_noise.dxf"
             output_path = Path(tmp_dir) / "mixed_noise.pb"
 
-            doc = ezdxf.new("R12")
+            doc = getattr(ezdxf, "new")("R12")
             modelspace = doc.modelspace()
             modelspace.add_line((0.0, 0.0), (10.0, 0.0))
             modelspace.add_point((5.0, 5.0))

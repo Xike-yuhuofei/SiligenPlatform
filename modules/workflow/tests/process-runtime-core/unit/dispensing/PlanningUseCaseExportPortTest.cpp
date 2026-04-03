@@ -314,6 +314,41 @@ TEST(PlanningUseCaseExportPortTest, ExecuteBuildsExportRequestWithoutDirectFiles
     std::filesystem::remove(temp_pb, ec);
 }
 
+TEST(PlanningUseCaseExportPortTest, AssembleExecutionDropsExportRequestAfterExportCompletes) {
+    auto temp_pb = MakeTempPbPath();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto path_source = std::make_shared<FakePathSourcePort>();
+    auto export_port = std::make_shared<FakePlanningArtifactExportPort>();
+    auto pb_service = std::make_shared<DxfPbPreparationService>();
+    PlanningUseCase use_case(
+        path_source,
+        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
+        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
+        config_port,
+        pb_service,
+        export_port);
+
+    const auto request = MakePlanningRequest(temp_pb);
+    const auto authority_result = use_case.PrepareAuthorityPreview(request);
+    ASSERT_TRUE(authority_result.IsSuccess()) << authority_result.GetError().ToString();
+
+    const auto assembly_result = use_case.AssembleExecutionFromAuthority(request, authority_result.Value());
+
+    ASSERT_TRUE(assembly_result.IsSuccess()) << assembly_result.GetError().ToString();
+    ASSERT_EQ(export_port->export_calls, 1);
+    EXPECT_FALSE(export_port->last_request.execution_trajectory_points.empty());
+    EXPECT_FALSE(export_port->last_request.interpolation_trajectory_points.empty());
+    EXPECT_FALSE(export_port->last_request.motion_trajectory_points.empty());
+    EXPECT_TRUE(assembly_result.Value().export_request.execution_trajectory_points.empty());
+    EXPECT_TRUE(assembly_result.Value().export_request.interpolation_trajectory_points.empty());
+    EXPECT_TRUE(assembly_result.Value().export_request.motion_trajectory_points.empty());
+
+    std::error_code ec;
+    std::filesystem::remove(temp_pb, ec);
+}
+
 TEST(PlanningUseCaseExportPortTest, ExecuteExportsEquivalentGluePointsForSubdividedOpenSpan) {
     auto temp_pb = MakeTempPbPath();
     auto config_port = std::make_shared<FakeConfigurationPort>();

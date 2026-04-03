@@ -141,23 +141,6 @@ Result<ControllerOutput> DispensingController::Build(const MotionTrajectory& tra
         return Result<ControllerOutput>::Success(output);
     }
 
-    output.interpolation.reserve(trajectory.points.size() - 1);
-
-    for (size_t i = 1; i < trajectory.points.size(); ++i) {
-        const auto& prev = trajectory.points[i - 1];
-        const auto& curr = trajectory.points[i];
-        InterpolationData data;
-        data.type = InterpolationType::LINEAR;
-        data.positions = {curr.position.x, curr.position.y};
-        data.velocity = SpeedMagnitude(curr.velocity);
-        data.acceleration = config.acceleration_mm_s2;
-        float32 next_speed = (i + 1 < trajectory.points.size())
-                                 ? SpeedMagnitude(trajectory.points[i + 1].velocity)
-                                 : 0.0f;
-        data.end_velocity = next_speed;
-        output.interpolation.push_back(data);
-    }
-
     output.estimated_motion_time_ms = trajectory.total_time * 1000.0f;
 
     bool allow_hardware_trigger = config.use_hardware_trigger;
@@ -236,46 +219,6 @@ Result<ControllerOutput> DispensingController::Build(const std::vector<Trajector
     float32 fallback_velocity = 0.0f;
     if (total_time_ms > kEpsilon) {
         fallback_velocity = total_length / (total_time_ms / 1000.0f);
-    }
-
-    output.interpolation.reserve(trajectory.size() - 1);
-    for (size_t i = 1; i < trajectory.size(); ++i) {
-        const auto& prev = trajectory[i - 1];
-        const auto& curr = trajectory[i];
-        InterpolationData data;
-        data.type = InterpolationType::LINEAR;
-        data.positions = {curr.position.x, curr.position.y};
-        float32 velocity = curr.velocity;
-        if (velocity <= kEpsilon) {
-            float32 dt = curr.timestamp - prev.timestamp;
-            if (dt > kEpsilon) {
-                velocity = prev.position.DistanceTo(curr.position) / dt;
-            } else {
-                velocity = fallback_velocity;
-            }
-        }
-        if (velocity < 0.0f) {
-            velocity = 0.0f;
-        }
-        data.velocity = velocity;
-        data.acceleration = config.acceleration_mm_s2;
-        float32 next_speed = 0.0f;
-        if (i + 1 < trajectory.size()) {
-            next_speed = trajectory[i + 1].velocity;
-            if (next_speed <= kEpsilon) {
-                float32 dt = trajectory[i + 1].timestamp - curr.timestamp;
-                if (dt > kEpsilon) {
-                    next_speed = curr.position.DistanceTo(trajectory[i + 1].position) / dt;
-                } else {
-                    next_speed = fallback_velocity;
-                }
-            }
-        }
-        if (next_speed < 0.0f) {
-            next_speed = 0.0f;
-        }
-        data.end_velocity = next_speed;
-        output.interpolation.push_back(data);
     }
 
     output.estimated_motion_time_ms = (total_time_ms > kEpsilon)

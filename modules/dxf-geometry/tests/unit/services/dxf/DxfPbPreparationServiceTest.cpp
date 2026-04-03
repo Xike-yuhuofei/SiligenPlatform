@@ -116,6 +116,34 @@ TEST(DxfPbPreparationServiceTest, RejectsEmptyPbOutput) {
     std::filesystem::remove_all(base_dir, ec);
 }
 
+TEST(DxfPbPreparationServiceTest, RejectsUnsupportedInputExtensionBeforeGeneration) {
+    const auto base_dir = MakeTempDir("pb_invalid_extension");
+    const auto txt_path = base_dir / "sample.txt";
+
+    WriteTextFile(txt_path, "not-a-dxf");
+
+    DxfPbPreparationService service;
+    auto result = service.EnsurePbReady(txt_path.string());
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::FILE_FORMAT_INVALID);
+
+    std::error_code ec;
+    std::filesystem::remove_all(base_dir, ec);
+}
+
+TEST(DxfPbPreparationServiceTest, RejectsMissingDxfInputBeforeGeneration) {
+    const auto base_dir = MakeTempDir("pb_missing_dxf");
+    const auto dxf_path = base_dir / "missing.dxf";
+
+    DxfPbPreparationService service;
+    auto result = service.EnsurePbReady(dxf_path.string());
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::FILE_NOT_FOUND);
+
+    std::error_code ec;
+    std::filesystem::remove_all(base_dir, ec);
+}
+
 TEST(DxfPbPreparationServiceTest, UsesExternalDxFProjectLauncherWhenAvailable) {
     const auto root_dir = MakeTempDir("external_dxf_project");
     const auto dxf_repo_dir = root_dir / "DXF";
@@ -182,6 +210,23 @@ TEST(DxfPbPreparationServiceTest, RejectsCommandOverrideWithoutInputOutputPlaceh
 
     WriteTextFile(dxf_path, MinimalDxf());
     SetEnvVar("SILIGEN_DXF_PB_COMMAND", "python fake_generator.py");
+
+    DxfPbPreparationService service;
+    auto result = service.EnsurePbReady(dxf_path.string());
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::CONFIGURATION_ERROR);
+
+    UnsetEnvVar("SILIGEN_DXF_PB_COMMAND");
+    std::error_code ec;
+    std::filesystem::remove_all(base_dir, ec);
+}
+
+TEST(DxfPbPreparationServiceTest, RejectsCommandOverrideWithUnclosedQuote) {
+    const auto base_dir = MakeTempDir("invalid_command_quote");
+    const auto dxf_path = base_dir / "sample.dxf";
+
+    WriteTextFile(dxf_path, MinimalDxf());
+    SetEnvVar("SILIGEN_DXF_PB_COMMAND", "python \"broken {input} {output}");
 
     DxfPbPreparationService service;
     auto result = service.EnsurePbReady(dxf_path.string());
@@ -281,6 +326,38 @@ TEST(DxfPbPreparationServiceTest, FindsDefaultPbScriptRelativeToWorkspaceWhenCwd
     std::ifstream in(pb_path, std::ios::binary);
     std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     EXPECT_EQ(content, "workspace-script-pb");
+
+    std::filesystem::remove_all(base_dir, ec);
+}
+
+TEST(DxfPbPreparationServiceTest, RejectsWhenDefaultPbScriptCannotBeResolved) {
+    const auto base_dir = MakeTempDir("missing_default_pb_script");
+    const auto workspace_root = base_dir / "workspace";
+    const auto nested_cwd = workspace_root / "build" / "bin" / "Debug";
+    const auto uploads_dir = workspace_root / "uploads";
+    const auto dxf_path = uploads_dir / "sample.dxf";
+
+    std::filesystem::create_directories(nested_cwd);
+    std::filesystem::create_directories(uploads_dir);
+    WriteTextFile(dxf_path, MinimalDxf());
+
+    UnsetEnvVar("SILIGEN_DXF_PB_SCRIPT");
+    UnsetEnvVar("SILIGEN_DXF_PB_COMMAND");
+
+    std::error_code ec;
+    const auto original_cwd = std::filesystem::current_path(ec);
+    ASSERT_FALSE(ec);
+    std::filesystem::current_path(nested_cwd, ec);
+    ASSERT_FALSE(ec);
+
+    DxfPbPreparationService service;
+    auto result = service.EnsurePbReady(dxf_path.string());
+
+    std::filesystem::current_path(original_cwd, ec);
+    ASSERT_FALSE(ec);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::FILE_NOT_FOUND);
 
     std::filesystem::remove_all(base_dir, ec);
 }

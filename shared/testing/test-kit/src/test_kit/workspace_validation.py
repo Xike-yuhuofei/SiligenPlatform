@@ -13,6 +13,7 @@ from .asset_catalog import (
     default_performance_sample_asset_ids,
     shared_asset_ids_for_smoke,
 )
+from .control_apps_build import control_apps_build_root_probes, preferred_control_apps_build_root
 from .evidence_bundle import (
     EvidenceBundle,
     EvidenceCaseRecord,
@@ -46,14 +47,16 @@ from .workspace_layout import load_workspace_layout
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[5]
-DEFAULT_SUITES = ("apps", "contracts", "e2e", "protocol-compatibility")
+DEFAULT_SUITES = ("apps", "contracts", "protocol-compatibility", "integration", "e2e")
 WORKSPACE_LAYOUT = load_workspace_layout(WORKSPACE_ROOT)
-CONTROL_APPS_BUILD_ROOT = Path(
-    os.getenv(
-        "SILIGEN_CONTROL_APPS_BUILD_ROOT",
-        str(Path(os.getenv("LOCALAPPDATA", str(WORKSPACE_ROOT))) / "SiligenSuite" / "control-apps-build"),
-    )
+CONTROL_APPS_BUILD_ROOT_PROBES = control_apps_build_root_probes(
+    WORKSPACE_ROOT,
+    explicit_build_root=os.getenv("SILIGEN_CONTROL_APPS_BUILD_ROOT"),
 )
+CONTROL_APPS_BUILD_ROOT = preferred_control_apps_build_root(
+    WORKSPACE_ROOT,
+    explicit_build_root=os.getenv("SILIGEN_CONTROL_APPS_BUILD_ROOT"),
+).root
 PERFORMANCE_THRESHOLD_CONFIG = WORKSPACE_ROOT / "tests" / "baselines" / "performance" / "dxf-preview-profile-thresholds.json"
 
 
@@ -66,12 +69,18 @@ def _layout_absolute_path(key: str) -> Path:
 
 
 def _control_apps_executable(name: str) -> Path:
-    candidates = (
-        CONTROL_APPS_BUILD_ROOT / "bin" / name,
-        CONTROL_APPS_BUILD_ROOT / "bin" / "Debug" / name,
-        CONTROL_APPS_BUILD_ROOT / "bin" / "Release" / name,
-        CONTROL_APPS_BUILD_ROOT / "bin" / "RelWithDebInfo" / name,
-    )
+    candidates: list[Path] = []
+    for probe in CONTROL_APPS_BUILD_ROOT_PROBES:
+        if not probe.accepted:
+            continue
+        candidates.extend(
+            (
+                probe.root / "bin" / name,
+                probe.root / "bin" / "Debug" / name,
+                probe.root / "bin" / "Release" / name,
+                probe.root / "bin" / "RelWithDebInfo" / name,
+            )
+        )
     for candidate in candidates:
         if candidate.exists():
             return candidate
@@ -149,14 +158,11 @@ def _normalize_suites(requested: list[str] | None) -> list[str]:
 
 
 def _workspace_validation_metadata() -> dict[str, object]:
-    control_apps_cache = CONTROL_APPS_BUILD_ROOT / "CMakeCache.txt"
-    cmake_home = ""
-    if control_apps_cache.exists():
-        for raw_line in control_apps_cache.read_text(encoding="utf-8", errors="ignore").splitlines():
-            if raw_line.startswith("CMAKE_HOME_DIRECTORY:"):
-                _, _, value = raw_line.partition("=")
-                cmake_home = value.strip()
-                break
+    selected_build_root = preferred_control_apps_build_root(
+        WORKSPACE_ROOT,
+        explicit_build_root=os.getenv("SILIGEN_CONTROL_APPS_BUILD_ROOT"),
+    )
+    cmake_home = selected_build_root.cmake_home_directory
 
     metadata = {
         "workspace_layout_file": str((WORKSPACE_ROOT / "cmake" / "workspace-layout.env").resolve()),
@@ -164,8 +170,15 @@ def _workspace_validation_metadata() -> dict[str, object]:
         "tests_root": str((WORKSPACE_ROOT / "tests").resolve()),
         "scripts_root": str((WORKSPACE_ROOT / "scripts").resolve()),
         "samples_root": str((WORKSPACE_ROOT / "samples").resolve()),
-        "control_apps_build_root": str(CONTROL_APPS_BUILD_ROOT.resolve()),
+        "control_apps_build_root": str(selected_build_root.root),
         "control_apps_cmake_home_directory": cmake_home,
+        "control_apps_build_root_source": selected_build_root.source,
+        "control_apps_search_roots": [str(probe.root) for probe in CONTROL_APPS_BUILD_ROOT_PROBES],
+        "control_apps_rejected_roots": [
+            {"root": str(probe.root), "reason": probe.reason}
+            for probe in CONTROL_APPS_BUILD_ROOT_PROBES
+            if not probe.accepted
+        ],
         "canonical_validation_layers": list(VALIDATION_LAYERS.keys()),
         "canonical_execution_lanes": list(EXECUTION_LANES.keys()),
         "canonical_suite_taxonomy": list(SUITE_TAXONOMY.keys()),
@@ -182,26 +195,34 @@ def _primary_layer_for_case(case: ValidationCase) -> str:
     if case.primary_layer:
         return case.primary_layer
     if case.name in {"hardware-smoke", "hil-closed-loop", "hil-case-matrix"}:
-        return "L5-limited-hil"
-    if case.layer == "performance":
-        return "L4-performance"
-    if case.layer == "protocol-compatibility":
-        return "L2-offline-integration"
+        return "L5"
+    if case.layer == "static":
+        return "L0"
+    if case.layer == "unit":
+        return "L1"
+    if case.layer in {"contracts", "protocol-compatibility", "freeze"}:
+        return "L2"
+    if case.layer == "integration":
+        return "L3"
     if case.layer == "e2e":
-        return "L3-simulated-e2e"
-    if case.layer in {"contracts", "unit"}:
-        return "L1-module-contract"
-    return "L0-structure-gate"
+        return "L4"
+    if case.layer == "performance":
+        return "L6"
+    return "L0"
 
 
 def _owner_scope_for_case(case: ValidationCase) -> str:
     if case.owner_scope and case.owner_scope != "shared/testing":
         return case.owner_scope
-    if case.layer == "apps":
+    if case.layer == "static":
+        return "root-validation"
+    if case.layer in {"apps", "unit"}:
         return "apps"
-    if case.layer in {"contracts", "unit"}:
+    if case.layer in {"contracts", "freeze"}:
         return "shared/contracts"
     if case.layer == "protocol-compatibility":
+        return "tests/integration"
+    if case.layer == "integration":
         return "tests/integration"
     if case.name == "simulated-line":
         return "runtime-execution"
@@ -215,10 +236,16 @@ def _owner_scope_for_case(case: ValidationCase) -> str:
 def _suite_ref_for_case(case: ValidationCase) -> str:
     if case.suite_ref:
         return case.suite_ref
-    if case.layer in {"freeze", "contracts", "unit"}:
+    if case.layer == "static":
+        return "static"
+    if case.layer in {"freeze", "contracts"}:
+        return "contracts"
+    if case.layer == "unit":
         return "contracts"
     if case.layer == "protocol-compatibility":
         return "protocol-compatibility"
+    if case.layer == "integration":
+        return "integration"
     if case.layer == "performance":
         return "performance"
     if case.layer == "apps":
@@ -268,9 +295,11 @@ def _risk_tags_for_case(case: ValidationCase) -> tuple[str, ...]:
         return ("acceptance", "regression")
     if case.layer == "performance":
         return ("performance", "single-flight")
+    if case.layer == "integration":
+        return ("integration", "workflow")
     if case.layer == "protocol-compatibility":
-        return ("integration", "protocol")
-    if case.layer in {"contracts", "unit"}:
+        return ("contract", "protocol")
+    if case.layer in {"contracts", "unit", "freeze"}:
         return ("contract",)
     if case.layer == "apps":
         return ("entrypoint",)
@@ -328,16 +357,18 @@ def _evidence_profile_for_case(case: ValidationCase) -> str:
     if case.evidence_profile != "workspace-validation":
         return case.evidence_profile
     primary_layer = _primary_layer_for_case(case)
-    if primary_layer == "L5-limited-hil":
+    if primary_layer == "L5":
         return "hil-report"
-    if primary_layer == "L4-performance":
+    if primary_layer == "L6":
         return "performance-report"
-    if primary_layer == "L3-simulated-e2e":
+    if primary_layer == "L4":
         return "simulated-e2e-report"
-    if primary_layer == "L2-offline-integration":
+    if primary_layer == "L3":
         return "integration-report"
-    if primary_layer == "L1-module-contract":
+    if primary_layer == "L2":
         return "contract-report"
+    if primary_layer == "L1":
+        return "unit-report"
     return "gate-summary"
 
 
@@ -412,6 +443,40 @@ def build_cases(
 
     cases: list[ValidationCase] = []
 
+    static_report_dir = (WORKSPACE_ROOT / "tests" / "reports" / "static").resolve()
+    cases.extend(
+        [
+            ValidationCase(
+                name="pyright-static",
+                layer="static",
+                description="Python static type gate",
+                command=_powershell_file_command(
+                    WORKSPACE_ROOT / "scripts" / "validation" / "run-pyright-gate.ps1",
+                    "-ReportDir",
+                    str(static_report_dir),
+                ),
+                cwd=WORKSPACE_ROOT,
+                suite_ref="static",
+                owner_scope="root-validation",
+                size_label="small",
+            ),
+            ValidationCase(
+                name="no-loose-mock",
+                layer="static",
+                description="core boundary mock strictness gate",
+                command=[
+                    *python_command(WORKSPACE_ROOT / "tools" / "testing" / "check_no_loose_mock.py"),
+                    "--report-dir",
+                    str(static_report_dir),
+                ],
+                cwd=WORKSPACE_ROOT,
+                suite_ref="static",
+                owner_scope="root-validation",
+                size_label="small",
+            ),
+        ]
+    )
+
     if "apps" in suites:
         cases.extend(
             [
@@ -453,14 +518,15 @@ def build_cases(
                 ),
                 ValidationCase(
                     name="hmi-app-unit",
-                    layer="apps",
+                    layer="unit",
                     description="hmi-app unit tests",
                     command=_powershell_file_command(WORKSPACE_ROOT / "apps" / "hmi-app" / "scripts" / "test.ps1"),
                     cwd=WORKSPACE_ROOT,
+                    suite_ref="apps",
                 ),
                 ValidationCase(
                     name="hmi-application-preview-session-unit",
-                    layer="apps",
+                    layer="unit",
                     description="hmi-application preview session unit tests",
                     command=[
                         *python_command(
@@ -469,18 +535,7 @@ def build_cases(
                         "-q",
                     ],
                     cwd=WORKSPACE_ROOT,
-                ),
-                ValidationCase(
-                    name="hmi-app-online-smoke",
-                    layer="apps",
-                    description="hmi-app 在线 mock smoke",
-                    command=_powershell_file_command(
-                        WORKSPACE_ROOT / "apps" / "hmi-app" / "scripts" / "online-smoke.ps1",
-                        "-TimeoutMs",
-                        "45000",
-                        "-ExerciseRuntimeActions",
-                    ),
-                    cwd=WORKSPACE_ROOT,
+                    suite_ref="apps",
                 ),
             ]
         )
@@ -673,32 +728,144 @@ def build_cases(
                 ]
             )
 
-    if "e2e" in suites:
-        cases.append(
+    if "integration" in suites:
+        cases.extend(
+            [
                 ValidationCase(
                     name="engineering-regression",
-                    layer="e2e",
+                    layer="integration",
                     description="engineering regression scenarios",
-                    command=python_command(
-                        WORKSPACE_ROOT / "tests" / "integration" / "scenarios" / "run_engineering_regression.py"
+                    command=[
+                        *python_command(
+                            WORKSPACE_ROOT / "tests" / "integration" / "scenarios" / "run_engineering_regression.py"
+                        ),
+                        "--report-dir",
+                        str(resolved_report_dir / "integration" / "engineering-regression"),
+                    ],
+                    cwd=WORKSPACE_ROOT,
+                    required_assets=(
+                        "protocol.fixture.rect_diag_dxf",
+                        "protocol.fixture.rect_diag_pb",
+                        "protocol.fixture.rect_diag_engineering",
+                        "protocol.fixture.rect_diag_preview_artifact",
+                    ),
+                    required_fixtures=("fixture.validation-evidence-bundle",),
+                ),
+                ValidationCase(
+                    name="preview-flow-integration",
+                    layer="integration",
+                    description="DXF import -> preview snapshot -> app state update integration",
+                    command=[
+                        *python_command(
+                            WORKSPACE_ROOT / "tests" / "integration" / "scenarios" / "run_preview_flow_regression.py"
+                        ),
+                        "--report-dir",
+                        str(resolved_report_dir / "integration" / "preview-flow-integration"),
+                    ],
+                    cwd=WORKSPACE_ROOT,
+                    required_assets=("sample.dxf.rect_diag",),
+                    required_fixtures=("fixture.validation-evidence-bundle",),
+                ),
+                ValidationCase(
+                    name="recipe-config-compatibility",
+                    layer="integration",
+                    description="recipe/config/version compatibility regression",
+                    command=[
+                        *python_command(
+                            WORKSPACE_ROOT / "tests" / "integration" / "scenarios" / "run_recipe_config_compatibility.py"
+                        ),
+                        "--report-dir",
+                        str(resolved_report_dir / "integration" / "recipe-config-compatibility"),
+                    ],
+                    cwd=WORKSPACE_ROOT,
+                    required_assets=(
+                        "protocol.fixture.recipe_get_request",
+                        "protocol.fixture.recipe_get_response",
+                        "protocol.fixture.recipe_import_request",
+                        "protocol.fixture.recipe_import_response",
+                        "protocol.fixture.recipe_alias_overrides",
+                    ),
+                    required_fixtures=("fixture.recipe-config-compatibility", "fixture.validation-evidence-bundle"),
+                ),
+                ValidationCase(
+                    name="tcp-precondition-matrix",
+                    layer="integration",
+                    description="preview confirm / execution preflight blocking matrix",
+                    command=[
+                        *python_command(
+                            WORKSPACE_ROOT
+                            / "tests"
+                            / "integration"
+                            / "scenarios"
+                            / "first-layer"
+                            / "run_tcp_precondition_matrix.py"
+                        ),
+                        "--report-dir",
+                        str(resolved_report_dir / "integration" / "tcp-precondition-matrix"),
+                        "--allow-skip-on-missing-gateway",
+                    ],
+                    cwd=WORKSPACE_ROOT,
+                    known_failure_exit_codes=(KNOWN_FAILURE_EXIT_CODE,),
+                    skipped_exit_codes=(SKIPPED_EXIT_CODE,),
+                    required_assets=("sample.dxf.rect_diag",),
+                    required_fixtures=("fixture.tcp-precondition-matrix", "fixture.validation-evidence-bundle"),
+                ),
+                ValidationCase(
+                    name="hmi-app-online-smoke",
+                    layer="integration",
+                    description="gateway startup / online connection / runtime actions smoke",
+                    command=_powershell_file_command(
+                        WORKSPACE_ROOT / "apps" / "hmi-app" / "scripts" / "online-smoke.ps1",
+                        "-TimeoutMs",
+                        "45000",
+                        "-ExerciseRuntimeActions",
                     ),
                     cwd=WORKSPACE_ROOT,
-                )
-            )
-        cases.append(
-            ValidationCase(
-                name="simulated-line",
-                layer="e2e",
-                description="simulated-line regression scenarios",
-                command=[
-                    *python_command(WORKSPACE_ROOT / "tests" / "e2e" / "simulated-line" / "run_simulated_line.py"),
-                    "--report-dir",
-                    str(resolved_report_dir / "e2e" / "simulated-line"),
-                ],
-                cwd=WORKSPACE_ROOT,
-                known_failure_exit_codes=(KNOWN_FAILURE_EXIT_CODE,),
-                skipped_exit_codes=(SKIPPED_EXIT_CODE,),
-            )
+                ),
+            ]
+        )
+
+    if "e2e" in suites:
+        cases.extend(
+            [
+                ValidationCase(
+                    name="simulated-line",
+                    layer="e2e",
+                    description="simulated-line regression scenarios",
+                    command=[
+                        *python_command(WORKSPACE_ROOT / "tests" / "e2e" / "simulated-line" / "run_simulated_line.py"),
+                        "--report-dir",
+                        str(resolved_report_dir / "e2e" / "simulated-line"),
+                    ],
+                    cwd=WORKSPACE_ROOT,
+                    known_failure_exit_codes=(KNOWN_FAILURE_EXIT_CODE,),
+                    skipped_exit_codes=(SKIPPED_EXIT_CODE,),
+                ),
+                ValidationCase(
+                    name="simulated-line-matrix",
+                    layer="e2e",
+                    description="simulated-line abnormal path matrix",
+                    command=[
+                        *python_command(
+                            WORKSPACE_ROOT / "tests" / "e2e" / "simulated-line" / "run_simulated_line_matrix.py"
+                        ),
+                        "--report-dir",
+                        str(resolved_report_dir / "e2e" / "simulated-line-matrix"),
+                    ],
+                    cwd=WORKSPACE_ROOT,
+                    required_assets=(
+                        "sample.simulation.invalid_empty_segments",
+                        "baseline.simulation.invalid_empty_segments",
+                        "sample.simulation.following_error_quantized",
+                        "baseline.simulation.following_error_quantized",
+                    ),
+                    required_fixtures=(
+                        "fixture.simulated-line-matrix",
+                        "fixture.simulated-line-regression",
+                        "fixture.validation-evidence-bundle",
+                    ),
+                ),
+            ]
         )
 
         if include_hardware_smoke:
@@ -829,20 +996,34 @@ def build_cases(
         )
 
     if "performance" in suites:
+        performance_command = [
+            *python_command(WORKSPACE_ROOT / "tests" / "performance" / "collect_dxf_preview_profiles.py"),
+            "--report-dir",
+            str(resolved_report_dir / "performance" / "dxf-preview-profiles"),
+            "--gate-mode",
+            performance_gate_mode,
+            "--threshold-config",
+            str(PERFORMANCE_THRESHOLD_CONFIG),
+        ]
+        if lane_ref == "nightly-performance":
+            performance_command.extend(
+                [
+                    "--include-start-job",
+                    "--include-control-cycles",
+                    "--pause-resume-cycles",
+                    "3",
+                    "--stop-reset-rounds",
+                    "3",
+                    "--long-run-minutes",
+                    "5",
+                ]
+            )
         cases.append(
             ValidationCase(
                 name="performance-baseline-collection",
                 layer="performance",
                 description="collect performance baselines",
-                command=[
-                    *python_command(WORKSPACE_ROOT / "tests" / "performance" / "collect_dxf_preview_profiles.py"),
-                    "--report-dir",
-                    str(resolved_report_dir / "performance" / "dxf-preview-profiles"),
-                    "--gate-mode",
-                    performance_gate_mode,
-                    "--threshold-config",
-                    str(PERFORMANCE_THRESHOLD_CONFIG),
-                ],
+                command=performance_command,
                 cwd=WORKSPACE_ROOT,
             )
         )
@@ -921,7 +1102,7 @@ def _write_workspace_evidence_bundle(
         offline_prerequisites=tuple(
             layer_id
             for layer_id in routed_request.selected_layer_refs
-            if layer_id in {"L0-structure-gate", "L1-module-contract", "L2-offline-integration", "L3-simulated-e2e"}
+            if layer_id in {"L0", "L1", "L2", "L3", "L4"}
         ),
         metadata={
             "workspace_validation_metadata": report.metadata,
@@ -963,7 +1144,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--suite",
         action="append",
-        choices=("all", "apps", "contracts", "e2e", "protocol-compatibility", "performance"),
+        choices=("all", "apps", "contracts", "protocol-compatibility", "integration", "e2e", "performance"),
         help="One or more suites to run. Default is all.",
     )
     parser.add_argument("--request-id", default="")
@@ -990,7 +1171,7 @@ def main() -> int:
             desired_depth = "hil"
         elif "performance" in suites:
             desired_depth = "nightly"
-        elif args.profile == "ci" or "e2e" in suites:
+        elif args.profile == "ci" or "integration" in suites or "e2e" in suites:
             desired_depth = "full-offline"
         else:
             desired_depth = "quick"

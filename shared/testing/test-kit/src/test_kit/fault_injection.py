@@ -13,8 +13,8 @@ from .asset_catalog import (
 
 ALLOWED_CONSUMER_SCOPES = ("tests/integration", "runtime-execution")
 SIMULATED_LINE_DOUBLE_SURFACE = {
-    "fake_controller": ["readiness", "abort"],
-    "fake_io": ["disconnect"],
+    "fake_controller": ["readiness", "abort", "preflight", "control_cycle"],
+    "fake_io": ["disconnect", "alarm"],
 }
 
 
@@ -102,6 +102,9 @@ def resolve_fault_plan(
     hook_readiness: str = "ready",
     hook_abort: str = "none",
     hook_disconnect: str = "none",
+    hook_preflight: str = "none",
+    hook_alarm: str = "none",
+    hook_control_cycle: str = "none",
 ) -> FaultInjectionPlan:
     matrix = build_fault_matrix(workspace_root, consumer_scope=consumer_scope)
     available_fault_ids = tuple(sorted(matrix["faults"]))
@@ -129,6 +132,9 @@ def resolve_fault_plan(
             "readiness": hook_readiness,
             "abort": hook_abort,
             "disconnect": hook_disconnect,
+            "preflight": hook_preflight,
+            "alarm": hook_alarm,
+            "control_cycle": hook_control_cycle,
         },
         double_surface=simulated_line_double_surface(),
         faults=selected_faults,

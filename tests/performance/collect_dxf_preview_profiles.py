@@ -7,6 +7,7 @@ import math
 import os
 import platform
 import statistics
+import subprocess
 import sys
 import threading
 import time
@@ -42,6 +43,7 @@ from hmi_client.client.gateway_launch import GatewayLaunchSpec, load_gateway_lau
 from hmi_client.client.protocol import CommandProtocol  # noqa: E402
 from hmi_client.client.tcp_client import TcpClient  # noqa: E402
 from test_kit.asset_catalog import default_performance_samples, performance_sample_asset_refs  # noqa: E402
+from test_kit.control_apps_build import valid_control_apps_build_roots  # noqa: E402
 from test_kit.evidence_bundle import EvidenceBundle, EvidenceCaseRecord, EvidenceLink, trace_fields, write_bundle_artifacts  # noqa: E402
 
 
@@ -54,7 +56,24 @@ def gateway_executable_candidates(
     control_apps_build_root: Path,
 ) -> tuple[Path, ...]:
     file_name = "siligen_runtime_gateway.exe"
-    return (
+    discovered_roots = valid_control_apps_build_roots(
+        workspace_root,
+        explicit_build_root=os.getenv("SILIGEN_CONTROL_APPS_BUILD_ROOT"),
+    )
+    build_root_candidates: list[Path] = []
+    prioritized_roots = [control_apps_build_root]
+    prioritized_roots.extend(root for root in discovered_roots if root != control_apps_build_root)
+    for root in prioritized_roots:
+        build_root_candidates.extend(
+            (
+                root / "bin" / file_name,
+                root / "bin" / "Debug" / file_name,
+                root / "bin" / "Release" / file_name,
+                root / "bin" / "RelWithDebInfo" / file_name,
+            )
+        )
+    return tuple(
+        [
         workspace_root / "build" / "bin" / file_name,
         workspace_root / "build" / "bin" / "Debug" / file_name,
         workspace_root / "build" / "bin" / "Release" / file_name,
@@ -63,10 +82,8 @@ def gateway_executable_candidates(
         workspace_root / "build" / "hmi-home-fix" / "bin" / "Debug" / file_name,
         workspace_root / "build" / "hmi-home-fix" / "bin" / "Release" / file_name,
         workspace_root / "build" / "hmi-home-fix" / "bin" / "RelWithDebInfo" / file_name,
-        control_apps_build_root / "bin" / file_name,
-        control_apps_build_root / "bin" / "Debug" / file_name,
-        control_apps_build_root / "bin" / "Release" / file_name,
-        control_apps_build_root / "bin" / "RelWithDebInfo" / file_name,
+        ]
+        + build_root_candidates
     )
 
 
@@ -176,6 +193,49 @@ class ConcurrentPrepareRecord:
     error: str = ""
 
 
+@dataclass(frozen=True)
+class ControlCycleRecord:
+    round_index: int
+    success: bool
+    pause_resume_applied: bool = False
+    stop_reset_applied: bool = False
+    plan_id: str = ""
+    job_id: str = ""
+    pause_to_running_ms: float | None = None
+    stop_to_idle_ms: float | None = None
+    stop_rpc_ms: float | None = None
+    stop_wait_for_terminal_ms: float | None = None
+    stop_wait_for_idle_ms: float | None = None
+    stop_terminal_state: str = ""
+    stop_terminal_error: str = ""
+    stop_idle_desc: str = ""
+    rerun_total_ms: float | None = None
+    execution_total_ms: float | None = None
+    timeout_detected: bool = False
+    error: str = ""
+
+
+@dataclass(frozen=True)
+class StopTransitionRecord:
+    success: bool
+    total_ms: float
+    rpc_ms: float | None = None
+    wait_for_terminal_ms: float | None = None
+    wait_for_idle_ms: float | None = None
+    terminal_state: str = ""
+    terminal_error: str = ""
+    idle_desc: str = ""
+
+
+@dataclass(frozen=True)
+class LongRunIterationRecord:
+    iteration_index: int
+    success: bool
+    execution_total_ms: float | None = None
+    timeout_detected: bool = False
+    error: str = ""
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Collect DXF preview/execution profiles and single-flight evidence."
@@ -217,6 +277,15 @@ def parse_args() -> argparse.Namespace:
         default=False,
         help="After preview.confirm, continue with dxf.job.start -> status -> stop and collect execution profiles.",
     )
+    parser.add_argument(
+        "--include-control-cycles",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Collect pause/resume and stop/reset control-cycle evidence on top of the execution path.",
+    )
+    parser.add_argument("--pause-resume-cycles", type=int, default=3)
+    parser.add_argument("--stop-reset-rounds", type=int, default=3)
+    parser.add_argument("--long-run-minutes", type=float, default=0.0)
     parser.add_argument(
         "--baseline-json",
         default="",
@@ -374,7 +443,7 @@ def read_hardware_mode(config_path: Path | None) -> str:
     if config_path is None or not config_path.exists():
         return "unknown"
     parser = configparser.ConfigParser(interpolation=None, strict=False)
-    parser.optionxform = str
+    setattr(parser, "optionxform", lambda optionstr: optionstr)
     try:
         with config_path.open("r", encoding="utf-8") as handle:
             parser.read_file(handle)
@@ -385,12 +454,31 @@ def read_hardware_mode(config_path: Path | None) -> str:
 
 def materialize_mock_config(source_config: Path, report_dir: Path) -> Path:
     parser = configparser.ConfigParser(interpolation=None, strict=False)
-    parser.optionxform = str
+    setattr(parser, "optionxform", lambda optionstr: optionstr)
     with source_config.open("r", encoding="utf-8") as handle:
         parser.read_file(handle)
     if not parser.has_section("Hardware"):
         parser.add_section("Hardware")
     parser.set("Hardware", "mode", "Mock")
+    for section in parser.sections():
+        if not section.startswith("Homing_"):
+            continue
+        # Perf dry-run uses a temporary mock config. Clamp homing parameters to
+        # the validator-accepted mock envelope so nightly-performance can reach
+        # preview.confirm -> dxf.job.start without mutating the real machine config.
+        for option_name, safe_limit in (("ready_zero_speed_mm_s", 10.0), ("rapid_velocity", 10.0)):
+            raw_value = str(parser.get(section, option_name, fallback="")).strip()
+            if not raw_value:
+                continue
+            try:
+                numeric_value = float(raw_value)
+            except ValueError:
+                continue
+            if numeric_value > safe_limit:
+                parser.set(section, option_name, f"{safe_limit:.1f}")
+        home_input_bit = str(parser.get(section, "home_input_bit", fallback="")).strip()
+        if not home_input_bit or home_input_bit == "-1":
+            parser.set(section, "home_input_bit", "0")
     runtime_dir = report_dir.expanduser().resolve() / "_runtime"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     target_path = runtime_dir / f"{source_config.stem}.mock{source_config.suffix or '.ini'}"
@@ -659,6 +747,151 @@ def extract_execution_profile(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def gateway_process_id(lease: BackendLease) -> int | None:
+    manager = lease.manager
+    if manager is None:
+        return None
+    process = getattr(manager, "_process", None)
+    pid = getattr(process, "pid", None)
+    return int(pid) if isinstance(pid, int) and pid > 0 else None
+
+
+def collect_process_metrics(pid: int | None) -> dict[str, Any]:
+    if pid is None:
+        return {}
+    command = (
+        "$p = Get-Process -Id {pid} -ErrorAction Stop; "
+        "@{{WorkingSet64=$p.WorkingSet64; PrivateMemorySize64=$p.PrivateMemorySize64; "
+        "HandleCount=$p.HandleCount; ThreadCount=$p.Threads.Count}} | ConvertTo-Json -Compress"
+    ).format(pid=pid)
+    try:
+        completed = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", command],
+            cwd=str(ROOT),
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=5.0,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        # Resource sampling is observational only. A single slow or failed
+        # Get-Process call must not flip the whole long-run/control-cycle case.
+        return {}
+    if completed.returncode != 0:
+        return {}
+    try:
+        payload = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    return {
+        "working_set_mb": round(float(payload.get("WorkingSet64", 0.0)) / (1024.0 * 1024.0), 3),
+        "private_memory_mb": round(float(payload.get("PrivateMemorySize64", 0.0)) / (1024.0 * 1024.0), 3),
+        "handle_count": int(payload.get("HandleCount", 0)),
+        "thread_count": int(payload.get("ThreadCount", 0)),
+        "collected_at": utc_now(),
+    }
+
+
+def wait_for_job_state(
+    protocol: CommandProtocol,
+    job_id: str,
+    expected_states: set[str],
+    *,
+    timeout_s: float = 8.0,
+    poll_interval_s: float = 0.05,
+) -> tuple[str, str, float]:
+    started = time.perf_counter()
+    deadline = started + timeout_s
+    last_state = ""
+    last_error = ""
+    normalized_expected = {state.strip().lower() for state in expected_states}
+    while time.perf_counter() < deadline:
+        payload = protocol.dxf_get_job_status(job_id)
+        last_state = str(payload.get("state", "")).strip().lower()
+        last_error = str(payload.get("error_message", "")).strip()
+        if last_state in normalized_expected:
+            return last_state, last_error, (time.perf_counter() - started) * 1000.0
+        time.sleep(poll_interval_s)
+    return last_state, last_error, (time.perf_counter() - started) * 1000.0
+
+
+def wait_for_job_stop_completion(
+    protocol: CommandProtocol,
+    job_id: str,
+    *,
+    timeout_s: float = 5.0,
+    poll_interval_s: float = 0.05,
+) -> tuple[str, str]:
+    deadline = time.perf_counter() + timeout_s
+    last_state = ""
+    last_error = ""
+    while time.perf_counter() < deadline:
+        polled = protocol.dxf_get_job_status(job_id)
+        last_state = str(polled.get("state", "")).strip().lower()
+        last_error = str(polled.get("error_message", "")).strip()
+        if last_state in TERMINAL_JOB_STATES:
+            return last_state, last_error
+        if last_state == "unknown" and (not last_error or "not running" in last_error.lower()):
+            return last_state, last_error
+        time.sleep(poll_interval_s)
+    return last_state, last_error
+
+
+def wait_for_idle_status(
+    protocol: CommandProtocol,
+    *,
+    timeout_s: float = 5.0,
+    poll_interval_s: float = 0.05,
+) -> tuple[bool, str]:
+    deadline = time.perf_counter() + timeout_s
+    last_desc = ""
+    while time.perf_counter() < deadline:
+        status = protocol.get_status()
+        active_job_id = str(status.active_job_id or "").strip()
+        active_job_state = str(status.active_job_state or "").strip().lower()
+        last_desc = f"active_job_id={active_job_id or '-'} active_job_state={active_job_state or '-'}"
+        if (not active_job_id) and (not active_job_state or active_job_state in TERMINAL_JOB_STATES):
+            return True, last_desc
+        time.sleep(poll_interval_s)
+    return False, last_desc
+
+
+def summarize_resource_series(samples: list[dict[str, Any]]) -> dict[str, Any]:
+    if not samples:
+        empty_series = {"count": 0, "baseline": 0.0, "min": 0.0, "max": 0.0, "delta_max": 0.0}
+        return {
+            "sample_count": 0,
+            "working_set_mb": dict(empty_series),
+            "private_memory_mb": dict(empty_series),
+            "handle_count": dict(empty_series),
+            "thread_count": dict(empty_series),
+        }
+
+    def _metric_summary(metric_name: str) -> dict[str, Any]:
+        values = [float(sample.get(metric_name, 0.0)) for sample in samples if metric_name in sample]
+        if not values:
+            return {"count": 0, "baseline": 0.0, "min": 0.0, "max": 0.0, "delta_max": 0.0}
+        baseline = values[0]
+        return {
+            "count": len(values),
+            "baseline": round(baseline, 3),
+            "min": round(min(values), 3),
+            "max": round(max(values), 3),
+            "delta_max": round(max(values) - baseline, 3),
+        }
+
+    return {
+        "sample_count": len(samples),
+        "working_set_mb": _metric_summary("working_set_mb"),
+        "private_memory_mb": _metric_summary("private_memory_mb"),
+        "handle_count": _metric_summary("handle_count"),
+        "thread_count": _metric_summary("thread_count"),
+    }
+
+
 def prepare_and_snapshot_once(
     protocol: CommandProtocol,
     artifact_id: str,
@@ -830,27 +1063,12 @@ def run_start_job_cycle(
             error=f"dxf.job.status failed: {status_error}",
         )
 
-    def wait_for_stop_completion(job_id: str, timeout_s: float = 5.0, poll_interval_s: float = 0.05) -> tuple[str, str]:
-        deadline = time.perf_counter() + timeout_s
-        last_state = ""
-        last_error = ""
-        while time.perf_counter() < deadline:
-            polled = protocol.dxf_get_job_status(job_id)
-            last_state = str(polled.get("state", "")).strip().lower()
-            last_error = str(polled.get("error_message", "")).strip()
-            if last_state in TERMINAL_JOB_STATES:
-                return last_state, last_error
-            if last_state == "unknown" and (not last_error or "not running" in last_error.lower()):
-                return last_state, last_error
-            time.sleep(poll_interval_s)
-        return last_state, last_error
-
     stop_started = time.perf_counter()
     stop_ok = protocol.dxf_job_stop(job_id)
     stop_state = ""
     stop_error = ""
     if stop_ok:
-        stop_state, stop_error = wait_for_stop_completion(job_id)
+        stop_state, stop_error = wait_for_job_stop_completion(protocol, job_id)
     stop_elapsed_ms = (time.perf_counter() - stop_started) * 1000.0
     if not stop_ok:
         return StartJobCycleRecord(
@@ -1012,6 +1230,456 @@ def execution_payload_for(records: list[StartJobCycleRecord], include_start_job:
         "status": status,
         "iterations": [asdict(record) for record in records],
         "summary": summarize_execution_records(records),
+    }
+    if error:
+        payload["error"] = error
+    return payload
+
+
+def _start_job_after_confirm(
+    protocol: CommandProtocol,
+    preview_record: PreviewCycleRecord,
+    *,
+    target_count: int,
+) -> tuple[bool, str, dict[str, Any], dict[str, Any], str]:
+    confirm_ok, _, confirm_error = protocol.dxf_preview_confirm(
+        preview_record.plan_id,
+        preview_record.snapshot_hash,
+    )
+    if not confirm_ok:
+        return False, "", {}, {}, f"preview.confirm failed: {confirm_error}"
+    start_ok, start_payload, start_error = protocol.dxf_start_job(
+        preview_record.plan_id,
+        target_count=max(1, int(target_count)),
+        plan_fingerprint=preview_record.plan_fingerprint,
+    )
+    if not start_ok:
+        return False, "", {}, {}, f"dxf.job.start failed: {start_error}"
+    job_id = str(start_payload.get("job_id", "")).strip()
+    if not job_id:
+        return False, "", {}, {}, "dxf.job.start response missing job_id"
+    status_payload = protocol.dxf_get_job_status(job_id)
+    return True, job_id, start_payload, status_payload, ""
+
+
+def _stop_job_to_idle(protocol: CommandProtocol, job_id: str) -> StopTransitionRecord:
+    stop_started = time.perf_counter()
+    stop_rpc_started = time.perf_counter()
+    stop_ok = protocol.dxf_job_stop(job_id)
+    stop_rpc_ms = (time.perf_counter() - stop_rpc_started) * 1000.0
+    stop_state = ""
+    stop_error = ""
+    wait_for_terminal_ms: float | None = None
+    wait_for_idle_ms: float | None = None
+    idle_desc = ""
+    if stop_ok:
+        wait_for_terminal_started = time.perf_counter()
+        stop_state, stop_error = wait_for_job_stop_completion(protocol, job_id)
+        wait_for_terminal_ms = (time.perf_counter() - wait_for_terminal_started) * 1000.0
+        wait_for_idle_started = time.perf_counter()
+        idle_ok, idle_desc = wait_for_idle_status(protocol)
+        wait_for_idle_ms = (time.perf_counter() - wait_for_idle_started) * 1000.0
+    else:
+        idle_ok = False
+    stop_elapsed_ms = (time.perf_counter() - stop_started) * 1000.0
+    if not stop_ok:
+        return StopTransitionRecord(
+            success=False,
+            total_ms=stop_elapsed_ms,
+            rpc_ms=stop_rpc_ms,
+            terminal_state=stop_state,
+            terminal_error=stop_error,
+            idle_desc="dxf.job.stop failed",
+        )
+    if stop_state not in TERMINAL_JOB_STATES and stop_state != "unknown":
+        return StopTransitionRecord(
+            success=False,
+            total_ms=stop_elapsed_ms,
+            rpc_ms=stop_rpc_ms,
+            wait_for_terminal_ms=wait_for_terminal_ms,
+            wait_for_idle_ms=wait_for_idle_ms,
+            terminal_state=stop_state,
+            terminal_error=stop_error,
+            idle_desc=f"dxf.job.stop did not reach terminal state: {stop_state or stop_error or 'timeout'}",
+        )
+    if not idle_ok:
+        return StopTransitionRecord(
+            success=False,
+            total_ms=stop_elapsed_ms,
+            rpc_ms=stop_rpc_ms,
+            wait_for_terminal_ms=wait_for_terminal_ms,
+            wait_for_idle_ms=wait_for_idle_ms,
+            terminal_state=stop_state,
+            terminal_error=stop_error,
+            idle_desc=f"dxf.job.stop did not return to idle: {idle_desc}",
+        )
+    return StopTransitionRecord(
+        success=True,
+        total_ms=stop_elapsed_ms,
+        rpc_ms=stop_rpc_ms,
+        wait_for_terminal_ms=wait_for_terminal_ms,
+        wait_for_idle_ms=wait_for_idle_ms,
+        terminal_state=stop_state,
+        terminal_error=stop_error,
+        idle_desc=idle_desc,
+    )
+
+
+def run_control_cycle_round(
+    protocol: CommandProtocol,
+    artifact_id: str,
+    args: argparse.Namespace,
+    *,
+    round_index: int,
+    pause_resume_enabled: bool,
+    stop_reset_enabled: bool,
+) -> ControlCycleRecord:
+    preview_record = prepare_and_snapshot_once(protocol, artifact_id, args, artifact_ms=None)
+    if not preview_record.success:
+        return ControlCycleRecord(
+            round_index=round_index,
+            success=False,
+            pause_resume_applied=pause_resume_enabled,
+            stop_reset_applied=stop_reset_enabled,
+            error=f"preview failed: {preview_record.error}",
+        )
+
+    start_ok, job_id, start_payload, _, start_error = _start_job_after_confirm(
+        protocol,
+        preview_record,
+        target_count=max(2, args.pause_resume_cycles + 1),
+    )
+    if not start_ok:
+        return ControlCycleRecord(
+            round_index=round_index,
+            success=False,
+            pause_resume_applied=pause_resume_enabled,
+            stop_reset_applied=stop_reset_enabled,
+            plan_id=preview_record.plan_id,
+            error=start_error,
+        )
+
+    running_state, running_error, _ = wait_for_job_state(protocol, job_id, {"running", "paused"})
+    if running_state not in {"running", "paused"}:
+        return ControlCycleRecord(
+            round_index=round_index,
+            success=False,
+            pause_resume_applied=pause_resume_enabled,
+            stop_reset_applied=stop_reset_enabled,
+            plan_id=preview_record.plan_id,
+            job_id=job_id,
+            timeout_detected=True,
+            error=f"dxf.job.start did not reach running state: {running_state or running_error or 'timeout'}",
+        )
+
+    pause_to_running_ms: float | None = None
+    if pause_resume_enabled:
+        if not protocol.dxf_job_pause(job_id):
+            return ControlCycleRecord(
+                round_index=round_index,
+                success=False,
+                pause_resume_applied=True,
+                stop_reset_applied=stop_reset_enabled,
+                plan_id=preview_record.plan_id,
+                job_id=job_id,
+                error="dxf.job.pause failed",
+            )
+        paused_state, paused_error, _ = wait_for_job_state(protocol, job_id, {"paused"})
+        if paused_state != "paused":
+            return ControlCycleRecord(
+                round_index=round_index,
+                success=False,
+                pause_resume_applied=True,
+                stop_reset_applied=stop_reset_enabled,
+                plan_id=preview_record.plan_id,
+                job_id=job_id,
+                timeout_detected=True,
+                error=f"dxf.job.pause did not reach paused state: {paused_state or paused_error or 'timeout'}",
+            )
+        resume_started = time.perf_counter()
+        if not protocol.dxf_job_resume(job_id):
+            return ControlCycleRecord(
+                round_index=round_index,
+                success=False,
+                pause_resume_applied=True,
+                stop_reset_applied=stop_reset_enabled,
+                plan_id=preview_record.plan_id,
+                job_id=job_id,
+                error="dxf.job.resume failed",
+            )
+        resumed_state, resumed_error, _ = wait_for_job_state(protocol, job_id, {"running"})
+        pause_to_running_ms = (time.perf_counter() - resume_started) * 1000.0
+        if resumed_state != "running":
+            return ControlCycleRecord(
+                round_index=round_index,
+                success=False,
+                pause_resume_applied=True,
+                stop_reset_applied=stop_reset_enabled,
+                plan_id=preview_record.plan_id,
+                job_id=job_id,
+                pause_to_running_ms=pause_to_running_ms,
+                timeout_detected=True,
+                error=f"dxf.job.resume did not return to running state: {resumed_state or resumed_error or 'timeout'}",
+            )
+
+    stop_record = _stop_job_to_idle(protocol, job_id)
+    if not stop_record.success:
+        return ControlCycleRecord(
+            round_index=round_index,
+            success=False,
+            pause_resume_applied=pause_resume_enabled,
+            stop_reset_applied=stop_reset_enabled,
+            plan_id=preview_record.plan_id,
+            job_id=job_id,
+            pause_to_running_ms=pause_to_running_ms,
+            stop_to_idle_ms=stop_record.total_ms,
+            stop_rpc_ms=stop_record.rpc_ms,
+            stop_wait_for_terminal_ms=stop_record.wait_for_terminal_ms,
+            stop_wait_for_idle_ms=stop_record.wait_for_idle_ms,
+            stop_terminal_state=stop_record.terminal_state,
+            stop_terminal_error=stop_record.terminal_error,
+            stop_idle_desc=stop_record.idle_desc,
+            timeout_detected="timeout" in stop_record.idle_desc.lower(),
+            error=stop_record.idle_desc,
+        )
+
+    rerun_total_ms: float | None = None
+    execution_profile = extract_execution_profile(start_payload)
+    execution_total_ms = execution_profile.get("execution_total_ms")
+    if stop_reset_enabled:
+        rerun_started = time.perf_counter()
+        rerun_preview, rerun_execution = collect_preview_and_execution_cycle(
+            protocol,
+            artifact_id,
+            args,
+            artifact_ms=None,
+        )
+        rerun_total_ms = (time.perf_counter() - rerun_started) * 1000.0
+        if not rerun_preview.success:
+            return ControlCycleRecord(
+                round_index=round_index,
+                success=False,
+                pause_resume_applied=pause_resume_enabled,
+                stop_reset_applied=True,
+                plan_id=preview_record.plan_id,
+                job_id=job_id,
+                pause_to_running_ms=pause_to_running_ms,
+                stop_to_idle_ms=stop_record.total_ms,
+                stop_rpc_ms=stop_record.rpc_ms,
+                stop_wait_for_terminal_ms=stop_record.wait_for_terminal_ms,
+                stop_wait_for_idle_ms=stop_record.wait_for_idle_ms,
+                stop_terminal_state=stop_record.terminal_state,
+                stop_terminal_error=stop_record.terminal_error,
+                stop_idle_desc=stop_record.idle_desc,
+                rerun_total_ms=rerun_total_ms,
+                execution_total_ms=float(execution_total_ms) if isinstance(execution_total_ms, (int, float)) else None,
+                error=f"rerun preview failed: {rerun_preview.error}",
+            )
+        if rerun_execution is None or not rerun_execution.success:
+            rerun_error = rerun_execution.error if rerun_execution is not None else "rerun execution missing"
+            return ControlCycleRecord(
+                round_index=round_index,
+                success=False,
+                pause_resume_applied=pause_resume_enabled,
+                stop_reset_applied=True,
+                plan_id=preview_record.plan_id,
+                job_id=job_id,
+                pause_to_running_ms=pause_to_running_ms,
+                stop_to_idle_ms=stop_record.total_ms,
+                stop_rpc_ms=stop_record.rpc_ms,
+                stop_wait_for_terminal_ms=stop_record.wait_for_terminal_ms,
+                stop_wait_for_idle_ms=stop_record.wait_for_idle_ms,
+                stop_terminal_state=stop_record.terminal_state,
+                stop_terminal_error=stop_record.terminal_error,
+                stop_idle_desc=stop_record.idle_desc,
+                rerun_total_ms=rerun_total_ms,
+                execution_total_ms=float(execution_total_ms) if isinstance(execution_total_ms, (int, float)) else None,
+                timeout_detected="timeout" in rerun_error.lower(),
+                error=f"rerun execution failed: {rerun_error}",
+            )
+
+    return ControlCycleRecord(
+        round_index=round_index,
+        success=True,
+        pause_resume_applied=pause_resume_enabled,
+        stop_reset_applied=stop_reset_enabled,
+        plan_id=preview_record.plan_id,
+        job_id=job_id,
+        pause_to_running_ms=pause_to_running_ms,
+        stop_to_idle_ms=stop_record.total_ms,
+        stop_rpc_ms=stop_record.rpc_ms,
+        stop_wait_for_terminal_ms=stop_record.wait_for_terminal_ms,
+        stop_wait_for_idle_ms=stop_record.wait_for_idle_ms,
+        stop_terminal_state=stop_record.terminal_state,
+        stop_terminal_error=stop_record.terminal_error,
+        stop_idle_desc=stop_record.idle_desc,
+        rerun_total_ms=rerun_total_ms,
+        execution_total_ms=float(execution_total_ms) if isinstance(execution_total_ms, (int, float)) else None,
+    )
+
+
+def summarize_control_cycle_records(records: list[ControlCycleRecord], resource_samples: list[dict[str, Any]]) -> dict[str, Any]:
+    successful = [record for record in records if record.success]
+    return {
+        "count": len(records),
+        "success_count": len(successful),
+        "failure_count": len(records) - len(successful),
+        "pause_to_running_ms": summarize_numbers(
+            [float(record.pause_to_running_ms) for record in successful if record.pause_to_running_ms is not None]
+        ),
+        "stop_to_idle_ms": summarize_numbers(
+            [float(record.stop_to_idle_ms) for record in successful if record.stop_to_idle_ms is not None]
+        ),
+        "stop_rpc_ms": summarize_numbers(
+            [float(record.stop_rpc_ms) for record in successful if record.stop_rpc_ms is not None]
+        ),
+        "stop_wait_for_terminal_ms": summarize_numbers(
+            [float(record.stop_wait_for_terminal_ms) for record in successful if record.stop_wait_for_terminal_ms is not None]
+        ),
+        "stop_wait_for_idle_ms": summarize_numbers(
+            [float(record.stop_wait_for_idle_ms) for record in successful if record.stop_wait_for_idle_ms is not None]
+        ),
+        "rerun_total_ms": summarize_numbers(
+            [float(record.rerun_total_ms) for record in successful if record.rerun_total_ms is not None]
+        ),
+        "execution_total_ms": summarize_numbers(
+            [float(record.execution_total_ms) for record in successful if record.execution_total_ms is not None]
+        ),
+        "timeout_count": sum(1 for record in records if record.timeout_detected),
+        **summarize_resource_series(resource_samples),
+    }
+
+
+def collect_control_cycle_profile(
+    args: argparse.Namespace,
+    launch_spec: LaunchSpecResolution,
+    sample_path: Path,
+) -> dict[str, Any]:
+    if not args.include_control_cycles:
+        return {"status": "skipped", "reason": "include_control_cycles=false"}
+    if not args.include_start_job:
+        return {"status": "skipped", "reason": "include_start_job=false"}
+    if args.pause_resume_cycles <= 0 and args.stop_reset_rounds <= 0:
+        return {"status": "skipped", "reason": "pause_resume_cycles<=0 and stop_reset_rounds<=0"}
+
+    records: list[ControlCycleRecord] = []
+    resource_samples: list[dict[str, Any]] = []
+    with managed_backend(args.host, args.port, launch_spec, allow_reuse_running=args.reuse_running) as lease:
+        with protocol_client(args.host, args.port) as (_, protocol):
+            maybe_prepare_execution_runtime(protocol, args, launch_spec)
+            artifact_id, artifact_ms = create_artifact(protocol, sample_path, args.artifact_timeout)
+            resource_samples.append(collect_process_metrics(gateway_process_id(lease)))
+            total_rounds = max(args.pause_resume_cycles, args.stop_reset_rounds)
+            for round_index in range(total_rounds):
+                record = run_control_cycle_round(
+                    protocol,
+                    artifact_id,
+                    args,
+                    round_index=round_index + 1,
+                    pause_resume_enabled=round_index < args.pause_resume_cycles,
+                    stop_reset_enabled=round_index < args.stop_reset_rounds,
+                )
+                records.append(record)
+                resource_samples.append(collect_process_metrics(gateway_process_id(lease)))
+
+    error = next((record.error for record in records if record.error), "")
+    status = "ok" if records and not error else "error"
+    payload = {
+        "status": status,
+        "mode": "reuse-backend-and-artifact",
+        "artifact_warmup_ms": round(artifact_ms, 3),
+        "pause_resume_cycles": args.pause_resume_cycles,
+        "stop_reset_rounds": args.stop_reset_rounds,
+        "iterations": [asdict(record) for record in records],
+        "resource_samples": [sample for sample in resource_samples if sample],
+        "summary": summarize_control_cycle_records(records, [sample for sample in resource_samples if sample]),
+    }
+    if error:
+        payload["error"] = error
+    return payload
+
+
+def summarize_long_run_records(records: list[LongRunIterationRecord], resource_samples: list[dict[str, Any]]) -> dict[str, Any]:
+    successful = [record for record in records if record.success]
+    return {
+        "count": len(records),
+        "success_count": len(successful),
+        "failure_count": len(records) - len(successful),
+        "execution_total_ms": summarize_numbers(
+            [float(record.execution_total_ms) for record in successful if record.execution_total_ms is not None]
+        ),
+        "timeout_count": sum(1 for record in records if record.timeout_detected),
+        **summarize_resource_series(resource_samples),
+    }
+
+
+def collect_long_run_profile(
+    args: argparse.Namespace,
+    launch_spec: LaunchSpecResolution,
+    sample_path: Path,
+) -> dict[str, Any]:
+    if args.long_run_minutes <= 0:
+        return {"status": "skipped", "reason": "long_run_minutes<=0"}
+    if not args.include_start_job:
+        return {"status": "skipped", "reason": "include_start_job=false"}
+
+    deadline = time.perf_counter() + max(1.0, float(args.long_run_minutes) * 60.0)
+    records: list[LongRunIterationRecord] = []
+    resource_samples: list[dict[str, Any]] = []
+    with managed_backend(args.host, args.port, launch_spec, allow_reuse_running=args.reuse_running) as lease:
+        with protocol_client(args.host, args.port) as (_, protocol):
+            maybe_prepare_execution_runtime(protocol, args, launch_spec)
+            artifact_id, artifact_ms = create_artifact(protocol, sample_path, args.artifact_timeout)
+            resource_samples.append(collect_process_metrics(gateway_process_id(lease)))
+            preview_record = prepare_and_snapshot_once(protocol, artifact_id, args, artifact_ms=artifact_ms)
+            resource_samples.append(collect_process_metrics(gateway_process_id(lease)))
+            if not preview_record.success:
+                records.append(
+                    LongRunIterationRecord(
+                        iteration_index=1,
+                        success=False,
+                        timeout_detected="timeout" in preview_record.error.lower(),
+                        error=f"preview setup failed: {preview_record.error}",
+                    )
+                )
+            else:
+                iteration_index = 0
+                while iteration_index == 0 or time.perf_counter() < deadline:
+                    iteration_index += 1
+                    execution_record = run_start_job_cycle(protocol, preview_record)
+                    if not execution_record.success:
+                        records.append(
+                            LongRunIterationRecord(
+                                iteration_index=iteration_index,
+                                success=False,
+                                execution_total_ms=execution_record.execution_total_ms,
+                                timeout_detected="timeout" in execution_record.error.lower(),
+                                error=execution_record.error,
+                            )
+                        )
+                    else:
+                        records.append(
+                            LongRunIterationRecord(
+                                iteration_index=iteration_index,
+                                success=True,
+                                execution_total_ms=execution_record.execution_total_ms,
+                                timeout_detected="timeout" in execution_record.error.lower(),
+                                error=execution_record.error,
+                            )
+                        )
+                    resource_samples.append(collect_process_metrics(gateway_process_id(lease)))
+
+    filtered_resource_samples = [sample for sample in resource_samples if sample]
+    error = next((record.error for record in records if record.error), "")
+    status = "ok" if records and not error else "error"
+    payload = {
+        "status": status,
+        "mode": "reuse-backend-and-artifact",
+        "minutes": float(args.long_run_minutes),
+        "preview_setup": asdict(preview_record),
+        "iterations": [asdict(record) for record in records],
+        "resource_samples": filtered_resource_samples,
+        "summary": summarize_long_run_records(records, filtered_resource_samples),
     }
     if error:
         payload["error"] = error
@@ -1310,6 +1978,8 @@ def collect_for_sample(
         "cold": None,
         "hot": None,
         "singleflight": None,
+        "control_cycle": None,
+        "long_run": None,
     }
 
     try:
@@ -1326,6 +1996,16 @@ def collect_for_sample(
         result["singleflight"] = collect_singleflight_profile(args, launch_spec, sample_path)
     except Exception as exc:  # noqa: BLE001
         result["singleflight"] = {"status": "error", "error": str(exc)}
+
+    try:
+        result["control_cycle"] = collect_control_cycle_profile(args, launch_spec, sample_path)
+    except Exception as exc:  # noqa: BLE001
+        result["control_cycle"] = {"status": "error", "error": str(exc)}
+
+    try:
+        result["long_run"] = collect_long_run_profile(args, launch_spec, sample_path)
+    except Exception as exc:  # noqa: BLE001
+        result["long_run"] = {"status": "error", "error": str(exc)}
 
     return result
 
@@ -1466,6 +2146,108 @@ def extract_metric_points(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
                     numeric_metrics=("plan_prepare_rpc_ms", "authority_wait_ms", "prepare_total_ms"),
                     bool_metrics=("authority_cache_hit", "authority_joined_inflight"),
                 )
+        control_cycle = result.get("control_cycle")
+        if isinstance(control_cycle, dict) and control_cycle.get("status") == "ok":
+            control_summary = control_cycle.get("summary", {})
+            if isinstance(control_summary, dict):
+                extend_numeric_summary_points(
+                    points,
+                    table="control_cycle",
+                    sample_label=sample_label,
+                    scenario_name="control_cycle",
+                    summary=control_summary,
+                    numeric_metrics=(
+                        "pause_to_running_ms",
+                        "stop_to_idle_ms",
+                        "rerun_total_ms",
+                        "execution_total_ms",
+                    ),
+                )
+                for metric_name in (
+                    "working_set_mb",
+                    "private_memory_mb",
+                    "handle_count",
+                    "thread_count",
+                ):
+                    metric_summary = control_summary.get(metric_name, {})
+                    if not isinstance(metric_summary, dict):
+                        continue
+                    value = metric_summary.get("delta_max")
+                    if isinstance(value, (int, float)):
+                        add_metric_point(
+                            points,
+                            table="control_cycle",
+                            sample_label=sample_label,
+                            scenario_name="control_cycle",
+                            metric_name=metric_name,
+                            stat_name="delta_max",
+                            value=float(value),
+                        )
+                timeout_count = control_summary.get("timeout_count")
+                if isinstance(timeout_count, (int, float)):
+                    add_metric_point(
+                        points,
+                        table="control_cycle",
+                        sample_label=sample_label,
+                        scenario_name="control_cycle",
+                        metric_name="timeout_count",
+                        stat_name="value",
+                        value=float(timeout_count),
+                    )
+        long_run = result.get("long_run")
+        if isinstance(long_run, dict) and long_run.get("status") == "ok":
+            long_run_summary = long_run.get("summary", {})
+            if isinstance(long_run_summary, dict):
+                extend_numeric_summary_points(
+                    points,
+                    table="long_run",
+                    sample_label=sample_label,
+                    scenario_name="long_run",
+                    summary=long_run_summary,
+                    numeric_metrics=("execution_total_ms",),
+                )
+                for metric_name in (
+                    "working_set_mb",
+                    "private_memory_mb",
+                    "handle_count",
+                    "thread_count",
+                ):
+                    metric_summary = long_run_summary.get(metric_name, {})
+                    if not isinstance(metric_summary, dict):
+                        continue
+                    delta_value = metric_summary.get("delta_max")
+                    if isinstance(delta_value, (int, float)):
+                        add_metric_point(
+                            points,
+                            table="long_run",
+                            sample_label=sample_label,
+                            scenario_name="long_run",
+                            metric_name=metric_name,
+                            stat_name="delta_max",
+                            value=float(delta_value),
+                        )
+                    max_value = metric_summary.get("max")
+                    if isinstance(max_value, (int, float)):
+                        add_metric_point(
+                            points,
+                            table="long_run",
+                            sample_label=sample_label,
+                            scenario_name="long_run",
+                            metric_name=metric_name,
+                            stat_name="max",
+                            value=float(max_value),
+                        )
+                timeout_count = long_run_summary.get("timeout_count")
+                if isinstance(timeout_count, (int, float)):
+                    add_metric_point(
+                        points,
+                        table="long_run",
+                        sample_label=sample_label,
+                        scenario_name="long_run",
+                        metric_name="timeout_count",
+                        stat_name="value",
+                        value=float(timeout_count),
+                    )
     return points
 
 
@@ -1704,6 +2486,64 @@ def singleflight_row(sample_label: str, scenario: dict[str, Any] | None) -> str:
     )
 
 
+def control_cycle_row(sample_label: str, scenario: dict[str, Any] | None) -> str:
+    if not scenario:
+        return f"| {sample_label} | missing | - | - | - | - | - | - | - |"
+    status = str(scenario.get("status", "unknown"))
+    if status != "ok":
+        detail = scenario.get("reason") or scenario.get("error") or "-"
+        return f"| {sample_label} | {status} | - | - | - | - | - | - | {detail} |"
+
+    summary = scenario.get("summary", {})
+    return (
+        f"| {sample_label} | ok | "
+        f"{summary.get('pause_to_running_ms', {}).get('p50_ms', 0.0):.3f} / {summary.get('pause_to_running_ms', {}).get('p95_ms', 0.0):.3f} | "
+        f"{summary.get('stop_to_idle_ms', {}).get('p50_ms', 0.0):.3f} / {summary.get('stop_to_idle_ms', {}).get('p95_ms', 0.0):.3f} | "
+        f"{summary.get('rerun_total_ms', {}).get('p50_ms', 0.0):.3f} / {summary.get('rerun_total_ms', {}).get('p95_ms', 0.0):.3f} | "
+        f"{summary.get('working_set_mb', {}).get('delta_max', 0.0):.3f} | "
+        f"{summary.get('private_memory_mb', {}).get('delta_max', 0.0):.3f} | "
+        f"{summary.get('handle_count', {}).get('delta_max', 0.0):.3f} | "
+        f"{summary.get('timeout_count', 0)} |"
+    )
+
+
+def control_cycle_diagnostics_row(sample_label: str, scenario: dict[str, Any] | None) -> str:
+    if not scenario:
+        return f"| {sample_label} | missing | - | - | - |"
+    status = str(scenario.get('status', 'unknown'))
+    if status != 'ok':
+        detail = scenario.get("reason") or scenario.get("error") or "-"
+        return f"| {sample_label} | {status} | - | - | - | {detail} |"
+
+    summary = scenario.get("summary", {})
+    return (
+        f"| {sample_label} | ok | "
+        f"{summary.get('stop_rpc_ms', {}).get('p50_ms', 0.0):.3f} / {summary.get('stop_rpc_ms', {}).get('p95_ms', 0.0):.3f} | "
+        f"{summary.get('stop_wait_for_terminal_ms', {}).get('p50_ms', 0.0):.3f} / {summary.get('stop_wait_for_terminal_ms', {}).get('p95_ms', 0.0):.3f} | "
+        f"{summary.get('stop_wait_for_idle_ms', {}).get('p50_ms', 0.0):.3f} / {summary.get('stop_wait_for_idle_ms', {}).get('p95_ms', 0.0):.3f} |"
+    )
+
+
+def long_run_row(sample_label: str, scenario: dict[str, Any] | None) -> str:
+    if not scenario:
+        return f"| {sample_label} | missing | - | - | - | - | - | - |"
+    status = str(scenario.get("status", "unknown"))
+    if status != "ok":
+        detail = scenario.get("reason") or scenario.get("error") or "-"
+        return f"| {sample_label} | {status} | - | - | - | - | - | {detail} |"
+
+    summary = scenario.get("summary", {})
+    return (
+        f"| {sample_label} | ok | "
+        f"{summary.get('execution_total_ms', {}).get('p50_ms', 0.0):.3f} / {summary.get('execution_total_ms', {}).get('p95_ms', 0.0):.3f} | "
+        f"{summary.get('working_set_mb', {}).get('delta_max', 0.0):.3f} | "
+        f"{summary.get('private_memory_mb', {}).get('delta_max', 0.0):.3f} | "
+        f"{summary.get('handle_count', {}).get('delta_max', 0.0):.3f} | "
+        f"{summary.get('thread_count', {}).get('max', 0.0):.3f} | "
+        f"{summary.get('timeout_count', 0)} |"
+    )
+
+
 def render_markdown(payload: dict[str, Any]) -> str:
     lines = [
         "# DXF Preview Profiles",
@@ -1718,6 +2558,10 @@ def render_markdown(payload: dict[str, Any]) -> str:
         f"- host_port: `{payload['gateway']['host']}:{payload['gateway']['port']}`",
         f"- dry_run: `{payload['sampling']['dry_run']}`",
         f"- include_start_job: `{payload['sampling']['include_start_job']}`",
+        f"- include_control_cycles: `{payload['sampling']['include_control_cycles']}`",
+        f"- pause_resume_cycles: `{payload['sampling']['pause_resume_cycles']}`",
+        f"- stop_reset_rounds: `{payload['sampling']['stop_reset_rounds']}`",
+        f"- long_run_minutes: `{payload['sampling']['long_run_minutes']}`",
         f"- sample_labels: `{', '.join(payload['sampling']['sample_labels'])}`",
         "",
         "## Samples",
@@ -1766,6 +2610,42 @@ def render_markdown(payload: dict[str, Any]) -> str:
     )
     for label, result in payload["results"].items():
         lines.append(singleflight_row(label, result.get("singleflight")))
+
+    lines.extend(
+        [
+            "",
+            "## Control Cycle",
+            "",
+            "| Sample | status | pause->running p50/p95 (ms) | stop->idle p50/p95 (ms) | rerun_total p50/p95 (ms) | working_set delta max (MB) | private_memory delta max (MB) | handle delta max | timeout_count |",
+            "|---|---|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
+    for label, result in payload["results"].items():
+        lines.append(control_cycle_row(label, result.get("control_cycle")))
+
+    lines.extend(
+        [
+            "",
+            "## Control Cycle Diagnostics",
+            "",
+            "| Sample | status | stop_rpc p50/p95 (ms) | wait_terminal p50/p95 (ms) | wait_idle p50/p95 (ms) |",
+            "|---|---|---:|---:|---:|",
+        ]
+    )
+    for label, result in payload["results"].items():
+        lines.append(control_cycle_diagnostics_row(label, result.get("control_cycle")))
+
+    lines.extend(
+        [
+            "",
+            "## Long Run",
+            "",
+            "| Sample | status | execution_total p50/p95 (ms) | working_set delta max (MB) | private_memory delta max (MB) | handle delta max | thread max | timeout_count |",
+            "|---|---|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
+    for label, result in payload["results"].items():
+        lines.append(long_run_row(label, result.get("long_run")))
 
     baseline = payload.get("baseline_comparison")
     if isinstance(baseline, dict):
@@ -1837,6 +2717,8 @@ def render_markdown(payload: dict[str, Any]) -> str:
             "- hot reuses the same backend and artifact to show authority cache reuse; when `--include-start-job` is on, it also warms and measures execution assembly reuse.",
             "- single-flight issues concurrent `plan.prepare` requests against the same artifact; use `authority_joined_inflight` and `authority_wait_ms` to judge prepare-side deduplication.",
             "- `--include-start-job` extends each preview cycle with `preview.confirm -> dxf.job.start -> dxf.job.status -> dxf.job.stop`, and the execution table surfaces the structured `dxf.job.start.performance_profile`.",
+            "- `--include-control-cycles` reuses the same performance authority and adds pause/resume plus stop/reset/rerun observations on top of the execution path; it does not introduce a second runner.",
+            "- `long_run` keeps reusing the same backend and artifact for the configured duration, then samples gateway process WorkingSet/PrivateMemory/HandleCount/ThreadCount through `Get-Process`.",
             "- When `--include-start-job` runs in dry-run mode without an explicit `--launch-spec`, the script pins to the workspace gateway, auto-materializes a temporary `Hardware.mode=Mock` config if needed, then performs `connect -> home.auto` before sampling. That bootstrap time is excluded from the execution table.",
             "- If a single-flight run shows `joined_inflight_rate=0` but cache hit is high, the sample likely completed too quickly and followers landed on hot cache instead of the inflight join window.",
             "- Baseline comparison remains advisory. `threshold_gate` is the only blocking mechanism when `--gate-mode nightly-performance` is used.",
@@ -1847,7 +2729,7 @@ def render_markdown(payload: dict[str, Any]) -> str:
 
 def _performance_case_status(result: dict[str, Any]) -> str:
     raw_statuses: list[str] = []
-    for key in ("cold", "hot", "singleflight"):
+    for key in ("cold", "hot", "singleflight", "control_cycle", "long_run"):
         block = result.get(key)
         if isinstance(block, dict):
             raw_statuses.append(str(block.get("status", "unknown")))
@@ -1877,7 +2759,7 @@ def _write_evidence_bundle(payload: dict[str, Any], run_dir: Path, summary_json_
                 name=f"performance-{sample_label}",
                 suite_ref="performance",
                 owner_scope="tests/performance",
-                primary_layer="L4-performance",
+                primary_layer="L6",
                 producer_lane_ref="nightly-performance",
                 status=case_status,
                 evidence_profile="performance-report",
@@ -1886,7 +2768,7 @@ def _write_evidence_bundle(payload: dict[str, Any], run_dir: Path, summary_json_
                 required_fixtures=("fixture.dxf-preview-profiler", "fixture.validation-evidence-bundle"),
                 risk_tags=("performance", "single-flight"),
                 trace_fields=trace_fields(
-                    stage_id="L4-performance",
+                    stage_id="L6",
                     artifact_id=f"performance-{sample_label}",
                     module_id="tests/performance",
                     workflow_state="executed",
@@ -1984,6 +2866,10 @@ def main() -> int:
             "snapshot_timeout": args.snapshot_timeout,
             "max_polyline_points": args.max_polyline_points,
             "include_start_job": args.include_start_job,
+            "include_control_cycles": args.include_control_cycles,
+            "pause_resume_cycles": args.pause_resume_cycles,
+            "stop_reset_rounds": args.stop_reset_rounds,
+            "long_run_minutes": args.long_run_minutes,
             "baseline_json": args.baseline_json,
             "regression_threshold_pct": args.regression_threshold_pct,
             "gate_mode": args.gate_mode,

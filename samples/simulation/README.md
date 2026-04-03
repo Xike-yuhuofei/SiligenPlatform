@@ -52,7 +52,7 @@ Fault scenario contract 现在固定为 `fault-scenario.v1`，每条场景都必
 - `invalid_empty_segments.simulation-input.json`
   - fault id: `fault.simulated.invalid-empty-segments`
   - 默认结果：`failed`
-  - 适用层：`L2-offline-integration`、`L3-simulated-e2e`
+  - 适用层：`L3`、`L4`
   - injector: `simulated-line.input-asset`
   - source_asset_refs:
     `sample.simulation.invalid_empty_segments`、`baseline.simulation.invalid_empty_segments`
@@ -61,9 +61,10 @@ Fault scenario contract 现在固定为 `fault-scenario.v1`，每条场景都必
 - `following_error_quantized.simulation-input.json`
   - fault id: `fault.simulated.following_error_quantized`
   - 默认结果：`deferred`
-  - 适用层：`L3-simulated-e2e`、`L4-performance`
+  - 适用层：`L4`、`L6`
   - injector: `simulated-line.input-asset`
   - source_asset_refs:
     `sample.simulation.following_error_quantized`、`baseline.simulation.following_error_quantized`
   - supported_hooks:
     `controller.abort`、`io.disconnect`
+

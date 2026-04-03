@@ -9,7 +9,7 @@ import tempfile
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 
 KNOWN_FAILURE_EXIT_CODE = 10
@@ -17,6 +17,9 @@ SKIPPED_EXIT_CODE = 11
 READINESS_CHOICES = ("ready", "not-ready")
 ABORT_CHOICES = ("none", "before-run", "after-first-pass")
 DISCONNECT_CHOICES = ("none", "after-first-pass")
+PREFLIGHT_CHOICES = ("none", "fail-after-preview-ready")
+ALARM_CHOICES = ("none", "during-execution")
+CONTROL_CYCLE_CHOICES = ("none", "pause-resume-once", "stop-reset-rerun")
 ROOT = Path(__file__).resolve().parents[3]
 TEST_KIT_SRC = ROOT / "shared" / "testing" / "test-kit" / "src"
 if str(TEST_KIT_SRC) not in sys.path:
@@ -77,10 +80,15 @@ class RegressionScenarioReport:
     status: str = "pending"
     summary_metrics: dict[str, Any] = field(default_factory=dict)
     repeated_summary_metrics: dict[str, Any] = field(default_factory=dict)
+    lifecycle_transitions: list[str] = field(default_factory=list)
     error: str = ""
 
 
 class SimulatedLineBlockedError(RuntimeError):
+    pass
+
+
+class SimulatedLineScenarioBlockedError(RuntimeError):
     pass
 
 
@@ -172,6 +180,21 @@ def parse_args() -> argparse.Namespace:
         "--hook-disconnect",
         choices=DISCONNECT_CHOICES,
         default=_env_text("SILIGEN_SIMULATED_LINE_DISCONNECT", "none"),
+    )
+    parser.add_argument(
+        "--hook-preflight",
+        choices=PREFLIGHT_CHOICES,
+        default=_env_text("SILIGEN_SIMULATED_LINE_PREFLIGHT", "none"),
+    )
+    parser.add_argument(
+        "--hook-alarm",
+        choices=ALARM_CHOICES,
+        default=_env_text("SILIGEN_SIMULATED_LINE_ALARM", "none"),
+    )
+    parser.add_argument(
+        "--hook-control-cycle",
+        choices=CONTROL_CYCLE_CHOICES,
+        default=_env_text("SILIGEN_SIMULATED_LINE_CONTROL_CYCLE", "none"),
     )
     return parser.parse_args()
 
@@ -431,6 +454,18 @@ def _assert_text_equal(first: str, second: str, scenario_name: str) -> None:
         raise AssertionError(f"simulated-line deterministic replay failed: {scenario_name} produced different JSON on repeat run")
 
 
+def _append_lifecycle_transition(
+    report: dict[str, Any],
+    scenario_report: RegressionScenarioReport,
+    transition: str,
+) -> None:
+    if transition not in scenario_report.lifecycle_transitions:
+        scenario_report.lifecycle_transitions.append(transition)
+    lifecycle_transitions = report.setdefault("lifecycle_transitions", [])
+    if transition not in lifecycle_transitions:
+        lifecycle_transitions.append(transition)
+
+
 def _write_report(report: dict[str, Any], report_dir: Path) -> tuple[Path, Path]:
     report_dir.mkdir(parents=True, exist_ok=True)
     json_path = report_dir / "simulated-line-summary.json"
@@ -456,6 +491,11 @@ def _write_report(report: dict[str, Any], report_dir: Path) -> tuple[Path, Path]
         lines.append(f"- hook_readiness: `{hooks.get('readiness', '')}`")
         lines.append(f"- hook_abort: `{hooks.get('abort', '')}`")
         lines.append(f"- hook_disconnect: `{hooks.get('disconnect', '')}`")
+        lines.append(f"- hook_preflight: `{report.get('hook_preflight', '')}`")
+        lines.append(f"- hook_alarm: `{report.get('hook_alarm', '')}`")
+        lines.append(f"- hook_control_cycle: `{report.get('hook_control_cycle', '')}`")
+    if report.get("lifecycle_transitions"):
+        lines.append(f"- lifecycle_transitions: `{','.join(report['lifecycle_transitions'])}`")
     if report.get("error"):
         lines.append(f"- error: {report['error']}")
     lines.append("")
@@ -476,6 +516,8 @@ def _write_report(report: dict[str, Any], report_dir: Path) -> tuple[Path, Path]
             lines.append(
                 f"  exit_code: expected=`{scenario['expected_exit_code']}` actual=`{scenario['actual_exit_code']}`"
             )
+            if scenario.get("lifecycle_transitions"):
+                lines.append(f"  lifecycle_transitions: `{','.join(scenario['lifecycle_transitions'])}`")
             if scenario.get("summary_metrics"):
                 lines.append("  summary_metrics:")
                 lines.append("  ```json")
@@ -521,7 +563,7 @@ def _write_evidence_bundle(report: dict[str, Any], report_dir: Path, summary_jso
                 name=name,
                 suite_ref="e2e",
                 owner_scope="runtime-execution",
-                primary_layer="L3-simulated-e2e",
+                primary_layer="L4",
                 producer_lane_ref="full-offline-gate",
                 status=scenario_status,
                 evidence_profile="simulated-e2e-report",
@@ -538,7 +580,7 @@ def _write_evidence_bundle(report: dict[str, Any], report_dir: Path, summary_jso
                 ),
                 note=str(scenario.get("error", "")),
                 trace_fields=trace_fields(
-                    stage_id="L3-simulated-e2e",
+                    stage_id="L4",
                     artifact_id=name,
                     module_id="runtime-execution",
                     workflow_state="executed",
@@ -557,7 +599,7 @@ def _write_evidence_bundle(report: dict[str, Any], report_dir: Path, summary_jso
                 name="simulated-line",
                 suite_ref="e2e",
                 owner_scope="runtime-execution",
-                primary_layer="L3-simulated-e2e",
+                primary_layer="L4",
                 producer_lane_ref="full-offline-gate",
                 status=_bundle_verdict(str(report.get("overall_status", "incomplete"))),
                 evidence_profile="simulated-e2e-report",
@@ -574,7 +616,7 @@ def _write_evidence_bundle(report: dict[str, Any], report_dir: Path, summary_jso
                 ),
                 note=str(report.get("error", "")),
                 trace_fields=trace_fields(
-                    stage_id="L3-simulated-e2e",
+                    stage_id="L4",
                     artifact_id="simulated-line",
                     module_id="runtime-execution",
                     workflow_state="executed",
@@ -604,6 +646,10 @@ def _write_evidence_bundle(report: dict[str, Any], report_dir: Path, summary_jso
             "clock_profile": replay_clock_profile,
             "double_surface": fault_plan.get("double_surface", {}),
             "hooks": fault_plan.get("hooks", {}),
+            "hook_preflight": report.get("hook_preflight", ""),
+            "hook_alarm": report.get("hook_alarm", ""),
+            "hook_control_cycle": report.get("hook_control_cycle", ""),
+            "lifecycle_transitions": list(report.get("lifecycle_transitions", [])),
         },
         case_records=case_records,
     )
@@ -620,12 +666,17 @@ def _write_evidence_bundle(report: dict[str, Any], report_dir: Path, summary_jso
 
 
 def _make_report(build_root: Path, mode: str, fault_plan: dict[str, object]) -> dict[str, Any]:
+    hooks = cast(dict[str, Any], fault_plan.get("hooks", {}))
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "build_root": str(build_root),
         "mode": mode,
         "overall_status": "running",
         "error": "",
+        "hook_preflight": hooks.get("preflight", ""),
+        "hook_alarm": hooks.get("alarm", ""),
+        "hook_control_cycle": hooks.get("control_cycle", ""),
+        "lifecycle_transitions": [],
         "scenarios": [],
         "fault_plan": fault_plan,
     }
@@ -685,6 +736,9 @@ def _validate_scenario(
 ) -> None:
     baseline = _load_json(scenario.baseline_path)
     scenario_report = _append_scenario_report(report, mode, scenario, "pending")
+    control_cycle = str(fault_plan.hooks.get("control_cycle", "none"))
+    hook_preflight = str(fault_plan.hooks.get("preflight", "none"))
+    hook_alarm = str(fault_plan.hooks.get("alarm", "none"))
 
     try:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -700,6 +754,26 @@ def _validate_scenario(
             summary = summarize(payload_a)
             scenario_report.actual_exit_code = first_exit_code
             scenario_report.summary_metrics = summary
+            _append_lifecycle_transition(report, scenario_report, "preview_ready")
+
+            if hook_preflight == "fail-after-preview-ready":
+                _append_lifecycle_transition(report, scenario_report, "preflight_failed")
+                raise SimulatedLineScenarioBlockedError(
+                    f"simulated-line preview ready but fake controller preflight failed: {scenario.name}"
+                )
+
+            _append_lifecycle_transition(report, scenario_report, "execution_started")
+            if hook_alarm == "during-execution":
+                _append_lifecycle_transition(report, scenario_report, "alarm_raised")
+                raise RuntimeError(f"simulated-line injected alarm during execution: {scenario.name}")
+
+            if control_cycle == "pause-resume-once":
+                _append_lifecycle_transition(report, scenario_report, "paused")
+                _append_lifecycle_transition(report, scenario_report, "resumed")
+            elif control_cycle == "stop-reset-rerun":
+                _append_lifecycle_transition(report, scenario_report, "stopped")
+                _append_lifecycle_transition(report, scenario_report, "reset_to_idle")
+                _append_lifecycle_transition(report, scenario_report, "rerun_started")
 
             if fault_plan.hooks["abort"] == "after-first-pass":
                 raise RuntimeError(f"simulated-line injected abort after first pass: {scenario.name}")
@@ -722,6 +796,8 @@ def _validate_scenario(
             scenario_report.deterministic_replay_passed = True
             repeated_summary = summarize(payload_b)
             scenario_report.repeated_summary_metrics = repeated_summary
+            if control_cycle == "stop-reset-rerun":
+                _append_lifecycle_transition(report, scenario_report, "rerun_completed")
 
         for key in equal_keys:
             _assert_equal(summary, baseline, key)
@@ -732,6 +808,11 @@ def _validate_scenario(
 
         scenario_report.status = "passed"
         _store_scenario_report(report, scenario_report)
+    except SimulatedLineScenarioBlockedError as error:
+        scenario_report.status = "blocked"
+        scenario_report.error = str(error)
+        _store_scenario_report(report, scenario_report)
+        raise SimulatedLineBlockedError(str(error))
     except Exception as error:
         scenario_report.status = "failed"
         scenario_report.error = str(error)
@@ -812,6 +893,9 @@ def main() -> int:
         hook_readiness=args.hook_readiness,
         hook_abort=args.hook_abort,
         hook_disconnect=args.hook_disconnect,
+        hook_preflight=args.hook_preflight,
+        hook_alarm=args.hook_alarm,
+        hook_control_cycle=args.hook_control_cycle,
     )
     report = _make_report(build_root, args.mode, fault_plan.to_dict())
     exit_code = 0
