@@ -400,8 +400,24 @@ class PreviewSessionOwner:
         return (
             f"段数: {self._state.dxf_segment_count} | 长度: {self._state.dxf_total_length_mm:.1f}mm | "
             f"预估: {self._state.dxf_estimated_time_text} | 预览: {self.preview_state_text()} | "
-            f"来源: {self.preview_source_text()}"
+            f"来源: {self.preview_source_text()} | 轨迹: {self.motion_preview_summary_text()}"
         )
+
+    def motion_preview_summary_text(self) -> str:
+        source_text = self.motion_preview_source_text()
+        if source_text == "-" or self._state.motion_preview_point_count <= 0:
+            return "-"
+
+        if (
+            self._state.motion_preview_is_sampled and
+            self._state.motion_preview_source_point_count > self._state.motion_preview_point_count
+        ):
+            return (
+                f"{source_text}({self._state.motion_preview_point_count}/"
+                f"{self._state.motion_preview_source_point_count})"
+            )
+
+        return f"{source_text}({self._state.motion_preview_point_count}点)"
 
     def should_enable_refresh(self, *, offline_mode: bool, connected: bool, dxf_loaded: bool) -> bool:
         return (not offline_mode) and connected and dxf_loaded and (not self._state.preview_refresh_inflight)

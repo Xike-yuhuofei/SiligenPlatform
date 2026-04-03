@@ -924,9 +924,13 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertEqual(self.window._preview_gate.snapshot.snapshot_hash, "hash-300s")
         self.assertEqual(self.window.statusBar().currentMessage(), "胶点预览已更新，启动前需确认")
         self.assertIn("规划胶点主预览", self.window._dxf_view.html)
+        self.assertIn("运动轨迹", self.window._dxf_view.html)
         self.assertIn("运动轨迹来源</td><td>执行轨迹快照</td>", self.window._dxf_view.html)
         self.assertIn("运动轨迹采样策略</td><td>fixed_spacing_corner_preserving</td>", self.window._dxf_view.html)
+        self.assertIn("stroke='#8fd3ff'", self.window._dxf_view.html)
+        self.assertIn("stroke-dasharray='7 4'", self.window._dxf_view.html)
         self.assertIn("hash-300s", self.window._dxf_view.html)
+        self.assertIn("轨迹: 执行轨迹快照(2/8)", self.window._dxf_info_label.text())
 
     def test_preview_snapshot_rejects_non_authoritative_preview_source(self) -> None:
         messages = []

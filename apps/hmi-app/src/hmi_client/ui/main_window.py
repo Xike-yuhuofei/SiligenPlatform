@@ -2459,6 +2459,18 @@ class MainWindow(QMainWindow):
                 f"<strong>运动轨迹预览提示。</strong> {html.escape(motion_preview_warning)}"
                 "</div>"
             )
+        legend_markup = (
+            "<div style='display:flex;gap:18px;align-items:center;margin-bottom:12px;color:#cfcfcf;font-size:13px;'>"
+            "<span style='display:inline-flex;align-items:center;gap:8px;'>"
+            "<span style='display:inline-block;width:20px;height:0;border-top:3px dashed #8fd3ff;'></span>"
+            "运动轨迹"
+            "</span>"
+            "<span style='display:inline-flex;align-items:center;gap:8px;'>"
+            "<span style='display:inline-block;width:10px;height:10px;background:#00d084;border-radius:50%;'></span>"
+            "胶点"
+            "</span>"
+            "</div>"
+        )
         validation_banner = ""
         if preview_validation_classification == "pass_with_exception" and preview_exception_reason:
             validation_banner = (
@@ -2516,8 +2528,11 @@ class MainWindow(QMainWindow):
                 f"{point_x:.2f},{point_y:.2f}" for point_x, point_y in display_motion_preview
             )
             motion_preview_markup = (
-                f"<polyline points='{motion_preview_polyline_markup}' fill='none' stroke='#5b6472' "
-                "stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round' opacity='0.9' />"
+                f"<polyline points='{motion_preview_polyline_markup}' fill='none' stroke='#27445f' "
+                "stroke-width='5.2' stroke-linecap='round' stroke-linejoin='round' opacity='0.85' />"
+                f"<polyline points='{motion_preview_polyline_markup}' fill='none' stroke='#8fd3ff' "
+                "stroke-width='2.8' stroke-linecap='round' stroke-linejoin='round' "
+                "stroke-dasharray='7 4' opacity='1.0' />"
             )
         points_markup = []
         for point_x, point_y in display_points:
@@ -2534,6 +2549,7 @@ class MainWindow(QMainWindow):
             "<p style='color:#b8b8b8;'>"
             "主图同时展示胶点触发点与运动轨迹路径，便于离线优化运动算法。执行前确认与哈希校验仍只基于胶点主预览。"
             "</p>"
+            f"{legend_markup}"
             f"<svg viewBox='0 0 {width:.0f} {height:.0f}' style='width:100%;height:56vh;background:#141414;border:1px solid #333;'>"
             f"{motion_preview_markup}"
             f"{point_cloud_svg}"
