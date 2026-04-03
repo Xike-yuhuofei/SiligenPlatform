@@ -20,8 +20,8 @@
 当前策略：
 
 - 默认验证 canonical `siligen_tcp_server.exe` 的最小启动闭环
-- 默认优先使用当前工作区 `build\bin\<Config>\...` 的二进制；只有工作区未构建时才回退到 `SILIGEN_CONTROL_APPS_BUILD_ROOT`
-- 默认产物根按 `<repo-root>\build` -> `SILIGEN_CONTROL_APPS_BUILD_ROOT` -> `%LOCALAPPDATA%\SiligenSuite\control-apps-build` 解析
+- 默认优先使用当前工作区 `build\` 下可解析的产物，包括 `build\bin\<Config>\...`、`build\control-apps\...` 与有效子构建目录；只有工作区未命中时才回退到 `SILIGEN_CONTROL_APPS_BUILD_ROOT`
+- 默认产物根按 `SILIGEN_CONTROL_APPS_BUILD_ROOT`（显式设置时）或 `<repo-root>\build + 有效子构建目录` -> `%LOCALAPPDATA%\SiligenSuite\control-apps-build` 解析
 - 默认目标路径模式：`<repo-root>\build\bin\<Config>\*.exe`
 - 可通过 `SILIGEN_HIL_GATEWAY_EXE` 显式覆盖可执行文件
 - 进程 `cwd` 使用仓库根，而不是 `control-core`

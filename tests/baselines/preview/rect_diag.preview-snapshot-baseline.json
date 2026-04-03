@@ -13,12 +13,12 @@
     "estimated_time_s": 54.14213943481445
   },
   "motion_preview": {
-    "source": "process_path_snapshot",
+    "source": "execution_trajectory_snapshot",
     "kind": "polyline",
-    "source_point_count": 6,
-    "point_count": 6,
-    "is_sampled": false,
-    "sampling_strategy": "process_path_geometry_preserving"
+    "source_point_count": 10082,
+    "point_count": 4000,
+    "is_sampled": true,
+    "sampling_strategy": "execution_trajectory_geometry_preserving_clamp"
   },
   "glue_summary": {
     "point_count": 180,
@@ -148,27 +148,37 @@
       "y": 0.0
     },
     {
-      "index": 1,
+      "index": 825,
       "x": 100.0,
-      "y": 0.0
+      "y": 0.066
     },
     {
-      "index": 2,
-      "x": 100.0,
+      "index": 1515,
+      "x": 99.878,
       "y": 100.0
     },
     {
-      "index": 3,
+      "index": 2176,
       "x": 0.0,
-      "y": 100.0
+      "y": 99.861
     },
     {
-      "index": 4,
+      "index": 2600,
       "x": 0.0,
-      "y": 0.0
+      "y": 35.719
     },
     {
-      "index": 5,
+      "index": 2837,
+      "x": 0.063,
+      "y": 0.063
+    },
+    {
+      "index": 3200,
+      "x": 29.584,
+      "y": 29.584
+    },
+    {
+      "index": 3999,
       "x": 100.0,
       "y": 100.0
     }

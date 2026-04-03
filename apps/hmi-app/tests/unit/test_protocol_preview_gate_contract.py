@@ -426,7 +426,7 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
                             "source_point_count": 48,
                             "point_count": 2,
                             "is_sampled": True,
-                            "sampling_strategy": "fixed_spacing_corner_preserving",
+                            "sampling_strategy": "execution_trajectory_geometry_preserving_clamp",
                             "polyline": [
                                 {"x": 0.0, "y": 0.0},
                                 {"x": 10.0, "y": 2.0},

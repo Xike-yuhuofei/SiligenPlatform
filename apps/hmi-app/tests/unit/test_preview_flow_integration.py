@@ -95,7 +95,7 @@ class _FakePreviewSnapshotWorker:
                 "source_point_count": 8,
                 "point_count": 2,
                 "is_sampled": True,
-                "sampling_strategy": "fixed_spacing_corner_preserving",
+                "sampling_strategy": "execution_trajectory_geometry_preserving_clamp",
                 "polyline": [
                     {"x": 0.0, "y": 0.0},
                     {"x": 10.0, "y": 0.0},
@@ -184,6 +184,10 @@ class PreviewFlowIntegrationTest(unittest.TestCase):
         self.assertEqual(runtime_window.statusBar().currentMessage(), "胶点预览已更新，启动前需确认")
         self.assertEqual(runtime_window._dxf_filename_display.text(), "rect_diag.dxf")
         self.assertIn("hash-it", runtime_window._preview_debug_view.toPlainText())
+        self.assertIn(
+            "execution_trajectory_geometry_preserving_clamp",
+            runtime_window._preview_debug_view.toPlainText(),
+        )
         self.assertEqual(
             runtime_window._protocol.calls,
             [
@@ -229,12 +233,12 @@ class PreviewFlowIntegrationTest(unittest.TestCase):
                     {"x": 12.0, "y": 0.0},
                 ],
                 "motion_preview": {
-                    "source": "execution_polyline",
+                    "source": "execution_trajectory_snapshot",
                     "kind": "polyline",
                     "source_point_count": 3,
                     "point_count": 3,
                     "is_sampled": False,
-                    "sampling_strategy": "workflow_preview_snapshot",
+                    "sampling_strategy": "execution_trajectory_geometry_preserving",
                     "polyline": [
                         {"x": 0.0, "y": 0.0},
                         {"x": 6.0, "y": 0.0},
@@ -259,7 +263,7 @@ class PreviewFlowIntegrationTest(unittest.TestCase):
         self.assertEqual(self.window._dxf_artifact_id, "offline-local")
         self.assertEqual(self.window._current_plan_id, "offline-preview-1")
         self.assertEqual(self.window._current_plan_fingerprint, "offline-hash-1")
-        self.assertEqual(self.window._preview_session.state.motion_preview_source, "execution_polyline")
+        self.assertEqual(self.window._preview_session.state.motion_preview_source, "execution_trajectory_snapshot")
         self.assertIn("执行轨迹快照", self.window._preview_debug_view.toPlainText())
         self.assertTrue(self.window._preview_play_btn.isEnabled())
         self.assertFalse(_FakePreviewSnapshotWorker.created)

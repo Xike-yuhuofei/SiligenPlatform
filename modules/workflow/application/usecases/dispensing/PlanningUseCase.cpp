@@ -1038,6 +1038,7 @@ Result<ExecutionAssemblyResponse> PlanningUseCase::AssembleExecutionFromAuthorit
     ExecutionAssemblyResponse response;
     response.success = true;
     response.execution_trajectory_points = assembly_result.Value().execution_trajectory_points;
+    response.motion_trajectory_points = assembly_result.Value().motion_trajectory_points;
     response.planning_report = assembly_input.motion_plan.planning_report;
     response.preview_authority_shared_with_execution =
         assembly_result.Value().preview_authority_shared_with_execution;

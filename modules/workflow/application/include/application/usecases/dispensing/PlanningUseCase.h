@@ -84,6 +84,7 @@ struct PreparedAuthorityPreview {
 struct ExecutionAssemblyResponse {
     bool success = false;
     std::vector<TrajectoryPoint> execution_trajectory_points;
+    std::vector<TrajectoryPoint> motion_trajectory_points;
     MotionPlanningReport planning_report;
     bool preview_authority_shared_with_execution = false;
     bool execution_binding_ready = false;

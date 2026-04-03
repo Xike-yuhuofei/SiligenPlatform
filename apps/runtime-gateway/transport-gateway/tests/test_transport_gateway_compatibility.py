@@ -200,6 +200,9 @@ def test_dxf_preview_contract_docs_freeze_shared_authority_semantics():
     assert fixture["result"]["preview_kind"] == "glue_points"
     assert fixture["result"]["glue_point_count"] > 0
     assert len(fixture["result"]["glue_points"]) == fixture["result"]["glue_point_count"]
+    assert fixture["result"]["motion_preview"]["source"] == "execution_trajectory_snapshot"
+    assert fixture["result"]["motion_preview"]["sampling_strategy"] == "execution_trajectory_geometry_preserving_clamp"
+    assert len(fixture["result"]["motion_preview"]["polyline"]) == fixture["result"]["motion_preview"]["point_count"]
     assert "shared authority" in mapping.lower()
 
 

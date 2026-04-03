@@ -199,6 +199,15 @@ def test_dxf_preview_and_job_contract():
     assert "polyline_point_count" in preview_result_properties
     assert "polyline_source_point_count" in preview_result_properties
 
+    preview_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.preview.snapshot.success.json")
+    motion_preview = preview_fixture["result"]["motion_preview"]
+    assert motion_preview["source"] == "execution_trajectory_snapshot"
+    assert motion_preview["kind"] == "polyline"
+    assert motion_preview["is_sampled"] is True
+    assert motion_preview["sampling_strategy"] == "execution_trajectory_geometry_preserving_clamp"
+    assert motion_preview["source_point_count"] >= motion_preview["point_count"]
+    assert len(motion_preview["polyline"]) == motion_preview["point_count"]
+
     preview_confirm = operations["dxf.preview.confirm"]
     assert {"plan_id", "snapshot_hash"}.issubset(set(preview_confirm["paramsSchema"]["required"]))
     assert {"confirmed", "plan_id", "snapshot_hash", "preview_state", "confirmed_at"}.issubset(

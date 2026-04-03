@@ -164,7 +164,7 @@
       "reviewer_guidance": "Preview geometry deltas must cite visual and machine-readable evidence before baseline refresh.",
       "lifecycle": {
         "state": "active",
-        "review_by": "2026-07-31"
+        "review_by": "2026-08-31"
       },
       "deprecated_source_paths": []
     },
@@ -195,4 +195,3 @@
     }
   ]
 }
-

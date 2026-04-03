@@ -293,7 +293,7 @@ class MainWindowTabsTest(unittest.TestCase):
                     "source_point_count": 8,
                     "point_count": 2,
                     "is_sampled": True,
-                    "sampling_strategy": "fixed_spacing_corner_preserving",
+                    "sampling_strategy": "execution_trajectory_geometry_preserving_clamp",
                     "polyline": [
                         {"x": 0.0, "y": 0.0},
                         {"x": 12.0, "y": 3.0},
@@ -1014,7 +1014,7 @@ class MainWindowTabsTest(unittest.TestCase):
                     "source_point_count": 8,
                     "point_count": 2,
                     "is_sampled": True,
-                    "sampling_strategy": "fixed_spacing_corner_preserving",
+                    "sampling_strategy": "execution_trajectory_geometry_preserving_clamp",
                     "polyline": [
                         {"x": 0.0, "y": 0.0},
                         {"x": 10.0, "y": 0.0},
@@ -1046,7 +1046,7 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertIn("id='preview-head'", self.window._dxf_view.html)
         self.assertIn("运动轨迹来源", self.window._preview_debug_view.toPlainText())
         self.assertIn("执行轨迹快照", self.window._preview_debug_view.toPlainText())
-        self.assertIn("fixed_spacing_corner_preserving", self.window._preview_debug_view.toPlainText())
+        self.assertIn("execution_trajectory_geometry_preserving_clamp", self.window._preview_debug_view.toPlainText())
         self.assertIn("hash-300s", self.window._preview_debug_view.toPlainText())
         self.assertIn("轨迹: 执行轨迹快照(2/8)", self.window._dxf_info_label.text())
 

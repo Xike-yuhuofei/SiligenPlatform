@@ -79,7 +79,7 @@ def _valid_payload(
             "source_point_count": execution_source_point_count,
             "point_count": 2,
             "is_sampled": execution_source_point_count > 2,
-            "sampling_strategy": "fixed_spacing_corner_preserving",
+            "sampling_strategy": "execution_trajectory_geometry_preserving_clamp",
             "polyline": [
                 {"x": 0.0, "y": 0.0},
                 {"x": 6.0, "y": 0.0},
@@ -246,7 +246,7 @@ class PreviewSessionOwnerTest(unittest.TestCase):
             "source_point_count": 12,
             "point_count": 3,
             "is_sampled": True,
-            "sampling_strategy": "fixed_spacing_corner_preserving",
+            "sampling_strategy": "execution_trajectory_geometry_preserving_clamp",
             "polyline": [
                 {"x": 1.0, "y": 1.0},
                 {"x": 4.0, "y": 2.0},
@@ -261,7 +261,10 @@ class PreviewSessionOwnerTest(unittest.TestCase):
         self.assertEqual(result.motion_preview[-1], (6.0, 3.0))
         self.assertEqual(self.owner.state.motion_preview_source, "execution_trajectory_snapshot")
         self.assertEqual(self.owner.state.motion_preview_point_count, 3)
-        self.assertEqual(self.owner.state.motion_preview_sampling_strategy, "fixed_spacing_corner_preserving")
+        self.assertEqual(
+            self.owner.state.motion_preview_sampling_strategy,
+            "execution_trajectory_geometry_preserving_clamp",
+        )
         self.assertEqual(result.motion_preview_warning, "")
         self.assertIn("轨迹: 执行轨迹快照(3/12)", self.owner.info_label_text())
 
@@ -315,18 +318,32 @@ class PreviewSessionOwnerTest(unittest.TestCase):
         self.assertEqual(playback.state, "idle")
         self.assertEqual(playback.progress, 0.0)
 
-    def test_process_snapshot_payload_falls_back_to_execution_polyline_when_motion_preview_missing(self) -> None:
+    def test_process_snapshot_payload_fails_when_motion_preview_missing(self) -> None:
         result = self.owner.process_snapshot_payload(
             _valid_payload(include_motion_preview=False),
             current_dry_run=False,
         )
 
-        self.assertTrue(result.ok)
-        self.assertEqual(result.motion_preview, result.execution_polyline)
-        self.assertIn("回退到 execution_polyline", result.motion_preview_warning)
-        self.assertEqual(self.owner.state.motion_preview_source, "legacy_execution_polyline")
-        self.assertEqual(self.owner.state.motion_preview_kind, "polyline")
-        self.assertIn("轨迹: execution_polyline 兼容层(2/10)", self.owner.info_label_text())
+        self.assertFalse(result.ok)
+        self.assertEqual(result.title, "胶点预览生成失败")
+        self.assertIn("缺少 motion_preview", result.detail)
+        self.assertEqual(self.owner.gate.last_error_message, "运行时快照缺少 motion_preview")
+        self.assertFalse(self.owner.local_playback_status().available)
+
+    def test_process_snapshot_payload_fails_when_motion_preview_source_is_not_execution_snapshot(self) -> None:
+        payload = _valid_payload()
+        payload["motion_preview"]["source"] = "execution_polyline"
+        payload["motion_preview"]["sampling_strategy"] = "legacy_execution_polyline_compat"
+
+        result = self.owner.process_snapshot_payload(payload, current_dry_run=False)
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.title, "胶点预览生成失败")
+        self.assertIn("motion_preview.source=execution_polyline", result.detail)
+        self.assertEqual(
+            self.owner.gate.last_error_message,
+            "运行时快照返回了非执行真值运动轨迹来源: execution_polyline",
+        )
 
     def test_process_snapshot_payload_invalidates_plan_when_dry_run_mode_changes(self) -> None:
         result = self.owner.process_snapshot_payload(

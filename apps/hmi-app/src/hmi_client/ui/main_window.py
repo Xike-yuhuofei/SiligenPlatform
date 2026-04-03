@@ -2590,16 +2590,16 @@ class MainWindow(QMainWindow):
         preview_failure_reason: str = "",
     ) -> str:
         normalized_source = str(preview_source or "").strip().lower()
-        effective_motion_preview = list(motion_preview or execution_polyline)
+        effective_motion_preview = list(motion_preview or [])
         effective_motion_preview_meta = motion_preview_meta
         if effective_motion_preview_meta is None and effective_motion_preview:
             effective_motion_preview_meta = MotionPreviewMeta(
-                source="legacy_execution_polyline",
+                source="",
                 kind="polyline",
                 point_count=len(effective_motion_preview),
                 source_point_count=len(effective_motion_preview),
                 is_sampled=False,
-                sampling_strategy="legacy_execution_polyline_compat",
+                sampling_strategy="",
             )
         effective_motion_preview_meta = effective_motion_preview_meta or MotionPreviewMeta()
         warning_banner = ""
@@ -2771,16 +2771,16 @@ class MainWindow(QMainWindow):
         generated_at = html.escape(snapshot.generated_at or "-")
         normalized_source = str(preview_source or "").strip().lower()
         normalized_kind = str(preview_kind or "").strip().lower() or "glue_points"
-        effective_motion_preview = list(motion_preview or execution_polyline)
+        effective_motion_preview = list(motion_preview or [])
         effective_motion_preview_meta = motion_preview_meta
         if effective_motion_preview_meta is None and effective_motion_preview:
             effective_motion_preview_meta = MotionPreviewMeta(
-                source="legacy_execution_polyline",
+                source="",
                 kind="polyline",
                 point_count=len(effective_motion_preview),
                 source_point_count=len(effective_motion_preview),
                 is_sampled=False,
-                sampling_strategy="legacy_execution_polyline_compat",
+                sampling_strategy="",
             )
         effective_motion_preview_meta = effective_motion_preview_meta or MotionPreviewMeta()
         source_text = html.escape(self._preview_source_text(normalized_source))
