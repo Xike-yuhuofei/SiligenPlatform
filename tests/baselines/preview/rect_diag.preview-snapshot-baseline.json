@@ -7,8 +7,6 @@
     "preview_state": "snapshot_ready",
     "segment_count": 5,
     "glue_point_count": 180,
-    "execution_polyline_point_count": 184,
-    "execution_polyline_source_point_count": 10078,
     "total_length_mm": 541.42138671875,
     "estimated_time_s": 54.14213943481445
   },
@@ -41,8 +39,8 @@
     "adjacent_distance_median_mm": 3.030000000000001,
     "corner_duplicate_point_count": 0
   },
-  "execution_geometry_summary": {
-    "point_count": 184,
+  "motion_preview_geometry_summary": {
+    "point_count": 4000,
     "x_range": [
       0.0,
       100.0
@@ -59,8 +57,8 @@
       "x": 100.0,
       "y": 100.0
     },
-    "axis_aligned_segments": 131,
-    "diagonal_segments": 52
+    "axis_aligned_segments": 2830,
+    "diagonal_segments": 1169
   },
   "glue_sample_points": [
     {
@@ -100,43 +98,6 @@
     },
     {
       "index": 179,
-      "x": 100.0,
-      "y": 100.0
-    }
-  ],
-  "execution_sample_points": [
-    {
-      "index": 0,
-      "x": 0.0,
-      "y": 0.0
-    },
-    {
-      "index": 34,
-      "x": 100.0,
-      "y": 0.263
-    },
-    {
-      "index": 68,
-      "x": 99.349,
-      "y": 100.0
-    },
-    {
-      "index": 101,
-      "x": 1.008,
-      "y": 100.0
-    },
-    {
-      "index": 134,
-      "x": 0.0,
-      "y": 2.954
-    },
-    {
-      "index": 168,
-      "x": 69.361,
-      "y": 69.361
-    },
-    {
-      "index": 183,
       "x": 100.0,
       "y": 100.0
     }

@@ -83,12 +83,6 @@ class _FakePreviewSnapshotWorker:
                 {"x": 0.0, "y": 0.0},
                 {"x": 10.0, "y": 0.0},
             ],
-            "execution_polyline_source_point_count": 8,
-            "execution_polyline_point_count": 2,
-            "execution_polyline": [
-                {"x": 0.0, "y": 0.0},
-                {"x": 10.0, "y": 0.0},
-            ],
             "motion_preview": {
                 "source": "execution_trajectory_snapshot",
                 "kind": "polyline",
@@ -221,13 +215,6 @@ class PreviewFlowIntegrationTest(unittest.TestCase):
                 "segment_count": 4,
                 "glue_point_count": 3,
                 "glue_points": [
-                    {"x": 0.0, "y": 0.0},
-                    {"x": 6.0, "y": 0.0},
-                    {"x": 12.0, "y": 0.0},
-                ],
-                "execution_polyline_source_point_count": 3,
-                "execution_polyline_point_count": 3,
-                "execution_polyline": [
                     {"x": 0.0, "y": 0.0},
                     {"x": 6.0, "y": 0.0},
                     {"x": 12.0, "y": 0.0},

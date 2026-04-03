@@ -93,7 +93,7 @@ def write_json(path: Path, payload: Any) -> None:
 
 
 def extract_points(snapshot_payload: dict[str, Any], field_name: str) -> list[dict[str, float]]:
-    result = status_result(snapshot_payload)
+    result = status_result(snapshot_payload) if "result" in snapshot_payload else snapshot_payload
     raw_points = result.get(field_name, [])
     output: list[dict[str, float]] = []
     if not isinstance(raw_points, list):
@@ -133,7 +133,7 @@ def summarize_point_cloud(points: list[dict[str, float]]) -> dict[str, Any]:
     }
 
 
-def summarize_execution_polyline(points: list[dict[str, float]]) -> dict[str, Any]:
+def summarize_motion_preview(points: list[dict[str, float]]) -> dict[str, Any]:
     summary = summarize_point_cloud(points)
     if not points:
         summary.update({"axis_aligned_segments": 0, "diagonal_segments": 0})
@@ -201,7 +201,7 @@ def build_preview_verdict(
     snapshot_plan_id: str,
     plan_fingerprint: str,
     glue_summary: dict[str, Any],
-    execution_summary: dict[str, Any],
+    motion_preview_summary: dict[str, Any],
     snapshot_payload: dict[str, Any],
     confirmed: bool,
     error_message: str,
@@ -213,27 +213,26 @@ def build_preview_verdict(
     glue_point_count = int(
         snapshot_result.get("glue_point_count", snapshot_result.get("point_count", glue_summary["point_count"])) or 0
     )
-    execution_polyline_point_count = int(
-        snapshot_result.get("execution_polyline_point_count", execution_summary["point_count"]) or 0
+    motion_preview_payload = snapshot_result.get("motion_preview", {})
+    if not isinstance(motion_preview_payload, dict):
+        motion_preview_payload = {}
+    motion_preview_point_count = int(
+        motion_preview_payload.get("point_count", motion_preview_summary["point_count"]) or 0
     )
-    execution_polyline_source_point_count = int(
-        snapshot_result.get(
-            "execution_polyline_source_point_count",
-            snapshot_result.get("polyline_source_point_count", 0),
-        )
-        or 0
+    motion_preview_source_point_count = int(
+        motion_preview_payload.get("source_point_count", motion_preview_point_count) or 0
     )
     geometry_match = (
         normalized_source == "planned_glue_snapshot"
         and normalized_kind == "glue_points"
         and glue_point_count == int(glue_summary["point_count"])
         and glue_point_count > 0
-        and execution_polyline_point_count == int(execution_summary["point_count"])
-        and execution_polyline_source_point_count >= execution_polyline_point_count
+        and motion_preview_point_count == int(motion_preview_summary["point_count"])
+        and motion_preview_source_point_count >= motion_preview_point_count
         and int(glue_summary["corner_duplicate_point_count"]) == 0
         and (
-            execution_polyline_source_point_count == 0
-            or glue_point_count < execution_polyline_source_point_count
+            motion_preview_source_point_count == 0
+            or glue_point_count < motion_preview_source_point_count
         )
     )
     order_match = bool(plan_id) and bool(effective_plan_id) and plan_id == effective_plan_id
@@ -286,8 +285,8 @@ def build_preview_verdict(
         "order_semantics_match": bool(order_match),
         "dispense_motion_semantics_match": bool(dispatch_match),
         "glue_point_count": glue_point_count,
-        "execution_polyline_point_count": execution_polyline_point_count,
-        "execution_polyline_source_point_count": execution_polyline_source_point_count,
+        "motion_preview_point_count": motion_preview_point_count,
+        "motion_preview_source_point_count": motion_preview_source_point_count,
         "glue_point_spacing_median_mm": float(glue_summary["adjacent_distance_median_mm"]),
         "corner_duplicate_point_count": int(glue_summary["corner_duplicate_point_count"]),
         "preview_confirmed": bool(confirmed),
@@ -305,7 +304,7 @@ def build_preview_evidence_markdown(
     snapshot_payload: dict[str, Any],
     verdict_payload: dict[str, Any],
     glue_summary: dict[str, Any],
-    execution_summary: dict[str, Any],
+    motion_preview_summary: dict[str, Any],
     hmi_screenshot_path: Path,
     online_smoke_log_path: Path,
 ) -> str:
@@ -326,7 +325,7 @@ def build_preview_evidence_markdown(
     lines.append("- `plan-prepare.json`")
     lines.append("- `snapshot.json`")
     lines.append("- `glue_points.json`")
-    lines.append("- `execution_polyline.json`")
+    lines.append("- `motion_preview.json`")
     lines.append("- `preview-verdict.json`")
     lines.append("- `preview-evidence.md`")
     if hmi_screenshot_path.exists():
@@ -358,10 +357,10 @@ def build_preview_evidence_markdown(
     lines.append(json.dumps(glue_summary, ensure_ascii=False, indent=2))
     lines.append("```")
     lines.append("")
-    lines.append("## Execution Polyline Summary")
+    lines.append("## Motion Preview Summary")
     lines.append("")
     lines.append("```json")
-    lines.append(json.dumps(execution_summary, ensure_ascii=False, indent=2))
+    lines.append(json.dumps(motion_preview_summary, ensure_ascii=False, indent=2))
     lines.append("```")
     return "\n".join(lines) + "\n"
 
@@ -394,10 +393,10 @@ def build_report_markdown(report: dict[str, Any]) -> str:
     lines.append(json.dumps(report["glue_summary"], ensure_ascii=False, indent=2))
     lines.append("```")
     lines.append("")
-    lines.append("## Execution Polyline Summary")
+    lines.append("## Motion Preview Summary")
     lines.append("")
     lines.append("```json")
-    lines.append(json.dumps(report["execution_geometry_summary"], ensure_ascii=False, indent=2))
+    lines.append(json.dumps(report["motion_preview_geometry_summary"], ensure_ascii=False, indent=2))
     lines.append("```")
     lines.append("")
     lines.append("## Steps")
@@ -485,7 +484,7 @@ def main() -> int:
     plan_prepare_json_path = report_dir / "plan-prepare.json"
     snapshot_json_path = report_dir / "snapshot.json"
     glue_points_json_path = report_dir / "glue_points.json"
-    execution_polyline_json_path = report_dir / "execution_polyline.json"
+    motion_preview_json_path = report_dir / "motion_preview.json"
     preview_verdict_json_path = report_dir / "preview-verdict.json"
     preview_evidence_md_path = report_dir / "preview-evidence.md"
     hmi_screenshot_path = report_dir / "hmi-preview.png"
@@ -503,9 +502,9 @@ def main() -> int:
     plan_result: dict[str, Any] = {}
     snapshot_result: dict[str, Any] = {}
     glue_points: list[dict[str, float]] = []
-    execution_polyline: list[dict[str, float]] = []
+    motion_preview_points: list[dict[str, float]] = []
     glue_summary = summarize_glue_points([], POINT_DUPLICATE_TOLERANCE_MM)
-    execution_summary = summarize_execution_polyline([])
+    motion_preview_summary = summarize_motion_preview([])
     error_message = ""
     overall_status = "failed"
     return_code = 1
@@ -664,17 +663,20 @@ def main() -> int:
             raise RuntimeError(f"unexpected preview_kind: {preview_kind}")
 
         glue_points = extract_points(snapshot_response, "glue_points")
-        execution_polyline = extract_points(snapshot_response, "execution_polyline")
+        motion_preview_block = snapshot_result.get("motion_preview", {})
+        if not isinstance(motion_preview_block, dict):
+            motion_preview_block = {}
+        motion_preview_points = extract_points(motion_preview_block, "polyline")
         if not glue_points:
             raise RuntimeError("dxf.preview.snapshot missing glue_points")
-        if not execution_polyline:
-            raise RuntimeError("dxf.preview.snapshot missing execution_polyline")
+        if not motion_preview_points:
+            raise RuntimeError("dxf.preview.snapshot missing motion_preview.polyline")
 
         glue_summary = summarize_glue_points(glue_points, POINT_DUPLICATE_TOLERANCE_MM)
-        execution_summary = summarize_execution_polyline(execution_polyline)
+        motion_preview_summary = summarize_motion_preview(motion_preview_points)
         write_json(snapshot_json_path, snapshot_result)
         write_json(glue_points_json_path, glue_points)
-        write_json(execution_polyline_json_path, execution_polyline)
+        write_json(motion_preview_json_path, motion_preview_points)
         add_step(
             steps,
             "dxf-preview-snapshot",
@@ -687,10 +689,8 @@ def main() -> int:
                     "preview_source": preview_source,
                     "preview_kind": preview_kind,
                     "glue_point_count": snapshot_result.get("glue_point_count", len(glue_points)),
-                    "execution_polyline_source_point_count": snapshot_result.get(
-                        "execution_polyline_source_point_count",
-                        0,
-                    ),
+                    "motion_preview_source_point_count": motion_preview_block.get("source_point_count", 0),
+                    "motion_preview_point_count": motion_preview_block.get("point_count", len(motion_preview_points)),
                     "glue_point_spacing_median_mm": glue_summary["adjacent_distance_median_mm"],
                     "corner_duplicate_point_count": glue_summary["corner_duplicate_point_count"],
                 },
@@ -793,7 +793,7 @@ def main() -> int:
             snapshot_plan_id=snapshot_plan_id,
             plan_fingerprint=plan_fingerprint,
             glue_summary=glue_summary,
-            execution_summary=execution_summary,
+            motion_preview_summary=motion_preview_summary,
             snapshot_payload=snapshot_result,
             confirmed=preview_confirmed,
             error_message=error_message,
@@ -806,7 +806,7 @@ def main() -> int:
             snapshot_payload=snapshot_result,
             verdict_payload=preview_verdict,
             glue_summary=glue_summary,
-            execution_summary=execution_summary,
+            motion_preview_summary=motion_preview_summary,
             hmi_screenshot_path=hmi_screenshot_path,
             online_smoke_log_path=online_smoke_log_path,
         )
@@ -827,7 +827,7 @@ def main() -> int:
             "preview_kind": preview_kind,
             "snapshot_hash": snapshot_hash,
             "glue_summary": glue_summary,
-            "execution_geometry_summary": execution_summary,
+            "motion_preview_geometry_summary": motion_preview_summary,
             "preview_verdict": preview_verdict,
             "steps": steps,
             "artifacts": artifacts,

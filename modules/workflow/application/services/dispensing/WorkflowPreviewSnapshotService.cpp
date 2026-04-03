@@ -91,11 +91,44 @@ std::vector<std::size_t> DetectCornerAnchorIndices(
         return anchors;
     }
 
+    const auto find_context_index = [&](std::size_t pivot, int direction) -> std::size_t {
+        std::size_t current = pivot;
+        double accumulated_length = 0.0;
+        while (true) {
+            if (direction < 0) {
+                if (current == 0U) {
+                    break;
+                }
+                const std::size_t next = current - 1U;
+                accumulated_length += Distance(points[current], points[next]);
+                current = next;
+            } else {
+                if (current + 1U >= points.size()) {
+                    break;
+                }
+                const std::size_t next = current + 1U;
+                accumulated_length += Distance(points[current], points[next]);
+                current = next;
+            }
+
+            if (accumulated_length >= kPreviewCornerMinLegMm) {
+                break;
+            }
+        }
+        return current;
+    };
+
     anchors.reserve(points.size() / 4U + 2U);
     for (std::size_t i = 1; i + 1 < points.size(); ++i) {
-        const auto& prev = points[i - 1U];
+        const auto prev_index = find_context_index(i, -1);
+        const auto next_index = find_context_index(i, 1);
+        if (prev_index == i || next_index == i) {
+            continue;
+        }
+
+        const auto& prev = points[prev_index];
         const auto& cur = points[i];
-        const auto& next = points[i + 1U];
+        const auto& next = points[next_index];
         const double leg1 = Distance(prev, cur);
         const double leg2 = Distance(cur, next);
         if (leg1 < kPreviewCornerMinLegMm || leg2 < kPreviewCornerMinLegMm) {
@@ -280,8 +313,6 @@ PreviewSnapshotResponse WorkflowPreviewSnapshotService::BuildResponse(
     response.confirmed_at = payload.confirmed_at;
     response.segment_count = payload.segment_count;
     response.execution_point_count = payload.point_count;
-    response.execution_polyline_source_point_count = payload.polyline_source_point_count;
-    response.execution_polyline_point_count = payload.polyline_point_count;
     response.total_length_mm = payload.total_length_mm;
     response.estimated_time_s = payload.estimated_time_s;
     response.generated_at = payload.generated_at;
@@ -297,7 +328,6 @@ PreviewSnapshotResponse WorkflowPreviewSnapshotService::BuildResponse(
             response.glue_points.push_back(snapshot_point);
         }
     }
-    CopyPreviewPolyline(payload.trajectory_polyline, response.execution_polyline);
 
     if (input.motion_trajectory_points != nullptr && !input.motion_trajectory_points->empty()) {
         const auto motion_points = BuildPointVectorFromTrajectory(*input.motion_trajectory_points);

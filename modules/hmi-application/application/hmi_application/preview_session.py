@@ -152,7 +152,6 @@ class PreviewPayloadResult:
     should_render: bool = False
     snapshot: PreviewSnapshotMeta | None = None
     glue_points: tuple[tuple[float, float], ...] = ()
-    execution_polyline: tuple[tuple[float, float], ...] = ()
     motion_preview: tuple[tuple[float, float], ...] = ()
     motion_preview_meta: MotionPreviewMeta | None = None
     preview_source: str = ""
@@ -160,7 +159,6 @@ class PreviewPayloadResult:
     dry_run: bool = False
     preview_warning: str = ""
     motion_preview_warning: str = ""
-    execution_polyline_source_point_count: int = 0
 
 
 class PreviewSnapshotWorker(QThread):
@@ -738,7 +736,6 @@ class PreviewSessionOwner:
             )
 
         glue_points = self.extract_points(payload, "glue_points")
-        execution_polyline = self.extract_points(payload, "execution_polyline")
         motion_preview_payload = payload.get("motion_preview")
         motion_preview_block = motion_preview_payload if isinstance(motion_preview_payload, dict) else {}
         motion_preview = self.extract_points(motion_preview_block, "polyline")
@@ -896,10 +893,9 @@ class PreviewSessionOwner:
             generated_at=str(payload.get("generated_at", "")),
         )
         self.load_local_playback(tuple(motion_preview), snapshot.estimated_time_s)
-        execution_source_point_count = int(payload.get("execution_polyline_source_point_count", 0) or 0)
         preview_warning = self.sampling_warning(
             glue_point_count=snapshot.point_count,
-            execution_source_point_count=execution_source_point_count,
+            execution_source_point_count=motion_preview_meta.source_point_count,
         )
         self.gate.preview_ready(snapshot)
         if backend_preview_state == "confirmed":
@@ -942,7 +938,6 @@ class PreviewSessionOwner:
             should_render=True,
             snapshot=snapshot,
             glue_points=tuple(glue_points),
-            execution_polyline=tuple(execution_polyline),
             motion_preview=tuple(motion_preview),
             motion_preview_meta=motion_preview_meta,
             preview_source=preview_source,
@@ -950,7 +945,6 @@ class PreviewSessionOwner:
             dry_run=preview_dry_run,
             preview_warning=preview_warning,
             motion_preview_warning=motion_preview_warning,
-            execution_polyline_source_point_count=execution_source_point_count,
         )
 
     def build_preflight_decision(

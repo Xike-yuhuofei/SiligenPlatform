@@ -40,7 +40,7 @@ def _valid_payload(
     preview_kind: str = "glue_points",
     dry_run: bool = False,
     glue_point_count: int = 3,
-    execution_source_point_count: int = 10,
+    motion_source_point_count: int = 10,
     include_motion_preview: bool = True,
 ) -> dict:
     glue_points = [
@@ -61,12 +61,6 @@ def _valid_payload(
         "segment_count": 2,
         "glue_point_count": glue_point_count,
         "glue_points": glue_points,
-        "execution_polyline_source_point_count": execution_source_point_count,
-        "execution_polyline_point_count": 2,
-        "execution_polyline": [
-            {"x": 0.0, "y": 0.0},
-            {"x": 6.0, "y": 0.0},
-        ],
         "total_length_mm": 6.0,
         "estimated_time_s": 1.0,
         "generated_at": "2026-03-28T00:00:00Z",
@@ -76,9 +70,9 @@ def _valid_payload(
         payload["motion_preview"] = {
             "source": "execution_trajectory_snapshot",
             "kind": "polyline",
-            "source_point_count": execution_source_point_count,
+            "source_point_count": motion_source_point_count,
             "point_count": 2,
-            "is_sampled": execution_source_point_count > 2,
+            "is_sampled": motion_source_point_count > 2,
             "sampling_strategy": "execution_trajectory_geometry_preserving_clamp",
             "polyline": [
                 {"x": 0.0, "y": 0.0},
@@ -224,12 +218,11 @@ class PreviewSessionOwnerTest(unittest.TestCase):
 
     def test_process_snapshot_payload_reports_sampling_warning_from_source_counts(self) -> None:
         result = self.owner.process_snapshot_payload(
-            _valid_payload(glue_point_count=950, execution_source_point_count=1000),
+            _valid_payload(glue_point_count=950, motion_source_point_count=1000),
             current_dry_run=False,
         )
 
         self.assertTrue(result.ok)
-        self.assertEqual(result.execution_polyline_source_point_count, 1000)
         self.assertIn("胶点预览疑似退化为轨迹采样点", result.preview_warning)
         self.assertIsNotNone(result.motion_preview_meta)
         self.assertEqual(self.owner.state.motion_preview_source, "execution_trajectory_snapshot")

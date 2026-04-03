@@ -178,7 +178,7 @@
       },
       "resultSchema": {
         "type": "object",
-        "required": ["snapshot_id", "snapshot_hash", "plan_id", "preview_state", "preview_source", "preview_kind", "confirmed_at", "segment_count", "point_count", "glue_point_count", "glue_points", "execution_point_count", "execution_polyline_point_count", "execution_polyline_source_point_count", "execution_polyline", "total_length_mm", "estimated_time_s", "generated_at"],
+        "required": ["snapshot_id", "snapshot_hash", "plan_id", "preview_state", "preview_source", "preview_kind", "confirmed_at", "segment_count", "point_count", "glue_point_count", "glue_points", "motion_preview", "execution_point_count", "total_length_mm", "estimated_time_s", "generated_at"],
         "properties": {
           "snapshot_id": { "type": "string" },
           "snapshot_hash": { "type": "string" },
@@ -203,20 +203,6 @@
             }
           },
           "execution_point_count": { "type": "integer" },
-          "execution_polyline_point_count": { "type": "integer" },
-          "execution_polyline_source_point_count": { "type": "integer" },
-          "execution_polyline": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["x", "y"],
-              "properties": {
-                "x": { "type": "number" },
-                "y": { "type": "number" }
-              },
-              "additionalProperties": false
-            }
-          },
           "motion_preview": {
             "type": "object",
             "required": ["source", "kind", "source_point_count", "point_count", "is_sampled", "sampling_strategy", "polyline"],
@@ -241,20 +227,6 @@
               }
             },
             "additionalProperties": false
-          },
-          "polyline_point_count": { "type": "integer" },
-          "polyline_source_point_count": { "type": "integer" },
-          "trajectory_polyline": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["x", "y"],
-              "properties": {
-                "x": { "type": "number" },
-                "y": { "type": "number" }
-              },
-              "additionalProperties": false
-            }
           },
           "total_length_mm": { "type": "number" },
           "estimated_time_s": { "type": "number" },

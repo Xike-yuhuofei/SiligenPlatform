@@ -19,15 +19,6 @@
       { "x": 90.0, "y": 0.0 }
     ],
     "execution_point_count": 384,
-    "execution_polyline_point_count": 5,
-    "execution_polyline_source_point_count": 384,
-    "execution_polyline": [
-      { "x": 0.0, "y": 0.0 },
-      { "x": 15.0, "y": 2.5 },
-      { "x": 35.0, "y": 8.0 },
-      { "x": 60.0, "y": 3.0 },
-      { "x": 90.0, "y": 0.0 }
-    ],
     "motion_preview": {
       "source": "execution_trajectory_snapshot",
       "kind": "polyline",
@@ -43,15 +34,6 @@
         { "x": 90.0, "y": 0.0 }
       ]
     },
-    "polyline_point_count": 5,
-    "polyline_source_point_count": 384,
-    "trajectory_polyline": [
-      { "x": 0.0, "y": 0.0 },
-      { "x": 15.0, "y": 2.5 },
-      { "x": 35.0, "y": 8.0 },
-      { "x": 60.0, "y": 3.0 },
-      { "x": 90.0, "y": 0.0 }
-    ],
     "total_length_mm": 1542.25,
     "estimated_time_s": 123.38,
     "generated_at": "2026-03-21T12:00:00Z"

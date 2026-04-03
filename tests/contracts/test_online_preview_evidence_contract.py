@@ -63,7 +63,7 @@ def test_online_preview_evidence_bundle_contract(tmp_path: Path) -> None:
         "plan_prepare": report_dir / "plan-prepare.json",
         "snapshot": report_dir / "snapshot.json",
         "glue_points": report_dir / "glue_points.json",
-        "execution_polyline": report_dir / "execution_polyline.json",
+        "motion_preview": report_dir / "motion_preview.json",
         "preview_verdict": report_dir / "preview-verdict.json",
         "preview_evidence": report_dir / "preview-evidence.md",
         "hmi_preview": report_dir / "hmi-preview.png",
@@ -86,7 +86,7 @@ def test_online_preview_evidence_bundle_contract(tmp_path: Path) -> None:
         "preview_source",
         "preview_kind",
         "glue_points",
-        "execution_polyline",
+        "motion_preview",
     }.issubset(snapshot.keys())
     assert {
         "verdict",
@@ -103,7 +103,8 @@ def test_online_preview_evidence_bundle_contract(tmp_path: Path) -> None:
         "order_semantics_match",
         "dispense_motion_semantics_match",
         "glue_point_count",
-        "execution_polyline_source_point_count",
+        "motion_preview_point_count",
+        "motion_preview_source_point_count",
         "glue_point_spacing_median_mm",
         "corner_duplicate_point_count",
     }.issubset(preview_verdict.keys())
@@ -124,9 +125,10 @@ def test_online_preview_evidence_bundle_contract(tmp_path: Path) -> None:
     assert preview_verdict["preview_source"] == "planned_glue_snapshot"
     assert preview_verdict["preview_kind"] == "glue_points"
     assert preview_verdict["glue_point_count"] == snapshot["glue_point_count"]
-    assert preview_verdict["execution_polyline_source_point_count"] == snapshot["execution_polyline_source_point_count"]
+    assert preview_verdict["motion_preview_point_count"] == snapshot["motion_preview"]["point_count"]
+    assert preview_verdict["motion_preview_source_point_count"] == snapshot["motion_preview"]["source_point_count"]
     assert "plan-prepare.json" in preview_evidence
     assert "preview-verdict.json" in preview_evidence
     assert "glue_points.json" in preview_evidence
-    assert "execution_polyline.json" in preview_evidence
+    assert "motion_preview.json" in preview_evidence
     assert "hmi-preview.png" in preview_evidence

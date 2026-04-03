@@ -2579,7 +2579,6 @@ class MainWindow(QMainWindow):
         dry_run: bool,
         preview_source: str,
         glue_points: list,
-        execution_polyline: list,
         preview_kind: str,
         motion_preview: list | None = None,
         motion_preview_meta: MotionPreviewMeta | None = None,
@@ -2761,7 +2760,6 @@ class MainWindow(QMainWindow):
         dry_run: bool,
         preview_source: str,
         glue_points: list,
-        execution_polyline: list,
         preview_kind: str,
         motion_preview: list | None = None,
         motion_preview_meta: MotionPreviewMeta | None = None,
@@ -2885,7 +2883,6 @@ class MainWindow(QMainWindow):
             dry_run=result.dry_run,
             preview_source=result.preview_source,
             glue_points=list(result.glue_points),
-            execution_polyline=list(result.execution_polyline),
             motion_preview=list(result.motion_preview),
             motion_preview_meta=result.motion_preview_meta,
             preview_kind=result.preview_kind,
@@ -2901,7 +2898,6 @@ class MainWindow(QMainWindow):
             dry_run=result.dry_run,
             preview_source=result.preview_source,
             glue_points=list(result.glue_points),
-            execution_polyline=list(result.execution_polyline),
             motion_preview=list(result.motion_preview),
             motion_preview_meta=result.motion_preview_meta,
             preview_kind=result.preview_kind,
@@ -2940,10 +2936,10 @@ class MainWindow(QMainWindow):
             )
         if result.preview_warning and result.snapshot is not None:
             _UI_LOGGER.warning(
-                "preview_sampling_warning snapshot_id=%s glue_points=%d execution_source_points=%d",
+                "preview_sampling_warning snapshot_id=%s glue_points=%d motion_source_points=%d",
                 result.snapshot.snapshot_id,
                 result.snapshot.point_count,
-                result.execution_polyline_source_point_count,
+                result.motion_preview_meta.source_point_count if result.motion_preview_meta is not None else 0,
             )
         if result.motion_preview_warning and result.snapshot is not None:
             _UI_LOGGER.warning(
@@ -2954,13 +2950,12 @@ class MainWindow(QMainWindow):
             )
         self.statusBar().showMessage(result.status_message)
         _UI_LOGGER.info(
-            "preview_ready snapshot_id=%s snapshot_hash=%s preview_source=%s glue_points=%d motion_points=%d execution_points=%d",
+            "preview_ready snapshot_id=%s snapshot_hash=%s preview_source=%s glue_points=%d motion_points=%d",
             result.snapshot.snapshot_id if result.snapshot is not None else "",
             result.snapshot.snapshot_hash if result.snapshot is not None else "",
             result.preview_source,
             len(result.glue_points),
             len(result.motion_preview),
-            len(result.execution_polyline),
         )
 
     def _on_dxf_load(self):

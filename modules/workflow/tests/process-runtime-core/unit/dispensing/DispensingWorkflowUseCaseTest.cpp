@@ -645,6 +645,7 @@ DispensingWorkflowUseCase::PlanRecord BuildPreviewPlanRecord(
     plan_record.response.estimated_time_s = 1.0f;
     plan_record.preview_authority_ready = true;
     plan_record.preview_authority_shared_with_execution = true;
+    plan_record.preview_binding_ready = true;
     plan_record.preview_spacing_valid = true;
     plan_record.preview_state = DispensingWorkflowUseCase::PlanPreviewState::SNAPSHOT_READY;
     plan_record.preview_snapshot_hash = plan_record.response.plan_fingerprint;
@@ -653,6 +654,7 @@ DispensingWorkflowUseCase::PlanRecord BuildPreviewPlanRecord(
     SeedAuthorityMetadata(plan_record, "layout-" + plan_id);
     for (const auto& point : points) {
         plan_record.execution_trajectory_points.emplace_back(point.x, point.y, 0.0f);
+        plan_record.execution_assembly.motion_trajectory_points.emplace_back(point.x, point.y, 0.0f);
         plan_record.glue_points.push_back(point);
     }
     return plan_record;
@@ -663,7 +665,7 @@ bool SnapshotContainsPoint(
     float target_x,
     float target_y,
     float tolerance = 1e-3f) {
-    for (const auto& point : snapshot.execution_polyline) {
+    for (const auto& point : snapshot.motion_preview_polyline) {
         if (std::abs(point.x - target_x) <= tolerance && std::abs(point.y - target_y) <= tolerance) {
             return true;
         }
@@ -1228,6 +1230,7 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotKeepsConfirmedStateWhenFin
     plan_record.response.estimated_time_s = 1.0f;
     plan_record.preview_authority_ready = true;
     plan_record.preview_authority_shared_with_execution = true;
+    plan_record.preview_binding_ready = true;
     plan_record.preview_spacing_valid = true;
     plan_record.preview_state = DispensingWorkflowUseCase::PlanPreviewState::CONFIRMED;
     plan_record.preview_snapshot_hash = plan_record.response.plan_fingerprint;
@@ -1236,6 +1239,8 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotKeepsConfirmedStateWhenFin
     SeedAuthorityMetadata(plan_record, "layout-plan-confirmed");
     plan_record.execution_trajectory_points.emplace_back(0.0f, 0.0f, 0.0f);
     plan_record.execution_trajectory_points.emplace_back(10.0f, 0.0f, 0.0f);
+    plan_record.execution_assembly.motion_trajectory_points.emplace_back(0.0f, 0.0f, 0.0f);
+    plan_record.execution_assembly.motion_trajectory_points.emplace_back(10.0f, 0.0f, 0.0f);
     plan_record.glue_points.emplace_back(0.0f, 0.0f);
     plan_record.glue_points.emplace_back(10.0f, 0.0f);
     use_case.plans_[plan_record.response.plan_id] = plan_record;
@@ -1334,37 +1339,6 @@ TEST(DispensingWorkflowUseCaseTest, StartJobRejectsFailPreviewUsingFailureReason
     EXPECT_EQ(result.GetError().GetMessage(), "authority locator failed on degenerate spline");
 }
 
-TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotSuppressesShortABATailArtifacts) {
-    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
-    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
-    auto homing_port = std::make_shared<FakeHomingPort>();
-    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
-    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port);
-
-    std::vector<Point2D> raw_points{
-        Point2D(0.0f, 0.0f),
-        Point2D(10.0f, 0.0f),
-        Point2D(10.0f, 10.0f),
-        Point2D(10.2f, 10.0f),
-        Point2D(10.0f, 10.0f),
-        Point2D(0.0f, 10.0f),
-    };
-    auto plan_record = BuildPreviewPlanRecord("plan-tail", raw_points);
-    use_case.plans_[plan_record.response.plan_id] = plan_record;
-
-    Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest request;
-    request.plan_id = "plan-tail";
-    request.max_polyline_points = 64;
-    auto result = use_case.GetPreviewSnapshot(request);
-
-    ASSERT_TRUE(result.IsSuccess());
-    const auto& snapshot = result.Value();
-    EXPECT_FALSE(SnapshotContainsPoint(snapshot, 10.2f, 10.0f, 1e-4f));
-    EXPECT_FALSE(SnapshotContainsPoint(snapshot, 10.0f, 10.0f, 1e-4f));
-    EXPECT_TRUE(SnapshotContainsPoint(snapshot, 0.0f, 0.0f, 1e-4f));
-    EXPECT_TRUE(SnapshotContainsPoint(snapshot, 0.0f, 10.0f, 1e-4f));
-}
-
 TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotKeepsCornerWhenDownsampling) {
     auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
@@ -1390,7 +1364,7 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotKeepsCornerWhenDownsamplin
 
     ASSERT_TRUE(result.IsSuccess());
     const auto& snapshot = result.Value();
-    EXPECT_LE(snapshot.execution_polyline.size(), 6U);
+    EXPECT_LE(snapshot.motion_preview_polyline.size(), 6U);
     EXPECT_TRUE(SnapshotContainsPoint(snapshot, 9.0f, 0.0f, 1e-4f));
 }
 
@@ -1421,43 +1395,7 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotSamplesGluePointsWithoutCh
     EXPECT_EQ(result.Value().glue_points.size(), 3U);
 }
 
-TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotUsesThreeMillimeterCenterSpacing) {
-    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
-    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
-    auto homing_port = std::make_shared<FakeHomingPort>();
-    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
-    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port);
-
-    std::vector<Point2D> raw_points;
-    for (int i = 0; i <= 30; ++i) {
-        raw_points.emplace_back(static_cast<float>(i), 0.0f);
-    }
-
-    auto plan_record = BuildPreviewPlanRecord("plan-spacing-3mm", raw_points);
-    use_case.plans_[plan_record.response.plan_id] = plan_record;
-
-    Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest request;
-    request.plan_id = "plan-spacing-3mm";
-    request.max_polyline_points = 128;
-    auto result = use_case.GetPreviewSnapshot(request);
-
-    ASSERT_TRUE(result.IsSuccess());
-    const auto& snapshot = result.Value();
-    ASSERT_GE(snapshot.execution_polyline.size(), 2U);
-    EXPECT_NEAR(snapshot.execution_polyline.front().x, 0.0f, 1e-4f);
-    EXPECT_NEAR(snapshot.execution_polyline.back().x, 30.0f, 1e-4f);
-    EXPECT_EQ(snapshot.execution_polyline.size(), 11U);
-    for (std::size_t i = 1; i < snapshot.execution_polyline.size(); ++i) {
-        const auto& prev = snapshot.execution_polyline[i - 1U];
-        const auto& curr = snapshot.execution_polyline[i];
-        const double dx = static_cast<double>(curr.x) - static_cast<double>(prev.x);
-        const double dy = static_cast<double>(curr.y) - static_cast<double>(prev.y);
-        const double distance = std::sqrt(dx * dx + dy * dy);
-        EXPECT_NEAR(distance, 3.0, 1e-2) << "spacing at segment index " << i;
-    }
-}
-
-TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotUsesExecutionTrajectoryForNestedMotionPreviewAndKeepsLegacyExecutionPolyline) {
+TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotUsesExecutionTrajectoryForNestedMotionPreview) {
     auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
     auto homing_port = std::make_shared<FakeHomingPort>();
@@ -1510,7 +1448,6 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotUsesExecutionTrajectoryFor
     EXPECT_EQ(snapshot.motion_preview_source_point_count, 6U);
     EXPECT_FALSE(snapshot.motion_preview_is_sampled);
     EXPECT_EQ(snapshot.motion_preview_point_count, snapshot.motion_preview_source_point_count);
-    EXPECT_FALSE(SnapshotContainsPoint(snapshot, 100.0f, 100.0f, 1e-4f));
     EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 100.0f, 0.0f, 1e-4f));
     EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 100.0f, 100.0f, 1e-4f));
     EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 0.0f, 100.0f, 1e-4f));

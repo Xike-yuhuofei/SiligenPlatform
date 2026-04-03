@@ -38,9 +38,9 @@ struct PreviewSnapshotPayload {
     std::string confirmed_at;
     std::uint32_t segment_count = 0;
     std::uint32_t point_count = 0;
-    std::uint32_t polyline_source_point_count = 0;
-    std::uint32_t polyline_point_count = 0;
-    std::vector<PreviewSnapshotPoint> trajectory_polyline;
+    std::uint32_t motion_preview_source_point_count = 0;
+    std::uint32_t motion_preview_point_count = 0;
+    std::vector<PreviewSnapshotPoint> motion_preview_polyline;
     float32 total_length_mm = 0.0f;
     float32 estimated_time_s = 0.0f;
     std::string generated_at;
