@@ -31,6 +31,57 @@ function Get-WorkspaceBuildToken {
     return -join ($hashBytes[0..5] | ForEach-Object { $_.ToString("x2") })
 }
 
+function Test-BuildRootMatchesWorkspace {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$BuildRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$WorkspaceRoot
+    )
+
+    $cacheFile = Join-Path $BuildRoot "CMakeCache.txt"
+    if (-not (Test-Path $cacheFile)) {
+        return $true
+    }
+
+    $homeDirectoryLine = Get-Content $cacheFile | Where-Object { $_ -like "CMAKE_HOME_DIRECTORY:*" } | Select-Object -First 1
+    if (-not $homeDirectoryLine) {
+        return $true
+    }
+
+    $configuredSourceRoot = ($homeDirectoryLine -split "=", 2)[1]
+    if ([string]::IsNullOrWhiteSpace($configuredSourceRoot)) {
+        return $true
+    }
+
+    $resolvedConfiguredSourceRoot = [System.IO.Path]::GetFullPath($configuredSourceRoot)
+    $resolvedWorkspaceSourceRoot = [System.IO.Path]::GetFullPath($WorkspaceRoot)
+    return $resolvedConfiguredSourceRoot -ieq $resolvedWorkspaceSourceRoot
+}
+
+function Get-WorkspaceCabBuildRoots {
+    param([string]$WorkspaceRoot)
+
+    if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        return @()
+    }
+
+    $ssRoot = Join-Path $env:LOCALAPPDATA "SS"
+    if (-not (Test-Path $ssRoot)) {
+        return @()
+    }
+
+    $roots = @()
+    foreach ($candidate in Get-ChildItem -Path $ssRoot -Directory -Filter "cab-*") {
+        $resolved = [System.IO.Path]::GetFullPath($candidate.FullName)
+        if (Test-BuildRootMatchesWorkspace -BuildRoot $resolved -WorkspaceRoot $WorkspaceRoot) {
+            $roots += $resolved
+        }
+    }
+
+    return @($roots | Select-Object -Unique)
+}
+
 function Resolve-FullPath {
     param(
         [Parameter(Mandatory = $true)]
@@ -86,10 +137,12 @@ function Get-RuntimeServiceSearchRoots {
     }
 
     $roots = @()
-    $workspaceBuildToken = Get-WorkspaceBuildToken -WorkspaceRoot $WorkspaceRoot
+    $roots += Get-WorkspaceCabBuildRoots -WorkspaceRoot $WorkspaceRoot
     if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
-        $roots += [System.IO.Path]::GetFullPath((Join-Path (Join-Path $env:LOCALAPPDATA "SS") ("cab-" + $workspaceBuildToken)))
-        $roots += [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA "SiligenSuite\control-apps-build"))
+        $legacyRoot = [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA "SiligenSuite\control-apps-build"))
+        if (Test-BuildRootMatchesWorkspace -BuildRoot $legacyRoot -WorkspaceRoot $WorkspaceRoot) {
+            $roots += $legacyRoot
+        }
     }
 
     $roots += [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build\control-apps"))

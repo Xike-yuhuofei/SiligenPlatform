@@ -80,6 +80,7 @@
     "pyproject.toml",
     "src/test_kit/__init__.py",
     "src/test_kit/asset_catalog.py",
+    "src/test_kit/control_apps_build.py",
     "src/test_kit/evidence_bundle.py",
     "src/test_kit/fault_injection.py",
     "src/test_kit/legacy_fact_catalog.py",

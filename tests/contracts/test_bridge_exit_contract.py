@@ -31,9 +31,39 @@ def _read(path: Path) -> str:
 
 
 class BridgeExitContractTest(unittest.TestCase):
-    def test_legacy_fact_catalog_has_no_active_exceptions(self) -> None:
-        active = [item.exception_id for item in LEGACY_FACT_CATALOG.active_exceptions()]
-        self.assertFalse(active, msg=f"active legacy exceptions are not allowed after closeout: {active}")
+    def test_legacy_fact_catalog_active_exceptions_are_scoped_and_documented(self) -> None:
+        active = {item.exception_id: item for item in LEGACY_FACT_CATALOG.active_exceptions()}
+        self.assertEqual({"EXC-903", "EXC-904"}, set(active), msg=f"unexpected active legacy exceptions: {sorted(active)}")
+
+        exc_903 = active["EXC-903"]
+        self.assertEqual(
+            {
+                "tools",
+                "scripts/build/build-validation.ps1",
+                "shared/testing/test-kit/src/test_kit/validation_layers.py",
+                "shared/testing/test-kit/src/test_kit/workspace_validation.py",
+            },
+            set(exc_903.allowed_locations),
+        )
+        self.assertEqual("shared/testing", exc_903.owner_scope)
+        self.assertIn("mock discipline checker", exc_903.justification)
+
+        exc_904 = active["EXC-904"]
+        self.assertEqual(
+            {
+                "modules/dxf-geometry/tests/CMakeLists.txt",
+                "modules/dxf-geometry/tests/README.md",
+                "modules/job-ingest/tests/CMakeLists.txt",
+                "modules/job-ingest/tests/README.md",
+                "modules/process-path/tests/CMakeLists.txt",
+                "modules/process-path/tests/README.md",
+                "modules/topology-feature/tests/CMakeLists.txt",
+                "modules/topology-feature/tests/README.md",
+            },
+            set(exc_904.allowed_locations),
+        )
+        self.assertEqual("modules/*/tests", exc_904.owner_scope)
+        self.assertIn("canonical test directories", exc_904.justification.lower())
 
     def test_legacy_fact_catalog_tracks_removed_and_migration_roots(self) -> None:
         self.assertEqual(LEGACY_FACT_CATALOG.root_registry["ROOT-017"].classification, "migration-source")

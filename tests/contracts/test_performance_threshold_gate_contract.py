@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
@@ -7,6 +8,7 @@ import tempfile
 import unittest
 from contextlib import contextmanager
 from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import patch
 from pathlib import Path
 
@@ -21,6 +23,7 @@ for candidate in (TEST_KIT_SRC, PERFORMANCE_ROOT):
 from collect_dxf_preview_profiles import (
     ControlCycleRecord,
     LongRunIterationRecord,
+    LaunchSpecResolution,
     PreviewCycleRecord,
     StartJobCycleRecord,
     collect_long_run_profile,
@@ -165,7 +168,11 @@ def _payload() -> dict[str, object]:
 
 class PerformanceThresholdGateContractTest(unittest.TestCase):
     def test_collect_process_metrics_ignores_sampler_timeout(self) -> None:
-        with patch("collect_dxf_preview_profiles.subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="powershell", timeout=5.0)):
+        with patch(
+            "collect_dxf_preview_profiles.subprocess.run",
+            autospec=True,
+            side_effect=subprocess.TimeoutExpired(cmd="powershell", timeout=5.0),
+        ):
             self.assertEqual(collect_process_metrics(1234), {})
 
     def test_default_gateway_executable_falls_back_to_control_apps_build_root(self) -> None:
@@ -251,15 +258,18 @@ class PerformanceThresholdGateContractTest(unittest.TestCase):
         self.assertEqual(gate["status"], "passed")
 
     def test_collect_long_run_profile_reuses_single_preview_snapshot(self) -> None:
-        args = SimpleNamespace(
-            long_run_minutes=1.0,
-            include_start_job=True,
-            host="127.0.0.1",
-            port=9856,
-            reuse_running=False,
-            artifact_timeout=120.0,
+        args = cast(
+            argparse.Namespace,
+            SimpleNamespace(
+                long_run_minutes=1.0,
+                include_start_job=True,
+                host="127.0.0.1",
+                port=9856,
+                reuse_running=False,
+                artifact_timeout=120.0,
+            ),
         )
-        launch_spec = SimpleNamespace()
+        launch_spec = cast(LaunchSpecResolution, SimpleNamespace())
         sample_path = WORKSPACE_ROOT / "samples" / "dxf" / "rect_diag.dxf"
         preview_record = PreviewCycleRecord(
             success=True,
@@ -272,21 +282,34 @@ class PerformanceThresholdGateContractTest(unittest.TestCase):
         execution_record = StartJobCycleRecord(success=True, execution_total_ms=162.0)
 
         @contextmanager
-        def fake_managed_backend(*_args, **_kwargs):
+        def managed_backend_context():
             yield SimpleNamespace(manager=None, mode="started")
 
         @contextmanager
-        def fake_protocol_client(*_args, **_kwargs):
+        def protocol_client_context():
             yield None, object()
 
         with (
-            patch("collect_dxf_preview_profiles.managed_backend", fake_managed_backend),
-            patch("collect_dxf_preview_profiles.protocol_client", fake_protocol_client),
-            patch("collect_dxf_preview_profiles.maybe_prepare_execution_runtime"),
-            patch("collect_dxf_preview_profiles.create_artifact", return_value=("artifact-1", 12.0)),
-            patch("collect_dxf_preview_profiles.gateway_process_id", return_value=1234),
+            patch(
+                "collect_dxf_preview_profiles.managed_backend",
+                autospec=True,
+                return_value=managed_backend_context(),
+            ),
+            patch(
+                "collect_dxf_preview_profiles.protocol_client",
+                autospec=True,
+                return_value=protocol_client_context(),
+            ),
+            patch("collect_dxf_preview_profiles.maybe_prepare_execution_runtime", autospec=True),
+            patch(
+                "collect_dxf_preview_profiles.create_artifact",
+                autospec=True,
+                return_value=("artifact-1", 12.0),
+            ),
+            patch("collect_dxf_preview_profiles.gateway_process_id", autospec=True, return_value=1234),
             patch(
                 "collect_dxf_preview_profiles.collect_process_metrics",
+                autospec=True,
                 side_effect=[
                     {"working_set_mb": 10.0, "private_memory_mb": 8.0, "handle_count": 1.0, "thread_count": 2.0},
                     {"working_set_mb": 11.0, "private_memory_mb": 9.0, "handle_count": 1.0, "thread_count": 2.0},
@@ -294,9 +317,17 @@ class PerformanceThresholdGateContractTest(unittest.TestCase):
                     {"working_set_mb": 13.0, "private_memory_mb": 11.0, "handle_count": 1.0, "thread_count": 2.0},
                 ],
             ),
-            patch("collect_dxf_preview_profiles.prepare_and_snapshot_once", return_value=preview_record) as prepare_mock,
-            patch("collect_dxf_preview_profiles.run_start_job_cycle", return_value=execution_record) as run_mock,
-            patch("collect_dxf_preview_profiles.time.perf_counter", side_effect=[0.0, 1.0, 61.0]),
+            patch(
+                "collect_dxf_preview_profiles.prepare_and_snapshot_once",
+                autospec=True,
+                return_value=preview_record,
+            ) as prepare_mock,
+            patch(
+                "collect_dxf_preview_profiles.run_start_job_cycle",
+                autospec=True,
+                return_value=execution_record,
+            ) as run_mock,
+            patch("collect_dxf_preview_profiles.time.perf_counter", autospec=True, side_effect=[0.0, 1.0, 61.0]),
         ):
             payload = collect_long_run_profile(args, launch_spec, sample_path)
 
@@ -310,42 +341,62 @@ class PerformanceThresholdGateContractTest(unittest.TestCase):
         self.assertEqual(payload["summary"]["sample_count"], 4)
 
     def test_collect_long_run_profile_surfaces_preview_setup_failure(self) -> None:
-        args = SimpleNamespace(
-            long_run_minutes=1.0,
-            include_start_job=True,
-            host="127.0.0.1",
-            port=9856,
-            reuse_running=False,
-            artifact_timeout=120.0,
+        args = cast(
+            argparse.Namespace,
+            SimpleNamespace(
+                long_run_minutes=1.0,
+                include_start_job=True,
+                host="127.0.0.1",
+                port=9856,
+                reuse_running=False,
+                artifact_timeout=120.0,
+            ),
         )
-        launch_spec = SimpleNamespace()
+        launch_spec = cast(LaunchSpecResolution, SimpleNamespace())
         sample_path = WORKSPACE_ROOT / "samples" / "dxf" / "rect_diag.dxf"
         preview_record = PreviewCycleRecord(success=False, artifact_id="artifact-1", error="preview.snapshot failed: timeout")
 
         @contextmanager
-        def fake_managed_backend(*_args, **_kwargs):
+        def managed_backend_context():
             yield SimpleNamespace(manager=None, mode="started")
 
         @contextmanager
-        def fake_protocol_client(*_args, **_kwargs):
+        def protocol_client_context():
             yield None, object()
 
         with (
-            patch("collect_dxf_preview_profiles.managed_backend", fake_managed_backend),
-            patch("collect_dxf_preview_profiles.protocol_client", fake_protocol_client),
-            patch("collect_dxf_preview_profiles.maybe_prepare_execution_runtime"),
-            patch("collect_dxf_preview_profiles.create_artifact", return_value=("artifact-1", 12.0)),
-            patch("collect_dxf_preview_profiles.gateway_process_id", return_value=1234),
+            patch(
+                "collect_dxf_preview_profiles.managed_backend",
+                autospec=True,
+                return_value=managed_backend_context(),
+            ),
+            patch(
+                "collect_dxf_preview_profiles.protocol_client",
+                autospec=True,
+                return_value=protocol_client_context(),
+            ),
+            patch("collect_dxf_preview_profiles.maybe_prepare_execution_runtime", autospec=True),
+            patch(
+                "collect_dxf_preview_profiles.create_artifact",
+                autospec=True,
+                return_value=("artifact-1", 12.0),
+            ),
+            patch("collect_dxf_preview_profiles.gateway_process_id", autospec=True, return_value=1234),
             patch(
                 "collect_dxf_preview_profiles.collect_process_metrics",
+                autospec=True,
                 side_effect=[
                     {"working_set_mb": 10.0, "private_memory_mb": 8.0, "handle_count": 1.0, "thread_count": 2.0},
                     {"working_set_mb": 11.0, "private_memory_mb": 9.0, "handle_count": 1.0, "thread_count": 2.0},
                 ],
             ),
-            patch("collect_dxf_preview_profiles.prepare_and_snapshot_once", return_value=preview_record),
-            patch("collect_dxf_preview_profiles.run_start_job_cycle") as run_mock,
-            patch("collect_dxf_preview_profiles.time.perf_counter", return_value=0.0),
+            patch(
+                "collect_dxf_preview_profiles.prepare_and_snapshot_once",
+                autospec=True,
+                return_value=preview_record,
+            ),
+            patch("collect_dxf_preview_profiles.run_start_job_cycle", autospec=True) as run_mock,
+            patch("collect_dxf_preview_profiles.time.perf_counter", autospec=True, return_value=0.0),
         ):
             payload = collect_long_run_profile(args, launch_spec, sample_path)
 

@@ -47,13 +47,13 @@ class ValidationEvidenceBundleContractTest(unittest.TestCase):
                     name="layered-validation-routing-smoke",
                     suite_ref="protocol-compatibility",
                     owner_scope="tests/integration",
-                    primary_layer="L2-offline-integration",
+                    primary_layer="L2",
                     producer_lane_ref="quick-gate",
                     status="passed",
-                    evidence_profile="integration-report",
+                    evidence_profile="contract-report",
                     stability_state="stable",
                     size_label="medium",
-                    label_refs=("suite:protocol-compatibility", "size:medium", "layer:L2-offline-integration"),
+                    label_refs=("suite:protocol-compatibility", "size:medium", "layer:L2"),
                     required_assets=("sample.dxf.rect_diag",),
                     required_fixtures=("fixture.layered-routing-smoke",),
                     fault_ids=("fault.simulated.invalid-empty-segments",),
@@ -65,7 +65,7 @@ class ValidationEvidenceBundleContractTest(unittest.TestCase):
                     },
                     failure_classification=default_failure_classification(status="passed"),
                     trace_fields=trace_fields(
-                        stage_id="L2-offline-integration",
+                        stage_id="L2",
                         artifact_id="layered-validation-routing-smoke",
                         module_id="tests/integration",
                         workflow_state="executed",
@@ -79,13 +79,13 @@ class ValidationEvidenceBundleContractTest(unittest.TestCase):
                     name="hil-closed-loop",
                     suite_ref="e2e",
                     owner_scope="runtime-execution",
-                    primary_layer="L5-limited-hil",
+                    primary_layer="L5",
                     producer_lane_ref="limited-hil",
                     status="blocked",
                     evidence_profile="hil-report",
                     stability_state="stable",
                     size_label="large",
-                    label_refs=("suite:e2e", "size:large", "layer:L5-limited-hil"),
+                    label_refs=("suite:e2e", "size:large", "layer:L5"),
                     required_assets=("sample.dxf.rect_diag",),
                     required_fixtures=("fixture.hil-closed-loop",),
                     fault_ids=("fault.hil.tcp-disconnect",),
@@ -102,7 +102,7 @@ class ValidationEvidenceBundleContractTest(unittest.TestCase):
                         "message": "hil admission blocked",
                     },
                     trace_fields=trace_fields(
-                        stage_id="L5-limited-hil",
+                        stage_id="L5",
                         artifact_id="hil-closed-loop",
                         module_id="runtime-execution",
                         workflow_state="executed",
@@ -121,9 +121,9 @@ class ValidationEvidenceBundleContractTest(unittest.TestCase):
                 summary_file=str(summary_md_path),
                 machine_file=str(summary_json_path),
                 verdict=infer_verdict([record.status for record in records]),
-                skipped_layer_refs=("L4-performance",),
+                skipped_layer_refs=("L6",),
                 skip_justification="performance deferred to nightly lane",
-                offline_prerequisites=("L0-structure-gate", "L2-offline-integration"),
+                offline_prerequisites=("L0", "L1", "L2", "L3", "L4"),
                 metadata={
                     "fault_matrix_id": "fault-matrix.simulated-line.v1",
                     "selected_fault_ids": ["fault.simulated.invalid-empty-segments", "fault.hil.tcp-disconnect"],
@@ -158,7 +158,7 @@ class ValidationEvidenceBundleContractTest(unittest.TestCase):
             self.assertEqual(payload["schema_version"], EVIDENCE_BUNDLE_SCHEMA_VERSION)
             self.assertEqual(payload["verdict"], "blocked")
             self.assertEqual(payload["producer_lane_ref"], "limited-hil")
-            self.assertEqual(payload["skipped_layer_refs"], ["L4-performance"])
+            self.assertEqual(payload["skipped_layer_refs"], ["L6"])
             self.assertEqual(payload["metadata"]["fault_matrix_id"], "fault-matrix.simulated-line.v1")
             self.assertTrue(bundle_is_compatible(payload))
             self.assertTrue(payload["report_manifest_file"])

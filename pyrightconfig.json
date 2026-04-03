@@ -1,0 +1,110 @@
+{
+  "include": [
+    "apps/hmi-app/src",
+    "apps/hmi-app/tests",
+    "modules/dxf-geometry/application/engineering_data/contracts/simulation_input.py",
+    "modules/dxf-geometry/application/engineering_data/preview/html_preview.py",
+    "modules/dxf-geometry/application/engineering_data/processing/dxf_to_pb.py",
+    "modules/hmi-application/application",
+    "modules/hmi-application/tests",
+    "scripts",
+    "tests",
+    "tools/testing"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    ".agents",
+    ".specify",
+    "build",
+    "plugins",
+    "third_party"
+  ],
+  "ignore": [
+    "apps/hmi-app/src/hmi_client/ui/main_window.py",
+    "apps/hmi-app/src/hmi_client/ui/recipe_config_widget.py",
+    "apps/hmi-app/src/hmi_client/tools/ui_qtest.py",
+    "apps/hmi-app/src/hmi_client/tools/offline_ui_smoke.py",
+    "apps/hmi-app/src/hmi_client/tools/config_mock_test.py",
+    "apps/hmi-app/src/hmi_client/tools/mock_server.py",
+    "apps/hmi-app/src/hmi_client/features/sim_observer/ui",
+    "apps/hmi-app/src/hmi_client/features/sim_observer/state/observer_store.py",
+    "apps/hmi-app/tests/unit/sim_observer",
+    "apps/hmi-app/tests/unit/test_main_window.py",
+    "scripts/migration/validate_dsp_e2e_spec_docset.py",
+    "tests/integration/scenarios/first-layer",
+    "tests/e2e/hardware-in-loop/run_real_dxf_preview_snapshot.py"
+  ],
+  "typeCheckingMode": "basic",
+  "reportMissingTypeStubs": "none",
+  "reportMissingImports": "warning",
+  "reportMissingModuleSource": "warning",
+  "strict": [
+    "apps/hmi-app/src/hmi_client/client/protocol.py",
+    "apps/hmi-app/src/hmi_client/client/gateway_launch.py",
+    "apps/hmi-app/src/hmi_client/client/startup_sequence.py",
+    "tests/contracts/test_layered_validation_contract.py",
+    "tests/contracts/test_layered_validation_lane_policy_contract.py"
+  ],
+  "executionEnvironments": [
+    {
+      "root": "apps/hmi-app/src",
+      "extraPaths": [
+        "modules/dxf-geometry/application",
+        "modules/hmi-application/application",
+        "shared/testing/test-kit/src"
+      ]
+    },
+    {
+      "root": "apps/hmi-app/tests",
+      "extraPaths": [
+        "apps/hmi-app/src",
+        "modules/dxf-geometry/application",
+        "modules/hmi-application/application",
+        "shared/testing/test-kit/src"
+      ]
+    },
+    {
+      "root": "modules/dxf-geometry/application",
+      "extraPaths": [
+        "shared/testing/test-kit/src"
+      ]
+    },
+    {
+      "root": "modules/hmi-application/application",
+      "extraPaths": [
+        "apps/hmi-app/src",
+        "modules/dxf-geometry/application",
+        "shared/testing/test-kit/src"
+      ]
+    },
+    {
+      "root": "modules/hmi-application/tests",
+      "extraPaths": [
+        "apps/hmi-app/src",
+        "modules/dxf-geometry/application",
+        "modules/hmi-application/application",
+        "shared/testing/test-kit/src"
+      ]
+    },
+    {
+      "root": "tests",
+      "extraPaths": [
+        "apps/hmi-app/src",
+        "apps/hmi-app/src/hmi_client",
+        "modules/dxf-geometry/application",
+        "modules/hmi-application/application",
+        "tests/e2e/hardware-in-loop",
+        "tests/performance",
+        "shared/testing/test-kit/src"
+      ]
+    },
+    {
+      "root": "scripts",
+      "extraPaths": [
+        "apps/hmi-app/src",
+        "modules/dxf-geometry/application",
+        "shared/testing/test-kit/src"
+      ]
+    }
+  ]
+}

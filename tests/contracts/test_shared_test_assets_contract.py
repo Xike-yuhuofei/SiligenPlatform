@@ -4,6 +4,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
+from typing import Any, cast
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
@@ -40,7 +41,7 @@ class SharedTestAssetsContractTest(unittest.TestCase):
             )
 
     def test_asset_inventory_lists_canonical_roots_and_manifests(self) -> None:
-        inventory = build_asset_inventory(WORKSPACE_ROOT)
+        inventory = cast(dict[str, Any], build_asset_inventory(WORKSPACE_ROOT))
         self.assertIn("samples", inventory["source_roots"])
         self.assertIn("tests/baselines", inventory["source_roots"])
         self.assertIn("shared/testing", inventory["source_roots"])
@@ -85,8 +86,8 @@ class SharedTestAssetsContractTest(unittest.TestCase):
         self.assertIn("baseline.simulation.scheme_c_rect_diag", shared_asset_ids)
 
     def test_baseline_manifest_schema_and_workflow_are_frozen(self) -> None:
-        schema = json.loads(baseline_manifest_schema_path(WORKSPACE_ROOT).read_text(encoding="utf-8"))
-        manifest = load_baseline_manifest(WORKSPACE_ROOT)
+        schema = cast(dict[str, Any], json.loads(baseline_manifest_schema_path(WORKSPACE_ROOT).read_text(encoding="utf-8")))
+        manifest = cast(dict[str, Any], load_baseline_manifest(WORKSPACE_ROOT))
         self.assertEqual(schema["title"], "SiligenSuite Baseline Manifest")
         self.assertIn("baselines", schema["required"])
         self.assertEqual(manifest["schema_version"], "baseline-manifest.v1")

@@ -5,6 +5,7 @@ import sys
 from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any, cast
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[3]
@@ -21,8 +22,8 @@ def _write_json(path: Path, payload: dict[str, object]) -> None:
 
 
 def _assert_workspace_governance() -> dict[str, object]:
-    inventory = build_asset_inventory(WORKSPACE_ROOT)
-    governance = baseline_governance_summary(WORKSPACE_ROOT)
+    inventory = cast(dict[str, Any], build_asset_inventory(WORKSPACE_ROOT))
+    governance = cast(dict[str, Any], baseline_governance_summary(WORKSPACE_ROOT))
     assert governance["blocking_issue_count"] == 0
     assert governance["advisory_issue_count"] == 0
     assert "samples" in inventory["source_roots"]
@@ -76,7 +77,7 @@ def _assert_synthetic_detection() -> dict[str, object]:
                         "baseline_kind": "simulation-summary",
                         "owner_scope": "runtime-execution",
                         "source_asset_refs": ["sample.dxf.rect_diag"],
-                        "consumer_layers": ["L2-offline-integration"],
+                        "consumer_layers": ["L3"],
                         "update_runner": "tests/e2e/simulated-line/run_simulated_line.py",
                         "update_reviewers": ["runtime-execution"],
                         "reviewer_guidance": "synthetic governance smoke",

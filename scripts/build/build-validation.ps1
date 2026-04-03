@@ -2,7 +2,7 @@
 param(
     [ValidateSet("Local", "CI")]
     [string]$Profile = "Local",
-    [ValidateSet("all", "apps", "contracts", "e2e", "protocol-compatibility", "performance")]
+    [ValidateSet("all", "apps", "contracts", "protocol-compatibility", "integration", "e2e", "performance")]
     [string[]]$Suite = @("all"),
     [ValidateSet("auto", "quick-gate", "full-offline-gate", "nightly-performance", "limited-hil")]
     [string]$Lane = "auto",
@@ -95,6 +95,32 @@ function Assert-DirectoryAbsent {
     }
 }
 
+function Assert-ControlledLegacyToolsRoot {
+    $toolsRoot = Join-Path $workspaceRoot "tools"
+    if (-not (Test-Path $toolsRoot)) {
+        return
+    }
+
+    $allowedFiles = @(
+        "tools/testing/check_no_loose_mock.py"
+    )
+    $unexpected = @()
+
+    foreach ($item in Get-ChildItem -Path $toolsRoot -Recurse -File) {
+        if ($item.FullName -like "*\__pycache__\*") {
+            continue
+        }
+        $relative = $item.FullName.Substring($workspaceRoot.Length + 1).Replace('\', '/')
+        if ($allowedFiles -notcontains $relative) {
+            $unexpected += $relative
+        }
+    }
+
+    if ($unexpected.Count -gt 0) {
+        throw "tools 根仅允许受控 L0 资产，检测到未授权文件: $($unexpected -join ', ')"
+    }
+}
+
 function Assert-CanonicalGraphAndLegacyExitContracts {
     $requiredPaths = @(
         (Join-Path $workspaceRoot "CMakeLists.txt"),
@@ -143,7 +169,7 @@ function Assert-CanonicalGraphAndLegacyExitContracts {
 
     Assert-DirectoryAbsent -RelativePath "packages"
     Assert-DirectoryAbsent -RelativePath "integration"
-    Assert-DirectoryAbsent -RelativePath "tools"
+    Assert-ControlledLegacyToolsRoot
     Assert-DirectoryAbsent -RelativePath "examples"
 }
 
@@ -174,7 +200,7 @@ function Resolve-Suites {
         [string[]]$RequestedSuites
     )
 
-    $defaultSuites = @("apps", "contracts", "e2e", "protocol-compatibility")
+    $defaultSuites = @("apps", "contracts", "protocol-compatibility", "integration", "e2e")
     if (-not $RequestedSuites -or $RequestedSuites.Count -eq 0 -or $RequestedSuites -contains "all") {
         return $defaultSuites
     }
@@ -291,6 +317,10 @@ if ($resolvedSuites -contains "apps") {
 }
 
 if (($resolvedSuites -contains "e2e") -and $localProfile) {
+    $controlAppTargets += "siligen_runtime_gateway"
+}
+
+if (($resolvedSuites -contains "integration") -and $localProfile) {
     $controlAppTargets += "siligen_runtime_gateway"
 }
 

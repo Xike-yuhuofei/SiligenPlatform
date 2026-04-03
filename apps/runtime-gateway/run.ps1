@@ -16,6 +16,72 @@ $workspaceRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $canonicalConfigPath = Join-Path $workspaceRoot "config\machine\machine_config.ini"
 $defaultVendorDir = Join-Path $workspaceRoot "modules\runtime-execution\adapters\device\vendor\multicard"
 
+function Get-WorkspaceBuildToken {
+    param([string]$WorkspaceRoot)
+
+    $normalizedRoot = [System.IO.Path]::GetFullPath($WorkspaceRoot).ToLowerInvariant()
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($normalizedRoot)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hashBytes = $sha256.ComputeHash($bytes)
+    } finally {
+        $sha256.Dispose()
+    }
+
+    return -join ($hashBytes[0..5] | ForEach-Object { $_.ToString("x2") })
+}
+
+function Test-BuildRootMatchesWorkspace {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$BuildRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$WorkspaceRoot
+    )
+
+    $cacheFile = Join-Path $BuildRoot "CMakeCache.txt"
+    if (-not (Test-Path $cacheFile)) {
+        return $true
+    }
+
+    $homeDirectoryLine = Get-Content $cacheFile | Where-Object { $_ -like "CMAKE_HOME_DIRECTORY:*" } | Select-Object -First 1
+    if (-not $homeDirectoryLine) {
+        return $true
+    }
+
+    $configuredSourceRoot = ($homeDirectoryLine -split "=", 2)[1]
+    if ([string]::IsNullOrWhiteSpace($configuredSourceRoot)) {
+        return $true
+    }
+
+    $resolvedConfiguredSourceRoot = [System.IO.Path]::GetFullPath($configuredSourceRoot)
+    $resolvedWorkspaceSourceRoot = [System.IO.Path]::GetFullPath($WorkspaceRoot)
+    return $resolvedConfiguredSourceRoot -ieq $resolvedWorkspaceSourceRoot
+}
+
+function Get-WorkspaceCabBuildRoots {
+    param([string]$WorkspaceRoot)
+
+    if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        return @()
+    }
+
+    $ssRoot = Join-Path $env:LOCALAPPDATA "SS"
+    if (-not (Test-Path $ssRoot)) {
+        return @()
+    }
+
+    $roots = @()
+    foreach ($candidate in Get-ChildItem -Path $ssRoot -Directory -Filter "cab-*") {
+        $resolved = [System.IO.Path]::GetFullPath($candidate.FullName)
+        if (Test-BuildRootMatchesWorkspace -BuildRoot $resolved -WorkspaceRoot $WorkspaceRoot) {
+            $roots += $resolved
+        }
+    }
+
+    return @($roots | Select-Object -Unique)
+}
+
 function Resolve-FullPath {
     param(
         [Parameter(Mandatory = $true)]
@@ -66,19 +132,21 @@ function Get-RuntimeGatewaySearchRoots {
         [string]$WorkspaceRoot
     )
 
-    $roots = @()
     if (-not [string]::IsNullOrWhiteSpace($env:SILIGEN_CONTROL_APPS_BUILD_ROOT)) {
-        $roots += (Resolve-FullPath -PathValue $env:SILIGEN_CONTROL_APPS_BUILD_ROOT)
-        return $roots
+        return @((Resolve-FullPath -PathValue $env:SILIGEN_CONTROL_APPS_BUILD_ROOT))
     }
 
-    $roots += [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build"))
-
+    $roots = @()
+    $roots += Get-WorkspaceCabBuildRoots -WorkspaceRoot $WorkspaceRoot
     if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
-        $roots += [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA "SiligenSuite\control-apps-build"))
+        $legacyRoot = [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA "SiligenSuite\control-apps-build"))
+        if (Test-BuildRootMatchesWorkspace -BuildRoot $legacyRoot -WorkspaceRoot $WorkspaceRoot) {
+            $roots += $legacyRoot
+        }
     }
 
     $roots += [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build\control-apps"))
+    $roots += [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build"))
 
     return @(
         $roots |

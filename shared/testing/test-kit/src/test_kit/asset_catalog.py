@@ -33,7 +33,10 @@ DEFAULT_CLOCK_PROFILE = "deterministic-monotonic"
 FAULT_SCENARIO_ALLOWED_HOOKS = (
     "controller.readiness",
     "controller.abort",
+    "controller.preflight",
+    "controller.control_cycle",
     "io.disconnect",
+    "io.alarm",
 )
 PERFORMANCE_SAMPLE_SPECS = (
     ("small", "sample.dxf.rect_diag", "samples/dxf/rect_diag.dxf"),
@@ -578,6 +581,46 @@ def build_asset_catalog(workspace_root: Path) -> AssetCatalog:
         ),
         _asset(
             root,
+            asset_id="protocol.fixture.recipe_get_request",
+            asset_kind="protocol-fixture",
+            relative_path="shared/contracts/application/fixtures/requests/recipe.get.request.json",
+            owner_scope="shared/contracts",
+            source_of_truth="application contract fixture recipe.get request",
+        ),
+        _asset(
+            root,
+            asset_id="protocol.fixture.recipe_get_response",
+            asset_kind="protocol-fixture",
+            relative_path="shared/contracts/application/fixtures/responses/recipe.get.success.json",
+            owner_scope="shared/contracts",
+            source_of_truth="application contract fixture recipe.get response",
+        ),
+        _asset(
+            root,
+            asset_id="protocol.fixture.recipe_import_request",
+            asset_kind="protocol-fixture",
+            relative_path="shared/contracts/application/fixtures/requests/recipe.import.request.json",
+            owner_scope="shared/contracts",
+            source_of_truth="application contract fixture recipe.import request",
+        ),
+        _asset(
+            root,
+            asset_id="protocol.fixture.recipe_import_response",
+            asset_kind="protocol-fixture",
+            relative_path="shared/contracts/application/fixtures/responses/recipe.import.conflicts.success.json",
+            owner_scope="shared/contracts",
+            source_of_truth="application contract fixture recipe.import response",
+        ),
+        _asset(
+            root,
+            asset_id="protocol.fixture.recipe_alias_overrides",
+            asset_kind="protocol-fixture",
+            relative_path="shared/contracts/application/mappings/compatibility-overrides.json",
+            owner_scope="shared/contracts",
+            source_of_truth="application contract compatibility alias overrides",
+        ),
+        _asset(
+            root,
             asset_id="checklist.online_test_matrix",
             asset_kind="manual-checklist",
             relative_path="docs/validation/online-test-matrix-v1.md",
@@ -593,7 +636,7 @@ def build_asset_catalog(workspace_root: Path) -> AssetCatalog:
             fixture_id="fixture.workspace-validation-runner",
             fixture_kind="report-emitter",
             provider_path="shared/testing/test-kit/src/test_kit/workspace_validation.py",
-            supported_layers=("L0-structure-gate", "L1-module-contract", "L2-offline-integration"),
+            supported_layers=("L0", "L1", "L2"),
             dependency_mode="offline-only",
             reusable_across_modules=True,
             notes="root validation routing and report enrichment",
@@ -605,12 +648,13 @@ def build_asset_catalog(workspace_root: Path) -> AssetCatalog:
             fixture_kind="report-emitter",
             provider_path="shared/testing/test-kit/src/test_kit/evidence_bundle.py",
             supported_layers=(
-                "L0-structure-gate",
-                "L1-module-contract",
-                "L2-offline-integration",
-                "L3-simulated-e2e",
-                "L4-performance",
-                "L5-limited-hil",
+                "L0",
+                "L1",
+                "L2",
+                "L3",
+                "L4",
+                "L5",
+                "L6",
             ),
             dependency_mode="none",
             reusable_across_modules=True,
@@ -622,7 +666,7 @@ def build_asset_catalog(workspace_root: Path) -> AssetCatalog:
             fixture_id="fixture.layered-routing-smoke",
             fixture_kind="assertion-kit",
             provider_path="tests/integration/scenarios/run_layered_validation_smoke.py",
-            supported_layers=("L2-offline-integration",),
+            supported_layers=("L2",),
             dependency_mode="offline-only",
             reusable_across_modules=True,
             notes="layer/lane routing smoke",
@@ -633,7 +677,7 @@ def build_asset_catalog(workspace_root: Path) -> AssetCatalog:
             fixture_id="fixture.shared-asset-reuse-smoke",
             fixture_kind="assertion-kit",
             provider_path="tests/integration/scenarios/run_shared_asset_reuse_smoke.py",
-            supported_layers=("L2-offline-integration",),
+            supported_layers=("L2",),
             dependency_mode="offline-only",
             reusable_across_modules=True,
             fault_points=("fault.simulated.invalid-empty-segments",),
@@ -645,7 +689,7 @@ def build_asset_catalog(workspace_root: Path) -> AssetCatalog:
             fixture_id="fixture.baseline-governance-smoke",
             fixture_kind="assertion-kit",
             provider_path="tests/integration/scenarios/run_baseline_governance_smoke.py",
-            supported_layers=("L2-offline-integration",),
+            supported_layers=("L2",),
             dependency_mode="offline-only",
             reusable_across_modules=True,
             notes="baseline manifest, inventory, and second-source governance smoke",
@@ -656,7 +700,7 @@ def build_asset_catalog(workspace_root: Path) -> AssetCatalog:
             fixture_id="fixture.fault-matrix-smoke",
             fixture_kind="assertion-kit",
             provider_path="tests/integration/scenarios/run_fault_matrix_smoke.py",
-            supported_layers=("L2-offline-integration", "L3-simulated-e2e"),
+            supported_layers=("L3", "L4"),
             dependency_mode="offline-only",
             reusable_across_modules=True,
             fault_points=(
@@ -668,10 +712,32 @@ def build_asset_catalog(workspace_root: Path) -> AssetCatalog:
     )
     catalog.add_fixture(
         TestFixture(
+            fixture_id="fixture.recipe-config-compatibility",
+            fixture_kind="assertion-kit",
+            provider_path="tests/integration/scenarios/run_recipe_config_compatibility.py",
+            supported_layers=("L2", "L3"),
+            dependency_mode="offline-only",
+            reusable_across_modules=True,
+            notes="recipe/config/version compatibility regression and alias override assertions",
+        )
+    )
+    catalog.add_fixture(
+        TestFixture(
+            fixture_id="fixture.tcp-precondition-matrix",
+            fixture_kind="assertion-kit",
+            provider_path="tests/integration/scenarios/first-layer/run_tcp_precondition_matrix.py",
+            supported_layers=("L3",),
+            dependency_mode="offline-only",
+            reusable_across_modules=True,
+            notes="preview-confirm and execution precondition blocking matrix",
+        )
+    )
+    catalog.add_fixture(
+        TestFixture(
             fixture_id="fixture.simulated-line-regression",
             fixture_kind="simulator",
             provider_path="tests/e2e/simulated-line/run_simulated_line.py",
-            supported_layers=("L3-simulated-e2e",),
+            supported_layers=("L4",),
             dependency_mode="simulated",
             reusable_across_modules=True,
             fault_points=(
@@ -682,10 +748,25 @@ def build_asset_catalog(workspace_root: Path) -> AssetCatalog:
     )
     catalog.add_fixture(
         TestFixture(
+            fixture_id="fixture.simulated-line-matrix",
+            fixture_kind="simulator",
+            provider_path="tests/e2e/simulated-line/run_simulated_line_matrix.py",
+            supported_layers=("L4",),
+            dependency_mode="simulated",
+            reusable_across_modules=True,
+            fault_points=(
+                "fault.simulated.invalid-empty-segments",
+                "fault.simulated.following_error_quantized",
+            ),
+            notes="simulated-line readiness, abort, disconnect, and fault-path matrix",
+        )
+    )
+    catalog.add_fixture(
+        TestFixture(
             fixture_id="fixture.hil-closed-loop",
             fixture_kind="fake-controller",
             provider_path="tests/e2e/hardware-in-loop/run_hil_closed_loop.py",
-            supported_layers=("L5-limited-hil",),
+            supported_layers=("L5",),
             dependency_mode="hardware-limited",
             reusable_across_modules=True,
             fault_points=("fault.hil.tcp-disconnect", "fault.hil.dispenser-state-timeout"),
@@ -697,7 +778,7 @@ def build_asset_catalog(workspace_root: Path) -> AssetCatalog:
             fixture_id="fixture.dxf-preview-profiler",
             fixture_kind="report-emitter",
             provider_path="tests/performance/collect_dxf_preview_profiles.py",
-            supported_layers=("L4-performance",),
+            supported_layers=("L6",),
             dependency_mode="simulated",
             reusable_across_modules=True,
             notes="preview/execution/single-flight performance evidence",
@@ -709,7 +790,7 @@ def build_asset_catalog(workspace_root: Path) -> AssetCatalog:
             fault_id="fault.simulated.invalid-empty-segments",
             scenario_kind="resource-missing",
             injection_point="samples/simulation/invalid_empty_segments.simulation-input.json",
-            applicable_layers=("L2-offline-integration", "L3-simulated-e2e"),
+            applicable_layers=("L3", "L4"),
             expected_outcome="failed",
             required_evidence_fields=("stage_id", "artifact_id", "failure_code", "evidence_path"),
             safety_level="simulated-safe",
@@ -721,7 +802,7 @@ def build_asset_catalog(workspace_root: Path) -> AssetCatalog:
             injector_id="simulated-line.input-asset",
             default_seed=DEFAULT_DETERMINISTIC_SEED,
             clock_profile=DEFAULT_CLOCK_PROFILE,
-            supported_hooks=("controller.readiness",),
+            supported_hooks=("controller.readiness", "controller.preflight", "controller.control_cycle"),
         )
     )
     catalog.add_fault(
@@ -729,7 +810,7 @@ def build_asset_catalog(workspace_root: Path) -> AssetCatalog:
             fault_id="fault.simulated.following_error_quantized",
             scenario_kind="timeout",
             injection_point="samples/simulation/following_error_quantized.simulation-input.json",
-            applicable_layers=("L3-simulated-e2e", "L4-performance"),
+            applicable_layers=("L4", "L6"),
             expected_outcome="deferred",
             required_evidence_fields=("stage_id", "artifact_id", "event_name", "evidence_path"),
             safety_level="simulated-safe",
@@ -741,7 +822,7 @@ def build_asset_catalog(workspace_root: Path) -> AssetCatalog:
             injector_id="simulated-line.input-asset",
             default_seed=DEFAULT_DETERMINISTIC_SEED,
             clock_profile=DEFAULT_CLOCK_PROFILE,
-            supported_hooks=("controller.abort", "io.disconnect"),
+            supported_hooks=("controller.abort", "controller.control_cycle", "io.disconnect", "io.alarm"),
         )
     )
     catalog.add_fault(
@@ -749,7 +830,7 @@ def build_asset_catalog(workspace_root: Path) -> AssetCatalog:
             fault_id="fault.hil.tcp-disconnect",
             scenario_kind="disconnect",
             injection_point="tests/e2e/hardware-in-loop/run_hil_closed_loop.py::TcpJsonClient",
-            applicable_layers=("L5-limited-hil",),
+            applicable_layers=("L5",),
             expected_outcome="failed",
             required_evidence_fields=("stage_id", "artifact_id", "failure_code", "evidence_path"),
             safety_level="hardware-bounded",
@@ -766,7 +847,7 @@ def build_asset_catalog(workspace_root: Path) -> AssetCatalog:
             fault_id="fault.hil.dispenser-state-timeout",
             scenario_kind="timeout",
             injection_point="tests/e2e/hardware-in-loop/run_hil_closed_loop.py::_wait_for_dispenser_state",
-            applicable_layers=("L5-limited-hil",),
+            applicable_layers=("L5",),
             expected_outcome="blocked",
             required_evidence_fields=("stage_id", "artifact_id", "failure_code", "evidence_path"),
             safety_level="hardware-bounded",

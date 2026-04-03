@@ -31,8 +31,8 @@
         "protocol.fixture.rect_diag_engineering"
       ],
       "consumer_layers": [
-        "L2-offline-integration",
-        "L3-simulated-e2e"
+        "L3",
+        "L4"
       ],
       "update_runner": "tests/e2e/simulated-line/run_simulated_line.py",
       "update_reviewers": [
@@ -58,7 +58,7 @@
         "sample.replay.rect_diag_recording"
       ],
       "consumer_layers": [
-        "L3-simulated-e2e"
+        "L4"
       ],
       "update_runner": "tests/e2e/simulated-line/run_simulated_line.py",
       "update_reviewers": [
@@ -82,7 +82,7 @@
         "sample.replay.sample_trajectory_recording"
       ],
       "consumer_layers": [
-        "L3-simulated-e2e"
+        "L4"
       ],
       "update_runner": "tests/e2e/simulated-line/run_simulated_line.py",
       "update_reviewers": [
@@ -105,8 +105,8 @@
         "sample.simulation.invalid_empty_segments"
       ],
       "consumer_layers": [
-        "L2-offline-integration",
-        "L3-simulated-e2e"
+        "L3",
+        "L4"
       ],
       "update_runner": "tests/e2e/simulated-line/run_simulated_line.py",
       "update_reviewers": [
@@ -129,8 +129,8 @@
         "sample.simulation.following_error_quantized"
       ],
       "consumer_layers": [
-        "L3-simulated-e2e",
-        "L4-performance"
+        "L4",
+        "L6"
       ],
       "update_runner": "tests/e2e/simulated-line/run_simulated_line.py",
       "update_reviewers": [
@@ -153,8 +153,8 @@
         "sample.dxf.rect_diag"
       ],
       "consumer_layers": [
-        "L3-simulated-e2e",
-        "L5-limited-hil"
+        "L4",
+        "L5"
       ],
       "update_runner": "tests/integration/scenarios/first-layer/test_real_preview_snapshot_geometry.py",
       "update_reviewers": [
@@ -179,7 +179,7 @@
         "sample.dxf.rect_large_ladder"
       ],
       "consumer_layers": [
-        "L4-performance"
+        "L6"
       ],
       "update_runner": "tests/performance/collect_dxf_preview_profiles.py",
       "update_reviewers": [
@@ -195,3 +195,4 @@
     }
   ]
 }
+
