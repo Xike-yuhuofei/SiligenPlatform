@@ -97,7 +97,7 @@ description: "Plan staged refactors and migrations with validation gates, compat
 -
 
 ## 建议下一步
-- 阶段执行后进入：`post-change-closeout`
+- 阶段执行后进入：`branch-closeout`
 
 # Handoff
 
@@ -105,4 +105,4 @@ description: "Plan staged refactors and migrations with validation gates, compat
   - `boundary-audit`
   - `change-scope-guard`
 - 下游：
-  - `post-change-closeout`
+  - `branch-closeout`
