@@ -2289,10 +2289,6 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
         return GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview glue points are empty");
     }
 
-    nlohmann::json execution_polyline = nlohmann::json::array();
-    for (const auto& point : snapshot.execution_polyline) {
-        execution_polyline.push_back(BuildPreviewPointJson(point.x, point.y));
-    }
     nlohmann::json motion_preview_polyline = nlohmann::json::array();
     for (const auto& point : snapshot.motion_preview_polyline) {
         motion_preview_polyline.push_back(BuildPreviewPointJson(point.x, point.y));
@@ -2349,12 +2345,6 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
         {"glue_points", glue_points},
         {"motion_preview", motion_preview},
         {"execution_point_count", snapshot.execution_point_count},
-        {"execution_polyline_point_count", snapshot.execution_polyline_point_count},
-        {"execution_polyline_source_point_count", snapshot.execution_polyline_source_point_count},
-        {"execution_polyline", execution_polyline},
-        {"polyline_point_count", snapshot.execution_polyline_point_count},
-        {"polyline_source_point_count", snapshot.execution_polyline_source_point_count},
-        {"trajectory_polyline", execution_polyline},
         {"total_length_mm", snapshot.total_length_mm},
         {"estimated_time_s", snapshot.estimated_time_s},
         {"generated_at", snapshot.generated_at}

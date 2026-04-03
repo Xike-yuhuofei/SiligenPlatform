@@ -88,11 +88,45 @@ std::vector<std::size_t> DetectCornerAnchorIndices(const std::vector<Point2D>& p
     if (points.size() < 3U) {
         return anchors;
     }
+
+    const auto find_context_index = [&](std::size_t pivot, int direction) -> std::size_t {
+        std::size_t current = pivot;
+        double accumulated_length = 0.0;
+        while (true) {
+            if (direction < 0) {
+                if (current == 0U) {
+                    break;
+                }
+                const std::size_t next = current - 1U;
+                accumulated_length += Distance(points[current], points[next]);
+                current = next;
+            } else {
+                if (current + 1U >= points.size()) {
+                    break;
+                }
+                const std::size_t next = current + 1U;
+                accumulated_length += Distance(points[current], points[next]);
+                current = next;
+            }
+
+            if (accumulated_length >= kPreviewCornerMinLegMm) {
+                break;
+            }
+        }
+        return current;
+    };
+
     anchors.reserve(points.size() / 4U + 2U);
     for (std::size_t i = 1; i + 1 < points.size(); ++i) {
-        const auto& prev = points[i - 1];
+        const auto prev_index = find_context_index(i, -1);
+        const auto next_index = find_context_index(i, 1);
+        if (prev_index == i || next_index == i) {
+            continue;
+        }
+
+        const auto& prev = points[prev_index];
         const auto& cur = points[i];
-        const auto& next = points[i + 1];
+        const auto& next = points[next_index];
         const double leg1 = Distance(prev, cur);
         const double leg2 = Distance(cur, next);
         if (leg1 < kPreviewCornerMinLegMm || leg2 < kPreviewCornerMinLegMm) {
@@ -362,18 +396,18 @@ PreviewSnapshotPayload PreviewSnapshotService::BuildPayload(
 
     const auto* trajectory_points = input.trajectory_points;
     const auto source_count = trajectory_points ? trajectory_points->size() : 0U;
-    payload.polyline_source_point_count = static_cast<std::uint32_t>(source_count);
+    payload.motion_preview_source_point_count = static_cast<std::uint32_t>(source_count);
 
     const auto polyline = trajectory_points
         ? BuildPreviewPolyline(*trajectory_points, max_points)
         : std::vector<Point2D>{};
-    payload.polyline_point_count = static_cast<std::uint32_t>(polyline.size());
-    payload.trajectory_polyline.reserve(polyline.size());
+    payload.motion_preview_point_count = static_cast<std::uint32_t>(polyline.size());
+    payload.motion_preview_polyline.reserve(polyline.size());
     for (const auto& point : polyline) {
         PreviewSnapshotPoint snapshot_point;
         snapshot_point.x = point.x;
         snapshot_point.y = point.y;
-        payload.trajectory_polyline.push_back(snapshot_point);
+        payload.motion_preview_polyline.push_back(snapshot_point);
     }
     return payload;
 }

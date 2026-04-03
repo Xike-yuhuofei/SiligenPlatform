@@ -1,7 +1,6 @@
 #include "WorkflowPreviewSnapshotService.h"
 
 #include "application/services/dispensing/PreviewSnapshotService.h"
-#include "domain/dispensing/planning/domain-services/CurveFlatteningService.h"
 
 #include <algorithm>
 #include <cmath>
@@ -92,11 +91,44 @@ std::vector<std::size_t> DetectCornerAnchorIndices(
         return anchors;
     }
 
+    const auto find_context_index = [&](std::size_t pivot, int direction) -> std::size_t {
+        std::size_t current = pivot;
+        double accumulated_length = 0.0;
+        while (true) {
+            if (direction < 0) {
+                if (current == 0U) {
+                    break;
+                }
+                const std::size_t next = current - 1U;
+                accumulated_length += Distance(points[current], points[next]);
+                current = next;
+            } else {
+                if (current + 1U >= points.size()) {
+                    break;
+                }
+                const std::size_t next = current + 1U;
+                accumulated_length += Distance(points[current], points[next]);
+                current = next;
+            }
+
+            if (accumulated_length >= kPreviewCornerMinLegMm) {
+                break;
+            }
+        }
+        return current;
+    };
+
     anchors.reserve(points.size() / 4U + 2U);
     for (std::size_t i = 1; i + 1 < points.size(); ++i) {
-        const auto& prev = points[i - 1U];
+        const auto prev_index = find_context_index(i, -1);
+        const auto next_index = find_context_index(i, 1);
+        if (prev_index == i || next_index == i) {
+            continue;
+        }
+
+        const auto& prev = points[prev_index];
         const auto& cur = points[i];
-        const auto& next = points[i + 1U];
+        const auto& next = points[next_index];
         const double leg1 = Distance(prev, cur);
         const double leg2 = Distance(cur, next);
         if (leg1 < kPreviewCornerMinLegMm || leg2 < kPreviewCornerMinLegMm) {
@@ -215,30 +247,13 @@ std::vector<Siligen::Shared::Types::Point2D> ClampPolylineByMaxPointsPreserveCor
     return polyline;
 }
 
-std::vector<Siligen::Shared::Types::Point2D> BuildPointVectorFromProcessPath(
-    const Siligen::ProcessPath::Contracts::ProcessPath& process_path) {
+std::vector<Siligen::Shared::Types::Point2D> BuildPointVectorFromTrajectory(
+    const std::vector<Siligen::TrajectoryPoint>& trajectory_points) {
     std::vector<Siligen::Shared::Types::Point2D> points;
-    Siligen::Domain::Dispensing::DomainServices::CurveFlatteningService flattening_service;
-    constexpr float32 kProcessPathSplineErrorMm = 0.05f;
-    constexpr float32 kProcessPathSampleStepMm = 1.0f;
-
-    for (const auto& process_segment : process_path.segments) {
-        const auto& geometry = process_segment.geometry;
-        if (geometry.is_point) {
-            AppendDistinctPoint(points, geometry.line.start);
-            continue;
-        }
-
-        const auto flatten_result =
-            flattening_service.Flatten(geometry, kProcessPathSplineErrorMm, kProcessPathSampleStepMm);
-        if (flatten_result.IsError()) {
-            continue;
-        }
-        for (const auto& point : flatten_result.Value().points) {
-            AppendDistinctPoint(points, point);
-        }
+    points.reserve(trajectory_points.size());
+    for (const auto& point : trajectory_points) {
+        AppendDistinctPoint(points, point.position);
     }
-
     return points;
 }
 
@@ -298,8 +313,6 @@ PreviewSnapshotResponse WorkflowPreviewSnapshotService::BuildResponse(
     response.confirmed_at = payload.confirmed_at;
     response.segment_count = payload.segment_count;
     response.execution_point_count = payload.point_count;
-    response.execution_polyline_source_point_count = payload.polyline_source_point_count;
-    response.execution_polyline_point_count = payload.polyline_point_count;
     response.total_length_mm = payload.total_length_mm;
     response.estimated_time_s = payload.estimated_time_s;
     response.generated_at = payload.generated_at;
@@ -315,44 +328,21 @@ PreviewSnapshotResponse WorkflowPreviewSnapshotService::BuildResponse(
             response.glue_points.push_back(snapshot_point);
         }
     }
-    CopyPreviewPolyline(payload.trajectory_polyline, response.execution_polyline);
 
-    if (input.process_path != nullptr && !input.process_path->segments.empty()) {
-        const auto process_path_points = BuildPointVectorFromProcessPath(*input.process_path);
-        const auto process_path_polyline =
-            ClampPolylineByMaxPointsPreserveCorners(process_path_points, max_polyline_points);
-        response.motion_preview_source = "process_path_snapshot";
+    if (input.motion_trajectory_points != nullptr && !input.motion_trajectory_points->empty()) {
+        const auto motion_points = BuildPointVectorFromTrajectory(*input.motion_trajectory_points);
+        const auto motion_polyline =
+            ClampPolylineByMaxPointsPreserveCorners(motion_points, max_polyline_points);
+        response.motion_preview_source = "execution_trajectory_snapshot";
         response.motion_preview_kind = "polyline";
-        response.motion_preview_source_point_count = static_cast<std::uint32_t>(process_path_points.size());
-        response.motion_preview_point_count = static_cast<std::uint32_t>(process_path_polyline.size());
+        response.motion_preview_source_point_count = static_cast<std::uint32_t>(motion_points.size());
+        response.motion_preview_point_count = static_cast<std::uint32_t>(motion_polyline.size());
         response.motion_preview_is_sampled =
             response.motion_preview_source_point_count != response.motion_preview_point_count;
         response.motion_preview_sampling_strategy = response.motion_preview_is_sampled
-            ? "process_path_geometry_preserving_clamp"
-            : "process_path_geometry_preserving";
-        CopyPreviewPolyline(process_path_polyline, response.motion_preview_polyline);
-    } else if (input.motion_trajectory_points != nullptr && !input.motion_trajectory_points->empty()) {
-        PreviewSnapshotInput motion_input = owner_input;
-        motion_input.point_count = static_cast<std::uint32_t>(input.motion_trajectory_points->size());
-        motion_input.trajectory_points = input.motion_trajectory_points;
-        const auto motion_payload = owner_service.BuildPayload(motion_input, max_polyline_points);
-        response.motion_preview_source = "execution_trajectory_snapshot";
-        response.motion_preview_kind = "polyline";
-        response.motion_preview_source_point_count = motion_payload.polyline_source_point_count;
-        response.motion_preview_point_count = motion_payload.polyline_point_count;
-        response.motion_preview_is_sampled =
-            motion_payload.polyline_source_point_count != motion_payload.polyline_point_count;
-        response.motion_preview_sampling_strategy = "fixed_spacing_corner_preserving";
-        CopyPreviewPolyline(motion_payload.trajectory_polyline, response.motion_preview_polyline);
-    } else {
-        response.motion_preview_source = "execution_polyline";
-        response.motion_preview_kind = "polyline";
-        response.motion_preview_source_point_count = response.execution_polyline_source_point_count;
-        response.motion_preview_point_count = response.execution_polyline_point_count;
-        response.motion_preview_is_sampled =
-            response.execution_polyline_source_point_count != response.execution_polyline_point_count;
-        response.motion_preview_sampling_strategy = "legacy_execution_polyline_compat";
-        response.motion_preview_polyline = response.execution_polyline;
+            ? "execution_trajectory_geometry_preserving_clamp"
+            : "execution_trajectory_geometry_preserving";
+        CopyPreviewPolyline(motion_polyline, response.motion_preview_polyline);
     }
     return response;
 }

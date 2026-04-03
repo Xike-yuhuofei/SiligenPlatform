@@ -1,7 +1,6 @@
 #pragma once
 
 #include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
-#include "process_path/contracts/ProcessPath.h"
 
 #include <cstddef>
 #include <string>
@@ -20,7 +19,6 @@ struct WorkflowPreviewSnapshotInput {
     float32 estimated_time_s = 0.0f;
     std::string generated_at;
     const std::vector<Siligen::TrajectoryPoint>* execution_trajectory_points = nullptr;
-    const Siligen::ProcessPath::Contracts::ProcessPath* process_path = nullptr;
     const std::vector<Siligen::TrajectoryPoint>* motion_trajectory_points = nullptr;
     const std::vector<Siligen::Shared::Types::Point2D>* glue_points = nullptr;
     std::string authority_layout_id;

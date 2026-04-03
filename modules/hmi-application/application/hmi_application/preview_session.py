@@ -152,7 +152,6 @@ class PreviewPayloadResult:
     should_render: bool = False
     snapshot: PreviewSnapshotMeta | None = None
     glue_points: tuple[tuple[float, float], ...] = ()
-    execution_polyline: tuple[tuple[float, float], ...] = ()
     motion_preview: tuple[tuple[float, float], ...] = ()
     motion_preview_meta: MotionPreviewMeta | None = None
     preview_source: str = ""
@@ -160,7 +159,6 @@ class PreviewPayloadResult:
     dry_run: bool = False
     preview_warning: str = ""
     motion_preview_warning: str = ""
-    execution_polyline_source_point_count: int = 0
 
 
 class PreviewSnapshotWorker(QThread):
@@ -363,14 +361,8 @@ class PreviewSessionOwner:
         ).strip().lower()
         if normalized == "execution_trajectory_snapshot":
             return "执行轨迹快照"
-        if normalized == "process_path_snapshot":
-            return "工艺路径快照"
-        if normalized == "execution_polyline":
-            return "执行轨迹快照"
         if normalized == "offline_local_preview":
             return "离线本地轨迹"
-        if normalized == "legacy_execution_polyline":
-            return "execution_polyline 兼容层"
         if normalized:
             return normalized
         return "-"
@@ -744,7 +736,6 @@ class PreviewSessionOwner:
             )
 
         glue_points = self.extract_points(payload, "glue_points")
-        execution_polyline = self.extract_points(payload, "execution_polyline")
         motion_preview_payload = payload.get("motion_preview")
         motion_preview_block = motion_preview_payload if isinstance(motion_preview_payload, dict) else {}
         motion_preview = self.extract_points(motion_preview_block, "polyline")
@@ -777,20 +768,19 @@ class PreviewSessionOwner:
         )
         motion_preview_sampling_strategy = str(motion_preview_block.get("sampling_strategy", "")).strip().lower()
         motion_preview_warning = ""
-        if not motion_preview:
-            motion_preview = list(execution_polyline)
-            if motion_preview:
-                motion_preview_source = "legacy_execution_polyline"
-                motion_preview_kind = "polyline"
-                motion_preview_source_point_count = int(
-                    payload.get("execution_polyline_source_point_count", len(motion_preview)) or len(motion_preview)
-                )
-                motion_preview_point_count = int(
-                    payload.get("execution_polyline_point_count", len(motion_preview)) or len(motion_preview)
-                )
-                motion_preview_is_sampled = motion_preview_point_count < motion_preview_source_point_count
-                motion_preview_sampling_strategy = "legacy_execution_polyline_compat"
-                motion_preview_warning = "当前结果未显式返回 motion_preview，HMI 已回退到 execution_polyline 兼容字段。"
+        current_plan_id = str(payload.get("plan_id", snapshot_id)).strip() or snapshot_id
+        self._state.current_plan_id = current_plan_id
+        self._state.current_plan_fingerprint = snapshot_hash
+        self._state.preview_plan_dry_run = preview_dry_run
+        self._state.preview_source = preview_source
+        self._state.preview_kind = preview_kind
+        self._state.preview_validation_classification = preview_validation_classification
+        self._state.preview_exception_reason = preview_exception_reason
+        self._state.preview_failure_reason = preview_failure_reason
+        self._state.dxf_segment_count = int(payload.get("segment_count", 0) or 0)
+        self._state.dxf_total_length_mm = float(payload.get("total_length_mm", 0.0) or 0.0)
+        estimated_time = float(payload.get("estimated_time_s", 0.0) or 0.0)
+        self._state.dxf_estimated_time_text = f"{estimated_time:.1f}s" if estimated_time > 0 else "-"
         if motion_preview and not motion_preview_kind:
             motion_preview_kind = "polyline"
         if motion_preview and motion_preview_point_count <= 0:
@@ -805,25 +795,6 @@ class PreviewSessionOwner:
             is_sampled=motion_preview_is_sampled,
             sampling_strategy=motion_preview_sampling_strategy,
         )
-        self._state.current_plan_id = str(payload.get("plan_id", snapshot_id)).strip() or snapshot_id
-        self._state.current_plan_fingerprint = snapshot_hash
-        self._state.preview_plan_dry_run = preview_dry_run
-        self._state.preview_source = preview_source
-        self._state.preview_kind = preview_kind
-        self._state.glue_point_count = len(glue_points)
-        self._state.motion_preview_source = motion_preview_meta.source
-        self._state.motion_preview_kind = motion_preview_meta.kind
-        self._state.motion_preview_point_count = motion_preview_meta.point_count
-        self._state.motion_preview_source_point_count = motion_preview_meta.source_point_count
-        self._state.motion_preview_sampling_strategy = motion_preview_meta.sampling_strategy
-        self._state.motion_preview_is_sampled = motion_preview_meta.is_sampled
-        self._state.preview_validation_classification = preview_validation_classification
-        self._state.preview_exception_reason = preview_exception_reason
-        self._state.preview_failure_reason = preview_failure_reason
-        self._state.dxf_segment_count = int(payload.get("segment_count", 0) or 0)
-        self._state.dxf_total_length_mm = float(payload.get("total_length_mm", 0.0) or 0.0)
-        estimated_time = float(payload.get("estimated_time_s", 0.0) or 0.0)
-        self._state.dxf_estimated_time_text = f"{estimated_time:.1f}s" if estimated_time > 0 else "-"
 
         legacy_runtime_snapshot = preview_source == "runtime_snapshot"
         legacy_polyline_present = "trajectory_polyline" in payload
@@ -833,7 +804,7 @@ class PreviewSessionOwner:
                 title="胶点预览生成失败",
                 detail=(
                     "返回结果缺少 glue_points，并检测到旧版 trajectory_polyline/runtime_snapshot；"
-                    f"plan_id={self._state.current_plan_id or snapshot_id}。"
+                    f"plan_id={current_plan_id}。"
                     "当前 HMI 连接的 runtime-gateway 很可能还是旧构建。"
                 ),
             )
@@ -862,6 +833,56 @@ class PreviewSessionOwner:
                 detail="返回结果缺少非空 glue_points。请核对 runtime-gateway 是否已升级到 planned_glue_snapshot 契约。",
             )
 
+        if not motion_preview:
+            return self.handle_local_failure(
+                gate_error_message="运行时快照缺少 motion_preview",
+                title="胶点预览生成失败",
+                detail="返回结果缺少 motion_preview，无法保证点胶头运动轨迹与真实执行轨迹一致。",
+            )
+        if motion_preview_source != "execution_trajectory_snapshot":
+            return self.handle_local_failure(
+                gate_error_message=f"运行时快照返回了非执行真值运动轨迹来源: {motion_preview_source or 'missing'}",
+                title="胶点预览生成失败",
+                detail=(
+                    "返回结果的 motion_preview.source="
+                    f"{motion_preview_source or 'missing'}，不是 execution_trajectory_snapshot。"
+                ),
+            )
+        if motion_preview_kind != "polyline":
+            return self.handle_local_failure(
+                gate_error_message=f"运行时快照返回了未知 motion_preview.kind: {motion_preview_kind or 'missing'}",
+                title="胶点预览生成失败",
+                detail=(
+                    "返回结果的 motion_preview.kind="
+                    f"{motion_preview_kind or 'missing'}，不属于支持的 polyline 轨迹语义。"
+                ),
+            )
+        if motion_preview_sampling_strategy not in {
+            "execution_trajectory_geometry_preserving",
+            "execution_trajectory_geometry_preserving_clamp",
+        }:
+            return self.handle_local_failure(
+                gate_error_message=(
+                    "运行时快照返回了未知 motion_preview.sampling_strategy: "
+                    f"{motion_preview_sampling_strategy or 'missing'}"
+                ),
+                title="胶点预览生成失败",
+                detail=(
+                    "返回结果的 motion_preview.sampling_strategy="
+                    f"{motion_preview_sampling_strategy or 'missing'}，"
+                    "不是 execution_trajectory_geometry_preserving / "
+                    "execution_trajectory_geometry_preserving_clamp。"
+                ),
+            )
+
+        self._state.glue_point_count = len(glue_points)
+        self._state.motion_preview_source = motion_preview_meta.source
+        self._state.motion_preview_kind = motion_preview_meta.kind
+        self._state.motion_preview_point_count = motion_preview_meta.point_count
+        self._state.motion_preview_source_point_count = motion_preview_meta.source_point_count
+        self._state.motion_preview_sampling_strategy = motion_preview_meta.sampling_strategy
+        self._state.motion_preview_is_sampled = motion_preview_meta.is_sampled
+
         snapshot = PreviewSnapshotMeta(
             snapshot_id=snapshot_id,
             snapshot_hash=snapshot_hash,
@@ -872,10 +893,9 @@ class PreviewSessionOwner:
             generated_at=str(payload.get("generated_at", "")),
         )
         self.load_local_playback(tuple(motion_preview), snapshot.estimated_time_s)
-        execution_source_point_count = int(payload.get("execution_polyline_source_point_count", 0) or 0)
         preview_warning = self.sampling_warning(
             glue_point_count=snapshot.point_count,
-            execution_source_point_count=execution_source_point_count,
+            execution_source_point_count=motion_preview_meta.source_point_count,
         )
         self.gate.preview_ready(snapshot)
         if backend_preview_state == "confirmed":
@@ -918,7 +938,6 @@ class PreviewSessionOwner:
             should_render=True,
             snapshot=snapshot,
             glue_points=tuple(glue_points),
-            execution_polyline=tuple(execution_polyline),
             motion_preview=tuple(motion_preview),
             motion_preview_meta=motion_preview_meta,
             preview_source=preview_source,
@@ -926,7 +945,6 @@ class PreviewSessionOwner:
             dry_run=preview_dry_run,
             preview_warning=preview_warning,
             motion_preview_warning=motion_preview_warning,
-            execution_polyline_source_point_count=execution_source_point_count,
         )
 
     def build_preflight_decision(

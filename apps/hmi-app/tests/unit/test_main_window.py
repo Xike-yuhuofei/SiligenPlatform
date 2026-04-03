@@ -283,17 +283,13 @@ class MainWindowTabsTest(unittest.TestCase):
                 "segment_count": 2,
                 "glue_point_count": len(glue_point_payload),
                 "glue_points": glue_point_payload,
-                "execution_polyline": [
-                    {"x": 0.0, "y": 0.0},
-                    {"x": 12.0, "y": 3.0},
-                ],
                 "motion_preview": {
                     "source": "execution_trajectory_snapshot",
                     "kind": "polyline",
                     "source_point_count": 8,
                     "point_count": 2,
                     "is_sampled": True,
-                    "sampling_strategy": "fixed_spacing_corner_preserving",
+                    "sampling_strategy": "execution_trajectory_geometry_preserving_clamp",
                     "polyline": [
                         {"x": 0.0, "y": 0.0},
                         {"x": 12.0, "y": 3.0},
@@ -656,7 +652,6 @@ class MainWindowTabsTest(unittest.TestCase):
             dry_run=False,
             preview_source="mock_synthetic",
             glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 3.0)],
-            execution_polyline=[(0.0, 0.0), (12.0, 3.0)],
             preview_kind="glue_points",
         )
         debug_html = self.window._render_preview_debug_html(
@@ -665,7 +660,6 @@ class MainWindowTabsTest(unittest.TestCase):
             dry_run=False,
             preview_source="mock_synthetic",
             glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 3.0)],
-            execution_polyline=[(0.0, 0.0), (12.0, 3.0)],
             preview_kind="glue_points",
         )
 
@@ -691,7 +685,6 @@ class MainWindowTabsTest(unittest.TestCase):
             dry_run=False,
             preview_source="planned_glue_snapshot",
             glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 3.0)],
-            execution_polyline=[(0.0, 0.0), (12.0, 3.0)],
             preview_kind="glue_points",
             preview_warning="胶点预览疑似退化为轨迹采样点（胶点数 950，执行轨迹源点 1000）。",
         )
@@ -716,7 +709,6 @@ class MainWindowTabsTest(unittest.TestCase):
             dry_run=False,
             preview_source="planned_glue_snapshot",
             glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 3.0)],
-            execution_polyline=[(0.0, 0.0), (12.0, 3.0)],
             preview_kind="glue_points",
             preview_warning="",
             preview_validation_classification="pass_with_exception",
@@ -744,7 +736,6 @@ class MainWindowTabsTest(unittest.TestCase):
             dry_run=False,
             preview_source="planned_glue_snapshot",
             glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
-            execution_polyline=[(0.0, 0.0), (12.0, 6.0)],
             motion_preview=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
             preview_kind="glue_points",
         )
@@ -779,7 +770,6 @@ class MainWindowTabsTest(unittest.TestCase):
             dry_run=False,
             preview_source="planned_glue_snapshot",
             glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
-            execution_polyline=[(0.0, 0.0), (12.0, 6.0)],
             motion_preview=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
             preview_kind="glue_points",
             preview_validation_classification="pass",
@@ -1004,17 +994,13 @@ class MainWindowTabsTest(unittest.TestCase):
                     {"x": 0.0, "y": 0.0},
                     {"x": 10.0, "y": 0.0},
                 ],
-                "execution_polyline": [
-                    {"x": 0.0, "y": 0.0},
-                    {"x": 10.0, "y": 0.0},
-                ],
                 "motion_preview": {
                     "source": "execution_trajectory_snapshot",
                     "kind": "polyline",
                     "source_point_count": 8,
                     "point_count": 2,
                     "is_sampled": True,
-                    "sampling_strategy": "fixed_spacing_corner_preserving",
+                    "sampling_strategy": "execution_trajectory_geometry_preserving_clamp",
                     "polyline": [
                         {"x": 0.0, "y": 0.0},
                         {"x": 10.0, "y": 0.0},
@@ -1046,7 +1032,7 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertIn("id='preview-head'", self.window._dxf_view.html)
         self.assertIn("运动轨迹来源", self.window._preview_debug_view.toPlainText())
         self.assertIn("执行轨迹快照", self.window._preview_debug_view.toPlainText())
-        self.assertIn("fixed_spacing_corner_preserving", self.window._preview_debug_view.toPlainText())
+        self.assertIn("execution_trajectory_geometry_preserving_clamp", self.window._preview_debug_view.toPlainText())
         self.assertIn("hash-300s", self.window._preview_debug_view.toPlainText())
         self.assertIn("轨迹: 执行轨迹快照(2/8)", self.window._dxf_info_label.text())
 
@@ -1064,10 +1050,6 @@ class MainWindowTabsTest(unittest.TestCase):
                 "preview_kind": "glue_points",
                 "glue_point_count": 2,
                 "glue_points": [
-                    {"x": 0.0, "y": 0.0},
-                    {"x": 10.0, "y": 0.0},
-                ],
-                "execution_polyline": [
                     {"x": 0.0, "y": 0.0},
                     {"x": 10.0, "y": 0.0},
                 ],
@@ -1101,10 +1083,6 @@ class MainWindowTabsTest(unittest.TestCase):
                     {"x": 0.0, "y": 0.0},
                     {"x": 10.0, "y": 0.0},
                 ],
-                "execution_polyline": [
-                    {"x": 0.0, "y": 0.0},
-                    {"x": 10.0, "y": 0.0},
-                ],
             },
             "",
         )
@@ -1132,10 +1110,6 @@ class MainWindowTabsTest(unittest.TestCase):
                 "preview_kind": "glue_points",
                 "glue_point_count": 0,
                 "glue_points": [],
-                "execution_polyline": [
-                    {"x": 0.0, "y": 0.0},
-                    {"x": 10.0, "y": 0.0},
-                ],
             },
             "",
         )
@@ -1279,7 +1253,6 @@ class MainWindowTabsTest(unittest.TestCase):
                 "preview_kind": "glue_points",
                 "glue_point_count": 2,
                 "glue_points": [{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
-                "execution_polyline": [{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
             },
             "",
             request_token=3,

@@ -9,4 +9,4 @@
 - `hmi_application.launch_supervision_contract/session`：`M11` 启动监督态契约与状态机实现；`supervisor_*` 仅保留 compat shim。
 
 `apps/hmi-app` 仅允许消费这些入口，不再在宿主侧保留同源 owner 实现。
-`main_window.py` 允许保留的职责固定为 Qt widget/线程装配、消息框展示、status bar 更新、协议调用和 `glue_points + execution_polyline` HTML 渲染。
+`main_window.py` 允许保留的职责固定为 Qt widget/线程装配、消息框展示、status bar 更新、协议调用和 `glue_points + motion_preview` HTML 渲染。
