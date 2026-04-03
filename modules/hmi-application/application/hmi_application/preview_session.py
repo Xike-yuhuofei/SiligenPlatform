@@ -52,6 +52,7 @@ class PreviewSessionState:
     preview_validation_classification: str = ""
     preview_exception_reason: str = ""
     preview_failure_reason: str = ""
+    preview_diagnostic_code: str = ""
     current_plan_id: str = ""
     current_plan_fingerprint: str = ""
     preview_plan_dry_run: bool | None = None
@@ -143,6 +144,12 @@ class PreviewPlaybackStatus:
 
 
 @dataclass(frozen=True)
+class PreviewDiagnosticNotice:
+    title: str = ""
+    detail: str = ""
+
+
+@dataclass(frozen=True)
 class PreviewPayloadResult:
     ok: bool
     title: str
@@ -158,6 +165,7 @@ class PreviewPayloadResult:
     preview_kind: str = "glue_points"
     dry_run: bool = False
     preview_warning: str = ""
+    preview_diagnostic_notice: PreviewDiagnosticNotice | None = None
     motion_preview_warning: str = ""
 
 
@@ -267,6 +275,10 @@ class PreviewSnapshotWorker(QThread):
                             payload.setdefault(
                                 "preview_failure_reason",
                                 str(plan_payload.get("preview_failure_reason", "")),
+                            )
+                            payload.setdefault(
+                                "preview_diagnostic_code",
+                                str(plan_payload.get("preview_diagnostic_code", "")),
                             )
                             performance_profile = plan_payload.get("performance_profile")
                             if isinstance(performance_profile, dict):
@@ -432,6 +444,7 @@ class PreviewSessionOwner:
         self._state.preview_validation_classification = ""
         self._state.preview_exception_reason = ""
         self._state.preview_failure_reason = ""
+        self._state.preview_diagnostic_code = ""
         self._clear_local_playback_state()
 
     def _clear_local_playback_state(self) -> None:
@@ -641,12 +654,28 @@ class PreviewSessionOwner:
             f"预估: {snapshot.estimated_time_s:.1f}s\n\n"
             "确认以上胶点预览后继续执行？"
         )
-        if self._state.preview_validation_classification == "pass_with_exception" and self._state.preview_exception_reason:
+        diagnostic_notice = self.current_preview_diagnostic_notice()
+        if diagnostic_notice is not None:
             summary = (
                 f"{summary}\n\n"
-                f"非阻断提示: {self._state.preview_exception_reason}"
+                f"{diagnostic_notice.title}: {diagnostic_notice.detail}"
             )
         return summary
+
+    def current_preview_diagnostic_notice(self) -> PreviewDiagnosticNotice | None:
+        if self._state.preview_validation_classification == "fail":
+            return None
+        if self._state.preview_diagnostic_code == "process_path_fragmentation":
+            detail = (
+                "路径生成存在碎片化/断链退化，当前结果已按显式例外继续。"
+                "这通常意味着 DXF 几何连通性较差，或导入顺序导致路径被拆碎。"
+            )
+            if self._state.preview_exception_reason:
+                detail = f"{detail} {self._state.preview_exception_reason}"
+            return PreviewDiagnosticNotice("路径碎片化提示", detail)
+        if self._state.preview_validation_classification == "pass_with_exception" and self._state.preview_exception_reason:
+            return PreviewDiagnosticNotice("非阻断提示", self._state.preview_exception_reason)
+        return None
 
     def validate_before_confirmation(self) -> PreviewConfirmResult:
         snapshot = self.gate.snapshot
@@ -756,6 +785,9 @@ class PreviewSessionOwner:
         preview_failure_reason = self.normalize_preview_gate_message(
             str(payload.get("preview_failure_reason", self._state.preview_failure_reason or "")).strip()
         )
+        preview_diagnostic_code = str(
+            payload.get("preview_diagnostic_code", self._state.preview_diagnostic_code or "")
+        ).strip().lower()
         motion_preview_source = str(motion_preview_block.get("source", "")).strip().lower()
         motion_preview_kind = str(motion_preview_block.get("kind", "")).strip().lower()
         motion_preview_source_point_count = int(motion_preview_block.get("source_point_count", 0) or 0)
@@ -768,19 +800,6 @@ class PreviewSessionOwner:
         )
         motion_preview_sampling_strategy = str(motion_preview_block.get("sampling_strategy", "")).strip().lower()
         motion_preview_warning = ""
-        current_plan_id = str(payload.get("plan_id", snapshot_id)).strip() or snapshot_id
-        self._state.current_plan_id = current_plan_id
-        self._state.current_plan_fingerprint = snapshot_hash
-        self._state.preview_plan_dry_run = preview_dry_run
-        self._state.preview_source = preview_source
-        self._state.preview_kind = preview_kind
-        self._state.preview_validation_classification = preview_validation_classification
-        self._state.preview_exception_reason = preview_exception_reason
-        self._state.preview_failure_reason = preview_failure_reason
-        self._state.dxf_segment_count = int(payload.get("segment_count", 0) or 0)
-        self._state.dxf_total_length_mm = float(payload.get("total_length_mm", 0.0) or 0.0)
-        estimated_time = float(payload.get("estimated_time_s", 0.0) or 0.0)
-        self._state.dxf_estimated_time_text = f"{estimated_time:.1f}s" if estimated_time > 0 else "-"
         if motion_preview and not motion_preview_kind:
             motion_preview_kind = "polyline"
         if motion_preview and motion_preview_point_count <= 0:
@@ -795,6 +814,27 @@ class PreviewSessionOwner:
             is_sampled=motion_preview_is_sampled,
             sampling_strategy=motion_preview_sampling_strategy,
         )
+        current_plan_id = str(payload.get("plan_id", snapshot_id)).strip() or snapshot_id
+        self._state.current_plan_id = current_plan_id
+        self._state.current_plan_fingerprint = snapshot_hash
+        self._state.preview_plan_dry_run = preview_dry_run
+        self._state.preview_source = preview_source
+        self._state.preview_kind = preview_kind
+        self._state.glue_point_count = len(glue_points)
+        self._state.motion_preview_source = motion_preview_meta.source
+        self._state.motion_preview_kind = motion_preview_meta.kind
+        self._state.motion_preview_point_count = motion_preview_meta.point_count
+        self._state.motion_preview_source_point_count = motion_preview_meta.source_point_count
+        self._state.motion_preview_sampling_strategy = motion_preview_meta.sampling_strategy
+        self._state.motion_preview_is_sampled = motion_preview_meta.is_sampled
+        self._state.preview_validation_classification = preview_validation_classification
+        self._state.preview_exception_reason = preview_exception_reason
+        self._state.preview_failure_reason = preview_failure_reason
+        self._state.preview_diagnostic_code = preview_diagnostic_code
+        self._state.dxf_segment_count = int(payload.get("segment_count", 0) or 0)
+        self._state.dxf_total_length_mm = float(payload.get("total_length_mm", 0.0) or 0.0)
+        estimated_time = float(payload.get("estimated_time_s", 0.0) or 0.0)
+        self._state.dxf_estimated_time_text = f"{estimated_time:.1f}s" if estimated_time > 0 else "-"
 
         legacy_runtime_snapshot = preview_source == "runtime_snapshot"
         legacy_polyline_present = "trajectory_polyline" in payload
@@ -897,6 +937,7 @@ class PreviewSessionOwner:
             glue_point_count=snapshot.point_count,
             execution_source_point_count=motion_preview_meta.source_point_count,
         )
+        preview_diagnostic_notice = self.current_preview_diagnostic_notice()
         self.gate.preview_ready(snapshot)
         if backend_preview_state == "confirmed":
             if not self.gate.confirm_current_snapshot():
@@ -944,6 +985,7 @@ class PreviewSessionOwner:
             preview_kind=preview_kind,
             dry_run=preview_dry_run,
             preview_warning=preview_warning,
+            preview_diagnostic_notice=preview_diagnostic_notice,
             motion_preview_warning=motion_preview_warning,
         )
 
@@ -1061,6 +1103,7 @@ class PreviewSessionOwner:
         )
         payload.setdefault("preview_exception_reason", self._state.preview_exception_reason)
         payload.setdefault("preview_failure_reason", self._state.preview_failure_reason)
+        payload.setdefault("preview_diagnostic_code", self._state.preview_diagnostic_code)
         return payload
 
     def handle_invalid_resync_payload(self) -> PreviewPayloadResult:

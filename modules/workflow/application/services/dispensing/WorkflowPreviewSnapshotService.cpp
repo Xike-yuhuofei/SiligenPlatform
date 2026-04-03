@@ -315,6 +315,10 @@ PreviewSnapshotResponse WorkflowPreviewSnapshotService::BuildResponse(
     response.execution_point_count = payload.point_count;
     response.total_length_mm = payload.total_length_mm;
     response.estimated_time_s = payload.estimated_time_s;
+    response.preview_validation_classification = input.validation_classification;
+    response.preview_exception_reason = input.exception_reason;
+    response.preview_failure_reason = input.failure_reason;
+    response.preview_diagnostic_code = input.diagnostic_code;
     response.generated_at = payload.generated_at;
     if (HasAuthoritativeGluePoints(input)) {
         response.glue_point_count = static_cast<std::uint32_t>(input.glue_points->size());

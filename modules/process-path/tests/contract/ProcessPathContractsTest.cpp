@@ -30,11 +30,13 @@ TEST(ProcessPathContractsTest, PathGenerationRequestDefaultsRemainOwnerNeutral) 
     const ProcessPathBuildRequest request;
 
     EXPECT_TRUE(request.primitives.empty());
+    EXPECT_TRUE(request.metadata.empty());
     EXPECT_FALSE(request.alignment.has_value());
     EXPECT_FLOAT_EQ(request.normalization.unit_scale, 1.0f);
     EXPECT_FLOAT_EQ(request.normalization.continuity_tolerance, 0.1f);
     EXPECT_FLOAT_EQ(request.process.default_flow, 1.0f);
     EXPECT_TRUE(request.process.corner_slowdown);
+    EXPECT_FALSE(request.topology_repair.enable);
     EXPECT_FLOAT_EQ(request.shaping.corner_smoothing_radius, 0.5f);
 }
 
@@ -46,6 +48,8 @@ TEST(ProcessPathContractsTest, PathGenerationResultDefaultsExposeEmptyProcessPat
     EXPECT_EQ(result.normalized.report.discontinuity_count, 0);
     EXPECT_TRUE(result.process_path.segments.empty());
     EXPECT_TRUE(result.shaped_path.segments.empty());
+    EXPECT_FALSE(result.topology_diagnostics.repair_applied);
+    EXPECT_EQ(result.topology_diagnostics.dispense_fragment_count, 0);
 }
 
 TEST(ProcessPathContractsTest, ProcessPathContractUsesCanonicalProcessSegmentContainer) {

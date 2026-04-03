@@ -1278,6 +1278,11 @@ void BindAuthorityLayoutToExecutionTrajectory(
     artifacts.authority_trigger_layout.binding_ready = false;
 
     if (execution_trajectory == nullptr || artifacts.authority_trigger_layout.trigger_points.empty()) {
+        if (execution_trajectory == nullptr &&
+            !artifacts.authority_trigger_layout.trigger_points.empty() &&
+            artifacts.failure_reason.empty()) {
+            artifacts.failure_reason = "execution trajectory unavailable for preview binding";
+        }
         std::ostringstream oss;
         oss << "preview_binding_stage=skipped"
             << " layout_id=" << artifacts.authority_trigger_layout.layout_id

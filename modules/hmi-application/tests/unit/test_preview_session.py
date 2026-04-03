@@ -65,6 +65,7 @@ def _valid_payload(
         "estimated_time_s": 1.0,
         "generated_at": "2026-03-28T00:00:00Z",
         "dry_run": dry_run,
+        "preview_diagnostic_code": "",
     }
     if include_motion_preview:
         payload["motion_preview"] = {
@@ -260,6 +261,37 @@ class PreviewSessionOwnerTest(unittest.TestCase):
         )
         self.assertEqual(result.motion_preview_warning, "")
         self.assertIn("轨迹: 执行轨迹快照(3/12)", self.owner.info_label_text())
+
+    def test_process_snapshot_payload_stores_preview_diagnostic_code(self) -> None:
+        payload = _valid_payload()
+        payload["preview_validation_classification"] = "pass_with_exception"
+        payload["preview_exception_reason"] = "span spacing outside configured window but accepted as explicit exception"
+        payload["preview_diagnostic_code"] = "process_path_fragmentation"
+
+        result = self.owner.process_snapshot_payload(payload, current_dry_run=False)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(self.owner.state.preview_diagnostic_code, "process_path_fragmentation")
+        notice = result.preview_diagnostic_notice
+        assert notice is not None
+        self.assertEqual(notice.title, "路径碎片化提示")
+        self.assertIn("span spacing outside configured window", notice.detail)
+        self.assertIn("路径碎片化提示", self.owner.build_confirmation_summary())
+        self.assertIn("span spacing outside configured window", self.owner.build_confirmation_summary())
+
+    def test_current_preview_diagnostic_notice_prefers_fragmentation_notice_over_generic_exception(self) -> None:
+        payload = _valid_payload()
+        payload["preview_validation_classification"] = "pass_with_exception"
+        payload["preview_exception_reason"] = "短闭环按例外保留，仍允许确认与启动。"
+        payload["preview_diagnostic_code"] = "process_path_fragmentation"
+
+        result = self.owner.process_snapshot_payload(payload, current_dry_run=False)
+
+        self.assertTrue(result.ok)
+        notice = self.owner.current_preview_diagnostic_notice()
+        assert notice is not None
+        self.assertEqual(notice.title, "路径碎片化提示")
+        self.assertIn("短闭环按例外保留", notice.detail)
 
     def test_process_snapshot_payload_builds_local_playback_model_from_motion_preview(self) -> None:
         result = self.owner.process_snapshot_payload(_valid_payload(), current_dry_run=False)

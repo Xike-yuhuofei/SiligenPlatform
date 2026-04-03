@@ -711,6 +711,10 @@ class MainWindowTabsTest(unittest.TestCase):
             glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 3.0)],
             preview_kind="glue_points",
             preview_warning="",
+            preview_diagnostic_notice=main_window_module.PreviewDiagnosticNotice(
+                title="非阻断提示",
+                detail="短闭环按例外保留，仍允许确认与启动。",
+            ),
             preview_validation_classification="pass_with_exception",
             preview_exception_reason="短闭环按例外保留，仍允许确认与启动。",
             preview_failure_reason="",
@@ -718,6 +722,38 @@ class MainWindowTabsTest(unittest.TestCase):
 
         self.assertIn("非阻断提示", html)
         self.assertIn("短闭环按例外保留", html)
+
+    def test_render_runtime_preview_html_prefers_fragmentation_notice_over_generic_exception_banner(self) -> None:
+        snapshot = main_window_module.PreviewSnapshotMeta(
+            snapshot_id="snapshot-1",
+            snapshot_hash="hash-1",
+            segment_count=2,
+            point_count=3,
+            total_length_mm=12.0,
+            estimated_time_s=1.5,
+            generated_at="2026-03-26T00:00:00Z",
+        )
+
+        html = self.window._render_runtime_preview_html(
+            snapshot=snapshot,
+            speed_mm_s=12.0,
+            dry_run=False,
+            preview_source="planned_glue_snapshot",
+            glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 3.0)],
+            execution_polyline=[(0.0, 0.0), (12.0, 3.0)],
+            preview_kind="glue_points",
+            preview_diagnostic_notice=main_window_module.PreviewDiagnosticNotice(
+                title="路径碎片化提示",
+                detail="路径生成存在碎片化/断链退化，当前结果已按显式例外继续。 span spacing outside configured window but accepted as explicit exception",
+            ),
+            preview_validation_classification="pass_with_exception",
+            preview_exception_reason="span spacing outside configured window but accepted as explicit exception",
+            preview_diagnostic_code="process_path_fragmentation",
+        )
+
+        self.assertIn("路径碎片化提示", html)
+        self.assertIn("span spacing outside configured window", html)
+        self.assertNotIn("<strong>非阻断提示。</strong>", html)
 
     def test_render_runtime_preview_html_contains_dynamic_playback_overlay(self) -> None:
         snapshot = main_window_module.PreviewSnapshotMeta(
@@ -822,6 +858,19 @@ class MainWindowTabsTest(unittest.TestCase):
 
         self.assertIn("非阻断提示", summary)
         self.assertIn("短闭环按例外保留", summary)
+
+    def test_confirmation_summary_prefers_fragmentation_notice_over_generic_exception(self) -> None:
+        self._arm_confirmed_preview(
+            preview_validation_classification="pass_with_exception",
+            preview_exception_reason="span spacing outside configured window but accepted as explicit exception",
+        )
+        self.window._preview_session.state.preview_diagnostic_code = "process_path_fragmentation"
+
+        summary = self.window._preview_session.build_confirmation_summary()
+
+        self.assertIn("路径碎片化提示", summary)
+        self.assertIn("span spacing outside configured window", summary)
+        self.assertNotIn("非阻断提示: span spacing outside configured window", summary)
 
     def test_check_production_preconditions_rejects_mock_preview_source(self) -> None:
         status = self._make_status(x_homed=True, y_homed=True)
@@ -1010,6 +1059,7 @@ class MainWindowTabsTest(unittest.TestCase):
                 "estimated_time_s": 0.5,
                 "generated_at": "2026-03-29T00:00:00Z",
                 "dry_run": False,
+                "preview_diagnostic_code": "",
             },
             "",
         )
@@ -1035,6 +1085,56 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertIn("execution_trajectory_geometry_preserving_clamp", self.window._preview_debug_view.toPlainText())
         self.assertIn("hash-300s", self.window._preview_debug_view.toPlainText())
         self.assertIn("轨迹: 执行轨迹快照(2/8)", self.window._dxf_info_label.text())
+
+    def test_preview_snapshot_renders_process_path_fragmentation_banner(self) -> None:
+        self.window._dxf_view = _FakePreviewView()
+
+        self.window._on_preview_snapshot_completed(
+            True,
+            {
+                "snapshot_id": "snapshot-fragmented",
+                "snapshot_hash": "hash-fragmented",
+                "plan_id": "plan-fragmented",
+                "preview_source": "planned_glue_snapshot",
+                "preview_kind": "glue_points",
+                "preview_validation_classification": "pass_with_exception",
+                "preview_exception_reason": "span spacing outside configured window but accepted as explicit exception",
+                "preview_diagnostic_code": "process_path_fragmentation",
+                "segment_count": 2,
+                "glue_point_count": 2,
+                "glue_points": [
+                    {"x": 0.0, "y": 0.0},
+                    {"x": 10.0, "y": 0.0},
+                ],
+                "execution_polyline": [
+                    {"x": 0.0, "y": 0.0},
+                    {"x": 10.0, "y": 0.0},
+                ],
+                "motion_preview": {
+                    "source": "execution_trajectory_snapshot",
+                    "kind": "polyline",
+                    "source_point_count": 8,
+                    "point_count": 2,
+                    "is_sampled": True,
+                    "sampling_strategy": "fixed_spacing_corner_preserving",
+                    "polyline": [
+                        {"x": 0.0, "y": 0.0},
+                        {"x": 10.0, "y": 0.0},
+                    ],
+                },
+                "total_length_mm": 10.0,
+                "estimated_time_s": 0.5,
+                "generated_at": "2026-03-29T00:00:00Z",
+                "dry_run": False,
+            },
+            "",
+        )
+
+        self.assertEqual(self.window._preview_session.state.preview_diagnostic_code, "process_path_fragmentation")
+        self.assertIn("路径碎片化提示", self.window._dxf_view.html)
+        self.assertIn("span spacing outside configured window", self.window._dxf_view.html)
+        self.assertNotIn("<strong>非阻断提示。</strong>", self.window._dxf_view.html)
+        self.assertIn("process_path_fragmentation", self.window._preview_debug_view.toPlainText())
 
     def test_preview_snapshot_rejects_non_authoritative_preview_source(self) -> None:
         messages = []
