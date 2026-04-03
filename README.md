@@ -39,11 +39,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\run-loc
 
 统一格式：`<type>/<scope>/<ticket>-<short-desc>`
 
-- `type`：见项目级 skill `.agents/skills/new-task/SKILL.md` 中的批准白名单
-- `scope`：使用稳定的小写模块/域名；推荐列表见项目级 skill `.agents/skills/new-task/SKILL.md`
+- `type`：见项目级 skill `.agents/skills/git-create/SKILL.md` 中的批准白名单
+- `scope`：使用稳定的小写模块/域名；推荐列表见项目级 skill `.agents/skills/git-create/SKILL.md`
 - `ticket`：优先使用任务系统编号，如 `MC-142`、`BUG-311`、`ARCH-057`、`SPEC-021`
 - `short-desc`：英文小写 kebab-case
-- 详细规则：项目级 skill `.agents/skills/new-task/SKILL.md`
+- 详细规则：项目级 skill `.agents/skills/git-create/SKILL.md`
 
 ## Git 收口规则
 

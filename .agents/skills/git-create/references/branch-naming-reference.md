@@ -1,6 +1,6 @@
 # Branch Naming Reference
 
-Use this reference as the branch naming baseline when the current repository does not provide a more specific local rule. In this repository, the project-specific authority is `.agents/skills/new-task/SKILL.md`.
+Use this reference as the branch naming baseline when the current repository does not provide a more specific local rule. In this repository, the project-specific authority is `.agents/skills/git-create/SKILL.md`.
 
 ## Canonical Format
 
