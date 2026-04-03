@@ -60,7 +60,12 @@ from client import (
     load_supervisor_policy_from_env,
     normalize_launch_mode,
 )
-from hmi_application.preview_session import MotionPreviewMeta, PreviewSessionOwner, PreviewSnapshotWorker
+from hmi_application.preview_session import (
+    MotionPreviewMeta,
+    PreviewDiagnosticNotice,
+    PreviewSessionOwner,
+    PreviewSnapshotWorker,
+)
 from client.auth import AuthManager
 from .dxf_default_paths import build_default_dxf_candidates
 from .offline_preview_builder import build_offline_preview_payload
@@ -2583,10 +2588,12 @@ class MainWindow(QMainWindow):
         motion_preview: list | None = None,
         motion_preview_meta: MotionPreviewMeta | None = None,
         preview_warning: str = "",
+        preview_diagnostic_notice: PreviewDiagnosticNotice | None = None,
         motion_preview_warning: str = "",
         preview_validation_classification: str = "",
         preview_exception_reason: str = "",
         preview_failure_reason: str = "",
+        preview_diagnostic_code: str = "",
     ) -> str:
         normalized_source = str(preview_source or "").strip().lower()
         effective_motion_preview = list(motion_preview or [])
@@ -2618,11 +2625,12 @@ class MainWindow(QMainWindow):
                 "</div>"
             )
         validation_banner = ""
-        if preview_validation_classification == "pass_with_exception" and preview_exception_reason:
+        if preview_diagnostic_notice is not None:
             validation_banner = (
                 "<div style='margin-bottom:14px;padding:12px 14px;border:1px solid #854d0e;"
                 "background:#2d2110;color:#fde68a;'>"
-                f"<strong>非阻断提示。</strong> {html.escape(preview_exception_reason)}"
+                f"<strong>{html.escape(preview_diagnostic_notice.title)}。</strong> "
+                f"{html.escape(preview_diagnostic_notice.detail)}"
                 "</div>"
             )
         elif preview_validation_classification == "fail":
@@ -2764,6 +2772,7 @@ class MainWindow(QMainWindow):
         motion_preview: list | None = None,
         motion_preview_meta: MotionPreviewMeta | None = None,
         preview_validation_classification: str = "",
+        preview_diagnostic_code: str = "",
     ) -> str:
         mode_text = "空跑" if dry_run else "生产"
         generated_at = html.escape(snapshot.generated_at or "-")
@@ -2810,6 +2819,7 @@ class MainWindow(QMainWindow):
             f"<tr><td style='padding:4px 16px 4px 0;'>运动轨迹来源</td><td>{motion_preview_source_text}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>运动轨迹语义</td><td>{motion_preview_kind}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>校验分类</td><td>{html.escape(preview_validation_classification or 'pass')}</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>诊断码</td><td>{html.escape(preview_diagnostic_code or '-')}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>模式</td><td>{mode_text}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>速度</td><td>{speed_mm_s:.3f} mm/s</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>段数</td><td>{snapshot.segment_count}</td></tr>"
@@ -2887,10 +2897,12 @@ class MainWindow(QMainWindow):
             motion_preview_meta=result.motion_preview_meta,
             preview_kind=result.preview_kind,
             preview_warning=result.preview_warning,
+            preview_diagnostic_notice=result.preview_diagnostic_notice,
             motion_preview_warning=result.motion_preview_warning,
             preview_validation_classification=self._preview_session.state.preview_validation_classification,
             preview_exception_reason=self._preview_session.state.preview_exception_reason,
             preview_failure_reason=self._preview_session.state.preview_failure_reason,
+            preview_diagnostic_code=self._preview_session.state.preview_diagnostic_code,
         )
         debug_html = self._render_preview_debug_html(
             snapshot=result.snapshot,
@@ -2902,6 +2914,7 @@ class MainWindow(QMainWindow):
             motion_preview_meta=result.motion_preview_meta,
             preview_kind=result.preview_kind,
             preview_validation_classification=self._preview_session.state.preview_validation_classification,
+            preview_diagnostic_code=self._preview_session.state.preview_diagnostic_code,
         )
         self._preview_dom_ready = False
         self._dxf_view.setHtml(html_content)

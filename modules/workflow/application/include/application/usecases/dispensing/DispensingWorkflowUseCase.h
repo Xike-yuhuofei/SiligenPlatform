@@ -95,6 +95,7 @@ struct PreparePlanResponse {
     std::string preview_validation_classification;
     std::string preview_exception_reason;
     std::string preview_failure_reason;
+    std::string preview_diagnostic_code;
     std::string generated_at;
     PerformanceProfile performance_profile;
 };
@@ -132,6 +133,10 @@ struct PreviewSnapshotResponse {
     std::vector<PreviewSnapshotPoint> motion_preview_polyline;
     float32 total_length_mm = 0.0f;
     float32 estimated_time_s = 0.0f;
+    std::string preview_validation_classification;
+    std::string preview_exception_reason;
+    std::string preview_failure_reason;
+    std::string preview_diagnostic_code;
     std::string generated_at;
 };
 
@@ -283,6 +288,7 @@ class DispensingWorkflowUseCase {
         std::string preview_validation_classification;
         std::string preview_exception_reason;
         std::string preview_failure_reason;
+        std::string preview_diagnostic_code;
         PlanPreviewState preview_state = PlanPreviewState::PREPARED;
         std::string preview_snapshot_id;
         std::string preview_snapshot_hash;

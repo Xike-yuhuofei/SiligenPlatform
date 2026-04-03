@@ -75,6 +75,7 @@ struct PreparedAuthorityPreview {
     std::string preview_validation_classification;
     std::string preview_exception_reason;
     std::string preview_failure_reason;
+    std::string preview_diagnostic_code;
     Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
     std::vector<Siligen::Application::Services::Dispensing::AuthorityTriggerPoint> authority_trigger_points;
     std::vector<Siligen::Application::Services::Dispensing::SpacingValidationGroup> spacing_validation_groups;
@@ -215,6 +216,7 @@ struct PlanningResponse {
     std::string preview_validation_classification;
     std::string preview_exception_reason;
     std::string preview_failure_reason;
+    std::string preview_diagnostic_code;
     Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
     std::vector<Siligen::Application::Services::Dispensing::AuthorityTriggerPoint> authority_trigger_points;
     std::vector<Siligen::Application::Services::Dispensing::SpacingValidationGroup> spacing_validation_groups;

@@ -647,6 +647,7 @@ DispensingWorkflowUseCase::PlanRecord BuildPreviewPlanRecord(
     plan_record.preview_authority_shared_with_execution = true;
     plan_record.preview_binding_ready = true;
     plan_record.preview_spacing_valid = true;
+    plan_record.preview_diagnostic_code.clear();
     plan_record.preview_state = DispensingWorkflowUseCase::PlanPreviewState::SNAPSHOT_READY;
     plan_record.preview_snapshot_hash = plan_record.response.plan_fingerprint;
     plan_record.latest = true;
@@ -1307,6 +1308,30 @@ TEST(DispensingWorkflowUseCaseTest, ConfirmPreviewAllowsPassWithExceptionMetadat
 
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
     EXPECT_EQ(result.Value().preview_state, "confirmed");
+}
+
+TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotCarriesPreviewDiagnosticCode) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+
+    auto plan_record = BuildPreviewPlanRecord(
+        "plan-fragmented",
+        {Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)});
+    plan_record.preview_validation_classification = "pass_with_exception";
+    plan_record.preview_exception_reason = "span spacing outside configured window but accepted as explicit exception";
+    plan_record.preview_diagnostic_code = "process_path_fragmentation";
+    use_case.plans_[plan_record.response.plan_id] = plan_record;
+
+    Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest request;
+    request.plan_id = "plan-fragmented";
+    const auto result = use_case.GetPreviewSnapshot(request);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    EXPECT_EQ(result.Value().preview_diagnostic_code, "process_path_fragmentation");
+    EXPECT_EQ(result.Value().preview_validation_classification, "pass_with_exception");
 }
 
 TEST(DispensingWorkflowUseCaseTest, StartJobRejectsFailPreviewUsingFailureReason) {

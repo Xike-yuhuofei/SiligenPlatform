@@ -991,6 +991,14 @@ int CLICommandHandlers::HandleDXFPreviewSnapshot(const CommandLineConfig& config
 
     auto snapshot_result = workflow_usecase->GetPreviewSnapshot(snapshot_request);
     if (snapshot_result.IsError()) {
+        const auto& prepare = prepare_result.Value();
+        std::cout << "prepare.preview_validation_classification: "
+                  << prepare.preview_validation_classification << std::endl;
+        std::cout << "prepare.preview_exception_reason: " << prepare.preview_exception_reason << std::endl;
+        std::cout << "prepare.preview_failure_reason: " << prepare.preview_failure_reason << std::endl;
+        std::cout << "prepare.preview_diagnostic_code: " << prepare.preview_diagnostic_code << std::endl;
+        std::cout << "prepare.performance.process_path_ms: " << prepare.performance_profile.process_path_ms
+                  << std::endl;
         PrintError(snapshot_result.GetError());
         return 1;
     }
@@ -1052,6 +1060,7 @@ int CLICommandHandlers::HandleDXFPreviewSnapshot(const CommandLineConfig& config
         {"preview_validation_classification", prepare.preview_validation_classification},
         {"preview_exception_reason", prepare.preview_exception_reason},
         {"preview_failure_reason", prepare.preview_failure_reason},
+        {"preview_diagnostic_code", prepare.preview_diagnostic_code},
         {"performance_profile", performance_profile},
     };
 

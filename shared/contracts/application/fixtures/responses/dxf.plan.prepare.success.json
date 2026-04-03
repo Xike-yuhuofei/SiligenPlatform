@@ -10,6 +10,10 @@
     "point_count": 256,
     "total_length_mm": 512.5,
     "estimated_time_s": 41.0,
+    "preview_validation_classification": "pass_with_exception",
+    "preview_exception_reason": "span spacing outside configured window but accepted as explicit exception",
+    "preview_failure_reason": "",
+    "preview_diagnostic_code": "process_path_fragmentation",
     "generated_at": "2026-03-21T10:00:00Z"
   }
 }
