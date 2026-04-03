@@ -753,7 +753,12 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertIn("id='preview-head'", html)
         self.assertIn("window.updatePreviewPlayback", html)
         self.assertIn(".preview-canvas svg{width:100%;height:100%;display:block;}", html)
-        self.assertIn("轨迹层显示点胶头运动路径，可能包含非点胶移动；绿色胶点仅表示图纸/工艺几何。", html)
+        self.assertNotIn("胶点几何", html)
+        self.assertNotIn("点胶头运动轨迹", html)
+        self.assertNotIn("当前播放进度", html)
+        self.assertNotIn("轨迹层显示点胶头运动路径，可能包含非点胶移动；绿色胶点仅表示图纸/工艺几何。", html)
+        self.assertNotIn("id='preview-base-line'", html)
+        self.assertNotIn("id='preview-base-shadow'", html)
         self.assertEqual(self.window._preview_tabs.tabText(0), "轨迹预览")
         self.assertEqual(self.window._preview_tabs.tabText(1), "调试信息")
 
@@ -785,11 +790,16 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertIn("运动轨迹预览点</td><td>4</td>", debug_html)
         self.assertIn("快照哈希</td><td>hash-debug</td>", debug_html)
 
-    def test_preview_tabs_stay_above_playback_controls(self) -> None:
+    def test_preview_layout_structure(self) -> None:
         preview_layout = self.window._preview_tabs.parentWidget().layout()
 
-        self.assertIs(preview_layout.itemAt(0).widget(), self.window._preview_tabs)
-        self.assertIs(preview_layout.itemAt(1).layout().itemAt(0).widget(), self.window._preview_play_btn)
+        # Tabs are now below the header
+        self.assertIs(preview_layout.itemAt(1).widget(), self.window._preview_tabs)
+        
+        # Header layout -> playback controls layout -> play button
+        header_layout = preview_layout.itemAt(0).layout()
+        playback_layout = header_layout.itemAt(2).layout()
+        self.assertIs(playback_layout.itemAt(0).widget(), self.window._preview_play_btn)
 
     def test_preview_playback_controls_follow_local_playback_state(self) -> None:
         self.window._dxf_loaded = True
@@ -1030,8 +1040,10 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertIn("预览调试参数", self.window._preview_debug_view.toHtml())
         self.assertIn("快照哈希", self.window._preview_debug_view.toPlainText())
         self.assertNotIn(">胶点<", self.window._dxf_view.html)
-        self.assertIn("stroke='#8fd3ff'", self.window._dxf_view.html)
-        self.assertIn("stroke-dasharray='7 4'", self.window._dxf_view.html)
+        self.assertNotIn("stroke='#8fd3ff'", self.window._dxf_view.html)
+        self.assertNotIn("stroke-dasharray='7 4'", self.window._dxf_view.html)
+        self.assertIn("id='preview-played-line'", self.window._dxf_view.html)
+        self.assertIn("id='preview-head'", self.window._dxf_view.html)
         self.assertIn("运动轨迹来源", self.window._preview_debug_view.toPlainText())
         self.assertIn("执行轨迹快照", self.window._preview_debug_view.toPlainText())
         self.assertIn("fixed_spacing_corner_preserving", self.window._preview_debug_view.toPlainText())
