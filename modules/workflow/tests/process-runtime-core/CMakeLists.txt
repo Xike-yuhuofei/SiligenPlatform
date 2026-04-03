@@ -226,7 +226,6 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/unit/motion/DeterministicPathExecutionUse
         siligen_utils
     )
     target_compile_features(process_runtime_core_deterministic_path_execution_test PRIVATE cxx_std_17)
-    process_runtime_core_stage_runtime_dependency(process_runtime_core_deterministic_path_execution_test ruckig)
     process_runtime_core_add_test_with_runtime_environment(
         process_runtime_core_deterministic_path_execution_test
         process_runtime_core_deterministic_path_execution_test
@@ -246,7 +245,6 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/unit/motion/MotionRuntimeAssemblyFactoryT
         siligen_utils
     )
     target_compile_features(process_runtime_core_motion_runtime_assembly_test PRIVATE cxx_std_17)
-    process_runtime_core_stage_runtime_dependency(process_runtime_core_motion_runtime_assembly_test ruckig)
     process_runtime_core_add_test_with_runtime_environment(
         process_runtime_core_motion_runtime_assembly_test
         process_runtime_core_motion_runtime_assembly_test
