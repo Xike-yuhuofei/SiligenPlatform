@@ -111,7 +111,7 @@ def _admission_payload(
     safety_preflight = _safety_preflight_payload()
     return {
         "schema_version": "hil-admission.v1",
-        "required_layers": ["L0-structure-gate", "L2-offline-integration", "L3-simulated-e2e"],
+        "required_layers": ["L0", "L1", "L2", "L3", "L4"],
         "required_cases": list(REQUIRED_OFFLINE_CASES),
         "offline_prerequisites_source": str(offline_report_path.resolve()),
         "offline_prerequisites_passed": True,
@@ -193,18 +193,18 @@ def _write_bundle(report_dir: Path, admission: dict[str, Any], *, case_status: s
                 name="hil-closed-loop",
                 suite_ref="e2e",
                 owner_scope="runtime-execution",
-                primary_layer="L5-limited-hil",
+                primary_layer="L5",
                 producer_lane_ref="limited-hil",
                 status=case_status,
                 evidence_profile="hil-report",
                 stability_state="stable",
                 size_label="large",
-                label_refs=("suite:e2e", "size:large", "layer:L5-limited-hil"),
+                label_refs=("suite:e2e", "size:large", "layer:L5"),
                 required_assets=("sample.dxf.rect_diag",),
                 required_fixtures=("fixture.hil-closed-loop", "fixture.validation-evidence-bundle"),
                 failure_classification=default_failure_classification(status=case_status),
                 trace_fields=trace_fields(
-                    stage_id="L5-limited-hil",
+                    stage_id="L5",
                     artifact_id="hil-closed-loop",
                     module_id="runtime-execution",
                     workflow_state="executed",
@@ -314,10 +314,10 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 def _run_positive_case(report_dir: Path) -> dict[str, Any]:
     _prepare_positive_case(report_dir)
-    verify = _run_python(str(VERIFY_SCRIPT), "--report-dir", str(report_dir), "--require-hil-case-matrix")
+    verify = _run_python(VERIFY_SCRIPT, "--report-dir", str(report_dir), "--require-hil-case-matrix")
     assert verify.returncode == 0, verify.stdout + verify.stderr
 
-    render = _run_python(str(RENDER_SCRIPT), "--report-dir", str(report_dir), "--profile", "Local", "--executor", "synthetic-smoke")
+    render = _run_python(RENDER_SCRIPT, "--report-dir", str(report_dir), "--profile", "Local", "--executor", "synthetic-smoke")
     assert render.returncode == 0, render.stdout + render.stderr
 
     gate_summary = _load_json(report_dir / "hil-controlled-gate-summary.json")
@@ -336,7 +336,7 @@ def _run_positive_case(report_dir: Path) -> dict[str, Any]:
 
 def _run_missing_offline_case(report_dir: Path) -> dict[str, Any]:
     _prepare_missing_offline_case(report_dir)
-    verify = _run_python(str(VERIFY_SCRIPT), "--report-dir", str(report_dir))
+    verify = _run_python(VERIFY_SCRIPT, "--report-dir", str(report_dir))
     assert verify.returncode == 10, verify.stdout + verify.stderr
 
     gate_summary = _load_json(report_dir / "hil-controlled-gate-summary.json")
@@ -356,7 +356,7 @@ def _run_missing_offline_case(report_dir: Path) -> dict[str, Any]:
 
 def _run_missing_override_reason_case(report_dir: Path) -> dict[str, Any]:
     _prepare_missing_override_reason_case(report_dir)
-    verify = _run_python(str(VERIFY_SCRIPT), "--report-dir", str(report_dir))
+    verify = _run_python(VERIFY_SCRIPT, "--report-dir", str(report_dir))
     assert verify.returncode == 1, verify.stdout + verify.stderr
 
     gate_summary = _load_json(report_dir / "hil-controlled-gate-summary.json")

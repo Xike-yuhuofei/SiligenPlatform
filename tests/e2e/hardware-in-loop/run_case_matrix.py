@@ -20,7 +20,7 @@ from run_hil_closed_loop import (
     TcpJsonClient,
     _evaluate_offline_admission,
     _evaluate_safety_preflight,
-    _load_connection_params,
+    _run_connect_step,
     _resolve_default_exe,
     _run_tcp_step,
     _status_snapshot_from_response,
@@ -293,7 +293,6 @@ def _run_closed_loop_case(
 def _run_round(args: argparse.Namespace, round_index: int, selected_modes: tuple[str, ...]) -> MatrixRoundReport:
     round_report = MatrixRoundReport(round_index=round_index, cases_executed=list(selected_modes))
     gateway_exe = Path(args.gateway_exe)
-    connect_params = _load_connection_params(args.config_path)
     process = subprocess.Popen(
         [str(gateway_exe), "--config", str(args.config_path), "--port", str(args.port)],
         cwd=str(ROOT),
@@ -336,11 +335,10 @@ def _run_round(args: argparse.Namespace, round_index: int, selected_modes: tuple
             )
         )
 
-        connect_step, _ = _run_tcp_step(
+        connect_step, _ = _run_connect_step(
             name="tcp-connect",
             client=client,
-            method="connect",
-            params=connect_params,
+            config_path=args.config_path,
             timeout_seconds=15.0,
         )
         round_report.steps.append(asdict(connect_step))
@@ -584,7 +582,7 @@ def _write_evidence_bundle(report_dir: Path, report: dict[str, Any], summary_jso
         machine_file=str(summary_json_path.resolve()),
         verdict=overall_status,
         linked_asset_refs=("sample.dxf.rect_diag",),
-        offline_prerequisites=tuple(admission.get("required_layers", ("L0-structure-gate", "L2-offline-integration", "L3-simulated-e2e"))),
+        offline_prerequisites=tuple(admission.get("required_layers", ("L0", "L1", "L2", "L3", "L4"))),
         abort_metadata={
             "failed_round": failed_round,
             "admission": admission,
@@ -601,7 +599,7 @@ def _write_evidence_bundle(report_dir: Path, report: dict[str, Any], summary_jso
                 name="hil-case-matrix",
                 suite_ref="e2e",
                 owner_scope="runtime-execution",
-                primary_layer="L5-limited-hil",
+                primary_layer="L5",
                 producer_lane_ref="limited-hil",
                 status=overall_status,
                 evidence_profile="hil-report",
@@ -612,7 +610,7 @@ def _write_evidence_bundle(report_dir: Path, report: dict[str, Any], summary_jso
                 note=str(failed_round.get("error", "")),
                 failure_classification=failure_classification,
                 trace_fields=trace_fields(
-                    stage_id="L5-limited-hil",
+                    stage_id="L5",
                     artifact_id="hil-case-matrix",
                     module_id="runtime-execution",
                     workflow_state="executed",
@@ -759,7 +757,7 @@ def main() -> int:
     admission["safety_preflight_passed"] = bool(safety_preflight.get("passed", False))
     admission["safety_preflight"] = safety_preflight
     if preflight_round.status != "passed" or not safety_preflight.get("passed", False):
-        failure_classification = safety_preflight.get("failure_classification")
+        failure_classification: dict[str, Any] = safety_preflight.get("failure_classification") or {}
         if preflight_round.status != "passed" and not _has_known_failure_steps(preflight_round):
             failure_classification = failure_classification or default_failure_classification(
                 status="failed",

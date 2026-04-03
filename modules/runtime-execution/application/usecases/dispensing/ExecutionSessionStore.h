@@ -13,6 +13,7 @@
 namespace Siligen::Application::UseCases::Dispensing {
 
 using TaskID = std::string;
+using SharedExecutionRequest = std::shared_ptr<const DispensingExecutionRequest>;
 
 enum class TaskState {
     PENDING,
@@ -47,7 +48,7 @@ struct TaskExecutionContext {
     TaskID task_id;
     std::atomic<TaskState> state{TaskState::PENDING};
     std::atomic<TaskState> committed_terminal_state{TaskState::PENDING};
-    DispensingExecutionRequest request;
+    SharedExecutionRequest request;
     DispensingExecutionResult result;
 
     std::atomic<uint32> total_segments{0};
@@ -74,7 +75,7 @@ struct JobExecutionContext {
     JobID job_id;
     std::string plan_id;
     std::string plan_fingerprint;
-    DispensingExecutionRequest execution_request;
+    SharedExecutionRequest execution_request;
     std::atomic<JobState> state{JobState::PENDING};
     std::atomic<uint32> target_count{0};
     std::atomic<uint32> completed_count{0};

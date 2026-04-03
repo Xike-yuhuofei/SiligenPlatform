@@ -5,6 +5,7 @@
 当前入口：
 
 - `run_simulated_line.py`
+- `run_simulated_line_matrix.py`
 - `run_controlled_production_test.ps1`
 - `run_controlled_production_test.py`
 - `verify_controlled_production_test.py`
@@ -40,8 +41,8 @@ scheme C 每个场景都会执行两次并比较输出 JSON，确保 repeated ru
 Phase 9 起，simulated-line fault/injector authority 固定在 `shared/testing/test-kit/src/test_kit/fault_injection.py`。
 默认 matrix id 为 `fault-matrix.simulated-line.v1`，双替身 surface 固定为：
 
-- `fake_controller`: `readiness`、`abort`
-- `fake_io`: `disconnect`
+- `fake_controller`: `readiness`、`abort`、`preflight`、`control_cycle`
+- `fake_io`: `disconnect`、`alarm`
 
 `run_simulated_line.py` 现在支持：
 
@@ -51,6 +52,9 @@ Phase 9 起，simulated-line fault/injector authority 固定在 `shared/testing/
 - `--hook-readiness ready|not-ready`
 - `--hook-abort none|before-run|after-first-pass`
 - `--hook-disconnect none|after-first-pass`
+- `--hook-preflight none|fail-after-preview-ready`
+- `--hook-alarm none|during-execution`
+- `--hook-control-cycle none|pause-resume-once|stop-reset-rerun`
 
 `run_controlled_production_test.py` 会把这些选项透传为环境变量：
 
@@ -60,6 +64,9 @@ Phase 9 起，simulated-line fault/injector authority 固定在 `shared/testing/
 - `SILIGEN_SIMULATED_LINE_READINESS`
 - `SILIGEN_SIMULATED_LINE_ABORT`
 - `SILIGEN_SIMULATED_LINE_DISCONNECT`
+- `SILIGEN_SIMULATED_LINE_PREFLIGHT`
+- `SILIGEN_SIMULATED_LINE_ALARM`
+- `SILIGEN_SIMULATED_LINE_CONTROL_CYCLE`
 
 `run_simulated_line.py` 支持通过 `--report-dir <dir>` 同步落盘：
 
@@ -69,6 +76,27 @@ Phase 9 起，simulated-line fault/injector authority 固定在 `shared/testing/
 - `validation-evidence-bundle.json`
 - `evidence-links.md`
 - `failure-details.json`（失败、阻断、已知失败、跳过或延后时）
+
+`run_simulated_line_matrix.py` 会复用 `run_simulated_line.py` 固化异常矩阵，当前覆盖：
+
+- `readiness-not-ready`
+- `abort-before-run`
+- `fault-invalid-empty-segments`
+- `fault-following-error-quantized`
+- `preview-ready-but-preflight-failed`
+- `alarm-during-execution`
+- `abort-after-first-pass`
+- `pause-resume-cycle`
+- `stop-reset-cycle`
+- `disconnect-after-first-pass`
+
+它同样会产出：
+
+- `simulated-line-matrix-summary.json`
+- `simulated-line-matrix-summary.md`
+- `case-index.json`
+- `validation-evidence-bundle.json`
+- `evidence-links.md`
 
 每条 case record 还必须带上：
 
@@ -86,5 +114,9 @@ bundle metadata 必须带上：
 - `clock_profile`
 - `double_surface`
 - `hooks`
+- `hook_preflight`
+- `hook_alarm`
+- `hook_control_cycle`
+- `lifecycle_transitions`
 
 `run_controlled_production_test.ps1` 会串行执行 root `e2e` build/test，并把 `workspace-validation.*` 与 `simulated-line-summary.*` 一起输出到统一报告目录。

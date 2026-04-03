@@ -73,3 +73,59 @@ TEST(UploadFileUseCaseTest, CleansUpArtifactsWhenPbGenerationFails) {
     EXPECT_EQ(dxf_count, 0u);
     EXPECT_EQ(pb_count, 0u);
 }
+
+TEST(UploadFileUseCaseTest, RejectsTooSmallPayloadBeforePersistingArtifacts) {
+    ScopedTempDir workspace("upload_invalid_small");
+    auto storage = std::make_shared<TestFileStoragePort>(workspace.Path() / "uploads");
+    UploadFileUseCase usecase(storage);
+
+    auto request = MakeUploadRequest();
+    const std::string invalid_payload = "short";
+    request.file_content.assign(invalid_payload.begin(), invalid_payload.end());
+    request.file_size = request.file_content.size();
+
+    auto result = usecase.Execute(request);
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::FILE_FORMAT_INVALID);
+
+    size_t dxf_count = 0;
+    size_t pb_count = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(storage->BaseDir())) {
+        if (entry.path().extension() == ".dxf") {
+            ++dxf_count;
+        }
+        if (entry.path().extension() == ".pb") {
+            ++pb_count;
+        }
+    }
+    EXPECT_EQ(dxf_count, 0u);
+    EXPECT_EQ(pb_count, 0u);
+}
+
+TEST(UploadFileUseCaseTest, RejectsNonDxfPayloadWithoutLeavingArtifacts) {
+    ScopedTempDir workspace("upload_invalid_content");
+    auto storage = std::make_shared<TestFileStoragePort>(workspace.Path() / "uploads");
+    UploadFileUseCase usecase(storage);
+
+    auto request = MakeUploadRequest();
+    const std::string invalid_payload = "this payload is definitely not a valid dxf document or binary signature";
+    request.file_content.assign(invalid_payload.begin(), invalid_payload.end());
+    request.file_size = request.file_content.size();
+
+    auto result = usecase.Execute(request);
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::FILE_FORMAT_INVALID);
+
+    size_t dxf_count = 0;
+    size_t pb_count = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(storage->BaseDir())) {
+        if (entry.path().extension() == ".dxf") {
+            ++dxf_count;
+        }
+        if (entry.path().extension() == ".pb") {
+            ++pb_count;
+        }
+    }
+    EXPECT_EQ(dxf_count, 0u);
+    EXPECT_EQ(pb_count, 0u);
+}

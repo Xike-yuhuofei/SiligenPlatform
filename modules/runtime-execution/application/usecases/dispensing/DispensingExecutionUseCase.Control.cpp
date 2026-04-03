@@ -109,7 +109,12 @@ Result<void> DispensingExecutionUseCase::Impl::ResumeJob(const JobID& job_id) {
             Error(ErrorCode::INVALID_STATE, "job already finished", "DispensingExecutionUseCase"));
     }
 
-    auto precondition_result = ValidateExecutionPreconditions(context->execution_request.dry_run);
+    if (!context->execution_request) {
+        return Result<void>::Failure(
+            Error(ErrorCode::INVALID_STATE, "job execution request is unavailable", "DispensingExecutionUseCase"));
+    }
+
+    auto precondition_result = ValidateExecutionPreconditions(context->execution_request->dry_run);
     if (precondition_result.IsError()) {
         return Result<void>::Failure(precondition_result.GetError());
     }
@@ -202,6 +207,30 @@ Result<void> DispensingExecutionUseCase::Impl::StopJob(const JobID& job_id) {
                         ";task_state=" + task_status.state,
                     "DispensingExecutionUseCase"));
         }
+
+        auto task_status_result = GetTaskStatus(active_task_id);
+        if (task_status_result.IsSuccess()) {
+            const auto& task_status = task_status_result.Value();
+            if (task_status.state == "cancelled") {
+                FinalizeJob(context, JobState::CANCELLED, task_status.error_message);
+                return Result<void>::Success();
+            }
+            if (task_status.state == "completed") {
+                FinalizeJob(context, JobState::COMPLETED, task_status.error_message);
+                return Result<void>::Success();
+            }
+            if (task_status.state == "failed") {
+                FinalizeJob(context, JobState::FAILED, task_status.error_message);
+                return Result<void>::Failure(
+                    Error(
+                        ErrorCode::HARDWARE_ERROR,
+                        "failure_stage=stop_cancel_confirm;failure_code=TASK_FAILED;message=" +
+                            task_status.error_message,
+                        "DispensingExecutionUseCase"));
+            }
+        }
+
+        FinalizeJob(context, JobState::CANCELLED, "failure_stage=cancel_confirm;failure_code=cancelled;message=执行已取消");
     } else {
         FinalizeJob(context, JobState::CANCELLED, "job cancelled");
     }

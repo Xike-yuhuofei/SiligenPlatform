@@ -17,6 +17,7 @@ namespace Siligen::Application::UseCases::Dispensing {
 using Siligen::Shared::Types::LogicalAxisId;
 
 using TaskID = std::string;
+using SharedExecutionRequest = std::shared_ptr<const DispensingExecutionRequest>;
 
 enum class TaskState {
     PENDING,
@@ -51,7 +52,7 @@ struct TaskExecutionContext {
     TaskID task_id;
     std::atomic<TaskState> state{TaskState::PENDING};
     std::atomic<TaskState> committed_terminal_state{TaskState::PENDING};
-    DispensingExecutionRequest request;
+    SharedExecutionRequest request;
     DispensingExecutionResult result;
 
     std::atomic<uint32> total_segments{0};
@@ -78,7 +79,7 @@ struct JobExecutionContext {
     JobID job_id;
     std::string plan_id;
     std::string plan_fingerprint;
-    DispensingExecutionRequest execution_request;
+    SharedExecutionRequest execution_request;
     std::atomic<JobState> state{JobState::PENDING};
     std::atomic<uint32> target_count{0};
     std::atomic<uint32> completed_count{0};
@@ -164,12 +165,12 @@ struct DispensingExecutionUseCase::Impl {
     mutable std::mutex inflight_mutex_;
     std::condition_variable inflight_cv_;
 
-    std::unordered_map<TaskID, std::shared_ptr<TaskExecutionContext>> tasks_;
+    mutable std::unordered_map<TaskID, std::shared_ptr<TaskExecutionContext>> tasks_;
     mutable std::mutex tasks_mutex_;
-    TaskID active_task_id_;
-    std::unordered_map<JobID, std::shared_ptr<JobExecutionContext>> jobs_;
+    mutable TaskID active_task_id_;
+    mutable std::unordered_map<JobID, std::shared_ptr<JobExecutionContext>> jobs_;
     mutable std::mutex jobs_mutex_;
-    JobID active_job_id_;
+    mutable JobID active_job_id_;
 
     Shared::Types::Result<void> ValidateHardwareConnection(bool allow_disconnected = false) noexcept;
     Shared::Types::Result<void> ValidateExecutionPreconditions(bool allow_disconnected = false) const noexcept;
@@ -189,6 +190,8 @@ struct DispensingExecutionUseCase::Impl {
         const std::string& error_message);
     static TaskState ResolveVisibleState(const std::shared_ptr<TaskExecutionContext>& context);
     std::shared_ptr<TaskExecutionContext> ResolveActiveContextLocked() const;
+    void CleanupTerminalTasksLocked();
+    void CleanupTerminalJobsLocked();
     void JoinWorkerThread();
     void JoinJobWorkerThread();
     void RegisterTaskInflight(const std::shared_ptr<TaskExecutionContext>& context);
@@ -205,6 +208,7 @@ struct DispensingExecutionUseCase::Impl {
     std::string ReadTaskErrorMessage(const std::shared_ptr<TaskExecutionContext>& context) const;
 
     Shared::Types::Result<TaskID> ExecuteAsync(const DispensingExecutionRequest& request);
+    Shared::Types::Result<TaskID> ExecuteAsync(SharedExecutionRequest request);
     Shared::Types::Result<TaskStatusResponse> GetTaskStatus(const TaskID& task_id) const;
     Shared::Types::Result<void> PauseTask(const TaskID& task_id);
     Shared::Types::Result<void> ResumeTask(const TaskID& task_id);
