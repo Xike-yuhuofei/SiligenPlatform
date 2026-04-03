@@ -2,15 +2,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, Protocol, cast
 from uuid import uuid4
 
 from .launch_supervision_contract import (
+    BackendState,
     FailureCode,
     FailureStage,
+    HardwareState,
     RecoveryAction,
     SessionSnapshot,
     SessionStageEvent,
+    StageEventType,
+    TcpState,
     is_online_ready,
     snapshot_timestamp,
 )
@@ -25,24 +29,58 @@ if TYPE_CHECKING:
         from client.protocol import CommandProtocol  # type: ignore
         from client.tcp_client import TcpClient  # type: ignore
 
+
+class BackendManagerBasic(Protocol):
+    def start(self) -> tuple[bool, str]: ...
+
+    def wait_ready(self, timeout: float = 5.0) -> tuple[bool, str]: ...
+
+    def stop(self) -> None: ...
+
+
+class BackendManagerDetailed(Protocol):
+    def start_detailed(self) -> object: ...
+
+    def wait_ready_detailed(self, timeout: float = 5.0) -> object: ...
+
+    def stop(self) -> None: ...
+
+
+BackendController = BackendManagerBasic | BackendManagerDetailed
+
+
+class TcpClientLike(Protocol):
+    def connect(self, timeout: float = 3.0) -> bool: ...
+
+    def disconnect(self) -> None: ...
+
+
+class HardwareProtocolLike(Protocol):
+    def connect_hardware(
+        self,
+        card_ip: str = "",
+        local_ip: str = "",
+        timeout: float = 15.0,
+    ) -> tuple[bool, str]: ...
+
 ProgressCallback = Callable[[str, int], None]
 SnapshotCallback = Callable[[SessionSnapshot], None]
 EventCallback = Callable[[SessionStageEvent], None]
 
-BACKEND_STARTING_STAGE = "backend_starting"
-BACKEND_READY_STAGE = "backend_ready"
-TCP_CONNECTING_STAGE = "tcp_connecting"
-TCP_READY_STAGE = "tcp_ready"
-HARDWARE_PROBING_STAGE = "hardware_probing"
-HARDWARE_READY_STAGE = "hardware_ready"
-ONLINE_READY_STAGE = "online_ready"
+BACKEND_STARTING_STAGE: FailureStage = "backend_starting"
+BACKEND_READY_STAGE: FailureStage = "backend_ready"
+TCP_CONNECTING_STAGE: FailureStage = "tcp_connecting"
+TCP_READY_STAGE: FailureStage = "tcp_ready"
+HARDWARE_PROBING_STAGE: FailureStage = "hardware_probing"
+HARDWARE_READY_STAGE: FailureStage = "hardware_ready"
+ONLINE_READY_STAGE: FailureStage = "online_ready"
 
 
 @dataclass(frozen=True)
 class StepResult:
     ok: bool
     message: str
-    failure_code: str | None = None
+    failure_code: FailureCode | None = None
     recoverable: bool = True
 
 
@@ -70,9 +108,9 @@ class SupervisorSession:
 
     def __init__(
         self,
-        backend: BackendManager,
-        client: TcpClient,
-        protocol: CommandProtocol,
+        backend: BackendController,
+        client: TcpClientLike,
+        protocol: HardwareProtocolLike,
         launch_mode: str = "online",
         policy: SupervisorPolicy | None = None,
     ) -> None:
@@ -180,17 +218,17 @@ class SupervisorSession:
         self._assert_recovery_allowed("retry_stage", snapshot)
 
         session_id = self._active_session_id or uuid4().hex
+        stage = snapshot.failure_stage or BACKEND_STARTING_STAGE
         self._emit_stage_event(
             event_callback=event_callback,
             session_id=session_id,
             event_type="recovery_invoked",
-            stage=snapshot.failure_stage,
+            stage=stage,
             failure_code=snapshot.failure_code,
             recoverable=snapshot.recoverable,
             message="retry_stage",
         )
 
-        stage = snapshot.failure_stage
         if stage == BACKEND_STARTING_STAGE:
             return self._run_online_flow(
                 start_stage=BACKEND_STARTING_STAGE,
@@ -338,8 +376,8 @@ class SupervisorSession:
                 snapshot_callback=snapshot_callback,
                 message="Starting backend...",
                 backend_state="starting",
-                tcp_state=states["tcp_state"],
-                hardware_state=states["hardware_state"],
+                tcp_state=cast(TcpState, states["tcp_state"]),
+                hardware_state=cast(HardwareState, states["hardware_state"]),
             )
             start_res = self._backend_start()
             if not start_res.ok:
@@ -415,10 +453,8 @@ class SupervisorSession:
             states["tcp_state"] = "ready"
 
             self._emit_stage_event(event_callback, session_id, "stage_entered", TCP_READY_STAGE)
-            if hasattr(self._client, "is_connected"):
-                connected = bool(self._client.is_connected())
-            else:
-                connected = True
+            is_connected = getattr(self._client, "is_connected", None)
+            connected = bool(is_connected()) if callable(is_connected) else True
             if not connected:
                 return self._failed(
                     stage=TCP_READY_STAGE,
@@ -550,9 +586,9 @@ class SupervisorSession:
         *,
         snapshot_callback: SnapshotCallback | None,
         message: str,
-        backend_state: str,
-        tcp_state: str,
-        hardware_state: str,
+        backend_state: BackendState,
+        tcp_state: TcpState,
+        hardware_state: HardwareState,
     ) -> SessionSnapshot:
         return self._emit_snapshot(
             SessionSnapshot(
@@ -574,8 +610,8 @@ class SupervisorSession:
         self,
         event_callback: EventCallback | None,
         session_id: str,
-        event_type: str,
-        stage: str,
+        event_type: StageEventType,
+        stage: FailureStage,
         failure_code: FailureCode | None = None,
         recoverable: bool | None = None,
         message: str | None = None,
@@ -597,18 +633,18 @@ class SupervisorSession:
     def _failed(
         self,
         *,
-        stage: str,
-        code: str | None,
+        stage: FailureStage,
+        code: FailureCode | None,
         message: str,
         recoverable: bool,
-        backend_state: str,
-        tcp_state: str,
-        hardware_state: str,
+        backend_state: BackendState,
+        tcp_state: TcpState,
+        hardware_state: HardwareState,
         snapshot_callback: SnapshotCallback | None,
         event_callback: EventCallback | None,
         session_id: str,
     ) -> SessionSnapshot:
-        failure_code = code or "SUP_UNKNOWN"
+        failure_code: FailureCode = code or "SUP_UNKNOWN"
         snapshot = SessionSnapshot(
             mode="online",
             session_state="failed",
@@ -633,15 +669,17 @@ class SupervisorSession:
         return self._emit_snapshot(snapshot, snapshot_callback)
 
     def _backend_start(self) -> StepResult:
-        if hasattr(self._backend, "start_detailed"):
-            result = self._backend.start_detailed()
+        start_detailed = getattr(self._backend, "start_detailed", None)
+        if callable(start_detailed):
+            result = start_detailed()
             return StepResult(
                 ok=bool(getattr(result, "ok", False)),
                 message=str(getattr(result, "message", "")),
                 failure_code=getattr(result, "failure_code", None),
                 recoverable=bool(getattr(result, "recoverable", True)),
             )
-        ok, msg = self._backend.start()
+        basic_backend = cast(BackendManagerBasic, self._backend)
+        ok, msg = basic_backend.start()
         return StepResult(
             ok=ok,
             message=msg,
@@ -650,21 +688,23 @@ class SupervisorSession:
         )
 
     def _backend_wait_ready(self) -> StepResult:
-        if hasattr(self._backend, "wait_ready_detailed"):
+        wait_ready_detailed = getattr(self._backend, "wait_ready_detailed", None)
+        if callable(wait_ready_detailed):
             try:
-                result = self._backend.wait_ready_detailed(timeout=self._policy.backend_ready_timeout_s)
+                result = wait_ready_detailed(timeout=self._policy.backend_ready_timeout_s)
             except TypeError:
-                result = self._backend.wait_ready_detailed()
+                result = wait_ready_detailed()
             return StepResult(
                 ok=bool(getattr(result, "ok", False)),
                 message=str(getattr(result, "message", "")),
                 failure_code=getattr(result, "failure_code", None),
                 recoverable=bool(getattr(result, "recoverable", True)),
             )
+        basic_backend = cast(BackendManagerBasic, self._backend)
         try:
-            ok, msg = self._backend.wait_ready(timeout=self._policy.backend_ready_timeout_s)
+            ok, msg = basic_backend.wait_ready(timeout=self._policy.backend_ready_timeout_s)
         except TypeError:
-            ok, msg = self._backend.wait_ready()
+            ok, msg = basic_backend.wait_ready()
         return StepResult(
             ok=ok,
             message=msg,
@@ -708,9 +748,9 @@ class SupervisorSession:
         failure_code: FailureCode,
         failure_stage: FailureStage,
         message: str,
-        backend_state: str | None = None,
-        tcp_state: str | None = None,
-        hardware_state: str | None = None,
+        backend_state: BackendState | None = None,
+        tcp_state: TcpState | None = None,
+        hardware_state: HardwareState | None = None,
         recoverable: bool = True,
     ) -> SessionSnapshot:
         return replace(
@@ -781,7 +821,7 @@ class SupervisorSession:
         event = SessionStageEvent(
             event_type="stage_failed",
             session_id=session_id or uuid4().hex,
-            stage=degraded.failure_stage,
+            stage=degraded.failure_stage or ONLINE_READY_STAGE,
             timestamp=snapshot_timestamp(),
             failure_code=degraded.failure_code,
             recoverable=degraded.recoverable,

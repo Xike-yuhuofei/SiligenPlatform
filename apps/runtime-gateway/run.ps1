@@ -137,6 +137,8 @@ function Get-RuntimeGatewaySearchRoots {
     }
 
     $roots = @()
+    $roots += [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build\control-apps"))
+    $roots += [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build"))
     $roots += Get-WorkspaceCabBuildRoots -WorkspaceRoot $WorkspaceRoot
     if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
         $legacyRoot = [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA "SiligenSuite\control-apps-build"))
@@ -144,9 +146,6 @@ function Get-RuntimeGatewaySearchRoots {
             $roots += $legacyRoot
         }
     }
-
-    $roots += [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build\control-apps"))
-    $roots += [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build"))
 
     return @(
         $roots |

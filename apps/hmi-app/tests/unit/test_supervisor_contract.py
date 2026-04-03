@@ -1,6 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
+from typing import cast
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -9,6 +10,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from hmi_client.client.launch_supervision_contract import (
     SessionSnapshot,
     SessionStageEvent,
+    StageEventType,
     is_online_ready,
     snapshot_timestamp,
 )
@@ -94,7 +96,7 @@ class SupervisorContractTest(unittest.TestCase):
     def test_stage_event_rejects_invalid_type(self) -> None:
         with self.assertRaisesRegex(ValueError, "Invalid event_type"):
             SessionStageEvent(
-                event_type="unknown",
+                event_type=cast(StageEventType, "unknown"),
                 session_id="abc",
                 stage="backend_starting",
                 timestamp="2026-03-20T00:00:00Z",

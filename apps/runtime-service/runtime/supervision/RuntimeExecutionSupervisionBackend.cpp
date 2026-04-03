@@ -9,6 +9,7 @@ namespace {
 
 using Siligen::Domain::Motion::Ports::MotionState;
 using Siligen::Runtime::Host::Supervision::RuntimeSupervisionInputs;
+using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::LogicalAxisId;
 using Siligen::Shared::Types::Result;
 
@@ -24,6 +25,10 @@ void ReadLimitIfAvailable(
     if (limit_result.IsSuccess()) {
         target = limit_result.Value();
     }
+}
+
+bool IsTerminalJobState(const std::string& state) {
+    return state == "completed" || state == "failed" || state == "cancelled";
 }
 
 }  // namespace
@@ -114,8 +119,15 @@ Result<RuntimeSupervisionInputs> RuntimeExecutionSupervisionBackend::ReadInputs(
         if (!inputs.active_job_id.empty()) {
             auto job_status_result = dispensing_execution_use_case_->GetJobStatus(inputs.active_job_id);
             if (job_status_result.IsSuccess()) {
-                inputs.active_job_status_available = true;
-                inputs.active_job_state = job_status_result.Value().state;
+                const auto& state = job_status_result.Value().state;
+                if (IsTerminalJobState(state)) {
+                    inputs.active_job_id.clear();
+                } else {
+                    inputs.active_job_status_available = true;
+                    inputs.active_job_state = state;
+                }
+            } else if (job_status_result.GetError().GetCode() == ErrorCode::NOT_FOUND) {
+                inputs.active_job_id.clear();
             } else {
                 inputs.active_job_state = "unknown";
             }

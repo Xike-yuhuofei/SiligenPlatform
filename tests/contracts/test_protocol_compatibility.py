@@ -2,16 +2,23 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
+HMI_APP_SRC = ROOT / "apps" / "hmi-app" / "src"
+if str(HMI_APP_SRC) not in sys.path:
+    sys.path.insert(0, str(HMI_APP_SRC))
+
 CONTRACTS = ROOT / "shared" / "contracts" / "application"
 HMI_PROTOCOL = ROOT / "apps" / "hmi-app" / "src" / "hmi_client" / "client" / "protocol.py"
 HMI_MAIN_WINDOW = ROOT / "apps" / "hmi-app" / "src" / "hmi_client" / "ui" / "main_window.py"
 TCP_DISPATCHER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "tcp" / "TcpCommandDispatcher.cpp"
 RUNTIME_STATUS_EXPORT_PORT = ROOT / "apps" / "runtime-service" / "runtime" / "status" / "WorkflowRuntimeStatusExportPort.cpp"
+
+from hmi_client.client.protocol import CommandProtocol
 
 
 def load_json(path: Path):
@@ -275,7 +282,6 @@ def test_status_contract_describes_backend_interlock_authority():
 def test_status_contract_exposes_effective_interlocks_and_supervision():
     states = load_json(CONTRACTS / "models" / "states.json")
     fixture = load_json(CONTRACTS / "fixtures" / "responses" / "status.success.json")
-    protocol_source = HMI_PROTOCOL.read_text(encoding="utf-8")
     tcp_source = TCP_DISPATCHER.read_text(encoding="utf-8")
 
     machine_required = set(states["definitions"]["machineStatus"]["required"])
@@ -332,12 +338,44 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
     assert fixture_result["supervision"]["requested_state"] == "Idle"
     assert fixture_result["supervision"]["state_change_in_process"] is False
 
-    assert "effective_interlocks_data = result.get(\"effective_interlocks\", {})" in protocol_source
-    assert "supervision_data = result.get(\"supervision\")" in protocol_source
-    assert "if not isinstance(supervision_data, dict):" in protocol_source
-    assert "def gate_estop_active" in protocol_source
-    assert "def gate_door_active" in protocol_source
-    assert "def home_boundary_active" in protocol_source
+    class StubClient:
+        def __init__(self, response: dict[str, object]) -> None:
+            self._response = response
+            self.calls: list[tuple[str, object | None, float]] = []
+
+        def send_request(self, method: str, params: object = None, timeout: float = 5.0) -> dict[str, object]:
+            self.calls.append((method, params, timeout))
+            return self._response
+
+    client = StubClient(fixture)
+    status = CommandProtocol(cast(Any, client)).get_status()
+    assert client.calls == [("status", None, 5.0)]
+    assert status.connected is True
+    assert status.connection_state == "connected"
+    assert status.machine_state == "Idle"
+    assert status.runtime_state == "Idle"
+    assert status.runtime_state_reason == "idle"
+    assert status.gate_estop_known() is True
+    assert status.gate_estop_active() is False
+    assert status.gate_door_known() is True
+    assert status.gate_door_active() is False
+    assert status.home_boundary_active("X") is False
+    assert status.home_boundary_active("Y") is False
+    assert status.effective_interlocks.sources["estop"] == "system_interlock"
+    assert status.supervision.requested_state == "Idle"
+    assert status.supervision.state_change_in_process is False
+
+    legacy_fixture = json.loads(json.dumps(fixture))
+    legacy_result = legacy_fixture["result"]
+    legacy_result["machine_state"] = "Preparing"
+    legacy_result["machine_state_reason"] = "awaiting-supervision"
+    legacy_result["supervision"] = ["legacy-payload"]
+
+    legacy_status = CommandProtocol(cast(Any, StubClient(legacy_fixture))).get_status()
+    assert legacy_status.supervision.current_state == "Preparing"
+    assert legacy_status.supervision.requested_state == "Preparing"
+    assert legacy_status.supervision.state_reason == "awaiting-supervision"
+    assert legacy_status.supervision.state_change_in_process is False
     assert "runtimeStatusExportPort_->ReadSnapshot()" in tcp_source
     assert "BuildRawIoJson(status_snapshot)" in tcp_source
     assert "BuildEffectiveInterlocksJson(status_snapshot)" in tcp_source

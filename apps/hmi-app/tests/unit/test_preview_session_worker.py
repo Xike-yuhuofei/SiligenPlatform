@@ -85,8 +85,14 @@ class PreviewSnapshotWorkerTimeoutTest(unittest.TestCase):
         completed = []
         worker.completed.connect(lambda ok, payload, error: completed.append((ok, payload, error)))
 
-        with patch("hmi_client.client.tcp_client.TcpClient", _FakeTcpClient), patch(
-            "hmi_client.client.protocol.CommandProtocol", _FakeCommandProtocol
+        with patch(
+            "hmi_client.client.tcp_client.TcpClient",
+            autospec=True,
+            side_effect=lambda host, port: _FakeTcpClient(host, port),
+        ), patch(
+            "hmi_client.client.protocol.CommandProtocol",
+            autospec=True,
+            side_effect=lambda client: _FakeCommandProtocol(client),
         ):
             worker.run()
 
@@ -122,8 +128,14 @@ class PreviewSnapshotWorkerTimeoutTest(unittest.TestCase):
         worker.completed.connect(lambda ok, payload, error: completed.append((ok, payload, error)))
 
         worker.cancel()
-        with patch("hmi_client.client.tcp_client.TcpClient", _FakeTcpClient), patch(
-            "hmi_client.client.protocol.CommandProtocol", _FakeCommandProtocol
+        with patch(
+            "hmi_client.client.tcp_client.TcpClient",
+            autospec=True,
+            side_effect=lambda host, port: _FakeTcpClient(host, port),
+        ), patch(
+            "hmi_client.client.protocol.CommandProtocol",
+            autospec=True,
+            side_effect=lambda client: _FakeCommandProtocol(client),
         ):
             worker.run()
 
