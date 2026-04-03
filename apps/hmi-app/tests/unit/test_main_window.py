@@ -653,9 +653,9 @@ class MainWindowTabsTest(unittest.TestCase):
             preview_kind="glue_points",
         )
 
-        self.assertIn("当前为 Mock 模拟轨迹", html)
-        self.assertIn("非真实几何", html)
+        self.assertNotIn("当前为 Mock 模拟轨迹", html)
         self.assertIn("来源</td><td>Mock模拟</td>", html)
+        self.assertIn("来源说明</td><td>模拟轨迹，非真实几何</td>", html)
 
     def test_render_runtime_preview_html_renders_sampling_warning_banner(self) -> None:
         snapshot = main_window_module.PreviewSnapshotMeta(
@@ -923,8 +923,9 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertIsNotNone(self.window._preview_gate.snapshot)
         self.assertEqual(self.window._preview_gate.snapshot.snapshot_hash, "hash-300s")
         self.assertEqual(self.window.statusBar().currentMessage(), "胶点预览已更新，启动前需确认")
-        self.assertIn("规划胶点主预览", self.window._dxf_view.html)
-        self.assertIn("运动轨迹", self.window._dxf_view.html)
+        self.assertNotIn("规划胶点主预览", self.window._dxf_view.html)
+        self.assertNotIn(">运动轨迹<", self.window._dxf_view.html)
+        self.assertNotIn(">胶点<", self.window._dxf_view.html)
         self.assertIn("运动轨迹来源</td><td>执行轨迹快照</td>", self.window._dxf_view.html)
         self.assertIn("运动轨迹采样策略</td><td>fixed_spacing_corner_preserving</td>", self.window._dxf_view.html)
         self.assertIn("stroke='#8fd3ff'", self.window._dxf_view.html)

@@ -2415,34 +2415,7 @@ class MainWindow(QMainWindow):
             else "否"
         )
         motion_preview_sampling_strategy = html.escape(effective_motion_preview_meta.sampling_strategy or "-")
-        if normalized_source == "mock_synthetic":
-            source_banner = (
-                "<div style='margin-bottom:14px;padding:12px 14px;border:1px solid #7f1d1d;"
-                "background:#3a1717;color:#ffd5d5;'>"
-                "<strong>当前为 Mock 模拟轨迹。</strong> 该结果仅用于联调，不代表真实 DXF 几何或真实点胶轨迹。"
-                "</div>"
-            )
-        elif normalized_source == "planned_glue_snapshot":
-            source_banner = (
-                "<div style='margin-bottom:14px;padding:12px 14px;border:1px solid #14532d;"
-                "background:#10261a;color:#c7f9d3;'>"
-                "<strong>当前为规划胶点主预览。</strong> 绿色圆点来自 `glue_points`，灰色路径来自独立 `motion_preview` 运动轨迹预览。"
-                "</div>"
-            )
-        elif normalized_source == "runtime_snapshot":
-            source_banner = (
-                "<div style='margin-bottom:14px;padding:12px 14px;border:1px solid #854d0e;"
-                "background:#2d2110;color:#fde68a;'>"
-                "<strong>当前为旧版 runtime_snapshot。</strong> 该结果仅表示执行轨迹抽样点，不等价于胶点触发预览。"
-                "</div>"
-            )
-        else:
-            source_banner = (
-                "<div style='margin-bottom:14px;padding:12px 14px;border:1px solid #854d0e;"
-                "background:#2d2110;color:#fde68a;'>"
-                "<strong>预览来源未知。</strong> 请勿将当前画面作为真实轨迹验收依据。"
-                "</div>"
-            )
+        source_banner = ""
         warning_banner = ""
         if preview_warning:
             warning_banner = (
@@ -2459,18 +2432,7 @@ class MainWindow(QMainWindow):
                 f"<strong>运动轨迹预览提示。</strong> {html.escape(motion_preview_warning)}"
                 "</div>"
             )
-        legend_markup = (
-            "<div style='display:flex;gap:18px;align-items:center;margin-bottom:12px;color:#cfcfcf;font-size:13px;'>"
-            "<span style='display:inline-flex;align-items:center;gap:8px;'>"
-            "<span style='display:inline-block;width:20px;height:0;border-top:3px dashed #8fd3ff;'></span>"
-            "运动轨迹"
-            "</span>"
-            "<span style='display:inline-flex;align-items:center;gap:8px;'>"
-            "<span style='display:inline-block;width:10px;height:10px;background:#00d084;border-radius:50%;'></span>"
-            "胶点"
-            "</span>"
-            "</div>"
-        )
+        legend_markup = ""
         validation_banner = ""
         if preview_validation_classification == "pass_with_exception" and preview_exception_reason:
             validation_banner = (
@@ -2546,9 +2508,6 @@ class MainWindow(QMainWindow):
             f"{warning_banner}"
             f"{motion_warning_banner}"
             f"{validation_banner}"
-            "<p style='color:#b8b8b8;'>"
-            "主图同时展示胶点触发点与运动轨迹路径，便于离线优化运动算法。执行前确认与哈希校验仍只基于胶点主预览。"
-            "</p>"
             f"{legend_markup}"
             f"<svg viewBox='0 0 {width:.0f} {height:.0f}' style='width:100%;height:56vh;background:#141414;border:1px solid #333;'>"
             f"{motion_preview_markup}"

@@ -175,7 +175,7 @@ class PreviewFlowIntegrationTest(unittest.TestCase):
         self.assertEqual(self.window._preview_gate.snapshot.snapshot_hash, "hash-it")
         self.assertEqual(self.window.statusBar().currentMessage(), "胶点预览已更新，启动前需确认")
         self.assertEqual(self.window._dxf_filename_display.text(), "rect_diag.dxf")
-        self.assertIn("规划胶点主预览", self.window._dxf_view.html)
+        self.assertNotIn("规划胶点主预览", self.window._dxf_view.html)
         self.assertIn("hash-it", self.window._dxf_view.html)
         self.assertEqual(
             self.window._protocol.calls,
