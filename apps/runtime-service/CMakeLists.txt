@@ -23,13 +23,6 @@ if(NOT TARGET siligen_trace_diagnostics_application_public)
     )
 endif()
 
-if(NOT TARGET siligen_parsing_adapter)
-    add_subdirectory(
-        "${SILIGEN_WORKSPACE_ROOT}/modules/workflow/adapters/infrastructure/adapters/planning/dxf"
-        "${CMAKE_BINARY_DIR}/apps/runtime-service/workflow-dxf-adapter"
-    )
-endif()
-
 if(NOT TARGET siligen_runtime_process_bootstrap_public)
     add_library(siligen_runtime_process_bootstrap_public INTERFACE)
 endif()
@@ -115,21 +108,6 @@ target_link_libraries(siligen_runtime_process_bootstrap PUBLIC
     siligen_types
     siligen_utils
 )
-if(TARGET siligen_process_path_application_public)
-    target_link_libraries(siligen_runtime_process_bootstrap PUBLIC
-        siligen_process_path_application_public
-    )
-endif()
-if(TARGET siligen_motion_planning_application_public)
-    target_link_libraries(siligen_runtime_process_bootstrap PUBLIC
-        siligen_motion_planning_application_public
-    )
-endif()
-if(TARGET siligen_dispense_packaging_application_public)
-    target_link_libraries(siligen_runtime_process_bootstrap PUBLIC
-        siligen_dispense_packaging_application_public
-    )
-endif()
 target_link_libraries(siligen_runtime_process_bootstrap PRIVATE
     siligen_runtime_host_boost_headers
 )
@@ -142,6 +120,18 @@ target_include_directories(siligen_runtime_process_bootstrap_public INTERFACE
 target_link_libraries(siligen_runtime_process_bootstrap_public INTERFACE
     siligen_runtime_process_bootstrap
 )
+foreach(runtime_process_bootstrap_link_only_target
+    IN ITEMS
+        siligen_process_path_application_public
+        siligen_motion_planning_application_public
+        siligen_dispense_packaging_application_public
+)
+    if(TARGET ${runtime_process_bootstrap_link_only_target})
+        target_link_libraries(siligen_runtime_process_bootstrap_public INTERFACE
+            $<LINK_ONLY:${runtime_process_bootstrap_link_only_target}>
+        )
+    endif()
+endforeach()
 target_compile_features(siligen_runtime_process_bootstrap_public INTERFACE cxx_std_17)
 
 if(NOT TARGET siligen_app_runtime_service)

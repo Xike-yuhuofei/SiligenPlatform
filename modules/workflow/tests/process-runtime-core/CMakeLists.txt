@@ -1,7 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
 
-set(WORKFLOW_MODULE_DIR
+get_filename_component(
+    WORKFLOW_MODULE_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/../.."
+    REALPATH
 )
 if(NOT TARGET siligen_process_runtime_core)
     message(FATAL_ERROR "workflow canonical tests 需要先加载 siligen_process_runtime_core target")
@@ -9,9 +11,6 @@ endif()
 
 set(WORKFLOW_TEST_IMPLEMENTATION_INCLUDE_DIRS
     "${WORKFLOW_MODULE_DIR}"
-    "${WORKFLOW_MODULE_DIR}/domain"
-    "${WORKFLOW_MODULE_DIR}/application"
-    "${WORKFLOW_MODULE_DIR}/adapters"
     "${WORKFLOW_MODULE_DIR}/domain/process-core/include"
     "${WORKFLOW_MODULE_DIR}/domain/motion-core/include"
     "${WORKFLOW_MODULE_DIR}/application/include"

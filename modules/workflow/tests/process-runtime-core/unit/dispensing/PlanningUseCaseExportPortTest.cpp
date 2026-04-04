@@ -294,10 +294,9 @@ TEST(PlanningUseCaseExportPortTest, ExecuteBuildsExportRequestWithoutDirectFiles
     auto pb_service = std::make_shared<DxfPbPreparationService>();
     PlanningUseCase use_case(
         path_source,
-        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
-        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningPathPreparationPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningMotionPlanPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningAssemblyPort(),
         config_port,
         pb_service,
         export_port);
@@ -323,10 +322,9 @@ TEST(PlanningUseCaseExportPortTest, AssembleExecutionDropsExportRequestAfterExpo
     auto pb_service = std::make_shared<DxfPbPreparationService>();
     PlanningUseCase use_case(
         path_source,
-        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
-        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningPathPreparationPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningMotionPlanPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningAssemblyPort(),
         config_port,
         pb_service,
         export_port);
@@ -358,10 +356,9 @@ TEST(PlanningUseCaseExportPortTest, ExecuteExportsEquivalentGluePointsForSubdivi
 
     PlanningUseCase single_use_case(
         std::make_shared<FakePathSourcePort>(),
-        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
-        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningPathPreparationPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningMotionPlanPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningAssemblyPort(),
         config_port,
         pb_service,
         export_port);
@@ -371,10 +368,9 @@ TEST(PlanningUseCaseExportPortTest, ExecuteExportsEquivalentGluePointsForSubdivi
 
     PlanningUseCase subdivided_use_case(
         std::make_shared<EquivalentSubdivisionPathSourcePort>(),
-        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
-        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningPathPreparationPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningMotionPlanPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningAssemblyPort(),
         config_port,
         pb_service,
         export_port);
@@ -400,10 +396,9 @@ TEST(PlanningUseCaseExportPortTest, ExecuteIgnoresPointNoiseForPreviewGlueSemant
 
     PlanningUseCase baseline_use_case(
         std::make_shared<FakePathSourcePort>(),
-        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
-        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningPathPreparationPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningMotionPlanPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningAssemblyPort(),
         config_port,
         pb_service,
         export_port);
@@ -413,10 +408,9 @@ TEST(PlanningUseCaseExportPortTest, ExecuteIgnoresPointNoiseForPreviewGlueSemant
 
     PlanningUseCase noisy_use_case(
         std::make_shared<PointNoisePathSourcePort>(),
-        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
-        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningPathPreparationPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningMotionPlanPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningAssemblyPort(),
         config_port,
         pb_service,
         export_port);
@@ -455,10 +449,9 @@ TEST(PlanningUseCaseExportPortTest, ExecuteKeepsSharedVertexExportStableAcrossRe
     auto pb_service = std::make_shared<DxfPbPreparationService>();
     PlanningUseCase use_case(
         path_source,
-        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
-        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningPathPreparationPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningMotionPlanPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningAssemblyPort(),
         config_port,
         pb_service,
         export_port);
@@ -492,10 +485,9 @@ TEST(PlanningUseCaseExportPortTest, ExecuteAutoFitsOutOfStrokeGeometryIntoMachin
 
     PlanningUseCase use_case(
         std::make_shared<FittableOutOfStrokePathSourcePort>(),
-        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
-        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningPathPreparationPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningMotionPlanPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningAssemblyPort(),
         config_port,
         pb_service,
         export_port);
@@ -524,10 +516,9 @@ TEST(PlanningUseCaseExportPortTest, ExecuteRejectsGeometryWhoseSizeExceedsMachin
 
     PlanningUseCase use_case(
         std::make_shared<TooWidePathSourcePort>(),
-        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
-        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningPathPreparationPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningMotionPlanPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningAssemblyPort(),
         config_port,
         pb_service,
         export_port);
@@ -553,19 +544,17 @@ TEST(PlanningUseCaseExportPortTest, AuthorityCacheKeyIncludesMachineSoftLimits) 
 
     PlanningUseCase left_use_case(
         std::make_shared<FakePathSourcePort>(),
-        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
-        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningPathPreparationPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningMotionPlanPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningAssemblyPort(),
         left_config,
         pb_service,
         nullptr);
     PlanningUseCase right_use_case(
         std::make_shared<FakePathSourcePort>(),
-        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
-        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningPathPreparationPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningMotionPlanPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningAssemblyPort(),
         right_config,
         pb_service,
         nullptr);

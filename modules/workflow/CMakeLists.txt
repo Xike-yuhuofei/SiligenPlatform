@@ -333,6 +333,18 @@ if(TARGET siligen_control_application)
         $<LINK_ONLY:siligen_control_application>
     )
 endif()
+foreach(workflow_application_impl_target
+    IN ITEMS
+        siligen_process_path_application_public
+        siligen_motion_planning_application_public
+        siligen_dispense_packaging_application_public
+)
+    if(TARGET ${workflow_application_impl_target})
+        target_link_libraries(siligen_workflow_application_public INTERFACE
+            $<LINK_ONLY:${workflow_application_impl_target}>
+        )
+    endif()
+endforeach()
 target_compile_features(siligen_workflow_application_public INTERFACE cxx_std_17)
 
 if(NOT TARGET siligen_workflow_adapters_public)

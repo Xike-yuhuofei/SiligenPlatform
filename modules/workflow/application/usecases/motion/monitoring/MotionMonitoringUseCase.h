@@ -2,6 +2,8 @@
 
 #include "domain/motion/ports/IHomingPort.h"
 #include "domain/motion/ports/IMotionStatePort.h"
+#include "domain/diagnostics/ports/IDiagnosticsPort.h"
+#include "domain/system/ports/IEventPublisherPort.h"
 #include "runtime_execution/contracts/motion/IIOControlPort.h"
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "shared/types/Result.h"
@@ -31,7 +33,11 @@ class MotionMonitoringUseCase {
                             std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort> io_port,
                             std::shared_ptr<Domain::Motion::Ports::IHomingPort> homing_port,
                             std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort>
-                                interpolation_port = nullptr);
+                                interpolation_port = nullptr,
+                            std::shared_ptr<Siligen::Domain::Diagnostics::Ports::IDiagnosticsPort>
+                                diagnostics_port = nullptr,
+                            std::shared_ptr<Siligen::Domain::System::Ports::IEventPublisherPort>
+                                event_publisher_port = nullptr);
 
     ~MotionMonitoringUseCase();
 
@@ -64,6 +70,8 @@ class MotionMonitoringUseCase {
     std::shared_ptr<Domain::Motion::Ports::IHomingPort> homing_port_;
     std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort> io_port_;
     std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort> interpolation_port_;
+    std::shared_ptr<Siligen::Domain::Diagnostics::Ports::IDiagnosticsPort> diagnostics_port_;
+    std::shared_ptr<Siligen::Domain::System::Ports::IEventPublisherPort> event_publisher_port_;
 
     MotionStatusCallback motion_status_callback_;
     IOStatusCallback io_status_callback_;
@@ -86,6 +94,10 @@ class MotionMonitoringUseCase {
     void NotifyIOStatusUpdate(const Siligen::RuntimeExecution::Contracts::Motion::IOStatus& signal);
     void StatusUpdateLoop();
     void StatusUpdateTimer();
+    void RecordPollingTransition(const char* component,
+                                 const Siligen::Shared::Types::Error* error,
+                                 std::uint32_t failure_count,
+                                 bool recovered) const;
 };
 
 }  // namespace Siligen::Application::UseCases::Motion::Monitoring

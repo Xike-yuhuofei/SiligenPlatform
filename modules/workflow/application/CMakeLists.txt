@@ -64,9 +64,6 @@ if(NOT TARGET siligen_workflow_application_headers)
 endif()
 target_include_directories(siligen_workflow_application_headers INTERFACE
     ${SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../process-path/application/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../motion-planning/application/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../dispense-packaging/application/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../dxf-geometry/application/include
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
@@ -84,24 +81,9 @@ if(TARGET siligen_dispense_packaging_contracts_public)
         siligen_dispense_packaging_contracts_public
     )
 endif()
-if(TARGET siligen_dispense_packaging_application_public)
-    target_link_libraries(siligen_workflow_application_headers INTERFACE
-        siligen_dispense_packaging_application_public
-    )
-endif()
-if(TARGET siligen_process_path_application_public)
-    target_link_libraries(siligen_workflow_application_headers INTERFACE
-        siligen_process_path_application_public
-    )
-endif()
 if(TARGET siligen_process_path_contracts_public)
     target_link_libraries(siligen_workflow_application_headers INTERFACE
         siligen_process_path_contracts_public
-    )
-endif()
-if(TARGET siligen_motion_planning_application_public)
-    target_link_libraries(siligen_workflow_application_headers INTERFACE
-        siligen_motion_planning_application_public
     )
 endif()
 if(TARGET siligen_motion_planning_contracts_public)
@@ -140,6 +122,9 @@ set(SILIGEN_APPLICATION_PUBLIC_INCLUDE_DIRS
 set(SILIGEN_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS
     ${PROCESS_RUNTIME_CORE_IMPLEMENTATION_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../process-path/application/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../motion-planning/application/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../dispense-packaging/application/include
 )
 
 add_library(siligen_application_system STATIC
@@ -224,17 +209,17 @@ if(TARGET siligen_device_contracts)
     )
 endif()
 if(TARGET siligen_process_path_application_public)
-    target_link_libraries(siligen_application_dispensing PUBLIC
+    target_link_libraries(siligen_application_dispensing PRIVATE
         siligen_process_path_application_public
     )
 endif()
 if(TARGET siligen_motion_planning_application_public)
-    target_link_libraries(siligen_application_dispensing PUBLIC
+    target_link_libraries(siligen_application_dispensing PRIVATE
         siligen_motion_planning_application_public
     )
 endif()
 if(TARGET siligen_dispense_packaging_application_public)
-    target_link_libraries(siligen_application_dispensing PUBLIC
+    target_link_libraries(siligen_application_dispensing PRIVATE
         siligen_dispense_packaging_application_public
     )
 endif()
