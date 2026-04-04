@@ -64,7 +64,15 @@ class _FakeCommandProtocol:
             "preview_kind": "glue_points",
             "glue_point_count": 2,
             "glue_points": [{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
-            "execution_polyline": [{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
+            "motion_preview": {
+                "source": "execution_trajectory_snapshot",
+                "kind": "polyline",
+                "source_point_count": 2,
+                "point_count": 2,
+                "is_sampled": False,
+                "sampling_strategy": "execution_trajectory_geometry_preserving",
+                "polyline": [{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
+            },
         }, ""
 
 

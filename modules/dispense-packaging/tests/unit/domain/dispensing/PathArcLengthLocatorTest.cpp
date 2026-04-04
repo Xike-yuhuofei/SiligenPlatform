@@ -9,12 +9,12 @@
 namespace {
 
 using Siligen::Domain::Dispensing::DomainServices::PathArcLengthLocator;
-using Siligen::Domain::Trajectory::ValueObjects::ArcPoint;
-using Siligen::Domain::Trajectory::ValueObjects::ComputeArcLength;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
-using Siligen::Domain::Trajectory::ValueObjects::Segment;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
+using Siligen::ProcessPath::Contracts::ArcPoint;
+using Siligen::ProcessPath::Contracts::ComputeArcLength;
+using Siligen::ProcessPath::Contracts::ProcessPath;
+using Siligen::ProcessPath::Contracts::ProcessSegment;
+using Siligen::ProcessPath::Contracts::Segment;
+using Siligen::ProcessPath::Contracts::SegmentType;
 using Siligen::Shared::Types::Point2D;
 
 ProcessSegment BuildArcSegment(

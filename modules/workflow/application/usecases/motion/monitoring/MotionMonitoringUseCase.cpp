@@ -57,9 +57,9 @@ void AttachHomingState(
 
 MotionMonitoringUseCase::MotionMonitoringUseCase(
     std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port,
-    std::shared_ptr<Domain::Motion::Ports::IIOControlPort> io_port,
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort> io_port,
     std::shared_ptr<Domain::Motion::Ports::IHomingPort> homing_port,
-    std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port)
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort> interpolation_port)
     : motion_state_port_(std::move(motion_state_port))
     , homing_port_(std::move(homing_port))
     , io_port_(io_port)
@@ -130,9 +130,10 @@ Result<Point2D> MotionMonitoringUseCase::GetCurrentPosition() const {
     return motion_state_port_->GetCurrentPosition();
 }
 
-Result<Domain::Motion::Ports::CoordinateSystemStatus> MotionMonitoringUseCase::GetCoordinateSystemStatus(int16 coord_sys) const {
+Result<Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemStatus>
+MotionMonitoringUseCase::GetCoordinateSystemStatus(int16 coord_sys) const {
     if (!interpolation_port_) {
-        return Result<Domain::Motion::Ports::CoordinateSystemStatus>::Failure(Error(
+        return Result<Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemStatus>::Failure(Error(
             ErrorCode::PORT_NOT_INITIALIZED,
             "Interpolation port not initialized",
             "MotionMonitoringUseCase::GetCoordinateSystemStatus"
@@ -163,14 +164,16 @@ Result<uint32> MotionMonitoringUseCase::GetLookAheadBufferSpace(int16 coord_sys)
     return interpolation_port_->GetLookAheadBufferSpace(coord_sys);
 }
 
-Result<Domain::Motion::Ports::IOStatus> MotionMonitoringUseCase::ReadDigitalInputStatus(int16 channel) const {
+Result<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>
+MotionMonitoringUseCase::ReadDigitalInputStatus(int16 channel) const {
     auto validation = ValidateChannelNumber(channel);
     if (validation.IsError()) {
-        return Result<Domain::Motion::Ports::IOStatus>::Failure(validation.GetError());
+        return Result<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>::Failure(
+            validation.GetError());
     }
 
     if (!io_port_) {
-        return Result<Domain::Motion::Ports::IOStatus>::Failure(Error(
+        return Result<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>::Failure(Error(
             ErrorCode::PORT_NOT_INITIALIZED,
             "IO port not initialized",
             "MotionMonitoringUseCase::ReadDigitalInputStatus"
@@ -180,34 +183,38 @@ Result<Domain::Motion::Ports::IOStatus> MotionMonitoringUseCase::ReadDigitalInpu
     return io_port_->ReadDigitalInput(channel);
 }
 
-Result<std::vector<Domain::Motion::Ports::IOStatus>> MotionMonitoringUseCase::ReadAllDigitalInputStatus() const {
+Result<std::vector<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>>
+MotionMonitoringUseCase::ReadAllDigitalInputStatus() const {
     if (!io_port_) {
-        return Result<std::vector<Domain::Motion::Ports::IOStatus>>::Failure(Error(
+        return Result<std::vector<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>>::Failure(Error(
             ErrorCode::PORT_NOT_INITIALIZED,
             "IO port not initialized",
             "MotionMonitoringUseCase::ReadAllDigitalInputStatus"
         ));
     }
 
-    std::vector<Domain::Motion::Ports::IOStatus> statuses;
+    std::vector<Siligen::RuntimeExecution::Contracts::Motion::IOStatus> statuses;
     for (int16 channel = 0; channel < 16; ++channel) {
         auto result = io_port_->ReadDigitalInput(channel);
         if (result.IsError()) {
-            return Result<std::vector<Domain::Motion::Ports::IOStatus>>::Failure(result.GetError());
+            return Result<std::vector<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>>::Failure(
+                result.GetError());
         }
         statuses.push_back(result.Value());
     }
-    return Result<std::vector<Domain::Motion::Ports::IOStatus>>::Success(statuses);
+    return Result<std::vector<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>>::Success(statuses);
 }
 
-Result<Domain::Motion::Ports::IOStatus> MotionMonitoringUseCase::ReadDigitalOutputStatus(int16 channel) const {
+Result<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>
+MotionMonitoringUseCase::ReadDigitalOutputStatus(int16 channel) const {
     auto validation = ValidateChannelNumber(channel);
     if (validation.IsError()) {
-        return Result<Domain::Motion::Ports::IOStatus>::Failure(validation.GetError());
+        return Result<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>::Failure(
+            validation.GetError());
     }
 
     if (!io_port_) {
-        return Result<Domain::Motion::Ports::IOStatus>::Failure(Error(
+        return Result<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>::Failure(Error(
             ErrorCode::PORT_NOT_INITIALIZED,
             "IO port not initialized",
             "MotionMonitoringUseCase::ReadDigitalOutputStatus"
@@ -217,27 +224,29 @@ Result<Domain::Motion::Ports::IOStatus> MotionMonitoringUseCase::ReadDigitalOutp
     return io_port_->ReadDigitalOutput(channel);
 }
 
-Result<std::vector<Domain::Motion::Ports::IOStatus>> MotionMonitoringUseCase::ReadAllDigitalOutputStatus() const {
+Result<std::vector<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>>
+MotionMonitoringUseCase::ReadAllDigitalOutputStatus() const {
     if (!io_port_) {
-        return Result<std::vector<Domain::Motion::Ports::IOStatus>>::Failure(Error(
+        return Result<std::vector<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>>::Failure(Error(
             ErrorCode::PORT_NOT_INITIALIZED,
             "IO port not initialized",
             "MotionMonitoringUseCase::ReadAllDigitalOutputStatus"
         ));
     }
 
-    std::vector<Domain::Motion::Ports::IOStatus> statuses;
+    std::vector<Siligen::RuntimeExecution::Contracts::Motion::IOStatus> statuses;
     for (int16 channel = 0; channel < 16; ++channel) {
         auto result = io_port_->ReadDigitalOutput(channel);
         if (result.IsError()) {
             if (result.GetError().GetCode() == ErrorCode::NOT_IMPLEMENTED) {
                 break;
             }
-            return Result<std::vector<Domain::Motion::Ports::IOStatus>>::Failure(result.GetError());
+            return Result<std::vector<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>>::Failure(
+                result.GetError());
         }
         statuses.push_back(result.Value());
     }
-    return Result<std::vector<Domain::Motion::Ports::IOStatus>>::Success(statuses);
+    return Result<std::vector<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>>::Success(statuses);
 }
 
 Result<bool> MotionMonitoringUseCase::ReadLimitStatus(LogicalAxisId axis_id, bool positive) const {
@@ -397,7 +406,8 @@ void MotionMonitoringUseCase::NotifyMotionStatusUpdate(LogicalAxisId axis_id,
     }
 }
 
-void MotionMonitoringUseCase::NotifyIOStatusUpdate(const Domain::Motion::Ports::IOStatus& signal) {
+void MotionMonitoringUseCase::NotifyIOStatusUpdate(
+    const Siligen::RuntimeExecution::Contracts::Motion::IOStatus& signal) {
     IOStatusCallback callback;
     {
         std::lock_guard<std::mutex> lock(callback_mutex_);

@@ -17,11 +17,11 @@ using Siligen::Application::UseCases::Motion::Trajectory::DeterministicPathExecu
 using Siligen::Application::UseCases::Motion::Trajectory::DeterministicPathExecutionUseCase;
 using Siligen::Application::UseCases::Motion::Trajectory::DeterministicPathSegment;
 using Siligen::Application::UseCases::Motion::Trajectory::DeterministicPathSegmentType;
-using Siligen::Domain::Motion::Ports::CoordinateSystemConfig;
-using Siligen::Domain::Motion::Ports::CoordinateSystemStatus;
-using Siligen::Domain::Motion::Ports::IInterpolationPort;
 using Siligen::Domain::Motion::Ports::IMotionStatePort;
-using Siligen::Domain::Motion::Ports::InterpolationData;
+using Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemConfig;
+using Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemStatus;
+using Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort;
+using Siligen::RuntimeExecution::Contracts::Motion::InterpolationData;
 using Siligen::Domain::Motion::Ports::MotionState;
 using Siligen::Domain::Motion::Ports::MotionStatus;
 using Siligen::Shared::Types::Error;

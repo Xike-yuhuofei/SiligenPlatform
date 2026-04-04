@@ -19,9 +19,25 @@ class OfflinePreviewBuilderTest(unittest.TestCase):
         captured = {}
         sample_path = PROJECT_ROOT.parent.parent / "samples" / "dxf" / "rect_diag.dxf"
 
-        def _fake_run(command, **kwargs):
+        def _fake_run(
+            command,
+            *,
+            cwd=None,
+            capture_output=False,
+            text=False,
+            encoding=None,
+            errors=None,
+            check=False,
+        ):
             captured["command"] = list(command)
-            captured["kwargs"] = dict(kwargs)
+            captured["kwargs"] = {
+                "cwd": cwd,
+                "capture_output": capture_output,
+                "text": text,
+                "encoding": encoding,
+                "errors": errors,
+                "check": check,
+            }
             return subprocess.CompletedProcess(
                 command,
                 0,
@@ -38,8 +54,12 @@ class OfflinePreviewBuilderTest(unittest.TestCase):
                 stderr="",
             )
 
-        with patch("ui.offline_preview_builder._resolve_planner_cli_executable", return_value=Path("C:/tmp/siligen_planner_cli.exe")):
-            with patch("ui.offline_preview_builder.subprocess.run", side_effect=_fake_run):
+        with patch(
+            "ui.offline_preview_builder._resolve_planner_cli_executable",
+            autospec=True,
+            return_value=Path("C:/tmp/siligen_planner_cli.exe"),
+        ):
+            with patch("ui.offline_preview_builder.subprocess.run", autospec=True, side_effect=_fake_run):
                 payload = build_offline_preview_payload(sample_path, speed_mm_s=18.5, dry_run=True)
 
         self.assertEqual(payload["plan_id"], "plan-1")
@@ -52,14 +72,19 @@ class OfflinePreviewBuilderTest(unittest.TestCase):
         self.assertIn("--dry-run", captured["command"])
         self.assertIn("--dry-run-speed", captured["command"])
         self.assertEqual(captured["kwargs"]["check"], False)
-        self.assertTrue(str(captured["kwargs"]["cwd"]).endswith("wt-t150-fix"))
+        self.assertEqual(Path(str(captured["kwargs"]["cwd"])).resolve(), PROJECT_ROOT.parent.parent.resolve())
 
     def test_build_offline_preview_payload_raises_on_nonzero_exit(self) -> None:
         sample_path = PROJECT_ROOT.parent.parent / "samples" / "dxf" / "rect_diag.dxf"
 
-        with patch("ui.offline_preview_builder._resolve_planner_cli_executable", return_value=Path("C:/tmp/siligen_planner_cli.exe")):
+        with patch(
+            "ui.offline_preview_builder._resolve_planner_cli_executable",
+            autospec=True,
+            return_value=Path("C:/tmp/siligen_planner_cli.exe"),
+        ):
             with patch(
                 "ui.offline_preview_builder.subprocess.run",
+                autospec=True,
                 return_value=subprocess.CompletedProcess(["planner"], 1, stdout="", stderr="planner failed"),
             ):
                 with self.assertRaisesRegex(RuntimeError, "planner failed"):
@@ -68,9 +93,14 @@ class OfflinePreviewBuilderTest(unittest.TestCase):
     def test_build_offline_preview_payload_raises_on_invalid_json(self) -> None:
         sample_path = PROJECT_ROOT.parent.parent / "samples" / "dxf" / "rect_diag.dxf"
 
-        with patch("ui.offline_preview_builder._resolve_planner_cli_executable", return_value=Path("C:/tmp/siligen_planner_cli.exe")):
+        with patch(
+            "ui.offline_preview_builder._resolve_planner_cli_executable",
+            autospec=True,
+            return_value=Path("C:/tmp/siligen_planner_cli.exe"),
+        ):
             with patch(
                 "ui.offline_preview_builder.subprocess.run",
+                autospec=True,
                 return_value=subprocess.CompletedProcess(["planner"], 0, stdout="not-json", stderr=""),
             ):
                 with self.assertRaisesRegex(RuntimeError, "非 JSON"):

@@ -283,17 +283,13 @@ class MainWindowTabsTest(unittest.TestCase):
                 "segment_count": 2,
                 "glue_point_count": len(glue_point_payload),
                 "glue_points": glue_point_payload,
-                "execution_polyline": [
-                    {"x": 0.0, "y": 0.0},
-                    {"x": 12.0, "y": 3.0},
-                ],
                 "motion_preview": {
                     "source": "execution_trajectory_snapshot",
                     "kind": "polyline",
                     "source_point_count": 8,
                     "point_count": 2,
                     "is_sampled": True,
-                    "sampling_strategy": "fixed_spacing_corner_preserving",
+                    "sampling_strategy": "execution_trajectory_geometry_preserving_clamp",
                     "polyline": [
                         {"x": 0.0, "y": 0.0},
                         {"x": 12.0, "y": 3.0},
@@ -656,7 +652,6 @@ class MainWindowTabsTest(unittest.TestCase):
             dry_run=False,
             preview_source="mock_synthetic",
             glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 3.0)],
-            execution_polyline=[(0.0, 0.0), (12.0, 3.0)],
             preview_kind="glue_points",
         )
         debug_html = self.window._render_preview_debug_html(
@@ -665,7 +660,6 @@ class MainWindowTabsTest(unittest.TestCase):
             dry_run=False,
             preview_source="mock_synthetic",
             glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 3.0)],
-            execution_polyline=[(0.0, 0.0), (12.0, 3.0)],
             preview_kind="glue_points",
         )
 
@@ -691,7 +685,6 @@ class MainWindowTabsTest(unittest.TestCase):
             dry_run=False,
             preview_source="planned_glue_snapshot",
             glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 3.0)],
-            execution_polyline=[(0.0, 0.0), (12.0, 3.0)],
             preview_kind="glue_points",
             preview_warning="胶点预览疑似退化为轨迹采样点（胶点数 950，执行轨迹源点 1000）。",
         )
@@ -716,9 +709,12 @@ class MainWindowTabsTest(unittest.TestCase):
             dry_run=False,
             preview_source="planned_glue_snapshot",
             glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 3.0)],
-            execution_polyline=[(0.0, 0.0), (12.0, 3.0)],
             preview_kind="glue_points",
             preview_warning="",
+            preview_diagnostic_notice=main_window_module.PreviewDiagnosticNotice(
+                title="非阻断提示",
+                detail="短闭环按例外保留，仍允许确认与启动。",
+            ),
             preview_validation_classification="pass_with_exception",
             preview_exception_reason="短闭环按例外保留，仍允许确认与启动。",
             preview_failure_reason="",
@@ -726,6 +722,38 @@ class MainWindowTabsTest(unittest.TestCase):
 
         self.assertIn("非阻断提示", html)
         self.assertIn("短闭环按例外保留", html)
+
+    def test_render_runtime_preview_html_prefers_fragmentation_notice_over_generic_exception_banner(self) -> None:
+        snapshot = main_window_module.PreviewSnapshotMeta(
+            snapshot_id="snapshot-1",
+            snapshot_hash="hash-1",
+            segment_count=2,
+            point_count=3,
+            total_length_mm=12.0,
+            estimated_time_s=1.5,
+            generated_at="2026-03-26T00:00:00Z",
+        )
+
+        html = self.window._render_runtime_preview_html(
+            snapshot=snapshot,
+            speed_mm_s=12.0,
+            dry_run=False,
+            preview_source="planned_glue_snapshot",
+            glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 3.0)],
+            execution_polyline=[(0.0, 0.0), (12.0, 3.0)],
+            preview_kind="glue_points",
+            preview_diagnostic_notice=main_window_module.PreviewDiagnosticNotice(
+                title="路径碎片化提示",
+                detail="路径生成存在碎片化/断链退化，当前结果已按显式例外继续。 span spacing outside configured window but accepted as explicit exception",
+            ),
+            preview_validation_classification="pass_with_exception",
+            preview_exception_reason="span spacing outside configured window but accepted as explicit exception",
+            preview_diagnostic_code="process_path_fragmentation",
+        )
+
+        self.assertIn("路径碎片化提示", html)
+        self.assertIn("span spacing outside configured window", html)
+        self.assertNotIn("<strong>非阻断提示。</strong>", html)
 
     def test_render_runtime_preview_html_contains_dynamic_playback_overlay(self) -> None:
         snapshot = main_window_module.PreviewSnapshotMeta(
@@ -744,7 +772,6 @@ class MainWindowTabsTest(unittest.TestCase):
             dry_run=False,
             preview_source="planned_glue_snapshot",
             glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
-            execution_polyline=[(0.0, 0.0), (12.0, 6.0)],
             motion_preview=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
             preview_kind="glue_points",
         )
@@ -753,7 +780,12 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertIn("id='preview-head'", html)
         self.assertIn("window.updatePreviewPlayback", html)
         self.assertIn(".preview-canvas svg{width:100%;height:100%;display:block;}", html)
-        self.assertIn("轨迹层显示点胶头运动路径，可能包含非点胶移动；绿色胶点仅表示图纸/工艺几何。", html)
+        self.assertNotIn("胶点几何", html)
+        self.assertNotIn("点胶头运动轨迹", html)
+        self.assertNotIn("当前播放进度", html)
+        self.assertNotIn("轨迹层显示点胶头运动路径，可能包含非点胶移动；绿色胶点仅表示图纸/工艺几何。", html)
+        self.assertNotIn("id='preview-base-line'", html)
+        self.assertNotIn("id='preview-base-shadow'", html)
         self.assertEqual(self.window._preview_tabs.tabText(0), "轨迹预览")
         self.assertEqual(self.window._preview_tabs.tabText(1), "调试信息")
 
@@ -774,7 +806,6 @@ class MainWindowTabsTest(unittest.TestCase):
             dry_run=False,
             preview_source="planned_glue_snapshot",
             glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
-            execution_polyline=[(0.0, 0.0), (12.0, 6.0)],
             motion_preview=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
             preview_kind="glue_points",
             preview_validation_classification="pass",
@@ -785,11 +816,16 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertIn("运动轨迹预览点</td><td>4</td>", debug_html)
         self.assertIn("快照哈希</td><td>hash-debug</td>", debug_html)
 
-    def test_preview_tabs_stay_above_playback_controls(self) -> None:
+    def test_preview_layout_structure(self) -> None:
         preview_layout = self.window._preview_tabs.parentWidget().layout()
 
-        self.assertIs(preview_layout.itemAt(0).widget(), self.window._preview_tabs)
-        self.assertIs(preview_layout.itemAt(1).layout().itemAt(0).widget(), self.window._preview_play_btn)
+        # Tabs are now below the header
+        self.assertIs(preview_layout.itemAt(1).widget(), self.window._preview_tabs)
+        
+        # Header layout -> playback controls layout -> play button
+        header_layout = preview_layout.itemAt(0).layout()
+        playback_layout = header_layout.itemAt(2).layout()
+        self.assertIs(playback_layout.itemAt(0).widget(), self.window._preview_play_btn)
 
     def test_preview_playback_controls_follow_local_playback_state(self) -> None:
         self.window._dxf_loaded = True
@@ -822,6 +858,19 @@ class MainWindowTabsTest(unittest.TestCase):
 
         self.assertIn("非阻断提示", summary)
         self.assertIn("短闭环按例外保留", summary)
+
+    def test_confirmation_summary_prefers_fragmentation_notice_over_generic_exception(self) -> None:
+        self._arm_confirmed_preview(
+            preview_validation_classification="pass_with_exception",
+            preview_exception_reason="span spacing outside configured window but accepted as explicit exception",
+        )
+        self.window._preview_session.state.preview_diagnostic_code = "process_path_fragmentation"
+
+        summary = self.window._preview_session.build_confirmation_summary()
+
+        self.assertIn("路径碎片化提示", summary)
+        self.assertIn("span spacing outside configured window", summary)
+        self.assertNotIn("非阻断提示: span spacing outside configured window", summary)
 
     def test_check_production_preconditions_rejects_mock_preview_source(self) -> None:
         status = self._make_status(x_homed=True, y_homed=True)
@@ -994,6 +1043,69 @@ class MainWindowTabsTest(unittest.TestCase):
                     {"x": 0.0, "y": 0.0},
                     {"x": 10.0, "y": 0.0},
                 ],
+                "motion_preview": {
+                    "source": "execution_trajectory_snapshot",
+                    "kind": "polyline",
+                    "source_point_count": 8,
+                    "point_count": 2,
+                    "is_sampled": True,
+                    "sampling_strategy": "execution_trajectory_geometry_preserving_clamp",
+                    "polyline": [
+                        {"x": 0.0, "y": 0.0},
+                        {"x": 10.0, "y": 0.0},
+                    ],
+                },
+                "total_length_mm": 10.0,
+                "estimated_time_s": 0.5,
+                "generated_at": "2026-03-29T00:00:00Z",
+                "dry_run": False,
+                "preview_diagnostic_code": "",
+            },
+            "",
+        )
+
+        self.assertEqual(messages, [])
+        self.assertEqual(self.window._preview_source, "planned_glue_snapshot")
+        self.assertEqual(self.window._current_plan_id, "plan-300s")
+        self.assertEqual(self.window._current_plan_fingerprint, "hash-300s")
+        self.assertIsNotNone(self.window._preview_gate.snapshot)
+        self.assertEqual(self.window._preview_gate.snapshot.snapshot_hash, "hash-300s")
+        self.assertEqual(self.window.statusBar().currentMessage(), "胶点预览已更新，启动前需确认")
+        self.assertNotIn("规划胶点主预览", self.window._dxf_view.html)
+        self.assertNotIn(">运动轨迹<", self.window._dxf_view.html)
+        self.assertIn("预览调试参数", self.window._preview_debug_view.toHtml())
+        self.assertIn("快照哈希", self.window._preview_debug_view.toPlainText())
+        self.assertNotIn(">胶点<", self.window._dxf_view.html)
+        self.assertNotIn("stroke='#8fd3ff'", self.window._dxf_view.html)
+        self.assertNotIn("stroke-dasharray='7 4'", self.window._dxf_view.html)
+        self.assertIn("id='preview-played-line'", self.window._dxf_view.html)
+        self.assertIn("id='preview-head'", self.window._dxf_view.html)
+        self.assertIn("运动轨迹来源", self.window._preview_debug_view.toPlainText())
+        self.assertIn("执行轨迹快照", self.window._preview_debug_view.toPlainText())
+        self.assertIn("execution_trajectory_geometry_preserving_clamp", self.window._preview_debug_view.toPlainText())
+        self.assertIn("hash-300s", self.window._preview_debug_view.toPlainText())
+        self.assertIn("轨迹: 执行轨迹快照(2/8)", self.window._dxf_info_label.text())
+
+    def test_preview_snapshot_renders_process_path_fragmentation_banner(self) -> None:
+        self.window._dxf_view = _FakePreviewView()
+
+        self.window._on_preview_snapshot_completed(
+            True,
+            {
+                "snapshot_id": "snapshot-fragmented",
+                "snapshot_hash": "hash-fragmented",
+                "plan_id": "plan-fragmented",
+                "preview_source": "planned_glue_snapshot",
+                "preview_kind": "glue_points",
+                "preview_validation_classification": "pass_with_exception",
+                "preview_exception_reason": "span spacing outside configured window but accepted as explicit exception",
+                "preview_diagnostic_code": "process_path_fragmentation",
+                "segment_count": 2,
+                "glue_point_count": 2,
+                "glue_points": [
+                    {"x": 0.0, "y": 0.0},
+                    {"x": 10.0, "y": 0.0},
+                ],
                 "execution_polyline": [
                     {"x": 0.0, "y": 0.0},
                     {"x": 10.0, "y": 0.0},
@@ -1018,25 +1130,11 @@ class MainWindowTabsTest(unittest.TestCase):
             "",
         )
 
-        self.assertEqual(messages, [])
-        self.assertEqual(self.window._preview_source, "planned_glue_snapshot")
-        self.assertEqual(self.window._current_plan_id, "plan-300s")
-        self.assertEqual(self.window._current_plan_fingerprint, "hash-300s")
-        self.assertIsNotNone(self.window._preview_gate.snapshot)
-        self.assertEqual(self.window._preview_gate.snapshot.snapshot_hash, "hash-300s")
-        self.assertEqual(self.window.statusBar().currentMessage(), "胶点预览已更新，启动前需确认")
-        self.assertNotIn("规划胶点主预览", self.window._dxf_view.html)
-        self.assertNotIn(">运动轨迹<", self.window._dxf_view.html)
-        self.assertIn("预览调试参数", self.window._preview_debug_view.toHtml())
-        self.assertIn("快照哈希", self.window._preview_debug_view.toPlainText())
-        self.assertNotIn(">胶点<", self.window._dxf_view.html)
-        self.assertIn("stroke='#8fd3ff'", self.window._dxf_view.html)
-        self.assertIn("stroke-dasharray='7 4'", self.window._dxf_view.html)
-        self.assertIn("运动轨迹来源", self.window._preview_debug_view.toPlainText())
-        self.assertIn("执行轨迹快照", self.window._preview_debug_view.toPlainText())
-        self.assertIn("fixed_spacing_corner_preserving", self.window._preview_debug_view.toPlainText())
-        self.assertIn("hash-300s", self.window._preview_debug_view.toPlainText())
-        self.assertIn("轨迹: 执行轨迹快照(2/8)", self.window._dxf_info_label.text())
+        self.assertEqual(self.window._preview_session.state.preview_diagnostic_code, "process_path_fragmentation")
+        self.assertIn("路径碎片化提示", self.window._dxf_view.html)
+        self.assertIn("span spacing outside configured window", self.window._dxf_view.html)
+        self.assertNotIn("<strong>非阻断提示。</strong>", self.window._dxf_view.html)
+        self.assertIn("process_path_fragmentation", self.window._preview_debug_view.toPlainText())
 
     def test_preview_snapshot_rejects_non_authoritative_preview_source(self) -> None:
         messages = []
@@ -1052,10 +1150,6 @@ class MainWindowTabsTest(unittest.TestCase):
                 "preview_kind": "glue_points",
                 "glue_point_count": 2,
                 "glue_points": [
-                    {"x": 0.0, "y": 0.0},
-                    {"x": 10.0, "y": 0.0},
-                ],
-                "execution_polyline": [
                     {"x": 0.0, "y": 0.0},
                     {"x": 10.0, "y": 0.0},
                 ],
@@ -1089,10 +1183,6 @@ class MainWindowTabsTest(unittest.TestCase):
                     {"x": 0.0, "y": 0.0},
                     {"x": 10.0, "y": 0.0},
                 ],
-                "execution_polyline": [
-                    {"x": 0.0, "y": 0.0},
-                    {"x": 10.0, "y": 0.0},
-                ],
             },
             "",
         )
@@ -1120,10 +1210,6 @@ class MainWindowTabsTest(unittest.TestCase):
                 "preview_kind": "glue_points",
                 "glue_point_count": 0,
                 "glue_points": [],
-                "execution_polyline": [
-                    {"x": 0.0, "y": 0.0},
-                    {"x": 10.0, "y": 0.0},
-                ],
             },
             "",
         )
@@ -1267,7 +1353,6 @@ class MainWindowTabsTest(unittest.TestCase):
                 "preview_kind": "glue_points",
                 "glue_point_count": 2,
                 "glue_points": [{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
-                "execution_polyline": [{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
             },
             "",
             request_token=3,

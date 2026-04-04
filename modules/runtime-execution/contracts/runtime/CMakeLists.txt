@@ -30,6 +30,11 @@ if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}/runtim
         "runtime-execution canonical runtime contracts require runtime_execution/contracts/motion/IIOControlPort.h"
     )
 endif()
+if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}/runtime_execution/contracts/motion/IInterpolationPort.h")
+    message(FATAL_ERROR
+        "runtime-execution canonical runtime contracts require runtime_execution/contracts/motion/IInterpolationPort.h"
+    )
+endif()
 
 target_include_directories(siligen_runtime_execution_runtime_contracts INTERFACE
     ${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}

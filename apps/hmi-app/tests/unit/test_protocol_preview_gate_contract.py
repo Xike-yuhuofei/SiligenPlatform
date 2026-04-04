@@ -414,19 +414,13 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
                             {"x": 10.0, "y": 2.0},
                         ],
                         "execution_point_count": 48,
-                        "execution_polyline_source_point_count": 48,
-                        "execution_polyline_point_count": 2,
-                        "execution_polyline": [
-                            {"x": 0.0, "y": 0.0},
-                            {"x": 10.0, "y": 2.0},
-                        ],
                         "motion_preview": {
                             "source": "execution_trajectory_snapshot",
                             "kind": "polyline",
                             "source_point_count": 48,
                             "point_count": 2,
                             "is_sampled": True,
-                            "sampling_strategy": "fixed_spacing_corner_preserving",
+                            "sampling_strategy": "execution_trajectory_geometry_preserving_clamp",
                             "polyline": [
                                 {"x": 0.0, "y": 0.0},
                                 {"x": 10.0, "y": 2.0},
@@ -449,7 +443,6 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertEqual(payload["preview_source"], "planned_glue_snapshot")
         self.assertEqual(payload["preview_kind"], "glue_points")
         self.assertEqual(len(payload["glue_points"]), 2)
-        self.assertEqual(len(payload["execution_polyline"]), 2)
         self.assertEqual(payload["motion_preview"]["source"], "execution_trajectory_snapshot")
         self.assertEqual(len(payload["motion_preview"]["polyline"]), 2)
         self.assertEqual(client.calls[0][0], "dxf.preview.snapshot")

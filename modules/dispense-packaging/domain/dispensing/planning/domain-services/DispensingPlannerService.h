@@ -3,9 +3,9 @@
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
 #include "shared/types/DispensingStrategy.h"
-#include "domain/trajectory/ports/IPathSourcePort.h"
-#include "domain/trajectory/value-objects/Path.h"
-#include "domain/trajectory/value-objects/ProcessPath.h"
+#include "process_path/contracts/IPathSourcePort.h"
+#include "process_path/contracts/Path.h"
+#include "process_path/contracts/ProcessPath.h"
 #include "motion_planning/contracts/MotionTrajectory.h"
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "domain/dispensing/value-objects/DispenseCompensationProfile.h"
@@ -28,10 +28,10 @@ using Siligen::Shared::Types::Point2D;
 using Siligen::Shared::Types::uint32;
 using Siligen::TrajectoryPoint;
 using Siligen::Domain::Motion::InterpolationAlgorithm;
-using Siligen::RuntimeExecution::Contracts::Motion::InterpolationData;
-using Siligen::Domain::Trajectory::ValueObjects::Path;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
+using Siligen::Domain::Motion::Ports::InterpolationData;
 using Siligen::MotionPlanning::Contracts::MotionTrajectory;
+using Siligen::ProcessPath::Contracts::Path;
+using Siligen::ProcessPath::Contracts::ProcessPath;
 using Siligen::Domain::Dispensing::ValueObjects::DispenseCompensationProfile;
 
 struct AuthorityTriggerPoint {

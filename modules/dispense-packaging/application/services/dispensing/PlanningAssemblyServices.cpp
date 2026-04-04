@@ -8,7 +8,7 @@
 #include "domain/motion/CMPCoordinatedInterpolator.h"
 #include "domain/motion/domain-services/TimeTrajectoryPlanner.h"
 #include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
-#include "domain/trajectory/value-objects/GeometryUtils.h"
+#include "process_path/contracts/GeometryUtils.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
 #include "shared/types/CMPTypes.h"
@@ -46,14 +46,14 @@ using Siligen::Domain::Motion::TrajectoryInterpolatorFactory;
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectory;
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectoryPoint;
 using Siligen::Domain::Motion::DomainServices::TimeTrajectoryPlanner;
-using Siligen::Domain::Trajectory::ValueObjects::ArcPoint;
-using Siligen::Domain::Trajectory::ValueObjects::ComputeArcLength;
-using Siligen::Domain::Trajectory::ValueObjects::ComputeArcSweep;
-using Siligen::Domain::Trajectory::ValueObjects::Segment;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentEnd;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentStart;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
 using Siligen::MotionPlanning::Contracts::MotionPlan;
+using Siligen::ProcessPath::Contracts::ArcPoint;
+using Siligen::ProcessPath::Contracts::ComputeArcLength;
+using Siligen::ProcessPath::Contracts::ComputeArcSweep;
+using Siligen::ProcessPath::Contracts::Segment;
+using Siligen::ProcessPath::Contracts::SegmentEnd;
+using Siligen::ProcessPath::Contracts::SegmentStart;
+using Siligen::ProcessPath::Contracts::SegmentType;
 using Siligen::ProcessPath::Contracts::ProcessPath;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
@@ -739,7 +739,7 @@ void SampleLinePoints(
 }
 
 void SampleArcPoints(
-    const Siligen::Domain::Trajectory::ValueObjects::ArcPrimitive& arc,
+    const Siligen::ProcessPath::Contracts::ArcPrimitive& arc,
     float32 step,
     std::vector<Point2D>& points) {
     const float32 length = ComputeArcLength(arc);
@@ -1278,6 +1278,11 @@ void BindAuthorityLayoutToExecutionTrajectory(
     artifacts.authority_trigger_layout.binding_ready = false;
 
     if (execution_trajectory == nullptr || artifacts.authority_trigger_layout.trigger_points.empty()) {
+        if (execution_trajectory == nullptr &&
+            !artifacts.authority_trigger_layout.trigger_points.empty() &&
+            artifacts.failure_reason.empty()) {
+            artifacts.failure_reason = "execution trajectory unavailable for preview binding";
+        }
         std::ostringstream oss;
         oss << "preview_binding_stage=skipped"
             << " layout_id=" << artifacts.authority_trigger_layout.layout_id

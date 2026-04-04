@@ -1,7 +1,7 @@
 #pragma once
 
-#include "domain/trajectory/ports/IPathSourcePort.h"
-#include "domain/trajectory/value-objects/Primitive.h"
+#include "process_path/contracts/IPathSourcePort.h"
+#include "process_path/contracts/Primitive.h"
 #include "shared/types/Point2D.h"
 
 #include <vector>
@@ -19,8 +19,8 @@ struct ContourOptimizationStats {
 
 class ContourOptimizationService {
    public:
-    static std::vector<Domain::Trajectory::ValueObjects::Primitive> Optimize(
-        const std::vector<Domain::Trajectory::ValueObjects::Primitive>& primitives,
+    static std::vector<Siligen::ProcessPath::Contracts::Primitive> Optimize(
+        const std::vector<Siligen::ProcessPath::Contracts::Primitive>& primitives,
         const std::vector<Domain::Trajectory::Ports::PathPrimitiveMeta>& metadata,
         const Shared::Types::Point2D& start_pos,
         bool enable,

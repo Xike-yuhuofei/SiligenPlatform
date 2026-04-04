@@ -1,7 +1,7 @@
 #pragma once
 
-#include "domain/trajectory/value-objects/Path.h"
-#include "domain/trajectory/value-objects/Primitive.h"
+#include "process_path/contracts/Path.h"
+#include "process_path/contracts/Primitive.h"
 #include "shared/types/Types.h"
 
 #include <vector>
@@ -9,8 +9,8 @@
 namespace Siligen::Domain::Trajectory::DomainServices {
 
 using Siligen::Shared::Types::float32;
-using Siligen::Domain::Trajectory::ValueObjects::Segment;
-using Siligen::Domain::Trajectory::ValueObjects::SplinePrimitive;
+using Siligen::ProcessPath::Contracts::Segment;
+using Siligen::ProcessPath::Contracts::SplinePrimitive;
 
 struct SplineApproximationConfig {
     float32 max_step_mm = 0.0f;

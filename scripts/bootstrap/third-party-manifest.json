@@ -38,17 +38,6 @@
                                              ]
                      },
                      {
-                         "name":  "ruckig",
-                         "archiveFileName":  "ruckig.zip",
-                         "targetDirectory":  "ruckig",
-                         "required":  true,
-                         "sha256":  "ddce00fa7e910cbb522f0472bb25326adb8b08544d56d5ee698bee6dd58c6427",
-                         "sizeBytes":  997529,
-                         "validationPaths":  [
-                                                 "ruckig/CMakeLists.txt"
-                                             ]
-                     },
-                     {
                          "name":  "spdlog",
                          "archiveFileName":  "spdlog.zip",
                          "targetDirectory":  "spdlog",

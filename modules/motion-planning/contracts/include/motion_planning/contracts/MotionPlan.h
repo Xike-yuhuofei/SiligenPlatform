@@ -1,9 +1,9 @@
 #pragma once
 
-#include "domain/motion/value-objects/MotionTrajectory.h"
+#include "motion_planning/contracts/MotionTrajectory.h"
 
 namespace Siligen::MotionPlanning::Contracts {
 
-using MotionPlan = Siligen::Domain::Motion::ValueObjects::MotionTrajectory;
+using MotionPlan = MotionTrajectory;
 
 }  // namespace Siligen::MotionPlanning::Contracts

@@ -66,7 +66,7 @@ function Convert-ToBashPath {
     return $unix
 }
 
-function Get-WindowsTerminalDefaultStartingDirectory {
+function Get-DefaultStartingDirectory {
     $candidates = @(
         "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json",
         "$env:LOCALAPPDATA\Microsoft\Windows Terminal\settings.json"
@@ -107,17 +107,32 @@ function Get-WindowsTerminalDefaultStartingDirectory {
     return (Get-Location).Path
 }
 
+function Get-GitBashLauncherPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    if (-not (Test-Path $fullPath)) {
+        throw "Git Bash 不存在：$fullPath"
+    }
+
+    if ([System.IO.Path]::GetFileName($fullPath).Equals("bash.exe", [System.StringComparison]::OrdinalIgnoreCase)) {
+        $gitBashPath = Join-Path (Split-Path (Split-Path $fullPath -Parent) -Parent) "git-bash.exe"
+        if (Test-Path $gitBashPath) {
+            return [System.IO.Path]::GetFullPath($gitBashPath)
+        }
+    }
+
+    return $fullPath
+}
+
 if ($EndId -lt $StartId) {
     throw "参数错误：EndId($EndId) 必须大于等于 StartId($StartId)。"
 }
 
-if (-not (Get-Command wt -ErrorAction SilentlyContinue)) {
-    throw "未找到 wt.exe，请先安装/启用 Windows Terminal。"
-}
-
-if (-not (Test-Path $GitBashPath)) {
-    throw "Git Bash 不存在：$GitBashPath"
-}
+$gitBashLauncherPath = Get-GitBashLauncherPath -Path $GitBashPath
 
 $promptDirectoryFull = [System.IO.Path]::GetFullPath($PromptDirectory)
 if (-not (Test-Path $promptDirectoryFull)) {
@@ -132,7 +147,7 @@ $notifyScriptWin = Join-Path $repoRoot "scripts\validation\invoke-codex-notify.p
 $notifyScriptBash = Convert-ToBashPath -Path $notifyScriptWin
 $notifyConfigWin = Join-Path (Get-UserCodexHome) "notify.local.json"
 
-$startDir = Get-WindowsTerminalDefaultStartingDirectory
+$startDir = Get-DefaultStartingDirectory
 if (-not (Test-Path $startDir)) {
     $startDir = (Get-Location).Path
 }
@@ -161,17 +176,57 @@ TASK="__TASK_NAME__"
 NOTIFY_SCRIPT_WIN='__NOTIFY_SCRIPT_WIN__'
 NOTIFY_SCRIPT_BASH="__NOTIFY_SCRIPT_BASH__"
 NOTIFY_CONFIG_WIN='__NOTIFY_CONFIG_WIN__'
+START_TS=$(date +%s)
+HEARTBEAT_PID=""
+log_info() {
+  echo "$1" | tee -a "$LOG"
+}
+log_error() {
+  echo "$1" | tee -a "$LOG" >&2
+}
+log_banner() {
+  log_info "============================================================"
+  log_info "$1"
+  log_info "============================================================"
+}
+start_heartbeat() {
+  (
+    while true; do
+      sleep 30
+      NOW_TS=$(date +%s)
+      ELAPSED=$((NOW_TS - START_TS))
+      log_info "[INFO] heartbeat: task still running (${ELAPSED}s elapsed)"
+    done
+  ) &
+  HEARTBEAT_PID=$!
+}
+stop_heartbeat() {
+  if [ -n "$HEARTBEAT_PID" ] && kill -0 "$HEARTBEAT_PID" 2>/dev/null; then
+    kill "$HEARTBEAT_PID" 2>/dev/null || true
+    wait "$HEARTBEAT_PID" 2>/dev/null || true
+  fi
+}
 {
-  echo "[INFO] task: $TASK"
-  echo "[INFO] start: $(date '+%F %T')"
-  echo "[INFO] pwd: $(pwd)"
-  echo "[INFO] prompt_file: $FILE"
-  command -v codex >/dev/null 2>&1 || { echo "[ERROR] codex not found in PATH"; exit 127; }
-  [ -f "$FILE" ] || { echo "[ERROR] prompt file missing"; exit 2; }
-} >>"$LOG" 2>&1
+  log_banner "[INFO] codex task bootstrap: $TASK"
+  log_info "[INFO] task: $TASK"
+  log_info "[INFO] start: $(date '+%F %T')"
+  log_info "[INFO] pwd: $(pwd)"
+  log_info "[INFO] prompt_file: $FILE"
+  log_info "[INFO] log_file: $LOG"
+  log_info "[INFO] phase: validating-environment"
+  command -v codex >/dev/null 2>&1 || { log_error "[ERROR] codex not found in PATH"; exit 127; }
+  [ -f "$FILE" ] || { log_error "[ERROR] prompt file missing"; exit 2; }
+  log_info "[INFO] phase: loading-prompt"
+}
 PROMPT_CONTENT="$(cat "$FILE")"
-codex --yolo --profile __PROFILE__ "$PROMPT_CONTENT"
-RC=$?
+log_info "[INFO] prompt_bytes: $(wc -c < "$FILE")"
+log_info "[INFO] phase: launching-codex"
+start_heartbeat
+codex --yolo --profile __PROFILE__ "$PROMPT_CONTENT" 2>&1 | tee -a "$LOG"
+RC=${PIPESTATUS[0]}
+stop_heartbeat
+END_TS=$(date +%s)
+ELAPSED=$((END_TS - START_TS))
 notify_codex_exit() {
   command -v powershell.exe >/dev/null 2>&1 || return 0
   [ -f "$NOTIFY_SCRIPT_BASH" ] || return 0
@@ -185,13 +240,18 @@ notify_codex_exit() {
     -ExitCode "$RC" >>"$LOG" 2>&1 || true
 }
 {
-  echo "[INFO] codex_exit: $RC"
-  echo "[INFO] end: $(date '+%F %T')"
-} >>"$LOG" 2>&1
+  log_info "[INFO] phase: notifying"
+  log_info "[INFO] codex_exit: $RC"
+  log_info "[INFO] elapsed_seconds: $ELAPSED"
+  log_info "[INFO] end: $(date '+%F %T')"
+}
 notify_codex_exit
 if [ $RC -ne 0 ]; then
-  echo "[ERROR] codex exited with code $RC"
-  echo "[ERROR] log file: $LOG"
+  log_banner "[ERROR] codex task failed: $TASK"
+  log_error "[ERROR] codex exited with code $RC"
+  log_error "[ERROR] log file: $LOG"
+else
+  log_banner "[INFO] codex task completed: $TASK (${ELAPSED}s)"
 fi
 __POST_ACTION__
 '@
@@ -217,24 +277,18 @@ foreach ($file in $promptFiles) {
 
     Set-Content -Path $tempScriptWin -Value $scriptContent -Encoding utf8
 
-    $wtArgs = @("-w")
+    $processArgs = @("--cd=$startDir")
     if ($LaunchMode -eq "NewWindow") {
-        $wtArgs += "new"
+        $processArgs += @("-li", $tempScriptBash)
     } else {
-        $wtArgs += @("0", "new-tab")
+        # 兼容旧参数口径；不再使用 Windows Terminal tab，统一转为独立 Git Bash 窗口。
+        $processArgs += @("-li", $tempScriptBash)
     }
-    $wtArgs += @(
-        "--title", ("codex-" + $task),
-        "--startingDirectory", $startDir,
-        $GitBashPath,
-        "-li",
-        $tempScriptBash
-    )
 
     if ($DryRun) {
-        Write-Output ("DRYRUN wt " + ($wtArgs -join " "))
+        Write-Output ("DRYRUN Start-Process " + $gitBashLauncherPath + " " + ($processArgs -join " "))
     } else {
-        & wt @wtArgs | Out-Null
+        Start-Process -FilePath $gitBashLauncherPath -ArgumentList $processArgs -WorkingDirectory $startDir | Out-Null
         if ($ThrottleMs -gt 0) {
             Start-Sleep -Milliseconds $ThrottleMs
         }
@@ -251,6 +305,7 @@ foreach ($file in $promptFiles) {
 Write-Output ("START_DIR=" + $startDir)
 Write-Output ("LAUNCH_MODE=" + $LaunchMode)
 Write-Output ("PROFILE=" + $Profile)
+Write-Output ("GIT_BASH_LAUNCHER=" + $gitBashLauncherPath)
 Write-Output ("PROMPT_DIR=" + $promptDirectoryFull)
 Write-Output ("COUNT=" + $results.Count)
 

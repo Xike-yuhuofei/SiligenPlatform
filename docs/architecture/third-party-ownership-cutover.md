@@ -11,7 +11,7 @@
 边界保持：
 
 - 不新增对 `control-core/third_party` 的 include/link
-- 不为了“看起来独立”复制一份 Boost / Protobuf / Ruckig / json vendor
+- 不为了“看起来独立”复制一份 Boost / Protobuf / json vendor
 - 现场 SDK 与代码 owner 分开处理，不能把“代码已切”与“现场验收已做”混成一句话
 
 ## 2. 本轮已完成的 third-party owner 切换
@@ -78,7 +78,6 @@
 | 依赖 | 当前 live 使用方 | 当前临时 owner | canonical owner / 切换方式 | 退出条件 |
 |---|---|---|---|---|
 | `boost` | `packages/process-runtime-core/src`、`control-core/src/shared`、`control-core/src/infrastructure/adapters/planning/spatial` | `control-core/third_party/boost` | 不新增副本。真正消费方改为显式依赖 workspace 预注册的 Boost headers target，或直接移除 Boost 用法 | `process-runtime-core` 与 shared compat 不再 include `boost/describe`、`boost::geometry`；`siligen_device_adapters_legacy_bridges` standalone 可通过 |
-| `ruckig` | `packages/process-runtime-core/CMakeLists.txt`、`packages/process-runtime-core/src/domain/trajectory/**`、`DispensingPlannerService.cpp` | `control-core/third_party/ruckig` | `process-runtime-core` 成为 canonical consumer owner；依赖由上层显式注入 target，不再把 `control-core/third_party` 当 source root | `packages/process-runtime-core` standalone 可在无 `control-core/third_party` 前提下配置并编译 |
 | `protobuf` | `packages/process-runtime-core/CMakeLists.txt`、`control-core/src/infrastructure/adapters/planning/dxf/CMakeLists.txt` | `control-core/third_party/protobuf` | 不复制 vendor。由实际消费者改为链接上层预注册的 `protobuf` targets | `process-runtime-core` 与 DXF planning 均不再从 `control-core/third_party/protobuf` add_subdirectory |
 | `spdlog` | `control-core/src/infrastructure/CMakeLists.txt`、`control-core/src/shared/CMakeLists.txt` | `control-core/third_party/spdlog` | logging 迁到独立 canonical package 或 workspace 预注册 target；停止手写 include path | `siligen_spdlog_adapter` 不再编译 `modules/device-hal` logging 源；shared/infrastructure 不再 include `${CMAKE_SOURCE_DIR}/third_party/spdlog/include` |
 | `nlohmann/json` | `packages/transport-gateway/src/tcp/**`、`packages/process-runtime-core/src/domain/**`、`control-core/src/infrastructure/CMakeLists.txt` | 当前实际仍靠 `control-core` 侧 include root 暴露 | 不复制 vendor。由 `transport-gateway`、`process-runtime-core`、recipe/serialization canonical owner 显式链接 imported target | `transport-gateway` 与 serialization 相关目标不再从 `control-core` 继承 json include root |
@@ -103,18 +102,17 @@
 
 这正是当前 `siligen_device_adapters_legacy_bridges` standalone 仍然失败的直接原因。
 
-### 4.2 `ruckig` / `protobuf`
+### 4.2 `protobuf`
 
 `packages/process-runtime-core/CMakeLists.txt` 当前仍显式从：
 
-- `${SILIGEN_THIRD_PARTY_DIR}/ruckig`
 - `${SILIGEN_THIRD_PARTY_DIR}/protobuf`
 
 引入依赖。
 
 这说明：
 
-- `process-runtime-core` 仍把 `control-core/third_party` 当作临时 vendor owner
+- `process-runtime-core` 仍把部分 `control-core/third_party` 资产当作临时 vendor owner
 - 若不先把依赖注册方式改成 package-consumer-owned，`control-core/third_party` 不能删
 
 ### 4.3 `spdlog`
@@ -181,7 +179,7 @@
 - 先迁 owner，再切 include/link，再删 `modules/device-hal/src/adapters/diagnostics/logging`
 - 先迁 owner，再切 include/link，再删 `modules/device-hal/src/adapters/recipes`
 
-### 5.4 第四优先级：收口 `ruckig` / `protobuf` / `json`
+### 5.4 第四优先级：收口 `protobuf` / `json`
 
 目标：
 
@@ -197,10 +195,9 @@
 
 ## 6. 风险
 
-1. 如果把 `boost`、`protobuf`、`ruckig` 直接复制到多个 package，会制造多份 vendor 漂移，后续无法收敛。
+1. 如果把 `boost`、`protobuf` 直接复制到多个 package，会制造多份 vendor 漂移，后续无法收敛。
 2. 如果把 recipes 或 logging 继续塞进 `device-adapters`，会破坏“设备层只承接设备实现”的边界。
 3. 如果把现场 SDK 验收与代码 owner 迁移混写，会导致删除门禁判断失真。
-
 ## 7. 验证结果
 
 ### 7.1 已通过
@@ -236,5 +233,4 @@
 - control-core 大图继续向前验证时，会先遇到既有 `siligen_types` include-root 问题：
   - `shared/errors/ErrorHandler.h` not found
 - 这是既有全图问题，不是本轮 shared/device cutover 新引入
-
 

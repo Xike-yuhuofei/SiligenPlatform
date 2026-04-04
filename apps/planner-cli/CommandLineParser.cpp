@@ -131,6 +131,7 @@ void ParsePrimaryCommand(CommandLineConfig& config, int argc, char* argv[], int&
     }
     if (arg == "dxf-preview-snapshot") {
         config.command = CommandType::DXF_PREVIEW_SNAPSHOT;
+        config.use_interpolation_planner = true;
         command_set = true;
         return;
     }

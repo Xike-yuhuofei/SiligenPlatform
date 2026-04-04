@@ -16,7 +16,7 @@
 |---|---|
 | canonical roots | `apps/`, `modules/`, `shared/`, `docs/`, `samples/`, `tests/`, `scripts/`, `config/`, `data/`, `deploy/` |
 | removed legacy roots | `packages/`, `integration/`, `tools/`, `examples/` 已物理删除 |
-| feature artifact roots | `specs/`（仅保留 freeze/input artifacts，不参与 live owner graph） |
+| removed speckit roots | `.specify/`, `specs/` 已卸载，不再参与当前工作区基线 |
 | support/vendor/generated | `cmake/`, `third_party/`, `build/`, `logs/`, `uploads/` |
 | 正式冻结文档集 | `docs/architecture/dsp-e2e-spec/` |
 

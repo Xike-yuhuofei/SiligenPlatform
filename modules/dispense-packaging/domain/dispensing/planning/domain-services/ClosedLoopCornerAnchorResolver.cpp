@@ -10,11 +10,11 @@
 namespace Siligen::Domain::Dispensing::DomainServices::Internal {
 
 using Siligen::Domain::Dispensing::ValueObjects::StrongAnchorRole;
-using Siligen::Domain::Trajectory::ValueObjects::ArcTangent;
-using Siligen::Domain::Trajectory::ValueObjects::LineDirection;
-using Siligen::Domain::Trajectory::ValueObjects::Segment;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentStart;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
+using Siligen::ProcessPath::Contracts::ArcTangent;
+using Siligen::ProcessPath::Contracts::LineDirection;
+using Siligen::ProcessPath::Contracts::Segment;
+using Siligen::ProcessPath::Contracts::SegmentStart;
+using Siligen::ProcessPath::Contracts::SegmentType;
 
 namespace {
 

@@ -2,7 +2,7 @@
 
 #include "application/services/dxf/DxfPbPreparationService.h"
 #include "application/services/dispensing/PlanningArtifactExportAssemblyService.h"
-#include "domain/trajectory/value-objects/GeometryUtils.h"
+#include "process_path/contracts/GeometryUtils.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
 #include "workflow/contracts/WorkflowContracts.h"
@@ -28,13 +28,13 @@ using Siligen::Application::Services::Dispensing::AuthorityPreviewBuildInput;
 using Siligen::Application::Services::Dispensing::ExecutionAssemblyBuildInput;
 using Siligen::Domain::Motion::ValueObjects::TimePlanningConfig;
 using Siligen::Domain::Trajectory::Ports::PathSourceResult;
-using Siligen::Domain::Trajectory::ValueObjects::ContourElement;
-using Siligen::Domain::Trajectory::ValueObjects::ContourElementType;
-using Siligen::Domain::Trajectory::ValueObjects::Primitive;
-using Siligen::Domain::Trajectory::ValueObjects::PrimitiveType;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
-using Siligen::Domain::Trajectory::ValueObjects::Segment;
 using Siligen::MotionPlanning::Contracts::MotionPlan;
+using Siligen::ProcessPath::Contracts::ContourElement;
+using Siligen::ProcessPath::Contracts::ContourElementType;
+using Siligen::ProcessPath::Contracts::Primitive;
+using Siligen::ProcessPath::Contracts::PrimitiveType;
+using Siligen::ProcessPath::Contracts::ProcessTag;
+using Siligen::ProcessPath::Contracts::Segment;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
@@ -278,30 +278,30 @@ void UpdateBounds(PrimitiveBounds& bounds, const Point2D& point) {
 }
 
 bool IsAngleOnArc(float32 start_angle, float32 end_angle, bool clockwise, float32 angle) {
-    const float32 total = Siligen::Domain::Trajectory::ValueObjects::ComputeArcSweep(start_angle, end_angle, clockwise);
-    const float32 sweep = Siligen::Domain::Trajectory::ValueObjects::ComputeArcSweep(start_angle, angle, clockwise);
+    const float32 total = Siligen::ProcessPath::Contracts::ComputeArcSweep(start_angle, end_angle, clockwise);
+    const float32 sweep = Siligen::ProcessPath::Contracts::ComputeArcSweep(start_angle, angle, clockwise);
     return sweep <= total + 1e-3f;
 }
 
 void UpdateBoundsForArc(
-    const Siligen::Domain::Trajectory::ValueObjects::ArcPrimitive& arc,
+    const Siligen::ProcessPath::Contracts::ArcPrimitive& arc,
     PrimitiveBounds& bounds) {
-    const float32 start_angle = Siligen::Domain::Trajectory::ValueObjects::NormalizeAngle(arc.start_angle_deg);
-    const float32 end_angle = Siligen::Domain::Trajectory::ValueObjects::NormalizeAngle(arc.end_angle_deg);
-    UpdateBounds(bounds, Siligen::Domain::Trajectory::ValueObjects::ArcPoint(arc, start_angle));
-    UpdateBounds(bounds, Siligen::Domain::Trajectory::ValueObjects::ArcPoint(arc, end_angle));
+    const float32 start_angle = Siligen::ProcessPath::Contracts::NormalizeAngle(arc.start_angle_deg);
+    const float32 end_angle = Siligen::ProcessPath::Contracts::NormalizeAngle(arc.end_angle_deg);
+    UpdateBounds(bounds, Siligen::ProcessPath::Contracts::ArcPoint(arc, start_angle));
+    UpdateBounds(bounds, Siligen::ProcessPath::Contracts::ArcPoint(arc, end_angle));
 
     const float32 cardinal_angles[] = {0.0f, 90.0f, 180.0f, 270.0f};
     for (float32 angle : cardinal_angles) {
-        const float32 normalized = Siligen::Domain::Trajectory::ValueObjects::NormalizeAngle(angle);
+        const float32 normalized = Siligen::ProcessPath::Contracts::NormalizeAngle(angle);
         if (IsAngleOnArc(start_angle, end_angle, arc.clockwise, normalized)) {
-            UpdateBounds(bounds, Siligen::Domain::Trajectory::ValueObjects::ArcPoint(arc, normalized));
+            UpdateBounds(bounds, Siligen::ProcessPath::Contracts::ArcPoint(arc, normalized));
         }
     }
 }
 
 void UpdateBoundsForEllipse(
-    const Siligen::Domain::Trajectory::ValueObjects::EllipsePrimitive& ellipse,
+    const Siligen::ProcessPath::Contracts::EllipsePrimitive& ellipse,
     PrimitiveBounds& bounds) {
     const Point2D major = ellipse.major_axis;
     const float32 a = major.Length();
@@ -493,9 +493,19 @@ void ApplyOffsetToPrimitives(
 ProcessPathBuildRequest BuildProcessPathRequest(
     const PlanningRequest& request,
     std::vector<Primitive> primitives,
+    std::vector<Siligen::Domain::Trajectory::Ports::PathPrimitiveMeta> metadata,
     const std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort>& config_port) {
     ProcessPathBuildRequest process_path_request;
     process_path_request.primitives = std::move(primitives);
+    process_path_request.metadata.reserve(metadata.size());
+    for (const auto& item : metadata) {
+        Siligen::ProcessPath::Contracts::PathPrimitiveMeta meta;
+        meta.entity_id = item.entity_id;
+        meta.entity_type = item.entity_type;
+        meta.entity_segment_index = item.entity_segment_index;
+        meta.entity_closed = item.entity_closed;
+        process_path_request.metadata.push_back(meta);
+    }
     process_path_request.normalization.approximate_splines = request.approximate_splines;
     process_path_request.normalization.spline_max_step_mm = request.spline_max_step_mm;
     process_path_request.normalization.spline_max_error_mm = request.spline_max_error_mm;
@@ -519,6 +529,9 @@ ProcessPathBuildRequest BuildProcessPathRequest(
     if (request.curve_chain_max_segment_mm > kEpsilon) {
         process_path_request.process.curve_chain_max_segment_mm = request.curve_chain_max_segment_mm;
     }
+    process_path_request.topology_repair.enable = request.optimize_path;
+    process_path_request.topology_repair.start_position = Siligen::Shared::Types::Point2D(request.start_x, request.start_y);
+    process_path_request.topology_repair.two_opt_iterations = request.two_opt_iterations;
 
     if (config_port) {
         auto dispensing_result = config_port->GetDispensingConfig();
@@ -571,11 +584,11 @@ float32 SegmentLength(const Segment& segment) {
         return segment.length;
     }
     switch (segment.type) {
-        case Siligen::Domain::Trajectory::ValueObjects::SegmentType::Line:
+        case Siligen::ProcessPath::Contracts::SegmentType::Line:
             return segment.line.start.DistanceTo(segment.line.end);
-        case Siligen::Domain::Trajectory::ValueObjects::SegmentType::Arc:
-            return Siligen::Domain::Trajectory::ValueObjects::ComputeArcLength(segment.arc);
-        case Siligen::Domain::Trajectory::ValueObjects::SegmentType::Spline: {
+        case Siligen::ProcessPath::Contracts::SegmentType::Arc:
+            return Siligen::ProcessPath::Contracts::ComputeArcLength(segment.arc);
+        case Siligen::ProcessPath::Contracts::SegmentType::Spline: {
             float32 total = 0.0f;
             for (size_t i = 1; i < segment.spline.control_points.size(); ++i) {
                 total += segment.spline.control_points[i - 1].DistanceTo(segment.spline.control_points[i]);
@@ -799,6 +812,7 @@ Result<PlanningResponse> PlanningUseCase::Execute(const PlanningRequest& request
     response.preview_failure_reason = execution.execution_failure_reason.empty()
         ? authority.preview_failure_reason
         : execution.execution_failure_reason;
+    response.preview_diagnostic_code = authority.preview_diagnostic_code;
     response.authority_trigger_layout = execution.authority_trigger_layout;
     response.authority_trigger_points = authority.authority_trigger_points;
     response.spacing_validation_groups = authority.spacing_validation_groups;
@@ -917,6 +931,7 @@ Result<PreparedAuthorityPreview> PlanningUseCase::PrepareAuthorityPreview(const 
         std::chrono::steady_clock::now() - load_start).count();
 
     auto primitives = path_result.Value().primitives;
+    auto metadata = path_result.Value().metadata;
     if (primitives.empty()) {
         return Result<PreparedAuthorityPreview>::Failure(
             Error(ErrorCode::FILE_FORMAT_INVALID, "DXF无可用路径", "PlanningUseCase"));
@@ -930,7 +945,8 @@ Result<PreparedAuthorityPreview> PlanningUseCase::PrepareAuthorityPreview(const 
 
     const auto runtime_params = BuildPreviewRuntimeParams(request, config_port_);
     const auto process_path_start = std::chrono::steady_clock::now();
-    const auto process_path_request = BuildProcessPathRequest(request, std::move(primitives), config_port_);
+    const auto process_path_request =
+        BuildProcessPathRequest(request, std::move(primitives), std::move(metadata), config_port_);
     const auto process_path_result = process_path_facade_->Build(process_path_request);
     const auto process_path_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - process_path_start).count();
@@ -973,6 +989,8 @@ Result<PreparedAuthorityPreview> PlanningUseCase::PrepareAuthorityPreview(const 
     prepared.preview_validation_classification = authority.preview_validation_classification;
     prepared.preview_exception_reason = authority.preview_exception_reason;
     prepared.preview_failure_reason = authority.preview_failure_reason;
+    prepared.preview_diagnostic_code =
+        process_path_result.topology_diagnostics.fragmentation_suspected ? "process_path_fragmentation" : "";
     prepared.authority_trigger_layout = authority.authority_trigger_layout;
     prepared.authority_trigger_points = authority.authority_trigger_points;
     prepared.spacing_validation_groups = authority.spacing_validation_groups;
@@ -990,6 +1008,23 @@ Result<PreparedAuthorityPreview> PlanningUseCase::PrepareAuthorityPreview(const 
             << " load_ms=" << load_elapsed_ms
             << " process_path_ms=" << process_path_elapsed_ms
             << " authority_ms=" << authority_elapsed_ms
+            << " repair_requested=" << (process_path_result.topology_diagnostics.repair_requested ? 1 : 0)
+            << " repair_applied=" << (process_path_result.topology_diagnostics.repair_applied ? 1 : 0)
+            << " metadata_valid=" << (process_path_result.topology_diagnostics.metadata_valid ? 1 : 0)
+            << " fragmentation_suspected="
+            << (process_path_result.topology_diagnostics.fragmentation_suspected ? 1 : 0)
+            << " original_primitives=" << process_path_result.topology_diagnostics.original_primitive_count
+            << " repaired_primitives=" << process_path_result.topology_diagnostics.repaired_primitive_count
+            << " contours=" << process_path_result.topology_diagnostics.contour_count
+            << " discontinuity_before=" << process_path_result.topology_diagnostics.discontinuity_before
+            << " discontinuity_after=" << process_path_result.topology_diagnostics.discontinuity_after
+            << " intersection_pairs=" << process_path_result.topology_diagnostics.intersection_pairs
+            << " collinear_pairs=" << process_path_result.topology_diagnostics.collinear_pairs
+            << " rapid_segments=" << process_path_result.topology_diagnostics.rapid_segment_count
+            << " dispense_fragments=" << process_path_result.topology_diagnostics.dispense_fragment_count
+            << " reordered_contours=" << process_path_result.topology_diagnostics.reordered_contours
+            << " reversed_contours=" << process_path_result.topology_diagnostics.reversed_contours
+            << " rotated_contours=" << process_path_result.topology_diagnostics.rotated_contours
             << " glue_points=" << prepared.glue_points.size()
             << " preview_points=" << prepared.preview_trajectory_points.size()
             << " total_ms=" << prepared.authority_profile.total_ms;
@@ -1038,6 +1073,7 @@ Result<ExecutionAssemblyResponse> PlanningUseCase::AssembleExecutionFromAuthorit
     ExecutionAssemblyResponse response;
     response.success = true;
     response.execution_trajectory_points = assembly_result.Value().execution_trajectory_points;
+    response.motion_trajectory_points = assembly_result.Value().motion_trajectory_points;
     response.planning_report = assembly_input.motion_plan.planning_report;
     response.preview_authority_shared_with_execution =
         assembly_result.Value().preview_authority_shared_with_execution;

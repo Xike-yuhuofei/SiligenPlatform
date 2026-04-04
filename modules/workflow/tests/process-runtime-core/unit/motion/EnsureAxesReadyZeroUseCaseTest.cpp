@@ -6,11 +6,11 @@
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "domain/motion/domain-services/ReadyZeroDecisionService.h"
 #include "domain/motion/ports/IHomingPort.h"
-#include "domain/motion/ports/IIOControlPort.h"
 #include "domain/motion/ports/IMotionConnectionPort.h"
 #include "domain/motion/ports/IMotionStatePort.h"
 #include "domain/motion/ports/IPositionControlPort.h"
 #include "domain/system/ports/IEventPublisherPort.h"
+#include "runtime_execution/contracts/motion/IIOControlPort.h"
 #include "shared/types/Error.h"
 #include "shared/types/HardwareConfiguration.h"
 
@@ -36,18 +36,18 @@ using Siligen::Domain::Configuration::Ports::IConfigurationPort;
 using Siligen::Domain::Configuration::Ports::MachineConfig;
 using Siligen::Domain::Configuration::Ports::SystemConfig;
 using Siligen::Domain::Motion::DomainServices::ReadyZeroDecisionService;
-using Siligen::Domain::Motion::Ports::CoordinateSystemStatus;
 using Siligen::Domain::Motion::Ports::HomingState;
 using Siligen::Domain::Motion::Ports::HomingStatus;
 using Siligen::Domain::Motion::Ports::IHomingPort;
-using Siligen::Domain::Motion::Ports::IIOControlPort;
 using Siligen::Domain::Motion::Ports::IMotionConnectionPort;
 using Siligen::Domain::Motion::Ports::IMotionStatePort;
-using Siligen::Domain::Motion::Ports::IOStatus;
 using Siligen::Domain::Motion::Ports::IPositionControlPort;
 using Siligen::Domain::Motion::Ports::MotionCommand;
 using Siligen::Domain::Motion::Ports::MotionState;
 using Siligen::Domain::Motion::Ports::MotionStatus;
+using Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemStatus;
+using Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort;
+using Siligen::RuntimeExecution::Contracts::Motion::IOStatus;
 using Siligen::Domain::System::Ports::DomainEvent;
 using Siligen::Domain::System::Ports::EventHandler;
 using Siligen::Domain::System::Ports::EventType;

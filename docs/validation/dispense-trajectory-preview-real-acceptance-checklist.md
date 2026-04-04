@@ -16,7 +16,7 @@
 - [ ] 当前证据目录位于 `tests/reports/online-preview/<timestamp>/` 或 `tests/reports/adhoc/real-dxf-preview-snapshot-canonical/<timestamp>/`。
 - [ ] 存在 `plan-prepare.json`。
 - [ ] 存在 `snapshot.json`。
-- [ ] 存在 `trajectory_polyline.json`。
+- [ ] 存在 `motion_preview.json`。
 - [ ] 存在 `preview-verdict.json`。
 - [ ] 存在 `preview-evidence.md`。
 

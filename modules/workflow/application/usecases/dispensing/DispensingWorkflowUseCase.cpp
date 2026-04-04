@@ -159,6 +159,7 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
     response.preview_validation_classification = authority_preview.preview_validation_classification;
     response.preview_exception_reason = authority_preview.preview_exception_reason;
     response.preview_failure_reason = authority_preview.preview_failure_reason;
+    response.preview_diagnostic_code = authority_preview.preview_diagnostic_code;
     response.generated_at = ToIso8601UtcNow();
     response.performance_profile.authority_cache_hit = authority_resolution.cache_hit;
     response.performance_profile.authority_joined_inflight = authority_resolution.joined_inflight;
@@ -204,6 +205,7 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
     record.preview_validation_classification = authority_preview.preview_validation_classification;
     record.preview_exception_reason = authority_preview.preview_exception_reason;
     record.preview_failure_reason = authority_preview.preview_failure_reason;
+    record.preview_diagnostic_code = authority_preview.preview_diagnostic_code;
     record.preview_state = PlanPreviewState::PREPARED;
     record.latest = true;
 
@@ -247,6 +249,7 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
             reusable->response.preview_validation_classification = authority_preview.preview_validation_classification;
             reusable->response.preview_exception_reason = authority_preview.preview_exception_reason;
             reusable->response.preview_failure_reason = authority_preview.preview_failure_reason;
+            reusable->response.preview_diagnostic_code = authority_preview.preview_diagnostic_code;
             reusable->preview_authority_ready = authority_preview.preview_authority_ready;
             reusable->preview_authority_shared_with_execution = false;
             reusable->preview_binding_ready = authority_preview.preview_binding_ready;
@@ -255,6 +258,7 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
             reusable->preview_validation_classification = authority_preview.preview_validation_classification;
             reusable->preview_exception_reason = authority_preview.preview_exception_reason;
             reusable->preview_failure_reason = authority_preview.preview_failure_reason;
+            reusable->preview_diagnostic_code = authority_preview.preview_diagnostic_code;
             reusable->glue_points = authority_preview.glue_points;
             reusable->execution_trajectory_points = authority_preview.preview_trajectory_points;
             reusable->authority_trigger_layout = authority_preview.authority_trigger_layout;
@@ -362,6 +366,20 @@ Result<PreviewSnapshotResponse> DispensingWorkflowUseCase::GetPreviewSnapshot(co
         }
         it->second.failure_message.clear();
         snapshot_record = it->second;
+    }
+
+    const bool has_export_process_path =
+        !snapshot_record.execution_assembly.export_request.process_path.segments.empty();
+    const bool has_authority_process_path =
+        !snapshot_record.execution_launch.authority_preview.process_path.segments.empty();
+    if (snapshot_record.execution_assembly.motion_trajectory_points.empty() &&
+        !has_export_process_path &&
+        !has_authority_process_path) {
+        return Result<PreviewSnapshotResponse>::Failure(
+            Error(
+                ErrorCode::INVALID_STATE,
+                "motion trajectory snapshot unavailable for preview",
+                "DispensingWorkflowUseCase"));
     }
 
     return Result<PreviewSnapshotResponse>::Success(
@@ -698,6 +716,7 @@ PreviewSnapshotResponse DispensingWorkflowUseCase::BuildPreviewSnapshotResponse(
     std::size_t max_polyline_points,
     std::size_t max_glue_points) {
     Siligen::Application::Services::Dispensing::WorkflowPreviewSnapshotInput input;
+    const auto& retained_authority_process_path = plan_record.execution_launch.authority_preview.process_path;
     input.snapshot_id = plan_record.preview_snapshot_id;
     input.snapshot_hash = plan_record.preview_snapshot_hash;
     input.plan_id = plan_record.response.plan_id;
@@ -709,17 +728,20 @@ PreviewSnapshotResponse DispensingWorkflowUseCase::BuildPreviewSnapshotResponse(
     input.estimated_time_s = plan_record.response.estimated_time_s;
     input.generated_at = plan_record.preview_generated_at;
     input.execution_trajectory_points = &plan_record.execution_trajectory_points;
-    if (!plan_record.execution_assembly.export_request.process_path.segments.empty()) {
+    if (!plan_record.execution_assembly.motion_trajectory_points.empty()) {
+        input.motion_trajectory_points = &plan_record.execution_assembly.motion_trajectory_points;
+    } else if (!plan_record.execution_assembly.export_request.process_path.segments.empty()) {
         input.process_path = &plan_record.execution_assembly.export_request.process_path;
-    }
-    if (!plan_record.execution_assembly.export_request.motion_trajectory_points.empty()) {
-        input.motion_trajectory_points = &plan_record.execution_assembly.export_request.motion_trajectory_points;
+    } else if (!retained_authority_process_path.segments.empty()) {
+        input.process_path = &retained_authority_process_path;
     }
     input.glue_points = &plan_record.glue_points;
     input.authority_layout_id = plan_record.authority_trigger_layout.layout_id;
     input.binding_ready = plan_record.preview_binding_ready;
     input.validation_classification = plan_record.preview_validation_classification;
     input.exception_reason = plan_record.preview_exception_reason;
+    input.failure_reason = plan_record.preview_failure_reason;
+    input.diagnostic_code = plan_record.preview_diagnostic_code;
 
     Siligen::Application::Services::Dispensing::WorkflowPreviewSnapshotService snapshot_service;
     return snapshot_service.BuildResponse(input, max_polyline_points, max_glue_points);

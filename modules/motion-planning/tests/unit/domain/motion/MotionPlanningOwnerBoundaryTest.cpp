@@ -202,6 +202,43 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowPlanningImplementationsAreRemoved)
     }
 }
 
+TEST(MotionPlanningOwnerBoundaryTest, WorkflowTrajectoryMotionPlannerResidueIsRemoved) {
+    const fs::path repo_root = RepoRoot();
+    const std::array<fs::path, 5> legacy_paths = {{
+        repo_root / "modules/workflow/domain/domain/trajectory/domain-services/MotionPlanner.cpp",
+        repo_root / "modules/workflow/domain/domain/trajectory/domain-services/MotionPlanner.h",
+        repo_root / "modules/workflow/domain/domain/trajectory/value-objects/MotionConfig.h",
+        repo_root / "modules/workflow/domain/domain/trajectory/value-objects/PlanningReport.h",
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/PlanningReport.h",
+    }};
+
+    for (const auto& path : legacy_paths) {
+        EXPECT_FALSE(fs::exists(path)) << path.string();
+    }
+}
+
+TEST(MotionPlanningOwnerBoundaryTest, WorkflowTriggerCmpCompatibilityIsShimOnly) {
+    const fs::path repo_root = RepoRoot();
+    const std::string workflow_domain_cmake =
+        ReadTextFile(repo_root / "modules/workflow/domain/domain/CMakeLists.txt");
+    const std::string workflow_cmp_header =
+        ReadTextFile(repo_root / "modules/workflow/domain/include/domain/dispensing/domain-services/CMPTriggerService.h");
+    const std::string workflow_trigger_header =
+        ReadTextFile(repo_root / "modules/workflow/domain/domain/dispensing/domain-services/TriggerPlanner.h");
+
+    EXPECT_EQ(workflow_domain_cmake.find("dispensing/domain-services/CMPTriggerService.cpp"), std::string::npos);
+    EXPECT_EQ(workflow_domain_cmake.find("dispensing/planning/domain-services/DispensingPlannerService.cpp"),
+              std::string::npos);
+    EXPECT_EQ(workflow_domain_cmake.find("dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp"),
+              std::string::npos);
+    EXPECT_NE(workflow_cmp_header.find("modules/dispense-packaging"), std::string::npos);
+    EXPECT_NE(workflow_cmp_header.find("CMPTriggerService.h"), std::string::npos);
+    EXPECT_EQ(workflow_cmp_header.find("class CMPService"), std::string::npos);
+    EXPECT_NE(workflow_trigger_header.find("modules/dispense-packaging"), std::string::npos);
+    EXPECT_NE(workflow_trigger_header.find("TriggerPlanner.h"), std::string::npos);
+    EXPECT_EQ(workflow_trigger_header.find("class TriggerPlanner"), std::string::npos);
+}
+
 TEST(MotionPlanningOwnerBoundaryTest, WorkflowCmpPrecisionTestUsesContractsProcessPathSemantics) {
     const fs::path repo_root = RepoRoot();
     const std::string workflow_cmp_test = ReadTextFile(
@@ -215,7 +252,7 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowCmpPrecisionTestUsesContractsProce
 TEST(MotionPlanningOwnerBoundaryTest, InterpolationProgramPlannerConsumersUseContractsProcessPathSemantics) {
     const fs::path repo_root = RepoRoot();
     const std::array<fs::path, 4> sources = {{
-        repo_root / "modules/workflow/tests/process-runtime-core/unit/domain/trajectory/InterpolationProgramPlannerTest.cpp",
+        repo_root / "modules/motion-planning/tests/unit/domain/trajectory/InterpolationProgramPlannerTest.cpp",
         repo_root / "modules/workflow/application/usecases/motion/trajectory/DeterministicPathExecutionUseCase.cpp",
         repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp",
         repo_root / "modules/dispense-packaging/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp",
@@ -236,4 +273,38 @@ TEST(MotionPlanningOwnerBoundaryTest, InterpolationProgramPlannerConsumersUseCon
               std::string::npos);
 }
 
+TEST(MotionPlanningOwnerBoundaryTest, WorkflowResidualUnifiedTrajectoryPlannerIsRemoved) {
+    const fs::path repo_root = RepoRoot();
+
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp"));
+
+    const std::string workflow_dispensing_planner = ReadTextFile(
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp");
+    EXPECT_NE(workflow_dispensing_planner.find(
+                  "../../../../../../../dispense-packaging/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.h"),
+              std::string::npos);
+    EXPECT_EQ(workflow_dispensing_planner.find('#' + std::string("include \"UnifiedTrajectoryPlannerService.h\"")),
+              std::string::npos);
+}
+
+TEST(MotionPlanningOwnerBoundaryTest, WorkflowValueObjectThinBridgesAreRemoved) {
+    const fs::path repo_root = RepoRoot();
+
+    const std::array<fs::path, 7> removed_headers = {{
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/Path.h",
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/Primitive.h",
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/ProcessConfig.h",
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/ProcessPath.h",
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/GeometryUtils.h",
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/GeometryBoostAdapter.h",
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/PlanningReport.h",
+    }};
+
+    for (const auto& header : removed_headers) {
+        EXPECT_FALSE(fs::exists(header)) << header.string();
+    }
+}
 }  // namespace

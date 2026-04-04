@@ -699,20 +699,19 @@ class MockState:
                 self.dxf.preview_generated_at = generated_at
                 glue_point_count = max(self.dxf.segment_count * 2, 0)
                 execution_point_count = max(glue_point_count, 2)
-                execution_polyline_source_point_count = execution_point_count
-                execution_polyline_point_count = min(execution_polyline_source_point_count, max_polyline_points)
                 glue_points = []
                 for i in range(glue_point_count):
                     t = i / float(max(glue_point_count - 1, 1))
                     x = t * self.dxf.total_length
                     y = 6.0 * math.sin(t * 4.0 * math.pi)
                     glue_points.append({"x": x, "y": y})
-                execution_polyline = []
-                for i in range(execution_polyline_point_count):
-                    t = i / float(max(execution_polyline_point_count - 1, 1))
+                motion_preview_point_count = min(execution_point_count, max_polyline_points)
+                motion_preview = []
+                for i in range(motion_preview_point_count):
+                    t = i / float(max(motion_preview_point_count - 1, 1))
                     x = t * self.dxf.total_length
                     y = 6.0 * math.sin(t * 4.0 * math.pi)
-                    execution_polyline.append({"x": x, "y": y})
+                    motion_preview.append({"x": x, "y": y})
                 self.dxf.preview_state = "snapshot_ready"
                 self.dxf.preview_confirmed_at = ""
                 return {
@@ -729,12 +728,19 @@ class MockState:
                         "glue_point_count": glue_point_count,
                         "glue_points": glue_points,
                         "execution_point_count": execution_point_count,
-                        "execution_polyline_point_count": execution_polyline_point_count,
-                        "execution_polyline_source_point_count": execution_polyline_source_point_count,
-                        "execution_polyline": execution_polyline,
-                        "polyline_point_count": execution_polyline_point_count,
-                        "polyline_source_point_count": execution_polyline_source_point_count,
-                        "trajectory_polyline": execution_polyline,
+                        "motion_preview": {
+                            "source": "execution_trajectory_snapshot",
+                            "kind": "polyline",
+                            "source_point_count": execution_point_count,
+                            "point_count": motion_preview_point_count,
+                            "is_sampled": motion_preview_point_count < execution_point_count,
+                            "sampling_strategy": (
+                                "execution_trajectory_geometry_preserving_clamp"
+                                if motion_preview_point_count < execution_point_count
+                                else "execution_trajectory_geometry_preserving"
+                            ),
+                            "polyline": motion_preview,
+                        },
                         "total_length_mm": self.dxf.total_length,
                         "estimated_time_s": self.dxf.total_length / max(0.1, self.dxf.plan_speed_mm_s),
                         "generated_at": generated_at,

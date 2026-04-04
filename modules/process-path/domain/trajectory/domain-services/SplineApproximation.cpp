@@ -120,7 +120,7 @@ void AppendLineSegment(const Point2D& start,
                        float32 min_segment_mm,
                        std::vector<Segment>& segments) {
     Segment seg;
-    seg.type = Siligen::Domain::Trajectory::ValueObjects::SegmentType::Line;
+    seg.type = Siligen::ProcessPath::Contracts::SegmentType::Line;
     seg.line.start = start;
     seg.line.end = end;
     seg.length = start.DistanceTo(end);

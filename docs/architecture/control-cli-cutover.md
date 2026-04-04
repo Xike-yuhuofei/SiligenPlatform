@@ -134,7 +134,7 @@
    - 可离线执行
 6. `siligen_cli.exe dxf-plan --file examples/dxf/rect_diag.dxf --config config/machine/machine_config.ini`
    - 可离线执行并返回规划结果
-7. `python -m test_kit.workspace_validation --profile local --suite apps`
+7. `.\test.ps1 -Profile Local -Suite apps`
    - `10 passed, 0 failed`
 
 当前本地仍需单独记录的功能性阻塞：
@@ -166,5 +166,4 @@
 2. `dxf-preview` 未显式设置 `SILIGEN_DXF_PREVIEW_SCRIPT` 时，默认脚本入口为 `tools/engineering-data-bridge/scripts/generate_preview.py`。
 3. `packages/engineering-data/scripts/generate_preview.py` 继续保留为 owner/维护入口，不再被描述为工作区默认入口。
 4. `SILIGEN_ENGINEERING_DATA_PYTHON`、`SILIGEN_DXF_PREVIEW_PYTHON` 的优先级与兼容策略不变。
-
 

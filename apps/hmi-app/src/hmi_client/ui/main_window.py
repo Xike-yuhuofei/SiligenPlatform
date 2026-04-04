@@ -60,7 +60,12 @@ from client import (
     load_supervisor_policy_from_env,
     normalize_launch_mode,
 )
-from hmi_application.preview_session import MotionPreviewMeta, PreviewSessionOwner, PreviewSnapshotWorker
+from hmi_application.preview_session import (
+    MotionPreviewMeta,
+    PreviewDiagnosticNotice,
+    PreviewSessionOwner,
+    PreviewSnapshotWorker,
+)
 from client.auth import AuthManager
 from .dxf_default_paths import build_default_dxf_candidates
 from .offline_preview_builder import build_offline_preview_payload
@@ -608,27 +613,23 @@ class MainWindow(QMainWindow):
         widget.setProperty("data-testid", "tab-production")
         
         main_layout = QHBoxLayout(widget)
-        main_layout.setSpacing(0)
-        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(15)
+        main_layout.setContentsMargins(15, 15, 15, 15)
 
         # === Left Sidebar (Control Panel) ===
         sidebar = QWidget()
-        sidebar.setFixedWidth(400)
-        # Background color is now handled by CSS 'QWidget[data-testid="tab-production"] > QWidget'
-        # but we keep border here or move to CSS. Let's rely on CSS for the look, 
-        # but set specific object name or class if needed. 
-        # Ideally, we just apply the class to the Frames inside.
+        sidebar.setFixedWidth(380)
         
         sidebar_layout = QVBoxLayout(sidebar)
-        sidebar_layout.setSpacing(15) # Reduced spacing as cards have padding
-        sidebar_layout.setContentsMargins(15, 20, 15, 20)
+        sidebar_layout.setSpacing(15)
+        sidebar_layout.setContentsMargins(0, 0, 0, 0)
 
         # 1. Job Preparation (File Selection)
         job_frame = QFrame()
         job_frame.setProperty("class", "sidebar-card")
         job_layout = QVBoxLayout(job_frame)
         job_layout.setContentsMargins(15, 15, 15, 15)
-        job_layout.setSpacing(10)
+        job_layout.setSpacing(12)
         
         # Header
         job_title = QLabel("作业准备")
@@ -637,37 +638,40 @@ class MainWindow(QMainWindow):
 
         # File display & Browse
         file_row = QHBoxLayout()
+        file_row.setSpacing(8)
         self._dxf_filename_display = QLineEdit()
         self._dxf_filename_display.setReadOnly(True)
         self._dxf_filename_display.setPlaceholderText("未加载DXF文件")
         self._dxf_filename_display.setProperty("data-testid", "input-current-recipe")
-        # Inline style removed, using QSS
         file_row.addWidget(self._dxf_filename_display)
         
         browse_btn = QPushButton("浏览...")
         browse_btn.setProperty("data-testid", "btn-dxf-browse")
-        browse_btn.setFixedWidth(80)
+        browse_btn.setFixedWidth(70)
         browse_btn.clicked.connect(self._on_dxf_browse)
         file_row.addWidget(browse_btn)
         job_layout.addLayout(file_row)
 
-        # Home All Button (Added per user request)
+        # Actions
+        job_actions_row = QHBoxLayout()
+        job_actions_row.setSpacing(8)
         self._prod_home_btn = QPushButton("全部回零")
         self._prod_home_btn.setProperty("data-testid", "btn-production-home-all")
         self._prod_home_btn.setCursor(Qt.PointingHandCursor)
         self._prod_home_btn.clicked.connect(lambda: self._on_home(None))
-        job_layout.addWidget(self._prod_home_btn)
-
-        # File Info (Compact)
-        self._dxf_info_label = QLabel("段数: - | 长度: - | 预估: - | 预览: 待生成")
-        self._dxf_info_label.setProperty("class", "sub-text")
-        job_layout.addWidget(self._dxf_info_label)
+        job_actions_row.addWidget(self._prod_home_btn)
 
         self._refresh_preview_btn = QPushButton("刷新预览")
         self._refresh_preview_btn.setProperty("data-testid", "btn-dxf-preview-refresh")
         self._refresh_preview_btn.setCursor(Qt.PointingHandCursor)
         self._refresh_preview_btn.clicked.connect(self._generate_dxf_preview)
-        job_layout.addWidget(self._refresh_preview_btn)
+        job_actions_row.addWidget(self._refresh_preview_btn)
+        job_layout.addLayout(job_actions_row)
+
+        # File Info (Compact)
+        self._dxf_info_label = QLabel("段数: - | 长度: - | 预估: - | 预览: 待生成")
+        self._dxf_info_label.setProperty("class", "sub-text")
+        job_layout.addWidget(self._dxf_info_label)
         
         sidebar_layout.addWidget(job_frame)
 
@@ -676,7 +680,7 @@ class MainWindow(QMainWindow):
         param_frame.setProperty("class", "sidebar-card")
         param_layout = QGridLayout(param_frame)
         param_layout.setContentsMargins(15, 15, 15, 15)
-        param_layout.setVerticalSpacing(15)
+        param_layout.setVerticalSpacing(12)
         param_layout.setHorizontalSpacing(10)
 
         # Header
@@ -690,14 +694,14 @@ class MainWindow(QMainWindow):
         self._target_input.setProperty("data-testid", "input-target-count")
         self._target_input.setRange(1, 99999)
         self._target_input.setValue(100)
-        self._target_input.setFixedHeight(30)
+        self._target_input.setFixedHeight(28)
         self._target_input.valueChanged.connect(self._on_target_changed)
         param_layout.addWidget(self._target_input, 1, 1)
 
         # Speed Control (Slider + SpinBox)
         param_layout.addWidget(QLabel("运行速度:"), 2, 0)
-        
         speed_control_layout = QHBoxLayout()
+        speed_control_layout.setSpacing(8)
         self._dxf_speed_slider = QSlider(Qt.Horizontal)
         self._dxf_speed_slider.setRange(1, 100) 
         self._dxf_speed_slider.setValue(20)
@@ -709,10 +713,9 @@ class MainWindow(QMainWindow):
         self._dxf_speed.setRange(0.1, 100.0)
         self._dxf_speed.setValue(20.0)
         self._dxf_speed.setSuffix(" mm/s")
-        self._dxf_speed.setFixedWidth(90)
+        self._dxf_speed.setFixedWidth(85)
         self._dxf_speed.valueChanged.connect(self._on_speed_spinbox_changed)
         speed_control_layout.addWidget(self._dxf_speed)
-        
         param_layout.addLayout(speed_control_layout, 2, 1)
 
         # Mode Switch
@@ -726,28 +729,58 @@ class MainWindow(QMainWindow):
         mode_layout.addWidget(self._mode_production)
         mode_layout.addWidget(self._mode_dryrun)
         param_layout.addLayout(mode_layout, 3, 1)
-
-        # Reset Counter (Moved here from removed Monitor Frame)
-        self._reset_counter_btn = QPushButton("重置计数")
-        self._reset_counter_btn.setProperty("data-testid", "btn-reset-counter")
-        self._reset_counter_btn.setFlat(True)
-        self._reset_counter_btn.setStyleSheet("color: #888; border: none; font-size: 11px; text-align: left;")
-        self._reset_counter_btn.setCursor(Qt.PointingHandCursor)
-        self._reset_counter_btn.clicked.connect(self._on_reset_counter)
-        param_layout.addWidget(self._reset_counter_btn, 4, 1, alignment=Qt.AlignRight)
         
         sidebar_layout.addWidget(param_frame)
 
-        # 3. Core Control (Big Buttons)
+        # Monitor Frame (Moved up, above Core Control)
+        monitor_frame = QFrame()
+        monitor_frame.setProperty("class", "sidebar-card")
+        monitor_layout = QVBoxLayout(monitor_frame)
+        monitor_layout.setContentsMargins(15, 15, 15, 15)
+        monitor_layout.setSpacing(12)
+        
+        monitor_header_layout = QHBoxLayout()
+        monitor_title = QLabel("当前进度")
+        monitor_title.setProperty("class", "header-text")
+        monitor_header_layout.addWidget(monitor_title)
+        
+        self._reset_counter_btn = QPushButton("重置")
+        self._reset_counter_btn.setProperty("data-testid", "btn-reset-counter")
+        self._reset_counter_btn.setFlat(True)
+        self._reset_counter_btn.setCursor(Qt.PointingHandCursor)
+        self._reset_counter_btn.setProperty("class", "text-button")
+        self._reset_counter_btn.clicked.connect(self._on_reset_counter)
+        monitor_header_layout.addWidget(self._reset_counter_btn, alignment=Qt.AlignRight)
+        monitor_layout.addLayout(monitor_header_layout)
+
+        status_row = QHBoxLayout()
+        status_row.addWidget(QLabel("完成计数:"))
+        
+        self._completed_label = QLabel("0 / 0")
+        self._completed_label.setProperty("data-testid", "label-completed-count")
+        self._completed_label.setProperty("class", "stat-value-large")
+        self._completed_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        status_row.addWidget(self._completed_label)
+        
+        monitor_layout.addLayout(status_row)
+        sidebar_layout.addWidget(monitor_frame)
+
+        # Push subsequent widgets to bottom
+        sidebar_layout.addStretch()
+
+        # 3. Core Control (Big Buttons) - Kept at bottom of sidebar
         control_frame = QFrame()
         control_frame.setProperty("class", "sidebar-card")
         control_layout = QVBoxLayout(control_frame)
         control_layout.setContentsMargins(15, 15, 15, 15)
+        control_layout.setSpacing(12)
         
+        control_title = QLabel("生产控制")
+        control_title.setProperty("class", "header-text")
+        control_layout.addWidget(control_title)
+
         self._prod_start_btn = QPushButton("启动生产")
         self._prod_start_btn.setProperty("data-testid", "btn-production-start")
-        self._prod_start_btn.setMinimumHeight(60)
-        # Inline font style removed, handled by CSS
         self._prod_start_btn.setProperty("role", "production-start")
         self._prod_start_btn.setCursor(Qt.PointingHandCursor)
         self._prod_start_btn.clicked.connect(self._on_production_start_clicked)
@@ -755,24 +788,23 @@ class MainWindow(QMainWindow):
 
         # Pause / Stop Row
         sub_control_layout = QHBoxLayout()
-        sub_control_layout.setSpacing(15)
+        sub_control_layout.setSpacing(10)
         
         self._prod_pause_btn = QPushButton("暂停")
         self._prod_pause_btn.setProperty("data-testid", "btn-production-pause")
-        self._prod_pause_btn.setMinimumHeight(40)
+        self._prod_pause_btn.setProperty("role", "production-secondary")
         self._prod_pause_btn.setCursor(Qt.PointingHandCursor)
         self._prod_pause_btn.clicked.connect(self._on_production_pause)
 
         self._prod_resume_btn = QPushButton("恢复")
         self._prod_resume_btn.setProperty("data-testid", "btn-production-resume")
-        self._prod_resume_btn.setMinimumHeight(40)
+        self._prod_resume_btn.setProperty("role", "production-secondary")
         self._prod_resume_btn.setCursor(Qt.PointingHandCursor)
         self._prod_resume_btn.clicked.connect(self._on_production_resume)
         
         self._prod_stop_btn = QPushButton("停止")
         self._prod_stop_btn.setProperty("data-testid", "btn-production-stop")
-        self._prod_stop_btn.setMinimumHeight(40)
-        self._prod_stop_btn.setProperty("role", "danger")
+        self._prod_stop_btn.setProperty("role", "danger-stop")
         self._prod_stop_btn.setCursor(Qt.PointingHandCursor)
         self._prod_stop_btn.clicked.connect(self._on_production_stop)
         
@@ -783,48 +815,81 @@ class MainWindow(QMainWindow):
         
         sidebar_layout.addWidget(control_frame)
 
-        # Push subsequent widgets to bottom
-        sidebar_layout.addStretch()
-
-        # Monitor Frame (Restored to Sidebar Bottom)
-        monitor_frame = QFrame()
-        monitor_frame.setProperty("class", "sidebar-card")
-        monitor_layout = QVBoxLayout(monitor_frame)
-        monitor_layout.setContentsMargins(15, 15, 15, 15)
-        
-        monitor_title = QLabel("当前进度")
-        monitor_title.setProperty("class", "header-text")
-        monitor_layout.addWidget(monitor_title)
-
-        status_row = QHBoxLayout()
-        status_row.addWidget(QLabel("完成计数:"))
-        
-        self._completed_label = QLabel("0 / 0")
-        self._completed_label.setProperty("data-testid", "label-completed-count")
-        self._completed_label.setStyleSheet("font-weight: bold; color: #4CAF50; font-size: 14px;")
-        self._completed_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        status_row.addWidget(self._completed_label)
-        
-        monitor_layout.addLayout(status_row)
-        sidebar_layout.addWidget(monitor_frame)
-
-        # === Right Content (Preview) ===
-        preview_container = QWidget()
+        # === Right Content (Preview Workspace) ===
+        preview_container = QFrame()
+        preview_container.setProperty("class", "preview-workspace")
         preview_layout = QVBoxLayout(preview_container)
-        preview_layout.setContentsMargins(0, 0, 0, 0)
-        preview_layout.setSpacing(10)
+        preview_layout.setContentsMargins(15, 15, 15, 15)
+        preview_layout.setSpacing(12)
 
+        # Header: Title + Playback Controls
+        preview_header_layout = QHBoxLayout()
+        preview_header_layout.setSpacing(15)
+        
+        preview_title = QLabel("轨迹与过程预览")
+        preview_title.setProperty("class", "header-text")
+        preview_header_layout.addWidget(preview_title)
+        
+        preview_header_layout.addStretch()
+
+        playback_controls_layout = QHBoxLayout()
+        playback_controls_layout.setSpacing(8)
+        
+        self._preview_play_btn = QPushButton("播放")
+        self._preview_play_btn.setProperty("data-testid", "btn-preview-play")
+        self._preview_play_btn.setProperty("class", "preview-control-btn")
+        self._preview_play_btn.setCursor(Qt.PointingHandCursor)
+        self._preview_play_btn.clicked.connect(self._on_preview_play)
+        playback_controls_layout.addWidget(self._preview_play_btn)
+        
+        self._preview_pause_btn = QPushButton("暂停")
+        self._preview_pause_btn.setProperty("data-testid", "btn-preview-pause")
+        self._preview_pause_btn.setProperty("class", "preview-control-btn")
+        self._preview_pause_btn.setCursor(Qt.PointingHandCursor)
+        self._preview_pause_btn.clicked.connect(self._on_preview_pause)
+        playback_controls_layout.addWidget(self._preview_pause_btn)
+        
+        self._preview_replay_btn = QPushButton("重播")
+        self._preview_replay_btn.setProperty("data-testid", "btn-preview-replay")
+        self._preview_replay_btn.setProperty("class", "preview-control-btn")
+        self._preview_replay_btn.setCursor(Qt.PointingHandCursor)
+        self._preview_replay_btn.clicked.connect(self._on_preview_replay)
+        playback_controls_layout.addWidget(self._preview_replay_btn)
+        
+        self._preview_speed_combo = QComboBox()
+        self._preview_speed_combo.setProperty("data-testid", "combo-preview-speed")
+        self._preview_speed_combo.setProperty("class", "preview-control-combo")
+        self._preview_speed_combo.addItem("0.5x", 0.5)
+        self._preview_speed_combo.addItem("1.0x", 1.0)
+        self._preview_speed_combo.addItem("2.0x", 2.0)
+        self._preview_speed_combo.addItem("4.0x", 4.0)
+        self._preview_speed_combo.setCurrentIndex(1)
+        self._preview_speed_combo.currentIndexChanged.connect(self._on_preview_speed_changed)
+        playback_controls_layout.addWidget(self._preview_speed_combo)
+
+        preview_header_layout.addLayout(playback_controls_layout)
+
+        self._preview_playback_status_label = QLabel("动态预览: 不可用")
+        self._preview_playback_status_label.setProperty("data-testid", "label-preview-playback-state")
+        self._preview_playback_status_label.setProperty("class", "sub-text")
+        self._preview_playback_status_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        preview_header_layout.addWidget(self._preview_playback_status_label)
+
+        preview_layout.addLayout(preview_header_layout)
+
+        # Preview Tabs
         self._preview_tabs = QTabWidget()
         self._preview_tabs.setProperty("data-testid", "tabs-preview-detail")
-        preview_layout.addWidget(self._preview_tabs, 1)
-
+        self._preview_tabs.setProperty("class", "inner-tabs")
+        
         preview_view_page = QWidget()
         preview_view_layout = QVBoxLayout(preview_view_page)
         preview_view_layout.setContentsMargins(0, 0, 0, 0)
+        preview_view_layout.setSpacing(0)
 
         if WEB_ENGINE_AVAILABLE:
             self._dxf_view = QWebEngineView()
-            self._dxf_view.page().setBackgroundColor(QColor("#1E1E1E"))
+            self._dxf_view.page().setBackgroundColor(QColor("#1A1A1A"))
             if hasattr(self._dxf_view, "loadFinished"):
                 self._dxf_view.loadFinished.connect(self._on_preview_view_load_finished)
             preview_view_layout.addWidget(self._dxf_view)
@@ -839,41 +904,15 @@ class MainWindow(QMainWindow):
         debug_page = QWidget()
         debug_layout = QVBoxLayout(debug_page)
         debug_layout.setContentsMargins(0, 0, 0, 0)
+        debug_layout.setSpacing(0)
         self._preview_debug_view = QTextBrowser()
         self._preview_debug_view.setProperty("data-testid", "browser-preview-debug")
         self._preview_debug_view.setOpenExternalLinks(False)
+        self._preview_debug_view.setStyleSheet("border: none; background-color: #1A1A1A; padding: 10px;")
         debug_layout.addWidget(self._preview_debug_view)
         self._preview_tabs.addTab(debug_page, "调试信息")
 
-        playback_controls_layout = QHBoxLayout()
-        playback_controls_layout.setContentsMargins(0, 0, 0, 0)
-        playback_controls_layout.setSpacing(8)
-        self._preview_play_btn = QPushButton("播放")
-        self._preview_play_btn.setProperty("data-testid", "btn-preview-play")
-        self._preview_play_btn.clicked.connect(self._on_preview_play)
-        playback_controls_layout.addWidget(self._preview_play_btn)
-        self._preview_pause_btn = QPushButton("暂停")
-        self._preview_pause_btn.setProperty("data-testid", "btn-preview-pause")
-        self._preview_pause_btn.clicked.connect(self._on_preview_pause)
-        playback_controls_layout.addWidget(self._preview_pause_btn)
-        self._preview_replay_btn = QPushButton("重播")
-        self._preview_replay_btn.setProperty("data-testid", "btn-preview-replay")
-        self._preview_replay_btn.clicked.connect(self._on_preview_replay)
-        playback_controls_layout.addWidget(self._preview_replay_btn)
-        self._preview_speed_combo = QComboBox()
-        self._preview_speed_combo.setProperty("data-testid", "combo-preview-speed")
-        self._preview_speed_combo.addItem("0.5x", 0.5)
-        self._preview_speed_combo.addItem("1.0x", 1.0)
-        self._preview_speed_combo.addItem("2.0x", 2.0)
-        self._preview_speed_combo.addItem("4.0x", 4.0)
-        self._preview_speed_combo.setCurrentIndex(1)
-        self._preview_speed_combo.currentIndexChanged.connect(self._on_preview_speed_changed)
-        playback_controls_layout.addWidget(self._preview_speed_combo)
-        self._preview_playback_status_label = QLabel("动态预览: 不可用")
-        self._preview_playback_status_label.setProperty("data-testid", "label-preview-playback-state")
-        self._preview_playback_status_label.setProperty("class", "sub-text")
-        playback_controls_layout.addWidget(self._preview_playback_status_label, 1)
-        preview_layout.addLayout(playback_controls_layout)
+        preview_layout.addWidget(self._preview_tabs, 1)
 
         # Add to main layout
         main_layout.addWidget(sidebar)
@@ -2545,27 +2584,28 @@ class MainWindow(QMainWindow):
         dry_run: bool,
         preview_source: str,
         glue_points: list,
-        execution_polyline: list,
         preview_kind: str,
         motion_preview: list | None = None,
         motion_preview_meta: MotionPreviewMeta | None = None,
         preview_warning: str = "",
+        preview_diagnostic_notice: PreviewDiagnosticNotice | None = None,
         motion_preview_warning: str = "",
         preview_validation_classification: str = "",
         preview_exception_reason: str = "",
         preview_failure_reason: str = "",
+        preview_diagnostic_code: str = "",
     ) -> str:
         normalized_source = str(preview_source or "").strip().lower()
-        effective_motion_preview = list(motion_preview or execution_polyline)
+        effective_motion_preview = list(motion_preview or [])
         effective_motion_preview_meta = motion_preview_meta
         if effective_motion_preview_meta is None and effective_motion_preview:
             effective_motion_preview_meta = MotionPreviewMeta(
-                source="legacy_execution_polyline",
+                source="",
                 kind="polyline",
                 point_count=len(effective_motion_preview),
                 source_point_count=len(effective_motion_preview),
                 is_sampled=False,
-                sampling_strategy="legacy_execution_polyline_compat",
+                sampling_strategy="",
             )
         effective_motion_preview_meta = effective_motion_preview_meta or MotionPreviewMeta()
         warning_banner = ""
@@ -2584,32 +2624,13 @@ class MainWindow(QMainWindow):
                 f"<strong>运动轨迹预览提示。</strong> {html.escape(motion_preview_warning)}"
                 "</div>"
             )
-        legend_markup = (
-            "<div style='display:flex;flex-wrap:wrap;gap:10px;align-items:center;"
-            "padding:10px 12px;border:1px solid #2f3640;background:#171717;color:#d5d5d5;'>"
-            "<span style='display:inline-flex;align-items:center;gap:6px;'>"
-            "<span style='width:10px;height:10px;border-radius:999px;background:#00d084;display:inline-block;'></span>"
-            "胶点几何"
-            "</span>"
-            "<span style='display:inline-flex;align-items:center;gap:6px;'>"
-            "<span style='width:18px;height:0;border-top:2px dashed #8fd3ff;display:inline-block;'></span>"
-            "点胶头运动轨迹"
-            "</span>"
-            "<span style='display:inline-flex;align-items:center;gap:6px;'>"
-            "<span style='width:18px;height:0;border-top:3px solid #f59e0b;display:inline-block;'></span>"
-            "当前播放进度"
-            "</span>"
-            "</div>"
-            "<div style='margin-top:8px;color:#9ca3af;font-size:12px;line-height:1.5;'>"
-            "轨迹层显示点胶头运动路径，可能包含非点胶移动；绿色胶点仅表示图纸/工艺几何。"
-            "</div>"
-        )
         validation_banner = ""
-        if preview_validation_classification == "pass_with_exception" and preview_exception_reason:
+        if preview_diagnostic_notice is not None:
             validation_banner = (
                 "<div style='margin-bottom:14px;padding:12px 14px;border:1px solid #854d0e;"
                 "background:#2d2110;color:#fde68a;'>"
-                f"<strong>非阻断提示。</strong> {html.escape(preview_exception_reason)}"
+                f"<strong>{html.escape(preview_diagnostic_notice.title)}。</strong> "
+                f"{html.escape(preview_diagnostic_notice.detail)}"
                 "</div>"
             )
         elif preview_validation_classification == "fail":
@@ -2655,20 +2676,9 @@ class MainWindow(QMainWindow):
 
         display_points = _map_points(glue_points)
         display_motion_preview = _map_points(effective_motion_preview)
-        motion_preview_markup = ""
         playback_data_markup = ""
         playback_overlay_markup = ""
         if len(display_motion_preview) >= 2:
-            motion_preview_polyline_markup = " ".join(
-                f"{point_x:.2f},{point_y:.2f}" for point_x, point_y in display_motion_preview
-            )
-            motion_preview_markup = (
-                f"<polyline id='preview-base-shadow' points='{motion_preview_polyline_markup}' fill='none' stroke='#27445f' "
-                "stroke-width='5.2' stroke-linecap='round' stroke-linejoin='round' opacity='0.85' />"
-                f"<polyline id='preview-base-line' points='{motion_preview_polyline_markup}' fill='none' stroke='#8fd3ff' "
-                "stroke-width='2.8' stroke-linecap='round' stroke-linejoin='round' "
-                "stroke-dasharray='7 4' opacity='1.0' />"
-            )
             playback_overlay_markup = (
                 "<polyline id='preview-played-shadow' points='' fill='none' stroke='#3f2a06' "
                 "stroke-width='6.8' stroke-linecap='round' stroke-linejoin='round' opacity='0.95' />"
@@ -2732,8 +2742,8 @@ class MainWindow(QMainWindow):
             "<style>"
             "html,body{height:100%;margin:0;background:#1e1e1e;color:#e8e8e8;font-family:Segoe UI;}"
             "body{display:flex;min-height:100%;}"
-            ".preview-root{box-sizing:border-box;display:flex;flex-direction:column;gap:14px;"
-            "height:100%;width:100%;padding:18px;}"
+            ".preview-root{box-sizing:border-box;display:flex;flex-direction:column;gap:2px;"
+            "height:100%;width:100%;padding:0;}"
             ".preview-canvas{flex:1 1 auto;min-height:0;background:#141414;border:1px solid #333;}"
             ".preview-canvas svg{width:100%;height:100%;display:block;}"
             "</style>"
@@ -2742,9 +2752,7 @@ class MainWindow(QMainWindow):
             f"{warning_banner}"
             f"{motion_warning_banner}"
             f"{validation_banner}"
-            f"{legend_markup}"
             f"<div class='preview-canvas'><svg viewBox='0 0 {width:.0f} {height:.0f}' preserveAspectRatio='xMidYMid meet'>"
-            f"{motion_preview_markup}"
             f"{point_cloud_svg}"
             f"{playback_overlay_markup}"
             "</svg></div>"
@@ -2760,26 +2768,26 @@ class MainWindow(QMainWindow):
         dry_run: bool,
         preview_source: str,
         glue_points: list,
-        execution_polyline: list,
         preview_kind: str,
         motion_preview: list | None = None,
         motion_preview_meta: MotionPreviewMeta | None = None,
         preview_validation_classification: str = "",
+        preview_diagnostic_code: str = "",
     ) -> str:
         mode_text = "空跑" if dry_run else "生产"
         generated_at = html.escape(snapshot.generated_at or "-")
         normalized_source = str(preview_source or "").strip().lower()
         normalized_kind = str(preview_kind or "").strip().lower() or "glue_points"
-        effective_motion_preview = list(motion_preview or execution_polyline)
+        effective_motion_preview = list(motion_preview or [])
         effective_motion_preview_meta = motion_preview_meta
         if effective_motion_preview_meta is None and effective_motion_preview:
             effective_motion_preview_meta = MotionPreviewMeta(
-                source="legacy_execution_polyline",
+                source="",
                 kind="polyline",
                 point_count=len(effective_motion_preview),
                 source_point_count=len(effective_motion_preview),
                 is_sampled=False,
-                sampling_strategy="legacy_execution_polyline_compat",
+                sampling_strategy="",
             )
         effective_motion_preview_meta = effective_motion_preview_meta or MotionPreviewMeta()
         source_text = html.escape(self._preview_source_text(normalized_source))
@@ -2811,6 +2819,7 @@ class MainWindow(QMainWindow):
             f"<tr><td style='padding:4px 16px 4px 0;'>运动轨迹来源</td><td>{motion_preview_source_text}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>运动轨迹语义</td><td>{motion_preview_kind}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>校验分类</td><td>{html.escape(preview_validation_classification or 'pass')}</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>诊断码</td><td>{html.escape(preview_diagnostic_code or '-')}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>模式</td><td>{mode_text}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>速度</td><td>{speed_mm_s:.3f} mm/s</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>段数</td><td>{snapshot.segment_count}</td></tr>"
@@ -2884,15 +2893,16 @@ class MainWindow(QMainWindow):
             dry_run=result.dry_run,
             preview_source=result.preview_source,
             glue_points=list(result.glue_points),
-            execution_polyline=list(result.execution_polyline),
             motion_preview=list(result.motion_preview),
             motion_preview_meta=result.motion_preview_meta,
             preview_kind=result.preview_kind,
             preview_warning=result.preview_warning,
+            preview_diagnostic_notice=result.preview_diagnostic_notice,
             motion_preview_warning=result.motion_preview_warning,
             preview_validation_classification=self._preview_session.state.preview_validation_classification,
             preview_exception_reason=self._preview_session.state.preview_exception_reason,
             preview_failure_reason=self._preview_session.state.preview_failure_reason,
+            preview_diagnostic_code=self._preview_session.state.preview_diagnostic_code,
         )
         debug_html = self._render_preview_debug_html(
             snapshot=result.snapshot,
@@ -2900,11 +2910,11 @@ class MainWindow(QMainWindow):
             dry_run=result.dry_run,
             preview_source=result.preview_source,
             glue_points=list(result.glue_points),
-            execution_polyline=list(result.execution_polyline),
             motion_preview=list(result.motion_preview),
             motion_preview_meta=result.motion_preview_meta,
             preview_kind=result.preview_kind,
             preview_validation_classification=self._preview_session.state.preview_validation_classification,
+            preview_diagnostic_code=self._preview_session.state.preview_diagnostic_code,
         )
         self._preview_dom_ready = False
         self._dxf_view.setHtml(html_content)
@@ -2939,10 +2949,10 @@ class MainWindow(QMainWindow):
             )
         if result.preview_warning and result.snapshot is not None:
             _UI_LOGGER.warning(
-                "preview_sampling_warning snapshot_id=%s glue_points=%d execution_source_points=%d",
+                "preview_sampling_warning snapshot_id=%s glue_points=%d motion_source_points=%d",
                 result.snapshot.snapshot_id,
                 result.snapshot.point_count,
-                result.execution_polyline_source_point_count,
+                result.motion_preview_meta.source_point_count if result.motion_preview_meta is not None else 0,
             )
         if result.motion_preview_warning and result.snapshot is not None:
             _UI_LOGGER.warning(
@@ -2953,13 +2963,12 @@ class MainWindow(QMainWindow):
             )
         self.statusBar().showMessage(result.status_message)
         _UI_LOGGER.info(
-            "preview_ready snapshot_id=%s snapshot_hash=%s preview_source=%s glue_points=%d motion_points=%d execution_points=%d",
+            "preview_ready snapshot_id=%s snapshot_hash=%s preview_source=%s glue_points=%d motion_points=%d",
             result.snapshot.snapshot_id if result.snapshot is not None else "",
             result.snapshot.snapshot_hash if result.snapshot is not None else "",
             result.preview_source,
             len(result.glue_points),
             len(result.motion_preview),
-            len(result.execution_polyline),
         )
 
     def _on_dxf_load(self):

@@ -4,8 +4,8 @@
 #include "domain/safety/ports/IInterlockSignalPort.h"
 #include "siligen/device/adapters/drivers/multicard/MockMultiCardWrapper.h"
 #include "runtime_execution/contracts/dispensing/ITaskSchedulerPort.h"
+#include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
 #include "domain/dispensing/ports/IValvePort.h"
-#include "domain/motion/ports/IMotionRuntimePort.h"
 #include "siligen/device/contracts/commands/device_commands.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 #include "runtime_process_bootstrap/WorkspaceAssetPaths.h"
@@ -272,7 +272,7 @@ TEST(RuntimeExecutionIntegrationHostBootstrapSmokeTest, BuildsContainerFromCanon
         container->ResolvePort<Siligen::Device::Contracts::Ports::DeviceConnectionPort>(),
         nullptr);
     EXPECT_NE(
-        container->ResolvePort<Siligen::Domain::Motion::Ports::IMotionRuntimePort>(),
+        container->ResolvePort<Siligen::RuntimeExecution::Contracts::Motion::IMotionRuntimePort>(),
         nullptr);
     EXPECT_NE(
         container->ResolvePort<Siligen::Domain::Dispensing::Ports::IValvePort>(),

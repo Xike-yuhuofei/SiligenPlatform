@@ -1,8 +1,8 @@
 #pragma once
 
 #include "application/usecases/motion/coordination/MotionCoordinationUseCase.h"
-#include "domain/motion/ports/IInterpolationPort.h"
 #include "domain/motion/ports/IMotionStatePort.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
 
@@ -63,7 +63,7 @@ struct DeterministicPathExecutionStatus {
 class DeterministicPathExecutionUseCase {
    public:
     DeterministicPathExecutionUseCase(
-        std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port,
+        std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort> interpolation_port,
         std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port);
 
     ~DeterministicPathExecutionUseCase() = default;
@@ -81,13 +81,13 @@ class DeterministicPathExecutionUseCase {
 
    private:
     struct ActiveExecution {
-        std::vector<Domain::Motion::Ports::InterpolationData> program{};
+        std::vector<Siligen::RuntimeExecution::Contracts::Motion::InterpolationData> program{};
         std::vector<LogicalAxisId> axis_map{};
         std::size_t next_segment_index{0};
         int16 coord_sys{1};
     };
 
-    std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port_;
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort> interpolation_port_;
     std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port_;
     Coordination::MotionCoordinationUseCase coordination_use_case_;
     std::optional<ActiveExecution> active_execution_{};
@@ -97,7 +97,8 @@ class DeterministicPathExecutionUseCase {
         const DeterministicPathExecutionRequest& request,
         const Point2D& start_point) const;
     Result<void> DispatchNextSegment(ActiveExecution& execution);
-    Result<Domain::Motion::Ports::CoordinateSystemStatus> ReadCoordinateSystemStatus(int16 coord_sys) const;
+    Result<Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemStatus>
+        ReadCoordinateSystemStatus(int16 coord_sys) const;
     Result<std::vector<Domain::Motion::Ports::MotionStatus>> ReadMotionStatuses() const;
     Result<void> FailActiveExecution(const std::string& detail);
 };

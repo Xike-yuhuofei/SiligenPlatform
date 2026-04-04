@@ -1,6 +1,7 @@
 #pragma once
 
-#include "domain/motion/ports/IMotionRuntimePort.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
+#include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
 #include "shared/types/LogTypes.h"
 
 #include <memory>
@@ -40,7 +41,6 @@ namespace Motion {
 namespace Ports {
 class IAxisControlPort;
 class IHomingPort;
-class IInterpolationPort;
 class IJogControlPort;
 class IMotionConnectionPort;
 class IMotionStatePort;
@@ -85,7 +85,6 @@ class IEventPublisherPort;
 namespace Trajectory {
 namespace Ports {
 class IPathSourcePort;
-class IDXFPathSourcePort;
 }  // namespace Ports
 }  // namespace Trajectory
 }  // namespace Domain
@@ -107,9 +106,9 @@ struct InfrastructureBindings {
     std::shared_ptr<Domain::Diagnostics::Ports::IDiagnosticsPort> diagnostics_port;
     std::shared_ptr<Domain::Dispensing::Ports::ITriggerControllerPort> trigger_port;
     std::shared_ptr<Domain::Dispensing::Ports::IValvePort> valve_port;
-    std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port;
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort> interpolation_port;
     std::shared_ptr<Domain::Motion::Ports::IVelocityProfilePort> velocity_profile_port;
-    std::shared_ptr<Domain::Motion::Ports::IMotionRuntimePort> motion_runtime_port;
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IMotionRuntimePort> motion_runtime_port;
     std::shared_ptr<Domain::Configuration::Ports::IFileStoragePort> file_storage_port;
     std::shared_ptr<Domain::Diagnostics::Ports::ITestRecordRepository> test_record_repository;
     std::shared_ptr<Domain::Diagnostics::Ports::ITestConfigurationPort> test_config_manager;
@@ -118,7 +117,6 @@ struct InfrastructureBindings {
     std::shared_ptr<Domain::System::Ports::IEventPublisherPort> event_port;
     std::shared_ptr<Domain::Safety::Ports::IInterlockSignalPort> interlock_signal_port;
     std::shared_ptr<Domain::Trajectory::Ports::IPathSourcePort> path_source_port;
-    std::shared_ptr<Domain::Trajectory::Ports::IDXFPathSourcePort> dxf_path_source_port;
     std::shared_ptr<Domain::Recipes::Ports::IRecipeRepositoryPort> recipe_repository;
     std::shared_ptr<Domain::Recipes::Ports::ITemplateRepositoryPort> template_repository;
     std::shared_ptr<Domain::Recipes::Ports::IAuditRepositoryPort> audit_repository;
