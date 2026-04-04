@@ -4,7 +4,7 @@
 #include "domain/dispensing/contracts/ExecutionPackage.h"
 #include "domain/dispensing/value-objects/AuthorityTriggerLayout.h"
 #include "domain/dispensing/value-objects/DispenseCompensationProfile.h"
-#include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
+#include "motion_planning/contracts/InterpolationTypes.h"
 #include "motion_planning/contracts/MotionPlan.h"
 #include "motion_planning/contracts/MotionPlanningReport.h"
 #include "process_path/contracts/ProcessPath.h"
@@ -102,8 +102,8 @@ struct ExecutionAssemblyBuildInput {
     Siligen::Shared::Types::float32 spline_max_error_mm = 0.0f;
     Siligen::Shared::Types::float32 estimated_time_s = 0.0f;
     bool use_interpolation_planner = false;
-    Siligen::Domain::Motion::InterpolationAlgorithm interpolation_algorithm =
-        Siligen::Domain::Motion::InterpolationAlgorithm::LINEAR;
+    Siligen::MotionPlanning::Contracts::InterpolationAlgorithm interpolation_algorithm =
+        Siligen::MotionPlanning::Contracts::InterpolationAlgorithm::LINEAR;
     Siligen::Domain::Dispensing::ValueObjects::DispenseCompensationProfile compensation_profile{};
     AuthorityPreviewBuildResult authority_preview;
 };
@@ -146,8 +146,8 @@ struct PlanningArtifactsBuildInput {
     bool dispense_only_cruise = false;
     bool downgrade_on_violation = true;
     bool use_interpolation_planner = false;
-    Siligen::Domain::Motion::InterpolationAlgorithm interpolation_algorithm =
-        Siligen::Domain::Motion::InterpolationAlgorithm::LINEAR;
+    Siligen::MotionPlanning::Contracts::InterpolationAlgorithm interpolation_algorithm =
+        Siligen::MotionPlanning::Contracts::InterpolationAlgorithm::LINEAR;
     Siligen::Domain::Dispensing::ValueObjects::DispenseCompensationProfile compensation_profile{};
     Siligen::Shared::Types::float32 spacing_tol_ratio = 0.0f;
     Siligen::Shared::Types::float32 spacing_min_mm = 0.0f;

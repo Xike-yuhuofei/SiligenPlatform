@@ -1,12 +1,13 @@
 #include "application/services/dispensing/DispensePlanningFacade.h"
+#include "application/services/motion_planning/CmpInterpolationFacade.h"
+#include "application/services/motion_planning/InterpolationProgramFacade.h"
+#include "application/services/motion_planning/MotionPlanningFacade.h"
+#include "application/services/motion_planning/TrajectoryInterpolationFacade.h"
 
 #include "domain/dispensing/planning/domain-services/AuthorityTriggerLayoutPlanner.h"
 #include "domain/dispensing/planning/domain-services/CurveFlatteningService.h"
 
 #include "domain/dispensing/domain-services/TriggerPlanner.h"
-#include "domain/motion/CMPCoordinatedInterpolator.h"
-#include "domain/motion/domain-services/TimeTrajectoryPlanner.h"
-#include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
 #include "process_path/contracts/GeometryUtils.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
@@ -27,6 +28,10 @@ using Siligen::Application::Services::Dispensing::AuthorityPreviewBuildInput;
 using Siligen::Application::Services::Dispensing::AuthorityPreviewBuildResult;
 using Siligen::Application::Services::Dispensing::ExecutionAssemblyBuildInput;
 using Siligen::Application::Services::Dispensing::ExecutionAssemblyBuildResult;
+using Siligen::Application::Services::MotionPlanning::CmpInterpolationFacade;
+using Siligen::Application::Services::MotionPlanning::InterpolationProgramFacade;
+using Siligen::Application::Services::MotionPlanning::MotionPlanningFacade;
+using Siligen::Application::Services::MotionPlanning::TrajectoryInterpolationFacade;
 using Siligen::Domain::Dispensing::Contracts::ExecutionPackageBuilt;
 using Siligen::Domain::Dispensing::DomainServices::AuthorityTriggerLayoutPlanner;
 using Siligen::Domain::Dispensing::DomainServices::AuthorityTriggerLayoutPlannerRequest;
@@ -39,13 +44,10 @@ using Siligen::Domain::Dispensing::ValueObjects::LayoutTriggerPoint;
 using Siligen::Domain::Dispensing::ValueObjects::LayoutTriggerSourceKind;
 using Siligen::Domain::Dispensing::ValueObjects::SpacingValidationClassification;
 using Siligen::Domain::Dispensing::ValueObjects::TriggerPlan;
-using Siligen::Domain::Motion::CMPCoordinatedInterpolator;
-using Siligen::Domain::Motion::InterpolationAlgorithm;
-using Siligen::Domain::Motion::TrajectoryInterpolatorFactory;
-using Siligen::Domain::Motion::ValueObjects::MotionTrajectory;
-using Siligen::Domain::Motion::ValueObjects::MotionTrajectoryPoint;
-using Siligen::Domain::Motion::DomainServices::TimeTrajectoryPlanner;
+using Siligen::MotionPlanning::Contracts::InterpolationAlgorithm;
 using Siligen::MotionPlanning::Contracts::MotionPlan;
+using Siligen::MotionPlanning::Contracts::MotionTrajectory;
+using Siligen::MotionPlanning::Contracts::MotionTrajectoryPoint;
 using Siligen::ProcessPath::Contracts::ArcPoint;
 using Siligen::ProcessPath::Contracts::ComputeArcLength;
 using Siligen::ProcessPath::Contracts::ComputeArcSweep;
@@ -1245,7 +1247,7 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
             triggers.push_back(trigger);
         }
 
-        CMPCoordinatedInterpolator cmp_interpolator;
+        CmpInterpolationFacade cmp_interpolator;
         const auto cmp_started_at = std::chrono::steady_clock::now();
         log_stage("cmp_plan_start", "seed_points=" + std::to_string(seed_points.size()));
         points = cmp_interpolator.PositionTriggeredDispensing(path, triggers, cmp_config, config);
@@ -1261,7 +1263,7 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
         }
 
         if (input.interpolation_algorithm == InterpolationAlgorithm::LINEAR) {
-            TimeTrajectoryPlanner trajectory_planner;
+            MotionPlanningFacade trajectory_planner;
             const auto linear_plan_started_at = std::chrono::steady_clock::now();
             log_stage("linear_plan_start", "seed_points=" + std::to_string(seed_points.size()));
             auto planned_trajectory = trajectory_planner.Plan(path, BuildInterpolationPlanningConfig(config));
@@ -1276,16 +1278,13 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
                       "points=" + std::to_string(points.size()) +
                           " elapsed_ms=" + std::to_string(ElapsedMs(convert_started_at)));
         } else {
-            auto interpolator = TrajectoryInterpolatorFactory::CreateInterpolator(input.interpolation_algorithm);
-            if (!interpolator) {
-                return Result<std::vector<TrajectoryPoint>>::Failure(
-                    Error(ErrorCode::NOT_IMPLEMENTED, "插补算法未实现", "DispensePlanningFacade"));
+            TrajectoryInterpolationFacade interpolation_facade;
+            auto interpolation_result =
+                interpolation_facade.Interpolate(seed_points, input.interpolation_algorithm, config);
+            if (interpolation_result.IsError()) {
+                return Result<std::vector<TrajectoryPoint>>::Failure(interpolation_result.GetError());
             }
-            if (!interpolator->ValidateParameters(seed_points, config)) {
-                return Result<std::vector<TrajectoryPoint>>::Failure(
-                    Error(ErrorCode::INVALID_PARAMETER, "插补规划参数无效", "DispensePlanningFacade"));
-            }
-            points = interpolator->CalculateInterpolation(seed_points, config);
+            points = interpolation_result.Value();
         }
 
         if (!trigger_artifacts.positions.empty() &&
@@ -1757,7 +1756,7 @@ Result<ExecutionAssemblyBuildResult> DispensePlanningFacade::BuildExecutionArtif
         log_stage("execution_interpolation_ready", oss.str());
     }
 
-    Siligen::Domain::Motion::DomainServices::InterpolationProgramPlanner program_planner;
+    InterpolationProgramFacade program_planner;
     auto interpolation_program =
         program_planner.BuildProgram(input.process_path, input.motion_plan, input.acceleration);
     if (interpolation_program.IsError() && trigger_artifacts.validation_classification != "fail") {

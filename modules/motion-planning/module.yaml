@@ -7,4 +7,4 @@ allowed_dependencies:
   - process-path/contracts
   - shared
 uniform_skeleton_ready: true
-notes: contracts/include + application/include 是当前 M7 正式 public surface；业务阶段名保留 MotionPlan，但代码级 canonical payload 固定为 MotionTrajectory，siligen_motion 只编译规划相关实现；workflow 兼容链中的 motion execution source 也已固定从 modules/motion-planning/domain/motion/ 解析
+notes: contracts/include + application/include 是当前 M7 正式 public surface；冻结对外入口为 MotionPlanningFacade、CmpInterpolationFacade、InterpolationProgramFacade、TrajectoryInterpolationFacade；业务阶段名保留 MotionPlan，但代码级 canonical payload 固定为 MotionTrajectory；InterpolationAlgorithm 真值固定在 contracts/include/motion_planning/contracts/InterpolationTypes.h；siligen_motion 只编译规划相关实现；workflow motion execution source 已固定从 modules/workflow/domain/domain/motion/ 解析

@@ -11,6 +11,7 @@ set(MOTION_PLANNING_TEST_SOURCES
     unit/domain/motion/NoRuntimeControlLeakTest.cpp
     unit/domain/motion/MotionPlannerOwnerPathTest.cpp
     unit/application/services/motion_planning/MotionPlanningFacadeTest.cpp
+    unit/application/services/motion_planning/MotionPlanningPublicSurfaceContractTest.cpp
 )
 
 add_executable(siligen_motion_planning_unit_tests ${MOTION_PLANNING_TEST_SOURCES})

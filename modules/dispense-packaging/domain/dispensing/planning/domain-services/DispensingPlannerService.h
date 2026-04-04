@@ -6,19 +6,16 @@
 #include "process_path/contracts/IPathSourcePort.h"
 #include "process_path/contracts/Path.h"
 #include "process_path/contracts/ProcessPath.h"
+#include "motion_planning/contracts/InterpolationTypes.h"
 #include "motion_planning/contracts/MotionTrajectory.h"
+#include "domain/motion/ports/IVelocityProfilePort.h"
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "domain/dispensing/value-objects/DispenseCompensationProfile.h"
-#include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
 
 #include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
-
-namespace Siligen::Domain::Motion::DomainServices {
-class VelocityProfileService;
-}
 
 namespace Siligen::Domain::Dispensing::DomainServices {
 
@@ -27,8 +24,8 @@ using Siligen::Shared::Types::DispensingStrategy;
 using Siligen::Shared::Types::Point2D;
 using Siligen::Shared::Types::uint32;
 using Siligen::TrajectoryPoint;
-using Siligen::Domain::Motion::InterpolationAlgorithm;
 using Siligen::Domain::Motion::Ports::InterpolationData;
+using Siligen::MotionPlanning::Contracts::InterpolationAlgorithm;
 using Siligen::MotionPlanning::Contracts::MotionTrajectory;
 using Siligen::ProcessPath::Contracts::Path;
 using Siligen::ProcessPath::Contracts::ProcessPath;
@@ -123,7 +120,7 @@ class DispensingPlanner {
    public:
     explicit DispensingPlanner(
         std::shared_ptr<Domain::Trajectory::Ports::IPathSourcePort> path_source,
-        std::shared_ptr<Domain::Motion::DomainServices::VelocityProfileService> velocity_profile_service = nullptr);
+        std::shared_ptr<Domain::Motion::Ports::IVelocityProfilePort> velocity_profile_port = nullptr);
 
     Result<DispensingPlan> Plan(const DispensingPlanRequest& request) const noexcept;
     std::vector<TrajectoryPoint> BuildPreviewPoints(const DispensingPlan& plan,
@@ -132,7 +129,7 @@ class DispensingPlanner {
 
    private:
     std::shared_ptr<Domain::Trajectory::Ports::IPathSourcePort> path_source_;
-    std::shared_ptr<Domain::Motion::DomainServices::VelocityProfileService> velocity_profile_service_;
+    std::shared_ptr<Domain::Motion::Ports::IVelocityProfilePort> velocity_profile_port_;
 };
 
 }  // namespace Siligen::Domain::Dispensing::DomainServices

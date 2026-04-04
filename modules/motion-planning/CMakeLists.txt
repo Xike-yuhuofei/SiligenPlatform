@@ -32,19 +32,18 @@ if(NOT TARGET siligen_motion_planning_application_public AND
 endif()
 
 add_library(siligen_module_motion_planning INTERFACE)
-if(TARGET siligen_motion_planning_application_public)
-    target_link_libraries(siligen_module_motion_planning INTERFACE
-        siligen_motion_planning_application_public
-    )
-else()
-    target_link_libraries(siligen_module_motion_planning INTERFACE
-        siligen_motion
-    )
+if(NOT TARGET siligen_motion_planning_application_public)
+    message(FATAL_ERROR "motion-planning requires canonical application public target")
 endif()
+target_link_libraries(siligen_module_motion_planning INTERFACE
+    siligen_motion_planning_application_public
+)
 if(TARGET siligen_motion_planning_contracts_public)
     target_link_libraries(siligen_module_motion_planning INTERFACE
         siligen_motion_planning_contracts_public
     )
+else()
+    message(FATAL_ERROR "motion-planning requires canonical contracts public target")
 endif()
 
 target_compile_features(siligen_module_motion_planning INTERFACE cxx_std_17)
