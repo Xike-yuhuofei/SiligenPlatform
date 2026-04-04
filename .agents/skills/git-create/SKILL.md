@@ -9,7 +9,39 @@ Generate, validate, or repair the repository task setup for this repository. In 
 
 ## Workflow
 
-### 1. Build the Task Branch
+### 1. Sync the Authoritative Base
+
+For this repository, the authoritative base for new task branches is `origin/main`, not the current local `main` tip.
+
+Required rule:
+- before creating or repairing a task branch, fetch the latest remote base with `git fetch origin main --prune`
+- treat `origin/main` as the source of truth for "latest code"
+- create a new task branch directly from `origin/main`
+- do not update the user's local `main` as part of routine branch creation unless the user explicitly asks to sync `main`
+
+Decision rule:
+- prefer creating the new branch from `origin/main` directly
+- do not use "update local `main` first, then branch from `main`" as the default workflow because it mutates an unrelated local branch and adds side effects without improving branch freshness
+- only fast-forward local `main` to `origin/main` when the user explicitly requests local `main` maintenance or when the task is specifically to repair the local base branch
+
+Recommended commands:
+
+```powershell
+git fetch origin main --prune
+git worktree add <worktree-path> -b <type/scope/ticket-short-desc> origin/main
+```
+
+If a branch already exists locally and must be repaired onto the latest base, only allow a no-conflict fast-forward style update path. If fast-forward is not possible, stop and report that the branch has diverged.
+
+Optional local `main` maintenance, only when explicitly requested:
+
+```powershell
+git fetch origin main --prune
+git switch main
+git merge --ff-only origin/main
+```
+
+### 2. Build the Task Branch
 
 Use exactly:
 
@@ -66,7 +98,7 @@ Default generic `scope` examples:
 - `infra`
 - `build`
 
-### 2. Validate
+### 3. Validate
 
 Reject or repair names with any of these problems:
 - missing `type`, `scope`, `ticket`, or `short-desc`
@@ -87,12 +119,19 @@ If the user also provides or asks for a `worktree` name, reject or repair it whe
 
 If the user asks to create or repair a new task setup without a `worktree`, treat the result as incomplete and add a compliant `worktree` name.
 
-### 3. Return an Actionable Result
+Also reject or repair the setup when:
+- the branch is not based on the latest fetched `origin/main`
+- the workflow proposes branching from a stale local `main` without first fetching `origin/main`
+- the workflow updates local `main` even though the user did not ask for that side effect
+- a repair attempt would require a non-fast-forward merge or rebase and the user did not explicitly request history rewriting
+
+### 4. Return an Actionable Result
 
 When generating a new task setup, return:
 - the recommended branch name
 - a short field-by-field explanation when the choice is not obvious
 - a recommended `worktree` name
+- the base branch decision, explicitly stating that the branch should be created from `origin/main`
 
 When validating an existing task setup, return:
 - valid or invalid
@@ -125,6 +164,7 @@ Use this shape:
 ```text
 Recommended: fix/runtime/SS-205-startup-timeout
 Reason: type=fix, scope=runtime, ticket=SS-205, short-desc=startup-timeout
+Base: origin/main
 Worktree: wt-ss205
 ```
 
