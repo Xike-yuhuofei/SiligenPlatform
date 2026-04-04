@@ -1,8 +1,5 @@
 #include "ApplicationContainer.h"
 
-#include "application/services/dispensing/WorkflowPlanningAssemblyOperationsProvider.h"
-#include "application/services/motion_planning/MotionPlanningFacade.h"
-#include "application/services/process_path/ProcessPathFacade.h"
 #include "application/usecases/dispensing/CleanupFilesUseCase.h"
 #include "application/usecases/dispensing/valve/ValveCommandUseCase.h"
 #include "application/usecases/dispensing/valve/ValveQueryUseCase.h"
@@ -18,6 +15,7 @@
 #include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
 #include "application/usecases/dispensing/PlanningUseCase.h"
 #include "shared/interfaces/ILoggingService.h"
+#include "shared/types/Result.h"
 
 #include <memory>
 #include <stdexcept>
@@ -28,6 +26,50 @@
 #define MODULE_NAME "ApplicationContainer.Dispensing"
 
 namespace Siligen::Application::Container {
+
+namespace {
+
+class CleanupFileStorageAdapter final : public Siligen::JobIngest::Contracts::Storage::IFileStoragePort {
+   public:
+    explicit CleanupFileStorageAdapter(
+        std::shared_ptr<Siligen::Infrastructure::Adapters::LocalFileStorageAdapter> file_storage_port)
+        : file_storage_port_(std::move(file_storage_port)) {}
+
+    Siligen::Shared::Types::Result<std::string> StoreFile(
+        const Siligen::JobIngest::Contracts::Storage::FileData& file_data,
+        const std::string& filename) override {
+        return file_storage_port_->StoreFile(
+            {file_data.content, file_data.original_name, file_data.size, file_data.content_type},
+            filename);
+    }
+
+    Siligen::Shared::Types::Result<void> ValidateFile(
+        const Siligen::JobIngest::Contracts::Storage::FileData& file_data,
+        size_t max_size_mb,
+        const std::vector<std::string>& allowed_extensions) override {
+        return file_storage_port_->ValidateFile(
+            {file_data.content, file_data.original_name, file_data.size, file_data.content_type},
+            max_size_mb,
+            allowed_extensions);
+    }
+
+    Siligen::Shared::Types::Result<void> DeleteFile(const std::string& filepath) override {
+        return file_storage_port_->DeleteFile(filepath);
+    }
+
+    Siligen::Shared::Types::Result<bool> FileExists(const std::string& filepath) override {
+        return file_storage_port_->FileExists(filepath);
+    }
+
+    Siligen::Shared::Types::Result<size_t> GetFileSize(const std::string& filepath) override {
+        return file_storage_port_->GetFileSize(filepath);
+    }
+
+   private:
+    std::shared_ptr<Siligen::Infrastructure::Adapters::LocalFileStorageAdapter> file_storage_port_;
+};
+
+}  // namespace
 
 void ApplicationContainer::ValidateDispensingPorts() {
     if (!trigger_port_) {
@@ -77,13 +119,15 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::PlanningUseCase>() {
 
     return std::make_shared<UseCases::Dispensing::PlanningUseCase>(
         path_source,
-        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
-        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningPathPreparationPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningMotionPlanPort(
             velocity_profile_port_),
-        Siligen::Application::Services::Dispensing::WorkflowPlanningAssemblyOperationsProvider{}.CreateOperations(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningAssemblyPort(),
         config_port_,
         nullptr,
-        Siligen::RuntimeExecution::Host::Planning::CreatePlanningArtifactExportPort());
+        Siligen::RuntimeExecution::Host::Planning::CreatePlanningArtifactExportPort(),
+        diagnostics_port_,
+        event_port_);
 }
 
 template<>
@@ -107,8 +151,11 @@ std::shared_ptr<UseCases::Dispensing::CleanupFilesUseCase>
 ApplicationContainer::CreateInstance<UseCases::Dispensing::CleanupFilesUseCase>() {
     auto local_file_storage =
         std::dynamic_pointer_cast<Siligen::Infrastructure::Adapters::LocalFileStorageAdapter>(file_storage_port_);
+    if (!local_file_storage) {
+        throw std::runtime_error("LocalFileStorageAdapter 未注册");
+    }
     return std::make_shared<UseCases::Dispensing::CleanupFilesUseCase>(
-        std::static_pointer_cast<Siligen::JobIngest::Contracts::Storage::IFileStoragePort>(local_file_storage),
+        std::make_shared<CleanupFileStorageAdapter>(std::move(local_file_storage)),
         upload_base_dir_);
 }
 

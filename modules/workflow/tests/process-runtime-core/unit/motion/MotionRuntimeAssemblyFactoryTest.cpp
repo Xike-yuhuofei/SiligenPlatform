@@ -622,6 +622,16 @@ public:
     }
 };
 
+class IncompleteMotionRuntimeServicesProvider final : public IMotionRuntimeServicesProvider {
+public:
+    MotionRuntimeServicesBundle CreateServices(
+        const std::shared_ptr<IMotionRuntimePort>& motion_runtime_port) const override {
+        MotionRuntimeServicesBundle bundle;
+        bundle.motion_control_service = std::make_shared<FakeMotionControlService>(motion_runtime_port);
+        return bundle;
+    }
+};
+
 MotionRuntimeAssemblyDependencies makeDependencies(
     const std::shared_ptr<FakeMotionRuntimePort>& motion_runtime_port,
     const std::shared_ptr<FakeInterpolationPort>& interpolation_port,
@@ -657,8 +667,10 @@ void testFactoryCreatesAssembly() {
     auto configuration_port = std::make_shared<FakeConfigurationPort>(2U);
     auto event_publisher = std::make_shared<FakeEventPublisher>();
     auto trigger_controller = std::make_shared<FakeTriggerControllerPort>();
-    auto assembly = MotionRuntimeAssemblyFactory::Create(makeDependencies(
+    auto assembly_result = MotionRuntimeAssemblyFactory::Create(makeDependencies(
         motion_runtime_port, interpolation_port, configuration_port, event_publisher, trigger_controller));
+    require(assembly_result.IsSuccess(), "factory should create assembly");
+    auto& assembly = assembly_result.Value();
 
     require(assembly.motion_control_service != nullptr, "factory should create motion control service");
     require(assembly.motion_status_service != nullptr, "factory should create motion status service");
@@ -671,14 +683,41 @@ void testFactoryCreatesAssembly() {
     require(assembly.path_execution_use_case != nullptr, "factory should create path execution use case");
 }
 
+void testFactoryRejectsMissingDependencies() {
+    auto assembly_result = MotionRuntimeAssemblyFactory::Create({});
+    require(assembly_result.IsError(), "factory should reject missing dependencies");
+    require(
+        assembly_result.GetError().GetCode() == ErrorCode::PORT_NOT_INITIALIZED,
+        "factory should report PORT_NOT_INITIALIZED for missing dependencies");
+}
+
+void testFactoryRejectsIncompleteProviderServices() {
+    auto motion_runtime_port = std::make_shared<FakeMotionRuntimePort>();
+    auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    auto configuration_port = std::make_shared<FakeConfigurationPort>(2U);
+    auto event_publisher = std::make_shared<FakeEventPublisher>();
+    auto trigger_controller = std::make_shared<FakeTriggerControllerPort>();
+    auto dependencies = makeDependencies(
+        motion_runtime_port, interpolation_port, configuration_port, event_publisher, trigger_controller);
+    dependencies.services_provider = std::make_shared<IncompleteMotionRuntimeServicesProvider>();
+
+    auto assembly_result = MotionRuntimeAssemblyFactory::Create(std::move(dependencies));
+    require(assembly_result.IsError(), "factory should reject incomplete services");
+    require(
+        assembly_result.GetError().GetCode() == ErrorCode::PORT_NOT_INITIALIZED,
+        "factory should report PORT_NOT_INITIALIZED for incomplete services");
+}
+
 void testFactoryWiresMoveAndStop() {
     auto motion_runtime_port = std::make_shared<FakeMotionRuntimePort>();
     auto interpolation_port = std::make_shared<FakeInterpolationPort>();
     auto configuration_port = std::make_shared<FakeConfigurationPort>(2U);
     auto event_publisher = std::make_shared<FakeEventPublisher>();
     auto trigger_controller = std::make_shared<FakeTriggerControllerPort>();
-    auto assembly = MotionRuntimeAssemblyFactory::Create(makeDependencies(
+    auto assembly_result = MotionRuntimeAssemblyFactory::Create(makeDependencies(
         motion_runtime_port, interpolation_port, configuration_port, event_publisher, trigger_controller));
+    require(assembly_result.IsSuccess(), "factory should create assembly");
+    auto& assembly = assembly_result.Value();
 
     MoveToPositionRequest request;
     request.target_position = Point2D{12.0f, 6.0f};
@@ -704,8 +743,10 @@ void testFactoryWiresTriggerAndPathExecution() {
     auto configuration_port = std::make_shared<FakeConfigurationPort>(2U);
     auto event_publisher = std::make_shared<FakeEventPublisher>();
     auto trigger_controller = std::make_shared<FakeTriggerControllerPort>();
-    auto assembly = MotionRuntimeAssemblyFactory::Create(makeDependencies(
+    auto assembly_result = MotionRuntimeAssemblyFactory::Create(makeDependencies(
         motion_runtime_port, interpolation_port, configuration_port, event_publisher, trigger_controller));
+    require(assembly_result.IsSuccess(), "factory should create assembly");
+    auto& assembly = assembly_result.Value();
 
     MotionIOCommand command;
     command.channel = 4;
@@ -737,6 +778,8 @@ void testFactoryWiresTriggerAndPathExecution() {
 
 int main() {
     try {
+        testFactoryRejectsMissingDependencies();
+        testFactoryRejectsIncompleteProviderServices();
         testFactoryCreatesAssembly();
         testFactoryWiresMoveAndStop();
         testFactoryWiresTriggerAndPathExecution();

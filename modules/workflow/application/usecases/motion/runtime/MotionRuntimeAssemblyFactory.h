@@ -16,6 +16,7 @@
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
 #include "runtime_execution/contracts/system/IMachineExecutionStatePort.h"
+#include "shared/types/Result.h"
 
 #include <memory>
 
@@ -51,7 +52,8 @@ struct MotionRuntimeAssembly {
 
 class MotionRuntimeAssemblyFactory {
 public:
-    static MotionRuntimeAssembly Create(MotionRuntimeAssemblyDependencies dependencies);
+    static Siligen::Shared::Types::Result<MotionRuntimeAssembly> Create(
+        MotionRuntimeAssemblyDependencies dependencies);
 };
 
 }  // namespace Siligen::Application::UseCases::Motion::Runtime

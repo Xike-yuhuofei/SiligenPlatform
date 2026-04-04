@@ -28,8 +28,10 @@ void UnsetEnvVar(const std::string& name) {
 }  // namespace
 
 TEST(DXFAdapterFactoryTest, MockAdapterProvidesDeterministicDXFResponses) {
-    auto adapter = DXFAdapterFactory::CreateDXFPathSourceAdapter(DXFAdapterFactory::AdapterType::MOCK);
+    auto adapter_result = DXFAdapterFactory::CreateDXFPathSourceAdapter(DXFAdapterFactory::AdapterType::MOCK);
 
+    ASSERT_TRUE(adapter_result.IsSuccess()) << adapter_result.GetError().ToString();
+    auto adapter = adapter_result.Value();
     ASSERT_NE(adapter, nullptr);
     EXPECT_EQ(DXFAdapterFactory::GetCurrentAdapterType(), DXFAdapterFactory::AdapterType::MOCK);
 
@@ -53,25 +55,19 @@ TEST(DXFAdapterFactoryTest, HealthCheckRejectsNullAdapter) {
 }
 
 TEST(DXFAdapterFactoryTest, RemoteAdapterStubFailsExplicitlyInsteadOfFallingBackToLocal) {
-    auto adapter = DXFAdapterFactory::CreateDXFPathSourceAdapter(DXFAdapterFactory::AdapterType::REMOTE);
+    auto adapter_result = DXFAdapterFactory::CreateDXFPathSourceAdapter(DXFAdapterFactory::AdapterType::REMOTE);
 
-    ASSERT_NE(adapter, nullptr);
+    ASSERT_TRUE(adapter_result.IsError());
     EXPECT_EQ(DXFAdapterFactory::GetCurrentAdapterType(), DXFAdapterFactory::AdapterType::REMOTE);
-    EXPECT_FALSE(DXFAdapterFactory::CheckAdapterHealth(adapter));
-
-    auto validation = adapter->ValidateDXFFile("remote_input.dxf");
-    ASSERT_TRUE(validation.IsError());
-    EXPECT_EQ(validation.GetError().GetCode(), Siligen::Shared::Types::ErrorCode::NOT_IMPLEMENTED);
-
-    auto load_result = adapter->LoadDXFFile("remote_input.dxf");
-    ASSERT_TRUE(load_result.IsError());
-    EXPECT_EQ(load_result.GetError().GetCode(), Siligen::Shared::Types::ErrorCode::NOT_IMPLEMENTED);
+    EXPECT_EQ(adapter_result.GetError().GetCode(), Siligen::Shared::Types::ErrorCode::NOT_IMPLEMENTED);
 }
 
 TEST(DXFAdapterFactoryTest, LocalAdapterRejectsLegacyDxfAutopathByDefault) {
     UnsetEnvVar("SILIGEN_DXF_AUTOPATH_LEGACY");
-    auto adapter = DXFAdapterFactory::CreateDXFPathSourceAdapter(DXFAdapterFactory::AdapterType::LOCAL);
+    auto adapter_result = DXFAdapterFactory::CreateDXFPathSourceAdapter(DXFAdapterFactory::AdapterType::LOCAL);
 
+    ASSERT_TRUE(adapter_result.IsSuccess()) << adapter_result.GetError().ToString();
+    auto adapter = adapter_result.Value();
     ASSERT_NE(adapter, nullptr);
     auto load_result = adapter->LoadDXFFile("legacy_input.dxf");
     ASSERT_TRUE(load_result.IsError());
@@ -80,12 +76,13 @@ TEST(DXFAdapterFactoryTest, LocalAdapterRejectsLegacyDxfAutopathByDefault) {
 
 TEST(DXFAdapterFactoryTest, LocalAdapterAllowsLegacyPathWhenExplicitlyEnabled) {
     SetEnvVar("SILIGEN_DXF_AUTOPATH_LEGACY", "1");
-    auto adapter = DXFAdapterFactory::CreateDXFPathSourceAdapter(DXFAdapterFactory::AdapterType::LOCAL);
+    auto adapter_result = DXFAdapterFactory::CreateDXFPathSourceAdapter(DXFAdapterFactory::AdapterType::LOCAL);
 
+    ASSERT_TRUE(adapter_result.IsSuccess()) << adapter_result.GetError().ToString();
+    auto adapter = adapter_result.Value();
     ASSERT_NE(adapter, nullptr);
     auto load_result = adapter->LoadDXFFile("legacy_input.dxf");
-    ASSERT_TRUE(load_result.IsSuccess());
-    EXPECT_FALSE(load_result.Value().success);
-    EXPECT_FALSE(load_result.Value().error_message.empty());
+    ASSERT_TRUE(load_result.IsError());
+    EXPECT_EQ(load_result.GetError().GetCode(), Siligen::Shared::Types::ErrorCode::CONFIGURATION_ERROR);
     UnsetEnvVar("SILIGEN_DXF_AUTOPATH_LEGACY");
 }

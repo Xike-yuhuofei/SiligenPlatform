@@ -1,7 +1,6 @@
 #pragma once
 
 #include "domain/configuration/ports/IFileStoragePort.h"
-#include "job_ingest/contracts/storage/IFileStoragePort.h"
 #include "shared/types/Result.h"
 
 #include <filesystem>
@@ -28,8 +27,7 @@ using Siligen::Shared::Types::Result;
  * - 使用 Result<T> 错误处理
  */
 class LocalFileStorageAdapter
-    : public Domain::Configuration::Ports::IFileStoragePort,
-      public JobIngest::Contracts::Storage::IFileStoragePort {
+    : public Domain::Configuration::Ports::IFileStoragePort {
    public:
     /**
      * @brief 构造函数
@@ -47,12 +45,8 @@ class LocalFileStorageAdapter
 
     // 实现 IFileStoragePort 接口
     Result<std::string> StoreFile(const Domain::Configuration::Ports::FileData& file_data, const std::string& filename) override;
-    Result<std::string> StoreFile(const JobIngest::Contracts::Storage::FileData& file_data, const std::string& filename) override;
 
     Result<void> ValidateFile(const Domain::Configuration::Ports::FileData& file_data,
-                              size_t max_size_mb,
-                              const std::vector<std::string>& allowed_extensions) override;
-    Result<void> ValidateFile(const JobIngest::Contracts::Storage::FileData& file_data,
                               size_t max_size_mb,
                               const std::vector<std::string>& allowed_extensions) override;
 

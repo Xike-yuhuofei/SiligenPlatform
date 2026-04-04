@@ -1,14 +1,10 @@
 #pragma once
 
+#include "shared/types/Result.h"
+
 #include <cstdint>
 #include <string>
 #include <vector>
-
-namespace Siligen::Shared::Types {
-template <typename T = void>
-class Result;
-class Error;
-}  // namespace Siligen::Shared::Types
 
 namespace Siligen::JobIngest::Contracts::Storage {
 

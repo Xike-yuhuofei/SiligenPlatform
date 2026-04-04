@@ -193,17 +193,6 @@ Result<std::string> LocalFileStorageAdapter::StoreFile(const Domain::Configurati
 
 }
 
-Result<std::string> LocalFileStorageAdapter::StoreFile(
-    const JobIngest::Contracts::Storage::FileData& file_data,
-    const std::string& filename) {
-    Domain::Configuration::Ports::FileData normalized{
-        file_data.content,
-        file_data.original_name,
-        file_data.size,
-        file_data.content_type};
-    return StoreFile(normalized, filename);
-}
-
 Result<void> LocalFileStorageAdapter::ValidateFile(const Domain::Configuration::Ports::FileData& file_data,
                                                    size_t max_size_mb,
                                                    const std::vector<std::string>& allowed_extensions) {
@@ -265,18 +254,6 @@ Result<void> LocalFileStorageAdapter::ValidateFile(const Domain::Configuration::
     }
 
     return Result<void>::Success();
-}
-
-Result<void> LocalFileStorageAdapter::ValidateFile(
-    const JobIngest::Contracts::Storage::FileData& file_data,
-    size_t max_size_mb,
-    const std::vector<std::string>& allowed_extensions) {
-    Domain::Configuration::Ports::FileData normalized{
-        file_data.content,
-        file_data.original_name,
-        file_data.size,
-        file_data.content_type};
-    return ValidateFile(normalized, max_size_mb, allowed_extensions);
 }
 
 Result<size_t> LocalFileStorageAdapter::GetFileSize(const std::string& filepath) {

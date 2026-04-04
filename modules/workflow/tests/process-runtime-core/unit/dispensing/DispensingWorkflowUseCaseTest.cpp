@@ -18,7 +18,8 @@
 #define SILIGEN_TEST_HOOKS
 #endif
 #define private public
-#include "application/services/dispensing/WorkflowPlanningAssemblyOperationsProvider.h"
+#include "application/services/dispensing/AuthorityPreviewAssemblyService.h"
+#include "application/services/dispensing/ExecutionAssemblyService.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "runtime_execution/contracts/dispensing/IDispensingProcessPort.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
@@ -264,20 +265,14 @@ std::string GluePointsFingerprint(const std::vector<Point2D>& points) {
     return oss.str();
 }
 
-std::shared_ptr<Siligen::Application::Services::Dispensing::IWorkflowPlanningAssemblyOperations>
-MakePlanningAssemblyOperations() {
-    return Siligen::Application::Services::Dispensing::WorkflowPlanningAssemblyOperationsProvider{}
-        .CreateOperations();
-}
-
 std::shared_ptr<PlanningUseCase> CreateRealPlanningUseCase() {
     auto path_source = std::make_shared<LinePathSourceStub>();
     auto pb_service = std::make_shared<DxfPbPreparationService>();
     return std::make_shared<PlanningUseCase>(
         path_source,
-        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
-        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        MakePlanningAssemblyOperations(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningPathPreparationPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningMotionPlanPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningAssemblyPort(),
         nullptr,
         pb_service);
 }
@@ -288,9 +283,9 @@ std::shared_ptr<PlanningUseCase> CreatePlanningUseCaseWithPathSourceAndExport(
     auto pb_service = std::make_shared<DxfPbPreparationService>();
     return std::make_shared<PlanningUseCase>(
         path_source,
-        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
-        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        MakePlanningAssemblyOperations(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningPathPreparationPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningMotionPlanPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningAssemblyPort(),
         nullptr,
         pb_service,
         export_port);
@@ -301,9 +296,9 @@ std::shared_ptr<PlanningUseCase> CreatePlanningUseCaseWithPathSource(
     auto pb_service = std::make_shared<DxfPbPreparationService>();
     return std::make_shared<PlanningUseCase>(
         path_source,
-        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
-        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        MakePlanningAssemblyOperations(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningPathPreparationPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningMotionPlanPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningAssemblyPort(),
         nullptr,
         pb_service);
 }

@@ -197,7 +197,9 @@ ApplicationContainer::CreateInstance<UseCases::Motion::Monitoring::MotionMonitor
         motion_state_port,
         io_control_port,
         homing_port,
-        interpolation_port_);
+        interpolation_port_,
+        diagnostics_port_,
+        event_port_);
 }
 
 template<>
