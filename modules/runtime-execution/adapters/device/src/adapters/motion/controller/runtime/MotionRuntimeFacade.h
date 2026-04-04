@@ -2,7 +2,7 @@
 
 #include "domain/machine/ports/IHardwareConnectionPort.h"
 #include "domain/motion/ports/IHomingPort.h"
-#include "domain/motion/ports/IMotionRuntimePort.h"
+#include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
 #include "siligen/device/adapters/motion/MultiCardMotionAdapter.h"
 
 #include <atomic>
@@ -20,7 +20,7 @@ namespace Siligen::Infrastructure::Adapters::Motion {
  * 以单一运行时入口聚合连接、心跳、回零和基础运动控制。
  * 细粒度端口保留为兼容面，但底层都收敛到同一对象。
  */
-class MotionRuntimeFacade final : public Domain::Motion::Ports::IMotionRuntimePort {
+class MotionRuntimeFacade final : public RuntimeExecution::Contracts::Motion::IMotionRuntimePort {
    public:
     MotionRuntimeFacade(std::shared_ptr<Siligen::Infrastructure::Adapters::MultiCardMotionAdapter> motion_adapter,
                         std::shared_ptr<Domain::Motion::Ports::IHomingPort> homing_port);

@@ -109,7 +109,7 @@ struct DxfPreprocessConfig {
 };
 
 /**
- * @brief DXF 轨迹规划配置（Python Ruckig）
+ * @brief DXF 轨迹规划配置（Python trajectory tool）
  */
 struct DxfTrajectoryConfig {
     std::string python = "python";            ///< Python解释器

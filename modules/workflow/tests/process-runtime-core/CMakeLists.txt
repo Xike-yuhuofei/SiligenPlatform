@@ -131,6 +131,11 @@ if(TARGET siligen_dxf_geometry_application_public)
         siligen_dxf_geometry_application_public
     )
 endif()
+if(TARGET siligen_workflow_dispensing_planning_compat)
+    target_link_libraries(siligen_unit_tests PRIVATE
+        siligen_workflow_dispensing_planning_compat
+    )
+endif()
 target_compile_definitions(siligen_unit_tests PRIVATE SILIGEN_TEST_HOOKS=1)
 
 target_include_directories(siligen_unit_tests PRIVATE
