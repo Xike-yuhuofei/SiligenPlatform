@@ -2,9 +2,18 @@ cmake_minimum_required(VERSION 3.20)
 
 get_filename_component(MOTION_PLANNING_MODULE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
 set(MOTION_PLANNING_CONTRACTS_INCLUDE_DIR "${MOTION_PLANNING_MODULE_DIR}/contracts/include")
+set(RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime-execution/contracts/runtime/include"
+)
 if(NOT DEFINED SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR)
     set(SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR
         "${MOTION_PLANNING_MODULE_DIR}"
+    )
+endif()
+if(NOT EXISTS "${RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}/runtime_execution/contracts/motion/IInterpolationPort.h")
+    message(FATAL_ERROR
+        "motion-planning requires runtime-execution runtime contracts include root: "
+        "${RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}"
     )
 endif()
 
@@ -58,6 +67,7 @@ add_library(siligen_motion STATIC
 target_include_directories(siligen_motion BEFORE PUBLIC
     ${SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR}
     ${MOTION_PLANNING_CONTRACTS_INCLUDE_DIR}
+    ${RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
 target_include_directories(siligen_motion PRIVATE
@@ -71,7 +81,6 @@ target_link_libraries(siligen_motion PUBLIC
     siligen_types
     siligen_utils
     siligen_process_path_contracts_public
-    ruckig
 )
 
 target_compile_features(siligen_motion PUBLIC cxx_std_17)
