@@ -31,8 +31,25 @@
 - `modules/workflow/domain/include/domain/trajectory/domain-services/GeometryNormalizer.h`
 - `modules/workflow/domain/include/domain/trajectory/domain-services/ProcessAnnotator.h`
 - `modules/workflow/domain/include/domain/trajectory/domain-services/TrajectoryShaper.h`
+- `modules/workflow/domain/include/domain/trajectory/value-objects/Path.h`
+- `modules/workflow/domain/include/domain/trajectory/value-objects/Primitive.h`
+- `modules/workflow/domain/include/domain/trajectory/value-objects/ProcessConfig.h`
+- `modules/workflow/domain/include/domain/trajectory/value-objects/ProcessPath.h`
+- `modules/workflow/domain/include/domain/trajectory/value-objects/GeometryUtils.h`
 
-以上 `workflow` public thin bridge 已完成仓内零引用复核并删除；默认 consumer 现已直接依赖 canonical `process_path/contracts/*`，`workflow/domain/domain/dispensing/planning/UnifiedTrajectoryPlannerService.*` residual 也已同步退场，不再反向占用该批 bridge。
+以上 `workflow` public thin bridge 已完成仓内零引用复核并删除；默认 consumer 现已直接依赖 canonical `process_path/contracts/*`，`workflow/domain/domain/dispensing/planning/UnifiedTrajectoryPlannerService.*` residual 也已同步退场，不再反向占用该批 bridge。`process-path/domain/trajectory/value-objects/*` 仍是 owner 内部实现入口，不属于本批删除范围。
+
+## 2.2 当前保守保留项
+
+- `modules/workflow/domain/include/domain/trajectory/value-objects/GeometryBoostAdapter.h`
+- `modules/workflow/domain/include/domain/trajectory/value-objects/PlanningReport.h`
+- `modules/process-path/domain/trajectory/value-objects/*`
+
+以上对象暂不按 thin bridge 删除处理：
+
+- `GeometryBoostAdapter.h` 仍是 inline 几何适配实现，不是纯 alias。
+- `PlanningReport.h` 仍是本地 struct 定义，不是 canonical contract re-export。
+- `process-path/domain/trajectory/value-objects/*` 继续承载 owner 内部旧命名空间实现面；若后续要清理该命名空间，必须单开阶段治理，不能与 `workflow` public bridge 退场混做一批。
 
 ## 3. 明确禁止项
 

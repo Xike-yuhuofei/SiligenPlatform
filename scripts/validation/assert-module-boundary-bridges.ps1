@@ -1453,6 +1453,66 @@ $forbiddenScopedSearches += @(
         detail = "motion-planning live headers must include process_path/contracts/ProcessPath.h instead of M6 domain headers"
     },
     @{
+        rule_id = "live-targets-still-include-workflow-path-value-object-bridge"
+        pattern = '#include "domain/trajectory/value-objects/Path.h"'
+        search_roots = @(
+            "modules/motion-planning",
+            "modules/dispense-packaging",
+            "modules/workflow/application",
+            "modules/workflow/domain/domain",
+            "apps"
+        )
+        detail = "live targets must include canonical process_path/contracts/Path.h instead of the deleted workflow bridge header"
+    },
+    @{
+        rule_id = "live-targets-still-include-workflow-primitive-value-object-bridge"
+        pattern = '#include "domain/trajectory/value-objects/Primitive.h"'
+        search_roots = @(
+            "modules/motion-planning",
+            "modules/dispense-packaging",
+            "modules/workflow/application",
+            "modules/workflow/domain/domain",
+            "apps"
+        )
+        detail = "live targets must include canonical process_path/contracts/Primitive.h instead of the deleted workflow bridge header"
+    },
+    @{
+        rule_id = "live-targets-still-include-workflow-process-config-value-object-bridge"
+        pattern = '#include "domain/trajectory/value-objects/ProcessConfig.h"'
+        search_roots = @(
+            "modules/motion-planning",
+            "modules/dispense-packaging",
+            "modules/workflow/application",
+            "modules/workflow/domain/domain",
+            "apps"
+        )
+        detail = "live targets must include canonical process_path/contracts/ProcessConfig.h instead of the deleted workflow bridge header"
+    },
+    @{
+        rule_id = "live-targets-still-include-workflow-process-path-value-object-bridge"
+        pattern = '#include "domain/trajectory/value-objects/ProcessPath.h"'
+        search_roots = @(
+            "modules/motion-planning",
+            "modules/dispense-packaging",
+            "modules/workflow/application",
+            "modules/workflow/domain/domain",
+            "apps"
+        )
+        detail = "live targets must include canonical process_path/contracts/ProcessPath.h instead of the deleted workflow bridge header"
+    },
+    @{
+        rule_id = "live-targets-still-include-workflow-geometry-utils-value-object-bridge"
+        pattern = '#include "domain/trajectory/value-objects/GeometryUtils.h"'
+        search_roots = @(
+            "modules/motion-planning",
+            "modules/dispense-packaging",
+            "modules/workflow/application",
+            "modules/workflow/domain/domain",
+            "apps"
+        )
+        detail = "live targets must include canonical process_path/contracts/GeometryUtils.h instead of the deleted workflow bridge header"
+    },
+    @{
         rule_id = "live-targets-still-include-workflow-pathsource-bridge"
         pattern = '#include "domain/trajectory/ports/IPathSourcePort.h"'
         search_roots = @(

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "domain/trajectory/value-objects/GeometryUtils.h"
-#include "domain/trajectory/value-objects/Path.h"
+#include "../../../../../../process-path/domain/trajectory/value-objects/GeometryUtils.h"
+#include "../../../../../../process-path/domain/trajectory/value-objects/Path.h"
 #include "shared/Geometry/BoostGeometryAdapter.h"
 
 #include <boost/geometry/algorithms/distance.hpp>
