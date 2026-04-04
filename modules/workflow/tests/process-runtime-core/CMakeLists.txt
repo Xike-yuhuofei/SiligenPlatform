@@ -29,10 +29,8 @@ set(TEST_SOURCES
     unit/domain/safety/EmergencyStopServiceTest.cpp
     unit/domain/safety/SafetyOutputGuardTest.cpp
     unit/domain/motion/JogControllerTest.cpp
-    unit/domain/motion/MainlineTrajectoryAuditTest.cpp
     unit/domain/dispensing/ArcTriggerPointCalculatorTest.cpp
     unit/domain/trajectory/TrajectoryShaperTest.cpp
-    unit/domain/dispensing/PurgeDispenserProcessTest.cpp
     unit/domain/recipes/RecipeActivationServiceTest.cpp
     unit/domain/motion/MotionBufferControllerTest.cpp
     unit/recipes/RecipeCommandUseCaseTest.cpp
@@ -46,7 +44,6 @@ set(TEST_SOURCES
     unit/dispensing/CleanupFilesUseCaseTest.cpp
     unit/dispensing/DispensingWorkflowUseCaseTest.cpp
     unit/dispensing/DispensingWorkflowModeResolutionTest.cpp
-    unit/dispensing/DispensingProcessServiceWaitForMotionCompleteTest.cpp
     unit/dispensing/PlanningUseCaseExportPortTest.cpp
 )
 
@@ -54,11 +51,9 @@ set(OPTIONAL_TEST_SOURCES
     unit/dispensing/DispensingProcessServiceBufferingTest.cpp
     unit/domain/diagnostics/ProcessResultServiceTest.cpp
     unit/domain/dispensing/ClosedLoopSkeletonTest.cpp
-    unit/domain/dispensing/ValveCoordinationServiceTest.cpp
     unit/dispensing/DispensingProcessServiceBufferingTest.cpp
     unit/dispensing/PlanningRequestTest.cpp
     unit/dispensing/PlanningUseCaseExportPortTest.cpp
-    unit/dispensing/ContourPathOptimizerTest.cpp
     unit/infrastructure/adapters/planning/dxf/DXFAdapterFactoryTest.cpp
     unit/infrastructure/adapters/redundancy/JsonRedundancyRepositoryAdapterTest.cpp
     unit/redundancy/CandidateScoringServiceTest.cpp
@@ -101,11 +96,6 @@ endif()
 if(TARGET siligen_motion_planning_application_public)
     target_link_libraries(siligen_unit_tests PRIVATE
         siligen_motion_planning_application_public
-    )
-endif()
-if(TARGET siligen_workflow_dispensing_planning_compat)
-    target_link_libraries(siligen_unit_tests PRIVATE
-        siligen_workflow_dispensing_planning_compat
     )
 endif()
 if(TARGET siligen_runtime_execution_application_public)
@@ -169,7 +159,6 @@ set(DISPENSING_SEMANTICS_TEST_SOURCES
     unit/domain/safety/SafetyOutputGuardTest.cpp
     unit/dispensing/DispensingWorkflowUseCaseTest.cpp
     unit/dispensing/DispensingWorkflowModeResolutionTest.cpp
-    unit/dispensing/DispensingProcessServiceWaitForMotionCompleteTest.cpp
     unit/dispensing/PlanningUseCaseExportPortTest.cpp
 )
 

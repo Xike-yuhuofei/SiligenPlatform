@@ -63,6 +63,7 @@ set(RUNTIME_HOST_PUBLIC_INCLUDE_DIRS
 list(REMOVE_DUPLICATES RUNTIME_HOST_PUBLIC_INCLUDE_DIRS)
 
 add_library(siligen_runtime_host STATIC
+    ${RUNTIME_HOST_SOURCE_ROOT}/runtime/dispensing/DispensingProcessPortAdapter.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/diagnostics/DiagnosticsPortAdapter.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/supervision/RuntimeSupervisionPortAdapter.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/system/DispenserModelMachineExecutionStateBackend.cpp

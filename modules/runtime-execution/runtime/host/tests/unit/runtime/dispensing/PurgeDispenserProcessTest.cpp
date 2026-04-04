@@ -16,7 +16,6 @@ namespace {
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
-using Siligen::Shared::Types::uint32;
 
 class FakeConfigurationPort : public Siligen::Domain::Configuration::Ports::IConfigurationPort {
    public:
@@ -28,7 +27,7 @@ class FakeConfigurationPort : public Siligen::Domain::Configuration::Ports::ICon
         return NotImplemented<Siligen::Domain::Configuration::Ports::SystemConfig>("LoadConfiguration");
     }
 
-    Result<void> SaveConfiguration(const Siligen::Domain::Configuration::Ports::SystemConfig& /*config*/) override {
+    Result<void> SaveConfiguration(const Siligen::Domain::Configuration::Ports::SystemConfig&) override {
         return NotImplementedVoid("SaveConfiguration");
     }
 
@@ -40,8 +39,7 @@ class FakeConfigurationPort : public Siligen::Domain::Configuration::Ports::ICon
         return Result<Siligen::Domain::Configuration::Ports::DispensingConfig>::Success(dispensing_);
     }
 
-    Result<void> SetDispensingConfig(
-        const Siligen::Domain::Configuration::Ports::DispensingConfig& /*config*/) override {
+    Result<void> SetDispensingConfig(const Siligen::Domain::Configuration::Ports::DispensingConfig&) override {
         return NotImplementedVoid("SetDispensingConfig");
     }
 
@@ -63,17 +61,15 @@ class FakeConfigurationPort : public Siligen::Domain::Configuration::Ports::ICon
         return NotImplemented<Siligen::Domain::Configuration::Ports::MachineConfig>("GetMachineConfig");
     }
 
-    Result<void> SetMachineConfig(
-        const Siligen::Domain::Configuration::Ports::MachineConfig& /*config*/) override {
+    Result<void> SetMachineConfig(const Siligen::Domain::Configuration::Ports::MachineConfig&) override {
         return NotImplementedVoid("SetMachineConfig");
     }
 
-    Result<Siligen::Domain::Configuration::Ports::HomingConfig> GetHomingConfig(int /*axis*/) const override {
+    Result<Siligen::Domain::Configuration::Ports::HomingConfig> GetHomingConfig(int) const override {
         return NotImplemented<Siligen::Domain::Configuration::Ports::HomingConfig>("GetHomingConfig");
     }
 
-    Result<void> SetHomingConfig(
-        int /*axis*/, const Siligen::Domain::Configuration::Ports::HomingConfig& /*config*/) override {
+    Result<void> SetHomingConfig(int, const Siligen::Domain::Configuration::Ports::HomingConfig&) override {
         return NotImplementedVoid("SetHomingConfig");
     }
 
@@ -105,11 +101,11 @@ class FakeConfigurationPort : public Siligen::Domain::Configuration::Ports::ICon
         return Result<std::vector<std::string>>::Success({});
     }
 
-    Result<void> BackupConfiguration(const std::string& /*backup_path*/) override {
+    Result<void> BackupConfiguration(const std::string&) override {
         return NotImplementedVoid("BackupConfiguration");
     }
 
-    Result<void> RestoreConfiguration(const std::string& /*backup_path*/) override {
+    Result<void> RestoreConfiguration(const std::string&) override {
         return NotImplementedVoid("RestoreConfiguration");
     }
 
@@ -153,7 +149,7 @@ class TrackingValvePort : public Siligen::Domain::Dispensing::Ports::IValvePort 
     std::chrono::steady_clock::time_point DispenserOpenTime() const { return dispenser_open_time_; }
 
     Result<Siligen::Domain::Dispensing::Ports::DispenserValveState> StartDispenser(
-        const Siligen::Domain::Dispensing::Ports::DispenserValveParams& /*params*/) noexcept override {
+        const Siligen::Domain::Dispensing::Ports::DispenserValveParams&) noexcept override {
         return NotImplemented<Siligen::Domain::Dispensing::Ports::DispenserValveState>("StartDispenser");
     }
 
@@ -171,7 +167,7 @@ class TrackingValvePort : public Siligen::Domain::Dispensing::Ports::IValvePort 
     }
 
     Result<Siligen::Domain::Dispensing::Ports::DispenserValveState> StartPositionTriggeredDispenser(
-        const Siligen::Domain::Dispensing::Ports::PositionTriggeredDispenserParams& /*params*/) noexcept override {
+        const Siligen::Domain::Dispensing::Ports::PositionTriggeredDispenserParams&) noexcept override {
         return NotImplemented<Siligen::Domain::Dispensing::Ports::DispenserValveState>("StartPositionTriggeredDispenser");
     }
 
@@ -188,7 +184,6 @@ class TrackingValvePort : public Siligen::Domain::Dispensing::Ports::IValvePort 
     }
 
     Result<Siligen::Domain::Dispensing::Ports::DispenserValveState> GetDispenserStatus() noexcept override {
-        ++status_calls_;
         if (!status_sequence_.empty()) {
             auto index = status_index_ < status_sequence_.size() ? status_index_ : status_sequence_.size() - 1;
             auto state = status_sequence_[index];
@@ -237,7 +232,6 @@ class TrackingValvePort : public Siligen::Domain::Dispensing::Ports::IValvePort 
     int close_supply_calls_ = 0;
     int open_dispenser_calls_ = 0;
     int close_dispenser_calls_ = 0;
-    int status_calls_ = 0;
     size_t status_index_ = 0;
     std::vector<Siligen::Domain::Dispensing::Ports::DispenserValveState> status_sequence_;
     std::chrono::steady_clock::time_point supply_open_time_;

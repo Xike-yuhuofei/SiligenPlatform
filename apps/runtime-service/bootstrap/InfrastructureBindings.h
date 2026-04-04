@@ -1,5 +1,6 @@
 #pragma once
 
+#include "domain/motion/ports/IInterpolationPort.h"
 #include "domain/motion/ports/IMotionRuntimePort.h"
 #include "shared/types/LogTypes.h"
 
@@ -40,7 +41,6 @@ namespace Motion {
 namespace Ports {
 class IAxisControlPort;
 class IHomingPort;
-class IInterpolationPort;
 class IJogControlPort;
 class IMotionConnectionPort;
 class IMotionStatePort;

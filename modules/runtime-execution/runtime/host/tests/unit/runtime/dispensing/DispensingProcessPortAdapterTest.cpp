@@ -1,4 +1,4 @@
-#include "runtime/dispensing/WorkflowDispensingProcessPortAdapter.h"
+#include "runtime/dispensing/DispensingProcessPortAdapter.h"
 
 #include <gtest/gtest.h>
 
@@ -7,24 +7,22 @@
 
 namespace {
 
-using IWorkflowDispensingProcessOperations =
-    Siligen::Runtime::Service::Dispensing::IWorkflowDispensingProcessOperations;
-using WorkflowDispensingProcessPortAdapter =
-    Siligen::Runtime::Service::Dispensing::WorkflowDispensingProcessPortAdapter;
 using DispensingExecutionOptions = Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionOptions;
 using DispensingExecutionPlan = Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionPlan;
 using DispensingExecutionReport = Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionReport;
+using DispensingProcessPortAdapter = Siligen::RuntimeExecution::Host::Dispensing::DispensingProcessPortAdapter;
 using DispensingRuntimeOverrides = Siligen::Domain::Dispensing::ValueObjects::DispensingRuntimeOverrides;
 using DispensingRuntimeParams = Siligen::Domain::Dispensing::ValueObjects::DispensingRuntimeParams;
 using Error = Siligen::Shared::Types::Error;
 using ErrorCode = Siligen::Shared::Types::ErrorCode;
+using IDispensingProcessOperations = Siligen::RuntimeExecution::Host::Dispensing::IDispensingProcessOperations;
 using ResultVoid = Siligen::Shared::Types::Result<void>;
 
 Error BuildTestError(const std::string& message) {
-    return Error(ErrorCode::NOT_IMPLEMENTED, message, "WorkflowDispensingProcessPortAdapterTest");
+    return Error(ErrorCode::NOT_IMPLEMENTED, message, "DispensingProcessPortAdapterTest");
 }
 
-class FakeWorkflowDispensingProcessOperations final : public IWorkflowDispensingProcessOperations {
+class FakeDispensingProcessOperations final : public IDispensingProcessOperations {
    public:
     ResultVoid validate_result = ResultVoid::Success();
     Siligen::Shared::Types::Result<DispensingRuntimeParams> runtime_params_result =
@@ -84,9 +82,9 @@ class FakeWorkflowDispensingProcessOperations final : public IWorkflowDispensing
     }
 };
 
-TEST(WorkflowDispensingProcessPortAdapterTest, ValidateHardwareConnectionDelegatesToInternalOperations) {
-    auto operations = std::make_shared<FakeWorkflowDispensingProcessOperations>();
-    WorkflowDispensingProcessPortAdapter adapter(operations);
+TEST(DispensingProcessPortAdapterTest, ValidateHardwareConnectionDelegatesToInternalOperations) {
+    auto operations = std::make_shared<FakeDispensingProcessOperations>();
+    DispensingProcessPortAdapter adapter(operations);
 
     auto result = adapter.ValidateHardwareConnection();
 
@@ -94,13 +92,13 @@ TEST(WorkflowDispensingProcessPortAdapterTest, ValidateHardwareConnectionDelegat
     EXPECT_EQ(operations->validate_calls, 1);
 }
 
-TEST(WorkflowDispensingProcessPortAdapterTest, BuildRuntimeParamsForwardsOverridesAndResult) {
-    auto operations = std::make_shared<FakeWorkflowDispensingProcessOperations>();
+TEST(DispensingProcessPortAdapterTest, BuildRuntimeParamsForwardsOverridesAndResult) {
+    auto operations = std::make_shared<FakeDispensingProcessOperations>();
     DispensingRuntimeParams expected_params;
     expected_params.dispensing_velocity = 123.0f;
     operations->runtime_params_result =
         Siligen::Shared::Types::Result<DispensingRuntimeParams>::Success(expected_params);
-    WorkflowDispensingProcessPortAdapter adapter(operations);
+    DispensingProcessPortAdapter adapter(operations);
 
     DispensingRuntimeOverrides overrides;
     overrides.dry_run = true;
@@ -116,14 +114,14 @@ TEST(WorkflowDispensingProcessPortAdapterTest, BuildRuntimeParamsForwardsOverrid
     EXPECT_FLOAT_EQ(result.Value().dispensing_velocity, 123.0f);
 }
 
-TEST(WorkflowDispensingProcessPortAdapterTest, ExecuteProcessForwardsAllArgumentsAndResult) {
-    auto operations = std::make_shared<FakeWorkflowDispensingProcessOperations>();
+TEST(DispensingProcessPortAdapterTest, ExecuteProcessForwardsAllArgumentsAndResult) {
+    auto operations = std::make_shared<FakeDispensingProcessOperations>();
     DispensingExecutionReport expected_report;
     expected_report.executed_segments = 7;
     expected_report.total_distance = 45.6f;
     operations->execute_result =
         Siligen::Shared::Types::Result<DispensingExecutionReport>::Success(expected_report);
-    WorkflowDispensingProcessPortAdapter adapter(operations);
+    DispensingProcessPortAdapter adapter(operations);
 
     DispensingExecutionPlan plan;
     plan.trigger_interval_ms = 20;
@@ -158,9 +156,9 @@ TEST(WorkflowDispensingProcessPortAdapterTest, ExecuteProcessForwardsAllArgument
     EXPECT_FLOAT_EQ(result.Value().total_distance, 45.6f);
 }
 
-TEST(WorkflowDispensingProcessPortAdapterTest, StopExecutionDelegatesFlagsToInternalOperations) {
-    auto operations = std::make_shared<FakeWorkflowDispensingProcessOperations>();
-    WorkflowDispensingProcessPortAdapter adapter(operations);
+TEST(DispensingProcessPortAdapterTest, StopExecutionDelegatesFlagsToInternalOperations) {
+    auto operations = std::make_shared<FakeDispensingProcessOperations>();
+    DispensingProcessPortAdapter adapter(operations);
 
     std::atomic<bool> stop_flag{false};
     std::atomic<bool> pause_flag{false};
@@ -171,14 +169,14 @@ TEST(WorkflowDispensingProcessPortAdapterTest, StopExecutionDelegatesFlagsToInte
     EXPECT_EQ(operations->last_pause_flag, &pause_flag);
 }
 
-TEST(WorkflowDispensingProcessPortAdapterTest, ErrorsFromInternalOperationsArePropagated) {
-    auto operations = std::make_shared<FakeWorkflowDispensingProcessOperations>();
+TEST(DispensingProcessPortAdapterTest, ErrorsFromInternalOperationsArePropagated) {
+    auto operations = std::make_shared<FakeDispensingProcessOperations>();
     operations->validate_result = ResultVoid::Failure(BuildTestError("validate failed"));
     operations->runtime_params_result =
         Siligen::Shared::Types::Result<DispensingRuntimeParams>::Failure(BuildTestError("params failed"));
     operations->execute_result =
         Siligen::Shared::Types::Result<DispensingExecutionReport>::Failure(BuildTestError("execute failed"));
-    WorkflowDispensingProcessPortAdapter adapter(operations);
+    DispensingProcessPortAdapter adapter(operations);
 
     auto validate_result = adapter.ValidateHardwareConnection();
     auto params_result = adapter.BuildRuntimeParams(DispensingRuntimeOverrides{});

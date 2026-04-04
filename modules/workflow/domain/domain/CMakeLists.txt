@@ -142,31 +142,6 @@ target_link_libraries(siligen_dispensing_execution_services PRIVATE
 )
 target_compile_features(siligen_dispensing_execution_services PUBLIC cxx_std_17)
 
-add_library(siligen_workflow_dispensing_planning_compat STATIC
-    dispensing/planning/domain-services/ContourOptimizationService.cpp
-    dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp
-    dispensing/planning/domain-services/DispensingPlannerService.cpp
-)
-target_include_directories(siligen_workflow_dispensing_planning_compat PUBLIC
-    ${SILIGEN_DOMAIN_INTERFACE_INCLUDE_DIRS}
-)
-target_include_directories(siligen_workflow_dispensing_planning_compat PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/dispensing/planning/domain-services
-    ${SILIGEN_DOMAIN_SHARED_IMPLEMENTATION_INCLUDE_DIRS}
-)
-target_link_libraries(siligen_workflow_dispensing_planning_compat PUBLIC
-    siligen_process_runtime_core_boost_headers
-    siligen_types
-    siligen_utils
-    siligen_motion
-    siligen_triggering
-    siligen_configuration
-    siligen_process_path_domain_trajectory
-    siligen_dispensing_execution_services
-    siligen_process_planning_contracts_public
-)
-target_compile_features(siligen_workflow_dispensing_planning_compat PUBLIC cxx_std_17)
-
 add_library(siligen_motion_execution_services STATIC
     # workflow runtime execution must use the workflow-owned motion services.
     # Pulling the motion-planning HomingProcess here reintroduces an ODR/layout
@@ -276,7 +251,6 @@ if(SILIGEN_USE_PCH)
     # target_precompile_headers(siligen_trajectory PRIVATE ${SILIGEN_PCH_HEADER})
     target_precompile_headers(siligen_triggering PRIVATE ${SILIGEN_PCH_HEADER})
     target_precompile_headers(siligen_dispensing_execution_services PRIVATE ${SILIGEN_PCH_HEADER})
-    target_precompile_headers(siligen_workflow_dispensing_planning_compat PRIVATE ${SILIGEN_PCH_HEADER})
     target_precompile_headers(siligen_motion_execution_services PRIVATE ${SILIGEN_PCH_HEADER})
     target_precompile_headers(siligen_recipe_domain_services PRIVATE ${SILIGEN_PCH_HEADER})
     target_precompile_headers(siligen_diagnostics_domain_services PRIVATE ${SILIGEN_PCH_HEADER})

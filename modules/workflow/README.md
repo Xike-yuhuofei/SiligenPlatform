@@ -51,7 +51,7 @@
 
 ## S3 当前口径
 
-- `siligen_workflow_dispensing_planning_compat` 仅保留给 deprecated compatibility tests，不再进入 live 装配链。
+- `siligen_workflow_dispensing_planning_compat` 已退出 live/test 主链；workflow 侧 planning 测试必须改走 facade 或迁到 owner 模块。
 - `siligen_process_runtime_core_*` 聚合 target 仅作为 deprecated compatibility target 保留，不再作为 owner 证据或 live public surface。
 
 ## S2 准入清单

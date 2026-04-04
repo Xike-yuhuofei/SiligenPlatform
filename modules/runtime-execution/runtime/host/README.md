@@ -7,6 +7,7 @@
 - 执行域事件发布桥接：`runtime/events/*`
 - 执行域任务调度桥接：`runtime/scheduling/*`
 - 执行域 diagnostics 适配：`runtime/diagnostics/*`
+- 执行域点胶 process port concrete：`runtime/dispensing/DispensingProcessPortAdapter.*`
 - 执行域 motion/runtime provider：`runtime/motion/WorkflowMotionRuntimeServicesProvider.*`
   - canonical provider contract：`runtime_execution/application/services/motion/runtime/IMotionRuntimeServicesProvider.h`
 - 执行态适配与 planning artifact 导出桥：`runtime/system/*`、`runtime/planning/*`

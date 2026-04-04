@@ -5,19 +5,19 @@
 namespace Siligen::Domain::Motion::DomainServices {
 
 ValidatedInterpolationPort::ValidatedInterpolationPort(
-    std::shared_ptr<Siligen::Domain::Motion::Ports::IInterpolationPort> inner)
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort> inner)
     : inner_(std::move(inner)) {
 }
 
 Result<void> ValidatedInterpolationPort::ConfigureCoordinateSystem(
     int16 coord_sys,
-    const Siligen::Domain::Motion::Ports::CoordinateSystemConfig& config) noexcept {
+    const Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemConfig& config) noexcept {
     return inner_->ConfigureCoordinateSystem(coord_sys, config);
 }
 
 Result<void> ValidatedInterpolationPort::AddInterpolationData(
     int16 coord_sys,
-    const Siligen::Domain::Motion::Ports::InterpolationData& data) noexcept {
+    const Siligen::RuntimeExecution::Contracts::Motion::InterpolationData& data) noexcept {
     auto validation = validator_.ValidateInterpolationData(data);
     if (validation.IsError()) {
         return validation;
@@ -86,7 +86,7 @@ Result<uint32> ValidatedInterpolationPort::GetLookAheadBufferSpace(int16 coord_s
     return inner_->GetLookAheadBufferSpace(coord_sys);
 }
 
-Result<Siligen::Domain::Motion::Ports::CoordinateSystemStatus>
+Result<Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemStatus>
 ValidatedInterpolationPort::GetCoordinateSystemStatus(int16 coord_sys) const noexcept {
     return inner_->GetCoordinateSystemStatus(coord_sys);
 }

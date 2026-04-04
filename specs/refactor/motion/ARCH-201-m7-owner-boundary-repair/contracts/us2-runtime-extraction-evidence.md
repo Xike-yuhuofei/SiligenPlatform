@@ -11,37 +11,51 @@
 
 ## File-Level Changes
 
-1. 新增 M9 motion contracts：
+1. 收口 M7 canonical planning types：
+   - `modules/motion-planning/contracts/include/motion_planning/contracts/MotionTrajectory.h`
+   - `modules/motion-planning/contracts/include/motion_planning/contracts/MotionPlan.h`
+   - `modules/motion-planning/contracts/include/motion_planning/contracts/MotionPlanningReport.h`
+   - `modules/motion-planning/contracts/include/motion_planning/contracts/TimePlanningConfig.h`
+2. 收口 M9 motion contracts：
    - `modules/runtime-execution/contracts/runtime/include/runtime_execution/contracts/motion/IMotionRuntimePort.h`
    - `modules/runtime-execution/contracts/runtime/include/runtime_execution/contracts/motion/IIOControlPort.h`
-2. 新增 M9 motion services：
+   - `modules/runtime-execution/contracts/runtime/include/runtime_execution/contracts/motion/IInterpolationPort.h`
+3. 新增 M9 motion services：
    - `modules/runtime-execution/application/include/runtime_execution/application/services/motion/MotionControlServiceImpl.h`
    - `modules/runtime-execution/application/services/motion/MotionControlServiceImpl.cpp`
    - `modules/runtime-execution/application/include/runtime_execution/application/services/motion/MotionStatusServiceImpl.h`
    - `modules/runtime-execution/application/services/motion/MotionStatusServiceImpl.cpp`
-3. 新增 M9 motion use case：
+4. 新增 M9 motion use case：
    - `modules/runtime-execution/application/include/runtime_execution/application/usecases/motion/MotionControlUseCase.h`
    - `modules/runtime-execution/application/usecases/motion/MotionControlUseCase.cpp`
-4. 将旧公开头改为 shim/alias：
-   - `modules/motion-planning/domain/motion/ports/IMotionRuntimePort.h`
-   - `modules/motion-planning/domain/motion/ports/IIOControlPort.h`
+5. 将旧公开头收瘦为“删除 owner 实体 + 兼容 alias/shim”：
+   - `modules/motion-planning/domain/motion/ports/IMotionRuntimePort.h` 已退出 `M7` owner surface
+   - `modules/motion-planning/domain/motion/ports/IIOControlPort.h` 已退出 `M7` owner surface
+   - `modules/motion-planning/domain/motion/ports/IInterpolationPort.h` 已退出 `M7` owner surface
+   - `modules/motion-planning/domain/motion/value-objects/MotionTrajectory.h` 已退出 `M7` owner surface
+   - `modules/motion-planning/domain/motion/value-objects/MotionPlanningReport.h` 已退出 `M7` owner surface
+   - `modules/motion-planning/domain/motion/value-objects/TimePlanningConfig.h` 已退出 `M7` owner surface
    - `modules/workflow/domain/include/domain/motion/ports/IMotionRuntimePort.h`
    - `modules/workflow/domain/include/domain/motion/ports/IIOControlPort.h`
-   - `modules/motion-planning/domain/motion/domain-services/MotionControlServiceImpl.h`
-   - `modules/motion-planning/domain/motion/domain-services/MotionStatusServiceImpl.h`
-   - `modules/workflow/domain/include/domain/motion/domain-services/MotionControlServiceImpl.h`
-   - `modules/workflow/domain/include/domain/motion/domain-services/MotionStatusServiceImpl.h`
-5. host/provider/container 最小重接：
+   - `modules/workflow/domain/include/domain/motion/ports/IInterpolationPort.h`
+   - `modules/workflow/domain/include/domain/motion/value-objects/MotionTrajectory.h`
+   - `modules/workflow/domain/include/domain/motion/value-objects/MotionPlanningReport.h`
+6. 邻接 domain consumer 对齐到 canonical contracts：
+   - `modules/dispense-packaging/domain/dispensing/planning/domain-services/DispensingPlannerService.*`
+   - `modules/dispense-packaging/domain/dispensing/domain-services/DispensingController.h`
+   - `modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp`
+   - `modules/workflow/domain/domain/dispensing/domain-services/DispensingController.h`
+7. host/provider/container 最小重接：
    - `modules/runtime-execution/runtime/host/runtime/motion/WorkflowMotionRuntimeServicesProvider.*`
    - `modules/runtime-execution/runtime/host/container/ApplicationContainer.Motion.cpp`
    - `modules/runtime-execution/runtime/host/container/ApplicationContainer.System.cpp`
    - `modules/runtime-execution/runtime/host/container/ApplicationContainer.h`
    - `modules/runtime-execution/runtime/host/container/ApplicationContainerFwd.h`
-6. gateway 最小重接：
+8. gateway 最小重接：
    - `apps/runtime-gateway/transport-gateway/include/siligen/gateway/tcp/tcp_facade_builder.h`
    - `apps/runtime-gateway/transport-gateway/src/facades/tcp/TcpMotionFacade.h`
    - `apps/runtime-gateway/transport-gateway/src/facades/tcp/TcpMotionFacade.cpp`
-7. 测试与构建入口：
+9. 测试与构建入口：
    - `modules/motion-planning/tests/CMakeLists.txt`
    - `modules/runtime-execution/runtime/host/tests/CMakeLists.txt`
    - `modules/runtime-execution/application/CMakeLists.txt`
@@ -65,37 +79,49 @@
 
 ## Verification Commands
 
-1. 独立验证构建目录 configure / reconfigure：
-   - `cmake -S . -B bsc -DSILIGEN_BUILD_TESTS=ON -DSILIGEN_BUILD_TARGET=tests`
+1. 独立验证构建目录 configure：
+   - `cmake -S D:/Projects/wt-spike153 -B D:/Projects/wt-spike153/build-phase2 -DSILIGEN_BUILD_TESTS=ON -DSILIGEN_USE_PCH=OFF -DSILIGEN_PARALLEL_COMPILE=ON`
 2. 边界脚本：
-   - `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validation/assert-module-boundary-bridges.ps1`
+   - `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validation/assert-module-boundary-bridges.ps1 -WorkspaceRoot D:/Projects/wt-spike153 -ReportDir tests/reports/module-boundary-bridges-phase2-current`
 3. 定向 build：
-   - `cmake --build bsc --config Debug --target siligen_motion_planning_unit_tests`
-   - `cmake --build bsc --config Debug --target siligen_runtime_host_unit_tests`
-   - `cmake --build bsc --config Debug --target siligen_transport_gateway`
-   - `cmake --build bsc --config Debug --target siligen_planner_cli`
-   - `cmake --build bsc --config Debug --target siligen_process_path_unit_tests`
-4. process-path 关键用例：
-   - `D:\Projects\SiligenSuite\bsc\bin\Debug\siligen_process_path_unit_tests.exe --gtest_filter=ProcessPathFacadeTest.*`
-5. 本地验证门禁：
-   - `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validation/run-local-validation-gate.ps1`
+   - `cmake --build D:/Projects/wt-spike153/build-phase2 --config Debug --target siligen_motion_planning_unit_tests siligen_unit_tests siligen_runtime_host_unit_tests --parallel`
+   - `cmake --build D:/Projects/wt-spike153/build-phase2 --config Debug --target process_runtime_core_motion_runtime_assembly_test workflow_integration_motion_runtime_assembly_smoke --parallel`
+4. 规划 owner 边界回归：
+   - `D:/Projects/wt-spike153/build-phase2/bin/Debug/siligen_motion_planning_unit_tests.exe --gtest_filter=MotionPlannerTest.*:MotionPlannerConstraintTest.*:InterpolationProgramPlannerTest.*:MotionPlannerOwnerPathTest.*:MotionPlanningOwnerBoundaryTest.*:NoRuntimeControlLeakTest.*`
+5. 邻接 consumer 回归：
+   - `D:/Projects/wt-spike153/build-phase2/bin/Debug/siligen_unit_tests.exe --gtest_filter=DispensingProcessServiceWaitForMotionCompleteTest.*:DispensingWorkflowUseCaseTest.*`
+6. host/runtime seam 回归：
+   - `D:/Projects/wt-spike153/build-phase2/bin/Debug/siligen_runtime_host_unit_tests.exe --gtest_filter=MotionControlMigrationTest.*:WorkflowMotionRuntimeServicesProviderTest.*`
+7. runtime assembly smoke：
+   - `D:/Projects/wt-spike153/build-phase2/bin/Debug/process_runtime_core_motion_runtime_assembly_test.exe`
+   - `D:/Projects/wt-spike153/build-phase2/bin/Debug/workflow_integration_motion_runtime_assembly_smoke.exe`
+8. root-entry 补充证据：
+   - `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validation/run-local-validation-gate.ps1 -ReportRoot tests/reports/local-validation-gate-phase2-current`
 
 ## Current Verification Status
 
-截至 2026-03-27：
+截至 2026-04-04：
 
 - 源码级与文件级检查：已完成
-- 独立验证构建目录：`bsc/` configure / reconfigure 成功
-- 边界脚本：已执行，报告位于 `tests/reports/module-boundary-bridges/`，结果为 `passed`
+- 独立验证构建目录：`build-phase2/` configure 成功
+- 边界脚本：已执行，报告位于 `tests/reports/module-boundary-bridges-phase2-current/`，结果为 `passed`
   - `finding_count = 0`
-  - 报告：`tests/reports/module-boundary-bridges/module-boundary-bridges.md`
+  - 报告：`tests/reports/module-boundary-bridges-phase2-current/module-boundary-bridges.md`
 - 定向 build：已完成
   - `siligen_motion_planning_unit_tests`：passed
+  - `siligen_unit_tests`：passed
   - `siligen_runtime_host_unit_tests`：passed
-  - `siligen_transport_gateway`：passed
-  - `siligen_planner_cli`：passed
-  - `siligen_process_path_unit_tests`：passed
-- process-path 关键用例：`ProcessPathFacadeTest.*` 已通过，确认 `CoordinateTransformSet.owner_module == "M5"`
-- 本地验证门禁：已执行，报告目录 `tests/reports/local-validation-gate/20260327-204804/`，结果为 `overall_status: passed`
+  - `process_runtime_core_motion_runtime_assembly_test`：passed
+  - `workflow_integration_motion_runtime_assembly_smoke`：passed
+- 规划 owner 边界回归：16/16 通过
+- 邻接 consumer 回归：33/33 通过
+- host/runtime seam 回归：5/5 通过
+- runtime assembly smoke：两个可执行均 `exit 0`
+- 本地验证门禁：已复跑，报告目录 `tests/reports/local-validation-gate-phase2-current/20260404-073057/`
+  - 结果：`overall_status: failed`
+  - 通过步骤：`review-baseline`、`workspace-layout`、`dsp-e2e-spec-docset`、`legacy-exit`、`module-boundary-bridges`、`build-validation-local-contracts`、`build-validation-ci-contracts`
+  - 唯一失败步骤：`test-contracts-ci`
+  - 失败根因：`apps/hmi-app/tests/unit/test_offline_preview_builder.py` 触发 `no-loose-mock` 静态门禁
+  - 结论：root-entry gate 当前被 `HMI` 静态测试治理阻断，而非 `ARCH-201 Stage B / US2` 本身阻断
 
-结论：US2 的代码、shim、host/gateway seam、边界脚本与验证门禁已完成闭环；Stage B 原先阻断验证的 superbuild / contracts / bootstrap seam 问题已在 Stage C 收口。
+结论：US2 的代码、contracts、consumer 对齐、host seam 与 Stage B 专项验证均已闭环；当前唯一未闭环证据是 root-entry local gate，而其阻断点位于 `apps/hmi-app` 的独立静态门禁，不属于本阶段 owner seam 范围。

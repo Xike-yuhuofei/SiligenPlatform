@@ -1444,6 +1444,14 @@ $forbiddenCompatReferences += @(
 
 $forbiddenScopedSearches += @(
     @{
+        rule_id = "workflow-domain-still-defines-planner-compat"
+        pattern = "siligen_workflow_dispensing_planning_compat"
+        search_roots = @(
+            "modules/workflow/domain/domain"
+        )
+        detail = "workflow domain bridge layer must not define the deprecated siligen_workflow_dispensing_planning_compat target"
+    },
+    @{
         rule_id = "motion-planning-live-headers-still-include-process-path-domain"
         pattern = '#include "domain/trajectory/value-objects/ProcessPath.h"'
         search_roots = @(
@@ -1476,6 +1484,63 @@ $forbiddenScopedSearches += @(
             "apps/runtime-gateway/transport-gateway"
         )
         detail = "live targets must not reference the deprecated siligen_workflow_dispensing_planning_compat target"
+    },
+    @{
+        rule_id = "tests-still-reference-planner-compat"
+        pattern = "siligen_workflow_dispensing_planning_compat"
+        search_roots = @(
+            "modules/workflow/tests",
+            "modules/motion-planning/tests"
+        )
+        detail = "workflow and motion-planning tests must not reference the deprecated siligen_workflow_dispensing_planning_compat target"
+    },
+    @{
+        rule_id = "workflow-tests-still-carry-planning-owner-concrete"
+        pattern = '#include "domain/dispensing/planning/domain-services/'
+        search_roots = @(
+            "modules/workflow/tests"
+        )
+        detail = "workflow tests must not include deprecated planning owner concrete headers"
+    },
+    @{
+        rule_id = "workflow-tests-still-carry-execution-owner-concrete"
+        pattern = '#include "domain/dispensing/domain-services/PurgeDispenserProcess.h"'
+        search_roots = @(
+            "modules/workflow/tests"
+        )
+        detail = "workflow tests must not carry purge owner concrete tests after runtime-execution extraction"
+    },
+    @{
+        rule_id = "workflow-tests-still-carry-execution-owner-concrete"
+        pattern = '#include "domain/dispensing/domain-services/ValveCoordinationService.h"'
+        search_roots = @(
+            "modules/workflow/tests"
+        )
+        detail = "workflow tests must not carry valve owner concrete tests after runtime-execution extraction"
+    },
+    @{
+        rule_id = "workflow-tests-still-carry-execution-owner-concrete"
+        pattern = '#include "modules/dispense-packaging/domain/dispensing/domain-services/DispensingProcessService.h"'
+        search_roots = @(
+            "modules/workflow/tests"
+        )
+        detail = "workflow tests must not carry process-service owner concrete tests after runtime-execution extraction"
+    },
+    @{
+        rule_id = "runtime-service-still-includes-dispensing-process-service"
+        pattern = 'DispensingProcessService.h'
+        search_roots = @(
+            "apps/runtime-service"
+        )
+        detail = "runtime-service app-local shell must not include DispensingProcessService directly"
+    },
+    @{
+        rule_id = "runtime-service-still-constructs-dispensing-process-service"
+        pattern = "std::make_shared<DispensingProcessService>"
+        search_roots = @(
+            "apps/runtime-service"
+        )
+        detail = "runtime-service app-local shell must not construct DispensingProcessService directly"
     }
 )
 

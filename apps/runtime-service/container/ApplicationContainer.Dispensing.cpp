@@ -14,7 +14,7 @@
 #include "application/usecases/dispensing/UploadFileUseCase.h"
 #include "job_ingest/contracts/dispensing/UploadContracts.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
-#include "runtime/dispensing/WorkflowDispensingProcessPortAdapter.h"
+#include "runtime/dispensing/DispensingProcessPortAdapter.h"
 #include "runtime/planning/PlanningArtifactExportPortAdapter.h"
 #include "runtime/storage/files/LocalFileStorageAdapter.h"
 #include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
@@ -118,7 +118,7 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::CleanupFilesUseCase>(
 template<>
 std::shared_ptr<UseCases::Dispensing::DispensingExecutionUseCase>
 ApplicationContainer::CreateInstance<UseCases::Dispensing::DispensingExecutionUseCase>() {
-    auto process_port = std::make_shared<Siligen::Runtime::Service::Dispensing::WorkflowDispensingProcessPortAdapter>(
+    auto process_port = Siligen::RuntimeExecution::Host::Dispensing::CreateDispensingProcessPort(
         valve_port_,
         interpolation_port_,
         motion_state_port_,

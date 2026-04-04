@@ -1,10 +1,10 @@
 #pragma once
 
-#include "domain/motion/value-objects/MotionTrajectory.h"
+#include "motion_planning/contracts/MotionTrajectory.h"
 
 namespace Siligen::Domain::Trajectory::ValueObjects {
 
-using TrajectoryPoint = Siligen::Domain::Motion::ValueObjects::MotionTrajectoryPoint;
-using Trajectory = Siligen::Domain::Motion::ValueObjects::MotionTrajectory;
+using TrajectoryPoint = Siligen::MotionPlanning::Contracts::MotionTrajectoryPoint;
+using Trajectory = Siligen::MotionPlanning::Contracts::MotionTrajectory;
 
 }  // namespace Siligen::Domain::Trajectory::ValueObjects

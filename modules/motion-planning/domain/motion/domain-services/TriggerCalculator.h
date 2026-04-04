@@ -9,10 +9,10 @@
 
 #pragma once
 
+#include "motion_planning/contracts/MotionTrajectory.h"
 #include "shared/types/CMPTypes.h"
 #include "shared/types/Point.h"
 #include "shared/types/Types.h"
-#include "domain/motion/value-objects/MotionTrajectory.h"
 
 #include <memory>
 #include <optional>

@@ -57,11 +57,24 @@
 - [X] T024 在独立验证构建目录 `bsc/` 完成 `siligen_motion_planning_unit_tests`、`siligen_runtime_host_unit_tests`、`siligen_transport_gateway`、`siligen_planner_cli`、`siligen_process_path_unit_tests` 定向 build，并补跑 `ProcessPathFacadeTest.*`
 - [X] T025 执行 `run-local-validation-gate.ps1`，报告 `tests/reports/local-validation-gate/20260327-204804/` 为 `passed`
 
-**Verification Note (2026-03-27)**:
-- `cmake -S . -B bsc -DSILIGEN_BUILD_TESTS=ON -DSILIGEN_BUILD_TARGET=tests` configure / reconfigure 成功
-- `tests/reports/module-boundary-bridges/module-boundary-bridges.md` 为 `status: passed`, `finding_count: 0`
-- `D:\Projects\SiligenSuite\bsc\bin\Debug\siligen_process_path_unit_tests.exe --gtest_filter=ProcessPathFacadeTest.*` 通过
-- `tests/reports/local-validation-gate/20260327-204804/local-validation-gate-summary.md` 为 `overall_status: passed`
+**Verification Note (2026-04-04)**:
+- `cmake -S D:/Projects/wt-spike153 -B D:/Projects/wt-spike153/build-phase2 -DSILIGEN_BUILD_TESTS=ON -DSILIGEN_USE_PCH=OFF -DSILIGEN_PARALLEL_COMPILE=ON` configure 成功
+- `cmake --build D:/Projects/wt-spike153/build-phase2 --config Debug --target siligen_motion_planning_unit_tests siligen_unit_tests siligen_runtime_host_unit_tests --parallel` 成功
+- `cmake --build D:/Projects/wt-spike153/build-phase2 --config Debug --target process_runtime_core_motion_runtime_assembly_test workflow_integration_motion_runtime_assembly_smoke --parallel` 成功
+- `tests/reports/module-boundary-bridges-phase2-current/module-boundary-bridges.md` 为 `status: passed`, `finding_count: 0`
+- `siligen_motion_planning_unit_tests` 的 16 个 Stage B 规划 owner 边界用例全部通过
+- `siligen_unit_tests` 的 33 个 `workflow/dispense` 邻接 consumer 用例全部通过
+- `siligen_runtime_host_unit_tests` 的 5 个 host/runtime seam 用例全部通过
+- `process_runtime_core_motion_runtime_assembly_test.exe` 与 `workflow_integration_motion_runtime_assembly_smoke.exe` 均 `exit 0`
+- `tests/reports/local-validation-gate-phase2-current/20260404-073057/local-validation-gate-summary.md` 为 `overall_status: failed`
+- 当前 local gate 唯一失败项为 `test-contracts-ci`，阻断来自 `apps/hmi-app/tests/unit/test_offline_preview_builder.py` 的 `no-loose-mock` 静态门禁，不属于 Stage B / US2 改动面
+
+## Reassessment Note (2026-04-04)
+
+- 本任务单的已完成项只继续代表 `ARCH-201 Stage B / US2 runtime-control owner` 的冻结结果。
+- 经只读比较确认，`workflow/domain/domain/CMakeLists.txt` 仍编译 `siligen_workflow_dispensing_planning_compat` 的真实 planning 源文件，`workflow/domain/include/domain/dispensing/planning/domain-services/DispensingPlannerService.h` 也仍暴露一套带 authority preview 扩展字段的 public shape；这已经不是“薄兼容层”。
+- 与之相对，live 链路中的 authority preview / planning artifact 语义已经在 `modules/dispense-packaging/application/services/dispensing/*` 与 `PlanningAssemblyTypes.h` 承接，说明 planning owner seam 正在向 `dispense-packaging` application side 收敛。
+- 因此，自 2026-04-04 起，不再把“让 workflow 本地 planning compat 单独编过”视为本任务单内的剩余小项；后续若继续推进，必须转 cumulative integration 或显式新阶段，并把 packaging-side owner wiring、consumer 迁移和 compatibility target 退场一并纳入。
 
 ---
 
@@ -69,7 +82,8 @@
 
 - Phase 1 完成前，不进入 Phase 2
 - Phase 2 完成前，不进入 evidence/traceability 收尾
-- `T024-T025` 已在独立验证构建目录 `bsc/` 完成，不再依赖旧 `build/` 状态
+- `T024` 当前基线固定在独立验证构建目录 `build-phase2/`
+- `T025` 已补充 current rerun 结论；root-entry gate 若失败，必须记录是否属于 Stage B 改动面
 
 ## Notes
 

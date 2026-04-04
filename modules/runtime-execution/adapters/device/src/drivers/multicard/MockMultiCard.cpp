@@ -1134,33 +1134,39 @@ void MockMultiCard::TickMs(double dt_ms) {
             continue;
         }
 
-        long target_x = crd_sys.trajectory_x[crd_sys.current_segment];
-        long target_y = crd_sys.trajectory_y[crd_sys.current_segment];
-
         long axis_x = crd_sys.axis_map[0];
         long axis_y = crd_sys.axis_map[1];
-        long current_x = axes_[axis_x].position;
-        long current_y = axes_[axis_y].position;
-
         double velocity_pulses_per_ms = 10.0;
-        double max_delta = velocity_pulses_per_ms * dt_ms;
+        double remaining_delta = velocity_pulses_per_ms * dt_ms;
 
-        double dx = static_cast<double>(target_x - current_x);
-        double dy = static_cast<double>(target_y - current_y);
-        double distance = std::sqrt((dx * dx) + (dy * dy));
+        while (crd_sys.is_running &&
+               crd_sys.current_segment < crd_sys.trajectory_x.size() &&
+               remaining_delta > 0.0) {
+            long target_x = crd_sys.trajectory_x[crd_sys.current_segment];
+            long target_y = crd_sys.trajectory_y[crd_sys.current_segment];
+            long current_x = axes_[axis_x].position;
+            long current_y = axes_[axis_y].position;
 
-        if (distance <= max_delta) {
-            axes_[axis_x].position = target_x;
-            axes_[axis_y].position = target_y;
-            crd_sys.current_segment++;
+            double dx = static_cast<double>(target_x - current_x);
+            double dy = static_cast<double>(target_y - current_y);
+            double distance = std::sqrt((dx * dx) + (dy * dy));
 
-            if (crd_sys.current_segment >= crd_sys.trajectory_x.size()) {
-                crd_sys.is_running = false;
+            if (distance <= remaining_delta) {
+                axes_[axis_x].position = target_x;
+                axes_[axis_y].position = target_y;
+                remaining_delta -= distance;
+                crd_sys.current_segment++;
+
+                if (crd_sys.current_segment >= crd_sys.trajectory_x.size()) {
+                    crd_sys.is_running = false;
+                }
+                continue;
             }
-        } else {
-            double ratio = max_delta / distance;
+
+            double ratio = remaining_delta / distance;
             axes_[axis_x].position += static_cast<long>(dx * ratio);
             axes_[axis_y].position += static_cast<long>(dy * ratio);
+            remaining_delta = 0.0;
         }
     }
 

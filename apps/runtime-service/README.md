@@ -32,7 +32,9 @@
 
 - `modules/runtime-execution/runtime/host` 只保留 host core。
 - recipe persistence、config/storage、security、workflow/job-ingest/DXF wiring 都在本目录的 app-local shell 组合。
-- `WorkflowDispensingProcessPortAdapter`、`RuntimeExecutionSupervisionBackend`、`WorkflowRuntimeSupervisionPort`、`WorkflowRuntimeStatusExportPort` 都属于本目录的 app-local shell 资产，不得回流到 `modules/runtime-execution` 变成模块 owner。
+- `RuntimeExecutionSupervisionBackend`、`WorkflowRuntimeSupervisionPort`、`WorkflowRuntimeStatusExportPort` 都属于本目录的 app-local shell 资产，不得回流到 `modules/runtime-execution` 变成模块 owner。
+
+- 点胶 `process port` concrete 已迁到 `modules/runtime-execution/runtime/host/runtime/dispensing/DispensingProcessPortAdapter.*`；本目录只保留装配调用，不再持有 owner concrete。
 - `workflow_recipe_*` 仍是 recipe owner surface；本目录只消费这些 public targets 进行 runtime wiring。
 
 ## 调用方

@@ -3,7 +3,11 @@ cmake_minimum_required(VERSION 3.20)
 set(RUNTIME_HOST_TEST_SOURCES
     unit/runtime/calibration/CalibrationWorkflowServiceTest.cpp
     unit/runtime/diagnostics/DiagnosticsPortAdapterTest.cpp
+    unit/runtime/dispensing/DispensingProcessPortAdapterTest.cpp
     unit/runtime/dispensing/DispensingExecutionUseCaseInternalTest.cpp
+    unit/runtime/dispensing/DispensingProcessServiceWaitForMotionCompleteTest.cpp
+    unit/runtime/dispensing/PurgeDispenserProcessTest.cpp
+    unit/runtime/dispensing/ValveCoordinationServiceTest.cpp
     unit/runtime/motion/HardLimitMonitorServiceTest.cpp
     unit/runtime/motion/HomingPortAdapterTest.cpp
     unit/runtime/motion/InterpolationAdapterTest.cpp
