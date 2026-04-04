@@ -46,10 +46,10 @@ TEST(MotionPlanningOwnerBoundaryTest, CanonicalPlanningHeadersUseProcessPathCont
     using Interpolator = Siligen::Domain::Motion::CMPCoordinatedInterpolator;
     using InterpolationProgramPlanner = Siligen::Domain::Motion::DomainServices::InterpolationProgramPlanner;
     using TimeTrajectoryPlanner = Siligen::Domain::Motion::DomainServices::TimeTrajectoryPlanner;
-    using MotionTrajectory = Siligen::Domain::Motion::ValueObjects::MotionTrajectory;
-    using TimePlanningConfig = Siligen::Domain::Motion::ValueObjects::TimePlanningConfig;
+    using MotionTrajectory = Siligen::MotionPlanning::Contracts::MotionTrajectory;
+    using TimePlanningConfig = Siligen::MotionPlanning::Contracts::TimePlanningConfig;
     using ContractsProcessPath = Siligen::ProcessPath::Contracts::ProcessPath;
-    using InterpolationData = Siligen::Domain::Motion::Ports::InterpolationData;
+    using InterpolationData = Siligen::RuntimeExecution::Contracts::Motion::InterpolationData;
     using InterpolationResult = Siligen::Shared::Types::Result<std::vector<InterpolationData>>;
     using Float32 = Siligen::Shared::Types::float32;
 
@@ -200,6 +200,43 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowPlanningImplementationsAreRemoved)
     for (const auto& source : extra_sources) {
         EXPECT_FALSE(fs::exists(source)) << source.string();
     }
+}
+
+TEST(MotionPlanningOwnerBoundaryTest, WorkflowTrajectoryMotionPlannerResidueIsRemoved) {
+    const fs::path repo_root = RepoRoot();
+    const std::array<fs::path, 5> legacy_paths = {{
+        repo_root / "modules/workflow/domain/domain/trajectory/domain-services/MotionPlanner.cpp",
+        repo_root / "modules/workflow/domain/domain/trajectory/domain-services/MotionPlanner.h",
+        repo_root / "modules/workflow/domain/domain/trajectory/value-objects/MotionConfig.h",
+        repo_root / "modules/workflow/domain/domain/trajectory/value-objects/PlanningReport.h",
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/PlanningReport.h",
+    }};
+
+    for (const auto& path : legacy_paths) {
+        EXPECT_FALSE(fs::exists(path)) << path.string();
+    }
+}
+
+TEST(MotionPlanningOwnerBoundaryTest, WorkflowTriggerCmpCompatibilityIsShimOnly) {
+    const fs::path repo_root = RepoRoot();
+    const std::string workflow_domain_cmake =
+        ReadTextFile(repo_root / "modules/workflow/domain/domain/CMakeLists.txt");
+    const std::string workflow_cmp_header =
+        ReadTextFile(repo_root / "modules/workflow/domain/include/domain/dispensing/domain-services/CMPTriggerService.h");
+    const std::string workflow_trigger_header =
+        ReadTextFile(repo_root / "modules/workflow/domain/domain/dispensing/domain-services/TriggerPlanner.h");
+
+    EXPECT_EQ(workflow_domain_cmake.find("dispensing/domain-services/CMPTriggerService.cpp"), std::string::npos);
+    EXPECT_EQ(workflow_domain_cmake.find("dispensing/planning/domain-services/DispensingPlannerService.cpp"),
+              std::string::npos);
+    EXPECT_EQ(workflow_domain_cmake.find("dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp"),
+              std::string::npos);
+    EXPECT_NE(workflow_cmp_header.find("modules/dispense-packaging"), std::string::npos);
+    EXPECT_NE(workflow_cmp_header.find("CMPTriggerService.h"), std::string::npos);
+    EXPECT_EQ(workflow_cmp_header.find("class CMPService"), std::string::npos);
+    EXPECT_NE(workflow_trigger_header.find("modules/dispense-packaging"), std::string::npos);
+    EXPECT_NE(workflow_trigger_header.find("TriggerPlanner.h"), std::string::npos);
+    EXPECT_EQ(workflow_trigger_header.find("class TriggerPlanner"), std::string::npos);
 }
 
 TEST(MotionPlanningOwnerBoundaryTest, WorkflowCmpPrecisionTestUsesContractsProcessPathSemantics) {

@@ -892,6 +892,36 @@ $forbiddenOwnershipReferences = @(
         detail = "workflow bridge domain must not compile process-path planning implementations"
     },
     @{
+        path = "modules/workflow/domain/domain/CMakeLists.txt"
+        pattern = "dispensing/domain-services/CMPTriggerService.cpp"
+        rule_id = "workflow-still-compiles-dispense-packaging-cmp-service"
+        detail = "workflow bridge domain must not compile CMPService after M8 takes Trigger/CMP ownership"
+    },
+    @{
+        path = "modules/workflow/domain/domain/CMakeLists.txt"
+        pattern = "dispensing/planning/domain-services/DispensingPlannerService.cpp"
+        rule_id = "workflow-still-compiles-dispense-packaging-planner"
+        detail = "workflow bridge domain must not compile DispensingPlannerService after M8 takes Trigger/CMP ownership"
+    },
+    @{
+        path = "modules/workflow/domain/domain/CMakeLists.txt"
+        pattern = "dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp"
+        rule_id = "workflow-still-compiles-dispense-packaging-planner"
+        detail = "workflow bridge domain must not compile UnifiedTrajectoryPlannerService after M8 takes Trigger/CMP ownership"
+    },
+    @{
+        path = "modules/workflow/domain/include/domain/dispensing/domain-services/CMPTriggerService.h"
+        pattern = "class CMPService"
+        rule_id = "workflow-still-declares-cmp-owner-header"
+        detail = "workflow compatibility headers must forward to dispense-packaging CMPService instead of declaring a new owner type"
+    },
+    @{
+        path = "modules/workflow/domain/domain/dispensing/domain-services/TriggerPlanner.h"
+        pattern = "class TriggerPlanner"
+        rule_id = "workflow-still-declares-trigger-owner-header"
+        detail = "workflow compatibility headers must forward to dispense-packaging TriggerPlanner instead of declaring a new owner type"
+    },
+    @{
         path = "modules/workflow/tests/process-runtime-core/CMakeLists.txt"
         pattern = "unit/domain/dispensing/DispensingControllerTest.cpp"
         rule_id = "workflow-still-owns-dispense-packaging-domain-tests"
