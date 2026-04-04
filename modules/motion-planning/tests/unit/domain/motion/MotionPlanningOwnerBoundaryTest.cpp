@@ -236,4 +236,21 @@ TEST(MotionPlanningOwnerBoundaryTest, InterpolationProgramPlannerConsumersUseCon
               std::string::npos);
 }
 
+TEST(MotionPlanningOwnerBoundaryTest, WorkflowResidualUnifiedTrajectoryPlannerIsRemoved) {
+    const fs::path repo_root = RepoRoot();
+
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp"));
+
+    const std::string workflow_dispensing_planner = ReadTextFile(
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp");
+    EXPECT_NE(workflow_dispensing_planner.find(
+                  "../../../../../../../dispense-packaging/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.h"),
+              std::string::npos);
+    EXPECT_EQ(workflow_dispensing_planner.find('#' + std::string("include \"UnifiedTrajectoryPlannerService.h\"")),
+              std::string::npos);
+}
+
 }  // namespace

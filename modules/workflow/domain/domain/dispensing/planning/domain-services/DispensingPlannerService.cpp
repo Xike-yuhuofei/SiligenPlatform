@@ -1,6 +1,6 @@
 #include "DispensingPlannerService.h"
 #include "ContourOptimizationService.h"
-#include "UnifiedTrajectoryPlannerService.h"
+#include "../../../../../../../dispense-packaging/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.h"
 
 #include "domain/dispensing/domain-services/TriggerPlanner.h"
 #include "domain/motion/CMPCoordinatedInterpolator.h"

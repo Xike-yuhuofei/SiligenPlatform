@@ -13,15 +13,26 @@
 ## 2. 当前允许保留的兼容面
 
 - 契约层：
+  - `modules/process-path/contracts/include/process_path/contracts/IPathSourcePort.h`
   - `modules/process-path/contracts/include/process_path/contracts/IDXFPathSourcePort.h`
 - owner 内兼容桥：
+  - `modules/process-path/domain/trajectory/ports/IPathSourcePort.h`
   - `modules/process-path/domain/trajectory/ports/IDXFPathSourcePort.h`
-  - `modules/workflow/domain/include/domain/trajectory/ports/IDXFPathSourcePort.h`
 - 临时 compat 实现：
   - `modules/workflow/adapters/infrastructure/adapters/planning/dxf/`
 - 直接验证：
   - `modules/workflow/tests/process-runtime-core/unit/infrastructure/adapters/planning/dxf/DXFAdapterFactoryTest.cpp`
   - 相关仓库级 contract test
+
+## 2.1 已完成零引用退场
+
+- `modules/workflow/domain/include/domain/trajectory/ports/IPathSourcePort.h`
+- `modules/workflow/domain/include/domain/trajectory/ports/IDXFPathSourcePort.h`
+- `modules/workflow/domain/include/domain/trajectory/domain-services/GeometryNormalizer.h`
+- `modules/workflow/domain/include/domain/trajectory/domain-services/ProcessAnnotator.h`
+- `modules/workflow/domain/include/domain/trajectory/domain-services/TrajectoryShaper.h`
+
+以上 `workflow` public thin bridge 已完成仓内零引用复核并删除；默认 consumer 现已直接依赖 canonical `process_path/contracts/*`，`workflow/domain/domain/dispensing/planning/UnifiedTrajectoryPlannerService.*` residual 也已同步退场，不再反向占用该批 bridge。
 
 ## 3. 明确禁止项
 

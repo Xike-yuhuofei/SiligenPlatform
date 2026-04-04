@@ -1453,6 +1453,51 @@ $forbiddenScopedSearches += @(
         detail = "motion-planning live headers must include process_path/contracts/ProcessPath.h instead of M6 domain headers"
     },
     @{
+        rule_id = "live-targets-still-include-workflow-pathsource-bridge"
+        pattern = '#include "domain/trajectory/ports/IPathSourcePort.h"'
+        search_roots = @(
+            "modules",
+            "apps"
+        )
+        detail = "live targets must include process_path/contracts/IPathSourcePort.h instead of the deleted workflow bridge header"
+    },
+    @{
+        rule_id = "live-targets-still-include-workflow-dxf-pathsource-bridge"
+        pattern = '#include "domain/trajectory/ports/IDXFPathSourcePort.h"'
+        search_roots = @(
+            "modules",
+            "apps"
+        )
+        detail = "live targets must include process_path/contracts/IDXFPathSourcePort.h instead of the deleted workflow bridge header"
+    },
+    @{
+        rule_id = "live-targets-still-include-workflow-geometry-normalizer-bridge"
+        pattern = '#include "domain/trajectory/domain-services/GeometryNormalizer.h"'
+        search_roots = @(
+            "modules",
+            "apps"
+        )
+        detail = "live targets must not include the deleted workflow GeometryNormalizer bridge header"
+    },
+    @{
+        rule_id = "live-targets-still-include-workflow-process-annotator-bridge"
+        pattern = '#include "domain/trajectory/domain-services/ProcessAnnotator.h"'
+        search_roots = @(
+            "modules",
+            "apps"
+        )
+        detail = "live targets must not include the deleted workflow ProcessAnnotator bridge header"
+    },
+    @{
+        rule_id = "live-targets-still-include-workflow-trajectory-shaper-bridge"
+        pattern = '#include "domain/trajectory/domain-services/TrajectoryShaper.h"'
+        search_roots = @(
+            "modules",
+            "apps"
+        )
+        detail = "live targets must not include the deleted workflow TrajectoryShaper bridge header"
+    },
+    @{
         rule_id = "live-targets-still-reference-process-runtime-core-planning"
         pattern = "siligen_process_runtime_core_planning"
         search_roots = @(
