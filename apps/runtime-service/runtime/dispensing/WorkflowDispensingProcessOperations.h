@@ -4,8 +4,8 @@
 #include "domain/dispensing/ports/IDispensingExecutionObserver.h"
 #include "domain/dispensing/ports/IValvePort.h"
 #include "domain/dispensing/value-objects/DispensingExecutionTypes.h"
-#include "domain/motion/ports/IInterpolationPort.h"
 #include "domain/motion/ports/IMotionStatePort.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "shared/types/Result.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 
@@ -38,7 +38,7 @@ class IWorkflowDispensingProcessOperations {
 
 std::shared_ptr<IWorkflowDispensingProcessOperations> CreateWorkflowDispensingProcessOperations(
     std::shared_ptr<Siligen::Domain::Dispensing::Ports::IValvePort> valve_port,
-    std::shared_ptr<Siligen::Domain::Motion::Ports::IInterpolationPort> interpolation_port,
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort> interpolation_port,
     std::shared_ptr<Siligen::Domain::Motion::Ports::IMotionStatePort> motion_state_port,
     std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
     std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port);

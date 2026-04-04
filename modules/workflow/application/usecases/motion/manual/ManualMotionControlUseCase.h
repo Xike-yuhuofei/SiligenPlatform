@@ -2,9 +2,9 @@
 
 #include "domain/motion/domain-services/JogController.h"
 #include "domain/motion/ports/IHomingPort.h"
-#include "domain/motion/ports/IIOControlPort.h"
 #include "domain/motion/ports/IMotionStatePort.h"
 #include "domain/motion/ports/IPositionControlPort.h"
+#include "runtime_execution/contracts/motion/IIOControlPort.h"
 #include "runtime_execution/application/usecases/motion/manual/ManualMotionCommand.h"
 #include "shared/types/Result.h"
 #include "shared/types/Types.h"
@@ -51,7 +51,8 @@ class ManualMotionControlUseCase {
      * @brief IO状态更新回调函数类型
      * @param signal IO信号状态
      */
-    using IOStatusCallback = std::function<void(const Domain::Motion::Ports::IOStatus&)>;
+    using IOStatusCallback =
+        std::function<void(const Siligen::RuntimeExecution::Contracts::Motion::IOStatus&)>;
 
     /**
      * @brief 构造函数

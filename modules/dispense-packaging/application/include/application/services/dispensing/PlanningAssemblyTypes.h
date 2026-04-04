@@ -5,8 +5,8 @@
 #include "domain/dispensing/value-objects/AuthorityTriggerLayout.h"
 #include "domain/dispensing/value-objects/DispenseCompensationProfile.h"
 #include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
-#include "domain/motion/value-objects/MotionPlanningReport.h"
 #include "motion_planning/contracts/MotionPlan.h"
+#include "motion_planning/contracts/MotionPlanningReport.h"
 #include "process_path/contracts/ProcessPath.h"
 #include "shared/types/DispensingStrategy.h"
 #include "shared/types/TrajectoryTypes.h"
@@ -164,7 +164,7 @@ struct PlanningArtifactsBuildResult {
     int trigger_count = 0;
     std::string dxf_filename;
     Siligen::Shared::Types::int32 timestamp = 0;
-    Siligen::Domain::Motion::ValueObjects::MotionPlanningReport planning_report;
+    Siligen::MotionPlanning::Contracts::MotionPlanningReport planning_report;
     bool preview_authority_ready = false;
     bool preview_authority_shared_with_execution = false;
     bool preview_binding_ready = false;

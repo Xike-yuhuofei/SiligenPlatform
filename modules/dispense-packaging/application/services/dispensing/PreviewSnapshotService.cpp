@@ -396,18 +396,18 @@ PreviewSnapshotPayload PreviewSnapshotService::BuildPayload(
 
     const auto* trajectory_points = input.trajectory_points;
     const auto source_count = trajectory_points ? trajectory_points->size() : 0U;
-    payload.motion_preview_source_point_count = static_cast<std::uint32_t>(source_count);
+    payload.polyline_source_point_count = static_cast<std::uint32_t>(source_count);
 
     const auto polyline = trajectory_points
         ? BuildPreviewPolyline(*trajectory_points, max_points)
         : std::vector<Point2D>{};
-    payload.motion_preview_point_count = static_cast<std::uint32_t>(polyline.size());
-    payload.motion_preview_polyline.reserve(polyline.size());
+    payload.polyline_point_count = static_cast<std::uint32_t>(polyline.size());
+    payload.trajectory_polyline.reserve(polyline.size());
     for (const auto& point : polyline) {
         PreviewSnapshotPoint snapshot_point;
         snapshot_point.x = point.x;
         snapshot_point.y = point.y;
-        payload.motion_preview_polyline.push_back(snapshot_point);
+        payload.trajectory_polyline.push_back(snapshot_point);
     }
     return payload;
 }

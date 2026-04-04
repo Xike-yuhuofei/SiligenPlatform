@@ -27,8 +27,8 @@ Result<std::string> MissingPortString(const char* method, const char* dependency
 }  // namespace
 
 MotionCoordinationUseCase::MotionCoordinationUseCase(
-    std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port,
-    std::shared_ptr<Domain::Motion::Ports::IIOControlPort> io_port,
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort> interpolation_port,
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort> io_port,
     std::shared_ptr<Domain::Motion::Ports::IAxisControlPort> axis_control_port,
     std::shared_ptr<Domain::Dispensing::Ports::ITriggerControllerPort> trigger_port,
     std::shared_ptr<Domain::Motion::Ports::IAdvancedMotionPort> advanced_motion_port)
@@ -52,7 +52,7 @@ Result<void> MotionCoordinationUseCase::ConfigureCoordinateSystem(int16 coord_sy
             "MotionCoordinationUseCase::ConfigureCoordinateSystem"));
     }
 
-    Domain::Motion::Ports::CoordinateSystemConfig config;
+    Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemConfig config;
     config.dimension = static_cast<int16>(axis_map.size());
     config.axis_map = axis_map;
     config.max_velocity = max_velocity;
@@ -70,7 +70,7 @@ Result<void> MotionCoordinationUseCase::AddInterpolationSegment(const Interpolat
 
 Result<void> MotionCoordinationUseCase::DispatchCoordinateSystemSegment(
     int16 coord_sys,
-    const Domain::Motion::Ports::InterpolationData& segment) {
+    const Siligen::RuntimeExecution::Contracts::Motion::InterpolationData& segment) {
     if (!interpolation_port_) {
         return MissingPort("MotionCoordinationUseCase::DispatchCoordinateSystemSegment", "Interpolation port");
     }

@@ -341,6 +341,8 @@ PreviewSnapshotResponse WorkflowPreviewSnapshotService::BuildResponse(
     response.confirmed_at = payload.confirmed_at;
     response.segment_count = payload.segment_count;
     response.execution_point_count = payload.point_count;
+    response.execution_polyline_source_point_count = payload.polyline_source_point_count;
+    response.execution_polyline_point_count = payload.polyline_point_count;
     response.total_length_mm = payload.total_length_mm;
     response.estimated_time_s = payload.estimated_time_s;
     response.preview_validation_classification = input.validation_classification;
@@ -360,6 +362,7 @@ PreviewSnapshotResponse WorkflowPreviewSnapshotService::BuildResponse(
             response.glue_points.push_back(snapshot_point);
         }
     }
+    CopyPreviewPolyline(payload.trajectory_polyline, response.execution_polyline);
 
     if (input.motion_trajectory_points != nullptr && !input.motion_trajectory_points->empty()) {
         const auto motion_points = BuildPointVectorFromTrajectory(*input.motion_trajectory_points);
