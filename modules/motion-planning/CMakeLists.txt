@@ -15,14 +15,16 @@ if(NOT TARGET siligen_motion)
     message(FATAL_ERROR "motion-planning requires canonical domain/motion target: siligen_motion")
 endif()
 
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/contracts/CMakeLists.txt")
+if(NOT TARGET siligen_motion_planning_contracts_public AND
+   EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/contracts/CMakeLists.txt")
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/contracts"
         "${CMAKE_BINARY_DIR}/modules/motion-planning/contracts"
     )
 endif()
 
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/application/CMakeLists.txt")
+if(NOT TARGET siligen_motion_planning_application_public AND
+   EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/application/CMakeLists.txt")
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/application"
         "${CMAKE_BINARY_DIR}/modules/motion-planning/application"

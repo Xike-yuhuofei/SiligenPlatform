@@ -22,8 +22,6 @@ target_link_libraries(siligen_motion_planning_application_headers INTERFACE
 target_compile_features(siligen_motion_planning_application_headers INTERFACE cxx_std_17)
 
 set(SILIGEN_MOTION_PLANNING_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS
-    ${PROCESS_RUNTIME_CORE_PUBLIC_INCLUDE_DIRS}
-    ${PROCESS_RUNTIME_CORE_IMPLEMENTATION_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/..
 )

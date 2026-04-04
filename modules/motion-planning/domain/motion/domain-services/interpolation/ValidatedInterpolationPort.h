@@ -1,22 +1,23 @@
 #pragma once
 
-#include "domain/motion/ports/IInterpolationPort.h"
 #include "InterpolationCommandValidator.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
 
 #include <memory>
 
 namespace Siligen::Domain::Motion::DomainServices {
 
-class ValidatedInterpolationPort : public Siligen::Domain::Motion::Ports::IInterpolationPort {
+class ValidatedInterpolationPort : public Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort {
 public:
-    explicit ValidatedInterpolationPort(std::shared_ptr<Siligen::Domain::Motion::Ports::IInterpolationPort> inner);
+    explicit ValidatedInterpolationPort(
+        std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort> inner);
     ~ValidatedInterpolationPort() override = default;
 
     Result<void> ConfigureCoordinateSystem(int16 coord_sys,
-                                           const Siligen::Domain::Motion::Ports::CoordinateSystemConfig& config) noexcept override;
+                                           const Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemConfig& config) noexcept override;
 
     Result<void> AddInterpolationData(int16 coord_sys,
-                                      const Siligen::Domain::Motion::Ports::InterpolationData& data) noexcept override;
+                                      const Siligen::RuntimeExecution::Contracts::Motion::InterpolationData& data) noexcept override;
 
     Result<void> ClearInterpolationBuffer(int16 coord_sys) noexcept override;
 
@@ -38,10 +39,11 @@ public:
 
     Result<uint32> GetLookAheadBufferSpace(int16 coord_sys) const noexcept override;
 
-    Result<Siligen::Domain::Motion::Ports::CoordinateSystemStatus> GetCoordinateSystemStatus(int16 coord_sys) const noexcept override;
+    Result<Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemStatus> GetCoordinateSystemStatus(
+        int16 coord_sys) const noexcept override;
 
 private:
-    std::shared_ptr<Siligen::Domain::Motion::Ports::IInterpolationPort> inner_;
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort> inner_;
     InterpolationCommandValidator validator_{};
 };
 
