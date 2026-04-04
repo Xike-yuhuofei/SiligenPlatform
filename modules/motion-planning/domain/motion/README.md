@@ -1,12 +1,12 @@
 # Motion 子域 - 运动规划
 
-**职责**: 负责运动规划事实、时间/轨迹/CMP 规划与插补算法，不再作为 runtime/control owner。
+**职责**: 负责运动规划事实、时间/轨迹规划与插补算法，不再作为 runtime/control owner，也不再作为 trigger/CMP 业务语义 owner。
 
 ## 业务范围
 
 - 轨迹规划与约束求解
 - 插补算法（直线、圆弧、样条）
-- 时间规划、速度规划与触发时间线计算
+- 时间规划、速度规划与触发时间线数学计算
 - `MotionTrajectory`、`TimePlanningConfig`、`MotionPlanningReport` 等规划事实输出
 - 面向后续阶段保留的少量兼容残余（仅供 thin compatibility shell 使用，不构成 owner public surface）
 
@@ -26,8 +26,9 @@
 ## Planning Owner 审计
 
 - `siligen_motion` 的 live source root 固定为 `modules/motion-planning/domain/motion/`
-- `CMPCoordinatedInterpolator`、`TimeTrajectoryPlanner`、`TrajectoryPlanner`、`TriggerCalculator`、`SpeedPlanner`、`GeometryBlender`、`VelocityProfileService`、`SevenSegmentSCurveProfile` 的 owner 固定为 motion-planning
-- `BezierCalculator`、`BSplineCalculator`、`CircleCalculator`、`CMPValidator`、`CMPCompensation` 与 interpolation 子目录实现同样固定为 motion-planning owner
+- `TimeTrajectoryPlanner`、`TrajectoryPlanner`、`SpeedPlanner`、`GeometryBlender`、`VelocityProfileService`、`SevenSegmentSCurveProfile` 的 owner 固定为 motion-planning
+- `TriggerCalculator`、`CMPCoordinatedInterpolator`、`CMPValidator`、`CMPCompensation` 在本阶段只保留数学/轨迹 helper 语义；不得在 `M7` 内重新定义 authority trigger layout、`TriggerPlan` 或 execution-preparation truth
+- `BezierCalculator`、`BSplineCalculator`、`CircleCalculator` 与 interpolation 子目录实现同样固定为 motion-planning owner
 - `modules/workflow/domain/domain/motion/` 与 `modules/workflow/domain/domain/motion/domain-services/` 下对应旧路径只保留 thin compatibility shell，不再持有 live `.cpp`
 - workflow domain 不再提供 `siligen_motion` 本地 fallback；缺少 canonical owner target 时构建显式失败
 
@@ -52,7 +53,7 @@ motion/
 │   ├── MotionPlanner             # 规划求解 owner
 │   ├── TrajectoryPlanner         # 轨迹规划
 │   ├── TimeTrajectoryPlanner     # 时间规划
-│   ├── TriggerCalculator         # 规划触发计算
+│   ├── TriggerCalculator         # 触发时间线/距离数学 helper
 │   ├── SpeedPlanner              # 速度规划
 │   ├── MotionBufferController    # compatibility header only
 │   ├── JogController             # compatibility header only
@@ -64,7 +65,7 @@ motion/
 ├── CircleCalculator.*
 ├── CMPValidator.*
 ├── CMPCompensation.*
-├── CMPCoordinatedInterpolator.*
+├── CMPCoordinatedInterpolator.*  # CMP/trigger 轨迹 helper，不承载业务 truth owner
 └── ports/                          # 规划相关端口；runtime/control 端口仅保留 shim
     ├── IMotionConnectionPort
     ├── IAxisControlPort
@@ -102,4 +103,5 @@ namespace Siligen::Domain::Motion {
 ## 特殊约束
 
 - `M7` public surface 只能承诺规划事实，不得重新吸收 runtime/control owner 语义
+- `TriggerPlan`、authority trigger layout、preview truth 与 execution-preparation CMP 语义 owner 固定在 `M8 dispense-packaging`
 - 本子域允许使用 `std::vector` 存储轨迹点（`.claude/rules/DOMAIN.md` 例外）

@@ -1,7 +1,7 @@
 /**
  * @file CMPCoordinatedInterpolator.h
  * @brief CMP位置触发协调插补算法实现
- * @details 实现CMP位置触发与轨迹运动的精确协调控制
+ * @details 提供 CMP/trigger 轨迹协调 helper，不承载 authority trigger layout 或 TriggerPlan 的业务 owner 语义
  *
  * @author Claude Code
  * @date 2025-10-30
@@ -35,12 +35,13 @@ class TrajectoryPlanner;
 
 /**
  * @brief CMP协调插补器
- * @details 实现CMP位置触发与轨迹运动的精确协调，支持：
+ * @details 实现 CMP 位置触发与轨迹运动的协调 helper，支持：
  * - 位置同步点胶插补
  * - 时间同步点胶插补
  * - 混合触发模式插补
  * - 多通道CMP协调控制
  * - 实时触发位置补偿
+ * @note trigger/CMP 的业务真值 owner 固定在 M8 dispense-packaging；本类只保留数学和轨迹组装职责
  */
 class CMPCoordinatedInterpolator : public TrajectoryInterpolatorBase {
    public:

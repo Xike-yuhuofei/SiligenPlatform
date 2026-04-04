@@ -1,7 +1,7 @@
 /**
  * @file TriggerCalculator.h
- * @brief 触发计算器 - 处理CMP触发点计算和优化
- * @details 从CMPCoordinatedInterpolator中提取的触发计算逻辑
+ * @brief 触发计算器 - 处理 trigger/CMP 的数学计算
+ * @details 仅提供轨迹距离、时间线与位置映射 helper，不承载 trigger/CMP 业务 owner 语义
  *
  * @author Claude Code
  * @date 2025-11-23
@@ -22,7 +22,7 @@ namespace Siligen::Domain::Motion {
 
 /**
  * @brief 触发计算器
- * @details 负责处理所有与CMP触发点相关的计算逻辑
+ * @details 提供 trigger/CMP 相关的轨迹数学 helper；authority trigger layout 与 TriggerPlan owner 在 M8 dispense-packaging
  */
 class TriggerCalculator {
    public:

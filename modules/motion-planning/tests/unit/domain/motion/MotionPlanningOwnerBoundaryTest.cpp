@@ -202,6 +202,44 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowPlanningImplementationsAreRemoved)
     }
 }
 
+TEST(MotionPlanningOwnerBoundaryTest, WorkflowDispensingCompatibilityFilesForwardToDispensePackagingOwner) {
+    const fs::path repo_root = RepoRoot();
+    const std::array<std::pair<fs::path, std::string>, 5> expectations = {{
+        {repo_root / "modules/workflow/domain/include/domain/dispensing/domain-services/TriggerPlanner.h",
+         "#include \"../../../../../../../dispense-packaging/domain/dispensing/domain-services/TriggerPlanner.h\""},
+        {repo_root / "modules/workflow/domain/domain/dispensing/domain-services/TriggerPlanner.h",
+         "#include \"../../../include/domain/dispensing/domain-services/TriggerPlanner.h\""},
+        {repo_root / "modules/workflow/domain/include/domain/dispensing/domain-services/CMPTriggerService.h",
+         "#include \"../../../../../../../dispense-packaging/domain/dispensing/domain-services/CMPTriggerService.h\""},
+        {repo_root / "modules/workflow/domain/domain/dispensing/domain-services/TriggerPlanner.cpp",
+         "Canonical trigger/CMP owner implementation lives in dispense-packaging."},
+        {repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp",
+         "Canonical trigger/CMP owner implementation lives in dispense-packaging."},
+    }};
+
+    for (const auto& [path, marker] : expectations) {
+        const std::string content = ReadTextFile(path);
+        EXPECT_NE(content.find("Canonical trigger/CMP owner"), std::string::npos) << path.string();
+        EXPECT_NE(content.find(marker), std::string::npos) << path.string();
+    }
+}
+
+TEST(MotionPlanningOwnerBoundaryTest, WorkflowRetiredPreviewResidueCannotRebuildM8TruthLocally) {
+    const fs::path repo_root = RepoRoot();
+    const std::string workflow_application_cmake =
+        ReadTextFile(repo_root / "modules/workflow/application/CMakeLists.txt");
+    const std::string retired_preview_service = ReadTextFile(
+        repo_root / "modules/workflow/application/services/dispensing/PlanningPreviewAssemblyService.cpp");
+
+    EXPECT_EQ(
+        workflow_application_cmake.find("services/dispensing/PlanningPreviewAssemblyService.cpp"),
+        std::string::npos);
+    EXPECT_NE(retired_preview_service.find("Retired compatibility shim"), std::string::npos);
+    EXPECT_NE(retired_preview_service.find("PlanningUseCase authority/execution chain"), std::string::npos);
+    EXPECT_EQ(retired_preview_service.find("DispensePlanningFacade"), std::string::npos);
+    EXPECT_EQ(retired_preview_service.find("AssemblePlanningArtifacts("), std::string::npos);
+}
+
 TEST(MotionPlanningOwnerBoundaryTest, WorkflowCmpPrecisionTestUsesContractsProcessPathSemantics) {
     const fs::path repo_root = RepoRoot();
     const std::string workflow_cmp_test = ReadTextFile(
@@ -214,10 +252,9 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowCmpPrecisionTestUsesContractsProce
 
 TEST(MotionPlanningOwnerBoundaryTest, InterpolationProgramPlannerConsumersUseContractsProcessPathSemantics) {
     const fs::path repo_root = RepoRoot();
-    const std::array<fs::path, 4> sources = {{
+    const std::array<fs::path, 3> sources = {{
         repo_root / "modules/motion-planning/tests/unit/domain/trajectory/InterpolationProgramPlannerTest.cpp",
         repo_root / "modules/workflow/application/usecases/motion/trajectory/DeterministicPathExecutionUseCase.cpp",
-        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp",
         repo_root / "modules/dispense-packaging/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp",
     }};
 

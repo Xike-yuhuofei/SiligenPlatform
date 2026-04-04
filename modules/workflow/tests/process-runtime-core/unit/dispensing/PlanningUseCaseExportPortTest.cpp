@@ -350,6 +350,55 @@ TEST(PlanningUseCaseExportPortTest, AssembleExecutionDropsExportRequestAfterExpo
     std::filesystem::remove(temp_pb, ec);
 }
 
+TEST(PlanningUseCaseExportPortTest, AssembleExecutionReusesAuthorityPreviewArtifactsAsSingleTruthSource) {
+    auto temp_pb = MakeTempPbPath();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto path_source = std::make_shared<SharedVertexPathSourcePort>();
+    auto export_port = std::make_shared<FakePlanningArtifactExportPort>();
+    auto pb_service = std::make_shared<DxfPbPreparationService>();
+    PlanningUseCase use_case(
+        path_source,
+        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
+        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
+        config_port,
+        pb_service,
+        export_port);
+
+    const auto request = MakePlanningRequest(temp_pb);
+    const auto authority_result = use_case.PrepareAuthorityPreview(request);
+    ASSERT_TRUE(authority_result.IsSuccess()) << authority_result.GetError().ToString();
+    ASSERT_TRUE(authority_result.Value().preview_authority_ready);
+    ASSERT_FALSE(authority_result.Value().glue_points.empty());
+    ASSERT_FALSE(authority_result.Value().authority_trigger_layout.layout_id.empty());
+
+    const auto assembly_result = use_case.AssembleExecutionFromAuthority(request, authority_result.Value());
+
+    ASSERT_TRUE(assembly_result.IsSuccess()) << assembly_result.GetError().ToString();
+    ASSERT_TRUE(assembly_result.Value().preview_authority_shared_with_execution);
+    ASSERT_TRUE(assembly_result.Value().execution_binding_ready);
+    ASSERT_TRUE(assembly_result.Value().execution_package);
+    EXPECT_EQ(
+        assembly_result.Value().authority_trigger_layout.layout_id,
+        authority_result.Value().authority_trigger_layout.layout_id);
+    EXPECT_EQ(
+        assembly_result.Value().authority_trigger_layout.trigger_points.size(),
+        authority_result.Value().authority_trigger_layout.trigger_points.size());
+    EXPECT_EQ(
+        assembly_result.Value().execution_package->source_fingerprint,
+        authority_result.Value().authority_trigger_layout.layout_id);
+    ASSERT_EQ(export_port->export_calls, 1);
+    ASSERT_EQ(export_port->last_request.glue_points.size(), authority_result.Value().glue_points.size());
+    for (std::size_t index = 0; index < authority_result.Value().glue_points.size(); ++index) {
+        EXPECT_NEAR(export_port->last_request.glue_points[index].x, authority_result.Value().glue_points[index].x, 1e-4f);
+        EXPECT_NEAR(export_port->last_request.glue_points[index].y, authority_result.Value().glue_points[index].y, 1e-4f);
+    }
+
+    std::error_code ec;
+    std::filesystem::remove(temp_pb, ec);
+}
+
 TEST(PlanningUseCaseExportPortTest, ExecuteExportsEquivalentGluePointsForSubdividedOpenSpan) {
     auto temp_pb = MakeTempPbPath();
     auto config_port = std::make_shared<FakeConfigurationPort>();

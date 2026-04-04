@@ -910,6 +910,24 @@ $forbiddenOwnershipReferences = @(
         detail = "workflow tests must not compile process-path owner domain tests"
     },
     @{
+        path = "modules/workflow/application/CMakeLists.txt"
+        pattern = "services/dispensing/PlanningPreviewAssemblyService.cpp"
+        rule_id = "workflow-still-compiles-preview-owner-residue"
+        detail = "workflow application must not compile the retired PlanningPreviewAssemblyService residue"
+    },
+    @{
+        path = "modules/workflow/application/services/dispensing/PlanningPreviewAssemblyService.cpp"
+        pattern = '#include "application/services/dispensing/DispensePlanningFacade.h"'
+        rule_id = "workflow-preview-residue-still-includes-m8-owner-facade"
+        detail = "retired PlanningPreviewAssemblyService must not include DispensePlanningFacade directly"
+    },
+    @{
+        path = "modules/workflow/application/services/dispensing/PlanningPreviewAssemblyService.cpp"
+        pattern = "AssemblePlanningArtifacts("
+        rule_id = "workflow-preview-residue-still-rebuilds-m8-truth"
+        detail = "retired PlanningPreviewAssemblyService must not rebuild planning artifacts locally"
+    },
+    @{
         path = "modules/runtime-execution/application/CMakeLists.txt"
         pattern = "siligen_workflow_application_public"
         rule_id = "runtime-application-still-links-workflow-application-public"
