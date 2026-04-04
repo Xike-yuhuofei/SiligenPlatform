@@ -43,6 +43,9 @@ add_library(siligen_dispense_packaging_domain_dispensing STATIC
     domain-services/TriggerPlanner.cpp
     domain-services/DispensingController.cpp
     domain-services/DispensingProcessService.cpp
+    planning/domain-services/ContourOptimizationService.cpp
+    planning/domain-services/UnifiedTrajectoryPlannerService.cpp
+    planning/domain-services/DispensingPlannerService.cpp
     planning/domain-services/AuthorityTriggerLayoutPlanner.cpp
     planning/domain-services/ClosedLoopAnchorConstraintSolver.cpp
     planning/domain-services/ClosedLoopCornerAnchorResolver.cpp

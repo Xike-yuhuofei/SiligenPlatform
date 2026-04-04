@@ -224,9 +224,6 @@ DispensingPlan BuildMinimalPlan() {
     plan.interpolation_points.front().enable_position_trigger = true;
     plan.interpolation_points.back().enable_position_trigger = true;
     plan.trigger_distances_mm = {0.0f, 20.0f};
-    plan.preview_authority_ready = true;
-    plan.preview_authority_shared_with_execution = true;
-    plan.preview_spacing_valid = true;
     return plan;
 }
 

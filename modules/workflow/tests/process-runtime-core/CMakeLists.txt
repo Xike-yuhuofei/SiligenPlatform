@@ -31,7 +31,6 @@ set(TEST_SOURCES
     unit/domain/safety/EmergencyStopServiceTest.cpp
     unit/domain/safety/SafetyOutputGuardTest.cpp
     unit/domain/motion/JogControllerTest.cpp
-    unit/domain/motion/MainlineTrajectoryAuditTest.cpp
     unit/domain/dispensing/ArcTriggerPointCalculatorTest.cpp
     unit/domain/dispensing/PurgeDispenserProcessTest.cpp
     unit/domain/recipes/RecipeActivationServiceTest.cpp

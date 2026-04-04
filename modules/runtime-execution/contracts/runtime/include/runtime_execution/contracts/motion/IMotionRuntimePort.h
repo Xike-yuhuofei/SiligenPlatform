@@ -25,3 +25,9 @@ class IMotionRuntimePort : public Siligen::Domain::Motion::Ports::IMotionConnect
 };
 
 }  // namespace Siligen::RuntimeExecution::Contracts::Motion
+
+namespace Siligen::Domain::Motion::Ports {
+
+using IMotionRuntimePort = Siligen::RuntimeExecution::Contracts::Motion::IMotionRuntimePort;
+
+}  // namespace Siligen::Domain::Motion::Ports

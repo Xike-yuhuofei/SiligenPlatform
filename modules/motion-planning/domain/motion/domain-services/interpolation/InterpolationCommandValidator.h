@@ -1,8 +1,8 @@
 #pragma once
 
-#include "domain/motion/ports/IInterpolationPort.h"
 #include "shared/types/Error.h"
 #include "shared/types/Result.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
 
 namespace Siligen::Domain::Motion::DomainServices {
 
@@ -11,8 +11,8 @@ using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::float32;
 using Siligen::Shared::Types::uint32;
-using Siligen::Domain::Motion::Ports::InterpolationData;
-using Siligen::Domain::Motion::Ports::InterpolationType;
+using Siligen::RuntimeExecution::Contracts::Motion::InterpolationData;
+using Siligen::RuntimeExecution::Contracts::Motion::InterpolationType;
 
 class InterpolationCommandValidator {
 public:
