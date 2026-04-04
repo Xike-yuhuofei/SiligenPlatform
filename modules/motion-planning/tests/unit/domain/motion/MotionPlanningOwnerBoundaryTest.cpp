@@ -9,8 +9,8 @@
 #include "domain/motion/domain-services/TrajectoryPlanner.h"
 #include "motion_planning/contracts/MotionTrajectory.h"
 #include "motion_planning/contracts/TimePlanningConfig.h"
-#include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "process_path/contracts/ProcessPath.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
 
 #include <gtest/gtest.h>
 

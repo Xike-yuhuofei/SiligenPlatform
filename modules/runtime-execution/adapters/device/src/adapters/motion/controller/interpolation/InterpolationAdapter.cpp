@@ -126,8 +126,9 @@ namespace Siligen::Infrastructure::Adapters {
 InterpolationAdapter::InterpolationAdapter(std::shared_ptr<Siligen::Infrastructure::Hardware::IMultiCardWrapper> wrapper)
     : wrapper_(wrapper) {}
 
-Result<void> InterpolationAdapter::ConfigureCoordinateSystem(int16 coord_sys,
-                                                             const Siligen::Domain::Motion::Ports::CoordinateSystemConfig& config) {
+Result<void> InterpolationAdapter::ConfigureCoordinateSystem(
+    int16 coord_sys,
+    const Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemConfig& config) {
     SILIGEN_LOG_DEBUG(std::string("ConfigureCoordinateSystem ========== 开始 =========="));
     SILIGEN_LOG_INFO("ConfigureCoordinateSystem: coord_sys=" + std::to_string(coord_sys) +
                      ", dimension=" + std::to_string(config.dimension) +
@@ -223,8 +224,9 @@ Result<void> InterpolationAdapter::ConfigureCoordinateSystem(int16 coord_sys,
     return Result<void>::Success();
 }
 
-Result<void> InterpolationAdapter::AddInterpolationData(int16 coord_sys,
-                                                        const Siligen::Domain::Motion::Ports::InterpolationData& data) {
+Result<void> InterpolationAdapter::AddInterpolationData(
+    int16 coord_sys,
+    const Siligen::RuntimeExecution::Contracts::Motion::InterpolationData& data) {
     int error_code = 0;
 
     SILIGEN_LOG_DEBUG(std::string("AddInterpolationData ========== 开始 =========="));
@@ -247,7 +249,7 @@ Result<void> InterpolationAdapter::AddInterpolationData(int16 coord_sys,
                       ", vel=" + std::to_string(vel_pulse) + " 脉冲/ms, acc=" + std::to_string(acc_pulse) + " 脉冲/ms^2");
 
     switch (data.type) {
-        case Siligen::Domain::Motion::Ports::InterpolationType::LINEAR:
+        case Siligen::RuntimeExecution::Contracts::Motion::InterpolationType::LINEAR:
             // 直线插补
             SILIGEN_LOG_DEBUG("调用 MC_LnXY(coord=" + std::to_string(coord_sys) + ", X=" + std::to_string(x_pulse) +
                               ", Y=" + std::to_string(y_pulse) + ", vel=" + std::to_string(vel_pulse) +
@@ -263,12 +265,13 @@ Result<void> InterpolationAdapter::AddInterpolationData(int16 coord_sys,
             }
             break;
 
-        case Siligen::Domain::Motion::Ports::InterpolationType::CIRCULAR_CW:
-        case Siligen::Domain::Motion::Ports::InterpolationType::CIRCULAR_CCW: {
+        case Siligen::RuntimeExecution::Contracts::Motion::InterpolationType::CIRCULAR_CW:
+        case Siligen::RuntimeExecution::Contracts::Motion::InterpolationType::CIRCULAR_CCW: {
             // 圆弧插补
             double cx_pulse = data.center_x * PULSE_PER_MM;
             double cy_pulse = data.center_y * PULSE_PER_MM;
-            short direction = (data.type == Siligen::Domain::Motion::Ports::InterpolationType::CIRCULAR_CW) ? 1 : 2;
+            short direction =
+                (data.type == Siligen::RuntimeExecution::Contracts::Motion::InterpolationType::CIRCULAR_CW) ? 1 : 2;
 
             SILIGEN_LOG_DEBUG("调用 MC_ArcXYC(coord=" + std::to_string(coord_sys) + ", X=" + std::to_string(x_pulse) +
                               ", Y=" + std::to_string(y_pulse) + ", CX=" + std::to_string(cx_pulse) +
@@ -286,13 +289,13 @@ Result<void> InterpolationAdapter::AddInterpolationData(int16 coord_sys,
             break;
         }
 
-        case Siligen::Domain::Motion::Ports::InterpolationType::SPIRAL:
+        case Siligen::RuntimeExecution::Contracts::Motion::InterpolationType::SPIRAL:
             // MVP不支持螺旋插补
             SILIGEN_LOG_ERROR("不支持螺旋插补");
             return Result<void>::Failure(Error(ErrorCode::NOT_IMPLEMENTED,
                                               "Spiral interpolation not supported in MVP"));
 
-        case Siligen::Domain::Motion::Ports::InterpolationType::BUFFER_STOP:
+        case Siligen::RuntimeExecution::Contracts::Motion::InterpolationType::BUFFER_STOP:
             // 缓冲区停止（暂不实现）
             SILIGEN_LOG_ERROR("不支持缓冲区停止");
             return Result<void>::Failure(Error(ErrorCode::NOT_IMPLEMENTED,

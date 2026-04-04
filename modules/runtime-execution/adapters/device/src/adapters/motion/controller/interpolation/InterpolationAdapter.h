@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/motion/ports/IInterpolationPort.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "siligen/device/adapters/drivers/multicard/IMultiCardWrapper.h"
 #include "shared/types/Result.h"
 
@@ -25,7 +25,7 @@ using Siligen::Shared::Types::ErrorCode;
  * - 依赖注入到 Application 层
  * - 使用 Result<T> 错误处理
  */
-class InterpolationAdapter : public Siligen::Domain::Motion::Ports::IInterpolationPort {
+class InterpolationAdapter : public Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort {
    public:
     /**
      * @brief 构造函数
@@ -42,11 +42,13 @@ class InterpolationAdapter : public Siligen::Domain::Motion::Ports::IInterpolati
     InterpolationAdapter& operator=(InterpolationAdapter&&) = delete;
 
     // 实现 IInterpolationPort 接口
-    Result<void> ConfigureCoordinateSystem(int16 coord_sys,
-                                           const Siligen::Domain::Motion::Ports::CoordinateSystemConfig& config) override;
+    Result<void> ConfigureCoordinateSystem(
+        int16 coord_sys,
+        const Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemConfig& config) override;
 
-    Result<void> AddInterpolationData(int16 coord_sys,
-                                      const Siligen::Domain::Motion::Ports::InterpolationData& data) override;
+    Result<void> AddInterpolationData(
+        int16 coord_sys,
+        const Siligen::RuntimeExecution::Contracts::Motion::InterpolationData& data) override;
 
     Result<void> ClearInterpolationBuffer(int16 coord_sys) override;
 
@@ -68,7 +70,8 @@ class InterpolationAdapter : public Siligen::Domain::Motion::Ports::IInterpolati
 
     Result<uint32> GetLookAheadBufferSpace(int16 coord_sys) const override;
 
-    Result<Siligen::Domain::Motion::Ports::CoordinateSystemStatus> GetCoordinateSystemStatus(int16 coord_sys) const override;
+    Result<Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemStatus> GetCoordinateSystemStatus(
+        int16 coord_sys) const override;
 
    private:
     std::shared_ptr<Infrastructure::Hardware::IMultiCardWrapper> wrapper_;
