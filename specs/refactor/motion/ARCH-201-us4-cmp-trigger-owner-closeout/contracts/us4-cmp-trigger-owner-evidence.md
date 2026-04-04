@@ -60,5 +60,5 @@
   `preview_failure_reason`,
   `authority_trigger_points`,
   `spacing_validation_groups`,
-  plus `python_ruckig_python` and `python_ruckig_script` request fields.
+  plus legacy offline trajectory request fields that should be removed from the compat surface.
 - Validation passed after that canonical header repair, with workflow remaining shim-only for Trigger/CMP ownership.

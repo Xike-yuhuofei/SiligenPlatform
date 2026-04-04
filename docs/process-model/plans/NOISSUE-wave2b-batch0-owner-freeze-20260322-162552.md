@@ -18,7 +18,7 @@
 1. diagnostics logging canonical owner 冻结为 `packages/traceability-observability`。
 2. recipes persistence / serializer canonical owner 冻结为 `packages/runtime-host`。
 3. third-party live consumer ownership 冻结为“由真实消费者显式声明依赖”：
-   - `packages/process-runtime-core` 负责其 Boost / Ruckig / Protobuf consumer debt
+   - `packages/process-runtime-core` 负责其 Boost / Protobuf consumer debt
    - `packages/runtime-host` 负责 recipe/json 相关 consumer debt
    - `packages/transport-gateway` 作为协作 consumer，不再借 legacy owner 透传 include/link 语义
 4. `packages/device-adapters` 只继续承担设备边界守门与 vendor 见证，不接收 recipes 或 logging 实现 owner。
