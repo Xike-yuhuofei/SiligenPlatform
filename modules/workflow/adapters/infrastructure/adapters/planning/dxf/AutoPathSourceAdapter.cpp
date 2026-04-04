@@ -232,29 +232,22 @@ Result<std::string> AutoPathSourceAdapter::PreprocessDXFFile(const std::string& 
     bool use_service = CheckDXFPipelineServiceAvailable();
     
     if (use_service) {
-        // 调用dxf-pipeline服务进行预处理
         auto service_result = CallDXFPipelineService(dxf_path, pb_path.string());
         if (service_result.IsSuccess()) {
             return Result<std::string>::Success(pb_path.string());
         }
-        // 服务调用失败，回退到本地处理
-        SILIGEN_LOG_WARNING("DXF pipeline服务调用失败，使用本地处理: " + service_result.GetError().GetMessage());
-    }
-    
-    // 本地预处理实现 - 未来将迁移到dxf-pipeline
-    // 这里只是创建空文件作为占位符
-    std::ofstream pb_file(pb_path);
-    if (!pb_file) {
         return Result<std::string>::Failure(
-            Siligen::Shared::Types::Error(Siligen::Shared::Types::ErrorCode::FILE_IO_ERROR,
-                                          "无法创建PB文件: " + pb_path.string(),
-                                          "AutoPathSourceAdapter"));
+            Siligen::Shared::Types::Error(
+                service_result.GetError().GetCode(),
+                "DXF pipeline服务调用失败: " + service_result.GetError().GetMessage(),
+                "AutoPathSourceAdapter"));
     }
-    
-    pb_file << "# 预处理占位符 - 未来将由dxf-pipeline生成实际内容" << std::endl;
-    pb_file.close();
-    
-    return Result<std::string>::Success(pb_path.string());
+
+    return Result<std::string>::Failure(
+        Siligen::Shared::Types::Error(
+            Siligen::Shared::Types::ErrorCode::CONFIGURATION_ERROR,
+            "DXF pipeline服务不可用，禁止回退到本地占位PB",
+            "AutoPathSourceAdapter"));
 }
 
 // 检查dxf-pipeline服务是否可用

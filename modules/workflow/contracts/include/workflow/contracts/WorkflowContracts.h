@@ -59,6 +59,12 @@ struct WorkflowStageState {
     WorkflowStageLifecycle lifecycle = WorkflowStageLifecycle::Pending;
     WorkflowFailureCategory failure_category = WorkflowFailureCategory::None;
     bool recovery_required = false;
+    std::int32_t diagnostic_error_code = 0;
+    std::string diagnostic_message;
+    std::int64_t observed_at_ms = 0;
+    std::uint32_t stage_duration_ms = 0;
+    bool export_attempted = false;
+    bool export_succeeded = false;
 };
 
 struct WorkflowPlanningTriggerRequest {
@@ -75,6 +81,12 @@ struct WorkflowPlanningTriggerResponse {
     WorkflowStageState stage_state;
     WorkflowFailureCategory failure_category = WorkflowFailureCategory::None;
     WorkflowRecoveryDirective recovery_directive;
+    std::int32_t diagnostic_error_code = 0;
+    std::string diagnostic_message;
+    std::int64_t observed_at_ms = 0;
+    std::uint32_t stage_duration_ms = 0;
+    bool export_attempted = false;
+    bool export_succeeded = false;
 };
 
 }  // namespace Siligen::Workflow::Contracts

@@ -86,19 +86,27 @@ class RemoteDXFPathSourceAdapterStub final : public IDXFPathSourcePort {
 // 静态成员初始化
 DXFAdapterFactory::AdapterType DXFAdapterFactory::current_adapter_type_ = DXFAdapterFactory::AdapterType::LOCAL;
 
-std::shared_ptr<IDXFPathSourcePort> DXFAdapterFactory::CreateDXFPathSourceAdapter(AdapterType type) {
+Siligen::Shared::Types::Result<std::shared_ptr<IDXFPathSourcePort>>
+DXFAdapterFactory::CreateDXFPathSourceAdapter(AdapterType type) {
     current_adapter_type_ = type;
     
     switch (type) {
         case AdapterType::LOCAL:
-            return CreateLocalAdapter();
+            return Siligen::Shared::Types::Result<std::shared_ptr<IDXFPathSourcePort>>::Success(CreateLocalAdapter());
         case AdapterType::REMOTE:
-            return CreateRemoteAdapter();
+            return Siligen::Shared::Types::Result<std::shared_ptr<IDXFPathSourcePort>>::Failure(
+                Siligen::Shared::Types::Error(
+                    Siligen::Shared::Types::ErrorCode::NOT_IMPLEMENTED,
+                    "Remote DXF adapter is not available",
+                    "DXFAdapterFactory"));
         case AdapterType::MOCK:
-            return CreateMockAdapter();
+            return Siligen::Shared::Types::Result<std::shared_ptr<IDXFPathSourcePort>>::Success(CreateMockAdapter());
         default:
-            // 默认回退到本地适配器
-            return CreateLocalAdapter();
+            return Siligen::Shared::Types::Result<std::shared_ptr<IDXFPathSourcePort>>::Failure(
+                Siligen::Shared::Types::Error(
+                    Siligen::Shared::Types::ErrorCode::CONFIGURATION_ERROR,
+                    "Unknown DXF adapter type",
+                    "DXFAdapterFactory"));
     }
 }
 

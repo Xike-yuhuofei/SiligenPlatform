@@ -2,6 +2,7 @@
 
 #include "process_path/contracts/IDXFPathSourcePort.h"
 #include "AutoPathSourceAdapter.h"
+#include "shared/types/Result.h"
 #include <memory>
 
 namespace Siligen::Infrastructure::Adapters::Parsing {
@@ -28,7 +29,8 @@ public:
      * 根据配置创建不同类型的适配器实例。
      * 默认使用LOCAL类型以保持向后兼容。
      */
-    static std::shared_ptr<IDXFPathSourcePort> CreateDXFPathSourceAdapter(AdapterType type = AdapterType::LOCAL);
+    static Siligen::Shared::Types::Result<std::shared_ptr<IDXFPathSourcePort>> CreateDXFPathSourceAdapter(
+        AdapterType type = AdapterType::LOCAL);
 
     /**
      * @brief 检查适配器健康状态

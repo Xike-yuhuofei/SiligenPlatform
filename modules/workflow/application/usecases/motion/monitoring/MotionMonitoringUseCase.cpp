@@ -6,9 +6,10 @@
 #include "shared/logging/PrintfLogFormatter.h"
 
 #include <algorithm>
-#include <utility>
 #include <chrono>
 #include <thread>
+#include <sstream>
+#include <utility>
 
 using namespace Siligen::Shared::Types;
 
@@ -59,11 +60,15 @@ MotionMonitoringUseCase::MotionMonitoringUseCase(
     std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port,
     std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort> io_port,
     std::shared_ptr<Domain::Motion::Ports::IHomingPort> homing_port,
-    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort> interpolation_port)
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort> interpolation_port,
+    std::shared_ptr<Siligen::Domain::Diagnostics::Ports::IDiagnosticsPort> diagnostics_port,
+    std::shared_ptr<Siligen::Domain::System::Ports::IEventPublisherPort> event_publisher_port)
     : motion_state_port_(std::move(motion_state_port))
     , homing_port_(std::move(homing_port))
     , io_port_(io_port)
-    , interpolation_port_(std::move(interpolation_port)) {
+    , interpolation_port_(std::move(interpolation_port))
+    , diagnostics_port_(std::move(diagnostics_port))
+    , event_publisher_port_(std::move(event_publisher_port)) {
 }
 
 MotionMonitoringUseCase::~MotionMonitoringUseCase() {
@@ -442,6 +447,10 @@ void MotionMonitoringUseCase::StatusUpdateTimer() {
                     NotifyMotionStatusUpdate(axis_id, allStatus[i]);
                 }
             }
+            if (motion_status_failure_count_.load() > 0) {
+                RecordPollingTransition("motion_status_poll", nullptr, motion_status_failure_count_.load(), true);
+            }
+            motion_status_failure_count_.store(0);
             motion_status_failure_logged_.store(false);
         } else {
             const auto failure_count = motion_status_failure_count_.fetch_add(1) + 1;
@@ -452,6 +461,7 @@ void MotionMonitoringUseCase::StatusUpdateTimer() {
                     ";message=" + allStatusResult.GetError().GetMessage() +
                     ";failure_count=" + std::to_string(failure_count));
             }
+            RecordPollingTransition("motion_status_poll", &allStatusResult.GetError(), failure_count, false);
         }
     }
 
@@ -462,6 +472,10 @@ void MotionMonitoringUseCase::StatusUpdateTimer() {
             for (const auto& io : allIO) {
                 NotifyIOStatusUpdate(io);
             }
+            if (io_status_failure_count_.load() > 0) {
+                RecordPollingTransition("io_status_poll", nullptr, io_status_failure_count_.load(), true);
+            }
+            io_status_failure_count_.store(0);
             io_status_failure_logged_.store(false);
         } else {
             const auto failure_count = io_status_failure_count_.fetch_add(1) + 1;
@@ -472,7 +486,49 @@ void MotionMonitoringUseCase::StatusUpdateTimer() {
                     ";message=" + allIOResult.GetError().GetMessage() +
                     ";failure_count=" + std::to_string(failure_count));
             }
+            RecordPollingTransition("io_status_poll", &allIOResult.GetError(), failure_count, false);
         }
+    }
+}
+
+void MotionMonitoringUseCase::RecordPollingTransition(
+    const char* component,
+    const Siligen::Shared::Types::Error* error,
+    std::uint32_t failure_count,
+    bool recovered) const {
+    if (diagnostics_port_) {
+        Siligen::Domain::Diagnostics::Ports::DiagnosticInfo info;
+        info.level = recovered
+            ? Siligen::Domain::Diagnostics::Ports::DiagnosticLevel::INFO
+            : Siligen::Domain::Diagnostics::Ports::DiagnosticLevel::WARNING;
+        info.component = component;
+        info.message = recovered
+            ? std::string(component) + " recovered after " + std::to_string(failure_count) + " failures"
+            : std::string(component) + " failure: " + error->GetMessage();
+        info.error_code = recovered ? 0 : static_cast<int32>(error->GetCode());
+        info.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        diagnostics_port_->AddDiagnostic(info);
+    }
+
+    if (event_publisher_port_) {
+        Siligen::Domain::System::Ports::DomainEvent event;
+        event.type = recovered
+            ? Siligen::Domain::System::Ports::EventType::WORKFLOW_STAGE_CHANGED
+            : Siligen::Domain::System::Ports::EventType::WORKFLOW_STAGE_FAILED;
+        event.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        event.source = "MotionMonitoringUseCase";
+        std::ostringstream oss;
+        oss << "component=" << component
+            << ";recovered=" << (recovered ? 1 : 0)
+            << ";failure_count=" << failure_count;
+        if (!recovered && error != nullptr) {
+            oss << ";error_code=" << static_cast<int>(error->GetCode())
+                << ";message=" << error->GetMessage();
+        }
+        event.message = oss.str();
+        event_publisher_port_->PublishAsync(event);
     }
 }
 

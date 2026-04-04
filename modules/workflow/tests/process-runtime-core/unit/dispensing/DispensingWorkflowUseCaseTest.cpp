@@ -270,10 +270,9 @@ std::shared_ptr<PlanningUseCase> CreateRealPlanningUseCase() {
     auto pb_service = std::make_shared<DxfPbPreparationService>();
     return std::make_shared<PlanningUseCase>(
         path_source,
-        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
-        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningPathPreparationPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningMotionPlanPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningAssemblyPort(),
         nullptr,
         pb_service);
 }
@@ -284,10 +283,9 @@ std::shared_ptr<PlanningUseCase> CreatePlanningUseCaseWithPathSourceAndExport(
     auto pb_service = std::make_shared<DxfPbPreparationService>();
     return std::make_shared<PlanningUseCase>(
         path_source,
-        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
-        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningPathPreparationPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningMotionPlanPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningAssemblyPort(),
         nullptr,
         pb_service,
         export_port);
@@ -298,10 +296,9 @@ std::shared_ptr<PlanningUseCase> CreatePlanningUseCaseWithPathSource(
     auto pb_service = std::make_shared<DxfPbPreparationService>();
     return std::make_shared<PlanningUseCase>(
         path_source,
-        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
-        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningPathPreparationPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningMotionPlanPort(),
+        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningAssemblyPort(),
         nullptr,
         pb_service);
 }
