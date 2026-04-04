@@ -1570,6 +1570,26 @@ $forbiddenScopedSearches += @(
         detail = "dispense-packaging consumers must use process_path/contracts semantics instead of Siligen::Domain::Trajectory::ValueObjects"
     },
     @{
+        rule_id = "runtime-and-app-live-targets-still-use-process-path-owner-namespace"
+        pattern = 'Siligen::Domain::Trajectory::ValueObjects::'
+        search_roots = @(
+            "modules/runtime-execution",
+            "modules/workflow/application",
+            "apps"
+        )
+        detail = "runtime and app consumers must use process_path/contracts semantics instead of Siligen::Domain::Trajectory::ValueObjects"
+    },
+    @{
+        rule_id = "process-path-owner-still-includes-legacy-value-object-headers"
+        pattern = '#include "domain/trajectory/value-objects/'
+        search_roots = @(
+            "modules/process-path/domain/trajectory/domain-services",
+            "modules/process-path/tests/unit/domain/trajectory",
+            "modules/process-path/application/services/process_path"
+        )
+        detail = "process-path owner internals must include canonical process_path/contracts headers instead of legacy value-object headers"
+    },
+    @{
         rule_id = "live-targets-still-include-workflow-pathsource-bridge"
         pattern = '#include "domain/trajectory/ports/IPathSourcePort.h"'
         search_roots = @(
