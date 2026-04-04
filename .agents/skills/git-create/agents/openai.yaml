@@ -1,4 +1,4 @@
 interface:
   display_name: "Git Create"
-  short_description: "Create and validate a compliant branch and worktree pair for a new task."
-  default_prompt: "Use $git-create to create or validate a repository-compliant branch and worktree pair for a new task."
+  short_description: "Create and validate a compliant branch and worktree pair for a new task, always fetching origin/main first and branching directly from origin/main by default."
+  default_prompt: "Use $git-create to create or validate a repository-compliant branch and worktree pair for a new task. Fetch origin/main first, treat origin/main as the latest authoritative base, create new task branches directly from origin/main, and only fast-forward local main when the user explicitly asks to sync main."
