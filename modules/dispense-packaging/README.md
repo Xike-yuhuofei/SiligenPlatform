@@ -28,5 +28,6 @@
 
 - 已补齐 module.yaml、domain、services、application、adapters、tests 与 examples 子目录。
 - `application/services/dispensing/DispensePlanningFacade.cpp` 已成为 preview payload 与 execution package 组装 owner 面。
-- `domain/dispensing/` 当前只保留 packaging/validation 相关 domain 实现，不再编译 planner/optimizer 实现。
+- `application/services/dispensing/PlanningAssemblyTypes.h`、`AuthorityPreviewAssemblyService`、`ExecutionAssemblyService` 是 authority preview / execution assembly 的 canonical owner public surface。
+- `domain/dispensing/` 当前仍承接 `DispensingPlannerService`、`ContourOptimizationService`、`UnifiedTrajectoryPlannerService` 等 planning domain owner 实现；这些实现不再允许回流到 `workflow`。
 - 所有 live 实现与构建入口均已收敛到 canonical roots。

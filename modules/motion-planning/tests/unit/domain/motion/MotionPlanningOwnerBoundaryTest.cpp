@@ -202,6 +202,24 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowPlanningImplementationsAreRemoved)
     }
 }
 
+TEST(MotionPlanningOwnerBoundaryTest, WorkflowDispensingPlanningCompatibilityLayerIsRemoved) {
+    const fs::path repo_root = RepoRoot();
+    const std::array<fs::path, 8> removed_paths = {{
+        repo_root / "modules/workflow/application/services/dispensing/PlanningPreviewAssemblyService.cpp",
+        repo_root / "modules/workflow/application/services/dispensing/PlanningPreviewAssemblyService.h",
+        repo_root / "modules/workflow/domain/include/domain/dispensing/planning/domain-services/DispensingPlannerService.h",
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/ContourOptimizationService.cpp",
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/ContourOptimizationService.h",
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp",
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp",
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.h",
+    }};
+
+    for (const auto& path : removed_paths) {
+        EXPECT_FALSE(fs::exists(path)) << path.string();
+    }
+}
+
 TEST(MotionPlanningOwnerBoundaryTest, WorkflowCmpPrecisionTestUsesContractsProcessPathSemantics) {
     const fs::path repo_root = RepoRoot();
     const std::string workflow_cmp_test = ReadTextFile(
@@ -214,10 +232,9 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowCmpPrecisionTestUsesContractsProce
 
 TEST(MotionPlanningOwnerBoundaryTest, InterpolationProgramPlannerConsumersUseContractsProcessPathSemantics) {
     const fs::path repo_root = RepoRoot();
-    const std::array<fs::path, 4> sources = {{
+    const std::array<fs::path, 3> sources = {{
         repo_root / "modules/workflow/tests/process-runtime-core/unit/domain/trajectory/InterpolationProgramPlannerTest.cpp",
         repo_root / "modules/workflow/application/usecases/motion/trajectory/DeterministicPathExecutionUseCase.cpp",
-        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp",
         repo_root / "modules/dispense-packaging/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp",
     }};
 

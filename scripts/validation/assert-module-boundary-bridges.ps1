@@ -1792,6 +1792,32 @@ if (-not (Test-Path $recipeLegacySerializerHeader)) {
     }
 }
 
+$workflowRemovedPlanningArtifacts = @(
+    "modules/workflow/application/services/dispensing/PlanningPreviewAssemblyService.cpp",
+    "modules/workflow/application/services/dispensing/PlanningPreviewAssemblyService.h",
+    "modules/workflow/domain/include/domain/dispensing/planning/domain-services/DispensingPlannerService.h",
+    "modules/workflow/domain/domain/dispensing/planning/domain-services/ContourOptimizationService.cpp",
+    "modules/workflow/domain/domain/dispensing/planning/domain-services/ContourOptimizationService.h",
+    "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp",
+    "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.h",
+    "modules/workflow/domain/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp",
+    "modules/workflow/domain/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.h"
+)
+
+foreach ($removedArtifact in $workflowRemovedPlanningArtifacts) {
+    $fullPath = Resolve-AbsolutePath -BasePath $repoRoot -PathValue $removedArtifact
+    if (Test-Path $fullPath) {
+        $findings.Add([pscustomobject]@{
+            rule_id = "workflow-planning-compat-artifact-still-present"
+            severity = "error"
+            target = $removedArtifact
+            file = $removedArtifact
+            line = 0
+            detail = "workflow planning compat hard cut requires this residual artifact to be removed from the repository"
+        })
+    }
+}
+
 $summary = [ordered]@{
     generated_at = (Get-Date).ToString("s")
     workspace_root = $repoRoot
