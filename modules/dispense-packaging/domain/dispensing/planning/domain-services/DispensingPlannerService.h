@@ -93,9 +93,6 @@ struct DispensingPlanRequest {
     float32 safety_margin_ms = 0.0f;
     float32 min_interval_ms = 0.0f;
     DispenseCompensationProfile compensation_profile{};
-    std::string python_ruckig_python;
-    std::string python_ruckig_script;
-
     bool Validate() const noexcept;
 };
 
