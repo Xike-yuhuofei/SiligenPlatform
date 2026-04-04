@@ -5,7 +5,6 @@
 ## 当前拓扑
 
 - canonical roots：`apps/`、`modules/`、`shared/`、`docs/`、`samples/`、`tests/`、`scripts/`、`config/`、`data/`、`deploy/`
-- feature artifacts：`specs/`
 - 已退出并物理删除：`packages/`、`integration/`、`tools/`、`examples/`
 
 当前进程入口：

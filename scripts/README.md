@@ -34,6 +34,6 @@
 
 ```powershell
 .\scripts\validation\start-codex-club-from-file.ps1 `
-  -PromptFile "D:\Projects\SS-dispense-align\specs\refactor\arch\NOISSUE-workspace-template-refactor\Prompts\Phase-04-user-story-2-canonical-roots\T021.md" `
+  -PromptFile "<ABS_PROMPT_FILE>" `
   -Profile "club"
 ```
