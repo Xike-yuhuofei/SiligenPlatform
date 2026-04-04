@@ -6,11 +6,12 @@
 #include "domain/trajectory/ports/IPathSourcePort.h"
 #include "domain/trajectory/value-objects/Path.h"
 #include "domain/trajectory/value-objects/ProcessPath.h"
-#include "domain/motion/value-objects/MotionTrajectory.h"
-#include "domain/motion/ports/IInterpolationPort.h"
+#include "motion_planning/contracts/MotionTrajectory.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "domain/dispensing/value-objects/DispenseCompensationProfile.h"
 #include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
@@ -27,11 +28,27 @@ using Siligen::Shared::Types::Point2D;
 using Siligen::Shared::Types::uint32;
 using Siligen::TrajectoryPoint;
 using Siligen::Domain::Motion::InterpolationAlgorithm;
-using Siligen::Domain::Motion::Ports::InterpolationData;
+using Siligen::RuntimeExecution::Contracts::Motion::InterpolationData;
 using Siligen::Domain::Trajectory::ValueObjects::Path;
 using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
-using Siligen::Domain::Motion::ValueObjects::MotionTrajectory;
+using Siligen::MotionPlanning::Contracts::MotionTrajectory;
 using Siligen::Domain::Dispensing::ValueObjects::DispenseCompensationProfile;
+
+struct AuthorityTriggerPoint {
+    Point2D position;
+    float32 trigger_distance_mm = 0.0f;
+    std::size_t segment_index = 0;
+    bool short_segment_exception = false;
+    bool shared_vertex = false;
+};
+
+struct SpacingValidationGroup {
+    std::size_t segment_index = 0;
+    std::vector<Point2D> points;
+    float32 actual_spacing_mm = 0.0f;
+    bool short_segment_exception = false;
+    bool within_window = false;
+};
 
 struct DispensingPlanRequest {
     std::string dxf_filepath;
@@ -96,6 +113,13 @@ struct DispensingPlan {
     bool trigger_downgrade_applied = false;
     float32 total_length_mm = 0.0f;
     float32 estimated_time_s = 0.0f;
+    bool preview_authority_ready = false;
+    bool preview_authority_shared_with_execution = false;
+    bool preview_spacing_valid = false;
+    bool preview_has_short_segment_exceptions = false;
+    std::string preview_failure_reason;
+    std::vector<AuthorityTriggerPoint> authority_trigger_points;
+    std::vector<SpacingValidationGroup> spacing_validation_groups;
 };
 
 class DispensingPlanner {

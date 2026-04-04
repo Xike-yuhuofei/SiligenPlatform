@@ -1,5 +1,5 @@
 #pragma once
 
-// Legacy bridge header; canonical owner header is provided by motion-planning public surface.
-#include "domain/motion/ports/IInterpolationPort.h"
+// Legacy bridge header; canonical owner header is provided by runtime-execution contracts.
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
 

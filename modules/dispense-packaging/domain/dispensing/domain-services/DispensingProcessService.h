@@ -5,7 +5,7 @@
 #include "domain/dispensing/ports/IDispensingExecutionObserver.h"
 #include "domain/dispensing/ports/IValvePort.h"
 #include "domain/dispensing/value-objects/DispensingExecutionTypes.h"
-#include "domain/motion/ports/IInterpolationPort.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "domain/motion/ports/IMotionStatePort.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 #include "shared/types/Result.h"
@@ -20,7 +20,7 @@ using Siligen::Shared::Types::int32;
 using Siligen::Domain::Configuration::Ports::IConfigurationPort;
 using Siligen::Domain::Dispensing::Ports::IDispensingExecutionObserver;
 using Siligen::Domain::Dispensing::Ports::IValvePort;
-using Siligen::Domain::Motion::Ports::IInterpolationPort;
+using Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort;
 using Siligen::Domain::Motion::Ports::IMotionStatePort;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionOptions;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionPlan;

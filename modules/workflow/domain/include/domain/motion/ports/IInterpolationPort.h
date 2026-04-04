@@ -1,3 +1,3 @@
 #pragma once
 
-#include "../../../../../../motion-planning/domain/motion/ports/IInterpolationPort.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"

@@ -1,5 +1,5 @@
 #include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
-#include "domain/motion/domain-services/MotionPlanner.h"
+#include "application/services/motion_planning/MotionPlanningFacade.h"
 
 #include <gtest/gtest.h>
 
@@ -11,7 +11,7 @@ TEST(InterpolationProgramPlannerTest, BuildsLinearProgramFromMotionPlannerTrajec
     using Siligen::Shared::Types::Point2D;
     using Siligen::Domain::Motion::DomainServices::InterpolationProgramPlanner;
     using Siligen::Domain::Motion::Ports::InterpolationType;
-    using Siligen::Domain::Motion::DomainServices::MotionPlanner;
+    using Siligen::Application::Services::MotionPlanning::MotionPlanningFacade;
     using Siligen::MotionPlanning::Contracts::TimePlanningConfig;
     using Siligen::ProcessPath::Contracts::ProcessPath;
     using Siligen::ProcessPath::Contracts::ProcessSegment;
@@ -34,8 +34,8 @@ TEST(InterpolationProgramPlannerTest, BuildsLinearProgramFromMotionPlannerTrajec
     cfg.amax = 200.0f;
     cfg.sample_dt = 0.01f;
 
-    MotionPlanner motion_planner;
-    auto trajectory = motion_planner.Plan(path, cfg);
+    MotionPlanningFacade motion_planning_facade;
+    auto trajectory = motion_planning_facade.Plan(path, cfg);
 
     InterpolationProgramPlanner program_planner;
     auto program_result = program_planner.BuildProgram(path, trajectory, cfg.amax);
@@ -52,7 +52,7 @@ TEST(InterpolationProgramPlannerTest, SplitsFullCircleArcIntoTwoSegments) {
     using Siligen::Shared::Types::Point2D;
     using Siligen::Domain::Motion::DomainServices::InterpolationProgramPlanner;
     using Siligen::Domain::Motion::Ports::InterpolationType;
-    using Siligen::Domain::Motion::DomainServices::MotionPlanner;
+    using Siligen::Application::Services::MotionPlanning::MotionPlanningFacade;
     using Siligen::MotionPlanning::Contracts::TimePlanningConfig;
     using Siligen::ProcessPath::Contracts::ProcessPath;
     using Siligen::ProcessPath::Contracts::ProcessSegment;
@@ -78,8 +78,8 @@ TEST(InterpolationProgramPlannerTest, SplitsFullCircleArcIntoTwoSegments) {
     cfg.amax = 100.0f;
     cfg.sample_dt = 0.01f;
 
-    MotionPlanner motion_planner;
-    auto trajectory = motion_planner.Plan(path, cfg);
+    MotionPlanningFacade motion_planning_facade;
+    auto trajectory = motion_planning_facade.Plan(path, cfg);
 
     InterpolationProgramPlanner program_planner;
     auto program_result = program_planner.BuildProgram(path, trajectory, cfg.amax);

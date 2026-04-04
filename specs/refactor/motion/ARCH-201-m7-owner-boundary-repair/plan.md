@@ -10,7 +10,7 @@
 ## Technical Context
 
 **Language/Version**: C++17、CMake 3.20+、PowerShell 7、Python 3.11
-**Primary Dependencies**: GoogleTest、spdlog、ruckig、仓库根级验证脚本
+**Primary Dependencies**: GoogleTest、spdlog、仓库根级验证脚本
 **Storage**: N/A（仅 Git 跟踪文件与验证报告目录）
 **Testing**: `modules/motion-planning/tests`、`modules/runtime-execution/runtime/host/tests`、`scripts/validation/assert-module-boundary-bridges.ps1`、`scripts/validation/run-local-validation-gate.ps1`
 **Target Platform**: Windows 开发环境 + CI（无机台 / mock）
@@ -97,20 +97,29 @@ modules/runtime-execution/runtime/host/runtime/motion/
 
 ### Intended Command Sequence
 
-1. `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validation/assert-module-boundary-bridges.ps1 -WorkspaceRoot . -ReportDir tests/reports/module-boundary-bridges`
-2. `cmake --build build --config Debug --target siligen_motion_planning_unit_tests`
-3. `cmake --build build --config Debug --target siligen_runtime_host_unit_tests`
-4. `cmake --build build --config Debug --target siligen_transport_gateway`（仅在 gateway 变更纳入 Stage B 时）
-5. `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validation/run-local-validation-gate.ps1 -ReportRoot tests/reports/local-validation-gate`
+1. `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validation/assert-module-boundary-bridges.ps1 -WorkspaceRoot D:/Projects/wt-spike153 -ReportDir tests/reports/module-boundary-bridges-phase2-current`
+2. `cmake --build D:/Projects/wt-spike153/build-phase2 --config Debug --target siligen_motion_planning_unit_tests siligen_unit_tests siligen_runtime_host_unit_tests --parallel`
+3. `cmake --build D:/Projects/wt-spike153/build-phase2 --config Debug --target process_runtime_core_motion_runtime_assembly_test workflow_integration_motion_runtime_assembly_smoke --parallel`
+4. `D:/Projects/wt-spike153/build-phase2/bin/Debug/siligen_motion_planning_unit_tests.exe --gtest_filter=MotionPlannerTest.*:MotionPlannerConstraintTest.*:InterpolationProgramPlannerTest.*:MotionPlannerOwnerPathTest.*:MotionPlanningOwnerBoundaryTest.*:NoRuntimeControlLeakTest.*`
+5. `D:/Projects/wt-spike153/build-phase2/bin/Debug/siligen_unit_tests.exe --gtest_filter=DispensingProcessServiceWaitForMotionCompleteTest.*:DispensingWorkflowUseCaseTest.*`
+6. `D:/Projects/wt-spike153/build-phase2/bin/Debug/siligen_runtime_host_unit_tests.exe --gtest_filter=MotionControlMigrationTest.*:WorkflowMotionRuntimeServicesProviderTest.*`
+7. `D:/Projects/wt-spike153/build-phase2/bin/Debug/process_runtime_core_motion_runtime_assembly_test.exe`
+8. `D:/Projects/wt-spike153/build-phase2/bin/Debug/workflow_integration_motion_runtime_assembly_smoke.exe`
+9. `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validation/run-local-validation-gate.ps1 -ReportRoot tests/reports/local-validation-gate-phase2-current`
 
-## Known Blockers
+## Current Validation Baseline
 
-当前工作树在 park 白名单外改动后，顶层 reconfigure 仍被仓库前置状态阻断。已知阻塞点包括：
+- `build-phase2` 已成功 configure，并可重复构建 `siligen_motion_planning_unit_tests`、`siligen_unit_tests`、`siligen_runtime_host_unit_tests`、`process_runtime_core_motion_runtime_assembly_test`、`workflow_integration_motion_runtime_assembly_smoke`
+- `assert-module-boundary-bridges.ps1` 当前报告为 `passed`
+- Stage B 关键回归已通过：
+  - 规划 owner 边界：16/16
+  - 邻接 consumer：33/33
+  - host/runtime seam：5/5
+  - runtime assembly smoke：2 个可执行 `exit 0`
 
-- `modules/process-planning/contracts` 缺少 `CMakeLists.txt`
-- `modules/job-ingest/contracts` 缺少 `CMakeLists.txt`
-- `modules/topology-feature/contracts` 缺少 `CMakeLists.txt`
-- `modules/trace-diagnostics` canonical public headers 缺失
-- `build/modules/process-planning/contracts` 存在 binary dir 二次占用冲突
+## Residual Blockers
 
-结论：Stage B 代码、门禁和文档可以继续收口，但完整 build/test 结果必须在证据中明确标记为“被当前工作树前置状态阻断”。
+- 本轮 `run-local-validation-gate.ps1` 已复跑，但 `overall_status=failed`
+- 唯一失败步骤是 `test-contracts-ci`
+- 精确阻断位于 `apps/hmi-app/tests/unit/test_offline_preview_builder.py`，由 `no-loose-mock` 静态门禁触发
+- 结论：Stage B / US2 的专项构建、测试和边界门禁已闭环；剩余 root-entry gate 阻断不属于本阶段 owner seam 范围，必须在证据中按“跨域静态测试阻断”单独记录

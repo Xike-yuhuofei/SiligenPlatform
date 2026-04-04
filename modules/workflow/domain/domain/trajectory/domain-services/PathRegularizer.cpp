@@ -1,7 +1,7 @@
 #include "PathRegularizer.h"
 
 #include "domain/trajectory/value-objects/GeometryUtils.h"
-#include "shared/Geometry/BoostGeometryAdapter.h"
+#include "shared/geometry/BoostGeometryAdapter.h"
 
 #include <algorithm>
 #include <cmath>

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "domain/motion/value-objects/MotionTrajectory.h"
-#include "domain/motion/ports/IInterpolationPort.h"
+#include "motion_planning/contracts/MotionTrajectory.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
 #include "shared/types/Types.h"
@@ -10,9 +10,9 @@
 
 namespace Siligen::Domain::Dispensing::DomainServices {
 
-using Siligen::Domain::Motion::ValueObjects::MotionTrajectory;
-using Siligen::Domain::Motion::Ports::InterpolationData;
-using Siligen::Domain::Motion::Ports::InterpolationType;
+using Siligen::MotionPlanning::Contracts::MotionTrajectory;
+using Siligen::RuntimeExecution::Contracts::Motion::InterpolationData;
+using Siligen::RuntimeExecution::Contracts::Motion::InterpolationType;
 using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::float32;
 using Siligen::Shared::Types::uint32;

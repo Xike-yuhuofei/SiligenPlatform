@@ -7,10 +7,10 @@
 #include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
 #include "domain/motion/domain-services/TimeTrajectoryPlanner.h"
 #include "domain/motion/domain-services/TrajectoryPlanner.h"
-#include "domain/motion/ports/IInterpolationPort.h"
-#include "domain/motion/value-objects/MotionTrajectory.h"
-#include "domain/motion/value-objects/TimePlanningConfig.h"
+#include "motion_planning/contracts/MotionTrajectory.h"
+#include "motion_planning/contracts/TimePlanningConfig.h"
 #include "process_path/contracts/ProcessPath.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
 
 #include <gtest/gtest.h>
 
@@ -46,10 +46,10 @@ TEST(MotionPlanningOwnerBoundaryTest, CanonicalPlanningHeadersUseProcessPathCont
     using Interpolator = Siligen::Domain::Motion::CMPCoordinatedInterpolator;
     using InterpolationProgramPlanner = Siligen::Domain::Motion::DomainServices::InterpolationProgramPlanner;
     using TimeTrajectoryPlanner = Siligen::Domain::Motion::DomainServices::TimeTrajectoryPlanner;
-    using MotionTrajectory = Siligen::Domain::Motion::ValueObjects::MotionTrajectory;
-    using TimePlanningConfig = Siligen::Domain::Motion::ValueObjects::TimePlanningConfig;
+    using MotionTrajectory = Siligen::MotionPlanning::Contracts::MotionTrajectory;
+    using TimePlanningConfig = Siligen::MotionPlanning::Contracts::TimePlanningConfig;
     using ContractsProcessPath = Siligen::ProcessPath::Contracts::ProcessPath;
-    using InterpolationData = Siligen::Domain::Motion::Ports::InterpolationData;
+    using InterpolationData = Siligen::RuntimeExecution::Contracts::Motion::InterpolationData;
     using InterpolationResult = Siligen::Shared::Types::Result<std::vector<InterpolationData>>;
     using Float32 = Siligen::Shared::Types::float32;
 

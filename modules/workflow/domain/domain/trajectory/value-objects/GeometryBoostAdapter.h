@@ -2,7 +2,7 @@
 
 #include "domain/trajectory/value-objects/GeometryUtils.h"
 #include "domain/trajectory/value-objects/Path.h"
-#include "shared/Geometry/BoostGeometryAdapter.h"
+#include "shared/geometry/BoostGeometryAdapter.h"
 
 #include <boost/geometry/algorithms/distance.hpp>
 #include <boost/geometry/algorithms/intersects.hpp>

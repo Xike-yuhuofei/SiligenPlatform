@@ -102,11 +102,6 @@ if(TARGET siligen_motion_planning_application_public)
         siligen_motion_planning_application_public
     )
 endif()
-if(TARGET siligen_workflow_dispensing_planning_compat)
-    target_link_libraries(siligen_unit_tests PRIVATE
-        siligen_workflow_dispensing_planning_compat
-    )
-endif()
 if(TARGET siligen_runtime_execution_application_public)
     target_link_libraries(siligen_unit_tests PRIVATE
         siligen_runtime_execution_application_public
@@ -120,6 +115,11 @@ endif()
 if(TARGET siligen_dxf_geometry_application_public)
     target_link_libraries(siligen_unit_tests PRIVATE
         siligen_dxf_geometry_application_public
+    )
+endif()
+if(TARGET siligen_workflow_dispensing_planning_compat)
+    target_link_libraries(siligen_unit_tests PRIVATE
+        siligen_workflow_dispensing_planning_compat
     )
 endif()
 target_compile_definitions(siligen_unit_tests PRIVATE SILIGEN_TEST_HOOKS=1)
