@@ -117,8 +117,7 @@ CLI cutover 详情见 `docs/architecture/control-cli-cutover.md`。
 
 ```powershell
 cmake --build C:\Users\Xike\AppData\Local\SiligenSuite\control-apps-build --target siligen_cli --config Debug -- /m:1
-$env:PYTHONPATH='D:\Projects\SiligenSuite\packages\test-kit\src'
-python -m test_kit.workspace_validation --profile local --suite apps --report-dir D:\Projects\SiligenSuite\integration\reports\verify\control-cli-cutover
+powershell -NoProfile -ExecutionPolicy Bypass -File .\test.ps1 -Profile Local -Suite apps -ReportDir D:\Projects\SiligenSuite\integration\reports\verify\control-cli-cutover
 ```
 
 结果：
@@ -167,5 +166,4 @@ python -m test_kit.workspace_validation --profile local --suite apps --report-di
 - 默认 binary cutover 已完成
 - `control-core/build/bin/**` 现在不再是三个 control app 的默认 source of truth
 - 剩余未删除条件已不再集中在 CLI fallback，而主要是 `control-core` 的库图、`third_party` 与其他 residual consumer
-
 

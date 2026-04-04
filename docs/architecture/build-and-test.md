@@ -17,7 +17,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\run-loc
 - 根级入口统一接受 `-Lane`、`-RiskProfile`、`-DesiredDepth`、`-ChangedScope`、`-SkipLayer`、`-SkipJustification`
 - `limited-hil` 正式入口使用 `-IncludeHilClosedLoop`、`-IncludeHilCaseMatrix` 控制 `L5` 闭环与矩阵资产
 - `limited-hil` 的 offline prerequisites 必须先覆盖 `contracts + integration + e2e + protocol-compatibility`，以满足 `engineering-regression` / `simulated-line` / `protocol-compatibility` admission 契约
-- `python -m test_kit.workspace_validation` 是根级测试聚合 authority
+- `test.ps1` / `ci.ps1` 是根级测试聚合 authority；`python -m test_kit.workspace_validation` 仅在已完成环境引导并注入 `PYTHONPATH=shared\testing\test-kit\src` 时可作为底层模块入口
 - `tests/reports/static/` 是静态门禁正式报告根
 
 ## 正式分层
@@ -47,7 +47,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\run-loc
 | `nightly-performance` | `L6`，必要时复用 `L3/L4` 样本 |
 | `limited-hil` | `L5`，必要时附带少量 `L6` 样本 |
 
-`nightly-performance` 当前默认由 `python -m test_kit.workspace_validation --lane nightly-performance --suite performance` 接到 `tests/performance/collect_dxf_preview_profiles.py`，并固定追加：
+`nightly-performance` 当前默认由 `.\test.ps1 -Lane nightly-performance -Suite performance` 进入根级验证链路；其底层会在环境引导后调用 `python -m test_kit.workspace_validation --lane nightly-performance --suite performance` 接到 `tests/performance/collect_dxf_preview_profiles.py`，并固定追加：
 
 - `--include-start-job`
 - `--include-control-cycles`
