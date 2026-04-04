@@ -163,12 +163,12 @@
     {
       "root_id": "ROOT-011",
       "path": "specs",
-      "classification": "feature-artifact",
-      "presence_policy": "required",
+      "classification": "removed",
+      "presence_policy": "forbidden",
       "impl_owner_policy": "forbidden",
       "entry_role": "none",
-      "content_constraint": "feature-artifact-only",
-      "notes": "Specs contain feature artifacts and freeze inputs, not runtime owners."
+      "content_constraint": "removed-only",
+      "notes": "Removed speckit artifact root must not reappear as an active repository asset."
     },
     {
       "root_id": "ROOT-012",
@@ -329,6 +329,16 @@
       "entry_role": "none",
       "content_constraint": "removed-only",
       "notes": "Removed root must not reappear."
+    },
+    {
+      "root_id": "ROOT-108",
+      "path": ".specify",
+      "classification": "removed",
+      "presence_policy": "forbidden",
+      "impl_owner_policy": "forbidden",
+      "entry_role": "none",
+      "content_constraint": "removed-only",
+      "notes": "Removed speckit support root must not reappear as an active repository asset."
     }
   ],
   "zone_registry": [
@@ -371,14 +381,15 @@
       "notes": "Active documentation; not yet scanned by the current legacy-exit gate."
     },
     {
-      "zone_id": "feature-artifact",
-      "zone_class": "feature-artifact",
+      "zone_id": "removed-speckit-root",
+      "zone_class": "removed",
       "path_prefixes": [
-        "specs/"
+        "specs/",
+        ".specify/"
       ],
       "root_level_files": [],
       "default_scan_policy": "exclude",
-      "notes": "Frozen feature artifacts should not fail the live gate."
+      "notes": "Removed speckit roots are historical only and must not return as active repository assets."
     },
     {
       "zone_id": "archived-doc",

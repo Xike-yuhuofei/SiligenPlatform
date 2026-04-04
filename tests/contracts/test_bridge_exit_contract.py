@@ -68,6 +68,17 @@ class BridgeExitContractTest(unittest.TestCase):
     def test_legacy_fact_catalog_tracks_removed_and_migration_roots(self) -> None:
         self.assertEqual(LEGACY_FACT_CATALOG.root_registry["ROOT-017"].classification, "migration-source")
         self.assertEqual(LEGACY_FACT_CATALOG.root_registry["ROOT-101"].classification, "removed")
+        self.assertEqual(LEGACY_FACT_CATALOG.root_registry["ROOT-011"].path, "specs")
+        self.assertEqual(LEGACY_FACT_CATALOG.root_registry["ROOT-011"].classification, "removed")
+        self.assertEqual(LEGACY_FACT_CATALOG.root_registry["ROOT-108"].path, ".specify")
+        self.assertEqual(LEGACY_FACT_CATALOG.root_registry["ROOT-108"].classification, "removed")
+
+    def test_removed_speckit_roots_are_classified_as_historical_only(self) -> None:
+        self.assertEqual(LEGACY_FACT_CATALOG.classify_zone("specs/demo/spec.md"), "removed-speckit-root")
+        self.assertEqual(LEGACY_FACT_CATALOG.classify_zone(".specify/init-options.json"), "removed-speckit-root")
+        removed_zone = LEGACY_FACT_CATALOG.zone_registry["removed-speckit-root"]
+        self.assertEqual(removed_zone.zone_class, "removed")
+        self.assertEqual(removed_zone.default_scan_policy, "exclude")
 
     def test_bridge_roots_are_physically_absent(self) -> None:
         present = [relative for relative in BRIDGE_ROOTS if (WORKSPACE_ROOT / relative).exists()]
