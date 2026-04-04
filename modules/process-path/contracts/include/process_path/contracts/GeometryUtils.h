@@ -118,6 +118,8 @@ struct EllipsePrimitive;
 struct LinePrimitive;
 struct Segment;
 
+using Siligen::Shared::Types::float32;
+using Siligen::Shared::Types::Point2D;
 using Siligen::ProcessPath::Contracts::ArcPoint;
 using Siligen::ProcessPath::Contracts::ArcTangent;
 using Siligen::ProcessPath::Contracts::Clamp;

@@ -1717,14 +1717,18 @@ Result<DispensingPlan> DispensingPlanner::Plan(const DispensingPlanRequest& requ
     UnifiedTrajectoryPlannerService planner(velocity_profile_service_);
     auto plan_request = BuildUnifiedPlanRequest(request);
     auto plan_result = planner.Plan(primitives, plan_request);
+    if (plan_result.IsError()) {
+        return Result<DispensingPlan>::Failure(plan_result.GetError());
+    }
+    auto planned = std::move(plan_result.Value());
     {
-        auto& report = plan_result.motion_trajectory.planning_report;
-        report.segment_count = static_cast<int32>(plan_result.process_path.segments.size());
-        report.discontinuity_count = plan_result.normalized.report.discontinuity_count;
+        auto& report = planned.motion_trajectory.planning_report;
+        report.segment_count = static_cast<int32>(planned.process_path.segments.size());
+        report.discontinuity_count = planned.normalized.report.discontinuity_count;
         int32 rapid_count = 0;
         int32 corner_count = 0;
         float32 rapid_length = 0.0f;
-        for (const auto& seg : plan_result.process_path.segments) {
+        for (const auto& seg : planned.process_path.segments) {
             if (seg.tag == ProcessTag::Rapid) {
                 ++rapid_count;
                 rapid_length += SegmentLength(seg.geometry);
@@ -1736,15 +1740,15 @@ Result<DispensingPlan> DispensingPlanner::Plan(const DispensingPlanRequest& requ
         report.rapid_length_mm = rapid_length;
         report.corner_segment_count = corner_count;
     }
-    if (plan_result.motion_trajectory.points.empty() ||
-        plan_result.motion_trajectory.planning_report.jerk_plan_failed) {
-        const auto& report = plan_result.motion_trajectory.planning_report;
+    if (planned.motion_trajectory.points.empty() ||
+        planned.motion_trajectory.planning_report.jerk_plan_failed) {
+        const auto& report = planned.motion_trajectory.planning_report;
         SILIGEN_LOG_WARNING_FMT_HELPER(
             "DXF规划失败: points=%zu, jerk_failed=%d, segments=%zu, total_length=%.3f, total_time=%.3f, "
             "vmax_obs=%.3f, amax_obs=%.3f, jmax_obs=%.3f, violations=%d, time_err=%.6f, fallback=%d",
-            plan_result.motion_trajectory.points.size(),
+            planned.motion_trajectory.points.size(),
             report.jerk_plan_failed ? 1 : 0,
-            plan_result.process_path.segments.size(),
+            planned.process_path.segments.size(),
             report.total_length_mm,
             report.total_time_s,
             report.max_velocity_observed,
@@ -1769,17 +1773,17 @@ Result<DispensingPlan> DispensingPlanner::Plan(const DispensingPlanRequest& requ
             Error(ErrorCode::INVALID_STATE, "轨迹规划失败", "DispensingPlanner"));
     }
 
-    auto normalized_bounds = ComputeBoundsForSegments(plan_result.normalized.path.segments);
-    auto process_bounds = ComputeBoundsForProcessPath(plan_result.process_path);
-    auto shaped_bounds = ComputeBoundsForProcessPath(plan_result.shaped_path);
+    auto normalized_bounds = ComputeBoundsForSegments(planned.normalized.path.segments);
+    auto process_bounds = ComputeBoundsForProcessPath(planned.process_path);
+    auto shaped_bounds = ComputeBoundsForProcessPath(planned.shaped_path);
     LogBoundsReport("normalized.path", normalized_bounds);
     LogBoundsReport("process.path", process_bounds);
     LogBoundsReport("shaped.path", shaped_bounds);
-    LogBoundsSegmentDetails("shaped.path", plan_result.shaped_path, shaped_bounds);
-    LogBoundsReport("motion.trajectory", ComputeBoundsForMotionTrajectory(plan_result.motion_trajectory));
-    LogFirstNegativePoint("motion.trajectory", plan_result.motion_trajectory);
+    LogBoundsSegmentDetails("shaped.path", planned.shaped_path, shaped_bounds);
+    LogBoundsReport("motion.trajectory", ComputeBoundsForMotionTrajectory(planned.motion_trajectory));
+    LogFirstNegativePoint("motion.trajectory", planned.motion_trajectory);
 
-    auto trigger_artifacts_result = BuildTriggerArtifacts(plan_result.process_path, request);
+    auto trigger_artifacts_result = BuildTriggerArtifacts(planned.process_path, request);
     if (trigger_artifacts_result.IsError()) {
         return Result<DispensingPlan>::Failure(trigger_artifacts_result.GetError());
     }
@@ -1787,7 +1791,7 @@ Result<DispensingPlan> DispensingPlanner::Plan(const DispensingPlanRequest& requ
 
     auto interpolation_points_result = BuildInterpolationPoints(
         request,
-        plan_result.shaped_path,
+        planned.shaped_path,
         trigger_artifacts.distances);
     if (interpolation_points_result.IsError()) {
         return Result<DispensingPlan>::Failure(interpolation_points_result.GetError());
@@ -1799,16 +1803,16 @@ Result<DispensingPlan> DispensingPlanner::Plan(const DispensingPlanRequest& requ
     }
 
     Domain::Motion::DomainServices::InterpolationProgramPlanner program_planner;
-    auto interpolation_program = program_planner.BuildProgram(plan_result.shaped_path,
-                                                              plan_result.motion_trajectory,
+    auto interpolation_program = program_planner.BuildProgram(planned.shaped_path,
+                                                              planned.motion_trajectory,
                                                               request.acceleration);
     if (interpolation_program.IsError()) {
         return Result<DispensingPlan>::Failure(interpolation_program.GetError());
     }
 
-    float32 sample_total_length = ComputeTrajectoryPointLength(plan_result.motion_trajectory);
+    float32 sample_total_length = ComputeTrajectoryPointLength(planned.motion_trajectory);
     float32 path_total_length = 0.0f;
-    for (const auto& seg : plan_result.shaped_path.segments) {
+    for (const auto& seg : planned.shaped_path.segments) {
         path_total_length += SegmentLength(seg.geometry);
     }
     if (sample_total_length > kEpsilon && path_total_length > kEpsilon) {
@@ -1820,9 +1824,9 @@ Result<DispensingPlan> DispensingPlanner::Plan(const DispensingPlanRequest& requ
 
     DispensingPlan plan;
     plan.success = true;
-    plan.path = plan_result.normalized.path;
-    plan.process_path = plan_result.shaped_path;
-    plan.motion_trajectory = std::move(plan_result.motion_trajectory);
+    plan.path = planned.normalized.path;
+    plan.process_path = planned.shaped_path;
+    plan.motion_trajectory = std::move(planned.motion_trajectory);
     plan.interpolation_segments = std::move(interpolation_program.Value());
     plan.interpolation_points = std::move(interpolation_points);
     plan.trigger_distances_mm = std::move(trigger_artifacts.distances);

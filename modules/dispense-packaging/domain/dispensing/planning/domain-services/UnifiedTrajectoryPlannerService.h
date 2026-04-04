@@ -1,5 +1,6 @@
 #pragma once
 
+#include "application/services/process_path/ProcessPathFacade.h"
 #include "domain/motion/value-objects/TimePlanningConfig.h"
 #include "domain/motion/value-objects/MotionTrajectory.h"
 #include "domain/motion/domain-services/VelocityProfileService.h"
@@ -9,6 +10,7 @@
 #include "process_path/contracts/ProcessConfig.h"
 #include "process_path/contracts/ProcessPath.h"
 #include "process_path/contracts/TrajectoryShaperConfig.h"
+#include "shared/types/Result.h"
 
 #include <memory>
 #include <vector>
@@ -36,11 +38,13 @@ class UnifiedTrajectoryPlannerService {
         std::shared_ptr<Domain::Motion::DomainServices::VelocityProfileService> velocity_service = nullptr);
     ~UnifiedTrajectoryPlannerService() = default;
 
-    UnifiedTrajectoryPlanResult Plan(const std::vector<Siligen::ProcessPath::Contracts::Primitive>& primitives,
-                                     const UnifiedTrajectoryPlanRequest& request) const;
+    Siligen::Shared::Types::Result<UnifiedTrajectoryPlanResult> Plan(
+        const std::vector<Siligen::ProcessPath::Contracts::Primitive>& primitives,
+        const UnifiedTrajectoryPlanRequest& request) const;
 
    private:
     std::shared_ptr<Domain::Motion::DomainServices::VelocityProfileService> velocity_service_;
+    Siligen::Application::Services::ProcessPath::ProcessPathFacade process_path_facade_{};
 };
 
 }  // namespace Siligen::Domain::Dispensing::DomainServices

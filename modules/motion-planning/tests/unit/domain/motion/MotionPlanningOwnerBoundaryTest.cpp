@@ -256,22 +256,19 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowResidualUnifiedTrajectoryPlannerIs
 TEST(MotionPlanningOwnerBoundaryTest, WorkflowValueObjectThinBridgesAreRemoved) {
     const fs::path repo_root = RepoRoot();
 
-    const std::array<fs::path, 5> removed_headers = {{
+    const std::array<fs::path, 7> removed_headers = {{
         repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/Path.h",
         repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/Primitive.h",
         repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/ProcessConfig.h",
         repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/ProcessPath.h",
         repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/GeometryUtils.h",
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/GeometryBoostAdapter.h",
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/PlanningReport.h",
     }};
 
     for (const auto& header : removed_headers) {
         EXPECT_FALSE(fs::exists(header)) << header.string();
     }
-
-    EXPECT_TRUE(fs::exists(
-        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/GeometryBoostAdapter.h"));
-    EXPECT_TRUE(fs::exists(
-        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/PlanningReport.h"));
 }
 
 }  // namespace

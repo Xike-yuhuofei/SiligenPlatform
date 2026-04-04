@@ -36,20 +36,45 @@
 - `modules/workflow/domain/include/domain/trajectory/value-objects/ProcessConfig.h`
 - `modules/workflow/domain/include/domain/trajectory/value-objects/ProcessPath.h`
 - `modules/workflow/domain/include/domain/trajectory/value-objects/GeometryUtils.h`
+- `modules/workflow/domain/include/domain/trajectory/value-objects/GeometryBoostAdapter.h`
+- `modules/workflow/domain/include/domain/trajectory/value-objects/PlanningReport.h`
 
 以上 `workflow` public thin bridge 已完成仓内零引用复核并删除；默认 consumer 现已直接依赖 canonical `process_path/contracts/*`，`workflow/domain/domain/dispensing/planning/UnifiedTrajectoryPlannerService.*` residual 也已同步退场，不再反向占用该批 bridge。`process-path/domain/trajectory/value-objects/*` 仍是 owner 内部实现入口，不属于本批删除范围。
 
 ## 2.2 当前保守保留项
 
-- `modules/workflow/domain/include/domain/trajectory/value-objects/GeometryBoostAdapter.h`
-- `modules/workflow/domain/include/domain/trajectory/value-objects/PlanningReport.h`
 - `modules/process-path/domain/trajectory/value-objects/*`
 
 以上对象暂不按 thin bridge 删除处理：
 
-- `GeometryBoostAdapter.h` 仍是 inline 几何适配实现，不是纯 alias。
-- `PlanningReport.h` 仍是本地 struct 定义，不是 canonical contract re-export。
 - `process-path/domain/trajectory/value-objects/*` 继续承载 owner 内部旧命名空间实现面；若后续要清理该命名空间，必须单开阶段治理，不能与 `workflow` public bridge 退场混做一批。
+
+## 2.3 本轮已收口 consumer
+
+- `modules/dispense-packaging/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.*`
+- `modules/dispense-packaging/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp`
+- `modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp`
+
+本轮 consumer 收口结论：
+
+- `dispense-packaging` 不再直连 `process-path` owner domain target `siligen_process_path_domain_trajectory`。
+- `UnifiedTrajectoryPlannerService` 已改为消费 `application/services/process_path/ProcessPathFacade.h` 与 `process_path/contracts/*`，不再 include `GeometryNormalizer.h`、`ProcessAnnotator.h`、`TrajectoryShaper.h` 等 owner domain-services bridge。
+- `UnifiedTrajectoryPlannerService::Plan(...)` 已改为返回 `Result<UnifiedTrajectoryPlanResult>`，并将 `ProcessPathFacade::Build(...)` 的失败阶段与错误信息显式透传给 consumer。
+- `topology_repair.enable` 在该 consumer 链路固定为 `false`，避免与现有 `DispensingPlannerService` 预处理/优化链重复生效。
+- 该批改动属于 consumer 编排层收口，不代表 `process-path/domain/trajectory/value-objects/*` owner 内部旧命名空间已经进入清理阶段。
+
+本轮新增守卫：
+
+- `modules/dispense-packaging` 禁止重新链接 `siligen_process_path_domain_trajectory`
+- `UnifiedTrajectoryPlannerService.cpp` 禁止重新 include `process-path` owner domain-services 头
+- `modules/dispense-packaging` 与 `modules/workflow/domain/domain/dispensing` 禁止重新使用 `Siligen::Domain::Trajectory::ValueObjects::*`
+
+本轮直接验证：
+
+- `cmake --build build --config Debug --target siligen_dispense_packaging_unit_tests`
+- `cmake --build build --config Debug --target siligen_unit_tests`
+- `ctest --test-dir build -C Debug --output-on-failure -R "siligen_unit_tests|siligen_dispense_packaging_unit_tests|siligen_process_path_unit_tests|siligen_motion_planning_unit_tests"`
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validation/assert-module-boundary-bridges.ps1 -WorkspaceRoot D:/Projects/wt-task154`
 
 ## 3. 明确禁止项
 
