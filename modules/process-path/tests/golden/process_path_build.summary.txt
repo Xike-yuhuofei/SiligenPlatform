@@ -1,4 +1,4 @@
-status=0
+status=2
 failure_stage=0
 normalized.segment_count=1
 normalized.closed=false

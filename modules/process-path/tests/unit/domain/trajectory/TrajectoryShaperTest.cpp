@@ -1,5 +1,5 @@
 #include "../../../../domain/trajectory/domain-services/TrajectoryShaper.h"
-#include "../../../../domain/trajectory/value-objects/GeometryUtils.h"
+#include "process_path/contracts/GeometryUtils.h"
 
 #include <gtest/gtest.h>
 
@@ -7,11 +7,11 @@ namespace {
 
 using Siligen::Domain::Trajectory::DomainServices::TrajectoryShaper;
 using Siligen::Domain::Trajectory::DomainServices::TrajectoryShaperConfig;
-using Siligen::Domain::Trajectory::ValueObjects::ComputeArcSweep;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
+using Siligen::ProcessPath::Contracts::ComputeArcSweep;
+using Siligen::ProcessPath::Contracts::ProcessPath;
+using Siligen::ProcessPath::Contracts::ProcessSegment;
+using Siligen::ProcessPath::Contracts::ProcessTag;
+using Siligen::ProcessPath::Contracts::SegmentType;
 using Siligen::Shared::Types::Point2D;
 
 ProcessSegment MakeDispenseLine(float x0, float y0, float x1, float y1) {

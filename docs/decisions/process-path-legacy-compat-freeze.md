@@ -36,20 +36,61 @@
 - `modules/workflow/domain/include/domain/trajectory/value-objects/ProcessConfig.h`
 - `modules/workflow/domain/include/domain/trajectory/value-objects/ProcessPath.h`
 - `modules/workflow/domain/include/domain/trajectory/value-objects/GeometryUtils.h`
+- `modules/workflow/domain/include/domain/trajectory/value-objects/GeometryBoostAdapter.h`
+- `modules/workflow/domain/include/domain/trajectory/value-objects/PlanningReport.h`
 
 以上 `workflow` public thin bridge 已完成仓内零引用复核并删除；默认 consumer 现已直接依赖 canonical `process_path/contracts/*`，`workflow/domain/domain/dispensing/planning/UnifiedTrajectoryPlannerService.*` residual 也已同步退场，不再反向占用该批 bridge。`process-path/domain/trajectory/value-objects/*` 仍是 owner 内部实现入口，不属于本批删除范围。
 
 ## 2.2 当前保守保留项
 
-- `modules/workflow/domain/include/domain/trajectory/value-objects/GeometryBoostAdapter.h`
-- `modules/workflow/domain/include/domain/trajectory/value-objects/PlanningReport.h`
-- `modules/process-path/domain/trajectory/value-objects/*`
+- `modules/process-path/domain/trajectory/ports/IPathSourcePort.h`
+- `modules/process-path/domain/trajectory/ports/IDXFPathSourcePort.h`
 
-以上对象暂不按 thin bridge 删除处理：
+以上对象当前仍保留为 owner 内兼容桥；`process-path/domain/trajectory/value-objects/*` 不再作为保守保留项继续存在。
 
-- `GeometryBoostAdapter.h` 仍是 inline 几何适配实现，不是纯 alias。
-- `PlanningReport.h` 仍是本地 struct 定义，不是 canonical contract re-export。
-- `process-path/domain/trajectory/value-objects/*` 继续承载 owner 内部旧命名空间实现面；若后续要清理该命名空间，必须单开阶段治理，不能与 `workflow` public bridge 退场混做一批。
+## 2.2.1 owner 内部收敛与退场
+
+- `modules/process-path/domain/trajectory/value-objects/Primitive.h`
+- `modules/process-path/domain/trajectory/value-objects/Path.h`
+- `modules/process-path/domain/trajectory/value-objects/ProcessConfig.h`
+- `modules/process-path/domain/trajectory/value-objects/ProcessPath.h`
+- `modules/process-path/domain/trajectory/value-objects/GeometryUtils.h`
+- `modules/process-path/domain/trajectory/value-objects/GeometryBoostAdapter.h`
+
+本批 owner 内部收敛结论：
+
+- owner 内 `GeometryNormalizer`、`ProcessAnnotator`、`TrajectoryShaper`、`SplineApproximation`、`PathRegularizer` 与 `ProcessPathFacade` 已全部切换为直接消费 `process_path/contracts/*`。
+- `Primitive.h`、`Path.h`、`ProcessConfig.h`、`ProcessPath.h`、`GeometryUtils.h` 不再作为 owner alias 头保留，已从 `process-path/domain/trajectory/value-objects/` 退场。
+- `GeometryBoostAdapter.h` 经零引用复核后判定为 dead residue，已从 owner 内退场，不再保留“待确认实现面”身份。
+- `process_path/contracts/GeometryUtils.h` 不再承载 `Siligen::Domain::Trajectory::ValueObjects::*` compat 命名空间；几何真值只保留在 `Siligen::ProcessPath::Contracts::*`。
+- `ProcessPathFacade` 与 owner domain-services 现已完全共用 canonical contract 类型，不再维护 Domain/Contracts 双套 schema 转换。
+
+## 2.3 本轮已收口 consumer
+
+- `modules/dispense-packaging/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.*`
+- `modules/dispense-packaging/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp`
+- `modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp`
+
+本轮 consumer 收口结论：
+
+- `dispense-packaging` 不再直连 `process-path` owner domain target `siligen_process_path_domain_trajectory`。
+- `UnifiedTrajectoryPlannerService` 已改为消费 `application/services/process_path/ProcessPathFacade.h` 与 `process_path/contracts/*`，不再 include `GeometryNormalizer.h`、`ProcessAnnotator.h`、`TrajectoryShaper.h` 等 owner domain-services bridge。
+- `UnifiedTrajectoryPlannerService::Plan(...)` 已改为返回 `Result<UnifiedTrajectoryPlanResult>`，并将 `ProcessPathFacade::Build(...)` 的失败阶段与错误信息显式透传给 consumer。
+- `topology_repair.enable` 在该 consumer 链路固定为 `false`，避免与现有 `DispensingPlannerService` 预处理/优化链重复生效。
+- 该批改动属于 consumer 编排层收口，不代表 `process-path/domain/trajectory/value-objects/*` owner 内部旧命名空间已经进入清理阶段。
+
+本轮新增守卫：
+
+- `modules/dispense-packaging` 禁止重新链接 `siligen_process_path_domain_trajectory`
+- `UnifiedTrajectoryPlannerService.cpp` 禁止重新 include `process-path` owner domain-services 头
+- `modules/dispense-packaging` 与 `modules/workflow/domain/domain/dispensing` 禁止重新使用 `Siligen::Domain::Trajectory::ValueObjects::*`
+
+本轮直接验证：
+
+- `cmake --build build --config Debug --target siligen_dispense_packaging_unit_tests`
+- `cmake --build build --config Debug --target siligen_unit_tests`
+- `ctest --test-dir build -C Debug --output-on-failure -R "siligen_unit_tests|siligen_dispense_packaging_unit_tests|siligen_process_path_unit_tests|siligen_motion_planning_unit_tests"`
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validation/assert-module-boundary-bridges.ps1 -WorkspaceRoot D:/Projects/wt-task154`
 
 ## 3. 明确禁止项
 

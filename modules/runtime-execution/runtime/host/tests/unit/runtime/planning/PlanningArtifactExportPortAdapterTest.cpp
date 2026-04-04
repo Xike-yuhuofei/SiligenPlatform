@@ -23,8 +23,8 @@ using PlanningArtifactExportResult = Siligen::Application::Services::Dispensing:
 using ProcessPath = Siligen::ProcessPath::Contracts::ProcessPath;
 using ProcessSegment = Siligen::ProcessPath::Contracts::ProcessSegment;
 using ProcessTag = Siligen::ProcessPath::Contracts::ProcessTag;
-using Segment = Siligen::Domain::Trajectory::ValueObjects::Segment;
-using SegmentType = Siligen::Domain::Trajectory::ValueObjects::SegmentType;
+using Segment = Siligen::ProcessPath::Contracts::Segment;
+using SegmentType = Siligen::ProcessPath::Contracts::SegmentType;
 using TrajectoryPoint = Siligen::TrajectoryPoint;
 
 class ScopedPreviewTrajectoryEnv final {
