@@ -2,6 +2,7 @@
 
 #include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
 #include "domain/motion/domain-services/MotionPlanner.h"
+#include "motion_planning/contracts/TimePlanningConfig.h"
 #include "process_path/contracts/ProcessPath.h"
 #include "process_path/contracts/GeometryUtils.h"
 #include "shared/types/Error.h"
@@ -16,11 +17,11 @@ namespace Siligen::Application::UseCases::Motion::Trajectory {
 using Coordination::MotionCoordinationUseCase;
 using Siligen::Domain::Motion::DomainServices::InterpolationProgramPlanner;
 using Siligen::Domain::Motion::DomainServices::MotionPlanner;
-using Siligen::Domain::Motion::Ports::CoordinateSystemStatus;
-using Siligen::Domain::Motion::Ports::InterpolationData;
+using Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemStatus;
+using Siligen::RuntimeExecution::Contracts::Motion::InterpolationData;
 using Siligen::Domain::Motion::Ports::MotionStatus;
 using Siligen::Domain::Motion::Ports::MotionState;
-using Siligen::Domain::Motion::ValueObjects::TimePlanningConfig;
+using Siligen::MotionPlanning::Contracts::TimePlanningConfig;
 using Siligen::ProcessPath::Contracts::ProcessPath;
 using Siligen::ProcessPath::Contracts::ProcessSegment;
 using Siligen::ProcessPath::Contracts::ProcessTag;
@@ -80,7 +81,7 @@ bool DeterministicPathExecutionRequest::Validate() const noexcept {
 }
 
 DeterministicPathExecutionUseCase::DeterministicPathExecutionUseCase(
-    std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port,
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort> interpolation_port,
     std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port)
     : interpolation_port_(std::move(interpolation_port)),
       motion_state_port_(std::move(motion_state_port)),
@@ -408,7 +409,8 @@ Result<void> DeterministicPathExecutionUseCase::DispatchNextSegment(ActiveExecut
     return Result<void>::Success();
 }
 
-Result<CoordinateSystemStatus> DeterministicPathExecutionUseCase::ReadCoordinateSystemStatus(int16 coord_sys) const {
+Result<CoordinateSystemStatus> DeterministicPathExecutionUseCase::ReadCoordinateSystemStatus(
+    int16 coord_sys) const {
     if (!interpolation_port_) {
         return Result<CoordinateSystemStatus>::Failure(
             MakeError(

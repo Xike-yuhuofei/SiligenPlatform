@@ -6,7 +6,7 @@
 #include "application/services/process_path/ProcessPathFacade.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
-#include "domain/motion/value-objects/MotionPlanningReport.h"
+#include "motion_planning/contracts/MotionPlanningReport.h"
 #include "process_path/contracts/IPathSourcePort.h"
 #include "domain/dispensing/contracts/ExecutionPackage.h"
 #include "process_path/contracts/ProcessPath.h"
@@ -35,7 +35,7 @@ using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::TrajectoryConfig;
 using Siligen::Shared::Types::TrajectoryResult;
 using Siligen::TrajectoryPoint;
-using Siligen::Domain::Motion::ValueObjects::MotionPlanningReport;
+using Siligen::MotionPlanning::Contracts::MotionPlanningReport;
 using Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated;
 
 struct AuthorityProfile {

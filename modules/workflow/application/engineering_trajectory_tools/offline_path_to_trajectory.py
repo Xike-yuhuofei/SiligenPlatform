@@ -7,70 +7,6 @@ from engineering_data.models.geometry import Point2D
 from engineering_trajectory_tools.models import PlanningReport, TrajectoryArtifact, TrajectorySample
 
 
-class ScalarTrajectory:
-    def __init__(self, total_length: float, vmax: float, amax: float) -> None:
-        if total_length <= 0.0:
-            raise ValueError("Total length is zero")
-        if vmax <= 0.0:
-            raise ValueError("vmax must be positive")
-        if amax <= 0.0:
-            raise ValueError("amax must be positive")
-
-        accel_time = vmax / amax
-        accel_distance = 0.5 * amax * accel_time * accel_time
-
-        if 2.0 * accel_distance >= total_length:
-            self.peak_velocity = (total_length * amax) ** 0.5
-            self.accel_time = self.peak_velocity / amax
-            self.accel_distance = 0.5 * amax * self.accel_time * self.accel_time
-            self.cruise_distance = 0.0
-            self.cruise_time = 0.0
-        else:
-            self.peak_velocity = vmax
-            self.accel_time = accel_time
-            self.accel_distance = accel_distance
-            self.cruise_distance = total_length - 2.0 * accel_distance
-            self.cruise_time = self.cruise_distance / vmax
-
-        self.amax = amax
-        self.total_length = total_length
-        self.duration = 2.0 * self.accel_time + self.cruise_time
-
-    def at_time(self, t: float):
-        clamped_t = min(max(t, 0.0), self.duration)
-        if clamped_t <= self.accel_time:
-            position = 0.5 * self.amax * clamped_t * clamped_t
-            velocity = self.amax * clamped_t
-            acceleration = self.amax
-        elif clamped_t <= self.accel_time + self.cruise_time:
-            cruise_t = clamped_t - self.accel_time
-            position = self.accel_distance + self.peak_velocity * cruise_t
-            velocity = self.peak_velocity
-            acceleration = 0.0
-        else:
-            decel_t = clamped_t - self.accel_time - self.cruise_time
-            position = (
-                self.accel_distance
-                + self.cruise_distance
-                + self.peak_velocity * decel_t
-                - 0.5 * self.amax * decel_t * decel_t
-            )
-            velocity = max(0.0, self.peak_velocity - self.amax * decel_t)
-            acceleration = -self.amax
-
-        return [min(position, self.total_length)], [velocity], [acceleration]
-
-    def get_first_time_at_position(self, _axis: int, s: float):
-        clamped_s = min(max(s, 0.0), self.total_length)
-        if clamped_s <= self.accel_distance:
-            return (2.0 * clamped_s / self.amax) ** 0.5
-        if clamped_s <= self.accel_distance + self.cruise_distance:
-            return self.accel_time + (clamped_s - self.accel_distance) / self.peak_velocity
-
-        remaining = max(0.0, self.total_length - clamped_s)
-        return self.duration - (2.0 * remaining / self.amax) ** 0.5
-
-
 def load_points(path: Path) -> List[Point2D]:
     data = json.loads(path.read_text(encoding="utf-8"))
     points = []
@@ -192,12 +128,41 @@ def build_trajectory_artifact(points: List[Point2D],
     if len(points) < 2:
         raise ValueError("Not enough points to generate trajectory")
 
+    try:
+        from ruckig import InputParameter, Result, Ruckig, Trajectory
+    except Exception as exc:
+        raise RuntimeError(f"Ruckig import failed: {exc}") from exc
+
     cum = cumulative_lengths(points)
     total_length = cum[-1]
-    traj = ScalarTrajectory(total_length=total_length, vmax=vmax, amax=amax)
+    if total_length <= 0.0:
+        raise ValueError("Total length is zero")
+
+    jerk_enforced = jmax > 0.0
+    if jmax <= 0.0:
+        jmax = 1e6
+
+    dt = 0.01 if sample_dt <= 0.0 else float(sample_dt)
+
+    otg = Ruckig(1, dt)
+    inp = InputParameter(1)
+    inp.current_position = [0.0]
+    inp.current_velocity = [0.0]
+    inp.current_acceleration = [0.0]
+    inp.target_position = [total_length]
+    inp.target_velocity = [0.0]
+    inp.target_acceleration = [0.0]
+    inp.max_velocity = [vmax]
+    inp.max_acceleration = [amax]
+    inp.max_jerk = [jmax]
+
+    traj = Trajectory(1)
+    result = otg.calculate(inp, traj)
+    if result not in (Result.Working, Result.Finished):
+        raise RuntimeError(f"Ruckig calculate failed: {result}")
 
     samples = sample_trajectory(points, cum, traj, sample_dt, sample_ds)
-    report = build_report(samples, vmax, amax, jmax, False)
+    report = build_report(samples, vmax, amax, jmax, jerk_enforced)
     report = PlanningReport(
         total_length_mm=total_length,
         total_time_s=float(traj.duration),
@@ -224,7 +189,7 @@ def build_trajectory_artifact(points: List[Point2D],
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Generate trajectory from polyline points")
+    parser = argparse.ArgumentParser(description="Generate trajectory from polyline points using Ruckig")
     parser.add_argument("--input", required=True, help="Input path points JSON")
     parser.add_argument("--output", required=True, help="Output trajectory JSON")
     parser.add_argument("--vmax", type=float, required=True)

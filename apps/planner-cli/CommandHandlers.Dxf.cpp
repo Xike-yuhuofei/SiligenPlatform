@@ -3,8 +3,7 @@
 
 #include "topology_feature/contracts/ContourAugmentContracts.h"
 #include "application/usecases/motion/homing/HomeAxesUseCase.h"
-#include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
-#include "domain/motion/value-objects/MotionPlanningReport.h"
+#include "motion_planning/contracts/MotionPlanningReport.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "workflow/application/usecases/dispensing/DispensingWorkflowUseCase.h"
 #include "workflow/application/usecases/dispensing/PlanningUseCase.h"
@@ -46,7 +45,7 @@ using Siligen::Infrastructure::Adapters::Planning::Geometry::ContourAugmenterAda
 using Siligen::Application::UseCases::Motion::Homing::HomeAxesRequest;
 using Siligen::Application::UseCases::Motion::Homing::HomeAxesUseCase;
 using Siligen::Domain::Motion::InterpolationAlgorithm;
-using Siligen::Domain::Motion::ValueObjects::MotionPlanningReport;
+using Siligen::MotionPlanning::Contracts::MotionPlanningReport;
 using Siligen::Shared::Types::LogicalAxisId;
 using Siligen::Shared::Types::TrajectoryConfig;
 
@@ -969,14 +968,6 @@ int CLICommandHandlers::HandleDXFPreviewSnapshot(const CommandLineConfig& config
 
     auto snapshot_result = workflow_usecase->GetPreviewSnapshot(snapshot_request);
     if (snapshot_result.IsError()) {
-        const auto& prepare = prepare_result.Value();
-        std::cout << "prepare.preview_validation_classification: "
-                  << prepare.preview_validation_classification << std::endl;
-        std::cout << "prepare.preview_exception_reason: " << prepare.preview_exception_reason << std::endl;
-        std::cout << "prepare.preview_failure_reason: " << prepare.preview_failure_reason << std::endl;
-        std::cout << "prepare.preview_diagnostic_code: " << prepare.preview_diagnostic_code << std::endl;
-        std::cout << "prepare.performance.process_path_ms: " << prepare.performance_profile.process_path_ms
-                  << std::endl;
         PrintError(snapshot_result.GetError());
         return 1;
     }
@@ -989,6 +980,10 @@ int CLICommandHandlers::HandleDXFPreviewSnapshot(const CommandLineConfig& config
         glue_points.push_back(BuildPreviewPointJson(point.x, point.y));
     }
 
+    nlohmann::json execution_polyline = nlohmann::json::array();
+    for (const auto& point : snapshot.execution_polyline) {
+        execution_polyline.push_back(BuildPreviewPointJson(point.x, point.y));
+    }
     nlohmann::json motion_preview_polyline = nlohmann::json::array();
     for (const auto& point : snapshot.motion_preview_polyline) {
         motion_preview_polyline.push_back(BuildPreviewPointJson(point.x, point.y));
@@ -1031,6 +1026,12 @@ int CLICommandHandlers::HandleDXFPreviewSnapshot(const CommandLineConfig& config
         {"glue_points", glue_points},
         {"motion_preview", motion_preview},
         {"execution_point_count", snapshot.execution_point_count},
+        {"execution_polyline_point_count", snapshot.execution_polyline_point_count},
+        {"execution_polyline_source_point_count", snapshot.execution_polyline_source_point_count},
+        {"execution_polyline", execution_polyline},
+        {"polyline_point_count", snapshot.execution_polyline_point_count},
+        {"polyline_source_point_count", snapshot.execution_polyline_source_point_count},
+        {"trajectory_polyline", execution_polyline},
         {"total_length_mm", snapshot.total_length_mm},
         {"estimated_time_s", snapshot.estimated_time_s},
         {"generated_at", snapshot.generated_at},
@@ -1038,7 +1039,6 @@ int CLICommandHandlers::HandleDXFPreviewSnapshot(const CommandLineConfig& config
         {"preview_validation_classification", prepare.preview_validation_classification},
         {"preview_exception_reason", prepare.preview_exception_reason},
         {"preview_failure_reason", prepare.preview_failure_reason},
-        {"preview_diagnostic_code", prepare.preview_diagnostic_code},
         {"performance_profile", performance_profile},
     };
 

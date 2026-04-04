@@ -7,10 +7,10 @@
 #include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
 #include "domain/motion/domain-services/TimeTrajectoryPlanner.h"
 #include "domain/motion/domain-services/TrajectoryPlanner.h"
-#include "domain/motion/ports/IInterpolationPort.h"
-#include "domain/motion/value-objects/MotionTrajectory.h"
-#include "domain/motion/value-objects/TimePlanningConfig.h"
+#include "motion_planning/contracts/MotionTrajectory.h"
+#include "motion_planning/contracts/TimePlanningConfig.h"
 #include "process_path/contracts/ProcessPath.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
 
 #include <gtest/gtest.h>
 
@@ -270,5 +270,4 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowValueObjectThinBridgesAreRemoved) 
         EXPECT_FALSE(fs::exists(header)) << header.string();
     }
 }
-
 }  // namespace

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "domain/motion/ports/IAxisControlPort.h"
-#include "domain/motion/ports/IIOControlPort.h"
+#include "runtime_execution/contracts/motion/IIOControlPort.h"
 #include "domain/motion/ports/IMotionConnectionPort.h"
 #include "shared/types/Result.h"
 #include "shared/types/Types.h"
@@ -18,7 +18,7 @@ class MotionInitializationUseCase {
    public:
     MotionInitializationUseCase(std::shared_ptr<Domain::Motion::Ports::IMotionConnectionPort> motion_connection_port,
                                 std::shared_ptr<Domain::Motion::Ports::IAxisControlPort> axis_control_port,
-                                std::shared_ptr<Domain::Motion::Ports::IIOControlPort> io_port);
+                                std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort> io_port);
 
     ~MotionInitializationUseCase() = default;
 
@@ -35,7 +35,7 @@ class MotionInitializationUseCase {
    private:
     std::shared_ptr<Domain::Motion::Ports::IMotionConnectionPort> motion_connection_port_;
     std::shared_ptr<Domain::Motion::Ports::IAxisControlPort> axis_control_port_;
-    std::shared_ptr<Domain::Motion::Ports::IIOControlPort> io_port_;
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort> io_port_;
 };
 
 }  // namespace Siligen::Application::UseCases::Motion::Initialization

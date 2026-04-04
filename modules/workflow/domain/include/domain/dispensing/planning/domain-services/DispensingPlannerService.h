@@ -1,5 +1,6 @@
 #pragma once
 
-// Compatibility shim; canonical planning owner header lives under modules/dispense-packaging.
+// Deprecated workflow compatibility header.
+// Canonical planning owner lives in dispense-packaging domain.
 #include "../../../../../../../dispense-packaging/domain/dispensing/planning/domain-services/DispensingPlannerService.h"
 

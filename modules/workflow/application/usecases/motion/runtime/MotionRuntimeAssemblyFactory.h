@@ -11,9 +11,9 @@
 #include "domain/motion/domain-services/MotionControlService.h"
 #include "domain/motion/domain-services/MotionStatusService.h"
 #include "domain/motion/domain-services/MotionValidationService.h"
-#include "domain/motion/ports/IInterpolationPort.h"
 #include "domain/system/ports/IEventPublisherPort.h"
 #include "application/services/motion/runtime/IMotionRuntimeServicesProvider.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
 #include "runtime_execution/contracts/system/IMachineExecutionStatePort.h"
 
@@ -23,7 +23,7 @@ namespace Siligen::Application::UseCases::Motion::Runtime {
 
 struct MotionRuntimeAssemblyDependencies {
     std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IMotionRuntimePort> motion_runtime_port{};
-    std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port{};
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort> interpolation_port{};
     std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> configuration_port{};
     std::shared_ptr<Domain::System::Ports::IEventPublisherPort> event_publisher_port{};
     std::shared_ptr<Domain::Dispensing::Ports::ITriggerControllerPort> trigger_controller_port{};
