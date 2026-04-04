@@ -110,3 +110,59 @@ inline Point2D EllipsePoint(const EllipsePrimitive& ellipse, const float32 param
 }
 
 }  // namespace Siligen::ProcessPath::Contracts
+
+namespace Siligen::Domain::Trajectory::ValueObjects {
+
+struct ArcPrimitive;
+struct EllipsePrimitive;
+struct LinePrimitive;
+struct Segment;
+
+using Siligen::ProcessPath::Contracts::ArcPoint;
+using Siligen::ProcessPath::Contracts::ArcTangent;
+using Siligen::ProcessPath::Contracts::Clamp;
+using Siligen::ProcessPath::Contracts::ComputeArcLength;
+using Siligen::ProcessPath::Contracts::ComputeArcSweep;
+using Siligen::ProcessPath::Contracts::EllipsePoint;
+using Siligen::ProcessPath::Contracts::LineDirection;
+using Siligen::ProcessPath::Contracts::NormalizeAngle;
+using Siligen::ProcessPath::Contracts::NormalizeSweep;
+using Siligen::ProcessPath::Contracts::SegmentEnd;
+using Siligen::ProcessPath::Contracts::SegmentStart;
+
+inline float32 ComputeArcLength(const ArcPrimitive& arc) {
+    return Siligen::ProcessPath::Contracts::ComputeArcLength(
+        reinterpret_cast<const Siligen::ProcessPath::Contracts::ArcPrimitive&>(arc));
+}
+
+inline Point2D ArcPoint(const ArcPrimitive& arc, float32 angle_deg) {
+    return Siligen::ProcessPath::Contracts::ArcPoint(
+        reinterpret_cast<const Siligen::ProcessPath::Contracts::ArcPrimitive&>(arc), angle_deg);
+}
+
+inline Point2D ArcTangent(const ArcPrimitive& arc, float32 angle_deg) {
+    return Siligen::ProcessPath::Contracts::ArcTangent(
+        reinterpret_cast<const Siligen::ProcessPath::Contracts::ArcPrimitive&>(arc), angle_deg);
+}
+
+inline Point2D LineDirection(const LinePrimitive& line) {
+    return Siligen::ProcessPath::Contracts::LineDirection(
+        reinterpret_cast<const Siligen::ProcessPath::Contracts::LinePrimitive&>(line));
+}
+
+inline Point2D SegmentStart(const Segment& segment) {
+    return Siligen::ProcessPath::Contracts::SegmentStart(
+        reinterpret_cast<const Siligen::ProcessPath::Contracts::Segment&>(segment));
+}
+
+inline Point2D SegmentEnd(const Segment& segment) {
+    return Siligen::ProcessPath::Contracts::SegmentEnd(
+        reinterpret_cast<const Siligen::ProcessPath::Contracts::Segment&>(segment));
+}
+
+inline Point2D EllipsePoint(const EllipsePrimitive& ellipse, float32 param) {
+    return Siligen::ProcessPath::Contracts::EllipsePoint(
+        reinterpret_cast<const Siligen::ProcessPath::Contracts::EllipsePrimitive&>(ellipse), param);
+}
+
+}  // namespace Siligen::Domain::Trajectory::ValueObjects

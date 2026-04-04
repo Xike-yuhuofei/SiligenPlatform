@@ -95,6 +95,8 @@ inline void SerializeProcessSegment(std::ostringstream& out,
 inline std::string SerializeBuildResultSummary(const ProcessPathBuildResult& result) {
     std::ostringstream out;
     out << std::boolalpha << std::fixed << std::setprecision(3);
+    out << "status=" << static_cast<int>(result.status) << "\n";
+    out << "failure_stage=" << static_cast<int>(result.failure_stage) << "\n";
     out << "normalized.segment_count=" << result.normalized.path.segments.size() << "\n";
     out << "normalized.closed=" << result.normalized.path.closed << "\n";
     out << "normalized.discontinuity_count=" << result.normalized.report.discontinuity_count << "\n";
