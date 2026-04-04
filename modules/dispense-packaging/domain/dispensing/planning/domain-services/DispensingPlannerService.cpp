@@ -3,10 +3,11 @@
 #include "AuthorityTriggerLayoutPlanner.h"
 #include "UnifiedTrajectoryPlannerService.h"
 
+#include "application/services/motion_planning/CmpInterpolationFacade.h"
+#include "application/services/motion_planning/InterpolationProgramFacade.h"
+#include "application/services/motion_planning/MotionPlanningFacade.h"
+#include "application/services/motion_planning/TrajectoryInterpolationFacade.h"
 #include "domain/dispensing/domain-services/TriggerPlanner.h"
-#include "domain/motion/CMPCoordinatedInterpolator.h"
-#include "domain/motion/domain-services/TimeTrajectoryPlanner.h"
-#include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
 #include "process_path/contracts/GeometryUtils.h"
 #include "process_path/contracts/Path.h"
 #include "process_path/contracts/PathPrimitiveMeta.h"
@@ -1361,7 +1362,8 @@ Result<TriggerArtifacts> BuildTriggerArtifacts(const ProcessPath& path, const Di
 Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
     const DispensingPlanRequest& request,
     const ProcessPath& path,
-    const std::vector<float32>& trigger_distances) {
+    const std::vector<float32>& trigger_distances,
+    const std::shared_ptr<Siligen::Domain::Motion::Ports::IVelocityProfilePort>& velocity_profile_port) {
     if (!request.use_interpolation_planner) {
         return Result<std::vector<TrajectoryPoint>>::Success({});
     }
@@ -1432,7 +1434,7 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
                 Error(ErrorCode::TRAJECTORY_GENERATION_FAILED, "CMP触发点解析失败", "DispensingPlanner"));
         }
 
-        Domain::Motion::CMPCoordinatedInterpolator cmp_interpolator;
+        Siligen::Application::Services::MotionPlanning::CmpInterpolationFacade cmp_interpolator;
         points = cmp_interpolator.PositionTriggeredDispensing(path, triggers, cmp_config, config);
     } else {
         if (request.interpolation_algorithm == InterpolationAlgorithm::CMP_COORDINATED) {
@@ -1449,17 +1451,18 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
         }
 
         if (request.interpolation_algorithm == InterpolationAlgorithm::LINEAR) {
-            Domain::Motion::DomainServices::TimeTrajectoryPlanner trajectory_planner;
+            Siligen::Application::Services::MotionPlanning::MotionPlanningFacade trajectory_planner(
+                velocity_profile_port);
             points = ConvertMotionTrajectoryToTrajectoryPoints(
                 trajectory_planner.Plan(path, BuildInterpolationPlanningConfig(config)));
         } else {
-            auto interpolator = Domain::Motion::TrajectoryInterpolatorFactory::CreateInterpolator(
-                request.interpolation_algorithm);
-            if (!interpolator) {
-                return Result<std::vector<TrajectoryPoint>>::Failure(
-                    Error(ErrorCode::NOT_IMPLEMENTED, "插补算法未实现", "DispensingPlanner"));
+            Siligen::Application::Services::MotionPlanning::TrajectoryInterpolationFacade interpolation_facade;
+            auto interpolation_result =
+                interpolation_facade.Interpolate(seed_points, request.interpolation_algorithm, config);
+            if (interpolation_result.IsError()) {
+                return Result<std::vector<TrajectoryPoint>>::Failure(interpolation_result.GetError());
             }
-            points = interpolator->CalculateInterpolation(seed_points, config);
+            points = interpolation_result.Value();
         }
 
         auto targets = trigger_distances;
@@ -1500,9 +1503,9 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
 
 DispensingPlanner::DispensingPlanner(
     std::shared_ptr<Siligen::Domain::Trajectory::Ports::IPathSourcePort> path_source,
-    std::shared_ptr<Domain::Motion::DomainServices::VelocityProfileService> velocity_profile_service)
+    std::shared_ptr<Domain::Motion::Ports::IVelocityProfilePort> velocity_profile_port)
     : path_source_(std::move(path_source)),
-      velocity_profile_service_(std::move(velocity_profile_service)) {}
+      velocity_profile_port_(std::move(velocity_profile_port)) {}
 
 bool DispensingPlanRequest::Validate() const noexcept {
     if (dxf_filepath.empty()) {
@@ -1714,7 +1717,7 @@ Result<DispensingPlan> DispensingPlanner::Plan(const DispensingPlanRequest& requ
         }
     }
 
-    UnifiedTrajectoryPlannerService planner(velocity_profile_service_);
+    UnifiedTrajectoryPlannerService planner(velocity_profile_port_);
     auto plan_request = BuildUnifiedPlanRequest(request);
     auto plan_result = planner.Plan(primitives, plan_request);
     if (plan_result.IsError()) {
@@ -1792,7 +1795,8 @@ Result<DispensingPlan> DispensingPlanner::Plan(const DispensingPlanRequest& requ
     auto interpolation_points_result = BuildInterpolationPoints(
         request,
         planned.shaped_path,
-        trigger_artifacts.distances);
+        trigger_artifacts.distances,
+        velocity_profile_port_);
     if (interpolation_points_result.IsError()) {
         return Result<DispensingPlan>::Failure(interpolation_points_result.GetError());
     }
@@ -1802,7 +1806,7 @@ Result<DispensingPlan> DispensingPlanner::Plan(const DispensingPlanRequest& requ
         LogFirstNegativePoint("interpolation.points", interpolation_points);
     }
 
-    Domain::Motion::DomainServices::InterpolationProgramPlanner program_planner;
+    Siligen::Application::Services::MotionPlanning::InterpolationProgramFacade program_planner;
     auto interpolation_program = program_planner.BuildProgram(planned.shaped_path,
                                                               planned.motion_trajectory,
                                                               request.acceleration);

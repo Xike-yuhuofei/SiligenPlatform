@@ -1,7 +1,5 @@
 #include "UnifiedTrajectoryPlannerService.h"
 
-#include "application/services/process_path/ProcessPathFacade.h"
-#include "domain/motion/domain-services/MotionPlanner.h"
 #include "process_path/contracts/GeometryUtils.h"
 #include "shared/types/Error.h"
 
@@ -99,8 +97,9 @@ Error BuildPathGenerationError(const ProcessPathBuildResult& build_result) {
 }  // namespace
 
 UnifiedTrajectoryPlannerService::UnifiedTrajectoryPlannerService(
-    std::shared_ptr<Domain::Motion::DomainServices::VelocityProfileService> velocity_service)
-    : velocity_service_(std::move(velocity_service)) {}
+    std::shared_ptr<Domain::Motion::Ports::IVelocityProfilePort> velocity_profile_port)
+    : velocity_profile_port_(std::move(velocity_profile_port)),
+      motion_planning_facade_(velocity_profile_port_) {}
 
 Siligen::Shared::Types::Result<UnifiedTrajectoryPlanResult> UnifiedTrajectoryPlannerService::Plan(
     const std::vector<Siligen::ProcessPath::Contracts::Primitive>& primitives,
@@ -118,8 +117,7 @@ Siligen::Shared::Types::Result<UnifiedTrajectoryPlanResult> UnifiedTrajectoryPla
     result.shaped_path = build_result.shaped_path;
 
     if (request.generate_motion_trajectory) {
-        Domain::Motion::DomainServices::MotionPlanner planner(velocity_service_);
-        result.motion_trajectory = planner.Plan(result.shaped_path, request.motion);
+        result.motion_trajectory = motion_planning_facade_.Plan(result.shaped_path, request.motion);
     }
 
     return Siligen::Shared::Types::Result<UnifiedTrajectoryPlanResult>::Success(std::move(result));

@@ -10,7 +10,7 @@
 #include "application/usecases/dispensing/valve/ValveQueryUseCase.h"
 #include "domain/dispensing/domain-services/ValveCoordinationService.h"
 #include "domain/safety/ports/IInterlockSignalPort.h"
-#include "domain/trajectory/ports/IPathSourcePort.h"
+#include "process_path/contracts/IPathSourcePort.h"
 #include "application/usecases/dispensing/UploadFileUseCase.h"
 #include "job_ingest/contracts/dispensing/UploadContracts.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
@@ -81,7 +81,7 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::PlanningUseCase>() {
         path_source,
         std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
         std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(
-            velocity_profile_service_),
+            velocity_profile_port_),
         std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
         std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
         config_port_,

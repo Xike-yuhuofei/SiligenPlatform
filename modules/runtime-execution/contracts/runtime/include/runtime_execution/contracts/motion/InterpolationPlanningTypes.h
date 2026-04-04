@@ -1,3 +1,3 @@
 #pragma once
 
-#include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
+#include "motion_planning/contracts/InterpolationTypes.h"

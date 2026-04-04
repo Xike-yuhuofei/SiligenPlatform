@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
+#include "motion_planning/contracts/InterpolationTypes.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
 
@@ -16,7 +16,7 @@ using Siligen::Shared::Types::int32;
 using Siligen::Point2D;
 using Siligen::TrajectoryPoint;
 using Siligen::InterpolationConfig;
-using Siligen::Domain::Motion::InterpolationAlgorithm;
+using Siligen::MotionPlanning::Contracts::InterpolationAlgorithm;
 
 struct InterpolationPlanningRequest {
     std::vector<Point2D> points;

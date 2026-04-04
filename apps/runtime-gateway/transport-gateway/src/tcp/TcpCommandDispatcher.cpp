@@ -16,6 +16,7 @@
 #include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
 #include "domain/configuration/ports/IConfigurationPort.h"
 #include "domain/configuration/services/ReadyZeroSpeedResolver.h"
+#include "motion_planning/contracts/InterpolationTypes.h"
 #include "runtime_execution/contracts/system/IRuntimeStatusExportPort.h"
 
 #include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
@@ -472,9 +473,10 @@ Application::UseCases::Dispensing::PlanningRequest BuildPreviewPlanningRequest(
     request.use_hardware_trigger = ReadJsonBool(params, "use_hardware_trigger", true);
     request.use_interpolation_planner = ReadJsonBool(params, "use_interpolation_planner", true);
     const int algorithm_raw = ReadJsonInt(params, "interpolation_algorithm", 0);
-    if (algorithm_raw >= static_cast<int>(Siligen::Domain::Motion::InterpolationAlgorithm::LINEAR) &&
-        algorithm_raw <= static_cast<int>(Siligen::Domain::Motion::InterpolationAlgorithm::CIRCULAR_ARRAY)) {
-        request.interpolation_algorithm = static_cast<Siligen::Domain::Motion::InterpolationAlgorithm>(algorithm_raw);
+    using InterpolationAlgorithm = Siligen::MotionPlanning::Contracts::InterpolationAlgorithm;
+    if (algorithm_raw >= static_cast<int>(InterpolationAlgorithm::LINEAR) &&
+        algorithm_raw <= static_cast<int>(InterpolationAlgorithm::CIRCULAR_ARRAY)) {
+        request.interpolation_algorithm = static_cast<InterpolationAlgorithm>(algorithm_raw);
     }
     return request;
 }

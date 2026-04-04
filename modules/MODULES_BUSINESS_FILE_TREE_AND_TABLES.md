@@ -17,7 +17,7 @@
 - `M2 dxf-geometry`：owner `CanonicalGeometry`，文件树 `57` 项，实现文件说明 `39` 项。
 - `M11 hmi-application`：owner `UIViewModel`，文件树 `6` 项，实现文件说明 `2` 项。
 - `M1 job-ingest`：owner `JobDefinition`，文件树 `13` 项，实现文件说明 `8` 项。
-- `M7 motion-planning`：owner `MotionPlan`，文件树 `154` 项，实现文件说明 `54` 项。
+- `M7 motion-planning`：owner `MotionTrajectory`，文件树 `154` 项，实现文件说明 `54` 项。
 - `M6 process-path`：owner `ProcessPath`，文件树 `26` 项，实现文件说明 `6` 项。
 - `M4 process-planning`：owner `ProcessPlan`，文件树 `12` 项，实现文件说明 `5` 项。
 - `M9 runtime-execution`：owner `ExecutionSession`，文件树 `164` 项，实现文件说明 `79` 项。
@@ -425,9 +425,9 @@ job-ingest/
 ## motion-planning
 
 - 模块编号：`M7`
-- Owner 对象：`MotionPlan`
+- Owner 对象：`MotionTrajectory`
 - 所属分组：`planning`
-- 模块职责：运动规划对象与轨迹求解语义；规划链路中的运动约束建模与结果产出；面向下游执行包装的运动规划事实边界
+- 模块职责：运动规划对象与轨迹求解语义；规划链路中的运动约束建模与结果产出；通过 `motion_planning/contracts/*` 与 application facade 暴露稳定 public surface
 
 **文件树**
 ```text
@@ -456,18 +456,10 @@ motion-planning/
 │       │   │   └── ValidatedInterpolationPort.h
 │       │   ├── GeometryBlender.cpp
 │       │   ├── GeometryBlender.h
-│       │   ├── HomingProcess.cpp
-│       │   ├── HomingProcess.h
-│       │   ├── JogController.cpp
-│       │   ├── JogController.h
-│       │   ├── MotionBufferController.cpp
-│       │   ├── MotionBufferController.h
 │       │   ├── MotionControlService.h
 │       │   ├── MotionControlServiceImpl.cpp
-│       │   ├── MotionControlServiceImpl.h
 │       │   ├── MotionStatusService.h
 │       │   ├── MotionStatusServiceImpl.cpp
-│       │   ├── MotionStatusServiceImpl.h
 │       │   ├── MotionValidationService.h
 │       │   ├── SevenSegmentSCurveProfile.cpp
 │       │   ├── SevenSegmentSCurveProfile.h
@@ -618,9 +610,6 @@ motion-planning/
 | 文件 | 流程阶段 | 触发条件 | 当前职责 | 输出结果 | 失败影响 |
 |---|---|---|---|---|---|
 | `GeometryBlender.cpp` | 路径转运动轨迹的规划阶段 | 当工艺路径已经生成，需要转成运动控制可执行轨迹时触发。 | 承担该环节中的主要行为实现。 | 输出轨迹、速度曲线或运动控制相关结果，交给点胶封装与现场执行阶段。 | 如果这里出错，现场会表现为轨迹不平滑、速度异常、抖动或定位偏差。 |
-| `HomingProcess.cpp` | 路径转运动轨迹的规划阶段 | 当工艺路径已经生成，需要转成运动控制可执行轨迹时触发。 | 执行回零与基准建立，确保正式点胶前的起始坐标正确。 | 输出轨迹、速度曲线或运动控制相关结果，交给点胶封装与现场执行阶段。 | 如果这里出错，现场会表现为轨迹不平滑、速度异常、抖动或定位偏差。 |
-| `JogController.cpp` | 路径转运动轨迹的规划阶段 | 当工艺路径已经生成，需要转成运动控制可执行轨迹时触发。 | 支持人工点动和微调，用于调试、对位或故障处理。 | 输出轨迹、速度曲线或运动控制相关结果，交给点胶封装与现场执行阶段。 | 如果这里出错，现场会表现为轨迹不平滑、速度异常、抖动或定位偏差。 |
-| `MotionBufferController.cpp` | 路径转运动轨迹的规划阶段 | 当工艺路径已经生成，需要转成运动控制可执行轨迹时触发。 | 把规划结果落实为受控动作或硬件指令。 | 输出轨迹、速度曲线或运动控制相关结果，交给点胶封装与现场执行阶段。 | 如果这里出错，现场会表现为轨迹不平滑、速度异常、抖动或定位偏差。 |
 | `MotionControlServiceImpl.cpp` | 路径转运动轨迹的规划阶段 | 当工艺路径已经生成，需要转成运动控制可执行轨迹时触发。 | 承担该环节中的主要行为实现。 | 输出轨迹、速度曲线或运动控制相关结果，交给点胶封装与现场执行阶段。 | 如果这里出错，现场会表现为轨迹不平滑、速度异常、抖动或定位偏差。 |
 | `MotionStatusServiceImpl.cpp` | 路径转运动轨迹的规划阶段 | 当工艺路径已经生成，需要转成运动控制可执行轨迹时触发。 | 承担该环节中的主要行为实现。 | 输出轨迹、速度曲线或运动控制相关结果，交给点胶封装与现场执行阶段。 | 如果这里出错，现场会表现为轨迹不平滑、速度异常、抖动或定位偏差。 |
 | `SevenSegmentSCurveProfile.cpp` | 路径转运动轨迹的规划阶段 | 当工艺路径已经生成，需要转成运动控制可执行轨迹时触发。 | 承担该环节中的主要行为实现。 | 输出轨迹、速度曲线或运动控制相关结果，交给点胶封装与现场执行阶段。 | 如果这里出错，现场会表现为轨迹不平滑、速度异常、抖动或定位偏差。 |

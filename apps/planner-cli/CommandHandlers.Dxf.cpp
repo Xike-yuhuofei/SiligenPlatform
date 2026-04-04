@@ -3,6 +3,7 @@
 
 #include "topology_feature/contracts/ContourAugmentContracts.h"
 #include "application/usecases/motion/homing/HomeAxesUseCase.h"
+#include "motion_planning/contracts/InterpolationTypes.h"
 #include "motion_planning/contracts/MotionPlanningReport.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "workflow/application/usecases/dispensing/DispensingWorkflowUseCase.h"
@@ -44,7 +45,7 @@ using Siligen::Infrastructure::Adapters::Planning::Geometry::ContourAugmentConfi
 using Siligen::Infrastructure::Adapters::Planning::Geometry::ContourAugmenterAdapter;
 using Siligen::Application::UseCases::Motion::Homing::HomeAxesRequest;
 using Siligen::Application::UseCases::Motion::Homing::HomeAxesUseCase;
-using Siligen::Domain::Motion::InterpolationAlgorithm;
+using Siligen::MotionPlanning::Contracts::InterpolationAlgorithm;
 using Siligen::MotionPlanning::Contracts::MotionPlanningReport;
 using Siligen::Shared::Types::LogicalAxisId;
 using Siligen::Shared::Types::TrajectoryConfig;

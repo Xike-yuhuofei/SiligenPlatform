@@ -4,8 +4,8 @@
 #include "application/services/dispensing/ExecutionAssemblyService.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/process_path/ProcessPathFacade.h"
+#include "motion_planning/contracts/InterpolationTypes.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
-#include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
 #include "motion_planning/contracts/MotionPlanningReport.h"
 #include "process_path/contracts/IPathSourcePort.h"
 #include "domain/dispensing/contracts/ExecutionPackage.h"
@@ -117,8 +117,8 @@ struct PlanningRequest {
     float32 curve_chain_max_segment_mm = 0.0f;  ///< 曲线链最大线段长度(mm, 0=默认)
     bool use_hardware_trigger = true;      ///< 兼容字段：DXF 规划/执行固定使用规划位置触发
     bool use_interpolation_planner = false;  ///< 是否使用Domain插补算法
-    Domain::Motion::InterpolationAlgorithm interpolation_algorithm =
-        Domain::Motion::InterpolationAlgorithm::LINEAR;
+    MotionPlanning::Contracts::InterpolationAlgorithm interpolation_algorithm =
+        MotionPlanning::Contracts::InterpolationAlgorithm::LINEAR;
     float32 spacing_tol_ratio = 0.0f;      ///< 点距容差比例(0=默认)
     float32 spacing_min_mm = 0.0f;         ///< 点距下限(0=默认)
     float32 spacing_max_mm = 0.0f;         ///< 点距上限(0=默认)
@@ -152,8 +152,8 @@ struct PlanningRequest {
             return false;
         }
         if (use_interpolation_planner &&
-            (interpolation_algorithm == Domain::Motion::InterpolationAlgorithm::LINEAR ||
-             interpolation_algorithm == Domain::Motion::InterpolationAlgorithm::CMP_COORDINATED) &&
+            (interpolation_algorithm == MotionPlanning::Contracts::InterpolationAlgorithm::LINEAR ||
+             interpolation_algorithm == MotionPlanning::Contracts::InterpolationAlgorithm::CMP_COORDINATED) &&
             trajectory_config.max_jerk <= 0.0f) {
             return false;
         }

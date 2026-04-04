@@ -9,7 +9,7 @@ namespace {
 
 using Siligen::Application::Services::Dispensing::DispensePlanningFacade;
 using Siligen::Application::Services::Dispensing::PlanningArtifactsBuildInput;
-using Siligen::Domain::Motion::InterpolationAlgorithm;
+using Siligen::MotionPlanning::Contracts::InterpolationAlgorithm;
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectoryPoint;
 using Siligen::Domain::Dispensing::ValueObjects::StrongAnchorRole;
 using Siligen::Domain::Dispensing::ValueObjects::TopologyDispatchType;

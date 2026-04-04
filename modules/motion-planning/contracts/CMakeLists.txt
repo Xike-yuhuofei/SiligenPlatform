@@ -17,11 +17,12 @@ target_include_directories(siligen_motion_planning_contracts_public INTERFACE
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
 
-if(TARGET siligen_process_path_contracts_public)
-    target_link_libraries(siligen_motion_planning_contracts_public INTERFACE
-        siligen_process_path_contracts_public
-    )
+if(NOT TARGET siligen_process_path_contracts_public)
+    message(FATAL_ERROR "motion-planning contracts require siligen_process_path_contracts_public")
 endif()
+target_link_libraries(siligen_motion_planning_contracts_public INTERFACE
+    siligen_process_path_contracts_public
+)
 
 if(TARGET siligen_application_contracts)
     target_link_libraries(siligen_motion_planning_contracts_public INTERFACE

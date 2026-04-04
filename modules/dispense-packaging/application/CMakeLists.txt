@@ -12,6 +12,12 @@ if(NOT TARGET siligen_motion_planning_contracts_public)
         "${CMAKE_BINARY_DIR}/_p/dpa_mpc"
     )
 endif()
+if(NOT TARGET siligen_motion_planning_application_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../motion-planning/application"
+        "${CMAKE_BINARY_DIR}/_p/dpa_mpa"
+    )
+endif()
 if(NOT TARGET siligen_dispense_packaging_contracts_public)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../contracts"
@@ -50,6 +56,11 @@ endif()
 if(TARGET siligen_motion_planning_contracts_public)
     target_link_libraries(siligen_dispense_packaging_application_headers INTERFACE
         siligen_motion_planning_contracts_public
+    )
+endif()
+if(TARGET siligen_motion_planning_application_public)
+    target_link_libraries(siligen_dispense_packaging_application_headers INTERFACE
+        siligen_motion_planning_application_public
     )
 endif()
 target_compile_features(siligen_dispense_packaging_application_headers INTERFACE cxx_std_17)
@@ -93,6 +104,11 @@ endif()
 if(TARGET siligen_motion_planning_contracts_public)
     target_link_libraries(siligen_dispense_packaging_application PUBLIC
         siligen_motion_planning_contracts_public
+    )
+endif()
+if(TARGET siligen_motion_planning_application_public)
+    target_link_libraries(siligen_dispense_packaging_application PUBLIC
+        siligen_motion_planning_application_public
     )
 endif()
 target_compile_features(siligen_dispense_packaging_application PUBLIC cxx_std_17)

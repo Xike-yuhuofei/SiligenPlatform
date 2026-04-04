@@ -61,44 +61,31 @@ TEST(MotionExecutionOwnerBoundaryTest, LegacyExecutionHeadersRemainResolvableAnd
         std::vector<HomeAxesResponse::AxisResult>>));
 }
 
-TEST(MotionExecutionOwnerBoundaryTest, MotionPlanningExecutionHeadersAreThinCompatibilityShims) {
+TEST(MotionExecutionOwnerBoundaryTest, MotionPlanningExecutionCompatibilityHeadersAreRemoved) {
     const fs::path repo_root = RepoRoot();
-    const std::array<std::pair<fs::path, std::string>, 4> expectations = {{
-        {repo_root / "modules/motion-planning/domain/motion/domain-services/HomingProcess.h",
-         "#include \"../../../../workflow/domain/include/domain/motion/domain-services/HomingProcess.h\""},
-        {repo_root / "modules/motion-planning/domain/motion/domain-services/JogController.h",
-         "#include \"../../../../workflow/domain/include/domain/motion/domain-services/JogController.h\""},
-        {repo_root / "modules/motion-planning/domain/motion/domain-services/MotionBufferController.h",
-         "#include \"../../../../workflow/domain/include/domain/motion/domain-services/MotionBufferController.h\""},
-        {repo_root / "modules/motion-planning/domain/motion/domain-services/ReadyZeroDecisionService.h",
-         "#include \"../../../../workflow/domain/include/domain/motion/domain-services/ReadyZeroDecisionService.h\""},
+    const std::array<fs::path, 4> removed_headers = {{
+        repo_root / "modules/motion-planning/domain/motion/domain-services/HomingProcess.h",
+        repo_root / "modules/motion-planning/domain/motion/domain-services/JogController.h",
+        repo_root / "modules/motion-planning/domain/motion/domain-services/MotionBufferController.h",
+        repo_root / "modules/motion-planning/domain/motion/domain-services/ReadyZeroDecisionService.h",
     }};
 
-    for (const auto& [path, include_line] : expectations) {
-        const std::string content = ReadTextFile(path);
-        EXPECT_NE(content.find("Legacy compatibility shim"), std::string::npos) << path.string();
-        EXPECT_NE(content.find(include_line), std::string::npos) << path.string();
+    for (const auto& header : removed_headers) {
+        EXPECT_FALSE(fs::exists(header)) << header.string();
     }
 }
 
-TEST(MotionExecutionOwnerBoundaryTest, WorkflowLegacyRuntimeConcreteHeadersRemainThinShims) {
+TEST(MotionExecutionOwnerBoundaryTest, WorkflowLegacyRuntimeConcreteHeadersAreRemoved) {
     const fs::path repo_root = RepoRoot();
-    const std::array<std::pair<fs::path, std::string>, 4> expectations = {{
-        {repo_root / "modules/workflow/domain/domain/motion/domain-services/MotionControlServiceImpl.h",
-         "#include \"../../../include/domain/motion/domain-services/MotionControlServiceImpl.h\""},
-        {repo_root / "modules/workflow/domain/domain/motion/domain-services/MotionStatusServiceImpl.h",
-         "#include \"../../../include/domain/motion/domain-services/MotionStatusServiceImpl.h\""},
-        {repo_root / "modules/workflow/domain/include/domain/motion/domain-services/MotionControlServiceImpl.h",
-         "#include \"runtime_execution/application/services/motion/MotionControlServiceImpl.h\""},
-        {repo_root / "modules/workflow/domain/include/domain/motion/domain-services/MotionStatusServiceImpl.h",
-         "#include \"runtime_execution/application/services/motion/MotionStatusServiceImpl.h\""},
+    const std::array<fs::path, 4> removed_headers = {{
+        repo_root / "modules/workflow/domain/domain/motion/domain-services/MotionControlServiceImpl.h",
+        repo_root / "modules/workflow/domain/domain/motion/domain-services/MotionStatusServiceImpl.h",
+        repo_root / "modules/workflow/domain/include/domain/motion/domain-services/MotionControlServiceImpl.h",
+        repo_root / "modules/workflow/domain/include/domain/motion/domain-services/MotionStatusServiceImpl.h",
     }};
 
-    for (const auto& [path, include_line] : expectations) {
-        const std::string content = ReadTextFile(path);
-        EXPECT_NE(content.find("Runtime concrete owner lives in runtime-execution"), std::string::npos)
-            << path.string();
-        EXPECT_NE(content.find(include_line), std::string::npos) << path.string();
+    for (const auto& header : removed_headers) {
+        EXPECT_FALSE(fs::exists(header)) << header.string();
     }
 }
 
