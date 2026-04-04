@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://siligensuite.local/agents/schemas/module-optimization-plan.schema.json",
+  "title": "Module Optimization Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "commit_sha",
+    "module_name",
+    "source_audit_index_path",
+    "planner_status",
+    "summary",
+    "workstreams",
+    "execution_order",
+    "blockers"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "commit_sha": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9]{7,40}$"
+    },
+    "module_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_audit_index_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "planner_status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "partial",
+        "failed"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1500
+    },
+    "goals": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 300
+      }
+    },
+    "workstreams": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "priority",
+          "objective",
+          "rationale",
+          "source_findings",
+          "action_items",
+          "validation"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^W[0-9]{3}$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "p0",
+              "p1",
+              "p2",
+              "p3"
+            ]
+          },
+          "objective": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 800
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "source_findings": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 10,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "dimension",
+                "finding_id"
+              ],
+              "properties": {
+                "dimension": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "finding_id": {
+                  "type": "string",
+                  "pattern": "^F[0-9]{3}$"
+                }
+              }
+            }
+          },
+          "action_items": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 10,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 400
+            }
+          },
+          "validation": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 10,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 300
+            }
+          },
+          "owner_hint": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "risk": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        }
+      }
+    },
+    "execution_order": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "string",
+        "pattern": "^W[0-9]{3}$"
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 300
+      }
+    },
+    "deferred_items": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 300
+      }
+    }
+  }
+}

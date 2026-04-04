@@ -1,0 +1,262 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://siligensuite.local/agents/schemas/report.schema.json",
+  "title": "Audit Skill Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "commit_sha",
+    "module_name",
+    "skill_name",
+    "dimension",
+    "status",
+    "verdict",
+    "severity",
+    "confidence",
+    "summary",
+    "findings",
+    "evidence",
+    "next_action_hint"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "commit_sha": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9]{7,40}$"
+    },
+    "module_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "skill_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "dimension": {
+      "type": "string",
+      "enum": [
+        "module_responsibility",
+        "module_boundary",
+        "dependency_direction",
+        "interface_contract",
+        "domain_model_ownership",
+        "control_orchestration",
+        "change_isolation",
+        "legacy_compat",
+        "fallback_degradation",
+        "observability_diagnostics",
+        "build_deployment_alignment",
+        "test_boundary_validation"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "partial",
+        "failed",
+        "skipped"
+      ]
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "concern",
+        "fail",
+        "unknown"
+      ]
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ]
+    },
+    "confidence": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "findings": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "problem_type",
+          "severity",
+          "statement",
+          "impact",
+          "recommendation_priority"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^F[0-9]{3}$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "problem_type": {
+            "type": "string",
+            "enum": [
+              "missing_definition",
+              "boundary_leak",
+              "wrong_ownership",
+              "dependency_inversion_violation",
+              "contract_drift",
+              "orchestration_misplacement",
+              "change_coupling",
+              "legacy_pollution",
+              "fallback_masking",
+              "poor_observability",
+              "misaligned_build_placement",
+              "weak_validation_boundary",
+              "other"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ]
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "impact": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "recommendation_priority": {
+            "type": "string",
+            "enum": [
+              "p0",
+              "p1",
+              "p2",
+              "p3"
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 50
+            }
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "path",
+          "locator",
+          "note"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "file",
+              "symbol",
+              "directory",
+              "build_config",
+              "test",
+              "other"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "locator": {
+            "type": "string",
+            "minLength": 1
+          },
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        }
+      }
+    },
+    "not_in_scope": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      }
+    },
+    "open_questions": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 300
+      }
+    },
+    "next_action_hint": {
+      "type": "string",
+      "enum": [
+        "no_action",
+        "observe_only",
+        "needs_followup_audit",
+        "needs_design_refactor",
+        "needs_boundary_cleanup",
+        "needs_legacy_retirement_plan",
+        "needs_fallback_explicitization",
+        "needs_contract_hardening",
+        "needs_validation_hardening"
+      ]
+    },
+    "dimension_specific": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

@@ -7,6 +7,8 @@ description: Safely inventory and remove worktrees and branches that are outside
 
 Safely clean Git assets outside an explicit keep-list. Read the whitelist from this skill folder first, inventory everything second, dry-run before deletion, and delete remote branches last.
 
+Treat repository stash entries as first-class pending work. If any stash exists, process stash classification first and do not continue to deletion until every stash entry is either preserved explicitly or routed to a closeout workflow.
+
 ## Scope
 
 Use this skill for repository cleanup where the desired result is:
@@ -43,6 +45,7 @@ Stop when `whitelist.json` is missing, malformed, or semantically incomplete.
 5. Never use `git branch -D`, `git worktree remove --force`, `git push --force`, or any equivalent force-delete path inside this skill.
 6. Check GitHub PR state only as a remote-branch deletion gate. Open or unknown PR state means `blocked`, not guess-and-delete.
 7. Stop instead of guessing when ownership, merge state, PR state, or whitelist authority is unclear.
+8. Treat any existing stash as unresolved code change inventory. Do not delete worktrees or branches while stash ownership or intent is unclear.
 
 ## Authority File Shape
 
@@ -92,11 +95,13 @@ Apply the following standard without weakening it unless the user explicitly cha
 ### 2. Execution Standard
 
 - Start with `inventory + dry-run`.
+- Inventory stash entries before proposing any deletion.
 - Execute only after explicit user approval to delete.
 - Delete strictly in this order:
-  1. non-whitelisted worktrees
-  2. non-whitelisted local branches
-  3. non-whitelisted remote branches
+  1. classify and handle stash entries
+  2. non-whitelisted worktrees
+  3. non-whitelisted local branches
+  4. non-whitelisted remote branches
 
 ### 3. Worktree Deletion Standard
 
@@ -159,12 +164,13 @@ git push <remote> --delete <branch>
 
 1. Load [`whitelist.json`](./whitelist.json).
 2. Discover the current worktree, current branch, and remote default branch.
-3. Normalize the whitelist into one `keep-set` for:
+3. Read `git stash list` and freeze stash inventory before deletion planning.
+4. Normalize the whitelist into one `keep-set` for:
    - worktrees
    - local branches
    - remote branches
-4. Add the protected defaults from the safety contract.
-5. Print the final keep-set before proposing any deletion.
+5. Add the protected defaults from the safety contract.
+6. Print the final keep-set before proposing any deletion.
 
 Stop when:
 
@@ -178,11 +184,19 @@ Stop when:
 Collect evidence with read-only commands first:
 
 ```powershell
+git stash list
 git worktree list --porcelain
 git branch --show-current
 git symbolic-ref refs/remotes/origin/HEAD
 git for-each-ref --format="%(refname:short)|%(upstream:short)|%(objectname:short)|%(committerdate:iso8601)" refs/heads
 git for-each-ref --format="%(refname:short)|%(objectname:short)|%(committerdate:iso8601)" refs/remotes/origin
+```
+
+For each stash entry, inspect at least its summary and, when ownership is unclear, inspect its patch:
+
+```powershell
+git stash show --stat <stash>
+git stash show -p <stash>
 ```
 
 For each listed worktree, inspect:
@@ -200,7 +214,21 @@ git branch --contains <branch-tip>
 
 When GitHub context matters for remote deletion, inspect PR state before deleting the remote branch. If PR state cannot be confirmed, classify the branch as `blocked`.
 
-### 3. Classify Every Item
+### 3. Classify Stash Before Deletion
+
+Classify each stash entry into exactly one status:
+
+- `preserve-explicitly`: stash is intentionally retained and must be reported as residue
+- `route-to-closeout`: stash belongs to active or parked task work and must be handled by `worktree-closeout` or `branch-closeout`, not by cleanup deletion
+- `blocked`: stash ownership, branch target, or intent is unclear
+
+Apply these rules:
+
+- If any stash exists, stop deletion execution until every stash entry has one explicit classification.
+- If a stash contains task-related code changes, route it to closeout rather than ignoring it.
+- If the user wants the repository fully drained, a preserved stash still counts as residue and must be called out explicitly.
+
+### 4. Classify Every Non-Stash Item
 
 Classify each worktree or branch into exactly one status:
 
@@ -218,23 +246,24 @@ Apply these rules:
 - A remote branch with an open or unknown PR state is `blocked`.
 - A remote branch must not be a delete-candidate until its local counterpart is either absent or already proven disposable.
 
-### 4. Produce a Dry-Run Report
+### 5. Produce a Dry-Run Report
 
 Before deletion, always produce a dry-run report containing:
 
 1. whitelist authority and derived protected set
-2. inventory summary
-3. delete-candidates grouped into:
+2. stash inventory and classification
+3. inventory summary
+4. delete-candidates grouped into:
    - worktrees
    - local branches
    - remote branches
-4. blocked items and exact reasons
-5. the exact commands that would be run
-6. PR-state evidence for each remote delete-candidate
+5. blocked items and exact reasons
+6. the exact commands that would be run
+7. PR-state evidence for each remote delete-candidate
 
 If the user asked only for analysis, stop here.
 
-### 5. Remove Non-Whitelisted Worktrees
+### 6. Remove Non-Whitelisted Worktrees
 
 Delete local worktrees first, only when they are clean and outside the keep-set:
 
@@ -251,7 +280,7 @@ Stop when:
 - the worktree is locked
 - the worktree path cannot be resolved clearly
 
-### 6. Remove Non-Whitelisted Local Branches
+### 7. Remove Non-Whitelisted Local Branches
 
 Delete local branches only after confirming they are not checked out anywhere and are fully merged to the authoritative base:
 
@@ -268,7 +297,7 @@ Stop when:
 - the branch is ahead of base
 - Git requires a force delete
 
-### 7. Remove Non-Whitelisted Remote Branches
+### 8. Remove Non-Whitelisted Remote Branches
 
 Delete remote branches last and only after local safety checks are complete:
 
@@ -290,21 +319,23 @@ After deletion, confirm with:
 git ls-remote --heads <remote> <branch>
 ```
 
-### 8. Reconcile and Report
+### 9. Reconcile and Report
 
 Re-run the full inventory and report:
 
-1. items removed
-2. items kept
-3. items still blocked
-4. proof that no non-whitelisted clean candidate remains silently
-5. follow-up actions for blocked items
+1. stash entries preserved, routed, or still blocked
+2. items removed
+3. items kept
+4. items still blocked
+5. proof that no non-whitelisted clean candidate remains silently
+6. follow-up actions for blocked items
 
 ## Hard Stops
 
 Stop the workflow when any of the following is true:
 
 - the whitelist source is missing, ambiguous, or contradictory
+- a stash entry exists but has not been explicitly classified and handled
 - the current worktree or current branch would be deleted
 - a candidate worktree contains local changes
 - a candidate worktree is locked

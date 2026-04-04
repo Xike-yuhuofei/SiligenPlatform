@@ -23,9 +23,9 @@
 ## Codex 启动工作流
 
 - 正式入口：`scripts/validation/start-codex-club-from-file.ps1`
-- 作用：读取指定 Prompt 文档全文，使用 Windows Terminal 默认启动目录打开 Git Bash，并执行 `codex --yolo --profile <profile> "<prompt全文>"`。
+- 作用：读取指定 Prompt 文档全文，直接新开独立 Git Bash 窗口执行 `codex --yolo --profile <profile> "<prompt全文>"`，不再依赖 Windows Terminal。
 - 特性：
-  - 固定使用 `wt -w 0 new-tab`，避免一次触发多个窗口。
+  - 使用 `Start-Process` 直接拉起 Git Bash 独立窗口，避免受 Windows Terminal 窗口复用策略影响。
   - 自动记录日志到 `logs/codex-launch/`。
   - 支持读取用户级配置 `~/.codex/notify.local.json`，在任务结束后通过“虾推啥”发送微信通知。
   - 默认保留 shell，便于失败时直接查看终端输出。
