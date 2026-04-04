@@ -22,8 +22,22 @@ include_directories(BEFORE
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
 )
 
+set(SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime-execution/contracts/runtime/include"
+)
+set(SILIGEN_WORKFLOW_DOMAIN_IMPL_INCLUDE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../workflow/domain"
+)
+if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}/runtime_execution/contracts/motion/IInterpolationPort.h")
+    message(FATAL_ERROR
+        "dispense-packaging requires runtime-execution runtime contracts include root: "
+        "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}"
+    )
+endif()
+
 add_library(siligen_dispense_packaging_domain_dispensing STATIC
     domain-services/ArcTriggerPointCalculator.cpp
+    domain-services/CMPTriggerService.cpp
     domain-services/DispenseCompensationService.cpp
     domain-services/PathOptimizationStrategy.cpp
     domain-services/TriggerPlanner.cpp
@@ -32,10 +46,13 @@ add_library(siligen_dispense_packaging_domain_dispensing STATIC
     planning/domain-services/AuthorityTriggerLayoutPlanner.cpp
     planning/domain-services/ClosedLoopAnchorConstraintSolver.cpp
     planning/domain-services/ClosedLoopCornerAnchorResolver.cpp
+    planning/domain-services/ContourOptimizationService.cpp
     planning/domain-services/PathArcLengthLocator.cpp
     planning/domain-services/TopologyComponentClassifier.cpp
     planning/domain-services/TopologySpanSplitter.cpp
     planning/domain-services/CurveFlatteningService.cpp
+    planning/domain-services/UnifiedTrajectoryPlannerService.cpp
+    planning/domain-services/DispensingPlannerService.cpp
 )
 
 target_sources(siligen_dispense_packaging_domain_dispensing PRIVATE
@@ -51,8 +68,12 @@ target_sources(siligen_dispense_packaging_domain_dispensing PRIVATE
 target_include_directories(siligen_dispense_packaging_domain_dispensing BEFORE PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
+    ${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}
     ${SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
+)
+target_include_directories(siligen_dispense_packaging_domain_dispensing PRIVATE
+    ${SILIGEN_WORKFLOW_DOMAIN_IMPL_INCLUDE_DIR}
 )
 
 target_link_libraries(siligen_dispense_packaging_domain_dispensing PUBLIC

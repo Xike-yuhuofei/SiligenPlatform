@@ -20,6 +20,8 @@ set(WORKFLOW_TEST_IMPLEMENTATION_INCLUDE_DIRS
     "${CMAKE_SOURCE_DIR}/modules/job-ingest/contracts/include"
     "${CMAKE_SOURCE_DIR}/modules/runtime-execution/application/include"
     "${CMAKE_SOURCE_DIR}/modules/motion-planning"
+    "${CMAKE_SOURCE_DIR}/modules/motion-planning/contracts/include"
+    "${CMAKE_SOURCE_DIR}/modules/runtime-execution/contracts/runtime/include"
     "${CMAKE_SOURCE_DIR}/modules/runtime-execution/adapters/device/include"
 )
 
@@ -100,11 +102,6 @@ endif()
 if(TARGET siligen_motion_planning_application_public)
     target_link_libraries(siligen_unit_tests PRIVATE
         siligen_motion_planning_application_public
-    )
-endif()
-if(TARGET siligen_workflow_dispensing_planning_compat)
-    target_link_libraries(siligen_unit_tests PRIVATE
-        siligen_workflow_dispensing_planning_compat
     )
 endif()
 if(TARGET siligen_runtime_execution_application_public)

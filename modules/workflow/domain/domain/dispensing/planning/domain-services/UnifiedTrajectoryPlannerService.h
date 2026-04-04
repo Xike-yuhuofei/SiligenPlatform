@@ -6,8 +6,8 @@
 #include "domain/trajectory/value-objects/Primitive.h"
 #include "domain/trajectory/value-objects/ProcessConfig.h"
 #include "domain/trajectory/value-objects/ProcessPath.h"
-#include "domain/motion/value-objects/TimePlanningConfig.h"
-#include "domain/motion/value-objects/MotionTrajectory.h"
+#include "motion_planning/contracts/TimePlanningConfig.h"
+#include "motion_planning/contracts/MotionTrajectory.h"
 #include "domain/motion/domain-services/MotionPlanner.h"
 #include "domain/motion/domain-services/VelocityProfileService.h"
 
@@ -20,7 +20,7 @@ struct UnifiedTrajectoryPlanRequest {
     Domain::Trajectory::DomainServices::NormalizationConfig normalization;
     Domain::Trajectory::ValueObjects::ProcessConfig process;
     Domain::Trajectory::DomainServices::TrajectoryShaperConfig shaping;
-    Domain::Motion::ValueObjects::TimePlanningConfig motion;
+    Siligen::MotionPlanning::Contracts::TimePlanningConfig motion;
     bool generate_motion_trajectory = true;
 };
 
@@ -28,7 +28,7 @@ struct UnifiedTrajectoryPlanResult {
     Domain::Trajectory::DomainServices::NormalizedPath normalized;
     Domain::Trajectory::ValueObjects::ProcessPath process_path;
     Domain::Trajectory::ValueObjects::ProcessPath shaped_path;
-    Domain::Motion::ValueObjects::MotionTrajectory motion_trajectory;
+    Siligen::MotionPlanning::Contracts::MotionTrajectory motion_trajectory;
 };
 
 class UnifiedTrajectoryPlannerService {

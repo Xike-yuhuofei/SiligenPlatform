@@ -5,11 +5,8 @@
 #include "shared/logging/PrintfLogFormatter.h"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <vector>
-
-#include <ruckig/ruckig.hpp>
 
 #ifdef MODULE_NAME
 #undef MODULE_NAME
@@ -40,7 +37,6 @@ using Siligen::Shared::Types::kRadToDeg;
 namespace {
 constexpr float32 kEpsilon = 1e-6f;
 constexpr float32 kMinIntegrationVelocity = 1e-3f;
-constexpr float32 kFallbackJmax = 5000.0f;
 
 float32 SegmentLength(const Segment& segment) {
     if (segment.length > kEpsilon) {
@@ -114,44 +110,6 @@ float32 ComputeCurvatureLimit(float32 curvature,
     float32 factor = (curvature_factor > kEpsilon) ? curvature_factor : 1.0f;
     float32 limit = std::sqrt(std::max(0.0f, amax / curvature));
     return std::min(vmax, limit * factor);
-}
-
-float32 ClampTargetAccelerationForRuckig(float32 target_velocity,
-                                         float32 target_acceleration,
-                                         float32 max_velocity,
-                                         float32 max_jerk) {
-    if (max_jerk <= kEpsilon) {
-        return target_acceleration;
-    }
-
-    if (target_acceleration < -kEpsilon) {
-        float32 limit = max_velocity - target_velocity;
-        if (limit <= kEpsilon) {
-            return 0.0f;
-        }
-        float32 max_abs = std::sqrt(std::max(0.0f, 2.0f * max_jerk * limit));
-        max_abs = std::max(0.0f, max_abs - 1e-4f);
-        if (-target_acceleration > max_abs) {
-            return -max_abs;
-        }
-        return target_acceleration;
-    }
-
-    if (target_acceleration > kEpsilon) {
-        float32 min_velocity = -max_velocity;
-        float32 limit = target_velocity - min_velocity;
-        if (limit <= kEpsilon) {
-            return 0.0f;
-        }
-        float32 max_abs = std::sqrt(std::max(0.0f, 2.0f * max_jerk * limit));
-        max_abs = std::max(0.0f, max_abs - 1e-4f);
-        if (target_acceleration > max_abs) {
-            return max_abs;
-        }
-        return target_acceleration;
-    }
-
-    return 0.0f;
 }
 
 float32 ResolveSampleDs(const TimePlanningConfig& config) {
@@ -232,13 +190,6 @@ struct TimeIntegrationResult {
     float32 dt = 0.0f;
     float32 legacy_dt = 0.0f;
     bool used_fallback = false;
-};
-
-struct RuckigSegment {
-    ruckig::Trajectory<1> trajectory;
-    float32 start_time = 0.0f;
-    float32 duration = 0.0f;
-    float32 start_s = 0.0f;
 };
 
 struct PathLengthSummary {
@@ -502,9 +453,8 @@ MotionPlan MotionPlanner::Plan(const ProcessPath& path, const TimePlanningConfig
     const float32 amax = std::max(config.amax, 1e-3f);
     const float32 dt = (config.sample_dt > kEpsilon) ? config.sample_dt : 0.01f;
     const float32 ds = ResolveSampleDs(config);
-    const bool ruckig_enabled = config.enforce_jerk_limit;
-    const bool jerk_enforced = ruckig_enabled && config.jmax > kEpsilon;
-    const float32 effective_jmax = jerk_enforced ? config.jmax : kFallbackJmax;
+    const bool jerk_enforced = config.enforce_jerk_limit && config.jmax > kEpsilon;
+    const float32 effective_jmax = jerk_enforced ? config.jmax : 0.0f;
 
     const auto path_lengths = ComputePathLengths(path);
     const auto& lengths = path_lengths.lengths;
@@ -582,7 +532,7 @@ MotionPlan MotionPlanner::Plan(const ProcessPath& path, const TimePlanningConfig
         v_profile[i - 1] = std::min(v_profile[i - 1], reachable);
     }
 
-    if (ruckig_enabled && jerk_enforced) {
+    if (jerk_enforced) {
         int32 jerk_corrections = 0;
         auto v_forward = ApplyJerkLimitedScan(v_profile, s_samples, v_limits, amax, effective_jmax, true, jerk_corrections);
         auto v_backward = ApplyJerkLimitedScan(v_forward, s_samples, v_limits, amax, effective_jmax, false, jerk_corrections);
@@ -599,17 +549,9 @@ MotionPlan MotionPlanner::Plan(const ProcessPath& path, const TimePlanningConfig
         static_cast<void>(jerk_corrections);
     }
 
-    // Only route through per-segment Ruckig time parameterization when jerk limiting is
-    // explicitly enabled with a real jerk bound; otherwise keep the scanned velocity profile.
-    const bool use_ruckig = jerk_enforced;
     std::vector<float32> t_samples(sample_count, 0.0f);
-    std::vector<float32> accel_targets;
-    if (use_ruckig && sample_count > 1) {
-        accel_targets.resize(sample_count - 1, 0.0f);
-    }
     float32 integration_error = 0.0f;
     int32 integration_fallbacks = 0;
-    float32 prev_accel = 0.0f;
     for (size_t i = 1; i < sample_count; ++i) {
         float32 ds_step = s_samples[i] - s_samples[i - 1];
         float32 v0 = v_profile[i - 1];
@@ -621,211 +563,12 @@ MotionPlan MotionPlanner::Plan(const ProcessPath& path, const TimePlanningConfig
         if (step.used_fallback) {
             ++integration_fallbacks;
         }
-        if (use_ruckig) {
-            float32 dt_est = std::max(dt_step, kEpsilon);
-            float32 a_est = (v1 - v0) / dt_est;
-            a_est = Clamp(a_est, -amax, amax);
-            float32 a_min = prev_accel - effective_jmax * dt_est;
-            float32 a_max = prev_accel + effective_jmax * dt_est;
-            float32 a_filtered = Clamp(a_est, a_min, a_max);
-            float32 v_max = std::max(v0, v1);
-            a_filtered = ClampTargetAccelerationForRuckig(v1, a_filtered, v_max, effective_jmax);
-            accel_targets[i - 1] = a_filtered;
-            prev_accel = a_filtered;
-        }
     }
 
     report.total_length_mm = total_length;
     report.time_integration_error_s = integration_error;
     report.time_integration_fallbacks = integration_fallbacks;
     report.jerk_limit_enforced = jerk_enforced;
-
-    if (use_ruckig) {
-        std::vector<RuckigSegment> ruckig_segments;
-        ruckig_segments.reserve(sample_count > 1 ? sample_count - 1 : 0);
-
-        ruckig::Ruckig<1> otg;
-        ruckig::InputParameter<1> input;
-        std::array<double, 1> pos{};
-        std::array<double, 1> vel{};
-        std::array<double, 1> acc{};
-
-        float32 current_time = 0.0f;
-        float32 current_s = 0.0f;
-        float32 current_acc = 0.0f;
-
-        for (size_t i = 1; i < sample_count; ++i) {
-            float32 ds_step = s_samples[i] - s_samples[i - 1];
-            if (ds_step <= kEpsilon) {
-                continue;
-            }
-
-            input.current_position[0] = 0.0;
-            input.current_velocity[0] = v_profile[i - 1];
-            input.current_acceleration[0] = current_acc;
-            input.target_position[0] = ds_step;
-            input.target_velocity[0] = v_profile[i];
-            input.target_acceleration[0] = accel_targets.empty() ? 0.0f : accel_targets[i - 1];
-            float32 vmax_input = std::max(v_profile[i - 1], v_profile[i]);
-            if (i < v_limits.size()) {
-                vmax_input = std::max(vmax_input, v_limits[i]);
-            }
-            if (vmax_input <= kEpsilon) {
-                vmax_input = 1e-3f;  // Avoid invalid Ruckig input (max velocity must be > 0)
-            }
-            input.max_velocity[0] = vmax_input;
-            input.max_acceleration[0] = amax;
-            input.max_jerk[0] = effective_jmax;
-
-            ruckig::Trajectory<1> traj;
-            auto result = otg.calculate(input, traj);
-            if (result != ruckig::Result::Working) {
-                SILIGEN_LOG_WARNING_FMT_HELPER(
-                    "Ruckig calculate failed: result=%d, index=%zu, ds=%.6f, s0=%.6f, s1=%.6f, "
-                    "v0=%.6f, v1=%.6f, a0=%.6f, a1=%.6f, vmax=%.6f, amax=%.6f, jmax=%.6f, dt=%.6f, "
-                    "sample_count=%zu, total_length=%.6f",
-                    static_cast<int>(result),
-                    i,
-                    ds_step,
-                    s_samples[i - 1],
-                    s_samples[i],
-                    v_profile[i - 1],
-                    v_profile[i],
-                    current_acc,
-                    accel_targets.empty() ? 0.0f : accel_targets[i - 1],
-                    input.max_velocity[0],
-                    input.max_acceleration[0],
-                    input.max_jerk[0],
-                    dt,
-                    sample_count,
-                    total_length);
-                report.jerk_plan_failed = true;
-                trajectory.total_length = total_length;
-                trajectory.total_time = 0.0f;
-                trajectory.planning_report = report;
-                return trajectory;
-            }
-
-            const double traj_duration = traj.get_duration();
-            traj.at_time(traj_duration, pos, vel, acc);
-            current_acc = static_cast<float32>(acc[0]);
-
-            RuckigSegment seg;
-            seg.start_time = current_time;
-            seg.duration = static_cast<float32>(traj_duration);
-            seg.start_s = current_s;
-            seg.trajectory = std::move(traj);
-            ruckig_segments.push_back(std::move(seg));
-
-            current_time += ruckig_segments.back().duration;
-            current_s += ds_step;
-        }
-
-        float32 total_time = ruckig_segments.empty()
-                                 ? 0.0f
-                                 : ruckig_segments.back().start_time + ruckig_segments.back().duration;
-        report.total_time_s = total_time;
-        if (total_time <= kEpsilon) {
-            report.jerk_plan_failed = true;
-            trajectory.total_length = total_length;
-            trajectory.total_time = 0.0f;
-            trajectory.planning_report = report;
-            return trajectory;
-        }
-
-        int out_steps = static_cast<int>(std::ceil(total_time / dt));
-        if (out_steps < 1) {
-            out_steps = 1;
-        }
-
-        trajectory.points.reserve(static_cast<size_t>(out_steps) + 1);
-
-        float32 max_speed = 0.0f;
-        float32 max_acc = 0.0f;
-        float32 max_jerk = 0.0f;
-        int32 violation_count = 0;
-        float32 prev_acc = 0.0f;
-        float32 prev_t = 0.0f;
-        bool has_prev = false;
-
-        size_t seg_idx = 0;
-        for (int step = 0; step <= out_steps; ++step) {
-            float32 t = std::min(total_time, static_cast<float32>(step) * dt);
-            while (seg_idx + 1 < ruckig_segments.size() &&
-                   t > ruckig_segments[seg_idx].start_time + ruckig_segments[seg_idx].duration + kEpsilon) {
-                ++seg_idx;
-            }
-            const auto& rseg = ruckig_segments[seg_idx];
-            float32 local_t = t - rseg.start_time;
-
-            std::array<double, 1> s_pos{};
-            std::array<double, 1> s_vel{};
-            std::array<double, 1> s_acc{};
-            rseg.trajectory.at_time(local_t, s_pos, s_vel, s_acc);
-
-            float32 s = rseg.start_s + static_cast<float32>(s_pos[0]);
-            float32 speed = static_cast<float32>(s_vel[0]);
-            float32 accel = static_cast<float32>(s_acc[0]);
-
-            max_speed = std::max(max_speed, speed);
-            max_acc = std::max(max_acc, std::abs(accel));
-
-            float32 jerk = 0.0f;
-            if (has_prev) {
-                float32 dt_step = t - prev_t;
-                if (dt_step > kEpsilon) {
-                    jerk = (accel - prev_acc) / dt_step;
-                    max_jerk = std::max(max_jerk, std::abs(jerk));
-                }
-            }
-
-            size_t geom_idx = FindSegmentIndex(cumulative, s);
-            float32 local_s = s - cumulative[geom_idx];
-            const auto& geom_seg = path.segments[geom_idx];
-
-            Point2D pos2d;
-            Point2D tan;
-            float32 curvature = 0.0f;
-            EvaluateSegmentAtDistance(geom_seg.geometry, local_s, pos2d, tan, curvature);
-            static_cast<void>(curvature);
-
-            MotionTrajectoryPoint point;
-            point.t = t;
-            point.position = Point3D(pos2d, 0.0f);
-            point.velocity = Point3D(tan.x * speed, tan.y * speed, 0.0f);
-            point.process_tag = geom_seg.tag;
-            point.dispense_on = geom_seg.dispense_on;
-            if (geom_seg.dispense_on && config.vmax > kEpsilon) {
-                point.flow_rate = geom_seg.flow_rate * (speed / config.vmax);
-            } else {
-                point.flow_rate = 0.0f;
-            }
-            trajectory.points.push_back(point);
-
-            if (speed > config.vmax + 1e-3f) {
-                ++violation_count;
-            }
-            if (std::abs(accel) > amax + 1e-3f) {
-                ++violation_count;
-            }
-            if (jerk_enforced && std::abs(jerk) > effective_jmax + 1e-3f) {
-                ++violation_count;
-            }
-
-            prev_acc = accel;
-            prev_t = t;
-            has_prev = true;
-        }
-
-        trajectory.total_time = total_time;
-        trajectory.total_length = total_length;
-        report.max_velocity_observed = max_speed;
-        report.max_acceleration_observed = max_acc;
-        report.max_jerk_observed = max_jerk;
-        report.constraint_violations = violation_count;
-        trajectory.planning_report = report;
-        return trajectory;
-    }
 
     float32 total_time = t_samples.empty() ? 0.0f : t_samples.back();
     if (total_time <= kEpsilon) {
@@ -881,7 +624,7 @@ MotionPlan MotionPlanner::Plan(const ProcessPath& path, const TimePlanningConfig
             if (dt_step > kEpsilon) {
                 accel = (speed - prev_speed) / dt_step;
                 max_acc = std::max(max_acc, std::abs(accel));
-                if (config.jmax > kEpsilon) {
+                if (jerk_enforced) {
                     jerk = (accel - prev_acc) / dt_step;
                     max_jerk = std::max(max_jerk, std::abs(jerk));
                 }
@@ -907,7 +650,7 @@ MotionPlan MotionPlanner::Plan(const ProcessPath& path, const TimePlanningConfig
         if (std::abs(accel) > amax + 1e-3f) {
             ++violation_count;
         }
-        if (config.jmax > kEpsilon && std::abs(jerk) > config.jmax + 1e-3f) {
+        if (jerk_enforced && std::abs(jerk) > config.jmax + 1e-3f) {
             ++violation_count;
         }
 
