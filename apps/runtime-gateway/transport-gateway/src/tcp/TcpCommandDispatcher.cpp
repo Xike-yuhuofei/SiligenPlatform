@@ -14,7 +14,7 @@
 #include "facades/tcp/TcpSystemFacade.h"
 #include "application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
 #include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
-#include "domain/configuration/ports/IConfigurationPort.h"
+#include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "domain/configuration/services/ReadyZeroSpeedResolver.h"
 #include "motion_planning/contracts/InterpolationTypes.h"
 #include "runtime_execution/contracts/system/IRuntimeStatusExportPort.h"
