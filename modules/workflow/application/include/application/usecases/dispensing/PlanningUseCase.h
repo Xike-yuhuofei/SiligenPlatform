@@ -30,8 +30,8 @@ namespace Siligen::Application::Services::DXF {
 class DxfPbPreparationService;
 }
 
-namespace Siligen::Domain::Motion::DomainServices {
-class VelocityProfileService;
+namespace Siligen::Domain::Motion::Ports {
+class IVelocityProfilePort;
 }
 
 namespace Siligen::Domain::Dispensing::DomainServices {
@@ -321,7 +321,7 @@ public:
 
 std::shared_ptr<IPlanningPathPreparationPort> CreateDefaultPlanningPathPreparationPort();
 std::shared_ptr<IPlanningMotionPlanPort> CreateDefaultPlanningMotionPlanPort(
-    std::shared_ptr<Siligen::Domain::Motion::DomainServices::VelocityProfileService> velocity_service = nullptr);
+    std::shared_ptr<Siligen::Domain::Motion::Ports::IVelocityProfilePort> velocity_profile_port = nullptr);
 std::shared_ptr<IPlanningAssemblyPort> CreateDefaultPlanningAssemblyPort();
 
 /**

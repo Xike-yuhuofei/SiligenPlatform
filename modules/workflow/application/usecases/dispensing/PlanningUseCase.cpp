@@ -777,8 +777,8 @@ private:
 class DefaultPlanningMotionPlanPort final : public IPlanningMotionPlanPort {
 public:
     explicit DefaultPlanningMotionPlanPort(
-        std::shared_ptr<Siligen::Domain::Motion::DomainServices::VelocityProfileService> velocity_service)
-        : facade_(std::move(velocity_service)) {}
+        std::shared_ptr<Siligen::Domain::Motion::Ports::IVelocityProfilePort> velocity_profile_port)
+        : facade_(std::move(velocity_profile_port)) {}
 
     MotionPlan Plan(
         const Siligen::ProcessPath::Contracts::ProcessPath& path,
@@ -897,8 +897,8 @@ std::shared_ptr<IPlanningPathPreparationPort> CreateDefaultPlanningPathPreparati
 }
 
 std::shared_ptr<IPlanningMotionPlanPort> CreateDefaultPlanningMotionPlanPort(
-    std::shared_ptr<Siligen::Domain::Motion::DomainServices::VelocityProfileService> velocity_service) {
-    return std::make_shared<DefaultPlanningMotionPlanPort>(std::move(velocity_service));
+    std::shared_ptr<Siligen::Domain::Motion::Ports::IVelocityProfilePort> velocity_profile_port) {
+    return std::make_shared<DefaultPlanningMotionPlanPort>(std::move(velocity_profile_port));
 }
 
 std::shared_ptr<IPlanningAssemblyPort> CreateDefaultPlanningAssemblyPort() {

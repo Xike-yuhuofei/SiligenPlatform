@@ -121,7 +121,7 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::PlanningUseCase>() {
         path_source,
         Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningPathPreparationPort(),
         Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningMotionPlanPort(
-            velocity_profile_service_),
+            velocity_profile_port_),
         Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningAssemblyPort(),
         config_port_,
         nullptr,
