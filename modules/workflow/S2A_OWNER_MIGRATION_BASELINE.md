@@ -35,7 +35,7 @@
 
 - `modules/motion-planning/application/CMakeLists.txt` 不再反向修改 `siligen_application_motion` / `siligen_application_dispensing`
 - `modules/dispense-packaging/application/CMakeLists.txt` 不再反向修改 `siligen_application_dispensing`
-- `siligen_workflow_dispensing_planning_compat` 仅保留为 deprecated compatibility target，live target 禁止新增依赖
+- `siligen_workflow_dispensing_planning_compat` 已从 build graph 退场；live/test target 不得再依赖该 target 名称
 - `modules/workflow/domain/domain/CMakeLists.txt` 不再提供 `siligen_motion` 本地 fallback，缺少 canonical owner target 时显式失败
 - `siligen_process_runtime_core_*` 仅保留为 deprecated compatibility target，README 与后续 owner 论证不得再将其视为 live public surface
 - `tests/reports/module-boundary-bridges-s2a/module-boundary-bridges.md` 当前状态为 `passed`

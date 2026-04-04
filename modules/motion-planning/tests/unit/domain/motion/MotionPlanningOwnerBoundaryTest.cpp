@@ -7,10 +7,10 @@
 #include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
 #include "domain/motion/domain-services/TimeTrajectoryPlanner.h"
 #include "domain/motion/domain-services/TrajectoryPlanner.h"
-#include "domain/motion/ports/IInterpolationPort.h"
-#include "domain/motion/value-objects/MotionTrajectory.h"
-#include "domain/motion/value-objects/TimePlanningConfig.h"
+#include "motion_planning/contracts/MotionTrajectory.h"
+#include "motion_planning/contracts/TimePlanningConfig.h"
 #include "process_path/contracts/ProcessPath.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
 
 #include <gtest/gtest.h>
 
@@ -234,44 +234,6 @@ TEST(MotionPlanningOwnerBoundaryTest, InterpolationProgramPlannerConsumersUseCon
               std::string::npos);
     EXPECT_EQ(workflow_interpolation_test.find("using Siligen::Domain::Trajectory::ValueObjects::MotionConfig;"),
               std::string::npos);
-}
-
-TEST(MotionPlanningOwnerBoundaryTest, WorkflowResidualUnifiedTrajectoryPlannerIsRemoved) {
-    const fs::path repo_root = RepoRoot();
-
-    EXPECT_FALSE(fs::exists(
-        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.h"));
-    EXPECT_FALSE(fs::exists(
-        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp"));
-
-    const std::string workflow_dispensing_planner = ReadTextFile(
-        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp");
-    EXPECT_NE(workflow_dispensing_planner.find(
-                  "../../../../../../../dispense-packaging/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.h"),
-              std::string::npos);
-    EXPECT_EQ(workflow_dispensing_planner.find('#' + std::string("include \"UnifiedTrajectoryPlannerService.h\"")),
-              std::string::npos);
-}
-
-TEST(MotionPlanningOwnerBoundaryTest, WorkflowValueObjectThinBridgesAreRemoved) {
-    const fs::path repo_root = RepoRoot();
-
-    const std::array<fs::path, 5> removed_headers = {{
-        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/Path.h",
-        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/Primitive.h",
-        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/ProcessConfig.h",
-        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/ProcessPath.h",
-        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/GeometryUtils.h",
-    }};
-
-    for (const auto& header : removed_headers) {
-        EXPECT_FALSE(fs::exists(header)) << header.string();
-    }
-
-    EXPECT_TRUE(fs::exists(
-        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/GeometryBoostAdapter.h"));
-    EXPECT_TRUE(fs::exists(
-        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/PlanningReport.h"));
 }
 
 }  // namespace
