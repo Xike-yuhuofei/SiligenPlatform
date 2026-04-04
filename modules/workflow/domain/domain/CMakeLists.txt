@@ -142,12 +142,6 @@ target_link_libraries(siligen_dispensing_execution_services PRIVATE
 )
 target_compile_features(siligen_dispensing_execution_services PUBLIC cxx_std_17)
 
-add_library(siligen_workflow_dispensing_planning_compat INTERFACE)
-target_link_libraries(siligen_workflow_dispensing_planning_compat INTERFACE
-    siligen_dispense_packaging_domain_dispensing
-)
-target_compile_features(siligen_workflow_dispensing_planning_compat INTERFACE cxx_std_17)
-
 add_library(siligen_motion_execution_services STATIC
     # workflow runtime execution must use the workflow-owned motion services.
     # Pulling the motion-planning HomingProcess here reintroduces an ODR/layout
