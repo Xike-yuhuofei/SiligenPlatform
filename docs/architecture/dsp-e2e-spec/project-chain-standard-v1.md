@@ -65,7 +65,7 @@
 | A04 | 工艺规划链 | `FeatureGraph`、配方/材料/模板 -> `ProcessPlan` | 把制造特征映射为工艺规则与工艺参数，不负责路径顺序或动态约束。 | 路径链、轨迹链 |
 | A05 | 坐标/对位/补偿链 | `ProcessPlan`、治具/标定/视觉/测高输入 -> `CoordinateTransformSet`、`AlignmentCompensation` | 生成当前任务的坐标真相、补偿真相和“无需补偿”的显式事实。 | 路径优化链、速度规划链 |
 | A06 | 工艺路径链 | `ProcessPlan`、坐标变换、补偿 -> `ProcessPath` | 按工艺语义组织实际要走的几何段、顺序、连接、进退刀和段级工艺标签。 | 时间参数化链、板卡程序链 |
-| A07 | 轨迹生成链 | `ProcessPath`、动态参数（当前 canonical 为 `TimePlanningConfig`） -> `MotionPlan`（代码级 payload = `MotionTrajectory`） | 当前 M7 canonical owner 在 `modules/motion-planning/`。业务阶段名保留 `MotionPlan`，代码级实际通过 `MotionPlanningFacade -> MotionPlanner -> MotionTrajectory` 产出时间化运动描述；`Ruckig` 属于此层。 | `InterpolationProgramPlanner`、板卡 API 调用链、HMI 预览渲染链 |
+| A07 | 轨迹生成链 | `ProcessPath`、动态参数（当前 canonical 为 `TimePlanningConfig`） -> `MotionPlan`（代码级 payload = `MotionTrajectory`） | 当前 M7 canonical owner 在 `modules/motion-planning/`。业务阶段名保留 `MotionPlan`，代码级实际通过 `MotionPlanningFacade -> MotionPlanner -> MotionTrajectory` 产出时间化运动描述。 | `InterpolationProgramPlanner`、板卡 API 调用链、HMI 预览渲染链 |
 | A08 | 插补程序合成链 | `ProcessPath` + `MotionPlan`（代码级 payload = `MotionTrajectory`） -> `InterpolationData` / `interpolation_segments` | 由 `InterpolationProgramPlanner` 把几何段语义与速度语义合成为板卡段级程序。`interpolation_points` 属于预览 / authority binding 辅助资产，不是 A08 的 canonical 执行程序输出。 | `MotionPlanner` 时间参数化链、板卡执行链、状态回流链 |
 | A09 | 点胶时序链 | `MotionPlan`、`ProcessPlan`、阀/泵响应参数 -> `DispenseTimingPlan` | 生成出胶开闭、触发、补偿和供胶协同的时序事实。 | 轨迹生成链、手动阀调试链 |
 | A10 | 执行包链 | `MotionPlan`、`DispenseTimingPlan`、配方/模式 -> `ExecutionPackage(built/validated)` | 冻结正式执行输入，并把“已组包”和“已通过离线校验”显式分离。 | 设备预检链、正式执行链 |
@@ -79,13 +79,13 @@
 
 | 子链 | 权威输入 -> 输出 | 精准定义 | 主要依据 |
 |---|---|---|---|
-| A07-1 轨迹生成子链 | `ProcessPath` + `TimePlanningConfig` -> `MotionPlan`（代码级 payload = `MotionTrajectory`） | 当前 canonical 规划调用链是 `MotionPlanningFacade -> MotionPlanner -> MotionTrajectory`；业务阶段名保留 `MotionPlan`。`Ruckig` 在此层承担 jerk 约束与时间化，不是板卡插补器。 | `modules/motion-planning/README.md`、`docs/architecture/dxf-motion-execution-contract-v1.md` |
+| A07-1 轨迹生成子链 | `ProcessPath` + `TimePlanningConfig` -> `MotionPlan`（代码级 payload = `MotionTrajectory`） | 当前 canonical 规划调用链是 `MotionPlanningFacade -> MotionPlanner -> MotionTrajectory`；业务阶段名保留 `MotionPlan`。jerk 约束仍属于该层的时间化职责，不是板卡插补器。 | `modules/motion-planning/README.md`、`docs/architecture/dxf-motion-execution-contract-v1.md` |
 | A08-1 程序合成子链 | `ProcessPath` + `MotionPlan`（`MotionTrajectory`） -> `InterpolationData` / `interpolation_segments` | `InterpolationProgramPlanner` 根据 `process_path` 的几何段语义和 `motion_trajectory` 的速度语义合成板卡段程序；这是当前 canonical execution program。`interpolation_points` 只是预览 / authority binding 辅助资产。 | `docs/architecture/dxf-motion-execution-contract-v1.md` |
 | A12-1 板卡执行子链 | `InterpolationData` -> MultiCard 坐标系执行状态 | 设备层负责真正的 FIFO / lookahead / 坐标系插补执行和状态反馈。 | `docs/architecture/dxf-motion-execution-contract-v1.md` |
 
 裁决性定义：
 
-1. `Ruckig` 属于 **轨迹生成子链**。
+1. jerk 受限时间化属于 **轨迹生成子链**。
 2. 当前业务阶段名保留 `MotionPlan`，但代码级 canonical payload 是 `MotionTrajectory`；`modules/motion-planning/contracts/MotionPlan.h` 只是 alias 封装。
 3. `InterpolationAlgorithm` 在当前仓库不构成 `MotionPlanner` 的 canonical 公开输入；它主要服务于 `TrajectoryInterpolatorFactory` / `InterpolationPlanningUseCase` / preview `interpolation_points` 辅助分支。
 4. `InterpolationProgramPlanner` 属于 **程序合成子链**。
@@ -172,7 +172,7 @@ HMI 不是 `M0-M10` 的业务事实 owner，不直接生成 `MotionPlan`、`Exec
 
 1. 项目内不存在“只有一条总链路”的说法；至少应区分正式对象链、live 控制链和观测支撑链。
 2. “运动控制链路”不是整个项目主链，而是 **A07 轨迹生成链 + A08 插补程序合成链 + A12 板卡执行子链** 的组合叫法。
-3. `Ruckig` 与 `MotionTrajectory` 属于 **轨迹生成层**；`InterpolationAlgorithm` 在当前仓库主要属于插补器 / 预览点能力，不应直接等同为 M7 canonical `MotionPlanner` 输入。
+3. `MotionTrajectory` 属于 **轨迹生成层**；`InterpolationAlgorithm` 在当前仓库主要属于插补器 / 预览点能力，不应直接等同为 M7 canonical `MotionPlanner` 输入。
 4. `status` 是当前上位机统一观察面，不是规划对象真源。
 5. DXF 当前 live 执行链的正式入口不是笼统的“执行 DXF”，而是 **B03 DXF 预览确认执行链**。
 

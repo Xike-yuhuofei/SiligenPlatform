@@ -183,11 +183,6 @@ function(process_runtime_core_add_test_with_runtime_environment test_name test_t
                 )
             endif()
 
-            if(TARGET ruckig)
-                list(APPEND test_runtime_path_entries
-                    "PATH=path_list_prepend:$<TARGET_FILE_DIR:ruckig>"
-                )
-            endif()
         endif()
 
         list(REMOVE_DUPLICATES test_runtime_path_entries)

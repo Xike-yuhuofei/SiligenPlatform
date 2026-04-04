@@ -81,7 +81,6 @@
    - `packages/shared-kernel`
    - `control-core/src/shared`
    - `control-core/src/infrastructure/adapters/planning/dxf`
-   - `third_party/ruckig`
    - `third_party/protobuf`
    - GoogleTest
 
