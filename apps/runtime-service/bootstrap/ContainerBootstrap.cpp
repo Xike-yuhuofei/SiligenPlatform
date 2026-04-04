@@ -30,7 +30,7 @@
 #include "domain/recipes/ports/IRecipeRepositoryPort.h"
 #include "domain/recipes/ports/ITemplateRepositoryPort.h"
 #include "domain/safety/ports/IInterlockSignalPort.h"
-#include "domain/trajectory/ports/IPathSourcePort.h"
+#include "process_path/contracts/IPathSourcePort.h"
 #include "runtime/configuration/WorkspaceAssetPaths.h"
 
 #include <iostream>

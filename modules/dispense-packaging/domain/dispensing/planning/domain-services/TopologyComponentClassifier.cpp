@@ -10,9 +10,9 @@
 
 namespace Siligen::Domain::Dispensing::DomainServices {
 
-using Siligen::Domain::Trajectory::ValueObjects::SegmentEnd;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentStart;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
+using Siligen::ProcessPath::Contracts::SegmentEnd;
+using Siligen::ProcessPath::Contracts::SegmentStart;
+using Siligen::ProcessPath::Contracts::SegmentType;
 using Siligen::Shared::Types::Point2D;
 using Siligen::Domain::Dispensing::ValueObjects::DispenseSpanSplitReason;
 

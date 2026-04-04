@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/trajectory/ports/IPathSourcePort.h"
+#include "process_path/contracts/IPathSourcePort.h"
 
 #include <string>
 

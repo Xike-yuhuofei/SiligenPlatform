@@ -26,10 +26,10 @@ endif()
 target_compile_features(siligen_process_path_application_headers INTERFACE cxx_std_17)
 
 set(SILIGEN_PROCESS_PATH_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS
-    ${PROCESS_RUNTIME_CORE_PUBLIC_INCLUDE_DIRS}
-    ${PROCESS_RUNTIME_CORE_IMPLEMENTATION_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/..
+    ${PROCESS_RUNTIME_CORE_PUBLIC_INCLUDE_DIRS}
+    ${PROCESS_RUNTIME_CORE_IMPLEMENTATION_INCLUDE_DIRS}
 )
 list(REMOVE_DUPLICATES SILIGEN_PROCESS_PATH_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS)
 
@@ -49,9 +49,6 @@ target_link_libraries(siligen_process_path_application PUBLIC
 )
 target_link_libraries(siligen_process_path_application PRIVATE
     siligen_process_path_domain_trajectory
-)
-target_link_libraries(siligen_process_path_application INTERFACE
-    $<LINK_ONLY:siligen_process_path_domain_trajectory>
 )
 if(TARGET siligen_coordinate_alignment_contracts_public)
     target_link_libraries(siligen_process_path_application PUBLIC

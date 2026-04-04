@@ -15,13 +15,13 @@
 
 namespace Siligen::Domain::Trajectory::Geometry {
 
-using Siligen::Domain::Trajectory::ValueObjects::LinePrimitive;
+using Siligen::Domain::Trajectory::ValueObjects::ArcPoint;
 using Siligen::Domain::Trajectory::ValueObjects::ArcPrimitive;
+using Siligen::Domain::Trajectory::ValueObjects::ComputeArcSweep;
+using Siligen::Domain::Trajectory::ValueObjects::LinePrimitive;
+using Siligen::Domain::Trajectory::ValueObjects::NormalizeAngle;
 using Siligen::Domain::Trajectory::ValueObjects::Segment;
 using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
-using Siligen::Domain::Trajectory::ValueObjects::ArcPoint;
-using Siligen::Domain::Trajectory::ValueObjects::ComputeArcSweep;
-using Siligen::Domain::Trajectory::ValueObjects::NormalizeAngle;
 using Siligen::Shared::Types::Point2D;
 using Siligen::Shared::Types::float32;
 using Siligen::Shared::Types::kRadToDeg;
@@ -75,9 +75,7 @@ struct ArcSampleOptions {
     bool include_endpoints = true;
 };
 
-inline float32 ResolveArcStepDeg(const ArcPrimitive& arc,
-                                 float32 total_sweep,
-                                 const ArcSampleOptions& options) {
+inline float32 ResolveArcStepDeg(const ArcPrimitive& arc, float32 total_sweep, const ArcSampleOptions& options) {
     float32 step = options.max_angle_step_deg;
     if (step <= 0.0f) {
         step = 5.0f;
@@ -102,8 +100,7 @@ inline float32 ResolveArcStepDeg(const ArcPrimitive& arc,
     return step;
 }
 
-inline std::vector<Point2D> SampleArcPoints(const ArcPrimitive& arc,
-                                            const ArcSampleOptions& options = {}) {
+inline std::vector<Point2D> SampleArcPoints(const ArcPrimitive& arc, const ArcSampleOptions& options = {}) {
     std::vector<Point2D> points;
     if (arc.radius <= 0.0f) {
         points.push_back(arc.center);
@@ -146,46 +143,43 @@ inline std::vector<Point2D> SampleArcPoints(const ArcPrimitive& arc,
     return points;
 }
 
-inline boost::geometry::model::linestring<Point2D> ToLinestring(const ArcPrimitive& arc,
-                                                                const ArcSampleOptions& options = {}) {
+inline boost::geometry::model::linestring<Point2D> ToLinestring(
+    const ArcPrimitive& arc,
+    const ArcSampleOptions& options = {}) {
     boost::geometry::model::linestring<Point2D> line;
     auto points = SampleArcPoints(arc, options);
     line.assign(points.begin(), points.end());
     return line;
 }
 
-inline float32 DistancePointToArcApprox(const Point2D& point,
-                                        const ArcPrimitive& arc,
-                                        const ArcSampleOptions& options = {}) {
+inline float32 DistancePointToArcApprox(const Point2D& point, const ArcPrimitive& arc, const ArcSampleOptions& options = {}) {
     auto line = ToLinestring(arc, options);
     return boost::geometry::distance(point, line);
 }
 
-inline float32 DistanceLineToArcApprox(const LinePrimitive& line,
-                                       const ArcPrimitive& arc,
-                                       const ArcSampleOptions& options = {}) {
+inline float32 DistanceLineToArcApprox(
+    const LinePrimitive& line,
+    const ArcPrimitive& arc,
+    const ArcSampleOptions& options = {}) {
     auto arc_line = ToLinestring(arc, options);
     return boost::geometry::distance(ToSegment(line), arc_line);
 }
 
-inline bool IntersectsLineArcApprox(const LinePrimitive& line,
-                                    const ArcPrimitive& arc,
-                                    const ArcSampleOptions& options = {}) {
+inline bool IntersectsLineArcApprox(const LinePrimitive& line, const ArcPrimitive& arc, const ArcSampleOptions& options = {}) {
     auto arc_line = ToLinestring(arc, options);
     return boost::geometry::intersects(ToSegment(line), arc_line);
 }
 
-inline float32 DistanceArcToArcApprox(const ArcPrimitive& left,
-                                      const ArcPrimitive& right,
-                                      const ArcSampleOptions& options = {}) {
+inline float32 DistanceArcToArcApprox(
+    const ArcPrimitive& left,
+    const ArcPrimitive& right,
+    const ArcSampleOptions& options = {}) {
     auto left_line = ToLinestring(left, options);
     auto right_line = ToLinestring(right, options);
     return boost::geometry::distance(left_line, right_line);
 }
 
-inline bool IntersectsArcArcApprox(const ArcPrimitive& left,
-                                   const ArcPrimitive& right,
-                                   const ArcSampleOptions& options = {}) {
+inline bool IntersectsArcArcApprox(const ArcPrimitive& left, const ArcPrimitive& right, const ArcSampleOptions& options = {}) {
     auto left_line = ToLinestring(left, options);
     auto right_line = ToLinestring(right, options);
     return boost::geometry::intersects(left_line, right_line);

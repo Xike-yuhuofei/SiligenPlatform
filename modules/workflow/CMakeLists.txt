@@ -217,9 +217,9 @@ if(TARGET siligen_process_path_application_public)
     target_link_libraries(siligen_process_runtime_core_planning INTERFACE
         siligen_process_path_application_public
     )
-else()
+elseif(TARGET siligen_process_path_contracts_public)
     target_link_libraries(siligen_process_runtime_core_planning INTERFACE
-        siligen_process_path_domain_trajectory
+        siligen_process_path_contracts_public
     )
 endif()
 if(TARGET siligen_motion_planning_application_public)

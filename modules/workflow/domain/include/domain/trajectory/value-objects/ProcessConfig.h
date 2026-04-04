@@ -1,12 +1,10 @@
 #pragma once
 
-#include "process_path/contracts/Path.h"
+#include "process_path/contracts/ProcessConfig.h"
 
 // Legacy bridge header; canonical public owner contract lives in M6 process-path contracts.
 namespace Siligen::Domain::Trajectory::ValueObjects {
 
-using SegmentType = Siligen::ProcessPath::Contracts::SegmentType;
-using Segment = Siligen::ProcessPath::Contracts::Segment;
-using Path = Siligen::ProcessPath::Contracts::Path;
+using ProcessConfig = Siligen::ProcessPath::Contracts::ProcessConfig;
 
 }  // namespace Siligen::Domain::Trajectory::ValueObjects

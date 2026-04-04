@@ -1,15 +1,14 @@
 #pragma once
 
-#include "domain/trajectory/domain-services/GeometryNormalizer.h"
-#include "domain/trajectory/domain-services/ProcessAnnotator.h"
-#include "domain/trajectory/domain-services/TrajectoryShaper.h"
-#include "domain/trajectory/value-objects/Primitive.h"
-#include "domain/trajectory/value-objects/ProcessConfig.h"
-#include "domain/trajectory/value-objects/ProcessPath.h"
 #include "domain/motion/value-objects/TimePlanningConfig.h"
 #include "domain/motion/value-objects/MotionTrajectory.h"
-#include "domain/motion/domain-services/MotionPlanner.h"
 #include "domain/motion/domain-services/VelocityProfileService.h"
+#include "process_path/contracts/NormalizationConfig.h"
+#include "process_path/contracts/NormalizedPath.h"
+#include "process_path/contracts/Primitive.h"
+#include "process_path/contracts/ProcessConfig.h"
+#include "process_path/contracts/ProcessPath.h"
+#include "process_path/contracts/TrajectoryShaperConfig.h"
 
 #include <memory>
 #include <vector>
@@ -17,17 +16,17 @@
 namespace Siligen::Domain::Dispensing::DomainServices {
 
 struct UnifiedTrajectoryPlanRequest {
-    Domain::Trajectory::DomainServices::NormalizationConfig normalization;
-    Domain::Trajectory::ValueObjects::ProcessConfig process;
-    Domain::Trajectory::DomainServices::TrajectoryShaperConfig shaping;
+    Siligen::ProcessPath::Contracts::NormalizationConfig normalization;
+    Siligen::ProcessPath::Contracts::ProcessConfig process;
+    Siligen::ProcessPath::Contracts::TrajectoryShaperConfig shaping;
     Domain::Motion::ValueObjects::TimePlanningConfig motion;
     bool generate_motion_trajectory = true;
 };
 
 struct UnifiedTrajectoryPlanResult {
-    Domain::Trajectory::DomainServices::NormalizedPath normalized;
-    Domain::Trajectory::ValueObjects::ProcessPath process_path;
-    Domain::Trajectory::ValueObjects::ProcessPath shaped_path;
+    Siligen::ProcessPath::Contracts::NormalizedPath normalized;
+    Siligen::ProcessPath::Contracts::ProcessPath process_path;
+    Siligen::ProcessPath::Contracts::ProcessPath shaped_path;
     Domain::Motion::ValueObjects::MotionTrajectory motion_trajectory;
 };
 
@@ -37,7 +36,7 @@ class UnifiedTrajectoryPlannerService {
         std::shared_ptr<Domain::Motion::DomainServices::VelocityProfileService> velocity_service = nullptr);
     ~UnifiedTrajectoryPlannerService() = default;
 
-    UnifiedTrajectoryPlanResult Plan(const std::vector<Domain::Trajectory::ValueObjects::Primitive>& primitives,
+    UnifiedTrajectoryPlanResult Plan(const std::vector<Siligen::ProcessPath::Contracts::Primitive>& primitives,
                                      const UnifiedTrajectoryPlanRequest& request) const;
 
    private:

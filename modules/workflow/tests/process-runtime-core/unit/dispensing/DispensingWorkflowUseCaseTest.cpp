@@ -25,6 +25,9 @@
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/process_path/ProcessPathFacade.h"
 #include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
+#include "process_path/contracts/IPathSourcePort.h"
+#include "process_path/contracts/Primitive.h"
+#include "process_path/contracts/ProcessPath.h"
 #undef private
 #include "domain/dispensing/planning/domain-services/DispensingPlannerService.h"
 #include "dxf_geometry/application/services/dxf/DxfPbPreparationService.h"
@@ -84,7 +87,7 @@ class LinePathSourceStub final : public Siligen::Domain::Trajectory::Ports::IPat
     Result<Siligen::Domain::Trajectory::Ports::PathSourceResult> LoadFromFile(const std::string&) override {
         using Siligen::Domain::Trajectory::Ports::PathPrimitiveMeta;
         using Siligen::Domain::Trajectory::Ports::PathSourceResult;
-        using Siligen::Domain::Trajectory::ValueObjects::Primitive;
+        using Siligen::ProcessPath::Contracts::Primitive;
 
         PathSourceResult result;
         result.success = true;
@@ -106,7 +109,7 @@ class SlowCountingLinePathSourceStub final : public Siligen::Domain::Trajectory:
         std::this_thread::sleep_for(delay_);
         using Siligen::Domain::Trajectory::Ports::PathPrimitiveMeta;
         using Siligen::Domain::Trajectory::Ports::PathSourceResult;
-        using Siligen::Domain::Trajectory::ValueObjects::Primitive;
+        using Siligen::ProcessPath::Contracts::Primitive;
 
         PathSourceResult result;
         result.success = true;
@@ -176,7 +179,7 @@ PlanningRequest BuildCanonicalPlanningRequest(const std::string& filepath = "can
     request.curve_chain_max_segment_mm = 1.5f;
     request.use_hardware_trigger = false;
     request.use_interpolation_planner = true;
-    request.interpolation_algorithm = Siligen::Domain::Motion::InterpolationAlgorithm::SPLINE;
+    request.interpolation_algorithm = Siligen::Domain::Motion::InterpolationAlgorithm::LINEAR;
     request.trajectory_config.max_velocity = 88.0f;
     request.trajectory_config.max_acceleration = 350.0f;
     request.trajectory_config.max_jerk = 500.0f;
@@ -716,16 +719,16 @@ bool MotionPreviewHasUnexpectedSegmentAngle(
     return false;
 }
 
-Siligen::Domain::Trajectory::ValueObjects::ProcessSegment BuildLineProcessSegment(
+Siligen::ProcessPath::Contracts::ProcessSegment BuildLineProcessSegment(
     const Point2D& start,
     const Point2D& end) {
-    Siligen::Domain::Trajectory::ValueObjects::Segment segment;
-    segment.type = Siligen::Domain::Trajectory::ValueObjects::SegmentType::Line;
+    Siligen::ProcessPath::Contracts::Segment segment;
+    segment.type = Siligen::ProcessPath::Contracts::SegmentType::Line;
     segment.line.start = start;
     segment.line.end = end;
     segment.length = start.DistanceTo(end);
 
-    Siligen::Domain::Trajectory::ValueObjects::ProcessSegment process_segment;
+    Siligen::ProcessPath::Contracts::ProcessSegment process_segment;
     process_segment.geometry = segment;
     process_segment.dispense_on = true;
     return process_segment;

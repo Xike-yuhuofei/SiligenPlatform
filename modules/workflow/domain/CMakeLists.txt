@@ -54,10 +54,10 @@ if(NOT TARGET siligen_motion_core)
     )
 endif()
 
-if(NOT TARGET siligen_process_path_domain_trajectory)
+if(NOT TARGET siligen_process_path_contracts_public)
     add_subdirectory(
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../process-path/domain/trajectory"
-        "${CMAKE_BINARY_DIR}/modules/process-path/domain/trajectory"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../process-path/contracts"
+        "${CMAKE_BINARY_DIR}/_p/wd_pp_contracts"
     )
 endif()
 
@@ -96,7 +96,7 @@ target_link_libraries(siligen_domain INTERFACE
     siligen_domain_services
     siligen_process_core
     siligen_motion_core
-    siligen_process_path_domain_trajectory
+    siligen_process_path_contracts_public
     domain_recipes
     domain_machine
     siligen_dispense_packaging_domain_dispensing

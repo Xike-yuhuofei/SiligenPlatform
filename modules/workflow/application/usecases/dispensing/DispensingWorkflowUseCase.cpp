@@ -728,13 +728,12 @@ PreviewSnapshotResponse DispensingWorkflowUseCase::BuildPreviewSnapshotResponse(
     input.estimated_time_s = plan_record.response.estimated_time_s;
     input.generated_at = plan_record.preview_generated_at;
     input.execution_trajectory_points = &plan_record.execution_trajectory_points;
-    if (!plan_record.execution_assembly.export_request.process_path.segments.empty()) {
+    if (!plan_record.execution_assembly.motion_trajectory_points.empty()) {
+        input.motion_trajectory_points = &plan_record.execution_assembly.motion_trajectory_points;
+    } else if (!plan_record.execution_assembly.export_request.process_path.segments.empty()) {
         input.process_path = &plan_record.execution_assembly.export_request.process_path;
     } else if (!retained_authority_process_path.segments.empty()) {
         input.process_path = &retained_authority_process_path;
-    }
-    if (!plan_record.execution_assembly.motion_trajectory_points.empty()) {
-        input.motion_trajectory_points = &plan_record.execution_assembly.motion_trajectory_points;
     }
     input.glue_points = &plan_record.glue_points;
     input.authority_layout_id = plan_record.authority_trigger_layout.layout_id;

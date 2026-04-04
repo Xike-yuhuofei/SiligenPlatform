@@ -32,6 +32,7 @@
 
 - 已补齐 module.yaml、domain、services、application、adapters、tests 与 examples 子目录。
 - `contracts/` 与 `application/` 已成为当前 `M6` 的 canonical public surface。
+- `IPathSourcePort` / `IDXFPathSourcePort` 已收口到 `contracts/include/process_path/contracts/`，`domain/trajectory/ports` 只保留兼容桥接。
 - `ProcessPathFacade` 是唯一对外应用入口；新 consumer 不得直连 workflow 下的 trajectory 历史副本。
 - `domain/trajectory/` 承载 `M6` 领域规则与值对象，作为 owner implementation root 继续保留。
 - 本模块不再对外公开运动配置、规划报告、轨迹别名或运动规划服务。

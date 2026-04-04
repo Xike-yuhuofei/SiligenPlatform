@@ -1,16 +1,16 @@
 #pragma once
 
-#include "domain/trajectory/value-objects/Path.h"
-#include "domain/trajectory/value-objects/Primitive.h"
+#include "../value-objects/Path.h"
+#include "../value-objects/Primitive.h"
 #include "shared/types/Types.h"
 
 #include <vector>
 
 namespace Siligen::Domain::Trajectory::DomainServices {
 
-using Siligen::Shared::Types::float32;
 using Siligen::Domain::Trajectory::ValueObjects::Path;
 using Siligen::Domain::Trajectory::ValueObjects::Primitive;
+using Siligen::Shared::Types::float32;
 
 struct NormalizationConfig {
     float32 unit_scale = 1.0f;
@@ -23,6 +23,10 @@ struct NormalizationConfig {
 struct NormalizationReport {
     int discontinuity_count = 0;
     bool closed = false;
+    bool invalid_unit_scale = false;
+    int skipped_spline_count = 0;
+    int point_primitive_count = 0;
+    int consumable_segment_count = 0;
 };
 
 struct NormalizedPath {

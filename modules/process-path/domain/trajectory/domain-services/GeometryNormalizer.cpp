@@ -58,7 +58,11 @@ NormalizedPath GeometryNormalizer::Normalize(const std::vector<Primitive>& primi
     NormalizedPath result;
     result.path.segments.reserve(primitives.size());
 
-    const float32 scale = (config.unit_scale <= kEpsilon) ? 1.0f : config.unit_scale;
+    if (config.unit_scale <= kEpsilon) {
+        result.report.invalid_unit_scale = true;
+        return result;
+    }
+    const float32 scale = config.unit_scale;
 
     SplineApproximation spline_approximation;
     SplineApproximationConfig spline_config;
@@ -77,6 +81,9 @@ NormalizedPath GeometryNormalizer::Normalize(const std::vector<Primitive>& primi
             return;
         }
         result.path.segments.push_back(segment);
+        if (!segment.is_point) {
+            result.report.consumable_segment_count++;
+        }
     };
 
     auto append_arc_segment = [&](const ArcPrimitive& arc) {
@@ -88,10 +95,12 @@ NormalizedPath GeometryNormalizer::Normalize(const std::vector<Primitive>& primi
             return;
         }
         result.path.segments.push_back(segment);
+        result.report.consumable_segment_count++;
     };
 
     auto append_spline_segments = [&](const SplinePrimitive& spline) {
         if (!config.approximate_splines) {
+            result.report.skipped_spline_count++;
             return;
         }
         auto approx_segments = spline_approximation.Approximate(spline, spline_config);
@@ -100,6 +109,7 @@ NormalizedPath GeometryNormalizer::Normalize(const std::vector<Primitive>& primi
                 continue;
             }
             result.path.segments.push_back(seg);
+            result.report.consumable_segment_count++;
         }
     };
 
@@ -186,6 +196,7 @@ NormalizedPath GeometryNormalizer::Normalize(const std::vector<Primitive>& primi
                 break;
             }
             case PrimitiveType::Point: {
+                result.report.point_primitive_count++;
                 Point2D pt = primitive.point.position * scale;
                 append_line_segment(pt, pt, true);
                 break;

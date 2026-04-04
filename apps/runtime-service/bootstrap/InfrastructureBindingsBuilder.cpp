@@ -30,8 +30,6 @@
 #include "runtime/scheduling/TaskSchedulerAdapter.h"
 #include "security/AuditLogger.h"
 #include "security/InterlockMonitor.h"
-#include "infrastructure/adapters/planning/dxf/AutoPathSourceAdapter.h"
-#include "infrastructure/adapters/planning/dxf/DXFAdapterFactory.h"
 #include "infrastructure/adapters/planning/dxf/PbPathSourceAdapter.h"
 #include "runtime/recipes/RecipeFileRepository.h"
 #include "runtime/recipes/TemplateFileRepository.h"
@@ -320,9 +318,6 @@ InfrastructureBindings CreateInfrastructureBindings(const InfrastructureBootstra
     }
 
     bindings.path_source_port = std::make_shared<Infrastructure::Adapters::Parsing::PbPathSourceAdapter>();
-    
-    // 注册DXF专用路径源适配器
-    bindings.dxf_path_source_port = Infrastructure::Adapters::Parsing::DXFAdapterFactory::CreateDXFPathSourceAdapter();
 
     return bindings;
 }

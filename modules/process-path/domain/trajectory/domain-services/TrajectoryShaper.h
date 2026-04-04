@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/trajectory/value-objects/ProcessPath.h"
+#include "../value-objects/ProcessPath.h"
 #include "shared/types/Types.h"
 
 namespace Siligen::Domain::Trajectory::DomainServices {

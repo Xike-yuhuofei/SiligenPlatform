@@ -1,7 +1,7 @@
 #pragma once
 
-#include "domain/trajectory/ports/IPathSourcePort.h"
-#include "domain/trajectory/ports/IDXFPathSourcePort.h"
+#include "process_path/contracts/IPathSourcePort.h"
+#include "process_path/contracts/IDXFPathSourcePort.h"
 #include "PbPathSourceAdapter.h"
 
 #include <memory>

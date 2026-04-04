@@ -6,9 +6,11 @@
 #include "domain/motion/CMPCoordinatedInterpolator.h"
 #include "domain/motion/domain-services/TimeTrajectoryPlanner.h"
 #include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
+#include "process_path/contracts/GeometryUtils.h"
+#include "process_path/contracts/Path.h"
+#include "process_path/contracts/PathPrimitiveMeta.h"
+#include "process_path/contracts/Primitive.h"
 #include "process_path/contracts/ProcessPath.h"
-#include "domain/trajectory/value-objects/GeometryBoostAdapter.h"
-#include "domain/trajectory/value-objects/GeometryUtils.h"
 #include "shared/geometry/BoostGeometryAdapter.h"
 #include "shared/types/CMPTypes.h"
 #include "shared/types/Error.h"
@@ -35,8 +37,18 @@ using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::int32;
 using Siligen::Shared::Types::uint32;
-using Siligen::Domain::Trajectory::ValueObjects::Primitive;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
+using Siligen::ProcessPath::Contracts::ArcPoint;
+using Siligen::ProcessPath::Contracts::ComputeArcLength;
+using Siligen::ProcessPath::Contracts::ComputeArcSweep;
+using Siligen::ProcessPath::Contracts::NormalizeAngle;
+using Siligen::ProcessPath::Contracts::PathPrimitiveMeta;
+using Siligen::ProcessPath::Contracts::Primitive;
+using Siligen::ProcessPath::Contracts::ProcessPath;
+using Siligen::ProcessPath::Contracts::ProcessTag;
+using Siligen::ProcessPath::Contracts::Segment;
+using Siligen::ProcessPath::Contracts::SegmentEnd;
+using Siligen::ProcessPath::Contracts::SegmentStart;
+using Siligen::ProcessPath::Contracts::SegmentType;
 using Siligen::Domain::Motion::Ports::InterpolationData;
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectory;
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectoryPoint;
@@ -44,13 +56,6 @@ using Siligen::Domain::Dispensing::DomainServices::UnifiedTrajectoryPlanRequest;
 using Siligen::Domain::Dispensing::DomainServices::UnifiedTrajectoryPlannerService;
 using Siligen::Domain::Dispensing::DomainServices::TriggerPlanner;
 using Siligen::Domain::Dispensing::ValueObjects::TriggerPlan;
-using Siligen::ProcessPath::Contracts::ProcessPath;
-using Siligen::Domain::Trajectory::Geometry::LineLength;
-using Siligen::Domain::Trajectory::ValueObjects::ArcPoint;
-using Siligen::Domain::Trajectory::ValueObjects::ComputeArcLength;
-using Siligen::Domain::Trajectory::ValueObjects::ComputeArcSweep;
-using Siligen::Domain::Trajectory::ValueObjects::NormalizeAngle;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentEnd;
 using Siligen::Shared::Types::Point2D;
 using Siligen::Shared::Geometry::ComputeSegmentIntersection;
 using Siligen::Shared::Geometry::Distance;
@@ -64,27 +69,27 @@ constexpr float32 kCoordinateSafetyMarginMm = 1.0f;
 constexpr float32 kBoundsToleranceMm = 1e-4f;
 constexpr float32 kPreviewPointDedupToleranceMm = 1e-4f;
 
-float32 SegmentLength(const Domain::Trajectory::ValueObjects::Segment& segment) {
+float32 SegmentLength(const Segment& segment) {
     if (segment.length > kEpsilon) {
         return segment.length;
     }
-    if (segment.type == Domain::Trajectory::ValueObjects::SegmentType::Line) {
-        return LineLength(segment.line);
+    if (segment.type == SegmentType::Line) {
+        return segment.line.start.DistanceTo(segment.line.end);
     }
     return ComputeArcLength(segment.arc);
 }
 
-Point2D SegmentEndPoint(const Domain::Trajectory::ValueObjects::Segment& segment) {
+Point2D SegmentEndPoint(const Segment& segment) {
     return SegmentEnd(segment);
 }
 
-Point2D ContourElementStartPoint(const Domain::Trajectory::ValueObjects::ContourElement& element) {
-    using Siligen::Domain::Trajectory::ValueObjects::ContourElementType;
+Point2D ContourElementStartPoint(const Siligen::ProcessPath::Contracts::ContourElement& element) {
+    using Siligen::ProcessPath::Contracts::ContourElementType;
     if (element.type == ContourElementType::Line) {
         return element.line.start;
     }
     if (element.type == ContourElementType::Arc) {
-        return Siligen::Domain::Trajectory::ValueObjects::ArcPoint(element.arc, element.arc.start_angle_deg);
+        return ArcPoint(element.arc, element.arc.start_angle_deg);
     }
     if (!element.spline.control_points.empty()) {
         return element.spline.control_points.front();
@@ -92,13 +97,13 @@ Point2D ContourElementStartPoint(const Domain::Trajectory::ValueObjects::Contour
     return Point2D();
 }
 
-Point2D ContourElementEndPoint(const Domain::Trajectory::ValueObjects::ContourElement& element) {
-    using Siligen::Domain::Trajectory::ValueObjects::ContourElementType;
+Point2D ContourElementEndPoint(const Siligen::ProcessPath::Contracts::ContourElement& element) {
+    using Siligen::ProcessPath::Contracts::ContourElementType;
     if (element.type == ContourElementType::Line) {
         return element.line.end;
     }
     if (element.type == ContourElementType::Arc) {
-        return Siligen::Domain::Trajectory::ValueObjects::ArcPoint(element.arc, element.arc.end_angle_deg);
+        return ArcPoint(element.arc, element.arc.end_angle_deg);
     }
     if (!element.spline.control_points.empty()) {
         return element.spline.control_points.back();
@@ -107,7 +112,7 @@ Point2D ContourElementEndPoint(const Domain::Trajectory::ValueObjects::ContourEl
 }
 
 Point2D PrimitiveStartPoint(const Primitive& primitive) {
-    using Siligen::Domain::Trajectory::ValueObjects::PrimitiveType;
+    using Siligen::ProcessPath::Contracts::PrimitiveType;
     if (primitive.type == PrimitiveType::Line) {
         return primitive.line.start;
     }
@@ -123,8 +128,7 @@ Point2D PrimitiveStartPoint(const Primitive& primitive) {
                        primitive.circle.center.y + primitive.circle.radius * std::sin(angle_rad));
     }
     if (primitive.type == PrimitiveType::Ellipse) {
-        return Siligen::Domain::Trajectory::ValueObjects::EllipsePoint(primitive.ellipse,
-                                                                       primitive.ellipse.start_param);
+        return Siligen::ProcessPath::Contracts::EllipsePoint(primitive.ellipse, primitive.ellipse.start_param);
     }
     if (primitive.type == PrimitiveType::Point) {
         return primitive.point.position;
@@ -136,7 +140,7 @@ Point2D PrimitiveStartPoint(const Primitive& primitive) {
 }
 
 Point2D PrimitiveEndPoint(const Primitive& primitive) {
-    using Siligen::Domain::Trajectory::ValueObjects::PrimitiveType;
+    using Siligen::ProcessPath::Contracts::PrimitiveType;
     if (primitive.type == PrimitiveType::Line) {
         return primitive.line.end;
     }
@@ -152,8 +156,7 @@ Point2D PrimitiveEndPoint(const Primitive& primitive) {
                        primitive.circle.center.y + primitive.circle.radius * std::sin(angle_rad));
     }
     if (primitive.type == PrimitiveType::Ellipse) {
-        return Siligen::Domain::Trajectory::ValueObjects::EllipsePoint(primitive.ellipse,
-                                                                       primitive.ellipse.end_param);
+        return Siligen::ProcessPath::Contracts::EllipsePoint(primitive.ellipse, primitive.ellipse.end_param);
     }
     if (primitive.type == PrimitiveType::Point) {
         return primitive.point.position;
@@ -165,8 +168,8 @@ Point2D PrimitiveEndPoint(const Primitive& primitive) {
 }
 
 Primitive ReversePrimitive(const Primitive& primitive) {
-    using Siligen::Domain::Trajectory::ValueObjects::PrimitiveType;
-    using Siligen::Domain::Trajectory::ValueObjects::ContourElementType;
+    using Siligen::ProcessPath::Contracts::PrimitiveType;
+    using Siligen::ProcessPath::Contracts::ContourElementType;
     Primitive reversed = primitive;
     if (primitive.type == PrimitiveType::Line) {
         reversed.line.start = primitive.line.end;
@@ -182,7 +185,7 @@ Primitive ReversePrimitive(const Primitive& primitive) {
         std::swap(reversed.ellipse.start_param, reversed.ellipse.end_param);
         reversed.ellipse.clockwise = !reversed.ellipse.clockwise;
     } else if (primitive.type == PrimitiveType::Contour) {
-        std::vector<Domain::Trajectory::ValueObjects::ContourElement> elements;
+        std::vector<Siligen::ProcessPath::Contracts::ContourElement> elements;
         elements.reserve(primitive.contour.elements.size());
         for (auto it = primitive.contour.elements.rbegin();
              it != primitive.contour.elements.rend();
@@ -219,7 +222,7 @@ int CountPrimitiveDiscontinuity(const std::vector<Primitive>& primitives, float3
 }
 
 bool ShouldRebuildByConnectivity(const std::vector<Primitive>& primitives,
-                                 const std::vector<Siligen::Domain::Trajectory::Ports::PathPrimitiveMeta>& metadata,
+                                 const std::vector<PathPrimitiveMeta>& metadata,
                                  float32 tolerance,
                                  int discontinuity_count) {
     if (primitives.size() < 2) {
@@ -231,7 +234,7 @@ bool ShouldRebuildByConnectivity(const std::vector<Primitive>& primitives,
     if (discontinuity_count <= 0) {
         return false;
     }
-    using Siligen::Domain::Trajectory::ValueObjects::PrimitiveType;
+    using Siligen::ProcessPath::Contracts::PrimitiveType;
     for (const auto& prim : primitives) {
         if (prim.type != PrimitiveType::Line && prim.type != PrimitiveType::Arc) {
             return false;
@@ -253,7 +256,7 @@ bool ShouldRebuildByConnectivity(const std::vector<Primitive>& primitives,
 
 struct ConnectivityRebuildResult {
     std::vector<Primitive> primitives;
-    std::vector<Siligen::Domain::Trajectory::Ports::PathPrimitiveMeta> metadata;
+    std::vector<PathPrimitiveMeta> metadata;
     size_t contour_count = 0;
     size_t chained_count = 0;
     size_t reversed_count = 0;
@@ -261,7 +264,7 @@ struct ConnectivityRebuildResult {
 
 ConnectivityRebuildResult RebuildPrimitivesByConnectivity(
     const std::vector<Primitive>& primitives,
-    const std::vector<Siligen::Domain::Trajectory::Ports::PathPrimitiveMeta>& metadata,
+    const std::vector<PathPrimitiveMeta>& metadata,
     float32 tolerance) {
     ConnectivityRebuildResult result;
     if (primitives.empty() || primitives.size() != metadata.size()) {
@@ -371,7 +374,7 @@ struct BoundsReport {
 
 struct SplitLineResult {
     std::vector<Primitive> primitives;
-    std::vector<Siligen::Domain::Trajectory::Ports::PathPrimitiveMeta> metadata;
+    std::vector<PathPrimitiveMeta> metadata;
     size_t original_count = 0;
     size_t split_count = 0;
     size_t intersection_pairs = 0;
@@ -381,7 +384,7 @@ struct SplitLineResult {
 
 SplitLineResult SplitLinePrimitivesByIntersection(
     const std::vector<Primitive>& primitives,
-    const std::vector<Siligen::Domain::Trajectory::Ports::PathPrimitiveMeta>& metadata,
+    const std::vector<PathPrimitiveMeta>& metadata,
     float32 tolerance) {
     SplitLineResult result;
     result.original_count = primitives.size();
@@ -389,7 +392,7 @@ SplitLineResult SplitLinePrimitivesByIntersection(
         return result;
     }
 
-    using Siligen::Domain::Trajectory::ValueObjects::PrimitiveType;
+    using Siligen::ProcessPath::Contracts::PrimitiveType;
     for (const auto& prim : primitives) {
         if (prim.type != PrimitiveType::Line) {
             return result;
@@ -542,33 +545,33 @@ bool IsAngleOnArc(float32 start_angle, float32 end_angle, bool clockwise, float3
     return sweep <= total + 1e-3f;
 }
 
-void UpdateBoundsForArc(const Domain::Trajectory::ValueObjects::ArcPrimitive& arc,
+void UpdateBoundsForArc(const Siligen::ProcessPath::Contracts::ArcPrimitive& arc,
                         int seg_idx,
                         BoundsReport& report) {
     float32 start_angle = NormalizeAngle(arc.start_angle_deg);
     float32 end_angle = NormalizeAngle(arc.end_angle_deg);
-    UpdateBounds(report, Siligen::Domain::Trajectory::ValueObjects::ArcPoint(arc, start_angle), seg_idx, "arc.start");
-    UpdateBounds(report, Siligen::Domain::Trajectory::ValueObjects::ArcPoint(arc, end_angle), seg_idx, "arc.end");
+    UpdateBounds(report, ArcPoint(arc, start_angle), seg_idx, "arc.start");
+    UpdateBounds(report, ArcPoint(arc, end_angle), seg_idx, "arc.end");
 
     const float32 cardinal_angles[] = {0.0f, 90.0f, 180.0f, 270.0f};
     for (float32 angle : cardinal_angles) {
         float32 norm = NormalizeAngle(angle);
         if (IsAngleOnArc(start_angle, end_angle, arc.clockwise, norm)) {
-            UpdateBounds(report, Siligen::Domain::Trajectory::ValueObjects::ArcPoint(arc, norm), seg_idx, "arc.cardinal");
+            UpdateBounds(report, ArcPoint(arc, norm), seg_idx, "arc.cardinal");
         }
     }
 }
 
-BoundsReport ComputeBoundsForSegments(const std::vector<Domain::Trajectory::ValueObjects::Segment>& segments) {
+BoundsReport ComputeBoundsForSegments(const std::vector<Segment>& segments) {
     BoundsReport report;
     for (size_t i = 0; i < segments.size(); ++i) {
         const auto& segment = segments[i];
-        if (segment.type == Domain::Trajectory::ValueObjects::SegmentType::Line) {
+        if (segment.type == SegmentType::Line) {
             UpdateBounds(report, segment.line.start, static_cast<int>(i), "line.start");
             UpdateBounds(report, segment.line.end, static_cast<int>(i), "line.end");
             continue;
         }
-        if (segment.type == Domain::Trajectory::ValueObjects::SegmentType::Arc) {
+        if (segment.type == SegmentType::Arc) {
             UpdateBoundsForArc(segment.arc, static_cast<int>(i), report);
             continue;
         }
@@ -585,16 +588,16 @@ BoundsReport ComputeBoundsForPrimitives(const std::vector<Primitive>& primitives
     BoundsReport report;
     for (size_t i = 0; i < primitives.size(); ++i) {
         const auto& prim = primitives[i];
-        if (prim.type == Domain::Trajectory::ValueObjects::PrimitiveType::Line) {
+        if (prim.type == Siligen::ProcessPath::Contracts::PrimitiveType::Line) {
             UpdateBounds(report, prim.line.start, static_cast<int>(i), "line.start");
             UpdateBounds(report, prim.line.end, static_cast<int>(i), "line.end");
             continue;
         }
-        if (prim.type == Domain::Trajectory::ValueObjects::PrimitiveType::Arc) {
+        if (prim.type == Siligen::ProcessPath::Contracts::PrimitiveType::Arc) {
             UpdateBoundsForArc(prim.arc, static_cast<int>(i), report);
             continue;
         }
-        if (prim.type == Domain::Trajectory::ValueObjects::PrimitiveType::Circle) {
+        if (prim.type == Siligen::ProcessPath::Contracts::PrimitiveType::Circle) {
             UpdateBounds(report,
                          Point2D(prim.circle.center.x + prim.circle.radius, prim.circle.center.y),
                          static_cast<int>(i),
@@ -613,7 +616,7 @@ BoundsReport ComputeBoundsForPrimitives(const std::vector<Primitive>& primitives
                          "circle.s");
             continue;
         }
-        if (prim.type == Domain::Trajectory::ValueObjects::PrimitiveType::Ellipse) {
+        if (prim.type == Siligen::ProcessPath::Contracts::PrimitiveType::Ellipse) {
             const auto& e = prim.ellipse;
             Point2D major = e.major_axis;
             float32 a = major.Length();
@@ -631,19 +634,19 @@ BoundsReport ComputeBoundsForPrimitives(const std::vector<Primitive>& primitives
             }
             continue;
         }
-        if (prim.type == Domain::Trajectory::ValueObjects::PrimitiveType::Point) {
+        if (prim.type == Siligen::ProcessPath::Contracts::PrimitiveType::Point) {
             UpdateBounds(report, prim.point.position, static_cast<int>(i), "point");
             continue;
         }
-        if (prim.type == Domain::Trajectory::ValueObjects::PrimitiveType::Contour) {
+        if (prim.type == Siligen::ProcessPath::Contracts::PrimitiveType::Contour) {
             const auto& elements = prim.contour.elements;
             for (const auto& elem : elements) {
-                if (elem.type == Domain::Trajectory::ValueObjects::ContourElementType::Line) {
+                if (elem.type == Siligen::ProcessPath::Contracts::ContourElementType::Line) {
                     UpdateBounds(report, elem.line.start, static_cast<int>(i), "contour.line.start");
                     UpdateBounds(report, elem.line.end, static_cast<int>(i), "contour.line.end");
-                } else if (elem.type == Domain::Trajectory::ValueObjects::ContourElementType::Arc) {
+                } else if (elem.type == Siligen::ProcessPath::Contracts::ContourElementType::Arc) {
                     UpdateBoundsForArc(elem.arc, static_cast<int>(i), report);
-                } else if (elem.type == Domain::Trajectory::ValueObjects::ContourElementType::Spline) {
+                } else if (elem.type == Siligen::ProcessPath::Contracts::ContourElementType::Spline) {
                     for (const auto& pt : elem.spline.control_points) {
                         UpdateBounds(report, pt, static_cast<int>(i), "contour.spline.cp");
                     }
@@ -661,35 +664,35 @@ BoundsReport ComputeBoundsForPrimitives(const std::vector<Primitive>& primitives
 }
 
 void ApplyOffsetToPrimitive(Primitive& prim, const Point2D& offset) {
-    if (prim.type == Domain::Trajectory::ValueObjects::PrimitiveType::Line) {
+    if (prim.type == Siligen::ProcessPath::Contracts::PrimitiveType::Line) {
         prim.line.start += offset;
         prim.line.end += offset;
         return;
     }
-    if (prim.type == Domain::Trajectory::ValueObjects::PrimitiveType::Arc) {
+    if (prim.type == Siligen::ProcessPath::Contracts::PrimitiveType::Arc) {
         prim.arc.center += offset;
         return;
     }
-    if (prim.type == Domain::Trajectory::ValueObjects::PrimitiveType::Circle) {
+    if (prim.type == Siligen::ProcessPath::Contracts::PrimitiveType::Circle) {
         prim.circle.center += offset;
         return;
     }
-    if (prim.type == Domain::Trajectory::ValueObjects::PrimitiveType::Ellipse) {
+    if (prim.type == Siligen::ProcessPath::Contracts::PrimitiveType::Ellipse) {
         prim.ellipse.center += offset;
         return;
     }
-    if (prim.type == Domain::Trajectory::ValueObjects::PrimitiveType::Point) {
+    if (prim.type == Siligen::ProcessPath::Contracts::PrimitiveType::Point) {
         prim.point.position += offset;
         return;
     }
-    if (prim.type == Domain::Trajectory::ValueObjects::PrimitiveType::Contour) {
+    if (prim.type == Siligen::ProcessPath::Contracts::PrimitiveType::Contour) {
         for (auto& elem : prim.contour.elements) {
-            if (elem.type == Domain::Trajectory::ValueObjects::ContourElementType::Line) {
+            if (elem.type == Siligen::ProcessPath::Contracts::ContourElementType::Line) {
                 elem.line.start += offset;
                 elem.line.end += offset;
-            } else if (elem.type == Domain::Trajectory::ValueObjects::ContourElementType::Arc) {
+            } else if (elem.type == Siligen::ProcessPath::Contracts::ContourElementType::Arc) {
                 elem.arc.center += offset;
-            } else if (elem.type == Domain::Trajectory::ValueObjects::ContourElementType::Spline) {
+            } else if (elem.type == Siligen::ProcessPath::Contracts::ContourElementType::Spline) {
                 for (auto& pt : elem.spline.control_points) {
                     pt += offset;
                 }
@@ -713,16 +716,16 @@ void ApplyOffsetToPrimitives(std::vector<Primitive>& primitives, const Point2D& 
     }
 }
 
-BoundsReport ComputeBoundsForProcessPath(const Domain::Trajectory::ValueObjects::ProcessPath& path) {
+BoundsReport ComputeBoundsForProcessPath(const ProcessPath& path) {
     BoundsReport report;
     for (size_t i = 0; i < path.segments.size(); ++i) {
         const auto& segment = path.segments[i].geometry;
-        if (segment.type == Domain::Trajectory::ValueObjects::SegmentType::Line) {
+        if (segment.type == SegmentType::Line) {
             UpdateBounds(report, segment.line.start, static_cast<int>(i), "line.start");
             UpdateBounds(report, segment.line.end, static_cast<int>(i), "line.end");
             continue;
         }
-        if (segment.type == Domain::Trajectory::ValueObjects::SegmentType::Arc) {
+        if (segment.type == SegmentType::Arc) {
             UpdateBoundsForArc(segment.arc, static_cast<int>(i), report);
             continue;
         }
@@ -776,30 +779,30 @@ void LogBoundsReport(const char* name, const BoundsReport& report) {
     }
 }
 
-const char* SegmentTypeName(Domain::Trajectory::ValueObjects::SegmentType type) {
+const char* SegmentTypeName(SegmentType type) {
     switch (type) {
-        case Domain::Trajectory::ValueObjects::SegmentType::Line:
+        case SegmentType::Line:
             return "line";
-        case Domain::Trajectory::ValueObjects::SegmentType::Arc:
+        case SegmentType::Arc:
             return "arc";
-        case Domain::Trajectory::ValueObjects::SegmentType::Spline:
+        case SegmentType::Spline:
             return "spline";
         default:
             return "unknown";
     }
 }
 
-const char* ProcessTagName(Domain::Trajectory::ValueObjects::ProcessTag tag) {
+const char* ProcessTagName(ProcessTag tag) {
     switch (tag) {
-        case Domain::Trajectory::ValueObjects::ProcessTag::Normal:
+        case ProcessTag::Normal:
             return "normal";
-        case Domain::Trajectory::ValueObjects::ProcessTag::Start:
+        case ProcessTag::Start:
             return "start";
-        case Domain::Trajectory::ValueObjects::ProcessTag::End:
+        case ProcessTag::End:
             return "end";
-        case Domain::Trajectory::ValueObjects::ProcessTag::Corner:
+        case ProcessTag::Corner:
             return "corner";
-        case Domain::Trajectory::ValueObjects::ProcessTag::Rapid:
+        case ProcessTag::Rapid:
             return "rapid";
         default:
             return "unknown";
@@ -807,7 +810,7 @@ const char* ProcessTagName(Domain::Trajectory::ValueObjects::ProcessTag tag) {
 }
 
 void LogProcessSegmentDetail(const char* name,
-                             const Domain::Trajectory::ValueObjects::ProcessPath& path,
+                             const ProcessPath& path,
                              int seg_idx,
                              const char* label) {
     if (seg_idx < 0 || static_cast<size_t>(seg_idx) >= path.segments.size()) {
@@ -830,16 +833,16 @@ void LogProcessSegmentDetail(const char* name,
         geom.curvature_radius,
         geom.is_spline_approx ? 1 : 0);
 
-    if (geom.type == Domain::Trajectory::ValueObjects::SegmentType::Line) {
+    if (geom.type == SegmentType::Line) {
         SILIGEN_LOG_WARNING_FMT_HELPER("DXF段详情[%s]: line start=(%.6f,%.6f) end=(%.6f,%.6f)",
                                        name,
                                        geom.line.start.x,
                                        geom.line.start.y,
                                        geom.line.end.x,
                                        geom.line.end.y);
-    } else if (geom.type == Domain::Trajectory::ValueObjects::SegmentType::Arc) {
-        Point2D start_pt = Siligen::Domain::Trajectory::ValueObjects::ArcPoint(geom.arc, geom.arc.start_angle_deg);
-        Point2D end_pt = Siligen::Domain::Trajectory::ValueObjects::ArcPoint(geom.arc, geom.arc.end_angle_deg);
+    } else if (geom.type == SegmentType::Arc) {
+        Point2D start_pt = ArcPoint(geom.arc, geom.arc.start_angle_deg);
+        Point2D end_pt = ArcPoint(geom.arc, geom.arc.end_angle_deg);
         SILIGEN_LOG_WARNING_FMT_HELPER(
             "DXF段详情[%s]: arc center=(%.6f,%.6f) r=%.6f start=%.6f end=%.6f cw=%d",
             name,
@@ -882,7 +885,7 @@ void LogProcessSegmentDetail(const char* name,
 }
 
 void LogBoundsSegmentDetails(const char* name,
-                             const Domain::Trajectory::ValueObjects::ProcessPath& path,
+                             const ProcessPath& path,
                              const BoundsReport& report) {
     if (!report.has) {
         return;
@@ -1022,10 +1025,10 @@ void SampleLinePoints(const Point2D& start,
     }
 }
 
-void SampleArcPoints(const Domain::Trajectory::ValueObjects::ArcPrimitive& arc,
+void SampleArcPoints(const Siligen::ProcessPath::Contracts::ArcPrimitive& arc,
                      float32 step,
                      std::vector<Point2D>& points) {
-    float32 length = Siligen::Domain::Trajectory::ValueObjects::ComputeArcLength(arc);
+    float32 length = ComputeArcLength(arc);
     if (length <= kEpsilon) {
         return;
     }
@@ -1039,11 +1042,11 @@ void SampleArcPoints(const Domain::Trajectory::ValueObjects::ArcPrimitive& arc,
     for (int i = 0; i <= slices; ++i) {
         float32 ratio = static_cast<float32>(i) / static_cast<float32>(slices);
         float32 angle = arc.start_angle_deg + direction * sweep * ratio;
-        AppendUniquePoint(points, Siligen::Domain::Trajectory::ValueObjects::ArcPoint(arc, angle));
+        AppendUniquePoint(points, ArcPoint(arc, angle));
     }
 }
 
-bool ResolveSegmentPosition(const Domain::Trajectory::ValueObjects::Segment& segment,
+bool ResolveSegmentPosition(const Segment& segment,
                             float32 local_distance,
                             Point2D& out) {
     float32 segment_length = SegmentLength(segment);
@@ -1054,10 +1057,10 @@ bool ResolveSegmentPosition(const Domain::Trajectory::ValueObjects::Segment& seg
 
     float32 ratio = std::clamp(local_distance / segment_length, 0.0f, 1.0f);
     switch (segment.type) {
-        case Domain::Trajectory::ValueObjects::SegmentType::Line:
+        case SegmentType::Line:
             out = segment.line.start + (segment.line.end - segment.line.start) * ratio;
             return true;
-        case Domain::Trajectory::ValueObjects::SegmentType::Arc: {
+        case SegmentType::Arc: {
             float32 sweep = ComputeArcSweep(segment.arc.start_angle_deg,
                                             segment.arc.end_angle_deg,
                                             segment.arc.clockwise);
@@ -1079,10 +1082,10 @@ bool ResolveProcessPathPosition(const ProcessPath& path, float32 target_distance
 
     if (target_distance <= 0.0f) {
         const auto& first = path.segments.front().geometry;
-        if (first.type == Domain::Trajectory::ValueObjects::SegmentType::Line) {
+        if (first.type == SegmentType::Line) {
             out = first.line.start;
         } else {
-            out = Domain::Trajectory::ValueObjects::SegmentStart(first);
+            out = SegmentStart(first);
         }
         return true;
     }
@@ -1113,9 +1116,9 @@ std::vector<Point2D> BuildInterpolationSeedPoints(const ProcessPath& path, float
 
     for (const auto& segment : path.segments) {
         const auto& geom = segment.geometry;
-        if (geom.type == Domain::Trajectory::ValueObjects::SegmentType::Line) {
+        if (geom.type == SegmentType::Line) {
             SampleLinePoints(geom.line.start, geom.line.end, step, points);
-        } else if (geom.type == Domain::Trajectory::ValueObjects::SegmentType::Arc) {
+        } else if (geom.type == SegmentType::Arc) {
             SampleArcPoints(geom.arc, step, points);
         } else if (!geom.spline.control_points.empty()) {
             for (size_t i = 1; i < geom.spline.control_points.size(); ++i) {
@@ -1293,7 +1296,7 @@ void AppendAuthorityPoint(TriggerArtifacts& artifacts, AuthorityTriggerPoint poi
 }
 
 Result<void> AppendAnchoredAuthorityForSegment(TriggerArtifacts& artifacts,
-                                              const Domain::Trajectory::ValueObjects::Segment& segment,
+                                              const Segment& segment,
                                               std::size_t segment_index,
                                               float32 path_offset_mm,
                                               float32 target_spacing_mm,

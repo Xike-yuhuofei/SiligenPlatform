@@ -24,20 +24,22 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/application/CMakeLists.txt")
 endif()
 
 add_library(siligen_module_process_path INTERFACE)
-if(TARGET siligen_process_path_application_public)
-    target_link_libraries(siligen_module_process_path INTERFACE
-        siligen_process_path_application_public
-    )
-else()
-    target_link_libraries(siligen_module_process_path INTERFACE
-        siligen_process_path_domain_trajectory
+if(NOT TARGET siligen_process_path_application_public)
+    message(FATAL_ERROR
+        "process-path module target requires canonical public application target: "
+        "siligen_process_path_application_public"
     )
 endif()
-if(TARGET siligen_process_path_contracts_public)
-    target_link_libraries(siligen_module_process_path INTERFACE
-        siligen_process_path_contracts_public
+if(NOT TARGET siligen_process_path_contracts_public)
+    message(FATAL_ERROR
+        "process-path module target requires canonical public contracts target: "
+        "siligen_process_path_contracts_public"
     )
 endif()
+target_link_libraries(siligen_module_process_path INTERFACE
+    siligen_process_path_application_public
+    siligen_process_path_contracts_public
+)
 target_compile_features(siligen_module_process_path INTERFACE cxx_std_17)
 
 set_target_properties(siligen_module_process_path PROPERTIES

@@ -2,7 +2,7 @@
 
 #include "domain/dispensing/value-objects/AuthorityTriggerLayout.h"
 #include "domain/dispensing/value-objects/DispenseCompensationProfile.h"
-#include "domain/trajectory/value-objects/ProcessPath.h"
+#include "process_path/contracts/ProcessPath.h"
 #include "shared/types/DispensingStrategy.h"
 #include "shared/types/Result.h"
 
@@ -14,7 +14,7 @@ using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::float32;
 using Siligen::Shared::Types::uint32;
 using Siligen::Shared::Types::DispensingStrategy;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
+using Siligen::ProcessPath::Contracts::ProcessPath;
 using Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout;
 using Siligen::Domain::Dispensing::ValueObjects::DispenseCompensationProfile;
 

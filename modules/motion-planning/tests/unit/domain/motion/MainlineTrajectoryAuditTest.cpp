@@ -1,8 +1,8 @@
 #include "domain/motion/domain-services/MotionPlanner.h"
 #include "domain/dispensing/planning/domain-services/DispensingPlannerService.h"
-#include "domain/trajectory/ports/IPathSourcePort.h"
-#include "domain/trajectory/value-objects/GeometryUtils.h"
-#include "domain/trajectory/value-objects/Primitive.h"
+#include "process_path/contracts/IPathSourcePort.h"
+#include "process_path/contracts/GeometryUtils.h"
+#include "process_path/contracts/Primitive.h"
 
 #include <gtest/gtest.h>
 
@@ -23,10 +23,10 @@ using Siligen::Domain::Motion::ValueObjects::MotionTrajectory;
 using Siligen::Domain::Trajectory::Ports::IPathSourcePort;
 using Siligen::Domain::Trajectory::Ports::PathPrimitiveMeta;
 using Siligen::Domain::Trajectory::Ports::PathSourceResult;
-using Siligen::Domain::Trajectory::ValueObjects::ArcPrimitive;
-using Siligen::Domain::Trajectory::ValueObjects::ComputeArcLength;
-using Siligen::Domain::Trajectory::ValueObjects::Primitive;
+using Siligen::ProcessPath::Contracts::ArcPrimitive;
+using Siligen::ProcessPath::Contracts::ComputeArcLength;
 using Siligen::MotionPlanning::Contracts::TimePlanningConfig;
+using Siligen::ProcessPath::Contracts::Primitive;
 using Siligen::ProcessPath::Contracts::ProcessPath;
 using Siligen::ProcessPath::Contracts::ProcessSegment;
 using Siligen::ProcessPath::Contracts::ProcessTag;

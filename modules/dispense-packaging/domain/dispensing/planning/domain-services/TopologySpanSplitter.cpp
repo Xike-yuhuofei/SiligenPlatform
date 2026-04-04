@@ -6,8 +6,8 @@
 
 namespace Siligen::Domain::Dispensing::DomainServices {
 
-using Siligen::Domain::Trajectory::ValueObjects::SegmentEnd;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentStart;
+using Siligen::ProcessPath::Contracts::SegmentEnd;
+using Siligen::ProcessPath::Contracts::SegmentStart;
 
 namespace {
 

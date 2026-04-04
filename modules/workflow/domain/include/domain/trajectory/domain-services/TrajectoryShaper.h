@@ -1,12 +1,12 @@
 #pragma once
 
-#include "domain/trajectory/value-objects/ProcessPath.h"
+#include "../value-objects/ProcessPath.h"
 #include "shared/types/Types.h"
 
 namespace Siligen::Domain::Trajectory::DomainServices {
 
-using Siligen::Shared::Types::float32;
 using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
+using Siligen::Shared::Types::float32;
 
 struct TrajectoryShaperConfig {
     float32 corner_smoothing_radius = 0.5f;

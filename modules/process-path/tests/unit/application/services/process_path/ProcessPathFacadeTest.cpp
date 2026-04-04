@@ -32,12 +32,130 @@ TEST(ProcessPathFacadeTest, BuildsNormalizedAnnotatedAndShapedPath) {
     ProcessPathFacade facade;
     const auto result = facade.Build(request);
 
+    EXPECT_EQ(result.status, Siligen::ProcessPath::Contracts::PathGenerationStatus::Success);
+    EXPECT_EQ(result.failed_stage, Siligen::ProcessPath::Contracts::PathGenerationStage::None);
+    EXPECT_TRUE(result.error_message.empty());
     ASSERT_EQ(result.normalized.path.segments.size(), 1u);
     ASSERT_EQ(result.process_path.segments.size(), 1u);
     ASSERT_EQ(result.shaped_path.segments.size(), 1u);
     EXPECT_TRUE(result.shaped_path.segments.front().dispense_on);
     ASSERT_TRUE(request.alignment.has_value());
     EXPECT_EQ(request.alignment->owner_module, "M5");
+}
+
+TEST(ProcessPathFacadeTest, EmptyPrimitiveInputReturnsInvalidInputStatus) {
+    using Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest;
+    using Siligen::Application::Services::ProcessPath::ProcessPathFacade;
+    using Siligen::ProcessPath::Contracts::PathGenerationStage;
+    using Siligen::ProcessPath::Contracts::PathGenerationStatus;
+
+    ProcessPathBuildRequest request;
+
+    ProcessPathFacade facade;
+    const auto result = facade.Build(request);
+
+    EXPECT_EQ(result.status, PathGenerationStatus::InvalidInput);
+    EXPECT_EQ(result.failed_stage, PathGenerationStage::InputValidation);
+    EXPECT_FALSE(result.error_message.empty());
+    EXPECT_TRUE(result.normalized.path.segments.empty());
+    EXPECT_TRUE(result.process_path.segments.empty());
+    EXPECT_TRUE(result.shaped_path.segments.empty());
+}
+
+TEST(ProcessPathFacadeTest, RejectsAlignmentInputsNotOwnedByM5) {
+    using Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest;
+    using Siligen::Application::Services::ProcessPath::ProcessPathFacade;
+    using Siligen::CoordinateAlignment::Contracts::CoordinateTransformSet;
+    using Siligen::ProcessPath::Contracts::PathGenerationStage;
+    using Siligen::ProcessPath::Contracts::PathGenerationStatus;
+    using Siligen::ProcessPath::Contracts::Primitive;
+    using Siligen::Shared::Types::Point2D;
+
+    ProcessPathBuildRequest request;
+    request.primitives.push_back(Primitive::MakeLine(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)));
+    CoordinateTransformSet transform_set;
+    transform_set.valid = true;
+    transform_set.owner_module = "M4";
+    request.alignment = transform_set;
+
+    ProcessPathFacade facade;
+    const auto result = facade.Build(request);
+
+    EXPECT_EQ(result.status, PathGenerationStatus::InvalidInput);
+    EXPECT_EQ(result.failed_stage, PathGenerationStage::InputValidation);
+    EXPECT_EQ(result.error_message, "alignment input must remain owned by M5");
+}
+
+TEST(ProcessPathFacadeTest, RejectsNonPositiveNormalizationUnitScale) {
+    using Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest;
+    using Siligen::Application::Services::ProcessPath::ProcessPathFacade;
+    using Siligen::ProcessPath::Contracts::PathGenerationStage;
+    using Siligen::ProcessPath::Contracts::PathGenerationStatus;
+    using Siligen::ProcessPath::Contracts::Primitive;
+    using Siligen::Shared::Types::Point2D;
+
+    ProcessPathBuildRequest request;
+    request.primitives.push_back(Primitive::MakeLine(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)));
+    request.normalization.unit_scale = 0.0f;
+
+    ProcessPathFacade facade;
+    const auto result = facade.Build(request);
+
+    EXPECT_EQ(result.status, PathGenerationStatus::InvalidInput);
+    EXPECT_EQ(result.failed_stage, PathGenerationStage::Normalization);
+    EXPECT_EQ(result.error_message, "normalization.unit_scale must be greater than zero");
+    EXPECT_TRUE(result.normalized.path.segments.empty());
+    EXPECT_TRUE(result.normalized.report.invalid_unit_scale);
+}
+
+TEST(ProcessPathFacadeTest, RejectsSplineInputWhenApproximationIsDisabled) {
+    using Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest;
+    using Siligen::Application::Services::ProcessPath::ProcessPathFacade;
+    using Siligen::ProcessPath::Contracts::PathGenerationStage;
+    using Siligen::ProcessPath::Contracts::PathGenerationStatus;
+    using Siligen::ProcessPath::Contracts::Primitive;
+    using Siligen::Shared::Types::Point2D;
+
+    ProcessPathBuildRequest request;
+    request.primitives.push_back(Primitive::MakeSpline({
+        Point2D(0.0f, 0.0f),
+        Point2D(5.0f, 5.0f),
+        Point2D(10.0f, 0.0f),
+    }));
+    request.normalization.approximate_splines = false;
+
+    ProcessPathFacade facade;
+    const auto result = facade.Build(request);
+
+    EXPECT_EQ(result.status, PathGenerationStatus::StageFailure);
+    EXPECT_EQ(result.failed_stage, PathGenerationStage::Normalization);
+    EXPECT_EQ(result.error_message,
+              "normalization skipped spline primitives because approximate_splines is disabled");
+    EXPECT_EQ(result.normalized.report.skipped_spline_count, 1);
+    EXPECT_EQ(result.normalized.report.consumable_segment_count, 0);
+}
+
+TEST(ProcessPathFacadeTest, UnsupportedPointOnlyInputReturnsNormalizationFailure) {
+    using Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest;
+    using Siligen::Application::Services::ProcessPath::ProcessPathFacade;
+    using Siligen::ProcessPath::Contracts::PathGenerationStage;
+    using Siligen::ProcessPath::Contracts::PathGenerationStatus;
+    using Siligen::ProcessPath::Contracts::Primitive;
+    using Siligen::Shared::Types::Point2D;
+
+    ProcessPathBuildRequest request;
+    request.primitives.push_back(Primitive::MakePoint(Point2D(1.0f, 2.0f)));
+
+    ProcessPathFacade facade;
+    const auto result = facade.Build(request);
+
+    EXPECT_EQ(result.status, PathGenerationStatus::StageFailure);
+    EXPECT_EQ(result.failed_stage, PathGenerationStage::Normalization);
+    EXPECT_EQ(result.error_message, "normalization produced no consumable path segments");
+    EXPECT_EQ(result.normalized.report.point_primitive_count, 1);
+    EXPECT_EQ(result.normalized.report.consumable_segment_count, 0);
+    EXPECT_TRUE(result.process_path.segments.empty());
+    EXPECT_TRUE(result.shaped_path.segments.empty());
 }
 
 TEST(ProcessPathFacadeTest, PreservesBranchRevisitLikePrimitiveSequenceThroughBuild) {
