@@ -42,7 +42,7 @@ bool SnapshotContainsPoint(
     float target_x,
     float target_y,
     float tolerance = 1e-3f) {
-    for (const auto& point : snapshot.trajectory_polyline) {
+    for (const auto& point : snapshot.motion_preview_polyline) {
         if (std::abs(point.x - target_x) <= tolerance && std::abs(point.y - target_y) <= tolerance) {
             return true;
         }
@@ -56,7 +56,7 @@ std::size_t CountSnapshotPointsNear(
     float target_y,
     float radius) {
     std::size_t count = 0U;
-    for (const auto& point : snapshot.trajectory_polyline) {
+    for (const auto& point : snapshot.motion_preview_polyline) {
         const double dx = static_cast<double>(point.x) - static_cast<double>(target_x);
         const double dy = static_cast<double>(point.y) - static_cast<double>(target_y);
         if (std::sqrt(dx * dx + dy * dy) <= static_cast<double>(radius)) {
@@ -80,8 +80,8 @@ TEST(PreviewSnapshotServiceTest, BuildPayloadPreservesMetadataAndBuildsPreviewPo
     EXPECT_EQ(payload.plan_id, "plan-1");
     EXPECT_EQ(payload.preview_state, "snapshot_ready");
     EXPECT_EQ(payload.confirmed_at, "2026-03-28T00:00:00Z");
-    EXPECT_EQ(payload.polyline_source_point_count, 2U);
-    EXPECT_EQ(payload.polyline_point_count, payload.trajectory_polyline.size());
+    EXPECT_EQ(payload.motion_preview_source_point_count, 2U);
+    EXPECT_EQ(payload.motion_preview_point_count, payload.motion_preview_polyline.size());
 }
 
 TEST(PreviewSnapshotServiceTest, BuildPayloadSuppressesShortABATailArtifacts) {
@@ -119,7 +119,7 @@ TEST(PreviewSnapshotServiceTest, BuildPayloadKeepsCornerWhenDownsampling) {
 
     const auto payload = service.BuildPayload(input, 6);
 
-    EXPECT_LE(payload.trajectory_polyline.size(), 6U);
+    EXPECT_LE(payload.motion_preview_polyline.size(), 6U);
     EXPECT_TRUE(SnapshotContainsPoint(payload, 9.0f, 0.0f, 1e-4f));
 }
 
@@ -134,13 +134,13 @@ TEST(PreviewSnapshotServiceTest, BuildPayloadUsesThreeMillimeterCenterSpacing) {
 
     const auto payload = service.BuildPayload(input, 128);
 
-    ASSERT_GE(payload.trajectory_polyline.size(), 2U);
-    EXPECT_NEAR(payload.trajectory_polyline.front().x, 0.0f, 1e-4f);
-    EXPECT_NEAR(payload.trajectory_polyline.back().x, 30.0f, 1e-4f);
-    EXPECT_EQ(payload.trajectory_polyline.size(), 11U);
-    for (std::size_t i = 1; i < payload.trajectory_polyline.size(); ++i) {
-        const auto& prev = payload.trajectory_polyline[i - 1U];
-        const auto& curr = payload.trajectory_polyline[i];
+    ASSERT_GE(payload.motion_preview_polyline.size(), 2U);
+    EXPECT_NEAR(payload.motion_preview_polyline.front().x, 0.0f, 1e-4f);
+    EXPECT_NEAR(payload.motion_preview_polyline.back().x, 30.0f, 1e-4f);
+    EXPECT_EQ(payload.motion_preview_polyline.size(), 11U);
+    for (std::size_t i = 1; i < payload.motion_preview_polyline.size(); ++i) {
+        const auto& prev = payload.motion_preview_polyline[i - 1U];
+        const auto& curr = payload.motion_preview_polyline[i];
         const double dx = static_cast<double>(curr.x) - static_cast<double>(prev.x);
         const double dy = static_cast<double>(curr.y) - static_cast<double>(prev.y);
         const double distance = std::sqrt(dx * dx + dy * dy);

@@ -838,6 +838,30 @@ $forbiddenOwnershipReferences = @(
         detail = "motion-planning domain target must not fall back to siligen_process_path_domain_trajectory"
     },
     @{
+        path = "modules/dispense-packaging/domain/dispensing/CMakeLists.txt"
+        pattern = "siligen_process_path_domain_trajectory"
+        rule_id = "dispense-packaging-still-falls-back-to-process-path-domain"
+        detail = "dispense-packaging domain target must consume siligen_process_path_application_public instead of siligen_process_path_domain_trajectory"
+    },
+    @{
+        path = "modules/dispense-packaging/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp"
+        pattern = '#include "domain-services/GeometryNormalizer.h"'
+        rule_id = "dispense-packaging-unified-planner-still-includes-process-path-domain-normalizer"
+        detail = "UnifiedTrajectoryPlannerService must consume ProcessPathFacade instead of process-path domain-services headers"
+    },
+    @{
+        path = "modules/dispense-packaging/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp"
+        pattern = '#include "domain-services/ProcessAnnotator.h"'
+        rule_id = "dispense-packaging-unified-planner-still-includes-process-path-domain-annotator"
+        detail = "UnifiedTrajectoryPlannerService must consume ProcessPathFacade instead of process-path domain-services headers"
+    },
+    @{
+        path = "modules/dispense-packaging/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp"
+        pattern = '#include "domain-services/TrajectoryShaper.h"'
+        rule_id = "dispense-packaging-unified-planner-still-includes-process-path-domain-shaper"
+        detail = "UnifiedTrajectoryPlannerService must consume ProcessPathFacade instead of process-path domain-services headers"
+    },
+    @{
         path = "modules/process-path/contracts/include/process_path/contracts/PathGenerationRequest.h"
         pattern = 'domain/trajectory/domain-services/GeometryNormalizer.h'
         rule_id = "process-path-request-contract-still-includes-domain-normalizer"
@@ -1481,6 +1505,164 @@ $forbiddenScopedSearches += @(
             "modules/motion-planning/domain/motion"
         )
         detail = "motion-planning live headers must include process_path/contracts/ProcessPath.h instead of M6 domain headers"
+    },
+    @{
+        rule_id = "live-targets-still-include-workflow-path-value-object-bridge"
+        pattern = '#include "domain/trajectory/value-objects/Path.h"'
+        search_roots = @(
+            "modules/motion-planning",
+            "modules/dispense-packaging",
+            "modules/workflow/application",
+            "modules/workflow/domain/domain",
+            "apps"
+        )
+        detail = "live targets must include canonical process_path/contracts/Path.h instead of the deleted workflow bridge header"
+    },
+    @{
+        rule_id = "live-targets-still-include-workflow-primitive-value-object-bridge"
+        pattern = '#include "domain/trajectory/value-objects/Primitive.h"'
+        search_roots = @(
+            "modules/motion-planning",
+            "modules/dispense-packaging",
+            "modules/workflow/application",
+            "modules/workflow/domain/domain",
+            "apps"
+        )
+        detail = "live targets must include canonical process_path/contracts/Primitive.h instead of the deleted workflow bridge header"
+    },
+    @{
+        rule_id = "live-targets-still-include-workflow-process-config-value-object-bridge"
+        pattern = '#include "domain/trajectory/value-objects/ProcessConfig.h"'
+        search_roots = @(
+            "modules/motion-planning",
+            "modules/dispense-packaging",
+            "modules/workflow/application",
+            "modules/workflow/domain/domain",
+            "apps"
+        )
+        detail = "live targets must include canonical process_path/contracts/ProcessConfig.h instead of the deleted workflow bridge header"
+    },
+    @{
+        rule_id = "live-targets-still-include-workflow-process-path-value-object-bridge"
+        pattern = '#include "domain/trajectory/value-objects/ProcessPath.h"'
+        search_roots = @(
+            "modules/motion-planning",
+            "modules/dispense-packaging",
+            "modules/workflow/application",
+            "modules/workflow/domain/domain",
+            "apps"
+        )
+        detail = "live targets must include canonical process_path/contracts/ProcessPath.h instead of the deleted workflow bridge header"
+    },
+    @{
+        rule_id = "live-targets-still-include-workflow-geometry-utils-value-object-bridge"
+        pattern = '#include "domain/trajectory/value-objects/GeometryUtils.h"'
+        search_roots = @(
+            "modules/motion-planning",
+            "modules/dispense-packaging",
+            "modules/workflow/application",
+            "modules/workflow/domain/domain",
+            "apps"
+        )
+        detail = "live targets must include canonical process_path/contracts/GeometryUtils.h instead of the deleted workflow bridge header"
+    },
+    @{
+        rule_id = "live-targets-still-include-workflow-geometry-boost-adapter-bridge"
+        pattern = '#include "domain/trajectory/value-objects/GeometryBoostAdapter.h"'
+        search_roots = @(
+            "modules/motion-planning",
+            "modules/dispense-packaging",
+            "modules/workflow/application",
+            "modules/workflow/domain/domain",
+            "apps"
+        )
+        detail = "live targets must not include the deleted workflow GeometryBoostAdapter bridge header"
+    },
+    @{
+        rule_id = "live-targets-still-include-workflow-planning-report-bridge"
+        pattern = '#include "domain/trajectory/value-objects/PlanningReport.h"'
+        search_roots = @(
+            "modules/motion-planning",
+            "modules/dispense-packaging",
+            "modules/workflow/application",
+            "modules/workflow/domain/domain",
+            "apps"
+        )
+        detail = "live targets must not include the deleted workflow PlanningReport bridge header"
+    },
+    @{
+        rule_id = "dispense-packaging-live-targets-still-use-process-path-owner-namespace"
+        pattern = 'Siligen::Domain::Trajectory::ValueObjects::'
+        search_roots = @(
+            "modules/dispense-packaging",
+            "modules/workflow/domain/domain/dispensing"
+        )
+        detail = "dispense-packaging consumers must use process_path/contracts semantics instead of Siligen::Domain::Trajectory::ValueObjects"
+    },
+    @{
+        rule_id = "runtime-and-app-live-targets-still-use-process-path-owner-namespace"
+        pattern = 'Siligen::Domain::Trajectory::ValueObjects::'
+        search_roots = @(
+            "modules/runtime-execution",
+            "modules/workflow/application",
+            "apps"
+        )
+        detail = "runtime and app consumers must use process_path/contracts semantics instead of Siligen::Domain::Trajectory::ValueObjects"
+    },
+    @{
+        rule_id = "process-path-owner-still-includes-legacy-value-object-headers"
+        pattern = '#include "domain/trajectory/value-objects/'
+        search_roots = @(
+            "modules/process-path/domain/trajectory/domain-services",
+            "modules/process-path/tests/unit/domain/trajectory",
+            "modules/process-path/application/services/process_path"
+        )
+        detail = "process-path owner internals must include canonical process_path/contracts headers instead of legacy value-object headers"
+    },
+    @{
+        rule_id = "live-targets-still-include-workflow-pathsource-bridge"
+        pattern = '#include "domain/trajectory/ports/IPathSourcePort.h"'
+        search_roots = @(
+            "modules",
+            "apps"
+        )
+        detail = "live targets must include process_path/contracts/IPathSourcePort.h instead of the deleted workflow bridge header"
+    },
+    @{
+        rule_id = "live-targets-still-include-workflow-dxf-pathsource-bridge"
+        pattern = '#include "domain/trajectory/ports/IDXFPathSourcePort.h"'
+        search_roots = @(
+            "modules",
+            "apps"
+        )
+        detail = "live targets must include process_path/contracts/IDXFPathSourcePort.h instead of the deleted workflow bridge header"
+    },
+    @{
+        rule_id = "live-targets-still-include-workflow-geometry-normalizer-bridge"
+        pattern = '#include "domain/trajectory/domain-services/GeometryNormalizer.h"'
+        search_roots = @(
+            "modules",
+            "apps"
+        )
+        detail = "live targets must not include the deleted workflow GeometryNormalizer bridge header"
+    },
+    @{
+        rule_id = "live-targets-still-include-workflow-process-annotator-bridge"
+        pattern = '#include "domain/trajectory/domain-services/ProcessAnnotator.h"'
+        search_roots = @(
+            "modules",
+            "apps"
+        )
+        detail = "live targets must not include the deleted workflow ProcessAnnotator bridge header"
+    },
+    @{
+        rule_id = "live-targets-still-include-workflow-trajectory-shaper-bridge"
+        pattern = '#include "domain/trajectory/domain-services/TrajectoryShaper.h"'
+        search_roots = @(
+            "modules",
+            "apps"
+        )
+        detail = "live targets must not include the deleted workflow TrajectoryShaper bridge header"
     },
     @{
         rule_id = "live-targets-still-reference-process-runtime-core-planning"

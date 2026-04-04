@@ -9,7 +9,7 @@
 
 1. target canonical roots：`apps/`、`modules/`、`shared/`、`docs/`、`samples/`、`tests/`、`scripts/`、`config/`、`data/`、`deploy/`
 2. migration-source roots：`packages/`、`integration/`、`tools/`、`examples/`
-3. `specs/` 仅作为 `feature artifact` root
+3. `.specify/` 与 `specs/` 不纳入当前工作区正式基线
 4. `cmake/`、`third_party/`、`build/`、`logs/`、`uploads/` 分别归类为 `support`、`vendor`、`generated`
 
 ## 当前基线认定

@@ -1,4 +1,0 @@
-interface:
-  display_name: "New Task"
-  short_description: "Create and validate a compliant branch and worktree pair for a new task."
-  default_prompt: "Use $new-task to create or validate a repository-compliant branch and worktree pair for a new task."

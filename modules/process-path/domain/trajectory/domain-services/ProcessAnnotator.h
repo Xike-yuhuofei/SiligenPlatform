@@ -1,14 +1,14 @@
 #pragma once
 
-#include "domain/trajectory/value-objects/Path.h"
-#include "domain/trajectory/value-objects/ProcessPath.h"
-#include "domain/trajectory/value-objects/ProcessConfig.h"
+#include "process_path/contracts/Path.h"
+#include "process_path/contracts/ProcessConfig.h"
+#include "process_path/contracts/ProcessPath.h"
 
 namespace Siligen::Domain::Trajectory::DomainServices {
 
-using Siligen::Domain::Trajectory::ValueObjects::Path;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessConfig;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
+using Siligen::ProcessPath::Contracts::Path;
+using Siligen::ProcessPath::Contracts::ProcessConfig;
+using Siligen::ProcessPath::Contracts::ProcessPath;
 
 class ProcessAnnotator {
    public:

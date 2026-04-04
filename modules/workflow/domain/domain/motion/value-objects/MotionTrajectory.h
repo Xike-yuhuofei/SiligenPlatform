@@ -1,5 +1,5 @@
 #pragma once
 
-// Legacy bridge header; canonical owner header is provided by motion-planning public surface.
-#include "domain/motion/value-objects/MotionTrajectory.h"
+// Legacy bridge header; canonical owner header is provided by motion-planning contracts.
+#include "motion_planning/contracts/MotionTrajectory.h"
 

@@ -27,7 +27,7 @@
 | compatibility surface | owner path | note |
 |---|---|---|
 | `apps/hmi-app/src/hmi_client/ui/main_window.py` launch/recovery/runtime degradation semantics | `modules/hmi-application/application/hmi_application/launch_state.py` | host 仅保留 Qt 宿主与 UI 呈现，launch owner 语义已下沉到 M11 |
-| `apps/hmi-app/src/hmi_client/ui/main_window.py` preview session / preflight / resync semantics | `modules/hmi-application/application/hmi_application/preview_session.py` | `glue_points + execution_polyline` 语义治理、旧契约拒绝与 preflight owner 已下沉到 M11 |
+| `apps/hmi-app/src/hmi_client/ui/main_window.py` preview session / preflight / resync semantics | `modules/hmi-application/application/hmi_application/preview_session.py` | `glue_points + motion_preview` 语义治理、旧契约拒绝与 preflight owner 已下沉到 M11 |
 | `apps/hmi-app/src/hmi_client/client/*` and `features/dispense_preview_gate/*` | `modules/hmi-application/application/hmi_application/*.py` | 仅保留 compat re-export，不再新增 owner 逻辑 |
 | `modules/hmi-application/tests/unit/*` | `modules/hmi-application/application/hmi_application/*` | M11 owner 规则 canonical tests；app 侧单测只保留 thin-host 集成断言 |
 
@@ -35,7 +35,7 @@
 
 - `modules/motion-planning/application/CMakeLists.txt` 不再反向修改 `siligen_application_motion` / `siligen_application_dispensing`
 - `modules/dispense-packaging/application/CMakeLists.txt` 不再反向修改 `siligen_application_dispensing`
-- `siligen_workflow_dispensing_planning_compat` 仅保留为 deprecated compatibility target，live target 禁止新增依赖
+- `siligen_workflow_dispensing_planning_compat` 已从 build graph 退场；live/test target 不得再依赖该 target 名称
 - `modules/workflow/domain/domain/CMakeLists.txt` 不再提供 `siligen_motion` 本地 fallback，缺少 canonical owner target 时显式失败
 - `siligen_process_runtime_core_*` 仅保留为 deprecated compatibility target，README 与后续 owner 论证不得再将其视为 live public surface
 - `tests/reports/module-boundary-bridges-s2a/module-boundary-bridges.md` 当前状态为 `passed`

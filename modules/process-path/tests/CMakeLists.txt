@@ -5,6 +5,7 @@ set(PROCESS_PATH_TEST_SOURCES
     golden/ProcessPathBuildGoldenTest.cpp
     integration/ProcessPathToMotionPlanningIntegrationTest.cpp
     unit/domain/trajectory/PathRegularizerTest.cpp
+    unit/domain/trajectory/TrajectoryShaperTest.cpp
     unit/application/services/process_path/ProcessPathFacadeTest.cpp
 )
 
@@ -26,6 +27,7 @@ endif()
 target_link_libraries(siligen_process_path_unit_tests PRIVATE
     siligen_process_path_application_public
     siligen_process_path_domain_trajectory
+    siligen_parsing_adapter
     siligen_types
     siligen_utils
 )

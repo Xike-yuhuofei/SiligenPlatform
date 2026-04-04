@@ -9,7 +9,7 @@
 namespace Siligen::Domain::Motion {
 
 Shared::Types::Result<std::shared_ptr<MotionBufferController>> MotionBufferController::Create(
-    std::shared_ptr<Ports::IInterpolationPort> interpolation_port) {
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort> interpolation_port) {
     if (!interpolation_port) {
         return Shared::Types::Result<std::shared_ptr<MotionBufferController>>::Failure(
             Shared::Types::Error(Shared::Types::ErrorCode::INVALID_PARAMETER,
@@ -21,7 +21,8 @@ Shared::Types::Result<std::shared_ptr<MotionBufferController>> MotionBufferContr
         std::shared_ptr<MotionBufferController>(new MotionBufferController(std::move(interpolation_port))));
 }
 
-MotionBufferController::MotionBufferController(std::shared_ptr<Ports::IInterpolationPort> interpolation_port)
+MotionBufferController::MotionBufferController(
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort> interpolation_port)
     : interpolation_port_(std::move(interpolation_port)) {}
 
 int32 MotionBufferController::GetBufferSpace(short crd_num) {

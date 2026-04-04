@@ -1,8 +1,8 @@
 #include "domain/motion/CMPCoordinatedInterpolator.h"
 #include "domain/motion/domain-services/TrajectoryPlanner.h"
 #include "domain/dispensing/planning/domain-services/DispensingPlannerService.h"
-#include "domain/trajectory/ports/IPathSourcePort.h"
-#include "domain/trajectory/value-objects/GeometryUtils.h"
+#include "process_path/contracts/IPathSourcePort.h"
+#include "process_path/contracts/GeometryUtils.h"
 
 #include <gtest/gtest.h>
 
@@ -46,7 +46,7 @@ std::size_t CountTriggerMarkers(const std::vector<Siligen::TrajectoryPoint>& poi
 
 class ArcPathSourceStub : public Siligen::Domain::Trajectory::Ports::IPathSourcePort {
    public:
-    explicit ArcPathSourceStub(Siligen::Domain::Trajectory::ValueObjects::Primitive primitive)
+    explicit ArcPathSourceStub(Siligen::ProcessPath::Contracts::Primitive primitive)
         : primitive_(std::move(primitive)) {}
 
     Siligen::Shared::Types::Result<Siligen::Domain::Trajectory::Ports::PathSourceResult> LoadFromFile(
@@ -64,7 +64,7 @@ class ArcPathSourceStub : public Siligen::Domain::Trajectory::Ports::IPathSource
     }
 
    private:
-    Siligen::Domain::Trajectory::ValueObjects::Primitive primitive_;
+    Siligen::ProcessPath::Contracts::Primitive primitive_;
 };
 }  // namespace
 
@@ -175,10 +175,10 @@ TEST(CMPCoordinatedInterpolatorPrecisionTest, DispensingPlannerKeepsArcTriggerOn
     using Siligen::Domain::Dispensing::DomainServices::DispensingPlanRequest;
     using Siligen::Domain::Dispensing::DomainServices::DispensingPlanner;
     using Siligen::Domain::Motion::InterpolationAlgorithm;
-    using Siligen::Domain::Trajectory::ValueObjects::ArcPoint;
-    using Siligen::Domain::Trajectory::ValueObjects::ArcPrimitive;
-    using Siligen::Domain::Trajectory::ValueObjects::ComputeArcLength;
-    using Siligen::Domain::Trajectory::ValueObjects::Primitive;
+    using Siligen::ProcessPath::Contracts::ArcPoint;
+    using Siligen::ProcessPath::Contracts::ArcPrimitive;
+    using Siligen::ProcessPath::Contracts::ComputeArcLength;
+    using Siligen::ProcessPath::Contracts::Primitive;
 
     ArcPrimitive arc;
     arc.center = Point2D(0.0f, 0.0f);
@@ -239,7 +239,7 @@ TEST(CMPCoordinatedInterpolatorPrecisionTest, DispensingPlannerLinearInterpolati
     using Siligen::Domain::Dispensing::DomainServices::DispensingPlanRequest;
     using Siligen::Domain::Dispensing::DomainServices::DispensingPlanner;
     using Siligen::Domain::Motion::InterpolationAlgorithm;
-    using Siligen::Domain::Trajectory::ValueObjects::Primitive;
+    using Siligen::ProcessPath::Contracts::Primitive;
 
     auto path_source =
         std::make_shared<ArcPathSourceStub>(Primitive::MakeLine(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)));
@@ -307,7 +307,7 @@ TEST(CMPCoordinatedInterpolatorPrecisionTest, DispensingPlannerMarksShortSegment
     using Siligen::Domain::Dispensing::DomainServices::DispensingPlanRequest;
     using Siligen::Domain::Dispensing::DomainServices::DispensingPlanner;
     using Siligen::Domain::Motion::InterpolationAlgorithm;
-    using Siligen::Domain::Trajectory::ValueObjects::Primitive;
+    using Siligen::ProcessPath::Contracts::Primitive;
 
     auto path_source =
         std::make_shared<ArcPathSourceStub>(Primitive::MakeLine(Point2D(0.0f, 0.0f), Point2D(2.0f, 0.0f)));
@@ -342,7 +342,7 @@ TEST(CMPCoordinatedInterpolatorPrecisionTest, DispensingPlannerRejectsZeroLength
     using Siligen::Domain::Dispensing::DomainServices::DispensingPlanRequest;
     using Siligen::Domain::Dispensing::DomainServices::DispensingPlanner;
     using Siligen::Domain::Motion::InterpolationAlgorithm;
-    using Siligen::Domain::Trajectory::ValueObjects::Primitive;
+    using Siligen::ProcessPath::Contracts::Primitive;
 
     auto path_source =
         std::make_shared<ArcPathSourceStub>(Primitive::MakeLine(Point2D(1.0f, 1.0f), Point2D(1.0f, 1.0f)));

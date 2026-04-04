@@ -20,6 +20,8 @@ set(WORKFLOW_TEST_IMPLEMENTATION_INCLUDE_DIRS
     "${CMAKE_SOURCE_DIR}/modules/job-ingest/contracts/include"
     "${CMAKE_SOURCE_DIR}/modules/runtime-execution/application/include"
     "${CMAKE_SOURCE_DIR}/modules/motion-planning"
+    "${CMAKE_SOURCE_DIR}/modules/motion-planning/contracts/include"
+    "${CMAKE_SOURCE_DIR}/modules/runtime-execution/contracts/runtime/include"
     "${CMAKE_SOURCE_DIR}/modules/runtime-execution/adapters/device/include"
 )
 
@@ -30,7 +32,6 @@ set(TEST_SOURCES
     unit/domain/safety/SafetyOutputGuardTest.cpp
     unit/domain/motion/JogControllerTest.cpp
     unit/domain/dispensing/ArcTriggerPointCalculatorTest.cpp
-    unit/domain/trajectory/TrajectoryShaperTest.cpp
     unit/domain/dispensing/PurgeDispenserProcessTest.cpp
     unit/domain/recipes/RecipeActivationServiceTest.cpp
     unit/domain/motion/MotionBufferControllerTest.cpp
@@ -58,7 +59,6 @@ set(OPTIONAL_TEST_SOURCES
     unit/dispensing/PlanningRequestTest.cpp
     unit/dispensing/PlanningUseCaseExportPortTest.cpp
     unit/dispensing/ContourPathOptimizerTest.cpp
-    unit/infrastructure/adapters/planning/dxf/DXFAdapterFactoryTest.cpp
     unit/infrastructure/adapters/redundancy/JsonRedundancyRepositoryAdapterTest.cpp
     unit/redundancy/CandidateScoringServiceTest.cpp
     unit/redundancy/RedundancyGovernanceUseCasesTest.cpp
@@ -69,6 +69,15 @@ foreach(test_source IN LISTS OPTIONAL_TEST_SOURCES)
         list(APPEND TEST_SOURCES "${test_source}")
     endif()
 endforeach()
+
+if(
+    TARGET siligen_workflow_dxf_legacy_compat AND
+    EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/unit/infrastructure/adapters/planning/dxf/DXFAdapterFactoryTest.cpp"
+)
+    list(APPEND TEST_SOURCES
+        unit/infrastructure/adapters/planning/dxf/DXFAdapterFactoryTest.cpp
+    )
+endif()
 
 add_executable(siligen_unit_tests ${TEST_SOURCES})
 
@@ -87,6 +96,11 @@ target_link_libraries(siligen_unit_tests PRIVATE
     siligen_types
     siligen_utils
 )
+if(TARGET siligen_workflow_dxf_legacy_compat)
+    target_link_libraries(siligen_unit_tests PRIVATE
+        siligen_workflow_dxf_legacy_compat
+    )
+endif()
 if(TARGET siligen_application_dispensing)
     target_link_libraries(siligen_unit_tests PRIVATE
         siligen_application_dispensing
@@ -100,11 +114,6 @@ endif()
 if(TARGET siligen_motion_planning_application_public)
     target_link_libraries(siligen_unit_tests PRIVATE
         siligen_motion_planning_application_public
-    )
-endif()
-if(TARGET siligen_workflow_dispensing_planning_compat)
-    target_link_libraries(siligen_unit_tests PRIVATE
-        siligen_workflow_dispensing_planning_compat
     )
 endif()
 if(TARGET siligen_runtime_execution_application_public)
@@ -226,7 +235,6 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/unit/motion/DeterministicPathExecutionUse
         siligen_utils
     )
     target_compile_features(process_runtime_core_deterministic_path_execution_test PRIVATE cxx_std_17)
-    process_runtime_core_stage_runtime_dependency(process_runtime_core_deterministic_path_execution_test ruckig)
     process_runtime_core_add_test_with_runtime_environment(
         process_runtime_core_deterministic_path_execution_test
         process_runtime_core_deterministic_path_execution_test
@@ -246,7 +254,6 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/unit/motion/MotionRuntimeAssemblyFactoryT
         siligen_utils
     )
     target_compile_features(process_runtime_core_motion_runtime_assembly_test PRIVATE cxx_std_17)
-    process_runtime_core_stage_runtime_dependency(process_runtime_core_motion_runtime_assembly_test ruckig)
     process_runtime_core_add_test_with_runtime_environment(
         process_runtime_core_motion_runtime_assembly_test
         process_runtime_core_motion_runtime_assembly_test
@@ -272,7 +279,7 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/unit/infrastructure/adapters/planning/dxf
     )
 endif()
 
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/unit/infrastructure/adapters/planning/dxf/DXFAdapterFactoryTest.cpp")
+if(TARGET siligen_workflow_dxf_legacy_compat AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/unit/infrastructure/adapters/planning/dxf/DXFAdapterFactoryTest.cpp")
     add_executable(process_runtime_core_dxf_adapter_factory_test
         unit/infrastructure/adapters/planning/dxf/DXFAdapterFactoryTest.cpp
     )
@@ -287,7 +294,7 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/unit/infrastructure/adapters/planning/dxf
         message(FATAL_ERROR "GoogleTest target not found")
     endif()
     target_link_libraries(process_runtime_core_dxf_adapter_factory_test PRIVATE
-        siligen_parsing_adapter
+        siligen_workflow_dxf_legacy_compat
         siligen_types
         siligen_utils
     )

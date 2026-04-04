@@ -1,0 +1,254 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://siligensuite.local/agents/schemas/module-audit-index.schema.json",
+  "title": "Module Audit Index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "commit_sha",
+    "module_name",
+    "overall_status",
+    "overall_verdict",
+    "overall_risk",
+    "audit_reports",
+    "finding_totals",
+    "priority_queue",
+    "planner_ready"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "commit_sha": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9]{7,40}$"
+    },
+    "module_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "overall_status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "partial",
+        "failed"
+      ]
+    },
+    "overall_verdict": {
+      "type": "string",
+      "enum": [
+        "healthy",
+        "watch",
+        "unhealthy",
+        "unknown"
+      ]
+    },
+    "overall_risk": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ]
+    },
+    "audit_reports": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "dimension",
+          "skill_name",
+          "status",
+          "verdict",
+          "severity",
+          "confidence",
+          "report_path",
+          "finding_count",
+          "critical_finding_count"
+        ],
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "enum": [
+              "module_responsibility",
+              "module_boundary",
+              "dependency_direction",
+              "interface_contract",
+              "domain_model_ownership",
+              "control_orchestration",
+              "change_isolation",
+              "legacy_compat",
+              "fallback_degradation",
+              "observability_diagnostics",
+              "build_deployment_alignment",
+              "test_boundary_validation"
+            ]
+          },
+          "skill_name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "partial",
+              "failed",
+              "skipped"
+            ]
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "concern",
+              "fail",
+              "unknown"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ]
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "report_path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "finding_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "critical_finding_count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "finding_totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "low": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "medium": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "high": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "critical": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "priority_queue": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "dimension",
+          "finding_id",
+          "title",
+          "severity",
+          "recommendation_priority",
+          "reason"
+        ],
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "minLength": 1
+          },
+          "finding_id": {
+            "type": "string",
+            "pattern": "^F[0-9]{3}$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ]
+          },
+          "recommendation_priority": {
+            "type": "string",
+            "enum": [
+              "p0",
+              "p1",
+              "p2",
+              "p3"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        }
+      }
+    },
+    "planner_ready": {
+      "type": "boolean"
+    },
+    "planner_blockers": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 300
+      }
+    }
+  }
+}

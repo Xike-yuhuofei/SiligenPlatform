@@ -7,7 +7,7 @@
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
 #include "motion_planning/contracts/MotionPlanningReport.h"
-#include "domain/trajectory/ports/IPathSourcePort.h"
+#include "process_path/contracts/IPathSourcePort.h"
 #include "domain/dispensing/contracts/ExecutionPackage.h"
 #include "process_path/contracts/ProcessPath.h"
 #include "shared/types/Point.h"
@@ -75,6 +75,7 @@ struct PreparedAuthorityPreview {
     std::string preview_validation_classification;
     std::string preview_exception_reason;
     std::string preview_failure_reason;
+    std::string preview_diagnostic_code;
     Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
     std::vector<Siligen::Application::Services::Dispensing::AuthorityTriggerPoint> authority_trigger_points;
     std::vector<Siligen::Application::Services::Dispensing::SpacingValidationGroup> spacing_validation_groups;
@@ -84,6 +85,7 @@ struct PreparedAuthorityPreview {
 struct ExecutionAssemblyResponse {
     bool success = false;
     std::vector<TrajectoryPoint> execution_trajectory_points;
+    std::vector<TrajectoryPoint> motion_trajectory_points;
     MotionPlanningReport planning_report;
     bool preview_authority_shared_with_execution = false;
     bool execution_binding_ready = false;
@@ -214,6 +216,7 @@ struct PlanningResponse {
     std::string preview_validation_classification;
     std::string preview_exception_reason;
     std::string preview_failure_reason;
+    std::string preview_diagnostic_code;
     Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
     std::vector<Siligen::Application::Services::Dispensing::AuthorityTriggerPoint> authority_trigger_points;
     std::vector<Siligen::Application::Services::Dispensing::SpacingValidationGroup> spacing_validation_groups;

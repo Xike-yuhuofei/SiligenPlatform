@@ -5,6 +5,7 @@ set(MOTION_PLANNING_TEST_SOURCES
     unit/domain/trajectory/MotionPlannerConstraintTest.cpp
     unit/domain/trajectory/InterpolationProgramPlannerTest.cpp
     unit/domain/motion/CMPCoordinatedInterpolatorPrecisionTest.cpp
+    unit/domain/motion/MainlineTrajectoryAuditTest.cpp
     unit/domain/motion/MotionExecutionOwnerBoundaryTest.cpp
     unit/domain/motion/MotionPlanningOwnerBoundaryTest.cpp
     unit/domain/motion/NoRuntimeControlLeakTest.cpp
@@ -30,6 +31,7 @@ endif()
 target_link_libraries(siligen_motion_planning_unit_tests PRIVATE
     siligen_motion_planning_application_public
     siligen_motion
+    siligen_dispense_packaging_application_public
     siligen_runtime_execution_runtime_contracts
     siligen_types
     siligen_utils

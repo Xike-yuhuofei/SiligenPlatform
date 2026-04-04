@@ -20,8 +20,8 @@
 当前策略：
 
 - 默认验证 canonical `siligen_tcp_server.exe` 的最小启动闭环
-- 默认优先使用当前工作区 `build\bin\<Config>\...` 的二进制；只有工作区未构建时才回退到 `SILIGEN_CONTROL_APPS_BUILD_ROOT`
-- 默认产物根按 `<repo-root>\build` -> `SILIGEN_CONTROL_APPS_BUILD_ROOT` -> `%LOCALAPPDATA%\SiligenSuite\control-apps-build` 解析
+- 默认优先使用当前工作区 `build\` 下可解析的产物，包括 `build\bin\<Config>\...`、`build\control-apps\...` 与有效子构建目录；只有工作区未命中时才回退到 `SILIGEN_CONTROL_APPS_BUILD_ROOT`
+- 默认产物根按 `SILIGEN_CONTROL_APPS_BUILD_ROOT`（显式设置时）或 `<repo-root>\build + 有效子构建目录` -> `%LOCALAPPDATA%\SiligenSuite\control-apps-build` 解析
 - 默认目标路径模式：`<repo-root>\build\bin\<Config>\*.exe`
 - 可通过 `SILIGEN_HIL_GATEWAY_EXE` 显式覆盖可执行文件
 - 进程 `cwd` 使用仓库根，而不是 `control-core`
@@ -172,7 +172,7 @@ python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun.py `
 - 默认用 `--config-mode mock` 生成 mock 硬件配置，但预览数据源必须仍为 `preview_source=planned_glue_snapshot`
 - 默认 DXF 为 `samples/dxf/rect_diag.dxf`
 - 默认报告目录为 `tests/reports/adhoc/real-dxf-preview-snapshot-canonical/<timestamp>/`
-- 输出 `plan-prepare.json`、`snapshot.json`、`glue_points.json`、`execution_polyline.json`、`preview-verdict.json`、`preview-evidence.md`、`hmi-preview.png`、`online-smoke.log`
+- 输出 `plan-prepare.json`、`snapshot.json`、`glue_points.json`、`motion_preview.json`、`preview-verdict.json`、`preview-evidence.md`、`hmi-preview.png`、`online-smoke.log`
 - 同时保留兼容报告 `real-dxf-preview-snapshot.json`、`real-dxf-preview-snapshot.md`
 - 若返回 `mock_synthetic`、`runtime_snapshot` 或缺少 `preview_source/preview_kind`，脚本直接失败，禁止把结果当作真实规划胶点预览证据
 - 若 `plan_id / plan_fingerprint / snapshot_hash` 无法回链，`preview-verdict.json` 必须落为 `mismatch` 或 `incomplete`

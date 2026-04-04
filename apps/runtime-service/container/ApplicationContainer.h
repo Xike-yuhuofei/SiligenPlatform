@@ -193,8 +193,8 @@ private:
     // Domain层端口（供适配器层使用）
     std::shared_ptr<Domain::Dispensing::Ports::IValvePort> valve_port_;
     std::shared_ptr<Domain::Configuration::Ports::IFileStoragePort> file_storage_port_;
-    std::shared_ptr<Domain::Motion::Ports::IIOControlPort> io_control_port_;
-    std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port_;
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort> io_control_port_;
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort> interpolation_port_;
     std::shared_ptr<Domain::Motion::Ports::IVelocityProfilePort> velocity_profile_port_;
     std::shared_ptr<Domain::Dispensing::Ports::ITaskSchedulerPort> task_scheduler_port_;  // Phase 2: 任务调度器
     std::shared_ptr<Domain::Recipes::Ports::IRecipeRepositoryPort> recipe_repository_;
@@ -275,7 +275,8 @@ private:
             device_connection_port_ = port;
         } else if constexpr (std::is_same_v<TPort, Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort>) {
             machine_execution_state_port_ = port;
-        } else if constexpr (std::is_same_v<TPort, Domain::Motion::Ports::IMotionRuntimePort>) {
+        } else if constexpr (
+            std::is_same_v<TPort, Siligen::RuntimeExecution::Contracts::Motion::IMotionRuntimePort>) {
             motion_runtime_port_ = port;
             CacheMotionRuntimeAliases(port);
         } else if constexpr (std::is_same_v<TPort, Domain::Motion::Ports::IMotionConnectionPort>) {
@@ -288,7 +289,7 @@ private:
             motion_state_port_ = port;
         } else if constexpr (std::is_same_v<TPort, Domain::Motion::Ports::IJogControlPort>) {
             motion_jog_port_ = port;
-        } else if constexpr (std::is_same_v<TPort, Domain::Motion::Ports::IIOControlPort>) {
+        } else if constexpr (std::is_same_v<TPort, Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort>) {
             io_control_port_ = port;
         } else if constexpr (std::is_same_v<TPort, Domain::Motion::Ports::IHomingPort>) {
             homing_port_ = port;
@@ -308,7 +309,7 @@ private:
             valve_port_ = port;
         } else if constexpr (std::is_same_v<TPort, Domain::Configuration::Ports::IFileStoragePort>) {
             file_storage_port_ = port;
-        } else if constexpr (std::is_same_v<TPort, Domain::Motion::Ports::IInterpolationPort>) {
+        } else if constexpr (std::is_same_v<TPort, Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort>) {
             interpolation_port_ = port;
         } else if constexpr (std::is_same_v<TPort, Domain::Motion::Ports::IVelocityProfilePort>) {
             velocity_profile_port_ = port;
@@ -365,11 +366,13 @@ private:
                 std::static_pointer_cast<Domain::Motion::Ports::IJogControlPort>(port);
         }
         if (!io_control_port_) {
-            io_control_port_ = std::static_pointer_cast<Domain::Motion::Ports::IIOControlPort>(port);
+            io_control_port_ =
+                std::static_pointer_cast<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort>(port);
         }
-        if (!port_instances_.count(std::type_index(typeid(Domain::Motion::Ports::IIOControlPort)))) {
-            port_instances_[std::type_index(typeid(Domain::Motion::Ports::IIOControlPort))] =
-                std::static_pointer_cast<Domain::Motion::Ports::IIOControlPort>(port);
+        if (!port_instances_.count(
+                std::type_index(typeid(Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort)))) {
+            port_instances_[std::type_index(typeid(Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort))] =
+                std::static_pointer_cast<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort>(port);
         }
         if (!homing_port_) {
             homing_port_ = std::static_pointer_cast<Domain::Motion::Ports::IHomingPort>(port);

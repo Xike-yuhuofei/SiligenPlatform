@@ -133,7 +133,7 @@ class PreviewCycleRecord:
     plan_fingerprint: str = ""
     snapshot_hash: str = ""
     glue_point_count: int = 0
-    execution_polyline_point_count: int = 0
+    motion_preview_point_count: int = 0
     artifact_ms: float | None = None
     plan_prepare_rpc_ms: float | None = None
     snapshot_rpc_ms: float | None = None
@@ -952,6 +952,9 @@ def prepare_and_snapshot_once(
 
     snapshot_hash = str(snapshot_payload.get("snapshot_hash", "")).strip()
     profile = extract_prepare_profile(plan_payload)
+    motion_preview_payload = snapshot_payload.get("motion_preview", {})
+    if not isinstance(motion_preview_payload, dict):
+        motion_preview_payload = {}
     return PreviewCycleRecord(
         success=bool(snapshot_hash),
         artifact_id=artifact_id,
@@ -959,7 +962,7 @@ def prepare_and_snapshot_once(
         plan_fingerprint=plan_fingerprint,
         snapshot_hash=snapshot_hash,
         glue_point_count=int(snapshot_payload.get("glue_point_count", 0) or 0),
-        execution_polyline_point_count=int(snapshot_payload.get("execution_polyline_point_count", 0) or 0),
+        motion_preview_point_count=int(motion_preview_payload.get("point_count", 0) or 0),
         artifact_ms=artifact_ms,
         plan_prepare_rpc_ms=plan_elapsed_ms,
         snapshot_rpc_ms=snapshot_elapsed_ms,
@@ -1144,8 +1147,8 @@ def summarize_preview_records(records: list[PreviewCycleRecord]) -> dict[str, An
             [float(record.worker_total_ms) for record in successful if record.worker_total_ms is not None]
         ),
         "glue_point_count": summarize_scalar([float(record.glue_point_count) for record in successful]),
-        "execution_polyline_point_count": summarize_scalar(
-            [float(record.execution_polyline_point_count) for record in successful]
+        "motion_preview_point_count": summarize_scalar(
+            [float(record.motion_preview_point_count) for record in successful]
         ),
         "authority_cache_hit": summarize_bool(
             [bool(record.authority_cache_hit) for record in successful if record.authority_cache_hit is not None]

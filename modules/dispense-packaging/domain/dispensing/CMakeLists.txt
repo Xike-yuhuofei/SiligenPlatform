@@ -43,6 +43,9 @@ add_library(siligen_dispense_packaging_domain_dispensing STATIC
     domain-services/TriggerPlanner.cpp
     domain-services/DispensingController.cpp
     domain-services/DispensingProcessService.cpp
+    planning/domain-services/ContourOptimizationService.cpp
+    planning/domain-services/UnifiedTrajectoryPlannerService.cpp
+    planning/domain-services/DispensingPlannerService.cpp
     planning/domain-services/AuthorityTriggerLayoutPlanner.cpp
     planning/domain-services/ClosedLoopAnchorConstraintSolver.cpp
     planning/domain-services/ClosedLoopCornerAnchorResolver.cpp
@@ -81,6 +84,7 @@ target_link_libraries(siligen_dispense_packaging_domain_dispensing PUBLIC
     siligen_utils
     siligen_geometry
     siligen_motion
+    siligen_process_path_application_public
 )
 if(TARGET siligen_device_contracts)
     target_link_libraries(siligen_dispense_packaging_domain_dispensing PUBLIC

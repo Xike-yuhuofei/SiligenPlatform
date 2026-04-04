@@ -39,10 +39,10 @@ using Siligen::Domain::Dispensing::ValueObjects::SpacingValidationOutcome;
 using Siligen::Domain::Dispensing::ValueObjects::StrongAnchor;
 using Siligen::Domain::Dispensing::ValueObjects::StrongAnchorRole;
 using Siligen::Domain::Dispensing::ValueObjects::TopologyDispatchType;
-using Siligen::Domain::Trajectory::ValueObjects::Segment;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentEnd;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentStart;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
+using Siligen::ProcessPath::Contracts::Segment;
+using Siligen::ProcessPath::Contracts::SegmentEnd;
+using Siligen::ProcessPath::Contracts::SegmentStart;
+using Siligen::ProcessPath::Contracts::SegmentType;
 using Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout;
 
 namespace {
@@ -121,7 +121,7 @@ Result<float32> MeasureSegmentLength(
             return Result<float32>::Success(length_mm);
         }
         case SegmentType::Arc: {
-            const float32 length_mm = Siligen::Domain::Trajectory::ValueObjects::ComputeArcLength(segment.arc);
+            const float32 length_mm = Siligen::ProcessPath::Contracts::ComputeArcLength(segment.arc);
             if (!std::isfinite(length_mm)) {
                 return Result<float32>::Failure(
                     Error(ErrorCode::INVALID_PARAMETER, "arc geometry is invalid", "AuthorityTriggerLayoutPlanner"));

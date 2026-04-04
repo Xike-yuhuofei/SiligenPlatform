@@ -189,9 +189,7 @@ def test_dxf_preview_and_job_contract():
     assert "preview_source" in preview["resultSchema"]["required"]
     preview_result_properties = preview["resultSchema"]["properties"]
     assert "preview_source" in preview_result_properties
-    assert "trajectory_polyline" in preview_result_properties
-    assert "polyline_point_count" in preview_result_properties
-    assert "polyline_source_point_count" in preview_result_properties
+    assert "motion_preview" in preview_result_properties
 
     preview_confirm = operations["dxf.preview.confirm"]
     assert {"plan_id", "snapshot_hash"}.issubset(set(preview_confirm["paramsSchema"]["required"]))

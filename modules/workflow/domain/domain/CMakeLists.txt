@@ -104,7 +104,7 @@ set(DOMAIN_LIBRARIES
     siligen_trajectory
     siligen_triggering
     siligen_configuration
-    siligen_process_path_domain_trajectory
+    siligen_process_path_contracts_public
 )
 
 message(STATUS "领域层库配置完成")
@@ -147,7 +147,6 @@ target_link_libraries(siligen_workflow_dispensing_planning_compat INTERFACE
     siligen_dispense_packaging_domain_dispensing
 )
 target_compile_features(siligen_workflow_dispensing_planning_compat INTERFACE cxx_std_17)
-
 add_library(siligen_motion_execution_services STATIC
     # workflow runtime execution must use the workflow-owned motion services.
     # Pulling the motion-planning HomingProcess here reintroduces an ODR/layout

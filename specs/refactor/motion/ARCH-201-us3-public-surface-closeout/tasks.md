@@ -9,12 +9,21 @@
 
 ## Validation Result
 
-- `siligen_motion_planning_unit_tests.exe`: 27/27 passing
+- `siligen_motion_planning_unit_tests.exe`: 28/28 passing
 - `siligen_unit_tests.exe`: 163/163 passing
 - `siligen_runtime_host_unit_tests.exe`: 55/56 passing; single unrelated failure at `MockMultiCardCharacterizationTest.CrdClearDropsBufferedTrajectoryBeforeNextRun`
 - `runtime_service_integration_host_bootstrap_smoke.exe`: 4/4 passing
 - `process_runtime_core_motion_runtime_assembly_test.exe`: exit 0
 - `workflow_integration_motion_runtime_assembly_smoke.exe`: exit 0
+
+## Rescue Notes
+
+- `siligen_unit_tests.exe` initially had one US3-blocking regression:
+  `DispensingWorkflowUseCaseTest.GetPreviewSnapshotClampsLongExecutionTrajectoryMotionPreviewPreservingCorners`
+- The blocker was closed by restoring context-aware corner-anchor detection in:
+  - `modules/workflow/application/services/dispensing/WorkflowPreviewSnapshotService.cpp`
+  - `modules/dispense-packaging/application/services/dispensing/PreviewSnapshotService.cpp`
+- No extra residue was pulled into the batch while closing this regression.
 
 ## Closeout Disposition
 

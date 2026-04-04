@@ -1,6 +1,6 @@
 #include "PathRegularizer.h"
 
-#include "domain/trajectory/value-objects/GeometryUtils.h"
+#include "process_path/contracts/GeometryUtils.h"
 #include "shared/Geometry/BoostGeometryAdapter.h"
 
 #include <algorithm>
@@ -11,9 +11,9 @@
 namespace Siligen::Domain::Trajectory::DomainServices {
 
 using Siligen::Shared::Types::DXFSegmentType;
-using Siligen::Domain::Trajectory::ValueObjects::ArcPoint;
-using Siligen::Domain::Trajectory::ValueObjects::ComputeArcSweep;
-using Siligen::Domain::Trajectory::ValueObjects::NormalizeAngle;
+using Siligen::ProcessPath::Contracts::ArcPoint;
+using Siligen::ProcessPath::Contracts::ComputeArcSweep;
+using Siligen::ProcessPath::Contracts::NormalizeAngle;
 using Siligen::Shared::Geometry::DistancePointToSegment;
 using Siligen::Shared::Geometry::DistanceSquared;
 using Siligen::Shared::Types::kDegToRad;

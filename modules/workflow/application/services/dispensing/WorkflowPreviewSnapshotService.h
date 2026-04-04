@@ -27,6 +27,8 @@ struct WorkflowPreviewSnapshotInput {
     bool binding_ready = false;
     std::string validation_classification;
     std::string exception_reason;
+    std::string failure_reason;
+    std::string diagnostic_code;
 };
 
 class WorkflowPreviewSnapshotService {

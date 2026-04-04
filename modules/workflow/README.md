@@ -51,7 +51,8 @@
 
 ## S3 当前口径
 
-- `siligen_workflow_dispensing_planning_compat` 仅保留给 deprecated compatibility tests，不再进入 live 装配链。
+- `siligen_workflow_dispensing_planning_compat` 已退出 build graph；`workflow` 不再编译任何 dispensing planning `.cpp`。
+- `domain/dispensing/planning/domain-services/*` 的 workflow public surface 已降格为 deprecated forward header，canonical planning owner 固定在 `modules/dispense-packaging/domain/dispensing/planning/domain-services/`。
 - `siligen_process_runtime_core_*` 聚合 target 仅作为 deprecated compatibility target 保留，不再作为 owner 证据或 live public surface。
 
 ## S2 准入清单

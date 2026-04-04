@@ -8,9 +8,9 @@
 #include "domain/motion/domain-services/TimeTrajectoryPlanner.h"
 #include "domain/motion/domain-services/TrajectoryPlanner.h"
 #include "motion_planning/contracts/MotionTrajectory.h"
-#include "process_path/contracts/ProcessPath.h"
-#include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "motion_planning/contracts/TimePlanningConfig.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
+#include "process_path/contracts/ProcessPath.h"
 
 #include <gtest/gtest.h>
 
@@ -252,7 +252,7 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowCmpPrecisionTestUsesContractsProce
 TEST(MotionPlanningOwnerBoundaryTest, InterpolationProgramPlannerConsumersUseContractsProcessPathSemantics) {
     const fs::path repo_root = RepoRoot();
     const std::array<fs::path, 4> sources = {{
-        repo_root / "modules/workflow/tests/process-runtime-core/unit/domain/trajectory/InterpolationProgramPlannerTest.cpp",
+        repo_root / "modules/motion-planning/tests/unit/domain/trajectory/InterpolationProgramPlannerTest.cpp",
         repo_root / "modules/workflow/application/usecases/motion/trajectory/DeterministicPathExecutionUseCase.cpp",
         repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp",
         repo_root / "modules/dispense-packaging/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp",
@@ -273,4 +273,38 @@ TEST(MotionPlanningOwnerBoundaryTest, InterpolationProgramPlannerConsumersUseCon
               std::string::npos);
 }
 
+TEST(MotionPlanningOwnerBoundaryTest, WorkflowResidualUnifiedTrajectoryPlannerIsRemoved) {
+    const fs::path repo_root = RepoRoot();
+
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp"));
+
+    const std::string workflow_dispensing_planner = ReadTextFile(
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp");
+    EXPECT_NE(workflow_dispensing_planner.find(
+                  "../../../../../../../dispense-packaging/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.h"),
+              std::string::npos);
+    EXPECT_EQ(workflow_dispensing_planner.find('#' + std::string("include \"UnifiedTrajectoryPlannerService.h\"")),
+              std::string::npos);
+}
+
+TEST(MotionPlanningOwnerBoundaryTest, WorkflowValueObjectThinBridgesAreRemoved) {
+    const fs::path repo_root = RepoRoot();
+
+    const std::array<fs::path, 7> removed_headers = {{
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/Path.h",
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/Primitive.h",
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/ProcessConfig.h",
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/ProcessPath.h",
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/GeometryUtils.h",
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/GeometryBoostAdapter.h",
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/PlanningReport.h",
+    }};
+
+    for (const auto& header : removed_headers) {
+        EXPECT_FALSE(fs::exists(header)) << header.string();
+    }
+}
 }  // namespace

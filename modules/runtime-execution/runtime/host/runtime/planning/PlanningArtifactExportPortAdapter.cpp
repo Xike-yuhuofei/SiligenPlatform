@@ -103,8 +103,7 @@ Result<void> WriteGluePointsCsv(const PlanningArtifactExportRequest& request,
     return Result<void>::Success();
 }
 
-Siligen::Shared::Types::Point2D ArcPoint(const Domain::Trajectory::ValueObjects::ArcPrimitive& arc,
-                                         float32 angle_deg) {
+Siligen::Shared::Types::Point2D ArcPoint(const Siligen::ProcessPath::Contracts::ArcPrimitive& arc, float32 angle_deg) {
     constexpr float32 kPi = 3.14159265359f;
     constexpr float32 kDegToRad = kPi / 180.0f;
     const float32 angle_rad = angle_deg * kDegToRad;
@@ -113,8 +112,8 @@ Siligen::Shared::Types::Point2D ArcPoint(const Domain::Trajectory::ValueObjects:
         arc.center.y + arc.radius * std::sin(angle_rad));
 }
 
-Siligen::Shared::Types::Point2D SegmentStart(const Domain::Trajectory::ValueObjects::Segment& segment) {
-    using Domain::Trajectory::ValueObjects::SegmentType;
+Siligen::Shared::Types::Point2D SegmentStart(const Siligen::ProcessPath::Contracts::Segment& segment) {
+    using SegmentType = Siligen::ProcessPath::Contracts::SegmentType;
     switch (segment.type) {
         case SegmentType::Line:
             return segment.line.start;
@@ -130,8 +129,8 @@ Siligen::Shared::Types::Point2D SegmentStart(const Domain::Trajectory::ValueObje
     }
 }
 
-Siligen::Shared::Types::Point2D SegmentEnd(const Domain::Trajectory::ValueObjects::Segment& segment) {
-    using Domain::Trajectory::ValueObjects::SegmentType;
+Siligen::Shared::Types::Point2D SegmentEnd(const Siligen::ProcessPath::Contracts::Segment& segment) {
+    using SegmentType = Siligen::ProcessPath::Contracts::SegmentType;
     switch (segment.type) {
         case SegmentType::Line:
             return segment.line.end;
@@ -147,8 +146,8 @@ Siligen::Shared::Types::Point2D SegmentEnd(const Domain::Trajectory::ValueObject
     }
 }
 
-const char* SegmentTypeLabel(Domain::Trajectory::ValueObjects::SegmentType type) {
-    using Domain::Trajectory::ValueObjects::SegmentType;
+const char* SegmentTypeLabel(Siligen::ProcessPath::Contracts::SegmentType type) {
+    using SegmentType = Siligen::ProcessPath::Contracts::SegmentType;
     switch (type) {
         case SegmentType::Line:
             return "Line";
@@ -161,8 +160,8 @@ const char* SegmentTypeLabel(Domain::Trajectory::ValueObjects::SegmentType type)
     }
 }
 
-const char* ProcessTagLabel(Domain::Trajectory::ValueObjects::ProcessTag tag) {
-    using Domain::Trajectory::ValueObjects::ProcessTag;
+const char* ProcessTagLabel(Siligen::ProcessPath::Contracts::ProcessTag tag) {
+    using ProcessTag = Siligen::ProcessPath::Contracts::ProcessTag;
     switch (tag) {
         case ProcessTag::Normal:
             return "Normal";

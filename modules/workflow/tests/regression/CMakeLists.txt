@@ -23,10 +23,6 @@ if(EXISTS "${WORKFLOW_REGRESSION_PATH_EXECUTION_TEST_SOURCE}")
     )
     target_compile_features(workflow_regression_deterministic_path_execution_smoke PRIVATE cxx_std_17)
 
-    process_runtime_core_stage_runtime_dependency(
-        workflow_regression_deterministic_path_execution_smoke
-        ruckig
-    )
     process_runtime_core_add_test_with_runtime_environment(
         workflow_regression_deterministic_path_execution_smoke
         workflow_regression_deterministic_path_execution_smoke

@@ -59,7 +59,7 @@
 | `P0-03` | L2 | 多轮 `home + closed_loop` 稳定性 | `run_case_matrix.py`、`test.ps1 -IncludeHilCaseMatrix`、`run_hil_controlled_test.ps1` | `case-matrix-summary.json/md`、round 级 snapshots | `existing`：已接 root validation opt-in，已接 controlled gate / release-check 默认门禁 |
 | `P0-04` | L3 | canonical DXF dry-run 主链 | `run_real_dxf_machine_dryrun.py` | dry-run 报告、`phase_timeline`、`verdict`、`evidence_contract` | `existing` |
 | `P0-05` | L3 | 设备前提条件阻断 | `tests/e2e/hardware-in-loop/run_real_dxf_machine_dryrun_negative_matrix.py` + `run_real_dxf_machine_dryrun.py` + `tests/integration/scenarios/first-layer/run_tcp_precondition_matrix.py` | `real-dxf-machine-dryrun-negative-matrix.json/md`、per-case dry-run 报告、阻断原因、状态快照、失败上下文 | `existing`：canonical dry-run negative matrix 已收敛到 `estop`、`door_open`、`home_boundary_x_active`、`home_boundary_y_active` |
-| `P0-06` | L4 | 在线预览证据主干 | `run_real_dxf_preview_snapshot.py` + `tests/contracts/test_online_preview_evidence_contract.py` | `plan-prepare.json`、`snapshot.json`、`glue_points.json`、`execution_polyline.json`、`preview-verdict.json`、`preview-evidence.md`、`hmi-preview.png`、`online-smoke.log` | `existing` |
+| `P0-06` | L4 | 在线预览证据主干 | `run_real_dxf_preview_snapshot.py` + `tests/contracts/test_online_preview_evidence_contract.py` | `plan-prepare.json`、`snapshot.json`、`glue_points.json`、`motion_preview.json`、`preview-verdict.json`、`preview-evidence.md`、`hmi-preview.png`、`online-smoke.log` | `existing` |
 | `P0-07` | L5 | HMI online 启动成功 | `apps/hmi-app/scripts/online-smoke.ps1` | `online-smoke.log`、截图、`SUPERVISOR_EVENT` 最小阶段序列 | `existing` |
 | `P0-08` | L5 | HMI failure stage/code 识别 | `apps/hmi-app/scripts/verify-online-ready-timeout.ps1` | `failure_code`、`failure_stage`、阶段失败事件 | `existing` |
 | `P0-09` | L5 | HMI recovery 闭环 | `apps/hmi-app/scripts/verify-online-recovery-loop.ps1` | `stage_failed`、`recovery_invoked`、`stage_succeeded@online_ready`、最终 `online_ready=true` | `existing` |
@@ -105,7 +105,7 @@
 - `plan-prepare.json`
 - `snapshot.json`
 - `glue_points.json`
-- `execution_polyline.json`
+- `motion_preview.json`
 - `preview-verdict.json`
 - `preview-evidence.md`
 - `hmi-preview.png`

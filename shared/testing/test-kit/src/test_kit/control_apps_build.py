@@ -19,6 +19,26 @@ class BuildRootProbe:
     reason: str = ""
 
 
+def _workspace_build_children(workspace_root: Path) -> tuple[Path, ...]:
+    build_root = (workspace_root / "build").resolve()
+    if not build_root.exists():
+        return ()
+
+    candidates: list[Path] = []
+    for child in build_root.iterdir():
+        if not child.is_dir():
+            continue
+        resolved_child = child.resolve()
+        if resolved_child == (build_root / "control-apps").resolve():
+            continue
+        if not ((resolved_child / "bin").exists() or (resolved_child / "CMakeCache.txt").exists()):
+            continue
+        candidates.append(resolved_child)
+
+    candidates.sort(key=lambda path: (-path.stat().st_mtime, str(path).lower()))
+    return tuple(candidates)
+
+
 def workspace_build_token(workspace_root: Path) -> str:
     normalized_root = str(workspace_root.resolve()).lower().encode("utf-8")
     return hashlib.sha256(normalized_root).hexdigest()[:12]
@@ -89,6 +109,11 @@ def control_apps_build_root_probes(
     if explicit_build_root:
         add_probe(Path(explicit_build_root), source="env", allow_stale=True)
 
+    add_probe(workspace_root / "build" / "control-apps", source="workspace-build-control-apps")
+    add_probe(workspace_root / "build", source="workspace-build")
+    for child_root in _workspace_build_children(workspace_root):
+        add_probe(child_root, source="workspace-build-child")
+
     local_app_data = os.getenv("LOCALAPPDATA", "").strip()
     if local_app_data:
         ss_root = Path(local_app_data) / "SS"
@@ -98,9 +123,6 @@ def control_apps_build_root_probes(
             for candidate in sorted(ss_root.glob("cab-*")):
                 add_probe(candidate, source="workspace-cab-build")
         add_probe(Path(local_app_data) / "SiligenSuite" / "control-apps-build", source="legacy-control-apps-build")
-
-    add_probe(workspace_root / "build" / "control-apps", source="workspace-build-control-apps")
-    add_probe(workspace_root / "build", source="workspace-build")
     return tuple(probes)
 
 

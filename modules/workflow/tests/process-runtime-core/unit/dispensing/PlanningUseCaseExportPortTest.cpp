@@ -5,7 +5,8 @@
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/process_path/ProcessPathFacade.h"
 #include "application/services/dxf/DxfPbPreparationService.h"
-#include "domain/trajectory/ports/IPathSourcePort.h"
+#include "process_path/contracts/IPathSourcePort.h"
+#include "process_path/contracts/Primitive.h"
 #include "workflow/contracts/WorkflowContracts.h"
 
 #include <gtest/gtest.h>
@@ -29,7 +30,7 @@ using Siligen::Domain::Configuration::Ports::IConfigurationPort;
 using Siligen::Domain::Configuration::Ports::HomingConfig;
 using Siligen::Domain::Trajectory::Ports::IPathSourcePort;
 using Siligen::Domain::Trajectory::Ports::PathSourceResult;
-using Siligen::Domain::Trajectory::ValueObjects::Primitive;
+using Siligen::ProcessPath::Contracts::Primitive;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::TrajectoryConfig;
@@ -269,7 +270,7 @@ bool AllProcessPathSegmentEndpointsWithinBounds(
     float max_y,
     float tolerance_mm = 1e-3f) {
     for (const auto& segment : process_path.segments) {
-        if (segment.geometry.type == Siligen::Domain::Trajectory::ValueObjects::SegmentType::Line) {
+        if (segment.geometry.type == Siligen::ProcessPath::Contracts::SegmentType::Line) {
             const auto& start = segment.geometry.line.start;
             const auto& end = segment.geometry.line.end;
             if (start.x < min_x - tolerance_mm || start.x > max_x + tolerance_mm ||

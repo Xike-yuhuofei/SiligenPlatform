@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/trajectory/ports/IDXFPathSourcePort.h"
+#include "process_path/contracts/IDXFPathSourcePort.h"
 #include "AutoPathSourceAdapter.h"
 #include <memory>
 

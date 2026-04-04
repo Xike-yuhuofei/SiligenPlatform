@@ -38,7 +38,7 @@
 ## 构建与验证入口
 
 - CMake 统一目标：`siligen_shared_testing`（兼容别名：`siligen_test_kit`）。
-- workspace validation 入口：`python -m test_kit.workspace_validation`。
+- workspace validation 正式入口优先使用根级 `.\test.ps1` / `.\ci.ps1`；`python -m test_kit.workspace_validation` 仅在已完成环境引导并注入 `PYTHONPATH=shared\testing\test-kit\src` 时作为底层模块入口。
 
 ## 迁移与退出规则
 

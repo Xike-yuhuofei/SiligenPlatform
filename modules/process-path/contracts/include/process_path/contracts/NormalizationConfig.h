@@ -1,10 +1,26 @@
 #pragma once
 
-#include "../../../../domain/trajectory/domain-services/GeometryNormalizer.h"
+#include "shared/types/Types.h"
 
 namespace Siligen::ProcessPath::Contracts {
 
-using NormalizationConfig = Siligen::Domain::Trajectory::DomainServices::NormalizationConfig;
-using NormalizationReport = Siligen::Domain::Trajectory::DomainServices::NormalizationReport;
+using Siligen::Shared::Types::float32;
+
+struct NormalizationConfig {
+    float32 unit_scale = 1.0f;
+    float32 continuity_tolerance = 0.1f;
+    bool approximate_splines = false;
+    float32 spline_max_step_mm = 0.0f;
+    float32 spline_max_error_mm = 0.0f;
+};
+
+struct NormalizationReport {
+    int discontinuity_count = 0;
+    bool closed = false;
+    bool invalid_unit_scale = false;
+    int skipped_spline_count = 0;
+    int point_primitive_count = 0;
+    int consumable_segment_count = 0;
+};
 
 }  // namespace Siligen::ProcessPath::Contracts

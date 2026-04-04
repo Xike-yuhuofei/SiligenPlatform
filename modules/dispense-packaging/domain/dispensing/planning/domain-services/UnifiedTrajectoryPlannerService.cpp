@@ -1,59 +1,31 @@
 #include "UnifiedTrajectoryPlannerService.h"
 
+#include "application/services/process_path/ProcessPathFacade.h"
+#include "domain/motion/domain-services/MotionPlanner.h"
+#include "process_path/contracts/GeometryUtils.h"
+#include "shared/types/Error.h"
+
 #include <cmath>
+#include <sstream>
+#include <utility>
 
 namespace Siligen::Domain::Dispensing::DomainServices {
 
 namespace {
-constexpr float32 kPi = 3.14159265359f;
-constexpr float32 kDegToRad = kPi / 180.0f;
 constexpr float32 kEpsilon = 1e-6f;
 
-using Siligen::Domain::Trajectory::ValueObjects::Segment;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
+using Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest;
+using Siligen::Application::Services::ProcessPath::ProcessPathBuildResult;
+using Siligen::ProcessPath::Contracts::PathGenerationStage;
+using Siligen::ProcessPath::Contracts::PathGenerationStatus;
+using Siligen::ProcessPath::Contracts::SegmentEnd;
+using Siligen::ProcessPath::Contracts::SegmentStart;
+using Siligen::ProcessPath::Contracts::SegmentType;
+using Siligen::Shared::Types::Error;
+using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Point2D;
 
-Point2D ArcPoint(const Siligen::Domain::Trajectory::ValueObjects::ArcPrimitive& arc,
-                 float32 angle_deg) {
-    float32 angle_rad = angle_deg * kDegToRad;
-    return Point2D(arc.center.x + arc.radius * std::cos(angle_rad),
-                   arc.center.y + arc.radius * std::sin(angle_rad));
-}
-
-Point2D SegmentStart(const Segment& segment) {
-    switch (segment.type) {
-        case SegmentType::Line:
-            return segment.line.start;
-        case SegmentType::Arc:
-            return ArcPoint(segment.arc, segment.arc.start_angle_deg);
-        case SegmentType::Spline:
-            if (!segment.spline.control_points.empty()) {
-                return segment.spline.control_points.front();
-            }
-            return Point2D();
-        default:
-            return Point2D();
-    }
-}
-
-Point2D SegmentEnd(const Segment& segment) {
-    switch (segment.type) {
-        case SegmentType::Line:
-            return segment.line.end;
-        case SegmentType::Arc:
-            return ArcPoint(segment.arc, segment.arc.end_angle_deg);
-        case SegmentType::Spline:
-            if (!segment.spline.control_points.empty()) {
-                return segment.spline.control_points.back();
-            }
-            return Point2D();
-        default:
-            return Point2D();
-    }
-}
-
-void OptimizeLineOrientation(Siligen::Domain::Trajectory::ValueObjects::Path& path,
-                             float32 tolerance) {
+void OptimizeLineOrientation(Siligen::ProcessPath::Contracts::Path& path, float32 tolerance) {
     if (path.segments.size() < 2) {
         return;
     }
@@ -79,35 +51,78 @@ void OptimizeLineOrientation(Siligen::Domain::Trajectory::ValueObjects::Path& pa
         }
     }
 }
+
+ProcessPathBuildRequest BuildProcessPathRequest(
+    const std::vector<Siligen::ProcessPath::Contracts::Primitive>& primitives,
+    const UnifiedTrajectoryPlanRequest& request) {
+    ProcessPathBuildRequest build_request;
+    build_request.primitives = primitives;
+    build_request.normalization = request.normalization;
+    build_request.process = request.process;
+    build_request.shaping = request.shaping;
+    build_request.topology_repair.enable = false;
+    return build_request;
+}
+
+const char* StageToString(const PathGenerationStage stage) {
+    switch (stage) {
+        case PathGenerationStage::None:
+            return "none";
+        case PathGenerationStage::InputValidation:
+            return "input_validation";
+        case PathGenerationStage::TopologyRepair:
+            return "topology_repair";
+        case PathGenerationStage::Normalization:
+            return "normalization";
+        case PathGenerationStage::ProcessAnnotation:
+            return "process_annotation";
+        case PathGenerationStage::TrajectoryShaping:
+            return "trajectory_shaping";
+    }
+
+    return "unknown";
+}
+
+Error BuildPathGenerationError(const ProcessPathBuildResult& build_result) {
+    std::ostringstream oss;
+    oss << "process path build failed at stage " << StageToString(build_result.failed_stage);
+    if (!build_result.error_message.empty()) {
+        oss << ": " << build_result.error_message;
+    }
+
+    const auto error_code = build_result.status == PathGenerationStatus::InvalidInput
+        ? ErrorCode::INVALID_PARAMETER
+        : ErrorCode::INVALID_STATE;
+    return Error(error_code, oss.str(), "UnifiedTrajectoryPlannerService");
+}
+
 }  // namespace
 
 UnifiedTrajectoryPlannerService::UnifiedTrajectoryPlannerService(
     std::shared_ptr<Domain::Motion::DomainServices::VelocityProfileService> velocity_service)
     : velocity_service_(std::move(velocity_service)) {}
 
-UnifiedTrajectoryPlanResult UnifiedTrajectoryPlannerService::Plan(
-    const std::vector<Domain::Trajectory::ValueObjects::Primitive>& primitives,
+Siligen::Shared::Types::Result<UnifiedTrajectoryPlanResult> UnifiedTrajectoryPlannerService::Plan(
+    const std::vector<Siligen::ProcessPath::Contracts::Primitive>& primitives,
     const UnifiedTrajectoryPlanRequest& request) const {
+    const auto build_result = process_path_facade_.Build(BuildProcessPathRequest(primitives, request));
+    if (build_result.status != PathGenerationStatus::Success) {
+        return Siligen::Shared::Types::Result<UnifiedTrajectoryPlanResult>::Failure(
+            BuildPathGenerationError(build_result));
+    }
+
     UnifiedTrajectoryPlanResult result;
-
-    Domain::Trajectory::DomainServices::GeometryNormalizer normalizer;
-    result.normalized = normalizer.Normalize(primitives, request.normalization);
+    result.normalized = build_result.normalized;
     OptimizeLineOrientation(result.normalized.path, request.normalization.continuity_tolerance);
-
-    Domain::Trajectory::DomainServices::ProcessAnnotator annotator;
-    result.process_path = annotator.Annotate(result.normalized.path, request.process);
-
-    Domain::Trajectory::DomainServices::TrajectoryShaper shaper;
-    result.shaped_path = shaper.Shape(result.process_path, request.shaping);
+    result.process_path = build_result.process_path;
+    result.shaped_path = build_result.shaped_path;
 
     if (request.generate_motion_trajectory) {
         Domain::Motion::DomainServices::MotionPlanner planner(velocity_service_);
         result.motion_trajectory = planner.Plan(result.shaped_path, request.motion);
     }
 
-    return result;
+    return Siligen::Shared::Types::Result<UnifiedTrajectoryPlanResult>::Success(std::move(result));
 }
 
 }  // namespace Siligen::Domain::Dispensing::DomainServices
-
-

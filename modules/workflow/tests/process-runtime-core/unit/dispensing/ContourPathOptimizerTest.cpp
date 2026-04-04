@@ -1,4 +1,5 @@
 #include "domain/dispensing/planning/domain-services/ContourOptimizationService.h"
+#include "process_path/contracts/Primitive.h"
 
 #include <gtest/gtest.h>
 
@@ -8,7 +9,7 @@ namespace {
 using Siligen::Domain::Dispensing::DomainServices::ContourOptimizationService;
 using Siligen::Domain::Dispensing::DomainServices::ContourOptimizationStats;
 using Siligen::Domain::Trajectory::Ports::PathPrimitiveMeta;
-using Siligen::Domain::Trajectory::ValueObjects::Primitive;
+using Siligen::ProcessPath::Contracts::Primitive;
 using Siligen::Shared::Types::DXFEntityType;
 using Siligen::Shared::Types::Point2D;
 using Siligen::Shared::Types::float32;
