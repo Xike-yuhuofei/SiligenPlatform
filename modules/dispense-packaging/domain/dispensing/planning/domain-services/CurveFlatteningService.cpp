@@ -11,10 +11,10 @@ namespace Siligen::Domain::Dispensing::DomainServices {
 
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
-using Siligen::Domain::Trajectory::ValueObjects::ArcPoint;
-using Siligen::Domain::Trajectory::ValueObjects::ComputeArcLength;
-using Siligen::Domain::Trajectory::ValueObjects::ComputeArcSweep;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
+using Siligen::ProcessPath::Contracts::ArcPoint;
+using Siligen::ProcessPath::Contracts::ComputeArcLength;
+using Siligen::ProcessPath::Contracts::ComputeArcSweep;
+using Siligen::ProcessPath::Contracts::SegmentType;
 
 namespace {
 

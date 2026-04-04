@@ -1,5 +1,5 @@
-#include "domain/trajectory/domain-services/TrajectoryShaper.h"
-#include "domain/trajectory/value-objects/GeometryUtils.h"
+#include "../../../../domain/trajectory/domain-services/TrajectoryShaper.h"
+#include "../../../../domain/trajectory/value-objects/GeometryUtils.h"
 
 #include <gtest/gtest.h>
 

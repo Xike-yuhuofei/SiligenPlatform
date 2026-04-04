@@ -81,6 +81,7 @@ target_link_libraries(siligen_dispense_packaging_domain_dispensing PUBLIC
     siligen_utils
     siligen_geometry
     siligen_motion
+    siligen_process_path_domain_trajectory
 )
 if(TARGET siligen_device_contracts)
     target_link_libraries(siligen_dispense_packaging_domain_dispensing PUBLIC

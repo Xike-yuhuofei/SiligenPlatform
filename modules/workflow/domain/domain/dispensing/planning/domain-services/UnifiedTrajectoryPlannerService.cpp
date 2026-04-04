@@ -9,11 +9,12 @@ constexpr float32 kPi = 3.14159265359f;
 constexpr float32 kDegToRad = kPi / 180.0f;
 constexpr float32 kEpsilon = 1e-6f;
 
-using Siligen::Domain::Trajectory::ValueObjects::Segment;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
+using Siligen::ProcessPath::Contracts::Primitive;
+using Siligen::ProcessPath::Contracts::Segment;
+using Siligen::ProcessPath::Contracts::SegmentType;
 using Siligen::Shared::Types::Point2D;
 
-Point2D ArcPoint(const Siligen::Domain::Trajectory::ValueObjects::ArcPrimitive& arc,
+Point2D ArcPoint(const Siligen::ProcessPath::Contracts::ArcPrimitive& arc,
                  float32 angle_deg) {
     float32 angle_rad = angle_deg * kDegToRad;
     return Point2D(arc.center.x + arc.radius * std::cos(angle_rad),
@@ -52,7 +53,7 @@ Point2D SegmentEnd(const Segment& segment) {
     }
 }
 
-void OptimizeLineOrientation(Siligen::Domain::Trajectory::ValueObjects::Path& path,
+void OptimizeLineOrientation(Siligen::ProcessPath::Contracts::Path& path,
                              float32 tolerance) {
     if (path.segments.size() < 2) {
         return;
@@ -86,7 +87,7 @@ UnifiedTrajectoryPlannerService::UnifiedTrajectoryPlannerService(
     : velocity_service_(std::move(velocity_service)) {}
 
 UnifiedTrajectoryPlanResult UnifiedTrajectoryPlannerService::Plan(
-    const std::vector<Domain::Trajectory::ValueObjects::Primitive>& primitives,
+    const std::vector<Primitive>& primitives,
     const UnifiedTrajectoryPlanRequest& request) const {
     UnifiedTrajectoryPlanResult result;
 

@@ -85,7 +85,6 @@ class IEventPublisherPort;
 namespace Trajectory {
 namespace Ports {
 class IPathSourcePort;
-class IDXFPathSourcePort;
 }  // namespace Ports
 }  // namespace Trajectory
 }  // namespace Domain
@@ -118,7 +117,6 @@ struct InfrastructureBindings {
     std::shared_ptr<Domain::System::Ports::IEventPublisherPort> event_port;
     std::shared_ptr<Domain::Safety::Ports::IInterlockSignalPort> interlock_signal_port;
     std::shared_ptr<Domain::Trajectory::Ports::IPathSourcePort> path_source_port;
-    std::shared_ptr<Domain::Trajectory::Ports::IDXFPathSourcePort> dxf_path_source_port;
     std::shared_ptr<Domain::Recipes::Ports::IRecipeRepositoryPort> recipe_repository;
     std::shared_ptr<Domain::Recipes::Ports::ITemplateRepositoryPort> template_repository;
     std::shared_ptr<Domain::Recipes::Ports::IAuditRepositoryPort> audit_repository;

@@ -3,7 +3,7 @@
 #include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
 #include "domain/motion/domain-services/MotionPlanner.h"
 #include "process_path/contracts/ProcessPath.h"
-#include "domain/trajectory/value-objects/GeometryUtils.h"
+#include "process_path/contracts/GeometryUtils.h"
 #include "shared/types/Error.h"
 
 #include <algorithm>

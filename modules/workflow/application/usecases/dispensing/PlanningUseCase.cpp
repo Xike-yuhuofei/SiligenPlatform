@@ -2,7 +2,7 @@
 
 #include "application/services/dxf/DxfPbPreparationService.h"
 #include "application/services/dispensing/PlanningArtifactExportAssemblyService.h"
-#include "domain/trajectory/value-objects/GeometryUtils.h"
+#include "process_path/contracts/GeometryUtils.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
 #include "workflow/contracts/WorkflowContracts.h"
@@ -28,12 +28,12 @@ using Siligen::Application::Services::Dispensing::AuthorityPreviewBuildInput;
 using Siligen::Application::Services::Dispensing::ExecutionAssemblyBuildInput;
 using Siligen::Domain::Motion::ValueObjects::TimePlanningConfig;
 using Siligen::Domain::Trajectory::Ports::PathSourceResult;
-using Siligen::Domain::Trajectory::ValueObjects::ContourElement;
-using Siligen::Domain::Trajectory::ValueObjects::ContourElementType;
-using Siligen::Domain::Trajectory::ValueObjects::Primitive;
-using Siligen::Domain::Trajectory::ValueObjects::PrimitiveType;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessTag;
-using Siligen::Domain::Trajectory::ValueObjects::Segment;
+using Siligen::ProcessPath::Contracts::ContourElement;
+using Siligen::ProcessPath::Contracts::ContourElementType;
+using Siligen::ProcessPath::Contracts::Primitive;
+using Siligen::ProcessPath::Contracts::PrimitiveType;
+using Siligen::ProcessPath::Contracts::ProcessTag;
+using Siligen::ProcessPath::Contracts::Segment;
 using Siligen::MotionPlanning::Contracts::MotionPlan;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
@@ -278,30 +278,30 @@ void UpdateBounds(PrimitiveBounds& bounds, const Point2D& point) {
 }
 
 bool IsAngleOnArc(float32 start_angle, float32 end_angle, bool clockwise, float32 angle) {
-    const float32 total = Siligen::Domain::Trajectory::ValueObjects::ComputeArcSweep(start_angle, end_angle, clockwise);
-    const float32 sweep = Siligen::Domain::Trajectory::ValueObjects::ComputeArcSweep(start_angle, angle, clockwise);
+    const float32 total = Siligen::ProcessPath::Contracts::ComputeArcSweep(start_angle, end_angle, clockwise);
+    const float32 sweep = Siligen::ProcessPath::Contracts::ComputeArcSweep(start_angle, angle, clockwise);
     return sweep <= total + 1e-3f;
 }
 
 void UpdateBoundsForArc(
-    const Siligen::Domain::Trajectory::ValueObjects::ArcPrimitive& arc,
+    const Siligen::ProcessPath::Contracts::ArcPrimitive& arc,
     PrimitiveBounds& bounds) {
-    const float32 start_angle = Siligen::Domain::Trajectory::ValueObjects::NormalizeAngle(arc.start_angle_deg);
-    const float32 end_angle = Siligen::Domain::Trajectory::ValueObjects::NormalizeAngle(arc.end_angle_deg);
-    UpdateBounds(bounds, Siligen::Domain::Trajectory::ValueObjects::ArcPoint(arc, start_angle));
-    UpdateBounds(bounds, Siligen::Domain::Trajectory::ValueObjects::ArcPoint(arc, end_angle));
+    const float32 start_angle = Siligen::ProcessPath::Contracts::NormalizeAngle(arc.start_angle_deg);
+    const float32 end_angle = Siligen::ProcessPath::Contracts::NormalizeAngle(arc.end_angle_deg);
+    UpdateBounds(bounds, Siligen::ProcessPath::Contracts::ArcPoint(arc, start_angle));
+    UpdateBounds(bounds, Siligen::ProcessPath::Contracts::ArcPoint(arc, end_angle));
 
     const float32 cardinal_angles[] = {0.0f, 90.0f, 180.0f, 270.0f};
     for (float32 angle : cardinal_angles) {
-        const float32 normalized = Siligen::Domain::Trajectory::ValueObjects::NormalizeAngle(angle);
+        const float32 normalized = Siligen::ProcessPath::Contracts::NormalizeAngle(angle);
         if (IsAngleOnArc(start_angle, end_angle, arc.clockwise, normalized)) {
-            UpdateBounds(bounds, Siligen::Domain::Trajectory::ValueObjects::ArcPoint(arc, normalized));
+            UpdateBounds(bounds, Siligen::ProcessPath::Contracts::ArcPoint(arc, normalized));
         }
     }
 }
 
 void UpdateBoundsForEllipse(
-    const Siligen::Domain::Trajectory::ValueObjects::EllipsePrimitive& ellipse,
+    const Siligen::ProcessPath::Contracts::EllipsePrimitive& ellipse,
     PrimitiveBounds& bounds) {
     const Point2D major = ellipse.major_axis;
     const float32 a = major.Length();
@@ -584,11 +584,11 @@ float32 SegmentLength(const Segment& segment) {
         return segment.length;
     }
     switch (segment.type) {
-        case Siligen::Domain::Trajectory::ValueObjects::SegmentType::Line:
+        case Siligen::ProcessPath::Contracts::SegmentType::Line:
             return segment.line.start.DistanceTo(segment.line.end);
-        case Siligen::Domain::Trajectory::ValueObjects::SegmentType::Arc:
-            return Siligen::Domain::Trajectory::ValueObjects::ComputeArcLength(segment.arc);
-        case Siligen::Domain::Trajectory::ValueObjects::SegmentType::Spline: {
+        case Siligen::ProcessPath::Contracts::SegmentType::Arc:
+            return Siligen::ProcessPath::Contracts::ComputeArcLength(segment.arc);
+        case Siligen::ProcessPath::Contracts::SegmentType::Spline: {
             float32 total = 0.0f;
             for (size_t i = 1; i < segment.spline.control_points.size(); ++i) {
                 total += segment.spline.control_points[i - 1].DistanceTo(segment.spline.control_points[i]);

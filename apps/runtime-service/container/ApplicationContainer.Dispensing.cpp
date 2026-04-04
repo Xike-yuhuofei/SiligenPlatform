@@ -10,7 +10,7 @@
 #include "application/usecases/dispensing/valve/ValveQueryUseCase.h"
 #include "domain/dispensing/domain-services/ValveCoordinationService.h"
 #include "domain/safety/ports/IInterlockSignalPort.h"
-#include "domain/trajectory/ports/IPathSourcePort.h"
+#include "process_path/contracts/IPathSourcePort.h"
 #include "application/usecases/dispensing/UploadFileUseCase.h"
 #include "job_ingest/contracts/dispensing/UploadContracts.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"

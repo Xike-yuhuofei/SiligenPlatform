@@ -16,11 +16,11 @@ using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::Point2D;
 using Siligen::Shared::Types::float32;
-using Siligen::Domain::Trajectory::ValueObjects::Primitive;
-using Siligen::Domain::Trajectory::ValueObjects::ContourElement;
-using Siligen::Domain::Trajectory::ValueObjects::ContourElementType;
 using Siligen::Domain::Trajectory::Ports::PathSourceResult;
 using Siligen::Domain::Trajectory::Ports::PathPrimitiveMeta;
+using Siligen::ProcessPath::Contracts::ContourElement;
+using Siligen::ProcessPath::Contracts::ContourElementType;
+using Siligen::ProcessPath::Contracts::Primitive;
 using Siligen::Shared::Types::DXFEntityType;
 
 #if SILIGEN_ENABLE_PROTOBUF

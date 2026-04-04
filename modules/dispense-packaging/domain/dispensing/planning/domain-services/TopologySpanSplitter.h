@@ -1,7 +1,7 @@
 #pragma once
 
 #include "domain/dispensing/value-objects/AuthorityTriggerLayout.h"
-#include "domain/trajectory/value-objects/ProcessPath.h"
+#include "process_path/contracts/ProcessPath.h"
 #include "shared/types/Types.h"
 
 #include <vector>
@@ -10,8 +10,8 @@ namespace Siligen::Domain::Dispensing::DomainServices {
 
 using Siligen::Shared::Types::Point2D;
 using Siligen::Shared::Types::float32;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
+using Siligen::ProcessPath::Contracts::ProcessPath;
+using Siligen::ProcessPath::Contracts::ProcessSegment;
 using Siligen::Domain::Dispensing::ValueObjects::DispenseSpanSplitReason;
 using Siligen::Domain::Dispensing::ValueObjects::StrongAnchorRole;
 

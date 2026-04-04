@@ -1,6 +1,6 @@
 #include "domain/trajectory/domain-services/TopologyRepairService.h"
 
-#include "domain/trajectory/value-objects/GeometryUtils.h"
+#include "process_path/contracts/GeometryUtils.h"
 #include "shared/geometry/BoostGeometryAdapter.h"
 
 #include <algorithm>
@@ -12,10 +12,10 @@
 
 namespace Siligen::Domain::Trajectory::DomainServices {
 
-using Siligen::Domain::Trajectory::ValueObjects::ArcPoint;
-using Siligen::Domain::Trajectory::ValueObjects::ComputeArcSweep;
-using Siligen::Domain::Trajectory::ValueObjects::EllipsePoint;
-using Siligen::Domain::Trajectory::ValueObjects::NormalizeAngle;
+using Siligen::ProcessPath::Contracts::ArcPoint;
+using Siligen::ProcessPath::Contracts::ComputeArcSweep;
+using Siligen::ProcessPath::Contracts::EllipsePoint;
+using Siligen::ProcessPath::Contracts::NormalizeAngle;
 using Siligen::ProcessPath::Contracts::PrimitiveType;
 using Siligen::Shared::Geometry::Distance;
 using Siligen::Shared::Types::Point2D;
@@ -52,7 +52,7 @@ Point2D ContourElementEndPoint(const Siligen::ProcessPath::Contracts::ContourEle
     return {};
 }
 
-Point2D PrimitiveStartPoint(const Primitive& primitive) {
+Point2D PrimitiveStartPoint(const ContractsPrimitive& primitive) {
     switch (primitive.type) {
         case PrimitiveType::Line:
             return primitive.line.start;
@@ -78,7 +78,7 @@ Point2D PrimitiveStartPoint(const Primitive& primitive) {
     return {};
 }
 
-Point2D PrimitiveEndPoint(const Primitive& primitive) {
+Point2D PrimitiveEndPoint(const ContractsPrimitive& primitive) {
     switch (primitive.type) {
         case PrimitiveType::Line:
             return primitive.line.end;
@@ -106,11 +106,11 @@ Point2D PrimitiveEndPoint(const Primitive& primitive) {
     return {};
 }
 
-Primitive ReversePrimitive(const Primitive& primitive) {
+ContractsPrimitive ReversePrimitive(const ContractsPrimitive& primitive) {
     using Siligen::ProcessPath::Contracts::ContourElement;
     using Siligen::ProcessPath::Contracts::ContourElementType;
 
-    Primitive reversed = primitive;
+    ContractsPrimitive reversed = primitive;
     switch (primitive.type) {
         case PrimitiveType::Line:
             reversed.line.start = primitive.line.end;
@@ -154,7 +154,7 @@ Primitive ReversePrimitive(const Primitive& primitive) {
     return reversed;
 }
 
-int CountPrimitiveDiscontinuity(const std::vector<Primitive>& primitives, float32 tolerance) {
+int CountPrimitiveDiscontinuity(const std::vector<ContractsPrimitive>& primitives, float32 tolerance) {
     if (primitives.size() < 2) {
         return 0;
     }
@@ -168,11 +168,11 @@ int CountPrimitiveDiscontinuity(const std::vector<Primitive>& primitives, float3
     return count;
 }
 
-bool IsMetadataValid(const std::vector<Primitive>& primitives, const std::vector<PathPrimitiveMeta>& metadata) {
+bool IsMetadataValid(const std::vector<ContractsPrimitive>& primitives, const std::vector<PathPrimitiveMeta>& metadata) {
     return !primitives.empty() && metadata.size() == primitives.size();
 }
 
-bool SupportsConnectivityRebuild(const Primitive& primitive) {
+bool SupportsConnectivityRebuild(const ContractsPrimitive& primitive) {
     switch (primitive.type) {
         case PrimitiveType::Line:
         case PrimitiveType::Arc:
@@ -187,7 +187,7 @@ bool SupportsConnectivityRebuild(const Primitive& primitive) {
     }
 }
 
-bool ShouldRebuildByConnectivity(const std::vector<Primitive>& primitives,
+bool ShouldRebuildByConnectivity(const std::vector<ContractsPrimitive>& primitives,
                                  const std::vector<PathPrimitiveMeta>& metadata,
                                  int discontinuity_count) {
     if (primitives.size() < 2 || metadata.size() != primitives.size() || discontinuity_count <= 0) {
@@ -203,7 +203,7 @@ bool ShouldRebuildByConnectivity(const std::vector<Primitive>& primitives,
 }
 
 struct SplitLineResult {
-    std::vector<Primitive> primitives;
+    std::vector<ContractsPrimitive> primitives;
     std::vector<PathPrimitiveMeta> metadata;
     int original_count = 0;
     int split_count = 0;
@@ -213,13 +213,13 @@ struct SplitLineResult {
 };
 
 struct StripPointResult {
-    std::vector<Primitive> primitives;
+    std::vector<ContractsPrimitive> primitives;
     std::vector<PathPrimitiveMeta> metadata;
     int removed_points = 0;
     bool applied = false;
 };
 
-StripPointResult StripPointPrimitives(const std::vector<Primitive>& primitives,
+StripPointResult StripPointPrimitives(const std::vector<ContractsPrimitive>& primitives,
                                       const std::vector<PathPrimitiveMeta>& metadata) {
     StripPointResult result;
     result.primitives.reserve(primitives.size());
@@ -246,7 +246,7 @@ StripPointResult StripPointPrimitives(const std::vector<Primitive>& primitives,
     return result;
 }
 
-SplitLineResult SplitLinePrimitivesByIntersection(const std::vector<Primitive>& primitives,
+SplitLineResult SplitLinePrimitivesByIntersection(const std::vector<ContractsPrimitive>& primitives,
                                                   const std::vector<PathPrimitiveMeta>& metadata,
                                                   float32 tolerance) {
     SplitLineResult result;
@@ -344,7 +344,7 @@ SplitLineResult SplitLinePrimitivesByIntersection(const std::vector<Primitive>& 
                 continue;
             }
 
-            result.primitives.push_back(Primitive::MakeLine(p0, p1));
+            result.primitives.push_back(ContractsPrimitive::MakeLine(p0, p1));
             auto meta = metadata[i];
             meta.entity_id = next_entity_id--;
             meta.entity_segment_index = 0;
@@ -362,14 +362,14 @@ SplitLineResult SplitLinePrimitivesByIntersection(const std::vector<Primitive>& 
 }
 
 struct ConnectivityRebuildResult {
-    std::vector<Primitive> primitives;
+    std::vector<ContractsPrimitive> primitives;
     std::vector<PathPrimitiveMeta> metadata;
     int contour_count = 0;
     int reversed_count = 0;
     bool applied = false;
 };
 
-ConnectivityRebuildResult RebuildPrimitivesByConnectivity(const std::vector<Primitive>& primitives,
+ConnectivityRebuildResult RebuildPrimitivesByConnectivity(const std::vector<ContractsPrimitive>& primitives,
                                                           const std::vector<PathPrimitiveMeta>& metadata,
                                                           float32 tolerance) {
     ConnectivityRebuildResult result;
@@ -389,7 +389,7 @@ ConnectivityRebuildResult RebuildPrimitivesByConnectivity(const std::vector<Prim
         }
 
         const size_t contour_start = result.primitives.size();
-        Primitive current = primitives[i];
+        ContractsPrimitive current = primitives[i];
         Point2D contour_start_point = PrimitiveStartPoint(current);
         Point2D current_end = PrimitiveEndPoint(current);
 
@@ -432,7 +432,7 @@ ConnectivityRebuildResult RebuildPrimitivesByConnectivity(const std::vector<Prim
                 break;
             }
 
-            Primitive next = primitives[best_index];
+            ContractsPrimitive next = primitives[best_index];
             if (best_reverse) {
                 next = ReversePrimitive(next);
                 result.reversed_count += 1;
@@ -461,7 +461,7 @@ ConnectivityRebuildResult RebuildPrimitivesByConnectivity(const std::vector<Prim
     result.applied = result.primitives.size() == primitives.size() &&
                      (result.reversed_count > 0 ||
                       !std::equal(result.primitives.begin(), result.primitives.end(), primitives.begin(),
-                                  [](const Primitive& lhs, const Primitive& rhs) {
+                                  [](const ContractsPrimitive& lhs, const ContractsPrimitive& rhs) {
                                       return PrimitiveStartPoint(lhs) == PrimitiveStartPoint(rhs) &&
                                              PrimitiveEndPoint(lhs) == PrimitiveEndPoint(rhs);
                                   }));
@@ -472,7 +472,7 @@ struct Contour {
     int entity_id = -1;
     bool closed = false;
     size_t original_index = 0;
-    std::vector<Primitive> primitives;
+    std::vector<ContractsPrimitive> primitives;
     std::vector<PathPrimitiveMeta> metadata;
 };
 
@@ -535,7 +535,7 @@ void RotateContour(Contour& contour, size_t start_index) {
     ReindexContourMetadata(contour);
 }
 
-std::vector<Contour> BuildContoursFromMetadata(const std::vector<Primitive>& primitives,
+std::vector<Contour> BuildContoursFromMetadata(const std::vector<ContractsPrimitive>& primitives,
                                                const std::vector<PathPrimitiveMeta>& metadata) {
     std::vector<Contour> contours;
     if (primitives.empty() || metadata.size() != primitives.size()) {
@@ -574,7 +574,7 @@ std::vector<Contour> BuildContoursFromMetadata(const std::vector<Primitive>& pri
             return contour.metadata[lhs].entity_segment_index < contour.metadata[rhs].entity_segment_index;
         });
 
-        std::vector<Primitive> sorted_primitives;
+        std::vector<ContractsPrimitive> sorted_primitives;
         std::vector<PathPrimitiveMeta> sorted_metadata;
         sorted_primitives.reserve(order.size());
         sorted_metadata.reserve(order.size());
@@ -591,7 +591,7 @@ std::vector<Contour> BuildContoursFromMetadata(const std::vector<Primitive>& pri
 }
 
 struct ContourOrderResult {
-    std::vector<Primitive> primitives;
+    std::vector<ContractsPrimitive> primitives;
     std::vector<PathPrimitiveMeta> metadata;
     int reordered_contours = 0;
     int reversed_contours = 0;
@@ -745,7 +745,7 @@ std::vector<SegmentWithDirection> TwoOptImproveContourOrder(
     return order;
 }
 
-ContourOrderResult ReorderContours(const std::vector<Primitive>& primitives,
+ContourOrderResult ReorderContours(const std::vector<ContractsPrimitive>& primitives,
                                    const std::vector<PathPrimitiveMeta>& metadata,
                                    const Point2D& start_position,
                                    bool enable,
@@ -813,7 +813,7 @@ ContourOrderResult ReorderContours(const std::vector<Primitive>& primitives,
 
 }  // namespace
 
-TopologyRepairResult TopologyRepairService::Repair(const std::vector<Primitive>& primitives,
+TopologyRepairResult TopologyRepairService::Repair(const std::vector<ContractsPrimitive>& primitives,
                                                    const std::vector<PathPrimitiveMeta>& metadata,
                                                    float32 continuity_tolerance_mm,
                                                    const TopologyRepairConfig& config) const {

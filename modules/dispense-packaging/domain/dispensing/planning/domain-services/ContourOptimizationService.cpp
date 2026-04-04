@@ -1,6 +1,6 @@
 #include "ContourOptimizationService.h"
 #include "domain/dispensing/domain-services/PathOptimizationStrategy.h"
-#include "domain/trajectory/value-objects/GeometryUtils.h"
+#include "process_path/contracts/GeometryUtils.h"
 #include "shared/types/MathConstants.h"
 
 #include <algorithm>
@@ -11,13 +11,13 @@
 namespace Siligen::Domain::Dispensing::DomainServices {
 
 using Siligen::Domain::Trajectory::Ports::PathPrimitiveMeta;
-using Siligen::Domain::Trajectory::ValueObjects::Primitive;
-using Siligen::Domain::Trajectory::ValueObjects::PrimitiveType;
-using Siligen::Domain::Trajectory::ValueObjects::CirclePrimitive;
-using Siligen::Domain::Trajectory::ValueObjects::EllipsePrimitive;
-using Siligen::Domain::Trajectory::ValueObjects::EllipsePoint;
-using Siligen::Domain::Trajectory::ValueObjects::ContourElement;
-using Siligen::Domain::Trajectory::ValueObjects::ContourElementType;
+using Siligen::ProcessPath::Contracts::Primitive;
+using Siligen::ProcessPath::Contracts::PrimitiveType;
+using Siligen::ProcessPath::Contracts::CirclePrimitive;
+using Siligen::ProcessPath::Contracts::EllipsePrimitive;
+using Siligen::ProcessPath::Contracts::EllipsePoint;
+using Siligen::ProcessPath::Contracts::ContourElement;
+using Siligen::ProcessPath::Contracts::ContourElementType;
 using Siligen::Shared::Types::DXFEntityType;
 using Siligen::Shared::Types::Point2D;
 using Siligen::Shared::Types::float32;

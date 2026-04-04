@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/trajectory/value-objects/ProcessPath.h"
+#include "process_path/contracts/Path.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
 
@@ -11,7 +11,7 @@ namespace Siligen::Domain::Dispensing::DomainServices {
 using Siligen::Shared::Types::Point2D;
 using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::float32;
-using Siligen::Domain::Trajectory::ValueObjects::Segment;
+using Siligen::ProcessPath::Contracts::Segment;
 
 struct FlattenedCurvePath {
     std::vector<Point2D> points;

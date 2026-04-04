@@ -1,8 +1,8 @@
 #pragma once
 
-#include "domain/trajectory/value-objects/Path.h"
-#include "domain/trajectory/value-objects/ProcessPath.h"
-#include "domain/trajectory/value-objects/ProcessConfig.h"
+#include "../value-objects/Path.h"
+#include "../value-objects/ProcessPath.h"
+#include "../value-objects/ProcessConfig.h"
 
 namespace Siligen::Domain::Trajectory::DomainServices {
 

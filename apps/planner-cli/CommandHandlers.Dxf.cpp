@@ -5,7 +5,6 @@
 #include "application/usecases/motion/homing/HomeAxesUseCase.h"
 #include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
 #include "domain/motion/value-objects/MotionPlanningReport.h"
-#include "domain/trajectory/value-objects/PlanningReport.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "workflow/application/usecases/dispensing/DispensingWorkflowUseCase.h"
 #include "workflow/application/usecases/dispensing/PlanningUseCase.h"
@@ -48,7 +47,6 @@ using Siligen::Application::UseCases::Motion::Homing::HomeAxesRequest;
 using Siligen::Application::UseCases::Motion::Homing::HomeAxesUseCase;
 using Siligen::Domain::Motion::InterpolationAlgorithm;
 using Siligen::Domain::Motion::ValueObjects::MotionPlanningReport;
-using Siligen::Domain::Trajectory::ValueObjects::PlanningReport;
 using Siligen::Shared::Types::LogicalAxisId;
 using Siligen::Shared::Types::TrajectoryConfig;
 
@@ -426,7 +424,7 @@ VelocityTraceResult WriteVelocityTraceCsv(
     return result;
 }
 
-PlanningReportCsvResult WritePlanningReportCsv(const PlanningReport& report, const std::string& output_path) {
+PlanningReportCsvResult WritePlanningReportCsv(const MotionPlanningReport& report, const std::string& output_path) {
     PlanningReportCsvResult result;
     if (output_path.empty()) {
         result.error = "规划报告输出路径为空";
@@ -470,26 +468,6 @@ PlanningReportCsvResult WritePlanningReportCsv(const PlanningReport& report, con
     result.ok = true;
     result.path = output_path;
     return result;
-}
-
-PlanningReportCsvResult WritePlanningReportCsv(const MotionPlanningReport& report, const std::string& output_path) {
-    PlanningReport legacy_report;
-    legacy_report.total_length_mm = report.total_length_mm;
-    legacy_report.total_time_s = report.total_time_s;
-    legacy_report.max_velocity_observed = report.max_velocity_observed;
-    legacy_report.max_acceleration_observed = report.max_acceleration_observed;
-    legacy_report.max_jerk_observed = report.max_jerk_observed;
-    legacy_report.constraint_violations = report.constraint_violations;
-    legacy_report.time_integration_error_s = report.time_integration_error_s;
-    legacy_report.time_integration_fallbacks = report.time_integration_fallbacks;
-    legacy_report.jerk_limit_enforced = report.jerk_limit_enforced;
-    legacy_report.jerk_plan_failed = report.jerk_plan_failed;
-    legacy_report.segment_count = report.segment_count;
-    legacy_report.rapid_segment_count = report.rapid_segment_count;
-    legacy_report.rapid_length_mm = report.rapid_length_mm;
-    legacy_report.corner_segment_count = report.corner_segment_count;
-    legacy_report.discontinuity_count = report.discontinuity_count;
-    return WritePlanningReportCsv(legacy_report, output_path);
 }
 
 bool ResolveTrajectoryConfig(const CommandLineConfig& config, TrajectoryConfig& trajectory, std::string& error_message) {

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "domain/trajectory/value-objects/Path.h"
-#include "domain/trajectory/value-objects/Primitive.h"
+#include "../value-objects/Path.h"
+#include "../value-objects/Primitive.h"
 #include "shared/types/Types.h"
 
 #include <vector>
@@ -23,6 +23,10 @@ struct NormalizationConfig {
 struct NormalizationReport {
     int discontinuity_count = 0;
     bool closed = false;
+    bool invalid_unit_scale = false;
+    int skipped_spline_count = 0;
+    int point_primitive_count = 0;
+    int consumable_segment_count = 0;
 };
 
 struct NormalizedPath {

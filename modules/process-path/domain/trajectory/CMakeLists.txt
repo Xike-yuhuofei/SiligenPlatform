@@ -20,6 +20,7 @@ target_sources(siligen_process_path_domain_trajectory PRIVATE
     value-objects/ProcessPath.h
     value-objects/ProcessConfig.h
     ports/IPathSourcePort.h
+    ports/IDXFPathSourcePort.h
 )
 
 target_include_directories(siligen_process_path_domain_trajectory PUBLIC

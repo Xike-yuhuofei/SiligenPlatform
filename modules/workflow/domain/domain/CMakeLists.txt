@@ -104,7 +104,7 @@ set(DOMAIN_LIBRARIES
     siligen_trajectory
     siligen_triggering
     siligen_configuration
-    siligen_process_path_domain_trajectory
+    siligen_process_path_contracts_public
 )
 
 message(STATUS "领域层库配置完成")

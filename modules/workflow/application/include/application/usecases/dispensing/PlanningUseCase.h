@@ -7,7 +7,7 @@
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
 #include "domain/motion/value-objects/MotionPlanningReport.h"
-#include "domain/trajectory/ports/IPathSourcePort.h"
+#include "process_path/contracts/IPathSourcePort.h"
 #include "domain/dispensing/contracts/ExecutionPackage.h"
 #include "process_path/contracts/ProcessPath.h"
 #include "shared/types/Point.h"
