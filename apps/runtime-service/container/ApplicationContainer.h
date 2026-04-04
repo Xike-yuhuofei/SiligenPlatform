@@ -3,7 +3,7 @@
 #include "ApplicationContainerFwd.h"
 #include "../runtime/configuration/WorkspaceAssetPaths.h"
 #include "process_planning/contracts/ConfigurationContracts.h"
-#include "domain/motion/ports/IMotionRuntimePort.h"
+#include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 #include <array>
 #include <cstdio>
@@ -91,7 +91,10 @@ public:
         return FindInRegistry<TPort>(port_instances_);
     }
 
-    std::shared_ptr<Domain::Motion::Ports::IMotionRuntimePort> ResolveMotionRuntimePort() const;
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IMotionRuntimePort>
+        ResolveMotionRuntimePort() const {
+        return motion_runtime_port_;
+    }
 
     /**
      * @brief 解析Domain Service实例
@@ -170,7 +173,7 @@ private:
     std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port_;
     std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> device_connection_port_;
     std::shared_ptr<Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort> machine_execution_state_port_;
-    std::shared_ptr<Domain::Motion::Ports::IMotionRuntimePort> motion_runtime_port_;
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IMotionRuntimePort> motion_runtime_port_;
     std::shared_ptr<Domain::Motion::Ports::IMotionConnectionPort> motion_connection_port_;
     std::shared_ptr<Domain::Motion::Ports::IAxisControlPort> axis_control_port_;
     std::shared_ptr<Domain::Motion::Ports::IPositionControlPort> position_control_port_;
@@ -324,7 +327,8 @@ private:
         }
     }
 
-    void CacheMotionRuntimeAliases(const std::shared_ptr<Domain::Motion::Ports::IMotionRuntimePort>& port) {
+    void CacheMotionRuntimeAliases(
+        const std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IMotionRuntimePort>& port) {
         if (!motion_connection_port_) {
             motion_connection_port_ = std::static_pointer_cast<Domain::Motion::Ports::IMotionConnectionPort>(port);
         }

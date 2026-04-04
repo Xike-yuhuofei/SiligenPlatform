@@ -15,14 +15,13 @@
 #include "domain/dispensing/ports/IValvePort.h"
 #include "domain/motion/ports/IAxisControlPort.h"
 #include "domain/motion/ports/IHomingPort.h"
-#include "domain/motion/ports/IInterpolationPort.h"
-#include "domain/motion/ports/IIOControlPort.h"
 #include "domain/motion/ports/IJogControlPort.h"
 #include "domain/motion/ports/IMotionConnectionPort.h"
-#include "domain/motion/ports/IMotionRuntimePort.h"
 #include "domain/motion/ports/IMotionStatePort.h"
 #include "domain/motion/ports/IPositionControlPort.h"
 #include "domain/motion/ports/IVelocityProfilePort.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
+#include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
 #include "runtime_execution/contracts/system/IEventPublisherPort.h"
 #include "domain/recipes/ports/IParameterSchemaPort.h"
 #include "domain/recipes/ports/IAuditRepositoryPort.h"
@@ -54,8 +53,10 @@ Siligen::Shared::Types::LogConfiguration BuildLogConfig(
 
 void RegisterMotionRuntimePorts(
     Siligen::Application::Container::ApplicationContainer& container,
-    const std::shared_ptr<Siligen::Domain::Motion::Ports::IMotionRuntimePort>& motion_runtime_port) {
-    container.RegisterPort<Siligen::Domain::Motion::Ports::IMotionRuntimePort>(motion_runtime_port);
+    const std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IMotionRuntimePort>&
+        motion_runtime_port) {
+    container.RegisterPort<Siligen::RuntimeExecution::Contracts::Motion::IMotionRuntimePort>(
+        motion_runtime_port);
     // 兼容旧调用方：细粒度 motion 端口由容器在注册 runtime 时自动回填，
     // bootstrap 不再为同一运行时对象重复注册多条并行入口。
 }
@@ -107,7 +108,8 @@ void ApplyBindings(
         container.RegisterPort<Siligen::Domain::Configuration::Ports::IFileStoragePort>(bindings.file_storage_port);
     }
     if (bindings.interpolation_port) {
-        container.RegisterPort<Siligen::Domain::Motion::Ports::IInterpolationPort>(bindings.interpolation_port);
+        container.RegisterPort<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort>(
+            bindings.interpolation_port);
     }
     if (bindings.velocity_profile_port) {
         container.RegisterPort<Siligen::Domain::Motion::Ports::IVelocityProfilePort>(bindings.velocity_profile_port);

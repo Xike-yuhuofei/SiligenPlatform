@@ -1,7 +1,8 @@
 #pragma once
 
-#include "domain/motion/ports/IIOControlPort.h"
-#include "domain/motion/ports/IMotionRuntimePort.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
+#include "runtime_execution/contracts/motion/IIOControlPort.h"
+#include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
 
 namespace Siligen::Shared::Interfaces {
 class ILoggingService;
@@ -21,7 +22,6 @@ class MachineHealthPort;
 namespace Siligen::Domain::Motion::Ports {
 class IAxisControlPort;
 class IHomingPort;
-class IInterpolationPort;
 class IJogControlPort;
 class IMotionConnectionPort;
 class IMotionStatePort;

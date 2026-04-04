@@ -3,8 +3,8 @@
 #include "domain/dispensing/ports/ITriggerControllerPort.h"
 #include "domain/motion/ports/IAdvancedMotionPort.h"
 #include "domain/motion/ports/IAxisControlPort.h"
-#include "domain/motion/ports/IIOControlPort.h"
-#include "domain/motion/ports/IInterpolationPort.h"
+#include "runtime_execution/contracts/motion/IIOControlPort.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "shared/types/Error.h"
 #include "shared/types/Result.h"
 #include "shared/types/Point.h"
@@ -39,8 +39,9 @@ struct MotionIOCommand {
  */
 class MotionCoordinationUseCase {
    public:
-    MotionCoordinationUseCase(std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port,
-                              std::shared_ptr<Domain::Motion::Ports::IIOControlPort> io_port,
+    MotionCoordinationUseCase(
+                              std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort> interpolation_port,
+                              std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort> io_port,
                               std::shared_ptr<Domain::Motion::Ports::IAxisControlPort> axis_control_port = nullptr,
                               std::shared_ptr<Domain::Dispensing::Ports::ITriggerControllerPort> trigger_port = nullptr,
                               std::shared_ptr<Domain::Motion::Ports::IAdvancedMotionPort> advanced_motion_port = nullptr);
@@ -53,7 +54,7 @@ class MotionCoordinationUseCase {
     Result<void> AddInterpolationSegment(const InterpolationConfig& command);
     Result<void> DispatchCoordinateSystemSegment(
         int16 coord_sys,
-        const Domain::Motion::Ports::InterpolationData& segment);
+        const Siligen::RuntimeExecution::Contracts::Motion::InterpolationData& segment);
     Result<void> StartCoordinateSystemMotion(uint32 coord_sys_mask);
     Result<void> StopCoordinateSystemMotion(uint32 coord_sys_mask);
     Result<void> SetCoordinateSystemVelocityOverride(int16 coord_sys, float32 override_percent);
@@ -73,8 +74,8 @@ class MotionCoordinationUseCase {
     Result<std::string> ReceiveUARTData(int16 uart_id, int16 max_length = 256);
 
    private:
-    std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port_;
-    std::shared_ptr<Domain::Motion::Ports::IIOControlPort> io_port_;
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort> interpolation_port_;
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort> io_port_;
     std::shared_ptr<Domain::Motion::Ports::IAxisControlPort> axis_control_port_;
     std::shared_ptr<Domain::Dispensing::Ports::ITriggerControllerPort> trigger_port_;
     std::shared_ptr<Domain::Motion::Ports::IAdvancedMotionPort> advanced_motion_port_;

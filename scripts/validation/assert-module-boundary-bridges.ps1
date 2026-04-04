@@ -868,6 +868,36 @@ $forbiddenOwnershipReferences = @(
         detail = "workflow bridge domain must not compile process-path planning implementations"
     },
     @{
+        path = "modules/workflow/domain/domain/CMakeLists.txt"
+        pattern = "dispensing/domain-services/CMPTriggerService.cpp"
+        rule_id = "workflow-still-compiles-dispense-packaging-cmp-service"
+        detail = "workflow bridge domain must not compile CMPService after M8 takes Trigger/CMP ownership"
+    },
+    @{
+        path = "modules/workflow/domain/domain/CMakeLists.txt"
+        pattern = "dispensing/planning/domain-services/DispensingPlannerService.cpp"
+        rule_id = "workflow-still-compiles-dispense-packaging-planner"
+        detail = "workflow bridge domain must not compile DispensingPlannerService after M8 takes Trigger/CMP ownership"
+    },
+    @{
+        path = "modules/workflow/domain/domain/CMakeLists.txt"
+        pattern = "dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp"
+        rule_id = "workflow-still-compiles-dispense-packaging-planner"
+        detail = "workflow bridge domain must not compile UnifiedTrajectoryPlannerService after M8 takes Trigger/CMP ownership"
+    },
+    @{
+        path = "modules/workflow/domain/include/domain/dispensing/domain-services/CMPTriggerService.h"
+        pattern = "class CMPService"
+        rule_id = "workflow-still-declares-cmp-owner-header"
+        detail = "workflow compatibility headers must forward to dispense-packaging CMPService instead of declaring a new owner type"
+    },
+    @{
+        path = "modules/workflow/domain/domain/dispensing/domain-services/TriggerPlanner.h"
+        pattern = "class TriggerPlanner"
+        rule_id = "workflow-still-declares-trigger-owner-header"
+        detail = "workflow compatibility headers must forward to dispense-packaging TriggerPlanner instead of declaring a new owner type"
+    },
+    @{
         path = "modules/workflow/tests/process-runtime-core/CMakeLists.txt"
         pattern = "unit/domain/dispensing/DispensingControllerTest.cpp"
         rule_id = "workflow-still-owns-dispense-packaging-domain-tests"
@@ -1476,6 +1506,75 @@ $forbiddenScopedSearches += @(
             "apps/runtime-gateway/transport-gateway"
         )
         detail = "live targets must not reference the deprecated siligen_workflow_dispensing_planning_compat target"
+    },
+    @{
+        rule_id = "planner-cli-still-includes-legacy-planning-report-contract"
+        pattern = '#include "domain/motion/value-objects/MotionPlanningReport.h"'
+        search_roots = @(
+            "apps/planner-cli",
+            "modules/workflow/application/include",
+            "modules/dispense-packaging/application/include"
+        )
+        detail = "US3 planning consumers must include motion_planning/contracts/MotionPlanningReport.h"
+    },
+    @{
+        rule_id = "planner-cli-still-includes-legacy-trajectory-planning-report"
+        pattern = '#include "domain/trajectory/value-objects/PlanningReport.h"'
+        search_roots = @(
+            "apps/planner-cli"
+        )
+        detail = "planner-cli must export planning report data from canonical motion_planning contracts"
+    },
+    @{
+        rule_id = "planner-cli-still-includes-interpolator-implementation-header"
+        pattern = '#include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"'
+        search_roots = @(
+            "apps/planner-cli"
+        )
+        detail = "planner-cli must not directly include motion interpolator implementation headers"
+    },
+    @{
+        rule_id = "runtime-service-still-includes-legacy-interpolation-port-header"
+        pattern = '#include "domain/motion/ports/IInterpolationPort.h"'
+        search_roots = @(
+            "apps/runtime-service",
+            "modules/workflow/application/usecases/motion/runtime",
+            "modules/workflow/application/usecases/motion/trajectory"
+        )
+        detail = "US3 runtime/control consumers must include runtime_execution/contracts/motion/IInterpolationPort.h"
+    },
+    @{
+        rule_id = "runtime-service-still-includes-legacy-io-port-header"
+        pattern = '#include "domain/motion/ports/IIOControlPort.h"'
+        search_roots = @(
+            "apps/runtime-service",
+            "modules/workflow/application/usecases/motion/runtime"
+        )
+        detail = "US3 runtime/control consumers must include runtime_execution/contracts/motion/IIOControlPort.h"
+    },
+    @{
+        rule_id = "runtime-service-still-includes-legacy-motion-runtime-port-header"
+        pattern = '#include "domain/motion/ports/IMotionRuntimePort.h"'
+        search_roots = @(
+            "apps/runtime-service"
+        )
+        detail = "US3 runtime/control consumers must include runtime_execution/contracts/motion/IMotionRuntimePort.h"
+    },
+    @{
+        rule_id = "workflow-public-headers-still-include-legacy-interpolation-port-header"
+        pattern = '#include "domain/motion/ports/IInterpolationPort.h"'
+        search_roots = @(
+            "modules/workflow/application/include"
+        )
+        detail = "workflow public motion headers must include runtime_execution/contracts/motion/IInterpolationPort.h"
+    },
+    @{
+        rule_id = "workflow-public-headers-still-include-legacy-io-port-header"
+        pattern = '#include "domain/motion/ports/IIOControlPort.h"'
+        search_roots = @(
+            "modules/workflow/application/include"
+        )
+        detail = "workflow public motion headers must include runtime_execution/contracts/motion/IIOControlPort.h"
     }
 )
 
