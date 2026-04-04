@@ -53,6 +53,8 @@
 
 - `siligen_workflow_dispensing_planning_compat` 已退出 live/test 主链；workflow 侧 planning 测试必须改走 facade 或迁到 owner 模块。
 - `siligen_process_runtime_core_*` 聚合 target 仅作为 deprecated compatibility target 保留，不再作为 owner 证据或 live public surface。
+- Stage D hard cut 起，`workflow/domain/domain/dispensing/planning/**` 与 `workflow/domain/include/domain/dispensing/planning/**` 不再保留 planning owner 头/实现。
+- `PlanningPreviewAssemblyService` 已删除；preview payload 与 execution assembly 只允许走 `dispense-packaging/application` 的 canonical assembly services。
 
 ## S2 准入清单
 

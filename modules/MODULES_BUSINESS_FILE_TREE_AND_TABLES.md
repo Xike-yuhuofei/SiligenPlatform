@@ -7,8 +7,8 @@
 
 - 表格列含义：`流程阶段`、`触发条件`、`当前职责`、`输出结果`、`失败影响`
 - 已忽略表格说明：`CMakeLists.txt`、`module.yaml`、所有 `.h/.hpp`、文档、缓存、占位文件
-- 文件树统计范围：`1000` 个文件
-- 表格说明统计范围：`362` 个实现文件
+- 文件树统计范围：`991` 个文件
+- 表格说明统计范围：`358` 个实现文件
 
 ## 模块概览
 
@@ -23,7 +23,7 @@
 - `M9 runtime-execution`：owner `ExecutionSession`，文件树 `164` 项，实现文件说明 `79` 项。
 - `M3 topology-feature`：owner `TopologyModel`，文件树 `6` 项，实现文件说明 `2` 项。
 - `M10 trace-diagnostics`：owner `ExecutionRecord`，文件树 `5` 项，实现文件说明 `1` 项。
-- `M0 workflow`：owner `WorkflowRun`，文件树 `500` 项，实现文件说明 `150` 项。
+- `M0 workflow`：owner `WorkflowRun`，文件树 `491` 项，实现文件说明 `146` 项。
 
 ## coordinate-alignment
 
@@ -1596,14 +1596,6 @@ workflow/
 │   │   │   │   └── ValveCoordinationService.h
 │   │   │   ├── model/
 │   │   │   │   └── ModelService.h
-│   │   │   ├── planning/
-│   │   │   │   └── domain-services/
-│   │   │   │       ├── ContourOptimizationService.cpp
-│   │   │   │       ├── ContourOptimizationService.h
-│   │   │   │       ├── DispensingPlannerService.cpp
-│   │   │   │       ├── DispensingPlannerService.h
-│   │   │   │       ├── UnifiedTrajectoryPlannerService.cpp
-│   │   │   │       └── UnifiedTrajectoryPlannerService.h
 │   │   │   ├── ports/
 │   │   │   │   ├── IDispensingExecutionObserver.h
 │   │   │   │   ├── ITaskSchedulerPort.h
@@ -1820,9 +1812,6 @@ workflow/
 │   │       │   │   ├── PurgeDispenserProcess.h
 │   │       │   │   ├── SupplyStabilizationPolicy.h
 │   │       │   │   └── ValveCoordinationService.h
-│   │       │   ├── planning/
-│   │       │   │   └── domain-services/
-│   │       │   │       └── DispensingPlannerService.h
 │   │       │   ├── ports/
 │   │       │   │   ├── ITaskSchedulerPort.h
 │   │       │   │   ├── ITriggerControllerPort.h
@@ -2233,14 +2222,6 @@ workflow/
 | `SupplyStabilizationPolicy.cpp` | 点胶领域规则计算阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 承担该环节中的主要行为实现。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
 | `TriggerPlanner.cpp` | 点胶领域规则计算阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 计算或下发点胶触发时机，决定胶何时开始和停止输出。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
 | `ValveCoordinationService.cpp` | 点胶领域规则计算阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 控制阀的开闭和联动，直接影响出胶开始、保持和结束。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
-
-**workflow/domain/domain/dispensing/planning/domain-services/**
-
-| 文件 | 流程阶段 | 触发条件 | 当前职责 | 输出结果 | 失败影响 |
-|---|---|---|---|---|---|
-| `ContourOptimizationService.cpp` | 点胶规划细化阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 承担该环节中的主要行为实现。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
-| `DispensingPlannerService.cpp` | 点胶规划细化阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 把上游输入整理成下游可直接消费的规划结果。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
-| `UnifiedTrajectoryPlannerService.cpp` | 点胶规划细化阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 把上游输入整理成下游可直接消费的规划结果。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
 
 **workflow/domain/domain/machine/aggregates/**
 

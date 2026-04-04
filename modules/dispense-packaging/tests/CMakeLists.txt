@@ -6,6 +6,7 @@ set(DISPENSE_PACKAGING_TEST_SOURCES
     unit/domain/dispensing/PathArcLengthLocatorTest.cpp
     unit/domain/dispensing/TrajectoryTriggerUtilsTest.cpp
     unit/application/services/dispensing/DispensePlanningFacadeTest.cpp
+    unit/application/services/dispensing/PlanningAssemblyServicesTest.cpp
     unit/application/services/dispensing/PreviewSnapshotServiceTest.cpp
 )
 
