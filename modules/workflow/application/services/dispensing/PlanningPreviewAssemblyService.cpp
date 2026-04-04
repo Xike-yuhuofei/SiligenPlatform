@@ -1,6 +1,6 @@
 #include "PlanningPreviewAssemblyService.h"
 
-#include "application/services/dispensing/DispensePlanningFacade.h"
+#include "application/services/dispensing/WorkflowPlanningAssemblyOperationsProvider.h"
 
 namespace Siligen::Application::Services::Dispensing {
 
@@ -14,40 +14,42 @@ Result<PlanningPreviewAssemblyResult> PlanningPreviewAssemblyService::BuildRespo
     const DispensingPlan& plan,
     const DispensingPlanRequest& plan_request,
     const std::string& dxf_filename) const {
-    DispensePlanningFacade facade;
+    auto operations =
+        WorkflowPlanningAssemblyOperationsProvider{}.CreateOperations();
 
-    PlanningArtifactsBuildInput input;
-    input.process_path = plan.process_path;
-    input.authority_process_path = plan.process_path;
+    WorkflowPlanningAssemblyRequest input;
+    input.authority_preview_request.process_path = plan.process_path;
+    input.authority_preview_request.authority_process_path = plan.process_path;
     input.motion_plan = plan.motion_trajectory;
-    input.source_path = request.dxf_filepath;
-    input.dxf_filename = dxf_filename;
-    input.dispensing_velocity = plan_request.dispensing_velocity;
-    input.acceleration = plan_request.acceleration;
-    input.dispenser_interval_ms = plan_request.dispenser_interval_ms;
-    input.dispenser_duration_ms = plan_request.dispenser_duration_ms;
-    input.trigger_spatial_interval_mm = plan_request.trigger_spatial_interval_mm;
-    input.valve_response_ms = plan_request.valve_response_ms;
-    input.safety_margin_ms = plan_request.safety_margin_ms;
-    input.min_interval_ms = plan_request.min_interval_ms;
+    input.authority_preview_request.source_path = request.dxf_filepath;
+    input.authority_preview_request.dxf_filename = dxf_filename;
+    input.authority_preview_request.runtime_options.dispensing_velocity = plan_request.dispensing_velocity;
+    input.authority_preview_request.runtime_options.acceleration = plan_request.acceleration;
+    input.authority_preview_request.runtime_options.dispenser_interval_ms = plan_request.dispenser_interval_ms;
+    input.authority_preview_request.runtime_options.dispenser_duration_ms = plan_request.dispenser_duration_ms;
+    input.authority_preview_request.runtime_options.trigger_spatial_interval_mm =
+        plan_request.trigger_spatial_interval_mm;
+    input.authority_preview_request.runtime_options.valve_response_ms = plan_request.valve_response_ms;
+    input.authority_preview_request.runtime_options.safety_margin_ms = plan_request.safety_margin_ms;
+    input.authority_preview_request.runtime_options.min_interval_ms = plan_request.min_interval_ms;
     input.max_jerk = plan_request.max_jerk;
-    input.sample_dt = plan_request.sample_dt;
-    input.sample_ds = plan_request.sample_ds;
-    input.spline_max_step_mm = plan_request.spline_max_step_mm;
-    input.spline_max_error_mm = plan_request.spline_max_error_mm;
+    input.authority_preview_request.runtime_options.sample_dt = plan_request.sample_dt;
+    input.authority_preview_request.runtime_options.sample_ds = plan_request.sample_ds;
+    input.authority_preview_request.runtime_options.spline_max_step_mm = plan_request.spline_max_step_mm;
+    input.authority_preview_request.runtime_options.spline_max_error_mm = plan_request.spline_max_error_mm;
     input.estimated_time_s = plan.estimated_time_s;
-    input.dispensing_strategy = plan_request.dispensing_strategy;
-    input.subsegment_count = plan_request.subsegment_count;
-    input.dispense_only_cruise = plan_request.dispense_only_cruise;
-    input.downgrade_on_violation = plan_request.downgrade_on_violation;
+    input.authority_preview_request.dispensing_strategy = plan_request.dispensing_strategy;
+    input.authority_preview_request.subsegment_count = plan_request.subsegment_count;
+    input.authority_preview_request.dispense_only_cruise = plan_request.dispense_only_cruise;
+    input.authority_preview_request.downgrade_on_violation = plan_request.downgrade_on_violation;
     input.use_interpolation_planner = plan_request.use_interpolation_planner;
     input.interpolation_algorithm = plan_request.interpolation_algorithm;
-    input.compensation_profile = plan_request.compensation_profile;
-    input.spacing_tol_ratio = request.spacing_tol_ratio;
-    input.spacing_min_mm = request.spacing_min_mm;
-    input.spacing_max_mm = request.spacing_max_mm;
+    input.authority_preview_request.runtime_options.compensation_profile = plan_request.compensation_profile;
+    input.authority_preview_request.spacing_tol_ratio = request.spacing_tol_ratio;
+    input.authority_preview_request.spacing_min_mm = request.spacing_min_mm;
+    input.authority_preview_request.spacing_max_mm = request.spacing_max_mm;
 
-    auto assembly_result = facade.AssemblePlanningArtifacts(input);
+    auto assembly_result = operations->AssemblePlanningArtifacts(input);
     if (assembly_result.IsError()) {
         return Result<PlanningPreviewAssemblyResult>::Failure(assembly_result.GetError());
     }

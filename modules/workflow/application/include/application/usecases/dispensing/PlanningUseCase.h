@@ -1,7 +1,6 @@
 #pragma once
 
-#include "application/services/dispensing/AuthorityPreviewAssemblyService.h"
-#include "application/services/dispensing/ExecutionAssemblyService.h"
+#include "application/services/dispensing/WorkflowPlanningAssemblyOperationsProvider.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/process_path/ProcessPathFacade.h"
 #include "motion_planning/contracts/InterpolationTypes.h"
@@ -77,8 +76,8 @@ struct PreparedAuthorityPreview {
     std::string preview_failure_reason;
     std::string preview_diagnostic_code;
     Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
-    std::vector<Siligen::Application::Services::Dispensing::AuthorityTriggerPoint> authority_trigger_points;
-    std::vector<Siligen::Application::Services::Dispensing::SpacingValidationGroup> spacing_validation_groups;
+    std::vector<Siligen::Application::Services::Dispensing::WorkflowAuthorityTriggerPoint> authority_trigger_points;
+    std::vector<Siligen::Application::Services::Dispensing::WorkflowSpacingValidationGroup> spacing_validation_groups;
     AuthorityProfile authority_profile;
 };
 
@@ -218,8 +217,8 @@ struct PlanningResponse {
     std::string preview_failure_reason;
     std::string preview_diagnostic_code;
     Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
-    std::vector<Siligen::Application::Services::Dispensing::AuthorityTriggerPoint> authority_trigger_points;
-    std::vector<Siligen::Application::Services::Dispensing::SpacingValidationGroup> spacing_validation_groups;
+    std::vector<Siligen::Application::Services::Dispensing::WorkflowAuthorityTriggerPoint> authority_trigger_points;
+    std::vector<Siligen::Application::Services::Dispensing::WorkflowSpacingValidationGroup> spacing_validation_groups;
     AuthorityProfile authority_profile;
     ExecutionProfile execution_profile;
 
@@ -236,7 +235,7 @@ struct PlanningResponse {
  * 业务流程:
  * 1. 验证请求参数
  * 2. 通过 M6/M7 facade 完成 process path 与 motion plan 编排
- * 3. 通过 M8 窄 assembly service 组装 preview payload 与 execution package
+ * 3. 通过 M8 single planning seam 组装 preview payload 与 execution package
  * 5. 返回完整的规划结果
  *
  * 架构合规性:
@@ -255,10 +254,8 @@ public:
         std::shared_ptr<Siligen::Application::Services::ProcessPath::ProcessPathFacade> process_path_facade,
         std::shared_ptr<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>
             motion_planning_facade,
-        std::shared_ptr<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>
-            authority_preview_assembly_service,
-        std::shared_ptr<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>
-            execution_assembly_service,
+        std::shared_ptr<Siligen::Application::Services::Dispensing::IWorkflowPlanningAssemblyOperations>
+            planning_assembly_operations = nullptr,
         std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port = nullptr,
         std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService>
             pb_preparation_service = nullptr,
@@ -290,10 +287,8 @@ private:
     std::shared_ptr<Siligen::Application::Services::ProcessPath::ProcessPathFacade> process_path_facade_;
     std::shared_ptr<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>
         motion_planning_facade_;
-    std::shared_ptr<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>
-        authority_preview_assembly_service_;
-    std::shared_ptr<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>
-        execution_assembly_service_;
+    std::shared_ptr<Siligen::Application::Services::Dispensing::IWorkflowPlanningAssemblyOperations>
+        planning_assembly_operations_;
     std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port_;
     std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService> pb_preparation_service_;
     std::shared_ptr<Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort> artifact_export_port_;

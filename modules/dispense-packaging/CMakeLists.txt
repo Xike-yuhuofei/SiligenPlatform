@@ -24,15 +24,15 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/application/CMakeLists.txt")
 endif()
 
 add_library(siligen_module_dispense_packaging INTERFACE)
-if(TARGET siligen_dispense_packaging_application_public)
-    target_link_libraries(siligen_module_dispense_packaging INTERFACE
-        siligen_dispense_packaging_application_public
-    )
-else()
-    target_link_libraries(siligen_module_dispense_packaging INTERFACE
-        siligen_dispense_packaging_domain_dispensing
+if(NOT TARGET siligen_dispense_packaging_application_public)
+    message(FATAL_ERROR
+        "dispense-packaging canonical module target requires siligen_dispense_packaging_application_public; "
+        "refusing to fall back to siligen_dispense_packaging_domain_dispensing"
     )
 endif()
+target_link_libraries(siligen_module_dispense_packaging INTERFACE
+    siligen_dispense_packaging_application_public
+)
 if(TARGET siligen_dispense_packaging_contracts_public)
     target_link_libraries(siligen_module_dispense_packaging INTERFACE
         siligen_dispense_packaging_contracts_public

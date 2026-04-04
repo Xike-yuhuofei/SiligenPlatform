@@ -7,7 +7,7 @@
 - `bootstrap/`：`BuildContainer(...)` 与 runtime bootstrap 入口实现
 - `container/`：`ApplicationContainer*` 进程级组合根
 - `factories/`：基础设施适配器工厂
-- `runtime/dispensing/`：execution process 的 app-local concrete bridge；通过 app-local internal seam 吸收 `dispense-packaging` concrete owner，不成为 process owner
+- `runtime/dispensing/`：execution process 的 app-local concrete bridge；仅消费 `dispense-packaging application` public provider，不直接 include 或构造 `DispensingProcessService`
 - `runtime/configuration/`：配置解析、`WorkspaceAssetPaths`、interlock/config validator
 - `runtime/recipes/`：recipe persistence wiring 与文件仓储适配
 - `runtime/status/`：runtime status export assembler；透传 supervision snapshot authority，并通过可选只读 readers 追加 motion / valve enrichment，不重定义 machine/runtime authority

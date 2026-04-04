@@ -19,7 +19,7 @@ namespace Siligen::Application::UseCases::Dispensing
 ### PlanningUseCase
 - **职责**: 编排 `.pb -> process path -> motion plan -> execution package/preview` 生成链
 - **使用场景**: 路径预览和编辑
-- **补充**: 可选启用 Domain 插补算法，但 live 链已改为通过 `ProcessPathFacade`、`MotionPlanningFacade`、`DispensePlanningFacade` 组合完成，不再注入 `DispensingPlanner` concrete
+- **补充**: 可选启用 Domain 插补算法，但 live 链已改为通过 `ProcessPathFacade`、`MotionPlanningFacade`、`WorkflowPlanningAssemblyOperationsProvider` 组合完成，不再注入 `DispensingPlanner` concrete
 
 ### DispensingExecutionUseCase
 - **职责**: 执行 DXF 点胶任务

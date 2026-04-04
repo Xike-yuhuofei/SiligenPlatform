@@ -1,9 +1,9 @@
 #include "application/services/dispensing/DispensePlanningFacade.h"
+#include "application/services/dispensing/AuthorityPreviewAssemblyService.h"
+#include "application/services/dispensing/ExecutionAssemblyService.h"
+#include "PlanningAssemblyTestFixtures.h"
 
 #include <gtest/gtest.h>
-
-#include <algorithm>
-#include <cmath>
 
 namespace {
 
@@ -11,156 +11,11 @@ using Siligen::Application::Services::Dispensing::DispensePlanningFacade;
 using Siligen::Application::Services::Dispensing::PlanningArtifactsBuildInput;
 using Siligen::MotionPlanning::Contracts::InterpolationAlgorithm;
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectoryPoint;
+using Siligen::Application::Services::Dispensing::ExecutionAssemblyService;
 using Siligen::Domain::Dispensing::ValueObjects::StrongAnchorRole;
 using Siligen::Domain::Dispensing::ValueObjects::TopologyDispatchType;
-using Siligen::ProcessPath::Contracts::ProcessSegment;
-using Siligen::ProcessPath::Contracts::Segment;
-using Siligen::ProcessPath::Contracts::SegmentType;
-using Siligen::Shared::Types::DispensingStrategy;
 using Siligen::Shared::Types::Point2D;
-
-constexpr char kMixedExplicitBoundaryWithReorderedBranchFamily[] =
-    "mixed_explicit_boundary_with_reordered_branch_family";
-
-MotionTrajectoryPoint BuildMotionPoint(float t, float x, float y, bool dispense_on = true) {
-    MotionTrajectoryPoint point;
-    point.t = t;
-    point.position = Siligen::Point3D(x, y, 0.0f);
-    point.velocity = Siligen::Point3D(10.0f, 0.0f, 0.0f);
-    point.dispense_on = dispense_on;
-    return point;
-}
-
-ProcessSegment BuildLineSegment(const Point2D& start, const Point2D& end, bool dispense_on = true) {
-    Segment segment;
-    segment.type = SegmentType::Line;
-    segment.line.start = start;
-    segment.line.end = end;
-    segment.length = start.DistanceTo(end);
-
-    ProcessSegment process_segment;
-    process_segment.geometry = segment;
-    process_segment.dispense_on = dispense_on;
-    return process_segment;
-}
-
-ProcessSegment BuildSplineSegment(const std::vector<Point2D>& control_points, bool dispense_on = true) {
-    Segment segment;
-    segment.type = SegmentType::Spline;
-    segment.spline.control_points = control_points;
-    segment.length = 0.0f;
-
-    ProcessSegment process_segment;
-    process_segment.geometry = segment;
-    process_segment.dispense_on = dispense_on;
-    return process_segment;
-}
-
-ProcessSegment BuildPointSegment(const Point2D& point, bool dispense_on = true) {
-    Segment segment;
-    segment.type = SegmentType::Line;
-    segment.line.start = point;
-    segment.line.end = point;
-    segment.length = 0.0f;
-    segment.is_point = true;
-
-    ProcessSegment process_segment;
-    process_segment.geometry = segment;
-    process_segment.dispense_on = dispense_on;
-    return process_segment;
-}
-
-PlanningArtifactsBuildInput BuildInput() {
-    PlanningArtifactsBuildInput input;
-    input.source_path = "sample.pb";
-    input.dxf_filename = "sample.pb";
-    input.dispensing_velocity = 10.0f;
-    input.acceleration = 200.0f;
-    input.dispenser_interval_ms = 100;
-    input.dispenser_duration_ms = 100;
-    input.trigger_spatial_interval_mm = 5.0f;
-    input.sample_dt = 0.01f;
-    input.max_jerk = 5000.0f;
-    input.use_interpolation_planner = true;
-    input.interpolation_algorithm = InterpolationAlgorithm::LINEAR;
-    input.dispensing_strategy = DispensingStrategy::BASELINE;
-    input.process_path.segments.push_back(BuildLineSegment(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)));
-    input.motion_plan.points = {
-        BuildMotionPoint(0.0f, 0.0f, 0.0f),
-        BuildMotionPoint(1.0f, 10.0f, 0.0f),
-    };
-    input.motion_plan.total_length = 10.0f;
-    input.motion_plan.total_time = 1.0f;
-    input.estimated_time_s = 1.25f;
-    return input;
-}
-PlanningArtifactsBuildInput BuildPolylineInput(
-    const std::vector<Point2D>& polyline,
-    float spacing_mm = 3.0f) {
-    auto input = BuildInput();
-    input.process_path.segments.clear();
-    input.motion_plan.points.clear();
-    input.trigger_spatial_interval_mm = spacing_mm;
-
-    float total_length = 0.0f;
-    float timestamp = 0.0f;
-    for (std::size_t index = 1; index < polyline.size(); ++index) {
-        input.process_path.segments.push_back(BuildLineSegment(polyline[index - 1], polyline[index]));
-        if (index == 1) {
-            input.motion_plan.points.push_back(BuildMotionPoint(timestamp, polyline[index - 1].x, polyline[index - 1].y));
-        }
-        total_length += polyline[index - 1].DistanceTo(polyline[index]);
-        timestamp += 1.0f;
-        input.motion_plan.points.push_back(BuildMotionPoint(timestamp, polyline[index].x, polyline[index].y));
-    }
-    input.motion_plan.total_length = total_length;
-    input.motion_plan.total_time = std::max(1.0f, total_length / 10.0f);
-    input.estimated_time_s = input.motion_plan.total_time;
-    return input;
-}
-
-std::size_t CountPointsNear(
-    const std::vector<Point2D>& points,
-    const Point2D& target,
-    float tolerance_mm) {
-    std::size_t count = 0;
-    for (const auto& point : points) {
-        if (point.DistanceTo(target) <= tolerance_mm) {
-            ++count;
-        }
-    }
-    return count;
-}
-
-bool HasConsecutiveNearDuplicatePoints(
-    const std::vector<Point2D>& points,
-    float tolerance_mm) {
-    for (std::size_t index = 1; index < points.size(); ++index) {
-        if (points[index - 1].DistanceTo(points[index]) <= tolerance_mm) {
-            return true;
-        }
-    }
-    return false;
-}
-
-std::size_t CountTriggerMarkers(const std::vector<Siligen::TrajectoryPoint>& points) {
-    std::size_t count = 0;
-    for (const auto& point : points) {
-        if (point.enable_position_trigger) {
-            ++count;
-        }
-    }
-    return count;
-}
-
-std::size_t CountAnchorRoles(
-    const Siligen::Domain::Dispensing::ValueObjects::DispenseSpan& span,
-    StrongAnchorRole role) {
-    return static_cast<std::size_t>(std::count_if(
-        span.strong_anchors.begin(),
-        span.strong_anchors.end(),
-        [&](const auto& anchor) { return anchor.role == role; }));
-}
+using namespace Siligen::Application::Services::Dispensing::TestFixtures;
 
 }  // namespace
 
@@ -195,6 +50,63 @@ TEST(DispensePlanningFacadeTest, AssemblePlanningArtifactsBuildsPreviewPayloadAn
     EXPECT_EQ(payload.export_request.dxf_filename, "sample.pb");
     EXPECT_EQ(payload.export_request.glue_points.size(), payload.glue_points.size());
     EXPECT_EQ(payload.export_request.execution_trajectory_points.size(), payload.trajectory_points.size());
+}
+
+TEST(DispensePlanningFacadeTest, ExecutionAssemblyServiceMatchesFacadeExportRequestShape) {
+    auto input = BuildInput();
+    AuthorityPreviewAssemblyService authority_service;
+    ExecutionAssemblyService execution_service;
+    DispensePlanningFacade facade;
+    auto authority_result = authority_service.BuildAuthorityPreviewArtifacts(BuildAuthorityPreviewInput(input));
+    ASSERT_TRUE(authority_result.IsSuccess()) << authority_result.GetError().GetMessage();
+
+    auto service_result = execution_service.BuildExecutionArtifactsFromAuthority(
+        BuildExecutionInput(input, authority_result.Value()));
+    auto facade_result = facade.BuildExecutionArtifactsFromAuthority(
+        BuildExecutionInput(input, authority_result.Value()));
+
+    ASSERT_TRUE(service_result.IsSuccess()) << service_result.GetError().GetMessage();
+    ASSERT_TRUE(facade_result.IsSuccess()) << facade_result.GetError().GetMessage();
+    EXPECT_EQ(
+        service_result.Value().export_request.execution_trajectory_points.size(),
+        facade_result.Value().export_request.execution_trajectory_points.size());
+    EXPECT_EQ(
+        service_result.Value().export_request.interpolation_trajectory_points.size(),
+        facade_result.Value().export_request.interpolation_trajectory_points.size());
+    EXPECT_EQ(
+        service_result.Value().export_request.motion_trajectory_points.size(),
+        facade_result.Value().export_request.motion_trajectory_points.size());
+    EXPECT_EQ(
+        service_result.Value().export_request.glue_points.size(),
+        facade_result.Value().export_request.glue_points.size());
+}
+
+TEST(DispensePlanningFacadeTest, ExecutionAssemblyFailsWhenAuthorityFailedAndInterpolationProgramCannotBeBuilt) {
+    auto input = BuildInput();
+    input.process_path.segments.clear();
+    input.process_path.segments.push_back(BuildSplineSegment({
+        Point2D(5.0f, 5.0f),
+        Point2D(5.0f, 5.0f),
+        Point2D(5.0f, 5.0f),
+    }));
+    input.motion_plan.points = {
+        BuildMotionPoint(0.0f, 5.0f, 5.0f),
+        BuildMotionPoint(1.0f, 5.0f, 5.0f),
+    };
+    input.motion_plan.total_length = 0.0f;
+    input.motion_plan.total_time = 1.0f;
+    input.spline_max_step_mm = 1.0f;
+    input.spline_max_error_mm = 0.05f;
+
+    AuthorityPreviewAssemblyService authority_service;
+    ExecutionAssemblyService execution_service;
+    auto authority_result = authority_service.BuildAuthorityPreviewArtifacts(BuildAuthorityPreviewInput(input));
+    ASSERT_TRUE(authority_result.IsSuccess()) << authority_result.GetError().GetMessage();
+    const auto result = execution_service.BuildExecutionArtifactsFromAuthority(
+        BuildExecutionInput(input, authority_result.Value()));
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_NE(result.GetError().GetMessage().find("不支持的轨迹段类型"), std::string::npos);
 }
 
 TEST(DispensePlanningFacadeTest, AssemblePlanningArtifactsAnchorsGluePointsAtSegmentEndpointsAndUniformSpacing) {
@@ -728,14 +640,8 @@ TEST(DispensePlanningFacadeTest, AssemblePlanningArtifactsReturnsFailClassificat
     DispensePlanningFacade facade;
     const auto result = facade.AssemblePlanningArtifacts(input);
 
-    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
-    const auto& payload = result.Value();
-    EXPECT_EQ(payload.preview_validation_classification, "fail");
-    EXPECT_FALSE(payload.preview_authority_ready);
-    EXPECT_FALSE(payload.preview_binding_ready);
-    EXPECT_FALSE(payload.preview_spacing_valid);
-    EXPECT_TRUE(payload.glue_points.empty());
-    EXPECT_FALSE(payload.preview_failure_reason.empty());
+    ASSERT_TRUE(result.IsError());
+    EXPECT_NE(result.GetError().GetMessage().find("不支持的轨迹段类型"), std::string::npos);
 }
 TEST(DispensePlanningFacadeTest, AssemblePlanningArtifactsRejectsZeroLengthDispenseSegments) {
     auto input = BuildInput();

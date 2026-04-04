@@ -1,8 +1,6 @@
 #include "ApplicationContainer.h"
 
-#include "application/services/dispensing/AuthorityPreviewAssemblyService.h"
-#include "application/services/dispensing/ExecutionAssemblyService.h"
-#include "application/services/dispensing/DispensePlanningFacade.h"
+#include "application/services/dispensing/WorkflowPlanningAssemblyOperationsProvider.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/process_path/ProcessPathFacade.h"
 #include "application/usecases/dispensing/CleanupFilesUseCase.h"
@@ -82,8 +80,7 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::PlanningUseCase>() {
         std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
         std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(
             velocity_profile_port_),
-        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
-        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
+        Siligen::Application::Services::Dispensing::WorkflowPlanningAssemblyOperationsProvider{}.CreateOperations(),
         config_port_,
         nullptr,
         Siligen::RuntimeExecution::Host::Planning::CreatePlanningArtifactExportPort());

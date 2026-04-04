@@ -24,8 +24,8 @@ namespace Siligen::Application::UseCases::Dispensing {
 
 using Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest;
 using Siligen::Application::Services::ProcessPath::ProcessPathBuildResult;
-using Siligen::Application::Services::Dispensing::AuthorityPreviewBuildInput;
-using Siligen::Application::Services::Dispensing::ExecutionAssemblyBuildInput;
+using Siligen::Application::Services::Dispensing::WorkflowAuthorityPreviewRequest;
+using Siligen::Application::Services::Dispensing::WorkflowExecutionAssemblyRequest;
 using Siligen::Domain::Motion::ValueObjects::TimePlanningConfig;
 using Siligen::Domain::Trajectory::Ports::PathSourceResult;
 using Siligen::MotionPlanning::Contracts::MotionPlan;
@@ -637,31 +637,31 @@ void PopulatePlanningReport(const ProcessPathBuildResult& path_result, MotionPla
         motion_plan);
 }
 
-AuthorityPreviewBuildInput BuildAuthorityPreviewInput(
+WorkflowAuthorityPreviewRequest BuildAuthorityPreviewInput(
     const PlanningRequest& request,
     const ProcessPathBuildResult& path_result,
     const PreviewRuntimeParams& runtime_params,
     const std::string& source_path,
     const std::string& dxf_filename,
     const std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort>& config_port) {
-    AuthorityPreviewBuildInput input;
+    WorkflowAuthorityPreviewRequest input;
     input.process_path = path_result.shaped_path;
     input.authority_process_path = path_result.process_path;
     input.source_path = source_path;
     input.dxf_filename = dxf_filename;
-    input.dispensing_velocity = runtime_params.dispensing_velocity;
-    input.acceleration = runtime_params.acceleration;
-    input.dispenser_interval_ms = runtime_params.dispenser_interval_ms;
-    input.dispenser_duration_ms = runtime_params.dispenser_duration_ms;
-    input.trigger_spatial_interval_mm = runtime_params.trigger_spatial_interval_mm;
-    input.valve_response_ms = runtime_params.valve_response_ms;
-    input.safety_margin_ms = runtime_params.safety_margin_ms;
-    input.min_interval_ms = runtime_params.min_interval_ms;
-    input.sample_dt = runtime_params.sample_dt;
-    input.sample_ds = runtime_params.sample_ds;
-    input.spline_max_step_mm = request.spline_max_step_mm;
-    input.spline_max_error_mm = request.spline_max_error_mm;
-    input.compensation_profile = runtime_params.compensation_profile;
+    input.runtime_options.dispensing_velocity = runtime_params.dispensing_velocity;
+    input.runtime_options.acceleration = runtime_params.acceleration;
+    input.runtime_options.dispenser_interval_ms = runtime_params.dispenser_interval_ms;
+    input.runtime_options.dispenser_duration_ms = runtime_params.dispenser_duration_ms;
+    input.runtime_options.trigger_spatial_interval_mm = runtime_params.trigger_spatial_interval_mm;
+    input.runtime_options.valve_response_ms = runtime_params.valve_response_ms;
+    input.runtime_options.safety_margin_ms = runtime_params.safety_margin_ms;
+    input.runtime_options.min_interval_ms = runtime_params.min_interval_ms;
+    input.runtime_options.sample_dt = runtime_params.sample_dt;
+    input.runtime_options.sample_ds = runtime_params.sample_ds;
+    input.runtime_options.spline_max_step_mm = request.spline_max_step_mm;
+    input.runtime_options.spline_max_error_mm = request.spline_max_error_mm;
+    input.runtime_options.compensation_profile = runtime_params.compensation_profile;
     input.spacing_tol_ratio = request.spacing_tol_ratio;
     input.spacing_min_mm = request.spacing_min_mm;
     input.spacing_max_mm = request.spacing_max_mm;
@@ -683,33 +683,33 @@ AuthorityPreviewBuildInput BuildAuthorityPreviewInput(
     return input;
 }
 
-ExecutionAssemblyBuildInput BuildExecutionAssemblyInput(
+WorkflowExecutionAssemblyRequest BuildExecutionAssemblyInput(
     const PlanningRequest& request,
     const PreparedAuthorityPreview& authority_preview,
     MotionPlan motion_plan,
     const PreviewRuntimeParams& runtime_params) {
-    ExecutionAssemblyBuildInput input;
+    WorkflowExecutionAssemblyRequest input;
     input.process_path = authority_preview.process_path;
     input.motion_plan = std::move(motion_plan);
     input.source_path = authority_preview.source_path;
     input.dxf_filename = authority_preview.dxf_filename;
-    input.dispensing_velocity = runtime_params.dispensing_velocity;
-    input.acceleration = runtime_params.acceleration;
-    input.dispenser_interval_ms = runtime_params.dispenser_interval_ms;
-    input.dispenser_duration_ms = runtime_params.dispenser_duration_ms;
-    input.trigger_spatial_interval_mm = runtime_params.trigger_spatial_interval_mm;
-    input.valve_response_ms = runtime_params.valve_response_ms;
-    input.safety_margin_ms = runtime_params.safety_margin_ms;
-    input.min_interval_ms = runtime_params.min_interval_ms;
+    input.runtime_options.dispensing_velocity = runtime_params.dispensing_velocity;
+    input.runtime_options.acceleration = runtime_params.acceleration;
+    input.runtime_options.dispenser_interval_ms = runtime_params.dispenser_interval_ms;
+    input.runtime_options.dispenser_duration_ms = runtime_params.dispenser_duration_ms;
+    input.runtime_options.trigger_spatial_interval_mm = runtime_params.trigger_spatial_interval_mm;
+    input.runtime_options.valve_response_ms = runtime_params.valve_response_ms;
+    input.runtime_options.safety_margin_ms = runtime_params.safety_margin_ms;
+    input.runtime_options.min_interval_ms = runtime_params.min_interval_ms;
     input.max_jerk = request.trajectory_config.max_jerk;
-    input.sample_dt = runtime_params.sample_dt;
-    input.sample_ds = runtime_params.sample_ds;
-    input.spline_max_step_mm = request.spline_max_step_mm;
-    input.spline_max_error_mm = request.spline_max_error_mm;
+    input.runtime_options.sample_dt = runtime_params.sample_dt;
+    input.runtime_options.sample_ds = runtime_params.sample_ds;
+    input.runtime_options.spline_max_step_mm = request.spline_max_step_mm;
+    input.runtime_options.spline_max_error_mm = request.spline_max_error_mm;
     input.estimated_time_s = authority_preview.estimated_time;
     input.use_interpolation_planner = request.use_interpolation_planner;
     input.interpolation_algorithm = request.interpolation_algorithm;
-    input.compensation_profile = runtime_params.compensation_profile;
+    input.runtime_options.compensation_profile = runtime_params.compensation_profile;
 
     input.authority_preview.segment_count = authority_preview.segment_count;
     input.authority_preview.total_length = authority_preview.total_length;
@@ -741,10 +741,8 @@ PlanningUseCase::PlanningUseCase(
     std::shared_ptr<Siligen::Application::Services::ProcessPath::ProcessPathFacade> process_path_facade,
     std::shared_ptr<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>
         motion_planning_facade,
-    std::shared_ptr<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>
-        authority_preview_assembly_service,
-    std::shared_ptr<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>
-        execution_assembly_service,
+    std::shared_ptr<Siligen::Application::Services::Dispensing::IWorkflowPlanningAssemblyOperations>
+        planning_assembly_operations,
     std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port,
     std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService> pb_preparation_service,
     std::shared_ptr<Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort> artifact_export_port)
@@ -755,12 +753,11 @@ PlanningUseCase::PlanningUseCase(
       motion_planning_facade_(motion_planning_facade
                                   ? std::move(motion_planning_facade)
                                   : std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>()),
-      authority_preview_assembly_service_(authority_preview_assembly_service
-                                              ? std::move(authority_preview_assembly_service)
-                                              : std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>()),
-      execution_assembly_service_(execution_assembly_service
-                                      ? std::move(execution_assembly_service)
-                                      : std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>()),
+      planning_assembly_operations_(
+          planning_assembly_operations
+              ? std::move(planning_assembly_operations)
+              : Siligen::Application::Services::Dispensing::WorkflowPlanningAssemblyOperationsProvider{}
+                    .CreateOperations()),
       config_port_(std::move(config_port)),
       pb_preparation_service_(pb_preparation_service
                                   ? std::move(pb_preparation_service)
@@ -952,7 +949,7 @@ Result<PreparedAuthorityPreview> PlanningUseCase::PrepareAuthorityPreview(const 
         std::chrono::steady_clock::now() - process_path_start).count();
 
     const auto authority_start = std::chrono::steady_clock::now();
-    auto authority_result = authority_preview_assembly_service_->BuildAuthorityPreviewArtifacts(
+    auto authority_result = planning_assembly_operations_->BuildAuthorityPreviewArtifacts(
         BuildAuthorityPreviewInput(
             request,
             process_path_result,
@@ -1063,7 +1060,7 @@ Result<ExecutionAssemblyResponse> PlanningUseCase::AssembleExecutionFromAuthorit
         runtime_params);
 
     const auto assembly_start = std::chrono::steady_clock::now();
-    auto assembly_result = execution_assembly_service_->BuildExecutionArtifactsFromAuthority(assembly_input);
+    auto assembly_result = planning_assembly_operations_->BuildExecutionArtifactsFromAuthority(assembly_input);
     if (assembly_result.IsError()) {
         return Result<ExecutionAssemblyResponse>::Failure(assembly_result.GetError());
     }
@@ -1083,16 +1080,7 @@ Result<ExecutionAssemblyResponse> PlanningUseCase::AssembleExecutionFromAuthorit
         std::make_shared<Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated>(
             assembly_result.Value().execution_package);
     response.authority_trigger_layout = assembly_result.Value().authority_trigger_layout;
-    Siligen::Application::Services::Dispensing::PlanningArtifactExportAssemblyService export_assembly_service;
-    Siligen::Application::Services::Dispensing::PlanningArtifactExportAssemblyInput export_input;
-    export_input.source_path = authority_preview.source_path;
-    export_input.dxf_filename = authority_preview.dxf_filename;
-    export_input.process_path = authority_preview.process_path;
-    export_input.glue_points = authority_preview.glue_points;
-    export_input.execution_trajectory_points = response.execution_trajectory_points;
-    export_input.interpolation_trajectory_points = assembly_result.Value().interpolation_trajectory_points;
-    export_input.motion_trajectory_points = assembly_result.Value().motion_trajectory_points;
-    response.export_request = export_assembly_service.BuildRequest(export_input);
+    response.export_request = assembly_result.Value().export_request;
     response.execution_profile.motion_plan_ms = static_cast<std::uint32_t>(motion_plan_elapsed_ms);
     response.execution_profile.assembly_ms = static_cast<std::uint32_t>(assembly_elapsed_ms);
 
@@ -1107,10 +1095,6 @@ Result<ExecutionAssemblyResponse> PlanningUseCase::AssembleExecutionFromAuthorit
             SILIGEN_LOG_WARNING("planning artifact export reported failure: " + export_result.Value().message);
         }
     }
-    // export_request only feeds the export port. Keeping it inside the returned
-    // assembly response retains large duplicate trajectory buffers in workflow
-    // plan state and execution-assembly cache after export has already finished.
-    response.export_request = {};
     response.execution_profile.export_ms = export_elapsed_ms;
     response.execution_profile.total_ms = ToElapsedMs(total_start);
 
