@@ -204,13 +204,14 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowPlanningImplementationsAreRemoved)
 
 TEST(MotionPlanningOwnerBoundaryTest, WorkflowDispensingPlanningCompatibilityLayerIsRemoved) {
     const fs::path repo_root = RepoRoot();
-    const std::array<fs::path, 8> removed_paths = {{
+    const std::array<fs::path, 9> removed_paths = {{
         repo_root / "modules/workflow/application/services/dispensing/PlanningPreviewAssemblyService.cpp",
         repo_root / "modules/workflow/application/services/dispensing/PlanningPreviewAssemblyService.h",
         repo_root / "modules/workflow/domain/include/domain/dispensing/planning/domain-services/DispensingPlannerService.h",
         repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/ContourOptimizationService.cpp",
         repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/ContourOptimizationService.h",
         repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp",
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.h",
         repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp",
         repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.h",
     }};

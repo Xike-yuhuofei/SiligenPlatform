@@ -283,6 +283,17 @@ bool AllProcessPathSegmentEndpointsWithinBounds(
     return true;
 }
 
+void ExpectPointVectorsNear(
+    const std::vector<Point2D>& actual,
+    const std::vector<Point2D>& expected,
+    float tolerance_mm = 1e-4f) {
+    ASSERT_EQ(actual.size(), expected.size());
+    for (std::size_t index = 0; index < actual.size(); ++index) {
+        EXPECT_NEAR(actual[index].x, expected[index].x, tolerance_mm);
+        EXPECT_NEAR(actual[index].y, expected[index].y, tolerance_mm);
+    }
+}
+
 }  // namespace
 
 TEST(PlanningUseCaseExportPortTest, ExecuteBuildsExportRequestWithoutDirectFilesystemOwnership) {
@@ -344,6 +355,68 @@ TEST(PlanningUseCaseExportPortTest, AssembleExecutionDropsExportRequestAfterExpo
     EXPECT_TRUE(assembly_result.Value().export_request.execution_trajectory_points.empty());
     EXPECT_TRUE(assembly_result.Value().export_request.interpolation_trajectory_points.empty());
     EXPECT_TRUE(assembly_result.Value().export_request.motion_trajectory_points.empty());
+
+    std::error_code ec;
+    std::filesystem::remove(temp_pb, ec);
+}
+
+TEST(PlanningUseCaseExportPortTest, ExecuteMatchesSplitAuthorityAndExecutionAssemblySeam) {
+    auto temp_pb = MakeTempPbPath();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto path_source = std::make_shared<FakePathSourcePort>();
+    auto export_port = std::make_shared<FakePlanningArtifactExportPort>();
+    auto pb_service = std::make_shared<DxfPbPreparationService>();
+    PlanningUseCase use_case(
+        path_source,
+        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
+        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>(),
+        std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>(),
+        config_port,
+        pb_service,
+        export_port);
+
+    const auto request = MakePlanningRequest(temp_pb);
+    const auto authority_result = use_case.PrepareAuthorityPreview(request);
+    ASSERT_TRUE(authority_result.IsSuccess()) << authority_result.GetError().ToString();
+    const auto assembly_result = use_case.AssembleExecutionFromAuthority(request, authority_result.Value());
+    ASSERT_TRUE(assembly_result.IsSuccess()) << assembly_result.GetError().ToString();
+
+    const auto execute_result = use_case.Execute(request);
+    ASSERT_TRUE(execute_result.IsSuccess()) << execute_result.GetError().ToString();
+
+    const auto& authority_payload = authority_result.Value();
+    const auto& assembly_payload = assembly_result.Value();
+    const auto& execute_payload = execute_result.Value();
+
+    EXPECT_EQ(execute_payload.authority_trigger_layout.layout_id, authority_payload.authority_trigger_layout.layout_id);
+    EXPECT_EQ(execute_payload.trigger_count, authority_payload.trigger_count);
+    EXPECT_EQ(execute_payload.preview_authority_ready, authority_payload.preview_authority_ready);
+    EXPECT_EQ(execute_payload.preview_binding_ready, authority_payload.preview_binding_ready);
+    EXPECT_EQ(execute_payload.preview_spacing_valid, authority_payload.preview_spacing_valid);
+    EXPECT_EQ(execute_payload.preview_validation_classification, authority_payload.preview_validation_classification);
+    EXPECT_EQ(execute_payload.spacing_validation_groups.size(), authority_payload.spacing_validation_groups.size());
+    ExpectPointVectorsNear(execute_payload.glue_points, authority_payload.glue_points);
+
+    ASSERT_NE(execute_payload.execution_package, nullptr);
+    ASSERT_NE(assembly_payload.execution_package, nullptr);
+    EXPECT_TRUE(execute_payload.execution_package->Validate().IsSuccess());
+    EXPECT_TRUE(assembly_payload.execution_package->Validate().IsSuccess());
+    EXPECT_EQ(execute_payload.execution_package->source_path, assembly_payload.execution_package->source_path);
+    EXPECT_FLOAT_EQ(execute_payload.execution_package->total_length_mm,
+                    assembly_payload.execution_package->total_length_mm);
+    EXPECT_FLOAT_EQ(execute_payload.execution_package->estimated_time_s,
+                    assembly_payload.execution_package->estimated_time_s);
+    EXPECT_EQ(execute_payload.authority_trigger_layout.layout_id, assembly_payload.authority_trigger_layout.layout_id);
+    EXPECT_EQ(execute_payload.preview_authority_shared_with_execution,
+              assembly_payload.preview_authority_shared_with_execution);
+    EXPECT_EQ(execute_payload.execution_trajectory_points.size(),
+              assembly_payload.execution_trajectory_points.size());
+    EXPECT_EQ(execute_payload.preview_authority_shared_with_execution,
+              assembly_payload.preview_authority_shared_with_execution);
+    EXPECT_EQ(execute_payload.preview_binding_ready, authority_payload.preview_binding_ready);
+    EXPECT_EQ(execute_payload.authority_trigger_layout.bindings.size(),
+              assembly_payload.authority_trigger_layout.bindings.size());
 
     std::error_code ec;
     std::filesystem::remove(temp_pb, ec);
