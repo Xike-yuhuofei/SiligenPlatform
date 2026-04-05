@@ -4,6 +4,7 @@
 #include "application/services/motion_planning/InterpolationProgramFacade.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/motion_planning/TrajectoryInterpolationFacade.h"
+#include "application/services/dispensing/PlanningArtifactExportAssemblyService.h"
 
 #include "domain/dispensing/planning/domain-services/AuthorityTriggerLayoutPlanner.h"
 #include "domain/dispensing/planning/domain-services/CurveFlatteningService.h"
@@ -33,6 +34,8 @@ using Siligen::Application::Services::MotionPlanning::CmpInterpolationFacade;
 using Siligen::Application::Services::MotionPlanning::InterpolationProgramFacade;
 using Siligen::Application::Services::MotionPlanning::MotionPlanningFacade;
 using Siligen::Application::Services::MotionPlanning::TrajectoryInterpolationFacade;
+using Siligen::Application::Services::Dispensing::PlanningArtifactExportAssemblyInput;
+using Siligen::Application::Services::Dispensing::PlanningArtifactExportAssemblyService;
 using Siligen::Domain::Dispensing::Contracts::ExecutionPackageBuilt;
 using Siligen::Domain::Dispensing::DomainServices::AuthorityTriggerLayoutPlanner;
 using Siligen::Domain::Dispensing::DomainServices::AuthorityTriggerLayoutPlannerRequest;
@@ -1721,7 +1724,7 @@ Result<ExecutionAssemblyBuildResult> ExecutionAssemblyService::BuildExecutionArt
     InterpolationProgramFacade program_planner;
     auto interpolation_program =
         program_planner.BuildProgram(input.process_path, input.motion_plan, input.acceleration);
-    if (interpolation_program.IsError() && trigger_artifacts.validation_classification != "fail") {
+    if (interpolation_program.IsError()) {
         return Result<ExecutionAssemblyBuildResult>::Failure(interpolation_program.GetError());
     }
     {
@@ -1790,6 +1793,16 @@ Result<ExecutionAssemblyBuildResult> ExecutionAssemblyService::BuildExecutionArt
     result.execution_binding_ready = trigger_artifacts.binding_ready;
     result.execution_failure_reason = trigger_artifacts.failure_reason;
     result.authority_trigger_layout = trigger_artifacts.authority_trigger_layout;
+    PlanningArtifactExportAssemblyService export_assembly_service;
+    PlanningArtifactExportAssemblyInput export_input;
+    export_input.source_path = input.source_path;
+    export_input.dxf_filename = input.dxf_filename;
+    export_input.process_path = input.process_path;
+    export_input.glue_points = CollectAuthorityPositions(result.authority_trigger_layout);
+    export_input.execution_trajectory_points = result.execution_trajectory_points;
+    export_input.interpolation_trajectory_points = result.interpolation_trajectory_points;
+    export_input.motion_trajectory_points = result.motion_trajectory_points;
+    result.export_request = export_assembly_service.BuildRequest(export_input);
     {
         std::ostringstream oss;
         oss << "execution_binding_ready=" << (result.execution_binding_ready ? 1 : 0)

@@ -38,13 +38,13 @@
 
 - `workflow/contracts` 已落地 `WorkflowStageState`、`WorkflowCommand`、`WorkflowPlanningTriggerRequest`、`WorkflowPlanningTriggerResponse`、`WorkflowFailureCategory`、`WorkflowRecoveryDirective`。
 - `MotionRuntimeAssemblyFactory` 已改为依赖 runtime services provider，不再直接实例化 motion concrete。
-- `PlanningUseCase` 已改为编排 `IPathSourcePort + ProcessPathFacade + MotionPlanningFacade + AuthorityPreviewAssemblyService + ExecutionAssemblyService`；planning artifact export request 由 `workflow` owner contract 组装，并继续通过 `IPlanningArtifactExportPort` 交给 `runtime-execution` concrete 承担。
+- `PlanningUseCase` 已改为编排 `IPathSourcePort + ProcessPathFacade + MotionPlanningFacade + WorkflowPlanningAssemblyOperationsProvider`；planning artifact export request 由 `M8` owner seam 产出，并继续通过 `IPlanningArtifactExportPort` 交给 `runtime-execution` concrete 承担。
 - `IPlanningArtifactExportPort` 与 `IMotionRuntimeServicesProvider` 的 canonical contract 已归到 `runtime-execution/application/include/runtime_execution/application/*`，`workflow/application` 仅保留兼容转发头。
 - `assert-module-boundary-bridges.ps1` 已接入 bridge-only 收口标记，并在 `rg` 不可用时回退到 PowerShell 原生搜索。
 
 ## S2-A 完成态
 
-- `workflow/application` 的 live planning 链已改为显式编排 `M6 process-path`、`M7 motion-planning`、`M8 dispense-packaging` 的 public facade，不再注入 `DispensingPlannerService` concrete。
+- `workflow/application` 的 live planning 链已改为显式编排 `M6 process-path`、`M7 motion-planning`、`M8 dispense-packaging` 的 single planning seam，不再直接依赖 `AuthorityPreviewAssemblyService`、`ExecutionAssemblyService` 或 `DispensingPlannerService` concrete。
 - `workflow/domain/domain/CMakeLists.txt` 中的 `siligen_motion_execution_services` 已改为从 `modules/motion-planning/domain/motion/` 编译 owner source，`workflow/domain/domain/dispensing/CMakeLists.txt` 已降格为转发到 `siligen_dispense_packaging_domain_dispensing` 的兼容 target。
 - `motion-planning/application` 与 `dispense-packaging/application` 不再反向修改 `workflow` target，`workflow` 自身负责声明 owner 依赖。
 - bridge 报告已恢复绿色，见 `tests/reports/module-boundary-bridges-s2a/`。

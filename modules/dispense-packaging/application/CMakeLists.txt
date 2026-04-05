@@ -77,6 +77,9 @@ if(NOT TARGET siligen_dispense_packaging_application)
     add_library(siligen_dispense_packaging_application STATIC
         services/dispensing/DispensePlanningFacade.cpp
         services/dispensing/PlanningAssemblyServices.cpp
+        services/dispensing/PlanningArtifactExportAssemblyService.cpp
+        services/dispensing/WorkflowPlanningAssemblyOperationsProvider.cpp
+        services/dispensing/WorkflowDispensingProcessOperationsProvider.cpp
         services/dispensing/PreviewSnapshotService.cpp
     )
 endif()

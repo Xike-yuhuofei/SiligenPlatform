@@ -199,4 +199,14 @@ TEST(WorkflowDispensingProcessPortAdapterTest, ErrorsFromInternalOperationsArePr
     EXPECT_EQ(execute_result.GetError().GetMessage(), "execute failed");
 }
 
+TEST(WorkflowDispensingProcessPortAdapterTest, FactoryCreatesOperationsWithoutDirectHostOwnershipOfProcessService) {
+    const auto operations =
+        Siligen::Runtime::Service::Dispensing::CreateWorkflowDispensingProcessOperations(nullptr, nullptr, nullptr, nullptr, nullptr);
+
+    ASSERT_NE(operations, nullptr);
+    const auto result = operations->ValidateHardwareConnection();
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::PORT_NOT_INITIALIZED);
+}
+
 }  // namespace

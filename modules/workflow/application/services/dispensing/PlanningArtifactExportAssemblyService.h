@@ -1,28 +1,5 @@
 #pragma once
 
-#include "process_path/contracts/ProcessPath.h"
-#include "shared/types/Point.h"
-#include "shared/types/TrajectoryTypes.h"
-#include "workflow/application/services/dispensing/PlanningArtifactExportPort.h"
-
-#include <string>
-#include <vector>
-
-namespace Siligen::Application::Services::Dispensing {
-
-struct PlanningArtifactExportAssemblyInput {
-    std::string source_path;
-    std::string dxf_filename;
-    Siligen::ProcessPath::Contracts::ProcessPath process_path;
-    std::vector<Siligen::Shared::Types::Point2D> glue_points;
-    std::vector<Siligen::TrajectoryPoint> execution_trajectory_points;
-    std::vector<Siligen::TrajectoryPoint> interpolation_trajectory_points;
-    std::vector<Siligen::TrajectoryPoint> motion_trajectory_points;
-};
-
-class PlanningArtifactExportAssemblyService {
-public:
-    PlanningArtifactExportRequest BuildRequest(const PlanningArtifactExportAssemblyInput& input) const;
-};
-
-}  // namespace Siligen::Application::Services::Dispensing
+// Compatibility shim; canonical planning export owner now lives in
+// modules/dispense-packaging/application/include.
+#include "../../../../dispense-packaging/application/include/application/services/dispensing/PlanningArtifactExportAssemblyService.h"

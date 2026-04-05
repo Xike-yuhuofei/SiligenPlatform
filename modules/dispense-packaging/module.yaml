@@ -5,7 +5,12 @@ group: planning
 target_root: modules/dispense-packaging
 allowed_dependencies:
   - motion-planning/contracts
+  - process-path/contracts
   - process-planning/contracts
   - shared
 uniform_skeleton_ready: true
-notes: domain/dispensing 是唯一真实实现承载面；模块根 target 已切到 siligen_dispense_packaging_domain_dispensing
+notes: >
+  M8 canonical owner 公开产物是 ExecutionPackage、PlanningArtifactExportRequest、
+  AuthorityTriggerLayout、TriggerPlan、DispensingPlan；Workflow runtime host 必须通过
+  WorkflowDispensingProcessOperationsProvider 消费点胶执行过程装配，不得直接构造
+  domain/dispensing/DispensingProcessService。DispenseTimingPlan 为历史命名残留，不再新增 live 类型。

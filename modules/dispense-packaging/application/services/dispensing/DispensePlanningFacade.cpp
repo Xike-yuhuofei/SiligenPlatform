@@ -1759,7 +1759,7 @@ Result<ExecutionAssemblyBuildResult> DispensePlanningFacade::BuildExecutionArtif
     InterpolationProgramFacade program_planner;
     auto interpolation_program =
         program_planner.BuildProgram(input.process_path, input.motion_plan, input.acceleration);
-    if (interpolation_program.IsError() && trigger_artifacts.validation_classification != "fail") {
+    if (interpolation_program.IsError()) {
         return Result<ExecutionAssemblyBuildResult>::Failure(interpolation_program.GetError());
     }
     {
