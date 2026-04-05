@@ -34,6 +34,7 @@ target_link_libraries(siligen_motion_planning_unit_tests PRIVATE
     siligen_motion
     siligen_dispense_packaging_application_public
     siligen_runtime_execution_runtime_contracts
+    siligen_parsing_adapter
     siligen_types
     siligen_utils
 )
