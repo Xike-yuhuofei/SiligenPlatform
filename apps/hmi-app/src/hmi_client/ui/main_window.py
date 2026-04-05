@@ -1703,7 +1703,7 @@ class MainWindow(QMainWindow):
             if widget is not None:
                 widget.setEnabled(ui_state.allow_online_actions)
         if hasattr(self, "_production_tab"):
-            self._production_tab.setEnabled(True)
+            self._production_tab.setEnabled(ui_state.allow_online_actions)
         if hasattr(self, "_system_panel"):
             self._system_panel.setEnabled(ui_state.system_panel_enabled)
         if hasattr(self, "_stop_btn"):
@@ -2586,6 +2586,7 @@ class MainWindow(QMainWindow):
         glue_points: list,
         preview_kind: str,
         motion_preview: list | None = None,
+        execution_polyline: list | None = None,
         motion_preview_meta: MotionPreviewMeta | None = None,
         preview_warning: str = "",
         preview_diagnostic_notice: PreviewDiagnosticNotice | None = None,
@@ -2596,7 +2597,7 @@ class MainWindow(QMainWindow):
         preview_diagnostic_code: str = "",
     ) -> str:
         normalized_source = str(preview_source or "").strip().lower()
-        effective_motion_preview = list(motion_preview or [])
+        effective_motion_preview = list(motion_preview or execution_polyline or [])
         effective_motion_preview_meta = motion_preview_meta
         if effective_motion_preview_meta is None and effective_motion_preview:
             effective_motion_preview_meta = MotionPreviewMeta(

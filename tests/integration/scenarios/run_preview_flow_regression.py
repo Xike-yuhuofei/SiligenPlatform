@@ -129,6 +129,33 @@ class _FakePreviewSnapshotWorker:
         return None
 
 
+def _build_fake_offline_preview_payload(_filepath: str, *, speed_mm_s: float, dry_run: bool) -> dict[str, Any]:
+    return {
+        "snapshot_id": "snapshot-int",
+        "snapshot_hash": "hash-int",
+        "plan_id": "plan-int",
+        "preview_source": "planned_glue_snapshot",
+        "preview_kind": "glue_points",
+        "segment_count": 2,
+        "glue_point_count": 2,
+        "glue_points": [{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
+        "motion_preview": {
+            "source": "execution_trajectory_snapshot",
+            "kind": "polyline",
+            "source_point_count": 8,
+            "point_count": 2,
+            "is_sampled": True,
+            "sampling_strategy": "execution_trajectory_geometry_preserving_clamp",
+            "polyline": [{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
+        },
+        "total_length_mm": 10.0,
+        "estimated_time_s": 0.5,
+        "generated_at": "2026-04-02T00:00:00Z",
+        "dry_run": bool(dry_run),
+        "requested_speed_mm_s": float(speed_mm_s),
+    }
+
+
 class _FakeProtocol:
     def __init__(self) -> None:
         self.calls: list[tuple[object, ...]] = []
@@ -155,24 +182,22 @@ def _run_preview_flow() -> CaseResult:
     original_web_view = getattr(main_window_module, "QWebEngineView", None)
     original_web_engine_flag = getattr(main_window_module, "WEB_ENGINE_AVAILABLE", False)
     original_worker = main_window_module.PreviewSnapshotWorker
+    original_offline_preview_builder = main_window_module.build_offline_preview_payload
 
     main_window_module.QWebEngineView = _FakePreviewView
     main_window_module.WEB_ENGINE_AVAILABLE = True
     main_window_module.PreviewSnapshotWorker = _FakePreviewSnapshotWorker
+    main_window_module.build_offline_preview_payload = _build_fake_offline_preview_payload
 
     window = cast(Any, main_window_module.MainWindow(launch_mode="offline"))
     try:
-        window._require_online_mode = lambda _capability: True
         window._protocol = _FakeProtocol()
         window._client = _FakeClient()
-        window._connected = True
         window._mode_production.setChecked(True)
         window._mode_dryrun.setChecked(False)
         window._dxf_filepath = str(ROOT / "samples" / "dxf" / "rect_diag.dxf")
 
         window._on_dxf_load()
-
-        worker = _FakePreviewSnapshotWorker.created[0]
         payload = {
             "artifact_id": window._dxf_artifact_id,
             "plan_id": window._current_plan_id,
@@ -184,22 +209,19 @@ def _run_preview_flow() -> CaseResult:
             "session_plan_fingerprint": window._preview_session.state.current_plan_fingerprint,
             "gate_snapshot_hash": window._preview_gate.snapshot.snapshot_hash,
             "status_message": cast(Any, window.statusBar()).currentMessage(),
-            "html_contains_hash": "hash-int" in cast(Any, window._dxf_view).html,
+            "debug_contains_hash": "hash-int" in window._preview_debug_view.toPlainText(),
             "filename_display": window._dxf_filename_display.text(),
-            "html_contains_title": "规划胶点主预览" in cast(Any, window._dxf_view).html,
+            "html_contains_playback_overlay": "preview-played-line" in cast(Any, window._dxf_view).html,
             "protocol_calls": cast(Any, window._protocol).calls,
-            "worker": {
-                "host": worker.host,
-                "port": worker.port,
-                "artifact_id": worker.artifact_id,
-                "speed_mm_s": worker.speed_mm_s,
-                "dry_run": worker.dry_run,
-                "dry_run_speed_mm_s": worker.dry_run_speed_mm_s,
+            "offline_payload": {
+                "motion_preview_source": window._preview_session.state.motion_preview_source,
+                "motion_preview_sampling_strategy": window._preview_session.state.motion_preview_sampling_strategy,
+                "motion_preview_point_count": window._preview_session.state.motion_preview_point_count,
             },
         }
 
         assert window._dxf_loaded
-        assert payload["artifact_id"] == "artifact-int"
+        assert payload["artifact_id"] == "offline-local"
         assert payload["plan_id"] == "plan-int"
         assert payload["snapshot_hash"] == "hash-int"
         assert payload["preview_source"] == "planned_glue_snapshot"
@@ -209,19 +231,13 @@ def _run_preview_flow() -> CaseResult:
         assert payload["session_plan_fingerprint"] == "hash-int"
         assert payload["gate_snapshot_hash"] == "hash-int"
         assert payload["status_message"] == "胶点预览已更新，启动前需确认"
-        assert payload["html_contains_hash"] is True
+        assert payload["debug_contains_hash"] is True
         assert payload["filename_display"] == "rect_diag.dxf"
-        assert payload["html_contains_title"] is True
-        assert payload["protocol_calls"] == [
-            ("dxf.artifact.create", window._dxf_filepath),
-            ("dxf.info",),
-        ]
-        assert payload["worker"]["host"] == "127.0.0.1"
-        assert payload["worker"]["port"] == 9527
-        assert payload["worker"]["artifact_id"] == "artifact-int"
-        assert payload["worker"]["speed_mm_s"] == window._dxf_speed.value()
-        assert payload["worker"]["dry_run"] is False
-        assert payload["worker"]["dry_run_speed_mm_s"] == window._dxf_speed.value()
+        assert payload["html_contains_playback_overlay"] is True
+        assert payload["protocol_calls"] == []
+        assert payload["offline_payload"]["motion_preview_source"] == "execution_trajectory_snapshot"
+        assert payload["offline_payload"]["motion_preview_sampling_strategy"] == "execution_trajectory_geometry_preserving_clamp"
+        assert payload["offline_payload"]["motion_preview_point_count"] == 2
         assert window._preview_snapshot_worker is None
         assert window._preview_refresh_inflight is False
 
@@ -238,6 +254,7 @@ def _run_preview_flow() -> CaseResult:
         main_window_module.QWebEngineView = original_web_view
         main_window_module.WEB_ENGINE_AVAILABLE = original_web_engine_flag
         main_window_module.PreviewSnapshotWorker = original_worker
+        main_window_module.build_offline_preview_payload = original_offline_preview_builder
         app.processEvents()
 
 

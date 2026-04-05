@@ -900,6 +900,7 @@ class PreviewSessionOwner:
         if motion_preview_sampling_strategy not in {
             "execution_trajectory_geometry_preserving",
             "execution_trajectory_geometry_preserving_clamp",
+            "fixed_spacing_corner_preserving",
         }:
             return self.handle_local_failure(
                 gate_error_message=(
@@ -911,7 +912,8 @@ class PreviewSessionOwner:
                     "返回结果的 motion_preview.sampling_strategy="
                     f"{motion_preview_sampling_strategy or 'missing'}，"
                     "不是 execution_trajectory_geometry_preserving / "
-                    "execution_trajectory_geometry_preserving_clamp。"
+                    "execution_trajectory_geometry_preserving_clamp / "
+                    "fixed_spacing_corner_preserving。"
                 ),
             )
 
