@@ -2290,6 +2290,10 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
     if (glue_points.empty()) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview glue points are empty");
     }
+    nlohmann::json glue_reveal_lengths_mm = nlohmann::json::array();
+    for (const auto reveal_length_mm : snapshot.glue_reveal_lengths_mm) {
+        glue_reveal_lengths_mm.push_back(reveal_length_mm);
+    }
 
     nlohmann::json motion_preview_polyline = nlohmann::json::array();
     for (const auto& point : snapshot.motion_preview_polyline) {
@@ -2345,6 +2349,7 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
         {"point_count", snapshot.point_count},
         {"glue_point_count", snapshot.glue_point_count},
         {"glue_points", glue_points},
+        {"glue_reveal_lengths_mm", glue_reveal_lengths_mm},
         {"motion_preview", motion_preview},
         {"execution_point_count", snapshot.execution_point_count},
         {"total_length_mm", snapshot.total_length_mm},

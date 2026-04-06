@@ -168,6 +168,7 @@ class PreviewPayloadResult:
     should_render: bool = False
     snapshot: PreviewSnapshotMeta | None = None
     glue_points: tuple[tuple[float, float], ...] = ()
+    glue_reveal_lengths_mm: tuple[float, ...] = ()
     motion_preview: tuple[tuple[float, float], ...] = ()
     motion_preview_meta: MotionPreviewMeta | None = None
     preview_source: str = ""
@@ -775,6 +776,7 @@ class PreviewSessionOwner:
             )
 
         glue_points = self.extract_points(payload, "glue_points")
+        glue_reveal_lengths_mm = self.extract_float_list(payload, "glue_reveal_lengths_mm")
         motion_preview_payload = payload.get("motion_preview")
         motion_preview_block = motion_preview_payload if isinstance(motion_preview_payload, dict) else {}
         motion_preview = self.extract_points(motion_preview_block, "polyline")
@@ -991,6 +993,7 @@ class PreviewSessionOwner:
             should_render=True,
             snapshot=snapshot,
             glue_points=tuple(glue_points),
+            glue_reveal_lengths_mm=tuple(glue_reveal_lengths_mm),
             motion_preview=tuple(motion_preview),
             motion_preview_meta=motion_preview_meta,
             preview_source=preview_source,
@@ -1167,6 +1170,22 @@ class PreviewSessionOwner:
                 continue
             points.append((x_value, y_value))
         return points
+
+    @staticmethod
+    def extract_float_list(payload: dict[str, object], field_name: str) -> list[float]:
+        values: list[float] = []
+        raw_values = payload.get(field_name, [])
+        if not isinstance(raw_values, list):
+            return values
+        for raw in raw_values:
+            try:
+                value = float(raw)
+            except (TypeError, ValueError):
+                return []
+            if not math.isfinite(value):
+                return []
+            values.append(value)
+        return values
 
     @staticmethod
     def sampling_warning(glue_point_count: int, execution_source_point_count: int) -> str:

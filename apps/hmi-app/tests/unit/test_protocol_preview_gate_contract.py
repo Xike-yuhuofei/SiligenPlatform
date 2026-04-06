@@ -413,6 +413,7 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
                             {"x": 0.0, "y": 0.0},
                             {"x": 10.0, "y": 2.0},
                         ],
+                        "glue_reveal_lengths_mm": [0.0, 10.198039],
                         "execution_point_count": 48,
                         "motion_preview": {
                             "source": "execution_trajectory_snapshot",
@@ -443,6 +444,7 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertEqual(payload["preview_source"], "planned_glue_snapshot")
         self.assertEqual(payload["preview_kind"], "glue_points")
         self.assertEqual(len(payload["glue_points"]), 2)
+        self.assertEqual(payload["glue_reveal_lengths_mm"], [0.0, 10.198039])
         self.assertEqual(payload["motion_preview"]["source"], "execution_trajectory_snapshot")
         self.assertEqual(len(payload["motion_preview"]["polyline"]), 2)
         self.assertEqual(client.calls[0][0], "dxf.preview.snapshot")

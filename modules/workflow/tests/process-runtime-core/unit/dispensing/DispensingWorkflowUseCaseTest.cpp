@@ -525,6 +525,27 @@ void SeedAuthorityMetadata(
     plan_record.authority_trigger_layout.binding_ready = true;
 }
 
+void SeedAuthorityTriggerPoints(
+    DispensingWorkflowUseCase::PlanRecord& plan_record,
+    const std::vector<Point2D>& points) {
+    plan_record.authority_trigger_layout.trigger_points.clear();
+    plan_record.authority_trigger_layout.trigger_points.reserve(points.size());
+    float cumulative_length_mm = 0.0f;
+    for (std::size_t index = 0; index < points.size(); ++index) {
+        if (index > 0U) {
+            cumulative_length_mm += static_cast<float>(points[index - 1U].DistanceTo(points[index]));
+        }
+        Siligen::Domain::Dispensing::ValueObjects::LayoutTriggerPoint trigger_point;
+        trigger_point.trigger_id = "trigger-" + std::to_string(index);
+        trigger_point.layout_ref = plan_record.authority_trigger_layout.layout_id;
+        trigger_point.sequence_index_global = index;
+        trigger_point.distance_mm_global = cumulative_length_mm;
+        trigger_point.position = points[index];
+        plan_record.authority_trigger_layout.trigger_points.push_back(trigger_point);
+    }
+    plan_record.response.total_length_mm = cumulative_length_mm;
+}
+
 void SeedPlan(DispensingWorkflowUseCase& use_case, const std::string& plan_id) {
     DispensingWorkflowUseCase::PlanRecord plan_record;
     plan_record.response.plan_id = plan_id;
@@ -555,6 +576,8 @@ void SeedPlan(DispensingWorkflowUseCase& use_case, const std::string& plan_id) {
     plan_record.execution_assembly.preview_authority_shared_with_execution = true;
     plan_record.execution_assembly.execution_binding_ready = true;
     plan_record.execution_assembly.execution_package = plan_record.execution_launch.execution_package;
+    plan_record.execution_assembly.authority_trigger_layout = plan_record.authority_trigger_layout;
+    SeedAuthorityTriggerPoints(plan_record, plan_record.glue_points);
     plan_record.execution_assembly.authority_trigger_layout = plan_record.authority_trigger_layout;
     use_case.plans_[plan_id] = plan_record;
 }
@@ -655,6 +678,8 @@ DispensingWorkflowUseCase::PlanRecord BuildPreviewPlanRecord(
         plan_record.execution_assembly.motion_trajectory_points.emplace_back(point.x, point.y, 0.0f);
         plan_record.glue_points.push_back(point);
     }
+    SeedAuthorityTriggerPoints(plan_record, plan_record.glue_points);
+    plan_record.execution_assembly.authority_trigger_layout = plan_record.authority_trigger_layout;
     return plan_record;
 }
 
@@ -1258,6 +1283,9 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotKeepsConfirmedStateWhenFin
     EXPECT_EQ(snapshot.plan_id, "plan-confirmed");
     EXPECT_EQ(snapshot.glue_point_count, 2U);
     EXPECT_EQ(snapshot.glue_points.size(), 2U);
+    ASSERT_EQ(snapshot.glue_reveal_lengths_mm.size(), 2U);
+    EXPECT_FLOAT_EQ(snapshot.glue_reveal_lengths_mm[0], 0.0f);
+    EXPECT_FLOAT_EQ(snapshot.glue_reveal_lengths_mm[1], 10.0f);
 }
 
 TEST(DispensingWorkflowUseCaseTest, ConfirmPreviewRejectsMissingAuthorityLayoutId) {
@@ -1415,6 +1443,10 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotSamplesGluePointsWithoutCh
     EXPECT_EQ(result.Value().glue_point_count, 12U);
     EXPECT_EQ(result.Value().point_count, 12U);
     EXPECT_EQ(result.Value().glue_points.size(), 3U);
+    ASSERT_EQ(result.Value().glue_reveal_lengths_mm.size(), 3U);
+    EXPECT_FLOAT_EQ(result.Value().glue_reveal_lengths_mm[0], 0.0f);
+    EXPECT_FLOAT_EQ(result.Value().glue_reveal_lengths_mm[1], 6.0f);
+    EXPECT_FLOAT_EQ(result.Value().glue_reveal_lengths_mm[2], 11.0f);
 }
 
 TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotUsesExecutionTrajectoryForNestedMotionPreview) {

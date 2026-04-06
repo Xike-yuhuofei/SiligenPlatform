@@ -24,35 +24,70 @@ bool HasAuthoritativeGluePoints(const WorkflowPreviewSnapshotInput& input) {
            !input.glue_points->empty();
 }
 
-std::vector<Siligen::Shared::Types::Point2D> SampleGluePoints(
-    const std::vector<Siligen::Shared::Types::Point2D>& points,
-    std::size_t max_points) {
-    if (points.empty()) {
+std::vector<std::size_t> SampleGluePointIndices(std::size_t point_count, std::size_t max_points) {
+    if (point_count == 0U) {
         return {};
     }
     const std::size_t safe_max_points = std::max<std::size_t>(1, max_points);
-    if (points.size() <= safe_max_points) {
-        return points;
+    if (point_count <= safe_max_points) {
+        std::vector<std::size_t> indices(point_count);
+        for (std::size_t index = 0; index < point_count; ++index) {
+            indices[index] = index;
+        }
+        return indices;
     }
 
-    std::vector<Siligen::Shared::Types::Point2D> sampled;
-    sampled.reserve(safe_max_points);
-    sampled.push_back(points.front());
+    std::vector<std::size_t> indices;
+    indices.reserve(safe_max_points);
+    indices.push_back(0U);
     if (safe_max_points == 1U) {
-        return sampled;
+        return indices;
     }
 
     const std::size_t interior_budget = safe_max_points - 2U;
     if (interior_budget > 0U) {
-        const double step =
-            static_cast<double>(points.size() - 1U) / static_cast<double>(interior_budget + 1U);
+        const double step = static_cast<double>(point_count - 1U) / static_cast<double>(interior_budget + 1U);
         for (std::size_t index = 1; index <= interior_budget; ++index) {
             const auto sampled_index = static_cast<std::size_t>(std::llround(step * static_cast<double>(index)));
-            sampled.push_back(points[std::min<std::size_t>(points.size() - 1U, sampled_index)]);
+            indices.push_back(std::min<std::size_t>(point_count - 1U, sampled_index));
         }
     }
-    sampled.push_back(points.back());
-    return sampled;
+    indices.push_back(point_count - 1U);
+    return indices;
+}
+
+std::vector<float32> BuildFallbackRevealLengthsFromGluePoints(
+    const std::vector<Siligen::Shared::Types::Point2D>& glue_points) {
+    std::vector<float32> reveal_lengths;
+    if (glue_points.empty()) {
+        return reveal_lengths;
+    }
+    reveal_lengths.reserve(glue_points.size());
+    float32 cumulative_length_mm = 0.0f;
+    reveal_lengths.push_back(cumulative_length_mm);
+    for (std::size_t index = 1; index < glue_points.size(); ++index) {
+        cumulative_length_mm += static_cast<float32>(glue_points[index - 1U].DistanceTo(glue_points[index]));
+        reveal_lengths.push_back(cumulative_length_mm);
+    }
+    return reveal_lengths;
+}
+
+std::vector<float32> BuildAuthorityRevealLengths(
+    const WorkflowPreviewSnapshotInput& input,
+    const std::vector<Siligen::Shared::Types::Point2D>& glue_points) {
+    if (input.authority_trigger_layout != nullptr &&
+        input.authority_trigger_layout->trigger_points.size() == glue_points.size()) {
+        std::vector<float32> reveal_lengths;
+        reveal_lengths.reserve(input.authority_trigger_layout->trigger_points.size());
+        float32 previous_length_mm = 0.0f;
+        for (const auto& trigger : input.authority_trigger_layout->trigger_points) {
+            const float32 clamped_length_mm = std::max(previous_length_mm, trigger.distance_mm_global);
+            reveal_lengths.push_back(clamped_length_mm);
+            previous_length_mm = clamped_length_mm;
+        }
+        return reveal_lengths;
+    }
+    return BuildFallbackRevealLengthsFromGluePoints(glue_points);
 }
 
 double DistanceSquared(
@@ -353,13 +388,19 @@ PreviewSnapshotResponse WorkflowPreviewSnapshotService::BuildResponse(
     if (HasAuthoritativeGluePoints(input)) {
         response.glue_point_count = static_cast<std::uint32_t>(input.glue_points->size());
         response.point_count = response.glue_point_count;
-        const auto display_glue_points = SampleGluePoints(*input.glue_points, max_glue_points);
-        response.glue_points.reserve(display_glue_points.size());
-        for (const auto& point : display_glue_points) {
+        const auto authority_reveal_lengths = BuildAuthorityRevealLengths(input, *input.glue_points);
+        const auto sampled_glue_indices = SampleGluePointIndices(input.glue_points->size(), max_glue_points);
+        response.glue_points.reserve(sampled_glue_indices.size());
+        response.glue_reveal_lengths_mm.reserve(sampled_glue_indices.size());
+        for (const auto sampled_index : sampled_glue_indices) {
+            const auto& point = input.glue_points->at(sampled_index);
             Siligen::Application::UseCases::Dispensing::PreviewSnapshotPoint snapshot_point;
             snapshot_point.x = point.x;
             snapshot_point.y = point.y;
             response.glue_points.push_back(snapshot_point);
+            if (sampled_index < authority_reveal_lengths.size()) {
+                response.glue_reveal_lengths_mm.push_back(authority_reveal_lengths[sampled_index]);
+            }
         }
     }
     CopyPreviewPolyline(payload.trajectory_polyline, response.execution_polyline);

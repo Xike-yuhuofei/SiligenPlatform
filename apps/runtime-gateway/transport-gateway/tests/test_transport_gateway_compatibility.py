@@ -147,6 +147,7 @@ def test_dxf_preview_gate_contract_is_wired():
     assert '{"preview_source", snapshot.preview_source}' in source
     assert '{"preview_kind", snapshot.preview_kind}' in source
     assert '{"glue_points", glue_points}' in source
+    assert '{"glue_reveal_lengths_mm", glue_reveal_lengths_mm}' in source
     assert '{"glue_point_count", snapshot.glue_point_count}' in source
     assert '{"motion_preview", motion_preview}' in source
     assert '{"source", snapshot.motion_preview_source}' in source
@@ -194,6 +195,7 @@ def test_dxf_preview_contract_docs_freeze_shared_authority_semantics():
     assert fixture["result"]["preview_kind"] == "glue_points"
     assert fixture["result"]["glue_point_count"] > 0
     assert len(fixture["result"]["glue_points"]) == fixture["result"]["glue_point_count"]
+    assert len(fixture["result"]["glue_reveal_lengths_mm"]) == len(fixture["result"]["glue_points"])
     assert fixture["result"]["motion_preview"]["source"] == "execution_trajectory_snapshot"
     assert fixture["result"]["motion_preview"]["sampling_strategy"] == "execution_trajectory_geometry_preserving_clamp"
     assert len(fixture["result"]["motion_preview"]["polyline"]) == fixture["result"]["motion_preview"]["point_count"]

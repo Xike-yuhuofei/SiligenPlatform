@@ -132,6 +132,7 @@ struct PreviewSnapshotResponse {
     bool motion_preview_is_sampled = false;
     std::string motion_preview_sampling_strategy;
     std::vector<PreviewSnapshotPoint> glue_points;
+    std::vector<float32> glue_reveal_lengths_mm;
     std::vector<PreviewSnapshotPoint> execution_polyline;
     std::vector<PreviewSnapshotPoint> motion_preview_polyline;
     float32 total_length_mm = 0.0f;
