@@ -1,9 +1,9 @@
 ---
-name: worktree-closeout
+name: closeout-worktree
 description: Close out an entire SiligenSuite worktree by scanning all uncommitted changes and unpushed commits, grouping them into task batches, validating each batch, updating affected docs, committing and pushing batch by batch, opening or updating PRs, auto-handling trivial conflicts, switching PRs to ready for review, and reporting remaining residue. Use when the worktree may contain multiple tasks or leftover work and the goal is to drain the worktree systematically rather than close only the current branch.
 ---
 
-# Worktree Closeout
+# Closeout Worktree
 
 Execute a fixed worktree-level closeout workflow for all pending work in the current worktree. Inventory first, classify before acting, and do not leave silent residue.
 
@@ -15,7 +15,7 @@ Execute a fixed worktree-level closeout workflow for all pending work in the cur
 4. Treat `git stash list` as first-class pending work. A stash is not backup noise; it is undisposed code change inventory that must be classified and handled explicitly.
 5. Process stash entries before any closeout action that would otherwise claim the worktree is drained.
 6. Classify before commit. Do not mix multiple task groups into one batch.
-7. Reuse `branch-closeout` rules for each batch after grouping is complete.
+7. Reuse `closeout-branch` rules for each batch after grouping is complete.
 8. Run `scripts/validation/resolve-workflow-context.ps1` before closeout work when the repository context needs normalized `ticket/branchSafe/timestamp`.
 9. Route high-risk commands through `scripts/validation/invoke-guarded-command.ps1`.
 10. Auto-handle conflicts only when the resolution is mechanical, low-risk, and still inside the batch boundary. Otherwise stop that batch and report.
@@ -52,6 +52,8 @@ Apply these rules:
 
 - Stop before commit or push if any pending item cannot be classified with reasonable confidence.
 - Stop if a proposed batch still mixes unrelated task boundaries.
+- Do not hard-stop only because branch naming, ticket wording, and commit subject use different terms. Classify by evidence consistency first: ticket linkage, touched ownership chain, validation target, and stated outcome must still converge to one task boundary.
+- Escalate to `needs clarification` only when the batch cannot be explained as one task after checking branch name, commit range, file scope, validation intent, and any available issue/PR/doc context.
 - Stop if any stash entry remains neither consumed into a batch nor explicitly reported as parked or blocked.
 
 ### 3. Close Each Ready Batch
@@ -102,6 +104,7 @@ Stop the affected batch or the whole workflow when any of the following is true:
 - a pending item cannot be classified
 - a stash entry exists but has not been explicitly handled
 - a batch mixes unrelated tasks
+- batch evidence does not converge to one task boundary after inspecting naming, commit scope, validation target, and ticket context
 - conflicts are non-trivial or unresolved
 - repository or worktree state is unsafe or unclear
 - documentation is clearly affected but not yet updated

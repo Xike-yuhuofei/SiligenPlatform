@@ -18,7 +18,7 @@ Use this skill for repository cleanup where the desired result is:
 - keep only the explicitly whitelisted remote branches
 - remove stale temporary worktrees and branches outside that set
 
-Do not use this skill for normal task closeout, active implementation, or ambiguous repository recovery. Route living work to `branch-closeout` or `worktree-closeout`.
+Do not use this skill for normal task closeout, active implementation, or ambiguous repository recovery. Route living work to `closeout-branch` or `closeout-worktree`.
 
 ## Whitelist Authority
 
@@ -219,7 +219,7 @@ When GitHub context matters for remote deletion, inspect PR state before deletin
 Classify each stash entry into exactly one status:
 
 - `preserve-explicitly`: stash is intentionally retained and must be reported as residue
-- `route-to-closeout`: stash belongs to active or parked task work and must be handled by `worktree-closeout` or `branch-closeout`, not by cleanup deletion
+- `route-to-closeout`: stash belongs to active or parked task work and must be handled by `closeout-worktree` or `closeout-branch`, not by cleanup deletion
 - `blocked`: stash ownership, branch target, or intent is unclear
 
 Apply these rules:

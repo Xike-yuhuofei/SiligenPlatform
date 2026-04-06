@@ -91,7 +91,7 @@ description: "Execute already-scoped tasks with minimal implementation, bounded 
 - 若是，越界原因：
 
 ## 建议下一步
-- 推荐进入：`branch-closeout`
+- 推荐进入：`closeout-branch`
 - 若越界：返回 `change-scope-guard` 或 `feature-spec-and-plan`
 
 # Handoff
@@ -100,4 +100,4 @@ description: "Execute already-scoped tasks with minimal implementation, bounded 
   - `task-breakdown`
   - `change-scope-guard`
 - 下游：
-  - `branch-closeout`
+  - `closeout-branch`
