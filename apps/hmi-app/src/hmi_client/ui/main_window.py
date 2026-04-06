@@ -2678,12 +2678,10 @@ class MainWindow(QMainWindow):
         display_motion_preview = _map_points(effective_motion_preview)
         playback_data_markup = ""
         playback_overlay_markup = ""
+
+        reveal_lengths: list[float] = []
         if len(display_motion_preview) >= 2:
             playback_overlay_markup = (
-                "<polyline id='preview-played-shadow' points='' fill='none' stroke='#3f2a06' "
-                "stroke-width='6.8' stroke-linecap='round' stroke-linejoin='round' opacity='0.95' />"
-                "<polyline id='preview-played-line' points='' fill='none' stroke='#f59e0b' "
-                "stroke-width='3.6' stroke-linecap='round' stroke-linejoin='round' opacity='1.0' />"
                 "<circle id='preview-head-shadow' cx='0' cy='0' r='8.2' fill='#3f2a06' opacity='0.92' />"
                 "<circle id='preview-head' cx='0' cy='0' r='5.2' fill='#f59e0b' stroke='#fff4d6' stroke-width='1.2' />"
             )
@@ -2695,46 +2693,62 @@ class MainWindow(QMainWindow):
                 curr_x, curr_y = display_motion_preview[index]
                 total_display_length += ((curr_x - prev_x) ** 2 + (curr_y - prev_y) ** 2) ** 0.5
                 cumulative_lengths.append(round(total_display_length, 6))
+            reveal_lengths = self._build_preview_glue_reveal_lengths(
+                glue_points=display_points,
+                motion_preview=display_motion_preview,
+            )
             playback_lengths_json = json.dumps(cumulative_lengths)
+            reveal_lengths_json = json.dumps(reveal_lengths)
             playback_data_markup = (
                 "<script>"
                 f"window.previewPlaybackData={{points:{playback_points_json},cumulativeLengths:{playback_lengths_json},"
-                f"totalLength:{total_display_length:.6f}}};"
+                f"glueRevealLengths:{reveal_lengths_json},totalLength:{total_display_length:.6f}}};"
                 "window.updatePreviewPlayback=function(progress,playbackState){"
                 "const data=window.previewPlaybackData||{};"
                 "const pts=Array.isArray(data.points)?data.points:[];"
                 "const cumulative=Array.isArray(data.cumulativeLengths)?data.cumulativeLengths:[];"
+                "const revealLengths=Array.isArray(data.glueRevealLengths)?data.glueRevealLengths:[];"
                 "const totalLength=Number(data.totalLength||0);"
                 "const normalized=Math.max(0,Math.min(1,Number(progress||0)));"
+                "const state=String(playbackState||'idle');"
                 "const head=document.getElementById('preview-head');"
                 "const headShadow=document.getElementById('preview-head-shadow');"
-                "const playedShadow=document.getElementById('preview-played-shadow');"
-                "const playedLine=document.getElementById('preview-played-line');"
-                "if(!head||!headShadow||!playedShadow||!playedLine||pts.length===0){return;}"
+                "const glueDots=Array.from(document.querySelectorAll('[data-preview-glue-point=\"1\"]'));"
+                "if(!head||!headShadow||pts.length===0){return;}"
+                "const setVisibility=function(element,visible){element.style.display=visible?'':'none';};"
                 "const setMarker=function(point){head.setAttribute('cx',point[0].toFixed(2));head.setAttribute('cy',point[1].toFixed(2));"
                 "headShadow.setAttribute('cx',point[0].toFixed(2));headShadow.setAttribute('cy',point[1].toFixed(2));};"
-                "if(pts.length===1||totalLength<=0){playedShadow.setAttribute('points','');playedLine.setAttribute('points','');setMarker(pts[0]);return;}"
+                "const syncGlueDots=function(traveledLength){"
+                "glueDots.forEach(function(dot,index){"
+                "const revealAt=Number(revealLengths[index]||0);"
+                "setVisibility(dot,state!=='idle'&&traveledLength+0.25>=revealAt);"
+                "});"
+                "};"
+                "if(state==='idle'){setVisibility(head,false);setVisibility(headShadow,false);syncGlueDots(-1);return;}"
+                "setVisibility(head,true);setVisibility(headShadow,true);"
+                "if(pts.length===1||totalLength<=0){setMarker(pts[0]);syncGlueDots(totalLength);return;}"
                 "const traveled=normalized*totalLength;"
-                "const traveledPoints=[pts[0]];"
                 "let marker=pts[0];"
                 "for(let index=1;index<pts.length;index+=1){"
                 "const prev=pts[index-1];const curr=pts[index];"
                 "const prevLength=Number(cumulative[index-1]||0);const currLength=Number(cumulative[index]||prevLength);"
-                "if(traveled>=currLength-1e-6){traveledPoints.push(curr);marker=curr;continue;}"
+                "if(traveled>=currLength-1e-6){marker=curr;continue;}"
                 "const segmentLength=Math.max(currLength-prevLength,1e-9);"
                 "const ratio=Math.max(0,Math.min(1,(traveled-prevLength)/segmentLength));"
                 "marker=[prev[0]+((curr[0]-prev[0])*ratio),prev[1]+((curr[1]-prev[1])*ratio)];"
-                "traveledPoints.push(marker);break;}"
-                "const pointString=traveledPoints.map(function(point){return point[0].toFixed(2)+','+point[1].toFixed(2);}).join(' ');"
-                "playedShadow.setAttribute('points',pointString);playedLine.setAttribute('points',pointString);setMarker(marker);"
+                "break;}"
+                "setMarker(marker);syncGlueDots(traveled);"
                 "};"
                 "document.addEventListener('DOMContentLoaded',function(){window.updatePreviewPlayback(0,'idle');});"
                 "</script>"
             )
         points_markup = []
-        for point_x, point_y in display_points:
+        for index, (point_x, point_y) in enumerate(display_points):
+            point_style = "display:none;" if reveal_lengths else ""
             points_markup.append(
-                f"<circle cx='{point_x:.2f}' cy='{point_y:.2f}' r='{dot_radius:.1f}' fill='#00d084' />"
+                f"<circle id='preview-glue-point-{index}' data-preview-glue-point='1' "
+                f"cx='{point_x:.2f}' cy='{point_y:.2f}' r='{dot_radius:.1f}' "
+                f"fill='#00d084' style='{point_style}' />"
             )
         point_cloud_svg = "".join(points_markup)
         return (
@@ -2760,6 +2774,104 @@ class MainWindow(QMainWindow):
             f"{playback_data_markup}"
             "</body></html>"
         )
+
+    @staticmethod
+    def _build_preview_glue_reveal_lengths(
+        glue_points: list[tuple[float, float]],
+        motion_preview: list[tuple[float, float]],
+    ) -> list[float]:
+        if not glue_points:
+            return []
+        if len(motion_preview) <= 1:
+            return [0.0 for _ in glue_points]
+
+        def _normalized_direction(index: int) -> tuple[float, float] | None:
+            if len(glue_points) <= 1:
+                return None
+            candidates: list[tuple[float, float]] = []
+            if index + 1 < len(glue_points):
+                next_x, next_y = glue_points[index + 1]
+                curr_x, curr_y = glue_points[index]
+                candidates.append((next_x - curr_x, next_y - curr_y))
+            if index > 0:
+                curr_x, curr_y = glue_points[index]
+                prev_x, prev_y = glue_points[index - 1]
+                candidates.append((curr_x - prev_x, curr_y - prev_y))
+            for delta_x, delta_y in candidates:
+                length = (delta_x ** 2 + delta_y ** 2) ** 0.5
+                if length > 1e-9:
+                    return (delta_x / length, delta_y / length)
+            return None
+
+        segment_specs: list[tuple[int, float, float, float, float, float]] = []
+        cumulative_length = 0.0
+        for index in range(1, len(motion_preview)):
+            start_x, start_y = motion_preview[index - 1]
+            end_x, end_y = motion_preview[index]
+            delta_x = end_x - start_x
+            delta_y = end_y - start_y
+            segment_length = (delta_x ** 2 + delta_y ** 2) ** 0.5
+            if segment_length <= 1e-9:
+                continue
+            segment_specs.append(
+                (
+                    index,
+                    start_x,
+                    start_y,
+                    delta_x / segment_length,
+                    delta_y / segment_length,
+                    cumulative_length,
+                )
+            )
+            cumulative_length += segment_length
+
+        reveal_lengths: list[float] = []
+        min_reveal_length = 0.0
+        min_segment_index = 1
+        for glue_index, (point_x, point_y) in enumerate(glue_points):
+            expected_direction = _normalized_direction(glue_index)
+            best_aligned: tuple[float, float, int] | None = None
+            best_fallback: tuple[float, float, int] | None = None
+            for segment_index, start_x, start_y, unit_x, unit_y, start_length in segment_specs:
+                if segment_index < min_segment_index:
+                    continue
+                end_x, end_y = motion_preview[segment_index]
+                delta_x = end_x - start_x
+                delta_y = end_y - start_y
+                segment_length = (delta_x ** 2 + delta_y ** 2) ** 0.5
+                if segment_length <= 1e-9:
+                    continue
+                projection_ratio = (
+                    ((point_x - start_x) * delta_x) + ((point_y - start_y) * delta_y)
+                ) / (segment_length ** 2)
+                projection_ratio = max(0.0, min(1.0, projection_ratio))
+                projected_x = start_x + delta_x * projection_ratio
+                projected_y = start_y + delta_y * projection_ratio
+                distance_sq = ((point_x - projected_x) ** 2) + ((point_y - projected_y) ** 2)
+                projected_length = start_length + segment_length * projection_ratio
+                if projected_length + 1e-6 < min_reveal_length:
+                    continue
+                fallback_candidate = (distance_sq, projected_length, segment_index)
+                if best_fallback is None or fallback_candidate < best_fallback:
+                    best_fallback = fallback_candidate
+                if expected_direction is None:
+                    continue
+                alignment = (expected_direction[0] * unit_x) + (expected_direction[1] * unit_y)
+                if alignment < 0.35:
+                    continue
+                aligned_candidate = (distance_sq, projected_length, segment_index)
+                if best_aligned is None or aligned_candidate < best_aligned:
+                    best_aligned = aligned_candidate
+            selected = best_aligned or best_fallback
+            if selected is None:
+                reveal_length = min_reveal_length
+            else:
+                reveal_length = max(min_reveal_length, selected[1])
+                min_segment_index = max(1, selected[2] - 1)
+            reveal_length = round(reveal_length, 6)
+            reveal_lengths.append(reveal_length)
+            min_reveal_length = reveal_length
+        return reveal_lengths
 
     def _render_preview_debug_html(
         self,

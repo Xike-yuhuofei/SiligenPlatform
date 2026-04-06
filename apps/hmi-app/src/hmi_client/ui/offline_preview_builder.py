@@ -35,6 +35,13 @@ def _resolve_build_roots(workspace_root: Path) -> list[Path]:
     return unique_roots
 
 
+def _env_build_root() -> Path | None:
+    env_root = str(os.getenv(_CONTROL_APPS_BUILD_ROOT_ENV, "")).strip()
+    if not env_root:
+        return None
+    return Path(env_root).expanduser().resolve()
+
+
 def _cache_matches_workspace(build_root: Path, workspace_root: Path) -> bool:
     cache_path = build_root / "CMakeCache.txt"
     if not cache_path.exists():
@@ -57,8 +64,9 @@ def _resolve_planner_cli_executable(workspace_root: Path) -> Path:
         Path("bin") / "Release" / "siligen_planner_cli.exe",
         Path("bin") / "RelWithDebInfo" / "siligen_planner_cli.exe",
     ]
+    override_root = _env_build_root()
     for build_root in _resolve_build_roots(workspace_root):
-        if not _cache_matches_workspace(build_root, workspace_root):
+        if build_root != override_root and not _cache_matches_workspace(build_root, workspace_root):
             continue
         for relative_path in candidate_rel_paths:
             candidate = build_root / relative_path

@@ -740,7 +740,6 @@ class MainWindowTabsTest(unittest.TestCase):
             dry_run=False,
             preview_source="planned_glue_snapshot",
             glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 3.0)],
-            execution_polyline=[(0.0, 0.0), (12.0, 3.0)],
             preview_kind="glue_points",
             preview_diagnostic_notice=main_window_module.PreviewDiagnosticNotice(
                 title="路径碎片化提示",
@@ -776,8 +775,10 @@ class MainWindowTabsTest(unittest.TestCase):
             preview_kind="glue_points",
         )
 
-        self.assertIn("id='preview-played-line'", html)
         self.assertIn("id='preview-head'", html)
+        self.assertIn("data-preview-glue-point='1'", html)
+        self.assertIn("style='display:none;'", html)
+        self.assertIn("glueRevealLengths", html)
         self.assertIn("window.updatePreviewPlayback", html)
         self.assertIn(".preview-canvas svg{width:100%;height:100%;display:block;}", html)
         self.assertNotIn("胶点几何", html)
@@ -786,8 +787,29 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertNotIn("轨迹层显示点胶头运动路径，可能包含非点胶移动；绿色胶点仅表示图纸/工艺几何。", html)
         self.assertNotIn("id='preview-base-line'", html)
         self.assertNotIn("id='preview-base-shadow'", html)
+        self.assertNotIn("id='preview-played-line'", html)
+        self.assertNotIn("id='preview-played-shadow'", html)
         self.assertEqual(self.window._preview_tabs.tabText(0), "轨迹预览")
         self.assertEqual(self.window._preview_tabs.tabText(1), "调试信息")
+
+    def test_build_preview_glue_reveal_lengths_skips_reverse_air_move_matches(self) -> None:
+        reveal_lengths = self.window._build_preview_glue_reveal_lengths(
+            glue_points=[
+                (0.0, 0.0),
+                (4.0, 0.0),
+                (4.0, 6.0),
+                (4.0, 4.0),
+                (4.0, 2.0),
+            ],
+            motion_preview=[
+                (0.0, 0.0),
+                (4.0, 0.0),
+                (4.0, 6.0),
+                (4.0, 2.0),
+            ],
+        )
+
+        self.assertEqual(reveal_lengths, [0.0, 4.0, 10.0, 12.0, 14.0])
 
     def test_render_preview_debug_html_contains_runtime_debug_fields(self) -> None:
         snapshot = main_window_module.PreviewSnapshotMeta(
@@ -856,7 +878,7 @@ class MainWindowTabsTest(unittest.TestCase):
 
         summary = self.window._preview_session.build_confirmation_summary()
 
-        self.assertIn("非阻断提示", summary)
+        self.assertIn("可继续提示", summary)
         self.assertIn("短闭环按例外保留", summary)
 
     def test_confirmation_summary_prefers_fragmentation_notice_over_generic_exception(self) -> None:
@@ -869,8 +891,9 @@ class MainWindowTabsTest(unittest.TestCase):
         summary = self.window._preview_session.build_confirmation_summary()
 
         self.assertIn("路径碎片化提示", summary)
-        self.assertIn("span spacing outside configured window", summary)
-        self.assertNotIn("非阻断提示: span spacing outside configured window", summary)
+        self.assertIn("按例外规则放行", summary)
+        self.assertNotIn("span spacing outside configured window", summary)
+        self.assertNotIn("非阻断提示", summary)
 
     def test_check_production_preconditions_rejects_mock_preview_source(self) -> None:
         status = self._make_status(x_homed=True, y_homed=True)
@@ -1078,8 +1101,10 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertNotIn(">胶点<", self.window._dxf_view.html)
         self.assertNotIn("stroke='#8fd3ff'", self.window._dxf_view.html)
         self.assertNotIn("stroke-dasharray='7 4'", self.window._dxf_view.html)
-        self.assertIn("id='preview-played-line'", self.window._dxf_view.html)
         self.assertIn("id='preview-head'", self.window._dxf_view.html)
+        self.assertIn("data-preview-glue-point='1'", self.window._dxf_view.html)
+        self.assertIn("style='display:none;'", self.window._dxf_view.html)
+        self.assertNotIn("id='preview-played-line'", self.window._dxf_view.html)
         self.assertIn("运动轨迹来源", self.window._preview_debug_view.toPlainText())
         self.assertIn("执行轨迹快照", self.window._preview_debug_view.toPlainText())
         self.assertIn("execution_trajectory_geometry_preserving_clamp", self.window._preview_debug_view.toPlainText())
@@ -1116,7 +1141,7 @@ class MainWindowTabsTest(unittest.TestCase):
                     "source_point_count": 8,
                     "point_count": 2,
                     "is_sampled": True,
-                    "sampling_strategy": "fixed_spacing_corner_preserving",
+                    "sampling_strategy": "execution_trajectory_geometry_preserving_clamp",
                     "polyline": [
                         {"x": 0.0, "y": 0.0},
                         {"x": 10.0, "y": 0.0},
@@ -1132,7 +1157,8 @@ class MainWindowTabsTest(unittest.TestCase):
 
         self.assertEqual(self.window._preview_session.state.preview_diagnostic_code, "process_path_fragmentation")
         self.assertIn("路径碎片化提示", self.window._dxf_view.html)
-        self.assertIn("span spacing outside configured window", self.window._dxf_view.html)
+        self.assertIn("按例外规则放行", self.window._dxf_view.html)
+        self.assertNotIn("span spacing outside configured window", self.window._dxf_view.html)
         self.assertNotIn("<strong>非阻断提示。</strong>", self.window._dxf_view.html)
         self.assertIn("process_path_fragmentation", self.window._preview_debug_view.toPlainText())
 
