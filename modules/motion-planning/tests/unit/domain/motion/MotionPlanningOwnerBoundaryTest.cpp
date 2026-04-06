@@ -253,10 +253,9 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowCmpPrecisionResidueIsRemovedFromWo
 
 TEST(MotionPlanningOwnerBoundaryTest, InterpolationProgramPlannerConsumersUseContractsProcessPathSemantics) {
     const fs::path repo_root = RepoRoot();
-    const std::array<fs::path, 4> sources = {{
+    const std::array<fs::path, 3> sources = {{
         repo_root / "modules/motion-planning/tests/unit/domain/trajectory/InterpolationProgramPlannerTest.cpp",
         repo_root / "modules/workflow/application/usecases/motion/trajectory/DeterministicPathExecutionUseCase.cpp",
-        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp",
         repo_root / "modules/dispense-packaging/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp",
     }};
 
@@ -275,7 +274,7 @@ TEST(MotionPlanningOwnerBoundaryTest, InterpolationProgramPlannerConsumersUseCon
               std::string::npos);
 }
 
-TEST(MotionPlanningOwnerBoundaryTest, WorkflowResidualUnifiedTrajectoryPlannerIsRemoved) {
+TEST(MotionPlanningOwnerBoundaryTest, WorkflowPlanningCompatibilityStubsCarryNoLocalOwnerImplementation) {
     const fs::path repo_root = RepoRoot();
 
     EXPECT_FALSE(fs::exists(
@@ -285,11 +284,29 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowResidualUnifiedTrajectoryPlannerIs
 
     const std::string workflow_dispensing_planner = ReadTextFile(
         repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp");
-    EXPECT_NE(workflow_dispensing_planner.find(
-                  "../../../../../../../dispense-packaging/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.h"),
+    const std::string workflow_contour_optimizer = ReadTextFile(
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/ContourOptimizationService.cpp");
+    const std::string workflow_dispensing_planner_header = ReadTextFile(
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.h");
+    const std::string workflow_contour_optimizer_header = ReadTextFile(
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/ContourOptimizationService.h");
+
+    EXPECT_NE(workflow_dispensing_planner.find("Canonical planning owner lives under modules/dispense-packaging."),
               std::string::npos);
-    EXPECT_EQ(workflow_dispensing_planner.find('#' + std::string("include \"UnifiedTrajectoryPlannerService.h\"")),
+    EXPECT_EQ(workflow_dispensing_planner.find("application/services/"), std::string::npos);
+    EXPECT_EQ(workflow_dispensing_planner.find("UnifiedTrajectoryPlannerService"), std::string::npos);
+
+    EXPECT_NE(workflow_contour_optimizer.find("Canonical planning owner lives under modules/dispense-packaging."),
               std::string::npos);
+    EXPECT_EQ(workflow_contour_optimizer.find("application/services/"), std::string::npos);
+
+    EXPECT_NE(workflow_dispensing_planner_header.find("modules/dispense-packaging"), std::string::npos);
+    EXPECT_NE(workflow_dispensing_planner_header.find("DispensingPlannerService.h"), std::string::npos);
+    EXPECT_EQ(workflow_dispensing_planner_header.find("class DispensingPlanner"), std::string::npos);
+
+    EXPECT_NE(workflow_contour_optimizer_header.find("modules/dispense-packaging"), std::string::npos);
+    EXPECT_NE(workflow_contour_optimizer_header.find("ContourOptimizationService.h"), std::string::npos);
+    EXPECT_EQ(workflow_contour_optimizer_header.find("class ContourOptimizationService"), std::string::npos);
 }
 
 TEST(MotionPlanningOwnerBoundaryTest, WorkflowValueObjectThinBridgesAreRemoved) {

@@ -1,9 +1,8 @@
 #include "PlanningUseCase.h"
 
 #include "application/services/dxf/DxfPbPreparationService.h"
-#include "application/services/dispensing/AuthorityPreviewAssemblyService.h"
-#include "application/services/dispensing/ExecutionAssemblyService.h"
 #include "application/services/dispensing/PlanningArtifactExportAssemblyService.h"
+#include "application/services/dispensing/WorkflowPlanningAssemblyOperationsProvider.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/process_path/ProcessPathFacade.h"
 #include "process_path/contracts/GeometryUtils.h"
@@ -792,6 +791,11 @@ private:
 
 class DefaultPlanningAssemblyPort final : public IPlanningAssemblyPort {
 public:
+    DefaultPlanningAssemblyPort()
+        : operations_(
+              Siligen::Application::Services::Dispensing::WorkflowPlanningAssemblyOperationsProvider{}
+                  .CreateOperations()) {}
+
     Result<PreparedAuthorityPreview> BuildAuthorityPreview(
         const PlanningRequest& request,
         const PathGenerationResult& process_path_result,
@@ -799,8 +803,8 @@ public:
         const std::string& source_path,
         const std::string& dxf_filename,
         const std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort>& config_port) const override {
-        auto authority_result = authority_preview_service_.BuildAuthorityPreviewArtifacts(
-            BuildAuthorityPreviewInput(
+        auto authority_result = operations_->BuildAuthorityPreviewArtifacts(
+            BuildWorkflowAuthorityPreviewRequest(
                 request,
                 process_path_result,
                 runtime_params,
@@ -836,8 +840,8 @@ public:
         prepared.preview_diagnostic_code =
             process_path_result.topology_diagnostics.fragmentation_suspected ? "process_path_fragmentation" : "";
         prepared.authority_trigger_layout = authority.authority_trigger_layout;
-        prepared.authority_trigger_points = authority.authority_trigger_points;
-        prepared.spacing_validation_groups = authority.spacing_validation_groups;
+        prepared.authority_trigger_points = BuildInternalAuthorityTriggerPoints(authority.authority_trigger_points);
+        prepared.spacing_validation_groups = BuildInternalSpacingValidationGroups(authority.spacing_validation_groups);
         return Result<PreparedAuthorityPreview>::Success(std::move(prepared));
     }
 
@@ -847,8 +851,8 @@ public:
         MotionPlan motion_plan,
         const PlanningRuntimeParams& runtime_params) const override {
         const auto planning_report = motion_plan.planning_report;
-        auto assembly_result = execution_assembly_service_.BuildExecutionArtifactsFromAuthority(
-            BuildExecutionAssemblyInput(request, authority_preview, std::move(motion_plan), runtime_params));
+        auto assembly_result = operations_->BuildExecutionArtifactsFromAuthority(
+            BuildWorkflowExecutionAssemblyRequest(request, authority_preview, motion_plan, runtime_params));
         if (assembly_result.IsError()) {
             return Result<ExecutionAssemblyArtifacts>::Failure(assembly_result.GetError());
         }
@@ -857,7 +861,7 @@ public:
         ExecutionAssemblyArtifacts artifacts;
         artifacts.success = true;
         artifacts.execution_trajectory_points = value.execution_trajectory_points;
-        artifacts.interpolation_trajectory_points = value.interpolation_trajectory_points;
+        artifacts.interpolation_trajectory_points = value.export_request.interpolation_trajectory_points;
         artifacts.motion_trajectory_points = value.motion_trajectory_points;
         artifacts.planning_report = planning_report;
         artifacts.preview_authority_shared_with_execution = value.preview_authority_shared_with_execution;
@@ -867,12 +871,23 @@ public:
             std::make_shared<Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated>(
                 value.execution_package);
         artifacts.authority_trigger_layout = value.authority_trigger_layout;
+        artifacts.export_request = value.export_request;
         return Result<ExecutionAssemblyArtifacts>::Success(std::move(artifacts));
     }
 
     Siligen::Application::Services::Dispensing::PlanningArtifactExportRequest BuildExportRequest(
         const PreparedAuthorityPreview& authority_preview,
         const ExecutionAssemblyArtifacts& artifacts) const override {
+        if (!artifacts.export_request.source_path.empty() ||
+            !artifacts.export_request.dxf_filename.empty() ||
+            !artifacts.export_request.execution_trajectory_points.empty() ||
+            !artifacts.export_request.interpolation_trajectory_points.empty() ||
+            !artifacts.export_request.motion_trajectory_points.empty() ||
+            !artifacts.export_request.glue_points.empty() ||
+            !artifacts.export_request.process_path.segments.empty()) {
+            return artifacts.export_request;
+        }
+
         Siligen::Application::Services::Dispensing::PlanningArtifactExportAssemblyInput export_input;
         export_input.source_path = authority_preview.source_path;
         export_input.dxf_filename = authority_preview.dxf_filename;
@@ -885,8 +900,173 @@ public:
     }
 
 private:
-    Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService authority_preview_service_{};
-    Siligen::Application::Services::Dispensing::ExecutionAssemblyService execution_assembly_service_{};
+    static Siligen::Application::Services::Dispensing::WorkflowAuthorityPreviewRequest
+    BuildWorkflowAuthorityPreviewRequest(
+        const PlanningRequest& request,
+        const PathGenerationResult& process_path_result,
+        const PlanningRuntimeParams& runtime_params,
+        const std::string& source_path,
+        const std::string& dxf_filename,
+        const std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort>& config_port) {
+        auto input = BuildAuthorityPreviewInput(
+            request,
+            process_path_result,
+            runtime_params,
+            source_path,
+            dxf_filename,
+            config_port);
+        Siligen::Application::Services::Dispensing::WorkflowAuthorityPreviewRequest workflow_input;
+        workflow_input.process_path = input.process_path;
+        workflow_input.authority_process_path = input.authority_process_path;
+        workflow_input.source_path = input.source_path;
+        workflow_input.dxf_filename = input.dxf_filename;
+        workflow_input.runtime_options.dispensing_velocity = input.dispensing_velocity;
+        workflow_input.runtime_options.acceleration = input.acceleration;
+        workflow_input.runtime_options.dispenser_interval_ms = input.dispenser_interval_ms;
+        workflow_input.runtime_options.dispenser_duration_ms = input.dispenser_duration_ms;
+        workflow_input.runtime_options.trigger_spatial_interval_mm = input.trigger_spatial_interval_mm;
+        workflow_input.runtime_options.valve_response_ms = input.valve_response_ms;
+        workflow_input.runtime_options.safety_margin_ms = input.safety_margin_ms;
+        workflow_input.runtime_options.min_interval_ms = input.min_interval_ms;
+        workflow_input.runtime_options.sample_dt = input.sample_dt;
+        workflow_input.runtime_options.sample_ds = input.sample_ds;
+        workflow_input.runtime_options.spline_max_step_mm = input.spline_max_step_mm;
+        workflow_input.runtime_options.spline_max_error_mm = input.spline_max_error_mm;
+        workflow_input.runtime_options.compensation_profile = input.compensation_profile;
+        workflow_input.dispensing_strategy = input.dispensing_strategy;
+        workflow_input.subsegment_count = input.subsegment_count;
+        workflow_input.dispense_only_cruise = input.dispense_only_cruise;
+        workflow_input.downgrade_on_violation = input.downgrade_on_violation;
+        workflow_input.spacing_tol_ratio = input.spacing_tol_ratio;
+        workflow_input.spacing_min_mm = input.spacing_min_mm;
+        workflow_input.spacing_max_mm = input.spacing_max_mm;
+        return workflow_input;
+    }
+
+    static Siligen::Application::Services::Dispensing::WorkflowExecutionAssemblyRequest
+    BuildWorkflowExecutionAssemblyRequest(
+        const PlanningRequest& request,
+        const PreparedAuthorityPreview& authority_preview,
+        const MotionPlan& motion_plan,
+        const PlanningRuntimeParams& runtime_params) {
+        auto input = BuildExecutionAssemblyInput(request, authority_preview, motion_plan, runtime_params);
+        Siligen::Application::Services::Dispensing::WorkflowExecutionAssemblyRequest workflow_input;
+        workflow_input.process_path = input.process_path;
+        workflow_input.motion_plan = input.motion_plan;
+        workflow_input.source_path = input.source_path;
+        workflow_input.dxf_filename = input.dxf_filename;
+        workflow_input.runtime_options.dispensing_velocity = input.dispensing_velocity;
+        workflow_input.runtime_options.acceleration = input.acceleration;
+        workflow_input.runtime_options.dispenser_interval_ms = input.dispenser_interval_ms;
+        workflow_input.runtime_options.dispenser_duration_ms = input.dispenser_duration_ms;
+        workflow_input.runtime_options.trigger_spatial_interval_mm = input.trigger_spatial_interval_mm;
+        workflow_input.runtime_options.valve_response_ms = input.valve_response_ms;
+        workflow_input.runtime_options.safety_margin_ms = input.safety_margin_ms;
+        workflow_input.runtime_options.min_interval_ms = input.min_interval_ms;
+        workflow_input.runtime_options.sample_dt = input.sample_dt;
+        workflow_input.runtime_options.sample_ds = input.sample_ds;
+        workflow_input.runtime_options.spline_max_step_mm = input.spline_max_step_mm;
+        workflow_input.runtime_options.spline_max_error_mm = input.spline_max_error_mm;
+        workflow_input.runtime_options.compensation_profile = input.compensation_profile;
+        workflow_input.max_jerk = input.max_jerk;
+        workflow_input.estimated_time_s = input.estimated_time_s;
+        workflow_input.use_interpolation_planner = input.use_interpolation_planner;
+        workflow_input.interpolation_algorithm = static_cast<Siligen::Domain::Motion::InterpolationAlgorithm>(
+            input.interpolation_algorithm);
+        workflow_input.authority_preview.segment_count = input.authority_preview.segment_count;
+        workflow_input.authority_preview.total_length = input.authority_preview.total_length;
+        workflow_input.authority_preview.estimated_time = input.authority_preview.estimated_time;
+        workflow_input.authority_preview.preview_trajectory_points = input.authority_preview.preview_trajectory_points;
+        workflow_input.authority_preview.glue_points = input.authority_preview.glue_points;
+        workflow_input.authority_preview.trigger_count = input.authority_preview.trigger_count;
+        workflow_input.authority_preview.dxf_filename = input.authority_preview.dxf_filename;
+        workflow_input.authority_preview.timestamp = input.authority_preview.timestamp;
+        workflow_input.authority_preview.preview_authority_ready = input.authority_preview.preview_authority_ready;
+        workflow_input.authority_preview.preview_binding_ready = input.authority_preview.preview_binding_ready;
+        workflow_input.authority_preview.preview_spacing_valid = input.authority_preview.preview_spacing_valid;
+        workflow_input.authority_preview.preview_has_short_segment_exceptions =
+            input.authority_preview.preview_has_short_segment_exceptions;
+        workflow_input.authority_preview.preview_validation_classification =
+            input.authority_preview.preview_validation_classification;
+        workflow_input.authority_preview.preview_exception_reason = input.authority_preview.preview_exception_reason;
+        workflow_input.authority_preview.preview_failure_reason = input.authority_preview.preview_failure_reason;
+        workflow_input.authority_preview.authority_trigger_layout = input.authority_preview.authority_trigger_layout;
+        workflow_input.authority_preview.authority_trigger_points =
+            BuildWorkflowAuthorityTriggerPoints(input.authority_preview.authority_trigger_points);
+        workflow_input.authority_preview.spacing_validation_groups =
+            BuildWorkflowSpacingValidationGroups(input.authority_preview.spacing_validation_groups);
+        return workflow_input;
+    }
+
+    static std::vector<Siligen::Application::Services::Dispensing::AuthorityTriggerPoint>
+    BuildInternalAuthorityTriggerPoints(
+        const std::vector<Siligen::Application::Services::Dispensing::WorkflowAuthorityTriggerPoint>& input) {
+        std::vector<Siligen::Application::Services::Dispensing::AuthorityTriggerPoint> points;
+        points.reserve(input.size());
+        for (const auto& point : input) {
+            Siligen::Application::Services::Dispensing::AuthorityTriggerPoint converted;
+            converted.position = point.position;
+            converted.trigger_distance_mm = point.trigger_distance_mm;
+            converted.segment_index = point.segment_index;
+            converted.short_segment_exception = point.short_segment_exception;
+            converted.shared_vertex = point.shared_vertex;
+            points.push_back(converted);
+        }
+        return points;
+    }
+
+    static std::vector<Siligen::Application::Services::Dispensing::SpacingValidationGroup>
+    BuildInternalSpacingValidationGroups(
+        const std::vector<Siligen::Application::Services::Dispensing::WorkflowSpacingValidationGroup>& input) {
+        std::vector<Siligen::Application::Services::Dispensing::SpacingValidationGroup> groups;
+        groups.reserve(input.size());
+        for (const auto& group : input) {
+            Siligen::Application::Services::Dispensing::SpacingValidationGroup converted;
+            converted.segment_index = group.segment_index;
+            converted.points = group.points;
+            converted.actual_spacing_mm = group.actual_spacing_mm;
+            converted.short_segment_exception = group.short_segment_exception;
+            converted.within_window = group.within_window;
+            groups.push_back(converted);
+        }
+        return groups;
+    }
+
+    static std::vector<Siligen::Application::Services::Dispensing::WorkflowAuthorityTriggerPoint>
+    BuildWorkflowAuthorityTriggerPoints(
+        const std::vector<Siligen::Application::Services::Dispensing::AuthorityTriggerPoint>& input) {
+        std::vector<Siligen::Application::Services::Dispensing::WorkflowAuthorityTriggerPoint> points;
+        points.reserve(input.size());
+        for (const auto& point : input) {
+            Siligen::Application::Services::Dispensing::WorkflowAuthorityTriggerPoint converted;
+            converted.position = point.position;
+            converted.trigger_distance_mm = point.trigger_distance_mm;
+            converted.segment_index = point.segment_index;
+            converted.short_segment_exception = point.short_segment_exception;
+            converted.shared_vertex = point.shared_vertex;
+            points.push_back(converted);
+        }
+        return points;
+    }
+
+    static std::vector<Siligen::Application::Services::Dispensing::WorkflowSpacingValidationGroup>
+    BuildWorkflowSpacingValidationGroups(
+        const std::vector<Siligen::Application::Services::Dispensing::SpacingValidationGroup>& input) {
+        std::vector<Siligen::Application::Services::Dispensing::WorkflowSpacingValidationGroup> groups;
+        groups.reserve(input.size());
+        for (const auto& group : input) {
+            Siligen::Application::Services::Dispensing::WorkflowSpacingValidationGroup converted;
+            converted.segment_index = group.segment_index;
+            converted.points = group.points;
+            converted.actual_spacing_mm = group.actual_spacing_mm;
+            converted.short_segment_exception = group.short_segment_exception;
+            converted.within_window = group.within_window;
+            groups.push_back(converted);
+        }
+        return groups;
+    }
+
+    std::shared_ptr<Siligen::Application::Services::Dispensing::IWorkflowPlanningAssemblyOperations> operations_;
     Siligen::Application::Services::Dispensing::PlanningArtifactExportAssemblyService export_assembly_service_{};
 };
 

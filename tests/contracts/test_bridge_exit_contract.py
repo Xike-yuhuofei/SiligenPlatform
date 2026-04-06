@@ -134,6 +134,20 @@ class BridgeExitContractTest(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, _read(WORKSPACE_ROOT / relative), msg=f"{relative} must not reference {forbidden}")
 
+    def test_workflow_domain_has_no_application_service_dependency(self) -> None:
+        workflow_domain_root = WORKSPACE_ROOT / "modules" / "workflow" / "domain"
+        hits: list[str] = []
+        for path in workflow_domain_root.rglob("*"):
+            if path.suffix not in {".h", ".hpp", ".cpp", ".cc", ".cxx"}:
+                continue
+            text = _read(path)
+            if '#include "application/services/' in text:
+                hits.append(path.relative_to(WORKSPACE_ROOT).as_posix())
+        self.assertFalse(
+            hits,
+            msg=f"workflow domain must not include application/services headers: {hits}",
+        )
+
     def test_workflow_dxf_wrapper_uses_owner_public_header(self) -> None:
         wrapper = _read(
             WORKSPACE_ROOT

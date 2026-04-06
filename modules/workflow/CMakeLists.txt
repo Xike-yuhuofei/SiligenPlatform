@@ -55,7 +55,6 @@ set(PROCESS_RUNTIME_CORE_PUBLIC_INCLUDE_DIRS
     ${SILIGEN_WORKFLOW_CONTRACTS_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_WORKFLOW_ADAPTERS_PUBLIC_INCLUDE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../job-ingest/application/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../dxf-geometry/application/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../runtime-execution/application/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../runtime-execution/contracts/runtime/include
@@ -276,7 +275,7 @@ target_link_libraries(siligen_process_runtime_core_diagnostics_domain INTERFACE
 
 siligen_process_runtime_core_interface(siligen_process_runtime_core_application)
 target_link_libraries(siligen_process_runtime_core_application INTERFACE
-    siligen_control_application
+    siligen_workflow_application_public
 )
 set_target_properties(siligen_process_runtime_core_application PROPERTIES
     SILIGEN_TARGET_TOPOLOGY_OWNER_ROOT "modules/workflow"
@@ -424,13 +423,9 @@ target_compile_features(siligen_workflow_runtime_consumer_public INTERFACE cxx_s
 if(NOT TARGET siligen_module_workflow)
     add_library(siligen_module_workflow INTERFACE)
 endif()
-if(TARGET siligen_workflow_application_public)
-    target_link_libraries(siligen_module_workflow INTERFACE siligen_workflow_application_public)
-elseif(TARGET siligen_process_runtime_core_application)
-    target_link_libraries(siligen_module_workflow INTERFACE siligen_process_runtime_core_application)
-elseif(TARGET siligen_process_runtime_core)
-    target_link_libraries(siligen_module_workflow INTERFACE siligen_process_runtime_core)
-endif()
+target_link_libraries(siligen_module_workflow INTERFACE
+    siligen_workflow_application_public
+)
 foreach(workflow_public_target
     IN ITEMS
         siligen_workflow_recipe_application_public

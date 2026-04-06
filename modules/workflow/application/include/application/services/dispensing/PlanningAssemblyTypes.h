@@ -1,3 +1,3 @@
 #pragma once
 
-#include "../../../../../../dispense-packaging/application/include/application/services/dispensing/PlanningAssemblyTypes.h"
+#include "dispense_packaging/application/services/dispensing/PlanningAssemblyTypes.h"
