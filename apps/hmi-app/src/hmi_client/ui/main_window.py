@@ -1703,6 +1703,7 @@ class MainWindow(QMainWindow):
             if widget is not None:
                 widget.setEnabled(ui_state.allow_online_actions)
         if hasattr(self, "_production_tab"):
+            # 离线模式仍需允许 DXF 加载、离线预览和本地回放；仅在线动作按钮受 capability 门控。
             self._production_tab.setEnabled(True)
         if hasattr(self, "_system_panel"):
             self._system_panel.setEnabled(ui_state.system_panel_enabled)
@@ -1716,6 +1717,8 @@ class MainWindow(QMainWindow):
         self._update_recovery_controls_state()
 
     def _apply_production_action_capabilities(self, online_actions_allowed: bool) -> None:
+        if hasattr(self, "_prod_home_btn"):
+            self._prod_home_btn.setEnabled(bool(online_actions_allowed))
         if hasattr(self, "_prod_start_btn"):
             self._prod_start_btn.setEnabled(bool(online_actions_allowed))
         if hasattr(self, "_prod_pause_btn"):
@@ -2586,6 +2589,7 @@ class MainWindow(QMainWindow):
         glue_points: list,
         preview_kind: str,
         motion_preview: list | None = None,
+        execution_polyline: list | None = None,
         motion_preview_meta: MotionPreviewMeta | None = None,
         preview_warning: str = "",
         preview_diagnostic_notice: PreviewDiagnosticNotice | None = None,
@@ -2596,7 +2600,7 @@ class MainWindow(QMainWindow):
         preview_diagnostic_code: str = "",
     ) -> str:
         normalized_source = str(preview_source or "").strip().lower()
-        effective_motion_preview = list(motion_preview or [])
+        effective_motion_preview = list(motion_preview or execution_polyline or [])
         effective_motion_preview_meta = motion_preview_meta
         if effective_motion_preview_meta is None and effective_motion_preview:
             effective_motion_preview_meta = MotionPreviewMeta(
