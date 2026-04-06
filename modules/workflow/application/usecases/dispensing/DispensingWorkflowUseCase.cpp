@@ -736,6 +736,7 @@ PreviewSnapshotResponse DispensingWorkflowUseCase::BuildPreviewSnapshotResponse(
         input.process_path = &retained_authority_process_path;
     }
     input.glue_points = &plan_record.glue_points;
+    input.authority_trigger_layout = &plan_record.authority_trigger_layout;
     input.authority_layout_id = plan_record.authority_trigger_layout.layout_id;
     input.binding_ready = plan_record.preview_binding_ready;
     input.validation_classification = plan_record.preview_validation_classification;

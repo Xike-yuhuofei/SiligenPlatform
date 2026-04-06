@@ -61,6 +61,7 @@ def _valid_payload(
         "segment_count": 2,
         "glue_point_count": glue_point_count,
         "glue_points": glue_points,
+        "glue_reveal_lengths_mm": [float(index) * 3.0 for index in range(glue_point_count)],
         "total_length_mm": 6.0,
         "estimated_time_s": 1.0,
         "generated_at": "2026-03-28T00:00:00Z",
@@ -261,6 +262,15 @@ class PreviewSessionOwnerTest(unittest.TestCase):
         )
         self.assertEqual(result.motion_preview_warning, "")
         self.assertIn("轨迹: 执行轨迹快照(3/12)", self.owner.info_label_text())
+
+    def test_process_snapshot_payload_preserves_authority_glue_reveal_lengths(self) -> None:
+        payload = _valid_payload()
+        payload["glue_reveal_lengths_mm"] = [0.0, 3.25, 6.5]
+
+        result = self.owner.process_snapshot_payload(payload, current_dry_run=False)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.glue_reveal_lengths_mm, (0.0, 3.25, 6.5))
 
     def test_process_snapshot_payload_stores_preview_diagnostic_code(self) -> None:
         payload = _valid_payload()

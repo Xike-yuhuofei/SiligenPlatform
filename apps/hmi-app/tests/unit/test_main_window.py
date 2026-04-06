@@ -257,6 +257,7 @@ class MainWindowTabsTest(unittest.TestCase):
         preview_source: str = "planned_glue_snapshot",
         preview_kind: str = "glue_points",
         glue_points=None,
+        glue_reveal_lengths_mm=None,
         plan_id: str = "plan-1",
         snapshot_hash: str = "hash-1",
         preview_validation_classification: str = "pass",
@@ -273,6 +274,8 @@ class MainWindowTabsTest(unittest.TestCase):
             if glue_points is None
             else glue_points
         )
+        if glue_reveal_lengths_mm is None:
+            glue_reveal_lengths_mm = [0.0, 6.0, 12.708204]
         result = self.window._preview_session.process_snapshot_payload(
             {
                 "snapshot_id": "snapshot-1",
@@ -283,6 +286,7 @@ class MainWindowTabsTest(unittest.TestCase):
                 "segment_count": 2,
                 "glue_point_count": len(glue_point_payload),
                 "glue_points": glue_point_payload,
+                "glue_reveal_lengths_mm": glue_reveal_lengths_mm,
                 "motion_preview": {
                     "source": "execution_trajectory_snapshot",
                     "kind": "polyline",
@@ -810,6 +814,66 @@ class MainWindowTabsTest(unittest.TestCase):
         )
 
         self.assertEqual(reveal_lengths, [0.0, 4.0, 10.0, 12.0, 14.0])
+
+    def test_resolve_preview_glue_reveal_lengths_prefers_authority_lengths(self) -> None:
+        snapshot = main_window_module.PreviewSnapshotMeta(
+            snapshot_id="snapshot-authority",
+            snapshot_hash="hash-authority",
+            segment_count=3,
+            point_count=3,
+            total_length_mm=12.0,
+            estimated_time_s=1.0,
+            generated_at="2026-04-06T00:00:00Z",
+        )
+
+        reveal_lengths, diagnostics = self.window._resolve_preview_glue_reveal_lengths(
+            glue_points=[(0.0, 0.0), (60.0, 0.0), (120.0, 0.0)],
+            motion_preview=[(0.0, 0.0), (60.0, 0.0), (120.0, 0.0)],
+            glue_reveal_lengths_mm=[0.0, 6.0, 12.0],
+            scale_px_per_mm=10.0,
+            snapshot=snapshot,
+            motion_preview_meta=main_window_module.MotionPreviewMeta(
+                source="execution_trajectory_snapshot",
+                kind="polyline",
+                point_count=3,
+                source_point_count=3,
+                is_sampled=False,
+                sampling_strategy="execution_trajectory_geometry_preserving",
+            ),
+        )
+
+        self.assertEqual(reveal_lengths, [0.0, 60.0, 120.0])
+        self.assertEqual(diagnostics["source"], "authority_glue_reveal_lengths_mm")
+
+    def test_resolve_preview_glue_reveal_lengths_falls_back_when_authority_lengths_invalid(self) -> None:
+        snapshot = main_window_module.PreviewSnapshotMeta(
+            snapshot_id="snapshot-fallback",
+            snapshot_hash="hash-fallback",
+            segment_count=4,
+            point_count=4,
+            total_length_mm=18.0,
+            estimated_time_s=2.0,
+            generated_at="2026-04-06T00:00:00Z",
+        )
+
+        reveal_lengths, diagnostics = self.window._resolve_preview_glue_reveal_lengths(
+            glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
+            motion_preview=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
+            glue_reveal_lengths_mm=[0.0, 8.0, 7.0, 18.0],
+            scale_px_per_mm=1.0,
+            snapshot=snapshot,
+            motion_preview_meta=main_window_module.MotionPreviewMeta(
+                source="execution_trajectory_snapshot",
+                kind="polyline",
+                point_count=4,
+                source_point_count=4,
+                is_sampled=False,
+                sampling_strategy="execution_trajectory_geometry_preserving",
+            ),
+        )
+
+        self.assertEqual(reveal_lengths, [0.0, 6.0, 12.0, 18.0])
+        self.assertEqual(diagnostics["source"], "legacy_motion_preview_projection")
 
     def test_render_preview_debug_html_contains_runtime_debug_fields(self) -> None:
         snapshot = main_window_module.PreviewSnapshotMeta(

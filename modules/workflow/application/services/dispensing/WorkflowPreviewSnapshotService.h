@@ -23,6 +23,7 @@ struct WorkflowPreviewSnapshotInput {
     const Siligen::ProcessPath::Contracts::ProcessPath* process_path = nullptr;
     const std::vector<Siligen::TrajectoryPoint>* motion_trajectory_points = nullptr;
     const std::vector<Siligen::Shared::Types::Point2D>* glue_points = nullptr;
+    const Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout* authority_trigger_layout = nullptr;
     std::string authority_layout_id;
     bool binding_ready = false;
     std::string validation_classification;

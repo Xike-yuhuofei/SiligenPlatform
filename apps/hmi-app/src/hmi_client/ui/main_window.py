@@ -2588,6 +2588,7 @@ class MainWindow(QMainWindow):
         preview_source: str,
         glue_points: list,
         preview_kind: str,
+        glue_reveal_lengths_mm: list[float] | None = None,
         motion_preview: list | None = None,
         execution_polyline: list | None = None,
         motion_preview_meta: MotionPreviewMeta | None = None,
@@ -2697,9 +2698,13 @@ class MainWindow(QMainWindow):
                 curr_x, curr_y = display_motion_preview[index]
                 total_display_length += ((curr_x - prev_x) ** 2 + (curr_y - prev_y) ** 2) ** 0.5
                 cumulative_lengths.append(round(total_display_length, 6))
-            reveal_lengths = self._build_preview_glue_reveal_lengths(
+            reveal_lengths, reveal_diagnostics = self._resolve_preview_glue_reveal_lengths(
                 glue_points=display_points,
                 motion_preview=display_motion_preview,
+                glue_reveal_lengths_mm=glue_reveal_lengths_mm,
+                scale_px_per_mm=scale_px_per_mm,
+                snapshot=snapshot,
+                motion_preview_meta=effective_motion_preview_meta,
             )
             playback_lengths_json = json.dumps(cumulative_lengths)
             reveal_lengths_json = json.dumps(reveal_lengths)
@@ -2779,15 +2784,101 @@ class MainWindow(QMainWindow):
             "</body></html>"
         )
 
-    @staticmethod
+    def _resolve_preview_glue_reveal_lengths(
+        self,
+        *,
+        glue_points: list[tuple[float, float]],
+        motion_preview: list[tuple[float, float]],
+        glue_reveal_lengths_mm: list[float] | None,
+        scale_px_per_mm: float,
+        snapshot: PreviewSnapshotMeta,
+        motion_preview_meta: MotionPreviewMeta | None,
+    ) -> tuple[list[float], dict[str, object]]:
+        service_lengths = list(glue_reveal_lengths_mm or [])
+        if service_lengths:
+            monotonic = True
+            previous_length = service_lengths[0]
+            for current_length in service_lengths[1:]:
+                if current_length + 1e-6 < previous_length:
+                    monotonic = False
+                    break
+                previous_length = current_length
+            if len(service_lengths) == len(glue_points) and monotonic:
+                reveal_lengths = [round(length_mm * scale_px_per_mm, 6) for length_mm in service_lengths]
+                diagnostics: dict[str, object] = {
+                    "sample_points": [
+                        {
+                            "glue_index": index,
+                            "reveal_length_mm": round(service_lengths[index], 6),
+                            "reveal_length": reveal_lengths[index],
+                            "mode": "authority",
+                        }
+                        for index in range(min(len(service_lengths), 12))
+                    ],
+                    "aligned_count": len(reveal_lengths),
+                    "fallback_count": 0,
+                    "stalled_count": sum(
+                        1
+                        for index, reveal_length in enumerate(reveal_lengths)
+                        if index == 0 or abs(reveal_length - reveal_lengths[index - 1]) <= 1e-6
+                    ),
+                    "max_segment_jump": 0,
+                    "max_distance_sq": 0.0,
+                    "final_reveal_length": reveal_lengths[-1] if reveal_lengths else 0.0,
+                    "source": "authority_glue_reveal_lengths_mm",
+                }
+                self._log_preview_glue_reveal_diagnostics(
+                    diagnostics,
+                    glue_point_count=len(glue_points),
+                    motion_point_count=len(motion_preview),
+                    snapshot=snapshot,
+                    motion_preview_meta=motion_preview_meta,
+                )
+                return reveal_lengths, diagnostics
+            reason = "length_mismatch" if len(service_lengths) != len(glue_points) else "non_monotonic"
+            _UI_LOGGER.warning(
+                "preview_glue_reveal_compat_warning file=%s snapshot_id=%s reason=%s glue_points=%d reveal_lengths=%d",
+                os.path.basename(self._dxf_filepath) if self._dxf_filepath else "-",
+                snapshot.snapshot_id,
+                reason,
+                len(glue_points),
+                len(service_lengths),
+            )
+
+        reveal_lengths, reveal_diagnostics = self._build_preview_glue_reveal_lengths_with_diagnostics(
+            glue_points=glue_points,
+            motion_preview=motion_preview,
+        )
+        reveal_diagnostics["source"] = "legacy_motion_preview_projection"
+        self._log_preview_glue_reveal_diagnostics(
+            reveal_diagnostics,
+            glue_point_count=len(glue_points),
+            motion_point_count=len(motion_preview),
+            snapshot=snapshot,
+            motion_preview_meta=motion_preview_meta,
+        )
+        return reveal_lengths, reveal_diagnostics
+
     def _build_preview_glue_reveal_lengths(
+        self,
         glue_points: list[tuple[float, float]],
         motion_preview: list[tuple[float, float]],
     ) -> list[float]:
+        reveal_lengths, _ = self._build_preview_glue_reveal_lengths_with_diagnostics(
+            glue_points=glue_points,
+            motion_preview=motion_preview,
+        )
+        return reveal_lengths
+
+    def _build_preview_glue_reveal_lengths_with_diagnostics(
+        self,
+        glue_points: list[tuple[float, float]],
+        motion_preview: list[tuple[float, float]],
+    ) -> tuple[list[float], dict[str, object]]:
         if not glue_points:
-            return []
+            return [], {"sample_points": []}
         if len(motion_preview) <= 1:
-            return [0.0 for _ in glue_points]
+            return [0.0 for _ in glue_points], {"sample_points": []}
 
         def _normalized_direction(index: int) -> tuple[float, float] | None:
             if len(glue_points) <= 1:
@@ -2830,6 +2921,13 @@ class MainWindow(QMainWindow):
             cumulative_length += segment_length
 
         reveal_lengths: list[float] = []
+        sample_points: list[dict[str, object]] = []
+        aligned_count = 0
+        fallback_count = 0
+        stalled_count = 0
+        max_segment_jump = 0
+        previous_segment_index = 1
+        max_distance_sq = 0.0
         min_reveal_length = 0.0
         min_segment_index = 1
         for glue_index, (point_x, point_y) in enumerate(glue_points):
@@ -2869,13 +2967,80 @@ class MainWindow(QMainWindow):
             selected = best_aligned or best_fallback
             if selected is None:
                 reveal_length = min_reveal_length
+                selected_segment_index = min_segment_index
+                selected_distance_sq = 0.0
+                selected_mode = "carry_forward"
             else:
                 reveal_length = max(min_reveal_length, selected[1])
-                min_segment_index = max(1, selected[2] - 1)
+                selected_segment_index = selected[2]
+                selected_distance_sq = selected[0]
+                selected_mode = "aligned" if best_aligned is not None else "fallback"
+                min_segment_index = max(1, selected_segment_index - 1)
+            if selected_mode == "aligned":
+                aligned_count += 1
+            elif selected_mode == "fallback":
+                fallback_count += 1
+            if abs(reveal_length - min_reveal_length) <= 1e-6:
+                stalled_count += 1
+            if selected_segment_index > previous_segment_index:
+                max_segment_jump = max(max_segment_jump, selected_segment_index - previous_segment_index)
+            previous_segment_index = selected_segment_index
+            max_distance_sq = max(max_distance_sq, float(selected_distance_sq))
             reveal_length = round(reveal_length, 6)
             reveal_lengths.append(reveal_length)
+            if glue_index < 12:
+                sample_points.append(
+                    {
+                        "glue_index": glue_index,
+                        "segment_index": selected_segment_index,
+                        "reveal_length": reveal_length,
+                        "distance_sq": round(float(selected_distance_sq), 6),
+                        "mode": selected_mode,
+                    }
+                )
             min_reveal_length = reveal_length
-        return reveal_lengths
+        diagnostics: dict[str, object] = {
+            "sample_points": sample_points,
+            "aligned_count": aligned_count,
+            "fallback_count": fallback_count,
+            "stalled_count": stalled_count,
+            "max_segment_jump": max_segment_jump,
+            "max_distance_sq": round(max_distance_sq, 6),
+            "final_reveal_length": reveal_lengths[-1] if reveal_lengths else 0.0,
+        }
+        return reveal_lengths, diagnostics
+
+    def _log_preview_glue_reveal_diagnostics(
+        self,
+        diagnostics: dict[str, object],
+        *,
+        glue_point_count: int,
+        motion_point_count: int,
+        snapshot: PreviewSnapshotMeta,
+        motion_preview_meta: MotionPreviewMeta | None,
+    ) -> None:
+        filename = os.path.basename(self._dxf_filepath) if self._dxf_filepath else "-"
+        meta = motion_preview_meta or MotionPreviewMeta()
+        _UI_LOGGER.info(
+            "preview_glue_reveal file=%s snapshot_id=%s glue_points=%d motion_points=%d motion_source_points=%d "
+            "motion_sampled=%s motion_sampling_strategy=%s source=%s aligned=%s fallback=%s stalled=%s "
+            "max_segment_jump=%s max_distance_sq=%s final_reveal_length=%s samples=%s",
+            filename,
+            snapshot.snapshot_id,
+            glue_point_count,
+            motion_point_count,
+            meta.source_point_count or motion_point_count,
+            meta.is_sampled,
+            meta.sampling_strategy or "-",
+            diagnostics.get("source", "legacy_motion_preview_projection"),
+            diagnostics.get("aligned_count", 0),
+            diagnostics.get("fallback_count", 0),
+            diagnostics.get("stalled_count", 0),
+            diagnostics.get("max_segment_jump", 0),
+            diagnostics.get("max_distance_sq", 0.0),
+            diagnostics.get("final_reveal_length", 0.0),
+            json.dumps(diagnostics.get("sample_points", []), ensure_ascii=True),
+        )
 
     def _render_preview_debug_html(
         self,
@@ -3009,6 +3174,7 @@ class MainWindow(QMainWindow):
             dry_run=result.dry_run,
             preview_source=result.preview_source,
             glue_points=list(result.glue_points),
+            glue_reveal_lengths_mm=list(result.glue_reveal_lengths_mm),
             motion_preview=list(result.motion_preview),
             motion_preview_meta=result.motion_preview_meta,
             preview_kind=result.preview_kind,

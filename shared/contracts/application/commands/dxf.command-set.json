@@ -182,7 +182,7 @@
       },
       "resultSchema": {
         "type": "object",
-        "required": ["snapshot_id", "snapshot_hash", "plan_id", "preview_state", "preview_source", "preview_kind", "confirmed_at", "segment_count", "point_count", "glue_point_count", "glue_points", "motion_preview", "execution_point_count", "total_length_mm", "estimated_time_s", "generated_at"],
+        "required": ["snapshot_id", "snapshot_hash", "plan_id", "preview_state", "preview_source", "preview_kind", "confirmed_at", "segment_count", "point_count", "glue_point_count", "glue_points", "glue_reveal_lengths_mm", "motion_preview", "execution_point_count", "total_length_mm", "estimated_time_s", "generated_at"],
         "properties": {
           "snapshot_id": { "type": "string" },
           "snapshot_hash": { "type": "string" },
@@ -209,6 +209,10 @@
               },
               "additionalProperties": false
             }
+          },
+          "glue_reveal_lengths_mm": {
+            "type": "array",
+            "items": { "type": "number" }
           },
           "execution_point_count": { "type": "integer" },
           "motion_preview": {

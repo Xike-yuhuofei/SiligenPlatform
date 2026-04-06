@@ -22,6 +22,7 @@
       { "x": 45.0, "y": 6.0 },
       { "x": 90.0, "y": 0.0 }
     ],
+    "glue_reveal_lengths_mm": [0.0, 771.125, 1542.25],
     "execution_point_count": 384,
     "motion_preview": {
       "source": "execution_trajectory_snapshot",
