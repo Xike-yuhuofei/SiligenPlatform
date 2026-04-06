@@ -25,6 +25,15 @@ if TYPE_CHECKING:
         from client.tcp_client import TcpClient  # type: ignore
 
 
+def _normalize_preview_exception_reason(reason: str) -> str:
+    text = str(reason).strip()
+    if not text:
+        return ""
+    if text == "span spacing outside configured window but accepted as explicit exception":
+        return "点位间距未落入当前配置窗口，但已按例外规则放行，可继续预览与执行。"
+    return text
+
+
 class PreviewStatusLike(Protocol):
     connected: bool
 
@@ -665,16 +674,17 @@ class PreviewSessionOwner:
     def current_preview_diagnostic_notice(self) -> PreviewDiagnosticNotice | None:
         if self._state.preview_validation_classification == "fail":
             return None
+        normalized_exception_reason = _normalize_preview_exception_reason(self._state.preview_exception_reason)
         if self._state.preview_diagnostic_code == "process_path_fragmentation":
             detail = (
-                "路径生成存在碎片化/断链退化，当前结果已按显式例外继续。"
-                "这通常意味着 DXF 几何连通性较差，或导入顺序导致路径被拆碎。"
+                "路径较碎，当前结果已按例外规则放行，可继续预览与执行。"
+                "这通常意味着 DXF 几何连通性较差，或导入顺序导致路径被拆成多段。"
             )
-            if self._state.preview_exception_reason:
-                detail = f"{detail} {self._state.preview_exception_reason}"
+            if normalized_exception_reason:
+                detail = f"{detail} {normalized_exception_reason}"
             return PreviewDiagnosticNotice("路径碎片化提示", detail)
-        if self._state.preview_validation_classification == "pass_with_exception" and self._state.preview_exception_reason:
-            return PreviewDiagnosticNotice("非阻断提示", self._state.preview_exception_reason)
+        if self._state.preview_validation_classification == "pass_with_exception" and normalized_exception_reason:
+            return PreviewDiagnosticNotice("可继续提示", normalized_exception_reason)
         return None
 
     def validate_before_confirmation(self) -> PreviewConfirmResult:

@@ -275,9 +275,11 @@ class PreviewSessionOwnerTest(unittest.TestCase):
         notice = result.preview_diagnostic_notice
         assert notice is not None
         self.assertEqual(notice.title, "路径碎片化提示")
-        self.assertIn("span spacing outside configured window", notice.detail)
+        self.assertIn("按例外规则放行", notice.detail)
+        self.assertNotIn("span spacing outside configured window", notice.detail)
         self.assertIn("路径碎片化提示", self.owner.build_confirmation_summary())
-        self.assertIn("span spacing outside configured window", self.owner.build_confirmation_summary())
+        self.assertIn("按例外规则放行", self.owner.build_confirmation_summary())
+        self.assertNotIn("span spacing outside configured window", self.owner.build_confirmation_summary())
 
     def test_current_preview_diagnostic_notice_prefers_fragmentation_notice_over_generic_exception(self) -> None:
         payload = _valid_payload()
@@ -292,6 +294,20 @@ class PreviewSessionOwnerTest(unittest.TestCase):
         assert notice is not None
         self.assertEqual(notice.title, "路径碎片化提示")
         self.assertIn("短闭环按例外保留", notice.detail)
+
+    def test_current_preview_diagnostic_notice_normalizes_generic_exception_reason(self) -> None:
+        payload = _valid_payload()
+        payload["preview_validation_classification"] = "pass_with_exception"
+        payload["preview_exception_reason"] = "span spacing outside configured window but accepted as explicit exception"
+
+        result = self.owner.process_snapshot_payload(payload, current_dry_run=False)
+
+        self.assertTrue(result.ok)
+        notice = self.owner.current_preview_diagnostic_notice()
+        assert notice is not None
+        self.assertEqual(notice.title, "可继续提示")
+        self.assertIn("已按例外规则放行", notice.detail)
+        self.assertNotIn("span spacing outside configured window", notice.detail)
 
     def test_process_snapshot_payload_builds_local_playback_model_from_motion_preview(self) -> None:
         result = self.owner.process_snapshot_payload(_valid_payload(), current_dry_run=False)

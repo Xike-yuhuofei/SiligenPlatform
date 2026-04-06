@@ -11,7 +11,11 @@ from unittest.mock import patch
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "src" / "hmi_client"))
 
-from ui.offline_preview_builder import _resolve_planner_cli_executable, build_offline_preview_payload
+from ui.offline_preview_builder import (
+    _CONTROL_APPS_BUILD_ROOT_ENV,
+    _resolve_planner_cli_executable,
+    build_offline_preview_payload,
+)
 
 
 class OfflinePreviewBuilderTest(unittest.TestCase):
@@ -134,6 +138,33 @@ class OfflinePreviewBuilderTest(unittest.TestCase):
                 resolved = _resolve_planner_cli_executable(workspace_root)
 
         self.assertEqual(resolved, workspace_cli.resolve())
+
+    def test_resolve_planner_cli_executable_accepts_explicit_override_even_if_cache_points_elsewhere(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            workspace_root = temp_root / "workspace"
+            workspace_root.mkdir()
+            override_root = temp_root / "shared-build"
+            override_bin = override_root / "bin" / "Debug"
+            override_bin.mkdir(parents=True)
+
+            override_cli = override_bin / "siligen_planner_cli.exe"
+            override_cli.write_text("", encoding="utf-8")
+            other_workspace = temp_root / "other-workspace"
+            other_workspace.mkdir()
+            (override_root / "CMakeCache.txt").write_text(
+                f"CMAKE_HOME_DIRECTORY:INTERNAL={other_workspace}\n",
+                encoding="utf-8",
+            )
+
+            with patch.dict(
+                os.environ,
+                {_CONTROL_APPS_BUILD_ROOT_ENV: str(override_root)},
+                clear=False,
+            ):
+                resolved = _resolve_planner_cli_executable(workspace_root)
+
+        self.assertEqual(resolved, override_cli.resolve())
 
 
 if __name__ == "__main__":
