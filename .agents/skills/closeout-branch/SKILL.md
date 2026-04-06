@@ -1,9 +1,9 @@
 ---
-name: branch-closeout
+name: closeout-branch
 description: Close out one finished task branch in SiligenSuite, including validating the branch boundary, organizing task-related uncommitted changes, checking unpushed commits, updating affected docs, committing precisely, pushing safely, opening or updating the PR, auto-handling trivial conflicts, switching the PR to ready for review, and reporting structured results. Use when the current branch already represents one clear task and has entered final收尾. Do not use for multi-task worktree cleanup, active implementation, deep debugging, or unclear task boundaries.
 ---
 
-# Branch Closeout
+# Closeout Branch
 
 Execute a fixed branch-level closeout workflow for one finished task branch. Keep the boundary singular, stop on unsafe repository states, and leave no ambiguous branch residue.
 
@@ -11,7 +11,7 @@ Execute a fixed branch-level closeout workflow for one finished task branch. Kee
 
 1. Use simplified Chinese in user-facing communication.
 2. Treat this skill as branch closeout only. Do not continue implementation inside this workflow.
-3. Require one clear task boundary on the current branch. If the branch contains multiple task groups, stop and route to `worktree-closeout`.
+3. Require one clear task boundary on the current branch. If the branch contains multiple task groups, stop and route to `closeout-worktree`.
 4. Run `scripts/validation/resolve-workflow-context.ps1` before closeout work when the repository context needs normalized `ticket/branchSafe/timestamp`.
 5. Route high-risk commands through `scripts/validation/invoke-guarded-command.ps1`.
 6. Do not rewrite unrelated docs or expand scope with opportunistic refactors.
@@ -26,12 +26,13 @@ Execute a fixed branch-level closeout workflow for one finished task branch. Kee
 3. Inspect staged, unstaged, untracked, and unpushed branch changes.
 4. Review the diff and commit range for the current branch.
 5. Confirm all pending and pushed-but-not-merged work on the branch belongs to one task.
+6. Treat branch name, ticket wording, and commit subject as evidence, not as absolute truth. Allow wording mismatch when branch name, commit range, touched ownership chain, validation target, and ticket/PR/doc context still converge to the same task.
 
 Apply these rules:
 
 - Stop if the repository is not a Git repository.
 - Stop if unrelated changes are mixed in.
-- Stop if the branch boundary remains ambiguous after inspecting status, diff, and unpushed commits.
+- Stop if the branch boundary remains ambiguous after inspecting status, diff, unpushed commits, validation intent, and available ticket/PR/doc context.
 
 ### 2. Run Minimum Validation
 
@@ -87,7 +88,7 @@ Apply these rules:
 ### 7. Open or Update PR
 
 1. Detect whether a PR already exists for the current branch.
-2. Create the PR when missing, using the task boundary, validation evidence, and doc impact.
+2. Create the PR when missing, using the task boundary, validation evidence, and doc impact. When naming and commit wording differ, explain the evidence chain briefly in the PR body instead of blocking by default.
 3. Update the existing PR title or body when stale.
 4. Move the PR to `ready for review` after branch validation and conflict checks are complete.
 
@@ -112,7 +113,7 @@ Stop before commit, push, or PR ready-for-review when any of the following is tr
 
 - validation failed
 - unrelated changes are mixed in
-- the branch boundary is unclear
+- the branch boundary is unclear after checking naming, commit scope, validation target, and ticket/PR/doc context together
 - conflicts are non-trivial or unresolved
 - repository state is unsafe or unclear
 - documentation is clearly affected but not yet updated

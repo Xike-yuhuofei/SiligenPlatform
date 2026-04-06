@@ -89,7 +89,7 @@ description: "Apply the smallest valid fix after root-cause convergence and run 
 -
 
 ## 建议下一步
-- 推荐进入：`branch-closeout`
+- 推荐进入：`closeout-branch`
 - 若发现结构性问题：转 `boundary-audit`
 
 # Handoff
@@ -98,5 +98,5 @@ description: "Apply the smallest valid fix after root-cause convergence and run 
   - `root-cause-analysis`
   - `change-scope-guard`
 - 下游：
-  - `branch-closeout`
+  - `closeout-branch`
   - `boundary-audit`

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Worktree Closeout"
-  short_description: "Drain one worktree by task batches"
-  default_prompt: "Use $worktree-closeout to scan the entire worktree, inspect and handle stash entries first, classify uncommitted and unpushed work into task batches, close each batch safely, open or update PRs, handle trivial conflicts, and report all residue."
