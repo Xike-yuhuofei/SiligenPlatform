@@ -168,12 +168,36 @@ def _resolve_canonical_path(payload: RawRecordingPayload, raw_path: str) -> Path
     candidates = [candidate]
     if payload.source_path is not None and not candidate.is_absolute():
         candidates.insert(0, payload.source_path.parent / candidate)
+    candidates.extend(_fallback_canonical_candidates(payload, candidate))
     for path in candidates:
         if path.exists():
             return path.resolve()
     if payload.source_path is not None and not candidate.is_absolute():
         return (payload.source_path.parent / candidate).resolve()
     return candidate.resolve()
+
+
+def _fallback_canonical_candidates(payload: RawRecordingPayload, candidate: Path) -> tuple[Path, ...]:
+    if payload.source_path is None:
+        return tuple()
+
+    file_name = candidate.name
+    if not file_name:
+        return tuple()
+
+    fallback_paths: list[Path] = []
+    seen: set[Path] = set()
+    for ancestor in payload.source_path.parents:
+        sample_candidate = ancestor / "samples" / "simulation" / file_name
+        if sample_candidate not in seen:
+            fallback_paths.append(sample_candidate)
+            seen.add(sample_candidate)
+        if ancestor.name == "samples":
+            sibling_candidate = ancestor / "simulation" / file_name
+            if sibling_candidate not in seen:
+                fallback_paths.append(sibling_candidate)
+                seen.add(sibling_candidate)
+    return tuple(fallback_paths)
 
 
 def _load_json_mapping(path: Path) -> Mapping[str, Any]:
