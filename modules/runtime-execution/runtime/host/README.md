@@ -7,11 +7,11 @@
 - 执行域事件发布桥接：`runtime/events/*`
 - 执行域任务调度桥接：`runtime/scheduling/*`
 - 执行域 diagnostics 适配：`runtime/diagnostics/*`
-- 执行域 motion/runtime provider：`runtime/motion/WorkflowMotionRuntimeServicesProvider.*`
+- 执行域 motion/runtime provider：`runtime/motion/MotionRuntimeServicesProvider.*`
   - canonical provider contract：`runtime_execution/application/services/motion/runtime/IMotionRuntimeServicesProvider.h`
-- 执行态适配与 planning artifact 导出桥：`runtime/system/*`、`runtime/planning/*`
-  - machine execution state backend owner：`runtime/system/DispenserModelMachineExecutionStateBackend.*`
-  - app-facing neutral alias：`runtime/system/WorkflowMachineExecutionStateBackend.h`
+- machine execution state owner 与 planning artifact 导出桥：`runtime/system/*`、`runtime/planning/*`
+  - machine execution state backend owner：`runtime/system/DispenserModelMachineExecutionStateBackend.*`（直接实现 `runtime_execution/contracts/system/IMachineExecutionStatePort.h`）
+  - canonical domain model surface：`domain/machine/aggregates/DispenserModel.h` 对外提供 `Aggregates::DispenserModel` / `Aggregates::DispensingTask`；`runtime-execution` 不再暴露 `Legacy::DispenserModel` / `Legacy::DispensingTask`
   - canonical planning export contract：`runtime_execution/application/services/dispensing/PlanningArtifactExportPort.h`
 - 执行期硬限位 / 软限位监控：`services/motion/*`
 

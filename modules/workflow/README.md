@@ -33,6 +33,7 @@
 - `contracts/include/workflow/contracts/WorkflowContracts.h` 已成为 `M0 -> M4` 触发边界的 owner 契约入口。
 - `domain/`、`application/`、`adapters/`、`tests/` 已成为 `workflow` 的唯一真实实现与验证承载面。
 - `src/` 与 `process-runtime-core/` 已完成 shell-only bridge 收敛，不再承载真实 `.h/.cpp` payload。
+- `tests/canonical/` 是 workflow canonical 测试源码承载面；integration/regression 仅负责登记与复用。
 
 ## S1 完成态
 
@@ -45,7 +46,8 @@
 ## S2-A 完成态
 
 - `workflow/application` 的 live planning 链已改为显式编排 `M6 process-path`、`M7 motion-planning`、`M8 dispense-packaging` 的 single planning seam，不再直接依赖 `AuthorityPreviewAssemblyService`、`ExecutionAssemblyService` 或 `DispensingPlannerService` concrete。
-- `workflow/domain/domain/CMakeLists.txt` 中的 `siligen_motion_execution_services` 已改为从 `modules/motion-planning/domain/motion/` 编译 owner source，`workflow/domain/domain/dispensing/CMakeLists.txt` 已降格为转发到 `siligen_dispense_packaging_domain_dispensing` 的兼容 target。
+- motion execution concrete 已迁至 `modules/runtime-execution/application` 的 `siligen_runtime_execution_motion_execution_services`；workflow 只保留 public forward header 与 consumer 编排。
+- `workflow/domain/domain/dispensing/CMakeLists.txt` 已降格为转发到 `siligen_dispense_packaging_domain_dispensing` 的兼容 target。
 - `motion-planning/application` 与 `dispense-packaging/application` 不再反向修改 `workflow` target，`workflow` 自身负责声明 owner 依赖。
 - bridge 报告已恢复绿色，见 `tests/reports/module-boundary-bridges-s2a/`。
 
@@ -53,7 +55,6 @@
 
 - `siligen_workflow_dispensing_planning_compat` 已退出 build graph；`workflow` 不再编译任何 dispensing planning `.cpp`。
 - `domain/dispensing/planning/domain-services/*` 的 workflow public surface 已降格为 deprecated forward header，canonical planning owner 固定在 `modules/dispense-packaging/domain/dispensing/planning/domain-services/`。
-- `siligen_process_runtime_core_*` 聚合 target 仅作为 deprecated compatibility target 保留，不再作为 owner 证据或 live public surface。
 
 ## S2 准入清单
 

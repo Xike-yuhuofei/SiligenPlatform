@@ -1,6 +1,7 @@
 #include "CreateRecipeUseCase.h"
 
-#include "application/usecases/recipes/RecipeUseCaseHelpers.h"
+#include "RecipeUseCaseHelpers.h"
+#include "domain/recipes/domain-services/RecipeValidationService.h"
 #include "shared/types/Error.h"
 
 namespace Siligen::Application::UseCases::Recipes {
@@ -43,7 +44,8 @@ Result<CreateRecipeResponse> CreateRecipeUseCase::Execute(const CreateRecipeRequ
     recipe.created_at = NowEpochMillis();
     recipe.updated_at = recipe.created_at;
 
-    auto validation = ValidateRecipeWithProcessCore(recipe);
+    Siligen::Domain::Recipes::DomainServices::RecipeValidationService validation_service;
+    auto validation = validation_service.ValidateRecipe(recipe);
     if (validation.IsError()) {
         return Result<CreateRecipeResponse>::Failure(validation.GetError());
     }

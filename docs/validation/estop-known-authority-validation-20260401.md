@@ -23,7 +23,7 @@
 
 ## 代码边界
 
-- `apps/runtime-service/runtime/supervision/WorkflowRuntimeSupervisionBackend.cpp`
+- `apps/runtime-service/runtime/supervision/RuntimeExecutionSupervisionBackend.cpp`
 - `apps/runtime-gateway/transport-gateway/tests/test_transport_gateway_compatibility.py`
 - `modules/runtime-execution/runtime/host/tests/unit/runtime/supervision/RuntimeSupervisionPortAdapterTest.cpp`
 - `shared/contracts/application/models/states.json`
@@ -32,7 +32,7 @@
 
 ## 修复摘要
 
-- `WorkflowRuntimeSupervisionBackend::ReadInputs()` 只在 `inputs.connected=true` 时才把 `emergency_stop_use_case_->IsInEmergencyStop()` 视为 `estop_known` 的有效来源。
+- `RuntimeExecutionSupervisionBackend::ReadInputs()` 只在 `inputs.connected=true` 时才把 `emergency_stop_use_case_->IsInEmergencyStop()` 视为 `estop_known` 的有效来源。
 - `estop_known` 默认从连接态出发，断线且无 interlock 采样时不再被 `system_interlock` 口径兜底为 true。
 - `TcpCommandDispatcher::HandleStatus` 保持为 snapshot 序列化与 compat 投影层，不再承载这条 authority 修复。
 - `states.json` 增补 `estop_known` 文案，明确“断线且无有效采样/无权威急停来源时必须为 false”。

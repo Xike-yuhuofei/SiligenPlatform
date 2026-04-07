@@ -1,4 +1,4 @@
-#include "application/usecases/motion/runtime/MotionRuntimeAssemblyFactory.h"
+#include "MotionRuntimeAssemblyFactory.h"
 
 #include "shared/types/Error.h"
 #include "shared/types/Point.h"

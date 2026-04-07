@@ -5,11 +5,11 @@
 ## 当前登记目标
 
 - `workflow_integration_motion_runtime_assembly_smoke`
-  - 复用 `process-runtime-core` 的稳定装配测试源码。
+  - 复用 `canonical/` 中的稳定装配测试源码。
   - 验证 canonical `workflow` application/domain/adapters 组合后，motion runtime assembly 可完成最小装配与路径执行烟测。
 
 ## 约束
 
 - 本目录只负责 integration 级构建入口、命名与登记。
-- 测试源码优先复用 `tests/process-runtime-core/` 中已稳定的 canonical 资产。
+- 测试源码优先复用 `tests/canonical/` 中已稳定的 canonical 资产。
 - 后续若新增更贴近 workflow facade 的集成测试，应继续落在本目录注册，不得回写 bridge 测试入口。

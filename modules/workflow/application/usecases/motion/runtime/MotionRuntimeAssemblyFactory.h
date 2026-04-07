@@ -12,7 +12,7 @@
 #include "domain/motion/domain-services/MotionStatusService.h"
 #include "domain/motion/domain-services/MotionValidationService.h"
 #include "domain/system/ports/IEventPublisherPort.h"
-#include "application/services/motion/runtime/IMotionRuntimeServicesProvider.h"
+#include "runtime_execution/application/services/motion/runtime/IMotionRuntimeServicesProvider.h"
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
 #include "runtime_execution/contracts/system/IMachineExecutionStatePort.h"

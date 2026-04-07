@@ -5,7 +5,7 @@ if(NOT TARGET siligen_application_motion)
 endif()
 
 set(WORKFLOW_REGRESSION_PATH_EXECUTION_TEST_SOURCE
-    "${CMAKE_CURRENT_SOURCE_DIR}/../process-runtime-core/unit/motion/DeterministicPathExecutionUseCaseTest.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../canonical/unit/motion/DeterministicPathExecutionUseCaseTest.cpp"
 )
 
 if(EXISTS "${WORKFLOW_REGRESSION_PATH_EXECUTION_TEST_SOURCE}")
@@ -23,7 +23,7 @@ if(EXISTS "${WORKFLOW_REGRESSION_PATH_EXECUTION_TEST_SOURCE}")
     )
     target_compile_features(workflow_regression_deterministic_path_execution_smoke PRIVATE cxx_std_17)
 
-    process_runtime_core_add_test_with_runtime_environment(
+    siligen_add_test_with_runtime_environment(
         workflow_regression_deterministic_path_execution_smoke
         workflow_regression_deterministic_path_execution_smoke
     )

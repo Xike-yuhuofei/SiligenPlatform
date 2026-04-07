@@ -24,8 +24,8 @@ namespace Siligen::Application::UseCases::Dispensing
 ### DispensingExecutionUseCase
 - **职责**: 执行 DXF 点胶任务
 - **使用场景**: 自动点胶流程
-- **依赖**: Domain::Dispensing::DomainServices::DispensingProcessService
-- **说明**: 硬件插补程序由 Domain 统一入口生成与校验（`InterpolationProgramPlanner` / `ValidatedInterpolationPort`），应用层只做编排与调用
+- **依赖**: RuntimeExecution::Contracts::Dispensing::IDispensingProcessPort
+- **说明**: DXF 执行期流程由 `runtime-execution` owner port 统一承接；workflow/application 只做编排与调用
 - **触发技术说明**: 采用 **规划位置触发 (Planned Position Triggering)**。
   > 触发点由规划阶段生成并作为执行阶段唯一来源，位置触发不可用时直接失败，不回退到定时触发。
   > 定时触发仅保留在 HMI 设置页的点胶阀单独控制（调试链路），不参与 DXF 执行。
@@ -56,7 +56,7 @@ namespace Siligen::Application::UseCases::Dispensing
 ## 设计原则
 
 1. DXF 上传/归档 owner 面由 `job-ingest` 提供，workflow 只消费上传结果与文件事实
-2. 触发点/阀门时序与过程校验由 `DispensingProcessService` 统一实现
+2. 触发点/阀门时序与过程校验由 `runtime_execution/contracts/dispensing/IDispensingProcessPort` 执行链统一实现
 3. 插补策略/校验/程序生成由 Domain 统一入口负责，基础设施仅硬件调用
 4. 提供点胶进度监控
 5. 支持暂停/恢复/取消操作
@@ -72,7 +72,7 @@ namespace Siligen::Application::UseCases::Dispensing
 - `DxfPbPreparationService` 默认调用本仓库内的 `scripts/engineering-data/dxf_to_pb.py`；仅在显式设置 `SILIGEN_DXF_PROJECT_ROOT` 且路径有效时才调用外部 DXF 算法仓库，并向其 launcher 传递 canonical 子命令 `engineering-data-dxf-to-pb`。
 - `PlanningUseCase` 在主链路中接收 `EnsurePbReady` 返回的 `.pb` 路径，并继续编排 `M6 -> M7 -> M8` owner facade；live 链不再直接消费 `DispensingPlannerService`。
 - `ContourAugmenterAdapter` 已下沉到 `infrastructure/adapters/planning/geometry`，应用层不再直接承载几何增广实现。
-- `AutoPathSourceAdapter` 的 legacy DXF 自动预处理分支默认禁用；仅在显式设置 `SILIGEN_DXF_AUTOPATH_LEGACY=1` 时允许临时回退。
+- `AutoPathSourceAdapter` 不再提供 legacy DXF 自动预处理回退；直接 `.dxf` 输入会稳定报错，必须先通过 `DxfPbPreparationService` 生成 `.pb`。
 - 上传阶段的校验不只看扩展名或文件头，还会实际跑预处理；若 DXF 无法解析，或预处理后没有导出任何受支持图元，上传会直接失败。
 
 ### 当前支持的 DXF 实体

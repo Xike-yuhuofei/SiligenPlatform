@@ -3,16 +3,16 @@ add_library(siligen_recipe_json_codec STATIC
 )
 
 target_include_directories(siligen_recipe_json_codec PUBLIC
-    ${PROCESS_RUNTIME_CORE_PUBLIC_INCLUDE_DIRS}
+    ${SILIGEN_WORKSPACE_PUBLIC_INCLUDE_DIRS}
 )
 target_include_directories(siligen_recipe_json_codec PRIVATE
-    ${PROCESS_RUNTIME_CORE_IMPLEMENTATION_INCLUDE_DIRS}
+    ${SILIGEN_WORKSPACE_IMPLEMENTATION_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_link_libraries(siligen_recipe_json_codec PUBLIC
     siligen_domain
-    siligen_process_runtime_core_json_headers
+    siligen_workspace_json_headers
     siligen_types
     siligen_utils
 )

@@ -41,7 +41,7 @@ target_include_directories(workflow_owner_unit_tests PRIVATE
 target_compile_definitions(workflow_owner_unit_tests PRIVATE SILIGEN_TEST_HOOKS=1)
 target_compile_features(workflow_owner_unit_tests PRIVATE cxx_std_17)
 
-process_runtime_core_add_test_with_runtime_environment(
+siligen_add_test_with_runtime_environment(
     workflow_owner_unit_tests
     workflow_owner_unit_tests
 )

@@ -1,4 +1,3 @@
 #pragma once
 
-// Public owner entry for workflow motion execution buffer control.
-#include "../../../../domain/motion/domain-services/MotionBufferController.h"
+#include "../../../../../../runtime-execution/application/include/domain/motion/domain-services/MotionBufferController.h"

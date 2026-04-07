@@ -8,8 +8,8 @@
 
 namespace {
 
-using DispenserModel = Siligen::Domain::Machine::Aggregates::Legacy::DispenserModel;
-using DispensingTask = Siligen::Domain::Machine::Aggregates::Legacy::DispensingTask;
+using DispenserModel = Siligen::Domain::Machine::Aggregates::DispenserModel;
+using DispensingTask = Siligen::Domain::Machine::Aggregates::DispensingTask;
 using CMPTriggerPoint = Siligen::Shared::Types::CMPTriggerPoint;
 using DispenserModelMachineExecutionStateBackend = Siligen::Runtime::Service::System::DispenserModelMachineExecutionStateBackend;
 using MachineExecutionPhase = Siligen::RuntimeExecution::Contracts::System::MachineExecutionPhase;
@@ -24,6 +24,14 @@ DispensingTask MakePendingTask() {
     task.cmp_config.AddTriggerPoint(CMPTriggerPoint{});
     task.movement_speed = 12.0f;
     return task;
+}
+
+TEST(DispenserModelMachineExecutionStateBackendTest, NullInjectedModelReturnsNotInitializedError) {
+    DispenserModelMachineExecutionStateBackend backend(nullptr);
+
+    const auto snapshot_result = backend.ReadSnapshot();
+    ASSERT_TRUE(snapshot_result.IsError());
+    EXPECT_EQ(snapshot_result.GetError().GetCode(), Siligen::Shared::Types::ErrorCode::PORT_NOT_INITIALIZED);
 }
 
 TEST(DispenserModelMachineExecutionStateBackendTest, DefaultBackendStartsFromUninitializedSnapshot) {

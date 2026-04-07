@@ -7,7 +7,7 @@
 #include "application/usecases/motion/interpolation/InterpolationPlanningUseCase.h"
 #include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
 #include "application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
-#include "runtime/motion/WorkflowMotionControlOperationsBridge.h"
+#include "runtime/motion/MotionControlOperationsBridge.h"
 #include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
 #include "application/usecases/motion/safety/MotionSafetyUseCase.h"
 #include "application/usecases/motion/trajectory/ExecuteTrajectoryUseCase.h"
@@ -115,7 +115,7 @@ ApplicationContainer::CreateInstance<UseCases::Motion::MotionControlUseCase>() {
     auto ensure_ready_zero_use_case = Resolve<UseCases::Motion::Homing::EnsureAxesReadyZeroUseCase>();
     auto manual_use_case = Resolve<UseCases::Motion::Manual::ManualMotionControlUseCase>();
     auto monitoring_use_case = Resolve<UseCases::Motion::Monitoring::MotionMonitoringUseCase>();
-    auto operations = Siligen::Runtime::Service::Motion::CreateWorkflowMotionOperations(
+    auto operations = Siligen::Runtime::Service::Motion::CreateMotionOperations(
         std::move(home_use_case),
         std::move(ensure_ready_zero_use_case),
         std::move(manual_use_case),

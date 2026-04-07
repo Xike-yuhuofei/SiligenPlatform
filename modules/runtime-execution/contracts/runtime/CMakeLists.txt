@@ -5,19 +5,9 @@ if(NOT TARGET siligen_runtime_execution_runtime_contracts)
 endif()
 
 set(SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
-if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}/runtime_execution/contracts/system/IEventPublisherPort.h")
-    message(FATAL_ERROR
-        "runtime-execution canonical runtime contracts require runtime_execution/contracts/system/IEventPublisherPort.h"
-    )
-endif()
 if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}/runtime_execution/contracts/system/IRuntimeSupervisionPort.h")
     message(FATAL_ERROR
         "runtime-execution canonical runtime contracts require runtime_execution/contracts/system/IRuntimeSupervisionPort.h"
-    )
-endif()
-if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}/runtime_execution/contracts/dispensing/ITaskSchedulerPort.h")
-    message(FATAL_ERROR
-        "runtime-execution canonical runtime contracts require runtime_execution/contracts/dispensing/ITaskSchedulerPort.h"
     )
 endif()
 if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}/runtime_execution/contracts/motion/IMotionRuntimePort.h")

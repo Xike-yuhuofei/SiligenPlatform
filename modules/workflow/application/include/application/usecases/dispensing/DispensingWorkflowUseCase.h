@@ -2,6 +2,7 @@
 
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "application/usecases/dispensing/PlanningUseCase.h"
+#include "application/services/dispensing/PreviewSnapshotService.h"
 #include "job_ingest/contracts/dispensing/UploadContracts.h"
 #include "domain/motion/ports/IHomingPort.h"
 #include "domain/motion/ports/IMotionStatePort.h"
@@ -100,49 +101,9 @@ struct PreparePlanResponse {
     PerformanceProfile performance_profile;
 };
 
-struct PreviewSnapshotRequest {
-    PlanID plan_id;
-    std::size_t max_polyline_points = 4000;
-    std::size_t max_glue_points = 5000;
-};
-
-struct PreviewSnapshotPoint {
-    float32 x = 0.0f;
-    float32 y = 0.0f;
-};
-
-struct PreviewSnapshotResponse {
-    std::string snapshot_id;
-    std::string snapshot_hash;
-    PlanID plan_id;
-    std::string preview_state;
-    std::string preview_source;
-    std::string preview_kind;
-    std::string confirmed_at;
-    std::uint32_t segment_count = 0;
-    std::uint32_t point_count = 0;
-    std::uint32_t glue_point_count = 0;
-    std::uint32_t execution_point_count = 0;
-    std::uint32_t execution_polyline_source_point_count = 0;
-    std::uint32_t execution_polyline_point_count = 0;
-    std::string motion_preview_source;
-    std::string motion_preview_kind;
-    std::uint32_t motion_preview_source_point_count = 0;
-    std::uint32_t motion_preview_point_count = 0;
-    bool motion_preview_is_sampled = false;
-    std::string motion_preview_sampling_strategy;
-    std::vector<PreviewSnapshotPoint> glue_points;
-    std::vector<float32> glue_reveal_lengths_mm;
-    std::vector<PreviewSnapshotPoint> execution_polyline;
-    std::vector<PreviewSnapshotPoint> motion_preview_polyline;
-    float32 total_length_mm = 0.0f;
-    float32 estimated_time_s = 0.0f;
-    std::string preview_validation_classification;
-    std::string preview_exception_reason;
-    std::string preview_failure_reason;
-    std::string preview_diagnostic_code;
-    std::string generated_at;
-};
+using PreviewSnapshotRequest = Services::Dispensing::PreviewSnapshotRequest;
+using PreviewSnapshotPoint = Services::Dispensing::PreviewSnapshotPoint;
+using PreviewSnapshotResponse = Services::Dispensing::PreviewSnapshotResponse;
 
 struct ConfirmPreviewRequest {
     PlanID plan_id;
@@ -251,10 +212,7 @@ class DispensingWorkflowUseCase {
     Result<PreviewSnapshotResponse> GetPreviewSnapshot(const PreviewSnapshotRequest& request);
     Result<ConfirmPreviewResponse> ConfirmPreview(const ConfirmPreviewRequest& request);
     Result<StartJobResponse> StartJob(const StartJobRequest& request);
-    Result<JobStatusResponse> GetJobStatus(const JobID& job_id) const;
-    Result<void> PauseJob(const JobID& job_id);
-    Result<void> ResumeJob(const JobID& job_id);
-    Result<void> StopJob(const JobID& job_id);
+    void OnRuntimeJobTerminal(const JobID& job_id, const PlanID& plan_id = {}) const;
     Result<Domain::Safety::ValueObjects::InterlockSignals> ReadInterlockSignals() const;
     bool IsInterlockLatched() const;
 #ifdef SILIGEN_TEST_HOOKS
@@ -433,9 +391,6 @@ class DispensingWorkflowUseCase {
     void ReleaseRetainedExecutionState(PlanRecord& plan_record) const;
     void EraseExecutionAssemblyCacheEntry(const std::string& execution_cache_key) const;
     void ReleaseConfirmedPreviewForPlan(const PlanID& plan_id, const JobID* runtime_job_id = nullptr) const;
-    void SyncPlanStateFromRuntimeStatus(
-        const JobID& job_id,
-        const RuntimeJobStatusResponse& runtime_status) const;
 };
 
 }  // namespace Siligen::Application::UseCases::Dispensing

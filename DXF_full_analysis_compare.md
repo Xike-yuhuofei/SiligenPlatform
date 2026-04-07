@@ -88,7 +88,7 @@ CLI/scripts 输入
 | 2. DXF->PB 调用方式 | C++ 进程外调用 Python 脚本/命令模板 | Python 内部 canonical 实现 | `DxfPbPreparationService.cpp::ResolvePbCommandArgs`；`processing/dxf_to_pb.py::main` |
 | 3. 输入契约（strict-r12） | 配置项 `strict_r12`，默认 false；上传链路默认走 `--no-strict-r12` | `--strict-r12/--no-strict-r12`，严格模式失败返回 4 | `IConfigurationPort.h::DxfPreprocessConfig`；`UploadFileUseCaseTest.cpp`；`dxf_to_pb.py::validate_input_contract` |
 | 4. 错误模型 | `Result<T> + ErrorCode` 统一 | 异常 + CLI 返回码 | `DxfPbPreparationService.cpp`；`dxf_to_pb.py::return 1/2/3/4` |
-| 5. legacy 回退策略 | legacy autopath 默认禁用，需 `SILIGEN_DXF_AUTOPATH_LEGACY=1` | legacy 包全部 forward 到 canonical | `AutoPathSourceAdapter.cpp`；`src/dxf_pipeline/cli/*.py` |
+| 5. legacy 回退策略 | direct `.dxf` 输入稳定 hard-fail，必须先经 `DxfPbPreparationService` 生成 `.pb` | legacy 包全部 forward 到 canonical | `AutoPathSourceAdapter.cpp`；`src/dxf_pipeline/cli/*.py` |
 | 6. 数据契约（metadata） | `PathPrimitiveMeta` 仅 id/type/segment/closed | `PrimitiveMeta` 还写入 `layer/color` | `IPathSourcePort.h::PathPrimitiveMeta`；`dxf_to_pb.py::add_meta` |
 | 7. metadata 不一致处理 | 元数据数量不匹配时补默认 meta；轮廓优化直接放弃优化 | 导出端每 primitive 都写 meta（设计上对齐） | `PbPathSourceAdapter.cpp`；`ContourOptimizationService.cpp` |
 | 8. 触发策略 | `TriggerPlanner` 有 safety downgrade；Web 预览无触发直接失败 | simulation payload 允许 `triggers=[]` | `TriggerPlanner.cpp`；`PlanningUseCase.cpp`；`simulation_input.py` |
@@ -133,7 +133,7 @@ CLI/scripts 输入
 
 1. `rg --files packages/process-runtime-core packages/engineering-data | rg -i "dxf|pb|path_to_trajectory|dxf_to_pb|preview|contour|augment|simulation-input|trajectory"`
 2. `rg -n -i "dxf|pb|path_to_trajectory|dxf_to_pb|preview|augment|contour|trajectory|simulation-input" packages/process-runtime-core packages/engineering-data`
-3. `rg -n "EnsurePbReady|strict-r12|SILIGEN_DXF_PB_COMMAND|SILIGEN_DXF_AUTOPATH_LEGACY|jmax|bundle_to_simulation_payload|generate_preview" ...`
+3. `rg -n "EnsurePbReady|strict-r12|SILIGEN_DXF_PB_COMMAND|jmax|bundle_to_simulation_payload|generate_preview" ...`
 
 关键证据路径（核心）：
 
@@ -144,7 +144,7 @@ CLI/scripts 输入
 5. `packages/process-runtime-core/src/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp`
 6. `packages/process-runtime-core/src/infrastructure/adapters/planning/dxf/PbPathSourceAdapter.cpp`
 7. `packages/process-runtime-core/src/infrastructure/adapters/planning/dxf/AutoPathSourceAdapter.cpp`
-8. `packages/process-runtime-core/src/infrastructure/adapters/planning/dxf/DXFMigrationConfig.h`
+8. `packages/process-runtime-core/src/infrastructure/adapters/planning/dxf/PbPathSourceAdapter.cpp`
 9. `packages/process-runtime-core/src/domain/configuration/ports/IConfigurationPort.h`
 10. `packages/process-runtime-core/src/domain/dispensing/domain-services/TriggerPlanner.cpp`
 11. `packages/engineering-data/src/engineering_data/processing/dxf_to_pb.py`

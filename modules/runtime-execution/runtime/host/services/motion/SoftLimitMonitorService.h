@@ -1,6 +1,6 @@
 #pragma once
 
-#include "runtime_execution/contracts/system/IEventPublisherPort.h"
+#include "domain/system/ports/IEventPublisherPort.h"
 #include "domain/motion/ports/IMotionStatePort.h"
 #include "domain/motion/ports/IPositionControlPort.h"
 #include "shared/types/Result.h"
@@ -22,7 +22,7 @@ using Shared::Types::Result;
 using Shared::Types::LogicalAxisId;
 using Shared::Types::float32;
 using Shared::Types::uint32;
-using RuntimeEventPublisherPort = Siligen::RuntimeExecution::Contracts::System::IEventPublisherPort;
+using RuntimeEventPublisherPort = Siligen::Domain::System::Ports::IEventPublisherPort;
 
 /**
  * @brief 软限位监控配置

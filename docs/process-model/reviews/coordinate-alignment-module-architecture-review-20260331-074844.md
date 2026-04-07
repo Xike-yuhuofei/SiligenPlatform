@@ -162,7 +162,7 @@
 | `modules/workflow/domain/domain/machine/CMakeLists.txt` | `workflow` 仍继续构建这两个 machine 源文件 | 2, 4, 5, 6 |
 | `modules/coordinate-alignment/domain/machine/CMakeLists.txt` | M5 根实现 target 直接建立在 `domain/machine` 之上，且消费 workflow include | 3, 4, 5, 6 |
 | `CMakeLists.txt` | 根构建系统全局注入 workflow domain include path | 4, 5, 6 |
-| `modules/runtime-execution/runtime/host/runtime/system/LegacyMachineExecutionStateAdapter.cpp` | runtime 侧仍围绕 `DispenserModel` 做 machine execution 兼容桥 | 4, 5, 6 |
+| `modules/runtime-execution/runtime/host/runtime/system/MachineExecutionStatePortAdapter.cpp` | runtime 侧曾围绕 `DispenserModel` 做 machine execution 兼容桥；当前代码已改为中性 port adapter 命名 | 4, 5, 6 |
 | `modules/runtime-execution/adapters/device/src/adapters/motion/controller/connection/HardwareConnectionAdapter.h` | `runtime-execution` 继续实现 M5 旧连接端口 | 4, 5, 6 |
 | `modules/runtime-execution/adapters/device/src/adapters/diagnostics/health/testing/HardwareTestAdapter.h` | `runtime-execution` 继续实现 M5 旧硬件测试端口 | 4, 5, 6 |
 | `modules/process-path/contracts/include/process_path/contracts/PathGenerationRequest.h` | 下游实际只消费 `CoordinateTransformSet` 契约 | 1, 2, 4, 6 |

@@ -66,10 +66,6 @@ set(SILIGEN_SHARED_KERNEL_CANONICAL_DIR
     "${SILIGEN_SHARED_ROOT}/kernel"
     CACHE INTERNAL "Canonical shared kernel source root"
 )
-set(SILIGEN_WORKFLOW_CORE_DIR
-    "${SILIGEN_MODULES_ROOT}/workflow/process-runtime-core"
-    CACHE INTERNAL "Canonical workflow/process-runtime-core source root"
-)
 set(SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR
     "${SILIGEN_MODULES_ROOT}/workflow/application/include"
     CACHE INTERNAL "Canonical workflow application public include root"
@@ -116,6 +112,119 @@ set(SILIGEN_NLOHMANN_INCLUDE_DIR
     "${SILIGEN_THIRD_PARTY_DIR}"
     CACHE INTERNAL "Explicit nlohmann/json include root used by #include \"nlohmann/json.hpp\""
 )
+set(SILIGEN_WORKSPACE_PUBLIC_INCLUDE_DIRS
+    ${SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR}
+    ${SILIGEN_MODULES_ROOT}/workflow/contracts/include
+    ${SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR}
+    ${SILIGEN_WORKFLOW_ADAPTERS_PUBLIC_INCLUDE_DIR}
+    ${SILIGEN_MODULES_ROOT}/dxf-geometry/application/include
+    ${SILIGEN_MODULES_ROOT}/runtime-execution/application/include
+    ${SILIGEN_MODULES_ROOT}/runtime-execution/contracts/runtime/include
+    ${SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR}
+    ${SILIGEN_MODULES_ROOT}/workflow/domain/process-core/include
+    ${SILIGEN_MODULES_ROOT}/workflow/domain/motion-core/include
+    ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
+)
+set(SILIGEN_WORKSPACE_IMPLEMENTATION_INCLUDE_DIRS
+    ${SILIGEN_WORKSPACE_ROOT}
+    ${SILIGEN_MODULES_ROOT}/workflow/domain
+    ${SILIGEN_MODULES_ROOT}/workflow/application
+    ${SILIGEN_MODULES_ROOT}/workflow/adapters
+    ${SILIGEN_MODULES_ROOT}/workflow/domain/process-core/include
+    ${SILIGEN_MODULES_ROOT}/workflow/domain/motion-core/include
+    ${SILIGEN_WORKSPACE_PUBLIC_INCLUDE_DIRS}
+)
+list(REMOVE_DUPLICATES SILIGEN_WORKSPACE_PUBLIC_INCLUDE_DIRS)
+list(REMOVE_DUPLICATES SILIGEN_WORKSPACE_IMPLEMENTATION_INCLUDE_DIRS)
+
+if(NOT TARGET siligen_workspace_boost_headers)
+    add_library(siligen_workspace_boost_headers INTERFACE)
+    target_include_directories(siligen_workspace_boost_headers INTERFACE
+        ${SILIGEN_BOOST_INCLUDE_DIR}
+    )
+    target_compile_features(siligen_workspace_boost_headers INTERFACE cxx_std_17)
+endif()
+
+if(NOT TARGET siligen_workspace_json_headers)
+    add_library(siligen_workspace_json_headers INTERFACE)
+    target_include_directories(siligen_workspace_json_headers INTERFACE
+        ${SILIGEN_NLOHMANN_INCLUDE_DIR}
+    )
+    target_compile_features(siligen_workspace_json_headers INTERFACE cxx_std_17)
+endif()
+
+function(siligen_add_test_with_runtime_environment test_name test_target)
+    if(NOT TARGET ${test_target})
+        message(FATAL_ERROR "无法为不存在的 target 注册测试运行环境: ${test_target}")
+    endif()
+
+    get_target_property(siligen_test_output_name ${test_target} OUTPUT_NAME)
+    if(NOT siligen_test_output_name OR siligen_test_output_name STREQUAL "siligen_test_output_name-NOTFOUND")
+        set(siligen_test_output_name ${test_target})
+    endif()
+
+    if(WIN32 AND CMAKE_CONFIGURATION_TYPES)
+        if(NOT DEFINED SILIGEN_DEFAULT_TEST_CONFIGURATION)
+            set(SILIGEN_DEFAULT_TEST_CONFIGURATION "Debug")
+        endif()
+        set(siligen_test_bin_dir "${CMAKE_BINARY_DIR}/bin/${SILIGEN_DEFAULT_TEST_CONFIGURATION}")
+        set(siligen_test_lib_dir "${CMAKE_BINARY_DIR}/lib/${SILIGEN_DEFAULT_TEST_CONFIGURATION}")
+        add_test(
+            NAME ${test_name}
+            COMMAND "${siligen_test_bin_dir}/${siligen_test_output_name}.exe"
+        )
+    else()
+        add_test(
+            NAME ${test_name}
+            COMMAND $<TARGET_FILE:${test_target}>
+        )
+    endif()
+
+    if(WIN32)
+        if(CMAKE_CONFIGURATION_TYPES)
+            set(siligen_test_runtime_path_entries
+                "PATH=path_list_prepend:${siligen_test_bin_dir}"
+                "PATH=path_list_prepend:${CMAKE_BINARY_DIR}"
+                "PATH=path_list_prepend:${siligen_test_lib_dir}"
+            )
+        else()
+            set(siligen_test_runtime_path_entries
+                "PATH=path_list_prepend:$<TARGET_FILE_DIR:${test_target}>"
+                "PATH=path_list_prepend:${CMAKE_BINARY_DIR}"
+            )
+
+            if(TARGET gtest)
+                list(APPEND siligen_test_runtime_path_entries
+                    "PATH=path_list_prepend:$<TARGET_FILE_DIR:gtest>"
+                )
+            endif()
+
+            if(TARGET gtest_main)
+                list(APPEND siligen_test_runtime_path_entries
+                    "PATH=path_list_prepend:$<TARGET_FILE_DIR:gtest_main>"
+                )
+            endif()
+
+            if(TARGET abseil_dll)
+                list(APPEND siligen_test_runtime_path_entries
+                    "PATH=path_list_prepend:$<TARGET_FILE_DIR:abseil_dll>"
+                )
+            endif()
+
+            if(TARGET utf8_validity)
+                list(APPEND siligen_test_runtime_path_entries
+                    "PATH=path_list_prepend:$<TARGET_FILE_DIR:utf8_validity>"
+                )
+            endif()
+        endif()
+
+        list(REMOVE_DUPLICATES siligen_test_runtime_path_entries)
+        set_tests_properties(
+            ${test_name}
+            PROPERTIES ENVIRONMENT_MODIFICATION "${siligen_test_runtime_path_entries}"
+        )
+    endif()
+endfunction()
 set(SILIGEN_SPDLOG_INCLUDE_DIR
     "${SILIGEN_THIRD_PARTY_DIR}/spdlog/include"
     CACHE INTERNAL "Explicit spdlog include root used by traceability-observability"
@@ -366,8 +475,6 @@ if(NOT TARGET siligen_shared OR NOT TARGET siligen_shared_kernel)
 endif()
 
 include_directories(${SILIGEN_WORKSPACE_ROOT})
-include_directories(${SILIGEN_WORKFLOW_CORE_DIR}/modules/process-core/include)
-include_directories(${SILIGEN_WORKFLOW_CORE_DIR}/modules/motion-core/include)
 include_directories(${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT})
 include_directories(${SILIGEN_BOOST_INCLUDE_DIR})
 include_directories(${SILIGEN_NLOHMANN_INCLUDE_DIR})

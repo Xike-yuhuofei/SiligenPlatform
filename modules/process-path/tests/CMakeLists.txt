@@ -40,8 +40,8 @@ else()
 endif()
 target_compile_features(siligen_process_path_unit_tests PRIVATE cxx_std_17)
 
-if(COMMAND process_runtime_core_add_test_with_runtime_environment)
-    process_runtime_core_add_test_with_runtime_environment(
+if(COMMAND siligen_add_test_with_runtime_environment)
+    siligen_add_test_with_runtime_environment(
         siligen_process_path_unit_tests
         siligen_process_path_unit_tests
     )

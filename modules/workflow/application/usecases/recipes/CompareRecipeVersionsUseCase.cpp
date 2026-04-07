@@ -1,6 +1,6 @@
 #include "CompareRecipeVersionsUseCase.h"
 
-#include "application/usecases/recipes/RecipeUseCaseHelpers.h"
+#include "RecipeUseCaseHelpers.h"
 #include "shared/types/Error.h"
 
 #include <unordered_map>
