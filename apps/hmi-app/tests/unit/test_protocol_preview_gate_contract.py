@@ -750,6 +750,63 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertEqual(payload, {})
         self.assertIn("safety door open", error)
 
+    def test_dxf_job_pause_contract(self) -> None:
+        client = _FakeClient([{"result": {"paused": True, "job_id": "job-1"}}])
+        protocol = CommandProtocol(client)
+
+        ok, error = protocol.dxf_job_pause("job-1")
+
+        self.assertTrue(ok)
+        self.assertEqual(error, "")
+        self.assertEqual(client.calls[0], ("dxf.job.pause", {"job_id": "job-1"}, 15.0))
+
+    def test_dxf_job_pause_returns_backend_error(self) -> None:
+        client = _FakeClient([{"error": {"code": 2911, "message": "job not running"}}])
+        protocol = CommandProtocol(client)
+
+        ok, error = protocol.dxf_job_pause("job-1")
+
+        self.assertFalse(ok)
+        self.assertEqual(error, "job not running")
+
+    def test_dxf_job_resume_contract(self) -> None:
+        client = _FakeClient([{"result": {"resumed": True, "job_id": "job-1"}}])
+        protocol = CommandProtocol(client)
+
+        ok, error = protocol.dxf_job_resume("job-1")
+
+        self.assertTrue(ok)
+        self.assertEqual(error, "")
+        self.assertEqual(client.calls[0], ("dxf.job.resume", {"job_id": "job-1"}, 15.0))
+
+    def test_dxf_job_resume_returns_backend_error(self) -> None:
+        client = _FakeClient([{"error": {"code": 2912, "message": "interlock active"}}])
+        protocol = CommandProtocol(client)
+
+        ok, error = protocol.dxf_job_resume("job-1")
+
+        self.assertFalse(ok)
+        self.assertEqual(error, "interlock active")
+
+    def test_dxf_job_stop_contract(self) -> None:
+        client = _FakeClient([{"result": {"stopped": True, "job_id": "job-1", "transition_state": "stopping"}}])
+        protocol = CommandProtocol(client)
+
+        ok, error = protocol.dxf_job_stop("job-1")
+
+        self.assertTrue(ok)
+        self.assertEqual(error, "")
+        self.assertEqual(client.calls[0], ("dxf.job.stop", {"job_id": "job-1"}, 15.0))
+
+    def test_dxf_job_stop_returns_backend_error(self) -> None:
+        client = _FakeClient([{"error": {"code": 2913, "message": "stop timeout"}}])
+        protocol = CommandProtocol(client)
+
+        ok, error = protocol.dxf_job_stop("job-1")
+
+        self.assertFalse(ok)
+        self.assertEqual(error, "stop timeout")
+
 
 if __name__ == "__main__":
     unittest.main()

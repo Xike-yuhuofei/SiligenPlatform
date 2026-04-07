@@ -328,6 +328,71 @@ class HomeAutoWorker(QThread):
             self.completed.emit(ok, message)
 
 
+class ProductionActionWorker(QThread):
+    completed = pyqtSignal(str, bool, str)
+
+    def __init__(self, *, host: str, port: int, action: str, job_id: str) -> None:
+        super().__init__()
+        self._host = host
+        self._port = port
+        self._action = str(action or "").strip().lower()
+        self._job_id = str(job_id or "").strip()
+        self._cancel_lock = threading.Lock()
+        self._cancelled = False
+        self._client_ref = None
+
+    def cancel(self) -> None:
+        with self._cancel_lock:
+            self._cancelled = True
+            client = self._client_ref
+        if client is not None:
+            try:
+                client.disconnect()
+            except Exception:
+                pass
+
+    def _is_cancelled(self) -> bool:
+        with self._cancel_lock:
+            return self._cancelled
+
+    def run(self) -> None:
+        client = None
+        ok = False
+        error = ""
+        try:
+            if self._is_cancelled():
+                return
+            client = TcpClient(host=self._host, port=self._port)
+            with self._cancel_lock:
+                self._client_ref = client
+            if not client.connect():
+                error = "无法连接后端，请检查TCP链路"
+            else:
+                _protocol = CommandProtocol(client)
+                if self._action == "pause":
+                    ok, error = _protocol.dxf_job_pause(self._job_id)
+                elif self._action == "resume":
+                    ok, error = _protocol.dxf_job_resume(self._job_id)
+                elif self._action == "stop":
+                    ok, error = _protocol.dxf_job_stop(self._job_id)
+                else:
+                    error = f"不支持的生产控制动作: {self._action}"
+                if self._is_cancelled():
+                    return
+        except Exception as exc:
+            error = str(exc) or "生产控制执行异常"
+        finally:
+            if client is not None:
+                try:
+                    client.disconnect()
+                except Exception:
+                    pass
+            with self._cancel_lock:
+                self._client_ref = None
+        if not self._is_cancelled():
+            self.completed.emit(self._action, ok, error)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, launch_mode: str = "online"):
         super().__init__()
@@ -371,6 +436,9 @@ class MainWindow(QMainWindow):
         self._home_request_generation = 0
         self._preview_snapshot_worker = None
         self._preview_request_generation = 0
+        self._production_action_worker = None
+        self._production_action_request_generation = 0
+        self._production_action_restore_state = None
         self._preview_refresh_inflight = False
         self._preview_state_resync_pending = False
         self._last_preview_resync_attempt_ts = 0.0
@@ -385,6 +453,7 @@ class MainWindow(QMainWindow):
         # Production statistics
         self._production_running = False
         self._production_paused = False
+        self._pending_production_action = ""
         self._production_dry_run = False
         self._completed_count = 0
         self._last_completed_count_seen = 0
@@ -1717,18 +1786,44 @@ class MainWindow(QMainWindow):
         self._update_recovery_controls_state()
 
     def _apply_production_action_capabilities(self, online_actions_allowed: bool) -> None:
+        home_enabled = bool(
+            online_actions_allowed
+            and not self._current_job_id
+            and not self._pending_production_action
+            and not self._is_home_worker_running()
+        )
+        start_enabled = bool(online_actions_allowed and not self._current_job_id and not self._pending_production_action)
+        target_enabled = start_enabled
+        pause_enabled = False
+        resume_enabled = False
+        stop_enabled = False
+
+        if online_actions_allowed and self._current_job_id:
+            if self._pending_production_action == "pause":
+                stop_enabled = True
+            elif self._pending_production_action in ("resume", "stop"):
+                pass
+            elif self._production_paused:
+                resume_enabled = True
+                stop_enabled = True
+            elif self._production_running:
+                pause_enabled = True
+                stop_enabled = True
+            else:
+                stop_enabled = True
+
         if hasattr(self, "_prod_home_btn"):
-            self._prod_home_btn.setEnabled(bool(online_actions_allowed))
+            self._prod_home_btn.setEnabled(home_enabled)
         if hasattr(self, "_prod_start_btn"):
-            self._prod_start_btn.setEnabled(bool(online_actions_allowed))
+            self._prod_start_btn.setEnabled(start_enabled)
         if hasattr(self, "_prod_pause_btn"):
-            self._prod_pause_btn.setEnabled(bool(online_actions_allowed))
+            self._prod_pause_btn.setEnabled(pause_enabled)
         if hasattr(self, "_prod_resume_btn"):
-            self._prod_resume_btn.setEnabled(bool(online_actions_allowed))
+            self._prod_resume_btn.setEnabled(resume_enabled)
         if hasattr(self, "_prod_stop_btn"):
-            self._prod_stop_btn.setEnabled(bool(online_actions_allowed))
+            self._prod_stop_btn.setEnabled(stop_enabled)
         if hasattr(self, "_target_input"):
-            self._target_input.setEnabled(bool(online_actions_allowed))
+            self._target_input.setEnabled(target_enabled)
 
     def _show_initial_session_message(self) -> None:
         if self._requested_launch_mode == "online" and self._current_session_snapshot() is None:
@@ -1952,7 +2047,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, "_home_all_btn"):
             self._home_all_btn.setEnabled(enabled)
         if hasattr(self, "_prod_home_btn"):
-            self._prod_home_btn.setEnabled(enabled)
+            self._prod_home_btn.setEnabled(enabled and not self._current_job_id and not self._pending_production_action)
         if hasattr(self, "_home_axis_buttons"):
             for btn in self._home_axis_buttons:
                 btn.setEnabled(enabled)
@@ -1973,6 +2068,167 @@ class MainWindow(QMainWindow):
         else:
             _UI_LOGGER.info("home_worker_cancelled reason=%s generation=%s", reason, self._home_request_generation)
         self._update_home_controls_state()
+
+    def _is_production_action_worker_running(self) -> bool:
+        return self._production_action_worker is not None and self._production_action_worker.isRunning()
+
+    def _cancel_active_production_action_worker(self, *, reason: str) -> None:
+        worker = self._production_action_worker
+        self._production_action_worker = None
+        if worker is None:
+            return
+        self._production_action_request_generation += 1
+        try:
+            worker.cancel()
+        except Exception as exc:
+            _UI_LOGGER.warning("production_action_cancel_failed reason=%s error=%s", reason, exc)
+        else:
+            _UI_LOGGER.info(
+                "production_action_cancelled reason=%s generation=%s",
+                reason,
+                self._production_action_request_generation,
+            )
+        self._apply_mode_capabilities()
+
+    def _rollback_failed_production_action(self, action: str) -> None:
+        restore_state = self._production_action_restore_state or {}
+        if restore_state.get("action") != action:
+            self._production_action_restore_state = None
+            return
+        self._production_running = bool(restore_state.get("production_running", False))
+        self._production_paused = bool(restore_state.get("production_paused", False))
+        self._run_start_time = float(restore_state.get("run_start_time", 0.0) or 0.0)
+        self._total_run_time = float(restore_state.get("total_run_time", self._total_run_time) or 0.0)
+        self._production_action_restore_state = None
+
+    def _on_production_action_completed(self, action: str, ok: bool, error: str, *, request_token: int) -> None:
+        if request_token != self._production_action_request_generation:
+            _UI_LOGGER.info(
+                "production_action_ignored reason=stale_worker_result action=%s request_token=%s active_generation=%s",
+                action,
+                request_token,
+                self._production_action_request_generation,
+            )
+            return
+        self._production_action_worker = None
+        if ok:
+            self._production_action_restore_state = None
+            self._apply_mode_capabilities()
+            return
+        if self._pending_production_action == action:
+            self._pending_production_action = ""
+        self._rollback_failed_production_action(action)
+        failure_messages = {
+            "pause": "暂停失败",
+            "resume": "恢复失败",
+            "stop": "停止失败",
+        }
+        self.statusBar().showMessage(error or failure_messages.get(action, "生产控制失败"))
+        self._apply_mode_capabilities()
+
+    def _start_production_action(self, action: str, *, status_capability: str = "生产控制") -> None:
+        action = str(action or "").strip().lower()
+        if not self._require_online_mode(status_capability):
+            return
+        self._auth.record_activity()
+        if not self._current_job_id:
+            self.statusBar().showMessage("当前没有运行中的生产任务")
+            return
+
+        allowed = False
+        pending_text = ""
+        status_message = ""
+        if action == "pause":
+            if not self._production_running:
+                self.statusBar().showMessage("当前没有运行中的生产任务")
+                return
+            allowed = self._pending_production_action in ("", "pause")
+            pending_text = "暂停中"
+            status_message = "暂停请求已发送，等待后端确认"
+        elif action == "resume":
+            if not self._production_paused:
+                self.statusBar().showMessage("当前没有已暂停的生产任务")
+                return
+            allowed = self._pending_production_action in ("", "resume")
+            pending_text = "恢复中"
+            status_message = "恢复请求已发送，等待后端确认"
+        elif action == "stop":
+            allowed = self._pending_production_action in ("", "pause", "stop")
+            pending_text = "停止中"
+            status_message = "停止请求已发送，等待后端完成"
+        else:
+            self.statusBar().showMessage("不支持的生产控制动作")
+            return
+
+        active_worker = self._production_action_worker
+        if active_worker is not None and active_worker.isRunning():
+            if action == "stop" and self._pending_production_action == "pause":
+                self._cancel_active_production_action_worker(reason="production_action_override_stop")
+            else:
+                self.statusBar().showMessage("生产控制请求进行中，请稍候")
+                return
+
+        if not allowed:
+            self.statusBar().showMessage("生产控制请求进行中，请稍候")
+            return
+
+        self._pending_production_action = action
+        self._production_action_restore_state = {
+            "action": action,
+            "production_running": self._production_running,
+            "production_paused": self._production_paused,
+            "run_start_time": self._run_start_time,
+            "total_run_time": self._total_run_time,
+        }
+        if action == "pause":
+            if self._run_start_time > 0:
+                self._total_run_time += time.time() - self._run_start_time
+            self._production_running = False
+            self._production_paused = False
+            self._run_start_time = 0
+        elif action == "resume":
+            self._production_running = False
+            self._production_paused = True
+            self._run_start_time = 0
+        elif action == "stop":
+            if self._production_running and self._run_start_time > 0:
+                self._total_run_time += time.time() - self._run_start_time
+            self._production_running = False
+            self._production_paused = False
+            self._run_start_time = 0
+
+        self._operation_status.setText(pending_text)
+        self._apply_mode_capabilities()
+        self.statusBar().showMessage(status_message)
+
+        self._production_action_request_generation += 1
+        request_token = self._production_action_request_generation
+        worker = ProductionActionWorker(
+            host=self._client.host,
+            port=self._client.port,
+            action=action,
+            job_id=self._current_job_id,
+        )
+        worker.completed.connect(
+            lambda completed_action, ok, error, token=request_token: self._on_production_action_completed(
+                completed_action,
+                ok,
+                error,
+                request_token=token,
+            )
+        )
+        worker.finished.connect(worker.deleteLater)
+        self._production_action_worker = worker
+        try:
+            worker.start()
+        except Exception as exc:
+            self._production_action_worker = None
+            if self._pending_production_action == action:
+                self._pending_production_action = ""
+            self._rollback_failed_production_action(action)
+            self._apply_mode_capabilities()
+            QMessageBox.warning(self, "生产控制失败", str(exc) or "生产控制启动失败")
+            self.statusBar().showMessage("生产控制启动失败")
 
     def _check_home_preconditions(self) -> bool:
         if not self._require_online_mode("回零"):
@@ -2212,6 +2468,7 @@ class MainWindow(QMainWindow):
             self._log_motion_snapshot("Stop pre", axis)
         self._jog_press_time = None
         self._cancel_active_home_worker(reason=f"stop:{reason}")
+        self._cancel_active_production_action_worker(reason=f"stop:{reason}")
         ok = self._protocol.stop()
         if not ok:
             _UI_LOGGER.warning("Stop request failed reason=%s", reason)
@@ -2222,6 +2479,7 @@ class MainWindow(QMainWindow):
         if not self._require_runtime_command_channel("急停"):
             return
         self._cancel_active_home_worker(reason="estop")
+        self._cancel_active_production_action_worker(reason="estop")
         ok, msg = self._protocol.emergency_stop()
         self.statusBar().showMessage(f"急停: {msg}" if ok else (f"急停失败: {msg}" if msg else "急停失败"))
 
@@ -3469,18 +3727,7 @@ class MainWindow(QMainWindow):
         self._start_production_process(dry_run=is_dry_run)
 
     def _on_dxf_stop(self):
-        if not self._require_online_mode("DXF控制"):
-            return
-        if not self._current_job_id:
-            self.statusBar().showMessage("当前没有运行中的DXF任务")
-            return
-        ok = self._protocol.dxf_job_stop(self._current_job_id)
-        if ok:
-            self._production_paused = False
-            self._operation_status.setText("停止中")
-            self.statusBar().showMessage("DXF停止请求已发送，等待后端完成")
-        else:
-            self.statusBar().showMessage("DXF停止失败")
+        self._on_production_stop(status_capability="DXF控制")
 
     def _on_alarm_clear(self):
         if not self._require_online_mode("报警控制"):
@@ -3562,6 +3809,7 @@ class MainWindow(QMainWindow):
         self._current_job_id = str(payload.get("job_id", "")).strip()
         self._production_running = True
         self._production_paused = False
+        self._pending_production_action = ""
         self._production_dry_run = dry_run
         self._completed_count = 0
         self._last_completed_count_seen = 0
@@ -3573,6 +3821,7 @@ class MainWindow(QMainWindow):
         mode_text = "空跑" if dry_run else "生产"
         self._operation_status.setText(f"{mode_text}运行中")
         self._update_production_stats()
+        self._apply_mode_capabilities()
         self.statusBar().showMessage(f"{mode_text}已启动")
         performance_profile = payload.get("performance_profile", {})
         if isinstance(performance_profile, dict):
@@ -3602,61 +3851,19 @@ class MainWindow(QMainWindow):
 
     def _on_production_pause(self):
         """Pause production."""
-        if not self._require_online_mode("生产控制"):
-            return
-        if not self._production_running or not self._current_job_id:
-            self.statusBar().showMessage("当前没有运行中的生产任务")
-            return
-        if self._protocol.dxf_job_pause(self._current_job_id):
-            if self._run_start_time > 0:
-                self._total_run_time += time.time() - self._run_start_time
-            self._production_paused = True
-            self._production_running = False
-            self._run_start_time = 0
-            self._operation_status.setText("已暂停")
-            self.statusBar().showMessage("生产已暂停")
-        else:
-            self.statusBar().showMessage("暂停失败")
+        self._start_production_action("pause")
 
     def _on_production_resume(self):
         """Resume production after a pause."""
-        if not self._require_online_mode("生产控制"):
-            return
-        if not self._production_paused or not self._current_job_id:
-            self.statusBar().showMessage("当前没有已暂停的生产任务")
-            return
+        self._start_production_action("resume")
 
-        if self._protocol.dxf_job_resume(self._current_job_id):
-            self._production_running = True
-            self._production_paused = False
-            self._run_start_time = time.time()
-            mode_text = "空跑" if self._production_dry_run else "生产"
-            self._operation_status.setText(f"{mode_text}运行中")
-            self.statusBar().showMessage("生产已恢复")
-        else:
-            self.statusBar().showMessage("恢复失败")
-
-    def _on_production_stop(self):
+    def _on_production_stop(self, *, status_capability: str = "生产控制"):
         """Stop production."""
-        if not self._require_online_mode("生产控制"):
-            return
-        if not self._current_job_id:
-            self.statusBar().showMessage("当前没有运行中的生产任务")
-            return
-        if self._production_running and self._run_start_time > 0:
-            self._total_run_time += time.time() - self._run_start_time
-        self._run_start_time = 0
-        if self._protocol.dxf_job_stop(self._current_job_id):
-            self._production_paused = False
-            self._operation_status.setText("停止中")
-            self.statusBar().showMessage("停止请求已发送，等待后端完成")
-        else:
-            self.statusBar().showMessage("停止失败")
+        self._start_production_action("stop", status_capability=status_capability)
 
     def _on_target_changed(self, value):
         """Update target count."""
         self._target_count = value
-        self._target_label.setText(str(value))
         self._update_production_stats()
 
     def _on_reset_counter(self):
@@ -3792,13 +3999,12 @@ class MainWindow(QMainWindow):
             if self._dxf_loaded:
                 backend_active_job_id = str(getattr(status, "active_job_id", "")).strip()
                 backend_active_job_state = str(getattr(status, "active_job_state", "")).strip().lower()
+                tracked_job_id = backend_active_job_id or self._current_job_id
                 if backend_active_job_id:
                     self._current_job_id = backend_active_job_id
-                elif backend_active_job_state in ("", "completed", "failed", "cancelled"):
-                    self._current_job_id = ""
                 dxf_progress = (
-                    self._protocol.dxf_get_job_status(self._current_job_id)
-                    if self._current_job_id
+                    self._protocol.dxf_get_job_status(tracked_job_id)
+                    if tracked_job_id
                     else {
                         "state": "idle",
                         "overall_progress_percent": int(
@@ -3810,9 +4016,9 @@ class MainWindow(QMainWindow):
                 current = dxf_progress.get("current_segment", 0)
                 total = dxf_progress.get("total_segments", 0)
                 progress = dxf_progress.get("overall_progress_percent", dxf_progress.get("progress", 0))
-                state = dxf_progress.get("state", "")
+                state = str(dxf_progress.get("state", "")).strip().lower()
                 error_message = dxf_progress.get("error_message", "")
-                if backend_active_job_state and state in ("", "idle"):
+                if backend_active_job_state and state in ("", "idle", "unknown"):
                     state = backend_active_job_state
                 completed_count = int(dxf_progress.get("completed_count", self._completed_count) or 0)
                 if hasattr(self, '_global_progress'):
@@ -3824,32 +4030,63 @@ class MainWindow(QMainWindow):
                 else:
                     self._completed_count = completed_count
 
+                terminal_after_explicit_stop = self._pending_production_action == "stop"
                 if state == "paused":
-                    self._production_paused = True
                     self._production_running = False
-                    self._operation_status.setText("已暂停")
+                    self._run_start_time = 0
+                    if self._pending_production_action == "resume":
+                        self._production_paused = True
+                        self._operation_status.setText("恢复中")
+                    elif self._pending_production_action == "stop":
+                        self._production_paused = False
+                        self._operation_status.setText("停止中")
+                    else:
+                        self._pending_production_action = ""
+                        self._production_paused = True
+                        self._operation_status.setText("已暂停")
                 elif state in ("running", "pending"):
-                    self._production_paused = False
-                    self._production_running = True
-                    if self._run_start_time <= 0:
-                        self._run_start_time = time.time()
-                    mode_text = "空跑" if self._production_dry_run else "生产"
-                    self._operation_status.setText(f"{mode_text}运行中")
+                    if self._pending_production_action == "pause":
+                        self._production_paused = False
+                        self._production_running = True
+                        if self._run_start_time <= 0:
+                            self._run_start_time = time.time()
+                        self._operation_status.setText("暂停中")
+                    elif self._pending_production_action == "stop":
+                        self._production_paused = False
+                        self._production_running = False
+                        self._run_start_time = 0
+                        self._operation_status.setText("停止中")
+                    else:
+                        self._pending_production_action = ""
+                        self._production_paused = False
+                        self._production_running = True
+                        if self._run_start_time <= 0:
+                            self._run_start_time = time.time()
+                        mode_text = "空跑" if self._production_dry_run else "生产"
+                        self._operation_status.setText(f"{mode_text}运行中")
                 elif state == "stopping":
+                    self._pending_production_action = "stop"
                     self._production_paused = False
                     self._production_running = False
+                    self._run_start_time = 0
                     self._operation_status.setText("停止中")
                 elif state == "completed":
+                    self._pending_production_action = ""
                     self._production_running = False
                     self._production_paused = False
+                    self._run_start_time = 0
                     self._current_job_id = ""
-                    self._preview_session.mark_resync_pending()
+                    if terminal_after_explicit_stop:
+                        self._preview_session.clear_resync_pending()
+                    else:
+                        self._preview_session.mark_resync_pending()
                     self._sync_preview_session_fields()
                     self._operation_status.setText("完成")
                     self.statusBar().showMessage("生产目标已达成")
                 elif state == "unknown":
                     self._production_running = False
                     self._production_paused = False
+                    self._run_start_time = 0
                     self._operation_status.setText("状态未知")
                     self._runtime_status_fault = True
                     if error_message:
@@ -3857,17 +4094,30 @@ class MainWindow(QMainWindow):
                     else:
                         self.statusBar().showMessage("执行状态未知，请检查后端链路")
                 elif state in ("failed", "cancelled"):
+                    self._pending_production_action = ""
                     self._production_running = False
                     self._production_paused = False
+                    self._run_start_time = 0
                     self._current_job_id = ""
-                    self._preview_session.mark_resync_pending()
+                    if terminal_after_explicit_stop:
+                        self._preview_session.clear_resync_pending()
+                    else:
+                        self._preview_session.mark_resync_pending()
                     self._sync_preview_session_fields()
-                    status_text = "失败" if state == "failed" else "已取消"
+                    status_text = "失败" if state == "failed" else "已停止"
                     self._operation_status.setText(status_text)
                     if error_message:
                         self.statusBar().showMessage(f"执行失败: {error_message}")
                     else:
                         self.statusBar().showMessage(f"执行{status_text}")
+                else:
+                    if not tracked_job_id:
+                        self._pending_production_action = ""
+                        self._production_running = False
+                        self._production_paused = False
+                        self._run_start_time = 0
+
+                self._apply_mode_capabilities()
 
             # Update production stats periodically
             if self._production_running:
@@ -3927,6 +4177,11 @@ class MainWindow(QMainWindow):
             self._cancel_active_home_worker(reason="window_close")
             if home_worker.isRunning():
                 home_worker.wait(1000)
+        production_action_worker = self._production_action_worker
+        if production_action_worker is not None:
+            self._cancel_active_production_action_worker(reason="window_close")
+            if production_action_worker.isRunning():
+                production_action_worker.wait(1000)
         if self._preview_snapshot_worker and self._preview_snapshot_worker.isRunning():
             self._preview_snapshot_worker.wait(1000)
         if self._backend:
