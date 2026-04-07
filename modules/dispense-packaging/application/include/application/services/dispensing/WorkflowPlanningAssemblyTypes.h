@@ -88,6 +88,7 @@ struct WorkflowAuthorityPreviewArtifacts {
 
 struct WorkflowExecutionAssemblyRequest {
     Siligen::ProcessPath::Contracts::ProcessPath process_path;
+    Siligen::ProcessPath::Contracts::ProcessPath authority_process_path;
     Siligen::MotionPlanning::Contracts::MotionPlan motion_plan;
     std::string source_path;
     std::string dxf_filename;

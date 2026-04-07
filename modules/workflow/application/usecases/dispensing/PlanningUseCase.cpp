@@ -719,6 +719,7 @@ ExecutionAssemblyBuildInput BuildExecutionAssemblyInput(
     const PlanningRuntimeParams& runtime_params) {
     ExecutionAssemblyBuildInput input;
     input.process_path = authority_preview.process_path;
+    input.authority_process_path = authority_preview.authority_process_path;
     input.motion_plan = std::move(motion_plan);
     input.source_path = authority_preview.source_path;
     input.dxf_filename = authority_preview.dxf_filename;

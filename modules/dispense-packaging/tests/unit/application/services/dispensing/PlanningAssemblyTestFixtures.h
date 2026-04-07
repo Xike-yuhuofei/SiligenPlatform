@@ -173,6 +173,7 @@ inline WorkflowExecutionAssemblyRequest BuildWorkflowExecutionInput(
     const WorkflowAuthorityPreviewArtifacts& authority_preview) {
     WorkflowExecutionAssemblyRequest execution_input;
     execution_input.process_path = input.process_path;
+    execution_input.authority_process_path = input.authority_process_path;
     execution_input.motion_plan = input.motion_plan;
     execution_input.source_path = input.source_path;
     execution_input.dxf_filename = input.dxf_filename;
@@ -202,6 +203,7 @@ inline ExecutionAssemblyBuildInput BuildExecutionInput(
     const AuthorityPreviewBuildResult& authority_preview) {
     ExecutionAssemblyBuildInput execution_input;
     execution_input.process_path = input.process_path;
+    execution_input.authority_process_path = input.authority_process_path;
     execution_input.motion_plan = input.motion_plan;
     execution_input.source_path = input.source_path;
     execution_input.dxf_filename = input.dxf_filename;

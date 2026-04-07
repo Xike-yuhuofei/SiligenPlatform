@@ -566,6 +566,13 @@ const ProcessPath& ResolveAuthorityProcessPath(const AuthorityPreviewBuildInput&
     return input.process_path;
 }
 
+const ProcessPath& ResolveExecutionProcessPath(const ExecutionAssemblyBuildInput& input) {
+    if (!input.authority_process_path.segments.empty()) {
+        return input.authority_process_path;
+    }
+    return input.process_path;
+}
+
 bool ValidateGlueSpacing(
     const PlanningArtifactsBuildInput& input,
     TriggerArtifacts& artifacts,
@@ -1022,6 +1029,7 @@ ExecutionAssemblyBuildInput BuildExecutionAssemblyBuildInput(
     AuthorityPreviewBuildResult authority_preview) {
     ExecutionAssemblyBuildInput execution_input;
     execution_input.process_path = input.process_path;
+    execution_input.authority_process_path = input.authority_process_path;
     execution_input.motion_plan = input.motion_plan;
     execution_input.source_path = input.source_path;
     execution_input.dxf_filename = input.dxf_filename;
@@ -1688,11 +1696,14 @@ Result<AuthorityPreviewBuildResult> DispensePlanningFacade::BuildAuthorityPrevie
 
 Result<ExecutionAssemblyBuildResult> DispensePlanningFacade::BuildExecutionArtifactsFromAuthority(
     const ExecutionAssemblyBuildInput& input) const {
+    const auto& execution_process_path = ResolveExecutionProcessPath(input);
     auto log_stage = [&](const char* stage, const std::string& detail = std::string()) {
         std::ostringstream oss;
         oss << "planning_artifacts_stage=" << stage
             << " dxf=" << input.dxf_filename
             << " process_segments=" << input.process_path.segments.size()
+            << " authority_segments=" << input.authority_process_path.segments.size()
+            << " execution_segments=" << execution_process_path.segments.size()
             << " motion_points=" << input.motion_plan.points.size()
             << " preview_layout=" << input.authority_preview.authority_trigger_layout.layout_id;
         if (!detail.empty()) {
@@ -1703,7 +1714,7 @@ Result<ExecutionAssemblyBuildResult> DispensePlanningFacade::BuildExecutionArtif
 
     log_stage("execution_assembly_start");
 
-    if (input.process_path.segments.empty()) {
+    if (execution_process_path.segments.empty()) {
         return Result<ExecutionAssemblyBuildResult>::Failure(
             Error(ErrorCode::INVALID_PARAMETER, "process path为空", "DispensePlanningFacade"));
     }
@@ -1722,7 +1733,8 @@ Result<ExecutionAssemblyBuildResult> DispensePlanningFacade::BuildExecutionArtif
     }
 
     PlanningArtifactsBuildInput execution_input;
-    execution_input.process_path = input.process_path;
+    execution_input.process_path = execution_process_path;
+    execution_input.authority_process_path = input.authority_process_path;
     execution_input.motion_plan = input.motion_plan;
     execution_input.source_path = input.source_path;
     execution_input.dxf_filename = input.dxf_filename;
@@ -1745,7 +1757,7 @@ Result<ExecutionAssemblyBuildResult> DispensePlanningFacade::BuildExecutionArtif
     execution_input.compensation_profile = input.compensation_profile;
 
     auto interpolation_points_result =
-        BuildInterpolationPoints(execution_input, input.process_path, trigger_artifacts);
+        BuildInterpolationPoints(execution_input, execution_process_path, trigger_artifacts);
     if (interpolation_points_result.IsError()) {
         return Result<ExecutionAssemblyBuildResult>::Failure(interpolation_points_result.GetError());
     }
@@ -1758,7 +1770,7 @@ Result<ExecutionAssemblyBuildResult> DispensePlanningFacade::BuildExecutionArtif
 
     InterpolationProgramFacade program_planner;
     auto interpolation_program =
-        program_planner.BuildProgram(input.process_path, input.motion_plan, input.acceleration);
+        program_planner.BuildProgram(execution_process_path, input.motion_plan, input.acceleration);
     if (interpolation_program.IsError()) {
         return Result<ExecutionAssemblyBuildResult>::Failure(interpolation_program.GetError());
     }
@@ -1779,7 +1791,7 @@ Result<ExecutionAssemblyBuildResult> DispensePlanningFacade::BuildExecutionArtif
     built.execution_plan.trigger_interval_ms = trigger_artifacts.interval_ms;
     built.execution_plan.trigger_interval_mm = trigger_artifacts.interval_mm;
     built.execution_plan.total_length_mm =
-        input.motion_plan.total_length > kEpsilon ? input.motion_plan.total_length : ComputeProcessPathLength(input.process_path);
+        input.motion_plan.total_length > kEpsilon ? input.motion_plan.total_length : ComputeProcessPathLength(execution_process_path);
     built.total_length_mm = built.execution_plan.total_length_mm;
     built.estimated_time_s = input.estimated_time_s;
     built.source_path = input.source_path;

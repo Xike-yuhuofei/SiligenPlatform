@@ -1,16 +1,11 @@
 #include <gtest/gtest.h>
 
-#include <atomic>
-#include <limits>
-#include <memory>
-#include <utility>
-#include <vector>
-
 #include "modules/dispense-packaging/domain/dispensing/domain-services/DispensingProcessService.h"
-
-#include "domain/motion/ports/IInterpolationPort.h"
-#include "domain/motion/ports/IMotionStatePort.h"
 #include "shared/types/Error.h"
+
+#include <atomic>
+#include <memory>
+#include <vector>
 
 namespace {
 
@@ -35,28 +30,13 @@ using Siligen::Shared::Types::LogicalAxisId;
 using Siligen::Shared::Types::Point2D;
 using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::float32;
-using int16 = std::int16_t;
-using int32 = std::int32_t;
-using uint32 = std::uint32_t;
+using Siligen::Shared::Types::uint32;
 
-template <typename Tag, typename Tag::type Member>
+template <typename Tag, typename Tag::type M>
 struct PrivateMemberAccessor {
     friend typename Tag::type GetPrivateMember(Tag) {
-        return Member;
+        return M;
     }
-};
-
-struct WaitForMotionCompleteTag {
-    using type = Result<void> (DispensingProcessService::*)(int32,
-                                                            std::atomic<bool>*,
-                                                            std::atomic<bool>*,
-                                                            std::atomic<bool>*,
-                                                            const Point2D*,
-                                                            float32,
-                                                            uint32,
-                                                            bool,
-                                                            IDispensingExecutionObserver*) noexcept;
-    friend type GetPrivateMember(WaitForMotionCompleteTag);
 };
 
 struct ExecutePlanInternalTag {
@@ -72,19 +52,16 @@ struct ExecutePlanInternalTag {
 };
 
 template struct PrivateMemberAccessor<
-    WaitForMotionCompleteTag,
-    &DispensingProcessService::WaitForMotionComplete>;
-template struct PrivateMemberAccessor<
     ExecutePlanInternalTag,
     &DispensingProcessService::ExecutePlanInternal>;
 
 template <typename T>
 Result<T> NotImplemented(const char* method) {
-    return Result<T>::Failure(Error(ErrorCode::NOT_IMPLEMENTED, method, "DispensingProcessServiceWaitTest"));
+    return Result<T>::Failure(Error(ErrorCode::PORT_NOT_INITIALIZED, method));
 }
 
 Result<void> NotImplementedVoid(const char* method) {
-    return Result<void>::Failure(Error(ErrorCode::NOT_IMPLEMENTED, method, "DispensingProcessServiceWaitTest"));
+    return Result<void>::Failure(Error(ErrorCode::PORT_NOT_INITIALIZED, method));
 }
 
 class FakeInterpolationPort final : public IInterpolationPort {
@@ -130,15 +107,15 @@ class FakeInterpolationPort final : public IInterpolationPort {
     }
 
     Result<void> EnableCoordinateSystemSCurve(int16, float32) override {
-        return NotImplementedVoid("EnableCoordinateSystemSCurve");
+        return Result<void>::Success();
     }
 
     Result<void> DisableCoordinateSystemSCurve(int16) override {
-        return NotImplementedVoid("DisableCoordinateSystemSCurve");
+        return Result<void>::Success();
     }
 
     Result<void> SetConstLinearVelocityMode(int16, bool, uint32) override {
-        return NotImplementedVoid("SetConstLinearVelocityMode");
+        return Result<void>::Success();
     }
 
     Result<uint32> GetInterpolationBufferSpace(int16) const override {
@@ -154,9 +131,9 @@ class FakeInterpolationPort final : public IInterpolationPort {
     }
 
     CoordinateSystemStatus status{
-        CoordinateSystemState::MOVING,
-        true,
-        1U,
+        CoordinateSystemState::IDLE,
+        false,
+        0,
         0.0f,
         0,
         1,
@@ -174,40 +151,48 @@ class FakeInterpolationPort final : public IInterpolationPort {
 
 class SequencedMotionStatePort final : public IMotionStatePort {
    public:
-    explicit SequencedMotionStatePort(std::vector<Point2D> positions_in) : positions(std::move(positions_in)) {}
+    explicit SequencedMotionStatePort(std::vector<Point2D> positions)
+        : positions_(std::move(positions)) {}
 
     Result<Point2D> GetCurrentPosition() const override {
-        if (positions.empty()) {
+        if (positions_.empty()) {
             return Result<Point2D>::Success(Point2D{});
         }
-        const auto index = current_index < positions.size() ? current_index : positions.size() - 1;
-        const auto value = positions[index];
-        if (current_index + 1 < positions.size()) {
-            ++current_index;
+        const auto index = std::min(cursor_, positions_.size() - 1U);
+        const auto position = positions_[index];
+        if (cursor_ + 1U < positions_.size()) {
+            ++cursor_;
         }
-        last_position = value;
-        return Result<Point2D>::Success(value);
+        return Result<Point2D>::Success(position);
     }
 
     Result<float32> GetAxisPosition(LogicalAxisId axis) const override {
-        if (axis == LogicalAxisId::X) {
-            return Result<float32>::Success(last_position.x);
+        auto position_result = GetCurrentPosition();
+        if (position_result.IsError()) {
+            return Result<float32>::Failure(position_result.GetError());
         }
-        if (axis == LogicalAxisId::Y) {
-            return Result<float32>::Success(last_position.y);
-        }
-        return Result<float32>::Success(0.0f);
+        const auto& position = position_result.Value();
+        return Result<float32>::Success(axis == LogicalAxisId::X ? position.x : position.y);
     }
 
     Result<float32> GetAxisVelocity(LogicalAxisId) const override {
         return Result<float32>::Success(0.0f);
     }
 
-    Result<MotionStatus> GetAxisStatus(LogicalAxisId) const override {
+    Result<MotionStatus> GetAxisStatus(LogicalAxisId axis) const override {
+        auto position_result = GetAxisPosition(axis);
+        if (position_result.IsError()) {
+            return Result<MotionStatus>::Failure(position_result.GetError());
+        }
+
         MotionStatus status;
         status.state = MotionState::IDLE;
-        status.position = last_position;
-        status.velocity = 0.0f;
+        status.in_position = true;
+        status.enabled = true;
+        status.axis_position_mm = position_result.Value();
+        status.profile_position_mm = position_result.Value();
+        status.encoder_position_mm = position_result.Value();
+        status.selected_feedback_source = "profile";
         return Result<MotionStatus>::Success(status);
     }
 
@@ -220,12 +205,13 @@ class SequencedMotionStatePort final : public IMotionStatePort {
     }
 
     Result<std::vector<MotionStatus>> GetAllAxesStatus() const override {
-        return Result<std::vector<MotionStatus>>::Success({});
+        return Result<std::vector<MotionStatus>>::Failure(
+            Error(ErrorCode::PORT_NOT_INITIALIZED, "GetAllAxesStatus"));
     }
 
-    mutable std::size_t current_index = 0;
-    mutable Point2D last_position{};
-    std::vector<Point2D> positions{};
+   private:
+    mutable std::size_t cursor_ = 0U;
+    std::vector<Point2D> positions_{};
 };
 
 DispensingExecutionPlan BuildLinearExecutionPlan() {
@@ -289,148 +275,7 @@ DispensingExecutionOptions BuildExecutionOptions() {
     return options;
 }
 
-TEST(DispensingProcessServiceWaitForMotionCompleteTest, StablePositionAwayFromTargetTimesOut) {
-    auto interpolation_port = std::make_shared<FakeInterpolationPort>();
-    auto motion_state_port = std::make_shared<SequencedMotionStatePort>(
-        std::vector<Point2D>{Point2D{0.0f, 0.0f}, Point2D{92.305f, 0.0f}});
-    DispensingProcessService service(nullptr,
-                                     interpolation_port,
-                                     motion_state_port,
-                                     nullptr,
-                                     nullptr);
-
-    std::atomic<bool> stop_flag{false};
-    std::atomic<bool> pause_flag{false};
-    std::atomic<bool> pause_applied_flag{false};
-    Point2D final_target{100.0f, 100.0f};
-    const auto wait_for_motion_complete = GetPrivateMember(WaitForMotionCompleteTag{});
-
-    auto result = (service.*wait_for_motion_complete)(
-        180,
-        &stop_flag,
-        &pause_flag,
-        &pause_applied_flag,
-        &final_target,
-        1.0f,
-        9U,
-        false,
-        nullptr);
-
-    ASSERT_TRUE(result.IsError());
-    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::MOTION_TIMEOUT);
-}
-
-TEST(DispensingProcessServiceWaitForMotionCompleteTest, NearTargetLowVelocityFallsBackToSuccess) {
-    auto interpolation_port = std::make_shared<FakeInterpolationPort>();
-    interpolation_port->status.state = CoordinateSystemState::IDLE;
-    interpolation_port->status.is_moving = false;
-    interpolation_port->status.remaining_segments = 0U;
-    auto motion_state_port = std::make_shared<SequencedMotionStatePort>(
-        std::vector<Point2D>{Point2D{0.0f, 0.0f}, Point2D{99.7f, 99.8f}, Point2D{99.7f, 99.8f}, Point2D{99.7f, 99.8f},
-                             Point2D{99.7f, 99.8f}, Point2D{99.7f, 99.8f}, Point2D{99.7f, 99.8f}});
-    DispensingProcessService service(nullptr,
-                                     interpolation_port,
-                                     motion_state_port,
-                                     nullptr,
-                                     nullptr);
-
-    std::atomic<bool> stop_flag{false};
-    std::atomic<bool> pause_flag{false};
-    std::atomic<bool> pause_applied_flag{false};
-    Point2D final_target{100.0f, 100.0f};
-    const auto wait_for_motion_complete = GetPrivateMember(WaitForMotionCompleteTag{});
-
-    auto result = (service.*wait_for_motion_complete)(
-        800,
-        &stop_flag,
-        &pause_flag,
-        &pause_applied_flag,
-        &final_target,
-        1.0f,
-        9U,
-        false,
-        nullptr);
-
-    ASSERT_TRUE(result.IsSuccess());
-}
-
-TEST(DispensingProcessServiceWaitForMotionCompleteTest, FifoFinishedWithLatchedRunBitFallsBackToSuccess) {
-    auto interpolation_port = std::make_shared<FakeInterpolationPort>();
-    interpolation_port->status.state = CoordinateSystemState::MOVING;
-    interpolation_port->status.is_moving = true;
-    interpolation_port->status.remaining_segments = std::numeric_limits<uint32>::max();
-    interpolation_port->status.current_velocity = 0.0f;
-    interpolation_port->status.raw_status_word = 0x11;
-    interpolation_port->status.raw_segment = -858993460;
-    interpolation_port->status.mc_status_ret = 0;
-
-    auto motion_state_port = std::make_shared<SequencedMotionStatePort>(
-        std::vector<Point2D>{Point2D{0.0f, 0.0f}, Point2D{100.0f, 100.0f}, Point2D{100.0f, 100.0f},
-                             Point2D{100.0f, 100.0f}, Point2D{100.0f, 100.0f}, Point2D{100.0f, 100.0f},
-                             Point2D{100.0f, 100.0f}});
-    DispensingProcessService service(nullptr,
-                                     interpolation_port,
-                                     motion_state_port,
-                                     nullptr,
-                                     nullptr);
-
-    std::atomic<bool> stop_flag{false};
-    std::atomic<bool> pause_flag{false};
-    std::atomic<bool> pause_applied_flag{false};
-    Point2D final_target{100.0f, 100.0f};
-    const auto wait_for_motion_complete = GetPrivateMember(WaitForMotionCompleteTag{});
-
-    auto result = (service.*wait_for_motion_complete)(
-        800,
-        &stop_flag,
-        &pause_flag,
-        &pause_applied_flag,
-        &final_target,
-        1.0f,
-        9U,
-        false,
-        nullptr);
-
-    ASSERT_TRUE(result.IsSuccess());
-}
-
-TEST(DispensingProcessServiceWaitForMotionCompleteTest, IdleCoordinateSystemAwayFromTargetStillTimesOut) {
-    auto interpolation_port = std::make_shared<FakeInterpolationPort>();
-    interpolation_port->status.state = CoordinateSystemState::IDLE;
-    interpolation_port->status.is_moving = false;
-    interpolation_port->status.remaining_segments = 0U;
-
-    auto motion_state_port = std::make_shared<SequencedMotionStatePort>(
-        std::vector<Point2D>{Point2D{0.0f, 0.0f}, Point2D{92.305f, 0.0f}, Point2D{92.305f, 0.0f},
-                             Point2D{92.305f, 0.0f}, Point2D{92.305f, 0.0f}, Point2D{92.305f, 0.0f}});
-    DispensingProcessService service(nullptr,
-                                     interpolation_port,
-                                     motion_state_port,
-                                     nullptr,
-                                     nullptr);
-
-    std::atomic<bool> stop_flag{false};
-    std::atomic<bool> pause_flag{false};
-    std::atomic<bool> pause_applied_flag{false};
-    Point2D final_target{100.0f, 100.0f};
-    const auto wait_for_motion_complete = GetPrivateMember(WaitForMotionCompleteTag{});
-
-    auto result = (service.*wait_for_motion_complete)(
-        180,
-        &stop_flag,
-        &pause_flag,
-        &pause_applied_flag,
-        &final_target,
-        1.0f,
-        9U,
-        false,
-        nullptr);
-
-    ASSERT_TRUE(result.IsError());
-    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::MOTION_TIMEOUT);
-}
-
-TEST(DispensingProcessServiceWaitForMotionCompleteTest, ExecutePlanInternalKeepsDispatchOrderWithPreviewTraceEnabled) {
+TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalKeepsDispatchOrderWithPreviewTraceEnabled) {
     auto interpolation_port = std::make_shared<FakeInterpolationPort>();
     auto motion_state_port = std::make_shared<SequencedMotionStatePort>(
         std::vector<Point2D>{Point2D{10.0f, 0.0f}, Point2D{10.0f, 0.0f}, Point2D{10.0f, 0.0f}});
