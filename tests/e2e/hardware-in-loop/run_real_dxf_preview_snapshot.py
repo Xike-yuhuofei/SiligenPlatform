@@ -108,6 +108,20 @@ def extract_points(snapshot_payload: dict[str, Any], field_name: str) -> list[di
     return output
 
 
+def extract_float_list(snapshot_payload: dict[str, Any], field_name: str) -> list[float]:
+    result = status_result(snapshot_payload) if "result" in snapshot_payload else snapshot_payload
+    raw_values = result.get(field_name, [])
+    output: list[float] = []
+    if not isinstance(raw_values, list):
+        return output
+    for value in raw_values:
+        try:
+            output.append(float(value))
+        except (TypeError, ValueError):
+            continue
+    return output
+
+
 def distance_mm(point_a: dict[str, float], point_b: dict[str, float]) -> float:
     return math.hypot(point_b["x"] - point_a["x"], point_b["y"] - point_a["y"])
 
@@ -160,7 +174,11 @@ def summarize_motion_preview(points: list[dict[str, float]]) -> dict[str, Any]:
     return summary
 
 
-def summarize_glue_points(points: list[dict[str, float]], duplicate_tolerance_mm: float) -> dict[str, Any]:
+def summarize_glue_points(
+    points: list[dict[str, float]],
+    duplicate_tolerance_mm: float,
+    reveal_lengths_mm: list[float] | None = None,
+) -> dict[str, Any]:
     summary = summarize_point_cloud(points)
     if len(points) < 2:
         summary.update(
@@ -170,12 +188,26 @@ def summarize_glue_points(points: list[dict[str, float]], duplicate_tolerance_mm
                 "adjacent_distance_max_mm": 0.0,
                 "consecutive_duplicate_pairs": 0,
                 "corner_duplicate_point_count": 0,
+                "illegal_corner_duplicate_point_count": 0,
             }
         )
         return summary
 
     distances = [distance_mm(points[index - 1], points[index]) for index in range(1, len(points))]
     duplicate_pairs = sum(1 for value in distances if value <= duplicate_tolerance_mm)
+
+    reveal_lengths = list(reveal_lengths_mm or [])
+    illegal_duplicate_pairs = 0
+    for index, value in enumerate(distances, start=1):
+        if value > duplicate_tolerance_mm:
+            continue
+        if index >= len(reveal_lengths):
+            illegal_duplicate_pairs += 1
+            continue
+        reveal_delta = abs(reveal_lengths[index] - reveal_lengths[index - 1])
+        if reveal_delta <= duplicate_tolerance_mm:
+            illegal_duplicate_pairs += 1
+
     summary.update(
         {
             "adjacent_distance_median_mm": float(statistics.median(distances)),
@@ -183,6 +215,7 @@ def summarize_glue_points(points: list[dict[str, float]], duplicate_tolerance_mm
             "adjacent_distance_max_mm": float(max(distances)),
             "consecutive_duplicate_pairs": duplicate_pairs,
             "corner_duplicate_point_count": duplicate_pairs,
+            "illegal_corner_duplicate_point_count": illegal_duplicate_pairs,
         }
     )
     return summary
@@ -229,7 +262,7 @@ def build_preview_verdict(
         and glue_point_count > 0
         and motion_preview_point_count == int(motion_preview_summary["point_count"])
         and motion_preview_source_point_count >= motion_preview_point_count
-        and int(glue_summary["corner_duplicate_point_count"]) == 0
+        and int(glue_summary.get("illegal_corner_duplicate_point_count", glue_summary["corner_duplicate_point_count"])) == 0
         and (
             motion_preview_source_point_count == 0
             or glue_point_count < motion_preview_source_point_count
@@ -502,6 +535,7 @@ def main() -> int:
     plan_result: dict[str, Any] = {}
     snapshot_result: dict[str, Any] = {}
     glue_points: list[dict[str, float]] = []
+    glue_reveal_lengths_mm: list[float] = []
     motion_preview_points: list[dict[str, float]] = []
     glue_summary = summarize_glue_points([], POINT_DUPLICATE_TOLERANCE_MM)
     motion_preview_summary = summarize_motion_preview([])
@@ -663,6 +697,7 @@ def main() -> int:
             raise RuntimeError(f"unexpected preview_kind: {preview_kind}")
 
         glue_points = extract_points(snapshot_response, "glue_points")
+        glue_reveal_lengths_mm = extract_float_list(snapshot_result, "glue_reveal_lengths_mm")
         motion_preview_block = snapshot_result.get("motion_preview", {})
         if not isinstance(motion_preview_block, dict):
             motion_preview_block = {}
@@ -672,7 +707,11 @@ def main() -> int:
         if not motion_preview_points:
             raise RuntimeError("dxf.preview.snapshot missing motion_preview.polyline")
 
-        glue_summary = summarize_glue_points(glue_points, POINT_DUPLICATE_TOLERANCE_MM)
+        glue_summary = summarize_glue_points(
+            glue_points,
+            POINT_DUPLICATE_TOLERANCE_MM,
+            glue_reveal_lengths_mm,
+        )
         motion_preview_summary = summarize_motion_preview(motion_preview_points)
         write_json(snapshot_json_path, snapshot_result)
         write_json(glue_points_json_path, glue_points)

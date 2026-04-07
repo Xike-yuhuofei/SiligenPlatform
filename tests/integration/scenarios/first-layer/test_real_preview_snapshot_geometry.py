@@ -247,3 +247,45 @@ def test_real_preview_snapshot_matches_rect_diag_baseline(tmp_path: Path) -> Non
             coordinate_tolerance,
             f"motion_preview[{index}].y",
         )
+
+
+def test_build_preview_verdict_treats_same_position_with_distinct_reveal_lengths_as_valid() -> None:
+    from run_real_dxf_preview_snapshot import build_preview_verdict, summarize_glue_points
+
+    glue_points = [
+        {"x": 336.053, "y": 152.501},
+        {"x": 338.638, "y": 153.484},
+        {"x": 338.638, "y": 153.484},
+        {"x": 336.053, "y": 152.501},
+    ]
+    glue_reveal_lengths_mm = [13818.0380859375, 13820.8037109375, 13848.8486328125, 13851.6142578125]
+    glue_summary = summarize_glue_points(glue_points, 1e-4, glue_reveal_lengths_mm)
+
+    verdict = build_preview_verdict(
+        launch_mode="online",
+        online_ready=True,
+        dxf_file=Path("demo.dxf"),
+        artifact_id="artifact-1",
+        preview_source="planned_glue_snapshot",
+        preview_kind="glue_points",
+        snapshot_hash="hash-1",
+        plan_id="plan-1",
+        snapshot_plan_id="plan-1",
+        plan_fingerprint="hash-1",
+        glue_summary=glue_summary,
+        motion_preview_summary={"point_count": 3},
+        snapshot_payload={
+            "glue_point_count": 4,
+            "motion_preview": {
+                "point_count": 3,
+                "source_point_count": 10,
+            },
+        },
+        confirmed=True,
+        error_message="",
+    )
+
+    assert glue_summary["corner_duplicate_point_count"] == 1
+    assert glue_summary["illegal_corner_duplicate_point_count"] == 0
+    assert verdict["geometry_semantics_match"] is True
+    assert verdict["verdict"] == "passed"
