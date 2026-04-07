@@ -413,7 +413,7 @@ nlohmann::json BuildPreviewSignaturePayload(const std::string& filepath, const n
     payload["dispensing_speed_mm_s"] = ReadJsonDouble(params, "dispensing_speed_mm_s", ReadJsonDouble(params, "speed_mm_s", 0.0));
     payload["dry_run_speed_mm_s"] = ReadJsonDouble(params, "dry_run_speed_mm_s", 0.0);
     payload["rapid_speed_mm_s"] = ReadJsonDouble(params, "rapid_speed_mm_s", 0.0);
-    payload["optimize_path"] = ReadJsonBool(params, "optimize_path", false);
+    payload["optimize_path"] = ReadJsonBool(params, "optimize_path", true);
     payload["start_x"] = ReadJsonDouble(params, "start_x", 0.0);
     payload["start_y"] = ReadJsonDouble(params, "start_y", 0.0);
     payload["approximate_splines"] = ReadJsonBool(params, "approximate_splines", false);
@@ -459,7 +459,7 @@ Application::UseCases::Dispensing::PlanningRequest BuildPreviewPlanningRequest(
     request.trajectory_config.arc_tolerance = static_cast<float32>(
         ReadJsonDouble(params, "arc_tolerance_mm", ReadJsonDouble(params, "arc_tolerance", request.trajectory_config.arc_tolerance)));
 
-    request.optimize_path = ReadJsonBool(params, "optimize_path", false);
+    request.optimize_path = ReadJsonBool(params, "optimize_path", true);
     request.start_x = static_cast<float32>(ReadJsonDouble(params, "start_x", 0.0));
     request.start_y = static_cast<float32>(ReadJsonDouble(params, "start_y", 0.0));
     request.approximate_splines = ReadJsonBool(params, "approximate_splines", false);

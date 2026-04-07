@@ -172,6 +172,7 @@ def test_dxf_preview_gate_contract_is_wired():
     assert 'LogPreviewGateFailure("dxf.preview.snapshot"' in source
     assert 'LogPreviewGateFailure("dxf.preview.confirm"' in source
     assert 'LogPreviewGateFailure("dxf.job.start"' in source
+    assert 'ReadJsonBool(params, "optimize_path", true)' in source
     assert 'ReadJsonBool(params, "use_interpolation_planner", true)' in source
     assert "BuildPreparePlanRequest(" in source
     assert "BuildPreparePlanRuntimeOverrides(" in source
