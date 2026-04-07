@@ -7,10 +7,9 @@
 标定执行流程统一通过 `runtime_execution/contracts/system/ICalibrationExecutionPort` 与 `ICalibrationResultSink` 承接；`M5 coordinate-alignment` 仅负责测量事实到 `CoordinateTransformSet` 的结果收敛。
 插补相关规则（策略选择、参数校验、插补程序生成）统一在 Domain 层完成，用例只做参数映射与调用，禁止重复实现。
 运行时执行态、急停态、手动运动许可等跨模块状态必须通过 `runtime_execution/contracts/system/IMachineExecutionStatePort` 读取，不得在应用层直接依赖旧 machine 聚合或历史 calibration 兼容类型。
-安全互锁用例与监控的规则统一来源于 `motion-core`；用例与监控通过 `domain/safety/bridges/MotionCoreInterlockBridge.h` 调用模块能力，不得复写互锁判定逻辑。
-配方校验/生效规则统一来源于 `process-core`；用例通过 `recipes/RecipeUseCaseHelpers.h` 调用模块能力，不得直接修改配方生效状态或重复实现审计规则。
-胶路建压/稳压流程必须调用领域层统一入口（`Domain::Dispensing::DomainServices::PurgeDispenserProcess` /
-`DispensingProcessService` + `SupplyStabilizationPolicy`），用例不得实现稳压等待、超时或建压时序。
+安全互锁用例与监控统一通过 `Domain::Safety::DomainServices::InterlockPolicy` 承接；用例与监控只能依赖 canonical domain service，不得复写互锁判定逻辑。
+配方校验/生效统一通过 workflow domain 的 `RecipeValidationService` / `RecipeActivationService` 承接；`recipes/RecipeUseCaseHelpers.h` 仅保留通用工具，不得承担规则桥接、直接修改配方生效状态或重复实现审计规则。
+胶路建压/稳压流程必须调用领域层统一入口（`Domain::Dispensing::DomainServices::PurgeDispenserProcess`），DXF 执行链通过 `runtime_execution/contracts/dispensing/IDispensingProcessPort` 承接；用例不得实现稳压等待、超时或建压时序。
 如需覆盖稳压时间，仅允许通过请求参数 `supply_stabilization_ms` 传递，范围由领域层校验（0-5000ms，0 表示使用配置默认值）。
 
 ## 设计原则
@@ -37,7 +36,7 @@ Result<SomeResponse> Execute(const SomeRequest& request);
 ```
 
 ### 4. 点胶流程统一入口
-- 点胶执行流程（阀门控制、触发配置、流程顺序与校验）必须由 `Domain::Dispensing::DomainServices::DispensingProcessService` 统一负责。
+- 点胶执行流程（阀门控制、触发配置、流程顺序与校验）必须由 `runtime_execution/contracts/dispensing/IDispensingProcessPort` 统一负责。
 - 用例只做请求映射、端口编排与可观测性扩展（如速度采样），不得复制流程规则。
 
 ## 用例列表

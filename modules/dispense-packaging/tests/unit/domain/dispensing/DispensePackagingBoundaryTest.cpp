@@ -58,40 +58,79 @@ TEST(DispensePackagingBoundaryTest, ModuleRootRequiresApplicationPublicTargetAnd
     EXPECT_EQ(content.find("siligen_dispense_packaging_domain_dispensing\n    )"), std::string::npos);
 }
 
-TEST(DispensePackagingBoundaryTest, RuntimeServiceUsesApplicationProviderInsteadOfDirectDomainServiceInclude) {
+TEST(DispensePackagingBoundaryTest, RuntimeServiceComposesM9DispensingProcessPortFactoryInsteadOfM8ExecutionWrapper) {
     const fs::path repo_root = RepoRoot();
     const std::string content = ReadTextFile(
-        repo_root / "apps/runtime-service/runtime/dispensing/WorkflowDispensingProcessOperations.cpp");
+        repo_root / "apps/runtime-service/container/ApplicationContainer.Dispensing.cpp");
 
     EXPECT_NE(
-        content.find('#' + std::string("include \"runtime/dispensing/WorkflowDispensingProcessOperations.h\"")),
-        std::string::npos);
-    EXPECT_EQ(
         content.find(
             '#' +
-            std::string("include \"modules/dispense-packaging/domain/dispensing/domain-services/DispensingProcessService.h\"")),
+            std::string("include \"runtime_execution/application/services/dispensing/DispensingProcessPortFactory.h\"")),
         std::string::npos);
-    EXPECT_NE(content.find("WorkflowDispensingProcessOperationsProvider{}.CreateOperations("), std::string::npos);
+    EXPECT_NE(content.find("CreateDispensingProcessPort("), std::string::npos);
+    EXPECT_EQ(
+        content.find('#' + std::string("include \"runtime/dispensing/WorkflowDispensingProcessPortAdapter.h\"")),
+        std::string::npos);
+    EXPECT_EQ(content.find("WorkflowDispensingProcessPortAdapter"), std::string::npos);
+}
+
+TEST(DispensePackagingBoundaryTest, LegacyExecutionProviderAndTestsAreRemovedFromM8AndWorkflow) {
+    const fs::path repo_root = RepoRoot();
+
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/application/include/application/services/dispensing/WorkflowDispensingProcessOperations.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/application/include/application/services/dispensing/WorkflowDispensingProcessOperationsProvider.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/application/services/dispensing/WorkflowDispensingProcessOperationsProvider.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/tests/unit/application/services/dispensing/WorkflowDispensingProcessOperationsProviderTest.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/tests/unit/domain/dispensing/DispensingProcessServiceTraceTest.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/tests/process-runtime-core/unit/dispensing/DispensingProcessServiceWaitForMotionCompleteTest.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/domain/domain/dispensing/domain-services/DispensingProcessService.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/domain/domain/dispensing/domain-services/DispensingProcessService.cpp"));
+
+    EXPECT_TRUE(fs::exists(repo_root / "modules/runtime-execution/tests/unit/DispensingProcessPortFactoryTest.cpp"));
+    EXPECT_TRUE(fs::exists(repo_root / "modules/runtime-execution/tests/unit/DispensingProcessServiceTraceTest.cpp"));
+    EXPECT_TRUE(fs::exists(repo_root / "modules/runtime-execution/tests/unit/DispensingProcessServiceWaitForMotionCompleteTest.cpp"));
 }
 
 TEST(DispensePackagingBoundaryTest, WorkflowPlanningUseCaseConsumesSingleM8AssemblyProvider) {
     const fs::path repo_root = RepoRoot();
-    const std::string content = ReadTextFile(
+    const std::string header = ReadTextFile(
         repo_root / "modules/workflow/application/include/application/usecases/dispensing/PlanningUseCase.h");
+    const std::string source = ReadTextFile(
+        repo_root / "modules/workflow/application/usecases/dispensing/PlanningUseCase.cpp");
 
     EXPECT_NE(
-        content.find(
+        source.find(
             '#' +
-            std::string("include \"application/services/dispensing/WorkflowPlanningAssemblyOperationsProvider.h\"")),
+            std::string("include \"application/services/dispensing/WorkflowPlanningAssemblyOperations.h\"")),
+        std::string::npos);
+    EXPECT_NE(
+        header.find(
+            '#' +
+            std::string("include \"application/services/dispensing/WorkflowPlanningAssemblyTypes.h\"")),
         std::string::npos);
     EXPECT_EQ(
-        content.find('#' + std::string("include \"application/services/dispensing/AuthorityPreviewAssemblyService.h\"")),
+        source.find('#' + std::string("include \"application/services/dispensing/WorkflowPlanningAssemblyOperationsProvider.h\"")),
         std::string::npos);
     EXPECT_EQ(
-        content.find('#' + std::string("include \"application/services/dispensing/ExecutionAssemblyService.h\"")),
+        header.find('#' + std::string("include \"application/services/dispensing/WorkflowPlanningAssemblyOperationsProvider.h\"")),
         std::string::npos);
     EXPECT_EQ(
-        content.find('#' + std::string("include \"application/services/dispensing/PlanningAssemblyTypes.h\"")),
+        header.find('#' + std::string("include \"application/services/dispensing/AuthorityPreviewAssemblyService.h\"")),
+        std::string::npos);
+    EXPECT_EQ(
+        header.find('#' + std::string("include \"application/services/dispensing/ExecutionAssemblyService.h\"")),
+        std::string::npos);
+    EXPECT_EQ(
+        header.find('#' + std::string("include \"application/services/dispensing/PlanningAssemblyTypes.h\"")),
         std::string::npos);
 }
 
@@ -108,6 +147,25 @@ TEST(DispensePackagingBoundaryTest, WorkflowPlanningAssemblyPublicSeamUsesWorkfl
     EXPECT_EQ(
         content.find('#' + std::string("include \"application/services/dispensing/PlanningAssemblyTypes.h\"")),
         std::string::npos);
+}
+
+TEST(DispensePackagingBoundaryTest, WorkflowPlanningShimHeaderIsRemoved) {
+    const fs::path repo_root = RepoRoot();
+    const fs::path shim =
+        repo_root / "modules/workflow/application/include/application/services/dispensing/PlanningAssemblyTypes.h";
+
+    EXPECT_FALSE(fs::exists(shim));
+}
+
+TEST(DispensePackagingBoundaryTest, WorkflowPlanningPreviewAssemblyResidualIsRemoved) {
+    const fs::path repo_root = RepoRoot();
+    const fs::path header =
+        repo_root / "modules/workflow/application/services/dispensing/PlanningPreviewAssemblyService.h";
+    const fs::path source =
+        repo_root / "modules/workflow/application/services/dispensing/PlanningPreviewAssemblyService.cpp";
+
+    EXPECT_FALSE(fs::exists(header));
+    EXPECT_FALSE(fs::exists(source));
 }
 
 TEST(DispensePackagingBoundaryTest, WorkflowLegacyTriggerPlanHeaderForwardsToM8OwnerDefinition) {

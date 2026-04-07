@@ -8,7 +8,7 @@
 namespace Siligen::Runtime::Service::System {
 namespace {
 
-using Siligen::Domain::Machine::Aggregates::Legacy::DispenserModel;
+using Siligen::Domain::Machine::Aggregates::DispenserModel;
 using Siligen::RuntimeExecution::Contracts::System::MachineExecutionPhase;
 using Siligen::RuntimeExecution::Contracts::System::MachineExecutionSnapshot;
 using Siligen::Shared::Types::Error;

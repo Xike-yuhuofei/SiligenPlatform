@@ -2,15 +2,18 @@
 
 #include "runtime_execution/application/services/dispensing/PlanningArtifactExportPort.h"
 
+#include <memory>
+
 namespace Siligen::RuntimeExecution::Host::Planning {
 
 class PlanningArtifactExportPortAdapter final
-    : public Application::Services::Dispensing::IPlanningArtifactExportPort {
-public:
-    Shared::Types::Result<Application::Services::Dispensing::PlanningArtifactExportResult> Export(
-        const Application::Services::Dispensing::PlanningArtifactExportRequest& request) override;
+    : public Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort {
+   public:
+    Siligen::Shared::Types::Result<Siligen::Application::Services::Dispensing::PlanningArtifactExportResult> Export(
+        const Siligen::Application::Services::Dispensing::PlanningArtifactExportRequest& request) override;
 };
 
-std::shared_ptr<Application::Services::Dispensing::IPlanningArtifactExportPort> CreatePlanningArtifactExportPort();
+std::shared_ptr<Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort>
+CreatePlanningArtifactExportPort();
 
 }  // namespace Siligen::RuntimeExecution::Host::Planning

@@ -364,7 +364,7 @@ Result<PlanningArtifactExportResult> PlanningArtifactExportPortAdapter::Export(
     return Result<PlanningArtifactExportResult>::Success(std::move(result));
 }
 
-std::shared_ptr<Application::Services::Dispensing::IPlanningArtifactExportPort> CreatePlanningArtifactExportPort() {
+std::shared_ptr<Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort> CreatePlanningArtifactExportPort() {
     return std::make_shared<PlanningArtifactExportPortAdapter>();
 }
 

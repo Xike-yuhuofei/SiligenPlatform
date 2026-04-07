@@ -21,7 +21,7 @@ target_link_libraries(workflow_contract_tests PRIVATE
 )
 target_compile_features(workflow_contract_tests PRIVATE cxx_std_17)
 
-process_runtime_core_add_test_with_runtime_environment(
+siligen_add_test_with_runtime_environment(
     workflow_contract_tests
     workflow_contract_tests
 )

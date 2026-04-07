@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 set(RUNTIME_HOST_TEST_SOURCES
-    unit/runtime/calibration/CalibrationWorkflowServiceTest.cpp
+    unit/runtime/calibration/CalibrationExecutionServiceTest.cpp
     unit/runtime/diagnostics/DiagnosticsPortAdapterTest.cpp
     unit/runtime/dispensing/DispensingExecutionUseCaseInternalTest.cpp
     unit/runtime/motion/HardLimitMonitorServiceTest.cpp
@@ -10,10 +10,9 @@ set(RUNTIME_HOST_TEST_SOURCES
     unit/runtime/motion/MotionControlMigrationTest.cpp
     unit/runtime/motion/MultiCardMotionAdapterTest.cpp
     unit/runtime/motion/MotionRuntimeFacadeTest.cpp
-    unit/runtime/motion/WorkflowMotionRuntimeServicesProviderTest.cpp
+    unit/runtime/motion/MotionRuntimeServicesProviderTest.cpp
     unit/runtime/supervision/RuntimeSupervisionPortAdapterTest.cpp
     unit/runtime/system/DispenserModelMachineExecutionStateBackendTest.cpp
-    unit/runtime/system/LegacyMachineExecutionStateAdapterTest.cpp
 )
 
 add_executable(siligen_runtime_host_unit_tests ${RUNTIME_HOST_TEST_SOURCES})

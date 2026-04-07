@@ -1,4 +1,4 @@
-#include "application/usecases/redundancy/RedundancyGovernanceUseCases.h"
+#include "RedundancyGovernanceUseCases.h"
 
 #include "shared/types/Error.h"
 

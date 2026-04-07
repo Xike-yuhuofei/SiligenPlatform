@@ -26,7 +26,6 @@
 
 - `WorkflowPlanningAssemblyOperationsProvider`
 - `WorkflowPlanningAssemblyTypes.h`
-- `WorkflowDispensingProcessOperationsProvider`
 
 ## 输出契约
 
@@ -43,7 +42,7 @@
 - 不得重建 `MotionPlan`。
 - 不得把 `ExecutionPackageBuilt` 视为可执行。
 - 不得在 `workflow` 或宿主层重建 `PlanningArtifactExportRequest`。
-- 不得在宿主层直接 include 或构造 `domain/dispensing/DispensingProcessService`；运行时执行入口必须通过 `application/services/dispensing/WorkflowDispensingProcessOperationsProvider` 获取。
+- 不得在宿主层直接 include 或构造 `domain/dispensing/DispensingProcessService`；运行时执行入口必须通过 `runtime_execution/application/services/dispensing/DispensingProcessPortFactory.h` 暴露的 `CreateDispensingProcessPort(...)` 获取。
 
 ## 测试入口
 

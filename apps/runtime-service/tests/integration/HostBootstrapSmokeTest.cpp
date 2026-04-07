@@ -3,7 +3,7 @@
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "domain/safety/ports/IInterlockSignalPort.h"
 #include "siligen/device/adapters/drivers/multicard/MockMultiCardWrapper.h"
-#include "runtime_execution/contracts/dispensing/ITaskSchedulerPort.h"
+#include "domain/dispensing/ports/ITaskSchedulerPort.h"
 #include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
 #include "domain/dispensing/ports/IValvePort.h"
 #include "siligen/device/contracts/commands/device_commands.h"
@@ -278,7 +278,7 @@ TEST(RuntimeExecutionIntegrationHostBootstrapSmokeTest, BuildsContainerFromCanon
         container->ResolvePort<Siligen::Domain::Dispensing::Ports::IValvePort>(),
         nullptr);
     EXPECT_NE(
-        container->ResolvePort<Siligen::RuntimeExecution::Contracts::Dispensing::ITaskSchedulerPort>(),
+        container->ResolvePort<Siligen::Domain::Dispensing::Ports::ITaskSchedulerPort>(),
         nullptr);
     EXPECT_NE(container->GetMultiCardInstance(), nullptr);
 

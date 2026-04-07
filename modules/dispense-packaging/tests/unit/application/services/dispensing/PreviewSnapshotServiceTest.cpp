@@ -8,7 +8,7 @@
 namespace {
 
 using Siligen::Application::Services::Dispensing::PreviewSnapshotInput;
-using Siligen::Application::Services::Dispensing::PreviewSnapshotPayload;
+using Siligen::Application::Services::Dispensing::PreviewSnapshotResponse;
 using Siligen::Application::Services::Dispensing::PreviewSnapshotService;
 using Siligen::Shared::Types::Point2D;
 
@@ -38,7 +38,7 @@ PreviewSnapshotInput BuildInput(const std::vector<Siligen::TrajectoryPoint>& tra
 }
 
 bool SnapshotContainsPoint(
-    const PreviewSnapshotPayload& snapshot,
+    const PreviewSnapshotResponse& snapshot,
     float target_x,
     float target_y,
     float tolerance = 1e-3f) {
@@ -51,7 +51,7 @@ bool SnapshotContainsPoint(
 }
 
 std::size_t CountSnapshotPointsNear(
-    const PreviewSnapshotPayload& snapshot,
+    const PreviewSnapshotResponse& snapshot,
     float target_x,
     float target_y,
     float radius) {
@@ -68,12 +68,12 @@ std::size_t CountSnapshotPointsNear(
 
 }  // namespace
 
-TEST(PreviewSnapshotServiceTest, BuildPayloadPreservesMetadataAndBuildsPreviewPolyline) {
+TEST(PreviewSnapshotServiceTest, BuildResponsePreservesMetadataAndBuildsPreviewPolyline) {
     PreviewSnapshotService service;
     const auto trajectory = BuildTrajectory({Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)});
     const auto input = BuildInput(trajectory);
 
-    const auto payload = service.BuildPayload(input, 16);
+    const auto payload = service.BuildResponse(input, 16, 8);
 
     EXPECT_EQ(payload.snapshot_id, "snapshot-1");
     EXPECT_EQ(payload.snapshot_hash, "fp-snapshot-1");
@@ -84,7 +84,7 @@ TEST(PreviewSnapshotServiceTest, BuildPayloadPreservesMetadataAndBuildsPreviewPo
     EXPECT_EQ(payload.motion_preview_point_count, payload.motion_preview_polyline.size());
 }
 
-TEST(PreviewSnapshotServiceTest, BuildPayloadSuppressesShortABATailArtifacts) {
+TEST(PreviewSnapshotServiceTest, BuildResponseSuppressesShortABATailArtifacts) {
     PreviewSnapshotService service;
     const auto trajectory = BuildTrajectory({
         Point2D(0.0f, 0.0f),
@@ -96,7 +96,7 @@ TEST(PreviewSnapshotServiceTest, BuildPayloadSuppressesShortABATailArtifacts) {
     });
     const auto input = BuildInput(trajectory);
 
-    const auto payload = service.BuildPayload(input, 64);
+    const auto payload = service.BuildResponse(input, 64, 8);
 
     EXPECT_FALSE(SnapshotContainsPoint(payload, 10.2f, 10.0f, 1e-4f));
     EXPECT_FALSE(SnapshotContainsPoint(payload, 10.0f, 10.0f, 1e-4f));
@@ -105,7 +105,7 @@ TEST(PreviewSnapshotServiceTest, BuildPayloadSuppressesShortABATailArtifacts) {
     EXPECT_TRUE(SnapshotContainsPoint(payload, 0.0f, 10.0f, 1e-4f));
 }
 
-TEST(PreviewSnapshotServiceTest, BuildPayloadKeepsCornerWhenDownsampling) {
+TEST(PreviewSnapshotServiceTest, BuildResponseKeepsCornerWhenDownsampling) {
     PreviewSnapshotService service;
     std::vector<Point2D> raw_points;
     for (int i = 0; i <= 9; ++i) {
@@ -117,13 +117,13 @@ TEST(PreviewSnapshotServiceTest, BuildPayloadKeepsCornerWhenDownsampling) {
     const auto trajectory = BuildTrajectory(raw_points);
     const auto input = BuildInput(trajectory);
 
-    const auto payload = service.BuildPayload(input, 6);
+    const auto payload = service.BuildResponse(input, 6, 8);
 
     EXPECT_LE(payload.motion_preview_polyline.size(), 6U);
     EXPECT_TRUE(SnapshotContainsPoint(payload, 9.0f, 0.0f, 1e-4f));
 }
 
-TEST(PreviewSnapshotServiceTest, BuildPayloadUsesThreeMillimeterCenterSpacing) {
+TEST(PreviewSnapshotServiceTest, BuildResponseUsesThreeMillimeterCenterSpacing) {
     PreviewSnapshotService service;
     std::vector<Point2D> raw_points;
     for (int i = 0; i <= 30; ++i) {
@@ -132,7 +132,7 @@ TEST(PreviewSnapshotServiceTest, BuildPayloadUsesThreeMillimeterCenterSpacing) {
     const auto trajectory = BuildTrajectory(raw_points);
     const auto input = BuildInput(trajectory);
 
-    const auto payload = service.BuildPayload(input, 128);
+    const auto payload = service.BuildResponse(input, 128, 8);
 
     ASSERT_GE(payload.motion_preview_polyline.size(), 2U);
     EXPECT_NEAR(payload.motion_preview_polyline.front().x, 0.0f, 1e-4f);
@@ -148,7 +148,7 @@ TEST(PreviewSnapshotServiceTest, BuildPayloadUsesThreeMillimeterCenterSpacing) {
     }
 }
 
-TEST(PreviewSnapshotServiceTest, BuildPayloadDoesNotForceCornerVerticesIntoFixedSpacingPreview) {
+TEST(PreviewSnapshotServiceTest, BuildResponseDoesNotForceCornerVerticesIntoFixedSpacingPreview) {
     PreviewSnapshotService service;
     const auto trajectory = BuildTrajectory({
         Point2D(0.0f, 0.0f),
@@ -159,7 +159,7 @@ TEST(PreviewSnapshotServiceTest, BuildPayloadDoesNotForceCornerVerticesIntoFixed
     });
     const auto input = BuildInput(trajectory);
 
-    const auto payload = service.BuildPayload(input, 256);
+    const auto payload = service.BuildResponse(input, 256, 8);
 
     EXPECT_FALSE(SnapshotContainsPoint(payload, 100.0f, 0.0f, 1e-4f));
     EXPECT_FALSE(SnapshotContainsPoint(payload, 100.0f, 102.0f, 1e-4f));

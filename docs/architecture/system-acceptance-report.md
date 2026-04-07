@@ -1,14 +1,15 @@
 # System Acceptance Report
 
-更新时间：`2026-04-04`
+更新时间：`2026-04-07`
 
 ## 1. 结论
 
-- 工作区已进入单轨：`apps/`、`modules/`、`shared/`、`docs/`、`samples/`、`tests/`、`scripts/`、`config/`、`data/`、`deploy/`。
+- 当前工作区主根仍维持 `apps/`、`modules/`、`shared/`、`docs/`、`samples/`、`tests/`、`scripts/`、`config/`、`data/`、`deploy/` 单轨布局。
 - 旧根 `packages/`、`integration/`、`tools/`、`examples/` 已物理删除，并由 legacy-exit 门禁防回流。
 - `specs/` 与 `.specify/` 已从当前工作区正式基线卸载；它们只允许作为历史快照或已删除资产被记录，不再作为活动 feature / support roots。
 - 根级执行链统一为 `build.ps1`、`test.ps1`、`ci.ps1`、`scripts/validation/run-local-validation-gate.ps1`。
-- 本次 legacy/bridge 收口已完成，closeout 判定为 `PASS`。
+- `2026-04-07` 已从 live code 与 `modules/runtime-execution/contracts/runtime` 的 canonical required surface 中移除 `IConfigurationPort` / `ITaskSchedulerPort` / `IEventPublisherPort` alias shell；剩余 gap 已转为 broader owner 收口与文档同步问题。
+- 截至 `2026-04-07`，本次 legacy/bridge 收口不得宣称已完成；`runtime-execution` / `runtime-service` 一侧仍存在进行中的 owner 收口与文档同步工作，因此 closeout 口径必须保持 `NOT PASS`。
 
 ## 2. Speckit Exit 治理复核（2026-04-04）
 
@@ -22,6 +23,8 @@
 | root test entry contracts suite | `PASS`（`passed=22`, `failed=0`, `known_failure=0`, `skipped=0`） | `powershell -NoProfile -ExecutionPolicy Bypass -File .\\test.ps1 -Profile CI -Suite contracts -FailOnKnownFailure`；`tests/reports/workspace-validation.md`；`tests/reports/validation-evidence-bundle.json` |
 
 - 当前 `legacy-exit` 的 `11` 条 finding 全部为 `controlled-exception`，来源是受控保留的 `tools/testing/check_no_loose_mock.py` 和已登记的模块级测试子目录引用，不构成 blocker。
+- `bridge-exit contract` 的 `PASS` 仅表示根级 bridge/legacy contract 契约通过，不等价于 `runtime-execution` / `runtime-service` owner closeout 已完成；该口径仍以 `docs/architecture/bridge-exit-closeout.md` 的 `NOT PASS` 为准。
+- `2026-04-07` 已完成 runtime contracts alias shell 清零：`IConfigurationPort` / `ITaskSchedulerPort` / `IEventPublisherPort` 不再是 live code 或 `contracts/runtime` canonical required surface 的一部分。
 - 历史过程文档中残留的 `specs/` / `.specify/` 表述按“历史快照”保留；它们不是当前默认入口，也不作为活动执行依据。
 - `scripts/validation/run-local-validation-gate.ps1 -Lane quick-gate -DesiredDepth quick` 在本轮外层命令超时窗口内未完整收口，因此本次 speckit exit acceptance 不把 quick gate 写成已通过。
 

@@ -9,7 +9,7 @@ endif()
 
 add_library(siligen_contour_augment_adapter INTERFACE)
 target_include_directories(siligen_contour_augment_adapter INTERFACE
-    ${PROCESS_RUNTIME_CORE_PUBLIC_INCLUDE_DIRS}
+    ${SILIGEN_WORKSPACE_PUBLIC_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_contour_augment_adapter INTERFACE
     siligen_topology_feature_legacy_contour_bridge_public

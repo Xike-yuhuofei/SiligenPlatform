@@ -1,8 +1,9 @@
 #include "application/usecases/dispensing/PlanningUseCase.h"
 
 #include "application/services/dxf/DxfPbPreparationService.h"
-#include "domain/diagnostics/ports/IDiagnosticsPort.h"
-#include "domain/system/ports/IEventPublisherPort.h"
+#include "application/services/dispensing/WorkflowPlanningAssemblyOperationsProvider.h"
+#include "application/services/motion_planning/MotionPlanningFacade.h"
+#include "application/services/process_path/ProcessPathFacade.h"
 #include "process_path/contracts/IPathSourcePort.h"
 #include "process_path/contracts/Primitive.h"
 
@@ -151,6 +152,11 @@ std::filesystem::path MakeTempPbPath() {
     return path;
 }
 
+std::shared_ptr<Siligen::Application::Services::Dispensing::IWorkflowPlanningAssemblyOperations> CreatePlanningOperations() {
+    return Siligen::Application::Services::Dispensing::WorkflowPlanningAssemblyOperationsProvider{}
+        .CreateOperations();
+}
+
 PlanningRequest MakePlanningRequest(const std::filesystem::path& pb_path) {
     PlanningRequest request;
     request.dxf_filepath = pb_path.string();
@@ -170,9 +176,9 @@ TEST(PlanningFailureSurfaceTest, ExportFailureBecomesExplicitFailureAndWritesEvi
     auto event_port = std::make_shared<FakeEventPublisher>();
     PlanningUseCase use_case(
         std::make_shared<FakePathSourcePort>(),
-        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningPathPreparationPort(),
-        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningMotionPlanPort(),
-        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningAssemblyPort(),
+        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
+        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
+        CreatePlanningOperations(),
         std::make_shared<FakeConfigurationPort>(),
         std::make_shared<DxfPbPreparationService>(),
         std::make_shared<FailingExportPort>(),
@@ -198,9 +204,9 @@ TEST(PlanningFailureSurfaceTest, ExportNegativeAckBecomesExplicitFailureAndWrite
     auto event_port = std::make_shared<FakeEventPublisher>();
     PlanningUseCase use_case(
         std::make_shared<FakePathSourcePort>(),
-        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningPathPreparationPort(),
-        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningMotionPlanPort(),
-        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningAssemblyPort(),
+        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
+        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
+        CreatePlanningOperations(),
         std::make_shared<FakeConfigurationPort>(),
         std::make_shared<DxfPbPreparationService>(),
         std::make_shared<NegativeExportAckPort>(),

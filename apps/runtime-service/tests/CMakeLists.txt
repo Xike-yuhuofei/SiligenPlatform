@@ -4,12 +4,11 @@ set(RUNTIME_PROCESS_BOOTSTRAP_UNIT_TEST_SOURCES
     unit/runtime/configuration/ConfigValidatorTest.cpp
     unit/runtime/configuration/ConfigFileAdapterHardwareConfigurationTest.cpp
     unit/runtime/configuration/InterlockConfigResolverTest.cpp
-    unit/runtime/dispensing/WorkflowDispensingProcessPortAdapterTest.cpp
     unit/runtime/configuration/WorkspaceAssetPathsTest.cpp
     unit/runtime/recipes/TemplateFileRepositoryTest.cpp
-    unit/runtime/status/WorkflowRuntimeStatusExportPortTest.cpp
+    unit/runtime/status/RuntimeStatusExportPortTest.cpp
     unit/runtime/supervision/RuntimeExecutionSupervisionBackendTest.cpp
-    unit/runtime/supervision/WorkflowRuntimeSupervisionPortTest.cpp
+    unit/runtime/supervision/RuntimeSupervisionSyncPortTest.cpp
 )
 
 add_executable(siligen_runtime_service_unit_tests

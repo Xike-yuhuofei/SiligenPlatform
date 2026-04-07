@@ -6,11 +6,11 @@ add_library(domain_machine STATIC
 )
 
 target_include_directories(domain_machine PUBLIC
-    ${PROCESS_RUNTIME_CORE_PUBLIC_INCLUDE_DIRS}
+    ${SILIGEN_WORKSPACE_PUBLIC_INCLUDE_DIRS}
 )
 target_include_directories(domain_machine PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${PROCESS_RUNTIME_CORE_IMPLEMENTATION_INCLUDE_DIRS}
+    ${SILIGEN_WORKSPACE_IMPLEMENTATION_INCLUDE_DIRS}
 )
 
 target_link_libraries(domain_machine PUBLIC

@@ -117,23 +117,16 @@ TEST(MotionExecutionOwnerBoundaryTest, NonOwnerRuntimeConcreteImplementationsAre
     }
 }
 
-TEST(MotionExecutionOwnerBoundaryTest, WorkflowExecutionTargetOnlyUsesWorkflowOwnerSources) {
+TEST(MotionExecutionOwnerBoundaryTest, WorkflowNoLongerOwnsExecutionConcreteTarget) {
     const fs::path repo_root = RepoRoot();
     const std::string workflow_cmake =
         ReadTextFile(repo_root / "modules/workflow/domain/domain/CMakeLists.txt");
 
-    EXPECT_NE(workflow_cmake.find("add_library(siligen_motion_execution_services STATIC"), std::string::npos);
-    EXPECT_NE(workflow_cmake.find("${SILIGEN_MOTION_EXECUTION_DOMAIN_MOTION_DIR}/domain-services/MotionBufferController.cpp"),
-              std::string::npos);
-    EXPECT_NE(workflow_cmake.find("${SILIGEN_MOTION_EXECUTION_DOMAIN_MOTION_DIR}/domain-services/JogController.cpp"),
-              std::string::npos);
-    EXPECT_NE(workflow_cmake.find("${SILIGEN_MOTION_EXECUTION_DOMAIN_MOTION_DIR}/domain-services/HomingProcess.cpp"),
-              std::string::npos);
-    EXPECT_NE(workflow_cmake.find("${SILIGEN_MOTION_EXECUTION_DOMAIN_MOTION_DIR}/domain-services/ReadyZeroDecisionService.cpp"),
-              std::string::npos);
-    EXPECT_EQ(workflow_cmake.find("MotionControlServiceImpl.cpp"), std::string::npos);
-    EXPECT_EQ(workflow_cmake.find("MotionStatusServiceImpl.cpp"), std::string::npos);
-    EXPECT_EQ(workflow_cmake.find("motion-planning/domain/motion/domain-services"), std::string::npos);
+    EXPECT_EQ(workflow_cmake.find("add_library(siligen_motion_execution_services STATIC"), std::string::npos);
+    EXPECT_EQ(workflow_cmake.find("MotionBufferController.cpp"), std::string::npos);
+    EXPECT_EQ(workflow_cmake.find("JogController.cpp"), std::string::npos);
+    EXPECT_EQ(workflow_cmake.find("HomingProcess.cpp"), std::string::npos);
+    EXPECT_EQ(workflow_cmake.find("ReadyZeroDecisionService.cpp"), std::string::npos);
 }
 
 TEST(MotionExecutionOwnerBoundaryTest, RuntimeExecutionApplicationTargetOwnsConcreteMotionSources) {
@@ -141,16 +134,13 @@ TEST(MotionExecutionOwnerBoundaryTest, RuntimeExecutionApplicationTargetOwnsConc
     const std::string runtime_cmake =
         ReadTextFile(repo_root / "modules/runtime-execution/application/CMakeLists.txt");
 
-    EXPECT_NE(runtime_cmake.find("set_target_properties(siligen_runtime_execution_application PROPERTIES"),
-              std::string::npos);
-    EXPECT_NE(runtime_cmake.find("SILIGEN_TARGET_TOPOLOGY_OWNER_ROOT \"modules/runtime-execution\""),
-              std::string::npos);
-    EXPECT_EQ(CountOccurrences(runtime_cmake, "MotionControlServiceImpl.cpp"), 1U);
-    EXPECT_EQ(CountOccurrences(runtime_cmake, "MotionStatusServiceImpl.cpp"), 1U);
-    EXPECT_NE(runtime_cmake.find("services/motion/MotionControlServiceImpl.cpp"), std::string::npos);
-    EXPECT_NE(runtime_cmake.find("services/motion/MotionStatusServiceImpl.cpp"), std::string::npos);
-    EXPECT_EQ(runtime_cmake.find("domain/motion/domain-services/MotionControlServiceImpl.cpp"), std::string::npos);
-    EXPECT_EQ(runtime_cmake.find("domain/motion/domain-services/MotionStatusServiceImpl.cpp"), std::string::npos);
+    EXPECT_NE(runtime_cmake.find("add_library(siligen_runtime_execution_motion_execution_services STATIC"), std::string::npos);
+    EXPECT_NE(runtime_cmake.find("services/motion/execution/MotionBufferController.cpp"), std::string::npos);
+    EXPECT_NE(runtime_cmake.find("services/motion/execution/JogController.cpp"), std::string::npos);
+    EXPECT_NE(runtime_cmake.find("services/motion/execution/HomingProcess.cpp"), std::string::npos);
+    EXPECT_NE(runtime_cmake.find("services/motion/execution/ReadyZeroDecisionService.cpp"), std::string::npos);
+    EXPECT_EQ(runtime_cmake.find("modules/workflow/domain/domain/motion/domain-services"), std::string::npos);
+    EXPECT_EQ(runtime_cmake.find("siligen_motion_execution_services"), std::string::npos);
 }
 
 TEST(MotionExecutionOwnerBoundaryTest, PlanningTargetRetainsPlanningOwnersButNotExecutionSources) {

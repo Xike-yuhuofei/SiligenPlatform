@@ -16,12 +16,12 @@ if(NOT TARGET siligen_runtime_execution_runtime_contracts)
     )
 endif()
 
-if(NOT TARGET siligen_process_runtime_core_boost_headers)
-    add_library(siligen_process_runtime_core_boost_headers INTERFACE)
-    target_include_directories(siligen_process_runtime_core_boost_headers INTERFACE
+if(NOT TARGET siligen_workspace_boost_headers)
+    add_library(siligen_workspace_boost_headers INTERFACE)
+    target_include_directories(siligen_workspace_boost_headers INTERFACE
         ${SILIGEN_BOOST_INCLUDE_DIR}
     )
-    target_compile_features(siligen_process_runtime_core_boost_headers INTERFACE cxx_std_17)
+    target_compile_features(siligen_workspace_boost_headers INTERFACE cxx_std_17)
 endif()
 
 if(NOT TARGET siligen_process_path_contracts_public)
@@ -67,7 +67,7 @@ target_include_directories(siligen_motion PRIVATE
 )
 
 target_link_libraries(siligen_motion PUBLIC
-    siligen_process_runtime_core_boost_headers
+    siligen_workspace_boost_headers
     siligen_types
     siligen_utils
     siligen_process_path_contracts_public
