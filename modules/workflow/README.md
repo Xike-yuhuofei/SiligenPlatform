@@ -33,7 +33,7 @@
 - `contracts/include/workflow/contracts/WorkflowContracts.h` 已成为 `M0 -> M4` 触发边界的 owner 契约入口。
 - `domain/`、`application/`、`adapters/`、`tests/` 已成为 `workflow` 的唯一真实实现与验证承载面。
 - `src/` 与 `process-runtime-core/` 已完成 shell-only bridge 收敛，不再承载真实 `.h/.cpp` payload。
-- `tests/canonical/` 是 workflow canonical 测试源码承载面；integration/regression 仅负责登记与复用。
+- `tests/canonical/` 是 workflow canonical 测试源码承载面；其余 workflow 测试目录仅负责登记与复用。
 
 ## S1 完成态
 

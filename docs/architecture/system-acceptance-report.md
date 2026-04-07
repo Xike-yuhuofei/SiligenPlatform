@@ -22,7 +22,7 @@
 | legacy-exit gate | `PASS with controlled exceptions`（`finding_count=11`, `blocking_count=0`） | `python scripts/migration/legacy-exit-checks.py --profile local --report-dir tests/reports/legacy-exit-current`；`tests/reports/legacy-exit-current/legacy-exit-checks.md` |
 | root test entry contracts suite | `PASS`（`passed=22`, `failed=0`, `known_failure=0`, `skipped=0`） | `powershell -NoProfile -ExecutionPolicy Bypass -File .\\test.ps1 -Profile CI -Suite contracts -FailOnKnownFailure`；`tests/reports/workspace-validation.md`；`tests/reports/validation-evidence-bundle.json` |
 
-- 当前 `legacy-exit` 的 `11` 条 finding 全部为 `controlled-exception`，来源是受控保留的 `tools/testing/check_no_loose_mock.py` 和已登记的模块级测试子目录引用，不构成 blocker。
+- 当前 `legacy-exit` 的 `11` 条 finding 全部为 `controlled-exception`，来源是当时受控保留的宽松 mock 检查脚本与已登记的模块级测试子目录引用，不构成 blocker；对应检查脚本现已收敛到 `scripts/validation/check_no_loose_mock.py`。
 - `bridge-exit contract` 的 `PASS` 仅表示根级 bridge/legacy contract 契约通过，不等价于 `runtime-execution` / `runtime-service` owner closeout 已完成；该口径仍以 `docs/architecture/bridge-exit-closeout.md` 的 `NOT PASS` 为准。
 - `2026-04-07` 已完成 runtime contracts alias shell 清零：`IConfigurationPort` / `ITaskSchedulerPort` / `IEventPublisherPort` 不再是 live code 或 `contracts/runtime` canonical required surface 的一部分。
 - 历史过程文档中残留的 `specs/` / `.specify/` 表述按“历史快照”保留；它们不是当前默认入口，也不作为活动执行依据。

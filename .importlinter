@@ -1,0 +1,56 @@
+[importlinter]
+root_packages =
+    hmi_client
+    hmi_application
+    test_kit
+    engineering_data
+include_external_packages = False
+
+[importlinter:contract:production-no-test-kit]
+name = Production Python packages must not depend on test_kit
+type = forbidden
+source_modules =
+    hmi_client
+    hmi_application
+    engineering_data
+forbidden_modules =
+    test_kit
+
+[importlinter:contract:hmi-ui-no-direct-tools]
+name = HMI UI must not import fake/mock tool modules directly
+type = forbidden
+source_modules =
+    hmi_client.ui
+    hmi_client.features
+forbidden_modules =
+    hmi_client.tools
+allow_indirect_imports = True
+
+[importlinter:contract:hmi-ui-no-direct-runtime-session-internals]
+name = HMI UI must reach runtime through the client facade instead of backend_manager/tcp_client/gateway_launch internals
+type = forbidden
+source_modules =
+    hmi_client.ui
+forbidden_modules =
+    hmi_client.client.backend_manager
+    hmi_client.client.tcp_client
+    hmi_client.client.gateway_launch
+allow_indirect_imports = True
+
+[importlinter:contract:canonical-hmi-application-no-compat-shell]
+name = Canonical hmi_application should not depend on the hmi_client compatibility shell
+type = forbidden
+source_modules =
+    hmi_application
+forbidden_modules =
+    hmi_client.client
+    hmi_client.features
+
+[importlinter:contract:hmi-ui-no-owner-direct-import]
+name = HMI UI should flow through the client/application boundary instead of importing owner modules directly
+type = forbidden
+source_modules =
+    hmi_client.ui
+forbidden_modules =
+    hmi_application
+allow_indirect_imports = True
