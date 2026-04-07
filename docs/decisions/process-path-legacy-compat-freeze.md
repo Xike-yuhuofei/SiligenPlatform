@@ -18,8 +18,8 @@
 - owner 内兼容桥：
   - `modules/process-path/domain/trajectory/ports/IPathSourcePort.h`
   - `modules/process-path/domain/trajectory/ports/IDXFPathSourcePort.h`
-- 临时 compat 实现：
-  - `modules/workflow/adapters/infrastructure/adapters/planning/dxf/`
+- 过渡期遗留目录：
+  - `modules/workflow/adapters/infrastructure/adapters/planning/dxf/`（现仅保留 canonical PB 读取与 direct DXF hard-fail guard，不再提供 legacy fallback）
 - 直接验证：
   - `modules/workflow/tests/process-runtime-core/unit/infrastructure/adapters/planning/dxf/DXFAdapterFactoryTest.cpp`
   - 相关仓库级 contract test
@@ -96,16 +96,17 @@
 
 - 禁止在默认 runtime 装配链中注册或消费 `IDXFPathSourcePort`。
 - 禁止 live workflow 主链绕过 `.pb + IPathSourcePort + ProcessPathFacade` 重新接入 DXF 自动预处理 compat 入口。
-- 禁止新增任何模块直接复用 `AutoPathSourceAdapter`、`DXFAdapterFactory`、`DXFMigrationValidator`、`DXFMigrationManager`。
+- 禁止新增任何模块直接复用 `AutoPathSourceAdapter`、`DXFAdapterFactory`，或恢复已删除的 DXF 迁移管理/校验壳代码。
 - 禁止把 `modules/workflow/domain/domain/trajectory/` 或 `modules/dxf-geometry/adapters/dxf/` 重新接回默认构建。
 
 ## 4. 存续窗口与退出条件
 
-兼容面当前只允许用于以下场景：
+兼容契约当前只允许用于以下场景：
 
-- legacy 测试
-- 迁移校验
-- 显式设置 `SILIGEN_DXF_AUTOPATH_LEGACY=1` 的临时回退
+- direct DXF hard-fail 边界验证
+- canonical `.pb` 读取链的回归验证
+
+默认运行链已不存在 legacy fallback、迁移校验专用 target 或环境变量开关。
 
 兼容面后续退出必须同时满足：
 
@@ -116,6 +117,6 @@
 
 ## 5. 实施约束
 
-- canonical PB 读取 target 与 legacy compat target 必须拆分。
+- 默认构建图只保留 canonical PB 读取 target；不得恢复 DXF legacy compat target。
 - default consumer 只能链接 canonical PB target。
 - legacy compat target 只能被显式 legacy tests 或迁移校验链接。

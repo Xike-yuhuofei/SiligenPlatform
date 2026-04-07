@@ -1,6 +1,6 @@
 #pragma once
 
-#include "application/services/redundancy/CandidateScoringService.h"
+#include "../../services/redundancy/CandidateScoringService.h"
 #include "domain/system/redundancy/ports/IRedundancyRepositoryPort.h"
 #include "shared/types/Result.h"
 

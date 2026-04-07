@@ -2,8 +2,8 @@
 
 #include "domain/dispensing/contracts/PlanningArtifactExportRequest.h"
 #include "process_path/contracts/ProcessPath.h"
+#include "runtime_execution/application/services/dispensing/PlanningArtifactExportPort.h"
 #include "shared/types/Point.h"
-#include "workflow/application/services/dispensing/IPlanningArtifactExportPort.h"
 
 #include <gtest/gtest.h>
 

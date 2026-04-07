@@ -8,8 +8,8 @@
 
 - 核心职责：从声明性文档看，`modules/runtime-execution/` 是 `M9 runtime-execution` 的 canonical owner 根，owner artifact 是 `ExecutionSession`，应负责“消费已验证执行输入、驱动执行、收敛执行状态与失败归责”，以及执行域 runtime contracts、host core、设备联动桥接，见 `modules/runtime-execution/README.md`、`modules/runtime-execution/module.yaml`、`modules/runtime-execution/application/README.md`、`modules/runtime-execution/runtime/host/README.md`。
 - 业务位置：它位于规划链之后、宿主应用之前，承接上游已经完成的规划/编排结果，向 `apps/runtime-service`、`apps/runtime-gateway`、`apps/planner-cli` 暴露运行期执行面；这一点在仓库根 `README.md`、模块 `README.md` 与 `modules/runtime-execution/README.md` 的描述是一致的。
-- 主要输入：按声明应是“已验证执行输入”和运行期端口；按代码可见输入实际包括点胶执行计划与覆盖参数、motion/runtime port、device connection port、配置端口、legacy machine state model，见 `modules/runtime-execution/application/usecases/dispensing/DispensingExecutionUseCase.cpp`、`modules/runtime-execution/runtime/host/runtime/system/LegacyMachineExecutionStateAdapter.cpp`。
-- 主要输出：执行结果、执行状态快照、事件发布、运行期 motion services、planning artifact 导出桥与设备动作下发，见 `modules/runtime-execution/runtime/host/runtime/motion/WorkflowMotionRuntimeServicesProvider.h`、`modules/runtime-execution/runtime/host/runtime/planning/PlanningArtifactExportPortAdapter.h`、`modules/runtime-execution/runtime/host/runtime/system/LegacyMachineExecutionStateAdapter.cpp`。
+- 主要输入：按声明应是“已验证执行输入”和运行期端口；按 2026-03-31 审查时的代码证据，可见输入实际包括点胶执行计划与覆盖参数、motion/runtime port、device connection port、配置端口、当时仍存在的 machine state adapter，见 `modules/runtime-execution/application/usecases/dispensing/DispensingExecutionUseCase.cpp`、`modules/runtime-execution/runtime/host/runtime/system/MachineExecutionStatePortAdapter.cpp`。
+- 主要输出：执行结果、执行状态快照、事件发布、运行期 motion services、planning artifact 导出桥与设备动作下发，见 `modules/runtime-execution/runtime/host/runtime/motion/WorkflowMotionRuntimeServicesProvider.h`、`modules/runtime-execution/runtime/host/runtime/planning/PlanningArtifactExportPortAdapter.h`、`modules/runtime-execution/runtime/host/runtime/system/MachineExecutionStatePortAdapter.cpp`。
 - 应当依赖谁：从 `module.yaml` 看，白名单只允许 `dispense-packaging/contracts` 与 `shared`；结合 `contracts/README.md`，它还应通过 `shared/contracts/device` 这类稳定契约消费设备能力，而不应直接依赖 `workflow` 内部 application/domain 实现。
 - 谁应当依赖它：宿主应用与编排入口应依赖其 `application public`、`runtime contracts`、`host core`。`modules/runtime-execution/README.md` 直接写明 `apps/runtime-service`、`apps/planner-cli`、`apps/runtime-gateway` 消费 canonical runtime surfaces。至于其它业务 owner 模块是否应直接依赖其内部实现，当前证据不支持。
 
@@ -22,7 +22,7 @@
 ### 2.1 该模块应有实现仍落在别处
 
 - `DispensingExecutionUseCase.cpp` 直接包含 `domain/dispensing/domain-services/DispensingProcessService.h`，而该头实际位于 `modules/workflow/domain/domain/dispensing/domain-services/DispensingProcessService.h`。这说明执行主流程依赖的核心领域服务 owner 仍在 `workflow`。
-- `LegacyMachineExecutionStateAdapter.cpp` 直接包含 `domain/machine/aggregates/DispenserModel.h`，实际对应 `modules/workflow/domain/domain/machine/aggregates/DispenserModel.*`。这说明执行态快照依赖的机器执行状态模型仍在 `workflow`。
+- `MachineExecutionStatePortAdapter.cpp` 在 2026-03-31 审查时对应的 machine execution seam 仍直接围绕 `DispenserModel` 建模；这一点解释了当时为何判断执行态快照依赖的机器执行状态模型仍在 `workflow`。
 - `modules/runtime-execution/domain/` 与 `modules/runtime-execution/services/` 目录只有 `README.md`，没有 live 实现；而根 `CMakeLists.txt` 的 `SILIGEN_TARGET_IMPLEMENTATION_ROOTS` 却把这两个目录列为模块实现根之一，说明“owner 骨架”已建立，但真实 owner 事实没有回收到这些目录。
 
 ### 2.2 别的模块 owner 事实被放进了本模块 public surface
@@ -92,7 +92,7 @@
   - `modules/runtime-execution/application/usecases/motion/MotionControlUseCase.cpp`
   - `modules/runtime-execution/runtime/host/runtime/motion/WorkflowMotionRuntimeServicesProvider.h`
   - `modules/runtime-execution/runtime/host/runtime/planning/PlanningArtifactExportPortAdapter.h`
-  - `modules/runtime-execution/runtime/host/runtime/system/LegacyMachineExecutionStateAdapter.cpp`
+  - `modules/runtime-execution/runtime/host/runtime/system/MachineExecutionStatePortAdapter.cpp`
 - `runtime/host/CMakeLists.txt` 直接把 `modules/workflow/application/include` 加入 `PUBLIC` include root。
 - `workflow/application/CMakeLists.txt` 同时又把 `modules/runtime-execution/application/include` 放进 public include，并链接 `siligen_runtime_execution_application_public`。
 - 这已经不是单向编排依赖，而是 `workflow` 与 `runtime-execution` 之间的双向耦合。
@@ -106,7 +106,7 @@
 - `modules/runtime-execution/application/usecases/motion/MotionControlUseCase.cpp`
 - `modules/runtime-execution/runtime/host/runtime/motion/WorkflowMotionRuntimeServicesProvider.h`
 - `modules/runtime-execution/runtime/host/runtime/planning/PlanningArtifactExportPortAdapter.h`
-- `modules/runtime-execution/runtime/host/runtime/system/LegacyMachineExecutionStateAdapter.cpp`
+- `modules/runtime-execution/runtime/host/runtime/system/MachineExecutionStatePortAdapter.cpp`
 
 ### 工程后果
 
@@ -123,7 +123,7 @@
 - 涉及文件：
   - `modules/runtime-execution/module.yaml`
   - `modules/runtime-execution/application/usecases/dispensing/DispensingExecutionUseCase.cpp`
-  - `modules/runtime-execution/runtime/host/runtime/system/LegacyMachineExecutionStateAdapter.cpp`
+  - `modules/runtime-execution/runtime/host/runtime/system/MachineExecutionStatePortAdapter.cpp`
   - `modules/workflow/domain/domain/dispensing/domain-services/DispensingProcessService.h`
   - `modules/workflow/domain/domain/machine/aggregates/DispenserModel.cpp`
 - 为什么这是结构问题而不是局部实现问题：缺的不是一个函数或类，而是模块 owner 核心事实仍在外部模块，导致 `runtime-execution` 不是执行域真正的边界。
@@ -197,7 +197,7 @@
   - `modules/runtime-execution/domain/`
   - `modules/runtime-execution/services/`
   - `modules/runtime-execution/application/usecases/dispensing/DispensingExecutionUseCase*.cpp`
-  - `modules/runtime-execution/runtime/host/runtime/system/LegacyMachineExecutionStateAdapter.*`
+  - `modules/runtime-execution/runtime/host/runtime/system/MachineExecutionStatePortAdapter.*`
   - `modules/workflow/domain/domain/dispensing/domain-services/DispensingProcessService.*`
   - `modules/workflow/domain/domain/machine/aggregates/DispenserModel.*`
 - 收益：先恢复 `M9` 的 owner 身份，再谈后续依赖整理，避免继续围绕兼容壳修补。
@@ -247,7 +247,7 @@
 | `modules/runtime-execution/application/usecases/dispensing/DispensingExecutionUseCase.cpp` | 执行用例直接依赖 `workflow` 的 `DispensingProcessService` | `ExecutionSession` owner 未落在 M9 |
 | `modules/runtime-execution/application/usecases/motion/MotionControlUseCase.cpp` | M9 public usecase 实质封装 `workflow` motion usecases | M9 -> M0 反向依赖；真实实现散落外部 |
 | `modules/runtime-execution/runtime/host/runtime/motion/WorkflowMotionRuntimeServicesProvider.h` | M9 host 直接实现 `workflow` runtime service provider interface | M9 -> M0 反向依赖 |
-| `modules/runtime-execution/runtime/host/runtime/system/LegacyMachineExecutionStateAdapter.cpp` | 执行态适配器直接绑定 `workflow` 的 `DispenserModel` | owner 未收口；边界被侵入 |
+| `modules/runtime-execution/runtime/host/runtime/system/MachineExecutionStatePortAdapter.cpp` | 执行态适配器直接绑定 `workflow` 的 `DispenserModel` | owner 未收口；边界被侵入 |
 | `modules/runtime-execution/runtime/host/runtime/planning/PlanningArtifactExportPortAdapter.h` | planning artifact export 口仍使用 `workflow/application` 服务接口 | M9 -> M0 反向依赖 |
 | `modules/runtime-execution/contracts/runtime/include/runtime_execution/contracts/dispensing/ITaskSchedulerPort.h` | runtime contract 只是旧 domain port `using` 别名 | public surface 兼容壳化 |
 | `modules/runtime-execution/contracts/runtime/include/runtime_execution/contracts/system/IEventPublisherPort.h` | runtime contract 只是旧 domain port `using` 别名 | public surface 兼容壳化 |

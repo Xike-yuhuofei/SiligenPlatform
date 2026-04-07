@@ -5,7 +5,7 @@
 ## 当前登记目标
 
 - `workflow_regression_deterministic_path_execution_smoke`
-  - 复用 `process-runtime-core` 的确定性路径执行测试源码。
+  - 复用 `canonical/` 中的确定性路径执行测试源码。
   - 作为 canonical workflow 路径执行链的最小回归哨兵，优先覆盖 owner 激活后最容易因链接、运行时依赖或装配退化而失稳的场景。
 
 ## 约束

@@ -1,4 +1,4 @@
-#include "application/services/redundancy/CandidateScoringService.h"
+#include "CandidateScoringService.h"
 
 #include "shared/types/Error.h"
 

@@ -29,7 +29,6 @@
 ```
 dispensing/
 ├── domain-services/                      # 领域服务
-│   ├── DispensingProcessService          # 点胶过程编排与校验统一入口
 │   ├── DispensingController              # 触发点/规划位置触发计算
 │   ├── CMPTriggerService                 # CMP触发服务
 │   ├── PurgeDispenserProcess             # 排胶/建压稳压流程
@@ -65,7 +64,7 @@ namespace Siligen::Domain::Dispensing {
 
 ## 架构规范（点胶过程）
 
-- 点胶执行流程（阀门控制、触发配置、流程顺序与校验）必须由 `DispensingProcessService` 统一入口负责。
+- workflow 本地点胶执行残留仅保留阀门/排胶相关服务；DXF 执行流程（阀门控制、触发配置、流程顺序与校验）已由 `runtime_execution/contracts/dispensing/IDispensingProcessPort` 承接。
 - 触发点/规划位置触发计算必须由 `DispensingController` 统一实现，禁止在应用层或基础设施层重复实现。
 - 定时触发仅用于阀门单独控制（HMI 设置/调试链路），不参与 DXF 执行。
 - 硬件插补程序由 Motion 子域统一生成与校验，点胶流程仅消费插补程序结果。

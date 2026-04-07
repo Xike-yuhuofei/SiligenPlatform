@@ -1,6 +1,7 @@
 #include "UpdateRecipeUseCase.h"
 
-#include "application/usecases/recipes/RecipeUseCaseHelpers.h"
+#include "RecipeUseCaseHelpers.h"
+#include "domain/recipes/domain-services/RecipeValidationService.h"
 #include "shared/types/Error.h"
 
 namespace Siligen::Application::UseCases::Recipes {
@@ -65,7 +66,8 @@ Result<UpdateRecipeResponse> UpdateRecipeUseCase::Execute(const UpdateRecipeRequ
 
     recipe.updated_at = NowEpochMillis();
 
-    auto validation = ValidateRecipeWithProcessCore(recipe);
+    Siligen::Domain::Recipes::DomainServices::RecipeValidationService validation_service;
+    auto validation = validation_service.ValidateRecipe(recipe);
     if (validation.IsError()) {
         return Result<UpdateRecipeResponse>::Failure(validation.GetError());
     }

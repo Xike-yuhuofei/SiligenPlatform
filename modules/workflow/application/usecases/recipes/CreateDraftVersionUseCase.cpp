@@ -1,6 +1,7 @@
 #include "CreateDraftVersionUseCase.h"
 
-#include "application/usecases/recipes/RecipeUseCaseHelpers.h"
+#include "RecipeUseCaseHelpers.h"
+#include "domain/recipes/domain-services/RecipeValidationService.h"
 #include "shared/types/Error.h"
 
 namespace Siligen::Application::UseCases::Recipes {
@@ -75,7 +76,8 @@ Result<CreateDraftVersionResponse> CreateDraftVersionUseCase::Execute(const Crea
     if (schema_result.IsError()) {
         return Result<CreateDraftVersionResponse>::Failure(schema_result.GetError());
     }
-    auto validation = ValidateRecipeVersionWithProcessCore(version, schema_result.Value());
+    Siligen::Domain::Recipes::DomainServices::RecipeValidationService validation_service;
+    auto validation = validation_service.ValidateRecipeVersion(version, schema_result.Value());
     if (validation.IsError()) {
         return Result<CreateDraftVersionResponse>::Failure(validation.GetError());
     }

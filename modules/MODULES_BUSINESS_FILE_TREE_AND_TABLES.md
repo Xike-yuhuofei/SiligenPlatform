@@ -92,8 +92,6 @@ dispense-packaging/
 │       │   ├── DispenseCompensationService.h
 │       │   ├── DispensingController.cpp
 │       │   ├── DispensingController.h
-│       │   ├── DispensingProcessService.cpp
-│       │   ├── DispensingProcessService.h
 │       │   ├── PathOptimizationStrategy.cpp
 │       │   ├── PathOptimizationStrategy.h
 │       │   ├── PositionTriggerController.cpp
@@ -177,12 +175,6 @@ dxf-geometry/
 │       ├── CMakeLists.txt
 │       ├── DXFAdapterFactory.cpp
 │       ├── DXFAdapterFactory.h
-│       ├── DXFMigrationConfig.cpp
-│       ├── DXFMigrationConfig.h
-│       ├── DXFMigrationManager.cpp
-│       ├── DXFMigrationManager.h
-│       ├── DXFMigrationValidator.cpp
-│       ├── DXFMigrationValidator.h
 │       ├── PbPathSourceAdapter.cpp
 │       └── PbPathSourceAdapter.h
 ├── engineering-data/
@@ -235,12 +227,6 @@ dxf-geometry/
 │       ├── CMakeLists.txt
 │       ├── DXFAdapterFactory.cpp
 │       ├── DXFAdapterFactory.h
-│       ├── DXFMigrationConfig.cpp
-│       ├── DXFMigrationConfig.h
-│       ├── DXFMigrationManager.cpp
-│       ├── DXFMigrationManager.h
-│       ├── DXFMigrationValidator.cpp
-│       ├── DXFMigrationValidator.h
 │       ├── PbPathSourceAdapter.cpp
 │       └── PbPathSourceAdapter.h
 ├── CMakeLists.txt
@@ -253,12 +239,9 @@ dxf-geometry/
 
 | 文件 | 流程阶段 | 触发条件 | 当前职责 | 输出结果 | 失败影响 |
 |---|---|---|---|---|---|
-| `AutoPathSourceAdapter.cpp` | DXF 几何接入与转换阶段 | 当外部工程图形被导入系统并准备进入规划链时触发。 | 把模块内部语义转换为外部设备、驱动或历史实现可执行的调用。 | 输出标准化几何、协议数据或离线轨迹数据，交给拓扑、规划或预览链继续使用。 | 如果这里出错，后面的特征提取、路径规划和出胶落点都会跟着失真。 |
-| `DXFAdapterFactory.cpp` | DXF 几何接入与转换阶段 | 当外部工程图形被导入系统并准备进入规划链时触发。 | 把模块内部语义转换为外部设备、驱动或历史实现可执行的调用。 | 输出标准化几何、协议数据或离线轨迹数据，交给拓扑、规划或预览链继续使用。 | 如果这里出错，后面的特征提取、路径规划和出胶落点都会跟着失真。 |
-| `DXFMigrationConfig.cpp` | DXF 几何接入与转换阶段 | 当外部工程图形被导入系统并准备进入规划链时触发。 | 收敛设备、工艺或运行参数，为后续规划和执行提供边界条件。 | 输出标准化几何、协议数据或离线轨迹数据，交给拓扑、规划或预览链继续使用。 | 如果这里出错，后面的特征提取、路径规划和出胶落点都会跟着失真。 |
-| `DXFMigrationManager.cpp` | DXF 几何接入与转换阶段 | 当外部工程图形被导入系统并准备进入规划链时触发。 | 处理迁移期兼容、校验和切换，保证链路平滑过渡。 | 输出标准化几何、协议数据或离线轨迹数据，交给拓扑、规划或预览链继续使用。 | 如果这里出错，后面的特征提取、路径规划和出胶落点都会跟着失真。 |
-| `DXFMigrationValidator.cpp` | DXF 几何接入与转换阶段 | 当外部工程图形被导入系统并准备进入规划链时触发。 | 处理迁移期兼容、校验和切换，保证链路平滑过渡。 | 输出标准化几何、协议数据或离线轨迹数据，交给拓扑、规划或预览链继续使用。 | 如果这里出错，后面的特征提取、路径规划和出胶落点都会跟着失真。 |
-| `PbPathSourceAdapter.cpp` | DXF 几何接入与转换阶段 | 当外部工程图形被导入系统并准备进入规划链时触发。 | 把模块内部语义转换为外部设备、驱动或历史实现可执行的调用。 | 输出标准化几何、协议数据或离线轨迹数据，交给拓扑、规划或预览链继续使用。 | 如果这里出错，后面的特征提取、路径规划和出胶落点都会跟着失真。 |
+| `AutoPathSourceAdapter.cpp` | DXF 几何接入与转换阶段 | 当外部工程图形被导入系统并准备进入规划链时触发。 | 对 canonical `.pb` 输入做统一入口校验，并对 direct `.dxf` 输入执行 hard-fail guard。 | 输出标准化几何、协议数据或离线轨迹数据，交给拓扑、规划或预览链继续使用。 | 如果这里出错，后面的特征提取、路径规划和出胶落点都会跟着失真。 |
+| `DXFAdapterFactory.cpp` | DXF 几何接入与转换阶段 | 当外部工程图形被导入系统并准备进入规划链时触发。 | 组装 mock/local/remote DXF path source adapter，并把 local 行为收口到 canonical `.pb` 读取边界。 | 输出标准化几何、协议数据或离线轨迹数据，交给拓扑、规划或预览链继续使用。 | 如果这里出错，后面的特征提取、路径规划和出胶落点都会跟着失真。 |
+| `PbPathSourceAdapter.cpp` | DXF 几何接入与转换阶段 | 当外部工程图形被导入系统并准备进入规划链时触发。 | 从 `.pb` 解析运行时路径 primitive，作为 live 规划链唯一正式输入。 | 输出标准化几何、协议数据或离线轨迹数据，交给拓扑、规划或预览链继续使用。 | 如果这里出错，后面的特征提取、路径规划和出胶落点都会跟着失真。 |
 
 **dxf-geometry/engineering-data/scripts/**
 
@@ -346,12 +329,9 @@ dxf-geometry/
 
 | 文件 | 流程阶段 | 触发条件 | 当前职责 | 输出结果 | 失败影响 |
 |---|---|---|---|---|---|
-| `AutoPathSourceAdapter.cpp` | DXF 几何接入与转换阶段 | 当外部工程图形被导入系统并准备进入规划链时触发。 | 把模块内部语义转换为外部设备、驱动或历史实现可执行的调用。 | 输出标准化几何、协议数据或离线轨迹数据，交给拓扑、规划或预览链继续使用。 | 如果这里出错，后面的特征提取、路径规划和出胶落点都会跟着失真。 |
-| `DXFAdapterFactory.cpp` | DXF 几何接入与转换阶段 | 当外部工程图形被导入系统并准备进入规划链时触发。 | 把模块内部语义转换为外部设备、驱动或历史实现可执行的调用。 | 输出标准化几何、协议数据或离线轨迹数据，交给拓扑、规划或预览链继续使用。 | 如果这里出错，后面的特征提取、路径规划和出胶落点都会跟着失真。 |
-| `DXFMigrationConfig.cpp` | DXF 几何接入与转换阶段 | 当外部工程图形被导入系统并准备进入规划链时触发。 | 收敛设备、工艺或运行参数，为后续规划和执行提供边界条件。 | 输出标准化几何、协议数据或离线轨迹数据，交给拓扑、规划或预览链继续使用。 | 如果这里出错，后面的特征提取、路径规划和出胶落点都会跟着失真。 |
-| `DXFMigrationManager.cpp` | DXF 几何接入与转换阶段 | 当外部工程图形被导入系统并准备进入规划链时触发。 | 处理迁移期兼容、校验和切换，保证链路平滑过渡。 | 输出标准化几何、协议数据或离线轨迹数据，交给拓扑、规划或预览链继续使用。 | 如果这里出错，后面的特征提取、路径规划和出胶落点都会跟着失真。 |
-| `DXFMigrationValidator.cpp` | DXF 几何接入与转换阶段 | 当外部工程图形被导入系统并准备进入规划链时触发。 | 处理迁移期兼容、校验和切换，保证链路平滑过渡。 | 输出标准化几何、协议数据或离线轨迹数据，交给拓扑、规划或预览链继续使用。 | 如果这里出错，后面的特征提取、路径规划和出胶落点都会跟着失真。 |
-| `PbPathSourceAdapter.cpp` | DXF 几何接入与转换阶段 | 当外部工程图形被导入系统并准备进入规划链时触发。 | 把模块内部语义转换为外部设备、驱动或历史实现可执行的调用。 | 输出标准化几何、协议数据或离线轨迹数据，交给拓扑、规划或预览链继续使用。 | 如果这里出错，后面的特征提取、路径规划和出胶落点都会跟着失真。 |
+| `AutoPathSourceAdapter.cpp` | DXF 几何接入与转换阶段 | 当外部工程图形被导入系统并准备进入规划链时触发。 | 对 canonical `.pb` 输入做统一入口校验，并对 direct `.dxf` 输入执行 hard-fail guard。 | 输出标准化几何、协议数据或离线轨迹数据，交给拓扑、规划或预览链继续使用。 | 如果这里出错，后面的特征提取、路径规划和出胶落点都会跟着失真。 |
+| `DXFAdapterFactory.cpp` | DXF 几何接入与转换阶段 | 当外部工程图形被导入系统并准备进入规划链时触发。 | 组装 mock/local/remote DXF path source adapter，并把 local 行为收口到 canonical `.pb` 读取边界。 | 输出标准化几何、协议数据或离线轨迹数据，交给拓扑、规划或预览链继续使用。 | 如果这里出错，后面的特征提取、路径规划和出胶落点都会跟着失真。 |
+| `PbPathSourceAdapter.cpp` | DXF 几何接入与转换阶段 | 当外部工程图形被导入系统并准备进入规划链时触发。 | 从 `.pb` 解析运行时路径 primitive，作为 live 规划链唯一正式输入。 | 输出标准化几何、协议数据或离线轨迹数据，交给拓扑、规划或预览链继续使用。 | 如果这里出错，后面的特征提取、路径规划和出胶落点都会跟着失真。 |
 
 ## hmi-application
 
@@ -1352,12 +1332,6 @@ workflow/
 │   │       │   │   ├── CMakeLists.txt
 │   │       │   │   ├── DXFAdapterFactory.cpp
 │   │       │   │   ├── DXFAdapterFactory.h
-│   │       │   │   ├── DXFMigrationConfig.cpp
-│   │       │   │   ├── DXFMigrationConfig.h
-│   │       │   │   ├── DXFMigrationManager.cpp
-│   │       │   │   ├── DXFMigrationManager.h
-│   │       │   │   ├── DXFMigrationValidator.cpp
-│   │       │   │   ├── DXFMigrationValidator.h
 │   │       │   │   ├── PbPathSourceAdapter.cpp
 │   │       │   │   └── PbPathSourceAdapter.h
 │   │       │   └── geometry/
@@ -1569,8 +1543,6 @@ workflow/
 │   │   │   │   ├── DispenseCompensationService.h
 │   │   │   │   ├── DispensingController.cpp
 │   │   │   │   ├── DispensingController.h
-│   │   │   │   ├── DispensingProcessService.cpp
-│   │   │   │   ├── DispensingProcessService.h
 │   │   │   │   ├── PathOptimizationStrategy.cpp
 │   │   │   │   ├── PathOptimizationStrategy.h
 │   │   │   │   ├── PositionTriggerController.cpp
@@ -1732,8 +1704,6 @@ workflow/
 │   │   │   ├── CMakeLists.txt
 │   │   │   └── RecipeModule.h
 │   │   ├── safety/
-│   │   │   ├── bridges/
-│   │   │   │   └── MotionCoreInterlockBridge.h
 │   │   │   ├── domain-services/
 │   │   │   │   ├── EmergencyStopService.cpp
 │   │   │   │   ├── EmergencyStopService.h
@@ -1877,8 +1847,6 @@ workflow/
 │   │       │       ├── RecipeBundle.h
 │   │       │       └── RecipeTypes.h
 │   │       ├── safety/
-│   │       │   ├── bridges/
-│   │       │   │   └── MotionCoreInterlockBridge.h
 │   │       │   ├── domain-services/
 │   │       │   │   └── EmergencyStopService.h
 │   │       │   ├── ports/
@@ -1972,7 +1940,6 @@ workflow/
 │   │   │   │   ├── CleanupFilesUseCaseTest.cpp
 │   │   │   │   ├── ContourPathOptimizerTest.cpp
 │   │   │   │   ├── DispensingExecutionUseCaseProgressTest.cpp
-│   │   │   │   ├── DispensingProcessServiceWaitForMotionCompleteTest.cpp
 │   │   │   │   ├── DispensingWorkflowUseCaseTest.cpp
 │   │   │   │   ├── PlanningRequestTest.cpp
 │   │   │   │   └── UploadFileUseCaseTest.cpp
@@ -2037,12 +2004,9 @@ workflow/
 
 | 文件 | 流程阶段 | 触发条件 | 当前职责 | 输出结果 | 失败影响 |
 |---|---|---|---|---|---|
-| `AutoPathSourceAdapter.cpp` | 规划链中的 DXF 输入适配阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 把模块内部语义转换为外部设备、驱动或历史实现可执行的调用。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
-| `DXFAdapterFactory.cpp` | 规划链中的 DXF 输入适配阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 把模块内部语义转换为外部设备、驱动或历史实现可执行的调用。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
-| `DXFMigrationConfig.cpp` | 规划链中的 DXF 输入适配阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 收敛设备、工艺或运行参数，为后续规划和执行提供边界条件。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
-| `DXFMigrationManager.cpp` | 规划链中的 DXF 输入适配阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 处理迁移期兼容、校验和切换，保证链路平滑过渡。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
-| `DXFMigrationValidator.cpp` | 规划链中的 DXF 输入适配阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 处理迁移期兼容、校验和切换，保证链路平滑过渡。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
-| `PbPathSourceAdapter.cpp` | 规划链中的 DXF 输入适配阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 把模块内部语义转换为外部设备、驱动或历史实现可执行的调用。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
+| `AutoPathSourceAdapter.cpp` | 规划链中的 DXF 输入适配阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 对 canonical `.pb` 输入做统一入口校验，并对 direct `.dxf` 输入执行 hard-fail guard。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
+| `DXFAdapterFactory.cpp` | 规划链中的 DXF 输入适配阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 组装 mock/local/remote DXF path source adapter，并把 local 行为收口到 canonical `.pb` 读取边界。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
+| `PbPathSourceAdapter.cpp` | 规划链中的 DXF 输入适配阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 从 `.pb` 解析运行时路径 primitive，作为 live 规划链唯一正式输入。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
 
 **workflow/adapters/infrastructure/adapters/planning/geometry/**
 
@@ -2215,7 +2179,6 @@ workflow/
 | `CMPTriggerService.cpp` | 点胶领域规则计算阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 计算或下发点胶触发时机，决定胶何时开始和停止输出。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
 | `DispenseCompensationService.cpp` | 点胶领域规则计算阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 承担该环节中的主要行为实现。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
 | `DispensingController.cpp` | 点胶领域规则计算阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 把规划结果落实为受控动作或硬件指令。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
-| `DispensingProcessService.cpp` | 点胶领域规则计算阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 承担该环节中的主要行为实现。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
 | `PathOptimizationStrategy.cpp` | 点胶领域规则计算阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 承担该环节中的主要行为实现。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
 | `PositionTriggerController.cpp` | 点胶领域规则计算阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 计算或下发点胶触发时机，决定胶何时开始和停止输出。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
 | `PurgeDispenserProcess.cpp` | 点胶领域规则计算阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 承担该环节中的主要行为实现。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
@@ -2331,7 +2294,6 @@ workflow/
 | `CleanupFilesUseCaseTest.cpp` | 流程回归验证阶段 | 当验证工作流各环节在测试场景下的表现时触发。 | 验证对应流程环节在正常和异常条件下是否符合预期。 | 输出测试断言或验证结果，证明工作流行为是否符合预期。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
 | `ContourPathOptimizerTest.cpp` | 流程回归验证阶段 | 当验证工作流各环节在测试场景下的表现时触发。 | 验证对应流程环节在正常和异常条件下是否符合预期。 | 输出测试断言或验证结果，证明工作流行为是否符合预期。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
 | `DispensingExecutionUseCaseProgressTest.cpp` | 流程回归验证阶段 | 当验证工作流各环节在测试场景下的表现时触发。 | 验证对应流程环节在正常和异常条件下是否符合预期。 | 输出测试断言或验证结果，证明工作流行为是否符合预期。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
-| `DispensingProcessServiceWaitForMotionCompleteTest.cpp` | 流程回归验证阶段 | 当验证工作流各环节在测试场景下的表现时触发。 | 验证对应流程环节在正常和异常条件下是否符合预期。 | 输出测试断言或验证结果，证明工作流行为是否符合预期。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
 | `DispensingWorkflowUseCaseTest.cpp` | 流程回归验证阶段 | 当验证工作流各环节在测试场景下的表现时触发。 | 验证对应流程环节在正常和异常条件下是否符合预期。 | 输出测试断言或验证结果，证明工作流行为是否符合预期。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
 | `PlanningRequestTest.cpp` | 流程回归验证阶段 | 当验证工作流各环节在测试场景下的表现时触发。 | 验证对应流程环节在正常和异常条件下是否符合预期。 | 输出测试断言或验证结果，证明工作流行为是否符合预期。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
 | `UploadFileUseCaseTest.cpp` | 流程回归验证阶段 | 当验证工作流各环节在测试场景下的表现时触发。 | 验证对应流程环节在正常和异常条件下是否符合预期。 | 输出测试断言或验证结果，证明工作流行为是否符合预期。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |

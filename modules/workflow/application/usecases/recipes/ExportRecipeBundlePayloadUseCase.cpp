@@ -1,6 +1,6 @@
 #include "ExportRecipeBundlePayloadUseCase.h"
 
-#include "application/usecases/recipes/RecipeUseCaseHelpers.h"
+#include "RecipeUseCaseHelpers.h"
 #include "domain/recipes/value-objects/RecipeBundle.h"
 #include "shared/types/Error.h"
 

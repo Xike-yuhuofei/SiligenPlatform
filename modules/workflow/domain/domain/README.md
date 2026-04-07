@@ -42,7 +42,7 @@
 ### 胶路建压/稳压统一规范
 
 - `Dispensing::DomainServices::SupplyStabilizationPolicy` 是稳压时间解析与校验的唯一入口
-- 业务流程必须通过 `PurgeDispenserProcess` / `DispensingProcessService` 触发稳压等待
+- workflow 本地业务流程必须通过 `PurgeDispenserProcess` 触发稳压等待；DXF 执行态由 `runtime_execution/contracts/dispensing/IDispensingProcessPort` 承接
 - 应用层禁止自行实现稳压等待、超时或时序规则
 - 稳压时间来自 `IConfigurationPort::GetDispensingConfig().supply_stabilization_ms`；
   允许请求覆盖，但范围由领域层校验（0-5000ms，0 表示使用配置默认值）

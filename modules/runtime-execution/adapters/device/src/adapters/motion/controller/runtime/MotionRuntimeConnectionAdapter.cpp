@@ -14,7 +14,7 @@ using HardwareConnectionState = Siligen::Domain::Machine::Ports::HardwareConnect
 using HeartbeatConfig = Siligen::Domain::Machine::Ports::HeartbeatConfig;
 using HeartbeatStatus = Siligen::Domain::Machine::Ports::HeartbeatStatus;
 
-HardwareConnectionConfig ToLegacyConnectionConfig(const DeviceConnection& connection) {
+HardwareConnectionConfig ToDomainConnectionConfig(const DeviceConnection& connection) {
     HardwareConnectionConfig config;
     config.local_ip = connection.local_ip;
     config.local_port = connection.local_port;
@@ -48,7 +48,7 @@ DeviceConnectionSnapshot ToDeviceConnectionSnapshot(const HardwareConnectionInfo
     return snapshot;
 }
 
-HeartbeatConfig ToLegacyHeartbeatConfig(const HeartbeatSnapshot& snapshot) {
+HeartbeatConfig ToDomainHeartbeatConfig(const HeartbeatSnapshot& snapshot) {
     HeartbeatConfig config;
     config.enabled = snapshot.enabled;
     config.interval_ms = snapshot.interval_ms;
@@ -81,7 +81,7 @@ MotionRuntimeConnectionAdapter::MotionRuntimeConnectionAdapter(std::shared_ptr<M
     : runtime_(std::move(runtime)) {}
 
 Shared::Types::Result<void> MotionRuntimeConnectionAdapter::Connect(const DeviceConnection& connection) {
-    return Connect(ToLegacyConnectionConfig(connection));
+    return Connect(ToDomainConnectionConfig(connection));
 }
 
 Shared::Types::Result<DeviceConnectionSnapshot> MotionRuntimeConnectionAdapter::ReadConnection() const {
@@ -142,7 +142,7 @@ void MotionRuntimeConnectionAdapter::ClearError() {
 
 Shared::Types::Result<void> MotionRuntimeConnectionAdapter::StartHeartbeat(
     const HeartbeatSnapshot& config) {
-    return StartHeartbeat(ToLegacyHeartbeatConfig(config));
+    return StartHeartbeat(ToDomainHeartbeatConfig(config));
 }
 
 Shared::Types::Result<void> MotionRuntimeConnectionAdapter::StartHeartbeat(

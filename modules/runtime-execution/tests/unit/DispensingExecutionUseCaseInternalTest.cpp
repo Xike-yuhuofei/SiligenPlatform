@@ -32,7 +32,7 @@ using Siligen::Domain::Machine::ValueObjects::MachineMode;
 using Siligen::Domain::Motion::Ports::InterpolationData;
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectoryPoint;
 using RuntimeDispensingProcessPort = Siligen::RuntimeExecution::Contracts::Dispensing::IDispensingProcessPort;
-using RuntimeTaskSchedulerPort = Siligen::RuntimeExecution::Contracts::Dispensing::ITaskSchedulerPort;
+using RuntimeTaskSchedulerPort = Siligen::Domain::Dispensing::Ports::ITaskSchedulerPort;
 using Siligen::Shared::Types::float32;
 using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::ErrorCode;

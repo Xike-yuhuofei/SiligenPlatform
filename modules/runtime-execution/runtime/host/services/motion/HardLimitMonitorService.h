@@ -1,6 +1,6 @@
 #pragma once
 
-#include "application/usecases/system/IHardLimitMonitor.h"
+#include "runtime_execution/application/usecases/system/IHardLimitMonitor.h"
 #include "runtime_execution/contracts/motion/IIOControlPort.h"
 #include "domain/motion/ports/IPositionControlPort.h"
 #include "shared/types/Result.h"

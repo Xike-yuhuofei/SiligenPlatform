@@ -66,8 +66,7 @@ add_library(siligen_runtime_host STATIC
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/diagnostics/DiagnosticsPortAdapter.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/supervision/RuntimeSupervisionPortAdapter.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/system/DispenserModelMachineExecutionStateBackend.cpp
-    ${RUNTIME_HOST_SOURCE_ROOT}/runtime/system/LegacyMachineExecutionStateAdapter.cpp
-    ${RUNTIME_HOST_SOURCE_ROOT}/runtime/motion/WorkflowMotionRuntimeServicesProvider.cpp
+    ${RUNTIME_HOST_SOURCE_ROOT}/runtime/motion/MotionRuntimeServicesProvider.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/planning/PlanningArtifactExportPortAdapter.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/services/motion/HardLimitMonitorService.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/services/motion/SoftLimitMonitorService.cpp
@@ -96,6 +95,5 @@ target_link_libraries(siligen_runtime_host PRIVATE
 )
 
 set_target_properties(siligen_runtime_host PROPERTIES
-    SILIGEN_MIGRATION_SOURCE_ROOT "legacy-archive/runtime-host"
     SILIGEN_TARGET_TOPOLOGY_OWNER_ROOT "modules/runtime-execution"
 )

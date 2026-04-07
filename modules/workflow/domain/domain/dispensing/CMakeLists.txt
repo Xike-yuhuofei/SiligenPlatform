@@ -12,7 +12,7 @@ if(TARGET siligen_dispense_packaging_domain_dispensing)
 endif()
 
 target_include_directories(domain_dispensing INTERFACE
-    ${PROCESS_RUNTIME_CORE_PUBLIC_INCLUDE_DIRS}
+    ${SILIGEN_WORKSPACE_PUBLIC_INCLUDE_DIRS}
 )
 target_compile_features(domain_dispensing INTERFACE cxx_std_17)
 

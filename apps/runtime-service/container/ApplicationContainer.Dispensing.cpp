@@ -1,5 +1,8 @@
 #include "ApplicationContainer.h"
 
+#include "application/services/dispensing/WorkflowPlanningAssemblyOperationsProvider.h"
+#include "application/services/motion_planning/MotionPlanningFacade.h"
+#include "application/services/process_path/ProcessPathFacade.h"
 #include "application/usecases/dispensing/CleanupFilesUseCase.h"
 #include "application/usecases/dispensing/valve/ValveCommandUseCase.h"
 #include "application/usecases/dispensing/valve/ValveQueryUseCase.h"
@@ -8,8 +11,8 @@
 #include "process_path/contracts/IPathSourcePort.h"
 #include "application/usecases/dispensing/UploadFileUseCase.h"
 #include "job_ingest/contracts/dispensing/UploadContracts.h"
+#include "runtime_execution/application/services/dispensing/DispensingProcessPortFactory.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
-#include "runtime/dispensing/WorkflowDispensingProcessPortAdapter.h"
 #include "runtime/planning/PlanningArtifactExportPortAdapter.h"
 #include "runtime/storage/files/LocalFileStorageAdapter.h"
 #include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
@@ -117,12 +120,15 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::PlanningUseCase>() {
         throw std::runtime_error("IPathSourcePort 未注册");
     }
 
+    auto planning_operations =
+        Siligen::Application::Services::Dispensing::WorkflowPlanningAssemblyOperationsProvider{}
+            .CreateOperations();
+
     return std::make_shared<UseCases::Dispensing::PlanningUseCase>(
         path_source,
-        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningPathPreparationPort(),
-        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningMotionPlanPort(
-            velocity_profile_port_),
-        Siligen::Application::UseCases::Dispensing::CreateDefaultPlanningAssemblyPort(),
+        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
+        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(velocity_profile_port_),
+        std::move(planning_operations),
         config_port_,
         nullptr,
         Siligen::RuntimeExecution::Host::Planning::CreatePlanningArtifactExportPort(),
@@ -162,12 +168,13 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::CleanupFilesUseCase>(
 template<>
 std::shared_ptr<UseCases::Dispensing::DispensingExecutionUseCase>
 ApplicationContainer::CreateInstance<UseCases::Dispensing::DispensingExecutionUseCase>() {
-    auto process_port = std::make_shared<Siligen::Runtime::Service::Dispensing::WorkflowDispensingProcessPortAdapter>(
-        valve_port_,
-        interpolation_port_,
-        motion_state_port_,
-        device_connection_port_,
-        config_port_);
+    auto process_port =
+        Siligen::RuntimeExecution::Application::Services::Dispensing::CreateDispensingProcessPort(
+            valve_port_,
+            interpolation_port_,
+            motion_state_port_,
+            device_connection_port_,
+            config_port_);
     return std::make_shared<UseCases::Dispensing::DispensingExecutionUseCase>(
         valve_port_,
         interpolation_port_,

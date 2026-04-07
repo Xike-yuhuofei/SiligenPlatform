@@ -5,7 +5,7 @@ if(NOT TARGET siligen_application_motion)
 endif()
 
 set(WORKFLOW_INTEGRATION_ASSEMBLY_TEST_SOURCE
-    "${CMAKE_CURRENT_SOURCE_DIR}/../process-runtime-core/unit/motion/MotionRuntimeAssemblyFactoryTest.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../canonical/unit/motion/MotionRuntimeAssemblyFactoryTest.cpp"
 )
 
 if(EXISTS "${WORKFLOW_INTEGRATION_ASSEMBLY_TEST_SOURCE}")
@@ -23,7 +23,7 @@ if(EXISTS "${WORKFLOW_INTEGRATION_ASSEMBLY_TEST_SOURCE}")
     )
     target_compile_features(workflow_integration_motion_runtime_assembly_smoke PRIVATE cxx_std_17)
 
-    process_runtime_core_add_test_with_runtime_environment(
+    siligen_add_test_with_runtime_environment(
         workflow_integration_motion_runtime_assembly_smoke
         workflow_integration_motion_runtime_assembly_smoke
     )

@@ -1,21 +1,18 @@
 #pragma once
 
-#include "runtime/system/LegacyMachineExecutionStateAdapter.h"
+#include "domain/machine/aggregates/DispenserModel.h"
+#include "runtime_execution/contracts/system/IMachineExecutionStatePort.h"
 
 #include <memory>
-
-namespace Siligen::Domain::Machine::Aggregates::Legacy {
-class DispenserModel;
-}
 
 namespace Siligen::Runtime::Service::System {
 
 class DispenserModelMachineExecutionStateBackend final
-    : public Siligen::Runtime::Host::System::ILegacyMachineExecutionStateBackend {
+    : public Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort {
    public:
     DispenserModelMachineExecutionStateBackend();
     explicit DispenserModelMachineExecutionStateBackend(
-        std::shared_ptr<Siligen::Domain::Machine::Aggregates::Legacy::DispenserModel> dispenser_model);
+        std::shared_ptr<Siligen::Domain::Machine::Aggregates::DispenserModel> dispenser_model);
 
     Siligen::Shared::Types::Result<Siligen::RuntimeExecution::Contracts::System::MachineExecutionSnapshot>
     ReadSnapshot() const override;
@@ -24,7 +21,7 @@ class DispenserModelMachineExecutionStateBackend final
     Siligen::Shared::Types::Result<void> RecoverToUninitialized() override;
 
    private:
-    std::shared_ptr<Siligen::Domain::Machine::Aggregates::Legacy::DispenserModel> dispenser_model_;
+    std::shared_ptr<Siligen::Domain::Machine::Aggregates::DispenserModel> dispenser_model_;
 };
 
 }  // namespace Siligen::Runtime::Service::System

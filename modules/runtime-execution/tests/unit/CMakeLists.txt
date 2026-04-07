@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.20)
 
 set(RUNTIME_EXECUTION_UNIT_TEST_SOURCES
     DispensingExecutionUseCaseInternalTest.cpp
+    DispensingProcessPortFactoryTest.cpp
+    DispensingProcessServiceTraceTest.cpp
+    DispensingProcessServiceWaitForMotionCompleteTest.cpp
 )
 
 add_executable(siligen_runtime_execution_unit_tests

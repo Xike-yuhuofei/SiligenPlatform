@@ -5,7 +5,7 @@
 
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/types/Error.h"
-#include "domain/safety/bridges/MotionCoreInterlockBridge.h"
+#include "domain/safety/domain-services/InterlockPolicy.h"
 
 #include <chrono>
 #include <stdexcept>
@@ -115,7 +115,7 @@ void HardLimitMonitorService::MonitoringLoop() noexcept {
                 continue;
             }
 
-            bool triggered = Siligen::Domain::Safety::Bridges::IsHardLimitTriggeredWithMotionCore(
+            bool triggered = Siligen::Domain::Safety::DomainServices::InterlockPolicy::IsHardLimitTriggered(
                 pos_triggered, neg_triggered);
             if (triggered && !last_triggered_[i] && config_.emergency_stop_on_trigger) {
                 SILIGEN_LOG_ERROR("Hard limit triggered on axis " + std::to_string(axis_display) +

@@ -1,6 +1,8 @@
 #include "RecipeCommandUseCase.h"
 
-#include "application/usecases/recipes/RecipeUseCaseHelpers.h"
+#include "RecipeUseCaseHelpers.h"
+#include "domain/recipes/domain-services/RecipeActivationService.h"
+#include "domain/recipes/domain-services/RecipeValidationService.h"
 #include "shared/types/Error.h"
 
 #include <utility>
@@ -29,9 +31,10 @@ Result<ActivateRecipeVersionResponse> RecipeCommandUseCase::Execute(const Activa
             Error(ErrorCode::PORT_NOT_INITIALIZED, "Recipe repository not available", "ActivateRecipeVersionUseCase"));
     }
 
-    auto activation_result = ActivateRecipeVersionWithProcessCore(
+    Siligen::Domain::Recipes::DomainServices::RecipeActivationService activation_service(
         recipe_repository_,
-        audit_repository_,
+        audit_repository_);
+    auto activation_result = activation_service.ActivateVersion(
         request.recipe_id,
         request.version_id,
         AuditAction::Rollback,
@@ -117,7 +120,8 @@ Result<PublishRecipeVersionResponse> RecipeCommandUseCase::Execute(
     if (schema_result.IsError()) {
         return Result<PublishRecipeVersionResponse>::Failure(schema_result.GetError());
     }
-    auto validation = ValidateRecipeVersionWithProcessCore(version, schema_result.Value());
+    Siligen::Domain::Recipes::DomainServices::RecipeValidationService validation_service;
+    auto validation = validation_service.ValidateRecipeVersion(version, schema_result.Value());
     if (validation.IsError()) {
         return Result<PublishRecipeVersionResponse>::Failure(validation.GetError());
     }
@@ -130,9 +134,10 @@ Result<PublishRecipeVersionResponse> RecipeCommandUseCase::Execute(
         return Result<PublishRecipeVersionResponse>::Failure(save_version_result.GetError());
     }
 
-    auto activation_result = ActivateRecipeVersionWithProcessCore(
+    Siligen::Domain::Recipes::DomainServices::RecipeActivationService activation_service(
         recipe_repository_,
-        audit_repository_,
+        audit_repository_);
+    auto activation_result = activation_service.ActivateVersion(
         request.recipe_id,
         request.version_id,
         AuditAction::Publish,

@@ -30,12 +30,13 @@
 ## 统一骨架状态
 
 - 已补齐 module.yaml、domain、services、application、adapters、tests 与 examples 子目录。
-- `application/services/dispensing/DispensePlanningFacade.cpp` 已成为 preview payload 与 execution package 组装 owner 面。
+- `application/services/dispensing/PlanningAssemblyServices.cpp` 与
+  `WorkflowPlanningAssemblyOperationsProvider.cpp` 是当前 planning owner seam。
 - `application/services/dispensing/AuthorityPreviewAssemblyService`、
   `ExecutionAssemblyService`、`PlanningArtifactExportAssemblyService`、
-  `WorkflowPlanningAssemblyOperationsProvider`、
-  `WorkflowDispensingProcessOperationsProvider`
-  是当前稳定 public service；`DispensePlanningFacade` 仅保留兼容 wrapper 角色。
+  `WorkflowPlanningAssemblyOperationsProvider`
+  是当前稳定 public service。
+- execution concrete / process port factory 已迁入 `M9 runtime-execution`；`M8` 不再导出 execution provider。
 - `WorkflowPlanningAssemblyOperationsProvider` 的跨模块稳定输入/输出已收敛到
   `WorkflowPlanningAssemblyTypes.h`；`PlanningAssemblyTypes.h` 仅保留 `M8` 内部 stage
   组装使用，不再作为 workflow-facing seam 的公开类型面。

@@ -5,8 +5,8 @@
 ## 当前 owner 范围
 
 - 执行链 application public surface：消费已验证执行输入、驱动执行、收敛执行状态与失败归责。
-- runtime contracts：执行域运行时契约、motion/runtime bridge contracts、device/runtime consumer contracts。
-- runtime host core：事件桥接、任务调度桥接、执行期 diagnostics、执行期 motion/runtime provider、执行态适配与执行边界监控。
+- runtime contracts：仅保留 runtime-owned 执行态契约、motion/runtime bridge contracts、device/runtime consumer contracts；不再透传 configuration / task scheduler / event publisher 等 foreign-owner public surface。
+- runtime host core：事件桥接、任务调度桥接、执行期 diagnostics、执行期 motion/runtime provider、machine execution state owner、执行边界监控。
 
 ## 不再属于 M9 owner 的 live 事实
 
@@ -35,13 +35,13 @@
 - `runtime/events/*`
 - `runtime/scheduling/*`
 - `runtime/diagnostics/*`
-- `runtime/motion/WorkflowMotionRuntimeServicesProvider.*`
-- `runtime/system/DispenserModelMachineExecutionStateBackend.*`
-  app-facing neutral alias: `runtime/system/WorkflowMachineExecutionStateBackend.h`
-- `runtime/system/LegacyMachineExecutionStateAdapter.*`
+- `runtime/motion/MotionRuntimeServicesProvider.*`
+- `runtime/system/DispenserModelMachineExecutionStateBackend.*`（直接实现 `IMachineExecutionStatePort`）
 - `runtime/planning/PlanningArtifactExportPortAdapter.*`
 - `services/motion/HardLimitMonitorService.*`
 - `services/motion/SoftLimitMonitorService.*`
+
+其中 machine execution state 的 canonical domain model surface 由 `modules/workflow/domain/include/domain/machine/aggregates/DispenserModel.h` 提供 `Aggregates::DispenserModel` / `Aggregates::DispensingTask` owner alias；`runtime-execution` 自身不再把 `Legacy::DispenserModel` / `Legacy::DispensingTask` 暴露为 live public/test surface。
 
 `siligen_runtime_host` 不再 `PUBLIC` 聚合 `job-ingest`、`workflow`、`workflow_recipe`、DXF adapter、host storage 或 recipe persistence。
 
