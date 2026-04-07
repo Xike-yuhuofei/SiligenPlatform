@@ -126,6 +126,23 @@ namespace Siligen::Infrastructure::Adapters {
 InterpolationAdapter::InterpolationAdapter(std::shared_ptr<Siligen::Infrastructure::Hardware::IMultiCardWrapper> wrapper)
     : wrapper_(wrapper) {}
 
+InterpolationAdapter::BufferedPosition InterpolationAdapter::ResolveBufferedStartPosition(int16 coord_sys) const {
+    BufferedPosition position;
+    if (!wrapper_) {
+        return position;
+    }
+
+    double raw_positions[8] = {0.0};
+    if (wrapper_->MC_GetCrdPos(coord_sys, raw_positions) != 0) {
+        return position;
+    }
+
+    position.initialized = true;
+    position.x = static_cast<float32>(raw_positions[0] / PULSE_PER_MM);
+    position.y = static_cast<float32>(raw_positions[1] / PULSE_PER_MM);
+    return position;
+}
+
 Result<void> InterpolationAdapter::ConfigureCoordinateSystem(
     int16 coord_sys,
     const Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemConfig& config) {
@@ -220,6 +237,7 @@ Result<void> InterpolationAdapter::ConfigureCoordinateSystem(
 
     SILIGEN_LOG_DEBUG("坐标系配置完成");
     SILIGEN_LOG_INFO("ConfigureCoordinateSystem: 完成 (coord_sys=" + std::to_string(coord_sys) + ")");
+    buffered_positions_[coord_sys] = ResolveBufferedStartPosition(coord_sys);
 
     return Result<void>::Success();
 }
@@ -248,6 +266,11 @@ Result<void> InterpolationAdapter::AddInterpolationData(
     SILIGEN_LOG_DEBUG("转换脉冲: X=" + std::to_string(x_pulse) + ", Y=" + std::to_string(y_pulse) +
                       ", vel=" + std::to_string(vel_pulse) + " 脉冲/ms, acc=" + std::to_string(acc_pulse) + " 脉冲/ms^2");
 
+    auto& buffered_position = buffered_positions_[coord_sys];
+    if (!buffered_position.initialized) {
+        buffered_position = ResolveBufferedStartPosition(coord_sys);
+    }
+
     switch (data.type) {
         case Siligen::RuntimeExecution::Contracts::Motion::InterpolationType::LINEAR:
             // 直线插补
@@ -268,14 +291,22 @@ Result<void> InterpolationAdapter::AddInterpolationData(
         case Siligen::RuntimeExecution::Contracts::Motion::InterpolationType::CIRCULAR_CW:
         case Siligen::RuntimeExecution::Contracts::Motion::InterpolationType::CIRCULAR_CCW: {
             // 圆弧插补
-            double cx_pulse = data.center_x * PULSE_PER_MM;
-            double cy_pulse = data.center_y * PULSE_PER_MM;
+            const float32 arc_start_x = buffered_position.initialized ? buffered_position.x : 0.0f;
+            const float32 arc_start_y = buffered_position.initialized ? buffered_position.y : 0.0f;
+            const double cx_pulse = (data.center_x - arc_start_x) * PULSE_PER_MM;
+            const double cy_pulse = (data.center_y - arc_start_y) * PULSE_PER_MM;
+            // MultiCard arc direction uses 1=CW, 0=CCW in the live execution path.
             short direction =
-                (data.type == Siligen::RuntimeExecution::Contracts::Motion::InterpolationType::CIRCULAR_CW) ? 1 : 2;
+                (data.type == Siligen::RuntimeExecution::Contracts::Motion::InterpolationType::CIRCULAR_CW) ? 1 : 0;
 
             SILIGEN_LOG_DEBUG("调用 MC_ArcXYC(coord=" + std::to_string(coord_sys) + ", X=" + std::to_string(x_pulse) +
                               ", Y=" + std::to_string(y_pulse) + ", CX=" + std::to_string(cx_pulse) +
                               ", CY=" + std::to_string(cy_pulse) + ", dir=" + std::to_string(direction) + ")");
+            SILIGEN_LOG_DEBUG("圆弧起点(mm): start=(" + std::to_string(arc_start_x) + "," +
+                              std::to_string(arc_start_y) + "), center=(" + std::to_string(data.center_x) + "," +
+                              std::to_string(data.center_y) + "), center_offset=(" +
+                              std::to_string(data.center_x - arc_start_x) + "," +
+                              std::to_string(data.center_y - arc_start_y) + ")");
             error_code = wrapper_->MC_ArcXYC(coord_sys, x_pulse, y_pulse,
                                             cx_pulse, cy_pulse, direction,
                                             vel_pulse, acc_pulse, end_vel_pulse,
@@ -307,6 +338,10 @@ Result<void> InterpolationAdapter::AddInterpolationData(
                                               "Unknown interpolation type"));
     }
 
+    buffered_position.initialized = true;
+    buffered_position.x = data.positions[0];
+    buffered_position.y = data.positions[1];
+
     LogCrdDiagnostics(wrapper_, coord_sys, "Add:after");
     SILIGEN_LOG_INFO("AddInterpolationData: coord_sys=" + std::to_string(coord_sys) +
                      ", type=" + std::to_string(static_cast<int>(data.type)) +
@@ -328,6 +363,7 @@ Result<void> InterpolationAdapter::ClearInterpolationBuffer(int16 coord_sys) {
     }
 
     LogCrdDiagnostics(wrapper_, coord_sys, "Clear:after");
+    buffered_positions_[coord_sys] = ResolveBufferedStartPosition(coord_sys);
     return Result<void>::Success();
 }
 

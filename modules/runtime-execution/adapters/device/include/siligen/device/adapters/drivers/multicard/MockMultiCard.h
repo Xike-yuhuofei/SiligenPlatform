@@ -32,6 +32,12 @@ struct MockCardState {
  */
 class MockMultiCard {
 public:
+    struct BufferedArcSegment {
+        long center_x = 0;
+        long center_y = 0;
+        short direction = -1;
+    };
+
     MockMultiCard();
     virtual ~MockMultiCard();
 
@@ -153,6 +159,7 @@ public:
 
     // Test verification interface
     std::vector<long> GetCMPTriggerTimes(short cmp) const;
+    std::vector<BufferedArcSegment> GetBufferedArcSegments(short crd) const;
 
 private:
     struct AxisState {
@@ -183,12 +190,7 @@ private:
         std::vector<long> trajectory_y;    // Buffered Y positions
 
         // Arc segment information
-        struct ArcSegment {
-            long center_x;
-            long center_y;
-            short direction;  // 0=CW, 1=CCW, -1=linear
-        };
-        std::vector<ArcSegment> arc_segments;
+        std::vector<BufferedArcSegment> arc_segments;
 
         bool is_running = false;
         double velocity_override = 1.0;
@@ -198,6 +200,8 @@ private:
         bool const_linear_vel_enabled = false;
         long lookahead_space = 1000;
         size_t current_segment = 0;
+        double current_velocity_pulse_per_ms = 0.0;
+        std::chrono::steady_clock::time_point last_update_time{};
     };
 
     // CMP trigger state
@@ -228,6 +232,10 @@ private:
     unsigned short home_sense_mask_ = 0;
 
     AxisState& GetOrCreateAxisStateUnlocked(short axis);
+    void AdvanceCoordinateSystemUnlocked(CoordinateSystem& crd_sys,
+                                         double dt_ms,
+                                         const std::chrono::steady_clock::time_point& now);
+    void AdvanceCoordinateSystemsUnlocked(const std::chrono::steady_clock::time_point& now);
     void AdvanceAxisStateUnlocked(short axis, const std::chrono::steady_clock::time_point& now);
     void AdvanceAllAxesUnlocked(const std::chrono::steady_clock::time_point& now);
     void StopAxisUnlocked(short axis);

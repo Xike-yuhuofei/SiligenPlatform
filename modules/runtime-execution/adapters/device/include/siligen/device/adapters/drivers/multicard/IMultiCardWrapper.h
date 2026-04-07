@@ -318,7 +318,7 @@ class IMultiCardWrapper {
      * @param y 终点Y坐标（脉冲）
      * @param cx 圆心X坐标（脉冲）
      * @param cy 圆心Y坐标（脉冲）
-     * @param direction 方向（1=顺时针，2=逆时针）
+     * @param direction 方向（1=顺时针，0=逆时针）
      * @param synVel 同步速度（脉冲/秒）
      * @param synAcc 同步加速度（脉冲/秒²）
      * @param endVel 结束速度（脉冲/秒）

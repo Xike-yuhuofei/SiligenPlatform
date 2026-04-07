@@ -728,18 +728,7 @@ Result<RuntimeJobStatusResponse> DispensingExecutionUseCase::Impl::GetJobStatus(
         }
         context = it->second;
     }
-    const auto response = BuildJobStatusResponse(context);
-    if (IsTerminalJobState(context->state.load())) {
-        std::lock_guard<std::mutex> lock(jobs_mutex_);
-        auto it = jobs_.find(job_id);
-        if (it != jobs_.end() && it->second == context) {
-            jobs_.erase(it);
-        }
-        if (active_job_id_ == job_id) {
-            active_job_id_.clear();
-        }
-    }
-    return Result<RuntimeJobStatusResponse>::Success(response);
+    return Result<RuntimeJobStatusResponse>::Success(BuildJobStatusResponse(context));
 }
 
 Result<TaskStatusResponse> DispensingExecutionUseCase::Impl::GetTaskStatus(const TaskID& task_id) const {

@@ -4,6 +4,7 @@
 #include "siligen/device/adapters/drivers/multicard/IMultiCardWrapper.h"
 #include "shared/types/Result.h"
 
+#include <map>
 #include <memory>
 
 namespace Siligen::Infrastructure::Adapters {
@@ -74,7 +75,14 @@ class InterpolationAdapter : public Siligen::RuntimeExecution::Contracts::Motion
         int16 coord_sys) const override;
 
    private:
+    struct BufferedPosition {
+        bool initialized = false;
+        float32 x = 0.0f;
+        float32 y = 0.0f;
+    };
+
     std::shared_ptr<Infrastructure::Hardware::IMultiCardWrapper> wrapper_;
+    std::map<int16, BufferedPosition> buffered_positions_;
 
     /**
      * @brief 转换 MultiCard 错误码为 Result
@@ -82,6 +90,8 @@ class InterpolationAdapter : public Siligen::RuntimeExecution::Contracts::Motion
      * @param operation 操作描述
      */
     Result<void> ConvertError(int error_code, const std::string& operation);
+
+    BufferedPosition ResolveBufferedStartPosition(int16 coord_sys) const;
 
     /**
      * @brief 将脉冲转换为物理单位（简化实现：1:1映射）

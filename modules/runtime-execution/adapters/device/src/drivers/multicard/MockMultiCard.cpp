@@ -13,6 +13,9 @@ namespace Hardware {
 namespace {
 
 constexpr auto kMockHomingDuration = std::chrono::milliseconds(120);
+constexpr double kMockCoordinateVelocityPulsesPerMs = 10.0;
+constexpr short kMockCrdStatusProgRun = 0x0001;
+constexpr short kMockCrdStatusFifoFinish0 = 0x0010;
 
 short NormalizeAxis(short axis) {
     return axis < 1 ? static_cast<short>(axis + 1) : axis;
@@ -41,6 +44,95 @@ MockMultiCard::~MockMultiCard() {
 
 MockMultiCard::AxisState& MockMultiCard::GetOrCreateAxisStateUnlocked(short axis) {
     return axes_[NormalizeAxis(axis)];
+}
+
+void MockMultiCard::AdvanceCoordinateSystemUnlocked(CoordinateSystem& crd_sys,
+                                                    double dt_ms,
+                                                    const std::chrono::steady_clock::time_point& now) {
+    const size_t trajectory_size = crd_sys.trajectory_x.size();
+    if (!crd_sys.is_running || crd_sys.current_segment >= trajectory_size || trajectory_size == 0) {
+        crd_sys.is_running = false;
+        crd_sys.current_velocity_pulse_per_ms = 0.0;
+        crd_sys.last_update_time = now;
+        return;
+    }
+
+    const short axis_x = static_cast<short>(crd_sys.axis_map[0]);
+    const short axis_y = static_cast<short>(crd_sys.axis_map[1]);
+    AxisState* axis_x_state = axis_x > 0 ? &GetOrCreateAxisStateUnlocked(axis_x) : nullptr;
+    AxisState* axis_y_state = axis_y > 0 ? &GetOrCreateAxisStateUnlocked(axis_y) : nullptr;
+
+    const double speed =
+        std::max(kMockCoordinateVelocityPulsesPerMs, kMockCoordinateVelocityPulsesPerMs * crd_sys.velocity_override);
+    double remaining_dt_ms = std::max(0.0, dt_ms);
+    crd_sys.current_velocity_pulse_per_ms = speed;
+
+    while (crd_sys.is_running && crd_sys.current_segment < trajectory_size) {
+        const long current_x = axis_x_state ? axis_x_state->position : 0;
+        const long current_y = axis_y_state ? axis_y_state->position : 0;
+        const long target_x = crd_sys.trajectory_x[crd_sys.current_segment];
+        const long target_y = crd_sys.trajectory_y[crd_sys.current_segment];
+
+        const double dx = static_cast<double>(target_x - current_x);
+        const double dy = static_cast<double>(target_y - current_y);
+        const double distance = std::sqrt((dx * dx) + (dy * dy));
+
+        if (distance <= 0.0) {
+            if (axis_x_state) {
+                axis_x_state->position = target_x;
+            }
+            if (axis_y_state) {
+                axis_y_state->position = target_y;
+            }
+            ++crd_sys.current_segment;
+            continue;
+        }
+
+        if (remaining_dt_ms <= 0.0) {
+            break;
+        }
+
+        const double max_delta = speed * remaining_dt_ms;
+        if (distance <= max_delta) {
+            if (axis_x_state) {
+                axis_x_state->position = target_x;
+            }
+            if (axis_y_state) {
+                axis_y_state->position = target_y;
+            }
+            remaining_dt_ms -= distance / speed;
+            ++crd_sys.current_segment;
+            continue;
+        }
+
+        const double ratio = max_delta / distance;
+        if (axis_x_state) {
+            axis_x_state->position += static_cast<long>(std::lround(dx * ratio));
+        }
+        if (axis_y_state) {
+            axis_y_state->position += static_cast<long>(std::lround(dy * ratio));
+        }
+        remaining_dt_ms = 0.0;
+    }
+
+    if (crd_sys.current_segment >= trajectory_size) {
+        crd_sys.current_segment = trajectory_size;
+        crd_sys.is_running = false;
+        crd_sys.current_velocity_pulse_per_ms = 0.0;
+    }
+
+    crd_sys.last_update_time = now;
+}
+
+void MockMultiCard::AdvanceCoordinateSystemsUnlocked(const std::chrono::steady_clock::time_point& now) {
+    for (auto& [crd_id, crd_sys] : coordinate_systems_) {
+        (void)crd_id;
+        const double dt_ms =
+            (crd_sys.last_update_time == std::chrono::steady_clock::time_point{})
+                ? 0.0
+                : std::chrono::duration<double, std::milli>(now - crd_sys.last_update_time).count();
+        AdvanceCoordinateSystemUnlocked(crd_sys, dt_ms, now);
+    }
 }
 
 void MockMultiCard::StopAxisUnlocked(short axis) {
@@ -318,7 +410,9 @@ int MockMultiCard::MC_GetPos(short axis, long* position) {
         return -1;
     }
 
-    AdvanceAxisStateUnlocked(axis, std::chrono::steady_clock::now());
+    const auto now = std::chrono::steady_clock::now();
+    AdvanceCoordinateSystemsUnlocked(now);
+    AdvanceAxisStateUnlocked(axis, now);
     *position = GetOrCreateAxisStateUnlocked(axis).position;
     return 0;
 }
@@ -342,7 +436,9 @@ int MockMultiCard::MC_GetAxisEncPos(short axis, double* pos) {
         return -1;
     }
 
-    AdvanceAxisStateUnlocked(axis, std::chrono::steady_clock::now());
+    const auto now = std::chrono::steady_clock::now();
+    AdvanceCoordinateSystemsUnlocked(now);
+    AdvanceAxisStateUnlocked(axis, now);
     *pos = static_cast<double>(GetOrCreateAxisStateUnlocked(axis).position);
     return 0;
 }
@@ -543,6 +639,8 @@ int MockMultiCard::MC_CrdClear(short crd, short fifo) {
     crd_sys.arc_segments.clear();
     crd_sys.current_segment = 0;
     crd_sys.is_running = false;
+    crd_sys.current_velocity_pulse_per_ms = 0.0;
+    crd_sys.last_update_time = std::chrono::steady_clock::time_point{};
     return 0;
 }
 
@@ -604,9 +702,6 @@ int MockMultiCard::MC_ArcXYC(short crd,
                              short fifo,
                              long segment_id) {
     std::lock_guard<std::mutex> lock(state_mutex_);
-    (void)cx;
-    (void)cy;
-    (void)direction;
     (void)synVel;
     (void)synAcc;
     (void)endVel;
@@ -618,6 +713,8 @@ int MockMultiCard::MC_ArcXYC(short crd,
         return -1;
     }
 
+    it->second.arc_segments.push_back(
+        BufferedArcSegment{static_cast<long>(std::lround(cx)), static_cast<long>(std::lround(cy)), direction});
     it->second.trajectory_x.push_back(x);
     it->second.trajectory_y.push_back(y);
     return 0;
@@ -640,8 +737,10 @@ int MockMultiCard::MC_CrdStart(short crd, short mask) {
         return -1;
     }
 
-    it->second.is_running = true;
+    it->second.is_running = !it->second.trajectory_x.empty();
     it->second.current_segment = 0;
+    it->second.current_velocity_pulse_per_ms = 0.0;
+    it->second.last_update_time = std::chrono::steady_clock::now();
     return 0;
 }
 
@@ -778,7 +877,9 @@ int MockMultiCard::MC_GetPrfPos(short axis, double* pos) {
         return -1;
     }
 
-    AdvanceAxisStateUnlocked(axis, std::chrono::steady_clock::now());
+    const auto now = std::chrono::steady_clock::now();
+    AdvanceCoordinateSystemsUnlocked(now);
+    AdvanceAxisStateUnlocked(axis, now);
     *pos = static_cast<double>(GetOrCreateAxisStateUnlocked(axis).position);
     return 0;
 }
@@ -799,7 +900,9 @@ int MockMultiCard::MC_GetSts(short axis, long* sts, short from_axis, unsigned lo
         return -1;
     }
 
-    AdvanceAxisStateUnlocked(axis, std::chrono::steady_clock::now());
+    const auto now = std::chrono::steady_clock::now();
+    AdvanceCoordinateSystemsUnlocked(now);
+    AdvanceAxisStateUnlocked(axis, now);
     *sts = ComposeAxisStatusUnlocked(axis);
     axis_status_[NormalizeAxis(axis)] = *sts;
 
@@ -907,7 +1010,9 @@ int MockMultiCard::MC_HomeGetSts(short axis, unsigned short* status) {
         return -1;
     }
 
-    AdvanceAxisStateUnlocked(axis, std::chrono::steady_clock::now());
+    const auto now = std::chrono::steady_clock::now();
+    AdvanceCoordinateSystemsUnlocked(now);
+    AdvanceAxisStateUnlocked(axis, now);
     *status = GetOrCreateAxisStateUnlocked(axis).home_status;
     return 0;
 }
@@ -1013,34 +1118,68 @@ int MockMultiCard::MC_GetDiRaw(short nCardIndex, long* pValue) {
 
 int MockMultiCard::MC_CrdStatus(short nCrdNum, short* pCrdStatus, long* pSegment, short FifoIndex) {
     std::lock_guard<std::mutex> lock(state_mutex_);
-    (void)nCrdNum;
     (void)FifoIndex;
+    AdvanceCoordinateSystemsUnlocked(std::chrono::steady_clock::now());
+
+    short crd_status = 0;
+    long remaining_segments = 0;
+    const auto it = coordinate_systems_.find(nCrdNum);
+    if (it != coordinate_systems_.end()) {
+        const CoordinateSystem& crd_sys = it->second;
+        const bool has_remaining = crd_sys.current_segment < crd_sys.trajectory_x.size();
+        if (crd_sys.is_running && has_remaining) {
+            crd_status |= kMockCrdStatusProgRun;
+        }
+        if (!has_remaining) {
+            crd_status |= kMockCrdStatusFifoFinish0;
+        }
+        remaining_segments = has_remaining
+                                 ? static_cast<long>(crd_sys.trajectory_x.size() - crd_sys.current_segment)
+                                 : 0L;
+    }
+
     if (pCrdStatus) {
-        *pCrdStatus = 0;
+        *pCrdStatus = crd_status;
     }
     if (pSegment) {
-        *pSegment = 0;
+        *pSegment = remaining_segments;
     }
     return 0;
 }
 
 int MockMultiCard::MC_GetCrdPos(short nCrdNum, double* pPos) {
     std::lock_guard<std::mutex> lock(state_mutex_);
-    (void)nCrdNum;
     if (!pPos) {
         return -1;
     }
-    *pPos = 0.0;
+
+    AdvanceCoordinateSystemsUnlocked(std::chrono::steady_clock::now());
+    pPos[0] = 0.0;
+    pPos[1] = 0.0;
+
+    const auto it = coordinate_systems_.find(nCrdNum);
+    if (it != coordinate_systems_.end()) {
+        const short axis_x = static_cast<short>(it->second.axis_map[0]);
+        const short axis_y = static_cast<short>(it->second.axis_map[1]);
+        if (axis_x > 0) {
+            pPos[0] = static_cast<double>(GetOrCreateAxisStateUnlocked(axis_x).position);
+        }
+        if (axis_y > 0) {
+            pPos[1] = static_cast<double>(GetOrCreateAxisStateUnlocked(axis_y).position);
+        }
+    }
     return 0;
 }
 
 int MockMultiCard::MC_GetCrdVel(short nCrdNum, double* pSynVel) {
     std::lock_guard<std::mutex> lock(state_mutex_);
-    (void)nCrdNum;
     if (!pSynVel) {
         return -1;
     }
-    *pSynVel = 0.0;
+
+    AdvanceCoordinateSystemsUnlocked(std::chrono::steady_clock::now());
+    const auto it = coordinate_systems_.find(nCrdNum);
+    *pSynVel = (it != coordinate_systems_.end()) ? it->second.current_velocity_pulse_per_ms : 0.0;
     return 0;
 }
 
@@ -1126,56 +1265,12 @@ int MockMultiCard::MC_EncOff(short axis) {
 void MockMultiCard::TickMs(double dt_ms) {
     std::lock_guard<std::mutex> lock(state_mutex_);
     simulation_time_ms_ += dt_ms;
-    AdvanceAllAxesUnlocked(std::chrono::steady_clock::now());
-
+    const auto now = std::chrono::steady_clock::now();
     for (auto& [crd_id, crd_sys] : coordinate_systems_) {
         (void)crd_id;
-        if (!crd_sys.is_running || crd_sys.current_segment >= crd_sys.trajectory_x.size()) {
-            continue;
-        }
-
-        long axis_x = crd_sys.axis_map[0];
-        long axis_y = crd_sys.axis_map[1];
-        double remaining_dt_ms = dt_ms;
-        constexpr double velocity_pulses_per_ms = 10.0;
-
-        while (crd_sys.is_running && crd_sys.current_segment < crd_sys.trajectory_x.size() && remaining_dt_ms > 0.0) {
-            long target_x = crd_sys.trajectory_x[crd_sys.current_segment];
-            long target_y = crd_sys.trajectory_y[crd_sys.current_segment];
-            long current_x = axes_[axis_x].position;
-            long current_y = axes_[axis_y].position;
-
-            double dx = static_cast<double>(target_x - current_x);
-            double dy = static_cast<double>(target_y - current_y);
-            double distance = std::sqrt((dx * dx) + (dy * dy));
-
-            if (distance <= 0.0) {
-                crd_sys.current_segment++;
-                if (crd_sys.current_segment >= crd_sys.trajectory_x.size()) {
-                    crd_sys.is_running = false;
-                }
-                continue;
-            }
-
-            double max_delta = velocity_pulses_per_ms * remaining_dt_ms;
-            if (distance <= max_delta) {
-                axes_[axis_x].position = target_x;
-                axes_[axis_y].position = target_y;
-                remaining_dt_ms -= distance / velocity_pulses_per_ms;
-                crd_sys.current_segment++;
-
-                if (crd_sys.current_segment >= crd_sys.trajectory_x.size()) {
-                    crd_sys.is_running = false;
-                }
-                continue;
-            }
-
-            double ratio = max_delta / distance;
-            axes_[axis_x].position += static_cast<long>(dx * ratio);
-            axes_[axis_y].position += static_cast<long>(dy * ratio);
-            remaining_dt_ms = 0.0;
-        }
+        AdvanceCoordinateSystemUnlocked(crd_sys, dt_ms, now);
     }
+    AdvanceAllAxesUnlocked(now);
 
     for (auto& [cmp_id, trigger] : cmp_triggers_) {
         (void)cmp_id;
@@ -1208,6 +1303,16 @@ std::vector<long> MockMultiCard::GetCMPTriggerTimes(short cmp) const {
         return {};
     }
     return it->second.trigger_times;
+}
+
+std::vector<MockMultiCard::BufferedArcSegment> MockMultiCard::GetBufferedArcSegments(short crd) const {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+
+    auto it = coordinate_systems_.find(crd);
+    if (it == coordinate_systems_.end()) {
+        return {};
+    }
+    return it->second.arc_segments;
 }
 
 int MockMultiCard::MC_SetOverride(short crd, double ratio) {
