@@ -174,6 +174,7 @@ AuthorityPreviewBuildResult BuildAuthorityPreviewResult(const WorkflowAuthorityP
 ExecutionAssemblyBuildInput BuildExecutionAssemblyInput(const WorkflowExecutionAssemblyRequest& input) {
     ExecutionAssemblyBuildInput execution_input;
     execution_input.process_path = input.process_path;
+    execution_input.authority_process_path = input.authority_process_path;
     execution_input.motion_plan = input.motion_plan;
     execution_input.source_path = input.source_path;
     execution_input.dxf_filename = input.dxf_filename;
@@ -216,6 +217,7 @@ WorkflowExecutionAssemblyRequest BuildWorkflowExecutionAssemblyRequest(
     const WorkflowAuthorityPreviewArtifacts& authority_preview) {
     WorkflowExecutionAssemblyRequest request;
     request.process_path = input.authority_preview_request.process_path;
+    request.authority_process_path = input.authority_preview_request.authority_process_path;
     request.motion_plan = input.motion_plan;
     request.source_path = input.authority_preview_request.source_path;
     request.dxf_filename = input.authority_preview_request.dxf_filename;

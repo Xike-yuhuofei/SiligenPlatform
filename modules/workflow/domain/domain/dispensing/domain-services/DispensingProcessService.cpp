@@ -13,8 +13,10 @@
 #include <chrono>
 #include <cmath>
 #include <optional>
+#include <sstream>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace Siligen::Domain::Dispensing::DomainServices {
 
@@ -27,6 +29,9 @@ using Siligen::Shared::Types::uint32;
 using Siligen::Shared::Types::LogicalAxisId;
 using Siligen::Shared::Types::Point2D;
 namespace {
+constexpr float32 kTraceEpsilonMm = 1e-4f;
+constexpr float32 kTraceRadiansPerDegree = 0.017453292519943295f;
+constexpr float32 kTraceFullCirclePositionToleranceMm = 0.1f;
 constexpr float32 kDefaultAcceleration = 100.0f;
 constexpr float32 kDefaultPulsePerMm = 200.0f;
 constexpr uint32 kDefaultDispenserIntervalMs = 100;
@@ -218,6 +223,239 @@ int32 BuildMotionCompletionTimeoutMs(float32 estimated_motion_time_ms) noexcept 
                                      static_cast<int32>(kMotionCompletionGraceMinMs),
                                      static_cast<int32>(kMotionCompletionGraceMaxMs));
     return base_timeout + grace_ms;
+}
+
+const char* ToString(Motion::Ports::InterpolationType type) noexcept {
+    switch (type) {
+        case Motion::Ports::InterpolationType::LINEAR:
+            return "linear";
+        case Motion::Ports::InterpolationType::CIRCULAR_CW:
+            return "arc_cw";
+        case Motion::Ports::InterpolationType::CIRCULAR_CCW:
+            return "arc_ccw";
+        case Motion::Ports::InterpolationType::SPIRAL:
+            return "spiral";
+        case Motion::Ports::InterpolationType::BUFFER_STOP:
+            return "buffer_stop";
+    }
+    return "unknown";
+}
+
+std::optional<Point2D> ResolveInterpolationEndPoint(
+    const Motion::Ports::InterpolationData& segment) noexcept {
+    if (segment.positions.size() < 2U) {
+        return std::nullopt;
+    }
+    return Point2D(segment.positions[0], segment.positions[1]);
+}
+
+float32 NormalizePositiveDegrees(float32 degrees) noexcept {
+    auto normalized = std::fmod(degrees, 360.0f);
+    if (normalized < 0.0f) {
+        normalized += 360.0f;
+    }
+    return normalized;
+}
+
+float32 ComputeArcSweepDegrees(const Point2D& center,
+                               const Point2D& start_point,
+                               const Point2D& end_point,
+                               bool clockwise) noexcept {
+    const auto start_angle = static_cast<float32>(
+        std::atan2(start_point.y - center.y, start_point.x - center.x) / kTraceRadiansPerDegree);
+    const auto end_angle = static_cast<float32>(
+        std::atan2(end_point.y - center.y, end_point.x - center.x) / kTraceRadiansPerDegree);
+    auto sweep = clockwise
+                     ? NormalizePositiveDegrees(start_angle - end_angle)
+                     : NormalizePositiveDegrees(end_angle - start_angle);
+    if (sweep <= kTraceEpsilonMm &&
+        start_point.DistanceTo(end_point) <= kTraceFullCirclePositionToleranceMm) {
+        sweep = 360.0f;
+    }
+    return sweep;
+}
+
+float32 ResolveControllerReadySegmentLengthMm(const Point2D& start_point,
+                                              const Motion::Ports::InterpolationData& segment) noexcept {
+    const auto end_point = ResolveInterpolationEndPoint(segment);
+    if (!end_point.has_value()) {
+        return 0.0f;
+    }
+
+    if (segment.type == Motion::Ports::InterpolationType::CIRCULAR_CW ||
+        segment.type == Motion::Ports::InterpolationType::CIRCULAR_CCW) {
+        const Point2D center(segment.center_x, segment.center_y);
+        const auto radius = std::max(center.DistanceTo(start_point), center.DistanceTo(end_point.value()));
+        if (radius <= kTraceEpsilonMm) {
+            return start_point.DistanceTo(end_point.value());
+        }
+
+        const auto sweep_deg = ComputeArcSweepDegrees(
+            center,
+            start_point,
+            end_point.value(),
+            segment.type == Motion::Ports::InterpolationType::CIRCULAR_CW);
+        if (sweep_deg <= kTraceEpsilonMm) {
+            return start_point.DistanceTo(end_point.value());
+        }
+        return radius * sweep_deg * kTraceRadiansPerDegree;
+    }
+
+    return start_point.DistanceTo(end_point.value());
+}
+
+std::vector<float32> BuildPreviewPointArcLengths(
+    const std::vector<Siligen::TrajectoryPoint>& preview_points) {
+    std::vector<float32> arc_lengths;
+    if (preview_points.empty()) {
+        return arc_lengths;
+    }
+
+    arc_lengths.reserve(preview_points.size());
+    float32 cumulative_length = 0.0f;
+    arc_lengths.push_back(cumulative_length);
+    for (std::size_t index = 1; index < preview_points.size(); ++index) {
+        cumulative_length += preview_points[index - 1].position.DistanceTo(preview_points[index].position);
+        arc_lengths.push_back(cumulative_length);
+    }
+    return arc_lengths;
+}
+
+std::size_t ResolvePreviewPointFloorIndex(const std::vector<float32>& arc_lengths, float32 distance_mm) noexcept {
+    if (arc_lengths.empty()) {
+        return 0U;
+    }
+
+    const auto it = std::upper_bound(arc_lengths.begin(), arc_lengths.end(), distance_mm + kTraceEpsilonMm);
+    if (it == arc_lengths.begin()) {
+        return 0U;
+    }
+    return static_cast<std::size_t>(std::distance(arc_lengths.begin(), it) - 1);
+}
+
+std::size_t ResolvePreviewPointCeilIndex(const std::vector<float32>& arc_lengths, float32 distance_mm) noexcept {
+    if (arc_lengths.empty()) {
+        return 0U;
+    }
+
+    const auto it = std::lower_bound(arc_lengths.begin(), arc_lengths.end(), distance_mm - kTraceEpsilonMm);
+    if (it == arc_lengths.end()) {
+        return arc_lengths.size() - 1U;
+    }
+    return static_cast<std::size_t>(std::distance(arc_lengths.begin(), it));
+}
+
+struct ControllerReadySegmentTraceRow {
+    std::size_t segment_index = 0U;
+    Motion::Ports::InterpolationType type = Motion::Ports::InterpolationType::LINEAR;
+    Point2D start_point{};
+    Point2D end_point{};
+    Point2D preview_start_point{};
+    Point2D preview_end_point{};
+    std::size_t preview_start_index = 0U;
+    std::size_t preview_end_index = 0U;
+    uint32 preview_start_sequence_id = 0U;
+    uint32 preview_end_sequence_id = 0U;
+    float32 segment_length_mm = 0.0f;
+    float32 s_start_mm = 0.0f;
+    float32 s_end_mm = 0.0f;
+    float32 preview_start_arc_mm = 0.0f;
+    float32 preview_end_arc_mm = 0.0f;
+    float32 start_match_mm = 0.0f;
+    float32 end_match_mm = 0.0f;
+};
+
+struct ControllerReadyTracePlan {
+    std::vector<ControllerReadySegmentTraceRow> rows;
+    float32 controller_total_length_mm = 0.0f;
+    float32 preview_total_length_mm = 0.0f;
+};
+
+ControllerReadyTracePlan BuildControllerReadyTracePlan(const DispensingExecutionPlan& plan) {
+    ControllerReadyTracePlan trace_plan;
+    if (plan.interpolation_segments.empty() || plan.interpolation_points.size() < 2U) {
+        return trace_plan;
+    }
+
+    const auto arc_lengths = BuildPreviewPointArcLengths(plan.interpolation_points);
+    if (arc_lengths.empty()) {
+        return trace_plan;
+    }
+
+    trace_plan.preview_total_length_mm = arc_lengths.back();
+    trace_plan.rows.reserve(plan.interpolation_segments.size());
+
+    Point2D segment_start = plan.interpolation_points.front().position;
+    float32 s_cursor = 0.0f;
+    for (std::size_t segment_index = 0; segment_index < plan.interpolation_segments.size(); ++segment_index) {
+        const auto& segment = plan.interpolation_segments[segment_index];
+        const auto segment_end = ResolveInterpolationEndPoint(segment);
+        if (!segment_end.has_value()) {
+            continue;
+        }
+
+        const auto segment_length_mm = ResolveControllerReadySegmentLengthMm(segment_start, segment);
+        const auto s_start_mm = s_cursor;
+        const auto s_end_mm = s_start_mm + segment_length_mm;
+        const auto preview_start_index = ResolvePreviewPointFloorIndex(arc_lengths, s_start_mm);
+        auto preview_end_index = ResolvePreviewPointCeilIndex(arc_lengths, s_end_mm);
+        if (preview_end_index < preview_start_index) {
+            preview_end_index = preview_start_index;
+        }
+
+        ControllerReadySegmentTraceRow row;
+        row.segment_index = segment_index;
+        row.type = segment.type;
+        row.start_point = segment_start;
+        row.end_point = segment_end.value();
+        row.preview_start_index = preview_start_index;
+        row.preview_end_index = preview_end_index;
+        row.preview_start_sequence_id = plan.interpolation_points[preview_start_index].sequence_id;
+        row.preview_end_sequence_id = plan.interpolation_points[preview_end_index].sequence_id;
+        row.preview_start_point = plan.interpolation_points[preview_start_index].position;
+        row.preview_end_point = plan.interpolation_points[preview_end_index].position;
+        row.segment_length_mm = segment_length_mm;
+        row.s_start_mm = s_start_mm;
+        row.s_end_mm = s_end_mm;
+        row.preview_start_arc_mm = arc_lengths[preview_start_index];
+        row.preview_end_arc_mm = arc_lengths[preview_end_index];
+        row.start_match_mm = row.start_point.DistanceTo(row.preview_start_point);
+        row.end_match_mm = row.end_point.DistanceTo(row.preview_end_point);
+        trace_plan.rows.push_back(row);
+
+        segment_start = segment_end.value();
+        s_cursor = s_end_mm;
+    }
+
+    trace_plan.controller_total_length_mm = s_cursor;
+    return trace_plan;
+}
+
+void LogControllerReadyTraceRow(const ControllerReadySegmentTraceRow& row) {
+    SILIGEN_LOG_INFO_FMT_HELPER(
+        "controller_ready_dispatch segment_index=%zu preview_point_range=[%zu,%zu] "
+        "preview_sequence_range=[%u,%u] s_range_mm=[%.3f,%.3f] segment_length_mm=%.3f type=%s "
+        "start=(%.3f,%.3f) end=(%.3f,%.3f) preview_start=(%.3f,%.3f) preview_end=(%.3f,%.3f) "
+        "start_match_mm=%.3f end_match_mm=%.3f",
+        row.segment_index,
+        row.preview_start_index,
+        row.preview_end_index,
+        row.preview_start_sequence_id,
+        row.preview_end_sequence_id,
+        row.s_start_mm,
+        row.s_end_mm,
+        row.segment_length_mm,
+        ToString(row.type),
+        row.start_point.x,
+        row.start_point.y,
+        row.end_point.x,
+        row.end_point.y,
+        row.preview_start_point.x,
+        row.preview_start_point.y,
+        row.preview_end_point.x,
+        row.preview_end_point.y,
+        row.start_match_mm,
+        row.end_match_mm);
 }
 
 Point2D ResolveFinalTargetPosition(const DispensingExecutionPlan& plan) noexcept {
@@ -612,6 +850,20 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
     const auto& program = plan.interpolation_segments;
     const auto total_segments = program.size();
     size_t cursor = 0;
+    const auto controller_ready_trace = BuildControllerReadyTracePlan(plan);
+
+    if (!plan.interpolation_points.empty()) {
+        SILIGEN_LOG_INFO_FMT_HELPER(
+            "controller_ready_trace_summary preview_points=%zu controller_segments=%zu traced_segments=%zu "
+            "controller_total_length_mm=%.3f preview_total_length_mm=%.3f length_delta_mm=%.3f",
+            plan.interpolation_points.size(),
+            total_segments,
+            controller_ready_trace.rows.size(),
+            controller_ready_trace.controller_total_length_mm,
+            controller_ready_trace.preview_total_length_mm,
+            std::fabs(controller_ready_trace.controller_total_length_mm -
+                      controller_ready_trace.preview_total_length_mm));
+    }
 
     auto query_buffer_space = [&]() -> Result<uint32> {
         auto crd_space_result = interpolation_port_->GetInterpolationBufferSpace(kCoordinateSystem);
@@ -630,6 +882,15 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
 
     auto send_batch = [&](size_t batch_size) -> Result<void> {
         for (size_t i = 0; i < batch_size && cursor < total_segments; ++i, ++cursor) {
+            if (cursor < controller_ready_trace.rows.size()) {
+                LogControllerReadyTraceRow(controller_ready_trace.rows[cursor]);
+            } else if (!plan.interpolation_points.empty()) {
+                SILIGEN_LOG_WARNING_FMT_HELPER(
+                    "controller_ready_dispatch segment_index=%zu missing_trace=1 preview_points=%zu traced_segments=%zu",
+                    cursor,
+                    plan.interpolation_points.size(),
+                    controller_ready_trace.rows.size());
+            }
             auto add_result = interpolation_port_->AddInterpolationData(kCoordinateSystem, program[cursor]);
             if (add_result.IsError()) {
                 return Result<void>::Failure(add_result.GetError());
