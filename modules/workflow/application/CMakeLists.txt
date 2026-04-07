@@ -36,6 +36,12 @@ if(NOT TARGET siligen_runtime_execution_runtime_contracts)
         "${CMAKE_BINARY_DIR}/_p/wa_rec"
     )
 endif()
+if(NOT TARGET siligen_runtime_execution_application_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../runtime-execution/application"
+        "${CMAKE_BINARY_DIR}/_p/wa_rea"
+    )
+endif()
 if(NOT TARGET siligen_device_contracts)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../../../shared/contracts/device"
@@ -76,7 +82,11 @@ elseif(TARGET siligen_job_ingest_contracts)
         siligen_job_ingest_contracts
     )
 endif()
-if(TARGET siligen_dispense_packaging_contracts_public)
+if(TARGET siligen_dispense_packaging_application_public)
+    target_link_libraries(siligen_workflow_application_headers INTERFACE
+        siligen_dispense_packaging_application_public
+    )
+elseif(TARGET siligen_dispense_packaging_contracts_public)
     target_link_libraries(siligen_workflow_application_headers INTERFACE
         siligen_dispense_packaging_contracts_public
     )
@@ -101,9 +111,14 @@ if(TARGET siligen_device_contracts)
         siligen_device_contracts
     )
 endif()
-if(TARGET siligen_runtime_execution_runtime_contracts)
+if(TARGET siligen_runtime_execution_application_public)
     target_link_libraries(siligen_workflow_application_headers INTERFACE
-        siligen_runtime_execution_runtime_contracts
+        siligen_runtime_execution_application_public
+    )
+endif()
+if(TARGET siligen_dxf_geometry_application_public)
+    target_link_libraries(siligen_workflow_application_headers INTERFACE
+        siligen_dxf_geometry_application_public
     )
 endif()
 target_compile_features(siligen_workflow_application_headers INTERFACE cxx_std_17)

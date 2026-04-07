@@ -141,6 +141,7 @@ struct ExecutionAssemblyArtifacts {
     std::string execution_failure_reason;
     std::shared_ptr<ExecutionPackageValidated> execution_package;
     Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
+    Siligen::Application::Services::Dispensing::PlanningArtifactExportRequest export_request;
 };
 
 /**

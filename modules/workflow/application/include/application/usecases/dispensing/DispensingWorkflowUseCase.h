@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../../../../../runtime-execution/application/include/runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
+#include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "application/usecases/dispensing/PlanningUseCase.h"
 #include "job_ingest/contracts/dispensing/UploadContracts.h"
 #include "domain/motion/ports/IHomingPort.h"
@@ -356,6 +356,10 @@ class DispensingWorkflowUseCase {
         std::uint32_t wait_ms = 0;
     };
 
+    struct PreviewBindingResolution {
+        bool require_execution_binding = false;
+    };
+
     std::shared_ptr<IUploadFilePort> upload_use_case_;
     std::shared_ptr<PlanningUseCase> planning_use_case_;
     std::shared_ptr<DispensingExecutionUseCase> execution_use_case_;
@@ -392,6 +396,23 @@ class DispensingWorkflowUseCase {
         const ArtifactID& artifact_id,
         const PreparedAuthorityPreview& authority_preview,
         const PlanExecutionLaunch& execution_launch) const;
+    bool RequiresExecutionBinding(const PlanRecord& plan_record) const;
+    bool ShouldResolveExecutionBinding(const PlanRecord& plan_record) const;
+    Siligen::Shared::Types::Result<PreviewBindingResolution> ResolvePreviewBindingRequirement(
+        const PlanID& plan_id,
+        bool require_snapshot_ready,
+        const std::string* snapshot_hash,
+        bool mark_failed) const;
+    Siligen::Shared::Types::Result<PlanRecord> PromotePlanToSnapshotReady(
+        const PlanID& plan_id,
+        bool require_execution_binding);
+    Siligen::Shared::Types::Result<ConfirmPreviewResponse> ConfirmPreviewReadyPlan(
+        const PlanID& plan_id,
+        const std::string& snapshot_hash,
+        bool require_execution_binding);
+    Siligen::Shared::Types::Result<PlanExecutionLaunch> ResolveStartJobExecutionLaunch(
+        const StartJobRequest& request,
+        bool require_execution_binding) const;
     Siligen::Shared::Types::Result<AuthorityPreviewResolveResult> ResolveAuthorityPreview(
         const std::string& authority_cache_key,
         const PlanningRequest& planning_request) const;

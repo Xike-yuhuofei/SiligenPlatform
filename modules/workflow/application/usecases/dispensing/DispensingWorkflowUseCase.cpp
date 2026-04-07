@@ -297,77 +297,19 @@ Result<PreviewSnapshotResponse> DispensingWorkflowUseCase::GetPreviewSnapshot(co
             Error(ErrorCode::INVALID_PARAMETER, "plan_id is required", "DispensingWorkflowUseCase"));
     }
 
-    bool require_execution_binding = false;
-    bool should_resolve_execution = false;
-    {
-        std::lock_guard<std::mutex> lock(plans_mutex_);
-        auto it = plans_.find(request.plan_id);
-        if (it == plans_.end()) {
-            return Result<PreviewSnapshotResponse>::Failure(
-                Error(ErrorCode::NOT_FOUND, "plan not found", "DispensingWorkflowUseCase"));
-        }
-        if (!it->second.latest) {
-            return Result<PreviewSnapshotResponse>::Failure(
-                Error(ErrorCode::INVALID_STATE, "plan is stale", "DispensingWorkflowUseCase"));
-        }
-        if (auto preview_gate_error = BuildPreviewGateError(it->second, true, false); preview_gate_error.has_value()) {
-            return Result<PreviewSnapshotResponse>::Failure(preview_gate_error.value());
-        }
-
-        require_execution_binding =
-            !it->second.execution_launch.authority_cache_key.empty() ||
-            static_cast<bool>(it->second.execution_launch.execution_package) ||
-            it->second.execution_authority_shared_with_execution ||
-            it->second.execution_binding_ready;
-        should_resolve_execution =
-            require_execution_binding &&
-            (!it->second.execution_launch.execution_package ||
-             !it->second.preview_authority_shared_with_execution ||
-             !it->second.preview_binding_ready ||
-             !it->second.execution_authority_shared_with_execution ||
-             !it->second.execution_binding_ready);
+    auto binding_resolution = ResolvePreviewBindingRequirement(request.plan_id, false, nullptr, true);
+    if (binding_resolution.IsError()) {
+        return Result<PreviewSnapshotResponse>::Failure(binding_resolution.GetError());
     }
 
-    if (should_resolve_execution) {
-        auto ensure_result = EnsureExecutionAssemblyReady(request.plan_id);
-        if (ensure_result.IsError()) {
-            require_execution_binding = true;
-        }
+    auto snapshot_result = PromotePlanToSnapshotReady(
+        request.plan_id,
+        binding_resolution.Value().require_execution_binding);
+    if (snapshot_result.IsError()) {
+        return Result<PreviewSnapshotResponse>::Failure(snapshot_result.GetError());
     }
 
-    PlanRecord snapshot_record;
-    {
-        std::lock_guard<std::mutex> lock(plans_mutex_);
-        auto it = plans_.find(request.plan_id);
-        if (it == plans_.end()) {
-            return Result<PreviewSnapshotResponse>::Failure(
-                Error(ErrorCode::NOT_FOUND, "plan not found", "DispensingWorkflowUseCase"));
-        }
-        if (!it->second.latest) {
-            return Result<PreviewSnapshotResponse>::Failure(
-                Error(ErrorCode::INVALID_STATE, "plan is stale", "DispensingWorkflowUseCase"));
-        }
-        if (auto preview_gate_error = BuildPreviewGateError(
-                it->second, true, require_execution_binding); preview_gate_error.has_value()) {
-            return Result<PreviewSnapshotResponse>::Failure(preview_gate_error.value());
-        }
-
-        const bool keep_confirmed_state =
-            it->second.preview_state == PlanPreviewState::CONFIRMED &&
-            !it->second.preview_snapshot_hash.empty() &&
-            it->second.preview_snapshot_hash == it->second.response.plan_fingerprint;
-
-        it->second.preview_snapshot_id = it->second.response.plan_id;
-        it->second.preview_snapshot_hash = it->second.response.plan_fingerprint;
-        it->second.preview_generated_at = ToIso8601UtcNow();
-        if (!keep_confirmed_state) {
-            it->second.preview_state = PlanPreviewState::SNAPSHOT_READY;
-            it->second.confirmed_at.clear();
-        }
-        it->second.failure_message.clear();
-        snapshot_record = it->second;
-    }
-
+    auto snapshot_record = snapshot_result.Value();
     const bool has_export_process_path =
         !snapshot_record.execution_assembly.export_request.process_path.segments.empty();
     const bool has_authority_process_path =
@@ -396,93 +338,15 @@ Result<ConfirmPreviewResponse> DispensingWorkflowUseCase::ConfirmPreview(const C
             Error(ErrorCode::INVALID_PARAMETER, "snapshot_hash is required", "DispensingWorkflowUseCase"));
     }
 
-    bool require_execution_binding = false;
-    bool should_resolve_execution = false;
-    {
-        std::lock_guard<std::mutex> lock(plans_mutex_);
-        auto it = plans_.find(request.plan_id);
-        if (it == plans_.end()) {
-            return Result<ConfirmPreviewResponse>::Failure(
-                Error(ErrorCode::NOT_FOUND, "plan not found", "DispensingWorkflowUseCase"));
-        }
-        if (!it->second.latest) {
-            return Result<ConfirmPreviewResponse>::Failure(
-                Error(ErrorCode::INVALID_STATE, "plan is stale", "DispensingWorkflowUseCase"));
-        }
-        if (it->second.preview_state != PlanPreviewState::SNAPSHOT_READY &&
-            it->second.preview_state != PlanPreviewState::CONFIRMED) {
-            return Result<ConfirmPreviewResponse>::Failure(
-                Error(ErrorCode::INVALID_STATE, "preview snapshot not prepared", "DispensingWorkflowUseCase"));
-        }
-        if (request.snapshot_hash != it->second.preview_snapshot_hash) {
-            return Result<ConfirmPreviewResponse>::Failure(
-                Error(ErrorCode::INVALID_PARAMETER, "snapshot hash mismatch", "DispensingWorkflowUseCase"));
-        }
-        if (auto preview_gate_error = BuildPreviewGateError(it->second, true, false); preview_gate_error.has_value()) {
-            return Result<ConfirmPreviewResponse>::Failure(preview_gate_error.value());
-        }
-
-        require_execution_binding =
-            !it->second.execution_launch.authority_cache_key.empty() ||
-            static_cast<bool>(it->second.execution_launch.execution_package) ||
-            it->second.execution_authority_shared_with_execution ||
-            it->second.execution_binding_ready;
-        should_resolve_execution =
-            require_execution_binding &&
-            (!it->second.execution_launch.execution_package ||
-             !it->second.preview_authority_shared_with_execution ||
-             !it->second.preview_binding_ready ||
-             !it->second.execution_authority_shared_with_execution ||
-             !it->second.execution_binding_ready);
+    auto binding_resolution = ResolvePreviewBindingRequirement(request.plan_id, true, &request.snapshot_hash, true);
+    if (binding_resolution.IsError()) {
+        return Result<ConfirmPreviewResponse>::Failure(binding_resolution.GetError());
     }
 
-    if (should_resolve_execution) {
-        auto ensure_result = EnsureExecutionAssemblyReady(request.plan_id);
-        if (ensure_result.IsError()) {
-            require_execution_binding = true;
-        }
-    }
-
-    ConfirmPreviewResponse response;
-    {
-        std::lock_guard<std::mutex> lock(plans_mutex_);
-        auto it = plans_.find(request.plan_id);
-        if (it == plans_.end()) {
-            return Result<ConfirmPreviewResponse>::Failure(
-                Error(ErrorCode::NOT_FOUND, "plan not found", "DispensingWorkflowUseCase"));
-        }
-        if (!it->second.latest) {
-            return Result<ConfirmPreviewResponse>::Failure(
-                Error(ErrorCode::INVALID_STATE, "plan is stale", "DispensingWorkflowUseCase"));
-        }
-        if (it->second.preview_state != PlanPreviewState::SNAPSHOT_READY &&
-            it->second.preview_state != PlanPreviewState::CONFIRMED) {
-            return Result<ConfirmPreviewResponse>::Failure(
-                Error(ErrorCode::INVALID_STATE, "preview snapshot not prepared", "DispensingWorkflowUseCase"));
-        }
-        if (request.snapshot_hash != it->second.preview_snapshot_hash) {
-            return Result<ConfirmPreviewResponse>::Failure(
-                Error(ErrorCode::INVALID_PARAMETER, "snapshot hash mismatch", "DispensingWorkflowUseCase"));
-        }
-        if (auto preview_gate_error = BuildPreviewGateError(
-                it->second, true, require_execution_binding); preview_gate_error.has_value()) {
-            return Result<ConfirmPreviewResponse>::Failure(preview_gate_error.value());
-        }
-
-        it->second.preview_state = PlanPreviewState::CONFIRMED;
-        if (it->second.confirmed_at.empty()) {
-            it->second.confirmed_at = ToIso8601UtcNow();
-        }
-        it->second.failure_message.clear();
-
-        response.confirmed = true;
-        response.plan_id = it->second.response.plan_id;
-        response.snapshot_hash = it->second.preview_snapshot_hash;
-        response.preview_state = PreviewStateToString(it->second.preview_state);
-        response.confirmed_at = it->second.confirmed_at;
-    }
-
-    return Result<ConfirmPreviewResponse>::Success(std::move(response));
+    return ConfirmPreviewReadyPlan(
+        request.plan_id,
+        request.snapshot_hash,
+        binding_resolution.Value().require_execution_binding);
 }
 
 Result<StartJobResponse> DispensingWorkflowUseCase::StartJob(const StartJobRequest& request) {
@@ -499,32 +363,9 @@ Result<StartJobResponse> DispensingWorkflowUseCase::StartJob(const StartJobReque
             Error(ErrorCode::INVALID_PARAMETER, "target_count must be greater than 0", "DispensingWorkflowUseCase"));
     }
 
-    {
-        std::lock_guard<std::mutex> lock(plans_mutex_);
-        auto it = plans_.find(request.plan_id);
-        if (it == plans_.end()) {
-            return Result<StartJobResponse>::Failure(
-                Error(ErrorCode::NOT_FOUND, "plan not found", "DispensingWorkflowUseCase"));
-        }
-        if (!it->second.latest) {
-            return Result<StartJobResponse>::Failure(
-                Error(ErrorCode::INVALID_STATE, "plan is stale", "DispensingWorkflowUseCase"));
-        }
-        if (it->second.preview_state != PlanPreviewState::CONFIRMED) {
-            return Result<StartJobResponse>::Failure(
-                Error(ErrorCode::INVALID_STATE, "preview not confirmed", "DispensingWorkflowUseCase"));
-        }
-        if (auto preview_gate_error = BuildPreviewGateError(it->second, false, false); preview_gate_error.has_value()) {
-            return Result<StartJobResponse>::Failure(preview_gate_error.value());
-        }
-        if (it->second.preview_snapshot_hash != it->second.response.plan_fingerprint) {
-            return Result<StartJobResponse>::Failure(
-                Error(ErrorCode::INVALID_STATE, "preview fingerprint mismatch", "DispensingWorkflowUseCase"));
-        }
-        if (request.plan_fingerprint != it->second.response.plan_fingerprint) {
-            return Result<StartJobResponse>::Failure(
-                Error(ErrorCode::INVALID_PARAMETER, "plan fingerprint mismatch", "DispensingWorkflowUseCase"));
-        }
+    auto initial_launch_result = ResolveStartJobExecutionLaunch(request, false);
+    if (initial_launch_result.IsError()) {
+        return Result<StartJobResponse>::Failure(initial_launch_result.GetError());
     }
 
     auto ensure_execution_result = EnsureExecutionAssemblyReady(request.plan_id);
@@ -533,19 +374,11 @@ Result<StartJobResponse> DispensingWorkflowUseCase::StartJob(const StartJobReque
     }
     const auto execution_resolution = ensure_execution_result.Value();
 
-    PlanExecutionLaunch execution_launch;
-    {
-        std::lock_guard<std::mutex> lock(plans_mutex_);
-        auto it = plans_.find(request.plan_id);
-        if (it == plans_.end() || !it->second.latest) {
-            return Result<StartJobResponse>::Failure(
-                Error(ErrorCode::NOT_FOUND, "plan not found", "DispensingWorkflowUseCase"));
-        }
-        if (auto preview_gate_error = BuildPreviewGateError(it->second, false, true); preview_gate_error.has_value()) {
-            return Result<StartJobResponse>::Failure(preview_gate_error.value());
-        }
-        execution_launch = it->second.execution_launch;
+    auto execution_launch_result = ResolveStartJobExecutionLaunch(request, true);
+    if (execution_launch_result.IsError()) {
+        return Result<StartJobResponse>::Failure(execution_launch_result.GetError());
     }
+    auto execution_launch = execution_launch_result.Value();
 
     RuntimeStartJobRequest runtime_request;
     runtime_request.plan_id = request.plan_id;
@@ -1053,6 +886,187 @@ Result<DispensingWorkflowUseCase::ExecutionAssemblyResolveResult> DispensingWork
         << " execution_total_ms=" << assembly.execution_profile.total_ms;
     SILIGEN_LOG_INFO(oss.str());
     return Result<ExecutionAssemblyResolveResult>::Success(assembly_resolution);
+}
+
+bool DispensingWorkflowUseCase::RequiresExecutionBinding(const PlanRecord& plan_record) const {
+    return !plan_record.execution_launch.authority_cache_key.empty() ||
+           static_cast<bool>(plan_record.execution_launch.execution_package) ||
+           plan_record.execution_authority_shared_with_execution ||
+           plan_record.execution_binding_ready;
+}
+
+bool DispensingWorkflowUseCase::ShouldResolveExecutionBinding(const PlanRecord& plan_record) const {
+    const bool require_execution_binding = RequiresExecutionBinding(plan_record);
+    return require_execution_binding &&
+           (!plan_record.execution_launch.execution_package ||
+            !plan_record.preview_authority_shared_with_execution ||
+            !plan_record.preview_binding_ready ||
+            !plan_record.execution_authority_shared_with_execution ||
+            !plan_record.execution_binding_ready);
+}
+
+Result<DispensingWorkflowUseCase::PreviewBindingResolution> DispensingWorkflowUseCase::ResolvePreviewBindingRequirement(
+    const PlanID& plan_id,
+    bool require_snapshot_ready,
+    const std::string* snapshot_hash,
+    bool mark_failed) const {
+    PreviewBindingResolution resolution;
+    bool should_resolve_execution = false;
+    {
+        std::lock_guard<std::mutex> lock(plans_mutex_);
+        auto it = plans_.find(plan_id);
+        if (it == plans_.end()) {
+            return Result<PreviewBindingResolution>::Failure(
+                Error(ErrorCode::NOT_FOUND, "plan not found", "DispensingWorkflowUseCase"));
+        }
+        if (!it->second.latest) {
+            return Result<PreviewBindingResolution>::Failure(
+                Error(ErrorCode::INVALID_STATE, "plan is stale", "DispensingWorkflowUseCase"));
+        }
+        if (require_snapshot_ready &&
+            it->second.preview_state != PlanPreviewState::SNAPSHOT_READY &&
+            it->second.preview_state != PlanPreviewState::CONFIRMED) {
+            return Result<PreviewBindingResolution>::Failure(
+                Error(ErrorCode::INVALID_STATE, "preview snapshot not prepared", "DispensingWorkflowUseCase"));
+        }
+        if (snapshot_hash != nullptr && *snapshot_hash != it->second.preview_snapshot_hash) {
+            return Result<PreviewBindingResolution>::Failure(
+                Error(ErrorCode::INVALID_PARAMETER, "snapshot hash mismatch", "DispensingWorkflowUseCase"));
+        }
+        if (auto preview_gate_error = BuildPreviewGateError(it->second, mark_failed, false); preview_gate_error.has_value()) {
+            return Result<PreviewBindingResolution>::Failure(preview_gate_error.value());
+        }
+
+        resolution.require_execution_binding = RequiresExecutionBinding(it->second);
+        should_resolve_execution = ShouldResolveExecutionBinding(it->second);
+    }
+
+    if (should_resolve_execution) {
+        auto ensure_result = EnsureExecutionAssemblyReady(plan_id);
+        if (ensure_result.IsError()) {
+            resolution.require_execution_binding = true;
+        }
+    }
+
+    return Result<PreviewBindingResolution>::Success(std::move(resolution));
+}
+
+Result<DispensingWorkflowUseCase::PlanRecord> DispensingWorkflowUseCase::PromotePlanToSnapshotReady(
+    const PlanID& plan_id,
+    bool require_execution_binding) {
+    PlanRecord snapshot_record;
+    {
+        std::lock_guard<std::mutex> lock(plans_mutex_);
+        auto it = plans_.find(plan_id);
+        if (it == plans_.end()) {
+            return Result<PlanRecord>::Failure(
+                Error(ErrorCode::NOT_FOUND, "plan not found", "DispensingWorkflowUseCase"));
+        }
+        if (!it->second.latest) {
+            return Result<PlanRecord>::Failure(
+                Error(ErrorCode::INVALID_STATE, "plan is stale", "DispensingWorkflowUseCase"));
+        }
+        if (auto preview_gate_error = BuildPreviewGateError(
+                it->second, true, require_execution_binding); preview_gate_error.has_value()) {
+            return Result<PlanRecord>::Failure(preview_gate_error.value());
+        }
+
+        const bool keep_confirmed_state =
+            it->second.preview_state == PlanPreviewState::CONFIRMED &&
+            !it->second.preview_snapshot_hash.empty() &&
+            it->second.preview_snapshot_hash == it->second.response.plan_fingerprint;
+
+        it->second.preview_snapshot_id = it->second.response.plan_id;
+        it->second.preview_snapshot_hash = it->second.response.plan_fingerprint;
+        it->second.preview_generated_at = ToIso8601UtcNow();
+        if (!keep_confirmed_state) {
+            it->second.preview_state = PlanPreviewState::SNAPSHOT_READY;
+            it->second.confirmed_at.clear();
+        }
+        it->second.failure_message.clear();
+        snapshot_record = it->second;
+    }
+
+    return Result<PlanRecord>::Success(std::move(snapshot_record));
+}
+
+Result<ConfirmPreviewResponse> DispensingWorkflowUseCase::ConfirmPreviewReadyPlan(
+    const PlanID& plan_id,
+    const std::string& snapshot_hash,
+    bool require_execution_binding) {
+    ConfirmPreviewResponse response;
+    {
+        std::lock_guard<std::mutex> lock(plans_mutex_);
+        auto it = plans_.find(plan_id);
+        if (it == plans_.end()) {
+            return Result<ConfirmPreviewResponse>::Failure(
+                Error(ErrorCode::NOT_FOUND, "plan not found", "DispensingWorkflowUseCase"));
+        }
+        if (!it->second.latest) {
+            return Result<ConfirmPreviewResponse>::Failure(
+                Error(ErrorCode::INVALID_STATE, "plan is stale", "DispensingWorkflowUseCase"));
+        }
+        if (it->second.preview_state != PlanPreviewState::SNAPSHOT_READY &&
+            it->second.preview_state != PlanPreviewState::CONFIRMED) {
+            return Result<ConfirmPreviewResponse>::Failure(
+                Error(ErrorCode::INVALID_STATE, "preview snapshot not prepared", "DispensingWorkflowUseCase"));
+        }
+        if (snapshot_hash != it->second.preview_snapshot_hash) {
+            return Result<ConfirmPreviewResponse>::Failure(
+                Error(ErrorCode::INVALID_PARAMETER, "snapshot hash mismatch", "DispensingWorkflowUseCase"));
+        }
+        if (auto preview_gate_error = BuildPreviewGateError(
+                it->second, true, require_execution_binding); preview_gate_error.has_value()) {
+            return Result<ConfirmPreviewResponse>::Failure(preview_gate_error.value());
+        }
+
+        it->second.preview_state = PlanPreviewState::CONFIRMED;
+        if (it->second.confirmed_at.empty()) {
+            it->second.confirmed_at = ToIso8601UtcNow();
+        }
+        it->second.failure_message.clear();
+
+        response.confirmed = true;
+        response.plan_id = it->second.response.plan_id;
+        response.snapshot_hash = it->second.preview_snapshot_hash;
+        response.preview_state = PreviewStateToString(it->second.preview_state);
+        response.confirmed_at = it->second.confirmed_at;
+    }
+
+    return Result<ConfirmPreviewResponse>::Success(std::move(response));
+}
+
+Result<DispensingWorkflowUseCase::PlanExecutionLaunch> DispensingWorkflowUseCase::ResolveStartJobExecutionLaunch(
+    const StartJobRequest& request,
+    bool require_execution_binding) const {
+    std::lock_guard<std::mutex> lock(plans_mutex_);
+    auto it = plans_.find(request.plan_id);
+    if (it == plans_.end()) {
+        return Result<PlanExecutionLaunch>::Failure(
+            Error(ErrorCode::NOT_FOUND, "plan not found", "DispensingWorkflowUseCase"));
+    }
+    if (!it->second.latest) {
+        return Result<PlanExecutionLaunch>::Failure(
+            Error(ErrorCode::INVALID_STATE, "plan is stale", "DispensingWorkflowUseCase"));
+    }
+    if (it->second.preview_state != PlanPreviewState::CONFIRMED) {
+        return Result<PlanExecutionLaunch>::Failure(
+            Error(ErrorCode::INVALID_STATE, "preview not confirmed", "DispensingWorkflowUseCase"));
+    }
+    if (auto preview_gate_error = BuildPreviewGateError(
+            it->second, false, require_execution_binding); preview_gate_error.has_value()) {
+        return Result<PlanExecutionLaunch>::Failure(preview_gate_error.value());
+    }
+    if (it->second.preview_snapshot_hash != it->second.response.plan_fingerprint) {
+        return Result<PlanExecutionLaunch>::Failure(
+            Error(ErrorCode::INVALID_STATE, "preview fingerprint mismatch", "DispensingWorkflowUseCase"));
+    }
+    if (request.plan_fingerprint != it->second.response.plan_fingerprint) {
+        return Result<PlanExecutionLaunch>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "plan fingerprint mismatch", "DispensingWorkflowUseCase"));
+    }
+
+    return Result<PlanExecutionLaunch>::Success(it->second.execution_launch);
 }
 
 DispensingWorkflowUseCase::PreviewGateDiagnostic DispensingWorkflowUseCase::BuildPreviewGateDiagnostic(
