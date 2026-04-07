@@ -154,6 +154,7 @@ class CommandProtocol:
             "dispensing_speed_mm_s": float(dispensing_speed_mm_s),
             "dry_run": bool(dry_run),
         }
+        params["optimize_path"] = True
         params["use_interpolation_planner"] = True
         params["interpolation_algorithm"] = 0
         if dry_run and dry_run_speed_mm_s > 0.0:

@@ -693,6 +693,7 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertEqual(payload["plan_id"], "plan-1")
         self.assertEqual(client.calls[0][0], "dxf.plan.prepare")
         self.assertEqual(client.calls[0][1]["artifact_id"], "artifact-1")
+        self.assertTrue(client.calls[0][1]["optimize_path"])
         self.assertTrue(client.calls[0][1]["use_interpolation_planner"])
         self.assertEqual(client.calls[0][1]["interpolation_algorithm"], 0)
         self.assertEqual(client.calls[0][2], 15.0)
