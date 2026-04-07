@@ -297,8 +297,7 @@ target_link_libraries(siligen_application_redundancy PUBLIC
     siligen_workflow_application_headers
     siligen_types
     siligen_utils
-    siligen_domain
-    siligen_domain_services
+    siligen_workflow_domain_headers
     siligen_redundancy_storage_adapter
 )
 target_compile_features(siligen_application_redundancy PUBLIC cxx_std_17)
