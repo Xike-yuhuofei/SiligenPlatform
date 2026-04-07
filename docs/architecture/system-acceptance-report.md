@@ -21,7 +21,7 @@
 | legacy-exit gate | `PASS with controlled exceptions`（`finding_count=11`, `blocking_count=0`） | `python scripts/migration/legacy-exit-checks.py --profile local --report-dir tests/reports/legacy-exit-current`；`tests/reports/legacy-exit-current/legacy-exit-checks.md` |
 | root test entry contracts suite | `PASS`（`passed=22`, `failed=0`, `known_failure=0`, `skipped=0`） | `powershell -NoProfile -ExecutionPolicy Bypass -File .\\test.ps1 -Profile CI -Suite contracts -FailOnKnownFailure`；`tests/reports/workspace-validation.md`；`tests/reports/validation-evidence-bundle.json` |
 
-- 当前 `legacy-exit` 的 `11` 条 finding 全部为 `controlled-exception`，来源是受控保留的 `tools/testing/check_no_loose_mock.py` 和已登记的模块级测试子目录引用，不构成 blocker。
+- 当前 `legacy-exit` 的 `11` 条 finding 全部为 `controlled-exception`，来源是历史受控保留的宽松 mock 检查脚本与已登记的模块级测试子目录引用，不构成 blocker。
 - 历史过程文档中残留的 `specs/` / `.specify/` 表述按“历史快照”保留；它们不是当前默认入口，也不作为活动执行依据。
 - `scripts/validation/run-local-validation-gate.ps1 -Lane quick-gate -DesiredDepth quick` 在本轮外层命令超时窗口内未完整收口，因此本次 speckit exit acceptance 不把 quick gate 写成已通过。
 

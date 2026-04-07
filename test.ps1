@@ -16,7 +16,9 @@ param(
     [switch]$FailOnKnownFailure,
     [switch]$IncludeHardwareSmoke,
     [switch]$IncludeHilClosedLoop,
-    [switch]$IncludeHilCaseMatrix
+    [switch]$IncludeHilCaseMatrix,
+    [switch]$EnablePythonCoverage,
+    [switch]$EnableCppCoverage
 )
 
 $ErrorActionPreference = "Stop"
@@ -73,21 +75,70 @@ function Resolve-RootRunner {
     throw "未找到根级 $EntryName 入口。已检查: $canonicalPath"
 }
 
+$workspaceRoot = $PSScriptRoot
+$cppCoverageRawDir = Join-Path $workspaceRoot "tests\reports\coverage\cpp\raw"
+$previousLlvmProfileFile = $env:LLVM_PROFILE_FILE
+$previousCppCoverageRawDir = $env:SILIGEN_CPP_COVERAGE_RAW_DIR
+if ($EnableCppCoverage) {
+    New-Item -ItemType Directory -Force -Path $cppCoverageRawDir | Out-Null
+    $env:SILIGEN_CPP_COVERAGE_RAW_DIR = $cppCoverageRawDir
+    $env:LLVM_PROFILE_FILE = (Join-Path $cppCoverageRawDir "%4m-%p.profraw")
+}
+
 $runner = Resolve-RootRunner `
     -CanonicalRelativePath "scripts\\validation\\invoke-workspace-tests.ps1" `
     -EntryName "test"
 
-& $runner `
-    -Profile $Profile `
-    -Suite $Suite `
-    -ReportDir $ReportDir `
-    -Lane $Lane `
-    -RiskProfile $RiskProfile `
-    -DesiredDepth $DesiredDepth `
-    -ChangedScope $ChangedScope `
-    -SkipLayer $SkipLayer `
-    -SkipJustification $SkipJustification `
-    -FailOnKnownFailure:$FailOnKnownFailure `
-    -IncludeHardwareSmoke:$IncludeHardwareSmoke `
-    -IncludeHilClosedLoop:$IncludeHilClosedLoop `
-    -IncludeHilCaseMatrix:$IncludeHilCaseMatrix
+try {
+    & $runner `
+        -Profile $Profile `
+        -Suite $Suite `
+        -ReportDir $ReportDir `
+        -Lane $Lane `
+        -RiskProfile $RiskProfile `
+        -DesiredDepth $DesiredDepth `
+        -ChangedScope $ChangedScope `
+        -SkipLayer $SkipLayer `
+        -SkipJustification $SkipJustification `
+        -FailOnKnownFailure:$FailOnKnownFailure `
+        -IncludeHardwareSmoke:$IncludeHardwareSmoke `
+        -IncludeHilClosedLoop:$IncludeHilClosedLoop `
+        -IncludeHilCaseMatrix:$IncludeHilCaseMatrix
+
+    if ($EnablePythonCoverage) {
+        $pythonCoverageRunner = Resolve-RootRunner `
+            -CanonicalRelativePath "scripts\\validation\\invoke-python-coverage.ps1" `
+            -EntryName "python coverage"
+        & $pythonCoverageRunner
+        if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+        }
+    }
+
+    if ($EnableCppCoverage) {
+        $cppCoverageRunner = Resolve-RootRunner `
+            -CanonicalRelativePath "scripts\\validation\\invoke-cpp-coverage.ps1" `
+            -EntryName "cpp coverage"
+        & $cppCoverageRunner -RawProfileDir $cppCoverageRawDir
+        if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+        }
+    }
+}
+finally {
+    if ($EnableCppCoverage) {
+        if ([string]::IsNullOrWhiteSpace($previousLlvmProfileFile)) {
+            Remove-Item Env:LLVM_PROFILE_FILE -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:LLVM_PROFILE_FILE = $previousLlvmProfileFile
+        }
+
+        if ([string]::IsNullOrWhiteSpace($previousCppCoverageRawDir)) {
+            Remove-Item Env:SILIGEN_CPP_COVERAGE_RAW_DIR -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:SILIGEN_CPP_COVERAGE_RAW_DIR = $previousCppCoverageRawDir
+        }
+    }
+}

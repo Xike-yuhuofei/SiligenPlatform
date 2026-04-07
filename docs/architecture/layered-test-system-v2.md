@@ -53,7 +53,7 @@
 
 - `pyrightconfig.json`
 - `scripts/validation/run-pyright-gate.ps1`
-- `tools/testing/check_no_loose_mock.py`
+- `scripts/validation/check_no_loose_mock.py`
 - 根级 `build.ps1` / `test.ps1` / `ci.ps1`
 - `scripts/validation/run-local-validation-gate.ps1`
 
