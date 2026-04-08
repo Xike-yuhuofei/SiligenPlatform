@@ -18,12 +18,15 @@
 #define SILIGEN_TEST_HOOKS
 #endif
 #define private public
+#include "application/ports/dispensing/PlanningPortAdapters.h"
+#include "application/ports/dispensing/WorkflowExecutionPortAdapters.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "runtime_execution/contracts/dispensing/IDispensingProcessPort.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/process_path/ProcessPathFacade.h"
+#include "runtime_execution/application/services/dispensing/PlanningArtifactExportPort.h"
 #include "application/services/dispensing/WorkflowPlanningAssemblyOperationsProvider.h"
-#include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
+#include "workflow/application/phase-control/DispensingWorkflowUseCase.h"
 #include "process_path/contracts/IPathSourcePort.h"
 #include "process_path/contracts/Primitive.h"
 #include "process_path/contracts/ProcessPath.h"
@@ -274,11 +277,13 @@ std::shared_ptr<PlanningUseCase> CreateRealPlanningUseCase() {
     auto pb_service = std::make_shared<DxfPbPreparationService>();
     return std::make_shared<PlanningUseCase>(
         path_source,
-        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
-        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
+        Siligen::Application::Ports::Dispensing::AdaptProcessPathFacade(
+            std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>()),
+        Siligen::Application::Ports::Dispensing::AdaptMotionPlanningFacade(
+            std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>()),
         CreatePlanningOperations(),
         nullptr,
-        pb_service);
+        Siligen::Application::Ports::Dispensing::AdaptDxfPreparationService(pb_service));
 }
 
 std::shared_ptr<PlanningUseCase> CreatePlanningUseCaseWithPathSourceAndExport(
@@ -287,11 +292,13 @@ std::shared_ptr<PlanningUseCase> CreatePlanningUseCaseWithPathSourceAndExport(
     auto pb_service = std::make_shared<DxfPbPreparationService>();
     return std::make_shared<PlanningUseCase>(
         path_source,
-        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
-        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
+        Siligen::Application::Ports::Dispensing::AdaptProcessPathFacade(
+            std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>()),
+        Siligen::Application::Ports::Dispensing::AdaptMotionPlanningFacade(
+            std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>()),
         CreatePlanningOperations(),
         nullptr,
-        pb_service,
+        Siligen::Application::Ports::Dispensing::AdaptDxfPreparationService(pb_service),
         export_port);
 }
 
@@ -300,11 +307,13 @@ std::shared_ptr<PlanningUseCase> CreatePlanningUseCaseWithPathSource(
     auto pb_service = std::make_shared<DxfPbPreparationService>();
     return std::make_shared<PlanningUseCase>(
         path_source,
-        std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>(),
-        std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(),
+        Siligen::Application::Ports::Dispensing::AdaptProcessPathFacade(
+            std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>()),
+        Siligen::Application::Ports::Dispensing::AdaptMotionPlanningFacade(
+            std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>()),
         CreatePlanningOperations(),
         nullptr,
-        pb_service);
+        Siligen::Application::Ports::Dispensing::AdaptDxfPreparationService(pb_service));
 }
 
 class FakeHardwareConnectionPort final : public DeviceConnectionPort {
@@ -592,13 +601,13 @@ DispensingWorkflowUseCase CreateUseCase(
     const std::shared_ptr<FakeHomingPort>& homing_port,
     const std::shared_ptr<FakeInterlockSignalPort>& interlock_port,
     std::shared_ptr<DispensingExecutionUseCase> execution_use_case = nullptr) {
-    if (!execution_use_case) {
-        execution_use_case = MakeDummyShared<DispensingExecutionUseCase>();
-    }
+    auto execution_port = execution_use_case
+        ? Siligen::Application::Ports::Dispensing::AdaptRuntimeDispensingExecutionUseCase(execution_use_case)
+        : MakeDummyShared<Siligen::Application::Ports::Dispensing::IWorkflowExecutionPort>();
     return DispensingWorkflowUseCase(
         MakeDummyShared<IUploadFilePort>(),
         MakeDummyShared<PlanningUseCase>(),
-        execution_use_case,
+        execution_port,
         connection_port,
         motion_state_port,
         homing_port,
@@ -614,7 +623,7 @@ DispensingWorkflowUseCase CreateUseCaseWithPlanning(
     return DispensingWorkflowUseCase(
         MakeDummyShared<IUploadFilePort>(),
         planning_use_case,
-        MakeDummyShared<DispensingExecutionUseCase>(),
+        MakeDummyShared<Siligen::Application::Ports::Dispensing::IWorkflowExecutionPort>(),
         connection_port,
         motion_state_port,
         homing_port,
@@ -631,7 +640,7 @@ DispensingWorkflowUseCase CreateUseCaseWithPlanningAndExecution(
     return DispensingWorkflowUseCase(
         MakeDummyShared<IUploadFilePort>(),
         planning_use_case,
-        execution_use_case,
+        Siligen::Application::Ports::Dispensing::AdaptRuntimeDispensingExecutionUseCase(execution_use_case),
         connection_port,
         motion_state_port,
         homing_port,

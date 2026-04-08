@@ -1,5 +1,5 @@
-#include "application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
-#include "application/usecases/motion/runtime/MotionRuntimeAssemblyFactory.h"
+#include "runtime_execution/application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
+#include "runtime_execution/application/usecases/motion/runtime/MotionRuntimeAssemblyFactory.h"
 
 #include <gtest/gtest.h>
 

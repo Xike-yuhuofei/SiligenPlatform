@@ -1,4 +1,4 @@
-#include "infrastructure/adapters/planning/dxf/PbPathSourceAdapter.h"
+#include "dxf_geometry/adapters/planning/dxf/PbPathSourceAdapter.h"
 
 #include "shared/types/Error.h"
 

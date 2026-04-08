@@ -1,4 +1,4 @@
-#include "infrastructure/adapters/planning/dxf/DXFAdapterFactory.h"
+#include "dxf_geometry/adapters/planning/dxf/DXFAdapterFactory.h"
 
 #include <gtest/gtest.h>
 

@@ -1,7 +1,7 @@
 #include "application/usecases/motion/homing/HomeAxesUseCase.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "domain/motion/ports/IHomingPort.h"
-#include "domain/system/ports/IEventPublisherPort.h"
+#include "domain/supervision/ports/IEventPublisherPort.h"
 #include "shared/types/Error.h"
 #include "shared/types/HardwareConfiguration.h"
 #include "shared/types/Types.h"

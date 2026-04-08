@@ -4,12 +4,12 @@
 
 ## 当前登记目标
 
-- `workflow_regression_deterministic_path_execution_smoke`
-  - 复用 `canonical/` 中的确定性路径执行测试源码。
-  - 作为 canonical workflow 路径执行链的最小回归哨兵，优先覆盖 owner 激活后最容易因链接、运行时依赖或装配退化而失稳的场景。
+- `workflow_regression_dispensing_mode_resolution_smoke`
+  - 直接编译本目录内的回归测试源码。
+  - 作为 workflow 侧 legacy execute wiring 清理后的最小回归哨兵，专门守住模式切换与宿主接线不反弹。
 
 ## 约束
 
 - regression 面优先登记可重复、可定向执行的 smoke 目标。
 - 本任务不扩展 workflow owner 实现，不新增 public surface。
-- 更细的路径规划、初始化和装配回归矩阵，留给后续任务在本目录继续扩充。
+- 不再通过 `../canonical/` 复用 foreign owner 或 canonical 测试源码。

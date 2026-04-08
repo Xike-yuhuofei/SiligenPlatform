@@ -1,7 +1,7 @@
 # Dispensing 子域 CMakeLists.txt
 # ARCH-205 current fact:
 # 当前 target 编译 packaging owner + planning 相关实现，并暂时保留 execution concrete 残留。
-# Purge/ValveCoordination/SupplyStabilization 已不在本 target 源列表中，本文件只反映 live build 事实。
+# 阀门协调 / 排胶 / 供胶稳压 concrete 由本 canonical owner target 直接编译，不依赖 workflow fallback。
 
 if(NOT TARGET siligen_device_contracts AND EXISTS "${CMAKE_SOURCE_DIR}/shared/contracts/device/CMakeLists.txt")
     add_subdirectory(
@@ -40,9 +40,12 @@ add_library(siligen_dispense_packaging_domain_dispensing STATIC
     domain-services/CMPTriggerService.cpp
     domain-services/DispenseCompensationService.cpp
     domain-services/PathOptimizationStrategy.cpp
+    domain-services/PurgeDispenserProcess.cpp
     domain-services/TriggerPlanner.cpp
+    domain-services/ValveCoordinationService.cpp
     domain-services/DispensingController.cpp
     domain-services/DispensingProcessService.cpp
+    domain-services/SupplyStabilizationPolicy.cpp
     planning/domain-services/ContourOptimizationService.cpp
     planning/domain-services/UnifiedTrajectoryPlannerService.cpp
     planning/domain-services/DispensingPlannerService.cpp

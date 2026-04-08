@@ -102,6 +102,9 @@ $allowedDirectWorkflowReferences = @(
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/runtime-execution/CMakeLists.txt"),
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/runtime-execution/runtime/host/CMakeLists.txt"),
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "apps/runtime-service/CMakeLists.txt"),
+    (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/workflow/tests/canonical/CMakeLists.txt"),
+    (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/workflow/tests/integration/CMakeLists.txt"),
+    (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/workflow/tests/regression/CMakeLists.txt"),
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/dxf-geometry/CMakeLists.txt"),
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/job-ingest/CMakeLists.txt"),
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/dxf-geometry/tests/CMakeLists.txt"),
@@ -148,20 +151,12 @@ $requiredBridgeReferences = @(
         pattern = "siligen_dispense_packaging_domain_dispensing"
     },
     @{
-        path = "modules/workflow/adapters/infrastructure/adapters/planning/geometry/CMakeLists.txt"
-        pattern = "siligen_topology_feature_legacy_contour_bridge_public"
-    },
-    @{
         path = "modules/topology-feature/CMakeLists.txt"
         pattern = "siligen_topology_feature_contracts_public"
     },
     @{
         path = "modules/process-planning/CMakeLists.txt"
         pattern = "siligen_process_planning_contracts_public"
-    },
-    @{
-        path = "modules/job-ingest/CMakeLists.txt"
-        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
     },
     @{
         path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
@@ -180,10 +175,6 @@ $requiredBridgeReferences = @(
         pattern = "usecases/motion/MotionControlUseCase.cpp"
     },
     @{
-        path = "modules/runtime-execution/application/CMakeLists.txt"
-        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
-    },
-    @{
         path = "modules/process-path/application/CMakeLists.txt"
         pattern = "siligen_process_path_contracts_public"
     },
@@ -198,14 +189,6 @@ $requiredBridgeReferences = @(
     @{
         path = "modules/runtime-execution/contracts/runtime/CMakeLists.txt"
         pattern = "runtime_execution/contracts/motion/IIOControlPort.h"
-    },
-    @{
-        path = "modules/runtime-execution/adapters/device/CMakeLists.txt"
-        pattern = "siligen_domain"
-    },
-    @{
-        path = "modules/runtime-execution/adapters/device/CMakeLists.txt"
-        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
     },
     @{
         path = "modules/runtime-execution/runtime/host/runtime/events/CMakeLists.txt"
@@ -288,10 +271,6 @@ $requiredBridgeReferences = @(
         pattern = "siligen_topology_feature_legacy_contour_bridge_public"
     },
     @{
-        path = "apps/planner-cli/CMakeLists.txt"
-        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
-    },
-    @{
         path = "apps/planner-cli/main.cpp"
         pattern = '#include "runtime_process_bootstrap/ContainerBootstrap.h"'
     },
@@ -336,14 +315,6 @@ $requiredBridgeReferences = @(
         pattern = "siligen_runtime_process_bootstrap_public"
     },
     @{
-        path = "apps/runtime-gateway/transport-gateway/CMakeLists.txt"
-        pattern = "siligen_process_planning_legacy_configuration_bridge_public"
-    },
-    @{
-        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
-        pattern = "runtime/motion/WorkflowMotionRuntimeServicesProvider.cpp"
-    },
-    @{
         path = "modules/dispense-packaging/domain/dispensing/CMakeLists.txt"
         pattern = "siligen_process_planning_contracts_public"
     },
@@ -369,9 +340,7 @@ $recipeCanonicalUseCaseHeaderDir = Resolve-AbsolutePath -BasePath $repoRoot -Pat
 $recipeLegacyUseCaseHeaderDir = Resolve-AbsolutePath -BasePath $repoRoot -PathValue `
     "modules/workflow/application/include/application/usecases/recipes"
 $recipeCanonicalSerializerHeader = Resolve-AbsolutePath -BasePath $repoRoot -PathValue `
-    "modules/workflow/adapters/include/workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
-$recipeLegacySerializerHeader = Resolve-AbsolutePath -BasePath $repoRoot -PathValue `
-    "modules/workflow/adapters/include/recipes/serialization/RecipeJsonSerializer.h"
+    "modules/workflow/domain/include/domain/recipes/serialization/RecipeJsonSerializer.h"
 
 $forbiddenCompatReferences = @(
     @{
@@ -808,7 +777,7 @@ $forbiddenOwnershipReferences = @(
         detail = "workflow DXF service wrapper must include dxf_geometry/application/services/dxf/DxfPbPreparationService.h instead of a relative owner path"
     },
     @{
-        path = "modules/workflow/tests/process-runtime-core/CMakeLists.txt"
+        path = "modules/workflow/tests/canonical/CMakeLists.txt"
         pattern = "unit/dispensing/UploadFileUseCaseTest.cpp"
         rule_id = "workflow-still-owns-upload-tests"
         detail = "workflow tests must not compile Upload/PB owner tests"
@@ -910,7 +879,7 @@ $forbiddenOwnershipReferences = @(
         detail = "workflow bridge domain must not compile UnifiedTrajectoryPlannerService after M8 takes Trigger/CMP ownership"
     },
     @{
-        path = "modules/workflow/domain/include/domain/dispensing/domain-services/CMPTriggerService.h"
+        path = "modules/workflow/domain/domain/dispensing/domain-services/CMPTriggerService.h"
         pattern = "class CMPService"
         rule_id = "workflow-still-declares-cmp-owner-header"
         detail = "workflow compatibility headers must forward to dispense-packaging CMPService instead of declaring a new owner type"
@@ -922,46 +891,142 @@ $forbiddenOwnershipReferences = @(
         detail = "workflow compatibility headers must forward to dispense-packaging TriggerPlanner instead of declaring a new owner type"
     },
     @{
-        path = "modules/workflow/tests/process-runtime-core/CMakeLists.txt"
+        path = "modules/workflow/tests/canonical/CMakeLists.txt"
         pattern = "unit/domain/dispensing/DispensingControllerTest.cpp"
         rule_id = "workflow-still-owns-dispense-packaging-domain-tests"
         detail = "workflow tests must not compile dispense-packaging owner domain tests"
     },
     @{
-        path = "modules/workflow/tests/process-runtime-core/CMakeLists.txt"
+        path = "modules/workflow/tests/canonical/CMakeLists.txt"
         pattern = "unit/domain/dispensing/TriggerPlannerTest.cpp"
         rule_id = "workflow-still-owns-dispense-packaging-domain-tests"
         detail = "workflow tests must not compile dispense-packaging owner domain tests"
     },
     @{
-        path = "modules/workflow/tests/process-runtime-core/CMakeLists.txt"
+        path = "modules/workflow/tests/canonical/CMakeLists.txt"
         pattern = "unit/domain/motion/CMPCoordinatedInterpolatorPrecisionTest.cpp"
         rule_id = "workflow-still-owns-motion-planning-domain-tests"
         detail = "workflow tests must not compile motion-planning owner domain tests"
     },
     @{
-        path = "modules/workflow/tests/process-runtime-core/CMakeLists.txt"
+        path = "modules/workflow/tests/canonical/CMakeLists.txt"
         pattern = "unit/domain/trajectory/MotionPlannerTest.cpp"
         rule_id = "workflow-still-owns-motion-planning-domain-tests"
         detail = "workflow tests must not compile motion-planning owner domain tests"
     },
     @{
-        path = "modules/workflow/tests/process-runtime-core/CMakeLists.txt"
+        path = "modules/workflow/tests/canonical/CMakeLists.txt"
         pattern = "unit/domain/trajectory/MotionPlannerConstraintTest.cpp"
         rule_id = "workflow-still-owns-motion-planning-domain-tests"
         detail = "workflow tests must not compile motion-planning owner domain tests"
     },
     @{
-        path = "modules/workflow/tests/process-runtime-core/CMakeLists.txt"
+        path = "modules/workflow/tests/canonical/CMakeLists.txt"
         pattern = "unit/domain/trajectory/InterpolationProgramPlannerTest.cpp"
         rule_id = "workflow-still-owns-motion-planning-domain-tests"
         detail = "workflow tests must not compile motion-planning owner domain tests"
     },
     @{
-        path = "modules/workflow/tests/process-runtime-core/CMakeLists.txt"
+        path = "modules/workflow/tests/canonical/CMakeLists.txt"
         pattern = "unit/domain/trajectory/PathRegularizerTest.cpp"
         rule_id = "workflow-still-owns-process-path-domain-tests"
         detail = "workflow tests must not compile process-path owner domain tests"
+    },
+    @{
+        path = "modules/workflow/tests/integration/CMakeLists.txt"
+        pattern = "../canonical/"
+        rule_id = "workflow-integration-still-reuses-canonical-sources"
+        detail = "workflow integration tests must compile local sources instead of reaching back into canonical/"
+    },
+    @{
+        path = "modules/workflow/tests/regression/CMakeLists.txt"
+        pattern = "../canonical/"
+        rule_id = "workflow-regression-still-reuses-canonical-sources"
+        detail = "workflow regression tests must compile local sources instead of reaching back into canonical/"
+    },
+    @{
+        path = "modules/workflow/tests/canonical/CMakeLists.txt"
+        pattern = "modules/job-ingest/contracts/include"
+        rule_id = "workflow-canonical-still-uses-foreign-include-root"
+        detail = "workflow canonical tests must not keep foreign owner include roots in canonical CMake"
+    },
+    @{
+        path = "modules/workflow/tests/canonical/CMakeLists.txt"
+        pattern = "modules/runtime-execution/application/include"
+        rule_id = "workflow-canonical-still-uses-foreign-include-root"
+        detail = "workflow canonical tests must not keep foreign owner include roots in canonical CMake"
+    },
+    @{
+        path = "modules/workflow/tests/canonical/CMakeLists.txt"
+        pattern = "modules/motion-planning/contracts/include"
+        rule_id = "workflow-canonical-still-uses-foreign-include-root"
+        detail = "workflow canonical tests must not keep foreign owner include roots in canonical CMake"
+    },
+    @{
+        path = "modules/workflow/tests/canonical/CMakeLists.txt"
+        pattern = "modules/runtime-execution/contracts/runtime/include"
+        rule_id = "workflow-canonical-still-uses-foreign-include-root"
+        detail = "workflow canonical tests must not keep foreign owner include roots in canonical CMake"
+    },
+    @{
+        path = "modules/workflow/tests/canonical/CMakeLists.txt"
+        pattern = "modules/runtime-execution/adapters/device/include"
+        rule_id = "workflow-canonical-still-uses-foreign-include-root"
+        detail = "workflow canonical tests must not keep foreign owner include roots in canonical CMake"
+    },
+    @{
+        path = "modules/workflow/tests/canonical/CMakeLists.txt"
+        pattern = "siligen_dispense_packaging_application_public"
+        rule_id = "workflow-canonical-still-links-foreign-owner-target"
+        detail = "workflow canonical tests must not link foreign owner targets directly"
+    },
+    @{
+        path = "modules/workflow/tests/canonical/CMakeLists.txt"
+        pattern = "siligen_application_dispensing"
+        rule_id = "workflow-canonical-still-links-foreign-owner-target"
+        detail = "workflow canonical tests must not link foreign owner targets directly"
+    },
+    @{
+        path = "modules/workflow/tests/canonical/CMakeLists.txt"
+        pattern = "siligen_process_path_application_public"
+        rule_id = "workflow-canonical-still-links-foreign-owner-target"
+        detail = "workflow canonical tests must not link foreign owner targets directly"
+    },
+    @{
+        path = "modules/workflow/tests/canonical/CMakeLists.txt"
+        pattern = "siligen_motion_planning_application_public"
+        rule_id = "workflow-canonical-still-links-foreign-owner-target"
+        detail = "workflow canonical tests must not link foreign owner targets directly"
+    },
+    @{
+        path = "modules/workflow/tests/canonical/CMakeLists.txt"
+        pattern = "siligen_runtime_execution_application_public"
+        rule_id = "workflow-canonical-still-links-foreign-owner-target"
+        detail = "workflow canonical tests must not link foreign owner targets directly"
+    },
+    @{
+        path = "modules/workflow/tests/canonical/CMakeLists.txt"
+        pattern = "siligen_runtime_execution_motion_execution_services"
+        rule_id = "workflow-canonical-still-links-foreign-owner-target"
+        detail = "workflow canonical tests must not link foreign owner targets directly"
+    },
+    @{
+        path = "modules/workflow/tests/canonical/CMakeLists.txt"
+        pattern = "siligen_job_ingest_application_public"
+        rule_id = "workflow-canonical-still-links-foreign-owner-target"
+        detail = "workflow canonical tests must not link foreign owner targets directly"
+    },
+    @{
+        path = "modules/workflow/tests/canonical/CMakeLists.txt"
+        pattern = "siligen_dxf_geometry_application_public"
+        rule_id = "workflow-canonical-still-links-foreign-owner-target"
+        detail = "workflow canonical tests must not link foreign owner targets directly"
+    },
+    @{
+        path = "modules/workflow/tests/canonical/CMakeLists.txt"
+        pattern = "siligen_parsing_adapter"
+        rule_id = "workflow-canonical-still-links-foreign-owner-target"
+        detail = "workflow canonical tests must not link foreign owner targets directly"
     },
     @{
         path = "modules/runtime-execution/application/CMakeLists.txt"
@@ -1271,39 +1336,39 @@ $forbiddenOwnershipReferences = @(
     },
     @{
         path = "apps/runtime-gateway/transport-gateway/src/tcp/TcpCommandDispatcher.cpp"
-        pattern = '#include "recipes/serialization/RecipeJsonSerializer.h"'
+        pattern = '#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"'
         rule_id = "gateway-dispatcher-still-includes-legacy-recipe-serializer"
-        detail = "transport-gateway dispatcher must include workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
+        detail = "transport-gateway dispatcher must include domain/recipes/serialization/RecipeJsonSerializer.h"
     },
     @{
         path = "apps/runtime-service/runtime/recipes/RecipeBundleSerializer.h"
-        pattern = '#include "recipes/serialization/RecipeJsonSerializer.h"'
+        pattern = '#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"'
         rule_id = "runtime-bootstrap-recipe-serializer-still-includes-legacy-json-header"
-        detail = "runtime bootstrap recipe persistence must include workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
+        detail = "runtime bootstrap recipe persistence must include domain/recipes/serialization/RecipeJsonSerializer.h"
     },
     @{
         path = "apps/runtime-service/runtime/recipes/RecipeFileRepository.cpp"
-        pattern = '#include "recipes/serialization/RecipeJsonSerializer.h"'
+        pattern = '#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"'
         rule_id = "runtime-bootstrap-recipe-repository-still-includes-legacy-json-header"
-        detail = "runtime bootstrap recipe persistence must include workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
+        detail = "runtime bootstrap recipe persistence must include domain/recipes/serialization/RecipeJsonSerializer.h"
     },
     @{
         path = "apps/runtime-service/runtime/recipes/ParameterSchemaFileProvider.cpp"
-        pattern = '#include "recipes/serialization/RecipeJsonSerializer.h"'
+        pattern = '#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"'
         rule_id = "runtime-bootstrap-parameter-schema-still-includes-legacy-json-header"
-        detail = "runtime bootstrap recipe persistence must include workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
+        detail = "runtime bootstrap recipe persistence must include domain/recipes/serialization/RecipeJsonSerializer.h"
     },
     @{
         path = "apps/runtime-service/runtime/recipes/TemplateFileRepository.cpp"
-        pattern = '#include "recipes/serialization/RecipeJsonSerializer.h"'
+        pattern = '#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"'
         rule_id = "runtime-bootstrap-template-repository-still-includes-legacy-json-header"
-        detail = "runtime bootstrap recipe persistence must include workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
+        detail = "runtime bootstrap recipe persistence must include domain/recipes/serialization/RecipeJsonSerializer.h"
     },
     @{
         path = "apps/runtime-service/runtime/recipes/AuditFileRepository.cpp"
-        pattern = '#include "recipes/serialization/RecipeJsonSerializer.h"'
+        pattern = '#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"'
         rule_id = "runtime-bootstrap-audit-repository-still-includes-legacy-json-header"
-        detail = "runtime bootstrap recipe persistence must include workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
+        detail = "runtime bootstrap recipe persistence must include domain/recipes/serialization/RecipeJsonSerializer.h"
     }
 )
 
@@ -1969,7 +2034,7 @@ if (-not (Test-Path $recipeCanonicalSerializerHeader)) {
         target = $recipeCanonicalSerializerHeader
         file = Get-RelativeRepoPath -BasePath $repoRoot -TargetPath $recipeCanonicalSerializerHeader
         line = 0
-        detail = "canonical workflow recipe serializer public header does not exist"
+        detail = "canonical workflow recipe serializer domain header does not exist"
     })
 } else {
     $matches = Select-String -Path $recipeCanonicalSerializerHeader -Pattern ([regex]::Escape('recipes/serialization/RecipeJsonSerializer.h'))
@@ -1985,29 +2050,6 @@ if (-not (Test-Path $recipeCanonicalSerializerHeader)) {
     }
 }
 
-if (-not (Test-Path $recipeLegacySerializerHeader)) {
-    $findings.Add([pscustomobject]@{
-        rule_id = "missing-legacy-recipe-serializer-header"
-        severity = "error"
-        target = $recipeLegacySerializerHeader
-        file = Get-RelativeRepoPath -BasePath $repoRoot -TargetPath $recipeLegacySerializerHeader
-        line = 0
-        detail = "legacy workflow recipe serializer public header does not exist"
-    })
-} else {
-    $expectedSerializerInclude = '#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"'
-    if (-not (Select-String -Path $recipeLegacySerializerHeader -Pattern ([regex]::Escape($expectedSerializerInclude)) -Quiet)) {
-        $findings.Add([pscustomobject]@{
-            rule_id = "legacy-recipe-serializer-header-must-forward-to-canonical"
-            severity = "error"
-            target = $expectedSerializerInclude
-            file = Get-RelativeRepoPath -BasePath $repoRoot -TargetPath $recipeLegacySerializerHeader
-            line = 0
-            detail = "legacy workflow recipe serializer public header must forward to workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
-        })
-    }
-}
-
 $summary = [ordered]@{
     generated_at = (Get-Date).ToString("s")
     workspace_root = $repoRoot
@@ -2019,6 +2061,13 @@ $summary = [ordered]@{
         "modules/runtime-execution/CMakeLists.txt",
         "modules/runtime-execution/runtime/host/CMakeLists.txt",
         "apps/runtime-service/CMakeLists.txt",
+        "modules/workflow/tests/canonical/CMakeLists.txt",
+        "modules/workflow/tests/integration/CMakeLists.txt",
+        "modules/workflow/tests/regression/CMakeLists.txt",
+        "modules/dxf-geometry/CMakeLists.txt",
+        "modules/job-ingest/CMakeLists.txt",
+        "modules/dxf-geometry/tests/CMakeLists.txt",
+        "modules/job-ingest/tests/CMakeLists.txt",
         "apps/planner-cli/CMakeLists.txt",
         "apps/runtime-gateway/transport-gateway/CMakeLists.txt"
     )

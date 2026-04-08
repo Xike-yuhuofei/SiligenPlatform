@@ -13,7 +13,7 @@
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "domain/dispensing/ports/ITriggerControllerPort.h"
 #include "domain/motion/ports/IInterpolationPort.h"
-#include "domain/system/ports/IEventPublisherPort.h"
+#include "domain/supervision/ports/IEventPublisherPort.h"
 #include "runtime_execution/application/services/motion/runtime/IMotionRuntimeServicesProvider.h"
 #include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
 #include "shared/types/Error.h"
@@ -56,9 +56,9 @@ using MotionStatus = Siligen::Domain::Motion::Ports::MotionStatus;
 using MotionControlService = Siligen::Domain::Motion::DomainServices::MotionControlService;
 using MotionStatusService = Siligen::Domain::Motion::DomainServices::MotionStatusService;
 using IMotionRuntimePort = Siligen::RuntimeExecution::Contracts::Motion::IMotionRuntimePort;
-using DomainEvent = Siligen::Domain::System::Ports::DomainEvent;
-using EventType = Siligen::Domain::System::Ports::EventType;
-using EventHandler = Siligen::Domain::System::Ports::EventHandler;
+using DomainEvent = Siligen::Domain::Supervision::Ports::DomainEvent;
+using EventType = Siligen::Domain::Supervision::Ports::EventType;
+using EventHandler = Siligen::Domain::Supervision::Ports::EventHandler;
 template <typename T>
 using Result = Siligen::Shared::Types::Result<T>;
 using ResultVoid = Siligen::Shared::Types::Result<void>;
@@ -371,7 +371,7 @@ public:
     std::vector<HomingConfig> homing_configs{};
 };
 
-class FakeEventPublisher final : public Siligen::Domain::System::Ports::IEventPublisherPort {
+class FakeEventPublisher final : public Siligen::Domain::Supervision::Ports::IEventPublisherPort {
 public:
     ResultVoid Publish(const DomainEvent& event) override { published_events.push_back(event.message); return ResultVoid::Success(); }
     ResultVoid PublishAsync(const DomainEvent& event) override { return Publish(event); }

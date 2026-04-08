@@ -8,17 +8,17 @@
 
 namespace {
 
-using Siligen::Domain::System::Redundancy::CandidateAction;
-using Siligen::Domain::System::Redundancy::CandidatePriority;
-using Siligen::Domain::System::Redundancy::CandidateRecord;
-using Siligen::Domain::System::Redundancy::CandidateStatus;
-using Siligen::Domain::System::Redundancy::CodeEntity;
-using Siligen::Domain::System::Redundancy::DecisionAction;
-using Siligen::Domain::System::Redundancy::DecisionLogRecord;
-using Siligen::Domain::System::Redundancy::EntityType;
-using Siligen::Domain::System::Redundancy::Ports::CandidateQueryFilter;
-using Siligen::Domain::System::Redundancy::Ports::CandidateTransitionRequest;
-using Siligen::Domain::System::Redundancy::SourceLanguage;
+using Siligen::Domain::Recovery::Redundancy::CandidateAction;
+using Siligen::Domain::Recovery::Redundancy::CandidatePriority;
+using Siligen::Domain::Recovery::Redundancy::CandidateRecord;
+using Siligen::Domain::Recovery::Redundancy::CandidateStatus;
+using Siligen::Domain::Recovery::Redundancy::CodeEntity;
+using Siligen::Domain::Recovery::Redundancy::DecisionAction;
+using Siligen::Domain::Recovery::Redundancy::DecisionLogRecord;
+using Siligen::Domain::Recovery::Redundancy::EntityType;
+using Siligen::Domain::Recovery::Redundancy::Ports::CandidateQueryFilter;
+using Siligen::Domain::Recovery::Redundancy::Ports::CandidateTransitionRequest;
+using Siligen::Domain::Recovery::Redundancy::SourceLanguage;
 using Siligen::Infrastructure::Adapters::Redundancy::JsonRedundancyRepositoryAdapter;
 using Siligen::Shared::Types::ErrorCode;
 

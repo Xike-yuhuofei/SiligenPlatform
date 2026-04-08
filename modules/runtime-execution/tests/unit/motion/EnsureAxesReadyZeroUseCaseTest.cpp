@@ -9,7 +9,7 @@
 #include "domain/motion/ports/IMotionConnectionPort.h"
 #include "domain/motion/ports/IMotionStatePort.h"
 #include "domain/motion/ports/IPositionControlPort.h"
-#include "domain/system/ports/IEventPublisherPort.h"
+#include "domain/supervision/ports/IEventPublisherPort.h"
 #include "runtime_execution/contracts/motion/IIOControlPort.h"
 #include "shared/types/Error.h"
 #include "shared/types/HardwareConfiguration.h"

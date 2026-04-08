@@ -4,11 +4,12 @@
 
 ## 当前职责
 
-- 承载 `siligen_unit_tests`、`siligen_pr1_tests` 与 `siligen_dispensing_semantics_tests` 的真实测试源码。
+- 只承载 `workflow` 自有的 canonical 单元测试源码。
+- 当前对应 `siligen_unit_tests` 与 `siligen_pr1_tests` 两个稳定 target。
 - 通过 `modules/workflow/tests/canonical/CMakeLists.txt` 作为正式构建入口。
-- 依赖 `workflow` canonical implementation roots，而不是历史 bridge 测试壳层。
+- 不再承载 runtime-execution、dispense-packaging、dxf-geometry 等 owner 模块测试。
 
 ## 迁移约束
 
-- 新增测试必须写入本目录，不得回写任何已清除的历史测试壳层。
-- 测试 include/link 只能面向 canonical `domain/`、`application/`、`adapters/` 与公开头根。
+- 新增 canonical 测试必须保持 `workflow` owner 语义，不能把 foreign owner 单测再放回本目录。
+- integration / regression 级 workflow 测试应落到各自目录，不再复用本目录源码。

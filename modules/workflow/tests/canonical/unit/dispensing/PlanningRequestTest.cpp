@@ -1,4 +1,4 @@
-#include "application/usecases/dispensing/PlanningUseCase.h"
+#include "workflow/application/planning-trigger/PlanningUseCase.h"
 
 #include <gtest/gtest.h>
 
