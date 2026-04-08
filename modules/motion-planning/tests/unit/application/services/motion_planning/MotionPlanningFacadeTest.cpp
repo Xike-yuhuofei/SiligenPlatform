@@ -1,6 +1,6 @@
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/process_path/ProcessPathFacade.h"
-#include "infrastructure/adapters/planning/dxf/PbPathSourceAdapter.h"
+#include "dxf_geometry/adapters/planning/dxf/PbPathSourceAdapter.h"
 
 #include <gtest/gtest.h>
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/system/ports/IEventPublisherPort.h"
+#include "runtime_execution/contracts/system/IEventPublisherPort.h"
 
 #include <boost/signals2/connection.hpp>
 #include <boost/signals2/signal.hpp>

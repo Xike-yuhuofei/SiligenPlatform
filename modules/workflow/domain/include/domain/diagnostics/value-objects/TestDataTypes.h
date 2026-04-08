@@ -1,9 +1,11 @@
 #pragma once
 
 #include "DiagnosticTypes.h"
-#include "../../motion/value-objects/HardwareTestTypes.h"
-#include "../../motion/value-objects/TrajectoryAnalysisTypes.h"
-#include "../../motion/value-objects/TrajectoryTypes.h"
+#include "domain/motion/value-objects/HardwareTestTypes.h"
+#include "domain/motion/value-objects/MotionTypes.h"
+#include "domain/motion/value-objects/TrajectoryAnalysisTypes.h"
+#include "domain/motion/value-objects/TrajectoryTypes.h"
+#include "shared/types/Point.h"
 
 #include <cmath>
 #include <cstdint>
@@ -16,16 +18,15 @@ namespace Domain {
 namespace Diagnostics {
 namespace ValueObjects {
 
-using ::Siligen::Point2D;
+using Siligen::Shared::Types::Point2D;
 using Siligen::Domain::Motion::ValueObjects::CMPParameters;
 using Siligen::Domain::Motion::ValueObjects::InterpolationParameters;
+using Siligen::Domain::Motion::ValueObjects::JogDirection;
 using Siligen::Domain::Motion::ValueObjects::MotionQualityMetrics;
 using Siligen::Domain::Motion::ValueObjects::PathQualityMetrics;
 using Siligen::Domain::Motion::ValueObjects::TrajectoryAnalysis;
 using Siligen::Domain::Motion::ValueObjects::TrajectoryInterpolationType;
 using Siligen::Domain::Motion::ValueObjects::TrajectoryType;
-
-using Siligen::Domain::Motion::ValueObjects::JogDirection;
 using Siligen::Domain::Motion::ValueObjects::HomingTestMode;
 using Siligen::Domain::Motion::ValueObjects::HomingTestDirection;
 using Siligen::Domain::Motion::ValueObjects::HomingTestStatus;

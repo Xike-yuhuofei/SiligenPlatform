@@ -114,12 +114,42 @@ if(TARGET siligen_motion_planning_application_public)
 endif()
 target_compile_features(siligen_dispense_packaging_application PUBLIC cxx_std_17)
 
+if(NOT TARGET siligen_valve_core)
+    add_library(siligen_valve_core STATIC
+        usecases/dispensing/valve/ValveUseCases.cpp
+        usecases/dispensing/valve/coordination/ValveCoordinationUseCase.cpp
+    )
+endif()
+target_include_directories(siligen_valve_core PUBLIC
+    ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_PUBLIC_INCLUDE_DIR}
+)
+target_include_directories(siligen_valve_core PRIVATE
+    ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
+)
+target_link_libraries(siligen_valve_core PUBLIC
+    siligen_dispense_packaging_domain_dispensing
+    siligen_types
+    siligen_utils
+)
+if(TARGET siligen_process_planning_contracts_public)
+    target_link_libraries(siligen_valve_core PUBLIC
+        siligen_process_planning_contracts_public
+    )
+endif()
+if(TARGET siligen_device_contracts)
+    target_link_libraries(siligen_valve_core PUBLIC
+        siligen_device_contracts
+    )
+endif()
+target_compile_features(siligen_valve_core PUBLIC cxx_std_17)
+
 if(NOT TARGET siligen_dispense_packaging_application_public)
     add_library(siligen_dispense_packaging_application_public INTERFACE)
 endif()
 target_link_libraries(siligen_dispense_packaging_application_public INTERFACE
     siligen_dispense_packaging_application_headers
     siligen_dispense_packaging_contracts_public
+    $<LINK_ONLY:siligen_valve_core>
     $<LINK_ONLY:siligen_dispense_packaging_application>
 )
 target_compile_features(siligen_dispense_packaging_application_public INTERFACE cxx_std_17)

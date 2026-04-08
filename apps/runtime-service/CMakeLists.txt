@@ -93,6 +93,7 @@ target_link_libraries(siligen_runtime_process_bootstrap PUBLIC
     siligen_device_contracts
     siligen_dispense_packaging_application_public
     siligen_job_ingest_application_public
+    siligen_motion_planning_application_public
     siligen_workflow_application_public
     siligen_workflow_adapters_public
     siligen_workflow_recipe_domain_public

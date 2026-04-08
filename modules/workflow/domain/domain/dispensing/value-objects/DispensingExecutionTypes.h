@@ -1,5 +1,5 @@
 #pragma once
 
-// Legacy bridge header; canonical public owner header lives under modules/workflow/.
-#include "../../../include/domain/dispensing/value-objects/DispensingExecutionTypes.h"
+// Compatibility shim; canonical execution types owner header lives under modules/dispense-packaging.
+#include "../../../../../dispense-packaging/domain/dispensing/value-objects/DispensingExecutionTypes.h"
 

@@ -12,14 +12,14 @@
 #include "facades/tcp/TcpMotionFacade.h"
 #include "facades/tcp/TcpRecipeFacade.h"
 #include "facades/tcp/TcpSystemFacade.h"
-#include "application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
-#include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
+#include "runtime_execution/application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
+#include "runtime_execution/application/usecases/motion/manual/ManualMotionControlUseCase.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "domain/configuration/services/ReadyZeroSpeedResolver.h"
 #include "motion_planning/contracts/InterpolationTypes.h"
 #include "runtime_execution/contracts/system/IRuntimeStatusExportPort.h"
 
-#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
+#include "domain/recipes/serialization/RecipeJsonSerializer.h"
 
 #include <algorithm>
 #include <cctype>
@@ -49,7 +49,7 @@ namespace TcpFacades = Siligen::Application::Facades::Tcp;
 
 using Siligen::Shared::Types::LogicalAxisId;
 using Siligen::Shared::Types::float32;
-using Siligen::Infrastructure::Adapters::Recipes::RecipeJsonSerializer;
+using Siligen::Domain::Recipes::Serialization::RecipeJsonSerializer;
 using Siligen::Domain::Recipes::ValueObjects::ParameterValueEntry;
 using Siligen::Domain::Recipes::ValueObjects::ImportConflict;
 using Siligen::Domain::Recipes::ValueObjects::ConflictResolution;
@@ -832,8 +832,8 @@ namespace Siligen::Adapters::Tcp {
 using Siligen::Shared::Types::FromIndex;
 using Siligen::Shared::Types::IsValid;
 using Siligen::Shared::Types::LogicalAxisId;
+using Siligen::Domain::Recipes::Serialization::RecipeJsonSerializer;
 using Siligen::Domain::Recipes::ValueObjects::ParameterValueEntry;
-using Siligen::Infrastructure::Adapters::Recipes::RecipeJsonSerializer;
 
 TcpCommandDispatcher::TcpCommandDispatcher(
     std::shared_ptr<Application::Facades::Tcp::TcpSystemFacade> systemFacade,

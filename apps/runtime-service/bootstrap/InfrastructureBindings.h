@@ -1,5 +1,6 @@
 #pragma once
 
+#include "runtime_execution/contracts/system/IEventPublisherPort.h"
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
 #include "shared/types/LogTypes.h"
@@ -76,12 +77,6 @@ class IRecipeBundleSerializerPort;
 }  // namespace Ports
 }  // namespace Recipes
 
-namespace System {
-namespace Ports {
-class IEventPublisherPort;
-}  // namespace Ports
-}  // namespace System
-
 namespace Trajectory {
 namespace Ports {
 class IPathSourcePort;
@@ -123,7 +118,6 @@ struct InfrastructureBindings {
     std::shared_ptr<Domain::Recipes::Ports::IParameterSchemaPort> parameter_schema_port;
     std::shared_ptr<Domain::Recipes::Ports::IRecipeBundleSerializerPort> recipe_bundle_serializer_port;
 
-    std::string upload_base_dir;
     std::string recipe_base_dir;
     std::shared_ptr<void> multicard_instance;
 };

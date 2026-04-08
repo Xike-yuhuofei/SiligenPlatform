@@ -37,7 +37,8 @@
   - `siligen_runtime_execution_application_public`
   - `siligen_runtime_execution_runtime_contracts`
   - `siligen_device_contracts`
-  - `siligen_domain`
+  - `siligen_coordinate_alignment_domain_machine` (`LINK_ONLY`, 用于 `DispenserModel` concrete)
+  - `siligen_workflow_domain_headers`
   - `siligen_shared`
 - 不再 `PUBLIC` 聚合 `job-ingest`、`workflow`、`workflow_recipe`、DXF adapter、host storage、recipe persistence。
 

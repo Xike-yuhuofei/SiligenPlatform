@@ -1,6 +1,7 @@
 #pragma once
 
-#include "MotionTypes.h"  // 使用MotionTypes中的JogDirection定义
+#include "domain/motion/value-objects/MotionTypes.h"
+#include "shared/types/Types.h"
 
 #include <boost/describe/enum.hpp>
 
@@ -13,9 +14,7 @@ namespace Domain {
 namespace Motion {
 namespace ValueObjects {
 
-// NOTE: JogDirection removed from this file to avoid duplication
-// Use JogDirection from MotionTypes.h instead
-// (was: enum class JogDirection { Positive, Negative };)
+// NOTE: JogDirection is owned by the canonical motion-planning MotionTypes surface.
 
 /**
  * @brief 点动模式枚举

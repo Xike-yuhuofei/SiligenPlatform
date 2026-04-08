@@ -67,6 +67,7 @@ target_link_libraries(siligen_transport_gateway PUBLIC
     siligen_transport_gateway_boost_headers
     siligen_transport_gateway_json_headers
     siligen_transport_gateway_protocol
+    siligen_dispense_packaging_application_public
     siligen_job_ingest_application_public
     siligen_workflow_application_public
     siligen_workflow_recipe_application_public

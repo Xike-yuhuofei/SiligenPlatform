@@ -67,6 +67,13 @@ target_link_libraries(siligen_module_dxf_geometry INTERFACE
     siligen_dxf_geometry_application_public
 )
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/adapters/CMakeLists.txt")
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/adapters"
+        "${CMAKE_BINARY_DIR}/modules/dxf-geometry/adapters"
+    )
+endif()
+
 if(TARGET siligen_parsing_adapter)
     target_link_libraries(siligen_module_dxf_geometry INTERFACE siligen_parsing_adapter)
 endif()

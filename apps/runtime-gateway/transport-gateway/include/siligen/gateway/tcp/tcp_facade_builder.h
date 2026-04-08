@@ -2,8 +2,8 @@
 
 #include "siligen/gateway/tcp/tcp_facade_bundle.h"
 
-#include "application/usecases/dispensing/valve/ValveCommandUseCase.h"
-#include "application/usecases/dispensing/valve/ValveQueryUseCase.h"
+#include "dispense_packaging/application/usecases/dispensing/valve/ValveCommandUseCase.h"
+#include "dispense_packaging/application/usecases/dispensing/valve/ValveQueryUseCase.h"
 #include "workflow/application/usecases/recipes/CompareRecipeVersionsUseCase.h"
 #include "workflow/application/usecases/recipes/CreateDraftVersionUseCase.h"
 #include "workflow/application/usecases/recipes/CreateRecipeUseCase.h"
@@ -14,19 +14,19 @@
 #include "workflow/application/usecases/recipes/RecipeQueryUseCase.h"
 #include "workflow/application/usecases/recipes/UpdateDraftVersionUseCase.h"
 #include "workflow/application/usecases/recipes/UpdateRecipeUseCase.h"
-#include "application/usecases/system/EmergencyStopUseCase.h"
-#include "application/usecases/system/InitializeSystemUseCase.h"
+#include "runtime_execution/application/usecases/system/EmergencyStopUseCase.h"
+#include "runtime_execution/application/usecases/system/InitializeSystemUseCase.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 #include "job_ingest/contracts/dispensing/UploadContracts.h"
 #include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
-#include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
-#include "application/usecases/dispensing/PlanningUseCase.h"
+#include "workflow/application/phase-control/DispensingWorkflowUseCase.h"
+#include "workflow/application/planning-trigger/PlanningUseCase.h"
 #include "facades/tcp/TcpDispensingFacade.h"
 #include "facades/tcp/TcpMotionFacade.h"
 #include "facades/tcp/TcpRecipeFacade.h"
 #include "facades/tcp/TcpSystemFacade.h"
-#include "application/usecases/motion/safety/MotionSafetyUseCase.h"
+#include "runtime_execution/application/usecases/motion/safety/MotionSafetyUseCase.h"
 
 #include <memory>
 

@@ -66,6 +66,7 @@ add_library(siligen_runtime_host STATIC
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/diagnostics/DiagnosticsPortAdapter.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/supervision/RuntimeSupervisionPortAdapter.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/system/DispenserModelMachineExecutionStateBackend.cpp
+    ${RUNTIME_HOST_SOURCE_ROOT}/runtime/system/MachineExecutionStatePortFactory.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/motion/MotionRuntimeServicesProvider.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/planning/PlanningArtifactExportPortAdapter.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/services/motion/HardLimitMonitorService.cpp
@@ -85,7 +86,8 @@ target_link_libraries(siligen_runtime_host PUBLIC
     siligen_runtime_execution_application_public
     siligen_runtime_execution_runtime_contracts
     siligen_device_contracts
-    siligen_domain
+    $<LINK_ONLY:siligen_coordinate_alignment_domain_machine>
+    siligen_workflow_domain_headers
     siligen_shared
 )
 

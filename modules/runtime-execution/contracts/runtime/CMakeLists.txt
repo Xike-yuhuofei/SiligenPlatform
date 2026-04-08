@@ -30,7 +30,7 @@ target_include_directories(siligen_runtime_execution_runtime_contracts INTERFACE
     ${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}
 )
 target_link_libraries(siligen_runtime_execution_runtime_contracts INTERFACE
-    siligen_domain
+    siligen_workflow_domain_headers
 )
 target_compile_features(siligen_runtime_execution_runtime_contracts INTERFACE cxx_std_17)
 set_target_properties(siligen_runtime_execution_runtime_contracts PROPERTIES

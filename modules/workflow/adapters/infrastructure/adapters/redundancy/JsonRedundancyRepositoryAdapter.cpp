@@ -13,19 +13,19 @@ namespace Siligen::Infrastructure::Adapters::Redundancy {
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
-using Domain::System::Redundancy::CandidateActionFromString;
-using Domain::System::Redundancy::CandidatePriorityFromString;
-using Domain::System::Redundancy::CandidateStatus;
-using Domain::System::Redundancy::CandidateStatusFromString;
-using Domain::System::Redundancy::DecisionActionFromString;
-using Domain::System::Redundancy::EntityTypeFromString;
-using Domain::System::Redundancy::RuntimeEnvironmentFromString;
-using Domain::System::Redundancy::SourceLanguageFromString;
-using Domain::System::Redundancy::StaticSignalTypeFromString;
-using Domain::System::Redundancy::ToString;
-using Domain::System::Redundancy::Ports::BatchWriteSummary;
-using Domain::System::Redundancy::Ports::CandidateQueryFilter;
-using Domain::System::Redundancy::Ports::CandidateTransitionRequest;
+using Domain::Recovery::Redundancy::CandidateActionFromString;
+using Domain::Recovery::Redundancy::CandidatePriorityFromString;
+using Domain::Recovery::Redundancy::CandidateStatus;
+using Domain::Recovery::Redundancy::CandidateStatusFromString;
+using Domain::Recovery::Redundancy::DecisionActionFromString;
+using Domain::Recovery::Redundancy::EntityTypeFromString;
+using Domain::Recovery::Redundancy::RuntimeEnvironmentFromString;
+using Domain::Recovery::Redundancy::SourceLanguageFromString;
+using Domain::Recovery::Redundancy::StaticSignalTypeFromString;
+using Domain::Recovery::Redundancy::ToString;
+using Domain::Recovery::Redundancy::Ports::BatchWriteSummary;
+using Domain::Recovery::Redundancy::Ports::CandidateQueryFilter;
+using Domain::Recovery::Redundancy::Ports::CandidateTransitionRequest;
 
 namespace {
 
@@ -234,7 +234,7 @@ std::size_t UpsertById(std::vector<Record>& existing, const std::vector<Record>&
     return upserted;
 }
 
-nlohmann::json ToJson(const Domain::System::Redundancy::CodeEntity& entity) {
+nlohmann::json ToJson(const Domain::Recovery::Redundancy::CodeEntity& entity) {
     return {
         {"entity_id", entity.entity_id},
         {"entity_type", ToString(entity.entity_type)},
@@ -248,17 +248,17 @@ nlohmann::json ToJson(const Domain::System::Redundancy::CodeEntity& entity) {
     };
 }
 
-Result<Domain::System::Redundancy::CodeEntity> ParseCodeEntity(const nlohmann::json& value) {
-    Domain::System::Redundancy::CodeEntity entity;
+Result<Domain::Recovery::Redundancy::CodeEntity> ParseCodeEntity(const nlohmann::json& value) {
+    Domain::Recovery::Redundancy::CodeEntity entity;
     if (!value.is_object()) {
-        return Result<Domain::System::Redundancy::CodeEntity>::Failure(
+        return Result<Domain::Recovery::Redundancy::CodeEntity>::Failure(
             Error(ErrorCode::JSON_INVALID_TYPE, "CodeEntity must be object", "JsonRedundancyRepositoryAdapter"));
     }
     entity.entity_id = value.value("entity_id", "");
     auto entity_type = EntityTypeFromString(value.value("entity_type", ""));
     auto language = SourceLanguageFromString(value.value("language", ""));
     if (!entity_type.has_value() || !language.has_value()) {
-        return Result<Domain::System::Redundancy::CodeEntity>::Failure(
+        return Result<Domain::Recovery::Redundancy::CodeEntity>::Failure(
             Error(ErrorCode::JSON_INVALID_TYPE, "CodeEntity enum conversion failed", "JsonRedundancyRepositoryAdapter"));
     }
     entity.entity_type = entity_type.value();
@@ -270,13 +270,13 @@ Result<Domain::System::Redundancy::CodeEntity> ParseCodeEntity(const nlohmann::j
     entity.language = language.value();
     entity.last_modified_at = value.value("last_modified_at", "");
     if (!entity.Validate()) {
-        return Result<Domain::System::Redundancy::CodeEntity>::Failure(
+        return Result<Domain::Recovery::Redundancy::CodeEntity>::Failure(
             Error(ErrorCode::INVALID_PARAMETER, "CodeEntity validation failed", "JsonRedundancyRepositoryAdapter"));
     }
-    return Result<Domain::System::Redundancy::CodeEntity>::Success(entity);
+    return Result<Domain::Recovery::Redundancy::CodeEntity>::Success(entity);
 }
 
-nlohmann::json ToJson(const Domain::System::Redundancy::StaticEvidenceRecord& record) {
+nlohmann::json ToJson(const Domain::Recovery::Redundancy::StaticEvidenceRecord& record) {
     return {
         {"evidence_id", record.evidence_id},
         {"entity_id", record.entity_id},
@@ -289,10 +289,10 @@ nlohmann::json ToJson(const Domain::System::Redundancy::StaticEvidenceRecord& re
     };
 }
 
-Result<Domain::System::Redundancy::StaticEvidenceRecord> ParseStaticEvidence(const nlohmann::json& value) {
-    Domain::System::Redundancy::StaticEvidenceRecord record;
+Result<Domain::Recovery::Redundancy::StaticEvidenceRecord> ParseStaticEvidence(const nlohmann::json& value) {
+    Domain::Recovery::Redundancy::StaticEvidenceRecord record;
     if (!value.is_object()) {
-        return Result<Domain::System::Redundancy::StaticEvidenceRecord>::Failure(
+        return Result<Domain::Recovery::Redundancy::StaticEvidenceRecord>::Failure(
             Error(ErrorCode::JSON_INVALID_TYPE, "StaticEvidenceRecord must be object", "JsonRedundancyRepositoryAdapter"));
     }
     record.evidence_id = value.value("evidence_id", "");
@@ -301,7 +301,7 @@ Result<Domain::System::Redundancy::StaticEvidenceRecord> ParseStaticEvidence(con
     record.rule_version = value.value("rule_version", "");
     auto signal_type = StaticSignalTypeFromString(value.value("signal_type", ""));
     if (!signal_type.has_value()) {
-        return Result<Domain::System::Redundancy::StaticEvidenceRecord>::Failure(
+        return Result<Domain::Recovery::Redundancy::StaticEvidenceRecord>::Failure(
             Error(ErrorCode::JSON_INVALID_TYPE, "StaticEvidence signal_type conversion failed", "JsonRedundancyRepositoryAdapter"));
     }
     record.signal_type = signal_type.value();
@@ -309,13 +309,13 @@ Result<Domain::System::Redundancy::StaticEvidenceRecord> ParseStaticEvidence(con
     record.details_json = value.value("details_json", "{}");
     record.collected_at = value.value("collected_at", "");
     if (!record.Validate()) {
-        return Result<Domain::System::Redundancy::StaticEvidenceRecord>::Failure(
+        return Result<Domain::Recovery::Redundancy::StaticEvidenceRecord>::Failure(
             Error(ErrorCode::INVALID_PARAMETER, "StaticEvidenceRecord validation failed", "JsonRedundancyRepositoryAdapter"));
     }
-    return Result<Domain::System::Redundancy::StaticEvidenceRecord>::Success(record);
+    return Result<Domain::Recovery::Redundancy::StaticEvidenceRecord>::Success(record);
 }
 
-nlohmann::json ToJson(const Domain::System::Redundancy::RuntimeEvidenceRecord& record) {
+nlohmann::json ToJson(const Domain::Recovery::Redundancy::RuntimeEvidenceRecord& record) {
     return {
         {"evidence_id", record.evidence_id},
         {"entity_id", record.entity_id},
@@ -329,17 +329,17 @@ nlohmann::json ToJson(const Domain::System::Redundancy::RuntimeEvidenceRecord& r
     };
 }
 
-Result<Domain::System::Redundancy::RuntimeEvidenceRecord> ParseRuntimeEvidence(const nlohmann::json& value) {
-    Domain::System::Redundancy::RuntimeEvidenceRecord record;
+Result<Domain::Recovery::Redundancy::RuntimeEvidenceRecord> ParseRuntimeEvidence(const nlohmann::json& value) {
+    Domain::Recovery::Redundancy::RuntimeEvidenceRecord record;
     if (!value.is_object()) {
-        return Result<Domain::System::Redundancy::RuntimeEvidenceRecord>::Failure(
+        return Result<Domain::Recovery::Redundancy::RuntimeEvidenceRecord>::Failure(
             Error(ErrorCode::JSON_INVALID_TYPE, "RuntimeEvidenceRecord must be object", "JsonRedundancyRepositoryAdapter"));
     }
     record.evidence_id = value.value("evidence_id", "");
     record.entity_id = value.value("entity_id", "");
     auto environment = RuntimeEnvironmentFromString(value.value("environment", ""));
     if (!environment.has_value()) {
-        return Result<Domain::System::Redundancy::RuntimeEvidenceRecord>::Failure(
+        return Result<Domain::Recovery::Redundancy::RuntimeEvidenceRecord>::Failure(
             Error(ErrorCode::JSON_INVALID_TYPE, "RuntimeEvidence environment conversion failed", "JsonRedundancyRepositoryAdapter"));
     }
     record.environment = environment.value();
@@ -350,13 +350,13 @@ Result<Domain::System::Redundancy::RuntimeEvidenceRecord> ParseRuntimeEvidence(c
     record.source = value.value("source", "");
     record.collected_at = value.value("collected_at", "");
     if (!record.Validate()) {
-        return Result<Domain::System::Redundancy::RuntimeEvidenceRecord>::Failure(
+        return Result<Domain::Recovery::Redundancy::RuntimeEvidenceRecord>::Failure(
             Error(ErrorCode::INVALID_PARAMETER, "RuntimeEvidenceRecord validation failed", "JsonRedundancyRepositoryAdapter"));
     }
-    return Result<Domain::System::Redundancy::RuntimeEvidenceRecord>::Success(record);
+    return Result<Domain::Recovery::Redundancy::RuntimeEvidenceRecord>::Success(record);
 }
 
-nlohmann::json ToJson(const Domain::System::Redundancy::CandidateRecord& record) {
+nlohmann::json ToJson(const Domain::Recovery::Redundancy::CandidateRecord& record) {
     return {
         {"candidate_id", record.candidate_id},
         {"entity_id", record.entity_id},
@@ -371,10 +371,10 @@ nlohmann::json ToJson(const Domain::System::Redundancy::CandidateRecord& record)
     };
 }
 
-Result<Domain::System::Redundancy::CandidateRecord> ParseCandidateRecord(const nlohmann::json& value) {
-    Domain::System::Redundancy::CandidateRecord record;
+Result<Domain::Recovery::Redundancy::CandidateRecord> ParseCandidateRecord(const nlohmann::json& value) {
+    Domain::Recovery::Redundancy::CandidateRecord record;
     if (!value.is_object()) {
-        return Result<Domain::System::Redundancy::CandidateRecord>::Failure(
+        return Result<Domain::Recovery::Redundancy::CandidateRecord>::Failure(
             Error(ErrorCode::JSON_INVALID_TYPE, "CandidateRecord must be object", "JsonRedundancyRepositoryAdapter"));
     }
     record.candidate_id = value.value("candidate_id", "");
@@ -385,7 +385,7 @@ Result<Domain::System::Redundancy::CandidateRecord> ParseCandidateRecord(const n
     auto action = CandidateActionFromString(value.value("recommended_action", ""));
     auto status = CandidateStatusFromString(value.value("status", ""));
     if (!priority.has_value() || !action.has_value() || !status.has_value()) {
-        return Result<Domain::System::Redundancy::CandidateRecord>::Failure(
+        return Result<Domain::Recovery::Redundancy::CandidateRecord>::Failure(
             Error(ErrorCode::JSON_INVALID_TYPE, "CandidateRecord enum conversion failed", "JsonRedundancyRepositoryAdapter"));
     }
     record.priority = priority.value();
@@ -395,13 +395,13 @@ Result<Domain::System::Redundancy::CandidateRecord> ParseCandidateRecord(const n
     record.snapshot_id = value.value("snapshot_id", "");
     record.computed_at = value.value("computed_at", "");
     if (!record.Validate()) {
-        return Result<Domain::System::Redundancy::CandidateRecord>::Failure(
+        return Result<Domain::Recovery::Redundancy::CandidateRecord>::Failure(
             Error(ErrorCode::INVALID_PARAMETER, "CandidateRecord validation failed", "JsonRedundancyRepositoryAdapter"));
     }
-    return Result<Domain::System::Redundancy::CandidateRecord>::Success(record);
+    return Result<Domain::Recovery::Redundancy::CandidateRecord>::Success(record);
 }
 
-nlohmann::json ToJson(const Domain::System::Redundancy::DecisionLogRecord& record) {
+nlohmann::json ToJson(const Domain::Recovery::Redundancy::DecisionLogRecord& record) {
     return {
         {"decision_id", record.decision_id},
         {"candidate_id", record.candidate_id},
@@ -425,8 +425,8 @@ std::string CanonicalizeDecisionSnapshotJson(const std::string& snapshot_json) {
     }
 }
 
-bool IsEquivalentDecisionLogRecord(const Domain::System::Redundancy::DecisionLogRecord& left,
-                                   const Domain::System::Redundancy::DecisionLogRecord& right) {
+bool IsEquivalentDecisionLogRecord(const Domain::Recovery::Redundancy::DecisionLogRecord& left,
+                                   const Domain::Recovery::Redundancy::DecisionLogRecord& right) {
     return left.decision_id == right.decision_id &&
            left.candidate_id == right.candidate_id &&
            left.action == right.action &&
@@ -438,17 +438,17 @@ bool IsEquivalentDecisionLogRecord(const Domain::System::Redundancy::DecisionLog
            left.created_at == right.created_at;
 }
 
-Result<Domain::System::Redundancy::DecisionLogRecord> ParseDecisionLogRecord(const nlohmann::json& value) {
-    Domain::System::Redundancy::DecisionLogRecord record;
+Result<Domain::Recovery::Redundancy::DecisionLogRecord> ParseDecisionLogRecord(const nlohmann::json& value) {
+    Domain::Recovery::Redundancy::DecisionLogRecord record;
     if (!value.is_object()) {
-        return Result<Domain::System::Redundancy::DecisionLogRecord>::Failure(
+        return Result<Domain::Recovery::Redundancy::DecisionLogRecord>::Failure(
             Error(ErrorCode::JSON_INVALID_TYPE, "DecisionLogRecord must be object", "JsonRedundancyRepositoryAdapter"));
     }
     record.decision_id = value.value("decision_id", "");
     record.candidate_id = value.value("candidate_id", "");
     auto action = DecisionActionFromString(value.value("action", ""));
     if (!action.has_value()) {
-        return Result<Domain::System::Redundancy::DecisionLogRecord>::Failure(
+        return Result<Domain::Recovery::Redundancy::DecisionLogRecord>::Failure(
             Error(ErrorCode::JSON_INVALID_TYPE, "DecisionLog action conversion failed", "JsonRedundancyRepositoryAdapter"));
     }
     record.action = action.value();
@@ -458,14 +458,14 @@ Result<Domain::System::Redundancy::DecisionLogRecord> ParseDecisionLogRecord(con
     record.ticket = value.value("ticket", "");
     record.created_at = value.value("created_at", "");
     if (!record.Validate()) {
-        return Result<Domain::System::Redundancy::DecisionLogRecord>::Failure(
+        return Result<Domain::Recovery::Redundancy::DecisionLogRecord>::Failure(
             Error(ErrorCode::INVALID_PARAMETER, "DecisionLogRecord validation failed", "JsonRedundancyRepositoryAdapter"));
     }
-    return Result<Domain::System::Redundancy::DecisionLogRecord>::Success(record);
+    return Result<Domain::Recovery::Redundancy::DecisionLogRecord>::Success(record);
 }
 
 std::unordered_map<std::string, std::string> BuildEntityModuleMap(
-    const std::vector<Domain::System::Redundancy::CodeEntity>& entities) {
+    const std::vector<Domain::Recovery::Redundancy::CodeEntity>& entities) {
     std::unordered_map<std::string, std::string> module_map;
     for (const auto& entity : entities) {
         module_map[entity.entity_id] = entity.module;
@@ -505,18 +505,18 @@ Result<void> JsonRedundancyRepositoryAdapter::EnsureStoreInitialized() const {
     return EnsureFileInitialized(decision_logs_file_);
 }
 
-Result<BatchWriteSummary> JsonRedundancyRepositoryAdapter::UpsertEntities(const std::vector<Domain::System::Redundancy::CodeEntity>& entities) {
+Result<BatchWriteSummary> JsonRedundancyRepositoryAdapter::UpsertEntities(const std::vector<Domain::Recovery::Redundancy::CodeEntity>& entities) {
     std::scoped_lock lock(mutex_);
     auto initialized = EnsureStoreInitialized();
     if (initialized.IsError()) {
         return Result<BatchWriteSummary>::Failure(initialized.GetError());
     }
-    auto existing_result = LoadRecords<Domain::System::Redundancy::CodeEntity>(entities_file_, ParseCodeEntity);
+    auto existing_result = LoadRecords<Domain::Recovery::Redundancy::CodeEntity>(entities_file_, ParseCodeEntity);
     if (existing_result.IsError()) {
         return Result<BatchWriteSummary>::Failure(existing_result.GetError());
     }
 
-    std::vector<Domain::System::Redundancy::CodeEntity> valid_records;
+    std::vector<Domain::Recovery::Redundancy::CodeEntity> valid_records;
     BatchWriteSummary summary;
     summary.received = entities.size();
     for (const auto& entity : entities) {
@@ -532,7 +532,7 @@ Result<BatchWriteSummary> JsonRedundancyRepositoryAdapter::UpsertEntities(const 
     auto save_result = SaveRecords(
         entities_file_,
         existing,
-        [](const Domain::System::Redundancy::CodeEntity& item) { return ToJson(item); });
+        [](const Domain::Recovery::Redundancy::CodeEntity& item) { return ToJson(item); });
     if (save_result.IsError()) {
         return Result<BatchWriteSummary>::Failure(save_result.GetError());
     }
@@ -540,18 +540,18 @@ Result<BatchWriteSummary> JsonRedundancyRepositoryAdapter::UpsertEntities(const 
 }
 
 Result<BatchWriteSummary> JsonRedundancyRepositoryAdapter::AppendStaticEvidence(
-    const std::vector<Domain::System::Redundancy::StaticEvidenceRecord>& records) {
+    const std::vector<Domain::Recovery::Redundancy::StaticEvidenceRecord>& records) {
     std::scoped_lock lock(mutex_);
     auto initialized = EnsureStoreInitialized();
     if (initialized.IsError()) {
         return Result<BatchWriteSummary>::Failure(initialized.GetError());
     }
-    auto existing_result = LoadRecords<Domain::System::Redundancy::StaticEvidenceRecord>(static_evidence_file_, ParseStaticEvidence);
+    auto existing_result = LoadRecords<Domain::Recovery::Redundancy::StaticEvidenceRecord>(static_evidence_file_, ParseStaticEvidence);
     if (existing_result.IsError()) {
         return Result<BatchWriteSummary>::Failure(existing_result.GetError());
     }
 
-    std::vector<Domain::System::Redundancy::StaticEvidenceRecord> valid_records;
+    std::vector<Domain::Recovery::Redundancy::StaticEvidenceRecord> valid_records;
     BatchWriteSummary summary;
     summary.received = records.size();
     for (const auto& record : records) {
@@ -567,7 +567,7 @@ Result<BatchWriteSummary> JsonRedundancyRepositoryAdapter::AppendStaticEvidence(
     auto save_result = SaveRecords(
         static_evidence_file_,
         existing,
-        [](const Domain::System::Redundancy::StaticEvidenceRecord& item) { return ToJson(item); });
+        [](const Domain::Recovery::Redundancy::StaticEvidenceRecord& item) { return ToJson(item); });
     if (save_result.IsError()) {
         return Result<BatchWriteSummary>::Failure(save_result.GetError());
     }
@@ -575,18 +575,18 @@ Result<BatchWriteSummary> JsonRedundancyRepositoryAdapter::AppendStaticEvidence(
 }
 
 Result<BatchWriteSummary> JsonRedundancyRepositoryAdapter::AppendRuntimeEvidence(
-    const std::vector<Domain::System::Redundancy::RuntimeEvidenceRecord>& records) {
+    const std::vector<Domain::Recovery::Redundancy::RuntimeEvidenceRecord>& records) {
     std::scoped_lock lock(mutex_);
     auto initialized = EnsureStoreInitialized();
     if (initialized.IsError()) {
         return Result<BatchWriteSummary>::Failure(initialized.GetError());
     }
-    auto existing_result = LoadRecords<Domain::System::Redundancy::RuntimeEvidenceRecord>(runtime_evidence_file_, ParseRuntimeEvidence);
+    auto existing_result = LoadRecords<Domain::Recovery::Redundancy::RuntimeEvidenceRecord>(runtime_evidence_file_, ParseRuntimeEvidence);
     if (existing_result.IsError()) {
         return Result<BatchWriteSummary>::Failure(existing_result.GetError());
     }
 
-    std::vector<Domain::System::Redundancy::RuntimeEvidenceRecord> valid_records;
+    std::vector<Domain::Recovery::Redundancy::RuntimeEvidenceRecord> valid_records;
     BatchWriteSummary summary;
     summary.received = records.size();
     for (const auto& record : records) {
@@ -602,7 +602,7 @@ Result<BatchWriteSummary> JsonRedundancyRepositoryAdapter::AppendRuntimeEvidence
     auto save_result = SaveRecords(
         runtime_evidence_file_,
         existing,
-        [](const Domain::System::Redundancy::RuntimeEvidenceRecord& item) { return ToJson(item); });
+        [](const Domain::Recovery::Redundancy::RuntimeEvidenceRecord& item) { return ToJson(item); });
     if (save_result.IsError()) {
         return Result<BatchWriteSummary>::Failure(save_result.GetError());
     }
@@ -610,18 +610,18 @@ Result<BatchWriteSummary> JsonRedundancyRepositoryAdapter::AppendRuntimeEvidence
 }
 
 Result<BatchWriteSummary> JsonRedundancyRepositoryAdapter::UpsertCandidates(
-    const std::vector<Domain::System::Redundancy::CandidateRecord>& records) {
+    const std::vector<Domain::Recovery::Redundancy::CandidateRecord>& records) {
     std::scoped_lock lock(mutex_);
     auto initialized = EnsureStoreInitialized();
     if (initialized.IsError()) {
         return Result<BatchWriteSummary>::Failure(initialized.GetError());
     }
-    auto existing_result = LoadRecords<Domain::System::Redundancy::CandidateRecord>(candidates_file_, ParseCandidateRecord);
+    auto existing_result = LoadRecords<Domain::Recovery::Redundancy::CandidateRecord>(candidates_file_, ParseCandidateRecord);
     if (existing_result.IsError()) {
         return Result<BatchWriteSummary>::Failure(existing_result.GetError());
     }
 
-    std::vector<Domain::System::Redundancy::CandidateRecord> valid_records;
+    std::vector<Domain::Recovery::Redundancy::CandidateRecord> valid_records;
     BatchWriteSummary summary;
     summary.received = records.size();
     for (const auto& record : records) {
@@ -637,14 +637,14 @@ Result<BatchWriteSummary> JsonRedundancyRepositoryAdapter::UpsertCandidates(
     auto save_result = SaveRecords(
         candidates_file_,
         existing,
-        [](const Domain::System::Redundancy::CandidateRecord& item) { return ToJson(item); });
+        [](const Domain::Recovery::Redundancy::CandidateRecord& item) { return ToJson(item); });
     if (save_result.IsError()) {
         return Result<BatchWriteSummary>::Failure(save_result.GetError());
     }
     return Result<BatchWriteSummary>::Success(summary);
 }
 
-Result<BatchWriteSummary> JsonRedundancyRepositoryAdapter::AppendDecisionLog(const Domain::System::Redundancy::DecisionLogRecord& record) {
+Result<BatchWriteSummary> JsonRedundancyRepositoryAdapter::AppendDecisionLog(const Domain::Recovery::Redundancy::DecisionLogRecord& record) {
     std::scoped_lock lock(mutex_);
     auto initialized = EnsureStoreInitialized();
     if (initialized.IsError()) {
@@ -655,7 +655,7 @@ Result<BatchWriteSummary> JsonRedundancyRepositoryAdapter::AppendDecisionLog(con
             Error(ErrorCode::INVALID_PARAMETER, "DecisionLogRecord validation failed", "JsonRedundancyRepositoryAdapter"));
     }
 
-    auto existing_result = LoadRecords<Domain::System::Redundancy::DecisionLogRecord>(decision_logs_file_, ParseDecisionLogRecord);
+    auto existing_result = LoadRecords<Domain::Recovery::Redundancy::DecisionLogRecord>(decision_logs_file_, ParseDecisionLogRecord);
     if (existing_result.IsError()) {
         return Result<BatchWriteSummary>::Failure(existing_result.GetError());
     }
@@ -679,44 +679,44 @@ Result<BatchWriteSummary> JsonRedundancyRepositoryAdapter::AppendDecisionLog(con
     auto save_result = SaveRecords(
         decision_logs_file_,
         existing,
-        [](const Domain::System::Redundancy::DecisionLogRecord& item) { return ToJson(item); });
+        [](const Domain::Recovery::Redundancy::DecisionLogRecord& item) { return ToJson(item); });
     if (save_result.IsError()) {
         return Result<BatchWriteSummary>::Failure(save_result.GetError());
     }
     return Result<BatchWriteSummary>::Success(summary);
 }
 
-Result<std::vector<Domain::System::Redundancy::CodeEntity>> JsonRedundancyRepositoryAdapter::ListEntities(const std::string& module) const {
+Result<std::vector<Domain::Recovery::Redundancy::CodeEntity>> JsonRedundancyRepositoryAdapter::ListEntities(const std::string& module) const {
     std::scoped_lock lock(mutex_);
     auto initialized = EnsureStoreInitialized();
     if (initialized.IsError()) {
-        return Result<std::vector<Domain::System::Redundancy::CodeEntity>>::Failure(initialized.GetError());
+        return Result<std::vector<Domain::Recovery::Redundancy::CodeEntity>>::Failure(initialized.GetError());
     }
-    auto records_result = LoadRecords<Domain::System::Redundancy::CodeEntity>(entities_file_, ParseCodeEntity);
+    auto records_result = LoadRecords<Domain::Recovery::Redundancy::CodeEntity>(entities_file_, ParseCodeEntity);
     if (records_result.IsError()) {
-        return Result<std::vector<Domain::System::Redundancy::CodeEntity>>::Failure(records_result.GetError());
+        return Result<std::vector<Domain::Recovery::Redundancy::CodeEntity>>::Failure(records_result.GetError());
     }
     if (module.empty()) {
         return records_result;
     }
 
-    std::vector<Domain::System::Redundancy::CodeEntity> filtered;
+    std::vector<Domain::Recovery::Redundancy::CodeEntity> filtered;
     for (const auto& item : records_result.Value()) {
         if (item.module == module) {
             filtered.push_back(item);
         }
     }
-    return Result<std::vector<Domain::System::Redundancy::CodeEntity>>::Success(std::move(filtered));
+    return Result<std::vector<Domain::Recovery::Redundancy::CodeEntity>>::Success(std::move(filtered));
 }
 
-Result<std::vector<Domain::System::Redundancy::StaticEvidenceRecord>> JsonRedundancyRepositoryAdapter::ListStaticEvidence(
+Result<std::vector<Domain::Recovery::Redundancy::StaticEvidenceRecord>> JsonRedundancyRepositoryAdapter::ListStaticEvidence(
     const std::string& module) const {
     std::scoped_lock lock(mutex_);
     auto initialized = EnsureStoreInitialized();
     if (initialized.IsError()) {
-        return Result<std::vector<Domain::System::Redundancy::StaticEvidenceRecord>>::Failure(initialized.GetError());
+        return Result<std::vector<Domain::Recovery::Redundancy::StaticEvidenceRecord>>::Failure(initialized.GetError());
     }
-    auto records_result = LoadRecords<Domain::System::Redundancy::StaticEvidenceRecord>(static_evidence_file_, ParseStaticEvidence);
+    auto records_result = LoadRecords<Domain::Recovery::Redundancy::StaticEvidenceRecord>(static_evidence_file_, ParseStaticEvidence);
     if (records_result.IsError()) {
         return records_result;
     }
@@ -724,46 +724,46 @@ Result<std::vector<Domain::System::Redundancy::StaticEvidenceRecord>> JsonRedund
         return records_result;
     }
 
-    auto entities_result = LoadRecords<Domain::System::Redundancy::CodeEntity>(entities_file_, ParseCodeEntity);
+    auto entities_result = LoadRecords<Domain::Recovery::Redundancy::CodeEntity>(entities_file_, ParseCodeEntity);
     if (entities_result.IsError()) {
-        return Result<std::vector<Domain::System::Redundancy::StaticEvidenceRecord>>::Failure(entities_result.GetError());
+        return Result<std::vector<Domain::Recovery::Redundancy::StaticEvidenceRecord>>::Failure(entities_result.GetError());
     }
     const auto module_map = BuildEntityModuleMap(entities_result.Value());
 
-    std::vector<Domain::System::Redundancy::StaticEvidenceRecord> filtered;
+    std::vector<Domain::Recovery::Redundancy::StaticEvidenceRecord> filtered;
     for (const auto& item : records_result.Value()) {
         auto it = module_map.find(item.entity_id);
         if (it != module_map.end() && it->second == module) {
             filtered.push_back(item);
         }
     }
-    return Result<std::vector<Domain::System::Redundancy::StaticEvidenceRecord>>::Success(std::move(filtered));
+    return Result<std::vector<Domain::Recovery::Redundancy::StaticEvidenceRecord>>::Success(std::move(filtered));
 }
 
-Result<std::vector<Domain::System::Redundancy::RuntimeEvidenceRecord>> JsonRedundancyRepositoryAdapter::ListRuntimeEvidence(
+Result<std::vector<Domain::Recovery::Redundancy::RuntimeEvidenceRecord>> JsonRedundancyRepositoryAdapter::ListRuntimeEvidence(
     const std::string& module,
     const std::string& window_start,
     const std::string& window_end) const {
     std::scoped_lock lock(mutex_);
     auto initialized = EnsureStoreInitialized();
     if (initialized.IsError()) {
-        return Result<std::vector<Domain::System::Redundancy::RuntimeEvidenceRecord>>::Failure(initialized.GetError());
+        return Result<std::vector<Domain::Recovery::Redundancy::RuntimeEvidenceRecord>>::Failure(initialized.GetError());
     }
-    auto records_result = LoadRecords<Domain::System::Redundancy::RuntimeEvidenceRecord>(runtime_evidence_file_, ParseRuntimeEvidence);
+    auto records_result = LoadRecords<Domain::Recovery::Redundancy::RuntimeEvidenceRecord>(runtime_evidence_file_, ParseRuntimeEvidence);
     if (records_result.IsError()) {
         return records_result;
     }
 
     std::unordered_map<std::string, std::string> module_map;
     if (!module.empty()) {
-        auto entities_result = LoadRecords<Domain::System::Redundancy::CodeEntity>(entities_file_, ParseCodeEntity);
+        auto entities_result = LoadRecords<Domain::Recovery::Redundancy::CodeEntity>(entities_file_, ParseCodeEntity);
         if (entities_result.IsError()) {
-            return Result<std::vector<Domain::System::Redundancy::RuntimeEvidenceRecord>>::Failure(entities_result.GetError());
+            return Result<std::vector<Domain::Recovery::Redundancy::RuntimeEvidenceRecord>>::Failure(entities_result.GetError());
         }
         module_map = BuildEntityModuleMap(entities_result.Value());
     }
 
-    std::vector<Domain::System::Redundancy::RuntimeEvidenceRecord> filtered;
+    std::vector<Domain::Recovery::Redundancy::RuntimeEvidenceRecord> filtered;
     for (const auto& item : records_result.Value()) {
         if (!module.empty()) {
             auto it = module_map.find(item.entity_id);
@@ -776,35 +776,35 @@ Result<std::vector<Domain::System::Redundancy::RuntimeEvidenceRecord>> JsonRedun
         }
         filtered.push_back(item);
     }
-    return Result<std::vector<Domain::System::Redundancy::RuntimeEvidenceRecord>>::Success(std::move(filtered));
+    return Result<std::vector<Domain::Recovery::Redundancy::RuntimeEvidenceRecord>>::Success(std::move(filtered));
 }
 
-Result<std::vector<Domain::System::Redundancy::CandidateRecord>> JsonRedundancyRepositoryAdapter::ListCandidates(
+Result<std::vector<Domain::Recovery::Redundancy::CandidateRecord>> JsonRedundancyRepositoryAdapter::ListCandidates(
     const CandidateQueryFilter& filter) const {
     std::scoped_lock lock(mutex_);
     auto initialized = EnsureStoreInitialized();
     if (initialized.IsError()) {
-        return Result<std::vector<Domain::System::Redundancy::CandidateRecord>>::Failure(initialized.GetError());
+        return Result<std::vector<Domain::Recovery::Redundancy::CandidateRecord>>::Failure(initialized.GetError());
     }
-    auto records_result = LoadRecords<Domain::System::Redundancy::CandidateRecord>(candidates_file_, ParseCandidateRecord);
+    auto records_result = LoadRecords<Domain::Recovery::Redundancy::CandidateRecord>(candidates_file_, ParseCandidateRecord);
     if (records_result.IsError()) {
-        return Result<std::vector<Domain::System::Redundancy::CandidateRecord>>::Failure(records_result.GetError());
+        return Result<std::vector<Domain::Recovery::Redundancy::CandidateRecord>>::Failure(records_result.GetError());
     }
 
     std::unordered_map<std::string, std::string> module_map;
     if (!filter.module.empty()) {
-        auto entities_result = LoadRecords<Domain::System::Redundancy::CodeEntity>(entities_file_, ParseCodeEntity);
+        auto entities_result = LoadRecords<Domain::Recovery::Redundancy::CodeEntity>(entities_file_, ParseCodeEntity);
         if (entities_result.IsError()) {
-            return Result<std::vector<Domain::System::Redundancy::CandidateRecord>>::Failure(entities_result.GetError());
+            return Result<std::vector<Domain::Recovery::Redundancy::CandidateRecord>>::Failure(entities_result.GetError());
         }
         module_map = BuildEntityModuleMap(entities_result.Value());
     }
 
-    std::optional<Domain::System::Redundancy::CandidatePriority> parsed_priority_filter;
+    std::optional<Domain::Recovery::Redundancy::CandidatePriority> parsed_priority_filter;
     if (filter.priority.has_value()) {
         parsed_priority_filter = CandidatePriorityFromString(filter.priority.value());
         if (!parsed_priority_filter.has_value()) {
-            return Result<std::vector<Domain::System::Redundancy::CandidateRecord>>::Failure(
+            return Result<std::vector<Domain::Recovery::Redundancy::CandidateRecord>>::Failure(
                 Error(
                     ErrorCode::INVALID_PARAMETER,
                     "failure_stage=list_candidates_filter;failure_code=INVALID_PARAMETER;message=invalid_priority:" +
@@ -813,7 +813,7 @@ Result<std::vector<Domain::System::Redundancy::CandidateRecord>> JsonRedundancyR
         }
     }
 
-    std::vector<Domain::System::Redundancy::CandidateRecord> filtered;
+    std::vector<Domain::Recovery::Redundancy::CandidateRecord> filtered;
     for (const auto& item : records_result.Value()) {
         if (!filter.module.empty()) {
             auto it = module_map.find(item.entity_id);
@@ -837,32 +837,32 @@ Result<std::vector<Domain::System::Redundancy::CandidateRecord>> JsonRedundancyR
     }
 
     if (filter.offset >= filtered.size()) {
-        return Result<std::vector<Domain::System::Redundancy::CandidateRecord>>::Success({});
+        return Result<std::vector<Domain::Recovery::Redundancy::CandidateRecord>>::Success({});
     }
     const auto end = std::min(filtered.size(), filter.offset + filter.limit);
-    std::vector<Domain::System::Redundancy::CandidateRecord> paged(
+    std::vector<Domain::Recovery::Redundancy::CandidateRecord> paged(
         filtered.begin() + static_cast<std::ptrdiff_t>(filter.offset),
         filtered.begin() + static_cast<std::ptrdiff_t>(end));
-    return Result<std::vector<Domain::System::Redundancy::CandidateRecord>>::Success(std::move(paged));
+    return Result<std::vector<Domain::Recovery::Redundancy::CandidateRecord>>::Success(std::move(paged));
 }
 
-Result<Domain::System::Redundancy::CandidateRecord> JsonRedundancyRepositoryAdapter::GetCandidateById(
+Result<Domain::Recovery::Redundancy::CandidateRecord> JsonRedundancyRepositoryAdapter::GetCandidateById(
     const std::string& candidate_id) const {
     std::scoped_lock lock(mutex_);
     auto initialized = EnsureStoreInitialized();
     if (initialized.IsError()) {
-        return Result<Domain::System::Redundancy::CandidateRecord>::Failure(initialized.GetError());
+        return Result<Domain::Recovery::Redundancy::CandidateRecord>::Failure(initialized.GetError());
     }
-    auto records_result = LoadRecords<Domain::System::Redundancy::CandidateRecord>(candidates_file_, ParseCandidateRecord);
+    auto records_result = LoadRecords<Domain::Recovery::Redundancy::CandidateRecord>(candidates_file_, ParseCandidateRecord);
     if (records_result.IsError()) {
-        return Result<Domain::System::Redundancy::CandidateRecord>::Failure(records_result.GetError());
+        return Result<Domain::Recovery::Redundancy::CandidateRecord>::Failure(records_result.GetError());
     }
     for (const auto& item : records_result.Value()) {
         if (item.candidate_id == candidate_id) {
-            return Result<Domain::System::Redundancy::CandidateRecord>::Success(item);
+            return Result<Domain::Recovery::Redundancy::CandidateRecord>::Success(item);
         }
     }
-    return Result<Domain::System::Redundancy::CandidateRecord>::Failure(
+    return Result<Domain::Recovery::Redundancy::CandidateRecord>::Failure(
         Error(ErrorCode::NOT_FOUND, "Candidate not found: " + candidate_id, "JsonRedundancyRepositoryAdapter"));
 }
 
@@ -877,7 +877,7 @@ Result<void> JsonRedundancyRepositoryAdapter::TransitionCandidateStatus(const Ca
             Error(ErrorCode::INVALID_PARAMETER, "Invalid transition request", "JsonRedundancyRepositoryAdapter"));
     }
 
-    auto records_result = LoadRecords<Domain::System::Redundancy::CandidateRecord>(candidates_file_, ParseCandidateRecord);
+    auto records_result = LoadRecords<Domain::Recovery::Redundancy::CandidateRecord>(candidates_file_, ParseCandidateRecord);
     if (records_result.IsError()) {
         return Result<void>::Failure(records_result.GetError());
     }
@@ -905,7 +905,7 @@ Result<void> JsonRedundancyRepositoryAdapter::TransitionCandidateStatus(const Ca
     auto save_result = SaveRecords(
         candidates_file_,
         candidates,
-        [](const Domain::System::Redundancy::CandidateRecord& item) { return ToJson(item); });
+        [](const Domain::Recovery::Redundancy::CandidateRecord& item) { return ToJson(item); });
     if (save_result.IsError()) {
         return save_result;
     }

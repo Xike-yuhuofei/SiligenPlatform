@@ -2,7 +2,7 @@
 // Phase 2: DXF Dispensing Execution UseCase 重构 - Infrastructure 层
 #pragma once
 
-#include "domain/dispensing/ports/ITaskSchedulerPort.h"
+#include "runtime_execution/contracts/dispensing/ITaskSchedulerPort.h"
 #include "shared/types/Result.h"
 
 #include <boost/asio/post.hpp>

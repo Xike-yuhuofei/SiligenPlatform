@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/system/ports/IEventPublisherPort.h"
+#include "domain/supervision/ports/IEventPublisherPort.h"
 #include "domain/motion/ports/IMotionStatePort.h"
 #include "domain/motion/ports/IPositionControlPort.h"
 #include "shared/types/Result.h"

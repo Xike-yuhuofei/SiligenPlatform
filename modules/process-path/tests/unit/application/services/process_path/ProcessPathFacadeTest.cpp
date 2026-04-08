@@ -1,6 +1,6 @@
 #include "application/services/process_path/ProcessPathFacade.h"
 #include "domain/trajectory/domain-services/TopologyRepairService.h"
-#include "infrastructure/adapters/planning/dxf/PbPathSourceAdapter.h"
+#include "dxf_geometry/adapters/planning/dxf/PbPathSourceAdapter.h"
 
 #include <gtest/gtest.h>
 

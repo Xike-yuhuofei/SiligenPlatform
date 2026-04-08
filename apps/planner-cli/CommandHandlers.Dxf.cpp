@@ -2,12 +2,12 @@
 #include "CommandHandlersInternal.h"
 
 #include "topology_feature/contracts/ContourAugmentContracts.h"
-#include "application/usecases/motion/homing/HomeAxesUseCase.h"
+#include "runtime_execution/application/usecases/motion/homing/HomeAxesUseCase.h"
 #include "motion_planning/contracts/InterpolationTypes.h"
 #include "motion_planning/contracts/MotionPlanningReport.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
-#include "workflow/application/usecases/dispensing/DispensingWorkflowUseCase.h"
-#include "workflow/application/usecases/dispensing/PlanningUseCase.h"
+#include "workflow/application/phase-control/DispensingWorkflowUseCase.h"
+#include "workflow/application/planning-trigger/PlanningUseCase.h"
 #include "shared/types/TrajectoryTypes.h"
 
 #include <nlohmann/json.hpp>

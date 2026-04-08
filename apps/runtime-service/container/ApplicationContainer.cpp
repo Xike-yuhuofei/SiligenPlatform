@@ -118,10 +118,6 @@ void ApplicationContainer::SetMultiCardInstance(std::shared_ptr<void> multicard_
     multiCard_ = std::move(multicard_instance);
 }
 
-void ApplicationContainer::SetUploadBaseDir(const std::string& upload_base_dir) {
-    upload_base_dir_ = upload_base_dir;
-}
-
 std::shared_ptr<Shared::Interfaces::ILoggingService> ApplicationContainer::GetLoggingService() {
     return logging_service_;
 }

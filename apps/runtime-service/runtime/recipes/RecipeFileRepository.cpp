@@ -1,6 +1,6 @@
 #include "RecipeFileRepository.h"
 
-#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
+#include "domain/recipes/serialization/RecipeJsonSerializer.h"
 #include "shared/types/Error.h"
 #include "shared/interfaces/ILoggingService.h"
 
@@ -21,7 +21,7 @@ namespace {
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
-using Siligen::Infrastructure::Adapters::Recipes::RecipeJsonSerializer;
+using Siligen::Domain::Recipes::Serialization::RecipeJsonSerializer;
 using Siligen::Domain::Recipes::Aggregates::Recipe;
 using Siligen::Domain::Recipes::Aggregates::RecipeVersion;
 

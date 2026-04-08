@@ -1,6 +1,6 @@
 #include "runtime/supervision/RuntimeJobTerminalSync.h"
 
-#include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
+#include "workflow/application/phase-control/DispensingWorkflowUseCase.h"
 
 #include <utility>
 

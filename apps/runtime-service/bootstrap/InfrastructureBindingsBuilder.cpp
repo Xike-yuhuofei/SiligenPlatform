@@ -30,7 +30,7 @@
 #include "runtime/scheduling/TaskSchedulerAdapter.h"
 #include "security/AuditLogger.h"
 #include "security/InterlockMonitor.h"
-#include "infrastructure/adapters/planning/dxf/PbPathSourceAdapter.h"
+#include "dxf_geometry/adapters/planning/dxf/PbPathSourceAdapter.h"
 #include "runtime/recipes/RecipeFileRepository.h"
 #include "runtime/recipes/TemplateFileRepository.h"
 #include "runtime/recipes/AuditFileRepository.h"
@@ -232,9 +232,9 @@ InfrastructureBindings CreateInfrastructureBindings(const InfrastructureBootstra
         dispenser_config_result.Value(),
         compensation_profile);
 
-    bindings.upload_base_dir = RuntimeConfig::ResolveUploadDirectory();
+    const auto upload_base_dir = RuntimeConfig::ResolveUploadDirectory();
     bindings.file_storage_port = std::make_shared<Infrastructure::Adapters::LocalFileStorageAdapter>(
-        bindings.upload_base_dir);
+        upload_base_dir);
 
     bindings.recipe_base_dir = RuntimeConfig::ResolveRecipeDirectory();
     bindings.recipe_repository = std::make_shared<Infrastructure::Adapters::Recipes::RecipeFileRepository>(

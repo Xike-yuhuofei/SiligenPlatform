@@ -121,7 +121,8 @@ target_include_directories(siligen_device_adapters PRIVATE
 target_link_libraries(siligen_device_adapters PUBLIC
     siligen_device_contracts
     siligen_shared_kernel
-    siligen_domain
+    siligen_runtime_execution_runtime_contracts
+    siligen_workflow_domain_headers
     siligen_process_planning_contracts_public
 )
 if(TARGET siligen_types)

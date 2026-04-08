@@ -3,6 +3,7 @@
 #include "domain/diagnostics/value-objects/DiagnosticTypes.h"
 #include "domain/motion/value-objects/HardwareTestTypes.h"
 #include "domain/motion/value-objects/TrajectoryTypes.h"
+#include "shared/types/Point2D.h"
 #include "shared/types/Result.h"
 #include "shared/types/Types.h"
 

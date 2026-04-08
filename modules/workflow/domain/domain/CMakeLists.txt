@@ -9,35 +9,13 @@ set(SILIGEN_DOMAIN_IMPLEMENTATION_INCLUDE_DIRS
     ${SILIGEN_WORKSPACE_IMPLEMENTATION_INCLUDE_DIRS}
 )
 
-set(SILIGEN_MOTION_EXECUTION_DOMAIN_MOTION_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/motion"
-)
-set(SILIGEN_MOTION_PLANNING_DOMAIN_MOTION_DIR
-    "${SILIGEN_WORKSPACE_ROOT}/modules/motion-planning/domain/motion"
-)
-set(SILIGEN_MOTION_EXECUTION_OWNER_IMPLEMENTATION_INCLUDE_DIRS
-    ${SILIGEN_MOTION_EXECUTION_DOMAIN_MOTION_DIR}
-    ${SILIGEN_MOTION_EXECUTION_DOMAIN_MOTION_DIR}/domain-services
-    ${SILIGEN_MOTION_EXECUTION_DOMAIN_MOTION_DIR}/domain-services/interpolation
-    ${SILIGEN_DOMAIN_IMPLEMENTATION_INCLUDE_DIRS}
-)
-if(NOT EXISTS "${SILIGEN_MOTION_EXECUTION_DOMAIN_MOTION_DIR}/domain-services/MotionBufferController.cpp")
-    message(FATAL_ERROR
-        "workflow motion execution target requires workflow motion sources under "
-        "${SILIGEN_MOTION_EXECUTION_DOMAIN_MOTION_DIR}"
-    )
-endif()
-
-# 子域结构（占位，不影响现有构建）
+# workflow/domain/domain 当前仅保留仍有 live consumer 的最小 bridge-domain 聚合。
+# 已确认无 live consumer 的 machine / diagnostics / configuration / planning / recovery /
+# planning-boundary / supervision / system 物理壳层已从此处清除。
 add_subdirectory(_shared)
 add_subdirectory(motion)
 add_subdirectory(recipes)
-add_subdirectory(machine)
 add_subdirectory(safety)
-add_subdirectory(diagnostics)
-add_subdirectory(configuration)
-add_subdirectory(system)
-add_subdirectory(planning)
 
 # 领域模型库 (header-only for now)
 # add_library(siligen_models STATIC
@@ -111,9 +89,9 @@ message(STATUS "领域层库配置完成")
 
 set(SILIGEN_DOMAIN_SHARED_IMPLEMENTATION_INCLUDE_DIRS
     ${CMAKE_CURRENT_SOURCE_DIR}/dispensing/domain-services
-    ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics/domain-services
     ${CMAKE_CURRENT_SOURCE_DIR}/motion/domain-services
     ${CMAKE_CURRENT_SOURCE_DIR}/recipes/domain-services
+    ${CMAKE_CURRENT_SOURCE_DIR}/recipes/serialization
     ${CMAKE_CURRENT_SOURCE_DIR}/safety/domain-services
     ${SILIGEN_DOMAIN_IMPLEMENTATION_INCLUDE_DIRS}
 )
@@ -136,12 +114,6 @@ target_link_libraries(siligen_dispensing_execution_services PUBLIC
 )
 target_compile_features(siligen_dispensing_execution_services PUBLIC cxx_std_17)
 
-add_library(siligen_workflow_dispensing_planning_compat INTERFACE)
-target_link_libraries(siligen_workflow_dispensing_planning_compat INTERFACE
-    siligen_dispense_packaging_domain_dispensing
-)
-target_compile_features(siligen_workflow_dispensing_planning_compat INTERFACE cxx_std_17)
-
 add_library(siligen_recipe_domain_services STATIC
     recipes/domain-services/RecipeActivationService.cpp
     recipes/domain-services/RecipeValidationService.cpp
@@ -159,22 +131,21 @@ target_link_libraries(siligen_recipe_domain_services PUBLIC
 )
 target_compile_features(siligen_recipe_domain_services PUBLIC cxx_std_17)
 
-add_library(siligen_diagnostics_domain_services STATIC
-    diagnostics/domain-services/ProcessResultSerialization.cpp
-    diagnostics/domain-services/ProcessResultService.cpp
+add_library(siligen_recipe_json_codec STATIC
+    recipes/serialization/RecipeJsonSerializer.cpp
 )
-target_include_directories(siligen_diagnostics_domain_services PUBLIC
+target_include_directories(siligen_recipe_json_codec PUBLIC
     ${SILIGEN_DOMAIN_INTERFACE_INCLUDE_DIRS}
 )
-target_include_directories(siligen_diagnostics_domain_services PRIVATE
+target_include_directories(siligen_recipe_json_codec PRIVATE
     ${SILIGEN_DOMAIN_SHARED_IMPLEMENTATION_INCLUDE_DIRS}
 )
-target_link_libraries(siligen_diagnostics_domain_services PUBLIC
-    siligen_workspace_boost_headers
+target_link_libraries(siligen_recipe_json_codec PUBLIC
+    siligen_workspace_json_headers
     siligen_types
     siligen_utils
 )
-target_compile_features(siligen_diagnostics_domain_services PUBLIC cxx_std_17)
+target_compile_features(siligen_recipe_json_codec PUBLIC cxx_std_17)
 
 add_library(siligen_safety_domain_services STATIC
     safety/domain-services/EmergencyStopService.cpp
@@ -202,7 +173,6 @@ target_include_directories(siligen_domain_services INTERFACE
 )
 target_link_libraries(siligen_domain_services INTERFACE
     siligen_recipe_domain_services
-    siligen_diagnostics_domain_services
     siligen_safety_domain_services
 )
 target_compile_features(siligen_domain_services INTERFACE cxx_std_17)
@@ -210,7 +180,6 @@ target_compile_features(siligen_domain_services INTERFACE cxx_std_17)
 # 更新导出库列表
 list(APPEND DOMAIN_LIBRARIES
     siligen_recipe_domain_services
-    siligen_diagnostics_domain_services
     siligen_safety_domain_services
     siligen_domain_services
 )
@@ -221,8 +190,8 @@ if(SILIGEN_USE_PCH)
     # siligen_trajectory 现在是 INTERFACE 库,跳过预编译头
     # target_precompile_headers(siligen_trajectory PRIVATE ${SILIGEN_PCH_HEADER})
     target_precompile_headers(siligen_triggering PRIVATE ${SILIGEN_PCH_HEADER})
+    target_precompile_headers(siligen_recipe_json_codec PRIVATE ${SILIGEN_PCH_HEADER})
     target_precompile_headers(siligen_recipe_domain_services PRIVATE ${SILIGEN_PCH_HEADER})
-    target_precompile_headers(siligen_diagnostics_domain_services PRIVATE ${SILIGEN_PCH_HEADER})
     target_precompile_headers(siligen_safety_domain_services PRIVATE ${SILIGEN_PCH_HEADER})
 
     message(STATUS "[Domain Layer] 预编译头已应用于所有领域库")

@@ -49,10 +49,6 @@ namespace Siligen::Application::UseCases::Dispensing
     - **优点**: 触发点间距更贴合速度曲线，均匀性更好。
     - **配置**: `subsegment_count` (默认 8)。
 
-### CleanupFilesUseCase
-- **职责**: 清理过期的 DXF 文件
-- **使用场景**: 存储管理
-
 ## 设计原则
 
 1. DXF 上传/归档 owner 面由 `job-ingest` 提供，workflow 只消费上传结果与文件事实
@@ -68,7 +64,7 @@ namespace Siligen::Application::UseCases::Dispensing
 
 - `.pb` 是 **运行时中间格式**，由 DXF 预处理管线从 DXF 生成。
 - DXF 不是直接被 C++ 规划器消费；规划/预览/执行统一读取 `.pb`。
-- DXF 上传 owner 面由 `job-ingest` 承载；workflow 只在预览、规划、执行前消费统一准备好的输入事实，并通过 `DxfPbPreparationService` 确保 `.pb` 已存在、非空且时间戳不落后于源 DXF。
+- DXF 上传 owner 面由 `job-ingest` 承载；workflow 只在预览、规划、执行前消费统一准备好的输入事实，并通过注入的 `DxfPbPreparationService` seam 确保 `.pb` 已存在、非空且时间戳不落后于源 DXF。
 - `DxfPbPreparationService` 默认调用本仓库内的 `scripts/engineering-data/dxf_to_pb.py`；仅在显式设置 `SILIGEN_DXF_PROJECT_ROOT` 且路径有效时才调用外部 DXF 算法仓库，并向其 launcher 传递 canonical 子命令 `engineering-data-dxf-to-pb`。
 - `PlanningUseCase` 在主链路中接收 `EnsurePbReady` 返回的 `.pb` 路径，并继续编排 `M6 -> M7 -> M8` owner facade；live 链不再直接消费 `DispensingPlannerService`。
 - `ContourAugmenterAdapter` 已下沉到 `infrastructure/adapters/planning/geometry`，应用层不再直接承载几何增广实现。

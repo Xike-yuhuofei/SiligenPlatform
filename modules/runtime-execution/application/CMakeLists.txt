@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
 
+if(NOT TARGET siligen_runtime_execution_runtime_contracts)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../contracts/runtime"
+        "${CMAKE_BINARY_DIR}/_p/rea_rerc"
+    )
+endif()
+
 if(NOT TARGET siligen_device_contracts AND EXISTS "${SILIGEN_WORKSPACE_ROOT}/shared/contracts/device/CMakeLists.txt")
     add_subdirectory(
         "${SILIGEN_WORKSPACE_ROOT}/shared/contracts/device"
@@ -7,10 +14,46 @@ if(NOT TARGET siligen_device_contracts AND EXISTS "${SILIGEN_WORKSPACE_ROOT}/sha
     )
 endif()
 
+if(NOT TARGET siligen_dispense_packaging_contracts_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../dispense-packaging/contracts"
+        "${CMAKE_BINARY_DIR}/_p/rea_dpc"
+    )
+endif()
+
+if(NOT TARGET siligen_dispense_packaging_domain_dispensing)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../dispense-packaging/domain/dispensing"
+        "${CMAKE_BINARY_DIR}/_p/rea_dpd"
+    )
+endif()
+
+if(TARGET siligen_runtime_execution_runtime_contracts AND TARGET siligen_dispense_packaging_domain_dispensing)
+    # runtime contracts 的 dispensing surface 直接暴露 domain/dispensing/*；
+    # 这里只补 owner include dirs，避免把 dispensing static target 直接挂回去形成循环依赖。
+    target_include_directories(siligen_runtime_execution_runtime_contracts INTERFACE
+        $<TARGET_PROPERTY:siligen_dispense_packaging_domain_dispensing,INTERFACE_INCLUDE_DIRECTORIES>
+    )
+endif()
+
 if(NOT TARGET siligen_process_planning_contracts_public)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../../process-planning/contracts"
         "${CMAKE_BINARY_DIR}/_p/rea_ppc"
+    )
+endif()
+
+if(NOT TARGET siligen_process_path_contracts_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../process-path/contracts"
+        "${CMAKE_BINARY_DIR}/_p/rea_ppath"
+    )
+endif()
+
+if(NOT TARGET siligen_motion_planning_application_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../motion-planning/application"
+        "${CMAKE_BINARY_DIR}/_p/rea_mpa"
     )
 endif()
 
@@ -32,7 +75,6 @@ target_include_directories(siligen_runtime_execution_application_headers INTERFA
 target_link_libraries(siligen_runtime_execution_application_headers INTERFACE
     siligen_runtime_execution_runtime_contracts
     siligen_dispense_packaging_contracts_public
-    siligen_domain
     siligen_process_planning_contracts_public
 )
 if(TARGET siligen_device_contracts)
@@ -71,7 +113,7 @@ target_link_libraries(siligen_runtime_execution_motion_execution_services PUBLIC
     siligen_types
     siligen_utils
     siligen_motion
-    siligen_motion_core
+    siligen_safety_domain_services
     siligen_process_planning_contracts_public
 )
 target_compile_features(siligen_runtime_execution_motion_execution_services PUBLIC cxx_std_17)
@@ -108,13 +150,12 @@ target_link_libraries(siligen_runtime_execution_application PUBLIC
     siligen_runtime_execution_runtime_contracts
     siligen_dispense_packaging_contracts_public
     siligen_runtime_execution_motion_execution_services
-    siligen_domain
     siligen_process_planning_contracts_public
     siligen_types
     siligen_utils
     siligen_geometry
-    siligen_domain
-    siligen_domain_services
+    siligen_workflow_domain_headers
+    siligen_safety_domain_services
 )
 if(TARGET siligen_device_contracts)
     target_link_libraries(siligen_runtime_execution_application PUBLIC
@@ -127,11 +168,82 @@ set_target_properties(siligen_runtime_execution_application PROPERTIES
     SILIGEN_TARGET_TOPOLOGY_OWNER_ROOT "modules/runtime-execution"
 )
 
+if(NOT TARGET siligen_application_system)
+    add_library(siligen_application_system STATIC
+        usecases/system/InitializeSystemUseCase.cpp
+        usecases/system/EmergencyStopUseCase.cpp
+    )
+endif()
+target_include_directories(siligen_application_system PUBLIC
+    ${SILIGEN_RUNTIME_EXECUTION_APPLICATION_PUBLIC_INCLUDE_DIR}
+    ${CMAKE_SOURCE_DIR}/modules/runtime-execution/contracts/device/include
+)
+target_include_directories(siligen_application_system PRIVATE
+    ${SILIGEN_RUNTIME_EXECUTION_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
+)
+target_link_libraries(siligen_application_system PUBLIC
+    siligen_runtime_execution_application_headers
+    siligen_types
+    siligen_utils
+    siligen_safety_domain_services
+    siligen_dispense_packaging_domain_dispensing
+)
+if(TARGET siligen_device_contracts)
+    target_link_libraries(siligen_application_system PUBLIC
+        siligen_device_contracts
+    )
+endif()
+target_compile_features(siligen_application_system PUBLIC cxx_std_17)
+set_target_properties(siligen_application_system PROPERTIES
+    SILIGEN_TARGET_TOPOLOGY_OWNER_ROOT "modules/runtime-execution"
+)
+
+if(NOT TARGET siligen_application_motion)
+    add_library(siligen_application_motion STATIC
+        usecases/motion/manual/ManualMotionControlUseCase.cpp
+        usecases/motion/initialization/MotionInitializationUseCase.cpp
+        usecases/motion/safety/MotionSafetyUseCase.cpp
+        usecases/motion/monitoring/MotionMonitoringUseCase.cpp
+        usecases/motion/coordination/MotionCoordinationUseCase.cpp
+        usecases/motion/homing/HomeAxesUseCase.cpp
+        usecases/motion/homing/EnsureAxesReadyZeroUseCase.cpp
+        usecases/motion/ptp/MoveToPositionUseCase.cpp
+        usecases/motion/trajectory/DeterministicPathExecutionUseCase.cpp
+        usecases/motion/trajectory/ExecuteTrajectoryUseCase.cpp
+        usecases/motion/runtime/MotionRuntimeAssemblyFactory.cpp
+    )
+endif()
+target_include_directories(siligen_application_motion PUBLIC
+    ${SILIGEN_RUNTIME_EXECUTION_APPLICATION_PUBLIC_INCLUDE_DIR}
+    ${CMAKE_SOURCE_DIR}/modules/runtime-execution/contracts/device/include
+)
+target_include_directories(siligen_application_motion PRIVATE
+    ${SILIGEN_RUNTIME_EXECUTION_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
+)
+target_link_libraries(siligen_application_motion PUBLIC
+    siligen_runtime_execution_application_headers
+    siligen_types
+    siligen_utils
+    siligen_geometry
+    siligen_motion
+    siligen_runtime_execution_motion_execution_services
+    siligen_process_path_contracts_public
+    siligen_process_planning_contracts_public
+    siligen_dispense_packaging_domain_dispensing
+    siligen_motion_planning_application_public
+)
+target_compile_features(siligen_application_motion PUBLIC cxx_std_17)
+set_target_properties(siligen_application_motion PROPERTIES
+    SILIGEN_TARGET_TOPOLOGY_OWNER_ROOT "modules/runtime-execution"
+)
+
 if(NOT TARGET siligen_runtime_execution_application_public)
     add_library(siligen_runtime_execution_application_public INTERFACE)
 endif()
 target_link_libraries(siligen_runtime_execution_application_public INTERFACE
     siligen_runtime_execution_application_headers
+    $<LINK_ONLY:siligen_application_system>
+    $<LINK_ONLY:siligen_application_motion>
     $<LINK_ONLY:siligen_runtime_execution_application>
 )
 target_compile_features(siligen_runtime_execution_application_public INTERFACE cxx_std_17)

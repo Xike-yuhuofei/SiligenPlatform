@@ -13,32 +13,41 @@ set(SILIGEN_WORKFLOW_DOMAIN_BRIDGE_ONLY_ALLOWED_MODULES
     process-path
     motion-planning
     dispense-packaging
+    coordinate-alignment
 )
 
 set(SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
 if(NOT EXISTS "${SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR}/domain")
     message(FATAL_ERROR "workflow canonical domain include root missing: ${SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR}/domain")
 endif()
-if(NOT DEFINED SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR)
-    set(SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../motion-planning"
-    )
-endif()
-if(NOT EXISTS "${SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR}/domain/motion")
-    message(FATAL_ERROR "motion-planning canonical public include root missing: ${SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR}/domain/motion")
-endif()
-
 if(NOT TARGET siligen_workflow_domain_headers)
     add_library(siligen_workflow_domain_headers INTERFACE)
 endif()
 target_include_directories(siligen_workflow_domain_headers INTERFACE
     ${SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR}
-    ${SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/process-core/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/motion-core/include
-    ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
+)
+target_link_libraries(siligen_workflow_domain_headers INTERFACE
+    siligen_types
 )
 target_compile_features(siligen_workflow_domain_headers INTERFACE cxx_std_17)
+
+if(NOT TARGET siligen_coordinate_alignment_domain_machine)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../coordinate-alignment/domain/machine"
+        "${CMAKE_BINARY_DIR}/modules/coordinate-alignment/domain/machine"
+    )
+endif()
+if(NOT TARGET siligen_coordinate_alignment_domain_machine)
+    message(FATAL_ERROR "workflow/domain machine bridge requires canonical target siligen_coordinate_alignment_domain_machine")
+endif()
+
+if(NOT TARGET domain_machine)
+    add_library(domain_machine INTERFACE)
+endif()
+target_link_libraries(domain_machine INTERFACE
+    siligen_coordinate_alignment_domain_machine
+)
+target_compile_features(domain_machine INTERFACE cxx_std_17)
 
 if(NOT TARGET siligen_process_core)
     add_subdirectory(

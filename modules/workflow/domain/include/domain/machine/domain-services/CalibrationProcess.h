@@ -1,4 +1,4 @@
 #pragma once
 
-// Public compatibility shim. Canonical workflow owner currently lives in domain/domain.
-#include "../../../../domain/machine/domain-services/CalibrationProcess.h"
+// Bridge-only public surface. Canonical calibration owner now lives in M5 coordinate-alignment.
+#include "../../../../../../coordinate-alignment/domain/machine/domain-services/CalibrationProcess.h"

@@ -10,7 +10,6 @@
 #include "domain/diagnostics/ports/ITestConfigurationPort.h"
 #include "domain/diagnostics/ports/ITestRecordRepository.h"
 #include "siligen/device/contracts/ports/device_ports.h"
-#include "domain/dispensing/ports/ITaskSchedulerPort.h"
 #include "domain/dispensing/ports/ITriggerControllerPort.h"
 #include "domain/dispensing/ports/IValvePort.h"
 #include "domain/motion/ports/IAxisControlPort.h"
@@ -20,9 +19,10 @@
 #include "domain/motion/ports/IMotionStatePort.h"
 #include "domain/motion/ports/IPositionControlPort.h"
 #include "domain/motion/ports/IVelocityProfilePort.h"
+#include "runtime_execution/contracts/dispensing/ITaskSchedulerPort.h"
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
-#include "domain/system/ports/IEventPublisherPort.h"
+#include "runtime_execution/contracts/system/IEventPublisherPort.h"
 #include "domain/recipes/ports/IParameterSchemaPort.h"
 #include "domain/recipes/ports/IAuditRepositoryPort.h"
 #include "domain/recipes/ports/IRecipeBundleSerializerPort.h"
@@ -66,9 +66,6 @@ void ApplyBindings(
     const Siligen::Bootstrap::InfrastructureBindings& bindings) {
     if (bindings.logging_service) {
         container.SetLoggingService(bindings.logging_service);
-    }
-    if (!bindings.upload_base_dir.empty()) {
-        container.SetUploadBaseDir(bindings.upload_base_dir);
     }
     if (bindings.multicard_instance) {
         container.SetMultiCardInstance(bindings.multicard_instance);

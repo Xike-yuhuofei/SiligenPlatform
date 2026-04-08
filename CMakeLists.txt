@@ -121,8 +121,6 @@ set(SILIGEN_WORKSPACE_PUBLIC_INCLUDE_DIRS
     ${SILIGEN_MODULES_ROOT}/runtime-execution/application/include
     ${SILIGEN_MODULES_ROOT}/runtime-execution/contracts/runtime/include
     ${SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR}
-    ${SILIGEN_MODULES_ROOT}/workflow/domain/process-core/include
-    ${SILIGEN_MODULES_ROOT}/workflow/domain/motion-core/include
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
 set(SILIGEN_WORKSPACE_IMPLEMENTATION_INCLUDE_DIRS
@@ -130,8 +128,6 @@ set(SILIGEN_WORKSPACE_IMPLEMENTATION_INCLUDE_DIRS
     ${SILIGEN_MODULES_ROOT}/workflow/domain
     ${SILIGEN_MODULES_ROOT}/workflow/application
     ${SILIGEN_MODULES_ROOT}/workflow/adapters
-    ${SILIGEN_MODULES_ROOT}/workflow/domain/process-core/include
-    ${SILIGEN_MODULES_ROOT}/workflow/domain/motion-core/include
     ${SILIGEN_WORKSPACE_PUBLIC_INCLUDE_DIRS}
 )
 list(REMOVE_DUPLICATES SILIGEN_WORKSPACE_PUBLIC_INCLUDE_DIRS)
@@ -486,10 +482,6 @@ if(EXISTS "${SILIGEN_MODULES_ROOT}/CMakeLists.txt")
 endif()
 if(EXISTS "${SILIGEN_APPS_ROOT}/CMakeLists.txt")
     add_subdirectory("${SILIGEN_APPS_ROOT}" "${CMAKE_BINARY_DIR}/apps")
-endif()
-
-if(NOT TARGET siligen_domain)
-    message(FATAL_ERROR "workflow/process-runtime-core 必须提供 siligen_domain")
 endif()
 
 message(STATUS "=== 六边形架构模块配置完成 ===")

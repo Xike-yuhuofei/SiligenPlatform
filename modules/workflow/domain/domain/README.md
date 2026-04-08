@@ -9,8 +9,7 @@
 - `motion/`：运动控制子域
 - `machine/`：设备与运行状态子域
 - `safety/`：安全与互锁子域
-- `diagnostics/`：诊断与健康状态子域
-- `configuration/`：配置子域
+- `diagnostics/` / `configuration/`：live concrete 已退出当前 bridge-domain；仅保留 `../include/domain/**` 下的兼容合同面
 - `recipes/`：配方子域
 - `system/`：系统级横切能力子域
 - `planning/`：规划与可视化子域
@@ -82,14 +81,14 @@
 
 - `process-core` 是配方校验与生效规则的主实现与规则来源
 - `Recipes::DomainServices::RecipeActivationService` / `RecipeValidationService` 保留为兼容包装层，内部委托 `process-core`
+- 配方 JSON 编解码已拆到独立 target `siligen_recipe_json_codec`，不再并入 `siligen_recipe_domain_services`
 - 应用层仅负责发布/显式激活的编排与参数校验，禁止直接改写 `Recipe.active_version_id`
 - 领域层通过 `IRecipeRepositoryPort` 持久化配方与版本状态，通过 `IAuditRepositoryPort` 记录审计
 
 ### 工艺结果统一规范
 
-- `Diagnostics::DomainServices::ProcessResultService` 是工艺/测试结果的统一入口
-- 结构化定义与校验在 Domain（`TestDataTypes` / `TestRecord` / `ProcessResultService`）
-- JSON 格式由 `ProcessResultSerialization` 生成与解析，视为外部契约
+- 当前 workflow bridge-domain 不再编译 `ProcessResultService` / `ProcessResultSerialization` concrete
+- 诊断合同面仅保留 `TestDataTypes` / `TestRecord` / `IDiagnosticsPort` / `ITestRecordRepository` 等 public contracts
 - 持久化仅通过 `ITestRecordRepository` 端口完成，Infrastructure 不得重写规则或结构
 
 ## 依赖原则
