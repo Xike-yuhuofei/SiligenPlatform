@@ -63,7 +63,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\run-loc
 
 - `pyrightconfig.json`
 - `scripts/validation/run-pyright-gate.ps1`
-- `tools/testing/check_no_loose_mock.py`
+- `scripts/testing/check_no_loose_mock.py`
+- build root 自动发现默认只认 `build/`、`build/control-apps/`、显式 `SILIGEN_CONTROL_APPS_BUILD_ROOT` 与本地发布缓存；根级其他 `build-*` 仅作为本地临时目录保留，不参与默认候选。
 
 `L0` 失败即阻断 `quick-gate`，并禁止继续进入 `L3/L4/L5`。
 

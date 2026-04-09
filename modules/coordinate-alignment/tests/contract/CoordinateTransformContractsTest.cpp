@@ -1,4 +1,4 @@
-#include "coordinate_alignment/application/CoordinateAlignmentApplicationSurface.h"
+#include "coordinate_alignment/contracts/CoordinateTransformSet.h"
 
 #include <gtest/gtest.h>
 

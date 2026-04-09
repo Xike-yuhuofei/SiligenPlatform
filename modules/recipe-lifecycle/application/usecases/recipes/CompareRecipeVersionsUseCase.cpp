@@ -46,4 +46,3 @@ Result<CompareRecipeVersionsResponse> CompareRecipeVersionsUseCase::Execute(
 }
 
 }  // namespace Siligen::Application::UseCases::Recipes
-

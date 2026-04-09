@@ -101,4 +101,3 @@ Result<CreateVersionFromPublishedResponse> CreateVersionFromPublishedUseCase::Ex
 }
 
 }  // namespace Siligen::Application::UseCases::Recipes
-

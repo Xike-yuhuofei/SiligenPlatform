@@ -94,4 +94,3 @@ Result<UpdateRecipeResponse> UpdateRecipeUseCase::Execute(const UpdateRecipeRequ
 }
 
 }  // namespace Siligen::Application::UseCases::Recipes
-

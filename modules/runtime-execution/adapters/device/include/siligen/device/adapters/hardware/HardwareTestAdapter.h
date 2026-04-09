@@ -9,8 +9,11 @@
 
 #include <array>
 #include <chrono>
+#include <map>
 #include <memory>
 #include <mutex>
+#include <string>
+#include <vector>
 
 namespace Siligen::Infrastructure::Adapters::Hardware {
 
@@ -37,7 +40,8 @@ using Siligen::Domain::Configuration::Ports::HomingConfig;
 /**
  * @brief 硬件测试适配器 - MultiCard真实硬件实现
  *
- * 将IHardwareTestPort接口适配到MultiCard硬件控制器API。
+ * 继续同时实现 machine-test port 与 machine health port，
+ * 以承接尚未清空的 trigger controller live consumer。
  * 线程安全: 使用互斥锁保护硬件访问。
  */
 class HardwareTestAdapter : public IHardwareTestPort,

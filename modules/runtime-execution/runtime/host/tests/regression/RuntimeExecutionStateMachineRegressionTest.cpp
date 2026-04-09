@@ -1,4 +1,4 @@
-#include "runtime/system/DispenserModelMachineExecutionStateBackend.h"
+#include "runtime/system/MachineExecutionStateBackend.h"
 #include "support/RuntimeExecutionHostTestSupport.h"
 
 #include <gtest/gtest.h>
@@ -7,17 +7,14 @@
 
 namespace {
 
-using DispenserModel = Siligen::Runtime::Host::Tests::DispenserModel;
-using DispenserModelMachineExecutionStateBackend = Siligen::Runtime::Service::System::DispenserModelMachineExecutionStateBackend;
+using MachineExecutionStateBackend = Siligen::Runtime::Service::System::MachineExecutionStateBackend;
 using MachineExecutionPhase = Siligen::RuntimeExecution::Contracts::System::MachineExecutionPhase;
 
-TEST(RuntimeExecutionStateMachineRegressionTest, MapsReadyRunningPausedAndFaultLifecycleFromDispenserModel) {
-    auto model = std::make_shared<DispenserModel>();
-    ASSERT_TRUE(model->SetState(Siligen::DispenserState::INITIALIZING).IsSuccess());
-    ASSERT_TRUE(model->SetState(Siligen::DispenserState::READY).IsSuccess());
-    ASSERT_TRUE(model->AddTask(Siligen::Runtime::Host::Tests::MakePendingTask()).IsSuccess());
+TEST(RuntimeExecutionStateMachineRegressionTest, MapsReadyRunningPausedAndFaultLifecycleFromRuntimeOwnedStore) {
+    auto store = Siligen::Runtime::Host::Tests::CreateMachineExecutionStateStore(MachineExecutionPhase::Ready, 1);
+    ASSERT_NE(store, nullptr);
 
-    DispenserModelMachineExecutionStateBackend port(model);
+    MachineExecutionStateBackend port(store);
 
     auto ready_snapshot = port.ReadSnapshot();
     ASSERT_TRUE(ready_snapshot.IsSuccess()) << ready_snapshot.GetError().GetMessage();
@@ -26,20 +23,21 @@ TEST(RuntimeExecutionStateMachineRegressionTest, MapsReadyRunningPausedAndFaultL
     EXPECT_TRUE(ready_snapshot.Value().has_pending_tasks);
     EXPECT_TRUE(ready_snapshot.Value().manual_motion_allowed);
 
-    ASSERT_TRUE(model->StartTask("task-1").IsSuccess());
+    ASSERT_TRUE(store->SetPendingTaskCount(0).IsSuccess());
+    ASSERT_TRUE(store->SetPhase(MachineExecutionPhase::Running).IsSuccess());
     auto running_snapshot = port.ReadSnapshot();
     ASSERT_TRUE(running_snapshot.IsSuccess()) << running_snapshot.GetError().GetMessage();
     EXPECT_EQ(running_snapshot.Value().phase, MachineExecutionPhase::Running);
     EXPECT_EQ(running_snapshot.Value().pending_task_count, 0);
     EXPECT_FALSE(running_snapshot.Value().has_pending_tasks);
 
-    ASSERT_TRUE(model->PauseCurrentTask().IsSuccess());
+    ASSERT_TRUE(store->SetPhase(MachineExecutionPhase::Paused).IsSuccess());
     auto paused_snapshot = port.ReadSnapshot();
     ASSERT_TRUE(paused_snapshot.IsSuccess()) << paused_snapshot.GetError().GetMessage();
     EXPECT_EQ(paused_snapshot.Value().phase, MachineExecutionPhase::Paused);
     EXPECT_TRUE(paused_snapshot.Value().manual_motion_allowed);
 
-    ASSERT_TRUE(model->SetState(Siligen::DispenserState::ERROR_STATE).IsSuccess());
+    ASSERT_TRUE(store->SetPhase(MachineExecutionPhase::Fault).IsSuccess());
     auto fault_snapshot = port.ReadSnapshot();
     ASSERT_TRUE(fault_snapshot.IsSuccess()) << fault_snapshot.GetError().GetMessage();
     EXPECT_EQ(fault_snapshot.Value().phase, MachineExecutionPhase::Fault);
@@ -48,12 +46,10 @@ TEST(RuntimeExecutionStateMachineRegressionTest, MapsReadyRunningPausedAndFaultL
 }
 
 TEST(RuntimeExecutionStateMachineRegressionTest, ClearsPendingTasksAndRecoversFromEmergencyStopThroughPort) {
-    auto model = std::make_shared<DispenserModel>();
-    ASSERT_TRUE(model->SetState(Siligen::DispenserState::INITIALIZING).IsSuccess());
-    ASSERT_TRUE(model->SetState(Siligen::DispenserState::READY).IsSuccess());
-    ASSERT_TRUE(model->AddTask(Siligen::Runtime::Host::Tests::MakePendingTask()).IsSuccess());
+    auto store = Siligen::Runtime::Host::Tests::CreateMachineExecutionStateStore(MachineExecutionPhase::Ready, 1);
+    ASSERT_NE(store, nullptr);
 
-    DispenserModelMachineExecutionStateBackend port(model);
+    MachineExecutionStateBackend port(store);
 
     ASSERT_TRUE(port.ClearPendingTasks().IsSuccess());
     auto cleared_snapshot = port.ReadSnapshot();

@@ -1,5 +1,5 @@
 #include "runtime/supervision/RuntimeSupervisionPortAdapter.h"
-#include "runtime/system/DispenserModelMachineExecutionStateBackend.h"
+#include "runtime/system/MachineExecutionStateBackend.h"
 #include "support/RuntimeExecutionHostTestSupport.h"
 
 #include <gtest/gtest.h>
@@ -9,18 +9,15 @@
 namespace {
 
 using ConnectionOnlyRuntimeSupervisionBackend = Siligen::Runtime::Host::Tests::ConnectionOnlyRuntimeSupervisionBackend;
-using DispenserModel = Siligen::Runtime::Host::Tests::DispenserModel;
-using DispenserModelMachineExecutionStateBackend = Siligen::Runtime::Service::System::DispenserModelMachineExecutionStateBackend;
+using MachineExecutionStateBackend = Siligen::Runtime::Service::System::MachineExecutionStateBackend;
 using MachineExecutionPhase = Siligen::RuntimeExecution::Contracts::System::MachineExecutionPhase;
 using RuntimeSupervisionPortAdapter = Siligen::Runtime::Host::Supervision::RuntimeSupervisionPortAdapter;
 
 TEST(RuntimeExecutionIntegrationHostBootstrapSmokeTest, ComposesCanonicalHostCorePortsWithoutAppBootstrap) {
-    auto model = std::make_shared<DispenserModel>();
-    ASSERT_TRUE(model->SetState(Siligen::DispenserState::INITIALIZING).IsSuccess());
-    ASSERT_TRUE(model->SetState(Siligen::DispenserState::READY).IsSuccess());
-    ASSERT_TRUE(model->AddTask(Siligen::Runtime::Host::Tests::MakePendingTask()).IsSuccess());
+    auto store = Siligen::Runtime::Host::Tests::CreateMachineExecutionStateStore(MachineExecutionPhase::Ready, 1);
+    ASSERT_NE(store, nullptr);
 
-    DispenserModelMachineExecutionStateBackend machine_port(model);
+    MachineExecutionStateBackend machine_port(store);
 
     auto rig = Siligen::Runtime::Host::Tests::CreateMotionRuntimeTestRig();
     ASSERT_NE(rig.connection_adapter, nullptr);

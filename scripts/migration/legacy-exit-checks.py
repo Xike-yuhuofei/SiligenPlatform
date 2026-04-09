@@ -30,6 +30,7 @@ class Finding:
     file: str | None = None
     line: int | None = None
     zone: str | None = None
+    category: str | None = None
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,30 @@ def _iter_profile_code_files(profile: GateProfile) -> list[Path]:
     return files
 
 
+def _iter_active_doc_files() -> list[Path]:
+    files: list[Path] = []
+    seen: set[str] = set()
+    for relative in ("README.md", "WORKSPACE.md"):
+        path = ROOT / relative
+        if path.exists() and path.is_file():
+            rel_posix = _normalize_rel(path)
+            seen.add(rel_posix)
+            files.append(path)
+
+    docs_root = ROOT / "docs"
+    if docs_root.exists():
+        for path in docs_root.rglob("*.md"):
+            if not path.is_file():
+                continue
+            rel_posix = _normalize_rel(path)
+            if rel_posix.startswith("docs/_archive/"):
+                continue
+            if rel_posix not in seen:
+                seen.add(rel_posix)
+                files.append(path)
+    return files
+
+
 def _matcher_files(
     matcher: Matcher,
     profile: GateProfile,
@@ -115,12 +140,36 @@ def _decision_for(
 ) -> str:
     if rel_posix is None:
         return default_decision
+    normalized_rel = rel_posix.replace("\\", "/")
+    if normalized_rel in {"README.md", "WORKSPACE.md"} or normalized_rel.startswith("docs/"):
+        return "report-only"
     for exception in catalog.active_exceptions():
         if residual_id not in exception.linked_residual_ids:
             continue
         if rel_posix in exception.allowed_locations:
             return "controlled-exception"
     return default_decision
+
+
+def _category_for(rel_posix: str | None) -> str:
+    if rel_posix is None:
+        return "physical"
+    normalized = rel_posix.replace("\\", "/")
+    suffix = Path(normalized).suffix.lower()
+    name = Path(normalized).name.lower()
+    if normalized in {"README.md", "WORKSPACE.md"} or normalized.startswith("docs/"):
+        return "documentation"
+    if normalized.startswith("deploy/") or "launch" in name or name == "run.ps1":
+        return "runtime-entry"
+    if normalized.startswith("config/") or suffix in {".json", ".yaml", ".yml", ".toml", ".ini"}:
+        return "config"
+    if name == "cmakelists.txt" or suffix == ".cmake":
+        return "build"
+    if suffix == ".ps1":
+        return "script"
+    if suffix in {".py", ".cpp", ".cc", ".cxx", ".h", ".hpp", ".hh"}:
+        return "source"
+    return "other"
 
 
 def _scan_matcher(
@@ -147,6 +196,7 @@ def _scan_matcher(
                     message=matcher.message.format(path=relative),
                     file=relative,
                     zone=catalog.classify_zone(relative),
+                    category=_category_for(relative),
                 )
             )
         return findings
@@ -168,6 +218,7 @@ def _scan_matcher(
                                 file=rel_posix,
                                 line=lineno,
                                 zone=zone,
+                                category=_category_for(rel_posix),
                             )
                         )
             elif matcher.matcher_kind == "line-regex":
@@ -182,12 +233,13 @@ def _scan_matcher(
                                 file=rel_posix,
                                 line=lineno,
                                 zone=zone,
+                                category=_category_for(rel_posix),
                             )
                         )
     return findings
 
 
-def _collect_findings(catalog: LegacyFactCatalog, profile: GateProfile) -> ScanResult:
+def _collect_findings(catalog: LegacyFactCatalog, profile: GateProfile, *, include_docs: bool = False) -> ScanResult:
     findings: list[Finding] = []
     file_cache: dict[tuple[str, str], list[Path]] = {}
     for residual in catalog.residual_registry.values():
@@ -203,9 +255,39 @@ def _collect_findings(catalog: LegacyFactCatalog, profile: GateProfile) -> ScanR
                     file_cache=file_cache,
                 )
             )
+    if include_docs:
+        doc_files = _iter_active_doc_files()
+        doc_patterns = tuple(
+            pattern
+            for residual in catalog.residual_registry.values()
+            if residual.rule == "legacy-path-reference"
+            for matcher in residual.matchers
+            if matcher.matcher_kind == "line-regex"
+            for pattern in matcher.patterns
+        )
+        for path in doc_files:
+            rel_posix = _normalize_rel(path)
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            for lineno, line in enumerate(text.splitlines(), start=1):
+                for pattern in doc_patterns:
+                    if re.search(pattern, line):
+                        findings.append(
+                            Finding(
+                                residual_id="DOC-LEGACY-PATH",
+                                rule="legacy-path-reference",
+                                decision="report-only",
+                                message="活动文档仍包含 legacy 根路径说明，请确认是否属于历史说明而非运行入口。",
+                                file=rel_posix,
+                                line=lineno,
+                                zone=catalog.classify_zone(rel_posix),
+                                category=_category_for(rel_posix),
+                            )
+                        )
     scanned_files: set[str] = set()
     for paths in file_cache.values():
         scanned_files.update(_normalize_rel(path) for path in paths)
+    if include_docs:
+        scanned_files.update(_normalize_rel(path) for path in _iter_active_doc_files())
     return ScanResult(findings=tuple(findings), scanned_files=tuple(sorted(scanned_files)))
 
 
@@ -255,6 +337,22 @@ def _zone_summary(scanned_files: tuple[str, ...], catalog: LegacyFactCatalog) ->
     for rel_posix in scanned_files:
         zone = catalog.classify_zone(rel_posix) or "unclassified"
         summary[zone] = summary.get(zone, 0) + 1
+    return dict(sorted(summary.items()))
+
+
+def _decision_summary(findings: list[dict]) -> dict[str, int]:
+    summary: dict[str, int] = {}
+    for item in findings:
+        decision = str(item.get("decision") or "unknown")
+        summary[decision] = summary.get(decision, 0) + 1
+    return dict(sorted(summary.items()))
+
+
+def _category_summary(findings: list[dict]) -> dict[str, int]:
+    summary: dict[str, int] = {}
+    for item in findings:
+        category = str(item.get("category") or "uncategorized")
+        summary[category] = summary.get(category, 0) + 1
     return dict(sorted(summary.items()))
 
 
@@ -308,12 +406,19 @@ def _render_markdown(payload: dict) -> str:
         f"- finding_count: `{payload['finding_count']}`",
         f"- blocking_count: `{payload['blocking_count']}`",
         f"- scanned_file_count: `{payload['scanned_file_count']}`",
+        f"- include_docs: `{str(payload['include_docs']).lower()}`",
         "",
         "## Scan Summary",
         "",
     ]
     for zone, count in payload["zone_summary"].items():
         lines.append(f"- `{zone}`: `{count}`")
+    lines.extend(["", "## Decision Summary", ""])
+    for decision, count in payload["decision_summary"].items():
+        lines.append(f"- `{decision}`: `{count}`")
+    lines.extend(["", "## Category Summary", ""])
+    for category, count in payload["category_summary"].items():
+        lines.append(f"- `{category}`: `{count}`")
 
     lines.extend(["", "## Findings", ""])
     _render_findings(lines, findings)
@@ -353,6 +458,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate physical legacy-root and bridge exit.")
     parser.add_argument("--profile", choices=("local", "ci"), default="local")
     parser.add_argument("--report-dir", default=str(ROOT / "tests" / "reports" / "legacy-exit"))
+    parser.add_argument("--include-docs", action="store_true")
     return parser.parse_args()
 
 
@@ -364,7 +470,7 @@ def main() -> int:
     json_path = report_dir / "legacy-exit-checks.json"
     previous_payload = _load_previous_payload(json_path)
 
-    scan_result = _collect_findings(LEGACY_FACT_CATALOG, LEGACY_EXIT_PROFILE)
+    scan_result = _collect_findings(LEGACY_FACT_CATALOG, LEGACY_EXIT_PROFILE, include_docs=bool(args.include_docs))
     findings = list(scan_result.findings)
     blocking_count = sum(1 for item in findings if item.decision in LEGACY_EXIT_PROFILE.fail_on_decisions)
     finding_payload = [asdict(item) for item in findings]
@@ -380,7 +486,10 @@ def main() -> int:
         "finding_count": len(findings),
         "blocking_count": blocking_count,
         "scanned_file_count": len(scan_result.scanned_files),
+        "include_docs": bool(args.include_docs),
         "zone_summary": _zone_summary(scan_result.scanned_files, LEGACY_FACT_CATALOG),
+        "decision_summary": _decision_summary(finding_payload),
+        "category_summary": _category_summary(finding_payload),
         "suspended_exception_count": len(suspended_exceptions),
         "suspended_exceptions": suspended_exceptions,
         "delta": delta,
@@ -399,6 +508,7 @@ def main() -> int:
     print(f"  - finding_count={len(findings)}")
     print(f"  - blocking_count={blocking_count}")
     print(f"  - scanned_file_count={len(scan_result.scanned_files)}")
+    print(f"  - include_docs={str(bool(args.include_docs)).lower()}")
     print(f"  - suspended_exception_count={len(suspended_exceptions)}")
     print(f"  - json_report={json_path}")
     print(f"  - markdown_report={md_path}")

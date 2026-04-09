@@ -12,7 +12,8 @@ param(
     [string[]]$ChangedScope = @(),
     [string[]]$SkipLayer = @(),
     [string]$SkipJustification = "",
-    [switch]$SkipHeavyTargets
+    [switch]$SkipHeavyTargets,
+    [switch]$EnableCppCoverage
 )
 
 $ErrorActionPreference = "Stop"
@@ -44,4 +45,5 @@ $runner = Resolve-RootRunner `
     -ChangedScope $ChangedScope `
     -SkipLayer $SkipLayer `
     -SkipJustification $SkipJustification `
-    -SkipHeavyTargets:$SkipHeavyTargets
+    -SkipHeavyTargets:$SkipHeavyTargets `
+    -EnableCppCoverage:$EnableCppCoverage

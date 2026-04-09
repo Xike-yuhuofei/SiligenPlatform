@@ -1,12 +1,9 @@
-import sys
 import unittest
-from pathlib import Path
+from bootstrap import ensure_hmi_application_test_paths
 
+ensure_hmi_application_test_paths()
 
-WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
-sys.path.insert(0, str(WORKSPACE_ROOT / "modules" / "hmi-application" / "application"))
-
-from hmi_application.launch_supervision_contract import (
+from hmi_application.contracts.launch_supervision_contract import (
     SessionSnapshot,
     SessionStageEvent,
     is_online_ready,

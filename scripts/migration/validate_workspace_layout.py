@@ -97,7 +97,6 @@ REQUIRED_GITIGNORE_ENTRIES = (
     "/build-*/",
 )
 
-
 def _contains(path: Path, snippet: str) -> bool:
     if not path.exists():
         return False
@@ -217,6 +216,8 @@ def _validate_root_wiring(root: Path) -> list[str]:
         issues.append("run-local-validation-gate 未执行 legacy-exit gate")
     if not _contains(root / "ci.ps1", "legacy-exit-checks.py"):
         issues.append("ci.ps1 未执行 legacy-exit gate")
+    if not (root / "scripts" / "validation" / "check_no_loose_mock.py").exists():
+        issues.append("scripts/validation 缺少 check_no_loose_mock.py")
 
     shared_contracts = root / "shared" / "contracts" / "CMakeLists.txt"
     if shared_contracts.exists():

@@ -3,11 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Literal, Sequence
 
-from .startup import LaunchResult, launch_result_from_snapshot
-from .launch_supervision_contract import (
-    HardwareState,
+from .contracts.launch_supervision_contract import (
     FailureCode,
     FailureStage,
+    HardwareState,
     RecoveryAction,
     SessionSnapshot,
     SessionStageEvent,
@@ -15,7 +14,9 @@ from .launch_supervision_contract import (
     is_online_ready,
     snapshot_timestamp,
 )
+from .domain.launch_result_types import LaunchResult
 from .launch_supervision_session import SupervisorSession
+from .services.launch_result_projection import launch_result_from_snapshot
 
 LedState = Literal["off", "green", "red"]
 

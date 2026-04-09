@@ -13,7 +13,9 @@ param(
     [string]$SkipJustification = "",
     [switch]$IncludeHardwareSmoke,
     [switch]$IncludeHilClosedLoop,
-    [switch]$IncludeHilCaseMatrix
+    [switch]$IncludeHilCaseMatrix,
+    [switch]$EnablePythonCoverage,
+    [switch]$EnableCppCoverage
 )
 
 $ErrorActionPreference = "Stop"
@@ -79,6 +81,27 @@ function Invoke-LaneStep {
     exit $exitCode
 }
 
+function Invoke-ReportOnlyStep {
+    param(
+        [string]$StepName,
+        [scriptblock]$Action
+    )
+
+    & $Action
+    $stepSucceeded = $?
+    $exitCode = $LASTEXITCODE
+    if ($null -eq $exitCode) {
+        $exitCode = 0
+    }
+    if (-not $stepSucceeded -and $exitCode -eq 0) {
+        $exitCode = 1
+    }
+    if ($exitCode -ne 0) {
+        Write-Warning "$StepName exited with $exitCode; current policy is report-only."
+        $global:LASTEXITCODE = 0
+    }
+}
+
 if ($SkipLayer.Count -gt 0 -and [string]::IsNullOrWhiteSpace($SkipJustification)) {
     throw "SkipJustification is required when SkipLayer is not empty."
 }
@@ -128,11 +151,20 @@ $legacyExitRunner = Resolve-RootRunner `
 $legacyExitReportDir = Join-Path $resolvedReportDir "legacy-exit"
 $resolvedLegacyExitReportDir = $legacyExitReportDir
 New-Item -ItemType Directory -Force -Path $resolvedLegacyExitReportDir | Out-Null
-python $legacyExitRunner `
-    --profile "ci" `
-    --report-dir $resolvedLegacyExitReportDir
-if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
+Invoke-LaneStep -StepName "legacy-exit-check.ps1" -LanePolicy $lanePolicy -Action {
+    & (Join-Path $PSScriptRoot "legacy-exit-check.ps1") `
+        -Profile CI `
+        -ReportDir $resolvedLegacyExitReportDir
+}
+
+Invoke-LaneStep -StepName "semgrep" -LanePolicy $lanePolicy -Action {
+    & (Join-Path $PSScriptRoot "scripts\validation\invoke-semgrep.ps1") `
+        -ReportDir (Join-Path $resolvedReportDir "semgrep")
+}
+
+Invoke-LaneStep -StepName "import-linter" -LanePolicy $lanePolicy -Action {
+    & (Join-Path $PSScriptRoot "scripts\validation\invoke-import-linter.ps1") `
+        -ReportDir (Join-Path $resolvedReportDir "import-linter")
 }
 
 Invoke-LaneStep -StepName "build.ps1" -LanePolicy $lanePolicy -Action {
@@ -144,7 +176,8 @@ Invoke-LaneStep -StepName "build.ps1" -LanePolicy $lanePolicy -Action {
         -DesiredDepth $DesiredDepth `
         -ChangedScope $ChangedScope `
         -SkipLayer $SkipLayer `
-        -SkipJustification $SkipJustification
+        -SkipJustification $SkipJustification `
+        -EnableCppCoverage:$EnableCppCoverage
 }
 Invoke-LaneStep -StepName "test.ps1" -LanePolicy $lanePolicy -Action {
     & (Join-Path $PSScriptRoot "test.ps1") `
@@ -160,7 +193,20 @@ Invoke-LaneStep -StepName "test.ps1" -LanePolicy $lanePolicy -Action {
         -FailOnKnownFailure `
         -IncludeHardwareSmoke:$IncludeHardwareSmoke `
         -IncludeHilClosedLoop:$IncludeHilClosedLoop `
-        -IncludeHilCaseMatrix:$IncludeHilCaseMatrix
+        -IncludeHilCaseMatrix:$IncludeHilCaseMatrix `
+        -EnablePythonCoverage:$EnablePythonCoverage `
+        -EnableCppCoverage:$EnableCppCoverage
+}
+
+Invoke-ReportOnlyStep -StepName "cppcheck" -Action {
+    & (Join-Path $PSScriptRoot "scripts\validation\invoke-cppcheck.ps1") `
+        -ReportDir (Join-Path $resolvedReportDir "static-analysis\cppcheck")
+}
+
+Invoke-ReportOnlyStep -StepName "dependency-graphs" -Action {
+    & (Join-Path $PSScriptRoot "scripts\validation\invoke-dependency-graph-export.ps1") `
+        -ReportDir (Join-Path $resolvedReportDir "dependency-graphs") `
+        -SoftFail
 }
 
 Invoke-LaneStep -StepName "run-local-validation-gate.ps1" -LanePolicy $lanePolicy -Action {

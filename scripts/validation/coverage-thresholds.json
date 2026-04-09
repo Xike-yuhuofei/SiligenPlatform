@@ -1,0 +1,38 @@
+{
+  "python": {
+    "enforcement": "report-only",
+    "global_branch_min": 10.0,
+    "critical_paths": [
+      {
+        "path_prefix": "apps/hmi-app/src/hmi_client",
+        "branch_min": 20.0
+      },
+      {
+        "path_prefix": "modules/hmi-application/application/hmi_application",
+        "branch_min": 20.0
+      },
+      {
+        "path_prefix": "modules/dxf-geometry/application/engineering_data",
+        "branch_min": 15.0
+      }
+    ]
+  },
+  "cpp": {
+    "enforcement": "report-only",
+    "global_line_min": 5.0,
+    "critical_paths": [
+      {
+        "path_prefix": "apps/runtime-service",
+        "line_min": 10.0
+      },
+      {
+        "path_prefix": "apps/planner-cli",
+        "line_min": 10.0
+      },
+      {
+        "path_prefix": "modules",
+        "line_min": 10.0
+      }
+    ]
+  }
+}

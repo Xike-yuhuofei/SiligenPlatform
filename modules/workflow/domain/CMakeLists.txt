@@ -33,9 +33,37 @@ target_include_directories(siligen_workflow_domain_headers INTERFACE
     ${SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR}
 )
 target_link_libraries(siligen_workflow_domain_headers INTERFACE
+    siligen_trace_diagnostics_contracts_public
     siligen_types
     siligen_trace_diagnostics_contracts_public
 )
 target_compile_features(siligen_workflow_domain_headers INTERFACE cxx_std_17)
 
 message(STATUS "[Workflow::Domain] bridge root exports headers only; deleted machine/runtime compat targets stay absent")
+if(NOT TARGET siligen_process_path_contracts_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../process-path/contracts"
+        "${CMAKE_BINARY_DIR}/_p/wd_pp_contracts"
+    )
+endif()
+
+if(NOT TARGET siligen_motion)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../motion-planning/domain/motion"
+        "${CMAKE_BINARY_DIR}/modules/motion-planning/domain/motion"
+    )
+endif()
+
+if(NOT TARGET siligen_dispense_packaging_domain_dispensing)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../dispense-packaging/domain/dispensing"
+        "${CMAKE_BINARY_DIR}/modules/dispense-packaging/domain/dispensing"
+    )
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/domain/CMakeLists.txt")
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/domain"
+        "${CMAKE_BINARY_DIR}/modules/workflow/domain/bridge-domain"
+    )
+endif()
