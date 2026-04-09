@@ -163,12 +163,12 @@
     {
       "root_id": "ROOT-011",
       "path": "specs",
-      "classification": "removed",
-      "presence_policy": "forbidden",
+      "classification": "local-cache",
+      "presence_policy": "allowed",
       "impl_owner_policy": "forbidden",
       "entry_role": "none",
-      "content_constraint": "removed-only",
-      "notes": "Removed speckit artifact root must not reappear as an active repository asset."
+      "content_constraint": "ignored-local-cache-only",
+      "notes": "Local speckit artifact cache may exist in a developer workspace, but it is not a canonical repository asset."
     },
     {
       "root_id": "ROOT-012",
@@ -333,12 +333,12 @@
     {
       "root_id": "ROOT-108",
       "path": ".specify",
-      "classification": "removed",
-      "presence_policy": "forbidden",
+      "classification": "local-cache",
+      "presence_policy": "allowed",
       "impl_owner_policy": "forbidden",
       "entry_role": "none",
-      "content_constraint": "removed-only",
-      "notes": "Removed speckit support root must not reappear as an active repository asset."
+      "content_constraint": "ignored-local-cache-only",
+      "notes": "Local speckit support cache may exist in a developer workspace, but it is not a canonical repository asset."
     }
   ],
   "zone_registry": [
@@ -381,15 +381,15 @@
       "notes": "Active documentation; not yet scanned by the current legacy-exit gate."
     },
     {
-      "zone_id": "removed-speckit-root",
-      "zone_class": "removed",
+      "zone_id": "local-cache-root",
+      "zone_class": "local-cache",
       "path_prefixes": [
         "specs/",
         ".specify/"
       ],
       "root_level_files": [],
       "default_scan_policy": "exclude",
-      "notes": "Removed speckit roots are historical only and must not return as active repository assets."
+      "notes": "Local cache roots are ignored by governance scans and are never treated as active repository assets."
     },
     {
       "zone_id": "archived-doc",

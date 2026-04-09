@@ -1,6 +1,5 @@
-#include "runtime/system/DispenserModelMachineExecutionStateBackend.h"
-
-#include "runtime/system/DispenserModel.h"
+#include "runtime/system/MachineExecutionStateBackend.h"
+#include "runtime/system/MachineExecutionStateStore.h"
 
 #include <gtest/gtest.h>
 
@@ -8,34 +7,20 @@
 
 namespace {
 
-using DispenserModel = Siligen::Runtime::Service::System::DispenserModel;
-using DispensingTask = Siligen::Runtime::Service::System::DispensingTask;
-using CMPTriggerPoint = Siligen::Shared::Types::CMPTriggerPoint;
-using DispenserModelMachineExecutionStateBackend = Siligen::Runtime::Service::System::DispenserModelMachineExecutionStateBackend;
+using MachineExecutionStateBackend = Siligen::Runtime::Service::System::MachineExecutionStateBackend;
+using MachineExecutionStateStore = Siligen::Runtime::Service::System::MachineExecutionStateStore;
 using MachineExecutionPhase = Siligen::RuntimeExecution::Contracts::System::MachineExecutionPhase;
 
-DispensingTask MakePendingTask() {
-    DispensingTask task;
-    task.task_id = "task-1";
-    task.path = {
-        Siligen::Shared::Types::Point2D(0.0f, 0.0f),
-        Siligen::Shared::Types::Point2D(10.0f, 0.0f),
-    };
-    task.cmp_config.AddTriggerPoint(CMPTriggerPoint{});
-    task.movement_speed = 12.0f;
-    return task;
-}
-
-TEST(DispenserModelMachineExecutionStateBackendTest, NullInjectedModelReturnsNotInitializedError) {
-    DispenserModelMachineExecutionStateBackend backend(nullptr);
+TEST(MachineExecutionStateBackendTest, NullInjectedStoreReturnsNotInitializedError) {
+    MachineExecutionStateBackend backend(nullptr);
 
     const auto snapshot_result = backend.ReadSnapshot();
     ASSERT_TRUE(snapshot_result.IsError());
     EXPECT_EQ(snapshot_result.GetError().GetCode(), Siligen::Shared::Types::ErrorCode::PORT_NOT_INITIALIZED);
 }
 
-TEST(DispenserModelMachineExecutionStateBackendTest, DefaultBackendStartsFromUninitializedSnapshot) {
-    DispenserModelMachineExecutionStateBackend backend;
+TEST(MachineExecutionStateBackendTest, DefaultBackendStartsFromUninitializedSnapshot) {
+    MachineExecutionStateBackend backend;
 
     const auto snapshot_result = backend.ReadSnapshot();
 
@@ -47,13 +32,12 @@ TEST(DispenserModelMachineExecutionStateBackendTest, DefaultBackendStartsFromUni
     EXPECT_FALSE(snapshot_result.Value().has_pending_tasks);
 }
 
-TEST(DispenserModelMachineExecutionStateBackendTest, InjectedModelMapsPendingTasksAndEmergencyLifecycle) {
-    auto dispenser_model = std::make_shared<DispenserModel>();
-    ASSERT_TRUE(dispenser_model->SetState(Siligen::DispenserState::INITIALIZING).IsSuccess());
-    ASSERT_TRUE(dispenser_model->SetState(Siligen::DispenserState::READY).IsSuccess());
-    ASSERT_TRUE(dispenser_model->AddTask(MakePendingTask()).IsSuccess());
+TEST(MachineExecutionStateBackendTest, InjectedStoreMapsPendingTasksAndEmergencyLifecycle) {
+    auto state_store = std::make_shared<MachineExecutionStateStore>();
+    ASSERT_TRUE(state_store->SetPhase(MachineExecutionPhase::Ready).IsSuccess());
+    ASSERT_TRUE(state_store->SetPendingTaskCount(1).IsSuccess());
 
-    DispenserModelMachineExecutionStateBackend backend(dispenser_model);
+    MachineExecutionStateBackend backend(state_store);
 
     auto ready_snapshot = backend.ReadSnapshot();
     ASSERT_TRUE(ready_snapshot.IsSuccess()) << ready_snapshot.GetError().GetMessage();

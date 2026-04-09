@@ -1,0 +1,376 @@
+# coordinate-alignment Execution Report
+
+## 1. Execution Scope
+- 本轮处理的模块：`modules/coordinate-alignment`
+- 读取的台账路径：`docs/architecture-audits/modules/coordinate-alignment/residue-ledger.md`
+- 本轮 batch 范围：
+  - `B4-connection-residual-exit`
+  - `B5-machine-port-and-calibration-exit`
+  - `B6-machine-state-owner-cutover`
+  - `B7-runtime-consumer-decouple`
+  - `B8-docs-and-contract-reconcile`
+
+## 2. Execution Oracle
+- 本轮冻结的 batch 列表
+  - `B4-connection-residual-exit`
+    - acceptance criteria：`IHardwareConnectionPort` / `HardwareConnectionAdapter` 退出 live build；runtime connection 统一收敛到 device contracts + `MotionRuntimeConnectionAdapter`。
+  - `B5-machine-port-and-calibration-exit`
+    - acceptance criteria：`modules/coordinate-alignment/domain/machine/**` 中的 `DispenserModel`、`CalibrationProcess`、`ICalibration*Port`、`IHardware*Port`、`CalibrationTypes` 不再作为 live owner 或 live seam 存在；workflow machine bridge 同步退出。
+  - `B6-machine-state-owner-cutover`
+    - acceptance criteria：runtime-host 自持 machine execution state concrete；`siligen_runtime_host` 与其测试不再链接 `siligen_coordinate_alignment_domain_machine` 或引用 `DispenserModel` bridge。
+  - `B7-runtime-consumer-decouple`
+    - acceptance criteria：保留的 live runtime concrete 不再经由 `coordinate-alignment` legacy machine ports 暴露；`HardwareTestAdapter` / `TriggerControllerAdapter` / `runtime-service` bootstrap 在不新增 compat 壳层的前提下完成脱钩。
+  - `B8-docs-and-contract-reconcile`
+    - acceptance criteria：`README` / `module.yaml` / `CMakeLists.txt` / tests / bridge-exit contract 对齐到同一事实：`M5` 根面只剩 `CoordinateTransformSet`，已删除 residual 不得继续伪装为 canonical truth。
+- 本轮 no-change zone
+  - `modules/coordinate-alignment/contracts/include/coordinate_alignment/contracts/CoordinateTransformSet.h`
+  - `modules/process-path/contracts/include/process_path/contracts/PathGenerationRequest.h`
+  - `CoordinateTransformSet` 的数值字段扩充与外提到 `shared/contracts/engineering/` 的后续契约冻结
+  - 与本轮 residual 退出无关的 runtime/homing 行为语义
+- 本轮测试集合
+  - `cmake -S . -B build-ca-machine-exit`
+  - `python -m pytest tests/contracts/test_bridge_exit_contract.py -q`
+  - `MSBuild.exe build-ca-machine-exit/modules/runtime-execution/adapters/device/siligen_device_adapters.vcxproj /p:Configuration=Debug /m:1`
+  - `MSBuild.exe build-ca-machine-exit/modules/runtime-execution/runtime/host/siligen_runtime_host.vcxproj /p:Configuration=Debug /m:1`
+  - `MSBuild.exe build-ca-machine-exit/apps/runtime-service/siligen_runtime_process_bootstrap.vcxproj /p:Configuration=Debug /m:1`
+  - `cmake -S . -B build-ca-machine-exit-tests -DSILIGEN_BUILD_TESTS=ON -DSILIGEN_BUILD_TARGET=tests`
+  - `cmake --build build-ca-machine-exit-tests --config Debug --target siligen_coordinate_alignment_tests`
+  - `cmake --build build-ca-machine-exit-tests --config Debug --target siligen_runtime_host_unit_tests`
+  - `build-ca-machine-exit-tests/bin/Debug/siligen_coordinate_alignment_tests.exe`
+  - `build-ca-machine-exit-tests/bin/Debug/siligen_runtime_host_unit_tests.exe --gtest_filter=MachineExecutionStateBackendTest.*:MachineExecutionStateStoreTest.*`
+  - `build-ca-machine-exit-tests/bin/Debug/siligen_runtime_host_unit_tests.exe`
+
+## 3. Change Log
+- `modules/coordinate-alignment/CMakeLists.txt`
+  - 改动：模块根 target 收缩为仅暴露 `siligen_coordinate_alignment_contracts_public`。
+  - 原因：彻底切断 `M5` root 与 machine residual 的 build/public surface 关系。
+  - 消除 residual：CA-R005。
+- `modules/coordinate-alignment/application/CMakeLists.txt`
+  - 改动：删除。
+  - 原因：fake application surface 已无存在价值，继续保留只会制造并行 façade。
+  - 消除 residual：CA-R007。
+- `modules/coordinate-alignment/application/include/coordinate_alignment/application/CoordinateAlignmentApplicationSurface.h`
+  - 改动：删除。
+  - 原因：它只是 contracts 转发壳，不应再参与 live seam。
+  - 消除 residual：CA-R007。
+- `modules/coordinate-alignment/domain/machine/CMakeLists.txt`
+  - 改动：删除。
+  - 原因：`domain/machine` 不再是 `M5` 的 live build root。
+  - 消除 residual：CA-R005、CA-R011。
+- `modules/coordinate-alignment/domain/machine/aggregates/DispenserModel.h`
+  - 改动：删除。
+  - 原因：runtime machine execution state 不再允许寄存在 `M5`。
+  - 消除 residual：CA-R001。
+- `modules/coordinate-alignment/domain/machine/aggregates/DispenserModel.cpp`
+  - 改动：删除。
+  - 原因：与上同。
+  - 消除 residual：CA-R001。
+- `modules/coordinate-alignment/domain/machine/domain-services/CalibrationProcess.h`
+  - 改动：删除。
+  - 原因：calibration process-control 不再由 `M5` 持有。
+  - 消除 residual：CA-R002。
+- `modules/coordinate-alignment/domain/machine/domain-services/CalibrationProcess.cpp`
+  - 改动：删除。
+  - 原因：与上同。
+  - 消除 residual：CA-R002。
+- `modules/coordinate-alignment/domain/machine/ports/ICalibrationDevicePort.h`
+  - 改动：删除。
+  - 原因：calibration device port 不再允许伪装为 `M5` public seam。
+  - 消除 residual：CA-R002。
+- `modules/coordinate-alignment/domain/machine/ports/ICalibrationResultPort.h`
+  - 改动：删除。
+  - 原因：calibration result port 不再允许伪装为 `M5` public seam。
+  - 消除 residual：CA-R002。
+- `modules/coordinate-alignment/domain/machine/ports/IHardwareConnectionPort.h`
+  - 改动：删除。
+  - 原因：runtime connection/heartbeat seam 改由 device contracts 持有。
+  - 消除 residual：CA-R003。
+- `modules/coordinate-alignment/domain/machine/ports/IHardwareTestPort.h`
+  - 改动：删除。
+  - 原因：giant hardware-test port 不再允许停留在 `M5`。
+  - 消除 residual：CA-R004。
+- `modules/coordinate-alignment/domain/machine/value-objects/CalibrationTypes.h`
+  - 改动：删除。
+  - 原因：配套 calibration residual 一并退出。
+  - 消除 residual：CA-R002。
+- `modules/workflow/domain/include/domain/machine/aggregates/DispenserModel.h`
+  - 改动：删除。
+  - 原因：workflow machine aggregate bridge 退出，dual seam 关闭。
+  - 消除 residual：CA-R011。
+- `modules/workflow/domain/include/domain/machine/domain-services/CalibrationProcess.h`
+  - 改动：删除。
+  - 原因：workflow 不再转发 calibration residual。
+  - 消除 residual：CA-R011。
+- `modules/workflow/domain/include/domain/machine/ports/IHardwareConnectionPort.h`
+  - 改动：删除。
+  - 原因：workflow 不再转发 legacy connection port。
+  - 消除 residual：CA-R011。
+- `modules/workflow/domain/include/domain/machine/ports/IHardwareTestPort.h`
+  - 改动：删除。
+  - 原因：workflow 不再转发 legacy machine-test port。
+  - 消除 residual：CA-R011。
+- `modules/runtime-execution/adapters/device/include/siligen/device/adapters/hardware/HardwareConnectionAdapter.h`
+  - 改动：删除。
+  - 原因：旧 runtime connection adapter 退出，避免继续依赖 `IHardwareConnectionPort`。
+  - 消除 residual：CA-R003。
+- `modules/runtime-execution/adapters/device/src/adapters/motion/controller/connection/HardwareConnectionAdapter.h`
+  - 改动：删除。
+  - 原因：与上同。
+  - 消除 residual：CA-R003。
+- `modules/runtime-execution/adapters/device/src/adapters/motion/controller/connection/HardwareConnectionAdapter.cpp`
+  - 改动：删除。
+  - 原因：与上同。
+  - 消除 residual：CA-R003。
+- `modules/runtime-execution/adapters/device/CMakeLists.txt`
+  - 改动：去掉 `coordinate-alignment/domain/machine` 相关 source/include/link；改为链接 `trace-diagnostics/contracts`、`runtime_execution_runtime_contracts` 与本地 residual 需要的真实 owner target。
+  - 原因：清理 device adapters 对 `M5` legacy machine target 的反向依赖。
+  - 消除 residual：CA-R003、CA-R004、CA-R005。
+- `modules/runtime-execution/adapters/device/src/adapters/diagnostics/health/testing/HardwareTestAdapter.h`
+  - 改动：移除 `IHardwareTestPort` 继承，改为仅保留 local concrete + `MachineHealthPort`。
+  - 原因：保留 live concrete，但不再把它包装成 `M5` legacy machine-test seam。
+  - 消除 residual：CA-R004。
+- `modules/runtime-execution/adapters/device/src/adapters/dispensing/dispenser/triggering/TriggerControllerAdapter.h`
+  - 改动：改为依赖 `runtime_execution/contracts/dispensing/ITriggerControllerPort.h` 与本地 `HardwareTestAdapter` concrete。
+  - 原因：切断对 `IHardwareTestPort` 的依赖。
+  - 消除 residual：CA-R004。
+- `modules/runtime-execution/adapters/device/src/adapters/dispensing/dispenser/triggering/TriggerControllerAdapter.cpp`
+  - 改动：构造与 ready-check 改为直接面向 `HardwareTestAdapter`。
+  - 原因：与上同。
+  - 消除 residual：CA-R004。
+- `modules/runtime-execution/adapters/device/src/adapters/motion/controller/runtime/MotionRuntimeFacade.h`
+  - 改动：连接/心跳 surface 改为使用 `siligen/device/contracts`，不再暴露 `IHardwareConnectionPort` 类型。
+  - 原因：runtime connection seam 归位到真实设备契约 owner。
+  - 消除 residual：CA-R003。
+- `modules/runtime-execution/adapters/device/src/adapters/motion/controller/runtime/MotionRuntimeFacade.cpp`
+  - 改动：连接、心跳、回调、监控 API 全部切到 device contracts snapshot/command。
+  - 原因：与上同。
+  - 消除 residual：CA-R003。
+- `modules/runtime-execution/adapters/device/src/adapters/motion/controller/runtime/MotionRuntimeConnectionAdapter.h`
+  - 改动：继续作为 runtime connection port 适配器，但底层不再走 `M5` 旧接口。
+  - 原因：保持 runtime consumer 行为不退化，同时清除 legacy dependency。
+  - 消除 residual：CA-R003。
+- `modules/runtime-execution/adapters/device/src/adapters/motion/controller/runtime/MotionRuntimeConnectionAdapter.cpp`
+  - 改动：同步对接新 `MotionRuntimeFacade` device-contract API。
+  - 原因：与上同。
+  - 消除 residual：CA-R003。
+- `modules/runtime-execution/runtime/host/CMakeLists.txt`
+  - 改动：删除对 `siligen_coordinate_alignment_domain_machine` 的 link；加入本地 `MachineExecutionStateStore.cpp` 与 `MachineExecutionStateBackend.cpp`。
+  - 原因：runtime-host 自持 machine execution state owner。
+  - 消除 residual：CA-R001、CA-R005、CA-R011。
+- `modules/runtime-execution/runtime/host/runtime/system/DispenserModelMachineExecutionStateBackend.h`
+  - 改动：删除。
+  - 原因：runtime-host 不再通过 `DispenserModel` alias 间接实现 machine state。
+  - 消除 residual：CA-R001。
+- `modules/runtime-execution/runtime/host/runtime/system/DispenserModelMachineExecutionStateBackend.cpp`
+  - 改动：删除。
+  - 原因：与上同。
+  - 消除 residual：CA-R001。
+- `modules/runtime-execution/runtime/host/runtime/system/MachineExecutionStateStore.h`
+  - 改动：新增。
+  - 原因：将 machine execution state concrete 留在 runtime-host owner 内部。
+  - 消除 residual：CA-R001。
+- `modules/runtime-execution/runtime/host/runtime/system/MachineExecutionStateStore.cpp`
+  - 改动：新增。
+  - 原因：与上同。
+  - 消除 residual：CA-R001。
+- `modules/runtime-execution/runtime/host/runtime/system/MachineExecutionStateBackend.h`
+  - 改动：新增。
+  - 原因：runtime-host 直接实现 `IMachineExecutionStatePort`，不再借道 `DispenserModel`。
+  - 消除 residual：CA-R001。
+- `modules/runtime-execution/runtime/host/runtime/system/MachineExecutionStateBackend.cpp`
+  - 改动：新增。
+  - 原因：与上同。
+  - 消除 residual：CA-R001。
+- `modules/runtime-execution/runtime/host/tests/CMakeLists.txt`
+  - 改动：测试列表切到 `MachineExecutionStateBackendTest.cpp` / `MachineExecutionStateStoreTest.cpp`，去掉旧 `DispenserModelMachineExecutionStateBackendTest.cpp`。
+  - 原因：测试 owner 随 concrete owner 一起迁移。
+  - 消除 residual：CA-R008。
+- `modules/runtime-execution/runtime/host/tests/unit/runtime/system/MachineExecutionStateBackendTest.cpp`
+  - 改动：新增 machine-state backend suite。
+  - 原因：为 runtime-host 新 owner concrete 建立 closeout 证据。
+  - 消除 residual：CA-R008。
+- `modules/runtime-execution/runtime/host/tests/unit/runtime/system/MachineExecutionStateStoreTest.cpp`
+  - 改动：新增 machine-state store suite。
+  - 原因：为 runtime-host 新 owner concrete 建立 closeout 证据。
+  - 消除 residual：CA-R008。
+- `modules/runtime-execution/runtime/host/README.md`
+  - 改动：明确 runtime-host 自持 machine execution state，不再通过 workflow / coordinate-alignment 暴露 `DispenserModel` alias。
+  - 原因：文档真相与代码 owner 对齐。
+  - 消除 residual：CA-R009。
+- `apps/runtime-service/factories/InfrastructureAdapterFactory.h`
+  - 改动：删除 `CreateHardwareConnectionAdapter` 声明，并改用 `process_planning/contracts` canonical include。
+  - 原因：runtime-service 不再依赖 legacy connection adapter。
+  - 消除 residual：CA-R003、CA-R009。
+- `apps/runtime-service/factories/InfrastructureAdapterFactory.cpp`
+  - 改动：删除 `CreateHardwareConnectionAdapter` 实现。
+  - 原因：与上同。
+  - 消除 residual：CA-R003。
+- `apps/runtime-service/bootstrap/InfrastructureBindingsBuilder.cpp`
+  - 改动：runtime bootstrap 继续构造 `HardwareTestAdapter` / `TriggerControllerAdapter`，但不再依赖 `IHardwareTestPort` / `IHardwareConnectionPort`；插补与配置 include 也收敛到 canonical contracts/application header。
+  - 原因：保留 live bootstrap 行为，同时去掉 `M5` legacy seam。
+  - 消除 residual：CA-R003、CA-R004、CA-R009。
+- `modules/coordinate-alignment/tests/CMakeLists.txt`
+  - 改动：只保留 `contract` + `golden`，移除 `CalibrationProcessTest.cpp`。
+  - 原因：`M5` canonical gate 不再证明 calibration residual。
+  - 消除 residual：CA-R008。
+- `modules/coordinate-alignment/tests/unit/CalibrationProcessTest.cpp`
+  - 改动：删除。
+  - 原因：与上同。
+  - 消除 residual：CA-R008。
+- `modules/coordinate-alignment/tests/contract/CoordinateTransformContractsTest.cpp`
+  - 改动：直接 include `CoordinateTransformSet.h`。
+  - 原因：测试直连 stable seam，不再经过 fake application umbrella。
+  - 消除 residual：CA-R007、CA-R008。
+- `modules/coordinate-alignment/README.md`
+  - 改动：重写 root truth，明确 `contracts-only root surface` 与 deleted residual family。
+  - 原因：消除 `M5 owner` 与 `machine owner` 混叙。
+  - 消除 residual：CA-R009。
+- `modules/coordinate-alignment/module.yaml`
+  - 改动：notes 改为 `contracts-only root surface` 与 residual exit 完成态。
+  - 原因：metadata 与 build truth 对齐。
+  - 消除 residual：CA-R009。
+- `modules/coordinate-alignment/domain/README.md`
+  - 改动：改写为 contracts truth，不再把 `domain/machine` 写成 canonical owner root。
+  - 原因：与新 build truth 对齐。
+  - 消除 residual：CA-R009。
+- `modules/coordinate-alignment/domain/machine/README.md`
+  - 改动：保留删除前的残留说明语义后，物理 residual family 已退出；README 仅作为治理痕迹。
+  - 原因：避免残留命名继续伪装。
+  - 消除 residual：CA-R009。
+- `modules/coordinate-alignment/tests/README.md`
+  - 改动：将模块测试面收敛为 contract/golden，并明确 calibration family 已退出。
+  - 原因：测试叙事与 owner closeout 对齐。
+  - 消除 residual：CA-R008、CA-R009。
+- `modules/coordinate-alignment/application/README.md`
+  - 改动：声明为 docs-only shell，禁止重新引入 fake façade。
+  - 原因：关闭命名误导。
+  - 消除 residual：CA-R007、CA-R010。
+- `modules/coordinate-alignment/services/README.md`
+  - 改动：降级为 docs-only shell。
+  - 原因：空壳目录不再伪装 implementation root。
+  - 消除 residual：CA-R010。
+- `modules/coordinate-alignment/adapters/README.md`
+  - 改动：降级为 docs-only shell。
+  - 原因：空壳目录不再伪装 implementation root。
+  - 消除 residual：CA-R010。
+- `modules/coordinate-alignment/examples/README.md`
+  - 改动：降级为 docs-only shell。
+  - 原因：空壳目录不再伪装 implementation root。
+  - 消除 residual：CA-R010。
+- `tests/contracts/test_bridge_exit_contract.py`
+  - 改动：新增/更新对 `coordinate-alignment` machine residual 删除、workflow bridge 删除、runtime-host machine-state cutover 的断言。
+  - 原因：用仓库级 bridge-exit contract 固化本轮 closeout 结果。
+  - 消除 residual：CA-R001、CA-R002、CA-R003、CA-R004、CA-R011。
+
+## 4. Residual Disposition Table
+| residue_id | file_or_target | disposition | resulting_location | reason |
+| --- | --- | --- | --- | --- |
+| CA-R001 | `modules/coordinate-alignment/domain/machine/aggregates/DispenserModel.*` | migrated | `modules/runtime-execution/runtime/host/runtime/system/MachineExecutionStateStore.*` + `MachineExecutionStateBackend.*` | runtime machine execution state owner 已迁入 runtime-host，`M5` 不再持有 machine aggregate。 |
+| CA-R002 | `CalibrationProcess.*` / `CalibrationTypes.h` / `ICalibration*Port.h` | deleted | 已退出仓库 live surface | calibration process-control 不再允许伪装为 `M5` owner。 |
+| CA-R003 | `IHardwareConnectionPort.h` / `HardwareConnectionAdapter*` | deleted | runtime connection 收敛到 `siligen/device/contracts` + `MotionRuntimeConnectionAdapter` | connection/heartbeat seam 已迁回真实设备契约 owner。 |
+| CA-R004 | `IHardwareTestPort.h` | deleted | live trigger/health concrete 保留在 `modules/runtime-execution/adapters/device` 内部 | giant machine-test port 已拆除；`HardwareTestAdapter` 不再作为 `M5` legacy seam 暴露。 |
+| CA-R005 | `siligen_module_coordinate_alignment` / `domain/machine` build graph | split | `siligen_module_coordinate_alignment` 仅保留 `contracts`；runtime-host/device adapters 改连真实 owner target | `M5` root surface 不再公开 machine residual。 |
+| CA-R006 | `CoordinateTransformSet.h` | retained-with-justification | 原位保留 | 它仍是 frozen stable seam 与 `process-path` live consumer 依赖。 |
+| CA-R007 | `CoordinateAlignmentApplicationSurface.h` / `application/CMakeLists.txt` | deleted | 已退出 live build | fake façade 已清空。 |
+| CA-R008 | `CalibrationProcessTest.cpp` 与旧模块 gate | split | `modules/coordinate-alignment/tests` 仅保留 contract/golden；runtime-host 新增 machine-state tests | owner closeout 证据已回到 stable seam 与真实 consumer/backend。 |
+| CA-R009 | `README.md` / `module.yaml` / tests README / runtime-host README | demoted | 文档真值统一为 contracts root + runtime owner cutover | 文档不再同时宣称 `M5` 既是对齐 owner 又是 machine owner。 |
+| CA-R010 | `services/` / `adapters/` / `examples/` shell 目录 | demoted | docs-only shell | 空壳目录保留但不再伪装 implementation root。 |
+| CA-R011 | `coordinate-alignment/domain/machine/**` 与 `workflow/domain/include/domain/machine/**` dual seam | deleted | machine bridge 全部退出 | dual public seam 已关闭。 |
+
+## 5. Dependency Reconciliation Result
+- `module.yaml` / `modules/coordinate-alignment/CMakeLists.txt` / public headers 已对齐
+  - `siligen_module_coordinate_alignment` 只暴露 `siligen_coordinate_alignment_contracts_public`
+  - fake application target/header 已删除
+  - `domain/machine` target 已退出 live build
+- live link/include graph 已对齐的关键点
+  - `modules/runtime-execution/adapters/device/CMakeLists.txt` 不再引用 `siligen_coordinate_alignment_domain_machine`
+  - `modules/runtime-execution/runtime/host/CMakeLists.txt` 不再引用 `siligen_coordinate_alignment_domain_machine`
+  - `modules/workflow/domain/CMakeLists.txt` 不再注册 machine compat target
+  - `apps/runtime-service/siligen_runtime_process_bootstrap` 已能在新图上完成编译
+- 还有哪些未清项
+  - `CoordinateTransformSet` 仍是偏薄 DTO，尚未完成数值对齐语义 freeze
+  - `CoordinateTransformSet` 是否最终外提到 `shared/contracts/engineering/` 仍未冻结
+- 为什么本轮不能继续推进
+  - 继续推进将进入 `M5 -> M6 process-path` 契约演进，而不是 residual exit 执行
+
+## 6. Surface Reconciliation Result
+- stable seam 是否统一
+  - 是。`M5` 当前稳定面只剩 `contracts/include/coordinate_alignment/contracts/CoordinateTransformSet.h`
+- 是否还存在 façade/provider/bridge 多套并存
+  - `coordinate-alignment` 范围内否。fake application façade 已删除，workflow machine bridge 已删除。
+- 是否仍有内部 stage 类型泄漏
+  - 通过 `M5` root surface 的泄漏已清零。
+  - runtime side 仍保留 `HardwareTestAdapter` 这类 concrete，但它们不再经由 `M5` public seam 外泄。
+- contracts surface 与 owner 产物是否一致
+  - 已明显更一致：`M5` root 只承认 `CoordinateTransformSet`
+  - 但 `CoordinateTransformSet` 的数值语义仍偏薄，这是本轮后的主要剩余项
+
+## 7. Test Result
+- 本轮实际运行的测试与构建
+  - `cmake -S . -B build-ca-machine-exit`
+    - 结果：通过
+  - `python -m pytest tests/contracts/test_bridge_exit_contract.py -q`
+    - 结果：通过，`26 passed`
+  - `MSBuild.exe build-ca-machine-exit/modules/runtime-execution/adapters/device/siligen_device_adapters.vcxproj /p:Configuration=Debug /m:1`
+    - 结果：通过，`0 error`
+  - `MSBuild.exe build-ca-machine-exit/modules/runtime-execution/runtime/host/siligen_runtime_host.vcxproj /p:Configuration=Debug /m:1`
+    - 结果：通过，`0 error`
+  - `MSBuild.exe build-ca-machine-exit/apps/runtime-service/siligen_runtime_process_bootstrap.vcxproj /p:Configuration=Debug /m:1`
+    - 结果：通过，`0 error`
+  - `cmake -S . -B build-ca-machine-exit-tests -DSILIGEN_BUILD_TESTS=ON -DSILIGEN_BUILD_TARGET=tests`
+    - 结果：通过
+  - `cmake --build build-ca-machine-exit-tests --config Debug --target siligen_coordinate_alignment_tests`
+    - 结果：通过
+  - `build-ca-machine-exit-tests/bin/Debug/siligen_coordinate_alignment_tests.exe`
+    - 结果：通过，`3 passed`
+  - `cmake --build build-ca-machine-exit-tests --config Debug --target siligen_runtime_host_unit_tests`
+    - 结果：通过
+  - `build-ca-machine-exit-tests/bin/Debug/siligen_runtime_host_unit_tests.exe --gtest_filter=MachineExecutionStateBackendTest.*:MachineExecutionStateStoreTest.*`
+    - 结果：通过，`7 passed`
+  - `build-ca-machine-exit-tests/bin/Debug/siligen_runtime_host_unit_tests.exe`
+    - 结果：失败，`54 passed / 7 failed`
+- 哪些通过
+  - bridge-exit contract
+  - `coordinate-alignment` contract/golden owner gate
+  - runtime-host machine-state owner suites
+  - device adapters / runtime-host / runtime-service bootstrap 直接受影响构建
+- 哪些失败
+  - runtime-host 全量单测中的 7 条回零相关测试失败：
+    - `HomingPortAdapterTest.EscapesTriggeredHomeByJoggingAwayBeforeStartingHoming`
+    - `HomingPortAdapterTest.EscapesTriggeredHomeWhenStatusBitReleasesButRawHomeRemainsLatched`
+    - `HomingPortAdapterTest.DoesNotReportHomedUntilCompletedSignalStopsAndVelocityDropsToZero`
+    - `HomingPortAdapterTest.PrefersHardwareSuccessBitOverHomeApiFailureCode`
+    - `HomingPortAdapterTest.ActivelyReleasesHomeSwitchAfterHomingCompletionBeforeReportingHomed`
+    - `MotionRuntimeFacadeTest.HomeAxisDoesNotRecheckRawGetStsWhenRuntimeIsInGracePeriod`
+    - `MotionRuntimeFacadeTest.DefaultMockHomeCompletesAndExposesHomedStatus`
+  - 失败共同症状：`ready_zero_speed_mm_s must be positive`
+- 失败属于任务内问题还是已知任务外阻塞
+  - `coordinate-alignment` closeout 主证据与本轮 machine-state cutover 直接相关 suite 已通过。
+  - 上述 7 条失败暴露的是邻近 runtime/homing 配置语义问题；从失败签名看，它们不在本轮 `coordinate-alignment` residual exit acceptance criteria 内，但需要后续独立跟进。
+
+## 8. Remaining Blockers
+- 架构 blocker
+  - `CoordinateTransformSet` 仍未冻结完整数值型对齐语义，`CA-R006` 仍未 closeout
+  - `M5 -> M6 process-path` 的 handoff integration 仍未补齐
+- 构建 blocker
+  - 无直接构建 blocker；本轮受影响核心 target 已完成编译
+- 测试 blocker
+  - `coordinate-alignment` 仍缺 `process-path` 邻接 integration
+  - runtime-host 全量单测仍有 7 条回零相关失败，属于邻近 runtime/homing lane blocker
+- 文档 / 命名 blocker
+  - `services/` / `adapters/` / `examples/` 仍是 docs-only shell，占位事实已诚实化，但尚未完全清理
+  - `CoordinateTransformSet` 是否最终 externalize 到 `shared/contracts/engineering/` 尚未形成单一真值
+
+## 9. Final Verdict
+- `<MODULE_PATH>` 本轮后是否更接近 canonical owner
+  - 是。`M5` 已从 “contracts + fake application + machine/calibration/runtime residual” 收敛为真实的 `contracts-only` root owner。
+- 本轮是否达成 batch acceptance criteria
+  - 是。
+  - `B4-connection-residual-exit` 达成：legacy connection port 与 adapter 已删除，runtime connection 改走 device contracts。
+  - `B5-machine-port-and-calibration-exit` 达成：`domain/machine` residual family 与 workflow machine bridge 已退出 live build。
+  - `B6-machine-state-owner-cutover` 达成：runtime-host 已用本地 `MachineExecutionStateStore/Backend` 接管 owner。
+  - `B7-runtime-consumer-decouple` 达成：`HardwareTestAdapter` / `TriggerControllerAdapter` / runtime-service bootstrap 已脱离 `M5` legacy machine seam。
+  - `B8-docs-and-contract-reconcile` 达成：README / `module.yaml` / CMake / tests / bridge-exit contract 已对齐。
+- 下一批次最应该处理什么
+  - 优先处理 `CA-R006`：冻结 `CoordinateTransformSet` 的数值语义、补 `coordinate-alignment -> process-path` integration 与相应 golden/contract evidence。
+  - 另开独立 runtime/homing 任务处理 `ready_zero_speed_mm_s must be positive` 相关 7 条失败，不建议把它混回 `M5` residual exit 流程。

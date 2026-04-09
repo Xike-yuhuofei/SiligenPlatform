@@ -1,5 +1,6 @@
 #include "TriggerControllerAdapter.h"
 
+#include "siligen/device/adapters/hardware/HardwareTestAdapter.h"
 #include "shared/types/Error.h"
 
 #include <algorithm>
@@ -10,7 +11,9 @@ namespace Siligen::Infrastructure::Adapters::Dispensing {
 namespace {
 constexpr float32 kMinInterval = 0.0001f;
 
-Result<void> EnsurePortReady(const std::shared_ptr<IHardwareTestPort>& port) {
+using HardwareTestAdapter = Siligen::Infrastructure::Adapters::Hardware::HardwareTestAdapter;
+
+Result<void> EnsurePortReady(const std::shared_ptr<HardwareTestAdapter>& port) {
     if (!port) {
         return Result<void>::Failure(
             Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED,
@@ -34,7 +37,7 @@ TriggerAction ResolveActionForMode(TriggerMode mode, bool is_end_point) {
 }
 }  // namespace
 
-TriggerControllerAdapter::TriggerControllerAdapter(std::shared_ptr<IHardwareTestPort> hardware_test_port)
+TriggerControllerAdapter::TriggerControllerAdapter(std::shared_ptr<HardwareTestAdapter> hardware_test_port)
     : hardware_test_port_(std::move(hardware_test_port)) {}
 
 Result<void> TriggerControllerAdapter::ConfigureTrigger(const TriggerConfig& config) {

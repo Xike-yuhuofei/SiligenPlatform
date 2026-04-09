@@ -27,12 +27,6 @@ if(NOT TARGET siligen_device_adapters AND EXISTS "${RUNTIME_HOST_DEVICE_ADAPTERS
     )
 endif()
 
-if(NOT TARGET siligen_trace_diagnostics_application_public AND EXISTS "${RUNTIME_HOST_TRACEABILITY_DIR}/application/CMakeLists.txt")
-    add_subdirectory(
-        "${RUNTIME_HOST_TRACEABILITY_DIR}/application"
-        "${CMAKE_BINARY_DIR}/_p/rh_tda"
-    )
-endif()
 if(NOT TARGET siligen_trace_diagnostics_contracts_public AND EXISTS "${RUNTIME_HOST_TRACEABILITY_DIR}/contracts/CMakeLists.txt")
     add_subdirectory(
         "${RUNTIME_HOST_TRACEABILITY_DIR}/contracts"
@@ -64,14 +58,14 @@ endif()
 
 set(RUNTIME_HOST_PUBLIC_INCLUDE_DIRS
     ${RUNTIME_HOST_SOURCE_ROOT}
-    ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
 list(REMOVE_DUPLICATES RUNTIME_HOST_PUBLIC_INCLUDE_DIRS)
 
 add_library(siligen_runtime_host STATIC
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/diagnostics/DiagnosticsPortAdapter.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/supervision/RuntimeSupervisionPortAdapter.cpp
-    ${RUNTIME_HOST_SOURCE_ROOT}/runtime/system/DispenserModelMachineExecutionStateBackend.cpp
+    ${RUNTIME_HOST_SOURCE_ROOT}/runtime/system/MachineExecutionStateStore.cpp
+    ${RUNTIME_HOST_SOURCE_ROOT}/runtime/system/MachineExecutionStateBackend.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/system/MachineExecutionStatePortFactory.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/motion/MotionRuntimeServicesProvider.cpp
     ${RUNTIME_HOST_SOURCE_ROOT}/runtime/planning/PlanningArtifactExportPortAdapter.cpp
@@ -91,8 +85,8 @@ target_include_directories(siligen_runtime_host PUBLIC
 target_link_libraries(siligen_runtime_host PUBLIC
     siligen_runtime_execution_application_public
     siligen_runtime_execution_runtime_contracts
-    siligen_device_contracts
     siligen_trace_diagnostics_contracts_public
+    siligen_device_contracts
     siligen_workflow_domain_headers
     siligen_shared
 )

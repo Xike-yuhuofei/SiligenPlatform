@@ -1,8 +1,8 @@
 #pragma once
 
-#include "domain/motion/ports/IHomingPort.h"
+#include "runtime/system/MachineExecutionStateStore.h"
+#include "runtime_execution/contracts/motion/IHomingPort.h"
 #include "runtime/supervision/RuntimeSupervisionPortAdapter.h"
-#include "runtime/system/DispenserModel.h"
 #include "siligen/device/adapters/drivers/multicard/MockMultiCard.h"
 #include "siligen/device/adapters/drivers/multicard/MockMultiCardWrapper.h"
 #include "siligen/device/adapters/motion/MotionRuntimeConnectionAdapter.h"
@@ -20,15 +20,14 @@
 
 namespace Siligen::Runtime::Host::Tests {
 
-using CMPTriggerPoint = Siligen::Shared::Types::CMPTriggerPoint;
 using DeviceConnection = Siligen::Device::Contracts::Commands::DeviceConnection;
 using DeviceConnectionPort = Siligen::Device::Contracts::Ports::DeviceConnectionPort;
-using DispenserModel = Siligen::Runtime::Service::System::DispenserModel;
-using DispensingTask = Siligen::Runtime::Service::System::DispensingTask;
 using HeartbeatSnapshot = Siligen::Device::Contracts::State::HeartbeatSnapshot;
 using HomingStatus = Siligen::Domain::Motion::Ports::HomingStatus;
 using IRuntimeSupervisionBackend = Siligen::Runtime::Host::Supervision::IRuntimeSupervisionBackend;
 using LogicalAxisId = Siligen::Shared::Types::LogicalAxisId;
+using MachineExecutionPhase = Siligen::RuntimeExecution::Contracts::System::MachineExecutionPhase;
+using MachineExecutionStateStore = Siligen::Runtime::Service::System::MachineExecutionStateStore;
 using MockMultiCard = Siligen::Infrastructure::Hardware::MockMultiCard;
 using MockMultiCardWrapper = Siligen::Infrastructure::Hardware::MockMultiCardWrapper;
 using MotionRuntimeConnectionAdapter = Siligen::Infrastructure::Adapters::Motion::MotionRuntimeConnectionAdapter;
@@ -103,16 +102,17 @@ inline HeartbeatSnapshot MakeFastHeartbeatConfig() {
     return snapshot;
 }
 
-inline DispensingTask MakePendingTask(const std::string& task_id = "task-1") {
-    DispensingTask task;
-    task.task_id = task_id;
-    task.path = {
-        Siligen::Shared::Types::Point2D(0.0f, 0.0f),
-        Siligen::Shared::Types::Point2D(10.0f, 0.0f),
-    };
-    task.cmp_config.AddTriggerPoint(CMPTriggerPoint{});
-    task.movement_speed = 12.0f;
-    return task;
+inline std::shared_ptr<MachineExecutionStateStore> CreateMachineExecutionStateStore(
+    const MachineExecutionPhase phase = MachineExecutionPhase::Uninitialized,
+    const std::int32_t pending_task_count = 0) {
+    auto store = std::make_shared<MachineExecutionStateStore>();
+    if (store->SetPhase(phase).IsError()) {
+        return nullptr;
+    }
+    if (store->SetPendingTaskCount(pending_task_count).IsError()) {
+        return nullptr;
+    }
+    return store;
 }
 
 inline bool WaitUntil(

@@ -6,6 +6,9 @@
 
 - canonical roots：`apps/`、`modules/`、`shared/`、`docs/`、`samples/`、`tests/`、`scripts/`、`config/`、`data/`、`deploy/`
 - 已退出并物理删除：`packages/`、`integration/`、`tools/`、`examples/`
+- 本地缓存且默认忽略：`.specify/`、`specs/`
+- 本地生成物且默认忽略：根级 `build-*/`、`.claude/`
+- build root 自动发现只认 `build/`、`build/control-apps/`、显式环境变量与本地发布缓存；根级其他 `build-*` 不再作为默认候选。
 
 当前进程入口：
 
