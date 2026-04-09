@@ -60,11 +60,11 @@ from client import (
     load_supervisor_policy_from_env,
     normalize_launch_mode,
 )
+from hmi_application.adapters.qt_workers import PreviewSnapshotWorker
 from hmi_application.preview_session import (
     MotionPreviewMeta,
     PreviewDiagnosticNotice,
     PreviewSessionOwner,
-    PreviewSnapshotWorker,
 )
 from client.auth import AuthManager
 from .dxf_default_paths import build_default_dxf_candidates

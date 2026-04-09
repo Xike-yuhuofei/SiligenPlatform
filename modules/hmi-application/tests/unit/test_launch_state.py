@@ -1,10 +1,7 @@
-import sys
 import unittest
-from pathlib import Path
+from bootstrap import ensure_hmi_application_test_paths
 
-
-WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
-sys.path.insert(0, str(WORKSPACE_ROOT / "modules" / "hmi-application" / "application"))
+ensure_hmi_application_test_paths()
 
 from hmi_application.launch_state import (
     build_recovery_action_decision,
@@ -14,7 +11,7 @@ from hmi_application.launch_state import (
     detect_runtime_degradation_result,
     detect_runtime_requalification_result,
 )
-from hmi_application.launch_supervision_contract import (
+from hmi_application.contracts.launch_supervision_contract import (
     BackendState,
     FailureStage,
     HardwareState,
