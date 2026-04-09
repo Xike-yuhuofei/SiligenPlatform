@@ -16,7 +16,8 @@
 |---|---|
 | canonical roots | `apps/`, `modules/`, `shared/`, `docs/`, `samples/`, `tests/`, `scripts/`, `config/`, `data/`, `deploy/` |
 | removed legacy roots | `packages/`, `integration/`, `tools/`, `examples/` 已物理删除 |
-| removed speckit roots | `.specify/`, `specs/` 已卸载，不再参与当前工作区基线 |
+| local cache roots | `.specify/`, `specs/` 允许作为本地缓存存在，但不参与当前工作区基线 |
+| local generated roots | `.claude/`, `build-*` 允许作为本地工具状态或临时构建目录存在，但不参与当前工作区基线 |
 | support/vendor/generated | `cmake/`, `third_party/`, `build/`, `logs/`, `uploads/` |
 | 正式冻结文档集 | `docs/architecture/dsp-e2e-spec/` |
 
@@ -24,6 +25,8 @@
 
 - `canonical roots` 是后续架构评审、owner 判定、目录归位和根级构建图收敛的唯一正式根集合。
 - 已删除 legacy roots 不得以 wrapper、旁路目录或文档默认入口的形式回流；一旦回流，`legacy-exit-checks.py` 必须失败。
+- `.specify/` 与 `specs/` 即使存在，也只允许作为本地忽略缓存；不得进入版本管理，也不得成为正式流程输入。
+- 根级 `build-*` 即使存在，也只允许作为本地忽略生成物；自动 build root 发现不得把它们当作默认候选。
 - 新增稳定资产必须直接落在 canonical roots；禁止以“临时落位”为由恢复 bridge root 或默认 fallback。
 
 ## 3. 当前阶段说明

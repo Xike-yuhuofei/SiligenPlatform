@@ -13,6 +13,7 @@
 | `generated` | 构建、验证或运行生成物 | 不是 source of truth，不允许回写正式事实。 |
 | `archived` | 历史归档材料 | 不参与默认审阅链，不向当前实现回流。 |
 | `removed` | 已退出或已删除的历史根 | 只保留退出结论，不重新开放实现入口。 |
+| `local-cache` | 允许存在于本地工作区、但不纳入正式基线的缓存根 | 必须被版本管理忽略，不得作为正式事实源或默认入口。 |
 
 ## 2. 根级结构分类与处置
 
@@ -32,11 +33,13 @@
 | `integration/` | `migration-source` | `adjacent` | `migrate` | 历史集成、回归、证据根；目标收敛到 `tests/`。 |
 | `tools/` | `migration-source` | `adjacent` | `migrate` | 历史脚本、迁移、构建辅助根；目标收敛到 `scripts/`。 |
 | `examples/` | `migration-source` | `adjacent` | `migrate` | 历史样本根；目标收敛到 `samples/`。 |
-| `.specify/` | `removed` | `non-main-chain` | `remove` | 已卸载 speckit 支撑目录，不再作为仓库正式资产。 |
-| `specs/` | `removed` | `non-main-chain` | `remove` | 已卸载 speckit 产物目录，不再作为 `feature artifact` root。 |
+| `.specify/` | `local-cache` | `non-main-chain` | `ignore-local` | 本地工具缓存；允许存在，但不纳入正式基线、不得作为仓库正式资产。 |
+| `specs/` | `local-cache` | `non-main-chain` | `ignore-local` | 本地工具缓存；允许存在，但不作为 `feature artifact` 正式根。 |
+| `.claude/` | `local-cache` | `non-main-chain` | `ignore-local` | 本地工具状态目录；允许存在，但不纳入正式基线。 |
 | `cmake/` | `support` | `non-main-chain` | `keep` | 构建基础设施与布局清单。 |
 | `third_party/` | `vendor` | `non-main-chain` | `keep` | 第三方依赖；不得承载业务事实。 |
 | `build/` | `generated` | `non-main-chain` | `keep` | 构建产物输出。 |
+| `build-*/` | `generated` | `non-main-chain` | `ignore-local` | 根级临时专项构建目录；允许本地存在，但不作为稳定输出根。 |
 | `logs/` | `generated` | `non-main-chain` | `keep` | 运行与验证日志。 |
 | `uploads/` | `generated` | `adjacent` | `keep` | staging 输入面，不是 source of truth。 |
 | `docs/_archive/` | `archived` | `non-main-chain` | `archive` | 历史归档，不参与默认审阅链。 |
@@ -46,6 +49,7 @@
 
 - `effective-canonical` 必须先变成真实 owner 面、正式承载面或正式入口面，legacy root 才允许降级为 wrapper、redirect、forwarding include/CMake、README+tombstone 等显式 bridge。
 - `migration-source` 只表达“当前仍有内容，但必须迁出到目标根”；它不构成终态 canonical 许可，也不允许继续承载新业务逻辑。
+- `local-cache` 只表达“允许本地存在但不具备架构地位”；它不是 source of truth，不允许成为默认入口、正式脚本输入或冻结文档锚点。
 - 根级稳定入口固定为 `build.ps1`、`test.ps1`、`ci.ps1` 与 `scripts/validation/run-local-validation-gate.ps1`；正式脚本实现目标根为 `scripts/`，`tools/` 仅保留兼容入口或 wrapper 角色。
 - `Wave 1` 对根治理的正式门禁以 `validation-gates.md` 为准，至少要求 canonical root 文档、workspace layout 解析、root script 入口和 freeze/layout validator 能形成同一套证据链。
 - 任何想把 `migration-source`、`support`、`vendor`、`generated`、`archived` 重新解释为默认 owner 根的行为，都视为违规；必须先更新冻结文档与门禁定义并重新通过根级验证。
