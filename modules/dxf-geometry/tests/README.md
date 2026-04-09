@@ -38,3 +38,4 @@ dxf-geometry 的模块级验证入口应收敛到此目录。
 - `golden` 只冻结脱敏参数快照，不把临时目录路径写成权威真值。
 - `python/` 负责 `engineering_data` 中 DXF preprocess / simulation compat shell 的 owner closeout，并证明 trajectory / preview 已迁出本模块、simulation runtime residual 已退出 live tree。
 - 本地 preview owner gate 已迁到 `apps/planner-cli/tests/python/`；trajectory owner gate 已迁到 `modules/motion-planning/application/motion_planning/` 与 `scripts/engineering-data/path_to_trajectory.py`。
+- trajectory compat shell 与模块内旧 CLI 已从 live surface 删除。

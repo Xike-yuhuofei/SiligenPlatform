@@ -22,6 +22,13 @@ if(NOT TARGET siligen_device_contracts AND EXISTS "${SILIGEN_DEVICE_CONTRACTS_CA
     )
 endif()
 
+if(NOT TARGET siligen_trace_diagnostics_contracts_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../trace-diagnostics/contracts"
+        "${CMAKE_BINARY_DIR}/_p/da_tdc"
+    )
+endif()
+
 set(SILIGEN_DEVICE_ADAPTERS_INCLUDE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/include")
 set(SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/src")
 set(SILIGEN_DEVICE_ADAPTERS_SHARED_COMPAT_DIR "${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}")
@@ -122,6 +129,7 @@ target_link_libraries(siligen_device_adapters PUBLIC
     siligen_device_contracts
     siligen_shared_kernel
     siligen_runtime_execution_runtime_contracts
+    siligen_trace_diagnostics_contracts_public
     siligen_workflow_domain_headers
     siligen_process_planning_contracts_public
 )

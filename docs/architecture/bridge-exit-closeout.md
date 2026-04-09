@@ -1,6 +1,6 @@
 # Bridge Exit Closeout
 
-更新时间：`2026-04-07`
+更新时间：`2026-04-09`
 
 ## 1. 目标
 
@@ -42,5 +42,5 @@
 - `validate_workspace_layout.py` 与 `legacy-exit-checks.py` 不再接受“bridge shell-only 仍可通过”的旧语义。
 - 本次收口完成后，所有后续变更都必须直接落在 canonical roots，不允许再恢复桥接层。
 - 截至 `2026-04-07`，`runtime-execution/contracts/runtime` 已从 canonical required surface 中移除 `IConfigurationPort` / `ITaskSchedulerPort` / `IEventPublisherPort` alias shell，live include 也已清零；该问题不再构成运行链默认入口。
-- 截至 `2026-04-07`，machine execution state 已收口为 `runtime/system/DispenserModelMachineExecutionStateBackend.*` 直接实现 `IMachineExecutionStatePort`，并通过 `modules/workflow/domain/include/domain/machine/aggregates/DispenserModel.h` 提供 `Aggregates::DispenserModel` / `Aggregates::DispensingTask` canonical alias；`runtime-execution` 已不再把 `Legacy::DispenserModel` / `Legacy::DispensingTask` 作为 live surface 暴露。
+- 截至 `2026-04-09`，machine execution state 已收口为 `runtime/system/MachineExecutionStateStore.*` + `runtime/system/MachineExecutionStateBackend.*`；`MachineExecutionStateBackend` 直接实现 `IMachineExecutionStatePort`，且 `runtime-execution` / `runtime-host` 已不再依赖 `modules/workflow/domain/include/domain/machine/aggregates/DispenserModel.h` 或 `modules/coordinate-alignment/domain/machine/aggregates/DispenserModel.*` live surface。
 - 截至 `2026-04-07`，由于 `runtime-execution` / `runtime-service` 仍在进行 owner 收口、历史命名清理与其余文档同步，本次 bridge exit closeout 必须维持为 `NOT PASS`，不得继续对外宣称完成。

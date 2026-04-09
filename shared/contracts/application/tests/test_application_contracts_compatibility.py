@@ -16,7 +16,7 @@ CONTRACTS = ROOT / "shared" / "contracts" / "application"
 HMI_PROTOCOL = ROOT / "apps" / "hmi-app" / "src" / "hmi_client" / "client" / "protocol.py"
 HMI_MAIN_WINDOW = ROOT / "apps" / "hmi-app" / "src" / "hmi_client" / "ui" / "main_window.py"
 TCP_DISPATCHER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "tcp" / "TcpCommandDispatcher.cpp"
-RUNTIME_STATUS_EXPORT_PORT = ROOT / "apps" / "runtime-service" / "runtime" / "status" / "WorkflowRuntimeStatusExportPort.cpp"
+RUNTIME_STATUS_EXPORT_PORT = ROOT / "apps" / "runtime-service" / "runtime" / "status" / "RuntimeStatusExportPort.cpp"
 RUNTIME_SUPERVISION_ADAPTER = ROOT / "modules" / "runtime-execution" / "runtime" / "host" / "runtime" / "supervision" / "RuntimeSupervisionPortAdapter.cpp"
 
 from hmi_client.client.protocol import CommandProtocol

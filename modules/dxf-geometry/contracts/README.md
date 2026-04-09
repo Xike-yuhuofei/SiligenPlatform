@@ -20,7 +20,7 @@
 - `modules/dxf-geometry/application/include/dxf_geometry/application/services/dxf/DxfPbPreparationService.h`
 - `modules/dxf-geometry/adapters/include/dxf_geometry/adapters/planning/dxf/PbPathSourceAdapter.h`
 - `modules/dxf-geometry/application/engineering_data/contracts/simulation_input.py`
-  - 只保留 `simulation_input` stable compat shell；runtime concrete 已迁到 `modules/runtime-execution/application/runtime_execution/`，geometry helper 仍由 `application/engineering_data/processing/simulation_geometry.py` 提供。
+  - 只保留 `simulation_input` stable compat shell；simulation runtime concrete 已迁到 `modules/runtime-execution/application/runtime_execution/`，geometry helper 仍由 `application/engineering_data/processing/simulation_geometry.py` 提供。
 - `shared/contracts/engineering/`
   - preview JSON 与 simulation input JSON 的 canonical schema authority 仍在此处；本地 HTML preview renderer 已迁到 `apps/planner-cli/tools/planner_cli_preview/`。
 - `modules/motion-planning/application/motion_planning/trajectory_generation.py`

@@ -1,17 +1,17 @@
 #include "CommandHandlers.h"
 #include "CommandHandlersInternal.h"
 
-#include "workflow/application/usecases/recipes/CompareRecipeVersionsUseCase.h"
-#include "workflow/application/usecases/recipes/CreateDraftVersionUseCase.h"
-#include "workflow/application/usecases/recipes/CreateRecipeUseCase.h"
-#include "workflow/application/usecases/recipes/CreateVersionFromPublishedUseCase.h"
-#include "workflow/application/usecases/recipes/ExportRecipeBundlePayloadUseCase.h"
-#include "workflow/application/usecases/recipes/ImportRecipeBundlePayloadUseCase.h"
-#include "workflow/application/usecases/recipes/RecipeCommandUseCase.h"
-#include "workflow/application/usecases/recipes/RecipeQueryUseCase.h"
-#include "workflow/application/usecases/recipes/UpdateDraftVersionUseCase.h"
-#include "workflow/application/usecases/recipes/UpdateRecipeUseCase.h"
-#include "domain/recipes/value-objects/RecipeTypes.h"
+#include "recipe_lifecycle/application/usecases/recipes/CompareRecipeVersionsUseCase.h"
+#include "recipe_lifecycle/application/usecases/recipes/CreateDraftVersionUseCase.h"
+#include "recipe_lifecycle/application/usecases/recipes/CreateRecipeUseCase.h"
+#include "recipe_lifecycle/application/usecases/recipes/CreateVersionFromPublishedUseCase.h"
+#include "recipe_lifecycle/application/usecases/recipes/ExportRecipeBundlePayloadUseCase.h"
+#include "recipe_lifecycle/application/usecases/recipes/ImportRecipeBundlePayloadUseCase.h"
+#include "recipe_lifecycle/application/usecases/recipes/RecipeCommandUseCase.h"
+#include "recipe_lifecycle/application/usecases/recipes/RecipeQueryUseCase.h"
+#include "recipe_lifecycle/application/usecases/recipes/UpdateDraftVersionUseCase.h"
+#include "recipe_lifecycle/application/usecases/recipes/UpdateRecipeUseCase.h"
+#include "recipe_lifecycle/domain/recipes/value-objects/RecipeTypes.h"
 
 #include <fstream>
 #include <sstream>
