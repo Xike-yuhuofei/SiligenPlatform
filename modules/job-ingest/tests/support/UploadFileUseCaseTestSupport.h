@@ -1,7 +1,7 @@
 #pragma once
 
+#include "job_ingest/application/ports/dispensing/UploadPorts.h"
 #include "job_ingest/application/usecases/dispensing/UploadFileUseCase.h"
-#include "domain/configuration/ports/IFileStoragePort.h"
 #include "shared/types/Error.h"
 #include "shared/types/Result.h"
 
@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
@@ -18,10 +19,10 @@
 
 namespace Siligen::JobIngest::Tests::Support {
 
-using Siligen::Application::UseCases::Dispensing::UploadRequest;
-using Siligen::Application::UseCases::Dispensing::UploadResponse;
-using Siligen::Domain::Configuration::Ports::FileData;
-using Siligen::Domain::Configuration::Ports::IFileStoragePort;
+using Siligen::JobIngest::Application::Ports::Dispensing::IUploadPreparationPort;
+using Siligen::JobIngest::Application::Ports::Dispensing::IUploadStoragePort;
+using Siligen::JobIngest::Contracts::UploadRequest;
+using Siligen::JobIngest::Contracts::UploadResponse;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
@@ -141,18 +142,49 @@ inline std::string NormalizeExtension(std::string extension) {
     return extension;
 }
 
-class TestFileStoragePort final : public IFileStoragePort {
+class TestUploadStoragePort final : public IUploadStoragePort {
    public:
-    explicit TestFileStoragePort(std::filesystem::path base_dir) : base_dir_(std::move(base_dir)) {
+    explicit TestUploadStoragePort(std::filesystem::path base_dir) : base_dir_(std::move(base_dir)) {
         std::filesystem::create_directories(base_dir_);
     }
 
     [[nodiscard]] const std::filesystem::path& BaseDir() const { return base_dir_; }
 
-    Result<std::string> StoreFile(const FileData& file_data, const std::string& filename) override {
-        if (file_data.content.empty()) {
+    Result<void> Validate(const UploadRequest& request,
+                          size_t max_size_mb,
+                          const std::vector<std::string>& allowed_extensions) const override {
+        if (request.file_content.empty() || request.file_size == 0 || request.file_size != request.file_content.size()) {
+            return Result<void>::Failure(
+                Error(ErrorCode::INVALID_PARAMETER, "invalid file metadata", "TestUploadStoragePort"));
+        }
+
+        if (max_size_mb > 0) {
+            const size_t max_size_bytes = max_size_mb * 1024u * 1024u;
+            if (request.file_size > max_size_bytes) {
+                return Result<void>::Failure(
+                    Error(ErrorCode::INVALID_PARAMETER, "file too large", "TestUploadStoragePort"));
+            }
+        }
+
+        if (!allowed_extensions.empty()) {
+            const std::string extension = NormalizeExtension(std::filesystem::path(request.original_filename).extension().string());
+            const bool allowed = std::any_of(
+                allowed_extensions.begin(), allowed_extensions.end(), [&extension](const std::string& candidate) {
+                    return NormalizeExtension(candidate) == extension;
+                });
+            if (!allowed) {
+                return Result<void>::Failure(
+                    Error(ErrorCode::FILE_FORMAT_INVALID, "extension not allowed", "TestUploadStoragePort"));
+            }
+        }
+
+        return Result<void>::Success();
+    }
+
+    Result<std::string> Store(const UploadRequest& request, const std::string& filename) override {
+        if (request.file_content.empty()) {
             return Result<std::string>::Failure(
-                Error(ErrorCode::INVALID_PARAMETER, "file content empty", "TestFileStoragePort"));
+                Error(ErrorCode::INVALID_PARAMETER, "file content empty", "TestUploadStoragePort"));
         }
 
         std::filesystem::path full_path = base_dir_ / filename;
@@ -162,77 +194,64 @@ class TestFileStoragePort final : public IFileStoragePort {
         std::ofstream out(full_path, std::ios::binary);
         if (!out.good()) {
             return Result<std::string>::Failure(
-                Error(ErrorCode::FILE_IO_ERROR, "failed to open file", "TestFileStoragePort"));
+                Error(ErrorCode::FILE_IO_ERROR, "failed to open file", "TestUploadStoragePort"));
         }
-        out.write(reinterpret_cast<const char*>(file_data.content.data()),
-                  static_cast<std::streamsize>(file_data.content.size()));
+        out.write(reinterpret_cast<const char*>(request.file_content.data()),
+                  static_cast<std::streamsize>(request.file_content.size()));
         out.close();
         return Result<std::string>::Success(full_path.string());
     }
 
-    Result<void> ValidateFile(const FileData& file_data,
-                              size_t max_size_mb,
-                              const std::vector<std::string>& allowed_extensions) override {
-        if (file_data.content.empty() || file_data.size == 0 || file_data.size != file_data.content.size()) {
-            return Result<void>::Failure(
-                Error(ErrorCode::INVALID_PARAMETER, "invalid file metadata", "TestFileStoragePort"));
-        }
-
-        if (max_size_mb > 0) {
-            const size_t max_size_bytes = max_size_mb * 1024u * 1024u;
-            if (file_data.size > max_size_bytes) {
-                return Result<void>::Failure(
-                    Error(ErrorCode::INVALID_PARAMETER, "file too large", "TestFileStoragePort"));
-            }
-        }
-
-        if (!allowed_extensions.empty()) {
-            const std::string extension = NormalizeExtension(std::filesystem::path(file_data.original_name).extension().string());
-            const bool allowed = std::any_of(
-                allowed_extensions.begin(), allowed_extensions.end(), [&extension](const std::string& candidate) {
-                    return NormalizeExtension(candidate) == extension;
-                });
-            if (!allowed) {
-                return Result<void>::Failure(
-                    Error(ErrorCode::FILE_FORMAT_INVALID, "extension not allowed", "TestFileStoragePort"));
-            }
-        }
-
-        return Result<void>::Success();
-    }
-
-    Result<void> DeleteFile(const std::string& filepath) override {
+    Result<void> Delete(const std::string& stored_path) override {
         std::error_code ec;
-        std::filesystem::remove(filepath, ec);
+        std::filesystem::remove(stored_path, ec);
         if (ec) {
             return Result<void>::Failure(
-                Error(ErrorCode::FILE_IO_ERROR, "delete failed", "TestFileStoragePort"));
+                Error(ErrorCode::FILE_IO_ERROR, "delete failed", "TestUploadStoragePort"));
         }
         return Result<void>::Success();
-    }
-
-    Result<bool> FileExists(const std::string& filepath) override {
-        std::error_code ec;
-        const bool exists = std::filesystem::exists(filepath, ec);
-        if (ec) {
-            return Result<bool>::Failure(
-                Error(ErrorCode::FILE_IO_ERROR, "exists check failed", "TestFileStoragePort"));
-        }
-        return Result<bool>::Success(exists);
-    }
-
-    Result<size_t> GetFileSize(const std::string& filepath) override {
-        std::error_code ec;
-        const auto size = std::filesystem::file_size(filepath, ec);
-        if (ec) {
-            return Result<size_t>::Failure(
-                Error(ErrorCode::FILE_IO_ERROR, "size check failed", "TestFileStoragePort"));
-        }
-        return Result<size_t>::Success(static_cast<size_t>(size));
     }
 
    private:
     std::filesystem::path base_dir_;
+};
+
+class FakeUploadPreparationPort final : public IUploadPreparationPort {
+   public:
+    using EnsureHandler = std::function<Result<std::string>(const std::string&)>;
+    using CleanupHandler = std::function<Result<void>(const std::string&)>;
+
+    FakeUploadPreparationPort(EnsureHandler ensure_handler = {}, CleanupHandler cleanup_handler = {})
+        : ensure_handler_(std::move(ensure_handler)),
+          cleanup_handler_(std::move(cleanup_handler)) {}
+
+    Result<std::string> EnsurePreparedInput(const std::string& source_path) const override {
+        if (ensure_handler_) {
+            return ensure_handler_(source_path);
+        }
+
+        const auto pb_path = PbPathFor(source_path);
+        WriteTextFile(pb_path, "pb");
+        return Result<std::string>::Success(pb_path.string());
+    }
+
+    Result<void> CleanupPreparedInput(const std::string& source_path) const override {
+        if (cleanup_handler_) {
+            return cleanup_handler_(source_path);
+        }
+
+        std::error_code ec;
+        std::filesystem::remove(PbPathFor(source_path), ec);
+        if (ec) {
+            return Result<void>::Failure(
+                Error(ErrorCode::FILE_IO_ERROR, "cleanup failed", "FakeUploadPreparationPort"));
+        }
+        return Result<void>::Success();
+    }
+
+   private:
+    EnsureHandler ensure_handler_;
+    CleanupHandler cleanup_handler_;
 };
 
 inline UploadRequest MakeUploadRequest(const std::string& original_filename = "unit_test.dxf") {

@@ -23,7 +23,7 @@ using namespace Shared::Types;
 ValveAdapter::ValveAdapter(std::shared_ptr<Siligen::Infrastructure::Hardware::IMultiCardWrapper> hardware,
                            const Domain::Configuration::Ports::ValveSupplyConfig& supply_config,
                            const Shared::Types::DispenserValveConfig& dispenser_config,
-                           const Domain::Dispensing::ValueObjects::DispenseCompensationProfile& compensation_profile)
+                           const Siligen::Domain::Dispensing::ValueObjects::DispenseCompensationProfile& compensation_profile)
     : hardware_(hardware)
     , dispenser_elapsed_before_pause_(0)
     , supply_config_(supply_config)

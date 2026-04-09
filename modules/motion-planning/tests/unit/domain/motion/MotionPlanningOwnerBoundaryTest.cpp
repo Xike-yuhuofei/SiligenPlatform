@@ -255,7 +255,7 @@ TEST(MotionPlanningOwnerBoundaryTest, InterpolationProgramPlannerConsumersUseCon
     const fs::path repo_root = RepoRoot();
     const std::array<fs::path, 3> sources = {{
         repo_root / "modules/motion-planning/tests/unit/domain/trajectory/InterpolationProgramPlannerTest.cpp",
-        repo_root / "modules/workflow/application/usecases/motion/trajectory/DeterministicPathExecutionUseCase.cpp",
+        repo_root / "modules/runtime-execution/application/usecases/motion/trajectory/DeterministicPathExecutionUseCase.cpp",
         repo_root / "modules/dispense-packaging/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp",
     }};
 

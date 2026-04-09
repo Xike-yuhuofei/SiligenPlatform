@@ -4,10 +4,10 @@
 #include "shared/di/LoggingServiceLocator.h"
 #include "shared/interfaces/ILoggingService.h"
 
-#include "domain/configuration/ports/IConfigurationPort.h"
-#include "domain/configuration/ports/ValveConfig.h"
+#include "process_planning/contracts/configuration/IConfigurationPort.h"
+#include "process_planning/contracts/configuration/ValveConfig.h"
 #include "domain/dispensing/value-objects/DispenseCompensationProfile.h"
-#include "domain/motion/domain-services/interpolation/ValidatedInterpolationPort.h"
+#include "runtime_execution/application/services/motion/interpolation/ValidatedInterpolationPort.h"
 
 #include "application/services/trace_diagnostics/LoggingServiceFactory.h"
 #include "siligen/device/adapters/hardware/HardwareTestAdapter.h"
@@ -30,7 +30,7 @@
 #include "runtime/scheduling/TaskSchedulerAdapter.h"
 #include "security/AuditLogger.h"
 #include "security/InterlockMonitor.h"
-#include "infrastructure/adapters/planning/dxf/PbPathSourceAdapter.h"
+#include "dxf_geometry/adapters/planning/dxf/PbPathSourceAdapter.h"
 #include "runtime/recipes/RecipeFileRepository.h"
 #include "runtime/recipes/TemplateFileRepository.h"
 #include "runtime/recipes/AuditFileRepository.h"
@@ -232,9 +232,9 @@ InfrastructureBindings CreateInfrastructureBindings(const InfrastructureBootstra
         dispenser_config_result.Value(),
         compensation_profile);
 
-    bindings.upload_base_dir = RuntimeConfig::ResolveUploadDirectory();
+    const auto upload_base_dir = RuntimeConfig::ResolveUploadDirectory();
     bindings.file_storage_port = std::make_shared<Infrastructure::Adapters::LocalFileStorageAdapter>(
-        bindings.upload_base_dir);
+        upload_base_dir);
 
     bindings.recipe_base_dir = RuntimeConfig::ResolveRecipeDirectory();
     bindings.recipe_repository = std::make_shared<Infrastructure::Adapters::Recipes::RecipeFileRepository>(
@@ -253,7 +253,8 @@ InfrastructureBindings CreateInfrastructureBindings(const InfrastructureBootstra
 
     auto interpolation_adapter = std::make_shared<Infrastructure::Adapters::InterpolationAdapter>(multi_card);
     bindings.interpolation_port =
-        std::make_shared<Domain::Motion::DomainServices::ValidatedInterpolationPort>(interpolation_adapter);
+        std::make_shared<RuntimeExecution::Application::Services::Motion::ValidatedInterpolationPort>(
+            interpolation_adapter);
     bindings.velocity_profile_port =
         std::make_shared<Domain::Motion::DomainServices::SevenSegmentSCurveProfile>();
 

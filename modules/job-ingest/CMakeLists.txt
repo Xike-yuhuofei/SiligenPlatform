@@ -1,19 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
 
-if(NOT TARGET siligen_process_planning_contracts_public)
-    add_subdirectory(
-        "${CMAKE_CURRENT_SOURCE_DIR}/../process-planning/contracts"
-        "${CMAKE_BINARY_DIR}/_p/ji_ppc"
-    )
-endif()
-
-if(NOT TARGET siligen_process_planning_domain_configuration)
-    add_subdirectory(
-        "${CMAKE_CURRENT_SOURCE_DIR}/../process-planning/domain/configuration"
-        "${CMAKE_BINARY_DIR}/_p/ji_pdc"
-    )
-endif()
-
 if(NOT TARGET siligen_job_ingest_contracts AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/contracts/CMakeLists.txt")
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/contracts"
@@ -22,10 +8,10 @@ if(NOT TARGET siligen_job_ingest_contracts AND EXISTS "${CMAKE_CURRENT_SOURCE_DI
 endif()
 
 set(SILIGEN_JOB_INGEST_APPLICATION_PUBLIC_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/application/include")
-if(NOT EXISTS "${SILIGEN_JOB_INGEST_APPLICATION_PUBLIC_INCLUDE_DIR}/application")
+if(NOT EXISTS "${SILIGEN_JOB_INGEST_APPLICATION_PUBLIC_INCLUDE_DIR}/job_ingest/application")
     message(FATAL_ERROR
         "job-ingest canonical application include root missing: "
-        "${SILIGEN_JOB_INGEST_APPLICATION_PUBLIC_INCLUDE_DIR}/application"
+        "${SILIGEN_JOB_INGEST_APPLICATION_PUBLIC_INCLUDE_DIR}/job_ingest/application"
     )
 endif()
 
@@ -37,8 +23,6 @@ target_include_directories(siligen_job_ingest_application_headers INTERFACE
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
 target_link_libraries(siligen_job_ingest_application_headers INTERFACE
-    siligen_process_planning_domain_configuration
-    siligen_process_planning_contracts_public
     siligen_job_ingest_contracts
 )
 target_compile_features(siligen_job_ingest_application_headers INTERFACE cxx_std_17)
@@ -61,10 +45,7 @@ target_include_directories(siligen_job_ingest_application PRIVATE
     ${SILIGEN_JOB_INGEST_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_job_ingest_application PUBLIC
-    siligen_process_planning_domain_configuration
-    siligen_process_planning_contracts_public
     siligen_job_ingest_contracts
-    siligen_dxf_geometry_application_public
     siligen_types
     siligen_utils
 )
@@ -99,5 +80,5 @@ target_compile_features(siligen_module_job_ingest INTERFACE cxx_std_17)
 set_target_properties(siligen_module_job_ingest PROPERTIES
     SILIGEN_MODULE_ID "M1"
     SILIGEN_TARGET_TOPOLOGY_OWNER_ROOT "modules/job-ingest"
-    SILIGEN_TARGET_IMPLEMENTATION_ROOTS "modules/job-ingest/domain;modules/job-ingest/services;modules/job-ingest/application;modules/job-ingest/adapters;modules/job-ingest/tests;modules/job-ingest/examples"
+    SILIGEN_TARGET_IMPLEMENTATION_ROOTS "modules/job-ingest/application;modules/job-ingest/tests"
 )

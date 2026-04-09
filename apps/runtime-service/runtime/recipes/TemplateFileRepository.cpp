@@ -1,6 +1,6 @@
 #include "TemplateFileRepository.h"
 
-#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
+#include "recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h"
 #include "shared/types/Error.h"
 #include "shared/interfaces/ILoggingService.h"
 
@@ -22,7 +22,7 @@ namespace {
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
-using Siligen::Infrastructure::Adapters::Recipes::RecipeJsonSerializer;
+using Siligen::Domain::Recipes::Serialization::RecipeJsonSerializer;
 using Siligen::Domain::Recipes::ValueObjects::Template;
 using Siligen::Domain::Recipes::ValueObjects::TemplateId;
 

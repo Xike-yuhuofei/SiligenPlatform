@@ -15,11 +15,23 @@ if(NOT TARGET siligen_process_planning_contracts_public)
         "${CMAKE_BINARY_DIR}/_p/rtsvc_ppc"
     )
 endif()
+if(NOT TARGET siligen_process_planning_domain_configuration)
+    add_subdirectory(
+        "${SILIGEN_WORKSPACE_ROOT}/modules/process-planning/domain/configuration"
+        "${CMAKE_BINARY_DIR}/_p/rtsvc_ppd"
+    )
+endif()
 
 if(NOT TARGET siligen_trace_diagnostics_application_public)
     add_subdirectory(
         "${SILIGEN_WORKSPACE_ROOT}/modules/trace-diagnostics/application"
         "${CMAKE_BINARY_DIR}/_p/rtsvc_trace"
+    )
+endif()
+if(NOT TARGET siligen_trace_diagnostics_contracts_public)
+    add_subdirectory(
+        "${SILIGEN_WORKSPACE_ROOT}/modules/trace-diagnostics/contracts"
+        "${CMAKE_BINARY_DIR}/_p/rtsvc_trace_contracts"
     )
 endif()
 
@@ -75,6 +87,7 @@ add_library(siligen_runtime_process_bootstrap STATIC
 
 target_include_directories(siligen_runtime_process_bootstrap PRIVATE
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}
+    ${RUNTIME_PROCESS_BOOTSTRAP_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
 
@@ -92,15 +105,18 @@ target_link_libraries(siligen_runtime_process_bootstrap PUBLIC
     siligen_device_adapters
     siligen_device_contracts
     siligen_dispense_packaging_application_public
+    siligen_valve_core
+    siligen_module_dxf_geometry
     siligen_job_ingest_application_public
-    siligen_workflow_application_public
+    siligen_motion_planning_application_public
+    siligen_application_dispensing
     siligen_workflow_adapters_public
-    siligen_workflow_recipe_domain_public
-    siligen_workflow_recipe_application_public
-    siligen_workflow_recipe_serialization_public
+    siligen_recipe_lifecycle_domain_public
+    siligen_recipe_lifecycle_application_public
+    siligen_recipe_lifecycle_serialization_public
     siligen_runtime_execution_application_public
+    siligen_trace_diagnostics_contracts_public
     siligen_trace_diagnostics_application_public
-    siligen_parsing_adapter
     siligen_process_planning_contracts_public
     siligen_shared
     siligen_types
@@ -108,6 +124,8 @@ target_link_libraries(siligen_runtime_process_bootstrap PUBLIC
 )
 target_link_libraries(siligen_runtime_process_bootstrap PRIVATE
     siligen_runtime_host_boost_headers
+    siligen_process_path_application_public
+    siligen_process_planning_domain_configuration
 )
 target_compile_features(siligen_runtime_process_bootstrap PRIVATE cxx_std_17)
 

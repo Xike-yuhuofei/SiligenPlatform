@@ -1,4 +1,4 @@
-#include "HardwareTestAdapter.h"
+#include "siligen/device/adapters/hardware/HardwareTestAdapter.h"
 
 #define MODULE_NAME "HardwareTestAdapter"
 #include "shared/interfaces/ILoggingService.h"

@@ -1,4 +1,5 @@
 #include "support/UploadFileUseCaseTestSupport.h"
+#include "dxf_geometry/application/services/dxf/DxfPbPreparationService.h"
 
 #include <gtest/gtest.h>
 
@@ -8,16 +9,33 @@
 
 namespace {
 
-using Siligen::Application::UseCases::Dispensing::UploadFileUseCase;
+using Siligen::Application::Services::DXF::DxfPbPreparationService;
+using Siligen::JobIngest::Application::Ports::Dispensing::IUploadPreparationPort;
+using Siligen::JobIngest::Application::UseCases::Dispensing::UploadFileUseCase;
 using Siligen::JobIngest::Tests::Support::MakeUploadRequest;
 using Siligen::JobIngest::Tests::Support::PbPathFor;
 using Siligen::JobIngest::Tests::Support::QuoteArg;
 using Siligen::JobIngest::Tests::Support::ReadTextFile;
 using Siligen::JobIngest::Tests::Support::ScopedEnvVar;
 using Siligen::JobIngest::Tests::Support::ScopedTempDir;
-using Siligen::JobIngest::Tests::Support::TestFileStoragePort;
+using Siligen::JobIngest::Tests::Support::TestUploadStoragePort;
 using Siligen::JobIngest::Tests::Support::WriteTextFile;
 using Siligen::Shared::Types::ErrorCode;
+using Siligen::Shared::Types::Result;
+
+class RealUploadPreparationPort final : public IUploadPreparationPort {
+   public:
+    Result<std::string> EnsurePreparedInput(const std::string& source_path) const override {
+        return service_.EnsurePbReady(source_path);
+    }
+
+    Result<void> CleanupPreparedInput(const std::string& source_path) const override {
+        return service_.CleanupPreparedInput(source_path);
+    }
+
+   private:
+    DxfPbPreparationService service_;
+};
 
 TEST(UploadFileUseCaseIntegrationTest, ProducesSanitizedArtifactsThroughPbCommandOverride) {
     ScopedTempDir workspace("upload_integration_success");
@@ -32,8 +50,9 @@ TEST(UploadFileUseCaseIntegrationTest, ProducesSanitizedArtifactsThroughPbComman
     const ScopedEnvVar command_override(
         "SILIGEN_DXF_PB_COMMAND", "python " + QuoteArg(generator_path.string()) + " {input} {output}");
 
-    auto storage = std::make_shared<TestFileStoragePort>(workspace.Path() / "uploads");
-    UploadFileUseCase usecase(storage);
+    auto storage = std::make_shared<TestUploadStoragePort>(workspace.Path() / "uploads");
+    auto preparation = std::make_shared<RealUploadPreparationPort>();
+    UploadFileUseCase usecase(storage, preparation);
 
     auto result = usecase.Execute(MakeUploadRequest("fixture upload (v1).dxf"));
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
@@ -55,8 +74,9 @@ TEST(UploadFileUseCaseIntegrationTest, PropagatesPbCommandConfigurationErrorsAnd
     ScopedTempDir workspace("upload_integration_config_error");
     const ScopedEnvVar command_override("SILIGEN_DXF_PB_COMMAND", "python fake_generator.py");
 
-    auto storage = std::make_shared<TestFileStoragePort>(workspace.Path() / "uploads");
-    UploadFileUseCase usecase(storage);
+    auto storage = std::make_shared<TestUploadStoragePort>(workspace.Path() / "uploads");
+    auto preparation = std::make_shared<RealUploadPreparationPort>();
+    UploadFileUseCase usecase(storage, preparation);
 
     auto result = usecase.Execute(MakeUploadRequest("config failure.dxf"));
     ASSERT_TRUE(result.IsError());

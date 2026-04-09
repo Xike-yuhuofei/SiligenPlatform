@@ -1,114 +1,29 @@
-# Domain Layer (领域层)
+# domain/domain
 
-本层包含核心业务逻辑、领域模型和业务规则，不依赖具体技术实现。
+本目录是 workflow 迁移期保留下来的 bridge-domain residue，不是 `M0 workflow` 的终态 canonical domain root。
 
-## 目录结构（按子域）
+## 当前物理内容
 
-- `_shared/`：跨子域共享的值对象、规约、领域事件
-- `dispensing/`：点胶工艺子域（聚合/实体/值对象/领域服务/端口）
-- `motion/`：运动控制子域
-- `machine/`：设备与运行状态子域
-- `safety/`：安全与互锁子域
-- `diagnostics/`：诊断与健康状态子域
-- `configuration/`：配置子域
-- `recipes/`：配方子域
-- `system/`：系统级横切能力子域
-- `planning/`：规划与可视化子域
+- `_shared/`
+- `dispensing/`
+- `geometry/`
+- `motion/`
 
-端口接口按子域归类放置在 `*/ports/`，系统级端口位于 `system/ports/`。
+## 当前边界真值
 
-## 领域能力归属（业务能力）
+- recipe、machine、system、diagnostics、planning、recovery、supervision 等旧物理壳层已不再由本目录承载。
+- recipe family 的 canonical owner 已迁到 `modules/recipe-lifecycle`，不再属于 workflow domain。
+- 事件发布契约的 canonical owner 已迁到 `shared/contracts/runtime`，代码统一从 `runtime/contracts/system/IEventPublisherPort.h` 引入。
+- round `23` 起，本目录的根 CMake 只保留 dormant placeholder；`siligen_trajectory` / `siligen_configuration` dead shell 已删除，本目录不再定义 live target。
 
-以下能力明确归属于领域层（业务规则与状态），应用层仅负责编排与触发：
+## 当前 live residue
 
-- 回零（Homing）— Motion 子域
-- 点动（Jog）— Motion 子域
-- 插补（Interpolation）— Motion 子域
-- 急停（Emergency Stop）— Safety 子域
-- 安全互锁（Safety Interlock）— Safety 子域
-- 自动运行（Auto Run / Run Mode）— Machine 子域
-- 标定流程（Calibration Flow）— Machine 子域
-- 点胶过程（Dispensing Process）— Dispensing 子域
-- 胶路建压（Pressure Build-Up）— Dispensing 子域
-- 工艺/测试结果（Process Result/Test Record）— Diagnostics 子域
-- 配方生效（Recipe Activation）— Recipes 子域
+- workflow bridge-domain 已不再编译 dispensing concrete；`siligen_triggering` / `PositionTriggerController.cpp` 已于 round `21` 退出 live build graph，`dispensing/**` 当前只剩 dormant residue / compat 痕迹。
+- `motion/`、`geometry/` 中仍存在一批 bridge header/backref residue，需要继续向真正 owner surface 收口。
+- `domain/include/domain/safety/**` 已降为 compat public surface；canonical implementation 已切到 `modules/runtime-execution/application`。
 
-### 插补统一规范
+## 禁止事项
 
-- 插补策略选择、参数校验、插补程序生成必须在 Motion 子域统一实现。
-- Application 仅负责编排与参数映射，禁止复写插补规则。
-- Infrastructure 仅调用硬件插补 API，负责单位转换与错误映射。
-
-### 胶路建压/稳压统一规范
-
-- `Dispensing::DomainServices::SupplyStabilizationPolicy` 是稳压时间解析与校验的唯一入口
-- workflow 本地业务流程必须通过 `PurgeDispenserProcess` 触发稳压等待；DXF 执行态由 `runtime_execution/contracts/dispensing/IDispensingProcessPort` 承接
-- 应用层禁止自行实现稳压等待、超时或时序规则
-- 稳压时间来自 `IConfigurationPort::GetDispensingConfig().supply_stabilization_ms`；
-  允许请求覆盖，但范围由领域层校验（0-5000ms，0 表示使用配置默认值）
-
-### 标定流程统一规范
-
-- `Machine::DomainServices::CalibrationProcess` 是标定流程唯一规则来源
-- 应用层仅负责编排调用，禁止在用例中复写标定状态机或规则
-- 标定设备与结果存储通过端口接入（`ICalibrationDevicePort` / `ICalibrationResultPort`）
-
-### 自动运行/运行模式统一规范
-
-- `Machine::Aggregates::Legacy::DispenserModel` 是自动运行/运行模式唯一规则来源
-- 应用层仅负责编排调用，禁止在用例中复写运行模式状态机或规则
-- 与自动运行相关的状态变化事件由领域层产生并通过端口发布
-
-### 点动统一规范
-
-- `Motion::DomainServices::JogController` 是点动规则唯一入口与规则来源
-- 应用层/适配层不得重复实现点动参数校验、互锁判定或限位规则，仅负责请求转发与协议映射
-
-### 互锁统一规范
-
-- `motion-core` 是互锁规则的主实现与规则来源
-- `Safety::DomainServices::InterlockPolicy` 保留为兼容包装层，内部委托 `motion-core`
-- 应用层/基础设施层不得重复实现互锁判定，仅负责信号采集、状态转发与动作执行
-- 诊断适配器保持硬件直读/直判，不纳入互锁统一入口
-
-### 急停统一规范
-
-- `Safety::DomainServices::EmergencyStopService` 是急停规则唯一入口与规则来源
-- 急停流程（运动急停、禁用触发、清任务队列、硬件停机、状态置位）由该服务统一编排与校验
-- 应用层/适配层仅负责触发与结果处理，不得在用例或服务中复制急停状态更新或清理逻辑
-- `StopAllAxes(true)` / `StopAxis(..., true)` 仅表示立即停止动作，不能替代急停流程
-
-### 配方生效统一规范
-
-- `process-core` 是配方校验与生效规则的主实现与规则来源
-- `Recipes::DomainServices::RecipeActivationService` / `RecipeValidationService` 保留为兼容包装层，内部委托 `process-core`
-- 应用层仅负责发布/显式激活的编排与参数校验，禁止直接改写 `Recipe.active_version_id`
-- 领域层通过 `IRecipeRepositoryPort` 持久化配方与版本状态，通过 `IAuditRepositoryPort` 记录审计
-
-### 工艺结果统一规范
-
-- `Diagnostics::DomainServices::ProcessResultService` 是工艺/测试结果的统一入口
-- 结构化定义与校验在 Domain（`TestDataTypes` / `TestRecord` / `ProcessResultService`）
-- JSON 格式由 `ProcessResultSerialization` 生成与解析，视为外部契约
-- 持久化仅通过 `ITestRecordRepository` 端口完成，Infrastructure 不得重写规则或结构
-
-## 依赖原则
-
-- **只依赖** shared层的接口和类型
-- **不依赖** infrastructure、application 或 adapters 层
-- 所有外部依赖通过端口接口注入
-
-## 命名空间
-
-```cpp
-namespace Siligen::Domain {
-    namespace Dispensing { }
-    namespace Motion { }
-    namespace Machine { }
-    namespace Safety { }
-    namespace Diagnostics { }
-    namespace Configuration { }
-    namespace System { }
-    namespace Planning { }
-}
-```
+- 不允许把 recipe、machine、system、diagnostics concrete 重新塞回本目录。
+- 不允许把本目录继续当作长期 bridge-domain 装配根。
+- 不允许为了兼容旧 include/path 再新增 fake layer、wrapper 或 facade shell。

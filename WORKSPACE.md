@@ -23,8 +23,15 @@
 
 - `packages/`（已物理删除）
 - `integration/`（已物理删除）
-- `tools/`（已物理删除）
+- `tools/`（已物理删除；`no-loose-mock` 已迁到 `scripts/testing/`）
 - `examples/`（已物理删除）
+
+本地缓存（允许存在但不纳入正式基线）：
+
+- `.specify/`（本地工具缓存，默认忽略）
+- `specs/`（本地工具缓存，默认忽略）
+- `.claude/`（本地工具状态目录，默认忽略）
+- `build-*/`（根级临时构建目录，默认忽略）
 
 约束：
 
@@ -62,3 +69,6 @@
 2. `docs/architecture/dsp-e2e-spec/` 是阶段、对象、模块、控制语义和 acceptance baseline 的唯一正式入口。
 3. 任何目录调整必须先更新 `S05`、`S06`、`S09`、`S10` 和对应验证脚本。
 4. 分支命名必须符合 `<type>/<scope>/<ticket>-<short-desc>`，并统一以项目级 skill `.agents/skills/git-create/SKILL.md` 为准。
+5. `.specify/` 与 `specs/` 如存在，只能作为本地缓存；不得作为正式文档锚点、正式脚本输入或仓库事实源。
+6. 根级 `build-*` 与 `.claude/` 如存在，只能作为本地生成物或工具状态；不得进入版本管理，也不得被正式脚本声明为固定事实路径。
+7. build root 自动发现只允许 `build/`、`build/control-apps/`、显式环境变量和本地发布缓存；根级其他 `build-*` 不得作为默认 build root 候选。

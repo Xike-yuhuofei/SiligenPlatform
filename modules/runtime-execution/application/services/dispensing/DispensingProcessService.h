@@ -2,7 +2,7 @@
 
 #include "domain/dispensing/ports/IDispensingExecutionObserver.h"
 #include "domain/dispensing/value-objects/DispensingExecutionTypes.h"
-#include "domain/motion/ports/IMotionStatePort.h"
+#include "runtime_execution/contracts/motion/IMotionStatePort.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "runtime_execution/contracts/dispensing/IDispensingProcessPort.h"
 #include "runtime_execution/contracts/dispensing/IValvePort.h"

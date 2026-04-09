@@ -1,5 +1,8 @@
 #pragma once
 
+// Public compatibility surface. Canonical implementation lives in
+// modules/runtime-execution/application.
+
 #include "domain/dispensing/value-objects/GuardDecision.h"
 #include "shared/types/Result.h"
 

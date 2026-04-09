@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "domain/planning/ports/ISpatialIndexPort.h"
+#include "domain/dispensing/planning/ports/ISpatialIndexPort.h"
 #include "shared/types/Point2D.h"
 #include "shared/types/Types.h"
 #include "shared/types/VisualizationTypes.h"
@@ -57,7 +57,7 @@ class PathOptimizationStrategy {
      * @param spatial_index 空间索引端口（可选）
      */
     explicit PathOptimizationStrategy(
-        std::shared_ptr<Planning::Ports::ISpatialIndexPort> spatial_index) noexcept;
+        std::shared_ptr<PlanningBoundary::Ports::ISpatialIndexPort> spatial_index) noexcept;
 
     ~PathOptimizationStrategy() = default;
 
@@ -102,7 +102,7 @@ class PathOptimizationStrategy {
         const std::vector<Shared::Types::DXFSegment>& segments,
         const Shared::Types::Point2D& start_pos) noexcept;
 
-    std::shared_ptr<Planning::Ports::ISpatialIndexPort> spatial_index_;
+    std::shared_ptr<PlanningBoundary::Ports::ISpatialIndexPort> spatial_index_;
 };
 
 }  // namespace DomainServices

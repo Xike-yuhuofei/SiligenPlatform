@@ -1,17 +1,17 @@
-#include "application/services/redundancy/CandidateScoringService.h"
+#include "application/recovery-control/CandidateScoringService.h"
 
 #include <gtest/gtest.h>
 
 namespace {
 
 using Siligen::Application::Services::Redundancy::CandidateScoringService;
-using Siligen::Domain::System::Redundancy::CodeEntity;
-using Siligen::Domain::System::Redundancy::EntityType;
-using Siligen::Domain::System::Redundancy::RuntimeEnvironment;
-using Siligen::Domain::System::Redundancy::RuntimeEvidenceRecord;
-using Siligen::Domain::System::Redundancy::SourceLanguage;
-using Siligen::Domain::System::Redundancy::StaticEvidenceRecord;
-using Siligen::Domain::System::Redundancy::StaticSignalType;
+using Siligen::Domain::Recovery::Redundancy::CodeEntity;
+using Siligen::Domain::Recovery::Redundancy::EntityType;
+using Siligen::Domain::Recovery::Redundancy::RuntimeEnvironment;
+using Siligen::Domain::Recovery::Redundancy::RuntimeEvidenceRecord;
+using Siligen::Domain::Recovery::Redundancy::SourceLanguage;
+using Siligen::Domain::Recovery::Redundancy::StaticEvidenceRecord;
+using Siligen::Domain::Recovery::Redundancy::StaticSignalType;
 
 CodeEntity BuildEntity() {
     CodeEntity entity;

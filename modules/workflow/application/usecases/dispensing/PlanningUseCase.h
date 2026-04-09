@@ -1,4 +1,4 @@
 #pragma once
 
-#include "../../include/application/usecases/dispensing/PlanningUseCase.h"
+#include "../../include/application/planning-trigger/PlanningUseCase.h"
 

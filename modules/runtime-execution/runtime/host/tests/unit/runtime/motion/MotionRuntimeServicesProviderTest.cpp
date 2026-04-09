@@ -1,6 +1,6 @@
 #include "runtime/motion/MotionRuntimeServicesProvider.h"
 
-#include "domain/motion/ports/IHomingPort.h"
+#include "runtime_execution/contracts/motion/IHomingPort.h"
 #include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
 #include "siligen/device/adapters/drivers/multicard/MockMultiCard.h"
 #include "siligen/device/adapters/drivers/multicard/MockMultiCardWrapper.h"

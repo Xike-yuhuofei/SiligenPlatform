@@ -11,7 +11,8 @@
 ## 边界约束
 
 - 仅放置 `M9 runtime-execution` owner 专属契约，不放跨模块长期稳定公共契约。
+- `IEventPublisherPort` 不再属于本目录；其 canonical owner 位于 `shared/contracts/runtime`，消费路径为 `runtime/contracts/system/IEventPublisherPort.h`。
 - 跨模块稳定设备契约应维护在 `shared/contracts/device/`。
 - `shared/contracts/device/` 是稳定设备契约 canonical root。
-- `modules/runtime-execution/contracts/device/` 仅保留兼容装配入口，不再定义 `siligen_device_contracts` 的 canonical owner。
+- `modules/runtime-execution/contracts/device/` 只负责把构建接到 `shared/contracts/device/` canonical owner，不再暴露模块内别名 target 或兼容装配壳。
 - `modules/runtime-execution/runtime/host/`、`modules/runtime-execution/adapters/device/` 消费 `shared/contracts/device/`，不再把 runtime 私有目录当作设备契约源。

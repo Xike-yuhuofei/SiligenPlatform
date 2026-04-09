@@ -1,4 +1,14 @@
 # application
 
-job-ingest 的 facade、handler、query/command 入口应收敛到此目录。
+job-ingest 的 live application seam 只包含 `UploadFileUseCase` 与 module-owned upload ports。
 
+## 当前真相
+
+- authoritative include path：`job_ingest/application/usecases/dispensing/UploadFileUseCase.h`
+- module-owned port seam：`job_ingest/application/ports/dispensing/UploadPorts.h`
+- `UploadFileUseCase` namespace：`Siligen::JobIngest::Application::UseCases::Dispensing`
+- `UploadResponse` 是本模块 authority artifact；`UploadFileUseCase` 是生成该 authority fact 的 application seam
+- public constructor 只接受 `IUploadStoragePort` 与 `IUploadPreparationPort`
+- application producer target 不再直接链接 `process-planning` 或 `dxf-geometry`
+- foreign storage / PB service 适配只允许存在于 runtime-service composition root 或模块 integration tests
+- 本批次不在 application 层重新冻结 storage owner / PB owner；M1 只保留 seam，不吞回 foreign concrete owner 语义

@@ -1,9 +1,9 @@
 #pragma once
 
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
-#include "domain/motion/ports/IHomingPort.h"
-#include "domain/motion/ports/IMotionConnectionPort.h"
-#include "domain/motion/ports/IMotionStatePort.h"
+#include "runtime_execution/contracts/motion/IHomingPort.h"
+#include "runtime_execution/contracts/motion/IMotionConnectionPort.h"
+#include "runtime_execution/contracts/motion/IMotionStatePort.h"
 #include "shared/types/AxisTypes.h"
 #include "shared/types/Result.h"
 

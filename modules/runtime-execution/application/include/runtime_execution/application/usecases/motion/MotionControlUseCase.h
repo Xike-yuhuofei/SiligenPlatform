@@ -2,7 +2,7 @@
 
 #include "runtime_execution/application/usecases/motion/homing/EnsureAxesReadyZeroTypes.h"
 #include "runtime_execution/application/usecases/motion/manual/ManualMotionCommand.h"
-#include "runtime_execution/contracts/motion/HomingProcess.h"
+#include "domain/motion/domain-services/HomingProcess.h"
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "runtime_execution/contracts/motion/IMotionStatePort.h"
 #include "shared/types/Point.h"

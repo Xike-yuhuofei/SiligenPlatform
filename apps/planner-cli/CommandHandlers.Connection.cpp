@@ -1,10 +1,10 @@
 #include "CommandHandlers.h"
 #include "CommandHandlersInternal.h"
 
-#include "application/usecases/dispensing/valve/ValveQueryUseCase.h"
-#include "application/usecases/motion/initialization/MotionInitializationUseCase.h"
-#include "application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
-#include "application/usecases/system/InitializeSystemUseCase.h"
+#include "dispense_packaging/application/usecases/dispensing/valve/ValveQueryUseCase.h"
+#include "runtime_execution/application/usecases/motion/initialization/MotionInitializationUseCase.h"
+#include "runtime_execution/application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
+#include "runtime_execution/application/usecases/system/InitializeSystemUseCase.h"
 
 namespace Siligen::Adapters::CLI {
 

@@ -90,11 +90,30 @@ FORBIDDEN_CMAKE_SNIPPETS = LEGACY_FACT_CATALOG.snippets_for_rule(
     "bridge-metadata",
     target_glob="modules/**/CMakeLists.txt",
 )
+REQUIRED_GITIGNORE_ENTRIES = (
+    ".specify/",
+    "specs/",
+    ".claude/",
+    "/build-*/",
+)
 
 def _contains(path: Path, snippet: str) -> bool:
     if not path.exists():
         return False
     return snippet in path.read_text(encoding="utf-8", errors="ignore")
+
+
+def _validate_root_local_ignore_contract(root: Path) -> list[str]:
+    issues: list[str] = []
+    gitignore = root / ".gitignore"
+    if not gitignore.exists():
+        return ["missing root ignore file: .gitignore"]
+
+    text = gitignore.read_text(encoding="utf-8", errors="ignore")
+    for entry in REQUIRED_GITIGNORE_ENTRIES:
+        if entry not in text:
+            issues.append(f"root local cache/generated path must be ignored in .gitignore: {entry}")
+    return issues
 
 
 def _extract_cmake_property_value(cmake_text: str, property_name: str) -> str | None:
@@ -218,7 +237,7 @@ def _validate_root_wiring(root: Path) -> list[str]:
     if workflow_application.exists():
         workflow_application_text = workflow_application.read_text(encoding="utf-8", errors="ignore")
         for required in (
-            "siligen_job_ingest_application_public",
+            "siligen_job_ingest_contracts",
             "siligen_dxf_geometry_application_public",
             "siligen_runtime_execution_application_public",
         ):
@@ -274,9 +293,7 @@ def _validate_root_wiring(root: Path) -> list[str]:
         / "DxfPbPreparationService.h"
     )
     if workflow_dxf_wrapper.exists():
-        wrapper_text = workflow_dxf_wrapper.read_text(encoding="utf-8", errors="ignore")
-        if "dxf_geometry/application/services/dxf/DxfPbPreparationService.h" not in wrapper_text:
-            issues.append("workflow dxf wrapper must forward to dxf_geometry/application/services/dxf/DxfPbPreparationService.h")
+        issues.append("workflow dxf wrapper must be deleted after cutover to dxf_geometry/application/services/dxf/DxfPbPreparationService.h")
 
     return issues
 
@@ -315,6 +332,7 @@ def main() -> int:
     module_failures = _validate_module_skeleton(ROOT)
     bridge_root_failures = _validate_bridge_roots_absent(ROOT)
     root_wiring_failures = _validate_root_wiring(ROOT)
+    root_local_ignore_failures = _validate_root_local_ignore_contract(ROOT)
     baseline_governance = baseline_governance_summary(ROOT)
     baseline_blocking_failures = blocking_baseline_governance_issues(baseline_governance)
     baseline_advisory_failures = advisory_baseline_governance_issues(baseline_governance)
@@ -334,6 +352,7 @@ def main() -> int:
     print(f"  - module_failure_count={len(module_failures)}")
     print(f"  - bridge_root_failure_count={len(bridge_root_failures)}")
     print(f"  - root_wiring_failure_count={len(root_wiring_failures)}")
+    print(f"  - root_local_ignore_failure_count={len(root_local_ignore_failures)}")
     print(f"  - baseline_blocking_issue_count={len(baseline_blocking_failures)}")
     print(f"  - baseline_advisory_issue_count={len(baseline_advisory_failures)}")
 
@@ -345,6 +364,7 @@ def main() -> int:
     issues.extend(module_failures)
     issues.extend(bridge_root_failures)
     issues.extend(root_wiring_failures)
+    issues.extend(root_local_ignore_failures)
     issues.extend(baseline_blocking_failures)
 
     print("[issues]")

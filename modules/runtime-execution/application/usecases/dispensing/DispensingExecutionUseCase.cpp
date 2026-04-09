@@ -2,7 +2,7 @@
 
 #include "DispensingExecutionUseCase.Internal.h"
 
-#include "runtime_execution/contracts/safety/SafetyOutputGuard.h"
+#include "domain/safety/domain-services/SafetyOutputGuard.h"
 #include "shared/logging/PrintfLogFormatter.h"
 #include "shared/interfaces/ILoggingService.h"
 

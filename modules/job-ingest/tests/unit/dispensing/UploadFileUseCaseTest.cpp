@@ -7,31 +7,21 @@
 #include <string>
 
 namespace {
-using Siligen::Application::UseCases::Dispensing::UploadFileUseCase;
+using Siligen::JobIngest::Application::UseCases::Dispensing::UploadFileUseCase;
+using Siligen::JobIngest::Tests::Support::FakeUploadPreparationPort;
 using Siligen::JobIngest::Tests::Support::MakeUploadRequest;
 using Siligen::JobIngest::Tests::Support::PbPathFor;
-using Siligen::JobIngest::Tests::Support::QuoteArg;
 using Siligen::JobIngest::Tests::Support::ReadTextFile;
-using Siligen::JobIngest::Tests::Support::ScopedEnvVar;
 using Siligen::JobIngest::Tests::Support::ScopedTempDir;
-using Siligen::JobIngest::Tests::Support::TestFileStoragePort;
-using Siligen::JobIngest::Tests::Support::WriteTextFile;
+using Siligen::JobIngest::Tests::Support::TestUploadStoragePort;
 using Siligen::Shared::Types::ErrorCode;
 }  // namespace
 
 TEST(UploadFileUseCaseTest, GeneratesPbAfterUpload) {
     ScopedTempDir workspace("upload_success");
-    const auto generator_path = workspace.Path() / "gen_pb.py";
-    WriteTextFile(generator_path,
-                  "import pathlib\n"
-                  "import sys\n"
-                  "pathlib.Path(sys.argv[2]).write_bytes(b'pb')\n");
-
-    const ScopedEnvVar command_override(
-        "SILIGEN_DXF_PB_COMMAND", "python " + QuoteArg(generator_path.string()) + " {input} {output}");
-
-    auto storage = std::make_shared<TestFileStoragePort>(workspace.Path() / "uploads");
-    UploadFileUseCase usecase(storage);
+    auto storage = std::make_shared<TestUploadStoragePort>(workspace.Path() / "uploads");
+    auto preparation = std::make_shared<FakeUploadPreparationPort>();
+    UploadFileUseCase usecase(storage, preparation);
 
     auto result = usecase.Execute(MakeUploadRequest());
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
@@ -47,14 +37,20 @@ TEST(UploadFileUseCaseTest, GeneratesPbAfterUpload) {
 
 TEST(UploadFileUseCaseTest, CleansUpArtifactsWhenPbGenerationFails) {
     ScopedTempDir workspace("upload_failure_cleanup");
-    const auto generator_path = workspace.Path() / "fail_pb.py";
-    WriteTextFile(generator_path, "raise SystemExit(7)\n");
-
-    const ScopedEnvVar command_override(
-        "SILIGEN_DXF_PB_COMMAND", "python " + QuoteArg(generator_path.string()) + " {input} {output}");
-
-    auto storage = std::make_shared<TestFileStoragePort>(workspace.Path() / "uploads");
-    UploadFileUseCase usecase(storage);
+    auto storage = std::make_shared<TestUploadStoragePort>(workspace.Path() / "uploads");
+    auto preparation = std::make_shared<FakeUploadPreparationPort>(
+        [](const std::string& source_path) {
+            const auto pb_path = PbPathFor(source_path);
+            std::ofstream out(pb_path, std::ios::binary);
+            out << "pb";
+            out.close();
+            return Siligen::Shared::Types::Result<std::string>::Failure(
+                Siligen::Shared::Types::Error(
+                    ErrorCode::COMMAND_FAILED,
+                    "pb generation failed",
+                    "FakeUploadPreparationPort"));
+        });
+    UploadFileUseCase usecase(storage, preparation);
 
     auto result = usecase.Execute(MakeUploadRequest());
     ASSERT_TRUE(result.IsError());
@@ -76,8 +72,9 @@ TEST(UploadFileUseCaseTest, CleansUpArtifactsWhenPbGenerationFails) {
 
 TEST(UploadFileUseCaseTest, RejectsTooSmallPayloadBeforePersistingArtifacts) {
     ScopedTempDir workspace("upload_invalid_small");
-    auto storage = std::make_shared<TestFileStoragePort>(workspace.Path() / "uploads");
-    UploadFileUseCase usecase(storage);
+    auto storage = std::make_shared<TestUploadStoragePort>(workspace.Path() / "uploads");
+    auto preparation = std::make_shared<FakeUploadPreparationPort>();
+    UploadFileUseCase usecase(storage, preparation);
 
     auto request = MakeUploadRequest();
     const std::string invalid_payload = "short";
@@ -104,8 +101,9 @@ TEST(UploadFileUseCaseTest, RejectsTooSmallPayloadBeforePersistingArtifacts) {
 
 TEST(UploadFileUseCaseTest, RejectsNonDxfPayloadWithoutLeavingArtifacts) {
     ScopedTempDir workspace("upload_invalid_content");
-    auto storage = std::make_shared<TestFileStoragePort>(workspace.Path() / "uploads");
-    UploadFileUseCase usecase(storage);
+    auto storage = std::make_shared<TestUploadStoragePort>(workspace.Path() / "uploads");
+    auto preparation = std::make_shared<FakeUploadPreparationPort>();
+    UploadFileUseCase usecase(storage, preparation);
 
     auto request = MakeUploadRequest();
     const std::string invalid_payload = "this payload is definitely not a valid dxf document or binary signature";

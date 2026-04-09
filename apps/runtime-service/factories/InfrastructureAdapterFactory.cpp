@@ -36,13 +36,6 @@ std::shared_ptr<Hardware::IMultiCardWrapper> InfrastructureAdapterFactory::Creat
 #endif
 }
 
-std::shared_ptr<Adapters::HardwareConnectionAdapter> InfrastructureAdapterFactory::CreateHardwareConnectionAdapter(
-    std::shared_ptr<Hardware::IMultiCardWrapper> multiCard,
-    const Shared::Types::HardwareConfiguration& config,
-    Shared::Types::HardwareMode mode) {
-    return std::make_shared<Adapters::HardwareConnectionAdapter>(multiCard, mode, config);
-}
-
 std::shared_ptr<Adapters::Hardware::HardwareTestAdapter> InfrastructureAdapterFactory::CreateHardwareTestAdapter(
     std::shared_ptr<Hardware::IMultiCardWrapper> multiCard,
     const Shared::Types::HardwareConfiguration& config,

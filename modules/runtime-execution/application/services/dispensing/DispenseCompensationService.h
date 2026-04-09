@@ -1,7 +1,7 @@
 #pragma once
 
-#include "domain/dispensing/value-objects/DispenseCompensationProfile.h"
-#include "domain/dispensing/ports/IValvePort.h"
+#include "runtime_execution/contracts/dispensing/DispenseCompensationProfile.h"
+#include "runtime_execution/contracts/dispensing/IValvePort.h"
 #include "shared/types/Types.h"
 
 namespace Siligen::RuntimeExecution::Application::Services::Dispensing {

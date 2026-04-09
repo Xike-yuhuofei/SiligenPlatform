@@ -6,7 +6,6 @@ add_library(siligen_event_adapters STATIC
 
 target_include_directories(siligen_event_adapters PUBLIC
     ${RUNTIME_HOST_SOURCE_ROOT}
-    ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
 
 # 链接依赖

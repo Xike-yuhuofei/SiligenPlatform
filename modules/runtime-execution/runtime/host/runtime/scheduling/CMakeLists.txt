@@ -6,7 +6,6 @@ add_library(siligen_task_scheduler STATIC
 
 target_include_directories(siligen_task_scheduler PUBLIC
     ${RUNTIME_HOST_SOURCE_ROOT}
-    ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
 
 # 链接依赖

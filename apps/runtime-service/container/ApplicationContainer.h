@@ -3,7 +3,14 @@
 #include "ApplicationContainerFwd.h"
 #include "../runtime/configuration/WorkspaceAssetPaths.h"
 #include "process_planning/contracts/ConfigurationContracts.h"
+#include "runtime_process_bootstrap/storage/ports/IFileStoragePort.h"
+#include "runtime_execution/contracts/motion/IAxisControlPort.h"
+#include "runtime_execution/contracts/motion/IHomingPort.h"
+#include "runtime_execution/contracts/motion/IJogControlPort.h"
+#include "runtime_execution/contracts/motion/IMotionConnectionPort.h"
 #include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
+#include "runtime_execution/contracts/motion/IMotionStatePort.h"
+#include "runtime_execution/contracts/motion/IPositionControlPort.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 #include <array>
 #include <cstdio>
@@ -142,11 +149,6 @@ public:
     void SetMultiCardInstance(std::shared_ptr<void> multicard_instance);
 
     /**
-     * @brief 设置上传目录（由组合根注入）
-     */
-    void SetUploadBaseDir(const std::string& upload_base_dir);
-
-    /**
      * @brief 获取日志服务接口
      * @return ILoggingService共享指针
      *
@@ -216,9 +218,6 @@ private:
 
     // MultiCard共享实例（内部管理，不暴露给外部）
     std::shared_ptr<void> multiCard_;  // 使用void*避免类型暴露
-
-    // 上传目录绝对路径（用于 LocalFileStorageAdapter 和 CleanupFilesUseCase）
-    std::string upload_base_dir_;
 
     // 日志重定向相关
     LogMode log_mode_ = LogMode::Console;
@@ -468,17 +467,12 @@ std::shared_ptr<UseCases::Dispensing::PlanningUseCase>
 ApplicationContainer::CreateInstance<UseCases::Dispensing::PlanningUseCase>();
 
 template<>
-std::shared_ptr<UseCases::Dispensing::UploadFileUseCase>
-ApplicationContainer::CreateInstance<UseCases::Dispensing::UploadFileUseCase>();
+std::shared_ptr<Siligen::JobIngest::Application::UseCases::Dispensing::UploadFileUseCase>
+ApplicationContainer::CreateInstance<Siligen::JobIngest::Application::UseCases::Dispensing::UploadFileUseCase>();
 
 template<>
-std::shared_ptr<UseCases::Dispensing::IUploadFilePort>
-ApplicationContainer::CreateInstance<UseCases::Dispensing::IUploadFilePort>();
-
-// DXF Cleanup and Execution UseCase 特化声明
-template<>
-std::shared_ptr<UseCases::Dispensing::CleanupFilesUseCase>
-ApplicationContainer::CreateInstance<UseCases::Dispensing::CleanupFilesUseCase>();
+std::shared_ptr<Siligen::JobIngest::Contracts::IUploadFilePort>
+ApplicationContainer::CreateInstance<Siligen::JobIngest::Contracts::IUploadFilePort>();
 
 template<>
 std::shared_ptr<UseCases::Dispensing::DispensingExecutionUseCase>

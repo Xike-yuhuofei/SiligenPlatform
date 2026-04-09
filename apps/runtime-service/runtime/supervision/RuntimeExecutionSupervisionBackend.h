@@ -1,6 +1,6 @@
 #pragma once
 
-#include "application/usecases/system/EmergencyStopUseCase.h"
+#include "runtime_execution/application/usecases/system/EmergencyStopUseCase.h"
 #include "runtime/supervision/RuntimeSupervisionPortAdapter.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"

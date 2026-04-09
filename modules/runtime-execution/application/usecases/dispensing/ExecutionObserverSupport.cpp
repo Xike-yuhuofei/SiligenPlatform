@@ -43,7 +43,7 @@ bool PrepareVelocityTraceFile(const std::string& output_path, std::ofstream& fil
 class VelocityTraceObserver final : public Domain::Dispensing::Ports::IDispensingExecutionObserver {
    public:
     VelocityTraceObserver(
-        const std::shared_ptr<Domain::Motion::Ports::IMotionStatePort>& motion_state_port,
+        const std::shared_ptr<RuntimeExecution::Contracts::Motion::IMotionStatePort>& motion_state_port,
         std::string output_path,
         int32 interval_ms,
         bool dispense_enabled)
@@ -150,7 +150,7 @@ class VelocityTraceObserver final : public Domain::Dispensing::Ports::IDispensin
     ~VelocityTraceObserver() override { OnMotionStop(); }
 
    private:
-    std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port_;
+    std::shared_ptr<RuntimeExecution::Contracts::Motion::IMotionStatePort> motion_state_port_;
     std::string output_path_;
     int32 interval_ms_ = 0;
     int dispense_flag_ = 0;
@@ -247,7 +247,7 @@ std::string ResolveVelocityTracePath(const std::string& dxf_path, const std::str
 }
 
 std::unique_ptr<Domain::Dispensing::Ports::IDispensingExecutionObserver> CreateExecutionObserver(
-    const std::shared_ptr<Domain::Motion::Ports::IMotionStatePort>& motion_state_port,
+    const std::shared_ptr<RuntimeExecution::Contracts::Motion::IMotionStatePort>& motion_state_port,
     const std::string& trace_output_path,
     int32 trace_interval_ms,
     bool trace_enabled,

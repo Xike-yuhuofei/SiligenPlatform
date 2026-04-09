@@ -1,4 +1,4 @@
 #pragma once
 
-// Public compatibility shim. Canonical planning owner lives in motion-planning.
+// Legacy compatibility shim. Canonical planning owner lives in motion-planning.
 #include "../../../../../motion-planning/domain/motion/BSplineCalculator.h"

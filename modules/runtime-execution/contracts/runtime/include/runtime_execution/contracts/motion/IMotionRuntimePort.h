@@ -1,11 +1,11 @@
 #pragma once
 
-#include "domain/motion/ports/IAxisControlPort.h"
-#include "domain/motion/ports/IHomingPort.h"
-#include "domain/motion/ports/IJogControlPort.h"
-#include "domain/motion/ports/IMotionConnectionPort.h"
-#include "domain/motion/ports/IMotionStatePort.h"
-#include "domain/motion/ports/IPositionControlPort.h"
+#include "runtime_execution/contracts/motion/IAxisControlPort.h"
+#include "runtime_execution/contracts/motion/IHomingPort.h"
+#include "runtime_execution/contracts/motion/IJogControlPort.h"
+#include "runtime_execution/contracts/motion/IMotionConnectionPort.h"
+#include "runtime_execution/contracts/motion/IMotionStatePort.h"
+#include "runtime_execution/contracts/motion/IPositionControlPort.h"
 #include "runtime_execution/contracts/motion/IIOControlPort.h"
 
 namespace Siligen::RuntimeExecution::Contracts::Motion {
@@ -14,12 +14,12 @@ namespace Siligen::RuntimeExecution::Contracts::Motion {
  * @brief M9 owner 的统一 motion runtime 主入口。
  */
 class IMotionRuntimePort : public Siligen::Domain::Motion::Ports::IMotionConnectionPort,
-                           public Siligen::Domain::Motion::Ports::IAxisControlPort,
-                           public Siligen::Domain::Motion::Ports::IPositionControlPort,
-                           public Siligen::Domain::Motion::Ports::IMotionStatePort,
-                           public Siligen::Domain::Motion::Ports::IJogControlPort,
+                           public IAxisControlPort,
+                           public IPositionControlPort,
+                           public IMotionStatePort,
+                           public IJogControlPort,
                            public IIOControlPort,
-                           public Siligen::Domain::Motion::Ports::IHomingPort {
+                           public IHomingPort {
    public:
     ~IMotionRuntimePort() override = default;
 };

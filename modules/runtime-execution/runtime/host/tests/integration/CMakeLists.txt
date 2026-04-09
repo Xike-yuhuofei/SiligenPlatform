@@ -25,7 +25,6 @@ target_link_libraries(runtime_execution_integration_host_bootstrap_smoke PRIVATE
     siligen_runtime_host
     siligen_device_adapters
     siligen_device_contracts
-    siligen_domain
     siligen_shared
     siligen_types
     siligen_utils

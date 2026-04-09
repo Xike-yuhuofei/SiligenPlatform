@@ -1,11 +1,15 @@
 cmake_minimum_required(VERSION 3.20)
 
 set(DISPENSE_PACKAGING_TEST_SOURCES
+    unit/domain/dispensing/ArcTriggerPointCalculatorTest.cpp
+    unit/domain/dispensing/ContourPathOptimizerTest.cpp
     unit/domain/dispensing/TriggerPlannerTest.cpp
     unit/domain/dispensing/DispensingControllerTest.cpp
     unit/domain/dispensing/PathArcLengthLocatorTest.cpp
+    unit/domain/dispensing/PurgeDispenserProcessTest.cpp
     unit/domain/dispensing/UnifiedTrajectoryPlannerServiceTest.cpp
     unit/domain/dispensing/TrajectoryTriggerUtilsTest.cpp
+    unit/domain/dispensing/ValveCoordinationServiceTest.cpp
     unit/application/services/dispensing/PreviewSnapshotServiceTest.cpp
 )
 

@@ -30,7 +30,7 @@ TcpDispensingFacade::TcpDispensingFacade(
     std::shared_ptr<UseCases::Dispensing::Valve::ValveCommandUseCase> valve_command_use_case,
     std::shared_ptr<UseCases::Dispensing::Valve::ValveQueryUseCase> valve_query_use_case,
     std::shared_ptr<UseCases::Dispensing::DispensingExecutionUseCase> dxf_execute_use_case,
-    std::shared_ptr<UseCases::Dispensing::IUploadFilePort> dxf_upload_use_case,
+    std::shared_ptr<IUploadFilePort> dxf_upload_use_case,
     std::shared_ptr<UseCases::Dispensing::PlanningUseCase> dxf_planning_use_case,
     std::shared_ptr<UseCases::Dispensing::DispensingWorkflowUseCase> dxf_workflow_use_case)
     : valve_command_use_case_(std::move(valve_command_use_case)),
@@ -66,8 +66,8 @@ Shared::Types::Result<Domain::Dispensing::Ports::SupplyValveStatusDetail> TcpDis
     return valve_query_use_case_->GetSupplyStatus();
 }
 
-Shared::Types::Result<UseCases::Dispensing::UploadResponse> TcpDispensingFacade::UploadDxf(
-    const UseCases::Dispensing::UploadRequest& request) {
+Shared::Types::Result<UploadResponse> TcpDispensingFacade::UploadDxf(
+    const UploadRequest& request) {
     return dxf_upload_use_case_->Execute(request);
 }
 
@@ -77,7 +77,7 @@ Shared::Types::Result<UseCases::Dispensing::PlanningResponse> TcpDispensingFacad
 }
 
 Shared::Types::Result<UseCases::Dispensing::CreateArtifactResponse> TcpDispensingFacade::CreateDxfArtifact(
-    const UseCases::Dispensing::UploadRequest& request) {
+    const UploadRequest& request) {
     return dxf_workflow_use_case_->CreateArtifact(request);
 }
 

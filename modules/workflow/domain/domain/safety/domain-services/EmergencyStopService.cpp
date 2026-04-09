@@ -2,6 +2,7 @@
 
 #include "EmergencyStopService.h"
 
+#include "domain/dispensing/domain-services/CMPTriggerService.h"
 #include "shared/types/Types.h"
 
 namespace Siligen::Domain::Safety::DomainServices {

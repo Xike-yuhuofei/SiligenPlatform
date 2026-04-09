@@ -7,6 +7,9 @@
 
 #pragma once
 
+// Public compatibility surface. Canonical implementation lives in
+// modules/runtime-execution/application.
+
 #include "domain/dispensing/domain-services/CMPTriggerService.h"
 #include "domain/motion/domain-services/MotionControlService.h"
 #include "domain/motion/domain-services/MotionStatusService.h"
@@ -63,7 +66,7 @@ struct EmergencyStopOptions {
 };
 
 class EmergencyStopService {
-public:
+   public:
     EmergencyStopService(std::shared_ptr<MotionControlService> motion_control_service,
                          std::shared_ptr<MotionStatusService> motion_status_service,
                          std::shared_ptr<CMPService> cmp_service,
@@ -73,7 +76,7 @@ public:
     Result<bool> IsInEmergencyStop() const noexcept;
     Result<void> RecoverFromEmergencyStop() noexcept;
 
-private:
+   private:
     std::shared_ptr<MotionControlService> motion_control_service_;
     std::shared_ptr<MotionStatusService> motion_status_service_;
     std::shared_ptr<CMPService> cmp_service_;

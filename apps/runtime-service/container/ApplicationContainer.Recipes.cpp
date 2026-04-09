@@ -1,15 +1,15 @@
 #include "ApplicationContainer.h"
 
-#include "workflow/application/usecases/recipes/CompareRecipeVersionsUseCase.h"
-#include "workflow/application/usecases/recipes/CreateDraftVersionUseCase.h"
-#include "workflow/application/usecases/recipes/CreateRecipeUseCase.h"
-#include "workflow/application/usecases/recipes/CreateVersionFromPublishedUseCase.h"
-#include "workflow/application/usecases/recipes/ExportRecipeBundlePayloadUseCase.h"
-#include "workflow/application/usecases/recipes/ImportRecipeBundlePayloadUseCase.h"
-#include "workflow/application/usecases/recipes/RecipeCommandUseCase.h"
-#include "workflow/application/usecases/recipes/RecipeQueryUseCase.h"
-#include "workflow/application/usecases/recipes/UpdateDraftVersionUseCase.h"
-#include "workflow/application/usecases/recipes/UpdateRecipeUseCase.h"
+#include "recipe_lifecycle/application/usecases/recipes/CompareRecipeVersionsUseCase.h"
+#include "recipe_lifecycle/application/usecases/recipes/CreateDraftVersionUseCase.h"
+#include "recipe_lifecycle/application/usecases/recipes/CreateRecipeUseCase.h"
+#include "recipe_lifecycle/application/usecases/recipes/CreateVersionFromPublishedUseCase.h"
+#include "recipe_lifecycle/application/usecases/recipes/ExportRecipeBundlePayloadUseCase.h"
+#include "recipe_lifecycle/application/usecases/recipes/ImportRecipeBundlePayloadUseCase.h"
+#include "recipe_lifecycle/application/usecases/recipes/RecipeCommandUseCase.h"
+#include "recipe_lifecycle/application/usecases/recipes/RecipeQueryUseCase.h"
+#include "recipe_lifecycle/application/usecases/recipes/UpdateDraftVersionUseCase.h"
+#include "recipe_lifecycle/application/usecases/recipes/UpdateRecipeUseCase.h"
 #include "shared/interfaces/ILoggingService.h"
 
 #include <memory>
@@ -40,7 +40,7 @@ void ApplicationContainer::ValidateRecipePorts() {
 }
 
 void ApplicationContainer::ConfigureRecipeServices() {
-    // recipes 校验/激活已直接下沉到 process-core helper，这里不再注册兼容域服务。
+    // recipe 校验/激活当前由 recipe-lifecycle owner 模块提供，这里不再注册 workflow 兼容域服务。
 }
 
 template<>

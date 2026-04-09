@@ -1,9 +1,5 @@
-#include "application/usecases/dispensing/UploadFileUseCase.h"
-#include "application/services/dxf/DxfPbPreparationService.h"
+#include "job_ingest/application/usecases/dispensing/UploadFileUseCase.h"
 #include "shared/interfaces/ILoggingService.h"
-
-#include "domain/configuration/ports/IConfigurationPort.h"
-#include "domain/configuration/ports/IFileStoragePort.h"
 
 // Phase 3: 六边形架构日志系统 - 定义模块名称供日志宏使用
 #ifdef MODULE_NAME
@@ -14,32 +10,30 @@
 #include "shared/types/Result.h"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
-#include <filesystem>
 #include <iomanip>
 #include <random>
 #include <sstream>
+#include <stdexcept>
 
-namespace Siligen::Application::UseCases::Dispensing {
+namespace Siligen::JobIngest::Application::UseCases::Dispensing {
 
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
 
-UploadFileUseCase::UploadFileUseCase(std::shared_ptr<Domain::Configuration::Ports::IFileStoragePort> file_storage_port,
-                                           size_t max_file_size_mb,
-                                           std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port,
-                                           std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService>
-                                               pb_preparation_service)
-    : file_storage_port_(std::move(file_storage_port)),
-      max_file_size_mb_(max_file_size_mb),
-      config_port_(std::move(config_port)),
-      pb_preparation_service_(pb_preparation_service
-                                  ? std::move(pb_preparation_service)
-                                  : std::make_shared<Siligen::Application::Services::DXF::DxfPbPreparationService>(
-                                        config_port_)) {
-    if (!file_storage_port_) {
-        throw std::invalid_argument("UploadFileUseCase: file_storage_port cannot be null");
+UploadFileUseCase::UploadFileUseCase(std::shared_ptr<IUploadStoragePort> storage_port,
+                                     std::shared_ptr<IUploadPreparationPort> preparation_port,
+                                     size_t max_file_size_mb)
+    : storage_port_(std::move(storage_port)),
+      preparation_port_(std::move(preparation_port)),
+      max_file_size_mb_(max_file_size_mb) {
+    if (!storage_port_) {
+        throw std::invalid_argument("UploadFileUseCase: storage_port cannot be null");
+    }
+    if (!preparation_port_) {
+        throw std::invalid_argument("UploadFileUseCase: preparation_port cannot be null");
     }
 }
 
@@ -49,8 +43,8 @@ Result<UploadResponse> UploadFileUseCase::Execute(const UploadRequest& request) 
     // 1. 验证请求参数
     if (!request.Validate()) {
         return Result<UploadResponse>::Failure(Error(ErrorCode::INVALID_PARAMETER,
-                                                        "Invalid upload request: empty file content or filename",
-                                                        "UploadFileUseCase"));
+                                                     "Invalid upload request: empty file content or filename",
+                                                     "UploadFileUseCase"));
     }
 
     // 2. 验证 DXF 格式
@@ -63,40 +57,33 @@ Result<UploadResponse> UploadFileUseCase::Execute(const UploadRequest& request) 
     std::string safe_filename = GenerateSafeFilename(request.original_filename);
     SILIGEN_LOG_INFO("Generated safe filename: " + safe_filename);
 
-    // 4. 构造文件数据
-    Domain::Configuration::Ports::FileData file_data{
-        request.file_content,       // content
-        safe_filename,              // original_name (使用生成的安全文件名)
-        request.file_size,          // size
-        request.content_type        // content_type
-    };
-
-    // 5. 验证文件（大小、类型）
+    // 4. 验证文件（大小、类型）
     std::vector<std::string> allowed_extensions = {"dxf", "DXF"};
-    auto validation_result = file_storage_port_->ValidateFile(file_data, max_file_size_mb_, allowed_extensions);
+    auto validation_result = storage_port_->Validate(request, max_file_size_mb_, allowed_extensions);
 
     if (!validation_result.IsSuccess()) {
         return Result<UploadResponse>::Failure(validation_result.GetError());
     }
 
-    // 6. 存储文件
-    auto store_result = file_storage_port_->StoreFile(file_data, safe_filename);
+    // 5. 存储文件
+    auto store_result = storage_port_->Store(request, safe_filename);
 
     if (!store_result.IsSuccess()) {
         return Result<UploadResponse>::Failure(store_result.GetError());
     }
+    const auto& stored_path = store_result.Value();
 
-    // 6.1 生成对应的 PB 文件
-    auto pb_result = pb_preparation_service_->EnsurePbReady(store_result.Value());
-    if (!pb_result.IsSuccess()) {
-        CleanupGeneratedArtifacts(store_result.Value());
-        return Result<UploadResponse>::Failure(pb_result.GetError());
+    // 6. 生成对应的准备产物
+    auto prepared_result = preparation_port_->EnsurePreparedInput(stored_path);
+    if (!prepared_result.IsSuccess()) {
+        CleanupGeneratedArtifacts(stored_path);
+        return Result<UploadResponse>::Failure(prepared_result.GetError());
     }
 
     // 7. 构建响应
     UploadResponse response;
     response.success = true;
-    response.filepath = store_result.Value();
+    response.filepath = stored_path;
     response.original_name = request.original_filename;
     response.size = request.file_size;
     response.generated_filename = safe_filename;
@@ -196,25 +183,16 @@ Result<void> UploadFileUseCase::ValidateFileFormat(const std::vector<uint8_t>& f
     return Result<void>::Success();
 }
 
-void UploadFileUseCase::CleanupGeneratedArtifacts(const std::string& filepath) noexcept {
-    auto delete_result = file_storage_port_->DeleteFile(filepath);
+void UploadFileUseCase::CleanupGeneratedArtifacts(const std::string& stored_path) const noexcept {
+    auto delete_result = storage_port_->Delete(stored_path);
     if (delete_result.IsError()) {
         SILIGEN_LOG_WARNING("清理上传失败DXF文件失败: " + delete_result.GetError().ToString());
     }
 
-    std::filesystem::path pb_path(filepath);
-    pb_path.replace_extension(".pb");
-
-    std::error_code ec;
-    std::filesystem::remove(pb_path, ec);
-    if (ec) {
-        SILIGEN_LOG_WARNING("清理上传失败PB文件失败: " + pb_path.string() + ", error=" + ec.message());
+    auto cleanup_result = preparation_port_->CleanupPreparedInput(stored_path);
+    if (cleanup_result.IsError()) {
+        SILIGEN_LOG_WARNING("清理上传失败准备产物失败: " + cleanup_result.GetError().ToString());
     }
 }
 
-}  // namespace Siligen::Application::UseCases::Dispensing
-
-
-
-
-
+}  // namespace Siligen::JobIngest::Application::UseCases::Dispensing

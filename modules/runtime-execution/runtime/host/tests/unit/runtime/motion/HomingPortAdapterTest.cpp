@@ -20,6 +20,37 @@ using HardwareConfiguration = Siligen::Shared::Types::HardwareConfiguration;
 using LogicalAxisId = Siligen::Shared::Types::LogicalAxisId;
 using HomingState = Siligen::Domain::Motion::Ports::HomingState;
 
+constexpr float kReadyZeroSpeedMmS = 5.0f;
+
+std::array<HomingConfig, 4> MakeTestHomingConfigs() {
+    std::array<HomingConfig, 4> homing_configs{};
+    auto& config = homing_configs[0];
+    config.axis = 0;
+    config.mode = 1;
+    config.direction = 0;
+    config.ready_zero_speed_mm_s = kReadyZeroSpeedMmS;
+    config.rapid_velocity = kReadyZeroSpeedMmS;
+    config.locate_velocity = kReadyZeroSpeedMmS;
+    config.index_velocity = kReadyZeroSpeedMmS;
+    config.acceleration = 500.0f;
+    config.deceleration = 500.0f;
+    config.search_distance = 200.0f;
+    config.escape_distance = 5.0f;
+    config.escape_velocity = kReadyZeroSpeedMmS;
+    config.timeout_ms = 1000;
+    config.escape_timeout_ms = 1000;
+    config.escape_max_attempts = 1;
+    config.enable_escape = true;
+    config.enable_limit_switch = true;
+    config.enable_index = false;
+    config.home_backoff_enabled = false;
+    config.home_input_source = MC_HOME;
+    config.home_input_bit = 0;
+    config.home_active_low = false;
+    config.home_debounce_ms = 0;
+    return homing_configs;
+}
+
 class HomeReleaseOnJogWrapper final : public MockMultiCardWrapper {
    public:
     explicit HomeReleaseOnJogWrapper(std::shared_ptr<MockMultiCard> mock_card)
@@ -439,28 +470,7 @@ TEST(HomingPortAdapterTest, EscapesTriggeredHomeByJoggingAwayBeforeStartingHomin
     hardware_config.soft_limit_negative_mm = 0.0f;
     hardware_config.soft_limit_positive_mm = 480.0f;
 
-    std::array<HomingConfig, 4> homing_configs{};
-    homing_configs[0].axis = 0;
-    homing_configs[0].mode = 1;
-    homing_configs[0].direction = 0;
-    homing_configs[0].rapid_velocity = 10.0f;
-    homing_configs[0].locate_velocity = 5.0f;
-    homing_configs[0].acceleration = 500.0f;
-    homing_configs[0].deceleration = 500.0f;
-    homing_configs[0].search_distance = 200.0f;
-    homing_configs[0].escape_distance = 5.0f;
-    homing_configs[0].escape_velocity = 5.0f;
-    homing_configs[0].timeout_ms = 1000;
-    homing_configs[0].escape_timeout_ms = 1000;
-    homing_configs[0].escape_max_attempts = 1;
-    homing_configs[0].enable_escape = true;
-    homing_configs[0].enable_limit_switch = true;
-    homing_configs[0].enable_index = false;
-    homing_configs[0].home_backoff_enabled = false;
-    homing_configs[0].home_input_source = MC_HOME;
-    homing_configs[0].home_input_bit = 0;
-    homing_configs[0].home_active_low = false;
-    homing_configs[0].home_debounce_ms = 0;
+    auto homing_configs = MakeTestHomingConfigs();
 
     auto adapter = HomingPortAdapter(wrapper, hardware_config, homing_configs);
 
@@ -490,28 +500,7 @@ TEST(HomingPortAdapterTest, EscapesTriggeredHomeWhenStatusBitReleasesButRawHomeR
     hardware_config.soft_limit_negative_mm = 0.0f;
     hardware_config.soft_limit_positive_mm = 480.0f;
 
-    std::array<HomingConfig, 4> homing_configs{};
-    homing_configs[0].axis = 0;
-    homing_configs[0].mode = 1;
-    homing_configs[0].direction = 0;
-    homing_configs[0].rapid_velocity = 10.0f;
-    homing_configs[0].locate_velocity = 5.0f;
-    homing_configs[0].acceleration = 500.0f;
-    homing_configs[0].deceleration = 500.0f;
-    homing_configs[0].search_distance = 200.0f;
-    homing_configs[0].escape_distance = 5.0f;
-    homing_configs[0].escape_velocity = 5.0f;
-    homing_configs[0].timeout_ms = 1000;
-    homing_configs[0].escape_timeout_ms = 1000;
-    homing_configs[0].escape_max_attempts = 1;
-    homing_configs[0].enable_escape = true;
-    homing_configs[0].enable_limit_switch = true;
-    homing_configs[0].enable_index = false;
-    homing_configs[0].home_backoff_enabled = false;
-    homing_configs[0].home_input_source = MC_HOME;
-    homing_configs[0].home_input_bit = 0;
-    homing_configs[0].home_active_low = false;
-    homing_configs[0].home_debounce_ms = 0;
+    auto homing_configs = MakeTestHomingConfigs();
 
     auto adapter = HomingPortAdapter(wrapper, hardware_config, homing_configs);
 
@@ -538,24 +527,7 @@ TEST(HomingPortAdapterTest, DoesNotReportHomedUntilCompletedSignalStopsAndVeloci
     hardware_config.soft_limit_negative_mm = 0.0f;
     hardware_config.soft_limit_positive_mm = 480.0f;
 
-    std::array<HomingConfig, 4> homing_configs{};
-    homing_configs[0].axis = 0;
-    homing_configs[0].mode = 1;
-    homing_configs[0].direction = 0;
-    homing_configs[0].rapid_velocity = 10.0f;
-    homing_configs[0].locate_velocity = 5.0f;
-    homing_configs[0].acceleration = 500.0f;
-    homing_configs[0].deceleration = 500.0f;
-    homing_configs[0].search_distance = 200.0f;
-    homing_configs[0].timeout_ms = 1000;
-    homing_configs[0].enable_escape = true;
-    homing_configs[0].enable_limit_switch = true;
-    homing_configs[0].enable_index = false;
-    homing_configs[0].home_backoff_enabled = false;
-    homing_configs[0].home_input_source = MC_HOME;
-    homing_configs[0].home_input_bit = 0;
-    homing_configs[0].home_active_low = false;
-    homing_configs[0].home_debounce_ms = 0;
+    auto homing_configs = MakeTestHomingConfigs();
 
     auto adapter = HomingPortAdapter(wrapper, hardware_config, homing_configs);
 
@@ -587,24 +559,7 @@ TEST(HomingPortAdapterTest, PrefersHardwareSuccessBitOverHomeApiFailureCode) {
     hardware_config.soft_limit_negative_mm = 0.0f;
     hardware_config.soft_limit_positive_mm = 480.0f;
 
-    std::array<HomingConfig, 4> homing_configs{};
-    homing_configs[0].axis = 0;
-    homing_configs[0].mode = 1;
-    homing_configs[0].direction = 0;
-    homing_configs[0].rapid_velocity = 10.0f;
-    homing_configs[0].locate_velocity = 5.0f;
-    homing_configs[0].acceleration = 500.0f;
-    homing_configs[0].deceleration = 500.0f;
-    homing_configs[0].search_distance = 200.0f;
-    homing_configs[0].timeout_ms = 1000;
-    homing_configs[0].enable_escape = true;
-    homing_configs[0].enable_limit_switch = true;
-    homing_configs[0].enable_index = false;
-    homing_configs[0].home_backoff_enabled = false;
-    homing_configs[0].home_input_source = MC_HOME;
-    homing_configs[0].home_input_bit = 0;
-    homing_configs[0].home_active_low = false;
-    homing_configs[0].home_debounce_ms = 0;
+    auto homing_configs = MakeTestHomingConfigs();
 
     auto adapter = HomingPortAdapter(wrapper, hardware_config, homing_configs);
 
@@ -631,28 +586,8 @@ TEST(HomingPortAdapterTest, ActivelyReleasesHomeSwitchAfterHomingCompletionBefor
     hardware_config.soft_limit_negative_mm = 0.0f;
     hardware_config.soft_limit_positive_mm = 480.0f;
 
-    std::array<HomingConfig, 4> homing_configs{};
-    homing_configs[0].axis = 0;
-    homing_configs[0].mode = 1;
-    homing_configs[0].direction = 0;
-    homing_configs[0].rapid_velocity = 10.0f;
-    homing_configs[0].locate_velocity = 5.0f;
-    homing_configs[0].acceleration = 500.0f;
-    homing_configs[0].deceleration = 500.0f;
-    homing_configs[0].search_distance = 200.0f;
-    homing_configs[0].escape_distance = 5.0f;
-    homing_configs[0].escape_velocity = 5.0f;
-    homing_configs[0].timeout_ms = 1000;
-    homing_configs[0].escape_timeout_ms = 1000;
-    homing_configs[0].escape_max_attempts = 1;
-    homing_configs[0].enable_escape = true;
-    homing_configs[0].enable_limit_switch = true;
-    homing_configs[0].enable_index = false;
+    auto homing_configs = MakeTestHomingConfigs();
     homing_configs[0].home_backoff_enabled = true;
-    homing_configs[0].home_input_source = MC_HOME;
-    homing_configs[0].home_input_bit = 0;
-    homing_configs[0].home_active_low = false;
-    homing_configs[0].home_debounce_ms = 0;
 
     auto adapter = HomingPortAdapter(wrapper, hardware_config, homing_configs);
 

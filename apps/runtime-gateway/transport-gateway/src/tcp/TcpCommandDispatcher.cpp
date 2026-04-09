@@ -12,14 +12,14 @@
 #include "facades/tcp/TcpMotionFacade.h"
 #include "facades/tcp/TcpRecipeFacade.h"
 #include "facades/tcp/TcpSystemFacade.h"
-#include "application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
-#include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
+#include "runtime_execution/application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
+#include "runtime_execution/application/usecases/motion/manual/ManualMotionControlUseCase.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
-#include "domain/configuration/services/ReadyZeroSpeedResolver.h"
+#include "process_planning/contracts/configuration/ReadyZeroSpeedResolver.h"
 #include "motion_planning/contracts/InterpolationTypes.h"
 #include "runtime_execution/contracts/system/IRuntimeStatusExportPort.h"
 
-#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
+#include "recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h"
 
 #include <algorithm>
 #include <cctype>
@@ -49,7 +49,7 @@ namespace TcpFacades = Siligen::Application::Facades::Tcp;
 
 using Siligen::Shared::Types::LogicalAxisId;
 using Siligen::Shared::Types::float32;
-using Siligen::Infrastructure::Adapters::Recipes::RecipeJsonSerializer;
+using Siligen::Domain::Recipes::Serialization::RecipeJsonSerializer;
 using Siligen::Domain::Recipes::ValueObjects::ParameterValueEntry;
 using Siligen::Domain::Recipes::ValueObjects::ImportConflict;
 using Siligen::Domain::Recipes::ValueObjects::ConflictResolution;
@@ -832,8 +832,8 @@ namespace Siligen::Adapters::Tcp {
 using Siligen::Shared::Types::FromIndex;
 using Siligen::Shared::Types::IsValid;
 using Siligen::Shared::Types::LogicalAxisId;
+using Siligen::Domain::Recipes::Serialization::RecipeJsonSerializer;
 using Siligen::Domain::Recipes::ValueObjects::ParameterValueEntry;
-using Siligen::Infrastructure::Adapters::Recipes::RecipeJsonSerializer;
 
 TcpCommandDispatcher::TcpCommandDispatcher(
     std::shared_ptr<Application::Facades::Tcp::TcpSystemFacade> systemFacade,
@@ -1384,10 +1384,6 @@ std::string TcpCommandDispatcher::HandleHomeGo(const std::string& id, const nloh
         if (speed_result.IsError()) {
             return GatewayJsonProtocol::MakeErrorResponse(id, 2415, speed_result.GetError().GetMessage());
         }
-        if (speed_result.Value().used_fallback) {
-            SILIGEN_LOG_WARNING("home.go axis " + std::string(Siligen::Shared::Types::AxisName(axis_id)) +
-                                " is using locate_velocity fallback because ready_zero_speed_mm_s is not configured");
-        }
         go_home_plans.emplace_back(axis_id, speed_result.Value().speed_mm_s);
     }
 
@@ -1832,7 +1828,7 @@ std::string TcpCommandDispatcher::HandleDxfArtifactCreate(const std::string& id,
         return GatewayJsonProtocol::MakeErrorResponse(id, 2892, "Decoded file content is empty");
     }
 
-    Application::UseCases::Dispensing::UploadRequest request;
+    Siligen::JobIngest::Contracts::UploadRequest request;
     request.file_content = std::move(decoded);
     request.original_filename = filename;
     request.file_size = request.file_content.size();
@@ -2151,7 +2147,7 @@ std::string TcpCommandDispatcher::HandleDxfLoad(const std::string& id, const nlo
         return GatewayJsonProtocol::MakeErrorResponse(id, 2902, readError);
     }
 
-    Application::UseCases::Dispensing::UploadRequest request;
+    Siligen::JobIngest::Contracts::UploadRequest request;
     request.file_content = std::move(fileContent);
     request.original_filename = ExtractFilename(filePath);
     request.file_size = request.file_content.size();

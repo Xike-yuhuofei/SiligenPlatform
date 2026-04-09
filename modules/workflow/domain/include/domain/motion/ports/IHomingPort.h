@@ -1,9 +1,11 @@
 #pragma once
 
-#include "domain/motion/value-objects/MotionTypes.h"
 #include "shared/types/Result.h"
 #include "shared/types/Types.h"
 
+namespace Siligen::Domain::Motion::ValueObjects {
+enum class HomingStage;
+}
 
 // 导入共享类型
 using Siligen::Shared::Types::float32;
@@ -30,7 +32,7 @@ enum class HomingState {
 struct HomingStatus {
     LogicalAxisId axis = LogicalAxisId::X;
     HomingState state = HomingState::NOT_HOMED;
-    HomingStage stage = HomingStage::Idle;
+    HomingStage stage{};
     float32 current_position = 0.0f;
     int32 error_code = 0;
     bool is_searching = false;

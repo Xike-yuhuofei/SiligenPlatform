@@ -1,11 +1,11 @@
 #include "ApplicationContainer.h"
 
-#include "application/usecases/dispensing/DispensingWorkflowUseCase.h"
-#include "application/usecases/dispensing/valve/ValveQueryUseCase.h"
-#include "application/usecases/motion/homing/HomeAxesUseCase.h"
-#include "application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
-#include "application/usecases/system/EmergencyStopUseCase.h"
-#include "application/usecases/system/InitializeSystemUseCase.h"
+#include "workflow/application/phase-control/DispensingWorkflowUseCase.h"
+#include "dispense_packaging/application/usecases/dispensing/valve/ValveQueryUseCase.h"
+#include "runtime_execution/application/usecases/motion/homing/HomeAxesUseCase.h"
+#include "runtime_execution/application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
+#include "runtime_execution/application/usecases/system/EmergencyStopUseCase.h"
+#include "runtime_execution/application/usecases/system/InitializeSystemUseCase.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
 #include "domain/safety/ports/IInterlockSignalPort.h"
@@ -14,7 +14,7 @@
 #include "runtime/supervision/RuntimeSupervisionPortAdapter.h"
 #include "runtime/supervision/RuntimeJobTerminalSync.h"
 #include "runtime/supervision/RuntimeSupervisionSyncPort.h"
-#include "runtime/system/DispenserModelMachineExecutionStateBackend.h"
+#include "runtime/system/MachineExecutionStatePortFactory.h"
 #include "runtime_execution/application/services/motion/MotionControlServiceImpl.h"
 #include "runtime_execution/application/services/motion/MotionStatusServiceImpl.h"
 #include "runtime_execution/contracts/system/IMachineExecutionStatePort.h"
@@ -127,7 +127,7 @@ std::shared_ptr<UseCases::System::EmergencyStopUseCase>
 ApplicationContainer::CreateInstance<UseCases::System::EmergencyStopUseCase>() {
     if (!machine_execution_state_port_) {
         RegisterPort<Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort>(
-            std::make_shared<Siligen::Runtime::Service::System::DispenserModelMachineExecutionStateBackend>());
+            Siligen::RuntimeExecution::Host::System::CreateMachineExecutionStatePort());
     }
     auto position_control_port = motion_runtime_port_
         ? std::static_pointer_cast<Domain::Motion::Ports::IPositionControlPort>(motion_runtime_port_)

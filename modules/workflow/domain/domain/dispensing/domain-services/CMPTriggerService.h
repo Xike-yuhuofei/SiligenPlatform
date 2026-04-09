@@ -1,5 +1,5 @@
 #pragma once
 
-// Legacy bridge header; canonical public owner header lives under modules/workflow/.
-#include "../../../include/domain/dispensing/domain-services/CMPTriggerService.h"
+// Compatibility shim; canonical CMP owner header lives under modules/dispense-packaging.
+#include "../../../../../dispense-packaging/domain/dispensing/domain-services/CMPTriggerService.h"
 

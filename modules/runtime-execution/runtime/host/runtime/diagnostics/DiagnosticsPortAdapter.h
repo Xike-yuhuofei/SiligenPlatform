@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/diagnostics/ports/IDiagnosticsPort.h"
+#include "trace_diagnostics/contracts/IDiagnosticsPort.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 #include "shared/types/Result.h"
 

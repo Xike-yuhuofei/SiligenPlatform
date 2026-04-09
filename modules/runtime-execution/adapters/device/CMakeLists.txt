@@ -14,6 +14,25 @@ if(NOT TARGET siligen_shared_kernel AND EXISTS "${SILIGEN_WORKSPACE_ROOT}/shared
     )
 endif()
 
+set(SILIGEN_TRACE_DIAGNOSTICS_CONTRACTS_CANONICAL_DIR "${SILIGEN_WORKSPACE_ROOT}/modules/trace-diagnostics/contracts")
+if(NOT TARGET siligen_trace_diagnostics_contracts_public AND EXISTS "${SILIGEN_TRACE_DIAGNOSTICS_CONTRACTS_CANONICAL_DIR}/CMakeLists.txt")
+    add_subdirectory(
+        "${SILIGEN_TRACE_DIAGNOSTICS_CONTRACTS_CANONICAL_DIR}"
+        "${CMAKE_BINARY_DIR}/_p/da_tdc"
+    )
+endif()
+
+set(SILIGEN_DISPENSE_PACKAGING_DOMAIN_CANONICAL_DIR
+    "${SILIGEN_WORKSPACE_ROOT}/modules/dispense-packaging/domain/dispensing"
+)
+if(NOT TARGET siligen_dispense_packaging_domain_dispensing
+   AND EXISTS "${SILIGEN_DISPENSE_PACKAGING_DOMAIN_CANONICAL_DIR}/CMakeLists.txt")
+    add_subdirectory(
+        "${SILIGEN_DISPENSE_PACKAGING_DOMAIN_CANONICAL_DIR}"
+        "${CMAKE_BINARY_DIR}/_p/da_dpd"
+    )
+endif()
+
 set(SILIGEN_DEVICE_CONTRACTS_CANONICAL_DIR "${SILIGEN_WORKSPACE_ROOT}/shared/contracts/device")
 if(NOT TARGET siligen_device_contracts AND EXISTS "${SILIGEN_DEVICE_CONTRACTS_CANONICAL_DIR}/CMakeLists.txt")
     add_subdirectory(
@@ -24,7 +43,12 @@ endif()
 
 set(SILIGEN_DEVICE_ADAPTERS_INCLUDE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/include")
 set(SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/src")
-set(SILIGEN_DEVICE_ADAPTERS_SHARED_COMPAT_DIR "${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}")
+set(SILIGEN_DEVICE_ADAPTERS_DISPENSE_PACKAGING_INCLUDE_ROOT
+    "${SILIGEN_WORKSPACE_ROOT}/modules/dispense-packaging"
+)
+set(SILIGEN_DEVICE_ADAPTERS_MOTION_PLANNING_INCLUDE_ROOT
+    "${SILIGEN_WORKSPACE_ROOT}/modules/motion-planning"
+)
 set(SILIGEN_DEVICE_ADAPTERS_VENDOR_DIR "${SILIGEN_WORKSPACE_ROOT}/modules/runtime-execution/adapters/device/vendor/multicard")
 if(DEFINED SILIGEN_MULTICARD_VENDOR_DIR AND EXISTS "${SILIGEN_MULTICARD_VENDOR_DIR}")
     set(SILIGEN_DEVICE_ADAPTERS_VENDOR_DIR "${SILIGEN_MULTICARD_VENDOR_DIR}")
@@ -39,12 +63,6 @@ endif()
 if(NOT EXISTS "${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/drivers/multicard/error_mapper.cpp")
     message(FATAL_ERROR
         "runtime-execution canonical device adapters require src/drivers/multicard/error_mapper.cpp"
-    )
-endif()
-
-if(NOT EXISTS "${SILIGEN_DEVICE_ADAPTERS_SHARED_COMPAT_DIR}/shared")
-    message(FATAL_ERROR
-        "device-adapters public adapters require SILIGEN_SHARED_COMPAT_INCLUDE_ROOT to expose shared/* compatibility headers."
     )
 endif()
 
@@ -67,7 +85,6 @@ set(SILIGEN_DEVICE_ADAPTERS_SOURCES
     ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/adapters/diagnostics/health/testing/HardwareTestAdapter.Diagnostics.cpp
     ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/adapters/diagnostics/health/testing/HardwareTestAdapter.Safety.cpp
     ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/adapters/diagnostics/health/testing/HardwareTestAdapter.Helpers.cpp
-    ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/adapters/motion/controller/connection/HardwareConnectionAdapter.cpp
     ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/adapters/motion/controller/control/MultiCardMotionAdapter.cpp
     ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/adapters/motion/controller/control/MultiCardMotionAdapter.Status.cpp
     ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/adapters/motion/controller/control/MultiCardMotionAdapter.Motion.cpp
@@ -75,7 +92,6 @@ set(SILIGEN_DEVICE_ADAPTERS_SOURCES
     ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/adapters/motion/controller/control/MultiCardMotionAdapter.Helpers.cpp
     ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/adapters/motion/controller/homing/HomingPortAdapter.cpp
     ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/adapters/motion/controller/interpolation/InterpolationAdapter.cpp
-    ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/adapters/motion/controller/internal/UnitConverter.cpp
     ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/adapters/motion/controller/runtime/MotionRuntimeConnectionAdapter.cpp
     ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/adapters/motion/controller/runtime/MotionRuntimeFacade.cpp
     ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/adapters/dispensing/dispenser/ValveAdapter.cpp
@@ -85,13 +101,8 @@ set(SILIGEN_DEVICE_ADAPTERS_SOURCES
     ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/adapters/dispensing/dispenser/triggering/TriggerControllerAdapter.cpp
 )
 
-set(SILIGEN_DEVICE_ADAPTERS_LEGACY_BRIDGE_SOURCES
-    ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/legacy/drivers/multicard/MultiCardAdapter.cpp
-)
-
 add_library(siligen_device_adapters STATIC
     ${SILIGEN_DEVICE_ADAPTERS_SOURCES}
-    ${SILIGEN_DEVICE_ADAPTERS_LEGACY_BRIDGE_SOURCES}
 )
 
 if(EXISTS "${SILIGEN_DEVICE_ADAPTERS_VENDOR_DIR}/MultiCard.lib")
@@ -104,25 +115,26 @@ if(SILIGEN_HAS_REAL_MULTICARD)
     target_sources(siligen_device_adapters PRIVATE
         ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/drivers/multicard/RealMultiCardWrapper.cpp
     )
-else()
-    target_sources(siligen_device_adapters PRIVATE
-        ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/legacy/drivers/multicard/MultiCardStub_Class.cpp
-    )
 endif()
 
 target_include_directories(siligen_device_adapters PUBLIC
     ${SILIGEN_DEVICE_ADAPTERS_INCLUDE_ROOT}
-    ${SILIGEN_DEVICE_ADAPTERS_SHARED_COMPAT_DIR}
+    ${SILIGEN_DEVICE_ADAPTERS_MOTION_PLANNING_INCLUDE_ROOT}
 )
 target_include_directories(siligen_device_adapters PRIVATE
     ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}
+    ${SILIGEN_DEVICE_ADAPTERS_DISPENSE_PACKAGING_INCLUDE_ROOT}
 )
 
 target_link_libraries(siligen_device_adapters PUBLIC
     siligen_device_contracts
     siligen_shared_kernel
-    siligen_domain
+    siligen_trace_diagnostics_contracts_public
+    siligen_runtime_execution_runtime_contracts
     siligen_process_planning_contracts_public
+)
+target_link_libraries(siligen_device_adapters PRIVATE
+    siligen_dispense_packaging_execution_residual
 )
 if(TARGET siligen_types)
     target_link_libraries(siligen_device_adapters PRIVATE siligen_types)
@@ -154,18 +166,5 @@ target_compile_definitions(siligen_device_adapters PUBLIC
 
 target_compile_features(siligen_device_adapters PUBLIC cxx_std_17)
 set_target_properties(siligen_device_adapters PROPERTIES
-    SILIGEN_MIGRATION_SOURCE_ROOT "legacy-archive/device-adapters"
     SILIGEN_TARGET_TOPOLOGY_OWNER_ROOT "modules/runtime-execution"
 )
-
-if(NOT TARGET siligen_device_hal)
-    add_library(siligen_device_hal INTERFACE)
-    target_include_directories(siligen_device_hal INTERFACE
-        ${SILIGEN_DEVICE_ADAPTERS_INCLUDE_ROOT}
-    )
-    target_link_libraries(siligen_device_hal INTERFACE
-        siligen_device_adapters
-        siligen_device_contracts
-    )
-    target_compile_features(siligen_device_hal INTERFACE cxx_std_17)
-endif()

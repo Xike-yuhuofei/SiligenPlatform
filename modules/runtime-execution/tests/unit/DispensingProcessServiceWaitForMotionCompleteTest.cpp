@@ -8,7 +8,7 @@
 
 #include "services/dispensing/DispensingProcessService.h"
 #include "domain/motion/ports/IInterpolationPort.h"
-#include "domain/motion/ports/IMotionStatePort.h"
+#include "runtime_execution/contracts/motion/IMotionStatePort.h"
 #include "shared/types/Error.h"
 
 namespace {

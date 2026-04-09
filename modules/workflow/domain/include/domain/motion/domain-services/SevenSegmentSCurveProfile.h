@@ -1,4 +1,5 @@
 #pragma once
 
-// Public compatibility shim. Canonical planning owner lives in motion-planning.
+// Deprecated workflow compatibility header.
+// Canonical owner lives in modules/motion-planning/domain/motion/domain-services.
 #include "../../../../../../motion-planning/domain/motion/domain-services/SevenSegmentSCurveProfile.h"

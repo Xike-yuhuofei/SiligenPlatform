@@ -10,7 +10,7 @@ namespace Dispensing {
 namespace DomainServices {
 
 PathOptimizationStrategy::PathOptimizationStrategy(
-    std::shared_ptr<Planning::Ports::ISpatialIndexPort> spatial_index) noexcept
+    std::shared_ptr<PlanningBoundary::Ports::ISpatialIndexPort> spatial_index) noexcept
     : spatial_index_(std::move(spatial_index)) {}
 
 float32 PathOptimizationStrategy::Distance(const Shared::Types::Point2D& a, const Shared::Types::Point2D& b) noexcept {
@@ -165,7 +165,7 @@ std::vector<SegmentWithDirection> PathOptimizationStrategy::OptimizeWithSpatialI
     const Shared::Types::Point2D& start_pos) noexcept {
     // 构建空间索引：每个段有两个点（起点和终点）
     // ID编码：偶数ID = 段i的起点，奇数ID = 段i的终点
-    std::vector<Planning::Ports::SpatialItem> items;
+    std::vector<PlanningBoundary::Ports::SpatialItem> items;
     items.reserve(segments.size() * 2);
     for (size_t i = 0; i < segments.size(); ++i) {
         items.push_back({i * 2, segments[i].start_point});      // 起点

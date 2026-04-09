@@ -1,8 +1,8 @@
 #pragma once
 
-#include "domain/recipes/ports/IRecipeBundleSerializerPort.h"
-#include "domain/recipes/value-objects/RecipeBundle.h"
-#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
+#include "recipe_lifecycle/domain/recipes/ports/IRecipeBundleSerializerPort.h"
+#include "recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h"
+#include "recipe_lifecycle/domain/recipes/value-objects/RecipeBundle.h"
 
 #include <string>
 
@@ -10,6 +10,7 @@ namespace Siligen::Infrastructure::Adapters::Recipes {
 
 class RecipeBundleSerializer : public Siligen::Domain::Recipes::Ports::IRecipeBundleSerializerPort {
    public:
+    using RecipeJsonSerializer = Siligen::Domain::Recipes::Serialization::RecipeJsonSerializer;
     using json = RecipeJsonSerializer::json;
     using RecipeBundle = Siligen::Domain::Recipes::ValueObjects::RecipeBundle;
 

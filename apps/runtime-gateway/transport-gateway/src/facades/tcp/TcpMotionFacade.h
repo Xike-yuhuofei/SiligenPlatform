@@ -1,9 +1,9 @@
 #pragma once
 
-#include "application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
-#include "application/usecases/motion/homing/HomeAxesUseCase.h"
-#include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
-#include "application/usecases/motion/safety/MotionSafetyUseCase.h"
+#include "runtime_execution/application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
+#include "runtime_execution/application/usecases/motion/homing/HomeAxesUseCase.h"
+#include "runtime_execution/application/usecases/motion/manual/ManualMotionControlUseCase.h"
+#include "runtime_execution/application/usecases/motion/safety/MotionSafetyUseCase.h"
 #include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"

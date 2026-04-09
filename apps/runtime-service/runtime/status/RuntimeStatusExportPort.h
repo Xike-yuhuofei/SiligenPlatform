@@ -1,7 +1,7 @@
 #pragma once
 
 #include "domain/dispensing/ports/IValvePort.h"
-#include "domain/motion/ports/IMotionStatePort.h"
+#include "runtime_execution/contracts/motion/IMotionStatePort.h"
 #include "runtime_execution/contracts/system/IRuntimeStatusExportPort.h"
 #include "runtime_execution/contracts/system/IRuntimeSupervisionPort.h"
 #include "shared/types/Point.h"

@@ -42,6 +42,7 @@ add_library(siligen_motion_planning_application STATIC
     services/motion_planning/InterpolationProgramFacade.cpp
     services/motion_planning/MotionPlanningFacade.cpp
     services/motion_planning/TrajectoryInterpolationFacade.cpp
+    usecases/motion/interpolation/InterpolationPlanningUseCase.cpp
 )
 target_include_directories(siligen_motion_planning_application PUBLIC
     ${SILIGEN_MOTION_PLANNING_APPLICATION_PUBLIC_INCLUDE_DIR}
