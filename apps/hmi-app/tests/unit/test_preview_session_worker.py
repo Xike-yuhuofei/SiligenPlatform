@@ -9,7 +9,7 @@ WORKSPACE_ROOT = PROJECT_ROOT.parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 sys.path.insert(0, str(WORKSPACE_ROOT / "modules" / "hmi-application" / "application"))
 
-from hmi_application.preview_session import DXF_OPEN_AUTO_PREVIEW_TIMEOUT_S, PreviewSnapshotWorker
+from hmi_application.adapters.qt_workers import DXF_OPEN_AUTO_PREVIEW_TIMEOUT_S, PreviewSnapshotWorker
 
 
 class _FakeTcpClient:

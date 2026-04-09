@@ -1,0 +1,130 @@
+rules:
+  - id: refactor.guard.no-retired-root-reference-live-files
+    message: "Live source/build/config/runtime files must not reference retired repository roots packages/, integration/, tools/, or examples/."
+    severity: ERROR
+    languages:
+      - generic
+    paths:
+      include:
+        - /apps/**
+        - /modules/**
+        - /shared/**
+        - /scripts/**
+        - /config/**
+        - /deploy/**
+        - /cmake/**
+        - /tests/**
+        - /build.ps1
+        - /test.ps1
+        - /ci.ps1
+        - /legacy-exit-check.ps1
+        - /CMakeLists.txt
+      exclude:
+        - /docs/**
+        - /.agents/**
+        - /third_party/**
+        - /tests/reports/**
+        - /scripts/migration/legacy_fact_catalog.json
+        - /scripts/migration/legacy-exit-checks.py
+        - /scripts/validation/semgrep/**
+        - /tests/contracts/test_bridge_exit_contract.py
+        - /shared/testing/test-kit/src/test_kit/legacy_fact_catalog.py
+    pattern-regex: '(?<![A-Za-z0-9_./\\-])(?:packages|integration|tools|examples)[/\\]'
+
+  - id: refactor.guard.no-retired-entry-reference-in-entrypoints
+    message: "Entrypoints and deploy/config scripts must not point at removed legacy applications or repositories."
+    severity: ERROR
+    languages:
+      - generic
+    paths:
+      include:
+        - /apps/*/run.ps1
+        - /apps/hmi-app/scripts/**
+        - /scripts/build/**
+        - /scripts/validation/**
+        - /config/**
+        - /deploy/**
+        - /build.ps1
+        - /test.ps1
+        - /ci.ps1
+        - /legacy-exit-check.ps1
+      exclude:
+        - /docs/**
+        - /tests/reports/**
+        - /scripts/migration/**
+        - /scripts/validation/semgrep/**
+    pattern-regex: '(?<![A-Za-z0-9_./\\-])(?:control-core|hmi-client|dxf-editor|dxf-pipeline|simulation-engine|apps[/\\]dxf-editor-app)(?:[/\\]|\\b)'
+
+  - id: refactor.guard.hmi-no-runtime-internal-paths
+    message: "apps/hmi-app must consume runtime via launcher/client/protocol/public entrypoints, not runtime-service or transport-gateway internals."
+    severity: ERROR
+    languages:
+      - generic
+    paths:
+      include:
+        - /apps/hmi-app/src/**/*.py
+        - /apps/hmi-app/scripts/**/*.ps1
+        - /apps/hmi-app/run.ps1
+      exclude:
+        - /docs/**
+        - /tests/reports/**
+    pattern-regex: 'apps[/\\](?:runtime-service[/\\](?:bootstrap|container|factories|runtime|security)|runtime-gateway[/\\]transport-gateway[/\\](?:src|include|docs)|planner-cli[/\\](?:CommandHandlers|main\\.cpp))'
+
+  - id: refactor.guard.apps-no-module-internal-paths
+    message: "apps/* must not reach into modules/* internal/private/detail/impl implementation paths."
+    severity: ERROR
+    languages:
+      - generic
+    paths:
+      include:
+        - /apps/**/*.py
+        - /apps/**/*.ps1
+        - /apps/**/*.cpp
+        - /apps/**/*.cc
+        - /apps/**/*.cxx
+        - /apps/**/*.h
+        - /apps/**/*.hpp
+        - /apps/**/CMakeLists.txt
+      exclude:
+        - /docs/**
+        - /tests/reports/**
+    pattern-regex: 'modules[/\\][^"''\\s]+[/\\](?:internal|private|detail|impl)(?:[/\\]|\\b)'
+
+  - id: refactor.guard.shared-no-apps-reverse-dependency
+    message: "shared/kernel and shared/contracts production surfaces must not depend on apps/* paths or entrypoints."
+    severity: ERROR
+    languages:
+      - generic
+    paths:
+      include:
+        - /shared/kernel/**
+        - /shared/contracts/**
+        - /shared/CMakeLists.txt
+      exclude:
+        - /shared/testing/**
+        - /shared/**/tests/**
+        - /shared/**/README.md
+        - /shared/**/docs/**
+        - /docs/**
+        - /tests/reports/**
+    pattern-regex: '(?<![A-Za-z0-9_./\\-])apps[/\\]'
+
+  - id: refactor.guard.no-legacy-named-runtime-config-paths
+    message: "Validation/config/runtime entry files must not introduce new legacy/compat/old/v1/deprecated/shim/bridge/temp path segments."
+    severity: ERROR
+    languages:
+      - generic
+    paths:
+      include:
+        - /apps/*/run.ps1
+        - /apps/hmi-app/scripts/**
+        - /scripts/build/**
+        - /scripts/validation/**
+        - /config/**
+        - /deploy/**
+      exclude:
+        - /scripts/migration/**
+        - /docs/**
+        - /tests/reports/**
+        - /scripts/validation/semgrep/**
+    pattern-regex: '(?:^|[\\s"''=])(?:legacy|compat|old|v1|deprecated|shim|bridge|temp)[/\\][A-Za-z0-9_.-]+'

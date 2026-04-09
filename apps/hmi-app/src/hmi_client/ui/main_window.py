@@ -60,11 +60,11 @@ from client import (
     load_supervisor_policy_from_env,
     normalize_launch_mode,
 )
+from hmi_application.adapters.qt_workers import PreviewSnapshotWorker
 from hmi_application.preview_session import (
     MotionPreviewMeta,
     PreviewDiagnosticNotice,
     PreviewSessionOwner,
-    PreviewSnapshotWorker,
 )
 from client.auth import AuthManager
 from .dxf_default_paths import build_default_dxf_candidates
@@ -1772,8 +1772,7 @@ class MainWindow(QMainWindow):
             if widget is not None:
                 widget.setEnabled(ui_state.allow_online_actions)
         if hasattr(self, "_production_tab"):
-            # 离线模式仍需允许 DXF 加载、离线预览和本地回放；仅在线动作按钮受 capability 门控。
-            self._production_tab.setEnabled(True)
+            self._production_tab.setEnabled(ui_state.allow_online_actions)
         if hasattr(self, "_system_panel"):
             self._system_panel.setEnabled(ui_state.system_panel_enabled)
         if hasattr(self, "_stop_btn"):

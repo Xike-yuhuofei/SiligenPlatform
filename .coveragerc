@@ -1,0 +1,19 @@
+[run]
+branch = True
+parallel = False
+relative_files = True
+source =
+    hmi_client
+    hmi_application
+    engineering_data
+omit =
+    */tests/*
+    */__pycache__/*
+
+[report]
+show_missing = True
+skip_empty = True
+precision = 2
+
+[html]
+title = SiligenSuite Python Branch Coverage

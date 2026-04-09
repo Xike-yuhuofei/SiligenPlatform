@@ -1,7 +1,7 @@
 {
   "catalog_meta": {
     "catalog_id": "legacy-fact-catalog",
-    "catalog_version": "1.0.0",
+    "catalog_version": "1.1.0",
     "repo_id": "SS-dispense-align",
     "baseline_date": "2026-03-26",
     "status": "active",
@@ -144,7 +144,7 @@
       "root_id": "ROOT-009",
       "path": "deploy",
       "classification": "effective-canonical",
-      "presence_policy": "allowed",
+      "presence_policy": "forbidden",
       "impl_owner_policy": "forbidden",
       "entry_role": "none",
       "content_constraint": "deployment-only",
@@ -224,41 +224,41 @@
       "root_id": "ROOT-017",
       "path": "packages",
       "classification": "migration-source",
-      "presence_policy": "allowed",
+      "presence_policy": "forbidden",
       "impl_owner_policy": "forbidden",
       "entry_role": "none",
       "content_constraint": "migration-history-only",
-      "notes": "Historical package root; must not return as default owner or entry."
+      "notes": "Historical package root; must stay physically absent from the active workspace."
     },
     {
       "root_id": "ROOT-018",
       "path": "integration",
       "classification": "migration-source",
-      "presence_policy": "allowed",
+      "presence_policy": "forbidden",
       "impl_owner_policy": "forbidden",
       "entry_role": "none",
       "content_constraint": "migration-history-only",
-      "notes": "Historical integration root; must not return as default owner or entry."
+      "notes": "Historical integration root; only tests/integration remains canonical, repository root integration/ must stay absent."
     },
     {
       "root_id": "ROOT-019",
       "path": "tools",
       "classification": "migration-source",
-      "presence_policy": "allowed",
+      "presence_policy": "forbidden",
       "impl_owner_policy": "forbidden",
       "entry_role": "compat-wrapper-entry",
       "content_constraint": "wrapper-only",
-      "notes": "Historical tools root; current automation must live under scripts."
+      "notes": "Historical tools root; current automation must live under scripts and tools/ must stay absent."
     },
     {
       "root_id": "ROOT-020",
       "path": "examples",
       "classification": "migration-source",
-      "presence_policy": "allowed",
+      "presence_policy": "forbidden",
       "impl_owner_policy": "forbidden",
       "entry_role": "none",
       "content_constraint": "migration-history-only",
-      "notes": "Historical examples root; canonical reusable samples belong in samples."
+      "notes": "Historical examples root; root-level examples/ must stay absent while module-local examples remain canonical."
     },
     {
       "root_id": "ROOT-101",
@@ -621,27 +621,6 @@
       ]
     },
     {
-      "exception_id": "EXC-903",
-      "status": "active",
-      "linked_residual_ids": [
-        "RES-001",
-        "RES-004"
-      ],
-      "allowed_locations": [
-        "tools",
-        "shared/testing/test-kit/src/test_kit/validation_layers.py",
-        "shared/testing/test-kit/src/test_kit/workspace_validation.py",
-        "scripts/build/build-validation.ps1"
-      ],
-      "owner_scope": "shared/testing",
-      "justification": "L0 static gate requires a single workspace-level mock discipline checker under tools/testing while the rest of the legacy tools root remains forbidden.",
-      "exit_condition": "Remove once the checker is relocated to the canonical automation root and all references are cut over.",
-      "reference_ids": [
-        "REF-003",
-        "REF-004"
-      ]
-    },
-    {
       "exception_id": "EXC-904",
       "status": "active",
       "linked_residual_ids": [
@@ -696,6 +675,7 @@
         ".ps1",
         ".cmake",
         ".json",
+        ".ini",
         ".toml",
         ".yaml",
         ".yml",
@@ -725,6 +705,7 @@
         "scripts/migration/legacy_fact_catalog.json",
         "scripts/migration/legacy-exit-checks.py",
         "scripts/migration/validate_workspace_layout.py",
+        "scripts/validation/semgrep/arch-rules.yml",
         "tests/contracts/test_bridge_exit_contract.py"
       ],
       "fail_on_decisions": [

@@ -149,7 +149,7 @@ VALIDATION_LAYERS: dict[str, ValidationLayerDefinition] = {
             "ci.ps1",
             "scripts/validation/run-local-validation-gate.ps1",
             "pyrightconfig.json",
-            "tools/testing/check_no_loose_mock.py",
+            "scripts/testing/check_no_loose_mock.py",
         ),
         allowed_environments=("offline", "ci"),
         upgrade_prerequisites=(),
