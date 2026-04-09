@@ -105,4 +105,3 @@ Result<CreateDraftVersionResponse> CreateDraftVersionUseCase::Execute(const Crea
 }
 
 }  // namespace Siligen::Application::UseCases::Recipes
-

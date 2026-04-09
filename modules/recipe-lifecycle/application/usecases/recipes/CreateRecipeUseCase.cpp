@@ -76,4 +76,3 @@ Result<CreateRecipeResponse> CreateRecipeUseCase::Execute(const CreateRecipeRequ
 }
 
 }  // namespace Siligen::Application::UseCases::Recipes
-

@@ -81,4 +81,3 @@ Result<UpdateDraftVersionResponse> UpdateDraftVersionUseCase::Execute(const Upda
 }
 
 }  // namespace Siligen::Application::UseCases::Recipes
-
