@@ -56,36 +56,33 @@ The text the user typed after `/speckit.specify` in the triggering message **is*
 
 Given that feature description, do this:
 
-1. **Generate a concise short name** (2-4 words) for the branch:
-   - Analyze the feature description and extract the most meaningful keywords
-   - Create a 2-4 word short name that captures the essence of the feature
-   - Use action-noun format when possible (e.g., "add-user-auth", "fix-payment-bug")
-   - Preserve technical terms and acronyms (OAuth2, API, JWT, etc.)
-   - Keep it concise but descriptive enough to understand the feature at a glance
-   - Examples:
-     - "I want to add user authentication" → "user-auth"
-     - "Implement OAuth2 integration for the API" → "oauth2-api-integration"
-     - "Create a dashboard for analytics" → "analytics-dashboard"
-     - "Fix payment processing timeout bug" → "fix-payment-timeout"
+1. **Derive compliant branch metadata** before creating the feature branch:
+   - Infer `Type` from the requested work:
+     - new capability or workflow -> `feat`
+     - bug or regression fix -> `fix`
+     - refactor or owner-surface repair -> `refactor`
+     - tests only -> `test`
+     - docs only -> `docs`
+     - tooling / maintenance -> `chore`
+   - Infer `Scope` from the owner module or app most directly responsible for the change (for example `hmi`, `runtime`, `gateway`, `workflow`, `planner`, `docs`).
+   - Use an explicit task ID as `Ticket` when the user or current context provides one; otherwise use `NOISSUE` temporarily.
+   - Generate a concise `ShortName` (2-4 words) that captures the feature intent:
+     - Use action-noun format when possible (for example `user-auth`, `fix-payment-timeout`)
+     - Preserve technical terms and acronyms (OAuth2, API, JWT, etc.)
+     - Keep it concise but descriptive enough to understand the feature at a glance
 
-2. **Create the feature branch** by running the script with `--short-name` (and `--json`). In sequential mode, do NOT pass `--number` — the script auto-detects the next available number. In timestamp mode, the script generates a `YYYYMMDD-HHMMSS` prefix automatically:
+2. **Create the feature branch** by running the PowerShell script once with `-Json`, `-Type`, `-Scope`, `-Ticket`, and `-ShortName`.
 
-   **Branch numbering mode**: Before running the script, check if `.specify/init-options.json` exists and read the `branch_numbering` value.
-   - If `"timestamp"`, add `--timestamp` (Bash) or `-Timestamp` (PowerShell) to the script invocation
-   - If `"sequential"` or absent, do not add any extra flag (default behavior)
-
-   - Bash example: `.specify/scripts/bash/create-new-feature.sh "$ARGUMENTS" --json --short-name "user-auth" "Add user authentication"`
-   - Bash (timestamp): `.specify/scripts/bash/create-new-feature.sh "$ARGUMENTS" --json --timestamp --short-name "user-auth" "Add user authentication"`
-   - PowerShell example: `.specify/scripts/bash/create-new-feature.sh "$ARGUMENTS" -Json -ShortName "user-auth" "Add user authentication"`
-   - PowerShell (timestamp): `.specify/scripts/bash/create-new-feature.sh "$ARGUMENTS" -Json -Timestamp -ShortName "user-auth" "Add user authentication"`
+   - PowerShell example:
+     `.specify/scripts/powershell/create-new-feature.ps1 -Json -Type feat -Scope hmi -Ticket TASK-123 -ShortName "user-auth" "Add user authentication"`
 
    **IMPORTANT**:
-   - Do NOT pass `--number` — the script determines the correct next number automatically
-   - Always include the JSON flag (`--json` for Bash, `-Json` for PowerShell) so the output can be parsed reliably
+   - Do NOT read or rely on `.specify/init-options.json` `branch_numbering`; this repository constitution forbids legacy sequential or timestamp-based branch creation for new work
+   - Do NOT pass `-Number`; the script rejects it
+   - Always include `-Json` so the output can be parsed reliably
    - You must only ever run this script once per feature
-   - The JSON is provided in the terminal as output - always refer to it to get the actual content you're looking for
-   - The JSON output will contain BRANCH_NAME and SPEC_FILE paths
-   - For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot")
+   - The JSON output will contain `BRANCH_NAME`, `SPEC_FILE`, `SPEC_PATH`, and `FEATURE_REF`
+   - For single quotes in args like `I'm Groot`, use quoting that is valid for the active shell
 
 3. Load `.specify/templates/spec-template.md` to understand required sections.
 
