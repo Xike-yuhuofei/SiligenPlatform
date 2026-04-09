@@ -1130,7 +1130,7 @@ class MainWindow(QMainWindow):
         axis_layout = QGridLayout(axis_group)
         axis_layout.setSpacing(10)
 
-        headers = ["轴", "位置", "速度", "使能", "已回零"]
+        headers = ["轴", "位置", "速度", "使能", "已建立零点"]
         for col, header in enumerate(headers):
             lbl = QLabel(header)
             lbl.setProperty("role", "table-header")
