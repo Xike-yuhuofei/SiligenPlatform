@@ -57,15 +57,14 @@ from .startup_sequence import (
     build_offline_launch_result,
     LaunchResult,
     LaunchMode,
-    RecoveryWorker,
     StartupResult,
-    StartupWorker,
     launch_result_from_snapshot,
     load_supervisor_policy_from_env,
     normalize_launch_mode,
     run_recovery_action,
     run_launch_sequence,
 )
+from hmi_application.adapters.qt_workers import RecoveryWorker, StartupWorker
 
 __all__ = [
     "TcpClient",

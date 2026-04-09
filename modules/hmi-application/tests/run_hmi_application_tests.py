@@ -5,12 +5,14 @@ import sys
 import unittest
 from pathlib import Path
 
+from bootstrap import ensure_hmi_application_test_paths
 
 TEST_ROOT = Path(__file__).resolve().parent
 
 
 def main() -> int:
     sys.path.insert(0, str(TEST_ROOT))
+    ensure_hmi_application_test_paths()
     os.chdir(TEST_ROOT)
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()

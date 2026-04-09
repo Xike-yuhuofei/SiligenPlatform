@@ -1,104 +1,12 @@
-from .preview_gate import (
-    DispensePreviewGate,
-    PreviewGateDecision,
-    PreviewGateState,
-    PreviewSnapshotMeta,
-    StartBlockReason,
-)
-from .launch_state import (
-    LaunchUiState,
-    RecoveryActionDecision,
-    RecoveryControlsState,
-    RuntimeDegradationResult,
-    RuntimeRequalificationResult,
-    build_launch_ui_state,
-    build_online_capability_message,
-    build_recovery_action_decision,
-    build_recovery_finished_message,
-    build_runtime_degradation_result,
-    build_startup_error_message,
-    detect_runtime_degradation_result,
-    detect_runtime_requalification_result,
-)
-from .preview_session import (
-    PreflightBlockReason,
-    PreflightDecision,
-    PreviewConfirmResult,
-    PreviewPayloadResult,
-    PreviewSessionOwner,
-    PreviewSessionState,
-    PreviewSnapshotWorker,
-)
-from .startup import (
-    build_offline_launch_result,
-    LaunchMode,
-    LaunchResult,
-    RecoveryWorker,
-    StartupResult,
-    StartupWorker,
-    launch_result_from_snapshot,
-    load_supervisor_policy_from_env,
-    normalize_launch_mode,
-    run_launch_sequence,
-    run_recovery_action,
-)
-from .launch_supervision_contract import (
-    FailureCode,
-    FailureStage,
-    RecoveryAction,
-    SessionSnapshot,
-    SessionStageEvent,
-    StageEventType,
-    is_online_ready,
-    snapshot_timestamp,
-)
-from .launch_supervision_session import SupervisorPolicy, SupervisorSession
+"""M11 HMI application package.
 
-__all__ = [
-    "DispensePreviewGate",
-    "FailureCode",
-    "FailureStage",
-    "LaunchUiState",
-    "LaunchMode",
-    "LaunchResult",
-    "PreflightBlockReason",
-    "PreflightDecision",
-    "PreviewGateDecision",
-    "PreviewGateState",
-    "PreviewConfirmResult",
-    "PreviewPayloadResult",
-    "PreviewSessionOwner",
-    "PreviewSessionState",
-    "PreviewSnapshotMeta",
-    "PreviewSnapshotWorker",
-    "RecoveryAction",
-    "RecoveryActionDecision",
-    "RecoveryControlsState",
-    "RecoveryWorker",
-    "RuntimeDegradationResult",
-    "RuntimeRequalificationResult",
-    "SessionSnapshot",
-    "SessionStageEvent",
-    "StageEventType",
-    "StartBlockReason",
-    "StartupResult",
-    "StartupWorker",
-    "SupervisorPolicy",
-    "SupervisorSession",
-    "build_launch_ui_state",
-    "build_offline_launch_result",
-    "build_online_capability_message",
-    "build_recovery_action_decision",
-    "build_recovery_finished_message",
-    "build_runtime_degradation_result",
-    "build_startup_error_message",
-    "detect_runtime_degradation_result",
-    "detect_runtime_requalification_result",
-    "is_online_ready",
-    "launch_result_from_snapshot",
-    "load_supervisor_policy_from_env",
-    "normalize_launch_mode",
-    "run_launch_sequence",
-    "run_recovery_action",
-    "snapshot_timestamp",
-]
+Import owner seams from explicit submodules such as:
+- `hmi_application.preview_session`
+- `hmi_application.startup`
+- `hmi_application.launch_state`
+- `hmi_application.launch_supervision_session`
+- `hmi_application.contracts.launch_supervision_contract`
+- `hmi_application.adapters.qt_workers`
+"""
+
+__all__: list[str] = []

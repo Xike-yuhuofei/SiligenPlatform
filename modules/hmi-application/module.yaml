@@ -7,5 +7,5 @@ allowed_dependencies:
   - workflow/contracts
   - runtime-execution/contracts
   - shared
-uniform_skeleton_ready: true
-notes: hmi 业务 owner 在模块内，apps/hmi-app 仅保留宿主职责；live 实现与构建入口不得回落到 bridge 根
+uniform_skeleton_ready: false
+notes: stage-3 cleanup中；live build 仅冻结 application/tests，launch_supervision contract已迁入 hmi_application.contracts.*，状态机/运行态 helper 已拆到包内 domain/services/adapters，顶层 contracts/domain/services/adapters/examples 仍为非live占位目录

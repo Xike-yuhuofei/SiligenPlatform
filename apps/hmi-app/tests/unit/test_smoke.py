@@ -13,8 +13,7 @@ class SmokeTest(unittest.TestCase):
             project_root / 'src' / 'hmi_client' / 'client' / 'gateway_launch.py',
             project_root / 'src' / 'hmi_client' / 'client' / 'launch_supervision_contract.py',
             project_root / 'src' / 'hmi_client' / 'client' / 'launch_supervision_session.py',
-            project_root / 'src' / 'hmi_client' / 'client' / 'supervisor_contract.py',
-            project_root / 'src' / 'hmi_client' / 'client' / 'supervisor_session.py',
+            project_root / 'src' / 'hmi_client' / 'client' / 'startup_sequence.py',
         ]
         for candidate in candidates:
             self.assertTrue(candidate.exists(), f'missing file: {candidate}')
