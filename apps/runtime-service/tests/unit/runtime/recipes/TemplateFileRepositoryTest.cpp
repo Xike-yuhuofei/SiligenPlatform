@@ -1,6 +1,6 @@
 #include "runtime/recipes/TemplateFileRepository.h"
 
-#include "domain/recipes/value-objects/RecipeTypes.h"
+#include "recipe_lifecycle/domain/recipes/value-objects/RecipeTypes.h"
 #include "shared/types/Error.h"
 
 #include <gtest/gtest.h>

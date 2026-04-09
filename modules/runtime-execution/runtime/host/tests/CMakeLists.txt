@@ -31,7 +31,6 @@ target_link_libraries(siligen_runtime_host_unit_tests PRIVATE
     siligen_application_motion
     siligen_device_adapters
     siligen_device_contracts
-    siligen_coordinate_alignment_domain_machine
     siligen_workflow_domain_headers
     siligen_shared
     siligen_types

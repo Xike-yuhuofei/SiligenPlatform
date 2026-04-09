@@ -118,27 +118,29 @@ MultiCardMotionAdapter::AxisFeedbackSnapshot MultiCardMotionAdapter::ReadAxisFee
     double prf_pos = 0.0;
     snapshot.profile_position_ret = hardware_wrapper_->MC_GetPrfPos(sdk_axis, &prf_pos);
     if (snapshot.profile_position_ret == 0) {
-        snapshot.profile_position_mm = static_cast<float>(unit_converter_.PulsesToPosition(axis, static_cast<long>(prf_pos)));
+        snapshot.profile_position_mm = unit_converter_.PulseToMm(static_cast<int32>(prf_pos));
     }
 
     double enc_pos = 0.0;
     snapshot.encoder_position_ret = hardware_wrapper_->MC_GetAxisEncPos(sdk_axis, &enc_pos);
     if (snapshot.encoder_position_ret == 0) {
-        snapshot.encoder_position_mm = static_cast<float>(unit_converter_.PulsesToPosition(axis, static_cast<long>(enc_pos)));
+        snapshot.encoder_position_mm = unit_converter_.PulseToMm(static_cast<int32>(enc_pos));
     }
 
     double prf_vel = 0.0;
     unsigned long prf_clock = 0;
     snapshot.profile_velocity_ret = hardware_wrapper_->MC_GetAxisPrfVel(sdk_axis, &prf_vel, 1, &prf_clock);
     if (snapshot.profile_velocity_ret == 0) {
-        snapshot.profile_velocity_mm_s = static_cast<float>(unit_converter_.PulsePerMsToVelocity(axis, prf_vel));
+        snapshot.profile_velocity_mm_s =
+            unit_converter_.VelocityPSToMmS(prf_vel * Units::PULSE_PER_SEC_TO_MS);
     }
 
     double enc_vel = 0.0;
     unsigned long enc_clock = 0;
     snapshot.encoder_velocity_ret = hardware_wrapper_->MC_GetAxisEncVel(sdk_axis, &enc_vel, 1, &enc_clock);
     if (snapshot.encoder_velocity_ret == 0) {
-        snapshot.encoder_velocity_mm_s = static_cast<float>(unit_converter_.PulsePerMsToVelocity(axis, enc_vel));
+        snapshot.encoder_velocity_mm_s =
+            unit_converter_.VelocityPSToMmS(enc_vel * Units::PULSE_PER_SEC_TO_MS);
     }
 
     return snapshot;
@@ -253,8 +255,7 @@ void MultiCardMotionAdapter::LogAxisSnapshot(const std::string& tag, short axis,
     const bool soft_neg = (hw_status & AXIS_STATUS_NEG_SOFT_LIMIT) != 0;
     const bool follow_err = (hw_status & AXIS_STATUS_FOLLOW_ERR) != 0;
 
-    const double pulses_per_mm = unit_converter_.GetPulsesPerMm(axis);
-    const double cmd_mm = pulses_per_mm > 0.0 ? static_cast<double>(cmd_pos) / pulses_per_mm : 0.0;
+    const double cmd_mm = unit_converter_.PulseToMm(static_cast<int32>(cmd_pos));
     const double prf_mm = feedback.profile_position_mm;
     const double enc_mm = feedback.encoder_position_mm;
     const double prf_vel_mm_s = feedback.profile_velocity_mm_s;

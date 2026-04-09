@@ -24,7 +24,6 @@ if(NOT TARGET siligen_spdlog_adapter AND EXISTS "${SILIGEN_TRACE_DIAGNOSTICS_SOU
 
     target_include_directories(siligen_spdlog_adapter PUBLIC
         "${SILIGEN_TRACE_DIAGNOSTICS_SOURCE_ROOT}"
-        ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
     )
     target_link_libraries(siligen_spdlog_adapter PUBLIC
         siligen_traceability_spdlog_headers
@@ -35,25 +34,33 @@ if(NOT TARGET siligen_spdlog_adapter AND EXISTS "${SILIGEN_TRACE_DIAGNOSTICS_SOU
     target_compile_features(siligen_spdlog_adapter PUBLIC cxx_std_17)
 endif()
 
-if(NOT TARGET siligen_trace_diagnostics_application_public AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/application/CMakeLists.txt")
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/application/CMakeLists.txt")
+    message(FATAL_ERROR
+        "trace-diagnostics canonical application CMake missing: "
+        "${CMAKE_CURRENT_SOURCE_DIR}/application/CMakeLists.txt"
+    )
+endif()
+
+if(NOT TARGET siligen_trace_diagnostics_application_public)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/application"
         "${CMAKE_BINARY_DIR}/modules/trace-diagnostics/application"
     )
 endif()
 
+if(NOT TARGET siligen_trace_diagnostics_application_public)
+    message(FATAL_ERROR
+        "trace-diagnostics canonical application public target was not created: "
+        "siligen_trace_diagnostics_application_public"
+    )
+endif()
+
 if(NOT TARGET siligen_module_trace_diagnostics)
     add_library(siligen_module_trace_diagnostics INTERFACE)
 endif()
-if(TARGET siligen_trace_diagnostics_application_public)
-    target_link_libraries(siligen_module_trace_diagnostics INTERFACE
-        siligen_trace_diagnostics_application_public
-    )
-else()
-    target_link_libraries(siligen_module_trace_diagnostics INTERFACE
-        siligen_spdlog_adapter
-    )
-endif()
+target_link_libraries(siligen_module_trace_diagnostics INTERFACE
+    siligen_trace_diagnostics_application_public
+)
 if(TARGET siligen_trace_diagnostics_contracts_public)
     target_link_libraries(siligen_module_trace_diagnostics INTERFACE
         siligen_trace_diagnostics_contracts_public

@@ -9,6 +9,7 @@
 #include <fstream>
 #include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -19,7 +20,6 @@
 #endif
 #define private public
 #include "application/ports/dispensing/PlanningPortAdapters.h"
-#include "application/ports/dispensing/WorkflowExecutionPortAdapters.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "runtime_execution/contracts/dispensing/IDispensingProcessPort.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
@@ -46,11 +46,11 @@ using Siligen::Application::UseCases::Dispensing::PreparePlanResponse;
 using Siligen::Application::UseCases::Dispensing::PreparePlanRuntimeOverrides;
 using Siligen::Application::UseCases::Dispensing::RuntimeJobStatusResponse;
 using Siligen::Application::UseCases::Dispensing::StartJobResponse;
-using Siligen::Application::UseCases::Dispensing::IUploadFilePort;
 using Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort;
 using Siligen::Application::Services::Dispensing::PlanningArtifactExportRequest;
 using Siligen::Application::Services::Dispensing::PlanningArtifactExportResult;
 using Siligen::Application::Services::DXF::DxfPbPreparationService;
+using Siligen::JobIngest::Contracts::IUploadFilePort;
 using Siligen::Device::Contracts::Commands::DeviceConnection;
 using Siligen::Device::Contracts::Ports::DeviceConnectionPort;
 using Siligen::Device::Contracts::State::DeviceConnectionSnapshot;
@@ -84,11 +84,68 @@ std::shared_ptr<T> MakeDummyShared() {
     return std::shared_ptr<T>(reinterpret_cast<T*>(0x1), [](T*) {});
 }
 
-class LinePathSourceStub final : public Siligen::Domain::Trajectory::Ports::IPathSourcePort {
+class RuntimeWorkflowExecutionPortAdapter final
+    : public Siligen::Application::Ports::Dispensing::IWorkflowExecutionPort {
+public:
+    explicit RuntimeWorkflowExecutionPortAdapter(std::shared_ptr<DispensingExecutionUseCase> use_case)
+        : use_case_(std::move(use_case)) {
+        if (!use_case_) {
+            throw std::invalid_argument("RuntimeWorkflowExecutionPortAdapter: use_case cannot be null");
+        }
+    }
+
+    Result<Siligen::Application::Ports::Dispensing::WorkflowJobId> StartJob(
+        const Siligen::Application::Ports::Dispensing::WorkflowRuntimeStartJobRequest& request) override {
+        Siligen::Application::UseCases::Dispensing::RuntimeStartJobRequest runtime_request;
+        runtime_request.plan_id = request.plan_id;
+        runtime_request.plan_fingerprint = request.plan_fingerprint;
+        runtime_request.target_count = request.target_count;
+        runtime_request.execution_request.execution_package = request.execution_request.execution_package;
+        runtime_request.execution_request.source_path = request.execution_request.source_path;
+        runtime_request.execution_request.use_hardware_trigger = request.execution_request.use_hardware_trigger;
+        runtime_request.execution_request.dry_run = request.execution_request.dry_run;
+        runtime_request.execution_request.machine_mode = request.execution_request.machine_mode;
+        runtime_request.execution_request.execution_mode = request.execution_request.execution_mode;
+        runtime_request.execution_request.output_policy = request.execution_request.output_policy;
+        runtime_request.execution_request.max_jerk = request.execution_request.max_jerk;
+        runtime_request.execution_request.arc_tolerance_mm = request.execution_request.arc_tolerance_mm;
+        runtime_request.execution_request.dispensing_speed_mm_s = request.execution_request.dispensing_speed_mm_s;
+        runtime_request.execution_request.dry_run_speed_mm_s = request.execution_request.dry_run_speed_mm_s;
+        runtime_request.execution_request.rapid_speed_mm_s = request.execution_request.rapid_speed_mm_s;
+        runtime_request.execution_request.acceleration_mm_s2 = request.execution_request.acceleration_mm_s2;
+        runtime_request.execution_request.velocity_trace_enabled = request.execution_request.velocity_trace_enabled;
+        runtime_request.execution_request.velocity_trace_interval_ms =
+            request.execution_request.velocity_trace_interval_ms;
+        runtime_request.execution_request.velocity_trace_path = request.execution_request.velocity_trace_path;
+        runtime_request.execution_request.velocity_guard_enabled = request.execution_request.velocity_guard_enabled;
+        runtime_request.execution_request.velocity_guard_ratio = request.execution_request.velocity_guard_ratio;
+        runtime_request.execution_request.velocity_guard_abs_mm_s = request.execution_request.velocity_guard_abs_mm_s;
+        runtime_request.execution_request.velocity_guard_min_expected_mm_s =
+            request.execution_request.velocity_guard_min_expected_mm_s;
+        runtime_request.execution_request.velocity_guard_grace_ms = request.execution_request.velocity_guard_grace_ms;
+        runtime_request.execution_request.velocity_guard_interval_ms =
+            request.execution_request.velocity_guard_interval_ms;
+        runtime_request.execution_request.velocity_guard_max_consecutive =
+            request.execution_request.velocity_guard_max_consecutive;
+        runtime_request.execution_request.velocity_guard_stop_on_violation =
+            request.execution_request.velocity_guard_stop_on_violation;
+        return use_case_->StartJob(runtime_request);
+    }
+
+private:
+    std::shared_ptr<DispensingExecutionUseCase> use_case_;
+};
+
+std::shared_ptr<Siligen::Application::Ports::Dispensing::IWorkflowExecutionPort> CreateRuntimeWorkflowExecutionPort(
+    std::shared_ptr<DispensingExecutionUseCase> use_case) {
+    return std::make_shared<RuntimeWorkflowExecutionPortAdapter>(std::move(use_case));
+}
+
+class LinePathSourceStub final : public Siligen::ProcessPath::Contracts::IPathSourcePort {
    public:
-    Result<Siligen::Domain::Trajectory::Ports::PathSourceResult> LoadFromFile(const std::string&) override {
-        using Siligen::Domain::Trajectory::Ports::PathPrimitiveMeta;
-        using Siligen::Domain::Trajectory::Ports::PathSourceResult;
+    Result<Siligen::ProcessPath::Contracts::PathSourceResult> LoadFromFile(const std::string&) override {
+        using Siligen::ProcessPath::Contracts::PathPrimitiveMeta;
+        using Siligen::ProcessPath::Contracts::PathSourceResult;
         using Siligen::ProcessPath::Contracts::Primitive;
 
         PathSourceResult result;
@@ -99,18 +156,18 @@ class LinePathSourceStub final : public Siligen::Domain::Trajectory::Ports::IPat
     }
 };
 
-class SlowCountingLinePathSourceStub final : public Siligen::Domain::Trajectory::Ports::IPathSourcePort {
+class SlowCountingLinePathSourceStub final : public Siligen::ProcessPath::Contracts::IPathSourcePort {
    public:
     explicit SlowCountingLinePathSourceStub(
         std::shared_ptr<std::atomic<int>> load_calls,
         std::chrono::milliseconds delay = std::chrono::milliseconds(75))
         : load_calls_(std::move(load_calls)), delay_(delay) {}
 
-    Result<Siligen::Domain::Trajectory::Ports::PathSourceResult> LoadFromFile(const std::string&) override {
+    Result<Siligen::ProcessPath::Contracts::PathSourceResult> LoadFromFile(const std::string&) override {
         load_calls_->fetch_add(1);
         std::this_thread::sleep_for(delay_);
-        using Siligen::Domain::Trajectory::Ports::PathPrimitiveMeta;
-        using Siligen::Domain::Trajectory::Ports::PathSourceResult;
+        using Siligen::ProcessPath::Contracts::PathPrimitiveMeta;
+        using Siligen::ProcessPath::Contracts::PathSourceResult;
         using Siligen::ProcessPath::Contracts::Primitive;
 
         PathSourceResult result;
@@ -287,7 +344,7 @@ std::shared_ptr<PlanningUseCase> CreateRealPlanningUseCase() {
 }
 
 std::shared_ptr<PlanningUseCase> CreatePlanningUseCaseWithPathSourceAndExport(
-    const std::shared_ptr<Siligen::Domain::Trajectory::Ports::IPathSourcePort>& path_source,
+    const std::shared_ptr<Siligen::ProcessPath::Contracts::IPathSourcePort>& path_source,
     const std::shared_ptr<IPlanningArtifactExportPort>& export_port) {
     auto pb_service = std::make_shared<DxfPbPreparationService>();
     return std::make_shared<PlanningUseCase>(
@@ -303,7 +360,7 @@ std::shared_ptr<PlanningUseCase> CreatePlanningUseCaseWithPathSourceAndExport(
 }
 
 std::shared_ptr<PlanningUseCase> CreatePlanningUseCaseWithPathSource(
-    const std::shared_ptr<Siligen::Domain::Trajectory::Ports::IPathSourcePort>& path_source) {
+    const std::shared_ptr<Siligen::ProcessPath::Contracts::IPathSourcePort>& path_source) {
     auto pb_service = std::make_shared<DxfPbPreparationService>();
     return std::make_shared<PlanningUseCase>(
         path_source,
@@ -602,7 +659,7 @@ DispensingWorkflowUseCase CreateUseCase(
     const std::shared_ptr<FakeInterlockSignalPort>& interlock_port,
     std::shared_ptr<DispensingExecutionUseCase> execution_use_case = nullptr) {
     auto execution_port = execution_use_case
-        ? Siligen::Application::Ports::Dispensing::AdaptRuntimeDispensingExecutionUseCase(execution_use_case)
+        ? CreateRuntimeWorkflowExecutionPort(std::move(execution_use_case))
         : MakeDummyShared<Siligen::Application::Ports::Dispensing::IWorkflowExecutionPort>();
     return DispensingWorkflowUseCase(
         MakeDummyShared<IUploadFilePort>(),
@@ -640,7 +697,7 @@ DispensingWorkflowUseCase CreateUseCaseWithPlanningAndExecution(
     return DispensingWorkflowUseCase(
         MakeDummyShared<IUploadFilePort>(),
         planning_use_case,
-        Siligen::Application::Ports::Dispensing::AdaptRuntimeDispensingExecutionUseCase(execution_use_case),
+        CreateRuntimeWorkflowExecutionPort(execution_use_case),
         connection_port,
         motion_state_port,
         homing_port,

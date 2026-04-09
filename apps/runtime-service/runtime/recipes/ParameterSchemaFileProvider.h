@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/recipes/ports/IParameterSchemaPort.h"
+#include "recipe_lifecycle/domain/recipes/ports/IParameterSchemaPort.h"
 
 #include <mutex>
 #include <string>

@@ -1,8 +1,14 @@
 #pragma once
 
-#include "runtime_execution/contracts/system/IEventPublisherPort.h"
+#include "runtime/contracts/system/IEventPublisherPort.h"
+#include "runtime_execution/contracts/motion/IAxisControlPort.h"
+#include "runtime_execution/contracts/motion/IHomingPort.h"
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
+#include "runtime_execution/contracts/motion/IJogControlPort.h"
+#include "runtime_execution/contracts/motion/IMotionConnectionPort.h"
 #include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
+#include "runtime_execution/contracts/motion/IMotionStatePort.h"
+#include "runtime_execution/contracts/motion/IPositionControlPort.h"
 #include "shared/types/LogTypes.h"
 
 #include <memory>
@@ -40,12 +46,6 @@ class IFileStoragePort;
 
 namespace Motion {
 namespace Ports {
-class IAxisControlPort;
-class IHomingPort;
-class IJogControlPort;
-class IMotionConnectionPort;
-class IMotionStatePort;
-class IPositionControlPort;
 class IVelocityProfilePort;
 }  // namespace Ports
 }  // namespace Motion
@@ -77,12 +77,13 @@ class IRecipeBundleSerializerPort;
 }  // namespace Ports
 }  // namespace Recipes
 
-namespace Trajectory {
-namespace Ports {
-class IPathSourcePort;
-}  // namespace Ports
-}  // namespace Trajectory
 }  // namespace Domain
+
+namespace ProcessPath {
+namespace Contracts {
+class IPathSourcePort;
+}  // namespace Contracts
+}  // namespace ProcessPath
 
 namespace Bootstrap {
 
@@ -111,7 +112,7 @@ struct InfrastructureBindings {
     std::shared_ptr<Domain::Dispensing::Ports::ITaskSchedulerPort> task_scheduler_port;
     std::shared_ptr<Domain::System::Ports::IEventPublisherPort> event_port;
     std::shared_ptr<Domain::Safety::Ports::IInterlockSignalPort> interlock_signal_port;
-    std::shared_ptr<Domain::Trajectory::Ports::IPathSourcePort> path_source_port;
+    std::shared_ptr<ProcessPath::Contracts::IPathSourcePort> path_source_port;
     std::shared_ptr<Domain::Recipes::Ports::IRecipeRepositoryPort> recipe_repository;
     std::shared_ptr<Domain::Recipes::Ports::ITemplateRepositoryPort> template_repository;
     std::shared_ptr<Domain::Recipes::Ports::IAuditRepositoryPort> audit_repository;

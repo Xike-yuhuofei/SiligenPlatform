@@ -7,4 +7,4 @@ allowed_dependencies:
   - */contracts
   - shared
 uniform_skeleton_ready: true
-notes: adapters/logging/spdlog 是唯一真实实现承载面；application/contracts 仅暴露 logging bootstrap surface；runtime-host 通过 canonical adapters 根消费日志适配实现
+notes: adapters/logging/spdlog 是唯一真实实现承载面；contracts 同时承接 generic diagnostics sink；application/contracts 仅暴露 logging bootstrap surface；runtime bootstrap 通过 canonical application/contracts surface 消费模块能力，adapter 不对外暴露；hardware-test diagnostics contracts 不在本模块落地

@@ -1,6 +1,6 @@
 #include "runtime/system/DispenserModelMachineExecutionStateBackend.h"
 
-#include "domain/machine/aggregates/DispenserModel.h"
+#include "runtime/system/DispenserModel.h"
 
 #include <gtest/gtest.h>
 
@@ -8,8 +8,8 @@
 
 namespace {
 
-using DispenserModel = Siligen::Domain::Machine::Aggregates::DispenserModel;
-using DispensingTask = Siligen::Domain::Machine::Aggregates::DispensingTask;
+using DispenserModel = Siligen::Runtime::Service::System::DispenserModel;
+using DispensingTask = Siligen::Runtime::Service::System::DispensingTask;
 using CMPTriggerPoint = Siligen::Shared::Types::CMPTriggerPoint;
 using DispenserModelMachineExecutionStateBackend = Siligen::Runtime::Service::System::DispenserModelMachineExecutionStateBackend;
 using MachineExecutionPhase = Siligen::RuntimeExecution::Contracts::System::MachineExecutionPhase;

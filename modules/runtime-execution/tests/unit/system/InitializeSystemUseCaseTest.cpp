@@ -1,4 +1,4 @@
-#include "application/usecases/system/InitializeSystemUseCase.h"
+#include "runtime_execution/application/usecases/system/InitializeSystemUseCase.h"
 
 #include "gtest/gtest.h"
 

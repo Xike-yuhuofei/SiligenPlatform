@@ -1,8 +1,8 @@
 #pragma once
 
-#include "domain/supervision/ports/IEventPublisherPort.h"
-#include "domain/motion/ports/IMotionStatePort.h"
-#include "domain/motion/ports/IPositionControlPort.h"
+#include "runtime/contracts/system/IEventPublisherPort.h"
+#include "runtime_execution/contracts/motion/IMotionStatePort.h"
+#include "runtime_execution/contracts/motion/IPositionControlPort.h"
 #include "shared/types/Result.h"
 
 #include <atomic>

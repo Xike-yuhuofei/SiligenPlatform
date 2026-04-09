@@ -3,6 +3,8 @@ cmake_minimum_required(VERSION 3.20)
 set(RUNTIME_EXECUTION_TEST_INCLUDE_DIRS
     "${CMAKE_SOURCE_DIR}/modules/runtime-execution"
     "${CMAKE_SOURCE_DIR}/modules/runtime-execution/application"
+    "${CMAKE_SOURCE_DIR}/modules/dispense-packaging"
+    "${CMAKE_SOURCE_DIR}/modules/motion-planning/contracts/include"
 )
 
 set(RUNTIME_EXECUTION_UNIT_TEST_SOURCES
@@ -13,6 +15,9 @@ set(RUNTIME_EXECUTION_UNIT_TEST_SOURCES
     domain/motion/JogControllerTest.cpp
     domain/motion/MotionBufferControllerTest.cpp
     domain/safety/EmergencyStopServiceTest.cpp
+    domain/safety/InterlockPolicyTest.cpp
+    domain/safety/SafetyOutputGuardTest.cpp
+    domain/safety/SoftLimitValidatorTest.cpp
     motion/EnsureAxesReadyZeroUseCaseTest.cpp
     motion/HomeAxesUseCaseTest.cpp
     motion/HomingSupportTest.cpp
@@ -36,7 +41,6 @@ endif()
 
 target_link_libraries(siligen_runtime_execution_unit_tests PRIVATE
     siligen_runtime_execution_application_public
-    siligen_workflow_domain_headers
     siligen_shared
     siligen_types
     siligen_utils

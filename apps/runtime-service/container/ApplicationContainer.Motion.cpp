@@ -4,7 +4,7 @@
 #include "runtime_execution/application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
 #include "runtime_execution/application/usecases/motion/homing/HomeAxesUseCase.h"
 #include "runtime_execution/application/usecases/motion/initialization/MotionInitializationUseCase.h"
-#include "motion_planning/application/usecases/motion/interpolation/InterpolationPlanningUseCase.h"
+#include "runtime_execution/application/usecases/motion/interpolation/InterpolationPlanningUseCase.h"
 #include "runtime_execution/application/usecases/motion/manual/ManualMotionControlUseCase.h"
 #include "runtime_execution/application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
 #include "runtime/motion/MotionControlOperationsBridge.h"

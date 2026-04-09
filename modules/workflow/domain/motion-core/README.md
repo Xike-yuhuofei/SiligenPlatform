@@ -8,9 +8,9 @@ Responsibilities:
 - trajectory, interpolation, and safety rules
 
 Current stage:
-- directory and CMake target exist
-- seed interfaces now live under `include/siligen/motion`
-- current compiled implementation is carried by the package-local compatibility mirror under `../../src/domain/motion`, `../../src/domain/trajectory`, and related package application usecases
+- archive/seed-only residue directory
+- no live CMake target remains in the workflow build graph
+- previous safety payload and compatibility target have exited; canonical live consumers must use runtime-owned or motion-planning-owned surfaces instead of reviving this tree
 
 Seed headers:
 - `model/motion_types.h`
@@ -20,8 +20,6 @@ Seed headers:
 - `ports/emergency_port.h`
 - `services/motion_service.h`
 
-Real migrated slice:
-- safety interlock value objects
-- interlock signal port
-- interlock policy evaluation service
-- jog / homing / hard-limit / soft-limit safety helper semantics
+Archived note:
+- historical seed headers may remain only as documentation breadcrumbs for migration history
+- if a future slice needs to revive motion semantics, it must land in the canonical owner module instead of reactivating `modules/workflow/domain/motion-core`

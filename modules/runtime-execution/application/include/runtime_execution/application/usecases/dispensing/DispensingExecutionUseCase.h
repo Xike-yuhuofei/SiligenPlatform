@@ -10,7 +10,7 @@
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "runtime_execution/contracts/motion/IMotionStatePort.h"
 #include "runtime_execution/contracts/safety/IInterlockSignalPort.h"
-#include "runtime_execution/contracts/system/IEventPublisherPort.h"
+#include "runtime/contracts/system/IEventPublisherPort.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
 #include "siligen/device/contracts/ports/device_ports.h"

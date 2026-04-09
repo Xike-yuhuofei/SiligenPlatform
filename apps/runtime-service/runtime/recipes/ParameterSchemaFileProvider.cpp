@@ -1,6 +1,6 @@
 #include "ParameterSchemaFileProvider.h"
 
-#include "domain/recipes/serialization/RecipeJsonSerializer.h"
+#include "recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h"
 #include "shared/types/Error.h"
 #include "shared/interfaces/ILoggingService.h"
 

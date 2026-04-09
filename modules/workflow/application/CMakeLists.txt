@@ -18,6 +18,12 @@ if(NOT TARGET siligen_motion_planning_contracts_public)
         "${CMAKE_BINARY_DIR}/_p/wa_mpc"
     )
 endif()
+if(NOT TARGET siligen_trace_diagnostics_contracts_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../trace-diagnostics/contracts"
+        "${CMAKE_BINARY_DIR}/_p/wa_tdc"
+    )
+endif()
 if(NOT TARGET siligen_motion_planning_application_public)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../../motion-planning/application"
@@ -66,6 +72,12 @@ if(NOT TARGET siligen_device_contracts)
         "${CMAKE_BINARY_DIR}/_p/wa_sdc"
     )
 endif()
+if(NOT TARGET siligen_shared_runtime_contracts)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../shared/contracts/runtime"
+        "${CMAKE_BINARY_DIR}/_p/wa_src"
+    )
+endif()
 
 # Bridge-only: workflow/application 当前仍为迁移期桥接层。
 # 允许保留的跨模块 include/target 仅限既有 owner 模块，禁止继续新增 sibling bridge。
@@ -88,56 +100,8 @@ if(NOT TARGET siligen_workflow_application_headers)
 endif()
 target_include_directories(siligen_workflow_application_headers INTERFACE
     ${SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR}
-    ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
-if(TARGET siligen_job_ingest_contracts)
-    target_link_libraries(siligen_workflow_application_headers INTERFACE
-        siligen_job_ingest_contracts
-    )
-endif()
-if(TARGET siligen_process_path_contracts_public)
-    target_link_libraries(siligen_workflow_application_headers INTERFACE
-        siligen_process_path_contracts_public
-    )
-endif()
-if(TARGET siligen_motion_planning_contracts_public)
-    target_link_libraries(siligen_workflow_application_headers INTERFACE
-        siligen_motion_planning_contracts_public
-    )
-endif()
-if(TARGET siligen_motion_planning_application_headers)
-    target_link_libraries(siligen_workflow_application_headers INTERFACE
-        siligen_motion_planning_application_headers
-    )
-endif()
-if(TARGET siligen_process_planning_contracts_public)
-    target_link_libraries(siligen_workflow_application_headers INTERFACE
-        siligen_process_planning_contracts_public
-    )
-endif()
-if(TARGET siligen_dispense_packaging_application_headers)
-    target_link_libraries(siligen_workflow_application_headers INTERFACE
-        siligen_dispense_packaging_application_headers
-    )
-endif()
-if(TARGET siligen_runtime_execution_application_headers)
-    target_link_libraries(siligen_workflow_application_headers INTERFACE
-        siligen_runtime_execution_application_headers
-    )
-endif()
-if(TARGET siligen_device_contracts)
-    target_link_libraries(siligen_workflow_application_headers INTERFACE
-        siligen_device_contracts
-    )
-endif()
 target_compile_features(siligen_workflow_application_headers INTERFACE cxx_std_17)
-
-# Application层 - 应用协调和用例
-# 本层包含用例实现和依赖注入容器
-
-# 首批独立库: 配方纯业务能力
-# 保留文件IO型导入/导出用例在宿主层,便于后续继续剥离 host runtime。
-add_subdirectory(usecases/recipes)
 
 set(SILIGEN_APPLICATION_PUBLIC_INCLUDE_DIRS
     ${SILIGEN_WORKSPACE_PUBLIC_INCLUDE_DIRS}
@@ -151,6 +115,7 @@ set(SILIGEN_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS
 )
 
 add_library(siligen_application_dispensing STATIC
+    ports/dispensing/PlanningPortAdapters.cpp
     planning-trigger/PlanningUseCase.cpp
     phase-control/DispensingWorkflowUseCase.cpp
 )
@@ -162,14 +127,36 @@ target_include_directories(siligen_application_dispensing PRIVATE
 )
 target_link_libraries(siligen_application_dispensing PUBLIC
     siligen_workflow_application_headers
+    siligen_workflow_contracts_public
+    siligen_workflow_domain_public
     siligen_types
     siligen_utils
     siligen_geometry
     siligen_dispense_packaging_domain_dispensing
 )
+if(TARGET siligen_process_path_contracts_public)
+    target_link_libraries(siligen_application_dispensing PUBLIC
+        siligen_process_path_contracts_public
+    )
+endif()
+if(TARGET siligen_motion_planning_contracts_public)
+    target_link_libraries(siligen_application_dispensing PUBLIC
+        siligen_motion_planning_contracts_public
+    )
+endif()
 if(TARGET siligen_device_contracts)
     target_link_libraries(siligen_application_dispensing PUBLIC
         siligen_device_contracts
+    )
+endif()
+if(TARGET siligen_shared_runtime_contracts)
+    target_link_libraries(siligen_application_dispensing PUBLIC
+        siligen_shared_runtime_contracts
+    )
+endif()
+if(TARGET siligen_runtime_execution_runtime_contracts)
+    target_link_libraries(siligen_application_dispensing PUBLIC
+        siligen_runtime_execution_runtime_contracts
     )
 endif()
 if(TARGET siligen_process_path_application_public)
@@ -203,7 +190,9 @@ if(TARGET siligen_dxf_geometry_application_public)
     )
 endif()
 if(TARGET siligen_runtime_execution_application_public)
-    target_link_libraries(siligen_application_dispensing PUBLIC
+    # runtime planning export wiring is implementation-only and must not leak
+    # back out through the workflow public header bundle.
+    target_link_libraries(siligen_application_dispensing PRIVATE
         siligen_runtime_execution_application_public
     )
 endif()

@@ -216,7 +216,7 @@ Result<void> MultiCardMotionAdapter::StartJog(LogicalAxisId axis_id, int16 direc
     }
 
     // 3. 设置速度（方向编码在速度符号中）
-    double vel_pulse_ms = unit_converter_.VelocityToPulsePerMs(axis, velocity);
+    double vel_pulse_ms = unit_converter_.VelocityMmSToPS(velocity) / Units::PULSE_PER_SEC_TO_MS;
     if (direction < 0) {
         vel_pulse_ms = -vel_pulse_ms;
     }
@@ -361,7 +361,7 @@ Result<void> MultiCardMotionAdapter::StartJogStep(LogicalAxisId axis_id,
     }
 
     // 转换步长到脉冲
-    long step_pulses = unit_converter_.DistanceToPulses(axis, distance);
+    long step_pulses = static_cast<long>(unit_converter_.MmToPulse(distance));
     if (direction < 0) {
         step_pulses = -step_pulses;
     }
@@ -385,7 +385,7 @@ Result<void> MultiCardMotionAdapter::StartJogStep(LogicalAxisId axis_id,
     }
 
     // 设置目标位置和速度
-    double vel_pulse_ms = unit_converter_.VelocityToPulsePerMs(axis, velocity);
+    double vel_pulse_ms = unit_converter_.VelocityMmSToPS(velocity) / Units::PULSE_PER_SEC_TO_MS;
     ret = hardware_wrapper_->MC_SetPos(sdk_axis, target_pos);
     if (ret != 0) {
         return Result<void>(

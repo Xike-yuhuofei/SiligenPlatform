@@ -5,8 +5,7 @@
 #include "application/services/dispensing/WorkflowPlanningAssemblyTypes.h"
 #include "domain/dispensing/value-objects/AuthorityTriggerLayout.h"
 #include "domain/dispensing/value-objects/DispenseCompensationProfile.h"
-#include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
-#include "domain/supervision/ports/IEventPublisherPort.h"
+#include "runtime/contracts/system/IEventPublisherPort.h"
 #include "motion_planning/contracts/MotionPlanningReport.h"
 #include "motion_planning/contracts/InterpolationTypes.h"
 #include "domain/dispensing/contracts/ExecutionPackage.h"
@@ -20,7 +19,7 @@
 #include <string>
 #include <vector>
 
-namespace Siligen::Domain::Trajectory::Ports {
+namespace Siligen::ProcessPath::Contracts {
 class IPathSourcePort;
 }
 
@@ -241,7 +240,7 @@ struct PlanningUseCaseInternalAccess;
 class PlanningUseCase {
 public:
     PlanningUseCase(
-        std::shared_ptr<Siligen::Domain::Trajectory::Ports::IPathSourcePort> path_source,
+        std::shared_ptr<Siligen::ProcessPath::Contracts::IPathSourcePort> path_source,
         std::shared_ptr<Siligen::Application::Ports::Dispensing::IProcessPathBuildPort> process_path_port,
         std::shared_ptr<Siligen::Application::Ports::Dispensing::IMotionPlanningPort> motion_planning_port,
         std::shared_ptr<Siligen::Application::Services::Dispensing::IWorkflowPlanningAssemblyOperations> planning_operations,
@@ -271,7 +270,7 @@ private:
         const PlanningRequest& request,
         const PreparedAuthorityPreview& authority_preview);
 
-    std::shared_ptr<Siligen::Domain::Trajectory::Ports::IPathSourcePort> path_source_;
+    std::shared_ptr<Siligen::ProcessPath::Contracts::IPathSourcePort> path_source_;
     std::shared_ptr<Siligen::Application::Ports::Dispensing::IProcessPathBuildPort> process_path_port_;
     std::shared_ptr<Siligen::Application::Ports::Dispensing::IMotionPlanningPort> motion_planning_port_;
     std::shared_ptr<Siligen::Application::Services::Dispensing::IWorkflowPlanningAssemblyOperations> planning_operations_;

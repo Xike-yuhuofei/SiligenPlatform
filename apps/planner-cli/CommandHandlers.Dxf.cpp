@@ -650,14 +650,14 @@ bool TryReadFileBytes(
 
 bool TryBuildPreviewUploadRequest(
     const std::filesystem::path& input_path,
-    Siligen::Application::UseCases::Dispensing::UploadRequest& request,
+    Siligen::JobIngest::Contracts::UploadRequest& request,
     std::string& error_message) {
     std::vector<uint8_t> file_content;
     if (!TryReadFileBytes(input_path, file_content, error_message)) {
         return false;
     }
 
-    request = Siligen::Application::UseCases::Dispensing::UploadRequest{};
+    request = Siligen::JobIngest::Contracts::UploadRequest{};
     request.file_content = std::move(file_content);
     request.original_filename = input_path.filename().string();
     request.file_size = request.file_content.size();
@@ -934,7 +934,7 @@ int CLICommandHandlers::HandleDXFPreviewSnapshot(const CommandLineConfig& config
         return 1;
     }
 
-    Siligen::Application::UseCases::Dispensing::UploadRequest upload_request;
+    Siligen::JobIngest::Contracts::UploadRequest upload_request;
     std::string build_error;
     if (!TryBuildPreviewUploadRequest(input_path, upload_request, build_error)) {
         std::cout << build_error << std::endl;

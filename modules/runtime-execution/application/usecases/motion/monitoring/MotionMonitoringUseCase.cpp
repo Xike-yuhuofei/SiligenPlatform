@@ -1,6 +1,6 @@
 #define MODULE_NAME "MotionMonitoringUseCase"
 
-#include "MotionMonitoringUseCase.h"
+#include "runtime_execution/application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
 
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"

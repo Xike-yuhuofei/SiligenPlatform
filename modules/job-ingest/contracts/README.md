@@ -5,17 +5,20 @@
 ## 契约范围
 
 - 任务接入阶段的输入对象约束
-- ingest 请求与校验结果的模块内语义约定
-- 对上游 `M1 -> M2` 交接所需的最小字段口径
+- ingest 请求与上传结果的稳定公开面
+- 对 workflow 交接文件事实所需的最小字段口径
+- authority artifact 固定为 `UploadResponse`；`UploadRequest` 仅是 ingress 输入 DTO
 
 ## 边界约束
 
-- 仅放置 `job-ingest` owner 专属契约，不放跨模块公共稳定契约。
+- 当前 source-bearing contract 仅包括 `UploadRequest`、`UploadResponse` 与 `IUploadFilePort`。
+- 不在本模块 contracts 中继续维护第二套 `IFileStoragePort` / `FileData` seam。
 - 跨模块可复用且长期稳定的应用侧契约应维护在 `shared/contracts/application/`。
-- 禁止在模块外再维护第二套 `M1` owner 专属契约事实。
+- 当前 contracts namespace 已统一为 `Siligen::JobIngest::Contracts`。
+- 不在 contracts 中重新声明 storage / PB preparation owner；相关 foreign concrete 只允许通过 application ports 被适配。
 
 ## 当前对照面
 
-- `shared/contracts/application/commands/`
-- `shared/contracts/application/queries/`
-- `shared/contracts/application/models/`
+- `modules/workflow/application/include/application/phase-control/DispensingWorkflowUseCase.h`
+- `apps/runtime-gateway/transport-gateway/src/facades/tcp/TcpDispensingFacade.h`
+- `apps/planner-cli/CommandHandlers.Dxf.cpp`

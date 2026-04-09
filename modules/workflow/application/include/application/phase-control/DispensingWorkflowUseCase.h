@@ -4,8 +4,8 @@
 #include "application/planning-trigger/PlanningUseCase.h"
 #include "application/services/dispensing/PreviewSnapshotService.h"
 #include "job_ingest/contracts/dispensing/UploadContracts.h"
-#include "domain/motion/ports/IHomingPort.h"
-#include "domain/motion/ports/IMotionStatePort.h"
+#include "runtime_execution/contracts/motion/IHomingPort.h"
+#include "runtime_execution/contracts/motion/IMotionStatePort.h"
 #include "domain/safety/ports/IInterlockSignalPort.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 #include "shared/types/Error.h"
@@ -29,6 +29,9 @@ namespace Siligen::Application::UseCases::Dispensing {
 using ArtifactID = std::string;
 using PlanID = std::string;
 using JobID = std::string;
+using Siligen::JobIngest::Contracts::IUploadFilePort;
+using Siligen::JobIngest::Contracts::UploadRequest;
+using Siligen::JobIngest::Contracts::UploadResponse;
 
 struct CreateArtifactResponse {
     bool success = false;

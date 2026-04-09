@@ -1,6 +1,5 @@
 #include "runtime/system/DispenserModelMachineExecutionStateBackend.h"
 
-#include "domain/machine/aggregates/DispenserModel.h"
 #include "shared/types/Error.h"
 
 #include <utility>
@@ -8,7 +7,6 @@
 namespace Siligen::Runtime::Service::System {
 namespace {
 
-using Siligen::Domain::Machine::Aggregates::DispenserModel;
 using Siligen::RuntimeExecution::Contracts::System::MachineExecutionPhase;
 using Siligen::RuntimeExecution::Contracts::System::MachineExecutionSnapshot;
 using Siligen::Shared::Types::Error;

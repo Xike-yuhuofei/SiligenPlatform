@@ -11,8 +11,8 @@ DXF_PREVIEW_SUCCESS_FIXTURE = CONTRACTS / "fixtures" / "responses" / "dxf.previe
 PROTOCOL_MAPPING = CONTRACTS / "mappings" / "protocol-mapping.md"
 TCP_DISPATCHER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "tcp" / "TcpCommandDispatcher.cpp"
 TCP_DISPATCHER_HEADER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "tcp" / "TcpCommandDispatcher.h"
-RUNTIME_STATUS_EXPORT_PORT = ROOT / "apps" / "runtime-service" / "runtime" / "status" / "WorkflowRuntimeStatusExportPort.cpp"
-RUNTIME_SUPERVISION_BACKEND = ROOT / "apps" / "runtime-service" / "runtime" / "supervision" / "WorkflowRuntimeSupervisionBackend.cpp"
+RUNTIME_STATUS_EXPORT_PORT = ROOT / "apps" / "runtime-service" / "runtime" / "status" / "RuntimeStatusExportPort.cpp"
+RUNTIME_SUPERVISION_BACKEND = ROOT / "apps" / "runtime-service" / "runtime" / "supervision" / "RuntimeExecutionSupervisionBackend.cpp"
 TCP_DISPENSING_FACADE_HEADER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "facades" / "tcp" / "TcpDispensingFacade.h"
 TCP_DISPENSING_FACADE_CPP = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "facades" / "tcp" / "TcpDispensingFacade.cpp"
 TCP_FACADE_BUILDER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "include" / "siligen" / "gateway" / "tcp" / "tcp_facade_builder.h"
@@ -278,13 +278,14 @@ def test_legacy_execute_and_task_surface_are_removed():
 
 def test_status_reads_backend_interlock_signals():
     source = RUNTIME_SUPERVISION_BACKEND.read_text(encoding="utf-8")
-    assert "ReadInterlockSignals()" in source
+    assert "ReadSignals()" in source
     assert "IsInEmergencyStop()" in source
     assert "if (estop_state_result.IsSuccess() && inputs.connected)" in source
     assert "inputs.io.estop_known = inputs.connected;" in source
     assert "inputs.io.estop = inputs.estop_active || signals.emergency_stop_triggered;" in source
+    assert "inputs.io.estop = inputs.estop_active;" in source
     assert "GetActiveJobId()" in source
-    assert "GetJobStatus(inputs.active_job_id)" in source
+    assert "dispensing_execution_use_case_->GetJobStatus(inputs.active_job_id)" in source
     assert "motion_control_use_case->ReadLimitStatus(axis, positive)" in source
     assert "ReadLimitIfAvailable(motion_control_use_case_, LogicalAxisId::X, true, inputs.io.limit_x_pos);" in source
     assert "ReadLimitIfAvailable(motion_control_use_case_, LogicalAxisId::X, false, inputs.io.limit_x_neg);" in source

@@ -45,7 +45,7 @@ Result<void> MultiCardMotionAdapter::SetAxisVelocity(LogicalAxisId axis_id, floa
     }
     short sdk_axis = sdk_axis_result.Value();
 
-    double vel_pulse_ms = unit_converter_.VelocityToPulsePerMs(axis, velocity);
+    double vel_pulse_ms = unit_converter_.VelocityMmSToPS(velocity) / Units::PULSE_PER_SEC_TO_MS;
     short ret = hardware_wrapper_->MC_SetVel(sdk_axis, vel_pulse_ms);
     if (ret != 0) {
         return Result<void>(Shared::Types::Error(Shared::Types::ErrorCode::MOTION_ERROR,
@@ -68,7 +68,9 @@ Result<void> MultiCardMotionAdapter::SetAxisAcceleration(LogicalAxisId axis_id, 
     }
     short sdk_axis = sdk_axis_result.Value();
 
-    double acc_pulse_ms2 = unit_converter_.AccelerationToPulsePerMs2(axis, acceleration);
+    double acc_pulse_ms2 =
+        unit_converter_.AccelerationMmS2ToPS2(acceleration) /
+        (Units::PULSE_PER_SEC_TO_MS * Units::PULSE_PER_SEC_TO_MS);
     // 使用 MC_SetTrapPrm 设置加减速度，起始速度为0，平滑时间为0
     TTrapPrm trap_prm{};
     trap_prm.acc = acc_pulse_ms2;
@@ -100,8 +102,8 @@ Result<void> MultiCardMotionAdapter::SetSoftLimits(LogicalAxisId axis_id,
     }
     short sdk_axis = sdk_axis_result.Value();
 
-    long neg_pulses = unit_converter_.PositionToPulses(axis, negative_limit);
-    long pos_pulses = unit_converter_.PositionToPulses(axis, positive_limit);
+    long neg_pulses = static_cast<long>(unit_converter_.MmToPulse(negative_limit));
+    long pos_pulses = static_cast<long>(unit_converter_.MmToPulse(positive_limit));
 
     // MC_SetSoftLimit(axis, positive_limit, negative_limit) - 与厂商SDK一致
     short ret = hardware_wrapper_->MC_SetSoftLimit(0, sdk_axis, pos_pulses, neg_pulses);

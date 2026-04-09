@@ -1,5 +1,5 @@
 #include "domain/motion/domain-services/JogController.h"
-#include "domain/motion/ports/IMotionStatePort.h"
+#include "runtime_execution/contracts/motion/IMotionStatePort.h"
 #include "shared/types/Error.h"
 
 #include <gtest/gtest.h>

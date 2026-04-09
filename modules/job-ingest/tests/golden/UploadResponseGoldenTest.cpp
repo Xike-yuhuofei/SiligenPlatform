@@ -11,16 +11,14 @@
 
 namespace {
 
-using Siligen::Application::UseCases::Dispensing::UploadFileUseCase;
+using Siligen::JobIngest::Application::UseCases::Dispensing::UploadFileUseCase;
+using Siligen::JobIngest::Tests::Support::FakeUploadPreparationPort;
 using Siligen::JobIngest::Tests::Support::MakeUploadRequest;
 using Siligen::JobIngest::Tests::Support::PbPathFor;
-using Siligen::JobIngest::Tests::Support::QuoteArg;
 using Siligen::JobIngest::Tests::Support::ReadTextFile;
-using Siligen::JobIngest::Tests::Support::ScopedEnvVar;
 using Siligen::JobIngest::Tests::Support::ScopedTempDir;
-using Siligen::JobIngest::Tests::Support::TestFileStoragePort;
+using Siligen::JobIngest::Tests::Support::TestUploadStoragePort;
 using Siligen::JobIngest::Tests::Support::UploadResponse;
-using Siligen::JobIngest::Tests::Support::WriteTextFile;
 
 std::filesystem::path GoldenPath() {
     return std::filesystem::path(__FILE__).parent_path() / "upload_response.summary.txt";
@@ -63,17 +61,9 @@ std::string SerializeSummary(const UploadResponse& response, const std::filesyst
 
 TEST(UploadResponseGoldenTest, SanitizedUploadSummaryMatchesGoldenSnapshot) {
     ScopedTempDir workspace("upload_golden");
-    const auto generator_path = workspace.Path() / "emit_pb.py";
-    WriteTextFile(generator_path,
-                  "import pathlib\n"
-                  "import sys\n"
-                  "pathlib.Path(sys.argv[2]).write_bytes(b'pb')\n");
-
-    const ScopedEnvVar command_override(
-        "SILIGEN_DXF_PB_COMMAND", "python " + QuoteArg(generator_path.string()) + " {input} {output}");
-
-    auto storage = std::make_shared<TestFileStoragePort>(workspace.Path() / "uploads");
-    UploadFileUseCase usecase(storage);
+    auto storage = std::make_shared<TestUploadStoragePort>(workspace.Path() / "uploads");
+    auto preparation = std::make_shared<FakeUploadPreparationPort>();
+    UploadFileUseCase usecase(storage, preparation);
 
     auto result = usecase.Execute(MakeUploadRequest("golden upload.dxf"));
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();

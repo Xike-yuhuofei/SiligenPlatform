@@ -3,7 +3,6 @@ cmake_minimum_required(VERSION 3.20)
 set(RUNTIME_EXECUTION_REQUIRED_TEST_ROOTS
     "${CMAKE_CURRENT_SOURCE_DIR}/unit/CMakeLists.txt"
     "${CMAKE_CURRENT_SOURCE_DIR}/runtime-host/CMakeLists.txt"
-    "${CMAKE_CURRENT_SOURCE_DIR}/integration/CMakeLists.txt"
     "${CMAKE_CURRENT_SOURCE_DIR}/regression/CMakeLists.txt"
 )
 
@@ -21,11 +20,6 @@ add_subdirectory(
 add_subdirectory(
     "${CMAKE_CURRENT_SOURCE_DIR}/runtime-host"
     "${CMAKE_BINARY_DIR}/tests/runtime-execution-runtime-host"
-)
-
-add_subdirectory(
-    "${CMAKE_CURRENT_SOURCE_DIR}/integration"
-    "${CMAKE_BINARY_DIR}/tests/runtime-execution-integration"
 )
 
 add_subdirectory(

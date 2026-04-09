@@ -1,8 +1,8 @@
 #pragma once
 
-#include "domain/machine/aggregates/DispenserModel.h"
 #include "domain/motion/ports/IHomingPort.h"
 #include "runtime/supervision/RuntimeSupervisionPortAdapter.h"
+#include "runtime/system/DispenserModel.h"
 #include "siligen/device/adapters/drivers/multicard/MockMultiCard.h"
 #include "siligen/device/adapters/drivers/multicard/MockMultiCardWrapper.h"
 #include "siligen/device/adapters/motion/MotionRuntimeConnectionAdapter.h"
@@ -23,8 +23,8 @@ namespace Siligen::Runtime::Host::Tests {
 using CMPTriggerPoint = Siligen::Shared::Types::CMPTriggerPoint;
 using DeviceConnection = Siligen::Device::Contracts::Commands::DeviceConnection;
 using DeviceConnectionPort = Siligen::Device::Contracts::Ports::DeviceConnectionPort;
-using DispenserModel = Siligen::Domain::Machine::Aggregates::DispenserModel;
-using DispensingTask = Siligen::Domain::Machine::Aggregates::DispensingTask;
+using DispenserModel = Siligen::Runtime::Service::System::DispenserModel;
+using DispensingTask = Siligen::Runtime::Service::System::DispensingTask;
 using HeartbeatSnapshot = Siligen::Device::Contracts::State::HeartbeatSnapshot;
 using HomingStatus = Siligen::Domain::Motion::Ports::HomingStatus;
 using IRuntimeSupervisionBackend = Siligen::Runtime::Host::Supervision::IRuntimeSupervisionBackend;

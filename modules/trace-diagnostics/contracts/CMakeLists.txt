@@ -8,6 +8,20 @@ if(NOT EXISTS "${SILIGEN_TRACE_DIAGNOSTICS_CONTRACTS_PUBLIC_INCLUDE_DIR}/trace_d
     )
 endif()
 
+if(NOT EXISTS "${SILIGEN_TRACE_DIAGNOSTICS_CONTRACTS_PUBLIC_INCLUDE_DIR}/trace_diagnostics/contracts/IDiagnosticsPort.h")
+    message(FATAL_ERROR
+        "trace-diagnostics diagnostics sink contract header missing: "
+        "${SILIGEN_TRACE_DIAGNOSTICS_CONTRACTS_PUBLIC_INCLUDE_DIR}/trace_diagnostics/contracts/IDiagnosticsPort.h"
+    )
+endif()
+
+if(NOT EXISTS "${SILIGEN_TRACE_DIAGNOSTICS_CONTRACTS_PUBLIC_INCLUDE_DIR}/trace_diagnostics/contracts/DiagnosticTypes.h")
+    message(FATAL_ERROR
+        "trace-diagnostics diagnostic value-object contract header missing: "
+        "${SILIGEN_TRACE_DIAGNOSTICS_CONTRACTS_PUBLIC_INCLUDE_DIR}/trace_diagnostics/contracts/DiagnosticTypes.h"
+    )
+endif()
+
 if(NOT EXISTS "${SILIGEN_TRACE_DIAGNOSTICS_CONTRACTS_PUBLIC_INCLUDE_DIR}/trace_diagnostics/contracts/ValidationEvidenceBundle.h")
     message(FATAL_ERROR
         "trace-diagnostics evidence contract header missing: "
@@ -20,7 +34,10 @@ if(NOT TARGET siligen_trace_diagnostics_contracts_public)
 endif()
 target_include_directories(siligen_trace_diagnostics_contracts_public INTERFACE
     ${SILIGEN_TRACE_DIAGNOSTICS_CONTRACTS_PUBLIC_INCLUDE_DIR}
-    ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
+)
+target_link_libraries(siligen_trace_diagnostics_contracts_public INTERFACE
+    siligen_shared_kernel
+    siligen_types
 )
 if(TARGET siligen_application_contracts)
     target_link_libraries(siligen_trace_diagnostics_contracts_public INTERFACE

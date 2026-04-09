@@ -2,7 +2,7 @@
 #include "runtime_execution/application/usecases/motion/homing/EnsureAxesReadyZeroTypes.h"
 #include "runtime_execution/application/usecases/motion/manual/ManualMotionCommand.h"
 #include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
-#include "runtime_execution/contracts/motion/HomingProcess.h"
+#include "domain/motion/domain-services/HomingProcess.h"
 #include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
 
 #include <gtest/gtest.h>

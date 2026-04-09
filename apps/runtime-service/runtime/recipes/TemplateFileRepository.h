@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/recipes/ports/ITemplateRepositoryPort.h"
+#include "recipe_lifecycle/domain/recipes/ports/ITemplateRepositoryPort.h"
 #include "shared/types/Result.h"
 
 #include "nlohmann/json.hpp"

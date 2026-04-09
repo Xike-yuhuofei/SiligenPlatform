@@ -1,4 +1,4 @@
-#include "InitializeSystemUseCase.h"
+#include "runtime_execution/application/usecases/system/InitializeSystemUseCase.h"
 
 #include "runtime_execution/application/usecases/motion/homing/HomeAxesUseCase.h"
 #include "shared/types/Error.h"

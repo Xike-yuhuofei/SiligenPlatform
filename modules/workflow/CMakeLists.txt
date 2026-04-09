@@ -51,26 +51,6 @@ target_link_libraries(siligen_workflow_contracts_public INTERFACE
 )
 target_compile_features(siligen_workflow_contracts_public INTERFACE cxx_std_17)
 
-if(NOT TARGET siligen_workflow_application_public)
-    add_library(siligen_workflow_application_public INTERFACE)
-endif()
-target_link_libraries(siligen_workflow_application_public INTERFACE
-    siligen_workflow_contracts_public
-    siligen_workflow_domain_public
-    siligen_workflow_application_headers
-)
-if(TARGET siligen_application_dispensing)
-    target_link_libraries(siligen_workflow_application_public INTERFACE
-        $<LINK_ONLY:siligen_application_dispensing>
-    )
-endif()
-if(TARGET siligen_application_redundancy)
-    target_link_libraries(siligen_workflow_application_public INTERFACE
-        $<LINK_ONLY:siligen_application_redundancy>
-    )
-endif()
-target_compile_features(siligen_workflow_application_public INTERFACE cxx_std_17)
-
 if(NOT TARGET siligen_workflow_adapters_public)
     add_library(siligen_workflow_adapters_public INTERFACE)
 endif()
@@ -90,60 +70,26 @@ foreach(adapter_target
 endforeach()
 target_compile_features(siligen_workflow_adapters_public INTERFACE cxx_std_17)
 
-if(NOT TARGET siligen_workflow_recipe_domain_public)
-    add_library(siligen_workflow_recipe_domain_public INTERFACE)
-endif()
-target_link_libraries(siligen_workflow_recipe_domain_public INTERFACE
-    siligen_workflow_domain_headers
-    domain_recipes
-)
-target_compile_features(siligen_workflow_recipe_domain_public INTERFACE cxx_std_17)
-
-if(NOT TARGET siligen_workflow_recipe_application_public)
-    add_library(siligen_workflow_recipe_application_public INTERFACE)
-endif()
-target_link_libraries(siligen_workflow_recipe_application_public INTERFACE
-    siligen_workflow_recipe_domain_public
-    siligen_workflow_application_headers
-)
-if(TARGET siligen_recipe_core)
-    target_link_libraries(siligen_workflow_recipe_application_public INTERFACE
-        $<LINK_ONLY:siligen_recipe_core>
-    )
-endif()
-target_compile_features(siligen_workflow_recipe_application_public INTERFACE cxx_std_17)
-
-if(NOT TARGET siligen_workflow_recipe_serialization_public)
-    add_library(siligen_workflow_recipe_serialization_public INTERFACE)
-endif()
-target_link_libraries(siligen_workflow_recipe_serialization_public INTERFACE
-    siligen_workflow_recipe_domain_public
-    siligen_workspace_json_headers
-)
-if(TARGET siligen_recipe_json_codec)
-    target_link_libraries(siligen_workflow_recipe_serialization_public INTERFACE
-        $<LINK_ONLY:siligen_recipe_json_codec>
-    )
-endif()
-target_compile_features(siligen_workflow_recipe_serialization_public INTERFACE cxx_std_17)
-
-if(NOT TARGET siligen_workflow_runtime_consumer_public)
-    add_library(siligen_workflow_runtime_consumer_public INTERFACE)
-endif()
-target_link_libraries(siligen_workflow_runtime_consumer_public INTERFACE
-    siligen_workflow_contracts_public
-    siligen_workflow_domain_public
-    siligen_workflow_application_public
-    siligen_workflow_adapters_public
-)
-target_compile_features(siligen_workflow_runtime_consumer_public INTERFACE cxx_std_17)
-
 if(NOT TARGET siligen_module_workflow)
     add_library(siligen_module_workflow INTERFACE)
 endif()
 target_link_libraries(siligen_module_workflow INTERFACE
-    siligen_workflow_application_public
+    siligen_workflow_contracts_public
+    siligen_workflow_domain_public
+    siligen_workflow_application_headers
+    siligen_workflow_adapters_public
 )
+foreach(workflow_application_target
+    IN ITEMS
+        siligen_application_dispensing
+        siligen_application_redundancy
+)
+    if(TARGET ${workflow_application_target})
+        target_link_libraries(siligen_module_workflow INTERFACE
+            $<LINK_ONLY:${workflow_application_target}>
+        )
+    endif()
+endforeach()
 target_compile_features(siligen_module_workflow INTERFACE cxx_std_17)
 
 set_target_properties(siligen_module_workflow PROPERTIES

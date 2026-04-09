@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/recipes/ports/IAuditRepositoryPort.h"
+#include "recipe_lifecycle/domain/recipes/ports/IAuditRepositoryPort.h"
 #include "shared/types/Result.h"
 
 #include <filesystem>

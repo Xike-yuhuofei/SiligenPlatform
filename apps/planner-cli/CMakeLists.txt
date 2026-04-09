@@ -7,10 +7,10 @@ if(NOT TARGET siligen_process_planning_contracts_public)
     )
 endif()
 
-if(NOT TARGET siligen_topology_feature_legacy_contour_bridge_public)
+if(NOT TARGET siligen_module_topology_feature)
     add_subdirectory(
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../modules/topology-feature/contracts"
-        "${CMAKE_BINARY_DIR}/_p/pc_tfc"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../modules/topology-feature"
+        "${CMAKE_BINARY_DIR}/_p/pc_tf"
     )
 endif()
 
@@ -21,14 +21,14 @@ endif()
 target_link_libraries(siligen_app_planner_cli INTERFACE
     siligen_module_job_ingest
     siligen_dispense_packaging_application_public
-    siligen_workflow_application_public
+    siligen_valve_core
+    siligen_application_dispensing
     siligen_workflow_adapters_public
-    siligen_workflow_recipe_application_public
-    siligen_module_hmi_application
+    siligen_recipe_lifecycle_application_public
     siligen_runtime_execution_application_public
     siligen_runtime_process_bootstrap_public
     siligen_process_planning_contracts_public
-    siligen_topology_feature_legacy_contour_bridge_public
+    siligen_module_topology_feature
     siligen_shared
 )
 target_compile_features(siligen_app_planner_cli INTERFACE cxx_std_17)

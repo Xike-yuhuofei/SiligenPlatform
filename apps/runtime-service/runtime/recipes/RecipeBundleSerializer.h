@@ -1,8 +1,8 @@
 #pragma once
 
-#include "domain/recipes/ports/IRecipeBundleSerializerPort.h"
-#include "domain/recipes/serialization/RecipeJsonSerializer.h"
-#include "domain/recipes/value-objects/RecipeBundle.h"
+#include "recipe_lifecycle/domain/recipes/ports/IRecipeBundleSerializerPort.h"
+#include "recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h"
+#include "recipe_lifecycle/domain/recipes/value-objects/RecipeBundle.h"
 
 #include <string>
 

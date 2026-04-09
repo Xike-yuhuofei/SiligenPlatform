@@ -25,7 +25,6 @@ target_link_libraries(runtime_execution_regression_host_core PRIVATE
     siligen_runtime_host
     siligen_device_adapters
     siligen_device_contracts
-    siligen_workflow_domain_headers
     siligen_shared
     siligen_types
     siligen_utils

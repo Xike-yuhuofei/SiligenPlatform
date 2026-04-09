@@ -1,7 +1,7 @@
 #pragma once
 
-#include "domain/motion/ports/IJogControlPort.h"
-#include "domain/motion/ports/IMotionStatePort.h"
+#include "runtime_execution/contracts/motion/IJogControlPort.h"
+#include "runtime_execution/contracts/motion/IMotionStatePort.h"
 #include "shared/types/Result.h"
 #include "shared/types/Error.h"
 

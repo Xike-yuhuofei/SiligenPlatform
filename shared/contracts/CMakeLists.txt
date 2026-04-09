@@ -42,6 +42,21 @@ set_target_properties(siligen_engineering_contracts PROPERTIES
     SILIGEN_TARGET_TOPOLOGY_OWNER_ROOT "shared/contracts/engineering"
 )
 
+set(SILIGEN_RUNTIME_CONTRACTS_CANONICAL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/runtime")
+if(NOT EXISTS "${SILIGEN_RUNTIME_CONTRACTS_CANONICAL_DIR}/CMakeLists.txt")
+    message(FATAL_ERROR
+        "未找到 canonical shared/contracts/runtime source: "
+        "${SILIGEN_RUNTIME_CONTRACTS_CANONICAL_DIR}/CMakeLists.txt"
+    )
+endif()
+
+if(NOT TARGET siligen_shared_runtime_contracts)
+    add_subdirectory(
+        "${SILIGEN_RUNTIME_CONTRACTS_CANONICAL_DIR}"
+        "${CMAKE_BINARY_DIR}/shared/contracts/runtime"
+    )
+endif()
+
 set(SILIGEN_DEVICE_CONTRACTS_CANONICAL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/device")
 if(NOT EXISTS "${SILIGEN_DEVICE_CONTRACTS_CANONICAL_DIR}/CMakeLists.txt")
     message(FATAL_ERROR
@@ -73,6 +88,7 @@ endif()
 target_link_libraries(siligen_shared_contracts INTERFACE
     siligen_application_contracts
     siligen_engineering_contracts
+    siligen_shared_runtime_contracts
     siligen_device_contracts
 )
 target_compile_features(siligen_shared_contracts INTERFACE cxx_std_17)

@@ -20,14 +20,3 @@ if(NOT TARGET siligen_device_contracts)
         "shared/contracts/device did not register siligen_device_contracts"
     )
 endif()
-
-if(NOT TARGET siligen_runtime_execution_device_contracts)
-    add_library(siligen_runtime_execution_device_contracts INTERFACE)
-endif()
-target_link_libraries(siligen_runtime_execution_device_contracts INTERFACE
-    siligen_device_contracts
-)
-target_compile_features(siligen_runtime_execution_device_contracts INTERFACE cxx_std_17)
-set_target_properties(siligen_runtime_execution_device_contracts PROPERTIES
-    SILIGEN_TARGET_TOPOLOGY_OWNER_ROOT "modules/runtime-execution"
-)

@@ -1,7 +1,6 @@
 #pragma once
 
-// Compat forwarder: canonical planning artifact export request/result contract
-// lives in dispense-packaging contracts public surface.
+// Canonical planning artifact export request/result contract for runtime-execution application consumers.
 #include "domain/dispensing/contracts/PlanningArtifactExportRequest.h"
 #include "shared/types/Result.h"
 

@@ -33,6 +33,12 @@ if(NOT TARGET siligen_trace_diagnostics_application_public AND EXISTS "${RUNTIME
         "${CMAKE_BINARY_DIR}/_p/rh_tda"
     )
 endif()
+if(NOT TARGET siligen_trace_diagnostics_contracts_public AND EXISTS "${RUNTIME_HOST_TRACEABILITY_DIR}/contracts/CMakeLists.txt")
+    add_subdirectory(
+        "${RUNTIME_HOST_TRACEABILITY_DIR}/contracts"
+        "${CMAKE_BINARY_DIR}/_p/rh_tdc"
+    )
+endif()
 
 if(NOT TARGET siligen_runtime_host_boost_headers)
     add_library(siligen_runtime_host_boost_headers INTERFACE)
@@ -86,7 +92,7 @@ target_link_libraries(siligen_runtime_host PUBLIC
     siligen_runtime_execution_application_public
     siligen_runtime_execution_runtime_contracts
     siligen_device_contracts
-    $<LINK_ONLY:siligen_coordinate_alignment_domain_machine>
+    siligen_trace_diagnostics_contracts_public
     siligen_workflow_domain_headers
     siligen_shared
 )

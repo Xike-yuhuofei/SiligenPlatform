@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_resolve_default_exe_prefers_workspace_build_child_over_legacy_localappdata(tmp_path: Path) -> None:
+def test_resolve_default_exe_prefers_legacy_localappdata_over_noncanonical_workspace_build_child(tmp_path: Path) -> None:
     fake_file_name = "codex_runtime_gateway_resolution_probe.exe"
     workspace_build_root = ROOT / "build" / "zz-codex-harness-resolution"
     workspace_exe = workspace_build_root / "bin" / "Debug" / fake_file_name
@@ -48,6 +48,6 @@ def test_resolve_default_exe_prefers_workspace_build_child_over_legacy_localappd
             check=False,
         )
         assert completed.returncode == 0, completed.stderr
-        assert completed.stdout.strip() == str(workspace_exe)
+        assert completed.stdout.strip() == str(legacy_exe)
     finally:
         shutil.rmtree(workspace_build_root, ignore_errors=True)

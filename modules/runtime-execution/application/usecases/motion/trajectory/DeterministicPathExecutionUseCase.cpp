@@ -1,7 +1,7 @@
 #include "DeterministicPathExecutionUseCase.h"
 
-#include "application/services/motion_planning/InterpolationProgramFacade.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
+#include "modules/motion-planning/domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
 #include "motion_planning/contracts/TimePlanningConfig.h"
 #include "process_path/contracts/ProcessPath.h"
 #include "process_path/contracts/GeometryUtils.h"
@@ -15,8 +15,8 @@
 namespace Siligen::Application::UseCases::Motion::Trajectory {
 
 using Coordination::MotionCoordinationUseCase;
-using Siligen::Application::Services::MotionPlanning::InterpolationProgramFacade;
 using Siligen::Application::Services::MotionPlanning::MotionPlanningFacade;
+using Siligen::Domain::Motion::DomainServices::InterpolationProgramPlanner;
 using Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemStatus;
 using Siligen::RuntimeExecution::Contracts::Motion::InterpolationData;
 using Siligen::Domain::Motion::Ports::MotionStatus;
@@ -291,7 +291,7 @@ Result<DeterministicPathExecutionUseCase::ActiveExecution> DeterministicPathExec
     const DeterministicPathExecutionRequest& request,
     const Point2D& start_point) const {
     MotionPlanningFacade motion_planner;
-    InterpolationProgramFacade program_planner;
+    InterpolationProgramPlanner program_planner;
 
     ProcessPath path;
     path.segments.reserve(request.segments.size());

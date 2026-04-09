@@ -4,7 +4,7 @@
 #include "runtime_execution/contracts/motion/MotionControlService.h"
 #include "runtime_execution/contracts/motion/MotionStatusService.h"
 
-#include "domain/motion/domain-services/MotionValidationService.h"
+#include "runtime_execution/contracts/motion/MotionValidationService.h"
 
 #include <memory>
 

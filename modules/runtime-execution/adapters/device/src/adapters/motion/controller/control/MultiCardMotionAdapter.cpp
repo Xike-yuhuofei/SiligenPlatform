@@ -110,6 +110,7 @@ Result<void> MultiCardMotionAdapter::EnsureAxisEnabled(short axis, short sdk_axi
 }
 
 TJogPrm MultiCardMotionAdapter::BuildJogParameters(short axis) const {
+    static_cast<void>(axis);
     double acc_mm_s2 = static_cast<double>(hardware_config_.max_acceleration_mm_s2);
     double dec_mm_s2 = static_cast<double>(hardware_config_.max_deceleration_mm_s2);
     const double kMaxJogAcc = 500.0;
@@ -127,8 +128,12 @@ TJogPrm MultiCardMotionAdapter::BuildJogParameters(short axis) const {
     }
 
     TJogPrm jog_prm{};
-    jog_prm.dAcc = unit_converter_.AccelerationToPulsePerMs2(axis, acc_mm_s2);
-    jog_prm.dDec = unit_converter_.AccelerationToPulsePerMs2(axis, dec_mm_s2);
+    jog_prm.dAcc =
+        unit_converter_.AccelerationMmS2ToPS2(static_cast<float32>(acc_mm_s2)) /
+        (Units::PULSE_PER_SEC_TO_MS * Units::PULSE_PER_SEC_TO_MS);
+    jog_prm.dDec =
+        unit_converter_.AccelerationMmS2ToPS2(static_cast<float32>(dec_mm_s2)) /
+        (Units::PULSE_PER_SEC_TO_MS * Units::PULSE_PER_SEC_TO_MS);
     jog_prm.dSmooth = 0.0;
     return jog_prm;
 }
@@ -451,8 +456,12 @@ Result<void> MultiCardMotionAdapter::SetJogParameters(
 
     // 设置JOG参数
     TJogPrm jog_prm{};
-    jog_prm.dAcc = unit_converter_.AccelerationToPulsePerMs2(axis, params.acceleration);
-    jog_prm.dDec = unit_converter_.AccelerationToPulsePerMs2(axis, params.deceleration);
+    jog_prm.dAcc =
+        unit_converter_.AccelerationMmS2ToPS2(params.acceleration) /
+        (Units::PULSE_PER_SEC_TO_MS * Units::PULSE_PER_SEC_TO_MS);
+    jog_prm.dDec =
+        unit_converter_.AccelerationMmS2ToPS2(params.deceleration) /
+        (Units::PULSE_PER_SEC_TO_MS * Units::PULSE_PER_SEC_TO_MS);
     jog_prm.dSmooth = params.smooth_time;
     ret = hardware_wrapper_->MC_SetJogPrm(sdk_axis, &jog_prm);
     if (ret != 0) {
@@ -461,7 +470,7 @@ Result<void> MultiCardMotionAdapter::SetJogParameters(
     }
 
     if (params.velocity > 0.0f) {
-        double vel_pulse_ms = unit_converter_.VelocityToPulsePerMs(axis, params.velocity);
+        double vel_pulse_ms = unit_converter_.VelocityMmSToPS(params.velocity) / Units::PULSE_PER_SEC_TO_MS;
         ret = hardware_wrapper_->MC_SetVel(sdk_axis, vel_pulse_ms);
         if (ret != 0) {
             return Result<void>(Shared::Types::Error(Shared::Types::ErrorCode::MOTION_ERROR,
@@ -628,7 +637,7 @@ Result<void> MultiCardMotionAdapter::MoveAxisToPosition(LogicalAxisId axis_id, f
     }
 
     // 2. 设置目标位置
-    long target_pulses = unit_converter_.PositionToPulses(axis, position);
+    long target_pulses = static_cast<long>(unit_converter_.MmToPulse(position));
     ret = hardware_wrapper_->MC_SetPos(sdk_axis, target_pulses);
     if (ret != 0) {
         return Result<void>(
@@ -636,7 +645,7 @@ Result<void> MultiCardMotionAdapter::MoveAxisToPosition(LogicalAxisId axis_id, f
     }
 
     // 3. 设置速度
-    double vel_pulse_ms = unit_converter_.VelocityToPulsePerMs(axis, velocity);
+    double vel_pulse_ms = unit_converter_.VelocityMmSToPS(velocity) / Units::PULSE_PER_SEC_TO_MS;
     ret = hardware_wrapper_->MC_SetVel(sdk_axis, vel_pulse_ms);
     if (ret != 0) {
         return Result<void>(
@@ -682,9 +691,9 @@ Result<void> MultiCardMotionAdapter::RelativeMove(LogicalAxisId axis_id, float32
     }
 
     // 计算目标位置
-    long distance_pulses = unit_converter_.DistanceToPulses(axis, distance);
+    long distance_pulses = static_cast<long>(unit_converter_.MmToPulse(distance));
     long target_pulses = static_cast<long>(current_pos) + distance_pulses;
-    double vel_pulse_ms = unit_converter_.VelocityToPulsePerMs(axis, velocity);
+    double vel_pulse_ms = unit_converter_.VelocityMmSToPS(velocity) / Units::PULSE_PER_SEC_TO_MS;
 
     // 切换到点位模式
     ret = hardware_wrapper_->MC_PrfTrap(sdk_axis);
@@ -765,8 +774,8 @@ Result<void> MultiCardMotionAdapter::SynchronizedMove(const std::vector<MotionCo
                                                      FormatErrorMessage("SynchronizedMove", axis, -1)));
         }
 
-        long target_pulses = unit_converter_.PositionToPulses(axis, cmd.position);
-        double vel_pulse_ms = unit_converter_.VelocityToPulsePerMs(axis, cmd.velocity);
+        long target_pulses = static_cast<long>(unit_converter_.MmToPulse(cmd.position));
+        double vel_pulse_ms = unit_converter_.VelocityMmSToPS(cmd.velocity) / Units::PULSE_PER_SEC_TO_MS;
         short sdk_axis = ToSdkAxis(axis);
         SILIGEN_LOG_DEBUG("axis" + std::to_string(axis) + " (SDK=" + std::to_string(sdk_axis) +
                           "): pos=" + std::to_string(cmd.position) + "mm(" + std::to_string(target_pulses) +

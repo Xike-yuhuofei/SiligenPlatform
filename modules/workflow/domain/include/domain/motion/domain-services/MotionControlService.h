@@ -1,5 +1,8 @@
 #pragma once
 
+#if __has_include("runtime_execution/contracts/motion/MotionControlService.h")
+#include "runtime_execution/contracts/motion/MotionControlService.h"
+#else
 #include "shared/types/Point2D.h"
 #include "shared/types/Result.h"
 
@@ -25,4 +28,5 @@ public:
 };
 
 }  // namespace Siligen::Domain::Motion::DomainServices
+#endif
 

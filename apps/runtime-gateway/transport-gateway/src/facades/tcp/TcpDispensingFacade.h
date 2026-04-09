@@ -12,12 +12,16 @@
 
 namespace Siligen::Application::Facades::Tcp {
 
+using Siligen::JobIngest::Contracts::IUploadFilePort;
+using Siligen::JobIngest::Contracts::UploadRequest;
+using Siligen::JobIngest::Contracts::UploadResponse;
+
 class TcpDispensingFacade {
    public:
     TcpDispensingFacade(std::shared_ptr<UseCases::Dispensing::Valve::ValveCommandUseCase> valve_command_use_case,
                         std::shared_ptr<UseCases::Dispensing::Valve::ValveQueryUseCase> valve_query_use_case,
                         std::shared_ptr<UseCases::Dispensing::DispensingExecutionUseCase> dxf_execute_use_case,
-                        std::shared_ptr<UseCases::Dispensing::IUploadFilePort> dxf_upload_use_case,
+                        std::shared_ptr<IUploadFilePort> dxf_upload_use_case,
                         std::shared_ptr<UseCases::Dispensing::PlanningUseCase> dxf_planning_use_case,
                         std::shared_ptr<UseCases::Dispensing::DispensingWorkflowUseCase> dxf_workflow_use_case);
 
@@ -33,12 +37,12 @@ class TcpDispensingFacade {
     Shared::Types::Result<Domain::Dispensing::Ports::DispenserValveState> GetDispenserStatus();
     Shared::Types::Result<Domain::Dispensing::Ports::SupplyValveStatusDetail> GetSupplyStatus();
 
-    Shared::Types::Result<UseCases::Dispensing::UploadResponse> UploadDxf(
-        const UseCases::Dispensing::UploadRequest& request);
+    Shared::Types::Result<UploadResponse> UploadDxf(
+        const UploadRequest& request);
     Shared::Types::Result<UseCases::Dispensing::PlanningResponse> PlanDxf(
         const UseCases::Dispensing::PlanningRequest& request);
     Shared::Types::Result<UseCases::Dispensing::CreateArtifactResponse> CreateDxfArtifact(
-        const UseCases::Dispensing::UploadRequest& request);
+        const UploadRequest& request);
     Shared::Types::Result<UseCases::Dispensing::PreparePlanResponse> PrepareDxfPlan(
         const UseCases::Dispensing::PreparePlanRequest& request);
     Shared::Types::Result<UseCases::Dispensing::PreviewSnapshotResponse> GetDxfPreviewSnapshot(
@@ -59,7 +63,7 @@ class TcpDispensingFacade {
     std::shared_ptr<UseCases::Dispensing::Valve::ValveCommandUseCase> valve_command_use_case_;
     std::shared_ptr<UseCases::Dispensing::Valve::ValveQueryUseCase> valve_query_use_case_;
     std::shared_ptr<UseCases::Dispensing::DispensingExecutionUseCase> dxf_execute_use_case_;
-    std::shared_ptr<UseCases::Dispensing::IUploadFilePort> dxf_upload_use_case_;
+    std::shared_ptr<IUploadFilePort> dxf_upload_use_case_;
     std::shared_ptr<UseCases::Dispensing::PlanningUseCase> dxf_planning_use_case_;
     std::shared_ptr<UseCases::Dispensing::DispensingWorkflowUseCase> dxf_workflow_use_case_;
 };

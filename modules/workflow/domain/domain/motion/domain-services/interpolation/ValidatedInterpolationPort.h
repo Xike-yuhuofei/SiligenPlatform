@@ -1,5 +1,6 @@
 #pragma once
 
 // Legacy compatibility shim. Canonical planning owner lives in motion-planning.
-#include "../../../../../../motion-planning/domain/motion/domain-services/interpolation/ValidatedInterpolationPort.h"
+// Runtime execution wrapper owner lives in runtime-execution/application.
+#include "../../../../../../runtime-execution/application/include/runtime_execution/application/services/motion/interpolation/ValidatedInterpolationPort.h"
 

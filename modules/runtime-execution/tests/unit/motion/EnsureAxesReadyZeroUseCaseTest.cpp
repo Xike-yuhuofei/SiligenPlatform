@@ -2,14 +2,14 @@
 
 #include "application/usecases/motion/homing/HomeAxesUseCase.h"
 #include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
-#include "application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
+#include "runtime_execution/application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "domain/motion/domain-services/ReadyZeroDecisionService.h"
-#include "domain/motion/ports/IHomingPort.h"
-#include "domain/motion/ports/IMotionConnectionPort.h"
-#include "domain/motion/ports/IMotionStatePort.h"
-#include "domain/motion/ports/IPositionControlPort.h"
-#include "domain/supervision/ports/IEventPublisherPort.h"
+#include "runtime_execution/contracts/motion/IHomingPort.h"
+#include "runtime_execution/contracts/motion/IMotionConnectionPort.h"
+#include "runtime_execution/contracts/motion/IMotionStatePort.h"
+#include "runtime_execution/contracts/motion/IPositionControlPort.h"
+#include "runtime/contracts/system/IEventPublisherPort.h"
 #include "runtime_execution/contracts/motion/IIOControlPort.h"
 #include "shared/types/Error.h"
 #include "shared/types/HardwareConfiguration.h"
@@ -442,7 +442,7 @@ TEST(EnsureAxesReadyZeroUseCaseTest, GoesHomeWithoutRehomingWhenAxisAlreadyHomed
     EXPECT_EQ(response.axis_results[0].message, "Moved to zero");
 }
 
-TEST(EnsureAxesReadyZeroUseCaseTest, FallsBackToLocateVelocityWhenReadyZeroSpeedIsMissing) {
+TEST(EnsureAxesReadyZeroUseCaseTest, RejectsGoHomeWhenReadyZeroSpeedIsMissing) {
     auto environment = std::make_shared<FakeMotionEnvironment>();
     auto config_port = std::make_shared<FakeConfigurationPort>();
     auto event_port = std::make_shared<FakeEventPublisher>();
@@ -464,11 +464,9 @@ TEST(EnsureAxesReadyZeroUseCaseTest, FallsBackToLocateVelocityWhenReadyZeroSpeed
 
     auto result = use_case->Execute(request);
 
-    ASSERT_TRUE(result.IsSuccess());
-    EXPECT_TRUE(result.Value().accepted);
-    EXPECT_EQ(result.Value().summary_state, "completed");
-    EXPECT_EQ(environment->move_calls, 1);
-    EXPECT_FLOAT_EQ(environment->last_move_velocity, 4.0f);
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_CONFIG_VALUE);
+    EXPECT_EQ(environment->move_calls, 0);
 }
 
 TEST(EnsureAxesReadyZeroUseCaseTest, ReturnsNoopWhenAxisAlreadyAtZero) {

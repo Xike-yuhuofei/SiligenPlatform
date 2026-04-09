@@ -28,14 +28,6 @@ if(NOT TARGET siligen_dispense_packaging_domain_dispensing)
     )
 endif()
 
-if(TARGET siligen_runtime_execution_runtime_contracts AND TARGET siligen_dispense_packaging_domain_dispensing)
-    # runtime contracts 的 dispensing surface 直接暴露 domain/dispensing/*；
-    # 这里只补 owner include dirs，避免把 dispensing static target 直接挂回去形成循环依赖。
-    target_include_directories(siligen_runtime_execution_runtime_contracts INTERFACE
-        $<TARGET_PROPERTY:siligen_dispense_packaging_domain_dispensing,INTERFACE_INCLUDE_DIRECTORIES>
-    )
-endif()
-
 if(NOT TARGET siligen_process_planning_contracts_public)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../../process-planning/contracts"
@@ -47,6 +39,12 @@ if(NOT TARGET siligen_process_path_contracts_public)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../../process-path/contracts"
         "${CMAKE_BINARY_DIR}/_p/rea_ppath"
+    )
+endif()
+if(NOT TARGET siligen_trace_diagnostics_contracts_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../trace-diagnostics/contracts"
+        "${CMAKE_BINARY_DIR}/_p/rea_tdc"
     )
 endif()
 
@@ -75,8 +73,15 @@ target_include_directories(siligen_runtime_execution_application_headers INTERFA
 target_link_libraries(siligen_runtime_execution_application_headers INTERFACE
     siligen_runtime_execution_runtime_contracts
     siligen_dispense_packaging_contracts_public
+    siligen_dispense_packaging_domain_dispensing
+    siligen_dispense_packaging_execution_residual
     siligen_process_planning_contracts_public
 )
+if(TARGET siligen_trace_diagnostics_contracts_public)
+    target_link_libraries(siligen_runtime_execution_application_headers INTERFACE
+        siligen_trace_diagnostics_contracts_public
+    )
+endif()
 if(TARGET siligen_device_contracts)
     target_link_libraries(siligen_runtime_execution_application_headers INTERFACE
         siligen_device_contracts
@@ -91,6 +96,32 @@ set(SILIGEN_RUNTIME_EXECUTION_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS
     ${CMAKE_CURRENT_SOURCE_DIR}/..
 )
 list(REMOVE_DUPLICATES SILIGEN_RUNTIME_EXECUTION_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS)
+
+if(NOT TARGET siligen_runtime_execution_safety_services)
+    add_library(siligen_runtime_execution_safety_services STATIC
+        services/safety/EmergencyStopService.cpp
+        services/safety/InterlockPolicy.cpp
+        services/safety/SafetyOutputGuard.cpp
+        services/safety/SoftLimitValidator.cpp
+    )
+endif()
+target_include_directories(siligen_runtime_execution_safety_services PUBLIC
+    ${SILIGEN_RUNTIME_EXECUTION_APPLICATION_PUBLIC_INCLUDE_DIR}
+)
+target_include_directories(siligen_runtime_execution_safety_services PRIVATE
+    ${SILIGEN_RUNTIME_EXECUTION_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
+)
+target_link_libraries(siligen_runtime_execution_safety_services PUBLIC
+    siligen_runtime_execution_runtime_contracts
+    siligen_dispense_packaging_execution_residual
+    siligen_types
+    siligen_utils
+    siligen_process_planning_contracts_public
+)
+target_compile_features(siligen_runtime_execution_safety_services PUBLIC cxx_std_17)
+set_target_properties(siligen_runtime_execution_safety_services PROPERTIES
+    SILIGEN_TARGET_TOPOLOGY_OWNER_ROOT "modules/runtime-execution"
+)
 
 if(NOT TARGET siligen_runtime_execution_motion_execution_services)
     add_library(siligen_runtime_execution_motion_execution_services STATIC
@@ -113,7 +144,7 @@ target_link_libraries(siligen_runtime_execution_motion_execution_services PUBLIC
     siligen_types
     siligen_utils
     siligen_motion
-    siligen_safety_domain_services
+    siligen_runtime_execution_safety_services
     siligen_process_planning_contracts_public
 )
 target_compile_features(siligen_runtime_execution_motion_execution_services PUBLIC cxx_std_17)
@@ -125,6 +156,7 @@ if(NOT TARGET siligen_runtime_execution_application)
     add_library(siligen_runtime_execution_application STATIC
         services/motion/MotionControlServiceImpl.cpp
         services/motion/MotionStatusServiceImpl.cpp
+        services/motion/interpolation/ValidatedInterpolationPort.cpp
         services/calibration/CalibrationExecutionService.cpp
         services/dispensing/DispenseCompensationService.cpp
         services/dispensing/DispensingController.cpp
@@ -150,12 +182,11 @@ target_link_libraries(siligen_runtime_execution_application PUBLIC
     siligen_runtime_execution_runtime_contracts
     siligen_dispense_packaging_contracts_public
     siligen_runtime_execution_motion_execution_services
+    siligen_runtime_execution_safety_services
     siligen_process_planning_contracts_public
     siligen_types
     siligen_utils
     siligen_geometry
-    siligen_workflow_domain_headers
-    siligen_safety_domain_services
 )
 if(TARGET siligen_device_contracts)
     target_link_libraries(siligen_runtime_execution_application PUBLIC
@@ -183,9 +214,9 @@ target_include_directories(siligen_application_system PRIVATE
 )
 target_link_libraries(siligen_application_system PUBLIC
     siligen_runtime_execution_application_headers
+    siligen_runtime_execution_safety_services
     siligen_types
     siligen_utils
-    siligen_safety_domain_services
     siligen_dispense_packaging_domain_dispensing
 )
 if(TARGET siligen_device_contracts)
@@ -202,6 +233,7 @@ if(NOT TARGET siligen_application_motion)
     add_library(siligen_application_motion STATIC
         usecases/motion/manual/ManualMotionControlUseCase.cpp
         usecases/motion/initialization/MotionInitializationUseCase.cpp
+        usecases/motion/interpolation/InterpolationPlanningUseCase.cpp
         usecases/motion/safety/MotionSafetyUseCase.cpp
         usecases/motion/monitoring/MotionMonitoringUseCase.cpp
         usecases/motion/coordination/MotionCoordinationUseCase.cpp
@@ -245,6 +277,7 @@ target_link_libraries(siligen_runtime_execution_application_public INTERFACE
     $<LINK_ONLY:siligen_application_system>
     $<LINK_ONLY:siligen_application_motion>
     $<LINK_ONLY:siligen_runtime_execution_application>
+    $<LINK_ONLY:siligen_runtime_execution_safety_services>
 )
 target_compile_features(siligen_runtime_execution_application_public INTERFACE cxx_std_17)
 set_target_properties(siligen_runtime_execution_application_public PROPERTIES

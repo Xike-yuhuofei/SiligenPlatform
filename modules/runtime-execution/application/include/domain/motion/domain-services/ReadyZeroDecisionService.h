@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/motion/ports/IMotionStatePort.h"
+#include "runtime_execution/contracts/motion/IMotionStatePort.h"
 #include "shared/types/AxisTypes.h"
 
 namespace Siligen::Domain::Motion::DomainServices {

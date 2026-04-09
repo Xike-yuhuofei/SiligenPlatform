@@ -1,7 +1,7 @@
 #include "PlanningUseCase.h"
 
 #include "application/services/dispensing/WorkflowPlanningAssemblyOperations.h"
-#include "domain/diagnostics/ports/IDiagnosticsPort.h"
+#include "trace_diagnostics/contracts/IDiagnosticsPort.h"
 #include "motion_planning/contracts/MotionPlan.h"
 #include "motion_planning/contracts/TimePlanningConfig.h"
 #include "process_path/contracts/GeometryUtils.h"
@@ -29,10 +29,10 @@ namespace Siligen::Application::UseCases::Dispensing {
 using Siligen::Application::Ports::Dispensing::ProcessPathBuildRequest;
 using Siligen::Application::Ports::Dispensing::ProcessPathBuildResult;
 using Siligen::Domain::Motion::ValueObjects::TimePlanningConfig;
-using Siligen::Domain::Trajectory::Ports::PathSourceResult;
 using Siligen::MotionPlanning::Contracts::MotionPlan;
 using Siligen::ProcessPath::Contracts::ContourElement;
 using Siligen::ProcessPath::Contracts::ContourElementType;
+using Siligen::ProcessPath::Contracts::PathSourceResult;
 using Siligen::ProcessPath::Contracts::Primitive;
 using Siligen::ProcessPath::Contracts::PrimitiveType;
 using Siligen::ProcessPath::Contracts::ProcessTag;
@@ -522,19 +522,11 @@ void ApplyOffsetToPrimitives(
 ProcessPathBuildRequest BuildProcessPathRequest(
     const PlanningRequest& request,
     std::vector<Primitive> primitives,
-    std::vector<Siligen::Domain::Trajectory::Ports::PathPrimitiveMeta> metadata,
+    std::vector<Siligen::ProcessPath::Contracts::PathPrimitiveMeta> metadata,
     const std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort>& config_port) {
     ProcessPathBuildRequest process_path_request;
     process_path_request.primitives = std::move(primitives);
-    process_path_request.metadata.reserve(metadata.size());
-    for (const auto& item : metadata) {
-        Siligen::ProcessPath::Contracts::PathPrimitiveMeta meta;
-        meta.entity_id = item.entity_id;
-        meta.entity_type = item.entity_type;
-        meta.entity_segment_index = item.entity_segment_index;
-        meta.entity_closed = item.entity_closed;
-        process_path_request.metadata.push_back(meta);
-    }
+    process_path_request.metadata = std::move(metadata);
     process_path_request.normalization.approximate_splines = request.approximate_splines;
     process_path_request.normalization.spline_max_step_mm = request.spline_max_step_mm;
     process_path_request.normalization.spline_max_error_mm = request.spline_max_error_mm;
@@ -681,8 +673,7 @@ Siligen::Application::Services::Dispensing::WorkflowExecutionAssemblyRequest Bui
     workflow_input.max_jerk = request.trajectory_config.max_jerk;
     workflow_input.estimated_time_s = authority_preview.artifacts.estimated_time;
     workflow_input.use_interpolation_planner = request.use_interpolation_planner;
-    workflow_input.interpolation_algorithm = static_cast<Siligen::Domain::Motion::InterpolationAlgorithm>(
-        request.interpolation_algorithm);
+    workflow_input.interpolation_algorithm = request.interpolation_algorithm;
     workflow_input.authority_preview = authority_preview.artifacts;
     return workflow_input;
 }
@@ -749,7 +740,7 @@ void PopulatePlanningReport(const ProcessPathBuildResult& path_result, MotionPla
 }  // namespace
 
 PlanningUseCase::PlanningUseCase(
-    std::shared_ptr<Siligen::Domain::Trajectory::Ports::IPathSourcePort> path_source,
+    std::shared_ptr<Siligen::ProcessPath::Contracts::IPathSourcePort> path_source,
     std::shared_ptr<Siligen::Application::Ports::Dispensing::IProcessPathBuildPort> process_path_port,
     std::shared_ptr<Siligen::Application::Ports::Dispensing::IMotionPlanningPort> motion_planning_port,
     std::shared_ptr<Siligen::Application::Services::Dispensing::IWorkflowPlanningAssemblyOperations> planning_operations,

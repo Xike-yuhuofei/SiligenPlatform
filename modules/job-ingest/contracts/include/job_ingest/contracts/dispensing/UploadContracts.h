@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace Siligen::Application::UseCases::Dispensing {
+namespace Siligen::JobIngest::Contracts {
 
 using Siligen::Shared::Types::Result;
 
@@ -38,4 +38,4 @@ class IUploadFilePort {
     virtual Result<UploadResponse> Execute(const UploadRequest& request) = 0;
 };
 
-}  // namespace Siligen::Application::UseCases::Dispensing
+}  // namespace Siligen::JobIngest::Contracts

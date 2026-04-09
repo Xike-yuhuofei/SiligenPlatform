@@ -1,15 +1,25 @@
 cmake_minimum_required(VERSION 3.20)
 
-if(NOT TARGET siligen_workflow_application_public)
-    message(FATAL_ERROR "workflow canonical tests 需要先加载 siligen_workflow_application_public target")
-endif()
+foreach(required_target
+    IN ITEMS
+        siligen_workflow_application_headers
+        siligen_workflow_contracts_public
+        siligen_application_redundancy
+        siligen_redundancy_storage_adapter
+        siligen_dispense_packaging_contracts_public
+        siligen_dispense_packaging_domain_dispensing
+        siligen_motion_planning_contracts_public
+        siligen_process_path_contracts_public
+        siligen_shared_runtime_contracts
+        siligen_types
+        siligen_utils
+)
+    if(NOT TARGET ${required_target})
+        message(FATAL_ERROR "workflow canonical tests 缺少必需 target: ${required_target}")
+    endif()
+endforeach()
 
 set(WORKFLOW_CANONICAL_UNIT_TEST_SOURCES
-    unit/domain/safety/InterlockPolicyTest.cpp
-    unit/domain/safety/SoftLimitValidatorTest.cpp
-    unit/domain/safety/SafetyOutputGuardTest.cpp
-    unit/domain/recipes/RecipeActivationServiceTest.cpp
-    unit/recipes/RecipeCommandUseCaseTest.cpp
     unit/dispensing/PlanningRequestTest.cpp
     unit/infrastructure/adapters/redundancy/JsonRedundancyRepositoryAdapterTest.cpp
     unit/redundancy/CandidateScoringServiceTest.cpp
@@ -17,18 +27,13 @@ set(WORKFLOW_CANONICAL_UNIT_TEST_SOURCES
 )
 
 set(WORKFLOW_DOMAIN_SAFETY_TEST_SOURCES
-    unit/domain/safety/InterlockPolicyTest.cpp
-    unit/domain/safety/SoftLimitValidatorTest.cpp
-    unit/domain/safety/SafetyOutputGuardTest.cpp
 )
 set(WORKFLOW_DOMAIN_RECIPE_TEST_SOURCES
-    unit/domain/recipes/RecipeActivationServiceTest.cpp
 )
 set(WORKFLOW_APPLICATION_PLANNING_TRIGGER_TEST_SOURCES
     unit/dispensing/PlanningRequestTest.cpp
 )
 set(WORKFLOW_APPLICATION_COMPAT_TEST_SOURCES
-    unit/recipes/RecipeCommandUseCaseTest.cpp
 )
 set(WORKFLOW_APPLICATION_RECOVERY_CONTROL_TEST_SOURCES
     unit/redundancy/CandidateScoringServiceTest.cpp
@@ -56,16 +61,18 @@ else()
 endif()
 
 target_link_libraries(siligen_unit_tests PRIVATE
-    siligen_workflow_application_public
+    siligen_workflow_application_headers
+    siligen_workflow_contracts_public
+    siligen_application_redundancy
     siligen_redundancy_storage_adapter
+    siligen_dispense_packaging_contracts_public
+    siligen_dispense_packaging_domain_dispensing
+    siligen_motion_planning_contracts_public
+    siligen_process_path_contracts_public
+    siligen_shared_runtime_contracts
     siligen_types
     siligen_utils
 )
-if(TARGET siligen_workflow_recipe_application_public)
-    target_link_libraries(siligen_unit_tests PRIVATE
-        siligen_workflow_recipe_application_public
-    )
-endif()
 target_compile_definitions(siligen_unit_tests PRIVATE SILIGEN_TEST_HOOKS=1)
 target_include_directories(siligen_unit_tests PRIVATE
     ${WORKFLOW_TEST_IMPLEMENTATION_INCLUDE_DIRS}
@@ -77,8 +84,6 @@ siligen_add_test_with_runtime_environment(
 )
 
 set(WORKFLOW_PR1_TEST_SOURCES
-    unit/domain/safety/InterlockPolicyTest.cpp
-    unit/domain/safety/SafetyOutputGuardTest.cpp
     unit/dispensing/PlanningRequestTest.cpp
 )
 
@@ -93,7 +98,13 @@ else()
 endif()
 
 target_link_libraries(siligen_pr1_tests PRIVATE
-    siligen_workflow_application_public
+    siligen_workflow_application_headers
+    siligen_workflow_contracts_public
+    siligen_dispense_packaging_contracts_public
+    siligen_dispense_packaging_domain_dispensing
+    siligen_motion_planning_contracts_public
+    siligen_process_path_contracts_public
+    siligen_shared_runtime_contracts
     siligen_types
     siligen_utils
 )

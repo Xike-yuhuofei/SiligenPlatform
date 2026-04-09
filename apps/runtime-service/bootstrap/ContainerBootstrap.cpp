@@ -4,30 +4,30 @@
 #include "InfrastructureBindings.h"
 
 #include "process_planning/contracts/ConfigurationContracts.h"
-#include "domain/configuration/ports/IFileStoragePort.h"
-#include "domain/diagnostics/ports/ICMPTestPresetPort.h"
-#include "domain/diagnostics/ports/IDiagnosticsPort.h"
-#include "domain/diagnostics/ports/ITestConfigurationPort.h"
-#include "domain/diagnostics/ports/ITestRecordRepository.h"
+#include "runtime_process_bootstrap/storage/ports/IFileStoragePort.h"
+#include "runtime_process_bootstrap/diagnostics/ports/ICMPTestPresetPort.h"
+#include "trace_diagnostics/contracts/IDiagnosticsPort.h"
+#include "runtime_process_bootstrap/diagnostics/ports/ITestConfigurationPort.h"
+#include "runtime_process_bootstrap/diagnostics/ports/ITestRecordRepository.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 #include "domain/dispensing/ports/ITriggerControllerPort.h"
 #include "domain/dispensing/ports/IValvePort.h"
-#include "domain/motion/ports/IAxisControlPort.h"
-#include "domain/motion/ports/IHomingPort.h"
-#include "domain/motion/ports/IJogControlPort.h"
-#include "domain/motion/ports/IMotionConnectionPort.h"
-#include "domain/motion/ports/IMotionStatePort.h"
-#include "domain/motion/ports/IPositionControlPort.h"
+#include "runtime_execution/contracts/motion/IAxisControlPort.h"
+#include "runtime_execution/contracts/motion/IHomingPort.h"
+#include "runtime_execution/contracts/motion/IJogControlPort.h"
+#include "runtime_execution/contracts/motion/IMotionConnectionPort.h"
+#include "runtime_execution/contracts/motion/IMotionStatePort.h"
+#include "runtime_execution/contracts/motion/IPositionControlPort.h"
 #include "domain/motion/ports/IVelocityProfilePort.h"
 #include "runtime_execution/contracts/dispensing/ITaskSchedulerPort.h"
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
-#include "runtime_execution/contracts/system/IEventPublisherPort.h"
-#include "domain/recipes/ports/IParameterSchemaPort.h"
-#include "domain/recipes/ports/IAuditRepositoryPort.h"
-#include "domain/recipes/ports/IRecipeBundleSerializerPort.h"
-#include "domain/recipes/ports/IRecipeRepositoryPort.h"
-#include "domain/recipes/ports/ITemplateRepositoryPort.h"
+#include "runtime/contracts/system/IEventPublisherPort.h"
+#include "recipe_lifecycle/domain/recipes/ports/IParameterSchemaPort.h"
+#include "recipe_lifecycle/domain/recipes/ports/IAuditRepositoryPort.h"
+#include "recipe_lifecycle/domain/recipes/ports/IRecipeBundleSerializerPort.h"
+#include "recipe_lifecycle/domain/recipes/ports/IRecipeRepositoryPort.h"
+#include "recipe_lifecycle/domain/recipes/ports/ITemplateRepositoryPort.h"
 #include "domain/safety/ports/IInterlockSignalPort.h"
 #include "process_path/contracts/IPathSourcePort.h"
 #include "runtime/configuration/WorkspaceAssetPaths.h"
@@ -125,7 +125,7 @@ void ApplyBindings(
         container.RegisterPort<Siligen::Domain::Safety::Ports::IInterlockSignalPort>(bindings.interlock_signal_port);
     }
     if (bindings.path_source_port) {
-        container.RegisterPort<Siligen::Domain::Trajectory::Ports::IPathSourcePort>(bindings.path_source_port);
+        container.RegisterPort<Siligen::ProcessPath::Contracts::IPathSourcePort>(bindings.path_source_port);
     }
     if (bindings.recipe_repository) {
         container.RegisterPort<Siligen::Domain::Recipes::Ports::IRecipeRepositoryPort>(bindings.recipe_repository);

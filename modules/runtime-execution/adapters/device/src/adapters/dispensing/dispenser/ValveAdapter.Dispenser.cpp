@@ -2,7 +2,7 @@
 #define MODULE_NAME "ValveAdapter"
 
 #include "ValveAdapter.h"
-#include "domain/dispensing/domain-services/DispenseCompensationService.h"
+#include "../../../../../../../dispense-packaging/domain/dispensing/domain-services/DispenseCompensationService.h"
 #include "shared/types/AxisTypes.h"
 #include "shared/interfaces/ILoggingService.h"
 #include <chrono>

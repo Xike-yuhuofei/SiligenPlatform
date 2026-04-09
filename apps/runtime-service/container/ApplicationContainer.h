@@ -3,7 +3,14 @@
 #include "ApplicationContainerFwd.h"
 #include "../runtime/configuration/WorkspaceAssetPaths.h"
 #include "process_planning/contracts/ConfigurationContracts.h"
+#include "runtime_process_bootstrap/storage/ports/IFileStoragePort.h"
+#include "runtime_execution/contracts/motion/IAxisControlPort.h"
+#include "runtime_execution/contracts/motion/IHomingPort.h"
+#include "runtime_execution/contracts/motion/IJogControlPort.h"
+#include "runtime_execution/contracts/motion/IMotionConnectionPort.h"
 #include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
+#include "runtime_execution/contracts/motion/IMotionStatePort.h"
+#include "runtime_execution/contracts/motion/IPositionControlPort.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 #include <array>
 #include <cstdio>
@@ -460,12 +467,12 @@ std::shared_ptr<UseCases::Dispensing::PlanningUseCase>
 ApplicationContainer::CreateInstance<UseCases::Dispensing::PlanningUseCase>();
 
 template<>
-std::shared_ptr<UseCases::Dispensing::UploadFileUseCase>
-ApplicationContainer::CreateInstance<UseCases::Dispensing::UploadFileUseCase>();
+std::shared_ptr<Siligen::JobIngest::Application::UseCases::Dispensing::UploadFileUseCase>
+ApplicationContainer::CreateInstance<Siligen::JobIngest::Application::UseCases::Dispensing::UploadFileUseCase>();
 
 template<>
-std::shared_ptr<UseCases::Dispensing::IUploadFilePort>
-ApplicationContainer::CreateInstance<UseCases::Dispensing::IUploadFilePort>();
+std::shared_ptr<Siligen::JobIngest::Contracts::IUploadFilePort>
+ApplicationContainer::CreateInstance<Siligen::JobIngest::Contracts::IUploadFilePort>();
 
 template<>
 std::shared_ptr<UseCases::Dispensing::DispensingExecutionUseCase>
