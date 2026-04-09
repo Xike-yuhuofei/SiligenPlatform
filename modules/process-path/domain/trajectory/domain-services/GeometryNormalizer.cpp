@@ -1,7 +1,7 @@
 #include "GeometryNormalizer.h"
 #include "SplineApproximation.h"
 
-#include "domain/trajectory/value-objects/GeometryUtils.h"
+#include "process_path/contracts/GeometryUtils.h"
 #include "shared/types/MathConstants.h"
 
 #include <algorithm>
@@ -9,22 +9,22 @@
 
 namespace Siligen::Domain::Trajectory::DomainServices {
 
-using Siligen::Domain::Trajectory::ValueObjects::Segment;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
-using Siligen::Domain::Trajectory::ValueObjects::ArcPrimitive;
-using Siligen::Domain::Trajectory::ValueObjects::LinePrimitive;
-using Siligen::Domain::Trajectory::ValueObjects::SplinePrimitive;
-using Siligen::Domain::Trajectory::ValueObjects::CirclePrimitive;
-using Siligen::Domain::Trajectory::ValueObjects::EllipsePrimitive;
-using Siligen::Domain::Trajectory::ValueObjects::EllipsePoint;
-using Siligen::Domain::Trajectory::ValueObjects::PointPrimitive;
-using Siligen::Domain::Trajectory::ValueObjects::ContourPrimitive;
-using Siligen::Domain::Trajectory::ValueObjects::ContourElement;
-using Siligen::Domain::Trajectory::ValueObjects::ContourElementType;
-using Siligen::Domain::Trajectory::ValueObjects::ComputeArcLength;
-using Siligen::Domain::Trajectory::ValueObjects::NormalizeAngle;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentEnd;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentStart;
+using Siligen::ProcessPath::Contracts::ArcPrimitive;
+using Siligen::ProcessPath::Contracts::CirclePrimitive;
+using Siligen::ProcessPath::Contracts::ComputeArcLength;
+using Siligen::ProcessPath::Contracts::ContourElement;
+using Siligen::ProcessPath::Contracts::ContourElementType;
+using Siligen::ProcessPath::Contracts::ContourPrimitive;
+using Siligen::ProcessPath::Contracts::EllipsePoint;
+using Siligen::ProcessPath::Contracts::EllipsePrimitive;
+using Siligen::ProcessPath::Contracts::LinePrimitive;
+using Siligen::ProcessPath::Contracts::NormalizeAngle;
+using Siligen::ProcessPath::Contracts::PointPrimitive;
+using Siligen::ProcessPath::Contracts::Segment;
+using Siligen::ProcessPath::Contracts::SegmentEnd;
+using Siligen::ProcessPath::Contracts::SegmentStart;
+using Siligen::ProcessPath::Contracts::SegmentType;
+using Siligen::ProcessPath::Contracts::SplinePrimitive;
 using Siligen::Shared::Types::Point2D;
 
 namespace {
@@ -156,7 +156,7 @@ NormalizedPath GeometryNormalizer::Normalize(const std::vector<Primitive>& primi
     };
 
     auto append_primitive = [&](const Primitive& primitive, auto&& self_ref) -> void {
-        using PrimitiveType = Siligen::Domain::Trajectory::ValueObjects::PrimitiveType;
+        using PrimitiveType = Siligen::ProcessPath::Contracts::PrimitiveType;
         switch (primitive.type) {
             case PrimitiveType::Line: {
                 append_line_segment(primitive.line.start * scale, primitive.line.end * scale, false);

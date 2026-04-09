@@ -1,6 +1,6 @@
 #include "SoftLimitMonitorService.h"
 
-#include "domain/safety/bridges/MotionCoreInterlockBridge.h"
+#include "domain/safety/domain-services/InterlockPolicy.h"
 #include "shared/types/Error.h"
 
 #include <chrono>
@@ -100,7 +100,7 @@ Result<bool> SoftLimitMonitorService::CheckSoftLimits() noexcept {
         const auto& status = status_result.Value();
 
         bool positive_limit = false;
-        const bool triggered = Siligen::Domain::Safety::Bridges::IsSoftLimitTriggeredWithMotionCore(
+        const bool triggered = Siligen::Domain::Safety::DomainServices::InterlockPolicy::IsSoftLimitTriggered(
             status, &positive_limit, nullptr);
         if (triggered) {
             auto handle_result = HandleSoftLimitTrigger(axis_id, status, positive_limit);

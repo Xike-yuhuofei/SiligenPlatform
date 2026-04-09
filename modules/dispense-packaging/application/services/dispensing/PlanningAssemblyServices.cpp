@@ -1,13 +1,15 @@
 #include "application/services/dispensing/AuthorityPreviewAssemblyService.h"
 #include "application/services/dispensing/ExecutionAssemblyService.h"
+#include "application/services/motion_planning/CmpInterpolationFacade.h"
+#include "application/services/motion_planning/InterpolationProgramFacade.h"
+#include "application/services/motion_planning/MotionPlanningFacade.h"
+#include "application/services/motion_planning/TrajectoryInterpolationFacade.h"
+#include "application/services/dispensing/PlanningArtifactExportAssemblyService.h"
 
 #include "domain/dispensing/planning/domain-services/AuthorityTriggerLayoutPlanner.h"
 #include "domain/dispensing/planning/domain-services/CurveFlatteningService.h"
 
 #include "domain/dispensing/domain-services/TriggerPlanner.h"
-#include "domain/motion/CMPCoordinatedInterpolator.h"
-#include "domain/motion/domain-services/TimeTrajectoryPlanner.h"
-#include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
 #include "process_path/contracts/GeometryUtils.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
@@ -28,6 +30,12 @@ using Siligen::Application::Services::Dispensing::AuthorityPreviewBuildInput;
 using Siligen::Application::Services::Dispensing::AuthorityPreviewBuildResult;
 using Siligen::Application::Services::Dispensing::ExecutionAssemblyBuildInput;
 using Siligen::Application::Services::Dispensing::ExecutionAssemblyBuildResult;
+using Siligen::Application::Services::MotionPlanning::CmpInterpolationFacade;
+using Siligen::Application::Services::MotionPlanning::InterpolationProgramFacade;
+using Siligen::Application::Services::MotionPlanning::MotionPlanningFacade;
+using Siligen::Application::Services::MotionPlanning::TrajectoryInterpolationFacade;
+using Siligen::Application::Services::Dispensing::PlanningArtifactExportAssemblyInput;
+using Siligen::Application::Services::Dispensing::PlanningArtifactExportAssemblyService;
 using Siligen::Domain::Dispensing::Contracts::ExecutionPackageBuilt;
 using Siligen::Domain::Dispensing::DomainServices::AuthorityTriggerLayoutPlanner;
 using Siligen::Domain::Dispensing::DomainServices::AuthorityTriggerLayoutPlannerRequest;
@@ -40,13 +48,10 @@ using Siligen::Domain::Dispensing::ValueObjects::LayoutTriggerPoint;
 using Siligen::Domain::Dispensing::ValueObjects::LayoutTriggerSourceKind;
 using Siligen::Domain::Dispensing::ValueObjects::SpacingValidationClassification;
 using Siligen::Domain::Dispensing::ValueObjects::TriggerPlan;
-using Siligen::Domain::Motion::CMPCoordinatedInterpolator;
-using Siligen::Domain::Motion::InterpolationAlgorithm;
-using Siligen::Domain::Motion::TrajectoryInterpolatorFactory;
-using Siligen::Domain::Motion::ValueObjects::MotionTrajectory;
-using Siligen::Domain::Motion::ValueObjects::MotionTrajectoryPoint;
-using Siligen::Domain::Motion::DomainServices::TimeTrajectoryPlanner;
+using Siligen::MotionPlanning::Contracts::InterpolationAlgorithm;
 using Siligen::MotionPlanning::Contracts::MotionPlan;
+using Siligen::MotionPlanning::Contracts::MotionTrajectory;
+using Siligen::MotionPlanning::Contracts::MotionTrajectoryPoint;
 using Siligen::ProcessPath::Contracts::ArcPoint;
 using Siligen::ProcessPath::Contracts::ComputeArcLength;
 using Siligen::ProcessPath::Contracts::ComputeArcSweep;
@@ -592,6 +597,13 @@ const ProcessPath& ResolveAuthorityProcessPath(const PlanningArtifactsAssemblyIn
 }
 
 const ProcessPath& ResolveAuthorityProcessPath(const AuthorityPreviewBuildInput& input) {
+    if (!input.authority_process_path.segments.empty()) {
+        return input.authority_process_path;
+    }
+    return input.process_path;
+}
+
+const ProcessPath& ResolveExecutionProcessPath(const ExecutionAssemblyBuildInput& input) {
     if (!input.authority_process_path.segments.empty()) {
         return input.authority_process_path;
     }
@@ -1202,7 +1214,7 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
             triggers.push_back(trigger);
         }
 
-        CMPCoordinatedInterpolator cmp_interpolator;
+        CmpInterpolationFacade cmp_interpolator;
         const auto cmp_started_at = std::chrono::steady_clock::now();
         log_stage("cmp_plan_start", "seed_points=" + std::to_string(seed_points.size()));
         points = cmp_interpolator.PositionTriggeredDispensing(path, triggers, cmp_config, config);
@@ -1218,7 +1230,7 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
         }
 
         if (input.interpolation_algorithm == InterpolationAlgorithm::LINEAR) {
-            TimeTrajectoryPlanner trajectory_planner;
+            MotionPlanningFacade trajectory_planner;
             const auto linear_plan_started_at = std::chrono::steady_clock::now();
             log_stage("linear_plan_start", "seed_points=" + std::to_string(seed_points.size()));
             auto planned_trajectory = trajectory_planner.Plan(path, BuildInterpolationPlanningConfig(config));
@@ -1233,16 +1245,13 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
                       "points=" + std::to_string(points.size()) +
                           " elapsed_ms=" + std::to_string(ElapsedMs(convert_started_at)));
         } else {
-            auto interpolator = TrajectoryInterpolatorFactory::CreateInterpolator(input.interpolation_algorithm);
-            if (!interpolator) {
-                return Result<std::vector<TrajectoryPoint>>::Failure(
-                    Error(ErrorCode::NOT_IMPLEMENTED, "插补算法未实现", "DispensePackagingAssembly"));
+            TrajectoryInterpolationFacade interpolation_facade;
+            auto interpolation_result =
+                interpolation_facade.Interpolate(seed_points, input.interpolation_algorithm, config);
+            if (interpolation_result.IsError()) {
+                return Result<std::vector<TrajectoryPoint>>::Failure(interpolation_result.GetError());
             }
-            if (!interpolator->ValidateParameters(seed_points, config)) {
-                return Result<std::vector<TrajectoryPoint>>::Failure(
-                    Error(ErrorCode::INVALID_PARAMETER, "插补规划参数无效", "DispensePackagingAssembly"));
-            }
-            points = interpolator->CalculateInterpolation(seed_points, config);
+            points = interpolation_result.Value();
         }
 
         if (!trigger_artifacts.positions.empty() &&
@@ -1651,11 +1660,14 @@ Result<AuthorityPreviewBuildResult> AuthorityPreviewAssemblyService::BuildAuthor
 
 Result<ExecutionAssemblyBuildResult> ExecutionAssemblyService::BuildExecutionArtifactsFromAuthority(
     const ExecutionAssemblyBuildInput& input) const {
+    const auto& execution_process_path = ResolveExecutionProcessPath(input);
     auto log_stage = [&](const char* stage, const std::string& detail = std::string()) {
         std::ostringstream oss;
         oss << "planning_artifacts_stage=" << stage
             << " dxf=" << input.dxf_filename
             << " process_segments=" << input.process_path.segments.size()
+            << " authority_segments=" << input.authority_process_path.segments.size()
+            << " execution_segments=" << execution_process_path.segments.size()
             << " motion_points=" << input.motion_plan.points.size()
             << " preview_layout=" << input.authority_preview.authority_trigger_layout.layout_id;
         if (!detail.empty()) {
@@ -1666,7 +1678,7 @@ Result<ExecutionAssemblyBuildResult> ExecutionAssemblyService::BuildExecutionArt
 
     log_stage("execution_assembly_start");
 
-    if (input.process_path.segments.empty()) {
+    if (execution_process_path.segments.empty()) {
         return Result<ExecutionAssemblyBuildResult>::Failure(
             Error(ErrorCode::INVALID_PARAMETER, "process path为空", "DispensePackagingAssembly"));
     }
@@ -1685,7 +1697,8 @@ Result<ExecutionAssemblyBuildResult> ExecutionAssemblyService::BuildExecutionArt
     }
 
     PlanningArtifactsAssemblyInput execution_input;
-    execution_input.process_path = input.process_path;
+    execution_input.process_path = execution_process_path;
+    execution_input.authority_process_path = input.authority_process_path;
     execution_input.motion_plan = input.motion_plan;
     execution_input.source_path = input.source_path;
     execution_input.dxf_filename = input.dxf_filename;
@@ -1708,7 +1721,7 @@ Result<ExecutionAssemblyBuildResult> ExecutionAssemblyService::BuildExecutionArt
     execution_input.compensation_profile = input.compensation_profile;
 
     auto interpolation_points_result =
-        BuildInterpolationPoints(execution_input, input.process_path, trigger_artifacts);
+        BuildInterpolationPoints(execution_input, execution_process_path, trigger_artifacts);
     if (interpolation_points_result.IsError()) {
         return Result<ExecutionAssemblyBuildResult>::Failure(interpolation_points_result.GetError());
     }
@@ -1719,10 +1732,10 @@ Result<ExecutionAssemblyBuildResult> ExecutionAssemblyService::BuildExecutionArt
         log_stage("execution_interpolation_ready", oss.str());
     }
 
-    Siligen::Domain::Motion::DomainServices::InterpolationProgramPlanner program_planner;
+    InterpolationProgramFacade program_planner;
     auto interpolation_program =
-        program_planner.BuildProgram(input.process_path, input.motion_plan, input.acceleration);
-    if (interpolation_program.IsError() && trigger_artifacts.validation_classification != "fail") {
+        program_planner.BuildProgram(execution_process_path, input.motion_plan, input.acceleration);
+    if (interpolation_program.IsError()) {
         return Result<ExecutionAssemblyBuildResult>::Failure(interpolation_program.GetError());
     }
     {
@@ -1742,7 +1755,7 @@ Result<ExecutionAssemblyBuildResult> ExecutionAssemblyService::BuildExecutionArt
     built.execution_plan.trigger_interval_ms = trigger_artifacts.interval_ms;
     built.execution_plan.trigger_interval_mm = trigger_artifacts.interval_mm;
     built.execution_plan.total_length_mm =
-        input.motion_plan.total_length > kEpsilon ? input.motion_plan.total_length : ComputeProcessPathLength(input.process_path);
+        input.motion_plan.total_length > kEpsilon ? input.motion_plan.total_length : ComputeProcessPathLength(execution_process_path);
     built.total_length_mm = built.execution_plan.total_length_mm;
     built.estimated_time_s = input.estimated_time_s;
     built.source_path = input.source_path;
@@ -1791,6 +1804,16 @@ Result<ExecutionAssemblyBuildResult> ExecutionAssemblyService::BuildExecutionArt
     result.execution_binding_ready = trigger_artifacts.binding_ready;
     result.execution_failure_reason = trigger_artifacts.failure_reason;
     result.authority_trigger_layout = trigger_artifacts.authority_trigger_layout;
+    PlanningArtifactExportAssemblyService export_assembly_service;
+    PlanningArtifactExportAssemblyInput export_input;
+    export_input.source_path = input.source_path;
+    export_input.dxf_filename = input.dxf_filename;
+    export_input.process_path = execution_process_path;
+    export_input.glue_points = CollectAuthorityPositions(result.authority_trigger_layout);
+    export_input.execution_trajectory_points = result.execution_trajectory_points;
+    export_input.interpolation_trajectory_points = result.interpolation_trajectory_points;
+    export_input.motion_trajectory_points = result.motion_trajectory_points;
+    result.export_request = export_assembly_service.BuildRequest(export_input);
     {
         std::ostringstream oss;
         oss << "execution_binding_ready=" << (result.execution_binding_ready ? 1 : 0)

@@ -14,14 +14,14 @@
 
 - `IMotionRuntimePort`、`IIOControlPort` 的 owner 在 `modules/runtime-execution/contracts/runtime/include/runtime_execution/contracts/motion/`
 - `MotionControlServiceImpl`、`MotionStatusServiceImpl` 的 owner 在 `modules/runtime-execution/application/include/runtime_execution/application/services/motion/`
-- 本目录下同名头文件仅允许保留 shim/alias，禁止重新声明 runtime/control owner 类型
-- `MotionBufferController`、`JogController`、`HomingProcess`、`ReadyZeroDecisionService` 在本目录下仅保留 compatibility header；live implementation owner 已冻结到 `modules/workflow/domain/domain/motion/domain-services/`
+- 本目录不得重新声明 runtime/control owner 类型，也不再保留对应 shim/alias 头
+- `MotionBufferController`、`JogController`、`HomingProcess`、`ReadyZeroDecisionService` 的 live implementation owner 已冻结到 `modules/workflow/domain/domain/motion/domain-services/`
 - 上述四类 execution-owner 服务禁止在 `modules/motion-planning/domain/motion/domain-services/` 下保留可被 target 误编译的 `.cpp`
 
 ## Execution Owner 审计
 
 - `siligen_motion_execution_services` 的 live source root 固定为 workflow motion root，只允许从 `modules/workflow/domain/domain/motion/domain-services/` 取 `MotionBufferController`、`JogController`、`HomingProcess`、`ReadyZeroDecisionService`
-- `modules/motion-planning/domain/motion/domain-services/` 下这四个旧路径只保留 thin compatibility shell，用于兼容历史 include，不再持有 live `.cpp`
+- `modules/motion-planning/domain/motion/domain-services/` 下这四个旧路径已删除，不再承担历史 include 兼容
 
 ## Planning Owner 审计
 
@@ -54,10 +54,6 @@ motion/
 │   ├── TimeTrajectoryPlanner     # 时间规划
 │   ├── TriggerCalculator         # 规划触发计算
 │   ├── SpeedPlanner              # 速度规划
-│   ├── MotionBufferController    # compatibility header only
-│   ├── JogController             # compatibility header only
-│   ├── HomingProcess             # compatibility header only
-│   ├── ReadyZeroDecisionService  # compatibility header only
 │   └── interpolation/            # 插补与程序生成
 ├── BezierCalculator.*             # 计算器与验证器（根目录文件）
 ├── BSplineCalculator.*
@@ -65,7 +61,7 @@ motion/
 ├── CMPValidator.*
 ├── CMPCompensation.*
 ├── CMPCoordinatedInterpolator.*
-└── ports/                          # 规划相关端口；runtime/control 端口仅保留 shim
+└── ports/                          # 规划相关端口
     ├── IMotionConnectionPort
     ├── IAxisControlPort
     ├── IPositionControlPort
@@ -73,8 +69,8 @@ motion/
     ├── IInterpolationPort
     ├── IMotionStatePort
     ├── IHomingPort
-    ├── IMotionRuntimePort  # shim -> M9 owner
-    └── IIOControlPort      # shim -> M9 owner
+    ├── IMotionRuntimePort
+    └── IIOControlPort
 ```
 
 ## 命名空间
@@ -102,4 +98,5 @@ namespace Siligen::Domain::Motion {
 ## 特殊约束
 
 - `M7` public surface 只能承诺规划事实，不得重新吸收 runtime/control owner 语义
+- `InterpolationAlgorithm` 的对外真值固定为 `motion_planning/contracts/InterpolationTypes.h`
 - 本子域允许使用 `std::vector` 存储轨迹点（`.claude/rules/DOMAIN.md` 例外）

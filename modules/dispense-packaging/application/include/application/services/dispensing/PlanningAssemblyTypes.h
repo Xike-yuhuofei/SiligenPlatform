@@ -4,9 +4,9 @@
 #include "domain/dispensing/contracts/ExecutionPackage.h"
 #include "domain/dispensing/value-objects/AuthorityTriggerLayout.h"
 #include "domain/dispensing/value-objects/DispenseCompensationProfile.h"
-#include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
-#include "domain/motion/value-objects/MotionPlanningReport.h"
+#include "motion_planning/contracts/InterpolationTypes.h"
 #include "motion_planning/contracts/MotionPlan.h"
+#include "motion_planning/contracts/MotionPlanningReport.h"
 #include "process_path/contracts/ProcessPath.h"
 #include "shared/types/DispensingStrategy.h"
 #include "shared/types/TrajectoryTypes.h"
@@ -84,6 +84,7 @@ struct AuthorityPreviewBuildResult {
 
 struct ExecutionAssemblyBuildInput {
     Siligen::ProcessPath::Contracts::ProcessPath process_path;
+    Siligen::ProcessPath::Contracts::ProcessPath authority_process_path;
     Siligen::MotionPlanning::Contracts::MotionPlan motion_plan;
     std::string source_path;
     std::string dxf_filename;
@@ -102,8 +103,8 @@ struct ExecutionAssemblyBuildInput {
     Siligen::Shared::Types::float32 spline_max_error_mm = 0.0f;
     Siligen::Shared::Types::float32 estimated_time_s = 0.0f;
     bool use_interpolation_planner = false;
-    Siligen::Domain::Motion::InterpolationAlgorithm interpolation_algorithm =
-        Siligen::Domain::Motion::InterpolationAlgorithm::LINEAR;
+    Siligen::MotionPlanning::Contracts::InterpolationAlgorithm interpolation_algorithm =
+        Siligen::MotionPlanning::Contracts::InterpolationAlgorithm::LINEAR;
     Siligen::Domain::Dispensing::ValueObjects::DispenseCompensationProfile compensation_profile{};
     AuthorityPreviewBuildResult authority_preview;
 };
@@ -146,8 +147,8 @@ struct PlanningArtifactsBuildInput {
     bool dispense_only_cruise = false;
     bool downgrade_on_violation = true;
     bool use_interpolation_planner = false;
-    Siligen::Domain::Motion::InterpolationAlgorithm interpolation_algorithm =
-        Siligen::Domain::Motion::InterpolationAlgorithm::LINEAR;
+    Siligen::MotionPlanning::Contracts::InterpolationAlgorithm interpolation_algorithm =
+        Siligen::MotionPlanning::Contracts::InterpolationAlgorithm::LINEAR;
     Siligen::Domain::Dispensing::ValueObjects::DispenseCompensationProfile compensation_profile{};
     Siligen::Shared::Types::float32 spacing_tol_ratio = 0.0f;
     Siligen::Shared::Types::float32 spacing_min_mm = 0.0f;
@@ -164,7 +165,7 @@ struct PlanningArtifactsBuildResult {
     int trigger_count = 0;
     std::string dxf_filename;
     Siligen::Shared::Types::int32 timestamp = 0;
-    Siligen::Domain::Motion::ValueObjects::MotionPlanningReport planning_report;
+    Siligen::MotionPlanning::Contracts::MotionPlanningReport planning_report;
     bool preview_authority_ready = false;
     bool preview_authority_shared_with_execution = false;
     bool preview_binding_ready = false;

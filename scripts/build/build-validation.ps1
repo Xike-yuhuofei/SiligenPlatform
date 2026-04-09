@@ -95,32 +95,6 @@ function Assert-DirectoryAbsent {
     }
 }
 
-function Assert-ControlledLegacyToolsRoot {
-    $toolsRoot = Join-Path $workspaceRoot "tools"
-    if (-not (Test-Path $toolsRoot)) {
-        return
-    }
-
-    $allowedFiles = @(
-        "tools/testing/check_no_loose_mock.py"
-    )
-    $unexpected = @()
-
-    foreach ($item in Get-ChildItem -Path $toolsRoot -Recurse -File) {
-        if ($item.FullName -like "*\__pycache__\*") {
-            continue
-        }
-        $relative = $item.FullName.Substring($workspaceRoot.Length + 1).Replace('\', '/')
-        if ($allowedFiles -notcontains $relative) {
-            $unexpected += $relative
-        }
-    }
-
-    if ($unexpected.Count -gt 0) {
-        throw "tools 根仅允许受控 L0 资产，检测到未授权文件: $($unexpected -join ', ')"
-    }
-}
-
 function Assert-CanonicalGraphAndLegacyExitContracts {
     $requiredPaths = @(
         (Join-Path $workspaceRoot "CMakeLists.txt"),
@@ -129,6 +103,7 @@ function Assert-CanonicalGraphAndLegacyExitContracts {
         (Join-Path $workspaceRoot "cmake\workspace-layout.env"),
         (Join-Path $workspaceRoot "scripts\build\build-validation.ps1"),
         (Join-Path $workspaceRoot "scripts\migration\legacy-exit-checks.py"),
+        (Join-Path $workspaceRoot "scripts\testing\check_no_loose_mock.py"),
         (Join-Path $workspaceRoot "scripts\validation\invoke-workspace-tests.ps1"),
         (Join-Path $workspaceRoot "scripts\validation\run-local-validation-gate.ps1")
     )
@@ -169,7 +144,7 @@ function Assert-CanonicalGraphAndLegacyExitContracts {
 
     Assert-DirectoryAbsent -RelativePath "packages"
     Assert-DirectoryAbsent -RelativePath "integration"
-    Assert-ControlledLegacyToolsRoot
+    Assert-DirectoryAbsent -RelativePath "tools"
     Assert-DirectoryAbsent -RelativePath "examples"
 }
 

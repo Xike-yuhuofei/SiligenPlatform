@@ -9,13 +9,12 @@
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
 #include "domain/safety/ports/IInterlockSignalPort.h"
-#include "runtime/status/WorkflowRuntimeStatusExportPort.h"
+#include "runtime/status/RuntimeStatusExportPort.h"
 #include "runtime/supervision/RuntimeExecutionSupervisionBackend.h"
 #include "runtime/supervision/RuntimeSupervisionPortAdapter.h"
-#include "runtime/supervision/WorkflowRuntimeJobTerminalSync.h"
-#include "runtime/supervision/WorkflowRuntimeSupervisionPort.h"
-#include "runtime/system/LegacyMachineExecutionStateAdapter.h"
-#include "runtime/system/WorkflowMachineExecutionStateBackend.h"
+#include "runtime/supervision/RuntimeJobTerminalSync.h"
+#include "runtime/supervision/RuntimeSupervisionSyncPort.h"
+#include "runtime/system/DispenserModelMachineExecutionStateBackend.h"
 #include "runtime_execution/application/services/motion/MotionControlServiceImpl.h"
 #include "runtime_execution/application/services/motion/MotionStatusServiceImpl.h"
 #include "runtime_execution/contracts/system/IMachineExecutionStatePort.h"
@@ -66,7 +65,7 @@ void ApplicationContainer::ConfigureSystemOwnerPorts() {
     if (!runtime_supervision_port) {
         auto dispensing_execution_use_case = Resolve<UseCases::Dispensing::DispensingExecutionUseCase>();
         auto terminal_job_sync =
-            std::make_shared<Siligen::Runtime::Service::Supervision::WorkflowRuntimeJobTerminalSync>(
+            std::make_shared<Siligen::Runtime::Service::Supervision::RuntimeJobTerminalSync>(
                 Resolve<UseCases::Dispensing::DispensingWorkflowUseCase>());
         auto backend = std::make_shared<Siligen::Runtime::Service::Supervision::RuntimeExecutionSupervisionBackend>(
             Resolve<UseCases::Motion::MotionControlUseCase>(),
@@ -74,7 +73,7 @@ void ApplicationContainer::ConfigureSystemOwnerPorts() {
             dispensing_execution_use_case,
             ResolvePort<Domain::Safety::Ports::IInterlockSignalPort>(),
             device_connection_port_);
-        runtime_supervision_port = std::make_shared<Siligen::Runtime::Service::Supervision::WorkflowRuntimeSupervisionPort>(
+        runtime_supervision_port = std::make_shared<Siligen::Runtime::Service::Supervision::RuntimeSupervisionSyncPort>(
             std::make_shared<Siligen::Runtime::Host::Supervision::RuntimeSupervisionPortAdapter>(backend),
             dispensing_execution_use_case,
             terminal_job_sync);
@@ -103,7 +102,7 @@ void ApplicationContainer::ConfigureSystemOwnerPorts() {
         }
 
         RegisterPort<Siligen::RuntimeExecution::Contracts::System::IRuntimeStatusExportPort>(
-            std::make_shared<Siligen::Runtime::Service::Status::WorkflowRuntimeStatusExportPort>(
+            std::make_shared<Siligen::Runtime::Service::Status::RuntimeStatusExportPort>(
                 runtime_supervision_port,
                 std::move(motion_status_reader),
                 std::move(dispenser_status_reader)));
@@ -127,9 +126,8 @@ template<>
 std::shared_ptr<UseCases::System::EmergencyStopUseCase>
 ApplicationContainer::CreateInstance<UseCases::System::EmergencyStopUseCase>() {
     if (!machine_execution_state_port_) {
-        auto backend = std::make_shared<Siligen::Runtime::Service::System::WorkflowMachineExecutionStateBackend>();
         RegisterPort<Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort>(
-            std::make_shared<Siligen::Runtime::Host::System::LegacyMachineExecutionStateAdapter>(backend));
+            std::make_shared<Siligen::Runtime::Service::System::DispenserModelMachineExecutionStateBackend>());
     }
     auto position_control_port = motion_runtime_port_
         ? std::static_pointer_cast<Domain::Motion::Ports::IPositionControlPort>(motion_runtime_port_)

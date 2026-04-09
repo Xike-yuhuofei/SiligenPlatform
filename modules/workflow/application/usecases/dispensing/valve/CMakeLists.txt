@@ -9,17 +9,17 @@ add_library(siligen_valve_core STATIC
 )
 
 target_include_directories(siligen_valve_core PUBLIC
-    ${PROCESS_RUNTIME_CORE_PUBLIC_INCLUDE_DIRS}
+    ${SILIGEN_WORKSPACE_PUBLIC_INCLUDE_DIRS}
 )
 target_include_directories(siligen_valve_core PRIVATE
-    ${PROCESS_RUNTIME_CORE_IMPLEMENTATION_INCLUDE_DIRS}
+    ${SILIGEN_WORKSPACE_IMPLEMENTATION_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_link_libraries(siligen_valve_core PUBLIC
     siligen_types
-    siligen_domain
-    siligen_domain_services
+    siligen_dispensing_execution_services
+    siligen_process_planning_contracts_public
 )
 if(TARGET siligen_device_contracts)
     target_link_libraries(siligen_valve_core PUBLIC

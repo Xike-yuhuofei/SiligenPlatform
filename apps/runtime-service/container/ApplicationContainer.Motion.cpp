@@ -7,7 +7,7 @@
 #include "application/usecases/motion/interpolation/InterpolationPlanningUseCase.h"
 #include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
 #include "application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
-#include "runtime/motion/WorkflowMotionControlOperationsBridge.h"
+#include "runtime/motion/MotionControlOperationsBridge.h"
 #include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
 #include "application/usecases/motion/safety/MotionSafetyUseCase.h"
 #include "application/usecases/motion/trajectory/ExecuteTrajectoryUseCase.h"
@@ -46,7 +46,7 @@ void ApplicationContainer::ConfigureMotionServices() {
         ? std::static_pointer_cast<Domain::Motion::Ports::IMotionStatePort>(motion_runtime_port_)
         : motion_state_port_;
     auto io_control_port = motion_runtime_port_
-        ? std::static_pointer_cast<Domain::Motion::Ports::IIOControlPort>(motion_runtime_port_)
+        ? std::static_pointer_cast<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort>(motion_runtime_port_)
         : io_control_port_;
     auto position_control_port = motion_runtime_port_
         ? std::static_pointer_cast<Domain::Motion::Ports::IPositionControlPort>(motion_runtime_port_)
@@ -115,7 +115,7 @@ ApplicationContainer::CreateInstance<UseCases::Motion::MotionControlUseCase>() {
     auto ensure_ready_zero_use_case = Resolve<UseCases::Motion::Homing::EnsureAxesReadyZeroUseCase>();
     auto manual_use_case = Resolve<UseCases::Motion::Manual::ManualMotionControlUseCase>();
     auto monitoring_use_case = Resolve<UseCases::Motion::Monitoring::MotionMonitoringUseCase>();
-    auto operations = Siligen::Runtime::Service::Motion::CreateWorkflowMotionOperations(
+    auto operations = Siligen::Runtime::Service::Motion::CreateMotionOperations(
         std::move(home_use_case),
         std::move(ensure_ready_zero_use_case),
         std::move(manual_use_case),
@@ -164,7 +164,7 @@ ApplicationContainer::CreateInstance<UseCases::Motion::Initialization::MotionIni
         ? std::static_pointer_cast<Domain::Motion::Ports::IAxisControlPort>(motion_runtime_port_)
         : axis_control_port_;
     auto io_control_port = motion_runtime_port_
-        ? std::static_pointer_cast<Domain::Motion::Ports::IIOControlPort>(motion_runtime_port_)
+        ? std::static_pointer_cast<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort>(motion_runtime_port_)
         : io_control_port_;
     return std::make_shared<UseCases::Motion::Initialization::MotionInitializationUseCase>(
         motion_connection_port,
@@ -188,7 +188,7 @@ ApplicationContainer::CreateInstance<UseCases::Motion::Monitoring::MotionMonitor
         ? std::static_pointer_cast<Domain::Motion::Ports::IMotionStatePort>(motion_runtime_port_)
         : motion_state_port_;
     auto io_control_port = motion_runtime_port_
-        ? std::static_pointer_cast<Domain::Motion::Ports::IIOControlPort>(motion_runtime_port_)
+        ? std::static_pointer_cast<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort>(motion_runtime_port_)
         : io_control_port_;
     auto homing_port = motion_runtime_port_
         ? std::static_pointer_cast<Domain::Motion::Ports::IHomingPort>(motion_runtime_port_)
@@ -197,14 +197,16 @@ ApplicationContainer::CreateInstance<UseCases::Motion::Monitoring::MotionMonitor
         motion_state_port,
         io_control_port,
         homing_port,
-        interpolation_port_);
+        interpolation_port_,
+        diagnostics_port_,
+        event_port_);
 }
 
 template<>
 std::shared_ptr<UseCases::Motion::Coordination::MotionCoordinationUseCase>
 ApplicationContainer::CreateInstance<UseCases::Motion::Coordination::MotionCoordinationUseCase>() {
     auto io_control_port = motion_runtime_port_
-        ? std::static_pointer_cast<Domain::Motion::Ports::IIOControlPort>(motion_runtime_port_)
+        ? std::static_pointer_cast<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort>(motion_runtime_port_)
         : io_control_port_;
     auto axis_control_port = motion_runtime_port_
         ? std::static_pointer_cast<Domain::Motion::Ports::IAxisControlPort>(motion_runtime_port_)

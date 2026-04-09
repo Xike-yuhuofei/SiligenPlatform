@@ -154,6 +154,7 @@ class CommandProtocol:
             "dispensing_speed_mm_s": float(dispensing_speed_mm_s),
             "dry_run": bool(dry_run),
         }
+        params["optimize_path"] = True
         params["use_interpolation_planner"] = True
         params["interpolation_algorithm"] = 0
         if dry_run and dry_run_speed_mm_s > 0.0:
@@ -554,20 +555,26 @@ class CommandProtocol:
             return {"state": "unknown", "error_message": resp["error"].get("message", "Unknown error")}
         return _as_dict(resp.get("result"))
 
-    def dxf_job_pause(self, job_id: str = "") -> bool:
+    def dxf_job_pause(self, job_id: str = "") -> tuple[bool, str]:
         params = {"job_id": job_id} if job_id else {}
-        resp = self._client.send_request("dxf.job.pause", params)
-        return "result" in resp
+        resp = self._client.send_request("dxf.job.pause", params, timeout=15.0)
+        if "error" in resp:
+            return False, resp["error"].get("message", "Unknown error")
+        return True, ""
 
-    def dxf_job_resume(self, job_id: str = "") -> bool:
+    def dxf_job_resume(self, job_id: str = "") -> tuple[bool, str]:
         params = {"job_id": job_id} if job_id else {}
-        resp = self._client.send_request("dxf.job.resume", params)
-        return "result" in resp
+        resp = self._client.send_request("dxf.job.resume", params, timeout=15.0)
+        if "error" in resp:
+            return False, resp["error"].get("message", "Unknown error")
+        return True, ""
 
-    def dxf_job_stop(self, job_id: str = "") -> bool:
+    def dxf_job_stop(self, job_id: str = "") -> tuple[bool, str]:
         params = {"job_id": job_id} if job_id else {}
-        resp = self._client.send_request("dxf.job.stop", params)
-        return "result" in resp
+        resp = self._client.send_request("dxf.job.stop", params, timeout=15.0)
+        if "error" in resp:
+            return False, resp["error"].get("message", "Unknown error")
+        return True, ""
 
     def dxf_get_info(self) -> JsonDict:
         """Get DXF file info including bounding box and total length."""

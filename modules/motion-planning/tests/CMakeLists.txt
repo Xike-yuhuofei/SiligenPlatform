@@ -11,6 +11,7 @@ set(MOTION_PLANNING_TEST_SOURCES
     unit/domain/motion/NoRuntimeControlLeakTest.cpp
     unit/domain/motion/MotionPlannerOwnerPathTest.cpp
     unit/application/services/motion_planning/MotionPlanningFacadeTest.cpp
+    unit/application/services/motion_planning/MotionPlanningPublicSurfaceContractTest.cpp
 )
 
 add_executable(siligen_motion_planning_unit_tests ${MOTION_PLANNING_TEST_SOURCES})
@@ -33,18 +34,14 @@ target_link_libraries(siligen_motion_planning_unit_tests PRIVATE
     siligen_motion
     siligen_dispense_packaging_application_public
     siligen_runtime_execution_runtime_contracts
+    siligen_parsing_adapter
     siligen_types
     siligen_utils
 )
-if(TARGET siligen_workflow_dispensing_planning_compat)
-    target_link_libraries(siligen_motion_planning_unit_tests PRIVATE
-        siligen_workflow_dispensing_planning_compat
-    )
-endif()
 target_compile_features(siligen_motion_planning_unit_tests PRIVATE cxx_std_17)
 
-if(COMMAND process_runtime_core_add_test_with_runtime_environment)
-    process_runtime_core_add_test_with_runtime_environment(
+if(COMMAND siligen_add_test_with_runtime_environment)
+    siligen_add_test_with_runtime_environment(
         siligen_motion_planning_unit_tests
         siligen_motion_planning_unit_tests
     )

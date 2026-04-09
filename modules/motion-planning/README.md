@@ -17,10 +17,12 @@
 ## 迁移边界
 
 - `modules/motion-planning/` 是 `M7` 的唯一终态 owner 根。
-- `MotionPlanningFacade -> MotionPlanner -> MotionTrajectory` 是当前唯一 canonical 规划调用链。
+- 当前冻结的对外 surface 只有 `motion_planning/contracts/*`、`MotionPlanningFacade`、`CmpInterpolationFacade`、`InterpolationProgramFacade`、`TrajectoryInterpolationFacade`。
+- `MotionPlanningFacade -> MotionPlanner -> MotionTrajectory` 是当前 canonical 规划调用链；CMP / 插补程序 / 轨迹插补分别通过对应 facade 暴露。
 - 业务阶段名保留 `MotionPlan`，但本阶段代码级 canonical payload 固定为 `MotionTrajectory`。
-- `IMotionRuntimePort`、`IIOControlPort`、`MotionControlServiceImpl`、`MotionStatusServiceImpl` 的 owner 已迁移到 `modules/runtime-execution`；`M7` 下同名头文件仅保留 shim/alias。
-- `workflow` 侧仍可通过 thin compatibility shell 消费 `MotionBufferController`、`JogController`、`HomingProcess`、`ReadyZeroDecisionService` 等残余资产，但这些不再构成 `M7` 的 public owner surface。
+- `InterpolationAlgorithm` 的 contract 真值固定在 `contracts/include/motion_planning/contracts/InterpolationTypes.h`，外部消费者不得再引用旧 `Siligen::Domain::Motion::InterpolationAlgorithm`。
+- `IMotionRuntimePort`、`IIOControlPort`、`MotionControlServiceImpl`、`MotionStatusServiceImpl` 的 owner 已迁移到 `modules/runtime-execution`；`M7` 下对应旧兼容头已退场，不再保留 shim。
+- `MotionBufferController`、`JogController`、`HomingProcess`、`ReadyZeroDecisionService` 的 execution owner 已固定在 `modules/workflow/domain/domain/motion/domain-services/`；`M7` 下对应旧兼容头已删除。
 
 ## 统一骨架状态
 

@@ -326,6 +326,10 @@ class DispenserModel : public Siligen::Shared::Util::DomainModuleTag {
 };
 
 }  // namespace Legacy
+
+using DispenserModel = Legacy::DispenserModel;
+using DispensingTask = Legacy::DispensingTask;
+
 }  // namespace Aggregates
 }  // namespace Machine
 }  // namespace Domain

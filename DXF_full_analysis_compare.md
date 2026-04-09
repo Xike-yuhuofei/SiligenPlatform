@@ -77,7 +77,7 @@ CLI/scripts 输入
 | contracts | `contracts/preview.py` | PreviewRequest | PreviewArtifact | dataclass | 请求不合法时上层抛异常 |
 | scripts | `scripts/dxf_to_pb.py` 等 | 命令行 | 调 cli | Python 环境 | 继承 CLI 行为 |
 | 转换管线 | `processing/dxf_to_pb.py` | DXF | PathBundle.pb | ezdxf/geomdl/protobuf | 返回码 1/2/3/4 |
-| 转换管线 | `trajectory/offline_path_to_trajectory.py` | 点集 JSON | trajectory JSON | ruckig | 点不足、Ruckig导入/计算失败 |
+| 转换管线 | `trajectory/offline_path_to_trajectory.py` | 点集 JSON | trajectory JSON | 离线标量轨迹生成 | 点不足、轨迹计算失败 |
 | legacy | `src/dxf_pipeline/**` | 旧导入/旧CLI | forward 到 canonical | shim | 保留兼容入口，不承载算法 |
 
 ## 5. 差异对比矩阵（维度化）
@@ -88,7 +88,7 @@ CLI/scripts 输入
 | 2. DXF->PB 调用方式 | C++ 进程外调用 Python 脚本/命令模板 | Python 内部 canonical 实现 | `DxfPbPreparationService.cpp::ResolvePbCommandArgs`；`processing/dxf_to_pb.py::main` |
 | 3. 输入契约（strict-r12） | 配置项 `strict_r12`，默认 false；上传链路默认走 `--no-strict-r12` | `--strict-r12/--no-strict-r12`，严格模式失败返回 4 | `IConfigurationPort.h::DxfPreprocessConfig`；`UploadFileUseCaseTest.cpp`；`dxf_to_pb.py::validate_input_contract` |
 | 4. 错误模型 | `Result<T> + ErrorCode` 统一 | 异常 + CLI 返回码 | `DxfPbPreparationService.cpp`；`dxf_to_pb.py::return 1/2/3/4` |
-| 5. legacy 回退策略 | legacy autopath 默认禁用，需 `SILIGEN_DXF_AUTOPATH_LEGACY=1` | legacy 包全部 forward 到 canonical | `AutoPathSourceAdapter.cpp`；`src/dxf_pipeline/cli/*.py` |
+| 5. legacy 回退策略 | direct `.dxf` 输入稳定 hard-fail，必须先经 `DxfPbPreparationService` 生成 `.pb` | legacy 包全部 forward 到 canonical | `AutoPathSourceAdapter.cpp`；`src/dxf_pipeline/cli/*.py` |
 | 6. 数据契约（metadata） | `PathPrimitiveMeta` 仅 id/type/segment/closed | `PrimitiveMeta` 还写入 `layer/color` | `IPathSourcePort.h::PathPrimitiveMeta`；`dxf_to_pb.py::add_meta` |
 | 7. metadata 不一致处理 | 元数据数量不匹配时补默认 meta；轮廓优化直接放弃优化 | 导出端每 primitive 都写 meta（设计上对齐） | `PbPathSourceAdapter.cpp`；`ContourOptimizationService.cpp` |
 | 8. 触发策略 | `TriggerPlanner` 有 safety downgrade；Web 预览无触发直接失败 | simulation payload 允许 `triggers=[]` | `TriggerPlanner.cpp`；`PlanningUseCase.cpp`；`simulation_input.py` |
@@ -110,7 +110,7 @@ CLI/scripts 输入
 | P0 | legacy autopath 会写“占位 PB”且上层可能收到 Success 语义 | 开启 legacy/autopath 或误走旧链路 | 立即禁用占位 PB 回退，失败必须显式 `Failure(Error)` |
 | P0 | 跨侧默认值不一致（`jmax<=0`、strict-r12 容错）导致离线/在线结果漂移 | 同一输入在两侧跑 | 建立统一参数契约与默认值基线，出厂即对齐 |
 | P1 | metadata 契约丢失 `layer/color`，影响后续按图层/颜色策略扩展 | 需要图层级策略时 | 扩展 runtime `PathPrimitiveMeta` 并保持向后兼容 |
-| P1 | `python_ruckig_*` 配置疑似“死字段”造成运维误判 | 修改配置无效果 | 明确删除或接入消费路径，补测试 |
+| P1 | 旧轨迹脚本配置字段疑似“死字段”造成运维误判 | 修改配置无效果 | 明确删除或接入消费路径，补测试 |
 | P1 | 错误码映射不透明（Python exit code -> runtime ErrorCode） | 预处理失败排障 | 定义统一错误映射表并输出结构化日志 |
 | P2 | 远程适配器与迁移管理仍为壳实现，存在认知噪音 | 团队误以为可切 REMOTE | 文档与代码同时标记实验态，避免默认暴露 |
 | P2 | 回归入口分散（runtime 单测 vs engineering-data fixture） | 变更验证成本高 | 收敛到统一回归流水线 |
@@ -124,7 +124,7 @@ CLI/scripts 输入
 | 短期 | 对齐关键默认值（`strict_r12`、`jmax`、trigger 间隔） | 预览、执行、离线轨迹 | 同 DXF 输入双侧产物对比测试 | 减少离线/在线行为漂移 |
 | 短期 | 增加跨包金标用例（DXF->PB->preview/sim/plan） | 两个 package 测试层 | CI 新增契约回归 job | 变更可回归、可追责 |
 | 中期 | 扩展统一 metadata 契约（含 layer/color） | pb schema、runtime port、策略层 | 兼容读写测试 + 历史 PB 回放 | 支撑图层策略/可视化一致性 |
-| 中期 | 清理 dead config（`python_ruckig_*`）并文档化边界 | 配置系统、用例构建 | 配置生效性测试 | 降低配置歧义与维护成本 |
+| 中期 | 清理死配置字段并文档化边界 | 配置系统、用例构建 | 配置生效性测试 | 降低配置歧义与维护成本 |
 | 中期 | 迁移壳代码治理：明确保留/淘汰清单（`dxf_pipeline` vs runtime migration） | 兼容层、文档 | deprecation 计划 + 版本门禁 | 去重，减少长期技术债 |
 
 ## 8. 附录：检索命令与关键证据路径
@@ -133,7 +133,7 @@ CLI/scripts 输入
 
 1. `rg --files packages/process-runtime-core packages/engineering-data | rg -i "dxf|pb|path_to_trajectory|dxf_to_pb|preview|contour|augment|simulation-input|trajectory"`
 2. `rg -n -i "dxf|pb|path_to_trajectory|dxf_to_pb|preview|augment|contour|trajectory|simulation-input" packages/process-runtime-core packages/engineering-data`
-3. `rg -n "EnsurePbReady|strict-r12|SILIGEN_DXF_PB_COMMAND|SILIGEN_DXF_AUTOPATH_LEGACY|jmax|bundle_to_simulation_payload|generate_preview" ...`
+3. `rg -n "EnsurePbReady|strict-r12|SILIGEN_DXF_PB_COMMAND|jmax|bundle_to_simulation_payload|generate_preview" ...`
 
 关键证据路径（核心）：
 
@@ -144,7 +144,7 @@ CLI/scripts 输入
 5. `packages/process-runtime-core/src/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp`
 6. `packages/process-runtime-core/src/infrastructure/adapters/planning/dxf/PbPathSourceAdapter.cpp`
 7. `packages/process-runtime-core/src/infrastructure/adapters/planning/dxf/AutoPathSourceAdapter.cpp`
-8. `packages/process-runtime-core/src/infrastructure/adapters/planning/dxf/DXFMigrationConfig.h`
+8. `packages/process-runtime-core/src/infrastructure/adapters/planning/dxf/PbPathSourceAdapter.cpp`
 9. `packages/process-runtime-core/src/domain/configuration/ports/IConfigurationPort.h`
 10. `packages/process-runtime-core/src/domain/dispensing/domain-services/TriggerPlanner.cpp`
 11. `packages/engineering-data/src/engineering_data/processing/dxf_to_pb.py`
@@ -158,7 +158,6 @@ CLI/scripts 输入
 ---
 
 本报告仅做分析，不包含代码修改。
-
 
 
 

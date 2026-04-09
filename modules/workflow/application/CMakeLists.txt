@@ -6,6 +6,24 @@ if(NOT TARGET siligen_process_planning_contracts_public)
         "${CMAKE_BINARY_DIR}/_p/wa_ppc"
     )
 endif()
+if(NOT TARGET siligen_process_path_contracts_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../process-path/contracts"
+        "${CMAKE_BINARY_DIR}/_p/wa_ppath"
+    )
+endif()
+if(NOT TARGET siligen_motion_planning_contracts_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../motion-planning/contracts"
+        "${CMAKE_BINARY_DIR}/_p/wa_mpc"
+    )
+endif()
+if(NOT TARGET siligen_motion_planning_application_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../motion-planning/application"
+        "${CMAKE_BINARY_DIR}/_p/wa_mpa"
+    )
+endif()
 if(NOT TARGET siligen_dispense_packaging_contracts_public)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../../dispense-packaging/contracts"
@@ -36,6 +54,12 @@ if(NOT TARGET siligen_runtime_execution_runtime_contracts)
         "${CMAKE_BINARY_DIR}/_p/wa_rec"
     )
 endif()
+if(NOT TARGET siligen_runtime_execution_application_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../runtime-execution/application"
+        "${CMAKE_BINARY_DIR}/_p/wa_rea"
+    )
+endif()
 if(NOT TARGET siligen_device_contracts)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../../../shared/contracts/device"
@@ -64,9 +88,6 @@ if(NOT TARGET siligen_workflow_application_headers)
 endif()
 target_include_directories(siligen_workflow_application_headers INTERFACE
     ${SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../process-path/application/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../motion-planning/application/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../dispense-packaging/application/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../dxf-geometry/application/include
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
@@ -79,29 +100,18 @@ elseif(TARGET siligen_job_ingest_contracts)
         siligen_job_ingest_contracts
     )
 endif()
-if(TARGET siligen_dispense_packaging_contracts_public)
-    target_link_libraries(siligen_workflow_application_headers INTERFACE
-        siligen_dispense_packaging_contracts_public
-    )
-endif()
 if(TARGET siligen_dispense_packaging_application_public)
     target_link_libraries(siligen_workflow_application_headers INTERFACE
         siligen_dispense_packaging_application_public
     )
-endif()
-if(TARGET siligen_process_path_application_public)
+elseif(TARGET siligen_dispense_packaging_contracts_public)
     target_link_libraries(siligen_workflow_application_headers INTERFACE
-        siligen_process_path_application_public
+        siligen_dispense_packaging_contracts_public
     )
 endif()
 if(TARGET siligen_process_path_contracts_public)
     target_link_libraries(siligen_workflow_application_headers INTERFACE
         siligen_process_path_contracts_public
-    )
-endif()
-if(TARGET siligen_motion_planning_application_public)
-    target_link_libraries(siligen_workflow_application_headers INTERFACE
-        siligen_motion_planning_application_public
     )
 endif()
 if(TARGET siligen_motion_planning_contracts_public)
@@ -119,9 +129,14 @@ if(TARGET siligen_device_contracts)
         siligen_device_contracts
     )
 endif()
-if(TARGET siligen_runtime_execution_runtime_contracts)
+if(TARGET siligen_runtime_execution_application_public)
     target_link_libraries(siligen_workflow_application_headers INTERFACE
-        siligen_runtime_execution_runtime_contracts
+        siligen_runtime_execution_application_public
+    )
+endif()
+if(TARGET siligen_dxf_geometry_application_public)
+    target_link_libraries(siligen_workflow_application_headers INTERFACE
+        siligen_dxf_geometry_application_public
     )
 endif()
 target_compile_features(siligen_workflow_application_headers INTERFACE cxx_std_17)
@@ -135,11 +150,14 @@ add_subdirectory(usecases/recipes)
 add_subdirectory(usecases/dispensing/valve)
 
 set(SILIGEN_APPLICATION_PUBLIC_INCLUDE_DIRS
-    ${PROCESS_RUNTIME_CORE_PUBLIC_INCLUDE_DIRS}
+    ${SILIGEN_WORKSPACE_PUBLIC_INCLUDE_DIRS}
 )
 set(SILIGEN_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS
-    ${PROCESS_RUNTIME_CORE_IMPLEMENTATION_INCLUDE_DIRS}
+    ${SILIGEN_WORKSPACE_IMPLEMENTATION_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../process-path/application/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../motion-planning/application/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../dispense-packaging/application/include
 )
 
 add_library(siligen_application_system STATIC
@@ -156,8 +174,8 @@ target_link_libraries(siligen_application_system PUBLIC
     siligen_workflow_application_headers
     siligen_types
     siligen_utils
-    siligen_domain
-    siligen_domain_services
+    siligen_safety_domain_services
+    siligen_dispense_packaging_domain_dispensing
 )
 if(TARGET siligen_device_contracts)
     target_link_libraries(siligen_application_system PUBLIC
@@ -191,16 +209,22 @@ target_link_libraries(siligen_application_motion PUBLIC
     siligen_types
     siligen_utils
     siligen_geometry
-    siligen_domain
-    siligen_domain_services
+    siligen_motion
+    siligen_runtime_execution_motion_execution_services
+    siligen_process_path_contracts_public
+    siligen_process_planning_contracts_public
+    siligen_dispense_packaging_domain_dispensing
 )
+if(TARGET siligen_motion_planning_application_public)
+    target_link_libraries(siligen_application_motion PUBLIC
+        siligen_motion_planning_application_public
+    )
+endif()
 target_compile_features(siligen_application_motion PUBLIC cxx_std_17)
 
 add_library(siligen_application_dispensing STATIC
     usecases/dispensing/valve/coordination/ValveCoordinationUseCase.cpp
     usecases/dispensing/CleanupFilesUseCase.cpp
-    services/dispensing/PlanningArtifactExportAssemblyService.cpp
-    services/dispensing/WorkflowPreviewSnapshotService.cpp
     usecases/dispensing/PlanningUseCase.cpp
     usecases/dispensing/DispensingWorkflowUseCase.cpp
 )
@@ -215,8 +239,7 @@ target_link_libraries(siligen_application_dispensing PUBLIC
     siligen_types
     siligen_utils
     siligen_geometry
-    siligen_domain
-    siligen_domain_services
+    siligen_dispense_packaging_domain_dispensing
 )
 if(TARGET siligen_device_contracts)
     target_link_libraries(siligen_application_dispensing PUBLIC
@@ -224,17 +247,17 @@ if(TARGET siligen_device_contracts)
     )
 endif()
 if(TARGET siligen_process_path_application_public)
-    target_link_libraries(siligen_application_dispensing PUBLIC
+    target_link_libraries(siligen_application_dispensing PRIVATE
         siligen_process_path_application_public
     )
 endif()
 if(TARGET siligen_motion_planning_application_public)
-    target_link_libraries(siligen_application_dispensing PUBLIC
+    target_link_libraries(siligen_application_dispensing PRIVATE
         siligen_motion_planning_application_public
     )
 endif()
 if(TARGET siligen_dispense_packaging_application_public)
-    target_link_libraries(siligen_application_dispensing PUBLIC
+    target_link_libraries(siligen_application_dispensing PRIVATE
         siligen_dispense_packaging_application_public
     )
 endif()
@@ -274,8 +297,7 @@ target_link_libraries(siligen_application_redundancy PUBLIC
     siligen_workflow_application_headers
     siligen_types
     siligen_utils
-    siligen_domain
-    siligen_domain_services
+    siligen_workflow_domain_headers
     siligen_redundancy_storage_adapter
 )
 target_compile_features(siligen_application_redundancy PUBLIC cxx_std_17)

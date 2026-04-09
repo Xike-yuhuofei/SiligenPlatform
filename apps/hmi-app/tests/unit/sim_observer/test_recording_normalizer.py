@@ -4,9 +4,10 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = PROJECT_ROOT.parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from hmi_client.features.sim_observer.adapters.recording_loader import load_recording_from_mapping  # noqa: E402
+from hmi_client.features.sim_observer.adapters.recording_loader import RawRecordingPayload, load_recording_from_mapping  # noqa: E402
 from hmi_client.features.sim_observer.adapters.recording_normalizer import normalize_recording  # noqa: E402
 from hmi_client.features.sim_observer.contracts.observer_types import ObjectId  # noqa: E402
 
@@ -142,6 +143,32 @@ class RecordingNormalizerTest(unittest.TestCase):
         self.assertAlmostEqual(segment.bbox.min_y, 0.0, places=3)
         self.assertAlmostEqual(segment.bbox.max_x, 10.0, places=3)
         self.assertAlmostEqual(segment.bbox.max_y, 10.0, places=3)
+
+    def test_normalize_recording_falls_back_to_repo_samples_simulation(self) -> None:
+        normalized = normalize_recording(
+            RawRecordingPayload(
+                summary={},
+                snapshots=tuple(),
+                timeline=(
+                    {
+                        "message": (
+                            "Loaded canonical simulation input from "
+                            "D:\\Projects\\SiligenSuite\\examples\\simulation\\sample_trajectory.json."
+                        )
+                    },
+                ),
+                trace=tuple(),
+                motion_profile=({"axis": "X", "position_mm": 0.0},),
+                raw_root={},
+                source_path=REPO_ROOT / "samples" / "replay-data" / "sample_trajectory.scheme_c.recording.json",
+            )
+        )
+
+        self.assertEqual(len(normalized.path_segments), 3)
+        self.assertEqual(
+            tuple(segment.segment_type for segment in normalized.path_segments),
+            ("line", "arc", "line"),
+        )
 
 
 if __name__ == "__main__":

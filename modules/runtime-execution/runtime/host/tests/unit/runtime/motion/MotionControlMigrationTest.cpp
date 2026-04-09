@@ -1,8 +1,8 @@
-#include "application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
-#include "application/usecases/motion/homing/HomeAxesUseCase.h"
-#include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
-#include "runtime/motion/WorkflowMotionRuntimeServicesProvider.h"
+#include "runtime/motion/MotionRuntimeServicesProvider.h"
+#include "runtime_execution/application/usecases/motion/homing/EnsureAxesReadyZeroTypes.h"
+#include "runtime_execution/application/usecases/motion/manual/ManualMotionCommand.h"
 #include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
+#include "runtime_execution/contracts/motion/HomingProcess.h"
 #include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
 
 #include <gtest/gtest.h>
@@ -26,13 +26,13 @@ using Siligen::Application::UseCases::Motion::Manual::ManualMotionCommand;
 using Siligen::Domain::Motion::Ports::AxisConfiguration;
 using Siligen::Domain::Motion::Ports::HomingState;
 using Siligen::Domain::Motion::Ports::HomingStatus;
-using Siligen::Domain::Motion::Ports::IOStatus;
 using Siligen::Domain::Motion::Ports::JogParameters;
 using Siligen::Domain::Motion::Ports::MotionCommand;
 using Siligen::Domain::Motion::Ports::MotionState;
 using Siligen::Domain::Motion::Ports::MotionStatus;
 using Siligen::RuntimeExecution::Contracts::Motion::IMotionRuntimePort;
-using Siligen::RuntimeExecution::Host::Motion::WorkflowMotionRuntimeServicesProvider;
+using Siligen::RuntimeExecution::Contracts::Motion::IOStatus;
+using Siligen::RuntimeExecution::Host::Motion::MotionRuntimeServicesProvider;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::LogicalAxisId;
@@ -418,9 +418,9 @@ class FakeMotionMonitoringOperations final : public IMotionMonitoringOperations 
     std::shared_ptr<FakeMotionRuntimePort> runtime_port_;
 };
 
-TEST(MotionControlMigrationTest, WorkflowMotionRuntimeServicesProviderBuildsControlAndStatusServicesFromM9Port) {
+TEST(MotionControlMigrationTest, MotionRuntimeServicesProviderBuildsControlAndStatusServicesFromM9Port) {
     auto runtime_port = std::make_shared<FakeMotionRuntimePort>();
-    WorkflowMotionRuntimeServicesProvider provider;
+    MotionRuntimeServicesProvider provider;
 
     const auto bundle = provider.CreateServices(runtime_port);
 

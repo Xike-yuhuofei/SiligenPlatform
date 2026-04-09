@@ -40,3 +40,10 @@ class IIOControlPort {
 };
 
 }  // namespace Siligen::RuntimeExecution::Contracts::Motion
+
+namespace Siligen::Domain::Motion::Ports {
+
+using IOStatus = Siligen::RuntimeExecution::Contracts::Motion::IOStatus;
+using IIOControlPort = Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort;
+
+}  // namespace Siligen::Domain::Motion::Ports

@@ -1,6 +1,6 @@
 # Bridge Exit Closeout
 
-更新时间：`2026-03-25`
+更新时间：`2026-04-07`
 
 ## 1. 目标
 
@@ -23,6 +23,7 @@
 | workflow | `modules/workflow/src`; `modules/workflow/process-runtime-core`; `modules/workflow/application/usecases-bridge` |
 | dxf-geometry | `modules/dxf-geometry/src`; `modules/dxf-geometry/engineering-data`; `scripts/engineering-data-bridge` |
 | runtime-execution | `modules/runtime-execution/device-contracts`; `modules/runtime-execution/device-adapters`; `modules/runtime-execution/runtime-host` |
+| runtime contracts alias shell | `modules/runtime-execution/contracts/runtime/include/runtime_execution/contracts/configuration/IConfigurationPort.h`; `modules/runtime-execution/contracts/runtime/include/runtime_execution/contracts/dispensing/ITaskSchedulerPort.h`; `modules/runtime-execution/contracts/runtime/include/runtime_execution/contracts/system/IEventPublisherPort.h` |
 | 其余模块 src bridge | `modules/job-ingest/src`; `modules/topology-feature/src`; `modules/process-planning/src`; `modules/coordinate-alignment/src`; `modules/process-path/src`; `modules/motion-planning/src`; `modules/dispense-packaging/src`; `modules/trace-diagnostics/src`; `modules/hmi-application/src` |
 | bridge metadata | `module.yaml` 中 `bridge_roots` / `bridge_mode: active`; `CMakeLists.txt` 中 `SILIGEN_BRIDGE_ROOTS` / `SILIGEN_MIGRATION_SOURCE_ROOTS` |
 
@@ -40,4 +41,6 @@
 - 任何 live 目录、脚本或文档只要仍把 bridge/fallback 写成默认入口，本次 closeout 即失败。
 - `validate_workspace_layout.py` 与 `legacy-exit-checks.py` 不再接受“bridge shell-only 仍可通过”的旧语义。
 - 本次收口完成后，所有后续变更都必须直接落在 canonical roots，不允许再恢复桥接层。
-- 截至 `2026-03-25`，本次 bridge exit closeout 判定为 `PASS`。
+- 截至 `2026-04-07`，`runtime-execution/contracts/runtime` 已从 canonical required surface 中移除 `IConfigurationPort` / `ITaskSchedulerPort` / `IEventPublisherPort` alias shell，live include 也已清零；该问题不再构成运行链默认入口。
+- 截至 `2026-04-07`，machine execution state 已收口为 `runtime/system/DispenserModelMachineExecutionStateBackend.*` 直接实现 `IMachineExecutionStatePort`，并通过 `modules/workflow/domain/include/domain/machine/aggregates/DispenserModel.h` 提供 `Aggregates::DispenserModel` / `Aggregates::DispensingTask` canonical alias；`runtime-execution` 已不再把 `Legacy::DispenserModel` / `Legacy::DispensingTask` 作为 live surface 暴露。
+- 截至 `2026-04-07`，由于 `runtime-execution` / `runtime-service` 仍在进行 owner 收口、历史命名清理与其余文档同步，本次 bridge exit closeout 必须维持为 `NOT PASS`，不得继续对外宣称完成。

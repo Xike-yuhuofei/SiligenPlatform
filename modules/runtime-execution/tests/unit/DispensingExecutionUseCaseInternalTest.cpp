@@ -32,7 +32,7 @@ using Siligen::Domain::Machine::ValueObjects::MachineMode;
 using Siligen::Domain::Motion::Ports::InterpolationData;
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectoryPoint;
 using RuntimeDispensingProcessPort = Siligen::RuntimeExecution::Contracts::Dispensing::IDispensingProcessPort;
-using RuntimeTaskSchedulerPort = Siligen::RuntimeExecution::Contracts::Dispensing::ITaskSchedulerPort;
+using RuntimeTaskSchedulerPort = Siligen::Domain::Dispensing::Ports::ITaskSchedulerPort;
 using Siligen::Shared::Types::float32;
 using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::ErrorCode;
@@ -479,7 +479,7 @@ TEST(DispensingExecutionUseCaseInternalTest, TerminalTaskStatusIsReturnedOnceThe
     EXPECT_EQ(second_status_result.GetError().GetCode(), ErrorCode::INVALID_STATE);
 }
 
-TEST(DispensingExecutionUseCaseInternalTest, TerminalJobStatusIsReturnedOnceThenReleased) {
+TEST(DispensingExecutionUseCaseInternalTest, TerminalJobStatusRemainsReadableUntilCleanup) {
     auto use_case = CreateExecutionUseCase();
 
     auto context = std::make_shared<JobExecutionContext>();
@@ -503,11 +503,12 @@ TEST(DispensingExecutionUseCaseInternalTest, TerminalJobStatusIsReturnedOnceThen
     ASSERT_TRUE(first_status_result.IsSuccess());
     EXPECT_EQ(first_status_result.Value().job_id, context->job_id);
     EXPECT_EQ(first_status_result.Value().state, "completed");
-    EXPECT_EQ(use_case->jobs_.find(context->job_id), use_case->jobs_.end());
+    EXPECT_NE(use_case->jobs_.find(context->job_id), use_case->jobs_.end());
 
     auto second_status_result = use_case->GetJobStatus(context->job_id);
-    ASSERT_TRUE(second_status_result.IsError());
-    EXPECT_EQ(second_status_result.GetError().GetCode(), ErrorCode::NOT_FOUND);
+    ASSERT_TRUE(second_status_result.IsSuccess());
+    EXPECT_EQ(second_status_result.Value().job_id, context->job_id);
+    EXPECT_EQ(second_status_result.Value().state, "completed");
 }
 
 TEST(DispensingExecutionUseCaseInternalTest, CleanupTerminalJobsLockedDropsOlderTerminalJobs) {

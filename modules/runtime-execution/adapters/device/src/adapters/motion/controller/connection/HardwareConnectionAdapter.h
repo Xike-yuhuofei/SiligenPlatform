@@ -136,8 +136,8 @@ class HardwareConnectionAdapter : public Siligen::Device::Contracts::Ports::Devi
     Siligen::Domain::Machine::Ports::HeartbeatStatus heartbeat_status_;  ///< 心跳状态
 
     // 回调函数
-    std::function<void(const Siligen::Domain::Machine::Ports::HardwareConnectionInfo&)> legacy_state_change_callback_;  ///< 历史状态变化回调
-    std::function<void(const Siligen::Device::Contracts::State::DeviceConnectionSnapshot&)> state_change_callback_;  ///< 稳定状态变化回调
+    std::function<void(const Siligen::Device::Contracts::State::DeviceConnectionSnapshot&)>
+        state_change_callback_;  ///< 统一状态变化回调（兼容接口在注册时完成转换）
 };
 
 }  // namespace Adapters

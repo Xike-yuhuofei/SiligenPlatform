@@ -42,6 +42,9 @@ enum class EventType {
     DXF_PARSING_STARTED,   // DXF解析开始
     DXF_PARSING_COMPLETED, // DXF解析完成
     DXF_PARSING_FAILED,    // DXF解析失败
+    WORKFLOW_STAGE_CHANGED, // workflow 阶段状态变化
+    WORKFLOW_STAGE_FAILED,  // workflow 阶段失败
+    WORKFLOW_EXPORT_FAILED, // workflow 导出失败
     SOFT_LIMIT_TRIGGERED,  // 软限位触发（硬件触发）
     SOFT_LIMIT_VIOLATION,  // 软限位违规（轨迹验证失败）
 

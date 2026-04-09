@@ -5,8 +5,8 @@
 #include "domain/dispensing/value-objects/JobExecutionMode.h"
 #include "domain/dispensing/value-objects/ProcessOutputPolicy.h"
 #include "domain/machine/value-objects/MachineMode.h"
-#include "domain/motion/ports/IInterpolationPort.h"
-#include "domain/motion/value-objects/MotionTrajectory.h"
+#include "motion_planning/contracts/MotionTrajectory.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "shared/types/Error.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
@@ -24,8 +24,8 @@ using Siligen::Shared::Types::float32;
 using Siligen::Shared::Types::int32;
 using Siligen::Shared::Types::uint32;
 using Siligen::TrajectoryPoint;
-using Siligen::Domain::Motion::Ports::InterpolationData;
-using Siligen::Domain::Motion::ValueObjects::MotionTrajectory;
+using Siligen::MotionPlanning::Contracts::MotionTrajectory;
+using Siligen::RuntimeExecution::Contracts::Motion::InterpolationData;
 
 struct DispensingRuntimeOverrides {
     bool dry_run = false;

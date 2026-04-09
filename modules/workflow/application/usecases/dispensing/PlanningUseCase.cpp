@@ -1,7 +1,9 @@
 #include "PlanningUseCase.h"
 
 #include "application/services/dxf/DxfPbPreparationService.h"
-#include "application/services/dispensing/PlanningArtifactExportAssemblyService.h"
+#include "application/services/dispensing/WorkflowPlanningAssemblyOperations.h"
+#include "application/services/motion_planning/MotionPlanningFacade.h"
+#include "application/services/process_path/ProcessPathFacade.h"
 #include "process_path/contracts/GeometryUtils.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
@@ -24,20 +26,22 @@ namespace Siligen::Application::UseCases::Dispensing {
 
 using Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest;
 using Siligen::Application::Services::ProcessPath::ProcessPathBuildResult;
-using Siligen::Application::Services::Dispensing::AuthorityPreviewBuildInput;
-using Siligen::Application::Services::Dispensing::ExecutionAssemblyBuildInput;
 using Siligen::Domain::Motion::ValueObjects::TimePlanningConfig;
 using Siligen::Domain::Trajectory::Ports::PathSourceResult;
+using Siligen::MotionPlanning::Contracts::MotionPlan;
 using Siligen::ProcessPath::Contracts::ContourElement;
 using Siligen::ProcessPath::Contracts::ContourElementType;
 using Siligen::ProcessPath::Contracts::Primitive;
 using Siligen::ProcessPath::Contracts::PrimitiveType;
 using Siligen::ProcessPath::Contracts::ProcessTag;
 using Siligen::ProcessPath::Contracts::Segment;
-using Siligen::MotionPlanning::Contracts::MotionPlan;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
+using Siligen::Domain::Diagnostics::Ports::DiagnosticInfo;
+using Siligen::Domain::Diagnostics::Ports::DiagnosticLevel;
+using Siligen::Domain::System::Ports::DomainEvent;
+using Siligen::Domain::System::Ports::EventType;
 using Siligen::Workflow::Contracts::WorkflowCommand;
 using Siligen::Workflow::Contracts::WorkflowFailureCategory;
 using Siligen::Workflow::Contracts::WorkflowPlanningTriggerRequest;
@@ -50,20 +54,26 @@ namespace {
 constexpr float32 kEpsilon = 1e-6f;
 constexpr float32 kBoundsToleranceMm = 1e-4f;
 
-struct PreviewRuntimeParams {
-    float32 dispensing_velocity = 0.0f;
-    float32 acceleration = 0.0f;
-    float32 pulse_per_mm = 200.0f;
-    uint32 dispenser_interval_ms = 0;
-    uint32 dispenser_duration_ms = 0;
-    float32 trigger_spatial_interval_mm = 0.0f;
-    float32 valve_response_ms = 0.0f;
-    float32 safety_margin_ms = 0.0f;
-    float32 min_interval_ms = 0.0f;
-    float32 sample_dt = 0.01f;
-    float32 sample_ds = 0.0f;
-    Siligen::Domain::Dispensing::ValueObjects::DispenseCompensationProfile compensation_profile{};
-};
+std::int64_t CurrentUnixTimestampMs() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
+WorkflowFailureCategory ToWorkflowFailureCategory(const ErrorCode code) {
+    switch (code) {
+        case ErrorCode::INVALID_PARAMETER:
+        case ErrorCode::INVALID_CONFIG_VALUE:
+        case ErrorCode::FILE_FORMAT_INVALID:
+            return WorkflowFailureCategory::Validation;
+        case ErrorCode::FILE_NOT_FOUND:
+            return WorkflowFailureCategory::InputPreparation;
+        case ErrorCode::CONFIGURATION_ERROR:
+        case ErrorCode::PORT_NOT_INITIALIZED:
+            return WorkflowFailureCategory::Infrastructure;
+        default:
+            return WorkflowFailureCategory::Unknown;
+    }
+}
 
 struct MachineBounds {
     bool enabled = false;
@@ -96,11 +106,21 @@ WorkflowPlanningTriggerResponse BuildWorkflowPlanningTriggerResponse(
     WorkflowStageLifecycle lifecycle,
     WorkflowFailureCategory failure_category,
     const std::string& prepared_input_path,
-    const std::string& reason) {
+    const std::string& reason,
+    int diagnostic_error_code = 0,
+    std::uint32_t stage_duration_ms = 0,
+    bool export_attempted = false,
+    bool export_succeeded = false) {
     WorkflowPlanningTriggerResponse response;
     response.accepted = (lifecycle == WorkflowStageLifecycle::Completed);
     response.prepared_input_path = prepared_input_path;
     response.failure_category = failure_category;
+    response.diagnostic_error_code = diagnostic_error_code;
+    response.diagnostic_message = reason;
+    response.observed_at_ms = CurrentUnixTimestampMs();
+    response.stage_duration_ms = stage_duration_ms;
+    response.export_attempted = export_attempted;
+    response.export_succeeded = export_succeeded;
     response.stage_state.workflow_run_id = trigger_request.workflow_run_id;
     response.stage_state.source_artifact = trigger_request.source_artifact;
     response.stage_state.stage_name = "M0->M6/M7/M8-planning-trigger";
@@ -108,6 +128,12 @@ WorkflowPlanningTriggerResponse BuildWorkflowPlanningTriggerResponse(
     response.stage_state.lifecycle = lifecycle;
     response.stage_state.failure_category = failure_category;
     response.stage_state.recovery_required = (failure_category != WorkflowFailureCategory::None);
+    response.stage_state.diagnostic_error_code = diagnostic_error_code;
+    response.stage_state.diagnostic_message = reason;
+    response.stage_state.observed_at_ms = response.observed_at_ms;
+    response.stage_state.stage_duration_ms = stage_duration_ms;
+    response.stage_state.export_attempted = export_attempted;
+    response.stage_state.export_succeeded = export_succeeded;
     if (failure_category != WorkflowFailureCategory::None) {
         response.recovery_directive.action = WorkflowRecoveryAction::EscalateToHost;
         response.recovery_directive.retryable = false;
@@ -116,10 +142,10 @@ WorkflowPlanningTriggerResponse BuildWorkflowPlanningTriggerResponse(
     return response;
 }
 
-PreviewRuntimeParams BuildPreviewRuntimeParams(
+PlanningRuntimeParams BuildPreviewRuntimeParams(
     const PlanningRequest& request,
     const std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort>& config_port) {
-    PreviewRuntimeParams params;
+    PlanningRuntimeParams params;
     params.dispensing_velocity = request.trajectory_config.max_velocity;
     params.acceleration = request.trajectory_config.max_acceleration;
     params.sample_dt = request.trajectory_config.time_step;
@@ -549,7 +575,7 @@ ProcessPathBuildRequest BuildProcessPathRequest(
 
 TimePlanningConfig BuildMotionPlanningConfig(
     const PlanningRequest& request,
-    const PreviewRuntimeParams& runtime_params,
+    const PlanningRuntimeParams& runtime_params,
     const std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort>& config_port) {
     TimePlanningConfig config;
     config.vmax = runtime_params.dispensing_velocity;
@@ -577,6 +603,85 @@ TimePlanningConfig BuildMotionPlanningConfig(
     }
 
     return config;
+}
+
+Siligen::Application::Services::Dispensing::WorkflowAuthorityPreviewRequest BuildWorkflowAuthorityPreviewRequest(
+    const PlanningRequest& request,
+    const PathGenerationResult& process_path_result,
+    const PlanningRuntimeParams& runtime_params,
+    const std::string& source_path,
+    const std::string& dxf_filename,
+    const std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort>& config_port) {
+    Siligen::Application::Services::Dispensing::WorkflowAuthorityPreviewRequest workflow_input;
+    workflow_input.process_path = process_path_result.shaped_path;
+    workflow_input.authority_process_path = process_path_result.process_path;
+    workflow_input.source_path = source_path;
+    workflow_input.dxf_filename = dxf_filename;
+    workflow_input.runtime_options.dispensing_velocity = runtime_params.dispensing_velocity;
+    workflow_input.runtime_options.acceleration = runtime_params.acceleration;
+    workflow_input.runtime_options.dispenser_interval_ms = runtime_params.dispenser_interval_ms;
+    workflow_input.runtime_options.dispenser_duration_ms = runtime_params.dispenser_duration_ms;
+    workflow_input.runtime_options.trigger_spatial_interval_mm = runtime_params.trigger_spatial_interval_mm;
+    workflow_input.runtime_options.valve_response_ms = runtime_params.valve_response_ms;
+    workflow_input.runtime_options.safety_margin_ms = runtime_params.safety_margin_ms;
+    workflow_input.runtime_options.min_interval_ms = runtime_params.min_interval_ms;
+    workflow_input.runtime_options.sample_dt = runtime_params.sample_dt;
+    workflow_input.runtime_options.sample_ds = runtime_params.sample_ds;
+    workflow_input.runtime_options.spline_max_step_mm = request.spline_max_step_mm;
+    workflow_input.runtime_options.spline_max_error_mm = request.spline_max_error_mm;
+    workflow_input.runtime_options.compensation_profile = runtime_params.compensation_profile;
+    workflow_input.spacing_tol_ratio = request.spacing_tol_ratio;
+    workflow_input.spacing_min_mm = request.spacing_min_mm;
+    workflow_input.spacing_max_mm = request.spacing_max_mm;
+
+    if (!config_port) {
+        return workflow_input;
+    }
+
+    auto dispensing_result = config_port->GetDispensingConfig();
+    if (dispensing_result.IsSuccess()) {
+        const auto& dispensing = dispensing_result.Value();
+        workflow_input.dispensing_strategy = dispensing.strategy;
+        if (dispensing.subsegment_count > 0) {
+            workflow_input.subsegment_count = dispensing.subsegment_count;
+        }
+        workflow_input.dispense_only_cruise = dispensing.dispense_only_cruise;
+    }
+
+    return workflow_input;
+}
+
+Siligen::Application::Services::Dispensing::WorkflowExecutionAssemblyRequest BuildWorkflowExecutionAssemblyRequest(
+    const PlanningRequest& request,
+    const PreparedAuthorityPreview& authority_preview,
+    MotionPlan motion_plan,
+    const PlanningRuntimeParams& runtime_params) {
+    Siligen::Application::Services::Dispensing::WorkflowExecutionAssemblyRequest workflow_input;
+    workflow_input.process_path = authority_preview.process_path;
+    workflow_input.authority_process_path = authority_preview.authority_process_path;
+    workflow_input.motion_plan = std::move(motion_plan);
+    workflow_input.source_path = authority_preview.source_path;
+    workflow_input.dxf_filename = authority_preview.artifacts.dxf_filename;
+    workflow_input.runtime_options.dispensing_velocity = runtime_params.dispensing_velocity;
+    workflow_input.runtime_options.acceleration = runtime_params.acceleration;
+    workflow_input.runtime_options.dispenser_interval_ms = runtime_params.dispenser_interval_ms;
+    workflow_input.runtime_options.dispenser_duration_ms = runtime_params.dispenser_duration_ms;
+    workflow_input.runtime_options.trigger_spatial_interval_mm = runtime_params.trigger_spatial_interval_mm;
+    workflow_input.runtime_options.valve_response_ms = runtime_params.valve_response_ms;
+    workflow_input.runtime_options.safety_margin_ms = runtime_params.safety_margin_ms;
+    workflow_input.runtime_options.min_interval_ms = runtime_params.min_interval_ms;
+    workflow_input.runtime_options.sample_dt = runtime_params.sample_dt;
+    workflow_input.runtime_options.sample_ds = runtime_params.sample_ds;
+    workflow_input.runtime_options.spline_max_step_mm = request.spline_max_step_mm;
+    workflow_input.runtime_options.spline_max_error_mm = request.spline_max_error_mm;
+    workflow_input.runtime_options.compensation_profile = runtime_params.compensation_profile;
+    workflow_input.max_jerk = request.trajectory_config.max_jerk;
+    workflow_input.estimated_time_s = authority_preview.artifacts.estimated_time;
+    workflow_input.use_interpolation_planner = request.use_interpolation_planner;
+    workflow_input.interpolation_algorithm = static_cast<Siligen::Domain::Motion::InterpolationAlgorithm>(
+        request.interpolation_algorithm);
+    workflow_input.authority_preview = authority_preview.artifacts;
+    return workflow_input;
 }
 
 float32 SegmentLength(const Segment& segment) {
@@ -637,138 +742,42 @@ void PopulatePlanningReport(const ProcessPathBuildResult& path_result, MotionPla
         motion_plan);
 }
 
-AuthorityPreviewBuildInput BuildAuthorityPreviewInput(
-    const PlanningRequest& request,
-    const ProcessPathBuildResult& path_result,
-    const PreviewRuntimeParams& runtime_params,
-    const std::string& source_path,
-    const std::string& dxf_filename,
-    const std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort>& config_port) {
-    AuthorityPreviewBuildInput input;
-    input.process_path = path_result.shaped_path;
-    input.authority_process_path = path_result.process_path;
-    input.source_path = source_path;
-    input.dxf_filename = dxf_filename;
-    input.dispensing_velocity = runtime_params.dispensing_velocity;
-    input.acceleration = runtime_params.acceleration;
-    input.dispenser_interval_ms = runtime_params.dispenser_interval_ms;
-    input.dispenser_duration_ms = runtime_params.dispenser_duration_ms;
-    input.trigger_spatial_interval_mm = runtime_params.trigger_spatial_interval_mm;
-    input.valve_response_ms = runtime_params.valve_response_ms;
-    input.safety_margin_ms = runtime_params.safety_margin_ms;
-    input.min_interval_ms = runtime_params.min_interval_ms;
-    input.sample_dt = runtime_params.sample_dt;
-    input.sample_ds = runtime_params.sample_ds;
-    input.spline_max_step_mm = request.spline_max_step_mm;
-    input.spline_max_error_mm = request.spline_max_error_mm;
-    input.compensation_profile = runtime_params.compensation_profile;
-    input.spacing_tol_ratio = request.spacing_tol_ratio;
-    input.spacing_min_mm = request.spacing_min_mm;
-    input.spacing_max_mm = request.spacing_max_mm;
-
-    if (!config_port) {
-        return input;
-    }
-
-    auto dispensing_result = config_port->GetDispensingConfig();
-    if (dispensing_result.IsSuccess()) {
-        const auto& dispensing = dispensing_result.Value();
-        input.dispensing_strategy = dispensing.strategy;
-        if (dispensing.subsegment_count > 0) {
-            input.subsegment_count = dispensing.subsegment_count;
-        }
-        input.dispense_only_cruise = dispensing.dispense_only_cruise;
-    }
-
-    return input;
-}
-
-ExecutionAssemblyBuildInput BuildExecutionAssemblyInput(
-    const PlanningRequest& request,
-    const PreparedAuthorityPreview& authority_preview,
-    MotionPlan motion_plan,
-    const PreviewRuntimeParams& runtime_params) {
-    ExecutionAssemblyBuildInput input;
-    input.process_path = authority_preview.process_path;
-    input.motion_plan = std::move(motion_plan);
-    input.source_path = authority_preview.source_path;
-    input.dxf_filename = authority_preview.dxf_filename;
-    input.dispensing_velocity = runtime_params.dispensing_velocity;
-    input.acceleration = runtime_params.acceleration;
-    input.dispenser_interval_ms = runtime_params.dispenser_interval_ms;
-    input.dispenser_duration_ms = runtime_params.dispenser_duration_ms;
-    input.trigger_spatial_interval_mm = runtime_params.trigger_spatial_interval_mm;
-    input.valve_response_ms = runtime_params.valve_response_ms;
-    input.safety_margin_ms = runtime_params.safety_margin_ms;
-    input.min_interval_ms = runtime_params.min_interval_ms;
-    input.max_jerk = request.trajectory_config.max_jerk;
-    input.sample_dt = runtime_params.sample_dt;
-    input.sample_ds = runtime_params.sample_ds;
-    input.spline_max_step_mm = request.spline_max_step_mm;
-    input.spline_max_error_mm = request.spline_max_error_mm;
-    input.estimated_time_s = authority_preview.estimated_time;
-    input.use_interpolation_planner = request.use_interpolation_planner;
-    input.interpolation_algorithm = request.interpolation_algorithm;
-    input.compensation_profile = runtime_params.compensation_profile;
-
-    input.authority_preview.segment_count = authority_preview.segment_count;
-    input.authority_preview.total_length = authority_preview.total_length;
-    input.authority_preview.estimated_time = authority_preview.estimated_time;
-    input.authority_preview.preview_trajectory_points = authority_preview.preview_trajectory_points;
-    input.authority_preview.glue_points = authority_preview.glue_points;
-    input.authority_preview.trigger_count = authority_preview.trigger_count;
-    input.authority_preview.dxf_filename = authority_preview.dxf_filename;
-    input.authority_preview.timestamp = authority_preview.timestamp;
-    input.authority_preview.preview_authority_ready = authority_preview.preview_authority_ready;
-    input.authority_preview.preview_binding_ready = authority_preview.preview_binding_ready;
-    input.authority_preview.preview_spacing_valid = authority_preview.preview_spacing_valid;
-    input.authority_preview.preview_has_short_segment_exceptions =
-        authority_preview.preview_has_short_segment_exceptions;
-    input.authority_preview.preview_validation_classification =
-        authority_preview.preview_validation_classification;
-    input.authority_preview.preview_exception_reason = authority_preview.preview_exception_reason;
-    input.authority_preview.preview_failure_reason = authority_preview.preview_failure_reason;
-    input.authority_preview.authority_trigger_layout = authority_preview.authority_trigger_layout;
-    input.authority_preview.authority_trigger_points = authority_preview.authority_trigger_points;
-    input.authority_preview.spacing_validation_groups = authority_preview.spacing_validation_groups;
-    return input;
-}
 
 }  // namespace
 
 PlanningUseCase::PlanningUseCase(
     std::shared_ptr<Siligen::Domain::Trajectory::Ports::IPathSourcePort> path_source,
     std::shared_ptr<Siligen::Application::Services::ProcessPath::ProcessPathFacade> process_path_facade,
-    std::shared_ptr<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>
-        motion_planning_facade,
-    std::shared_ptr<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>
-        authority_preview_assembly_service,
-    std::shared_ptr<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>
-        execution_assembly_service,
+    std::shared_ptr<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade> motion_planning_facade,
+    std::shared_ptr<Siligen::Application::Services::Dispensing::IWorkflowPlanningAssemblyOperations> planning_operations,
     std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port,
     std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService> pb_preparation_service,
-    std::shared_ptr<Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort> artifact_export_port)
+    std::shared_ptr<Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort> artifact_export_port,
+    std::shared_ptr<Siligen::Domain::Diagnostics::Ports::IDiagnosticsPort> diagnostics_port,
+    std::shared_ptr<Siligen::Domain::System::Ports::IEventPublisherPort> event_publisher_port)
     : path_source_(std::move(path_source)),
-      process_path_facade_(process_path_facade
-                               ? std::move(process_path_facade)
-                               : std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>()),
-      motion_planning_facade_(motion_planning_facade
-                                  ? std::move(motion_planning_facade)
-                                  : std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>()),
-      authority_preview_assembly_service_(authority_preview_assembly_service
-                                              ? std::move(authority_preview_assembly_service)
-                                              : std::make_shared<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>()),
-      execution_assembly_service_(execution_assembly_service
-                                      ? std::move(execution_assembly_service)
-                                      : std::make_shared<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>()),
+      process_path_facade_(std::move(process_path_facade)),
+      motion_planning_facade_(std::move(motion_planning_facade)),
+      planning_operations_(std::move(planning_operations)),
       config_port_(std::move(config_port)),
       pb_preparation_service_(pb_preparation_service
                                   ? std::move(pb_preparation_service)
                                   : std::make_shared<Siligen::Application::Services::DXF::DxfPbPreparationService>(
                                         config_port_)),
-      artifact_export_port_(std::move(artifact_export_port)) {
+      artifact_export_port_(std::move(artifact_export_port)),
+      diagnostics_port_(std::move(diagnostics_port)),
+      event_publisher_port_(std::move(event_publisher_port)) {
     if (!path_source_) {
         throw std::invalid_argument("PlanningUseCase: path_source cannot be null");
+    }
+    if (!process_path_facade_) {
+        throw std::invalid_argument("PlanningUseCase: process_path_facade cannot be null");
+    }
+    if (!motion_planning_facade_) {
+        throw std::invalid_argument("PlanningUseCase: motion_planning_facade cannot be null");
+    }
+    if (!planning_operations_) {
+        throw std::invalid_argument("PlanningUseCase: planning_operations cannot be null");
     }
 }
 
@@ -791,34 +800,39 @@ Result<PlanningResponse> PlanningUseCase::Execute(const PlanningRequest& request
 
     PlanningResponse response;
     response.success = true;
-    response.segment_count = authority.segment_count;
-    response.total_length = execution.execution_package ? execution.execution_package->total_length_mm : authority.total_length;
+    response.segment_count = authority.artifacts.segment_count;
+    response.total_length = execution.execution_package ? execution.execution_package->total_length_mm : authority.artifacts.total_length;
     response.estimated_time =
-        execution.execution_package ? execution.execution_package->estimated_time_s : authority.estimated_time;
+        execution.execution_package ? execution.execution_package->estimated_time_s : authority.artifacts.estimated_time;
     response.execution_trajectory_points = execution.execution_trajectory_points;
-    response.glue_points = authority.glue_points;
+    response.glue_points = authority.artifacts.glue_points;
     response.process_tags.assign(response.execution_trajectory_points.size(), 0);
-    response.trigger_count = authority.trigger_count;
-    response.dxf_filename = authority.dxf_filename;
-    response.timestamp = authority.timestamp;
+    response.trigger_count = authority.artifacts.trigger_count;
+    response.dxf_filename = authority.artifacts.dxf_filename;
+    response.timestamp = authority.artifacts.timestamp;
     response.planning_report = execution.planning_report;
-    response.preview_authority_ready = authority.preview_authority_ready;
+    response.preview_authority_ready = authority.artifacts.preview_authority_ready;
     response.preview_authority_shared_with_execution = execution.preview_authority_shared_with_execution;
     response.preview_binding_ready = execution.execution_binding_ready;
-    response.preview_spacing_valid = authority.preview_spacing_valid;
-    response.preview_has_short_segment_exceptions = authority.preview_has_short_segment_exceptions;
-    response.preview_validation_classification = authority.preview_validation_classification;
-    response.preview_exception_reason = authority.preview_exception_reason;
+    response.preview_spacing_valid = authority.artifacts.preview_spacing_valid;
+    response.preview_has_short_segment_exceptions = authority.artifacts.preview_has_short_segment_exceptions;
+    response.preview_validation_classification = authority.artifacts.preview_validation_classification;
+    response.preview_exception_reason = authority.artifacts.preview_exception_reason;
     response.preview_failure_reason = execution.execution_failure_reason.empty()
-        ? authority.preview_failure_reason
+        ? authority.artifacts.preview_failure_reason
         : execution.execution_failure_reason;
     response.preview_diagnostic_code = authority.preview_diagnostic_code;
     response.authority_trigger_layout = execution.authority_trigger_layout;
-    response.authority_trigger_points = authority.authority_trigger_points;
-    response.spacing_validation_groups = authority.spacing_validation_groups;
+    response.authority_trigger_points = authority.artifacts.authority_trigger_points;
+    response.spacing_validation_groups = authority.artifacts.spacing_validation_groups;
     response.authority_profile = authority.authority_profile;
     response.execution_profile = execution.execution_profile;
     response.execution_package = execution.execution_package;
+    response.diagnostic_error_code = execution.diagnostic_error_code;
+    response.diagnostic_message = execution.diagnostic_message;
+    response.observed_at_ms = execution.observed_at_ms;
+    response.export_attempted = execution.export_attempted;
+    response.export_succeeded = execution.export_succeeded;
 
     SILIGEN_LOG_INFO_FMT_HELPER(
         "DXF预览数据准备完成: execution_points=%zu, glue_points=%zu, triggers=%d",
@@ -952,8 +966,8 @@ Result<PreparedAuthorityPreview> PlanningUseCase::PrepareAuthorityPreview(const 
         std::chrono::steady_clock::now() - process_path_start).count();
 
     const auto authority_start = std::chrono::steady_clock::now();
-    auto authority_result = authority_preview_assembly_service_->BuildAuthorityPreviewArtifacts(
-        BuildAuthorityPreviewInput(
+    auto authority_result = planning_operations_->BuildAuthorityPreviewArtifacts(
+        BuildWorkflowAuthorityPreviewRequest(
             request,
             process_path_result,
             runtime_params,
@@ -966,34 +980,16 @@ Result<PreparedAuthorityPreview> PlanningUseCase::PrepareAuthorityPreview(const 
     const auto authority_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - authority_start).count();
 
-    const auto& authority = authority_result.Value();
     PreparedAuthorityPreview prepared;
     prepared.success = true;
     prepared.source_path = request.dxf_filepath;
     prepared.prepared_pb_path = prepared_pb_path;
-    prepared.dxf_filename = authority.dxf_filename;
     prepared.process_path = process_path_result.shaped_path;
     prepared.authority_process_path = process_path_result.process_path;
     prepared.discontinuity_count = process_path_result.normalized.report.discontinuity_count;
-    prepared.segment_count = authority.segment_count;
-    prepared.total_length = authority.total_length;
-    prepared.estimated_time = authority.estimated_time;
-    prepared.preview_trajectory_points = authority.preview_trajectory_points;
-    prepared.glue_points = authority.glue_points;
-    prepared.trigger_count = authority.trigger_count;
-    prepared.timestamp = authority.timestamp;
-    prepared.preview_authority_ready = authority.preview_authority_ready;
-    prepared.preview_binding_ready = authority.preview_binding_ready;
-    prepared.preview_spacing_valid = authority.preview_spacing_valid;
-    prepared.preview_has_short_segment_exceptions = authority.preview_has_short_segment_exceptions;
-    prepared.preview_validation_classification = authority.preview_validation_classification;
-    prepared.preview_exception_reason = authority.preview_exception_reason;
-    prepared.preview_failure_reason = authority.preview_failure_reason;
     prepared.preview_diagnostic_code =
         process_path_result.topology_diagnostics.fragmentation_suspected ? "process_path_fragmentation" : "";
-    prepared.authority_trigger_layout = authority.authority_trigger_layout;
-    prepared.authority_trigger_points = authority.authority_trigger_points;
-    prepared.spacing_validation_groups = authority.spacing_validation_groups;
+    prepared.artifacts = authority_result.Value();
     prepared.authority_profile.pb_prepare_ms = static_cast<std::uint32_t>(pb_elapsed_ms);
     prepared.authority_profile.path_load_ms = static_cast<std::uint32_t>(load_elapsed_ms);
     prepared.authority_profile.process_path_ms = static_cast<std::uint32_t>(process_path_elapsed_ms);
@@ -1025,8 +1021,8 @@ Result<PreparedAuthorityPreview> PlanningUseCase::PrepareAuthorityPreview(const 
             << " reordered_contours=" << process_path_result.topology_diagnostics.reordered_contours
             << " reversed_contours=" << process_path_result.topology_diagnostics.reversed_contours
             << " rotated_contours=" << process_path_result.topology_diagnostics.rotated_contours
-            << " glue_points=" << prepared.glue_points.size()
-            << " preview_points=" << prepared.preview_trajectory_points.size()
+            << " glue_points=" << prepared.artifacts.glue_points.size()
+            << " preview_points=" << prepared.artifacts.preview_trajectory_points.size()
             << " total_ms=" << prepared.authority_profile.total_ms;
         SILIGEN_LOG_INFO(oss.str());
     }
@@ -1056,56 +1052,78 @@ Result<ExecutionAssemblyResponse> PlanningUseCase::AssembleExecutionFromAuthorit
     const auto motion_plan_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - motion_plan_start).count();
 
-    auto assembly_input = BuildExecutionAssemblyInput(
-        request,
-        authority_preview,
-        std::move(motion_plan),
-        runtime_params);
-
     const auto assembly_start = std::chrono::steady_clock::now();
-    auto assembly_result = execution_assembly_service_->BuildExecutionArtifactsFromAuthority(assembly_input);
+    auto assembly_result = planning_operations_->BuildExecutionArtifactsFromAuthority(
+        BuildWorkflowExecutionAssemblyRequest(request, authority_preview, std::move(motion_plan), runtime_params));
     if (assembly_result.IsError()) {
         return Result<ExecutionAssemblyResponse>::Failure(assembly_result.GetError());
     }
     const auto assembly_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - assembly_start).count();
 
+    const auto& assembled = assembly_result.Value();
+
     ExecutionAssemblyResponse response;
     response.success = true;
-    response.execution_trajectory_points = assembly_result.Value().execution_trajectory_points;
-    response.motion_trajectory_points = assembly_result.Value().motion_trajectory_points;
-    response.planning_report = assembly_input.motion_plan.planning_report;
-    response.preview_authority_shared_with_execution =
-        assembly_result.Value().preview_authority_shared_with_execution;
-    response.execution_binding_ready = assembly_result.Value().execution_binding_ready;
-    response.execution_failure_reason = assembly_result.Value().execution_failure_reason;
+    response.execution_trajectory_points = assembled.execution_trajectory_points;
+    response.motion_trajectory_points = assembled.motion_trajectory_points;
+    response.planning_report = motion_plan.planning_report;
+    response.preview_authority_shared_with_execution = assembled.preview_authority_shared_with_execution;
+    response.execution_binding_ready = assembled.execution_binding_ready;
+    response.execution_failure_reason = assembled.execution_failure_reason;
     response.execution_package =
         std::make_shared<Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated>(
-            assembly_result.Value().execution_package);
-    response.authority_trigger_layout = assembly_result.Value().authority_trigger_layout;
-    Siligen::Application::Services::Dispensing::PlanningArtifactExportAssemblyService export_assembly_service;
-    Siligen::Application::Services::Dispensing::PlanningArtifactExportAssemblyInput export_input;
-    export_input.source_path = authority_preview.source_path;
-    export_input.dxf_filename = authority_preview.dxf_filename;
-    export_input.process_path = authority_preview.process_path;
-    export_input.glue_points = authority_preview.glue_points;
-    export_input.execution_trajectory_points = response.execution_trajectory_points;
-    export_input.interpolation_trajectory_points = assembly_result.Value().interpolation_trajectory_points;
-    export_input.motion_trajectory_points = assembly_result.Value().motion_trajectory_points;
-    response.export_request = export_assembly_service.BuildRequest(export_input);
+            assembled.execution_package);
+    response.authority_trigger_layout = assembled.authority_trigger_layout;
+    response.export_request = assembled.export_request;
     response.execution_profile.motion_plan_ms = static_cast<std::uint32_t>(motion_plan_elapsed_ms);
     response.execution_profile.assembly_ms = static_cast<std::uint32_t>(assembly_elapsed_ms);
+    response.observed_at_ms = CurrentUnixTimestampMs();
 
     std::uint32_t export_elapsed_ms = 0;
     if (artifact_export_port_) {
         const auto export_start = std::chrono::steady_clock::now();
         auto export_result = artifact_export_port_->Export(response.export_request);
         export_elapsed_ms = ToElapsedMs(export_start);
+        response.export_attempted = true;
         if (export_result.IsError()) {
-            SILIGEN_LOG_WARNING("planning artifact export failed: " + export_result.GetError().GetMessage());
+            response.execution_profile.export_ms = export_elapsed_ms;
+            response.execution_profile.total_ms = ToElapsedMs(total_start);
+            response.diagnostic_error_code = static_cast<int>(export_result.GetError().GetCode());
+            response.diagnostic_message = export_result.GetError().GetMessage();
+            RecordPlanningDiagnostic(
+                WorkflowFailureCategory::Export,
+                response.diagnostic_error_code,
+                response.diagnostic_message,
+                authority_preview.source_path,
+                authority_preview.source_path,
+                true,
+                false,
+                response.execution_profile.total_ms);
+            return Result<ExecutionAssemblyResponse>::Failure(Error(
+                export_result.GetError().GetCode(),
+                "planning artifact export failed: " + export_result.GetError().GetMessage(),
+                "PlanningUseCase"));
         } else if (export_result.Value().export_requested && !export_result.Value().success) {
-            SILIGEN_LOG_WARNING("planning artifact export reported failure: " + export_result.Value().message);
+            response.execution_profile.export_ms = export_elapsed_ms;
+            response.execution_profile.total_ms = ToElapsedMs(total_start);
+            response.diagnostic_error_code = static_cast<int>(ErrorCode::INVALID_STATE);
+            response.diagnostic_message = export_result.Value().message;
+            RecordPlanningDiagnostic(
+                WorkflowFailureCategory::Export,
+                response.diagnostic_error_code,
+                response.diagnostic_message,
+                authority_preview.source_path,
+                authority_preview.source_path,
+                true,
+                false,
+                response.execution_profile.total_ms);
+            return Result<ExecutionAssemblyResponse>::Failure(Error(
+                ErrorCode::INVALID_STATE,
+                "planning artifact export reported failure: " + export_result.Value().message,
+                "PlanningUseCase"));
         }
+        response.export_succeeded = true;
     }
     // export_request only feeds the export port. Keeping it inside the returned
     // assembly response retains large duplicate trajectory buffers in workflow
@@ -1128,6 +1146,47 @@ Result<ExecutionAssemblyResponse> PlanningUseCase::AssembleExecutionFromAuthorit
     }
 
     return Result<ExecutionAssemblyResponse>::Success(std::move(response));
+}
+
+void PlanningUseCase::RecordPlanningDiagnostic(
+    WorkflowFailureCategory failure_category,
+    int error_code,
+    const std::string& message,
+    const std::string& workflow_run_id,
+    const std::string& source_path,
+    bool export_attempted,
+    bool export_succeeded,
+    std::uint32_t stage_duration_ms) const {
+    if (diagnostics_port_) {
+        DiagnosticInfo info;
+        info.level = failure_category == WorkflowFailureCategory::Export
+            ? DiagnosticLevel::ERR
+            : DiagnosticLevel::WARNING;
+        info.component = "workflow.planning";
+        info.message = message;
+        info.error_code = error_code;
+        info.timestamp = CurrentUnixTimestampMs();
+        diagnostics_port_->AddDiagnostic(info);
+    }
+    if (event_publisher_port_) {
+        DomainEvent event;
+        event.type = failure_category == WorkflowFailureCategory::Export
+            ? EventType::WORKFLOW_EXPORT_FAILED
+            : EventType::WORKFLOW_STAGE_FAILED;
+        event.timestamp = CurrentUnixTimestampMs();
+        event.source = "PlanningUseCase";
+        std::ostringstream oss;
+        oss << "workflow_run_id=" << workflow_run_id
+            << ";source_path=" << source_path
+            << ";failure_category=" << static_cast<int>(failure_category)
+            << ";error_code=" << error_code
+            << ";export_attempted=" << (export_attempted ? 1 : 0)
+            << ";export_succeeded=" << (export_succeeded ? 1 : 0)
+            << ";stage_duration_ms=" << stage_duration_ms
+            << ";message=" << message;
+        event.message = oss.str();
+        event_publisher_port_->PublishAsync(event);
+    }
 }
 
 Result<void> PlanningUseCase::ValidateFileExists(const std::string& filepath) {

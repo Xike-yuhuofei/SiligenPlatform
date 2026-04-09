@@ -7,7 +7,6 @@
 - `bootstrap/`：`BuildContainer(...)` 与 runtime bootstrap 入口实现
 - `container/`：`ApplicationContainer*` 进程级组合根
 - `factories/`：基础设施适配器工厂
-- `runtime/dispensing/`：execution process 的 app-local concrete bridge；通过 app-local internal seam 吸收 `dispense-packaging` concrete owner，不成为 process owner
 - `runtime/configuration/`：配置解析、`WorkspaceAssetPaths`、interlock/config validator
 - `runtime/recipes/`：recipe persistence wiring 与文件仓储适配
 - `runtime/status/`：runtime status export assembler；透传 supervision snapshot authority，并通过可选只读 readers 追加 motion / valve enrichment，不重定义 machine/runtime authority
@@ -31,8 +30,9 @@
 ## 与 M9 的边界
 
 - `modules/runtime-execution/runtime/host` 只保留 host core。
+- dispensing execution concrete 已迁入 `modules/runtime-execution`；本目录只在 `ApplicationContainer.Dispensing.cpp` 组合 `CreateDispensingProcessPort(...)`，不保留 app-local execution wrapper。
 - recipe persistence、config/storage、security、workflow/job-ingest/DXF wiring 都在本目录的 app-local shell 组合。
-- `WorkflowDispensingProcessPortAdapter`、`RuntimeExecutionSupervisionBackend`、`WorkflowRuntimeSupervisionPort`、`WorkflowRuntimeStatusExportPort` 都属于本目录的 app-local shell 资产，不得回流到 `modules/runtime-execution` 变成模块 owner。
+- `RuntimeExecutionSupervisionBackend`、`RuntimeSupervisionSyncPort`、`RuntimeStatusExportPort` 都属于本目录的 app-local shell 资产，不得回流到 `modules/runtime-execution` 变成模块 owner。
 - `workflow_recipe_*` 仍是 recipe owner surface；本目录只消费这些 public targets 进行 runtime wiring。
 
 ## 调用方

@@ -1,5 +1,9 @@
 #include "application/services/dispensing/PreviewSnapshotService.h"
 
+#include "domain/dispensing/planning/domain-services/CurveFlatteningService.h"
+#include "domain/dispensing/value-objects/AuthorityTriggerLayout.h"
+#include "process_path/contracts/ProcessPath.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -16,6 +20,14 @@ constexpr double kPreviewTailLegMaxMm = 4e-1;
 constexpr double kPreviewCornerMinTurnDeg = 20.0;
 constexpr double kPreviewCornerMinLegMm = 2e-1;
 
+bool HasAuthoritativeGluePoints(const PreviewSnapshotInput& input) {
+    return !input.authority_layout_id.empty() &&
+           input.binding_ready &&
+           input.validation_classification != "fail" &&
+           input.glue_points != nullptr &&
+           !input.glue_points->empty();
+}
+
 double DistanceSquared(const Point2D& lhs, const Point2D& rhs) {
     const double dx = static_cast<double>(lhs.x) - static_cast<double>(rhs.x);
     const double dy = static_cast<double>(lhs.y) - static_cast<double>(rhs.y);
@@ -29,6 +41,14 @@ double Distance(const Point2D& lhs, const Point2D& rhs) {
 bool NearlyEqualPoint(const Point2D& lhs, const Point2D& rhs, double epsilon_mm) {
     const double epsilon_sq = epsilon_mm * epsilon_mm;
     return DistanceSquared(lhs, rhs) <= epsilon_sq;
+}
+
+void AppendDistinctPoint(
+    std::vector<Point2D>& points,
+    const Point2D& candidate) {
+    if (points.empty() || !NearlyEqualPoint(points.back(), candidate, kPreviewDuplicateEpsilonMm)) {
+        points.push_back(candidate);
+    }
 }
 
 std::vector<Point2D> ToPointVector(const std::vector<Siligen::TrajectoryPoint>& points) {
@@ -358,10 +378,6 @@ std::vector<Point2D> BuildPreviewPolyline(
     }
     reduced_points = RemoveConsecutiveNearDuplicates(reduced_points);
 
-    // Keep the preview dot cloud on a continuous fixed-spacing walk.
-    // Sharp corners are preserved later only if max-point clamping would
-    // otherwise drop them; forcing vertices here creates artificial corner
-    // clustering in the HMI point preview.
     auto spacing_sample = BuildFixedSpacingSample(reduced_points, kPreviewGluePointSpacingMm);
     if (spacing_sample.size() < 2U) {
         spacing_sample = BuildUniformStepSample(reduced_points, max_points);
@@ -377,39 +393,215 @@ std::vector<Point2D> BuildPreviewPolyline(
     return polyline;
 }
 
-}  // namespace
+std::vector<std::size_t> SampleGluePointIndices(std::size_t point_count, std::size_t max_points) {
+    if (point_count == 0U) {
+        return {};
+    }
+    const std::size_t safe_max_points = std::max<std::size_t>(1, max_points);
+    if (point_count <= safe_max_points) {
+        std::vector<std::size_t> indices(point_count);
+        for (std::size_t index = 0; index < point_count; ++index) {
+            indices[index] = index;
+        }
+        return indices;
+    }
 
-PreviewSnapshotPayload PreviewSnapshotService::BuildPayload(
+    std::vector<std::size_t> indices;
+    indices.reserve(safe_max_points);
+    indices.push_back(0U);
+    if (safe_max_points == 1U) {
+        return indices;
+    }
+
+    const std::size_t interior_budget = safe_max_points - 2U;
+    if (interior_budget > 0U) {
+        const double step = static_cast<double>(point_count - 1U) / static_cast<double>(interior_budget + 1U);
+        for (std::size_t index = 1; index <= interior_budget; ++index) {
+            const auto sampled_index = static_cast<std::size_t>(std::llround(step * static_cast<double>(index)));
+            indices.push_back(std::min<std::size_t>(point_count - 1U, sampled_index));
+        }
+    }
+    indices.push_back(point_count - 1U);
+    return indices;
+}
+
+std::vector<float32> BuildFallbackRevealLengthsFromGluePoints(
+    const std::vector<Point2D>& glue_points) {
+    std::vector<float32> reveal_lengths;
+    if (glue_points.empty()) {
+        return reveal_lengths;
+    }
+    reveal_lengths.reserve(glue_points.size());
+    float32 cumulative_length_mm = 0.0f;
+    reveal_lengths.push_back(cumulative_length_mm);
+    for (std::size_t index = 1; index < glue_points.size(); ++index) {
+        cumulative_length_mm += static_cast<float32>(glue_points[index - 1U].DistanceTo(glue_points[index]));
+        reveal_lengths.push_back(cumulative_length_mm);
+    }
+    return reveal_lengths;
+}
+
+std::vector<float32> BuildAuthorityRevealLengths(
     const PreviewSnapshotInput& input,
-    std::size_t max_points) const {
-    PreviewSnapshotPayload payload;
-    payload.snapshot_id = input.snapshot_id;
-    payload.snapshot_hash = input.snapshot_hash;
-    payload.plan_id = input.plan_id;
-    payload.preview_state = input.preview_state;
-    payload.confirmed_at = input.confirmed_at;
-    payload.segment_count = input.segment_count;
-    payload.point_count = input.point_count;
-    payload.total_length_mm = input.total_length_mm;
-    payload.estimated_time_s = input.estimated_time_s;
-    payload.generated_at = input.generated_at;
+    const std::vector<Point2D>& glue_points) {
+    if (input.authority_trigger_layout != nullptr &&
+        input.authority_trigger_layout->trigger_points.size() == glue_points.size()) {
+        std::vector<float32> reveal_lengths;
+        reveal_lengths.reserve(input.authority_trigger_layout->trigger_points.size());
+        float32 previous_length_mm = 0.0f;
+        for (const auto& trigger : input.authority_trigger_layout->trigger_points) {
+            const float32 clamped_length_mm = std::max(previous_length_mm, trigger.distance_mm_global);
+            reveal_lengths.push_back(clamped_length_mm);
+            previous_length_mm = clamped_length_mm;
+        }
+        return reveal_lengths;
+    }
+    return BuildFallbackRevealLengthsFromGluePoints(glue_points);
+}
 
-    const auto* trajectory_points = input.trajectory_points;
-    const auto source_count = trajectory_points ? trajectory_points->size() : 0U;
-    payload.motion_preview_source_point_count = static_cast<std::uint32_t>(source_count);
+std::vector<Point2D> BuildPointVectorFromTrajectory(
+    const std::vector<Siligen::TrajectoryPoint>& trajectory_points) {
+    std::vector<Point2D> points;
+    points.reserve(trajectory_points.size());
+    for (const auto& point : trajectory_points) {
+        AppendDistinctPoint(points, point.position);
+    }
+    return points;
+}
 
-    const auto polyline = trajectory_points
-        ? BuildPreviewPolyline(*trajectory_points, max_points)
-        : std::vector<Point2D>{};
-    payload.motion_preview_point_count = static_cast<std::uint32_t>(polyline.size());
-    payload.motion_preview_polyline.reserve(polyline.size());
-    for (const auto& point : polyline) {
+std::vector<Point2D> BuildPointVectorFromProcessPath(
+    const Siligen::ProcessPath::Contracts::ProcessPath& process_path) {
+    std::vector<Point2D> points;
+    Siligen::Domain::Dispensing::DomainServices::CurveFlatteningService flattening_service;
+    constexpr float32 kProcessPathSplineErrorMm = 0.05f;
+    constexpr float32 kProcessPathSampleStepMm = 1.0f;
+
+    for (const auto& process_segment : process_path.segments) {
+        const auto& geometry = process_segment.geometry;
+        if (geometry.is_point) {
+            AppendDistinctPoint(points, geometry.line.start);
+            continue;
+        }
+
+        const auto flatten_result =
+            flattening_service.Flatten(geometry, kProcessPathSplineErrorMm, kProcessPathSampleStepMm);
+        if (flatten_result.IsError()) {
+            continue;
+        }
+        for (const auto& point : flatten_result.Value().points) {
+            AppendDistinctPoint(points, point);
+        }
+    }
+
+    return points;
+}
+
+void CopyPreviewPolyline(
+    const std::vector<Point2D>& points,
+    std::vector<PreviewSnapshotPoint>& target) {
+    target.reserve(points.size());
+    for (const auto& point : points) {
         PreviewSnapshotPoint snapshot_point;
         snapshot_point.x = point.x;
         snapshot_point.y = point.y;
-        payload.motion_preview_polyline.push_back(snapshot_point);
+        target.push_back(snapshot_point);
     }
-    return payload;
+}
+
+}  // namespace
+
+PreviewSnapshotResponse PreviewSnapshotService::BuildResponse(
+    const PreviewSnapshotInput& input,
+    std::size_t max_polyline_points,
+    std::size_t max_glue_points) const {
+    PreviewSnapshotResponse response;
+    response.snapshot_id = input.snapshot_id;
+    response.snapshot_hash = input.snapshot_hash;
+    response.plan_id = input.plan_id;
+    response.preview_state = input.preview_state;
+    response.preview_source = "planned_glue_snapshot";
+    response.preview_kind = "glue_points";
+    response.confirmed_at = input.confirmed_at;
+    response.segment_count = input.segment_count;
+    response.execution_point_count = input.point_count;
+    response.total_length_mm = input.total_length_mm;
+    response.estimated_time_s = input.estimated_time_s;
+    response.preview_validation_classification = input.validation_classification;
+    response.preview_exception_reason = input.exception_reason;
+    response.preview_failure_reason = input.failure_reason;
+    response.preview_diagnostic_code = input.diagnostic_code;
+    response.generated_at = input.generated_at;
+
+    const auto* trajectory_points = input.trajectory_points;
+    const auto trajectory_source_count = trajectory_points ? trajectory_points->size() : 0U;
+    response.execution_polyline_source_point_count = static_cast<std::uint32_t>(trajectory_source_count);
+    const auto execution_polyline = trajectory_points
+        ? BuildPreviewPolyline(*trajectory_points, max_polyline_points)
+        : std::vector<Point2D>{};
+    response.execution_polyline_point_count = static_cast<std::uint32_t>(execution_polyline.size());
+    CopyPreviewPolyline(execution_polyline, response.execution_polyline);
+
+    if (HasAuthoritativeGluePoints(input)) {
+        response.glue_point_count = static_cast<std::uint32_t>(input.glue_points->size());
+        response.point_count = response.glue_point_count;
+        const auto authority_reveal_lengths = BuildAuthorityRevealLengths(input, *input.glue_points);
+        const auto sampled_glue_indices = SampleGluePointIndices(input.glue_points->size(), max_glue_points);
+        response.glue_points.reserve(sampled_glue_indices.size());
+        response.glue_reveal_lengths_mm.reserve(sampled_glue_indices.size());
+        for (const auto sampled_index : sampled_glue_indices) {
+            const auto& point = input.glue_points->at(sampled_index);
+            PreviewSnapshotPoint snapshot_point;
+            snapshot_point.x = point.x;
+            snapshot_point.y = point.y;
+            response.glue_points.push_back(snapshot_point);
+            if (sampled_index < authority_reveal_lengths.size()) {
+                response.glue_reveal_lengths_mm.push_back(authority_reveal_lengths[sampled_index]);
+            }
+        }
+    }
+
+    std::vector<Point2D> motion_points;
+    if (input.motion_trajectory_points != nullptr && !input.motion_trajectory_points->empty()) {
+        motion_points = BuildPointVectorFromTrajectory(*input.motion_trajectory_points);
+        response.motion_preview_source = "execution_trajectory_snapshot";
+        response.motion_preview_kind = "polyline";
+        auto motion_polyline = ClampPolylineByMaxPointsPreserveCorners(motion_points, max_polyline_points);
+        response.motion_preview_source_point_count = static_cast<std::uint32_t>(motion_points.size());
+        response.motion_preview_point_count = static_cast<std::uint32_t>(motion_polyline.size());
+        response.motion_preview_is_sampled =
+            response.motion_preview_source_point_count != response.motion_preview_point_count;
+        response.motion_preview_sampling_strategy = response.motion_preview_is_sampled
+            ? "execution_trajectory_geometry_preserving_clamp"
+            : "execution_trajectory_geometry_preserving";
+        CopyPreviewPolyline(motion_polyline, response.motion_preview_polyline);
+    } else if (input.process_path != nullptr && !input.process_path->segments.empty()) {
+        motion_points = BuildPointVectorFromProcessPath(*input.process_path);
+        response.motion_preview_source = "process_path_snapshot";
+        response.motion_preview_kind = "polyline";
+        auto motion_polyline = ClampPolylineByMaxPointsPreserveCorners(motion_points, max_polyline_points);
+        response.motion_preview_source_point_count = static_cast<std::uint32_t>(motion_points.size());
+        response.motion_preview_point_count = static_cast<std::uint32_t>(motion_polyline.size());
+        response.motion_preview_is_sampled =
+            response.motion_preview_source_point_count != response.motion_preview_point_count;
+        response.motion_preview_sampling_strategy = response.motion_preview_is_sampled
+            ? "process_path_geometry_preserving_clamp"
+            : "process_path_geometry_preserving";
+        CopyPreviewPolyline(motion_polyline, response.motion_preview_polyline);
+    } else if (input.trajectory_points != nullptr && !input.trajectory_points->empty()) {
+        motion_points = BuildPreviewPolyline(*input.trajectory_points, max_polyline_points);
+        response.motion_preview_source = "execution_preview_polyline_snapshot";
+        response.motion_preview_kind = "polyline";
+        response.motion_preview_source_point_count = static_cast<std::uint32_t>(trajectory_source_count);
+        response.motion_preview_point_count = static_cast<std::uint32_t>(motion_points.size());
+        response.motion_preview_is_sampled =
+            response.motion_preview_source_point_count != response.motion_preview_point_count;
+        response.motion_preview_sampling_strategy = response.motion_preview_is_sampled
+            ? "execution_preview_polyline_fixed_spacing_clamp"
+            : "execution_preview_polyline_fixed_spacing";
+        CopyPreviewPolyline(motion_points, response.motion_preview_polyline);
+    }
+
+    return response;
 }
 
 }  // namespace Siligen::Application::Services::Dispensing

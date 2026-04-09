@@ -2,20 +2,6 @@ cmake_minimum_required(VERSION 3.20)
 
 get_filename_component(MOTION_PLANNING_MODULE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
 set(MOTION_PLANNING_CONTRACTS_INCLUDE_DIR "${MOTION_PLANNING_MODULE_DIR}/contracts/include")
-set(RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime-execution/contracts/runtime/include"
-)
-if(NOT DEFINED SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR)
-    set(SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR
-        "${MOTION_PLANNING_MODULE_DIR}"
-    )
-endif()
-if(NOT EXISTS "${RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}/runtime_execution/contracts/motion/IInterpolationPort.h")
-    message(FATAL_ERROR
-        "motion-planning requires runtime-execution runtime contracts include root: "
-        "${RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}"
-    )
-endif()
 
 if(NOT TARGET siligen_process_path_contracts_public)
     add_subdirectory(
@@ -23,13 +9,19 @@ if(NOT TARGET siligen_process_path_contracts_public)
         "${CMAKE_BINARY_DIR}/_p/mp_ppc"
     )
 endif()
+if(NOT TARGET siligen_runtime_execution_runtime_contracts)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime-execution/contracts/runtime"
+        "${CMAKE_BINARY_DIR}/_p/mp_rerc"
+    )
+endif()
 
-if(NOT TARGET siligen_process_runtime_core_boost_headers)
-    add_library(siligen_process_runtime_core_boost_headers INTERFACE)
-    target_include_directories(siligen_process_runtime_core_boost_headers INTERFACE
+if(NOT TARGET siligen_workspace_boost_headers)
+    add_library(siligen_workspace_boost_headers INTERFACE)
+    target_include_directories(siligen_workspace_boost_headers INTERFACE
         ${SILIGEN_BOOST_INCLUDE_DIR}
     )
-    target_compile_features(siligen_process_runtime_core_boost_headers INTERFACE cxx_std_17)
+    target_compile_features(siligen_workspace_boost_headers INTERFACE cxx_std_17)
 endif()
 
 if(NOT TARGET siligen_process_path_contracts_public)
@@ -65,23 +57,26 @@ add_library(siligen_motion STATIC
 )
 
 target_include_directories(siligen_motion BEFORE PUBLIC
-    ${SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR}
     ${MOTION_PLANNING_CONTRACTS_INCLUDE_DIR}
-    ${RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}
-    ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
 target_include_directories(siligen_motion PRIVATE
+    ${MOTION_PLANNING_MODULE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/domain-services
     ${CMAKE_CURRENT_SOURCE_DIR}/domain-services/interpolation
 )
 
 target_link_libraries(siligen_motion PUBLIC
-    siligen_process_runtime_core_boost_headers
+    siligen_workspace_boost_headers
     siligen_types
     siligen_utils
     siligen_process_path_contracts_public
 )
+if(TARGET siligen_runtime_execution_runtime_contracts)
+    target_link_libraries(siligen_motion PRIVATE
+        siligen_runtime_execution_runtime_contracts
+    )
+endif()
 
 target_compile_features(siligen_motion PUBLIC cxx_std_17)
 

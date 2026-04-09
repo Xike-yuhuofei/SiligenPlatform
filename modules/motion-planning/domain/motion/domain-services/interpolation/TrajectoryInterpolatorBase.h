@@ -3,6 +3,7 @@
 #include <memory>
 #include <vector>
 
+#include "motion_planning/contracts/InterpolationTypes.h"
 #include "shared/types/Point.h"
 #include "shared/types/Types.h"
 
@@ -12,19 +13,9 @@ using ::float32;
 using ::float64;
 using ::int32;
 using Siligen::InterpolationConfig;
+using Siligen::MotionPlanning::Contracts::InterpolationAlgorithm;
 using Siligen::Point2D;
 using Siligen::TrajectoryPoint;
-
-enum class InterpolationAlgorithm {
-    LINEAR,
-    ARC,
-    SPLINE,
-    TRANSITION,
-    CMP_COORDINATED,
-    SEAL_BEAD,
-    GRID_FILLING,
-    CIRCULAR_ARRAY
-};
 
 class TrajectoryInterpolatorBase {
    public:

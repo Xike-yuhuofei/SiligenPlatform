@@ -14,8 +14,9 @@
 #include "facades/tcp/TcpSystemFacade.h"
 #include "application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
 #include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
-#include "domain/configuration/ports/IConfigurationPort.h"
+#include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "domain/configuration/services/ReadyZeroSpeedResolver.h"
+#include "motion_planning/contracts/InterpolationTypes.h"
 #include "runtime_execution/contracts/system/IRuntimeStatusExportPort.h"
 
 #include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"
@@ -412,7 +413,7 @@ nlohmann::json BuildPreviewSignaturePayload(const std::string& filepath, const n
     payload["dispensing_speed_mm_s"] = ReadJsonDouble(params, "dispensing_speed_mm_s", ReadJsonDouble(params, "speed_mm_s", 0.0));
     payload["dry_run_speed_mm_s"] = ReadJsonDouble(params, "dry_run_speed_mm_s", 0.0);
     payload["rapid_speed_mm_s"] = ReadJsonDouble(params, "rapid_speed_mm_s", 0.0);
-    payload["optimize_path"] = ReadJsonBool(params, "optimize_path", false);
+    payload["optimize_path"] = ReadJsonBool(params, "optimize_path", true);
     payload["start_x"] = ReadJsonDouble(params, "start_x", 0.0);
     payload["start_y"] = ReadJsonDouble(params, "start_y", 0.0);
     payload["approximate_splines"] = ReadJsonBool(params, "approximate_splines", false);
@@ -458,7 +459,7 @@ Application::UseCases::Dispensing::PlanningRequest BuildPreviewPlanningRequest(
     request.trajectory_config.arc_tolerance = static_cast<float32>(
         ReadJsonDouble(params, "arc_tolerance_mm", ReadJsonDouble(params, "arc_tolerance", request.trajectory_config.arc_tolerance)));
 
-    request.optimize_path = ReadJsonBool(params, "optimize_path", false);
+    request.optimize_path = ReadJsonBool(params, "optimize_path", true);
     request.start_x = static_cast<float32>(ReadJsonDouble(params, "start_x", 0.0));
     request.start_y = static_cast<float32>(ReadJsonDouble(params, "start_y", 0.0));
     request.approximate_splines = ReadJsonBool(params, "approximate_splines", false);
@@ -472,9 +473,10 @@ Application::UseCases::Dispensing::PlanningRequest BuildPreviewPlanningRequest(
     request.use_hardware_trigger = ReadJsonBool(params, "use_hardware_trigger", true);
     request.use_interpolation_planner = ReadJsonBool(params, "use_interpolation_planner", true);
     const int algorithm_raw = ReadJsonInt(params, "interpolation_algorithm", 0);
-    if (algorithm_raw >= static_cast<int>(Siligen::Domain::Motion::InterpolationAlgorithm::LINEAR) &&
-        algorithm_raw <= static_cast<int>(Siligen::Domain::Motion::InterpolationAlgorithm::CIRCULAR_ARRAY)) {
-        request.interpolation_algorithm = static_cast<Siligen::Domain::Motion::InterpolationAlgorithm>(algorithm_raw);
+    using InterpolationAlgorithm = Siligen::MotionPlanning::Contracts::InterpolationAlgorithm;
+    if (algorithm_raw >= static_cast<int>(InterpolationAlgorithm::LINEAR) &&
+        algorithm_raw <= static_cast<int>(InterpolationAlgorithm::CIRCULAR_ARRAY)) {
+        request.interpolation_algorithm = static_cast<InterpolationAlgorithm>(algorithm_raw);
     }
     return request;
 }
@@ -2288,6 +2290,10 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
     if (glue_points.empty()) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview glue points are empty");
     }
+    nlohmann::json glue_reveal_lengths_mm = nlohmann::json::array();
+    for (const auto reveal_length_mm : snapshot.glue_reveal_lengths_mm) {
+        glue_reveal_lengths_mm.push_back(reveal_length_mm);
+    }
 
     nlohmann::json motion_preview_polyline = nlohmann::json::array();
     for (const auto& point : snapshot.motion_preview_polyline) {
@@ -2343,6 +2349,7 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
         {"point_count", snapshot.point_count},
         {"glue_point_count", snapshot.glue_point_count},
         {"glue_points", glue_points},
+        {"glue_reveal_lengths_mm", glue_reveal_lengths_mm},
         {"motion_preview", motion_preview},
         {"execution_point_count", snapshot.execution_point_count},
         {"total_length_mm", snapshot.total_length_mm},

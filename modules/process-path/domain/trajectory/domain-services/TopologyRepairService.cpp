@@ -172,6 +172,46 @@ bool IsMetadataValid(const std::vector<ContractsPrimitive>& primitives, const st
     return !primitives.empty() && metadata.size() == primitives.size();
 }
 
+bool WouldReverseCandidateRetraceCurrent(const ContractsPrimitive& current,
+                                         const ContractsPrimitive& candidate,
+                                         float32 tolerance) {
+    if (current.type != PrimitiveType::Line || candidate.type != PrimitiveType::Line) {
+        return false;
+    }
+
+    const auto current_start = current.line.start;
+    const auto current_end = current.line.end;
+    const auto candidate_start = candidate.line.start;
+    const auto candidate_end = candidate.line.end;
+
+    return Distance(current_end, candidate_end) <= tolerance &&
+           Distance(current_start, candidate_start) <= tolerance;
+}
+
+bool FormsImmediateLineBacktrack(const ContractsPrimitive& previous,
+                                 const ContractsPrimitive& next,
+                                 float32 tolerance) {
+    if (previous.type != PrimitiveType::Line || next.type != PrimitiveType::Line) {
+        return false;
+    }
+
+    const auto prev_vec = previous.line.end - previous.line.start;
+    const auto next_vec = next.line.end - next.line.start;
+    const float32 prev_len = prev_vec.Length();
+    const float32 next_len = next_vec.Length();
+    if (prev_len <= kEpsilon || next_len <= kEpsilon) {
+        return false;
+    }
+
+    if (Distance(previous.line.end, next.line.start) > tolerance) {
+        return false;
+    }
+
+    const float32 normalized_cross = std::abs(prev_vec.Cross(next_vec)) / std::max(kEpsilon, prev_len * next_len);
+    const float32 normalized_dot = prev_vec.Dot(next_vec) / (prev_len * next_len);
+    return normalized_cross <= 1e-3f && normalized_dot < -0.95f;
+}
+
 bool SupportsConnectivityRebuild(const ContractsPrimitive& primitive) {
     switch (primitive.type) {
         case PrimitiveType::Line:
@@ -419,6 +459,10 @@ ConnectivityRebuildResult RebuildPrimitivesByConnectivity(const std::vector<Cont
                 if (!can_forward && !can_reverse) {
                     continue;
                 }
+                if (!can_forward && can_reverse &&
+                    WouldReverseCandidateRetraceCurrent(current, primitives[j], tolerance)) {
+                    continue;
+                }
 
                 const float32 candidate_distance = std::min(start_distance, end_distance);
                 if (candidate_distance < best_distance) {
@@ -652,6 +696,22 @@ std::vector<SegmentWithDirection> OptimizeContoursByNearestNeighbor(
         }
         return (cos_threshold - dot) / (cos_threshold + 1.0f);
     };
+    auto immediate_backtrack_penalty = [&](const Point2D& entry_point, const Point2D& candidate_direction) -> float32 {
+        if (!has_last_direction || Distance(current, entry_point) > kEpsilon) {
+            return 0.0f;
+        }
+
+        const float32 last_length = last_direction.Length();
+        const float32 candidate_length = candidate_direction.Length();
+        if (last_length <= kEpsilon || candidate_length <= kEpsilon) {
+            return 0.0f;
+        }
+
+        const Point2D n1 = last_direction / last_length;
+        const Point2D n2 = candidate_direction / candidate_length;
+        const float32 dot = clamp(n1.Dot(n2), -1.0f, 1.0f);
+        return dot <= -0.95f ? 1e6f : 0.0f;
+    };
 
     for (size_t i = 0; i < segments.size(); ++i) {
         size_t nearest_index = 0;
@@ -669,9 +729,13 @@ std::vector<SegmentWithDirection> OptimizeContoursByNearestNeighbor(
             const Point2D forward_direction = segment.end_point - segment.start_point;
             const Point2D reverse_direction = segment.start_point - segment.end_point;
             const float32 forward_cost =
-                forward_distance + kDirectionPenaltyWeight * direction_penalty(forward_direction);
+                forward_distance +
+                kDirectionPenaltyWeight * direction_penalty(forward_direction) +
+                immediate_backtrack_penalty(segment.start_point, forward_direction);
             const float32 reverse_cost =
-                reverse_distance + kDirectionPenaltyWeight * direction_penalty(reverse_direction);
+                reverse_distance +
+                kDirectionPenaltyWeight * direction_penalty(reverse_direction) +
+                immediate_backtrack_penalty(segment.end_point, reverse_direction);
 
             if (forward_cost < best_cost) {
                 best_cost = forward_cost;
@@ -794,6 +858,15 @@ ContourOrderResult ReorderContours(const std::vector<ContractsPrimitive>& primit
         } else if (order[selection_index].reversed) {
             ReverseContour(contour);
             result.reversed_contours += 1;
+        }
+        if (!contour.closed && !result.primitives.empty() &&
+            FormsImmediateLineBacktrack(result.primitives.back(), contour.primitives.front(), 1e-3f)) {
+            Contour flipped = contour;
+            ReverseContour(flipped);
+            if (!FormsImmediateLineBacktrack(result.primitives.back(), flipped.primitives.front(), 1e-3f)) {
+                contour = std::move(flipped);
+                result.reversed_contours += order[selection_index].reversed ? -1 : 1;
+            }
         }
 
         current = ContourEndPoint(contour);

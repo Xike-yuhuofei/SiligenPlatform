@@ -1,7 +1,7 @@
 #include "InterlockMonitor.h"
 
 #include "SecurityLogHelper.h"
-#include "domain/safety/bridges/MotionCoreInterlockBridge.h"
+#include "domain/safety/domain-services/InterlockPolicy.h"
 
 #include <iomanip>
 #include <sstream>
@@ -330,7 +330,7 @@ void InterlockMonitor::CheckInterlockConditions() {
         return;
     }
 
-    auto decision_result = Domain::Safety::Bridges::EvaluateWithMotionCore(*this, policy_config_);
+    auto decision_result = Domain::Safety::DomainServices::InterlockPolicy::Evaluate(*this, policy_config_);
     if (decision_result.IsError()) {
         SecurityLogHelper::Log(LogLevel::ERR, "InterlockMonitor", "连锁判定失败: " + decision_result.GetError().GetMessage());
         return;

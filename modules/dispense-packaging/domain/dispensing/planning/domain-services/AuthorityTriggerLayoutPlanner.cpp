@@ -108,6 +108,20 @@ bool PointsNear(const Siligen::Shared::Types::Point2D& lhs,
     return lhs.DistanceTo(rhs) <= tolerance_mm;
 }
 
+bool ShouldSkipAdjacentCrossSpanDuplicateTrigger(
+    const std::vector<LayoutTriggerPoint>& existing_trigger_points,
+    const LayoutTriggerPoint& candidate,
+    float32 vertex_tolerance_mm) {
+    if (existing_trigger_points.empty()) {
+        return false;
+    }
+
+    const auto& previous = existing_trigger_points.back();
+    return previous.span_ref != candidate.span_ref &&
+        PointsNear(previous.position, candidate.position, vertex_tolerance_mm) &&
+        std::fabs(previous.distance_mm_global - candidate.distance_mm_global) <= kSharedVertexToleranceMm;
+}
+
 Result<float32> MeasureSegmentLength(
     const Segment& segment,
     const AuthorityTriggerLayoutPlannerRequest& request) {
@@ -810,6 +824,13 @@ Result<AuthorityTriggerLayout> AuthorityTriggerLayoutPlanner::Plan(
                     point.source_kind = LayoutTriggerSourceKind::SharedVertex;
                 } else {
                     point.source_kind = LayoutTriggerSourceKind::Generated;
+                }
+
+                if (ShouldSkipAdjacentCrossSpanDuplicateTrigger(
+                        layout.trigger_points,
+                        point,
+                        vertex_tolerance_mm)) {
+                    continue;
                 }
 
                 span_trigger_points.push_back(point);

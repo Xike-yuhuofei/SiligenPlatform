@@ -1,6 +1,6 @@
 #include "ContourAugmenterAdapter.h"
 
-#include "shared/Geometry/BoostGeometryAdapter.h"
+#include "shared/geometry/BoostGeometryAdapter.h"
 #include "shared/types/Point.h"
 
 #include <CGAL/Exact_predicates_exact_constructions_kernel.h>

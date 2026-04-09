@@ -1,5 +1,4 @@
 #pragma once
 
-// Legacy bridge header; canonical public owner header lives under modules/workflow/.
-#include "../../../../include/domain/dispensing/planning/domain-services/DispensingPlannerService.h"
-
+// Compatibility shim; canonical planning owner header lives under modules/dispense-packaging.
+#include "../../../../../../dispense-packaging/domain/dispensing/planning/domain-services/DispensingPlannerService.h"

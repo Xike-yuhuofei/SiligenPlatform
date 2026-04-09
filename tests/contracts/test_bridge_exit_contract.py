@@ -68,6 +68,17 @@ class BridgeExitContractTest(unittest.TestCase):
     def test_legacy_fact_catalog_tracks_removed_and_migration_roots(self) -> None:
         self.assertEqual(LEGACY_FACT_CATALOG.root_registry["ROOT-017"].classification, "migration-source")
         self.assertEqual(LEGACY_FACT_CATALOG.root_registry["ROOT-101"].classification, "removed")
+        self.assertEqual(LEGACY_FACT_CATALOG.root_registry["ROOT-011"].path, "specs")
+        self.assertEqual(LEGACY_FACT_CATALOG.root_registry["ROOT-011"].classification, "removed")
+        self.assertEqual(LEGACY_FACT_CATALOG.root_registry["ROOT-108"].path, ".specify")
+        self.assertEqual(LEGACY_FACT_CATALOG.root_registry["ROOT-108"].classification, "removed")
+
+    def test_removed_speckit_roots_are_classified_as_historical_only(self) -> None:
+        self.assertEqual(LEGACY_FACT_CATALOG.classify_zone("specs/demo/spec.md"), "removed-speckit-root")
+        self.assertEqual(LEGACY_FACT_CATALOG.classify_zone(".specify/init-options.json"), "removed-speckit-root")
+        removed_zone = LEGACY_FACT_CATALOG.zone_registry["removed-speckit-root"]
+        self.assertEqual(removed_zone.zone_class, "removed")
+        self.assertEqual(removed_zone.default_scan_policy, "exclude")
 
     def test_bridge_roots_are_physically_absent(self) -> None:
         present = [relative for relative in BRIDGE_ROOTS if (WORKSPACE_ROOT / relative).exists()]
@@ -122,6 +133,20 @@ class BridgeExitContractTest(unittest.TestCase):
             ("modules/runtime-execution/application/CMakeLists.txt", "siligen_application_dispensing"),
         ):
             self.assertNotIn(forbidden, _read(WORKSPACE_ROOT / relative), msg=f"{relative} must not reference {forbidden}")
+
+    def test_workflow_domain_has_no_application_service_dependency(self) -> None:
+        workflow_domain_root = WORKSPACE_ROOT / "modules" / "workflow" / "domain"
+        hits: list[str] = []
+        for path in workflow_domain_root.rglob("*"):
+            if path.suffix not in {".h", ".hpp", ".cpp", ".cc", ".cxx"}:
+                continue
+            text = _read(path)
+            if '#include "application/services/' in text:
+                hits.append(path.relative_to(WORKSPACE_ROOT).as_posix())
+        self.assertFalse(
+            hits,
+            msg=f"workflow domain must not include application/services headers: {hits}",
+        )
 
     def test_workflow_dxf_wrapper_uses_owner_public_header(self) -> None:
         wrapper = _read(

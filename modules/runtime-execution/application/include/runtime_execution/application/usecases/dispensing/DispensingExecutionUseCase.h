@@ -1,16 +1,16 @@
 #pragma once
 
 #include "domain/dispensing/contracts/ExecutionPackage.h"
-#include "runtime_execution/contracts/configuration/IConfigurationPort.h"
+#include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "runtime_execution/contracts/dispensing/IDispensingProcessPort.h"
-#include "runtime_execution/contracts/dispensing/ITaskSchedulerPort.h"
+#include "domain/dispensing/ports/ITaskSchedulerPort.h"
 #include "runtime_execution/contracts/dispensing/IValvePort.h"
 #include "runtime_execution/contracts/dispensing/QualityMetrics.h"
 #include "runtime_execution/contracts/motion/IHomingPort.h"
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "runtime_execution/contracts/motion/IMotionStatePort.h"
 #include "runtime_execution/contracts/safety/IInterlockSignalPort.h"
-#include "runtime_execution/contracts/system/IEventPublisherPort.h"
+#include "domain/system/ports/IEventPublisherPort.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
 #include "siligen/device/contracts/ports/device_ports.h"
@@ -27,9 +27,9 @@ using Siligen::Domain::Dispensing::ValueObjects::ProcessOutputPolicy;
 using Siligen::Domain::Machine::ValueObjects::MachineMode;
 using Siligen::Shared::Types::float32;
 using Siligen::Shared::Types::int32;
-using RuntimeEventPublisherPort = Siligen::RuntimeExecution::Contracts::System::IEventPublisherPort;
+using RuntimeEventPublisherPort = Siligen::Domain::System::Ports::IEventPublisherPort;
 using RuntimeDispensingProcessPort = Siligen::RuntimeExecution::Contracts::Dispensing::IDispensingProcessPort;
-using RuntimeTaskSchedulerPort = Siligen::RuntimeExecution::Contracts::Dispensing::ITaskSchedulerPort;
+using RuntimeTaskSchedulerPort = Siligen::Domain::Dispensing::Ports::ITaskSchedulerPort;
 using RuntimeHomingPort = Siligen::Domain::Motion::Ports::IHomingPort;
 using RuntimeInterlockSignalPort = Siligen::Domain::Safety::Ports::IInterlockSignalPort;
 

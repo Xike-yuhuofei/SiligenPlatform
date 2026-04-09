@@ -6,9 +6,10 @@
 #include "shared/logging/PrintfLogFormatter.h"
 
 #include <algorithm>
-#include <utility>
 #include <chrono>
 #include <thread>
+#include <sstream>
+#include <utility>
 
 using namespace Siligen::Shared::Types;
 
@@ -57,13 +58,17 @@ void AttachHomingState(
 
 MotionMonitoringUseCase::MotionMonitoringUseCase(
     std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port,
-    std::shared_ptr<Domain::Motion::Ports::IIOControlPort> io_port,
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort> io_port,
     std::shared_ptr<Domain::Motion::Ports::IHomingPort> homing_port,
-    std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port)
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort> interpolation_port,
+    std::shared_ptr<Siligen::Domain::Diagnostics::Ports::IDiagnosticsPort> diagnostics_port,
+    std::shared_ptr<Siligen::Domain::System::Ports::IEventPublisherPort> event_publisher_port)
     : motion_state_port_(std::move(motion_state_port))
     , homing_port_(std::move(homing_port))
     , io_port_(io_port)
-    , interpolation_port_(std::move(interpolation_port)) {
+    , interpolation_port_(std::move(interpolation_port))
+    , diagnostics_port_(std::move(diagnostics_port))
+    , event_publisher_port_(std::move(event_publisher_port)) {
 }
 
 MotionMonitoringUseCase::~MotionMonitoringUseCase() {
@@ -130,9 +135,10 @@ Result<Point2D> MotionMonitoringUseCase::GetCurrentPosition() const {
     return motion_state_port_->GetCurrentPosition();
 }
 
-Result<Domain::Motion::Ports::CoordinateSystemStatus> MotionMonitoringUseCase::GetCoordinateSystemStatus(int16 coord_sys) const {
+Result<Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemStatus>
+MotionMonitoringUseCase::GetCoordinateSystemStatus(int16 coord_sys) const {
     if (!interpolation_port_) {
-        return Result<Domain::Motion::Ports::CoordinateSystemStatus>::Failure(Error(
+        return Result<Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemStatus>::Failure(Error(
             ErrorCode::PORT_NOT_INITIALIZED,
             "Interpolation port not initialized",
             "MotionMonitoringUseCase::GetCoordinateSystemStatus"
@@ -163,14 +169,16 @@ Result<uint32> MotionMonitoringUseCase::GetLookAheadBufferSpace(int16 coord_sys)
     return interpolation_port_->GetLookAheadBufferSpace(coord_sys);
 }
 
-Result<Domain::Motion::Ports::IOStatus> MotionMonitoringUseCase::ReadDigitalInputStatus(int16 channel) const {
+Result<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>
+MotionMonitoringUseCase::ReadDigitalInputStatus(int16 channel) const {
     auto validation = ValidateChannelNumber(channel);
     if (validation.IsError()) {
-        return Result<Domain::Motion::Ports::IOStatus>::Failure(validation.GetError());
+        return Result<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>::Failure(
+            validation.GetError());
     }
 
     if (!io_port_) {
-        return Result<Domain::Motion::Ports::IOStatus>::Failure(Error(
+        return Result<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>::Failure(Error(
             ErrorCode::PORT_NOT_INITIALIZED,
             "IO port not initialized",
             "MotionMonitoringUseCase::ReadDigitalInputStatus"
@@ -180,34 +188,38 @@ Result<Domain::Motion::Ports::IOStatus> MotionMonitoringUseCase::ReadDigitalInpu
     return io_port_->ReadDigitalInput(channel);
 }
 
-Result<std::vector<Domain::Motion::Ports::IOStatus>> MotionMonitoringUseCase::ReadAllDigitalInputStatus() const {
+Result<std::vector<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>>
+MotionMonitoringUseCase::ReadAllDigitalInputStatus() const {
     if (!io_port_) {
-        return Result<std::vector<Domain::Motion::Ports::IOStatus>>::Failure(Error(
+        return Result<std::vector<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>>::Failure(Error(
             ErrorCode::PORT_NOT_INITIALIZED,
             "IO port not initialized",
             "MotionMonitoringUseCase::ReadAllDigitalInputStatus"
         ));
     }
 
-    std::vector<Domain::Motion::Ports::IOStatus> statuses;
+    std::vector<Siligen::RuntimeExecution::Contracts::Motion::IOStatus> statuses;
     for (int16 channel = 0; channel < 16; ++channel) {
         auto result = io_port_->ReadDigitalInput(channel);
         if (result.IsError()) {
-            return Result<std::vector<Domain::Motion::Ports::IOStatus>>::Failure(result.GetError());
+            return Result<std::vector<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>>::Failure(
+                result.GetError());
         }
         statuses.push_back(result.Value());
     }
-    return Result<std::vector<Domain::Motion::Ports::IOStatus>>::Success(statuses);
+    return Result<std::vector<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>>::Success(statuses);
 }
 
-Result<Domain::Motion::Ports::IOStatus> MotionMonitoringUseCase::ReadDigitalOutputStatus(int16 channel) const {
+Result<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>
+MotionMonitoringUseCase::ReadDigitalOutputStatus(int16 channel) const {
     auto validation = ValidateChannelNumber(channel);
     if (validation.IsError()) {
-        return Result<Domain::Motion::Ports::IOStatus>::Failure(validation.GetError());
+        return Result<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>::Failure(
+            validation.GetError());
     }
 
     if (!io_port_) {
-        return Result<Domain::Motion::Ports::IOStatus>::Failure(Error(
+        return Result<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>::Failure(Error(
             ErrorCode::PORT_NOT_INITIALIZED,
             "IO port not initialized",
             "MotionMonitoringUseCase::ReadDigitalOutputStatus"
@@ -217,27 +229,29 @@ Result<Domain::Motion::Ports::IOStatus> MotionMonitoringUseCase::ReadDigitalOutp
     return io_port_->ReadDigitalOutput(channel);
 }
 
-Result<std::vector<Domain::Motion::Ports::IOStatus>> MotionMonitoringUseCase::ReadAllDigitalOutputStatus() const {
+Result<std::vector<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>>
+MotionMonitoringUseCase::ReadAllDigitalOutputStatus() const {
     if (!io_port_) {
-        return Result<std::vector<Domain::Motion::Ports::IOStatus>>::Failure(Error(
+        return Result<std::vector<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>>::Failure(Error(
             ErrorCode::PORT_NOT_INITIALIZED,
             "IO port not initialized",
             "MotionMonitoringUseCase::ReadAllDigitalOutputStatus"
         ));
     }
 
-    std::vector<Domain::Motion::Ports::IOStatus> statuses;
+    std::vector<Siligen::RuntimeExecution::Contracts::Motion::IOStatus> statuses;
     for (int16 channel = 0; channel < 16; ++channel) {
         auto result = io_port_->ReadDigitalOutput(channel);
         if (result.IsError()) {
             if (result.GetError().GetCode() == ErrorCode::NOT_IMPLEMENTED) {
                 break;
             }
-            return Result<std::vector<Domain::Motion::Ports::IOStatus>>::Failure(result.GetError());
+            return Result<std::vector<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>>::Failure(
+                result.GetError());
         }
         statuses.push_back(result.Value());
     }
-    return Result<std::vector<Domain::Motion::Ports::IOStatus>>::Success(statuses);
+    return Result<std::vector<Siligen::RuntimeExecution::Contracts::Motion::IOStatus>>::Success(statuses);
 }
 
 Result<bool> MotionMonitoringUseCase::ReadLimitStatus(LogicalAxisId axis_id, bool positive) const {
@@ -397,7 +411,8 @@ void MotionMonitoringUseCase::NotifyMotionStatusUpdate(LogicalAxisId axis_id,
     }
 }
 
-void MotionMonitoringUseCase::NotifyIOStatusUpdate(const Domain::Motion::Ports::IOStatus& signal) {
+void MotionMonitoringUseCase::NotifyIOStatusUpdate(
+    const Siligen::RuntimeExecution::Contracts::Motion::IOStatus& signal) {
     IOStatusCallback callback;
     {
         std::lock_guard<std::mutex> lock(callback_mutex_);
@@ -432,6 +447,10 @@ void MotionMonitoringUseCase::StatusUpdateTimer() {
                     NotifyMotionStatusUpdate(axis_id, allStatus[i]);
                 }
             }
+            if (motion_status_failure_count_.load() > 0) {
+                RecordPollingTransition("motion_status_poll", nullptr, motion_status_failure_count_.load(), true);
+            }
+            motion_status_failure_count_.store(0);
             motion_status_failure_logged_.store(false);
         } else {
             const auto failure_count = motion_status_failure_count_.fetch_add(1) + 1;
@@ -442,6 +461,7 @@ void MotionMonitoringUseCase::StatusUpdateTimer() {
                     ";message=" + allStatusResult.GetError().GetMessage() +
                     ";failure_count=" + std::to_string(failure_count));
             }
+            RecordPollingTransition("motion_status_poll", &allStatusResult.GetError(), failure_count, false);
         }
     }
 
@@ -452,6 +472,10 @@ void MotionMonitoringUseCase::StatusUpdateTimer() {
             for (const auto& io : allIO) {
                 NotifyIOStatusUpdate(io);
             }
+            if (io_status_failure_count_.load() > 0) {
+                RecordPollingTransition("io_status_poll", nullptr, io_status_failure_count_.load(), true);
+            }
+            io_status_failure_count_.store(0);
             io_status_failure_logged_.store(false);
         } else {
             const auto failure_count = io_status_failure_count_.fetch_add(1) + 1;
@@ -462,7 +486,49 @@ void MotionMonitoringUseCase::StatusUpdateTimer() {
                     ";message=" + allIOResult.GetError().GetMessage() +
                     ";failure_count=" + std::to_string(failure_count));
             }
+            RecordPollingTransition("io_status_poll", &allIOResult.GetError(), failure_count, false);
         }
+    }
+}
+
+void MotionMonitoringUseCase::RecordPollingTransition(
+    const char* component,
+    const Siligen::Shared::Types::Error* error,
+    std::uint32_t failure_count,
+    bool recovered) const {
+    if (diagnostics_port_) {
+        Siligen::Domain::Diagnostics::Ports::DiagnosticInfo info;
+        info.level = recovered
+            ? Siligen::Domain::Diagnostics::Ports::DiagnosticLevel::INFO
+            : Siligen::Domain::Diagnostics::Ports::DiagnosticLevel::WARNING;
+        info.component = component;
+        info.message = recovered
+            ? std::string(component) + " recovered after " + std::to_string(failure_count) + " failures"
+            : std::string(component) + " failure: " + error->GetMessage();
+        info.error_code = recovered ? 0 : static_cast<int32>(error->GetCode());
+        info.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        diagnostics_port_->AddDiagnostic(info);
+    }
+
+    if (event_publisher_port_) {
+        Siligen::Domain::System::Ports::DomainEvent event;
+        event.type = recovered
+            ? Siligen::Domain::System::Ports::EventType::WORKFLOW_STAGE_CHANGED
+            : Siligen::Domain::System::Ports::EventType::WORKFLOW_STAGE_FAILED;
+        event.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        event.source = "MotionMonitoringUseCase";
+        std::ostringstream oss;
+        oss << "component=" << component
+            << ";recovered=" << (recovered ? 1 : 0)
+            << ";failure_count=" << failure_count;
+        if (!recovered && error != nullptr) {
+            oss << ";error_code=" << static_cast<int>(error->GetCode())
+                << ";message=" << error->GetMessage();
+        }
+        event.message = oss.str();
+        event_publisher_port_->PublishAsync(event);
     }
 }
 

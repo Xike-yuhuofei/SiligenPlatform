@@ -12,6 +12,12 @@ if(NOT TARGET siligen_motion_planning_contracts_public)
         "${CMAKE_BINARY_DIR}/_p/dpa_mpc"
     )
 endif()
+if(NOT TARGET siligen_motion_planning_application_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../motion-planning/application"
+        "${CMAKE_BINARY_DIR}/_p/dpa_mpa"
+    )
+endif()
 if(NOT TARGET siligen_dispense_packaging_contracts_public)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../contracts"
@@ -52,11 +58,16 @@ if(TARGET siligen_motion_planning_contracts_public)
         siligen_motion_planning_contracts_public
     )
 endif()
+if(TARGET siligen_motion_planning_application_public)
+    target_link_libraries(siligen_dispense_packaging_application_headers INTERFACE
+        siligen_motion_planning_application_public
+    )
+endif()
 target_compile_features(siligen_dispense_packaging_application_headers INTERFACE cxx_std_17)
 
 set(SILIGEN_DISPENSE_PACKAGING_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS
-    ${PROCESS_RUNTIME_CORE_PUBLIC_INCLUDE_DIRS}
-    ${PROCESS_RUNTIME_CORE_IMPLEMENTATION_INCLUDE_DIRS}
+    ${SILIGEN_WORKSPACE_PUBLIC_INCLUDE_DIRS}
+    ${SILIGEN_WORKSPACE_IMPLEMENTATION_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/..
 )
@@ -64,8 +75,9 @@ list(REMOVE_DUPLICATES SILIGEN_DISPENSE_PACKAGING_APPLICATION_IMPLEMENTATION_INC
 
 if(NOT TARGET siligen_dispense_packaging_application)
     add_library(siligen_dispense_packaging_application STATIC
-        services/dispensing/DispensePlanningFacade.cpp
         services/dispensing/PlanningAssemblyServices.cpp
+        services/dispensing/PlanningArtifactExportAssemblyService.cpp
+        services/dispensing/WorkflowPlanningAssemblyOperationsProvider.cpp
         services/dispensing/PreviewSnapshotService.cpp
     )
 endif()
@@ -93,6 +105,11 @@ endif()
 if(TARGET siligen_motion_planning_contracts_public)
     target_link_libraries(siligen_dispense_packaging_application PUBLIC
         siligen_motion_planning_contracts_public
+    )
+endif()
+if(TARGET siligen_motion_planning_application_public)
+    target_link_libraries(siligen_dispense_packaging_application PUBLIC
+        siligen_motion_planning_application_public
     )
 endif()
 target_compile_features(siligen_dispense_packaging_application PUBLIC cxx_std_17)

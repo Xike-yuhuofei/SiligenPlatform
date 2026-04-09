@@ -1,9 +1,10 @@
 #pragma once
 
-#include "domain/motion/ports/IInterpolationPort.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "siligen/device/adapters/drivers/multicard/IMultiCardWrapper.h"
 #include "shared/types/Result.h"
 
+#include <map>
 #include <memory>
 
 namespace Siligen::Infrastructure::Adapters {
@@ -25,7 +26,7 @@ using Siligen::Shared::Types::ErrorCode;
  * - 依赖注入到 Application 层
  * - 使用 Result<T> 错误处理
  */
-class InterpolationAdapter : public Siligen::Domain::Motion::Ports::IInterpolationPort {
+class InterpolationAdapter : public Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort {
    public:
     /**
      * @brief 构造函数
@@ -42,11 +43,13 @@ class InterpolationAdapter : public Siligen::Domain::Motion::Ports::IInterpolati
     InterpolationAdapter& operator=(InterpolationAdapter&&) = delete;
 
     // 实现 IInterpolationPort 接口
-    Result<void> ConfigureCoordinateSystem(int16 coord_sys,
-                                           const Siligen::Domain::Motion::Ports::CoordinateSystemConfig& config) override;
+    Result<void> ConfigureCoordinateSystem(
+        int16 coord_sys,
+        const Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemConfig& config) override;
 
-    Result<void> AddInterpolationData(int16 coord_sys,
-                                      const Siligen::Domain::Motion::Ports::InterpolationData& data) override;
+    Result<void> AddInterpolationData(
+        int16 coord_sys,
+        const Siligen::RuntimeExecution::Contracts::Motion::InterpolationData& data) override;
 
     Result<void> ClearInterpolationBuffer(int16 coord_sys) override;
 
@@ -68,10 +71,18 @@ class InterpolationAdapter : public Siligen::Domain::Motion::Ports::IInterpolati
 
     Result<uint32> GetLookAheadBufferSpace(int16 coord_sys) const override;
 
-    Result<Siligen::Domain::Motion::Ports::CoordinateSystemStatus> GetCoordinateSystemStatus(int16 coord_sys) const override;
+    Result<Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemStatus> GetCoordinateSystemStatus(
+        int16 coord_sys) const override;
 
    private:
+    struct BufferedPosition {
+        bool initialized = false;
+        float32 x = 0.0f;
+        float32 y = 0.0f;
+    };
+
     std::shared_ptr<Infrastructure::Hardware::IMultiCardWrapper> wrapper_;
+    std::map<int16, BufferedPosition> buffered_positions_;
 
     /**
      * @brief 转换 MultiCard 错误码为 Result
@@ -79,6 +90,8 @@ class InterpolationAdapter : public Siligen::Domain::Motion::Ports::IInterpolati
      * @param operation 操作描述
      */
     Result<void> ConvertError(int error_code, const std::string& operation);
+
+    BufferedPosition ResolveBufferedStartPosition(int16 coord_sys) const;
 
     /**
      * @brief 将脉冲转换为物理单位（简化实现：1:1映射）

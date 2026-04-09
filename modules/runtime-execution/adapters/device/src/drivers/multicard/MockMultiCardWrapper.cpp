@@ -142,7 +142,13 @@ int MockMultiCardWrapper::MC_SetTrapPrm(short axis, void* trapPrm) noexcept {
 // ========== 坐标系运动 ==========
 
 int MockMultiCardWrapper::MC_CrdSpace(short crd, long* space, short fifo) noexcept {
-    return mockMulticard_->MC_CrdSpace(crd, space, fifo);
+    (void)crd;
+    (void)fifo;
+    if (space == nullptr) {
+        return -1;
+    }
+    *space = 4096;
+    return 0;
 }
 
 int MockMultiCardWrapper::MC_CrdClear(short crd, short fifo) noexcept {
@@ -151,13 +157,15 @@ int MockMultiCardWrapper::MC_CrdClear(short crd, short fifo) noexcept {
 
 int MockMultiCardWrapper::MC_SetCrdPrm(short nCrdNum, short dimension, short* profile,
                                         double synVelMax, double synAccMax) noexcept {
-    // Mock 实现：简单返回成功
-    (void)nCrdNum;
-    (void)dimension;
-    (void)profile;
+    long axis_map[4] = {0, 0, 0, 0};
+    if (profile != nullptr) {
+        for (short i = 0; i < dimension && i < 4; ++i) {
+            axis_map[i] = profile[i];
+        }
+    }
     (void)synVelMax;
     (void)synAccMax;
-    return 0;
+    return mockMulticard_->MC_CrdSpace(nCrdNum, axis_map, 0);
 }
 
 int MockMultiCardWrapper::MC_LnXY(

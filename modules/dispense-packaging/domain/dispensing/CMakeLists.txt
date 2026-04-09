@@ -1,7 +1,7 @@
 # Dispensing 子域 CMakeLists.txt
-# ARCH-205 Phase 1 current fact:
-# 当前 target 仍同时编译 packaging owner、planning residual 与 process-control residual。
-# owner 迁移尚未完成，本文件只反映 live build 事实。
+# ARCH-205 current fact:
+# 当前 target 编译 packaging owner + planning 相关实现，并暂时保留 execution concrete 残留。
+# Purge/ValveCoordination/SupplyStabilization 已不在本 target 源列表中，本文件只反映 live build 事实。
 
 if(NOT TARGET siligen_device_contracts AND EXISTS "${CMAKE_SOURCE_DIR}/shared/contracts/device/CMakeLists.txt")
     add_subdirectory(
@@ -43,6 +43,9 @@ add_library(siligen_dispense_packaging_domain_dispensing STATIC
     domain-services/TriggerPlanner.cpp
     domain-services/DispensingController.cpp
     domain-services/DispensingProcessService.cpp
+    planning/domain-services/ContourOptimizationService.cpp
+    planning/domain-services/UnifiedTrajectoryPlannerService.cpp
+    planning/domain-services/DispensingPlannerService.cpp
     planning/domain-services/AuthorityTriggerLayoutPlanner.cpp
     planning/domain-services/ClosedLoopAnchorConstraintSolver.cpp
     planning/domain-services/ClosedLoopCornerAnchorResolver.cpp
@@ -81,7 +84,8 @@ target_link_libraries(siligen_dispense_packaging_domain_dispensing PUBLIC
     siligen_utils
     siligen_geometry
     siligen_motion
-    siligen_process_path_domain_trajectory
+    siligen_motion_planning_application_public
+    siligen_process_path_application_public
 )
 if(TARGET siligen_device_contracts)
     target_link_libraries(siligen_dispense_packaging_domain_dispensing PUBLIC

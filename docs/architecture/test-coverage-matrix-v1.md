@@ -28,5 +28,5 @@
 |---|---|---|---|
 | `tests/integration/scenarios/first-layer/test_real_preview_snapshot_geometry.py` | 依赖真实环境，不能充当离线 L3 主发现层 | 机台前才暴露 preview 主链问题 | 保留为 HIL/联机辅助资产，不计入离线主覆盖 |
 | `apps/hmi-app/tests/unit/test_preview_flow_integration.py` | 物理位置在 unit，但语义是跨组件主链 | 若只算 L1 会高估单元覆盖 | 基于同链路新增 `tests/integration/scenarios/run_preview_flow_regression.py` |
-| 历史宽松 patch / Mock 用法 | 签名错误可能被 fake 吞掉 | 参数漂移延后到联机/HIL 才暴露 | 已接入 `check_no_loose_mock.py` 并加固关键测试 |
+| 历史宽松 patch / Mock 用法 | 签名错误可能被 fake 吞掉 | 参数漂移延后到联机/HIL 才暴露 | 已接入 `scripts/validation/check_no_loose_mock.py` 并加固关键测试 |
 | 历史 `connect` 仅检查“无 error” | gateway 返回 `result.connected=false` 或后续 `status.connected=false` 时会形成假在线 | `home` / `preview` / `start job` 链路被延后到更深层才暴露 | 已将 strict admission 收敛到 `runtime_gateway_harness` 并接入 `tcp-precondition-matrix` 等 runner |

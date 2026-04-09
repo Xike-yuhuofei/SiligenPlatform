@@ -1,7 +1,8 @@
 #include "DeterministicPathExecutionUseCase.h"
 
-#include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
-#include "domain/motion/domain-services/MotionPlanner.h"
+#include "application/services/motion_planning/InterpolationProgramFacade.h"
+#include "application/services/motion_planning/MotionPlanningFacade.h"
+#include "motion_planning/contracts/TimePlanningConfig.h"
 #include "process_path/contracts/ProcessPath.h"
 #include "process_path/contracts/GeometryUtils.h"
 #include "shared/types/Error.h"
@@ -14,13 +15,13 @@
 namespace Siligen::Application::UseCases::Motion::Trajectory {
 
 using Coordination::MotionCoordinationUseCase;
-using Siligen::Domain::Motion::DomainServices::InterpolationProgramPlanner;
-using Siligen::Domain::Motion::DomainServices::MotionPlanner;
-using Siligen::Domain::Motion::Ports::CoordinateSystemStatus;
-using Siligen::Domain::Motion::Ports::InterpolationData;
+using Siligen::Application::Services::MotionPlanning::InterpolationProgramFacade;
+using Siligen::Application::Services::MotionPlanning::MotionPlanningFacade;
+using Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemStatus;
+using Siligen::RuntimeExecution::Contracts::Motion::InterpolationData;
 using Siligen::Domain::Motion::Ports::MotionStatus;
 using Siligen::Domain::Motion::Ports::MotionState;
-using Siligen::Domain::Motion::ValueObjects::TimePlanningConfig;
+using Siligen::MotionPlanning::Contracts::TimePlanningConfig;
 using Siligen::ProcessPath::Contracts::ProcessPath;
 using Siligen::ProcessPath::Contracts::ProcessSegment;
 using Siligen::ProcessPath::Contracts::ProcessTag;
@@ -80,7 +81,7 @@ bool DeterministicPathExecutionRequest::Validate() const noexcept {
 }
 
 DeterministicPathExecutionUseCase::DeterministicPathExecutionUseCase(
-    std::shared_ptr<Domain::Motion::Ports::IInterpolationPort> interpolation_port,
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort> interpolation_port,
     std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port)
     : interpolation_port_(std::move(interpolation_port)),
       motion_state_port_(std::move(motion_state_port)),
@@ -289,8 +290,8 @@ bool DeterministicPathExecutionUseCase::HasActiveExecution() const noexcept {
 Result<DeterministicPathExecutionUseCase::ActiveExecution> DeterministicPathExecutionUseCase::BuildExecution(
     const DeterministicPathExecutionRequest& request,
     const Point2D& start_point) const {
-    MotionPlanner motion_planner;
-    InterpolationProgramPlanner program_planner;
+    MotionPlanningFacade motion_planner;
+    InterpolationProgramFacade program_planner;
 
     ProcessPath path;
     path.segments.reserve(request.segments.size());
@@ -408,7 +409,8 @@ Result<void> DeterministicPathExecutionUseCase::DispatchNextSegment(ActiveExecut
     return Result<void>::Success();
 }
 
-Result<CoordinateSystemStatus> DeterministicPathExecutionUseCase::ReadCoordinateSystemStatus(int16 coord_sys) const {
+Result<CoordinateSystemStatus> DeterministicPathExecutionUseCase::ReadCoordinateSystemStatus(
+    int16 coord_sys) const {
     if (!interpolation_port_) {
         return Result<CoordinateSystemStatus>::Failure(
             MakeError(

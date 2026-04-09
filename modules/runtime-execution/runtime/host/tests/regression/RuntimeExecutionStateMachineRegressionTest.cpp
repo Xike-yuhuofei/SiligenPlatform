@@ -1,5 +1,4 @@
 #include "runtime/system/DispenserModelMachineExecutionStateBackend.h"
-#include "runtime/system/LegacyMachineExecutionStateAdapter.h"
 #include "support/RuntimeExecutionHostTestSupport.h"
 
 #include <gtest/gtest.h>
@@ -10,7 +9,6 @@ namespace {
 
 using DispenserModel = Siligen::Runtime::Host::Tests::DispenserModel;
 using DispenserModelMachineExecutionStateBackend = Siligen::Runtime::Service::System::DispenserModelMachineExecutionStateBackend;
-using LegacyMachineExecutionStateAdapter = Siligen::Runtime::Host::System::LegacyMachineExecutionStateAdapter;
 using MachineExecutionPhase = Siligen::RuntimeExecution::Contracts::System::MachineExecutionPhase;
 
 TEST(RuntimeExecutionStateMachineRegressionTest, MapsReadyRunningPausedAndFaultLifecycleFromDispenserModel) {
@@ -19,8 +17,7 @@ TEST(RuntimeExecutionStateMachineRegressionTest, MapsReadyRunningPausedAndFaultL
     ASSERT_TRUE(model->SetState(Siligen::DispenserState::READY).IsSuccess());
     ASSERT_TRUE(model->AddTask(Siligen::Runtime::Host::Tests::MakePendingTask()).IsSuccess());
 
-    auto backend = std::make_shared<DispenserModelMachineExecutionStateBackend>(model);
-    LegacyMachineExecutionStateAdapter port(backend);
+    DispenserModelMachineExecutionStateBackend port(model);
 
     auto ready_snapshot = port.ReadSnapshot();
     ASSERT_TRUE(ready_snapshot.IsSuccess()) << ready_snapshot.GetError().GetMessage();
@@ -56,8 +53,7 @@ TEST(RuntimeExecutionStateMachineRegressionTest, ClearsPendingTasksAndRecoversFr
     ASSERT_TRUE(model->SetState(Siligen::DispenserState::READY).IsSuccess());
     ASSERT_TRUE(model->AddTask(Siligen::Runtime::Host::Tests::MakePendingTask()).IsSuccess());
 
-    auto backend = std::make_shared<DispenserModelMachineExecutionStateBackend>(model);
-    LegacyMachineExecutionStateAdapter port(backend);
+    DispenserModelMachineExecutionStateBackend port(model);
 
     ASSERT_TRUE(port.ClearPendingTasks().IsSuccess());
     auto cleared_snapshot = port.ReadSnapshot();

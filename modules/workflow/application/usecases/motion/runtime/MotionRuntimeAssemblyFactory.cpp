@@ -1,4 +1,4 @@
-#include "application/usecases/motion/runtime/MotionRuntimeAssemblyFactory.h"
+#include "MotionRuntimeAssemblyFactory.h"
 
 #include "shared/types/Error.h"
 #include "shared/types/Point.h"
@@ -47,14 +47,17 @@ public:
 
 }  // namespace
 
-MotionRuntimeAssembly MotionRuntimeAssemblyFactory::Create(MotionRuntimeAssemblyDependencies dependencies) {
+Result<MotionRuntimeAssembly> MotionRuntimeAssemblyFactory::Create(MotionRuntimeAssemblyDependencies dependencies) {
     MotionRuntimeAssembly assembly;
     if (!dependencies.motion_runtime_port ||
         !dependencies.interpolation_port ||
         !dependencies.configuration_port ||
         !dependencies.event_publisher_port ||
         !dependencies.services_provider) {
-        return assembly;
+        return Result<MotionRuntimeAssembly>::Failure(Error(
+            ErrorCode::PORT_NOT_INITIALIZED,
+            "Motion runtime assembly dependencies are incomplete",
+            "MotionRuntimeAssemblyFactory"));
     }
 
     auto provided_services = dependencies.services_provider->CreateServices(dependencies.motion_runtime_port);
@@ -65,7 +68,10 @@ MotionRuntimeAssembly MotionRuntimeAssemblyFactory::Create(MotionRuntimeAssembly
         assembly.motion_validation_service = std::make_shared<DefaultMotionRuntimeValidationService>();
     }
     if (!assembly.motion_control_service || !assembly.motion_status_service) {
-        return MotionRuntimeAssembly();
+        return Result<MotionRuntimeAssembly>::Failure(Error(
+            ErrorCode::PORT_NOT_INITIALIZED,
+            "Motion runtime services provider returned incomplete services",
+            "MotionRuntimeAssemblyFactory"));
     }
 
     assembly.home_use_case = std::make_unique<Homing::HomeAxesUseCase>(
@@ -94,7 +100,7 @@ MotionRuntimeAssembly MotionRuntimeAssemblyFactory::Create(MotionRuntimeAssembly
         dependencies.interpolation_port,
         dependencies.motion_runtime_port);
 
-    return assembly;
+    return Result<MotionRuntimeAssembly>::Success(std::move(assembly));
 }
 
 }  // namespace Siligen::Application::UseCases::Motion::Runtime

@@ -19,7 +19,7 @@
 | workflow compatibility surface | owner path | note |
 |---|---|---|
 | `domain_dispensing` | `siligen_dispense_packaging_domain_dispensing` | `workflow/domain/domain/dispensing/CMakeLists.txt` 已改为纯转发 |
-| `PlanningUseCase` live planning dependency | `IPathSourcePort + ProcessPathFacade + MotionPlanningFacade + DispensePlanningFacade` | workflow live 链已不再注入 `DispensingPlannerService` concrete |
+| `PlanningUseCase` live planning dependency | `IPathSourcePort + ProcessPathFacade + MotionPlanningFacade + IWorkflowPlanningAssemblyOperations` | workflow live planning seam 已切到 M8 workflow-facing assembly operations |
 | `PlanningUseCase` execution package dependency | `domain/dispensing/contracts/ExecutionPackage.h` | 继续通过 M8 contracts 消费执行包契约 |
 
 ## HMI Application -> M11
@@ -35,7 +35,7 @@
 
 - `modules/motion-planning/application/CMakeLists.txt` 不再反向修改 `siligen_application_motion` / `siligen_application_dispensing`
 - `modules/dispense-packaging/application/CMakeLists.txt` 不再反向修改 `siligen_application_dispensing`
-- `siligen_workflow_dispensing_planning_compat` 仅保留为 deprecated compatibility target，live target 禁止新增依赖
+- `siligen_workflow_dispensing_planning_compat` 已从 build graph 退场；live/test target 不得再依赖该 target 名称
 - `modules/workflow/domain/domain/CMakeLists.txt` 不再提供 `siligen_motion` 本地 fallback，缺少 canonical owner target 时显式失败
 - `siligen_process_runtime_core_*` 仅保留为 deprecated compatibility target，README 与后续 owner 论证不得再将其视为 live public surface
 - `tests/reports/module-boundary-bridges-s2a/module-boundary-bridges.md` 当前状态为 `passed`

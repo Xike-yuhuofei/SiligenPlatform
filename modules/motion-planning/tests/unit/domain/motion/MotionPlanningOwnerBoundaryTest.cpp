@@ -7,10 +7,10 @@
 #include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
 #include "domain/motion/domain-services/TimeTrajectoryPlanner.h"
 #include "domain/motion/domain-services/TrajectoryPlanner.h"
-#include "domain/motion/ports/IInterpolationPort.h"
-#include "domain/motion/value-objects/MotionTrajectory.h"
-#include "domain/motion/value-objects/TimePlanningConfig.h"
+#include "motion_planning/contracts/MotionTrajectory.h"
+#include "motion_planning/contracts/TimePlanningConfig.h"
 #include "process_path/contracts/ProcessPath.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
 
 #include <gtest/gtest.h>
 
@@ -46,10 +46,10 @@ TEST(MotionPlanningOwnerBoundaryTest, CanonicalPlanningHeadersUseProcessPathCont
     using Interpolator = Siligen::Domain::Motion::CMPCoordinatedInterpolator;
     using InterpolationProgramPlanner = Siligen::Domain::Motion::DomainServices::InterpolationProgramPlanner;
     using TimeTrajectoryPlanner = Siligen::Domain::Motion::DomainServices::TimeTrajectoryPlanner;
-    using MotionTrajectory = Siligen::Domain::Motion::ValueObjects::MotionTrajectory;
-    using TimePlanningConfig = Siligen::Domain::Motion::ValueObjects::TimePlanningConfig;
+    using MotionTrajectory = Siligen::MotionPlanning::Contracts::MotionTrajectory;
+    using TimePlanningConfig = Siligen::MotionPlanning::Contracts::TimePlanningConfig;
     using ContractsProcessPath = Siligen::ProcessPath::Contracts::ProcessPath;
-    using InterpolationData = Siligen::Domain::Motion::Ports::InterpolationData;
+    using InterpolationData = Siligen::RuntimeExecution::Contracts::Motion::InterpolationData;
     using InterpolationResult = Siligen::Shared::Types::Result<std::vector<InterpolationData>>;
     using Float32 = Siligen::Shared::Types::float32;
 
@@ -93,9 +93,7 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowDomainRequiresCanonicalMotionOwner
 
 TEST(MotionPlanningOwnerBoundaryTest, WorkflowPlanningHeadersAreThinCompatibilityShims) {
     const fs::path repo_root = RepoRoot();
-    const std::array<std::pair<fs::path, std::string>, 30> expectations = {{
-        {repo_root / "modules/workflow/domain/domain/motion/CMPCoordinatedInterpolator.h",
-         "#include \"../../../../motion-planning/domain/motion/CMPCoordinatedInterpolator.h\""},
+    const std::array<std::pair<fs::path, std::string>, 24> expectations = {{
         {repo_root / "modules/workflow/domain/domain/motion/BezierCalculator.h",
          "#include \"../../../../motion-planning/domain/motion/BezierCalculator.h\""},
         {repo_root / "modules/workflow/domain/domain/motion/BSplineCalculator.h",
@@ -112,8 +110,6 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowPlanningHeadersAreThinCompatibilit
          "#include \"../../../../../motion-planning/domain/motion/domain-services/SevenSegmentSCurveProfile.h\""},
         {repo_root / "modules/workflow/domain/domain/motion/domain-services/SpeedPlanner.h",
          "#include \"../../../../../motion-planning/domain/motion/domain-services/SpeedPlanner.h\""},
-        {repo_root / "modules/workflow/domain/domain/motion/domain-services/TimeTrajectoryPlanner.h",
-         "#include \"../../../../../motion-planning/domain/motion/domain-services/TimeTrajectoryPlanner.h\""},
         {repo_root / "modules/workflow/domain/domain/motion/domain-services/TrajectoryPlanner.h",
          "#include \"../../../../../motion-planning/domain/motion/domain-services/TrajectoryPlanner.h\""},
         {repo_root / "modules/workflow/domain/domain/motion/domain-services/TriggerCalculator.h",
@@ -126,20 +122,14 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowPlanningHeadersAreThinCompatibilit
          "#include \"../../../../../../motion-planning/domain/motion/domain-services/interpolation/ArcInterpolator.h\""},
         {repo_root / "modules/workflow/domain/domain/motion/domain-services/interpolation/InterpolationCommandValidator.h",
          "#include \"../../../../../../motion-planning/domain/motion/domain-services/interpolation/InterpolationCommandValidator.h\""},
-        {repo_root / "modules/workflow/domain/domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h",
-         "#include \"../../../../../../motion-planning/domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h\""},
         {repo_root / "modules/workflow/domain/domain/motion/domain-services/interpolation/LinearInterpolator.h",
          "#include \"../../../../../../motion-planning/domain/motion/domain-services/interpolation/LinearInterpolator.h\""},
         {repo_root / "modules/workflow/domain/domain/motion/domain-services/interpolation/SplineGeometryMath.h",
          "#include \"../../../../../../motion-planning/domain/motion/domain-services/interpolation/SplineGeometryMath.h\""},
         {repo_root / "modules/workflow/domain/domain/motion/domain-services/interpolation/SplineInterpolator.h",
          "#include \"../../../../../../motion-planning/domain/motion/domain-services/interpolation/SplineInterpolator.h\""},
-        {repo_root / "modules/workflow/domain/domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h",
-         "#include \"../../../../../../motion-planning/domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h\""},
         {repo_root / "modules/workflow/domain/domain/motion/domain-services/interpolation/ValidatedInterpolationPort.h",
          "#include \"../../../../../../motion-planning/domain/motion/domain-services/interpolation/ValidatedInterpolationPort.h\""},
-        {repo_root / "modules/workflow/domain/include/domain/motion/CMPCoordinatedInterpolator.h",
-         "#include \"../../../../../motion-planning/domain/motion/CMPCoordinatedInterpolator.h\""},
         {repo_root / "modules/workflow/domain/include/domain/motion/BezierCalculator.h",
          "#include \"../../../../../motion-planning/domain/motion/BezierCalculator.h\""},
         {repo_root / "modules/workflow/domain/include/domain/motion/BSplineCalculator.h",
@@ -150,8 +140,6 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowPlanningHeadersAreThinCompatibilit
          "#include \"../../../../../motion-planning/domain/motion/CMPCompensation.h\""},
         {repo_root / "modules/workflow/domain/include/domain/motion/CMPValidator.h",
          "#include \"../../../../../motion-planning/domain/motion/CMPValidator.h\""},
-        {repo_root / "modules/workflow/domain/include/domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h",
-         "#include \"../../../../../../../motion-planning/domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h\""},
         {repo_root / "modules/workflow/domain/include/domain/motion/domain-services/interpolation/ArcInterpolator.h",
          "#include \"../../../../../../../motion-planning/domain/motion/domain-services/interpolation/ArcInterpolator.h\""},
     }};
@@ -160,6 +148,24 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowPlanningHeadersAreThinCompatibilit
         const std::string content = ReadTextFile(path);
         EXPECT_NE(content.find("Canonical planning owner lives in motion-planning"), std::string::npos) << path.string();
         EXPECT_NE(content.find(include_line), std::string::npos) << path.string();
+    }
+}
+
+TEST(MotionPlanningOwnerBoundaryTest, WorkflowPlanningHeaderShimsRemovedWhenNoConsumersRemain) {
+    const fs::path repo_root = RepoRoot();
+    const std::array<fs::path, 8> removed_headers = {{
+        repo_root / "modules/workflow/domain/domain/motion/CMPCoordinatedInterpolator.h",
+        repo_root / "modules/workflow/domain/domain/motion/domain-services/TimeTrajectoryPlanner.h",
+        repo_root / "modules/workflow/domain/domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h",
+        repo_root / "modules/workflow/domain/domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h",
+        repo_root / "modules/workflow/domain/include/domain/motion/CMPCoordinatedInterpolator.h",
+        repo_root / "modules/workflow/domain/include/domain/motion/domain-services/TimeTrajectoryPlanner.h",
+        repo_root / "modules/workflow/domain/include/domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h",
+        repo_root / "modules/workflow/domain/include/domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h",
+    }};
+
+    for (const auto& header : removed_headers) {
+        EXPECT_FALSE(fs::exists(header)) << header.string();
     }
 }
 
@@ -202,22 +208,54 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowPlanningImplementationsAreRemoved)
     }
 }
 
-TEST(MotionPlanningOwnerBoundaryTest, WorkflowCmpPrecisionTestUsesContractsProcessPathSemantics) {
+TEST(MotionPlanningOwnerBoundaryTest, WorkflowTrajectoryMotionPlannerResidueIsRemoved) {
     const fs::path repo_root = RepoRoot();
-    const std::string workflow_cmp_test = ReadTextFile(
-        repo_root / "modules/workflow/tests/process-runtime-core/unit/domain/motion/CMPCoordinatedInterpolatorPrecisionTest.cpp");
+    const std::array<fs::path, 5> legacy_paths = {{
+        repo_root / "modules/workflow/domain/domain/trajectory/domain-services/MotionPlanner.cpp",
+        repo_root / "modules/workflow/domain/domain/trajectory/domain-services/MotionPlanner.h",
+        repo_root / "modules/workflow/domain/domain/trajectory/value-objects/MotionConfig.h",
+        repo_root / "modules/workflow/domain/domain/trajectory/value-objects/PlanningReport.h",
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/PlanningReport.h",
+    }};
 
-    EXPECT_NE(workflow_cmp_test.find("using Siligen::ProcessPath::Contracts::ProcessPath;"), std::string::npos);
-    EXPECT_NE(workflow_cmp_test.find("using Siligen::ProcessPath::Contracts::ArcPrimitive;"), std::string::npos);
-    EXPECT_EQ(workflow_cmp_test.find("using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;"), std::string::npos);
+    for (const auto& path : legacy_paths) {
+        EXPECT_FALSE(fs::exists(path)) << path.string();
+    }
+}
+
+TEST(MotionPlanningOwnerBoundaryTest, WorkflowTriggerCmpCompatibilityIsShimOnly) {
+    const fs::path repo_root = RepoRoot();
+    const std::string workflow_domain_cmake =
+        ReadTextFile(repo_root / "modules/workflow/domain/domain/CMakeLists.txt");
+    const std::string workflow_cmp_header =
+        ReadTextFile(repo_root / "modules/workflow/domain/include/domain/dispensing/domain-services/CMPTriggerService.h");
+    const std::string workflow_trigger_header =
+        ReadTextFile(repo_root / "modules/workflow/domain/domain/dispensing/domain-services/TriggerPlanner.h");
+
+    EXPECT_EQ(workflow_domain_cmake.find("dispensing/domain-services/CMPTriggerService.cpp"), std::string::npos);
+    EXPECT_EQ(workflow_domain_cmake.find("dispensing/planning/domain-services/DispensingPlannerService.cpp"),
+              std::string::npos);
+    EXPECT_EQ(workflow_domain_cmake.find("dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp"),
+              std::string::npos);
+    EXPECT_NE(workflow_cmp_header.find("modules/dispense-packaging"), std::string::npos);
+    EXPECT_NE(workflow_cmp_header.find("CMPTriggerService.h"), std::string::npos);
+    EXPECT_EQ(workflow_cmp_header.find("class CMPService"), std::string::npos);
+    EXPECT_NE(workflow_trigger_header.find("modules/dispense-packaging"), std::string::npos);
+    EXPECT_NE(workflow_trigger_header.find("TriggerPlanner.h"), std::string::npos);
+    EXPECT_EQ(workflow_trigger_header.find("class TriggerPlanner"), std::string::npos);
+}
+
+TEST(MotionPlanningOwnerBoundaryTest, WorkflowCmpPrecisionResidueIsRemovedFromWorkflowModule) {
+    const fs::path repo_root = RepoRoot();
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/tests/process-runtime-core/unit/domain/motion/CMPCoordinatedInterpolatorPrecisionTest.cpp"));
 }
 
 TEST(MotionPlanningOwnerBoundaryTest, InterpolationProgramPlannerConsumersUseContractsProcessPathSemantics) {
     const fs::path repo_root = RepoRoot();
-    const std::array<fs::path, 4> sources = {{
+    const std::array<fs::path, 3> sources = {{
         repo_root / "modules/motion-planning/tests/unit/domain/trajectory/InterpolationProgramPlannerTest.cpp",
         repo_root / "modules/workflow/application/usecases/motion/trajectory/DeterministicPathExecutionUseCase.cpp",
-        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp",
         repo_root / "modules/dispense-packaging/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp",
     }};
 
@@ -236,4 +274,56 @@ TEST(MotionPlanningOwnerBoundaryTest, InterpolationProgramPlannerConsumersUseCon
               std::string::npos);
 }
 
+TEST(MotionPlanningOwnerBoundaryTest, WorkflowPlanningCompatibilityStubsCarryNoLocalOwnerImplementation) {
+    const fs::path repo_root = RepoRoot();
+
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp"));
+
+    const std::string workflow_dispensing_planner = ReadTextFile(
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp");
+    const std::string workflow_contour_optimizer = ReadTextFile(
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/ContourOptimizationService.cpp");
+    const std::string workflow_dispensing_planner_header = ReadTextFile(
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.h");
+    const std::string workflow_contour_optimizer_header = ReadTextFile(
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/ContourOptimizationService.h");
+
+    EXPECT_NE(workflow_dispensing_planner.find("Canonical planning owner lives under modules/dispense-packaging."),
+              std::string::npos);
+    EXPECT_EQ(workflow_dispensing_planner.find("application/services/"), std::string::npos);
+    EXPECT_EQ(workflow_dispensing_planner.find("UnifiedTrajectoryPlannerService"), std::string::npos);
+
+    EXPECT_NE(workflow_contour_optimizer.find("Canonical planning owner lives under modules/dispense-packaging."),
+              std::string::npos);
+    EXPECT_EQ(workflow_contour_optimizer.find("application/services/"), std::string::npos);
+
+    EXPECT_NE(workflow_dispensing_planner_header.find("modules/dispense-packaging"), std::string::npos);
+    EXPECT_NE(workflow_dispensing_planner_header.find("DispensingPlannerService.h"), std::string::npos);
+    EXPECT_EQ(workflow_dispensing_planner_header.find("class DispensingPlanner"), std::string::npos);
+
+    EXPECT_NE(workflow_contour_optimizer_header.find("modules/dispense-packaging"), std::string::npos);
+    EXPECT_NE(workflow_contour_optimizer_header.find("ContourOptimizationService.h"), std::string::npos);
+    EXPECT_EQ(workflow_contour_optimizer_header.find("class ContourOptimizationService"), std::string::npos);
+}
+
+TEST(MotionPlanningOwnerBoundaryTest, WorkflowValueObjectThinBridgesAreRemoved) {
+    const fs::path repo_root = RepoRoot();
+
+    const std::array<fs::path, 7> removed_headers = {{
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/Path.h",
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/Primitive.h",
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/ProcessConfig.h",
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/ProcessPath.h",
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/GeometryUtils.h",
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/GeometryBoostAdapter.h",
+        repo_root / "modules/workflow/domain/include/domain/trajectory/value-objects/PlanningReport.h",
+    }};
+
+    for (const auto& header : removed_headers) {
+        EXPECT_FALSE(fs::exists(header)) << header.string();
+    }
+}
 }  // namespace

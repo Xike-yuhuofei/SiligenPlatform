@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "application/usecases/system/IHardLimitMonitor.h"
+#include "runtime_execution/application/usecases/system/IHardLimitMonitor.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "domain/system/ports/IEventPublisherPort.h"
 #include "domain/diagnostics/ports/IDiagnosticsPort.h"

@@ -2,8 +2,8 @@
 
 #include "domain/dispensing/contracts/PlanningArtifactExportRequest.h"
 #include "process_path/contracts/ProcessPath.h"
+#include "runtime_execution/application/services/dispensing/PlanningArtifactExportPort.h"
 #include "shared/types/Point.h"
-#include "workflow/application/services/dispensing/IPlanningArtifactExportPort.h"
 
 #include <gtest/gtest.h>
 
@@ -23,8 +23,8 @@ using PlanningArtifactExportResult = Siligen::Application::Services::Dispensing:
 using ProcessPath = Siligen::ProcessPath::Contracts::ProcessPath;
 using ProcessSegment = Siligen::ProcessPath::Contracts::ProcessSegment;
 using ProcessTag = Siligen::ProcessPath::Contracts::ProcessTag;
-using Segment = Siligen::Domain::Trajectory::ValueObjects::Segment;
-using SegmentType = Siligen::Domain::Trajectory::ValueObjects::SegmentType;
+using Segment = Siligen::ProcessPath::Contracts::Segment;
+using SegmentType = Siligen::ProcessPath::Contracts::SegmentType;
 using TrajectoryPoint = Siligen::TrajectoryPoint;
 
 class ScopedPreviewTrajectoryEnv final {

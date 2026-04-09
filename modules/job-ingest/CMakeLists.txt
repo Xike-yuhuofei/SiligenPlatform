@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-if(NOT TARGET siligen_process_planning_legacy_configuration_bridge_public)
+if(NOT TARGET siligen_process_planning_contracts_public)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../process-planning/contracts"
         "${CMAKE_BINARY_DIR}/_p/ji_ppc"
@@ -38,14 +38,14 @@ target_include_directories(siligen_job_ingest_application_headers INTERFACE
 )
 target_link_libraries(siligen_job_ingest_application_headers INTERFACE
     siligen_process_planning_domain_configuration
-    siligen_process_planning_legacy_configuration_bridge_public
+    siligen_process_planning_contracts_public
     siligen_job_ingest_contracts
 )
 target_compile_features(siligen_job_ingest_application_headers INTERFACE cxx_std_17)
 
 set(SILIGEN_JOB_INGEST_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS
-    ${PROCESS_RUNTIME_CORE_PUBLIC_INCLUDE_DIRS}
-    ${PROCESS_RUNTIME_CORE_IMPLEMENTATION_INCLUDE_DIRS}
+    ${SILIGEN_WORKSPACE_PUBLIC_INCLUDE_DIRS}
+    ${SILIGEN_WORKSPACE_IMPLEMENTATION_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/application
 )
@@ -62,7 +62,7 @@ target_include_directories(siligen_job_ingest_application PRIVATE
 )
 target_link_libraries(siligen_job_ingest_application PUBLIC
     siligen_process_planning_domain_configuration
-    siligen_process_planning_legacy_configuration_bridge_public
+    siligen_process_planning_contracts_public
     siligen_job_ingest_contracts
     siligen_dxf_geometry_application_public
     siligen_types

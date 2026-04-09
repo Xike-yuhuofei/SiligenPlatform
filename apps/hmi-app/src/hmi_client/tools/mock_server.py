@@ -700,11 +700,18 @@ class MockState:
                 glue_point_count = max(self.dxf.segment_count * 2, 0)
                 execution_point_count = max(glue_point_count, 2)
                 glue_points = []
+                glue_reveal_lengths_mm = []
+                cumulative_length = 0.0
+                previous_point = None
                 for i in range(glue_point_count):
                     t = i / float(max(glue_point_count - 1, 1))
                     x = t * self.dxf.total_length
                     y = 6.0 * math.sin(t * 4.0 * math.pi)
                     glue_points.append({"x": x, "y": y})
+                    if previous_point is not None:
+                        cumulative_length += math.hypot(x - previous_point[0], y - previous_point[1])
+                    glue_reveal_lengths_mm.append(round(cumulative_length, 6))
+                    previous_point = (x, y)
                 motion_preview_point_count = min(execution_point_count, max_polyline_points)
                 motion_preview = []
                 for i in range(motion_preview_point_count):
@@ -727,6 +734,7 @@ class MockState:
                         "point_count": glue_point_count,
                         "glue_point_count": glue_point_count,
                         "glue_points": glue_points,
+                        "glue_reveal_lengths_mm": glue_reveal_lengths_mm,
                         "execution_point_count": execution_point_count,
                         "motion_preview": {
                             "source": "execution_trajectory_snapshot",

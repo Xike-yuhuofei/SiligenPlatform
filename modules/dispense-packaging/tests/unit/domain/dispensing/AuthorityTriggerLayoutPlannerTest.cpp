@@ -23,10 +23,10 @@ using Siligen::Domain::Dispensing::ValueObjects::LayoutTriggerSourceKind;
 using Siligen::Domain::Dispensing::ValueObjects::SpacingValidationClassification;
 using Siligen::Domain::Dispensing::ValueObjects::StrongAnchorRole;
 using Siligen::Domain::Dispensing::ValueObjects::TopologyDispatchType;
-using Siligen::Domain::Trajectory::ValueObjects::ComputeArcLength;
-using Siligen::Domain::Trajectory::ValueObjects::ProcessSegment;
-using Siligen::Domain::Trajectory::ValueObjects::Segment;
-using Siligen::Domain::Trajectory::ValueObjects::SegmentType;
+using Siligen::ProcessPath::Contracts::ComputeArcLength;
+using Siligen::ProcessPath::Contracts::ProcessSegment;
+using Siligen::ProcessPath::Contracts::Segment;
+using Siligen::ProcessPath::Contracts::SegmentType;
 using Siligen::Shared::Types::DispensingStrategy;
 using Siligen::Shared::Types::Point2D;
 
@@ -148,6 +148,27 @@ std::size_t CountPointsNear(
         [&](const auto& point) {
             return point.span_ref == span_id && point.position.DistanceTo(position) <= tolerance_mm;
         }));
+}
+
+std::size_t CountGlobalPointsNear(
+    const std::vector<LayoutTriggerPoint>& trigger_points,
+    const Point2D& position,
+    float tolerance_mm) {
+    return static_cast<std::size_t>(std::count_if(
+        trigger_points.begin(),
+        trigger_points.end(),
+        [&](const auto& point) { return point.position.DistanceTo(position) <= tolerance_mm; }));
+}
+
+bool HasConsecutiveNearDuplicateTriggerPoints(
+    const std::vector<LayoutTriggerPoint>& trigger_points,
+    float tolerance_mm) {
+    for (std::size_t index = 1; index < trigger_points.size(); ++index) {
+        if (trigger_points[index - 1].position.DistanceTo(trigger_points[index].position) <= tolerance_mm) {
+            return true;
+        }
+    }
+    return false;
 }
 
 }  // namespace
@@ -646,6 +667,39 @@ TEST(AuthorityTriggerLayoutPlannerTest, ClassifiesRapidSeparatedSharedVertexSpan
     EXPECT_FALSE(layout.spans[1].closed);
     EXPECT_EQ(CountPointsNear(layout.trigger_points, layout.spans[0].span_id, Point2D(0.0f, 0.0f), 1e-4f), 1U);
     EXPECT_EQ(CountPointsNear(layout.trigger_points, layout.spans[1].span_id, Point2D(0.0f, 0.0f), 1e-4f), 1U);
+    EXPECT_EQ(CountGlobalPointsNear(layout.trigger_points, Point2D(0.0f, 0.0f), 1e-4f), 2U);
+    EXPECT_FALSE(HasConsecutiveNearDuplicateTriggerPoints(layout.trigger_points, 1e-4f));
+}
+
+TEST(AuthorityTriggerLayoutPlannerTest, DeduplicatesAdjacentSharedBoundaryTriggersAcrossBranchRevisitSpans) {
+    AuthorityTriggerLayoutPlanner planner;
+    auto request = BuildRequest();
+    request.target_spacing_mm = 5.0f;
+    request.min_spacing_mm = 4.7f;
+    request.max_spacing_mm = 5.3f;
+    request.process_path.segments.push_back(
+        BuildLineSegment(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)));
+    request.process_path.segments.push_back(
+        BuildLineSegment(Point2D(10.0f, 0.0f), Point2D(10.0f, 10.0f)));
+    request.process_path.segments.push_back(
+        BuildLineSegment(Point2D(10.0f, 10.0f), Point2D(0.0f, 10.0f)));
+    request.process_path.segments.push_back(
+        BuildLineSegment(Point2D(0.0f, 10.0f), Point2D(10.0f, 0.0f)));
+    request.process_path.segments.push_back(
+        BuildLineSegment(Point2D(10.0f, 0.0f), Point2D(20.0f, 0.0f)));
+
+    const auto result = planner.Plan(request);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    const auto& layout = result.Value();
+    EXPECT_TRUE(layout.branch_revisit_split_applied);
+    ASSERT_EQ(layout.spans.size(), 2U);
+    EXPECT_EQ(layout.dispatch_type, TopologyDispatchType::BranchOrRevisit);
+    EXPECT_EQ(CountGlobalPointsNear(layout.trigger_points, Point2D(10.0f, 0.0f), 1e-4f), 1U);
+    EXPECT_FALSE(HasConsecutiveNearDuplicateTriggerPoints(layout.trigger_points, 1e-4f));
+    ASSERT_EQ(layout.validation_outcomes.size(), 2U);
+    EXPECT_FALSE(layout.validation_outcomes[0].points.empty());
+    EXPECT_FALSE(layout.validation_outcomes[1].points.empty());
 }
 
 TEST(AuthorityTriggerLayoutPlannerTest, ClassifiesMixedSingleOpenChainAndExplicitBoundaryFamilyAsExplicitProcessBoundary) {

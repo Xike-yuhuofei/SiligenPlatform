@@ -15,10 +15,6 @@ add_library(siligen_process_path_domain_trajectory STATIC
 )
 
 target_sources(siligen_process_path_domain_trajectory PRIVATE
-    value-objects/Primitive.h
-    value-objects/Path.h
-    value-objects/ProcessPath.h
-    value-objects/ProcessConfig.h
     ports/IPathSourcePort.h
     ports/IDXFPathSourcePort.h
 )
@@ -30,7 +26,7 @@ target_include_directories(siligen_process_path_domain_trajectory PUBLIC
 )
 
 target_link_libraries(siligen_process_path_domain_trajectory PUBLIC
-    siligen_process_runtime_core_boost_headers
+    siligen_workspace_boost_headers
     siligen_process_path_contracts_public
     siligen_types
     siligen_geometry

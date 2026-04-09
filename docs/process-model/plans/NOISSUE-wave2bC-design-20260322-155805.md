@@ -44,7 +44,7 @@
 | `process-runtime-core-device-hal` / diagnostics logging payoff | `packages/traceability-observability` | `packages/runtime-host` | `packages/traceability-observability/README.md` 已承认 logging 来源含 `device-hal diagnostics`；`docs/architecture/device-hal-cutover.md` 明确 logging 不应继续留在 device 层 | `SpdlogLoggingAdapter` 不再以 `modules/device-hal` 路径存在；consumer 改指向 canonical logging owner |
 | `process-runtime-core-device-hal` / recipes persistence payoff | `packages/runtime-host` | `packages/transport-gateway` | `docs/architecture/device-hal-cutover.md` 明确 recipes persistence/serializer 不应继续留在 device 层，且 `TcpCommandDispatcher` 仍吃 `RecipeJsonSerializer` | `Recipe*` / `Template*` / `Audit*` / `ParameterSchema*` / `RecipeBundleSerializer*` 不再由 legacy `device-hal` 提供 |
 | `process-runtime-core-device-hal` / device boundary 守门 | `packages/device-adapters` | `packages/process-runtime-core` | `packages/device-adapters/README.md` 已明确“残留不回灌本包”；该包的责任是继续守边界，不是接收 recipes/logging | README 和边界门禁不再需要保留 `device-hal` 残留说明 |
-| `device-adapters-third-party` / Boost、Ruckig、Protobuf consumer payoff | `packages/process-runtime-core` | `packages/shared-kernel` | `docs/architecture/third-party-ownership-cutover.md` 明确 live consumer 主要在 `process-runtime-core`；`shared-kernel` 已是已脱离见证者，不应重新背锅 | `process-runtime-core` 不再把 `control-core/third_party` 当临时 owner；依赖改为显式 consumer-owned |
+| `device-adapters-third-party` / Boost、Protobuf consumer payoff | `packages/process-runtime-core` | `packages/shared-kernel` | `docs/architecture/third-party-ownership-cutover.md` 明确 live consumer 主要在 `process-runtime-core`；`shared-kernel` 已是已脱离见证者，不应重新背锅 | `process-runtime-core` 不再把 `control-core/third_party` 当临时 owner；依赖改为显式 consumer-owned |
 | `device-adapters-third-party` / JSON + recipe serializer payoff | `packages/runtime-host` | `packages/transport-gateway` | `third-party-ownership-cutover.md` 明确 `json` 与 recipe serializer owner 切换耦合，`TcpCommandDispatcher` 是直接协作方 | recipe serializer owner 固化后，`transport-gateway` 不再借 `control-core` third-party/include root 暴露 json |
 | `device-adapters-third-party` / vendor 代码 owner 见证 | `packages/device-adapters` | `apps/hmi-app` | `packages/device-adapters/vendor/multicard/README.md` 已说明 vendor 资产 canonical 位置；HMI audit 仅保留已移除事实 | README/AUDIT 不再需要通过 `control-core/third_party` 叙述 provenance |
 | `hmi-multicard-driver-probe` | `apps/hmi-app` | `packages/device-adapters` | 命中只在 HMI 审计文档；MultiCard 代码 owner 已在 `packages/device-adapters` | HMI audit 迁成“当前 canonical 依赖”表述后删除历史 probe 叙述 |
@@ -56,7 +56,7 @@
 |---|---|---|---|
 | `P0` | 冻结 recipes persistence/serializer canonical owner | 这是 `process-runtime-core-device-hal` 的核心 blocker；不先定 owner，就无法切 include/link，也无法拆 `json` debt | 是 |
 | `P0` | 冻结 diagnostics logging canonical owner | `device-hal` 剩余 debt 之一；若继续模糊挂在 device 层，会导致 owner 错位 | 是 |
-| `P0` | 冻结 `process-runtime-core` 的 third-party consumer-owned 方案 | `Boost` / `Ruckig` / `Protobuf` 仍是实际 build graph blocker；不清零就不能把 `third_party` 从 legacy owner 语义上摘掉 | 是 |
+| `P0` | 冻结 `process-runtime-core` 的 third-party consumer-owned 方案 | `Boost` / `Protobuf` 仍是实际 build graph blocker；不清零就不能把 `third_party` 从 legacy owner 语义上摘掉 | 是 |
 | `P1` | 把 `process-runtime-core-device-hal` 拆成 logging / recipes / doc-guard 三个 payoff 单元 | 当前 ledger 条目过粗，无法直接派工，也会误伤 `device-adapters` | 是 |
 | `P1` | 把 `device-adapters-third-party` 拆成 runtime/build consumer debt 与文档见证 debt | 当前条目把 `process-runtime-core`、HMI audit、shared-kernel witness 混在一起 | 是 |
 | `P2` | 归并 `process-runtime-core-infrastructure-runtime` 的边界文档表述 | 这是文档 debt，不阻塞 runtime cutover，但会阻塞最终 ledger 归零 | 否 |
@@ -135,7 +135,7 @@
 
 1. `recipes persistence/serializer` 的 canonical owner 还没有冻结成单一结论；现有资料只指向“`packages/runtime-host` 或独立 package”，这会阻断 `device-hal` payoff 派工。
 2. `diagnostics logging` 的 canonical owner 当前只有 `packages/traceability-observability` 占位描述，尚缺正式落点冻结。
-3. `third-party` 的 consumer-owned 注册方式还没有冻结成单一机制；`Boost`、`Ruckig`、`Protobuf`、`json` 不能在没有统一注入方案时分别各自漂移。
+3. `third-party` 的 consumer-owned 注册方式还没有冻结成单一机制；`Boost`、`Protobuf`、`json` 不能在没有统一注入方案时分别各自漂移。
 4. 当前 ledger schema 只有 `id`、`pattern`、`allowed_files`，没有 `type`、`owner`、`must_zero_before_cutover` 字段；如果不先补充设计约束，后续 gate 只能做字符串命中，无法表达切换顺序。
 
 ## 最终回答

@@ -1,7 +1,8 @@
 #pragma once
 
-#include "../../../../../../runtime-execution/application/include/runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
+#include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "application/usecases/dispensing/PlanningUseCase.h"
+#include "application/services/dispensing/PreviewSnapshotService.h"
 #include "job_ingest/contracts/dispensing/UploadContracts.h"
 #include "domain/motion/ports/IHomingPort.h"
 #include "domain/motion/ports/IMotionStatePort.h"
@@ -100,45 +101,9 @@ struct PreparePlanResponse {
     PerformanceProfile performance_profile;
 };
 
-struct PreviewSnapshotRequest {
-    PlanID plan_id;
-    std::size_t max_polyline_points = 4000;
-    std::size_t max_glue_points = 5000;
-};
-
-struct PreviewSnapshotPoint {
-    float32 x = 0.0f;
-    float32 y = 0.0f;
-};
-
-struct PreviewSnapshotResponse {
-    std::string snapshot_id;
-    std::string snapshot_hash;
-    PlanID plan_id;
-    std::string preview_state;
-    std::string preview_source;
-    std::string preview_kind;
-    std::string confirmed_at;
-    std::uint32_t segment_count = 0;
-    std::uint32_t point_count = 0;
-    std::uint32_t glue_point_count = 0;
-    std::uint32_t execution_point_count = 0;
-    std::string motion_preview_source;
-    std::string motion_preview_kind;
-    std::uint32_t motion_preview_source_point_count = 0;
-    std::uint32_t motion_preview_point_count = 0;
-    bool motion_preview_is_sampled = false;
-    std::string motion_preview_sampling_strategy;
-    std::vector<PreviewSnapshotPoint> glue_points;
-    std::vector<PreviewSnapshotPoint> motion_preview_polyline;
-    float32 total_length_mm = 0.0f;
-    float32 estimated_time_s = 0.0f;
-    std::string preview_validation_classification;
-    std::string preview_exception_reason;
-    std::string preview_failure_reason;
-    std::string preview_diagnostic_code;
-    std::string generated_at;
-};
+using PreviewSnapshotRequest = Services::Dispensing::PreviewSnapshotRequest;
+using PreviewSnapshotPoint = Services::Dispensing::PreviewSnapshotPoint;
+using PreviewSnapshotResponse = Services::Dispensing::PreviewSnapshotResponse;
 
 struct ConfirmPreviewRequest {
     PlanID plan_id;
@@ -247,10 +212,7 @@ class DispensingWorkflowUseCase {
     Result<PreviewSnapshotResponse> GetPreviewSnapshot(const PreviewSnapshotRequest& request);
     Result<ConfirmPreviewResponse> ConfirmPreview(const ConfirmPreviewRequest& request);
     Result<StartJobResponse> StartJob(const StartJobRequest& request);
-    Result<JobStatusResponse> GetJobStatus(const JobID& job_id) const;
-    Result<void> PauseJob(const JobID& job_id);
-    Result<void> ResumeJob(const JobID& job_id);
-    Result<void> StopJob(const JobID& job_id);
+    void OnRuntimeJobTerminal(const JobID& job_id, const PlanID& plan_id = {}) const;
     Result<Domain::Safety::ValueObjects::InterlockSignals> ReadInterlockSignals() const;
     bool IsInterlockLatched() const;
 #ifdef SILIGEN_TEST_HOOKS
@@ -352,6 +314,10 @@ class DispensingWorkflowUseCase {
         std::uint32_t wait_ms = 0;
     };
 
+    struct PreviewBindingResolution {
+        bool require_execution_binding = false;
+    };
+
     std::shared_ptr<IUploadFilePort> upload_use_case_;
     std::shared_ptr<PlanningUseCase> planning_use_case_;
     std::shared_ptr<DispensingExecutionUseCase> execution_use_case_;
@@ -388,6 +354,23 @@ class DispensingWorkflowUseCase {
         const ArtifactID& artifact_id,
         const PreparedAuthorityPreview& authority_preview,
         const PlanExecutionLaunch& execution_launch) const;
+    bool RequiresExecutionBinding(const PlanRecord& plan_record) const;
+    bool ShouldResolveExecutionBinding(const PlanRecord& plan_record) const;
+    Siligen::Shared::Types::Result<PreviewBindingResolution> ResolvePreviewBindingRequirement(
+        const PlanID& plan_id,
+        bool require_snapshot_ready,
+        const std::string* snapshot_hash,
+        bool mark_failed) const;
+    Siligen::Shared::Types::Result<PlanRecord> PromotePlanToSnapshotReady(
+        const PlanID& plan_id,
+        bool require_execution_binding);
+    Siligen::Shared::Types::Result<ConfirmPreviewResponse> ConfirmPreviewReadyPlan(
+        const PlanID& plan_id,
+        const std::string& snapshot_hash,
+        bool require_execution_binding);
+    Siligen::Shared::Types::Result<PlanExecutionLaunch> ResolveStartJobExecutionLaunch(
+        const StartJobRequest& request,
+        bool require_execution_binding) const;
     Siligen::Shared::Types::Result<AuthorityPreviewResolveResult> ResolveAuthorityPreview(
         const std::string& authority_cache_key,
         const PlanningRequest& planning_request) const;
@@ -408,9 +391,6 @@ class DispensingWorkflowUseCase {
     void ReleaseRetainedExecutionState(PlanRecord& plan_record) const;
     void EraseExecutionAssemblyCacheEntry(const std::string& execution_cache_key) const;
     void ReleaseConfirmedPreviewForPlan(const PlanID& plan_id, const JobID* runtime_job_id = nullptr) const;
-    void SyncPlanStateFromRuntimeStatus(
-        const JobID& job_id,
-        const RuntimeJobStatusResponse& runtime_status) const;
 };
 
 }  // namespace Siligen::Application::UseCases::Dispensing

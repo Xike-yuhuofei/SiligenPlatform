@@ -2,7 +2,8 @@
 
 #include "InterpolationPlanningUseCase.h"
 
-#include "domain/motion/CMPCoordinatedInterpolator.h"
+#include "application/services/motion_planning/CmpInterpolationFacade.h"
+#include "application/services/motion_planning/TrajectoryInterpolationFacade.h"
 #include "shared/types/CMPTypes.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
@@ -16,6 +17,8 @@ namespace Siligen::Application::UseCases::Motion::Interpolation {
 
 using Siligen::Shared::Types::uint32;
 using Siligen::Shared::Types::DispensingTriggerPoint;
+using Siligen::Application::Services::MotionPlanning::CmpInterpolationFacade;
+using Siligen::Application::Services::MotionPlanning::TrajectoryInterpolationFacade;
 
 namespace {
 constexpr float32 kEpsilon = 1e-6f;
@@ -140,7 +143,7 @@ Result<InterpolationPlanningResult> InterpolationPlanningUseCase::Execute(
     std::vector<TrajectoryPoint> points;
     if (request.algorithm == InterpolationAlgorithm::CMP_COORDINATED &&
         !request.trigger_distances_mm.empty()) {
-        Domain::Motion::CMPCoordinatedInterpolator cmp_interpolator;
+        CmpInterpolationFacade cmp_interpolator;
         CMPConfiguration cmp_config;
         cmp_config.trigger_mode = CMPTriggerMode::POSITION_SYNC;
         cmp_config.cmp_channel = 1;
@@ -163,14 +166,18 @@ Result<InterpolationPlanningResult> InterpolationPlanningUseCase::Execute(
                       "InterpolationPlanningUseCase"));
         }
 
-        auto interpolator = Domain::Motion::TrajectoryInterpolatorFactory::CreateInterpolator(request.algorithm);
-        if (!interpolator) {
-            return Result<InterpolationPlanningResult>::Failure(
-                Error(ErrorCode::NOT_IMPLEMENTED, "插补算法未实现", "InterpolationPlanningUseCase"));
+        TrajectoryInterpolationFacade interpolation_facade;
+        auto interpolation_result =
+            interpolation_facade.Interpolate(request.points, request.algorithm, request.config);
+        if (interpolation_result.IsError()) {
+            return Result<InterpolationPlanningResult>::Failure(interpolation_result.GetError());
         }
-        points = interpolator->CalculateInterpolation(request.points, request.config);
+        points = interpolation_result.Value();
         if (request.optimize_density && request.max_step_size_mm > kEpsilon) {
-            points = interpolator->OptimizeTrajectoryDensity(points, request.max_step_size_mm);
+            points = interpolation_facade.OptimizeTrajectoryDensity(
+                points,
+                request.algorithm,
+                request.max_step_size_mm);
         }
         if (!Siligen::Shared::Types::ApplyTriggerMarkersByDistance(points, request.trigger_distances_mm)) {
             return Result<InterpolationPlanningResult>::Failure(

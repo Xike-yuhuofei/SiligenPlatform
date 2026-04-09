@@ -1,19 +1,26 @@
 #pragma once
 
-#include "application/services/dispensing/AuthorityPreviewAssemblyService.h"
-#include "application/services/dispensing/ExecutionAssemblyService.h"
-#include "application/services/motion_planning/MotionPlanningFacade.h"
-#include "application/services/process_path/ProcessPathFacade.h"
+#include "workflow/contracts/WorkflowContracts.h"
+#include "application/services/dispensing/WorkflowPlanningAssemblyTypes.h"
+#include "application/services/dispensing/WorkflowPlanningAssemblyOperations.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
+#include "domain/diagnostics/ports/IDiagnosticsPort.h"
+#include "domain/dispensing/value-objects/AuthorityTriggerLayout.h"
+#include "domain/dispensing/value-objects/DispenseCompensationProfile.h"
 #include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
-#include "domain/motion/value-objects/MotionPlanningReport.h"
+#include "domain/system/ports/IEventPublisherPort.h"
+#include "motion_planning/contracts/MotionPlan.h"
+#include "motion_planning/contracts/MotionPlanningReport.h"
+#include "motion_planning/contracts/TimePlanningConfig.h"
 #include "process_path/contracts/IPathSourcePort.h"
+#include "process_path/contracts/PathGenerationRequest.h"
+#include "process_path/contracts/PathGenerationResult.h"
 #include "domain/dispensing/contracts/ExecutionPackage.h"
 #include "process_path/contracts/ProcessPath.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
 #include "shared/types/TrajectoryTypes.h"
-#include "application/services/dispensing/IPlanningArtifactExportPort.h"
+#include "runtime_execution/application/services/dispensing/PlanningArtifactExportPort.h"
 
 #include <cstdint>
 #include <memory>
@@ -24,8 +31,16 @@ namespace Siligen::Application::Services::DXF {
 class DxfPbPreparationService;
 }
 
-namespace Siligen::Domain::Dispensing::DomainServices {
-struct DispensingPlan;
+namespace Siligen::Application::Services::Dispensing {
+class IWorkflowPlanningAssemblyOperations;
+}
+
+namespace Siligen::Application::Services::ProcessPath {
+class ProcessPathFacade;
+}
+
+namespace Siligen::Application::Services::MotionPlanning {
+class MotionPlanningFacade;
 }
 
 namespace Siligen::Application::UseCases::Dispensing {
@@ -35,7 +50,11 @@ using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::TrajectoryConfig;
 using Siligen::Shared::Types::TrajectoryResult;
 using Siligen::TrajectoryPoint;
-using Siligen::Domain::Motion::ValueObjects::MotionPlanningReport;
+using Siligen::MotionPlanning::Contracts::MotionPlan;
+using Siligen::MotionPlanning::Contracts::MotionPlanningReport;
+using Siligen::MotionPlanning::Contracts::TimePlanningConfig;
+using Siligen::ProcessPath::Contracts::PathGenerationRequest;
+using Siligen::ProcessPath::Contracts::PathGenerationResult;
 using Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated;
 
 struct AuthorityProfile {
@@ -57,28 +76,11 @@ struct PreparedAuthorityPreview {
     bool success = false;
     std::string source_path;
     std::string prepared_pb_path;
-    std::string dxf_filename;
     Siligen::ProcessPath::Contracts::ProcessPath process_path;
     Siligen::ProcessPath::Contracts::ProcessPath authority_process_path;
     int discontinuity_count = 0;
-    int segment_count = 0;
-    float32 total_length = 0.0f;
-    float32 estimated_time = 0.0f;
-    std::vector<TrajectoryPoint> preview_trajectory_points;
-    std::vector<Siligen::Shared::Types::Point2D> glue_points;
-    int trigger_count = 0;
-    int32 timestamp = 0;
-    bool preview_authority_ready = false;
-    bool preview_binding_ready = false;
-    bool preview_spacing_valid = false;
-    bool preview_has_short_segment_exceptions = false;
-    std::string preview_validation_classification;
-    std::string preview_exception_reason;
-    std::string preview_failure_reason;
     std::string preview_diagnostic_code;
-    Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
-    std::vector<Siligen::Application::Services::Dispensing::AuthorityTriggerPoint> authority_trigger_points;
-    std::vector<Siligen::Application::Services::Dispensing::SpacingValidationGroup> spacing_validation_groups;
+    Siligen::Application::Services::Dispensing::WorkflowAuthorityPreviewArtifacts artifacts;
     AuthorityProfile authority_profile;
 };
 
@@ -94,6 +96,33 @@ struct ExecutionAssemblyResponse {
     Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
     Siligen::Application::Services::Dispensing::PlanningArtifactExportRequest export_request;
     ExecutionProfile execution_profile;
+    int diagnostic_error_code = 0;
+    std::string diagnostic_message;
+    std::int64_t observed_at_ms = 0;
+    bool export_attempted = false;
+    bool export_succeeded = false;
+};
+
+struct PlanningRuntimeParams {
+    float32 dispensing_velocity = 0.0f;
+    float32 acceleration = 0.0f;
+    float32 pulse_per_mm = 200.0f;
+    uint32 dispenser_interval_ms = 0;
+    uint32 dispenser_duration_ms = 0;
+    float32 trigger_spatial_interval_mm = 0.0f;
+    float32 valve_response_ms = 0.0f;
+    float32 safety_margin_ms = 0.0f;
+    float32 min_interval_ms = 0.0f;
+    float32 sample_dt = 0.01f;
+    float32 sample_ds = 0.0f;
+    Siligen::Domain::Dispensing::ValueObjects::DispenseCompensationProfile compensation_profile{};
+};
+
+struct ExecutionAssemblyArtifacts {
+    bool success = false;
+    MotionPlanningReport planning_report;
+    std::shared_ptr<ExecutionPackageValidated> execution_package;
+    Siligen::Application::Services::Dispensing::WorkflowExecutionAssemblyResult artifacts;
 };
 
 /**
@@ -117,8 +146,8 @@ struct PlanningRequest {
     float32 curve_chain_max_segment_mm = 0.0f;  ///< 曲线链最大线段长度(mm, 0=默认)
     bool use_hardware_trigger = true;      ///< 兼容字段：DXF 规划/执行固定使用规划位置触发
     bool use_interpolation_planner = false;  ///< 是否使用Domain插补算法
-    Domain::Motion::InterpolationAlgorithm interpolation_algorithm =
-        Domain::Motion::InterpolationAlgorithm::LINEAR;
+    MotionPlanning::Contracts::InterpolationAlgorithm interpolation_algorithm =
+        MotionPlanning::Contracts::InterpolationAlgorithm::LINEAR;
     float32 spacing_tol_ratio = 0.0f;      ///< 点距容差比例(0=默认)
     float32 spacing_min_mm = 0.0f;         ///< 点距下限(0=默认)
     float32 spacing_max_mm = 0.0f;         ///< 点距上限(0=默认)
@@ -152,8 +181,8 @@ struct PlanningRequest {
             return false;
         }
         if (use_interpolation_planner &&
-            (interpolation_algorithm == Domain::Motion::InterpolationAlgorithm::LINEAR ||
-             interpolation_algorithm == Domain::Motion::InterpolationAlgorithm::CMP_COORDINATED) &&
+            (interpolation_algorithm == MotionPlanning::Contracts::InterpolationAlgorithm::LINEAR ||
+             interpolation_algorithm == MotionPlanning::Contracts::InterpolationAlgorithm::CMP_COORDINATED) &&
             trajectory_config.max_jerk <= 0.0f) {
             return false;
         }
@@ -218,31 +247,20 @@ struct PlanningResponse {
     std::string preview_failure_reason;
     std::string preview_diagnostic_code;
     Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
-    std::vector<Siligen::Application::Services::Dispensing::AuthorityTriggerPoint> authority_trigger_points;
-    std::vector<Siligen::Application::Services::Dispensing::SpacingValidationGroup> spacing_validation_groups;
+    std::vector<Siligen::Application::Services::Dispensing::WorkflowAuthorityTriggerPoint> authority_trigger_points;
+    std::vector<Siligen::Application::Services::Dispensing::WorkflowSpacingValidationGroup> spacing_validation_groups;
     AuthorityProfile authority_profile;
     ExecutionProfile execution_profile;
 
     // 过渡期执行载体：供 runtime-execution canonical API 直接消费
     std::shared_ptr<ExecutionPackageValidated> execution_package;
-
-    // 兼容字段：保留内存态规划结果，供仍未迁移的调用链复用
-    std::shared_ptr<Siligen::Domain::Dispensing::DomainServices::DispensingPlan> execution_plan;
+    int diagnostic_error_code = 0;
+    std::string diagnostic_message;
+    std::int64_t observed_at_ms = 0;
+    bool export_attempted = false;
+    bool export_succeeded = false;
 };
 
-/**
- * @brief DXF Web 路径规划用例
- *
- * 业务流程:
- * 1. 验证请求参数
- * 2. 通过 M6/M7 facade 完成 process path 与 motion plan 编排
- * 3. 通过 M8 窄 assembly service 组装 preview payload 与 execution package
- * 5. 返回完整的规划结果
- *
- * 架构合规性:
- * - workflow 仅编排 owner facade，不再注入 planner concrete
- * - 单一职责：仅编排 DXF 路径规划流程
- */
 class PlanningUseCase {
 public:
     /**
@@ -253,17 +271,15 @@ public:
     PlanningUseCase(
         std::shared_ptr<Siligen::Domain::Trajectory::Ports::IPathSourcePort> path_source,
         std::shared_ptr<Siligen::Application::Services::ProcessPath::ProcessPathFacade> process_path_facade,
-        std::shared_ptr<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>
-            motion_planning_facade,
-        std::shared_ptr<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>
-            authority_preview_assembly_service,
-        std::shared_ptr<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>
-            execution_assembly_service,
+        std::shared_ptr<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade> motion_planning_facade,
+        std::shared_ptr<Siligen::Application::Services::Dispensing::IWorkflowPlanningAssemblyOperations> planning_operations,
         std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port = nullptr,
         std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService>
             pb_preparation_service = nullptr,
         std::shared_ptr<Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort>
-            artifact_export_port = nullptr);
+            artifact_export_port = nullptr,
+        std::shared_ptr<Siligen::Domain::Diagnostics::Ports::IDiagnosticsPort> diagnostics_port = nullptr,
+        std::shared_ptr<Siligen::Domain::System::Ports::IEventPublisherPort> event_publisher_port = nullptr);
 
     ~PlanningUseCase() = default;
 
@@ -288,15 +304,13 @@ public:
 private:
     std::shared_ptr<Siligen::Domain::Trajectory::Ports::IPathSourcePort> path_source_;
     std::shared_ptr<Siligen::Application::Services::ProcessPath::ProcessPathFacade> process_path_facade_;
-    std::shared_ptr<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>
-        motion_planning_facade_;
-    std::shared_ptr<Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService>
-        authority_preview_assembly_service_;
-    std::shared_ptr<Siligen::Application::Services::Dispensing::ExecutionAssemblyService>
-        execution_assembly_service_;
+    std::shared_ptr<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade> motion_planning_facade_;
+    std::shared_ptr<Siligen::Application::Services::Dispensing::IWorkflowPlanningAssemblyOperations> planning_operations_;
     std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port_;
     std::shared_ptr<Siligen::Application::Services::DXF::DxfPbPreparationService> pb_preparation_service_;
     std::shared_ptr<Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort> artifact_export_port_;
+    std::shared_ptr<Siligen::Domain::Diagnostics::Ports::IDiagnosticsPort> diagnostics_port_;
+    std::shared_ptr<Siligen::Domain::System::Ports::IEventPublisherPort> event_publisher_port_;
 
     /**
      * @brief 验证文件存在性
@@ -311,6 +325,15 @@ private:
      * @return 文件名（不含路径）
      */
     std::string ExtractFilename(const std::string& filepath);
+    void RecordPlanningDiagnostic(
+        Siligen::Workflow::Contracts::WorkflowFailureCategory failure_category,
+        int error_code,
+        const std::string& message,
+        const std::string& workflow_run_id,
+        const std::string& source_path,
+        bool export_attempted,
+        bool export_succeeded,
+        std::uint32_t stage_duration_ms) const;
 };
 
 }  // namespace Siligen::Application::UseCases::Dispensing
