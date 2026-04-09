@@ -158,7 +158,7 @@ struct HomingConfig {
     int32 home_debounce_ms = 0;           ///< HOME输入去抖时间(ms,0=不去抖)
 
     // 速度参数 (mm/s)
-    float32 ready_zero_speed_mm_s = 0.0f; ///< 回零/回零后二阶段归零统一速度(0=兼容回退到locate_velocity)
+    float32 ready_zero_speed_mm_s = 0.0f; ///< 回零/回零后二阶段归零统一速度
     float32 rapid_velocity = 0.0f;        ///< 快移速度
     float32 locate_velocity = 0.0f;       ///< 定位速度
     float32 index_velocity = 0.0f;        ///< INDEX速度

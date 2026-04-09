@@ -8,8 +8,8 @@
 namespace {
 using Siligen::Domain::Dispensing::DomainServices::ContourOptimizationService;
 using Siligen::Domain::Dispensing::DomainServices::ContourOptimizationStats;
-using Siligen::Domain::Trajectory::Ports::PathPrimitiveMeta;
 using Siligen::ProcessPath::Contracts::Primitive;
+using Siligen::ProcessPath::Contracts::PathPrimitiveMeta;
 using Siligen::Shared::Types::DXFEntityType;
 using Siligen::Shared::Types::Point2D;
 using Siligen::Shared::Types::float32;

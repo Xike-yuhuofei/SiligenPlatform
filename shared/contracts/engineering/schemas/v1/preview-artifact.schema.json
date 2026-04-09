@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://siligensuite.local/contracts/engineering/v1/preview-artifact.schema.json",
   "title": "DXF Preview Artifact",
-  "description": "Canonical JSON returned by dxf-pipeline generate_preview --json.",
+  "description": "Canonical JSON returned by scripts/engineering-data/generate_preview.py --json.",
   "type": "object",
   "additionalProperties": false,
   "required": [

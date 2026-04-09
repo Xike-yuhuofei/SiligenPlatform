@@ -1,8 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
 
 foreach(module_dir IN ITEMS
-    workflow
     dxf-geometry
+    workflow
+    recipe-lifecycle
     job-ingest
     topology-feature
     process-planning

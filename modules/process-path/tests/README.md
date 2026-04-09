@@ -9,7 +9,7 @@ process-path 的模块级验证入口应收敛到此目录。
 - `unit/application/services/process_path/ProcessPathFacadeTest.cpp`
   - 冻结 facade 对归一化、工艺标注和整形链路的最小 owner 行为。
 - `contract/ProcessPathContractsTest.cpp`
-  - 冻结 `ProcessPathFacade` request/result 与 `ProcessPath` public surface。
+  - 冻结 `ProcessPathFacade` request/result、`IPathSourcePort` 与 `ProcessPath` live contract surface。
 - `golden/ProcessPathBuildGoldenTest.cpp`
   - 冻结 `lead-on/lead-off` 场景的稳定构建摘要，防止路径段标签和长度漂移。
 - `integration/ProcessPathToMotionPlanningIntegrationTest.cpp`

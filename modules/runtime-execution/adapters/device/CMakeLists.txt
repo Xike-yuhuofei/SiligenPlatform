@@ -22,6 +22,14 @@ if(NOT TARGET siligen_trace_diagnostics_contracts_public AND EXISTS "${SILIGEN_T
     )
 endif()
 
+set(SILIGEN_WORKFLOW_DOMAIN_CANONICAL_DIR "${SILIGEN_WORKSPACE_ROOT}/modules/workflow/domain")
+if(NOT TARGET siligen_workflow_domain_headers AND EXISTS "${SILIGEN_WORKFLOW_DOMAIN_CANONICAL_DIR}/CMakeLists.txt")
+    add_subdirectory(
+        "${SILIGEN_WORKFLOW_DOMAIN_CANONICAL_DIR}"
+        "${CMAKE_BINARY_DIR}/_p/da_wdh"
+    )
+endif()
+
 set(SILIGEN_DISPENSE_PACKAGING_DOMAIN_CANONICAL_DIR
     "${SILIGEN_WORKSPACE_ROOT}/modules/dispense-packaging/domain/dispensing"
 )
@@ -131,6 +139,7 @@ target_link_libraries(siligen_device_adapters PUBLIC
     siligen_shared_kernel
     siligen_trace_diagnostics_contracts_public
     siligen_runtime_execution_runtime_contracts
+    siligen_workflow_domain_headers
     siligen_process_planning_contracts_public
 )
 target_link_libraries(siligen_device_adapters PRIVATE

@@ -35,6 +35,7 @@ target_include_directories(siligen_workflow_domain_headers INTERFACE
 target_link_libraries(siligen_workflow_domain_headers INTERFACE
     siligen_trace_diagnostics_contracts_public
     siligen_types
+    siligen_trace_diagnostics_contracts_public
 )
 target_compile_features(siligen_workflow_domain_headers INTERFACE cxx_std_17)
 

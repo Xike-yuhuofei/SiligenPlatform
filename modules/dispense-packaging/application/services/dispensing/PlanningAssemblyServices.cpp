@@ -1,11 +1,11 @@
 #include "application/services/dispensing/AuthorityPreviewAssemblyService.h"
 #include "application/services/dispensing/ExecutionAssemblyService.h"
 #include "application/services/motion_planning/CmpInterpolationFacade.h"
-#include "application/services/motion_planning/InterpolationProgramFacade.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/motion_planning/TrajectoryInterpolationFacade.h"
 #include "application/services/dispensing/PlanningArtifactExportAssemblyService.h"
 
+#include "modules/motion-planning/domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
 #include "domain/dispensing/planning/domain-services/AuthorityTriggerLayoutPlanner.h"
 #include "domain/dispensing/planning/domain-services/CurveFlatteningService.h"
 
@@ -31,11 +31,11 @@ using Siligen::Application::Services::Dispensing::AuthorityPreviewBuildResult;
 using Siligen::Application::Services::Dispensing::ExecutionAssemblyBuildInput;
 using Siligen::Application::Services::Dispensing::ExecutionAssemblyBuildResult;
 using Siligen::Application::Services::MotionPlanning::CmpInterpolationFacade;
-using Siligen::Application::Services::MotionPlanning::InterpolationProgramFacade;
 using Siligen::Application::Services::MotionPlanning::MotionPlanningFacade;
 using Siligen::Application::Services::MotionPlanning::TrajectoryInterpolationFacade;
 using Siligen::Application::Services::Dispensing::PlanningArtifactExportAssemblyInput;
 using Siligen::Application::Services::Dispensing::PlanningArtifactExportAssemblyService;
+using Siligen::Domain::Motion::DomainServices::InterpolationProgramPlanner;
 using Siligen::Domain::Dispensing::Contracts::ExecutionPackageBuilt;
 using Siligen::Domain::Dispensing::DomainServices::AuthorityTriggerLayoutPlanner;
 using Siligen::Domain::Dispensing::DomainServices::AuthorityTriggerLayoutPlannerRequest;
@@ -1732,7 +1732,7 @@ Result<ExecutionAssemblyBuildResult> ExecutionAssemblyService::BuildExecutionArt
         log_stage("execution_interpolation_ready", oss.str());
     }
 
-    InterpolationProgramFacade program_planner;
+    InterpolationProgramPlanner program_planner;
     auto interpolation_program =
         program_planner.BuildProgram(execution_process_path, input.motion_plan, input.acceleration);
     if (interpolation_program.IsError()) {

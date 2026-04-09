@@ -47,6 +47,9 @@ endif()
 
 target_link_libraries(siligen_dispense_packaging_unit_tests PRIVATE
     siligen_dispense_packaging_application_public
+    siligen_dispense_packaging_planning_residual
+    siligen_dispense_packaging_execution_residual
+    siligen_valve_core
     siligen_types
     siligen_utils
 )

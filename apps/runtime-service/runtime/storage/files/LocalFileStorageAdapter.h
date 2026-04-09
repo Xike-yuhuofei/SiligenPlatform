@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/configuration/ports/IFileStoragePort.h"
+#include "runtime_process_bootstrap/storage/ports/IFileStoragePort.h"
 #include "shared/types/Result.h"
 
 #include <filesystem>
@@ -16,7 +16,7 @@ using Siligen::Shared::Types::Result;
 /**
  * @brief 本地文件存储适配器
  *
- * 实现 IFileStoragePort 接口
+ * 实现 runtime-service bootstrap app-local IFileStoragePort 接口
  * - 管理本地文件系统
  * - 线程安全文件操作
  * - 路径遍历攻击防护

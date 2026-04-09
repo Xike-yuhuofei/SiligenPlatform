@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "domain/planning-boundary/ports/ISpatialIndexPort.h"
+#include "domain/dispensing/planning/ports/ISpatialIndexPort.h"
 #include "shared/types/Point2D.h"
 #include "shared/types/Types.h"
 #include "shared/types/VisualizationTypes.h"

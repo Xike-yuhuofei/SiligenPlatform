@@ -22,6 +22,9 @@ static_assert(
 static_assert(std::is_same_v<decltype(std::declval<const DxfPbPreparationService&>().EnsurePbReady(
                                  std::declval<const std::string&>())),
                              Result<std::string>>);
+static_assert(std::is_same_v<decltype(std::declval<const DxfPbPreparationService&>().CleanupPreparedInput(
+                                 std::declval<const std::string&>())),
+                             Result<void>>);
 
 TEST(DxfPbPreparationServiceContractsTest, ReturnsExistingPbPathWhenPbAlreadyValid) {
     ScopedTempDir workspace("dxf_pb_contract_passthrough");
@@ -44,6 +47,16 @@ TEST(DxfPbPreparationServiceContractsTest, RejectsUnsupportedInputExtension) {
     auto result = service.EnsurePbReady(txt_path.string());
     ASSERT_TRUE(result.IsError());
     EXPECT_EQ(result.GetError().GetCode(), ErrorCode::FILE_FORMAT_INVALID);
+}
+
+TEST(DxfPbPreparationServiceContractsTest, CleanupTreatsMissingPreparedArtifactAsSuccess) {
+    ScopedTempDir workspace("dxf_pb_contract_cleanup_missing");
+    const auto dxf_path = workspace.Path() / "sample.dxf";
+    WriteTextFile(dxf_path, "not used");
+
+    DxfPbPreparationService service;
+    auto result = service.CleanupPreparedInput(dxf_path.string());
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
 }
 
 }  // namespace

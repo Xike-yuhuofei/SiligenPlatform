@@ -40,7 +40,6 @@ add_library(siligen_motion STATIC
     domain-services/interpolation/SplineGeometryMath.cpp
     domain-services/interpolation/InterpolationCommandValidator.cpp
     domain-services/interpolation/InterpolationProgramPlanner.cpp
-    domain-services/interpolation/ValidatedInterpolationPort.cpp
     domain-services/GeometryBlender.cpp
     domain-services/SpeedPlanner.cpp
     domain-services/TrajectoryPlanner.cpp

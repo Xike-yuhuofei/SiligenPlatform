@@ -273,13 +273,7 @@ Result<void> ConfigFileAdapter::LoadHomingSection(std::vector<HomingConfig>& con
         if (ready_zero_speed_result.IsSuccess()) {
             config.ready_zero_speed_mm_s = ready_zero_speed_result.Value();
         } else {
-            const auto& message = ready_zero_speed_result.GetError().GetMessage();
-            if (message.find("缺少配置项") != std::string::npos) {
-                SILIGEN_LOG_WARNING(
-                    "Missing [" + section + "] ready_zero_speed_mm_s, using locate_velocity compatibility fallback");
-            } else {
-                return Result<void>(ready_zero_speed_result.GetError());
-            }
+            return Result<void>(ready_zero_speed_result.GetError());
         }
 
         result = assign_float(section, "rapid_velocity", config.rapid_velocity);
@@ -438,9 +432,7 @@ void ConfigFileAdapter::SaveHomingSection(const std::vector<HomingConfig>& confi
         WriteIniValue(section, "home_debounce_ms", IntToString(config.home_debounce_ms));
 
         // 速度参数
-        const float32 ready_zero_speed_mm_s =
-            config.ready_zero_speed_mm_s > 0.0f ? config.ready_zero_speed_mm_s : config.locate_velocity;
-        WriteIniValue(section, "ready_zero_speed_mm_s", FloatToString(ready_zero_speed_mm_s));
+        WriteIniValue(section, "ready_zero_speed_mm_s", FloatToString(config.ready_zero_speed_mm_s));
         WriteIniValue(section, "rapid_velocity", FloatToString(config.rapid_velocity));
         WriteIniValue(section, "locate_velocity", FloatToString(config.locate_velocity));
         WriteIniValue(section, "index_velocity", FloatToString(config.index_velocity));

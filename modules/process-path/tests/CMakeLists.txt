@@ -27,7 +27,7 @@ endif()
 target_link_libraries(siligen_process_path_unit_tests PRIVATE
     siligen_process_path_application_public
     siligen_process_path_domain_trajectory
-    siligen_parsing_adapter
+    siligen_dxf_geometry_pb_path_source_adapter
     siligen_types
     siligen_utils
 )

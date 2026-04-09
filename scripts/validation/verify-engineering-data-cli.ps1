@@ -22,6 +22,18 @@ if ([string]::IsNullOrWhiteSpace($PythonExe)) {
     }
 }
 
+$pythonPackageRoots = @(
+    [System.IO.Path]::GetFullPath((Join-Path $workspaceRoot "modules\dxf-geometry\application")),
+    [System.IO.Path]::GetFullPath((Join-Path $workspaceRoot "modules\runtime-execution\application"))
+)
+$existingPythonPath = $env:PYTHONPATH
+$pathSeparator = [System.IO.Path]::PathSeparator
+$env:PYTHONPATH = if ([string]::IsNullOrWhiteSpace($existingPythonPath)) {
+    $pythonPackageRoots -join $pathSeparator
+} else {
+    ($pythonPackageRoots + $existingPythonPath) -join $pathSeparator
+}
+
 function Invoke-ProcessCapture {
     param(
         [string]$Label,
@@ -69,11 +81,15 @@ function Invoke-ConsoleScriptCheck {
 }
 
 $checks = @()
+$previewScript = Join-Path $workspaceRoot "scripts\engineering-data\generate_preview.py"
+$exportSimulationInputScript = Join-Path $workspaceRoot "scripts\engineering-data\export_simulation_input.py"
+$trajectoryScript = Join-Path $workspaceRoot "scripts\engineering-data\path_to_trajectory.py"
 $checks += Invoke-RequiredCheck -Label "import engineering_data" -Arguments @("-c", "import engineering_data")
 $checks += Invoke-RequiredCheck -Label "module dxf_to_pb" -Arguments @("-m", "engineering_data.cli.dxf_to_pb", "--help")
-$checks += Invoke-RequiredCheck -Label "module path_to_trajectory" -Arguments @("-m", "engineering_data.cli.path_to_trajectory", "--help")
 $checks += Invoke-RequiredCheck -Label "module export_simulation_input" -Arguments @("-m", "engineering_data.cli.export_simulation_input", "--help")
-$checks += Invoke-RequiredCheck -Label "module generate_preview" -Arguments @("-m", "engineering_data.cli.generate_preview", "--help")
+$checks += Invoke-RequiredCheck -Label "workspace export_simulation_input" -Arguments @($exportSimulationInputScript, "--help")
+$checks += Invoke-RequiredCheck -Label "workspace path_to_trajectory" -Arguments @($trajectoryScript, "--help")
+$checks += Invoke-RequiredCheck -Label "workspace generate_preview" -Arguments @($previewScript, "--help")
 
 $consoleChecks = @()
 $consoleChecks += Invoke-ConsoleScriptCheck -ScriptName "engineering-data-dxf-to-pb"
@@ -89,6 +105,7 @@ $payload = [ordered]@{
     generated_at = (Get-Date).ToString("o")
     workspace_root = $workspaceRoot
     python_exe = $PythonExe
+    pythonpath = $env:PYTHONPATH
     require_console_scripts = $RequireConsoleScripts.IsPresent
     required_checks_passed = $requiredPass
     console_scripts_passed = $consolePass
@@ -105,6 +122,7 @@ $mdLines += "# Engineering Data CLI Check"
 $mdLines += ""
 $mdLines += ('- generated_at: `{0}`' -f $payload.generated_at)
 $mdLines += ('- python_exe: `{0}`' -f $payload.python_exe)
+$mdLines += ('- pythonpath: `{0}`' -f $payload.pythonpath)
 $mdLines += ('- require_console_scripts: `{0}`' -f $payload.require_console_scripts)
 $mdLines += ('- required_checks_passed: `{0}`' -f $payload.required_checks_passed)
 $mdLines += ('- console_scripts_passed: `{0}`' -f $payload.console_scripts_passed)

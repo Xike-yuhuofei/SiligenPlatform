@@ -64,7 +64,7 @@ ValidationResult ConfigValidator::ValidateHomingConfigDetailed(const HomingConfi
             result.AddError(FormatRangeError("统一回零速度", config.ready_zero_speed_mm_s, 0.1f, kHomingMaxVelocity));
         }
     } else {
-        result.AddWarning("未配置 ready_zero_speed_mm_s，当前兼容回退到 locate_velocity；建议尽快补齐显式配置");
+        result.AddError("必须显式配置正的 ready_zero_speed_mm_s");
     }
 
     // 验证速度参数
@@ -141,8 +141,7 @@ ValidationResult ConfigValidator::ValidateHomingConfigDetailed(const HomingConfi
         result.AddError(FormatRangeError("逃离超时", config.escape_timeout_ms, 100, 300000));
     }
 
-    const float32 effective_ready_zero_speed =
-        has_ready_zero_speed ? config.ready_zero_speed_mm_s : config.locate_velocity;
+    const float32 effective_ready_zero_speed = config.ready_zero_speed_mm_s;
     if (config.search_distance > 0.0f && effective_ready_zero_speed > 0.0f) {
         const auto travel_timeout_ms = static_cast<int32>(
             std::ceil(static_cast<double>(config.search_distance) / static_cast<double>(effective_ready_zero_speed) *
@@ -249,8 +248,7 @@ ValidationResult ConfigValidator::ValidateHomingConfigDetailed(const HomingConfi
         }
     }
 
-    const float32 effective_ready_zero_speed =
-        config.ready_zero_speed_mm_s > 0.0f ? config.ready_zero_speed_mm_s : config.locate_velocity;
+    const float32 effective_ready_zero_speed = config.ready_zero_speed_mm_s;
     if (machine.max_speed > 0.0f &&
         effective_ready_zero_speed > 0.0f &&
         effective_ready_zero_speed > machine.max_speed) {

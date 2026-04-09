@@ -4,9 +4,9 @@
 #include "UnifiedTrajectoryPlannerService.h"
 
 #include "application/services/motion_planning/CmpInterpolationFacade.h"
-#include "application/services/motion_planning/InterpolationProgramFacade.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/motion_planning/TrajectoryInterpolationFacade.h"
+#include "modules/motion-planning/domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
 #include "domain/dispensing/domain-services/TriggerPlanner.h"
 #include "process_path/contracts/GeometryUtils.h"
 #include "process_path/contracts/Path.h"
@@ -1502,7 +1502,7 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
 }  // namespace
 
 DispensingPlanner::DispensingPlanner(
-    std::shared_ptr<Siligen::Domain::Trajectory::Ports::IPathSourcePort> path_source,
+    std::shared_ptr<Siligen::ProcessPath::Contracts::IPathSourcePort> path_source,
     std::shared_ptr<Domain::Motion::Ports::IVelocityProfilePort> velocity_profile_port)
     : path_source_(std::move(path_source)),
       velocity_profile_port_(std::move(velocity_profile_port)) {}
@@ -1806,7 +1806,7 @@ Result<DispensingPlan> DispensingPlanner::Plan(const DispensingPlanRequest& requ
         LogFirstNegativePoint("interpolation.points", interpolation_points);
     }
 
-    Siligen::Application::Services::MotionPlanning::InterpolationProgramFacade program_planner;
+    Siligen::Domain::Motion::DomainServices::InterpolationProgramPlanner program_planner;
     auto interpolation_program = program_planner.BuildProgram(planned.shaped_path,
                                                               planned.motion_trajectory,
                                                               request.acceleration);

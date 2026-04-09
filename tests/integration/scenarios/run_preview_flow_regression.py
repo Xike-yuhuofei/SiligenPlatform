@@ -211,7 +211,7 @@ def _run_preview_flow() -> CaseResult:
             "status_message": cast(Any, window.statusBar()).currentMessage(),
             "debug_contains_hash": "hash-int" in window._preview_debug_view.toPlainText(),
             "filename_display": window._dxf_filename_display.text(),
-            "html_contains_playback_overlay": "preview-played-line" in cast(Any, window._dxf_view).html,
+            "html_contains_playback_overlay": "id='preview-head'" in cast(Any, window._dxf_view).html,
             "protocol_calls": cast(Any, window._protocol).calls,
             "offline_payload": {
                 "motion_preview_source": window._preview_session.state.motion_preview_source,

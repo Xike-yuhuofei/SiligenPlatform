@@ -21,7 +21,7 @@ class ContourOptimizationService {
    public:
     static std::vector<Siligen::ProcessPath::Contracts::Primitive> Optimize(
         const std::vector<Siligen::ProcessPath::Contracts::Primitive>& primitives,
-        const std::vector<Domain::Trajectory::Ports::PathPrimitiveMeta>& metadata,
+        const std::vector<Siligen::ProcessPath::Contracts::PathPrimitiveMeta>& metadata,
         const Shared::Types::Point2D& start_pos,
         bool enable,
         int two_opt_iterations = 0,

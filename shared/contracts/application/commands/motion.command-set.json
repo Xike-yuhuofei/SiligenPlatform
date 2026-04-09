@@ -87,7 +87,7 @@
       "compatibility": {
         "notes": [
           "调用前目标轴必须已完成回零；急停或门互锁锁存时 TCP 入口直接拒绝执行。",
-          "运行速度完全由轴配置项 ready_zero_speed_mm_s 决定；兼容期内若缺失则回退到 locate_velocity。",
+          "运行速度完全由轴配置项 ready_zero_speed_mm_s 决定；缺失或非正值时直接报错。",
           "保留 speed 参数仅用于兼容旧调用方，运行时不再接受该参数作为速度覆盖。"
         ]
       }

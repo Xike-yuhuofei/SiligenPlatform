@@ -18,24 +18,20 @@ using Shared::Types::float32;
 
 struct ReadyZeroSpeedResolution {
     float32 speed_mm_s = 0.0f;
-    bool used_fallback = false;
 };
 
 inline Result<ReadyZeroSpeedResolution> ResolveReadyZeroSpeed(
     const HomingConfig& homing_config,
     const char* error_source = "ReadyZeroSpeedResolver") {
-    ReadyZeroSpeedResolution resolution;
-    resolution.speed_mm_s = homing_config.ready_zero_speed_mm_s;
-    if (resolution.speed_mm_s <= 0.0f) {
-        resolution.speed_mm_s = homing_config.locate_velocity;
-        resolution.used_fallback = true;
-    }
-    if (resolution.speed_mm_s <= 0.0f) {
+    if (homing_config.ready_zero_speed_mm_s <= 0.0f) {
         return Result<ReadyZeroSpeedResolution>::Failure(
             Error(ErrorCode::INVALID_CONFIG_VALUE,
-                  "ready_zero_speed_mm_s must be positive or locate_velocity must remain available for fallback",
+                  "ready_zero_speed_mm_s must be positive",
                   error_source));
     }
+
+    ReadyZeroSpeedResolution resolution;
+    resolution.speed_mm_s = homing_config.ready_zero_speed_mm_s;
     return Result<ReadyZeroSpeedResolution>::Success(resolution);
 }
 

@@ -2,10 +2,9 @@
 
 #include "siligen/device/adapters/drivers/multicard/IMultiCardWrapper.h"
 #include "siligen/device/contracts/ports/device_ports.h"
-#include "trace_diagnostics/contracts/DiagnosticTypes.h"
-#include "domain/motion/value-objects/HardwareTestTypes.h"
-#include "domain/motion/value-objects/TrajectoryTypes.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
+#include "trace_diagnostics/contracts/DiagnosticTypes.h"
+#include "domain/machine/ports/IHardwareTestPort.h"
 #include "shared/types/HardwareConfiguration.h"
 
 #include <array>
@@ -18,33 +17,35 @@
 
 namespace Siligen::Infrastructure::Adapters::Hardware {
 
+using Siligen::Domain::Machine::Ports::IHardwareTestPort;
+using Siligen::Domain::Machine::Ports::JogDirection;
+using Siligen::Domain::Machine::Ports::HomingStage;
+using Siligen::Domain::Machine::Ports::HomingTestStatus;
 using Siligen::Domain::Motion::ValueObjects::HomeInputState;
-using Siligen::Domain::Motion::ValueObjects::JogDirection;
-using Siligen::Domain::Motion::ValueObjects::HomingStage;
-using Siligen::Domain::Motion::ValueObjects::HomingTestStatus;
-using Siligen::Domain::Motion::ValueObjects::LimitSwitchState;
-using Siligen::Domain::Motion::ValueObjects::TriggerAction;
-using Siligen::Domain::Motion::ValueObjects::TriggerEvent;
-using Siligen::Domain::Motion::ValueObjects::TrajectoryDefinition;
-using Siligen::Domain::Motion::ValueObjects::TrajectoryInterpolationType;
-using Siligen::Domain::Motion::ValueObjects::InterpolationParameters;
-using Siligen::Domain::Motion::ValueObjects::CMPParameters;
-using Siligen::Domain::Diagnostics::ValueObjects::HardwareCheckResult;
-using Siligen::Domain::Diagnostics::ValueObjects::CommunicationCheckResult;
-using Siligen::Domain::Diagnostics::ValueObjects::AccuracyCheckResult;
+using Siligen::Domain::Machine::Ports::LimitSwitchState;
+using Siligen::Domain::Machine::Ports::TriggerAction;
+using Siligen::Domain::Machine::Ports::TriggerEvent;
+using Siligen::Domain::Machine::Ports::TrajectoryDefinition;
+using Siligen::Domain::Machine::Ports::TrajectoryInterpolationType;
+using Siligen::Domain::Machine::Ports::InterpolationParameters;
+using Siligen::Domain::Machine::Ports::CMPParameters;
+using Siligen::Domain::Machine::Ports::HardwareCheckResult;
+using Siligen::Domain::Machine::Ports::CommunicationCheckResult;
+using Siligen::Domain::Machine::Ports::AccuracyCheckResult;
 using Siligen::Shared::Types::LogicalAxisId;
-using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::Point2D;
+using Siligen::Shared::Types::Result;
 using Siligen::Domain::Configuration::Ports::HomingConfig;
 
 /**
  * @brief 硬件测试适配器 - MultiCard真实硬件实现
  *
- * 保留 machine health / trigger / diagnostics 的 live concrete，
- * 但不再继承 coordinate-alignment 的 legacy machine-test port。
+ * 继续同时实现 machine-test port 与 machine health port，
+ * 以承接尚未清空的 trigger controller live consumer。
  * 线程安全: 使用互斥锁保护硬件访问。
  */
-class HardwareTestAdapter : public Siligen::Device::Contracts::Ports::MachineHealthPort {
+class HardwareTestAdapter : public IHardwareTestPort,
+                            public Siligen::Device::Contracts::Ports::MachineHealthPort {
    public:
     /**
      * @brief 构造函数
@@ -67,69 +68,69 @@ class HardwareTestAdapter : public Siligen::Device::Contracts::Ports::MachineHea
 
     // ============ 连接管理 ============
 
-    bool isConnected() const;
-    std::map<LogicalAxisId, bool> getAxisEnableStates() const;
+    bool isConnected() const override;
+    std::map<LogicalAxisId, bool> getAxisEnableStates() const override;
 
     // ============ 点动测试 ============
 
-    Result<void> startJog(LogicalAxisId axis, JogDirection direction, double speed);
-    Result<void> stopJog(LogicalAxisId axis);
-    Result<void> startJogStep(LogicalAxisId axis, JogDirection direction, double distance, double speed);
-    Result<double> getAxisPosition(LogicalAxisId axis) const;
-    std::map<LogicalAxisId, double> getAllAxisPositions() const;
+    Result<void> startJog(LogicalAxisId axis, JogDirection direction, double speed) override;
+    Result<void> stopJog(LogicalAxisId axis) override;
+    Result<void> startJogStep(LogicalAxisId axis, JogDirection direction, double distance, double speed) override;
+    Result<double> getAxisPosition(LogicalAxisId axis) const override;
+    std::map<LogicalAxisId, double> getAllAxisPositions() const override;
 
     // ============ 回零测试 ============
 
-    Result<void> startHoming(const std::vector<LogicalAxisId>& axes);
-    Result<void> stopHoming(const std::vector<LogicalAxisId>& axes);
-    HomingTestStatus getHomingStatus(LogicalAxisId axis) const;
-    HomingStage getHomingStage(LogicalAxisId axis) const;
-    LimitSwitchState getLimitSwitchState(LogicalAxisId axis) const;
+    Result<void> startHoming(const std::vector<LogicalAxisId>& axes) override;
+    Result<void> stopHoming(const std::vector<LogicalAxisId>& axes) override;
+    HomingTestStatus getHomingStatus(LogicalAxisId axis) const override;
+    HomingStage getHomingStage(LogicalAxisId axis) const override;
+    LimitSwitchState getLimitSwitchState(LogicalAxisId axis) const override;
 
     // ============ I/O测试 ============
 
-    Result<void> setDigitalOutput(int port, bool value);
-    Result<bool> getDigitalInput(int port) const;
-    std::map<int, bool> getAllDigitalInputs() const;
-    std::map<int, bool> getAllDigitalOutputs() const;
+    Result<void> setDigitalOutput(int port, bool value) override;
+    Result<bool> getDigitalInput(int port) const override;
+    std::map<int, bool> getAllDigitalInputs() const override;
+    std::map<int, bool> getAllDigitalOutputs() const override;
 
     // ============ 位置触发测试 ============
 
-    Result<int> configureTriggerPoint(LogicalAxisId axis, double position, int outputPort, TriggerAction action);
-    Result<void> enableTrigger(int triggerPointId);
-    Result<void> disableTrigger(int triggerPointId);
-    Result<void> clearAllTriggers();
-    std::vector<TriggerEvent> getTriggerEvents() const;
+    Result<int> configureTriggerPoint(LogicalAxisId axis, double position, int outputPort, TriggerAction action) override;
+    Result<void> enableTrigger(int triggerPointId) override;
+    Result<void> disableTrigger(int triggerPointId) override;
+    Result<void> clearAllTriggers() override;
+    std::vector<TriggerEvent> getTriggerEvents() const override;
 
     // ============ CMP测试 ============
 
-    Result<void> startCMPTest(const TrajectoryDefinition& trajectory, const CMPParameters& cmpParams);
-    Result<void> stopCMPTest();
-    double getCMPTestProgress() const;
-    std::vector<Point2D> getCMPActualPath() const;
+    Result<void> startCMPTest(const TrajectoryDefinition& trajectory, const CMPParameters& cmpParams) override;
+    Result<void> stopCMPTest() override;
+    double getCMPTestProgress() const override;
+    std::vector<Point2D> getCMPActualPath() const override;
 
     // ============ 插补测试 ============
 
     Result<void> executeInterpolationTest(TrajectoryInterpolationType interpolationType,
                                           const std::vector<Point2D>& controlPoints,
-                                          const InterpolationParameters& interpParams);
-    std::vector<Point2D> getInterpolatedPath() const;
+                                          const InterpolationParameters& interpParams) override;
+    std::vector<Point2D> getInterpolatedPath() const override;
 
     // ============ 系统诊断 ============
 
-    HardwareCheckResult checkHardwareConnection();
-    CommunicationCheckResult testCommunicationQuality(int testDurationMs);
-    Result<double> measureAxisResponseTime(LogicalAxisId axis);
-    Result<AccuracyCheckResult> testPositioningAccuracy(LogicalAxisId axis, int testCycles);
+    HardwareCheckResult checkHardwareConnection() override;
+    CommunicationCheckResult testCommunicationQuality(int testDurationMs) override;
+    Result<double> measureAxisResponseTime(LogicalAxisId axis) override;
+    Result<AccuracyCheckResult> testPositioningAccuracy(LogicalAxisId axis, int testCycles) override;
     Siligen::SharedKernel::Result<Siligen::Device::Contracts::State::MachineHealthSnapshot> ReadHealth()
         const override;
 
     // ============ 安全控制 ============
 
-    Result<void> emergencyStop();
-    Result<void> resetEmergencyStop();
-    bool isEmergencyStopActive() const;
-    Result<void> validateMotionParameters(LogicalAxisId axis, double targetPosition, double speed) const;
+    Result<void> emergencyStop() override;
+    Result<void> resetEmergencyStop() override;
+    bool isEmergencyStopActive() const override;
+    Result<void> validateMotionParameters(LogicalAxisId axis, double targetPosition, double speed) const override;
 
    private:
     struct Units {

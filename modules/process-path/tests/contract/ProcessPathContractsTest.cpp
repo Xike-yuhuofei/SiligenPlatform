@@ -1,6 +1,5 @@
 #include "application/services/process_path/ProcessPathFacade.h"
 #include "process_path/contracts/IPathSourcePort.h"
-#include "process_path/contracts/IDXFPathSourcePort.h"
 #include "process_path/contracts/PathGenerationRequest.h"
 #include "process_path/contracts/PathGenerationResult.h"
 #include "process_path/contracts/ProcessPath.h"
@@ -16,16 +15,13 @@ namespace {
 using Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest;
 using Siligen::Application::Services::ProcessPath::ProcessPathBuildResult;
 using Siligen::Application::Services::ProcessPath::ProcessPathFacade;
-using Siligen::Domain::Trajectory::Ports::DXFPathSourceResult;
-using Siligen::Domain::Trajectory::Ports::DXFValidationResult;
-using Siligen::Domain::Trajectory::Ports::IPathSourcePort;
-using Siligen::Domain::Trajectory::Ports::IDXFPathSourcePort;
-using Siligen::Domain::Trajectory::Ports::PathSourceResult;
+using Siligen::ProcessPath::Contracts::IPathSourcePort;
 using Siligen::ProcessPath::Contracts::PathGenerationRequest;
 using Siligen::ProcessPath::Contracts::PathGenerationResult;
 using Siligen::ProcessPath::Contracts::PathGenerationStage;
 using Siligen::ProcessPath::Contracts::PathGenerationStatus;
 using Siligen::ProcessPath::Contracts::PathPrimitiveMeta;
+using Siligen::ProcessPath::Contracts::PathSourceResult;
 using Siligen::ProcessPath::Contracts::ProcessPath;
 
 static_assert(std::is_same_v<ProcessPathBuildRequest, PathGenerationRequest>);
@@ -33,10 +29,9 @@ static_assert(std::is_same_v<ProcessPathBuildResult, PathGenerationResult>);
 static_assert(std::is_default_constructible_v<PathGenerationRequest>);
 static_assert(std::is_default_constructible_v<PathGenerationResult>);
 static_assert(std::is_abstract_v<IPathSourcePort>);
-static_assert(std::is_abstract_v<IDXFPathSourcePort>);
 static_assert(std::is_same_v<typename decltype(std::declval<PathSourceResult>().metadata)::value_type, PathPrimitiveMeta>);
-static_assert(std::is_default_constructible_v<DXFValidationResult>);
-static_assert(std::is_default_constructible_v<DXFPathSourceResult>);
+static_assert(std::is_same_v<typename decltype(std::declval<PathSourceResult>().primitives)::value_type,
+                             Siligen::ProcessPath::Contracts::Primitive>);
 static_assert(std::is_same_v<decltype(std::declval<const ProcessPathFacade&>().Build(
                                  std::declval<const ProcessPathBuildRequest&>())),
                              ProcessPathBuildResult>);

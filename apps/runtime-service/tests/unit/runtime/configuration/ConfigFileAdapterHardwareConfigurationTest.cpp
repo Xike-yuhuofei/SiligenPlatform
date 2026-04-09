@@ -264,18 +264,15 @@ TEST(ConfigFileAdapterHardwareConfigurationTest, LoadsReadyZeroSpeedFromHomingSe
     std::filesystem::remove(ini_path, ec);
 }
 
-TEST(ConfigFileAdapterHardwareConfigurationTest, KeepsReadyZeroFallbackUnsetWhenFieldMissing) {
+TEST(ConfigFileAdapterHardwareConfigurationTest, RejectsMissingReadyZeroSpeedField) {
     auto ini = ReplaceAll(BuildBaseIni(), "ready_zero_speed_mm_s=8.0\n", "");
     const auto ini_path = WriteTempIni("ready_zero_speed_missing", ini);
 
-    ConfigFileAdapter adapter(ini_path.string());
-    auto result = adapter.LoadConfiguration();
-
-    ASSERT_TRUE(result.IsSuccess());
-    ASSERT_GE(result.Value().homing_configs.size(), 2u);
-    EXPECT_FLOAT_EQ(result.Value().homing_configs[0].ready_zero_speed_mm_s, 0.0f);
-    EXPECT_FLOAT_EQ(result.Value().homing_configs[1].ready_zero_speed_mm_s, 0.0f);
-    EXPECT_FLOAT_EQ(result.Value().homing_configs[0].locate_velocity, 10.0f);
+    EXPECT_THROW(
+        {
+            ConfigFileAdapter adapter(ini_path.string());
+        },
+        std::runtime_error);
 
     std::error_code ec;
     std::filesystem::remove(ini_path, ec);

@@ -551,7 +551,7 @@ if(BUILD_SECURITY_MODULE)
     )
 
     target_link_libraries(security_module PRIVATE
-        siligen_workflow_runtime_consumer_public
+        siligen_module_workflow
         siligen_shared_kernel
         ${WINDOWS_LIBS}
         bcrypt

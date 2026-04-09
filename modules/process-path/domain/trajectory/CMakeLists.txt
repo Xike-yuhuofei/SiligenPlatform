@@ -14,12 +14,7 @@ add_library(siligen_process_path_domain_trajectory STATIC
     domain-services/SplineApproximation.cpp
 )
 
-target_sources(siligen_process_path_domain_trajectory PRIVATE
-    ports/IPathSourcePort.h
-    ports/IDXFPathSourcePort.h
-)
-
-target_include_directories(siligen_process_path_domain_trajectory PUBLIC
+target_include_directories(siligen_process_path_domain_trajectory PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}

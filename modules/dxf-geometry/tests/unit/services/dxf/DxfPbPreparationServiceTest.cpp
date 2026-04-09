@@ -1,4 +1,4 @@
-#include "application/services/dxf/DxfPbPreparationService.h"
+#include "dxf_geometry/application/services/dxf/DxfPbPreparationService.h"
 #include "shared/types/Error.h"
 #include "shared/types/Result.h"
 
@@ -387,6 +387,25 @@ TEST(DxfPbPreparationServiceTest, PrefersCanonicalEngineeringDataPythonEnv) {
     UnsetEnvVar("SILIGEN_DXF_PB_SCRIPT");
     UnsetEnvVar("SILIGEN_DXF_PB_PYTHON");
     UnsetEnvVar("SILIGEN_ENGINEERING_DATA_PYTHON");
+    std::error_code ec;
+    std::filesystem::remove_all(base_dir, ec);
+}
+
+TEST(DxfPbPreparationServiceTest, CleanupReturnsIoErrorWhenPreparedArtifactPathIsBlocked) {
+    const auto base_dir = MakeTempDir("cleanup_blocked_by_directory");
+    const auto dxf_path = base_dir / "sample.dxf";
+    auto pb_path = dxf_path;
+    pb_path.replace_extension(".pb");
+
+    WriteTextFile(dxf_path, MinimalDxf());
+    std::filesystem::create_directories(pb_path);
+    WriteTextFile(pb_path / "nested.txt", "block removal");
+
+    DxfPbPreparationService service;
+    auto result = service.CleanupPreparedInput(dxf_path.string());
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::FILE_IO_ERROR);
+
     std::error_code ec;
     std::filesystem::remove_all(base_dir, ec);
 }

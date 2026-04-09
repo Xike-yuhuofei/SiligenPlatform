@@ -4,9 +4,9 @@
 #include "domain/dispensing/contracts/ExecutionPackage.h"
 #include "domain/dispensing/value-objects/AuthorityTriggerLayout.h"
 #include "domain/dispensing/value-objects/DispenseCompensationProfile.h"
-#include "domain/motion/domain-services/interpolation/TrajectoryInterpolatorBase.h"
 #include "motion_planning/contracts/MotionPlan.h"
 #include "motion_planning/contracts/MotionPlanningReport.h"
+#include "motion_planning/contracts/InterpolationTypes.h"
 #include "process_path/contracts/ProcessPath.h"
 #include "shared/types/DispensingStrategy.h"
 #include "shared/types/TrajectoryTypes.h"
@@ -96,8 +96,8 @@ struct WorkflowExecutionAssemblyRequest {
     Siligen::Shared::Types::float32 max_jerk = 0.0f;
     Siligen::Shared::Types::float32 estimated_time_s = 0.0f;
     bool use_interpolation_planner = false;
-    Siligen::Domain::Motion::InterpolationAlgorithm interpolation_algorithm =
-        Siligen::Domain::Motion::InterpolationAlgorithm::LINEAR;
+    Siligen::MotionPlanning::Contracts::InterpolationAlgorithm interpolation_algorithm =
+        Siligen::MotionPlanning::Contracts::InterpolationAlgorithm::LINEAR;
     WorkflowAuthorityPreviewArtifacts authority_preview;
 };
 
@@ -118,8 +118,8 @@ struct WorkflowPlanningAssemblyRequest {
     Siligen::Shared::Types::float32 max_jerk = 0.0f;
     Siligen::Shared::Types::float32 estimated_time_s = 0.0f;
     bool use_interpolation_planner = false;
-    Siligen::Domain::Motion::InterpolationAlgorithm interpolation_algorithm =
-        Siligen::Domain::Motion::InterpolationAlgorithm::LINEAR;
+    Siligen::MotionPlanning::Contracts::InterpolationAlgorithm interpolation_algorithm =
+        Siligen::MotionPlanning::Contracts::InterpolationAlgorithm::LINEAR;
 };
 
 struct WorkflowPlanningAssemblyResult {

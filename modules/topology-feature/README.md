@@ -13,15 +13,15 @@ owner 入口：
 
 - 已补齐 module.yaml、domain、services、application、adapters、tests 与 examples 子目录。
 - `adapters/infrastructure/adapters/planning/geometry/` 已成为当前唯一真实实现承载面，模块根 target 直接链接 canonical adapter target。
-- `domain/geometry/` 仅保留迁移期兼容转发壳，不再承载 live owner 实现。
-- 所有 live 实现与构建入口都已收敛到 canonical roots。
+- `contracts/include/topology_feature/contracts/` 是当前唯一公共契约入口。
+- 所有 live 实现、构建入口与公共 surface 都已收敛到 canonical roots。
 
 ## 当前测试面
 
 - `tests/unit/`
   - 冻结 `ContourAugmentConfig` 默认值
 - `tests/contract/`
-  - 冻结 canonical contract header / legacy bridge 的公开面
+  - 冻结 canonical contract header 的公开面
 - `tests/golden/`
   - 冻结默认配置快照 golden
 - `tests/integration/`

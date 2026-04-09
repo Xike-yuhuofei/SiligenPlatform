@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -17,10 +18,11 @@ import sys
 
 sys.path.insert(0, str(ENGINEERING_DATA_ROOT))
 
-from engineering_data.contracts.preview import PreviewArtifact, PreviewRequest  # noqa: E402
 from engineering_data.contracts.simulation_input import bundle_to_simulation_payload, load_path_bundle  # noqa: E402
-from engineering_data.preview.html_preview import generate_preview  # noqa: E402
 from engineering_data.proto import dxf_primitives_pb2 as pb  # noqa: E402
+
+
+PREVIEW_SCRIPT = WORKSPACE_ROOT / "scripts" / "engineering-data" / "generate_preview.py"
 
 
 def _load_json(path: Path) -> dict:
@@ -120,6 +122,42 @@ def _validate_simulation_input(testcase: unittest.TestCase, payload: dict) -> No
     _assert_number(testcase, payload["valve"]["close_delay_seconds"], minimum=0)
 
 
+def _run_preview_script(
+    input_path: Path,
+    output_dir: Path,
+    *,
+    title: str,
+    speed_mm_s: float,
+    deterministic: bool = False,
+) -> dict:
+    command = [
+        sys.executable,
+        str(PREVIEW_SCRIPT),
+        "--input",
+        str(input_path),
+        "--output-dir",
+        str(output_dir),
+        "--title",
+        title,
+        "--speed",
+        str(speed_mm_s),
+        "--json",
+    ]
+    if deterministic:
+        command.append("--deterministic")
+
+    completed = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    if completed.returncode != 0:
+        raise AssertionError(f"preview script failed\nstdout={completed.stdout}\nstderr={completed.stderr}")
+    return json.loads(completed.stdout)
+
+
 class EngineeringContractsCompatibilityTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -176,32 +214,18 @@ class EngineeringContractsCompatibilityTest(unittest.TestCase):
 
     def test_preview_fixture_is_compatible_with_canonical_preview_consumer(self) -> None:
         payload = _load_json(self.preview_fixture_path)
-        result = PreviewArtifact(
-            preview_path=str(payload.get("preview_path", "")),
-            entity_count=int(payload.get("entity_count", 0)),
-            segment_count=int(payload.get("segment_count", 0)),
-            point_count=int(payload.get("point_count", 0)),
-            total_length_mm=float(payload.get("total_length_mm", 0.0)),
-            estimated_time_s=float(payload.get("estimated_time_s", 0.0)),
-            width_mm=float(payload.get("width_mm", 0.0)),
-            height_mm=float(payload.get("height_mm", 0.0)),
-        )
-
-        self.assertTrue(result.preview_path)
-        self.assertEqual(result.segment_count, 5)
-        self.assertAlmostEqual(result.estimated_time_s, 54.14213562373095, places=9)
+        self.assertTrue(payload["preview_path"])
+        self.assertEqual(payload["segment_count"], 5)
+        self.assertAlmostEqual(payload["estimated_time_s"], 54.14213562373095, places=9)
 
     def test_engineering_data_generate_preview_matches_canonical_preview_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            artifact = generate_preview(
-                PreviewRequest(
-                    input_path=self.dxf_fixture_path,
-                    output_dir=Path(tmp_dir),
-                    title="rect_diag",
-                    speed_mm_s=10.0,
-                )
+            payload = _run_preview_script(
+                self.dxf_fixture_path,
+                Path(tmp_dir),
+                title="rect_diag",
+                speed_mm_s=10.0,
             )
-            payload = artifact.to_dict()
 
         _validate_preview_artifact(self, payload)
         expected = _load_json(self.preview_fixture_path)

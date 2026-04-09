@@ -119,7 +119,7 @@ struct DispensingPlan {
 class DispensingPlanner {
    public:
     explicit DispensingPlanner(
-        std::shared_ptr<Domain::Trajectory::Ports::IPathSourcePort> path_source,
+        std::shared_ptr<Siligen::ProcessPath::Contracts::IPathSourcePort> path_source,
         std::shared_ptr<Domain::Motion::Ports::IVelocityProfilePort> velocity_profile_port = nullptr);
 
     Result<DispensingPlan> Plan(const DispensingPlanRequest& request) const noexcept;
@@ -128,7 +128,7 @@ class DispensingPlanner {
                                                     size_t max_points) const;
 
    private:
-    std::shared_ptr<Domain::Trajectory::Ports::IPathSourcePort> path_source_;
+    std::shared_ptr<Siligen::ProcessPath::Contracts::IPathSourcePort> path_source_;
     std::shared_ptr<Domain::Motion::Ports::IVelocityProfilePort> velocity_profile_port_;
 };
 

@@ -51,5 +51,5 @@ target_compile_features(siligen_module_motion_planning INTERFACE cxx_std_17)
 set_target_properties(siligen_module_motion_planning PROPERTIES
     SILIGEN_MODULE_ID "M7"
     SILIGEN_TARGET_TOPOLOGY_OWNER_ROOT "modules/motion-planning"
-    SILIGEN_TARGET_IMPLEMENTATION_ROOTS "modules/motion-planning/domain;modules/motion-planning/services;modules/motion-planning/application;modules/motion-planning/adapters;modules/motion-planning/tests;modules/motion-planning/examples"
+    SILIGEN_TARGET_IMPLEMENTATION_ROOTS "modules/motion-planning/domain;modules/motion-planning/application;modules/motion-planning/contracts;modules/motion-planning/tests"
 )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -18,15 +19,52 @@ FIXTURE_ROOT = CONTRACTS_ROOT / "fixtures" / "cases" / "rect_diag"
 
 sys.path.insert(0, str(PACKAGE_ROOT))
 
-from engineering_data.contracts.preview import PreviewRequest  # noqa: E402
 from engineering_data.contracts.simulation_input import bundle_to_simulation_payload, load_path_bundle  # noqa: E402
-from engineering_data.preview.html_preview import generate_preview  # noqa: E402
 from engineering_data.processing import dxf_to_pb  # noqa: E402
 from engineering_data.proto import dxf_primitives_pb2 as pb  # noqa: E402
 
 
+PREVIEW_SCRIPT = WORKSPACE_ROOT / "scripts" / "engineering-data" / "generate_preview.py"
+
+
 def _load_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _run_preview_script(
+    input_path: Path,
+    output_dir: Path,
+    *,
+    title: str,
+    speed_mm_s: float,
+    deterministic: bool = False,
+) -> dict:
+    command = [
+        sys.executable,
+        str(PREVIEW_SCRIPT),
+        "--input",
+        str(input_path),
+        "--output-dir",
+        str(output_dir),
+        "--title",
+        title,
+        "--speed",
+        str(speed_mm_s),
+        "--json",
+    ]
+    if deterministic:
+        command.append("--deterministic")
+
+    completed = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    if completed.returncode != 0:
+        raise AssertionError(f"preview script failed\nstdout={completed.stdout}\nstderr={completed.stderr}")
+    return json.loads(completed.stdout)
 
 
 class EngineeringDataCompatibilityTest(unittest.TestCase):
@@ -93,15 +131,12 @@ class EngineeringDataCompatibilityTest(unittest.TestCase):
 
     def test_generate_preview_matches_fixture(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            artifact = generate_preview(
-                PreviewRequest(
-                    input_path=self.dxf_fixture_path,
-                    output_dir=Path(tmp_dir),
-                    title="rect_diag",
-                    speed_mm_s=10.0,
-                )
+            payload = _run_preview_script(
+                self.dxf_fixture_path,
+                Path(tmp_dir),
+                title="rect_diag",
+                speed_mm_s=10.0,
             )
-            payload = artifact.to_dict()
 
         expected = _load_json(self.preview_fixture_path)
         self.assertEqual(payload["entity_count"], expected["entity_count"])
@@ -115,21 +150,26 @@ class EngineeringDataCompatibilityTest(unittest.TestCase):
     def test_generate_preview_deterministic_output_is_stable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             output_dir = Path(tmp_dir)
-            request = PreviewRequest(
-                input_path=self.dxf_fixture_path,
-                output_dir=output_dir,
+            payload_a = _run_preview_script(
+                self.dxf_fixture_path,
+                output_dir,
                 title="rect_diag",
                 speed_mm_s=10.0,
-                deterministic_name=True,
+                deterministic=True,
             )
-            artifact_a = generate_preview(request)
-            html_a = Path(artifact_a.preview_path).read_text(encoding="utf-8")
+            html_a = Path(payload_a["preview_path"]).read_text(encoding="utf-8")
 
-            artifact_b = generate_preview(request)
-            html_b = Path(artifact_b.preview_path).read_text(encoding="utf-8")
+            payload_b = _run_preview_script(
+                self.dxf_fixture_path,
+                output_dir,
+                title="rect_diag",
+                speed_mm_s=10.0,
+                deterministic=True,
+            )
+            html_b = Path(payload_b["preview_path"]).read_text(encoding="utf-8")
 
-        self.assertEqual(Path(artifact_a.preview_path).name, "rect_diag-preview.html")
-        self.assertEqual(artifact_a.to_dict(), artifact_b.to_dict())
+        self.assertEqual(Path(payload_a["preview_path"]).name, "rect_diag-preview.html")
+        self.assertEqual(payload_a, payload_b)
         self.assertEqual(html_a, html_b)
 
     def test_simulation_payload_matches_fixture(self) -> None:

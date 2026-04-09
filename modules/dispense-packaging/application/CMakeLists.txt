@@ -12,10 +12,22 @@ if(NOT TARGET siligen_motion_planning_contracts_public)
         "${CMAKE_BINARY_DIR}/_p/dpa_mpc"
     )
 endif()
-if(NOT TARGET siligen_motion_planning_application_public)
+if(NOT TARGET siligen_motion_planning_application_public AND NOT TARGET siligen_motion_planning_application)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../../motion-planning/application"
         "${CMAKE_BINARY_DIR}/_p/dpa_mpa"
+    )
+endif()
+if(NOT TARGET siligen_process_planning_contracts_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../process-planning/contracts"
+        "${CMAKE_BINARY_DIR}/_p/dpa_procplan"
+    )
+endif()
+if(NOT TARGET siligen_device_contracts AND EXISTS "${CMAKE_SOURCE_DIR}/shared/contracts/device/CMakeLists.txt")
+    add_subdirectory(
+        "${CMAKE_SOURCE_DIR}/shared/contracts/device"
+        "${CMAKE_BINARY_DIR}/_p/dpa_sdc"
     )
 endif()
 if(NOT TARGET siligen_dispense_packaging_contracts_public)
@@ -23,6 +35,11 @@ if(NOT TARGET siligen_dispense_packaging_contracts_public)
         "${CMAKE_CURRENT_SOURCE_DIR}/../contracts"
         "${CMAKE_BINARY_DIR}/_p/dpa_dpc"
     )
+endif()
+
+set(SILIGEN_DISPENSE_PACKAGING_MOTION_PLANNING_APP_TARGET siligen_motion_planning_application_public)
+if(NOT TARGET ${SILIGEN_DISPENSE_PACKAGING_MOTION_PLANNING_APP_TARGET} AND TARGET siligen_motion_planning_application)
+    set(SILIGEN_DISPENSE_PACKAGING_MOTION_PLANNING_APP_TARGET siligen_motion_planning_application)
 endif()
 
 set(SILIGEN_DISPENSE_PACKAGING_APPLICATION_PUBLIC_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
@@ -56,11 +73,6 @@ endif()
 if(TARGET siligen_motion_planning_contracts_public)
     target_link_libraries(siligen_dispense_packaging_application_headers INTERFACE
         siligen_motion_planning_contracts_public
-    )
-endif()
-if(TARGET siligen_motion_planning_application_public)
-    target_link_libraries(siligen_dispense_packaging_application_headers INTERFACE
-        siligen_motion_planning_application_public
     )
 endif()
 target_compile_features(siligen_dispense_packaging_application_headers INTERFACE cxx_std_17)
@@ -107,9 +119,14 @@ if(TARGET siligen_motion_planning_contracts_public)
         siligen_motion_planning_contracts_public
     )
 endif()
-if(TARGET siligen_motion_planning_application_public)
-    target_link_libraries(siligen_dispense_packaging_application PUBLIC
-        siligen_motion_planning_application_public
+if(TARGET siligen_dispense_packaging_planning_residual)
+    target_link_libraries(siligen_dispense_packaging_application PRIVATE
+        siligen_dispense_packaging_planning_residual
+    )
+endif()
+if(TARGET ${SILIGEN_DISPENSE_PACKAGING_MOTION_PLANNING_APP_TARGET})
+    target_link_libraries(siligen_dispense_packaging_application PRIVATE
+        ${SILIGEN_DISPENSE_PACKAGING_MOTION_PLANNING_APP_TARGET}
     )
 endif()
 target_compile_features(siligen_dispense_packaging_application PUBLIC cxx_std_17)
@@ -127,7 +144,7 @@ target_include_directories(siligen_valve_core PRIVATE
     ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_valve_core PUBLIC
-    siligen_dispense_packaging_domain_dispensing
+    siligen_dispense_packaging_execution_residual
     siligen_types
     siligen_utils
 )
@@ -149,7 +166,6 @@ endif()
 target_link_libraries(siligen_dispense_packaging_application_public INTERFACE
     siligen_dispense_packaging_application_headers
     siligen_dispense_packaging_contracts_public
-    $<LINK_ONLY:siligen_valve_core>
     $<LINK_ONLY:siligen_dispense_packaging_application>
 )
 target_compile_features(siligen_dispense_packaging_application_public INTERFACE cxx_std_17)

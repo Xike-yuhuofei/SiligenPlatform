@@ -40,13 +40,42 @@ TEST(DispensePackagingBoundaryTest, UnifiedTrajectoryPlannerUsesProcessPathFacad
     EXPECT_EQ(source.find('#' + std::string("include \"domain-services/TrajectoryShaper.h\"")), std::string::npos);
 }
 
-TEST(DispensePackagingBoundaryTest, DispensePackagingTargetLinksProcessPathApplicationPublicOnly) {
+TEST(DispensePackagingBoundaryTest, DispensePackagingOwnerTargetShrinksToCoreAndResidualTargetsCarryConcreteLinks) {
     const fs::path repo_root = RepoRoot();
     const std::string content = ReadTextFile(
         repo_root / "modules/dispense-packaging/domain/dispensing/CMakeLists.txt");
 
+    EXPECT_NE(content.find("add_library(siligen_dispense_packaging_domain_dispensing INTERFACE)"), std::string::npos);
+    EXPECT_NE(content.find("add_library(siligen_dispense_packaging_planning_residual STATIC"), std::string::npos);
+    EXPECT_NE(content.find("add_library(siligen_dispense_packaging_execution_residual STATIC"), std::string::npos);
+    EXPECT_NE(
+        content.find("target_link_libraries(siligen_dispense_packaging_domain_dispensing INTERFACE"),
+        std::string::npos);
     EXPECT_NE(content.find("siligen_process_path_application_public"), std::string::npos);
+    EXPECT_NE(content.find("siligen_motion_planning_application_public"), std::string::npos);
     EXPECT_EQ(content.find("siligen_process_path_domain_trajectory"), std::string::npos);
+    EXPECT_EQ(
+        content.find("target_link_libraries(siligen_dispense_packaging_domain_dispensing PUBLIC"),
+        std::string::npos);
+}
+
+TEST(DispensePackagingBoundaryTest, ApplicationPublicStopsExportingValveResidualTarget) {
+    const fs::path repo_root = RepoRoot();
+    const std::string content = ReadTextFile(
+        repo_root / "modules/dispense-packaging/application/CMakeLists.txt");
+
+    EXPECT_NE(
+        content.find("target_link_libraries(siligen_valve_core PUBLIC"),
+        std::string::npos);
+    EXPECT_NE(
+        content.find("siligen_dispense_packaging_execution_residual"),
+        std::string::npos);
+    EXPECT_EQ(content.find("$<LINK_ONLY:siligen_valve_core>"), std::string::npos);
+    EXPECT_EQ(
+        content.find(
+            "target_link_libraries(siligen_dispense_packaging_application_headers INTERFACE\n"
+            "        siligen_motion_planning_application_public"),
+        std::string::npos);
 }
 
 TEST(DispensePackagingBoundaryTest, ModuleRootRequiresApplicationPublicTargetAndRefusesDomainFallback) {
@@ -103,9 +132,9 @@ TEST(DispensePackagingBoundaryTest, LegacyExecutionProviderAndTestsAreRemovedFro
 TEST(DispensePackagingBoundaryTest, WorkflowPlanningUseCaseConsumesSingleM8AssemblyProvider) {
     const fs::path repo_root = RepoRoot();
     const std::string header = ReadTextFile(
-        repo_root / "modules/workflow/application/include/application/usecases/dispensing/PlanningUseCase.h");
+        repo_root / "modules/workflow/application/include/application/planning-trigger/PlanningUseCase.h");
     const std::string source = ReadTextFile(
-        repo_root / "modules/workflow/application/usecases/dispensing/PlanningUseCase.cpp");
+        repo_root / "modules/workflow/application/planning-trigger/PlanningUseCase.cpp");
 
     EXPECT_NE(
         source.find(

@@ -6,7 +6,7 @@
 - `apps/runtime-service/bootstrap/*`
 - `apps/runtime-service/container/*`
 - `apps/runtime-service/tests/integration/HostBootstrapSmokeTest.cpp`
-- `modules/workflow/application/include/application/usecases/dispensing/PlanningUseCase.h`
+- `modules/workflow/application/include/application/planning-trigger/PlanningUseCase.h`
 - `modules/workflow/application/include/application/usecases/motion/*`
 - `modules/workflow/application/usecases/motion/runtime/MotionRuntimeAssemblyFactory.h`
 - `modules/workflow/application/usecases/motion/trajectory/DeterministicPathExecutionUseCase.*`
