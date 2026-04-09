@@ -10,7 +10,6 @@
 
 namespace Siligen::Domain::Dispensing::DomainServices {
 
-using Siligen::Domain::Trajectory::Ports::PathPrimitiveMeta;
 using Siligen::ProcessPath::Contracts::Primitive;
 using Siligen::ProcessPath::Contracts::PrimitiveType;
 using Siligen::ProcessPath::Contracts::CirclePrimitive;
@@ -18,6 +17,7 @@ using Siligen::ProcessPath::Contracts::EllipsePrimitive;
 using Siligen::ProcessPath::Contracts::EllipsePoint;
 using Siligen::ProcessPath::Contracts::ContourElement;
 using Siligen::ProcessPath::Contracts::ContourElementType;
+using Siligen::ProcessPath::Contracts::PathPrimitiveMeta;
 using Siligen::Shared::Types::DXFEntityType;
 using Siligen::Shared::Types::Point2D;
 using Siligen::Shared::Types::float32;

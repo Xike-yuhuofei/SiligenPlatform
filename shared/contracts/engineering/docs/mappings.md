@@ -8,7 +8,7 @@
 
 ## 重要声明
 
-- Preview canonical 是 `dxf-pipeline` CLI `--json` 输出的 `PreviewArtifact`。
+- Preview canonical 是 `scripts/engineering-data/generate_preview.py --json` 输出的 `PreviewArtifact`。
 - HTML 预览文件中的内嵌脚本数据不是 preview canonical。
 - Simulation input canonical 是 `tests/e2e/simulated-line` 当前仿真执行链可直接读取的段级 JSON，不是 `.path.json` 或 `.traj.json`。
 

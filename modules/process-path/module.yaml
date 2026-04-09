@@ -8,4 +8,4 @@ allowed_dependencies:
   - coordinate-alignment/contracts
   - shared
 uniform_skeleton_ready: true
-notes: contracts/include + application/include 是当前 M6 正式 public surface；ProcessPathFacade request/result 是唯一 public contract，domain/trajectory 继续作为 owner implementation root
+notes: contracts/include + application/include 是当前 M6 正式 public surface；ProcessPathFacade 是唯一 public application entry，IPathSourcePort 与 PathGeneration* 是 live contract surface，domain/trajectory 继续作为 owner implementation root

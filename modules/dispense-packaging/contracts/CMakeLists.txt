@@ -18,9 +18,20 @@ if(NOT TARGET siligen_dispense_packaging_contracts_public)
     add_library(siligen_dispense_packaging_contracts_public INTERFACE)
 endif()
 
+if(NOT TARGET siligen_process_path_contracts_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../process-path/contracts"
+        "${CMAKE_BINARY_DIR}/_p/dpc_ppath"
+    )
+endif()
+
 target_include_directories(siligen_dispense_packaging_contracts_public INTERFACE
     ${SILIGEN_DISPENSE_PACKAGING_CONTRACTS_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
+)
+
+target_link_libraries(siligen_dispense_packaging_contracts_public INTERFACE
+    siligen_process_path_contracts_public
 )
 
 if(TARGET siligen_application_contracts)

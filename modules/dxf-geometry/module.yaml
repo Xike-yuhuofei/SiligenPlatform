@@ -4,7 +4,17 @@ owner_artifact: CanonicalGeometry
 group: upstream
 target_root: modules/dxf-geometry
 allowed_dependencies:
-  - job-ingest/contracts
+  - process-planning/contracts
+  - process-path/contracts
   - shared
 uniform_skeleton_ready: true
-notes: DXF 解析适配、几何转换与 engineering_data Python 包均已归位到 canonical application/adapters surfaces
+notes: >
+  当前稳定 C++ surface 收敛到
+  dxf_geometry/application/services/dxf/DxfPbPreparationService.h 与
+  dxf_geometry/adapters/planning/dxf/PbPathSourceAdapter.h；
+  siligen_dxf_geometry_pb_path_source_adapter 是唯一 live parser target，
+  负责 PB parser 与 protobuf 生成。engineering_data Python truth 当前只保留
+  DXF preprocess 与 simulation_input stable contract；
+  preview owner 已迁到 apps/planner-cli/tools/planner_cli_preview，
+  trajectory owner 已迁到 modules/motion-planning/application/motion_planning/trajectory_generation.py；
+  residual/ 只隔离 simulation runtime concrete，不再承认 trajectory/preview 为本模块 residual truth。

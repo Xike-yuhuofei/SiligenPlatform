@@ -2,20 +2,23 @@
   "include": [
     "apps/hmi-app/src",
     "apps/hmi-app/tests",
+    "apps/planner-cli/tools/planner_cli_preview/contracts.py",
+    "apps/planner-cli/tools/planner_cli_preview/generate_preview.py",
+    "apps/planner-cli/tools/planner_cli_preview/preview_renderer.py",
     "modules/dxf-geometry/application/engineering_data/contracts/simulation_input.py",
-    "modules/dxf-geometry/application/engineering_data/preview/html_preview.py",
     "modules/dxf-geometry/application/engineering_data/processing/dxf_to_pb.py",
     "modules/hmi-application/application",
     "modules/hmi-application/tests",
     "scripts",
     "tests",
-    "tools/testing"
+    "scripts/testing"
   ],
   "exclude": [
     "**/__pycache__",
     ".agents",
     "build",
     "plugins",
+    "tests/reports",
     "third_party"
   ],
   "ignore": [
@@ -90,6 +93,7 @@
       "extraPaths": [
         "apps/hmi-app/src",
         "apps/hmi-app/src/hmi_client",
+        "apps/planner-cli/tools",
         "modules/dxf-geometry/application",
         "modules/hmi-application/application",
         "tests/e2e/hardware-in-loop",
@@ -101,7 +105,14 @@
       "root": "scripts",
       "extraPaths": [
         "apps/hmi-app/src",
+        "apps/planner-cli/tools",
         "modules/dxf-geometry/application",
+        "shared/testing/test-kit/src"
+      ]
+    },
+    {
+      "root": "apps/planner-cli/tools",
+      "extraPaths": [
         "shared/testing/test-kit/src"
       ]
     }

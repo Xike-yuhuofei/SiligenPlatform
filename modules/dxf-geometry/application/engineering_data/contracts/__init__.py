@@ -1,14 +1,17 @@
-from engineering_data.contracts.preview import PreviewArtifact, PreviewRequest
 from engineering_data.contracts.simulation_input import (
     DEFAULT_EXPORTS,
     ExportDefaults,
     IoDelay,
     TriggerPoint,
     ValveConfig,
+    bundle_contains_fallback_primitives,
     bundle_to_simulation_payload,
     collect_export_notes,
+    count_fallback_primitives,
+    count_skipped_points,
     load_path_bundle,
     load_trigger_points_csv,
+    project_trigger_points,
     write_simulation_payload,
 )
 
@@ -16,13 +19,15 @@ __all__ = [
     "DEFAULT_EXPORTS",
     "ExportDefaults",
     "IoDelay",
-    "PreviewArtifact",
-    "PreviewRequest",
     "TriggerPoint",
     "ValveConfig",
+    "bundle_contains_fallback_primitives",
     "bundle_to_simulation_payload",
     "collect_export_notes",
+    "count_fallback_primitives",
+    "count_skipped_points",
     "load_path_bundle",
     "load_trigger_points_csv",
+    "project_trigger_points",
     "write_simulation_payload",
 ]

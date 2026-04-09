@@ -7,10 +7,8 @@
 #include <string>
 #include <vector>
 
-namespace Siligen::Domain::Trajectory::Ports {
+namespace Siligen::ProcessPath::Contracts {
 
-using Siligen::ProcessPath::Contracts::PathPrimitiveMeta;
-using Siligen::ProcessPath::Contracts::Primitive;
 using Siligen::Shared::Types::Result;
 
 struct PathSourceResult {
@@ -27,4 +25,4 @@ class IPathSourcePort {
     virtual Result<PathSourceResult> LoadFromFile(const std::string& filepath) = 0;
 };
 
-}  // namespace Siligen::Domain::Trajectory::Ports
+}  // namespace Siligen::ProcessPath::Contracts

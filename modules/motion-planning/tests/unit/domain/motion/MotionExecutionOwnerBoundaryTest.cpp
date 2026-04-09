@@ -89,6 +89,33 @@ TEST(MotionExecutionOwnerBoundaryTest, WorkflowLegacyRuntimeConcreteHeadersAreRe
     }
 }
 
+TEST(MotionExecutionOwnerBoundaryTest, ValidatedInterpolationPortMovesToRuntimeExecutionApplication) {
+    const fs::path repo_root = RepoRoot();
+    const fs::path legacy_header =
+        repo_root / "modules/motion-planning/domain/motion/domain-services/interpolation/ValidatedInterpolationPort.h";
+    const fs::path legacy_source =
+        repo_root / "modules/motion-planning/domain/motion/domain-services/interpolation/ValidatedInterpolationPort.cpp";
+    const fs::path runtime_header =
+        repo_root / "modules/runtime-execution/application/include/runtime_execution/application/services/motion/interpolation/ValidatedInterpolationPort.h";
+    const fs::path runtime_source =
+        repo_root / "modules/runtime-execution/application/services/motion/interpolation/ValidatedInterpolationPort.cpp";
+
+    EXPECT_FALSE(fs::exists(legacy_header)) << legacy_header.string();
+    EXPECT_FALSE(fs::exists(legacy_source)) << legacy_source.string();
+    EXPECT_TRUE(fs::exists(runtime_header)) << runtime_header.string();
+    EXPECT_TRUE(fs::exists(runtime_source)) << runtime_source.string();
+
+    const std::string runtime_cmake =
+        ReadTextFile(repo_root / "modules/runtime-execution/application/CMakeLists.txt");
+    const std::string workflow_compat =
+        ReadTextFile(repo_root / "modules/workflow/domain/include/domain/motion/domain-services/interpolation/ValidatedInterpolationPort.h");
+
+    EXPECT_NE(runtime_cmake.find("services/motion/interpolation/ValidatedInterpolationPort.cpp"), std::string::npos);
+    EXPECT_NE(
+        workflow_compat.find("runtime-execution/application/include/runtime_execution/application/services/motion/interpolation/ValidatedInterpolationPort.h"),
+        std::string::npos);
+}
+
 TEST(MotionExecutionOwnerBoundaryTest, MotionPlanningExecutionImplementationsAreRemoved) {
     const fs::path repo_root = RepoRoot();
     const std::array<fs::path, 4> legacy_sources = {{

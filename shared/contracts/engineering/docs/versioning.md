@@ -12,11 +12,14 @@
 
 ## Owner
 
-- 主生产者：`dxf-pipeline`
+- 主生产者：
+  - `.pb`：`engineering_data.processing.dxf_to_pb` / `engineering_data.cli.dxf_to_pb`
+  - preview JSON：`scripts/engineering-data/generate_preview.py --json`（实现 owner：`apps/planner-cli/tools/planner_cli_preview`）
+  - simulation input JSON：`engineering_data.contracts.simulation_input.bundle_to_simulation_payload` / `engineering_data.cli.export_simulation_input`（实现 owner：`modules/runtime-execution/application/runtime_execution/`；schema authority 仍在本包）
 - 主消费者：
   - `.pb`：`dxf-pipeline`、`control-core`
   - preview JSON：`apps/hmi-app`
-- simulation input JSON：`tests/e2e/simulated-line`
+  - simulation input JSON：`tests/e2e/simulated-line`
 
 任何协议变更都必须同时更新：
 

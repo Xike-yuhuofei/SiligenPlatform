@@ -70,4 +70,35 @@ TEST(DxfPbPreparationServiceIntegrationTest, ResolvesWorkspaceScriptAndAppliesCo
     EXPECT_NE(args_snapshot.find("arg[11]=8"), std::string::npos);
 }
 
+TEST(DxfPbPreparationServiceIntegrationTest, CleanupRemovesPreparedArtifactForDxfAndPbInputs) {
+    ScopedTempDir workspace("dxf_pb_cleanup_integration");
+    const auto dxf_path = workspace.Path() / "sample.dxf";
+    const auto pb_path = PbPathFor(dxf_path);
+
+    WriteTextFile(dxf_path, MinimalDxf());
+    WriteTextFile(pb_path, "prepared-pb");
+
+    DxfPbPreparationService service(std::make_shared<FakeConfigurationPort>());
+
+    auto cleanup_from_dxf = service.CleanupPreparedInput(dxf_path.string());
+    ASSERT_TRUE(cleanup_from_dxf.IsSuccess()) << cleanup_from_dxf.GetError().ToString();
+    EXPECT_FALSE(std::filesystem::exists(pb_path));
+
+    WriteTextFile(pb_path, "prepared-pb-again");
+    auto cleanup_from_pb = service.CleanupPreparedInput(pb_path.string());
+    ASSERT_TRUE(cleanup_from_pb.IsSuccess()) << cleanup_from_pb.GetError().ToString();
+    EXPECT_FALSE(std::filesystem::exists(pb_path));
+}
+
+TEST(DxfPbPreparationServiceIntegrationTest, CleanupRejectsUnsupportedExtension) {
+    ScopedTempDir workspace("dxf_pb_cleanup_invalid_extension");
+    const auto txt_path = workspace.Path() / "sample.txt";
+    WriteTextFile(txt_path, "nope");
+
+    DxfPbPreparationService service(std::make_shared<FakeConfigurationPort>());
+    auto result = service.CleanupPreparedInput(txt_path.string());
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), Siligen::Shared::Types::ErrorCode::FILE_FORMAT_INVALID);
+}
+
 }  // namespace

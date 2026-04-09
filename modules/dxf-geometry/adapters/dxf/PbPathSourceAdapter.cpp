@@ -11,10 +11,10 @@
 
 namespace Siligen::Infrastructure::Adapters::Parsing {
 
-using Siligen::Domain::Trajectory::Ports::PathPrimitiveMeta;
-using Siligen::Domain::Trajectory::Ports::PathSourceResult;
 using Siligen::ProcessPath::Contracts::ContourElement;
 using Siligen::ProcessPath::Contracts::ContourElementType;
+using Siligen::ProcessPath::Contracts::PathPrimitiveMeta;
+using Siligen::ProcessPath::Contracts::PathSourceResult;
 using Siligen::ProcessPath::Contracts::Primitive;
 using Siligen::Shared::Types::DXFEntityType;
 using Siligen::Shared::Types::Error;

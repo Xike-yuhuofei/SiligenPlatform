@@ -78,7 +78,7 @@ python -c "import engineering_data"
 python -m engineering_data.cli.dxf_to_pb --help
 python -m engineering_data.cli.export_simulation_input --help
 python -m engineering_data.cli.path_to_trajectory --help
-python -m engineering_data.cli.generate_preview --help
+python scripts/engineering-data/generate_preview.py --help
 where.exe engineering-data-dxf-to-pb
 where.exe engineering-data-export-simulation-input
 where.exe engineering-data-path-to-trajectory
@@ -88,7 +88,7 @@ where.exe engineering-data-generate-preview
 人工确认：
 
 - 目标 Python 解释器能导入 `engineering_data`
-- 目标 Python 解释器能运行 canonical module CLI
+- 目标 Python 解释器能运行 canonical module CLI，与 workspace preview wrapper
 - 不再调用 `dxf-to-pb`
 - 不再调用 `path-to-trajectory`
 - 不再调用 `export-simulation-input`

@@ -1,11 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 
-if(NOT TARGET siligen_parsing_adapter)
+if(NOT TARGET siligen_dxf_geometry_pb_path_source_adapter)
     set(SILIGEN_DXF_GEOMETRY_ADAPTERS_PUBLIC_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
     foreach(required_dir
         IN ITEMS
             "${SILIGEN_DXF_GEOMETRY_ADAPTERS_PUBLIC_INCLUDE_DIR}/dxf_geometry"
-            "${SILIGEN_DXF_GEOMETRY_ADAPTERS_PUBLIC_INCLUDE_DIR}/infrastructure"
             "${CMAKE_CURRENT_SOURCE_DIR}/dxf"
     )
         if(NOT EXISTS "${required_dir}")
@@ -37,7 +36,7 @@ if(NOT TARGET siligen_parsing_adapter)
 
     if(SILIGEN_ENABLE_PROTOBUF AND NOT SILIGEN_DXF_GEOMETRY_ADAPTER_PROTOBUF_ENABLED)
         message(WARNING
-            "[DXFGeometry] protobuf targets are unavailable; siligen_parsing_adapter "
+            "[DXFGeometry] protobuf targets are unavailable; siligen_dxf_geometry_pb_path_source_adapter "
             "will fall back to SILIGEN_ENABLE_PROTOBUF=0 for this configure pass"
         )
     endif()
@@ -84,31 +83,29 @@ if(NOT TARGET siligen_parsing_adapter)
         list(APPEND DXF_PB_ADAPTER_LINK_LIBRARIES protobuf::libprotobuf-lite)
     endif()
 
-    add_library(siligen_parsing_adapter STATIC
+    add_library(siligen_dxf_geometry_pb_path_source_adapter STATIC
         dxf/PbPathSourceAdapter.cpp
-        dxf/AutoPathSourceAdapter.cpp
-        dxf/DXFAdapterFactory.cpp
         ${DXF_PROTO_SRCS}
     )
 
-    target_include_directories(siligen_parsing_adapter PUBLIC
+    target_include_directories(siligen_dxf_geometry_pb_path_source_adapter PUBLIC
         ${SILIGEN_DXF_GEOMETRY_ADAPTERS_PUBLIC_INCLUDE_DIR}
         ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
     )
-    target_include_directories(siligen_parsing_adapter PRIVATE
+    target_include_directories(siligen_dxf_geometry_pb_path_source_adapter PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${DXF_PROTO_OUT_DIR}
     )
 
-    target_link_libraries(siligen_parsing_adapter PUBLIC ${DXF_PB_ADAPTER_LINK_LIBRARIES})
+    target_link_libraries(siligen_dxf_geometry_pb_path_source_adapter PUBLIC ${DXF_PB_ADAPTER_LINK_LIBRARIES})
 
     if(SILIGEN_DXF_GEOMETRY_ADAPTER_PROTOBUF_ENABLED)
-        target_compile_definitions(siligen_parsing_adapter PRIVATE SILIGEN_ENABLE_PROTOBUF=1)
+        target_compile_definitions(siligen_dxf_geometry_pb_path_source_adapter PRIVATE SILIGEN_ENABLE_PROTOBUF=1)
     else()
-        target_compile_definitions(siligen_parsing_adapter PRIVATE SILIGEN_ENABLE_PROTOBUF=0)
+        target_compile_definitions(siligen_dxf_geometry_pb_path_source_adapter PRIVATE SILIGEN_ENABLE_PROTOBUF=0)
     endif()
 
-    target_compile_features(siligen_parsing_adapter PUBLIC cxx_std_17)
+    target_compile_features(siligen_dxf_geometry_pb_path_source_adapter PUBLIC cxx_std_17)
 
-    message(STATUS "[DXFGeometry] Parsing Adapter configured")
+    message(STATUS "[DXFGeometry] PbPathSource adapter configured")
 endif()

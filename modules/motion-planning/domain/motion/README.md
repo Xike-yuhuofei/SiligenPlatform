@@ -1,6 +1,6 @@
 # Motion 子域 - 运动规划
 
-**职责**: 负责运动规划事实、时间/轨迹/CMP 规划与插补算法，不再作为 runtime/control owner。
+**职责**: 负责运动规划事实、时间/轨迹/CMP 规划、插补算法与插补程序生成，不再作为 runtime/control owner 或 interpolation runtime wrapper owner。
 
 ## 业务范围
 
@@ -13,14 +13,14 @@
 ## Stage B 边界
 
 - `IMotionRuntimePort`、`IIOControlPort` 的 owner 在 `modules/runtime-execution/contracts/runtime/include/runtime_execution/contracts/motion/`
-- `MotionControlServiceImpl`、`MotionStatusServiceImpl` 的 owner 在 `modules/runtime-execution/application/include/runtime_execution/application/services/motion/`
+- `MotionControlServiceImpl`、`MotionStatusServiceImpl`、`ValidatedInterpolationPort` 的 owner 在 `modules/runtime-execution/application/include/runtime_execution/application/services/motion/`
 - 本目录不得重新声明 runtime/control owner 类型，也不再保留对应 shim/alias 头
-- `MotionBufferController`、`JogController`、`HomingProcess`、`ReadyZeroDecisionService` 的 live implementation owner 已冻结到 `modules/workflow/domain/domain/motion/domain-services/`
+- `MotionBufferController`、`JogController`、`HomingProcess`、`ReadyZeroDecisionService` 的 live implementation owner 已冻结到 `modules/runtime-execution/application/services/motion/execution/`
 - 上述四类 execution-owner 服务禁止在 `modules/motion-planning/domain/motion/domain-services/` 下保留可被 target 误编译的 `.cpp`
 
 ## Execution Owner 审计
 
-- `siligen_motion_execution_services` 的 live source root 固定为 workflow motion root，只允许从 `modules/workflow/domain/domain/motion/domain-services/` 取 `MotionBufferController`、`JogController`、`HomingProcess`、`ReadyZeroDecisionService`
+- `siligen_runtime_execution_motion_execution_services` 的 live source root 固定为 `modules/runtime-execution/application/services/motion/execution/`
 - `modules/motion-planning/domain/motion/domain-services/` 下这四个旧路径已删除，不再承担历史 include 兼容
 
 ## Planning Owner 审计
@@ -47,8 +47,7 @@ motion/
 │   │   ├── ArcInterpolator
 │   │   └── SplineInterpolator
 │   │   ├── InterpolationProgramPlanner
-│   │   ├── InterpolationCommandValidator
-│   │   └── ValidatedInterpolationPort
+│   │   └── InterpolationCommandValidator
 │   ├── MotionPlanner             # 规划求解 owner
 │   ├── TrajectoryPlanner         # 轨迹规划
 │   ├── TimeTrajectoryPlanner     # 时间规划
@@ -63,14 +62,9 @@ motion/
 ├── CMPCoordinatedInterpolator.*
 └── ports/                          # 规划相关端口
     ├── IMotionConnectionPort
-    ├── IAxisControlPort
     ├── IPositionControlPort
-    ├── IJogControlPort
-    ├── IInterpolationPort
     ├── IMotionStatePort
-    ├── IHomingPort
-    ├── IMotionRuntimePort
-    └── IIOControlPort
+    └── IVelocityProfilePort
 ```
 
 ## 命名空间
@@ -86,17 +80,18 @@ namespace Siligen::Domain::Motion {
 
 ## 依赖关系
 
-- ✅ 依赖: `shared/types`, `shared/utils`, `domain/_shared`
+- ✅ 依赖: `process-path/contracts`, `runtime-execution/contracts/motion`（仅限插补程序生成 DTO）、`shared/types`, `shared/utils`
 - ❌ 不依赖: `infrastructure`, `application`, 其他子域
 
 ## 插补规则统一规范
 
 - 插补策略选择、参数校验、插补程序生成统一在本子域领域服务中完成。
-- 通过 `ValidatedInterpolationPort` 对外提供统一校验入口；基础设施只负责硬件调用。
+- 插补程序生成只消费 `runtime-execution/contracts/motion/IInterpolationPort.h` 中的 DTO 定义，不再在 M7 内持有 runtime wrapper 实现。
 - 应用层不得实现插补规则，仅负责流程编排与参数映射。
 
 ## 特殊约束
 
-- `M7` public surface 只能承诺规划事实，不得重新吸收 runtime/control owner 语义
+- `M7` public surface 只能承诺规划事实与 CMP / 轨迹插补 facade，不得重新吸收 runtime/control owner 语义
+- `InterpolationProgramPlanner` 虽继续留在 `domain/motion/`，但仅作为 internal residual seam 供直接 consumer 调用，不构成稳定 public surface
 - `InterpolationAlgorithm` 的对外真值固定为 `motion_planning/contracts/InterpolationTypes.h`
 - 本子域允许使用 `std::vector` 存储轨迹点（`.claude/rules/DOMAIN.md` 例外）

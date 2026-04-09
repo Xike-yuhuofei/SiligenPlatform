@@ -5,6 +5,7 @@ group: planning
 target_root: modules/motion-planning
 allowed_dependencies:
   - process-path/contracts
+  - runtime-execution/contracts
   - shared
 uniform_skeleton_ready: true
-notes: contracts/include + application/include 是当前 M7 正式 public surface；冻结对外入口为 MotionPlanningFacade、CmpInterpolationFacade、InterpolationProgramFacade、TrajectoryInterpolationFacade；业务阶段名保留 MotionPlan，但代码级 canonical payload 固定为 MotionTrajectory；InterpolationAlgorithm 真值固定在 contracts/include/motion_planning/contracts/InterpolationTypes.h；siligen_motion 只编译规划相关实现；workflow motion execution source 已固定从 modules/workflow/domain/domain/motion/ 解析
+notes: contracts/include + application/include/application/services 是当前 M7 正式 public surface；冻结对外入口为 MotionPlanningFacade、CmpInterpolationFacade、TrajectoryInterpolationFacade；业务阶段名保留 MotionPlan，但代码级 canonical payload 固定为 MotionTrajectory；InterpolationAlgorithm 真值固定在 contracts/include/motion_planning/contracts/InterpolationTypes.h；InterpolationProgramPlanner 仅保留为 domain/motion internal seam，供 runtime-execution/application 与 dispense-packaging 直接消费；siligen_motion 只编译规划相关实现与规划程序生成，不再承载 interpolation runtime wrapper；runtime concrete / execution wrapper owner 固定在 modules/runtime-execution/application

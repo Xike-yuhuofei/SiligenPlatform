@@ -7,7 +7,7 @@ topology-feature 的模块级验证入口应收敛到此目录。
 - `unit/`
   - `ContourAugmentConfig` 默认值冻结
 - `contract/`
-  - canonical contract header / legacy bridge 公开面一致性
+  - canonical contract header 公开面一致性
 - `golden/`
   - `ContourAugmentConfig` 默认快照 golden
 - `integration/`

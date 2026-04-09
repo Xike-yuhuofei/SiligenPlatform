@@ -20,7 +20,7 @@ using Siligen::Application::Services::Dispensing::WorkflowAuthorityPreviewReques
 using Siligen::Application::Services::Dispensing::WorkflowExecutionAssemblyRequest;
 using Siligen::Application::Services::Dispensing::WorkflowPlanningAssemblyRequest;
 using Siligen::Domain::Dispensing::ValueObjects::StrongAnchorRole;
-using Siligen::Domain::Motion::InterpolationAlgorithm;
+using Siligen::MotionPlanning::Contracts::InterpolationAlgorithm;
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectoryPoint;
 using Siligen::ProcessPath::Contracts::ProcessSegment;
 using Siligen::ProcessPath::Contracts::Segment;

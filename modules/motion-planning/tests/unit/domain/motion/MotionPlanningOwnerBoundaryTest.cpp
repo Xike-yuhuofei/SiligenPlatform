@@ -91,6 +91,39 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowDomainRequiresCanonicalMotionOwner
     EXPECT_NE(workflow_cmake.find("requires canonical siligen_motion target"), std::string::npos);
 }
 
+TEST(MotionPlanningOwnerBoundaryTest, MotionPlanningPublicSurfaceDoesNotExportInterpolationUseCase) {
+    const fs::path repo_root = RepoRoot();
+
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/motion-planning/application/include/motion_planning/application/usecases/motion/interpolation/InterpolationPlanningUseCase.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/motion-planning/application/usecases/motion/interpolation/InterpolationPlanningUseCase.h"));
+    EXPECT_TRUE(fs::exists(
+        repo_root / "modules/runtime-execution/application/include/runtime_execution/application/usecases/motion/interpolation/InterpolationPlanningUseCase.h"));
+    EXPECT_TRUE(fs::exists(
+        repo_root / "modules/runtime-execution/application/usecases/motion/interpolation/InterpolationPlanningUseCase.h"));
+}
+
+TEST(MotionPlanningOwnerBoundaryTest, MotionPlanningPublicSurfaceDoesNotExportInterpolationProgramFacade) {
+    const fs::path repo_root = RepoRoot();
+    const fs::path legacy_header =
+        repo_root / "modules/motion-planning/application/include/application/services/motion_planning/InterpolationProgramFacade.h";
+    const fs::path legacy_source =
+        repo_root / "modules/motion-planning/application/services/motion_planning/InterpolationProgramFacade.cpp";
+
+    EXPECT_FALSE(fs::exists(legacy_header)) << legacy_header.string();
+    EXPECT_FALSE(fs::exists(legacy_source)) << legacy_source.string();
+
+    const std::string application_cmake =
+        ReadTextFile(repo_root / "modules/motion-planning/application/CMakeLists.txt");
+    const std::string readme = ReadTextFile(repo_root / "modules/motion-planning/README.md");
+    const std::string module_yaml = ReadTextFile(repo_root / "modules/motion-planning/module.yaml");
+
+    EXPECT_EQ(application_cmake.find("InterpolationProgramFacade.cpp"), std::string::npos);
+    EXPECT_EQ(readme.find("InterpolationProgramFacade"), std::string::npos);
+    EXPECT_EQ(module_yaml.find("InterpolationProgramFacade"), std::string::npos);
+}
+
 TEST(MotionPlanningOwnerBoundaryTest, WorkflowPlanningHeadersAreThinCompatibilityShims) {
     const fs::path repo_root = RepoRoot();
     const std::array<std::pair<fs::path, std::string>, 24> expectations = {{
@@ -129,7 +162,7 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowPlanningHeadersAreThinCompatibilit
         {repo_root / "modules/workflow/domain/domain/motion/domain-services/interpolation/SplineInterpolator.h",
          "#include \"../../../../../../motion-planning/domain/motion/domain-services/interpolation/SplineInterpolator.h\""},
         {repo_root / "modules/workflow/domain/domain/motion/domain-services/interpolation/ValidatedInterpolationPort.h",
-         "#include \"../../../../../../motion-planning/domain/motion/domain-services/interpolation/ValidatedInterpolationPort.h\""},
+         "#include \"../../../../../../runtime-execution/application/include/runtime_execution/application/services/motion/interpolation/ValidatedInterpolationPort.h\""},
         {repo_root / "modules/workflow/domain/include/domain/motion/BezierCalculator.h",
          "#include \"../../../../../motion-planning/domain/motion/BezierCalculator.h\""},
         {repo_root / "modules/workflow/domain/include/domain/motion/BSplineCalculator.h",
@@ -227,16 +260,22 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowTriggerCmpCompatibilityIsShimOnly)
     const fs::path repo_root = RepoRoot();
     const std::string workflow_domain_cmake =
         ReadTextFile(repo_root / "modules/workflow/domain/domain/CMakeLists.txt");
+    const std::string workflow_domain_root_cmake =
+        ReadTextFile(repo_root / "modules/workflow/domain/CMakeLists.txt");
     const std::string workflow_cmp_header =
         ReadTextFile(repo_root / "modules/workflow/domain/include/domain/dispensing/domain-services/CMPTriggerService.h");
     const std::string workflow_trigger_header =
         ReadTextFile(repo_root / "modules/workflow/domain/domain/dispensing/domain-services/TriggerPlanner.h");
 
     EXPECT_EQ(workflow_domain_cmake.find("dispensing/domain-services/CMPTriggerService.cpp"), std::string::npos);
+    EXPECT_EQ(workflow_domain_cmake.find("dispensing/domain-services/PositionTriggerController.cpp"), std::string::npos);
     EXPECT_EQ(workflow_domain_cmake.find("dispensing/planning/domain-services/DispensingPlannerService.cpp"),
               std::string::npos);
     EXPECT_EQ(workflow_domain_cmake.find("dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp"),
               std::string::npos);
+    const std::string deleted_target = std::string("siligen_") + "triggering";
+    EXPECT_EQ(workflow_domain_cmake.find(deleted_target), std::string::npos);
+    EXPECT_EQ(workflow_domain_root_cmake.find("if(NOT TARGET " + deleted_target + ")"), std::string::npos);
     EXPECT_NE(workflow_cmp_header.find("modules/dispense-packaging"), std::string::npos);
     EXPECT_NE(workflow_cmp_header.find("CMPTriggerService.h"), std::string::npos);
     EXPECT_EQ(workflow_cmp_header.find("class CMPService"), std::string::npos);
@@ -253,14 +292,19 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowCmpPrecisionResidueIsRemovedFromWo
 
 TEST(MotionPlanningOwnerBoundaryTest, InterpolationProgramPlannerConsumersUseContractsProcessPathSemantics) {
     const fs::path repo_root = RepoRoot();
-    const std::array<fs::path, 3> sources = {{
+    const std::array<fs::path, 4> sources = {{
         repo_root / "modules/motion-planning/tests/unit/domain/trajectory/InterpolationProgramPlannerTest.cpp",
         repo_root / "modules/runtime-execution/application/usecases/motion/trajectory/DeterministicPathExecutionUseCase.cpp",
+        repo_root / "modules/dispense-packaging/application/services/dispensing/PlanningAssemblyServices.cpp",
         repo_root / "modules/dispense-packaging/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp",
     }};
 
     for (const auto& path : sources) {
         const std::string content = ReadTextFile(path);
+        EXPECT_NE(content.find("InterpolationProgramPlanner"), std::string::npos)
+            << path.string();
+        EXPECT_EQ(content.find("InterpolationProgramFacade"), std::string::npos)
+            << path.string();
         EXPECT_NE(content.find("using Siligen::ProcessPath::Contracts::ProcessPath;"), std::string::npos)
             << path.string();
         EXPECT_EQ(content.find("using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;"), std::string::npos)

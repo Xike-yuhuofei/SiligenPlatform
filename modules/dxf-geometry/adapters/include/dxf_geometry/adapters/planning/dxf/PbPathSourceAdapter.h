@@ -6,10 +6,10 @@
 
 namespace Siligen::Infrastructure::Adapters::Parsing {
 
-using Siligen::Domain::Trajectory::Ports::PathSourceResult;
+using Siligen::ProcessPath::Contracts::PathSourceResult;
 using Siligen::Shared::Types::Result;
 
-class PbPathSourceAdapter : public Domain::Trajectory::Ports::IPathSourcePort {
+class PbPathSourceAdapter : public ProcessPath::Contracts::IPathSourcePort {
    public:
     PbPathSourceAdapter() = default;
     ~PbPathSourceAdapter() override = default;

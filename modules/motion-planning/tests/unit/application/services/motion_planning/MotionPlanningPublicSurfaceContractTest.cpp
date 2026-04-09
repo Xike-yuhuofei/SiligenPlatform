@@ -1,6 +1,4 @@
 #include "application/services/motion_planning/CmpInterpolationFacade.h"
-#include "application/services/motion_planning/InterpolationProgramFacade.h"
-#include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/motion_planning/TrajectoryInterpolationFacade.h"
 
 #include <gtest/gtest.h>
@@ -30,34 +28,6 @@ Siligen::Shared::Types::Point2D ComputeArcPoint(
     return Siligen::Shared::Types::Point2D(
         arc.center.x + arc.radius * std::cos(angle_rad),
         arc.center.y + arc.radius * std::sin(angle_rad));
-}
-
-Siligen::ProcessPath::Contracts::ProcessPath BuildLineProcessPath() {
-    using Siligen::ProcessPath::Contracts::ProcessPath;
-    using Siligen::ProcessPath::Contracts::ProcessSegment;
-    using Siligen::ProcessPath::Contracts::ProcessTag;
-    using Siligen::ProcessPath::Contracts::SegmentType;
-    using Siligen::Shared::Types::Point2D;
-
-    ProcessPath path;
-    ProcessSegment seg;
-    seg.dispense_on = true;
-    seg.flow_rate = 1.0f;
-    seg.tag = ProcessTag::Normal;
-    seg.geometry.type = SegmentType::Line;
-    seg.geometry.line.start = Point2D(0.0f, 0.0f);
-    seg.geometry.line.end = Point2D(10.0f, 0.0f);
-    seg.geometry.length = 10.0f;
-    path.segments.push_back(seg);
-    return path;
-}
-
-Siligen::MotionPlanning::Contracts::TimePlanningConfig BuildTimePlanningConfig() {
-    Siligen::MotionPlanning::Contracts::TimePlanningConfig config;
-    config.vmax = 50.0f;
-    config.amax = 200.0f;
-    config.sample_dt = 0.01f;
-    return config;
 }
 
 }  // namespace
@@ -97,24 +67,6 @@ TEST(MotionPlanningPublicSurfaceContractTest, TrajectoryInterpolationFacadeUsesC
     const auto optimized =
         facade.OptimizeTrajectoryDensity(result.Value(), InterpolationAlgorithm::LINEAR, 5.0f);
     EXPECT_FALSE(optimized.empty());
-}
-
-TEST(MotionPlanningPublicSurfaceContractTest, InterpolationProgramFacadeBuildsProgramFromContractPathAndTrajectory) {
-    using Siligen::Application::Services::MotionPlanning::InterpolationProgramFacade;
-    using Siligen::Application::Services::MotionPlanning::MotionPlanningFacade;
-
-    const auto path = BuildLineProcessPath();
-    const auto config = BuildTimePlanningConfig();
-
-    MotionPlanningFacade planning_facade;
-    const auto trajectory = planning_facade.Plan(path, config);
-    ASSERT_FALSE(trajectory.points.empty());
-
-    InterpolationProgramFacade interpolation_program_facade;
-    const auto result = interpolation_program_facade.BuildProgram(path, trajectory, config.amax);
-
-    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
-    EXPECT_FALSE(result.Value().empty());
 }
 
 TEST(MotionPlanningPublicSurfaceContractTest, CmpInterpolationFacadeAcceptsContractProcessPathAndExternalTriggers) {
