@@ -1,4 +1,4 @@
-#include "HardwareTestAdapter.h"
+#include "siligen/device/adapters/hardware/HardwareTestAdapter.h"
 
 #include <algorithm>
 

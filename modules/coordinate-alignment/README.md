@@ -22,20 +22,25 @@
 
 ## 当前事实来源
 
-- `modules/coordinate-alignment/domain/machine/`
-- `shared/contracts/engineering/`
+- `modules/coordinate-alignment/contracts/include/coordinate_alignment/contracts/CoordinateTransformSet.h`
+- `modules/process-path/contracts/include/process_path/contracts/PathGenerationRequest.h`
 
-## 统一骨架状态
+## 当前 root surface
 
-- 已补齐 module.yaml、domain、services、application、adapters、tests 与 examples 子目录。
-- `domain/machine/` 已成为当前唯一真实实现承载面，模块根 target 直接链接 canonical 子域 target。
-- 所有 live 实现与构建入口均已收敛到 canonical roots。
+- 模块根 target `siligen_module_coordinate_alignment` 当前只暴露 `contracts/`。
+- `CoordinateTransformSet` 是当前唯一冻结的 stable seam；`process-path` 也只消费该 seam。
+- `application/` 当前不再参与 live build，避免继续伪装为 façade / provider public surface。
+
+## Residual Exit
+
+- `domain/machine/` 的 legacy machine/calibration/runtime residual 已退出 live build。
+- `CalibrationProcess`、`IHardwareConnectionPort`、`IHardwareTestPort` 与 workflow bridge headers 已删除，不再允许 direct consumer 继续显式引入。
+- 本目录禁止重新引入 façade / provider / bridge / compat 壳层来回填已关闭的 residual。
 
 ## 当前测试面
 
-- `tests/unit/`
-  - 冻结 `CalibrationProcess` 的 happy-path 与 missing-device 失败链路
 - `tests/contract/`
   - 冻结 `CoordinateTransformSet` 默认公开面与基线变换样本
 - `tests/golden/`
   - 冻结包含 `origin-offset`、`rotation-z` 的对齐基线样本
+- `CalibrationProcess` residual family 已退出 live build，不再作为 `M5` owner 证明。

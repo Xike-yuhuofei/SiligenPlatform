@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
 set(COORDINATE_ALIGNMENT_TEST_SOURCES
-    unit/CalibrationProcessTest.cpp
     contract/CoordinateTransformContractsTest.cpp
     golden/CoordinateTransformSetGoldenTest.cpp
 )
@@ -22,7 +21,6 @@ endif()
 
 target_link_libraries(siligen_coordinate_alignment_tests PRIVATE
     siligen_module_coordinate_alignment
-    siligen_coordinate_alignment_contracts_public
 )
 target_compile_features(siligen_coordinate_alignment_tests PRIVATE cxx_std_17)
 
