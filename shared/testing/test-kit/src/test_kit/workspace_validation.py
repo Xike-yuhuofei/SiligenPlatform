@@ -465,7 +465,7 @@ def build_cases(
                 layer="static",
                 description="core boundary mock strictness gate",
                 command=[
-                    *python_command(WORKSPACE_ROOT / "scripts" / "validation" / "check_no_loose_mock.py"),
+                    *python_command(WORKSPACE_ROOT / "scripts" / "testing" / "check_no_loose_mock.py"),
                     "--report-dir",
                     str(static_report_dir),
                 ],
