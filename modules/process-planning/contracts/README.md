@@ -5,8 +5,7 @@
 ## 契约范围
 
 - `ConfigurationContracts.h` 暴露的 configuration-only consumer surface。
-- 规划配置读取、默认值与兼容桥接所需的最小类型口径。
-- 对 `legacy-bridge/include/domain/configuration/ports/IConfigurationPort.h` 的稳定转发，不扩张为完整 `ProcessPlan` 契约。
+- 规划配置读取、默认值与 `ReadyZeroSpeedResolver` 所需的最小类型口径。
 
 ## 边界约束
 

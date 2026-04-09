@@ -13,15 +13,14 @@ using Siligen::Domain::Configuration::Services::ResolveReadyZeroSpeed;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::LogicalAxisId;
 
-TEST(ReadyZeroSpeedResolverTest, UsesLocateVelocityFallbackWhenReadyZeroSpeedMissing) {
+TEST(ReadyZeroSpeedResolverTest, RejectsMissingReadyZeroSpeed) {
     HomingConfig homing_config;
     homing_config.locate_velocity = 12.5f;
 
     const auto result = ResolveReadyZeroSpeed(homing_config, "ReadyZeroSpeedResolverTest");
 
-    ASSERT_TRUE(result.IsSuccess());
-    EXPECT_TRUE(result.Value().used_fallback);
-    EXPECT_FLOAT_EQ(result.Value().speed_mm_s, 12.5f);
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_CONFIG_VALUE);
 }
 
 TEST(ReadyZeroSpeedResolverTest, RejectsMissingReadyZeroAndLocateVelocity) {
@@ -46,7 +45,6 @@ TEST(ReadyZeroSpeedResolverTest, RejectsMissingConfigurationPort) {
 TEST(ReadyZeroSpeedResolverTest, AppliesUnifiedSpeedToAllHomingPhases) {
     HomingConfig homing_config;
     homing_config.ready_zero_speed_mm_s = 8.0f;
-    homing_config.locate_velocity = 12.0f;
 
     const auto result = ApplyUnifiedReadyZeroSpeed(homing_config, "ReadyZeroSpeedResolverTest");
 

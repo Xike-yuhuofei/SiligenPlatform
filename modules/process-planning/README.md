@@ -27,13 +27,14 @@
 ## 统一骨架状态
 
 - 已补齐 module.yaml、domain、services、application、adapters、tests 与 examples 子目录。
-- `domain/configuration/` 保留为模块内 configuration 实现库；`siligen_module_process_planning` 现在固定透传 `siligen_process_planning_application_public + siligen_process_planning_contracts_public`，不再回退到 `domain_configuration` public fallback。
+- `domain/configuration/` 仅保留模块内 configuration 实现；upload file storage seam 已迁出到 `apps/runtime-service/include/runtime_process_bootstrap/storage/ports/IFileStoragePort.h`。
+- `siligen_module_process_planning` 固定透传 `siligen_process_planning_application_public + siligen_process_planning_contracts_public`。
 - 所有 live 实现与构建入口均已收敛到 canonical roots。
 
 ## 当前测试面
 
 - `tests/unit/`
-  - 冻结 `ReadyZeroSpeedResolver` 的 fallback 与 missing-config 错误面
+  - 冻结 `ReadyZeroSpeedResolver` 的显式 `ready_zero_speed_mm_s` 配置约束与 missing-config 错误面
 - `tests/contract/`
   - 冻结 `ConfigurationContracts.h` 的公开面与 `ValveSupplyConfig` 边界
 - `tests/golden/`

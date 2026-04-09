@@ -1,6 +1,6 @@
 # Configuration 子域 - 配置管理
 
-**职责**: 负责系统配置管理、参数验证、配置迁移、文件存储，并承载标定/工艺结果相关配置
+**职责**: 负责系统配置实现、参数验证，并承载标定/工艺结果相关配置；对外 configuration consumer contract 已外提到 `modules/process-planning/contracts/`
 
 ## 业务范围
 
@@ -12,7 +12,6 @@
 - 标定/校准参数配置（如脉冲-位移换算）
 - 工艺结果判定相关阈值配置（如点径/流量目标）
 - 配置验证
-- 配置迁移（版本兼容）
 
 ## 目录结构
 
@@ -25,9 +24,6 @@ configuration/
 ├── InterpolationConfig.cpp
 ├── value-objects/
 │   └── ConfigTypes.h
-└── ports/                      # 端口接口（2个）
-    ├── IConfigurationPort
-    └── IFileStoragePort
 ```
 
 ## 命名空间
@@ -36,7 +32,7 @@ configuration/
 namespace Siligen::Domain::Configuration {
     namespace ValueObjects { ... }
     namespace DomainServices { ... }
-    namespace Ports { ... }
+    namespace Ports { ... }  // configuration owner ports only
 }
 ```
 
@@ -52,3 +48,8 @@ namespace Siligen::Domain::Configuration {
 
 - ✅ 依赖: `shared/types`, `shared/utils`, `domain/_shared`
 - ❌ 不依赖: `infrastructure`, `application`, 其他子域
+
+## 非本目录 owner
+
+- upload file storage seam 不再由 `process-planning` 持有。
+- 运行时 host-local storage wiring 当前固定落在 `apps/runtime-service/include/runtime_process_bootstrap/storage/ports/IFileStoragePort.h`。

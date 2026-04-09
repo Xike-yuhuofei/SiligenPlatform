@@ -1,5 +1,3 @@
-get_filename_component(PROCESS_PLANNING_MODULE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
-
 add_library(siligen_process_planning_domain_configuration STATIC
     CMPPulseConfig.cpp
     DispensingConfig.cpp
@@ -9,7 +7,6 @@ add_library(siligen_process_planning_domain_configuration STATIC
 )
 
 target_include_directories(siligen_process_planning_domain_configuration PUBLIC
-    ${PROCESS_PLANNING_MODULE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
