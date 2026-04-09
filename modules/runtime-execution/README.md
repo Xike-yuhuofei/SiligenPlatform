@@ -5,7 +5,9 @@
 ## 当前 owner 范围
 
 - 执行链 application public surface：消费已验证执行输入、驱动执行、收敛执行状态与失败归责。
+- Python simulation export concrete：`application/runtime_execution/*.py` 持有 simulation input 的 runtime defaults、trigger CSV/投影、payload 组装、JSON 导出与 CLI concrete；schema authority 仍留在 `shared/contracts/engineering/`，geometry helper 仍由 `modules/dxf-geometry/` 提供。
 - runtime contracts：仅保留 runtime-owned 执行态契约、motion/runtime bridge contracts、device/runtime consumer contracts；不再透传 configuration / task scheduler / event publisher 等 foreign-owner public surface。
+- 跨模块稳定事件发布契约 `IEventPublisherPort` 现由 `shared/contracts/runtime` 持有；`runtime-execution` 只消费 `runtime/contracts/system/IEventPublisherPort.h`。
 - runtime host core：事件桥接、任务调度桥接、执行期 diagnostics、执行期 motion/runtime provider、machine execution state owner、执行边界监控。
 
 ## 不再属于 M9 owner 的 live 事实
@@ -23,6 +25,8 @@
   target: `siligen_runtime_execution_application_public`
   runtime provider contract: `application/include/runtime_execution/application/services/motion/runtime/IMotionRuntimeServicesProvider.h`
   planning export contract: `application/include/runtime_execution/application/services/dispensing/PlanningArtifactExportPort.h`
+- Python simulation export owner：`modules/runtime-execution/application/runtime_execution/`
+  stable compat surface 仍通过 `engineering_data.contracts.simulation_input`、`engineering_data.cli.export_simulation_input` 与 `scripts/engineering-data/export_simulation_input.py` 暴露。
 - runtime contracts：`modules/runtime-execution/contracts/runtime/CMakeLists.txt`
   target: `siligen_runtime_execution_runtime_contracts`
 - host core：`modules/runtime-execution/runtime/host/CMakeLists.txt`
@@ -36,12 +40,13 @@
 - `runtime/scheduling/*`
 - `runtime/diagnostics/*`
 - `runtime/motion/MotionRuntimeServicesProvider.*`
-- `runtime/system/DispenserModelMachineExecutionStateBackend.*`（直接实现 `IMachineExecutionStatePort`）
+- `runtime/system/MachineExecutionStateStore.*`
+- `runtime/system/MachineExecutionStateBackend.*`（直接实现 `IMachineExecutionStatePort`）
 - `runtime/planning/PlanningArtifactExportPortAdapter.*`
 - `services/motion/HardLimitMonitorService.*`
 - `services/motion/SoftLimitMonitorService.*`
 
-其中 machine execution state 的 canonical domain model surface 由 `modules/workflow/domain/include/domain/machine/aggregates/DispenserModel.h` 提供 `Aggregates::DispenserModel` / `Aggregates::DispensingTask` owner alias；`runtime-execution` 自身不再把 `Legacy::DispenserModel` / `Legacy::DispensingTask` 暴露为 live public/test surface。
+其中 machine execution state 的 canonical concrete 已收口为 `runtime/system/MachineExecutionStateStore.*` + `runtime/system/MachineExecutionStateBackend.*`。`runtime-execution` 不再依赖 workflow machine aggregate alias，也不再把 `DispenserModel` / `DispensingTask` 暴露为 live public/test surface。
 
 `siligen_runtime_host` 不再 `PUBLIC` 聚合 `job-ingest`、`workflow`、`workflow_recipe`、DXF adapter、host storage 或 recipe persistence。
 
@@ -51,4 +56,4 @@
   target: `siligen_runtime_process_bootstrap_public`
   include root: `runtime_process_bootstrap/*`
 - `apps/planner-cli`、`apps/runtime-gateway`、`apps/runtime-service` 对 `BuildContainer(...)` / `WorkspaceAssetPaths` 的消费统一经 `runtime_process_bootstrap/*`。
-- `modules/runtime-execution/runtime/host/ContainerBootstrap.h` 与 `modules/runtime-execution/runtime/host/runtime/configuration/WorkspaceAssetPaths.h` 只保留 deprecated forwarder 兼容壳，不再承载 live owner 实现。
+- `modules/runtime-execution/runtime/host/` 已不再暴露 `ContainerBootstrap.h` 与 `runtime/configuration/WorkspaceAssetPaths.h` 旧入口；相关 process bootstrap public surface 已完全迁到 `apps/runtime-service/include/runtime_process_bootstrap/*`。

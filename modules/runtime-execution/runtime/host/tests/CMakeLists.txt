@@ -12,7 +12,8 @@ set(RUNTIME_HOST_TEST_SOURCES
     unit/runtime/motion/MotionRuntimeFacadeTest.cpp
     unit/runtime/motion/MotionRuntimeServicesProviderTest.cpp
     unit/runtime/supervision/RuntimeSupervisionPortAdapterTest.cpp
-    unit/runtime/system/DispenserModelMachineExecutionStateBackendTest.cpp
+    unit/runtime/system/MachineExecutionStateBackendTest.cpp
+    unit/runtime/system/MachineExecutionStateStoreTest.cpp
 )
 
 add_executable(siligen_runtime_host_unit_tests ${RUNTIME_HOST_TEST_SOURCES})
@@ -31,7 +32,6 @@ target_link_libraries(siligen_runtime_host_unit_tests PRIVATE
     siligen_application_motion
     siligen_device_adapters
     siligen_device_contracts
-    siligen_workflow_domain_headers
     siligen_shared
     siligen_types
     siligen_utils

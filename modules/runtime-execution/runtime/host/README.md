@@ -10,8 +10,9 @@
 - 执行域 motion/runtime provider：`runtime/motion/MotionRuntimeServicesProvider.*`
   - canonical provider contract：`runtime_execution/application/services/motion/runtime/IMotionRuntimeServicesProvider.h`
 - machine execution state owner 与 planning artifact 导出桥：`runtime/system/*`、`runtime/planning/*`
-  - machine execution state backend owner：`runtime/system/DispenserModelMachineExecutionStateBackend.*`（直接实现 `runtime_execution/contracts/system/IMachineExecutionStatePort.h`）
-  - canonical domain model surface：`domain/machine/aggregates/DispenserModel.h` 对外提供 `Aggregates::DispenserModel` / `Aggregates::DispensingTask`；`runtime-execution` 不再暴露 `Legacy::DispenserModel` / `Legacy::DispensingTask`
+  - machine execution state store owner：`runtime/system/MachineExecutionStateStore.*`
+  - machine execution state backend owner：`runtime/system/MachineExecutionStateBackend.*`（直接实现 `runtime_execution/contracts/system/IMachineExecutionStatePort.h`）
+  - machine execution state concrete 已完全留在 `runtime/system/*`，不再通过 workflow / coordinate-alignment 暴露 `DispenserModel` alias
   - canonical planning export contract：`runtime_execution/application/services/dispensing/PlanningArtifactExportPort.h`
 - 执行期硬限位 / 软限位监控：`services/motion/*`
 
@@ -37,16 +38,15 @@
   - `siligen_runtime_execution_application_public`
   - `siligen_runtime_execution_runtime_contracts`
   - `siligen_device_contracts`
-  - `siligen_coordinate_alignment_domain_machine` (`LINK_ONLY`, 用于 `DispenserModel` concrete)
   - `siligen_workflow_domain_headers`
   - `siligen_shared`
 - 不再 `PUBLIC` 聚合 `job-ingest`、`workflow`、`workflow_recipe`、DXF adapter、host storage、recipe persistence。
 
-## 兼容壳
+## 已摘除旧入口
 
 - `ContainerBootstrap.h`
 - `runtime/configuration/WorkspaceAssetPaths.h`
 
-这两个模块内旧路径头仅保留 forwarder 兼容用途，真实实现与 canonical public surface 已迁到 `runtime_process_bootstrap/*`。
+这两个模块内旧路径头已从 `runtime-execution/runtime/host` public surface 删除；真实 process bootstrap public surface 位于 `apps/runtime-service/include/runtime_process_bootstrap/*`。
 
-`workflow/application` 侧的 planning export / motion runtime provider 兼容头现在通过相对路径直接 forward 到 `runtime_execution/application/*` canonical header；`runtime-host` 不再依赖 `workflow/application/CMakeLists.txt` 扩散 `../../runtime-execution/application/include`。
+`runtime-host` 不再依赖 `workflow/application/CMakeLists.txt` 扩散 `../../runtime-execution/application/include`；planning export / motion runtime provider 的 canonical consumer surface 已固定为 `runtime_execution/application/*`。
