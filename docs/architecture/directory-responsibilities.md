@@ -21,37 +21,37 @@
 - `shared/` 允许承载 `ids`、`artifacts`、`contracts`、`commands`、`events`、`failures`、`messaging`、`logging`、`config`、`testing`，但不得承载一级业务 owner。
 - `tests/`、`samples/`、`scripts/`、`deploy/` 在 `Wave 1` 之后必须成为正式承载面，而不是长期占位目录。
 
-## 2. migration-source roots 与 bridge 约束
+## 2. 已退出 legacy roots 与 bridge 约束
 
-| 根目录 | 当前角色 | canonical destination | 允许 bridge 形态 | 退出信号 |
-|---|---|---|---|---|
-| `packages/` | 当前实现与契约迁移来源 | `modules/`、`shared/`、目标应用面 | README、wrapper、forwarding include/CMake、thin bridge | 对应 owner 已迁入 target root，旧包只剩兼容壳。 |
-| `integration/` | 当前验证与报告迁移来源 | `tests/` | README redirect、test harness forwarder | `tests/` 成为唯一仓库级验证承载面。 |
-| `tools/` | 当前自动化迁移来源 | `scripts/` | root wrapper、入口转发脚本 | 根级稳定入口切向 `scripts/`，`tools/` 只剩兼容入口。 |
-| `examples/` | 当前样本迁移来源 | `samples/` | README redirect、tombstone | `samples/` 成为唯一稳定样本承载面。 |
+| 根目录 | 当前状态 | 当前正式去向 | 允许保留的描述方式 |
+|---|---|---|---|
+| `packages/` | 已退出 current root set | `modules/`、`shared/`、目标应用面 | 只允许作为历史迁移来源、兼容背景或审计对象被显式说明 |
+| `integration/` | 已退出 current root set | `tests/`、`tests/reports/` | 只允许作为历史证据根被提及 |
+| `tools/` | 已退出 current root set | `scripts/` | 只允许作为历史脚本根或兼容 wrapper 背景被提及 |
+| `examples/` | 已退出 current root set | `samples/` | 只允许作为历史样本根被提及 |
 
 补充规则：
 
-- `migration-source` 根中的实现只表示“当前承载”，不表示终态 owner，也不允许新增业务逻辑。
+- 已退出根不得再被写成“当前承载”或“默认入口”。
 - bridge 必须显式、可审计、可退出；禁止依赖未声明的 implicit fallback。
 - bridge 退出判定统一回链到 `wave-mapping.md` 的退出波次和 `validation-gates.md` 的根级门禁，而不是依赖口头约定。
 
 ## 3. 模块 owner 落位
 
-| 模块 | target owner path | 当前 fact cluster |
+| 模块 | target owner path | 当前正式关注点 |
 |---|---|---|
-| `M0` | `modules/workflow/` | `packages/process-runtime-core/src/application` |
-| `M1` | `modules/job-ingest/` | `apps/hmi-app`, `apps/control-cli`, `packages/application-contracts` |
-| `M2` | `modules/dxf-geometry/` | `packages/engineering-data`, `packages/engineering-contracts` |
-| `M3` | `modules/topology-feature/` | `packages/engineering-data` |
-| `M4` | `modules/process-planning/` | `packages/process-runtime-core/planning`, `packages/process-runtime-core/src/domain` |
-| `M5` | `modules/coordinate-alignment/` | `packages/process-runtime-core/planning`, `packages/process-runtime-core/machine` |
-| `M6` | `modules/process-path/` | `packages/process-runtime-core/planning` |
-| `M7` | `modules/motion-planning/` | `packages/process-runtime-core/src/domain/motion` |
-| `M8` | `modules/dispense-packaging/` | `packages/process-runtime-core/src/domain/dispensing`, `packages/process-runtime-core/src/application/usecases/dispensing` |
-| `M9` | `modules/runtime-execution/` | `packages/runtime-host`, `packages/device-contracts`, `packages/device-adapters`, `apps/control-runtime`, `apps/control-tcp-server` |
-| `M10` | `modules/trace-diagnostics/` | `packages/traceability-observability`, `docs/validation/`, `integration/` |
-| `M11` | `modules/hmi-application/` | `apps/hmi-app`, `apps/control-cli`, `packages/application-contracts` |
+| `M0` | `modules/workflow/` | orchestration 边界仍需继续收紧，避免重新吸入 recipe / runtime / engineering concrete |
+| `M1` | `modules/job-ingest/` | 负责上传语义与输入归一，不应被宿主或 UI 重新承接 owner 事实 |
+| `M2` | `modules/dxf-geometry/` | DXF preprocess 与 PB 准备链当前以模块实现 + `shared/contracts/engineering/` 为准 |
+| `M3` | `modules/topology-feature/` | 目录语义与 owner 面仍需继续收口 |
+| `M4` | `modules/process-planning/` | owner 边界仍偏弱，不能被写成完整 `ProcessPlan` 唯一事实源 |
+| `M5` | `modules/coordinate-alignment/` | 负责坐标/对位专属语义，不承接长期稳定工程契约 |
+| `M6` | `modules/process-path/` | `ProcessPath` contract 与相关路径语义以模块 public surface 为准 |
+| `M7` | `modules/motion-planning/` | `MotionTrajectory` contract 与插补程序规划语义以模块 public surface 为准 |
+| `M8` | `modules/dispense-packaging/` | 负责点胶组包与执行程序装配，避免与 `workflow` 形成双 owner |
+| `M9` | `modules/runtime-execution/` | 当前 owner 已收紧为执行域、runtime contracts 与 host core，不再概括为旧 runtime-host 聚合面 |
+| `M10` | `modules/trace-diagnostics/` | evidence 与诊断契约边界仍需继续收口，不得把 `docs/validation/` 或历史证据根写成 owner |
+| `M11` | `modules/hmi-application/` | HMI owner 面应在模块 public surface，不应退回 app 宿主侧承接业务语义 |
 
 ## 4. 正式脚本入口与门禁回链
 
@@ -71,7 +71,7 @@
 ## 5. 边界规则
 
 - `apps/` 可以发命令、展示状态和承接装配，但不能直接成为核心运行时对象事实源。
-- `modules/` 是唯一正式 owner 面；迁移来源根中的实现只表示当前承载，不表示终态 owner。
+- `modules/` 是唯一正式 owner 面；已退出根不得再承担“当前承载”或“当前 owner”语义。
 - `tests/` 与 `docs/validation/` 负责 evidence，不回写业务事实。
 - `shared/`、`cmake/`、`third_party/`、`build/`、`logs/`、`uploads/` 不能升级为 formal owner 根。
 - 任何从 `migration-source`、`support`、`vendor`、`generated` 回流到正式 owner 面的调整，都必须先更新冻结文档与门禁定义，再通过根级验证。

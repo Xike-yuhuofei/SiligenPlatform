@@ -12,10 +12,12 @@
 
 本文适用于：
 
-- `packages/engineering-data`
-- `packages/process-runtime-core`
-- `packages/device-adapters`
-- `packages/runtime-host`
+- `modules/dxf-geometry`
+- `modules/process-path`
+- `modules/motion-planning`
+- `modules/dispense-packaging`
+- `modules/runtime-execution`
+- `shared/contracts/engineering`
 
 本文不覆盖：
 
@@ -63,6 +65,12 @@ DXF
   -> MultiCard SDK
   -> 控制卡坐标系插补执行
 ```
+
+当前路径真值说明：
+
+- DXF / PB 契约 authority 以 `shared/contracts/engineering/` 与 `data/schemas/engineering/dxf/v1/` 为准。
+- DXF preprocess 与 PB 准备链当前 owner 以 `modules/dxf-geometry/` 为准。
+- `process_path`、`motion_trajectory`、`interpolation_segments` 三层对象的 live surface 已切到 `modules/*`，不再以 package-era 路径作为默认代码入口。
 
 ## 4. 三层契约
 

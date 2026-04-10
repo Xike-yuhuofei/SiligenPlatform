@@ -17,11 +17,11 @@
 
 | 配置项 | owner | canonical 路径 |
 |---|---|---|
-| 机器配置 | `packages/runtime-host` + 运行入口消费者 | `config/machine/machine_config.ini` |
+| 机器配置 | `modules/runtime-execution/runtime/host` + `apps/runtime-service` / `apps/runtime-gateway` 消费侧 | `config/machine/machine_config.ini` |
 
 ## 4. 默认解析顺序
 
-`packages/runtime-host` 当前只按以下顺序解析：
+当前运行入口只按以下顺序解析：
 
 1. 用户显式传入路径
 2. `config/machine/machine_config.ini`
@@ -32,6 +32,7 @@
 
 - 根级验证与运行入口只认 `config/machine/machine_config.ini`。
 - 任何需要发布或打包的步骤都必须直接消费 canonical 路径，不再生成 alias 文件。
+- 根级 alias `config/machine_config.ini` 已退出默认解析链路，只允许作为历史兼容背景被提及。
 - `[ValveDispenser]` 是点胶阀正式配置段；历史 `[CMP]` 段已退出。
 
 ## 6. 风险说明
