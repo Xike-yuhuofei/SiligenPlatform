@@ -1,11 +1,12 @@
 #pragma once
 
-#include "runtime_execution/application/usecases/motion/coordination/MotionCoordinationUseCase.h"
 #include "runtime_execution/contracts/motion/IMotionStatePort.h"
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -89,14 +90,22 @@ class DeterministicPathExecutionUseCase {
 
     std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort> interpolation_port_;
     std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port_;
-    Coordination::MotionCoordinationUseCase coordination_use_case_;
     std::optional<ActiveExecution> active_execution_{};
     DeterministicPathExecutionStatus status_{};
 
     Result<ActiveExecution> BuildExecution(
         const DeterministicPathExecutionRequest& request,
         const Point2D& start_point) const;
+    Result<void> ConfigureCoordinateSystem(
+        int16 coord_sys,
+        const std::vector<LogicalAxisId>& axis_map,
+        float32 max_velocity);
     Result<void> DispatchNextSegment(ActiveExecution& execution);
+    Result<void> DispatchCoordinateSystemSegment(
+        int16 coord_sys,
+        const Siligen::RuntimeExecution::Contracts::Motion::InterpolationData& segment);
+    Result<void> StartCoordinateSystemMotion(std::uint32_t coord_sys_mask);
+    Result<void> StopCoordinateSystemMotion(std::uint32_t coord_sys_mask);
     Result<Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemStatus>
         ReadCoordinateSystemStatus(int16 coord_sys) const;
     Result<std::vector<Domain::Motion::Ports::MotionStatus>> ReadMotionStatuses() const;

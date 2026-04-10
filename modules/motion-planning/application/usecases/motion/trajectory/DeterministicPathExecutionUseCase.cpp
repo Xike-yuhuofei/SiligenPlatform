@@ -1,10 +1,10 @@
-#include "DeterministicPathExecutionUseCase.h"
+#include "application/usecases/motion/trajectory/DeterministicPathExecutionUseCase.h"
 
 #include "application/services/motion_planning/MotionPlanningFacade.h"
-#include "modules/motion-planning/domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
+#include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
 #include "motion_planning/contracts/TimePlanningConfig.h"
-#include "process_path/contracts/ProcessPath.h"
 #include "process_path/contracts/GeometryUtils.h"
+#include "process_path/contracts/ProcessPath.h"
 #include "shared/types/Error.h"
 
 #include <algorithm>
@@ -14,18 +14,17 @@
 
 namespace Siligen::Application::UseCases::Motion::Trajectory {
 
-using Coordination::MotionCoordinationUseCase;
 using Siligen::Application::Services::MotionPlanning::MotionPlanningFacade;
 using Siligen::Domain::Motion::DomainServices::InterpolationProgramPlanner;
-using Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemStatus;
-using Siligen::RuntimeExecution::Contracts::Motion::InterpolationData;
 using Siligen::Domain::Motion::Ports::MotionStatus;
-using Siligen::Domain::Motion::Ports::MotionState;
 using Siligen::MotionPlanning::Contracts::TimePlanningConfig;
 using Siligen::ProcessPath::Contracts::ProcessPath;
 using Siligen::ProcessPath::Contracts::ProcessSegment;
 using Siligen::ProcessPath::Contracts::ProcessTag;
 using Siligen::ProcessPath::Contracts::SegmentType;
+using Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemConfig;
+using Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemStatus;
+using Siligen::RuntimeExecution::Contracts::Motion::InterpolationData;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 
@@ -84,8 +83,7 @@ DeterministicPathExecutionUseCase::DeterministicPathExecutionUseCase(
     std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort> interpolation_port,
     std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port)
     : interpolation_port_(std::move(interpolation_port)),
-      motion_state_port_(std::move(motion_state_port)),
-      coordination_use_case_(interpolation_port_, nullptr) {}
+      motion_state_port_(std::move(motion_state_port)) {}
 
 Result<DeterministicPathExecutionStatus> DeterministicPathExecutionUseCase::Start(
     const DeterministicPathExecutionRequest& request) {
@@ -121,10 +119,8 @@ Result<DeterministicPathExecutionStatus> DeterministicPathExecutionUseCase::Star
         return Result<DeterministicPathExecutionStatus>::Failure(execution_result.GetError());
     }
 
-    const auto configure_result = coordination_use_case_.ConfigureCoordinateSystem(
-        request.coord_sys,
-        request.axis_map,
-        request.max_velocity_mm_s);
+    const auto configure_result =
+        ConfigureCoordinateSystem(request.coord_sys, request.axis_map, request.max_velocity_mm_s);
     if (configure_result.IsError()) {
         return Result<DeterministicPathExecutionStatus>::Failure(configure_result.GetError());
     }
@@ -181,8 +177,7 @@ Result<DeterministicPathExecutionStatus> DeterministicPathExecutionUseCase::Adva
     }
 
     auto& execution = *active_execution_;
-    const auto start_result = coordination_use_case_.StartCoordinateSystemMotion(
-        CoordinateSystemMask(execution.coord_sys));
+    const auto start_result = StartCoordinateSystemMotion(CoordinateSystemMask(execution.coord_sys));
     if (start_result.IsError() && !IsBenignCoordinateSystemStopError(start_result.GetError())) {
         const auto detail = start_result.GetError().GetMessage();
         (void)FailActiveExecution(detail);
@@ -211,9 +206,9 @@ Result<DeterministicPathExecutionStatus> DeterministicPathExecutionUseCase::Adva
     }
 
     auto coord_status = coord_status_result.Value();
-    const auto allowed_prefetch = std::min<uint32_t>(
+    const auto allowed_prefetch = std::min<std::uint32_t>(
         buffer_space_result.Value(),
-        static_cast<uint32_t>((coord_status.remaining_segments == 0U ? 1U : 0U) + lookahead_space_result.Value()));
+        static_cast<std::uint32_t>((coord_status.remaining_segments == 0U ? 1U : 0U) + lookahead_space_result.Value()));
 
     std::size_t prefetched_segments = 0U;
     while (prefetched_segments < allowed_prefetch && execution.next_segment_index < execution.program.size()) {
@@ -269,8 +264,7 @@ Result<void> DeterministicPathExecutionUseCase::Cancel() {
         return Result<void>::Success();
     }
 
-    const auto stop_result = coordination_use_case_.StopCoordinateSystemMotion(
-        CoordinateSystemMask(active_execution_->coord_sys));
+    const auto stop_result = StopCoordinateSystemMotion(CoordinateSystemMask(active_execution_->coord_sys));
     active_execution_.reset();
     status_.state = DeterministicPathExecutionState::CANCELLED;
     status_.segment_in_flight = false;
@@ -370,6 +364,33 @@ Result<DeterministicPathExecutionUseCase::ActiveExecution> DeterministicPathExec
     return Result<ActiveExecution>::Success(std::move(execution));
 }
 
+Result<void> DeterministicPathExecutionUseCase::ConfigureCoordinateSystem(
+    int16 coord_sys,
+    const std::vector<LogicalAxisId>& axis_map,
+    float32 max_velocity) {
+    if (!interpolation_port_) {
+        return Result<void>::Failure(
+            MakeError(
+                ErrorCode::PORT_NOT_INITIALIZED,
+                "Interpolation port not initialized",
+                "DeterministicPathExecutionUseCase::ConfigureCoordinateSystem"));
+    }
+    if (coord_sys <= 0 || axis_map.empty() || max_velocity <= 0.0f) {
+        return Result<void>::Failure(
+            MakeError(
+                ErrorCode::INVALID_PARAMETER,
+                "Invalid coordinate system parameters",
+                "DeterministicPathExecutionUseCase::ConfigureCoordinateSystem"));
+    }
+
+    CoordinateSystemConfig config;
+    config.dimension = static_cast<int16>(axis_map.size());
+    config.axis_map = axis_map;
+    config.max_velocity = max_velocity;
+    config.max_acceleration = max_velocity;
+    return interpolation_port_->ConfigureCoordinateSystem(coord_sys, config);
+}
+
 Result<void> DeterministicPathExecutionUseCase::DispatchNextSegment(ActiveExecution& execution) {
     if (execution.next_segment_index >= execution.program.size()) {
         return Result<void>::Failure(
@@ -398,15 +419,84 @@ Result<void> DeterministicPathExecutionUseCase::DispatchNextSegment(ActiveExecut
         }
     }
 
-    const auto dispatch_result = coordination_use_case_.DispatchCoordinateSystemSegment(
-        execution.coord_sys,
-        mapped_segment);
+    const auto dispatch_result = DispatchCoordinateSystemSegment(execution.coord_sys, mapped_segment);
     if (dispatch_result.IsError()) {
         return dispatch_result;
     }
 
     ++execution.next_segment_index;
     return Result<void>::Success();
+}
+
+Result<void> DeterministicPathExecutionUseCase::DispatchCoordinateSystemSegment(
+    int16 coord_sys,
+    const InterpolationData& segment) {
+    if (!interpolation_port_) {
+        return Result<void>::Failure(
+            MakeError(
+                ErrorCode::PORT_NOT_INITIALIZED,
+                "Interpolation port not initialized",
+                "DeterministicPathExecutionUseCase::DispatchCoordinateSystemSegment"));
+    }
+    if (coord_sys <= 0) {
+        return Result<void>::Failure(
+            MakeError(
+                ErrorCode::INVALID_PARAMETER,
+                "Coordinate system must be greater than zero",
+                "DeterministicPathExecutionUseCase::DispatchCoordinateSystemSegment"));
+    }
+
+    const auto status_result = interpolation_port_->GetCoordinateSystemStatus(coord_sys);
+    if (status_result.IsError()) {
+        return Result<void>::Failure(status_result.GetError());
+    }
+
+    const auto status = status_result.Value();
+    const bool buffer_empty = !status.is_moving && status.remaining_segments == 0U;
+
+    if (buffer_empty) {
+        auto result = interpolation_port_->ClearInterpolationBuffer(coord_sys);
+        if (result.IsError()) {
+            return result;
+        }
+    }
+
+    auto result = interpolation_port_->AddInterpolationData(coord_sys, segment);
+    if (result.IsError()) {
+        return result;
+    }
+    result = interpolation_port_->FlushInterpolationData(coord_sys);
+    if (result.IsError()) {
+        return result;
+    }
+
+    if (buffer_empty) {
+        return StartCoordinateSystemMotion(CoordinateSystemMask(coord_sys));
+    }
+
+    return Result<void>::Success();
+}
+
+Result<void> DeterministicPathExecutionUseCase::StartCoordinateSystemMotion(std::uint32_t coord_sys_mask) {
+    if (!interpolation_port_) {
+        return Result<void>::Failure(
+            MakeError(
+                ErrorCode::PORT_NOT_INITIALIZED,
+                "Interpolation port not initialized",
+                "DeterministicPathExecutionUseCase::StartCoordinateSystemMotion"));
+    }
+    return interpolation_port_->StartCoordinateSystemMotion(coord_sys_mask);
+}
+
+Result<void> DeterministicPathExecutionUseCase::StopCoordinateSystemMotion(std::uint32_t coord_sys_mask) {
+    if (!interpolation_port_) {
+        return Result<void>::Failure(
+            MakeError(
+                ErrorCode::PORT_NOT_INITIALIZED,
+                "Interpolation port not initialized",
+                "DeterministicPathExecutionUseCase::StopCoordinateSystemMotion"));
+    }
+    return interpolation_port_->StopCoordinateSystemMotion(coord_sys_mask);
 }
 
 Result<CoordinateSystemStatus> DeterministicPathExecutionUseCase::ReadCoordinateSystemStatus(
@@ -441,8 +531,7 @@ Result<void> DeterministicPathExecutionUseCase::FailActiveExecution(const std::s
     status_.detail = detail;
 
     if (coord_sys > 0) {
-        const auto stop_result = coordination_use_case_.StopCoordinateSystemMotion(
-            CoordinateSystemMask(coord_sys));
+        const auto stop_result = StopCoordinateSystemMotion(CoordinateSystemMask(coord_sys));
         if (stop_result.IsError() && !IsBenignCoordinateSystemStopError(stop_result.GetError())) {
             return Result<void>::Failure(stop_result.GetError());
         }

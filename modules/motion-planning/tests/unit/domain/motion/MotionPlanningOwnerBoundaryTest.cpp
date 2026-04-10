@@ -292,9 +292,17 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowCmpPrecisionResidueIsRemovedFromWo
 
 TEST(MotionPlanningOwnerBoundaryTest, InterpolationProgramPlannerConsumersUseContractsProcessPathSemantics) {
     const fs::path repo_root = RepoRoot();
+    const fs::path migrated_owner =
+        repo_root / "modules/motion-planning/application/usecases/motion/trajectory/DeterministicPathExecutionUseCase.cpp";
+    const fs::path legacy_owner =
+        repo_root / "modules/runtime-execution/application/usecases/motion/trajectory/DeterministicPathExecutionUseCase.cpp";
+
+    EXPECT_TRUE(fs::exists(migrated_owner)) << migrated_owner.string();
+    EXPECT_FALSE(fs::exists(legacy_owner)) << legacy_owner.string();
+
     const std::array<fs::path, 4> sources = {{
         repo_root / "modules/motion-planning/tests/unit/domain/trajectory/InterpolationProgramPlannerTest.cpp",
-        repo_root / "modules/runtime-execution/application/usecases/motion/trajectory/DeterministicPathExecutionUseCase.cpp",
+        migrated_owner,
         repo_root / "modules/dispense-packaging/application/services/dispensing/PlanningAssemblyServices.cpp",
         repo_root / "modules/dispense-packaging/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp",
     }};

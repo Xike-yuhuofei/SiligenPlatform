@@ -5,7 +5,7 @@
 #include "runtime_execution/application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
 #include "runtime_execution/application/usecases/motion/ptp/MoveToPositionUseCase.h"
 #include "runtime_execution/application/usecases/motion/safety/MotionSafetyUseCase.h"
-#include "runtime_execution/application/usecases/motion/trajectory/DeterministicPathExecutionUseCase.h"
+#include "application/usecases/motion/trajectory/DeterministicPathExecutionUseCase.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "runtime_execution/contracts/dispensing/ITriggerControllerPort.h"
 #include "runtime_execution/contracts/motion/MotionControlService.h"

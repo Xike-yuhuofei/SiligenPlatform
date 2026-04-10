@@ -1,14 +1,13 @@
+#include "application/usecases/motion/trajectory/DeterministicPathExecutionUseCase.h"
+#include "runtime_execution/contracts/motion/IMotionStatePort.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
+#include "shared/types/Error.h"
+
 #include <cstdint>
-#include <iostream>
-#include <stdexcept>
-#include <string>
-#include <utility>
+#include <memory>
 #include <vector>
 
-#include "application/usecases/motion/trajectory/DeterministicPathExecutionUseCase.h"
-#include "domain/motion/ports/IInterpolationPort.h"
-#include "runtime_execution/contracts/motion/IMotionStatePort.h"
-#include "shared/types/Error.h"
+#include <gtest/gtest.h>
 
 namespace {
 
@@ -18,12 +17,12 @@ using Siligen::Application::UseCases::Motion::Trajectory::DeterministicPathExecu
 using Siligen::Application::UseCases::Motion::Trajectory::DeterministicPathSegment;
 using Siligen::Application::UseCases::Motion::Trajectory::DeterministicPathSegmentType;
 using Siligen::Domain::Motion::Ports::IMotionStatePort;
+using Siligen::Domain::Motion::Ports::MotionState;
+using Siligen::Domain::Motion::Ports::MotionStatus;
 using Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemConfig;
 using Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemStatus;
 using Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort;
 using Siligen::RuntimeExecution::Contracts::Motion::InterpolationData;
-using Siligen::Domain::Motion::Ports::MotionState;
-using Siligen::Domain::Motion::Ports::MotionStatus;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::LogicalAxisId;
@@ -34,19 +33,14 @@ using int16 = std::int16_t;
 using int32 = std::int32_t;
 using uint32 = std::uint32_t;
 
-void require(bool condition, const std::string& message) {
-    if (!condition) {
-        throw std::runtime_error(message);
-    }
-}
-
 template <typename T>
 Result<T> NotImplemented(const char* method) {
     return Result<T>::Failure(Error(ErrorCode::NOT_IMPLEMENTED, method, "DeterministicPathExecutionUseCaseTest"));
 }
 
 Result<void> NotImplementedVoid(const char* method) {
-    return Result<void>::Failure(Error(ErrorCode::NOT_IMPLEMENTED, method, "DeterministicPathExecutionUseCaseTest"));
+    return Result<void>::Failure(
+        Error(ErrorCode::NOT_IMPLEMENTED, method, "DeterministicPathExecutionUseCaseTest"));
 }
 
 class FakeInterpolationPort final : public IInterpolationPort {
@@ -119,9 +113,9 @@ class FakeInterpolationPort final : public IInterpolationPort {
     }
 
     Result<uint32> GetInterpolationBufferSpace(int16 /*coord_sys*/) const override {
-        const auto occupancy =
-            staged_segments.size() + queued_segments.size() + (active_segment ? 1U : 0U);
-        return Result<uint32>::Success(buffer_capacity > occupancy ? static_cast<uint32>(buffer_capacity - occupancy) : 0U);
+        const auto occupancy = staged_segments.size() + queued_segments.size() + (active_segment ? 1U : 0U);
+        return Result<uint32>::Success(
+            buffer_capacity > occupancy ? static_cast<uint32>(buffer_capacity - occupancy) : 0U);
     }
 
     Result<uint32> GetLookAheadBufferSpace(int16 /*coord_sys*/) const override {
@@ -141,7 +135,7 @@ class FakeInterpolationPort final : public IInterpolationPort {
         return Result<CoordinateSystemStatus>::Success(status);
     }
 
-    void completeActiveSegment() {
+    void CompleteActiveSegment() {
         active_segment = false;
     }
 
@@ -212,7 +206,7 @@ class FakeMotionStatePort final : public IMotionStatePort {
         return Result<std::vector<MotionStatus>>::Success(axis_statuses);
     }
 
-    void setMoving(bool moving) {
+    void SetMoving(bool moving) {
         axis_statuses[0].state = moving ? MotionState::MOVING : MotionState::IDLE;
         axis_statuses[1].state = moving ? MotionState::MOVING : MotionState::IDLE;
     }
@@ -221,7 +215,7 @@ class FakeMotionStatePort final : public IMotionStatePort {
     std::vector<MotionStatus> axis_statuses{MotionStatus{}, MotionStatus{}};
 };
 
-DeterministicPathExecutionRequest makeRequest() {
+DeterministicPathExecutionRequest MakeRequest() {
     DeterministicPathExecutionRequest request;
     request.max_velocity_mm_s = 20.0f;
     request.max_acceleration_mm_s2 = 200.0f;
@@ -240,101 +234,89 @@ DeterministicPathExecutionRequest makeRequest() {
     return request;
 }
 
-void testStartAndAdvanceAreDeterministic() {
+TEST(DeterministicPathExecutionUseCaseTest, StartAndAdvanceAreDeterministic) {
     auto interpolation_port = std::make_shared<FakeInterpolationPort>();
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
 
     DeterministicPathExecutionUseCase use_case(interpolation_port, motion_state_port);
-    const auto start_result = use_case.Start(makeRequest());
+    const auto start_result = use_case.Start(MakeRequest());
 
-    require(start_result.IsSuccess(), "start should succeed");
+    ASSERT_TRUE(start_result.IsSuccess());
     const auto start_status = start_result.Value();
-    require(start_status.state == DeterministicPathExecutionState::READY, "start should be non-blocking");
-    require(start_status.total_segments == 2, "expected two planned segments");
-    require(start_status.dispatched_segments == 0, "start should not dispatch segments");
-    require(interpolation_port->clear_calls == 1, "start should clear any stale interpolation buffer");
-    require(interpolation_port->add_calls == 0, "start must not inject interpolation data");
+    EXPECT_EQ(start_status.state, DeterministicPathExecutionState::READY);
+    EXPECT_EQ(start_status.total_segments, 2);
+    EXPECT_EQ(start_status.dispatched_segments, 0);
+    EXPECT_EQ(interpolation_port->clear_calls, 1);
+    EXPECT_EQ(interpolation_port->add_calls, 0);
 
     auto advance_result = use_case.Advance();
-    require(advance_result.IsSuccess(), "first advance should succeed");
-    require(advance_result.Value().state == DeterministicPathExecutionState::RUNNING, "first advance should run");
-    require(advance_result.Value().dispatched_segments == 2, "first advance should prefetch the buffered program");
-    require(interpolation_port->clear_calls == 2, "first advance should reset the coordinate-system buffer once more");
-    require(interpolation_port->add_calls == 2, "first advance should add both interpolation segments");
-    require(interpolation_port->flush_calls == 2, "first advance should flush each buffered segment");
-    require(interpolation_port->start_calls == 2, "first advance should service start and dispatch the first segment");
-    require(interpolation_port->segments.size() == 2, "first advance should record the buffered segments");
-    require(interpolation_port->segments[0].positions.size() == 2, "segment should keep XY positions");
-    require(interpolation_port->segments[0].positions[0] == 10.0f, "first segment X mismatch");
-    require(interpolation_port->segments[0].positions[1] == 0.0f, "first segment Y mismatch");
-    require(interpolation_port->segments[1].positions[0] == 10.0f, "second segment X mismatch");
-    require(interpolation_port->segments[1].positions[1] == 5.0f, "second segment Y mismatch");
+    ASSERT_TRUE(advance_result.IsSuccess());
+    EXPECT_EQ(advance_result.Value().state, DeterministicPathExecutionState::RUNNING);
+    EXPECT_EQ(advance_result.Value().dispatched_segments, 2);
+    EXPECT_EQ(interpolation_port->clear_calls, 2);
+    EXPECT_EQ(interpolation_port->add_calls, 2);
+    EXPECT_EQ(interpolation_port->flush_calls, 2);
+    EXPECT_EQ(interpolation_port->start_calls, 2);
+    ASSERT_EQ(interpolation_port->segments.size(), 2U);
+    ASSERT_EQ(interpolation_port->segments[0].positions.size(), 2U);
+    EXPECT_FLOAT_EQ(interpolation_port->segments[0].positions[0], 10.0f);
+    EXPECT_FLOAT_EQ(interpolation_port->segments[0].positions[1], 0.0f);
+    EXPECT_FLOAT_EQ(interpolation_port->segments[1].positions[0], 10.0f);
+    EXPECT_FLOAT_EQ(interpolation_port->segments[1].positions[1], 5.0f);
 
-    motion_state_port->setMoving(true);
+    motion_state_port->SetMoving(true);
     advance_result = use_case.Advance();
-    require(advance_result.IsSuccess(), "advance while moving should succeed");
-    require(advance_result.Value().dispatched_segments == 2, "advance while moving should keep both segments buffered");
-    require(interpolation_port->add_calls == 2, "advance while moving must not add more segments");
+    ASSERT_TRUE(advance_result.IsSuccess());
+    EXPECT_EQ(advance_result.Value().dispatched_segments, 2);
+    EXPECT_EQ(interpolation_port->add_calls, 2);
 
-    motion_state_port->setMoving(false);
-    interpolation_port->completeActiveSegment();
+    motion_state_port->SetMoving(false);
+    interpolation_port->CompleteActiveSegment();
     advance_result = use_case.Advance();
-    require(advance_result.IsSuccess(), "buffered dispatch should succeed");
-    require(advance_result.Value().dispatched_segments == 2, "buffered dispatch should not change segment counter");
-    require(interpolation_port->add_calls == 2, "buffered dispatch should reuse queued data");
+    ASSERT_TRUE(advance_result.IsSuccess());
+    EXPECT_EQ(advance_result.Value().dispatched_segments, 2);
+    EXPECT_EQ(interpolation_port->add_calls, 2);
 
-    interpolation_port->completeActiveSegment();
+    interpolation_port->CompleteActiveSegment();
     advance_result = use_case.Advance();
-    require(advance_result.IsSuccess(), "completion advance should succeed");
-    require(advance_result.Value().state == DeterministicPathExecutionState::COMPLETED, "path should complete");
+    ASSERT_TRUE(advance_result.IsSuccess());
+    EXPECT_EQ(advance_result.Value().state, DeterministicPathExecutionState::COMPLETED);
 }
 
-void testCancelStopsCoordinateSystem() {
+TEST(DeterministicPathExecutionUseCaseTest, CancelStopsCoordinateSystem) {
     auto interpolation_port = std::make_shared<FakeInterpolationPort>();
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
 
     DeterministicPathExecutionUseCase use_case(interpolation_port, motion_state_port);
-    const auto start_result = use_case.Start(makeRequest());
-    require(start_result.IsSuccess(), "cancel test start should succeed");
-    require(use_case.Advance().IsSuccess(), "cancel test first advance should succeed");
+    const auto start_result = use_case.Start(MakeRequest());
+    ASSERT_TRUE(start_result.IsSuccess());
+    ASSERT_TRUE(use_case.Advance().IsSuccess());
 
     const auto cancel_result = use_case.Cancel();
-    require(cancel_result.IsSuccess(), "cancel should succeed");
+    ASSERT_TRUE(cancel_result.IsSuccess());
     const auto status = use_case.Status();
-    require(status.state == DeterministicPathExecutionState::CANCELLED, "cancel should update terminal state");
-    require(interpolation_port->stop_calls == 1, "cancel should stop coordinate system motion");
-    require(interpolation_port->last_stop_mask == 1U, "cancel should stop coordinate system 1");
+    EXPECT_EQ(status.state, DeterministicPathExecutionState::CANCELLED);
+    EXPECT_EQ(interpolation_port->stop_calls, 1);
+    EXPECT_EQ(interpolation_port->last_stop_mask, 1U);
 }
 
-void testFailureStopsCoordinateSystem() {
+TEST(DeterministicPathExecutionUseCaseTest, FailureStopsCoordinateSystem) {
     auto interpolation_port = std::make_shared<FakeInterpolationPort>();
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
 
     DeterministicPathExecutionUseCase use_case(interpolation_port, motion_state_port);
-    const auto start_result = use_case.Start(makeRequest());
-    require(start_result.IsSuccess(), "failure test start should succeed");
-    require(use_case.Advance().IsSuccess(), "failure test first advance should succeed");
+    const auto start_result = use_case.Start(MakeRequest());
+    ASSERT_TRUE(start_result.IsSuccess());
+    ASSERT_TRUE(use_case.Advance().IsSuccess());
 
     motion_state_port->axis_statuses[0].has_error = true;
     motion_state_port->axis_statuses[0].error_code = 42;
 
     const auto advance_result = use_case.Advance();
-    require(advance_result.IsError(), "advance on axis error should fail");
-    require(use_case.Status().state == DeterministicPathExecutionState::FAILED, "status should move to failed");
-    require(interpolation_port->stop_calls == 1, "failure should stop coordinate system motion");
-    require(interpolation_port->last_stop_mask == 1U, "failure should stop coordinate system 1");
+    ASSERT_TRUE(advance_result.IsError());
+    EXPECT_EQ(use_case.Status().state, DeterministicPathExecutionState::FAILED);
+    EXPECT_EQ(interpolation_port->stop_calls, 1);
+    EXPECT_EQ(interpolation_port->last_stop_mask, 1U);
 }
 
 }  // namespace
-
-int main() {
-    try {
-        testStartAndAdvanceAreDeterministic();
-        testCancelStopsCoordinateSystem();
-        testFailureStopsCoordinateSystem();
-        return 0;
-    } catch (const std::exception& ex) {
-        std::cerr << ex.what() << '\n';
-        return 1;
-    }
-}
