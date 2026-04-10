@@ -7,7 +7,7 @@
 
 当前 DXF 真机点胶主链中的 CMP 运行时配置边界固定如下：
 
-1. 运行时权威入口只允许使用 `config/machine/machine_config.ini` 和 `config/machine_config.ini` 中的 `[ValveDispenser]` 段。
+1. 运行时权威入口只允许使用 `config/machine/machine_config.ini` 中的 `[ValveDispenser]` 段。
 2. `[CMP]` 全段在当前主链中降级为历史/兼容信息，不再作为运行时权威配置入口。
 3. CLI 不再提供 `--cmp-channel` 这类会制造“命令行可覆盖主链配置”错觉的参数。
 4. `MC_CmpBufData.nCmpEncodeNum` 在当前主链中的真实语义固定为“触发轴映射后的 SDK 轴号”，不再按 `encoder_num` 的历史命名理解。
@@ -35,6 +35,7 @@
 - 当前主链中，修改 `[CMP]` 不应再改变 DXF 真机点胶运行时行为。
 - 任何新的 CMP 运行时参数都必须先进入 `[ValveDispenser]`，再决定是否需要历史兼容映射。
 - 任何新的 CLI 参数若不能形成真实消费链路，不得暴露到公共命令面。
+- 历史根级 alias `config/machine_config.ini` 不再属于当前默认解析链路，只允许作为兼容背景或审计对象被提及。
 
 ## 后果
 
