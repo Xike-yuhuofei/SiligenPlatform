@@ -58,7 +58,7 @@
 - `docs/runtime/long-run-stability.md`
 - `docs/runtime/release-process.md`
 - `docs/runtime/rollback.md`
-- `docs/troubleshooting/post-refactor-runbook.md`
+- `docs/troubleshooting/canonical-runbook.md`
 
 不在这份白名单里的 root/onboarding/runtime/troubleshooting/validation 文档，只要再出现 legacy 路径，就会被 `legacy-exit-check.ps1` 直接打失败。
 

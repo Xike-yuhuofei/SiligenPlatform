@@ -29,7 +29,7 @@
 - 运行与部署：`docs/runtime/deployment.md`
 - 新人接手：`docs/onboarding/workspace-onboarding.md`
 - 日常开发：`docs/onboarding/developer-workflow.md`
-- 排障：`docs/troubleshooting/post-refactor-runbook.md`
+- 排障：`docs/troubleshooting/canonical-runbook.md`
 
 禁止再把以下路径当成默认入口：
 

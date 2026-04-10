@@ -53,8 +53,3 @@
 - `pause_resume_cycles`：达到预设门槛（默认 `3`）
 - `timeout_count`：`0`
 - `hil-case-matrix` workspace case 为 `passed`，且 `case-matrix-summary.overall_status=passed`
-
-## 5. 下一阶段建议
-
-1. 在不同班次重复至少 `2` 轮 `1800s`，确认跨时段稳定性。
-2. 增加报警注入/异常恢复受控场景，补齐恢复闭环证据。

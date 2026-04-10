@@ -4,7 +4,7 @@
 
 ## 1. 目的与适用范围
 
-本文定义首轮真实硬件 bring-up / smoke 的现场标准操作流程，用于确认以下最小闭环已经成立：
+本文定义真实硬件 bring-up / smoke 的现场标准操作流程，用于确认以下最小闭环已经成立：
 
 - canonical 机器配置可被 `runtime-service` / `runtime-gateway` 正确加载
 - MultiCard vendor 资产可被真实硬件入口识别
@@ -122,7 +122,7 @@ Get-Content $ConfigPath | Set-Content (Join-Path $EvidenceRoot "machine_config.s
 
 - `[脚本]` `MultiCard.dll` 缺失：硬停止，不允许继续。
 - `[脚本]` `MultiCard.dll` / `MultiCard.lib` 在 fresh clone 中本应已随仓库到位；若缺失，先按仓库完整性问题处理，再继续现场 bring-up。
-- `[脚本]` `MultiCard.lib` 缺失：若本次需要现场重建或替换二进制，硬停止；若只验证既有 `Debug` 二进制，可记录偏差后提交 `A4` 审核。
+- `[脚本]` `MultiCard.lib` 缺失：若本次需要现场重建或替换二进制，硬停止；若只验证既有 `Debug` 二进制，可记录偏差后继续人工评估是否具备最小 smoke 前提。
 
 ### 6.4 二进制与 dry-run 检查
 
@@ -180,7 +180,7 @@ Test-Path (Join-Path $ControlAppsBuildRoot "bin\Debug\siligen_runtime_gateway.ex
 - `[人工]` 回零速度、搜索距离、逃逸距离必须与现场丝杆、行程和传感器安装位置匹配。
 - `[人工]` 若未完成该项，不允许进行回零相关 smoke。
 
-## 9. 首轮 smoke 执行顺序
+## 9. Smoke 执行顺序
 
 ### 9.1 启动服务
 
@@ -305,8 +305,8 @@ if (Test-Path "D:\Projects\SiligenSuite\logs\velocity_trace") {
 }
 ```
 
-## 13. 与后续任务的衔接
+## 13. 使用边界
 
-- `C1` 提供 canonical 配置、vendor 资产约束和运行脚本 preflight，本 SOP 直接消费这些事实。
-- `C3` 将补充观察/记录脚本；在其完成前，本文默认人工创建 `$EvidenceRoot` 并手工归档证据。
-- `A4` 将基于本文、`C1` 资产准备状态和 `C3` 观察脚本状态做 go/no-go 进入门评审。
+- 本 SOP 只覆盖最小 bring-up / smoke 闭环，不替代 `docs/runtime/field-acceptance.md` 中的 HIL、真机和正式现场门禁。
+- 若现场已有更严格的机台准入、审批或安全联锁流程，应在执行本 SOP 前先满足现场规则。
+- 若后续需要自动化补强证据采集，可在不改变本文正式门禁口径的前提下增加辅助脚本，但不得降低本文要求。

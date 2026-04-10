@@ -26,7 +26,7 @@
 - HIL 报告根：`tests/reports/hil-controlled-test/`
 - 时间戳批次：`tests/reports/hil-controlled-test/<timestamp>/`
 - 统一验证报告：`tests/reports/workspace-validation.md`
-- 新主链真机回归记录：`docs/validation/dxf-real-dispense-field-regression-2026-03-21.md`
+- 真机回归历史记录：见 [docs/validation/history/dxf/README.md](/D:/Projects/SiligenSuite/docs/validation/history/dxf/README.md)
 
 ## 3. 关键链路检查
 

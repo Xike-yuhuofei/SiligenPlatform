@@ -84,8 +84,8 @@ Project-Binding: Completed (IO映射、错误码、配置参数已补充)
   - IO映射: 见 `06_reference.md` 的 "IO映射表"
   - 版本矩阵: 见 `06_reference.md` 的 "版本矩阵"
   - API规范: 见 `06_reference.md` 的 "7.5 板卡操作API参数约束"
-  - 网络配置: 见 `config/machine_config.ini` 的 `[Network]` 段
-  - 厂商SDK集成: 见 [third_party/vendor/README.md](../../third_party/vendor/README.md)
+  - 网络配置: 见 `config/machine/machine_config.ini` 的 `[Network]` 段
+  - 厂商SDK集成: 见 [README.md](../../modules/runtime-execution/adapters/device/vendor/multicard/README.md)
 
 ---
 
@@ -189,8 +189,8 @@ Project-Binding: Completed (IO映射、错误码、配置参数已补充)
 - **关联参考**:
   - IO映射: 见 `06_reference.md` 的 "IO映射表" (CMP通道1配置)
   - API规范: 见 `06_reference.md` 的 "7.2 比较输出(CMP)API规范"
-  - 当前工作区主链 CMP 配置: 见 `config/machine_config.ini` 的 `[ValveDispenser]` 段；本文中 `[CMP]` 表述仅作历史背景说明
-  - CMP API: 见 [third_party/vendor/03-高级功能/03-比较输出飞拍API.md](../../third_party/vendor/03-高级功能/03-比较输出飞拍API.md)
+  - 当前工作区主链 CMP 配置: 见 `config/machine/machine_config.ini` 的 `[ValveDispenser]` 段；本文中 `[CMP]` 表述仅作历史背景说明
+  - CMP API: 见 `modules/runtime-execution/adapters/device/vendor/multicard/` 下的厂商交付资料
   - 阀控制实现: 见 `src/infrastructure/adapters/dispensing/dispenser/ValveAdapter.cpp`
 
 ---
@@ -235,8 +235,8 @@ Project-Binding: Completed (IO映射、错误码、配置参数已补充)
 - **关联参考**:
   - IO映射: 见 `06_reference.md` 的 "IO映射表" (Y2供胶阀)
   - IO操作API: 见 [third_party/vendor/01-基础功能/03-IO操作API.md](../../third_party/vendor/01-基础功能/03-IO操作API.md)
-  - 供胶阀配置: 见 `config/machine_config.ini` 的 `[ValveSupply]` 段
-  - DO API: 见 [third_party/vendor/01-基础功能/03-IO操作API.md](../../third_party/vendor/01-基础功能/03-IO操作API.md)
+  - 供胶阀配置: 见 `config/machine/machine_config.ini` 的 `[ValveSupply]` 段
+  - DO API: 见 `modules/runtime-execution/adapters/device/vendor/multicard/` 下的厂商交付资料
   - 阀控制实现: 见 `src/infrastructure/adapters/dispensing/dispenser/ValveAdapter.cpp`
 
 ---

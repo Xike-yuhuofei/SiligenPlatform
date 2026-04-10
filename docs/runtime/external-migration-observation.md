@@ -4,7 +4,9 @@
 
 ## 1. 适用范围
 
-本文档用于 `Wave 4A` 之后的仓外迁移观察期。目标不是重新恢复 compat shell，而是确认仓外已部署环境、发布包、运维脚本和回滚包已经完全切到当前 canonical 入口。
+本文档定义正式发布前 `G7` 仓外交付物观察的当前 SOP。目标是确认仓外已部署环境、发布包、运维脚本和回滚包已经完全切到当前 canonical 入口，而不是继续依赖历史 alias、compat shell 或错误配置根。
+
+历史 `Wave 4*` 观察过程与 closeout 证据保留在 `docs/process-model/`，仅用于追溯；当前正式执行口径以本文为准。
 
 当前仓内已确认：
 
@@ -12,7 +14,7 @@
 - legacy DXF CLI alias 已退出
 - `config\machine_config.ini` root alias 已删除
 
-因此本观察期只接受两类结论：
+因此当前仓外交付物观察只接受两类结论：
 
 - `Go`：仓外交付物只使用 canonical 入口
 - `No-Go`：仍残留 legacy 入口，需要替换仓外交付物或脚本
@@ -25,10 +27,10 @@
 
 ## 2. 证据落位
 
-当前重跑阶段的仓外观察期证据应整理到当前阶段独立目录，不要覆写 `Wave 4C/4D` 历史证据。例如：
+当前正式观察证据应整理到独立批次目录，不要覆写历史批次证据。例如：
 
 ```text
-tests/reports/verify/wave4e-rerun/
+tests/reports/verify/external-observation-<yyyyMMdd-HHmmss>/
   intake/
   observation/
 ```
@@ -45,7 +47,7 @@ tests/reports/verify/wave4e-rerun/
 .\scripts\validation\register-external-observation-intake.ps1 -Scope field-scripts -SourcePath <field-script-root>
 .\scripts\validation\register-external-observation-intake.ps1 -Scope release-package -SourcePath <unpacked-release-root>
 .\scripts\validation\register-external-observation-intake.ps1 -Scope rollback-package -SourcePath <rollback-root>
-.\scripts\validation\run-external-migration-observation.ps1 -PythonExe <target-python> -ReportRoot tests\reports\verify\wave4e-rerun
+.\scripts\validation\run-external-migration-observation.ps1 -PythonExe <target-python> -ReportRoot tests\reports\verify\external-observation-<yyyyMMdd-HHmmss>
 ```
 
 说明：

@@ -14,7 +14,7 @@
 5. `docs/runtime/deployment.md`
 6. `docs/runtime/release-process.md`
 7. `docs/runtime/rollback.md`
-8. `docs/troubleshooting/post-refactor-runbook.md`
+8. `docs/troubleshooting/canonical-runbook.md`
 9. `integration/hardware-in-loop/README.md`
 10. `docs/runtime/external-migration-observation.md`
 

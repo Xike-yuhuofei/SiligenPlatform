@@ -54,7 +54,7 @@
 
 `control-core` 现在已经没有 config/data/HIL/alias/source-root/CLI fallback 价值；HMI 运行态 residual consumer 也已归零，`modules/shared-kernel`、`src/domain`、`src/application`、`modules/process-core`、`modules/motion-core` 也已删除。剩余价值只来自 `src/shared`、`src/infrastructure`、`modules/device-hal`、`third_party` 与顶层 CMake/source-root owner。
 
-CLI cutover 状态详见 `docs/architecture/control-cli-cutover.md`。
+CLI 当前状态详见 `docs/architecture/legacy-cutover-status.md`；历史 cutover 记录见 `docs/architecture/history/closeouts/control-cli-cutover.md`。
 
 ## 5. `hmi-client`
 

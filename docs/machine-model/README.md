@@ -2,10 +2,11 @@
 
 本目录承接机型级事实文档，不讨论抽象架构，只记录会直接影响现场联机、接线判定、IO 映射、回零/限位假设和机型约束的资料。
 
-当前入口：
+当前 authority 顺序：
 
-- [multicard-io-and-wiring-reference.md](./multicard-io-and-wiring-reference.md)：当前点胶机型的控制卡 IO、接线、阈值与现场复核结论。
-- [backend-cpp-library/README.md](./backend-cpp-library/README.md)：从 `Backend_CPP/docs/library` 精选迁入的 MultiCard 参考、排障与限位诊断资料。
+1. [multicard-io-and-wiring-reference.md](./multicard-io-and-wiring-reference.md)：当前点胶机型的正式事实源。
+2. [backend-cpp-library/README.md](./backend-cpp-library/README.md)：迁入的当前补充参考，用于现场排障和参数查表；若与根层权威页冲突，以根层权威页为准。
+3. [history/README.md](./history/README.md)：历史诊断说明与不再承担当前真值职责的迁入材料。
 
 当前已确认的机型事实：
 

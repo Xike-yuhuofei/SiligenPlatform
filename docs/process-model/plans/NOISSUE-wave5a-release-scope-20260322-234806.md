@@ -29,7 +29,7 @@
 3. transport 与文档证据
    - `packages/transport-gateway/src/tcp/TcpCommandDispatcher.cpp`
    - `packages/transport-gateway/tests/test_transport_gateway_compatibility.py`
-   - `docs/architecture/*`、`docs/process-model/*`、`docs/troubleshooting/post-refactor-runbook.md`
+   - `docs/architecture/*`、`docs/process-model/*`、`docs/troubleshooting/canonical-runbook.md`
 
 ## 3. 非提交范围说明
 

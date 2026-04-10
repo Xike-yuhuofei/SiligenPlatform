@@ -1,6 +1,6 @@
 # Legacy Freeze Policy
 
-> `2026-03-19` 状态更新：`control-core/modules/shared-kernel`、`control-core/src/domain`、`control-core/src/application`、`control-core/modules/process-core`、`control-core/modules/motion-core` 已删除，相关“允许维护”口径仅代表历史冻结基线。当前删除状态请以 `docs/architecture/legacy-deletion-gates.md` 与 `docs/architecture/removed-legacy-items-final.md` 为准。
+> `2026-03-19` 状态更新：`control-core/modules/shared-kernel`、`control-core/src/domain`、`control-core/src/application`、`control-core/modules/process-core`、`control-core/modules/motion-core` 已删除，相关“允许维护”口径仅代表历史冻结基线。当前删除状态与 live 收口口径请以 `docs/architecture/legacy-deletion-gates.md` 与 `docs/architecture/legacy-cutover-status.md` 为准。
 
 更新时间：`2026-03-19`
 
@@ -80,7 +80,7 @@
 | `control-core/data/recipes/*` | 已退出默认 fallback；当前仅允许做历史残留核对、provenance 审计或删除前比对，不得写回默认公开路径。 |
 - `apps/control-runtime/run.ps1`、`apps/control-tcp-server/run.ps1`、`apps/control-cli/run.ps1` 已不再享有 legacy build 例外；三者默认和显式 legacy fallback 都已经阻断。
 - `integration/hardware-in-loop/run_hardware_smoke.py` 的默认入口已经切到 canonical `siligen_tcp_server.exe`，不再属于 `control-core/build/bin/**` 例外。
-- CLI cutover 详情见 `docs/architecture/control-cli-cutover.md`；`control-core/build/bin/**/siligen_cli.exe` 仅剩历史产物语义，不再属于“唯一可运行路径例外”。
+- CLI 当前状态见 `docs/architecture/legacy-cutover-status.md`；历史 cutover 记录见 `docs/architecture/history/closeouts/control-cli-cutover.md`。`control-core/build/bin/**/siligen_cli.exe` 仅剩历史产物语义，不再属于“唯一可运行路径例外”。
 
 ## 6. 评审与准入规则
 
@@ -89,7 +89,7 @@
 1. 提交说明写明该路径属于 `compatibility shell` 还是“唯一可运行路径例外”。
 2. 提交说明写明当前调用方是谁。
 3. 提交说明写明为什么不能改到 canonical 路径。
-4. 若是兼容壳扩边界，必须同步更新 `docs/architecture/compatibility-shell-audit.md`。
+4. 若是兼容壳扩边界，必须同步更新 `docs/architecture/legacy-cutover-status.md` 与对应历史 closeout/audit 记录。
 5. 若新增 legacy 默认引用，评审应直接拒绝，除非文档中新增了明确例外规则。
 
 ## 7. 退出冻结的条件
@@ -99,7 +99,7 @@
 1. canonical 路径已经承接真实实现或真实产物。
 2. 根级入口已经不再回退到该 legacy 路径。
 3. 测试、文档、自动化都已改到 canonical 路径。
-4. `docs/architecture/canonical-paths.md` 与 `docs/architecture/compatibility-shell-audit.md` 已同步更新。
+4. `docs/architecture/canonical-paths.md` 与 `docs/architecture/legacy-cutover-status.md` 已同步更新。
 
 在满足这些条件前，禁止直接删除仍存在的兼容壳。
 

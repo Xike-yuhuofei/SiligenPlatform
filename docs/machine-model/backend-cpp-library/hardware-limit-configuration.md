@@ -8,7 +8,7 @@ Scope: 回零/接近开关
 # 回零开关配置与验证(当前无硬限位)
 
 > 本文档描述当前项目的回零接近开关接线方式、信号极性与验证方法。
-> 当前硬件无硬限位，HOME 仅用于回零。若与其他文档冲突，以 `docs/library/06_reference.md` 为准。
+> 当前硬件无硬限位，HOME 仅用于回零。若与其他文档冲突，以 `docs/machine-model/multicard-io-and-wiring-reference.md` 与本目录的 [06_reference.md](./06_reference.md) 为准。
 
 ## 1) 当前硬件约定
 
@@ -40,7 +40,7 @@ Scope: 回零/接近开关
 若现场电平相反, 需要修改:
 - `src/infrastructure/adapters/motion/controller/control/MultiCardMotionAdapter.cpp`
 - `src/infrastructure/adapters/diagnostics/health/testing/HardwareTestAdapter.cpp`
-- 并同步更新 `docs/library/06_reference.md`
+- 并同步更新 [06_reference.md](./06_reference.md)
 
 ## 4) 运动行为与安全策略
 
