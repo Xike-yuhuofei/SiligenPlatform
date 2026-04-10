@@ -16,6 +16,7 @@ using Siligen::ProcessPath::Contracts::ArcPoint;
 using Siligen::ProcessPath::Contracts::ComputeArcSweep;
 using Siligen::ProcessPath::Contracts::EllipsePoint;
 using Siligen::ProcessPath::Contracts::NormalizeAngle;
+using Siligen::ProcessPath::Contracts::TopologyRepairPolicy;
 using Siligen::ProcessPath::Contracts::PrimitiveType;
 using Siligen::Shared::Geometry::Distance;
 using Siligen::Shared::Types::Point2D;
@@ -251,40 +252,6 @@ struct SplitLineResult {
     int collinear_pairs = 0;
     bool applied = false;
 };
-
-struct StripPointResult {
-    std::vector<ContractsPrimitive> primitives;
-    std::vector<PathPrimitiveMeta> metadata;
-    int removed_points = 0;
-    bool applied = false;
-};
-
-StripPointResult StripPointPrimitives(const std::vector<ContractsPrimitive>& primitives,
-                                      const std::vector<PathPrimitiveMeta>& metadata) {
-    StripPointResult result;
-    result.primitives.reserve(primitives.size());
-    if (metadata.empty() || metadata.size() == primitives.size()) {
-        result.metadata.reserve(metadata.size());
-    }
-
-    const bool metadata_valid = metadata.size() == primitives.size();
-    for (size_t i = 0; i < primitives.size(); ++i) {
-        if (primitives[i].type == PrimitiveType::Point) {
-            result.removed_points += 1;
-            continue;
-        }
-        result.primitives.push_back(primitives[i]);
-        if (metadata_valid) {
-            result.metadata.push_back(metadata[i]);
-        }
-    }
-
-    if (!metadata_valid) {
-        result.metadata = metadata;
-    }
-    result.applied = result.removed_points > 0;
-    return result;
-}
 
 SplitLineResult SplitLinePrimitivesByIntersection(const std::vector<ContractsPrimitive>& primitives,
                                                   const std::vector<PathPrimitiveMeta>& metadata,
@@ -893,7 +860,7 @@ TopologyRepairResult TopologyRepairService::Repair(const std::vector<ContractsPr
     TopologyRepairResult result;
     result.primitives = primitives;
     result.metadata = metadata;
-    result.diagnostics.repair_requested = config.enable;
+    result.diagnostics.repair_requested = config.policy != TopologyRepairPolicy::Off;
     result.diagnostics.original_primitive_count = static_cast<int>(primitives.size());
     result.diagnostics.repaired_primitive_count = static_cast<int>(primitives.size());
     result.diagnostics.metadata_valid = IsMetadataValid(primitives, metadata);
@@ -902,18 +869,11 @@ TopologyRepairResult TopologyRepairService::Repair(const std::vector<ContractsPr
     result.diagnostics.discontinuity_before = CountPrimitiveDiscontinuity(primitives, tolerance);
     result.diagnostics.discontinuity_after = result.diagnostics.discontinuity_before;
 
-    if (!config.enable || primitives.empty()) {
+    if (config.policy == TopologyRepairPolicy::Off || primitives.empty()) {
         return result;
     }
 
     bool repair_applied = false;
-
-    const auto stripped = StripPointPrimitives(result.primitives, result.metadata);
-    if (!stripped.primitives.empty() && stripped.applied) {
-        result.primitives = stripped.primitives;
-        result.metadata = stripped.metadata;
-        repair_applied = true;
-    }
 
     if (config.split_intersections && IsMetadataValid(result.primitives, result.metadata)) {
         const auto split = SplitLinePrimitivesByIntersection(result.primitives, result.metadata, tolerance);

@@ -141,16 +141,16 @@ ProcessPath ProcessAnnotator::Annotate(const Path& path, const ProcessConfig& co
     std::vector<Segment> segments = path.segments;
 
     // lead-on segment
-    if (config.lead_on_dist > kEpsilon) {
+    if (config.approach_dist > kEpsilon) {
         const Segment& first = segments.front();
         Point2D start = SegmentStart(first);
         Point2D dir = SegmentTangentAtStart(first);
         if (dir.Length() > kEpsilon) {
-            Point2D lead_start = start - dir * config.lead_on_dist;
+            Point2D lead_start = start - dir * config.approach_dist;
             ProcessSegment lead_seg;
             lead_seg.geometry = MakeLineSegment(lead_start, start);
-            lead_seg.dispense_on = true;
-            lead_seg.flow_rate = config.default_flow;
+            lead_seg.dispense_on = config.priming.enable;
+            lead_seg.flow_rate = config.priming.enable ? config.priming.flow_rate : 0.0f;
             lead_seg.tag = ProcessTag::Start;
             ApplyVelocityConstraint(lead_seg, lead_seg.tag, config);
             output.segments.push_back(lead_seg);

@@ -23,6 +23,7 @@ using Siligen::ProcessPath::Contracts::PathGenerationStatus;
 using Siligen::ProcessPath::Contracts::PathPrimitiveMeta;
 using Siligen::ProcessPath::Contracts::PathSourceResult;
 using Siligen::ProcessPath::Contracts::ProcessPath;
+using Siligen::ProcessPath::Contracts::TopologyRepairPolicy;
 
 static_assert(std::is_same_v<ProcessPathBuildRequest, PathGenerationRequest>);
 static_assert(std::is_same_v<ProcessPathBuildResult, PathGenerationResult>);
@@ -44,8 +45,11 @@ TEST(ProcessPathContractsTest, PathGenerationRequestDefaultsRemainOwnerNeutral) 
     EXPECT_FLOAT_EQ(request.normalization.unit_scale, 1.0f);
     EXPECT_FLOAT_EQ(request.normalization.continuity_tolerance, 0.1f);
     EXPECT_FLOAT_EQ(request.process.default_flow, 1.0f);
+    EXPECT_FLOAT_EQ(request.process.approach_dist, 0.0f);
+    EXPECT_FALSE(request.process.priming.enable);
+    EXPECT_FLOAT_EQ(request.process.priming.flow_rate, 1.0f);
     EXPECT_TRUE(request.process.corner_slowdown);
-    EXPECT_FALSE(request.topology_repair.enable);
+    EXPECT_EQ(request.topology_repair.policy, TopologyRepairPolicy::Off);
     EXPECT_FLOAT_EQ(request.shaping.corner_smoothing_radius, 0.5f);
 }
 
@@ -65,6 +69,8 @@ TEST(ProcessPathContractsTest, PathGenerationResultDefaultsExposeEmptyProcessPat
     EXPECT_TRUE(result.process_path.segments.empty());
     EXPECT_TRUE(result.shaped_path.segments.empty());
     EXPECT_FALSE(result.topology_diagnostics.repair_applied);
+    EXPECT_EQ(result.topology_diagnostics.pre_shape_rapid_segment_count, 0);
+    EXPECT_EQ(result.topology_diagnostics.pre_shape_dispense_fragment_count, 0);
     EXPECT_EQ(result.topology_diagnostics.dispense_fragment_count, 0);
 }
 

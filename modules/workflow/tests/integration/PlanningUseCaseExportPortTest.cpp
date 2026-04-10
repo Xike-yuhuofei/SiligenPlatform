@@ -8,6 +8,7 @@
 #include "application/services/dispensing/WorkflowPlanningAssemblyOperationsProvider.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "process_path/contracts/IPathSourcePort.h"
+#include "process_path/contracts/PathGenerationResult.h"
 #include "process_path/contracts/Primitive.h"
 #include "workflow/contracts/WorkflowContracts.h"
 
@@ -32,6 +33,8 @@ using Siligen::Domain::Configuration::Ports::IConfigurationPort;
 using Siligen::Domain::Configuration::Ports::HomingConfig;
 using Siligen::ProcessPath::Contracts::Primitive;
 using Siligen::ProcessPath::Contracts::IPathSourcePort;
+using Siligen::ProcessPath::Contracts::PathGenerationResult;
+using Siligen::ProcessPath::Contracts::PathGenerationStatus;
 using Siligen::ProcessPath::Contracts::PathSourceResult;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
@@ -41,6 +44,18 @@ using Siligen::Workflow::Contracts::WorkflowPlanningTriggerRequest;
 template <typename T>
 using ResultT = Siligen::Shared::Types::Result<T>;
 using ResultVoid = Siligen::Shared::Types::Result<void>;
+
+Siligen::ProcessPath::Contracts::ProcessSegment MakeLineProcessSegment(
+    const Point2D& start,
+    const Point2D& end) {
+    Siligen::ProcessPath::Contracts::ProcessSegment segment;
+    segment.dispense_on = true;
+    segment.geometry.type = Siligen::ProcessPath::Contracts::SegmentType::Line;
+    segment.geometry.line.start = start;
+    segment.geometry.line.end = end;
+    segment.geometry.length = start.DistanceTo(end);
+    return segment;
+}
 
 class FakeConfigurationPort final : public IConfigurationPort {
 public:
@@ -215,6 +230,22 @@ public:
     PlanningArtifactExportRequest last_request;
 };
 
+class DistinctAuthorityProcessPathPort final : public Siligen::Application::Ports::Dispensing::IProcessPathBuildPort {
+public:
+    Siligen::Application::Ports::Dispensing::ProcessPathBuildResult Build(
+        const Siligen::Application::Ports::Dispensing::ProcessPathBuildRequest&) const override {
+        PathGenerationResult result;
+        result.status = PathGenerationStatus::Success;
+
+        result.process_path.segments.push_back(MakeLineProcessSegment(Point2D{0.0f, 0.0f}, Point2D{10.0f, 0.0f}));
+        result.shaped_path.segments = {
+            MakeLineProcessSegment(Point2D{0.0f, 0.0f}, Point2D{4.0f, 0.0f}),
+            MakeLineProcessSegment(Point2D{4.0f, 0.0f}, Point2D{10.0f, 0.0f}),
+        };
+        return result;
+    }
+};
+
 std::shared_ptr<Siligen::Application::Services::Dispensing::IWorkflowPlanningAssemblyOperations> CreatePlanningOperations() {
     return Siligen::Application::Services::Dispensing::WorkflowPlanningAssemblyOperationsProvider{}
         .CreateOperations();
@@ -336,6 +367,47 @@ TEST(PlanningUseCaseExportPortTest, ExecuteBuildsExportRequestWithoutDirectFiles
     std::filesystem::remove(temp_pb, ec);
 }
 
+TEST(PlanningUseCaseExportPortTest, WorkflowUsesShapedPathForExecutionButPreservesAuthorityProcessPath) {
+    auto temp_pb = MakeTempPbPath();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto path_source = std::make_shared<FakePathSourcePort>();
+    auto export_port = std::make_shared<FakePlanningArtifactExportPort>();
+    auto pb_service = std::make_shared<DxfPbPreparationService>();
+    auto process_path_port = std::make_shared<DistinctAuthorityProcessPathPort>();
+
+    PlanningUseCase use_case(
+        path_source,
+        process_path_port,
+        CreateMotionPlanningPort(),
+        CreatePlanningOperations(),
+        config_port,
+        CreatePlanningInputPreparationPort(pb_service),
+        export_port);
+
+    const auto request = MakePlanningRequest(temp_pb);
+    const auto authority_result =
+        Siligen::Application::UseCases::Dispensing::PlanningUseCaseInternalAccess::PrepareAuthorityPreview(
+            use_case,
+            request);
+
+    ASSERT_TRUE(authority_result.IsSuccess()) << authority_result.GetError().ToString();
+    ASSERT_EQ(authority_result.Value().process_path.segments.size(), 2U);
+    ASSERT_EQ(authority_result.Value().authority_process_path.segments.size(), 1U);
+    EXPECT_FLOAT_EQ(authority_result.Value().process_path.segments.front().geometry.line.end.x, 4.0f);
+    EXPECT_FLOAT_EQ(authority_result.Value().authority_process_path.segments.front().geometry.line.end.x, 10.0f);
+
+    const auto execute_result = use_case.Execute(request);
+
+    ASSERT_TRUE(execute_result.IsSuccess()) << execute_result.GetError().ToString();
+    ASSERT_EQ(export_port->last_request.process_path.segments.size(), 2U);
+    EXPECT_FLOAT_EQ(export_port->last_request.process_path.segments.front().geometry.line.end.x, 4.0f);
+    EXPECT_FLOAT_EQ(export_port->last_request.process_path.segments.back().geometry.line.start.x, 4.0f);
+    EXPECT_FLOAT_EQ(export_port->last_request.process_path.segments.back().geometry.line.end.x, 10.0f);
+
+    std::error_code ec;
+    std::filesystem::remove(temp_pb, ec);
+}
+
 TEST(PlanningUseCaseExportPortTest, AssembleExecutionDropsExportRequestAfterExportCompletes) {
     auto temp_pb = MakeTempPbPath();
     auto config_port = std::make_shared<FakeConfigurationPort>();
@@ -417,23 +489,11 @@ TEST(PlanningUseCaseExportPortTest, ExecuteExportsEquivalentGluePointsForSubdivi
     std::filesystem::remove(temp_pb, ec);
 }
 
-TEST(PlanningUseCaseExportPortTest, ExecuteIgnoresPointNoiseForPreviewGlueSemantics) {
+TEST(PlanningUseCaseExportPortTest, ExecuteFailsOnPointNoiseWithExplicitProcessPathError) {
     auto temp_pb = MakeTempPbPath();
     auto config_port = std::make_shared<FakeConfigurationPort>();
     auto export_port = std::make_shared<FakePlanningArtifactExportPort>();
     auto pb_service = std::make_shared<DxfPbPreparationService>();
-
-    PlanningUseCase baseline_use_case(
-        std::make_shared<FakePathSourcePort>(),
-        CreateProcessPathPort(),
-        CreateMotionPlanningPort(),
-        CreatePlanningOperations(),
-        config_port,
-        CreatePlanningInputPreparationPort(pb_service),
-        export_port);
-    const auto baseline = baseline_use_case.Execute(MakePlanningRequest(temp_pb));
-    ASSERT_TRUE(baseline.IsSuccess()) << baseline.GetError().ToString();
-    const auto baseline_glue_points = export_port->last_request.glue_points;
 
     PlanningUseCase noisy_use_case(
         std::make_shared<PointNoisePathSourcePort>(),
@@ -444,15 +504,16 @@ TEST(PlanningUseCaseExportPortTest, ExecuteIgnoresPointNoiseForPreviewGlueSemant
         CreatePlanningInputPreparationPort(pb_service),
         export_port);
     const auto noisy = noisy_use_case.Execute(MakePlanningRequest(temp_pb));
-    ASSERT_TRUE(noisy.IsSuccess()) << noisy.GetError().ToString();
-    const auto& noisy_glue_points = export_port->last_request.glue_points;
-
-    ASSERT_EQ(baseline_glue_points.size(), noisy_glue_points.size());
-    EXPECT_EQ(CountPointsNear(noisy_glue_points, Point2D{5.0f, 5.0f}, 1e-4f), 0U);
-    for (std::size_t index = 0; index < baseline_glue_points.size(); ++index) {
-        EXPECT_NEAR(baseline_glue_points[index].x, noisy_glue_points[index].x, 1e-4f);
-        EXPECT_NEAR(baseline_glue_points[index].y, noisy_glue_points[index].y, 1e-4f);
-    }
+    ASSERT_TRUE(noisy.IsError());
+    EXPECT_EQ(noisy.GetError().GetCode(), ErrorCode::INVALID_PARAMETER);
+    EXPECT_NE(
+        noisy.GetError().GetMessage().find("process path build failed at stage input_validation"),
+        std::string::npos);
+    EXPECT_NE(
+        noisy.GetError().GetMessage().find("point primitive is not a supported live process-path input"),
+        std::string::npos);
+    EXPECT_EQ(noisy.GetError().GetMessage().find("process path为空"), std::string::npos);
+    EXPECT_EQ(export_port->export_calls, 0);
 
     std::error_code ec;
     std::filesystem::remove(temp_pb, ec);

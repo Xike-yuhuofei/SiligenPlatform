@@ -9,6 +9,10 @@
 - 为 `M7 motion-planning` 提供正式路径事实，不回退为执行层的临时中间态。
 - 仅负责 `Primitive/Path/ProcessPath` 与路径规范化、工艺标注、路径整形，不再承载运动配置、轨迹结果或运动求解语义。
 - `ProcessPathFacade` 是当前唯一 public application entry；`process_path/contracts/*` 是唯一 live contract surface。
+- `PathGenerationRequest.alignment` 当前仅承载来自 `M5` 的 provenance / owner 证据，不在 `M6` 内作为 live 几何变换执行。
+- `PathGenerationRequest.topology_repair.policy` 默认值为 `Off`；只有显式 `Auto` 才进入 repair/reorder 主链。
+- `TopologyRepairPolicy::Auto` 要求 `metadata` 与 `primitives` 一一对应，否则在输入校验阶段直接失败。
+- `PathGenerationResult.shaped_path` 是对下游负责的 final authority；`process_path` 仅保留为 pre-shape 内部工艺事实。
 
 ## Owner 入口
 

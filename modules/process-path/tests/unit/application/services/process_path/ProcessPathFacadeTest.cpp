@@ -464,7 +464,7 @@ TEST(ProcessPathFacadeTest, RejectsSplineInputWhenApproximationIsDisabled) {
     EXPECT_EQ(result.normalized.report.consumable_segment_count, 0);
 }
 
-TEST(ProcessPathFacadeTest, UnsupportedPointOnlyInputReturnsNormalizationFailure) {
+TEST(ProcessPathFacadeTest, UnsupportedPointOnlyInputReturnsInvalidInput) {
     using Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest;
     using Siligen::Application::Services::ProcessPath::ProcessPathFacade;
     using Siligen::ProcessPath::Contracts::PathGenerationStage;
@@ -478,10 +478,10 @@ TEST(ProcessPathFacadeTest, UnsupportedPointOnlyInputReturnsNormalizationFailure
     ProcessPathFacade facade;
     const auto result = facade.Build(request);
 
-    EXPECT_EQ(result.status, PathGenerationStatus::StageFailure);
-    EXPECT_EQ(result.failed_stage, PathGenerationStage::Normalization);
-    EXPECT_EQ(result.error_message, "normalization produced no consumable path segments");
-    EXPECT_EQ(result.normalized.report.point_primitive_count, 1);
+    EXPECT_EQ(result.status, PathGenerationStatus::InvalidInput);
+    EXPECT_EQ(result.failed_stage, PathGenerationStage::InputValidation);
+    EXPECT_EQ(result.error_message, "point primitive is not a supported live process-path input");
+    EXPECT_EQ(result.normalized.report.point_primitive_count, 0);
     EXPECT_EQ(result.normalized.report.consumable_segment_count, 0);
     EXPECT_TRUE(result.process_path.segments.empty());
     EXPECT_TRUE(result.shaped_path.segments.empty());
@@ -521,6 +521,7 @@ TEST(ProcessPathFacadeTest, RepairDisabledPreservesFragmentedRapidInsertion) {
     ProcessPathBuildRequest request;
     request.normalization.continuity_tolerance = 0.1f;
     request.process.rapid_gap_threshold = 0.1f;
+    request.topology_repair.policy = Siligen::ProcessPath::Contracts::TopologyRepairPolicy::Off;
     request.primitives.push_back(Primitive::MakeLine(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)));
     request.primitives.push_back(Primitive::MakeLine(Point2D(0.0f, 10.0f), Point2D(0.0f, 0.0f)));
     request.primitives.push_back(Primitive::MakeLine(Point2D(10.0f, 0.0f), Point2D(10.0f, 10.0f)));
@@ -551,7 +552,7 @@ TEST(ProcessPathFacadeTest, RepairEnabledReducesFragmentedDispenseChains) {
     ProcessPathBuildRequest request;
     request.normalization.continuity_tolerance = 0.1f;
     request.process.rapid_gap_threshold = 0.1f;
-    request.topology_repair.enable = true;
+    request.topology_repair.policy = Siligen::ProcessPath::Contracts::TopologyRepairPolicy::Auto;
     request.topology_repair.start_position = Point2D(0.0f, 0.0f);
     request.primitives.push_back(Primitive::MakeLine(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)));
     request.primitives.push_back(Primitive::MakeLine(Point2D(0.0f, 10.0f), Point2D(0.0f, 0.0f)));
@@ -575,26 +576,57 @@ TEST(ProcessPathFacadeTest, RepairEnabledReducesFragmentedDispenseChains) {
     EXPECT_EQ(result.topology_diagnostics.dispense_fragment_count, 1);
 }
 
-TEST(ProcessPathFacadeTest, RepairToleratesMissingMetadataWithoutCrashing) {
+TEST(ProcessPathFacadeTest, RepairAutoRequiresMetadataForEveryPrimitive) {
     using Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest;
     using Siligen::Application::Services::ProcessPath::ProcessPathFacade;
+    using Siligen::ProcessPath::Contracts::PathGenerationStage;
+    using Siligen::ProcessPath::Contracts::PathGenerationStatus;
     using Siligen::ProcessPath::Contracts::Primitive;
     using Siligen::Shared::Types::Point2D;
 
     ProcessPathBuildRequest request;
     request.normalization.continuity_tolerance = 0.1f;
-    request.topology_repair.enable = true;
+    request.topology_repair.policy = Siligen::ProcessPath::Contracts::TopologyRepairPolicy::Auto;
     request.primitives.push_back(Primitive::MakeLine(Point2D(0.0f, 0.0f), Point2D(5.0f, 0.0f)));
     request.primitives.push_back(Primitive::MakeLine(Point2D(5.2f, 0.0f), Point2D(10.0f, 0.0f)));
 
     ProcessPathFacade facade;
     const auto result = facade.Build(request);
 
+    EXPECT_EQ(result.status, PathGenerationStatus::InvalidInput);
+    EXPECT_EQ(result.failed_stage, PathGenerationStage::InputValidation);
+    EXPECT_EQ(result.error_message, "topology repair policy Auto requires metadata for every primitive");
+    EXPECT_TRUE(result.topology_diagnostics.repair_requested);
+    EXPECT_FALSE(result.topology_diagnostics.repair_applied);
+    EXPECT_FALSE(result.topology_diagnostics.metadata_valid);
+    EXPECT_TRUE(result.process_path.segments.empty());
+    EXPECT_TRUE(result.shaped_path.segments.empty());
+}
+
+TEST(ProcessPathFacadeTest, RepairOffAllowsMissingMetadataToFlowThrough) {
+    using Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest;
+    using Siligen::Application::Services::ProcessPath::ProcessPathFacade;
+    using Siligen::ProcessPath::Contracts::PathGenerationStatus;
+    using Siligen::ProcessPath::Contracts::Primitive;
+    using Siligen::Shared::Types::Point2D;
+
+    ProcessPathBuildRequest request;
+    request.normalization.continuity_tolerance = 0.1f;
+    request.topology_repair.policy = Siligen::ProcessPath::Contracts::TopologyRepairPolicy::Off;
+    request.primitives.push_back(Primitive::MakeLine(Point2D(0.0f, 0.0f), Point2D(5.0f, 0.0f)));
+    request.primitives.push_back(Primitive::MakeLine(Point2D(5.2f, 0.0f), Point2D(10.0f, 0.0f)));
+
+    ProcessPathFacade facade;
+    const auto result = facade.Build(request);
+
+    EXPECT_EQ(result.status, PathGenerationStatus::Success);
+    EXPECT_FALSE(result.topology_diagnostics.repair_requested);
+    EXPECT_FALSE(result.topology_diagnostics.repair_applied);
     EXPECT_FALSE(result.topology_diagnostics.metadata_valid);
     EXPECT_TRUE(result.process_path.segments.size() >= 2u);
 }
 
-TEST(ProcessPathFacadeTest, RepairDropsPointNoiseBeforeConnectivityRebuild) {
+TEST(ProcessPathFacadeTest, RejectsPointNoiseBeforeTopologyRepair) {
     using Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest;
     using Siligen::Application::Services::ProcessPath::ProcessPathFacade;
     using Siligen::ProcessPath::Contracts::PathPrimitiveMeta;
@@ -604,7 +636,7 @@ TEST(ProcessPathFacadeTest, RepairDropsPointNoiseBeforeConnectivityRebuild) {
     ProcessPathBuildRequest request;
     request.normalization.continuity_tolerance = 0.1f;
     request.process.rapid_gap_threshold = 0.1f;
-    request.topology_repair.enable = true;
+    request.topology_repair.policy = Siligen::ProcessPath::Contracts::TopologyRepairPolicy::Auto;
     request.topology_repair.start_position = Point2D(0.0f, 0.0f);
     request.primitives = {
         Primitive::MakeLine(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)),
@@ -626,423 +658,12 @@ TEST(ProcessPathFacadeTest, RepairDropsPointNoiseBeforeConnectivityRebuild) {
     ProcessPathFacade facade;
     const auto result = facade.Build(request);
 
-    EXPECT_TRUE(result.topology_diagnostics.repair_applied);
-    EXPECT_EQ(result.topology_diagnostics.original_primitive_count, 6);
-    EXPECT_EQ(result.topology_diagnostics.repaired_primitive_count, 4);
-    EXPECT_GT(result.topology_diagnostics.contour_count, 0);
-    EXPECT_EQ(result.topology_diagnostics.rapid_segment_count, 0);
-    EXPECT_EQ(result.topology_diagnostics.dispense_fragment_count, 1);
+    EXPECT_EQ(result.status, Siligen::ProcessPath::Contracts::PathGenerationStatus::InvalidInput);
+    EXPECT_EQ(result.failed_stage, Siligen::ProcessPath::Contracts::PathGenerationStage::InputValidation);
+    EXPECT_EQ(result.error_message, "point primitive is not a supported live process-path input");
+    EXPECT_FALSE(result.topology_diagnostics.repair_requested);
+    EXPECT_FALSE(result.topology_diagnostics.repair_applied);
+    EXPECT_TRUE(result.process_path.segments.empty());
+    EXPECT_TRUE(result.shaped_path.segments.empty());
 }
 
-TEST(ProcessPathFacadeTest, Demo1PbRealFileRegressionReportsTopologyDiagnostics) {
-    const fs::path pb_path = "D:\\Projects\\SiligenSuite\\uploads\\dxf\\archive\\Demo-1.pb";
-    if (!fs::exists(pb_path)) {
-        GTEST_SKIP() << "Demo-1.pb 不存在: " << pb_path.string();
-    }
-
-    Siligen::Infrastructure::Adapters::Parsing::PbPathSourceAdapter adapter;
-    const auto load_result = adapter.LoadFromFile(pb_path.string());
-    ASSERT_TRUE(load_result.IsSuccess()) << load_result.GetError().ToString();
-
-    using Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest;
-    using Siligen::Application::Services::ProcessPath::ProcessPathFacade;
-    using Siligen::ProcessPath::Contracts::PathPrimitiveMeta;
-
-    ProcessPathBuildRequest request;
-    request.primitives = load_result.Value().primitives;
-    request.metadata.reserve(load_result.Value().metadata.size());
-    for (const auto& item : load_result.Value().metadata) {
-        PathPrimitiveMeta meta;
-        meta.entity_id = item.entity_id;
-        meta.entity_type = item.entity_type;
-        meta.entity_segment_index = item.entity_segment_index;
-        meta.entity_closed = item.entity_closed;
-        request.metadata.push_back(meta);
-    }
-    request.normalization.continuity_tolerance = 0.1f;
-    request.topology_repair.enable = true;
-    request.topology_repair.start_position = Siligen::Shared::Types::Point2D(0.0f, 0.0f);
-    request.topology_repair.two_opt_iterations = 0;
-
-    std::map<int, int> primitive_type_counts;
-    for (const auto& primitive : request.primitives) {
-        primitive_type_counts[static_cast<int>(primitive.type)] += 1;
-    }
-
-    ProcessPathFacade facade;
-    const auto result = facade.Build(request);
-
-    std::cout << "Demo-1 primitive_types";
-    for (const auto& [type_id, count] : primitive_type_counts) {
-        std::cout << " type" << type_id << '=' << count;
-    }
-    std::cout << std::endl;
-
-    std::cout
-        << "Demo-1 topology_diagnostics"
-        << " repair_requested=" << result.topology_diagnostics.repair_requested
-        << " repair_applied=" << result.topology_diagnostics.repair_applied
-        << " metadata_valid=" << result.topology_diagnostics.metadata_valid
-        << " fragmentation_suspected=" << result.topology_diagnostics.fragmentation_suspected
-        << " original_primitive_count=" << result.topology_diagnostics.original_primitive_count
-        << " repaired_primitive_count=" << result.topology_diagnostics.repaired_primitive_count
-        << " contour_count=" << result.topology_diagnostics.contour_count
-        << " discontinuity_before=" << result.topology_diagnostics.discontinuity_before
-        << " discontinuity_after=" << result.topology_diagnostics.discontinuity_after
-        << " intersection_pairs=" << result.topology_diagnostics.intersection_pairs
-        << " collinear_pairs=" << result.topology_diagnostics.collinear_pairs
-        << " rapid_segment_count=" << result.topology_diagnostics.rapid_segment_count
-        << " dispense_fragment_count=" << result.topology_diagnostics.dispense_fragment_count
-        << " reordered_contours=" << result.topology_diagnostics.reordered_contours
-        << " reversed_contours=" << result.topology_diagnostics.reversed_contours
-        << " rotated_contours=" << result.topology_diagnostics.rotated_contours
-        << " shaped_segments=" << result.shaped_path.segments.size()
-        << std::endl;
-
-    EXPECT_TRUE(result.topology_diagnostics.repair_requested);
-    EXPECT_TRUE(result.topology_diagnostics.metadata_valid);
-    EXPECT_EQ(result.topology_diagnostics.original_primitive_count, static_cast<int>(request.primitives.size()));
-    EXPECT_EQ(result.topology_diagnostics.repaired_primitive_count, static_cast<int>(result.normalized.path.segments.size()));
-}
-
-TEST(ProcessPathFacadeTest, DemoPbRealFileDiagnosticsExportsShapedPathFacts) {
-    const fs::path pb_path = "D:\\Projects\\wt-task157\\tmp\\Demo.pb";
-    if (!fs::exists(pb_path)) {
-        GTEST_SKIP() << "Demo.pb 不存在: " << pb_path.string();
-    }
-
-    Siligen::Infrastructure::Adapters::Parsing::PbPathSourceAdapter adapter;
-    const auto load_result = adapter.LoadFromFile(pb_path.string());
-    ASSERT_TRUE(load_result.IsSuccess()) << load_result.GetError().ToString();
-
-    using Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest;
-    using Siligen::Application::Services::ProcessPath::ProcessPathFacade;
-    using Siligen::ProcessPath::Contracts::PathGenerationStatus;
-    using Siligen::ProcessPath::Contracts::PathPrimitiveMeta;
-
-    ProcessPathBuildRequest request;
-    request.primitives = load_result.Value().primitives;
-    request.metadata.reserve(load_result.Value().metadata.size());
-    for (const auto& item : load_result.Value().metadata) {
-        PathPrimitiveMeta meta;
-        meta.entity_id = item.entity_id;
-        meta.entity_type = item.entity_type;
-        meta.entity_segment_index = item.entity_segment_index;
-        meta.entity_closed = item.entity_closed;
-        request.metadata.push_back(meta);
-    }
-    request.normalization.continuity_tolerance = 0.1f;
-    request.topology_repair.enable = true;
-    request.topology_repair.start_position = Point2D(0.0f, 0.0f);
-    request.topology_repair.two_opt_iterations = 0;
-
-    ProcessPathFacade facade;
-    const auto result = facade.Build(request);
-
-    ASSERT_EQ(result.status, PathGenerationStatus::Success) << result.error_message;
-    ASSERT_FALSE(result.shaped_path.segments.empty());
-
-    const auto immediate_reversal_count = CountImmediateLineReversals(result.shaped_path);
-
-    const fs::path output_dir = "D:\\Projects\\wt-task157\\tmp\\demo-diagnostics";
-    fs::create_directories(output_dir);
-    const auto csv_path = output_dir / "demo_process_path_shaped.csv";
-    WriteProcessPathCsv(csv_path, result.shaped_path);
-
-    std::cout
-        << "Demo shaped_path"
-        << " segments=" << result.shaped_path.segments.size()
-        << " reversal_pairs=" << immediate_reversal_count
-        << " repair_applied=" << result.topology_diagnostics.repair_applied
-        << " discontinuity_before=" << result.topology_diagnostics.discontinuity_before
-        << " discontinuity_after=" << result.topology_diagnostics.discontinuity_after
-        << " reordered_contours=" << result.topology_diagnostics.reordered_contours
-        << " reversed_contours=" << result.topology_diagnostics.reversed_contours
-        << " csv=" << csv_path.string()
-        << std::endl;
-}
-
-TEST(ProcessPathFacadeTest, DemoPbRepairToggleDiagnosticsIdentifiesFirstBadSubstep) {
-    const fs::path pb_path = "D:\\Projects\\wt-task157\\tmp\\Demo.pb";
-    if (!fs::exists(pb_path)) {
-        GTEST_SKIP() << "Demo.pb 不存在: " << pb_path.string();
-    }
-
-    Siligen::Infrastructure::Adapters::Parsing::PbPathSourceAdapter adapter;
-    const auto load_result = adapter.LoadFromFile(pb_path.string());
-    ASSERT_TRUE(load_result.IsSuccess()) << load_result.GetError().ToString();
-
-    using Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest;
-    using Siligen::Application::Services::ProcessPath::ProcessPathFacade;
-    using Siligen::ProcessPath::Contracts::PathGenerationStatus;
-    using Siligen::ProcessPath::Contracts::PathPrimitiveMeta;
-
-    auto make_request = [&]() {
-        ProcessPathBuildRequest request;
-        request.primitives = load_result.Value().primitives;
-        request.metadata.reserve(load_result.Value().metadata.size());
-        for (const auto& item : load_result.Value().metadata) {
-            PathPrimitiveMeta meta;
-            meta.entity_id = item.entity_id;
-            meta.entity_type = item.entity_type;
-            meta.entity_segment_index = item.entity_segment_index;
-            meta.entity_closed = item.entity_closed;
-            request.metadata.push_back(meta);
-        }
-        request.normalization.continuity_tolerance = 0.1f;
-        request.topology_repair.enable = true;
-        request.topology_repair.start_position = Point2D(0.0f, 0.0f);
-        request.topology_repair.two_opt_iterations = 0;
-        return request;
-    };
-
-    auto run_case = [&](const char* label, ProcessPathBuildRequest request) {
-        ProcessPathFacade facade;
-        const auto result = facade.Build(request);
-        EXPECT_EQ(result.status, PathGenerationStatus::Success) << label << ": " << result.error_message;
-        const auto process_reversal_count = CountImmediateLineReversals(result.process_path);
-        const auto shaped_reversal_count = CountImmediateLineReversals(result.shaped_path);
-        std::cout
-            << "Demo repair_toggle"
-            << " label=" << label
-            << " process_segments=" << result.process_path.segments.size()
-            << " shaped_segments=" << result.shaped_path.segments.size()
-            << " process_line_reversals=" << process_reversal_count
-            << " shaped_line_reversals=" << shaped_reversal_count
-            << " repair_applied=" << result.topology_diagnostics.repair_applied
-            << " reordered_contours=" << result.topology_diagnostics.reordered_contours
-            << " reversed_contours=" << result.topology_diagnostics.reversed_contours
-            << " discontinuity_before=" << result.topology_diagnostics.discontinuity_before
-            << " discontinuity_after=" << result.topology_diagnostics.discontinuity_after
-            << std::endl;
-        return std::pair<std::size_t, std::size_t>(process_reversal_count, shaped_reversal_count);
-    };
-
-    auto disabled = make_request();
-    disabled.topology_repair.enable = false;
-
-    auto no_rebuild = make_request();
-    no_rebuild.topology_repair.rebuild_by_connectivity = false;
-
-    auto no_reorder = make_request();
-    no_reorder.topology_repair.reorder_contours = false;
-
-    auto full = make_request();
-
-    const auto disabled_reversals = run_case("repair_off", disabled);
-    const auto no_rebuild_reversals = run_case("no_rebuild", no_rebuild);
-    const auto no_reorder_reversals = run_case("no_reorder", no_reorder);
-    const auto full_reversals = run_case("full", full);
-
-    EXPECT_LE(disabled_reversals.second, full_reversals.second);
-    EXPECT_LE(no_rebuild_reversals.second, full_reversals.second);
-    EXPECT_LE(no_reorder_reversals.second, full_reversals.second);
-}
-
-TEST(ProcessPathFacadeTest, DemoPbConnectivityRepairDiagnosticsMapsReversalsToOriginalPrimitives) {
-    const fs::path pb_path = "D:\\Projects\\wt-task157\\tmp\\Demo.pb";
-    if (!fs::exists(pb_path)) {
-        GTEST_SKIP() << "Demo.pb 不存在: " << pb_path.string();
-    }
-
-    Siligen::Infrastructure::Adapters::Parsing::PbPathSourceAdapter adapter;
-    const auto load_result = adapter.LoadFromFile(pb_path.string());
-    ASSERT_TRUE(load_result.IsSuccess()) << load_result.GetError().ToString();
-
-    using Siligen::Domain::Trajectory::DomainServices::TopologyRepairService;
-    using Siligen::ProcessPath::Contracts::PathPrimitiveMeta;
-    using Siligen::ProcessPath::Contracts::TopologyRepairConfig;
-
-    std::vector<PathPrimitiveMeta> metadata;
-    metadata.reserve(load_result.Value().metadata.size());
-    for (const auto& item : load_result.Value().metadata) {
-        PathPrimitiveMeta meta;
-        meta.entity_id = item.entity_id;
-        meta.entity_type = item.entity_type;
-        meta.entity_segment_index = item.entity_segment_index;
-        meta.entity_closed = item.entity_closed;
-        metadata.push_back(meta);
-    }
-
-    auto run_case = [&](const char* label, const TopologyRepairConfig& config) {
-        TopologyRepairService service;
-        const auto repair = service.Repair(load_result.Value().primitives, metadata, 0.1f, config);
-        const auto reversals = CollectImmediatePrimitiveLineReversals(repair.primitives);
-        std::cout
-            << "Demo topology_repair_case"
-            << " label=" << label
-            << " primitive_count=" << repair.primitives.size()
-            << " reversal_pairs=" << reversals.size()
-            << " repair_applied=" << repair.diagnostics.repair_applied
-            << " reversed_contours=" << repair.diagnostics.reversed_contours
-            << " contour_count=" << repair.diagnostics.contour_count
-            << std::endl;
-        PrintPrimitiveReversalDiagnostics(
-            label,
-            repair.primitives,
-            repair.metadata,
-            load_result.Value().primitives,
-            metadata,
-            0.1f);
-        PrintJunctionCandidates(
-            label,
-            repair.primitives,
-            load_result.Value().primitives,
-            metadata,
-            0.1f);
-        return reversals.size();
-    };
-
-    TopologyRepairConfig repair_off;
-    repair_off.enable = false;
-
-    TopologyRepairConfig no_rebuild;
-    no_rebuild.enable = true;
-    no_rebuild.rebuild_by_connectivity = false;
-
-    TopologyRepairConfig no_reorder;
-    no_reorder.enable = true;
-    no_reorder.reorder_contours = false;
-
-    TopologyRepairConfig full;
-    full.enable = true;
-
-    const auto off_reversal_count = run_case("repair_off", repair_off);
-    const auto no_rebuild_reversal_count = run_case("no_rebuild", no_rebuild);
-    const auto no_reorder_reversal_count = run_case("no_reorder", no_reorder);
-    const auto full_reversal_count = run_case("full", full);
-
-    EXPECT_LE(off_reversal_count, no_reorder_reversal_count);
-    EXPECT_EQ(no_reorder_reversal_count, full_reversal_count);
-    EXPECT_LE(no_rebuild_reversal_count, no_reorder_reversal_count);
-}
-
-TEST(ProcessPathFacadeTest, ConnectivityRepairDoesNotReverseDuplicateForwardLineIntoBacktrack) {
-    using Siligen::Domain::Trajectory::DomainServices::TopologyRepairService;
-    using Siligen::ProcessPath::Contracts::DXFEntityType;
-    using Siligen::ProcessPath::Contracts::PathPrimitiveMeta;
-    using Siligen::ProcessPath::Contracts::Primitive;
-    using Siligen::ProcessPath::Contracts::TopologyRepairConfig;
-
-    std::vector<Primitive> primitives{
-        Primitive::MakeLine(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)),
-        Primitive::MakeLine(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)),
-    };
-
-    std::vector<PathPrimitiveMeta> metadata(2);
-    metadata[0].entity_id = 100;
-    metadata[0].entity_type = DXFEntityType::Line;
-    metadata[1].entity_id = 101;
-    metadata[1].entity_type = DXFEntityType::Line;
-
-    TopologyRepairConfig config;
-    config.enable = true;
-    config.reorder_contours = false;
-    config.start_position = Point2D(0.0f, 0.0f);
-
-    TopologyRepairService service;
-    const auto repair = service.Repair(primitives, metadata, 0.1f, config);
-
-    ASSERT_EQ(repair.primitives.size(), primitives.size());
-    EXPECT_TRUE(CollectImmediatePrimitiveLineReversals(repair.primitives).empty());
-    EXPECT_EQ(repair.diagnostics.contour_count, 2);
-    EXPECT_EQ(repair.diagnostics.reversed_contours, 0);
-    EXPECT_EQ(repair.primitives[0].line.start, Point2D(0.0f, 0.0f));
-    EXPECT_EQ(repair.primitives[0].line.end, Point2D(10.0f, 0.0f));
-    EXPECT_EQ(repair.primitives[1].line.start, Point2D(0.0f, 0.0f));
-    EXPECT_EQ(repair.primitives[1].line.end, Point2D(10.0f, 0.0f));
-}
-
-TEST(ProcessPathFacadeTest, ReorderContoursDoesNotCreateImmediateBacktrackAtOpenContourBoundary) {
-    using Siligen::Domain::Trajectory::DomainServices::TopologyRepairService;
-    using Siligen::ProcessPath::Contracts::DXFEntityType;
-    using Siligen::ProcessPath::Contracts::PathPrimitiveMeta;
-    using Siligen::ProcessPath::Contracts::Primitive;
-    using Siligen::ProcessPath::Contracts::TopologyRepairConfig;
-
-    std::vector<Primitive> primitives{
-        Primitive::MakeLine(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)),
-        Primitive::MakeLine(Point2D(10.0f, 0.0f), Point2D(20.0f, 0.0f)),
-        Primitive::MakeLine(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)),
-    };
-
-    std::vector<PathPrimitiveMeta> metadata(3);
-    metadata[0].entity_id = 10;
-    metadata[0].entity_type = DXFEntityType::Line;
-    metadata[0].entity_segment_index = 0;
-    metadata[0].entity_closed = false;
-
-    metadata[1].entity_id = 10;
-    metadata[1].entity_type = DXFEntityType::Line;
-    metadata[1].entity_segment_index = 1;
-    metadata[1].entity_closed = false;
-
-    metadata[2].entity_id = 20;
-    metadata[2].entity_type = DXFEntityType::Line;
-    metadata[2].entity_segment_index = 0;
-    metadata[2].entity_closed = false;
-
-    TopologyRepairConfig config;
-    config.enable = true;
-    config.rebuild_by_connectivity = false;
-    config.reorder_contours = true;
-    config.start_position = Point2D(0.0f, 0.0f);
-    config.two_opt_iterations = 0;
-
-    TopologyRepairService service;
-    const auto repair = service.Repair(primitives, metadata, 0.1f, config);
-
-    ASSERT_EQ(repair.primitives.size(), primitives.size());
-    EXPECT_TRUE(CollectImmediatePrimitiveLineReversals(repair.primitives).empty());
-    ASSERT_GE(repair.primitives.size(), 2u);
-    EXPECT_EQ(repair.primitives[0].line.start, Point2D(0.0f, 0.0f));
-    EXPECT_EQ(repair.primitives[0].line.end, Point2D(10.0f, 0.0f));
-    EXPECT_EQ(repair.primitives[1].line.start, Point2D(10.0f, 0.0f));
-    EXPECT_EQ(repair.primitives[1].line.end, Point2D(20.0f, 0.0f));
-}
-
-TEST(ProcessPathFacadeTest, ReorderContoursFlipsOpenContourWhenSelectedDirectionWouldBacktrack) {
-    using Siligen::Domain::Trajectory::DomainServices::TopologyRepairService;
-    using Siligen::ProcessPath::Contracts::DXFEntityType;
-    using Siligen::ProcessPath::Contracts::PathPrimitiveMeta;
-    using Siligen::ProcessPath::Contracts::Primitive;
-    using Siligen::ProcessPath::Contracts::TopologyRepairConfig;
-
-    std::vector<Primitive> primitives{
-        Primitive::MakeLine(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)),
-        Primitive::MakeLine(Point2D(10.0f, 0.0f), Point2D(20.0f, 0.0f)),
-        Primitive::MakeLine(Point2D(20.0f, 0.0f), Point2D(10.0f, 0.0f)),
-    };
-
-    std::vector<PathPrimitiveMeta> metadata(3);
-    metadata[0].entity_id = 100;
-    metadata[0].entity_type = DXFEntityType::Line;
-    metadata[0].entity_segment_index = 0;
-    metadata[0].entity_closed = false;
-
-    metadata[1].entity_id = 100;
-    metadata[1].entity_type = DXFEntityType::Line;
-    metadata[1].entity_segment_index = 1;
-    metadata[1].entity_closed = false;
-
-    metadata[2].entity_id = 200;
-    metadata[2].entity_type = DXFEntityType::Line;
-    metadata[2].entity_segment_index = 0;
-    metadata[2].entity_closed = false;
-
-    TopologyRepairConfig config;
-    config.enable = true;
-    config.rebuild_by_connectivity = false;
-    config.reorder_contours = true;
-    config.start_position = Point2D(0.0f, 0.0f);
-    config.two_opt_iterations = 0;
-
-    TopologyRepairService service;
-    const auto repair = service.Repair(primitives, metadata, 0.1f, config);
-
-    ASSERT_EQ(repair.primitives.size(), primitives.size());
-    EXPECT_TRUE(CollectImmediatePrimitiveLineReversals(repair.primitives).empty());
-    ASSERT_GE(repair.primitives.size(), 3u);
-    EXPECT_EQ(repair.primitives[2].line.start, Point2D(10.0f, 0.0f));
-    EXPECT_EQ(repair.primitives[2].line.end, Point2D(20.0f, 0.0f));
-}

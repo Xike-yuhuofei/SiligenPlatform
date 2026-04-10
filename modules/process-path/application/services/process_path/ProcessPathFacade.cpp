@@ -7,12 +7,65 @@
 
 namespace {
 
+using Siligen::ProcessPath::Contracts::PathGenerationStage;
+using Siligen::ProcessPath::Contracts::PathGenerationStatus;
+using Siligen::ProcessPath::Contracts::PathTopologyDiagnostics;
+using Siligen::ProcessPath::Contracts::Primitive;
+using Siligen::ProcessPath::Contracts::PrimitiveType;
+using Siligen::ProcessPath::Contracts::ProcessPath;
+using Siligen::ProcessPath::Contracts::TopologyRepairPolicy;
+
 void SetFailure(Siligen::Application::Services::ProcessPath::ProcessPathBuildResult& result,
                 const Siligen::ProcessPath::Contracts::PathGenerationStage stage,
                 const char* const message) {
-    result.status = Siligen::ProcessPath::Contracts::PathGenerationStatus::StageFailure;
+    result.status = PathGenerationStatus::StageFailure;
     result.failed_stage = stage;
     result.error_message = message;
+}
+
+bool ContainsUnsupportedPointPrimitive(const std::vector<Primitive>& primitives) {
+    for (const auto& primitive : primitives) {
+        if (primitive.type == PrimitiveType::Point) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void SetInvalidRepairMetadata(
+    Siligen::Application::Services::ProcessPath::ProcessPathBuildResult& result,
+    const std::size_t primitive_count) {
+    result.status = PathGenerationStatus::InvalidInput;
+    result.failed_stage = PathGenerationStage::InputValidation;
+    result.error_message = "topology repair policy Auto requires metadata for every primitive";
+    result.topology_diagnostics.repair_requested = true;
+    result.topology_diagnostics.repair_applied = false;
+    result.topology_diagnostics.metadata_valid = false;
+    result.topology_diagnostics.original_primitive_count = static_cast<int>(primitive_count);
+    result.topology_diagnostics.repaired_primitive_count = static_cast<int>(primitive_count);
+}
+
+void PopulateDispenseDiagnostics(const ProcessPath& path,
+                                 int& rapid_segment_count,
+                                 int& dispense_fragment_count,
+                                 bool& fragmentation_suspected) {
+    rapid_segment_count = 0;
+    dispense_fragment_count = 0;
+    bool previous_dispense = false;
+    bool has_previous = false;
+    for (const auto& segment : path.segments) {
+        if (!segment.dispense_on) {
+            rapid_segment_count += 1;
+        }
+        if (segment.dispense_on && (!has_previous || !previous_dispense)) {
+            dispense_fragment_count += 1;
+        }
+        previous_dispense = segment.dispense_on;
+        has_previous = true;
+    }
+
+    fragmentation_suspected =
+        fragmentation_suspected || dispense_fragment_count > 1 || rapid_segment_count > 0;
 }
 
 }  // namespace
@@ -27,15 +80,26 @@ ProcessPathBuildResult ProcessPathFacade::Build(const ProcessPathBuildRequest& r
 
     ProcessPathBuildResult result;
     if (request.primitives.empty()) {
-        result.status = Siligen::ProcessPath::Contracts::PathGenerationStatus::InvalidInput;
-        result.failed_stage = Siligen::ProcessPath::Contracts::PathGenerationStage::InputValidation;
+        result.status = PathGenerationStatus::InvalidInput;
+        result.failed_stage = PathGenerationStage::InputValidation;
         result.error_message = "path generation requires at least one primitive";
         return result;
     }
+    if (ContainsUnsupportedPointPrimitive(request.primitives)) {
+        result.status = PathGenerationStatus::InvalidInput;
+        result.failed_stage = PathGenerationStage::InputValidation;
+        result.error_message = "point primitive is not a supported live process-path input";
+        return result;
+    }
     if (request.alignment.has_value() && request.alignment->owner_module != "M5") {
-        result.status = Siligen::ProcessPath::Contracts::PathGenerationStatus::InvalidInput;
-        result.failed_stage = Siligen::ProcessPath::Contracts::PathGenerationStage::InputValidation;
+        result.status = PathGenerationStatus::InvalidInput;
+        result.failed_stage = PathGenerationStage::InputValidation;
         result.error_message = "alignment input must remain owned by M5";
+        return result;
+    }
+    if (request.topology_repair.policy == TopologyRepairPolicy::Auto &&
+        request.metadata.size() != request.primitives.size()) {
+        SetInvalidRepairMetadata(result, request.primitives.size());
         return result;
     }
 
@@ -50,26 +114,26 @@ ProcessPathBuildResult ProcessPathFacade::Build(const ProcessPathBuildRequest& r
     result.normalized = normalized;
     result.topology_diagnostics.discontinuity_after = result.normalized.report.discontinuity_count;
     if (result.normalized.report.invalid_unit_scale) {
-        result.status = Siligen::ProcessPath::Contracts::PathGenerationStatus::InvalidInput;
-        result.failed_stage = Siligen::ProcessPath::Contracts::PathGenerationStage::Normalization;
+        result.status = PathGenerationStatus::InvalidInput;
+        result.failed_stage = PathGenerationStage::Normalization;
         result.error_message = "normalization.unit_scale must be greater than zero";
         return result;
     }
     if (result.normalized.report.skipped_spline_count > 0) {
         SetFailure(result,
-                   Siligen::ProcessPath::Contracts::PathGenerationStage::Normalization,
+                   PathGenerationStage::Normalization,
                    "normalization skipped spline primitives because approximate_splines is disabled");
         return result;
     }
     if (result.normalized.report.consumable_segment_count == 0) {
         SetFailure(result,
-                   Siligen::ProcessPath::Contracts::PathGenerationStage::Normalization,
+                   PathGenerationStage::Normalization,
                    "normalization produced no consumable path segments");
         return result;
     }
     if (!repair_result.primitives.empty() && result.normalized.path.segments.empty()) {
         SetFailure(result,
-                   Siligen::ProcessPath::Contracts::PathGenerationStage::Normalization,
+                   PathGenerationStage::Normalization,
                    "normalization produced no consumable path segments");
         return result;
     }
@@ -78,7 +142,7 @@ ProcessPathBuildResult ProcessPathFacade::Build(const ProcessPathBuildRequest& r
     result.process_path = process_path;
     if (!result.normalized.path.segments.empty() && result.process_path.segments.empty()) {
         SetFailure(result,
-                   Siligen::ProcessPath::Contracts::PathGenerationStage::ProcessAnnotation,
+                   PathGenerationStage::ProcessAnnotation,
                    "process annotation produced no process segments");
         return result;
     }
@@ -87,32 +151,22 @@ ProcessPathBuildResult ProcessPathFacade::Build(const ProcessPathBuildRequest& r
     result.shaped_path = shaped_path;
     if (!result.process_path.segments.empty() && result.shaped_path.segments.empty()) {
         SetFailure(result,
-                   Siligen::ProcessPath::Contracts::PathGenerationStage::TrajectoryShaping,
+                   PathGenerationStage::TrajectoryShaping,
                    "trajectory shaping produced no shaped segments");
         return result;
     }
 
-    result.status = Siligen::ProcessPath::Contracts::PathGenerationStatus::Success;
-    result.failed_stage = Siligen::ProcessPath::Contracts::PathGenerationStage::None;
+    result.status = PathGenerationStatus::Success;
+    result.failed_stage = PathGenerationStage::None;
     result.error_message.clear();
-    result.topology_diagnostics.rapid_segment_count = 0;
-    result.topology_diagnostics.dispense_fragment_count = 0;
-    bool previous_dispense = false;
-    bool has_previous = false;
-    for (const auto& segment : result.process_path.segments) {
-        if (!segment.dispense_on) {
-            result.topology_diagnostics.rapid_segment_count += 1;
-        }
-        if (segment.dispense_on && (!has_previous || !previous_dispense)) {
-            result.topology_diagnostics.dispense_fragment_count += 1;
-        }
-        previous_dispense = segment.dispense_on;
-        has_previous = true;
-    }
-    if (result.topology_diagnostics.dispense_fragment_count > 1 ||
-        result.topology_diagnostics.rapid_segment_count > 0) {
-        result.topology_diagnostics.fragmentation_suspected = true;
-    }
+    PopulateDispenseDiagnostics(result.process_path,
+                                result.topology_diagnostics.pre_shape_rapid_segment_count,
+                                result.topology_diagnostics.pre_shape_dispense_fragment_count,
+                                result.topology_diagnostics.fragmentation_suspected);
+    PopulateDispenseDiagnostics(result.shaped_path,
+                                result.topology_diagnostics.rapid_segment_count,
+                                result.topology_diagnostics.dispense_fragment_count,
+                                result.topology_diagnostics.fragmentation_suspected);
     return result;
 }
 

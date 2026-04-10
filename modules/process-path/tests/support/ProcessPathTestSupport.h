@@ -1,21 +1,27 @@
 #pragma once
 
 #include "application/services/process_path/ProcessPathFacade.h"
+#include "dxf_geometry/adapters/planning/dxf/PbPathSourceAdapter.h"
 #include "motion_planning/contracts/TimePlanningConfig.h"
 #include "process_path/contracts/Path.h"
+#include "process_path/contracts/PathPrimitiveMeta.h"
 #include "process_path/contracts/ProcessPath.h"
 #include "process_path/contracts/Primitive.h"
 
+#include <filesystem>
 #include <iomanip>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 
 namespace Siligen::ProcessPath::Tests::Support {
 
 using Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest;
 using Siligen::Application::Services::ProcessPath::ProcessPathBuildResult;
+using Siligen::Infrastructure::Adapters::Parsing::PbPathSourceAdapter;
 using Siligen::MotionPlanning::Contracts::TimePlanningConfig;
 using Siligen::ProcessPath::Contracts::PathGenerationRequest;
+using Siligen::ProcessPath::Contracts::PathPrimitiveMeta;
 using Siligen::ProcessPath::Contracts::Primitive;
 using Siligen::ProcessPath::Contracts::ProcessPath;
 using Siligen::ProcessPath::Contracts::ProcessSegment;
@@ -24,13 +30,46 @@ using Siligen::ProcessPath::Contracts::Segment;
 using Siligen::ProcessPath::Contracts::SegmentType;
 using Siligen::Shared::Types::Point2D;
 
-inline ProcessPathBuildRequest MakeLeadInLeadOutRequest() {
+namespace fs = std::filesystem;
+
+inline fs::path WorkspaceRoot() {
+    return fs::path(__FILE__).parent_path().parent_path().parent_path().parent_path().parent_path();
+}
+
+inline fs::path EngineeringFixtureCasePath(const std::string& case_name, const std::string& file_name) {
+    return WorkspaceRoot() / "shared" / "contracts" / "engineering" / "fixtures" / "cases" / case_name / file_name;
+}
+
+inline ProcessPathBuildRequest LoadFixtureRequest(const fs::path& fixture_path) {
+    PbPathSourceAdapter adapter;
+    const auto load_result = adapter.LoadFromFile(fixture_path.string());
+    if (!load_result.IsSuccess()) {
+        throw std::runtime_error(load_result.GetError().ToString());
+    }
+
+    ProcessPathBuildRequest request;
+    request.primitives = load_result.Value().primitives;
+    request.metadata.reserve(load_result.Value().metadata.size());
+    for (const auto& item : load_result.Value().metadata) {
+        PathPrimitiveMeta meta;
+        meta.entity_id = item.entity_id;
+        meta.entity_type = item.entity_type;
+        meta.entity_segment_index = item.entity_segment_index;
+        meta.entity_closed = item.entity_closed;
+        request.metadata.push_back(meta);
+    }
+    return request;
+}
+
+inline ProcessPathBuildRequest MakeLeadInLeadOutRequest(const bool enable_priming = false) {
     ProcessPathBuildRequest request;
     request.primitives.push_back(Primitive::MakeLine(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)));
     request.normalization.continuity_tolerance = 0.1f;
     request.process.default_flow = 2.5f;
-    request.process.lead_on_dist = 1.0f;
+    request.process.approach_dist = 1.0f;
     request.process.lead_off_dist = 1.0f;
+    request.process.priming.enable = enable_priming;
+    request.process.priming.flow_rate = 1.25f;
     request.shaping.corner_smoothing_radius = 0.5f;
     request.shaping.position_tolerance = 0.1f;
     return request;

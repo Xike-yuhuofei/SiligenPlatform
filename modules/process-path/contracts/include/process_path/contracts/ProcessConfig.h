@@ -6,10 +6,16 @@ namespace Siligen::ProcessPath::Contracts {
 
 using Siligen::Shared::Types::float32;
 
+struct PrimingConfig {
+    bool enable = false;
+    float32 flow_rate = 1.0f;
+};
+
 struct ProcessConfig {
     float32 default_flow = 1.0f;
-    float32 lead_on_dist = 0.0f;
+    float32 approach_dist = 0.0f;
     float32 lead_off_dist = 0.0f;
+    PrimingConfig priming{};
     bool corner_slowdown = true;
     float32 corner_angle_deg = 45.0f;
     float32 curve_chain_angle_deg = 0.0f;

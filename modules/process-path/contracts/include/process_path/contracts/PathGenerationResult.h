@@ -28,7 +28,9 @@ struct PathGenerationResult {
     PathGenerationStage failed_stage = PathGenerationStage::InputValidation;
     std::string error_message = "path generation has not produced a valid result";
     NormalizedPath normalized;
+    // process_path is the pre-shape internal handoff inside M6.
     ProcessPath process_path;
+    // shaped_path is the final authority surface for downstream consumers.
     ProcessPath shaped_path;
     PathTopologyDiagnostics topology_diagnostics;
 };
