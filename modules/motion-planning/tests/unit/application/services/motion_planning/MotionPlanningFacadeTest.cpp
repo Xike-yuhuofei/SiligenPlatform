@@ -119,7 +119,7 @@ TEST(MotionPlanningFacadeTest, DemoPbRealFileDiagnosticsExportsMotionTrajectoryF
         request.metadata.push_back(meta);
     }
     request.normalization.continuity_tolerance = 0.1f;
-    request.topology_repair.enable = true;
+    request.topology_repair.policy = Siligen::ProcessPath::Contracts::TopologyRepairPolicy::Auto;
     request.topology_repair.start_position = Siligen::Shared::Types::Point2D(0.0f, 0.0f);
     request.topology_repair.two_opt_iterations = 0;
 

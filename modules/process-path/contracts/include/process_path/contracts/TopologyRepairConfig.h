@@ -4,8 +4,13 @@
 
 namespace Siligen::ProcessPath::Contracts {
 
+enum class TopologyRepairPolicy {
+    Off,
+    Auto
+};
+
 struct TopologyRepairConfig {
-    bool enable = false;
+    TopologyRepairPolicy policy = TopologyRepairPolicy::Off;
     Siligen::Shared::Types::Point2D start_position{};
     int two_opt_iterations = 0;
     bool split_intersections = true;

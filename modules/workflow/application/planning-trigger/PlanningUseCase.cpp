@@ -38,6 +38,8 @@ using Siligen::ProcessPath::Contracts::PrimitiveType;
 using Siligen::ProcessPath::Contracts::ProcessTag;
 using Siligen::ProcessPath::Contracts::Segment;
 using Siligen::ProcessPath::Contracts::PathGenerationResult;
+using Siligen::ProcessPath::Contracts::PathGenerationStage;
+using Siligen::ProcessPath::Contracts::PathGenerationStatus;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
@@ -76,6 +78,39 @@ WorkflowFailureCategory ToWorkflowFailureCategory(const ErrorCode code) {
         default:
             return WorkflowFailureCategory::Unknown;
     }
+}
+
+const char* ToPathGenerationStageString(const PathGenerationStage stage) {
+    switch (stage) {
+        case PathGenerationStage::None:
+            return "none";
+        case PathGenerationStage::InputValidation:
+            return "input_validation";
+        case PathGenerationStage::TopologyRepair:
+            return "topology_repair";
+        case PathGenerationStage::Normalization:
+            return "normalization";
+        case PathGenerationStage::ProcessAnnotation:
+            return "process_annotation";
+        case PathGenerationStage::TrajectoryShaping:
+            return "trajectory_shaping";
+    }
+
+    return "unknown";
+}
+
+Error BuildProcessPathBuildError(const PathGenerationResult& process_path_result) {
+    std::ostringstream oss;
+    oss << "process path build failed at stage "
+        << ToPathGenerationStageString(process_path_result.failed_stage);
+    if (!process_path_result.error_message.empty()) {
+        oss << ": " << process_path_result.error_message;
+    }
+
+    const auto error_code = process_path_result.status == PathGenerationStatus::InvalidInput
+        ? ErrorCode::INVALID_PARAMETER
+        : ErrorCode::INVALID_STATE;
+    return Error(error_code, oss.str(), "PlanningUseCase");
 }
 
 struct MachineBounds {
@@ -535,7 +570,7 @@ ProcessPathBuildRequest BuildProcessPathRequest(
     }
 
     process_path_request.process.default_flow = 1.0f;
-    process_path_request.process.lead_on_dist = 0.0f;
+    process_path_request.process.approach_dist = 0.0f;
     process_path_request.process.lead_off_dist = 0.0f;
     process_path_request.process.corner_slowdown = true;
     process_path_request.process.start_speed_factor = 0.5f;
@@ -550,7 +585,9 @@ ProcessPathBuildRequest BuildProcessPathRequest(
     if (request.curve_chain_max_segment_mm > kEpsilon) {
         process_path_request.process.curve_chain_max_segment_mm = request.curve_chain_max_segment_mm;
     }
-    process_path_request.topology_repair.enable = request.optimize_path;
+    process_path_request.topology_repair.policy = request.optimize_path
+        ? Siligen::ProcessPath::Contracts::TopologyRepairPolicy::Auto
+        : Siligen::ProcessPath::Contracts::TopologyRepairPolicy::Off;
     process_path_request.topology_repair.start_position = Siligen::Shared::Types::Point2D(request.start_x, request.start_y);
     process_path_request.topology_repair.two_opt_iterations = request.two_opt_iterations;
 
@@ -954,6 +991,9 @@ Result<PreparedAuthorityPreview> PlanningUseCase::PrepareAuthorityPreview(const 
     const auto process_path_result = process_path_port_->Build(process_path_request);
     const auto process_path_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - process_path_start).count();
+    if (process_path_result.status != PathGenerationStatus::Success) {
+        return Result<PreparedAuthorityPreview>::Failure(BuildProcessPathBuildError(process_path_result));
+    }
 
     const auto authority_start = std::chrono::steady_clock::now();
     auto authority_result = planning_operations_->BuildAuthorityPreviewArtifacts(

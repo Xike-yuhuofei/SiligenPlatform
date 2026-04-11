@@ -58,7 +58,7 @@ ProcessPathBuildRequest BuildProcessPathRequest(
     build_request.normalization = request.normalization;
     build_request.process = request.process;
     build_request.shaping = request.shaping;
-    build_request.topology_repair.enable = false;
+    build_request.topology_repair.policy = Siligen::ProcessPath::Contracts::TopologyRepairPolicy::Off;
     return build_request;
 }
 

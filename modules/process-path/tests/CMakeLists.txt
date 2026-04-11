@@ -3,9 +3,17 @@ cmake_minimum_required(VERSION 3.20)
 set(PROCESS_PATH_TEST_SOURCES
     contract/ProcessPathContractsTest.cpp
     golden/ProcessPathBuildGoldenTest.cpp
+    golden/LeadOnPolicyGoldenTest.cpp
     integration/ProcessPathToMotionPlanningIntegrationTest.cpp
+    regression/PbFixtureRegressionTest.cpp
+    regression/RepairPolicyRegressionTest.cpp
+    regression/TopologyRepairContourOrderingRegressionTest.cpp
+    regression/TopologyRepairNoOpRegressionTest.cpp
     unit/domain/trajectory/PathRegularizerTest.cpp
     unit/domain/trajectory/TrajectoryShaperTest.cpp
+    unit/application/services/process_path/AlignmentSemanticTest.cpp
+    unit/application/services/process_path/FinalPathDiagnosticsTest.cpp
+    unit/application/services/process_path/PointPrimitiveSemanticsTest.cpp
     unit/application/services/process_path/ProcessPathFacadeTest.cpp
 )
 

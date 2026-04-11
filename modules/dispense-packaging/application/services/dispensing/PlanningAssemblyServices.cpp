@@ -327,6 +327,56 @@ bool IsBetterTriggerBindingCandidate(
     return candidate.interpolation_index < current.interpolation_index;
 }
 
+bool SupportsClosedLoopCyclicBinding(const AuthorityTriggerLayout& layout) {
+    return layout.spans.size() == 1U && layout.spans.front().closed;
+}
+
+void RotateEnabledTriggerIndicesForClosedLoopBinding(
+    const TriggerArtifacts& artifacts,
+    const std::vector<TrajectoryPoint>& execution_trajectory,
+    std::vector<std::size_t>& enabled_trigger_indices,
+    float32 distance_tolerance_mm,
+    float32 match_tolerance_mm) {
+    if (!SupportsClosedLoopCyclicBinding(artifacts.authority_trigger_layout) ||
+        enabled_trigger_indices.empty() ||
+        artifacts.authority_trigger_layout.trigger_points.empty()) {
+        return;
+    }
+
+    const auto& first_trigger = artifacts.authority_trigger_layout.trigger_points.front();
+    TriggerBindingCandidate best_candidate;
+    for (std::size_t enabled_position = 0;
+         enabled_position < enabled_trigger_indices.size();
+         ++enabled_position) {
+        const auto& trajectory_point =
+            execution_trajectory[enabled_trigger_indices[enabled_position]];
+        const float32 distance_error_mm =
+            std::fabs(trajectory_point.trigger_position_mm - first_trigger.distance_mm_global);
+        const float32 match_error_mm = trajectory_point.position.DistanceTo(first_trigger.position);
+        if (distance_error_mm > distance_tolerance_mm ||
+            match_error_mm > match_tolerance_mm) {
+            continue;
+        }
+
+        TriggerBindingCandidate candidate;
+        candidate.found = true;
+        candidate.enabled_position = enabled_position;
+        candidate.interpolation_index = enabled_trigger_indices[enabled_position];
+        candidate.distance_error_mm = distance_error_mm;
+        candidate.match_error_mm = match_error_mm;
+        candidate.monotonic = true;
+        if (IsBetterTriggerBindingCandidate(candidate, best_candidate)) {
+            best_candidate = candidate;
+        }
+    }
+
+    if (best_candidate.found && best_candidate.enabled_position > 0) {
+        std::rotate(enabled_trigger_indices.begin(),
+                    enabled_trigger_indices.begin() + static_cast<std::ptrdiff_t>(best_candidate.enabled_position),
+                    enabled_trigger_indices.end());
+    }
+}
+
 float32 SegmentLength(const Segment& segment) {
     if (segment.length > kEpsilon) {
         return segment.length;
@@ -604,10 +654,10 @@ const ProcessPath& ResolveAuthorityProcessPath(const AuthorityPreviewBuildInput&
 }
 
 const ProcessPath& ResolveExecutionProcessPath(const ExecutionAssemblyBuildInput& input) {
-    if (!input.authority_process_path.segments.empty()) {
-        return input.authority_process_path;
+    if (!input.process_path.segments.empty()) {
+        return input.process_path;
     }
-    return input.process_path;
+    return input.authority_process_path;
 }
 
 bool ValidateGlueSpacing(
@@ -1332,6 +1382,12 @@ void BindAuthorityLayoutToExecutionTrajectory(
     const float32 distance_tolerance_mm = Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm;
     const float32 match_tolerance_mm =
         std::max(kGluePointDedupEpsilonMm, distance_tolerance_mm);
+    RotateEnabledTriggerIndicesForClosedLoopBinding(
+        artifacts,
+        *execution_trajectory,
+        enabled_trigger_indices,
+        distance_tolerance_mm,
+        match_tolerance_mm);
 
     auto bind_candidate = [&](std::size_t trigger_index,
                               const auto& trigger,
@@ -1362,6 +1418,8 @@ void BindAuthorityLayoutToExecutionTrajectory(
         artifacts.authority_trigger_layout.bindings.push_back(std::move(binding));
         last_interpolation_index = candidate.interpolation_index;
     };
+    std::size_t last_enabled_position = 0;
+    bool has_previous_binding = false;
 
     for (std::size_t trigger_index = 0;
          trigger_index < artifacts.authority_trigger_layout.trigger_points.size();
@@ -1410,7 +1468,7 @@ void BindAuthorityLayoutToExecutionTrajectory(
             candidate.interpolation_index = interpolation_index;
             candidate.distance_error_mm = distance_error_mm;
             candidate.match_error_mm = match_error_mm;
-            candidate.monotonic = interpolation_index >= last_interpolation_index;
+            candidate.monotonic = !has_previous_binding || enabled_position >= last_enabled_position;
             if (IsBetterTriggerBindingCandidate(candidate, best_candidate)) {
                 best_candidate = candidate;
             }
@@ -1507,6 +1565,8 @@ void BindAuthorityLayoutToExecutionTrajectory(
 
         bind_candidate(trigger_index, trigger, best_candidate, std::move(trace_row));
         consumed_enabled[best_candidate.enabled_position] = true;
+        last_enabled_position = best_candidate.enabled_position;
+        has_previous_binding = true;
         preferred_enabled_position =
             std::max(preferred_enabled_position, best_candidate.enabled_position + 1U);
     }

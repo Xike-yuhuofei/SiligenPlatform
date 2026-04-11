@@ -4,6 +4,9 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cmath>
+
 namespace {
 
 using Siligen::Application::Services::Dispensing::WorkflowPlanningAssemblyOperationsProvider;
@@ -100,7 +103,7 @@ TEST(WorkflowPlanningAssemblyOperationsContractTest, AssemblePlanningArtifactsPr
     EXPECT_TRUE(payload.spacing_validation_groups.front().short_segment_exception);
 }
 
-TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFromAuthorityPrefersAuthorityProcessPathWhenPresent) {
+TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFromAuthorityUsesExecutionProcessPathForExportWhenPresent) {
     WorkflowPlanningAssemblyOperationsProvider provider;
     const auto operations = provider.CreateOperations();
 
@@ -119,10 +122,66 @@ TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFrom
 
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
     const auto& payload = result.Value();
-    ASSERT_EQ(payload.execution_package.execution_plan.interpolation_segments.size(), 1U);
+    EXPECT_FALSE(payload.execution_package.execution_plan.interpolation_segments.empty());
+    ASSERT_EQ(payload.export_request.process_path.segments.size(), 2U);
+    EXPECT_FLOAT_EQ(payload.export_request.process_path.segments.front().geometry.line.start.x, 0.0f);
+    EXPECT_FLOAT_EQ(payload.export_request.process_path.segments.front().geometry.line.end.x, 4.0f);
+    EXPECT_FLOAT_EQ(payload.export_request.process_path.segments.back().geometry.line.start.x, 4.0f);
+    EXPECT_FLOAT_EQ(payload.export_request.process_path.segments.back().geometry.line.end.x, 10.0f);
+}
+
+TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildAuthorityPreviewArtifactsUsesAuthorityProcessPathForTriggerLayoutWhenProvided) {
+    WorkflowPlanningAssemblyOperationsProvider provider;
+    const auto operations = provider.CreateOperations();
+
+    auto input = BuildPlanningInput();
+    input.process_path.segments.clear();
+    input.process_path.segments.push_back(BuildLineSegment(Point2D(0.0f, 0.0f), Point2D(0.0f, 5.0f)));
+    input.process_path.segments.push_back(BuildLineSegment(Point2D(0.0f, 5.0f), Point2D(5.0f, 5.0f)));
+    input.authority_process_path.segments.clear();
+    input.authority_process_path.segments.push_back(BuildLineSegment(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)));
+    input.trigger_spatial_interval_mm = 5.0f;
+
+    const auto result = operations->BuildAuthorityPreviewArtifacts(BuildWorkflowAuthorityPreviewInput(input));
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    const auto& payload = result.Value();
+    ASSERT_FALSE(payload.authority_trigger_points.empty());
+    EXPECT_EQ(payload.trigger_count, static_cast<int>(payload.authority_trigger_points.size()));
+    EXPECT_TRUE(std::all_of(
+        payload.authority_trigger_points.begin(),
+        payload.authority_trigger_points.end(),
+        [](const auto& trigger) { return std::abs(trigger.position.y) <= 1e-4f; }));
+    EXPECT_TRUE(std::any_of(
+        payload.preview_trajectory_points.begin(),
+        payload.preview_trajectory_points.end(),
+        [](const auto& point) { return point.position.y >= 4.9f; }));
+}
+
+TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFallsBackToAuthorityProcessPathOnlyWhenExecutionPathMissing) {
+    WorkflowPlanningAssemblyOperationsProvider provider;
+    const auto operations = provider.CreateOperations();
+
+    auto input = BuildPlanningInput();
+    input.process_path.segments.clear();
+    input.process_path.segments.push_back(BuildLineSegment(Point2D(0.0f, 0.0f), Point2D(0.0f, 5.0f)));
+    input.process_path.segments.push_back(BuildLineSegment(Point2D(0.0f, 5.0f), Point2D(5.0f, 5.0f)));
+    input.authority_process_path.segments.clear();
+    input.authority_process_path.segments.push_back(BuildLineSegment(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)));
+
+    auto authority = operations->BuildAuthorityPreviewArtifacts(BuildWorkflowAuthorityPreviewInput(input));
+    ASSERT_TRUE(authority.IsSuccess()) << authority.GetError().GetMessage();
+
+    input.process_path.segments.clear();
+    const auto result = operations->BuildExecutionArtifactsFromAuthority(
+        BuildWorkflowExecutionInput(input, authority.Value()));
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    const auto& payload = result.Value();
     ASSERT_EQ(payload.export_request.process_path.segments.size(), 1U);
     EXPECT_FLOAT_EQ(payload.export_request.process_path.segments.front().geometry.line.start.x, 0.0f);
     EXPECT_FLOAT_EQ(payload.export_request.process_path.segments.front().geometry.line.end.x, 10.0f);
+    EXPECT_FLOAT_EQ(payload.export_request.process_path.segments.front().geometry.line.end.y, 0.0f);
 }
 
 TEST(WorkflowPlanningAssemblyOperationsContractTest, AssemblePlanningArtifactsSurfacesUnsupportedMixedTopologyAsFailClassification) {

@@ -14,7 +14,9 @@ namespace Siligen::ProcessPath::Contracts {
 
 struct PathGenerationRequest {
     std::vector<Primitive> primitives;
+    // metadata is required 1:1 with primitives when topology_repair.policy == Auto.
     std::vector<PathPrimitiveMeta> metadata;
+    // alignment is provenance from M5, not a live geometric transform in M6.
     std::optional<Siligen::CoordinateAlignment::Contracts::CoordinateTransformSet> alignment;
     NormalizationConfig normalization{};
     ProcessConfig process{};

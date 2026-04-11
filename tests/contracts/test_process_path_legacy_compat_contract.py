@@ -67,6 +67,7 @@ class ProcessPathContractSurfaceTest(unittest.TestCase):
             '#include "domain/trajectory/ports/IPathSourcePort.h"',
             '#include "domain/trajectory/ports/IDXFPathSourcePort.h"',
             '#include "process_path/contracts/IDXFPathSourcePort.h"',
+            "topology_repair.enable",
         ]
         for root in scan_roots:
             for needle in forbidden_needles:

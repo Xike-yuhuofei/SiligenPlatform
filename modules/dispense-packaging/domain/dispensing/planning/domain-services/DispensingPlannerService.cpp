@@ -1232,7 +1232,7 @@ void ApplyProcessInfoToTrajectory(const ProcessPath& path, float32 vmax, MotionT
 UnifiedTrajectoryPlanRequest BuildUnifiedPlanRequest(const DispensingPlanRequest& request) {
     UnifiedTrajectoryPlanRequest plan_request{};
     plan_request.process.default_flow = 1.0f;
-    plan_request.process.lead_on_dist = 0.0f;
+    plan_request.process.approach_dist = 0.0f;
     plan_request.process.lead_off_dist = 0.0f;
     plan_request.process.corner_slowdown = true;
     if (request.curve_chain_angle_deg > kEpsilon) {
