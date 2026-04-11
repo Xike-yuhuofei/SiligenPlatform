@@ -22,7 +22,7 @@
 
 ### 2.1 活跃 current-fact 文档收口
 
-1. `README.md`、`WORKSPACE.md`、`docs/onboarding/*`、`docs/runtime/*`、`docs/troubleshooting/post-refactor-runbook.md`、`integration/hardware-in-loop/README.md`
+1. `README.md`、`WORKSPACE.md`、`docs/onboarding/*`、`docs/runtime/*`、`docs/troubleshooting/canonical-runbook.md`、`integration/hardware-in-loop/README.md`
    - 删除活跃文档中的绝对路径 `D:\Projects\SiligenSuite`
    - 删除把 `dxf-pipeline` sibling 依赖写成当前仓内事实的表述
    - 删除把 `config\machine_config.ini` 写成当前 bridge 的表述
@@ -37,7 +37,7 @@
 3. `docs/runtime/rollback.md`
    - 回滚只恢复 `config\machine\machine_config.ini`
    - `config\machine_config.ini` 只作为已删除 alias 的负向说明存在
-4. `docs/troubleshooting/post-refactor-runbook.md`
+4. `docs/troubleshooting/canonical-runbook.md`
    - 把 root config alias 改成“误按旧文档恢复已删除 alias”的失败模式
 
 ### 2.3 仓外观察期入口与门禁同步

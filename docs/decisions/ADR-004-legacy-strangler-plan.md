@@ -141,6 +141,6 @@ legacy 目录统一使用以下状态：
 ## 关联文档
 
 - `docs/architecture/canonical-paths.md`
-- `docs/architecture/compatibility-shell-audit.md`
+- `docs/architecture/history/audits/compatibility-shell-audit.md`
 - `docs/architecture/legacy-freeze-policy.md`
 - `docs/architecture/legacy-deletion-gates.md`

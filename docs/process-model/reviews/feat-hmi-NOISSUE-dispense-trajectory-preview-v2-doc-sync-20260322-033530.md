@@ -8,7 +8,7 @@
 
 1. `packages/engineering-contracts/README.md`
 2. `docs/architecture/build-and-test.md`
-3. `docs/troubleshooting/post-refactor-runbook.md`
+3. `docs/troubleshooting/canonical-runbook.md`
 
 ## 关键差异摘要
 

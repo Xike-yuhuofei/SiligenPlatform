@@ -10,8 +10,9 @@ Source: migrated from D:\Projects\Backend_CPP\docs\library\06_reference.md
 # MultiCard IO 与接线参考
 
 > 这里放"查表就能用"的信息: IO 映射、阈值、版本矩阵、端口、配置项。不要写长篇论述。
-> MultiCard SDK 资产入口见 [packages/device-adapters/vendor/multicard/README.md](../../packages/device-adapters/vendor/multicard/README.md)。
-> 控制卡接口定义与输入组枚举见 [packages/device-adapters/include/siligen/device/adapters/drivers/multicard/MultiCardCPP.h](../../packages/device-adapters/include/siligen/device/adapters/drivers/multicard/MultiCardCPP.h)。
+> 本文是当前机型的正式事实源；若与迁入副本或历史诊断说明冲突，以本文为准。
+> MultiCard SDK 资产入口见 [README.md](../../modules/runtime-execution/adapters/device/vendor/multicard/README.md)。
+> 控制卡接口定义与输入组枚举见 [MultiCardCPP.h](../../modules/runtime-execution/adapters/device/include/siligen/device/adapters/drivers/multicard/MultiCardCPP.h)。
 
 ## 1) 版本矩阵(强烈建议维护)
 
@@ -22,9 +23,9 @@ Source: migrated from D:\Projects\Backend_CPP\docs\library\06_reference.md
 | 上位机软件 | siligen-motion-controller v1.0 | C++17, Windows 10/11 |
 | 伺服驱动器固件 | v1.0 | 伺服驱动器固件 |
 | 阀驱动/模块 | v1.0 | 电磁阀控制模块 |
-| 厂商SDK文档 | 博派运动控制 | `packages/device-adapters/vendor/multicard/` |
+| 厂商SDK文档 | 博派运动控制 | `modules/runtime-execution/adapters/device/vendor/multicard/` |
 
-> **SDK验证**: 以仓库内 `packages/device-adapters/vendor/multicard/` 目录为准，入口见 [packages/device-adapters/vendor/multicard/README.md](../../packages/device-adapters/vendor/multicard/README.md)
+> **SDK验证**: 以仓库内 `modules/runtime-execution/adapters/device/vendor/multicard/` 目录为准，入口见 [README.md](../../modules/runtime-execution/adapters/device/vendor/multicard/README.md)
 
 ### 1.1 当前硬件环境(必须显式)
 
@@ -93,7 +94,7 @@ Source: migrated from D:\Projects\Backend_CPP\docs\library\06_reference.md
 | **CMP+** | Trigger | 差分模块-IN-A- | 差分信号(负) | 2000μs | 点胶阀触发 | MC_CmpBufData |
 | **CMP-** | Trigger | 差分模块-IN-A+ | 差分信号(正) | 2000μs | 点胶阀触发 | MC_CmpBufData |
 
-> **当前 DXF 主链权威配置来源**: machine_config.ini `[ValveDispenser]` 段
+> **当前 DXF 主链权威配置来源**: `config/machine/machine_config.ini` 的 `[ValveDispenser]` 段
 > **当前主链典型配置**: `cmp_channel=1`, `pulse_type=0`, `abs_position_flag=1`
 > **触发技术说明**: DXF 执行采用 **规划位置触发 (Planned Position Triggering)**。CMP 位置比较以规划位置(Profile Position)为比较源，通过 `MC_CmpBufData` 下发触发位置数组。定时触发 (`MC_CmpPluse`) 仅用于阀门调试/单独控制，不参与 DXF 执行。
 > **遗留配置澄清**: `[CMP]` 段中的 `cmp_channel`、`signal_type`、`trigger_mode`、`pulse_width_us`、`delay_time_us`、`encoder_num`、`abs_position_flag` 及软件触发相关字段不再是当前 DXF 真机点胶主链的权威配置。真机实际使用的 `MC_CmpBufData.nCmpEncodeNum` 由触发轴映射得到的 SDK 轴号决定，而不是从 `encoder_num` 读取。
@@ -194,12 +195,12 @@ MHE3 系列是 FESTO 的高速微型阀, 专为快速切换应用设计:
 | 连接超时 | 5000 | ms | 控制卡连接超时 | [Network] timeout_ms |
 | 状态监控间隔 | 100 | ms | 轴状态轮询周期 | [Safety] status_monitor_interval |
 
-> **配置来源**: `config/machine_config.ini`（链接到 `src/infrastructure/resources/config/files/machine_config.ini`）
+> **配置来源**: `config/machine/machine_config.ini`
 > **供胶压力**: 系统通过外部调压阀设定(默认50.0 kPa),通过气压表人工监控,无电子压力传感器
 
 ## 5) 常见报警码/错误码(逐步补齐)
 
-> 控制卡错误映射实现见 `packages/device-adapters/src/legacy/drivers/multicard/MultiCardErrorCodes.*`
+> 控制卡错误映射实现见 `modules/runtime-execution/adapters/device/src/drivers/multicard/error_mapper.*`
 
 | 子系统 | 错误码/关键字 | 含义 | 快速处理 | 深入排查 |
 |---|---|---|---|---|
@@ -215,7 +216,7 @@ MHE3 系列是 FESTO 的高速微型阀, 专为快速切换应用设计:
 | 伺服 | 0x00000001 | AXIS_STATUS_ESTOP | 急停触发 | 检查急停按钮状态 |
 
 > **完整错误码**: 见 `src/infrastructure/drivers/multicard/MultiCardErrorCodes.cpp`
-> **厂商文档**: 见 `packages/device-adapters/vendor/multicard/` 对应厂商交付资产
+> **厂商文档**: 见 `modules/runtime-execution/adapters/device/vendor/multicard/` 对应厂商交付资产
 
 ## 6) 重要配置项(如有)
 
@@ -272,7 +273,7 @@ MHE3 系列是 FESTO 的高速微型阀, 专为快速切换应用设计:
 ## 8) 博派API规范
 
 > 本章节包含博派MultiCard控制卡的API参数约束、性能边界和安全要求。所有参数均基于厂商文档提取。
-> **完整厂商文档**: 见 [packages/device-adapters/vendor/multicard/README.md](../../packages/device-adapters/vendor/multicard/README.md)
+> **完整厂商文档**: 见 [README.md](../../modules/runtime-execution/adapters/device/vendor/multicard/README.md)
 
 ### 7.1 安全机制API规范
 

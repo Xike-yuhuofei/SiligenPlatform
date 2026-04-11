@@ -115,11 +115,3 @@ Set-Location <repo-root>
 1. 仓内 release gate 只能证明 canonical 工作区当前通过，不能直接证明仓外迁移已完成。
 2. `hardware smoke` 只能证明最小启动闭环，不能替代 HIL 长稳、真机可运行性或工艺签收。
 3. 正式发布结论必须同时满足软件、设备和现场运维三个维度，不接受只凭单一维度放行。
-
-## 7. 当前已完成的切换
-
-- `runtime-service`、`runtime-gateway`、`planner-cli` 的默认可执行产物都已切到 canonical control-apps build root。
-- `config\machine\machine_config.ini` 与 `data\recipes\` 已是默认配置/数据来源。
-- HIL 默认入口已经切到 `tests\e2e\hardware-in-loop\run_hardware_smoke.py` + canonical gateway/runtime 入口。
-- legacy gateway/tcp alias 已删除；兼容测试现在只验证 canonical target 仍存在且 alias 不得回流。
-- `dxf-pipeline` compat shell、legacy CLI alias 与 root config alias 已从仓内退出；若仓外交付物仍出现这些入口，应直接判为迁移阻断而不是恢复兼容壳。
