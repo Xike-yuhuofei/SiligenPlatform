@@ -11,6 +11,9 @@ if(NOT TARGET siligen_shared_runtime_contracts)
 endif()
 
 set(SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
+set(SILIGEN_DISPENSE_PACKAGING_CONTRACTS_INCLUDE_DIR
+    "${SILIGEN_WORKSPACE_ROOT}/modules/dispense-packaging/contracts/include"
+)
 if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}/runtime_execution/contracts/system/IRuntimeSupervisionPort.h")
     message(FATAL_ERROR
         "runtime-execution canonical runtime contracts require runtime_execution/contracts/system/IRuntimeSupervisionPort.h"
@@ -56,9 +59,16 @@ if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}/runtim
         "runtime-execution canonical runtime contracts require runtime_execution/contracts/dispensing/DispenseCompensationProfile.h"
     )
 endif()
+if(NOT EXISTS "${SILIGEN_DISPENSE_PACKAGING_CONTRACTS_INCLUDE_DIR}/dispense_packaging/contracts/IValvePort.h")
+    message(FATAL_ERROR
+        "runtime-execution canonical runtime contracts require dispense-packaging contracts include root: "
+        "${SILIGEN_DISPENSE_PACKAGING_CONTRACTS_INCLUDE_DIR}"
+    )
+endif()
 
 target_include_directories(siligen_runtime_execution_runtime_contracts INTERFACE
     ${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}
+    ${SILIGEN_DISPENSE_PACKAGING_CONTRACTS_INCLUDE_DIR}
 )
 target_link_libraries(siligen_runtime_execution_runtime_contracts INTERFACE
     siligen_shared_runtime_contracts

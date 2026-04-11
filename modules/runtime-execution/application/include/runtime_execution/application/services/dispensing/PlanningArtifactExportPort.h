@@ -1,7 +1,7 @@
 #pragma once
 
 // Canonical planning artifact export request/result contract for runtime-execution application consumers.
-#include "domain/dispensing/contracts/PlanningArtifactExportRequest.h"
+#include "dispense_packaging/contracts/PlanningArtifactExportRequest.h"
 #include "shared/types/Result.h"
 
 #include <vector>
@@ -20,7 +20,7 @@ class IPlanningArtifactExportPort {
     virtual ~IPlanningArtifactExportPort() = default;
 
     virtual Shared::Types::Result<PlanningArtifactExportResult> Export(
-        const PlanningArtifactExportRequest& request) = 0;
+        const Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest& request) = 0;
 };
 
 }  // namespace Siligen::Application::Services::Dispensing

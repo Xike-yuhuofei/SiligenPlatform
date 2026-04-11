@@ -1,3 +1,3 @@
 #pragma once
 
-#include "domain/dispensing/value-objects/DispensingExecutionTypes.h"
+#include "dispense_packaging/contracts/DispensingExecutionTypes.h"

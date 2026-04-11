@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/dispensing/contracts/PlanningArtifactExportRequest.h"
+#include "dispense_packaging/contracts/PlanningArtifactExportRequest.h"
 #include "process_path/contracts/ProcessPath.h"
 #include "shared/types/Point.h"
 #include "shared/types/TrajectoryTypes.h"
@@ -22,7 +22,8 @@ struct PlanningArtifactExportAssemblyInput {
 
 class PlanningArtifactExportAssemblyService {
 public:
-    PlanningArtifactExportRequest BuildRequest(const PlanningArtifactExportAssemblyInput& input) const;
+    Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest BuildRequest(
+        const PlanningArtifactExportAssemblyInput& input) const;
 };
 
 }  // namespace Siligen::Application::Services::Dispensing

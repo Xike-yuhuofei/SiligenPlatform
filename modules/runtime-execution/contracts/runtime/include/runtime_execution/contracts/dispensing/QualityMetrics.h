@@ -1,3 +1,3 @@
 #pragma once
 
-#include "domain/dispensing/value-objects/QualityMetrics.h"
+#include "dispense_packaging/contracts/QualityMetrics.h"

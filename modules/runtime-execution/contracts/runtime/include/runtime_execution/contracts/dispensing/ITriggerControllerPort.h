@@ -1,3 +1,3 @@
 #pragma once
 
-#include "domain/dispensing/ports/ITriggerControllerPort.h"
+#include "dispense_packaging/contracts/ITriggerControllerPort.h"

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/dispensing/contracts/ExecutionPackage.h"
+#include "dispense_packaging/contracts/ExecutionPackage.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "runtime_execution/contracts/dispensing/IDispensingProcessPort.h"
 #include "runtime_execution/contracts/dispensing/ITaskSchedulerPort.h"

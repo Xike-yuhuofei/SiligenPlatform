@@ -37,7 +37,6 @@ ApplicationContainer::~ApplicationContainer() {
     service_instances_.clear();
     port_instances_.clear();
 
-    valve_controller_.reset();
     velocity_profile_service_.reset();
     jog_controller_.reset();
 

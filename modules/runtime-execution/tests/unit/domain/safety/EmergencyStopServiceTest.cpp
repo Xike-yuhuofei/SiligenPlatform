@@ -1,4 +1,5 @@
 #include "domain/safety/domain-services/EmergencyStopService.h"
+#include "runtime_execution/contracts/dispensing/ITriggerControllerPort.h"
 #include "runtime_execution/contracts/system/IMachineExecutionStatePort.h"
 #include "runtime_execution/contracts/system/MachineExecutionSnapshot.h"
 #include "shared/types/CMPTypes.h"
@@ -23,9 +24,15 @@ using Siligen::Domain::Motion::DomainServices::MotionStatusService;
 using Siligen::Domain::Safety::DomainServices::EmergencyStopFailureKind;
 using Siligen::Domain::Safety::DomainServices::EmergencyStopOptions;
 using Siligen::Domain::Safety::DomainServices::EmergencyStopService;
+using Siligen::Domain::Dispensing::Ports::ITriggerControllerPort;
+using Siligen::Domain::Dispensing::Ports::TriggerConfig;
+using Siligen::Domain::Dispensing::Ports::TriggerStatus;
 using Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort;
 using Siligen::RuntimeExecution::Contracts::System::MachineExecutionPhase;
 using Siligen::RuntimeExecution::Contracts::System::MachineExecutionSnapshot;
+using Siligen::Shared::Types::float32;
+using Siligen::Shared::Types::int32;
+using Siligen::Shared::Types::LogicalAxisId;
 
 class StubMotionControlService final : public MotionControlService {
 public:
@@ -138,12 +145,81 @@ public:
     int recover_to_uninitialized_calls = 0;
 };
 
+class FakeTriggerControllerPort final : public ITriggerControllerPort {
+public:
+    Result<void> ConfigureTrigger(const TriggerConfig& /*config*/) override {
+        return Result<void>::Failure(Error(ErrorCode::NOT_IMPLEMENTED, "ConfigureTrigger not implemented", "FakeTriggerController"));
+    }
+
+    Result<TriggerConfig> GetTriggerConfig() const override {
+        return Result<TriggerConfig>::Failure(
+            Error(ErrorCode::NOT_IMPLEMENTED, "GetTriggerConfig not implemented", "FakeTriggerController"));
+    }
+
+    Result<void> SetSingleTrigger(LogicalAxisId /*axis*/, float32 /*position*/, int32 /*pulse_width_us*/) override {
+        return Result<void>::Failure(Error(ErrorCode::NOT_IMPLEMENTED, "SetSingleTrigger not implemented", "FakeTriggerController"));
+    }
+
+    Result<void> SetContinuousTrigger(
+        LogicalAxisId /*axis*/,
+        float32 /*start_pos*/,
+        float32 /*end_pos*/,
+        float32 /*interval*/,
+        int32 /*pulse_width_us*/) override {
+        return Result<void>::Failure(
+            Error(ErrorCode::NOT_IMPLEMENTED, "SetContinuousTrigger not implemented", "FakeTriggerController"));
+    }
+
+    Result<void> SetRangeTrigger(
+        LogicalAxisId /*axis*/, float32 /*start_pos*/, float32 /*end_pos*/, int32 /*pulse_width_us*/) override {
+        return Result<void>::Failure(Error(ErrorCode::NOT_IMPLEMENTED, "SetRangeTrigger not implemented", "FakeTriggerController"));
+    }
+
+    Result<void> SetSequenceTrigger(
+        LogicalAxisId /*axis*/, const std::vector<float32>& /*positions*/, int32 /*pulse_width_us*/) override {
+        return Result<void>::Failure(
+            Error(ErrorCode::NOT_IMPLEMENTED, "SetSequenceTrigger not implemented", "FakeTriggerController"));
+    }
+
+    Result<void> EnableTrigger(LogicalAxisId /*axis*/) override {
+        return Result<void>::Failure(Error(ErrorCode::NOT_IMPLEMENTED, "EnableTrigger not implemented", "FakeTriggerController"));
+    }
+
+    Result<void> DisableTrigger(LogicalAxisId axis) override {
+        ++disable_trigger_calls;
+        last_disable_axis = axis;
+        return disable_trigger_result;
+    }
+
+    Result<void> ClearTrigger(LogicalAxisId /*axis*/) override {
+        return Result<void>::Failure(Error(ErrorCode::NOT_IMPLEMENTED, "ClearTrigger not implemented", "FakeTriggerController"));
+    }
+
+    Result<TriggerStatus> GetTriggerStatus(LogicalAxisId /*axis*/) const override {
+        return Result<TriggerStatus>::Failure(
+            Error(ErrorCode::NOT_IMPLEMENTED, "GetTriggerStatus not implemented", "FakeTriggerController"));
+    }
+
+    Result<bool> IsTriggerEnabled(LogicalAxisId /*axis*/) const override {
+        return Result<bool>::Failure(Error(ErrorCode::NOT_IMPLEMENTED, "IsTriggerEnabled not implemented", "FakeTriggerController"));
+    }
+
+    Result<int32> GetTriggerCount(LogicalAxisId /*axis*/) const override {
+        return Result<int32>::Failure(
+            Error(ErrorCode::NOT_IMPLEMENTED, "GetTriggerCount not implemented", "FakeTriggerController"));
+    }
+
+    Result<void> disable_trigger_result = Result<void>::Success();
+    int disable_trigger_calls = 0;
+    LogicalAxisId last_disable_axis = LogicalAxisId::INVALID;
+};
+
 }  // namespace
 
 TEST(EmergencyStopServiceTest, ExecuteRecordsActionsAndClearsTasks) {
     auto motion_control = std::make_shared<StubMotionControlService>();
     auto motion_status = std::make_shared<StubMotionStatusService>();
-    auto cmp_service = std::make_shared<Siligen::Domain::Dispensing::DomainServices::CMPService>(nullptr, nullptr);
+    auto trigger_port = std::make_shared<FakeTriggerControllerPort>();
     auto machine_state_port = std::make_shared<FakeMachineExecutionStatePort>();
     machine_state_port->snapshot.phase = MachineExecutionPhase::Ready;
     machine_state_port->snapshot.manual_motion_allowed = true;
@@ -151,7 +227,7 @@ TEST(EmergencyStopServiceTest, ExecuteRecordsActionsAndClearsTasks) {
     machine_state_port->snapshot.pending_task_count = 2;
     machine_state_port->snapshot_result = Result<MachineExecutionSnapshot>::Success(machine_state_port->snapshot);
 
-    EmergencyStopService service(motion_control, motion_status, cmp_service, machine_state_port);
+    EmergencyStopService service(motion_control, motion_status, trigger_port, machine_state_port);
     EmergencyStopOptions options;
     auto outcome = service.Execute(options);
 
@@ -169,6 +245,8 @@ TEST(EmergencyStopServiceTest, ExecuteRecordsActionsAndClearsTasks) {
     EXPECT_FLOAT_EQ(outcome.stop_position.y, 2.0f);
     EXPECT_EQ(machine_state_port->clear_pending_tasks_calls, 1);
     EXPECT_EQ(machine_state_port->transition_to_emergency_stop_calls, 1);
+    EXPECT_EQ(trigger_port->disable_trigger_calls, 1);
+    EXPECT_EQ(trigger_port->last_disable_axis, LogicalAxisId::X);
     EXPECT_FALSE(machine_state_port->snapshot.has_pending_tasks);
     EXPECT_EQ(machine_state_port->snapshot.pending_task_count, 0);
     EXPECT_TRUE(machine_state_port->snapshot.emergency_stopped);
@@ -186,6 +264,28 @@ TEST(EmergencyStopServiceTest, ExecuteReportsMissingDependencies) {
     EXPECT_FALSE(outcome.state_update.attempted);
     EXPECT_FALSE(outcome.stop_position_available);
     EXPECT_STREQ(outcome.motion_stop.error.GetMessage().c_str(), "Motion service not initialized");
+}
+
+TEST(EmergencyStopServiceTest, ExecuteTreatsInvalidStateAndNotImplementedAsCmpDisableSuccess) {
+    for (const auto code : {ErrorCode::INVALID_STATE, ErrorCode::NOT_IMPLEMENTED}) {
+        auto motion_control = std::make_shared<StubMotionControlService>();
+        auto trigger_port = std::make_shared<FakeTriggerControllerPort>();
+        trigger_port->disable_trigger_result =
+            Result<void>::Failure(Error(code, "expected cmp disable bypass", "FakeTriggerController"));
+
+        EmergencyStopService service(motion_control, nullptr, trigger_port, nullptr);
+        EmergencyStopOptions options;
+        options.clear_task_queue = false;
+        options.disable_hardware = false;
+
+        auto outcome = service.Execute(options);
+
+        EXPECT_TRUE(outcome.motion_stop.success);
+        EXPECT_TRUE(outcome.cmp_disable.success);
+        EXPECT_EQ(outcome.cmp_disable.failure, EmergencyStopFailureKind::None);
+        EXPECT_EQ(trigger_port->disable_trigger_calls, 1);
+        EXPECT_EQ(trigger_port->last_disable_axis, LogicalAxisId::X);
+    }
 }
 
 TEST(EmergencyStopServiceTest, RecoverFromEmergencyStopValidatesState) {

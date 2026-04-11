@@ -7,7 +7,6 @@
 #include "application/ports/dispensing/PlanningPortAdapters.h"
 #include "dispense_packaging/application/usecases/dispensing/valve/ValveCommandUseCase.h"
 #include "dispense_packaging/application/usecases/dispensing/valve/ValveQueryUseCase.h"
-#include "domain/dispensing/domain-services/ValveCoordinationService.h"
 #include "domain/safety/ports/IInterlockSignalPort.h"
 #include "job_ingest/application/ports/dispensing/UploadPorts.h"
 #include "job_ingest/application/usecases/dispensing/UploadFileUseCase.h"
@@ -171,17 +170,13 @@ void ApplicationContainer::ValidateDispensingPorts() {
 }
 
 void ApplicationContainer::ConfigureDispensingServices() {
-    valve_controller_ =
-        std::make_shared<Domain::Dispensing::DomainServices::ValveCoordinationService>(valve_port_);
-    RegisterService<Domain::Dispensing::DomainServices::ValveCoordinationService>(valve_controller_);
-    SILIGEN_LOG_INFO("ValveController registered");
+    SILIGEN_LOG_INFO("Dispensing services configuration complete");
 }
 
 template<>
 std::shared_ptr<UseCases::Dispensing::Valve::ValveCommandUseCase>
 ApplicationContainer::CreateInstance<UseCases::Dispensing::Valve::ValveCommandUseCase>() {
     return std::make_shared<UseCases::Dispensing::Valve::ValveCommandUseCase>(
-        valve_controller_,
         valve_port_,
         config_port_,
         device_connection_port_);

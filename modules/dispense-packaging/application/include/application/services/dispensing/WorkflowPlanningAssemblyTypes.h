@@ -1,9 +1,9 @@
 #pragma once
 
-#include "domain/dispensing/contracts/PlanningArtifactExportRequest.h"
-#include "domain/dispensing/contracts/ExecutionPackage.h"
-#include "domain/dispensing/value-objects/AuthorityTriggerLayout.h"
-#include "domain/dispensing/value-objects/DispenseCompensationProfile.h"
+#include "dispense_packaging/contracts/PlanningArtifactExportRequest.h"
+#include "dispense_packaging/contracts/ExecutionPackage.h"
+#include "dispense_packaging/contracts/AuthorityTriggerLayout.h"
+#include "dispense_packaging/contracts/DispenseCompensationProfile.h"
 #include "motion_planning/contracts/MotionPlan.h"
 #include "motion_planning/contracts/MotionPlanningReport.h"
 #include "motion_planning/contracts/InterpolationTypes.h"
@@ -109,7 +109,7 @@ struct WorkflowExecutionAssemblyResult {
     bool execution_binding_ready = false;
     std::string execution_failure_reason;
     Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
-    PlanningArtifactExportRequest export_request;
+    Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest export_request;
 };
 
 struct WorkflowPlanningAssemblyRequest {
@@ -144,7 +144,7 @@ struct WorkflowPlanningAssemblyResult {
     Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
     std::vector<WorkflowAuthorityTriggerPoint> authority_trigger_points;
     std::vector<WorkflowSpacingValidationGroup> spacing_validation_groups;
-    PlanningArtifactExportRequest export_request;
+    Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest export_request;
 };
 
 }  // namespace Siligen::Application::Services::Dispensing

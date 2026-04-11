@@ -57,9 +57,6 @@ target_include_directories(siligen_dispense_packaging_application_headers INTERF
     ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
-target_link_libraries(siligen_dispense_packaging_application_headers INTERFACE
-    siligen_dispense_packaging_domain_dispensing
-)
 if(TARGET siligen_dispense_packaging_contracts_public)
     target_link_libraries(siligen_dispense_packaging_application_headers INTERFACE
         siligen_dispense_packaging_contracts_public
@@ -100,9 +97,11 @@ target_include_directories(siligen_dispense_packaging_application PRIVATE
     ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_dispense_packaging_application PUBLIC
-    siligen_dispense_packaging_domain_dispensing
     siligen_types
     siligen_utils
+)
+target_link_libraries(siligen_dispense_packaging_application PRIVATE
+    siligen_dispense_packaging_domain_dispensing
 )
 if(TARGET siligen_dispense_packaging_contracts_public)
     target_link_libraries(siligen_dispense_packaging_application PUBLIC
@@ -144,9 +143,12 @@ target_include_directories(siligen_valve_core PRIVATE
     ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_valve_core PUBLIC
-    siligen_dispense_packaging_execution_residual
+    siligen_dispense_packaging_contracts_public
     siligen_types
     siligen_utils
+)
+target_link_libraries(siligen_valve_core PRIVATE
+    siligen_dispense_packaging_execution_residual
 )
 if(TARGET siligen_process_planning_contracts_public)
     target_link_libraries(siligen_valve_core PUBLIC

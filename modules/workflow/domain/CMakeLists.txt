@@ -14,6 +14,13 @@ if(NOT TARGET siligen_trace_diagnostics_contracts_public)
     )
 endif()
 
+if(NOT TARGET siligen_dispense_packaging_contracts_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../dispense-packaging/contracts"
+        "${CMAKE_BINARY_DIR}/_p/wd_dpc"
+    )
+endif()
+
 # Bridge-only: workflow/domain 当前仍为迁移期桥接层。
 # 允许保留的 sibling source 聚合仅限既有 owner 模块，禁止继续向外扩张。
 set(SILIGEN_WORKFLOW_DOMAIN_BRIDGE_ONLY_ALLOWED_MODULES
@@ -34,6 +41,7 @@ target_include_directories(siligen_workflow_domain_headers INTERFACE
 )
 target_link_libraries(siligen_workflow_domain_headers INTERFACE
     siligen_trace_diagnostics_contracts_public
+    siligen_dispense_packaging_contracts_public
     siligen_types
     siligen_trace_diagnostics_contracts_public
 )

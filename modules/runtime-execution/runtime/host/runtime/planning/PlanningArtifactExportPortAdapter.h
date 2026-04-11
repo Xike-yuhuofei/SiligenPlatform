@@ -10,7 +10,7 @@ class PlanningArtifactExportPortAdapter final
     : public Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort {
    public:
     Siligen::Shared::Types::Result<Siligen::Application::Services::Dispensing::PlanningArtifactExportResult> Export(
-        const Siligen::Application::Services::Dispensing::PlanningArtifactExportRequest& request) override;
+        const Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest& request) override;
 };
 
 std::shared_ptr<Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort>

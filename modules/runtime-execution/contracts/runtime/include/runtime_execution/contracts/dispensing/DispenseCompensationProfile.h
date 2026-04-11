@@ -1,3 +1,3 @@
 #pragma once
 
-#include "domain/dispensing/value-objects/DispenseCompensationProfile.h"
+#include "dispense_packaging/contracts/DispenseCompensationProfile.h"
