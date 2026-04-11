@@ -75,6 +75,7 @@ target_link_libraries(siligen_runtime_execution_application_headers INTERFACE
     siligen_dispense_packaging_contracts_public
     siligen_dispense_packaging_domain_dispensing
     siligen_dispense_packaging_execution_residual
+    siligen_motion_planning_application_headers
     siligen_process_planning_contracts_public
 )
 if(TARGET siligen_trace_diagnostics_contracts_public)
@@ -240,7 +241,6 @@ if(NOT TARGET siligen_application_motion)
         usecases/motion/homing/HomeAxesUseCase.cpp
         usecases/motion/homing/EnsureAxesReadyZeroUseCase.cpp
         usecases/motion/ptp/MoveToPositionUseCase.cpp
-        usecases/motion/trajectory/DeterministicPathExecutionUseCase.cpp
         usecases/motion/trajectory/ExecuteTrajectoryUseCase.cpp
         usecases/motion/runtime/MotionRuntimeAssemblyFactory.cpp
     )
@@ -259,7 +259,6 @@ target_link_libraries(siligen_application_motion PUBLIC
     siligen_geometry
     siligen_motion
     siligen_runtime_execution_motion_execution_services
-    siligen_process_path_contracts_public
     siligen_process_planning_contracts_public
     siligen_dispense_packaging_domain_dispensing
     siligen_motion_planning_application_public

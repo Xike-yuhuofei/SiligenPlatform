@@ -77,21 +77,3 @@ add_test(
     NAME runtime_execution_motion_runtime_assembly_test
     COMMAND runtime_execution_motion_runtime_assembly_test
 )
-
-add_executable(runtime_execution_deterministic_path_execution_test
-    motion/DeterministicPathExecutionUseCaseTest.cpp
-)
-target_include_directories(runtime_execution_deterministic_path_execution_test PRIVATE
-    ${RUNTIME_EXECUTION_TEST_INCLUDE_DIRS}
-)
-target_link_libraries(runtime_execution_deterministic_path_execution_test PRIVATE
-    siligen_application_motion
-    siligen_runtime_execution_motion_execution_services
-    siligen_types
-    siligen_utils
-)
-target_compile_features(runtime_execution_deterministic_path_execution_test PRIVATE cxx_std_17)
-add_test(
-    NAME runtime_execution_deterministic_path_execution_test
-    COMMAND runtime_execution_deterministic_path_execution_test
-)

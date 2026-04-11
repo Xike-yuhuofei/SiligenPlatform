@@ -5,6 +5,7 @@
 ## 当前 owner 范围
 
 - 执行链 application public surface：消费已验证执行输入、驱动执行、收敛执行状态与失败归责。
+- deterministic-path runtime 装配：通过 `MotionRuntimeAssemblyFactory` 消费 `modules/motion-planning/application/usecases/motion/trajectory/DeterministicPathExecutionUseCase.h` 提供的 M7 concrete seam，不再在 M9 本地持有路径构建与插补程序生成 owner。
 - Python simulation export concrete：`application/runtime_execution/*.py` 持有 simulation input 的 runtime defaults、trigger CSV/投影、payload 组装、JSON 导出与 CLI concrete；schema authority 仍留在 `shared/contracts/engineering/`，geometry helper 仍由 `modules/dxf-geometry/` 提供。
 - runtime contracts：仅保留 runtime-owned 执行态契约、motion/runtime bridge contracts、device/runtime consumer contracts；不再透传 configuration / task scheduler / event publisher 等 foreign-owner public surface。
 - 跨模块稳定事件发布契约 `IEventPublisherPort` 现由 `shared/contracts/runtime` 持有；`runtime-execution` 只消费 `runtime/contracts/system/IEventPublisherPort.h`。
@@ -47,6 +48,8 @@
 - `services/motion/SoftLimitMonitorService.*`
 
 其中 machine execution state 的 canonical concrete 已收口为 `runtime/system/MachineExecutionStateStore.*` + `runtime/system/MachineExecutionStateBackend.*`。`runtime-execution` 不再依赖 workflow machine aggregate alias，也不再把 `DispenserModel` / `DispensingTask` 暴露为 live public/test surface。
+
+deterministic-path 的 `ProcessPath` 重建、轨迹规划与插补程序生成现由 `M7 motion-planning` 持有；`runtime-execution` 仅负责 runtime port 装配、tick 推进调用与执行态消费。
 
 `siligen_runtime_host` 不再 `PUBLIC` 聚合 `job-ingest`、`workflow`、`workflow_recipe`、DXF adapter、host storage 或 recipe persistence。
 
