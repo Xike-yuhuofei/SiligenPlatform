@@ -1,17 +1,16 @@
 #include "domain/safety/domain-services/EmergencyStopService.h"
 
-#include "domain/dispensing/domain-services/CMPTriggerService.h"
 #include "shared/types/Types.h"
 
 namespace Siligen::Domain::Safety::DomainServices {
 
 EmergencyStopService::EmergencyStopService(std::shared_ptr<MotionControlService> motion_control_service,
                                            std::shared_ptr<MotionStatusService> motion_status_service,
-                                           std::shared_ptr<CMPService> cmp_service,
+                                           std::shared_ptr<ITriggerControllerPort> trigger_port,
                                            std::shared_ptr<IMachineExecutionStatePort> machine_execution_state_port) noexcept
     : motion_control_service_(std::move(motion_control_service)),
       motion_status_service_(std::move(motion_status_service)),
-      cmp_service_(std::move(cmp_service)),
+      trigger_port_(std::move(trigger_port)),
       machine_execution_state_port_(std::move(machine_execution_state_port)) {}
 
 EmergencyStopStepResult EmergencyStopService::DependencyMissingResult(const char* message) noexcept {
@@ -51,11 +50,18 @@ EmergencyStopOutcome EmergencyStopService::Execute(const EmergencyStopOptions& o
     }
 
     if (options.disable_cmp) {
-        if (!cmp_service_) {
-            outcome.cmp_disable = DependencyMissingResult("CMP service not initialized");
+        if (!trigger_port_) {
+            outcome.cmp_disable = DependencyMissingResult("Trigger controller port not initialized");
         } else {
-            auto result = cmp_service_->DisableCMP();
-            outcome.cmp_disable = result.IsSuccess() ? SuccessResult() : OperationFailedResult(result.GetError());
+            auto result = trigger_port_->DisableTrigger(Siligen::Shared::Types::LogicalAxisId::X);
+            if (result.IsSuccess()) {
+                outcome.cmp_disable = SuccessResult();
+            } else if (result.GetError().GetCode() == ErrorCode::INVALID_STATE ||
+                       result.GetError().GetCode() == ErrorCode::NOT_IMPLEMENTED) {
+                outcome.cmp_disable = SuccessResult();
+            } else {
+                outcome.cmp_disable = OperationFailedResult(result.GetError());
+            }
         }
     }
 

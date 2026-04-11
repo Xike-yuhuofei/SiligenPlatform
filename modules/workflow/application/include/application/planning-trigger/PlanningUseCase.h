@@ -3,12 +3,12 @@
 #include "application/ports/dispensing/PlanningPorts.h"
 #include "workflow/contracts/WorkflowContracts.h"
 #include "application/services/dispensing/WorkflowPlanningAssemblyTypes.h"
-#include "domain/dispensing/value-objects/AuthorityTriggerLayout.h"
-#include "domain/dispensing/value-objects/DispenseCompensationProfile.h"
+#include "dispense_packaging/contracts/AuthorityTriggerLayout.h"
+#include "dispense_packaging/contracts/DispenseCompensationProfile.h"
 #include "runtime/contracts/system/IEventPublisherPort.h"
 #include "motion_planning/contracts/MotionPlanningReport.h"
 #include "motion_planning/contracts/InterpolationTypes.h"
-#include "domain/dispensing/contracts/ExecutionPackage.h"
+#include "dispense_packaging/contracts/ExecutionPackage.h"
 #include "process_path/contracts/ProcessPath.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
@@ -81,7 +81,7 @@ struct ExecutionAssemblyResponse {
     std::string execution_failure_reason;
     std::shared_ptr<ExecutionPackageValidated> execution_package;
     Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
-    Siligen::Application::Services::Dispensing::PlanningArtifactExportRequest export_request;
+    Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest export_request;
     ExecutionProfile execution_profile;
     int diagnostic_error_code = 0;
     std::string diagnostic_message;

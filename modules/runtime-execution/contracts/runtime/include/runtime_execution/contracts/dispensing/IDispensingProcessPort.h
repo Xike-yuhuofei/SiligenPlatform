@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/dispensing/ports/IDispensingExecutionObserver.h"
+#include "dispense_packaging/contracts/IDispensingExecutionObserver.h"
 #include "runtime_execution/contracts/dispensing/DispensingExecutionTypes.h"
 
 #include <atomic>

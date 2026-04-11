@@ -1,7 +1,7 @@
 #pragma once
 
-#include "domain/dispensing/contracts/ExecutionPackage.h"
-#include "domain/dispensing/value-objects/DispensingExecutionTypes.h"
+#include "dispense_packaging/contracts/ExecutionPackage.h"
+#include "dispense_packaging/contracts/DispensingExecutionTypes.h"
 #include "domain/safety/domain-services/SafetyOutputGuard.h"
 #include "shared/types/Result.h"
 

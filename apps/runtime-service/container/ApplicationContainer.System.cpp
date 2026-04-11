@@ -135,9 +135,6 @@ ApplicationContainer::CreateInstance<UseCases::System::EmergencyStopUseCase>() {
     auto motion_state_port = motion_runtime_port_
         ? std::static_pointer_cast<Domain::Motion::Ports::IMotionStatePort>(motion_runtime_port_)
         : motion_state_port_;
-    auto cmp_service = std::make_shared<Domain::Dispensing::DomainServices::CMPService>(
-        trigger_port_,
-        logging_service_);
     auto motion_control_service =
         std::make_shared<Siligen::RuntimeExecution::Application::Services::Motion::MotionControlServiceImpl>(
             position_control_port);
@@ -148,7 +145,7 @@ ApplicationContainer::CreateInstance<UseCases::System::EmergencyStopUseCase>() {
     return std::make_shared<UseCases::System::EmergencyStopUseCase>(
         motion_control_service,
         motion_status_service,
-        cmp_service,
+        trigger_port_,
         machine_execution_state_port_,
         logging_service_);
 }

@@ -208,7 +208,6 @@ private:
     // Domain Service实例
     std::shared_ptr<Domain::Motion::DomainServices::JogController> jog_controller_;
     std::shared_ptr<Domain::Motion::DomainServices::VelocityProfileService> velocity_profile_service_;
-    std::shared_ptr<Domain::Dispensing::DomainServices::ValveCoordinationService> valve_controller_;
     std::shared_ptr<Siligen::Application::UseCases::System::IHardLimitMonitor> hard_limit_monitor_;
 
     // 配置数据
@@ -395,8 +394,6 @@ private:
             jog_controller_ = service;
         } else if constexpr (std::is_same_v<TService, Domain::Motion::DomainServices::VelocityProfileService>) {
             velocity_profile_service_ = service;
-        } else if constexpr (std::is_same_v<TService, Domain::Dispensing::DomainServices::ValveCoordinationService>) {
-            valve_controller_ = service;
         }
     }
 

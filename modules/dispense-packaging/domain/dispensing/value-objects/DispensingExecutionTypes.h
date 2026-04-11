@@ -1,10 +1,10 @@
 #pragma once
 
-#include "domain/dispensing/value-objects/DispenseCompensationProfile.h"
-#include "domain/dispensing/value-objects/GuardDecision.h"
-#include "domain/dispensing/value-objects/JobExecutionMode.h"
-#include "domain/dispensing/value-objects/ProcessOutputPolicy.h"
-#include "domain/machine/value-objects/MachineMode.h"
+#include "../../../contracts/include/dispense_packaging/contracts/DispenseCompensationProfile.h"
+#include "../../../contracts/include/dispense_packaging/contracts/GuardDecision.h"
+#include "../../../contracts/include/dispense_packaging/contracts/JobExecutionMode.h"
+#include "../../../contracts/include/dispense_packaging/contracts/MachineMode.h"
+#include "../../../contracts/include/dispense_packaging/contracts/ProcessOutputPolicy.h"
 #include "motion_planning/contracts/MotionTrajectory.h"
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "shared/types/Error.h"

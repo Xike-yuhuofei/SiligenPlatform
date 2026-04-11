@@ -101,6 +101,26 @@ endif()
 target_include_directories(siligen_workflow_application_headers INTERFACE
     ${SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR}
 )
+if(TARGET siligen_dispense_packaging_contracts_public)
+    target_link_libraries(siligen_workflow_application_headers INTERFACE
+        siligen_dispense_packaging_contracts_public
+    )
+endif()
+if(TARGET siligen_motion_planning_contracts_public)
+    target_link_libraries(siligen_workflow_application_headers INTERFACE
+        siligen_motion_planning_contracts_public
+    )
+endif()
+if(TARGET siligen_process_path_contracts_public)
+    target_link_libraries(siligen_workflow_application_headers INTERFACE
+        siligen_process_path_contracts_public
+    )
+endif()
+if(TARGET siligen_runtime_execution_runtime_contracts)
+    target_link_libraries(siligen_workflow_application_headers INTERFACE
+        siligen_runtime_execution_runtime_contracts
+    )
+endif()
 target_compile_features(siligen_workflow_application_headers INTERFACE cxx_std_17)
 
 set(SILIGEN_APPLICATION_PUBLIC_INCLUDE_DIRS
@@ -132,7 +152,6 @@ target_link_libraries(siligen_application_dispensing PUBLIC
     siligen_types
     siligen_utils
     siligen_geometry
-    siligen_dispense_packaging_domain_dispensing
 )
 if(TARGET siligen_process_path_contracts_public)
     target_link_libraries(siligen_application_dispensing PUBLIC
@@ -172,6 +191,11 @@ endif()
 if(TARGET siligen_dispense_packaging_application_public)
     target_link_libraries(siligen_application_dispensing PRIVATE
         siligen_dispense_packaging_application_public
+    )
+endif()
+if(TARGET siligen_dispense_packaging_domain_dispensing)
+    target_link_libraries(siligen_application_dispensing PRIVATE
+        siligen_dispense_packaging_domain_dispensing
     )
 endif()
 if(TARGET siligen_dispense_packaging_contracts_public)

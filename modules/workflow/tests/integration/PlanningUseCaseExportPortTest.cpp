@@ -26,11 +26,11 @@ namespace {
 using Siligen::Application::Services::DXF::DxfPbPreparationService;
 using Siligen::Application::UseCases::Dispensing::PlanningRequest;
 using Siligen::Application::UseCases::Dispensing::PlanningUseCase;
-using Siligen::Application::Services::Dispensing::PlanningArtifactExportRequest;
 using Siligen::Application::Services::Dispensing::PlanningArtifactExportResult;
 using Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort;
 using Siligen::Domain::Configuration::Ports::IConfigurationPort;
 using Siligen::Domain::Configuration::Ports::HomingConfig;
+using Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest;
 using Siligen::ProcessPath::Contracts::Primitive;
 using Siligen::ProcessPath::Contracts::IPathSourcePort;
 using Siligen::ProcessPath::Contracts::PathGenerationResult;
