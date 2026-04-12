@@ -374,7 +374,9 @@ class ProductionActionWorker(QThread):
                 elif self._action == "resume":
                     ok, error = _protocol.dxf_job_resume(self._job_id)
                 elif self._action == "stop":
-                    ok, error = _protocol.dxf_job_stop(self._job_id)
+                    transition = _protocol.dxf_job_stop(self._job_id)
+                    ok = transition.accepted
+                    error = "" if transition.accepted else transition.message
                 else:
                     error = f"不支持的生产控制动作: {self._action}"
                 if self._is_cancelled():

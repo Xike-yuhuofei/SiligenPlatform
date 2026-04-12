@@ -131,6 +131,15 @@ class MachineStatus:
         return False
 
 
+@dataclass
+class JobTransitionResult:
+    accepted: bool = False
+    transition_state: str = ""
+    job_id: str = ""
+    message: str = ""
+    error_code: int | None = None
+
+
 class CommandProtocol:
     """High-level command interface for motion controller."""
 
@@ -163,6 +172,38 @@ class CommandProtocol:
             return False, missing_result_message, None
 
         return True, "", None
+
+    def _resolve_job_transition_result(
+        self,
+        resp: JsonDict,
+        *,
+        accepted_key: str,
+        default_transition_state: str,
+        missing_result_message: str = "响应缺少 result 字段",
+    ) -> JobTransitionResult:
+        if "error" in resp:
+            error_payload = _as_dict(resp.get("error"))
+            message = str(error_payload.get("message", "") or "Unknown error")
+            code_raw = error_payload.get("code")
+            if code_raw is None:
+                error_code = None
+            else:
+                try:
+                    error_code = int(code_raw)
+                except (TypeError, ValueError):
+                    error_code = None
+            return JobTransitionResult(message=message, error_code=error_code)
+
+        if "result" not in resp:
+            return JobTransitionResult(message=missing_result_message)
+
+        result = _as_dict(resp.get("result"))
+        return JobTransitionResult(
+            accepted=bool(result.get(accepted_key, False)),
+            transition_state=str(result.get("transition_state", default_transition_state) or default_transition_state),
+            job_id=str(result.get("job_id", "") or ""),
+            message=str(result.get("message", "") or ""),
+        )
 
     def _build_dxf_plan_params(
         self,
@@ -601,12 +642,23 @@ class CommandProtocol:
             return False, resp["error"].get("message", "Unknown error")
         return True, ""
 
-    def dxf_job_stop(self, job_id: str = "") -> tuple[bool, str]:
+    def dxf_job_stop(self, job_id: str = "") -> JobTransitionResult:
         params = {"job_id": job_id} if job_id else {}
         resp = self._client.send_request("dxf.job.stop", params, timeout=15.0)
-        if "error" in resp:
-            return False, resp["error"].get("message", "Unknown error")
-        return True, ""
+        return self._resolve_job_transition_result(
+            resp,
+            accepted_key="stopped",
+            default_transition_state="stopping",
+        )
+
+    def dxf_job_cancel(self, job_id: str = "") -> JobTransitionResult:
+        params = {"job_id": job_id} if job_id else {}
+        resp = self._client.send_request("dxf.job.cancel", params, timeout=15.0)
+        return self._resolve_job_transition_result(
+            resp,
+            accepted_key="cancelled",
+            default_transition_state="canceling",
+        )
 
     def dxf_get_info(self) -> JsonDict:
         """Get DXF file info including bounding box and total length."""

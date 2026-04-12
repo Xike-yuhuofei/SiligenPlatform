@@ -146,6 +146,7 @@ std::unique_ptr<DispensingExecutionUseCase::Impl> CreateExecutionUseCase(
         nullptr,
         std::move(task_scheduler_port),
         nullptr,
+        nullptr,
         nullptr);
 }
 
@@ -467,7 +468,7 @@ TEST(DispensingExecutionUseCaseInternalTest, CancelTaskCancelsPendingSchedulerTa
     EXPECT_EQ(task_it->second->committed_terminal_state.load(), TaskState::CANCELLED);
 }
 
-TEST(DispensingExecutionUseCaseInternalTest, StopJobCommitsCancelledStateImmediatelyAfterTaskCancelConfirmed) {
+TEST(DispensingExecutionUseCaseInternalTest, StopJobLeavesJobInStoppingTransitionAfterTaskCancelConfirmed) {
     auto use_case = CreateExecutionUseCase();
 
     auto task_context = std::make_shared<TaskExecutionContext>();
@@ -512,14 +513,14 @@ TEST(DispensingExecutionUseCaseInternalTest, StopJobCommitsCancelledStateImmedia
     cancel_completion.join();
 
     ASSERT_TRUE(stop_result.IsSuccess()) << stop_result.GetError().GetMessage();
-    EXPECT_EQ(job_context->state.load(), JobState::CANCELLED);
-    EXPECT_TRUE(job_context->final_state_committed.load());
-    EXPECT_TRUE(use_case->active_job_id_.empty());
+    EXPECT_EQ(job_context->state.load(), JobState::STOPPING);
+    EXPECT_FALSE(job_context->final_state_committed.load());
+    EXPECT_EQ(use_case->active_job_id_, job_context->job_id);
 
     auto job_status_result = use_case->GetJobStatus(job_context->job_id);
     ASSERT_TRUE(job_status_result.IsSuccess());
-    EXPECT_EQ(job_status_result.Value().state, "cancelled");
-    EXPECT_EQ(job_status_result.Value().error_message, "failure_stage=cancel_confirm;failure_code=cancelled;message=执行已取消");
+    EXPECT_EQ(job_status_result.Value().state, "stopping");
+    EXPECT_EQ(job_status_result.Value().error_message, "");
 }
 
 TEST(DispensingExecutionUseCaseInternalTest, TerminalTaskStatusIsReturnedOnceThenReleased) {

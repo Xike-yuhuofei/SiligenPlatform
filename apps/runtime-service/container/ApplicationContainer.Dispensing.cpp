@@ -14,6 +14,7 @@
 #include "process_path/contracts/IPathSourcePort.h"
 #include "runtime_process_bootstrap/storage/ports/IFileStoragePort.h"
 #include "runtime_execution/application/services/dispensing/DispensingProcessPortFactory.h"
+#include "runtime_execution/application/services/motion/execution/MotionReadinessService.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "runtime/planning/PlanningArtifactExportPortAdapter.h"
 #include "workflow/application/phase-control/DispensingWorkflowUseCase.h"
@@ -242,6 +243,12 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::DispensingExecutionUs
             motion_state_port_,
             device_connection_port_,
             config_port_);
+    auto readiness_service =
+        std::make_shared<Siligen::Application::Services::Motion::Execution::MotionReadinessService>(
+            motion_runtime_port_
+                ? std::static_pointer_cast<Siligen::Domain::Motion::Ports::IMotionStatePort>(motion_runtime_port_)
+                : motion_state_port_,
+            interpolation_port_);
     return std::make_shared<UseCases::Dispensing::DispensingExecutionUseCase>(
         valve_port_,
         interpolation_port_,
@@ -252,7 +259,8 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::DispensingExecutionUs
         event_port_,
         task_scheduler_port_,
         homing_port_,
-        ResolvePort<Domain::Safety::Ports::IInterlockSignalPort>());
+        ResolvePort<Domain::Safety::Ports::IInterlockSignalPort>(),
+        readiness_service);
 }
 
 template<>

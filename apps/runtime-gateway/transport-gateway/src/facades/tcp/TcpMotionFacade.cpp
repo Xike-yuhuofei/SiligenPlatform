@@ -145,6 +145,16 @@ Shared::Types::Result<bool> TcpMotionFacade::ReadServoAlarmStatus(Shared::Types:
     return motion_control_use_case_->ReadServoAlarmStatus(axis);
 }
 
+Shared::Types::Result<Siligen::Application::Services::Motion::Execution::MotionReadinessResult>
+TcpMotionFacade::EvaluateMotionReadiness(
+    const Siligen::Application::Services::Motion::Execution::MotionReadinessQuery& query) const {
+    if (!motion_control_use_case_) {
+        return Shared::Types::Result<Siligen::Application::Services::Motion::Execution::MotionReadinessResult>::Failure(
+            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "MotionControlUseCase not available"));
+    }
+    return motion_control_use_case_->EvaluateMotionReadiness(query);
+}
+
 bool TcpMotionFacade::HasHardwareConnectionPort() const {
     return static_cast<bool>(hardware_connection_port_);
 }

@@ -12,4 +12,5 @@
 
 - [dxf-contract-regression-resume-2026-03-21.md](./dxf-contract-regression-resume-2026-03-21.md)
 - [dxf-mainline-session-summary-2026-03-21.md](./dxf-mainline-session-summary-2026-03-21.md)
+- [dxf-motion-readiness-gates-validation-2026-04-12.md](./dxf-motion-readiness-gates-validation-2026-04-12.md)
 - [dxf-real-dispense-field-regression-2026-03-21.md](./dxf-real-dispense-field-regression-2026-03-21.md)

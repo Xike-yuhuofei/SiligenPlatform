@@ -7,6 +7,7 @@
 #include "runtime_execution/contracts/dispensing/IValvePort.h"
 #include "runtime_execution/contracts/dispensing/QualityMetrics.h"
 #include "runtime_execution/contracts/machine/MachineMode.h"
+#include "runtime_execution/application/services/motion/execution/MotionReadinessService.h"
 #include "runtime_execution/contracts/motion/IHomingPort.h"
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "runtime_execution/contracts/motion/IMotionStatePort.h"
@@ -122,7 +123,9 @@ class DispensingExecutionUseCase {
         std::shared_ptr<RuntimeEventPublisherPort> event_port = nullptr,
         std::shared_ptr<RuntimeTaskSchedulerPort> task_scheduler_port = nullptr,
         std::shared_ptr<RuntimeHomingPort> homing_port = nullptr,
-        std::shared_ptr<RuntimeInterlockSignalPort> interlock_signal_port = nullptr);
+        std::shared_ptr<RuntimeInterlockSignalPort> interlock_signal_port = nullptr,
+        std::shared_ptr<Siligen::Application::Services::Motion::Execution::MotionReadinessService>
+            readiness_service = nullptr);
 
     ~DispensingExecutionUseCase();
 

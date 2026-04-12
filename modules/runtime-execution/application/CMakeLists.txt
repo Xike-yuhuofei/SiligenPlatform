@@ -126,6 +126,7 @@ if(NOT TARGET siligen_runtime_execution_motion_execution_services)
         services/motion/execution/MotionBufferController.cpp
         services/motion/execution/JogController.cpp
         services/motion/execution/HomingProcess.cpp
+        services/motion/execution/MotionReadinessService.cpp
         services/motion/execution/ReadyZeroDecisionService.cpp
     )
 endif()

@@ -3,6 +3,7 @@
 #include "runtime_execution/application/usecases/motion/coordination/MotionCoordinationUseCase.h"
 #include "runtime_execution/application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
 #include "runtime_execution/application/usecases/motion/homing/HomeAxesUseCase.h"
+#include "runtime_execution/application/services/motion/execution/MotionReadinessService.h"
 #include "runtime_execution/application/usecases/motion/initialization/MotionInitializationUseCase.h"
 #include "runtime_execution/application/usecases/motion/interpolation/InterpolationPlanningUseCase.h"
 #include "runtime_execution/application/usecases/motion/manual/ManualMotionControlUseCase.h"
@@ -26,6 +27,26 @@
 #define MODULE_NAME "ApplicationContainer.Motion"
 
 namespace Siligen::Application::Container {
+namespace {
+
+std::shared_ptr<Siligen::Application::Services::Motion::Execution::MotionReadinessService>
+CreateMotionReadinessService(
+    const std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IMotionRuntimePort>& motion_runtime_port,
+    const std::shared_ptr<Siligen::Domain::Motion::Ports::IMotionStatePort>& motion_state_port,
+    const std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort>& interpolation_port) {
+    auto state_port = motion_runtime_port
+        ? std::static_pointer_cast<Siligen::Domain::Motion::Ports::IMotionStatePort>(motion_runtime_port)
+        : motion_state_port;
+    if (!state_port || !interpolation_port) {
+        return nullptr;
+    }
+    return std::make_shared<Siligen::Application::Services::Motion::Execution::MotionReadinessService>(
+        state_port,
+        interpolation_port);
+}
+
+}  // namespace
+
 void ApplicationContainer::ValidateMotionPorts() {
     if (!motion_runtime_port_) {
         throw std::runtime_error("IMotionRuntimePort 未注册");
@@ -105,7 +126,8 @@ ApplicationContainer::CreateInstance<UseCases::Motion::Homing::EnsureAxesReadyZe
         Resolve<UseCases::Motion::Manual::ManualMotionControlUseCase>(),
         Resolve<UseCases::Motion::Monitoring::MotionMonitoringUseCase>(),
         config_port_,
-        std::make_shared<Domain::Motion::DomainServices::ReadyZeroDecisionService>());
+        std::make_shared<Domain::Motion::DomainServices::ReadyZeroDecisionService>(),
+        CreateMotionReadinessService(motion_runtime_port_, motion_state_port_, interpolation_port_));
 }
 
 template<>
@@ -124,7 +146,8 @@ ApplicationContainer::CreateInstance<UseCases::Motion::MotionControlUseCase>() {
     return std::make_shared<UseCases::Motion::MotionControlUseCase>(
         std::move(operations.homing_operations),
         std::move(operations.manual_operations),
-        std::move(operations.monitoring_operations));
+        std::move(operations.monitoring_operations),
+        CreateMotionReadinessService(motion_runtime_port_, motion_state_port_, interpolation_port_));
 }
 
 template<>
@@ -151,7 +174,8 @@ ApplicationContainer::CreateInstance<UseCases::Motion::Manual::ManualMotionContr
     return std::make_shared<UseCases::Motion::Manual::ManualMotionControlUseCase>(
         position_control_port,
         jog_controller_,
-        homing_port);
+        homing_port,
+        CreateMotionReadinessService(motion_runtime_port_, motion_state_port_, interpolation_port_));
 }
 
 template<>

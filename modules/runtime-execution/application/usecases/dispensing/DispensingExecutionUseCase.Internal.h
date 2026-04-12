@@ -109,7 +109,9 @@ struct DispensingExecutionUseCase::Impl {
         std::shared_ptr<RuntimeEventPublisherPort> event_port,
         std::shared_ptr<RuntimeTaskSchedulerPort> task_scheduler_port,
         std::shared_ptr<RuntimeHomingPort> homing_port,
-        std::shared_ptr<RuntimeInterlockSignalPort> interlock_signal_port);
+        std::shared_ptr<RuntimeInterlockSignalPort> interlock_signal_port,
+        std::shared_ptr<Siligen::Application::Services::Motion::Execution::MotionReadinessService>
+            readiness_service);
 
     ~Impl();
 
@@ -136,6 +138,8 @@ struct DispensingExecutionUseCase::Impl {
     std::shared_ptr<RuntimeTaskSchedulerPort> task_scheduler_port_;
     std::shared_ptr<RuntimeHomingPort> homing_port_;
     std::shared_ptr<RuntimeInterlockSignalPort> interlock_signal_port_;
+    std::shared_ptr<Siligen::Application::Services::Motion::Execution::MotionReadinessService>
+        readiness_service_;
 
     struct VelocityTraceSettings {
         bool enabled = false;
@@ -215,6 +219,11 @@ struct DispensingExecutionUseCase::Impl {
     Shared::Types::Result<void> CancelTask(const TaskID& task_id);
     void CleanupExpiredTasks();
     void StopExecution();
+    Shared::Types::Result<void> WaitForStopSettle(
+        const std::shared_ptr<JobExecutionContext>& context);
+    void FinalizeStoppedJob(
+        const std::shared_ptr<JobExecutionContext>& context,
+        const std::string& error_message);
 
     TaskID GenerateTaskID();
     JobID GenerateJobID();
