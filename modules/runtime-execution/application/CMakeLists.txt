@@ -73,9 +73,6 @@ target_include_directories(siligen_runtime_execution_application_headers INTERFA
 target_link_libraries(siligen_runtime_execution_application_headers INTERFACE
     siligen_runtime_execution_runtime_contracts
     siligen_dispense_packaging_contracts_public
-    siligen_dispense_packaging_domain_dispensing
-    siligen_dispense_packaging_execution_residual
-    siligen_motion_planning_application_headers
     siligen_process_planning_contracts_public
 )
 if(TARGET siligen_trace_diagnostics_contracts_public)
@@ -114,7 +111,7 @@ target_include_directories(siligen_runtime_execution_safety_services PRIVATE
 )
 target_link_libraries(siligen_runtime_execution_safety_services PUBLIC
     siligen_runtime_execution_runtime_contracts
-    siligen_dispense_packaging_execution_residual
+    siligen_dispense_packaging_contracts_public
     siligen_types
     siligen_utils
     siligen_process_planning_contracts_public
@@ -218,7 +215,6 @@ target_link_libraries(siligen_application_system PUBLIC
     siligen_runtime_execution_safety_services
     siligen_types
     siligen_utils
-    siligen_dispense_packaging_domain_dispensing
 )
 if(TARGET siligen_device_contracts)
     target_link_libraries(siligen_application_system PUBLIC
@@ -260,8 +256,10 @@ target_link_libraries(siligen_application_motion PUBLIC
     siligen_motion
     siligen_runtime_execution_motion_execution_services
     siligen_process_planning_contracts_public
-    siligen_dispense_packaging_domain_dispensing
     siligen_motion_planning_application_public
+)
+target_link_libraries(siligen_application_motion PRIVATE
+    siligen_dispense_packaging_domain_dispensing
 )
 target_compile_features(siligen_application_motion PUBLIC cxx_std_17)
 set_target_properties(siligen_application_motion PROPERTIES

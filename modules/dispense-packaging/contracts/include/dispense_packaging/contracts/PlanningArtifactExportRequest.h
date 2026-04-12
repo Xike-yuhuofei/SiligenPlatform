@@ -1,6 +1,5 @@
 #pragma once
 
-#include "dispense_packaging/contracts/PlanningArtifactExportRequest.h"
 #include "process_path/contracts/ProcessPath.h"
 #include "shared/types/Point.h"
 #include "shared/types/TrajectoryTypes.h"
@@ -8,22 +7,16 @@
 #include <string>
 #include <vector>
 
-namespace Siligen::Application::Services::Dispensing {
+namespace Siligen::Domain::Dispensing::Contracts {
 
-struct PlanningArtifactExportAssemblyInput {
+struct PlanningArtifactExportRequest {
     std::string source_path;
     std::string dxf_filename;
     Siligen::ProcessPath::Contracts::ProcessPath process_path;
-    std::vector<Siligen::Shared::Types::Point2D> glue_points;
     std::vector<Siligen::TrajectoryPoint> execution_trajectory_points;
     std::vector<Siligen::TrajectoryPoint> interpolation_trajectory_points;
     std::vector<Siligen::TrajectoryPoint> motion_trajectory_points;
+    std::vector<Siligen::Shared::Types::Point2D> glue_points;
 };
 
-class PlanningArtifactExportAssemblyService {
-public:
-    Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest BuildRequest(
-        const PlanningArtifactExportAssemblyInput& input) const;
-};
-
-}  // namespace Siligen::Application::Services::Dispensing
+}  // namespace Siligen::Domain::Dispensing::Contracts

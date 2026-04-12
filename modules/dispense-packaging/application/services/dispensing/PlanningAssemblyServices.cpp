@@ -171,7 +171,7 @@ struct ExecutionAssemblyBuildResult {
     bool execution_binding_ready = false;
     std::string execution_failure_reason;
     AuthorityTriggerLayout authority_trigger_layout;
-    PlanningArtifactExportRequest export_request;
+    Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest export_request;
 };
 
 struct PlanningArtifactsAssemblyInput {

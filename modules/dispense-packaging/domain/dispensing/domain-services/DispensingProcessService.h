@@ -4,6 +4,7 @@
 #include "domain/dispensing/domain-services/DispensingController.h"
 #include "domain/dispensing/ports/IDispensingExecutionObserver.h"
 #include "domain/dispensing/ports/IValvePort.h"
+#include "domain/dispensing/value-objects/DispensingExecutionPlan.h"
 #include "domain/dispensing/value-objects/DispensingExecutionTypes.h"
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "runtime_execution/contracts/motion/IMotionStatePort.h"

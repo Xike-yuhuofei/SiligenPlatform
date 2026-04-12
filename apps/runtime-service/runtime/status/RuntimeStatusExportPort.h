@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/dispensing/ports/IValvePort.h"
+#include "dispense_packaging/contracts/IValvePort.h"
 #include "runtime_execution/contracts/motion/IMotionStatePort.h"
 #include "runtime_execution/contracts/system/IRuntimeStatusExportPort.h"
 #include "runtime_execution/contracts/system/IRuntimeSupervisionPort.h"

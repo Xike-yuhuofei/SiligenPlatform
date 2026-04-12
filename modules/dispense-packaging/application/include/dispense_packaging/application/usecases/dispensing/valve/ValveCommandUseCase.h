@@ -1,23 +1,37 @@
 #pragma once
 
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
-#include "domain/dispensing/domain-services/PurgeDispenserProcess.h"
-#include "domain/dispensing/domain-services/ValveCoordinationService.h"
-#include "domain/dispensing/ports/IValvePort.h"
+#include "dispense_packaging/contracts/IValvePort.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 #include "shared/types/Result.h"
 
 #include <memory>
+#include <string>
 
 namespace Siligen::Application::UseCases::Dispensing::Valve {
 
-using PurgeDispenserRequest = Domain::Dispensing::DomainServices::PurgeDispenserRequest;
-using PurgeDispenserResponse = Domain::Dispensing::DomainServices::PurgeDispenserResponse;
+struct PurgeDispenserRequest {
+    bool manage_supply = true;
+    bool wait_for_completion = true;
+    Siligen::Shared::Types::uint32 supply_stabilization_ms = 0;
+    Siligen::Shared::Types::uint32 poll_interval_ms = 50;
+    Siligen::Shared::Types::uint32 timeout_ms = 30000;
+
+    bool Validate() const noexcept;
+    std::string GetValidationError() const noexcept;
+};
+
+struct PurgeDispenserResponse {
+    Domain::Dispensing::Ports::DispenserValveState dispenser_state;
+    Domain::Dispensing::Ports::SupplyValveState supply_state =
+        Domain::Dispensing::Ports::SupplyValveState::Closed;
+    bool supply_managed = false;
+    bool completed = false;
+};
 
 class ValveCommandUseCase {
    public:
     ValveCommandUseCase(
-        std::shared_ptr<Domain::Dispensing::DomainServices::ValveCoordinationService> valve_service,
         std::shared_ptr<Domain::Dispensing::Ports::IValvePort> valve_port,
         std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port,
         std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port);
@@ -34,7 +48,6 @@ class ValveCommandUseCase {
    private:
     Shared::Types::Result<void> EnsureHardwareConnected() const;
 
-    std::shared_ptr<Domain::Dispensing::DomainServices::ValveCoordinationService> valve_service_;
     std::shared_ptr<Domain::Dispensing::Ports::IValvePort> valve_port_;
     std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port_;
     std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port_;

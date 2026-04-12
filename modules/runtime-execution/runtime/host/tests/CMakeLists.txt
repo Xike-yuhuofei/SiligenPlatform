@@ -10,6 +10,7 @@ set(RUNTIME_HOST_TEST_SOURCES
     unit/runtime/motion/InterpolationAdapterTest.cpp
     unit/runtime/motion/MotionControlMigrationTest.cpp
     unit/runtime/motion/MultiCardMotionAdapterTest.cpp
+    unit/runtime/planning/PlanningArtifactExportPortAdapterTest.cpp
     unit/runtime/motion/MotionRuntimeFacadeTest.cpp
     unit/runtime/motion/MotionRuntimeServicesProviderTest.cpp
     unit/runtime/motion/SoftLimitMonitorServiceTest.cpp

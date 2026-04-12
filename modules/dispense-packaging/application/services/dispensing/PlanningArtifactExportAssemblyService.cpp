@@ -2,9 +2,10 @@
 
 namespace Siligen::Application::Services::Dispensing {
 
-PlanningArtifactExportRequest PlanningArtifactExportAssemblyService::BuildRequest(
+Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest
+PlanningArtifactExportAssemblyService::BuildRequest(
     const PlanningArtifactExportAssemblyInput& input) const {
-    PlanningArtifactExportRequest request;
+    Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest request;
     request.source_path = input.source_path;
     request.dxf_filename = input.dxf_filename;
     request.process_path = input.process_path;

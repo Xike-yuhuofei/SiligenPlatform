@@ -1,6 +1,6 @@
 #include "runtime/planning/PlanningArtifactExportPortAdapter.h"
 
-#include "domain/dispensing/contracts/PlanningArtifactExportRequest.h"
+#include "dispense_packaging/contracts/PlanningArtifactExportRequest.h"
 #include "process_path/contracts/ProcessPath.h"
 #include "runtime_execution/application/services/dispensing/PlanningArtifactExportPort.h"
 #include "shared/types/Point.h"
@@ -18,8 +18,8 @@
 namespace {
 
 using IPlanningArtifactExportPort = Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort;
-using PlanningArtifactExportRequest = Siligen::Application::Services::Dispensing::PlanningArtifactExportRequest;
 using PlanningArtifactExportResult = Siligen::Application::Services::Dispensing::PlanningArtifactExportResult;
+using PlanningArtifactExportRequest = Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest;
 using ProcessPath = Siligen::ProcessPath::Contracts::ProcessPath;
 using ProcessSegment = Siligen::ProcessPath::Contracts::ProcessSegment;
 using ProcessTag = Siligen::ProcessPath::Contracts::ProcessTag;

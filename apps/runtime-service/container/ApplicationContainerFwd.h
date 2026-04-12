@@ -58,10 +58,6 @@ class JogController;
 class VelocityProfileService;
 }
 
-namespace Siligen::Domain::Dispensing::DomainServices {
-class ValveCoordinationService;
-}
-
 namespace Siligen::Application::UseCases::System {
 class IHardLimitMonitor;
 class InitializeSystemUseCase;

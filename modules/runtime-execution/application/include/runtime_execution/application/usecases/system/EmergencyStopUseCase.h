@@ -8,10 +8,9 @@
 
 #pragma once
 
-#include "domain/dispensing/domain-services/CMPTriggerService.h"
 #include "runtime_execution/contracts/motion/MotionControlService.h"
 #include "runtime_execution/contracts/motion/MotionStatusService.h"
-#include "domain/safety/domain-services/EmergencyStopService.h"
+#include "runtime_execution/contracts/dispensing/ITriggerControllerPort.h"
 #include "runtime_execution/contracts/system/IMachineExecutionStatePort.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/types/Error.h"
@@ -21,6 +20,10 @@
 #include <memory>
 #include <string>
 #include <vector>
+
+namespace Siligen::Domain::Safety::DomainServices {
+class EmergencyStopService;
+}
 
 namespace Siligen::Application::UseCases::System {
 
@@ -131,7 +134,7 @@ struct EmergencyStopResponse {
 /// 使用示例:
 /// @code
 /// auto useCase = std::make_shared<EmergencyStopUseCase>(
-///     motionControlService, motionStatusService, cmpService, machineExecutionStatePort, logger);
+///     motionControlService, motionStatusService, triggerControllerPort, machineExecutionStatePort, logger);
 /// EmergencyStopRequest request;
 /// request.reason = EmergencyStopReason::USER_REQUEST;
 /// request.detail_message = "User pressed emergency stop button";
@@ -146,13 +149,13 @@ class EmergencyStopUseCase {
     /// @brief 构造函数
     /// @param motion_control_service 运动控制领域服务
     /// @param motion_status_service 运动状态查询服务
-    /// @param cmp_service CMP触发控制领域服务
+    /// @param trigger_port CMP触发控制端口
     /// @param machine_execution_state_port 运行时执行状态端口
     /// @param logging_service 日志服务
     explicit EmergencyStopUseCase(
         std::shared_ptr<Siligen::Domain::Motion::DomainServices::MotionControlService> motion_control_service,
         std::shared_ptr<Siligen::Domain::Motion::DomainServices::MotionStatusService> motion_status_service,
-        std::shared_ptr<Siligen::Domain::Dispensing::DomainServices::CMPService> cmp_service,
+        std::shared_ptr<Siligen::Domain::Dispensing::Ports::ITriggerControllerPort> trigger_port,
         std::shared_ptr<Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort> machine_execution_state_port,
         std::shared_ptr<Siligen::Shared::Interfaces::ILoggingService> logging_service);
 

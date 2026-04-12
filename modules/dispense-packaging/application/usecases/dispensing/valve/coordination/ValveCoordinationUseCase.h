@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/dispensing/ports/IValvePort.h"
+#include "dispense_packaging/contracts/IValvePort.h"
 #include "domain/geometry/GeometryTypes.h"
 #include "shared/types/Result.h"
 #include "shared/types/Types.h"

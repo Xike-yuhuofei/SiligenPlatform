@@ -20,7 +20,8 @@
 |---|---|---|
 | `domain_dispensing` | `siligen_dispense_packaging_domain_dispensing` | `workflow/domain/domain/dispensing/CMakeLists.txt` 已改为纯转发 |
 | `PlanningUseCase` live planning dependency | `IPathSourcePort + ProcessPathFacade + MotionPlanningFacade + IWorkflowPlanningAssemblyOperations` | workflow live planning seam 已切到 M8 workflow-facing assembly operations |
-| `PlanningUseCase` execution package dependency | `domain/dispensing/contracts/ExecutionPackage.h` | 继续通过 M8 contracts 消费执行包契约 |
+| `PlanningUseCase` execution/export dependency | `dispense_packaging/contracts/{ExecutionPackage,PlanningArtifactExportRequest}.h` | workflow 继续通过 M8 contracts 消费执行包与导出请求契约；旧 `domain/dispensing/contracts/*` 仅保留 thin shim header |
+| `workflow/runtime legacy dispensing ports + value objects` | `modules/dispense-packaging/contracts/include/dispense_packaging/contracts/*.h` | `workflow/domain/include/domain/dispensing/*` 与 `runtime_execution/contracts/dispensing/*` 已收口到 M8 contracts canonical include root；旧路径仅保留兼容转发 |
 
 ## HMI Application -> M11
 
