@@ -60,6 +60,60 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
             ("connect", {"card_ip": "172.16.0.10", "local_ip": "172.16.0.20"}, 5.0),
         )
 
+    def test_dispenser_start_returns_success_details(self) -> None:
+        client = _FakeClient([{"result": {"dispensing": True}}])
+        protocol = CommandProtocol(client)
+
+        ok, error, error_code = protocol.dispenser_start(count=20, interval_ms=40, duration_ms=40)
+
+        self.assertTrue(ok)
+        self.assertEqual(error, "")
+        self.assertIsNone(error_code)
+        self.assertEqual(
+            client.calls[0],
+            ("dispenser.start", {"count": 20, "interval_ms": 40, "duration_ms": 40}, None),
+        )
+
+    def test_dispenser_start_returns_backend_error_details(self) -> None:
+        client = _FakeClient([{"error": {"code": 2701, "message": "supply not open"}}])
+        protocol = CommandProtocol(client)
+
+        ok, error, error_code = protocol.dispenser_start(count=10, interval_ms=1000, duration_ms=15)
+
+        self.assertFalse(ok)
+        self.assertEqual(error, "supply not open")
+        self.assertEqual(error_code, 2701)
+
+    def test_dispenser_stop_returns_backend_error_without_code(self) -> None:
+        client = _FakeClient([{"error": {"message": "stop timeout"}}])
+        protocol = CommandProtocol(client)
+
+        ok, error, error_code = protocol.dispenser_stop()
+
+        self.assertFalse(ok)
+        self.assertEqual(error, "stop timeout")
+        self.assertIsNone(error_code)
+
+    def test_supply_open_returns_backend_error_details(self) -> None:
+        client = _FakeClient([{"error": {"code": 2842, "message": "door interlock active"}}])
+        protocol = CommandProtocol(client)
+
+        ok, error, error_code = protocol.supply_open()
+
+        self.assertFalse(ok)
+        self.assertEqual(error, "door interlock active")
+        self.assertEqual(error_code, 2842)
+
+    def test_supply_close_returns_missing_result_fallback(self) -> None:
+        client = _FakeClient([{"success": True, "version": "1.0"}])
+        protocol = CommandProtocol(client)
+
+        ok, error, error_code = protocol.supply_close()
+
+        self.assertFalse(ok)
+        self.assertEqual(error, "响应缺少 result 字段")
+        self.assertIsNone(error_code)
+
     def test_get_status_reads_backend_interlock_fields(self) -> None:
         client = _FakeClient(
             [
