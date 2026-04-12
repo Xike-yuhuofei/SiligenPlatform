@@ -62,7 +62,12 @@
   `siligen_dispense_packaging_execution_residual`。不得恢复 workflow domain target、
   raw workflow include root
   或 raw runtime contract include root 暴露。
-- 所有 live 实现与构建入口均已收敛到 canonical roots。
+- `tests/` 当前已把 owner boundary / workflow seam / residual regression /
+  shared-adjacent regression 分 lane；`unit` 不再承载显式 residual planner、
+  process-control、controller 或 shared util 回归。
+- owner-facing canonical roots 已收敛，但 `domain/dispensing/` 下仍保留
+  planning / execution residual targets，属于迁移中事实，不应误记为“所有 live
+  实现都已完成 owner 归位”。
 
 ## Phase 4 Closeout 口径
 
@@ -72,5 +77,10 @@
 - `workflow` / `runtime-service` 的 planning 主线回归仍是阶段 4 的外层消费证据，但不替代 `M8` owner 自身证据。
 - `siligen_dispense_packaging_unit_tests` 当前作为相邻回归应继续执行，但不替代
   boundary/workflow seam gate。
+- planning / execution residual 与 shared-adjacent 回归当前分别通过
+  `siligen_dispense_packaging_planning_residual_regression_tests`、
+  `siligen_dispense_packaging_execution_residual_regression_tests`、
+  `siligen_dispense_packaging_shared_adjacent_regression_tests` 执行；这些目标用于
+  邻接稳定性守护，不构成 `M8` owner closeout 证据。
 - 本阶段额外下游消费证据包括 `siligen_planner_cli` 与 `siligen_unit_tests`
   的成功构建；若后续再次出现编译回归，应优先检查 workflow DTO 头是否重新发生重复定义或 raw include root 泄漏。

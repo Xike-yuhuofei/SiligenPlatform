@@ -1,4 +1,5 @@
 # examples
 
-${moduleName} 的最小样例、回归输入和调试样本应收敛到此目录。
+`modules/dispense-packaging/examples/` 当前仍是样例占位目录，不参与 live build。
 
+在没有真实 source-bearing 示例之前，本目录只保留为骨架说明，不新增空壳样例。
