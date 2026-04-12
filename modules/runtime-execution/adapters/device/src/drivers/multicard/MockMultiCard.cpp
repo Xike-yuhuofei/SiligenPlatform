@@ -543,7 +543,7 @@ int MockMultiCard::MC_StopEx(long crd_mask, long crd_option, long axis_mask, lon
     AdvanceAllAxesUnlocked(std::chrono::steady_clock::now());
     for (auto& [axis, state] : axes_) {
         (void)state;
-        if (IsAxisMasked(axis_mask, axis)) {
+        if (axis_mask != 0 && IsAxisMasked(axis_mask, axis)) {
             StopAxisUnlocked(axis);
             axis_status_[NormalizeAxis(axis)] = ComposeAxisStatusUnlocked(axis);
         }

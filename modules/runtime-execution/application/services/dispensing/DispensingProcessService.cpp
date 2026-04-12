@@ -47,6 +47,7 @@ constexpr float32 kMotionCompletionGraceRatio = 0.15f;
 constexpr float32 kCompletionVelocityToleranceMmS = 0.5f;
 constexpr float32 kCompletionPositionToleranceFloorMm = 0.2f;
 constexpr auto kCompletionSettleWindow = std::chrono::milliseconds(250);
+constexpr auto kStopDrainTimeout = std::chrono::milliseconds(2000);
 constexpr int32 kCrdStatusFifoFinish0 = 0x00000010;
 constexpr int16 kCoordinateSystem = 1;
 constexpr uint32 kCoordinateSystemMask = 0x01;
@@ -68,6 +69,16 @@ bool IsCoordinateSystemCompleted(const Motion::Ports::CoordinateSystemStatus& st
     const bool coord_velocity_idle = std::fabs(status.current_velocity) <= kCompletionVelocityToleranceMmS;
     const bool segments_drained = status.remaining_segments == 0U || status.raw_segment <= 0;
     return fifo_finished && coord_velocity_idle && segments_drained;
+}
+
+bool IsCoordinateSystemStopDrained(const Motion::Ports::CoordinateSystemStatus& status) {
+    if (status.state == Motion::Ports::CoordinateSystemState::IDLE) {
+        return true;
+    }
+
+    const bool coord_velocity_idle = std::fabs(status.current_velocity) <= kCompletionVelocityToleranceMmS;
+    const bool segments_drained = status.remaining_segments == 0U || status.raw_segment <= 0;
+    return !status.is_moving && coord_velocity_idle && segments_drained;
 }
 
 std::optional<uint32> TryResolveExecutedSegmentsForProgress(const Motion::Ports::CoordinateSystemStatus& status,
@@ -1399,10 +1410,13 @@ void DispensingProcessService::StopExecution(std::atomic<bool>* stop_flag, std::
     if (pause_flag) {
         pause_flag->store(false);
     }
+    bool stop_command_sent = false;
     if (interpolation_port_) {
         auto result = interpolation_port_->StopCoordinateSystemMotion(kCoordinateSystemMask);
         if (result.IsError()) {
             SILIGEN_LOG_WARNING("停止坐标系运动失败: " + result.GetError().GetMessage());
+        } else {
+            stop_command_sent = true;
         }
     }
     if (valve_port_) {
@@ -1410,6 +1424,51 @@ void DispensingProcessService::StopExecution(std::atomic<bool>* stop_flag, std::
         if (result.IsError()) {
             SILIGEN_LOG_WARNING("停止点胶阀失败: " + result.GetError().GetMessage());
         }
+    }
+    if (!stop_command_sent || !interpolation_port_) {
+        return;
+    }
+
+    const auto drain_start = std::chrono::steady_clock::now();
+    auto settled_since = std::chrono::steady_clock::time_point{};
+    bool settle_tracking = false;
+    Motion::Ports::CoordinateSystemStatus last_status{};
+    bool has_status = false;
+    while (std::chrono::steady_clock::now() - drain_start < kStopDrainTimeout) {
+        const auto now = std::chrono::steady_clock::now();
+        auto status_result = interpolation_port_->GetCoordinateSystemStatus(kCoordinateSystem);
+        if (status_result.IsError()) {
+            SILIGEN_LOG_WARNING("停止后读取坐标系状态失败: " + status_result.GetError().GetMessage());
+            return;
+        }
+
+        last_status = status_result.Value();
+        has_status = true;
+        if (IsCoordinateSystemStopDrained(last_status)) {
+            if (!settle_tracking) {
+                settled_since = now;
+                settle_tracking = true;
+            } else if (now - settled_since >= kCompletionSettleWindow) {
+                return;
+            }
+        } else {
+            settle_tracking = false;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(kStatusPollIntervalMs));
+    }
+
+    if (has_status) {
+        SILIGEN_LOG_WARNING_FMT_HELPER(
+            "停止后坐标系未在超时内收敛: state=%d, moving=%d, remaining=%u, coord_vel=%.4f, raw_status=%d, raw_segment=%d",
+            static_cast<int>(last_status.state),
+            last_status.is_moving ? 1 : 0,
+            last_status.remaining_segments,
+            last_status.current_velocity,
+            last_status.raw_status_word,
+            last_status.raw_segment);
+    } else {
+        SILIGEN_LOG_WARNING("停止后坐标系未在超时内收敛: 未读取到状态");
     }
 }
 

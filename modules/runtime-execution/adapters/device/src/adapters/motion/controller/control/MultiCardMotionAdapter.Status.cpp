@@ -121,10 +121,10 @@ Result<MotionStatus> MultiCardMotionAdapter::GetAxisStatus(LogicalAxisId axis_id
             status.has_error = true;
         } else if (homing) {
             status.state = MotionState::HOMING;
-        } else if (homed) {
-            status.state = MotionState::HOMED;
         } else if (running) {
             status.state = MotionState::MOVING;
+        } else if (homed) {
+            status.state = MotionState::HOMED;
         } else if (!status.enabled) {
             status.state = MotionState::DISABLED;
         } else {
