@@ -26,6 +26,10 @@ class FakeProtocol:
         self.home_calls = []
         self.home_auto_calls = []
         self.jog_calls = []
+        self.dispenser_start_calls = []
+        self.dispenser_stop_calls = 0
+        self.supply_open_calls = 0
+        self.supply_close_calls = 0
         self.stop_calls = 0
         self.emergency_stop_calls = 0
         self.estop_reset_calls = 0
@@ -58,6 +62,10 @@ class FakeProtocol:
         self.pause_job_response = (True, "")
         self.resume_job_response = (True, "")
         self.stop_job_response = (True, "")
+        self.dispenser_start_response = (True, "", None)
+        self.dispenser_stop_response = (True, "", None)
+        self.supply_open_response = (True, "", None)
+        self.supply_close_response = (True, "", None)
 
     def get_status(self) -> MachineStatus:
         self.status_calls += 1
@@ -77,6 +85,22 @@ class FakeProtocol:
     def jog(self, axis: str, direction: int, speed: float):
         self.jog_calls.append((axis, direction, speed))
         return True, "Jogging"
+
+    def dispenser_start(self, count: int = 1, interval_ms: int = 1000, duration_ms: int = 15):
+        self.dispenser_start_calls.append((count, interval_ms, duration_ms))
+        return self.dispenser_start_response
+
+    def dispenser_stop(self):
+        self.dispenser_stop_calls += 1
+        return self.dispenser_stop_response
+
+    def supply_open(self):
+        self.supply_open_calls += 1
+        return self.supply_open_response
+
+    def supply_close(self):
+        self.supply_close_calls += 1
+        return self.supply_close_response
 
     def stop(self) -> bool:
         self.stop_calls += 1
@@ -749,6 +773,64 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertEqual(self.window._last_jog_context["axis"], "X")
         self.assertEqual(self.window._last_jog_context["direction"], 1)
         self.assertEqual(self.window._last_jog_context["speed"], 12.0)
+
+    def test_manual_dispenser_defaults_match_observed_hardware_baseline(self) -> None:
+        self.assertEqual(self.window._dispenser_count.value(), 20)
+        self.assertEqual(self.window._dispenser_interval.value(), 40)
+        self.assertEqual(self.window._dispenser_duration.value(), 40)
+
+    def test_on_dispenser_start_uses_manual_defaults_and_updates_status(self) -> None:
+        fake_protocol = FakeProtocol(self._make_status())
+        self.window._protocol = fake_protocol
+        self.window._require_online_mode = lambda capability: True
+
+        self.window._on_dispenser_start()
+
+        self.assertEqual(fake_protocol.dispenser_start_calls, [(20, 40, 40)])
+        self.assertEqual(self.window.statusBar().currentMessage(), "点胶已启动 (次数:20, 间隔:40ms, 持续:40ms)")
+
+    def test_on_dispenser_start_surfaces_backend_error_details(self) -> None:
+        fake_protocol = FakeProtocol(self._make_status())
+        fake_protocol.dispenser_start_response = (False, "供胶阀未打开", 2701)
+        self.window._protocol = fake_protocol
+        self.window._require_online_mode = lambda capability: True
+
+        self.window._on_dispenser_start()
+
+        self.assertEqual(self.window.statusBar().currentMessage(), "点胶启动失败(code=2701): 供胶阀未打开")
+
+    def test_on_dispenser_stop_surfaces_backend_error_details(self) -> None:
+        fake_protocol = FakeProtocol(self._make_status())
+        fake_protocol.dispenser_stop_response = (False, "stop timeout", None)
+        self.window._protocol = fake_protocol
+        self.window._require_online_mode = lambda capability: True
+
+        self.window._on_dispenser_stop()
+
+        self.assertEqual(fake_protocol.dispenser_stop_calls, 1)
+        self.assertEqual(self.window.statusBar().currentMessage(), "点胶停止失败: stop timeout")
+
+    def test_on_supply_open_surfaces_backend_error_details(self) -> None:
+        fake_protocol = FakeProtocol(self._make_status())
+        fake_protocol.supply_open_response = (False, "door interlock active", 2842)
+        self.window._protocol = fake_protocol
+        self.window._require_online_mode = lambda capability: True
+
+        self.window._on_supply_open()
+
+        self.assertEqual(fake_protocol.supply_open_calls, 1)
+        self.assertEqual(self.window.statusBar().currentMessage(), "供料阀打开失败(code=2842): door interlock active")
+
+    def test_on_supply_close_surfaces_backend_error_details(self) -> None:
+        fake_protocol = FakeProtocol(self._make_status())
+        fake_protocol.supply_close_response = (False, "close rejected", None)
+        self.window._protocol = fake_protocol
+        self.window._require_online_mode = lambda capability: True
+
+        self.window._on_supply_close()
+
+        self.assertEqual(fake_protocol.supply_close_calls, 1)
+        self.assertEqual(self.window.statusBar().currentMessage(), "供料阀关闭失败: close rejected")
 
     def test_on_jog_release_requests_stop(self) -> None:
         status = self._make_status(x_homed=True, y_homed=True)
