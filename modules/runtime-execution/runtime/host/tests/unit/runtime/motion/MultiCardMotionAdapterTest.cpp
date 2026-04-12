@@ -246,6 +246,27 @@ TEST(MultiCardMotionAdapterTest, RecoverFromEmergencyStopClearsEstopAndReenables
     EXPECT_TRUE(recovered_status.Value().enabled);
 }
 
+TEST(MultiCardMotionAdapterTest, RunningStateTakesPriorityOverHomedState) {
+    auto mock_card = std::make_shared<MockMultiCard>();
+    auto wrapper = std::make_shared<MockMultiCardWrapper>(mock_card);
+
+    HardwareConfiguration hardware_config;
+    hardware_config.num_axes = 2;
+    hardware_config.pulse_per_mm = 200.0f;
+    hardware_config.max_acceleration_mm_s2 = 500.0f;
+    hardware_config.max_deceleration_mm_s2 = 500.0f;
+
+    auto adapter_result = MultiCardMotionAdapter::Create(wrapper, hardware_config);
+    ASSERT_TRUE(adapter_result.IsSuccess()) << adapter_result.GetError().GetMessage();
+
+    mock_card->SetAxisStatus(1, AXIS_STATUS_ENABLE | AXIS_STATUS_HOME_SUCESS | AXIS_STATUS_RUNNING);
+
+    auto status_result = adapter_result.Value()->GetAxisStatus(LogicalAxisId::X);
+
+    ASSERT_TRUE(status_result.IsSuccess()) << status_result.GetError().GetMessage();
+    EXPECT_EQ(status_result.Value().state, MotionState::MOVING);
+}
+
 TEST(MockMultiCardCharacterizationTest, AxisOnSetsEnableBitInRawStatus) {
     auto mock_card = std::make_shared<MockMultiCard>();
 

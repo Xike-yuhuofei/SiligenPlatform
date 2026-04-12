@@ -86,7 +86,7 @@ int RealMultiCardWrapper::MC_Stop(long mask, short mode) noexcept {
 }
 
 int RealMultiCardWrapper::MC_StopEx(long mask, short stopMode) noexcept {
-    return multicard_->MC_Stop(mask, stopMode);
+    return multicard_->MC_StopEx(mask, stopMode, 0, 0);
 }
 
 // ========== 点动控制 ==========

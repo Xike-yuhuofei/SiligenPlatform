@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <chrono>
 #include <limits>
 #include <memory>
 #include <utility>
@@ -149,6 +150,16 @@ class FakeInterpolationPort final : public IInterpolationPort {
     }
 
     Result<CoordinateSystemStatus> GetCoordinateSystemStatus(int16) const override {
+        ++status_reads;
+        if (!status_sequence.empty()) {
+            const auto index =
+                status_sequence_cursor < status_sequence.size() ? status_sequence_cursor : status_sequence.size() - 1U;
+            const auto value = status_sequence[index];
+            if (status_sequence_cursor + 1U < status_sequence.size()) {
+                ++status_sequence_cursor;
+            }
+            return Result<CoordinateSystemStatus>::Success(value);
+        }
         return Result<CoordinateSystemStatus>::Success(status);
     }
 
@@ -168,6 +179,9 @@ class FakeInterpolationPort final : public IInterpolationPort {
     int flush_calls = 0;
     int start_calls = 0;
     int stop_calls = 0;
+    mutable int status_reads = 0;
+    mutable std::size_t status_sequence_cursor = 0;
+    std::vector<CoordinateSystemStatus> status_sequence{};
     std::vector<InterpolationData> added_segments{};
 };
 
@@ -468,6 +482,38 @@ TEST(DispensingProcessServiceWaitForMotionCompleteTest, ExecutePlanInternalKeeps
     ASSERT_GE(interpolation_port->added_segments[1].positions.size(), 2U);
     EXPECT_FLOAT_EQ(interpolation_port->added_segments[0].positions[0], 5.0f);
     EXPECT_FLOAT_EQ(interpolation_port->added_segments[1].positions[0], 10.0f);
+}
+
+TEST(DispensingProcessServiceWaitForMotionCompleteTest, StopExecutionWaitsForCoordinateSystemToDrain) {
+    auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    interpolation_port->status_sequence = {
+        CoordinateSystemStatus{CoordinateSystemState::MOVING, true, 3U, 12.0f, 0, 1, 3},
+        CoordinateSystemStatus{CoordinateSystemState::MOVING, true, 2U, 6.0f, 0, 1, 2},
+        CoordinateSystemStatus{CoordinateSystemState::IDLE, false, 0U, 0.0f, 0x10, 1, 0},
+        CoordinateSystemStatus{CoordinateSystemState::IDLE, false, 0U, 0.0f, 0x10, 1, 0},
+        CoordinateSystemStatus{CoordinateSystemState::IDLE, false, 0U, 0.0f, 0x10, 1, 0},
+        CoordinateSystemStatus{CoordinateSystemState::IDLE, false, 0U, 0.0f, 0x10, 1, 0},
+        CoordinateSystemStatus{CoordinateSystemState::IDLE, false, 0U, 0.0f, 0x10, 1, 0},
+        CoordinateSystemStatus{CoordinateSystemState::IDLE, false, 0U, 0.0f, 0x10, 1, 0}};
+    auto motion_state_port = std::make_shared<SequencedMotionStatePort>(std::vector<Point2D>{Point2D{0.0f, 0.0f}});
+    DispensingProcessService service(nullptr,
+                                     interpolation_port,
+                                     motion_state_port,
+                                     nullptr,
+                                     nullptr);
+    std::atomic<bool> stop_flag{false};
+    std::atomic<bool> pause_flag{true};
+
+    const auto start = std::chrono::steady_clock::now();
+    service.StopExecution(&stop_flag, &pause_flag);
+    const auto elapsed_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+
+    EXPECT_TRUE(stop_flag.load());
+    EXPECT_FALSE(pause_flag.load());
+    EXPECT_EQ(interpolation_port->stop_calls, 1);
+    EXPECT_GE(interpolation_port->status_reads, 6);
+    EXPECT_GE(elapsed_ms, 200);
 }
 
 }  // namespace

@@ -520,6 +520,35 @@ TEST(EnsureAxesReadyZeroUseCaseTest, RejectsAxisWhenHomingIsInProgress) {
     EXPECT_EQ(response.axis_results[0].planned_action, "reject");
 }
 
+TEST(EnsureAxesReadyZeroUseCaseTest, RejectsMovingAxisEvenWhenAlreadyHomed) {
+    auto environment = std::make_shared<FakeMotionEnvironment>();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto event_port = std::make_shared<FakeEventPublisher>();
+    auto use_case = MakeUseCase(environment, config_port, event_port);
+
+    environment->Axis(LogicalAxisId::X).homing_state = HomingState::HOMED;
+    environment->Axis(LogicalAxisId::X).status.state = MotionState::MOVING;
+    environment->Axis(LogicalAxisId::X).status.velocity = 8.0f;
+    environment->Axis(LogicalAxisId::X).status.axis_position_mm = 4.0f;
+    environment->Axis(LogicalAxisId::X).status.position.x = 4.0f;
+
+    EnsureAxesReadyZeroRequest request;
+    request.axes = {LogicalAxisId::X};
+
+    auto result = use_case->Execute(request);
+
+    ASSERT_TRUE(result.IsSuccess());
+    const auto& response = result.Value();
+    ASSERT_EQ(response.axis_results.size(), 1U);
+    EXPECT_FALSE(response.accepted);
+    EXPECT_EQ(response.summary_state, "rejected");
+    EXPECT_EQ(environment->home_calls, 0);
+    EXPECT_EQ(environment->move_calls, 0);
+    EXPECT_EQ(response.axis_results[0].supervisor_state, "blocked");
+    EXPECT_EQ(response.axis_results[0].planned_action, "reject");
+    EXPECT_EQ(response.axis_results[0].reason_code, "axis_moving");
+}
+
 TEST(EnsureAxesReadyZeroUseCaseTest, RejectsFaultedAxisBeforeExecution) {
     auto environment = std::make_shared<FakeMotionEnvironment>();
     auto config_port = std::make_shared<FakeConfigurationPort>();

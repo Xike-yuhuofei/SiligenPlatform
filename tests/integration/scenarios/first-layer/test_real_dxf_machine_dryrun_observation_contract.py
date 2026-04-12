@@ -281,6 +281,47 @@ def test_update_runtime_phases_adds_coord_running_and_axis_motion() -> None:
     assert [item["phase"] for item in phase_timeline] == ["coord_running", "axis_motion"]
 
 
+def test_coord_status_indicates_running_ignores_stop_and_fifo_finish_bits_without_motion() -> None:
+    stop_status = {
+        "is_moving": False,
+        "remaining_segments": 0,
+        "raw_segment": -858993460,
+        "raw_status_word": dryrun.CRDSYS_STATUS_PROG_STOP,
+        "current_velocity": 0.0,
+    }
+    fifo_finish_status = {
+        "is_moving": False,
+        "remaining_segments": 0,
+        "raw_segment": 0,
+        "raw_status_word": dryrun.CRDSYS_STATUS_FIFO_FINISH_0,
+        "current_velocity": 0.0,
+    }
+
+    assert dryrun.coord_status_indicates_running(stop_status, velocity_epsilon_mm_s=dryrun.DEFAULT_VELOCITY_EPSILON_MM_S) is False
+    assert (
+        dryrun.coord_status_indicates_running(
+            fifo_finish_status,
+            velocity_epsilon_mm_s=dryrun.DEFAULT_VELOCITY_EPSILON_MM_S,
+        )
+        is False
+    )
+
+
+def test_coord_status_is_idle_empty_accepts_stop_bit_and_negative_raw_segment() -> None:
+    coord_status = {
+        "is_moving": False,
+        "remaining_segments": 0,
+        "raw_segment": -858993460,
+        "raw_status_word": dryrun.CRDSYS_STATUS_PROG_STOP,
+        "current_velocity": 0.0,
+    }
+
+    assert dryrun.coord_status_is_idle_empty(
+        coord_status,
+        velocity_epsilon_mm_s=dryrun.DEFAULT_VELOCITY_EPSILON_MM_S,
+    )
+
+
 def test_detect_state_contradiction_on_high_progress_zero_motion_window() -> None:
     job_status_history = []
     coord_status_history = []

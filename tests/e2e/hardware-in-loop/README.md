@@ -8,6 +8,7 @@
 
 - `run_hardware_smoke.py`
 - `run_real_dxf_machine_dryrun.py`
+- `run_dxf_stop_home_auto_probe.py`
 - `run_real_dxf_machine_dryrun_negative_matrix.py`
 - `run_real_dxf_preview_snapshot.py`
 - `run_hil_closed_loop.py`
@@ -53,6 +54,10 @@ python .\tests\e2e\hardware-in-loop\run_hardware_smoke.py
 
 ```powershell
 python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun.py
+```
+
+```powershell
+python .\tests\e2e\hardware-in-loop\run_dxf_stop_home_auto_probe.py
 ```
 
 ```powershell
@@ -137,6 +142,25 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 - 当前 `state_contradiction` 默认阈值参数为：`--contradiction-progress-threshold-percent=95`、`--contradiction-consecutive-samples=5`、`--contradiction-grace-seconds=0.5`、`--position-epsilon-mm=0.001`、`--velocity-epsilon-mm-s=0.001`
 - 当前能力先作为 `BUG-312` 专项诊断入口使用，默认不直接接入 `verify_hil_controlled_gate.py`
 - 自动离线回归入口为 `python -m pytest tests/integration/scenarios/first-layer/test_real_dxf_machine_dryrun_observation_contract.py -q`
+
+`run_dxf_stop_home_auto_probe.py` 说明：
+
+- 当前用于 `MC_PrfTrap` 现场专项复测，固定执行 `dxf.job.start -> dxf.job.stop -> 等 cancel 终态 -> immediate home.auto`
+- 默认报告目录为 `tests/reports/adhoc/dxf-stop-home-auto-probe/<timestamp>/`
+- 会同时落盘：
+  - `dxf-stop-home-auto-probe.json`
+  - `dxf-stop-home-auto-probe.md`
+  - `gateway-stdout.log`
+  - `gateway-stderr.log`
+- 报告会强制保留 stop 前观测、stop 后直到终态的观测，以及 `pre_home_snapshot` / `post_home_snapshot`
+- `observation_summary` 会直接给出：
+  - `job_terminal_state_after_stop`
+  - `coord_after_stop.is_moving / remaining_segments / current_velocity / raw_status_word / raw_segment`
+  - `axes_stopped_before_home`
+  - `home_auto_ok / home_auto_summary_state / home_auto_message`
+  - `mc_prftrap_detected / prftrap_hit_count`
+- 若 `dxf.job.stop` 过晚导致 job 已 `completed`，脚本会返回 `skipped` 口径，不把该次结果误判为“stop/cancel 主链已验证”
+- 当前离线回归入口为 `python -m pytest tests/integration/scenarios/first-layer/test_dxf_stop_home_auto_probe_contract.py -q`
 
 `run_real_dxf_machine_dryrun_negative_matrix.py` 说明：
 

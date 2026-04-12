@@ -644,7 +644,7 @@ class IMultiCardWrapper {
 
     /**
      * @brief 停止坐标系运动（扩展版本）
-     * @param mask 轴掩码
+     * @param mask 坐标系掩码
      * @param stopMode 停止模式（0=减速停止，1=立即停止）
      * @return 错误码（0=成功）
      */
