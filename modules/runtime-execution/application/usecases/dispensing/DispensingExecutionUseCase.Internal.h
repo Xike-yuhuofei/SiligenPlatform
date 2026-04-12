@@ -81,6 +81,7 @@ struct JobExecutionContext {
     std::string plan_fingerprint;
     SharedExecutionRequest execution_request;
     std::atomic<JobState> state{JobState::PENDING};
+    std::atomic<ExecutionTransitionState> requested_transition_state{ExecutionTransitionState::PENDING};
     std::atomic<uint32> target_count{0};
     std::atomic<uint32> completed_count{0};
     std::atomic<uint32> current_cycle{0};
@@ -118,6 +119,9 @@ struct DispensingExecutionUseCase::Impl {
     Shared::Types::Result<DispensingExecutionResult> Execute(const DispensingExecutionRequest& request);
     Shared::Types::Result<JobID> StartJob(const RuntimeStartJobRequest& request);
     Shared::Types::Result<RuntimeJobStatusResponse> GetJobStatus(const JobID& job_id) const;
+    Shared::Types::Result<ExecutionTransitionSnapshot> RequestJobTransition(
+        const JobID& job_id,
+        ExecutionTransitionState requested_transition_state);
     JobID GetActiveJobId() const;
     Shared::Types::Result<void> PauseJob(const JobID& job_id);
     Shared::Types::Result<void> ResumeJob(const JobID& job_id);

@@ -164,12 +164,12 @@ void LogAxisSnapshot(
 }
 
 Application::Services::Motion::Execution::MotionReadinessQuery BuildReadinessQuery(
-    const std::string& active_job_state) {
+    Application::Services::Motion::Execution::ExecutionTransitionState active_job_transition_state) {
     Application::Services::Motion::Execution::MotionReadinessQuery query;
     query.coord_sys = 1;
-    query.active_job_state = active_job_state;
-    query.active_job_transition_state =
-        Application::Services::Motion::Execution::ParseExecutionTransitionState(active_job_state);
+    query.active_job_transition_state = active_job_transition_state;
+    query.active_job_state =
+        Application::Services::Motion::Execution::ToString(active_job_transition_state);
     return query;
 }
 
@@ -1262,7 +1262,8 @@ std::string TcpCommandDispatcher::HandleHomeAuto(const std::string& id, const nl
         return interlock_error.value();
     }
 
-    auto readiness_result = motionFacade_->EvaluateMotionReadiness(BuildReadinessQuery(ResolveActiveDxfJobState()));
+    auto readiness_result =
+        motionFacade_->EvaluateMotionReadiness(BuildReadinessQuery(ResolveActiveDxfJobTransitionState()));
     if (readiness_result.IsError()) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 2424, readiness_result.GetError().GetMessage());
     }
@@ -1412,7 +1413,8 @@ std::string TcpCommandDispatcher::HandleHomeGo(const std::string& id, const nloh
         return interlock_error.value();
     }
 
-    auto readiness_result = motionFacade_->EvaluateMotionReadiness(BuildReadinessQuery(ResolveActiveDxfJobState()));
+    auto readiness_result =
+        motionFacade_->EvaluateMotionReadiness(BuildReadinessQuery(ResolveActiveDxfJobTransitionState()));
     if (readiness_result.IsError()) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 2416, readiness_result.GetError().GetMessage());
     }
@@ -1590,7 +1592,8 @@ std::string TcpCommandDispatcher::HandleMove(const std::string& id, const nlohma
         return interlock_error.value();
     }
 
-    auto readiness_result = motionFacade_->EvaluateMotionReadiness(BuildReadinessQuery(ResolveActiveDxfJobState()));
+    auto readiness_result =
+        motionFacade_->EvaluateMotionReadiness(BuildReadinessQuery(ResolveActiveDxfJobTransitionState()));
     if (readiness_result.IsError()) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 2401, readiness_result.GetError().GetMessage());
     }
@@ -2166,15 +2169,17 @@ std::string TcpCommandDispatcher::HandleDxfJobStop(const std::string& id, const 
     if (job_id.empty()) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 2912, "DXF job not running");
     }
-    auto stop_result = dispensingFacade_->StopDxfJob(job_id);
+    auto stop_result = dispensingFacade_->RequestDxfJobTransition(
+        job_id,
+        Application::UseCases::Dispensing::ExecutionTransitionState::STOPPING);
     if (stop_result.IsError()) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 2913, stop_result.GetError().GetMessage());
     }
     return GatewayJsonProtocol::MakeSuccessResponse(id, {
-        {"stopped", true},
+        {"stopped", stop_result.Value().accepted},
         {"job_id", job_id},
-        {"transition_state", Application::Services::Motion::Execution::ToString(
-                                 Application::Services::Motion::Execution::ExecutionTransitionState::STOPPING)},
+        {"transition_state", Application::Services::Motion::Execution::ToString(stop_result.Value().transition_state)},
+        {"message", stop_result.Value().message},
     });
 }
 
@@ -2192,16 +2197,18 @@ std::string TcpCommandDispatcher::HandleDxfJobCancel(const std::string& id, cons
     if (job_id.empty()) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 2915, "DXF job not running");
     }
-    auto cancel_result = dispensingFacade_->StopDxfJob(job_id);
+    auto cancel_result = dispensingFacade_->RequestDxfJobTransition(
+        job_id,
+        Application::UseCases::Dispensing::ExecutionTransitionState::CANCELING);
     if (cancel_result.IsError()) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 2916, cancel_result.GetError().GetMessage());
     }
     return GatewayJsonProtocol::MakeSuccessResponse(
         id,
-        {{"cancelled", true},
+        {{"cancelled", cancel_result.Value().accepted},
          {"job_id", job_id},
-         {"transition_state", Application::Services::Motion::Execution::ToString(
-                                  Application::Services::Motion::Execution::ExecutionTransitionState::CANCELING)}});
+         {"transition_state", Application::Services::Motion::Execution::ToString(cancel_result.Value().transition_state)},
+         {"message", cancel_result.Value().message}});
 }
 
 std::string TcpCommandDispatcher::HandleDxfLoad(const std::string& id, const nlohmann::json& params) {
@@ -3202,9 +3209,12 @@ std::string TcpCommandDispatcher::HandleRecipeImport(const std::string& id, cons
     });
 }
 
-std::string TcpCommandDispatcher::ResolveActiveDxfJobState() const {
+Application::Services::Motion::Execution::ExecutionTransitionState
+TcpCommandDispatcher::ResolveActiveDxfJobTransitionState() const {
+    using ExecutionTransitionState = Application::Services::Motion::Execution::ExecutionTransitionState;
+
     if (!dispensingFacade_) {
-        return "";
+        return ExecutionTransitionState::UNSPECIFIED;
     }
 
     std::string job_id;
@@ -3213,14 +3223,14 @@ std::string TcpCommandDispatcher::ResolveActiveDxfJobState() const {
         job_id = active_dxf_job_id_;
     }
     if (job_id.empty()) {
-        return "";
+        return ExecutionTransitionState::UNSPECIFIED;
     }
 
-    auto status_result = dispensingFacade_->GetDxfJobStatus(job_id);
-    if (status_result.IsError()) {
-        return "";
+    auto transition_result = dispensingFacade_->GetDxfJobTransitionState(job_id);
+    if (transition_result.IsError()) {
+        return ExecutionTransitionState::UNSPECIFIED;
     }
-    return status_result.Value().state;
+    return transition_result.Value();
 }
 
 } // namespace Siligen::Adapters::Tcp

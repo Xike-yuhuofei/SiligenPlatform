@@ -1,6 +1,6 @@
 # DXF Motion Readiness Gates Validation 2026-04-12
 
-更新时间：`2026-04-12`
+更新时间：`2026-04-13`
 
 ## 1. 范围
 
@@ -57,6 +57,32 @@
 - `MotionReadinessService` 的直测当前收敛在 `EnsureAxesReadyZeroUseCaseTest.cpp` 中，不存在单独的 `MotionReadinessServiceTest.*` suite。
 - 本轮收尾已按真实 test filter 重新验证，避免把“未被构建系统接纳的独立 suite”误记为已执行。
 
+## 3.2 2026-04-13 收尾补充验证
+
+1. transport-gateway 协议契约校验
+- 命令：`python -m pytest .\apps\runtime-gateway\transport-gateway\tests\test_transport_gateway_compatibility.py -q`
+- 结果：`22 passed`
+- 备注：补齐 `shared/contracts/application/commands/dxf.command-set.json` 中缺失的 `dxf.job.cancel` authority 项，并同步 stop/cancel 的 structured transition result 字段。
+
+2. HMI DXF 过渡结果契约回归
+- 命令：`python -m pytest .\apps\hmi-app\tests\unit\test_protocol_preview_gate_contract.py -q`
+- 结果：`45 passed`
+
+3. runtime-execution 定向重建
+- 命令：`C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe .\build\tests\runtime-execution-unit\siligen_runtime_execution_unit_tests.vcxproj /p:Configuration=Debug /p:Platform=x64 /m:1 /nologo`
+- 结果：通过
+
+4. runtime-execution 定向单测
+- 命令：`.\build\bin\Debug\siligen_runtime_execution_unit_tests.exe --gtest_filter=EnsureAxesReadyZeroUseCaseTest.*:DispensingExecutionUseCaseInternalTest.*`
+- 结果：`34 tests from 2 test suites ... PASSED`
+
+5. transport-gateway 临时构建验证
+- 命令：
+  - `cmake -S . -B %TEMP%\siligen-closeout-transport-build`
+  - `C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe %TEMP%\siligen-closeout-transport-build\apps\runtime-gateway\transport-gateway\siligen_transport_gateway.vcxproj /p:Configuration=Debug /p:Platform=x64 /m:1 /nologo`
+- 结果：通过
+- 备注：当前工作树自带的 `.\build` 目录在构建 `third_party/protobuf/libprotoc` 时持续出现 `CL.read.1.tlog` 文件占用；该问题属于构建树状态污染，不是本批次源码编译错误，因此改用全新临时构建目录获取 `transport-gateway` 编译证据。
+
 ## 4. 结果结论
 
 - HMI 已能识别 `dxf.job.stop` / `dxf.job.cancel` 的结构化过渡结果。
@@ -67,3 +93,4 @@
 ## 5. 已知限制
 
 - 根脚本 `build.ps1` 当前仍会因 `scripts/build/build-validation.ps1` 不接受 `-EnableCppCoverage` 而失败；这不是本批次代码差异直接引入的问题，本轮以定向构建与定向测试作为收尾验证证据。
+- 当前工作树自带 `.\build` 目录在 `libprotoc` 阶段存在 tlog 锁竞争；如需复现 `transport-gateway` 编译，请优先使用新的构建目录或先清理该构建树状态。

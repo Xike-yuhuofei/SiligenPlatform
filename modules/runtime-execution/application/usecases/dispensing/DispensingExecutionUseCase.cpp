@@ -416,6 +416,12 @@ Result<RuntimeJobStatusResponse> DispensingExecutionUseCase::GetJobStatus(const 
     return impl_->GetJobStatus(job_id);
 }
 
+Result<ExecutionTransitionSnapshot> DispensingExecutionUseCase::RequestJobTransition(
+    const JobID& job_id,
+    ExecutionTransitionState requested_transition_state) {
+    return impl_->RequestJobTransition(job_id, requested_transition_state);
+}
+
 JobID DispensingExecutionUseCase::GetActiveJobId() const {
     return impl_->GetActiveJobId();
 }
