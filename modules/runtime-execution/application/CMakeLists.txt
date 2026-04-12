@@ -186,6 +186,9 @@ target_link_libraries(siligen_runtime_execution_application PUBLIC
     siligen_utils
     siligen_geometry
 )
+target_link_libraries(siligen_runtime_execution_application PRIVATE
+    siligen_motion_planning_application_headers
+)
 if(TARGET siligen_device_contracts)
     target_link_libraries(siligen_runtime_execution_application PUBLIC
         siligen_device_contracts

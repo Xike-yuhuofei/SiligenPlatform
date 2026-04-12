@@ -49,6 +49,7 @@ using Siligen::Application::UseCases::Dispensing::StartJobResponse;
 using Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort;
 using Siligen::Application::Services::Dispensing::PlanningArtifactExportResult;
 using Siligen::Application::Services::DXF::DxfPbPreparationService;
+using Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest;
 using Siligen::JobIngest::Contracts::IUploadFilePort;
 using Siligen::Device::Contracts::Commands::DeviceConnection;
 using Siligen::Device::Contracts::Ports::DeviceConnectionPort;

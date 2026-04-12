@@ -28,6 +28,7 @@ using Siligen::Application::UseCases::Dispensing::PlanningRequest;
 using Siligen::Application::UseCases::Dispensing::PlanningUseCase;
 using Siligen::Application::Services::Dispensing::PlanningArtifactExportResult;
 using Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort;
+using Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest;
 using Siligen::Domain::Configuration::Ports::IConfigurationPort;
 using Siligen::Domain::Configuration::Ports::HomingConfig;
 using Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest;

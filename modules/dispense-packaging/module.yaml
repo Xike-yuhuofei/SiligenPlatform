@@ -13,6 +13,9 @@ uniform_skeleton_ready: true
 notes: >
   M8 canonical owner 公开产物是 ExecutionPackage、PlanningArtifactExportRequest、
   AuthorityTriggerLayout、TriggerPlan、DispensingPlan；Workflow-facing public assembly
+  seam 中的 PlanningArtifactExportRequest 仅允许以
+  domain/dispensing/contracts canonical namespace 暴露，不再保留 application
+  namespace alias；
   seam 固定为 AuthorityPreviewAssemblyService、ExecutionAssemblyService 与
   WorkflowPlanningAssemblyOperationsProvider，公开输入/输出统一使用 workflow DTO；
   application/include/application/services/dispensing/WorkflowPlanningAssemblyTypes.h
@@ -20,6 +23,8 @@ notes: >
   forwarder。internal stage 类型已回收到
   application/services/dispensing/PlanningAssemblyServices.cpp，不再保留
   PlanningAssemblyTypes.h 公开头。DispensingExecutionPlan 保留为 M8 owner backing type；运行期
+  planning artifact export 的 port/result contract canonical owner 位于
+  runtime-execution/application；
   overrides/params/options/report 与 GuardDecision/MachineMode/JobExecutionMode/
   ProcessOutputPolicy 的 canonical owner 位于 runtime-execution/contracts/runtime。
   domain_dispensing 当前只允许作为 owner/core header surface 暴露，planning concrete
