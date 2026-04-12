@@ -125,7 +125,9 @@ public:
     Result<int32_t> Subscribe(EventType, EventHandler) override { return Result<int32_t>::Success(1); }
     Result<void> Unsubscribe(int32_t) override { return Result<void>::Success(); }
     Result<void> UnsubscribeAll(EventType) override { return Result<void>::Success(); }
-    Result<std::vector<DomainEvent*>> GetEventHistory(EventType, int32_t = 100) const override { return Result<std::vector<DomainEvent*>>::Success({}); }
+    Result<std::vector<std::shared_ptr<const DomainEvent>>> GetEventHistory(EventType, int32_t = 100) const override {
+        return Result<std::vector<std::shared_ptr<const DomainEvent>>>::Success({});
+    }
     Result<void> ClearEventHistory() override { events.clear(); return Result<void>::Success(); }
 
     mutable std::vector<DomainEvent> events;

@@ -569,38 +569,49 @@ Result<TaskID> DispensingExecutionUseCase::Impl::ExecuteAsync(SharedExecutionReq
         }
     };
 
+    bool scheduled = false;
     if (task_scheduler_port_) {
         task_scheduler_port_->CleanupExpiredTasks();
+        auto submit_result = task_scheduler_port_->SubmitTask(runner);
+        if (submit_result.IsSuccess()) {
+            std::lock_guard<std::mutex> context_lock(context->mutex_);
+            context->scheduler_task_id = submit_result.Value();
+            scheduled = true;
+        } else {
+            SILIGEN_LOG_WARNING("任务调度器提交失败，回退为本地线程执行: " + submit_result.GetError().GetMessage());
+        }
     }
 
-    try {
-        JoinWorkerThread();
-        {
-            std::lock_guard<std::mutex> lock(worker_mutex_);
-            worker_thread_ = std::thread(std::move(runner));
+    if (!scheduled) {
+        try {
+            JoinWorkerThread();
+            {
+                std::lock_guard<std::mutex> lock(worker_mutex_);
+                worker_thread_ = std::thread(std::move(runner));
+            }
+        } catch (const std::exception& ex) {
+            TryCommitTerminalState(
+                context,
+                TaskState::FAILED,
+                "failure_stage=local_thread_start;failure_code=THREAD_START_FAILED;message=" + std::string(ex.what()));
+            ReleaseTaskInflight(context);
+            return Result<TaskID>::Failure(
+                Error(
+                    ErrorCode::THREAD_START_FAILED,
+                    "failure_stage=local_thread_start;failure_code=THREAD_START_FAILED;message=" + std::string(ex.what()),
+                    "DispensingExecutionUseCase"));
+        } catch (...) {
+            TryCommitTerminalState(
+                context,
+                TaskState::FAILED,
+                "failure_stage=local_thread_start;failure_code=THREAD_START_FAILED;message=unknown");
+            ReleaseTaskInflight(context);
+            return Result<TaskID>::Failure(
+                Error(
+                    ErrorCode::THREAD_START_FAILED,
+                    "failure_stage=local_thread_start;failure_code=THREAD_START_FAILED;message=unknown",
+                    "DispensingExecutionUseCase"));
         }
-    } catch (const std::exception& ex) {
-        TryCommitTerminalState(
-            context,
-            TaskState::FAILED,
-            "failure_stage=local_thread_start;failure_code=THREAD_START_FAILED;message=" + std::string(ex.what()));
-        ReleaseTaskInflight(context);
-        return Result<TaskID>::Failure(
-            Error(
-                ErrorCode::THREAD_START_FAILED,
-                "failure_stage=local_thread_start;failure_code=THREAD_START_FAILED;message=" + std::string(ex.what()),
-                "DispensingExecutionUseCase"));
-    } catch (...) {
-        TryCommitTerminalState(
-            context,
-            TaskState::FAILED,
-            "failure_stage=local_thread_start;failure_code=THREAD_START_FAILED;message=unknown");
-        ReleaseTaskInflight(context);
-        return Result<TaskID>::Failure(
-            Error(
-                ErrorCode::THREAD_START_FAILED,
-                "failure_stage=local_thread_start;failure_code=THREAD_START_FAILED;message=unknown",
-                "DispensingExecutionUseCase"));
     }
 
     return Result<TaskID>::Success(task_id);

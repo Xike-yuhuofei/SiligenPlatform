@@ -48,7 +48,7 @@ public:
     Shared::Types::Result<void> Unsubscribe(int32_t subscription_id) override;
     Shared::Types::Result<void> UnsubscribeAll(EventType type) override;
 
-    Shared::Types::Result<std::vector<DomainEvent*>> GetEventHistory(
+    Shared::Types::Result<std::vector<std::shared_ptr<const DomainEvent>>> GetEventHistory(
         EventType type, int32_t max_count = 100) const override;
     Shared::Types::Result<void> ClearEventHistory() override;
 
@@ -64,7 +64,7 @@ private:
 
     // 事件历史记录 (简单队列实现)
     struct EventRecord {
-        std::shared_ptr<DomainEvent> event;
+        std::shared_ptr<const DomainEvent> event;
     };
     std::deque<EventRecord> event_history_;
     size_t max_history_size_;
@@ -83,7 +83,7 @@ private:
     /**
      * @brief 为历史记录复制事件对象，保留常见派生事件字段
      */
-    static std::shared_ptr<DomainEvent> CloneEvent(const DomainEvent& event);
+    static std::shared_ptr<const DomainEvent> CloneEvent(const DomainEvent& event);
 };
 
 }  // namespace Adapters

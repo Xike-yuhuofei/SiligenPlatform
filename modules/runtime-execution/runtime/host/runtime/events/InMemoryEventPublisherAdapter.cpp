@@ -17,7 +17,7 @@ using Siligen::Shared::Types::ErrorCode;
 namespace {
 
 template <typename TEvent>
-std::shared_ptr<DomainEvent> CloneTypedEvent(const DomainEvent& event) {
+std::shared_ptr<const DomainEvent> CloneTypedEvent(const DomainEvent& event) {
     if (const auto* typed_event = dynamic_cast<const TEvent*>(&event)) {
         return std::make_shared<TEvent>(*typed_event);
     }
@@ -111,11 +111,11 @@ Result<void> InMemoryEventPublisherAdapter::UnsubscribeAll(EventType type) {
     return Result<void>::Success();
 }
 
-Result<std::vector<DomainEvent*>> InMemoryEventPublisherAdapter::GetEventHistory(
+Result<std::vector<std::shared_ptr<const DomainEvent>>> InMemoryEventPublisherAdapter::GetEventHistory(
     EventType type, int32_t max_count) const {
-    std::vector<DomainEvent*> history;
+    std::vector<std::shared_ptr<const DomainEvent>> history;
     if (max_count <= 0) {
-        return Result<std::vector<DomainEvent*>>::Success(std::move(history));
+        return Result<std::vector<std::shared_ptr<const DomainEvent>>>::Success(std::move(history));
     }
 
     std::lock_guard<std::mutex> lock(history_mutex_);
@@ -126,9 +126,9 @@ Result<std::vector<DomainEvent*>> InMemoryEventPublisherAdapter::GetEventHistory
         if (!it->event || it->event->type != type) {
             continue;
         }
-        history.push_back(it->event.get());
+        history.push_back(it->event);
     }
-    return Result<std::vector<DomainEvent*>>::Success(std::move(history));
+    return Result<std::vector<std::shared_ptr<const DomainEvent>>>::Success(std::move(history));
 }
 
 Result<void> InMemoryEventPublisherAdapter::ClearEventHistory() {
@@ -170,7 +170,7 @@ void InMemoryEventPublisherAdapter::RecordEvent(const DomainEvent& event) {
     }
 }
 
-std::shared_ptr<DomainEvent> InMemoryEventPublisherAdapter::CloneEvent(const DomainEvent& event) {
+std::shared_ptr<const DomainEvent> InMemoryEventPublisherAdapter::CloneEvent(const DomainEvent& event) {
     switch (event.type) {
         case EventType::POSITION_CHANGED:
             return CloneTypedEvent<Siligen::Domain::System::Ports::PositionChangedEvent>(event);
