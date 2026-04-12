@@ -5,6 +5,7 @@
 #include "shared/types/Types.h"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -156,7 +157,9 @@ class IEventPublisherPort {
     virtual Result<int32> Subscribe(EventType type, EventHandler handler) = 0;
     virtual Result<void> Unsubscribe(int32 subscription_id) = 0;
     virtual Result<void> UnsubscribeAll(EventType type) = 0;
-    virtual Result<std::vector<DomainEvent*>> GetEventHistory(EventType type, int32 max_count = 100) const = 0;
+    virtual Result<std::vector<std::shared_ptr<const DomainEvent>>> GetEventHistory(
+        EventType type,
+        int32 max_count = 100) const = 0;
     virtual Result<void> ClearEventHistory() = 0;
 };
 

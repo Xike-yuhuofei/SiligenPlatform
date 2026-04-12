@@ -654,9 +654,10 @@ class StubEventPublisherPort : public Siligen::Domain::System::Ports::IEventPubl
         return Siligen::Shared::Types::Result<void>::Success();
     }
 
-    Siligen::Shared::Types::Result<std::vector<Siligen::Domain::System::Ports::DomainEvent*>> GetEventHistory(
+    Siligen::Shared::Types::Result<std::vector<std::shared_ptr<const Siligen::Domain::System::Ports::DomainEvent>>> GetEventHistory(
         Siligen::Domain::System::Ports::EventType /*type*/, int32 /*max_count*/) const override {
-        return Siligen::Shared::Types::Result<std::vector<Siligen::Domain::System::Ports::DomainEvent*>>::Success({});
+        return Siligen::Shared::Types::Result<
+            std::vector<std::shared_ptr<const Siligen::Domain::System::Ports::DomainEvent>>>::Success({});
     }
 
     Siligen::Shared::Types::Result<void> ClearEventHistory() override {

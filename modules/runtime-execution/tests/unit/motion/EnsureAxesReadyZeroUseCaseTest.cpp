@@ -351,8 +351,8 @@ class FakeEventPublisher final : public IEventPublisherPort {
     Result<int32> Subscribe(EventType, EventHandler) override { return Result<int32>::Success(1); }
     Result<void> Unsubscribe(int32) override { return Result<void>::Success(); }
     Result<void> UnsubscribeAll(EventType) override { return Result<void>::Success(); }
-    Result<std::vector<DomainEvent*>> GetEventHistory(EventType, int32 = 100) const override {
-        return Result<std::vector<DomainEvent*>>::Success({});
+    Result<std::vector<std::shared_ptr<const DomainEvent>>> GetEventHistory(EventType, int32 = 100) const override {
+        return Result<std::vector<std::shared_ptr<const DomainEvent>>>::Success({});
     }
     Result<void> ClearEventHistory() override { return Result<void>::Success(); }
 };

@@ -86,8 +86,8 @@ class CapturingEventPublisher final : public IEventPublisherPort {
         return ResultVoid::Success();
     }
 
-    Result<std::vector<DomainEvent*>> GetEventHistory(EventType, int32 = 100) const override {
-        return Result<std::vector<DomainEvent*>>::Success({});
+    Result<std::vector<std::shared_ptr<const DomainEvent>>> GetEventHistory(EventType, int32 = 100) const override {
+        return Result<std::vector<std::shared_ptr<const DomainEvent>>>::Success({});
     }
 
     ResultVoid ClearEventHistory() override {

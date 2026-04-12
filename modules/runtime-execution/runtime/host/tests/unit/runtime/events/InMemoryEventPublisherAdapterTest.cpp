@@ -30,14 +30,33 @@ TEST(InMemoryEventPublisherAdapterTest, ReturnsTypedHistoryFromBoundedBuffer) {
     const auto& history = history_result.Value();
     ASSERT_EQ(history.size(), 2U);
 
-    auto* latest = dynamic_cast<SoftLimitTriggeredEvent*>(history[0]);
-    auto* previous = dynamic_cast<SoftLimitTriggeredEvent*>(history[1]);
+    auto* latest = dynamic_cast<const SoftLimitTriggeredEvent*>(history[0].get());
+    auto* previous = dynamic_cast<const SoftLimitTriggeredEvent*>(history[1].get());
     ASSERT_NE(latest, nullptr);
     ASSERT_NE(previous, nullptr);
     EXPECT_EQ(latest->task_id, "task-3");
     EXPECT_FLOAT_EQ(latest->position, 33.0f);
     EXPECT_EQ(previous->task_id, "task-2");
     EXPECT_FLOAT_EQ(previous->position, 22.0f);
+}
+
+TEST(InMemoryEventPublisherAdapterTest, ReturnedHistoryRemainsReadableAfterClearAndRepublish) {
+    InMemoryEventPublisherAdapter adapter(2);
+
+    ASSERT_TRUE(adapter.Publish(BuildSoftLimitEvent("task-stable", 44.0f)).IsSuccess());
+
+    auto history_result = adapter.GetEventHistory(EventType::SOFT_LIMIT_TRIGGERED, 10);
+    ASSERT_TRUE(history_result.IsSuccess()) << history_result.GetError().GetMessage();
+    const auto history = history_result.Value();
+    ASSERT_EQ(history.size(), 1U);
+
+    ASSERT_TRUE(adapter.ClearEventHistory().IsSuccess());
+    ASSERT_TRUE(adapter.Publish(BuildSoftLimitEvent("task-next", 55.0f)).IsSuccess());
+
+    auto* retained = dynamic_cast<const SoftLimitTriggeredEvent*>(history.front().get());
+    ASSERT_NE(retained, nullptr);
+    EXPECT_EQ(retained->task_id, "task-stable");
+    EXPECT_FLOAT_EQ(retained->position, 44.0f);
 }
 
 TEST(InMemoryEventPublisherAdapterTest, ClearEventHistoryRemovesStoredEvents) {

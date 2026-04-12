@@ -3,6 +3,7 @@
 #include <chrono>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -69,7 +70,11 @@ class StubDispensingProcessPort final : public RuntimeDispensingProcessPort {
 class CapturingTaskSchedulerPort final : public RuntimeTaskSchedulerPort {
    public:
     Result<std::string> SubmitTask(TaskExecutor executor) override {
+        ++submit_calls;
         last_executor = std::move(executor);
+        if (submit_error.has_value()) {
+            return Result<std::string>::Failure(submit_error.value());
+        }
         return Result<std::string>::Success("scheduler-task-1");
     }
 
@@ -87,6 +92,8 @@ class CapturingTaskSchedulerPort final : public RuntimeTaskSchedulerPort {
     TaskExecutor last_executor;
     bool cancelled = false;
     int cleanup_calls = 0;
+    int submit_calls = 0;
+    std::optional<Siligen::Shared::Types::Error> submit_error;
 };
 
 DispensingExecutionRequest BuildExecutionRequest(bool include_interpolation_points) {
@@ -385,7 +392,7 @@ TEST(DispensingExecutionUseCaseInternalTest, ExecuteAsyncDropsOlderTerminalTasks
     EXPECT_EQ(use_case->active_task_id_, task_result.Value());
 }
 
-TEST(DispensingExecutionUseCaseInternalTest, ExecuteAsyncCleansExpiredSchedulerTasksBeforeLocalStart) {
+TEST(DispensingExecutionUseCaseInternalTest, ExecuteAsyncCleansExpiredSchedulerTasksBeforeSchedulerSubmit) {
     auto scheduler = std::make_shared<CapturingTaskSchedulerPort>();
     auto use_case = CreateExecutionUseCase(std::make_shared<StubDispensingProcessPort>(), scheduler);
 
@@ -393,11 +400,31 @@ TEST(DispensingExecutionUseCaseInternalTest, ExecuteAsyncCleansExpiredSchedulerT
 
     ASSERT_TRUE(task_result.IsSuccess());
     EXPECT_EQ(scheduler->cleanup_calls, 1);
-    EXPECT_FALSE(static_cast<bool>(scheduler->last_executor));
+    EXPECT_EQ(scheduler->submit_calls, 1);
+    EXPECT_TRUE(static_cast<bool>(scheduler->last_executor));
 }
 
-TEST(DispensingExecutionUseCaseInternalTest, ExecuteAsyncStartsLocalWorkerEvenWhenSchedulerPortExists) {
+TEST(DispensingExecutionUseCaseInternalTest, ExecuteAsyncStoresSchedulerTaskIdWhenScheduled) {
     auto scheduler = std::make_shared<CapturingTaskSchedulerPort>();
+    auto use_case = CreateExecutionUseCase(std::make_shared<StubDispensingProcessPort>(), scheduler);
+
+    auto task_result = use_case->ExecuteAsync(BuildExecutionRequest(true));
+
+    ASSERT_TRUE(task_result.IsSuccess());
+    const auto task_id = task_result.Value();
+    const auto task_it = use_case->tasks_.find(task_id);
+    ASSERT_NE(task_it, use_case->tasks_.end());
+    std::lock_guard<std::mutex> lock(task_it->second->mutex_);
+    EXPECT_EQ(task_it->second->scheduler_task_id, "scheduler-task-1");
+    EXPECT_FALSE(task_it->second->execution_started.load());
+}
+
+TEST(DispensingExecutionUseCaseInternalTest, ExecuteAsyncFallsBackToLocalWorkerWhenSchedulerSubmitFails) {
+    auto scheduler = std::make_shared<CapturingTaskSchedulerPort>();
+    scheduler->submit_error = Siligen::Shared::Types::Error(
+        ErrorCode::UNKNOWN_ERROR,
+        "submit failed",
+        "CapturingTaskSchedulerPort");
     auto use_case = CreateExecutionUseCase(std::make_shared<StubDispensingProcessPort>(), scheduler);
 
     auto task_result = use_case->ExecuteAsync(BuildExecutionRequest(true));
@@ -416,7 +443,28 @@ TEST(DispensingExecutionUseCaseInternalTest, ExecuteAsyncStartsLocalWorkerEvenWh
     const auto task_it = use_case->tasks_.find(task_id);
     ASSERT_NE(task_it, use_case->tasks_.end());
     EXPECT_TRUE(task_it->second->execution_started.load());
-    EXPECT_FALSE(static_cast<bool>(scheduler->last_executor));
+    std::lock_guard<std::mutex> lock(task_it->second->mutex_);
+    EXPECT_TRUE(task_it->second->scheduler_task_id.empty());
+}
+
+TEST(DispensingExecutionUseCaseInternalTest, CancelTaskCancelsPendingSchedulerTaskBeforeExecutionStarts) {
+    auto scheduler = std::make_shared<CapturingTaskSchedulerPort>();
+    auto use_case = CreateExecutionUseCase(std::make_shared<StubDispensingProcessPort>(), scheduler);
+
+    auto task_result = use_case->ExecuteAsync(BuildExecutionRequest(true));
+
+    ASSERT_TRUE(task_result.IsSuccess());
+    const auto task_id = task_result.Value();
+    auto cancel_result = use_case->CancelTask(task_id);
+
+    ASSERT_TRUE(cancel_result.IsSuccess()) << cancel_result.GetError().GetMessage();
+    EXPECT_TRUE(scheduler->cancelled);
+
+    const auto task_it = use_case->tasks_.find(task_id);
+    ASSERT_NE(task_it, use_case->tasks_.end());
+    EXPECT_FALSE(task_it->second->execution_started.load());
+    EXPECT_TRUE(task_it->second->terminal_committed.load());
+    EXPECT_EQ(task_it->second->committed_terminal_state.load(), TaskState::CANCELLED);
 }
 
 TEST(DispensingExecutionUseCaseInternalTest, StopJobCommitsCancelledStateImmediatelyAfterTaskCancelConfirmed) {
