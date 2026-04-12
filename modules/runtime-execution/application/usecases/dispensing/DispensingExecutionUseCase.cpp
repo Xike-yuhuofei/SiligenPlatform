@@ -386,7 +386,9 @@ DispensingExecutionUseCase::DispensingExecutionUseCase(
     std::shared_ptr<RuntimeEventPublisherPort> event_port,
     std::shared_ptr<RuntimeTaskSchedulerPort> task_scheduler_port,
     std::shared_ptr<RuntimeHomingPort> homing_port,
-    std::shared_ptr<RuntimeInterlockSignalPort> interlock_signal_port)
+    std::shared_ptr<RuntimeInterlockSignalPort> interlock_signal_port,
+    std::shared_ptr<Siligen::Application::Services::Motion::Execution::MotionReadinessService>
+        readiness_service)
     : impl_(std::make_unique<Impl>(
           std::move(valve_port),
           std::move(interpolation_port),
@@ -397,7 +399,8 @@ DispensingExecutionUseCase::DispensingExecutionUseCase(
           std::move(event_port),
           std::move(task_scheduler_port),
           std::move(homing_port),
-          std::move(interlock_signal_port))) {}
+          std::move(interlock_signal_port),
+          std::move(readiness_service))) {}
 
 DispensingExecutionUseCase::~DispensingExecutionUseCase() = default;
 
@@ -456,7 +459,9 @@ DispensingExecutionUseCase::Impl::Impl(
     std::shared_ptr<RuntimeEventPublisherPort> event_port,
     std::shared_ptr<RuntimeTaskSchedulerPort> task_scheduler_port,
     std::shared_ptr<RuntimeHomingPort> homing_port,
-    std::shared_ptr<RuntimeInterlockSignalPort> interlock_signal_port)
+    std::shared_ptr<RuntimeInterlockSignalPort> interlock_signal_port,
+    std::shared_ptr<Siligen::Application::Services::Motion::Execution::MotionReadinessService>
+        readiness_service)
     : valve_port_(std::move(valve_port)),
       interpolation_port_(std::move(interpolation_port)),
       motion_state_port_(std::move(motion_state_port)),
@@ -466,7 +471,8 @@ DispensingExecutionUseCase::Impl::Impl(
       event_port_(std::move(event_port)),
       task_scheduler_port_(std::move(task_scheduler_port)),
       homing_port_(std::move(homing_port)),
-      interlock_signal_port_(std::move(interlock_signal_port)) {}
+      interlock_signal_port_(std::move(interlock_signal_port)),
+      readiness_service_(std::move(readiness_service)) {}
 
 DispensingExecutionUseCase::Impl::~Impl() {
     stop_requested_.store(true);

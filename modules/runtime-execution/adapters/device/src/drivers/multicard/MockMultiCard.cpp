@@ -31,6 +31,16 @@ bool IsAxisMasked(long mask, short axis) {
     return (mask & (1L << (axis - 1))) != 0;
 }
 
+bool IsAxisMaskedForStopEx(long mask, short axis) {
+    if (mask == 0) {
+        return false;
+    }
+    if (axis <= 0) {
+        return false;
+    }
+    return (mask & (1L << (axis - 1))) != 0;
+}
+
 }  // namespace
 
 MockMultiCard::MockMultiCard() {
@@ -543,7 +553,7 @@ int MockMultiCard::MC_StopEx(long crd_mask, long crd_option, long axis_mask, lon
     AdvanceAllAxesUnlocked(std::chrono::steady_clock::now());
     for (auto& [axis, state] : axes_) {
         (void)state;
-        if (axis_mask != 0 && IsAxisMasked(axis_mask, axis)) {
+        if (IsAxisMaskedForStopEx(axis_mask, axis)) {
             StopAxisUnlocked(axis);
             axis_status_[NormalizeAxis(axis)] = ComposeAxisStatusUnlocked(axis);
         }

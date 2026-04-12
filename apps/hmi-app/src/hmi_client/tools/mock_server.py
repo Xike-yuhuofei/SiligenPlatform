@@ -881,7 +881,7 @@ class MockState:
                 self.dxf.running = True
                 self._start_dxf_progress()
                 return {"result": {"resumed": True, "job_id": self.dxf.current_job_id}}
-            if method == "dxf.job.stop":
+            if method in ("dxf.job.stop", "dxf.job.cancel"):
                 job_id = self.dxf.current_job_id
                 self.dxf.running = False
                 self.dxf.paused = False
@@ -891,6 +891,8 @@ class MockState:
                 self.dxf.completed_count = 0
                 self.dxf.target_count = 0
                 self.dxf.job_dry_run = False
+                if method == "dxf.job.cancel":
+                    return {"result": {"cancelled": True, "job_id": job_id, "transition_state": "canceling"}}
                 return {"result": {"stopped": True, "job_id": job_id, "transition_state": "stopping"}}
             if method == "dxf.info":
                 return {

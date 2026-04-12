@@ -2,6 +2,7 @@
 
 #include "application/usecases/motion/homing/HomeAxesUseCase.h"
 #include "application/usecases/motion/manual/ManualMotionControlUseCase.h"
+#include "runtime_execution/application/services/motion/execution/MotionReadinessService.h"
 #include "runtime_execution/application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "domain/motion/domain-services/ReadyZeroDecisionService.h"
@@ -29,6 +30,11 @@ using Siligen::Application::UseCases::Motion::Homing::EnsureAxesReadyZeroUseCase
 using Siligen::Application::UseCases::Motion::Homing::HomeAxesUseCase;
 using Siligen::Application::UseCases::Motion::Manual::ManualMotionControlUseCase;
 using Siligen::Application::UseCases::Motion::Monitoring::MotionMonitoringUseCase;
+using Siligen::Application::Services::Motion::Execution::MotionReadinessQuery;
+using Siligen::Application::Services::Motion::Execution::MotionReadinessBlockCause;
+using Siligen::Application::Services::Motion::Execution::MotionReadinessReason;
+using Siligen::Application::Services::Motion::Execution::MotionReadinessService;
+using Siligen::Application::Services::Motion::Execution::ExecutionTransitionState;
 using Siligen::Domain::Configuration::Ports::DxfPreprocessConfig;
 using Siligen::Domain::Configuration::Ports::DxfTrajectoryConfig;
 using Siligen::Domain::Configuration::Ports::HomingConfig;
@@ -45,6 +51,7 @@ using Siligen::Domain::Motion::Ports::IPositionControlPort;
 using Siligen::Domain::Motion::Ports::MotionCommand;
 using Siligen::Domain::Motion::Ports::MotionState;
 using Siligen::Domain::Motion::Ports::MotionStatus;
+using Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemState;
 using Siligen::RuntimeExecution::Contracts::Motion::CoordinateSystemStatus;
 using Siligen::RuntimeExecution::Contracts::Motion::IIOControlPort;
 using Siligen::RuntimeExecution::Contracts::Motion::IOStatus;
@@ -90,7 +97,8 @@ class FakeMotionEnvironment final : public IHomingPort,
                                     public IMotionConnectionPort,
                                     public IMotionStatePort,
                                     public IPositionControlPort,
-                                    public IIOControlPort {
+                                    public IIOControlPort,
+                                    public Siligen::Domain::Motion::Ports::IInterpolationPort {
    public:
     FakeMotionEnvironment() {
         for (int index = 0; index < 2; ++index) {
@@ -231,6 +239,26 @@ class FakeMotionEnvironment final : public IHomingPort,
     Result<void> RecoverFromEmergencyStop() override { return Result<void>::Success(); }
     Result<void> WaitForMotionComplete(LogicalAxisId, int32 = 60000) override { return Result<void>::Success(); }
 
+    Result<void> ConfigureCoordinateSystem(int16, const Siligen::Domain::Motion::Ports::CoordinateSystemConfig&) override {
+        return Result<void>::Success();
+    }
+    Result<void> AddInterpolationData(int16, const Siligen::Domain::Motion::Ports::InterpolationData&) override {
+        return Result<void>::Success();
+    }
+    Result<void> ClearInterpolationBuffer(int16) override { return Result<void>::Success(); }
+    Result<void> FlushInterpolationData(int16) override { return Result<void>::Success(); }
+    Result<void> StartCoordinateSystemMotion(uint32) override { return Result<void>::Success(); }
+    Result<void> StopCoordinateSystemMotion(uint32) override { return Result<void>::Success(); }
+    Result<void> SetCoordinateSystemVelocityOverride(int16, float32) override { return Result<void>::Success(); }
+    Result<void> EnableCoordinateSystemSCurve(int16, float32) override { return Result<void>::Success(); }
+    Result<void> DisableCoordinateSystemSCurve(int16) override { return Result<void>::Success(); }
+    Result<void> SetConstLinearVelocityMode(int16, bool, uint32) override { return Result<void>::Success(); }
+    Result<uint32> GetInterpolationBufferSpace(int16) const override { return Result<uint32>::Success(0U); }
+    Result<uint32> GetLookAheadBufferSpace(int16) const override { return Result<uint32>::Success(0U); }
+    Result<CoordinateSystemStatus> GetCoordinateSystemStatus(int16) const override {
+        return Result<CoordinateSystemStatus>::Success(coord_status);
+    }
+
     Result<IOStatus> ReadDigitalInput(int16 channel) override {
         IOStatus status;
         status.channel = channel;
@@ -250,6 +278,7 @@ class FakeMotionEnvironment final : public IHomingPort,
     int move_calls = 0;
     float32 last_move_velocity = 0.0f;
     bool connected = true;
+    CoordinateSystemStatus coord_status{};
 
    private:
     std::array<AxisRuntimeState, 2> axes_{};
@@ -361,6 +390,10 @@ std::shared_ptr<EnsureAxesReadyZeroUseCase> MakeUseCase(
     const std::shared_ptr<FakeMotionEnvironment>& environment,
     const std::shared_ptr<FakeConfigurationPort>& config_port,
     const std::shared_ptr<FakeEventPublisher>& event_port) {
+    auto readiness_service =
+        std::make_shared<Siligen::Application::Services::Motion::Execution::MotionReadinessService>(
+            std::static_pointer_cast<IMotionStatePort>(environment),
+            std::static_pointer_cast<Siligen::Domain::Motion::Ports::IInterpolationPort>(environment));
     auto home_use_case = std::make_shared<HomeAxesUseCase>(
         std::static_pointer_cast<IHomingPort>(environment),
         config_port,
@@ -370,7 +403,8 @@ std::shared_ptr<EnsureAxesReadyZeroUseCase> MakeUseCase(
     auto manual_use_case = std::make_shared<ManualMotionControlUseCase>(
         std::static_pointer_cast<IPositionControlPort>(environment),
         nullptr,
-        std::static_pointer_cast<IHomingPort>(environment));
+        std::static_pointer_cast<IHomingPort>(environment),
+        readiness_service);
     auto monitoring_use_case = std::make_shared<MotionMonitoringUseCase>(
         std::static_pointer_cast<IMotionStatePort>(environment),
         std::static_pointer_cast<IIOControlPort>(environment),
@@ -381,7 +415,8 @@ std::shared_ptr<EnsureAxesReadyZeroUseCase> MakeUseCase(
         manual_use_case,
         monitoring_use_case,
         config_port,
-        std::make_shared<ReadyZeroDecisionService>());
+        std::make_shared<ReadyZeroDecisionService>(),
+        readiness_service);
 }
 
 TEST(EnsureAxesReadyZeroUseCaseTest, HomesThenMovesToZeroWhenAxisWasNotHomed) {
@@ -541,12 +576,14 @@ TEST(EnsureAxesReadyZeroUseCaseTest, RejectsMovingAxisEvenWhenAlreadyHomed) {
     const auto& response = result.Value();
     ASSERT_EQ(response.axis_results.size(), 1U);
     EXPECT_FALSE(response.accepted);
-    EXPECT_EQ(response.summary_state, "rejected");
+    EXPECT_EQ(response.summary_state, "blocked");
     EXPECT_EQ(environment->home_calls, 0);
     EXPECT_EQ(environment->move_calls, 0);
     EXPECT_EQ(response.axis_results[0].supervisor_state, "blocked");
     EXPECT_EQ(response.axis_results[0].planned_action, "reject");
-    EXPECT_EQ(response.axis_results[0].reason_code, "axis_moving");
+    EXPECT_EQ(response.axis_results[0].reason_code, "motion_not_ready");
+    EXPECT_EQ(response.reason_code, "motion_not_ready");
+    EXPECT_EQ(response.message, "motion_not_ready");
 }
 
 TEST(EnsureAxesReadyZeroUseCaseTest, RejectsFaultedAxisBeforeExecution) {
@@ -599,6 +636,113 @@ TEST(EnsureAxesReadyZeroUseCaseTest, StopsAfterHomeFailureWithoutDispatchingGoHo
     EXPECT_EQ(environment->move_calls, 0);
     EXPECT_FALSE(response.axis_results[0].success);
     EXPECT_EQ(response.axis_results[0].reason_code, "home_failed");
+}
+
+TEST(EnsureAxesReadyZeroUseCaseTest, MotionReadinessBlocksStoppingJobState) {
+    auto environment = std::make_shared<FakeMotionEnvironment>();
+    auto readiness_service = std::make_shared<MotionReadinessService>(
+        std::static_pointer_cast<IMotionStatePort>(environment),
+        std::static_pointer_cast<Siligen::Domain::Motion::Ports::IInterpolationPort>(environment));
+
+    MotionReadinessQuery query;
+    query.active_job_state = "stopping";
+
+    auto result = readiness_service->Evaluate(query);
+
+    ASSERT_TRUE(result.IsSuccess());
+    EXPECT_FALSE(result.Value().ready);
+    EXPECT_EQ(result.Value().reason, MotionReadinessReason::MOTION_NOT_READY);
+    EXPECT_EQ(result.Value().block_cause, MotionReadinessBlockCause::ACTIVE_JOB_STATE);
+    EXPECT_EQ(result.Value().active_job_transition_state, ExecutionTransitionState::STOPPING);
+    EXPECT_EQ(result.Value().reason_code, "motion_not_ready");
+    EXPECT_EQ(result.Value().diagnostic_message, "active_job_state=stopping");
+}
+
+TEST(EnsureAxesReadyZeroUseCaseTest, MotionReadinessBlocksTypedCancelingJobState) {
+    auto environment = std::make_shared<FakeMotionEnvironment>();
+    auto readiness_service = std::make_shared<MotionReadinessService>(
+        std::static_pointer_cast<IMotionStatePort>(environment),
+        std::static_pointer_cast<Siligen::Domain::Motion::Ports::IInterpolationPort>(environment));
+
+    MotionReadinessQuery query;
+    query.active_job_transition_state = ExecutionTransitionState::CANCELING;
+
+    auto result = readiness_service->Evaluate(query);
+
+    ASSERT_TRUE(result.IsSuccess());
+    EXPECT_FALSE(result.Value().ready);
+    EXPECT_EQ(result.Value().reason, MotionReadinessReason::MOTION_NOT_READY);
+    EXPECT_EQ(result.Value().block_cause, MotionReadinessBlockCause::ACTIVE_JOB_STATE);
+    EXPECT_EQ(result.Value().active_job_transition_state, ExecutionTransitionState::CANCELING);
+    EXPECT_EQ(result.Value().reason_code, "motion_not_ready");
+    EXPECT_EQ(result.Value().diagnostic_message, "active_job_state=canceling");
+}
+
+TEST(EnsureAxesReadyZeroUseCaseTest, MotionReadinessBlocksAxisVelocityAboveTolerance) {
+    auto environment = std::make_shared<FakeMotionEnvironment>();
+    auto readiness_service = std::make_shared<MotionReadinessService>(
+        std::static_pointer_cast<IMotionStatePort>(environment),
+        std::static_pointer_cast<Siligen::Domain::Motion::Ports::IInterpolationPort>(environment));
+
+    environment->Axis(LogicalAxisId::X).status.velocity = 0.02f;
+
+    auto result = readiness_service->Evaluate();
+
+    ASSERT_TRUE(result.IsSuccess());
+    EXPECT_FALSE(result.Value().ready);
+    EXPECT_EQ(result.Value().reason, MotionReadinessReason::MOTION_NOT_READY);
+    EXPECT_EQ(result.Value().block_cause, MotionReadinessBlockCause::AXIS_NOT_SETTLED);
+    EXPECT_EQ(result.Value().reason_code, "motion_not_ready");
+    EXPECT_EQ(result.Value().diagnostic_message, "axis_not_settled");
+}
+
+TEST(EnsureAxesReadyZeroUseCaseTest, MotionReadinessBlocksCoordinateSystemWithRemainingSegments) {
+    auto environment = std::make_shared<FakeMotionEnvironment>();
+    auto readiness_service = std::make_shared<MotionReadinessService>(
+        std::static_pointer_cast<IMotionStatePort>(environment),
+        std::static_pointer_cast<Siligen::Domain::Motion::Ports::IInterpolationPort>(environment));
+
+    environment->coord_status.remaining_segments = 2U;
+
+    auto result = readiness_service->Evaluate();
+
+    ASSERT_TRUE(result.IsSuccess());
+    EXPECT_FALSE(result.Value().ready);
+    EXPECT_EQ(result.Value().reason, MotionReadinessReason::MOTION_NOT_READY);
+    EXPECT_EQ(result.Value().block_cause, MotionReadinessBlockCause::COORDINATE_SYSTEM_NOT_SETTLED);
+    EXPECT_EQ(result.Value().reason_code, "motion_not_ready");
+    EXPECT_EQ(result.Value().diagnostic_message, "coord_not_settled");
+}
+
+TEST(EnsureAxesReadyZeroUseCaseTest, BlocksGoHomeWhenMotionNotReady) {
+    auto environment = std::make_shared<FakeMotionEnvironment>();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto event_port = std::make_shared<FakeEventPublisher>();
+    auto use_case = MakeUseCase(environment, config_port, event_port);
+
+    environment->Axis(LogicalAxisId::X).homing_state = HomingState::HOMED;
+    environment->Axis(LogicalAxisId::X).status.axis_position_mm = 2.5f;
+    environment->Axis(LogicalAxisId::X).status.position.x = 2.5f;
+    environment->Axis(LogicalAxisId::X).status.state = MotionState::MOVING;
+    environment->Axis(LogicalAxisId::X).status.velocity = 1.0f;
+    environment->coord_status.state = CoordinateSystemState::MOVING;
+    environment->coord_status.is_moving = true;
+    environment->coord_status.remaining_segments = 1U;
+
+    EnsureAxesReadyZeroRequest request;
+    request.axes = {LogicalAxisId::X};
+
+    auto result = use_case->Execute(request);
+
+    ASSERT_TRUE(result.IsSuccess());
+    const auto& response = result.Value();
+    ASSERT_EQ(response.axis_results.size(), 1U);
+    EXPECT_FALSE(response.accepted);
+    EXPECT_EQ(response.summary_state, "blocked");
+    EXPECT_EQ(response.reason_code, "motion_not_ready");
+    EXPECT_EQ(response.message, "motion_not_ready");
+    EXPECT_EQ(response.axis_results[0].reason_code, "motion_not_ready");
+    EXPECT_EQ(environment->move_calls, 0);
 }
 
 }  // namespace

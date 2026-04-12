@@ -2,6 +2,7 @@
 
 #include "runtime_execution/application/usecases/motion/homing/EnsureAxesReadyZeroTypes.h"
 #include "runtime_execution/application/usecases/motion/manual/ManualMotionCommand.h"
+#include "runtime_execution/application/services/motion/execution/MotionReadinessService.h"
 #include "domain/motion/domain-services/HomingProcess.h"
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "runtime_execution/contracts/motion/IMotionStatePort.h"
@@ -68,7 +69,9 @@ class MotionControlUseCase {
     MotionControlUseCase(
         std::shared_ptr<IMotionHomingOperations> homing_operations,
         std::shared_ptr<IMotionManualOperations> manual_operations,
-        std::shared_ptr<IMotionMonitoringOperations> monitoring_operations);
+        std::shared_ptr<IMotionMonitoringOperations> monitoring_operations,
+        std::shared_ptr<Siligen::Application::Services::Motion::Execution::MotionReadinessService>
+            readiness_service = nullptr);
 
     Result<Homing::HomeAxesResponse> Home(const Homing::HomeAxesRequest& request);
     Result<Homing::EnsureAxesReadyZeroResponse> EnsureAxesReadyZero(
@@ -93,11 +96,14 @@ class MotionControlUseCase {
     Result<uint32> GetLookAheadBufferSpace(int16 coord_sys) const;
     Result<bool> ReadLimitStatus(Siligen::Shared::Types::LogicalAxisId axis, bool positive) const;
     Result<bool> ReadServoAlarmStatus(Siligen::Shared::Types::LogicalAxisId axis) const;
+    Result<Siligen::Application::Services::Motion::Execution::MotionReadinessResult> EvaluateMotionReadiness(
+        const Siligen::Application::Services::Motion::Execution::MotionReadinessQuery& query) const;
 
    private:
     std::shared_ptr<IMotionHomingOperations> homing_operations_;
     std::shared_ptr<IMotionManualOperations> manual_operations_;
     std::shared_ptr<IMotionMonitoringOperations> monitoring_operations_;
+    std::shared_ptr<Siligen::Application::Services::Motion::Execution::MotionReadinessService> readiness_service_;
 };
 
 }  // namespace Siligen::Application::UseCases::Motion

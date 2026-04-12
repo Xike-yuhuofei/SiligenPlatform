@@ -1,6 +1,7 @@
 #pragma once
 
 #include "domain/motion/domain-services/JogController.h"
+#include "runtime_execution/application/services/motion/execution/MotionReadinessService.h"
 #include "runtime_execution/contracts/motion/IHomingPort.h"
 #include "runtime_execution/contracts/motion/IMotionStatePort.h"
 #include "runtime_execution/contracts/motion/IPositionControlPort.h"
@@ -62,7 +63,9 @@ class ManualMotionControlUseCase {
     ManualMotionControlUseCase(
         std::shared_ptr<Domain::Motion::Ports::IPositionControlPort> position_control_port,
         std::shared_ptr<Domain::Motion::DomainServices::JogController> jog_controller,
-        std::shared_ptr<Domain::Motion::Ports::IHomingPort> homing_port = nullptr);
+        std::shared_ptr<Domain::Motion::Ports::IHomingPort> homing_port = nullptr,
+        std::shared_ptr<Siligen::Application::Services::Motion::Execution::MotionReadinessService>
+            readiness_service = nullptr);
 
     ~ManualMotionControlUseCase() = default;
 
@@ -124,6 +127,7 @@ class ManualMotionControlUseCase {
     std::shared_ptr<Domain::Motion::Ports::IPositionControlPort> position_control_port_;
     std::shared_ptr<Domain::Motion::DomainServices::JogController> jog_controller_;
     std::shared_ptr<Domain::Motion::Ports::IHomingPort> homing_port_;
+    std::shared_ptr<Siligen::Application::Services::Motion::Execution::MotionReadinessService> readiness_service_;
 
     void InvalidateHomingState(Siligen::Shared::Types::LogicalAxisId axis_id);
 };

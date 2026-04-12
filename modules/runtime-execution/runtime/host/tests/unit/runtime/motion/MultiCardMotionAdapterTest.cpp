@@ -328,4 +328,44 @@ TEST(MockMultiCardCharacterizationTest, CrdClearDropsBufferedTrajectoryBeforeNex
     EXPECT_EQ(pos_y, 25);
 }
 
+TEST(MockMultiCardCharacterizationTest, WrapperStopExWithZeroAxisMaskDoesNotStopJogAxis) {
+    auto mock_card = std::make_shared<MockMultiCard>();
+    auto wrapper = std::make_shared<MockMultiCardWrapper>(mock_card);
+
+    ASSERT_EQ(mock_card->MC_AxisOn(1), 0);
+    ASSERT_EQ(mock_card->MC_PrfJog(1), 0);
+    ASSERT_EQ(mock_card->MC_SetVel(1, 5.0), 0);
+    ASSERT_EQ(mock_card->MC_Update(0x1), 0);
+
+    double velocity = 0.0;
+    ASSERT_EQ(mock_card->MC_GetAxisPrfVel(1, &velocity), 0);
+    EXPECT_GT(velocity, 0.0);
+
+    ASSERT_EQ(wrapper->MC_StopEx(0x1, 0), 0);
+
+    ASSERT_EQ(mock_card->MC_GetAxisPrfVel(1, &velocity), 0);
+    EXPECT_GT(velocity, 0.0);
+}
+
+TEST(MultiCardMotionAdapterTest, RunningBitOverridesHomedBitInMappedAxisState) {
+    auto mock_card = std::make_shared<MockMultiCard>();
+    auto wrapper = std::make_shared<MockMultiCardWrapper>(mock_card);
+
+    HardwareConfiguration hardware_config;
+    hardware_config.num_axes = 2;
+    hardware_config.pulse_per_mm = 200.0f;
+    hardware_config.max_acceleration_mm_s2 = 500.0f;
+    hardware_config.max_deceleration_mm_s2 = 500.0f;
+
+    auto adapter_result = MultiCardMotionAdapter::Create(wrapper, hardware_config);
+    ASSERT_TRUE(adapter_result.IsSuccess()) << adapter_result.GetError().GetMessage();
+
+    mock_card->SetAxisStatus(1, AXIS_STATUS_ENABLE | AXIS_STATUS_HOME_SUCESS | AXIS_STATUS_RUNNING);
+
+    auto status_result = adapter_result.Value()->GetAxisStatus(LogicalAxisId::X);
+
+    ASSERT_TRUE(status_result.IsSuccess()) << status_result.GetError().GetMessage();
+    EXPECT_EQ(status_result.Value().state, MotionState::MOVING);
+}
+
 }  // namespace

@@ -6,7 +6,7 @@ except ImportError:  # pragma: no cover - script-mode fallback
 ensure_hmi_application_path()
 
 from .tcp_client import TcpClient
-from .protocol import CommandProtocol, MachineStatus, AxisStatus
+from .protocol import CommandProtocol, MachineStatus, AxisStatus, JobTransitionResult
 from .auth import AuthManager, User
 from .recipe import Recipe, RecipeManager
 from .backend_manager import BackendManager
@@ -71,6 +71,7 @@ __all__ = [
     "CommandProtocol",
     "MachineStatus",
     "AxisStatus",
+    "JobTransitionResult",
     "AuthManager",
     "User",
     "Recipe",

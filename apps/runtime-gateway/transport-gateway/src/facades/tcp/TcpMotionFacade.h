@@ -3,6 +3,7 @@
 #include "runtime_execution/application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
 #include "runtime_execution/application/usecases/motion/homing/HomeAxesUseCase.h"
 #include "runtime_execution/application/usecases/motion/manual/ManualMotionControlUseCase.h"
+#include "runtime_execution/application/services/motion/execution/MotionReadinessService.h"
 #include "runtime_execution/application/usecases/motion/safety/MotionSafetyUseCase.h"
 #include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
 #include "shared/types/Point.h"
@@ -43,6 +44,9 @@ class TcpMotionFacade {
     Shared::Types::Result<uint32> GetLookAheadBufferSpace(int16 coord_sys) const;
     Shared::Types::Result<bool> ReadLimitStatus(Shared::Types::LogicalAxisId axis, bool positive) const;
     Shared::Types::Result<bool> ReadServoAlarmStatus(Shared::Types::LogicalAxisId axis) const;
+    Shared::Types::Result<Siligen::Application::Services::Motion::Execution::MotionReadinessResult>
+        EvaluateMotionReadiness(
+            const Siligen::Application::Services::Motion::Execution::MotionReadinessQuery& query) const;
     bool HasHardwareConnectionPort() const;
     Siligen::Device::Contracts::State::DeviceConnectionSnapshot GetHardwareConnectionInfo() const;
     Siligen::Device::Contracts::State::HeartbeatSnapshot GetHeartbeatStatus() const;

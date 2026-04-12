@@ -16,7 +16,14 @@ sys.path.insert(0, str(PROJECT_ROOT / "src" / "hmi_client"))
 
 import ui.main_window as main_window_module
 from client import SessionSnapshot, launch_result_from_snapshot
-from client.protocol import AxisStatus, EffectiveInterlocks, IOStatus, MachineStatus, SupervisionStatus
+from client.protocol import (
+    AxisStatus,
+    EffectiveInterlocks,
+    IOStatus,
+    JobTransitionResult,
+    MachineStatus,
+    SupervisionStatus,
+)
 
 
 class FakeProtocol:
@@ -61,7 +68,11 @@ class FakeProtocol:
         )
         self.pause_job_response = (True, "")
         self.resume_job_response = (True, "")
-        self.stop_job_response = (True, "")
+        self.stop_job_response = JobTransitionResult(
+            accepted=True,
+            transition_state="stopping",
+            job_id="job-1",
+        )
         self.dispenser_start_response = (True, "", None)
         self.dispenser_stop_response = (True, "", None)
         self.supply_open_response = (True, "", None)

@@ -1032,7 +1032,7 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
     }
 
     if (context->stop_requested.load()) {
-        FinalizeJob(context, JobState::CANCELLED, "job cancelled");
+        FinalizeStoppedJob(context, "job cancelled");
         return;
     }
 
@@ -1042,7 +1042,7 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
             return;
         }
         if (context->stop_requested.load()) {
-            FinalizeJob(context, JobState::CANCELLED, "job cancelled");
+            FinalizeStoppedJob(context, "job cancelled");
             return;
         }
 
@@ -1053,7 +1053,7 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
 
         while (context->pause_requested.load()) {
             if (context->stop_requested.load()) {
-                FinalizeJob(context, JobState::CANCELLED, "job cancelled");
+                FinalizeStoppedJob(context, "job cancelled");
                 return;
             }
             if (!context->final_state_committed.load()) {
@@ -1068,7 +1068,7 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
             return;
         }
         if (context->stop_requested.load()) {
-            FinalizeJob(context, JobState::CANCELLED, "job cancelled");
+            FinalizeStoppedJob(context, "job cancelled");
             return;
         }
         if (!context->final_state_committed.load()) {
@@ -1115,7 +1115,7 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
 
                     const auto& task_status_after_cancel = task_status_after_cancel_result.Value();
                     if (task_status_after_cancel.state == "cancelled") {
-                        FinalizeJob(context, JobState::CANCELLED, task_status_after_cancel.error_message);
+                        FinalizeStoppedJob(context, task_status_after_cancel.error_message);
                         return;
                     }
                     if (task_status_after_cancel.state == "completed") {
@@ -1124,7 +1124,7 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
                         if (cycle + 1 >= context->target_count.load()) {
                             break;
                         }
-                        FinalizeJob(context, JobState::CANCELLED, "job cancelled");
+                        FinalizeStoppedJob(context, "job cancelled");
                         return;
                     }
                     if (task_status_after_cancel.state == "failed") {
@@ -1182,12 +1182,12 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
                 context->completed_count.store(cycle + 1);
                 context->cycle_progress_percent.store(100);
                 if (context->stop_requested.load() && cycle + 1 < context->target_count.load()) {
-                    FinalizeJob(context, JobState::CANCELLED, "job cancelled");
+                    FinalizeStoppedJob(context, "job cancelled");
                     return;
                 }
                 break;
             } else if (task_status.state == "cancelled") {
-                FinalizeJob(context, JobState::CANCELLED, task_status.error_message);
+                FinalizeStoppedJob(context, task_status.error_message);
                 return;
             } else if (task_status.state == "failed") {
                 FinalizeJob(context, JobState::FAILED, task_status.error_message);

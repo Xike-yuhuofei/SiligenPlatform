@@ -40,6 +40,7 @@ struct EnsureAxesReadyZeroResponse {
 
     bool accepted = false;
     std::string summary_state;
+    std::string reason_code;
     std::string message;
     std::vector<AxisResult> axis_results;
     int32 total_time_ms = 0;
