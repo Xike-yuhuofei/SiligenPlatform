@@ -21,3 +21,10 @@ coordinate-alignment 的模块级验证入口应收敛到此目录。
 - 真实数值型 `origin offset / rotation` 补偿字段契约
 - `coordinate-alignment -> process-path` 邻接 integration
 - out-of-range / 数值语义覆盖
+
+当前 skeleton：
+
+- `unit/`
+- `integration/`
+- `regression/`
+  - 以上目录当前仅保留 `.gitkeep`，用于维持 `S06` 推荐骨架，不作为 live owner 证明。
