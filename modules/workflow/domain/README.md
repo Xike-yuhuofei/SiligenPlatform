@@ -8,7 +8,7 @@ workflow 的 owner 事实、值对象、不变量与少量 orchestration boundar
 - workflow domain 当前只保留 canonical `siligen_workflow_domain_headers` / `siligen_workflow_domain_public`；`siligen_domain` 已于 round `18` 删除。
 - recipe family 已从 workflow domain 退出；其 canonical owner 位于 `modules/recipe-lifecycle`。
 - 事件发布契约不再落在 workflow domain；统一从 `shared/contracts/runtime` 暴露的 `runtime/contracts/system/IEventPublisherPort.h` 引入。
-- `domain_machine` compat target 已于 round `23` 删除；machine public surface 当前只剩 `domain/include/domain/machine/**` 这组 wrapper/header residue。
+- `domain_machine` compat target 已于 round `23` 删除；workflow `domain/include/domain/machine/**` tracked payload 已退出，machine 相关剩余命中只保留在 contract guard 与历史文档中。
 
 ## 当前 residue
 

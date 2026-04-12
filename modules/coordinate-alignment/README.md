@@ -24,20 +24,19 @@
 
 - `modules/coordinate-alignment/contracts/include/coordinate_alignment/contracts/CoordinateTransformSet.h`
 - `modules/process-path/contracts/include/process_path/contracts/PathGenerationRequest.h`
-- `modules/runtime-execution/adapters/device/include/siligen/device/adapters/hardware/HardwareTestAdapter.h`
+- `modules/coordinate-alignment/contracts/include/coordinate_alignment/contracts/` 当前不再承载任何 machine-test contract
 
 ## 当前 root surface
 
 - 模块根 target `siligen_module_coordinate_alignment` 当前只暴露 `contracts/`。
-- `CoordinateTransformSet` 是当前唯一冻结的 `M5` owner seam；`process-path` 当前也只消费该 seam。
-- `contracts/include/coordinate_alignment/contracts/IHardwareTestPort.h` 仍作为 runtime-execution 的 consumer residual public header 留在 root surface；因此 `contracts/` 目前不是纯粹的 `M5` owner-only contract 面。
+- `contracts/include` 当前唯一冻结的 stable seam 是 `CoordinateTransformSet`；`process-path` 也只消费该 seam。
 - `application/`、`adapters/`、`services/`、`examples/` 当前都属于 docs-only shell，不参与 live build。
 
 ## Residual Exit
 
 - `domain/machine/` 的 legacy machine/calibration/runtime residual 已退出 live build，本轮后仅保留退出说明文档。
-- `domain/machine/ports/IHardwareTestPort.h` dead forwarder 已删除，不再伪装为 live owner root。
-- `CalibrationProcess`、`IHardwareConnectionPort` 与 workflow bridge headers 不在当前模块 live roots 中；若继续清理 `contracts/.../IHardwareTestPort.h`，会触发 runtime-execution consumer 迁移，超出本轮低成本边界。
+- `contracts/include/coordinate_alignment/contracts/IHardwareTestPort.h` 与 `domain/machine/ports/IHardwareTestPort.h` 均已删除，不再伪装为 live contract / owner root。
+- `CalibrationProcess`、`IHardwareConnectionPort` 与 workflow bridge headers 已退出当前模块 live roots，不再允许 direct consumer 继续显式引入。
 - 本目录禁止重新引入 façade / provider / bridge / compat 壳层来回填已关闭的 residual。
 
 ## 当前测试面

@@ -150,6 +150,8 @@ target_link_libraries(siligen_application_dispensing PUBLIC
     siligen_workflow_contracts_public
     siligen_workflow_domain_public
     siligen_types
+)
+target_link_libraries(siligen_application_dispensing PRIVATE
     siligen_utils
     siligen_geometry
 )
@@ -233,10 +235,11 @@ target_include_directories(siligen_application_redundancy PRIVATE
     ${SILIGEN_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
 )
 target_link_libraries(siligen_application_redundancy PUBLIC
-    siligen_workflow_application_headers
     siligen_types
-    siligen_utils
     siligen_workflow_domain_public
+)
+target_link_libraries(siligen_application_redundancy PRIVATE
+    siligen_utils
 )
 target_compile_features(siligen_application_redundancy PUBLIC cxx_std_17)
 
