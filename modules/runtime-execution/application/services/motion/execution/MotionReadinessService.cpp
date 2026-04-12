@@ -6,6 +6,7 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <string_view>
 #include <thread>
 #include <utility>
 
@@ -27,14 +28,28 @@ std::string ToLower(std::string value) {
     return value;
 }
 
-bool IsBlockingJobState(const std::string& state) {
-    const auto normalized = ToLower(state);
-    return normalized == "running" ||
-           normalized == "stopping" ||
-           normalized == "canceling" ||
-           normalized == "cancelling" ||
-           normalized == "pausing" ||
-           normalized == "paused";
+ExecutionTransitionState ResolveActiveJobTransitionState(const MotionReadinessQuery& query) {
+    if (query.active_job_transition_state != ExecutionTransitionState::UNSPECIFIED) {
+        return query.active_job_transition_state;
+    }
+    return ParseExecutionTransitionState(query.active_job_state);
+}
+
+bool IsBlockingJobState(ExecutionTransitionState state) {
+    return state == ExecutionTransitionState::RUNNING ||
+           state == ExecutionTransitionState::STOPPING ||
+           state == ExecutionTransitionState::CANCELING ||
+           state == ExecutionTransitionState::PAUSING ||
+           state == ExecutionTransitionState::PAUSED;
+}
+
+std::string BuildActiveJobDiagnostic(
+    const MotionReadinessQuery& query,
+    ExecutionTransitionState state) {
+    if (!query.active_job_state.empty()) {
+        return "active_job_state=" + ToLower(query.active_job_state);
+    }
+    return std::string("active_job_state=") + ToString(state);
 }
 
 bool HasVelocityAboveTolerance(const Siligen::Domain::Motion::Ports::MotionStatus& status, float32 tolerance) {
@@ -58,11 +73,16 @@ bool HasBlockingAxisState(const Siligen::Domain::Motion::Ports::MotionStatus& st
 MotionReadinessResult MakeBlockedResult(
     const Siligen::Domain::Motion::Ports::CoordinateSystemStatus& coord_status,
     std::vector<Siligen::Domain::Motion::Ports::MotionStatus> axis_statuses,
-    std::string diagnostic_message) {
+    MotionReadinessBlockCause block_cause,
+    std::string diagnostic_message,
+    ExecutionTransitionState active_job_transition_state = ExecutionTransitionState::UNSPECIFIED) {
     MotionReadinessResult result;
     result.ready = false;
-    result.reason_code = "motion_not_ready";
-    result.message = "motion_not_ready";
+    result.reason = MotionReadinessReason::MOTION_NOT_READY;
+    result.block_cause = block_cause;
+    result.active_job_transition_state = active_job_transition_state;
+    result.reason_code = ToString(result.reason);
+    result.message = result.reason_code;
     result.diagnostic_message = std::move(diagnostic_message);
     result.coord_status = coord_status;
     result.axis_statuses = std::move(axis_statuses);
@@ -70,6 +90,95 @@ MotionReadinessResult MakeBlockedResult(
 }
 
 }  // namespace
+
+const char* ToString(ExecutionTransitionState state) noexcept {
+    switch (state) {
+        case ExecutionTransitionState::RUNNING:
+            return "running";
+        case ExecutionTransitionState::STOPPING:
+            return "stopping";
+        case ExecutionTransitionState::CANCELING:
+            return "canceling";
+        case ExecutionTransitionState::PAUSING:
+            return "pausing";
+        case ExecutionTransitionState::PAUSED:
+            return "paused";
+        case ExecutionTransitionState::COMPLETED:
+            return "completed";
+        case ExecutionTransitionState::CANCELLED:
+            return "cancelled";
+        case ExecutionTransitionState::FAILED:
+            return "failed";
+        case ExecutionTransitionState::IDLE:
+            return "idle";
+        case ExecutionTransitionState::UNKNOWN:
+            return "unknown";
+        case ExecutionTransitionState::UNSPECIFIED:
+        default:
+            return "unspecified";
+    }
+}
+
+ExecutionTransitionState ParseExecutionTransitionState(std::string_view state) noexcept {
+    const auto normalized = ToLower(std::string(state));
+    if (normalized.empty()) {
+        return ExecutionTransitionState::UNSPECIFIED;
+    }
+    if (normalized == "running") {
+        return ExecutionTransitionState::RUNNING;
+    }
+    if (normalized == "stopping") {
+        return ExecutionTransitionState::STOPPING;
+    }
+    if (normalized == "canceling" || normalized == "cancelling" || normalized == "canceled") {
+        return ExecutionTransitionState::CANCELING;
+    }
+    if (normalized == "paused") {
+        return ExecutionTransitionState::PAUSED;
+    }
+    if (normalized == "pausing") {
+        return ExecutionTransitionState::PAUSING;
+    }
+    if (normalized == "completed") {
+        return ExecutionTransitionState::COMPLETED;
+    }
+    if (normalized == "cancelled") {
+        return ExecutionTransitionState::CANCELLED;
+    }
+    if (normalized == "failed") {
+        return ExecutionTransitionState::FAILED;
+    }
+    if (normalized == "idle") {
+        return ExecutionTransitionState::IDLE;
+    }
+    return ExecutionTransitionState::UNKNOWN;
+}
+
+const char* ToString(MotionReadinessReason reason) noexcept {
+    switch (reason) {
+        case MotionReadinessReason::MOTION_NOT_READY:
+            return "motion_not_ready";
+        case MotionReadinessReason::NONE:
+        default:
+            return "";
+    }
+}
+
+const char* ToString(MotionReadinessBlockCause cause) noexcept {
+    switch (cause) {
+        case MotionReadinessBlockCause::ACTIVE_JOB_STATE:
+            return "active_job_state";
+        case MotionReadinessBlockCause::COORDINATE_SYSTEM_ERROR:
+            return "coord_state_error";
+        case MotionReadinessBlockCause::COORDINATE_SYSTEM_NOT_SETTLED:
+            return "coord_not_settled";
+        case MotionReadinessBlockCause::AXIS_NOT_SETTLED:
+            return "axis_not_settled";
+        case MotionReadinessBlockCause::NONE:
+        default:
+            return "";
+    }
+}
 
 MotionReadinessService::MotionReadinessService(
     std::shared_ptr<Siligen::Domain::Motion::Ports::IMotionStatePort> motion_state_port,
@@ -100,18 +209,22 @@ Result<MotionReadinessResult> MotionReadinessService::Evaluate(const MotionReadi
     const auto& coord_status = coord_result.Value();
     const auto axis_statuses = axes_result.Value();
     const float32 velocity_tolerance = std::max(0.0f, query.velocity_tolerance_mm_s);
+    const auto active_job_transition_state = ResolveActiveJobTransitionState(query);
 
-    if (IsBlockingJobState(query.active_job_state)) {
+    if (IsBlockingJobState(active_job_transition_state)) {
         return Result<MotionReadinessResult>::Success(MakeBlockedResult(
             coord_status,
             axis_statuses,
-            "active_job_state=" + ToLower(query.active_job_state)));
+            MotionReadinessBlockCause::ACTIVE_JOB_STATE,
+            BuildActiveJobDiagnostic(query, active_job_transition_state),
+            active_job_transition_state));
     }
 
     if (coord_status.state == CoordinateSystemState::ERROR_STATE) {
         return Result<MotionReadinessResult>::Success(MakeBlockedResult(
             coord_status,
             axis_statuses,
+            MotionReadinessBlockCause::COORDINATE_SYSTEM_ERROR,
             "coord_state=error"));
     }
 
@@ -123,6 +236,7 @@ Result<MotionReadinessResult> MotionReadinessService::Evaluate(const MotionReadi
         return Result<MotionReadinessResult>::Success(MakeBlockedResult(
             coord_status,
             axis_statuses,
+            MotionReadinessBlockCause::COORDINATE_SYSTEM_NOT_SETTLED,
             "coord_not_settled"));
     }
 
@@ -131,12 +245,16 @@ Result<MotionReadinessResult> MotionReadinessService::Evaluate(const MotionReadi
             return Result<MotionReadinessResult>::Success(MakeBlockedResult(
                 coord_status,
                 axis_statuses,
+                MotionReadinessBlockCause::AXIS_NOT_SETTLED,
                 "axis_not_settled"));
         }
     }
 
     MotionReadinessResult result;
     result.ready = true;
+    result.reason = MotionReadinessReason::NONE;
+    result.block_cause = MotionReadinessBlockCause::NONE;
+    result.active_job_transition_state = active_job_transition_state;
     result.coord_status = coord_status;
     result.axis_statuses = axis_statuses;
     result.message = "ready";

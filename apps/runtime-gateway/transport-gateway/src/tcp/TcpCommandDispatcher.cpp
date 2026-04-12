@@ -168,7 +168,25 @@ Application::Services::Motion::Execution::MotionReadinessQuery BuildReadinessQue
     Application::Services::Motion::Execution::MotionReadinessQuery query;
     query.coord_sys = 1;
     query.active_job_state = active_job_state;
+    query.active_job_transition_state =
+        Application::Services::Motion::Execution::ParseExecutionTransitionState(active_job_state);
     return query;
+}
+
+std::string ResolveReadinessReasonCode(
+    const Application::Services::Motion::Execution::MotionReadinessResult& result) {
+    if (!result.reason_code.empty()) {
+        return result.reason_code;
+    }
+    return Application::Services::Motion::Execution::ToString(result.reason);
+}
+
+std::string ResolveReadinessMessage(
+    const Application::Services::Motion::Execution::MotionReadinessResult& result) {
+    if (!result.message.empty()) {
+        return result.message;
+    }
+    return ResolveReadinessReasonCode(result);
 }
 
 void FlushLogs() {
@@ -1249,11 +1267,13 @@ std::string TcpCommandDispatcher::HandleHomeAuto(const std::string& id, const nl
         return GatewayJsonProtocol::MakeErrorResponse(id, 2424, readiness_result.GetError().GetMessage());
     }
     if (!readiness_result.Value().ready) {
+        const auto reason_code = ResolveReadinessReasonCode(readiness_result.Value());
+        const auto message = ResolveReadinessMessage(readiness_result.Value());
         return GatewayJsonProtocol::MakeSuccessResponse(id, {
             {"accepted", false},
             {"summary_state", "blocked"},
-            {"reason_code", "motion_not_ready"},
-            {"message", "motion_not_ready"},
+            {"reason_code", reason_code},
+            {"message", message},
             {"axis_results", nlohmann::json::array()},
             {"total_time_ms", 0},
         });
@@ -1397,7 +1417,7 @@ std::string TcpCommandDispatcher::HandleHomeGo(const std::string& id, const nloh
         return GatewayJsonProtocol::MakeErrorResponse(id, 2416, readiness_result.GetError().GetMessage());
     }
     if (!readiness_result.Value().ready) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 2416, "motion_not_ready");
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2416, ResolveReadinessMessage(readiness_result.Value()));
     }
 
     if (params.contains("speed")) {
@@ -1575,7 +1595,7 @@ std::string TcpCommandDispatcher::HandleMove(const std::string& id, const nlohma
         return GatewayJsonProtocol::MakeErrorResponse(id, 2401, readiness_result.GetError().GetMessage());
     }
     if (!readiness_result.Value().ready) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 2401, "motion_not_ready");
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2401, ResolveReadinessMessage(readiness_result.Value()));
     }
 
     auto current_position_result = motionFacade_->GetCurrentPosition();
@@ -2150,7 +2170,12 @@ std::string TcpCommandDispatcher::HandleDxfJobStop(const std::string& id, const 
     if (stop_result.IsError()) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 2913, stop_result.GetError().GetMessage());
     }
-    return GatewayJsonProtocol::MakeSuccessResponse(id, {{"stopped", true}, {"job_id", job_id}, {"transition_state", "stopping"}});
+    return GatewayJsonProtocol::MakeSuccessResponse(id, {
+        {"stopped", true},
+        {"job_id", job_id},
+        {"transition_state", Application::Services::Motion::Execution::ToString(
+                                 Application::Services::Motion::Execution::ExecutionTransitionState::STOPPING)},
+    });
 }
 
 std::string TcpCommandDispatcher::HandleDxfJobCancel(const std::string& id, const nlohmann::json& params) {
@@ -2173,7 +2198,10 @@ std::string TcpCommandDispatcher::HandleDxfJobCancel(const std::string& id, cons
     }
     return GatewayJsonProtocol::MakeSuccessResponse(
         id,
-        {{"cancelled", true}, {"job_id", job_id}, {"transition_state", "canceling"}});
+        {{"cancelled", true},
+         {"job_id", job_id},
+         {"transition_state", Application::Services::Motion::Execution::ToString(
+                                  Application::Services::Motion::Execution::ExecutionTransitionState::CANCELING)}});
 }
 
 std::string TcpCommandDispatcher::HandleDxfLoad(const std::string& id, const nlohmann::json& params) {

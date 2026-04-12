@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace Siligen::Application::Services::Motion::Execution {
@@ -16,14 +17,50 @@ using Siligen::Shared::Types::int16;
 using Siligen::Shared::Types::int32;
 using Siligen::Shared::Types::Result;
 
+enum class ExecutionTransitionState {
+    UNSPECIFIED = 0,
+    RUNNING,
+    STOPPING,
+    CANCELING,
+    PAUSING,
+    PAUSED,
+    COMPLETED,
+    CANCELLED,
+    FAILED,
+    IDLE,
+    UNKNOWN,
+};
+
+enum class MotionReadinessReason {
+    NONE = 0,
+    MOTION_NOT_READY,
+};
+
+enum class MotionReadinessBlockCause {
+    NONE = 0,
+    ACTIVE_JOB_STATE,
+    COORDINATE_SYSTEM_ERROR,
+    COORDINATE_SYSTEM_NOT_SETTLED,
+    AXIS_NOT_SETTLED,
+};
+
+const char* ToString(ExecutionTransitionState state) noexcept;
+ExecutionTransitionState ParseExecutionTransitionState(std::string_view state) noexcept;
+const char* ToString(MotionReadinessReason reason) noexcept;
+const char* ToString(MotionReadinessBlockCause cause) noexcept;
+
 struct MotionReadinessQuery {
     int16 coord_sys = 1;
     std::string active_job_state;
+    ExecutionTransitionState active_job_transition_state = ExecutionTransitionState::UNSPECIFIED;
     float32 velocity_tolerance_mm_s = 0.001f;
 };
 
 struct MotionReadinessResult {
     bool ready = false;
+    MotionReadinessReason reason = MotionReadinessReason::NONE;
+    MotionReadinessBlockCause block_cause = MotionReadinessBlockCause::NONE;
+    ExecutionTransitionState active_job_transition_state = ExecutionTransitionState::UNSPECIFIED;
     std::string reason_code;
     std::string message;
     std::string diagnostic_message;

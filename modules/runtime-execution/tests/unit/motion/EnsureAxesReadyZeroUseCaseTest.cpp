@@ -31,7 +31,10 @@ using Siligen::Application::UseCases::Motion::Homing::HomeAxesUseCase;
 using Siligen::Application::UseCases::Motion::Manual::ManualMotionControlUseCase;
 using Siligen::Application::UseCases::Motion::Monitoring::MotionMonitoringUseCase;
 using Siligen::Application::Services::Motion::Execution::MotionReadinessQuery;
+using Siligen::Application::Services::Motion::Execution::MotionReadinessBlockCause;
+using Siligen::Application::Services::Motion::Execution::MotionReadinessReason;
 using Siligen::Application::Services::Motion::Execution::MotionReadinessService;
+using Siligen::Application::Services::Motion::Execution::ExecutionTransitionState;
 using Siligen::Domain::Configuration::Ports::DxfPreprocessConfig;
 using Siligen::Domain::Configuration::Ports::DxfTrajectoryConfig;
 using Siligen::Domain::Configuration::Ports::HomingConfig;
@@ -573,12 +576,14 @@ TEST(EnsureAxesReadyZeroUseCaseTest, RejectsMovingAxisEvenWhenAlreadyHomed) {
     const auto& response = result.Value();
     ASSERT_EQ(response.axis_results.size(), 1U);
     EXPECT_FALSE(response.accepted);
-    EXPECT_EQ(response.summary_state, "rejected");
+    EXPECT_EQ(response.summary_state, "blocked");
     EXPECT_EQ(environment->home_calls, 0);
     EXPECT_EQ(environment->move_calls, 0);
     EXPECT_EQ(response.axis_results[0].supervisor_state, "blocked");
     EXPECT_EQ(response.axis_results[0].planned_action, "reject");
-    EXPECT_EQ(response.axis_results[0].reason_code, "axis_moving");
+    EXPECT_EQ(response.axis_results[0].reason_code, "motion_not_ready");
+    EXPECT_EQ(response.reason_code, "motion_not_ready");
+    EXPECT_EQ(response.message, "motion_not_ready");
 }
 
 TEST(EnsureAxesReadyZeroUseCaseTest, RejectsFaultedAxisBeforeExecution) {
@@ -646,8 +651,31 @@ TEST(EnsureAxesReadyZeroUseCaseTest, MotionReadinessBlocksStoppingJobState) {
 
     ASSERT_TRUE(result.IsSuccess());
     EXPECT_FALSE(result.Value().ready);
+    EXPECT_EQ(result.Value().reason, MotionReadinessReason::MOTION_NOT_READY);
+    EXPECT_EQ(result.Value().block_cause, MotionReadinessBlockCause::ACTIVE_JOB_STATE);
+    EXPECT_EQ(result.Value().active_job_transition_state, ExecutionTransitionState::STOPPING);
     EXPECT_EQ(result.Value().reason_code, "motion_not_ready");
     EXPECT_EQ(result.Value().diagnostic_message, "active_job_state=stopping");
+}
+
+TEST(EnsureAxesReadyZeroUseCaseTest, MotionReadinessBlocksTypedCancelingJobState) {
+    auto environment = std::make_shared<FakeMotionEnvironment>();
+    auto readiness_service = std::make_shared<MotionReadinessService>(
+        std::static_pointer_cast<IMotionStatePort>(environment),
+        std::static_pointer_cast<Siligen::Domain::Motion::Ports::IInterpolationPort>(environment));
+
+    MotionReadinessQuery query;
+    query.active_job_transition_state = ExecutionTransitionState::CANCELING;
+
+    auto result = readiness_service->Evaluate(query);
+
+    ASSERT_TRUE(result.IsSuccess());
+    EXPECT_FALSE(result.Value().ready);
+    EXPECT_EQ(result.Value().reason, MotionReadinessReason::MOTION_NOT_READY);
+    EXPECT_EQ(result.Value().block_cause, MotionReadinessBlockCause::ACTIVE_JOB_STATE);
+    EXPECT_EQ(result.Value().active_job_transition_state, ExecutionTransitionState::CANCELING);
+    EXPECT_EQ(result.Value().reason_code, "motion_not_ready");
+    EXPECT_EQ(result.Value().diagnostic_message, "active_job_state=canceling");
 }
 
 TEST(EnsureAxesReadyZeroUseCaseTest, MotionReadinessBlocksAxisVelocityAboveTolerance) {
@@ -662,6 +690,8 @@ TEST(EnsureAxesReadyZeroUseCaseTest, MotionReadinessBlocksAxisVelocityAboveToler
 
     ASSERT_TRUE(result.IsSuccess());
     EXPECT_FALSE(result.Value().ready);
+    EXPECT_EQ(result.Value().reason, MotionReadinessReason::MOTION_NOT_READY);
+    EXPECT_EQ(result.Value().block_cause, MotionReadinessBlockCause::AXIS_NOT_SETTLED);
     EXPECT_EQ(result.Value().reason_code, "motion_not_ready");
     EXPECT_EQ(result.Value().diagnostic_message, "axis_not_settled");
 }
@@ -678,6 +708,8 @@ TEST(EnsureAxesReadyZeroUseCaseTest, MotionReadinessBlocksCoordinateSystemWithRe
 
     ASSERT_TRUE(result.IsSuccess());
     EXPECT_FALSE(result.Value().ready);
+    EXPECT_EQ(result.Value().reason, MotionReadinessReason::MOTION_NOT_READY);
+    EXPECT_EQ(result.Value().block_cause, MotionReadinessBlockCause::COORDINATE_SYSTEM_NOT_SETTLED);
     EXPECT_EQ(result.Value().reason_code, "motion_not_ready");
     EXPECT_EQ(result.Value().diagnostic_message, "coord_not_settled");
 }

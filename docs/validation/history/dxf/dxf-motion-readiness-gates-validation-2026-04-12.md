@@ -36,22 +36,19 @@
 3. C++ 定向构建
 - 命令：
   - `C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe .\build\tests\runtime-execution-unit\siligen_runtime_execution_unit_tests.vcxproj /p:Configuration=Debug /p:Platform=x64 /m:1 /nologo`
+  - `C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe .\build\rtx-host-unit\siligen_runtime_host_unit_tests.vcxproj /p:Configuration=Debug /p:Platform=x64 /m:1 /nologo`
   - `C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe .\build\apps\runtime-gateway\transport-gateway\siligen_transport_gateway.vcxproj /p:Configuration=Debug /p:Platform=x64 /m:1 /nologo`
 - 结果：通过
 
 4. C++ 定向测试
 - 命令：
-  - `.\build\bin\Debug\siligen_runtime_execution_unit_tests.exe --gtest_filter=EnsureAxesReadyZeroUseCaseTest.MotionReadiness*:EnsureAxesReadyZeroUseCaseTest.BlocksGoHomeWhenMotionNotReady`
-  - `.\build\bin\Debug\siligen_runtime_execution_unit_tests.exe --gtest_filter=EnsureAxesReadyZeroUseCaseTest.*`
-  - `.\build\bin\Debug\siligen_runtime_execution_unit_tests.exe --gtest_filter=DispensingExecutionUseCaseInternalTest.*`
+  - `.\build\bin\Debug\siligen_runtime_execution_unit_tests.exe --gtest_filter=EnsureAxesReadyZeroUseCaseTest.*:DispensingExecutionUseCaseInternalTest.*`
   - `.\build\bin\Debug\siligen_runtime_host_unit_tests.exe --gtest_filter=MockMultiCardCharacterizationTest.*:MultiCardMotionAdapterTest.*:DispensingExecutionUseCaseInternalTest.*`
   - `.\build\bin\Debug\runtime_execution_motion_runtime_assembly_test.exe`
   - `.\build\bin\Debug\siligen_runtime_service_unit_tests.exe`
 - 结果：
-  - `4 tests from 1 test suite ... PASSED`
-  - `11 tests from 1 test suite ... PASSED`
-  - `20 tests from 1 test suite ... PASSED`
-  - `23 tests from 3 test suites ... PASSED`
+  - `33 tests from 2 test suites ... PASSED`
+  - `24 tests from 3 test suites ... PASSED`
   - 退出码 `0`
   - `43 tests from 8 test suites ... PASSED`
 
