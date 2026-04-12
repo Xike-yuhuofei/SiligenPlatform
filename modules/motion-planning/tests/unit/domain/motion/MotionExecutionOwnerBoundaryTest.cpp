@@ -33,21 +33,7 @@ std::string ReadTextFile(const fs::path& path) {
     return buffer.str();
 }
 
-std::size_t CountOccurrences(const std::string& haystack, const std::string& needle) {
-    if (needle.empty()) {
-        return 0U;
-    }
-
-    std::size_t count = 0U;
-    std::size_t pos = haystack.find(needle);
-    while (pos != std::string::npos) {
-        ++count;
-        pos = haystack.find(needle, pos + needle.size());
-    }
-    return count;
-}
-
-TEST(MotionExecutionOwnerBoundaryTest, LegacyExecutionHeadersRemainResolvableAndExposeWorkflowLayout) {
+TEST(MotionExecutionOwnerBoundaryTest, ExecutionHeadersRemainResolvableFromRuntimeExecutionOwnerSurface) {
     using Siligen::Domain::Motion::MotionBufferController;
     using namespace Siligen::Domain::Motion::DomainServices;
 
@@ -59,6 +45,20 @@ TEST(MotionExecutionOwnerBoundaryTest, LegacyExecutionHeadersRemainResolvableAnd
     EXPECT_TRUE((std::is_same_v<
         decltype(HomeAxesResponse{}.axis_results),
         std::vector<HomeAxesResponse::AxisResult>>));
+}
+
+TEST(MotionExecutionOwnerBoundaryTest, WorkflowExecutionCompatibilityHeadersAreRemoved) {
+    const fs::path repo_root = RepoRoot();
+    const std::array<fs::path, 4> removed_headers = {{
+        repo_root / "modules/workflow/domain/include/domain/motion/domain-services/HomingProcess.h",
+        repo_root / "modules/workflow/domain/include/domain/motion/domain-services/JogController.h",
+        repo_root / "modules/workflow/domain/include/domain/motion/domain-services/MotionBufferController.h",
+        repo_root / "modules/workflow/domain/include/domain/motion/domain-services/ReadyZeroDecisionService.h",
+    }};
+
+    for (const auto& header : removed_headers) {
+        EXPECT_FALSE(fs::exists(header)) << header.string();
+    }
 }
 
 TEST(MotionExecutionOwnerBoundaryTest, MotionPlanningExecutionCompatibilityHeadersAreRemoved) {
@@ -95,24 +95,37 @@ TEST(MotionExecutionOwnerBoundaryTest, ValidatedInterpolationPortMovesToRuntimeE
         repo_root / "modules/motion-planning/domain/motion/domain-services/interpolation/ValidatedInterpolationPort.h";
     const fs::path legacy_source =
         repo_root / "modules/motion-planning/domain/motion/domain-services/interpolation/ValidatedInterpolationPort.cpp";
+    const fs::path motion_planning_wrapper =
+        repo_root / "modules/motion-planning/application/include/application/services/motion_planning/InterpolationCommandValidator.h";
     const fs::path runtime_header =
         repo_root / "modules/runtime-execution/application/include/runtime_execution/application/services/motion/interpolation/ValidatedInterpolationPort.h";
     const fs::path runtime_source =
         repo_root / "modules/runtime-execution/application/services/motion/interpolation/ValidatedInterpolationPort.cpp";
+    const fs::path workflow_public_compat =
+        repo_root / "modules/workflow/domain/include/domain/motion/domain-services/interpolation/ValidatedInterpolationPort.h";
+    const fs::path workflow_dormant_compat =
+        repo_root / "modules/workflow/domain/domain/motion/domain-services/interpolation/ValidatedInterpolationPort.h";
 
     EXPECT_FALSE(fs::exists(legacy_header)) << legacy_header.string();
     EXPECT_FALSE(fs::exists(legacy_source)) << legacy_source.string();
+    EXPECT_TRUE(fs::exists(motion_planning_wrapper)) << motion_planning_wrapper.string();
     EXPECT_TRUE(fs::exists(runtime_header)) << runtime_header.string();
     EXPECT_TRUE(fs::exists(runtime_source)) << runtime_source.string();
+    EXPECT_FALSE(fs::exists(workflow_public_compat)) << workflow_public_compat.string();
+    EXPECT_FALSE(fs::exists(workflow_dormant_compat)) << workflow_dormant_compat.string();
 
-    const std::string runtime_cmake =
-        ReadTextFile(repo_root / "modules/runtime-execution/application/CMakeLists.txt");
-    const std::string workflow_compat =
-        ReadTextFile(repo_root / "modules/workflow/domain/include/domain/motion/domain-services/interpolation/ValidatedInterpolationPort.h");
+    const std::string wrapper = ReadTextFile(motion_planning_wrapper);
+    const std::string runtime_source_text = ReadTextFile(runtime_source);
 
-    EXPECT_NE(runtime_cmake.find("services/motion/interpolation/ValidatedInterpolationPort.cpp"), std::string::npos);
+    EXPECT_NE(wrapper.find("Thin public wrapper"), std::string::npos);
+    EXPECT_NE(wrapper.find("InterpolationCommandValidator.h"), std::string::npos);
     EXPECT_NE(
-        workflow_compat.find("runtime-execution/application/include/runtime_execution/application/services/motion/interpolation/ValidatedInterpolationPort.h"),
+        runtime_source_text.find(
+            '#' + std::string("include \"application/services/motion_planning/InterpolationCommandValidator.h\"")),
+        std::string::npos);
+    EXPECT_EQ(
+        runtime_source_text.find(
+            '#' + std::string("include \"domain/motion/domain-services/interpolation/InterpolationCommandValidator.h\"")),
         std::string::npos);
 }
 

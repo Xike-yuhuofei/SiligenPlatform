@@ -1,5 +1,5 @@
 #include "InfrastructureAdapterFactory.h"
-#include "domain/motion/domain-services/SevenSegmentSCurveProfile.h"
+#include "application/services/motion_planning/SevenSegmentSCurveProfile.h"
 
 #if SILIGEN_ENABLE_MOCK_MULTICARD
 #include "siligen/device/adapters/drivers/multicard/MockMultiCardWrapper.h"

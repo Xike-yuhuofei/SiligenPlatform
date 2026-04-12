@@ -7,10 +7,28 @@ allowed_dependencies:
   - motion-planning/contracts
   - process-path/contracts
   - process-planning/contracts
+  - runtime-execution/contracts
   - shared
 uniform_skeleton_ready: true
 notes: >
   M8 canonical owner 公开产物是 ExecutionPackage、PlanningArtifactExportRequest、
-  AuthorityTriggerLayout、TriggerPlan、DispensingPlan；Workflow runtime host 必须通过
-  WorkflowDispensingProcessOperationsProvider 消费点胶执行过程装配，不得直接构造
-  domain/dispensing/DispensingProcessService。DispenseTimingPlan 为历史命名残留，不再新增 live 类型。
+  AuthorityTriggerLayout、TriggerPlan、DispensingPlan；Workflow-facing public assembly
+  seam 中的 PlanningArtifactExportRequest 仅允许以
+  domain/dispensing/contracts canonical namespace 暴露，不再保留 application
+  namespace alias；
+  seam 固定为 AuthorityPreviewAssemblyService、ExecutionAssemblyService 与
+  WorkflowPlanningAssemblyOperationsProvider，公开输入/输出统一使用 workflow DTO；
+  application/include/application/services/dispensing/WorkflowPlanningAssemblyTypes.h
+  当前是 canonical DTO owner。workflow/application 中同名头仅允许作为 compat
+  forwarder。internal stage 类型已回收到
+  application/services/dispensing/PlanningAssemblyServices.cpp，不再保留
+  PlanningAssemblyTypes.h 公开头。DispensingExecutionPlan 保留为 M8 owner backing type；运行期
+  planning artifact export 的 port/result contract canonical owner 位于
+  runtime-execution/application；
+  overrides/params/options/report 与 GuardDecision/MachineMode/JobExecutionMode/
+  ProcessOutputPolicy 的 canonical owner 位于 runtime-execution/contracts/runtime。
+  domain_dispensing 当前只允许作为 owner/core header surface 暴露，planning concrete
+  必须挂到 planning_residual，execution/process-control/valve/CMP concrete 必须挂到 execution_residual；
+  不得恢复 WorkflowDispensingProcessOperationsProvider、不得恢复 raw workflow include root /
+  raw runtime contract include root 暴露，也不得把 valve/process-control/CMP residual
+  误记为 canonical public owner surface。DispenseTimingPlan 为历史命名残留，不再新增 live 类型。

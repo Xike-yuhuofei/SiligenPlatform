@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/motion/ports/IAdvancedMotionPort.h"
+#include "motion_planning/contracts/IAdvancedMotionPort.h"
 #include "runtime_execution/contracts/dispensing/ITriggerControllerPort.h"
 #include "runtime_execution/contracts/motion/IAxisControlPort.h"
 #include "runtime_execution/contracts/motion/IIOControlPort.h"

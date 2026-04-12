@@ -1,6 +1,6 @@
 #include "runtime_execution/application/services/motion/interpolation/ValidatedInterpolationPort.h"
 
-#include "domain/motion/domain-services/interpolation/InterpolationCommandValidator.h"
+#include "application/services/motion_planning/InterpolationCommandValidator.h"
 
 #include <utility>
 

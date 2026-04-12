@@ -18,7 +18,7 @@
 #include "runtime_execution/contracts/motion/IMotionConnectionPort.h"
 #include "runtime_execution/contracts/motion/IMotionStatePort.h"
 #include "runtime_execution/contracts/motion/IPositionControlPort.h"
-#include "domain/motion/ports/IVelocityProfilePort.h"
+#include "motion_planning/contracts/IVelocityProfilePort.h"
 #include "runtime_execution/contracts/dispensing/ITaskSchedulerPort.h"
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "runtime_execution/contracts/motion/IMotionRuntimePort.h"

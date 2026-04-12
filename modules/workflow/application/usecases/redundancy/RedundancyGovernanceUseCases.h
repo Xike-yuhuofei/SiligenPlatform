@@ -1,3 +1,3 @@
 #pragma once
 
-#include "../../include/application/recovery-control/RedundancyGovernanceUseCases.h"
+#include "../../recovery-control/RedundancyGovernanceUseCases.h"

@@ -3,7 +3,7 @@
 // Compatibility surface: the dependent safety contracts already prefer runtime-
 // execution canonical headers when visible, and fall back to workflow mirrors
 // for consumers that only receive workflow public includes.
-#include "domain/motion/ports/IMotionStatePort.h"
+#include "runtime_execution/contracts/motion/IMotionStatePort.h"
 #include "domain/safety/ports/IInterlockSignalPort.h"
 #include "domain/safety/value-objects/InterlockTypes.h"
 #include "shared/types/Error.h"

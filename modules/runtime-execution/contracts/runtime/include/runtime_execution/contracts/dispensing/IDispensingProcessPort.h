@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dispense_packaging/contracts/ExecutionPackage.h"
 #include "dispense_packaging/contracts/IDispensingExecutionObserver.h"
 #include "runtime_execution/contracts/dispensing/DispensingExecutionTypes.h"
 

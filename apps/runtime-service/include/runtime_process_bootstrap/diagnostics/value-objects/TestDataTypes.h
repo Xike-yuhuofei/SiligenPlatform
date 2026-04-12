@@ -1,10 +1,10 @@
 #pragma once
 
 #include "trace_diagnostics/contracts/DiagnosticTypes.h"
-#include "domain/motion/value-objects/HardwareTestTypes.h"
-#include "domain/motion/value-objects/MotionTypes.h"
-#include "domain/motion/value-objects/TrajectoryAnalysisTypes.h"
-#include "domain/motion/value-objects/TrajectoryTypes.h"
+#include "motion_planning/contracts/HardwareTestTypes.h"
+#include "motion_planning/contracts/MotionTypes.h"
+#include "motion_planning/contracts/TrajectoryAnalysisTypes.h"
+#include "motion_planning/contracts/TrajectoryTypes.h"
 #include "shared/types/Point.h"
 
 #include <cmath>

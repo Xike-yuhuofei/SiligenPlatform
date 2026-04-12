@@ -7,6 +7,13 @@ if(NOT TARGET siligen_process_planning_contracts_public)
     )
 endif()
 
+if(NOT TARGET siligen_process_path_contracts_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../process-path/contracts"
+        "${CMAKE_BINARY_DIR}/_p/da_ppath"
+    )
+endif()
+
 if(NOT TARGET siligen_shared_kernel AND EXISTS "${SILIGEN_WORKSPACE_ROOT}/shared/kernel/CMakeLists.txt")
     add_subdirectory(
         "${SILIGEN_WORKSPACE_ROOT}/shared/kernel"
@@ -22,11 +29,19 @@ if(NOT TARGET siligen_trace_diagnostics_contracts_public AND EXISTS "${SILIGEN_T
     )
 endif()
 
-set(SILIGEN_WORKFLOW_DOMAIN_CANONICAL_DIR "${SILIGEN_WORKSPACE_ROOT}/modules/workflow/domain")
-if(NOT TARGET siligen_workflow_domain_headers AND EXISTS "${SILIGEN_WORKFLOW_DOMAIN_CANONICAL_DIR}/CMakeLists.txt")
+set(SILIGEN_COORDINATE_ALIGNMENT_CANONICAL_DIR "${SILIGEN_WORKSPACE_ROOT}/modules/coordinate-alignment")
+if(NOT TARGET siligen_coordinate_alignment_contracts_public AND EXISTS "${SILIGEN_COORDINATE_ALIGNMENT_CANONICAL_DIR}/CMakeLists.txt")
     add_subdirectory(
-        "${SILIGEN_WORKFLOW_DOMAIN_CANONICAL_DIR}"
-        "${CMAKE_BINARY_DIR}/_p/da_wdh"
+        "${SILIGEN_COORDINATE_ALIGNMENT_CANONICAL_DIR}"
+        "${CMAKE_BINARY_DIR}/_p/da_ca"
+    )
+endif()
+
+set(SILIGEN_MOTION_PLANNING_CONTRACTS_CANONICAL_DIR "${SILIGEN_WORKSPACE_ROOT}/modules/motion-planning/contracts")
+if(NOT TARGET siligen_motion_planning_contracts_public AND EXISTS "${SILIGEN_MOTION_PLANNING_CONTRACTS_CANONICAL_DIR}/CMakeLists.txt")
+    add_subdirectory(
+        "${SILIGEN_MOTION_PLANNING_CONTRACTS_CANONICAL_DIR}"
+        "${CMAKE_BINARY_DIR}/_p/da_mpc"
     )
 endif()
 
@@ -53,9 +68,6 @@ set(SILIGEN_DEVICE_ADAPTERS_INCLUDE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/include")
 set(SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/src")
 set(SILIGEN_DEVICE_ADAPTERS_DISPENSE_PACKAGING_INCLUDE_ROOT
     "${SILIGEN_WORKSPACE_ROOT}/modules/dispense-packaging"
-)
-set(SILIGEN_DEVICE_ADAPTERS_MOTION_PLANNING_INCLUDE_ROOT
-    "${SILIGEN_WORKSPACE_ROOT}/modules/motion-planning"
 )
 set(SILIGEN_DEVICE_ADAPTERS_VENDOR_DIR "${SILIGEN_WORKSPACE_ROOT}/modules/runtime-execution/adapters/device/vendor/multicard")
 if(DEFINED SILIGEN_MULTICARD_VENDOR_DIR AND EXISTS "${SILIGEN_MULTICARD_VENDOR_DIR}")
@@ -127,7 +139,6 @@ endif()
 
 target_include_directories(siligen_device_adapters PUBLIC
     ${SILIGEN_DEVICE_ADAPTERS_INCLUDE_ROOT}
-    ${SILIGEN_DEVICE_ADAPTERS_MOTION_PLANNING_INCLUDE_ROOT}
 )
 target_include_directories(siligen_device_adapters PRIVATE
     ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}
@@ -139,7 +150,8 @@ target_link_libraries(siligen_device_adapters PUBLIC
     siligen_shared_kernel
     siligen_trace_diagnostics_contracts_public
     siligen_runtime_execution_runtime_contracts
-    siligen_workflow_domain_headers
+    siligen_coordinate_alignment_contracts_public
+    siligen_motion_planning_contracts_public
     siligen_process_planning_contracts_public
 )
 target_link_libraries(siligen_device_adapters PRIVATE

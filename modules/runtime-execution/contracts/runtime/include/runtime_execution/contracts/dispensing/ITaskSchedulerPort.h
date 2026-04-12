@@ -1,10 +1,5 @@
 #pragma once
 
-// Compatibility surface: prefer the canonical dispense-packaging port when visible,
-// but keep a local mirror for consumers that only receive runtime-execution contracts.
-#if __has_include("dispense_packaging/contracts/ITaskSchedulerPort.h")
-#include "dispense_packaging/contracts/ITaskSchedulerPort.h"
-#else
 #include "shared/types/Result.h"
 #include "shared/types/Types.h"
 
@@ -56,4 +51,3 @@ class ITaskSchedulerPort {
 };
 
 }  // namespace Siligen::Domain::Dispensing::Ports
-#endif

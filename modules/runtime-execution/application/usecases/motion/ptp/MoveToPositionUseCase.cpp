@@ -53,7 +53,7 @@ Result<MoveToPositionResponse> MoveToPositionUseCase::Execute(const MoveToPositi
     }
 
     MoveToPositionResponse response;
-    response.motion_completed = true;
+    response.motion_completed = request.wait_for_completion;
 
     if (motion_status_service_) {
         auto position_result = motion_status_service_->GetCurrentPosition();
@@ -72,7 +72,7 @@ Result<MoveToPositionResponse> MoveToPositionUseCase::Execute(const MoveToPositi
 
     response.execution_time =
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time);
-    response.status_message = "Move completed";
+    response.status_message = request.wait_for_completion ? "Move completed" : "Move command accepted";
 
     return Result<MoveToPositionResponse>::Success(response);
 }

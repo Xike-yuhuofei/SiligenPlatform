@@ -1,3 +1,4 @@
 #pragma once
 
-#include "dispense_packaging/contracts/IDispensingExecutionObserver.h"
+// Legacy bridge header; canonical public owner header lives under runtime-execution contracts.
+#include "../../../../../runtime-execution/contracts/runtime/include/runtime_execution/contracts/dispensing/IDispensingExecutionObserver.h"

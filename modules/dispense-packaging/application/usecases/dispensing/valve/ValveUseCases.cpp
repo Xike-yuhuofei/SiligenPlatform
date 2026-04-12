@@ -16,6 +16,16 @@ using Siligen::Shared::Types::Result;
 
 namespace {
 
+Result<void> EnsureValvePortAvailable(
+    const std::shared_ptr<Domain::Dispensing::Ports::IValvePort>& valve_port) {
+    if (!valve_port) {
+        return Result<void>::Failure(
+            Error(ErrorCode::PORT_NOT_INITIALIZED, "阀门端口未初始化"));
+    }
+
+    return Result<void>::Success();
+}
+
 Domain::Dispensing::DomainServices::PurgeDispenserRequest ToDomainRequest(const PurgeDispenserRequest& request) {
     Domain::Dispensing::DomainServices::PurgeDispenserRequest domain_request;
     domain_request.manage_supply = request.manage_supply;
@@ -45,7 +55,6 @@ bool PurgeDispenserRequest::Validate() const noexcept {
 std::string PurgeDispenserRequest::GetValidationError() const noexcept {
     return ToDomainRequest(*this).GetValidationError();
 }
-
 ValveCommandUseCase::ValveCommandUseCase(
     std::shared_ptr<Domain::Dispensing::Ports::IValvePort> valve_port,
     std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port,
@@ -74,6 +83,10 @@ Result<PurgeDispenserResponse> ValveCommandUseCase::PurgeDispenser(const PurgeDi
     if (connection.IsError()) {
         return Result<PurgeDispenserResponse>::Failure(connection.GetError());
     }
+    auto valve_port_check = EnsureValvePortAvailable(valve_port_);
+    if (valve_port_check.IsError()) {
+        return Result<PurgeDispenserResponse>::Failure(valve_port_check.GetError());
+    }
 
     Domain::Dispensing::DomainServices::PurgeDispenserProcess process(valve_port_, config_port_);
     auto result = process.Execute(ToDomainRequest(request));
@@ -89,6 +102,10 @@ Result<void> ValveCommandUseCase::StopDispenser() {
     if (connection.IsError()) {
         return Result<void>::Failure(connection.GetError());
     }
+    auto valve_port_check = EnsureValvePortAvailable(valve_port_);
+    if (valve_port_check.IsError()) {
+        return Result<void>::Failure(valve_port_check.GetError());
+    }
 
     return valve_port_->StopDispenser();
 }
@@ -97,6 +114,10 @@ Result<void> ValveCommandUseCase::PauseDispenser() {
     auto connection = EnsureHardwareConnected();
     if (connection.IsError()) {
         return Result<void>::Failure(connection.GetError());
+    }
+    auto valve_port_check = EnsureValvePortAvailable(valve_port_);
+    if (valve_port_check.IsError()) {
+        return Result<void>::Failure(valve_port_check.GetError());
     }
 
     return valve_port_->PauseDispenser();
@@ -107,6 +128,10 @@ Result<void> ValveCommandUseCase::ResumeDispenser() {
     if (connection.IsError()) {
         return Result<void>::Failure(connection.GetError());
     }
+    auto valve_port_check = EnsureValvePortAvailable(valve_port_);
+    if (valve_port_check.IsError()) {
+        return Result<void>::Failure(valve_port_check.GetError());
+    }
 
     return valve_port_->ResumeDispenser();
 }
@@ -115,6 +140,10 @@ Result<Domain::Dispensing::Ports::SupplyValveState> ValveCommandUseCase::OpenSup
     auto connection = EnsureHardwareConnected();
     if (connection.IsError()) {
         return Result<Domain::Dispensing::Ports::SupplyValveState>::Failure(connection.GetError());
+    }
+    auto valve_port_check = EnsureValvePortAvailable(valve_port_);
+    if (valve_port_check.IsError()) {
+        return Result<Domain::Dispensing::Ports::SupplyValveState>::Failure(valve_port_check.GetError());
     }
 
     return valve_port_->OpenSupply();
@@ -125,6 +154,10 @@ Result<Domain::Dispensing::Ports::SupplyValveState> ValveCommandUseCase::CloseSu
     if (connection.IsError()) {
         return Result<Domain::Dispensing::Ports::SupplyValveState>::Failure(connection.GetError());
     }
+    auto valve_port_check = EnsureValvePortAvailable(valve_port_);
+    if (valve_port_check.IsError()) {
+        return Result<Domain::Dispensing::Ports::SupplyValveState>::Failure(valve_port_check.GetError());
+    }
 
     return valve_port_->CloseSupply();
 }
@@ -133,10 +166,20 @@ ValveQueryUseCase::ValveQueryUseCase(std::shared_ptr<Domain::Dispensing::Ports::
     : valve_port_(std::move(valve_port)) {}
 
 Shared::Types::Result<Domain::Dispensing::Ports::DispenserValveState> ValveQueryUseCase::GetDispenserStatus() {
+    auto valve_port_check = EnsureValvePortAvailable(valve_port_);
+    if (valve_port_check.IsError()) {
+        return Result<Domain::Dispensing::Ports::DispenserValveState>::Failure(valve_port_check.GetError());
+    }
+
     return valve_port_->GetDispenserStatus();
 }
 
 Shared::Types::Result<Domain::Dispensing::Ports::SupplyValveStatusDetail> ValveQueryUseCase::GetSupplyStatus() {
+    auto valve_port_check = EnsureValvePortAvailable(valve_port_);
+    if (valve_port_check.IsError()) {
+        return Result<Domain::Dispensing::Ports::SupplyValveStatusDetail>::Failure(valve_port_check.GetError());
+    }
+
     return valve_port_->GetSupplyStatus();
 }
 

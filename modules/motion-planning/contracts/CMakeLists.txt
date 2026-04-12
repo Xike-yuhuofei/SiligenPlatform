@@ -7,6 +7,22 @@ if(NOT EXISTS "${SILIGEN_MOTION_PLANNING_CONTRACTS_PUBLIC_INCLUDE_DIR}/motion_pl
         "${SILIGEN_MOTION_PLANNING_CONTRACTS_PUBLIC_INCLUDE_DIR}/motion_planning/contracts"
     )
 endif()
+foreach(motion_planning_contract_header
+    IN ITEMS
+        IAdvancedMotionPort.h
+        IVelocityProfilePort.h
+        MotionTypes.h
+        HardwareTestTypes.h
+        TrajectoryTypes.h
+        TrajectoryAnalysisTypes.h
+)
+    if(NOT EXISTS "${SILIGEN_MOTION_PLANNING_CONTRACTS_PUBLIC_INCLUDE_DIR}/motion_planning/contracts/${motion_planning_contract_header}")
+        message(FATAL_ERROR
+            "motion-planning canonical contracts header missing: "
+            "${SILIGEN_MOTION_PLANNING_CONTRACTS_PUBLIC_INCLUDE_DIR}/motion_planning/contracts/${motion_planning_contract_header}"
+        )
+    endif()
+endforeach()
 
 if(NOT TARGET siligen_motion_planning_contracts_public)
     add_library(siligen_motion_planning_contracts_public INTERFACE)

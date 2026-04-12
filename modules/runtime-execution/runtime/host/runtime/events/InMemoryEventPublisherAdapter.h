@@ -64,9 +64,7 @@ private:
 
     // 事件历史记录 (简单队列实现)
     struct EventRecord {
-        EventType type;
-        std::string message;
-        int64_t timestamp;
+        std::shared_ptr<DomainEvent> event;
     };
     std::deque<EventRecord> event_history_;
     size_t max_history_size_;
@@ -81,6 +79,11 @@ private:
      * @brief 记录事件到历史记录
      */
     void RecordEvent(const DomainEvent& event);
+
+    /**
+     * @brief 为历史记录复制事件对象，保留常见派生事件字段
+     */
+    static std::shared_ptr<DomainEvent> CloneEvent(const DomainEvent& event);
 };
 
 }  // namespace Adapters

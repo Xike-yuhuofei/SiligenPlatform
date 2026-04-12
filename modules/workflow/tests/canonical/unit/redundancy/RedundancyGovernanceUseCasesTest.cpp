@@ -1,4 +1,4 @@
-#include "application/usecases/redundancy/RedundancyGovernanceUseCases.h"
+#include "recovery-control/RedundancyGovernanceUseCases.h"
 #include "infrastructure/adapters/redundancy/JsonRedundancyRepositoryAdapter.h"
 
 #include <gtest/gtest.h>

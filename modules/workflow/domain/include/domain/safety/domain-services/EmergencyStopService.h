@@ -11,8 +11,8 @@
 // modules/runtime-execution/application.
 
 #include "domain/dispensing/domain-services/CMPTriggerService.h"
-#include "domain/motion/domain-services/MotionControlService.h"
-#include "domain/motion/domain-services/MotionStatusService.h"
+#include "runtime_execution/contracts/motion/MotionControlService.h"
+#include "runtime_execution/contracts/motion/MotionStatusService.h"
 #include "runtime_execution/contracts/system/IMachineExecutionStatePort.h"
 #include "shared/types/Error.h"
 #include "shared/types/Point2D.h"

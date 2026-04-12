@@ -87,7 +87,6 @@ target_link_libraries(siligen_runtime_host PUBLIC
     siligen_runtime_execution_runtime_contracts
     siligen_trace_diagnostics_contracts_public
     siligen_device_contracts
-    siligen_workflow_domain_headers
     siligen_shared
 )
 

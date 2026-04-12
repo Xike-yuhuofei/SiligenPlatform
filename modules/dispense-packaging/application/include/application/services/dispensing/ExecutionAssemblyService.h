@@ -1,13 +1,13 @@
 #pragma once
 
-#include "application/services/dispensing/PlanningAssemblyTypes.h"
+#include "application/services/dispensing/WorkflowPlanningAssemblyTypes.h"
 
 namespace Siligen::Application::Services::Dispensing {
 
 class ExecutionAssemblyService {
 public:
-    Siligen::Shared::Types::Result<ExecutionAssemblyBuildResult> BuildExecutionArtifactsFromAuthority(
-        const ExecutionAssemblyBuildInput& input) const;
+    Siligen::Shared::Types::Result<WorkflowExecutionAssemblyResult> BuildExecutionArtifactsFromAuthority(
+        const WorkflowExecutionAssemblyRequest& input) const;
 };
 
 }  // namespace Siligen::Application::Services::Dispensing

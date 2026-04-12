@@ -1,8 +1,8 @@
 #pragma once
 
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
-#include "domain/motion/value-objects/HardwareTestTypes.h"
-#include "domain/motion/value-objects/MotionTypes.h"
+#include "motion_planning/contracts/HardwareTestTypes.h"
+#include "motion_planning/contracts/MotionTypes.h"
 #include "siligen/device/adapters/drivers/multicard/IMultiCardWrapper.h"
 #include "siligen/device/adapters/drivers/multicard/MultiCardCPP.h"
 #include "shared/types/Error.h"

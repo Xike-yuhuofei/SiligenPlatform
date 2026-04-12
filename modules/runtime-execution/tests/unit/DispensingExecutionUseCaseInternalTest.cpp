@@ -336,7 +336,6 @@ TEST(DispensingExecutionUseCaseInternalTest, ExecuteAsyncTrimsRedundantMotionTra
     auto task_result = use_case->ExecuteAsync(request);
 
     ASSERT_TRUE(task_result.IsSuccess());
-    ASSERT_TRUE(static_cast<bool>(scheduler->last_executor));
     const auto task_id = task_result.Value();
     const auto task_it = use_case->tasks_.find(task_id);
     ASSERT_NE(task_it, use_case->tasks_.end());
@@ -386,7 +385,7 @@ TEST(DispensingExecutionUseCaseInternalTest, ExecuteAsyncDropsOlderTerminalTasks
     EXPECT_EQ(use_case->active_task_id_, task_result.Value());
 }
 
-TEST(DispensingExecutionUseCaseInternalTest, ExecuteAsyncCleansExpiredSchedulerTasksBeforeSubmit) {
+TEST(DispensingExecutionUseCaseInternalTest, ExecuteAsyncCleansExpiredSchedulerTasksBeforeLocalStart) {
     auto scheduler = std::make_shared<CapturingTaskSchedulerPort>();
     auto use_case = CreateExecutionUseCase(std::make_shared<StubDispensingProcessPort>(), scheduler);
 
@@ -394,7 +393,30 @@ TEST(DispensingExecutionUseCaseInternalTest, ExecuteAsyncCleansExpiredSchedulerT
 
     ASSERT_TRUE(task_result.IsSuccess());
     EXPECT_EQ(scheduler->cleanup_calls, 1);
-    EXPECT_TRUE(static_cast<bool>(scheduler->last_executor));
+    EXPECT_FALSE(static_cast<bool>(scheduler->last_executor));
+}
+
+TEST(DispensingExecutionUseCaseInternalTest, ExecuteAsyncStartsLocalWorkerEvenWhenSchedulerPortExists) {
+    auto scheduler = std::make_shared<CapturingTaskSchedulerPort>();
+    auto use_case = CreateExecutionUseCase(std::make_shared<StubDispensingProcessPort>(), scheduler);
+
+    auto task_result = use_case->ExecuteAsync(BuildExecutionRequest(true));
+
+    ASSERT_TRUE(task_result.IsSuccess());
+    const auto task_id = task_result.Value();
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    while (std::chrono::steady_clock::now() < deadline) {
+        auto task_it = use_case->tasks_.find(task_id);
+        if (task_it != use_case->tasks_.end() && task_it->second->execution_started.load()) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    const auto task_it = use_case->tasks_.find(task_id);
+    ASSERT_NE(task_it, use_case->tasks_.end());
+    EXPECT_TRUE(task_it->second->execution_started.load());
+    EXPECT_FALSE(static_cast<bool>(scheduler->last_executor));
 }
 
 TEST(DispensingExecutionUseCaseInternalTest, StopJobCommitsCancelledStateImmediatelyAfterTaskCancelConfirmed) {

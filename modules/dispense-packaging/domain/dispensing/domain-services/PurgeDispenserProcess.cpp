@@ -61,6 +61,12 @@ Result<PurgeDispenserResponse> PurgeDispenserProcess::Execute(const PurgeDispens
             Siligen::Shared::Types::Error(Siligen::Shared::Types::ErrorCode::INVALID_PARAMETER,
                                           request.GetValidationError()));
     }
+    if (!valve_port_) {
+        return Result<PurgeDispenserResponse>::Failure(
+            Siligen::Shared::Types::Error(
+                Siligen::Shared::Types::ErrorCode::PORT_NOT_INITIALIZED,
+                "点胶阀端口未初始化"));
+    }
 
     PurgeDispenserResponse response;
     response.supply_managed = request.manage_supply;

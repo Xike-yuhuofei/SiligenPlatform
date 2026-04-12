@@ -14,6 +14,18 @@ using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 
+namespace {
+
+template <typename TEvent>
+std::shared_ptr<DomainEvent> CloneTypedEvent(const DomainEvent& event) {
+    if (const auto* typed_event = dynamic_cast<const TEvent*>(&event)) {
+        return std::make_shared<TEvent>(*typed_event);
+    }
+    return std::make_shared<DomainEvent>(event);
+}
+
+}  // namespace
+
 InMemoryEventPublisherAdapter::InMemoryEventPublisherAdapter(size_t max_history_size)
     : max_history_size_(max_history_size) {}
 
@@ -101,10 +113,22 @@ Result<void> InMemoryEventPublisherAdapter::UnsubscribeAll(EventType type) {
 
 Result<std::vector<DomainEvent*>> InMemoryEventPublisherAdapter::GetEventHistory(
     EventType type, int32_t max_count) const {
-    // MVP 简化实现：返回空列表
-    // 实际实现需要存储完整的 DomainEvent 对象
-    // 当前只存储简化的 EventRecord
-    return Result<std::vector<DomainEvent*>>::Success(std::vector<DomainEvent*>{});
+    std::vector<DomainEvent*> history;
+    if (max_count <= 0) {
+        return Result<std::vector<DomainEvent*>>::Success(std::move(history));
+    }
+
+    std::lock_guard<std::mutex> lock(history_mutex_);
+    history.reserve(std::min<std::size_t>(static_cast<std::size_t>(max_count), event_history_.size()));
+    for (auto it = event_history_.rbegin(); it != event_history_.rend() &&
+                                           history.size() < static_cast<std::size_t>(max_count);
+         ++it) {
+        if (!it->event || it->event->type != type) {
+            continue;
+        }
+        history.push_back(it->event.get());
+    }
+    return Result<std::vector<DomainEvent*>>::Success(std::move(history));
 }
 
 Result<void> InMemoryEventPublisherAdapter::ClearEventHistory() {
@@ -138,15 +162,57 @@ void InMemoryEventPublisherAdapter::RecordEvent(const DomainEvent& event) {
     std::lock_guard<std::mutex> lock(history_mutex_);
 
     // 添加到历史记录
-    event_history_.push_back({
-        event.type,
-        event.message,
-        event.timestamp
-    });
+    event_history_.push_back({CloneEvent(event)});
 
     // 限制历史记录大小
     while (event_history_.size() > max_history_size_) {
         event_history_.pop_front();
+    }
+}
+
+std::shared_ptr<DomainEvent> InMemoryEventPublisherAdapter::CloneEvent(const DomainEvent& event) {
+    switch (event.type) {
+        case EventType::POSITION_CHANGED:
+            return CloneTypedEvent<Siligen::Domain::System::Ports::PositionChangedEvent>(event);
+        case EventType::MOTION_COMPLETED:
+            return CloneTypedEvent<Siligen::Domain::System::Ports::MotionCompletedEvent>(event);
+        case EventType::EMERGENCY_STOP:
+            return CloneTypedEvent<Siligen::Domain::System::Ports::EmergencyStopEvent>(event);
+        case EventType::AXIS_ERROR:
+            return CloneTypedEvent<Siligen::Domain::System::Ports::AxisErrorEvent>(event);
+        case EventType::DXF_EXECUTION_STARTED:
+            return CloneTypedEvent<Siligen::Domain::System::Ports::DXFExecutionStartedEvent>(event);
+        case EventType::DXF_EXECUTION_PROGRESS:
+            return CloneTypedEvent<Siligen::Domain::System::Ports::DXFExecutionProgressEvent>(event);
+        case EventType::DXF_EXECUTION_COMPLETED:
+            return CloneTypedEvent<Siligen::Domain::System::Ports::DXFExecutionCompletedEvent>(event);
+        case EventType::DXF_EXECUTION_FAILED:
+            return CloneTypedEvent<Siligen::Domain::System::Ports::DXFExecutionFailedEvent>(event);
+        case EventType::DXF_EXECUTION_CANCELLED:
+            return CloneTypedEvent<Siligen::Domain::System::Ports::DXFExecutionCancelledEvent>(event);
+        case EventType::SOFT_LIMIT_TRIGGERED:
+            return CloneTypedEvent<Siligen::Domain::System::Ports::SoftLimitTriggeredEvent>(event);
+        case EventType::SOFT_LIMIT_VIOLATION:
+            return CloneTypedEvent<Siligen::Domain::System::Ports::SoftLimitViolationEvent>(event);
+        case EventType::HARDWARE_CONNECTED:
+        case EventType::HARDWARE_DISCONNECTED:
+        case EventType::HARDWARE_CONNECTION_FAILED:
+            return CloneTypedEvent<Siligen::Domain::System::Ports::HardwareConnectionEvent>(event);
+        case EventType::SYSTEM_STATE_CHANGED:
+            return CloneTypedEvent<Siligen::Domain::System::Ports::SystemStateChangedEvent>(event);
+        case EventType::MOTION_STARTED:
+        case EventType::HOMING_STARTED:
+        case EventType::HOMING_COMPLETED:
+        case EventType::TRIGGER_ACTIVATED:
+        case EventType::CONFIGURATION_CHANGED:
+        case EventType::DXF_PARSING_STARTED:
+        case EventType::DXF_PARSING_COMPLETED:
+        case EventType::DXF_PARSING_FAILED:
+        case EventType::WORKFLOW_STAGE_CHANGED:
+        case EventType::WORKFLOW_STAGE_FAILED:
+        case EventType::WORKFLOW_EXPORT_FAILED:
+        default:
+            return std::make_shared<DomainEvent>(event);
     }
 }
 

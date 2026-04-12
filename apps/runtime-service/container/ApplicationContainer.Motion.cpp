@@ -13,7 +13,7 @@
 #include "runtime_execution/application/usecases/motion/trajectory/ExecuteTrajectoryUseCase.h"
 #include "domain/motion/domain-services/JogController.h"
 #include "domain/motion/domain-services/ReadyZeroDecisionService.h"
-#include "domain/motion/domain-services/VelocityProfileService.h"
+#include "application/services/motion_planning/VelocityProfileService.h"
 #include "services/motion/HardLimitMonitorService.h"
 #include "shared/interfaces/ILoggingService.h"
 

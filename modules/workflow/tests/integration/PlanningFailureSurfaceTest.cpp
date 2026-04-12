@@ -1,6 +1,6 @@
 #include "workflow/application/planning-trigger/PlanningUseCase.h"
 
-#include "application/ports/dispensing/PlanningPortAdapters.h"
+#include "workflow/application/ports/dispensing/PlanningPortAdapters.h"
 #include "dxf_geometry/application/services/dxf/DxfPbPreparationService.h"
 #include "runtime_execution/application/services/dispensing/PlanningArtifactExportPort.h"
 #include "application/services/dispensing/WorkflowPlanningAssemblyOperationsProvider.h"
@@ -26,6 +26,7 @@ using Siligen::Application::Services::Dispensing::PlanningArtifactExportResult;
 using Siligen::Application::Services::DXF::DxfPbPreparationService;
 using Siligen::Application::UseCases::Dispensing::PlanningRequest;
 using Siligen::Application::UseCases::Dispensing::PlanningUseCase;
+using Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest;
 using Siligen::Domain::Configuration::Ports::HomingConfig;
 using Siligen::Domain::Configuration::Ports::IConfigurationPort;
 using Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest;

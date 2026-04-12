@@ -4,7 +4,6 @@ set(RUNTIME_EXECUTION_TEST_INCLUDE_DIRS
     "${CMAKE_SOURCE_DIR}/modules/runtime-execution"
     "${CMAKE_SOURCE_DIR}/modules/runtime-execution/application"
     "${CMAKE_SOURCE_DIR}/modules/dispense-packaging"
-    "${CMAKE_SOURCE_DIR}/modules/motion-planning/contracts/include"
 )
 
 set(RUNTIME_EXECUTION_UNIT_TEST_SOURCES

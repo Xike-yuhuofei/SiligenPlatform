@@ -1,7 +1,5 @@
 #pragma once
 
-#include "application/services/dispensing/AuthorityPreviewAssemblyService.h"
-#include "application/services/dispensing/PlanningAssemblyTypes.h"
 #include "application/services/dispensing/WorkflowPlanningAssemblyTypes.h"
 
 #include <algorithm>
@@ -10,11 +8,6 @@
 
 namespace Siligen::Application::Services::Dispensing::TestFixtures {
 
-using Siligen::Application::Services::Dispensing::AuthorityPreviewAssemblyService;
-using Siligen::Application::Services::Dispensing::AuthorityPreviewBuildInput;
-using Siligen::Application::Services::Dispensing::AuthorityPreviewBuildResult;
-using Siligen::Application::Services::Dispensing::ExecutionAssemblyBuildInput;
-using Siligen::Application::Services::Dispensing::PlanningArtifactsBuildInput;
 using Siligen::Application::Services::Dispensing::WorkflowAuthorityPreviewArtifacts;
 using Siligen::Application::Services::Dispensing::WorkflowAuthorityPreviewRequest;
 using Siligen::Application::Services::Dispensing::WorkflowExecutionAssemblyRequest;
@@ -30,6 +23,39 @@ using Siligen::Shared::Types::Point2D;
 
 inline constexpr char kMixedExplicitBoundaryWithReorderedBranchFamily[] =
     "mixed_explicit_boundary_with_reordered_branch_family";
+
+struct FixturePlanningInput {
+    Siligen::ProcessPath::Contracts::ProcessPath process_path;
+    Siligen::ProcessPath::Contracts::ProcessPath authority_process_path;
+    Siligen::MotionPlanning::Contracts::MotionPlan motion_plan;
+    std::string source_path;
+    std::string dxf_filename;
+    Siligen::Shared::Types::float32 dispensing_velocity = 0.0f;
+    Siligen::Shared::Types::float32 acceleration = 0.0f;
+    Siligen::Shared::Types::uint32 dispenser_interval_ms = 0;
+    Siligen::Shared::Types::uint32 dispenser_duration_ms = 0;
+    Siligen::Shared::Types::float32 trigger_spatial_interval_mm = 0.0f;
+    Siligen::Shared::Types::float32 valve_response_ms = 0.0f;
+    Siligen::Shared::Types::float32 safety_margin_ms = 0.0f;
+    Siligen::Shared::Types::float32 min_interval_ms = 0.0f;
+    Siligen::Shared::Types::float32 max_jerk = 0.0f;
+    Siligen::Shared::Types::float32 sample_dt = 0.01f;
+    Siligen::Shared::Types::float32 sample_ds = 0.0f;
+    Siligen::Shared::Types::float32 spline_max_step_mm = 0.0f;
+    Siligen::Shared::Types::float32 spline_max_error_mm = 0.0f;
+    Siligen::Shared::Types::float32 estimated_time_s = 0.0f;
+    Siligen::Shared::Types::DispensingStrategy dispensing_strategy =
+        Siligen::Shared::Types::DispensingStrategy::BASELINE;
+    int subsegment_count = 8;
+    bool dispense_only_cruise = false;
+    bool downgrade_on_violation = true;
+    bool use_interpolation_planner = false;
+    InterpolationAlgorithm interpolation_algorithm = InterpolationAlgorithm::LINEAR;
+    Siligen::Domain::Dispensing::ValueObjects::DispenseCompensationProfile compensation_profile{};
+    Siligen::Shared::Types::float32 spacing_tol_ratio = 0.0f;
+    Siligen::Shared::Types::float32 spacing_min_mm = 0.0f;
+    Siligen::Shared::Types::float32 spacing_max_mm = 0.0f;
+};
 
 inline MotionTrajectoryPoint BuildMotionPoint(float t, float x, float y, bool dispense_on = true) {
     MotionTrajectoryPoint point;
@@ -81,8 +107,8 @@ inline ProcessSegment BuildPointSegment(const Point2D& point, bool dispense_on =
     return process_segment;
 }
 
-inline PlanningArtifactsBuildInput BuildPlanningInput() {
-    PlanningArtifactsBuildInput input;
+inline FixturePlanningInput BuildPlanningInput() {
+    FixturePlanningInput input;
     input.source_path = "sample.pb";
     input.dxf_filename = "sample.pb";
     input.dispensing_velocity = 10.0f;
@@ -106,11 +132,11 @@ inline PlanningArtifactsBuildInput BuildPlanningInput() {
     return input;
 }
 
-inline PlanningArtifactsBuildInput BuildInput() {
+inline FixturePlanningInput BuildInput() {
     return BuildPlanningInput();
 }
 
-inline WorkflowAuthorityPreviewRequest BuildWorkflowAuthorityPreviewInput(const PlanningArtifactsBuildInput& input) {
+inline WorkflowAuthorityPreviewRequest BuildWorkflowAuthorityPreviewInput(const FixturePlanningInput& input) {
     WorkflowAuthorityPreviewRequest authority_input;
     authority_input.process_path = input.process_path;
     authority_input.authority_process_path = input.authority_process_path;
@@ -139,37 +165,8 @@ inline WorkflowAuthorityPreviewRequest BuildWorkflowAuthorityPreviewInput(const 
     return authority_input;
 }
 
-inline AuthorityPreviewBuildInput BuildAuthorityPreviewInput(const PlanningArtifactsBuildInput& input) {
-    AuthorityPreviewBuildInput authority_input;
-    authority_input.process_path = input.process_path;
-    authority_input.authority_process_path = input.authority_process_path;
-    authority_input.source_path = input.source_path;
-    authority_input.dxf_filename = input.dxf_filename;
-    authority_input.dispensing_velocity = input.dispensing_velocity;
-    authority_input.acceleration = input.acceleration;
-    authority_input.dispenser_interval_ms = input.dispenser_interval_ms;
-    authority_input.dispenser_duration_ms = input.dispenser_duration_ms;
-    authority_input.trigger_spatial_interval_mm = input.trigger_spatial_interval_mm;
-    authority_input.valve_response_ms = input.valve_response_ms;
-    authority_input.safety_margin_ms = input.safety_margin_ms;
-    authority_input.min_interval_ms = input.min_interval_ms;
-    authority_input.sample_dt = input.sample_dt;
-    authority_input.sample_ds = input.sample_ds;
-    authority_input.spline_max_step_mm = input.spline_max_step_mm;
-    authority_input.spline_max_error_mm = input.spline_max_error_mm;
-    authority_input.dispensing_strategy = input.dispensing_strategy;
-    authority_input.subsegment_count = input.subsegment_count;
-    authority_input.dispense_only_cruise = input.dispense_only_cruise;
-    authority_input.downgrade_on_violation = input.downgrade_on_violation;
-    authority_input.compensation_profile = input.compensation_profile;
-    authority_input.spacing_tol_ratio = input.spacing_tol_ratio;
-    authority_input.spacing_min_mm = input.spacing_min_mm;
-    authority_input.spacing_max_mm = input.spacing_max_mm;
-    return authority_input;
-}
-
 inline WorkflowExecutionAssemblyRequest BuildWorkflowExecutionInput(
-    const PlanningArtifactsBuildInput& input,
+    const FixturePlanningInput& input,
     const WorkflowAuthorityPreviewArtifacts& authority_preview) {
     WorkflowExecutionAssemblyRequest execution_input;
     execution_input.process_path = input.process_path;
@@ -198,37 +195,7 @@ inline WorkflowExecutionAssemblyRequest BuildWorkflowExecutionInput(
     return execution_input;
 }
 
-inline ExecutionAssemblyBuildInput BuildExecutionInput(
-    const PlanningArtifactsBuildInput& input,
-    const AuthorityPreviewBuildResult& authority_preview) {
-    ExecutionAssemblyBuildInput execution_input;
-    execution_input.process_path = input.process_path;
-    execution_input.authority_process_path = input.authority_process_path;
-    execution_input.motion_plan = input.motion_plan;
-    execution_input.source_path = input.source_path;
-    execution_input.dxf_filename = input.dxf_filename;
-    execution_input.dispensing_velocity = input.dispensing_velocity;
-    execution_input.acceleration = input.acceleration;
-    execution_input.dispenser_interval_ms = input.dispenser_interval_ms;
-    execution_input.dispenser_duration_ms = input.dispenser_duration_ms;
-    execution_input.trigger_spatial_interval_mm = input.trigger_spatial_interval_mm;
-    execution_input.valve_response_ms = input.valve_response_ms;
-    execution_input.safety_margin_ms = input.safety_margin_ms;
-    execution_input.min_interval_ms = input.min_interval_ms;
-    execution_input.max_jerk = input.max_jerk;
-    execution_input.sample_dt = input.sample_dt;
-    execution_input.sample_ds = input.sample_ds;
-    execution_input.spline_max_step_mm = input.spline_max_step_mm;
-    execution_input.spline_max_error_mm = input.spline_max_error_mm;
-    execution_input.estimated_time_s = input.estimated_time_s;
-    execution_input.use_interpolation_planner = input.use_interpolation_planner;
-    execution_input.interpolation_algorithm = input.interpolation_algorithm;
-    execution_input.compensation_profile = input.compensation_profile;
-    execution_input.authority_preview = authority_preview;
-    return execution_input;
-}
-
-inline WorkflowPlanningAssemblyRequest BuildWorkflowPlanningInput(const PlanningArtifactsBuildInput& input) {
+inline WorkflowPlanningAssemblyRequest BuildWorkflowPlanningInput(const FixturePlanningInput& input) {
     WorkflowPlanningAssemblyRequest workflow_input;
     workflow_input.authority_preview_request = BuildWorkflowAuthorityPreviewInput(input);
     workflow_input.motion_plan = input.motion_plan;
@@ -243,7 +210,7 @@ inline WorkflowPlanningAssemblyRequest BuildWorkflowPlanningInput() {
     return BuildWorkflowPlanningInput(BuildPlanningInput());
 }
 
-inline PlanningArtifactsBuildInput BuildPolylineInput(
+inline FixturePlanningInput BuildPolylineInput(
     const std::vector<Point2D>& polyline,
     float spacing_mm = 3.0f) {
     auto input = BuildPlanningInput();

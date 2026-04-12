@@ -19,7 +19,7 @@
 #define SILIGEN_TEST_HOOKS
 #endif
 #define private public
-#include "application/ports/dispensing/PlanningPortAdapters.h"
+#include "workflow/application/ports/dispensing/PlanningPortAdapters.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "runtime_execution/contracts/dispensing/IDispensingProcessPort.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
@@ -49,6 +49,7 @@ using Siligen::Application::UseCases::Dispensing::StartJobResponse;
 using Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort;
 using Siligen::Application::Services::Dispensing::PlanningArtifactExportResult;
 using Siligen::Application::Services::DXF::DxfPbPreparationService;
+using Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest;
 using Siligen::JobIngest::Contracts::IUploadFilePort;
 using Siligen::Device::Contracts::Commands::DeviceConnection;
 using Siligen::Device::Contracts::Ports::DeviceConnectionPort;

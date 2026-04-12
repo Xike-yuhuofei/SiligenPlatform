@@ -1,3 +1,4 @@
 #pragma once
 
-#include "../../../contracts/include/dispense_packaging/contracts/QualityMetrics.h"
+// Compatibility shim; canonical quality metrics owner lives in runtime-execution contracts.
+#include "runtime_execution/contracts/dispensing/QualityMetrics.h"
