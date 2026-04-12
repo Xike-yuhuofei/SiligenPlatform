@@ -1,10 +1,10 @@
 #include "DispensingPlannerService.h"
 #include "ContourOptimizationService.h"
 #include "AuthorityTriggerLayoutPlanner.h"
-#include "UnifiedTrajectoryPlannerService.h"
 
 #include "application/services/motion_planning/CmpInterpolationFacade.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
+#include "application/services/process_path/ProcessPathFacade.h"
 #include "application/services/motion_planning/TrajectoryInterpolationFacade.h"
 #include "modules/motion-planning/domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
 #include "domain/dispensing/domain-services/TriggerPlanner.h"
@@ -44,8 +44,6 @@ using Siligen::ProcessPath::Contracts::ProcessTag;
 using Siligen::Domain::Motion::Ports::InterpolationData;
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectory;
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectoryPoint;
-using Siligen::Domain::Dispensing::DomainServices::UnifiedTrajectoryPlanRequest;
-using Siligen::Domain::Dispensing::DomainServices::UnifiedTrajectoryPlannerService;
 using Siligen::Domain::Dispensing::DomainServices::TriggerPlanner;
 using Siligen::Domain::Dispensing::ValueObjects::TriggerPlan;
 using Siligen::ProcessPath::Contracts::ArcPoint;
@@ -69,6 +67,21 @@ constexpr float32 kPi = 3.14159265359f;
 constexpr float32 kDegToRad = kPi / 180.0f;
 constexpr float32 kCoordinateSafetyMarginMm = 1.0f;
 constexpr float32 kBoundsToleranceMm = 1e-4f;
+
+struct ProcessPathMotionRequest {
+    Siligen::ProcessPath::Contracts::NormalizationConfig normalization;
+    Siligen::ProcessPath::Contracts::ProcessConfig process;
+    Siligen::ProcessPath::Contracts::TrajectoryShaperConfig shaping;
+    Siligen::MotionPlanning::Contracts::TimePlanningConfig motion;
+    bool generate_motion_trajectory = true;
+};
+
+struct ProcessPathMotionArtifacts {
+    Siligen::ProcessPath::Contracts::NormalizedPath normalized;
+    Siligen::ProcessPath::Contracts::ProcessPath process_path;
+    Siligen::ProcessPath::Contracts::ProcessPath shaped_path;
+    Siligen::MotionPlanning::Contracts::MotionTrajectory motion_trajectory;
+};
 
 float32 SegmentLength(const Segment& segment) {
     if (segment.length > kEpsilon) {
@@ -1229,8 +1242,116 @@ void ApplyProcessInfoToTrajectory(const ProcessPath& path, float32 vmax, MotionT
     }
 }
 
-UnifiedTrajectoryPlanRequest BuildUnifiedPlanRequest(const DispensingPlanRequest& request) {
-    UnifiedTrajectoryPlanRequest plan_request{};
+void OptimizeLineOrientation(Siligen::ProcessPath::Contracts::Path& path, float32 tolerance) {
+    using Siligen::ProcessPath::Contracts::SegmentEnd;
+    using Siligen::ProcessPath::Contracts::SegmentStart;
+    using Siligen::ProcessPath::Contracts::SegmentType;
+
+    if (path.segments.size() < 2) {
+        return;
+    }
+
+    for (size_t i = 0; i < path.segments.size(); ++i) {
+        auto& seg = path.segments[i];
+        if (seg.type != SegmentType::Line) {
+            continue;
+        }
+
+        const Point2D prev_end = (i > 0) ? SegmentEnd(path.segments[i - 1]) : seg.line.start;
+        const Point2D next_start =
+            (i + 1 < path.segments.size()) ? SegmentStart(path.segments[i + 1]) : seg.line.end;
+
+        const Point2D start = seg.line.start;
+        const Point2D end = seg.line.end;
+
+        const float32 cost_current = prev_end.DistanceTo(start) + end.DistanceTo(next_start);
+        const float32 cost_reversed = prev_end.DistanceTo(end) + start.DistanceTo(next_start);
+
+        if (cost_reversed + std::max(tolerance, kEpsilon) < cost_current) {
+            std::swap(seg.line.start, seg.line.end);
+        }
+    }
+}
+
+Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest BuildProcessPathRequest(
+    const std::vector<Primitive>& primitives,
+    const ProcessPathMotionRequest& request) {
+    Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest build_request;
+    build_request.primitives = primitives;
+    build_request.normalization = request.normalization;
+    build_request.process = request.process;
+    build_request.shaping = request.shaping;
+    build_request.topology_repair.policy = Siligen::ProcessPath::Contracts::TopologyRepairPolicy::Off;
+    return build_request;
+}
+
+const char* StageToString(const Siligen::ProcessPath::Contracts::PathGenerationStage stage) {
+    using Siligen::ProcessPath::Contracts::PathGenerationStage;
+
+    switch (stage) {
+        case PathGenerationStage::None:
+            return "none";
+        case PathGenerationStage::InputValidation:
+            return "input_validation";
+        case PathGenerationStage::TopologyRepair:
+            return "topology_repair";
+        case PathGenerationStage::Normalization:
+            return "normalization";
+        case PathGenerationStage::ProcessAnnotation:
+            return "process_annotation";
+        case PathGenerationStage::TrajectoryShaping:
+            return "trajectory_shaping";
+    }
+
+    return "unknown";
+}
+
+Error BuildPathGenerationError(
+    const Siligen::Application::Services::ProcessPath::ProcessPathBuildResult& build_result) {
+    using Siligen::ProcessPath::Contracts::PathGenerationStatus;
+
+    std::ostringstream oss;
+    oss << "process path build failed at stage " << StageToString(build_result.failed_stage);
+    if (!build_result.error_message.empty()) {
+        oss << ": " << build_result.error_message;
+    }
+
+    const auto error_code = build_result.status == PathGenerationStatus::InvalidInput
+                                ? ErrorCode::INVALID_PARAMETER
+                                : ErrorCode::INVALID_STATE;
+    return Error(error_code, oss.str(), "DispensingPlanner");
+}
+
+Result<ProcessPathMotionArtifacts> BuildProcessPathMotionArtifacts(
+    const std::vector<Primitive>& primitives,
+    const ProcessPathMotionRequest& request,
+    const std::shared_ptr<Domain::Motion::Ports::IVelocityProfilePort>& velocity_profile_port) {
+    using Siligen::Application::Services::MotionPlanning::MotionPlanningFacade;
+    using Siligen::Application::Services::ProcessPath::ProcessPathFacade;
+    using Siligen::ProcessPath::Contracts::PathGenerationStatus;
+
+    ProcessPathFacade process_path_facade;
+    const auto build_result = process_path_facade.Build(BuildProcessPathRequest(primitives, request));
+    if (build_result.status != PathGenerationStatus::Success) {
+        return Result<ProcessPathMotionArtifacts>::Failure(BuildPathGenerationError(build_result));
+    }
+
+    ProcessPathMotionArtifacts result;
+    result.normalized = build_result.normalized;
+    OptimizeLineOrientation(result.normalized.path, request.normalization.continuity_tolerance);
+    result.process_path = build_result.process_path;
+    result.shaped_path = build_result.shaped_path;
+
+    if (request.generate_motion_trajectory) {
+        MotionPlanningFacade motion_planning_facade(velocity_profile_port);
+        result.motion_trajectory = motion_planning_facade.Plan(result.shaped_path, request.motion);
+    }
+
+    return Result<ProcessPathMotionArtifacts>::Success(std::move(result));
+}
+
+ProcessPathMotionRequest BuildProcessPathMotionRequest(const DispensingPlanRequest& request) {
+    ProcessPathMotionRequest plan_request{};
     plan_request.process.default_flow = 1.0f;
     plan_request.process.approach_dist = 0.0f;
     plan_request.process.lead_off_dist = 0.0f;
@@ -1717,9 +1838,8 @@ Result<DispensingPlan> DispensingPlanner::Plan(const DispensingPlanRequest& requ
         }
     }
 
-    UnifiedTrajectoryPlannerService planner(velocity_profile_port_);
-    auto plan_request = BuildUnifiedPlanRequest(request);
-    auto plan_result = planner.Plan(primitives, plan_request);
+    auto plan_request = BuildProcessPathMotionRequest(request);
+    auto plan_result = BuildProcessPathMotionArtifacts(primitives, plan_request, velocity_profile_port_);
     if (plan_result.IsError()) {
         return Result<DispensingPlan>::Failure(plan_result.GetError());
     }

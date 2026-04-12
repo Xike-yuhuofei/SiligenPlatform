@@ -1,6 +1,6 @@
 # tests
 
-`modules/dispense-packaging/tests/` 是当前模块级验证入口。
+`modules/dispense-packaging/tests/` 仅承载模块级验证入口与 closeout 证据。
 
 ## 当前 source-bearing 测试面
 
@@ -9,7 +9,11 @@
 - `contract/domain/dispensing/`
   - owner 边界守护与物理目录语义一致。
 - `regression/domain/dispensing/`
-  - residual acceptance 与 planning / execution residual 回归统一收口，不再混入 `unit`。
+  - residual acceptance 收口在此目录，不再混入 `unit`。
+- `regression/domain/dispensing/planning/`
+  - planning residual 与 legacy DXF quarantine audit 的物理回归面；其中 legacy DXF concrete 仅允许通过 test-only `siligen_dispense_packaging_planning_legacy_dxf_quarantine_support` 进入。
+- `regression/domain/dispensing/execution/`
+  - execution / process-control residual 回归面。
 - `regression/shared/types/`
   - shared-adjacent 回归与 `M8` owner unit 分离，避免误记为模块 closeout 证据。
 - `unit/application/services/dispensing/`
@@ -21,20 +25,12 @@
 
 ## 当前 live targets
 
-- `siligen_dispense_packaging_unit_tests`
-  - 当前聚焦模块内 unit 范围，不再混入 boundary / seam / residual acceptance。
-- `siligen_dispense_packaging_boundary_tests`
-  - 当前 owner 边界守护入口；物理源文件位于 `contract/`。
-- `siligen_dispense_packaging_workflow_seam_tests`
-  - 当前 workflow-facing seam 守护入口；物理源文件位于 `contract/`。
-- `siligen_dispense_packaging_residual_regression_tests`
-  - 当前 residual acceptance 守护入口。
-- `siligen_dispense_packaging_planning_residual_regression_tests`
-  - 当前 planning residual 回归入口；物理源文件位于 `regression/domain/dispensing/planning/`。
-- `siligen_dispense_packaging_execution_residual_regression_tests`
-  - 当前 execution / process-control residual 回归入口；物理源文件位于 `regression/domain/dispensing/execution/`。
-- `siligen_dispense_packaging_shared_adjacent_regression_tests`
-  - 当前 shared-adjacent 回归入口；物理源文件位于 `regression/shared/types/`。
+- `siligen_dispense_packaging_boundary_tests` 与 `siligen_dispense_packaging_workflow_seam_tests` 是当前 phase 4 closeout gate。
+- `siligen_dispense_packaging_unit_tests` 当前聚焦模块内 owner-adjacent/unit 邻接回归，不替代 closeout gate。
+- `siligen_dispense_packaging_residual_regression_tests` 当前只承载结构性 residual acceptance / topology 守护。
+- `siligen_dispense_packaging_planning_residual_regression_tests` 当前承载 planning residual 与 legacy DXF quarantine audit。
+- `siligen_dispense_packaging_execution_residual_regression_tests` 当前承载 execution / process-control residual 回归。
+- `siligen_dispense_packaging_shared_adjacent_regression_tests` 当前承载 shared-adjacent 回归。
 
 ## 占位目录
 
