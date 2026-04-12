@@ -7,12 +7,6 @@ if(NOT EXISTS "${SILIGEN_COORDINATE_ALIGNMENT_CONTRACTS_PUBLIC_INCLUDE_DIR}/coor
         "${SILIGEN_COORDINATE_ALIGNMENT_CONTRACTS_PUBLIC_INCLUDE_DIR}/coordinate_alignment/contracts/CoordinateTransformSet.h"
     )
 endif()
-if(NOT EXISTS "${SILIGEN_COORDINATE_ALIGNMENT_CONTRACTS_PUBLIC_INCLUDE_DIR}/coordinate_alignment/contracts/IHardwareTestPort.h")
-    message(FATAL_ERROR
-        "coordinate-alignment canonical contracts header missing: "
-        "${SILIGEN_COORDINATE_ALIGNMENT_CONTRACTS_PUBLIC_INCLUDE_DIR}/coordinate_alignment/contracts/IHardwareTestPort.h"
-    )
-endif()
 
 get_filename_component(SILIGEN_COORDINATE_ALIGNMENT_WORKSPACE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
 
@@ -20,14 +14,6 @@ if(NOT TARGET siligen_types AND EXISTS "${SILIGEN_COORDINATE_ALIGNMENT_WORKSPACE
     add_subdirectory(
         "${SILIGEN_COORDINATE_ALIGNMENT_WORKSPACE_ROOT}/shared/kernel"
         "${CMAKE_BINARY_DIR}/shared/kernel"
-    )
-endif()
-
-if(NOT TARGET siligen_trace_diagnostics_contracts_public AND
-   EXISTS "${SILIGEN_COORDINATE_ALIGNMENT_WORKSPACE_ROOT}/modules/trace-diagnostics/contracts/CMakeLists.txt")
-    add_subdirectory(
-        "${SILIGEN_COORDINATE_ALIGNMENT_WORKSPACE_ROOT}/modules/trace-diagnostics/contracts"
-        "${CMAKE_BINARY_DIR}/_p/ca_tdc"
     )
 endif()
 
@@ -39,7 +25,6 @@ target_include_directories(siligen_coordinate_alignment_contracts_public INTERFA
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
 target_link_libraries(siligen_coordinate_alignment_contracts_public INTERFACE
-    siligen_trace_diagnostics_contracts_public
     siligen_types
 )
 if(TARGET siligen_application_contracts)

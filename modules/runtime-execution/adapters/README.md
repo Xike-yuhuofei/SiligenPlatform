@@ -30,4 +30,4 @@
 - `device/adapters` public surface 已不再依赖 `src/**` forwarding shell；对 motion value objects 的消费统一经 canonical include root 解析。
 - `src/adapters/dispensing/dispenser/ValveAdapter.Dispenser.cpp` 已从 workflow-style `domain/dispensing/domain-services/DispenseCompensationService.h` 歧义入口，retarget 到 `modules/dispense-packaging/domain/dispensing/domain-services/DispenseCompensationService.h` canonical owner。
 - motion connection 已收敛到 `MotionRuntimeFacade` + `DeviceConnectionPort` stable device contracts，不再依赖 `coordinate-alignment/domain/machine/IHardwareConnectionPort`。
-- `HardwareTestAdapter` / `TriggerControllerAdapter` 保留为 `runtime-execution/adapters/device` 内部 concrete；当前仍保留 `IHardwareTestPort` 这条过渡调用面，仅用于承接 live trigger controller consumer，后续再做彻底收口。
+- `HardwareTestAdapter` / `TriggerControllerAdapter` 保留为 `runtime-execution/adapters/device` 内部 concrete；`HardwareTestAdapter` 当前不再继承 `IHardwareTestPort`，trigger controller 继续直接依赖本模块 concrete，不再回链 `coordinate-alignment` 合同面。

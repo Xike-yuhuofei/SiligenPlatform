@@ -4,6 +4,7 @@ import sys
 import unittest
 from pathlib import Path
 import json
+import re
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
@@ -45,6 +46,36 @@ def _fixed_string_hits(pattern: str, roots: tuple[str, ...] = ("modules", "apps"
             if pattern in _read(path):
                 hits.append(path.relative_to(WORKSPACE_ROOT).as_posix())
     return hits
+
+
+def _target_link_libraries_entries(cmake_text: str, target: str, scope: str) -> list[str]:
+    pattern = re.compile(
+        rf"target_link_libraries\(\s*{re.escape(target)}\s+{re.escape(scope)}\s+(.*?)\)",
+        re.DOTALL,
+    )
+    entries: list[str] = []
+    for match in pattern.finditer(cmake_text):
+        body = match.group(1)
+        entries.extend(re.findall(r"[A-Za-z0-9_:+.-]+", body))
+    return entries
+
+
+def _assert_target_link_keep_set(
+    test_case: unittest.TestCase,
+    cmake_text: str,
+    target: str,
+    scope: str,
+    expected: set[str],
+) -> None:
+    actual = set(_target_link_libraries_entries(cmake_text, target, scope))
+    test_case.assertEqual(
+        expected,
+        actual,
+        msg=(
+            f"{target} {scope} keep-set drifted; "
+            f"expected={sorted(expected)}, actual={sorted(actual)}"
+        ),
+    )
 
 
 class BridgeExitContractTest(unittest.TestCase):
@@ -150,6 +181,90 @@ class BridgeExitContractTest(unittest.TestCase):
             ("modules/workflow/tests/integration/CMakeLists.txt", "siligen_workflow_application_public"),
         ):
             self.assertNotIn(forbidden, _read(WORKSPACE_ROOT / relative), msg=f"{relative} must not reference {forbidden}")
+
+    def test_workflow_application_keep_set_does_not_leak_shared_kernel_helpers(self) -> None:
+        workflow_application = _read(WORKSPACE_ROOT / "modules" / "workflow" / "application" / "CMakeLists.txt")
+
+        dispensing_public = _target_link_libraries_entries(
+            workflow_application,
+            "siligen_application_dispensing",
+            "PUBLIC",
+        )
+        dispensing_private = _target_link_libraries_entries(
+            workflow_application,
+            "siligen_application_dispensing",
+            "PRIVATE",
+        )
+        self.assertIn("siligen_types", dispensing_public)
+        self.assertNotIn("siligen_utils", dispensing_public)
+        self.assertNotIn("siligen_geometry", dispensing_public)
+        self.assertIn("siligen_utils", dispensing_private)
+        self.assertIn("siligen_geometry", dispensing_private)
+
+        redundancy_public = _target_link_libraries_entries(
+            workflow_application,
+            "siligen_application_redundancy",
+            "PUBLIC",
+        )
+        redundancy_private = _target_link_libraries_entries(
+            workflow_application,
+            "siligen_application_redundancy",
+            "PRIVATE",
+        )
+        self.assertIn("siligen_types", redundancy_public)
+        self.assertNotIn("siligen_utils", redundancy_public)
+        self.assertIn("siligen_utils", redundancy_private)
+
+    def test_workflow_application_redundancy_public_surface_does_not_export_header_bundle(self) -> None:
+        workflow_application = _read(WORKSPACE_ROOT / "modules" / "workflow" / "application" / "CMakeLists.txt")
+
+        redundancy_public = _target_link_libraries_entries(
+            workflow_application,
+            "siligen_application_redundancy",
+            "PUBLIC",
+        )
+        self.assertIn("siligen_types", redundancy_public)
+        self.assertIn("siligen_workflow_domain_public", redundancy_public)
+        self.assertNotIn("siligen_workflow_application_headers", redundancy_public)
+
+    def test_workflow_application_header_bundle_interface_keep_set_is_frozen(self) -> None:
+        workflow_application = _read(WORKSPACE_ROOT / "modules" / "workflow" / "application" / "CMakeLists.txt")
+
+        _assert_target_link_keep_set(
+            self,
+            workflow_application,
+            "siligen_workflow_application_headers",
+            "INTERFACE",
+            {
+                "siligen_dispense_packaging_contracts_public",
+                "siligen_motion_planning_contracts_public",
+                "siligen_process_path_contracts_public",
+                "siligen_runtime_execution_runtime_contracts",
+            },
+        )
+
+    def test_workflow_application_dispensing_public_keep_set_is_frozen(self) -> None:
+        workflow_application = _read(WORKSPACE_ROOT / "modules" / "workflow" / "application" / "CMakeLists.txt")
+
+        _assert_target_link_keep_set(
+            self,
+            workflow_application,
+            "siligen_application_dispensing",
+            "PUBLIC",
+            {
+                "siligen_workflow_application_headers",
+                "siligen_workflow_contracts_public",
+                "siligen_workflow_domain_public",
+                "siligen_types",
+                "siligen_process_path_contracts_public",
+                "siligen_motion_planning_contracts_public",
+                "siligen_device_contracts",
+                "siligen_shared_runtime_contracts",
+                "siligen_runtime_execution_runtime_contracts",
+                "siligen_dispense_packaging_contracts_public",
+                "siligen_job_ingest_contracts",
+            },
+        )
 
     def test_workflow_planning_port_adapters_header_is_declaration_only(self) -> None:
         adapters_header = _read(

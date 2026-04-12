@@ -84,6 +84,7 @@ class MachineResidualExitContractTest(unittest.TestCase):
         for relative in (
             "modules/coordinate-alignment/application/CMakeLists.txt",
             "modules/coordinate-alignment/application/include/coordinate_alignment/application/CoordinateAlignmentApplicationSurface.h",
+            "modules/coordinate-alignment/contracts/include/coordinate_alignment/contracts/IHardwareTestPort.h",
             "modules/coordinate-alignment/domain/machine/CMakeLists.txt",
             "modules/coordinate-alignment/domain/machine/aggregates/DispenserModel.h",
             "modules/coordinate-alignment/domain/machine/domain-services/CalibrationProcess.h",
@@ -105,7 +106,11 @@ class MachineResidualExitContractTest(unittest.TestCase):
             self.assertFalse((WORKSPACE_ROOT / relative).exists(), msg=f"legacy machine residual should be deleted: {relative}")
 
         module_cmake = _read(WORKSPACE_ROOT / "modules" / "coordinate-alignment" / "CMakeLists.txt")
+        contracts_cmake = _read(WORKSPACE_ROOT / "modules" / "coordinate-alignment" / "contracts" / "CMakeLists.txt")
         tests_cmake = _read(WORKSPACE_ROOT / "modules" / "coordinate-alignment" / "tests" / "CMakeLists.txt")
+        device_adapters_cmake = _read(
+            WORKSPACE_ROOT / "modules" / "runtime-execution" / "adapters" / "device" / "CMakeLists.txt"
+        )
         hardware_test_header = _read(
             WORKSPACE_ROOT
             / "modules"
@@ -160,13 +165,16 @@ class MachineResidualExitContractTest(unittest.TestCase):
         )
 
         self.assertNotIn("siligen_coordinate_alignment_domain_machine", module_cmake)
+        self.assertNotIn("IHardwareTestPort.h", contracts_cmake)
         self.assertNotIn("CalibrationProcessTest.cpp", tests_cmake)
+        self.assertNotIn("siligen_coordinate_alignment_contracts_public", device_adapters_cmake)
         self.assertNotIn("IHardwareTestPort", hardware_test_header)
         self.assertNotIn("IHardwareTestPort", trigger_header)
         self.assertNotIn("IHardwareConnectionPort", motion_connection_header)
         self.assertNotIn("IHardwareConnectionPort", motion_runtime_header)
 
         for pattern in (
+            '#include "coordinate_alignment/contracts/IHardwareTestPort.h"',
             '#include "../../../../../../coordinate-alignment/domain/machine/ports/IHardwareConnectionPort.h"',
             '#include "../../../../../../coordinate-alignment/domain/machine/ports/IHardwareTestPort.h"',
             '#include "domain/machine/ports/IHardwareConnectionPort.h"',
@@ -176,6 +184,57 @@ class MachineResidualExitContractTest(unittest.TestCase):
         ):
             hits = _fixed_string_hits(pattern, roots=("modules", "apps", "tests"))
             self.assertFalse(hits, msg=f"legacy machine residual reference still present for {pattern}: {hits}")
+
+    def test_machine_mode_wrappers_exit_live_surface(self) -> None:
+        for relative in (
+            "modules/workflow/domain/include/domain/machine/value-objects/MachineMode.h",
+            "modules/dispense-packaging/contracts/include/dispense_packaging/contracts/MachineMode.h",
+        ):
+            self.assertFalse((WORKSPACE_ROOT / relative).exists(), msg=f"MachineMode wrapper should be deleted: {relative}")
+
+        for relative in (
+            "modules/workflow/application/ports/dispensing/WorkflowExecutionPort.h",
+            "modules/workflow/application/phase-control/DispensingWorkflowUseCase.h",
+            "modules/workflow/domain/include/domain/safety/domain-services/SafetyOutputGuard.h",
+            "modules/runtime-execution/application/include/runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h",
+            "modules/runtime-execution/application/include/domain/safety/domain-services/SafetyOutputGuard.h",
+        ):
+            self.assertIn(
+                '#include "runtime_execution/contracts/machine/MachineMode.h"',
+                _read(WORKSPACE_ROOT / relative),
+                msg=f"{relative} must include the canonical MachineMode contract directly",
+            )
+
+        for pattern in (
+            '#include "domain/machine/value-objects/MachineMode.h"',
+            '#include "dispense_packaging/contracts/MachineMode.h"',
+        ):
+            hits = _fixed_string_hits(pattern, roots=("modules", "apps", "tests"))
+            self.assertFalse(hits, msg=f"legacy MachineMode wrapper reference still present for {pattern}: {hits}")
+
+    def test_machine_state_dead_shell_exits_live_surface(self) -> None:
+        machine_state_header = (
+            WORKSPACE_ROOT
+            / "modules"
+            / "workflow"
+            / "domain"
+            / "include"
+            / "domain"
+            / "machine"
+            / "value-objects"
+            / "MachineState.h"
+        )
+        self.assertFalse(machine_state_header.exists(), msg="MachineState dead shell should be deleted")
+
+        machine_root = WORKSPACE_ROOT / "modules" / "workflow" / "domain" / "include" / "domain" / "machine"
+        machine_files = [path.relative_to(WORKSPACE_ROOT).as_posix() for path in machine_root.rglob("*") if path.is_file()]
+        self.assertFalse(machine_files, msg=f"workflow machine include tree should have no tracked files: {machine_files}")
+
+        machine_state_hits = _fixed_string_hits('#include "domain/machine/value-objects/MachineState.h"', roots=("modules", "apps", "tests"))
+        self.assertFalse(
+            machine_state_hits,
+            msg=f"MachineState live include should be fully removed: {machine_state_hits}",
+        )
 
 
 if __name__ == "__main__":

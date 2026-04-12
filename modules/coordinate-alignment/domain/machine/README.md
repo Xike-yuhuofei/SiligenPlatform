@@ -16,4 +16,4 @@
 - 不允许重新引入 machine/runtime/calibration legacy surface。
 - 不允许把本目录重新接回 `siligen_module_coordinate_alignment` root surface。
 - 若未来需要新能力，只能围绕 `CoordinateTransformSet` 或其正式 consumer seam 建模。
-- 若未来要清掉 `contracts/include/coordinate_alignment/contracts/IHardwareTestPort.h`，必须连同 runtime-execution consumer 一次性迁移；该动作超出本轮边界。
+- `contracts/include/coordinate_alignment/contracts/IHardwareTestPort.h` 已在本轮删除；runtime-execution device adapter 当前保留 device-internal concrete，不再回链 `coordinate-alignment` 合同面。
