@@ -4036,7 +4036,6 @@ class MainWindow(QMainWindow):
                 else:
                     self._completed_count = completed_count
 
-                terminal_after_explicit_stop = self._pending_production_action == "stop"
                 if state == "paused":
                     self._production_running = False
                     self._run_start_time = 0
@@ -4082,10 +4081,7 @@ class MainWindow(QMainWindow):
                     self._production_paused = False
                     self._run_start_time = 0
                     self._current_job_id = ""
-                    if terminal_after_explicit_stop:
-                        self._preview_session.clear_resync_pending()
-                    else:
-                        self._preview_session.mark_resync_pending()
+                    self._preview_session.mark_resync_pending()
                     self._sync_preview_session_fields()
                     self._operation_status.setText("完成")
                     self.statusBar().showMessage("生产目标已达成")
@@ -4105,15 +4101,15 @@ class MainWindow(QMainWindow):
                     self._production_paused = False
                     self._run_start_time = 0
                     self._current_job_id = ""
-                    if terminal_after_explicit_stop:
-                        self._preview_session.clear_resync_pending()
-                    else:
-                        self._preview_session.mark_resync_pending()
+                    self._preview_session.mark_resync_pending()
                     self._sync_preview_session_fields()
                     status_text = "失败" if state == "failed" else "已停止"
                     self._operation_status.setText(status_text)
                     if error_message:
-                        self.statusBar().showMessage(f"执行失败: {error_message}")
+                        if state == "cancelled":
+                            self.statusBar().showMessage(f"执行已取消: {error_message}")
+                        else:
+                            self.statusBar().showMessage(f"执行失败: {error_message}")
                     else:
                         self.statusBar().showMessage(f"执行{status_text}")
                 else:

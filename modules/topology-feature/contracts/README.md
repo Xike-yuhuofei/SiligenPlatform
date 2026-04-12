@@ -9,3 +9,9 @@
 契约对象（冻结口径）：
 - `TopologyModel`
 - `FeatureGraph`
+
+当前实现事实：
+
+- `contracts/include/topology_feature/contracts/ContourAugmentContracts.h` 当前直接 re-export `ContourAugmentConfig` 与 `ContourAugmenterAdapter`。
+- 因此本目录现在是模块 public entry，但还不是纯粹映射 `TopologyModel` / `FeatureGraph` 的 owner-only contract surface。
+- 若要把该 public seam 收回到真正的 owner contract，需要同步调整 consumer 与实现表达，超出本轮低成本整理边界。

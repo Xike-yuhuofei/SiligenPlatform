@@ -6,11 +6,15 @@
   - `IEventPublisherPort` owner = `shared/contracts/runtime/include/runtime/contracts/system/IEventPublisherPort.h`
   - generic diagnostics contracts owner = `modules/trace-diagnostics/contracts/include/trace_diagnostics/contracts/{IDiagnosticsPort,DiagnosticTypes}.h`
   - hardware-test diagnostics live landing = `apps/runtime-service/include/runtime_process_bootstrap/diagnostics/**` (app-local quarantine surface)
+  - `IHardwareTestPort` 已从 `modules/coordinate-alignment/contracts/**` 与 `modules/workflow/domain/include/domain/machine/**` 退出 live surface；machine residue active set 不再包含该接口
+  - `IHardwareConnectionPort` 当前只剩 contract guard 与历史文档命中，不再属于 live code surface
+  - `MachineMode` canonical owner 固定为 `modules/runtime-execution/contracts/runtime/include/runtime_execution/contracts/machine/MachineMode.h`；workflow 与 dispense-packaging wrapper 已删除，live consumer 直接包含 canonical contract
+  - `MachineState` dead shell 已删除；workflow `domain/include/domain/machine/**` tracked payload 已清零，machine 相关剩余命中只保留在 contract guard 与历史文档中
 - 因此，若下文仍把 `runtime_process_bootstrap/recipes/RecipeJsonSerializer.h`、workflow recipe targets 或 workflow-owned event seam 记为当前 owner，请按历史执行证据理解。
 
 # Current execution baseline
 - baseline_plan: `modules/workflow/docs/workflow-batched-cleanup-plan-2026-04-08.md`
-- current_date: `2026-04-09`
+- current_date: `2026-04-12`
 - execution_mode: `continuous`
 - current_state:
   - `WF-B01` 已 green。
@@ -31,13 +35,16 @@
   - repo 级非文档源码检索下，`siligen_control_application` / `siligen_application` 当前已无 live 命中；[modules/workflow/application/CMakeLists.txt](/D:/Projects/SiligenSuite/modules/workflow/application/CMakeLists.txt) 当前只定义 `siligen_application_dispensing` 与 `siligen_application_redundancy` 两个 workflow live target。
   - `siligen_application_motion` 的当前 live owner target 位于 [modules/runtime-execution/application/CMakeLists.txt](/D:/Projects/SiligenSuite/modules/runtime-execution/application/CMakeLists.txt)；workflow 侧 `application/execution-supervision/runtime-consumer/MotionRuntimeAssemblyFactory.cpp` 与 `application/usecases/motion/trajectory/DeterministicPathExecutionUseCase.cpp` 当前均不存在。
   - `build-wf-b04-04a-tests-serial` 串行 `/FS` 验证已确认 `siligen_motion_planning_unit_tests` 当前构建通过，且 `ctest --test-dir D:/Projects/SiligenSuite/build-wf-b04-04a-tests-serial -C Debug -R siligen_motion_planning_unit_tests --output-on-failure` 通过；round `10` 的 owner-boundary 失败只保留为历史证据。
-  - round `25` 已完成 `WF-B03` 当前最小 producer/export slice：`siligen_workflow_application_headers` 已收口到 workflow 自身 include root，`siligen_application_dispensing` 已显式声明 planning/runtime contracts 级 public deps；`siligen_unit_tests` / `siligen_pr1_tests` 已改为 direct link 最小 owner targets，且 `siligen_application_dispensing`、`siligen_application_redundancy`、`siligen_dispensing_semantics_tests`、`siligen_unit_tests`、`siligen_pr1_tests`、`siligen_runtime_process_bootstrap`、`siligen_transport_gateway`、`siligen_planner_cli` 在 `build-wf-b04-04a-tests-serial` 下均已串行 `/FS` 通过，相关 `ctest` 也通过。
+  - round `25` 已完成 `WF-B03` 当前最小 producer/export slice：`siligen_workflow_application_headers` 已删除 `${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}`，`siligen_application_dispensing` 已显式声明 planning/runtime contracts 级 public deps；`siligen_unit_tests` / `siligen_pr1_tests` 已改为 direct link 最小 owner targets，且 `siligen_application_dispensing`、`siligen_application_redundancy`、`siligen_dispensing_semantics_tests`、`siligen_unit_tests`、`siligen_pr1_tests`、`siligen_runtime_process_bootstrap`、`siligen_transport_gateway`、`siligen_planner_cli` 在 `build-wf-b04-04a-tests-serial` 下均已串行 `/FS` 通过，相关 `ctest` 也通过。
   - round `26` 已完成 `WF-B17` 当前最小 live-app consumer slice：`apps/runtime-service`、`apps/runtime-gateway` 与 `apps/planner-cli` 当前都已从 `siligen_workflow_application_public` retarget 到 `siligen_application_dispensing`，且 [modules/workflow/application/CMakeLists.txt](/D:/Projects/SiligenSuite/modules/workflow/application/CMakeLists.txt) 已把 `siligen_workflow_contracts_public` / `siligen_workflow_domain_public` 提升为 `siligen_application_dispensing` 的 `PUBLIC` deps。
   - `build-wf-b04-04a-tests-serial` 当前重新验证下，`siligen_application_dispensing`、`siligen_transport_gateway`、`siligen_planner_cli`、`siligen_dispensing_semantics_tests`、`siligen_unit_tests` 与 `siligen_pr1_tests` 已继续串行 `/FS` 通过；`siligen_runtime_process_bootstrap` 则命中 `modules/runtime-execution/adapters/device/src/adapters/dispensing/dispenser/triggering/TriggerControllerAdapter.cpp` 对缺失路径 `adapters/diagnostics/health/testing/HardwareTestAdapter.h` 的 include 失败，属于 `modules/runtime-execution/**` / device-adapter 当前 dirty-worktree 阻塞，不并入本轮 workflow scope。
   - round `27` 已完成 `WF-B18` 当前最小 workflow test-consumer cleanup slice：workflow canonical / integration tests 当前都已不再链接 `siligen_workflow_application_public`，`python -m pytest D:/Projects/SiligenSuite/tests/contracts/test_bridge_exit_contract.py -q` 通过，且 `scripts/validation/assert-module-boundary-bridges.ps1` 已按 round `26/27` 真值更新后重新转绿。
   - round `28` 已完成 `WF-B05` 当前最小 module-root aggregate / naming slice：`modules/workflow/CMakeLists.txt` 已删除 `siligen_workflow_application_public`，并把 `siligen_module_workflow` 重冻为显式 M0 canonical bundle（`workflow contracts/domain/application/adapters` + `LINK_ONLY` application payload）；当前默认 build graph 下，`siligen_workflow_application_public` 已退出 live 非文档代码面。
   - round `29` 已完成 `WF-B03` carry-over freeze + `WF-B04` planning-boundary first slice：`PlanningPortAdapters.h` 已收敛为 declaration-only public header，不再 re-export `MotionPlanningFacade.h` / `ProcessPathFacade.h` / `DxfPbPreparationService.h`；`apps/runtime-service/container/ApplicationContainer.Dispensing.cpp` 已显式包含 `ProcessPathFacade.h`，`siligen_runtime_process_bootstrap` 也已显式链接 `siligen_process_path_application_public`；同时 `domain/planning-boundary/ports/ISpatialIndexPort.h` 已迁到 `modules/dispense-packaging/domain/dispensing/planning/ports/ISpatialIndexPort.h`，旧 workflow public header 已删除，`PathOptimizationStrategy.h` live include 已全部 retarget。
   - `D:/Projects/SiligenSuite/build` 下的 round `29` 串行 `/FS` 重新验证已确认 `siligen_application_dispensing`、`siligen_runtime_process_bootstrap`、`siligen_transport_gateway`、`siligen_planner_cli`、`siligen_dispensing_semantics_tests`、`siligen_unit_tests` 与 `siligen_pr1_tests` 构建通过；`ctest --test-dir D:/Projects/SiligenSuite/build -C Debug -R "siligen_(dispensing_semantics_tests|unit_tests|pr1_tests)" --output-on-failure` 通过；`python -m pytest D:/Projects/SiligenSuite/tests/contracts/test_bridge_exit_contract.py -q -k "workflow_planning_port_adapters_header_is_declaration_only or planning_boundary_surface_moves_out_of_workflow_public_root"` 通过（2 passed）；`assert-module-boundary-bridges.ps1` 已继续转绿。完整 `test_bridge_exit_contract.py` 当前仍有 1 个既有失败，落在 `modules/dxf-geometry/tests/README.md` 文案断言，不并入本轮 workflow scope。
+  - round `30` 已完成 `WF-B03` 当前最小 keep-set tighten slice：`siligen_application_dispensing` 的 `siligen_utils` / `siligen_geometry` 与 `siligen_application_redundancy` 的 `siligen_utils` 已从 `PUBLIC` 降为 `PRIVATE`；`siligen_types` 继续作为稳定 `PUBLIC` surface 保留，`siligen_workflow_application_headers` 的剩余 foreign contract `INTERFACE` links 本轮不扩边处理。
+  - round `31` 已完成 `WF-B03` 当前最小 redundancy public-surface tighten slice：`siligen_application_redundancy` 已不再把 `siligen_workflow_application_headers` 暴露为 `PUBLIC` 依赖；其 `PUBLIC` surface 当前只保留 `siligen_types` 与 `siligen_workflow_domain_public`，header bundle 本体与 remaining foreign contract `INTERFACE` links 本轮不扩边处理。
+  - round `32` 已完成 `WF-B03` 当前最小 keep-set necessity freeze slice：`tests/contracts/test_bridge_exit_contract.py` 当前已精确冻结 `siligen_workflow_application_headers` 的 4 条 `INTERFACE` keep-set 与 `siligen_application_dispensing` 的 11 条 `PUBLIC` keep-set；workflow README / residue ledger / execution status 已同步回写为“public-surface 必需项冻结”真值。若后续要继续减少 remaining keep-set，必须单开 public header surface refactor 批次。
   - round `1~10` 继续作为历史证据；若与上述 rebaseline 冲突，以本段当前真值为准。
 - hard_stop_reason:
   - 本轮不再把旧 `domain/system/*` event publisher compat path 当作 `WF-B04` active blocker。
@@ -48,8 +55,8 @@
   - `recipe serialization` 已完成 app-cross-boundary cutover；workflow 当前不再保留 serializer producer/compat target，live serializer surface 已切到 `recipe-lifecycle`。
   - diagnostics、safety 与 dispensing concrete 已从 workflow residue 的 active blocker 列表退出；后续主线不应重新打开 app-cross-boundary、safety closeout 或 workflow triggering concrete scope。
   - `siligen_domain` 已于 round `18` 退场，`WF-B07` / `WF-B11` 已于 round `19` green，`WF-B09` 已于 round `20` green，`WF-B10` 已于 round `21` green，`WF-B16` 已于 round `23` green；后续 continuation 应转向 `WF-B04` 与 application owner-drift 批次。
-  - round `25` 已把 `WF-B03` 的 header/export leak 当前最小切片收口；下一阶段不应再把 `siligen_workflow_application_headers` 当 active blocker。
-  - round `29` 已收掉 workflow application public header 对外部 application facade 的 implicit leak，并完成 `WF-B04` 的 `planning-boundary` first slice；下一阶段 continuation 应转向 `WF-B04` 剩余的 `motion` / `safety` / `machine` public surface，而不是回退到 `PlanningPortAdapters`、`domain/planning-boundary/*`、已删除的 `siligen_workflow_application_public`，或重复执行 `WF-NR-B04-04A/04C`。
+  - round `31` 已把 `siligen_application_redundancy` 从 workflow application header bundle 的 `PUBLIC` 暴露链上解开；round `32` 又已把 `siligen_workflow_application_headers` 剩余 4 条 `INTERFACE` keep-set 与 `siligen_application_dispensing` 剩余 11 条 `PUBLIC` keep-set 冻结为 contract-guarded truth。下一阶段若继续推进 application public-surface，不应再做低成本 keep-set 削减，而应单开 public header surface refactor 批次。
+  - round `29` 已收掉 workflow application public header 对外部 application facade 的 implicit leak，并完成 `WF-B04` 的 `planning-boundary` first slice；下一阶段 continuation 不应回退到 `PlanningPortAdapters`、`domain/planning-boundary/*`、已删除的 `siligen_workflow_application_public`，或重复执行 `WF-NR-B04-04A/04C`。
 
 # Green batches
 - `WF-B01` `Root Legacy Provider Detach`
@@ -202,9 +209,7 @@
 - `WF-B13` `System Concrete Exit From Workflow`
   - blocked_by: system landing 未冻结
 - `WF-B14` `Machine/Calibration Concrete Split Out`
-  - blocked_by:
-    - `domain/include/domain/machine/**` 的 split 轴仍未冻结：`DispenserModel` / `CalibrationProcess` 已指向 `modules/coordinate-alignment/domain/machine/**`
-    - `IHardwareConnectionPort` / `IHardwareTestPort` / `MachineMode` / `MachineState` 仍由 workflow public include root 暴露，owner/consumer 边界尚未重冻
+  - blocked_by: none；workflow `domain/include/domain/machine/**` tracked payload 已清零，machine public-surface split 不再是 active blocker
 - `WF-B15` `DXF Parsing Adapter Exit From Workflow`
   - blocked_by: DXF landing owner 与 protobuf 边界未冻结
 - `WF-B20` `Validation Tooling And Exit Gate Cleanup`
@@ -216,7 +221,7 @@
 
 # Needs-trace batches
 - `WF-B03` `Workflow Application Public Surface Cleanup`
-  - trace_gap: `siligen_workflow_application_headers` foreign-surface leak 当前最小 slice 已在 round `25` 收口，live app consumer retarget 与 workflow test-consumer cleanup 又已在 round `26/27` 收口；round `28` 又已删除 `siligen_workflow_application_public` 并把 `siligen_module_workflow` 重冻为 canonical bundle；round `29` 再把 `PlanningPortAdapters.h` 收敛为 declaration-only public header。当前剩余 trace gap 已缩到 `siligen_application_dispensing` keep-set 中哪些 `PUBLIC` 依赖仍属 orchestration 必需，哪些仍是历史 carry-over。
+  - trace_gap: live app consumer retarget 与 workflow test-consumer cleanup 已在 round `26/27` 收口；round `28` 又已删除 `siligen_workflow_application_public` 并把 `siligen_module_workflow` 重冻为 canonical bundle；round `29` 再把 `PlanningPortAdapters.h` 收敛为 declaration-only public header；round `30` 又已完成 shared-kernel helper `PUBLIC` keep-set 收紧；round `31` 再把 `siligen_application_redundancy` 从 `siligen_workflow_application_headers` 的 `PUBLIC` 暴露链上解开；round `32` 则已把 header bundle 剩余 4 条 `INTERFACE` keep-set 与 `siligen_application_dispensing` 剩余 11 条 `PUBLIC` keep-set 冻结为 contract-guarded truth。继续减少这些 remaining keep-set 需要独立的 public header surface refactor，不再属于当前低成本 slice。
 - `WF-B19` `Legacy Planning/System Compat Consumer Closure`
   - trace_gap: `domain/system/*` live consumer 已归零；`domain/planning/*` 仍需保留 repo-wide closure evidence 与文档 closeout
 - `WF-B21` `Offline Engineering Tools Owner Freeze`
@@ -882,12 +887,12 @@
     - [modules/workflow/domain/domain/README.md](/D:/Projects/SiligenSuite/modules/workflow/domain/domain/README.md) 当前只把 `_shared/`、`motion/`、`geometry/`、`dispensing/` 记为本目录物理内容，已不再把 machine 视作本目录承载内容
     - [modules/workflow/domain/domain/CMakeLists.txt](/D:/Projects/SiligenSuite/modules/workflow/domain/domain/CMakeLists.txt) 当前只保留 `add_subdirectory(_shared)`、`add_subdirectory(motion)` 与 interface 壳 `siligen_trajectory` / `siligen_configuration`，不再定义 machine / recipe / safety / dispensing concrete target
     - repo-wide 非文档源码检索下，`siligen_trajectory` / `siligen_configuration` / `domain_machine` 当前只命中 workflow 自身 CMake 定义；其余命中集中在历史 build 产物，尚未发现当前源码侧显式 consumer
-    - [modules/workflow/domain/include/domain/machine/aggregates/DispenserModel.h](/D:/Projects/SiligenSuite/modules/workflow/domain/include/domain/machine/aggregates/DispenserModel.h) 与 [modules/workflow/domain/include/domain/machine/domain-services/CalibrationProcess.h](/D:/Projects/SiligenSuite/modules/workflow/domain/include/domain/machine/domain-services/CalibrationProcess.h) 当前都已直接 forward 到 `modules/coordinate-alignment/domain/machine/**`
-    - repo-wide 非文档源码检索下，`domain/machine/aggregates/DispenserModel.h`、`domain/machine/ports/IHardwareConnectionPort.h`、`domain/machine/ports/IHardwareTestPort.h` 与 `domain/machine/value-objects/{MachineMode,MachineState}.h` 仍有 live consumer，machine residue 当前集中在 workflow public surface，而不是 `domain/domain/**` concrete
+    - `modules/workflow/domain/include/domain/machine/**` 当前已不再包含任何 tracked header / payload；`MachineState.h` 作为最后一个 dead shell 已删除
+    - repo-wide 非文档源码检索下，`domain/machine/aggregates/DispenserModel.h`、`domain/machine/domain-services/CalibrationProcess.h` 与 `domain/machine/value-objects/MachineState.h` 当前均无 live include；`domain/machine/ports/IHardwareConnectionPort.h` 与 `domain/machine/ports/IHardwareTestPort.h` 只剩 contract guard / 历史文档命中
   - frozen_conclusion:
-    - `WF-B14` 的旧 `domain/domain/machine/**` scope 已失效；当前需要重冻的是 `modules/workflow/domain/include/domain/machine/**` 的 machine public-surface split axis，而不是 bridge-domain machine concrete
-    - `WF-B16` 当前不再被 live machine concrete 卡住；下一阶段应先在 `modules/workflow/domain/**` 内冻结 machine public-surface owner split，再决定是否物理删除 `siligen_trajectory` / `siligen_configuration` / `domain_machine` dead shell
-    - 本轮无需回退到全局 `WF-B04`；收益最高且不越界的 continuation 仍是 `WF-B16` 主线下的 machine split-axis prerequisite freeze
+    - `WF-B14` 的 workflow-side public-surface closeout 当前已完成；`domain/domain/machine/**` 与 `domain/include/domain/machine/**` 都不再承载 tracked payload
+    - `WF-B16` 当前不再需要 machine public-surface prerequisite freeze；后续不应再把 machine lane 当作 active continuation，除非 contract guard 报警或 residue 回流
+    - 本轮无需回退到全局 `WF-B04`；machine family 的下一阶段重点应转为 guard-against-reintroduction，而不是继续做 owner split
   - scope_audit:
     - 本轮仅做 truth rebaseline 与 continuation freeze，无产品代码改动
     - 本轮未修改 `apps/*`、未触达 `modules/coordinate-alignment/**` 语义，未改 `IHardwareTestPort` 契约形状或 `TestDataTypes` 结构
@@ -941,7 +946,7 @@
   - id: `WF-B03-workflow-application-header-unleak-and-canonical-consumer-tighten`
   - result: `slice-complete`
   - evidence:
-    - [modules/workflow/application/CMakeLists.txt](/D:/Projects/SiligenSuite/modules/workflow/application/CMakeLists.txt) 当前已从 `siligen_workflow_application_headers` 删除 `${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}` 与全部 foreign `INTERFACE` links；`siligen_application_dispensing` 当前已显式 `PUBLIC` 链接 `siligen_process_path_contracts_public`、`siligen_motion_planning_contracts_public`、`siligen_shared_runtime_contracts` 与 `siligen_runtime_execution_runtime_contracts`
+    - [modules/workflow/application/CMakeLists.txt](/D:/Projects/SiligenSuite/modules/workflow/application/CMakeLists.txt) 当前已从 `siligen_workflow_application_headers` 删除 `${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}`，并把 `siligen_application_dispensing` 的 planning/runtime contracts 级 `PUBLIC` 依赖显式化；remaining foreign contract `INTERFACE` links 继续留待后续 trace
     - [modules/workflow/tests/canonical/CMakeLists.txt](/D:/Projects/SiligenSuite/modules/workflow/tests/canonical/CMakeLists.txt) 当前已把 `siligen_unit_tests` / `siligen_pr1_tests` 从 `siligen_workflow_application_public` aggregate 收窄为 direct link 最小 planning/redundancy owner targets
     - `cmake --build D:/Projects/SiligenSuite/build-wf-b04-04a-tests-serial --config Debug --target siligen_application_dispensing -- /m:1 /nologo /p:BuildInParallel=false /p:UseMultiToolTask=false /p:CL_MPCount=1 /p:MultiProcessorCompilation=false '/clp:ErrorsOnly;Summary'` 通过
     - `cmake --build D:/Projects/SiligenSuite/build-wf-b04-04a-tests-serial --config Debug --target siligen_application_redundancy -- /m:1 /nologo /p:BuildInParallel=false /p:UseMultiToolTask=false /p:CL_MPCount=1 /p:MultiProcessorCompilation=false '/clp:ErrorsOnly;Summary'` 通过
@@ -953,7 +958,7 @@
     - `cmake --build D:/Projects/SiligenSuite/build-wf-b04-04a-tests-serial --config Debug --target siligen_transport_gateway -- /m:1 /nologo /p:BuildInParallel=false /p:UseMultiToolTask=false /p:CL_MPCount=1 /p:MultiProcessorCompilation=false '/clp:ErrorsOnly;Summary'` 通过
     - `cmake --build D:/Projects/SiligenSuite/build-wf-b04-04a-tests-serial --config Debug --target siligen_planner_cli -- /m:1 /nologo /p:BuildInParallel=false /p:UseMultiToolTask=false /p:CL_MPCount=1 /p:MultiProcessorCompilation=false '/clp:ErrorsOnly;Summary'` 通过
   - frozen_conclusion:
-    - `WF-B03` 当前最小 producer/export leak slice 已收口：workflow application headers 不再充当 foreign surface distributor
+    - `WF-B03` 当前最小 producer/export leak slice 已收口：workflow application headers 不再透传 shared compat include root，foreign-surface 风险已从 broad include leak 收敛到少量 remaining contract links
     - workflow canonical tests 当前已完成最小 consumer tighten，不再依赖 `siligen_workflow_application_public` aggregate 才能编译 planning/redundancy 侧用例
     - 本轮不等于 `WF-B03` 全量 closeout；`siligen_workflow_application_public` 仍然是 live aggregate surface，外部 app consumer retarget 仍留待后续批次
   - scope_audit:

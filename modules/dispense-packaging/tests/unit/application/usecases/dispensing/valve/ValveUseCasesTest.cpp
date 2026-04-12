@@ -189,7 +189,7 @@ class FakeConfigurationPort final : public IConfigurationPort {
 
 TEST(ValveUseCasesTest, StopDispenserRejectsWhenValvePortUnavailable) {
     auto connection_port = std::make_shared<FakeConnectionPort>();
-    ValveCommandUseCase use_case(nullptr, nullptr, std::make_shared<FakeConfigurationPort>(), connection_port);
+    ValveCommandUseCase use_case(nullptr, std::make_shared<FakeConfigurationPort>(), connection_port);
 
     const auto result = use_case.StopDispenser();
 
@@ -199,7 +199,7 @@ TEST(ValveUseCasesTest, StopDispenserRejectsWhenValvePortUnavailable) {
 
 TEST(ValveUseCasesTest, PurgeDispenserRejectsWhenValvePortUnavailable) {
     auto connection_port = std::make_shared<FakeConnectionPort>();
-    ValveCommandUseCase use_case(nullptr, nullptr, std::make_shared<FakeConfigurationPort>(), connection_port);
+    ValveCommandUseCase use_case(nullptr, std::make_shared<FakeConfigurationPort>(), connection_port);
     PurgeDispenserRequest request;
     request.manage_supply = false;
     request.wait_for_completion = false;

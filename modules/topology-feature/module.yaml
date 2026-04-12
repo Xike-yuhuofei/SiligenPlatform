@@ -7,4 +7,4 @@ allowed_dependencies:
   - dxf-geometry/contracts
   - shared
 uniform_skeleton_ready: true
-notes: adapters/infrastructure/adapters/planning/geometry 是唯一真实实现承载面；contracts/include/topology_feature/contracts 是唯一公共契约入口；模块根 target 直接使用 siligen_topology_feature_contour_augment_adapter
+notes: adapters/infrastructure/adapters/planning/geometry 是唯一真实实现承载面；SILIGEN_TARGET_IMPLEMENTATION_ROOTS 仅覆盖 contracts/adapters/tests；contracts/include 当前暴露的是 ContourAugmentConfig/ContourAugmenterAdapter seam，而非纯 owner contract

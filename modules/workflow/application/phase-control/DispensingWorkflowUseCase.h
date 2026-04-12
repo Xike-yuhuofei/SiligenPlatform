@@ -6,6 +6,7 @@
 #include "job_ingest/contracts/dispensing/UploadContracts.h"
 #include "runtime_execution/contracts/motion/IHomingPort.h"
 #include "runtime_execution/contracts/motion/IMotionStatePort.h"
+#include "runtime_execution/contracts/machine/MachineMode.h"
 #include "domain/safety/ports/IInterlockSignalPort.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 #include "shared/types/Error.h"

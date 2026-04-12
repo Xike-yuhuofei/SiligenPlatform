@@ -4,6 +4,7 @@
 // modules/runtime-execution/application.
 
 #include "runtime_execution/contracts/dispensing/GuardDecision.h"
+#include "runtime_execution/contracts/machine/MachineMode.h"
 #include "shared/types/Result.h"
 
 namespace Siligen::Domain::Safety::DomainServices {

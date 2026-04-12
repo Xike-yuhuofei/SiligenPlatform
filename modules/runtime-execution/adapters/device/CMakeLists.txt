@@ -29,14 +29,6 @@ if(NOT TARGET siligen_trace_diagnostics_contracts_public AND EXISTS "${SILIGEN_T
     )
 endif()
 
-set(SILIGEN_COORDINATE_ALIGNMENT_CANONICAL_DIR "${SILIGEN_WORKSPACE_ROOT}/modules/coordinate-alignment")
-if(NOT TARGET siligen_coordinate_alignment_contracts_public AND EXISTS "${SILIGEN_COORDINATE_ALIGNMENT_CANONICAL_DIR}/CMakeLists.txt")
-    add_subdirectory(
-        "${SILIGEN_COORDINATE_ALIGNMENT_CANONICAL_DIR}"
-        "${CMAKE_BINARY_DIR}/_p/da_ca"
-    )
-endif()
-
 set(SILIGEN_MOTION_PLANNING_CONTRACTS_CANONICAL_DIR "${SILIGEN_WORKSPACE_ROOT}/modules/motion-planning/contracts")
 if(NOT TARGET siligen_motion_planning_contracts_public AND EXISTS "${SILIGEN_MOTION_PLANNING_CONTRACTS_CANONICAL_DIR}/CMakeLists.txt")
     add_subdirectory(
@@ -150,7 +142,6 @@ target_link_libraries(siligen_device_adapters PUBLIC
     siligen_shared_kernel
     siligen_trace_diagnostics_contracts_public
     siligen_runtime_execution_runtime_contracts
-    siligen_coordinate_alignment_contracts_public
     siligen_motion_planning_contracts_public
     siligen_process_planning_contracts_public
 )

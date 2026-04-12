@@ -19,6 +19,8 @@
 - hardware-test diagnostics contracts 当前 live landing 位于 `apps/runtime-service/include/runtime_process_bootstrap/diagnostics/**`，属于 app-local quarantine surface，不属于 `workflow` owner。
 - runtime service 装配 concrete 与 planning 工件落盘 concrete 固定由 `modules/runtime-execution/` 或 `apps/runtime-service/` 承接；`workflow` 只保留端口、请求/结果与 orchestration call site。
 - `application/include/`、`domain/include/`、`adapters/include/` 仍是 workflow 当前 public roots，但它们还没有完全收口，不能被当作 foreign owner surface 的长期分发器。
+- `siligen_workflow_application_headers` 与 `siligen_application_dispensing` 的剩余 keep-set 已冻结到 `tests/contracts/test_bridge_exit_contract.py`：前者当前只允许 4 条 foreign contract `INTERFACE` links，后者当前只允许 11 条 `PUBLIC` keep-set。若要继续下收，必须单开 public header surface refactor 批次，本轮不做。
+- root `BUILD_SECURITY_MODULE=ON` 的 optional `security_module` 仍链接 `siligen_module_workflow`，但默认关闭，不纳入当前 workflow clean-exit 验证对象。
 
 ## 目录职责
 
@@ -33,8 +35,8 @@
 
 - `modules/workflow/domain/domain/dispensing/**` 仍保留一组 dormant foreign files / compat 痕迹，但 workflow live build graph 已不再编译 `siligen_triggering` 或 `PositionTriggerController.cpp`。
 - `modules/workflow/domain/include/domain/{motion,safety}/**` 仍保留一组 compat public headers，尚未完全收口到 canonical owner surface。
-- `siligen_workflow_application_headers` 仍透传部分 foreign owner headers/contracts，application public surface 还没有完全瘦身。
-- `tests/canonical/` 仍直接依赖部分 foreign owner targets，测试边界尚未完全收口。
+- `siligen_workflow_application_headers` 仍保留少量 foreign contract `INTERFACE` links；当前已冻结其精确 keep-set，只把 `siligen_application_redundancy` 从该 header bundle 的 `PUBLIC` 暴露链上解开，不继续对 header bundle 本体做低成本之外的收紧。
+- `tests/canonical/` 仍直接依赖部分 foreign owner targets，测试边界尚未完全收口；本轮不继续扩展 consumer 迁移。
 
 ## 禁止事项
 

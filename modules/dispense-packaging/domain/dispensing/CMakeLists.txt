@@ -38,6 +38,12 @@ if(NOT TARGET siligen_motion_planning_application_public AND NOT TARGET siligen_
         "${CMAKE_BINARY_DIR}/_p/dpd_mpa"
     )
 endif()
+if(NOT TARGET siligen_runtime_execution_runtime_contracts)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime-execution/contracts/runtime"
+        "${CMAKE_BINARY_DIR}/_p/dpd_rerc"
+    )
+endif()
 
 set(SILIGEN_DISPENSE_PACKAGING_MOTION_PLANNING_APP_TARGET siligen_motion_planning_application_public)
 if(NOT TARGET ${SILIGEN_DISPENSE_PACKAGING_MOTION_PLANNING_APP_TARGET} AND TARGET siligen_motion_planning_application)
@@ -66,7 +72,6 @@ target_include_directories(siligen_dispense_packaging_domain_dispensing BEFORE I
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
     ${SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR}
-    ${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
 target_link_libraries(siligen_dispense_packaging_domain_dispensing INTERFACE
@@ -76,6 +81,7 @@ target_link_libraries(siligen_dispense_packaging_domain_dispensing INTERFACE
     siligen_motion_planning_contracts_public
     siligen_process_path_contracts_public
     siligen_process_planning_contracts_public
+    siligen_runtime_execution_runtime_contracts
 )
 if(TARGET siligen_device_contracts)
     target_link_libraries(siligen_dispense_packaging_domain_dispensing INTERFACE
