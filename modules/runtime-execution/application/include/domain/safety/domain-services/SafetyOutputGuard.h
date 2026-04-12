@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/dispensing/value-objects/GuardDecision.h"
+#include "runtime_execution/contracts/dispensing/GuardDecision.h"
 #include "shared/types/Result.h"
 
 namespace Siligen::Domain::Safety::DomainServices {

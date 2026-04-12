@@ -91,8 +91,8 @@ set(SILIGEN_WORKFLOW_APPLICATION_BRIDGE_ONLY_ALLOWED_MODULES
 )
 
 set(SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
-if(NOT EXISTS "${SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR}/application")
-    message(FATAL_ERROR "workflow canonical application include root missing: ${SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR}/application")
+if(NOT EXISTS "${SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR}/workflow/application")
+    message(FATAL_ERROR "workflow canonical application include root missing: ${SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR}/workflow/application")
 endif()
 
 if(NOT TARGET siligen_workflow_application_headers)
@@ -212,7 +212,7 @@ target_link_libraries(siligen_application_redundancy PUBLIC
     siligen_workflow_application_headers
     siligen_types
     siligen_utils
-    siligen_workflow_domain_headers
+    siligen_workflow_domain_public
 )
 target_compile_features(siligen_application_redundancy PUBLIC cxx_std_17)
 

@@ -1,4 +1,4 @@
-#include "application/recovery-control/CandidateScoringService.h"
+#include "workflow/application/recovery-control/CandidateScoringService.h"
 
 #include <gtest/gtest.h>
 

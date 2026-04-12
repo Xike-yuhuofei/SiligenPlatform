@@ -4,7 +4,7 @@
 #include "application/services/dispensing/WorkflowPlanningAssemblyOperationsProvider.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/process_path/ProcessPathFacade.h"
-#include "application/ports/dispensing/PlanningPortAdapters.h"
+#include "workflow/application/ports/dispensing/PlanningPortAdapters.h"
 #include "dispense_packaging/application/usecases/dispensing/valve/ValveCommandUseCase.h"
 #include "dispense_packaging/application/usecases/dispensing/valve/ValveQueryUseCase.h"
 #include "domain/dispensing/domain-services/ValveCoordinationService.h"

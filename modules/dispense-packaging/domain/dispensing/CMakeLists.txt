@@ -31,6 +31,12 @@ if(NOT TARGET siligen_motion_planning_application_public AND NOT TARGET siligen_
         "${CMAKE_BINARY_DIR}/_p/dpd_mpa"
     )
 endif()
+if(NOT TARGET siligen_runtime_execution_runtime_contracts)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime-execution/contracts/runtime"
+        "${CMAKE_BINARY_DIR}/_p/dpd_rerc"
+    )
+endif()
 
 set(SILIGEN_DISPENSE_PACKAGING_MOTION_PLANNING_APP_TARGET siligen_motion_planning_application_public)
 if(NOT TARGET ${SILIGEN_DISPENSE_PACKAGING_MOTION_PLANNING_APP_TARGET} AND TARGET siligen_motion_planning_application)
@@ -42,32 +48,18 @@ include_directories(BEFORE
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
 )
 
-set(SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime-execution/contracts/runtime/include"
-)
-set(SILIGEN_WORKFLOW_DOMAIN_IMPL_INCLUDE_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../../workflow/domain"
-)
-if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}/runtime_execution/contracts/motion/IInterpolationPort.h")
-    message(FATAL_ERROR
-        "dispense-packaging requires runtime-execution runtime contracts include root: "
-        "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}"
-    )
-endif()
-
 if(NOT TARGET siligen_dispense_packaging_domain_dispensing)
     add_library(siligen_dispense_packaging_domain_dispensing INTERFACE)
 endif()
 target_include_directories(siligen_dispense_packaging_domain_dispensing BEFORE INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
-    ${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}
-    ${SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
 target_link_libraries(siligen_dispense_packaging_domain_dispensing INTERFACE
     siligen_types
     siligen_utils
+    siligen_runtime_execution_runtime_contracts
     siligen_motion_planning_contracts_public
     siligen_process_path_contracts_public
     siligen_process_planning_contracts_public
@@ -93,12 +85,7 @@ endif()
 target_include_directories(siligen_dispense_packaging_execution_residual BEFORE PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
-    ${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}
-    ${SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
-)
-target_include_directories(siligen_dispense_packaging_execution_residual PRIVATE
-    ${SILIGEN_WORKFLOW_DOMAIN_IMPL_INCLUDE_DIR}
 )
 target_link_libraries(siligen_dispense_packaging_execution_residual PUBLIC
     siligen_dispense_packaging_domain_dispensing
@@ -133,12 +120,7 @@ endif()
 target_include_directories(siligen_dispense_packaging_planning_residual BEFORE PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
-    ${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}
-    ${SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
-)
-target_include_directories(siligen_dispense_packaging_planning_residual PRIVATE
-    ${SILIGEN_WORKFLOW_DOMAIN_IMPL_INCLUDE_DIR}
 )
 target_link_libraries(siligen_dispense_packaging_planning_residual PUBLIC
     siligen_dispense_packaging_domain_dispensing

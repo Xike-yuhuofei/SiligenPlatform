@@ -12,7 +12,7 @@
 #include "application/usecases/motion/runtime/MotionRuntimeAssemblyFactory.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "runtime_execution/contracts/dispensing/ITriggerControllerPort.h"
-#include "domain/motion/ports/IInterpolationPort.h"
+#include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "runtime/contracts/system/IEventPublisherPort.h"
 #include "runtime_execution/application/services/motion/runtime/IMotionRuntimeServicesProvider.h"
 #include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
@@ -728,6 +728,7 @@ void testFactoryWiresMoveAndStop() {
 
     const auto move_result = assembly.move_use_case->Execute(request);
     require(move_result.IsSuccess(), "move use case should execute through runtime port");
+    require(!move_result.Value().motion_completed, "non-blocking move should not report motion completed");
     require(motion_runtime_port->move_to_position_calls == 1, "move should call motion runtime port once");
     require(motion_runtime_port->last_target.x == 12.0f, "move should keep X target");
     require(motion_runtime_port->last_target.y == 6.0f, "move should keep Y target");

@@ -1,7 +1,6 @@
 #include "application/services/dispensing/AuthorityPreviewAssemblyService.h"
 #include "application/services/dispensing/ExecutionAssemblyService.h"
 #include "application/services/motion_planning/CmpInterpolationFacade.h"
-#include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/motion_planning/TrajectoryInterpolationFacade.h"
 #include "application/services/dispensing/PlanningArtifactExportAssemblyService.h"
 
@@ -26,15 +25,16 @@
 
 namespace Siligen::Application::Services::Dispensing {
 
-using Siligen::Application::Services::Dispensing::AuthorityPreviewBuildInput;
-using Siligen::Application::Services::Dispensing::AuthorityPreviewBuildResult;
-using Siligen::Application::Services::Dispensing::ExecutionAssemblyBuildInput;
-using Siligen::Application::Services::Dispensing::ExecutionAssemblyBuildResult;
 using Siligen::Application::Services::MotionPlanning::CmpInterpolationFacade;
-using Siligen::Application::Services::MotionPlanning::MotionPlanningFacade;
 using Siligen::Application::Services::MotionPlanning::TrajectoryInterpolationFacade;
 using Siligen::Application::Services::Dispensing::PlanningArtifactExportAssemblyInput;
 using Siligen::Application::Services::Dispensing::PlanningArtifactExportAssemblyService;
+using Siligen::Application::Services::Dispensing::WorkflowAuthorityPreviewArtifacts;
+using Siligen::Application::Services::Dispensing::WorkflowAuthorityPreviewRequest;
+using Siligen::Application::Services::Dispensing::WorkflowAuthorityTriggerPoint;
+using Siligen::Application::Services::Dispensing::WorkflowExecutionAssemblyRequest;
+using Siligen::Application::Services::Dispensing::WorkflowExecutionAssemblyResult;
+using Siligen::Application::Services::Dispensing::WorkflowSpacingValidationGroup;
 using Siligen::Domain::Motion::DomainServices::InterpolationProgramPlanner;
 using Siligen::Domain::Dispensing::Contracts::ExecutionPackageBuilt;
 using Siligen::Domain::Dispensing::DomainServices::AuthorityTriggerLayoutPlanner;
@@ -70,6 +70,109 @@ namespace {
 
 constexpr float32 kEpsilon = 1e-6f;
 constexpr float32 kGluePointDedupEpsilonMm = 1e-4f;
+
+struct AuthorityTriggerPoint {
+    Point2D position;
+    float32 trigger_distance_mm = 0.0f;
+    std::size_t segment_index = 0;
+    bool short_segment_exception = false;
+    bool shared_vertex = false;
+};
+
+struct SpacingValidationGroup {
+    std::size_t segment_index = 0;
+    std::vector<Point2D> points;
+    float32 actual_spacing_mm = 0.0f;
+    bool short_segment_exception = false;
+    bool within_window = false;
+};
+
+struct AuthorityPreviewBuildInput {
+    ProcessPath process_path;
+    ProcessPath authority_process_path;
+    std::string source_path;
+    std::string dxf_filename;
+    float32 dispensing_velocity = 0.0f;
+    float32 acceleration = 0.0f;
+    uint32 dispenser_interval_ms = 0;
+    uint32 dispenser_duration_ms = 0;
+    float32 trigger_spatial_interval_mm = 0.0f;
+    float32 valve_response_ms = 0.0f;
+    float32 safety_margin_ms = 0.0f;
+    float32 min_interval_ms = 0.0f;
+    float32 sample_dt = 0.01f;
+    float32 sample_ds = 0.0f;
+    float32 spline_max_step_mm = 0.0f;
+    float32 spline_max_error_mm = 0.0f;
+    Siligen::Shared::Types::DispensingStrategy dispensing_strategy =
+        Siligen::Shared::Types::DispensingStrategy::BASELINE;
+    int subsegment_count = 8;
+    bool dispense_only_cruise = false;
+    bool downgrade_on_violation = true;
+    Siligen::Domain::Dispensing::ValueObjects::DispenseCompensationProfile compensation_profile{};
+    float32 spacing_tol_ratio = 0.0f;
+    float32 spacing_min_mm = 0.0f;
+    float32 spacing_max_mm = 0.0f;
+};
+
+struct AuthorityPreviewBuildResult {
+    int segment_count = 0;
+    float32 total_length = 0.0f;
+    float32 estimated_time = 0.0f;
+    std::vector<TrajectoryPoint> preview_trajectory_points;
+    std::vector<Point2D> glue_points;
+    int trigger_count = 0;
+    std::string dxf_filename;
+    int32 timestamp = 0;
+    bool preview_authority_ready = false;
+    bool preview_binding_ready = false;
+    bool preview_spacing_valid = false;
+    bool preview_has_short_segment_exceptions = false;
+    std::string preview_validation_classification;
+    std::string preview_exception_reason;
+    std::string preview_failure_reason;
+    AuthorityTriggerLayout authority_trigger_layout;
+    std::vector<AuthorityTriggerPoint> authority_trigger_points;
+    std::vector<SpacingValidationGroup> spacing_validation_groups;
+};
+
+struct ExecutionAssemblyBuildInput {
+    ProcessPath process_path;
+    ProcessPath authority_process_path;
+    MotionPlan motion_plan;
+    std::string source_path;
+    std::string dxf_filename;
+    float32 dispensing_velocity = 0.0f;
+    float32 acceleration = 0.0f;
+    uint32 dispenser_interval_ms = 0;
+    uint32 dispenser_duration_ms = 0;
+    float32 trigger_spatial_interval_mm = 0.0f;
+    float32 valve_response_ms = 0.0f;
+    float32 safety_margin_ms = 0.0f;
+    float32 min_interval_ms = 0.0f;
+    float32 max_jerk = 0.0f;
+    float32 sample_dt = 0.01f;
+    float32 sample_ds = 0.0f;
+    float32 spline_max_step_mm = 0.0f;
+    float32 spline_max_error_mm = 0.0f;
+    float32 estimated_time_s = 0.0f;
+    bool use_interpolation_planner = false;
+    InterpolationAlgorithm interpolation_algorithm = InterpolationAlgorithm::LINEAR;
+    Siligen::Domain::Dispensing::ValueObjects::DispenseCompensationProfile compensation_profile{};
+    AuthorityPreviewBuildResult authority_preview;
+};
+
+struct ExecutionAssemblyBuildResult {
+    ExecutionPackageValidated execution_package;
+    std::vector<TrajectoryPoint> execution_trajectory_points;
+    std::vector<TrajectoryPoint> interpolation_trajectory_points;
+    std::vector<TrajectoryPoint> motion_trajectory_points;
+    bool preview_authority_shared_with_execution = false;
+    bool execution_binding_ready = false;
+    std::string execution_failure_reason;
+    AuthorityTriggerLayout authority_trigger_layout;
+    PlanningArtifactExportRequest export_request;
+};
 
 struct PlanningArtifactsAssemblyInput {
     ProcessPath process_path;
@@ -154,6 +257,170 @@ struct TriggerBindingTraceRow {
     bool monotonic = false;
     Siligen::SegmentType execution_segment_type = Siligen::SegmentType::LINEAR;
 };
+
+WorkflowAuthorityTriggerPoint BuildWorkflowAuthorityTriggerPoint(const AuthorityTriggerPoint& input) {
+    WorkflowAuthorityTriggerPoint point;
+    point.position = input.position;
+    point.trigger_distance_mm = input.trigger_distance_mm;
+    point.segment_index = input.segment_index;
+    point.short_segment_exception = input.short_segment_exception;
+    point.shared_vertex = input.shared_vertex;
+    return point;
+}
+
+WorkflowSpacingValidationGroup BuildWorkflowSpacingValidationGroup(const SpacingValidationGroup& input) {
+    WorkflowSpacingValidationGroup group;
+    group.segment_index = input.segment_index;
+    group.points = input.points;
+    group.actual_spacing_mm = input.actual_spacing_mm;
+    group.short_segment_exception = input.short_segment_exception;
+    group.within_window = input.within_window;
+    return group;
+}
+
+AuthorityTriggerPoint BuildInternalAuthorityTriggerPoint(const WorkflowAuthorityTriggerPoint& input) {
+    AuthorityTriggerPoint point;
+    point.position = input.position;
+    point.trigger_distance_mm = input.trigger_distance_mm;
+    point.segment_index = input.segment_index;
+    point.short_segment_exception = input.short_segment_exception;
+    point.shared_vertex = input.shared_vertex;
+    return point;
+}
+
+SpacingValidationGroup BuildInternalSpacingValidationGroup(const WorkflowSpacingValidationGroup& input) {
+    SpacingValidationGroup group;
+    group.segment_index = input.segment_index;
+    group.points = input.points;
+    group.actual_spacing_mm = input.actual_spacing_mm;
+    group.short_segment_exception = input.short_segment_exception;
+    group.within_window = input.within_window;
+    return group;
+}
+
+AuthorityPreviewBuildInput BuildAuthorityPreviewBuildInput(const WorkflowAuthorityPreviewRequest& input) {
+    AuthorityPreviewBuildInput authority_input;
+    authority_input.process_path = input.process_path;
+    authority_input.authority_process_path = input.authority_process_path;
+    authority_input.source_path = input.source_path;
+    authority_input.dxf_filename = input.dxf_filename;
+    authority_input.dispensing_velocity = input.runtime_options.dispensing_velocity;
+    authority_input.acceleration = input.runtime_options.acceleration;
+    authority_input.dispenser_interval_ms = input.runtime_options.dispenser_interval_ms;
+    authority_input.dispenser_duration_ms = input.runtime_options.dispenser_duration_ms;
+    authority_input.trigger_spatial_interval_mm = input.runtime_options.trigger_spatial_interval_mm;
+    authority_input.valve_response_ms = input.runtime_options.valve_response_ms;
+    authority_input.safety_margin_ms = input.runtime_options.safety_margin_ms;
+    authority_input.min_interval_ms = input.runtime_options.min_interval_ms;
+    authority_input.sample_dt = input.runtime_options.sample_dt;
+    authority_input.sample_ds = input.runtime_options.sample_ds;
+    authority_input.spline_max_step_mm = input.runtime_options.spline_max_step_mm;
+    authority_input.spline_max_error_mm = input.runtime_options.spline_max_error_mm;
+    authority_input.dispensing_strategy = input.dispensing_strategy;
+    authority_input.subsegment_count = input.subsegment_count;
+    authority_input.dispense_only_cruise = input.dispense_only_cruise;
+    authority_input.downgrade_on_violation = input.downgrade_on_violation;
+    authority_input.compensation_profile = input.runtime_options.compensation_profile;
+    authority_input.spacing_tol_ratio = input.spacing_tol_ratio;
+    authority_input.spacing_min_mm = input.spacing_min_mm;
+    authority_input.spacing_max_mm = input.spacing_max_mm;
+    return authority_input;
+}
+
+WorkflowAuthorityPreviewArtifacts BuildWorkflowAuthorityPreviewArtifacts(const AuthorityPreviewBuildResult& input) {
+    WorkflowAuthorityPreviewArtifacts artifacts;
+    artifacts.segment_count = input.segment_count;
+    artifacts.total_length = input.total_length;
+    artifacts.estimated_time = input.estimated_time;
+    artifacts.preview_trajectory_points = input.preview_trajectory_points;
+    artifacts.glue_points = input.glue_points;
+    artifacts.trigger_count = input.trigger_count;
+    artifacts.dxf_filename = input.dxf_filename;
+    artifacts.timestamp = input.timestamp;
+    artifacts.preview_authority_ready = input.preview_authority_ready;
+    artifacts.preview_binding_ready = input.preview_binding_ready;
+    artifacts.preview_spacing_valid = input.preview_spacing_valid;
+    artifacts.preview_has_short_segment_exceptions = input.preview_has_short_segment_exceptions;
+    artifacts.preview_validation_classification = input.preview_validation_classification;
+    artifacts.preview_exception_reason = input.preview_exception_reason;
+    artifacts.preview_failure_reason = input.preview_failure_reason;
+    artifacts.authority_trigger_layout = input.authority_trigger_layout;
+    for (const auto& point : input.authority_trigger_points) {
+        artifacts.authority_trigger_points.push_back(BuildWorkflowAuthorityTriggerPoint(point));
+    }
+    for (const auto& group : input.spacing_validation_groups) {
+        artifacts.spacing_validation_groups.push_back(BuildWorkflowSpacingValidationGroup(group));
+    }
+    return artifacts;
+}
+
+AuthorityPreviewBuildResult BuildAuthorityPreviewBuildResult(const WorkflowAuthorityPreviewArtifacts& input) {
+    AuthorityPreviewBuildResult authority_preview;
+    authority_preview.segment_count = input.segment_count;
+    authority_preview.total_length = input.total_length;
+    authority_preview.estimated_time = input.estimated_time;
+    authority_preview.preview_trajectory_points = input.preview_trajectory_points;
+    authority_preview.glue_points = input.glue_points;
+    authority_preview.trigger_count = input.trigger_count;
+    authority_preview.dxf_filename = input.dxf_filename;
+    authority_preview.timestamp = input.timestamp;
+    authority_preview.preview_authority_ready = input.preview_authority_ready;
+    authority_preview.preview_binding_ready = input.preview_binding_ready;
+    authority_preview.preview_spacing_valid = input.preview_spacing_valid;
+    authority_preview.preview_has_short_segment_exceptions = input.preview_has_short_segment_exceptions;
+    authority_preview.preview_validation_classification = input.preview_validation_classification;
+    authority_preview.preview_exception_reason = input.preview_exception_reason;
+    authority_preview.preview_failure_reason = input.preview_failure_reason;
+    authority_preview.authority_trigger_layout = input.authority_trigger_layout;
+    for (const auto& point : input.authority_trigger_points) {
+        authority_preview.authority_trigger_points.push_back(BuildInternalAuthorityTriggerPoint(point));
+    }
+    for (const auto& group : input.spacing_validation_groups) {
+        authority_preview.spacing_validation_groups.push_back(BuildInternalSpacingValidationGroup(group));
+    }
+    return authority_preview;
+}
+
+ExecutionAssemblyBuildInput BuildExecutionAssemblyBuildInput(const WorkflowExecutionAssemblyRequest& input) {
+    ExecutionAssemblyBuildInput execution_input;
+    execution_input.process_path = input.process_path;
+    execution_input.authority_process_path = input.authority_process_path;
+    execution_input.motion_plan = input.motion_plan;
+    execution_input.source_path = input.source_path;
+    execution_input.dxf_filename = input.dxf_filename;
+    execution_input.dispensing_velocity = input.runtime_options.dispensing_velocity;
+    execution_input.acceleration = input.runtime_options.acceleration;
+    execution_input.dispenser_interval_ms = input.runtime_options.dispenser_interval_ms;
+    execution_input.dispenser_duration_ms = input.runtime_options.dispenser_duration_ms;
+    execution_input.trigger_spatial_interval_mm = input.runtime_options.trigger_spatial_interval_mm;
+    execution_input.valve_response_ms = input.runtime_options.valve_response_ms;
+    execution_input.safety_margin_ms = input.runtime_options.safety_margin_ms;
+    execution_input.min_interval_ms = input.runtime_options.min_interval_ms;
+    execution_input.max_jerk = input.max_jerk;
+    execution_input.sample_dt = input.runtime_options.sample_dt;
+    execution_input.sample_ds = input.runtime_options.sample_ds;
+    execution_input.spline_max_step_mm = input.runtime_options.spline_max_step_mm;
+    execution_input.spline_max_error_mm = input.runtime_options.spline_max_error_mm;
+    execution_input.estimated_time_s = input.estimated_time_s;
+    execution_input.use_interpolation_planner = input.use_interpolation_planner;
+    execution_input.interpolation_algorithm = input.interpolation_algorithm;
+    execution_input.compensation_profile = input.runtime_options.compensation_profile;
+    execution_input.authority_preview = BuildAuthorityPreviewBuildResult(input.authority_preview);
+    return execution_input;
+}
+
+WorkflowExecutionAssemblyResult BuildWorkflowExecutionAssemblyResult(const ExecutionAssemblyBuildResult& input) {
+    WorkflowExecutionAssemblyResult result;
+    result.execution_package = input.execution_package;
+    result.execution_trajectory_points = input.execution_trajectory_points;
+    result.motion_trajectory_points = input.motion_trajectory_points;
+    result.preview_authority_shared_with_execution = input.preview_authority_shared_with_execution;
+    result.execution_binding_ready = input.execution_binding_ready;
+    result.execution_failure_reason = input.execution_failure_reason;
+    result.authority_trigger_layout = input.authority_trigger_layout;
+    result.export_request = input.export_request;
+    return result;
+}
 
 std::string FormatPoint(const Point2D& point) {
     std::ostringstream oss;
@@ -737,24 +1004,6 @@ float32 SpeedMagnitude(const MotionTrajectoryPoint& point) {
     return std::sqrt(vx * vx + vy * vy);
 }
 
-Siligen::Domain::Motion::ValueObjects::TimePlanningConfig BuildInterpolationPlanningConfig(
-    const Siligen::InterpolationConfig& config) {
-    Siligen::Domain::Motion::ValueObjects::TimePlanningConfig motion_config;
-    motion_config.vmax = config.max_velocity;
-    motion_config.amax = config.max_acceleration;
-    motion_config.jmax = config.max_jerk;
-    motion_config.sample_dt = config.time_step;
-    motion_config.sample_ds = 0.0f;
-    motion_config.curvature_speed_factor = config.curvature_speed_factor;
-    motion_config.corner_speed_factor = 1.0f;
-    motion_config.start_speed_factor = 1.0f;
-    motion_config.end_speed_factor = 1.0f;
-    motion_config.rapid_speed_factor = 1.0f;
-    motion_config.arc_tolerance_mm = std::max(config.position_tolerance, 0.0f);
-    motion_config.enforce_jerk_limit = true;
-    return motion_config;
-}
-
 std::vector<TrajectoryPoint> ConvertMotionTrajectoryToTrajectoryPoints(const MotionTrajectory& trajectory) {
     std::vector<TrajectoryPoint> points;
     points.reserve(trajectory.points.size());
@@ -1189,26 +1438,6 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
         return Result<std::vector<TrajectoryPoint>>::Success({});
     }
 
-    const auto seed_started_at = std::chrono::steady_clock::now();
-    log_stage("seed_start");
-    const auto seed_points_result = BuildInterpolationSeedPoints(
-        path,
-        input.spline_max_error_mm,
-        ResolveInterpolationStep(input));
-    if (seed_points_result.IsError()) {
-        log_stage("seed_failed", "elapsed_ms=" + std::to_string(ElapsedMs(seed_started_at)) +
-                                     " reason=" + seed_points_result.GetError().GetMessage());
-        return Result<std::vector<TrajectoryPoint>>::Failure(seed_points_result.GetError());
-    }
-    const auto& seed_points = seed_points_result.Value();
-    log_stage("seed_done",
-              "seed_points=" + std::to_string(seed_points.size()) +
-                  " elapsed_ms=" + std::to_string(ElapsedMs(seed_started_at)));
-    if (seed_points.size() < 2) {
-        return Result<std::vector<TrajectoryPoint>>::Failure(
-            Error(ErrorCode::INVALID_PARAMETER, "插补规划参数无效", "DispensePackagingAssembly"));
-    }
-
     Siligen::InterpolationConfig config{};
     config.max_velocity = input.dispensing_velocity;
     config.max_acceleration = input.acceleration;
@@ -1235,6 +1464,56 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
     if ((input.interpolation_algorithm == InterpolationAlgorithm::LINEAR ||
          input.interpolation_algorithm == InterpolationAlgorithm::CMP_COORDINATED) &&
         config.max_jerk <= 0.0f) {
+        return Result<std::vector<TrajectoryPoint>>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "插补规划参数无效", "DispensePackagingAssembly"));
+    }
+
+    if (input.interpolation_algorithm == InterpolationAlgorithm::LINEAR) {
+        if (input.motion_plan.points.size() < 2U) {
+            return Result<std::vector<TrajectoryPoint>>::Failure(
+                Error(ErrorCode::INVALID_PARAMETER, "motion plan为空", "DispensePackagingAssembly"));
+        }
+
+        auto points = ConvertMotionTrajectoryToTrajectoryPoints(input.motion_plan);
+        log_stage("linear_motion_plan_consumed",
+                  "motion_points=" + std::to_string(input.motion_plan.points.size()) +
+                      " converted_points=" + std::to_string(points.size()));
+
+        if (!trigger_artifacts.positions.empty() &&
+            !ApplyTriggerMarkersByPositionWithDiagnostics(
+                points,
+                trigger_artifacts.positions,
+                trigger_artifacts.distances,
+                Siligen::Shared::Types::kTriggerMarkerDedupToleranceMm,
+                std::max(config.position_tolerance, Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm))) {
+            return Result<std::vector<TrajectoryPoint>>::Failure(
+                Error(ErrorCode::TRAJECTORY_GENERATION_FAILED,
+                      "显式 trigger authority 映射到上游 motion plan 轨迹失败",
+                      "DispensePackagingAssembly"));
+        }
+
+        log_stage("complete",
+                  "points=" + std::to_string(points.size()) +
+                      " elapsed_ms=" + std::to_string(ElapsedMs(started_at)));
+        return Result<std::vector<TrajectoryPoint>>::Success(std::move(points));
+    }
+
+    const auto seed_started_at = std::chrono::steady_clock::now();
+    log_stage("seed_start");
+    const auto seed_points_result = BuildInterpolationSeedPoints(
+        path,
+        input.spline_max_error_mm,
+        ResolveInterpolationStep(input));
+    if (seed_points_result.IsError()) {
+        log_stage("seed_failed", "elapsed_ms=" + std::to_string(ElapsedMs(seed_started_at)) +
+                                     " reason=" + seed_points_result.GetError().GetMessage());
+        return Result<std::vector<TrajectoryPoint>>::Failure(seed_points_result.GetError());
+    }
+    const auto& seed_points = seed_points_result.Value();
+    log_stage("seed_done",
+              "seed_points=" + std::to_string(seed_points.size()) +
+                  " elapsed_ms=" + std::to_string(ElapsedMs(seed_started_at)));
+    if (seed_points.size() < 2) {
         return Result<std::vector<TrajectoryPoint>>::Failure(
             Error(ErrorCode::INVALID_PARAMETER, "插补规划参数无效", "DispensePackagingAssembly"));
     }
@@ -1279,22 +1558,7 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
                       "DispensePackagingAssembly"));
         }
 
-        if (input.interpolation_algorithm == InterpolationAlgorithm::LINEAR) {
-            MotionPlanningFacade trajectory_planner;
-            const auto linear_plan_started_at = std::chrono::steady_clock::now();
-            log_stage("linear_plan_start", "seed_points=" + std::to_string(seed_points.size()));
-            auto planned_trajectory = trajectory_planner.Plan(path, BuildInterpolationPlanningConfig(config));
-            log_stage("linear_plan_done",
-                      "motion_points=" + std::to_string(planned_trajectory.points.size()) +
-                          " elapsed_ms=" + std::to_string(ElapsedMs(linear_plan_started_at)));
-            const auto convert_started_at = std::chrono::steady_clock::now();
-            log_stage("linear_convert_start");
-            points = ConvertMotionTrajectoryToTrajectoryPoints(
-                planned_trajectory);
-            log_stage("linear_convert_done",
-                      "points=" + std::to_string(points.size()) +
-                          " elapsed_ms=" + std::to_string(ElapsedMs(convert_started_at)));
-        } else {
+        if (input.interpolation_algorithm != InterpolationAlgorithm::LINEAR) {
             TrajectoryInterpolationFacade interpolation_facade;
             auto interpolation_result =
                 interpolation_facade.Interpolate(seed_points, input.interpolation_algorithm, config);
@@ -1591,8 +1855,9 @@ void BindAuthorityLayoutToExecutionTrajectory(
 
 }  // namespace
 
-Result<AuthorityPreviewBuildResult> AuthorityPreviewAssemblyService::BuildAuthorityPreviewArtifacts(
-    const AuthorityPreviewBuildInput& input) const {
+Result<WorkflowAuthorityPreviewArtifacts> AuthorityPreviewAssemblyService::BuildAuthorityPreviewArtifacts(
+    const WorkflowAuthorityPreviewRequest& request) const {
+    const auto input = BuildAuthorityPreviewBuildInput(request);
     auto log_stage = [&](const char* stage, const std::string& detail = std::string()) {
         std::ostringstream oss;
         oss << "planning_artifacts_stage=" << stage
@@ -1608,7 +1873,7 @@ Result<AuthorityPreviewBuildResult> AuthorityPreviewAssemblyService::BuildAuthor
     log_stage("start");
 
     if (input.process_path.segments.empty()) {
-        return Result<AuthorityPreviewBuildResult>::Failure(
+        return Result<WorkflowAuthorityPreviewArtifacts>::Failure(
             Error(ErrorCode::INVALID_PARAMETER, "process path为空", "DispensePackagingAssembly"));
     }
 
@@ -1642,7 +1907,7 @@ Result<AuthorityPreviewBuildResult> AuthorityPreviewAssemblyService::BuildAuthor
 
     auto trigger_artifacts_result = BuildTriggerArtifacts(authority_process_path, authority_input);
     if (trigger_artifacts_result.IsError()) {
-        return Result<AuthorityPreviewBuildResult>::Failure(trigger_artifacts_result.GetError());
+        return Result<WorkflowAuthorityPreviewArtifacts>::Failure(trigger_artifacts_result.GetError());
     }
     auto trigger_artifacts = trigger_artifacts_result.Value();
     {
@@ -1669,7 +1934,7 @@ Result<AuthorityPreviewBuildResult> AuthorityPreviewAssemblyService::BuildAuthor
                 << " reason=" << preview_points_result.GetError().GetMessage();
             log_stage("preview_polyline_failed_non_blocking", oss.str());
         } else {
-            return Result<AuthorityPreviewBuildResult>::Failure(preview_points_result.GetError());
+            return Result<WorkflowAuthorityPreviewArtifacts>::Failure(preview_points_result.GetError());
         }
     } else {
         preview_trajectory_points = ConvertPreviewPointsToTrajectory(preview_points_result.Value());
@@ -1715,11 +1980,13 @@ Result<AuthorityPreviewBuildResult> AuthorityPreviewAssemblyService::BuildAuthor
             << " trigger_count=" << result.trigger_count;
         log_stage("complete", oss.str());
     }
-    return Result<AuthorityPreviewBuildResult>::Success(std::move(result));
+    return Result<WorkflowAuthorityPreviewArtifacts>::Success(
+        BuildWorkflowAuthorityPreviewArtifacts(result));
 }
 
-Result<ExecutionAssemblyBuildResult> ExecutionAssemblyService::BuildExecutionArtifactsFromAuthority(
-    const ExecutionAssemblyBuildInput& input) const {
+Result<WorkflowExecutionAssemblyResult> ExecutionAssemblyService::BuildExecutionArtifactsFromAuthority(
+    const WorkflowExecutionAssemblyRequest& request) const {
+    const auto input = BuildExecutionAssemblyBuildInput(request);
     const auto& execution_process_path = ResolveExecutionProcessPath(input);
     auto log_stage = [&](const char* stage, const std::string& detail = std::string()) {
         std::ostringstream oss;
@@ -1739,11 +2006,11 @@ Result<ExecutionAssemblyBuildResult> ExecutionAssemblyService::BuildExecutionArt
     log_stage("execution_assembly_start");
 
     if (execution_process_path.segments.empty()) {
-        return Result<ExecutionAssemblyBuildResult>::Failure(
+        return Result<WorkflowExecutionAssemblyResult>::Failure(
             Error(ErrorCode::INVALID_PARAMETER, "process path为空", "DispensePackagingAssembly"));
     }
     if (input.motion_plan.points.empty()) {
-        return Result<ExecutionAssemblyBuildResult>::Failure(
+        return Result<WorkflowExecutionAssemblyResult>::Failure(
             Error(ErrorCode::TRAJECTORY_GENERATION_FAILED, "motion plan为空", "DispensePackagingAssembly"));
     }
 
@@ -1783,7 +2050,7 @@ Result<ExecutionAssemblyBuildResult> ExecutionAssemblyService::BuildExecutionArt
     auto interpolation_points_result =
         BuildInterpolationPoints(execution_input, execution_process_path, trigger_artifacts);
     if (interpolation_points_result.IsError()) {
-        return Result<ExecutionAssemblyBuildResult>::Failure(interpolation_points_result.GetError());
+        return Result<WorkflowExecutionAssemblyResult>::Failure(interpolation_points_result.GetError());
     }
     auto interpolation_points = interpolation_points_result.Value();
     {
@@ -1796,7 +2063,7 @@ Result<ExecutionAssemblyBuildResult> ExecutionAssemblyService::BuildExecutionArt
     auto interpolation_program =
         program_planner.BuildProgram(execution_process_path, input.motion_plan, input.acceleration);
     if (interpolation_program.IsError()) {
-        return Result<ExecutionAssemblyBuildResult>::Failure(interpolation_program.GetError());
+        return Result<WorkflowExecutionAssemblyResult>::Failure(interpolation_program.GetError());
     }
     {
         std::ostringstream oss;
@@ -1826,7 +2093,7 @@ Result<ExecutionAssemblyBuildResult> ExecutionAssemblyService::BuildExecutionArt
     ExecutionPackageValidated execution_package(std::move(built));
     auto package_validation = execution_package.Validate();
     if (package_validation.IsError()) {
-        return Result<ExecutionAssemblyBuildResult>::Failure(package_validation.GetError());
+        return Result<WorkflowExecutionAssemblyResult>::Failure(package_validation.GetError());
     }
     {
         std::ostringstream oss;
@@ -1880,7 +2147,8 @@ Result<ExecutionAssemblyBuildResult> ExecutionAssemblyService::BuildExecutionArt
             << " execution_failure_reason=" << result.execution_failure_reason;
         log_stage("execution_assembly_complete", oss.str());
     }
-    return Result<ExecutionAssemblyBuildResult>::Success(std::move(result));
+    return Result<WorkflowExecutionAssemblyResult>::Success(
+        BuildWorkflowExecutionAssemblyResult(result));
 }
 
 }  // namespace Siligen::Application::Services::Dispensing

@@ -5,12 +5,14 @@ set(DISPENSE_PACKAGING_TEST_SOURCES
     unit/domain/dispensing/ContourPathOptimizerTest.cpp
     unit/domain/dispensing/TriggerPlannerTest.cpp
     unit/domain/dispensing/DispensingControllerTest.cpp
+    unit/domain/dispensing/DispensePackagingResidualAcceptanceTest.cpp
     unit/domain/dispensing/PathArcLengthLocatorTest.cpp
     unit/domain/dispensing/PurgeDispenserProcessTest.cpp
     unit/domain/dispensing/UnifiedTrajectoryPlannerServiceTest.cpp
     unit/domain/dispensing/TrajectoryTriggerUtilsTest.cpp
     unit/domain/dispensing/ValveCoordinationServiceTest.cpp
     unit/application/services/dispensing/PreviewSnapshotServiceTest.cpp
+    unit/application/usecases/dispensing/valve/ValveUseCasesTest.cpp
 )
 
 set(DISPENSE_PACKAGING_OPTIONAL_TEST_SOURCES

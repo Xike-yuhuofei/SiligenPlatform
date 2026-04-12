@@ -24,7 +24,7 @@
 #include "runtime/configuration/InterlockConfigResolver.h"
 #include "runtime/configuration/WorkspaceAssetPaths.h"
 #include "runtime/diagnostics/DiagnosticsPortAdapter.h"
-#include "domain/motion/domain-services/SevenSegmentSCurveProfile.h"
+#include "application/services/motion_planning/SevenSegmentSCurveProfile.h"
 #include "runtime/storage/files/LocalFileStorageAdapter.h"
 #include "runtime/events/InMemoryEventPublisherAdapter.h"
 #include "runtime/scheduling/TaskSchedulerAdapter.h"

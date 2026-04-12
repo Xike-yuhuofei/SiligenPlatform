@@ -2,7 +2,7 @@
 
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/process_path/ProcessPathFacade.h"
-#include "domain/motion/ports/IVelocityProfilePort.h"
+#include "../../../../motion-planning/domain/motion/ports/IVelocityProfilePort.h"
 #include "motion_planning/contracts/MotionTrajectory.h"
 #include "motion_planning/contracts/TimePlanningConfig.h"
 #include "process_path/contracts/NormalizationConfig.h"

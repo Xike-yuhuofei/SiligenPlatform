@@ -54,6 +54,46 @@ TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFrom
     EXPECT_EQ(payload.export_request.execution_trajectory_points.size(), payload.execution_trajectory_points.size());
 }
 
+TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFromAuthorityUsesInputMotionPlanAsExecutionTruth) {
+    WorkflowPlanningAssemblyOperationsProvider provider;
+    const auto operations = provider.CreateOperations();
+
+    auto input = BuildPlanningInput();
+    input.motion_plan.points = {
+        BuildMotionPoint(0.0f, 0.0f, 0.0f),
+        BuildMotionPoint(1.0f, 5.0f, 2.0f),
+        BuildMotionPoint(2.0f, 10.0f, 0.0f),
+    };
+    input.motion_plan.total_length = 12.0f;
+    input.motion_plan.total_time = 2.0f;
+    input.estimated_time_s = 2.5f;
+    input.use_interpolation_planner = true;
+    input.interpolation_algorithm = InterpolationAlgorithm::LINEAR;
+    input.sample_ds = 50.0f;
+    input.trigger_spatial_interval_mm = 100.0f;
+
+    auto authority = operations->BuildAuthorityPreviewArtifacts(BuildWorkflowAuthorityPreviewInput(input));
+    ASSERT_TRUE(authority.IsSuccess()) << authority.GetError().GetMessage();
+
+    const auto result = operations->BuildExecutionArtifactsFromAuthority(
+        BuildWorkflowExecutionInput(input, authority.Value()));
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    const auto& payload = result.Value();
+    ASSERT_EQ(payload.motion_trajectory_points.size(), input.motion_plan.points.size());
+    EXPECT_FLOAT_EQ(payload.motion_trajectory_points[1].position.x, 5.0f);
+    EXPECT_FLOAT_EQ(payload.motion_trajectory_points[1].position.y, 2.0f);
+    EXPECT_GE(payload.execution_trajectory_points.size(), input.motion_plan.points.size());
+    EXPECT_TRUE(std::any_of(
+        payload.execution_trajectory_points.begin(),
+        payload.execution_trajectory_points.end(),
+        [](const auto& point) {
+            return std::abs(point.position.x - 5.0f) <= 1e-4f &&
+                   std::abs(point.position.y - 2.0f) <= 1e-4f;
+        }));
+    EXPECT_EQ(payload.export_request.execution_trajectory_points.size(), payload.execution_trajectory_points.size());
+}
+
 TEST(WorkflowPlanningAssemblyOperationsContractTest, AssemblePlanningArtifactsMatchesStagedAuthorityAndExecutionSemantics) {
     WorkflowPlanningAssemblyOperationsProvider provider;
     const auto operations = provider.CreateOperations();
@@ -266,8 +306,9 @@ TEST(WorkflowPlanningAssemblyOperationsContractTest, AssemblePlanningArtifactsAn
 
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
     const auto& payload = result.Value();
-    ASSERT_GT(payload.trajectory_points.size(), payload.glue_points.size());
     ASSERT_EQ(payload.glue_points.size(), 4U);
+    EXPECT_GE(payload.trajectory_points.size(), payload.glue_points.size());
+    EXPECT_EQ(CountTriggerMarkers(payload.trajectory_points), payload.glue_points.size());
     EXPECT_EQ(payload.trigger_count, 4);
     EXPECT_TRUE(payload.preview_authority_ready);
     EXPECT_TRUE(payload.preview_authority_shared_with_execution);
@@ -295,7 +336,7 @@ TEST(WorkflowPlanningAssemblyOperationsContractTest, AssemblePlanningArtifactsLi
     const auto& payload = result.Value();
     ASSERT_EQ(payload.glue_points.size(), 4U);
     EXPECT_EQ(CountTriggerMarkers(payload.trajectory_points), payload.glue_points.size());
-    EXPECT_LT(payload.glue_points.size(), payload.trajectory_points.size());
+    EXPECT_GE(payload.trajectory_points.size(), payload.glue_points.size());
 }
 
 TEST(WorkflowPlanningAssemblyOperationsContractTest, AssemblePlanningArtifactsDeduplicatesSharedVerticesAcrossAnchoredSegments) {

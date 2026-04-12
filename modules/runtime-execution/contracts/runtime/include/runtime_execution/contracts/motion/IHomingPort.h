@@ -1,11 +1,8 @@
 #pragma once
 
+#include "motion_planning/contracts/MotionTypes.h"
 #include "shared/types/Result.h"
 #include "shared/types/Types.h"
-
-namespace Siligen::Domain::Motion::ValueObjects {
-enum class HomingStage;
-}
 
 using Siligen::Domain::Motion::ValueObjects::HomingStage;
 using Siligen::Shared::Types::float32;

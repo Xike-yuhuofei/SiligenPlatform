@@ -63,6 +63,18 @@ namespace Siligen::Domain::Dispensing {
 - ⚠️ 可选依赖: `domain/motion`（触发计算）
 - ❌ 不依赖: `infrastructure`, `application`
 
+## 当前构建口径
+
+- `siligen_dispense_packaging_domain_dispensing` 是当前 owner/core target，只暴露
+  本目录 header 与 canonical contract targets。
+- `siligen_dispense_packaging_execution_residual` 承接 execution/process-control/
+  valve/CMP concrete 实现。
+- `siligen_dispense_packaging_planning_residual` 承接 planning concrete 实现，并显式持有
+  `process-path application` 与 `motion-planning application` concrete link。
+- 不允许通过 raw include path 暴露 `workflow` include root 或
+  `runtime-execution/contracts/runtime` include root；如需跨模块头，应通过 canonical target
+  传递。
+
 ## 架构规范（点胶过程）
 
 - 点胶执行流程（阀门控制、触发配置、流程顺序与校验）必须由 `DispensingProcessService` 统一入口负责。

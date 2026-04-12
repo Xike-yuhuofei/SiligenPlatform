@@ -124,6 +124,202 @@ TEST(MotionPlanningOwnerBoundaryTest, MotionPlanningPublicSurfaceDoesNotExportIn
     EXPECT_EQ(module_yaml.find("InterpolationProgramFacade"), std::string::npos);
 }
 
+TEST(MotionPlanningOwnerBoundaryTest, MotionPlanningContractsExposeThinMotionValueObjectWrappers) {
+    const fs::path repo_root = RepoRoot();
+    const std::array<std::pair<fs::path, std::string>, 4> expectations = {{
+        {repo_root / "modules/motion-planning/contracts/include/motion_planning/contracts/MotionTypes.h",
+         "#include \"../../../../domain/motion/value-objects/MotionTypes.h\""},
+        {repo_root / "modules/motion-planning/contracts/include/motion_planning/contracts/HardwareTestTypes.h",
+         "#include \"../../../../domain/motion/value-objects/HardwareTestTypes.h\""},
+        {repo_root / "modules/motion-planning/contracts/include/motion_planning/contracts/TrajectoryTypes.h",
+         "#include \"../../../../domain/motion/value-objects/TrajectoryTypes.h\""},
+        {repo_root / "modules/motion-planning/contracts/include/motion_planning/contracts/TrajectoryAnalysisTypes.h",
+         "#include \"../../../../domain/motion/value-objects/TrajectoryAnalysisTypes.h\""},
+    }};
+
+    for (const auto& [path, include_line] : expectations) {
+        const std::string content = ReadTextFile(path);
+        EXPECT_NE(content.find("Thin public wrapper"), std::string::npos) << path.string();
+        EXPECT_NE(content.find(include_line), std::string::npos) << path.string();
+    }
+}
+
+TEST(MotionPlanningOwnerBoundaryTest, MotionPlanningContractsExposeThinMotionPortWrappers) {
+    const fs::path repo_root = RepoRoot();
+    const std::array<std::pair<fs::path, std::string>, 2> expectations = {{
+        {repo_root / "modules/motion-planning/contracts/include/motion_planning/contracts/IAdvancedMotionPort.h",
+         "#include \"../../../../domain/motion/ports/IAdvancedMotionPort.h\""},
+        {repo_root / "modules/motion-planning/contracts/include/motion_planning/contracts/IVelocityProfilePort.h",
+         "#include \"../../../../domain/motion/ports/IVelocityProfilePort.h\""},
+    }};
+
+    for (const auto& [path, include_line] : expectations) {
+        const std::string content = ReadTextFile(path);
+        EXPECT_NE(content.find("Thin public wrapper"), std::string::npos) << path.string();
+        EXPECT_NE(content.find(include_line), std::string::npos) << path.string();
+    }
+}
+
+TEST(MotionPlanningOwnerBoundaryTest, RuntimeConsumersUseMotionPlanningContractsSurfaceForMotionValueObjects) {
+    const fs::path repo_root = RepoRoot();
+
+    const std::string trigger_controller = ReadTextFile(
+        repo_root / "modules/runtime-execution/adapters/device/include/siligen/device/adapters/dispensing/TriggerControllerAdapter.h");
+    EXPECT_NE(trigger_controller.find('#' + std::string("include \"motion_planning/contracts/HardwareTestTypes.h\"")),
+              std::string::npos);
+    EXPECT_EQ(trigger_controller.find('#' + std::string("include \"domain/motion/value-objects/HardwareTestTypes.h\"")),
+              std::string::npos);
+
+    const std::string homing_support = ReadTextFile(
+        repo_root / "modules/runtime-execution/adapters/device/include/siligen/device/adapters/motion/HomingSupport.h");
+    EXPECT_NE(homing_support.find('#' + std::string("include \"motion_planning/contracts/HardwareTestTypes.h\"")),
+              std::string::npos);
+    EXPECT_NE(homing_support.find('#' + std::string("include \"motion_planning/contracts/MotionTypes.h\"")),
+              std::string::npos);
+    EXPECT_EQ(homing_support.find('#' + std::string("include \"domain/motion/value-objects/HardwareTestTypes.h\"")),
+              std::string::npos);
+    EXPECT_EQ(homing_support.find('#' + std::string("include \"domain/motion/value-objects/MotionTypes.h\"")),
+              std::string::npos);
+
+    const std::string homing_port = ReadTextFile(
+        repo_root / "modules/runtime-execution/adapters/device/include/siligen/device/adapters/motion/HomingPortAdapter.h");
+    EXPECT_NE(homing_port.find('#' + std::string("include \"motion_planning/contracts/HardwareTestTypes.h\"")),
+              std::string::npos);
+    EXPECT_EQ(homing_port.find('#' + std::string("include \"domain/motion/value-objects/HardwareTestTypes.h\"")),
+              std::string::npos);
+
+    const std::string runtime_homing_contract = ReadTextFile(
+        repo_root / "modules/runtime-execution/contracts/runtime/include/runtime_execution/contracts/motion/IHomingPort.h");
+    EXPECT_NE(runtime_homing_contract.find('#' + std::string("include \"motion_planning/contracts/MotionTypes.h\"")),
+              std::string::npos);
+    EXPECT_EQ(runtime_homing_contract.find("enum class HomingStage;"), std::string::npos);
+
+    const std::string process_planning_config = ReadTextFile(
+        repo_root / "modules/process-planning/domain/configuration/value-objects/ConfigTypes.h");
+    EXPECT_NE(process_planning_config.find('#' + std::string("include \"motion_planning/contracts/MotionTypes.h\"")),
+              std::string::npos);
+    EXPECT_EQ(process_planning_config.find('#' + std::string("include \"domain/motion/value-objects/MotionTypes.h\"")),
+              std::string::npos);
+
+    const std::string diagnostics_types = ReadTextFile(
+        repo_root / "apps/runtime-service/include/runtime_process_bootstrap/diagnostics/value-objects/TestDataTypes.h");
+    EXPECT_NE(diagnostics_types.find('#' + std::string("include \"motion_planning/contracts/HardwareTestTypes.h\"")),
+              std::string::npos);
+    EXPECT_NE(diagnostics_types.find('#' + std::string("include \"motion_planning/contracts/MotionTypes.h\"")),
+              std::string::npos);
+    EXPECT_NE(
+        diagnostics_types.find('#' + std::string("include \"motion_planning/contracts/TrajectoryAnalysisTypes.h\"")),
+        std::string::npos);
+    EXPECT_NE(diagnostics_types.find('#' + std::string("include \"motion_planning/contracts/TrajectoryTypes.h\"")),
+              std::string::npos);
+    EXPECT_EQ(diagnostics_types.find('#' + std::string("include \"domain/motion/value-objects/HardwareTestTypes.h\"")),
+              std::string::npos);
+    EXPECT_EQ(diagnostics_types.find('#' + std::string("include \"domain/motion/value-objects/MotionTypes.h\"")),
+              std::string::npos);
+    EXPECT_EQ(
+        diagnostics_types.find('#' + std::string("include \"domain/motion/value-objects/TrajectoryAnalysisTypes.h\"")),
+        std::string::npos);
+    EXPECT_EQ(diagnostics_types.find('#' + std::string("include \"domain/motion/value-objects/TrajectoryTypes.h\"")),
+              std::string::npos);
+}
+
+TEST(MotionPlanningOwnerBoundaryTest, RuntimeTargetsDependOnMotionPlanningContractsInsteadOfRawIncludeRoots) {
+    const fs::path repo_root = RepoRoot();
+
+    const std::string device_cmake =
+        ReadTextFile(repo_root / "modules/runtime-execution/adapters/device/CMakeLists.txt");
+    EXPECT_NE(device_cmake.find("siligen_motion_planning_contracts_public"), std::string::npos);
+    EXPECT_EQ(device_cmake.find("SILIGEN_DEVICE_ADAPTERS_MOTION_PLANNING_INCLUDE_ROOT"), std::string::npos);
+    EXPECT_EQ(device_cmake.find("\"${SILIGEN_WORKSPACE_ROOT}/modules/motion-planning\""), std::string::npos);
+
+    const std::string process_planning_cmake =
+        ReadTextFile(repo_root / "modules/process-planning/domain/configuration/CMakeLists.txt");
+    EXPECT_NE(process_planning_cmake.find("siligen_motion_planning_contracts_public"), std::string::npos);
+    EXPECT_NE(process_planning_cmake.find("../../motion-planning/contracts"), std::string::npos);
+
+    const std::string runtime_tests_cmake =
+        ReadTextFile(repo_root / "modules/runtime-execution/tests/unit/CMakeLists.txt");
+    EXPECT_EQ(runtime_tests_cmake.find("modules/motion-planning/contracts/include"), std::string::npos);
+}
+
+TEST(MotionPlanningOwnerBoundaryTest, MotionPlanningApplicationExposesThinVelocityPlanningWrappers) {
+    const fs::path repo_root = RepoRoot();
+    const std::array<std::pair<fs::path, std::string>, 2> expectations = {{
+        {repo_root / "modules/motion-planning/application/include/application/services/motion_planning/VelocityProfileService.h",
+         "#include \"../../../../../domain/motion/domain-services/VelocityProfileService.h\""},
+        {repo_root / "modules/motion-planning/application/include/application/services/motion_planning/SevenSegmentSCurveProfile.h",
+         "#include \"../../../../../domain/motion/domain-services/SevenSegmentSCurveProfile.h\""},
+    }};
+
+    for (const auto& [path, include_line] : expectations) {
+        const std::string content = ReadTextFile(path);
+        EXPECT_NE(content.find("Thin public wrapper"), std::string::npos) << path.string();
+        EXPECT_NE(content.find(include_line), std::string::npos) << path.string();
+    }
+}
+
+TEST(MotionPlanningOwnerBoundaryTest, RuntimeConsumersUseMotionPlanningPublicSurfaceForVelocityPlanning) {
+    const fs::path repo_root = RepoRoot();
+
+    const std::string container_bootstrap =
+        ReadTextFile(repo_root / "apps/runtime-service/bootstrap/ContainerBootstrap.cpp");
+    EXPECT_NE(container_bootstrap.find('#' + std::string("include \"motion_planning/contracts/IVelocityProfilePort.h\"")),
+              std::string::npos);
+    EXPECT_EQ(container_bootstrap.find('#' + std::string("include \"domain/motion/ports/IVelocityProfilePort.h\"")),
+              std::string::npos);
+
+    const std::string adapter_factory_header =
+        ReadTextFile(repo_root / "apps/runtime-service/factories/InfrastructureAdapterFactory.h");
+    EXPECT_NE(adapter_factory_header.find('#' + std::string("include \"motion_planning/contracts/IVelocityProfilePort.h\"")),
+              std::string::npos);
+    EXPECT_EQ(adapter_factory_header.find('#' + std::string("include \"domain/motion/ports/IVelocityProfilePort.h\"")),
+              std::string::npos);
+
+    const std::string bindings_builder =
+        ReadTextFile(repo_root / "apps/runtime-service/bootstrap/InfrastructureBindingsBuilder.cpp");
+    EXPECT_NE(bindings_builder.find('#' + std::string("include \"application/services/motion_planning/SevenSegmentSCurveProfile.h\"")),
+              std::string::npos);
+    EXPECT_EQ(bindings_builder.find('#' + std::string("include \"domain/motion/domain-services/SevenSegmentSCurveProfile.h\"")),
+              std::string::npos);
+
+    const std::string adapter_factory_cpp =
+        ReadTextFile(repo_root / "apps/runtime-service/factories/InfrastructureAdapterFactory.cpp");
+    EXPECT_NE(adapter_factory_cpp.find('#' + std::string("include \"application/services/motion_planning/SevenSegmentSCurveProfile.h\"")),
+              std::string::npos);
+    EXPECT_EQ(adapter_factory_cpp.find('#' + std::string("include \"domain/motion/domain-services/SevenSegmentSCurveProfile.h\"")),
+              std::string::npos);
+
+    const std::string application_container =
+        ReadTextFile(repo_root / "apps/runtime-service/container/ApplicationContainer.Motion.cpp");
+    EXPECT_NE(application_container.find('#' + std::string("include \"application/services/motion_planning/VelocityProfileService.h\"")),
+              std::string::npos);
+    EXPECT_EQ(application_container.find('#' + std::string("include \"domain/motion/domain-services/VelocityProfileService.h\"")),
+              std::string::npos);
+
+    const std::string coordination_use_case =
+        ReadTextFile(repo_root / "modules/runtime-execution/application/include/runtime_execution/application/usecases/motion/coordination/MotionCoordinationUseCase.h");
+    EXPECT_NE(coordination_use_case.find('#' + std::string("include \"motion_planning/contracts/IAdvancedMotionPort.h\"")),
+              std::string::npos);
+    EXPECT_EQ(coordination_use_case.find('#' + std::string("include \"domain/motion/ports/IAdvancedMotionPort.h\"")),
+              std::string::npos);
+    EXPECT_EQ(coordination_use_case.find('#' + std::string("include \"modules/motion-planning/domain/motion/ports/IAdvancedMotionPort.h\"")),
+              std::string::npos);
+}
+
+TEST(MotionPlanningOwnerBoundaryTest, WorkflowVelocityPlanningCompatibilityHeadersAreRemoved) {
+    const fs::path repo_root = RepoRoot();
+    const std::array<fs::path, 4> removed_headers = {{
+        repo_root / "modules/workflow/domain/include/domain/motion/ports/IAdvancedMotionPort.h",
+        repo_root / "modules/workflow/domain/include/domain/motion/ports/IVelocityProfilePort.h",
+        repo_root / "modules/workflow/domain/include/domain/motion/domain-services/VelocityProfileService.h",
+        repo_root / "modules/workflow/domain/include/domain/motion/domain-services/SevenSegmentSCurveProfile.h",
+    }};
+
+    for (const auto& header : removed_headers) {
+        EXPECT_FALSE(fs::exists(header)) << header.string();
+    }
+}
+
 TEST(MotionPlanningOwnerBoundaryTest, WorkflowPlanningHeadersAreThinCompatibilityShims) {
     const fs::path repo_root = RepoRoot();
     const std::array<std::pair<fs::path, std::string>, 24> expectations = {{

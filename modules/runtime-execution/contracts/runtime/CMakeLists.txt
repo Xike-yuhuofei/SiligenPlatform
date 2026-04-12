@@ -9,6 +9,18 @@ if(NOT TARGET siligen_shared_runtime_contracts)
         "${CMAKE_BINARY_DIR}/_p/rerc_src"
     )
 endif()
+if(NOT TARGET siligen_process_path_contracts_public)
+    add_subdirectory(
+        "${SILIGEN_WORKSPACE_ROOT}/modules/process-path/contracts"
+        "${CMAKE_BINARY_DIR}/_p/rerc_ppath"
+    )
+endif()
+if(NOT TARGET siligen_motion_planning_contracts_public)
+    add_subdirectory(
+        "${SILIGEN_WORKSPACE_ROOT}/modules/motion-planning/contracts"
+        "${CMAKE_BINARY_DIR}/_p/rerc_mpc"
+    )
+endif()
 
 set(SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
 if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}/runtime_execution/contracts/system/IRuntimeSupervisionPort.h")
@@ -62,6 +74,8 @@ target_include_directories(siligen_runtime_execution_runtime_contracts INTERFACE
 )
 target_link_libraries(siligen_runtime_execution_runtime_contracts INTERFACE
     siligen_shared_runtime_contracts
+    siligen_motion_planning_contracts_public
+    siligen_process_path_contracts_public
 )
 target_compile_features(siligen_runtime_execution_runtime_contracts INTERFACE cxx_std_17)
 set_target_properties(siligen_runtime_execution_runtime_contracts PROPERTIES

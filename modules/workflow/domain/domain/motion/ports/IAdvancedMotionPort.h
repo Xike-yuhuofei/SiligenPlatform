@@ -1,5 +1,5 @@
 #pragma once
 
-// Legacy bridge header; canonical public owner header lives under modules/workflow/.
-#include "../../../include/domain/motion/ports/IAdvancedMotionPort.h"
+// Legacy bridge header; canonical owner header is provided by motion-planning public surface.
+#include "../../../../../motion-planning/contracts/include/motion_planning/contracts/IAdvancedMotionPort.h"
 

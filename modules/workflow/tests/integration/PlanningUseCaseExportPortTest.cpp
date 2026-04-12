@@ -1,6 +1,6 @@
 #include "workflow/application/planning-trigger/PlanningUseCase.h"
-#include "application/usecases/dispensing/PlanningUseCaseInternal.h"
-#include "application/ports/dispensing/PlanningPortAdapters.h"
+#include "planning-trigger/PlanningUseCaseInternal.h"
+#include "workflow/application/ports/dispensing/PlanningPortAdapters.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/process_path/ProcessPathFacade.h"
 #include "dxf_geometry/application/services/dxf/DxfPbPreparationService.h"

@@ -1,6 +1,6 @@
 #include "workflow/application/planning-trigger/PlanningUseCase.h"
 
-#include "application/ports/dispensing/PlanningPortAdapters.h"
+#include "workflow/application/ports/dispensing/PlanningPortAdapters.h"
 #include "dxf_geometry/application/services/dxf/DxfPbPreparationService.h"
 #include "runtime_execution/application/services/dispensing/PlanningArtifactExportPort.h"
 #include "application/services/dispensing/WorkflowPlanningAssemblyOperationsProvider.h"

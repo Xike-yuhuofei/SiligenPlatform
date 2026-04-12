@@ -3,8 +3,8 @@
 #include "siligen/device/adapters/drivers/multicard/IMultiCardWrapper.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
+#include "coordinate_alignment/contracts/IHardwareTestPort.h"
 #include "trace_diagnostics/contracts/DiagnosticTypes.h"
-#include "domain/machine/ports/IHardwareTestPort.h"
 #include "shared/types/HardwareConfiguration.h"
 
 #include <array>

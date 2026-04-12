@@ -2,7 +2,7 @@
 
 #include "shared/types/HardwareConfiguration.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
-#include "domain/motion/ports/IVelocityProfilePort.h"
+#include "motion_planning/contracts/IVelocityProfilePort.h"
 #include "siligen/device/adapters/hardware/HardwareTestAdapter.h"
 #include "siligen/device/adapters/drivers/multicard/IMultiCardWrapper.h"
 

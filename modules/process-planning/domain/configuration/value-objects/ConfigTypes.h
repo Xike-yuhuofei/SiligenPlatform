@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/motion/value-objects/MotionTypes.h"
+#include "motion_planning/contracts/MotionTypes.h"
 #include "domain/safety/value-objects/InterlockTypes.h"
 #include "shared/types/DispensingStrategy.h"
 

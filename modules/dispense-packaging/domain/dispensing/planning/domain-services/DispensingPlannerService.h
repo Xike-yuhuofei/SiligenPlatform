@@ -8,7 +8,7 @@
 #include "process_path/contracts/ProcessPath.h"
 #include "motion_planning/contracts/InterpolationTypes.h"
 #include "motion_planning/contracts/MotionTrajectory.h"
-#include "domain/motion/ports/IVelocityProfilePort.h"
+#include "../../../../motion-planning/domain/motion/ports/IVelocityProfilePort.h"
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "domain/dispensing/value-objects/DispenseCompensationProfile.h"
 

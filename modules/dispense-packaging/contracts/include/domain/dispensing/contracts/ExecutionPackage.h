@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/dispensing/value-objects/DispensingExecutionTypes.h"
+#include "domain/dispensing/value-objects/DispensingExecutionPlan.h"
 #include "shared/types/Error.h"
 #include "shared/types/Result.h"
 

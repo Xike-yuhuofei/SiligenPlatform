@@ -478,7 +478,6 @@ DispensingExecutionUseCase::Impl::~Impl() {
     if (!active_job.empty()) {
         (void)StopJob(active_job);
     }
-    JoinJobWorkerThread();
 
     std::shared_ptr<TaskExecutionContext> active_context;
     {
@@ -491,27 +490,29 @@ DispensingExecutionUseCase::Impl::~Impl() {
     if (active_context) {
         active_context->cancel_requested.store(true);
         active_context->pause_requested.store(false);
-
-        if (task_scheduler_port_) {
-            std::string scheduler_task_id;
-            {
-                std::lock_guard<std::mutex> context_lock(active_context->mutex_);
-                scheduler_task_id = active_context->scheduler_task_id;
-            }
-            if (!scheduler_task_id.empty()) {
-                auto scheduler_cancel_result = task_scheduler_port_->CancelTask(scheduler_task_id);
-                if (scheduler_cancel_result.IsSuccess()) {
-                    TryCommitTerminalState(
-                        active_context,
-                        TaskState::CANCELLED,
-                        "failure_stage=destructor_cancel;failure_code=scheduler_cancelled;message=execution_destroyed");
-                    ReleaseTaskInflight(active_context);
-                }
-            }
-        }
     }
     if (process_port_) {
         process_port_->StopExecution(&stop_requested_);
+    }
+    JoinJobWorkerThread();
+    JoinWorkerThread();
+
+    if (active_context && task_scheduler_port_) {
+        std::string scheduler_task_id;
+        {
+            std::lock_guard<std::mutex> context_lock(active_context->mutex_);
+            scheduler_task_id = active_context->scheduler_task_id;
+        }
+        if (!scheduler_task_id.empty()) {
+            auto scheduler_cancel_result = task_scheduler_port_->CancelTask(scheduler_task_id);
+            if (scheduler_cancel_result.IsSuccess()) {
+                TryCommitTerminalState(
+                    active_context,
+                    TaskState::CANCELLED,
+                    "failure_stage=destructor_cancel;failure_code=scheduler_cancelled;message=execution_destroyed");
+                ReleaseTaskInflight(active_context);
+            }
+        }
     }
 
     constexpr auto kInflightDrainTimeout = std::chrono::seconds(5);
@@ -529,15 +530,10 @@ DispensingExecutionUseCase::Impl::~Impl() {
         inflight_drained = WaitForAllInflightTasks(kInflightDrainTimeout, &inflight_diagnostics);
     }
 
-    while (!inflight_drained) {
+    if (!inflight_drained) {
         SILIGEN_LOG_ERROR(
             "failure_stage=destructor_wait_inflight;failure_code=INFLIGHT_STILL_PENDING;message=" + inflight_diagnostics);
-        ReconcileStalledInflightTasks();
-        inflight_diagnostics.clear();
-        inflight_drained = WaitForAllInflightTasks(kInflightDrainTimeout, &inflight_diagnostics);
     }
-
-    JoinWorkerThread();
 }
 
 Result<DispensingExecutionResult> DispensingExecutionUseCase::Impl::Execute(

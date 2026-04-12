@@ -1,7 +1,9 @@
 #pragma once
 
-#include "domain/dispensing/ports/IDispensingExecutionObserver.h"
 #include "runtime_execution/contracts/dispensing/DispensingExecutionTypes.h"
+#include "runtime_execution/contracts/dispensing/IDispensingExecutionObserver.h"
+
+#include "domain/dispensing/value-objects/DispensingExecutionPlan.h"
 
 #include <atomic>
 

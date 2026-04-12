@@ -2,7 +2,7 @@
 
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "runtime_execution/contracts/motion/IHomingPort.h"
-#include "domain/motion/value-objects/HardwareTestTypes.h"
+#include "motion_planning/contracts/HardwareTestTypes.h"
 #include "siligen/device/adapters/drivers/multicard/IMultiCardWrapper.h"
 #include "shared/types/HardwareConfiguration.h"
 

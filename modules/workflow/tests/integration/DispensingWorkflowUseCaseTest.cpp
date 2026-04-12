@@ -19,7 +19,7 @@
 #define SILIGEN_TEST_HOOKS
 #endif
 #define private public
-#include "application/ports/dispensing/PlanningPortAdapters.h"
+#include "workflow/application/ports/dispensing/PlanningPortAdapters.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "runtime_execution/contracts/dispensing/IDispensingProcessPort.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"

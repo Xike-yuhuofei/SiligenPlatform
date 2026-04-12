@@ -4,6 +4,7 @@ set(RUNTIME_HOST_TEST_SOURCES
     unit/runtime/calibration/CalibrationExecutionServiceTest.cpp
     unit/runtime/diagnostics/DiagnosticsPortAdapterTest.cpp
     unit/runtime/dispensing/DispensingExecutionUseCaseInternalTest.cpp
+    unit/runtime/events/InMemoryEventPublisherAdapterTest.cpp
     unit/runtime/motion/HardLimitMonitorServiceTest.cpp
     unit/runtime/motion/HomingPortAdapterTest.cpp
     unit/runtime/motion/InterpolationAdapterTest.cpp
@@ -11,6 +12,7 @@ set(RUNTIME_HOST_TEST_SOURCES
     unit/runtime/motion/MultiCardMotionAdapterTest.cpp
     unit/runtime/motion/MotionRuntimeFacadeTest.cpp
     unit/runtime/motion/MotionRuntimeServicesProviderTest.cpp
+    unit/runtime/motion/SoftLimitMonitorServiceTest.cpp
     unit/runtime/supervision/RuntimeSupervisionPortAdapterTest.cpp
     unit/runtime/system/MachineExecutionStateBackendTest.cpp
     unit/runtime/system/MachineExecutionStateStoreTest.cpp
@@ -32,6 +34,8 @@ target_link_libraries(siligen_runtime_host_unit_tests PRIVATE
     siligen_application_motion
     siligen_device_adapters
     siligen_device_contracts
+    siligen_event_adapters
+    siligen_task_scheduler
     siligen_shared
     siligen_types
     siligen_utils

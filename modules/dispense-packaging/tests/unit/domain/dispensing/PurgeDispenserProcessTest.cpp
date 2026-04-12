@@ -288,3 +288,17 @@ TEST(PurgeDispenserProcessTest, ClosesValvesOnTimeout) {
     EXPECT_EQ(valve_port->CloseDispenserCalls(), 1);
     EXPECT_EQ(valve_port->CloseSupplyCalls(), 1);
 }
+
+TEST(PurgeDispenserProcessTest, RejectsWhenValvePortUnavailable) {
+    auto config_port = std::make_shared<FakeConfigurationPort>(0);
+
+    Siligen::Domain::Dispensing::DomainServices::PurgeDispenserProcess process(nullptr, config_port);
+    Siligen::Domain::Dispensing::DomainServices::PurgeDispenserRequest request;
+    request.manage_supply = false;
+    request.wait_for_completion = false;
+
+    auto result = process.Execute(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::PORT_NOT_INITIALIZED);
+}

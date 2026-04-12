@@ -47,7 +47,7 @@ std::size_t CountOccurrences(const std::string& haystack, const std::string& nee
     return count;
 }
 
-TEST(MotionExecutionOwnerBoundaryTest, LegacyExecutionHeadersRemainResolvableAndExposeWorkflowLayout) {
+TEST(MotionExecutionOwnerBoundaryTest, ExecutionHeadersRemainResolvableFromRuntimeExecutionOwnerSurface) {
     using Siligen::Domain::Motion::MotionBufferController;
     using namespace Siligen::Domain::Motion::DomainServices;
 
@@ -59,6 +59,20 @@ TEST(MotionExecutionOwnerBoundaryTest, LegacyExecutionHeadersRemainResolvableAnd
     EXPECT_TRUE((std::is_same_v<
         decltype(HomeAxesResponse{}.axis_results),
         std::vector<HomeAxesResponse::AxisResult>>));
+}
+
+TEST(MotionExecutionOwnerBoundaryTest, WorkflowExecutionCompatibilityHeadersAreRemoved) {
+    const fs::path repo_root = RepoRoot();
+    const std::array<fs::path, 4> removed_headers = {{
+        repo_root / "modules/workflow/domain/include/domain/motion/domain-services/HomingProcess.h",
+        repo_root / "modules/workflow/domain/include/domain/motion/domain-services/JogController.h",
+        repo_root / "modules/workflow/domain/include/domain/motion/domain-services/MotionBufferController.h",
+        repo_root / "modules/workflow/domain/include/domain/motion/domain-services/ReadyZeroDecisionService.h",
+    }};
+
+    for (const auto& header : removed_headers) {
+        EXPECT_FALSE(fs::exists(header)) << header.string();
+    }
 }
 
 TEST(MotionExecutionOwnerBoundaryTest, MotionPlanningExecutionCompatibilityHeadersAreRemoved) {

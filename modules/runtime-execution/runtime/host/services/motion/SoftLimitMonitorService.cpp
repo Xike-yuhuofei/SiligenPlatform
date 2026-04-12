@@ -146,9 +146,12 @@ Result<void> SoftLimitMonitorService::HandleSoftLimitTrigger(
     event.type = Domain::System::Ports::EventType::SOFT_LIMIT_TRIGGERED;
     event.timestamp = std::chrono::system_clock::now().time_since_epoch().count();
     event.source = "SoftLimitMonitorService";
-    event.task_id = current_task_id_;
+    {
+        std::lock_guard<std::mutex> lock(task_mutex_);
+        event.task_id = current_task_id_;
+    }
     event.axis = axis_id;
-    event.position = status.position.x;  // 使用X坐标（假设2D运动）
+    event.position = status.axis_position_mm;
     event.is_positive_limit = positive_limit;
 
     // 构建事件消息
@@ -156,7 +159,7 @@ Result<void> SoftLimitMonitorService::HandleSoftLimitTrigger(
     oss << "Soft limit "
         << (positive_limit ? "positive" : "negative")
         << " triggered on axis " << axis_display
-        << " at position (" << status.position.x << ", " << status.position.y << ")";
+        << " at axis position " << event.position << "mm";
     event.message = oss.str();
 
     // 发布事件

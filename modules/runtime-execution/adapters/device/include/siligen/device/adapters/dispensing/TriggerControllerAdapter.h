@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/motion/value-objects/HardwareTestTypes.h"
+#include "motion_planning/contracts/HardwareTestTypes.h"
 #include "runtime_execution/contracts/dispensing/ITriggerControllerPort.h"
 #include "shared/types/Result.h"
 

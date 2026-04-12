@@ -6,7 +6,7 @@
 #include "domain/dispensing/ports/IValvePort.h"
 #include "domain/dispensing/value-objects/DispensingExecutionTypes.h"
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
-#include "domain/motion/ports/IMotionStatePort.h"
+#include "runtime_execution/contracts/motion/IMotionStatePort.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 #include "shared/types/Result.h"
 

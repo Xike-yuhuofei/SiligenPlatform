@@ -1,4 +1,4 @@
 #pragma once
 
-// Bridge-only wrapper. Canonical machine health/test contract still lives under coordinate-alignment.
-#include "../../../../../../coordinate-alignment/domain/machine/ports/IHardwareTestPort.h"
+// Bridge-only wrapper. Canonical machine health/test contract now lives under coordinate-alignment/contracts.
+#include "../../../../../../coordinate-alignment/contracts/include/coordinate_alignment/contracts/IHardwareTestPort.h"
