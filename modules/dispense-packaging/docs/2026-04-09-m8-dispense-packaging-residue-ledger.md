@@ -25,9 +25,9 @@
 - owner residue：9
 - build residue：2
 - surface residue：3
-- naming residue：4
-- test residue：4
-- placeholder residue：3
+- naming residue：0
+- test residue：0
+- placeholder residue：2
 - live façade/provider 并存重复：0 个确认项。当前问题不是“双套 seam 还都活着”，而是“单套 canonical seam 仍背着 residual 容器和泄漏面”。
 - workflow-facing seam 当前已基本收敛到 `WorkflowPlanningAssemblyOperations.h` + `WorkflowPlanningAssemblyTypes.h`，未发现 workflow 继续直接 include `PlanningAssemblyTypes.h`；残留主要是 public export 泄漏和 namespace alias 漂移。
   证据：`modules/workflow/application/include/application/planning-trigger/PlanningUseCase.h:5`、`application/include/application/services/dispensing/WorkflowPlanningAssemblyOperations.h:3-18`
@@ -50,17 +50,8 @@
 | SR-01 | P1 | `application/include/application/services/dispensing/PlanningAssemblyTypes.h` | public include root 下的 internal stage 类型面 | workflow 当前没有直接消费它，但它仍通过 application public include root 对外可见，且测试夹具继续把它当 live seam 使用；这与“只保留内部 stage 类型面”不一致 | `PlanningAssemblyTypes.h` 仅内部使用的冻结事实 | `README.md:40-42`、`application/CMakeLists.txt:28-41`、`PlanningAssemblyTypes.h:36-181`、`PlanningAssemblyTestFixtures.h:4-5` | demote | `application/services/dispensing` 私有/internal include | high |
 | SR-02 | P1 | `application/include/dispense_packaging/application/services/dispensing/PlanningAssemblyTypes.h` | pure compat forwarder | 仅做旧 include 路径转发，把 internal stage types 再次暴露一层，属于 bridge-only residual | internal stage 类型不应继续保留 workflow/public compat 面 | `application/include/dispense_packaging/application/services/dispensing/PlanningAssemblyTypes.h:1-3` | delete | 无 | high |
 | SR-03 | P1 | `contracts/include/domain/dispensing/contracts/PlanningArtifactExportRequest.h` + `application/include/application/services/dispensing/PlanningArtifactExportPort.h` | contract + deprecated compatibility bridge | contract 文件把类型重新别名回 `Application::Services::Dispensing`，同时还保留 deprecated compatibility forwarder；外部消费者已经绑定到 alias，而不是纯 contracts 命名空间 | contracts surface 应与 owner artifact 一致，不应继续由 app namespace alias/compat port 承担稳定 seam | `PlanningArtifactExportRequest.h:24-27`、`PlanningArtifactExportPort.h:3-6`、`modules/workflow/application/include/application/planning-trigger/PlanningUseCase.h:84`、`modules/runtime-execution/runtime/host/runtime/planning/PlanningArtifactExportPortAdapter.h:10-17` | demote | 只保留 `domain/dispensing/contracts` 命名空间；端口接口归消费方 owner | high |
-| NR-01 | P2 | `domain/dispensing/README.md` | 子域说明文档 | 文档仍把 `DispensingProcessService`、阀控、CMP、建压稳压、流量控制等定义成正式 owner 范围，且写“❌ 不依赖 application”，与 live CMake 事实相反 | owner scope 与 build facts | `domain/dispensing/README.md:3-15,21-26,31-46,68-73`、`domain/dispensing/CMakeLists.txt:85-100` | shrink | 仅保留 M8 authority/package residual 注记 | high |
-| NR-02 | P2 | `application/dispensing/README.md` | application 子目录说明文档 | 仍写“阀控编排”且点名已 deprecated 的 `siligen_process_runtime_core_dispensing`，与冻结 public seam 不一致 | naming baseline 与 stable public service baseline | `application/dispensing/README.md:3,7` | shrink | 文档只描述 assembly/public seam | high |
-| NR-03 | P1 | `module.yaml` | 模块元数据 notes | notes 仍使用 `WorkflowDispensingProcessOperationsProvider` 与 `DispensingProcessService` 的旧 runtime 口径，和当前稳定 seam 名单不一致 | canonical seam 命名冻结 | `module.yaml:13-16` | rename | 更新为 `PlanningAssemblyServices` / `WorkflowPlanningAssemblyOperationsProvider` 口径 | high |
-| NR-04 | P2 | `README.md` | 模块根 closeout 说明 | 文档仍称 `PreviewSnapshotServiceTest.cpp` 依赖旧 `PreviewSnapshotPayload`；实际测试已改为 `PreviewSnapshotInput/Response`。同时 README 说“所有 live 实现与构建入口均已收敛”，与 residual build/container 现状不符 | closeout 文档口径基线 | `README.md:44,52-55`、`tests/unit/application/services/dispensing/PreviewSnapshotServiceTest.cpp:10-37` | rename | 模块根 README closeout 段落 | high |
-| TR-01 | P1 | `tests/CMakeLists.txt` | 测试组织与 gate 入口 | 物理目录和 target 组织仍把 residual planner/process-control tests 聚进 `unit_tests`，但 closeout gate 已换成 boundary/workflow seam 两个 target；组织与 gate 不一致 | test baseline | `tests/CMakeLists.txt:3-18,26-34,48-62` | split | owner closeout targets 与 residual quarantine targets 分离 | high |
-| TR-02 | P1 | `tests/unit/domain/dispensing/DispensePackagingBoundaryTest.cpp` | closeout boundary test 混合体 | 同一文件里既有正确的 no-fallback / workflow seam 收敛断言，也有把 `UnifiedTrajectoryPlannerService` 依赖 `ProcessPathFacade`、domain target 链接 `process_path_application_public` 当成应被守护的事实；这会把 residual 拿来当 gate | owner closeout test 应只守 canonical owner 边界，不应守 residual topology | `DispensePackagingBoundaryTest.cpp:28-58,103-149` | split | 保留 owner closeout 断言；residual acceptance 迁出 gate | high |
-| TR-03 | P1 | `tests/unit/application/services/dispensing/PlanningAssemblyTestFixtures.h` | seam 测试夹具 | 夹具同时 include `PlanningAssemblyTypes.h` 与 `WorkflowPlanningAssemblyTypes.h`，持续把 internal stage plane 和 workflow plane 耦合在一起 | stage types internal-only baseline | `PlanningAssemblyTestFixtures.h:3-5,13-21` | split | workflow seam tests 只用 workflow types；内部 stage tests 留内聚单测 | high |
-| TR-04 | P2 | `ContourPathOptimizerTest.cpp`、`UnifiedTrajectoryPlannerServiceTest.cpp`、`PurgeDispenserProcessTest.cpp`、`ValveCoordinationServiceTest.cpp`、`DispensingControllerTest.cpp`、`TrajectoryTriggerUtilsTest.cpp` | 历史 unit 噪音批次 | 这些测试分别绑定优化 residual、planner wrapper residual、process-control residual、阀控 residual、执行 controller residual，或是 shared util；不构成 M8 owner closeout 证据 | owner closeout 证据边界 | 各文件首行 include：`ContourPathOptimizerTest.cpp:1`、`UnifiedTrajectoryPlannerServiceTest.cpp:1`、`PurgeDispenserProcessTest.cpp:1`、`ValveCoordinationServiceTest.cpp:1`、`DispensingControllerTest.cpp:3`、`TrajectoryTriggerUtilsTest.cpp:1` | split | residual quarantine lane，或回各自真正 owner 的测试域 | high |
 | PR-01 | P2 | `domain/dispensing/model/ModelService.h`、`domain/dispensing/simulation/SimulationRecordStore.h`、`domain/dispensing/compensation/TriggerStrategy.h` | 未接入 build 的 closed-loop 占位链 | 三个 header 只在彼此链内互引，未进入 domain target source list，也未形成 owner seam；属于 repository-presence，不是 live owner | live build 与仓库存在必须区分 | `domain/dispensing/CMakeLists.txt:38-62`、`ModelService.h:31-74`、`SimulationRecordStore.h:29-77`、`TriggerStrategy.h:35-60` | delete | 无 | high |
 | PR-02 | P2 | `domain/dispensing/domain-services/PositionTriggerController.h/.cpp` | 未接入 build 的硬件 concrete leftover | 直接依赖 `MultiCardInterface/MultiCard`，`.cpp` 还留硬件调用 TODO，但不在 CMake source list；属于未关干净的硬件 concrete 遗留 | repository-presence ≠ live seam | `PositionTriggerController.h:11-21`、`PositionTriggerController.cpp:71-77`、`domain/dispensing/CMakeLists.txt:38-62` | delete | 无；若未来复活，应去硬件 adapter owner | high |
-| PR-03 | P2 | `tests/contract/.gitkeep`、`tests/integration/.gitkeep`、`tests/regression/.gitkeep` | 空壳测试目录 | 当前只有 `.gitkeep`，没有 owner 证据测试；是占位壳层，不是 live validation lane | test structure 应与真实 gate/evidence 对齐 | 三个目录仅存在 `.gitkeep` | delete | 无；等真实证据落地后再恢复目录 | high |
 
 ## 5. Hotspots
 
@@ -72,8 +63,7 @@
 - `domain/dispensing/value-objects/DispensingExecutionTypes.h`：owner contract 与 runtime 语义缠在一起，任何 contract freeze 都会卡在这里。
 - `application/include/application/services/dispensing/PlanningAssemblyTypes.h`：不是当前 workflow seam，但仍然处于 public include root，形成 surface leakage。
 - `application/services/dispensing/WorkflowPlanningAssemblyOperationsProvider.cpp`：稳定 seam 没错，但里面的双向 DTO 搬运说明 canonical seam 还背着兼容桥角色。
-- `tests/CMakeLists.txt`：closeout gate 和历史 unit bundle 混放，后续测试清理都要从这里切。
-- `tests/unit/domain/dispensing/DispensePackagingBoundaryTest.cpp`：这是“好证据”和“坏守护”混在一起的 gate 文件，不拆就会把 residual 锁死。
+- `tests/CMakeLists.txt`：当前已把 closeout gate、residual regression 与 shared-adjacent regression 分 lane；后续若继续推进，应只做结构性残余迁移，不应把这些回归重新混回 `unit`。
 
 ## 6. False Friends
 
@@ -107,16 +97,11 @@
 
 ### 测试阻塞
 
-- `tests/CMakeLists.txt:3-18` 的 `unit_tests` 仍混着大量 residual noise。
-- `DispensePackagingBoundaryTest.cpp:28-58` 把 residual topology 当成 boundary gate。
-- `PlanningAssemblyTestFixtures.h:3-5` 仍耦合 internal/workflow 双 type plane。
-- `tests/contract`、`tests/integration`、`tests/regression` 仍是空壳目录，不支撑 owner closeout 证据。
+- 当前无独立测试目录/target 组织阻塞；后续风险主要来自结构性残余，而不是 test lane 语义。
 
 ### 文档/命名阻塞
 
-- `module.yaml:13-16` 仍写旧 runtime/provider 口径。
-- `domain/dispensing/README.md:3-15` 与 `application/dispensing/README.md:3,7` 仍把 process-control/阀控当正式 owner 面。
-- `README.md:52-55` 的 closeout 叙述已与实际测试代码不一致。
+- 当前无独立文档/命名阻塞；README、module.yaml 与 tests lane 口径已对齐到现状事实。
 
 ## 8. No-Change Zone
 
@@ -127,7 +112,7 @@
 - `application/include/application/services/dispensing/WorkflowPlanningAssemblyOperations.h:8-18` 是当前 workflow-facing 稳定 seam，应保持。
 - `application/include/application/services/dispensing/WorkflowPlanningAssemblyTypes.h:20-148` 是当前 workflow-facing 类型面，应保持。
 - `application/include/application/services/dispensing/AuthorityPreviewAssemblyService.h`、`ExecutionAssemblyService.h`、`PlanningArtifactExportAssemblyService.h`、`WorkflowPlanningAssemblyOperationsProvider.h` 作为当前稳定 public service/provider 名称面应保持。
-- `tests/unit/application/services/dispensing/WorkflowPlanningAssemblyOperationsContractTest.cpp` 与 `tests/unit/application/services/dispensing/PreviewSnapshotServiceTest.cpp` 当前是最接近 owner closeout 的证据，不应在本轮扩散处理。
+- `tests/contract/application/services/dispensing/WorkflowPlanningAssemblyOperationsContractTest.cpp` 与 `tests/unit/application/services/dispensing/PreviewSnapshotServiceTest.cpp` 当前是最接近 owner closeout 的证据，不应在本轮扩散处理。
 
 ## 9. Next-Phase Input
 
@@ -143,12 +128,10 @@
 - Batch D1：`application/include/dispense_packaging/application/services/dispensing/PlanningAssemblyTypes.h`
 - Batch D2：`domain/dispensing/model/ModelService.h`、`domain/dispensing/simulation/SimulationRecordStore.h`、`domain/dispensing/compensation/TriggerStrategy.h`
 - Batch D3：`domain/dispensing/domain-services/PositionTriggerController.h/.cpp`
-- Batch D4：`tests/contract/.gitkeep`、`tests/integration/.gitkeep`、`tests/regression/.gitkeep`
 - Batch D5：`PlanningArtifactExportPort.h` 的 compat 面，在 consumer 切换完成后删除
 
 ### rename batches
 
-- Batch R1：`module.yaml`、`README.md`、`domain/dispensing/README.md`、`application/dispensing/README.md` 的旧 runtime/provider/PreviewSnapshot 口径
 - Batch R2：`ValveCoordinationUseCase.h` 中 `ValveTiming*` 命名与 owner artifact 口径对齐或显式降级为 compat 名称
 
 ### contract freeze items
@@ -161,7 +144,4 @@
 
 ### test realignment items
 
-- Item T1：拆分 `tests/unit/domain/dispensing/DispensePackagingBoundaryTest.cpp`，把 owner closeout 断言与 residual acceptance 断言分离
-- Item T2：从 `siligen_dispense_packaging_unit_tests` 中剥离 residual noise 批次
-- Item T3：保留 owner 证据主轴为 `tests/unit/application/services/dispensing/WorkflowPlanningAssemblyOperationsContractTest.cpp`、`tests/unit/application/services/dispensing/PreviewSnapshotServiceTest.cpp`，以及 `AuthorityTriggerLayoutPlanner/TriggerPlanner` 相关 owner 测试子集
-- Item T4：让测试目录结构与实际 closeout gate 一致，不再用空壳目录占位
+- 当前 test lane 与 closeout gate 目录语义已对齐；下一批无需再把测试目录重整作为主任务。
