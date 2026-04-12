@@ -22,7 +22,8 @@ struct PlanningArtifactExportAssemblyInput {
 
 class PlanningArtifactExportAssemblyService {
 public:
-    PlanningArtifactExportRequest BuildRequest(const PlanningArtifactExportAssemblyInput& input) const;
+    Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest BuildRequest(
+        const PlanningArtifactExportAssemblyInput& input) const;
 };
 
 }  // namespace Siligen::Application::Services::Dispensing

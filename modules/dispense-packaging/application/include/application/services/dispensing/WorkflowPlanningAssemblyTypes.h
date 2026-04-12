@@ -109,7 +109,7 @@ struct WorkflowExecutionAssemblyResult {
     bool execution_binding_ready = false;
     std::string execution_failure_reason;
     Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
-    PlanningArtifactExportRequest export_request;
+    Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest export_request;
 };
 
 struct WorkflowPlanningAssemblyRequest {
@@ -144,7 +144,7 @@ struct WorkflowPlanningAssemblyResult {
     Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
     std::vector<WorkflowAuthorityTriggerPoint> authority_trigger_points;
     std::vector<WorkflowSpacingValidationGroup> spacing_validation_groups;
-    PlanningArtifactExportRequest export_request;
+    Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest export_request;
 };
 
 }  // namespace Siligen::Application::Services::Dispensing

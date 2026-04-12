@@ -6,6 +6,8 @@
 
 - 承接 `TriggerPlan`、`DispensingPlan`、`ExecutionPackage`、`PlanningArtifactExportRequest`、
   `AuthorityTriggerLayout` 的正式 owner 语义。
+- `PlanningArtifactExportRequest` 仅以 `domain/dispensing/contracts` canonical namespace
+  对外暴露，不再提供 application namespace alias。
 - 负责 preview payload 组装、执行包 built/validated 转换与离线校验边界。
 - 向 `M9 runtime-execution` 输出可消费但不可回写的执行准备事实。
 - `DispenseTimingPlan` 仅作为历史术语保留在旧文档中，不再对应新的 live 类型或 public API。
@@ -19,6 +21,8 @@
 
 - `M6`、`M7` 只提供上游路径与运动结果，不在 `M8` 内继续编译 `*Planner*` / `*Optimization*` 规划实现。
 - `M9 runtime-execution` 只能消费 `ExecutionPackage`，不得把 `built` 结果伪装成 `validated`。
+- planning artifact export 的 port/result contract 由 `M9 runtime-execution` owner；
+  `M8` 仅 owner request contract 与 request assembly。
 - `workflow` 只能编排 `M8` 的 public service，不再自建 `PlanningArtifactExportRequest` 组装逻辑。
 - 跨模块稳定工程契约应维护在 `shared/contracts/engineering/`，本目录仅承载 `M8` 专属契约。
 

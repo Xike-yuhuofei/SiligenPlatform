@@ -210,6 +210,21 @@ TEST(DispensePackagingBoundaryTest, PlanningArtifactExportCompatHeaderIsRemovedF
     EXPECT_FALSE(fs::exists(compat_header));
 }
 
+TEST(DispensePackagingBoundaryTest, PlanningArtifactExportRequestRemainsContractOwnedWithoutAppAlias) {
+    const fs::path repo_root = RepoRoot();
+    const std::string contract_header = ReadTextFile(
+        repo_root / "modules/dispense-packaging/contracts/include/domain/dispensing/contracts/PlanningArtifactExportRequest.h");
+    const std::string runtime_port_header = ReadTextFile(
+        repo_root / "modules/runtime-execution/application/include/runtime_execution/application/services/dispensing/PlanningArtifactExportPort.h");
+
+    EXPECT_EQ(contract_header.find("namespace Siligen::Application::Services::Dispensing"), std::string::npos);
+    EXPECT_EQ(contract_header.find("using PlanningArtifactExportRequest ="), std::string::npos);
+    EXPECT_NE(
+        runtime_port_header.find("Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest"),
+        std::string::npos);
+    EXPECT_EQ(runtime_port_header.find("const PlanningArtifactExportRequest& request"), std::string::npos);
+}
+
 TEST(DispensePackagingBoundaryTest, LocalWorkflowPlanningTypesHeaderOwnsCanonicalWorkflowDtoDefinitions) {
     const fs::path repo_root = RepoRoot();
     const std::string content = ReadTextFile(

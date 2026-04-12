@@ -20,7 +20,7 @@ class IPlanningArtifactExportPort {
     virtual ~IPlanningArtifactExportPort() = default;
 
     virtual Shared::Types::Result<PlanningArtifactExportResult> Export(
-        const PlanningArtifactExportRequest& request) = 0;
+        const Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest& request) = 0;
 };
 
 }  // namespace Siligen::Application::Services::Dispensing

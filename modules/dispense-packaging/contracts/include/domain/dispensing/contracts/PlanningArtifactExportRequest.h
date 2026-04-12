@@ -20,9 +20,3 @@ struct PlanningArtifactExportRequest {
 };
 
 }  // namespace Siligen::Domain::Dispensing::Contracts
-
-namespace Siligen::Application::Services::Dispensing {
-
-using PlanningArtifactExportRequest = Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest;
-
-}  // namespace Siligen::Application::Services::Dispensing

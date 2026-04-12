@@ -18,8 +18,8 @@
 namespace {
 
 using IPlanningArtifactExportPort = Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort;
-using PlanningArtifactExportRequest = Siligen::Application::Services::Dispensing::PlanningArtifactExportRequest;
 using PlanningArtifactExportResult = Siligen::Application::Services::Dispensing::PlanningArtifactExportResult;
+using PlanningArtifactExportRequest = Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest;
 using ProcessPath = Siligen::ProcessPath::Contracts::ProcessPath;
 using ProcessSegment = Siligen::ProcessPath::Contracts::ProcessSegment;
 using ProcessTag = Siligen::ProcessPath::Contracts::ProcessTag;
