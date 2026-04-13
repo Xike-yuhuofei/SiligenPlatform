@@ -395,17 +395,44 @@
       },
       "resultSchema": {
         "type": "object",
-        "required": ["stopped", "job_id"],
+        "required": ["stopped", "job_id", "transition_state", "message"],
         "properties": {
           "stopped": { "type": "boolean" },
           "job_id": { "type": "string" },
-          "transition_state": { "type": "string" }
+          "transition_state": { "type": "string" },
+          "message": { "type": "string" }
         },
         "additionalProperties": false
       },
       "errorCodes": [2911, 2912, 2913],
       "consumers": [
         "hmi-client CommandProtocol.dxf_job_stop"
+      ]
+    },
+    {
+      "method": "dxf.job.cancel",
+      "kind": "command",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {
+          "job_id": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["cancelled", "job_id", "transition_state", "message"],
+        "properties": {
+          "cancelled": { "type": "boolean" },
+          "job_id": { "type": "string" },
+          "transition_state": { "type": "string" },
+          "message": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [2914, 2915, 2916],
+      "consumers": [
+        "hmi-client CommandProtocol.dxf_job_cancel"
       ]
     }
   ]

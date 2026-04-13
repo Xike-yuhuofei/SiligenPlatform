@@ -20,6 +20,23 @@ constexpr auto kPauseTransitionPoll = std::chrono::milliseconds(50);
 constexpr int kStopSettleTimeoutMs = 2000;
 constexpr int kStopSettlePollMs = 20;
 
+bool IsSupportedTransitionRequest(ExecutionTransitionState state) {
+    return state == ExecutionTransitionState::STOPPING ||
+           state == ExecutionTransitionState::CANCELING;
+}
+
+ExecutionTransitionSnapshot BuildTransitionSnapshot(
+    const RuntimeJobStatusResponse& status,
+    bool accepted,
+    std::string message = std::string()) {
+    ExecutionTransitionSnapshot snapshot;
+    snapshot.accepted = accepted;
+    snapshot.job_id = status.job_id;
+    snapshot.transition_state = status.transition_state;
+    snapshot.message = message.empty() ? status.error_message : std::move(message);
+    return snapshot;
+}
+
 const char* TaskStateCode(TaskState state) {
     switch (state) {
         case TaskState::PENDING:
@@ -175,23 +192,40 @@ Result<void> DispensingExecutionUseCase::Impl::ResumeJob(const JobID& job_id) {
     return Result<void>::Success();
 }
 
-Result<void> DispensingExecutionUseCase::Impl::StopJob(const JobID& job_id) {
+Result<ExecutionTransitionSnapshot> DispensingExecutionUseCase::Impl::RequestJobTransition(
+    const JobID& job_id,
+    ExecutionTransitionState requested_transition_state) {
+    if (!IsSupportedTransitionRequest(requested_transition_state)) {
+        return Result<ExecutionTransitionSnapshot>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "unsupported job transition request", "DispensingExecutionUseCase"));
+    }
+
     std::shared_ptr<JobExecutionContext> context;
     {
         std::lock_guard<std::mutex> lock(jobs_mutex_);
         auto it = jobs_.find(job_id);
         if (it == jobs_.end()) {
-            return Result<void>::Failure(
+            return Result<ExecutionTransitionSnapshot>::Failure(
             Error(ErrorCode::NOT_FOUND, "job not found", "DispensingExecutionUseCase"));
         }
         context = it->second;
     }
 
     const auto state = context->state.load();
-    if (IsTerminalJobState(state) || state == JobState::STOPPING) {
-        return Result<void>::Success();
+    if (IsTerminalJobState(state)) {
+        return Result<ExecutionTransitionSnapshot>::Success(BuildTransitionSnapshot(
+            BuildJobStatusResponse(context),
+            false,
+            "job already finished"));
+    }
+    if (state == JobState::STOPPING) {
+        context->requested_transition_state.store(requested_transition_state);
+        return Result<ExecutionTransitionSnapshot>::Success(BuildTransitionSnapshot(
+            BuildJobStatusResponse(context),
+            true));
     }
 
+    context->requested_transition_state.store(requested_transition_state);
     context->stop_requested.store(true);
     context->pause_requested.store(false);
     context->state.store(JobState::STOPPING);
@@ -216,14 +250,16 @@ Result<void> DispensingExecutionUseCase::Impl::StopJob(const JobID& job_id) {
             if (active_task_context) {
                 const auto task_state = ResolveVisibleState(active_task_context);
                 if (task_state == TaskState::CANCELLED || task_state == TaskState::COMPLETED) {
-                    return Result<void>::Success();
+                    return Result<ExecutionTransitionSnapshot>::Success(BuildTransitionSnapshot(
+                        BuildJobStatusResponse(context),
+                        true));
                 }
                 if (task_state == TaskState::FAILED) {
                     auto failure_message = ReadTaskErrorMessage(active_task_context);
                     if (failure_message.empty()) {
                         failure_message = cancel_result.GetError().GetMessage();
                     }
-                    return Result<void>::Failure(
+                    return Result<ExecutionTransitionSnapshot>::Failure(
                         Error(
                             ErrorCode::HARDWARE_ERROR,
                             "failure_stage=stop_cancel_forward;failure_code=TASK_FAILED;message=" +
@@ -233,10 +269,13 @@ Result<void> DispensingExecutionUseCase::Impl::StopJob(const JobID& job_id) {
             }
 
             if (IsTerminalJobState(context->state.load())) {
-                return Result<void>::Success();
+                return Result<ExecutionTransitionSnapshot>::Success(BuildTransitionSnapshot(
+                    BuildJobStatusResponse(context),
+                    false,
+                    "job already finished"));
             }
 
-            return Result<void>::Failure(
+            return Result<ExecutionTransitionSnapshot>::Failure(
                 Error(
                     cancel_result.GetError().GetCode(),
                     "failure_stage=stop_cancel_forward;failure_code=" +
@@ -244,6 +283,17 @@ Result<void> DispensingExecutionUseCase::Impl::StopJob(const JobID& job_id) {
                         ";message=" + cancel_result.GetError().GetMessage(),
                     "DispensingExecutionUseCase"));
         }
+    }
+
+    return Result<ExecutionTransitionSnapshot>::Success(BuildTransitionSnapshot(
+        BuildJobStatusResponse(context),
+        true));
+}
+
+Result<void> DispensingExecutionUseCase::Impl::StopJob(const JobID& job_id) {
+    auto transition_result = RequestJobTransition(job_id, ExecutionTransitionState::STOPPING);
+    if (transition_result.IsError()) {
+        return Result<void>::Failure(transition_result.GetError());
     }
 
     return Result<void>::Success();

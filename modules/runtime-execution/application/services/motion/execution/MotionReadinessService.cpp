@@ -93,6 +93,8 @@ MotionReadinessResult MakeBlockedResult(
 
 const char* ToString(ExecutionTransitionState state) noexcept {
     switch (state) {
+        case ExecutionTransitionState::PENDING:
+            return "pending";
         case ExecutionTransitionState::RUNNING:
             return "running";
         case ExecutionTransitionState::STOPPING:
@@ -126,6 +128,9 @@ ExecutionTransitionState ParseExecutionTransitionState(std::string_view state) n
     }
     if (normalized == "running") {
         return ExecutionTransitionState::RUNNING;
+    }
+    if (normalized == "pending") {
+        return ExecutionTransitionState::PENDING;
     }
     if (normalized == "stopping") {
         return ExecutionTransitionState::STOPPING;

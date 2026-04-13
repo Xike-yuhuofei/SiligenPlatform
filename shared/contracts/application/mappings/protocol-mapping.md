@@ -29,7 +29,8 @@
 | `dxf.job.status` | 查询 | `CommandProtocol.dxf_get_job_status()` | `HandleDxfJobStatus` | 无 | `state` / `overall_progress_percent` / `completed_count` | 作为运行态查询主入口，替代旧 `dxf.progress` |
 | `dxf.job.pause` | 命令 | `CommandProtocol.dxf_job_pause()` | `HandleDxfJobPause` | 无 | `paused` / `job_id` | 支持显式 `job_id`，缺省时回退当前活动 job |
 | `dxf.job.resume` | 命令 | `CommandProtocol.dxf_job_resume()` | `HandleDxfJobResume` | 无 | `resumed` / `job_id` | 支持显式 `job_id`，缺省时回退当前活动 job |
-| `dxf.job.stop` | 命令 | `CommandProtocol.dxf_job_stop()` | `HandleDxfJobStop` | 无 | `stopped` / `job_id` / `transition_state` | 停止 canonical job，并同步清理当前活动 job 缓存 |
+| `dxf.job.stop` | 命令 | `CommandProtocol.dxf_job_stop()` | `HandleDxfJobStop` | 无 | `stopped` / `job_id` / `transition_state` / `message` | 停止 canonical job；结果来自 owner transition surface，即使已完成/未接受也返回当前过渡态与说明 |
+| `dxf.job.cancel` | 命令 | `CommandProtocol.dxf_job_cancel()` | `HandleDxfJobCancel` | 无 | `cancelled` / `job_id` / `transition_state` / `message` | 取消 canonical job；结果来自 owner transition surface，即使已完成/未接受也返回当前过渡态与说明 |
 | `dxf.info` | 查询 | `CommandProtocol.dxf_get_info()` | `HandleDxfInfo` | `DXF_PLAN` 结果侧等价 | `total_length` / `total_segments` / `bounds` | 与 HMI UI 段数读取字段已对齐 |
 
 ### `dxf.preview` authority gate

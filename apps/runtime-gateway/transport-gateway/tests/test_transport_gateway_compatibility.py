@@ -485,6 +485,31 @@ def test_home_auto_command_is_registered_and_uses_supervisor_chain():
     assert "motion_control_use_case_->EnsureAxesReadyZero(request)" in facade_impl
 
 
+def test_manual_readiness_gate_uses_typed_job_transition_owner_state():
+    dispatcher_source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    dispatcher_header = TCP_DISPATCHER_HEADER.read_text(encoding="utf-8")
+    facade_header = TCP_DISPENSING_FACADE_HEADER.read_text(encoding="utf-8")
+    facade_impl = TCP_DISPENSING_FACADE_CPP.read_text(encoding="utf-8")
+
+    assert "GetDxfJobTransitionState(" in facade_header
+    assert "Shared::Types::Result<UseCases::Dispensing::ExecutionTransitionState>" in facade_header
+    assert "dxf_execute_use_case_->GetJobStatus(job_id)" in facade_impl
+    assert "runtime_result.Value().transition_state" in facade_impl
+    assert "ResolveActiveDxfJobTransitionState() const;" in dispatcher_header
+    assert "BuildReadinessQuery(ResolveActiveDxfJobTransitionState())" in dispatcher_source
+
+    resolve_match = re.search(
+        r"TcpCommandDispatcher::ResolveActiveDxfJobTransitionState\(\) const \{(?P<body>.*?)\n\}",
+        dispatcher_source,
+        re.S,
+    )
+    assert resolve_match, "cannot locate ResolveActiveDxfJobTransitionState body"
+    resolve_body = resolve_match.group("body")
+    assert "GetDxfJobTransitionState(job_id)" in resolve_body
+    assert "GetDxfJobStatus(job_id)" not in resolve_body
+    assert ".state" not in resolve_body
+
+
 def test_home_go_uses_ready_zero_configuration_and_rejects_speed_override():
     source = TCP_DISPATCHER.read_text(encoding="utf-8")
 
@@ -538,6 +563,7 @@ def main():
         test_move_prechecks_directional_limits_before_dispatch,
         test_home_command_exposes_axis_level_results,
         test_home_auto_command_is_registered_and_uses_supervisor_chain,
+        test_manual_readiness_gate_uses_typed_job_transition_owner_state,
         test_home_go_uses_ready_zero_configuration_and_rejects_speed_override,
         test_jog_allows_positive_escape_when_home_is_active_but_axis_not_homed,
     ]

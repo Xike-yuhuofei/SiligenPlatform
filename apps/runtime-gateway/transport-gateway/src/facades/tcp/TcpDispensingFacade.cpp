@@ -111,6 +111,23 @@ Shared::Types::Result<UseCases::Dispensing::JobStatusResponse> TcpDispensingFaca
         ToWorkflowJobStatus(runtime_result.Value()));
 }
 
+Shared::Types::Result<UseCases::Dispensing::ExecutionTransitionState> TcpDispensingFacade::GetDxfJobTransitionState(
+    const UseCases::Dispensing::JobID& job_id) const {
+    auto runtime_result = dxf_execute_use_case_->GetJobStatus(job_id);
+    if (runtime_result.IsError()) {
+        return Shared::Types::Result<UseCases::Dispensing::ExecutionTransitionState>::Failure(
+            runtime_result.GetError());
+    }
+    return Shared::Types::Result<UseCases::Dispensing::ExecutionTransitionState>::Success(
+        runtime_result.Value().transition_state);
+}
+
+Shared::Types::Result<UseCases::Dispensing::ExecutionTransitionSnapshot> TcpDispensingFacade::RequestDxfJobTransition(
+    const UseCases::Dispensing::JobID& job_id,
+    UseCases::Dispensing::ExecutionTransitionState requested_transition_state) {
+    return dxf_execute_use_case_->RequestJobTransition(job_id, requested_transition_state);
+}
+
 Shared::Types::Result<void> TcpDispensingFacade::PauseDxfJob(
     const UseCases::Dispensing::JobID& job_id) {
     return dxf_execute_use_case_->PauseJob(job_id);

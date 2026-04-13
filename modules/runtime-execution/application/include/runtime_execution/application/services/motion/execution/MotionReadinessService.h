@@ -19,6 +19,7 @@ using Siligen::Shared::Types::Result;
 
 enum class ExecutionTransitionState {
     UNSPECIFIED = 0,
+    PENDING,
     RUNNING,
     STOPPING,
     CANCELING,
