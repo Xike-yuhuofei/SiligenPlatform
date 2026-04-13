@@ -1,3 +1,4 @@
 #pragma once
 
-#include "../../../../domain/dispensing/ports/ITaskSchedulerPort.h"
+// Compatibility forwarder; canonical owner lives in runtime-execution runtime contracts.
+#include "runtime_execution/contracts/dispensing/ITaskSchedulerPort.h"

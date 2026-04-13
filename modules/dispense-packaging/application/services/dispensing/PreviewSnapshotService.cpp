@@ -1,6 +1,6 @@
 #include "application/services/dispensing/PreviewSnapshotService.h"
 
-#include "domain/dispensing/planning/domain-services/CurveFlatteningService.h"
+#include "application/services/dispensing/PreviewSnapshotResidualProcessPath.h"
 #include "domain/dispensing/value-objects/AuthorityTriggerLayout.h"
 #include "process_path/contracts/ProcessPath.h"
 
@@ -469,33 +469,6 @@ std::vector<Point2D> BuildPointVectorFromTrajectory(
     return points;
 }
 
-std::vector<Point2D> BuildPointVectorFromProcessPath(
-    const Siligen::ProcessPath::Contracts::ProcessPath& process_path) {
-    std::vector<Point2D> points;
-    Siligen::Domain::Dispensing::DomainServices::CurveFlatteningService flattening_service;
-    constexpr float32 kProcessPathSplineErrorMm = 0.05f;
-    constexpr float32 kProcessPathSampleStepMm = 1.0f;
-
-    for (const auto& process_segment : process_path.segments) {
-        const auto& geometry = process_segment.geometry;
-        if (geometry.is_point) {
-            AppendDistinctPoint(points, geometry.line.start);
-            continue;
-        }
-
-        const auto flatten_result =
-            flattening_service.Flatten(geometry, kProcessPathSplineErrorMm, kProcessPathSampleStepMm);
-        if (flatten_result.IsError()) {
-            continue;
-        }
-        for (const auto& point : flatten_result.Value().points) {
-            AppendDistinctPoint(points, point);
-        }
-    }
-
-    return points;
-}
-
 void CopyPreviewPolyline(
     const std::vector<Point2D>& points,
     std::vector<PreviewSnapshotPoint>& target) {
@@ -575,7 +548,7 @@ PreviewSnapshotResponse PreviewSnapshotService::BuildResponse(
             : "execution_trajectory_geometry_preserving";
         CopyPreviewPolyline(motion_polyline, response.motion_preview_polyline);
     } else if (input.process_path != nullptr && !input.process_path->segments.empty()) {
-        motion_points = BuildPointVectorFromProcessPath(*input.process_path);
+        motion_points = Internal::BuildPreviewProcessPathPoints(*input.process_path);
         response.motion_preview_source = "process_path_snapshot";
         response.motion_preview_kind = "polyline";
         auto motion_polyline = ClampPolylineByMaxPointsPreserveCorners(motion_points, max_polyline_points);

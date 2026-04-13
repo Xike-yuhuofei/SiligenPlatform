@@ -1,4 +1,5 @@
 #include "application/services/dispensing/PreviewSnapshotService.h"
+#include "process_path/contracts/ProcessPath.h"
 
 #include <gtest/gtest.h>
 
@@ -10,6 +11,10 @@ namespace {
 using Siligen::Application::Services::Dispensing::PreviewSnapshotInput;
 using Siligen::Application::Services::Dispensing::PreviewSnapshotResponse;
 using Siligen::Application::Services::Dispensing::PreviewSnapshotService;
+using Siligen::ProcessPath::Contracts::ProcessPath;
+using Siligen::ProcessPath::Contracts::ProcessSegment;
+using Siligen::ProcessPath::Contracts::Segment;
+using Siligen::ProcessPath::Contracts::SegmentType;
 using Siligen::Shared::Types::Point2D;
 
 std::vector<Siligen::TrajectoryPoint> BuildTrajectory(const std::vector<Point2D>& points) {
@@ -34,6 +39,22 @@ PreviewSnapshotInput BuildInput(const std::vector<Siligen::TrajectoryPoint>& tra
     input.estimated_time_s = 1.0f;
     input.generated_at = "2026-03-28T00:00:01Z";
     input.trajectory_points = &trajectory;
+    return input;
+}
+
+PreviewSnapshotInput BuildProcessPathInput(const ProcessPath& process_path) {
+    PreviewSnapshotInput input;
+    input.snapshot_id = "snapshot-process-path";
+    input.snapshot_hash = "fp-process-path";
+    input.plan_id = "plan-process-path";
+    input.preview_state = "snapshot_ready";
+    input.confirmed_at = "2026-03-28T00:00:00Z";
+    input.segment_count = static_cast<std::uint32_t>(process_path.segments.size());
+    input.point_count = 0U;
+    input.total_length_mm = 12.0f;
+    input.estimated_time_s = 1.0f;
+    input.generated_at = "2026-03-28T00:00:01Z";
+    input.process_path = &process_path;
     return input;
 }
 
@@ -167,4 +188,30 @@ TEST(PreviewSnapshotServiceTest, BuildResponseDoesNotForceCornerVerticesIntoFixe
     EXPECT_LE(CountSnapshotPointsNear(payload, 100.0f, 0.0f, 3.5f), 2U);
     EXPECT_LE(CountSnapshotPointsNear(payload, 100.0f, 102.0f, 3.5f), 2U);
     EXPECT_LE(CountSnapshotPointsNear(payload, 0.0f, 102.0f, 3.5f), 2U);
+}
+
+TEST(PreviewSnapshotServiceTest, BuildResponseBuildsMotionPreviewFromProcessPathSnapshot) {
+    PreviewSnapshotService service;
+    Segment line_segment;
+    line_segment.type = SegmentType::Line;
+    line_segment.line.start = Point2D(0.0f, 0.0f);
+    line_segment.line.end = Point2D(12.0f, 0.0f);
+    line_segment.length = 12.0f;
+
+    ProcessSegment process_segment;
+    process_segment.geometry = line_segment;
+
+    ProcessPath process_path;
+    process_path.segments.push_back(process_segment);
+
+    const auto input = BuildProcessPathInput(process_path);
+
+    const auto payload = service.BuildResponse(input, 64, 8);
+
+    EXPECT_EQ(payload.motion_preview_source, "process_path_snapshot");
+    EXPECT_EQ(payload.motion_preview_kind, "polyline");
+    EXPECT_GT(payload.motion_preview_source_point_count, 0U);
+    EXPECT_EQ(payload.motion_preview_point_count, payload.motion_preview_polyline.size());
+    EXPECT_TRUE(SnapshotContainsPoint(payload, 0.0f, 0.0f, 1e-4f));
+    EXPECT_TRUE(SnapshotContainsPoint(payload, 12.0f, 0.0f, 1e-4f));
 }

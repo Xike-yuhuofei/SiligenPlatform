@@ -18,6 +18,13 @@ if(NOT TARGET siligen_process_planning_contracts_public)
     )
 endif()
 
+if(NOT TARGET siligen_process_path_contracts_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../process-path/contracts"
+        "${CMAKE_BINARY_DIR}/_p/dpd_ppathc"
+    )
+endif()
+
 if(NOT TARGET siligen_motion_planning_contracts_public)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../../../motion-planning/contracts"
@@ -32,16 +39,17 @@ if(NOT TARGET siligen_dispense_packaging_contracts_public)
     )
 endif()
 
-if(NOT TARGET siligen_motion_planning_application_public AND NOT TARGET siligen_motion_planning_application)
-    add_subdirectory(
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../../motion-planning/application"
-        "${CMAKE_BINARY_DIR}/_p/dpd_mpa"
-    )
-endif()
 if(NOT TARGET siligen_runtime_execution_runtime_contracts)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime-execution/contracts/runtime"
         "${CMAKE_BINARY_DIR}/_p/dpd_rerc"
+    )
+endif()
+
+if(NOT TARGET siligen_motion_planning_application_public AND NOT TARGET siligen_motion_planning_application)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../motion-planning/application"
+        "${CMAKE_BINARY_DIR}/_p/dpd_mpa"
     )
 endif()
 
@@ -55,45 +63,77 @@ include_directories(BEFORE
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
 )
 
-set(SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime-execution/contracts/runtime/include"
-)
-if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}/runtime_execution/contracts/motion/IInterpolationPort.h")
-    message(FATAL_ERROR
-        "dispense-packaging requires runtime-execution runtime contracts include root: "
-        "${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}"
-    )
-endif()
-
 if(NOT TARGET siligen_dispense_packaging_domain_dispensing)
     add_library(siligen_dispense_packaging_domain_dispensing INTERFACE)
 endif()
 target_include_directories(siligen_dispense_packaging_domain_dispensing BEFORE INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
-    ${SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
 target_link_libraries(siligen_dispense_packaging_domain_dispensing INTERFACE
     siligen_dispense_packaging_contracts_public
     siligen_types
     siligen_utils
-    siligen_motion_planning_contracts_public
-    siligen_process_path_contracts_public
-    siligen_process_planning_contracts_public
+)
+target_compile_features(siligen_dispense_packaging_domain_dispensing INTERFACE cxx_std_17)
+
+if(NOT TARGET siligen_dispense_packaging_domain_dispensing_planning_residual_headers)
+    add_library(siligen_dispense_packaging_domain_dispensing_planning_residual_headers INTERFACE)
+endif()
+target_include_directories(siligen_dispense_packaging_domain_dispensing_planning_residual_headers BEFORE INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../..
+    ${SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR}
+    ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
+)
+target_link_libraries(siligen_dispense_packaging_domain_dispensing_planning_residual_headers INTERFACE
+    siligen_dispense_packaging_domain_dispensing
     siligen_runtime_execution_runtime_contracts
 )
+target_compile_features(siligen_dispense_packaging_domain_dispensing_planning_residual_headers INTERFACE cxx_std_17)
+
+if(NOT TARGET siligen_dispense_packaging_domain_dispensing_execution_residual_headers)
+    add_library(siligen_dispense_packaging_domain_dispensing_execution_residual_headers INTERFACE)
+endif()
+target_include_directories(siligen_dispense_packaging_domain_dispensing_execution_residual_headers BEFORE INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../..
+    ${SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR}
+    ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
+)
+target_link_libraries(siligen_dispense_packaging_domain_dispensing_execution_residual_headers INTERFACE
+    siligen_dispense_packaging_domain_dispensing
+    siligen_runtime_execution_runtime_contracts
+    siligen_process_planning_contracts_public
+)
 if(TARGET siligen_device_contracts)
-    target_link_libraries(siligen_dispense_packaging_domain_dispensing INTERFACE
+    target_link_libraries(siligen_dispense_packaging_domain_dispensing_execution_residual_headers INTERFACE
         siligen_device_contracts
     )
 endif()
-target_compile_features(siligen_dispense_packaging_domain_dispensing INTERFACE cxx_std_17)
+target_compile_features(siligen_dispense_packaging_domain_dispensing_execution_residual_headers INTERFACE cxx_std_17)
+
+if(NOT TARGET siligen_dispense_packaging_compensation_residual)
+    add_library(siligen_dispense_packaging_compensation_residual STATIC
+        domain-services/DispenseCompensationService.cpp
+    )
+endif()
+target_include_directories(siligen_dispense_packaging_compensation_residual BEFORE PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../..
+    ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
+)
+target_link_libraries(siligen_dispense_packaging_compensation_residual PUBLIC
+    siligen_dispense_packaging_domain_dispensing_execution_residual_headers
+    siligen_types
+    siligen_utils
+)
+target_compile_features(siligen_dispense_packaging_compensation_residual PUBLIC cxx_std_17)
 
 if(NOT TARGET siligen_dispense_packaging_execution_residual)
     add_library(siligen_dispense_packaging_execution_residual STATIC
         domain-services/CMPTriggerService.cpp
-        domain-services/DispenseCompensationService.cpp
         domain-services/PurgeDispenserProcess.cpp
         domain-services/ValveCoordinationService.cpp
         domain-services/DispensingController.cpp
@@ -104,57 +144,45 @@ endif()
 target_include_directories(siligen_dispense_packaging_execution_residual BEFORE PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
-    ${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
 target_link_libraries(siligen_dispense_packaging_execution_residual PUBLIC
-    siligen_dispense_packaging_domain_dispensing
+    siligen_dispense_packaging_domain_dispensing_execution_residual_headers
     siligen_types
     siligen_utils
-    siligen_process_planning_contracts_public
 )
-if(TARGET siligen_device_contracts)
-    target_link_libraries(siligen_dispense_packaging_execution_residual PUBLIC
-        siligen_device_contracts
-    )
-endif()
+target_link_libraries(siligen_dispense_packaging_execution_residual PRIVATE
+    siligen_dispense_packaging_compensation_residual
+)
 target_compile_features(siligen_dispense_packaging_execution_residual PUBLIC cxx_std_17)
 
-if(NOT TARGET siligen_dispense_packaging_planning_residual)
-    add_library(siligen_dispense_packaging_planning_residual STATIC
+if(NOT TARGET siligen_dispense_packaging_planning_owner_residual)
+    add_library(siligen_dispense_packaging_planning_owner_residual STATIC
         domain-services/ArcTriggerPointCalculator.cpp
-        domain-services/PathOptimizationStrategy.cpp
         domain-services/TriggerPlanner.cpp
         planning/domain-services/AuthorityTriggerLayoutPlanner.cpp
         planning/domain-services/ClosedLoopAnchorConstraintSolver.cpp
         planning/domain-services/ClosedLoopCornerAnchorResolver.cpp
-        planning/domain-services/ContourOptimizationService.cpp
         planning/domain-services/CurveFlatteningService.cpp
-        planning/domain-services/DispensingPlannerService.cpp
         planning/domain-services/PathArcLengthLocator.cpp
         planning/domain-services/TopologyComponentClassifier.cpp
         planning/domain-services/TopologySpanSplitter.cpp
-        planning/domain-services/UnifiedTrajectoryPlannerService.cpp
     )
 endif()
-target_include_directories(siligen_dispense_packaging_planning_residual BEFORE PUBLIC
+target_include_directories(siligen_dispense_packaging_planning_owner_residual BEFORE PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
-    ${SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR}
     ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
 )
-target_link_libraries(siligen_dispense_packaging_planning_residual PUBLIC
-    siligen_dispense_packaging_domain_dispensing
+target_link_libraries(siligen_dispense_packaging_planning_owner_residual PUBLIC
+    siligen_dispense_packaging_domain_dispensing_planning_residual_headers
+    siligen_process_path_contracts_public
     siligen_types
     siligen_utils
-    siligen_geometry
-    siligen_motion
-    siligen_process_path_application_public
-    ${SILIGEN_DISPENSE_PACKAGING_MOTION_PLANNING_APP_TARGET}
 )
-target_link_libraries(siligen_dispense_packaging_planning_residual PRIVATE
-    siligen_dispense_packaging_execution_residual
+target_link_libraries(siligen_dispense_packaging_planning_owner_residual PRIVATE
+    siligen_dispense_packaging_compensation_residual
 )
-target_compile_features(siligen_dispense_packaging_planning_residual PUBLIC cxx_std_17)
+target_compile_features(siligen_dispense_packaging_planning_owner_residual PUBLIC cxx_std_17)
 
 message(STATUS "[DispensePackaging::Domain::Dispensing] owner/core target and residual targets 已添加")

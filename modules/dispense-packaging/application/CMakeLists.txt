@@ -82,6 +82,101 @@ set(SILIGEN_DISPENSE_PACKAGING_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS
 )
 list(REMOVE_DUPLICATES SILIGEN_DISPENSE_PACKAGING_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS)
 
+if(NOT TARGET siligen_dispense_packaging_application_planning_common_residual)
+    add_library(siligen_dispense_packaging_application_planning_common_residual STATIC
+        services/dispensing/PlanningAssemblyResidualCommon.cpp
+    )
+endif()
+target_include_directories(siligen_dispense_packaging_application_planning_common_residual PUBLIC
+    ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_PUBLIC_INCLUDE_DIR}
+)
+target_include_directories(siligen_dispense_packaging_application_planning_common_residual PRIVATE
+    ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
+)
+target_link_libraries(siligen_dispense_packaging_application_planning_common_residual PRIVATE
+    siligen_dispense_packaging_domain_dispensing_planning_residual_headers
+    siligen_dispense_packaging_contracts_public
+    siligen_process_path_contracts_public
+    siligen_motion_planning_contracts_public
+    siligen_dispense_packaging_planning_owner_residual
+    siligen_types
+    siligen_utils
+)
+target_compile_features(siligen_dispense_packaging_application_planning_common_residual PUBLIC cxx_std_17)
+
+if(NOT TARGET siligen_dispense_packaging_application_planning_authority_residual)
+    add_library(siligen_dispense_packaging_application_planning_authority_residual STATIC
+        services/dispensing/PlanningAssemblyAuthorityArtifacts.cpp
+        services/dispensing/PreviewSnapshotResidualProcessPath.cpp
+    )
+endif()
+target_include_directories(siligen_dispense_packaging_application_planning_authority_residual PUBLIC
+    ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_PUBLIC_INCLUDE_DIR}
+)
+target_include_directories(siligen_dispense_packaging_application_planning_authority_residual PRIVATE
+    ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
+)
+target_link_libraries(siligen_dispense_packaging_application_planning_authority_residual PRIVATE
+    siligen_dispense_packaging_application_planning_common_residual
+    siligen_dispense_packaging_domain_dispensing_planning_residual_headers
+    siligen_dispense_packaging_contracts_public
+    siligen_process_path_contracts_public
+    siligen_motion_planning_contracts_public
+    siligen_dispense_packaging_planning_owner_residual
+    siligen_types
+    siligen_utils
+)
+target_compile_features(siligen_dispense_packaging_application_planning_authority_residual PUBLIC cxx_std_17)
+
+if(NOT TARGET siligen_dispense_packaging_application_planning_execution_residual)
+    add_library(siligen_dispense_packaging_application_planning_execution_residual STATIC
+        services/dispensing/PlanningAssemblyExecutionArtifacts.cpp
+        services/dispensing/PlanningAssemblyExecutionInterpolation.cpp
+        services/dispensing/PlanningAssemblyExecutionBinding.cpp
+        services/dispensing/PlanningAssemblyExecutionPackaging.cpp
+    )
+endif()
+target_include_directories(siligen_dispense_packaging_application_planning_execution_residual PUBLIC
+    ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_PUBLIC_INCLUDE_DIR}
+)
+target_include_directories(siligen_dispense_packaging_application_planning_execution_residual PRIVATE
+    ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
+)
+target_link_libraries(siligen_dispense_packaging_application_planning_execution_residual PRIVATE
+    siligen_dispense_packaging_application_planning_common_residual
+    siligen_dispense_packaging_domain_dispensing_planning_residual_headers
+    siligen_dispense_packaging_contracts_public
+    siligen_process_path_contracts_public
+    siligen_motion_planning_contracts_public
+    ${SILIGEN_DISPENSE_PACKAGING_MOTION_PLANNING_APP_TARGET}
+    siligen_types
+    siligen_utils
+)
+target_compile_features(siligen_dispense_packaging_application_planning_execution_residual PUBLIC cxx_std_17)
+
+if(NOT TARGET siligen_dispense_packaging_application_planning_residual)
+    add_library(siligen_dispense_packaging_application_planning_residual STATIC
+        services/dispensing/PlanningAssemblyResidualFacade.cpp
+    )
+endif()
+target_include_directories(siligen_dispense_packaging_application_planning_residual PUBLIC
+    ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_PUBLIC_INCLUDE_DIR}
+)
+target_include_directories(siligen_dispense_packaging_application_planning_residual PRIVATE
+    ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
+)
+target_link_libraries(siligen_dispense_packaging_application_planning_residual PRIVATE
+    siligen_dispense_packaging_application_planning_common_residual
+    siligen_dispense_packaging_application_planning_authority_residual
+    siligen_dispense_packaging_application_planning_execution_residual
+    siligen_dispense_packaging_contracts_public
+    siligen_process_path_contracts_public
+    siligen_motion_planning_contracts_public
+    siligen_types
+    siligen_utils
+)
+target_compile_features(siligen_dispense_packaging_application_planning_residual PUBLIC cxx_std_17)
+
 if(NOT TARGET siligen_dispense_packaging_application)
     add_library(siligen_dispense_packaging_application STATIC
         services/dispensing/PlanningAssemblyServices.cpp
@@ -101,7 +196,7 @@ target_link_libraries(siligen_dispense_packaging_application PUBLIC
     siligen_utils
 )
 target_link_libraries(siligen_dispense_packaging_application PRIVATE
-    siligen_dispense_packaging_domain_dispensing
+    siligen_dispense_packaging_application_planning_residual
 )
 if(TARGET siligen_dispense_packaging_contracts_public)
     target_link_libraries(siligen_dispense_packaging_application PUBLIC
@@ -116,16 +211,6 @@ endif()
 if(TARGET siligen_motion_planning_contracts_public)
     target_link_libraries(siligen_dispense_packaging_application PUBLIC
         siligen_motion_planning_contracts_public
-    )
-endif()
-if(TARGET siligen_dispense_packaging_planning_residual)
-    target_link_libraries(siligen_dispense_packaging_application PRIVATE
-        siligen_dispense_packaging_planning_residual
-    )
-endif()
-if(TARGET ${SILIGEN_DISPENSE_PACKAGING_MOTION_PLANNING_APP_TARGET})
-    target_link_libraries(siligen_dispense_packaging_application PRIVATE
-        ${SILIGEN_DISPENSE_PACKAGING_MOTION_PLANNING_APP_TARGET}
     )
 endif()
 target_compile_features(siligen_dispense_packaging_application PUBLIC cxx_std_17)

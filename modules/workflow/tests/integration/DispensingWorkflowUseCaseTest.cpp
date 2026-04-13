@@ -31,7 +31,6 @@
 #include "process_path/contracts/Primitive.h"
 #include "process_path/contracts/ProcessPath.h"
 #undef private
-#include "domain/dispensing/planning/domain-services/DispensingPlannerService.h"
 #include "dxf_geometry/application/services/dxf/DxfPbPreparationService.h"
 
 namespace {
@@ -49,6 +48,8 @@ using Siligen::Application::UseCases::Dispensing::StartJobResponse;
 using Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort;
 using Siligen::Application::Services::Dispensing::PlanningArtifactExportResult;
 using Siligen::Application::Services::DXF::DxfPbPreparationService;
+using Siligen::Domain::Dispensing::Contracts::ExecutionPackageBuilt;
+using Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated;
 using Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest;
 using Siligen::JobIngest::Contracts::IUploadFilePort;
 using Siligen::Device::Contracts::Commands::DeviceConnection;
@@ -56,8 +57,6 @@ using Siligen::Device::Contracts::Ports::DeviceConnectionPort;
 using Siligen::Device::Contracts::State::DeviceConnectionSnapshot;
 using Siligen::Device::Contracts::State::DeviceConnectionState;
 using Siligen::Device::Contracts::State::HeartbeatSnapshot;
-using Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest;
-using Siligen::Domain::Dispensing::DomainServices::DispensingPlan;
 using Siligen::Domain::Dispensing::Ports::IDispensingExecutionObserver;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionOptions;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionPlan;
@@ -271,37 +270,22 @@ PreparePlanRuntimeOverrides BuildPreparePlanRuntimeOverrides() {
     return overrides;
 }
 
-DispensingPlan BuildMinimalPlan() {
-    DispensingPlan plan;
-    plan.success = true;
-    plan.total_length_mm = 20.0f;
-    plan.estimated_time_s = 1.0f;
-    plan.trigger_interval_mm = 5.0f;
-    plan.motion_trajectory.total_length = 20.0f;
-    plan.motion_trajectory.total_time = 1.0f;
-    plan.interpolation_points.emplace_back(0.0f, 0.0f, 10.0f);
-    plan.interpolation_points.emplace_back(20.0f, 0.0f, 10.0f);
-    plan.interpolation_points.front().enable_position_trigger = true;
-    plan.interpolation_points.back().enable_position_trigger = true;
-    plan.trigger_distances_mm = {0.0f, 20.0f};
-    return plan;
-}
-
-Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated BuildMinimalExecutionPackage() {
-    const auto plan = BuildMinimalPlan();
-
-    Siligen::Domain::Dispensing::Contracts::ExecutionPackageBuilt built;
-    built.execution_plan.interpolation_points = plan.interpolation_points;
-    built.execution_plan.motion_trajectory = plan.motion_trajectory;
-    built.execution_plan.trigger_distances_mm = plan.trigger_distances_mm;
-    built.execution_plan.trigger_interval_ms = plan.trigger_interval_ms;
-    built.execution_plan.trigger_interval_mm = plan.trigger_interval_mm;
-    built.execution_plan.total_length_mm = plan.total_length_mm;
-    built.total_length_mm = plan.total_length_mm;
-    built.estimated_time_s = plan.estimated_time_s;
+ExecutionPackageValidated BuildMinimalExecutionPackage() {
+    ExecutionPackageBuilt built;
+    built.execution_plan.interpolation_points.emplace_back(0.0f, 0.0f, 10.0f);
+    built.execution_plan.interpolation_points.emplace_back(20.0f, 0.0f, 10.0f);
+    built.execution_plan.interpolation_points.front().enable_position_trigger = true;
+    built.execution_plan.interpolation_points.back().enable_position_trigger = true;
+    built.execution_plan.motion_trajectory.total_length = 20.0f;
+    built.execution_plan.motion_trajectory.total_time = 1.0f;
+    built.execution_plan.trigger_distances_mm = {0.0f, 20.0f};
+    built.execution_plan.trigger_interval_mm = 5.0f;
+    built.execution_plan.total_length_mm = 20.0f;
+    built.total_length_mm = 20.0f;
+    built.estimated_time_s = 1.0f;
     built.source_path = "artifact.pb";
     built.source_fingerprint = "artifact-fingerprint";
-    return Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated(built);
+    return ExecutionPackageValidated(built);
 }
 
 bool SpinUntil(
