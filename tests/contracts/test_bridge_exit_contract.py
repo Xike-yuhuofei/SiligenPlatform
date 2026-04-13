@@ -4,7 +4,6 @@ import sys
 import unittest
 from pathlib import Path
 import json
-import re
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
@@ -48,34 +47,37 @@ def _fixed_string_hits(pattern: str, roots: tuple[str, ...] = ("modules", "apps"
     return hits
 
 
-def _target_link_libraries_entries(cmake_text: str, target: str, scope: str) -> list[str]:
-    pattern = re.compile(
-        rf"target_link_libraries\(\s*{re.escape(target)}\s+{re.escape(scope)}\s+(.*?)\)",
-        re.DOTALL,
-    )
-    entries: list[str] = []
-    for match in pattern.finditer(cmake_text):
-        body = match.group(1)
-        entries.extend(re.findall(r"[A-Za-z0-9_:+.-]+", body))
-    return entries
+def _fixed_string_hits_outside_workflow_tests(
+    pattern: str,
+    roots: tuple[str, ...] = ("modules", "apps", "tests"),
+) -> list[str]:
+    hits: list[str] = []
+    valid_suffixes = {".h", ".hpp", ".cpp", ".cc", ".cxx", ".cmake", ".ps1", ".py"}
+    current_test_file = Path(__file__).resolve()
+    for root in roots:
+        for path in (WORKSPACE_ROOT / root).rglob("*"):
+            if not path.is_file():
+                continue
+            if path.resolve() == current_test_file:
+                continue
+            if path.name != "CMakeLists.txt" and path.suffix not in valid_suffixes:
+                continue
+            relative = path.relative_to(WORKSPACE_ROOT).as_posix()
+            if relative.startswith("modules/workflow/tests/"):
+                continue
+            if pattern in _read(path):
+                hits.append(relative)
+    return hits
 
 
-def _assert_target_link_keep_set(
-    test_case: unittest.TestCase,
-    cmake_text: str,
-    target: str,
-    scope: str,
-    expected: set[str],
-) -> None:
-    actual = set(_target_link_libraries_entries(cmake_text, target, scope))
-    test_case.assertEqual(
-        expected,
-        actual,
-        msg=(
-            f"{target} {scope} keep-set drifted; "
-            f"expected={sorted(expected)}, actual={sorted(actual)}"
-        ),
-    )
+def _extract_cmake_block(content: str, start_token: str) -> str:
+    start = content.find(start_token)
+    if start == -1:
+        return ""
+    end = content.find("\n)", start)
+    if end == -1:
+        return ""
+    return content[start:end]
 
 
 class BridgeExitContractTest(unittest.TestCase):
@@ -152,20 +154,35 @@ class BridgeExitContractTest(unittest.TestCase):
 
     def test_application_owner_wiring_has_no_reverse_mutations(self) -> None:
         workflow_application = _read(WORKSPACE_ROOT / "modules" / "workflow" / "application" / "CMakeLists.txt")
-        self.assertIn("siligen_job_ingest_contracts", workflow_application)
-        self.assertIn("siligen_dxf_geometry_application_public", workflow_application)
-        self.assertIn("siligen_runtime_execution_application_public", workflow_application)
+        self.assertIn("SILIGEN_WORKFLOW_APPLICATION_SKELETON_INCLUDE_DIR", workflow_application)
+        self.assertNotIn("SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR", workflow_application)
+        self.assertNotIn("add_library(siligen_workflow_application_headers", workflow_application)
+        self.assertNotIn("siligen_workflow_contracts_headers", workflow_application)
+        self.assertNotIn("siligen_workflow_domain_headers", workflow_application)
+        self.assertNotIn("siligen_job_ingest_contracts", workflow_application)
+        self.assertNotIn("siligen_dxf_geometry_application_public", workflow_application)
+        self.assertNotIn("siligen_runtime_execution_application_public", workflow_application)
         self.assertNotIn("siligen_runtime_execution_application_headers", workflow_application)
+        self.assertNotIn("siligen_application_redundancy", workflow_application)
+        self.assertNotIn("siligen_trace_diagnostics_contracts_public", workflow_application)
 
         runtime_execution_application = _read(
             WORKSPACE_ROOT / "modules" / "runtime-execution" / "application" / "CMakeLists.txt"
         )
+        self.assertIn("siligen_dispense_packaging_application_public", runtime_execution_application)
         self.assertIn("siligen_runtime_execution_safety_services", runtime_execution_application)
         self.assertNotIn("siligen_safety_domain_services", runtime_execution_application)
         self.assertNotIn(
             "target_include_directories(siligen_runtime_execution_runtime_contracts INTERFACE",
             runtime_execution_application,
         )
+
+        dispense_packaging_application = _read(
+            WORKSPACE_ROOT / "modules" / "dispense-packaging" / "application" / "CMakeLists.txt"
+        )
+        self.assertIn("services/dispensing/PlanningAssemblyServices.cpp", dispense_packaging_application)
+        self.assertIn("services/dispensing/PlanningAssemblyResidualFacade.cpp", dispense_packaging_application)
+        self.assertNotIn("siligen_workflow_application_headers", dispense_packaging_application)
 
         for relative, forbidden in (
             ("modules/job-ingest/CMakeLists.txt", "siligen_workflow_application_public"),
@@ -179,142 +196,261 @@ class BridgeExitContractTest(unittest.TestCase):
             ("modules/runtime-execution/application/CMakeLists.txt", "siligen_application_dispensing"),
             ("modules/workflow/tests/canonical/CMakeLists.txt", "siligen_workflow_application_public"),
             ("modules/workflow/tests/integration/CMakeLists.txt", "siligen_workflow_application_public"),
+            ("modules/workflow/tests/canonical/CMakeLists.txt", "siligen_dispense_packaging_application_public"),
+            ("modules/workflow/tests/canonical/CMakeLists.txt", "siligen_runtime_execution_application_public"),
+            ("modules/workflow/tests/integration/CMakeLists.txt", "siligen_dispense_packaging_application_public"),
+            ("modules/workflow/tests/integration/CMakeLists.txt", "siligen_runtime_execution_application_public"),
         ):
             self.assertNotIn(forbidden, _read(WORKSPACE_ROOT / relative), msg=f"{relative} must not reference {forbidden}")
 
-    def test_workflow_application_keep_set_does_not_leak_shared_kernel_helpers(self) -> None:
-        workflow_application = _read(WORKSPACE_ROOT / "modules" / "workflow" / "application" / "CMakeLists.txt")
+    def test_root_global_include_surface_excludes_workflow_internal_skeleton_roots(self) -> None:
+        root_cmake = _read(WORKSPACE_ROOT / "CMakeLists.txt")
 
-        dispensing_public = _target_link_libraries_entries(
-            workflow_application,
-            "siligen_application_dispensing",
-            "PUBLIC",
-        )
-        dispensing_private = _target_link_libraries_entries(
-            workflow_application,
-            "siligen_application_dispensing",
-            "PRIVATE",
-        )
-        self.assertIn("siligen_types", dispensing_public)
-        self.assertNotIn("siligen_utils", dispensing_public)
-        self.assertNotIn("siligen_geometry", dispensing_public)
-        self.assertIn("siligen_utils", dispensing_private)
-        self.assertIn("siligen_geometry", dispensing_private)
+        self.assertNotIn("SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR", root_cmake)
+        self.assertNotIn("SILIGEN_WORKFLOW_ADAPTERS_PUBLIC_INCLUDE_DIR", root_cmake)
+        self.assertNotIn("${SILIGEN_MODULES_ROOT}/workflow/application/include", root_cmake)
+        self.assertNotIn("${SILIGEN_MODULES_ROOT}/workflow/adapters/include", root_cmake)
 
-        redundancy_public = _target_link_libraries_entries(
-            workflow_application,
-            "siligen_application_redundancy",
-            "PUBLIC",
-        )
-        redundancy_private = _target_link_libraries_entries(
-            workflow_application,
-            "siligen_application_redundancy",
-            "PRIVATE",
-        )
-        self.assertIn("siligen_types", redundancy_public)
-        self.assertNotIn("siligen_utils", redundancy_public)
-        self.assertIn("siligen_utils", redundancy_private)
-
-    def test_workflow_application_redundancy_public_surface_does_not_export_header_bundle(self) -> None:
-        workflow_application = _read(WORKSPACE_ROOT / "modules" / "workflow" / "application" / "CMakeLists.txt")
-
-        redundancy_public = _target_link_libraries_entries(
-            workflow_application,
-            "siligen_application_redundancy",
-            "PUBLIC",
-        )
-        self.assertIn("siligen_types", redundancy_public)
-        self.assertIn("siligen_workflow_domain_public", redundancy_public)
-        self.assertNotIn("siligen_workflow_application_headers", redundancy_public)
-
-    def test_workflow_application_header_bundle_interface_keep_set_is_frozen(self) -> None:
-        workflow_application = _read(WORKSPACE_ROOT / "modules" / "workflow" / "application" / "CMakeLists.txt")
-
-        _assert_target_link_keep_set(
-            self,
-            workflow_application,
-            "siligen_workflow_application_headers",
-            "INTERFACE",
-            {
-                "siligen_dispense_packaging_contracts_public",
-                "siligen_motion_planning_contracts_public",
-                "siligen_process_path_contracts_public",
-                "siligen_runtime_execution_runtime_contracts",
-            },
+    def test_root_implementation_include_surface_excludes_workflow_internal_roots(self) -> None:
+        root_cmake = _read(WORKSPACE_ROOT / "CMakeLists.txt")
+        implementation_block = _extract_cmake_block(
+            root_cmake,
+            "set(SILIGEN_WORKSPACE_IMPLEMENTATION_INCLUDE_DIRS",
         )
 
-    def test_workflow_application_dispensing_public_keep_set_is_frozen(self) -> None:
-        workflow_application = _read(WORKSPACE_ROOT / "modules" / "workflow" / "application" / "CMakeLists.txt")
+        self.assertTrue(implementation_block, msg="missing SILIGEN_WORKSPACE_IMPLEMENTATION_INCLUDE_DIRS block")
+        self.assertNotIn("${SILIGEN_MODULES_ROOT}/workflow/domain", implementation_block)
+        self.assertNotIn("${SILIGEN_MODULES_ROOT}/workflow/application", implementation_block)
+        self.assertNotIn("${SILIGEN_MODULES_ROOT}/workflow/adapters", implementation_block)
 
-        _assert_target_link_keep_set(
-            self,
-            workflow_application,
-            "siligen_application_dispensing",
-            "PUBLIC",
-            {
-                "siligen_workflow_application_headers",
-                "siligen_workflow_contracts_public",
-                "siligen_workflow_domain_public",
-                "siligen_types",
-                "siligen_process_path_contracts_public",
-                "siligen_motion_planning_contracts_public",
-                "siligen_device_contracts",
-                "siligen_shared_runtime_contracts",
-                "siligen_runtime_execution_runtime_contracts",
-                "siligen_dispense_packaging_contracts_public",
-                "siligen_job_ingest_contracts",
-            },
+    def test_non_workflow_tests_do_not_include_workflow_internal_skeleton_headers(self) -> None:
+        for pattern in (
+            '#include "workflow/application/',
+            '#include "runtime/orchestrators/',
+            '#include "runtime/subscriptions/',
+            '#include "workflow/adapters/',
+        ):
+            hits = _fixed_string_hits_outside_workflow_tests(pattern, roots=("modules", "apps", "tests"))
+            self.assertFalse(hits, msg=f"workflow internal skeleton include leaked outside workflow/tests for {pattern}: {hits}")
+
+    def test_planning_owner_surfaces_move_out_of_workflow_application(self) -> None:
+        planning_header = _read(
+            WORKSPACE_ROOT
+            / "modules"
+            / "dispense-packaging"
+            / "application"
+            / "include"
+            / "dispense_packaging"
+            / "application"
+            / "usecases"
+            / "dispensing"
+            / "PlanningUseCase.h"
         )
-
-    def test_workflow_planning_port_adapters_header_is_declaration_only(self) -> None:
+        workflow_header = _read(
+            WORKSPACE_ROOT
+            / "modules"
+            / "runtime-execution"
+            / "application"
+            / "include"
+            / "runtime_execution"
+            / "application"
+            / "usecases"
+            / "dispensing"
+            / "DispensingWorkflowUseCase.h"
+        )
         adapters_header = _read(
             WORKSPACE_ROOT
             / "modules"
-            / "workflow"
+            / "dispense-packaging"
             / "application"
             / "include"
+            / "dispense_packaging"
             / "application"
-            / "ports"
+            / "usecases"
             / "dispensing"
             / "PlanningPortAdapters.h"
         )
+
+        self.assertIn("PrepareAuthorityPreview(", planning_header)
+        self.assertIn("AssembleExecutionFromAuthority(", planning_header)
+        self.assertNotIn("PlanningUseCaseInternal", planning_header)
         self.assertIn("AdaptProcessPathFacade(", adapters_header)
         self.assertIn("AdaptMotionPlanningFacade(", adapters_header)
         self.assertIn("AdaptDxfPreparationService(", adapters_header)
-        self.assertNotIn('#include "application/services/motion_planning/MotionPlanningFacade.h"', adapters_header)
-        self.assertNotIn('#include "application/services/process_path/ProcessPathFacade.h"', adapters_header)
-        self.assertNotIn('#include "dxf_geometry/application/services/dxf/DxfPbPreparationService.h"', adapters_header)
-        self.assertNotIn("class ProcessPathFacadePortAdapter final", adapters_header)
-        self.assertNotIn("class MotionPlanningFacadePortAdapter final", adapters_header)
-        self.assertNotIn("class DxfPreparationPortAdapter final", adapters_header)
+        self.assertIn("class DispensingWorkflowUseCase", workflow_header)
+        self.assertIn("class IWorkflowExecutionPort", _read(
+            WORKSPACE_ROOT
+            / "modules"
+            / "runtime-execution"
+            / "application"
+            / "include"
+            / "runtime_execution"
+            / "application"
+            / "usecases"
+            / "dispensing"
+            / "WorkflowExecutionPort.h"
+        ))
 
-        runtime_service_source = _read(
-            WORKSPACE_ROOT / "apps" / "runtime-service" / "container" / "ApplicationContainer.Dispensing.cpp"
+        for relative in (
+            "modules/workflow/application/planning-trigger/PlanningUseCase.cpp",
+            "modules/workflow/application/planning-trigger/PlanningUseCase.h",
+            "modules/workflow/application/planning-trigger/PlanningUseCaseInternal.h",
+            "modules/workflow/application/phase-control/DispensingWorkflowUseCase.cpp",
+            "modules/workflow/application/phase-control/DispensingWorkflowUseCase.h",
+            "modules/workflow/application/ports/dispensing/PlanningPortAdapters.h",
+            "modules/workflow/application/ports/dispensing/PlanningPorts.h",
+            "modules/workflow/application/ports/dispensing/WorkflowExecutionPort.h",
+            "modules/runtime-execution/application/include/runtime_execution/application/services/dispensing/PlanningArtifactExportPort.h",
+        ):
+            self.assertFalse(
+                (WORKSPACE_ROOT / relative).exists(),
+                msg=f"legacy workflow-owned planning/execution surface should be deleted: {relative}",
+            )
+
+    def test_planning_and_execution_tests_move_to_owner_modules(self) -> None:
+        for relative in (
+            "modules/dispense-packaging/tests/unit/application/usecases/dispensing/PlanningRequestTest.cpp",
+            "modules/dispense-packaging/tests/unit/application/usecases/dispensing/PlanningUseCaseExportPortTest.cpp",
+            "modules/dispense-packaging/tests/unit/application/usecases/dispensing/PlanningFailureSurfaceTest.cpp",
+            "modules/runtime-execution/tests/unit/dispensing/DispensingWorkflowUseCaseTest.cpp",
+        ):
+            self.assertTrue((WORKSPACE_ROOT / relative).exists(), msg=f"owner test missing: {relative}")
+
+        for relative in (
+            "modules/workflow/tests/canonical/unit/dispensing/PlanningRequestTest.cpp",
+            "modules/workflow/tests/integration/PlanningUseCaseExportPortTest.cpp",
+            "modules/workflow/tests/integration/PlanningFailureSurfaceTest.cpp",
+            "modules/workflow/tests/integration/DispensingWorkflowUseCaseTest.cpp",
+        ):
+            self.assertFalse(
+                (WORKSPACE_ROOT / relative).exists(),
+                msg=f"workflow/tests must not retain foreign-owner source-bearing test: {relative}",
+            )
+
+        workflow_integration_cmake = _read(
+            WORKSPACE_ROOT / "modules" / "workflow" / "tests" / "integration" / "CMakeLists.txt"
         )
-        self.assertIn(
-            '#include "application/services/process_path/ProcessPathFacade.h"',
-            runtime_service_source,
-            msg="runtime-service must include ProcessPathFacade directly after workflow adapter header stops re-exporting it",
-        )
+        self.assertIn("WORKFLOW_INTEGRATION_FORBIDDEN_SOURCES", workflow_integration_cmake)
+        self.assertNotIn("add_executable(", workflow_integration_cmake)
 
     def test_workflow_module_root_bundle_uses_canonical_surfaces_only(self) -> None:
         workflow_root = _read(WORKSPACE_ROOT / "modules" / "workflow" / "CMakeLists.txt")
         self.assertIn("siligen_module_workflow", workflow_root)
-        self.assertIn("siligen_workflow_application_headers", workflow_root)
         self.assertIn("siligen_workflow_adapters_public", workflow_root)
-        self.assertIn("siligen_application_dispensing", workflow_root)
-        self.assertIn("siligen_application_redundancy", workflow_root)
+        self.assertIn('add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/application"', workflow_root)
+        self.assertIn("SILIGEN_WORKFLOW_APPLICATION_INTERNAL_INCLUDE_DIR", workflow_root)
+        self.assertIn(
+            'SILIGEN_TARGET_IMPLEMENTATION_ROOTS "modules/workflow/application;modules/workflow/domain;',
+            workflow_root,
+        )
+        self.assertNotIn("siligen_application_dispensing", workflow_root)
+        self.assertNotIn("siligen_application_redundancy", workflow_root)
+        self.assertNotIn("siligen_workflow_application_headers", workflow_root)
         self.assertNotIn("siligen_workflow_application_public", workflow_root)
 
+    def test_workflow_internal_cmake_slices_enforce_m0_only_roots(self) -> None:
+        workflow_domain = _read(WORKSPACE_ROOT / "modules" / "workflow" / "domain" / "CMakeLists.txt")
+        workflow_application = _read(WORKSPACE_ROOT / "modules" / "workflow" / "application" / "CMakeLists.txt")
+        workflow_adapters = _read(WORKSPACE_ROOT / "modules" / "workflow" / "adapters" / "CMakeLists.txt")
+        workflow_canonical = _read(WORKSPACE_ROOT / "modules" / "workflow" / "tests" / "canonical" / "CMakeLists.txt")
+
+        self.assertIn("workflow domain legacy residue root must stay deleted", workflow_domain)
+        self.assertIn("workflow application legacy foreign surface must stay deleted", workflow_application)
+        self.assertIn("workflow adapters legacy redundancy residue must stay deleted", workflow_adapters)
+        self.assertNotIn("WORKFLOW_DOMAIN_SAFETY_TEST_SOURCES", workflow_canonical)
+        self.assertNotIn("WORKFLOW_DOMAIN_RECIPE_TEST_SOURCES", workflow_canonical)
+        self.assertNotIn("WORKFLOW_APPLICATION_PLANNING_TRIGGER_TEST_SOURCES", workflow_canonical)
+        self.assertNotIn("WORKFLOW_APPLICATION_COMPAT_TEST_SOURCES", workflow_canonical)
+        self.assertNotIn("WORKFLOW_PR1_TEST_SOURCES", workflow_canonical)
+
+    def test_workflow_non_owner_redundancy_governance_surface_is_absent(self) -> None:
+        workflow_adapters = _read(WORKSPACE_ROOT / "modules" / "workflow" / "adapters" / "CMakeLists.txt")
+        workflow_canonical = _read(WORKSPACE_ROOT / "modules" / "workflow" / "tests" / "canonical" / "CMakeLists.txt")
+
+        self.assertNotIn("siligen_redundancy_storage_adapter", workflow_adapters)
+        self.assertNotIn("siligen_application_redundancy", workflow_canonical)
+        self.assertNotIn("siligen_redundancy_storage_adapter", workflow_canonical)
+
+        for relative in (
+            "modules/workflow/application/recovery-control/CandidateScoringService.cpp",
+            "modules/workflow/application/recovery-control/CandidateScoringService.h",
+            "modules/workflow/application/recovery-control/RedundancyGovernanceUseCases.cpp",
+            "modules/workflow/application/recovery-control/RedundancyGovernanceUseCases.h",
+            "modules/workflow/application/usecases/redundancy/RedundancyGovernanceUseCases.h",
+            "modules/workflow/application/include/application/recovery-control/CandidateScoringService.h",
+            "modules/workflow/application/include/application/recovery-control/RedundancyGovernanceUseCases.h",
+            "modules/workflow/application/include/workflow/application/recovery-control/CandidateScoringService.h",
+            "modules/workflow/application/include/workflow/application/recovery-control/RedundancyGovernanceUseCases.h",
+            "modules/workflow/domain/include/domain/recovery/redundancy/RedundancyTypes.h",
+            "modules/workflow/domain/include/domain/recovery/redundancy/ports/IRedundancyRepositoryPort.h",
+            "modules/workflow/adapters/include/infrastructure/adapters/redundancy/JsonRedundancyRepositoryAdapter.h",
+            "modules/workflow/adapters/infrastructure/adapters/redundancy/CMakeLists.txt",
+            "modules/workflow/adapters/infrastructure/adapters/redundancy/JsonRedundancyRepositoryAdapter.cpp",
+            "modules/workflow/tests/canonical/unit/redundancy/CandidateScoringServiceTest.cpp",
+            "modules/workflow/tests/canonical/unit/redundancy/RedundancyGovernanceUseCasesTest.cpp",
+            "modules/workflow/tests/canonical/unit/infrastructure/adapters/redundancy/JsonRedundancyRepositoryAdapterTest.cpp",
+        ):
+            self.assertFalse((WORKSPACE_ROOT / relative).exists(), msg=f"workflow must not retain non-owner redundancy residue: {relative}")
+
+    def test_workflow_contracts_public_surface_is_split_by_role(self) -> None:
+        contracts_root = (
+            WORKSPACE_ROOT / "modules" / "workflow" / "contracts" / "include" / "workflow" / "contracts"
+        )
+        for relative in ("commands", "queries", "events", "dto", "failures"):
+            self.assertTrue((contracts_root / relative).is_dir(), msg=f"{relative} contract slice must exist")
+
+        aggregate_header = _read(contracts_root / "WorkflowContracts.h")
+        self.assertIn('#include "workflow/contracts/commands/AdvanceStage.h"', aggregate_header)
+        self.assertIn('#include "workflow/contracts/events/StageFailed.h"', aggregate_header)
+        self.assertIn('#include "workflow/contracts/dto/WorkflowRunView.h"', aggregate_header)
+        self.assertIn('#include "workflow/contracts/failures/WorkflowFailurePayload.h"', aggregate_header)
+        self.assertNotIn("WorkflowPlanningTriggerRequest", aggregate_header)
+        self.assertNotIn("WorkflowPlanningTriggerResponse", aggregate_header)
+        self.assertNotIn("WorkflowStageState", aggregate_header)
+        self.assertNotIn("WorkflowRecoveryDirective", aggregate_header)
+
+    def test_workflow_domain_public_surface_has_owner_model_slices(self) -> None:
+        domain_root = (
+            WORKSPACE_ROOT / "modules" / "workflow" / "domain" / "include" / "workflow" / "domain"
+        )
+        for relative in ("workflow_run", "stage_transition", "rollback", "policies", "ports"):
+            self.assertTrue((domain_root / relative).is_dir(), msg=f"{relative} domain slice must exist")
+
+        self.assertTrue((domain_root / "workflow_run" / "WorkflowRun.h").exists())
+        self.assertTrue((domain_root / "rollback" / "RollbackDecision.h").exists())
+        self.assertTrue((domain_root / "policies" / "WorkflowStateTransitionPolicy.h").exists())
+
+    def test_workflow_service_runtime_and_application_skeleton_slices_exist(self) -> None:
+        workflow_root = WORKSPACE_ROOT / "modules" / "workflow"
+
+        for relative in (
+            "services/lifecycle/CreateWorkflowService.h",
+            "services/lifecycle/HandleStageSucceededService.h",
+            "services/rollback/RequestRollbackService.h",
+            "services/archive/CompleteWorkflowArchiveService.h",
+            "services/projection/WorkflowProjectionService.h",
+            "runtime/orchestrators/WorkflowCommandOrchestrator.h",
+            "runtime/orchestrators/WorkflowEventOrchestrator.h",
+            "runtime/subscriptions/TraceEventsSubscription.h",
+            "application/commands/CreateWorkflowHandler.h",
+            "application/queries/GetWorkflowRunHandler.h",
+            "application/facade/WorkflowFacade.h",
+            "application/include/workflow/application/commands/CreateWorkflowHandler.h",
+            "application/include/workflow/application/queries/GetWorkflowRunHandler.h",
+            "application/include/workflow/application/facade/WorkflowFacade.h",
+        ):
+            self.assertTrue((workflow_root / relative).exists(), msg=f"missing workflow skeleton: {relative}")
+
     def test_workflow_bridge_domain_no_longer_compiles_runtime_safety_or_dispensing_concrete(self) -> None:
-        workflow_domain_cmake = _read(WORKSPACE_ROOT / "modules" / "workflow" / "domain" / "domain" / "CMakeLists.txt")
         workflow_domain_root_cmake = _read(WORKSPACE_ROOT / "modules" / "workflow" / "domain" / "CMakeLists.txt")
-        self.assertNotIn("siligen_safety_domain_services", workflow_domain_cmake)
-        self.assertNotIn("siligen_dispensing_execution_services", workflow_domain_cmake)
-        self.assertNotIn("siligen_triggering", workflow_domain_cmake)
-        self.assertNotIn("PositionTriggerController.cpp", workflow_domain_cmake)
-        self.assertNotIn("siligen_trajectory", workflow_domain_cmake)
-        self.assertNotIn("siligen_configuration", workflow_domain_cmake)
+        workflow_domain_cmake = WORKSPACE_ROOT / "modules" / "workflow" / "domain" / "domain" / "CMakeLists.txt"
+        self.assertFalse(workflow_domain_cmake.exists(), msg="workflow bridge-domain CMake must be deleted after owner convergence")
+        self.assertNotIn("siligen_safety_domain_services", workflow_domain_root_cmake)
+        self.assertNotIn("siligen_dispensing_execution_services", workflow_domain_root_cmake)
+        self.assertNotIn("siligen_triggering", workflow_domain_root_cmake)
+        self.assertNotIn("PositionTriggerController.cpp", workflow_domain_root_cmake)
+        self.assertNotIn("siligen_trajectory", workflow_domain_root_cmake)
+        self.assertNotIn("siligen_configuration", workflow_domain_root_cmake)
         self.assertNotIn("domain_machine", workflow_domain_root_cmake)
         self.assertNotIn("siligen_coordinate_alignment_domain_machine", workflow_domain_root_cmake)
         self.assertNotIn('"${CMAKE_CURRENT_SOURCE_DIR}/../../coordinate-alignment/domain/machine"', workflow_domain_root_cmake)
@@ -356,15 +492,23 @@ class BridgeExitContractTest(unittest.TestCase):
         self.assertTrue(canonical_header.exists(), msg="dispense-packaging must expose the canonical spatial index port")
         self.assertIn("namespace Siligen::Domain::PlanningBoundary::Ports", _read(canonical_header))
 
-        for relative in (
-            "modules/dispense-packaging/domain/dispensing/domain-services/PathOptimizationStrategy.h",
-            "modules/workflow/domain/domain/dispensing/domain-services/PathOptimizationStrategy.h",
-        ):
-            self.assertIn(
-                '#include "domain/dispensing/planning/ports/ISpatialIndexPort.h"',
-                _read(WORKSPACE_ROOT / relative),
-                msg=f"{relative} must include the canonical dispense-packaging planning port",
-            )
+        legacy_optimizer = (
+            WORKSPACE_ROOT
+            / "modules"
+            / "dispense-packaging"
+            / "domain"
+            / "dispensing"
+            / "domain-services"
+            / "PathOptimizationStrategy.h"
+        )
+        self.assertFalse(
+            legacy_optimizer.exists(),
+            msg="legacy PathOptimizationStrategy surface should be deleted after residual收口",
+        )
+        self.assertFalse(
+            (WORKSPACE_ROOT / "modules/workflow/domain/domain/dispensing/domain-services/PathOptimizationStrategy.h").exists(),
+            msg="workflow must not retain planning-boundary shim header after domain residue exit",
+        )
 
         hits = _fixed_string_hits('#include "domain/planning-boundary/ports/ISpatialIndexPort.h"', roots=("modules", "apps", "tests"))
         self.assertFalse(hits, msg=f"legacy workflow planning-boundary include still used: {hits}")
@@ -398,6 +542,14 @@ class BridgeExitContractTest(unittest.TestCase):
             hits,
             msg=f"workflow domain must not include application/services headers: {hits}",
         )
+
+    def test_workflow_domain_residue_roots_are_deleted(self) -> None:
+        for relative in (
+            "modules/workflow/domain/domain",
+            "modules/workflow/domain/include/domain",
+            "modules/workflow/domain/motion-core",
+        ):
+            self.assertFalse((WORKSPACE_ROOT / relative).exists(), msg=f"workflow domain residue root should be deleted: {relative}")
 
     def test_workflow_dxf_wrapper_is_deleted_after_cutover(self) -> None:
         wrapper = (
@@ -554,18 +706,20 @@ class BridgeExitContractTest(unittest.TestCase):
         self.assertIn('#include "trace_diagnostics/contracts/DiagnosticTypes.h"', _read(umbrella_header))
 
         for relative in (
-            "modules/workflow/application/CMakeLists.txt",
             "modules/runtime-execution/application/CMakeLists.txt",
             "modules/runtime-execution/runtime/host/CMakeLists.txt",
             "apps/runtime-service/CMakeLists.txt",
             "modules/runtime-execution/adapters/device/CMakeLists.txt",
-            "modules/workflow/domain/CMakeLists.txt",
         ):
             self.assertIn(
                 "siligen_trace_diagnostics_contracts_public",
                 _read(WORKSPACE_ROOT / relative),
                 msg=f"{relative} must link trace-diagnostics contracts for the generic sink",
             )
+
+        workflow_application = _read(WORKSPACE_ROOT / "modules" / "workflow" / "application" / "CMakeLists.txt")
+        self.assertNotIn("siligen_workflow_domain_headers", workflow_application)
+        self.assertNotIn("siligen_trace_diagnostics_contracts_public", workflow_application)
 
         expected_include = '#include "trace_diagnostics/contracts/IDiagnosticsPort.h"'
         legacy_wrapper = (
@@ -596,8 +750,8 @@ class BridgeExitContractTest(unittest.TestCase):
             msg="runtime-execution motion monitoring wrapper should be deleted after public include cutover",
         )
         for relative in (
-            "modules/workflow/application/planning-trigger/PlanningUseCase.cpp",
-            "modules/workflow/tests/integration/PlanningFailureSurfaceTest.cpp",
+            "modules/dispense-packaging/application/usecases/dispensing/PlanningUseCase.cpp",
+            "modules/dispense-packaging/tests/unit/application/usecases/dispensing/PlanningFailureSurfaceTest.cpp",
             "modules/runtime-execution/application/include/runtime_execution/application/usecases/system/InitializeSystemUseCase.h",
             "modules/runtime-execution/application/include/runtime_execution/application/usecases/motion/monitoring/MotionMonitoringUseCase.h",
             "modules/runtime-execution/runtime/host/runtime/diagnostics/DiagnosticsPortAdapter.h",
@@ -765,15 +919,29 @@ class BridgeExitContractTest(unittest.TestCase):
         unit_cmake = _read(workflow_tests_unit / "CMakeLists.txt")
         self.assertNotIn("add_executable(", unit_cmake, msg="workflow/tests/unit must remain registration-only")
 
-    def test_workflow_services_and_examples_are_shell_only(self) -> None:
+    def test_workflow_examples_remain_shell_only_and_services_are_canonicalized(self) -> None:
         payload_suffixes = {".h", ".hpp", ".cpp", ".cc", ".cxx", ".py", ".ps1"}
-        for relative in ("modules/workflow/services", "modules/workflow/examples"):
-            payload = [
-                path.relative_to(WORKSPACE_ROOT).as_posix()
-                for path in (WORKSPACE_ROOT / relative).rglob("*")
-                if path.is_file() and path.suffix in payload_suffixes
-            ]
-            self.assertFalse(payload, msg=f"{relative} must remain shell-only: {payload}")
+        examples_payload = [
+            path.relative_to(WORKSPACE_ROOT).as_posix()
+            for path in (WORKSPACE_ROOT / "modules/workflow/examples").rglob("*")
+            if path.is_file() and path.suffix in payload_suffixes
+        ]
+        self.assertFalse(examples_payload, msg=f"modules/workflow/examples must remain shell-only: {examples_payload}")
+
+        services_payload = [
+            path.relative_to(WORKSPACE_ROOT).as_posix()
+            for path in (WORKSPACE_ROOT / "modules/workflow/services").rglob("*")
+            if path.is_file() and path.suffix in payload_suffixes
+        ]
+        self.assertTrue(services_payload, msg="modules/workflow/services must contain M0 service skeleton headers")
+        self.assertIn(
+            "modules/workflow/services/lifecycle/CreateWorkflowService.h",
+            services_payload,
+        )
+        self.assertIn(
+            "modules/workflow/services/projection/WorkflowProjectionService.h",
+            services_payload,
+        )
 
     def test_root_entries_run_bridge_exit_gate(self) -> None:
         build_validation = _read(WORKSPACE_ROOT / "scripts" / "build" / "build-validation.ps1")

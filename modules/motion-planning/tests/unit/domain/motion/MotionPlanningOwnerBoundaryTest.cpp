@@ -84,11 +84,10 @@ TEST(MotionPlanningOwnerBoundaryTest, CanonicalPlanningHeadersUseProcessPathCont
 
 TEST(MotionPlanningOwnerBoundaryTest, WorkflowDomainRequiresCanonicalMotionOwnerTarget) {
     const fs::path repo_root = RepoRoot();
-    const std::string workflow_cmake =
-        ReadTextFile(repo_root / "modules/workflow/domain/domain/CMakeLists.txt");
+    const fs::path workflow_cmake =
+        repo_root / "modules/workflow/domain/domain/CMakeLists.txt";
 
-    EXPECT_EQ(workflow_cmake.find("add_library(siligen_motion STATIC"), std::string::npos);
-    EXPECT_NE(workflow_cmake.find("requires canonical siligen_motion target"), std::string::npos);
+    EXPECT_FALSE(fs::exists(workflow_cmake)) << workflow_cmake.string();
 }
 
 TEST(MotionPlanningOwnerBoundaryTest, MotionPlanningPublicSurfaceDoesNotExportInterpolationUseCase) {
@@ -471,30 +470,13 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowTrajectoryMotionPlannerResidueIsRe
 
 TEST(MotionPlanningOwnerBoundaryTest, WorkflowTriggerCmpCompatibilityIsShimOnly) {
     const fs::path repo_root = RepoRoot();
-    const std::string workflow_domain_cmake =
-        ReadTextFile(repo_root / "modules/workflow/domain/domain/CMakeLists.txt");
     const std::string workflow_domain_root_cmake =
         ReadTextFile(repo_root / "modules/workflow/domain/CMakeLists.txt");
-    const std::string workflow_cmp_header =
-        ReadTextFile(repo_root / "modules/workflow/domain/include/domain/dispensing/domain-services/CMPTriggerService.h");
-    const std::string workflow_trigger_header =
-        ReadTextFile(repo_root / "modules/workflow/domain/domain/dispensing/domain-services/TriggerPlanner.h");
-
-    EXPECT_EQ(workflow_domain_cmake.find("dispensing/domain-services/CMPTriggerService.cpp"), std::string::npos);
-    EXPECT_EQ(workflow_domain_cmake.find("dispensing/domain-services/PositionTriggerController.cpp"), std::string::npos);
-    EXPECT_EQ(workflow_domain_cmake.find("dispensing/planning/domain-services/DispensingPlannerService.cpp"),
-              std::string::npos);
-    EXPECT_EQ(workflow_domain_cmake.find("dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp"),
-              std::string::npos);
-    const std::string deleted_target = std::string("siligen_") + "triggering";
-    EXPECT_EQ(workflow_domain_cmake.find(deleted_target), std::string::npos);
-    EXPECT_EQ(workflow_domain_root_cmake.find("if(NOT TARGET " + deleted_target + ")"), std::string::npos);
-    EXPECT_NE(workflow_cmp_header.find("modules/dispense-packaging"), std::string::npos);
-    EXPECT_NE(workflow_cmp_header.find("CMPTriggerService.h"), std::string::npos);
-    EXPECT_EQ(workflow_cmp_header.find("class CMPService"), std::string::npos);
-    EXPECT_NE(workflow_trigger_header.find("modules/dispense-packaging"), std::string::npos);
-    EXPECT_NE(workflow_trigger_header.find("TriggerPlanner.h"), std::string::npos);
-    EXPECT_EQ(workflow_trigger_header.find("class TriggerPlanner"), std::string::npos);
+    EXPECT_EQ(workflow_domain_root_cmake.find("triggering"), std::string::npos);
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/domain/include/domain/dispensing/domain-services/CMPTriggerService.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/domain/domain/dispensing/domain-services/TriggerPlanner.h"));
 }
 
 TEST(MotionPlanningOwnerBoundaryTest, WorkflowCmpPrecisionResidueIsRemovedFromWorkflowModule) {
@@ -539,39 +521,21 @@ TEST(MotionPlanningOwnerBoundaryTest, InterpolationProgramPlannerConsumersUseCon
               std::string::npos);
 }
 
-TEST(MotionPlanningOwnerBoundaryTest, WorkflowPlanningCompatibilityStubsCarryNoLocalOwnerImplementation) {
+TEST(MotionPlanningOwnerBoundaryTest, WorkflowPlanningCompatibilityStubsAreDeleted) {
     const fs::path repo_root = RepoRoot();
 
     EXPECT_FALSE(fs::exists(
         repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.h"));
     EXPECT_FALSE(fs::exists(
         repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp"));
-
-    const std::string workflow_dispensing_planner = ReadTextFile(
-        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp");
-    const std::string workflow_contour_optimizer = ReadTextFile(
-        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/ContourOptimizationService.cpp");
-    const std::string workflow_dispensing_planner_header = ReadTextFile(
-        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.h");
-    const std::string workflow_contour_optimizer_header = ReadTextFile(
-        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/ContourOptimizationService.h");
-
-    EXPECT_NE(workflow_dispensing_planner.find("Canonical planning owner lives under modules/dispense-packaging."),
-              std::string::npos);
-    EXPECT_EQ(workflow_dispensing_planner.find("application/services/"), std::string::npos);
-    EXPECT_EQ(workflow_dispensing_planner.find("UnifiedTrajectoryPlannerService"), std::string::npos);
-
-    EXPECT_NE(workflow_contour_optimizer.find("Canonical planning owner lives under modules/dispense-packaging."),
-              std::string::npos);
-    EXPECT_EQ(workflow_contour_optimizer.find("application/services/"), std::string::npos);
-
-    EXPECT_NE(workflow_dispensing_planner_header.find("modules/dispense-packaging"), std::string::npos);
-    EXPECT_NE(workflow_dispensing_planner_header.find("DispensingPlannerService.h"), std::string::npos);
-    EXPECT_EQ(workflow_dispensing_planner_header.find("class DispensingPlanner"), std::string::npos);
-
-    EXPECT_NE(workflow_contour_optimizer_header.find("modules/dispense-packaging"), std::string::npos);
-    EXPECT_NE(workflow_contour_optimizer_header.find("ContourOptimizationService.h"), std::string::npos);
-    EXPECT_EQ(workflow_contour_optimizer_header.find("class ContourOptimizationService"), std::string::npos);
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/ContourOptimizationService.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/DispensingPlannerService.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/domain/domain/dispensing/planning/domain-services/ContourOptimizationService.h"));
 }
 
 TEST(MotionPlanningOwnerBoundaryTest, WorkflowValueObjectThinBridgesAreRemoved) {

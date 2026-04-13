@@ -115,46 +115,56 @@ TEST(DispensePackagingBoundaryTest, LegacyExecutionProviderAndTestsAreRemovedFro
     EXPECT_TRUE(fs::exists(repo_root / "modules/runtime-execution/tests/unit/DispensingProcessServiceWaitForMotionCompleteTest.cpp"));
 }
 
-TEST(DispensePackagingBoundaryTest, WorkflowPlanningUseCaseConsumesSingleM8AssemblyProvider) {
+TEST(DispensePackagingBoundaryTest, PlanningUseCaseAndPortsAreOwnedByDispensePackagingApplication) {
     const fs::path repo_root = RepoRoot();
-    const std::string compat_header = ReadTextFile(
-        repo_root / "modules/workflow/application/include/application/planning-trigger/PlanningUseCase.h");
     const std::string canonical_header = ReadTextFile(
-        repo_root / "modules/workflow/application/planning-trigger/PlanningUseCase.h");
+        repo_root / "modules/dispense-packaging/application/include/dispense_packaging/application/usecases/dispensing/PlanningUseCase.h");
+    const std::string ports_header = ReadTextFile(
+        repo_root / "modules/dispense-packaging/application/include/dispense_packaging/application/usecases/dispensing/PlanningPorts.h");
+    const std::string adapters_header = ReadTextFile(
+        repo_root / "modules/dispense-packaging/application/include/dispense_packaging/application/usecases/dispensing/PlanningPortAdapters.h");
     const std::string source = ReadTextFile(
-        repo_root / "modules/workflow/application/planning-trigger/PlanningUseCase.cpp");
+        repo_root / "modules/dispense-packaging/application/usecases/dispensing/PlanningUseCase.cpp");
 
     EXPECT_NE(
-        compat_header.find('#' + std::string("include \"../../../planning-trigger/PlanningUseCase.h\"")),
+        canonical_header.find("Result<PreparedAuthorityPreview> PrepareAuthorityPreview("),
+        std::string::npos);
+    EXPECT_NE(
+        canonical_header.find("Result<ExecutionAssemblyResponse> AssembleExecutionFromAuthority("),
+        std::string::npos);
+    EXPECT_EQ(
+        canonical_header.find("PlanningUseCaseInternal"),
+        std::string::npos);
+    EXPECT_EQ(
+        source.find("PlanningUseCaseInternal"),
         std::string::npos);
     EXPECT_NE(
         source.find(
             '#' +
             std::string("include \"application/services/dispensing/WorkflowPlanningAssemblyOperations.h\"")),
         std::string::npos);
-    EXPECT_EQ(
-        compat_header.find("class PlanningUseCase"),
+    EXPECT_NE(
+        ports_header.find("class IProcessPathBuildPort"),
         std::string::npos);
     EXPECT_NE(
-        canonical_header.find(
-            '#' +
-            std::string("include \"../services/dispensing/WorkflowPlanningAssemblyTypes.h\"")),
+        adapters_header.find("AdaptProcessPathFacade("),
+        std::string::npos);
+    EXPECT_NE(
+        adapters_header.find("AdaptMotionPlanningFacade("),
+        std::string::npos);
+    EXPECT_NE(
+        adapters_header.find("AdaptDxfPreparationService("),
         std::string::npos);
     EXPECT_EQ(
         source.find('#' + std::string("include \"application/services/dispensing/WorkflowPlanningAssemblyOperationsProvider.h\"")),
         std::string::npos);
-    EXPECT_EQ(
-        canonical_header.find('#' + std::string("include \"application/services/dispensing/WorkflowPlanningAssemblyOperationsProvider.h\"")),
-        std::string::npos);
-    EXPECT_EQ(
-        canonical_header.find('#' + std::string("include \"application/services/dispensing/AuthorityPreviewAssemblyService.h\"")),
-        std::string::npos);
-    EXPECT_EQ(
-        canonical_header.find('#' + std::string("include \"application/services/dispensing/ExecutionAssemblyService.h\"")),
-        std::string::npos);
-    EXPECT_EQ(
-        canonical_header.find('#' + std::string("include \"application/services/dispensing/PlanningAssemblyTypes.h\"")),
-        std::string::npos);
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/application/include/application/planning-trigger/PlanningUseCase.h"));
+    EXPECT_FALSE(fs::exists(repo_root / "modules/workflow/application/planning-trigger/PlanningUseCase.h"));
+    EXPECT_FALSE(fs::exists(repo_root / "modules/workflow/application/planning-trigger/PlanningUseCase.cpp"));
+    EXPECT_FALSE(fs::exists(repo_root / "modules/workflow/application/planning-trigger/PlanningUseCaseInternal.h"));
+    EXPECT_FALSE(fs::exists(repo_root / "modules/workflow/application/ports/dispensing/PlanningPorts.h"));
+    EXPECT_FALSE(fs::exists(repo_root / "modules/workflow/application/ports/dispensing/PlanningPortAdapters.h"));
 }
 
 TEST(DispensePackagingBoundaryTest, WorkflowPlanningAssemblyPublicSeamUsesWorkflowTypesInsteadOfStageTypes) {
@@ -180,27 +190,33 @@ TEST(DispensePackagingBoundaryTest, PlanningAssemblyStageTypesHeaderIsRemovedFro
     EXPECT_FALSE(fs::exists(public_header));
 }
 
-TEST(DispensePackagingBoundaryTest, PlanningArtifactExportCompatHeaderIsRemovedFromM8ApplicationIncludeRoot) {
+TEST(DispensePackagingBoundaryTest, PlanningArtifactExportPortLivesInDispensePackagingApplicationSurface) {
     const fs::path repo_root = RepoRoot();
-    const fs::path compat_header =
+    const fs::path owner_header =
         repo_root / "modules/dispense-packaging/application/include/application/services/dispensing/PlanningArtifactExportPort.h";
+    const std::string owner_content = ReadTextFile(owner_header);
 
-    EXPECT_FALSE(fs::exists(compat_header));
+    EXPECT_TRUE(fs::exists(owner_header));
+    EXPECT_NE(
+        owner_content.find('#' + std::string("include \"dispense_packaging/contracts/PlanningArtifactExportRequest.h\"")),
+        std::string::npos);
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/runtime-execution/application/include/runtime_execution/application/services/dispensing/PlanningArtifactExportPort.h"));
 }
 
 TEST(DispensePackagingBoundaryTest, PlanningArtifactExportRequestRemainsContractOwnedWithoutAppAlias) {
     const fs::path repo_root = RepoRoot();
     const std::string contract_header = ReadTextFile(
         repo_root / "modules/dispense-packaging/contracts/include/domain/dispensing/contracts/PlanningArtifactExportRequest.h");
-    const std::string runtime_port_header = ReadTextFile(
-        repo_root / "modules/runtime-execution/application/include/runtime_execution/application/services/dispensing/PlanningArtifactExportPort.h");
+    const std::string owner_port_header = ReadTextFile(
+        repo_root / "modules/dispense-packaging/application/include/application/services/dispensing/PlanningArtifactExportPort.h");
 
     EXPECT_EQ(contract_header.find("namespace Siligen::Application::Services::Dispensing"), std::string::npos);
     EXPECT_EQ(contract_header.find("using PlanningArtifactExportRequest ="), std::string::npos);
     EXPECT_NE(
-        runtime_port_header.find("Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest"),
+        owner_port_header.find("Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest"),
         std::string::npos);
-    EXPECT_EQ(runtime_port_header.find("const PlanningArtifactExportRequest& request"), std::string::npos);
+    EXPECT_EQ(owner_port_header.find("const PlanningArtifactExportRequest& request"), std::string::npos);
 }
 
 TEST(DispensePackagingBoundaryTest, LocalWorkflowPlanningTypesHeaderOwnsCanonicalWorkflowDtoDefinitions) {
@@ -219,19 +235,36 @@ TEST(DispensePackagingBoundaryTest, LocalWorkflowPlanningTypesHeaderOwnsCanonica
     EXPECT_NE(content.find("struct WorkflowPlanningAssemblyResult"), std::string::npos);
 }
 
-TEST(DispensePackagingBoundaryTest, WorkflowPlanningTypesCompatHeaderForwardsToM8OwnerDefinition) {
+TEST(DispensePackagingBoundaryTest, WorkflowPlanningTypesLegacyCompatHeadersAreRemovedFromWorkflow) {
     const fs::path repo_root = RepoRoot();
-    const std::string content = ReadTextFile(
-        repo_root / "modules/workflow/application/services/dispensing/WorkflowPlanningAssemblyTypes.h");
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/application/services/dispensing/WorkflowPlanningAssemblyTypes.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/application/include/application/services/dispensing/WorkflowPlanningAssemblyTypes.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/application/include/workflow/application/services/dispensing/WorkflowPlanningAssemblyTypes.h"));
+}
 
-    EXPECT_NE(content.find("compat forwarder"), std::string::npos);
-    EXPECT_NE(
-        content.find(
-            '#' +
-            std::string(
-                "include \"../../../../dispense-packaging/application/include/application/services/dispensing/WorkflowPlanningAssemblyTypes.h\"")),
-        std::string::npos);
-    EXPECT_EQ(content.find("struct WorkflowAuthorityTriggerPoint"), std::string::npos);
+TEST(DispensePackagingBoundaryTest, ForeignPlanningAndExecutionTestsAreHostedByOwnerModules) {
+    const fs::path repo_root = RepoRoot();
+
+    EXPECT_TRUE(fs::exists(
+        repo_root / "modules/dispense-packaging/tests/unit/application/usecases/dispensing/PlanningRequestTest.cpp"));
+    EXPECT_TRUE(fs::exists(
+        repo_root / "modules/dispense-packaging/tests/unit/application/usecases/dispensing/PlanningUseCaseExportPortTest.cpp"));
+    EXPECT_TRUE(fs::exists(
+        repo_root / "modules/dispense-packaging/tests/unit/application/usecases/dispensing/PlanningFailureSurfaceTest.cpp"));
+    EXPECT_TRUE(fs::exists(
+        repo_root / "modules/runtime-execution/tests/unit/dispensing/DispensingWorkflowUseCaseTest.cpp"));
+
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/tests/canonical/unit/dispensing/PlanningRequestTest.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/tests/integration/PlanningUseCaseExportPortTest.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/tests/integration/PlanningFailureSurfaceTest.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/tests/integration/DispensingWorkflowUseCaseTest.cpp"));
 }
 
 TEST(DispensePackagingBoundaryTest, ExecutionPackageUsesPlanOnlyBackingTypeAndRuntimeContractsOwnRuntimeTypes) {
@@ -258,7 +291,7 @@ TEST(DispensePackagingBoundaryTest, ExecutionPackageUsesPlanOnlyBackingTypeAndRu
         std::string::npos);
 }
 
-TEST(DispensePackagingBoundaryTest, LegacyDispensingPortsAndDtosForwardToRuntimeContractOwners) {
+TEST(DispensePackagingBoundaryTest, LegacyDispensingPortsAndDtosLiveOnlyOnOwnerModules) {
     const fs::path repo_root = RepoRoot();
     const std::string runtime_compensation = ReadTextFile(
         repo_root / "modules/runtime-execution/contracts/runtime/include/runtime_execution/contracts/dispensing/DispenseCompensationProfile.h");
@@ -294,19 +327,6 @@ TEST(DispensePackagingBoundaryTest, LegacyDispensingPortsAndDtosForwardToRuntime
     const std::string package_observer = ReadTextFile(
         repo_root / "modules/dispense-packaging/domain/dispensing/ports/IDispensingExecutionObserver.h");
 
-    const std::string workflow_compensation = ReadTextFile(
-        repo_root / "modules/workflow/domain/include/domain/dispensing/value-objects/DispenseCompensationProfile.h");
-    const std::string workflow_quality = ReadTextFile(
-        repo_root / "modules/workflow/domain/include/domain/dispensing/value-objects/QualityMetrics.h");
-    const std::string workflow_valve = ReadTextFile(
-        repo_root / "modules/workflow/domain/include/domain/dispensing/ports/IValvePort.h");
-    const std::string workflow_trigger = ReadTextFile(
-        repo_root / "modules/workflow/domain/include/domain/dispensing/ports/ITriggerControllerPort.h");
-    const std::string workflow_scheduler = ReadTextFile(
-        repo_root / "modules/workflow/domain/include/domain/dispensing/ports/ITaskSchedulerPort.h");
-    const std::string workflow_observer = ReadTextFile(
-        repo_root / "modules/workflow/domain/domain/dispensing/ports/IDispensingExecutionObserver.h");
-
     EXPECT_NE(runtime_compensation.find("struct DispenseCompensationProfile"), std::string::npos);
     EXPECT_NE(runtime_quality.find("struct QualityMetrics"), std::string::npos);
     EXPECT_NE(runtime_valve.find("class IValvePort"), std::string::npos);
@@ -339,18 +359,18 @@ TEST(DispensePackagingBoundaryTest, LegacyDispensingPortsAndDtosForwardToRuntime
     EXPECT_EQ(package_scheduler.find("class ITaskSchedulerPort"), std::string::npos);
     EXPECT_EQ(package_observer.find("class IDispensingExecutionObserver"), std::string::npos);
 
-    EXPECT_NE(workflow_compensation.find("runtime_execution/contracts"), std::string::npos);
-    EXPECT_NE(workflow_quality.find("runtime_execution/contracts"), std::string::npos);
-    EXPECT_NE(workflow_valve.find("runtime_execution/contracts"), std::string::npos);
-    EXPECT_NE(workflow_trigger.find("runtime_execution/contracts"), std::string::npos);
-    EXPECT_NE(workflow_scheduler.find("runtime_execution/contracts"), std::string::npos);
-    EXPECT_NE(workflow_observer.find("runtime_execution/contracts"), std::string::npos);
-    EXPECT_EQ(workflow_compensation.find("struct DispenseCompensationProfile"), std::string::npos);
-    EXPECT_EQ(workflow_quality.find("struct QualityMetrics"), std::string::npos);
-    EXPECT_EQ(workflow_valve.find("class IValvePort"), std::string::npos);
-    EXPECT_EQ(workflow_trigger.find("class ITriggerControllerPort"), std::string::npos);
-    EXPECT_EQ(workflow_scheduler.find("class ITaskSchedulerPort"), std::string::npos);
-    EXPECT_EQ(workflow_observer.find("class IDispensingExecutionObserver"), std::string::npos);
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/domain/include/domain/dispensing/value-objects/DispenseCompensationProfile.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/domain/include/domain/dispensing/value-objects/QualityMetrics.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/domain/include/domain/dispensing/ports/IValvePort.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/domain/include/domain/dispensing/ports/ITriggerControllerPort.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/domain/include/domain/dispensing/ports/ITaskSchedulerPort.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/domain/domain/dispensing/ports/IDispensingExecutionObserver.h"));
 }
 
 TEST(DispensePackagingBoundaryTest, WorkflowPlanningShimHeaderIsRemoved) {
@@ -372,18 +392,10 @@ TEST(DispensePackagingBoundaryTest, WorkflowPlanningPreviewAssemblyResidualIsRem
     EXPECT_FALSE(fs::exists(source));
 }
 
-TEST(DispensePackagingBoundaryTest, WorkflowLegacyTriggerPlanHeaderForwardsToM8OwnerDefinition) {
+TEST(DispensePackagingBoundaryTest, WorkflowLegacyTriggerPlanHeaderIsDeleted) {
     const fs::path repo_root = RepoRoot();
-    const std::string content = ReadTextFile(
-        repo_root / "modules/workflow/domain/domain/dispensing/value-objects/TriggerPlan.h");
-
-    EXPECT_NE(content.find("Canonical owner lives in dispense-packaging domain."), std::string::npos);
-    EXPECT_NE(
-        content.find(
-            '#' +
-            std::string("include \"../../../../../dispense-packaging/domain/dispensing/value-objects/TriggerPlan.h\"")),
-        std::string::npos);
-    EXPECT_EQ(content.find("struct TriggerPlan"), std::string::npos);
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/workflow/domain/domain/dispensing/value-objects/TriggerPlan.h"));
 }
 
 }  // namespace

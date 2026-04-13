@@ -15,7 +15,7 @@ ValveCoordinationUseCase::ValveCoordinationUseCase(
       current_velocity_(0.0f) {}
 
 Result<ValveTimingResult> ValveCoordinationUseCase::CalculateTimingParameters(
-    const std::vector<GeometrySegment>& path,
+    const std::vector<Segment>& path,
     const ValveTimingConfig& config) {
     if (!config.Validate()) {
         return Result<ValveTimingResult>::Failure(
@@ -35,16 +35,16 @@ Result<ValveTimingResult> ValveCoordinationUseCase::CalculateTimingParameters(
     return Result<ValveTimingResult>::Success(std::move(result));
 }
 
-float32 ValveCoordinationUseCase::CalculateTotalLength(const std::vector<GeometrySegment>& path) {
+float32 ValveCoordinationUseCase::CalculateTotalLength(const std::vector<Segment>& path) {
     float32 total_length = 0.0f;
     for (const auto& segment : path) {
-        total_length += segment.Length();
+        total_length += segment.length;
     }
     return total_length;
 }
 
 std::vector<TriggerPoint> ValveCoordinationUseCase::GenerateTriggerPoints(
-    const std::vector<GeometrySegment>& path,
+    const std::vector<Segment>& path,
     float32 interval_mm) {
     std::vector<TriggerPoint> trigger_points;
     if (interval_mm <= 0.0f) {
@@ -55,7 +55,7 @@ std::vector<TriggerPoint> ValveCoordinationUseCase::GenerateTriggerPoints(
     float32 next_trigger_position = interval_mm;
     for (std::size_t segment_index = 0; segment_index < path.size(); ++segment_index) {
         const auto& segment = path[segment_index];
-        const float32 segment_length = segment.Length();
+        const float32 segment_length = segment.length;
         accumulated_length += segment_length;
         while (accumulated_length >= next_trigger_position) {
             TriggerPoint point{};

@@ -10,6 +10,7 @@
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
 #include "shared/types/HardwareConfiguration.h"
+#include "shared/types/Point.h"
 
 #include <array>
 #include <chrono>
@@ -36,9 +37,9 @@ using Siligen::Domain::Motion::ValueObjects::TrajectoryInterpolationType;
 using Siligen::Domain::Motion::ValueObjects::TriggerAction;
 using Siligen::Domain::Motion::ValueObjects::TriggerEvent;
 using Siligen::Shared::Types::LogicalAxisId;
-using Siligen::Shared::Types::Point2D;
 using Siligen::Shared::Types::Result;
 using Siligen::Domain::Configuration::Ports::HomingConfig;
+using Siligen::Point2D;
 
 /**
  * @brief 硬件测试适配器 - MultiCard真实硬件实现

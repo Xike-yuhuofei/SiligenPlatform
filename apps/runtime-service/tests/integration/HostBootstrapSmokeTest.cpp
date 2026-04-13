@@ -1,7 +1,7 @@
 #include "runtime_process_bootstrap/ContainerBootstrap.h"
 #include "container/ApplicationContainer.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
-#include "domain/safety/ports/IInterlockSignalPort.h"
+#include "runtime_execution/contracts/safety/IInterlockSignalPort.h"
 #include "siligen/device/adapters/drivers/multicard/MockMultiCardWrapper.h"
 #include "dispense_packaging/contracts/ITaskSchedulerPort.h"
 #include "runtime_execution/contracts/motion/IMotionRuntimePort.h"

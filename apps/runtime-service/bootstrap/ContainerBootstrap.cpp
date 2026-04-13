@@ -28,7 +28,7 @@
 #include "recipe_lifecycle/domain/recipes/ports/IRecipeBundleSerializerPort.h"
 #include "recipe_lifecycle/domain/recipes/ports/IRecipeRepositoryPort.h"
 #include "recipe_lifecycle/domain/recipes/ports/ITemplateRepositoryPort.h"
-#include "domain/safety/ports/IInterlockSignalPort.h"
+#include "runtime_execution/contracts/safety/IInterlockSignalPort.h"
 #include "process_path/contracts/IPathSourcePort.h"
 #include "runtime/configuration/WorkspaceAssetPaths.h"
 

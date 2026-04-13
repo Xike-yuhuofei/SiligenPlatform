@@ -70,7 +70,6 @@ target_link_libraries(siligen_transport_gateway PUBLIC
     siligen_dispense_packaging_application_public
     siligen_valve_core
     siligen_job_ingest_application_public
-    siligen_application_dispensing
     siligen_recipe_lifecycle_application_public
     siligen_recipe_lifecycle_serialization_public
     siligen_runtime_execution_application_public

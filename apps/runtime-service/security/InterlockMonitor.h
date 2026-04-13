@@ -2,7 +2,7 @@
 
 #include "shared/types/Types.h"
 #include "security/AuditLogger.h"
-#include "domain/safety/ports/IInterlockSignalPort.h"
+#include "runtime_execution/contracts/safety/IInterlockSignalPort.h"
 #include "siligen/device/adapters/drivers/multicard/IMultiCardWrapper.h"
 
 #include <atomic>

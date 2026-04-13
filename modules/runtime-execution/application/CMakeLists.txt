@@ -27,6 +27,18 @@ if(NOT TARGET siligen_dispense_packaging_domain_dispensing)
         "${CMAKE_BINARY_DIR}/_p/rea_dpd"
     )
 endif()
+if(NOT TARGET siligen_dispense_packaging_application_public)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../dispense-packaging/application"
+        "${CMAKE_BINARY_DIR}/_p/rea_dpa"
+    )
+endif()
+if(NOT TARGET siligen_job_ingest_contracts)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../job-ingest/contracts"
+        "${CMAKE_BINARY_DIR}/_p/rea_jic"
+    )
+endif()
 
 if(NOT TARGET siligen_process_planning_contracts_public)
     add_subdirectory(
@@ -54,6 +66,12 @@ if(NOT TARGET siligen_motion_planning_application_public)
         "${CMAKE_BINARY_DIR}/_p/rea_mpa"
     )
 endif()
+if(NOT TARGET siligen_shared_runtime_contracts)
+    add_subdirectory(
+        "${SILIGEN_WORKSPACE_ROOT}/shared/contracts/runtime"
+        "${CMAKE_BINARY_DIR}/_p/rea_src"
+    )
+endif()
 
 set(SILIGEN_RUNTIME_EXECUTION_APPLICATION_PUBLIC_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
 if(NOT EXISTS "${SILIGEN_RUNTIME_EXECUTION_APPLICATION_PUBLIC_INCLUDE_DIR}/runtime_execution")
@@ -72,7 +90,9 @@ target_include_directories(siligen_runtime_execution_application_headers INTERFA
 )
 target_link_libraries(siligen_runtime_execution_application_headers INTERFACE
     siligen_runtime_execution_runtime_contracts
+    siligen_dispense_packaging_application_headers
     siligen_dispense_packaging_contracts_public
+    siligen_job_ingest_contracts
     siligen_process_planning_contracts_public
 )
 if(TARGET siligen_trace_diagnostics_contracts_public)
@@ -168,6 +188,7 @@ if(NOT TARGET siligen_runtime_execution_application)
         usecases/dispensing/DispensingExecutionUseCase.Setup.cpp
         usecases/dispensing/DispensingExecutionUseCase.Control.cpp
         usecases/dispensing/DispensingExecutionUseCase.Async.cpp
+        usecases/dispensing/DispensingWorkflowUseCase.cpp
     )
 endif()
 target_include_directories(siligen_runtime_execution_application PUBLIC
@@ -180,6 +201,7 @@ target_include_directories(siligen_runtime_execution_application PRIVATE
 target_link_libraries(siligen_runtime_execution_application PUBLIC
     siligen_runtime_execution_runtime_contracts
     siligen_dispense_packaging_contracts_public
+    siligen_job_ingest_contracts
     siligen_runtime_execution_motion_execution_services
     siligen_runtime_execution_safety_services
     siligen_process_planning_contracts_public
@@ -189,6 +211,8 @@ target_link_libraries(siligen_runtime_execution_application PUBLIC
 )
 target_link_libraries(siligen_runtime_execution_application PRIVATE
     siligen_motion_planning_application_headers
+    siligen_dispense_packaging_application_public
+    siligen_shared_runtime_contracts
 )
 if(TARGET siligen_device_contracts)
     target_link_libraries(siligen_runtime_execution_application PUBLIC

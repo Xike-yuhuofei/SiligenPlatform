@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/motion/ports/IVelocityProfilePort.h"
+#include "motion_planning/contracts/IVelocityProfilePort.h"
 
 namespace Siligen::Domain::Motion::DomainServices {
 

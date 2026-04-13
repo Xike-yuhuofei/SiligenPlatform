@@ -109,7 +109,6 @@ target_link_libraries(siligen_runtime_process_bootstrap PUBLIC
     siligen_module_dxf_geometry
     siligen_job_ingest_application_public
     siligen_motion_planning_application_public
-    siligen_application_dispensing
     siligen_workflow_adapters_public
     siligen_recipe_lifecycle_domain_public
     siligen_recipe_lifecycle_application_public

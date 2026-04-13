@@ -94,6 +94,7 @@ class MachineResidualExitContractTest(unittest.TestCase):
             "modules/coordinate-alignment/domain/machine/ports/IHardwareTestPort.h",
             "modules/coordinate-alignment/domain/machine/value-objects/CalibrationTypes.h",
             "modules/coordinate-alignment/tests/unit/CalibrationProcessTest.cpp",
+            "modules/workflow/domain/include/domain/machine",
             "modules/workflow/domain/include/domain/machine/aggregates/DispenserModel.h",
             "modules/workflow/domain/include/domain/machine/domain-services/CalibrationProcess.h",
             "modules/workflow/domain/include/domain/machine/ports/IHardwareConnectionPort.h",
@@ -108,6 +109,7 @@ class MachineResidualExitContractTest(unittest.TestCase):
         module_cmake = _read(WORKSPACE_ROOT / "modules" / "coordinate-alignment" / "CMakeLists.txt")
         contracts_cmake = _read(WORKSPACE_ROOT / "modules" / "coordinate-alignment" / "contracts" / "CMakeLists.txt")
         tests_cmake = _read(WORKSPACE_ROOT / "modules" / "coordinate-alignment" / "tests" / "CMakeLists.txt")
+        adapters_readme = _read(WORKSPACE_ROOT / "modules" / "runtime-execution" / "adapters" / "README.md")
         device_adapters_cmake = _read(
             WORKSPACE_ROOT / "modules" / "runtime-execution" / "adapters" / "device" / "CMakeLists.txt"
         )
@@ -167,6 +169,7 @@ class MachineResidualExitContractTest(unittest.TestCase):
         self.assertNotIn("siligen_coordinate_alignment_domain_machine", module_cmake)
         self.assertNotIn("IHardwareTestPort.h", contracts_cmake)
         self.assertNotIn("CalibrationProcessTest.cpp", tests_cmake)
+        self.assertNotIn("IHardwareTestPort", adapters_readme)
         self.assertNotIn("siligen_coordinate_alignment_contracts_public", device_adapters_cmake)
         self.assertNotIn("IHardwareTestPort", hardware_test_header)
         self.assertNotIn("IHardwareTestPort", trigger_header)
@@ -192,12 +195,18 @@ class MachineResidualExitContractTest(unittest.TestCase):
         ):
             self.assertFalse((WORKSPACE_ROOT / relative).exists(), msg=f"MachineMode wrapper should be deleted: {relative}")
 
-        for relative in (
+        removed_legacy_surfaces = (
             "modules/workflow/application/ports/dispensing/WorkflowExecutionPort.h",
             "modules/workflow/application/phase-control/DispensingWorkflowUseCase.h",
             "modules/workflow/domain/include/domain/safety/domain-services/SafetyOutputGuard.h",
+        )
+        for relative in removed_legacy_surfaces:
+            self.assertFalse((WORKSPACE_ROOT / relative).exists(), msg=f"legacy workflow surface should be deleted: {relative}")
+
+        for relative in (
             "modules/runtime-execution/application/include/runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h",
             "modules/runtime-execution/application/include/domain/safety/domain-services/SafetyOutputGuard.h",
+            "modules/runtime-execution/application/include/runtime_execution/application/usecases/dispensing/DispensingWorkflowUseCase.h",
         ):
             self.assertIn(
                 '#include "runtime_execution/contracts/machine/MachineMode.h"',

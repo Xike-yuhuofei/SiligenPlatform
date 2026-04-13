@@ -76,3 +76,34 @@ add_test(
     NAME runtime_execution_motion_runtime_assembly_test
     COMMAND runtime_execution_motion_runtime_assembly_test
 )
+
+add_executable(siligen_runtime_execution_workflow_seam_tests
+    dispensing/DispensingWorkflowUseCaseTest.cpp
+    dispensing/DispensingWorkflowModeResolutionTest.cpp
+)
+if(TARGET GTest::gtest_main)
+    target_link_libraries(siligen_runtime_execution_workflow_seam_tests PRIVATE GTest::gtest_main)
+elseif(TARGET gtest_main)
+    target_link_libraries(siligen_runtime_execution_workflow_seam_tests PRIVATE gtest_main)
+else()
+    message(FATAL_ERROR "GoogleTest target not found")
+endif()
+target_include_directories(siligen_runtime_execution_workflow_seam_tests PRIVATE
+    ${RUNTIME_EXECUTION_TEST_INCLUDE_DIRS}
+)
+target_link_libraries(siligen_runtime_execution_workflow_seam_tests PRIVATE
+    siligen_runtime_execution_application_public
+    siligen_dispense_packaging_application_public
+    siligen_dispense_packaging_domain_dispensing
+    siligen_process_path_application_public
+    siligen_motion_planning_application_public
+    siligen_dxf_geometry_application_public
+    siligen_shared
+    siligen_types
+    siligen_utils
+)
+target_compile_features(siligen_runtime_execution_workflow_seam_tests PRIVATE cxx_std_17)
+add_test(
+    NAME siligen_runtime_execution_workflow_seam_tests
+    COMMAND siligen_runtime_execution_workflow_seam_tests
+)

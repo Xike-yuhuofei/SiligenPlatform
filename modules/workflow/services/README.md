@@ -1,6 +1,10 @@
 # services
 
-workflow 的模块级编排服务预留在此目录。
+workflow 的模块级编排服务已在此目录落成最小 skeleton。
 
-- 当前目录是空壳保留位，不是 live owner 层。
-- 在 workflow 终态边界未冻结前，不允许把 compat shell、容器残留或 foreign concrete 塞到这里充当兜底层。
+- `lifecycle/`：创建、推进、重试、成功/失败投影
+- `rollback/`：回退申请、执行、影响分析
+- `archive/`：归档握手与完成
+- `projection/`：domain -> contracts DTO / timeline 投影
+
+禁止把 compat shell、foreign planning/execution concrete 塞到这里。

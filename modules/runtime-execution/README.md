@@ -25,7 +25,12 @@
 - application public：`modules/runtime-execution/application/CMakeLists.txt`
   target: `siligen_runtime_execution_application_public`
   runtime provider contract: `application/include/runtime_execution/application/services/motion/runtime/IMotionRuntimeServicesProvider.h`
-  planning export contract: `application/include/runtime_execution/application/services/dispensing/PlanningArtifactExportPort.h`
+  dispensing workflow seam:
+  `application/include/runtime_execution/application/usecases/dispensing/DispensingWorkflowUseCase.h`
+  与
+  `application/include/runtime_execution/application/usecases/dispensing/WorkflowExecutionPort.h`
+  模式/宿主接线回归哨兵：
+  `tests/unit/dispensing/DispensingWorkflowModeResolutionTest.cpp`
 - Python simulation export owner：`modules/runtime-execution/application/runtime_execution/`
   stable compat surface 仍通过 `engineering_data.contracts.simulation_input`、`engineering_data.cli.export_simulation_input` 与 `scripts/engineering-data/export_simulation_input.py` 暴露。
 - runtime contracts：`modules/runtime-execution/contracts/runtime/CMakeLists.txt`
@@ -48,6 +53,9 @@
 - `services/motion/SoftLimitMonitorService.*`
 
 其中 machine execution state 的 canonical concrete 已收口为 `runtime/system/MachineExecutionStateStore.*` + `runtime/system/MachineExecutionStateBackend.*`。`runtime-execution` 不再依赖 workflow machine aggregate alias，也不再把 `DispenserModel` / `DispensingTask` 暴露为 live public/test surface。
+`runtime/planning/PlanningArtifactExportPortAdapter.*` 仅实现
+`modules/dispense-packaging/application/include/application/services/dispensing/PlanningArtifactExportPort.h`
+定义的 owner port。
 
 deterministic-path 的 `ProcessPath` 重建、轨迹规划与插补程序生成现由 `M7 motion-planning` 持有；`runtime-execution` 仅负责 runtime port 装配、tick 推进调用与执行态消费。
 

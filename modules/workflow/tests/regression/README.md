@@ -1,12 +1,12 @@
 # workflow regression tests
 
-本目录是 `workflow` 模块 regression 承载面的正式入口。
+本目录是 `workflow` 模块 regression 登记面的正式入口。
 
-## 当前登记目标
+## 当前状态
 
-- `workflow_regression_dispensing_mode_resolution_smoke`
-  - 直接编译本目录内的回归测试源码。
-  - 作为 workflow 侧 legacy execute wiring 清理后的最小回归哨兵，专门守住模式切换与宿主接线不反弹。
+- 当前不承载 source-bearing regression 测试源码。
+- foreign-owner 的模式切换 / execution wiring 哨兵已迁到 `modules/runtime-execution/tests/unit/dispensing/DispensingWorkflowModeResolutionTest.cpp`。
+- 目录保留为 M0 regression shell，后续只允许登记真正属于 workflow owner 的回归目标。
 
 ## 约束
 

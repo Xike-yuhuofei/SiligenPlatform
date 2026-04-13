@@ -5,13 +5,8 @@ set(WORKFLOW_MODULE_DIR
 )
 set(WORKFLOW_TEST_IMPLEMENTATION_INCLUDE_DIRS
     "${WORKFLOW_MODULE_DIR}"
-    "${WORKFLOW_MODULE_DIR}/domain"
-    "${WORKFLOW_MODULE_DIR}/application"
-    "${WORKFLOW_MODULE_DIR}/adapters"
     "${WORKFLOW_MODULE_DIR}/application/include"
     "${WORKFLOW_MODULE_DIR}/domain/include"
-    "${WORKFLOW_MODULE_DIR}/adapters/include"
-    "${CMAKE_SOURCE_DIR}/modules/motion-planning"
 )
 
 set(WORKFLOW_REQUIRED_TEST_ROOTS

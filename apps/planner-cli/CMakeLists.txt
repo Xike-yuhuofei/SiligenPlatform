@@ -22,7 +22,6 @@ target_link_libraries(siligen_app_planner_cli INTERFACE
     siligen_module_job_ingest
     siligen_dispense_packaging_application_public
     siligen_valve_core
-    siligen_application_dispensing
     siligen_workflow_adapters_public
     siligen_recipe_lifecycle_application_public
     siligen_runtime_execution_application_public

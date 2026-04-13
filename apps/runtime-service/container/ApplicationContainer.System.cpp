@@ -1,6 +1,6 @@
 #include "ApplicationContainer.h"
 
-#include "workflow/application/phase-control/DispensingWorkflowUseCase.h"
+#include "runtime_execution/application/usecases/dispensing/DispensingWorkflowUseCase.h"
 #include "dispense_packaging/application/usecases/dispensing/valve/ValveQueryUseCase.h"
 #include "runtime_execution/application/usecases/motion/homing/HomeAxesUseCase.h"
 #include "runtime_execution/application/usecases/motion/monitoring/MotionMonitoringUseCase.h"
@@ -8,7 +8,7 @@
 #include "runtime_execution/application/usecases/system/InitializeSystemUseCase.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
-#include "domain/safety/ports/IInterlockSignalPort.h"
+#include "runtime_execution/contracts/safety/IInterlockSignalPort.h"
 #include "runtime/status/RuntimeStatusExportPort.h"
 #include "runtime/supervision/RuntimeExecutionSupervisionBackend.h"
 #include "runtime/supervision/RuntimeSupervisionPortAdapter.h"

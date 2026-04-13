@@ -66,17 +66,9 @@ set(SILIGEN_SHARED_KERNEL_CANONICAL_DIR
     "${SILIGEN_SHARED_ROOT}/kernel"
     CACHE INTERNAL "Canonical shared kernel source root"
 )
-set(SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR
-    "${SILIGEN_MODULES_ROOT}/workflow/application/include"
-    CACHE INTERNAL "Canonical workflow application public include root"
-)
 set(SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR
     "${SILIGEN_MODULES_ROOT}/workflow/domain/include"
     CACHE INTERNAL "Canonical workflow domain public include root"
-)
-set(SILIGEN_WORKFLOW_ADAPTERS_PUBLIC_INCLUDE_DIR
-    "${SILIGEN_MODULES_ROOT}/workflow/adapters/include"
-    CACHE INTERNAL "Canonical workflow adapters public include root"
 )
 set(SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR
     "${SILIGEN_MODULES_ROOT}/motion-planning"
@@ -113,10 +105,8 @@ set(SILIGEN_NLOHMANN_INCLUDE_DIR
     CACHE INTERNAL "Explicit nlohmann/json include root used by #include \"nlohmann/json.hpp\""
 )
 set(SILIGEN_WORKSPACE_PUBLIC_INCLUDE_DIRS
-    ${SILIGEN_WORKFLOW_APPLICATION_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_MODULES_ROOT}/workflow/contracts/include
     ${SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR}
-    ${SILIGEN_WORKFLOW_ADAPTERS_PUBLIC_INCLUDE_DIR}
     ${SILIGEN_MODULES_ROOT}/dxf-geometry/application/include
     ${SILIGEN_MODULES_ROOT}/runtime-execution/application/include
     ${SILIGEN_MODULES_ROOT}/runtime-execution/contracts/runtime/include
@@ -125,9 +115,6 @@ set(SILIGEN_WORKSPACE_PUBLIC_INCLUDE_DIRS
 )
 set(SILIGEN_WORKSPACE_IMPLEMENTATION_INCLUDE_DIRS
     ${SILIGEN_WORKSPACE_ROOT}
-    ${SILIGEN_MODULES_ROOT}/workflow/domain
-    ${SILIGEN_MODULES_ROOT}/workflow/application
-    ${SILIGEN_MODULES_ROOT}/workflow/adapters
     ${SILIGEN_WORKSPACE_PUBLIC_INCLUDE_DIRS}
 )
 list(REMOVE_DUPLICATES SILIGEN_WORKSPACE_PUBLIC_INCLUDE_DIRS)
