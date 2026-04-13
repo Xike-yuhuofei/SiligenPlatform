@@ -89,6 +89,7 @@ DEFAULT_ASPECT_RATIO = 16 / 9
 DEFAULT_BASE_WIDTH = 1600
 ASPECT_RATIO_ENV = "SILIGEN_HMI_ASPECT_RATIO"
 STATUS_LOG_HISTORY_LIMIT = 200
+DEFAULT_HOME_AUTO_TIMEOUT_MS = 120_000
 
 
 def _parse_aspect_ratio(value: str):
@@ -266,7 +267,7 @@ class HomeAutoWorker(QThread):
         port: int,
         axes: list[str] | None,
         force_rehome: bool,
-        timeout_ms: int = 0,
+        timeout_ms: int = DEFAULT_HOME_AUTO_TIMEOUT_MS,
     ) -> None:
         super().__init__()
         self._host = host
@@ -2319,6 +2320,7 @@ class MainWindow(QMainWindow):
             port=self._client.port,
             axes=axes,
             force_rehome=force_rehome,
+            timeout_ms=DEFAULT_HOME_AUTO_TIMEOUT_MS,
         )
         worker.completed.connect(
             lambda ok, message, token=request_token: self._on_home_auto_completed(

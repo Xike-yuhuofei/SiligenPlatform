@@ -564,6 +564,7 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertEqual(worker.port, self.window._client.port)
         self.assertEqual(worker.axes, ["X", "Y"])
         self.assertFalse(worker.force_rehome)
+        self.assertEqual(worker.timeout_ms, main_window_module.DEFAULT_HOME_AUTO_TIMEOUT_MS)
         self.assertEqual(self.window.statusBar().currentMessage(), "回零进行中...")
 
         worker.complete(True, "Axes ready at zero")
