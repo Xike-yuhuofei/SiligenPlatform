@@ -19,6 +19,6 @@
 
 ## 当前对照面
 
-- `modules/workflow/application/include/application/phase-control/DispensingWorkflowUseCase.h`
+- `modules/runtime-execution/application/include/runtime_execution/application/usecases/dispensing/DispensingWorkflowUseCase.h`
 - `apps/runtime-gateway/transport-gateway/src/facades/tcp/TcpDispensingFacade.h`
 - `apps/planner-cli/CommandHandlers.Dxf.cpp`

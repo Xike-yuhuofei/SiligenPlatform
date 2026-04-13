@@ -159,14 +159,10 @@ TEST(MotionExecutionOwnerBoundaryTest, NonOwnerRuntimeConcreteImplementationsAre
 
 TEST(MotionExecutionOwnerBoundaryTest, WorkflowNoLongerOwnsExecutionConcreteTarget) {
     const fs::path repo_root = RepoRoot();
-    const std::string workflow_cmake =
-        ReadTextFile(repo_root / "modules/workflow/domain/domain/CMakeLists.txt");
+    const fs::path workflow_cmake =
+        repo_root / "modules/workflow/domain/domain/CMakeLists.txt";
 
-    EXPECT_EQ(workflow_cmake.find("add_library(siligen_motion_execution_services STATIC"), std::string::npos);
-    EXPECT_EQ(workflow_cmake.find("MotionBufferController.cpp"), std::string::npos);
-    EXPECT_EQ(workflow_cmake.find("JogController.cpp"), std::string::npos);
-    EXPECT_EQ(workflow_cmake.find("HomingProcess.cpp"), std::string::npos);
-    EXPECT_EQ(workflow_cmake.find("ReadyZeroDecisionService.cpp"), std::string::npos);
+    EXPECT_FALSE(fs::exists(workflow_cmake)) << workflow_cmake.string();
 }
 
 TEST(MotionExecutionOwnerBoundaryTest, RuntimeExecutionApplicationTargetOwnsConcreteMotionSources) {

@@ -2,7 +2,7 @@
 
 #include "dispense_packaging/contracts/PlanningArtifactExportRequest.h"
 #include "process_path/contracts/ProcessPath.h"
-#include "runtime_execution/application/services/dispensing/PlanningArtifactExportPort.h"
+#include "application/services/dispensing/PlanningArtifactExportPort.h"
 #include "shared/types/Point.h"
 
 #include <gtest/gtest.h>

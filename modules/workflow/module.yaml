@@ -11,8 +11,10 @@ notes: >
   workflow/contracts 是当前稳定的 M0 触发契约面；recipe family 已迁到
   modules/recipe-lifecycle，跨模块事件发布契约已迁到
   shared/contracts/runtime/include/runtime/contracts/system/IEventPublisherPort.h。
-  当前 live residue 主要集中在 domain/domain/dispensing bridge concrete、
-  domain/include/domain/{motion,safety} compat headers、siligen_workflow_application_headers
-  对 foreign owner surface 的透传，以及 tests/canonical 对 foreign targets 的依赖。
-  services/examples 当前是 shell-only 保留目录；tests/canonical 是唯一允许继续承载
-  source-bearing workflow tests 的目录。
+  modules/workflow 当前已收口为 M0 canonical bundle：module root 只暴露
+  workflow/contracts、workflow/domain 与 workflow/adapters public surfaces，
+  并显式纳入 application/services/runtime skeleton 自校验。domain/domain、
+  domain/include/domain、motion-core 与 application 下 planning/execution/recovery
+  residue 已退出；workflow/tests 也只保留 M0 source-bearing canonical tests。
+  services 为 M0 lifecycle/rollback/archive/projection skeleton；examples、
+  tests/unit、tests/integration 与 tests/regression 仅保留登记面或空壳入口。

@@ -5,8 +5,8 @@
 #include "job_ingest/contracts/dispensing/UploadContracts.h"
 #include "domain/safety/value-objects/InterlockTypes.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
-#include "workflow/application/phase-control/DispensingWorkflowUseCase.h"
-#include "workflow/application/planning-trigger/PlanningUseCase.h"
+#include "runtime_execution/application/usecases/dispensing/DispensingWorkflowUseCase.h"
+#include "dispense_packaging/application/usecases/dispensing/PlanningUseCase.h"
 
 #include <memory>
 

@@ -8,7 +8,7 @@
 - 插补算法（直线、圆弧、样条）
 - 时间规划、速度规划与触发时间线计算
 - `MotionTrajectory`、`TimePlanningConfig`、`MotionPlanningReport` 等规划事实输出
-- 面向后续阶段保留的少量兼容残余（仅供 thin compatibility shell 使用，不构成 owner public surface）
+- 仅保留 motion-planning 自身 owner 规划事实与内部 residual seam；workflow compat shell 已物理删除
 
 ## Stage B 边界
 
@@ -28,7 +28,7 @@
 - `siligen_motion` 的 live source root 固定为 `modules/motion-planning/domain/motion/`
 - `CMPCoordinatedInterpolator`、`TimeTrajectoryPlanner`、`TrajectoryPlanner`、`TriggerCalculator`、`SpeedPlanner`、`GeometryBlender`、`VelocityProfileService`、`SevenSegmentSCurveProfile` 的 owner 固定为 motion-planning
 - `BezierCalculator`、`BSplineCalculator`、`CircleCalculator`、`CMPValidator`、`CMPCompensation` 与 interpolation 子目录实现同样固定为 motion-planning owner
-- `modules/workflow/domain/domain/motion/` 与 `modules/workflow/domain/domain/motion/domain-services/` 下对应旧路径只保留 thin compatibility shell，不再持有 live `.cpp`
+- `modules/workflow/domain/domain/motion/` 与 `modules/workflow/domain/include/domain/motion/` 下旧 compat residue 已物理删除，不再保留 thin shell
 - workflow domain 不再提供 `siligen_motion` 本地 fallback；缺少 canonical owner target 时构建显式失败
 
 ## 目录结构

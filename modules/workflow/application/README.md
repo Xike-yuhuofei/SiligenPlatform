@@ -4,15 +4,14 @@ workflow 的 canonical application 入口应收敛到此目录。
 
 ## 当前真值
 
-- 对外 public surface 应只围绕 `planning-trigger/`、`phase-control/`、`recovery-control/` 展开。
+- `commands/`、`queries/`、`facade/` 已作为 M0 终态 skeleton 落位。
+- `planning-trigger/`、`phase-control/` 与 `ports/dispensing/` foreign surface 已物理删除并迁回 owner 模块。
+- 原 `recovery-control/` 与 `usecases/redundancy/` 已确认为非 M0 的代码治理 residue，不再属于 workflow canonical build graph。
 - recipe CRUD / publish / import-export 已迁到 `modules/recipe-lifecycle`，不再属于 workflow application owner。
 - 事件发布契约统一从 `runtime/contracts/system/IEventPublisherPort.h` 引入，其物理 owner 位于 `shared/contracts/runtime`。
-- `usecases/` 子目录当前只应被视为迁移残留与内部实现目录，不是 workflow 终态 public surface。
-
-## 当前 residue
-
-- `siligen_workflow_application_headers` 仍链接部分 foreign owner headers/contracts，说明 application public surface 还没有完全收口。
-- `planning-trigger` 仍需要编排 `motion-planning`、`dispense-packaging`、`runtime-execution` 等 canonical owner 模块，但这种依赖只允许停留在 orchestration 边界，不得继续回流为 workflow 自己的 concrete owner。
+- `include/workflow/application/**` 只保留 `commands/queries/facade` wrapper。
+- `include/application/**` dual-root residue 与 `usecases/ / ports/ / services/ / recovery-control/` compat 目录已退出。
+- `application/CMakeLists.txt` 只做 skeleton 校验，不再导出 `siligen_workflow_application_headers` 这类 bridge target。
 
 ## 禁止事项
 

@@ -1,6 +1,6 @@
 #include "ApplicationContainer.h"
 
-#include "workflow/application/phase-control/DispensingWorkflowUseCase.h"
+#include "runtime_execution/application/usecases/dispensing/DispensingWorkflowUseCase.h"
 #include "dispense_packaging/application/usecases/dispensing/valve/ValveQueryUseCase.h"
 #include "runtime_execution/application/usecases/motion/homing/HomeAxesUseCase.h"
 #include "runtime_execution/application/usecases/motion/monitoring/MotionMonitoringUseCase.h"

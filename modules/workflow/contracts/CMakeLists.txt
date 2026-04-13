@@ -7,6 +7,18 @@ if(NOT EXISTS "${SILIGEN_WORKFLOW_CONTRACTS_PUBLIC_INCLUDE_DIR}/workflow/contrac
         "${SILIGEN_WORKFLOW_CONTRACTS_PUBLIC_INCLUDE_DIR}/workflow/contracts"
     )
 endif()
+foreach(required_dir
+    IN ITEMS
+        "${SILIGEN_WORKFLOW_CONTRACTS_PUBLIC_INCLUDE_DIR}/workflow/contracts/commands"
+        "${SILIGEN_WORKFLOW_CONTRACTS_PUBLIC_INCLUDE_DIR}/workflow/contracts/queries"
+        "${SILIGEN_WORKFLOW_CONTRACTS_PUBLIC_INCLUDE_DIR}/workflow/contracts/events"
+        "${SILIGEN_WORKFLOW_CONTRACTS_PUBLIC_INCLUDE_DIR}/workflow/contracts/dto"
+        "${SILIGEN_WORKFLOW_CONTRACTS_PUBLIC_INCLUDE_DIR}/workflow/contracts/failures"
+)
+    if(NOT EXISTS "${required_dir}")
+        message(FATAL_ERROR "workflow canonical contracts slice missing: ${required_dir}")
+    endif()
+endforeach()
 
 if(NOT TARGET siligen_workflow_contracts_headers)
     add_library(siligen_workflow_contracts_headers INTERFACE)

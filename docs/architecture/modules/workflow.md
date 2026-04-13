@@ -45,3 +45,9 @@
 - `S07` 状态机迁移
 - `S08` success/block/rollback/recovery/archive 时序
 - `S09` 幂等、回退、归档回归
+
+## 目标态补充
+
+- [workflow-target-state-v1](./workflow-target-state-v1.md)
+- [workflow-target-state-mapping-v1](./workflow-target-state-mapping-v1.md)
+- [workflow-target-state-task-breakdown-v1](./workflow-target-state-task-breakdown-v1.md)

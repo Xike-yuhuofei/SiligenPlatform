@@ -84,6 +84,7 @@ class MachineResidualExitContractTest(unittest.TestCase):
         for relative in (
             "modules/coordinate-alignment/application/CMakeLists.txt",
             "modules/coordinate-alignment/application/include/coordinate_alignment/application/CoordinateAlignmentApplicationSurface.h",
+            "modules/coordinate-alignment/contracts/include/coordinate_alignment/contracts/IHardwareTestPort.h",
             "modules/coordinate-alignment/domain/machine/CMakeLists.txt",
             "modules/coordinate-alignment/domain/machine/aggregates/DispenserModel.h",
             "modules/coordinate-alignment/domain/machine/domain-services/CalibrationProcess.h",
@@ -93,6 +94,7 @@ class MachineResidualExitContractTest(unittest.TestCase):
             "modules/coordinate-alignment/domain/machine/ports/IHardwareTestPort.h",
             "modules/coordinate-alignment/domain/machine/value-objects/CalibrationTypes.h",
             "modules/coordinate-alignment/tests/unit/CalibrationProcessTest.cpp",
+            "modules/workflow/domain/include/domain/machine",
             "modules/workflow/domain/include/domain/machine/aggregates/DispenserModel.h",
             "modules/workflow/domain/include/domain/machine/domain-services/CalibrationProcess.h",
             "modules/workflow/domain/include/domain/machine/ports/IHardwareConnectionPort.h",
@@ -105,7 +107,9 @@ class MachineResidualExitContractTest(unittest.TestCase):
             self.assertFalse((WORKSPACE_ROOT / relative).exists(), msg=f"legacy machine residual should be deleted: {relative}")
 
         module_cmake = _read(WORKSPACE_ROOT / "modules" / "coordinate-alignment" / "CMakeLists.txt")
+        contracts_cmake = _read(WORKSPACE_ROOT / "modules" / "coordinate-alignment" / "contracts" / "CMakeLists.txt")
         tests_cmake = _read(WORKSPACE_ROOT / "modules" / "coordinate-alignment" / "tests" / "CMakeLists.txt")
+        adapters_readme = _read(WORKSPACE_ROOT / "modules" / "runtime-execution" / "adapters" / "README.md")
         hardware_test_header = _read(
             WORKSPACE_ROOT
             / "modules"
@@ -160,7 +164,9 @@ class MachineResidualExitContractTest(unittest.TestCase):
         )
 
         self.assertNotIn("siligen_coordinate_alignment_domain_machine", module_cmake)
+        self.assertNotIn("IHardwareTestPort.h", contracts_cmake)
         self.assertNotIn("CalibrationProcessTest.cpp", tests_cmake)
+        self.assertNotIn("IHardwareTestPort", adapters_readme)
         self.assertNotIn("IHardwareTestPort", hardware_test_header)
         self.assertNotIn("IHardwareTestPort", trigger_header)
         self.assertNotIn("IHardwareConnectionPort", motion_connection_header)

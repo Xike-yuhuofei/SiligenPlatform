@@ -45,8 +45,7 @@
   workflow DTO：`AuthorityPreviewAssemblyService` 公开接收
   `WorkflowAuthorityPreviewRequest`，`ExecutionAssemblyService` 公开接收
   `WorkflowExecutionAssemblyRequest`。`application/include/application/services/dispensing/WorkflowPlanningAssemblyTypes.h`
-  当前已恢复为 canonical DTO owner；workflow/application 中同名头仅保留 compat
-  forwarder。内部 stage 类型当前只作为
+  当前已恢复为 canonical DTO owner；workflow/application 中同名头已删除。内部 stage 类型当前只作为
   `application/services/dispensing/PlanningAssemblyServices.cpp` 的本地实现细节存在，
   不再保留独立 public 头，也不再作为 workflow-facing seam 的公开类型面。
 - `DispensingExecutionPlan` 保留为 `ExecutionPackage` 的 M8 owner backing type；

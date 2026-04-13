@@ -34,15 +34,23 @@ add_executable(
     siligen_dispense_packaging_workflow_seam_tests
     unit/application/services/dispensing/WorkflowPlanningAssemblyOperationsContractTest.cpp
 )
+add_executable(
+    siligen_dispense_packaging_planning_tests
+    unit/application/usecases/dispensing/PlanningRequestTest.cpp
+    unit/application/usecases/dispensing/PlanningUseCaseExportPortTest.cpp
+    unit/application/usecases/dispensing/PlanningFailureSurfaceTest.cpp
+)
 
 if(TARGET GTest::gtest_main)
     target_link_libraries(siligen_dispense_packaging_unit_tests PRIVATE GTest::gtest_main)
     target_link_libraries(siligen_dispense_packaging_boundary_tests PRIVATE GTest::gtest_main)
     target_link_libraries(siligen_dispense_packaging_workflow_seam_tests PRIVATE GTest::gtest_main)
+    target_link_libraries(siligen_dispense_packaging_planning_tests PRIVATE GTest::gtest_main)
 elseif(TARGET gtest_main)
     target_link_libraries(siligen_dispense_packaging_unit_tests PRIVATE gtest_main)
     target_link_libraries(siligen_dispense_packaging_boundary_tests PRIVATE gtest_main)
     target_link_libraries(siligen_dispense_packaging_workflow_seam_tests PRIVATE gtest_main)
+    target_link_libraries(siligen_dispense_packaging_planning_tests PRIVATE gtest_main)
 else()
     message(FATAL_ERROR "GoogleTest target not found")
 endif()
@@ -65,9 +73,21 @@ target_link_libraries(siligen_dispense_packaging_workflow_seam_tests PRIVATE
     siligen_types
     siligen_utils
 )
+target_link_libraries(siligen_dispense_packaging_planning_tests PRIVATE
+    siligen_dispense_packaging_application_public
+    siligen_process_planning_contracts_public
+    siligen_process_path_application_public
+    siligen_motion_planning_application_public
+    siligen_dxf_geometry_application_public
+    siligen_trace_diagnostics_contracts_public
+    siligen_shared_runtime_contracts
+    siligen_types
+    siligen_utils
+)
 target_compile_features(siligen_dispense_packaging_unit_tests PRIVATE cxx_std_17)
 target_compile_features(siligen_dispense_packaging_boundary_tests PRIVATE cxx_std_17)
 target_compile_features(siligen_dispense_packaging_workflow_seam_tests PRIVATE cxx_std_17)
+target_compile_features(siligen_dispense_packaging_planning_tests PRIVATE cxx_std_17)
 
 if(COMMAND siligen_add_test_with_runtime_environment)
     siligen_add_test_with_runtime_environment(
@@ -82,8 +102,13 @@ if(COMMAND siligen_add_test_with_runtime_environment)
         siligen_dispense_packaging_workflow_seam_tests
         siligen_dispense_packaging_workflow_seam_tests
     )
+    siligen_add_test_with_runtime_environment(
+        siligen_dispense_packaging_planning_tests
+        siligen_dispense_packaging_planning_tests
+    )
 else()
     add_test(NAME siligen_dispense_packaging_unit_tests COMMAND siligen_dispense_packaging_unit_tests)
     add_test(NAME siligen_dispense_packaging_boundary_tests COMMAND siligen_dispense_packaging_boundary_tests)
     add_test(NAME siligen_dispense_packaging_workflow_seam_tests COMMAND siligen_dispense_packaging_workflow_seam_tests)
+    add_test(NAME siligen_dispense_packaging_planning_tests COMMAND siligen_dispense_packaging_planning_tests)
 endif()

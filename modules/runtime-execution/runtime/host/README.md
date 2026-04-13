@@ -13,7 +13,8 @@
   - machine execution state store owner：`runtime/system/MachineExecutionStateStore.*`
   - machine execution state backend owner：`runtime/system/MachineExecutionStateBackend.*`（直接实现 `runtime_execution/contracts/system/IMachineExecutionStatePort.h`）
   - machine execution state concrete 已完全留在 `runtime/system/*`，不再通过 workflow / coordinate-alignment 暴露 `DispenserModel` alias
-  - canonical planning export contract：`runtime_execution/application/services/dispensing/PlanningArtifactExportPort.h`
+  - consumed planning export port：
+    `modules/dispense-packaging/application/include/application/services/dispensing/PlanningArtifactExportPort.h`
 - 执行期硬限位 / 软限位监控：`services/motion/*`
 
 ## 已迁出到 app-local shell
@@ -37,8 +38,8 @@
 - 只暴露执行域所需最小依赖：
   - `siligen_runtime_execution_application_public`
   - `siligen_runtime_execution_runtime_contracts`
+  - `siligen_trace_diagnostics_contracts_public`
   - `siligen_device_contracts`
-  - `siligen_workflow_domain_headers`
   - `siligen_shared`
 - 不再 `PUBLIC` 聚合 `job-ingest`、`workflow`、`workflow_recipe`、DXF adapter、host storage、recipe persistence。
 
@@ -49,4 +50,4 @@
 
 这两个模块内旧路径头已从 `runtime-execution/runtime/host` public surface 删除；真实 process bootstrap public surface 位于 `apps/runtime-service/include/runtime_process_bootstrap/*`。
 
-`runtime-host` 不再依赖 `workflow/application/CMakeLists.txt` 扩散 `../../runtime-execution/application/include`；planning export / motion runtime provider 的 canonical consumer surface 已固定为 `runtime_execution/application/*`。
+`runtime-host` 不再依赖 `workflow/application/CMakeLists.txt` 扩散 `../../runtime-execution/application/include`；motion runtime provider 的 canonical consumer surface 固定为 `runtime_execution/application/*`，planning export 仅消费 `dispense-packaging/application` 提供的 owner port。

@@ -5,7 +5,7 @@
 ## 当前职责
 
 - 只承载 `workflow` 自有的 canonical 单元测试源码。
-- 当前对应 `siligen_unit_tests` 与 `siligen_pr1_tests` 两个稳定 target。
+- 当前正式构建目标为 `siligen_unit_tests`。
 - 通过 `modules/workflow/tests/canonical/CMakeLists.txt` 作为正式构建入口。
 - 不再承载 runtime-execution、dispense-packaging、dxf-geometry 等 owner 模块测试。
 

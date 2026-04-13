@@ -5,9 +5,8 @@
 ## Owner 范围
 
 - 工作流编排与阶段推进语义
-- 规划链（`M4-M8`）触发与编排边界
-- 流程状态、阶段失败与调度决策事实
-- recovery governance 的最小 metadata、ports 与 scoring 逻辑
+- `WorkflowRun / StageTransitionRecord / RollbackDecision` owner 事实
+- 阶段失败、回退决策与归档握手编排
 
 ## 当前边界真值
 
@@ -18,23 +17,23 @@
 - generic diagnostics sink 的 canonical owner 已收口到 `trace_diagnostics/contracts/{IDiagnosticsPort,DiagnosticTypes}.h`；`workflow/domain/include/domain/diagnostics/**` 旧 public headers 已删除。
 - hardware-test diagnostics contracts 当前 live landing 位于 `apps/runtime-service/include/runtime_process_bootstrap/diagnostics/**`，属于 app-local quarantine surface，不属于 `workflow` owner。
 - runtime service 装配 concrete 与 planning 工件落盘 concrete 固定由 `modules/runtime-execution/` 或 `apps/runtime-service/` 承接；`workflow` 只保留端口、请求/结果与 orchestration call site。
-- `application/include/`、`domain/include/`、`adapters/include/` 仍是 workflow 当前 public roots，但它们还没有完全收口，不能被当作 foreign owner surface 的长期分发器。
+- 代码冗余治理 `Candidate/Evidence/DecisionLog` 语义不属于 `workflow` rollback；相关 `recovery-control / redundancy` surface 已退出 canonical build/test bundle。
+- `application/` 当前只保留 `commands/queries/facade` 的 headers-only M0 skeleton；
+  planning / execution foreign surface 已迁回 `dispense-packaging` 与 `runtime-execution`，且不再进入模块根 canonical bundle。
+- `application/CMakeLists.txt` 仅作为模块根 canonical bundle 的内部自校验面；
+  `modules/workflow/CMakeLists.txt` 会显式纳入该自校验，但不会再导出 `siligen_workflow_application_headers`。
+- `domain/` 现只保留 `include/workflow/domain/**` 这组 M0 owner model；旧 `domain/domain/**`、`domain/include/domain/**` 与 `motion-core/**` 已退出。
 
 ## 目录职责
 
 - `contracts/`：`M0` 专属稳定契约
-- `application/`：canonical application 入口，终态只应保留 `planning-trigger/`、`phase-control/`、`recovery-control/`
-- `domain/`：workflow 自有领域事实与少量仍待退出的 bridge residue
-- `adapters/`：workflow owner ports 的最小 concrete adapter
-- `tests/`：模块级验证入口；`tests/canonical/` 是唯一 source-bearing workflow 测试承载面
-- shell-only 保留目录：仅保留说明与空壳，不承载 live code
-
-## 当前 live residue
-
-- `modules/workflow/domain/domain/dispensing/**` 仍保留一组 dormant foreign files / compat 痕迹，但 workflow live build graph 已不再编译 `siligen_triggering` 或 `PositionTriggerController.cpp`。
-- `modules/workflow/domain/include/domain/{motion,safety}/**` 仍保留一组 compat public headers，尚未完全收口到 canonical owner surface。
-- `siligen_workflow_application_headers` 仍透传部分 foreign owner headers/contracts，application public surface 还没有完全瘦身。
-- `tests/canonical/` 仍直接依赖部分 foreign owner targets，测试边界尚未完全收口。
+- `services/`：M0 lifecycle / rollback / archive / projection skeleton
+- `application/`：`commands/queries/facade` headers-only skeleton
+- `runtime/`：M0 command/event/archive orchestration skeleton
+- `domain/`：只暴露 `include/workflow/domain/**` 的 M0 owner model
+- `adapters/`：workflow owner adapter root；当前仅保留 `persistence / messaging / projection_store` shell roots
+- `tests/`：模块级验证入口；`tests/canonical/` 只承载 workflow owner 测试，`tests/integration/` 与 `tests/regression/` 仅保留 M0 登记面
+- shell-only 保留目录：当前仅 `examples/` 保留说明与空壳，不承载 live code；`services/` 已实化为 M0 skeleton
 
 ## 禁止事项
 

@@ -1,29 +1,31 @@
 # workflow contracts
 
-`modules/workflow/contracts/` 承载 `M0 workflow` 的模块 owner 专属契约。
+`modules/workflow/contracts/` 承载 `M0 workflow` 的模块 owner 专属稳定契约。
 
 ## 契约范围
 
-- 工作流阶段状态与编排指令的语义约束
-- `M0 -> M4` 规划链触发所需的最小输入/输出口径
-- 调度失败归类与恢复策略所需契约字段
+- 工作流 command / query / event 的稳定消息面
+- `WorkflowRun / StageTransitionRecord / RollbackDecision` 的查询 DTO
+- 顶层失败分类、恢复建议与回退目标的稳定枚举
 
-## 当前已落地契约
+## 当前目录
 
-- `WorkflowStageState`
-- `WorkflowCommand`
-- `WorkflowPlanningTriggerRequest`
-- `WorkflowPlanningTriggerResponse`
-- `WorkflowFailureCategory`
-- `WorkflowRecoveryDirective`
+- `commands/`
+- `queries/`
+- `events/`
+- `dto/`
+- `failures/`
+- `WorkflowContracts.h` 只做聚合 `#include`
 
 ## 边界约束
 
-- 仅放置 `workflow` owner 专属契约，不放跨模块公共稳定契约。
+- 仅放置 `workflow` owner 专属契约，不放 planning / execution specific request-response。
 - 跨模块长期稳定契约应维护在 `shared/contracts/`。
-- `process-runtime-core/` 与 `src/` 仅作为 shell-only bridge，不再承载 `M0` 终态 owner 契约。
-- 契约字段仅表达编排、阶段推进、失败分类与恢复指令，不承载 motion / recipe / planning 的内部算法参数或状态机细节。
+- `modules/workflow/contracts/` 当前没有额外 compat / bridge 子树；live 契约只存在于 `include/workflow/contracts/**`。
+- 契约字段仅表达编排、阶段推进、失败分类、回退与归档握手，不承载 motion / recipe / planning 的内部算法参数或状态机细节。
 
-## 迁移来源（当前事实）
+## 明确不属于本目录的对象
 
-- `legacy-archive/process-runtime-core/src/application`
+- `WorkflowPlanningTriggerRequest`
+- `WorkflowPlanningTriggerResponse`
+- 任意 `M1-M10` 的 domain / application concrete
