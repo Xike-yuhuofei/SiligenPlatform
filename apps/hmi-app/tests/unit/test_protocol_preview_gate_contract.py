@@ -114,6 +114,37 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertEqual(error, "响应缺少 result 字段")
         self.assertIsNone(error_code)
 
+    def test_move_to_returns_gateway_success_contract(self) -> None:
+        client = _FakeClient([{"result": {"moving": True}}])
+        protocol = CommandProtocol(client)
+
+        ok, error, error_code = protocol.move_to(1.0, 1.5, 8.0)
+
+        self.assertTrue(ok)
+        self.assertEqual(error, "")
+        self.assertIsNone(error_code)
+        self.assertEqual(client.calls[0], ("move", {"x": 1.0, "y": 1.5, "speed": 8.0}, None))
+
+    def test_move_to_returns_backend_error_details(self) -> None:
+        client = _FakeClient([{"error": {"code": 2401, "message": "motion_not_ready"}}])
+        protocol = CommandProtocol(client)
+
+        ok, error, error_code = protocol.move_to(1.0, 1.5, 8.0)
+
+        self.assertFalse(ok)
+        self.assertEqual(error, "motion_not_ready")
+        self.assertEqual(error_code, 2401)
+
+    def test_move_to_handles_completion_style_result_contract(self) -> None:
+        client = _FakeClient([{"result": {"motion_completed": False, "status_message": "Move rejected"}}])
+        protocol = CommandProtocol(client)
+
+        ok, error, error_code = protocol.move_to(1.0, 1.5, 8.0)
+
+        self.assertFalse(ok)
+        self.assertEqual(error, "Move rejected")
+        self.assertIsNone(error_code)
+
     def test_get_status_reads_backend_interlock_fields(self) -> None:
         client = _FakeClient(
             [

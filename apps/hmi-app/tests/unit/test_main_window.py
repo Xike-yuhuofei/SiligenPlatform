@@ -33,6 +33,7 @@ class FakeProtocol:
         self.home_calls = []
         self.home_auto_calls = []
         self.jog_calls = []
+        self.move_to_calls = []
         self.dispenser_start_calls = []
         self.dispenser_stop_calls = 0
         self.supply_open_calls = 0
@@ -77,6 +78,7 @@ class FakeProtocol:
         self.dispenser_stop_response = (True, "", None)
         self.supply_open_response = (True, "", None)
         self.supply_close_response = (True, "", None)
+        self.move_to_response = (True, "", None)
 
     def get_status(self) -> MachineStatus:
         self.status_calls += 1
@@ -96,6 +98,10 @@ class FakeProtocol:
     def jog(self, axis: str, direction: int, speed: float):
         self.jog_calls.append((axis, direction, speed))
         return True, "Jogging"
+
+    def move_to(self, x: float, y: float, speed: float):
+        self.move_to_calls.append((x, y, speed))
+        return self.move_to_response
 
     def dispenser_start(self, count: int = 1, interval_ms: int = 1000, duration_ms: int = 15):
         self.dispenser_start_calls.append((count, interval_ms, duration_ms))
@@ -564,6 +570,7 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertEqual(worker.port, self.window._client.port)
         self.assertEqual(worker.axes, ["X", "Y"])
         self.assertFalse(worker.force_rehome)
+        self.assertEqual(worker.timeout_ms, main_window_module.DEFAULT_HOME_AUTO_TIMEOUT_MS)
         self.assertEqual(self.window.statusBar().currentMessage(), "回零进行中...")
 
         worker.complete(True, "Axes ready at zero")
@@ -756,6 +763,15 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertFalse(result)
         self.assertEqual(self.window.statusBar().currentMessage(), "安全门打开，无法点动")
 
+    def test_check_motion_preconditions_can_render_move_specific_message(self) -> None:
+        self.window._require_online_mode = lambda capability: True
+        self.window._protocol = FakeProtocol(self._make_status(door=False, effective_door=True))
+
+        result = self.window._check_motion_preconditions("移动", "移动控制")
+
+        self.assertFalse(result)
+        self.assertEqual(self.window.statusBar().currentMessage(), "安全门打开，无法移动")
+
     def test_update_status_prefers_runtime_supervision_state_over_compat_machine_state(self) -> None:
         status = self._make_status()
         status.machine_state = "Idle"
@@ -784,6 +800,39 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertEqual(self.window._last_jog_context["axis"], "X")
         self.assertEqual(self.window._last_jog_context["direction"], 1)
         self.assertEqual(self.window._last_jog_context["speed"], 12.0)
+
+    def test_on_move_to_checks_motion_preconditions_before_dispatch(self) -> None:
+        status = self._make_status(x_homed=True, y_homed=True)
+        fake_protocol = FakeProtocol(status)
+        requested_actions = []
+        self.window._protocol = fake_protocol
+        self.window._require_online_mode = lambda capability: True
+        self.window._check_motion_preconditions = (
+            lambda action_name="点动", capability_name="点动": requested_actions.append(
+                (action_name, capability_name)
+            ) or False
+        )
+
+        self.window._on_move_to()
+
+        self.assertEqual(requested_actions, [("移动", "移动控制")])
+        self.assertEqual(fake_protocol.move_to_calls, [])
+
+    def test_on_move_to_surfaces_backend_error_details(self) -> None:
+        status = self._make_status(x_homed=True, y_homed=True)
+        fake_protocol = FakeProtocol(status)
+        fake_protocol.move_to_response = (False, "motion_not_ready", 2401)
+        self.window._protocol = fake_protocol
+        self.window._require_online_mode = lambda capability: True
+        self.window._check_motion_preconditions = lambda action_name="点动", capability_name="点动": True
+        self.window._move_inputs["X"].setValue(1.0)
+        self.window._move_inputs["Y"].setValue(1.5)
+        self.window._move_speed.setValue(8.0)
+
+        self.window._on_move_to()
+
+        self.assertEqual(fake_protocol.move_to_calls, [(1.0, 1.5, 8.0)])
+        self.assertEqual(self.window.statusBar().currentMessage(), "移动失败(code=2401): motion_not_ready")
 
     def test_manual_dispenser_defaults_match_observed_hardware_baseline(self) -> None:
         self.assertEqual(self.window._dispenser_count.value(), 20)

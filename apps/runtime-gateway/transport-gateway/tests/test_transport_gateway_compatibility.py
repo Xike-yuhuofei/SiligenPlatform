@@ -15,6 +15,8 @@ RUNTIME_STATUS_EXPORT_PORT = ROOT / "apps" / "runtime-service" / "runtime" / "st
 RUNTIME_SUPERVISION_BACKEND = ROOT / "apps" / "runtime-service" / "runtime" / "supervision" / "RuntimeExecutionSupervisionBackend.cpp"
 TCP_DISPENSING_FACADE_HEADER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "facades" / "tcp" / "TcpDispensingFacade.h"
 TCP_DISPENSING_FACADE_CPP = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "facades" / "tcp" / "TcpDispensingFacade.cpp"
+TCP_MOTION_FACADE_HEADER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "facades" / "tcp" / "TcpMotionFacade.h"
+TCP_MOTION_FACADE_CPP = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "facades" / "tcp" / "TcpMotionFacade.cpp"
 TCP_FACADE_BUILDER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "include" / "siligen" / "gateway" / "tcp" / "tcp_facade_builder.h"
 APPLICATION_CONTAINER_DISPENSING = ROOT / "apps" / "runtime-service" / "container" / "ApplicationContainer.Dispensing.cpp"
 RUNTIME_EXECUTION_UC_HEADER = ROOT / "modules" / "runtime-execution" / "application" / "include" / "runtime_execution" / "application" / "usecases" / "dispensing" / "DispensingExecutionUseCase.h"
@@ -543,6 +545,20 @@ def test_jog_allows_positive_escape_when_home_is_active_but_axis_not_homed():
     assert '"Axis not homed, run homing first"' in jog_body
 
 
+def test_move_command_uses_synchronized_xy_position_control():
+    dispatcher_source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    motion_facade_header = TCP_MOTION_FACADE_HEADER.read_text(encoding="utf-8")
+    motion_facade_impl = TCP_MOTION_FACADE_CPP.read_text(encoding="utf-8")
+    builder = TCP_FACADE_BUILDER.read_text(encoding="utf-8")
+
+    assert "Shared::Types::Result<void> MoveToPosition(const Point2D& position, float32 velocity);" in motion_facade_header
+    assert "position_control_port_->MoveToPosition(position, velocity);" in motion_facade_impl
+    assert "ResolvePort<Siligen::Domain::Motion::Ports::IPositionControlPort>()" in builder
+    assert "motionFacade_->MoveToPosition(target_position, speed);" in dispatcher_source
+    assert "auto resultX = motionFacade_->ExecutePointToPointMotion(cmdX);" not in dispatcher_source
+    assert "auto resultY = motionFacade_->ExecutePointToPointMotion(cmdY);" not in dispatcher_source
+
+
 def main():
     tests = [
         test_dispatcher_matches_contracts,
@@ -566,6 +582,7 @@ def main():
         test_manual_readiness_gate_uses_typed_job_transition_owner_state,
         test_home_go_uses_ready_zero_configuration_and_rejects_speed_override,
         test_jog_allows_positive_escape_when_home_is_active_but_axis_not_homed,
+        test_move_command_uses_synchronized_xy_position_control,
     ]
     for test in tests:
         test()

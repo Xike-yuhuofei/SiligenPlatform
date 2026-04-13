@@ -501,7 +501,8 @@ def measure_reliability(
             ok, message = protocol.home()
             if not ok:
                 cycle_errors.append(message or "home")
-            if not protocol.move_to(10.0, 5.0, 20.0):
+            move_ok, _, _ = protocol.move_to(10.0, 5.0, 20.0)
+            if not move_ok:
                 cycle_errors.append("move")
             artifact_ok, artifact_payload, artifact_error = protocol.dxf_create_artifact(str(DXF_INPUT))
             if not artifact_ok:

@@ -89,6 +89,7 @@ DEFAULT_ASPECT_RATIO = 16 / 9
 DEFAULT_BASE_WIDTH = 1600
 ASPECT_RATIO_ENV = "SILIGEN_HMI_ASPECT_RATIO"
 STATUS_LOG_HISTORY_LIMIT = 200
+DEFAULT_HOME_AUTO_TIMEOUT_MS = 120_000
 
 
 def _parse_aspect_ratio(value: str):
@@ -266,7 +267,7 @@ class HomeAutoWorker(QThread):
         port: int,
         axes: list[str] | None,
         force_rehome: bool,
-        timeout_ms: int = 0,
+        timeout_ms: int = DEFAULT_HOME_AUTO_TIMEOUT_MS,
     ) -> None:
         super().__init__()
         self._host = host
@@ -2256,24 +2257,24 @@ class MainWindow(QMainWindow):
             return False
         return True
 
-    def _check_motion_preconditions(self) -> bool:
-        if not self._require_online_mode("点动"):
+    def _check_motion_preconditions(self, action_name: str = "点动", capability_name: str = "点动") -> bool:
+        if not self._require_online_mode(capability_name):
             return False
         status = self._protocol.get_status()
         if status.connection_state == "degraded":
-            self.statusBar().showMessage("硬件连接已降级，无法点动，请重新连接")
+            self.statusBar().showMessage(f"硬件连接已降级，无法{action_name}，请重新连接")
             return False
         if not status.connected:
             self.statusBar().showMessage("后端状态不可用，请检查连接")
             return False
         if not status.gate_estop_known() or not status.gate_door_known():
-            self.statusBar().showMessage("互锁信号状态未知，无法点动")
+            self.statusBar().showMessage(f"互锁信号状态未知，无法{action_name}")
             return False
         if status.gate_estop_active():
-            self.statusBar().showMessage("急停未解除，无法点动")
+            self.statusBar().showMessage(f"急停未解除，无法{action_name}")
             return False
         if status.gate_door_active():
-            self.statusBar().showMessage("安全门打开，无法点动")
+            self.statusBar().showMessage(f"安全门打开，无法{action_name}")
             return False
         return True
 
@@ -2319,6 +2320,7 @@ class MainWindow(QMainWindow):
             port=self._client.port,
             axes=axes,
             force_rehome=force_rehome,
+            timeout_ms=DEFAULT_HOME_AUTO_TIMEOUT_MS,
         )
         worker.completed.connect(
             lambda ok, message, token=request_token: self._on_home_auto_completed(
@@ -2494,11 +2496,13 @@ class MainWindow(QMainWindow):
         if not self._require_online_mode("移动控制"):
             return
         self._auth.record_activity()
+        if not self._check_motion_preconditions("移动", "移动控制"):
+            return
         x = self._move_inputs["X"].value()
         y = self._move_inputs["Y"].value()
         speed = self._move_speed.value()
-        ok = self._protocol.move_to(x, y, speed)
-        self.statusBar().showMessage("移动中..." if ok else "移动失败")
+        ok, error, error_code = self._protocol.move_to(x, y, speed)
+        self.statusBar().showMessage("移动中..." if ok else self._format_action_failure("移动", error, error_code))
 
     @staticmethod
     def _format_action_failure(action: str, message: str, error_code: int | None) -> str:

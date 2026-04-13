@@ -437,9 +437,24 @@ class CommandProtocol:
         result = _as_dict(resp.get("result"))
         return result.get("jogging", "result" in resp), ""
 
-    def move_to(self, x: float, y: float, speed: float = 10.0) -> bool:
+    def move_to(self, x: float, y: float, speed: float = 10.0) -> tuple[bool, str, int | None]:
         resp = self._client.send_request("move", {"x": x, "y": y, "speed": speed})
-        return "result" in resp
+        ok, message, error_code = self._resolve_action_result(resp)
+        if not ok:
+            return False, message, error_code
+
+        result = _as_dict(resp.get("result"))
+        status_message = str(result.get("status_message", "") or result.get("message", "") or "")
+
+        if "motion_completed" in result:
+            completed = bool(result.get("motion_completed", False))
+            return completed, status_message, None
+
+        if "moving" in result:
+            moving = bool(result.get("moving", False))
+            return moving, status_message, None
+
+        return True, status_message, None
 
     def stop(self) -> bool:
         resp = self._client.send_request("stop")
