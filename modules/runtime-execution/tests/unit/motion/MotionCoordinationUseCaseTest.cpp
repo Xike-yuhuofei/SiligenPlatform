@@ -306,6 +306,7 @@ TEST(MotionCoordinationUseCaseTest, ConfigureCoordinateSystemForwardsToInterpola
     EXPECT_EQ(interpolation_port->last_config.axis_map[1], LogicalAxisId::Y);
     EXPECT_FLOAT_EQ(interpolation_port->last_config.max_velocity, 120.0f);
     EXPECT_FLOAT_EQ(interpolation_port->last_config.max_acceleration, 120.0f);
+    EXPECT_TRUE(interpolation_port->last_config.use_current_planned_position_as_origin);
 }
 
 TEST(MotionCoordinationUseCaseTest, ControlDigitalOutputAndPulseUseIoPort) {

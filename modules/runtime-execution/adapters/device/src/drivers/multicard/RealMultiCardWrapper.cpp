@@ -158,8 +158,13 @@ int RealMultiCardWrapper::MC_CrdClear(short crd, short fifo) noexcept {
     return multicard_->MC_CrdClear(crd, fifo);
 }
 
-int RealMultiCardWrapper::MC_SetCrdPrm(short nCrdNum, short dimension, short* profile,
-                                        double synVelMax, double synAccMax) noexcept {
+int RealMultiCardWrapper::MC_SetCrdPrm(short nCrdNum,
+                                       short dimension,
+                                       short* profile,
+                                       double synVelMax,
+                                       double synAccMax,
+                                       short setOriginFlag,
+                                       const long* originPos) noexcept {
     // 构造 TCrdPrm 结构体
     TCrdPrm crdPrm = {};
     crdPrm.dimension = dimension;
@@ -169,8 +174,12 @@ int RealMultiCardWrapper::MC_SetCrdPrm(short nCrdNum, short dimension, short* pr
     crdPrm.synVelMax = synVelMax;
     crdPrm.synAccMax = synAccMax;
     crdPrm.evenTime = 0;        // 默认值
-    crdPrm.setOriginFlag = 0;   // 使用当前规划位置作为原点
-    // originPos 默认为 0
+    crdPrm.setOriginFlag = setOriginFlag;
+    if (originPos != nullptr) {
+        for (int i = 0; i < 8; ++i) {
+            crdPrm.originPos[i] = originPos[i];
+        }
+    }
 
     return multicard_->MC_SetCrdPrm(nCrdNum, &crdPrm);
 }

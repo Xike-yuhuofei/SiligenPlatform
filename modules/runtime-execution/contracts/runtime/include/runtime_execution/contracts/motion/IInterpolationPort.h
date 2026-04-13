@@ -31,6 +31,9 @@ struct CoordinateSystemConfig {
     float32 max_acceleration = 0.0f;
     int16 look_ahead_segments = 100;
     bool look_ahead_enabled = true;
+    // true: reuse the controller's current planned position as the coordinate-system origin.
+    // false: pin the coordinate-system origin to machine zero so repeated runs stay anchored.
+    bool use_current_planned_position_as_origin = true;
 };
 
 struct InterpolationData {

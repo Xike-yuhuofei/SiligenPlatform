@@ -459,7 +459,7 @@ class MainWindow(QMainWindow):
         self._production_dry_run = False
         self._completed_count = 0
         self._last_completed_count_seen = 0
-        self._target_count = 100
+        self._target_count = 1
         self._cycle_times = []
         self._last_cycle_start = 0
         self._run_start_time = 0
@@ -764,7 +764,7 @@ class MainWindow(QMainWindow):
         self._target_input = QSpinBox()
         self._target_input.setProperty("data-testid", "input-target-count")
         self._target_input.setRange(1, 99999)
-        self._target_input.setValue(100)
+        self._target_input.setValue(1)
         self._target_input.setFixedHeight(28)
         self._target_input.valueChanged.connect(self._on_target_changed)
         param_layout.addWidget(self._target_input, 1, 1)

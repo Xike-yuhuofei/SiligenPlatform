@@ -6,6 +6,7 @@
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/types/AxisTypes.h"
 
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <thread>
@@ -176,6 +177,10 @@ Result<void> InterpolationAdapter::ConfigureCoordinateSystem(
     SILIGEN_LOG_DEBUG("synVelMax (脉冲/ms) = " + std::to_string(synVelMax));
     SILIGEN_LOG_DEBUG("synAccMax (脉冲/ms^2) = " + std::to_string(synAccMax));
 
+    const short set_origin_flag = config.use_current_planned_position_as_origin ? 0 : 1;
+    std::array<long, 8> origin_pos{};
+    SILIGEN_LOG_DEBUG("setOriginFlag = " + std::to_string(set_origin_flag));
+
     // 0. 尝试停止并清空历史坐标系（防止上一次执行残留导致SetCrdPrm失败）
     if (coord_sys > 0 && coord_sys <= 32) {
         const long crd_mask = 1L << (coord_sys - 1);
@@ -194,7 +199,8 @@ Result<void> InterpolationAdapter::ConfigureCoordinateSystem(
         SILIGEN_LOG_DEBUG("预清空 MC_CrdClear 返回: 0 (成功)");
     }
 
-    int error_code = wrapper_->MC_SetCrdPrm(coord_sys, config.dimension, profile, synVelMax, synAccMax);
+    int error_code =
+        wrapper_->MC_SetCrdPrm(coord_sys, config.dimension, profile, synVelMax, synAccMax, set_origin_flag, origin_pos.data());
     if (error_code != 0) {
         SILIGEN_LOG_ERROR("MC_SetCrdPrm 返回: " + std::to_string(error_code));
         return ConvertError(error_code, "ConfigureCoordinateSystem: SetCrdPrm failed");

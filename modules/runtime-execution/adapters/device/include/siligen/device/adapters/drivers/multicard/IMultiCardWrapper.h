@@ -285,10 +285,17 @@ class IMultiCardWrapper {
      * @param profile 轴映射数组（profile[0]=X轴号, profile[1]=Y轴号, ...）
      * @param synVelMax 最大合成速度（脉冲/秒）
      * @param synAccMax 最大合成加速度（脉冲/秒²）
+     * @param setOriginFlag 原点模式（0=当前规划位置，1=使用 originPos）
+     * @param originPos 用户指定原点位置数组（脉冲，可为 nullptr 表示全 0）
      * @return 错误码（0=成功）
      */
-    virtual int MC_SetCrdPrm(short nCrdNum, short dimension, short* profile,
-                              double synVelMax, double synAccMax) noexcept = 0;
+    virtual int MC_SetCrdPrm(short nCrdNum,
+                             short dimension,
+                             short* profile,
+                             double synVelMax,
+                             double synAccMax,
+                             short setOriginFlag = 0,
+                             const long* originPos = nullptr) noexcept = 0;
 
     /**
      * @brief 直线插补（XY平面）

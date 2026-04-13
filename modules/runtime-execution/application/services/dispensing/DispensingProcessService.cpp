@@ -677,6 +677,7 @@ Result<void> DispensingProcessService::ConfigureCoordinateSystem(const Dispensin
     config.max_velocity = params.dispensing_velocity;
     config.max_acceleration = params.acceleration;
     config.look_ahead_enabled = false;
+    config.use_current_planned_position_as_origin = false;
 
     SILIGEN_LOG_INFO_FMT_HELPER(
         "坐标系配置: max_velocity=%.2fmm/s, acc=%.2fmm/s2",
