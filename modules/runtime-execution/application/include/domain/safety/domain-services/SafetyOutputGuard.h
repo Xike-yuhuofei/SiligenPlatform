@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dispense_packaging/contracts/GuardDecision.h"
+#include "runtime_execution/contracts/machine/MachineMode.h"
 #include "shared/types/Result.h"
 
 namespace Siligen::Domain::Safety::DomainServices {

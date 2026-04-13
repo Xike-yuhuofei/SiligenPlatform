@@ -374,7 +374,9 @@ class ProductionActionWorker(QThread):
                 elif self._action == "resume":
                     ok, error = _protocol.dxf_job_resume(self._job_id)
                 elif self._action == "stop":
-                    ok, error = _protocol.dxf_job_stop(self._job_id)
+                    transition = _protocol.dxf_job_stop(self._job_id)
+                    ok = transition.accepted
+                    error = "" if transition.accepted else transition.message
                 else:
                     error = f"不支持的生产控制动作: {self._action}"
                 if self._is_cancelled():
@@ -1379,14 +1381,14 @@ class MainWindow(QMainWindow):
         self._dispenser_count = QSpinBox()
         self._dispenser_count.setProperty("data-testid", "input-dispenser-count")
         self._dispenser_count.setRange(1, 1000)
-        self._dispenser_count.setValue(10)
+        self._dispenser_count.setValue(20)
         params_layout.addWidget(self._dispenser_count, 0, 1)
 
         params_layout.addWidget(QLabel("间隔:"), 1, 0)
         self._dispenser_interval = QSpinBox()
         self._dispenser_interval.setProperty("data-testid", "input-dispenser-interval")
         self._dispenser_interval.setRange(0, 10000)
-        self._dispenser_interval.setValue(1000)
+        self._dispenser_interval.setValue(40)
         self._dispenser_interval.setSuffix(" ms")
         params_layout.addWidget(self._dispenser_interval, 1, 1)
 
@@ -1394,7 +1396,7 @@ class MainWindow(QMainWindow):
         self._dispenser_duration = QSpinBox()
         self._dispenser_duration.setProperty("data-testid", "input-dispenser-duration")
         self._dispenser_duration.setRange(1, 10000)
-        self._dispenser_duration.setValue(15)
+        self._dispenser_duration.setValue(40)
         self._dispenser_duration.setSuffix(" ms")
         params_layout.addWidget(self._dispenser_duration, 2, 1)
 
@@ -2498,19 +2500,26 @@ class MainWindow(QMainWindow):
         ok = self._protocol.move_to(x, y, speed)
         self.statusBar().showMessage("移动中..." if ok else "移动失败")
 
+    @staticmethod
+    def _format_action_failure(action: str, message: str, error_code: int | None) -> str:
+        detail = str(message or "").strip() or "未知错误"
+        if error_code is None:
+            return f"{action}失败: {detail}"
+        return f"{action}失败(code={error_code}): {detail}"
+
     def _on_dispenser_start(self):
         if not self._require_online_mode("点胶控制"):
             return
         count = self._dispenser_count.value()
         interval = self._dispenser_interval.value()
         duration = self._dispenser_duration.value()
-        ok = self._protocol.dispenser_start(count, interval, duration)
+        ok, error, error_code = self._protocol.dispenser_start(count, interval, duration)
         if ok:
             self._increment_needle_count(count)
         if ok:
             self.statusBar().showMessage(f"点胶已启动 (次数:{count}, 间隔:{interval}ms, 持续:{duration}ms)")
         else:
-            self.statusBar().showMessage("点胶启动失败")
+            self.statusBar().showMessage(self._format_action_failure("点胶启动", error, error_code))
 
     def _on_dispenser_pause(self):
         if not self._require_online_mode("点胶控制"):
@@ -2527,20 +2536,20 @@ class MainWindow(QMainWindow):
     def _on_dispenser_stop(self):
         if not self._require_online_mode("点胶控制"):
             return
-        ok = self._protocol.dispenser_stop()
-        self.statusBar().showMessage("点胶已停止" if ok else "点胶停止失败")
+        ok, error, error_code = self._protocol.dispenser_stop()
+        self.statusBar().showMessage("点胶已停止" if ok else self._format_action_failure("点胶停止", error, error_code))
 
     def _on_supply_open(self):
         if not self._require_online_mode("供料阀控制"):
             return
-        ok = self._protocol.supply_open()
-        self.statusBar().showMessage("供料阀已打开" if ok else "供料阀打开失败")
+        ok, error, error_code = self._protocol.supply_open()
+        self.statusBar().showMessage("供料阀已打开" if ok else self._format_action_failure("供料阀打开", error, error_code))
 
     def _on_supply_close(self):
         if not self._require_online_mode("供料阀控制"):
             return
-        ok = self._protocol.supply_close()
-        self.statusBar().showMessage("供料阀已关闭" if ok else "供料阀关闭失败")
+        ok, error, error_code = self._protocol.supply_close()
+        self.statusBar().showMessage("供料阀已关闭" if ok else self._format_action_failure("供料阀关闭", error, error_code))
 
     def _on_purge(self):
         if not self._require_online_mode("清洗"):
@@ -4029,7 +4038,6 @@ class MainWindow(QMainWindow):
                 else:
                     self._completed_count = completed_count
 
-                terminal_after_explicit_stop = self._pending_production_action == "stop"
                 if state == "paused":
                     self._production_running = False
                     self._run_start_time = 0
@@ -4075,10 +4083,7 @@ class MainWindow(QMainWindow):
                     self._production_paused = False
                     self._run_start_time = 0
                     self._current_job_id = ""
-                    if terminal_after_explicit_stop:
-                        self._preview_session.clear_resync_pending()
-                    else:
-                        self._preview_session.mark_resync_pending()
+                    self._preview_session.mark_resync_pending()
                     self._sync_preview_session_fields()
                     self._operation_status.setText("完成")
                     self.statusBar().showMessage("生产目标已达成")
@@ -4098,15 +4103,15 @@ class MainWindow(QMainWindow):
                     self._production_paused = False
                     self._run_start_time = 0
                     self._current_job_id = ""
-                    if terminal_after_explicit_stop:
-                        self._preview_session.clear_resync_pending()
-                    else:
-                        self._preview_session.mark_resync_pending()
+                    self._preview_session.mark_resync_pending()
                     self._sync_preview_session_fields()
                     status_text = "失败" if state == "failed" else "已停止"
                     self._operation_status.setText(status_text)
                     if error_message:
-                        self.statusBar().showMessage(f"执行失败: {error_message}")
+                        if state == "cancelled":
+                            self.statusBar().showMessage(f"执行已取消: {error_message}")
+                        else:
+                            self.statusBar().showMessage(f"执行失败: {error_message}")
                     else:
                         self.statusBar().showMessage(f"执行{status_text}")
                 else:

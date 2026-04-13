@@ -4,7 +4,7 @@
 #include "runtime/supervision/RuntimeSupervisionPortAdapter.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
-#include "domain/safety/ports/IInterlockSignalPort.h"
+#include "runtime_execution/contracts/safety/IInterlockSignalPort.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 
 #include <memory>

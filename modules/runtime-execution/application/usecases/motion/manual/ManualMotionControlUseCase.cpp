@@ -9,10 +9,12 @@ namespace Siligen::Application::UseCases::Motion::Manual {
 ManualMotionControlUseCase::ManualMotionControlUseCase(
     std::shared_ptr<Domain::Motion::Ports::IPositionControlPort> position_control_port,
     std::shared_ptr<Domain::Motion::DomainServices::JogController> jog_controller,
-    std::shared_ptr<Domain::Motion::Ports::IHomingPort> homing_port)
+    std::shared_ptr<Domain::Motion::Ports::IHomingPort> homing_port,
+    std::shared_ptr<Siligen::Application::Services::Motion::Execution::MotionReadinessService> readiness_service)
     : position_control_port_(std::move(position_control_port))
     , jog_controller_(std::move(jog_controller))
-    , homing_port_(std::move(homing_port)) {
+    , homing_port_(std::move(homing_port))
+    , readiness_service_(std::move(readiness_service)) {
 }
 
 void ManualMotionControlUseCase::InvalidateHomingState(LogicalAxisId axis_id) {
@@ -32,6 +34,19 @@ Result<void> ManualMotionControlUseCase::ExecutePointToPointMotion(const ManualM
             "Position control port not available",
             "ManualMotionControlUseCase::ExecutePointToPointMotion"
         ));
+    }
+    if (readiness_service_) {
+        auto readiness_result = readiness_service_->Evaluate();
+        if (readiness_result.IsError()) {
+            return Result<void>::Failure(readiness_result.GetError());
+        }
+        if (!readiness_result.Value().ready) {
+            return Result<void>::Failure(Error(
+                ErrorCode::INVALID_STATE,
+                readiness_result.Value().message.empty() ? "motion_not_ready" : readiness_result.Value().message,
+                "ManualMotionControlUseCase::ExecutePointToPointMotion"
+            ));
+        }
     }
 
     auto axis_id = command.axis;

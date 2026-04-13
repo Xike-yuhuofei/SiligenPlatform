@@ -6,6 +6,12 @@ if(NOT TARGET siligen_process_path_contracts_public)
         "${CMAKE_BINARY_DIR}/_p/dpa_ppc"
     )
 endif()
+if(NOT TARGET siligen_process_path_application_public AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../process-path/application/CMakeLists.txt")
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../process-path/application"
+        "${CMAKE_BINARY_DIR}/_p/dpa_ppa"
+    )
+endif()
 if(NOT TARGET siligen_motion_planning_contracts_public)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../../motion-planning/contracts"
@@ -24,30 +30,6 @@ if(NOT TARGET siligen_process_planning_contracts_public)
         "${CMAKE_BINARY_DIR}/_p/dpa_procplan"
     )
 endif()
-if(NOT TARGET siligen_shared_runtime_contracts)
-    add_subdirectory(
-        "${CMAKE_SOURCE_DIR}/shared/contracts/runtime"
-        "${CMAKE_BINARY_DIR}/_p/dpa_src"
-    )
-endif()
-if(NOT TARGET siligen_trace_diagnostics_contracts_public)
-    add_subdirectory(
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../trace-diagnostics/contracts"
-        "${CMAKE_BINARY_DIR}/_p/dpa_tdc"
-    )
-endif()
-if(NOT TARGET siligen_process_path_application_public)
-    add_subdirectory(
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../process-path/application"
-        "${CMAKE_BINARY_DIR}/_p/dpa_ppa"
-    )
-endif()
-if(NOT TARGET siligen_dxf_geometry_application_public)
-    add_subdirectory(
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../dxf-geometry"
-        "${CMAKE_BINARY_DIR}/_p/dpa_dga"
-    )
-endif()
 if(NOT TARGET siligen_device_contracts AND EXISTS "${CMAKE_SOURCE_DIR}/shared/contracts/device/CMakeLists.txt")
     add_subdirectory(
         "${CMAKE_SOURCE_DIR}/shared/contracts/device"
@@ -58,6 +40,12 @@ if(NOT TARGET siligen_dispense_packaging_contracts_public)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../contracts"
         "${CMAKE_BINARY_DIR}/_p/dpa_dpc"
+    )
+endif()
+if(NOT TARGET siligen_trace_diagnostics_contracts_public AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../trace-diagnostics/contracts/CMakeLists.txt")
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../trace-diagnostics/contracts"
+        "${CMAKE_BINARY_DIR}/_p/dpa_tdc"
     )
 endif()
 
@@ -96,6 +84,21 @@ if(TARGET siligen_motion_planning_contracts_public)
         siligen_motion_planning_contracts_public
     )
 endif()
+if(TARGET siligen_process_planning_contracts_public)
+    target_link_libraries(siligen_dispense_packaging_application_headers INTERFACE
+        siligen_process_planning_contracts_public
+    )
+endif()
+if(TARGET siligen_process_path_application_public)
+    target_link_libraries(siligen_dispense_packaging_application_headers INTERFACE
+        siligen_process_path_application_public
+    )
+endif()
+if(TARGET siligen_trace_diagnostics_contracts_public)
+    target_link_libraries(siligen_dispense_packaging_application_headers INTERFACE
+        siligen_trace_diagnostics_contracts_public
+    )
+endif()
 target_compile_features(siligen_dispense_packaging_application_headers INTERFACE cxx_std_17)
 
 set(SILIGEN_DISPENSE_PACKAGING_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS
@@ -106,14 +109,109 @@ set(SILIGEN_DISPENSE_PACKAGING_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS
 )
 list(REMOVE_DUPLICATES SILIGEN_DISPENSE_PACKAGING_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS)
 
+if(NOT TARGET siligen_dispense_packaging_application_planning_common_residual)
+    add_library(siligen_dispense_packaging_application_planning_common_residual STATIC
+        services/dispensing/PlanningAssemblyResidualCommon.cpp
+    )
+endif()
+target_include_directories(siligen_dispense_packaging_application_planning_common_residual PUBLIC
+    ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_PUBLIC_INCLUDE_DIR}
+)
+target_include_directories(siligen_dispense_packaging_application_planning_common_residual PRIVATE
+    ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
+)
+target_link_libraries(siligen_dispense_packaging_application_planning_common_residual PRIVATE
+    siligen_dispense_packaging_domain_dispensing_planning_residual_headers
+    siligen_dispense_packaging_contracts_public
+    siligen_process_path_contracts_public
+    siligen_motion_planning_contracts_public
+    siligen_dispense_packaging_planning_owner_residual
+    siligen_types
+    siligen_utils
+)
+target_compile_features(siligen_dispense_packaging_application_planning_common_residual PUBLIC cxx_std_17)
+
+if(NOT TARGET siligen_dispense_packaging_application_planning_authority_residual)
+    add_library(siligen_dispense_packaging_application_planning_authority_residual STATIC
+        services/dispensing/PlanningAssemblyAuthorityArtifacts.cpp
+        services/dispensing/PreviewSnapshotResidualProcessPath.cpp
+    )
+endif()
+target_include_directories(siligen_dispense_packaging_application_planning_authority_residual PUBLIC
+    ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_PUBLIC_INCLUDE_DIR}
+)
+target_include_directories(siligen_dispense_packaging_application_planning_authority_residual PRIVATE
+    ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
+)
+target_link_libraries(siligen_dispense_packaging_application_planning_authority_residual PRIVATE
+    siligen_dispense_packaging_application_planning_common_residual
+    siligen_dispense_packaging_domain_dispensing_planning_residual_headers
+    siligen_dispense_packaging_contracts_public
+    siligen_process_path_contracts_public
+    siligen_motion_planning_contracts_public
+    siligen_dispense_packaging_planning_owner_residual
+    siligen_types
+    siligen_utils
+)
+target_compile_features(siligen_dispense_packaging_application_planning_authority_residual PUBLIC cxx_std_17)
+
+if(NOT TARGET siligen_dispense_packaging_application_planning_execution_residual)
+    add_library(siligen_dispense_packaging_application_planning_execution_residual STATIC
+        services/dispensing/PlanningAssemblyExecutionArtifacts.cpp
+        services/dispensing/PlanningAssemblyExecutionInterpolation.cpp
+        services/dispensing/PlanningAssemblyExecutionBinding.cpp
+        services/dispensing/PlanningAssemblyExecutionPackaging.cpp
+    )
+endif()
+target_include_directories(siligen_dispense_packaging_application_planning_execution_residual PUBLIC
+    ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_PUBLIC_INCLUDE_DIR}
+)
+target_include_directories(siligen_dispense_packaging_application_planning_execution_residual PRIVATE
+    ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
+)
+target_link_libraries(siligen_dispense_packaging_application_planning_execution_residual PRIVATE
+    siligen_dispense_packaging_application_planning_common_residual
+    siligen_dispense_packaging_domain_dispensing_planning_residual_headers
+    siligen_dispense_packaging_contracts_public
+    siligen_process_path_contracts_public
+    siligen_motion_planning_contracts_public
+    ${SILIGEN_DISPENSE_PACKAGING_MOTION_PLANNING_APP_TARGET}
+    siligen_types
+    siligen_utils
+)
+target_compile_features(siligen_dispense_packaging_application_planning_execution_residual PUBLIC cxx_std_17)
+
+if(NOT TARGET siligen_dispense_packaging_application_planning_residual)
+    add_library(siligen_dispense_packaging_application_planning_residual STATIC
+        services/dispensing/PlanningAssemblyResidualFacade.cpp
+    )
+endif()
+target_include_directories(siligen_dispense_packaging_application_planning_residual PUBLIC
+    ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_PUBLIC_INCLUDE_DIR}
+)
+target_include_directories(siligen_dispense_packaging_application_planning_residual PRIVATE
+    ${SILIGEN_DISPENSE_PACKAGING_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS}
+)
+target_link_libraries(siligen_dispense_packaging_application_planning_residual PRIVATE
+    siligen_dispense_packaging_application_planning_common_residual
+    siligen_dispense_packaging_application_planning_authority_residual
+    siligen_dispense_packaging_application_planning_execution_residual
+    siligen_dispense_packaging_contracts_public
+    siligen_process_path_contracts_public
+    siligen_motion_planning_contracts_public
+    siligen_types
+    siligen_utils
+)
+target_compile_features(siligen_dispense_packaging_application_planning_residual PUBLIC cxx_std_17)
+
 if(NOT TARGET siligen_dispense_packaging_application)
     add_library(siligen_dispense_packaging_application STATIC
+        usecases/dispensing/PlanningUseCase.cpp
+        usecases/dispensing/PlanningPortAdapters.cpp
         services/dispensing/PlanningAssemblyServices.cpp
         services/dispensing/PlanningArtifactExportAssemblyService.cpp
         services/dispensing/WorkflowPlanningAssemblyOperationsProvider.cpp
         services/dispensing/PreviewSnapshotService.cpp
-        usecases/dispensing/PlanningUseCase.cpp
-        usecases/dispensing/PlanningPortAdapters.cpp
     )
 endif()
 target_include_directories(siligen_dispense_packaging_application PUBLIC
@@ -125,10 +223,10 @@ target_include_directories(siligen_dispense_packaging_application PRIVATE
 target_link_libraries(siligen_dispense_packaging_application PUBLIC
     siligen_types
     siligen_utils
-    siligen_shared_runtime_contracts
 )
 target_link_libraries(siligen_dispense_packaging_application PRIVATE
-    siligen_dispense_packaging_domain_dispensing
+    siligen_dispense_packaging_application_planning_residual
+    ${SILIGEN_DISPENSE_PACKAGING_MOTION_PLANNING_APP_TARGET}
 )
 if(TARGET siligen_dispense_packaging_contracts_public)
     target_link_libraries(siligen_dispense_packaging_application PUBLIC
@@ -145,34 +243,19 @@ if(TARGET siligen_motion_planning_contracts_public)
         siligen_motion_planning_contracts_public
     )
 endif()
-if(TARGET siligen_trace_diagnostics_contracts_public)
-    target_link_libraries(siligen_dispense_packaging_application PUBLIC
-        siligen_trace_diagnostics_contracts_public
-    )
-endif()
 if(TARGET siligen_process_planning_contracts_public)
     target_link_libraries(siligen_dispense_packaging_application PUBLIC
         siligen_process_planning_contracts_public
     )
 endif()
-if(TARGET siligen_dispense_packaging_planning_residual)
-    target_link_libraries(siligen_dispense_packaging_application PRIVATE
-        siligen_dispense_packaging_planning_residual
-    )
-endif()
-if(TARGET ${SILIGEN_DISPENSE_PACKAGING_MOTION_PLANNING_APP_TARGET})
-    target_link_libraries(siligen_dispense_packaging_application PRIVATE
-        ${SILIGEN_DISPENSE_PACKAGING_MOTION_PLANNING_APP_TARGET}
-    )
-endif()
 if(TARGET siligen_process_path_application_public)
-    target_link_libraries(siligen_dispense_packaging_application PRIVATE
+    target_link_libraries(siligen_dispense_packaging_application PUBLIC
         siligen_process_path_application_public
     )
 endif()
-if(TARGET siligen_dxf_geometry_application_public)
-    target_link_libraries(siligen_dispense_packaging_application PRIVATE
-        siligen_dxf_geometry_application_public
+if(TARGET siligen_trace_diagnostics_contracts_public)
+    target_link_libraries(siligen_dispense_packaging_application PUBLIC
+        siligen_trace_diagnostics_contracts_public
     )
 endif()
 target_compile_features(siligen_dispense_packaging_application PUBLIC cxx_std_17)

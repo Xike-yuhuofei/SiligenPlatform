@@ -8,7 +8,7 @@
 #include "runtime_execution/application/usecases/system/InitializeSystemUseCase.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
-#include "domain/safety/ports/IInterlockSignalPort.h"
+#include "runtime_execution/contracts/safety/IInterlockSignalPort.h"
 #include "runtime/status/RuntimeStatusExportPort.h"
 #include "runtime/supervision/RuntimeExecutionSupervisionBackend.h"
 #include "runtime/supervision/RuntimeSupervisionPortAdapter.h"

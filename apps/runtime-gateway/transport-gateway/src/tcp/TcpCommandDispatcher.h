@@ -10,6 +10,7 @@
 #include <cstdint>
 
 #include "shared/types/DiagnosticsConfig.h"
+#include "runtime_execution/application/services/motion/execution/MotionReadinessService.h"
 
 namespace Siligen::Application::Facades::Tcp {
 class TcpSystemFacade;
@@ -142,6 +143,7 @@ private:
     std::string HandleDxfJobPause(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfJobResume(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfJobStop(const std::string& id, const nlohmann::json& params);
+    std::string HandleDxfJobCancel(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfInfo(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfPreviewSnapshot(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfPreviewConfirm(const std::string& id, const nlohmann::json& params);
@@ -178,6 +180,7 @@ private:
     void RegisterAlarmCommands();
     void RegisterRecipeCommands();
     void RegisterCommands();
+    Application::Services::Motion::Execution::ExecutionTransitionState ResolveActiveDxfJobTransitionState() const;
 };
 
 } // namespace Siligen::Adapters::Tcp

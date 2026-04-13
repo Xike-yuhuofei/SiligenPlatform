@@ -131,6 +131,15 @@ class MachineStatus:
         return False
 
 
+@dataclass
+class JobTransitionResult:
+    accepted: bool = False
+    transition_state: str = ""
+    job_id: str = ""
+    message: str = ""
+    error_code: int | None = None
+
+
 class CommandProtocol:
     """High-level command interface for motion controller."""
 
@@ -139,6 +148,62 @@ class CommandProtocol:
 
     def __init__(self, client: RpcClientLike):
         self._client = client
+
+    def _resolve_action_result(
+        self,
+        resp: JsonDict,
+        *,
+        missing_result_message: str = "响应缺少 result 字段",
+    ) -> tuple[bool, str, int | None]:
+        if "error" in resp:
+            error_payload = _as_dict(resp.get("error"))
+            message = str(error_payload.get("message", "") or "Unknown error")
+            code_raw = error_payload.get("code")
+            if code_raw is None:
+                error_code = None
+            else:
+                try:
+                    error_code = int(code_raw)
+                except (TypeError, ValueError):
+                    error_code = None
+            return False, message, error_code
+
+        if "result" not in resp:
+            return False, missing_result_message, None
+
+        return True, "", None
+
+    def _resolve_job_transition_result(
+        self,
+        resp: JsonDict,
+        *,
+        accepted_key: str,
+        default_transition_state: str,
+        missing_result_message: str = "响应缺少 result 字段",
+    ) -> JobTransitionResult:
+        if "error" in resp:
+            error_payload = _as_dict(resp.get("error"))
+            message = str(error_payload.get("message", "") or "Unknown error")
+            code_raw = error_payload.get("code")
+            if code_raw is None:
+                error_code = None
+            else:
+                try:
+                    error_code = int(code_raw)
+                except (TypeError, ValueError):
+                    error_code = None
+            return JobTransitionResult(message=message, error_code=error_code)
+
+        if "result" not in resp:
+            return JobTransitionResult(message=missing_result_message)
+
+        result = _as_dict(resp.get("result"))
+        return JobTransitionResult(
+            accepted=bool(result.get(accepted_key, False)),
+            transition_state=str(result.get("transition_state", default_transition_state) or default_transition_state),
+            job_id=str(result.get("job_id", "") or ""),
+            message=str(result.get("message", "") or ""),
+        )
 
     def _build_dxf_plan_params(
         self,
@@ -413,17 +478,25 @@ class CommandProtocol:
             params["limit_y_neg"] = bool(limit_y_neg)
         return self._call("mock.io.set", params)
 
-    def dispenser_start(self, count: int = 1, interval_ms: int = 1000, duration_ms: int = 15) -> bool:
-        resp = self._client.send_request("dispenser.start", {
-            "count": count,
-            "interval_ms": interval_ms,
-            "duration_ms": duration_ms
-        })
-        return "result" in resp
+    def dispenser_start(
+        self,
+        count: int = 1,
+        interval_ms: int = 1000,
+        duration_ms: int = 15,
+    ) -> tuple[bool, str, int | None]:
+        resp = self._client.send_request(
+            "dispenser.start",
+            {
+                "count": count,
+                "interval_ms": interval_ms,
+                "duration_ms": duration_ms,
+            },
+        )
+        return self._resolve_action_result(resp)
 
-    def dispenser_stop(self) -> bool:
+    def dispenser_stop(self) -> tuple[bool, str, int | None]:
         resp = self._client.send_request("dispenser.stop")
-        return "result" in resp
+        return self._resolve_action_result(resp)
 
     def dispenser_pause(self) -> bool:
         resp = self._client.send_request("dispenser.pause")
@@ -437,13 +510,13 @@ class CommandProtocol:
         resp = self._client.send_request("purge", {"timeout_ms": timeout_ms})
         return "result" in resp
 
-    def supply_open(self) -> bool:
+    def supply_open(self) -> tuple[bool, str, int | None]:
         resp = self._client.send_request("supply.open")
-        return "result" in resp
+        return self._resolve_action_result(resp)
 
-    def supply_close(self) -> bool:
+    def supply_close(self) -> tuple[bool, str, int | None]:
         resp = self._client.send_request("supply.close")
-        return "result" in resp
+        return self._resolve_action_result(resp)
 
     def dxf_load(self, filepath: str, timeout: float = 15.0) -> tuple[bool, object]:
         resp = self._client.send_request("dxf.load", {"filepath": filepath}, timeout=timeout)
@@ -569,12 +642,23 @@ class CommandProtocol:
             return False, resp["error"].get("message", "Unknown error")
         return True, ""
 
-    def dxf_job_stop(self, job_id: str = "") -> tuple[bool, str]:
+    def dxf_job_stop(self, job_id: str = "") -> JobTransitionResult:
         params = {"job_id": job_id} if job_id else {}
         resp = self._client.send_request("dxf.job.stop", params, timeout=15.0)
-        if "error" in resp:
-            return False, resp["error"].get("message", "Unknown error")
-        return True, ""
+        return self._resolve_job_transition_result(
+            resp,
+            accepted_key="stopped",
+            default_transition_state="stopping",
+        )
+
+    def dxf_job_cancel(self, job_id: str = "") -> JobTransitionResult:
+        params = {"job_id": job_id} if job_id else {}
+        resp = self._client.send_request("dxf.job.cancel", params, timeout=15.0)
+        return self._resolve_job_transition_result(
+            resp,
+            accepted_key="cancelled",
+            default_transition_state="canceling",
+        )
 
     def dxf_get_info(self) -> JsonDict:
         """Get DXF file info including bounding box and total length."""

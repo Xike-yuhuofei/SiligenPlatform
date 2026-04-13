@@ -2,6 +2,7 @@
 
 #include "domain/dispensing/contracts/ExecutionPackage.h"
 #include "runtime_execution/contracts/dispensing/DispensingExecutionTypes.h"
+#include "runtime_execution/contracts/machine/MachineMode.h"
 #include "domain/safety/domain-services/SafetyOutputGuard.h"
 #include "shared/types/Result.h"
 

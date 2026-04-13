@@ -12,6 +12,7 @@
 
 namespace {
 constexpr int kCrdStatusProgRun = 0x00000001;
+constexpr int kCrdStatusProgStop = 0x00000002;
 constexpr int kCrdStatusProgEstop = 0x00000004;
 constexpr int kCrdStatusFifoFinish0 = 0x00000010;
 constexpr int kCrdStatusAlarm = 0x00000040;
@@ -552,9 +553,11 @@ Result<Siligen::Domain::Motion::Ports::CoordinateSystemStatus> InterpolationAdap
     const bool is_alarm = (status_bits & kCrdStatusAlarm) != 0;
 
     status.raw_status_word = static_cast<int32>(crd_status);
-    status.raw_segment = static_cast<int32>(segment);
+    status.raw_segment = segment > 0 ? static_cast<int32>(segment) : 0;
     status.mc_status_ret = error_code;
 
+    const bool is_stopping = (status_bits & kCrdStatusProgStop) != 0;
+    const bool buffer_empty = segment <= 0;
     bool velocity_valid = false;
     double current_velocity = 0.0;
     int vel_result = wrapper_->MC_GetCrdVel(coord_sys, &current_velocity);
@@ -566,9 +569,23 @@ Result<Siligen::Domain::Motion::Ports::CoordinateSystemStatus> InterpolationAdap
         SILIGEN_LOG_WARNING("MC_GetCrdVel failed: " + std::to_string(vel_result));
     }
 
+    const bool controller_reported_idle = !is_running && buffer_empty;
+    if (controller_reported_idle && !is_estop && !is_alarm) {
+        if (velocity_valid && std::fabs(status.current_velocity) > kCoordinateVelocityIdleToleranceMmS) {
+            SILIGEN_LOG_DEBUG("GetCoordinateSystemStatus: normalize stale coordinate velocity to zero"
+                              " (coord_sys=" + std::to_string(coord_sys) +
+                              ", raw_status=" + std::to_string(status_bits) +
+                              ", raw_segment=" + std::to_string(segment) +
+                              ", velocity_mm_s=" + std::to_string(status.current_velocity) + ")");
+        }
+        status.current_velocity = 0.0f;
+        velocity_valid = true;
+    }
+
     const bool coord_velocity_idle =
         !velocity_valid || std::fabs(status.current_velocity) <= kCoordinateVelocityIdleToleranceMmS;
-    const bool controller_reported_complete = is_fifo_finished && coord_velocity_idle && segment <= 0;
+    const bool controller_reported_complete =
+        (is_fifo_finished || is_stopping || controller_reported_idle) && coord_velocity_idle && buffer_empty;
 
     status.is_moving = is_running && !controller_reported_complete;
     status.remaining_segments = segment > 0 ? static_cast<uint32>(segment) : 0U;

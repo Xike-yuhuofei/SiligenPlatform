@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 
 add_executable(siligen_recipe_lifecycle_unit_tests
-    canonical/unit/domain/recipes/RecipeActivationServiceTest.cpp
-    canonical/unit/recipes/RecipeCommandUseCaseTest.cpp
+    unit/domain/recipes/RecipeActivationServiceTest.cpp
+    unit/application/recipes/RecipeCommandUseCaseTest.cpp
 )
 
 if(TARGET GTest::gtest_main)

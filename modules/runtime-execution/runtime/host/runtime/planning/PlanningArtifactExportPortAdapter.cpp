@@ -15,6 +15,7 @@
 namespace Siligen::RuntimeExecution::Host::Planning {
 
 using Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest;
+using Siligen::Application::Services::Dispensing::PlanningArtifactExportResult;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;

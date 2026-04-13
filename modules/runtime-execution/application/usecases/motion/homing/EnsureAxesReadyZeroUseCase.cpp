@@ -188,12 +188,14 @@ EnsureAxesReadyZeroUseCase::EnsureAxesReadyZeroUseCase(
     std::shared_ptr<Manual::ManualMotionControlUseCase> manual_motion_use_case,
     std::shared_ptr<Monitoring::MotionMonitoringUseCase> monitoring_use_case,
     std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port,
-    std::shared_ptr<ReadyZeroDecisionService> decision_service)
+    std::shared_ptr<ReadyZeroDecisionService> decision_service,
+    std::shared_ptr<Siligen::Application::Services::Motion::Execution::MotionReadinessService> readiness_service)
     : home_use_case_(std::move(home_use_case)),
       manual_motion_use_case_(std::move(manual_motion_use_case)),
       monitoring_use_case_(std::move(monitoring_use_case)),
       config_port_(std::move(config_port)),
-      decision_service_(std::move(decision_service)) {}
+      decision_service_(std::move(decision_service)),
+      readiness_service_(std::move(readiness_service)) {}
 
 Result<EnsureAxesReadyZeroResponse> EnsureAxesReadyZeroUseCase::Execute(const EnsureAxesReadyZeroRequest& request) {
     if (!request.Validate()) {
@@ -233,6 +235,8 @@ Result<EnsureAxesReadyZeroResponse> EnsureAxesReadyZeroUseCase::Execute(const En
     std::vector<std::string> rejection_messages;
     std::vector<LogicalAxisId> axes_to_home;
     std::vector<LogicalAxisId> axes_to_go_home;
+    bool has_transient_motion_rejection = false;
+    bool has_non_transient_rejection = false;
 
     for (const auto& snapshot : initial_snapshots) {
         EnsureAxesReadyZeroResponse::AxisResult axis_result;
@@ -253,6 +257,11 @@ Result<EnsureAxesReadyZeroResponse> EnsureAxesReadyZeroUseCase::Execute(const En
         }
 
         if (effective_action == ReadyZeroPlannedAction::REJECT) {
+            if (snapshot.decision.reason_code == "axis_moving") {
+                has_transient_motion_rejection = true;
+            } else {
+                has_non_transient_rejection = true;
+            }
             rejection_messages.push_back(AxisScopedMessage(snapshot.axis, snapshot.decision.message));
         } else if (effective_action == ReadyZeroPlannedAction::HOME) {
             axes_to_home.push_back(snapshot.axis);
@@ -266,6 +275,27 @@ Result<EnsureAxesReadyZeroResponse> EnsureAxesReadyZeroUseCase::Execute(const En
     }
 
     if (!rejection_messages.empty()) {
+        if (has_transient_motion_rejection && !has_non_transient_rejection && readiness_service_) {
+            auto readiness_result = readiness_service_->Evaluate();
+            if (readiness_result.IsError()) {
+                return Result<EnsureAxesReadyZeroResponse>::Failure(readiness_result.GetError());
+            }
+            if (!readiness_result.Value().ready) {
+                for (auto& axis_result : response.axis_results) {
+                    if (axis_result.reason_code == "axis_moving") {
+                        axis_result.reason_code = "motion_not_ready";
+                        axis_result.message = "motion_not_ready";
+                    }
+                }
+                response.accepted = false;
+                response.summary_state = "blocked";
+                response.reason_code = "motion_not_ready";
+                response.message = "motion_not_ready";
+                response.total_time_ms = ElapsedMs(start_time);
+                return Result<EnsureAxesReadyZeroResponse>::Success(response);
+            }
+        }
+
         response.accepted = false;
         response.summary_state = "rejected";
         response.message = JoinMessages(rejection_messages);
@@ -375,6 +405,28 @@ Result<EnsureAxesReadyZeroResponse> EnsureAxesReadyZeroUseCase::Execute(const En
     }
 
     if (!axes_to_go_home.empty()) {
+        if (readiness_service_) {
+            auto readiness_result = readiness_service_->Evaluate();
+            if (readiness_result.IsError()) {
+                return Result<EnsureAxesReadyZeroResponse>::Failure(readiness_result.GetError());
+            }
+            if (!readiness_result.Value().ready) {
+                for (auto& axis_result : response.axis_results) {
+                    if (ContainsAxis(axes_to_go_home, axis_result.axis)) {
+                        axis_result.success = false;
+                        axis_result.reason_code = "motion_not_ready";
+                        axis_result.message = "motion_not_ready";
+                    }
+                }
+                response.accepted = false;
+                response.summary_state = "blocked";
+                response.reason_code = "motion_not_ready";
+                response.message = "motion_not_ready";
+                response.total_time_ms = ElapsedMs(start_time);
+                return Result<EnsureAxesReadyZeroResponse>::Success(response);
+            }
+        }
+
         std::vector<GoHomeAxisPlan> go_home_plans;
         go_home_plans.reserve(axes_to_go_home.size());
         for (const auto axis : axes_to_go_home) {

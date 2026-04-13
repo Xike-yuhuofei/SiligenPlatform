@@ -993,22 +993,22 @@ $forbiddenOwnershipReferences = @(
         detail = "dispense-packaging domain target must consume siligen_process_path_application_public instead of siligen_process_path_domain_trajectory"
     },
     @{
-        path = "modules/dispense-packaging/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp"
+        path = "modules/dispense-packaging/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp"
         pattern = '#include "domain-services/GeometryNormalizer.h"'
-        rule_id = "dispense-packaging-unified-planner-still-includes-process-path-domain-normalizer"
-        detail = "UnifiedTrajectoryPlannerService must consume ProcessPathFacade instead of process-path domain-services headers"
+        rule_id = "dispense-packaging-planner-still-includes-process-path-domain-normalizer"
+        detail = "DispensingPlannerService residual flow must consume ProcessPathFacade instead of process-path domain-services headers"
     },
     @{
-        path = "modules/dispense-packaging/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp"
+        path = "modules/dispense-packaging/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp"
         pattern = '#include "domain-services/ProcessAnnotator.h"'
-        rule_id = "dispense-packaging-unified-planner-still-includes-process-path-domain-annotator"
-        detail = "UnifiedTrajectoryPlannerService must consume ProcessPathFacade instead of process-path domain-services headers"
+        rule_id = "dispense-packaging-planner-still-includes-process-path-domain-annotator"
+        detail = "DispensingPlannerService residual flow must consume ProcessPathFacade instead of process-path domain-services headers"
     },
     @{
-        path = "modules/dispense-packaging/domain/dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp"
+        path = "modules/dispense-packaging/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp"
         pattern = '#include "domain-services/TrajectoryShaper.h"'
-        rule_id = "dispense-packaging-unified-planner-still-includes-process-path-domain-shaper"
-        detail = "UnifiedTrajectoryPlannerService must consume ProcessPathFacade instead of process-path domain-services headers"
+        rule_id = "dispense-packaging-planner-still-includes-process-path-domain-shaper"
+        detail = "DispensingPlannerService residual flow must consume ProcessPathFacade instead of process-path domain-services headers"
     },
     @{
         path = "modules/process-path/contracts/include/process_path/contracts/PathGenerationRequest.h"

@@ -29,10 +29,12 @@ Result<void> MissingVoidDependency(const char* dependency_name) {
 MotionControlUseCase::MotionControlUseCase(
     std::shared_ptr<IMotionHomingOperations> homing_operations,
     std::shared_ptr<IMotionManualOperations> manual_operations,
-    std::shared_ptr<IMotionMonitoringOperations> monitoring_operations)
+    std::shared_ptr<IMotionMonitoringOperations> monitoring_operations,
+    std::shared_ptr<Siligen::Application::Services::Motion::Execution::MotionReadinessService> readiness_service)
     : homing_operations_(std::move(homing_operations)),
       manual_operations_(std::move(manual_operations)),
-      monitoring_operations_(std::move(monitoring_operations)) {}
+      monitoring_operations_(std::move(monitoring_operations)),
+      readiness_service_(std::move(readiness_service)) {}
 
 Result<Homing::HomeAxesResponse> MotionControlUseCase::Home(const Homing::HomeAxesRequest& request) {
     if (!homing_operations_) {
@@ -140,6 +142,16 @@ Result<bool> MotionControlUseCase::ReadServoAlarmStatus(Siligen::Shared::Types::
         return MissingDependency<bool>("IMotionMonitoringOperations");
     }
     return monitoring_operations_->ReadServoAlarmStatus(axis);
+}
+
+Result<Siligen::Application::Services::Motion::Execution::MotionReadinessResult>
+MotionControlUseCase::EvaluateMotionReadiness(
+    const Siligen::Application::Services::Motion::Execution::MotionReadinessQuery& query) const {
+    if (!readiness_service_) {
+        return MissingDependency<Siligen::Application::Services::Motion::Execution::MotionReadinessResult>(
+            "MotionReadinessService");
+    }
+    return readiness_service_->Evaluate(query);
 }
 
 }  // namespace Siligen::Application::UseCases::Motion

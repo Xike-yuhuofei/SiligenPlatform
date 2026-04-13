@@ -6,6 +6,8 @@
 #include "runtime_execution/contracts/dispensing/ITaskSchedulerPort.h"
 #include "runtime_execution/contracts/dispensing/IValvePort.h"
 #include "runtime_execution/contracts/dispensing/QualityMetrics.h"
+#include "runtime_execution/contracts/machine/MachineMode.h"
+#include "runtime_execution/application/services/motion/execution/MotionReadinessService.h"
 #include "runtime_execution/contracts/motion/IHomingPort.h"
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "runtime_execution/contracts/motion/IMotionStatePort.h"
@@ -32,6 +34,7 @@ using RuntimeDispensingProcessPort = Siligen::RuntimeExecution::Contracts::Dispe
 using RuntimeTaskSchedulerPort = Siligen::Domain::Dispensing::Ports::ITaskSchedulerPort;
 using RuntimeHomingPort = Siligen::Domain::Motion::Ports::IHomingPort;
 using RuntimeInterlockSignalPort = Siligen::Domain::Safety::Ports::IInterlockSignalPort;
+using ExecutionTransitionState = Siligen::Application::Services::Motion::Execution::ExecutionTransitionState;
 
 struct DispensingExecutionRequest {
     ExecutionPackageValidated execution_package;
@@ -96,6 +99,7 @@ struct RuntimeJobStatusResponse {
     JobID job_id;
     std::string plan_id;
     std::string plan_fingerprint;
+    ExecutionTransitionState transition_state = ExecutionTransitionState::UNSPECIFIED;
     std::string state;
     uint32 target_count = 0;
     uint32 completed_count = 0;
@@ -107,6 +111,13 @@ struct RuntimeJobStatusResponse {
     float32 elapsed_seconds = 0.0f;
     std::string error_message;
     bool dry_run = false;
+};
+
+struct ExecutionTransitionSnapshot {
+    bool accepted = false;
+    JobID job_id;
+    ExecutionTransitionState transition_state = ExecutionTransitionState::UNSPECIFIED;
+    std::string message;
 };
 
 class DispensingExecutionUseCase {
@@ -121,7 +132,9 @@ class DispensingExecutionUseCase {
         std::shared_ptr<RuntimeEventPublisherPort> event_port = nullptr,
         std::shared_ptr<RuntimeTaskSchedulerPort> task_scheduler_port = nullptr,
         std::shared_ptr<RuntimeHomingPort> homing_port = nullptr,
-        std::shared_ptr<RuntimeInterlockSignalPort> interlock_signal_port = nullptr);
+        std::shared_ptr<RuntimeInterlockSignalPort> interlock_signal_port = nullptr,
+        std::shared_ptr<Siligen::Application::Services::Motion::Execution::MotionReadinessService>
+            readiness_service = nullptr);
 
     ~DispensingExecutionUseCase();
 
@@ -131,6 +144,9 @@ class DispensingExecutionUseCase {
     Shared::Types::Result<DispensingExecutionResult> Execute(const DispensingExecutionRequest& request);
     Shared::Types::Result<JobID> StartJob(const RuntimeStartJobRequest& request);
     Shared::Types::Result<RuntimeJobStatusResponse> GetJobStatus(const JobID& job_id) const;
+    Shared::Types::Result<ExecutionTransitionSnapshot> RequestJobTransition(
+        const JobID& job_id,
+        ExecutionTransitionState requested_transition_state);
     JobID GetActiveJobId() const;
     Shared::Types::Result<void> PauseJob(const JobID& job_id);
     Shared::Types::Result<void> ResumeJob(const JobID& job_id);

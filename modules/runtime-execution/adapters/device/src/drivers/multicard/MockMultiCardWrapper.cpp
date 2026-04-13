@@ -86,7 +86,7 @@ int MockMultiCardWrapper::MC_Stop(long mask, short mode) noexcept {
 }
 
 int MockMultiCardWrapper::MC_StopEx(long mask, short stopMode) noexcept {
-    return mockMulticard_->MC_Stop(mask, stopMode);
+    return mockMulticard_->MC_StopEx(mask, stopMode, 0, 0);
 }
 
 // ========== 点动控制 ==========

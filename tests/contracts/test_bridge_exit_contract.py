@@ -180,8 +180,8 @@ class BridgeExitContractTest(unittest.TestCase):
         dispense_packaging_application = _read(
             WORKSPACE_ROOT / "modules" / "dispense-packaging" / "application" / "CMakeLists.txt"
         )
-        self.assertIn("usecases/dispensing/PlanningUseCase.cpp", dispense_packaging_application)
-        self.assertIn("usecases/dispensing/PlanningPortAdapters.cpp", dispense_packaging_application)
+        self.assertIn("services/dispensing/PlanningAssemblyServices.cpp", dispense_packaging_application)
+        self.assertIn("services/dispensing/PlanningAssemblyResidualFacade.cpp", dispense_packaging_application)
         self.assertNotIn("siligen_workflow_application_headers", dispense_packaging_application)
 
         for relative, forbidden in (
@@ -492,9 +492,18 @@ class BridgeExitContractTest(unittest.TestCase):
         self.assertTrue(canonical_header.exists(), msg="dispense-packaging must expose the canonical spatial index port")
         self.assertIn("namespace Siligen::Domain::PlanningBoundary::Ports", _read(canonical_header))
 
-        self.assertIn(
-            '#include "domain/dispensing/planning/ports/ISpatialIndexPort.h"',
-            _read(WORKSPACE_ROOT / "modules/dispense-packaging/domain/dispensing/domain-services/PathOptimizationStrategy.h"),
+        legacy_optimizer = (
+            WORKSPACE_ROOT
+            / "modules"
+            / "dispense-packaging"
+            / "domain"
+            / "dispensing"
+            / "domain-services"
+            / "PathOptimizationStrategy.h"
+        )
+        self.assertFalse(
+            legacy_optimizer.exists(),
+            msg="legacy PathOptimizationStrategy surface should be deleted after residual收口",
         )
         self.assertFalse(
             (WORKSPACE_ROOT / "modules/workflow/domain/domain/dispensing/domain-services/PathOptimizationStrategy.h").exists(),

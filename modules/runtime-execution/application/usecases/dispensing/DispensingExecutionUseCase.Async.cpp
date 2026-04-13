@@ -69,29 +69,71 @@ const char* JobStateCode(JobState state) {
     }
 }
 
-JobState ParseJobStateForTesting(const std::string& state) {
-    if (state == "pending") {
-        return JobState::PENDING;
+struct ParsedJobStateForTesting {
+    JobState job_state = JobState::FAILED;
+    ExecutionTransitionState transition_state = ExecutionTransitionState::FAILED;
+};
+
+ExecutionTransitionState ResolveJobTransitionState(
+    JobState state,
+    ExecutionTransitionState requested_transition_state) {
+    switch (state) {
+        case JobState::PENDING:
+            return ExecutionTransitionState::PENDING;
+        case JobState::RUNNING:
+            return ExecutionTransitionState::RUNNING;
+        case JobState::STOPPING:
+            return requested_transition_state == ExecutionTransitionState::CANCELING
+                ? ExecutionTransitionState::CANCELING
+                : ExecutionTransitionState::STOPPING;
+        case JobState::PAUSED:
+            return ExecutionTransitionState::PAUSED;
+        case JobState::COMPLETED:
+            return ExecutionTransitionState::COMPLETED;
+        case JobState::FAILED:
+            return ExecutionTransitionState::FAILED;
+        case JobState::CANCELLED:
+            return ExecutionTransitionState::CANCELLED;
+        default:
+            return ExecutionTransitionState::UNKNOWN;
     }
-    if (state == "running") {
-        return JobState::RUNNING;
+}
+
+ParsedJobStateForTesting ParseJobStateForTesting(const std::string& state) {
+    ParsedJobStateForTesting parsed;
+    parsed.transition_state = Siligen::Application::Services::Motion::Execution::ParseExecutionTransitionState(state);
+    switch (parsed.transition_state) {
+        case ExecutionTransitionState::PENDING:
+            parsed.job_state = JobState::PENDING;
+            break;
+        case ExecutionTransitionState::RUNNING:
+            parsed.job_state = JobState::RUNNING;
+            break;
+        case ExecutionTransitionState::STOPPING:
+        case ExecutionTransitionState::CANCELING:
+            parsed.job_state = JobState::STOPPING;
+            break;
+        case ExecutionTransitionState::PAUSED:
+            parsed.job_state = JobState::PAUSED;
+            break;
+        case ExecutionTransitionState::COMPLETED:
+            parsed.job_state = JobState::COMPLETED;
+            break;
+        case ExecutionTransitionState::CANCELLED:
+            parsed.job_state = JobState::CANCELLED;
+            break;
+        case ExecutionTransitionState::FAILED:
+            parsed.job_state = JobState::FAILED;
+            break;
+        case ExecutionTransitionState::UNSPECIFIED:
+        case ExecutionTransitionState::IDLE:
+        case ExecutionTransitionState::UNKNOWN:
+        default:
+            parsed.job_state = JobState::FAILED;
+            parsed.transition_state = ExecutionTransitionState::FAILED;
+            break;
     }
-    if (state == "stopping") {
-        return JobState::STOPPING;
-    }
-    if (state == "paused") {
-        return JobState::PAUSED;
-    }
-    if (state == "completed") {
-        return JobState::COMPLETED;
-    }
-    if (state == "failed") {
-        return JobState::FAILED;
-    }
-    if (state == "cancelled") {
-        return JobState::CANCELLED;
-    }
-    return JobState::FAILED;
+    return parsed;
 }
 
 }  // namespace
@@ -645,6 +687,7 @@ Result<JobID> DispensingExecutionUseCase::Impl::StartJob(const RuntimeStartJobRe
     context->plan_fingerprint = request.plan_fingerprint;
     context->execution_request = execution_request;
     context->state.store(JobState::PENDING);
+    context->requested_transition_state.store(ExecutionTransitionState::PENDING);
     context->target_count.store(request.target_count);
     context->dry_run =
         execution_request->ResolveOutputPolicy() == ProcessOutputPolicy::Inhibited;
@@ -991,10 +1034,13 @@ std::string DispensingExecutionUseCase::Impl::JobStateToString(JobState state) c
 RuntimeJobStatusResponse DispensingExecutionUseCase::Impl::BuildJobStatusResponse(
     const std::shared_ptr<JobExecutionContext>& context) const {
     RuntimeJobStatusResponse response;
+    const auto transition_state =
+        ResolveJobTransitionState(context->state.load(), context->requested_transition_state.load());
     response.job_id = context->job_id;
     response.plan_id = context->plan_id;
     response.plan_fingerprint = context->plan_fingerprint;
-    response.state = JobStateToString(context->state.load());
+    response.transition_state = transition_state;
+    response.state = Siligen::Application::Services::Motion::Execution::ToString(transition_state);
     response.target_count = context->target_count.load();
     response.completed_count = context->completed_count.load();
     response.current_cycle = context->current_cycle.load();
@@ -1032,7 +1078,7 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
     }
 
     if (context->stop_requested.load()) {
-        FinalizeJob(context, JobState::CANCELLED, "job cancelled");
+        FinalizeStoppedJob(context, "job cancelled");
         return;
     }
 
@@ -1042,7 +1088,7 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
             return;
         }
         if (context->stop_requested.load()) {
-            FinalizeJob(context, JobState::CANCELLED, "job cancelled");
+            FinalizeStoppedJob(context, "job cancelled");
             return;
         }
 
@@ -1053,7 +1099,7 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
 
         while (context->pause_requested.load()) {
             if (context->stop_requested.load()) {
-                FinalizeJob(context, JobState::CANCELLED, "job cancelled");
+                FinalizeStoppedJob(context, "job cancelled");
                 return;
             }
             if (!context->final_state_committed.load()) {
@@ -1068,7 +1114,7 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
             return;
         }
         if (context->stop_requested.load()) {
-            FinalizeJob(context, JobState::CANCELLED, "job cancelled");
+            FinalizeStoppedJob(context, "job cancelled");
             return;
         }
         if (!context->final_state_committed.load()) {
@@ -1115,7 +1161,7 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
 
                     const auto& task_status_after_cancel = task_status_after_cancel_result.Value();
                     if (task_status_after_cancel.state == "cancelled") {
-                        FinalizeJob(context, JobState::CANCELLED, task_status_after_cancel.error_message);
+                        FinalizeStoppedJob(context, task_status_after_cancel.error_message);
                         return;
                     }
                     if (task_status_after_cancel.state == "completed") {
@@ -1124,7 +1170,7 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
                         if (cycle + 1 >= context->target_count.load()) {
                             break;
                         }
-                        FinalizeJob(context, JobState::CANCELLED, "job cancelled");
+                        FinalizeStoppedJob(context, "job cancelled");
                         return;
                     }
                     if (task_status_after_cancel.state == "failed") {
@@ -1182,12 +1228,12 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
                 context->completed_count.store(cycle + 1);
                 context->cycle_progress_percent.store(100);
                 if (context->stop_requested.load() && cycle + 1 < context->target_count.load()) {
-                    FinalizeJob(context, JobState::CANCELLED, "job cancelled");
+                    FinalizeStoppedJob(context, "job cancelled");
                     return;
                 }
                 break;
             } else if (task_status.state == "cancelled") {
-                FinalizeJob(context, JobState::CANCELLED, task_status.error_message);
+                FinalizeStoppedJob(context, task_status.error_message);
                 return;
             } else if (task_status.state == "failed") {
                 FinalizeJob(context, JobState::FAILED, task_status.error_message);
@@ -1242,7 +1288,11 @@ void DispensingExecutionUseCase::Impl::SeedJobStateForTesting(
     context->plan_id = status.plan_id;
     context->plan_fingerprint = status.plan_fingerprint;
     context->execution_request = execution_request;
-    context->state.store(ParseJobStateForTesting(status.state));
+    const auto parsed_state = ParseJobStateForTesting(status.state);
+    context->state.store(parsed_state.job_state);
+    context->requested_transition_state.store(status.transition_state == ExecutionTransitionState::UNSPECIFIED
+        ? parsed_state.transition_state
+        : status.transition_state);
     context->target_count.store(status.target_count);
     context->completed_count.store(status.completed_count);
     context->current_cycle.store(status.current_cycle);

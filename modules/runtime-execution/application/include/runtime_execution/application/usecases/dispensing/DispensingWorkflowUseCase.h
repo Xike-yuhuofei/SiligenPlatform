@@ -4,6 +4,7 @@
 #include "dispense_packaging/application/usecases/dispensing/PlanningUseCase.h"
 #include "application/services/dispensing/PreviewSnapshotService.h"
 #include "job_ingest/contracts/dispensing/UploadContracts.h"
+#include "runtime_execution/contracts/machine/MachineMode.h"
 #include "runtime_execution/contracts/motion/IHomingPort.h"
 #include "runtime_execution/contracts/motion/IMotionStatePort.h"
 #include "runtime_execution/contracts/safety/IInterlockSignalPort.h"

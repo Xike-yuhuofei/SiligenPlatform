@@ -1,7 +1,7 @@
 #pragma once
 
 #include "dispense_packaging/contracts/IValvePort.h"
-#include "domain/geometry/GeometryTypes.h"
+#include "process_path/contracts/Path.h"
 #include "shared/types/Result.h"
 #include "shared/types/Types.h"
 
@@ -11,7 +11,7 @@
 namespace Siligen::Application::UseCases::Dispensing::Valve::Coordination {
 
 using Siligen::Domain::Dispensing::Ports::IValvePort;
-using Siligen::Domain::Geometry::GeometrySegment;
+using Siligen::ProcessPath::Contracts::Segment;
 using Siligen::Shared::Types::Result;
 
 struct ValveTimingConfig {
@@ -49,16 +49,16 @@ public:
     ValveCoordinationUseCase& operator=(const ValveCoordinationUseCase&) = delete;
 
     Result<ValveTimingResult> CalculateTimingParameters(
-        const std::vector<GeometrySegment>& path,
+        const std::vector<Segment>& path,
         const ValveTimingConfig& config);
 
 private:
     std::shared_ptr<IValvePort> valve_port_;
     float32 current_velocity_;
 
-    float32 CalculateTotalLength(const std::vector<GeometrySegment>& path);
+    float32 CalculateTotalLength(const std::vector<Segment>& path);
     std::vector<TriggerPoint> GenerateTriggerPoints(
-        const std::vector<GeometrySegment>& path,
+        const std::vector<Segment>& path,
         float32 interval_mm);
 };
 

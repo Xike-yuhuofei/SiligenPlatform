@@ -8,6 +8,8 @@
 
 - `run_hardware_smoke.py`
 - `run_real_dxf_machine_dryrun.py`
+- `run_dxf_stop_home_auto_probe.py`
+- `run_dxf_stop_home_auto_validation.py`
 - `run_real_dxf_machine_dryrun_negative_matrix.py`
 - `run_real_dxf_preview_snapshot.py`
 - `run_hil_closed_loop.py`
@@ -53,6 +55,14 @@ python .\tests\e2e\hardware-in-loop\run_hardware_smoke.py
 
 ```powershell
 python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun.py
+```
+
+```powershell
+python .\tests\e2e\hardware-in-loop\run_dxf_stop_home_auto_probe.py
+```
+
+```powershell
+python .\tests\e2e\hardware-in-loop\run_dxf_stop_home_auto_validation.py
 ```
 
 ```powershell
@@ -137,6 +147,49 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 - 当前 `state_contradiction` 默认阈值参数为：`--contradiction-progress-threshold-percent=95`、`--contradiction-consecutive-samples=5`、`--contradiction-grace-seconds=0.5`、`--position-epsilon-mm=0.001`、`--velocity-epsilon-mm-s=0.001`
 - 当前能力先作为 `BUG-312` 专项诊断入口使用，默认不直接接入 `verify_hil_controlled_gate.py`
 - 自动离线回归入口为 `python -m pytest tests/integration/scenarios/first-layer/test_real_dxf_machine_dryrun_observation_contract.py -q`
+
+`run_dxf_stop_home_auto_probe.py` 说明：
+
+- 当前用于 `MC_PrfTrap` 现场专项复测，固定执行 `dxf.job.start -> dxf.job.stop -> 等 cancel 终态 -> immediate home.auto`
+- 默认报告目录为 `tests/reports/adhoc/dxf-stop-home-auto-probe/<timestamp>/`
+- 会同时落盘：
+  - `dxf-stop-home-auto-probe.json`
+  - `dxf-stop-home-auto-probe.md`
+  - `gateway-stdout.log`
+  - `gateway-stderr.log`
+- 报告会强制保留 stop 前观测、stop 后直到终态的观测，以及 `pre_home_snapshot` / `post_home_snapshot`
+- `observation_summary` 会直接给出：
+  - `job_terminal_state_after_stop`
+  - `coord_after_stop.is_moving / remaining_segments / current_velocity / raw_status_word / raw_segment`
+  - `axes_stopped_before_home`
+  - `home_auto_ok / home_auto_summary_state / home_auto_message`
+- `mc_prftrap_detected / prftrap_hit_count`
+- 若 `dxf.job.stop` 过晚导致 job 已 `completed`，脚本会返回 `skipped` 口径，不把该次结果误判为“stop/cancel 主链已验证”
+- 当前离线回归入口为 `python -m pytest tests/integration/scenarios/first-layer/test_dxf_stop_home_auto_probe_contract.py -q`
+
+`run_dxf_stop_home_auto_validation.py` 说明：
+
+- 当前用于把 `MC_PrfTrap` 现场专项复测固定成一个正式编排入口，不替代单次 probe
+- 固定先执行 `run-hardware-smoke-observation.ps1`，再根据 `--manual-checks-confirmed` 决定是否允许进入真实动作
+- 默认成功条件为累计 `3` 个有效通过样本；有效样本必须同时满足：
+  - `overall_status=passed`
+  - `job_terminal_state_after_stop != completed`
+  - `axes_stopped_before_home=true`
+  - `home_auto_ok=true`
+  - `mc_prftrap_detected=false`
+  - `prftrap_hit_count=0`
+- 默认 `skipped` 预算为 `3`；超过预算直接阻塞本阶段，避免现场反复“晚停一次再试”
+- 首个非 `skipped` 失败样本会立即停止后续 probe，并归类为：
+  - `stop_drain_incomplete`
+  - `axis_stopped_but_prftrap`
+  - `probe_failed_unclassified`
+- 默认报告目录为 `tests/reports/online-validation/dxf-stop-home-auto-validation/<timestamp>/`
+- 当前会同时落盘：
+  - `dxf-stop-home-auto-validation.json`
+  - `dxf-stop-home-auto-validation.md`
+  - `logs/hardware-smoke-launcher.log`
+  - `probe-attempts/attempt-*/launcher.log`
+- 当前离线回归入口为 `python -m pytest tests/integration/scenarios/first-layer/test_dxf_stop_home_auto_validation_contract.py -q`
 
 `run_real_dxf_machine_dryrun_negative_matrix.py` 说明：
 

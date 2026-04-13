@@ -163,6 +163,32 @@ void LogAxisSnapshot(
 
 }
 
+Application::Services::Motion::Execution::MotionReadinessQuery BuildReadinessQuery(
+    Application::Services::Motion::Execution::ExecutionTransitionState active_job_transition_state) {
+    Application::Services::Motion::Execution::MotionReadinessQuery query;
+    query.coord_sys = 1;
+    query.active_job_transition_state = active_job_transition_state;
+    query.active_job_state =
+        Application::Services::Motion::Execution::ToString(active_job_transition_state);
+    return query;
+}
+
+std::string ResolveReadinessReasonCode(
+    const Application::Services::Motion::Execution::MotionReadinessResult& result) {
+    if (!result.reason_code.empty()) {
+        return result.reason_code;
+    }
+    return Application::Services::Motion::Execution::ToString(result.reason);
+}
+
+std::string ResolveReadinessMessage(
+    const Application::Services::Motion::Execution::MotionReadinessResult& result) {
+    if (!result.message.empty()) {
+        return result.message;
+    }
+    return ResolveReadinessReasonCode(result);
+}
+
 void FlushLogs() {
     auto logger = Siligen::Shared::Interfaces::ILoggingService::GetInstance();
     if (logger) {
@@ -898,6 +924,7 @@ void TcpCommandDispatcher::RegisterDxfCommands() {
     RegisterCommand("dxf.job.pause", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobPause(id, params); });
     RegisterCommand("dxf.job.resume", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobResume(id, params); });
     RegisterCommand("dxf.job.stop", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobStop(id, params); });
+    RegisterCommand("dxf.job.cancel", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobCancel(id, params); });
     RegisterCommand("dxf.preview.snapshot", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfPreviewSnapshot(id, params); });
     RegisterCommand("dxf.preview.confirm", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfPreviewConfirm(id, params); });
     RegisterCommand("dxf.info", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfInfo(id, params); });
@@ -1235,6 +1262,24 @@ std::string TcpCommandDispatcher::HandleHomeAuto(const std::string& id, const nl
         return interlock_error.value();
     }
 
+    auto readiness_result =
+        motionFacade_->EvaluateMotionReadiness(BuildReadinessQuery(ResolveActiveDxfJobTransitionState()));
+    if (readiness_result.IsError()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2424, readiness_result.GetError().GetMessage());
+    }
+    if (!readiness_result.Value().ready) {
+        const auto reason_code = ResolveReadinessReasonCode(readiness_result.Value());
+        const auto message = ResolveReadinessMessage(readiness_result.Value());
+        return GatewayJsonProtocol::MakeSuccessResponse(id, {
+            {"accepted", false},
+            {"summary_state", "blocked"},
+            {"reason_code", reason_code},
+            {"message", message},
+            {"axis_results", nlohmann::json::array()},
+            {"total_time_ms", 0},
+        });
+    }
+
     Application::UseCases::Motion::Homing::EnsureAxesReadyZeroRequest request;
     request.home_all_axes = true;
 
@@ -1299,6 +1344,7 @@ std::string TcpCommandDispatcher::HandleHomeAuto(const std::string& id, const nl
     nlohmann::json result_json = {
         {"accepted", response.accepted},
         {"summary_state", response.summary_state},
+        {"reason_code", response.reason_code},
         {"message", response.message},
         {"axis_results", axisResultsJson},
         {"total_time_ms", response.total_time_ms},
@@ -1365,6 +1411,15 @@ std::string TcpCommandDispatcher::HandleHomeGo(const std::string& id, const nloh
             ReadManualInterlockSnapshot(systemFacade_, dispensingFacade_));
         interlock_error.has_value()) {
         return interlock_error.value();
+    }
+
+    auto readiness_result =
+        motionFacade_->EvaluateMotionReadiness(BuildReadinessQuery(ResolveActiveDxfJobTransitionState()));
+    if (readiness_result.IsError()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2416, readiness_result.GetError().GetMessage());
+    }
+    if (!readiness_result.Value().ready) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2416, ResolveReadinessMessage(readiness_result.Value()));
     }
 
     if (params.contains("speed")) {
@@ -1535,6 +1590,15 @@ std::string TcpCommandDispatcher::HandleMove(const std::string& id, const nlohma
             ReadManualInterlockSnapshot(systemFacade_, dispensingFacade_));
         interlock_error.has_value()) {
         return interlock_error.value();
+    }
+
+    auto readiness_result =
+        motionFacade_->EvaluateMotionReadiness(BuildReadinessQuery(ResolveActiveDxfJobTransitionState()));
+    if (readiness_result.IsError()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2401, readiness_result.GetError().GetMessage());
+    }
+    if (!readiness_result.Value().ready) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2401, ResolveReadinessMessage(readiness_result.Value()));
     }
 
     auto current_position_result = motionFacade_->GetCurrentPosition();
@@ -2105,11 +2169,46 @@ std::string TcpCommandDispatcher::HandleDxfJobStop(const std::string& id, const 
     if (job_id.empty()) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 2912, "DXF job not running");
     }
-    auto stop_result = dispensingFacade_->StopDxfJob(job_id);
+    auto stop_result = dispensingFacade_->RequestDxfJobTransition(
+        job_id,
+        Application::UseCases::Dispensing::ExecutionTransitionState::STOPPING);
     if (stop_result.IsError()) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 2913, stop_result.GetError().GetMessage());
     }
-    return GatewayJsonProtocol::MakeSuccessResponse(id, {{"stopped", true}, {"job_id", job_id}, {"transition_state", "stopping"}});
+    return GatewayJsonProtocol::MakeSuccessResponse(id, {
+        {"stopped", stop_result.Value().accepted},
+        {"job_id", job_id},
+        {"transition_state", Application::Services::Motion::Execution::ToString(stop_result.Value().transition_state)},
+        {"message", stop_result.Value().message},
+    });
+}
+
+std::string TcpCommandDispatcher::HandleDxfJobCancel(const std::string& id, const nlohmann::json& params) {
+    if (!dispensingFacade_) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2914, "TcpDispensingFacade not available");
+    }
+    std::string job_id = params.value("job_id", "");
+    {
+        std::lock_guard<std::mutex> lock(dxf_mutex_);
+        if (job_id.empty()) {
+            job_id = active_dxf_job_id_;
+        }
+    }
+    if (job_id.empty()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2915, "DXF job not running");
+    }
+    auto cancel_result = dispensingFacade_->RequestDxfJobTransition(
+        job_id,
+        Application::UseCases::Dispensing::ExecutionTransitionState::CANCELING);
+    if (cancel_result.IsError()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2916, cancel_result.GetError().GetMessage());
+    }
+    return GatewayJsonProtocol::MakeSuccessResponse(
+        id,
+        {{"cancelled", cancel_result.Value().accepted},
+         {"job_id", job_id},
+         {"transition_state", Application::Services::Motion::Execution::ToString(cancel_result.Value().transition_state)},
+         {"message", cancel_result.Value().message}});
 }
 
 std::string TcpCommandDispatcher::HandleDxfLoad(const std::string& id, const nlohmann::json& params) {
@@ -3108,6 +3207,30 @@ std::string TcpCommandDispatcher::HandleRecipeImport(const std::string& id, cons
         {"importedCount", result.Value().imported_count},
         {"conflicts", conflicts}
     });
+}
+
+Application::Services::Motion::Execution::ExecutionTransitionState
+TcpCommandDispatcher::ResolveActiveDxfJobTransitionState() const {
+    using ExecutionTransitionState = Application::Services::Motion::Execution::ExecutionTransitionState;
+
+    if (!dispensingFacade_) {
+        return ExecutionTransitionState::UNSPECIFIED;
+    }
+
+    std::string job_id;
+    {
+        std::lock_guard<std::mutex> lock(dxf_mutex_);
+        job_id = active_dxf_job_id_;
+    }
+    if (job_id.empty()) {
+        return ExecutionTransitionState::UNSPECIFIED;
+    }
+
+    auto transition_result = dispensingFacade_->GetDxfJobTransitionState(job_id);
+    if (transition_result.IsError()) {
+        return ExecutionTransitionState::UNSPECIFIED;
+    }
+    return transition_result.Value();
 }
 
 } // namespace Siligen::Adapters::Tcp

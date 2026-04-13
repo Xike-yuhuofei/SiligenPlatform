@@ -30,6 +30,7 @@ std::unique_ptr<DispensingExecutionUseCase::Impl> CreateExecutionUseCase() {
         nullptr,
         nullptr,
         nullptr,
+        nullptr,
         nullptr);
 }
 

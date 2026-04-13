@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/motion/ports/IVelocityProfilePort.h"
+#include "motion_planning/contracts/IVelocityProfilePort.h"
 #include "shared/types/Result.h"
 #include "shared/types/Types.h"
 

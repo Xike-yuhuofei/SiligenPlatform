@@ -24,17 +24,19 @@
 
 - `modules/coordinate-alignment/contracts/include/coordinate_alignment/contracts/CoordinateTransformSet.h`
 - `modules/process-path/contracts/include/process_path/contracts/PathGenerationRequest.h`
+- `modules/coordinate-alignment/contracts/include/coordinate_alignment/contracts/` 当前不再承载任何 machine-test contract
 
 ## 当前 root surface
 
 - 模块根 target `siligen_module_coordinate_alignment` 当前只暴露 `contracts/`。
-- `CoordinateTransformSet` 是当前唯一冻结的 stable seam；`process-path` 也只消费该 seam。
-- `application/` 当前不再参与 live build，避免继续伪装为 façade / provider public surface。
+- `contracts/include` 当前唯一冻结的 stable seam 是 `CoordinateTransformSet`；`process-path` 也只消费该 seam。
+- `application/`、`adapters/`、`services/`、`examples/` 当前都属于 docs-only shell，不参与 live build。
 
 ## Residual Exit
 
-- `domain/machine/` 的 legacy machine/calibration/runtime residual 已退出 live build。
-- `CalibrationProcess`、`IHardwareConnectionPort`、`IHardwareTestPort` 与 workflow bridge headers 已删除，不再允许 direct consumer 继续显式引入。
+- `domain/machine/` 的 legacy machine/calibration/runtime residual 已退出 live build，本轮后仅保留退出说明文档。
+- `contracts/include/coordinate_alignment/contracts/IHardwareTestPort.h` 与 `domain/machine/ports/IHardwareTestPort.h` 均已删除，不再伪装为 live contract / owner root。
+- `CalibrationProcess`、`IHardwareConnectionPort` 与 workflow bridge headers 已退出当前模块 live roots，不再允许 direct consumer 继续显式引入。
 - 本目录禁止重新引入 façade / provider / bridge / compat 壳层来回填已关闭的 residual。
 
 ## 当前测试面
@@ -44,3 +46,4 @@
 - `tests/golden/`
   - 冻结包含 `origin-offset`、`rotation-z` 的对齐基线样本
 - `CalibrationProcess` residual family 已退出 live build，不再作为 `M5` owner 证明。
+- `tests/unit/`、`tests/integration/`、`tests/regression/` 当前仅保留 skeleton 占位目录，不参与 live 测试收敛。

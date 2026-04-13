@@ -1,5 +1,4 @@
 #include "ContourOptimizationService.h"
-#include "domain/dispensing/domain-services/PathOptimizationStrategy.h"
 #include "process_path/contracts/GeometryUtils.h"
 #include "shared/types/MathConstants.h"
 
@@ -152,6 +151,11 @@ struct IndexedPrimitive {
     Primitive primitive{};
 };
 
+struct SegmentWithDirection {
+    size_t index = 0;
+    bool reversed = false;
+};
+
 struct Contour {
     int entity_id = -1;
     DXFEntityType entity_type = DXFEntityType::Unknown;
@@ -279,6 +283,139 @@ void ApplyReverse(Contour& contour) {
     contour.primitives = std::move(reversed);
 }
 
+float32 Distance(const Point2D& a, const Point2D& b) {
+    return a.DistanceTo(b);
+}
+
+std::vector<SegmentWithDirection> OptimizeByNearestNeighbor(
+    const std::vector<Shared::Types::DXFSegment>& segments,
+    const Point2D& start_pos) {
+    std::vector<SegmentWithDirection> order;
+    std::vector<bool> visited(segments.size(), false);
+    Point2D current = start_pos;
+    Point2D last_dir;
+    bool has_last_dir = false;
+
+    constexpr float32 kDirectionPenaltyAngleDeg = 150.0f;
+    constexpr float32 kDirectionPenaltyWeight = 5.0f;
+    const float32 cos_threshold = std::cos(kDirectionPenaltyAngleDeg * kDegToRad);
+
+    auto clamp = [](float32 value, float32 lo, float32 hi) {
+        return std::max(lo, std::min(hi, value));
+    };
+
+    auto direction_penalty = [&](const Point2D& candidate_dir) -> float32 {
+        if (!has_last_dir) {
+            return 0.0f;
+        }
+
+        const float32 last_len = last_dir.Length();
+        const float32 candidate_len = candidate_dir.Length();
+        if (last_len <= kEpsilon || candidate_len <= kEpsilon) {
+            return 0.0f;
+        }
+
+        const Point2D n1 = last_dir / last_len;
+        const Point2D n2 = candidate_dir / candidate_len;
+        const float32 dot = clamp(n1.Dot(n2), -1.0f, 1.0f);
+        if (dot >= cos_threshold) {
+            return 0.0f;
+        }
+        return (cos_threshold - dot) / (cos_threshold + 1.0f);
+    };
+
+    for (size_t i = 0; i < segments.size(); ++i) {
+        size_t nearest = 0;
+        bool reversed = false;
+        float32 min_cost = std::numeric_limits<float32>::max();
+
+        for (size_t j = 0; j < segments.size(); ++j) {
+            if (visited[j]) {
+                continue;
+            }
+
+            const float32 forward_dist = Distance(current, segments[j].start_point);
+            const float32 reverse_dist = Distance(current, segments[j].end_point);
+            const Point2D forward_dir = segments[j].end_point - segments[j].start_point;
+            const Point2D reverse_dir = segments[j].start_point - segments[j].end_point;
+            const float32 forward_cost =
+                forward_dist + kDirectionPenaltyWeight * direction_penalty(forward_dir);
+            const float32 reverse_cost =
+                reverse_dist + kDirectionPenaltyWeight * direction_penalty(reverse_dir);
+
+            if (forward_cost < min_cost) {
+                min_cost = forward_cost;
+                nearest = j;
+                reversed = false;
+            }
+            if (reverse_cost < min_cost) {
+                min_cost = reverse_cost;
+                nearest = j;
+                reversed = true;
+            }
+        }
+
+        order.push_back({nearest, reversed});
+        visited[nearest] = true;
+        current = reversed ? segments[nearest].start_point : segments[nearest].end_point;
+        last_dir = reversed ? (segments[nearest].start_point - segments[nearest].end_point)
+                            : (segments[nearest].end_point - segments[nearest].start_point);
+        has_last_dir = last_dir.Length() > kEpsilon;
+    }
+
+    return order;
+}
+
+std::vector<SegmentWithDirection> TwoOptImprove(
+    const std::vector<SegmentWithDirection>& initial_order,
+    const std::vector<Shared::Types::DXFSegment>& segments,
+    int max_iterations) {
+    if (initial_order.size() < 4 || max_iterations <= 0) {
+        return initial_order;
+    }
+
+    auto order = initial_order;
+    bool improved = true;
+
+    auto get_exit_point = [&](const SegmentWithDirection& segment) -> Point2D {
+        return segment.reversed ? segments[segment.index].start_point : segments[segment.index].end_point;
+    };
+    auto get_entry_point = [&](const SegmentWithDirection& segment) -> Point2D {
+        return segment.reversed ? segments[segment.index].end_point : segments[segment.index].start_point;
+    };
+
+    while (improved && max_iterations-- > 0) {
+        improved = false;
+
+        for (size_t i = 0; i + 2 < order.size(); ++i) {
+            for (size_t j = i + 2; j < order.size(); ++j) {
+                float32 old_dist = Distance(get_exit_point(order[i]), get_entry_point(order[i + 1]));
+                if (j + 1 < order.size()) {
+                    old_dist += Distance(get_exit_point(order[j]), get_entry_point(order[j + 1]));
+                }
+
+                const SegmentWithDirection reversed_j{order[j].index, !order[j].reversed};
+                const SegmentWithDirection reversed_i1{order[i + 1].index, !order[i + 1].reversed};
+                float32 new_dist = Distance(get_exit_point(order[i]), get_entry_point(reversed_j));
+                if (j + 1 < order.size()) {
+                    new_dist += Distance(get_exit_point(reversed_i1), get_entry_point(order[j + 1]));
+                }
+
+                if (new_dist < old_dist) {
+                    std::reverse(order.begin() + static_cast<std::ptrdiff_t>(i + 1),
+                                 order.begin() + static_cast<std::ptrdiff_t>(j + 1));
+                    for (size_t k = i + 1; k <= j; ++k) {
+                        order[k].reversed = !order[k].reversed;
+                    }
+                    improved = true;
+                }
+            }
+        }
+    }
+
+    return order;
+}
+
 }  // namespace
 
 std::vector<Primitive> ContourOptimizationService::Optimize(
@@ -288,7 +425,7 @@ std::vector<Primitive> ContourOptimizationService::Optimize(
     bool enable,
     int two_opt_iterations,
     ContourOptimizationStats* stats) {
-    // Complexity: O(n log n) for per-contour sorting plus O(c^2) greedy selection (worst-case O(n^2)).
+    // Complexity: O(n log n) for per-contour sorting plus O(c^2) greedy selection and O(c^2 * iterations) local search.
     if (stats) {
         *stats = ContourOptimizationStats{};
     }
@@ -387,11 +524,10 @@ std::vector<Primitive> ContourOptimizationService::Optimize(
         return primitives;
     }
 
-    Domain::Dispensing::DomainServices::PathOptimizationStrategy optimizer;
-    auto order = optimizer.OptimizeByNearestNeighbor(contour_segments, start_pos);
+    auto order = OptimizeByNearestNeighbor(contour_segments, start_pos);
     int iterations = std::max(0, two_opt_iterations);
     if (iterations > 0) {
-        order = optimizer.TwoOptImprove(order, contour_segments, iterations);
+        order = TwoOptImprove(order, contour_segments, iterations);
     }
 
     Point2D current = start_pos;

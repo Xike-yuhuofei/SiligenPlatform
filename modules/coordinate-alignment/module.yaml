@@ -7,4 +7,4 @@ allowed_dependencies:
   - process-planning/contracts
   - shared
 uniform_skeleton_ready: true
-notes: siligen_module_coordinate_alignment 当前只暴露 contracts surface；domain/machine legacy residual 与 workflow machine bridge 已退出 live build
+notes: siligen_module_coordinate_alignment 当前只暴露 CoordinateTransformSet contract surface；contracts/include 不再承载 machine-test contract；domain/machine legacy residual 与 workflow machine bridge 已退出 live build

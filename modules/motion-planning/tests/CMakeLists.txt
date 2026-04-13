@@ -75,16 +75,10 @@ target_link_libraries(siligen_motion_planning_integration_tests PRIVATE
     siligen_motion_planning_application_public
     siligen_motion
     siligen_runtime_execution_runtime_contracts
-    siligen_dispense_packaging_application_public
     siligen_dxf_geometry_pb_path_source_adapter
     siligen_types
     siligen_utils
 )
-if(TARGET siligen_dispense_packaging_domain_dispensing)
-    target_link_libraries(siligen_motion_planning_integration_tests PRIVATE
-        siligen_dispense_packaging_domain_dispensing
-    )
-endif()
 if(TARGET siligen_process_path_application_public)
     target_link_libraries(siligen_motion_planning_integration_tests PRIVATE
         siligen_process_path_application_public

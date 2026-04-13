@@ -12,6 +12,7 @@ if str(TEST_ROOT) not in sys.path:
 
 from support import FIXTURE_ROOT, WORKSPACE_ROOT
 
+import engineering_data
 from engineering_data.contracts.simulation_input import (
     DEFAULT_EXPORTS,
     TriggerPoint,
@@ -59,6 +60,15 @@ MODULE_TRAJECTORY_CLI = (
     / "path_to_trajectory.py"
 )
 WORKSPACE_TRAJECTORY_SCRIPT = WORKSPACE_ROOT / "scripts" / "engineering-data" / "path_to_trajectory.py"
+TRAJECTORY_MODEL_MODULE = (
+    WORKSPACE_ROOT
+    / "modules"
+    / "dxf-geometry"
+    / "application"
+    / "engineering_data"
+    / "models"
+    / "trajectory.py"
+)
 SIMULATION_RUNTIME_RESIDUAL = (
     WORKSPACE_ROOT
     / "modules"
@@ -88,6 +98,13 @@ def test_simulation_contract_surface_stays_bound_to_runtime_owner_and_geometry_h
 def test_trajectory_shells_are_removed_from_dxf_geometry_live_surface() -> None:
     assert not TRAJECTORY_COMPAT_SHELL.exists()
     assert not MODULE_TRAJECTORY_CLI.exists()
+    assert not TRAJECTORY_MODEL_MODULE.exists()
+
+
+def test_dxf_geometry_package_root_no_longer_exports_trajectory_owner_types() -> None:
+    assert not hasattr(engineering_data, "TrajectoryArtifact")
+    assert not hasattr(engineering_data, "TrajectorySample")
+    assert not hasattr(engineering_data, "PlanningReport")
 
 
 def test_workspace_trajectory_entry_points_to_motion_planning_owner() -> None:

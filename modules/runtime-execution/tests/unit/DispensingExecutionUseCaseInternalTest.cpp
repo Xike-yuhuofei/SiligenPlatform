@@ -14,6 +14,7 @@ namespace {
 
 using Siligen::Application::UseCases::Dispensing::DispensingExecutionRequest;
 using Siligen::Application::UseCases::Dispensing::DispensingExecutionUseCase;
+using Siligen::Application::UseCases::Dispensing::ExecutionTransitionState;
 using Siligen::Application::UseCases::Dispensing::JobExecutionContext;
 using Siligen::Application::UseCases::Dispensing::JobState;
 using Siligen::Application::UseCases::Dispensing::RuntimeJobStatusResponse;
@@ -145,6 +146,7 @@ std::unique_ptr<DispensingExecutionUseCase::Impl> CreateExecutionUseCase(
         std::move(process_port),
         nullptr,
         std::move(task_scheduler_port),
+        nullptr,
         nullptr,
         nullptr);
 }
@@ -467,7 +469,65 @@ TEST(DispensingExecutionUseCaseInternalTest, CancelTaskCancelsPendingSchedulerTa
     EXPECT_EQ(task_it->second->committed_terminal_state.load(), TaskState::CANCELLED);
 }
 
-TEST(DispensingExecutionUseCaseInternalTest, StopJobCommitsCancelledStateImmediatelyAfterTaskCancelConfirmed) {
+TEST(DispensingExecutionUseCaseInternalTest, RequestJobTransitionReturnsCancelingSnapshotAndStatus) {
+    auto use_case = CreateExecutionUseCase();
+
+    auto task_context = std::make_shared<TaskExecutionContext>();
+    task_context->task_id = "task-cancel";
+    task_context->state.store(TaskState::RUNNING);
+    task_context->start_time = std::chrono::steady_clock::now() - std::chrono::seconds(1);
+    use_case->tasks_[task_context->task_id] = task_context;
+    use_case->active_task_id_ = task_context->task_id;
+
+    auto job_context = std::make_shared<JobExecutionContext>();
+    job_context->job_id = "job-cancel";
+    job_context->plan_id = "plan-cancel";
+    job_context->plan_fingerprint = "fp-cancel";
+    job_context->execution_request = std::make_shared<DispensingExecutionRequest>(BuildExecutionRequest(true));
+    job_context->state.store(JobState::RUNNING);
+    job_context->requested_transition_state.store(ExecutionTransitionState::RUNNING);
+    job_context->target_count.store(1);
+    job_context->current_cycle.store(1);
+    job_context->dry_run = true;
+    job_context->start_time = std::chrono::steady_clock::now() - std::chrono::seconds(1);
+    {
+        std::lock_guard<std::mutex> lock(job_context->mutex_);
+        job_context->active_task_id = task_context->task_id;
+    }
+    use_case->jobs_[job_context->job_id] = job_context;
+    use_case->active_job_id_ = job_context->job_id;
+
+    std::thread cancel_completion([task_context]() {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+        while (!task_context->cancel_requested.load() && std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+
+        task_context->state.store(TaskState::CANCELLED);
+        task_context->committed_terminal_state.store(TaskState::CANCELLED);
+        task_context->terminal_committed.store(true);
+        task_context->end_time = std::chrono::steady_clock::now();
+        std::lock_guard<std::mutex> lock(task_context->mutex_);
+        task_context->error_message = "failure_stage=cancel_confirm;failure_code=cancelled;message=执行已取消";
+    });
+
+    auto transition_result = use_case->RequestJobTransition(job_context->job_id, ExecutionTransitionState::CANCELING);
+    cancel_completion.join();
+
+    ASSERT_TRUE(transition_result.IsSuccess()) << transition_result.GetError().GetMessage();
+    EXPECT_TRUE(transition_result.Value().accepted);
+    EXPECT_EQ(transition_result.Value().job_id, job_context->job_id);
+    EXPECT_EQ(transition_result.Value().transition_state, ExecutionTransitionState::CANCELING);
+    EXPECT_EQ(job_context->state.load(), JobState::STOPPING);
+    EXPECT_EQ(job_context->requested_transition_state.load(), ExecutionTransitionState::CANCELING);
+
+    auto job_status_result = use_case->GetJobStatus(job_context->job_id);
+    ASSERT_TRUE(job_status_result.IsSuccess());
+    EXPECT_EQ(job_status_result.Value().transition_state, ExecutionTransitionState::CANCELING);
+    EXPECT_EQ(job_status_result.Value().state, "canceling");
+}
+
+TEST(DispensingExecutionUseCaseInternalTest, StopJobLeavesJobInStoppingTransitionAfterTaskCancelConfirmed) {
     auto use_case = CreateExecutionUseCase();
 
     auto task_context = std::make_shared<TaskExecutionContext>();
@@ -512,14 +572,14 @@ TEST(DispensingExecutionUseCaseInternalTest, StopJobCommitsCancelledStateImmedia
     cancel_completion.join();
 
     ASSERT_TRUE(stop_result.IsSuccess()) << stop_result.GetError().GetMessage();
-    EXPECT_EQ(job_context->state.load(), JobState::CANCELLED);
-    EXPECT_TRUE(job_context->final_state_committed.load());
-    EXPECT_TRUE(use_case->active_job_id_.empty());
+    EXPECT_EQ(job_context->state.load(), JobState::STOPPING);
+    EXPECT_FALSE(job_context->final_state_committed.load());
+    EXPECT_EQ(use_case->active_job_id_, job_context->job_id);
 
     auto job_status_result = use_case->GetJobStatus(job_context->job_id);
     ASSERT_TRUE(job_status_result.IsSuccess());
-    EXPECT_EQ(job_status_result.Value().state, "cancelled");
-    EXPECT_EQ(job_status_result.Value().error_message, "failure_stage=cancel_confirm;failure_code=cancelled;message=执行已取消");
+    EXPECT_EQ(job_status_result.Value().state, "stopping");
+    EXPECT_EQ(job_status_result.Value().error_message, "");
 }
 
 TEST(DispensingExecutionUseCaseInternalTest, TerminalTaskStatusIsReturnedOnceThenReleased) {

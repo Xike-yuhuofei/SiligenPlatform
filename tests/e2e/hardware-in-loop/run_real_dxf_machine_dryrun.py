@@ -42,6 +42,18 @@ DEFAULT_POSITION_EPSILON_MM = 0.001
 DEFAULT_VELOCITY_EPSILON_MM_S = 0.001
 DEFAULT_JOB_TIMEOUT_SCALE = 2.0
 DEFAULT_JOB_TIMEOUT_BUFFER_SECONDS = 15.0
+CRDSYS_STATUS_PROG_RUN = 0x00000001
+CRDSYS_STATUS_PROG_STOP = 0x00000002
+CRDSYS_STATUS_PROG_ESTOP = 0x00000004
+CRDSYS_STATUS_FIFO_FINISH_0 = 0x00000010
+CRDSYS_STATUS_FIFO_FINISH_1 = 0x00000020
+CRDSYS_STATUS_ALARM = 0x00000040
+CRDSYS_STATUS_ACTIVE_MOTION_MASK = CRDSYS_STATUS_PROG_RUN
+CRDSYS_STATUS_IDLE_ALLOWED_MASK = (
+    CRDSYS_STATUS_PROG_STOP
+    | CRDSYS_STATUS_FIFO_FINISH_0
+    | CRDSYS_STATUS_FIFO_FINISH_1
+)
 
 SUPPORTED_DRYRUN_PHASES = (
     "prepare",
@@ -478,8 +490,12 @@ def coord_status_indicates_running(
         return True
     remaining_segments = parse_int(coord_status.get("remaining_segments"))
     raw_segment = parse_int(coord_status.get("raw_segment"))
-    raw_status_word = parse_int(coord_status.get("raw_status_word"))
-    return bool((remaining_segments or 0) > 0 or (raw_segment or 0) > 0 or (raw_status_word or 0) != 0)
+    raw_status_word = parse_int(coord_status.get("raw_status_word")) or 0
+    return bool(
+        (remaining_segments or 0) > 0
+        or (raw_segment or 0) > 0
+        or (raw_status_word & CRDSYS_STATUS_ACTIVE_MOTION_MASK) != 0
+    )
 
 
 def axis_window_shows_motion(
@@ -612,8 +628,8 @@ def coord_status_is_idle_empty(
     return (
         not bool(coord_status.get("is_moving", False))
         and remaining_segments == 0
-        and raw_segment == 0
-        and raw_status_word == 0
+        and raw_segment <= 0
+        and (raw_status_word & ~CRDSYS_STATUS_IDLE_ALLOWED_MASK) == 0
         and abs(current_velocity) <= velocity_epsilon_mm_s
     )
 

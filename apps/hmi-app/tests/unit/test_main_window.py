@@ -16,7 +16,14 @@ sys.path.insert(0, str(PROJECT_ROOT / "src" / "hmi_client"))
 
 import ui.main_window as main_window_module
 from client import SessionSnapshot, launch_result_from_snapshot
-from client.protocol import AxisStatus, EffectiveInterlocks, IOStatus, MachineStatus, SupervisionStatus
+from client.protocol import (
+    AxisStatus,
+    EffectiveInterlocks,
+    IOStatus,
+    JobTransitionResult,
+    MachineStatus,
+    SupervisionStatus,
+)
 
 
 class FakeProtocol:
@@ -26,6 +33,10 @@ class FakeProtocol:
         self.home_calls = []
         self.home_auto_calls = []
         self.jog_calls = []
+        self.dispenser_start_calls = []
+        self.dispenser_stop_calls = 0
+        self.supply_open_calls = 0
+        self.supply_close_calls = 0
         self.stop_calls = 0
         self.emergency_stop_calls = 0
         self.estop_reset_calls = 0
@@ -57,7 +68,15 @@ class FakeProtocol:
         )
         self.pause_job_response = (True, "")
         self.resume_job_response = (True, "")
-        self.stop_job_response = (True, "")
+        self.stop_job_response = JobTransitionResult(
+            accepted=True,
+            transition_state="stopping",
+            job_id="job-1",
+        )
+        self.dispenser_start_response = (True, "", None)
+        self.dispenser_stop_response = (True, "", None)
+        self.supply_open_response = (True, "", None)
+        self.supply_close_response = (True, "", None)
 
     def get_status(self) -> MachineStatus:
         self.status_calls += 1
@@ -77,6 +96,22 @@ class FakeProtocol:
     def jog(self, axis: str, direction: int, speed: float):
         self.jog_calls.append((axis, direction, speed))
         return True, "Jogging"
+
+    def dispenser_start(self, count: int = 1, interval_ms: int = 1000, duration_ms: int = 15):
+        self.dispenser_start_calls.append((count, interval_ms, duration_ms))
+        return self.dispenser_start_response
+
+    def dispenser_stop(self):
+        self.dispenser_stop_calls += 1
+        return self.dispenser_stop_response
+
+    def supply_open(self):
+        self.supply_open_calls += 1
+        return self.supply_open_response
+
+    def supply_close(self):
+        self.supply_close_calls += 1
+        return self.supply_close_response
 
     def stop(self) -> bool:
         self.stop_calls += 1
@@ -749,6 +784,64 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertEqual(self.window._last_jog_context["axis"], "X")
         self.assertEqual(self.window._last_jog_context["direction"], 1)
         self.assertEqual(self.window._last_jog_context["speed"], 12.0)
+
+    def test_manual_dispenser_defaults_match_observed_hardware_baseline(self) -> None:
+        self.assertEqual(self.window._dispenser_count.value(), 20)
+        self.assertEqual(self.window._dispenser_interval.value(), 40)
+        self.assertEqual(self.window._dispenser_duration.value(), 40)
+
+    def test_on_dispenser_start_uses_manual_defaults_and_updates_status(self) -> None:
+        fake_protocol = FakeProtocol(self._make_status())
+        self.window._protocol = fake_protocol
+        self.window._require_online_mode = lambda capability: True
+
+        self.window._on_dispenser_start()
+
+        self.assertEqual(fake_protocol.dispenser_start_calls, [(20, 40, 40)])
+        self.assertEqual(self.window.statusBar().currentMessage(), "点胶已启动 (次数:20, 间隔:40ms, 持续:40ms)")
+
+    def test_on_dispenser_start_surfaces_backend_error_details(self) -> None:
+        fake_protocol = FakeProtocol(self._make_status())
+        fake_protocol.dispenser_start_response = (False, "供胶阀未打开", 2701)
+        self.window._protocol = fake_protocol
+        self.window._require_online_mode = lambda capability: True
+
+        self.window._on_dispenser_start()
+
+        self.assertEqual(self.window.statusBar().currentMessage(), "点胶启动失败(code=2701): 供胶阀未打开")
+
+    def test_on_dispenser_stop_surfaces_backend_error_details(self) -> None:
+        fake_protocol = FakeProtocol(self._make_status())
+        fake_protocol.dispenser_stop_response = (False, "stop timeout", None)
+        self.window._protocol = fake_protocol
+        self.window._require_online_mode = lambda capability: True
+
+        self.window._on_dispenser_stop()
+
+        self.assertEqual(fake_protocol.dispenser_stop_calls, 1)
+        self.assertEqual(self.window.statusBar().currentMessage(), "点胶停止失败: stop timeout")
+
+    def test_on_supply_open_surfaces_backend_error_details(self) -> None:
+        fake_protocol = FakeProtocol(self._make_status())
+        fake_protocol.supply_open_response = (False, "door interlock active", 2842)
+        self.window._protocol = fake_protocol
+        self.window._require_online_mode = lambda capability: True
+
+        self.window._on_supply_open()
+
+        self.assertEqual(fake_protocol.supply_open_calls, 1)
+        self.assertEqual(self.window.statusBar().currentMessage(), "供料阀打开失败(code=2842): door interlock active")
+
+    def test_on_supply_close_surfaces_backend_error_details(self) -> None:
+        fake_protocol = FakeProtocol(self._make_status())
+        fake_protocol.supply_close_response = (False, "close rejected", None)
+        self.window._protocol = fake_protocol
+        self.window._require_online_mode = lambda capability: True
+
+        self.window._on_supply_close()
+
+        self.assertEqual(fake_protocol.supply_close_calls, 1)
+        self.assertEqual(self.window.statusBar().currentMessage(), "供料阀关闭失败: close rejected")
 
     def test_on_jog_release_requests_stop(self) -> None:
         status = self._make_status(x_homed=True, y_homed=True)
@@ -1502,14 +1595,19 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertTrue(self.window._prod_start_btn.isEnabled())
         self.assertFalse(self.window._prod_stop_btn.isEnabled())
 
-    def test_stop_terminal_cancelled_does_not_auto_resync_confirmed_preview(self) -> None:
+    def test_stop_terminal_cancelled_auto_resyncs_confirmed_preview(self) -> None:
         status = self._make_status()
         status.active_job_id = "job-1"
         status.active_job_state = "running"
         fake_protocol = FakeProtocol(status)
         fake_protocol.dxf_job_status_responses = [
             {"state": "stopping", "completed_count": 0, "overall_progress_percent": 40},
-            {"state": "cancelled", "completed_count": 0, "overall_progress_percent": 40},
+            {
+                "state": "cancelled",
+                "completed_count": 0,
+                "overall_progress_percent": 40,
+                "error_message": "failure_stage=cancel_confirm;failure_code=cancelled;message=执行已取消",
+            },
         ]
         fake_protocol.preview_snapshot_response = (
             True,
@@ -1561,15 +1659,15 @@ class MainWindowTabsTest(unittest.TestCase):
         self.window._update_status()
         self.window._update_status()
 
-        self.assertEqual(fake_protocol.preview_snapshot_calls, [])
+        self.assertEqual(len(fake_protocol.preview_snapshot_calls), 1)
         self.assertFalse(self.window._preview_session.state.preview_state_resync_pending)
         self.assertEqual(self.window._current_job_id, "")
         self.assertEqual(self.window._pending_production_action, "")
         self.assertEqual(self.window._operation_status.text(), "已停止")
         self.assertEqual(self.window._current_plan_id, "plan-1")
-        self.assertEqual(self.window._current_plan_fingerprint, "hash-1")
+        self.assertEqual(self.window._current_plan_fingerprint, "hash-resync")
 
-    def test_stop_terminal_completed_does_not_auto_resync_confirmed_preview(self) -> None:
+    def test_stop_terminal_completed_auto_resyncs_confirmed_preview(self) -> None:
         status = self._make_status()
         status.active_job_id = "job-1"
         status.active_job_state = "running"
@@ -1628,13 +1726,13 @@ class MainWindowTabsTest(unittest.TestCase):
         self.window._update_status()
         self.window._update_status()
 
-        self.assertEqual(fake_protocol.preview_snapshot_calls, [])
+        self.assertEqual(len(fake_protocol.preview_snapshot_calls), 1)
         self.assertFalse(self.window._preview_session.state.preview_state_resync_pending)
         self.assertEqual(self.window._current_job_id, "")
         self.assertEqual(self.window._pending_production_action, "")
         self.assertEqual(self.window._operation_status.text(), "完成")
         self.assertEqual(self.window._current_plan_id, "plan-1")
-        self.assertEqual(self.window._current_plan_fingerprint, "hash-1")
+        self.assertEqual(self.window._current_plan_fingerprint, "hash-resync")
 
     def test_natural_completion_still_auto_resyncs_confirmed_preview(self) -> None:
         status = self._make_status()
@@ -1695,6 +1793,39 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertEqual(self.window._pending_production_action, "")
         self.assertEqual(self.window._current_plan_id, "plan-1")
         self.assertEqual(self.window._current_plan_fingerprint, "hash-resync")
+
+    def test_cancelled_terminal_surfaces_cancelled_message_instead_of_failure(self) -> None:
+        status = self._make_status()
+        status.active_job_id = "job-3"
+        status.active_job_state = "running"
+        fake_protocol = FakeProtocol(status)
+        fake_protocol.dxf_job_status_responses = [
+            {
+                "state": "cancelled",
+                "completed_count": 0,
+                "overall_progress_percent": 10,
+                "error_message": "failure_stage=cancel_confirm;failure_code=cancelled;message=执行已取消",
+            },
+        ]
+        self.window._protocol = fake_protocol
+        self._set_online_ready_session()
+        self.window._is_online_ready = lambda: True
+        self.window._require_online_mode = lambda capability: True
+        self.window._dxf_loaded = True
+        self.window._current_job_id = "job-3"
+        self.window._production_running = True
+        self.window._production_paused = False
+        self.window._run_start_time = time.time()
+
+        status.active_job_id = ""
+        status.active_job_state = ""
+        self.window._update_status()
+
+        self.assertEqual(
+            self.window.statusBar().currentMessage(),
+            "执行已取消: failure_stage=cancel_confirm;failure_code=cancelled;message=执行已取消",
+        )
+        self.assertEqual(self.window._operation_status.text(), "已停止")
 
     def test_production_control_handlers_surface_backend_errors(self) -> None:
         status = self._make_status()

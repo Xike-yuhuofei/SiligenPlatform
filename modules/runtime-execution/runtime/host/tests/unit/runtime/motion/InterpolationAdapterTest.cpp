@@ -1,6 +1,7 @@
 #include "siligen/device/adapters/drivers/multicard/MockMultiCard.h"
 #include "siligen/device/adapters/drivers/multicard/MockMultiCardWrapper.h"
 #include "siligen/device/adapters/motion/InterpolationAdapter.h"
+#include "siligen/device/adapters/motion/MultiCardMotionAdapter.h"
 
 #include <gtest/gtest.h>
 
@@ -19,6 +20,8 @@ using CoordinateSystemConfig = Siligen::Domain::Motion::Ports::CoordinateSystemC
 using InterpolationData = Siligen::RuntimeExecution::Contracts::Motion::InterpolationData;
 using InterpolationType = Siligen::RuntimeExecution::Contracts::Motion::InterpolationType;
 using LogicalAxisId = Siligen::Shared::Types::LogicalAxisId;
+using HardwareConfiguration = Siligen::Shared::Types::HardwareConfiguration;
+using MultiCardMotionAdapter = Siligen::Infrastructure::Adapters::MultiCardMotionAdapter;
 
 class FlakyPostConfigureClearWrapper final : public MockMultiCardWrapper {
    public:
@@ -64,6 +67,32 @@ class FlakyPostConfigureClearWrapper final : public MockMultiCardWrapper {
     bool configured_ = false;
     int crd_clear_calls_ = 0;
     int stop_ex_calls_ = 0;
+};
+
+class StaleStoppedVelocityWrapper final : public MockMultiCardWrapper {
+   public:
+    StaleStoppedVelocityWrapper()
+        : MockMultiCardWrapper(std::make_shared<MockMultiCard>()) {}
+
+    int MC_CrdStatus(short nCrdNum, short* pCrdStatus, long* pSegment, short FifoIndex) noexcept override {
+        (void)nCrdNum;
+        (void)FifoIndex;
+        if (pCrdStatus != nullptr) {
+            *pCrdStatus = 0x0002;
+        }
+        if (pSegment != nullptr) {
+            *pSegment = -858993460L;
+        }
+        return 0;
+    }
+
+    int MC_GetCrdVel(short nCrdNum, double* pSynVel) noexcept override {
+        (void)nCrdNum;
+        if (pSynVel != nullptr) {
+            *pSynVel = 1.0;
+        }
+        return 0;
+    }
 };
 
 CoordinateSystemConfig BuildConfig() {
@@ -164,6 +193,21 @@ TEST(InterpolationAdapterTest, GetCoordinateSystemStatusReportsMovingImmediately
     EXPECT_GT(status_result.Value().current_velocity, 0.0f);
 }
 
+TEST(InterpolationAdapterTest, GetCoordinateSystemStatusClearsStaleVelocityWhenControllerAlreadyStopped) {
+    auto wrapper = std::make_shared<StaleStoppedVelocityWrapper>();
+    InterpolationAdapter adapter(wrapper);
+
+    const auto status_result = adapter.GetCoordinateSystemStatus(1);
+
+    ASSERT_TRUE(status_result.IsSuccess()) << status_result.GetError().GetMessage();
+    EXPECT_FALSE(status_result.Value().is_moving);
+    EXPECT_EQ(status_result.Value().state, Siligen::Domain::Motion::Ports::CoordinateSystemState::IDLE);
+    EXPECT_EQ(status_result.Value().remaining_segments, 0U);
+    EXPECT_EQ(status_result.Value().raw_status_word, 0x0002);
+    EXPECT_EQ(status_result.Value().raw_segment, 0);
+    EXPECT_FLOAT_EQ(status_result.Value().current_velocity, 0.0f);
+}
+
 TEST(InterpolationAdapterTest, MockCoordinateMotionAdvancesOnReadWithoutExplicitTick) {
     auto mock_card = std::make_shared<MockMultiCard>();
     auto wrapper = std::make_shared<MockMultiCardWrapper>(mock_card);
@@ -195,6 +239,36 @@ TEST(InterpolationAdapterTest, MockCoordinateMotionAdvancesOnReadWithoutExplicit
     long final_x = 0;
     ASSERT_EQ(wrapper->MC_GetPos(1, &final_x), 0);
     EXPECT_EQ(final_x, 1000);
+}
+
+TEST(InterpolationAdapterTest, StopCoordinateSystemMotionDoesNotStopStandaloneJogAxis) {
+    auto mock_card = std::make_shared<MockMultiCard>();
+    auto wrapper = std::make_shared<MockMultiCardWrapper>(mock_card);
+    InterpolationAdapter interpolation_adapter(wrapper);
+
+    HardwareConfiguration hardware_config;
+    hardware_config.num_axes = 2;
+    hardware_config.pulse_per_mm = 200.0f;
+    hardware_config.max_acceleration_mm_s2 = 500.0f;
+    hardware_config.max_deceleration_mm_s2 = 500.0f;
+
+    auto motion_adapter_result = MultiCardMotionAdapter::Create(wrapper, hardware_config);
+    ASSERT_TRUE(motion_adapter_result.IsSuccess()) << motion_adapter_result.GetError().GetMessage();
+
+    auto jog_result = motion_adapter_result.Value()->StartJog(LogicalAxisId::X, 1, 10.0f);
+    ASSERT_TRUE(jog_result.IsSuccess()) << jog_result.GetError().GetMessage();
+
+    auto before_stop_status = motion_adapter_result.Value()->GetAxisStatus(LogicalAxisId::X);
+    ASSERT_TRUE(before_stop_status.IsSuccess()) << before_stop_status.GetError().GetMessage();
+    EXPECT_EQ(before_stop_status.Value().state, Siligen::Domain::Motion::Ports::MotionState::MOVING);
+
+    const auto stop_result = interpolation_adapter.StopCoordinateSystemMotion(0x01);
+    ASSERT_TRUE(stop_result.IsSuccess()) << stop_result.GetError().GetMessage();
+
+    auto after_stop_status = motion_adapter_result.Value()->GetAxisStatus(LogicalAxisId::X);
+    ASSERT_TRUE(after_stop_status.IsSuccess()) << after_stop_status.GetError().GetMessage();
+    EXPECT_EQ(after_stop_status.Value().state, Siligen::Domain::Motion::Ports::MotionState::MOVING);
+    EXPECT_GT(after_stop_status.Value().velocity, 0.0f);
 }
 
 }  // namespace

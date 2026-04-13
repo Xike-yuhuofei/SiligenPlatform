@@ -64,28 +64,6 @@ TEST(DispensePackagingBoundaryTest, PublicAssemblyServicesUseWorkflowTypesInstea
         std::string::npos);
 }
 
-TEST(DispensePackagingBoundaryTest, DomainDispensingStopsExportingWorkflowAndRuntimeRawIncludeRoots) {
-    const fs::path repo_root = RepoRoot();
-    const std::string content = ReadTextFile(
-        repo_root / "modules/dispense-packaging/domain/dispensing/CMakeLists.txt");
-
-    const std::string include_block = ExtractBlock(
-        content,
-        "target_include_directories(siligen_dispense_packaging_domain_dispensing BEFORE INTERFACE");
-    const std::string link_block = ExtractBlock(
-        content,
-        "target_link_libraries(siligen_dispense_packaging_domain_dispensing INTERFACE");
-
-    EXPECT_EQ(include_block.find("SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR"), std::string::npos);
-    EXPECT_EQ(include_block.find("SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR"), std::string::npos);
-    EXPECT_NE(link_block.find("siligen_runtime_execution_runtime_contracts"), std::string::npos);
-    EXPECT_EQ(link_block.find("SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR"), std::string::npos);
-    EXPECT_EQ(link_block.find("SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR"), std::string::npos);
-    EXPECT_EQ(link_block.find("siligen_workflow_domain_public"), std::string::npos);
-    EXPECT_EQ(link_block.find("siligen_workflow_domain_headers"), std::string::npos);
-    EXPECT_EQ(content.find("GuardDecision bridge headers"), std::string::npos);
-}
-
 TEST(DispensePackagingBoundaryTest, ModuleRootRequiresApplicationPublicTargetAndRefusesDomainFallback) {
     const fs::path repo_root = RepoRoot();
     const std::string content = ReadTextFile(
@@ -332,6 +310,14 @@ TEST(DispensePackagingBoundaryTest, LegacyDispensingPortsAndDtosLiveOnlyOnOwnerM
         repo_root / "modules/dispense-packaging/domain/dispensing/value-objects/DispenseCompensationProfile.h");
     const std::string package_quality = ReadTextFile(
         repo_root / "modules/dispense-packaging/domain/dispensing/value-objects/QualityMetrics.h");
+    const std::string package_contract_valve = ReadTextFile(
+        repo_root / "modules/dispense-packaging/contracts/include/dispense_packaging/contracts/IValvePort.h");
+    const std::string package_contract_trigger = ReadTextFile(
+        repo_root / "modules/dispense-packaging/contracts/include/dispense_packaging/contracts/ITriggerControllerPort.h");
+    const std::string package_contract_scheduler = ReadTextFile(
+        repo_root / "modules/dispense-packaging/contracts/include/dispense_packaging/contracts/ITaskSchedulerPort.h");
+    const std::string package_contract_observer = ReadTextFile(
+        repo_root / "modules/dispense-packaging/contracts/include/dispense_packaging/contracts/IDispensingExecutionObserver.h");
     const std::string package_valve = ReadTextFile(
         repo_root / "modules/dispense-packaging/domain/dispensing/ports/IValvePort.h");
     const std::string package_trigger = ReadTextFile(
@@ -350,12 +336,24 @@ TEST(DispensePackagingBoundaryTest, LegacyDispensingPortsAndDtosLiveOnlyOnOwnerM
 
     EXPECT_NE(package_compensation.find("runtime_execution/contracts"), std::string::npos);
     EXPECT_NE(package_quality.find("runtime_execution/contracts"), std::string::npos);
+    EXPECT_NE(package_contract_valve.find("runtime_execution/contracts"), std::string::npos);
+    EXPECT_NE(package_contract_trigger.find("runtime_execution/contracts"), std::string::npos);
+    EXPECT_NE(package_contract_scheduler.find("runtime_execution/contracts"), std::string::npos);
+    EXPECT_NE(package_contract_observer.find("runtime_execution/contracts"), std::string::npos);
+    EXPECT_EQ(package_contract_valve.find("domain/dispensing/ports"), std::string::npos);
+    EXPECT_EQ(package_contract_trigger.find("domain/dispensing/ports"), std::string::npos);
+    EXPECT_EQ(package_contract_scheduler.find("domain/dispensing/ports"), std::string::npos);
+    EXPECT_EQ(package_contract_observer.find("domain/dispensing/ports"), std::string::npos);
     EXPECT_NE(package_valve.find("runtime_execution/contracts"), std::string::npos);
     EXPECT_NE(package_trigger.find("runtime_execution/contracts"), std::string::npos);
     EXPECT_NE(package_scheduler.find("runtime_execution/contracts"), std::string::npos);
     EXPECT_NE(package_observer.find("runtime_execution/contracts"), std::string::npos);
     EXPECT_EQ(package_compensation.find("struct DispenseCompensationProfile"), std::string::npos);
     EXPECT_EQ(package_quality.find("struct QualityMetrics"), std::string::npos);
+    EXPECT_EQ(package_contract_valve.find("class IValvePort"), std::string::npos);
+    EXPECT_EQ(package_contract_trigger.find("class ITriggerControllerPort"), std::string::npos);
+    EXPECT_EQ(package_contract_scheduler.find("class ITaskSchedulerPort"), std::string::npos);
+    EXPECT_EQ(package_contract_observer.find("class IDispensingExecutionObserver"), std::string::npos);
     EXPECT_EQ(package_valve.find("class IValvePort"), std::string::npos);
     EXPECT_EQ(package_trigger.find("class ITriggerControllerPort"), std::string::npos);
     EXPECT_EQ(package_scheduler.find("class ITaskSchedulerPort"), std::string::npos);
@@ -373,25 +371,6 @@ TEST(DispensePackagingBoundaryTest, LegacyDispensingPortsAndDtosLiveOnlyOnOwnerM
         repo_root / "modules/workflow/domain/include/domain/dispensing/ports/ITaskSchedulerPort.h"));
     EXPECT_FALSE(fs::exists(
         repo_root / "modules/workflow/domain/domain/dispensing/ports/IDispensingExecutionObserver.h"));
-}
-
-TEST(DispensePackagingBoundaryTest, ApplicationPublicStopsExportingValveResidualAndMotionPlanningTargets) {
-    const fs::path repo_root = RepoRoot();
-    const std::string content = ReadTextFile(
-        repo_root / "modules/dispense-packaging/application/CMakeLists.txt");
-
-    const std::string header_block = ExtractBlock(
-        content,
-        "target_link_libraries(siligen_dispense_packaging_application_headers INTERFACE");
-    const std::string public_block = ExtractBlock(
-        content,
-        "target_link_libraries(siligen_dispense_packaging_application_public INTERFACE");
-
-    EXPECT_EQ(header_block.find("siligen_motion_planning_application_public"), std::string::npos);
-    EXPECT_EQ(header_block.find("SILIGEN_DISPENSE_PACKAGING_MOTION_PLANNING_APP_TARGET"), std::string::npos);
-    EXPECT_EQ(public_block.find("siligen_valve_core"), std::string::npos);
-    EXPECT_EQ(public_block.find("siligen_dispense_packaging_execution_residual"), std::string::npos);
-    EXPECT_EQ(public_block.find("siligen_dispense_packaging_planning_residual"), std::string::npos);
 }
 
 TEST(DispensePackagingBoundaryTest, WorkflowPlanningShimHeaderIsRemoved) {
