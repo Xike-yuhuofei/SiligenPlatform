@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <array>
 #include <memory>
 #include <string>
 #include <thread>
@@ -34,9 +35,18 @@ class FlakyPostConfigureClearWrapper final : public MockMultiCardWrapper {
                      short dimension,
                      short* profile,
                      double synVelMax,
-                     double synAccMax) noexcept override {
+                     double synAccMax,
+                     short setOriginFlag = 0,
+                     const long* originPos = nullptr) noexcept override {
         configured_ = true;
-        return MockMultiCardWrapper::MC_SetCrdPrm(nCrdNum, dimension, profile, synVelMax, synAccMax);
+        return MockMultiCardWrapper::MC_SetCrdPrm(
+            nCrdNum,
+            dimension,
+            profile,
+            synVelMax,
+            synAccMax,
+            setOriginFlag,
+            originPos);
     }
 
     int MC_CrdClear(short crd, short fifo) noexcept override {
@@ -95,6 +105,39 @@ class StaleStoppedVelocityWrapper final : public MockMultiCardWrapper {
     }
 };
 
+class RecordingOriginWrapper final : public MockMultiCardWrapper {
+   public:
+    RecordingOriginWrapper()
+        : MockMultiCardWrapper(std::make_shared<MockMultiCard>()) {}
+
+    int MC_SetCrdPrm(short nCrdNum,
+                     short dimension,
+                     short* profile,
+                     double synVelMax,
+                     double synAccMax,
+                     short setOriginFlag = 0,
+                     const long* originPos = nullptr) noexcept override {
+        last_set_origin_flag = setOriginFlag;
+        last_origin_pos.fill(0);
+        if (originPos != nullptr) {
+            for (std::size_t i = 0; i < last_origin_pos.size(); ++i) {
+                last_origin_pos[i] = originPos[i];
+            }
+        }
+        return MockMultiCardWrapper::MC_SetCrdPrm(
+            nCrdNum,
+            dimension,
+            profile,
+            synVelMax,
+            synAccMax,
+            setOriginFlag,
+            originPos);
+    }
+
+    short last_set_origin_flag = -1;
+    std::array<long, 8> last_origin_pos{};
+};
+
 CoordinateSystemConfig BuildConfig() {
     CoordinateSystemConfig config;
     config.dimension = 2;
@@ -135,6 +178,34 @@ TEST(InterpolationAdapterTest, ConfigureCoordinateSystemDoesNotMaskNonRetriableC
     EXPECT_NE(result.GetError().GetMessage().find("ConfigureCoordinateSystem: CrdClear failed"), std::string::npos);
     EXPECT_NE(result.GetError().GetMessage().find("错误码:7"), std::string::npos);
     EXPECT_EQ(wrapper->crd_clear_calls(), 4);
+}
+
+TEST(InterpolationAdapterTest, ConfigureCoordinateSystemDefaultsToCurrentPlannedPositionOrigin) {
+    auto wrapper = std::make_shared<RecordingOriginWrapper>();
+    InterpolationAdapter adapter(wrapper);
+
+    const auto result = adapter.ConfigureCoordinateSystem(1, BuildConfig());
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    EXPECT_EQ(wrapper->last_set_origin_flag, 0);
+    for (long value : wrapper->last_origin_pos) {
+        EXPECT_EQ(value, 0);
+    }
+}
+
+TEST(InterpolationAdapterTest, ConfigureCoordinateSystemCanPinOriginToMachineZero) {
+    auto wrapper = std::make_shared<RecordingOriginWrapper>();
+    InterpolationAdapter adapter(wrapper);
+    auto config = BuildConfig();
+    config.use_current_planned_position_as_origin = false;
+
+    const auto result = adapter.ConfigureCoordinateSystem(1, config);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    EXPECT_EQ(wrapper->last_set_origin_flag, 1);
+    for (long value : wrapper->last_origin_pos) {
+        EXPECT_EQ(value, 0);
+    }
 }
 
 TEST(InterpolationAdapterTest, AddInterpolationDataUsesCenterOffsetRelativeToBufferedArcStart) {

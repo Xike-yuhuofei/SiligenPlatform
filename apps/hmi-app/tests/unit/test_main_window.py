@@ -1898,6 +1898,10 @@ class MainWindowTabsTest(unittest.TestCase):
         self.window._production_running = False
         self.window._current_job_id = ""
 
+    def test_target_count_defaults_to_single_cycle(self) -> None:
+        self.assertEqual(self.window._target_count, 1)
+        self.assertEqual(self.window._target_input.value(), 1)
+
     def test_target_input_value_change_updates_production_stats_without_crash(self) -> None:
         self.window._completed_count = 3
 

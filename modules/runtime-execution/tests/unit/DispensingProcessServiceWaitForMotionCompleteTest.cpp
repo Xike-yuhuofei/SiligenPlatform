@@ -71,12 +71,20 @@ struct ExecutePlanInternalTag {
     friend type GetPrivateMember(ExecutePlanInternalTag);
 };
 
+struct ConfigureCoordinateSystemTag {
+    using type = Result<void> (DispensingProcessService::*)(const DispensingRuntimeParams&) noexcept;
+    friend type GetPrivateMember(ConfigureCoordinateSystemTag);
+};
+
 template struct PrivateMemberAccessor<
     WaitForMotionCompleteTag,
     &DispensingProcessService::WaitForMotionComplete>;
 template struct PrivateMemberAccessor<
     ExecutePlanInternalTag,
     &DispensingProcessService::ExecutePlanInternal>;
+template struct PrivateMemberAccessor<
+    ConfigureCoordinateSystemTag,
+    &DispensingProcessService::ConfigureCoordinateSystem>;
 
 template <typename T>
 Result<T> NotImplemented(const char* method) {
@@ -89,8 +97,9 @@ Result<void> NotImplementedVoid(const char* method) {
 
 class FakeInterpolationPort final : public IInterpolationPort {
    public:
-    Result<void> ConfigureCoordinateSystem(int16, const CoordinateSystemConfig&) override {
+    Result<void> ConfigureCoordinateSystem(int16, const CoordinateSystemConfig& config) override {
         ++configure_calls;
+        last_config = config;
         return Result<void>::Success();
     }
 
@@ -181,6 +190,7 @@ class FakeInterpolationPort final : public IInterpolationPort {
     int stop_calls = 0;
     mutable int status_reads = 0;
     mutable std::size_t status_sequence_cursor = 0;
+    CoordinateSystemConfig last_config{};
     std::vector<CoordinateSystemStatus> status_sequence{};
     std::vector<InterpolationData> added_segments{};
 };
@@ -441,6 +451,25 @@ TEST(DispensingProcessServiceWaitForMotionCompleteTest, IdleCoordinateSystemAway
 
     ASSERT_TRUE(result.IsError());
     EXPECT_EQ(result.GetError().GetCode(), ErrorCode::MOTION_TIMEOUT);
+}
+
+TEST(DispensingProcessServiceWaitForMotionCompleteTest, ConfigureCoordinateSystemPinsDispensingCyclesToMachineZero) {
+    auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    DispensingProcessService service(nullptr,
+                                     interpolation_port,
+                                     nullptr,
+                                     nullptr,
+                                     nullptr);
+    DispensingRuntimeParams params;
+    params.dispensing_velocity = 20.0f;
+    params.acceleration = 100.0f;
+
+    const auto configure_coordinate_system = GetPrivateMember(ConfigureCoordinateSystemTag{});
+    const auto result = (service.*configure_coordinate_system)(params);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    EXPECT_EQ(interpolation_port->configure_calls, 1);
+    EXPECT_FALSE(interpolation_port->last_config.use_current_planned_position_as_origin);
 }
 
 TEST(DispensingProcessServiceWaitForMotionCompleteTest, ExecutePlanInternalKeepsDispatchOrderWithPreviewTraceEnabled) {

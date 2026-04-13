@@ -155,8 +155,13 @@ int MockMultiCardWrapper::MC_CrdClear(short crd, short fifo) noexcept {
     return mockMulticard_->MC_CrdClear(crd, fifo);
 }
 
-int MockMultiCardWrapper::MC_SetCrdPrm(short nCrdNum, short dimension, short* profile,
-                                        double synVelMax, double synAccMax) noexcept {
+int MockMultiCardWrapper::MC_SetCrdPrm(short nCrdNum,
+                                       short dimension,
+                                       short* profile,
+                                       double synVelMax,
+                                       double synAccMax,
+                                       short setOriginFlag,
+                                       const long* originPos) noexcept {
     long axis_map[4] = {0, 0, 0, 0};
     if (profile != nullptr) {
         for (short i = 0; i < dimension && i < 4; ++i) {
@@ -165,6 +170,8 @@ int MockMultiCardWrapper::MC_SetCrdPrm(short nCrdNum, short dimension, short* pr
     }
     (void)synVelMax;
     (void)synAccMax;
+    (void)setOriginFlag;
+    (void)originPos;
     return mockMulticard_->MC_CrdSpace(nCrdNum, axis_map, 0);
 }
 

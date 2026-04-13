@@ -91,8 +91,13 @@ class MockMultiCardWrapper : public IMultiCardWrapper {
     // 坐标系运动
     int MC_CrdSpace(short crd, long* space, short fifo = 0) noexcept override;
     int MC_CrdClear(short crd, short fifo) noexcept override;
-    int MC_SetCrdPrm(short nCrdNum, short dimension, short* profile,
-                      double synVelMax, double synAccMax) noexcept override;
+    int MC_SetCrdPrm(short nCrdNum,
+                     short dimension,
+                     short* profile,
+                     double synVelMax,
+                     double synAccMax,
+                     short setOriginFlag = 0,
+                     const long* originPos = nullptr) noexcept override;
     int MC_LnXY(short crd,
                 long x,
                 long y,
