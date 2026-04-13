@@ -6,6 +6,7 @@
 #include "runtime_execution/application/services/motion/execution/MotionReadinessService.h"
 #include "runtime_execution/application/usecases/motion/safety/MotionSafetyUseCase.h"
 #include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
+#include "runtime_execution/contracts/motion/IPositionControlPort.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
 #include "shared/types/Types.h"
@@ -20,6 +21,7 @@ class TcpMotionFacade {
    public:
     TcpMotionFacade(std::shared_ptr<UseCases::Motion::MotionControlUseCase> motion_control_use_case,
                     std::shared_ptr<UseCases::Motion::Safety::MotionSafetyUseCase> motion_safety_use_case,
+                    std::shared_ptr<Domain::Motion::Ports::IPositionControlPort> position_control_port,
                     std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> hardware_connection_port);
 
     Shared::Types::Result<UseCases::Motion::Homing::HomeAxesResponse> Home(
@@ -31,6 +33,7 @@ class TcpMotionFacade {
     Shared::Types::Result<void> ExecutePointToPointMotion(
         const UseCases::Motion::Manual::ManualMotionCommand& command,
         bool invalidate_homing = false);
+    Shared::Types::Result<void> MoveToPosition(const Point2D& position, float32 velocity);
     Shared::Types::Result<void> StartJog(Shared::Types::LogicalAxisId axis, int16 direction, float32 velocity);
     Shared::Types::Result<void> StopJog(Shared::Types::LogicalAxisId axis);
     Shared::Types::Result<void> StopAllAxes(bool immediate = false);
@@ -55,6 +58,7 @@ class TcpMotionFacade {
    private:
     std::shared_ptr<UseCases::Motion::MotionControlUseCase> motion_control_use_case_;
     std::shared_ptr<UseCases::Motion::Safety::MotionSafetyUseCase> motion_safety_use_case_;
+    std::shared_ptr<Domain::Motion::Ports::IPositionControlPort> position_control_port_;
     std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> hardware_connection_port_;
 };
 

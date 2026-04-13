@@ -43,6 +43,7 @@ TcpFacadeBundle BuildTcpFacadeBundle(Resolver& resolver) {
     bundle.motion = std::make_shared<Application::Facades::Tcp::TcpMotionFacade>(
         resolver.template Resolve<Application::UseCases::Motion::MotionControlUseCase>(),
         resolver.template Resolve<Application::UseCases::Motion::Safety::MotionSafetyUseCase>(),
+        resolver.template ResolvePort<Siligen::Domain::Motion::Ports::IPositionControlPort>(),
         resolver.template ResolvePort<Siligen::Device::Contracts::Ports::DeviceConnectionPort>());
 
     bundle.dispensing = std::make_shared<Application::Facades::Tcp::TcpDispensingFacade>(

@@ -1625,23 +1625,10 @@ std::string TcpCommandDispatcher::HandleMove(const std::string& id, const nlohma
         LogAxisSnapshot("Move deep pre", motionFacade_, LogicalAxisId::Y);
     }
 
-    // 执行X轴移动
-    Application::UseCases::Motion::Manual::ManualMotionCommand cmdX;
-    cmdX.axis = LogicalAxisId::X;
-    cmdX.position = x;
-    cmdX.velocity = speed;
-    auto resultX = motionFacade_->ExecutePointToPointMotion(cmdX);
-
-    // 执行Y轴移动
-    Application::UseCases::Motion::Manual::ManualMotionCommand cmdY;
-    cmdY.axis = LogicalAxisId::Y;
-    cmdY.position = y;
-    cmdY.velocity = speed;
-    auto resultY = motionFacade_->ExecutePointToPointMotion(cmdY);
-
-    if (!resultX.IsSuccess() || !resultY.IsSuccess()) {
-        std::string errMsg = resultX.IsSuccess() ? resultY.GetError().GetMessage() : resultX.GetError().GetMessage();
-        return GatewayJsonProtocol::MakeErrorResponse(id, 2401, errMsg);
+    const Point2D target_position{x, y};
+    auto move_result = motionFacade_->MoveToPosition(target_position, speed);
+    if (!move_result.IsSuccess()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2401, move_result.GetError().GetMessage());
     }
 
     if (IsDeepMotionLoggingEnabled()) {
