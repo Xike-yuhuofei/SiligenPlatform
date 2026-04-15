@@ -214,6 +214,7 @@ class FakeMotionEnvironment final : public IHomingPort,
         return MoveAxisToPosition(axis, Axis(axis).status.axis_position_mm + distance, velocity);
     }
     Result<void> SynchronizedMove(const std::vector<MotionCommand>& commands) override {
+        ++synchronized_move_calls;
         for (const auto& command : commands) {
             auto move_result = command.relative
                 ? RelativeMove(command.axis, command.position, command.velocity)
@@ -276,6 +277,7 @@ class FakeMotionEnvironment final : public IHomingPort,
     int home_calls = 0;
     int wait_for_homing_calls = 0;
     int move_calls = 0;
+    int synchronized_move_calls = 0;
     float32 last_move_velocity = 0.0f;
     bool connected = true;
     CoordinateSystemStatus coord_status{};
@@ -414,6 +416,7 @@ std::shared_ptr<EnsureAxesReadyZeroUseCase> MakeUseCase(
         home_use_case,
         manual_use_case,
         monitoring_use_case,
+        std::static_pointer_cast<IPositionControlPort>(environment),
         config_port,
         std::make_shared<ReadyZeroDecisionService>(),
         readiness_service);
@@ -743,6 +746,33 @@ TEST(EnsureAxesReadyZeroUseCaseTest, BlocksGoHomeWhenMotionNotReady) {
     EXPECT_EQ(response.message, "motion_not_ready");
     EXPECT_EQ(response.axis_results[0].reason_code, "motion_not_ready");
     EXPECT_EQ(environment->move_calls, 0);
+}
+
+TEST(EnsureAxesReadyZeroUseCaseTest, UsesSynchronizedDispatchForMultiAxisGoHome) {
+    auto environment = std::make_shared<FakeMotionEnvironment>();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto event_port = std::make_shared<FakeEventPublisher>();
+    auto use_case = MakeUseCase(environment, config_port, event_port);
+
+    environment->Axis(LogicalAxisId::X).homing_state = HomingState::HOMED;
+    environment->Axis(LogicalAxisId::X).status.axis_position_mm = 12.0f;
+    environment->Axis(LogicalAxisId::X).status.position.x = 12.0f;
+    environment->Axis(LogicalAxisId::Y).homing_state = HomingState::HOMED;
+    environment->Axis(LogicalAxisId::Y).status.axis_position_mm = 8.0f;
+    environment->Axis(LogicalAxisId::Y).status.position.y = 8.0f;
+
+    EnsureAxesReadyZeroRequest request;
+    request.axes = {LogicalAxisId::X, LogicalAxisId::Y};
+
+    auto result = use_case->Execute(request);
+
+    ASSERT_TRUE(result.IsSuccess());
+    const auto& response = result.Value();
+    ASSERT_EQ(response.axis_results.size(), 2U);
+    EXPECT_TRUE(response.accepted);
+    EXPECT_EQ(response.summary_state, "completed");
+    EXPECT_EQ(response.message, "Axes ready at zero");
+    EXPECT_EQ(environment->synchronized_move_calls, 1);
 }
 
 }  // namespace

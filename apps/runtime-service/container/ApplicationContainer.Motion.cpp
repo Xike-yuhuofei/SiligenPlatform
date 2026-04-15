@@ -125,6 +125,9 @@ ApplicationContainer::CreateInstance<UseCases::Motion::Homing::EnsureAxesReadyZe
         Resolve<UseCases::Motion::Homing::HomeAxesUseCase>(),
         Resolve<UseCases::Motion::Manual::ManualMotionControlUseCase>(),
         Resolve<UseCases::Motion::Monitoring::MotionMonitoringUseCase>(),
+        motion_runtime_port_
+            ? std::static_pointer_cast<Domain::Motion::Ports::IPositionControlPort>(motion_runtime_port_)
+            : position_control_port_,
         config_port_,
         std::make_shared<Domain::Motion::DomainServices::ReadyZeroDecisionService>(),
         CreateMotionReadinessService(motion_runtime_port_, motion_state_port_, interpolation_port_));
