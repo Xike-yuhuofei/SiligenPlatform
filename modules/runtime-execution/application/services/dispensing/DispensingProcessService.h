@@ -53,6 +53,11 @@ class DispensingProcessService final : public IDispensingProcessPort {
 
    private:
     Result<void> ConfigureCoordinateSystem(const DispensingRuntimeParams& params) noexcept;
+    Result<void> PrePositionToPlanStart(const DispensingExecutionPlan& plan,
+                                        const DispensingRuntimeParams& params,
+                                        std::atomic<bool>* stop_flag,
+                                        std::atomic<bool>* pause_flag,
+                                        std::atomic<bool>* pause_applied_flag) noexcept;
     Result<void> WaitForMotionComplete(int32 timeout_ms,
                                        std::atomic<bool>* stop_flag,
                                        std::atomic<bool>* pause_flag,
@@ -62,6 +67,9 @@ class DispensingProcessService final : public IDispensingProcessPort {
                                        uint32 total_segments,
                                        bool dispense_enabled,
                                        IDispensingExecutionObserver* observer) noexcept;
+    Result<void> ClearInterpolationBufferForFormalPath(std::atomic<bool>* stop_flag,
+                                                       std::atomic<bool>* pause_flag,
+                                                       std::atomic<bool>* pause_applied_flag) noexcept;
     Result<void> WaitWhilePaused(std::atomic<bool>* stop_flag,
                                  std::atomic<bool>* pause_flag,
                                  std::atomic<bool>* pause_applied_flag,

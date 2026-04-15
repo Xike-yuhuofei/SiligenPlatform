@@ -19,17 +19,20 @@ constexpr int kCrdStatusFifoFinish0 = 0x00000010;
 constexpr int kCrdStatusAlarm = 0x00000040;
 constexpr float kCoordinateVelocityIdleToleranceMmS = 0.001f;
 constexpr int kRetriableExecutionFailedErrorCode = 1;
-constexpr int kConfigureCrdClearMaxAttempts = 20;
-constexpr auto kConfigureCrdClearRetryDelay = std::chrono::milliseconds(10);
+constexpr double kDiagnosticsPulsePerMm = 200.0;
+constexpr int kCrdClearMaxAttempts = 20;
+constexpr auto kCrdClearRetryDelay = std::chrono::milliseconds(10);
 
 struct CrdDiagnosticsSnapshot {
     short status = 0;
     long segment = 0;
     long fifo_space = 0;
     long lookahead_space = 0;
+    double velocity_mm_s = 0.0;
     int status_result = -1;
     int fifo_result = -1;
     int lookahead_result = -1;
+    int velocity_result = -1;
 };
 
 CrdDiagnosticsSnapshot QueryCrdDiagnostics(
@@ -43,6 +46,11 @@ CrdDiagnosticsSnapshot QueryCrdDiagnostics(
     snapshot.status_result = wrapper->MC_CrdStatus(coord_sys, &snapshot.status, &snapshot.segment, 0);
     snapshot.fifo_result = wrapper->MC_CrdSpace(coord_sys, &snapshot.fifo_space, 0);
     snapshot.lookahead_result = wrapper->MC_GetLookAheadSpace(coord_sys, &snapshot.lookahead_space, 0);
+    double velocity_pulse_per_ms = 0.0;
+    snapshot.velocity_result = wrapper->MC_GetCrdVel(coord_sys, &velocity_pulse_per_ms);
+    if (snapshot.velocity_result == 0) {
+        snapshot.velocity_mm_s = velocity_pulse_per_ms * 1000.0 / kDiagnosticsPulsePerMm;
+    }
     return snapshot;
 }
 
@@ -52,9 +60,11 @@ std::string FormatCrdDiagnostics(int16 coord_sys, const CrdDiagnosticsSnapshot& 
            ", segment=" + std::to_string(snapshot.segment) +
            ", fifo_space=" + std::to_string(snapshot.fifo_space) +
            ", lookahead_space=" + std::to_string(snapshot.lookahead_space) +
+           ", velocity_mm_s=" + std::to_string(snapshot.velocity_mm_s) +
            ", status_ret=" + std::to_string(snapshot.status_result) +
            ", fifo_ret=" + std::to_string(snapshot.fifo_result) +
-           ", lookahead_ret=" + std::to_string(snapshot.lookahead_result);
+           ", lookahead_ret=" + std::to_string(snapshot.lookahead_result) +
+           ", velocity_ret=" + std::to_string(snapshot.velocity_result);
 }
 
 void LogCrdDiagnostics(const std::shared_ptr<Siligen::Infrastructure::Hardware::IMultiCardWrapper>& wrapper,
@@ -76,44 +86,61 @@ long BuildCoordinateMask(int16 coord_sys) {
     return 1L << (coord_sys - 1);
 }
 
-int RetryConfigureCrdClear(const std::shared_ptr<Siligen::Infrastructure::Hardware::IMultiCardWrapper>& wrapper,
-                           int16 coord_sys,
-                           const std::string& phase) {
+int RetryCrdClear(const std::shared_ptr<Siligen::Infrastructure::Hardware::IMultiCardWrapper>& wrapper,
+                  int16 coord_sys,
+                  const std::string& phase) {
     if (!wrapper) {
         return -1;
     }
 
+    LogCrdDiagnostics(wrapper, coord_sys, phase + ":attempt:1:before");
     int error_code = wrapper->MC_CrdClear(coord_sys, 0);
     if (error_code == 0) {
+        LogCrdDiagnostics(wrapper, coord_sys, phase + ":attempt:1:after");
         return 0;
     }
+    SILIGEN_LOG_WARNING("MC_CrdClear returned: phase=" + phase +
+                        ", coord_sys=" + std::to_string(coord_sys) +
+                        ", attempt=1, error=" + std::to_string(error_code));
+    LogCrdDiagnostics(wrapper, coord_sys, phase + ":attempt:1:failed");
     if (error_code != kRetriableExecutionFailedErrorCode) {
         return error_code;
     }
 
     const long crd_mask = BuildCoordinateMask(coord_sys);
-    for (int attempt = 2; attempt <= kConfigureCrdClearMaxAttempts; ++attempt) {
+    for (int attempt = 2; attempt <= kCrdClearMaxAttempts; ++attempt) {
         SILIGEN_LOG_WARNING("MC_CrdClear returned ExecutionFailed, retrying: phase=" + phase +
                             ", coord_sys=" + std::to_string(coord_sys) +
                             ", attempt=" + std::to_string(attempt));
-        LogCrdDiagnostics(wrapper, coord_sys, phase + ":retry:" + std::to_string(attempt));
 
+        int stop_result = 0;
         if (crd_mask != 0) {
-            const int stop_result = wrapper->MC_StopEx(crd_mask, 0);
+            stop_result = wrapper->MC_StopEx(crd_mask, 0);
             if (stop_result != 0) {
                 SILIGEN_LOG_WARNING("MC_StopEx during CrdClear retry returned: " + std::to_string(stop_result));
+            } else {
+                SILIGEN_LOG_DEBUG("MC_StopEx during CrdClear retry returned: 0 (成功)");
             }
         }
 
-        std::this_thread::sleep_for(kConfigureCrdClearRetryDelay);
+        std::this_thread::sleep_for(kCrdClearRetryDelay);
 
+        LogCrdDiagnostics(wrapper, coord_sys, phase + ":attempt:" + std::to_string(attempt) + ":before");
         error_code = wrapper->MC_CrdClear(coord_sys, 0);
         if (error_code == 0) {
             SILIGEN_LOG_INFO("MC_CrdClear recovered after retry: phase=" + phase +
                              ", coord_sys=" + std::to_string(coord_sys) +
-                             ", attempt=" + std::to_string(attempt));
+                             ", attempt=" + std::to_string(attempt) +
+                             ", stop_result=" + std::to_string(stop_result));
+            LogCrdDiagnostics(wrapper, coord_sys, phase + ":attempt:" + std::to_string(attempt) + ":after");
             return 0;
         }
+        SILIGEN_LOG_WARNING("MC_CrdClear retry failed: phase=" + phase +
+                            ", coord_sys=" + std::to_string(coord_sys) +
+                            ", attempt=" + std::to_string(attempt) +
+                            ", error=" + std::to_string(error_code) +
+                            ", stop_result=" + std::to_string(stop_result));
+        LogCrdDiagnostics(wrapper, coord_sys, phase + ":attempt:" + std::to_string(attempt) + ":failed");
         if (error_code != kRetriableExecutionFailedErrorCode) {
             return error_code;
         }
@@ -192,7 +219,7 @@ Result<void> InterpolationAdapter::ConfigureCoordinateSystem(
         }
     }
 
-    int pre_clear_result = RetryConfigureCrdClear(wrapper_, coord_sys, "ConfigureCoordinateSystem: pre_clear");
+    int pre_clear_result = RetryCrdClear(wrapper_, coord_sys, "ConfigureCoordinateSystem: pre_clear");
     if (pre_clear_result != 0) {
         SILIGEN_LOG_WARNING("预清空 MC_CrdClear 返回: " + std::to_string(pre_clear_result));
     } else {
@@ -208,7 +235,7 @@ Result<void> InterpolationAdapter::ConfigureCoordinateSystem(
     SILIGEN_LOG_DEBUG("MC_SetCrdPrm 返回: 0 (成功)");
 
     // 2. 清空坐标系缓冲区（FIFO 0）
-    error_code = RetryConfigureCrdClear(wrapper_, coord_sys, "ConfigureCoordinateSystem: post_set_prm_clear");
+    error_code = RetryCrdClear(wrapper_, coord_sys, "ConfigureCoordinateSystem: post_set_prm_clear");
     if (error_code != 0) {
         SILIGEN_LOG_ERROR("MC_CrdClear 返回: " + std::to_string(error_code));
         return ConvertError(error_code, "ConfigureCoordinateSystem: CrdClear failed");
@@ -363,9 +390,10 @@ Result<void> InterpolationAdapter::ClearInterpolationBuffer(int16 coord_sys) {
     SILIGEN_LOG_DEBUG("ClearInterpolationBuffer called (coord_sys=" + std::to_string(coord_sys) + ")");
     LogCrdDiagnostics(wrapper_, coord_sys, "Clear:before");
 
-    int error_code = wrapper_->MC_CrdClear(coord_sys, 0);
+    int error_code = RetryCrdClear(wrapper_, coord_sys, "ClearInterpolationBuffer");
     if (error_code != 0) {
         SILIGEN_LOG_ERROR("MC_CrdClear 返回: " + std::to_string(error_code));
+        LogCrdDiagnostics(wrapper_, coord_sys, "Clear:failed");
         return ConvertError(error_code, "ClearInterpolationBuffer: CrdClear failed");
     }
 

@@ -4,6 +4,7 @@
 #include <chrono>
 #include <limits>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -76,6 +77,13 @@ struct ConfigureCoordinateSystemTag {
     friend type GetPrivateMember(ConfigureCoordinateSystemTag);
 };
 
+struct ClearInterpolationBufferForFormalPathTag {
+    using type =
+        Result<void> (DispensingProcessService::*)(std::atomic<bool>*, std::atomic<bool>*, std::atomic<bool>*)
+            noexcept;
+    friend type GetPrivateMember(ClearInterpolationBufferForFormalPathTag);
+};
+
 template struct PrivateMemberAccessor<
     WaitForMotionCompleteTag,
     &DispensingProcessService::WaitForMotionComplete>;
@@ -85,6 +93,9 @@ template struct PrivateMemberAccessor<
 template struct PrivateMemberAccessor<
     ConfigureCoordinateSystemTag,
     &DispensingProcessService::ConfigureCoordinateSystem>;
+template struct PrivateMemberAccessor<
+    ClearInterpolationBufferForFormalPathTag,
+    &DispensingProcessService::ClearInterpolationBufferForFormalPath>;
 
 template <typename T>
 Result<T> NotImplemented(const char* method) {
@@ -106,11 +117,36 @@ class FakeInterpolationPort final : public IInterpolationPort {
     Result<void> AddInterpolationData(int16, const InterpolationData& data) override {
         ++add_calls;
         added_segments.push_back(data);
+        add_history.push_back(data);
         return Result<void>::Success();
     }
 
     Result<void> ClearInterpolationBuffer(int16) override {
         ++clear_calls;
+        const auto clear_status = PeekCurrentStatus();
+        if (fail_clear_when_run_bit_set &&
+            clear_calls >= clear_fail_from_call &&
+            (clear_status.raw_status_word & kCrdStatusProgRun) != 0) {
+            return Result<void>::Failure(
+                Error(ErrorCode::HARDWARE_ERROR,
+                      "ClearInterpolationBuffer: simulated latched RUN bit",
+                      "DispensingProcessServiceWaitTest"));
+        }
+        if (!scripted_clear_failures.empty()) {
+            const auto index = scripted_clear_failure_cursor < scripted_clear_failures.size()
+                                   ? scripted_clear_failure_cursor
+                                   : scripted_clear_failures.size() - 1U;
+            const bool should_fail = scripted_clear_failures[index];
+            if (scripted_clear_failure_cursor + 1U < scripted_clear_failures.size()) {
+                ++scripted_clear_failure_cursor;
+            }
+            if (should_fail) {
+                return Result<void>::Failure(
+                    Error(ErrorCode::HARDWARE_ERROR,
+                          scripted_clear_failure_message,
+                          "DispensingProcessServiceWaitTest"));
+            }
+        }
         added_segments.clear();
         return Result<void>::Success();
     }
@@ -172,6 +208,15 @@ class FakeInterpolationPort final : public IInterpolationPort {
         return Result<CoordinateSystemStatus>::Success(status);
     }
 
+    CoordinateSystemStatus PeekCurrentStatus() const {
+        if (!status_sequence.empty()) {
+            const auto index =
+                status_sequence_cursor < status_sequence.size() ? status_sequence_cursor : status_sequence.size() - 1U;
+            return status_sequence[index];
+        }
+        return status;
+    }
+
     CoordinateSystemStatus status{
         CoordinateSystemState::MOVING,
         true,
@@ -193,6 +238,15 @@ class FakeInterpolationPort final : public IInterpolationPort {
     CoordinateSystemConfig last_config{};
     std::vector<CoordinateSystemStatus> status_sequence{};
     std::vector<InterpolationData> added_segments{};
+    std::vector<InterpolationData> add_history{};
+    std::vector<bool> scripted_clear_failures{};
+    bool fail_clear_when_run_bit_set = false;
+    int clear_fail_from_call = 2;
+    std::string scripted_clear_failure_message = "ClearInterpolationBuffer: simulated scripted failure";
+
+   private:
+    static constexpr int32 kCrdStatusProgRun = 0x00000001;
+    mutable std::size_t scripted_clear_failure_cursor = 0;
 };
 
 class SequencedMotionStatePort final : public IMotionStatePort {
@@ -469,13 +523,22 @@ TEST(DispensingProcessServiceWaitForMotionCompleteTest, ConfigureCoordinateSyste
 
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
     EXPECT_EQ(interpolation_port->configure_calls, 1);
+    EXPECT_FLOAT_EQ(interpolation_port->last_config.max_velocity, 20.0f);
     EXPECT_FALSE(interpolation_port->last_config.use_current_planned_position_as_origin);
 }
 
 TEST(DispensingProcessServiceWaitForMotionCompleteTest, ExecutePlanInternalKeepsDispatchOrderWithPreviewTraceEnabled) {
     auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    interpolation_port->status_sequence = {
+        CoordinateSystemStatus{CoordinateSystemState::IDLE, false, 0U, 0.0f, 0x11, 1, 0}};
     auto motion_state_port = std::make_shared<SequencedMotionStatePort>(
-        std::vector<Point2D>{Point2D{10.0f, 0.0f}, Point2D{10.0f, 0.0f}, Point2D{10.0f, 0.0f}});
+        std::vector<Point2D>{Point2D{0.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f}});
     DispensingProcessService service(nullptr,
                                      interpolation_port,
                                      motion_state_port,
@@ -511,6 +574,118 @@ TEST(DispensingProcessServiceWaitForMotionCompleteTest, ExecutePlanInternalKeeps
     ASSERT_GE(interpolation_port->added_segments[1].positions.size(), 2U);
     EXPECT_FLOAT_EQ(interpolation_port->added_segments[0].positions[0], 5.0f);
     EXPECT_FLOAT_EQ(interpolation_port->added_segments[1].positions[0], 10.0f);
+}
+
+TEST(DispensingProcessServiceWaitForMotionCompleteTest, ExecutePlanInternalPrePositionsToProgramStartWhenCurrentPositionDrifts) {
+    auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    auto motion_state_port = std::make_shared<SequencedMotionStatePort>(
+        std::vector<Point2D>{Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{0.0f, 0.0f},
+                             Point2D{0.0f, 0.0f},
+                             Point2D{0.0f, 0.0f},
+                             Point2D{0.0f, 0.0f},
+                             Point2D{0.0f, 0.0f},
+                             Point2D{0.0f, 0.0f},
+                             Point2D{0.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f}});
+    DispensingProcessService service(nullptr,
+                                     interpolation_port,
+                                     motion_state_port,
+                                     nullptr,
+                                     nullptr);
+
+    auto plan = BuildLinearExecutionPlan();
+    auto params = BuildRuntimeParams();
+    auto options = BuildExecutionOptions();
+    std::atomic<bool> stop_flag{false};
+    std::atomic<bool> pause_flag{false};
+    std::atomic<bool> pause_applied_flag{false};
+    const auto execute_plan_internal = GetPrivateMember(ExecutePlanInternalTag{});
+
+    const auto result = (service.*execute_plan_internal)(
+        plan,
+        params,
+        options,
+        &stop_flag,
+        &pause_flag,
+        &pause_applied_flag,
+        nullptr);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    EXPECT_EQ(interpolation_port->clear_calls, 2);
+    EXPECT_EQ(interpolation_port->add_calls, 3);
+    EXPECT_EQ(interpolation_port->flush_calls, 2);
+    EXPECT_EQ(interpolation_port->start_calls, 2);
+    ASSERT_EQ(interpolation_port->add_history.size(), 3U);
+    ASSERT_GE(interpolation_port->add_history[0].positions.size(), 2U);
+    EXPECT_FLOAT_EQ(interpolation_port->add_history[0].positions[0], 0.0f);
+    EXPECT_FLOAT_EQ(interpolation_port->add_history[0].positions[1], 0.0f);
+    EXPECT_FLOAT_EQ(interpolation_port->add_history[0].velocity, 20.0f);
+    EXPECT_FLOAT_EQ(interpolation_port->add_history[1].positions[0], 5.0f);
+    EXPECT_FLOAT_EQ(interpolation_port->add_history[2].positions[0], 10.0f);
+}
+
+TEST(DispensingProcessServiceWaitForMotionCompleteTest,
+     ClearInterpolationBufferForFormalPathRetriesSettledClearUntilSuccess) {
+    auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    interpolation_port->status_sequence = {
+        CoordinateSystemStatus{CoordinateSystemState::IDLE, false, 0U, 0.0f, 0x11, 1, 0}};
+    interpolation_port->scripted_clear_failures = {true, true, true, false};
+    DispensingProcessService service(nullptr,
+                                     interpolation_port,
+                                     nullptr,
+                                     nullptr,
+                                     nullptr);
+
+    std::atomic<bool> stop_flag{false};
+    std::atomic<bool> pause_flag{false};
+    std::atomic<bool> pause_applied_flag{false};
+    const auto clear_for_formal_path = GetPrivateMember(ClearInterpolationBufferForFormalPathTag{});
+
+    const auto result = (service.*clear_for_formal_path)(
+        &stop_flag,
+        &pause_flag,
+        &pause_applied_flag);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    EXPECT_EQ(interpolation_port->clear_calls, 4);
+    EXPECT_GE(interpolation_port->status_reads, 8);
+}
+
+TEST(DispensingProcessServiceWaitForMotionCompleteTest,
+     ClearInterpolationBufferForFormalPathTimesOutWhenSettledClearNeverSucceeds) {
+    auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    interpolation_port->status_sequence = {
+        CoordinateSystemStatus{CoordinateSystemState::IDLE, false, 0U, 0.0f, 0x11, 1, 0}};
+    interpolation_port->scripted_clear_failures = {true};
+    interpolation_port->scripted_clear_failure_message = "ClearInterpolationBuffer: simulated persistent failure";
+    DispensingProcessService service(nullptr,
+                                     interpolation_port,
+                                     nullptr,
+                                     nullptr,
+                                     nullptr);
+
+    std::atomic<bool> stop_flag{false};
+    std::atomic<bool> pause_flag{false};
+    std::atomic<bool> pause_applied_flag{false};
+    const auto clear_for_formal_path = GetPrivateMember(ClearInterpolationBufferForFormalPathTag{});
+
+    const auto result = (service.*clear_for_formal_path)(
+        &stop_flag,
+        &pause_flag,
+        &pause_applied_flag);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::MOTION_TIMEOUT);
+    EXPECT_EQ(result.GetError().GetMessage(), "预定位完成后清缓冲未在超时内成功");
+    EXPECT_GT(interpolation_port->clear_calls, 10);
 }
 
 TEST(DispensingProcessServiceWaitForMotionCompleteTest, StopExecutionWaitsForCoordinateSystemToDrain) {
