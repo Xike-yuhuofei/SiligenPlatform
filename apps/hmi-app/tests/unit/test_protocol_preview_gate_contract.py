@@ -376,6 +376,78 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertEqual(explicit_supervision_status.runtime_state, "Unknown")
         self.assertEqual(explicit_supervision_status.runtime_state_reason, "unknown")
 
+    def test_get_motion_coord_status_parses_gateway_payload(self) -> None:
+        client = _FakeClient(
+            [
+                {
+                    "result": {
+                        "coord_sys": 1,
+                        "state": 1,
+                        "is_moving": True,
+                        "remaining_segments": 3,
+                        "current_velocity": 12.5,
+                        "raw_status_word": 17,
+                        "raw_segment": 3,
+                        "mc_status_ret": 0,
+                        "axes": {
+                            "X": {
+                                "position": 1.5,
+                                "velocity": 2.5,
+                                "state": 1,
+                                "enabled": True,
+                                "homed": True,
+                                "in_position": False,
+                                "has_error": False,
+                                "error_code": None,
+                                "servo_alarm": False,
+                                "following_error": False,
+                                "home_failed": False,
+                            },
+                            "Y": {
+                                "position": 0.0,
+                                "velocity": 0.0,
+                                "state": 0,
+                                "enabled": True,
+                                "homed": True,
+                                "in_position": True,
+                                "has_error": False,
+                                "error_code": None,
+                                "servo_alarm": False,
+                                "following_error": False,
+                                "home_failed": False,
+                            },
+                        },
+                    }
+                }
+            ]
+        )
+        protocol = CommandProtocol(client)
+
+        status = protocol.get_motion_coord_status()
+
+        self.assertTrue(status.available)
+        self.assertEqual(status.coord_sys, 1)
+        self.assertEqual(status.state, 1)
+        self.assertEqual(status.state_label, "moving")
+        self.assertTrue(status.is_moving)
+        self.assertEqual(status.remaining_segments, 3)
+        self.assertAlmostEqual(status.current_velocity, 12.5)
+        self.assertIn("X", status.axes)
+        self.assertAlmostEqual(status.axes["X"].velocity, 2.5)
+        self.assertEqual(client.calls[0], ("motion.coord.status", {"coord_sys": 1}, None))
+
+    def test_get_motion_coord_status_preserves_backend_error_details(self) -> None:
+        client = _FakeClient([{"error": {"code": 2201, "message": "coord status unavailable"}}])
+        protocol = CommandProtocol(client)
+
+        status = protocol.get_motion_coord_status(coord_sys=2)
+
+        self.assertFalse(status.available)
+        self.assertEqual(status.coord_sys, 2)
+        self.assertEqual(status.error_code, 2201)
+        self.assertEqual(status.error_message, "coord status unavailable")
+        self.assertEqual(client.calls[0], ("motion.coord.status", {"coord_sys": 2}, None))
+
     def test_home_prefers_axis_level_error_messages(self) -> None:
         client = _FakeClient(
             [
