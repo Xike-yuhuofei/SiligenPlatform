@@ -1,3 +1,4 @@
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [ValidateSet("Local", "CI")]
     [string]$Profile = "Local",
@@ -12,6 +13,20 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $false
+
+function Assert-PathArgumentNotBooleanLiteral {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ArgumentName,
+        [Parameter(Mandatory = $true)]
+        [string]$PathValue
+    )
+
+    $trimmedValue = $PathValue.Trim()
+    if ($trimmedValue -imatch '^(true|false)$') {
+        throw "$ArgumentName 不能为字面量 '$trimmedValue'。如果要启用布尔开关，请使用命名开关语法，不要把 True/False 作为独立位置参数传入。"
+    }
+}
 
 $workspaceRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
 $buildScript = Join-Path $workspaceRoot "build.ps1"
@@ -31,6 +46,9 @@ if (-not (Test-Path $gateScript)) {
 if (-not (Test-Path $renderSummaryScript)) {
     throw "missing release summary renderer: $renderSummaryScript"
 }
+
+Assert-PathArgumentNotBooleanLiteral -ArgumentName "ReportDir" -PathValue $ReportDir
+Assert-PathArgumentNotBooleanLiteral -ArgumentName "PublishLatestReportDir" -PathValue $PublishLatestReportDir
 
 $resolvedReportDir = if ([System.IO.Path]::IsPathRooted($ReportDir)) {
     [System.IO.Path]::GetFullPath($ReportDir)
