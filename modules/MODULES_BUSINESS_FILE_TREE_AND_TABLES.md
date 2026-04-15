@@ -82,7 +82,6 @@ dispense-packaging/
 ├── domain/
 │   └── dispensing/
 │       ├── compensation/
-│       │   └── TriggerStrategy.h
 │       ├── domain-services/
 │       │   ├── ArcTriggerPointCalculator.cpp
 │       │   ├── ArcTriggerPointCalculator.h
@@ -94,8 +93,6 @@ dispense-packaging/
 │       │   ├── DispensingController.h
 │       │   ├── PathOptimizationStrategy.cpp
 │       │   ├── PathOptimizationStrategy.h
-│       │   ├── PositionTriggerController.cpp
-│       │   ├── PositionTriggerController.h
 │       │   ├── PurgeDispenserProcess.cpp
 │       │   ├── PurgeDispenserProcess.h
 │       │   ├── SupplyStabilizationPolicy.cpp
@@ -105,7 +102,6 @@ dispense-packaging/
 │       │   ├── ValveCoordinationService.cpp
 │       │   └── ValveCoordinationService.h
 │       ├── model/
-│       │   └── ModelService.h
 │       ├── planning/
 │       │   └── domain-services/
 │       │       ├── ContourOptimizationService.cpp
@@ -120,7 +116,6 @@ dispense-packaging/
 │       │   ├── ITriggerControllerPort.h
 │       │   └── IValvePort.h
 │       ├── simulation/
-│       │   └── SimulationRecordStore.h
 │       ├── value-objects/
 │       │   ├── DispenseCompensationProfile.h
 │       │   ├── DispensingExecutionTypes.h
@@ -145,7 +140,6 @@ dispense-packaging/
 | `DispensingController.cpp` | 运行时执行前的触发、阀控和时序封装阶段 | 当轨迹、阀控和触发条件已知，需要组装成执行包时触发。 | 把规划结果落实为受控动作或硬件指令。 | 输出触发点、阀动作时序、补偿结果或执行包片段，供运行时直接下发。 | 如果这里出错，现场会出现出胶时机错误、阀动作错误、补偿失效或执行包不可用。 |
 | `DispensingProcessService.cpp` | 运行时执行前的触发、阀控和时序封装阶段 | 当轨迹、阀控和触发条件已知，需要组装成执行包时触发。 | 承担该环节中的主要行为实现。 | 输出触发点、阀动作时序、补偿结果或执行包片段，供运行时直接下发。 | 如果这里出错，现场会出现出胶时机错误、阀动作错误、补偿失效或执行包不可用。 |
 | `PathOptimizationStrategy.cpp` | 运行时执行前的触发、阀控和时序封装阶段 | 当轨迹、阀控和触发条件已知，需要组装成执行包时触发。 | 承担该环节中的主要行为实现。 | 输出触发点、阀动作时序、补偿结果或执行包片段，供运行时直接下发。 | 如果这里出错，现场会出现出胶时机错误、阀动作错误、补偿失效或执行包不可用。 |
-| `PositionTriggerController.cpp` | 运行时执行前的触发、阀控和时序封装阶段 | 当轨迹、阀控和触发条件已知，需要组装成执行包时触发。 | 计算或下发点胶触发时机，决定胶何时开始和停止输出。 | 输出触发点、阀动作时序、补偿结果或执行包片段，供运行时直接下发。 | 如果这里出错，现场会出现出胶时机错误、阀动作错误、补偿失效或执行包不可用。 |
 | `PurgeDispenserProcess.cpp` | 运行时执行前的触发、阀控和时序封装阶段 | 当轨迹、阀控和触发条件已知，需要组装成执行包时触发。 | 承担该环节中的主要行为实现。 | 输出触发点、阀动作时序、补偿结果或执行包片段，供运行时直接下发。 | 如果这里出错，现场会出现出胶时机错误、阀动作错误、补偿失效或执行包不可用。 |
 | `SupplyStabilizationPolicy.cpp` | 运行时执行前的触发、阀控和时序封装阶段 | 当轨迹、阀控和触发条件已知，需要组装成执行包时触发。 | 承担该环节中的主要行为实现。 | 输出触发点、阀动作时序、补偿结果或执行包片段，供运行时直接下发。 | 如果这里出错，现场会出现出胶时机错误、阀动作错误、补偿失效或执行包不可用。 |
 | `TriggerPlanner.cpp` | 运行时执行前的触发、阀控和时序封装阶段 | 当轨迹、阀控和触发条件已知，需要组装成执行包时触发。 | 计算或下发点胶触发时机，决定胶何时开始和停止输出。 | 输出触发点、阀动作时序、补偿结果或执行包片段，供运行时直接下发。 | 如果这里出错，现场会出现出胶时机错误、阀动作错误、补偿失效或执行包不可用。 |
@@ -1533,7 +1527,6 @@ workflow/
 │   │   │   └── CMakeLists.txt
 │   │   ├── dispensing/
 │   │   │   ├── compensation/
-│   │   │   │   └── TriggerStrategy.h
 │   │   │   ├── domain-services/
 │   │   │   │   ├── ArcTriggerPointCalculator.cpp
 │   │   │   │   ├── ArcTriggerPointCalculator.h
@@ -1545,8 +1538,6 @@ workflow/
 │   │   │   │   ├── DispensingController.h
 │   │   │   │   ├── PathOptimizationStrategy.cpp
 │   │   │   │   ├── PathOptimizationStrategy.h
-│   │   │   │   ├── PositionTriggerController.cpp
-│   │   │   │   ├── PositionTriggerController.h
 │   │   │   │   ├── PurgeDispenserProcess.cpp
 │   │   │   │   ├── PurgeDispenserProcess.h
 │   │   │   │   ├── SupplyStabilizationPolicy.cpp
@@ -1556,7 +1547,6 @@ workflow/
 │   │   │   │   ├── ValveCoordinationService.cpp
 │   │   │   │   └── ValveCoordinationService.h
 │   │   │   ├── model/
-│   │   │   │   └── ModelService.h
 │   │   │   ├── planning/
 │   │   │   │   └── domain-services/
 │   │   │   │       ├── ContourOptimizationService.cpp
@@ -1571,7 +1561,6 @@ workflow/
 │   │   │   │   ├── ITriggerControllerPort.h
 │   │   │   │   └── IValvePort.h
 │   │   │   ├── simulation/
-│   │   │   │   └── SimulationRecordStore.h
 │   │   │   ├── value-objects/
 │   │   │   │   ├── DispenseCompensationProfile.h
 │   │   │   │   ├── DispensingExecutionTypes.h
@@ -2180,7 +2169,6 @@ workflow/
 | `DispenseCompensationService.cpp` | 点胶领域规则计算阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 承担该环节中的主要行为实现。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
 | `DispensingController.cpp` | 点胶领域规则计算阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 把规划结果落实为受控动作或硬件指令。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
 | `PathOptimizationStrategy.cpp` | 点胶领域规则计算阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 承担该环节中的主要行为实现。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
-| `PositionTriggerController.cpp` | 点胶领域规则计算阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 计算或下发点胶触发时机，决定胶何时开始和停止输出。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
 | `PurgeDispenserProcess.cpp` | 点胶领域规则计算阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 承担该环节中的主要行为实现。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
 | `SupplyStabilizationPolicy.cpp` | 点胶领域规则计算阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 承担该环节中的主要行为实现。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |
 | `TriggerPlanner.cpp` | 点胶领域规则计算阶段 | 当上游任务已经进入系统，需要由工作流决定下一步流转和编排动作时触发。 | 计算或下发点胶触发时机，决定胶何时开始和停止输出。 | 输出编排决定、领域结果、适配结果或用例执行结果，交给下一个流程环节。 | 如果这里出错，整条点胶链会在顺序、状态流转或边界控制上出现问题。 |

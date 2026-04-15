@@ -32,8 +32,8 @@
 - `runtime/`：M0 command/event/archive orchestration skeleton
 - `domain/`：只暴露 `include/workflow/domain/**` 的 M0 owner model
 - `adapters/`：workflow owner adapter root；当前仅保留 `persistence / messaging / projection_store` shell roots
-- `tests/`：模块级验证入口；`tests/canonical/` 只承载 workflow owner 测试，`tests/integration/` 与 `tests/regression/` 仅保留 M0 登记面
-- shell-only 保留目录：当前仅 `examples/` 保留说明与空壳，不承载 live code；`services/` 已实化为 M0 skeleton
+- `tests/`：模块级验证入口；`canonical` 只承载 workflow owner 测试，`integration` 与 `regression` 仅保留 M0 登记面
+- shell-only 保留目录：当前仅 `examples` 目录保留说明与空壳，不承载 live code；`services/` 已实化为 M0 skeleton
 
 ## 禁止事项
 

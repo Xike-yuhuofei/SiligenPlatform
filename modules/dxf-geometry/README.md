@@ -19,12 +19,12 @@
 - `modules/dxf-geometry/application/engineering_data/` 当前只承载 DXF preprocess、simulation geometry helper 与 simulation-input stable compat shell。
 - simulation-input runtime concrete 已迁到 `modules/runtime-execution/application/runtime_execution/`；`dxf-geometry` 不再承载 runtime defaults、trigger 投影或 payload 组装实现。
 - trajectory owner 已迁到 `modules/motion-planning/application/motion_planning/trajectory_generation.py`；`scripts/engineering-data/path_to_trajectory.py` 是唯一正式 workspace 入口。
-- preview owner 已迁到 `apps/planner-cli/tools/planner_cli_preview/`；`scripts/engineering-data/generate_preview.py` 只是 workspace 稳定入口。
+- preview owner 已迁到 `apps/planner-cli` 下的 `planner_cli_preview` 子包；`scripts/engineering-data/generate_preview.py` 只是 workspace 稳定入口。
 
 ## 统一骨架状态
 
 - 当前 source-bearing roots：`application/`、`adapters/`、`tests/`
-- `domain/`、`services/`、`examples/` 保留为 canonical skeleton；当前 shell-only，不参与 live build。
+- `domain`、`services`、`examples` 保留为 canonical skeleton；当前 shell-only，不参与 live build。
 - `tests/regression/` 仅为 workspace layout 要求的 canonical skeleton；当前不承载 source-bearing 测试，也不注册 regression target。
 
 ## 测试基线

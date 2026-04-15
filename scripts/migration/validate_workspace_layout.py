@@ -236,13 +236,17 @@ def _validate_root_wiring(root: Path) -> list[str]:
     workflow_application = root / "modules" / "workflow" / "application" / "CMakeLists.txt"
     if workflow_application.exists():
         workflow_application_text = workflow_application.read_text(encoding="utf-8", errors="ignore")
-        for required in (
+        if "SILIGEN_WORKFLOW_APPLICATION_SKELETON_INCLUDE_DIR" not in workflow_application_text:
+            issues.append("workflow application internal skeleton self-check missing: SILIGEN_WORKFLOW_APPLICATION_SKELETON_INCLUDE_DIR")
+        for forbidden in (
             "siligen_job_ingest_contracts",
             "siligen_dxf_geometry_application_public",
             "siligen_runtime_execution_application_public",
+            "siligen_runtime_execution_application_headers",
+            "siligen_trace_diagnostics_contracts_public",
         ):
-            if required not in workflow_application_text:
-                issues.append(f"workflow application owner wiring missing: {required}")
+            if forbidden in workflow_application_text:
+                issues.append(f"workflow application internal-only skeleton drifted back to foreign wiring: {forbidden}")
 
     forbidden_reverse_mutations = (
         (

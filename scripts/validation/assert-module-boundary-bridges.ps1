@@ -158,6 +158,7 @@ Set-Location $repoRoot
 $allowedDirectWorkflowReferences = @(
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/workflow/CMakeLists.txt"),
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/workflow/application/CMakeLists.txt"),
+    (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/workflow/tests/canonical/CMakeLists.txt"),
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/runtime-execution/CMakeLists.txt"),
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/runtime-execution/runtime/host/CMakeLists.txt"),
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "apps/runtime-service/CMakeLists.txt"),
@@ -166,27 +167,12 @@ $allowedDirectWorkflowReferences = @(
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/job-ingest/CMakeLists.txt"),
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/dxf-geometry/tests/CMakeLists.txt"),
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/job-ingest/tests/CMakeLists.txt"),
+    (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/dispense-packaging/tests/regression/domain/dispensing/DispensePackagingResidualAcceptanceTest.cpp"),
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "apps/planner-cli/CMakeLists.txt"),
     (Resolve-AbsolutePath -BasePath $repoRoot -PathValue "apps/runtime-gateway/transport-gateway/CMakeLists.txt")
 )
 
 $requiredBridgeReferences = @(
-    @{
-        path = "modules/workflow/application/CMakeLists.txt"
-        pattern = "siligen_job_ingest_contracts"
-    },
-    @{
-        path = "modules/workflow/application/CMakeLists.txt"
-        pattern = "siligen_dxf_geometry_application_public"
-    },
-    @{
-        path = "modules/workflow/application/CMakeLists.txt"
-        pattern = "siligen_runtime_execution_application_public"
-    },
-    @{
-        path = "modules/workflow/application/CMakeLists.txt"
-        pattern = "siligen_process_planning_contracts_public"
-    },
     @{
         path = "modules/dispense-packaging/domain/dispensing/planning/ports/ISpatialIndexPort.h"
         pattern = "namespace Siligen::Domain::PlanningBoundary::Ports"
@@ -194,18 +180,6 @@ $requiredBridgeReferences = @(
     @{
         path = "apps/runtime-service/container/ApplicationContainer.Dispensing.cpp"
         pattern = '#include "application/services/process_path/ProcessPathFacade.h"'
-    },
-    @{
-        path = "modules/workflow/application/CMakeLists.txt"
-        pattern = "SILIGEN_WORKFLOW_APPLICATION_BRIDGE_ONLY_ALLOWED_MODULES"
-    },
-    @{
-        path = "modules/workflow/domain/CMakeLists.txt"
-        pattern = "SILIGEN_WORKFLOW_DOMAIN_BRIDGE_ONLY_ALLOWED_MODULES"
-    },
-    @{
-        path = "modules/workflow/domain/domain/dispensing/CMakeLists.txt"
-        pattern = "siligen_dispense_packaging_domain_dispensing"
     },
     @{
         path = "modules/topology-feature/CMakeLists.txt"
@@ -281,10 +255,6 @@ $requiredBridgeReferences = @(
     },
     @{
         path = "apps/runtime-service/CMakeLists.txt"
-        pattern = "siligen_application_dispensing"
-    },
-    @{
-        path = "apps/runtime-service/CMakeLists.txt"
         pattern = "siligen_workflow_adapters_public"
     },
     @{
@@ -314,10 +284,6 @@ $requiredBridgeReferences = @(
     @{
         path = "apps/planner-cli/CMakeLists.txt"
         pattern = "siligen_recipe_lifecycle_application_public"
-    },
-    @{
-        path = "apps/planner-cli/CMakeLists.txt"
-        pattern = "siligen_application_dispensing"
     },
     @{
         path = "apps/planner-cli/CMakeLists.txt"
@@ -354,10 +320,6 @@ $requiredBridgeReferences = @(
     @{
         path = "apps/runtime-gateway/transport-gateway/CMakeLists.txt"
         pattern = "siligen_recipe_lifecycle_application_public"
-    },
-    @{
-        path = "apps/runtime-gateway/transport-gateway/CMakeLists.txt"
-        pattern = "siligen_application_dispensing"
     },
     @{
         path = "apps/runtime-gateway/transport-gateway/CMakeLists.txt"
@@ -416,24 +378,12 @@ $requiredBridgeReferences = @(
         pattern = '#include "recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h"'
     },
     @{
-        path = "modules/workflow/application/CMakeLists.txt"
-        pattern = "siligen_trace_diagnostics_contracts_public"
-    },
-    @{
         path = "modules/runtime-execution/application/CMakeLists.txt"
         pattern = "siligen_trace_diagnostics_contracts_public"
     },
     @{
         path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
         pattern = "siligen_trace_diagnostics_contracts_public"
-    },
-    @{
-        path = "modules/workflow/application/planning-trigger/PlanningUseCase.cpp"
-        pattern = '#include "trace_diagnostics/contracts/IDiagnosticsPort.h"'
-    },
-    @{
-        path = "modules/workflow/tests/integration/PlanningFailureSurfaceTest.cpp"
-        pattern = '#include "trace_diagnostics/contracts/IDiagnosticsPort.h"'
     },
     @{
         path = "modules/runtime-execution/application/include/runtime_execution/application/usecases/system/InitializeSystemUseCase.h"
@@ -596,12 +546,6 @@ $forbiddenCompatReferences = @(
         detail = "transport-gateway upload consumer must include job_ingest/application/* headers"
     },
     @{
-        path = "apps/runtime-gateway/transport-gateway/src/facades/tcp/TcpDispensingFacade.h"
-        pattern = '#include "runtime_execution/application/usecases/dispensing/DispensingWorkflowUseCase.h"'
-        rule_id = "gateway-still-uses-runtime-workflow-wrapper"
-        detail = "transport-gateway workflow consumer must include workflow/application/* headers"
-    },
-    @{
         path = "apps/runtime-gateway/transport-gateway/include/siligen/gateway/tcp/tcp_facade_builder.h"
         pattern = '#include "runtime_execution/application/usecases/dispensing/PlanningUseCase.h"'
         rule_id = "gateway-builder-still-uses-runtime-planning-wrapper"
@@ -614,12 +558,6 @@ $forbiddenCompatReferences = @(
         detail = "transport-gateway builder must include job_ingest/application/* headers"
     },
     @{
-        path = "apps/runtime-gateway/transport-gateway/include/siligen/gateway/tcp/tcp_facade_builder.h"
-        pattern = '#include "runtime_execution/application/usecases/dispensing/DispensingWorkflowUseCase.h"'
-        rule_id = "gateway-builder-still-uses-runtime-workflow-wrapper"
-        detail = "transport-gateway builder must include workflow/application/* headers"
-    },
-    @{
         path = "apps/runtime-service/container/ApplicationContainer.Dispensing.cpp"
         pattern = '#include "runtime_execution/application/usecases/dispensing/PlanningUseCase.h"'
         rule_id = "runtime-bootstrap-still-uses-runtime-planning-wrapper"
@@ -630,12 +568,6 @@ $forbiddenCompatReferences = @(
         pattern = '#include "runtime_execution/application/usecases/dispensing/UploadFileUseCase.h"'
         rule_id = "runtime-bootstrap-still-uses-runtime-upload-wrapper"
         detail = "runtime bootstrap upload consumer must include job_ingest/application/* headers"
-    },
-    @{
-        path = "apps/runtime-service/container/ApplicationContainer.Dispensing.cpp"
-        pattern = '#include "runtime_execution/application/usecases/dispensing/DispensingWorkflowUseCase.h"'
-        rule_id = "runtime-bootstrap-still-uses-runtime-workflow-wrapper"
-        detail = "runtime bootstrap workflow consumer must include workflow/application/* headers"
     },
     @{
         path = "apps/planner-cli/CMakeLists.txt"
@@ -1029,48 +961,6 @@ $forbiddenOwnershipReferences = @(
         detail = "PathGenerationResult must only include process_path/contracts/* headers"
     },
     @{
-        path = "modules/workflow/domain/domain/CMakeLists.txt"
-        pattern = "add_subdirectory(dispensing)"
-        rule_id = "workflow-still-builds-dispensing-domain-duplicate"
-        detail = "workflow bridge domain must not compile dispense-packaging planning implementations"
-    },
-    @{
-        path = "modules/workflow/domain/domain/CMakeLists.txt"
-        pattern = "add_subdirectory(trajectory)"
-        rule_id = "workflow-still-builds-trajectory-domain-duplicate"
-        detail = "workflow bridge domain must not compile process-path planning implementations"
-    },
-    @{
-        path = "modules/workflow/domain/domain/CMakeLists.txt"
-        pattern = "dispensing/domain-services/CMPTriggerService.cpp"
-        rule_id = "workflow-still-compiles-dispense-packaging-cmp-service"
-        detail = "workflow bridge domain must not compile CMPService after M8 takes Trigger/CMP ownership"
-    },
-    @{
-        path = "modules/workflow/domain/domain/CMakeLists.txt"
-        pattern = "dispensing/planning/domain-services/DispensingPlannerService.cpp"
-        rule_id = "workflow-still-compiles-dispense-packaging-planner"
-        detail = "workflow bridge domain must not compile DispensingPlannerService after M8 takes Trigger/CMP ownership"
-    },
-    @{
-        path = "modules/workflow/domain/domain/CMakeLists.txt"
-        pattern = "dispensing/planning/domain-services/UnifiedTrajectoryPlannerService.cpp"
-        rule_id = "workflow-still-compiles-dispense-packaging-planner"
-        detail = "workflow bridge domain must not compile UnifiedTrajectoryPlannerService after M8 takes Trigger/CMP ownership"
-    },
-    @{
-        path = "modules/workflow/domain/domain/dispensing/domain-services/CMPTriggerService.h"
-        pattern = "class CMPService"
-        rule_id = "workflow-still-declares-cmp-owner-header"
-        detail = "workflow compatibility headers must forward to dispense-packaging CMPService instead of declaring a new owner type"
-    },
-    @{
-        path = "modules/workflow/domain/domain/dispensing/domain-services/TriggerPlanner.h"
-        pattern = "class TriggerPlanner"
-        rule_id = "workflow-still-declares-trigger-owner-header"
-        detail = "workflow compatibility headers must forward to dispense-packaging TriggerPlanner instead of declaring a new owner type"
-    },
-    @{
         path = "modules/workflow/tests/canonical/CMakeLists.txt"
         pattern = "unit/domain/dispensing/DispensingControllerTest.cpp"
         rule_id = "workflow-still-owns-dispense-packaging-domain-tests"
@@ -1263,30 +1153,6 @@ $forbiddenOwnershipReferences = @(
         detail = "runtime execution application must not mutate runtime contract include roots from the application layer"
     },
     @{
-        path = "modules/workflow/domain/domain/CMakeLists.txt"
-        pattern = "siligen_safety_domain_services"
-        rule_id = "workflow-domain-still-compiles-runtime-safety-concrete"
-        detail = "workflow bridge-domain must not compile runtime-owned safety concrete"
-    },
-    @{
-        path = "modules/workflow/domain/domain/CMakeLists.txt"
-        pattern = "siligen_dispensing_execution_services"
-        rule_id = "workflow-domain-still-compiles-foreign-dispensing-concrete"
-        detail = "workflow bridge-domain must not compile foreign dispensing concrete"
-    },
-    @{
-        path = "modules/workflow/domain/domain/CMakeLists.txt"
-        pattern = "siligen_triggering"
-        rule_id = "workflow-domain-still-compiles-foreign-dispensing-concrete"
-        detail = "workflow bridge-domain must not keep the legacy siligen_triggering concrete target"
-    },
-    @{
-        path = "modules/workflow/domain/domain/CMakeLists.txt"
-        pattern = "dispensing/domain-services/PositionTriggerController.cpp"
-        rule_id = "workflow-domain-still-compiles-foreign-dispensing-concrete"
-        detail = "workflow bridge-domain must not compile PositionTriggerController from workflow residue"
-    },
-    @{
         path = "modules/workflow/tests/canonical/CMakeLists.txt"
         pattern = "unit/domain/safety/InterlockPolicyTest.cpp"
         rule_id = "workflow-canonical-still-owns-runtime-safety-tests"
@@ -1363,42 +1229,6 @@ $forbiddenOwnershipReferences = @(
         pattern = "siligen_application_dispensing"
         rule_id = "dispense-packaging-application-still-mutates-workflow-dispensing"
         detail = "dispense-packaging application must not mutate workflow dispensing target; workflow must declare owner dependencies itself"
-    },
-    @{
-        path = "modules/workflow/domain/domain/CMakeLists.txt"
-        pattern = "    motion/domain-services/MotionBufferController.cpp"
-        rule_id = "workflow-still-compiles-local-motion-execution-source"
-        detail = "workflow domain must compile motion execution services from the M7 owner path instead of local workflow/domain/domain/motion sources"
-    },
-    @{
-        path = "modules/workflow/domain/domain/CMakeLists.txt"
-        pattern = "    motion/domain-services/MotionControlServiceImpl.cpp"
-        rule_id = "workflow-still-compiles-local-motion-execution-source"
-        detail = "workflow domain must compile motion execution services from the M7 owner path instead of local workflow/domain/domain/motion sources"
-    },
-    @{
-        path = "modules/workflow/domain/domain/CMakeLists.txt"
-        pattern = "    motion/domain-services/MotionStatusServiceImpl.cpp"
-        rule_id = "workflow-still-compiles-local-motion-execution-source"
-        detail = "workflow domain must compile motion execution services from the M7 owner path instead of local workflow/domain/domain/motion sources"
-    },
-    @{
-        path = "modules/workflow/domain/domain/dispensing/CMakeLists.txt"
-        pattern = "planning/domain-services/ContourOptimizationService.cpp"
-        rule_id = "workflow-still-compiles-local-dispensing-planning-source"
-        detail = "workflow compatibility dispensing target must not compile local M8 planning sources"
-    },
-    @{
-        path = "modules/workflow/domain/domain/dispensing/CMakeLists.txt"
-        pattern = "planning/domain-services/UnifiedTrajectoryPlannerService.cpp"
-        rule_id = "workflow-still-compiles-local-dispensing-planning-source"
-        detail = "workflow compatibility dispensing target must not compile local M8 planning sources"
-    },
-    @{
-        path = "modules/workflow/domain/domain/dispensing/CMakeLists.txt"
-        pattern = "planning/domain-services/DispensingPlannerService.cpp"
-        rule_id = "workflow-still-compiles-local-dispensing-planning-source"
-        detail = "workflow compatibility dispensing target must not compile local M8 planning sources"
     },
     @{
         path = "modules/dxf-geometry/CMakeLists.txt"
@@ -1631,6 +1461,21 @@ $requiredDeletedFiles = @(
         detail = "workflow DXF wrapper must be deleted after consumers move to dxf_geometry/application/services/dxf/DxfPbPreparationService.h"
     },
     @{
+        path = "modules/workflow/application/planning-trigger/PlanningUseCase.cpp"
+        rule_id = "workflow-planning-trigger-source-still-exists"
+        detail = "workflow planning-trigger source must stay deleted after planning ownership moves out of workflow/application"
+    },
+    @{
+        path = "modules/workflow/tests/integration/PlanningFailureSurfaceTest.cpp"
+        rule_id = "workflow-integration-planning-failure-test-still-exists"
+        detail = "workflow integration planning failure source must stay deleted after owner tests move out of workflow/tests"
+    },
+    @{
+        path = "modules/workflow/domain/domain"
+        rule_id = "workflow-domain-residue-root-still-exists"
+        detail = "workflow domain residue root must stay deleted after M0 closeout"
+    },
+    @{
         path = "modules/workflow/domain/include/domain/system/ports/IEventPublisherPort.h"
         rule_id = "workflow-system-event-publisher-shim-still-exists"
         detail = "workflow legacy domain/system event publisher shim must be deleted after all live consumers move to runtime/contracts/system/IEventPublisherPort.h"
@@ -1728,24 +1573,6 @@ $forbiddenCompatReferences += @(
         pattern = "siligen_runtime_execution_application_headers"
         rule_id = "workflow-application-headers-still-reexport-runtime-execution"
         detail = "workflow application header bundle must not re-export runtime-execution application headers"
-    },
-    @{
-        path = "modules/workflow/application/include/application/ports/dispensing/PlanningPortAdapters.h"
-        pattern = "MotionPlanningFacade.h"
-        rule_id = "workflow-planning-port-adapters-still-reexport-motion-facade"
-        detail = "workflow planning port adapters public header must not re-export motion-planning application headers"
-    },
-    @{
-        path = "modules/workflow/application/include/application/ports/dispensing/PlanningPortAdapters.h"
-        pattern = "ProcessPathFacade.h"
-        rule_id = "workflow-planning-port-adapters-still-reexport-process-path-facade"
-        detail = "workflow planning port adapters public header must not re-export process-path application headers"
-    },
-    @{
-        path = "modules/workflow/application/include/application/ports/dispensing/PlanningPortAdapters.h"
-        pattern = "DxfPbPreparationService.h"
-        rule_id = "workflow-planning-port-adapters-still-reexport-dxf-preparation-service"
-        detail = "workflow planning port adapters public header must not re-export dxf-geometry application headers"
     },
     @{
         path = "modules/workflow/domain/CMakeLists.txt"
@@ -2349,22 +2176,6 @@ $forbiddenScopedSearches += @(
         detail = "live code must include trace_diagnostics/contracts/IDiagnosticsPort.h instead of the deleted workflow diagnostics sink header"
     },
     @{
-        rule_id = "workflow-services-still-carry-live-code"
-        pattern = "namespace "
-        search_roots = @(
-            "modules/workflow/services"
-        )
-        detail = "workflow/services must remain shell-only and must not accumulate live implementation code"
-    },
-    @{
-        rule_id = "workflow-examples-still-carry-live-code"
-        pattern = "namespace "
-        search_roots = @(
-            "modules/workflow/examples"
-        )
-        detail = "workflow/examples must remain shell-only and must not accumulate live implementation code"
-    },
-    @{
         rule_id = "workflow-tests-unit-still-source-bearing"
         pattern = "add_executable("
         search_roots = @(
@@ -2545,6 +2356,38 @@ foreach ($requiredDeletedFile in $requiredDeletedFiles) {
             file = $requiredDeletedFile.path
             line = 0
             detail = $requiredDeletedFile.detail
+        })
+    }
+}
+
+$workflowServicesRoot = Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/workflow/services"
+if (Test-Path $workflowServicesRoot) {
+    foreach ($payload in Get-ChildItem -Path $workflowServicesRoot -Recurse -File | Where-Object {
+        $_.Extension -in @(".cpp", ".cc", ".cxx", ".py", ".ps1")
+    }) {
+        $findings.Add([pscustomobject]@{
+            rule_id = "workflow-services-still-carry-implementation-files"
+            severity = "error"
+            target = $payload.Name
+            file = Get-RelativeRepoPath -BasePath $repoRoot -TargetPath $payload.FullName
+            line = 0
+            detail = "workflow/services may keep headers-only M0 skeletons but must not carry implementation payload"
+        })
+    }
+}
+
+$workflowExamplesRoot = Resolve-AbsolutePath -BasePath $repoRoot -PathValue "modules/workflow/examples"
+if (Test-Path $workflowExamplesRoot) {
+    foreach ($payload in Get-ChildItem -Path $workflowExamplesRoot -Recurse -File | Where-Object {
+        $_.Extension -in @(".h", ".hpp", ".cpp", ".cc", ".cxx", ".py", ".ps1")
+    }) {
+        $findings.Add([pscustomobject]@{
+            rule_id = "workflow-examples-still-carry-payload"
+            severity = "error"
+            target = $payload.Name
+            file = Get-RelativeRepoPath -BasePath $repoRoot -TargetPath $payload.FullName
+            line = 0
+            detail = "workflow/examples must remain shell-only and must not carry source-bearing payload"
         })
     }
 }

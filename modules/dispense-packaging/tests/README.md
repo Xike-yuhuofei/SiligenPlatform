@@ -34,5 +34,6 @@
 
 ## 占位目录
 
-当前没有 source-bearing `integration/` suite，也不再保留空壳占位目录。
-如后续出现真实 integration lane，应以实际测试源文件和 target 为准重新建立目录，而不是先放 `.gitkeep`。
+- `integration`
+  当前只保留 canonical skeleton 占位目录，用于满足 workspace layout gate；它不承载 source-bearing suite，也不参与 closeout 证据。
+- 如后续出现真实 integration lane，应以实际测试源文件和 target 为准扩展该目录，而不是把占位目录误记为 live 测试面。

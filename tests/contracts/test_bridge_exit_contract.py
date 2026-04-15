@@ -614,12 +614,12 @@ class BridgeExitContractTest(unittest.TestCase):
         tests_readme = _read(WORKSPACE_ROOT / "modules" / "dxf-geometry" / "tests" / "README.md")
         contracts_readme = _read(WORKSPACE_ROOT / "modules" / "dxf-geometry" / "contracts" / "README.md")
 
-        self.assertIn("preview owner 已迁到 `apps/planner-cli/tools/planner_cli_preview/`", readme)
+        self.assertIn("preview owner 已迁到 `apps/planner-cli` 下的 `planner_cli_preview` 子包", readme)
         self.assertIn("trajectory owner 已迁到 `modules/motion-planning/application/motion_planning/trajectory_generation.py`", readme)
         self.assertNotIn("trajectory 只保留兼容 import / CLI 入口", readme)
         self.assertNotIn("compat wrapper", readme)
 
-        self.assertIn("preview owner 已迁到 apps/planner-cli/tools/planner_cli_preview", module_yaml)
+        self.assertIn("preview owner 已迁到 apps/planner-cli 下的 planner_cli_preview 子包", module_yaml)
         self.assertIn(
             "trajectory owner 已迁到 modules/motion-planning/application/motion_planning/trajectory_generation.py",
             module_yaml,
