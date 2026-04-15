@@ -1,10 +1,20 @@
+import sys
 import unittest
+from pathlib import Path
+
+TEST_ROOT = Path(__file__).resolve().parents[1]
+if str(TEST_ROOT) not in sys.path:
+    sys.path.insert(0, str(TEST_ROOT))
 
 from bootstrap import ensure_hmi_application_test_paths
 
 ensure_hmi_application_test_paths()
 
-from hmi_application.contracts.launch_supervision_contract import SessionSnapshot, snapshot_timestamp
+from hmi_application.contracts.launch_supervision_contract import (
+    FailureStage,
+    SessionSnapshot,
+    snapshot_timestamp,
+)
 from hmi_application.services.startup_orchestration import run_launch_sequence, run_recovery_action
 
 
@@ -52,7 +62,7 @@ class _FakeProtocol:
         return self.hardware_result
 
 
-def _failed_snapshot(*, recoverable: bool = True, stage: str = "tcp_ready") -> SessionSnapshot:
+def _failed_snapshot(*, recoverable: bool = True, stage: FailureStage = "tcp_ready") -> SessionSnapshot:
     return SessionSnapshot(
         mode="online",
         session_state="failed",
