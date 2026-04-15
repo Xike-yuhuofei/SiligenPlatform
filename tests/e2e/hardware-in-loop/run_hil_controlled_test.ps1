@@ -1,3 +1,4 @@
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [ValidateSet("Local", "CI")]
     [string]$Profile = "Local",
@@ -33,6 +34,20 @@ function Resolve-AbsolutePath {
         return [System.IO.Path]::GetFullPath($PathValue)
     }
     return [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot $PathValue))
+}
+
+function Assert-PathArgumentNotBooleanLiteral {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ArgumentName,
+        [Parameter(Mandatory = $true)]
+        [string]$PathValue
+    )
+
+    $trimmedValue = $PathValue.Trim()
+    if ($trimmedValue -imatch '^(true|false)$') {
+        throw "$ArgumentName 不能为字面量 '$trimmedValue'。如果要启用布尔开关，请使用命名开关语法，不要把 True/False 作为独立位置参数传入。"
+    }
 }
 
 function Copy-PathIfPresent {
@@ -77,6 +92,9 @@ foreach ($requiredPath in @($buildScript, $testScript, $hardwareSmokeScript, $hi
         throw "missing required controlled-hil entry: $requiredPath"
     }
 }
+
+Assert-PathArgumentNotBooleanLiteral -ArgumentName "ReportDir" -PathValue $ReportDir
+Assert-PathArgumentNotBooleanLiteral -ArgumentName "PublishLatestReportDir" -PathValue $PublishLatestReportDir
 
 $resolvedReportDir = Resolve-AbsolutePath -WorkspaceRoot $workspaceRoot -PathValue $ReportDir
 if ($UseTimestampedReportDir) {
