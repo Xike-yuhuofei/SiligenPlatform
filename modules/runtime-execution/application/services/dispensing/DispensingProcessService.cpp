@@ -47,6 +47,7 @@ constexpr float32 kMotionCompletionGraceRatio = 0.15f;
 constexpr float32 kCompletionVelocityToleranceMmS = 0.5f;
 constexpr float32 kCompletionPositionToleranceFloorMm = 0.2f;
 constexpr auto kCompletionSettleWindow = std::chrono::milliseconds(250);
+constexpr auto kFormalPathClearRetryTimeout = std::chrono::milliseconds(8000);
 constexpr auto kStopDrainTimeout = std::chrono::milliseconds(2000);
 constexpr int32 kCrdStatusFifoFinish0 = 0x00000010;
 constexpr int16 kCoordinateSystem = 1;
@@ -74,6 +75,16 @@ bool IsCoordinateSystemCompleted(const Motion::Ports::CoordinateSystemStatus& st
 bool IsCoordinateSystemStopDrained(const Motion::Ports::CoordinateSystemStatus& status) {
     if (status.state == Motion::Ports::CoordinateSystemState::IDLE) {
         return true;
+    }
+
+    const bool coord_velocity_idle = std::fabs(status.current_velocity) <= kCompletionVelocityToleranceMmS;
+    const bool segments_drained = status.remaining_segments == 0U || status.raw_segment <= 0;
+    return !status.is_moving && coord_velocity_idle && segments_drained;
+}
+
+bool IsCoordinateSystemSettledForFormalPathClear(const Motion::Ports::CoordinateSystemStatus& status) {
+    if (status.state == Motion::Ports::CoordinateSystemState::ERROR_STATE) {
+        return false;
     }
 
     const bool coord_velocity_idle = std::fabs(status.current_velocity) <= kCompletionVelocityToleranceMmS;
@@ -488,6 +499,34 @@ Point2D ResolveFinalTargetPosition(const DispensingExecutionPlan& plan) noexcept
     return Point2D{};
 }
 
+std::optional<Point2D> ResolveProgramStartPosition(const DispensingExecutionPlan& plan) noexcept {
+    if (!plan.motion_trajectory.points.empty()) {
+        return Point2D(plan.motion_trajectory.points.front().position);
+    }
+    if (!plan.interpolation_points.empty()) {
+        return plan.interpolation_points.front().position;
+    }
+    return std::nullopt;
+}
+
+int32 EstimateLinearMotionTimeMs(float32 distance_mm, float32 velocity_mm_s) noexcept {
+    if (distance_mm <= kTraceEpsilonMm || velocity_mm_s <= kTraceEpsilonMm) {
+        return 0;
+    }
+    return static_cast<int32>(std::ceil((distance_mm / velocity_mm_s) * 1000.0f));
+}
+
+Motion::Ports::InterpolationData BuildPrePositionSegment(const Point2D& target_position,
+                                                         const DispensingRuntimeParams& params) noexcept {
+    Motion::Ports::InterpolationData segment;
+    segment.type = Motion::Ports::InterpolationType::LINEAR;
+    segment.positions = {target_position.x, target_position.y};
+    segment.velocity = params.dispensing_velocity;
+    segment.acceleration = params.acceleration;
+    segment.end_velocity = 0.0f;
+    return segment;
+}
+
 float32 ResolveCompletionPositionToleranceMm(const std::shared_ptr<IConfigurationPort>& config_port) noexcept {
     float32 tolerance = kCompletionPositionToleranceFloorMm;
     if (!config_port) {
@@ -711,6 +750,108 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecuteProcess(
     return ExecutePlanInternal(plan, params, options, stop_flag, pause_flag, pause_applied_flag, observer);
 }
 
+Result<void> DispensingProcessService::PrePositionToPlanStart(const DispensingExecutionPlan& plan,
+                                                              const DispensingRuntimeParams& params,
+                                                              std::atomic<bool>* stop_flag,
+                                                              std::atomic<bool>* pause_flag,
+                                                              std::atomic<bool>* pause_applied_flag) noexcept {
+    if (!interpolation_port_ || !motion_state_port_) {
+        return Result<void>::Success();
+    }
+
+    const auto program_start = ResolveProgramStartPosition(plan);
+    if (!program_start.has_value()) {
+        return Result<void>::Success();
+    }
+
+    auto current_position_result = motion_state_port_->GetCurrentPosition();
+    if (current_position_result.IsError()) {
+        SILIGEN_LOG_WARNING("读取当前位置失败，跳过计划首点预定位: " +
+                            current_position_result.GetError().GetMessage());
+        return Result<void>::Success();
+    }
+
+    const auto& current_position = current_position_result.Value();
+    const auto position_tolerance_mm = ResolveCompletionPositionToleranceMm(config_port_);
+    const auto distance_to_start = current_position.DistanceTo(program_start.value());
+    if (distance_to_start <= position_tolerance_mm) {
+        SILIGEN_LOG_INFO_FMT_HELPER(
+            "计划首点预定位跳过: current=(%.3f, %.3f), start=(%.3f, %.3f), distance=%.4f, tolerance=%.4f",
+            current_position.x,
+            current_position.y,
+            program_start->x,
+            program_start->y,
+            distance_to_start,
+            position_tolerance_mm);
+        return Result<void>::Success();
+    }
+
+    if (IsStopRequested(stop_flag)) {
+        return Result<void>::Failure(
+            Error(ErrorCode::INVALID_STATE, "用户请求停止", "DispensingProcessService"));
+    }
+
+    const auto pre_position_segment = BuildPrePositionSegment(program_start.value(), params);
+    const auto estimated_motion_time_ms =
+        EstimateLinearMotionTimeMs(distance_to_start, pre_position_segment.velocity);
+    const auto timeout_ms = BuildMotionCompletionTimeoutMs(static_cast<float32>(estimated_motion_time_ms));
+
+    SILIGEN_LOG_INFO_FMT_HELPER(
+        "计划首点预定位: current=(%.3f, %.3f), start=(%.3f, %.3f), distance=%.4f, velocity=%.3f, timeout_ms=%d",
+        current_position.x,
+        current_position.y,
+        program_start->x,
+        program_start->y,
+        distance_to_start,
+        pre_position_segment.velocity,
+        timeout_ms);
+
+    auto clear_result = interpolation_port_->ClearInterpolationBuffer(kCoordinateSystem);
+    if (clear_result.IsError()) {
+        return clear_result;
+    }
+
+    auto add_result = interpolation_port_->AddInterpolationData(kCoordinateSystem, pre_position_segment);
+    if (add_result.IsError()) {
+        return add_result;
+    }
+
+    auto flush_result = interpolation_port_->FlushInterpolationData(kCoordinateSystem);
+    if (flush_result.IsError()) {
+        return flush_result;
+    }
+
+    auto override_result = interpolation_port_->SetCoordinateSystemVelocityOverride(kCoordinateSystem, 100.0f);
+    if (override_result.IsError()) {
+        SILIGEN_LOG_WARNING("计划首点预定位设置速度倍率失败: " + override_result.GetError().GetMessage());
+    }
+
+    auto start_result = interpolation_port_->StartCoordinateSystemMotion(kCoordinateSystemMask);
+    if (start_result.IsError()) {
+        return start_result;
+    }
+
+    auto wait_result = WaitForMotionComplete(timeout_ms,
+                                             stop_flag,
+                                             pause_flag,
+                                             pause_applied_flag,
+                                             &program_start.value(),
+                                             position_tolerance_mm,
+                                             0U,
+                                             false,
+                                             nullptr);
+    if (wait_result.IsError()) {
+        return wait_result;
+    }
+
+    SILIGEN_LOG_INFO_FMT_HELPER(
+        "计划首点预定位完成: start=(%.3f, %.3f), distance=%.4f",
+        program_start->x,
+        program_start->y,
+        distance_to_start);
+    return Result<void>::Success();
+}
+
 Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
     const DispensingExecutionPlan& plan,
     const DispensingRuntimeParams& params,
@@ -760,13 +901,18 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
             Error(ErrorCode::TRAJECTORY_GENERATION_FAILED, "插补数据为空", "DispensingProcessService"));
     }
 
+    auto pre_position_result = PrePositionToPlanStart(plan, params, stop_flag, pause_flag, pause_applied_flag);
+    if (pre_position_result.IsError()) {
+        return Result<DispensingExecutionReport>::Failure(pre_position_result.GetError());
+    }
+
     constexpr uint32 kMinBufferSpace = 20;
     constexpr uint32 kZeroSpaceWarmupBatch = kMinBufferSpace;
     constexpr auto kBufferPollInterval = std::chrono::milliseconds(5);
     constexpr auto kBufferStallTimeout = std::chrono::seconds(10);
     constexpr float32 kMinMovingVelocityMmS = 0.1f;
 
-    auto clear_result = interpolation_port_->ClearInterpolationBuffer(kCoordinateSystem);
+    auto clear_result = ClearInterpolationBufferForFormalPath(stop_flag, pause_flag, pause_applied_flag);
     if (clear_result.IsError()) {
         return Result<DispensingExecutionReport>::Failure(clear_result.GetError());
     }
@@ -1335,6 +1481,91 @@ Result<void> DispensingProcessService::WaitForMotionComplete(int32 timeout_ms,
         std::this_thread::sleep_for(
             std::chrono::milliseconds(kStatusPollIntervalMs));
     }
+}
+
+Result<void> DispensingProcessService::ClearInterpolationBufferForFormalPath(std::atomic<bool>* stop_flag,
+                                                                             std::atomic<bool>* pause_flag,
+                                                                             std::atomic<bool>* pause_applied_flag) noexcept {
+    if (!interpolation_port_) {
+        return Result<void>::Success();
+    }
+
+    const auto clear_start = std::chrono::steady_clock::now();
+    auto settled_since = std::chrono::steady_clock::time_point{};
+    bool settle_tracking = false;
+    Motion::Ports::CoordinateSystemStatus last_status{};
+    bool has_status = false;
+    bool has_clear_error = false;
+    std::string last_clear_error_message;
+    while (std::chrono::steady_clock::now() - clear_start < kFormalPathClearRetryTimeout) {
+        auto pause_result = WaitWhilePaused(stop_flag, pause_flag, pause_applied_flag, false, nullptr);
+        if (pause_result.IsError()) {
+            return pause_result;
+        }
+
+        if (IsStopRequested(stop_flag)) {
+            StopExecution(stop_flag, pause_flag);
+            return Result<void>::Failure(
+                Error(ErrorCode::INVALID_STATE, "执行已被取消", "DispensingProcessService"));
+        }
+
+        auto status_result = interpolation_port_->GetCoordinateSystemStatus(kCoordinateSystem);
+        if (status_result.IsError()) {
+            return Result<void>::Failure(status_result.GetError());
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+        last_status = status_result.Value();
+        has_status = true;
+        if (IsCoordinateSystemSettledForFormalPathClear(last_status)) {
+            if (!settle_tracking) {
+                settled_since = now;
+                settle_tracking = true;
+            }
+            if (now - settled_since >= kCompletionSettleWindow) {
+                auto clear_result = interpolation_port_->ClearInterpolationBuffer(kCoordinateSystem);
+                if (clear_result.IsSuccess()) {
+                    return Result<void>::Success();
+                }
+                has_clear_error = true;
+                last_clear_error_message = clear_result.GetError().GetMessage();
+            }
+        } else {
+            settle_tracking = false;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(kStatusPollIntervalMs));
+    }
+
+    if (has_status) {
+        if (has_clear_error) {
+            SILIGEN_LOG_WARNING_FMT_HELPER(
+                "预定位完成后清缓冲未在超时内成功: state=%d, moving=%d, remaining=%u, coord_vel=%.4f, raw_status=%d, "
+                "raw_segment=%d, last_clear_error=%s",
+                static_cast<int>(last_status.state),
+                last_status.is_moving ? 1 : 0,
+                last_status.remaining_segments,
+                last_status.current_velocity,
+                last_status.raw_status_word,
+                last_status.raw_segment,
+                last_clear_error_message.c_str());
+        } else {
+            SILIGEN_LOG_WARNING_FMT_HELPER(
+                "预定位完成后坐标系未在超时内进入清缓冲重试窗口: state=%d, moving=%d, remaining=%u, coord_vel=%.4f, "
+                "raw_status=%d, raw_segment=%d",
+                static_cast<int>(last_status.state),
+                last_status.is_moving ? 1 : 0,
+                last_status.remaining_segments,
+                last_status.current_velocity,
+                last_status.raw_status_word,
+                last_status.raw_segment);
+        }
+    } else {
+        SILIGEN_LOG_WARNING("预定位完成后清缓冲未在超时内成功: 未读取到状态");
+    }
+
+    return Result<void>::Failure(
+        Error(ErrorCode::MOTION_TIMEOUT, "预定位完成后清缓冲未在超时内成功", "DispensingProcessService"));
 }
 
 Result<void> DispensingProcessService::WaitWhilePaused(std::atomic<bool>* stop_flag,

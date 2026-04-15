@@ -79,6 +79,40 @@ class FlakyPostConfigureClearWrapper final : public MockMultiCardWrapper {
     int stop_ex_calls_ = 0;
 };
 
+class FlakyDirectClearWrapper final : public MockMultiCardWrapper {
+   public:
+    FlakyDirectClearWrapper(int retriable_failures, int terminal_error = 0)
+        : MockMultiCardWrapper(std::make_shared<MockMultiCard>()),
+          retriable_failures_remaining_(retriable_failures),
+          terminal_error_(terminal_error) {}
+
+    int MC_CrdClear(short crd, short fifo) noexcept override {
+        ++crd_clear_calls_;
+        if (retriable_failures_remaining_ > 0) {
+            --retriable_failures_remaining_;
+            return 1;
+        }
+        if (terminal_error_ != 0) {
+            return terminal_error_;
+        }
+        return MockMultiCardWrapper::MC_CrdClear(crd, fifo);
+    }
+
+    int MC_StopEx(long mask, short stopMode) noexcept override {
+        ++stop_ex_calls_;
+        return MockMultiCardWrapper::MC_StopEx(mask, stopMode);
+    }
+
+    int crd_clear_calls() const noexcept { return crd_clear_calls_; }
+    int stop_ex_calls() const noexcept { return stop_ex_calls_; }
+
+   private:
+    int retriable_failures_remaining_ = 0;
+    int terminal_error_ = 0;
+    int crd_clear_calls_ = 0;
+    int stop_ex_calls_ = 0;
+};
+
 class StaleStoppedVelocityWrapper final : public MockMultiCardWrapper {
    public:
     StaleStoppedVelocityWrapper()
@@ -206,6 +240,30 @@ TEST(InterpolationAdapterTest, ConfigureCoordinateSystemCanPinOriginToMachineZer
     for (long value : wrapper->last_origin_pos) {
         EXPECT_EQ(value, 0);
     }
+}
+
+TEST(InterpolationAdapterTest, ClearInterpolationBufferRetriesTransientCrdClearExecutionFailure) {
+    auto wrapper = std::make_shared<FlakyDirectClearWrapper>(2);
+    InterpolationAdapter adapter(wrapper);
+
+    const auto result = adapter.ClearInterpolationBuffer(1);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    EXPECT_EQ(wrapper->crd_clear_calls(), 3);
+    EXPECT_EQ(wrapper->stop_ex_calls(), 2);
+}
+
+TEST(InterpolationAdapterTest, ClearInterpolationBufferDoesNotMaskNonRetriableCrdClearFailure) {
+    auto wrapper = std::make_shared<FlakyDirectClearWrapper>(0, 7);
+    InterpolationAdapter adapter(wrapper);
+
+    const auto result = adapter.ClearInterpolationBuffer(1);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_NE(result.GetError().GetMessage().find("ClearInterpolationBuffer: CrdClear failed"), std::string::npos);
+    EXPECT_NE(result.GetError().GetMessage().find("错误码:7"), std::string::npos);
+    EXPECT_EQ(wrapper->crd_clear_calls(), 1);
+    EXPECT_EQ(wrapper->stop_ex_calls(), 0);
 }
 
 TEST(InterpolationAdapterTest, AddInterpolationDataUsesCenterOffsetRelativeToBufferedArcStart) {

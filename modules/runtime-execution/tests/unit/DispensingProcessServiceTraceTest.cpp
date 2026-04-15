@@ -278,7 +278,13 @@ DispensingExecutionOptions BuildExecutionOptions() {
 TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalKeepsDispatchOrderWithPreviewTraceEnabled) {
     auto interpolation_port = std::make_shared<FakeInterpolationPort>();
     auto motion_state_port = std::make_shared<SequencedMotionStatePort>(
-        std::vector<Point2D>{Point2D{10.0f, 0.0f}, Point2D{10.0f, 0.0f}, Point2D{10.0f, 0.0f}});
+        std::vector<Point2D>{Point2D{0.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f}});
     DispensingProcessService service(nullptr,
                                      interpolation_port,
                                      motion_state_port,
