@@ -2,6 +2,8 @@
 
 这里放 canonical 仿真执行链的联动回归。
 
+更新时间：`2026-04-13`
+
 当前入口：
 
 - `run_simulated_line.py`
@@ -44,8 +46,17 @@ Phase 9 起，simulated-line fault/injector authority 固定在 `shared/testing/
 - `fake_controller`: `readiness`、`abort`、`preflight`、`control_cycle`
 - `fake_io`: `disconnect`、`alarm`
 
+DXF truth matrix 口径：
+
+- compat full-chain case 统一来自 `shared/contracts/engineering/fixtures/dxf-truth-matrix.json`
+- 当前 full-chain canonical producer case 为 `rect_diag`、`bra`、`arc_circle_quadrants`
+- `run_simulated_line.py --mode compat` 在未显式筛选时，会枚举全部 full-chain case，而不再只跑 `rect_diag`
+- `run_simulated_line.py --mode both` 也会先跑上述 compat case，再补 scheme C regression
+- `run_simulated_line_matrix.py` 仍显式钉住 `rect_diag`，用于冻结 fault matrix / control-cycle authority；它不是 full-chain case sweep 入口
+
 `run_simulated_line.py` 现在支持：
 
+- `--compat-case-id <case>` 可重复，用于只运行指定 full-chain compat case
 - `--fault-id <fault_id>` 可重复，用于只运行指定 fault 场景
 - `--seed <int>`
 - `--clock-profile <profile>`
@@ -76,6 +87,20 @@ Phase 9 起，simulated-line fault/injector authority 固定在 `shared/testing/
 - `validation-evidence-bundle.json`
 - `evidence-links.md`
 - `failure-details.json`（失败、阻断、已知失败、跳过或延后时）
+
+truth matrix 示例命令：
+
+```powershell
+python .\tests\e2e\simulated-line\run_simulated_line.py --mode compat
+```
+
+```powershell
+python .\tests\e2e\simulated-line\run_simulated_line.py --mode compat --compat-case-id bra
+```
+
+```powershell
+python .\tests\e2e\simulated-line\run_simulated_line.py --mode both --compat-case-id arc_circle_quadrants
+```
 
 `run_simulated_line_matrix.py` 会复用 `run_simulated_line.py` 固化异常矩阵，当前覆盖：
 

@@ -54,31 +54,24 @@ function Stop-HangingMockProcesses {
 
 Stop-HangingMockProcesses
 
-$stdoutLog = Join-Path ([IO.Path]::GetTempPath()) ("siligen-verify-online-timeout-{0}-stdout.log" -f [guid]::NewGuid().ToString("N"))
-$stderrLog = Join-Path ([IO.Path]::GetTempPath()) ("siligen-verify-online-timeout-{0}-stderr.log" -f [guid]::NewGuid().ToString("N"))
 $args = @(
+    "-NoProfile",
     "-ExecutionPolicy", "Bypass",
     "-File", $onlineSmoke,
     "-UseSupervisorInjection",
     "-MockCommand", $hangingMock,
     "-ExpectFailureCode", "SUP_BACKEND_READY_TIMEOUT",
     "-ExpectFailureStage", "backend_ready",
-    "-PythonExe", $PythonExe
+    "-MockStartupTimeoutMs", "$MockStartupTimeoutMs",
+    "-PythonExe", ('"{0}"' -f $PythonExe)
 )
 
 try {
     Write-Host "[verify-online-ready-timeout] expect_exit=21 via supervisor injection timeout_ms=$MockStartupTimeoutMs"
-    $process = Start-Process `
-        -FilePath "powershell" `
-        -ArgumentList $args `
-        -PassThru `
-        -Wait `
-        -RedirectStandardOutput $stdoutLog `
-        -RedirectStandardError $stderrLog
-    $output = Read-CombinedOutput -StdoutPath $stdoutLog -StderrPath $stderrLog
-    $rawExitCode = $process.ExitCode
+    $outputLines = & powershell @args 2>&1
+    $output = ($outputLines | ForEach-Object { "$_" }) -join [Environment]::NewLine
+    $rawExitCode = $LASTEXITCODE
 } finally {
-    Remove-Item $stdoutLog, $stderrLog -ErrorAction SilentlyContinue
 }
 
 if ($output) {

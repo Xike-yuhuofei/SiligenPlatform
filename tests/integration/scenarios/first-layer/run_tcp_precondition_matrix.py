@@ -35,14 +35,8 @@ from test_kit.evidence_bundle import (  # noqa: E402
     write_bundle_artifacts,
 )
 from runtime_gateway_harness import load_connection_params, tcp_connect_and_ensure_ready  # noqa: E402
+from runtime_gateway_harness import build_process_env, resolve_default_exe  # noqa: E402
 
-CONTROL_APPS_BUILD_ROOT = Path(
-    os.getenv(
-        "SILIGEN_CONTROL_APPS_BUILD_ROOT",
-        str(Path(os.getenv("LOCALAPPDATA", str(ROOT))) / "SiligenSuite" / "control-apps-build"),
-    )
-)
-VENDOR_DIR = ROOT / "modules" / "runtime-execution" / "adapters" / "device" / "vendor" / "multicard"
 DEFAULT_DXF_FILE = ROOT / "samples" / "dxf" / "rect_diag.dxf"
 DEFAULT_DXF_PB_SCRIPT = ROOT / "scripts" / "engineering-data" / "dxf_to_pb.py"
 DEFAULT_DXF_TRAJECTORY_SCRIPT = ROOT / "scripts" / "engineering-data" / "path_to_trajectory.py"
@@ -140,49 +134,6 @@ class TcpJsonClient:
             if not chunk:
                 raise ConnectionError("tcp socket closed by peer")
             self._recv_buffer += chunk.decode("utf-8", errors="replace")
-
-
-def _resolve_default_exe(*file_names: str) -> Path:
-    candidates: list[Path] = []
-    for file_name in file_names:
-        candidates.extend(
-            (
-                ROOT / "build" / "hmi-home-fix" / "bin" / file_name,
-                ROOT / "build" / "hmi-home-fix" / "bin" / "Debug" / file_name,
-                ROOT / "build" / "hmi-home-fix" / "bin" / "Release" / file_name,
-                ROOT / "build" / "hmi-home-fix" / "bin" / "RelWithDebInfo" / file_name,
-                CONTROL_APPS_BUILD_ROOT / "bin" / file_name,
-                CONTROL_APPS_BUILD_ROOT / "bin" / "Debug" / file_name,
-                CONTROL_APPS_BUILD_ROOT / "bin" / "Release" / file_name,
-                CONTROL_APPS_BUILD_ROOT / "bin" / "RelWithDebInfo" / file_name,
-            )
-        )
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return candidates[0]
-
-
-def _build_process_env(gateway_exe: Path) -> dict[str, str]:
-    env = os.environ.copy()
-    candidate_dirs: list[str] = []
-
-    build_config_dir = gateway_exe.parent
-    candidate_dirs.append(str(build_config_dir))
-
-    if build_config_dir.parent.name.lower() == "bin":
-        sibling_lib_dir = build_config_dir.parent.parent / "lib" / build_config_dir.name
-        if sibling_lib_dir.exists():
-            candidate_dirs.append(str(sibling_lib_dir))
-
-    if VENDOR_DIR.exists():
-        candidate_dirs.append(str(VENDOR_DIR))
-        env["SILIGEN_MULTICARD_VENDOR_DIR"] = str(VENDOR_DIR)
-
-    existing_path = env.get("PATH", "")
-    env["PATH"] = os.pathsep.join(candidate_dirs + ([existing_path] if existing_path else []))
-    return env
-
 
 def _matches_known_failure(text: str) -> bool:
     lowered = text.lower()
@@ -633,7 +584,7 @@ def parse_args() -> argparse.Namespace:
         "--gateway-exe",
         default=os.getenv(
             "SILIGEN_HIL_GATEWAY_EXE",
-            str(_resolve_default_exe("siligen_runtime_gateway.exe", "siligen_tcp_server.exe")),
+            str(resolve_default_exe("siligen_runtime_gateway.exe", "siligen_tcp_server.exe")),
         ),
     )
     parser.add_argument("--gateway-cwd", default=os.getenv("SILIGEN_HIL_GATEWAY_CWD", ""))
@@ -730,7 +681,7 @@ def main() -> int:
         _emit_report_and_print(report_dir, report)
         return 1
 
-    process_env = _build_process_env(gateway_exe)
+    process_env = build_process_env(gateway_exe)
     if "SILIGEN_DXF_PB_SCRIPT" not in process_env and DEFAULT_DXF_PB_SCRIPT.exists():
         process_env["SILIGEN_DXF_PB_SCRIPT"] = str(DEFAULT_DXF_PB_SCRIPT)
 

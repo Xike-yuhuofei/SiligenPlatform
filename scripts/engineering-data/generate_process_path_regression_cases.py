@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 
 
-WORKSPACE_ROOT = Path(__file__).resolve().parents[5]
+WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 ENGINEERING_DATA_ROOT = WORKSPACE_ROOT / "modules" / "dxf-geometry" / "application"
 
 sys.path.insert(0, str(ENGINEERING_DATA_ROOT))
@@ -19,17 +19,22 @@ def _point(x: float, y: float) -> pb.Point2D:
 
 
 def _line(start: tuple[float, float], end: tuple[float, float]) -> pb.LinePrimitive:
-    return pb.LinePrimitive(start=_point(*start), end=_point(*end))
+    line = pb.LinePrimitive()
+    line.start.CopyFrom(_point(*start))
+    line.end.CopyFrom(_point(*end))
+    return line
 
 
-def _add_line(bundle: pb.PathBundle,
-              entity_id: int,
-              segment_index: int,
-              start: tuple[float, float],
-              end: tuple[float, float],
-              *,
-              closed: bool = False,
-              layer: str = "0") -> None:
+def _add_line(
+    bundle: pb.PathBundle,
+    entity_id: int,
+    segment_index: int,
+    start: tuple[float, float],
+    end: tuple[float, float],
+    *,
+    closed: bool = False,
+    layer: str = "0",
+) -> None:
     primitive = bundle.primitives.add()
     primitive.type = pb.PRIMITIVE_LINE
     primitive.line.CopyFrom(_line(start, end))

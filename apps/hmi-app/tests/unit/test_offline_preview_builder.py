@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import hashlib
 from pathlib import Path
 from unittest.mock import patch
 
@@ -165,6 +166,50 @@ class OfflinePreviewBuilderTest(unittest.TestCase):
                 resolved = _resolve_planner_cli_executable(workspace_root)
 
         self.assertEqual(resolved, override_cli.resolve())
+
+    def test_resolve_planner_cli_executable_supports_workspace_ca_build_root(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            workspace_root = temp_root / "workspace"
+            workspace_root.mkdir()
+            build_root = workspace_root / "build" / "ca"
+            build_bin = build_root / "bin" / "Debug"
+            build_bin.mkdir(parents=True)
+
+            cli_path = build_bin / "siligen_planner_cli.exe"
+            cli_path.write_text("", encoding="utf-8")
+            (build_root / "CMakeCache.txt").write_text(
+                f"CMAKE_HOME_DIRECTORY:INTERNAL={workspace_root}\n",
+                encoding="utf-8",
+            )
+
+            resolved = _resolve_planner_cli_executable(workspace_root)
+
+        self.assertEqual(resolved, cli_path.resolve())
+
+    def test_resolve_planner_cli_executable_supports_workspace_token_build_root(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            workspace_root = temp_root / "workspace"
+            workspace_root.mkdir()
+            local_app_data = temp_root / "localappdata"
+            ss_root = local_app_data / "SS"
+            token = hashlib.sha256(str(workspace_root.resolve()).lower().encode("utf-8")).hexdigest()[:12]
+            token_build_root = ss_root / f"cab-{token}"
+            token_bin = token_build_root / "bin" / "Debug"
+            token_bin.mkdir(parents=True)
+
+            token_cli = token_bin / "siligen_planner_cli.exe"
+            token_cli.write_text("", encoding="utf-8")
+            (token_build_root / "CMakeCache.txt").write_text(
+                f"CMAKE_HOME_DIRECTORY:INTERNAL={workspace_root}\n",
+                encoding="utf-8",
+            )
+
+            with patch.dict(os.environ, {"LOCALAPPDATA": str(local_app_data)}, clear=False):
+                resolved = _resolve_planner_cli_executable(workspace_root)
+
+        self.assertEqual(resolved, token_cli.resolve())
 
 
 if __name__ == "__main__":

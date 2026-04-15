@@ -33,20 +33,19 @@ from test_kit.evidence_bundle import (
     trace_fields,
     write_bundle_artifacts,
 )
+from test_kit.dxf_truth_matrix import full_chain_cases, resolve_full_chain_case
 from test_kit.fault_injection import resolve_fault_plan
 
 DEFAULT_BUILD_ROOTS = (
     ROOT / "build" / "simulated-line",
     ROOT / "build" / "simulation-engine",
 )
-COMPAT_INPUT = ROOT / "shared" / "contracts" / "engineering" / "fixtures" / "cases" / "rect_diag" / "simulation-input.json"
 SCHEME_C_RECT_DIAG_RECORDING = ROOT / "samples" / "replay-data" / "rect_diag.scheme_c.recording.json"
 SCHEME_C_SAMPLE_RECORDING = ROOT / "samples" / "replay-data" / "sample_trajectory.scheme_c.recording.json"
 SCHEME_C_RECT_DIAG_INPUT = ROOT / "samples" / "simulation" / "rect_diag.simulation-input.json"
 SCHEME_C_SAMPLE_INPUT = ROOT / "samples" / "simulation" / "sample_trajectory.json"
 SCHEME_C_INVALID_INPUT = ROOT / "samples" / "simulation" / "invalid_empty_segments.simulation-input.json"
 SCHEME_C_REALISM_INPUT = ROOT / "samples" / "simulation" / "following_error_quantized.simulation-input.json"
-COMPAT_BASELINE = ROOT / "tests" / "baselines" / "rect_diag.simulation-baseline.json"
 SCHEME_C_RECT_DIAG_BASELINE = ROOT / "tests" / "baselines" / "rect_diag.scheme_c.recording-baseline.json"
 SCHEME_C_SAMPLE_BASELINE = ROOT / "tests" / "baselines" / "sample_trajectory.scheme_c.recording-baseline.json"
 SCHEME_C_INVALID_BASELINE = ROOT / "tests" / "baselines" / "invalid_empty_segments.scheme_c.recording-baseline.json"
@@ -92,17 +91,18 @@ class SimulatedLineScenarioBlockedError(RuntimeError):
     pass
 
 
-COMPAT_SCENARIOS = (
-    RegressionScenario(
-        name="compat_rect_diag",
-        input_path=COMPAT_INPUT,
-        baseline_path=COMPAT_BASELINE,
-        required_assets=(
-            "protocol.fixture.rect_diag_engineering",
-            "baseline.simulation.compat_rect_diag",
-        ),
-    ),
-)
+def _compat_scenario(case_id: str) -> RegressionScenario:
+    truth_case = resolve_full_chain_case(ROOT, case_id)
+    return RegressionScenario(
+        name=f"compat_{truth_case.case_id}",
+        input_path=truth_case.simulation_fixture_absolute(ROOT),
+        baseline_path=ROOT / "tests" / "baselines" / f"{truth_case.case_id}.simulation-baseline.json",
+        required_assets=truth_case.compat_required_asset_ids(),
+    )
+
+
+def _compat_scenarios() -> tuple[RegressionScenario, ...]:
+    return tuple(_compat_scenario(case.case_id) for case in full_chain_cases(ROOT))
 
 SCHEME_C_SCENARIOS = (
     RegressionScenario(
@@ -166,11 +166,26 @@ def _normalize_fault_ids(raw_fault_ids: list[str]) -> tuple[str, ...]:
     return tuple(normalized)
 
 
+def _normalize_case_ids(raw_case_ids: list[str]) -> tuple[str, ...]:
+    normalized: list[str] = []
+    for case_id in raw_case_ids:
+        candidate = case_id.strip()
+        if candidate and candidate not in normalized:
+            normalized.append(candidate)
+    return tuple(normalized)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run compat and scheme C simulated-line regressions.")
     parser.add_argument("--mode", choices=("compat", "scheme_c", "both"), default="both")
     parser.add_argument("--build-root", default=os.getenv("SILIGEN_SIMULATION_ENGINE_BUILD_ROOT", ""))
     parser.add_argument("--report-dir", default="")
+    parser.add_argument(
+        "--compat-case-id",
+        action="append",
+        default=[],
+        help="Only run the named compat truth-matrix case. Can be repeated.",
+    )
     parser.add_argument("--fault-id", action="append", default=_env_fault_ids())
     parser.add_argument("--seed", type=int, default=_env_seed())
     parser.add_argument("--clock-profile", default=os.getenv("SILIGEN_SIMULATED_LINE_CLOCK_PROFILE", "").strip())
@@ -537,7 +552,7 @@ def _bundle_verdict(overall_status: str) -> str:
 
 
 def _scenario_definitions_by_name() -> dict[str, RegressionScenario]:
-    scenarios = list(COMPAT_SCENARIOS) + list(SCHEME_C_SCENARIOS)
+    scenarios = list(_compat_scenarios()) + list(SCHEME_C_SCENARIOS)
     return {scenario.name: scenario for scenario in scenarios}
 
 
@@ -639,6 +654,7 @@ def _write_evidence_bundle(report: dict[str, Any], report_dir: Path, summary_jso
         metadata={
             "mode": report.get("mode", ""),
             "build_root": report.get("build_root", ""),
+            "compat_case_ids": list(report.get("compat_case_ids", [])),
             "fault_matrix_id": fault_plan.get("matrix_id", ""),
             "selected_fault_ids": list(fault_plan.get("selected_fault_ids", [])),
             "deterministic_seed": replay_seed,
@@ -670,6 +686,7 @@ def _make_report(build_root: Path, mode: str, fault_plan: dict[str, object]) -> 
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "build_root": str(build_root),
         "mode": mode,
+        "compat_case_ids": [case.case_id for case in full_chain_cases(ROOT)],
         "overall_status": "running",
         "error": "",
         "hook_preflight": hooks.get("preflight", ""),
@@ -720,6 +737,12 @@ def _selected_scenarios(
         if any(fault_id in requested_fault_ids for fault_id in scenario.fault_ids)
     ]
     return tuple(selected)
+
+
+def _selected_compat_scenarios(requested_case_ids: tuple[str, ...]) -> tuple[RegressionScenario, ...]:
+    if not requested_case_ids:
+        return _compat_scenarios()
+    return tuple(_compat_scenario(case_id) for case_id in requested_case_ids)
 
 
 def _validate_scenario(
@@ -823,10 +846,12 @@ def _run_compat_regression(
     build_root: Path,
     report: dict[str, Any],
     *,
+    requested_case_ids: tuple[str, ...],
     requested_fault_ids: tuple[str, ...],
     fault_plan,
 ) -> None:
-    for scenario in _selected_scenarios(COMPAT_SCENARIOS, requested_fault_ids):
+    compat_scenarios = _selected_compat_scenarios(requested_case_ids)
+    for scenario in _selected_scenarios(compat_scenarios, requested_fault_ids):
         _validate_scenario(
             mode="compat",
             scenario=scenario,
@@ -882,7 +907,10 @@ def main() -> int:
     build_root = _resolve_build_root(args.build_root)
     selected_modes = ("compat", "scheme_c") if args.mode == "both" else (args.mode,)
     report_dir = Path(args.report_dir) if args.report_dir else None
+    requested_compat_case_ids = _normalize_case_ids(args.compat_case_id)
     requested_fault_ids = _normalize_fault_ids(args.fault_id)
+    for compat_case_id in requested_compat_case_ids:
+        resolve_full_chain_case(ROOT, compat_case_id)
     fault_plan = resolve_fault_plan(
         ROOT,
         consumer_scope="runtime-execution",
@@ -897,6 +925,9 @@ def main() -> int:
         hook_control_cycle=args.hook_control_cycle,
     )
     report = _make_report(build_root, args.mode, fault_plan.to_dict())
+    report["compat_case_ids"] = list(requested_compat_case_ids) if requested_compat_case_ids else [
+        case.case_id for case in full_chain_cases(ROOT)
+    ]
     exit_code = 0
 
     try:
@@ -910,6 +941,7 @@ def main() -> int:
                 _run_compat_regression(
                     build_root,
                     report,
+                    requested_case_ids=requested_compat_case_ids,
                     requested_fault_ids=requested_fault_ids,
                     fault_plan=fault_plan,
                 )

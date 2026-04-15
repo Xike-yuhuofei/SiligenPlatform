@@ -13,7 +13,8 @@ param(
     [string[]]$ChangedScope = @(),
     [string[]]$SkipLayer = @(),
     [string]$SkipJustification = "",
-    [switch]$SkipHeavyTargets
+    [switch]$SkipHeavyTargets,
+    [switch]$EnableCppCoverage
 )
 
 $ErrorActionPreference = "Stop"
@@ -163,10 +164,8 @@ if ($LASTEXITCODE -ne 0) {
 
 $controlAppsBuild = if (-not [string]::IsNullOrWhiteSpace($env:SILIGEN_CONTROL_APPS_BUILD_ROOT)) {
     $env:SILIGEN_CONTROL_APPS_BUILD_ROOT
-} elseif (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
-    Join-Path $env:LOCALAPPDATA "SiligenSuite\control-apps-build"
 } else {
-    Join-Path $workspaceRoot "build\control-apps"
+    Join-Path $workspaceRoot "build\ca"
 }
 $controlAppsCmakeHomeDirectory = ""
 
@@ -259,6 +258,7 @@ function Invoke-ControlAppsBuild {
     }
 
     $buildTestsFlag = if ($EnableTests) { "ON" } else { "OFF" }
+    $coverageFlag = if ($EnableCppCoverage) { "ON" } else { "OFF" }
     # Validation builds favor determinism over compile acceleration. Several
     # workspace targets already opt out of PCH on Windows/MSBuild to avoid
     # intermittent file-lock failures under parallel builds.
@@ -267,6 +267,7 @@ function Invoke-ControlAppsBuild {
     Reset-ControlAppsBuildIfSourceRootChanged
     & cmake -S $workspaceSourceRoot -B $controlAppsBuild `
         -DSILIGEN_BUILD_TESTS=$buildTestsFlag `
+        -DSILIGEN_ENABLE_COVERAGE=$coverageFlag `
         -DSILIGEN_USE_PCH=$usePchFlag `
         -DSILIGEN_PARALLEL_COMPILE=$parallelCompileFlag
     if ($LASTEXITCODE -ne 0) {
@@ -305,8 +306,7 @@ if (($resolvedSuites -contains "contracts") -and $localProfile -and (-not $SkipH
         "siligen_runtime_host_unit_tests",
         "siligen_dxf_geometry_unit_tests",
         "siligen_job_ingest_unit_tests",
-        "siligen_unit_tests",
-        "siligen_pr1_tests"
+        "siligen_unit_tests"
     )
     $enableControlAppTests = $true
 }
@@ -322,7 +322,6 @@ $controlAppArtifactMap = @{
     "siligen_dxf_geometry_unit_tests" = "siligen_dxf_geometry_unit_tests.exe"
     "siligen_job_ingest_unit_tests" = "siligen_job_ingest_unit_tests.exe"
     "siligen_unit_tests" = "siligen_unit_tests.exe"
-    "siligen_pr1_tests" = "siligen_pr1_tests.exe"
 }
 
 foreach ($targetName in ($controlAppTargets | Select-Object -Unique)) {

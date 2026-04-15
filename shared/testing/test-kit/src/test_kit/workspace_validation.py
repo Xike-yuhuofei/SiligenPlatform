@@ -10,7 +10,9 @@ from .asset_catalog import (
     baseline_governance_summary,
     build_asset_catalog,
     build_asset_inventory,
+    default_engineering_regression_asset_ids,
     default_performance_sample_asset_ids,
+    default_simulated_line_asset_ids,
     shared_asset_ids_for_smoke,
 )
 from .control_apps_build import control_apps_build_root_probes, preferred_control_apps_build_root
@@ -310,7 +312,7 @@ def _required_assets_for_case(case: ValidationCase) -> tuple[str, ...]:
     if case.required_assets:
         return case.required_assets
     if case.name == "simulated-line":
-        return shared_asset_ids_for_smoke(WORKSPACE_ROOT)
+        return default_simulated_line_asset_ids(WORKSPACE_ROOT)
     if case.name == "fault-matrix-smoke":
         return (
             "sample.simulation.invalid_empty_segments",
@@ -743,12 +745,7 @@ def build_cases(
                         str(resolved_report_dir / "integration" / "engineering-regression"),
                     ],
                     cwd=WORKSPACE_ROOT,
-                    required_assets=(
-                        "protocol.fixture.rect_diag_dxf",
-                        "protocol.fixture.rect_diag_pb",
-                        "protocol.fixture.rect_diag_engineering",
-                        "protocol.fixture.rect_diag_preview_artifact",
-                    ),
+                    required_assets=default_engineering_regression_asset_ids(WORKSPACE_ROOT),
                     required_fixtures=("fixture.validation-evidence-bundle",),
                 ),
                 ValidationCase(

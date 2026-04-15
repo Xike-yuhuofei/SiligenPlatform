@@ -1,0 +1,115 @@
+{
+  "schema_version": "dxf-truth-matrix.v1",
+  "manifest_owner": "shared/contracts/engineering",
+  "full_chain_canonical_cases": [
+    {
+      "case_id": "rect_diag",
+      "topology_family": "branch_or_revisit",
+      "source_sample_path": "samples/dxf/rect_diag.dxf",
+      "fixture_root": "shared/contracts/engineering/fixtures/cases/rect_diag",
+      "dxf_fixture": "shared/contracts/engineering/fixtures/cases/rect_diag/rect_diag.dxf",
+      "pb_fixture": "shared/contracts/engineering/fixtures/cases/rect_diag/rect_diag.pb",
+      "preview_fixture": "shared/contracts/engineering/fixtures/cases/rect_diag/preview-artifact.json",
+      "simulation_fixture": "shared/contracts/engineering/fixtures/cases/rect_diag/simulation-input.json",
+      "default_runtime_sample": true,
+      "default_hil_sample": true,
+      "notes": "Legacy baseline retained as the default runtime/HIL canonical producer case."
+    },
+    {
+      "case_id": "bra",
+      "topology_family": "closed_loop_polyline",
+      "source_sample_path": "samples/dxf/bra.dxf",
+      "fixture_root": "shared/contracts/engineering/fixtures/cases/bra",
+      "dxf_fixture": "shared/contracts/engineering/fixtures/cases/bra/bra.dxf",
+      "pb_fixture": "shared/contracts/engineering/fixtures/cases/bra/bra.pb",
+      "preview_fixture": "shared/contracts/engineering/fixtures/cases/bra/preview-artifact.json",
+      "simulation_fixture": "shared/contracts/engineering/fixtures/cases/bra/simulation-input.json",
+      "default_runtime_sample": false,
+      "default_hil_sample": false,
+      "notes": "Closed organic contour canonical producer case sourced from the importer truth sample."
+    },
+    {
+      "case_id": "arc_circle_quadrants",
+      "topology_family": "closed_loop_arc",
+      "source_sample_path": "samples/dxf/arc_circle_quadrants.dxf",
+      "fixture_root": "shared/contracts/engineering/fixtures/cases/arc_circle_quadrants",
+      "dxf_fixture": "shared/contracts/engineering/fixtures/cases/arc_circle_quadrants/arc_circle_quadrants.dxf",
+      "pb_fixture": "shared/contracts/engineering/fixtures/cases/arc_circle_quadrants/arc_circle_quadrants.pb",
+      "preview_fixture": "shared/contracts/engineering/fixtures/cases/arc_circle_quadrants/preview-artifact.json",
+      "simulation_fixture": "shared/contracts/engineering/fixtures/cases/arc_circle_quadrants/simulation-input.json",
+      "default_runtime_sample": false,
+      "default_hil_sample": false,
+      "notes": "Minimal closed-loop arc canonical producer case used to freeze arc-only end-to-end semantics."
+    }
+  ],
+  "topology_contract_cases": [
+    {
+      "case_id": "point_mixed",
+      "topology_family": "auxiliary_geometry_filtered",
+      "owner_scope": "modules/process-path",
+      "fixture_root": "shared/contracts/engineering/fixtures/cases/point_mixed",
+      "pb_fixture": "shared/contracts/engineering/fixtures/cases/point_mixed/point_mixed.pb",
+      "readme_path": "shared/contracts/engineering/fixtures/cases/point_mixed/README.md",
+      "notes": "Point primitive rejection truth case."
+    },
+    {
+      "case_id": "fragmented_chain",
+      "topology_family": "open_chain_repair",
+      "owner_scope": "modules/process-path",
+      "fixture_root": "shared/contracts/engineering/fixtures/cases/fragmented_chain",
+      "pb_fixture": "shared/contracts/engineering/fixtures/cases/fragmented_chain/fragmented_chain.pb",
+      "readme_path": "shared/contracts/engineering/fixtures/cases/fragmented_chain/README.md",
+      "notes": "Repair-policy truth case for fragmented open chains."
+    },
+    {
+      "case_id": "multi_contour_reorder",
+      "topology_family": "multi_contour",
+      "owner_scope": "modules/process-path",
+      "fixture_root": "shared/contracts/engineering/fixtures/cases/multi_contour_reorder",
+      "pb_fixture": "shared/contracts/engineering/fixtures/cases/multi_contour_reorder/multi_contour_reorder.pb",
+      "readme_path": "shared/contracts/engineering/fixtures/cases/multi_contour_reorder/README.md",
+      "notes": "Contour ordering and direction repair truth case."
+    },
+    {
+      "case_id": "intersection_split",
+      "topology_family": "intersection_split",
+      "owner_scope": "modules/process-path",
+      "fixture_root": "shared/contracts/engineering/fixtures/cases/intersection_split",
+      "pb_fixture": "shared/contracts/engineering/fixtures/cases/intersection_split/intersection_split.pb",
+      "readme_path": "shared/contracts/engineering/fixtures/cases/intersection_split/README.md",
+      "notes": "Intersection split truth case for topology repair."
+    }
+  ],
+  "importer_canonical_samples": [
+    {
+      "sample_id": "rect_diag",
+      "coverage_family": "branch_or_revisit baseline",
+      "sample_path": "samples/dxf/rect_diag.dxf",
+      "notes": "Shared baseline importer sample and default performance small sample."
+    },
+    {
+      "sample_id": "bra",
+      "coverage_family": "closed_loop_polyline",
+      "sample_path": "samples/dxf/bra.dxf",
+      "notes": "Organic closed contour importer truth sample; also promoted to full-chain canonical case."
+    },
+    {
+      "sample_id": "Demo",
+      "coverage_family": "mixed_entities_with_point_noise",
+      "sample_path": "samples/dxf/Demo.dxf",
+      "notes": "Importer truth sample for mixed LINE/LWPOLYLINE/POINT handling."
+    },
+    {
+      "sample_id": "arc_circle_quadrants",
+      "coverage_family": "closed_loop_arc",
+      "sample_path": "samples/dxf/arc_circle_quadrants.dxf",
+      "notes": "Minimal arc-only importer truth sample; also promoted to full-chain canonical case."
+    },
+    {
+      "sample_id": "geometry_zoo",
+      "coverage_family": "supported_primitive_matrix",
+      "sample_path": "samples/dxf/geometry_zoo.dxf",
+      "notes": "Importer-only truth sample that covers supported primitive families in one curated DXF."
+    }
+  ]
+}

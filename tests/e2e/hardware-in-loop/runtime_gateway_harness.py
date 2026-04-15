@@ -21,14 +21,14 @@ TEST_KIT_SRC = ROOT / "shared" / "testing" / "test-kit" / "src"
 if str(TEST_KIT_SRC) not in sys.path:
     sys.path.insert(0, str(TEST_KIT_SRC))
 
-from test_kit.control_apps_build import valid_control_apps_build_roots
+from test_kit.control_apps_build import preferred_control_apps_build_root, valid_control_apps_build_roots
 
 CANONICAL_CONFIG = ROOT / "config" / "machine" / "machine_config.ini"
 CONTROL_APPS_BUILD_ROOT = Path(
-    os.getenv(
-        "SILIGEN_CONTROL_APPS_BUILD_ROOT",
-        str(Path(os.getenv("LOCALAPPDATA", str(ROOT))) / "SiligenSuite" / "control-apps-build"),
-    )
+    preferred_control_apps_build_root(
+        ROOT,
+        explicit_build_root=os.getenv("SILIGEN_CONTROL_APPS_BUILD_ROOT"),
+    ).root
 )
 VENDOR_DIR = ROOT / "modules" / "runtime-execution" / "adapters" / "device" / "vendor" / "multicard"
 
@@ -145,40 +145,24 @@ def resolve_default_exe(*file_names: str) -> Path:
         ROOT,
         explicit_build_root=os.getenv("SILIGEN_CONTROL_APPS_BUILD_ROOT"),
     )
+    prioritized_roots: list[Path] = []
+    seen_roots: set[Path] = set()
+    for root in (CONTROL_APPS_BUILD_ROOT, *valid_roots, ROOT / "build" / "hmi-home-fix"):
+        resolved_root = root.resolve()
+        if resolved_root in seen_roots:
+            continue
+        seen_roots.add(resolved_root)
+        prioritized_roots.append(resolved_root)
+
     candidates: list[Path] = []
     for file_name in file_names:
-        candidates.extend(
-            (
-                ROOT / "build" / "control-apps" / "bin" / file_name,
-                ROOT / "build" / "control-apps" / "bin" / "Debug" / file_name,
-                ROOT / "build" / "control-apps" / "bin" / "Release" / file_name,
-                ROOT / "build" / "control-apps" / "bin" / "RelWithDebInfo" / file_name,
-                ROOT / "build" / "bin" / file_name,
-                ROOT / "build" / "bin" / "Debug" / file_name,
-                ROOT / "build" / "bin" / "Release" / file_name,
-                ROOT / "build" / "bin" / "RelWithDebInfo" / file_name,
-                ROOT / "build" / "hmi-home-fix" / "bin" / file_name,
-                ROOT / "build" / "hmi-home-fix" / "bin" / "Debug" / file_name,
-                ROOT / "build" / "hmi-home-fix" / "bin" / "Release" / file_name,
-                ROOT / "build" / "hmi-home-fix" / "bin" / "RelWithDebInfo" / file_name,
-            )
-        )
-        for build_root in valid_roots:
+        for build_root in prioritized_roots:
             candidates.extend(
                 (
                     build_root / "bin" / file_name,
                     build_root / "bin" / "Debug" / file_name,
                     build_root / "bin" / "Release" / file_name,
                     build_root / "bin" / "RelWithDebInfo" / file_name,
-                )
-            )
-        if CONTROL_APPS_BUILD_ROOT not in valid_roots:
-            candidates.extend(
-                (
-                    CONTROL_APPS_BUILD_ROOT / "bin" / file_name,
-                    CONTROL_APPS_BUILD_ROOT / "bin" / "Debug" / file_name,
-                    CONTROL_APPS_BUILD_ROOT / "bin" / "Release" / file_name,
-                    CONTROL_APPS_BUILD_ROOT / "bin" / "RelWithDebInfo" / file_name,
                 )
             )
     for candidate in candidates:

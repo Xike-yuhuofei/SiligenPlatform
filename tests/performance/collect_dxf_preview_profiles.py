@@ -23,12 +23,6 @@ REPORT_ROOT = ROOT / "tests" / "reports" / "performance" / "dxf-preview-profiles
 DEFAULT_THRESHOLD_CONFIG = ROOT / "tests" / "baselines" / "performance" / "dxf-preview-profile-thresholds.json"
 DEFAULT_MACHINE_CONFIG = ROOT / "config" / "machine" / "machine_config.ini"
 DEFAULT_VENDOR_DIR = ROOT / "modules" / "runtime-execution" / "adapters" / "device" / "vendor" / "multicard"
-CONTROL_APPS_BUILD_ROOT = Path(
-    os.getenv(
-        "SILIGEN_CONTROL_APPS_BUILD_ROOT",
-        str(Path(os.getenv("LOCALAPPDATA", str(ROOT))) / "SiligenSuite" / "control-apps-build"),
-    )
-)
 HMI_SRC = ROOT / "apps" / "hmi-app" / "src"
 TEST_KIT_SRC = ROOT / "shared" / "testing" / "test-kit" / "src"
 TERMINAL_JOB_STATES = {"completed", "failed", "cancelled", "stopped"}
@@ -43,11 +37,15 @@ from hmi_client.client.gateway_launch import GatewayLaunchSpec, load_gateway_lau
 from hmi_client.client.protocol import CommandProtocol  # noqa: E402
 from hmi_client.client.tcp_client import TcpClient  # noqa: E402
 from test_kit.asset_catalog import default_performance_samples, performance_sample_asset_refs  # noqa: E402
-from test_kit.control_apps_build import valid_control_apps_build_roots  # noqa: E402
+from test_kit.control_apps_build import preferred_control_apps_build_root, valid_control_apps_build_roots  # noqa: E402
 from test_kit.evidence_bundle import EvidenceBundle, EvidenceCaseRecord, EvidenceLink, trace_fields, write_bundle_artifacts  # noqa: E402
 
 
 DEFAULT_SAMPLES: dict[str, Path] = default_performance_samples(ROOT)
+CONTROL_APPS_BUILD_ROOT = preferred_control_apps_build_root(
+    ROOT,
+    explicit_build_root=os.getenv("SILIGEN_CONTROL_APPS_BUILD_ROOT"),
+).root
 
 
 def gateway_executable_candidates(
@@ -60,9 +58,16 @@ def gateway_executable_candidates(
         workspace_root,
         explicit_build_root=os.getenv("SILIGEN_CONTROL_APPS_BUILD_ROOT"),
     )
+    prioritized_roots: list[Path] = []
+    seen_roots: set[Path] = set()
+    for root in (control_apps_build_root, *discovered_roots, workspace_root / "build" / "hmi-home-fix"):
+        resolved_root = root.resolve()
+        if resolved_root in seen_roots:
+            continue
+        seen_roots.add(resolved_root)
+        prioritized_roots.append(resolved_root)
+
     build_root_candidates: list[Path] = []
-    prioritized_roots = [control_apps_build_root]
-    prioritized_roots.extend(root for root in discovered_roots if root != control_apps_build_root)
     for root in prioritized_roots:
         build_root_candidates.extend(
             (
@@ -72,19 +77,7 @@ def gateway_executable_candidates(
                 root / "bin" / "RelWithDebInfo" / file_name,
             )
         )
-    return tuple(
-        [
-        workspace_root / "build" / "bin" / file_name,
-        workspace_root / "build" / "bin" / "Debug" / file_name,
-        workspace_root / "build" / "bin" / "Release" / file_name,
-        workspace_root / "build" / "bin" / "RelWithDebInfo" / file_name,
-        workspace_root / "build" / "hmi-home-fix" / "bin" / file_name,
-        workspace_root / "build" / "hmi-home-fix" / "bin" / "Debug" / file_name,
-        workspace_root / "build" / "hmi-home-fix" / "bin" / "Release" / file_name,
-        workspace_root / "build" / "hmi-home-fix" / "bin" / "RelWithDebInfo" / file_name,
-        ]
-        + build_root_candidates
-    )
+    return tuple(build_root_candidates)
 
 
 def resolve_default_gateway_executable(

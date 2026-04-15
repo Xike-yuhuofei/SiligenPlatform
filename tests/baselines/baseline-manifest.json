@@ -49,6 +49,54 @@
       ]
     },
     {
+      "baseline_id": "baseline.simulation.compat_bra",
+      "canonical_path": "tests/baselines/bra.simulation-baseline.json",
+      "baseline_kind": "simulation-summary",
+      "owner_scope": "runtime-execution",
+      "source_asset_refs": [
+        "protocol.fixture.bra_engineering"
+      ],
+      "consumer_layers": [
+        "L3",
+        "L4"
+      ],
+      "update_runner": "tests/e2e/simulated-line/run_simulated_line.py",
+      "update_reviewers": [
+        "runtime-execution",
+        "shared/testing"
+      ],
+      "reviewer_guidance": "Refresh only when the closed-loop polyline compat producer changed intentionally and the new evidence is attached.",
+      "lifecycle": {
+        "state": "active",
+        "review_by": "2026-06-30"
+      },
+      "deprecated_source_paths": []
+    },
+    {
+      "baseline_id": "baseline.simulation.compat_arc_circle_quadrants",
+      "canonical_path": "tests/baselines/arc_circle_quadrants.simulation-baseline.json",
+      "baseline_kind": "simulation-summary",
+      "owner_scope": "runtime-execution",
+      "source_asset_refs": [
+        "protocol.fixture.arc_circle_quadrants_engineering"
+      ],
+      "consumer_layers": [
+        "L3",
+        "L4"
+      ],
+      "update_runner": "tests/e2e/simulated-line/run_simulated_line.py",
+      "update_reviewers": [
+        "runtime-execution",
+        "shared/testing"
+      ],
+      "reviewer_guidance": "Refresh only when the closed-loop arc compat producer changed intentionally and the new evidence is attached.",
+      "lifecycle": {
+        "state": "active",
+        "review_by": "2026-06-30"
+      },
+      "deprecated_source_paths": []
+    },
+    {
       "baseline_id": "baseline.simulation.scheme_c_rect_diag",
       "canonical_path": "tests/baselines/rect_diag.scheme_c.recording-baseline.json",
       "baseline_kind": "recording-summary",

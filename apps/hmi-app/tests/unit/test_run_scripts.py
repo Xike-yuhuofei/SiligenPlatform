@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,7 +16,7 @@ RUNTIME_RUNNER = WORKSPACE_ROOT / "apps" / "runtime-gateway" / "run.ps1"
 
 class HmiRunScriptContractTest(unittest.TestCase):
     def _ensure_workspace_gateway_exe(self) -> tuple[Path, bool]:
-        exe_path = WORKSPACE_ROOT / "build" / "bin" / "Debug" / "siligen_runtime_gateway.exe"
+        exe_path = WORKSPACE_ROOT / "build" / "ca" / "bin" / "Debug" / "siligen_runtime_gateway.exe"
         if exe_path.exists():
             return exe_path, False
 
@@ -249,3 +250,60 @@ class HmiRunScriptContractTest(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, msg=completed.stderr)
         self.assertIn("gateway contract source: app-default", completed.stdout)
         self.assertIn(str(PROJECT_ROOT / "config" / "gateway-launch.json"), completed.stdout)
+
+    def test_verify_online_ready_timeout_handles_python_path_with_spaces(self) -> None:
+        verify_script = PROJECT_ROOT / "scripts" / "verify-online-ready-timeout.ps1"
+        python_exe = Path(sys.executable).resolve()
+
+        completed = subprocess.run(
+            [
+                POWERSHELL,
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(verify_script),
+                "-MockStartupTimeoutMs",
+                "2000",
+                "-PythonExe",
+                str(python_exe),
+            ],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+        )
+
+        output = f"{completed.stdout}\n{completed.stderr}"
+        self.assertEqual(completed.returncode, 0, msg=output)
+        self.assertIn("observed exit_code=21", output)
+        self.assertNotIn("Cannot process argument transformation on parameter 'TimeoutMs'", output)
+
+    def test_online_smoke_writes_screenshot_without_runtime_action_mode(self) -> None:
+        smoke_script = PROJECT_ROOT / "scripts" / "online-smoke.ps1"
+        python_exe = Path(sys.executable).resolve()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            screenshot_path = Path(temp_dir) / "online-smoke.png"
+            completed = subprocess.run(
+                [
+                    POWERSHELL,
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(smoke_script),
+                    "-PythonExe",
+                    str(python_exe),
+                    "-TimeoutMs",
+                    "20000",
+                    "-ScreenshotPath",
+                    str(screenshot_path),
+                ],
+                cwd=str(PROJECT_ROOT),
+                capture_output=True,
+                text=True,
+            )
+
+            output = f"{completed.stdout}\n{completed.stderr}"
+            self.assertEqual(completed.returncode, 0, msg=output)
+            self.assertTrue(screenshot_path.exists(), msg=output)

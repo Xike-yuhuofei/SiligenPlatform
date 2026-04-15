@@ -5,6 +5,7 @@ import json
 import os
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import asdict, dataclass
@@ -17,14 +18,13 @@ KNOWN_FAILURE_EXIT_CODE = 10
 SKIPPED_EXIT_CODE = 11
 
 ROOT = Path(__file__).resolve().parents[4]
+HIL_DIR = ROOT / "tests" / "e2e" / "hardware-in-loop"
+if str(HIL_DIR) not in sys.path:
+    sys.path.insert(0, str(HIL_DIR))
 CANONICAL_CONFIG = ROOT / "config" / "machine" / "machine_config.ini"
-CONTROL_APPS_BUILD_ROOT = Path(
-    os.getenv(
-        "SILIGEN_CONTROL_APPS_BUILD_ROOT",
-        str(Path(os.getenv("LOCALAPPDATA", str(ROOT))) / "SiligenSuite" / "control-apps-build"),
-    )
-)
-VENDOR_DIR = ROOT / "modules" / "runtime-execution" / "adapters" / "device" / "vendor" / "multicard"
+
+from runtime_gateway_harness import build_process_env as _shared_build_process_env  # noqa: E402
+from runtime_gateway_harness import resolve_default_exe  # noqa: E402
 
 KNOWN_FAILURE_PATTERNS = (
     "IDiagnosticsPort 未注册",
@@ -117,47 +117,8 @@ class TcpJsonClient:
                 raise ConnectionError("tcp socket closed by peer")
             self._recv_buffer += chunk.decode("utf-8", errors="replace")
 
-
-def _resolve_default_exe(*file_names: str) -> Path:
-    candidates: list[Path] = []
-    for file_name in file_names:
-        candidates.extend(
-            (
-                ROOT / "build" / "hmi-home-fix" / "bin" / file_name,
-                ROOT / "build" / "hmi-home-fix" / "bin" / "Debug" / file_name,
-                ROOT / "build" / "hmi-home-fix" / "bin" / "Release" / file_name,
-                ROOT / "build" / "hmi-home-fix" / "bin" / "RelWithDebInfo" / file_name,
-                CONTROL_APPS_BUILD_ROOT / "bin" / file_name,
-                CONTROL_APPS_BUILD_ROOT / "bin" / "Debug" / file_name,
-                CONTROL_APPS_BUILD_ROOT / "bin" / "Release" / file_name,
-                CONTROL_APPS_BUILD_ROOT / "bin" / "RelWithDebInfo" / file_name,
-            )
-        )
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return candidates[0]
-
-
 def _build_process_env(gateway_exe: Path) -> dict[str, str]:
-    env = os.environ.copy()
-    candidate_dirs: list[str] = []
-
-    build_config_dir = gateway_exe.parent
-    candidate_dirs.append(str(build_config_dir))
-
-    if build_config_dir.parent.name.lower() == "bin":
-        sibling_lib_dir = build_config_dir.parent.parent / "lib" / build_config_dir.name
-        if sibling_lib_dir.exists():
-            candidate_dirs.append(str(sibling_lib_dir))
-
-    if VENDOR_DIR.exists():
-        candidate_dirs.append(str(VENDOR_DIR))
-        env["SILIGEN_MULTICARD_VENDOR_DIR"] = str(VENDOR_DIR)
-
-    existing_path = env.get("PATH", "")
-    env["PATH"] = os.pathsep.join(candidate_dirs + ([existing_path] if existing_path else []))
-    return env
+    return _shared_build_process_env(gateway_exe)
 
 
 def _rewrite_mock_config(source_text: str) -> str:
@@ -307,7 +268,7 @@ def parse_args() -> argparse.Namespace:
         "--gateway-exe",
         default=os.getenv(
             "SILIGEN_HIL_GATEWAY_EXE",
-            str(_resolve_default_exe("siligen_runtime_gateway.exe", "siligen_tcp_server.exe")),
+            str(resolve_default_exe("siligen_runtime_gateway.exe", "siligen_tcp_server.exe")),
         ),
     )
     parser.add_argument("--allow-skip-on-missing-gateway", action="store_true")

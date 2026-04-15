@@ -800,6 +800,8 @@ class GuiContractRunner:
             not self._status_message().startswith("Offline 模式下不可用"),
             "Online actions should not be blocked by the offline guard",
         )
+        if self.screenshot_path and not self.exercise_runtime_actions:
+            self._capture_screenshot("online ready screenshot")
         if self.exercise_runtime_actions:
             self._wait_for(
                 "runtime status cache ready",

@@ -11,9 +11,11 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
 PACKAGE_ROOT = WORKSPACE_ROOT / "shared" / "contracts" / "engineering"
 ENGINEERING_DATA_ROOT = WORKSPACE_ROOT / "modules" / "dxf-geometry" / "application"
 FIXTURE_ROOT = PACKAGE_ROOT / "fixtures" / "cases" / "rect_diag"
+TRUTH_MATRIX_PATH = PACKAGE_ROOT / "fixtures" / "dxf-truth-matrix.json"
 CANONICAL_SCHEMA_ROOT = WORKSPACE_ROOT / "data" / "schemas" / "engineering" / "dxf" / "v1"
 LEGACY_BACKEND_CPP_ROOT = WORKSPACE_ROOT.parent / "Backend_CPP" / "proto"
 PREVIEW_SCRIPT = WORKSPACE_ROOT / "scripts" / "engineering-data" / "generate_preview.py"
+TRUTH_MATRIX_FIXTURE_SCRIPT = WORKSPACE_ROOT / "scripts" / "engineering-data" / "generate_dxf_truth_matrix_fixtures.py"
 
 import sys
 
@@ -25,6 +27,11 @@ from engineering_data.proto import dxf_primitives_pb2 as pb  # noqa: E402
 
 def _load_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _full_chain_cases() -> list[dict]:
+    payload = _load_json(TRUTH_MATRIX_PATH)
+    return list(payload["full_chain_canonical_cases"])
 
 
 def _assert_number(testcase: unittest.TestCase, value, *, minimum: float | None = None, exclusive_minimum: float | None = None) -> None:
@@ -269,6 +276,91 @@ class EngineeringContractsCompatibilityTest(unittest.TestCase):
             self.assertIn("total_time", result)
             self.assertIn("motion_distance", result)
             self.assertGreater(result["motion_distance"], 0)
+
+    def test_truth_matrix_declares_existing_full_chain_cases(self) -> None:
+        payload = _load_json(TRUTH_MATRIX_PATH)
+        self.assertEqual(payload["schema_version"], "dxf-truth-matrix.v1")
+        self.assertEqual(payload["manifest_owner"], "shared/contracts/engineering")
+        cases = payload["full_chain_canonical_cases"]
+        self.assertGreaterEqual(len(cases), 3)
+        self.assertTrue(any(case["default_runtime_sample"] for case in cases))
+        self.assertTrue(any(case["topology_family"] == "closed_loop_polyline" for case in cases))
+        self.assertTrue(any(case["topology_family"] == "closed_loop_arc" for case in cases))
+
+    def test_all_full_chain_cases_have_complete_fixture_sets(self) -> None:
+        for case in _full_chain_cases():
+            with self.subTest(case_id=case["case_id"]):
+                dxf_fixture = WORKSPACE_ROOT / case["dxf_fixture"]
+                pb_fixture = WORKSPACE_ROOT / case["pb_fixture"]
+                preview_fixture = WORKSPACE_ROOT / case["preview_fixture"]
+                simulation_fixture = WORKSPACE_ROOT / case["simulation_fixture"]
+
+                self.assertTrue(dxf_fixture.exists(), msg=f"missing fixture: {dxf_fixture}")
+                self.assertTrue(pb_fixture.exists(), msg=f"missing fixture: {pb_fixture}")
+                self.assertTrue(preview_fixture.exists(), msg=f"missing fixture: {preview_fixture}")
+                self.assertTrue(simulation_fixture.exists(), msg=f"missing fixture: {simulation_fixture}")
+
+                bundle = load_path_bundle(pb_fixture)
+                self.assertGreater(len(bundle.primitives), 0)
+                self.assertEqual(len(bundle.primitives), len(bundle.metadata))
+
+                preview_payload = _load_json(preview_fixture)
+                _validate_preview_artifact(self, preview_payload)
+
+                simulation_payload = _load_json(simulation_fixture)
+                _validate_simulation_input(self, simulation_payload)
+
+    def test_full_chain_cases_match_current_preview_and_simulation_export(self) -> None:
+        for case in _full_chain_cases():
+            with self.subTest(case_id=case["case_id"]):
+                dxf_fixture = WORKSPACE_ROOT / case["dxf_fixture"]
+                pb_fixture = WORKSPACE_ROOT / case["pb_fixture"]
+                preview_fixture = WORKSPACE_ROOT / case["preview_fixture"]
+                simulation_fixture = WORKSPACE_ROOT / case["simulation_fixture"]
+
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    preview_payload = _run_preview_script(
+                        dxf_fixture,
+                        Path(tmp_dir),
+                        title=case["case_id"],
+                        speed_mm_s=10.0,
+                    )
+                expected_preview = _load_json(preview_fixture)
+                self.assertEqual(preview_payload["entity_count"], expected_preview["entity_count"])
+                self.assertEqual(preview_payload["segment_count"], expected_preview["segment_count"])
+                self.assertEqual(preview_payload["point_count"], expected_preview["point_count"])
+                self.assertAlmostEqual(preview_payload["total_length_mm"], expected_preview["total_length_mm"], places=9)
+                self.assertAlmostEqual(preview_payload["estimated_time_s"], expected_preview["estimated_time_s"], places=9)
+                self.assertEqual(preview_payload["width_mm"], expected_preview["width_mm"])
+                self.assertEqual(preview_payload["height_mm"], expected_preview["height_mm"])
+
+                simulation_payload = bundle_to_simulation_payload(load_path_bundle(pb_fixture))
+                self.assertEqual(simulation_payload, _load_json(simulation_fixture))
+
+    def test_truth_matrix_fixture_script_check_mode_passes(self) -> None:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(TRUTH_MATRIX_FIXTURE_SCRIPT),
+                "--check",
+                "--case-id",
+                "bra",
+                "--case-id",
+                "arc_circle_quadrants",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            cwd=str(WORKSPACE_ROOT),
+        )
+
+        self.assertEqual(
+            completed.returncode,
+            0,
+            msg=f"stdout={completed.stdout}\nstderr={completed.stderr}",
+        )
+        self.assertIn("dxf truth matrix fixtures are up to date", completed.stdout)
 
 
 if __name__ == "__main__":

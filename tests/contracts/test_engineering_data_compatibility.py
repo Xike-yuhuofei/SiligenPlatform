@@ -16,6 +16,7 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_ROOT = WORKSPACE_ROOT / "modules" / "dxf-geometry" / "application"
 CONTRACTS_ROOT = WORKSPACE_ROOT / "shared" / "contracts" / "engineering"
 FIXTURE_ROOT = CONTRACTS_ROOT / "fixtures" / "cases" / "rect_diag"
+TRUTH_MATRIX_PATH = CONTRACTS_ROOT / "fixtures" / "dxf-truth-matrix.json"
 
 sys.path.insert(0, str(PACKAGE_ROOT))
 
@@ -29,6 +30,11 @@ PREVIEW_SCRIPT = WORKSPACE_ROOT / "scripts" / "engineering-data" / "generate_pre
 
 def _load_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _full_chain_cases() -> list[dict]:
+    payload = _load_json(TRUTH_MATRIX_PATH)
+    return list(payload["full_chain_canonical_cases"])
 
 
 def _run_preview_script(
@@ -175,6 +181,47 @@ class EngineeringDataCompatibilityTest(unittest.TestCase):
     def test_simulation_payload_matches_fixture(self) -> None:
         payload = bundle_to_simulation_payload(load_path_bundle(self.pb_fixture_path))
         self.assertEqual(payload, _load_json(self.sim_fixture_path))
+
+    def test_full_chain_canonical_cases_round_trip_to_their_fixtures(self) -> None:
+        for case in _full_chain_cases():
+            with self.subTest(case_id=case["case_id"]):
+                dxf_fixture_path = WORKSPACE_ROOT / case["dxf_fixture"]
+                pb_fixture_path = WORKSPACE_ROOT / case["pb_fixture"]
+                preview_fixture_path = WORKSPACE_ROOT / case["preview_fixture"]
+                sim_fixture_path = WORKSPACE_ROOT / case["simulation_fixture"]
+
+                expected_bundle = load_path_bundle(pb_fixture_path)
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    output_path = Path(tmp_dir) / f"{case['case_id']}.pb"
+                    exit_code = dxf_to_pb.main([
+                        "--input", str(dxf_fixture_path),
+                        "--output", str(output_path),
+                    ])
+                    self.assertEqual(exit_code, 0)
+                    actual_bundle = load_path_bundle(output_path)
+
+                actual_bundle.header.source_path = ""
+                expected_bundle.header.source_path = ""
+                self.assertEqual(actual_bundle.SerializeToString(), expected_bundle.SerializeToString())
+
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    preview_payload = _run_preview_script(
+                        dxf_fixture_path,
+                        Path(tmp_dir),
+                        title=case["case_id"],
+                        speed_mm_s=10.0,
+                    )
+                expected_preview = _load_json(preview_fixture_path)
+                self.assertEqual(preview_payload["entity_count"], expected_preview["entity_count"])
+                self.assertEqual(preview_payload["segment_count"], expected_preview["segment_count"])
+                self.assertEqual(preview_payload["point_count"], expected_preview["point_count"])
+                self.assertAlmostEqual(preview_payload["total_length_mm"], expected_preview["total_length_mm"], places=9)
+                self.assertAlmostEqual(preview_payload["estimated_time_s"], expected_preview["estimated_time_s"], places=9)
+                self.assertEqual(preview_payload["width_mm"], expected_preview["width_mm"])
+                self.assertEqual(preview_payload["height_mm"], expected_preview["height_mm"])
+
+                simulation_payload = bundle_to_simulation_payload(load_path_bundle(pb_fixture_path))
+                self.assertEqual(simulation_payload, _load_json(sim_fixture_path))
 
 
 if __name__ == "__main__":

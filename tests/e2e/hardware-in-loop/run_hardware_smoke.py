@@ -14,32 +14,13 @@ from pathlib import Path
 KNOWN_FAILURE_EXIT_CODE = 10
 SKIPPED_EXIT_CODE = 11
 ROOT = Path(__file__).resolve().parents[3]
-CONTROL_APPS_BUILD_ROOT = Path(
-    os.getenv(
-        "SILIGEN_CONTROL_APPS_BUILD_ROOT",
-        str(Path(os.getenv("LOCALAPPDATA", str(ROOT))) / "SiligenSuite" / "control-apps-build"),
-    )
-)
+HIL_DIR = ROOT / "tests" / "e2e" / "hardware-in-loop"
+if str(HIL_DIR) not in sys.path:
+    sys.path.insert(0, str(HIL_DIR))
 
+from runtime_gateway_harness import resolve_default_exe  # noqa: E402
 
-def _resolve_default_exe() -> Path:
-    candidates = (
-        CONTROL_APPS_BUILD_ROOT / "bin" / "siligen_runtime_gateway.exe",
-        CONTROL_APPS_BUILD_ROOT / "bin" / "Debug" / "siligen_runtime_gateway.exe",
-        CONTROL_APPS_BUILD_ROOT / "bin" / "Release" / "siligen_runtime_gateway.exe",
-        CONTROL_APPS_BUILD_ROOT / "bin" / "RelWithDebInfo" / "siligen_runtime_gateway.exe",
-        CONTROL_APPS_BUILD_ROOT / "bin" / "siligen_tcp_server.exe",
-        CONTROL_APPS_BUILD_ROOT / "bin" / "Debug" / "siligen_tcp_server.exe",
-        CONTROL_APPS_BUILD_ROOT / "bin" / "Release" / "siligen_tcp_server.exe",
-        CONTROL_APPS_BUILD_ROOT / "bin" / "RelWithDebInfo" / "siligen_tcp_server.exe",
-    )
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return candidates[0]
-
-
-DEFAULT_EXE = _resolve_default_exe()
+DEFAULT_EXE = resolve_default_exe("siligen_runtime_gateway.exe", "siligen_tcp_server.exe")
 
 
 def parse_args() -> argparse.Namespace:

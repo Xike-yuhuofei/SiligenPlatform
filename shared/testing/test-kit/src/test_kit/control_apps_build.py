@@ -89,6 +89,7 @@ def control_apps_build_root_probes(
     if explicit_build_root:
         add_probe(Path(explicit_build_root), source="env", allow_stale=True)
 
+    add_probe(workspace_root / "build" / "ca", source="workspace-build-ca")
     add_probe(workspace_root / "build" / "control-apps", source="workspace-build-control-apps")
     add_probe(workspace_root / "build", source="workspace-build")
 
