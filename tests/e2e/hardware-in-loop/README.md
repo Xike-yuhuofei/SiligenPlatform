@@ -1,6 +1,6 @@
 # hardware-in-loop
 
-更新时间：`2026-04-03`
+更新时间：`2026-04-13`
 
 这里统一放硬件冒烟和机台联调入口。
 
@@ -12,6 +12,8 @@
 - `run_dxf_stop_home_auto_validation.py`
 - `run_real_dxf_machine_dryrun_negative_matrix.py`
 - `run_real_dxf_preview_snapshot.py`
+- `run_real_dxf_preview_suite.py`
+- `run_real_dxf_machine_dryrun_suite.py`
 - `run_hil_closed_loop.py`
 - `run_case_matrix.py`
 - `run_hil_tcp_recovery.py`
@@ -22,9 +24,8 @@
 当前策略：
 
 - 默认验证 canonical `siligen_tcp_server.exe` 的最小启动闭环
-- 默认优先使用当前工作区 `build\` 下可解析的产物，包括 `build\bin\<Config>\...`、`build\control-apps\...` 与有效子构建目录；只有工作区未命中时才回退到 `SILIGEN_CONTROL_APPS_BUILD_ROOT`
-- 默认产物根按 `SILIGEN_CONTROL_APPS_BUILD_ROOT`（显式设置时）或 `<repo-root>\build + 有效子构建目录` -> `%LOCALAPPDATA%\SiligenSuite\control-apps-build` 解析
-- 默认目标路径模式：`<repo-root>\build\bin\<Config>\*.exe`
+- 默认产物根解析顺序与 shared build owner 保持一致：`SILIGEN_CONTROL_APPS_BUILD_ROOT`（显式设置时） -> `<repo-root>\build\ca` -> `<repo-root>\build\control-apps` -> `<repo-root>\build` -> 匹配当前工作区的 `%LOCALAPPDATA%\SS\cab-*` -> legacy `%LOCALAPPDATA%\SiligenSuite\control-apps-build`
+- 默认目标路径模式为 `<build-root>\bin\<Config>\*.exe`，当前 canonical 命中应为 `<repo-root>\build\ca\bin\<Config>\*.exe`
 - 可通过 `SILIGEN_HIL_GATEWAY_EXE` 显式覆盖可执行文件
 - 进程 `cwd` 使用仓库根，而不是 `control-core`
 - 若启动失败并命中当前已知模式，会归类为 `known_failure`
@@ -35,7 +36,14 @@
 - `run_hil_controlled_test.ps1` 在 offline prerequisites 已通过后，即使 hardware-smoke / hil-closed-loop / hil-case-matrix 阻塞，也会继续产出 `hil-controlled-gate-summary.*` 与 `hil-controlled-release-summary.md`
 - 固定目录会写入 `latest-source.txt`，用于追溯来源时间戳目录（双轨证据）
 - 联机测试矩阵基线统一见 `docs/validation/online-test-matrix-v1.md`
+- `run_hil_closed_loop.py` 与 `run_case_matrix.py` 的 DXF case 选择统一来自 `shared/contracts/engineering/fixtures/dxf-truth-matrix.json`
+- 当前 full-chain canonical producer case 为 `rect_diag`、`bra`、`arc_circle_quadrants`
+- `run_real_dxf_preview_suite.py` 会聚合 `rect_diag`、`bra`、`arc_circle_quadrants` 三个 canonical preview case，并补 `case-index.json`、`validation-evidence-bundle.json`、`report-manifest.json`、`report-index.json`
+- `run_real_dxf_machine_dryrun_suite.py` 会聚合同一组 canonical dry-run case，并输出 suite summary + per-case launcher log + evidence bundle
+- 默认 HIL case 仍是 truth matrix 中标记为 `default_hil_sample` 的 `rect_diag`；`bra`、`arc_circle_quadrants` 只应在显式传 `--dxf-case-id` 时进入真实设备路径
+- `limited-hil` 不是“实现完即全量上机”；当前正式口径仍是先过 `full-offline-gate`，再经人工签字进入 `run_hil_controlled_test.ps1` 的受控路径
 - `run_hil_tcp_recovery.py` 是 `P1-01` 的独立 recovery authority，不接 `verify_hil_controlled_gate.py`、`run_hil_controlled_test.ps1` 或 `release-check.ps1`
+- preview / dry-run suite 只用于 full-online blocker 汇总与 `G8` 补充证据，不会 publish latest，也不会覆盖 controlled HIL authority
 - `run_hil_closed_loop.py` 与 `run_case_matrix.py` 现在都会额外发布：
   - `case-index.json`
   - `validation-evidence-bundle.json`
@@ -74,6 +82,14 @@ python .\tests\e2e\hardware-in-loop\run_real_dxf_preview_snapshot.py
 ```
 
 ```powershell
+python .\tests\e2e\hardware-in-loop\run_real_dxf_preview_suite.py
+```
+
+```powershell
+python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun_suite.py
+```
+
+```powershell
 python .\tests\e2e\hardware-in-loop\run_case_matrix.py --mode both --rounds 20
 ```
 
@@ -91,6 +107,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 
 ```powershell
 python .\tests\e2e\hardware-in-loop\run_hil_closed_loop.py --report-dir .\tests\reports\hil-controlled-test --duration-seconds 1800
+```
+
+```powershell
+python .\tests\e2e\hardware-in-loop\run_hil_closed_loop.py --dxf-case-id bra --report-dir .\tests\reports\adhoc\hil-bra --duration-seconds 300
+```
+
+```powershell
+python .\tests\e2e\hardware-in-loop\run_case_matrix.py --mode closed_loop --dxf-case-id arc_circle_quadrants --rounds 5
 ```
 
 ```powershell
@@ -116,6 +140,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 `run_hil_closed_loop.py` 说明：
 
 - 预检阶段执行一次 `dxf.load`，循环阶段按 `tcp connect -> status -> supply.open -> dispenser.start/pause/resume -> dispenser.stop -> supply.close -> disconnect` 执行闭环
+- 支持 `--dxf-case-id <case>` 或 `--dxf-file <path>` 二选一；`--dxf-case-id` 会从共享 truth matrix 解析 case 与资产引用
+- 当前可选 `--dxf-case-id` 为 `rect_diag`、`bra`、`arc_circle_quadrants`
+- 省略 `--dxf-case-id` 时使用 truth matrix 默认 HIL case `rect_diag`
 - 默认对 `Running/Paused/Running` 状态做等待门控，避免 pause/resume 竞态误判
 - `dispenser.start` 未观测到 `Running` 视为失败，不再按 `skipped` 兼容通过
 - 默认输出 `hil-closed-loop-summary.json` 与 `hil-closed-loop-summary.md`
@@ -239,6 +266,8 @@ python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun.py `
 - 默认输出 `case-matrix-summary.json` 与 `case-matrix-summary.md`
 - 默认报告目录为 `tests/reports/adhoc/hil-case-matrix/`
 - 当前支持 `--mode home|closed_loop|both` 与 `--rounds <N>`
+- 支持 `--dxf-case-id <case>` 或 `--dxf-file <path>` 二选一；省略时同样回落到 truth matrix 默认 HIL case `rect_diag`
+- 若进入真实设备扩样，推荐顺序为：先默认 `rect_diag` 走 controlled path，再按计划扩到 `--dxf-case-id bra` 或 `--dxf-case-id arc_circle_quadrants`
 - `closed_loop` 路径与 `run_hil_closed_loop.py` 对齐，当前会显式执行 `supply.open -> dispenser.start -> dispenser.stop -> supply.close`
 - 已接入根级 `test.ps1` / `ci.ps1` / `run-local-validation-gate.ps1` 的 opt-in 开关 `-IncludeHilCaseMatrix`
 - `run_hil_controlled_test.ps1` 与 `release-check.ps1` 当前默认纳入 `hil-case-matrix`
@@ -296,6 +325,7 @@ python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun.py `
 - offline prerequisites 直接以 `-Suite @("contracts","integration","e2e","protocol-compatibility")` 调用根级 `test.ps1`，覆盖 `engineering-regression`，并避免子 `powershell -File` 多 `-Suite` 绑定歧义
 - 默认会把 `offline-prereq`、`hardware-smoke`、`hil-closed-loop`、`hil-controlled-gate`、`hil-controlled-release-summary` 聚合到同一报告根
 - 默认 `-IncludeHilCaseMatrix:$true`；如需隔离排障可显式关闭，但正式 release path 应优先保留
+- 当前 controlled path 不会自动把 truth matrix 全量 case 一次性上机；若要扩到 `bra` / `arc_circle_quadrants`，应先保留默认 `rect_diag` 完成受控回合与人工签字
 - 若 offline prerequisites 已通过，但后续 HIL 步骤阻塞，脚本仍会继续渲染 gate/release summary，并保留原始失败退出码
 
 Phase 12 blocked evidence 示例：

@@ -13,6 +13,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot "tooling-common.ps1")
+
 $workspaceRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $defaultVendorDir = Join-Path $workspaceRoot "modules\runtime-execution\adapters\device\vendor\multicard"
 $runtimeServiceScript = Join-Path $workspaceRoot "apps\runtime-service\run.ps1"
@@ -95,6 +97,30 @@ function Find-FirstExistingPath {
     }
 
     return $null
+}
+
+function Get-ControlAppsExecutableCandidates {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$BuildRoots,
+        [Parameter(Mandatory = $true)]
+        [string]$ExecutableName,
+        [Parameter(Mandatory = $true)]
+        [string]$BuildConfig
+    )
+
+    $candidates = @()
+    foreach ($buildRoot in $BuildRoots) {
+        $candidates += @(
+            (Join-Path $buildRoot "bin\$BuildConfig\$ExecutableName"),
+            (Join-Path $buildRoot "bin\$ExecutableName"),
+            (Join-Path $buildRoot "bin\Debug\$ExecutableName"),
+            (Join-Path $buildRoot "bin\Release\$ExecutableName"),
+            (Join-Path $buildRoot "bin\RelWithDebInfo\$ExecutableName")
+        )
+    }
+
+    return @($candidates | Select-Object -Unique)
 }
 
 function Invoke-ExternalProcessCapture {
@@ -222,29 +248,18 @@ $runDir = Join-Path $resolvedReportRoot $timestamp
 $logsDir = Join-Path $runDir "logs"
 New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
 
-$controlAppsBuildRoot = if (-not [string]::IsNullOrWhiteSpace($env:SILIGEN_CONTROL_APPS_BUILD_ROOT)) {
-    $env:SILIGEN_CONTROL_APPS_BUILD_ROOT
-} elseif (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
-    Join-Path $env:LOCALAPPDATA "SiligenSuite\control-apps-build"
-} else {
-    Join-Path $workspaceRoot "build\control-apps"
-}
+$controlAppsBuildRoots = @(Get-ControlAppsBuildRoots -WorkspaceRoot $workspaceRoot)
+$controlAppsBuildRoot = $controlAppsBuildRoots[0]
 
-$runtimeServiceExe = Find-FirstExistingPath -Candidates @(
-    (Join-Path $controlAppsBuildRoot "bin\$BuildConfig\siligen_runtime_service.exe"),
-    (Join-Path $controlAppsBuildRoot "bin\siligen_runtime_service.exe"),
-    (Join-Path $controlAppsBuildRoot "bin\Debug\siligen_runtime_service.exe"),
-    (Join-Path $controlAppsBuildRoot "bin\Release\siligen_runtime_service.exe"),
-    (Join-Path $controlAppsBuildRoot "bin\RelWithDebInfo\siligen_runtime_service.exe")
-)
+$runtimeServiceExe = Find-FirstExistingPath -Candidates (Get-ControlAppsExecutableCandidates `
+    -BuildRoots $controlAppsBuildRoots `
+    -ExecutableName "siligen_runtime_service.exe" `
+    -BuildConfig $BuildConfig)
 
-$runtimeGatewayExe = Find-FirstExistingPath -Candidates @(
-    (Join-Path $controlAppsBuildRoot "bin\$BuildConfig\siligen_runtime_gateway.exe"),
-    (Join-Path $controlAppsBuildRoot "bin\siligen_runtime_gateway.exe"),
-    (Join-Path $controlAppsBuildRoot "bin\Debug\siligen_runtime_gateway.exe"),
-    (Join-Path $controlAppsBuildRoot "bin\Release\siligen_runtime_gateway.exe"),
-    (Join-Path $controlAppsBuildRoot "bin\RelWithDebInfo\siligen_runtime_gateway.exe")
-)
+$runtimeGatewayExe = Find-FirstExistingPath -Candidates (Get-ControlAppsExecutableCandidates `
+    -BuildRoots $controlAppsBuildRoots `
+    -ExecutableName "siligen_runtime_gateway.exe" `
+    -BuildConfig $BuildConfig)
 
 $configExists = Test-Path $resolvedConfigPath
 $vendorDirExists = Test-Path $resolvedVendorDir
@@ -388,6 +403,7 @@ $summaryPayload = [ordered]@{
     config_path = $resolvedConfigPath
     vendor_dir = $resolvedVendorDir
     control_apps_build_root = $controlAppsBuildRoot
+    control_apps_build_roots = @($controlAppsBuildRoots)
     log_locations = [ordered]@{
         runtime_service_default = "logs/control_runtime.log"
         runtime_gateway_default = "logs/tcp_server.log"

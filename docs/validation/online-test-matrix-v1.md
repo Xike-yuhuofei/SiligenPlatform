@@ -47,6 +47,17 @@
 | HMI recovery | `apps/hmi-app/scripts/verify-online-recovery-loop.ps1` | 恢复前后事件与最终 `online_ready=true` | P0 正式入口 |
 | 多轮 home/closed-loop matrix | `tests/e2e/hardware-in-loop/run_case_matrix.py`，或根级 `test.ps1 -IncludeHilCaseMatrix` | `case-matrix-summary.json/md` | P1 补充入口，已接 root validation opt-in，已接 controlled gate / release-check 默认门禁 |
 | HIL TCP recovery | `tests/e2e/hardware-in-loop/run_hil_tcp_recovery.py` | `hil-tcp-recovery-summary.json/md` | P1 补充入口，当前不接 controlled gate / release-check |
+| DXF 批量在线预览 | `tests/e2e/hardware-in-loop/run_real_dxf_preview_suite.py` | suite summary + per-case `preview-verdict.json` + evidence bundle | owner-local 聚合入口，用于 full-online blocker 集合 |
+| 多 DXF dry-run 回归 | `tests/e2e/hardware-in-loop/run_real_dxf_machine_dryrun_suite.py` | suite summary + per-case dry-run 报告 + evidence bundle | owner-local 聚合入口，用于 full-online blocker 集合 |
+| HMI full-online 汇总 | `apps/hmi-app/scripts/run_full_online_hmi_suite.py` | suite summary + per-scenario logs + evidence bundle | owner-local 聚合入口，用于 full-online blocker 集合 |
+| soak profiles 汇总 | `tests/performance/run_online_soak_profiles.py` | suite summary + per-profile `latest.json/md` + evidence bundle | owner-local 聚合入口，用于 full-online blocker 集合 |
+
+### 3.1 full-online blocker 集合与 signed publish 关系
+
+- 当前没有 repo-root 单一“全量联机测试总入口”；full-online 仍由多个 owner-local 入口组成。
+- `run_real_dxf_preview_suite.py`、`run_real_dxf_machine_dryrun_suite.py`、`run_full_online_hmi_suite.py`、`run_online_soak_profiles.py` 只负责补齐 blocker 集合与 `G8` 补充证据。
+- `tests/e2e/hardware-in-loop/run_hil_controlled_test.ps1` 仍是唯一允许 `signed publish` 和刷新 latest authority 的正式入口。
+- blocker 集合通过后，如需刷新 latest authority，必须沿用 controlled HIL path，并在 `PublishLatestOnPass=true` 时传非空 `-Executor`。
 
 ## 4. 联机测试矩阵
 
@@ -71,15 +82,15 @@
 | --- | --- | --- | --- | --- |
 | `P1-01` | L2 | 断连恢复 | `tests/e2e/hardware-in-loop/run_hil_tcp_recovery.py` | `existing`：独立 authority，仅覆盖 TCP session disconnect/reconnect recovery，不接 formal gate |
 | `P1-02` | L3 | 门/急停/限位阻断专项 | 扩 `run_real_dxf_machine_dryrun.py` 的负例参数矩阵 | `planned` |
-| `P1-03` | L4 | DXF 基线集批量在线预览 | 扩 `run_real_dxf_preview_snapshot.py` 批量模式 | `planned` |
+| `P1-03` | L4 | DXF 基线集批量在线预览 | `tests/e2e/hardware-in-loop/run_real_dxf_preview_suite.py` | `existing`：聚合 `rect_diag` / `bra` / `arc_circle_quadrants`，产出 suite summary 与 evidence bundle，不替代 controlled publish |
 | `P1-04` | L5 | HMI runtime actions 批量在线回归 | `apps/hmi-app/scripts/run_online_runtime_action_matrix.py` + `online-smoke.ps1` / `ui_qtest.py` | `existing` |
-| `P1-05` | L6 | 30 分钟以上 soak | `run_hil_closed_loop.py --duration-seconds` + gate 汇总 | `existing` 但未纳入统一矩阵文档前一直视为专项 |
+| `P1-05` | L6 | 30 分钟以上 soak | `tests/performance/run_online_soak_profiles.py --profile-id soak-30m-matrix` | `existing`：已纳入 full-online blocker 集合；`>30m` 扩展 profile 需要显式 `--allow-long-profiles` |
 
 ### 4.3 P2：发布前与容量边界
 
 | ID | 层级 | 场景 | 建议落点 | 当前状态 |
 | --- | --- | --- | --- | --- |
-| `P2-01` | L3/L4 | 多 DXF 回归套件 | `tests/e2e/hardware-in-loop/suites/` 或批量脚本参数化 | `planned` |
+| `P2-01` | L3/L4 | 多 DXF 回归套件 | `tests/e2e/hardware-in-loop/run_real_dxf_machine_dryrun_suite.py` + `run_real_dxf_preview_suite.py` | `existing`：multi-DXF dry-run / preview 已聚合，但仍只作为 blocker summary，不发布 latest |
 | `P2-02` | L5/L6 | HMI 故障恢复夜间回归 | nightly suite 脚本 + suite summary | `planned` |
 | `P2-03` | 真机 E2E | 发布前最小真机主链 | 现场记录文档 + 受限执行 SOP | `planned` |
 
@@ -110,6 +121,8 @@
 - `preview-evidence.md`
 - `hmi-preview.png`
 - `online-smoke.log`
+- `real-dxf-preview-suite-summary.json`
+- `real-dxf-preview-suite-summary.md`
 
 ### 5.3 HMI 故障/恢复类
 
@@ -120,6 +133,8 @@
 - `online-smoke.log`
 - `failure_code` / `failure_stage` 断言结果
 - 恢复前后 `SUPERVISOR_EVENT` / `SUPERVISOR_DIAG`
+- `full-online-hmi-suite-summary.json`
+- `full-online-hmi-suite-summary.md`
 
 ### 5.4 HMI runtime actions matrix
 
@@ -150,7 +165,25 @@
 - 每个 negative case 的 `real-dxf-machine-dryrun-canonical.json/.md`
 - 每个 negative case 的 `launcher.log`
 
-### 5.7 分层 evidence bundle 约束
+### 5.7 multi-DXF dry-run suite
+
+至少保留：
+
+- `real-dxf-machine-dryrun-suite-summary.json`
+- `real-dxf-machine-dryrun-suite-summary.md`
+- 每个 case 的 `real-dxf-machine-dryrun-canonical.json/.md`
+- 每个 case 的 `launcher.log`
+
+### 5.8 soak profiles
+
+至少保留：
+
+- `online-soak-profiles-summary.json`
+- `online-soak-profiles-summary.md`
+- 每个 profile 的 `latest.json`
+- 每个 profile 的 `latest.md`
+
+### 5.9 分层 evidence bundle 约束
 
 受限 HIL 与联机相关 evidence 还必须补充：
 
@@ -173,7 +206,7 @@
 
 ## 6. 项目落地规则
 
-1. 新的联机场景优先扩现有入口参数，不优先新增新的总入口脚本。
+1. 新的联机场景优先扩现有入口参数；若必须补聚合层，只允许在 owner-local 目录新增 suite runner，不允许新增 repo-root 总入口脚本。
 2. 正式矩阵定义沉到 `docs/validation/`；脚本入口说明沉到各自 owner README。
 3. 只有当场景输出已经形成稳定 `authority artifact` 时，才允许接入 `verify_hil_controlled_gate.py` 或发布流程。
 4. `tests/contracts/` 与 `tests/integration/scenarios/first-layer/` 继续承担离线契约与负例验证；不得让联机脚本独自承担契约真值。
@@ -194,7 +227,8 @@
 ### 第三阶段
 
 - 已完成 `P1-01` 的独立 HIL TCP recovery authority。
-- 后续继续推进 `P1-03`、`P1-05` 与 `P2` 套件化建设。
+- 已完成 `P1-03`、`P1-05` 与 `P2-01` 的 owner-local 套件化聚合。
+- 当前 full-online 推荐执行顺序固定为：`preview suite -> dry-run suite -> HMI full-online suite -> soak profiles -> controlled HIL signed publish`。
 
 ## 8. 关联入口
 

@@ -25,7 +25,7 @@ if str(TEST_KIT_SRC) not in sys.path:
 
 from runtime_gateway_harness import build_process_env  # noqa: E402
 from runtime_gateway_harness import load_connection_params as _shared_load_connection_params  # noqa: E402
-from runtime_gateway_harness import resolve_default_exe as _resolve_harness_default_exe  # noqa: E402
+from runtime_gateway_harness import resolve_default_exe  # noqa: E402
 from runtime_gateway_harness import tcp_connect_and_ensure_ready  # noqa: E402
 from test_kit.evidence_bundle import (
     EvidenceBundle,
@@ -35,14 +35,11 @@ from test_kit.evidence_bundle import (
     trace_fields,
     write_bundle_artifacts,
 )  # noqa: E402
+from test_kit.dxf_truth_matrix import default_hil_case, full_chain_cases, resolve_full_chain_case  # noqa: E402
 
-CONTROL_APPS_BUILD_ROOT = Path(
-    os.getenv(
-        "SILIGEN_CONTROL_APPS_BUILD_ROOT",
-        str(Path(os.getenv("LOCALAPPDATA", str(ROOT))) / "SiligenSuite" / "control-apps-build"),
-    )
-)
-DEFAULT_DXF_FILE = ROOT / "samples" / "dxf" / "rect_diag.dxf"
+DEFAULT_DXF_CASE = default_hil_case(ROOT)
+DEFAULT_DXF_FILE = DEFAULT_DXF_CASE.source_sample_absolute(ROOT)
+DEFAULT_DXF_CASE_ID = DEFAULT_DXF_CASE.case_id
 DEFAULT_CONFIG_PATH = ROOT / "config" / "machine" / "machine_config.ini"
 HIL_ADMISSION_SCHEMA_VERSION = "hil-admission.v1"
 REQUIRED_OFFLINE_CASES = (
@@ -161,6 +158,28 @@ def _load_connection_params(config_path: Path) -> dict[str, str]:
 
 def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _resolve_dxf_selection(
+    case_id: str | None,
+    dxf_file: Path | None,
+) -> tuple[str | None, Path, tuple[str, ...]]:
+    if case_id:
+        truth_case = resolve_full_chain_case(ROOT, case_id)
+        return (
+            truth_case.case_id,
+            truth_case.source_sample_absolute(ROOT),
+            (truth_case.sample_asset_id,),
+        )
+
+    if dxf_file is None:
+        return DEFAULT_DXF_CASE_ID, DEFAULT_DXF_FILE, (DEFAULT_DXF_CASE.sample_asset_id,)
+
+    resolved_file = dxf_file.resolve()
+    for truth_case in full_chain_cases(ROOT):
+        if truth_case.source_sample_absolute(ROOT) == resolved_file:
+            return truth_case.case_id, resolved_file, (truth_case.sample_asset_id,)
+    return None, resolved_file, ()
 
 
 def _build_admission_check(
@@ -394,12 +413,6 @@ def _evaluate_safety_preflight(snapshot: dict[str, Any]) -> dict[str, Any]:
         "checks": checks,
         "failure_classification": failure,
     }
-
-
-def _resolve_default_exe(*file_names: str) -> Path:
-    return _resolve_harness_default_exe(*file_names)
-
-
 def _matches_known_failure(text: str) -> bool:
     lowered = text.lower()
     for pattern in KNOWN_FAILURE_PATTERNS:
@@ -839,6 +852,7 @@ def _write_evidence_bundle(report: dict[str, Any], report_dir: Path, summary_jso
     overall_status = _bundle_verdict(str(report.get("overall_status", "incomplete")))
     admission = report.get("admission", {}) if isinstance(report.get("admission"), dict) else {}
     failure_classification = report.get("failure_classification", {}) if isinstance(report.get("failure_classification"), dict) else {}
+    dxf_asset_refs = tuple(str(item) for item in report.get("dxf_asset_refs", ()))
     bundle = EvidenceBundle(
         bundle_id=f"hil-closed-loop-{report['generated_at']}",
         request_ref="hil-closed-loop",
@@ -847,13 +861,15 @@ def _write_evidence_bundle(report: dict[str, Any], report_dir: Path, summary_jso
         summary_file=str(summary_md_path.resolve()),
         machine_file=str(summary_json_path.resolve()),
         verdict=overall_status,
-        linked_asset_refs=("sample.dxf.rect_diag",),
+        linked_asset_refs=dxf_asset_refs,
         offline_prerequisites=tuple(admission.get("required_layers", ("L0", "L1", "L2", "L3", "L4"))),
         abort_metadata={
             "failure_context": report.get("failure_context", {}),
             "admission": admission,
         },
         metadata={
+            "dxf_case_id": report.get("dxf_case_id", ""),
+            "dxf_asset_refs": list(dxf_asset_refs),
             "duration_seconds": report.get("duration_seconds", 0),
             "iterations": report.get("iterations", 0),
             "timeout_count": report.get("timeout_count", 0),
@@ -870,7 +886,7 @@ def _write_evidence_bundle(report: dict[str, Any], report_dir: Path, summary_jso
                 status=overall_status,
                 evidence_profile="hil-report",
                 stability_state="stable",
-                required_assets=("sample.dxf.rect_diag",),
+                required_assets=dxf_asset_refs,
                 required_fixtures=("fixture.hil-closed-loop", "fixture.validation-evidence-bundle"),
                 risk_tags=("hardware", "state-machine"),
                 note=str(report.get("failure_context", {}).get("error_message", "")),
@@ -919,6 +935,7 @@ def _write_reports(report: dict, report_dir: Path) -> tuple[Path, Path]:
         f"- gateway_exe: `{report['gateway_exe']}`",
         f"- cli_exe: `{report['cli_exe']}`",
         f"- transport: `{report['transport']}`",
+        f"- dxf_case_id: `{report.get('dxf_case_id', '')}`",
         f"- dxf_file: `{report['dxf_file']}`",
         f"- dispenser_start_params: `count={report['dispenser_start_params']['count']} interval_ms={report['dispenser_start_params']['interval_ms']} duration_ms={report['dispenser_start_params']['duration_ms']}`",
         f"- state_wait_timeout_seconds: `{report['state_wait_timeout_seconds']}`",
@@ -1092,6 +1109,8 @@ def _build_report(
         "transport": "tcp-json",
         "host": args.host,
         "port": args.port,
+        "dxf_case_id": getattr(args, "dxf_case_id", "") or "",
+        "dxf_asset_refs": list(getattr(args, "dxf_asset_refs", ()) or ()),
         "dxf_file": str(args.dxf_file),
         "duration_seconds": args.duration_seconds,
         "pause_resume_cycles": args.pause_resume_cycles,
@@ -1128,17 +1147,19 @@ def parse_args() -> argparse.Namespace:
         "--gateway-exe",
         default=os.getenv(
             "SILIGEN_HIL_GATEWAY_EXE",
-            str(_resolve_default_exe("siligen_runtime_gateway.exe", "siligen_tcp_server.exe")),
+            str(resolve_default_exe("siligen_runtime_gateway.exe", "siligen_tcp_server.exe")),
         ),
     )
     parser.add_argument(
         "--cli-exe",
         default=os.getenv(
             "SILIGEN_HIL_CLI_EXE",
-            str(_resolve_default_exe("siligen_planner_cli.exe", "siligen_cli.exe")),
+            str(resolve_default_exe("siligen_planner_cli.exe", "siligen_cli.exe")),
         ),
     )
-    parser.add_argument("--dxf-file", type=Path, default=DEFAULT_DXF_FILE)
+    dxf_group = parser.add_mutually_exclusive_group()
+    dxf_group.add_argument("--dxf-file", type=Path)
+    dxf_group.add_argument("--dxf-case-id", default="")
     parser.add_argument("--pause-resume-cycles", type=int, default=3)
     parser.add_argument("--max-iterations", type=int, default=0)
     parser.add_argument("--dispenser-count", type=int, default=int(os.getenv("SILIGEN_HIL_DISPENSER_COUNT", "300")))
@@ -1158,6 +1179,13 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    resolved_case_id, resolved_dxf_file, resolved_asset_refs = _resolve_dxf_selection(
+        getattr(args, "dxf_case_id", "") or None,
+        getattr(args, "dxf_file", None),
+    )
+    args.dxf_case_id = resolved_case_id or ""
+    args.dxf_file = resolved_dxf_file
+    args.dxf_asset_refs = resolved_asset_refs
     report_dir = Path(args.report_dir)
     gateway_exe = Path(args.gateway_exe)
     cli_exe = Path(args.cli_exe)

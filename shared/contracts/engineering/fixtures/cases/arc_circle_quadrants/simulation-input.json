@@ -1,0 +1,63 @@
+{
+  "timestep_seconds": 0.001,
+  "max_simulation_time_seconds": 600.0,
+  "max_velocity": 220.0,
+  "max_acceleration": 600.0,
+  "segments": [
+    {
+      "type": "ARC",
+      "center": {
+        "x": 20.0,
+        "y": 20.0
+      },
+      "radius": 20.0,
+      "start_angle": 0.0,
+      "end_angle": 1.5707963267948966
+    },
+    {
+      "type": "ARC",
+      "center": {
+        "x": 20.0,
+        "y": 20.0
+      },
+      "radius": 20.0,
+      "start_angle": 1.5707963267948966,
+      "end_angle": 3.141592653589793
+    },
+    {
+      "type": "ARC",
+      "center": {
+        "x": 20.0,
+        "y": 20.0
+      },
+      "radius": 20.0,
+      "start_angle": 3.141592653589793,
+      "end_angle": 4.71238898038469
+    },
+    {
+      "type": "ARC",
+      "center": {
+        "x": 20.0,
+        "y": 20.0
+      },
+      "radius": 20.0,
+      "start_angle": 4.71238898038469,
+      "end_angle": 6.283185307179586
+    }
+  ],
+  "io_delays": [
+    {
+      "channel": "DO_VALVE",
+      "delay_seconds": 0.003
+    },
+    {
+      "channel": "DO_CAMERA_TRIGGER",
+      "delay_seconds": 0.001
+    }
+  ],
+  "triggers": [],
+  "valve": {
+    "open_delay_seconds": 0.012,
+    "close_delay_seconds": 0.008
+  }
+}

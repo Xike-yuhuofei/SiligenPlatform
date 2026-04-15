@@ -93,18 +93,114 @@ function Get-WorkspaceRelativePath {
     return $resolvedTargetPath
 }
 
-function Get-ControlAppsBuildRoot {
+function Get-WorkspaceBuildToken {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$WorkspaceRoot
+    )
+
+    $normalizedRoot = [System.IO.Path]::GetFullPath($WorkspaceRoot).ToLowerInvariant()
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($normalizedRoot)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hashBytes = $sha256.ComputeHash($bytes)
+    }
+    finally {
+        $sha256.Dispose()
+    }
+
+    return -join ($hashBytes[0..5] | ForEach-Object { $_.ToString("x2") })
+}
+
+function Test-ControlAppsBuildRootMatchesWorkspace {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$BuildRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$WorkspaceRoot
+    )
+
+    $cacheFile = Join-Path $BuildRoot "CMakeCache.txt"
+    if (-not (Test-Path $cacheFile)) {
+        return $true
+    }
+
+    $homeDirectoryLine = Get-Content $cacheFile | Where-Object { $_ -like "CMAKE_HOME_DIRECTORY:*" } | Select-Object -First 1
+    if (-not $homeDirectoryLine) {
+        return $true
+    }
+
+    $configuredSourceRoot = ($homeDirectoryLine -split "=", 2)[1]
+    if ([string]::IsNullOrWhiteSpace($configuredSourceRoot)) {
+        return $true
+    }
+
+    $resolvedConfiguredSourceRoot = [System.IO.Path]::GetFullPath($configuredSourceRoot)
+    $resolvedWorkspaceSourceRoot = [System.IO.Path]::GetFullPath($WorkspaceRoot)
+    return $resolvedConfiguredSourceRoot -ieq $resolvedWorkspaceSourceRoot
+}
+
+function Get-ControlAppsBuildRoots {
     param(
         [Parameter(Mandatory = $true)]
         [string]$WorkspaceRoot
     )
 
     if (-not [string]::IsNullOrWhiteSpace($env:SILIGEN_CONTROL_APPS_BUILD_ROOT)) {
-        return [System.IO.Path]::GetFullPath($env:SILIGEN_CONTROL_APPS_BUILD_ROOT)
-    }
-    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
-        return [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA "SiligenSuite\control-apps-build"))
+        return @([System.IO.Path]::GetFullPath($env:SILIGEN_CONTROL_APPS_BUILD_ROOT))
     }
 
-    return [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build\control-apps"))
+    $roots = @(
+        [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build\ca")),
+        [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build\control-apps")),
+        [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build"))
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        $ssRoot = Join-Path $env:LOCALAPPDATA "SS"
+        $tokenRoot = Join-Path $ssRoot ("cab-{0}" -f (Get-WorkspaceBuildToken -WorkspaceRoot $WorkspaceRoot))
+        $roots += [System.IO.Path]::GetFullPath($tokenRoot)
+
+        if (Test-Path $ssRoot) {
+            foreach ($candidate in Get-ChildItem -Path $ssRoot -Directory -Filter "cab-*") {
+                $resolved = [System.IO.Path]::GetFullPath($candidate.FullName)
+                if (Test-ControlAppsBuildRootMatchesWorkspace -BuildRoot $resolved -WorkspaceRoot $WorkspaceRoot) {
+                    $roots += $resolved
+                }
+            }
+        }
+
+        $legacyRoot = [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA "SiligenSuite\control-apps-build"))
+        if (Test-ControlAppsBuildRootMatchesWorkspace -BuildRoot $legacyRoot -WorkspaceRoot $WorkspaceRoot) {
+            $roots += $legacyRoot
+        }
+    }
+
+    return @(
+        $roots |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Select-Object -Unique
+    )
+}
+
+function Get-ControlAppsBuildRoot {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$WorkspaceRoot
+    )
+
+    $roots = @(Get-ControlAppsBuildRoots -WorkspaceRoot $WorkspaceRoot)
+    foreach ($root in $roots) {
+        if ((Test-Path $root) -and (Test-ControlAppsBuildRootMatchesWorkspace -BuildRoot $root -WorkspaceRoot $WorkspaceRoot)) {
+            return [System.IO.Path]::GetFullPath($root)
+        }
+    }
+
+    foreach ($root in $roots) {
+        if (Test-Path $root) {
+            return [System.IO.Path]::GetFullPath($root)
+        }
+    }
+
+    return [System.IO.Path]::GetFullPath($roots[0])
 }

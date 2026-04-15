@@ -315,11 +315,11 @@ function Invoke-UiSmoke {
     if (-not [string]::IsNullOrWhiteSpace($ExpectFailureStage)) {
         $uiArgs += @("--expect-failure-stage", $ExpectFailureStage)
     }
+    if (-not [string]::IsNullOrWhiteSpace($ScreenshotPath)) {
+        $uiArgs += @("--screenshot-path", $ScreenshotPath)
+    }
     if ($ExerciseRuntimeActions) {
         $uiArgs += "--exercise-runtime-actions"
-        if (-not [string]::IsNullOrWhiteSpace($ScreenshotPath)) {
-            $uiArgs += @("--screenshot-path", $ScreenshotPath)
-        }
         if (-not [string]::IsNullOrWhiteSpace($PreviewPayloadPath)) {
             $uiArgs += @("--preview-payload-path", $PreviewPayloadPath)
         }

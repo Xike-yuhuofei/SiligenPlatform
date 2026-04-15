@@ -22,12 +22,11 @@ Set-Location <repo-root>
 
 control-apps 产物检查：
 
+默认解析顺序：`SILIGEN_CONTROL_APPS_BUILD_ROOT` -> `.\build\ca` -> `.\build\control-apps` -> `.\build` -> 匹配当前工作区的 `LOCALAPPDATA\SS\cab-*` -> legacy `LOCALAPPDATA\SiligenSuite\control-apps-build`。
+
 ```powershell
-$controlAppsRoot = if (-not [string]::IsNullOrWhiteSpace($env:SILIGEN_CONTROL_APPS_BUILD_ROOT)) {
-    $env:SILIGEN_CONTROL_APPS_BUILD_ROOT
-} else {
-    Join-Path $env:LOCALAPPDATA "SiligenSuite\control-apps-build"
-}
+. .\scripts\validation\tooling-common.ps1
+$controlAppsRoot = Get-ControlAppsBuildRoot -WorkspaceRoot (Get-Location)
 
 Test-Path (Join-Path $controlAppsRoot "bin\Debug\siligen_runtime_service.exe")
 Test-Path (Join-Path $controlAppsRoot "bin\Debug\siligen_runtime_gateway.exe")

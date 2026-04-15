@@ -19,12 +19,18 @@
 - `HIL` 长稳以 `pause/resume=3` 为默认门槛，且 `failed=0`、`known_failure=0`、`skipped=0`。
 - `real hardware` 结论用于现场可运行性确认，不等同工艺质量签收。
 - `hardware smoke` 只能证明最小启动闭环，不构成正式发布的现场放行依据。
+- full-online blocker 集合当前由 `run_real_dxf_preview_suite.py`、`run_real_dxf_machine_dryrun_suite.py`、`run_full_online_hmi_suite.py`、`run_online_soak_profiles.py` 组成；它们只补充 `G8` 证据，不刷新 latest authority。
+- 如需刷新 latest authority，必须在 blocker 集合通过后，沿用 `run_hil_controlled_test.ps1` 再跑一次 signed publish，并传非空 `-Executor`。
 - 正式发布必须满足 [docs/runtime/release-readiness-standard.md](/D:/Projects/SiligenSuite/docs/runtime/release-readiness-standard.md) 中 `G8` 的要求。
 
 ## 2. 证据位置
 
 - HIL 报告根：`tests/reports/hil-controlled-test/`
 - 时间戳批次：`tests/reports/hil-controlled-test/<timestamp>/`
+- full-online preview suite：`tests/reports/online-validation/real-dxf-preview-suite/`
+- full-online dry-run suite：`tests/reports/online-validation/real-dxf-machine-dryrun-suite/`
+- full-online HMI suite：`tests/reports/online-validation/full-online-hmi-suite/`
+- soak profiles suite：`tests/reports/performance/online-soak-profiles/`
 - 统一验证报告：`tests/reports/workspace-validation.md`
 - 真机回归历史记录：见 [docs/validation/history/dxf/README.md](/D:/Projects/SiligenSuite/docs/validation/history/dxf/README.md)
 
@@ -34,11 +40,13 @@
 - DXF 加载/执行在 simulation 与 HIL 均有通过证据。
 - pause/resume 状态转换满足门槛。
 - 报警/异常恢复必须有专项场景证据，不能只作为建议项保留。
+- 当前 full-online 推荐执行顺序为：preview suite -> dry-run suite -> HMI full-online suite -> soak profiles -> controlled HIL signed publish。
 
 ## 4. 当前验收结论模板
 
 - `mock/simulation 替代验收`：通过/阻断
 - `HIL 受控闭环长稳`：通过/阻断
 - `real hardware 可运行性`：通过/阻断
+- `full-online blocker 集合`：通过/阻断
 - `工艺质量签收`：独立流程，不由本页替代
 - `正式发布现场门禁`：只有 `HIL` 与 `real hardware` 均满足最低要求时，才可判定为通过

@@ -25,6 +25,9 @@ dxf-geometry 的模块级验证入口应收敛到此目录。
 - `python/test_engineering_data_cli_lane.py`
   - 对应命令：`python -m pytest modules/dxf-geometry/tests/python/test_engineering_data_cli_lane.py -q`
   - 冻结 `engineering_data` 两个模块内 CLI (`dxf_to_pb` / `export_simulation_input`) 仍可用，并验证 workspace `export_simulation_input.py` / `path_to_trajectory.py` 继续是正式入口。
+- `python/test_geometry_coverage_samples.py`
+  - 对应命令：`python -m pytest modules/dxf-geometry/tests/python/test_geometry_coverage_samples.py -q`
+  - 真实消费 `samples/dxf/bra.dxf`、`samples/dxf/Demo.dxf`、`samples/dxf/arc_circle_quadrants.dxf`、`samples/dxf/geometry_zoo.dxf`，冻结 importer truth 样本在 `engineering_data.cli.dxf_to_pb` 下的最小导出语义。
 
 ## 当前不进入 live suite
 

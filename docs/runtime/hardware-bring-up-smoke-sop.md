@@ -52,14 +52,12 @@ New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
 
 $ConfigPath = (Resolve-Path ".\config\machine\machine_config.ini").Path
 $VendorDir = (Resolve-Path ".\modules\runtime-execution\adapters\device\vendor\multicard").Path
-$ControlAppsBuildRoot = if (-not [string]::IsNullOrWhiteSpace($env:SILIGEN_CONTROL_APPS_BUILD_ROOT)) {
-    $env:SILIGEN_CONTROL_APPS_BUILD_ROOT
-} elseif (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
-    Join-Path $env:LOCALAPPDATA "SiligenSuite\control-apps-build"
-} else {
-    Join-Path (Get-Location) "build\control-apps"
-}
+. .\scripts\validation\tooling-common.ps1
+$ControlAppsBuildRoot = Get-ControlAppsBuildRoot -WorkspaceRoot (Get-Location)
+$ControlAppsBuildRoot
 ```
+
+默认解析顺序：`SILIGEN_CONTROL_APPS_BUILD_ROOT` -> `.\build\ca` -> `.\build\control-apps` -> `.\build` -> 匹配当前工作区的 `LOCALAPPDATA\SS\cab-*` -> legacy `LOCALAPPDATA\SiligenSuite\control-apps-build`。
 
 建议在 `$EvidenceRoot` 中至少保留下列文件：
 
@@ -263,7 +261,7 @@ Copy-Item .\backup\config\machine_config.ini .\config\machine\machine_config.ini
 
 - `$env:SILIGEN_MULTICARD_VENDOR_DIR`
 - `apps/hmi-app/config/gateway-launch.json` 或临时 launch contract
-- `control-apps-build` 下现场替换过的可执行文件或 DLL
+- 当前实际命中的 build root 下现场替换过的可执行文件或 DLL；canonical 默认是 `build\ca`，legacy fallback 仍可能命中 `control-apps-build`
 
 回滚后至少执行以下确认：
 

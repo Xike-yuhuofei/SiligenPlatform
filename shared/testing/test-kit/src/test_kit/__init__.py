@@ -2,6 +2,7 @@
 
 __all__ = [
     "asset_catalog",
+    "dxf_truth_matrix",
     "evidence_bundle",
     "fault_injection",
     "runner",

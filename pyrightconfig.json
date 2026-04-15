@@ -68,6 +68,7 @@
     {
       "root": "modules/dxf-geometry/application",
       "extraPaths": [
+        "modules/runtime-execution/application",
         "shared/testing/test-kit/src"
       ]
     },
@@ -96,6 +97,7 @@
         "apps/planner-cli/tools",
         "modules/dxf-geometry/application",
         "modules/hmi-application/application",
+        "modules/runtime-execution/application",
         "tests/e2e/hardware-in-loop",
         "tests/performance",
         "shared/testing/test-kit/src"
@@ -107,6 +109,8 @@
         "apps/hmi-app/src",
         "apps/planner-cli/tools",
         "modules/dxf-geometry/application",
+        "modules/motion-planning/application",
+        "modules/runtime-execution/application",
         "shared/testing/test-kit/src"
       ]
     },

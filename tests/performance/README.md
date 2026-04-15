@@ -12,7 +12,7 @@
 - 如需临时覆盖某个 sample，仍可显式通过 `--sample <label>=<PATH>` 提供，但正式 `nightly-performance` blocking gate 只认仓库内 canonical samples
 - 输出 `JSON + Markdown` 到 `tests/reports/performance/dxf-preview-profiles/`
 - `tests/performance/collect_dxf_preview_profiles.py` 同时是 `nightly-performance` 的正式 authority；当显式传 `--gate-mode nightly-performance --threshold-config tests/baselines/performance/dxf-preview-profile-thresholds.json` 时，threshold gate 为 blocking
-- 默认 gateway executable 解析顺序与根级 build 保持一致：`<repo-root>\build\bin\*` -> `%LOCALAPPDATA%\SiligenSuite\control-apps-build\bin\*`
+- 默认 gateway executable 解析顺序与 shared build owner 保持一致：`SILIGEN_CONTROL_APPS_BUILD_ROOT` -> `<repo-root>\build\ca\bin\*` -> `<repo-root>\build\control-apps\bin\*` -> `<repo-root>\build\bin\*` -> `%LOCALAPPDATA%\SS\cab-*\bin\*` -> legacy `%LOCALAPPDATA%\SiligenSuite\control-apps-build\bin\*`
 - 固定输出三张表：
   - `Preview`：authority 侧 `artifact.create -> plan.prepare -> preview.snapshot`
   - `Execution`：开启 `--include-start-job` 后的 `preview.confirm -> dxf.job.start -> dxf.job.status -> dxf.job.stop`
@@ -22,6 +22,18 @@
   - `validation-evidence-bundle.json`
   - `evidence-links.md`
   - `failure-details.json`（仅失败/阻断等非通过结论）
+
+## Online Soak Profiles 聚合脚本
+
+- `tests/performance/run_online_soak_profiles.py`
+- 该脚本复用 `collect_dxf_preview_profiles.py`，把 full-online blocker 所需的 soak 证据收敛成 owner-local suite summary
+- 当前冻结 profile：
+  - `soak-30m-matrix`：`small + medium + large` 的 30 分钟矩阵
+  - `soak-2h-small`：默认 `small` 样本的 2 小时长稳
+  - `soak-8h-small`：默认 `small` 样本的 8 小时长稳
+  - `soak-24h-small`：默认 `small` 样本的 24 小时长稳
+- `soak-30m-matrix` 可直接执行；超过 30 分钟的扩展 profile 必须显式传 `--allow-long-profiles`，避免误触超长任务
+- 该脚本只负责 `G8` 补充证据和 blocker 汇总，不替代 `nightly-performance` authority，也不会 publish latest authority
 
 ### 场景语义
 
@@ -45,7 +57,7 @@
 
 - 若显式传入 `--launch-spec`，脚本完全尊重该契约，不额外改写启动配置。
 - 若未传入 `--launch-spec` 且同时开启 `--include-start-job --dry-run`：
-  - 脚本固定使用当前工作区解析出的 `--gateway-exe/--config-path`，优先取 `<repo-root>\build\bin\*`，其次取 `%LOCALAPPDATA%\SiligenSuite\control-apps-build\bin\*`，而不是 HMI 外部 launch spec。
+  - 脚本固定使用当前工作区解析出的 `--gateway-exe/--config-path`，优先命中 `<repo-root>\build\ca\bin\*`，兼容 fallback 到 `<repo-root>\build\control-apps\bin\*`、`<repo-root>\build\bin\*` 与 `%LOCALAPPDATA%\SS\cab-*\bin\*`，最后才是 legacy `%LOCALAPPDATA%\SiligenSuite\control-apps-build\bin\*`，而不是 HMI 外部 launch spec。
   - 当 `--config-path` 指向的配置仍是 `Hardware.mode=Real` 时，脚本会在 `tests/reports/performance/dxf-preview-profiles/_runtime/` 下自动生成临时 mock 配置，并以该配置启动 gateway。
   - gateway 启动后，脚本会在采样前执行一次 mock `connect -> home.auto`，确保 `dxf.job.start` 的 dry-run/mock 路径具备可复跑前置条件。
 - 上述 bootstrap 只负责把 mock runtime 拉到可执行状态；其耗时不计入 `Execution` 表。
@@ -107,6 +119,16 @@
     --baseline-json tests/reports/performance/dxf-preview-profiles/latest.json `
     --regression-threshold-pct 10
   ```
+- `30m` full-online soak 汇总
+  ```powershell
+  python tests/performance/run_online_soak_profiles.py `
+    --profile-id soak-30m-matrix
+  ```
+- 全 planned soak profile 汇总
+  ```powershell
+  python tests/performance/run_online_soak_profiles.py `
+    --allow-long-profiles
+  ```
 
 ### 报告路径
 
@@ -116,6 +138,11 @@
 - 每次运行还会额外写入时间戳目录：
   - `tests/reports/performance/dxf-preview-profiles/<UTC_TIMESTAMP>/report.json`
   - `tests/reports/performance/dxf-preview-profiles/<UTC_TIMESTAMP>/report.md`
+- soak suite 报告写入：
+  - `tests/reports/performance/online-soak-profiles/<LOCAL_TIMESTAMP>/online-soak-profiles-summary.json`
+  - `tests/reports/performance/online-soak-profiles/<LOCAL_TIMESTAMP>/online-soak-profiles-summary.md`
+  - `tests/reports/performance/online-soak-profiles/<LOCAL_TIMESTAMP>/profiles/<profile-id>/latest.json`
+  - `tests/reports/performance/online-soak-profiles/<LOCAL_TIMESTAMP>/profiles/<profile-id>/latest.md`
 
 ### 字段说明
 

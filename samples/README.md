@@ -16,7 +16,7 @@
 
 ## 分层测试体系下的 canonical taxonomy
 
-- `samples/dxf/`：DXF 输入样本。当前仓库内已跟踪 DXF canonical samples 为 `rect_diag.dxf`、`rect_medium_ladder.dxf`、`rect_large_ladder.dxf`
+- `samples/dxf/`：DXF 输入样本，按 `canonical performance`、`importer canonical truth / geometry coverage`、`diagnostic / exploratory` 三类维护；详见 `samples/dxf/README.md`
 - `samples/simulation/`：simulated-line / fault scenario 输入
 - `samples/replay-data/`：recording / preview 相关回放工件
 - `samples/recipes/`：recipe/import-export 样本
@@ -26,6 +26,10 @@
 - `samples/dxf/rect_diag.dxf`：默认 DXF regression sample
 - `samples/dxf/rect_medium_ladder.dxf`：canonical medium nightly-performance DXF sample
 - `samples/dxf/rect_large_ladder.dxf`：canonical large nightly-performance DXF sample
+- `samples/dxf/bra.dxf`：闭合 `LWPOLYLINE` importer truth 样本；已升级为 full-chain canonical producer case
+- `samples/dxf/Demo.dxf`：混合实体与点噪声几何覆盖样本
+- `samples/dxf/arc_circle_quadrants.dxf`：最小 `ARC` 闭合轮廓 importer truth 样本；已升级为 full-chain canonical producer case
+- `samples/dxf/geometry_zoo.dxf`：supported primitive 矩阵 importer truth 样本
 - `samples/simulation/rect_diag.simulation-input.json`：compat / scheme C 主输入
 - `samples/simulation/sample_trajectory.json`：混合轨迹输入
 - `samples/simulation/invalid_empty_segments.simulation-input.json`：结构化失败输入

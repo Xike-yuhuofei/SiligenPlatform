@@ -21,12 +21,13 @@ from run_hil_closed_loop import (
     _evaluate_offline_admission,
     _evaluate_safety_preflight,
     _run_connect_step,
-    _resolve_default_exe,
+    _resolve_dxf_selection,
     _run_tcp_step,
     _status_snapshot_from_response,
     _wait_for_dispenser_state,
     _wait_gateway_ready,
     build_process_env,
+    resolve_default_exe,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -463,6 +464,7 @@ def _write_report(report_dir: Path, report: dict[str, Any]) -> tuple[Path, Path]
         "",
         f"- generated_at: `{report['generated_at']}`",
         f"- mode: `{report['mode']}`",
+        f"- dxf_case_id: `{report.get('dxf_case_id', '')}`",
         f"- rounds_requested: `{report['rounds_requested']}`",
         f"- rounds_executed: `{report['rounds_executed']}`",
         f"- overall_status: `{report['overall_status']}`",
@@ -573,6 +575,7 @@ def _write_evidence_bundle(report_dir: Path, report: dict[str, Any], summary_jso
     failed_round = next((round_report for round_report in report.get("rounds", []) if round_report.get("status") != "passed"), {})
     admission = report.get("admission", {}) if isinstance(report.get("admission"), dict) else {}
     failure_classification = report.get("failure_classification", {}) if isinstance(report.get("failure_classification"), dict) else {}
+    dxf_asset_refs = tuple(str(item) for item in report.get("dxf_asset_refs", ()))
     bundle = EvidenceBundle(
         bundle_id=f"hil-case-matrix-{report['generated_at']}",
         request_ref="hil-case-matrix",
@@ -581,7 +584,7 @@ def _write_evidence_bundle(report_dir: Path, report: dict[str, Any], summary_jso
         summary_file=str(summary_md_path.resolve()),
         machine_file=str(summary_json_path.resolve()),
         verdict=overall_status,
-        linked_asset_refs=("sample.dxf.rect_diag",),
+        linked_asset_refs=dxf_asset_refs,
         offline_prerequisites=tuple(admission.get("required_layers", ("L0", "L1", "L2", "L3", "L4"))),
         abort_metadata={
             "failed_round": failed_round,
@@ -589,6 +592,8 @@ def _write_evidence_bundle(report_dir: Path, report: dict[str, Any], summary_jso
         },
         metadata={
             "mode": report.get("mode", ""),
+            "dxf_case_id": report.get("dxf_case_id", ""),
+            "dxf_asset_refs": list(dxf_asset_refs),
             "rounds_requested": report.get("rounds_requested", 0),
             "rounds_executed": report.get("rounds_executed", 0),
             "admission": admission,
@@ -604,7 +609,7 @@ def _write_evidence_bundle(report_dir: Path, report: dict[str, Any], summary_jso
                 status=overall_status,
                 evidence_profile="hil-report",
                 stability_state="stable",
-                required_assets=("sample.dxf.rect_diag",),
+                required_assets=dxf_asset_refs,
                 required_fixtures=("fixture.hil-closed-loop", "fixture.validation-evidence-bundle"),
                 risk_tags=("hardware", "state-machine"),
                 note=str(failed_round.get("error", "")),
@@ -644,9 +649,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config-path", type=Path, default=DEFAULT_CONFIG_PATH)
     parser.add_argument(
         "--gateway-exe",
-        default=str(_resolve_default_exe("siligen_runtime_gateway.exe", "siligen_tcp_server.exe")),
+        default=str(resolve_default_exe("siligen_runtime_gateway.exe", "siligen_tcp_server.exe")),
     )
-    parser.add_argument("--dxf-file", type=Path, default=DEFAULT_DXF_FILE)
+    dxf_group = parser.add_mutually_exclusive_group()
+    dxf_group.add_argument("--dxf-file", type=Path)
+    dxf_group.add_argument("--dxf-case-id", default="")
     parser.add_argument("--home-timeout-seconds", type=float, default=90.0)
     parser.add_argument("--pause-resume-cycles", type=int, default=3)
     parser.add_argument("--dispenser-count", type=int, default=int(os.getenv("SILIGEN_HIL_DISPENSER_COUNT", "300")))
@@ -681,6 +688,13 @@ def _missing_preflight_snapshot_failure() -> dict[str, Any]:
 
 def main() -> int:
     args = parse_args()
+    resolved_case_id, resolved_dxf_file, resolved_asset_refs = _resolve_dxf_selection(
+        getattr(args, "dxf_case_id", "") or None,
+        getattr(args, "dxf_file", None),
+    )
+    args.dxf_case_id = resolved_case_id or ""
+    args.dxf_file = resolved_dxf_file
+    args.dxf_asset_refs = resolved_asset_refs
     report_dir = Path(args.report_dir)
     selected_modes = ("home", "closed_loop") if args.mode == "both" else (args.mode,)
     admission = _evaluate_offline_admission(
@@ -696,6 +710,8 @@ def main() -> int:
             "mode": args.mode,
             "rounds_requested": args.rounds,
             "rounds_executed": 0,
+            "dxf_case_id": args.dxf_case_id,
+            "dxf_asset_refs": list(args.dxf_asset_refs),
             "overall_status": "failed",
             "error": "limited-hil case-matrix admission blocked",
             "counts": {
@@ -723,6 +739,8 @@ def main() -> int:
             "mode": args.mode,
             "rounds_requested": args.rounds,
             "rounds_executed": 0,
+            "dxf_case_id": args.dxf_case_id,
+            "dxf_asset_refs": list(args.dxf_asset_refs),
             "overall_status": "known_failure",
             "error": f"gateway executable missing: {gateway_exe}",
             "counts": {
@@ -771,6 +789,8 @@ def main() -> int:
             "mode": args.mode,
             "rounds_requested": args.rounds,
             "rounds_executed": 0,
+            "dxf_case_id": args.dxf_case_id,
+            "dxf_asset_refs": list(args.dxf_asset_refs),
             "overall_status": overall_status,
             "error": preflight_round.error or str(failure_classification.get("message", "case-matrix preflight failed")),
             "counts": {
@@ -837,6 +857,8 @@ def main() -> int:
         "rounds_requested": args.rounds,
         "rounds_executed": len(rounds),
         "gateway_exe": str(gateway_exe),
+        "dxf_case_id": args.dxf_case_id,
+        "dxf_asset_refs": list(args.dxf_asset_refs),
         "dxf_file": str(args.dxf_file),
         "force_home": args.force_home,
         "pause_resume_cycles": args.pause_resume_cycles,

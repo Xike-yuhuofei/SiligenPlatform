@@ -5,6 +5,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import date
 from pathlib import Path
 
+from .dxf_truth_matrix import full_chain_cases
+
 
 CANONICAL_SOURCE_ROOTS = (
     "samples",
@@ -429,6 +431,22 @@ def build_asset_catalog(workspace_root: Path) -> AssetCatalog:
         ),
         _asset(
             root,
+            asset_id="sample.dxf.bra",
+            asset_kind="sample-input",
+            relative_path="samples/dxf/bra.dxf",
+            owner_scope="runtime-execution",
+            source_of_truth="tracked DXF closed-loop polyline sample",
+        ),
+        _asset(
+            root,
+            asset_id="sample.dxf.arc_circle_quadrants",
+            asset_kind="sample-input",
+            relative_path="samples/dxf/arc_circle_quadrants.dxf",
+            owner_scope="runtime-execution",
+            source_of_truth="tracked DXF closed-loop arc sample",
+        ),
+        _asset(
+            root,
             asset_id="sample.dxf.rect_medium_ladder",
             asset_kind="sample-input",
             relative_path="samples/dxf/rect_medium_ladder.dxf",
@@ -498,6 +516,22 @@ def build_asset_catalog(workspace_root: Path) -> AssetCatalog:
             relative_path="tests/baselines/rect_diag.simulation-baseline.json",
             owner_scope="runtime-execution",
             source_of_truth="tracked simulated-line compat baseline",
+        ),
+        _asset(
+            root,
+            asset_id="baseline.simulation.compat_bra",
+            asset_kind="golden-baseline",
+            relative_path="tests/baselines/bra.simulation-baseline.json",
+            owner_scope="runtime-execution",
+            source_of_truth="tracked simulated-line compat baseline for closed-loop polyline case",
+        ),
+        _asset(
+            root,
+            asset_id="baseline.simulation.compat_arc_circle_quadrants",
+            asset_kind="golden-baseline",
+            relative_path="tests/baselines/arc_circle_quadrants.simulation-baseline.json",
+            owner_scope="runtime-execution",
+            source_of_truth="tracked simulated-line compat baseline for closed-loop arc case",
         ),
         _asset(
             root,
@@ -578,6 +612,70 @@ def build_asset_catalog(workspace_root: Path) -> AssetCatalog:
             relative_path="shared/contracts/engineering/fixtures/cases/rect_diag/simulation-input.json",
             owner_scope="shared/contracts",
             source_of_truth="engineering contract fixture simulation input",
+        ),
+        _asset(
+            root,
+            asset_id="protocol.fixture.bra_dxf",
+            asset_kind="protocol-fixture",
+            relative_path="shared/contracts/engineering/fixtures/cases/bra/bra.dxf",
+            owner_scope="shared/contracts",
+            source_of_truth="engineering contract fixture DXF for closed-loop polyline case",
+        ),
+        _asset(
+            root,
+            asset_id="protocol.fixture.bra_pb",
+            asset_kind="protocol-fixture",
+            relative_path="shared/contracts/engineering/fixtures/cases/bra/bra.pb",
+            owner_scope="shared/contracts",
+            source_of_truth="engineering contract fixture PB for closed-loop polyline case",
+        ),
+        _asset(
+            root,
+            asset_id="protocol.fixture.bra_preview_artifact",
+            asset_kind="protocol-fixture",
+            relative_path="shared/contracts/engineering/fixtures/cases/bra/preview-artifact.json",
+            owner_scope="shared/contracts",
+            source_of_truth="engineering contract fixture preview artifact for closed-loop polyline case",
+        ),
+        _asset(
+            root,
+            asset_id="protocol.fixture.bra_engineering",
+            asset_kind="protocol-fixture",
+            relative_path="shared/contracts/engineering/fixtures/cases/bra/simulation-input.json",
+            owner_scope="shared/contracts",
+            source_of_truth="engineering contract fixture simulation input for closed-loop polyline case",
+        ),
+        _asset(
+            root,
+            asset_id="protocol.fixture.arc_circle_quadrants_dxf",
+            asset_kind="protocol-fixture",
+            relative_path="shared/contracts/engineering/fixtures/cases/arc_circle_quadrants/arc_circle_quadrants.dxf",
+            owner_scope="shared/contracts",
+            source_of_truth="engineering contract fixture DXF for closed-loop arc case",
+        ),
+        _asset(
+            root,
+            asset_id="protocol.fixture.arc_circle_quadrants_pb",
+            asset_kind="protocol-fixture",
+            relative_path="shared/contracts/engineering/fixtures/cases/arc_circle_quadrants/arc_circle_quadrants.pb",
+            owner_scope="shared/contracts",
+            source_of_truth="engineering contract fixture PB for closed-loop arc case",
+        ),
+        _asset(
+            root,
+            asset_id="protocol.fixture.arc_circle_quadrants_preview_artifact",
+            asset_kind="protocol-fixture",
+            relative_path="shared/contracts/engineering/fixtures/cases/arc_circle_quadrants/preview-artifact.json",
+            owner_scope="shared/contracts",
+            source_of_truth="engineering contract fixture preview artifact for closed-loop arc case",
+        ),
+        _asset(
+            root,
+            asset_id="protocol.fixture.arc_circle_quadrants_engineering",
+            asset_kind="protocol-fixture",
+            relative_path="shared/contracts/engineering/fixtures/cases/arc_circle_quadrants/simulation-input.json",
+            owner_scope="shared/contracts",
+            source_of_truth="engineering contract fixture simulation input for closed-loop arc case",
         ),
         _asset(
             root,
@@ -1158,3 +1256,33 @@ def shared_asset_ids_for_smoke(workspace_root: Path) -> tuple[str, ...]:
         "baseline.preview.rect_diag_snapshot",
     )
     return tuple(asset_id for asset_id in preferred if asset_id in catalog.assets)
+
+
+def default_engineering_regression_asset_ids(workspace_root: Path) -> tuple[str, ...]:
+    asset_ids: list[str] = []
+    for case in full_chain_cases(workspace_root):
+        for asset_id in case.engineering_fixture_asset_ids():
+            if asset_id not in asset_ids:
+                asset_ids.append(asset_id)
+    return tuple(asset_ids)
+
+
+def default_simulated_line_asset_ids(workspace_root: Path) -> tuple[str, ...]:
+    asset_ids: list[str] = []
+    for case in full_chain_cases(workspace_root):
+        for asset_id in case.compat_required_asset_ids():
+            if asset_id not in asset_ids:
+                asset_ids.append(asset_id)
+    for asset_id in (
+        "sample.simulation.rect_diag",
+        "baseline.simulation.scheme_c_rect_diag",
+        "sample.simulation.sample_trajectory",
+        "baseline.simulation.sample_trajectory",
+        "sample.simulation.invalid_empty_segments",
+        "baseline.simulation.invalid_empty_segments",
+        "sample.simulation.following_error_quantized",
+        "baseline.simulation.following_error_quantized",
+    ):
+        if asset_id not in asset_ids:
+            asset_ids.append(asset_id)
+    return tuple(asset_ids)

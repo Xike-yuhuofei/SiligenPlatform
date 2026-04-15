@@ -5,6 +5,7 @@ import json
 import os
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import asdict, dataclass
@@ -17,14 +18,13 @@ KNOWN_FAILURE_EXIT_CODE = 10
 SKIPPED_EXIT_CODE = 11
 
 ROOT = Path(__file__).resolve().parents[4]
-CONTROL_APPS_BUILD_ROOT = Path(
-    os.getenv(
-        "SILIGEN_CONTROL_APPS_BUILD_ROOT",
-        str(Path(os.getenv("LOCALAPPDATA", str(ROOT))) / "SiligenSuite" / "control-apps-build"),
-    )
-)
+HIL_DIR = ROOT / "tests" / "e2e" / "hardware-in-loop"
+if str(HIL_DIR) not in sys.path:
+    sys.path.insert(0, str(HIL_DIR))
 CANONICAL_CONFIG = ROOT / "config" / "machine" / "machine_config.ini"
-VENDOR_DIR = ROOT / "modules" / "runtime-execution" / "adapters" / "device" / "vendor" / "multicard"
+
+from runtime_gateway_harness import build_process_env as _shared_build_process_env  # noqa: E402
+from runtime_gateway_harness import resolve_default_exe  # noqa: E402
 
 
 @dataclass
@@ -134,21 +134,6 @@ def _compute_overall_status(results: list[CheckResult]) -> str:
         return "skipped"
     return "passed"
 
-
-def _resolve_default_gateway() -> Path:
-    candidates = [
-        ROOT / "build" / "hmi-home-fix" / "bin" / "Debug" / "siligen_runtime_gateway.exe",
-        CONTROL_APPS_BUILD_ROOT / "bin" / "siligen_runtime_gateway.exe",
-        CONTROL_APPS_BUILD_ROOT / "bin" / "Debug" / "siligen_runtime_gateway.exe",
-        CONTROL_APPS_BUILD_ROOT / "bin" / "Release" / "siligen_runtime_gateway.exe",
-        CONTROL_APPS_BUILD_ROOT / "bin" / "RelWithDebInfo" / "siligen_runtime_gateway.exe",
-    ]
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return candidates[0]
-
-
 def _pick_free_port(host: str) -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind((host, 0))
@@ -205,24 +190,7 @@ def _wait_gateway_ready(process: subprocess.Popen[str], host: str, port: int, ti
 
 
 def _build_process_env(gateway_exe: Path) -> dict[str, str]:
-    env = os.environ.copy()
-    candidate_dirs: list[str] = []
-
-    build_config_dir = gateway_exe.parent
-    candidate_dirs.append(str(build_config_dir))
-
-    if build_config_dir.parent.name.lower() == "bin":
-        sibling_lib_dir = build_config_dir.parent.parent / "lib" / build_config_dir.name
-        if sibling_lib_dir.exists():
-            candidate_dirs.append(str(sibling_lib_dir))
-
-    if VENDOR_DIR.exists():
-        candidate_dirs.append(str(VENDOR_DIR))
-        env["SILIGEN_MULTICARD_VENDOR_DIR"] = str(VENDOR_DIR)
-
-    existing_path = env.get("PATH", "")
-    env["PATH"] = os.pathsep.join(candidate_dirs + ([existing_path] if existing_path else []))
-    return env
+    return _shared_build_process_env(gateway_exe)
 
 
 def _extract_axes(status_response: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -336,7 +304,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", default=str(CANONICAL_CONFIG))
     parser.add_argument(
         "--gateway-exe",
-        default=os.getenv("SILIGEN_HIL_GATEWAY_EXE", str(_resolve_default_gateway())),
+        default=os.getenv("SILIGEN_HIL_GATEWAY_EXE", str(resolve_default_exe("siligen_runtime_gateway.exe"))),
     )
     parser.add_argument("--allow-skip-on-missing-gateway", action="store_true")
     return parser.parse_args()
