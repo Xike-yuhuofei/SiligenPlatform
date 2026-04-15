@@ -843,10 +843,11 @@ def wait_for_idle_status(
     last_desc = ""
     while time.perf_counter() < deadline:
         status = protocol.get_status()
-        active_job_id = str(status.active_job_id or "").strip()
-        active_job_state = str(status.active_job_state or "").strip().lower()
-        last_desc = f"active_job_id={active_job_id or '-'} active_job_state={active_job_state or '-'}"
-        if (not active_job_id) and (not active_job_state or active_job_state in TERMINAL_JOB_STATES):
+        job_execution = status.job_execution
+        job_id = str(job_execution.job_id or "").strip()
+        job_state = str(job_execution.state or "").strip().lower()
+        last_desc = f"job_execution.job_id={job_id or '-'} job_execution.state={job_state or '-'}"
+        if job_state == "idle" or job_state in TERMINAL_JOB_STATES:
             return True, last_desc
         time.sleep(poll_interval_s)
     return False, last_desc

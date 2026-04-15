@@ -792,7 +792,29 @@ nlohmann::json BuildPositionJson(const RuntimeStatusExportSnapshot& snapshot) {
 nlohmann::json BuildDispenserJson(const RuntimeStatusExportSnapshot& snapshot) {
     return {
         {"valve_open", snapshot.dispenser.valve_open},
-        {"supply_open", snapshot.dispenser.supply_open}
+        {"supply_open", snapshot.dispenser.supply_open},
+        {"completedCount", snapshot.dispenser.completedCount},
+        {"totalCount", snapshot.dispenser.totalCount},
+        {"progress", snapshot.dispenser.progress}
+    };
+}
+
+nlohmann::json BuildJobExecutionJson(const RuntimeStatusExportSnapshot& snapshot) {
+    return {
+        {"job_id", snapshot.job_execution.job_id},
+        {"plan_id", snapshot.job_execution.plan_id},
+        {"plan_fingerprint", snapshot.job_execution.plan_fingerprint},
+        {"state", snapshot.job_execution.state},
+        {"target_count", snapshot.job_execution.target_count},
+        {"completed_count", snapshot.job_execution.completed_count},
+        {"current_cycle", snapshot.job_execution.current_cycle},
+        {"current_segment", snapshot.job_execution.current_segment},
+        {"total_segments", snapshot.job_execution.total_segments},
+        {"cycle_progress_percent", snapshot.job_execution.cycle_progress_percent},
+        {"overall_progress_percent", snapshot.job_execution.overall_progress_percent},
+        {"elapsed_seconds", snapshot.job_execution.elapsed_seconds},
+        {"error_message", snapshot.job_execution.error_message},
+        {"dry_run", snapshot.job_execution.dry_run}
     };
 }
 
@@ -1142,6 +1164,7 @@ std::string TcpCommandDispatcher::HandleStatus(const std::string& id, const nloh
     const nlohmann::json axesJson = BuildAxesJson(status_snapshot);
     const nlohmann::json positionJson = BuildPositionJson(status_snapshot);
     const nlohmann::json dispenserJson = BuildDispenserJson(status_snapshot);
+    const nlohmann::json jobExecutionJson = BuildJobExecutionJson(status_snapshot);
     const nlohmann::json ioJson = BuildRawIoJson(status_snapshot);
     const nlohmann::json effectiveInterlocksJson = BuildEffectiveInterlocksJson(status_snapshot);
     const nlohmann::json supervisionJson = BuildSupervisionJson(status_snapshot);
@@ -1153,8 +1176,7 @@ std::string TcpCommandDispatcher::HandleStatus(const std::string& id, const nloh
         {"machine_state_reason", status_snapshot.machine_state_reason},
         {"supervision", supervisionJson},
         {"interlock_latched", status_snapshot.interlock_latched},
-        {"active_job_id", status_snapshot.active_job_id},
-        {"active_job_state", status_snapshot.active_job_state},
+        {"job_execution", jobExecutionJson},
         {"axes", axesJson},
         {"position", positionJson},
         {"effective_interlocks", effectiveInterlocksJson},
@@ -1757,25 +1779,27 @@ std::string TcpCommandDispatcher::HandleDispenserStop(const std::string& id, con
 }
 
 std::string TcpCommandDispatcher::HandleDispenserPause(const std::string& id, const nlohmann::json& /*params*/) {
-    // 安全检查：如果有DXF作业正在运行，强制停止它（因为目前DXF不支持暂停）
     std::string current_dxf_job_id;
     {
         std::lock_guard<std::mutex> lock(dxf_mutex_);
         current_dxf_job_id = active_dxf_job_id_;
     }
 
-    if (!current_dxf_job_id.empty()) {
-        SILIGEN_LOG_WARNING("收到暂停请求，但检测到DXF作业正在运行且不支持暂停。执行强制停止以确保安全。");
-        if (dispensingFacade_) {
-            auto stop_result = dispensingFacade_->StopDxfJob(current_dxf_job_id);
-            if (stop_result.IsError()) {
-                return GatewayJsonProtocol::MakeErrorResponse(id, 2811, stop_result.GetError().GetMessage());
-            }
-        }
-    }
-
     if (!dispensingFacade_) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 2810, "TcpDispensingFacade not available");
+    }
+
+    if (!current_dxf_job_id.empty()) {
+        auto job_status_result = dispensingFacade_->GetDxfJobStatus(current_dxf_job_id);
+        if (job_status_result.IsSuccess()) {
+            const auto& state = job_status_result.Value().state;
+            if (state == "pending" || state == "running" || state == "paused" || state == "stopping") {
+                return GatewayJsonProtocol::MakeErrorResponse(
+                    id,
+                    2811,
+                    "manual dispenser pause is forbidden while DXF job is active");
+            }
+        }
     }
 
     auto result = dispensingFacade_->PauseDispenser();
@@ -1789,6 +1813,24 @@ std::string TcpCommandDispatcher::HandleDispenserPause(const std::string& id, co
 std::string TcpCommandDispatcher::HandleDispenserResume(const std::string& id, const nlohmann::json& /*params*/) {
     if (!dispensingFacade_) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 2820, "TcpDispensingFacade not available");
+    }
+
+    std::string current_dxf_job_id;
+    {
+        std::lock_guard<std::mutex> lock(dxf_mutex_);
+        current_dxf_job_id = active_dxf_job_id_;
+    }
+    if (!current_dxf_job_id.empty()) {
+        auto job_status_result = dispensingFacade_->GetDxfJobStatus(current_dxf_job_id);
+        if (job_status_result.IsSuccess()) {
+            const auto& state = job_status_result.Value().state;
+            if (state == "pending" || state == "running" || state == "paused" || state == "stopping") {
+                return GatewayJsonProtocol::MakeErrorResponse(
+                    id,
+                    2821,
+                    "manual dispenser resume is forbidden while DXF job is active");
+            }
+        }
     }
 
     auto result = dispensingFacade_->ResumeDispenser();

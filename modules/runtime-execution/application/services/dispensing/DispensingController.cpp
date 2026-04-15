@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <limits>
 
 namespace Siligen::RuntimeExecution::Application::Services::Dispensing {
 
@@ -11,109 +10,205 @@ using Siligen::Shared::Types::Point2D;
 namespace {
 constexpr float32 kEpsilon = 1e-6f;
 
-float32 SpeedMagnitude(const Siligen::Point3D& v) {
-    return std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
-}
+struct TriggerSample {
+    Point2D position;
+    float32 path_position_mm = 0.0f;
+};
 
-std::vector<Point2D> BuildTriggerPointsFromDistances(const MotionTrajectory& trajectory,
-                                                     const std::vector<float32>& distances_mm) {
-    std::vector<Point2D> points;
-    if (trajectory.points.size() < 2 || distances_mm.empty()) {
-        return points;
+void AppendTriggerSample(std::vector<TriggerSample>& samples,
+                         const Point2D& position,
+                         float32 path_position_mm) {
+    if (path_position_mm < 0.0f) {
+        return;
     }
 
-    std::vector<float32> cumulative;
-    cumulative.resize(trajectory.points.size(), 0.0f);
-    for (size_t i = 1; i < trajectory.points.size(); ++i) {
-        const auto& prev = trajectory.points[i - 1];
-        const auto& curr = trajectory.points[i];
-        float32 dist = prev.position.DistanceTo3D(curr.position);
-        cumulative[i] = cumulative[i - 1] + dist;
+    if (!samples.empty()) {
+        const auto& previous = samples.back();
+        if (std::fabs(previous.path_position_mm - path_position_mm) <= kEpsilon &&
+            previous.position.DistanceTo(position) <= kEpsilon) {
+            return;
+        }
+    }
+
+    TriggerSample sample;
+    sample.position = position;
+    sample.path_position_mm = path_position_mm;
+    samples.push_back(sample);
+}
+
+long MmToPulse(float32 value_mm, float32 pulse_per_mm) {
+    return static_cast<long>(std::llround(value_mm * pulse_per_mm));
+}
+
+std::vector<PathTriggerEvent> BuildTriggerEvents(const std::vector<TriggerSample>& samples, float32 pulse_per_mm) {
+    std::vector<PathTriggerEvent> events;
+    events.reserve(samples.size());
+    for (std::size_t index = 0; index < samples.size(); ++index) {
+        PathTriggerEvent event;
+        event.sequence_index = static_cast<uint32>(index);
+        event.path_position_mm = samples[index].path_position_mm;
+        event.x_position_pulse = MmToPulse(samples[index].position.x, pulse_per_mm);
+        event.y_position_pulse = MmToPulse(samples[index].position.y, pulse_per_mm);
+        events.push_back(event);
+    }
+    return events;
+}
+
+std::vector<TriggerSample> BuildTriggerSamplesFromDistances(const MotionTrajectory& trajectory,
+                                                            const std::vector<float32>& distances_mm) {
+    std::vector<TriggerSample> samples;
+    if (trajectory.points.size() < 2 || distances_mm.empty()) {
+        return samples;
+    }
+
+    std::vector<float32> cumulative(trajectory.points.size(), 0.0f);
+    for (size_t index = 1; index < trajectory.points.size(); ++index) {
+        const auto& previous = trajectory.points[index - 1];
+        const auto& current = trajectory.points[index];
+        cumulative[index] = cumulative[index - 1] + previous.position.DistanceTo3D(current.position);
     }
 
     std::vector<float32> sorted = distances_mm;
     std::sort(sorted.begin(), sorted.end());
 
-    size_t idx = 1;
+    size_t index = 1;
     for (float32 target : sorted) {
-        while (idx < cumulative.size() && cumulative[idx] + kEpsilon < target) {
-            ++idx;
+        while (index < cumulative.size() && cumulative[index] + kEpsilon < target) {
+            ++index;
         }
-        if (idx >= cumulative.size()) {
+        if (index >= cumulative.size()) {
             break;
         }
 
-        const auto& prev = trajectory.points[idx - 1];
-        const auto& curr = trajectory.points[idx];
-        if (!prev.dispense_on || !curr.dispense_on) {
+        const auto& previous = trajectory.points[index - 1];
+        const auto& current = trajectory.points[index];
+        if (!previous.dispense_on || !current.dispense_on) {
             continue;
         }
 
-        float32 seg_len = cumulative[idx] - cumulative[idx - 1];
-        float32 ratio = (seg_len > kEpsilon) ? (target - cumulative[idx - 1]) / seg_len : 0.0f;
-        Point2D start(prev.position);
-        Point2D end(curr.position);
-        points.push_back(start + (end - start) * ratio);
+        const float32 segment_length = cumulative[index] - cumulative[index - 1];
+        const float32 ratio =
+            segment_length > kEpsilon ? (target - cumulative[index - 1]) / segment_length : 0.0f;
+        const Point2D start(previous.position);
+        const Point2D end(current.position);
+        AppendTriggerSample(samples, start + (end - start) * ratio, target);
     }
 
-    return points;
+    return samples;
 }
 
-std::vector<Point2D> BuildTriggerPointsFromDistances(const std::vector<TrajectoryPoint>& trajectory,
-                                                     const std::vector<float32>& distances_mm) {
-    std::vector<Point2D> points;
+std::vector<TriggerSample> BuildTriggerSamplesFromDistances(const std::vector<TrajectoryPoint>& trajectory,
+                                                            const std::vector<float32>& distances_mm) {
+    std::vector<TriggerSample> samples;
     if (trajectory.size() < 2 || distances_mm.empty()) {
-        return points;
+        return samples;
     }
 
-    std::vector<float32> cumulative;
-    cumulative.resize(trajectory.size(), 0.0f);
-    for (size_t i = 1; i < trajectory.size(); ++i) {
-        const auto& prev = trajectory[i - 1];
-        const auto& curr = trajectory[i];
-        float32 dist = prev.position.DistanceTo(curr.position);
-        cumulative[i] = cumulative[i - 1] + dist;
+    std::vector<float32> cumulative(trajectory.size(), 0.0f);
+    for (size_t index = 1; index < trajectory.size(); ++index) {
+        cumulative[index] = cumulative[index - 1] +
+                            trajectory[index - 1].position.DistanceTo(trajectory[index].position);
     }
 
     std::vector<float32> sorted = distances_mm;
     std::sort(sorted.begin(), sorted.end());
 
-    size_t idx = 1;
+    size_t index = 1;
     for (float32 target : sorted) {
-        while (idx < cumulative.size() && cumulative[idx] + kEpsilon < target) {
-            ++idx;
+        while (index < cumulative.size() && cumulative[index] + kEpsilon < target) {
+            ++index;
         }
-        if (idx >= cumulative.size()) {
+        if (index >= cumulative.size()) {
             break;
         }
 
-        float32 seg_len = cumulative[idx] - cumulative[idx - 1];
-        float32 ratio = (seg_len > kEpsilon) ? (target - cumulative[idx - 1]) / seg_len : 0.0f;
-        Point2D start(trajectory[idx - 1].position);
-        Point2D end(trajectory[idx].position);
-        points.push_back(start + (end - start) * ratio);
+        const float32 segment_length = cumulative[index] - cumulative[index - 1];
+        const float32 ratio =
+            segment_length > kEpsilon ? (target - cumulative[index - 1]) / segment_length : 0.0f;
+        const Point2D start(trajectory[index - 1].position);
+        const Point2D end(trajectory[index].position);
+        AppendTriggerSample(samples, start + (end - start) * ratio, target);
     }
 
-    return points;
+    return samples;
 }
 
-float32 EstimateMotionTimeMs(const std::vector<TrajectoryPoint>& trajectory,
-                             float32 fallback_velocity) {
+std::vector<TriggerSample> BuildTriggerSamplesFromInterval(const MotionTrajectory& trajectory, float32 interval_mm) {
+    std::vector<TriggerSample> samples;
+    if (trajectory.points.size() < 2 || interval_mm <= kEpsilon) {
+        return samples;
+    }
+
+    float32 accumulated = 0.0f;
+    float32 next_trigger = interval_mm;
+    for (size_t index = 1; index < trajectory.points.size(); ++index) {
+        const auto& previous = trajectory.points[index - 1];
+        const auto& current = trajectory.points[index];
+        const float32 segment_length = previous.position.DistanceTo3D(current.position);
+        const float32 segment_end = accumulated + segment_length;
+        if (!previous.dispense_on || !current.dispense_on) {
+            while (next_trigger <= segment_end + kEpsilon) {
+                next_trigger += interval_mm;
+            }
+            accumulated = segment_end;
+            continue;
+        }
+
+        const Point2D start(previous.position);
+        const Point2D end(current.position);
+        while (segment_end + kEpsilon >= next_trigger) {
+            const float32 offset_mm = next_trigger - accumulated;
+            const float32 ratio = segment_length > kEpsilon ? offset_mm / segment_length : 0.0f;
+            AppendTriggerSample(samples, start + (end - start) * ratio, next_trigger);
+            next_trigger += interval_mm;
+        }
+        accumulated = segment_end;
+    }
+
+    return samples;
+}
+
+std::vector<TriggerSample> BuildTriggerSamplesFromInterval(const std::vector<TrajectoryPoint>& trajectory,
+                                                           float32 interval_mm) {
+    std::vector<TriggerSample> samples;
+    if (trajectory.size() < 2 || interval_mm <= kEpsilon) {
+        return samples;
+    }
+
+    float32 accumulated = 0.0f;
+    float32 next_trigger = interval_mm;
+    for (size_t index = 1; index < trajectory.size(); ++index) {
+        const float32 segment_length = trajectory[index - 1].position.DistanceTo(trajectory[index].position);
+        const Point2D start(trajectory[index - 1].position);
+        const Point2D end(trajectory[index].position);
+        while (accumulated + segment_length + kEpsilon >= next_trigger) {
+            const float32 offset_mm = next_trigger - accumulated;
+            const float32 ratio = segment_length > kEpsilon ? offset_mm / segment_length : 0.0f;
+            AppendTriggerSample(samples, start + (end - start) * ratio, next_trigger);
+            next_trigger += interval_mm;
+        }
+        accumulated += segment_length;
+    }
+
+    return samples;
+}
+
+float32 EstimateMotionTimeMs(const std::vector<TrajectoryPoint>& trajectory, float32 fallback_velocity) {
     if (trajectory.empty()) {
         return 0.0f;
     }
 
     float32 max_timestamp = 0.0f;
-    for (const auto& pt : trajectory) {
-        max_timestamp = std::max(max_timestamp, pt.timestamp);
+    for (const auto& point : trajectory) {
+        max_timestamp = std::max(max_timestamp, point.timestamp);
     }
     if (max_timestamp > kEpsilon) {
         return max_timestamp * 1000.0f;
     }
 
     float32 length = 0.0f;
-    for (size_t i = 1; i < trajectory.size(); ++i) {
-        length += trajectory[i - 1].position.DistanceTo(trajectory[i].position);
+    for (size_t index = 1; index < trajectory.size(); ++index) {
+        length += trajectory[index - 1].position.DistanceTo(trajectory[index].position);
     }
     if (fallback_velocity > kEpsilon) {
         return (length / fallback_velocity) * 1000.0f;
@@ -125,9 +220,10 @@ float32 CalculateTotalLength(const std::vector<TrajectoryPoint>& trajectory) {
     if (trajectory.size() < 2) {
         return 0.0f;
     }
+
     float32 length = 0.0f;
-    for (size_t i = 1; i < trajectory.size(); ++i) {
-        length += trajectory[i - 1].position.DistanceTo(trajectory[i].position);
+    for (size_t index = 1; index < trajectory.size(); ++index) {
+        length += trajectory[index - 1].position.DistanceTo(trajectory[index].position);
     }
     return length;
 }
@@ -143,67 +239,17 @@ Result<ControllerOutput> DispensingController::Build(const MotionTrajectory& tra
 
     output.estimated_motion_time_ms = trajectory.total_time * 1000.0f;
 
-    bool allow_hardware_trigger = config.use_hardware_trigger;
-
-    std::vector<Point2D> trigger_points;
-    float32 interval_mm = config.spatial_interval_mm;
-    if (allow_hardware_trigger) {
+    if (config.use_hardware_trigger) {
+        std::vector<TriggerSample> trigger_samples;
         if (!config.trigger_distances_mm.empty()) {
-            trigger_points = BuildTriggerPointsFromDistances(trajectory, config.trigger_distances_mm);
-        } else if (interval_mm > kEpsilon) {
-            float32 accumulated = 0.0f;
-            float32 next_trigger = interval_mm;
-            for (size_t i = 1; i < trajectory.points.size(); ++i) {
-                const auto& prev = trajectory.points[i - 1];
-                const auto& curr = trajectory.points[i];
-                if (!prev.dispense_on || !curr.dispense_on) {
-                    accumulated = 0.0f;
-                    next_trigger = interval_mm;
-                    continue;
-                }
-                float32 dist = prev.position.DistanceTo3D(curr.position);
-                accumulated += dist;
-                if (accumulated + kEpsilon >= next_trigger) {
-                    trigger_points.push_back(Point2D(curr.position));
-                    next_trigger += interval_mm;
-                }
-            }
+            trigger_samples = BuildTriggerSamplesFromDistances(trajectory, config.trigger_distances_mm);
+        } else if (config.spatial_interval_mm > kEpsilon) {
+            trigger_samples = BuildTriggerSamplesFromInterval(trajectory, config.spatial_interval_mm);
         }
+        output.trigger_events = BuildTriggerEvents(trigger_samples, config.pulse_per_mm);
     }
 
-    if (!trigger_points.empty() && allow_hardware_trigger) {
-        float32 x_min = trigger_points.front().x;
-        float32 x_max = trigger_points.front().x;
-        float32 y_min = trigger_points.front().y;
-        float32 y_max = trigger_points.front().y;
-        for (const auto& pt : trigger_points) {
-            x_min = std::min(x_min, pt.x);
-            x_max = std::max(x_max, pt.x);
-            y_min = std::min(y_min, pt.y);
-            y_max = std::max(y_max, pt.y);
-        }
-        float32 x_range = std::abs(x_max - x_min);
-        float32 y_range = std::abs(y_max - y_min);
-        output.trigger_axis = (x_range >= y_range) ? LogicalAxisId::X : LogicalAxisId::Y;
-
-        output.trigger_positions.reserve(trigger_points.size());
-        long last_pulse = std::numeric_limits<long>::min();
-        for (const auto& pt : trigger_points) {
-            float32 coord = (output.trigger_axis == LogicalAxisId::X) ? pt.x : pt.y;
-            long pulse = static_cast<long>(std::llround(coord * config.pulse_per_mm));
-            if (pulse == last_pulse) {
-                continue;
-            }
-            output.trigger_positions.push_back(pulse);
-            last_pulse = pulse;
-        }
-
-    }
-
-    if (!output.trigger_positions.empty()) {
-        output.use_hardware_trigger = true;
-        return Result<ControllerOutput>::Success(output);
-    }
+    output.use_hardware_trigger = config.use_hardware_trigger && !output.trigger_events.empty();
     return Result<ControllerOutput>::Success(output);
 }
 
@@ -214,79 +260,39 @@ Result<ControllerOutput> DispensingController::Build(const std::vector<Trajector
         return Result<ControllerOutput>::Success(output);
     }
 
-    float32 total_length = CalculateTotalLength(trajectory);
-    float32 total_time_ms = EstimateMotionTimeMs(trajectory, 0.0f);
+    const float32 total_length = CalculateTotalLength(trajectory);
+    const float32 total_time_ms = EstimateMotionTimeMs(trajectory, 0.0f);
     float32 fallback_velocity = 0.0f;
     if (total_time_ms > kEpsilon) {
         fallback_velocity = total_length / (total_time_ms / 1000.0f);
     }
 
-    output.estimated_motion_time_ms = (total_time_ms > kEpsilon)
-                                          ? total_time_ms
-                                          : EstimateMotionTimeMs(trajectory, fallback_velocity);
+    output.estimated_motion_time_ms =
+        total_time_ms > kEpsilon ? total_time_ms : EstimateMotionTimeMs(trajectory, fallback_velocity);
 
-    bool allow_hardware_trigger = config.use_hardware_trigger;
-
-    std::vector<Point2D> trigger_points;
-    if (allow_hardware_trigger) {
+    if (config.use_hardware_trigger) {
+        std::vector<TriggerSample> trigger_samples;
         bool has_explicit = false;
-        for (const auto& pt : trajectory) {
-            if (pt.enable_position_trigger) {
-                trigger_points.emplace_back(pt.position);
-                has_explicit = true;
-            }
-        }
-        if (!has_explicit) {
-            if (!config.trigger_distances_mm.empty()) {
-                trigger_points = BuildTriggerPointsFromDistances(trajectory, config.trigger_distances_mm);
-            } else if (config.spatial_interval_mm > kEpsilon) {
-                float32 accumulated = 0.0f;
-                float32 next_trigger = config.spatial_interval_mm;
-                for (size_t i = 1; i < trajectory.size(); ++i) {
-                    float32 dist = trajectory[i - 1].position.DistanceTo(trajectory[i].position);
-                    accumulated += dist;
-                    if (accumulated + kEpsilon >= next_trigger) {
-                        trigger_points.emplace_back(trajectory[i].position);
-                        next_trigger += config.spatial_interval_mm;
-                    }
-                }
-            }
-        }
-    }
-
-    if (!trigger_points.empty() && allow_hardware_trigger) {
-        float32 x_min = trigger_points.front().x;
-        float32 x_max = trigger_points.front().x;
-        float32 y_min = trigger_points.front().y;
-        float32 y_max = trigger_points.front().y;
-        for (const auto& pt : trigger_points) {
-            x_min = std::min(x_min, pt.x);
-            x_max = std::max(x_max, pt.x);
-            y_min = std::min(y_min, pt.y);
-            y_max = std::max(y_max, pt.y);
-        }
-        float32 x_range = std::abs(x_max - x_min);
-        float32 y_range = std::abs(y_max - y_min);
-        output.trigger_axis = (x_range >= y_range) ? LogicalAxisId::X : LogicalAxisId::Y;
-
-        output.trigger_positions.reserve(trigger_points.size());
-        long last_pulse = std::numeric_limits<long>::min();
-        for (const auto& pt : trigger_points) {
-            float32 coord = (output.trigger_axis == LogicalAxisId::X) ? pt.x : pt.y;
-            long pulse = static_cast<long>(std::llround(coord * config.pulse_per_mm));
-            if (pulse == last_pulse) {
+        for (const auto& point : trajectory) {
+            if (!point.enable_position_trigger) {
                 continue;
             }
-            output.trigger_positions.push_back(pulse);
-            last_pulse = pulse;
+            AppendTriggerSample(trigger_samples, point.position, point.trigger_position_mm);
+            has_explicit = true;
         }
 
+        if (!has_explicit) {
+            if (!config.trigger_distances_mm.empty()) {
+                trigger_samples = BuildTriggerSamplesFromDistances(trajectory, config.trigger_distances_mm);
+            } else if (config.spatial_interval_mm > kEpsilon) {
+                trigger_samples = BuildTriggerSamplesFromInterval(trajectory, config.spatial_interval_mm);
+            }
+        }
+
+        output.trigger_events = BuildTriggerEvents(trigger_samples, config.pulse_per_mm);
     }
 
-    if (!output.trigger_positions.empty()) {
-        output.use_hardware_trigger = true;
-        return Result<ControllerOutput>::Success(output);
-    }
+    output.use_hardware_trigger = config.use_hardware_trigger && !output.trigger_events.empty();
     return Result<ControllerOutput>::Success(output);
 }
 

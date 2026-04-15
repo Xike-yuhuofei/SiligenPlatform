@@ -32,6 +32,7 @@ constexpr float32 kTraceRadiansPerDegree = 0.017453292519943295f;
 constexpr float32 kTraceFullCirclePositionToleranceMm = 0.1f;
 constexpr float32 kDefaultAcceleration = 100.0f;
 constexpr float32 kDefaultPulsePerMm = 200.0f;
+constexpr float32 kPathTriggerPositionToleranceMm = 0.1f;
 constexpr uint32 kDefaultDispenserIntervalMs = 100;
 constexpr uint32 kDefaultDispenserDurationMs = 100;
 constexpr float32 kDefaultTriggerSpatialIntervalMm = 3.0f;
@@ -221,6 +222,15 @@ int32 BuildMotionCompletionTimeoutMs(float32 estimated_motion_time_ms) noexcept 
                                      static_cast<int32>(kMotionCompletionGraceMinMs),
                                      static_cast<int32>(kMotionCompletionGraceMaxMs));
     return base_timeout + grace_ms;
+}
+
+long ResolvePathTriggerTolerancePulse(float32 pulse_per_mm) noexcept {
+    if (pulse_per_mm <= kTraceEpsilonMm) {
+        return 0;
+    }
+    return std::max<long>(
+        1L,
+        static_cast<long>(std::llround(kPathTriggerPositionToleranceMm * pulse_per_mm)));
 }
 
 const char* ToString(Motion::Ports::InterpolationType type) noexcept {
@@ -732,7 +742,7 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
     }
 
     auto trigger_output = trigger_result.Value();
-    if (options.dispense_enabled && trigger_output.trigger_positions.empty()) {
+    if (options.dispense_enabled && trigger_output.trigger_events.empty()) {
         return Result<DispensingExecutionReport>::Failure(
             Error(ErrorCode::CMP_TRIGGER_SETUP_FAILED,
                   "位置触发不可用，禁止回退为定时触发",
@@ -878,10 +888,11 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
     DispenserOperationGuard dispenser_guard(valve_port_);
     if (options.dispense_enabled) {
         Ports::PositionTriggeredDispenserParams params_for_trigger;
-        params_for_trigger.trigger_positions = trigger_output.trigger_positions;
-        params_for_trigger.axis = trigger_output.trigger_axis;
+        params_for_trigger.trigger_events = trigger_output.trigger_events;
         params_for_trigger.pulse_width_ms = params.dispenser_duration_ms;
         params_for_trigger.start_level = ResolveDispenserStartLevel();
+        params_for_trigger.coordinate_system = kCoordinateSystem;
+        params_for_trigger.position_tolerance_pulse = ResolvePathTriggerTolerancePulse(params.pulse_per_mm);
         DispenseCompensationService compensation_service;
         params_for_trigger = compensation_service.ApplyPositionCompensation(params_for_trigger,
                                                                             params.compensation_profile,

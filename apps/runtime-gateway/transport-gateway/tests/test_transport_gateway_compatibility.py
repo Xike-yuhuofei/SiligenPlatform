@@ -317,11 +317,47 @@ def test_status_dispatcher_only_serializes_snapshot_and_compat_projection():
     assert "BuildRawIoJson(status_snapshot)" in source
     assert "BuildEffectiveInterlocksJson(status_snapshot)" in source
     assert "BuildSupervisionJson(status_snapshot)" in source
+    assert "BuildJobExecutionJson(status_snapshot)" in source
     assert "BuildCompatMachineState(" not in source
     assert "snapshot.machine_state = supervision.supervision.current_state;" in status_source
     assert "snapshot.machine_state_reason = supervision.supervision.state_reason;" in status_source
+    assert "snapshot.dispenser.completedCount = dispenser.completedCount;" in status_source
+    assert "snapshot.dispenser.totalCount = dispenser.totalCount;" in status_source
+    assert "snapshot.dispenser.progress = dispenser.progress;" in status_source
     assert '{"supervision", supervisionJson}' in source
     assert '{"effective_interlocks", effectiveInterlocksJson}' in source
+    assert '{"job_execution", jobExecutionJson}' in source
+    assert '{"active_job_id"' not in source
+    assert '{"active_job_state"' not in source
+    assert '{"completedCount", snapshot.dispenser.completedCount}' in source
+    assert '{"totalCount", snapshot.dispenser.totalCount}' in source
+    assert '{"progress", snapshot.dispenser.progress}' in source
+
+
+def test_manual_dispenser_pause_resume_do_not_stop_dxf_job_implicitly():
+    source = TCP_DISPATCHER.read_text(encoding="utf-8")
+
+    pause_match = re.search(
+        r"std::string TcpCommandDispatcher::HandleDispenserPause.*?return GatewayJsonProtocol::MakeSuccessResponse",
+        source,
+        re.S,
+    )
+    resume_match = re.search(
+        r"std::string TcpCommandDispatcher::HandleDispenserResume.*?return GatewayJsonProtocol::MakeSuccessResponse",
+        source,
+        re.S,
+    )
+    assert pause_match, "cannot locate HandleDispenserPause body"
+    assert resume_match, "cannot locate HandleDispenserResume body"
+
+    pause_body = pause_match.group(0)
+    resume_body = resume_match.group(0)
+
+    assert "StopDxfJob(" not in pause_body
+    assert "GetDxfJobStatus(current_dxf_job_id)" in pause_body
+    assert "manual dispenser pause is forbidden while DXF job is active" in pause_body
+    assert "GetDxfJobStatus(current_dxf_job_id)" in resume_body
+    assert "manual dispenser resume is forbidden while DXF job is active" in resume_body
 
 
 def test_motion_coord_status_exposes_feedback_diagnostics():
@@ -571,6 +607,7 @@ def main():
         test_status_reads_backend_interlock_signals,
         test_status_supervision_contract_is_derived_by_runtime_supervision_adapter,
         test_status_dispatcher_only_serializes_snapshot_and_compat_projection,
+        test_manual_dispenser_pause_resume_do_not_stop_dxf_job_implicitly,
         test_motion_coord_status_exposes_feedback_diagnostics,
         test_estop_reset_and_disconnect_semantics_are_wired,
         test_mock_io_set_is_registered_and_wired,
