@@ -30,7 +30,7 @@
 
 - 模块根 target `siligen_module_coordinate_alignment` 当前只暴露 `contracts/`。
 - `contracts/include` 当前唯一冻结的 stable seam 是 `CoordinateTransformSet`；`process-path` 也只消费该 seam。
-- `application/`、`adapters/`、`services/`、`examples/` 当前都属于 docs-only shell，不参与 live build。
+- `application`、`adapters`、`services`、`examples` 当前都属于 docs-only shell，不参与 live build。
 
 ## Residual Exit
 
@@ -46,4 +46,4 @@
 - `tests/golden/`
   - 冻结包含 `origin-offset`、`rotation-z` 的对齐基线样本
 - `CalibrationProcess` residual family 已退出 live build，不再作为 `M5` owner 证明。
-- `tests/unit/`、`tests/integration/`、`tests/regression/` 当前仅保留 skeleton 占位目录，不参与 live 测试收敛。
+- `tests` 下的 `unit`、`integration`、`regression` 当前仅保留 skeleton 占位目录，不参与 live 测试收敛。

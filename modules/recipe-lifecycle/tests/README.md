@@ -13,7 +13,7 @@
 
 - `contract/`
   - 目前没有独立 source-bearing 契约测试，避免为了对齐骨架新增空壳目录。
-- `integration/`
+- `integration`
   - 目前没有模块内集成测试入口，后续只在出现真实验证需求时再补。
 - `regression/`
   - 目前没有独立回归样本目录，不做占位污染。

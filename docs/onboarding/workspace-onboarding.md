@@ -46,11 +46,8 @@ DXF 编辑说明：
 2. 轻量确认 canonical 入口：
 
 ```powershell
-$controlAppsRoot = if (-not [string]::IsNullOrWhiteSpace($env:SILIGEN_CONTROL_APPS_BUILD_ROOT)) {
-    $env:SILIGEN_CONTROL_APPS_BUILD_ROOT
-} else {
-    Join-Path $env:LOCALAPPDATA "SiligenSuite\control-apps-build"
-}
+. .\scripts\validation\tooling-common.ps1
+$controlAppsRoot = Get-ControlAppsBuildRoot -WorkspaceRoot (Get-Location)
 
 Test-Path (Join-Path $controlAppsRoot "bin\Debug\siligen_runtime_service.exe")
 Test-Path (Join-Path $controlAppsRoot "bin\Debug\siligen_runtime_gateway.exe")

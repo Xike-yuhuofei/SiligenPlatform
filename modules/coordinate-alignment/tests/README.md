@@ -24,7 +24,7 @@ coordinate-alignment 的模块级验证入口应收敛到此目录。
 
 当前 skeleton：
 
-- `unit/`
-- `integration/`
-- `regression/`
-  - 以上目录当前仅保留 `.gitkeep`，用于维持 `S06` 推荐骨架，不作为 live owner 证明。
+- `unit`
+- `integration`
+- `regression`
+  以上目录当前仅保留 `.gitkeep`，用于维持 `S06` 推荐骨架，不作为 live owner 证明。
