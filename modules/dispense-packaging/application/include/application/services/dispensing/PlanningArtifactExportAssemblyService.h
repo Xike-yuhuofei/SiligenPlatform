@@ -15,6 +15,10 @@ struct PlanningArtifactExportAssemblyInput {
     std::string dxf_filename;
     Siligen::ProcessPath::Contracts::ProcessPath process_path;
     std::vector<Siligen::Shared::Types::Point2D> glue_points;
+    std::vector<float> glue_distances_mm;
+    std::vector<Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportGluePointMetadata> glue_point_metadata;
+    std::vector<Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportExecutionTriggerMetadata>
+        execution_trigger_metadata;
     std::vector<Siligen::TrajectoryPoint> execution_trajectory_points;
     std::vector<Siligen::TrajectoryPoint> interpolation_trajectory_points;
     std::vector<Siligen::TrajectoryPoint> motion_trajectory_points;
