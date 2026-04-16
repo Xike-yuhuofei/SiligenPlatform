@@ -43,6 +43,8 @@ SUPPORTED_RUNTIME_ACTION_PROFILES = (
     "estop_reset",
     "door_interlock",
 )
+MOCK_RECIPE_ID = "recipe-mock-001"
+MOCK_VERSION_ID = "version-mock-001"
 
 
 def find_by_testid(root: QWidget, testid: str) -> Optional[QWidget]:
@@ -219,14 +221,26 @@ def patch_modal_dialogs() -> Iterator[None]:
 @contextmanager
 def patch_recipe_context_loading() -> Iterator[None]:
     original_load_recipe_context = recipe_config_widget_module.RecipeConfigWidget._load_recipe_context
+    original_current_recipe_selection = recipe_config_widget_module.RecipeConfigWidget.current_recipe_selection
     original_show_error = recipe_config_widget_module.RecipeConfigWidget._show_error
 
-    recipe_config_widget_module.RecipeConfigWidget._load_recipe_context = lambda self: None
+    def _patched_load_recipe_context(self) -> None:
+        self._current_recipe_id = MOCK_RECIPE_ID
+        self._current_version_id = MOCK_VERSION_ID
+
+    def _patched_current_recipe_selection(self):
+        recipe_id = getattr(self, "_current_recipe_id", "") or MOCK_RECIPE_ID
+        version_id = getattr(self, "_current_version_id", "") or MOCK_VERSION_ID
+        return recipe_id, version_id
+
+    recipe_config_widget_module.RecipeConfigWidget._load_recipe_context = _patched_load_recipe_context
+    recipe_config_widget_module.RecipeConfigWidget.current_recipe_selection = _patched_current_recipe_selection
     recipe_config_widget_module.RecipeConfigWidget._show_error = lambda self, _msg: None
     try:
         yield
     finally:
         recipe_config_widget_module.RecipeConfigWidget._load_recipe_context = original_load_recipe_context
+        recipe_config_widget_module.RecipeConfigWidget.current_recipe_selection = original_current_recipe_selection
         recipe_config_widget_module.RecipeConfigWidget._show_error = original_show_error
 
 
