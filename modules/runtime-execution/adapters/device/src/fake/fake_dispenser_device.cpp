@@ -7,6 +7,7 @@ FakeDispenserDevice::FakeDispenserDevice() {
     capability_.supports_pause = true;
     capability_.supports_resume = true;
     capability_.supports_continuous_mode = true;
+    capability_.supports_in_motion_pulse_shot = true;
 }
 
 Siligen::SharedKernel::VoidResult FakeDispenserDevice::Execute(

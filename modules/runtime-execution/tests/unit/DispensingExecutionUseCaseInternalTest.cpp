@@ -32,7 +32,10 @@ using Siligen::Domain::Dispensing::ValueObjects::JobExecutionMode;
 using Siligen::Domain::Dispensing::ValueObjects::ProcessOutputPolicy;
 using Siligen::Domain::Machine::ValueObjects::MachineMode;
 using Siligen::Domain::Motion::Ports::InterpolationData;
+using Siligen::Domain::Motion::Ports::InterpolationType;
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectoryPoint;
+using Siligen::Shared::Types::DispensingExecutionGeometryKind;
+using Siligen::Shared::Types::DispensingExecutionStrategy;
 using RuntimeDispensingProcessPort = Siligen::RuntimeExecution::Contracts::Dispensing::IDispensingProcessPort;
 using RuntimeTaskSchedulerPort = Siligen::Domain::Dispensing::Ports::ITaskSchedulerPort;
 using Siligen::Shared::Types::float32;
@@ -687,4 +690,91 @@ TEST(DispensingExecutionUseCaseInternalTest, PlannedExecutionRequestRequiresTraj
     auto validation = request.Validate();
     ASSERT_TRUE(validation.IsError());
     EXPECT_EQ(validation.GetError().GetCode(), ErrorCode::INVALID_PARAMETER);
+}
+
+TEST(DispensingExecutionUseCaseInternalTest, StationaryPointExecutionRequestIsAccepted) {
+    auto use_case = CreateExecutionUseCase();
+
+    DispensingExecutionRequest request;
+    request.dispensing_speed_mm_s = 25.0f;
+    request.dry_run_speed_mm_s = 80.0f;
+    request.execution_package.total_length_mm = 0.0f;
+    request.execution_package.estimated_time_s = 0.05f;
+
+    auto& plan = request.execution_package.execution_plan;
+    plan.geometry_kind = DispensingExecutionGeometryKind::POINT;
+    plan.execution_strategy = DispensingExecutionStrategy::STATIONARY_SHOT;
+    plan.total_length_mm = 0.0f;
+
+    MotionTrajectoryPoint point;
+    point.t = 0.0f;
+    point.position = {5.0f, 5.0f, 0.0f};
+    point.velocity = {0.0f, 0.0f, 0.0f};
+    plan.motion_trajectory.points.push_back(point);
+
+    auto result = use_case->Execute(request);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    EXPECT_EQ(result.Value().total_segments, 1U);
+}
+
+TEST(DispensingExecutionUseCaseInternalTest, PointFlyingExecutionRequestIsAccepted) {
+    auto use_case = CreateExecutionUseCase();
+
+    DispensingExecutionRequest request;
+    request.dispensing_speed_mm_s = 25.0f;
+    request.dry_run_speed_mm_s = 80.0f;
+    request.execution_package.total_length_mm = 3.0f;
+    request.execution_package.estimated_time_s = 0.12f;
+
+    auto& plan = request.execution_package.execution_plan;
+    plan.geometry_kind = DispensingExecutionGeometryKind::POINT;
+    plan.execution_strategy = DispensingExecutionStrategy::FLYING_SHOT;
+    plan.trigger_distances_mm = {0.0f};
+    plan.total_length_mm = 3.0f;
+
+    MotionTrajectoryPoint start_point;
+    start_point.t = 0.0f;
+    start_point.position = {5.0f, 5.0f, 0.0f};
+    start_point.velocity = {25.0f, 0.0f, 0.0f};
+    start_point.dispense_on = true;
+
+    MotionTrajectoryPoint end_point;
+    end_point.t = 0.12f;
+    end_point.position = {8.0f, 5.0f, 0.0f};
+    end_point.velocity = {0.0f, 0.0f, 0.0f};
+    end_point.dispense_on = true;
+
+    plan.motion_trajectory.points = {start_point, end_point};
+    plan.motion_trajectory.total_length = 3.0f;
+    plan.motion_trajectory.total_time = 0.12f;
+
+    Siligen::TrajectoryPoint preview_start;
+    preview_start.position = Point2D{5.0f, 5.0f};
+    preview_start.sequence_id = 0U;
+    preview_start.timestamp = 0.0f;
+    preview_start.velocity = 25.0f;
+    preview_start.enable_position_trigger = true;
+    preview_start.trigger_position_mm = 0.0f;
+
+    Siligen::TrajectoryPoint preview_end;
+    preview_end.position = Point2D{8.0f, 5.0f};
+    preview_end.sequence_id = 1U;
+    preview_end.timestamp = 0.12f;
+    preview_end.velocity = 0.0f;
+
+    plan.interpolation_points = {preview_start, preview_end};
+
+    InterpolationData segment;
+    segment.type = InterpolationType::LINEAR;
+    segment.positions = {8.0f, 5.0f};
+    segment.velocity = 25.0f;
+    segment.acceleration = 100.0f;
+    segment.end_velocity = 0.0f;
+    plan.interpolation_segments.push_back(segment);
+
+    const auto result = use_case->Execute(request);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    EXPECT_EQ(result.Value().total_segments, 1U);
 }

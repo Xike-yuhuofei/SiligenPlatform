@@ -26,6 +26,7 @@
     "include/shared/types/CMPTypes.h",
     "include/shared/types/ConfigTypes.h",
     "include/shared/types/DiagnosticsConfig.h",
+    "include/shared/types/DispensingExecutionSemantics.h",
     "include/shared/types/DispensingStrategy.h",
     "include/shared/types/DomainEvent.h",
     "include/shared/types/EmergencyStopEvent.h",

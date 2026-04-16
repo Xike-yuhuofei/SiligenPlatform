@@ -160,7 +160,7 @@ ProcessPath ProcessAnnotator::Annotate(const Path& path, const ProcessConfig& co
     for (size_t i = 0; i < segments.size(); ++i) {
         Segment seg = segments[i];
         float32 length = SegmentLength(seg);
-        if (length <= kEpsilon) {
+        if (length <= kEpsilon && !seg.is_point) {
             continue;
         }
 

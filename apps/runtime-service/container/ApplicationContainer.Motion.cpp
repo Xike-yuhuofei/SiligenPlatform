@@ -51,6 +51,9 @@ void ApplicationContainer::ValidateMotionPorts() {
     if (!motion_runtime_port_) {
         throw std::runtime_error("IMotionRuntimePort 未注册");
     }
+    if (!motion_device_port_) {
+        throw std::runtime_error("MotionDevicePort 未注册");
+    }
     if (!interpolation_port_) {
         throw std::runtime_error("IInterpolationPort 未注册");
     }

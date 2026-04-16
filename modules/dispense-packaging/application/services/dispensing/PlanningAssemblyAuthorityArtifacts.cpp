@@ -291,6 +291,9 @@ Result<TriggerArtifacts> BuildTriggerArtifacts(
 
     TriggerPlanner trigger_planner;
     for (const auto& span : artifacts.authority_trigger_layout.spans) {
+        if (span.total_length_mm <= kEpsilon) {
+            continue;
+        }
         auto timing_result = trigger_planner.Plan(
             span.total_length_mm,
             input.dispensing_velocity,

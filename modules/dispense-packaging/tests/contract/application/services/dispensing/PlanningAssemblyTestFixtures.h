@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 #include <vector>
 
 namespace Siligen::Application::Services::Dispensing::TestFixtures {
@@ -18,7 +19,10 @@ using Siligen::Domain::Motion::ValueObjects::MotionTrajectoryPoint;
 using Siligen::ProcessPath::Contracts::ProcessSegment;
 using Siligen::ProcessPath::Contracts::Segment;
 using Siligen::ProcessPath::Contracts::SegmentType;
+using Siligen::Shared::Types::DispensingExecutionStrategy;
 using Siligen::Shared::Types::DispensingStrategy;
+using Siligen::Shared::Types::PointFlyingCarrierDirectionMode;
+using Siligen::Shared::Types::PointFlyingCarrierPolicy;
 using Siligen::Shared::Types::Point2D;
 
 inline constexpr char kMixedExplicitBoundaryWithReorderedBranchFamily[] =
@@ -28,6 +32,9 @@ struct FixturePlanningInput {
     Siligen::ProcessPath::Contracts::ProcessPath process_path;
     Siligen::ProcessPath::Contracts::ProcessPath authority_process_path;
     Siligen::MotionPlanning::Contracts::MotionPlan motion_plan;
+    Point2D planning_start_position{};
+    std::string recipe_id;
+    std::string version_id;
     std::string source_path;
     std::string dxf_filename;
     Siligen::Shared::Types::float32 dispensing_velocity = 0.0f;
@@ -51,11 +58,21 @@ struct FixturePlanningInput {
     bool downgrade_on_violation = true;
     bool use_interpolation_planner = false;
     InterpolationAlgorithm interpolation_algorithm = InterpolationAlgorithm::LINEAR;
+    DispensingExecutionStrategy requested_execution_strategy = DispensingExecutionStrategy::FLYING_SHOT;
+    std::optional<PointFlyingCarrierPolicy> point_flying_carrier_policy;
     Siligen::Domain::Dispensing::ValueObjects::DispenseCompensationProfile compensation_profile{};
     Siligen::Shared::Types::float32 spacing_tol_ratio = 0.0f;
     Siligen::Shared::Types::float32 spacing_min_mm = 0.0f;
     Siligen::Shared::Types::float32 spacing_max_mm = 0.0f;
 };
+
+inline PointFlyingCarrierPolicy BuildPointFlyingCarrierPolicy(
+    Siligen::Shared::Types::float32 trigger_spatial_interval_mm = 5.0f) {
+    PointFlyingCarrierPolicy policy;
+    policy.direction_mode = PointFlyingCarrierDirectionMode::APPROACH_DIRECTION;
+    policy.trigger_spatial_interval_mm = trigger_spatial_interval_mm;
+    return policy;
+}
 
 inline MotionTrajectoryPoint BuildMotionPoint(float t, float x, float y, bool dispense_on = true) {
     MotionTrajectoryPoint point;
@@ -109,6 +126,9 @@ inline ProcessSegment BuildPointSegment(const Point2D& point, bool dispense_on =
 
 inline FixturePlanningInput BuildPlanningInput() {
     FixturePlanningInput input;
+    input.planning_start_position = Point2D(0.0f, 0.0f);
+    input.recipe_id = "recipe-fixture";
+    input.version_id = "version-published";
     input.source_path = "sample.pb";
     input.dxf_filename = "sample.pb";
     input.dispensing_velocity = 10.0f;
@@ -121,6 +141,7 @@ inline FixturePlanningInput BuildPlanningInput() {
     input.use_interpolation_planner = true;
     input.interpolation_algorithm = InterpolationAlgorithm::LINEAR;
     input.dispensing_strategy = DispensingStrategy::BASELINE;
+    input.point_flying_carrier_policy = BuildPointFlyingCarrierPolicy();
     input.process_path.segments.push_back(BuildLineSegment(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)));
     input.motion_plan.points = {
         BuildMotionPoint(0.0f, 0.0f, 0.0f),
@@ -172,6 +193,9 @@ inline WorkflowExecutionAssemblyRequest BuildWorkflowExecutionInput(
     execution_input.process_path = input.process_path;
     execution_input.authority_process_path = input.authority_process_path;
     execution_input.motion_plan = input.motion_plan;
+    execution_input.planning_start_position = input.planning_start_position;
+    execution_input.recipe_id = input.recipe_id;
+    execution_input.version_id = input.version_id;
     execution_input.source_path = input.source_path;
     execution_input.dxf_filename = input.dxf_filename;
     execution_input.runtime_options.dispensing_velocity = input.dispensing_velocity;
@@ -190,6 +214,8 @@ inline WorkflowExecutionAssemblyRequest BuildWorkflowExecutionInput(
     execution_input.estimated_time_s = input.estimated_time_s;
     execution_input.use_interpolation_planner = input.use_interpolation_planner;
     execution_input.interpolation_algorithm = input.interpolation_algorithm;
+    execution_input.requested_execution_strategy = input.requested_execution_strategy;
+    execution_input.point_flying_carrier_policy = input.point_flying_carrier_policy;
     execution_input.runtime_options.compensation_profile = input.compensation_profile;
     execution_input.authority_preview = authority_preview;
     return execution_input;
@@ -199,10 +225,15 @@ inline WorkflowPlanningAssemblyRequest BuildWorkflowPlanningInput(const FixtureP
     WorkflowPlanningAssemblyRequest workflow_input;
     workflow_input.authority_preview_request = BuildWorkflowAuthorityPreviewInput(input);
     workflow_input.motion_plan = input.motion_plan;
+    workflow_input.planning_start_position = input.planning_start_position;
+    workflow_input.recipe_id = input.recipe_id;
+    workflow_input.version_id = input.version_id;
     workflow_input.max_jerk = input.max_jerk;
     workflow_input.estimated_time_s = input.estimated_time_s;
     workflow_input.use_interpolation_planner = input.use_interpolation_planner;
     workflow_input.interpolation_algorithm = input.interpolation_algorithm;
+    workflow_input.requested_execution_strategy = input.requested_execution_strategy;
+    workflow_input.point_flying_carrier_policy = input.point_flying_carrier_policy;
     return workflow_input;
 }
 

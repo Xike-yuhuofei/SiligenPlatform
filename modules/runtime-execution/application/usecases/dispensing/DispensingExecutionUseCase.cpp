@@ -593,7 +593,7 @@ Result<DispensingExecutionResult> DispensingExecutionUseCase::Impl::ExecuteInter
 
     const auto& execution_package = request.execution_package;
     const auto& execution_plan = execution_package.execution_plan;
-    if (execution_plan.motion_trajectory.points.size() < 2 && execution_plan.interpolation_points.size() < 2) {
+    if (!execution_plan.HasFormalTrajectory() && !execution_plan.RequiresStationaryPointShot()) {
         return Result<DispensingExecutionResult>::Failure(
             Error(ErrorCode::TRAJECTORY_GENERATION_FAILED, "轨迹点数量不足", "DispensingExecutionUseCase"));
     }
@@ -641,6 +641,9 @@ Result<DispensingExecutionResult> DispensingExecutionUseCase::Impl::ExecuteInter
     }
     if (result.total_segments == 0 && execution_plan.motion_trajectory.points.size() > 1) {
         result.total_segments = static_cast<uint32>(execution_plan.motion_trajectory.points.size() - 1);
+    }
+    if (result.total_segments == 0 && execution_plan.RequiresStationaryPointShot()) {
+        result.total_segments = 1U;
     }
     result.total_distance = execution_package.total_length_mm > 0.0f
                                 ? execution_package.total_length_mm

@@ -25,7 +25,9 @@ namespace Device {
 namespace Contracts {
 namespace Ports {
 class DeviceConnectionPort;
+class DispenserDevicePort;
 class MachineHealthPort;
+class MotionDevicePort;
 }  // namespace Ports
 }  // namespace Contracts
 }  // namespace Device
@@ -98,6 +100,8 @@ struct InfrastructureBindings {
 
     std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port;
     std::shared_ptr<Device::Contracts::Ports::DeviceConnectionPort> device_connection_port;
+    std::shared_ptr<Device::Contracts::Ports::MotionDevicePort> motion_device_port;
+    std::shared_ptr<Device::Contracts::Ports::DispenserDevicePort> dispenser_device_port;
     std::shared_ptr<Device::Contracts::Ports::MachineHealthPort> machine_health_port;
     std::shared_ptr<Domain::Diagnostics::Ports::IDiagnosticsPort> diagnostics_port;
     std::shared_ptr<Domain::Dispensing::Ports::ITriggerControllerPort> trigger_port;

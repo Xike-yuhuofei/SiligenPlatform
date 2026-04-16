@@ -10,6 +10,47 @@ from hmi_client.tools.mock_server import MockState
 
 
 class MockServerInterlockTest(unittest.TestCase):
+    def _preview_recipe_params(self, state: MockState) -> dict[str, str]:
+        recipe = state.recipes[0]
+        return {
+            "recipe_id": recipe["id"],
+            "version_id": recipe["activeVersionId"],
+        }
+
+    def test_motion_coord_status_reports_idle_axes_after_connect(self) -> None:
+        state = MockState(seed_alarms=False)
+        state.handle_request("connect", {})
+        state.handle_request("home", {"axes": ["X", "Y"]})
+
+        coord_status = state.handle_request("motion.coord.status", {"coord_sys": 1})
+
+        self.assertIn("result", coord_status)
+        self.assertEqual(coord_status["result"]["coord_sys"], 1)
+        self.assertEqual(coord_status["result"]["state"], 0)
+        self.assertFalse(coord_status["result"]["is_moving"])
+        self.assertEqual(coord_status["result"]["remaining_segments"], 0)
+        self.assertEqual(coord_status["result"]["current_velocity"], 0.0)
+        self.assertTrue(coord_status["result"]["axes"]["X"]["homed"])
+        self.assertTrue(coord_status["result"]["axes"]["X"]["in_position"])
+        self.assertEqual(coord_status["result"]["axes"]["X"]["state"], 0)
+
+    def test_motion_coord_status_reports_motion_while_axes_are_moving(self) -> None:
+        state = MockState(seed_alarms=False)
+        state.handle_request("connect", {})
+        state.handle_request("home", {"axes": ["X", "Y"]})
+        state.handle_request("move", {"x": 3.0, "y": 2.0, "speed": 8.0})
+
+        coord_status = state.handle_request("motion.coord.status", {"coord_sys": 1})
+
+        self.assertIn("result", coord_status)
+        self.assertEqual(coord_status["result"]["state"], 1)
+        self.assertTrue(coord_status["result"]["is_moving"])
+        self.assertEqual(coord_status["result"]["remaining_segments"], 1)
+        self.assertEqual(coord_status["result"]["current_velocity"], 8.0)
+        self.assertEqual(coord_status["result"]["axes"]["X"]["state"], 1)
+        self.assertEqual(coord_status["result"]["axes"]["X"]["position"], 3.0)
+        self.assertEqual(coord_status["result"]["axes"]["Y"]["position"], 2.0)
+
     def test_status_reflects_mock_io_switches_and_limit_bits(self) -> None:
         state = MockState(seed_alarms=False)
         state.handle_request("connect", {})
@@ -56,7 +97,11 @@ class MockServerInterlockTest(unittest.TestCase):
         )
         plan = state.handle_request(
             "dxf.plan.prepare",
-            {"artifact_id": state.dxf.artifact_id, "dispensing_speed_mm_s": 12.5},
+            {
+                "artifact_id": state.dxf.artifact_id,
+                "dispensing_speed_mm_s": 12.5,
+                **self._preview_recipe_params(state),
+            },
         )
         self.assertIn("result", plan)
         snapshot = state.handle_request("dxf.preview.snapshot", {"plan_id": plan["result"]["plan_id"]})
@@ -94,7 +139,11 @@ class MockServerInterlockTest(unittest.TestCase):
         )
         plan = state.handle_request(
             "dxf.plan.prepare",
-            {"artifact_id": state.dxf.artifact_id, "dispensing_speed_mm_s": 12.5},
+            {
+                "artifact_id": state.dxf.artifact_id,
+                "dispensing_speed_mm_s": 12.5,
+                **self._preview_recipe_params(state),
+            },
         )
         snapshot = state.handle_request("dxf.preview.snapshot", {"plan_id": plan["result"]["plan_id"]})
         confirm = state.handle_request(

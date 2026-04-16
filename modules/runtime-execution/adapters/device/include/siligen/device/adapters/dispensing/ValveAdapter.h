@@ -3,6 +3,7 @@
 #include "runtime_execution/contracts/dispensing/DispenseCompensationProfile.h"
 #include "runtime_execution/contracts/dispensing/IValvePort.h"
 #include "process_planning/contracts/configuration/ValveConfig.h"
+#include "siligen/device/contracts/ports/device_ports.h"
 #include "shared/types/Error.h"
 #include "shared/types/Types.h"
 #include "shared/types/ConfigTypes.h"
@@ -24,7 +25,8 @@
      * 实现IValvePort接口，封装MultiCard硬件阀门控制逻辑
      * 作为基础设施层的适配器，负责将领域接口转换为具体的硬件操作
      */
-    class ValveAdapter : public Domain::Dispensing::Ports::IValvePort {
+    class ValveAdapter : public Domain::Dispensing::Ports::IValvePort,
+                         public Siligen::Device::Contracts::Ports::DispenserDevicePort {
        public:
         /**
          * @brief 构造函数
@@ -73,6 +75,14 @@
         Shared::Types::Result<Domain::Dispensing::Ports::SupplyValveState> CloseSupply() noexcept override;
 
         Shared::Types::Result<Domain::Dispensing::Ports::SupplyValveStatusDetail> GetSupplyStatus() noexcept override;
+
+        Siligen::SharedKernel::VoidResult Execute(
+            const Siligen::Device::Contracts::Commands::DispenserCommand& command) override;
+
+        Siligen::SharedKernel::Result<Siligen::Device::Contracts::State::DispenserState> ReadState() const override;
+
+        Siligen::SharedKernel::Result<Siligen::Device::Contracts::Capabilities::DispenserCapability>
+        DescribeCapability() const override;
 
        private:
         /**
@@ -200,6 +210,7 @@
         bool timed_dispenser_active_ = false;
         bool timed_dispenser_stop_requested_ = false;
         bool timed_dispenser_pause_requested_ = false;
+        std::string last_execution_id_;
 
         // CMP 位置触发流式加载状态
         std::atomic<bool> cmp_streaming_active_{false};

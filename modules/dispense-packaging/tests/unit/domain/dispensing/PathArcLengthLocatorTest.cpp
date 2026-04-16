@@ -52,6 +52,20 @@ ProcessSegment BuildSplineSegment(
     return process_segment;
 }
 
+ProcessSegment BuildPointSegment(const Point2D& position) {
+    Segment segment;
+    segment.type = SegmentType::Line;
+    segment.line.start = position;
+    segment.line.end = position;
+    segment.length = 0.0f;
+    segment.is_point = true;
+
+    ProcessSegment process_segment;
+    process_segment.geometry = segment;
+    process_segment.dispense_on = true;
+    return process_segment;
+}
+
 }  // namespace
 
 TEST(PathArcLengthLocatorTest, LocatesArcMidpointOnVisiblePath) {
@@ -97,4 +111,23 @@ TEST(PathArcLengthLocatorTest, RejectsNonFiniteSplineControlPoints) {
 
     ASSERT_TRUE(result.IsError());
     EXPECT_NE(result.GetError().GetMessage().find("finite"), std::string::npos);
+}
+
+TEST(PathArcLengthLocatorTest, LocatesZeroLengthPointSegmentWithoutFailure) {
+    PathArcLengthLocator locator;
+    ProcessPath path;
+    path.segments.push_back(BuildPointSegment(Point2D(5.0f, 5.0f)));
+    path.segments.push_back(BuildArcSegment(Point2D(5.0f, 5.0f), 10.0f, 0.0f, 90.0f));
+
+    const auto point_result = locator.Locate(path, 0.0f, 0.05f, 1.0f);
+    const auto downstream_result = locator.Locate(path, 2.0f, 0.05f, 1.0f);
+
+    ASSERT_TRUE(point_result.IsSuccess()) << point_result.GetError().GetMessage();
+    EXPECT_EQ(point_result.Value().segment_index, 0U);
+    EXPECT_NEAR(point_result.Value().position.x, 5.0f, 1e-4f);
+    EXPECT_NEAR(point_result.Value().position.y, 5.0f, 1e-4f);
+
+    ASSERT_TRUE(downstream_result.IsSuccess()) << downstream_result.GetError().GetMessage();
+    EXPECT_EQ(downstream_result.Value().segment_index, 1U);
+    EXPECT_GT(downstream_result.Value().position.DistanceTo(Point2D(5.0f, 5.0f)), 0.0f);
 }

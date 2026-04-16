@@ -35,6 +35,10 @@ using Siligen::ProcessPath::Contracts::PathGenerationResult;
 using Siligen::ProcessPath::Contracts::PathGenerationStatus;
 using Siligen::ProcessPath::Contracts::PathSourceResult;
 using Siligen::Shared::Types::ErrorCode;
+using Siligen::Shared::Types::DispensingExecutionGeometryKind;
+using Siligen::Shared::Types::DispensingExecutionStrategy;
+using Siligen::Shared::Types::PointFlyingCarrierDirectionMode;
+using Siligen::Shared::Types::PointFlyingCarrierPolicy;
 using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::TrajectoryConfig;
 using Siligen::Shared::Types::Point2D;
@@ -181,6 +185,20 @@ public:
     std::vector<std::string> loaded_paths;
 };
 
+class PointOnlyPathSourcePort final : public IPathSourcePort {
+public:
+    ResultT<PathSourceResult> LoadFromFile(const std::string& filepath) override {
+        loaded_paths.push_back(filepath);
+        PathSourceResult result;
+        result.success = true;
+        result.primitives.push_back(Primitive::MakePoint(Point2D{5.0f, 5.0f}));
+        result.metadata.push_back({});
+        return ResultT<PathSourceResult>::Success(result);
+    }
+
+    std::vector<std::string> loaded_paths;
+};
+
 class FittableOutOfStrokePathSourcePort final : public IPathSourcePort {
 public:
     ResultT<PathSourceResult> LoadFromFile(const std::string& filepath) override {
@@ -257,9 +275,18 @@ std::filesystem::path MakeTempPbPath() {
     return path;
 }
 
+PointFlyingCarrierPolicy BuildCanonicalPointFlyingCarrierPolicy() {
+    PointFlyingCarrierPolicy policy;
+    policy.direction_mode = PointFlyingCarrierDirectionMode::APPROACH_DIRECTION;
+    policy.trigger_spatial_interval_mm = 5.0f;
+    return policy;
+}
+
 PlanningRequest MakePlanningRequest(const std::filesystem::path& pb_path) {
     PlanningRequest request;
     request.dxf_filepath = pb_path.string();
+    request.recipe_id = "recipe-export";
+    request.version_id = "version-published";
     request.trajectory_config = TrajectoryConfig();
     request.trajectory_config.max_velocity = 100.0f;
     request.trajectory_config.max_acceleration = 500.0f;
@@ -268,6 +295,7 @@ PlanningRequest MakePlanningRequest(const std::filesystem::path& pb_path) {
     request.trajectory_config.dispensing_interval = 3.0f;
     request.optimize_path = true;
     request.use_interpolation_planner = true;
+    request.point_flying_carrier_policy = BuildCanonicalPointFlyingCarrierPolicy();
     return request;
 }
 
@@ -478,7 +506,7 @@ TEST(PlanningUseCaseExportPortTest, ExecuteExportsEquivalentGluePointsForSubdivi
     std::filesystem::remove(temp_pb, ec);
 }
 
-TEST(PlanningUseCaseExportPortTest, ExecuteFailsOnPointNoiseWithExplicitProcessPathError) {
+TEST(PlanningUseCaseExportPortTest, PrepareAuthorityPreviewIncludesPointAuthorityForMixedInput) {
     auto temp_pb = MakeTempPbPath();
     auto config_port = std::make_shared<FakeConfigurationPort>();
     auto export_port = std::make_shared<FakePlanningArtifactExportPort>();
@@ -492,16 +520,52 @@ TEST(PlanningUseCaseExportPortTest, ExecuteFailsOnPointNoiseWithExplicitProcessP
         config_port,
         CreatePlanningInputPreparationPort(pb_service),
         export_port);
-    const auto noisy = noisy_use_case.Execute(MakePlanningRequest(temp_pb));
-    ASSERT_TRUE(noisy.IsError());
-    EXPECT_EQ(noisy.GetError().GetCode(), ErrorCode::INVALID_PARAMETER);
-    EXPECT_NE(
-        noisy.GetError().GetMessage().find("process path build failed at stage input_validation"),
-        std::string::npos);
-    EXPECT_NE(
-        noisy.GetError().GetMessage().find("point primitive is not a supported live process-path input"),
-        std::string::npos);
-    EXPECT_EQ(noisy.GetError().GetMessage().find("process path为空"), std::string::npos);
+    const auto preview = noisy_use_case.PrepareAuthorityPreview(MakePlanningRequest(temp_pb));
+    ASSERT_TRUE(preview.IsSuccess()) << preview.GetError().ToString();
+    EXPECT_EQ(export_port->export_calls, 0);
+    EXPECT_TRUE(preview.Value().artifacts.preview_authority_ready);
+    EXPECT_TRUE(preview.Value().artifacts.preview_binding_ready);
+    ASSERT_FALSE(preview.Value().artifacts.glue_points.empty());
+    EXPECT_EQ(CountPointsNear(preview.Value().artifacts.glue_points, Point2D{5.0f, 5.0f}, 1e-4f), 1U);
+    EXPECT_EQ(
+        CountPointsNear(
+            preview.Value().artifacts.glue_points,
+            Point2D{10.0f / 3.0f, 0.0f},
+            1e-4f),
+        1U);
+    EXPECT_EQ(preview.Value().artifacts.trigger_count,
+              static_cast<int>(preview.Value().artifacts.glue_points.size()));
+
+    std::error_code ec;
+    std::filesystem::remove(temp_pb, ec);
+}
+
+TEST(PlanningUseCaseExportPortTest, PrepareAuthorityPreviewSupportsPointOnlyInputForExplicitStationaryShot) {
+    auto temp_pb = MakeTempPbPath();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto export_port = std::make_shared<FakePlanningArtifactExportPort>();
+    auto pb_service = std::make_shared<DxfPbPreparationService>();
+
+    PlanningUseCase point_only_use_case(
+        std::make_shared<PointOnlyPathSourcePort>(),
+        CreateProcessPathPort(),
+        CreateMotionPlanningPort(),
+        CreatePlanningOperations(),
+        config_port,
+        CreatePlanningInputPreparationPort(pb_service),
+        export_port);
+    auto request = MakePlanningRequest(temp_pb);
+    request.requested_execution_strategy = DispensingExecutionStrategy::STATIONARY_SHOT;
+    const auto result = point_only_use_case.PrepareAuthorityPreview(request);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
+    EXPECT_TRUE(result.Value().artifacts.preview_authority_ready);
+    EXPECT_TRUE(result.Value().artifacts.preview_binding_ready);
+    EXPECT_EQ(result.Value().process_path.segments.size(), 1U);
+    EXPECT_TRUE(result.Value().process_path.segments.front().geometry.is_point);
+    ASSERT_EQ(result.Value().artifacts.glue_points.size(), 1U);
+    EXPECT_EQ(CountPointsNear(result.Value().artifacts.glue_points, Point2D{5.0f, 5.0f}, 1e-4f), 1U);
+    EXPECT_EQ(result.Value().artifacts.trigger_count, 1);
     EXPECT_EQ(export_port->export_calls, 0);
 
     std::error_code ec;
@@ -538,6 +602,186 @@ TEST(PlanningUseCaseExportPortTest, ExecuteKeepsSharedVertexExportStableAcrossRe
         EXPECT_NEAR(first_glue_points[index].x, second_glue_points[index].x, 1e-4f);
         EXPECT_NEAR(first_glue_points[index].y, second_glue_points[index].y, 1e-4f);
     }
+
+    std::error_code ec;
+    std::filesystem::remove(temp_pb, ec);
+}
+
+TEST(PlanningUseCaseExportPortTest, ExecuteBuildsPointFlyingShotCarrierFromExplicitPolicyForPointOnlyInput) {
+    auto temp_pb = MakeTempPbPath();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto export_port = std::make_shared<FakePlanningArtifactExportPort>();
+    auto pb_service = std::make_shared<DxfPbPreparationService>();
+    PlanningUseCase use_case(
+        std::make_shared<PointOnlyPathSourcePort>(),
+        CreateProcessPathPort(),
+        CreateMotionPlanningPort(),
+        CreatePlanningOperations(),
+        config_port,
+        CreatePlanningInputPreparationPort(pb_service),
+        export_port);
+
+    const auto result = use_case.Execute(MakePlanningRequest(temp_pb));
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
+    ASSERT_TRUE(static_cast<bool>(result.Value().execution_package));
+    const auto& plan = result.Value().execution_package->execution_plan;
+    EXPECT_EQ(plan.geometry_kind, DispensingExecutionGeometryKind::POINT);
+    EXPECT_EQ(plan.execution_strategy, DispensingExecutionStrategy::FLYING_SHOT);
+    EXPECT_TRUE(plan.HasFormalTrajectory());
+    ASSERT_EQ(plan.trigger_distances_mm.size(), 1U);
+    EXPECT_FLOAT_EQ(plan.trigger_distances_mm.front(), 0.0f);
+    ASSERT_GE(plan.motion_trajectory.points.size(), 2U);
+    EXPECT_NEAR(plan.motion_trajectory.points.front().position.x, 5.0f, 1e-4f);
+    EXPECT_NEAR(plan.motion_trajectory.points.front().position.y, 5.0f, 1e-4f);
+    EXPECT_NEAR(plan.motion_trajectory.points.back().position.x, 8.5355f, 1e-3f);
+    EXPECT_NEAR(plan.motion_trajectory.points.back().position.y, 8.5355f, 1e-3f);
+    EXPECT_FLOAT_EQ(plan.total_length_mm, 5.0f);
+    EXPECT_EQ(export_port->export_calls, 1);
+
+    std::error_code ec;
+    std::filesystem::remove(temp_pb, ec);
+}
+
+TEST(PlanningUseCaseExportPortTest, ExecuteAllowsExplicitStationaryShotForPointOnlyInput) {
+    auto temp_pb = MakeTempPbPath();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto export_port = std::make_shared<FakePlanningArtifactExportPort>();
+    auto pb_service = std::make_shared<DxfPbPreparationService>();
+    PlanningUseCase use_case(
+        std::make_shared<PointOnlyPathSourcePort>(),
+        CreateProcessPathPort(),
+        CreateMotionPlanningPort(),
+        CreatePlanningOperations(),
+        config_port,
+        CreatePlanningInputPreparationPort(pb_service),
+        export_port);
+
+    auto request = MakePlanningRequest(temp_pb);
+    request.requested_execution_strategy = DispensingExecutionStrategy::STATIONARY_SHOT;
+    const auto result = use_case.Execute(request);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
+    ASSERT_TRUE(static_cast<bool>(result.Value().execution_package));
+    EXPECT_EQ(
+        result.Value().execution_package->execution_plan.execution_strategy,
+        DispensingExecutionStrategy::STATIONARY_SHOT);
+
+    std::error_code ec;
+    std::filesystem::remove(temp_pb, ec);
+}
+
+TEST(PlanningUseCaseExportPortTest, ExecuteAllowsExplicitFlyingShotForPointOnlyInput) {
+    auto temp_pb = MakeTempPbPath();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto export_port = std::make_shared<FakePlanningArtifactExportPort>();
+    auto pb_service = std::make_shared<DxfPbPreparationService>();
+    PlanningUseCase use_case(
+        std::make_shared<PointOnlyPathSourcePort>(),
+        CreateProcessPathPort(),
+        CreateMotionPlanningPort(),
+        CreatePlanningOperations(),
+        config_port,
+        CreatePlanningInputPreparationPort(pb_service),
+        export_port);
+
+    auto request = MakePlanningRequest(temp_pb);
+    request.requested_execution_strategy = DispensingExecutionStrategy::FLYING_SHOT;
+    const auto result = use_case.Execute(request);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
+    ASSERT_TRUE(static_cast<bool>(result.Value().execution_package));
+    const auto& plan = result.Value().execution_package->execution_plan;
+    EXPECT_EQ(plan.geometry_kind, DispensingExecutionGeometryKind::POINT);
+    EXPECT_EQ(plan.execution_strategy, DispensingExecutionStrategy::FLYING_SHOT);
+    EXPECT_TRUE(plan.HasFormalTrajectory());
+    ASSERT_EQ(plan.trigger_distances_mm.size(), 1U);
+    EXPECT_FLOAT_EQ(plan.trigger_distances_mm.front(), 0.0f);
+    EXPECT_EQ(export_port->export_calls, 1);
+
+    std::error_code ec;
+    std::filesystem::remove(temp_pb, ec);
+}
+
+TEST(PlanningUseCaseExportPortTest, ExecuteRejectsPointFlyingShotWithoutCarrierPolicy) {
+    auto temp_pb = MakeTempPbPath();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto export_port = std::make_shared<FakePlanningArtifactExportPort>();
+    auto pb_service = std::make_shared<DxfPbPreparationService>();
+    PlanningUseCase use_case(
+        std::make_shared<PointOnlyPathSourcePort>(),
+        CreateProcessPathPort(),
+        CreateMotionPlanningPort(),
+        CreatePlanningOperations(),
+        config_port,
+        CreatePlanningInputPreparationPort(pb_service),
+        export_port);
+
+    auto request = MakePlanningRequest(temp_pb);
+    request.point_flying_carrier_policy.reset();
+    const auto result = use_case.Execute(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_PARAMETER);
+    EXPECT_NE(result.GetError().GetMessage().find("point_flying_carrier_policy"), std::string::npos);
+    EXPECT_EQ(export_port->export_calls, 0);
+
+    std::error_code ec;
+    std::filesystem::remove(temp_pb, ec);
+}
+
+TEST(PlanningUseCaseExportPortTest, ExecuteRejectsPointFlyingShotWhenPlanningStartMatchesPoint) {
+    auto temp_pb = MakeTempPbPath();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto export_port = std::make_shared<FakePlanningArtifactExportPort>();
+    auto pb_service = std::make_shared<DxfPbPreparationService>();
+    PlanningUseCase use_case(
+        std::make_shared<PointOnlyPathSourcePort>(),
+        CreateProcessPathPort(),
+        CreateMotionPlanningPort(),
+        CreatePlanningOperations(),
+        config_port,
+        CreatePlanningInputPreparationPort(pb_service),
+        export_port);
+
+    auto request = MakePlanningRequest(temp_pb);
+    request.start_x = 5.0f;
+    request.start_y = 5.0f;
+    const auto result = use_case.Execute(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_PARAMETER);
+    EXPECT_NE(result.GetError().GetMessage().find("planning_start_position"), std::string::npos);
+    EXPECT_EQ(export_port->export_calls, 0);
+
+    std::error_code ec;
+    std::filesystem::remove(temp_pb, ec);
+}
+
+TEST(PlanningUseCaseExportPortTest, ExecuteRejectsExplicitStationaryShotForPathGeometry) {
+    auto temp_pb = MakeTempPbPath();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto export_port = std::make_shared<FakePlanningArtifactExportPort>();
+    auto pb_service = std::make_shared<DxfPbPreparationService>();
+    PlanningUseCase use_case(
+        std::make_shared<FakePathSourcePort>(),
+        CreateProcessPathPort(),
+        CreateMotionPlanningPort(),
+        CreatePlanningOperations(),
+        config_port,
+        CreatePlanningInputPreparationPort(pb_service),
+        export_port);
+
+    auto request = MakePlanningRequest(temp_pb);
+    request.requested_execution_strategy = DispensingExecutionStrategy::STATIONARY_SHOT;
+    const auto result = use_case.Execute(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_PARAMETER);
+    EXPECT_NE(
+        result.GetError().GetMessage().find("stationary_shot only supports POINT geometry"),
+        std::string::npos);
+    EXPECT_EQ(export_port->export_calls, 0);
 
     std::error_code ec;
     std::filesystem::remove(temp_pb, ec);

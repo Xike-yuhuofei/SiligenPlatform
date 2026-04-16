@@ -80,6 +80,20 @@ ProcessSegment BuildSplineSegment(const std::vector<Point2D>& control_points, bo
     return process_segment;
 }
 
+ProcessSegment BuildPointSegment(const Point2D& position, bool dispense_on = true) {
+    Segment segment;
+    segment.type = SegmentType::Line;
+    segment.line.start = position;
+    segment.line.end = position;
+    segment.length = 0.0f;
+    segment.is_point = true;
+
+    ProcessSegment process_segment;
+    process_segment.geometry = segment;
+    process_segment.dispense_on = dispense_on;
+    return process_segment;
+}
+
 AuthorityTriggerLayoutPlannerRequest BuildRequest() {
     AuthorityTriggerLayoutPlannerRequest request;
     request.layout_id_seed = "planner-test";
@@ -210,6 +224,34 @@ TEST(AuthorityTriggerLayoutPlannerTest, SolvesGlobalSpacingAcrossOpenSpan) {
     EXPECT_NEAR(layout.trigger_points[1].position.x, 10.0f / 3.0f, 1e-4f);
     EXPECT_NEAR(layout.trigger_points[2].position.x, 20.0f / 3.0f, 1e-4f);
     EXPECT_NEAR(layout.trigger_points[3].position.x, 10.0f, 1e-4f);
+}
+
+TEST(AuthorityTriggerLayoutPlannerTest, AcceptsPointOnlySpanAsSingleAuthorityTrigger) {
+    AuthorityTriggerLayoutPlanner planner;
+    auto request = BuildRequest();
+    request.process_path.segments.push_back(BuildPointSegment(Point2D(5.0f, 5.0f)));
+
+    const auto result = planner.Plan(request);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    const auto& layout = result.Value();
+    EXPECT_TRUE(layout.authority_ready);
+    EXPECT_EQ(layout.state, Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayoutState::LayoutReady);
+    ASSERT_EQ(layout.spans.size(), 1U);
+    ASSERT_EQ(layout.validation_outcomes.size(), 1U);
+    ASSERT_EQ(layout.trigger_points.size(), 1U);
+
+    const auto& span = layout.spans.front();
+    EXPECT_FALSE(span.closed);
+    EXPECT_EQ(span.topology_type, DispenseSpanTopologyType::OpenChain);
+    EXPECT_EQ(span.total_length_mm, 0.0f);
+    EXPECT_EQ(span.interval_count, 0U);
+    EXPECT_EQ(span.validation_state, SpacingValidationClassification::Pass);
+    EXPECT_EQ(layout.validation_outcomes.front().classification, SpacingValidationClassification::Pass);
+    EXPECT_EQ(layout.trigger_points.front().source_kind, LayoutTriggerSourceKind::Anchor);
+    EXPECT_NEAR(layout.trigger_points.front().position.x, 5.0f, 1e-4f);
+    EXPECT_NEAR(layout.trigger_points.front().position.y, 5.0f, 1e-4f);
+    EXPECT_EQ(CountPointsNear(layout.trigger_points, span.span_id, Point2D(5.0f, 5.0f), 1e-4f), 1U);
 }
 
 TEST(AuthorityTriggerLayoutPlannerTest, PreservesGlobalDistancesAcrossSeparatedDispenseSpans) {
@@ -626,6 +668,36 @@ TEST(AuthorityTriggerLayoutPlannerTest, IgnoresShortAuxiliaryOpenComponentWhenPr
                     trigger.position.DistanceTo(Point2D(27.0f, 0.0f)) <= 1e-4f;
             }),
         0);
+}
+
+TEST(AuthorityTriggerLayoutPlannerTest, KeepsDisconnectedPointComponentAsEffectiveAuthorityGeometry) {
+    AuthorityTriggerLayoutPlanner planner;
+    auto request = BuildRequest();
+    request.process_path.segments.push_back(
+        BuildLineSegment(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)));
+    request.process_path.segments.push_back(
+        BuildPointSegment(Point2D(25.0f, 5.0f)));
+
+    const auto result = planner.Plan(request);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    const auto& layout = result.Value();
+    EXPECT_TRUE(layout.authority_ready);
+    EXPECT_EQ(layout.dispatch_type, TopologyDispatchType::MultiContour);
+    EXPECT_EQ(layout.effective_component_count, 2U);
+    EXPECT_EQ(layout.ignored_component_count, 0U);
+    ASSERT_EQ(layout.components.size(), 2U);
+    ASSERT_EQ(layout.spans.size(), 2U);
+    EXPECT_FALSE(layout.components[0].ignored);
+    EXPECT_FALSE(layout.components[1].ignored);
+    EXPECT_EQ(CountGlobalPointsNear(layout.trigger_points, Point2D(25.0f, 5.0f), 1e-4f), 1U);
+    EXPECT_TRUE(std::any_of(
+        layout.spans.begin(),
+        layout.spans.end(),
+        [](const auto& span) {
+            return span.total_length_mm == 0.0f &&
+                span.validation_state == SpacingValidationClassification::Pass;
+        }));
 }
 
 TEST(AuthorityTriggerLayoutPlannerTest, ClassifiesRapidSeparatedSharedVertexSpansAsExplicitProcessBoundary) {

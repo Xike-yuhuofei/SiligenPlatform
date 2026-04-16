@@ -16,6 +16,12 @@ namespace Siligen::Application::UseCases::Dispensing {
 
 using Domain::Motion::Ports::IMotionStatePort;
 using Domain::Safety::Ports::IInterlockSignalPort;
+using Siligen::Device::Contracts::Capabilities::DeviceCapabilities;
+using Siligen::Device::Contracts::Capabilities::DispenserCapability;
+using Siligen::Device::Contracts::Ports::DispenserDevicePort;
+using Siligen::Device::Contracts::Ports::MotionDevicePort;
+using Siligen::Shared::Types::DispensingExecutionGeometryKind;
+using Siligen::Shared::Types::DispensingExecutionStrategy;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 
@@ -64,19 +70,25 @@ std::uint32_t ToElapsedMs(const std::chrono::steady_clock::time_point start_time
 DispensingWorkflowUseCase::DispensingWorkflowUseCase(
     std::shared_ptr<IUploadFilePort> upload_use_case,
     std::shared_ptr<PlanningUseCase> planning_use_case,
+    std::shared_ptr<Siligen::Application::Ports::Dispensing::IRecipePlanningPolicyPort> recipe_planning_policy_port,
     std::shared_ptr<Siligen::Application::Ports::Dispensing::IWorkflowExecutionPort> execution_port,
     std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
+    std::shared_ptr<MotionDevicePort> motion_device_port,
+    std::shared_ptr<DispenserDevicePort> dispenser_device_port,
     std::shared_ptr<IMotionStatePort> motion_state_port,
     std::shared_ptr<Domain::Motion::Ports::IHomingPort> homing_port,
     std::shared_ptr<IInterlockSignalPort> interlock_signal_port)
     : upload_use_case_(std::move(upload_use_case)),
       planning_use_case_(std::move(planning_use_case)),
+      recipe_planning_policy_port_(std::move(recipe_planning_policy_port)),
       execution_port_(std::move(execution_port)),
       connection_port_(std::move(connection_port)),
+      motion_device_port_(std::move(motion_device_port)),
+      dispenser_device_port_(std::move(dispenser_device_port)),
       motion_state_port_(std::move(motion_state_port)),
       homing_port_(std::move(homing_port)),
       interlock_signal_port_(std::move(interlock_signal_port)) {
-    if (!upload_use_case_ || !planning_use_case_ || !execution_port_) {
+    if (!upload_use_case_ || !planning_use_case_ || !recipe_planning_policy_port_ || !execution_port_) {
         throw std::invalid_argument("DispensingWorkflowUseCase: dependencies cannot be null");
     }
 }
@@ -113,6 +125,15 @@ Result<CreateArtifactResponse> DispensingWorkflowUseCase::CreateArtifact(const U
 
 Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const PreparePlanRequest& request) {
     const auto prepare_start = std::chrono::steady_clock::now();
+    if (request.recipe_id.empty()) {
+        return Result<PreparePlanResponse>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "recipe_id is required", "DispensingWorkflowUseCase"));
+    }
+    if (request.version_id.empty()) {
+        return Result<PreparePlanResponse>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "version_id is required", "DispensingWorkflowUseCase"));
+    }
+
     ArtifactRecord artifact;
     {
         std::lock_guard<std::mutex> lock(artifacts_mutex_);
@@ -125,6 +146,23 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
     }
 
     auto planning_request = request.planning_request;
+    if (!planning_request.recipe_id.empty() && planning_request.recipe_id != request.recipe_id) {
+        return Result<PreparePlanResponse>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "planning_request.recipe_id mismatch", "DispensingWorkflowUseCase"));
+    }
+    if (!planning_request.version_id.empty() && planning_request.version_id != request.version_id) {
+        return Result<PreparePlanResponse>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "planning_request.version_id mismatch", "DispensingWorkflowUseCase"));
+    }
+    const auto recipe_policy_result =
+        recipe_planning_policy_port_->ResolvePlanningPolicy(request.recipe_id, request.version_id);
+    if (recipe_policy_result.IsError()) {
+        return Result<PreparePlanResponse>::Failure(recipe_policy_result.GetError());
+    }
+    const auto& recipe_policy = recipe_policy_result.Value();
+    planning_request.recipe_id = recipe_policy.recipe_id;
+    planning_request.version_id = recipe_policy.version_id;
+    planning_request.point_flying_carrier_policy = recipe_policy.point_flying_carrier_policy;
     if (planning_request.dxf_filepath.empty()) {
         planning_request.dxf_filepath = artifact.upload_response.filepath;
     }
@@ -598,6 +636,18 @@ std::string DispensingWorkflowUseCase::BuildPlanFingerprint(
 
     oss << artifact_id << '|'
         << execution_launch.authority_cache_key << '|'
+        << execution_launch.planning_request.recipe_id << '|'
+        << execution_launch.planning_request.version_id << '|'
+        << execution_launch.planning_request.HasExplicitExecutionStrategy() << '|'
+        << Siligen::Shared::Types::ToString(
+               execution_launch.planning_request.ResolveRequestedExecutionStrategy()) << '|'
+        << execution_launch.planning_request.point_flying_carrier_policy.has_value() << '|';
+    if (execution_launch.planning_request.point_flying_carrier_policy.has_value()) {
+        const auto& policy = execution_launch.planning_request.point_flying_carrier_policy.value();
+        oss << Siligen::Shared::Types::ToString(policy.direction_mode) << '|'
+            << policy.trigger_spatial_interval_mm << '|';
+    }
+    oss
         << runtime_request.dry_run << '|'
         << Domain::Machine::ValueObjects::ToString(machine_mode) << '|'
         << Domain::Dispensing::ValueObjects::ToString(execution_mode) << '|'
@@ -1036,6 +1086,87 @@ Result<DispensingWorkflowUseCase::PlanExecutionLaunch> DispensingWorkflowUseCase
     return Result<PlanExecutionLaunch>::Success(it->second.execution_launch);
 }
 
+DispensingWorkflowUseCase::ExecutionCapabilityDiagnostic
+DispensingWorkflowUseCase::EvaluateExecutionCapability(const PlanRecord& plan_record) const {
+    ExecutionCapabilityDiagnostic diagnostic;
+    const auto execution_package = plan_record.execution_launch.execution_package;
+    if (!execution_package) {
+        return diagnostic;
+    }
+
+    const auto& execution_plan = execution_package->execution_plan;
+    if (execution_plan.execution_strategy != DispensingExecutionStrategy::FLYING_SHOT) {
+        return diagnostic;
+    }
+
+    const auto execution_request = BuildExecutionRequest(plan_record.execution_launch);
+    const bool device_connected = connection_port_ && connection_port_->IsConnected();
+    if (execution_request.dry_run && !device_connected) {
+        return diagnostic;
+    }
+
+    if (!connection_port_ || !device_connected) {
+        diagnostic.ready = false;
+        diagnostic.failure_reason = "flying_shot requires connected device";
+        return diagnostic;
+    }
+    if (!motion_device_port_) {
+        diagnostic.ready = false;
+        diagnostic.failure_reason = "flying_shot capability probe requires motion device port";
+        return diagnostic;
+    }
+    if (!dispenser_device_port_) {
+        diagnostic.ready = false;
+        diagnostic.failure_reason = "flying_shot capability probe requires dispenser device port";
+        return diagnostic;
+    }
+
+    const auto motion_capabilities_result = motion_device_port_->DescribeCapabilities();
+    if (motion_capabilities_result.IsError()) {
+        diagnostic.ready = false;
+        diagnostic.failure_reason =
+            "failed to read motion capabilities: " + motion_capabilities_result.GetError().GetMessage();
+        return diagnostic;
+    }
+
+    const auto dispenser_capability_result = dispenser_device_port_->DescribeCapability();
+    if (dispenser_capability_result.IsError()) {
+        diagnostic.ready = false;
+        diagnostic.failure_reason =
+            "failed to read dispenser capabilities: " + dispenser_capability_result.GetError().GetMessage();
+        return diagnostic;
+    }
+
+    const auto& motion_capabilities = motion_capabilities_result.Value();
+    const auto& trigger = motion_capabilities.trigger;
+    const auto& dispenser = dispenser_capability_result.Value();
+    if (execution_request.use_hardware_trigger) {
+        if (!trigger.supports_in_motion_position_trigger) {
+            diagnostic.ready = false;
+            diagnostic.failure_reason = "flying_shot requires in-motion position trigger support";
+            return diagnostic;
+        }
+    } else if (!trigger.supports_in_motion_time_trigger) {
+        diagnostic.ready = false;
+        diagnostic.failure_reason = "flying_shot requires in-motion time trigger support";
+        return diagnostic;
+    }
+
+    if (execution_plan.geometry_kind == DispensingExecutionGeometryKind::POINT) {
+        if (!dispenser.supports_in_motion_pulse_shot) {
+            diagnostic.ready = false;
+            diagnostic.failure_reason = "point flying_shot requires dispenser in-motion pulse shot support";
+            return diagnostic;
+        }
+    } else if (!dispenser.supports_continuous_mode) {
+        diagnostic.ready = false;
+        diagnostic.failure_reason = "path flying_shot requires dispenser continuous mode support";
+        return diagnostic;
+    }
+
+    return diagnostic;
+}
+
 DispensingWorkflowUseCase::PreviewGateDiagnostic DispensingWorkflowUseCase::BuildPreviewGateDiagnostic(
     const PlanRecord& plan_record,
     bool require_execution_binding) const {
@@ -1093,6 +1224,11 @@ DispensingWorkflowUseCase::PreviewGateDiagnostic DispensingWorkflowUseCase::Buil
             diagnostic.owner_message = diagnostic.failure_reason.empty()
                 ? "authority trigger binding unavailable"
                 : diagnostic.failure_reason;
+            return diagnostic;
+        }
+        const auto capability_diagnostic = EvaluateExecutionCapability(plan_record);
+        if (!capability_diagnostic.ready) {
+            diagnostic.owner_message = capability_diagnostic.failure_reason;
             return diagnostic;
         }
     }

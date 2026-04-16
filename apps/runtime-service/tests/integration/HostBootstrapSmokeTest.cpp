@@ -245,6 +245,11 @@ std::string BuildMockMachineIni() {
 }  // namespace
 
 TEST(RuntimeExecutionIntegrationHostBootstrapSmokeTest, BuildsContainerFromCanonicalMockConfigWithoutHardware) {
+    using DeviceConnection = Siligen::Device::Contracts::Commands::DeviceConnection;
+    using DeviceConnectionPort = Siligen::Device::Contracts::Ports::DeviceConnectionPort;
+    using DispenserDevicePort = Siligen::Device::Contracts::Ports::DispenserDevicePort;
+    using MotionDevicePort = Siligen::Device::Contracts::Ports::MotionDevicePort;
+
     ScopedTempWorkspace workspace("canonical_mock_config");
     const auto expected_config_path =
         workspace.WriteFile(kCanonicalMachineConfigRelativePath, BuildMockMachineIni());
@@ -271,16 +276,57 @@ TEST(RuntimeExecutionIntegrationHostBootstrapSmokeTest, BuildsContainerFromCanon
     EXPECT_NE(
         container->ResolvePort<Siligen::Device::Contracts::Ports::DeviceConnectionPort>(),
         nullptr);
+    EXPECT_NE(container->ResolvePort<MotionDevicePort>(), nullptr);
     EXPECT_NE(
         container->ResolvePort<Siligen::RuntimeExecution::Contracts::Motion::IMotionRuntimePort>(),
         nullptr);
     EXPECT_NE(
         container->ResolvePort<Siligen::Domain::Dispensing::Ports::IValvePort>(),
         nullptr);
+    EXPECT_NE(container->ResolvePort<DispenserDevicePort>(), nullptr);
     EXPECT_NE(
         container->ResolvePort<Siligen::Domain::Dispensing::Ports::ITaskSchedulerPort>(),
         nullptr);
     EXPECT_NE(container->GetMultiCardInstance(), nullptr);
+
+    auto connection_port = container->ResolvePort<DeviceConnectionPort>();
+    auto motion_device_port = container->ResolvePort<MotionDevicePort>();
+    auto dispenser_device_port = container->ResolvePort<DispenserDevicePort>();
+    ASSERT_NE(connection_port, nullptr);
+    ASSERT_NE(motion_device_port, nullptr);
+    ASSERT_NE(dispenser_device_port, nullptr);
+
+    const auto motion_capabilities_result = motion_device_port->DescribeCapabilities();
+    ASSERT_TRUE(motion_capabilities_result.IsSuccess()) << motion_capabilities_result.GetError().GetMessage();
+    EXPECT_TRUE(motion_capabilities_result.Value().mock_backend);
+    EXPECT_TRUE(motion_capabilities_result.Value().trigger.supports_in_motion_position_trigger);
+    EXPECT_TRUE(motion_capabilities_result.Value().trigger.supports_in_motion_time_trigger);
+
+    const auto dispenser_capability_result = dispenser_device_port->DescribeCapability();
+    ASSERT_TRUE(dispenser_capability_result.IsSuccess()) << dispenser_capability_result.GetError().GetMessage();
+    EXPECT_TRUE(dispenser_capability_result.Value().supports_pause);
+    EXPECT_TRUE(dispenser_capability_result.Value().supports_resume);
+    EXPECT_TRUE(dispenser_capability_result.Value().supports_continuous_mode);
+    EXPECT_TRUE(dispenser_capability_result.Value().supports_in_motion_pulse_shot);
+    EXPECT_FALSE(dispenser_capability_result.Value().supports_prime);
+
+    DeviceConnection connection;
+    connection.local_ip = "192.168.10.10";
+    connection.card_ip = "192.168.10.20";
+    connection.local_port = 5000;
+    connection.card_port = 5000;
+    connection.timeout_ms = 3000;
+
+    const auto connect_result = connection_port->Connect(connection);
+    ASSERT_TRUE(connect_result.IsSuccess()) << connect_result.GetError().GetMessage();
+
+    const auto motion_state_result = motion_device_port->ReadState();
+    ASSERT_TRUE(motion_state_result.IsSuccess()) << motion_state_result.GetError().GetMessage();
+    EXPECT_TRUE(motion_state_result.Value().connected);
+    EXPECT_EQ(motion_state_result.Value().axes.size(), 2U);
+
+    const auto disconnect_result = connection_port->Disconnect();
+    ASSERT_TRUE(disconnect_result.IsSuccess()) << disconnect_result.GetError().GetMessage();
 
     EXPECT_TRUE(std::filesystem::exists(workspace.root() / "data" / "schemas" / "recipes"));
 }

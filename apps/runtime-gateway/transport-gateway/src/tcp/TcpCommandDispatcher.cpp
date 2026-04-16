@@ -73,6 +73,36 @@ double ReadJsonDouble(const nlohmann::json& params, const char* key, double fall
     return fallback;
 }
 
+std::string ReadJsonString(const nlohmann::json& params, const char* key, const std::string& fallback = {}) {
+    if (!params.contains(key)) {
+        return fallback;
+    }
+    try {
+        if (params.at(key).is_string()) {
+            return params.at(key).get<std::string>();
+        }
+    } catch (...) {
+        return fallback;
+    }
+    return fallback;
+}
+
+std::string ReadJsonStringAlias(
+    const nlohmann::json& params,
+    const char* canonical_key,
+    const char* alias_key,
+    const std::string& fallback = {}) {
+    const auto canonical_value = ReadJsonString(params, canonical_key);
+    if (!canonical_value.empty()) {
+        return canonical_value;
+    }
+    const auto alias_value = ReadJsonString(params, alias_key);
+    if (!alias_value.empty()) {
+        return alias_value;
+    }
+    return fallback;
+}
+
 size_t ReadJsonSizeT(const nlohmann::json& params, const char* key, size_t fallback) {
     if (!params.contains(key)) {
         return fallback;
@@ -435,8 +465,11 @@ std::string HexEncodeUint64(uint64_t value) {
 nlohmann::json BuildPreviewSignaturePayload(const std::string& filepath, const nlohmann::json& params) {
     nlohmann::json payload = nlohmann::json::object();
     payload["filepath"] = filepath;
+    payload["artifact_id"] = ReadJsonString(params, "artifact_id");
+    payload["recipe_id"] = ReadJsonString(params, "recipe_id");
+    payload["version_id"] = ReadJsonString(params, "version_id");
     payload["dry_run"] = ReadJsonBool(params, "dry_run", false);
-    payload["dispensing_speed_mm_s"] = ReadJsonDouble(params, "dispensing_speed_mm_s", ReadJsonDouble(params, "speed_mm_s", 0.0));
+    payload["dispensing_speed_mm_s"] = ReadJsonDouble(params, "dispensing_speed_mm_s", 0.0);
     payload["dry_run_speed_mm_s"] = ReadJsonDouble(params, "dry_run_speed_mm_s", 0.0);
     payload["rapid_speed_mm_s"] = ReadJsonDouble(params, "rapid_speed_mm_s", 0.0);
     payload["optimize_path"] = ReadJsonBool(params, "optimize_path", true);
@@ -455,6 +488,7 @@ nlohmann::json BuildPreviewSignaturePayload(const std::string& filepath, const n
     payload["use_hardware_trigger"] = ReadJsonBool(params, "use_hardware_trigger", true);
     payload["use_interpolation_planner"] = ReadJsonBool(params, "use_interpolation_planner", true);
     payload["interpolation_algorithm"] = ReadJsonInt(params, "interpolation_algorithm", 0);
+    payload["requested_execution_strategy"] = ReadJsonInt(params, "requested_execution_strategy", -1);
     return payload;
 }
 
@@ -462,14 +496,27 @@ std::string ComputePreviewRequestSignature(const std::string& filepath, const nl
     return BuildPreviewSignaturePayload(filepath, params).dump();
 }
 
+std::optional<Siligen::Shared::Types::DispensingExecutionStrategy> TryReadRequestedExecutionStrategy(
+    const nlohmann::json& params) {
+    using Strategy = Siligen::Shared::Types::DispensingExecutionStrategy;
+    const int raw = ReadJsonInt(params, "requested_execution_strategy", -1);
+    if (raw < static_cast<int>(Strategy::FLYING_SHOT) ||
+        raw > static_cast<int>(Strategy::STATIONARY_SHOT)) {
+        return std::nullopt;
+    }
+    return static_cast<Strategy>(raw);
+}
+
 Application::UseCases::Dispensing::PlanningRequest BuildPreviewPlanningRequest(
     const std::string& filepath,
     const nlohmann::json& params) {
     Application::UseCases::Dispensing::PlanningRequest request;
     request.dxf_filepath = filepath;
+    request.recipe_id = ReadJsonString(params, "recipe_id");
+    request.version_id = ReadJsonString(params, "version_id");
     request.trajectory_config = Siligen::Shared::Types::TrajectoryConfig();
 
-    const double speed = ReadJsonDouble(params, "dispensing_speed_mm_s", ReadJsonDouble(params, "speed_mm_s", 0.0));
+    const double speed = ReadJsonDouble(params, "dispensing_speed_mm_s", 0.0);
     if (speed > 0.0) {
         request.trajectory_config.max_velocity = static_cast<float32>(speed);
     }
@@ -504,6 +551,7 @@ Application::UseCases::Dispensing::PlanningRequest BuildPreviewPlanningRequest(
         algorithm_raw <= static_cast<int>(InterpolationAlgorithm::CIRCULAR_ARRAY)) {
         request.interpolation_algorithm = static_cast<InterpolationAlgorithm>(algorithm_raw);
     }
+    request.requested_execution_strategy = TryReadRequestedExecutionStrategy(params);
     return request;
 }
 
@@ -517,10 +565,7 @@ Application::UseCases::Dispensing::PreparePlanRuntimeOverrides BuildPreparePlanR
     request.use_hardware_trigger = ReadJsonBool(params, "use_hardware_trigger", true);
     request.dry_run = ReadJsonBool(params, "dry_run", false);
 
-    const double dispensingSpeed = ReadJsonDouble(
-        params,
-        "dispensing_speed_mm_s",
-        ReadJsonDouble(params, "speed_mm_s", 0.0));
+    const double dispensingSpeed = ReadJsonDouble(params, "dispensing_speed_mm_s", 0.0);
     const double dryRunSpeed = ReadJsonDouble(params, "dry_run_speed_mm_s", 0.0);
     const double rapidSpeed = ReadJsonDouble(params, "rapid_speed_mm_s", 0.0);
     if (dispensingSpeed > 0.0) {
@@ -572,6 +617,8 @@ Application::UseCases::Dispensing::PreparePlanRequest BuildPreparePlanRequest(
     Application::UseCases::Dispensing::PreparePlanRequest request;
     request.artifact_id = artifact_id;
     request.planning_request = BuildPreviewPlanningRequest(filepath, params);
+    request.recipe_id = request.planning_request.recipe_id;
+    request.version_id = request.planning_request.version_id;
     request.runtime_overrides = BuildPreparePlanRuntimeOverrides(filepath, params);
     return request;
 }
@@ -1916,13 +1963,17 @@ std::string TcpCommandDispatcher::HandleDxfPlanPrepare(const std::string& id, co
         return GatewayJsonProtocol::MakeErrorResponse(id, 2894, "TcpDispensingFacade not available");
     }
 
-    std::string artifact_id = params.value("artifact_id", "");
-    if (artifact_id.empty()) {
-        std::lock_guard<std::mutex> lock(dxf_mutex_);
-        artifact_id = dxf_cache_.artifact_id;
-    }
+    const std::string artifact_id = ReadJsonString(params, "artifact_id");
     if (artifact_id.empty()) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 2895, "Missing artifact_id");
+    }
+    const std::string recipe_id = ReadJsonString(params, "recipe_id");
+    if (recipe_id.empty()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2895, "Missing recipe_id");
+    }
+    const std::string version_id = ReadJsonString(params, "version_id");
+    if (version_id.empty()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2895, "Missing version_id");
     }
 
     const auto prepare_request = BuildPreparePlanRequest(artifact_id, "", params);

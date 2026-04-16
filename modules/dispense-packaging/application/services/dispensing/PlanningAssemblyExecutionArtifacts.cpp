@@ -11,8 +11,27 @@ using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
 
+namespace {
+
+Result<void> ValidateExecutionStrategyInput(
+    DispensingExecutionStrategy requested_strategy,
+    DispensingExecutionGeometryKind geometry_kind) {
+    if (geometry_kind != DispensingExecutionGeometryKind::POINT &&
+        requested_strategy == DispensingExecutionStrategy::STATIONARY_SHOT) {
+        return Result<void>::Failure(Error(
+            ErrorCode::INVALID_PARAMETER,
+            "requested_execution_strategy=stationary_shot only supports POINT geometry",
+            "ExecutionAssemblyService"));
+    }
+
+    return Result<void>::Success();
+}
+
+}  // namespace
+
 Result<ExecutionAssemblyBuildResult> AssembleExecutionArtifacts(const ExecutionAssemblyBuildInput& input) {
     const auto& execution_process_path = ResolveExecutionProcessPath(input);
+    const auto geometry_kind = ResolveExecutionGeometryKind(execution_process_path);
     auto log_stage = [&](const char* stage, const std::string& detail = std::string()) {
         std::ostringstream oss;
         oss << "planning_artifacts_stage=" << stage
@@ -37,6 +56,12 @@ Result<ExecutionAssemblyBuildResult> AssembleExecutionArtifacts(const ExecutionA
     if (input.motion_plan.points.empty()) {
         return Result<ExecutionAssemblyBuildResult>::Failure(
             Error(ErrorCode::TRAJECTORY_GENERATION_FAILED, "motion plan为空", "DispensePackagingAssembly"));
+    }
+
+    auto strategy_validation =
+        ValidateExecutionStrategyInput(input.requested_execution_strategy, geometry_kind);
+    if (strategy_validation.IsError()) {
+        return Result<ExecutionAssemblyBuildResult>::Failure(strategy_validation.GetError());
     }
 
     auto trigger_artifacts = BuildTriggerArtifactsFromAuthorityPreview(input.authority_preview);

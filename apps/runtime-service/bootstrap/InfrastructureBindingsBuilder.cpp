@@ -17,9 +17,11 @@
 #include "siligen/device/adapters/motion/MultiCardMotionAdapter.h"
 #include "siligen/device/adapters/motion/HomingPortAdapter.h"
 #include "siligen/device/adapters/motion/MotionRuntimeConnectionAdapter.h"
+#include "siligen/device/adapters/motion/MotionRuntimeDevicePortAdapter.h"
 #include "siligen/device/adapters/motion/MotionRuntimeFacade.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 #include "siligen/device/adapters/drivers/multicard/IMultiCardWrapper.h"
+#include "siligen/shared/axis_types.h"
 #include "runtime/configuration/ConfigFileAdapter.h"
 #include "runtime/configuration/InterlockConfigResolver.h"
 #include "runtime/configuration/WorkspaceAssetPaths.h"
@@ -55,6 +57,10 @@
 
 #ifdef GetMessage
 #undef GetMessage
+#endif
+
+#ifdef DeviceCapabilities
+#undef DeviceCapabilities
 #endif
 
 namespace {
@@ -124,6 +130,7 @@ std::shared_ptr<Siligen::Infrastructure::Hardware::IMultiCardWrapper> CreateMult
 void BuildMotionRuntimeBindings(
     Siligen::Bootstrap::InfrastructureBindings& bindings,
     const std::shared_ptr<Siligen::Infrastructure::Hardware::IMultiCardWrapper>& multi_card,
+    Siligen::Shared::Types::HardwareMode mode,
     const Siligen::Shared::Types::HardwareConfiguration& hw_config,
     const Siligen::Shared::Types::DiagnosticsConfig& diagnostics_config,
     const std::array<Siligen::Domain::Configuration::Ports::HomingConfig, 4>& homing_configs) {
@@ -141,9 +148,42 @@ void BuildMotionRuntimeBindings(
     auto motion_runtime = std::make_shared<Siligen::Infrastructure::Adapters::Motion::MotionRuntimeFacade>(
         motion_adapter_result.Value(),
         homing_port);
+    Siligen::Device::Contracts::Capabilities::DeviceCapabilities motion_capabilities;
+    motion_capabilities.backend_name =
+        mode == Siligen::Shared::Types::HardwareMode::Mock ? "mock-multicard" : "multicard";
+    motion_capabilities.mock_backend = mode == Siligen::Shared::Types::HardwareMode::Mock;
+    const auto axis_count = hw_config.EffectiveAxisCount(4);
+    motion_capabilities.axes.reserve(static_cast<size_t>(axis_count));
+    for (int axis_index = 0; axis_index < axis_count; ++axis_index) {
+        Siligen::Device::Contracts::Capabilities::AxisCapability axis_capability;
+        axis_capability.axis = Siligen::SharedKernel::FromIndex(static_cast<Siligen::SharedKernel::int16>(axis_index));
+        axis_capability.supports_home = true;
+        axis_capability.supports_jog = true;
+        axis_capability.supports_absolute_move = true;
+        axis_capability.supports_feedback = hw_config.IsEncoderEnabledForAxis(axis_index);
+        motion_capabilities.axes.push_back(axis_capability);
+    }
+    motion_capabilities.io.input_channels = 0;
+    motion_capabilities.io.output_channels = 0;
+    motion_capabilities.io.supports_latched_output = false;
+    motion_capabilities.trigger.supports_position_trigger = true;
+    motion_capabilities.trigger.supports_time_trigger = true;
+    motion_capabilities.trigger.supports_in_motion_position_trigger = true;
+    motion_capabilities.trigger.supports_in_motion_time_trigger = true;
+    motion_capabilities.dispenser.supports_prime = false;
+    motion_capabilities.dispenser.supports_pause = true;
+    motion_capabilities.dispenser.supports_resume = true;
+    motion_capabilities.dispenser.supports_continuous_mode = true;
+    motion_capabilities.dispenser.supports_in_motion_pulse_shot = true;
+
+    auto motion_device_port =
+        std::make_shared<Siligen::Infrastructure::Adapters::Motion::MotionRuntimeDevicePortAdapter>(
+            motion_runtime,
+            motion_capabilities);
     auto connection_adapter =
         std::make_shared<Siligen::Infrastructure::Adapters::Motion::MotionRuntimeConnectionAdapter>(motion_runtime);
     bindings.motion_runtime_port = motion_runtime;
+    bindings.motion_device_port = motion_device_port;
     bindings.device_connection_port = connection_adapter;
 }
 
@@ -226,11 +266,13 @@ InfrastructureBindings CreateInfrastructureBindings(const InfrastructureBootstra
         compensation_profile.curvature_speed_factor = disp_cfg.curvature_speed_factor;
     }
 
-    bindings.valve_port = std::make_shared<Infrastructure::Adapters::ValveAdapter>(
+    auto valve_adapter = std::make_shared<Infrastructure::Adapters::ValveAdapter>(
         multi_card,
         valve_supply_result.Value(),
         dispenser_config_result.Value(),
         compensation_profile);
+    bindings.valve_port = valve_adapter;
+    bindings.dispenser_device_port = valve_adapter;
 
     const auto upload_base_dir = RuntimeConfig::ResolveUploadDirectory();
     bindings.file_storage_port = std::make_shared<Infrastructure::Adapters::LocalFileStorageAdapter>(
@@ -270,7 +312,7 @@ InfrastructureBindings CreateInfrastructureBindings(const InfrastructureBootstra
         SILIGEN_LOG_WARNING("加载诊断配置失败，使用默认值: " + diagnostics_result.GetError().GetMessage());
     }
 
-    BuildMotionRuntimeBindings(bindings, multi_card, hw_config, diagnostics_config, homing_configs);
+    BuildMotionRuntimeBindings(bindings, multi_card, mode, hw_config, diagnostics_config, homing_configs);
 
     bindings.event_port = std::make_shared<Infrastructure::Adapters::InMemoryEventPublisherAdapter>(100);
 

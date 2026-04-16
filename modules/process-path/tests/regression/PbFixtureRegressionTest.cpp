@@ -37,6 +37,16 @@ int CountDispenseFragments(const Siligen::ProcessPath::Contracts::ProcessPath& p
     return count;
 }
 
+int CountPointSegments(const Siligen::ProcessPath::Contracts::ProcessPath& path) {
+    int count = 0;
+    for (const auto& segment : path.segments) {
+        if (segment.geometry.is_point) {
+            count += 1;
+        }
+    }
+    return count;
+}
+
 Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest LoadRepairFixtureRequest(
     const char* case_name,
     const TopologyRepairPolicy policy) {
@@ -64,7 +74,7 @@ TEST(PbFixtureRegressionTest, RectDiagFixtureBuildsShapedPathWithoutExternalWork
     EXPECT_EQ(result.topology_diagnostics.dispense_fragment_count, CountDispenseFragments(result.shaped_path));
 }
 
-TEST(PbFixtureRegressionTest, PointMixedFixtureIsRejectedUnderOffAndAutoPolicies) {
+TEST(PbFixtureRegressionTest, PointMixedFixturePreservesPointSemanticsUnderOffAndAutoPolicies) {
     auto off_request = LoadFixtureRequest(EngineeringFixtureCasePath("point_mixed", "point_mixed.pb"));
     off_request.topology_repair.policy = TopologyRepairPolicy::Off;
 
@@ -75,14 +85,19 @@ TEST(PbFixtureRegressionTest, PointMixedFixtureIsRejectedUnderOffAndAutoPolicies
     const auto off_result = facade.Build(off_request);
     const auto auto_result = facade.Build(auto_request);
 
-    ASSERT_EQ(off_result.status, PathGenerationStatus::InvalidInput);
-    ASSERT_EQ(auto_result.status, PathGenerationStatus::InvalidInput);
-    EXPECT_EQ(off_result.failed_stage, PathGenerationStage::InputValidation);
-    EXPECT_EQ(auto_result.failed_stage, PathGenerationStage::InputValidation);
-    EXPECT_EQ(off_result.error_message, "point primitive is not a supported live process-path input");
-    EXPECT_EQ(auto_result.error_message, off_result.error_message);
+    ASSERT_EQ(off_result.status, PathGenerationStatus::Success);
+    ASSERT_EQ(auto_result.status, PathGenerationStatus::Success);
+    EXPECT_EQ(off_result.failed_stage, PathGenerationStage::None);
+    EXPECT_EQ(auto_result.failed_stage, PathGenerationStage::None);
+    EXPECT_TRUE(off_result.error_message.empty());
+    EXPECT_TRUE(auto_result.error_message.empty());
     EXPECT_FALSE(off_result.topology_diagnostics.repair_requested);
-    EXPECT_FALSE(auto_result.topology_diagnostics.repair_requested);
+    EXPECT_TRUE(auto_result.topology_diagnostics.repair_requested);
+    EXPECT_GT(off_result.normalized.report.point_primitive_count, 0);
+    EXPECT_EQ(off_result.normalized.report.point_primitive_count,
+              auto_result.normalized.report.point_primitive_count);
+    EXPECT_EQ(CountPointSegments(off_result.process_path), CountPointSegments(auto_result.process_path));
+    EXPECT_GT(CountPointSegments(off_result.process_path), 0);
 }
 
 TEST(PbFixtureRegressionTest, FragmentedChainFixtureDifferentiatesOffAndAutoRepairSemantics) {

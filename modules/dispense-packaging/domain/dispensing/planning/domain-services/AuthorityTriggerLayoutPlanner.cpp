@@ -125,6 +125,9 @@ bool ShouldSkipAdjacentCrossSpanDuplicateTrigger(
 Result<float32> MeasureSegmentLength(
     const Segment& segment,
     const AuthorityTriggerLayoutPlannerRequest& request) {
+    if (segment.is_point) {
+        return Result<float32>::Success(0.0f);
+    }
     switch (segment.type) {
         case SegmentType::Line: {
             const float32 length_mm = segment.line.start.DistanceTo(segment.line.end);
@@ -161,6 +164,13 @@ Result<float32> MeasureSegmentLength(
 
 bool IsClosedSpan(const TopologySpanSlice& span, float32 vertex_tolerance_mm) {
     if (span.segments.empty()) {
+        return false;
+    }
+    const bool point_only_span = std::all_of(
+        span.segments.begin(),
+        span.segments.end(),
+        [](const auto& process_segment) { return process_segment.geometry.is_point; });
+    if (point_only_span) {
         return false;
     }
     if (span.segments.size() == 1U &&
@@ -209,6 +219,14 @@ float32 ComputeSpanLength(const TopologySpanSlice& span) {
         total_length_mm += segment_length_mm;
     }
     return total_length_mm;
+}
+
+bool IsPointOnlySpan(const TopologySpanSlice& span) {
+    return !span.segments.empty() &&
+        std::all_of(
+            span.segments.begin(),
+            span.segments.end(),
+            [](const auto& process_segment) { return process_segment.geometry.is_point; });
 }
 
 std::string BuildLayoutSeed(const AuthorityTriggerLayoutPlannerRequest& request,
@@ -525,13 +543,8 @@ Result<AuthorityTriggerLayout> AuthorityTriggerLayoutPlanner::Plan(
     std::vector<float32> segment_lengths_mm;
     segment_lengths_mm.reserve(request.process_path.segments.size());
     for (const auto& process_segment : request.process_path.segments) {
-        if (process_segment.dispense_on && process_segment.geometry.is_point) {
-            return Result<AuthorityTriggerLayout>::Failure(
-                Error(ErrorCode::INVALID_PARAMETER,
-                      "dispense_on 几何线段长度为0",
-                      "AuthorityTriggerLayoutPlanner"));
-        }
         if (process_segment.dispense_on &&
+            !process_segment.geometry.is_point &&
             process_segment.geometry.type != SegmentType::Spline &&
             SegmentStart(process_segment.geometry).DistanceTo(SegmentEnd(process_segment.geometry)) <= kEpsilon) {
             return Result<AuthorityTriggerLayout>::Failure(
@@ -665,6 +678,52 @@ Result<AuthorityTriggerLayout> AuthorityTriggerLayoutPlanner::Plan(
             }
 
             const float32 total_length_mm = ComputeSpanLength(span);
+            const bool point_only_span = IsPointOnlySpan(span);
+            if (point_only_span) {
+                PopulateStrongAnchors(layout_span, span, 0.0f, vertex_tolerance_mm);
+                ResolveSpanPolicies(layout_span);
+                layout_span.total_length_mm = 0.0f;
+                layout_span.interval_count = 0U;
+                layout_span.actual_spacing_mm = 0.0f;
+                layout_span.phase_mm = 0.0f;
+
+                SpacingValidationOutcome outcome;
+                outcome.outcome_id = BuildStableId("spacing", layout_span.span_id);
+                outcome.layout_ref = layout.layout_id;
+                outcome.span_ref = layout_span.span_id;
+                outcome.classification = SpacingValidationClassification::Pass;
+                outcome.anchor_constraint_state = "not_applicable";
+                outcome.min_observed_spacing_mm = 0.0f;
+                outcome.max_observed_spacing_mm = 0.0f;
+                PopulateOutcomeDiagnostics(outcome, layout_span);
+                layout_span.validation_state = outcome.classification;
+
+                LayoutTriggerPoint point;
+                point.trigger_id = BuildStableId("trigger", layout_span.span_id + "|point");
+                point.layout_ref = layout.layout_id;
+                point.span_ref = layout_span.span_id;
+                point.sequence_index_span = 0U;
+                point.distance_mm_global = span.start_distance_mm;
+                point.distance_mm_span = 0.0f;
+                point.position = SegmentStart(span.segments.front().geometry);
+                point.source_segment_index = span.source_segment_indices.front();
+                point.shared_vertex = false;
+                point.source_kind = LayoutTriggerSourceKind::Anchor;
+
+                if (!ShouldSkipAdjacentCrossSpanDuplicateTrigger(
+                        layout.trigger_points,
+                        point,
+                        vertex_tolerance_mm)) {
+                    point.sequence_index_global = global_sequence++;
+                    outcome.trigger_refs.push_back(point.trigger_id);
+                    outcome.points.push_back(point.position);
+                    layout.trigger_points.push_back(point);
+                }
+
+                layout.spans.push_back(std::move(layout_span));
+                layout.validation_outcomes.push_back(std::move(outcome));
+                continue;
+            }
             if (total_length_mm <= kEpsilon) {
                 append_failed_span("authority span length unavailable");
                 continue;

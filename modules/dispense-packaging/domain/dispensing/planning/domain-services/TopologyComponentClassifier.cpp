@@ -60,6 +60,13 @@ bool SpanIsClosed(const TopologySpanSlice& span, float32 tolerance_mm) {
     if (span.segments.empty()) {
         return false;
     }
+    const bool point_only_span = std::all_of(
+        span.segments.begin(),
+        span.segments.end(),
+        [](const auto& process_segment) { return process_segment.geometry.is_point; });
+    if (point_only_span) {
+        return false;
+    }
     if (span.segments.size() == 1U &&
         span.segments.front().geometry.type == SegmentType::Spline &&
         span.segments.front().geometry.spline.closed) {
@@ -289,6 +296,12 @@ bool IsAuxiliaryGeometryCandidate(
     const auto& span = component.spans.front();
     if (span.split_reason == DispenseSpanSplitReason::BranchOrRevisit ||
         SpanIsClosed(span, tolerance_mm)) {
+        return false;
+    }
+    if (std::any_of(
+            span.segments.begin(),
+            span.segments.end(),
+            [](const auto& process_segment) { return process_segment.geometry.is_point; })) {
         return false;
     }
 

@@ -18,12 +18,15 @@
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "runtime/planning/PlanningArtifactExportPortAdapter.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingWorkflowUseCase.h"
+#include "runtime_execution/application/usecases/dispensing/IRecipePlanningPolicyPort.h"
 #include "dispense_packaging/application/usecases/dispensing/PlanningUseCase.h"
+#include "recipe_lifecycle/domain/recipes/ports/IRecipeRepositoryPort.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/types/Error.h"
 #include "shared/types/Result.h"
 
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <utility>
 
@@ -48,7 +51,41 @@ using Siligen::JobIngest::Application::Ports::Dispensing::IUploadStoragePort;
 using Siligen::JobIngest::Application::UseCases::Dispensing::UploadFileUseCase;
 using Siligen::JobIngest::Contracts::IUploadFilePort;
 using Siligen::JobIngest::Contracts::UploadRequest;
+using Siligen::Domain::Recipes::Ports::IRecipeRepositoryPort;
+using Siligen::Domain::Recipes::ValueObjects::ParameterValueEntry;
 using Siligen::Shared::Types::Result;
+using Siligen::Shared::Types::Error;
+using Siligen::Shared::Types::ErrorCode;
+using Siligen::Shared::Types::PointFlyingCarrierPolicy;
+using Siligen::Shared::Types::TryParsePointFlyingCarrierDirectionMode;
+
+const ParameterValueEntry* FindRecipeParameter(
+    const std::vector<ParameterValueEntry>& parameters,
+    const std::string& key) {
+    for (const auto& entry : parameters) {
+        if (entry.key == key) {
+            return &entry;
+        }
+    }
+    return nullptr;
+}
+
+std::optional<std::string> TryReadRecipeStringValue(const ParameterValueEntry& entry) {
+    if (const auto* value = std::get_if<std::string>(&entry.value)) {
+        return *value;
+    }
+    return std::nullopt;
+}
+
+std::optional<Siligen::Shared::Types::float32> TryReadRecipeFloatValue(const ParameterValueEntry& entry) {
+    if (const auto* value = std::get_if<double>(&entry.value)) {
+        return static_cast<Siligen::Shared::Types::float32>(*value);
+    }
+    if (const auto* value = std::get_if<int64_t>(&entry.value)) {
+        return static_cast<Siligen::Shared::Types::float32>(*value);
+    }
+    return std::nullopt;
+}
 
 class RuntimeWorkflowExecutionPortAdapter final : public IWorkflowExecutionPort {
    public:
@@ -98,6 +135,111 @@ class RuntimeWorkflowExecutionPortAdapter final : public IWorkflowExecutionPort 
 
    private:
     std::shared_ptr<DispensingExecutionUseCase> use_case_;
+};
+
+class RuntimeRecipePlanningPolicyPortAdapter final
+    : public Siligen::Application::Ports::Dispensing::IRecipePlanningPolicyPort {
+   public:
+    explicit RuntimeRecipePlanningPolicyPortAdapter(std::shared_ptr<IRecipeRepositoryPort> recipe_repository)
+        : recipe_repository_(std::move(recipe_repository)) {
+        if (!recipe_repository_) {
+            throw std::invalid_argument("RuntimeRecipePlanningPolicyPortAdapter: recipe_repository cannot be null");
+        }
+    }
+
+    Result<Siligen::Application::Ports::Dispensing::ResolvedRecipePlanningPolicy> ResolvePlanningPolicy(
+        const std::string& recipe_id,
+        const std::string& version_id) const override {
+        if (recipe_id.empty()) {
+            return Result<Siligen::Application::Ports::Dispensing::ResolvedRecipePlanningPolicy>::Failure(
+                Error(ErrorCode::INVALID_PARAMETER, "recipe_id is required", MODULE_NAME));
+        }
+        if (version_id.empty()) {
+            return Result<Siligen::Application::Ports::Dispensing::ResolvedRecipePlanningPolicy>::Failure(
+                Error(ErrorCode::INVALID_PARAMETER, "version_id is required", MODULE_NAME));
+        }
+
+        auto recipe_result = recipe_repository_->GetRecipeById(recipe_id);
+        if (recipe_result.IsError()) {
+            return Result<Siligen::Application::Ports::Dispensing::ResolvedRecipePlanningPolicy>::Failure(
+                recipe_result.GetError());
+        }
+
+        auto version_result = recipe_repository_->GetVersionById(recipe_id, version_id);
+        if (version_result.IsError()) {
+            return Result<Siligen::Application::Ports::Dispensing::ResolvedRecipePlanningPolicy>::Failure(
+                version_result.GetError());
+        }
+
+        const auto& version = version_result.Value();
+        if (!version.IsPublished()) {
+            return Result<Siligen::Application::Ports::Dispensing::ResolvedRecipePlanningPolicy>::Failure(
+                Error(ErrorCode::RECIPE_INVALID_STATE, "recipe version must be published", MODULE_NAME));
+        }
+
+        const auto* interval_entry = FindRecipeParameter(version.parameters, "trigger_spatial_interval_mm");
+        if (interval_entry == nullptr) {
+            return Result<Siligen::Application::Ports::Dispensing::ResolvedRecipePlanningPolicy>::Failure(
+                Error(
+                    ErrorCode::INVALID_PARAMETER,
+                    "recipe version missing trigger_spatial_interval_mm",
+                    MODULE_NAME));
+        }
+        const auto interval_mm = TryReadRecipeFloatValue(*interval_entry);
+        if (!interval_mm.has_value()) {
+            return Result<Siligen::Application::Ports::Dispensing::ResolvedRecipePlanningPolicy>::Failure(
+                Error(
+                    ErrorCode::INVALID_PARAMETER,
+                    "recipe version trigger_spatial_interval_mm must be numeric",
+                    MODULE_NAME));
+        }
+
+        const auto* direction_entry = FindRecipeParameter(version.parameters, "point_flying_direction_mode");
+        if (direction_entry == nullptr) {
+            return Result<Siligen::Application::Ports::Dispensing::ResolvedRecipePlanningPolicy>::Failure(
+                Error(
+                    ErrorCode::INVALID_PARAMETER,
+                    "recipe version missing point_flying_direction_mode",
+                    MODULE_NAME));
+        }
+        const auto direction_value = TryReadRecipeStringValue(*direction_entry);
+        if (!direction_value.has_value()) {
+            return Result<Siligen::Application::Ports::Dispensing::ResolvedRecipePlanningPolicy>::Failure(
+                Error(
+                    ErrorCode::INVALID_PARAMETER,
+                    "recipe version point_flying_direction_mode must be string",
+                    MODULE_NAME));
+        }
+        const auto direction_mode = TryParsePointFlyingCarrierDirectionMode(direction_value.value());
+        if (!direction_mode.has_value()) {
+            return Result<Siligen::Application::Ports::Dispensing::ResolvedRecipePlanningPolicy>::Failure(
+                Error(
+                    ErrorCode::INVALID_PARAMETER,
+                    "unsupported point_flying_direction_mode: " + direction_value.value(),
+                    MODULE_NAME));
+        }
+
+        PointFlyingCarrierPolicy policy;
+        policy.direction_mode = direction_mode.value();
+        policy.trigger_spatial_interval_mm = interval_mm.value();
+        if (!Siligen::Shared::Types::IsValid(policy)) {
+            return Result<Siligen::Application::Ports::Dispensing::ResolvedRecipePlanningPolicy>::Failure(
+                Error(
+                    ErrorCode::INVALID_PARAMETER,
+                    "recipe version point flying carrier policy is invalid",
+                    MODULE_NAME));
+        }
+
+        Siligen::Application::Ports::Dispensing::ResolvedRecipePlanningPolicy resolved;
+        resolved.recipe_id = recipe_result.Value().id;
+        resolved.version_id = version.id;
+        resolved.point_flying_carrier_policy = policy;
+        return Result<Siligen::Application::Ports::Dispensing::ResolvedRecipePlanningPolicy>::Success(
+            std::move(resolved));
+    }
+
+   private:
+    std::shared_ptr<IRecipeRepositoryPort> recipe_repository_;
 };
 
 class RuntimeUploadStorageAdapter final : public IUploadStoragePort {
@@ -151,6 +293,11 @@ std::shared_ptr<IWorkflowExecutionPort> CreateRuntimeWorkflowExecutionPort(
     return std::make_shared<RuntimeWorkflowExecutionPortAdapter>(std::move(use_case));
 }
 
+std::shared_ptr<Siligen::Application::Ports::Dispensing::IRecipePlanningPolicyPort>
+CreateRuntimeRecipePlanningPolicyPort(std::shared_ptr<IRecipeRepositoryPort> recipe_repository) {
+    return std::make_shared<RuntimeRecipePlanningPolicyPortAdapter>(std::move(recipe_repository));
+}
+
 }  // namespace
 
 namespace Siligen::Application::Container {
@@ -161,6 +308,9 @@ void ApplicationContainer::ValidateDispensingPorts() {
     }
     if (!valve_port_) {
         throw std::runtime_error("IValvePort 未注册");
+    }
+    if (!dispenser_device_port_) {
+        throw std::runtime_error("DispenserDevicePort 未注册");
     }
     if (!file_storage_port_) {
         throw std::runtime_error("runtime bootstrap IFileStoragePort 未注册");
@@ -266,12 +416,18 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::DispensingExecutionUs
 template<>
 std::shared_ptr<UseCases::Dispensing::DispensingWorkflowUseCase>
 ApplicationContainer::CreateInstance<UseCases::Dispensing::DispensingWorkflowUseCase>() {
+    if (!recipe_repository_) {
+        throw std::runtime_error("IRecipeRepositoryPort 未注册");
+    }
     return std::make_shared<UseCases::Dispensing::DispensingWorkflowUseCase>(
         Resolve<IUploadFilePort>(),
         Resolve<UseCases::Dispensing::PlanningUseCase>(),
+        CreateRuntimeRecipePlanningPolicyPort(recipe_repository_),
         CreateRuntimeWorkflowExecutionPort(
             Resolve<UseCases::Dispensing::DispensingExecutionUseCase>()),
         device_connection_port_,
+        motion_device_port_,
+        dispenser_device_port_,
         motion_state_port_,
         homing_port_,
         ResolvePort<Domain::Safety::Ports::IInterlockSignalPort>());

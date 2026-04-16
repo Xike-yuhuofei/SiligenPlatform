@@ -105,6 +105,7 @@ set(SILIGEN_DEVICE_ADAPTERS_SOURCES
     ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/adapters/motion/controller/homing/HomingPortAdapter.cpp
     ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/adapters/motion/controller/interpolation/InterpolationAdapter.cpp
     ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/adapters/motion/controller/runtime/MotionRuntimeConnectionAdapter.cpp
+    ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/adapters/motion/controller/runtime/MotionRuntimeDevicePortAdapter.cpp
     ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/adapters/motion/controller/runtime/MotionRuntimeFacade.cpp
     ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/adapters/dispensing/dispenser/ValveAdapter.cpp
     ${SILIGEN_DEVICE_ADAPTERS_SOURCE_ROOT}/adapters/dispensing/dispenser/ValveAdapter.Dispenser.cpp

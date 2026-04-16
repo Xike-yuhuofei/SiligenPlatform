@@ -166,6 +166,8 @@ std::shared_ptr<Siligen::Application::Services::Dispensing::IWorkflowPlanningAss
 PlanningRequest MakePlanningRequest(const std::filesystem::path& pb_path) {
     PlanningRequest request;
     request.dxf_filepath = pb_path.string();
+    request.recipe_id = "recipe-failure-surface";
+    request.version_id = "version-published";
     request.trajectory_config = TrajectoryConfig();
     request.trajectory_config.max_velocity = 100.0f;
     request.trajectory_config.max_acceleration = 500.0f;
