@@ -78,6 +78,13 @@ void ApplyBindings(
         container.RegisterPort<Siligen::Device::Contracts::Ports::DeviceConnectionPort>(
             bindings.device_connection_port);
     }
+    if (bindings.motion_device_port) {
+        container.RegisterPort<Siligen::Device::Contracts::Ports::MotionDevicePort>(bindings.motion_device_port);
+    }
+    if (bindings.dispenser_device_port) {
+        container.RegisterPort<Siligen::Device::Contracts::Ports::DispenserDevicePort>(
+            bindings.dispenser_device_port);
+    }
     if (bindings.trigger_port) {
         container.RegisterPort<Siligen::Domain::Dispensing::Ports::ITriggerControllerPort>(bindings.trigger_port);
     }

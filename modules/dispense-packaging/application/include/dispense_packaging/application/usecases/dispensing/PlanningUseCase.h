@@ -10,12 +10,14 @@
 #include "domain/dispensing/contracts/PlanningArtifactExportRequest.h"
 #include "process_path/contracts/ProcessPath.h"
 #include "runtime/contracts/system/IEventPublisherPort.h"
+#include "shared/types/DispensingExecutionSemantics.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
 #include "shared/types/TrajectoryTypes.h"
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -40,6 +42,8 @@ namespace Siligen::Application::UseCases::Dispensing {
 
 using Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated;
 using Siligen::MotionPlanning::Contracts::MotionPlanningReport;
+using Siligen::Shared::Types::PointFlyingCarrierPolicy;
+using Siligen::Shared::Types::DispensingExecutionStrategy;
 using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::TrajectoryConfig;
 using Siligen::TrajectoryPoint;
@@ -120,6 +124,8 @@ struct ExecutionAssemblyArtifacts {
 
 struct PlanningRequest {
     std::string dxf_filepath;
+    std::string recipe_id;
+    std::string version_id;
     TrajectoryConfig trajectory_config;
     bool optimize_path = true;
     float32 start_x = 0.0f;
@@ -135,12 +141,17 @@ struct PlanningRequest {
     bool use_interpolation_planner = false;
     MotionPlanning::Contracts::InterpolationAlgorithm interpolation_algorithm =
         MotionPlanning::Contracts::InterpolationAlgorithm::LINEAR;
+    std::optional<DispensingExecutionStrategy> requested_execution_strategy;
+    std::optional<PointFlyingCarrierPolicy> point_flying_carrier_policy;
     float32 spacing_tol_ratio = 0.0f;
     float32 spacing_min_mm = 0.0f;
     float32 spacing_max_mm = 0.0f;
 
     bool Validate() const {
         if (dxf_filepath.empty()) {
+            return false;
+        }
+        if (recipe_id.empty() || version_id.empty()) {
             return false;
         }
 
@@ -185,8 +196,20 @@ struct PlanningRequest {
         if (curve_chain_max_segment_mm < 0.0f) {
             return false;
         }
+        if (point_flying_carrier_policy.has_value() &&
+            !Siligen::Shared::Types::IsValid(point_flying_carrier_policy.value())) {
+            return false;
+        }
 
         return true;
+    }
+
+    [[nodiscard]] bool HasExplicitExecutionStrategy() const noexcept {
+        return requested_execution_strategy.has_value();
+    }
+
+    [[nodiscard]] DispensingExecutionStrategy ResolveRequestedExecutionStrategy() const noexcept {
+        return requested_execution_strategy.value_or(DispensingExecutionStrategy::FLYING_SHOT);
     }
 };
 

@@ -8,10 +8,12 @@
 #include "motion_planning/contracts/MotionPlan.h"
 #include "motion_planning/contracts/MotionPlanningReport.h"
 #include "process_path/contracts/ProcessPath.h"
+#include "shared/types/DispensingExecutionSemantics.h"
 #include "shared/types/DispensingStrategy.h"
 #include "shared/types/TrajectoryTypes.h"
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -90,6 +92,9 @@ struct WorkflowExecutionAssemblyRequest {
     Siligen::ProcessPath::Contracts::ProcessPath process_path;
     Siligen::ProcessPath::Contracts::ProcessPath authority_process_path;
     Siligen::MotionPlanning::Contracts::MotionPlan motion_plan;
+    Siligen::Shared::Types::Point2D planning_start_position{};
+    std::string recipe_id;
+    std::string version_id;
     std::string source_path;
     std::string dxf_filename;
     WorkflowAssemblyRuntimeOptions runtime_options;
@@ -98,6 +103,9 @@ struct WorkflowExecutionAssemblyRequest {
     bool use_interpolation_planner = false;
     Siligen::MotionPlanning::Contracts::InterpolationAlgorithm interpolation_algorithm =
         Siligen::MotionPlanning::Contracts::InterpolationAlgorithm::LINEAR;
+    Siligen::Shared::Types::DispensingExecutionStrategy requested_execution_strategy =
+        Siligen::Shared::Types::DispensingExecutionStrategy::FLYING_SHOT;
+    std::optional<Siligen::Shared::Types::PointFlyingCarrierPolicy> point_flying_carrier_policy;
     WorkflowAuthorityPreviewArtifacts authority_preview;
 };
 
@@ -115,11 +123,17 @@ struct WorkflowExecutionAssemblyResult {
 struct WorkflowPlanningAssemblyRequest {
     WorkflowAuthorityPreviewRequest authority_preview_request;
     Siligen::MotionPlanning::Contracts::MotionPlan motion_plan;
+    Siligen::Shared::Types::Point2D planning_start_position{};
+    std::string recipe_id;
+    std::string version_id;
     Siligen::Shared::Types::float32 max_jerk = 0.0f;
     Siligen::Shared::Types::float32 estimated_time_s = 0.0f;
     bool use_interpolation_planner = false;
     Siligen::MotionPlanning::Contracts::InterpolationAlgorithm interpolation_algorithm =
         Siligen::MotionPlanning::Contracts::InterpolationAlgorithm::LINEAR;
+    Siligen::Shared::Types::DispensingExecutionStrategy requested_execution_strategy =
+        Siligen::Shared::Types::DispensingExecutionStrategy::FLYING_SHOT;
+    std::optional<Siligen::Shared::Types::PointFlyingCarrierPolicy> point_flying_carrier_policy;
 };
 
 struct WorkflowPlanningAssemblyResult {

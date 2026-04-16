@@ -82,12 +82,13 @@
       "kind": "command",
       "paramsSchema": {
         "type": "object",
-        "required": ["dispensing_speed_mm_s"],
+        "required": ["artifact_id", "recipe_id", "version_id", "dispensing_speed_mm_s"],
         "properties": {
           "artifact_id": { "type": "string" },
+          "recipe_id": { "type": "string" },
+          "version_id": { "type": "string" },
           "dry_run": { "type": "boolean" },
           "dispensing_speed_mm_s": { "type": "number" },
-          "speed_mm_s": { "type": "number" },
           "dry_run_speed_mm_s": { "type": "number" },
           "rapid_speed_mm_s": { "type": "number" },
           "optimize_path": { "type": "boolean" },
@@ -107,6 +108,7 @@
           "use_hardware_trigger": { "type": "boolean" },
           "use_interpolation_planner": { "type": "boolean" },
           "interpolation_algorithm": { "type": "integer" },
+          "requested_execution_strategy": { "type": "integer" },
           "velocity_trace_enabled": { "type": "boolean" },
           "velocity_trace_interval_ms": { "type": "integer" },
           "velocity_trace_path": { "type": "string" }
@@ -156,14 +158,9 @@
         "hmi-client CommandProtocol.dxf_prepare_plan"
       ],
       "compatibility": {
-        "requestAliases": [
-          {
-            "canonical": "dispensing_speed_mm_s",
-            "accepted": ["dispensing_speed_mm_s", "speed_mm_s"]
-          }
-        ],
         "notes": [
-          "artifact_id 允许省略；省略时服务端回退到最近一次已加载/已创建的 artifact。"
+          "artifact_id / recipe_id / version_id 必须显式提供；服务端不再回退最近 artifact、active recipe、activeVersionId 或其他全局活动态。",
+          "recipe_id / version_id 必须指向 published recipe version。requested_execution_strategy 为可选显式执行策略；未传时默认按 flying_shot 解析。POINT 若无 formal carrier trajectory，仅允许基于 recipe-owned point_flying_carrier_policy，并按 approach_direction = normalize(point - planning_start_position) 合成 formal carrier trajectory。"
         ]
       }
     },
@@ -331,7 +328,7 @@
       ],
       "compatibility": {
         "notes": [
-          "过渡期服务端可回退最近一次 prepared plan；新客户端必须显式传入 plan_id 与 plan_fingerprint。"
+          "仅接受显式 plan_id 与 plan_fingerprint。"
         ]
       }
     },

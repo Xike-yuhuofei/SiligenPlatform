@@ -155,6 +155,15 @@ class DispenserOperationGuard {
     explicit DispenserOperationGuard(std::shared_ptr<IValvePort> port)
         : port_(std::move(port)), started_(false) {}
 
+    Result<void> StartTimed(const Ports::DispenserValveParams& params) {
+        auto result = port_->StartDispenser(params);
+        if (result.IsSuccess()) {
+            started_ = true;
+            return Result<void>::Success();
+        }
+        return Result<void>::Failure(result.GetError());
+    }
+
     Result<void> Start(const Ports::PositionTriggeredDispenserParams& params) {
         auto result = port_->StartPositionTriggeredDispenser(params);
         if (result.IsSuccess()) {
@@ -183,6 +192,10 @@ class DispenserOperationGuard {
     std::shared_ptr<IValvePort> port_;
     bool started_;
 };
+
+bool ShouldExecuteStationaryPointShot(const DispensingExecutionPlan& plan) noexcept {
+    return plan.RequiresStationaryPointShot();
+}
 
 class CoordinateSystemStopGuard {
    public:
@@ -878,6 +891,86 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
     if (options.dispense_enabled && !valve_port_) {
         return Result<DispensingExecutionReport>::Failure(
             Error(ErrorCode::PORT_NOT_INITIALIZED, "点胶阀端口未初始化", "DispensingProcessService"));
+    }
+
+    if (ShouldExecuteStationaryPointShot(plan)) {
+        auto pre_position_result = PrePositionToPlanStart(plan, params, stop_flag, pause_flag, pause_applied_flag);
+        if (pre_position_result.IsError()) {
+            return Result<DispensingExecutionReport>::Failure(pre_position_result.GetError());
+        }
+
+        SupplyValveGuard supply_guard(valve_port_);
+        if (options.dispense_enabled) {
+            auto supply_result = supply_guard.Open();
+            if (supply_result.IsError()) {
+                return Result<DispensingExecutionReport>::Failure(supply_result.GetError());
+            }
+            auto stabilization_ms = SupplyStabilizationPolicy::Resolve(config_port_);
+            if (stabilization_ms.IsError()) {
+                return Result<DispensingExecutionReport>::Failure(stabilization_ms.GetError());
+            }
+            if (stabilization_ms.Value() > 0) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(stabilization_ms.Value()));
+            }
+        }
+
+        if (options.dispense_enabled) {
+            DispenserOperationGuard dispenser_guard(valve_port_);
+            Ports::DispenserValveParams timed_params;
+            timed_params.count = 1U;
+            timed_params.intervalMs = std::max<uint32>(10U, params.dispenser_interval_ms);
+            timed_params.durationMs = std::max<uint32>(10U, params.dispenser_duration_ms);
+            auto start_result = dispenser_guard.StartTimed(timed_params);
+            if (start_result.IsError()) {
+                return Result<DispensingExecutionReport>::Failure(start_result.GetError());
+            }
+
+            const auto timeout_ms =
+                static_cast<int32>(timed_params.intervalMs + timed_params.durationMs + kMotionCompletionGraceMinMs);
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+            while (std::chrono::steady_clock::now() < deadline) {
+                if (IsStopRequested(stop_flag)) {
+                    return Result<DispensingExecutionReport>::Failure(
+                        Error(ErrorCode::INVALID_STATE, "用户请求停止", "DispensingProcessService"));
+                }
+
+                auto pause_result =
+                    WaitWhilePaused(stop_flag, pause_flag, pause_applied_flag, options.dispense_enabled, observer);
+                if (pause_result.IsError()) {
+                    return Result<DispensingExecutionReport>::Failure(pause_result.GetError());
+                }
+
+                auto status_result = valve_port_->GetDispenserStatus();
+                if (status_result.IsError()) {
+                    return Result<DispensingExecutionReport>::Failure(status_result.GetError());
+                }
+                const auto& status = status_result.Value();
+                if (status.IsCompleted()) {
+                    break;
+                }
+                if (status.HasError()) {
+                    return Result<DispensingExecutionReport>::Failure(
+                        Error(ErrorCode::HARDWARE_ERROR, status.errorMessage, "DispensingProcessService"));
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(kStatusPollIntervalMs));
+            }
+
+            auto final_status_result = valve_port_->GetDispenserStatus();
+            if (final_status_result.IsError()) {
+                return Result<DispensingExecutionReport>::Failure(final_status_result.GetError());
+            }
+            const auto& final_status = final_status_result.Value();
+            if (!final_status.IsCompleted()) {
+                return Result<DispensingExecutionReport>::Failure(
+                    Error(ErrorCode::TIMEOUT, "单点静止点胶未在超时内完成", "DispensingProcessService"));
+            }
+        }
+
+        PublishProgress(observer, 1U, 1U);
+        DispensingExecutionReport report;
+        report.executed_segments = 1U;
+        report.total_distance = 0.0f;
+        return Result<DispensingExecutionReport>::Success(report);
     }
 
     DispensingController controller;

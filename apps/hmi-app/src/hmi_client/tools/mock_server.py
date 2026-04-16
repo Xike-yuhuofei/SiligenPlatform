@@ -64,8 +64,11 @@ class DxfState:
 def _build_preview_signature(filepath: str, params: Dict) -> str:
     payload = {
         "filepath": filepath,
+        "artifact_id": str(params.get("artifact_id", "")),
+        "recipe_id": str(params.get("recipe_id", "")),
+        "version_id": str(params.get("version_id", "")),
         "dry_run": bool(params.get("dry_run", False)),
-        "dispensing_speed_mm_s": float(params.get("dispensing_speed_mm_s", params.get("speed_mm_s", 0.0))),
+        "dispensing_speed_mm_s": float(params.get("dispensing_speed_mm_s", 0.0)),
         "dry_run_speed_mm_s": float(params.get("dry_run_speed_mm_s", 0.0)),
         "rapid_speed_mm_s": float(params.get("rapid_speed_mm_s", 0.0)),
         "optimize_path": bool(params.get("optimize_path", False)),
@@ -276,6 +279,57 @@ class MockState:
             return {"error": {"code": -32012, "message": "safety door open"}}
         return None
 
+    def _coord_axis_state(self, axis: AxisState) -> int:
+        if not axis.enabled:
+            return 0
+        return 1 if abs(axis.velocity) > 1e-6 else 0
+
+    def _motion_coord_status(self, coord_sys: int) -> Dict:
+        if not self.hardware_connected:
+            return {"error": {"code": 2201, "message": "coord status unavailable: hardware disconnected"}}
+
+        current_velocity = max((abs(axis.velocity) for axis in self.axes.values()), default=0.0)
+        any_axis_moving = current_velocity > 1e-6
+        has_fault = bool(self.io.estop or self.io.door)
+        if has_fault:
+            coord_state = 3
+        elif self.dxf.paused:
+            coord_state = 2
+        elif self.dxf.running or any_axis_moving:
+            coord_state = 1
+        else:
+            coord_state = 0
+
+        remaining_segments = 1 if coord_state in (1, 2) else 0
+        return {
+            "result": {
+                "coord_sys": int(coord_sys),
+                "state": coord_state,
+                "is_moving": bool(coord_state == 1),
+                "remaining_segments": remaining_segments,
+                "current_velocity": current_velocity,
+                "raw_status_word": coord_state,
+                "raw_segment": remaining_segments,
+                "mc_status_ret": 0,
+                "axes": {
+                    name: {
+                        "position": axis.position,
+                        "velocity": axis.velocity,
+                        "state": self._coord_axis_state(axis),
+                        "enabled": axis.enabled,
+                        "homed": axis.homed,
+                        "in_position": abs(axis.velocity) <= 1e-6,
+                        "has_error": has_fault,
+                        "error_code": -32011 if self.io.estop else (-32012 if self.io.door else None),
+                        "servo_alarm": False,
+                        "following_error": False,
+                        "home_failed": False,
+                    }
+                    for name, axis in self.axes.items()
+                },
+            }
+        }
+
     def handle_request(self, method: str, params: Optional[Dict]) -> Dict:
         params = params or {}
         with self._lock:
@@ -443,6 +497,9 @@ class MockState:
                         },
                     }
                 }
+            if method == "motion.coord.status":
+                coord_sys = int(params.get("coord_sys", 1) or 1)
+                return self._motion_coord_status(coord_sys)
             if method == "mock.io.set":
                 if "estop" in params:
                     self.io.estop = bool(params.get("estop"))
@@ -804,9 +861,22 @@ class MockState:
                 if not self.dxf.loaded:
                     return {"error": {"code": -32003, "message": "DXF not loaded"}}
                 artifact_id = str(params.get("artifact_id", "")).strip()
-                if artifact_id and artifact_id != self.dxf.artifact_id:
+                if not artifact_id:
+                    return {"error": {"code": -32005, "message": "Missing artifact_id"}}
+                if artifact_id != self.dxf.artifact_id:
                     return {"error": {"code": -32008, "message": "artifact not found"}}
-                speed = float(params.get("dispensing_speed_mm_s", params.get("speed_mm_s", 0.0)))
+                recipe_id = str(params.get("recipe_id", "")).strip()
+                if not recipe_id:
+                    return {"error": {"code": -33001, "message": "Missing recipe_id"}}
+                version_id = str(params.get("version_id", "")).strip()
+                if not version_id:
+                    return {"error": {"code": -33002, "message": "Missing version_id"}}
+                recipe = next((item for item in self.recipes if item["id"] == recipe_id), None)
+                if recipe is None:
+                    return {"error": {"code": -33003, "message": "Recipe not found"}}
+                if recipe.get("activeVersionId") != version_id:
+                    return {"error": {"code": -33004, "message": "Version not found"}}
+                speed = float(params.get("dispensing_speed_mm_s", 0.0))
                 if speed <= 0:
                     return {"error": {"code": -32004, "message": "Invalid speed_mm_s"}}
                 signature = _build_preview_signature(self.dxf.filepath, params)

@@ -24,6 +24,20 @@ std::vector<TrajectoryPoint> BuildTrajectoryFromMotion(const MotionTrajectory& t
     return ConvertMotionTrajectoryToTrajectoryPoints(trajectory);
 }
 
+Result<void> ValidateExecutionStrategyFeasibility(
+    DispensingExecutionStrategy requested_strategy,
+    DispensingExecutionGeometryKind geometry_kind) {
+    if (geometry_kind != DispensingExecutionGeometryKind::POINT &&
+        requested_strategy == DispensingExecutionStrategy::STATIONARY_SHOT) {
+        return Result<void>::Failure(Siligen::Shared::Types::Error(
+            Siligen::Shared::Types::ErrorCode::INVALID_PARAMETER,
+            "requested_execution_strategy=stationary_shot only supports POINT geometry",
+            "ExecutionAssemblyService"));
+    }
+
+    return Result<void>::Success();
+}
+
 ExecutionTrajectorySelection SelectExecutionTrajectory(const ExecutionPackageValidated& execution_package) {
     ExecutionTrajectorySelection selection;
     selection.motion_trajectory_points = BuildTrajectoryFromMotion(execution_package.execution_plan.motion_trajectory);
@@ -106,14 +120,30 @@ Result<ExecutionPackageValidated> BuildValidatedExecutionPackage(
     };
 
     ExecutionPackageBuilt built;
+    built.execution_plan.geometry_kind = ResolveExecutionGeometryKind(execution_process_path);
+    auto strategy_validation = ValidateExecutionStrategyFeasibility(
+        input.requested_execution_strategy,
+        built.execution_plan.geometry_kind);
+    if (strategy_validation.IsError()) {
+        return Result<ExecutionPackageValidated>::Failure(strategy_validation.GetError());
+    }
+    built.execution_plan.execution_strategy = ResolveExecutionStrategy(
+        input.requested_execution_strategy,
+        built.execution_plan.geometry_kind,
+        generation_artifacts,
+        input.motion_plan);
     built.execution_plan.interpolation_segments = std::move(generation_artifacts.interpolation_segments);
     built.execution_plan.interpolation_points = std::move(generation_artifacts.interpolation_points);
-    built.execution_plan.motion_trajectory = input.motion_plan;
+    built.execution_plan.motion_trajectory = generation_artifacts.motion_trajectory.points.empty()
+        ? input.motion_plan
+        : std::move(generation_artifacts.motion_trajectory);
     built.execution_plan.trigger_distances_mm = trigger_artifacts.distances;
     built.execution_plan.trigger_interval_ms = trigger_artifacts.interval_ms;
     built.execution_plan.trigger_interval_mm = trigger_artifacts.interval_mm;
-    built.execution_plan.total_length_mm = input.motion_plan.total_length > kEpsilon
-        ? input.motion_plan.total_length
+    built.execution_plan.total_length_mm = built.execution_plan.motion_trajectory.total_length > kEpsilon
+        ? built.execution_plan.motion_trajectory.total_length
+        : input.motion_plan.total_length > kEpsilon
+            ? input.motion_plan.total_length
         : ComputeProcessPathLength(execution_process_path);
     built.total_length_mm = built.execution_plan.total_length_mm;
     built.estimated_time_s = input.estimated_time_s;
@@ -131,7 +161,10 @@ Result<ExecutionPackageValidated> BuildValidatedExecutionPackage(
         std::ostringstream oss;
         oss << "trajectory_points=" << execution_package.execution_plan.motion_trajectory.points.size()
             << " interpolation_segments=" << execution_package.execution_plan.interpolation_segments.size()
-            << " interpolation_points=" << execution_package.execution_plan.interpolation_points.size();
+            << " interpolation_points=" << execution_package.execution_plan.interpolation_points.size()
+            << " geometry_kind=" << Siligen::Shared::Types::ToString(execution_package.execution_plan.geometry_kind)
+            << " execution_strategy="
+            << Siligen::Shared::Types::ToString(execution_package.execution_plan.execution_strategy);
         log_stage("execution_package_ready", oss.str());
     }
 

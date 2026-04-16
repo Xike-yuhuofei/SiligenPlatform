@@ -18,6 +18,37 @@ using namespace Domain::Dispensing::Ports;
 using namespace Shared::Types;
 
 namespace {
+using DispenserCapability = Siligen::Device::Contracts::Capabilities::DispenserCapability;
+using DispenserCommand = Siligen::Device::Contracts::Commands::DispenserCommand;
+using DispenserCommandKind = Siligen::Device::Contracts::Commands::DispenserCommandKind;
+using DeviceDispenserState = Siligen::Device::Contracts::State::DispenserState;
+using SharedKernelError = Siligen::SharedKernel::Error;
+using SharedKernelErrorCode = Siligen::SharedKernel::ErrorCode;
+
+SharedKernelError ToKernelError(const Siligen::Shared::Types::Error& error) {
+    return SharedKernelError(
+        static_cast<SharedKernelErrorCode>(static_cast<int32>(error.GetCode())),
+        error.GetMessage(),
+        error.GetModule());
+}
+
+Siligen::SharedKernel::VoidResult ToKernelVoidResult(const Result<void>& result) {
+    if (result.IsError()) {
+        return Siligen::SharedKernel::VoidResult::Failure(ToKernelError(result.GetError()));
+    }
+    return Siligen::SharedKernel::VoidResult::Success();
+}
+
+DispenserCapability BuildDispenserCapability() {
+    DispenserCapability capability;
+    capability.supports_prime = false;
+    capability.supports_pause = true;
+    capability.supports_resume = true;
+    capability.supports_continuous_mode = true;
+    capability.supports_in_motion_pulse_shot = true;
+    return capability;
+}
+
 constexpr auto kPathTriggerPollInterval = std::chrono::milliseconds(2);
 constexpr uint32 kMaxCoordinateReadFailures = 20;
 
@@ -565,6 +596,68 @@ Result<void> ValveAdapter::ResumeDispenser() noexcept {
         return Result<void>::Failure(
             Shared::Types::Error(ErrorCode::UNKNOWN_ERROR, std::string("Exception: ") + e.what()));
     }
+}
+
+Siligen::SharedKernel::VoidResult ValveAdapter::Execute(const DispenserCommand& command) {
+    {
+        std::lock_guard<std::mutex> lock(dispenser_mutex_);
+        last_execution_id_ = command.execution_id;
+    }
+
+    switch (command.kind) {
+        case DispenserCommandKind::kPrime:
+            return Siligen::SharedKernel::VoidResult::Failure(SharedKernelError(
+                SharedKernelErrorCode::NOT_IMPLEMENTED,
+                "Prime is not implemented in production ValveAdapter",
+                "ValveAdapter"));
+        case DispenserCommandKind::kStart: {
+            const auto result = OpenDispenser();
+            if (result.IsError()) {
+                return Siligen::SharedKernel::VoidResult::Failure(ToKernelError(result.GetError()));
+            }
+            return Siligen::SharedKernel::VoidResult::Success();
+        }
+        case DispenserCommandKind::kPause:
+            return ToKernelVoidResult(PauseDispenser());
+        case DispenserCommandKind::kResume:
+            return ToKernelVoidResult(ResumeDispenser());
+        case DispenserCommandKind::kStop:
+            return ToKernelVoidResult(StopDispenser());
+    }
+
+    return Siligen::SharedKernel::VoidResult::Failure(SharedKernelError(
+        SharedKernelErrorCode::INVALID_PARAMETER,
+        "unsupported dispenser command kind",
+        "ValveAdapter"));
+}
+
+Siligen::SharedKernel::Result<DeviceDispenserState> ValveAdapter::ReadState() const {
+    try {
+        auto* self = const_cast<ValveAdapter*>(this);
+        self->JoinTimedDispenserThreadIfFinished();
+
+        std::lock_guard<std::mutex> lock(dispenser_mutex_);
+        if (dispenser_run_mode_ == DispenserRunMode::Timed) {
+            self->RefreshTimedDispenserStateIfCompleted();
+        }
+
+        DeviceDispenserState state;
+        state.primed = false;
+        state.running = dispenser_state_.status == DispenserValveStatus::Running;
+        state.paused = dispenser_state_.status == DispenserValveStatus::Paused;
+        state.execution_id = last_execution_id_;
+        return Siligen::SharedKernel::Result<DeviceDispenserState>::Success(state);
+    }
+    catch (const std::exception& e) {
+        return Siligen::SharedKernel::Result<DeviceDispenserState>::Failure(SharedKernelError(
+            SharedKernelErrorCode::UNKNOWN_ERROR,
+            std::string("Exception: ") + e.what(),
+            "ValveAdapter"));
+    }
+}
+
+Siligen::SharedKernel::Result<DispenserCapability> ValveAdapter::DescribeCapability() const {
+    return Siligen::SharedKernel::Result<DispenserCapability>::Success(BuildDispenserCapability());
 }
 
 void ValveAdapter::TimedDispenserLoop() noexcept {

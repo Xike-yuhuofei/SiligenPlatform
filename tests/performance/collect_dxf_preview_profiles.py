@@ -893,9 +893,30 @@ def prepare_and_snapshot_once(
     *,
     artifact_ms: float | None,
 ) -> PreviewCycleRecord:
+    recipes_ok, recipes_payload, recipes_error = protocol.recipe_list()
+    if not recipes_ok or not recipes_payload:
+        return PreviewCycleRecord(
+            success=False,
+            artifact_id=artifact_id,
+            artifact_ms=artifact_ms,
+            error=f"recipe.list failed: {recipes_error or 'missing recipe'}",
+        )
+    recipe = recipes_payload[0]
+    recipe_id = str(recipe.get("id", "")).strip()
+    version_id = str(recipe.get("activeVersionId", "")).strip()
+    if not recipe_id or not version_id:
+        return PreviewCycleRecord(
+            success=False,
+            artifact_id=artifact_id,
+            artifact_ms=artifact_ms,
+            error="recipe.list response missing recipe/version",
+        )
+
     plan_started = time.perf_counter()
     plan_ok, plan_payload, plan_error = protocol.dxf_prepare_plan(
         artifact_id=artifact_id,
+        recipe_id=recipe_id,
+        version_id=version_id,
         speed_mm_s=args.dispensing_speed_mm_s,
         dry_run=args.dry_run,
         dry_run_speed_mm_s=args.dry_run_speed_mm_s,
@@ -1799,10 +1820,30 @@ def concurrent_prepare_worker(
 ) -> None:
     try:
         with protocol_client(args.host, args.port) as (_, protocol):
+            recipes_ok, recipes_payload, recipes_error = protocol.recipe_list()
+            if not recipes_ok or not recipes_payload:
+                results[request_index] = ConcurrentPrepareRecord(
+                    request_index=request_index,
+                    success=False,
+                    error=f"recipe.list failed: {recipes_error or 'missing recipe'}",
+                )
+                return
+            recipe = recipes_payload[0]
+            recipe_id = str(recipe.get("id", "")).strip()
+            version_id = str(recipe.get("activeVersionId", "")).strip()
+            if not recipe_id or not version_id:
+                results[request_index] = ConcurrentPrepareRecord(
+                    request_index=request_index,
+                    success=False,
+                    error="recipe.list response missing recipe/version",
+                )
+                return
             barrier.wait(timeout=max(10.0, args.prepare_timeout))
             started = time.perf_counter()
             ok, payload, error = protocol.dxf_prepare_plan(
                 artifact_id=artifact_id,
+                recipe_id=recipe_id,
+                version_id=version_id,
                 speed_mm_s=args.dispensing_speed_mm_s,
                 dry_run=args.dry_run,
                 dry_run_speed_mm_s=args.dry_run_speed_mm_s,

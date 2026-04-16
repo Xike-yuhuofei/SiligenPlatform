@@ -109,6 +109,31 @@ std::size_t CountImmediateLineReversals(const Siligen::ProcessPath::Contracts::P
     return immediate_reversal_count;
 }
 
+std::size_t CountPointSegments(const Siligen::ProcessPath::Contracts::ProcessPath& path) {
+    std::size_t count = 0;
+    for (const auto& segment : path.segments) {
+        if (segment.geometry.is_point) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+bool HasPointSegmentAt(const Siligen::ProcessPath::Contracts::ProcessPath& path,
+                       const Point2D& target,
+                       float tolerance) {
+    for (const auto& segment : path.segments) {
+        if (!segment.geometry.is_point) {
+            continue;
+        }
+        if (segment.geometry.line.start.DistanceTo(target) <= tolerance &&
+            segment.geometry.line.end.DistanceTo(target) <= tolerance) {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::optional<Point2D> PrimitiveStartPoint(const Siligen::ProcessPath::Contracts::Primitive& primitive) {
     using Siligen::ProcessPath::Contracts::PrimitiveType;
     switch (primitive.type) {
@@ -464,10 +489,9 @@ TEST(ProcessPathFacadeTest, RejectsSplineInputWhenApproximationIsDisabled) {
     EXPECT_EQ(result.normalized.report.consumable_segment_count, 0);
 }
 
-TEST(ProcessPathFacadeTest, UnsupportedPointOnlyInputReturnsInvalidInput) {
+TEST(ProcessPathFacadeTest, SupportsPointOnlyInputAndPreservesPointSegment) {
     using Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest;
     using Siligen::Application::Services::ProcessPath::ProcessPathFacade;
-    using Siligen::ProcessPath::Contracts::PathGenerationStage;
     using Siligen::ProcessPath::Contracts::PathGenerationStatus;
     using Siligen::ProcessPath::Contracts::Primitive;
     using Siligen::Shared::Types::Point2D;
@@ -478,13 +502,20 @@ TEST(ProcessPathFacadeTest, UnsupportedPointOnlyInputReturnsInvalidInput) {
     ProcessPathFacade facade;
     const auto result = facade.Build(request);
 
-    EXPECT_EQ(result.status, PathGenerationStatus::InvalidInput);
-    EXPECT_EQ(result.failed_stage, PathGenerationStage::InputValidation);
-    EXPECT_EQ(result.error_message, "point primitive is not a supported live process-path input");
-    EXPECT_EQ(result.normalized.report.point_primitive_count, 0);
+    EXPECT_EQ(result.status, PathGenerationStatus::Success);
+    EXPECT_EQ(result.failed_stage, Siligen::ProcessPath::Contracts::PathGenerationStage::None);
+    EXPECT_TRUE(result.error_message.empty());
+    EXPECT_EQ(result.normalized.report.point_primitive_count, 1);
     EXPECT_EQ(result.normalized.report.consumable_segment_count, 0);
-    EXPECT_TRUE(result.process_path.segments.empty());
-    EXPECT_TRUE(result.shaped_path.segments.empty());
+    ASSERT_EQ(result.normalized.path.segments.size(), 1U);
+    EXPECT_TRUE(result.normalized.path.segments.front().is_point);
+    EXPECT_EQ(result.normalized.path.segments.front().line.start, Point2D(1.0f, 2.0f));
+    ASSERT_EQ(result.process_path.segments.size(), 1U);
+    EXPECT_TRUE(result.process_path.segments.front().geometry.is_point);
+    EXPECT_TRUE(result.process_path.segments.front().dispense_on);
+    EXPECT_EQ(result.process_path.segments.front().geometry.line.start, Point2D(1.0f, 2.0f));
+    ASSERT_EQ(result.shaped_path.segments.size(), 1U);
+    EXPECT_TRUE(result.shaped_path.segments.front().geometry.is_point);
 }
 
 TEST(ProcessPathFacadeTest, PreservesBranchRevisitLikePrimitiveSequenceThroughBuild) {
@@ -626,7 +657,7 @@ TEST(ProcessPathFacadeTest, RepairOffAllowsMissingMetadataToFlowThrough) {
     EXPECT_TRUE(result.process_path.segments.size() >= 2u);
 }
 
-TEST(ProcessPathFacadeTest, RejectsPointNoiseBeforeTopologyRepair) {
+TEST(ProcessPathFacadeTest, PreservesPointNoiseThroughTopologyRepairPipeline) {
     using Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest;
     using Siligen::Application::Services::ProcessPath::ProcessPathFacade;
     using Siligen::ProcessPath::Contracts::PathPrimitiveMeta;
@@ -658,12 +689,16 @@ TEST(ProcessPathFacadeTest, RejectsPointNoiseBeforeTopologyRepair) {
     ProcessPathFacade facade;
     const auto result = facade.Build(request);
 
-    EXPECT_EQ(result.status, Siligen::ProcessPath::Contracts::PathGenerationStatus::InvalidInput);
-    EXPECT_EQ(result.failed_stage, Siligen::ProcessPath::Contracts::PathGenerationStage::InputValidation);
-    EXPECT_EQ(result.error_message, "point primitive is not a supported live process-path input");
-    EXPECT_FALSE(result.topology_diagnostics.repair_requested);
-    EXPECT_FALSE(result.topology_diagnostics.repair_applied);
-    EXPECT_TRUE(result.process_path.segments.empty());
-    EXPECT_TRUE(result.shaped_path.segments.empty());
+    EXPECT_EQ(result.status, Siligen::ProcessPath::Contracts::PathGenerationStatus::Success);
+    EXPECT_EQ(result.failed_stage, Siligen::ProcessPath::Contracts::PathGenerationStage::None);
+    EXPECT_TRUE(result.error_message.empty());
+    EXPECT_TRUE(result.topology_diagnostics.repair_requested);
+    EXPECT_EQ(result.normalized.report.point_primitive_count, 2);
+    EXPECT_EQ(CountPointSegments(result.process_path), 2U);
+    EXPECT_EQ(CountPointSegments(result.shaped_path), 2U);
+    EXPECT_TRUE(HasPointSegmentAt(result.process_path, Point2D(5.0f, 5.0f), 1e-4f));
+    EXPECT_TRUE(HasPointSegmentAt(result.process_path, Point2D(6.0f, 6.0f), 1e-4f));
+    EXPECT_TRUE(HasPointSegmentAt(result.shaped_path, Point2D(5.0f, 5.0f), 1e-4f));
+    EXPECT_TRUE(HasPointSegmentAt(result.shaped_path, Point2D(6.0f, 6.0f), 1e-4f));
 }
 

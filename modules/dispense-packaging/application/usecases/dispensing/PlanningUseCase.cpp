@@ -42,6 +42,9 @@ using Siligen::ProcessPath::Contracts::PathGenerationStage;
 using Siligen::ProcessPath::Contracts::PathGenerationStatus;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
+using Siligen::Shared::Types::DispensingExecutionGeometryKind;
+using Siligen::Shared::Types::DispensingExecutionStrategy;
+using Siligen::Shared::Types::PointFlyingCarrierPolicy;
 using Siligen::Shared::Types::Result;
 using Siligen::Domain::Diagnostics::Ports::DiagnosticInfo;
 using Siligen::Domain::Diagnostics::Ports::DiagnosticLevel;
@@ -56,6 +59,60 @@ constexpr float32 kBoundsToleranceMm = 1e-4f;
 std::int64_t CurrentUnixTimestampMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
+bool IsPointOnlyProcessPath(const Siligen::ProcessPath::Contracts::ProcessPath& process_path) {
+    return process_path.segments.size() == 1U &&
+           process_path.segments.front().geometry.is_point;
+}
+
+Result<void> ValidateRequestedExecutionStrategyForAuthorityPreview(
+    const PlanningRequest& request,
+    const PreparedAuthorityPreview& authority_preview) {
+    const auto requested_strategy = request.ResolveRequestedExecutionStrategy();
+    const bool point_only_geometry =
+        IsPointOnlyProcessPath(authority_preview.process_path) ||
+        IsPointOnlyProcessPath(authority_preview.authority_process_path);
+    if (!point_only_geometry) {
+        if (requested_strategy == DispensingExecutionStrategy::STATIONARY_SHOT) {
+            return Result<void>::Failure(Error(
+                ErrorCode::INVALID_PARAMETER,
+                "requested_execution_strategy=stationary_shot only supports POINT geometry",
+                "PlanningUseCase"));
+        }
+        return Result<void>::Success();
+    }
+
+    return Result<void>::Success();
+}
+
+Result<void> ValidateResolvedExecutionStrategy(
+    const PlanningRequest& request,
+    const Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated& execution_package) {
+    if (!request.HasExplicitExecutionStrategy()) {
+        return Result<void>::Success();
+    }
+
+    const auto requested_strategy = request.requested_execution_strategy.value();
+    const auto& execution_plan = execution_package.execution_plan;
+    if (execution_plan.geometry_kind != DispensingExecutionGeometryKind::POINT &&
+        requested_strategy == DispensingExecutionStrategy::STATIONARY_SHOT) {
+        return Result<void>::Failure(Error(
+            ErrorCode::INVALID_PARAMETER,
+            "requested_execution_strategy=stationary_shot only supports POINT geometry",
+            "PlanningUseCase"));
+    }
+
+    if (execution_plan.execution_strategy == requested_strategy) {
+        return Result<void>::Success();
+    }
+
+    std::ostringstream oss;
+    oss << "requested_execution_strategy=" << Siligen::Shared::Types::ToString(requested_strategy)
+        << " cannot be satisfied by assembled execution_strategy="
+        << Siligen::Shared::Types::ToString(execution_plan.execution_strategy);
+    return Result<void>::Failure(
+        Error(ErrorCode::INVALID_PARAMETER, oss.str(), "PlanningUseCase"));
 }
 
 const char* ToPathGenerationStageString(const PathGenerationStage stage) {
@@ -619,6 +676,9 @@ Siligen::Application::Services::Dispensing::WorkflowExecutionAssemblyRequest Bui
     workflow_input.process_path = authority_preview.process_path;
     workflow_input.authority_process_path = authority_preview.authority_process_path;
     workflow_input.motion_plan = std::move(motion_plan);
+    workflow_input.planning_start_position = Point2D(request.start_x, request.start_y);
+    workflow_input.recipe_id = request.recipe_id;
+    workflow_input.version_id = request.version_id;
     workflow_input.source_path = authority_preview.source_path;
     workflow_input.dxf_filename = authority_preview.artifacts.dxf_filename;
     workflow_input.runtime_options.dispensing_velocity = runtime_params.dispensing_velocity;
@@ -638,6 +698,8 @@ Siligen::Application::Services::Dispensing::WorkflowExecutionAssemblyRequest Bui
     workflow_input.estimated_time_s = authority_preview.artifacts.estimated_time;
     workflow_input.use_interpolation_planner = request.use_interpolation_planner;
     workflow_input.interpolation_algorithm = request.interpolation_algorithm;
+    workflow_input.requested_execution_strategy = request.ResolveRequestedExecutionStrategy();
+    workflow_input.point_flying_carrier_policy = request.point_flying_carrier_policy;
     workflow_input.authority_preview = authority_preview.artifacts;
     return workflow_input;
 }
@@ -828,6 +890,8 @@ std::string PlanningUseCase::BuildAuthorityCacheKey(const PlanningRequest& reque
 
     std::ostringstream oss;
     oss << request.dxf_filepath << '|'
+        << request.recipe_id << '|'
+        << request.version_id << '|'
         << request.optimize_path << '|'
         << request.start_x << '|'
         << request.start_y << '|'
@@ -861,6 +925,13 @@ std::string PlanningUseCase::BuildAuthorityCacheKey(const PlanningRequest& reque
         << request.spacing_tol_ratio << '|'
         << request.spacing_min_mm << '|'
         << request.spacing_max_mm << '|'
+        << request.point_flying_carrier_policy.has_value() << '|';
+    if (request.point_flying_carrier_policy.has_value()) {
+        const auto& policy = request.point_flying_carrier_policy.value();
+        oss << Siligen::Shared::Types::ToString(policy.direction_mode) << '|'
+            << policy.trigger_spatial_interval_mm << '|';
+    }
+    oss
         << static_cast<int>(strategy) << '|'
         << subsegment_count << '|'
         << dispense_only_cruise << '|'
@@ -953,6 +1024,11 @@ Result<PreparedAuthorityPreview> PlanningUseCase::PrepareAuthorityPreview(const 
     prepared.authority_profile.authority_build_ms = static_cast<std::uint32_t>(authority_elapsed_ms);
     prepared.authority_profile.total_ms = ToElapsedMs(total_start);
 
+    auto strategy_validation = ValidateRequestedExecutionStrategyForAuthorityPreview(request, prepared);
+    if (strategy_validation.IsError()) {
+        return Result<PreparedAuthorityPreview>::Failure(strategy_validation.GetError());
+    }
+
     {
         std::ostringstream oss;
         oss << "planning_prepare_authority"
@@ -1031,6 +1107,11 @@ Result<ExecutionAssemblyResponse> PlanningUseCase::AssembleExecutionFromAuthorit
     response.execution_package =
         std::make_shared<Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated>(
             assembled.execution_package);
+    auto requested_strategy_validation =
+        ValidateResolvedExecutionStrategy(request, *response.execution_package);
+    if (requested_strategy_validation.IsError()) {
+        return Result<ExecutionAssemblyResponse>::Failure(requested_strategy_validation.GetError());
+    }
     response.authority_trigger_layout = assembled.authority_trigger_layout;
     response.export_request = assembled.export_request;
     response.execution_profile.motion_plan_ms = static_cast<std::uint32_t>(motion_plan_elapsed_ms);

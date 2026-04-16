@@ -25,6 +25,8 @@ struct DigitalIoCapability {
 struct TriggerCapability {
     bool supports_position_trigger = false;
     bool supports_time_trigger = false;
+    bool supports_in_motion_position_trigger = false;
+    bool supports_in_motion_time_trigger = false;
 };
 
 struct DispenserCapability {
@@ -32,6 +34,7 @@ struct DispenserCapability {
     bool supports_pause = true;
     bool supports_resume = true;
     bool supports_continuous_mode = false;
+    bool supports_in_motion_pulse_shot = false;
 };
 
 struct DeviceCapabilities {

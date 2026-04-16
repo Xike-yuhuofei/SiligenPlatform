@@ -34,6 +34,9 @@ class RecipeConfigWidget(QWidget):
         # Initial load is now handled by MainWindow after connection
         # self._load_recipe_context()
 
+    def current_recipe_selection(self):
+        return self._current_recipe_id, self._current_version_id
+
     def _init_ui(self):
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(10, 10, 10, 10)

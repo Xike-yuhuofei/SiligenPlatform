@@ -174,6 +174,8 @@ private:
     // 端口实例(强类型)
     std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port_;
     std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> device_connection_port_;
+    std::shared_ptr<Siligen::Device::Contracts::Ports::MotionDevicePort> motion_device_port_;
+    std::shared_ptr<Siligen::Device::Contracts::Ports::DispenserDevicePort> dispenser_device_port_;
     std::shared_ptr<Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort> machine_execution_state_port_;
     std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IMotionRuntimePort> motion_runtime_port_;
     std::shared_ptr<Domain::Motion::Ports::IMotionConnectionPort> motion_connection_port_;
@@ -271,6 +273,10 @@ private:
             config_port_ = port;
         } else if constexpr (std::is_same_v<TPort, Siligen::Device::Contracts::Ports::DeviceConnectionPort>) {
             device_connection_port_ = port;
+        } else if constexpr (std::is_same_v<TPort, Siligen::Device::Contracts::Ports::MotionDevicePort>) {
+            motion_device_port_ = port;
+        } else if constexpr (std::is_same_v<TPort, Siligen::Device::Contracts::Ports::DispenserDevicePort>) {
+            dispenser_device_port_ = port;
         } else if constexpr (std::is_same_v<TPort, Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort>) {
             machine_execution_state_port_ = port;
         } else if constexpr (

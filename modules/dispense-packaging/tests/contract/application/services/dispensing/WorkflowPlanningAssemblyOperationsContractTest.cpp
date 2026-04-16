@@ -12,6 +12,8 @@ namespace {
 using Siligen::Application::Services::Dispensing::WorkflowPlanningAssemblyOperationsProvider;
 using Siligen::Domain::Dispensing::ValueObjects::StrongAnchorRole;
 using Siligen::Domain::Dispensing::ValueObjects::TopologyDispatchType;
+using Siligen::Shared::Types::DispensingExecutionGeometryKind;
+using Siligen::Shared::Types::DispensingExecutionStrategy;
 using namespace Siligen::Application::Services::Dispensing::TestFixtures;
 
 TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildAuthorityPreviewArtifactsReturnsStableAuthorityTruth) {
@@ -805,7 +807,7 @@ TEST(WorkflowPlanningAssemblyOperationsContractTest, AssemblePlanningArtifactsRe
     EXPECT_NE(result.GetError().GetMessage().find("插补程序为空"), std::string::npos);
 }
 
-TEST(WorkflowPlanningAssemblyOperationsContractTest, AssemblePlanningArtifactsRejectsZeroLengthDispenseSegments) {
+TEST(WorkflowPlanningAssemblyOperationsContractTest, AssemblePlanningArtifactsBuildsPointFlyingShotCarrierFromExplicitPolicy) {
     WorkflowPlanningAssemblyOperationsProvider provider;
     const auto operations = provider.CreateOperations();
 
@@ -821,8 +823,61 @@ TEST(WorkflowPlanningAssemblyOperationsContractTest, AssemblePlanningArtifactsRe
 
     const auto result = operations->AssemblePlanningArtifacts(BuildWorkflowPlanningInput(input));
 
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
+    const auto& execution_plan = result.Value().execution_package.execution_plan;
+    EXPECT_EQ(execution_plan.geometry_kind, DispensingExecutionGeometryKind::POINT);
+    EXPECT_EQ(execution_plan.execution_strategy, DispensingExecutionStrategy::FLYING_SHOT);
+    EXPECT_TRUE(execution_plan.HasFormalTrajectory());
+    ASSERT_EQ(execution_plan.trigger_distances_mm.size(), 1U);
+    EXPECT_FLOAT_EQ(execution_plan.trigger_distances_mm.front(), 0.0f);
+    ASSERT_EQ(result.Value().trajectory_points.size(), 2U);
+    EXPECT_NEAR(result.Value().trajectory_points.front().position.x, 10.0f, 1e-4f);
+    EXPECT_NEAR(result.Value().trajectory_points.front().position.y, 0.0f, 1e-4f);
+    EXPECT_NEAR(result.Value().trajectory_points.back().position.x, 15.0f, 1e-4f);
+    EXPECT_NEAR(result.Value().trajectory_points.back().position.y, 0.0f, 1e-4f);
+    EXPECT_FLOAT_EQ(execution_plan.total_length_mm, 5.0f);
+}
+
+TEST(WorkflowPlanningAssemblyOperationsContractTest, AssemblePlanningArtifactsRejectsPointFlyingShotWithoutCarrierPolicy) {
+    WorkflowPlanningAssemblyOperationsProvider provider;
+    const auto operations = provider.CreateOperations();
+
+    auto input = BuildPlanningInput();
+    input.process_path.segments.clear();
+    input.process_path.segments.push_back(BuildPointSegment(Point2D(10.0f, 0.0f)));
+    input.motion_plan.points = {
+        BuildMotionPoint(0.0f, 10.0f, 0.0f),
+        BuildMotionPoint(1.0f, 10.0f, 0.0f),
+    };
+    input.motion_plan.total_length = 0.0f;
+    input.motion_plan.total_time = 1.0f;
+    input.point_flying_carrier_policy.reset();
+
+    const auto result = operations->AssemblePlanningArtifacts(BuildWorkflowPlanningInput(input));
+
     ASSERT_TRUE(result.IsError());
-    EXPECT_NE(result.GetError().GetMessage().find("长度为0"), std::string::npos);
+    EXPECT_NE(result.GetError().GetMessage().find("point_flying_carrier_policy"), std::string::npos);
+}
+
+TEST(WorkflowPlanningAssemblyOperationsContractTest, AssemblePlanningArtifactsRejectsPointFlyingShotWhenPlanningStartMatchesPoint) {
+    WorkflowPlanningAssemblyOperationsProvider provider;
+    const auto operations = provider.CreateOperations();
+
+    auto input = BuildPlanningInput();
+    input.process_path.segments.clear();
+    input.process_path.segments.push_back(BuildPointSegment(Point2D(10.0f, 0.0f)));
+    input.motion_plan.points = {
+        BuildMotionPoint(0.0f, 10.0f, 0.0f),
+        BuildMotionPoint(1.0f, 10.0f, 0.0f),
+    };
+    input.motion_plan.total_length = 0.0f;
+    input.motion_plan.total_time = 1.0f;
+    input.planning_start_position = Point2D(10.0f, 0.0f);
+
+    const auto result = operations->AssemblePlanningArtifacts(BuildWorkflowPlanningInput(input));
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_NE(result.GetError().GetMessage().find("planning_start_position"), std::string::npos);
 }
 
 }  // namespace

@@ -21,6 +21,7 @@
 #define private public
 #include "dispense_packaging/application/usecases/dispensing/PlanningPortAdapters.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
+#include "runtime_execution/application/usecases/dispensing/IRecipePlanningPolicyPort.h"
 #include "runtime_execution/contracts/dispensing/IDispensingProcessPort.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/process_path/ProcessPathFacade.h"
@@ -46,14 +47,20 @@ using Siligen::Application::UseCases::Dispensing::PreparePlanResponse;
 using Siligen::Application::UseCases::Dispensing::PreparePlanRuntimeOverrides;
 using Siligen::Application::UseCases::Dispensing::RuntimeJobStatusResponse;
 using Siligen::Application::UseCases::Dispensing::StartJobResponse;
+using Siligen::Application::Ports::Dispensing::IRecipePlanningPolicyPort;
+using Siligen::Application::Ports::Dispensing::ResolvedRecipePlanningPolicy;
 using Siligen::Application::Services::Dispensing::PlanningArtifactExportResult;
 using Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort;
 using Siligen::Application::Services::DXF::DxfPbPreparationService;
 using Siligen::JobIngest::Contracts::IUploadFilePort;
 using Siligen::Device::Contracts::Commands::DeviceConnection;
+using Siligen::Device::Contracts::Ports::DispenserDevicePort;
 using Siligen::Device::Contracts::Ports::DeviceConnectionPort;
+using Siligen::Device::Contracts::Ports::MotionDevicePort;
 using Siligen::Device::Contracts::State::DeviceConnectionSnapshot;
 using Siligen::Device::Contracts::State::DeviceConnectionState;
+using Siligen::Device::Contracts::State::DeviceSession;
+using Siligen::Device::Contracts::State::DispenserState;
 using Siligen::Device::Contracts::State::HeartbeatSnapshot;
 using Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest;
 using Siligen::Domain::Dispensing::DomainServices::DispensingPlan;
@@ -63,21 +70,31 @@ using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionPlan;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionReport;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingRuntimeOverrides;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingRuntimeParams;
+using Siligen::Domain::Motion::Ports::InterpolationData;
 using Siligen::Domain::Motion::Ports::HomingState;
 using Siligen::Domain::Motion::Ports::HomingStatus;
 using Siligen::Domain::Motion::Ports::IHomingPort;
 using Siligen::Domain::Motion::Ports::IMotionStatePort;
 using Siligen::Domain::Motion::Ports::MotionState;
 using Siligen::Domain::Motion::Ports::MotionStatus;
+using Siligen::Domain::Motion::ValueObjects::MotionTrajectoryPoint;
 using Siligen::Domain::Safety::Ports::IInterlockSignalPort;
 using Siligen::Domain::Safety::ValueObjects::InterlockSignals;
+using Siligen::RuntimeExecution::Contracts::Motion::InterpolationType;
+using Siligen::Shared::Types::DispensingExecutionGeometryKind;
+using Siligen::Shared::Types::DispensingExecutionStrategy;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::LogicalAxisId;
+using Siligen::Shared::Types::PointFlyingCarrierDirectionMode;
+using Siligen::Shared::Types::PointFlyingCarrierPolicy;
 using Siligen::Shared::Types::Point2D;
 using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::float32;
 using Siligen::Shared::Types::uint32;
 using RuntimeDispensingProcessPort = Siligen::RuntimeExecution::Contracts::Dispensing::IDispensingProcessPort;
+
+constexpr char kCanonicalRecipeId[] = "recipe-preview";
+constexpr char kCanonicalVersionId[] = "version-published";
 
 template <typename T>
 std::shared_ptr<T> MakeDummyShared() {
@@ -203,6 +220,38 @@ class SlowExportPortStub final : public IPlanningArtifactExportPort {
     std::chrono::milliseconds delay_;
 };
 
+PointFlyingCarrierPolicy BuildCanonicalPointFlyingCarrierPolicy() {
+    PointFlyingCarrierPolicy policy;
+    policy.direction_mode = PointFlyingCarrierDirectionMode::APPROACH_DIRECTION;
+    policy.trigger_spatial_interval_mm = 5.0f;
+    return policy;
+}
+
+void ApplyCanonicalRecipeSelection(PlanningRequest& request) {
+    request.recipe_id = kCanonicalRecipeId;
+    request.version_id = kCanonicalVersionId;
+}
+
+void ApplyCanonicalRecipeSelection(PreparePlanRequest& request) {
+    request.recipe_id = kCanonicalRecipeId;
+    request.version_id = kCanonicalVersionId;
+}
+
+class FakeRecipePlanningPolicyPort final : public IRecipePlanningPolicyPort {
+   public:
+    Result<ResolvedRecipePlanningPolicy> ResolvePlanningPolicy(
+        const std::string& recipe_id,
+        const std::string& version_id) const override {
+        ResolvedRecipePlanningPolicy resolved;
+        resolved.recipe_id = recipe_id;
+        resolved.version_id = version_id;
+        resolved.point_flying_carrier_policy = policy;
+        return Result<ResolvedRecipePlanningPolicy>::Success(std::move(resolved));
+    }
+
+    PointFlyingCarrierPolicy policy = BuildCanonicalPointFlyingCarrierPolicy();
+};
+
 class ScopedTempPbFile {
    public:
     ScopedTempPbFile() {
@@ -226,6 +275,7 @@ class ScopedTempPbFile {
 PlanningRequest BuildCanonicalPlanningRequest(const std::string& filepath = "canonical.dxf") {
     PlanningRequest request;
     request.dxf_filepath = filepath;
+    ApplyCanonicalRecipeSelection(request);
     request.optimize_path = true;
     request.start_x = 12.5f;
     request.start_y = -3.0f;
@@ -268,6 +318,16 @@ PreparePlanRuntimeOverrides BuildPreparePlanRuntimeOverrides() {
     overrides.velocity_guard_max_consecutive = 4;
     overrides.velocity_guard_stop_on_violation = true;
     return overrides;
+}
+
+PreparePlanRequest BuildCanonicalPreparePlanRequest(const std::string& artifact_id) {
+    PreparePlanRequest request;
+    request.artifact_id = artifact_id;
+    ApplyCanonicalRecipeSelection(request);
+    request.planning_request = BuildCanonicalPlanningRequest();
+    request.planning_request.dxf_filepath.clear();
+    request.runtime_overrides = BuildPreparePlanRuntimeOverrides();
+    return request;
 }
 
 DispensingPlan BuildMinimalPlan() {
@@ -429,6 +489,71 @@ class FakeMotionStatePort final : public IMotionStatePort {
     }
 
     std::unordered_map<LogicalAxisId, MotionStatus> statuses;
+};
+
+class FakeMotionDevicePort final : public MotionDevicePort {
+   public:
+    FakeMotionDevicePort() {
+        capabilities.trigger.supports_position_trigger = true;
+        capabilities.trigger.supports_time_trigger = true;
+        capabilities.trigger.supports_in_motion_position_trigger = true;
+        capabilities.trigger.supports_in_motion_time_trigger = true;
+    }
+
+    Siligen::SharedKernel::VoidResult Connect(const DeviceConnection&) override {
+        return Siligen::SharedKernel::VoidResult::Success();
+    }
+    Siligen::SharedKernel::VoidResult Disconnect() override {
+        return Siligen::SharedKernel::VoidResult::Success();
+    }
+    Siligen::SharedKernel::Result<DeviceSession> ReadSession() const override {
+        return Siligen::SharedKernel::Result<DeviceSession>::Success(DeviceSession{});
+    }
+    Siligen::SharedKernel::VoidResult Execute(const Siligen::Device::Contracts::Commands::MotionCommand&) override {
+        return Siligen::SharedKernel::VoidResult::Success();
+    }
+    Siligen::SharedKernel::Result<Siligen::Device::Contracts::State::MotionState> ReadState() const override {
+        return Siligen::SharedKernel::Result<Siligen::Device::Contracts::State::MotionState>::Success(
+            Siligen::Device::Contracts::State::MotionState{});
+    }
+    Siligen::SharedKernel::Result<Siligen::Device::Contracts::Capabilities::DeviceCapabilities>
+    DescribeCapabilities() const override {
+        return Siligen::SharedKernel::Result<Siligen::Device::Contracts::Capabilities::DeviceCapabilities>::Success(
+            capabilities);
+    }
+    Siligen::SharedKernel::Result<std::vector<Siligen::Device::Contracts::Faults::DeviceFault>> ReadFaults()
+        const override {
+        return Siligen::SharedKernel::Result<std::vector<Siligen::Device::Contracts::Faults::DeviceFault>>::Success(
+            {});
+    }
+
+    Siligen::Device::Contracts::Capabilities::DeviceCapabilities capabilities{};
+};
+
+class FakeDispenserDevicePort final : public DispenserDevicePort {
+   public:
+    FakeDispenserDevicePort() {
+        capability.supports_prime = true;
+        capability.supports_pause = true;
+        capability.supports_resume = true;
+        capability.supports_continuous_mode = true;
+        capability.supports_in_motion_pulse_shot = true;
+    }
+
+    Siligen::SharedKernel::VoidResult Execute(
+        const Siligen::Device::Contracts::Commands::DispenserCommand&) override {
+        return Siligen::SharedKernel::VoidResult::Success();
+    }
+    Siligen::SharedKernel::Result<DispenserState> ReadState() const override {
+        return Siligen::SharedKernel::Result<DispenserState>::Success(DispenserState{});
+    }
+    Siligen::SharedKernel::Result<Siligen::Device::Contracts::Capabilities::DispenserCapability>
+    DescribeCapability() const override {
+        return Siligen::SharedKernel::Result<Siligen::Device::Contracts::Capabilities::DispenserCapability>::Success(
+            capability);
+    }
+
+    Siligen::Device::Contracts::Capabilities::DispenserCapability capability{};
 };
 
 class FakeInterlockSignalPort final : public IInterlockSignalPort {
@@ -652,20 +777,94 @@ void SeedPlan(DispensingWorkflowUseCase& use_case, const std::string& plan_id) {
     use_case.plans_[plan_id] = plan_record;
 }
 
+void ConfigurePointFlyingShotPlan(DispensingWorkflowUseCase::PlanRecord& plan_record) {
+    using Siligen::Domain::Dispensing::Contracts::ExecutionPackageBuilt;
+    using Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated;
+
+    ExecutionPackageBuilt built;
+    built.execution_plan.geometry_kind = DispensingExecutionGeometryKind::POINT;
+    built.execution_plan.execution_strategy = DispensingExecutionStrategy::FLYING_SHOT;
+    built.execution_plan.trigger_distances_mm = {0.0f};
+    built.execution_plan.trigger_interval_mm = 3.0f;
+    built.execution_plan.total_length_mm = 3.0f;
+    built.total_length_mm = 3.0f;
+    built.estimated_time_s = 0.12f;
+    built.source_path = "artifact.pb";
+    built.source_fingerprint = "point-flying";
+
+    MotionTrajectoryPoint start_point;
+    start_point.t = 0.0f;
+    start_point.position = {5.0f, 5.0f, 0.0f};
+    start_point.velocity = {25.0f, 0.0f, 0.0f};
+    start_point.dispense_on = true;
+
+    MotionTrajectoryPoint end_point;
+    end_point.t = 0.12f;
+    end_point.position = {8.0f, 5.0f, 0.0f};
+    end_point.velocity = {0.0f, 0.0f, 0.0f};
+    end_point.dispense_on = true;
+
+    built.execution_plan.motion_trajectory.points = {start_point, end_point};
+    built.execution_plan.motion_trajectory.total_length = 3.0f;
+    built.execution_plan.motion_trajectory.total_time = 0.12f;
+
+    Siligen::TrajectoryPoint preview_start;
+    preview_start.position = Point2D{5.0f, 5.0f};
+    preview_start.sequence_id = 0U;
+    preview_start.timestamp = 0.0f;
+    preview_start.velocity = 25.0f;
+    preview_start.enable_position_trigger = true;
+    preview_start.trigger_position_mm = 0.0f;
+
+    Siligen::TrajectoryPoint preview_end;
+    preview_end.position = Point2D{8.0f, 5.0f};
+    preview_end.sequence_id = 1U;
+    preview_end.timestamp = 0.12f;
+    preview_end.velocity = 0.0f;
+
+    built.execution_plan.interpolation_points = {preview_start, preview_end};
+
+    InterpolationData segment;
+    segment.type = InterpolationType::LINEAR;
+    segment.positions = {8.0f, 5.0f};
+    segment.velocity = 25.0f;
+    segment.acceleration = 100.0f;
+    segment.end_velocity = 0.0f;
+    built.execution_plan.interpolation_segments.push_back(segment);
+
+    auto package = std::make_shared<ExecutionPackageValidated>(std::move(built));
+    plan_record.execution_launch.execution_package = package;
+    plan_record.execution_assembly.execution_package = package;
+    plan_record.execution_trajectory_points = package->execution_plan.interpolation_points;
+    plan_record.execution_assembly.execution_trajectory_points = plan_record.execution_trajectory_points;
+    plan_record.glue_points = {Point2D{5.0f, 5.0f}};
+    plan_record.response.total_length_mm = 3.0f;
+    plan_record.authority_trigger_layout.trigger_points.clear();
+    SeedAuthorityTriggerPoints(plan_record, plan_record.glue_points);
+    plan_record.execution_assembly.authority_trigger_layout = plan_record.authority_trigger_layout;
+}
+
 DispensingWorkflowUseCase CreateUseCase(
     const std::shared_ptr<FakeHardwareConnectionPort>& connection_port,
     const std::shared_ptr<FakeMotionStatePort>& motion_state_port,
     const std::shared_ptr<FakeHomingPort>& homing_port,
     const std::shared_ptr<FakeInterlockSignalPort>& interlock_port,
-    std::shared_ptr<DispensingExecutionUseCase> execution_use_case = nullptr) {
+    std::shared_ptr<DispensingExecutionUseCase> execution_use_case = nullptr,
+    std::shared_ptr<FakeRecipePlanningPolicyPort> recipe_planning_policy_port =
+        std::make_shared<FakeRecipePlanningPolicyPort>()) {
+    auto motion_device_port = std::make_shared<FakeMotionDevicePort>();
+    auto dispenser_device_port = std::make_shared<FakeDispenserDevicePort>();
     auto execution_port = execution_use_case
         ? CreateRuntimeWorkflowExecutionPort(std::move(execution_use_case))
         : MakeDummyShared<Siligen::Application::Ports::Dispensing::IWorkflowExecutionPort>();
     return DispensingWorkflowUseCase(
         MakeDummyShared<IUploadFilePort>(),
         MakeDummyShared<PlanningUseCase>(),
+        recipe_planning_policy_port,
         execution_port,
         connection_port,
+        motion_device_port,
+        dispenser_device_port,
         motion_state_port,
         homing_port,
         interlock_port);
@@ -676,12 +875,19 @@ DispensingWorkflowUseCase CreateUseCaseWithPlanning(
     const std::shared_ptr<FakeHardwareConnectionPort>& connection_port,
     const std::shared_ptr<FakeMotionStatePort>& motion_state_port,
     const std::shared_ptr<FakeHomingPort>& homing_port,
-    const std::shared_ptr<FakeInterlockSignalPort>& interlock_port) {
+    const std::shared_ptr<FakeInterlockSignalPort>& interlock_port,
+    std::shared_ptr<FakeRecipePlanningPolicyPort> recipe_planning_policy_port =
+        std::make_shared<FakeRecipePlanningPolicyPort>()) {
+    auto motion_device_port = std::make_shared<FakeMotionDevicePort>();
+    auto dispenser_device_port = std::make_shared<FakeDispenserDevicePort>();
     return DispensingWorkflowUseCase(
         MakeDummyShared<IUploadFilePort>(),
         planning_use_case,
+        recipe_planning_policy_port,
         MakeDummyShared<Siligen::Application::Ports::Dispensing::IWorkflowExecutionPort>(),
         connection_port,
+        motion_device_port,
+        dispenser_device_port,
         motion_state_port,
         homing_port,
         interlock_port);
@@ -693,12 +899,19 @@ DispensingWorkflowUseCase CreateUseCaseWithPlanningAndExecution(
     const std::shared_ptr<FakeHardwareConnectionPort>& connection_port,
     const std::shared_ptr<FakeMotionStatePort>& motion_state_port,
     const std::shared_ptr<FakeHomingPort>& homing_port,
-    const std::shared_ptr<FakeInterlockSignalPort>& interlock_port) {
+    const std::shared_ptr<FakeInterlockSignalPort>& interlock_port,
+    std::shared_ptr<FakeRecipePlanningPolicyPort> recipe_planning_policy_port =
+        std::make_shared<FakeRecipePlanningPolicyPort>()) {
+    auto motion_device_port = std::make_shared<FakeMotionDevicePort>();
+    auto dispenser_device_port = std::make_shared<FakeDispenserDevicePort>();
     return DispensingWorkflowUseCase(
         MakeDummyShared<IUploadFilePort>(),
         planning_use_case,
+        recipe_planning_policy_port,
         CreateRuntimeWorkflowExecutionPort(execution_use_case),
         connection_port,
+        motion_device_port,
+        dispenser_device_port,
         motion_state_port,
         homing_port,
         interlock_port);
@@ -872,11 +1085,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanUsesCanonicalPlanningInputAndRunt
     artifact_record.upload_response.success = true;
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
-    PreparePlanRequest request;
-    request.artifact_id = artifact_record.response.artifact_id;
-    request.planning_request = BuildCanonicalPlanningRequest();
-    request.planning_request.dxf_filepath.clear();
-    request.runtime_overrides = BuildPreparePlanRuntimeOverrides();
+    PreparePlanRequest request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
 
     auto result = use_case.PreparePlan(request);
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
@@ -904,6 +1113,41 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanUsesCanonicalPlanningInputAndRunt
     EXPECT_EQ(prepared.filepath, temp_pb_file.string());
 }
 
+TEST(DispensingWorkflowUseCaseTest, PreparePlanRejectsMissingTopLevelRecipeOrVersion) {
+    ScopedTempPbFile temp_pb_file;
+    auto planning_use_case = CreateRealPlanningUseCase();
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto use_case = CreateUseCaseWithPlanning(
+        planning_use_case,
+        connection_port,
+        motion_state_port,
+        homing_port,
+        interlock_port);
+
+    DispensingWorkflowUseCase::ArtifactRecord artifact_record;
+    artifact_record.response.artifact_id = "artifact-missing-recipe-version";
+    artifact_record.upload_response.filepath = temp_pb_file.string();
+    artifact_record.upload_response.success = true;
+    use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
+
+    auto missing_recipe_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
+    missing_recipe_request.recipe_id.clear();
+    const auto missing_recipe_result = use_case.PreparePlan(missing_recipe_request);
+    ASSERT_TRUE(missing_recipe_result.IsError());
+    EXPECT_EQ(missing_recipe_result.GetError().GetCode(), ErrorCode::INVALID_PARAMETER);
+    EXPECT_EQ(missing_recipe_result.GetError().GetMessage(), "recipe_id is required");
+
+    auto missing_version_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
+    missing_version_request.version_id.clear();
+    const auto missing_version_result = use_case.PreparePlan(missing_version_request);
+    ASSERT_TRUE(missing_version_result.IsError());
+    EXPECT_EQ(missing_version_result.GetError().GetCode(), ErrorCode::INVALID_PARAMETER);
+    EXPECT_EQ(missing_version_result.GetError().GetMessage(), "version_id is required");
+}
+
 TEST(DispensingWorkflowUseCaseTest, PreparePlanReusesLatestPlanForIdenticalAuthorityAndRuntimeFingerprint) {
     ScopedTempPbFile temp_pb_file;
     auto planning_use_case = CreateRealPlanningUseCase();
@@ -924,11 +1168,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanReusesLatestPlanForIdenticalAutho
     artifact_record.upload_response.success = true;
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
-    PreparePlanRequest request;
-    request.artifact_id = artifact_record.response.artifact_id;
-    request.planning_request = BuildCanonicalPlanningRequest();
-    request.planning_request.dxf_filepath.clear();
-    request.runtime_overrides = BuildPreparePlanRuntimeOverrides();
+    PreparePlanRequest request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
 
     const auto first = use_case.PreparePlan(request);
     ASSERT_TRUE(first.IsSuccess()) << first.GetError().ToString();
@@ -970,11 +1210,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanSingleFlightsConcurrentAuthorityP
     artifact_record.upload_response.success = true;
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
-    PreparePlanRequest request;
-    request.artifact_id = artifact_record.response.artifact_id;
-    request.planning_request = BuildCanonicalPlanningRequest();
-    request.planning_request.dxf_filepath.clear();
-    request.runtime_overrides = BuildPreparePlanRuntimeOverrides();
+    PreparePlanRequest request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
 
     Result<PreparePlanResponse> first_result;
     Result<PreparePlanResponse> second_result;
@@ -1027,11 +1263,7 @@ TEST(DispensingWorkflowUseCaseTest, StartJobReturnsStructuredResponseWithExecuti
     artifact_record.upload_response.success = true;
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
-    PreparePlanRequest prepare_request;
-    prepare_request.artifact_id = artifact_record.response.artifact_id;
-    prepare_request.planning_request = BuildCanonicalPlanningRequest();
-    prepare_request.planning_request.dxf_filepath.clear();
-    prepare_request.runtime_overrides = BuildPreparePlanRuntimeOverrides();
+    PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
 
     const auto prepare_result = use_case.PreparePlan(prepare_request);
     ASSERT_TRUE(prepare_result.IsSuccess()) << prepare_result.GetError().ToString();
@@ -1126,11 +1358,7 @@ TEST(DispensingWorkflowUseCaseTest, EnsureExecutionAssemblySingleFlightsConcurre
     artifact_record.upload_response.success = true;
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
-    PreparePlanRequest prepare_request;
-    prepare_request.artifact_id = artifact_record.response.artifact_id;
-    prepare_request.planning_request = BuildCanonicalPlanningRequest();
-    prepare_request.planning_request.dxf_filepath.clear();
-    prepare_request.runtime_overrides = BuildPreparePlanRuntimeOverrides();
+    PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
 
     const auto prepare_result = use_case.PreparePlan(prepare_request);
     ASSERT_TRUE(prepare_result.IsSuccess()) << prepare_result.GetError().ToString();
@@ -1207,11 +1435,7 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotResolvesExecutionAssemblyF
     artifact_record.upload_response.success = true;
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
-    PreparePlanRequest prepare_request;
-    prepare_request.artifact_id = artifact_record.response.artifact_id;
-    prepare_request.planning_request = BuildCanonicalPlanningRequest();
-    prepare_request.planning_request.dxf_filepath.clear();
-    prepare_request.runtime_overrides = BuildPreparePlanRuntimeOverrides();
+    PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
 
     const auto prepare_result = use_case.PreparePlan(prepare_request);
     ASSERT_TRUE(prepare_result.IsSuccess()) << prepare_result.GetError().ToString();
@@ -1869,11 +2093,7 @@ TEST(DispensingWorkflowUseCaseTest, StartJobPreservesAuthorityFingerprintAndGlue
     artifact_record.upload_response.success = true;
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
-    PreparePlanRequest prepare_request;
-    prepare_request.artifact_id = artifact_record.response.artifact_id;
-    prepare_request.planning_request = BuildCanonicalPlanningRequest();
-    prepare_request.planning_request.dxf_filepath.clear();
-    prepare_request.runtime_overrides = BuildPreparePlanRuntimeOverrides();
+    PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
 
     const auto prepare_result = use_case.PreparePlan(prepare_request);
     ASSERT_TRUE(prepare_result.IsSuccess()) << prepare_result.GetError().ToString();
@@ -1936,11 +2156,8 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanParameterChangeInvalidatesPreviou
     artifact_record.upload_response.success = true;
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
-    PreparePlanRequest first_prepare_request;
-    first_prepare_request.artifact_id = artifact_record.response.artifact_id;
-    first_prepare_request.planning_request = BuildCanonicalPlanningRequest();
-    first_prepare_request.planning_request.dxf_filepath.clear();
-    first_prepare_request.runtime_overrides = BuildPreparePlanRuntimeOverrides();
+    PreparePlanRequest first_prepare_request =
+        BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
 
     const auto first_prepare = use_case.PreparePlan(first_prepare_request);
     ASSERT_TRUE(first_prepare.IsSuccess()) << first_prepare.GetError().ToString();
@@ -1971,6 +2188,169 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanParameterChangeInvalidatesPreviou
     ASSERT_TRUE(stale_start_result.IsError());
     EXPECT_EQ(stale_start_result.GetError().GetCode(), ErrorCode::INVALID_STATE);
     EXPECT_EQ(stale_start_result.GetError().GetMessage(), "plan is stale");
+}
+
+TEST(DispensingWorkflowUseCaseTest, PreparePlanExecutionStrategyPresenceUpdatesPlanFingerprint) {
+    ScopedTempPbFile temp_pb_file;
+    auto planning_use_case = CreateRealPlanningUseCase();
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_use_case =
+        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
+    motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
+    homing_port->homed[LogicalAxisId::X] = true;
+    homing_port->homed[LogicalAxisId::Y] = true;
+    auto use_case = CreateUseCaseWithPlanningAndExecution(
+        planning_use_case,
+        execution_use_case,
+        connection_port,
+        motion_state_port,
+        homing_port,
+        interlock_port);
+
+    DispensingWorkflowUseCase::ArtifactRecord artifact_record;
+    artifact_record.response.artifact_id = "artifact-strategy-fingerprint";
+    artifact_record.upload_response.filepath = temp_pb_file.string();
+    artifact_record.upload_response.success = true;
+    use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
+
+    PreparePlanRequest first_prepare_request =
+        BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
+
+    const auto first_prepare = use_case.PreparePlan(first_prepare_request);
+    ASSERT_TRUE(first_prepare.IsSuccess()) << first_prepare.GetError().ToString();
+
+    PreparePlanRequest second_prepare_request = first_prepare_request;
+    second_prepare_request.planning_request.requested_execution_strategy =
+        Siligen::Shared::Types::DispensingExecutionStrategy::FLYING_SHOT;
+    const auto second_prepare = use_case.PreparePlan(second_prepare_request);
+    ASSERT_TRUE(second_prepare.IsSuccess()) << second_prepare.GetError().ToString();
+
+    EXPECT_NE(second_prepare.Value().plan_fingerprint, first_prepare.Value().plan_fingerprint);
+    EXPECT_NE(second_prepare.Value().plan_id, first_prepare.Value().plan_id);
+}
+
+TEST(DispensingWorkflowUseCaseTest, PreparePlanRecipePolicyUpdatesPlanFingerprint) {
+    ScopedTempPbFile temp_pb_file;
+    auto planning_use_case = CreateRealPlanningUseCase();
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_use_case =
+        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    auto recipe_planning_policy_port = std::make_shared<FakeRecipePlanningPolicyPort>();
+    motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
+    motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
+    homing_port->homed[LogicalAxisId::X] = true;
+    homing_port->homed[LogicalAxisId::Y] = true;
+    auto use_case = CreateUseCaseWithPlanningAndExecution(
+        planning_use_case,
+        execution_use_case,
+        connection_port,
+        motion_state_port,
+        homing_port,
+        interlock_port,
+        recipe_planning_policy_port);
+
+    DispensingWorkflowUseCase::ArtifactRecord artifact_record;
+    artifact_record.response.artifact_id = "artifact-policy-fingerprint";
+    artifact_record.upload_response.filepath = temp_pb_file.string();
+    artifact_record.upload_response.success = true;
+    use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
+
+    const auto first_prepare = use_case.PreparePlan(
+        BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id));
+    ASSERT_TRUE(first_prepare.IsSuccess()) << first_prepare.GetError().ToString();
+
+    recipe_planning_policy_port->policy.trigger_spatial_interval_mm = 7.5f;
+    const auto second_prepare = use_case.PreparePlan(
+        BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id));
+    ASSERT_TRUE(second_prepare.IsSuccess()) << second_prepare.GetError().ToString();
+
+    EXPECT_NE(second_prepare.Value().plan_fingerprint, first_prepare.Value().plan_fingerprint);
+    EXPECT_NE(second_prepare.Value().plan_id, first_prepare.Value().plan_id);
+}
+
+TEST(DispensingWorkflowUseCaseTest, ConfirmPreviewRejectsFlyingShotWhenInMotionTimeTriggerCapabilityMissing) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_use_case =
+        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port, execution_use_case);
+    SeedPlan(use_case, "plan-missing-time-trigger");
+    auto& plan_record = use_case.plans_.at("plan-missing-time-trigger");
+    plan_record.preview_state = DispensingWorkflowUseCase::PlanPreviewState::SNAPSHOT_READY;
+
+    auto motion_device_port = std::dynamic_pointer_cast<FakeMotionDevicePort>(use_case.motion_device_port_);
+    ASSERT_TRUE(static_cast<bool>(motion_device_port));
+    motion_device_port->capabilities.trigger.supports_in_motion_time_trigger = false;
+
+    Siligen::Application::UseCases::Dispensing::ConfirmPreviewRequest request;
+    request.plan_id = "plan-missing-time-trigger";
+    request.snapshot_hash = plan_record.preview_snapshot_hash;
+    const auto result = use_case.ConfirmPreview(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+    EXPECT_NE(result.GetError().GetMessage().find("in-motion time trigger"), std::string::npos);
+}
+
+TEST(DispensingWorkflowUseCaseTest, StartJobRejectsFlyingShotWhenContinuousModeCapabilityMissing) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_use_case =
+        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port, execution_use_case);
+    SeedPlan(use_case, "plan-missing-continuous-mode");
+
+    auto dispenser_device_port = std::dynamic_pointer_cast<FakeDispenserDevicePort>(use_case.dispenser_device_port_);
+    ASSERT_TRUE(static_cast<bool>(dispenser_device_port));
+    dispenser_device_port->capability.supports_continuous_mode = false;
+
+    Siligen::Application::UseCases::Dispensing::StartJobRequest request;
+    request.plan_id = "plan-missing-continuous-mode";
+    request.plan_fingerprint = "fp-plan-missing-continuous-mode";
+    request.target_count = 1;
+    const auto result = use_case.StartJob(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+    EXPECT_NE(result.GetError().GetMessage().find("continuous mode"), std::string::npos);
+}
+
+TEST(DispensingWorkflowUseCaseTest, StartJobRejectsPointFlyingShotWhenInMotionPulseCapabilityMissing) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_use_case =
+        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port, execution_use_case);
+    SeedPlan(use_case, "plan-missing-in-motion-pulse");
+    auto& plan_record = use_case.plans_.at("plan-missing-in-motion-pulse");
+    ConfigurePointFlyingShotPlan(plan_record);
+
+    auto dispenser_device_port = std::dynamic_pointer_cast<FakeDispenserDevicePort>(use_case.dispenser_device_port_);
+    ASSERT_TRUE(static_cast<bool>(dispenser_device_port));
+    dispenser_device_port->capability.supports_in_motion_pulse_shot = false;
+
+    Siligen::Application::UseCases::Dispensing::StartJobRequest request;
+    request.plan_id = "plan-missing-in-motion-pulse";
+    request.plan_fingerprint = "fp-plan-missing-in-motion-pulse";
+    request.target_count = 1;
+    const auto result = use_case.StartJob(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+    EXPECT_NE(result.GetError().GetMessage().find("in-motion pulse shot"), std::string::npos);
 }
 
 TEST(DispensingWorkflowUseCaseTest, StartJobRejectsPreviewAuthorityMismatchBeforeRuntimeLaunch) {
@@ -2148,11 +2528,7 @@ TEST(DispensingWorkflowUseCaseTest, ReleaseConfirmedPreviewDropsRetainedExecutio
     artifact_record.upload_response.success = true;
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
-    PreparePlanRequest prepare_request;
-    prepare_request.artifact_id = artifact_record.response.artifact_id;
-    prepare_request.planning_request = BuildCanonicalPlanningRequest();
-    prepare_request.planning_request.dxf_filepath.clear();
-    prepare_request.runtime_overrides = BuildPreparePlanRuntimeOverrides();
+    PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
 
     const auto prepare_result = use_case.PreparePlan(prepare_request);
     ASSERT_TRUE(prepare_result.IsSuccess()) << prepare_result.GetError().ToString();

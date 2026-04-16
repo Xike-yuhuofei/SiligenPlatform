@@ -4,11 +4,16 @@
 
 namespace {
 using Siligen::Application::UseCases::Dispensing::PlanningRequest;
+using Siligen::Shared::Types::DispensingExecutionStrategy;
+using Siligen::Shared::Types::PointFlyingCarrierDirectionMode;
+using Siligen::Shared::Types::PointFlyingCarrierPolicy;
 using Siligen::Shared::Types::TrajectoryConfig;
 
 PlanningRequest MakeValidRequest() {
     PlanningRequest request;
     request.dxf_filepath = "dummy.dxf";
+    request.recipe_id = "recipe-test";
+    request.version_id = "version-published";
     request.trajectory_config = TrajectoryConfig();
     request.trajectory_config.max_velocity = 100.0f;
     request.trajectory_config.max_acceleration = 500.0f;
@@ -22,9 +27,32 @@ TEST(PlanningRequestTest, ValidRequestPasses) {
     EXPECT_TRUE(request.Validate());
 }
 
+TEST(PlanningRequestTest, RequestedExecutionStrategyDefaultsToFlyingShotWhenUnset) {
+    auto request = MakeValidRequest();
+    EXPECT_FALSE(request.HasExplicitExecutionStrategy());
+    EXPECT_EQ(request.ResolveRequestedExecutionStrategy(), DispensingExecutionStrategy::FLYING_SHOT);
+}
+
+TEST(PlanningRequestTest, RequestedExecutionStrategyPreservesExplicitChoice) {
+    auto request = MakeValidRequest();
+    request.requested_execution_strategy = DispensingExecutionStrategy::STATIONARY_SHOT;
+    EXPECT_TRUE(request.HasExplicitExecutionStrategy());
+    EXPECT_EQ(request.ResolveRequestedExecutionStrategy(), DispensingExecutionStrategy::STATIONARY_SHOT);
+}
+
 TEST(PlanningRequestTest, RejectsEmptyFilepath) {
     auto request = MakeValidRequest();
     request.dxf_filepath.clear();
+    EXPECT_FALSE(request.Validate());
+}
+
+TEST(PlanningRequestTest, RejectsMissingRecipeOrVersion) {
+    auto request = MakeValidRequest();
+    request.recipe_id.clear();
+    EXPECT_FALSE(request.Validate());
+
+    request = MakeValidRequest();
+    request.version_id.clear();
     EXPECT_FALSE(request.Validate());
 }
 
@@ -55,6 +83,16 @@ TEST(PlanningRequestTest, RejectsTimeStepOutOfRange) {
 
     request = MakeValidRequest();
     request.trajectory_config.time_step = 0.1001f;
+    EXPECT_FALSE(request.Validate());
+}
+
+TEST(PlanningRequestTest, RejectsInvalidPointFlyingCarrierPolicy) {
+    auto request = MakeValidRequest();
+    PointFlyingCarrierPolicy policy;
+    policy.direction_mode = PointFlyingCarrierDirectionMode::APPROACH_DIRECTION;
+    policy.trigger_spatial_interval_mm = 0.0f;
+    request.point_flying_carrier_policy = policy;
+
     EXPECT_FALSE(request.Validate());
 }
 

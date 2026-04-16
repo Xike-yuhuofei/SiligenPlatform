@@ -23,6 +23,8 @@ using Siligen::ProcessPath::Contracts::SegmentType;
 using Siligen::RuntimeExecution::Contracts::Motion::InterpolationData;
 using Siligen::Shared::Types::Point2D;
 using Siligen::Shared::Types::Result;
+using Siligen::Shared::Types::DispensingExecutionGeometryKind;
+using Siligen::Shared::Types::DispensingExecutionStrategy;
 using Siligen::Shared::Types::float32;
 using Siligen::Shared::Types::int32;
 using Siligen::Shared::Types::uint32;
@@ -100,6 +102,9 @@ struct ExecutionAssemblyBuildInput {
     ProcessPath process_path;
     ProcessPath authority_process_path;
     MotionPlan motion_plan;
+    Point2D planning_start_position{};
+    std::string recipe_id;
+    std::string version_id;
     std::string source_path;
     std::string dxf_filename;
     float32 dispensing_velocity = 0.0f;
@@ -118,6 +123,8 @@ struct ExecutionAssemblyBuildInput {
     float32 estimated_time_s = 0.0f;
     bool use_interpolation_planner = false;
     InterpolationAlgorithm interpolation_algorithm = InterpolationAlgorithm::LINEAR;
+    DispensingExecutionStrategy requested_execution_strategy = DispensingExecutionStrategy::FLYING_SHOT;
+    std::optional<Siligen::Shared::Types::PointFlyingCarrierPolicy> point_flying_carrier_policy;
     Siligen::Domain::Dispensing::ValueObjects::DispenseCompensationProfile compensation_profile{};
     AuthorityPreviewBuildResult authority_preview;
 };
@@ -125,6 +132,7 @@ struct ExecutionAssemblyBuildInput {
 struct ExecutionGenerationArtifacts {
     std::vector<InterpolationData> interpolation_segments;
     std::vector<TrajectoryPoint> interpolation_points;
+    MotionTrajectory motion_trajectory;
 };
 
 struct ExecutionAssemblyBuildResult {
@@ -207,6 +215,12 @@ float32 ComputeProcessPathLength(const ProcessPath& process_path);
 const ProcessPath& ResolveAuthorityProcessPath(const PlanningArtifactsAssemblyInput& input);
 const ProcessPath& ResolveAuthorityProcessPath(const AuthorityPreviewBuildInput& input);
 const ProcessPath& ResolveExecutionProcessPath(const ExecutionAssemblyBuildInput& input);
+DispensingExecutionGeometryKind ResolveExecutionGeometryKind(const ProcessPath& execution_process_path);
+DispensingExecutionStrategy ResolveExecutionStrategy(
+    DispensingExecutionStrategy requested_strategy,
+    DispensingExecutionGeometryKind geometry_kind,
+    const ExecutionGenerationArtifacts& generation_artifacts,
+    const MotionPlan& motion_plan);
 float32 EstimateExecutionTime(const PlanningArtifactsAssemblyInput& input, const ExecutionPackageBuilt& built);
 float32 ResolveInterpolationStep(const PlanningArtifactsAssemblyInput& input);
 std::vector<TrajectoryPoint> ConvertMotionTrajectoryToTrajectoryPoints(const MotionTrajectory& trajectory);

@@ -11,6 +11,10 @@ FakeMotionDevice::FakeMotionDevice() {
     };
     capabilities_.io.input_channels = 16;
     capabilities_.io.output_channels = 16;
+    capabilities_.trigger.supports_position_trigger = true;
+    capabilities_.trigger.supports_time_trigger = true;
+    capabilities_.trigger.supports_in_motion_position_trigger = true;
+    capabilities_.trigger.supports_in_motion_time_trigger = true;
     capabilities_.dispenser.supports_prime = true;
     capabilities_.dispenser.supports_pause = true;
     capabilities_.dispenser.supports_resume = true;

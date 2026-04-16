@@ -50,6 +50,7 @@ ApplicationContainer::~ApplicationContainer() {
     interpolation_port_.reset();
     io_control_port_.reset();
     file_storage_port_.reset();
+    dispenser_device_port_.reset();
     valve_port_.reset();
     test_config_manager_.reset();
     test_record_repository_.reset();
@@ -63,6 +64,7 @@ ApplicationContainer::~ApplicationContainer() {
     position_control_port_.reset();
     axis_control_port_.reset();
     motion_connection_port_.reset();
+    motion_device_port_.reset();
     motion_runtime_port_.reset();
     config_port_.reset();
     multiCard_.reset();

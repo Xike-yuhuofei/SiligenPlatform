@@ -2463,19 +2463,23 @@ class MainWindow(QMainWindow):
             return False
         status = self._protocol.get_status()
         if status.connection_state == "degraded":
-            self.statusBar().showMessage(f"硬件连接已降级，无法{action_name}，请重新连接")
+            self.statusBar().showMessage(
+                self._format_motion_precondition_failure(action_name, "硬件连接已降级，请重新连接")
+            )
             return False
         if not status.connected:
-            self.statusBar().showMessage("后端状态不可用，请检查连接")
+            self.statusBar().showMessage(
+                self._format_motion_precondition_failure(action_name, "后端状态不可用，请检查连接")
+            )
             return False
         if not status.gate_estop_known() or not status.gate_door_known():
-            self.statusBar().showMessage(f"互锁信号状态未知，无法{action_name}")
+            self.statusBar().showMessage(self._format_motion_precondition_failure(action_name, "互锁信号状态未知"))
             return False
         if status.gate_estop_active():
-            self.statusBar().showMessage(f"急停未解除，无法{action_name}")
+            self.statusBar().showMessage(self._format_motion_precondition_failure(action_name, "急停未解除"))
             return False
         if status.gate_door_active():
-            self.statusBar().showMessage(f"安全门打开，无法{action_name}")
+            self.statusBar().showMessage(self._format_motion_precondition_failure(action_name, "安全门打开"))
             return False
         return True
 
@@ -2711,6 +2715,18 @@ class MainWindow(QMainWindow):
         if error_code is None:
             return f"{action}失败: {detail}"
         return f"{action}失败(code={error_code}): {detail}"
+
+    def _format_motion_precondition_failure(self, action_name: str, detail: str) -> str:
+        normalized_action = str(action_name or "").strip()
+        if normalized_action == "移动":
+            return self._format_action_failure(normalized_action, detail, None)
+        if detail.endswith("，请重新连接"):
+            prefix = detail.removesuffix("，请重新连接")
+            return f"{prefix}，无法{normalized_action}，请重新连接"
+        if detail.endswith("，请检查连接"):
+            prefix = detail.removesuffix("，请检查连接")
+            return f"{prefix}，无法{normalized_action}，请检查连接"
+        return f"{detail}，无法{normalized_action}"
 
     def _on_dispenser_start(self):
         if not self._require_online_mode("点胶控制"):
@@ -3818,6 +3834,24 @@ class MainWindow(QMainWindow):
 
         speed = self._dxf_speed.value()
         dry_run_mode = self._mode_dryrun.isChecked() if hasattr(self, "_mode_dryrun") else False
+        recipe_id = ""
+        version_id = ""
+        if not self._is_offline_mode():
+            recipe_widget = getattr(self, "_recipe_config_widget", None)
+            selection_getter = getattr(recipe_widget, "current_recipe_selection", None)
+            if callable(selection_getter):
+                recipe_id, version_id = selection_getter()
+            if not recipe_id or not version_id:
+                result = self._preview_session.handle_local_failure(
+                    gate_error_message="preview request missing recipe/version",
+                    title="胶点预览生成失败",
+                    detail="在线预览必须显式选择 recipe 与 version；当前缺少有效的 recipe/version。",
+                )
+                self._sync_preview_session_fields()
+                self._update_info_label()
+                self.statusBar().showMessage(result.status_message)
+                self._set_preview_message_html(result.title, result.detail, is_error=result.is_error)
+                return
         self._preview_session.begin_preview_generation()
         self._sync_preview_session_fields()
         self._update_info_label()
@@ -3854,6 +3888,8 @@ class MainWindow(QMainWindow):
             host=self._client.host,
             port=self._client.port,
             artifact_id=self._dxf_artifact_id,
+            recipe_id=recipe_id,
+            version_id=version_id,
             speed_mm_s=speed,
             dry_run=dry_run_mode,
             dry_run_speed_mm_s=speed,

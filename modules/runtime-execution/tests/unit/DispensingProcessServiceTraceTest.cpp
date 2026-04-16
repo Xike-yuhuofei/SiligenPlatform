@@ -11,6 +11,9 @@ namespace {
 
 using Siligen::RuntimeExecution::Application::Services::Dispensing::DispensingProcessService;
 using Siligen::Domain::Dispensing::Ports::IDispensingExecutionObserver;
+using Siligen::Domain::Dispensing::Ports::DispenserValveParams;
+using Siligen::Domain::Dispensing::Ports::DispenserValveState;
+using Siligen::Domain::Dispensing::Ports::DispenserValveStatus;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionOptions;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionPlan;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionReport;
@@ -26,6 +29,8 @@ using Siligen::Domain::Motion::Ports::MotionState;
 using Siligen::Domain::Motion::Ports::MotionStatus;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
+using Siligen::Shared::Types::DispensingExecutionGeometryKind;
+using Siligen::Shared::Types::DispensingExecutionStrategy;
 using Siligen::Shared::Types::LogicalAxisId;
 using Siligen::Shared::Types::Point2D;
 using Siligen::Shared::Types::Result;
@@ -63,6 +68,74 @@ Result<T> NotImplemented(const char* method) {
 Result<void> NotImplementedVoid(const char* method) {
     return Result<void>::Failure(Error(ErrorCode::PORT_NOT_INITIALIZED, method));
 }
+
+class FakeValvePort final : public Siligen::Domain::Dispensing::Ports::IValvePort {
+   public:
+    Result<DispenserValveState> StartDispenser(const DispenserValveParams& params) noexcept override {
+        ++start_timed_calls;
+        last_timed_params = params;
+        status.status = DispenserValveStatus::Idle;
+        status.totalCount = params.count;
+        status.completedCount = params.count;
+        status.remainingCount = 0U;
+        return Result<DispenserValveState>::Success(status);
+    }
+
+    Result<DispenserValveState> OpenDispenser() noexcept override {
+        return Result<DispenserValveState>::Failure(Error(ErrorCode::PORT_NOT_INITIALIZED, "OpenDispenser"));
+    }
+
+    Result<void> CloseDispenser() noexcept override {
+        return Result<void>::Success();
+    }
+
+    Result<DispenserValveState> StartPositionTriggeredDispenser(
+        const Siligen::Domain::Dispensing::Ports::PositionTriggeredDispenserParams&) noexcept override {
+        ++start_position_trigger_calls;
+        return Result<DispenserValveState>::Success(status);
+    }
+
+    Result<void> StopDispenser() noexcept override {
+        ++stop_calls;
+        return Result<void>::Success();
+    }
+
+    Result<void> PauseDispenser() noexcept override {
+        return Result<void>::Success();
+    }
+
+    Result<void> ResumeDispenser() noexcept override {
+        return Result<void>::Success();
+    }
+
+    Result<DispenserValveState> GetDispenserStatus() noexcept override {
+        return Result<DispenserValveState>::Success(status);
+    }
+
+    Result<Siligen::Domain::Dispensing::Ports::SupplyValveState> OpenSupply() noexcept override {
+        ++open_supply_calls;
+        return Result<Siligen::Domain::Dispensing::Ports::SupplyValveState>::Success(
+            Siligen::Domain::Dispensing::Ports::SupplyValveState::Open);
+    }
+
+    Result<Siligen::Domain::Dispensing::Ports::SupplyValveState> CloseSupply() noexcept override {
+        ++close_supply_calls;
+        return Result<Siligen::Domain::Dispensing::Ports::SupplyValveState>::Success(
+            Siligen::Domain::Dispensing::Ports::SupplyValveState::Closed);
+    }
+
+    Result<Siligen::Domain::Dispensing::Ports::SupplyValveStatusDetail> GetSupplyStatus() noexcept override {
+        return Result<Siligen::Domain::Dispensing::Ports::SupplyValveStatusDetail>::Success({});
+    }
+
+    int start_timed_calls = 0;
+    int start_position_trigger_calls = 0;
+    int stop_calls = 0;
+    int open_supply_calls = 0;
+    int close_supply_calls = 0;
+    DispenserValveParams last_timed_params{};
+    DispenserValveState status{};
+};
 
 class FakeInterpolationPort final : public IInterpolationPort {
    public:
@@ -253,6 +326,27 @@ DispensingExecutionPlan BuildLinearExecutionPlan() {
     return plan;
 }
 
+DispensingExecutionPlan BuildStationaryPointExecutionPlan() {
+    DispensingExecutionPlan plan;
+    plan.geometry_kind = DispensingExecutionGeometryKind::POINT;
+    plan.execution_strategy = DispensingExecutionStrategy::STATIONARY_SHOT;
+
+    Siligen::TrajectoryPoint point;
+    point.position = Point2D{5.0f, 5.0f};
+    point.sequence_id = 0U;
+    point.enable_position_trigger = true;
+    point.trigger_position_mm = 0.0f;
+    plan.interpolation_points.push_back(point);
+
+    Siligen::Domain::Motion::ValueObjects::MotionTrajectoryPoint motion_point;
+    motion_point.t = 0.0f;
+    motion_point.position = {5.0f, 5.0f, 0.0f};
+    motion_point.velocity = {0.0f, 0.0f, 0.0f};
+    plan.motion_trajectory.points.push_back(motion_point);
+    plan.total_length_mm = 0.0f;
+    return plan;
+}
+
 DispensingRuntimeParams BuildRuntimeParams() {
     DispensingRuntimeParams params;
     params.dispensing_velocity = 20.0f;
@@ -320,6 +414,44 @@ TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalKeepsDispatchOrderWit
     ASSERT_GE(interpolation_port->added_segments[1].positions.size(), 2U);
     EXPECT_FLOAT_EQ(interpolation_port->added_segments[0].positions[0], 5.0f);
     EXPECT_FLOAT_EQ(interpolation_port->added_segments[1].positions[0], 10.0f);
+}
+
+TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalRunsStationaryPointShotWithoutCmpPath) {
+    auto valve_port = std::make_shared<FakeValvePort>();
+    auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    auto motion_state_port = std::make_shared<SequencedMotionStatePort>(
+        std::vector<Point2D>{Point2D{0.0f, 0.0f}, Point2D{5.0f, 5.0f}, Point2D{5.0f, 5.0f}});
+    DispensingProcessService service(valve_port,
+                                     interpolation_port,
+                                     motion_state_port,
+                                     nullptr,
+                                     nullptr);
+
+    auto plan = BuildStationaryPointExecutionPlan();
+    auto params = BuildRuntimeParams();
+    auto options = BuildExecutionOptions();
+    options.dispense_enabled = true;
+    std::atomic<bool> stop_flag{false};
+    std::atomic<bool> pause_flag{false};
+    std::atomic<bool> pause_applied_flag{false};
+    const auto execute_plan_internal = GetPrivateMember(ExecutePlanInternalTag{});
+
+    const auto result = (service.*execute_plan_internal)(
+        plan,
+        params,
+        options,
+        &stop_flag,
+        &pause_flag,
+        &pause_applied_flag,
+        nullptr);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    EXPECT_EQ(result.Value().executed_segments, 1U);
+    EXPECT_EQ(valve_port->start_timed_calls, 1);
+    EXPECT_EQ(valve_port->start_position_trigger_calls, 0);
+    EXPECT_EQ(valve_port->open_supply_calls, 1);
+    EXPECT_EQ(interpolation_port->add_calls, 1);
+    EXPECT_EQ(interpolation_port->start_calls, 1);
 }
 
 }  // namespace

@@ -18,6 +18,9 @@ WorkflowExecutionAssemblyRequest BuildWorkflowExecutionAssemblyRequest(
     request.process_path = input.authority_preview_request.process_path;
     request.authority_process_path = input.authority_preview_request.authority_process_path;
     request.motion_plan = input.motion_plan;
+    request.planning_start_position = input.planning_start_position;
+    request.recipe_id = input.recipe_id;
+    request.version_id = input.version_id;
     request.source_path = input.authority_preview_request.source_path;
     request.dxf_filename = input.authority_preview_request.dxf_filename;
     request.runtime_options = input.authority_preview_request.runtime_options;
@@ -25,6 +28,8 @@ WorkflowExecutionAssemblyRequest BuildWorkflowExecutionAssemblyRequest(
     request.estimated_time_s = input.estimated_time_s;
     request.use_interpolation_planner = input.use_interpolation_planner;
     request.interpolation_algorithm = input.interpolation_algorithm;
+    request.requested_execution_strategy = input.requested_execution_strategy;
+    request.point_flying_carrier_policy = input.point_flying_carrier_policy;
     request.authority_preview = authority_preview;
     return request;
 }

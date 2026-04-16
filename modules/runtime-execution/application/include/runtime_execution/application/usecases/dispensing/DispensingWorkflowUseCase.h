@@ -1,6 +1,7 @@
 #pragma once
 
 #include "runtime_execution/application/usecases/dispensing/WorkflowExecutionPort.h"
+#include "runtime_execution/application/usecases/dispensing/IRecipePlanningPolicyPort.h"
 #include "dispense_packaging/application/usecases/dispensing/PlanningUseCase.h"
 #include "application/services/dispensing/PreviewSnapshotService.h"
 #include "job_ingest/contracts/dispensing/UploadContracts.h"
@@ -72,6 +73,8 @@ struct PreparePlanRuntimeOverrides {
 
 struct PreparePlanRequest {
     ArtifactID artifact_id;
+    std::string recipe_id;
+    std::string version_id;
     PlanningRequest planning_request;
     PreparePlanRuntimeOverrides runtime_overrides;
 };
@@ -201,8 +204,11 @@ class DispensingWorkflowUseCase {
     DispensingWorkflowUseCase(
         std::shared_ptr<IUploadFilePort> upload_use_case,
         std::shared_ptr<PlanningUseCase> planning_use_case,
+        std::shared_ptr<Siligen::Application::Ports::Dispensing::IRecipePlanningPolicyPort> recipe_planning_policy_port,
         std::shared_ptr<Siligen::Application::Ports::Dispensing::IWorkflowExecutionPort> execution_port,
         std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
+        std::shared_ptr<Siligen::Device::Contracts::Ports::MotionDevicePort> motion_device_port,
+        std::shared_ptr<Siligen::Device::Contracts::Ports::DispenserDevicePort> dispenser_device_port,
         std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port,
         std::shared_ptr<Domain::Motion::Ports::IHomingPort> homing_port = nullptr,
         std::shared_ptr<Domain::Safety::Ports::IInterlockSignalPort> interlock_signal_port = nullptr);
@@ -323,10 +329,19 @@ class DispensingWorkflowUseCase {
         bool require_execution_binding = false;
     };
 
+    struct ExecutionCapabilityDiagnostic {
+        bool ready = true;
+        std::string failure_reason;
+    };
+
     std::shared_ptr<IUploadFilePort> upload_use_case_;
     std::shared_ptr<PlanningUseCase> planning_use_case_;
+    std::shared_ptr<Siligen::Application::Ports::Dispensing::IRecipePlanningPolicyPort>
+        recipe_planning_policy_port_;
     std::shared_ptr<Siligen::Application::Ports::Dispensing::IWorkflowExecutionPort> execution_port_;
     std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port_;
+    std::shared_ptr<Siligen::Device::Contracts::Ports::MotionDevicePort> motion_device_port_;
+    std::shared_ptr<Siligen::Device::Contracts::Ports::DispenserDevicePort> dispenser_device_port_;
     std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port_;
     std::shared_ptr<Domain::Motion::Ports::IHomingPort> homing_port_;
     std::shared_ptr<Domain::Safety::Ports::IInterlockSignalPort> interlock_signal_port_;
@@ -388,6 +403,8 @@ class DispensingWorkflowUseCase {
     PreviewGateDiagnostic BuildPreviewGateDiagnostic(
         const PlanRecord& plan_record,
         bool require_execution_binding) const;
+    ExecutionCapabilityDiagnostic EvaluateExecutionCapability(
+        const PlanRecord& plan_record) const;
     std::optional<Siligen::Shared::Types::Error> BuildPreviewGateError(
         PlanRecord& plan_record,
         bool mark_failed,

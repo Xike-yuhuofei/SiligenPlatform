@@ -178,6 +178,9 @@ ExecutionAssemblyBuildInput BuildExecutionAssemblyBuildInput(const WorkflowExecu
     execution_input.process_path = input.process_path;
     execution_input.authority_process_path = input.authority_process_path;
     execution_input.motion_plan = input.motion_plan;
+    execution_input.planning_start_position = input.planning_start_position;
+    execution_input.recipe_id = input.recipe_id;
+    execution_input.version_id = input.version_id;
     execution_input.source_path = input.source_path;
     execution_input.dxf_filename = input.dxf_filename;
     execution_input.dispensing_velocity = input.runtime_options.dispensing_velocity;
@@ -196,6 +199,8 @@ ExecutionAssemblyBuildInput BuildExecutionAssemblyBuildInput(const WorkflowExecu
     execution_input.estimated_time_s = input.estimated_time_s;
     execution_input.use_interpolation_planner = input.use_interpolation_planner;
     execution_input.interpolation_algorithm = input.interpolation_algorithm;
+    execution_input.requested_execution_strategy = input.requested_execution_strategy;
+    execution_input.point_flying_carrier_policy = input.point_flying_carrier_policy;
     execution_input.compensation_profile = input.runtime_options.compensation_profile;
     execution_input.authority_preview = BuildAuthorityPreviewBuildResult(input.authority_preview);
     return execution_input;
@@ -266,6 +271,25 @@ const ProcessPath& ResolveExecutionProcessPath(const ExecutionAssemblyBuildInput
         return input.process_path;
     }
     return input.authority_process_path;
+}
+
+DispensingExecutionGeometryKind ResolveExecutionGeometryKind(const ProcessPath& execution_process_path) {
+    if (execution_process_path.segments.size() == 1U &&
+        execution_process_path.segments.front().geometry.is_point) {
+        return DispensingExecutionGeometryKind::POINT;
+    }
+    return DispensingExecutionGeometryKind::PATH;
+}
+
+DispensingExecutionStrategy ResolveExecutionStrategy(
+    DispensingExecutionStrategy requested_strategy,
+    DispensingExecutionGeometryKind geometry_kind,
+    const ExecutionGenerationArtifacts& generation_artifacts,
+    const MotionPlan& motion_plan) {
+    (void)geometry_kind;
+    (void)generation_artifacts;
+    (void)motion_plan;
+    return requested_strategy;
 }
 
 float32 EstimateExecutionTime(

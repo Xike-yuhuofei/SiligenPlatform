@@ -176,6 +176,7 @@ def test_dxf_preview_gate_contract_is_wired():
     assert 'LogPreviewGateFailure("dxf.job.start"' in source
     assert 'ReadJsonBool(params, "optimize_path", true)' in source
     assert 'ReadJsonBool(params, "use_interpolation_planner", true)' in source
+    assert 'ReadJsonInt(params, "requested_execution_strategy", -1)' in source
     assert "BuildPreparePlanRequest(" in source
     assert "BuildPreparePlanRuntimeOverrides(" in source
     assert "Missing 'snapshot_hash'" in source
@@ -203,6 +204,38 @@ def test_dxf_preview_contract_docs_freeze_shared_authority_semantics():
     assert fixture["result"]["motion_preview"]["sampling_strategy"] == "execution_trajectory_geometry_preserving_clamp"
     assert len(fixture["result"]["motion_preview"]["polyline"]) == fixture["result"]["motion_preview"]["point_count"]
     assert "shared authority" in mapping.lower()
+
+
+def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
+    command_set = load_json(DXF_COMMAND_SET)
+    prepare_operation = next(op for op in command_set["operations"] if op["method"] == "dxf.plan.prepare")
+    mapping = PROTOCOL_MAPPING.read_text(encoding="utf-8")
+    dispatcher_source = TCP_DISPATCHER.read_text(encoding="utf-8")
+
+    assert {"artifact_id", "recipe_id", "version_id", "dispensing_speed_mm_s"}.issubset(
+        set(prepare_operation["paramsSchema"]["required"])
+    )
+    assert "speed_mm_s" not in prepare_operation["paramsSchema"]["properties"]
+    assert not prepare_operation.get("compatibility", {}).get("requestAliases")
+    assert "requested_execution_strategy" in prepare_operation["paramsSchema"]["properties"]
+    notes = "\n".join(prepare_operation.get("compatibility", {}).get("notes", []))
+    assert "published recipe version" in notes
+    assert "point_flying_carrier_policy" in notes
+    assert "approach_direction = normalize(point - planning_start_position)" in notes
+    assert "artifact_id 允许省略" not in notes
+    assert "requested_execution_strategy" in mapping
+    assert "published" in mapping
+    assert "activeVersionId" in mapping
+    assert "允许省略 `artifact_id`" not in mapping
+    job_start_operation = next(op for op in command_set["operations"] if op["method"] == "dxf.job.start")
+    job_start_notes = "\n".join(job_start_operation.get("compatibility", {}).get("notes", []))
+    assert "回退最近一次 prepared plan" not in job_start_notes
+    assert 'GatewayJsonProtocol::MakeErrorResponse(id, 2895, "Missing artifact_id")' in dispatcher_source
+    assert 'GatewayJsonProtocol::MakeErrorResponse(id, 2895, "Missing recipe_id")' in dispatcher_source
+    assert 'GatewayJsonProtocol::MakeErrorResponse(id, 2895, "Missing version_id")' in dispatcher_source
+    assert 'ReadJsonStringAlias(params, "recipeId", "recipe_id")' not in dispatcher_source
+    assert 'ReadJsonStringAlias(params, "versionId", "version_id")' not in dispatcher_source
+    assert 'ReadJsonDouble(params, "dispensing_speed_mm_s", ReadJsonDouble(params, "speed_mm_s", 0.0))' not in dispatcher_source
 
 
 def test_legacy_execute_and_task_surface_are_removed():
@@ -603,6 +636,7 @@ def main():
         test_canonical_targets_are_exported_without_legacy_aliases,
         test_dxf_preview_gate_contract_is_wired,
         test_dxf_preview_contract_docs_freeze_shared_authority_semantics,
+        test_dxf_plan_prepare_contract_exposes_requested_execution_strategy,
         test_legacy_execute_and_task_surface_are_removed,
         test_status_reads_backend_interlock_signals,
         test_status_supervision_contract_is_derived_by_runtime_supervision_adapter,

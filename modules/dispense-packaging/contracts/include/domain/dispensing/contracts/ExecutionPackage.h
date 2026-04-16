@@ -46,11 +46,25 @@ struct ExecutionPackageValidated {
           source_fingerprint(std::move(built.source_fingerprint)) {}
 
     [[nodiscard]] Result<void> Validate() const noexcept {
-        const bool has_interpolation_points = execution_plan.interpolation_points.size() >= 2;
-        const bool has_motion_points = execution_plan.motion_trajectory.points.size() >= 2;
+        const bool has_interpolation_points = execution_plan.interpolation_points.size() >= 2U;
+        const bool has_motion_points = execution_plan.motion_trajectory.points.size() >= 2U;
         const bool has_interpolation_segments = !execution_plan.interpolation_segments.empty();
+        const bool has_single_point_target = execution_plan.HasSinglePointTarget();
 
-        if (!has_interpolation_segments && !has_interpolation_points && !has_motion_points) {
+        if (execution_plan.IsPointGeometry()) {
+            if (execution_plan.execution_strategy ==
+                Siligen::Shared::Types::DispensingExecutionStrategy::STATIONARY_SHOT) {
+                if (!has_single_point_target) {
+                    return Result<void>::Failure(
+                        Error(ErrorCode::INVALID_PARAMETER,
+                              "point execution package missing stationary target"));
+                }
+            } else if (!has_interpolation_segments && !has_interpolation_points && !has_motion_points) {
+                return Result<void>::Failure(
+                    Error(ErrorCode::INVALID_PARAMETER,
+                          "point execution package missing executable flying trajectory"));
+            }
+        } else if (!has_interpolation_segments && !has_interpolation_points && !has_motion_points) {
             return Result<void>::Failure(
                 Error(ErrorCode::INVALID_PARAMETER, "execution package missing executable trajectory"));
         }

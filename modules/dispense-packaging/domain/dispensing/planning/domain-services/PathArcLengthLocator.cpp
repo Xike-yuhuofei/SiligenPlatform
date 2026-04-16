@@ -16,6 +16,7 @@ using Siligen::Shared::Types::ErrorCode;
 using Siligen::ProcessPath::Contracts::ArcPoint;
 using Siligen::ProcessPath::Contracts::ComputeArcLength;
 using Siligen::ProcessPath::Contracts::ComputeArcSweep;
+using Siligen::ProcessPath::Contracts::SegmentStart;
 using Siligen::ProcessPath::Contracts::SegmentType;
 
 namespace {
@@ -60,6 +61,10 @@ Result<ResolvedSegmentInfo> ResolveSegmentInfo(
     float32 spline_max_step_mm,
     CurveFlatteningService& flattening_service) {
     ResolvedSegmentInfo info;
+    if (segment.is_point) {
+        info.length_mm = 0.0f;
+        return Result<ResolvedSegmentInfo>::Success(std::move(info));
+    }
     switch (segment.type) {
         case SegmentType::Line: {
             const float32 length_mm = segment.line.start.DistanceTo(segment.line.end);
@@ -100,6 +105,9 @@ Result<Point2D> LocateResolvedSegment(
     const ResolvedSegmentInfo& info,
     float32 local_distance_mm) {
     if (info.length_mm <= kEpsilon) {
+        if (segment.is_point) {
+            return Result<Point2D>::Success(SegmentStart(segment));
+        }
         return Result<Point2D>::Failure(
             Error(ErrorCode::INVALID_PARAMETER, "segment length is invalid", "PathArcLengthLocator"));
     }

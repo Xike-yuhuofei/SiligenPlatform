@@ -23,15 +23,6 @@ void SetFailure(Siligen::Application::Services::ProcessPath::ProcessPathBuildRes
     result.error_message = message;
 }
 
-bool ContainsUnsupportedPointPrimitive(const std::vector<Primitive>& primitives) {
-    for (const auto& primitive : primitives) {
-        if (primitive.type == PrimitiveType::Point) {
-            return true;
-        }
-    }
-    return false;
-}
-
 void SetInvalidRepairMetadata(
     Siligen::Application::Services::ProcessPath::ProcessPathBuildResult& result,
     const std::size_t primitive_count) {
@@ -85,12 +76,6 @@ ProcessPathBuildResult ProcessPathFacade::Build(const ProcessPathBuildRequest& r
         result.error_message = "path generation requires at least one primitive";
         return result;
     }
-    if (ContainsUnsupportedPointPrimitive(request.primitives)) {
-        result.status = PathGenerationStatus::InvalidInput;
-        result.failed_stage = PathGenerationStage::InputValidation;
-        result.error_message = "point primitive is not a supported live process-path input";
-        return result;
-    }
     if (request.alignment.has_value() && request.alignment->owner_module != "M5") {
         result.status = PathGenerationStatus::InvalidInput;
         result.failed_stage = PathGenerationStage::InputValidation;
@@ -125,7 +110,8 @@ ProcessPathBuildResult ProcessPathFacade::Build(const ProcessPathBuildRequest& r
                    "normalization skipped spline primitives because approximate_splines is disabled");
         return result;
     }
-    if (result.normalized.report.consumable_segment_count == 0) {
+    if (result.normalized.report.consumable_segment_count == 0 &&
+        result.normalized.report.point_primitive_count == 0) {
         SetFailure(result,
                    PathGenerationStage::Normalization,
                    "normalization produced no consumable path segments");

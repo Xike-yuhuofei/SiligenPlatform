@@ -17,6 +17,9 @@ set(DISPENSE_PACKAGING_UNIT_TEST_SOURCES
     unit/domain/dispensing/TriggerPlannerTest.cpp
     unit/domain/dispensing/PathArcLengthLocatorTest.cpp
     unit/application/services/dispensing/PreviewSnapshotServiceTest.cpp
+    unit/application/usecases/dispensing/PlanningRequestTest.cpp
+    unit/application/usecases/dispensing/PlanningUseCaseExportPortTest.cpp
+    unit/application/usecases/dispensing/PlanningFailureSurfaceTest.cpp
     unit/application/usecases/dispensing/valve/ValveUseCasesTest.cpp
 )
 
@@ -118,6 +121,9 @@ target_compile_features(siligen_dispense_packaging_planning_legacy_dxf_quarantin
 
 target_link_libraries(siligen_dispense_packaging_unit_tests PRIVATE
     siligen_dispense_packaging_application_public
+    siligen_dxf_geometry_application_public
+    siligen_process_path_application_public
+    ${SILIGEN_DISPENSE_PACKAGING_TEST_MOTION_PLANNING_APP_TARGET}
     siligen_dispense_packaging_planning_owner_residual
     siligen_dispense_packaging_execution_residual
     siligen_valve_core

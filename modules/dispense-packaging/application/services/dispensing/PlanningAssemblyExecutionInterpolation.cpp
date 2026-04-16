@@ -18,10 +18,18 @@ namespace {
 using Siligen::Application::Services::MotionPlanning::CmpInterpolationFacade;
 using Siligen::Application::Services::MotionPlanning::TrajectoryInterpolationFacade;
 using Siligen::Domain::Motion::DomainServices::InterpolationProgramPlanner;
+using Siligen::MotionPlanning::Contracts::MotionTrajectoryPoint;
+using Siligen::RuntimeExecution::Contracts::Motion::InterpolationType;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
+using Siligen::Shared::Types::PointFlyingCarrierDirectionMode;
+using Siligen::Shared::Types::PointFlyingCarrierPolicy;
 using Siligen::Shared::Types::uint16;
 using Siligen::Shared::Types::uint32;
+
+bool HasFormalCarrierMotion(const MotionPlan& motion_plan) {
+    return motion_plan.points.size() >= 2U && motion_plan.total_length > kEpsilon;
+}
 
 PlanningArtifactsAssemblyInput BuildExecutionPlanningInput(
     const ExecutionAssemblyBuildInput& input,
@@ -102,6 +110,175 @@ bool ApplyTriggerMarkersByPositionWithDiagnostics(
         SILIGEN_LOG_INFO(oss.str());
     }
     return true;
+}
+
+TrajectoryPoint BuildPointExecutionMarker(
+    const ExecutionAssemblyBuildInput& input,
+    const TriggerArtifacts& trigger_artifacts) {
+    TrajectoryPoint point;
+
+    if (!input.motion_plan.points.empty()) {
+        const auto& motion_point = input.motion_plan.points.front();
+        point.position = Point2D(motion_point.position.x, motion_point.position.y);
+        point.timestamp = motion_point.t;
+        point.velocity = std::sqrt(
+            motion_point.velocity.x * motion_point.velocity.x +
+            motion_point.velocity.y * motion_point.velocity.y);
+    } else if (!trigger_artifacts.positions.empty()) {
+        point.position = trigger_artifacts.positions.front();
+    }
+
+    point.sequence_id = 0U;
+    point.enable_position_trigger = true;
+    point.trigger_position_mm = trigger_artifacts.distances.empty() ? 0.0f : trigger_artifacts.distances.front();
+    point.trigger_pulse_width_us = Siligen::Shared::Types::kDefaultTriggerPulseWidthUs;
+    return point;
+}
+
+Point2D ResolvePointExecutionPosition(
+    const ExecutionAssemblyBuildInput& input,
+    const ProcessPath& execution_process_path,
+    const TriggerArtifacts& trigger_artifacts) {
+    if (!trigger_artifacts.positions.empty()) {
+        return trigger_artifacts.positions.front();
+    }
+    if (!input.motion_plan.points.empty()) {
+        const auto& motion_point = input.motion_plan.points.front();
+        return Point2D(motion_point.position.x, motion_point.position.y);
+    }
+    if (!execution_process_path.segments.empty()) {
+        return execution_process_path.segments.front().geometry.line.start;
+    }
+    return Point2D{};
+}
+
+Result<PointFlyingCarrierPolicy> ResolvePointFlyingCarrierPolicy(const ExecutionAssemblyBuildInput& input) {
+    if (!input.point_flying_carrier_policy.has_value()) {
+        return Result<PointFlyingCarrierPolicy>::Failure(Error(
+            ErrorCode::INVALID_PARAMETER,
+            "POINT/flying_shot 缺少 point_flying_carrier_policy",
+            "DispensePackagingAssembly"));
+    }
+    const auto& policy = input.point_flying_carrier_policy.value();
+    if (!Siligen::Shared::Types::IsValid(policy)) {
+        return Result<PointFlyingCarrierPolicy>::Failure(Error(
+            ErrorCode::INVALID_PARAMETER,
+            "POINT/flying_shot point_flying_carrier_policy 无效",
+            "DispensePackagingAssembly"));
+    }
+    return Result<PointFlyingCarrierPolicy>::Success(policy);
+}
+
+Result<Point2D> ResolvePointFlyingCarrierDirection(
+    const ExecutionAssemblyBuildInput& input,
+    const Point2D& point,
+    PointFlyingCarrierDirectionMode direction_mode) {
+    if (direction_mode != PointFlyingCarrierDirectionMode::APPROACH_DIRECTION) {
+        return Result<Point2D>::Failure(Error(
+            ErrorCode::INVALID_PARAMETER,
+            "POINT/flying_shot point_flying_direction_mode 不受支持",
+            "DispensePackagingAssembly"));
+    }
+    const auto delta = point - input.planning_start_position;
+    const auto magnitude = std::sqrt(delta.x * delta.x + delta.y * delta.y);
+    if (magnitude <= kEpsilon) {
+        return Result<Point2D>::Failure(Error(
+            ErrorCode::INVALID_PARAMETER,
+            "POINT/flying_shot planning_start_position 不能与目标点重合",
+            "DispensePackagingAssembly"));
+    }
+    return Result<Point2D>::Success(Point2D(delta.x / magnitude, delta.y / magnitude));
+}
+
+Result<MotionTrajectory> BuildPointFlyingCarrierTrajectory(
+    const ExecutionAssemblyBuildInput& input,
+    const ProcessPath& execution_process_path,
+    const TriggerArtifacts& trigger_artifacts) {
+    const auto point = ResolvePointExecutionPosition(input, execution_process_path, trigger_artifacts);
+    auto policy_result = ResolvePointFlyingCarrierPolicy(input);
+    if (policy_result.IsError()) {
+        return Result<MotionTrajectory>::Failure(policy_result.GetError());
+    }
+    const auto policy = policy_result.Value();
+    auto direction_result = ResolvePointFlyingCarrierDirection(input, point, policy.direction_mode);
+    if (direction_result.IsError()) {
+        return Result<MotionTrajectory>::Failure(direction_result.GetError());
+    }
+    const auto carrier_length_mm = policy.trigger_spatial_interval_mm;
+    if (carrier_length_mm <= kEpsilon) {
+        return Result<MotionTrajectory>::Failure(Error(
+            ErrorCode::INVALID_PARAMETER,
+            "POINT/flying_shot trigger_spatial_interval_mm 必须大于 0",
+            "DispensePackagingAssembly"));
+    }
+    MotionTrajectory trajectory;
+    const auto direction = direction_result.Value();
+    const auto end = point + direction * carrier_length_mm;
+    const auto velocity_mm_s = std::max(input.dispensing_velocity, kEpsilon);
+    const auto total_time_s = carrier_length_mm / velocity_mm_s;
+
+    MotionTrajectoryPoint start_point;
+    start_point.t = 0.0f;
+    start_point.position = {point.x, point.y, 0.0f};
+    start_point.velocity = {
+        direction.x * velocity_mm_s,
+        direction.y * velocity_mm_s,
+        0.0f,
+    };
+    start_point.dispense_on = true;
+
+    MotionTrajectoryPoint end_point;
+    end_point.t = total_time_s;
+    end_point.position = {end.x, end.y, 0.0f};
+    end_point.velocity = {0.0f, 0.0f, 0.0f};
+    end_point.dispense_on = true;
+
+    trajectory.points = {start_point, end_point};
+    trajectory.total_length = carrier_length_mm;
+    trajectory.total_time = total_time_s;
+    return Result<MotionTrajectory>::Success(std::move(trajectory));
+}
+
+InterpolationData BuildPointFlyingCarrierSegment(
+    const MotionTrajectory& motion_trajectory,
+    const ExecutionAssemblyBuildInput& input) {
+    InterpolationData segment;
+    segment.type = InterpolationType::LINEAR;
+    const auto& end = motion_trajectory.points.back().position;
+    segment.positions = {end.x, end.y};
+    segment.velocity = std::max(input.dispensing_velocity, kEpsilon);
+    segment.acceleration = std::max(input.acceleration, kEpsilon);
+    segment.end_velocity = 0.0f;
+    return segment;
+}
+
+Result<ExecutionGenerationArtifacts> BuildPointFlyingExecutionArtifacts(
+    const ExecutionAssemblyBuildInput& input,
+    const ProcessPath& execution_process_path,
+    const TriggerArtifacts& trigger_artifacts) {
+    ExecutionGenerationArtifacts artifacts;
+    auto motion_trajectory_result =
+        BuildPointFlyingCarrierTrajectory(input, execution_process_path, trigger_artifacts);
+    if (motion_trajectory_result.IsError()) {
+        return Result<ExecutionGenerationArtifacts>::Failure(motion_trajectory_result.GetError());
+    }
+    artifacts.motion_trajectory = std::move(motion_trajectory_result.Value());
+    artifacts.interpolation_points = ConvertMotionTrajectoryToTrajectoryPoints(artifacts.motion_trajectory);
+    if (!trigger_artifacts.positions.empty() &&
+        !ApplyTriggerMarkersByPositionWithDiagnostics(
+            artifacts.interpolation_points,
+            trigger_artifacts.positions,
+            trigger_artifacts.distances,
+            Siligen::Shared::Types::kTriggerMarkerDedupToleranceMm,
+            Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm)) {
+        return Result<ExecutionGenerationArtifacts>::Failure(Error(
+            ErrorCode::TRAJECTORY_GENERATION_FAILED,
+            "显式 trigger authority 映射到 point flying_shot carrier trajectory 失败",
+            "DispensePackagingAssembly"));
+    }
+    artifacts.interpolation_segments.push_back(
+        BuildPointFlyingCarrierSegment(artifacts.motion_trajectory, input));
+    return Result<ExecutionGenerationArtifacts>::Success(std::move(artifacts));
 }
 
 }  // namespace
@@ -298,6 +475,23 @@ Result<ExecutionGenerationArtifacts> BuildExecutionGenerationArtifacts(
     const ExecutionAssemblyBuildInput& input,
     const ProcessPath& execution_process_path,
     const TriggerArtifacts& trigger_artifacts) {
+    const auto geometry_kind = ResolveExecutionGeometryKind(execution_process_path);
+    const bool has_formal_carrier_motion = HasFormalCarrierMotion(input.motion_plan);
+    if (geometry_kind == DispensingExecutionGeometryKind::POINT &&
+        input.requested_execution_strategy == DispensingExecutionStrategy::STATIONARY_SHOT &&
+        !has_formal_carrier_motion) {
+        ExecutionGenerationArtifacts artifacts;
+        artifacts.motion_trajectory = input.motion_plan;
+        artifacts.interpolation_points.push_back(BuildPointExecutionMarker(input, trigger_artifacts));
+        return Result<ExecutionGenerationArtifacts>::Success(std::move(artifacts));
+    }
+
+    if (geometry_kind == DispensingExecutionGeometryKind::POINT &&
+        input.requested_execution_strategy == DispensingExecutionStrategy::FLYING_SHOT &&
+        !has_formal_carrier_motion) {
+        return BuildPointFlyingExecutionArtifacts(input, execution_process_path, trigger_artifacts);
+    }
+
     const auto execution_input = BuildExecutionPlanningInput(input, execution_process_path);
 
     auto interpolation_points_result =
@@ -328,6 +522,7 @@ Result<ExecutionGenerationArtifacts> BuildExecutionGenerationArtifacts(
     ExecutionGenerationArtifacts artifacts;
     artifacts.interpolation_points = std::move(interpolation_points_result.Value());
     artifacts.interpolation_segments = std::move(interpolation_program.Value());
+    artifacts.motion_trajectory = input.motion_plan;
     return Result<ExecutionGenerationArtifacts>::Success(std::move(artifacts));
 }
 

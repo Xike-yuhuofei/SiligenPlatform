@@ -918,7 +918,7 @@ class MainWindowTabsTest(unittest.TestCase):
         result = self.window._check_motion_preconditions("移动", "移动控制")
 
         self.assertFalse(result)
-        self.assertEqual(self.window.statusBar().currentMessage(), "安全门打开，无法移动")
+        self.assertEqual(self.window.statusBar().currentMessage(), "移动失败: 安全门打开")
 
     def test_update_status_prefers_runtime_supervision_state_over_compat_machine_state(self) -> None:
         status = self._make_status()
@@ -2675,6 +2675,26 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertEqual(self.window.statusBar().currentMessage(), "运行模式已变更，请刷新预览并重新确认")
         self.assertEqual(self.window._preview_session.state.current_plan_id, "")
         self.assertEqual(self.window._preview_session.state.current_plan_fingerprint, "")
+
+    def test_generate_dxf_preview_requires_recipe_version_in_online_mode(self) -> None:
+        messages = []
+        self.window._set_preview_message_html = lambda title, detail="", is_error=False: messages.append((title, detail, is_error))
+        self.window._dxf_loaded = True
+        self.window._dxf_artifact_id = "artifact-1"
+        self.window._dxf_view = _FakePreviewView()
+        self.window._is_offline_mode = lambda: False
+        self._set_online_ready_session()
+        self._set_launch_connectivity(connected=True, hardware_connected=True)
+        main_window_module.WEB_ENGINE_AVAILABLE = True
+
+        self.window._generate_dxf_preview()
+
+        self.assertTrue(messages)
+        self.assertEqual(messages[-1][0], "胶点预览生成失败")
+        self.assertIn("recipe/version", messages[-1][1])
+        self.assertTrue(messages[-1][2])
+        self.assertIsNone(self.window._preview_snapshot_worker)
+        self.assertFalse(self.window._preview_session.state.preview_refresh_inflight)
 
     def test_preview_snapshot_ignores_stale_worker_completion(self) -> None:
         messages = []
