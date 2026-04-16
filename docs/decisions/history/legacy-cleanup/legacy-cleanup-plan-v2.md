@@ -5,14 +5,14 @@
 > 当前正式状态不要以本文为准。需要查看当前真值时，优先使用：
 >
 > - [docs/architecture/legacy-cutover-status.md](../../../architecture/legacy-cutover-status.md)
-> - [docs/architecture/legacy-deletion-gates.md](../../../architecture/legacy-deletion-gates.md)
+> - [docs/architecture/governance/migration/legacy-deletion-gates.md](../../../architecture/governance/migration/legacy-deletion-gates.md)
 > - [docs/decisions/history/legacy-cleanup/legacy-removal-execution.md](./legacy-removal-execution.md)
 
 更新时间：`2026-03-19`
 
 补充说明：
 
-- 本文档中的 `hmi-client` 判定已被 `docs/architecture/legacy-deletion-gates.md` 与 `docs/architecture/history/closeouts/removed-legacy-items.md` 覆盖；以下表格仅保留执行时上下文。
+- 本文档中的 `hmi-client` 判定已被 `docs/architecture/governance/migration/legacy-deletion-gates.md` 与 `docs/architecture/history/closeouts/removed-legacy-items.md` 覆盖；以下表格仅保留执行时上下文。
 - 本文档中的 `dxf-pipeline` 判定已被 `docs/architecture/history/closeouts/dxf-pipeline-final-cutover.md` 与 `docs/architecture/history/closeouts/removed-legacy-items-final.md` 覆盖；以下表格仅保留执行时上下文。
 
 ## 1. 目标与判定口径

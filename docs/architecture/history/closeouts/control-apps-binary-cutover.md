@@ -105,7 +105,7 @@ CLI cutover 详情见 `docs/architecture/history/closeouts/control-cli-cutover.m
 - `apps/control-tcp-server/README.md`
 - `apps/control-cli/README.md`
 - `docs/architecture/build-and-test.md`
-- `docs/architecture/legacy-deletion-gates.md`
+- `docs/architecture/governance/migration/legacy-deletion-gates.md`
 - `docs/architecture/workspace-baseline.md`
 - `docs/onboarding/developer-workflow.md`
 - `docs/validation/README.md`

@@ -9,7 +9,7 @@
 1. `docs/process-model/plans/NOISSUE-wave2a-path-bridge-20260322-140814.md`
    - 修正“bridge 前基线”和“当前工作树事实”混写问题
    - 明确 bridge 当前已有 4 个 wrapper，其中前 2 个解除默认入口阻塞，后 2 个稳定集成脚本入口
-2. `docs/architecture/performance-baseline.md`
+2. `docs/architecture/validation/performance-baseline.md`
    - 将工作区默认采样入口改为 `tools/engineering-data-bridge/scripts/*`
    - 补充“owner 仍是 `packages/engineering-data`”说明
 3. `docs/architecture/dxf-pipeline-strangler-progress.md`

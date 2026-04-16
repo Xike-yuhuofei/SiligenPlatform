@@ -34,7 +34,7 @@
 ## 3. 当前正式引用规则
 
 1. 需要当前状态判断时，优先引用本文
-2. 需要目录级删除/防回流规则时，引用 `legacy-deletion-gates.md` 与 `legacy-exit-checks.md`
+2. 需要目录级删除/防回流规则时，引用 `governance/migration/legacy-deletion-gates.md` 与 `governance/migration/legacy-exit-checks.md`
 3. 需要查看某次 cutover、删除或迁移执行证据时，进入 [history/closeouts/](./history/closeouts/README.md)
 4. 需要查看专项进展或实施清单时，进入 [history/progress/](./history/progress/README.md)
 

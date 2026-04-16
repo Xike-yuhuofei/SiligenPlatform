@@ -34,9 +34,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\run-loc
 
 详细说明见：
 
-- `docs/architecture/layered-test-system-v2.md`
-- `docs/architecture/test-coverage-matrix-v1.md`
-- `docs/architecture/machine-preflight-quality-gate-v1.md`
+- `docs/architecture/validation/layered-test-system-v2.md`
+- `docs/architecture/validation/test-coverage-matrix-v1.md`
+- `docs/architecture/validation/machine-preflight-quality-gate-v1.md`
 
 ## lane 映射
 

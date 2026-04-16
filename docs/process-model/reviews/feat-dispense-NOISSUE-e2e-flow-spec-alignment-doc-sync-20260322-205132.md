@@ -15,7 +15,7 @@
    - 从“仍在 strangler”更新为“compat shell 已退出”。
 4. `docs/architecture/dxf-pipeline-final-cutover.md`
    - 更新到兼容壳删除后的 current-fact。
-5. `docs/architecture/legacy-exit-checks.md`
+5. `docs/architecture/governance/migration/legacy-exit-checks.md`
    - 把 `dxf-pipeline` 从冻结防回流升级为兼容壳归零门禁。
 6. `docs/architecture/removed-legacy-items-final.md`
 7. `docs/architecture/redundancy-candidate-audit.md`

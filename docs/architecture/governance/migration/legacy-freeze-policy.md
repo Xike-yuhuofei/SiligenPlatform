@@ -1,6 +1,6 @@
 # Legacy Freeze Policy
 
-> `2026-03-19` 状态更新：`control-core/modules/shared-kernel`、`control-core/src/domain`、`control-core/src/application`、`control-core/modules/process-core`、`control-core/modules/motion-core` 已删除，相关“允许维护”口径仅代表历史冻结基线。当前删除状态与 live 收口口径请以 `docs/architecture/legacy-deletion-gates.md` 与 `docs/architecture/legacy-cutover-status.md` 为准。
+> `2026-03-19` 状态更新：`control-core/modules/shared-kernel`、`control-core/src/domain`、`control-core/src/application`、`control-core/modules/process-core`、`control-core/modules/motion-core` 已删除，相关“允许维护”口径仅代表历史冻结基线。当前删除状态与 live 收口口径请以 `docs/architecture/governance/migration/legacy-deletion-gates.md` 与 `docs/architecture/legacy-cutover-status.md` 为准。
 
 更新时间：`2026-03-19`
 
@@ -10,7 +10,7 @@
 
 冻结不是删除。
 
-已删除目录不再适用本策略，而是由 `docs/architecture/legacy-deletion-gates.md` 与 `legacy-exit-check.ps1` 的“目录缺失 + 防回流”门禁接管。
+已删除目录不再适用本策略，而是由 `docs/architecture/governance/migration/legacy-deletion-gates.md` 与 `legacy-exit-check.ps1` 的“目录缺失 + 防回流”门禁接管。
 
 冻结的含义是：
 

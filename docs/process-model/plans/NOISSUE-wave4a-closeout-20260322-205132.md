@@ -51,7 +51,7 @@
    - 新增 `dxf-pipeline-compat-shells-absent` 缺失规则
    - 把 `dxf-pipeline` 规则从防回流升级到兼容壳归零
    - 为历史审计脚本 `tools/migration/validate_wave2b_residual_payoff.py` 补登记白名单
-2. `docs/architecture/legacy-exit-checks.md`
+2. `docs/architecture/governance/migration/legacy-exit-checks.md`
 3. `docs/architecture/dxf-pipeline-strangler-progress.md`
 4. `docs/architecture/dxf-pipeline-final-cutover.md`
 5. `docs/architecture/removed-legacy-items-final.md`

@@ -51,7 +51,7 @@
 1. `docs/architecture/canonical-paths.md`
 2. `docs/architecture/build-and-test.md`
 3. `docs/architecture/directory-responsibilities.md`
-4. `docs/architecture/legacy-exit-checks.md`
+4. `docs/architecture/governance/migration/legacy-exit-checks.md`
 5. `packages/process-runtime-core/README.md`
 6. `packages/transport-gateway/tests/README.md`
 

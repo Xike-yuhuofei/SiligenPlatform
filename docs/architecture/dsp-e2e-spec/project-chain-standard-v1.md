@@ -79,9 +79,9 @@
 
 | 子链 | 权威输入 -> 输出 | 精准定义 | 主要依据 |
 |---|---|---|---|
-| A07-1 轨迹生成子链 | `ProcessPath` + `TimePlanningConfig` -> `MotionPlan`（代码级 payload = `MotionTrajectory`） | 当前 canonical 规划调用链是 `MotionPlanningFacade -> MotionPlanner -> MotionTrajectory`；业务阶段名保留 `MotionPlan`。jerk 约束仍属于该层的时间化职责，不是板卡插补器。 | `modules/motion-planning/README.md`、`docs/architecture/dxf-motion-execution-contract-v1.md` |
-| A08-1 程序合成子链 | `ProcessPath` + `MotionPlan`（`MotionTrajectory`） -> `InterpolationData` / `interpolation_segments` | `InterpolationProgramPlanner` 根据 `process_path` 的几何段语义和 `motion_trajectory` 的速度语义合成板卡段程序；这是当前 canonical execution program。`interpolation_points` 只是预览 / authority binding 辅助资产。 | `docs/architecture/dxf-motion-execution-contract-v1.md` |
-| A12-1 板卡执行子链 | `InterpolationData` -> MultiCard 坐标系执行状态 | 设备层负责真正的 FIFO / lookahead / 坐标系插补执行和状态反馈。 | `docs/architecture/dxf-motion-execution-contract-v1.md` |
+| A07-1 轨迹生成子链 | `ProcessPath` + `TimePlanningConfig` -> `MotionPlan`（代码级 payload = `MotionTrajectory`） | 当前 canonical 规划调用链是 `MotionPlanningFacade -> MotionPlanner -> MotionTrajectory`；业务阶段名保留 `MotionPlan`。jerk 约束仍属于该层的时间化职责，不是板卡插补器。 | `modules/motion-planning/README.md`、`docs/architecture/topics/dxf/dxf-motion-execution-contract-v1.md` |
+| A08-1 程序合成子链 | `ProcessPath` + `MotionPlan`（`MotionTrajectory`） -> `InterpolationData` / `interpolation_segments` | `InterpolationProgramPlanner` 根据 `process_path` 的几何段语义和 `motion_trajectory` 的速度语义合成板卡段程序；这是当前 canonical execution program。`interpolation_points` 只是预览 / authority binding 辅助资产。 | `docs/architecture/topics/dxf/dxf-motion-execution-contract-v1.md` |
+| A12-1 板卡执行子链 | `InterpolationData` -> MultiCard 坐标系执行状态 | 设备层负责真正的 FIFO / lookahead / 坐标系插补执行和状态反馈。 | `docs/architecture/topics/dxf/dxf-motion-execution-contract-v1.md` |
 
 裁决性定义：
 
@@ -100,9 +100,9 @@
 2. `shared/contracts/application/queries/*.json`
 3. `shared/contracts/application/mappings/protocol-mapping.md`
 4. `apps/runtime-gateway/transport-gateway/docs/protocol-mapping.md`
-5. `docs/architecture/dispense-trajectory-preview-sequence-text-v1.md`
-6. `docs/architecture/hmi-online-startup-state-machine-v1.md`
-7. `docs/architecture/runtime-supervision-state-contract-boundary-v1.md`
+5. `docs/architecture/topics/dispense-preview/dispense-trajectory-preview-sequence-text-v1.md`
+6. `docs/architecture/topics/runtime-hmi/hmi-online-startup-state-machine-v1.md`
+7. `docs/architecture/topics/runtime-hmi/runtime-supervision-state-contract-boundary-v1.md`
 
 | ID | 链路名 | 权威输入 -> 权威输出 | 精准定义 | 明确不等于 |
 |---|---|---|---|---|
@@ -121,8 +121,8 @@
 
 1. `apps/planner-cli/README.md`
 2. `apps/trace-viewer/README.md`
-3. `docs/architecture/sim-observer-data-contract-v1.md`
-4. `docs/architecture/dispense-trajectory-preview-scope-baseline-v1.md`
+3. `docs/architecture/topics/sim-observer/sim-observer-data-contract-v1.md`
+4. `docs/architecture/topics/dispense-preview/dispense-trajectory-preview-scope-baseline-v1.md`
 5. `docs/architecture/workspace-baseline.md`
 6. `README.md`
 

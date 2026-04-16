@@ -55,7 +55,7 @@ $env:SILIGEN_HIL_GATEWAY_EXE='D:\Projects\SiligenSuite\build\bin\Debug\siligen_r
     - `modules/motion-planning/adapters` 缺失
     - `modules/motion-planning/examples` 缺失
     - `modules/dispense-packaging/tests/integration` 缺失
-    - `docs/architecture/bridge-exit-closeout.md` 缺失
+    - `docs/architecture/governance/migration/bridge-exit-closeout.md` 缺失
     - workflow owner wiring 缺少 `siligen_job_ingest_contracts`
     - workflow owner wiring 缺少 `siligen_dxf_geometry_application_public`
     - workflow owner wiring 缺少 `siligen_runtime_execution_application_public`

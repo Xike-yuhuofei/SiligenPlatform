@@ -25,7 +25,7 @@
    - 新增 blocker register
    - 按 `Wave 1 / Wave 2A / Wave 2B` 分类写死 blocker、owner、解除条件和是否阻断物理迁移
 
-5. `docs/architecture/shared-boundary-freeze-wave1.md`
+5. `docs/architecture/governance/boundaries/shared-boundary-freeze-wave1.md`
    - 新增 Wave 1 shared 目标边界冻结文档
    - 明确 `Wave 1` 为 Go，shared 物理迁移为 No-Go
 
