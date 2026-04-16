@@ -18,6 +18,15 @@ SCRIPT_PATHS = (
 )
 
 
+def _write_matching_cmake_cache(build_root: Path) -> Path:
+    cache_path = build_root / "CMakeCache.txt"
+    cache_path.write_text(
+        f"CMAKE_HOME_DIRECTORY:INTERNAL={ROOT}\n",
+        encoding="utf-8",
+    )
+    return cache_path
+
+
 def _probe_resolved_executable(script_path: Path, fake_file_name: str, localappdata_root: Path) -> Path:
     probe_code = "\n".join(
         (
@@ -62,6 +71,9 @@ def test_gateway_resolution_consumers_prefer_workspace_build_ca_over_workspace_b
     for path in (workspace_ca_exe, workspace_build_exe, workspace_hmi_fix_exe, legacy_exe):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
+    workspace_ca_cache = _write_matching_cmake_cache(ROOT / "build" / "ca")
+    workspace_build_cache = _write_matching_cmake_cache(ROOT / "build")
+    legacy_cache = _write_matching_cmake_cache(legacy_localappdata / "SiligenSuite" / "control-apps-build")
 
     try:
         for script_path in SCRIPT_PATHS:
@@ -71,3 +83,6 @@ def test_gateway_resolution_consumers_prefer_workspace_build_ca_over_workspace_b
         for path in (workspace_ca_exe, workspace_build_exe, workspace_hmi_fix_exe):
             if path.exists():
                 path.unlink()
+        for cache_path in (workspace_ca_cache, workspace_build_cache, legacy_cache):
+            if cache_path.exists():
+                cache_path.unlink()

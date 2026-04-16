@@ -4,6 +4,7 @@ import hashlib
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Sequence
 
 
 @dataclass(frozen=True)
@@ -16,6 +17,23 @@ class BuildRootProbe:
     cmake_home_directory: str
     matches_workspace: bool
     accepted: bool
+    reason: str = ""
+
+
+@dataclass(frozen=True)
+class RequiredArtifactProbe:
+    artifact_name: str
+    resolved_path: Path | None
+    searched_paths: tuple[Path, ...]
+
+
+@dataclass(frozen=True)
+class ControlAppsBuildReadiness:
+    ready: bool
+    selected_probe: BuildRootProbe | None
+    required_artifacts: tuple[str, ...]
+    artifact_probes: tuple[RequiredArtifactProbe, ...]
+    missing_artifacts: tuple[str, ...]
     reason: str = ""
 
 
@@ -34,16 +52,58 @@ def _read_cmake_home_directory(cache_path: Path) -> str:
     return ""
 
 
+def _matches_workspace(cmake_home_directory: str, workspace_root: Path) -> bool:
+    if not cmake_home_directory:
+        return False
+    try:
+        return Path(cmake_home_directory).resolve() == workspace_root.resolve()
+    except OSError:
+        return False
+
+
+def _artifact_candidates(build_root: Path, artifact_name: str) -> tuple[Path, ...]:
+    return (
+        build_root / "bin" / artifact_name,
+        build_root / "bin" / "Debug" / artifact_name,
+        build_root / "bin" / "Release" / artifact_name,
+        build_root / "bin" / "RelWithDebInfo" / artifact_name,
+    )
+
+
+def _probe_required_artifact(probe: BuildRootProbe, artifact_name: str) -> RequiredArtifactProbe:
+    candidates = _artifact_candidates(probe.root, artifact_name)
+    resolved_path = next((candidate for candidate in candidates if candidate.exists()), None)
+    return RequiredArtifactProbe(
+        artifact_name=artifact_name,
+        resolved_path=resolved_path,
+        searched_paths=candidates,
+    )
+
+
+def _normalized_required_artifacts(required_artifacts: Sequence[str]) -> tuple[str, ...]:
+    normalized: list[str] = []
+    for artifact_name in required_artifacts:
+        value = str(artifact_name).strip()
+        if value and value not in normalized:
+            normalized.append(value)
+    return tuple(normalized)
+
+
 def _probe_build_root(root: Path, *, source: str, workspace_root: Path, allow_stale: bool) -> BuildRootProbe:
     resolved_root = root.resolve()
     cache_path = resolved_root / "CMakeCache.txt"
     cmake_home_directory = _read_cmake_home_directory(cache_path)
-    workspace_home = str(workspace_root.resolve())
-    matches_workspace = (not cmake_home_directory) or Path(cmake_home_directory).resolve() == workspace_root.resolve()
+    matches_workspace = _matches_workspace(cmake_home_directory, workspace_root)
 
     if allow_stale:
         accepted = True
         reason = ""
+    elif not cache_path.exists():
+        accepted = False
+        reason = "missing-cmake-cache"
+    elif not cmake_home_directory:
+        accepted = False
+        reason = "missing-cmake-home"
     elif cache_path.exists() and not matches_workspace:
         accepted = False
         reason = f"stale-cmake-home:{cmake_home_directory}"
@@ -130,3 +190,67 @@ def preferred_control_apps_build_root(
     if accepted:
         return accepted[0]
     return probes[0]
+
+
+def probe_control_apps_build_readiness(
+    workspace_root: Path,
+    *,
+    required_artifacts: Sequence[str],
+    explicit_build_root: str | None = None,
+) -> ControlAppsBuildReadiness:
+    normalized_artifacts = _normalized_required_artifacts(required_artifacts)
+    probes = control_apps_build_root_probes(workspace_root, explicit_build_root=explicit_build_root)
+    selected_probe = preferred_control_apps_build_root(workspace_root, explicit_build_root=explicit_build_root)
+
+    if explicit_build_root and not selected_probe.exists:
+        return ControlAppsBuildReadiness(
+            ready=False,
+            selected_probe=selected_probe,
+            required_artifacts=normalized_artifacts,
+            artifact_probes=tuple(),
+            missing_artifacts=normalized_artifacts,
+            reason="explicit-build-root-missing",
+        )
+
+    if not selected_probe.accepted:
+        return ControlAppsBuildReadiness(
+            ready=False,
+            selected_probe=selected_probe,
+            required_artifacts=normalized_artifacts,
+            artifact_probes=tuple(),
+            missing_artifacts=normalized_artifacts,
+            reason=selected_probe.reason or "build-root-rejected",
+        )
+
+    if not selected_probe.exists:
+        return ControlAppsBuildReadiness(
+            ready=False,
+            selected_probe=selected_probe,
+            required_artifacts=normalized_artifacts,
+            artifact_probes=tuple(),
+            missing_artifacts=normalized_artifacts,
+            reason="build-root-missing",
+        )
+
+    artifact_probes = tuple(_probe_required_artifact(selected_probe, artifact_name) for artifact_name in normalized_artifacts)
+    missing_artifacts = tuple(
+        artifact_probe.artifact_name for artifact_probe in artifact_probes if artifact_probe.resolved_path is None
+    )
+    if missing_artifacts:
+        return ControlAppsBuildReadiness(
+            ready=False,
+            selected_probe=selected_probe,
+            required_artifacts=normalized_artifacts,
+            artifact_probes=artifact_probes,
+            missing_artifacts=missing_artifacts,
+            reason="missing-required-artifacts",
+        )
+
+    return ControlAppsBuildReadiness(
+        ready=True,
+        selected_probe=selected_probe,
+        required_artifacts=normalized_artifacts,
+        artifact_probes=artifact_probes,
+        missing_artifacts=tuple(),
+        reason="",
+    )

@@ -558,15 +558,15 @@ def measure_reliability(
                                             job_id = str(job_payload.get("job_id", "")).strip()
                                             if not job_id:
                                                 cycle_errors.append("dxf.job.start.missing_job_id")
-                                        else:
-                                            time.sleep(0.3)
-                                            job_status = protocol.dxf_get_job_status(job_id)
-                                            if str(job_status.get("state", "")).strip().lower() not in {
-                                                "running",
-                                                "paused",
-                                                "completed",
-                                            }:
-                                                cycle_errors.append(f"dxf.job.status:{job_status}")
+                                            else:
+                                                time.sleep(0.3)
+                                                job_status = protocol.dxf_get_job_status(job_id)
+                                                if str(job_status.get("state", "")).strip().lower() not in {
+                                                    "running",
+                                                    "paused",
+                                                    "completed",
+                                                }:
+                                                    cycle_errors.append(f"dxf.job.status:{job_status}")
                                         if job_id and not protocol.dxf_job_stop(job_id):
                                             cycle_errors.append("dxf.job.stop")
 

@@ -15,7 +15,12 @@ from .asset_catalog import (
     default_simulated_line_asset_ids,
     shared_asset_ids_for_smoke,
 )
-from .control_apps_build import control_apps_build_root_probes, preferred_control_apps_build_root
+from .control_apps_build import (
+    ControlAppsBuildReadiness,
+    control_apps_build_root_probes,
+    preferred_control_apps_build_root,
+    probe_control_apps_build_readiness,
+)
 from .evidence_bundle import (
     EvidenceBundle,
     EvidenceCaseRecord,
@@ -30,6 +35,7 @@ from .runner import (
     SKIPPED_EXIT_CODE,
     ValidationCase,
     ValidationReport,
+    ValidationResult,
     python_command,
     report_to_json,
     report_to_markdown,
@@ -60,6 +66,17 @@ CONTROL_APPS_BUILD_ROOT = preferred_control_apps_build_root(
     explicit_build_root=os.getenv("SILIGEN_CONTROL_APPS_BUILD_ROOT"),
 ).root
 PERFORMANCE_THRESHOLD_CONFIG = WORKSPACE_ROOT / "tests" / "baselines" / "performance" / "dxf-preview-profile-thresholds.json"
+CONTROL_APPS_CASE_ARTIFACTS: dict[str, str] = {
+    "runtime-service-dry-run": "siligen_runtime_service.exe",
+    "runtime-gateway-dry-run": "siligen_runtime_gateway.exe",
+    "planner-cli-dry-run": "siligen_planner_cli.exe",
+    "shared-kernel-unit": "siligen_shared_kernel_tests.exe",
+    "runtime-host-unit": "siligen_runtime_host_unit_tests.exe",
+    "dxf-geometry-unit": "siligen_dxf_geometry_unit_tests.exe",
+    "job-ingest-unit": "siligen_job_ingest_unit_tests.exe",
+    "workflow-unit": "siligen_unit_tests.exe",
+}
+CONTROL_APPS_PREREQUISITE_CASE_ID = "control-apps-build-readiness"
 
 
 def _default_report_dir() -> Path:
@@ -72,9 +89,10 @@ def _layout_absolute_path(key: str) -> Path:
 
 def _control_apps_executable(name: str) -> Path:
     candidates: list[Path] = []
-    for probe in CONTROL_APPS_BUILD_ROOT_PROBES:
-        if not probe.accepted:
-            continue
+    probes = [probe for probe in CONTROL_APPS_BUILD_ROOT_PROBES if probe.accepted]
+    if not probes and CONTROL_APPS_BUILD_ROOT_PROBES:
+        probes = [CONTROL_APPS_BUILD_ROOT_PROBES[0]]
+    for probe in probes:
         candidates.extend(
             (
                 probe.root / "bin" / name,
@@ -159,22 +177,32 @@ def _normalize_suites(requested: list[str] | None) -> list[str]:
     return normalized
 
 
-def _workspace_validation_metadata() -> dict[str, object]:
-    selected_build_root = preferred_control_apps_build_root(
-        WORKSPACE_ROOT,
-        explicit_build_root=os.getenv("SILIGEN_CONTROL_APPS_BUILD_ROOT"),
-    )
-    cmake_home = selected_build_root.cmake_home_directory
-
+def _workspace_validation_metadata(control_apps_readiness: ControlAppsBuildReadiness) -> dict[str, object]:
     metadata = {
         "workspace_layout_file": str((WORKSPACE_ROOT / "cmake" / "workspace-layout.env").resolve()),
         "workspace_root": str(WORKSPACE_ROOT.resolve()),
         "tests_root": str((WORKSPACE_ROOT / "tests").resolve()),
         "scripts_root": str((WORKSPACE_ROOT / "scripts").resolve()),
         "samples_root": str((WORKSPACE_ROOT / "samples").resolve()),
-        "control_apps_build_root": str(selected_build_root.root),
-        "control_apps_cmake_home_directory": cmake_home,
-        "control_apps_build_root_source": selected_build_root.source,
+        "control_apps_build_root": (
+            str(control_apps_readiness.selected_probe.root)
+            if control_apps_readiness.ready and control_apps_readiness.selected_probe
+            else ""
+        ),
+        "control_apps_cmake_home_directory": (
+            control_apps_readiness.selected_probe.cmake_home_directory
+            if control_apps_readiness.ready and control_apps_readiness.selected_probe
+            else ""
+        ),
+        "control_apps_build_root_source": (
+            control_apps_readiness.selected_probe.source
+            if control_apps_readiness.ready and control_apps_readiness.selected_probe
+            else ""
+        ),
+        "control_apps_ready": control_apps_readiness.ready,
+        "control_apps_required_artifacts": list(control_apps_readiness.required_artifacts),
+        "control_apps_missing_artifacts": list(control_apps_readiness.missing_artifacts),
+        "control_apps_readiness_reason": control_apps_readiness.reason,
         "control_apps_search_roots": [str(probe.root) for probe in CONTROL_APPS_BUILD_ROOT_PROBES],
         "control_apps_rejected_roots": [
             {"root": str(probe.root), "reason": probe.reason}
@@ -191,6 +219,77 @@ def _workspace_validation_metadata() -> dict[str, object]:
         if key in WORKSPACE_LAYOUT:
             metadata[key.lower()] = str(_layout_absolute_path(key))
     return metadata
+
+
+def _required_control_apps_artifacts(cases: list[ValidationCase]) -> tuple[str, ...]:
+    required_artifacts: list[str] = []
+    for case in cases:
+        artifact_name = CONTROL_APPS_CASE_ARTIFACTS.get(case.name, "")
+        if artifact_name and artifact_name not in required_artifacts:
+            required_artifacts.append(artifact_name)
+    return tuple(required_artifacts)
+
+
+def _control_apps_readiness_result(readiness: ControlAppsBuildReadiness) -> ValidationResult:
+    selected_probe = readiness.selected_probe
+    stdout_lines = [
+        f"control_apps_ready={str(readiness.ready).lower()}",
+        f"required_artifacts={','.join(readiness.required_artifacts)}",
+        f"missing_artifacts={','.join(readiness.missing_artifacts)}",
+        f"reason={readiness.reason}",
+        f"selected_root={selected_probe.root if selected_probe else ''}",
+        f"selected_source={selected_probe.source if selected_probe else ''}",
+    ]
+    if selected_probe:
+        stdout_lines.append(f"selected_cmake_home={selected_probe.cmake_home_directory}")
+
+    return ValidationResult(
+        name=CONTROL_APPS_PREREQUISITE_CASE_ID,
+        case_id=CONTROL_APPS_PREREQUISITE_CASE_ID,
+        layer="static",
+        description="control-apps current-workspace build root readiness",
+        status="passed" if readiness.ready else "known_failure",
+        return_code=0 if readiness.ready else KNOWN_FAILURE_EXIT_CODE,
+        duration_seconds=0.0,
+        command=[],
+        cwd=str(WORKSPACE_ROOT),
+        stdout="\n".join(stdout_lines),
+        note="" if readiness.ready else f"{readiness.reason}: {', '.join(readiness.missing_artifacts)}",
+        owner_scope="root-validation",
+        primary_layer="L0",
+        suite_ref="apps",
+        evidence_profile="gate-summary",
+        stability_state="stable",
+        size_label="small",
+        label_refs=("suite:apps", "kind:entrypoint", "size:small", "layer:L0", "owner:apps", "stability:stable"),
+        risk_tags=("entrypoint",),
+        required_fixtures=("fixture.workspace-validation-runner",),
+    )
+
+
+def _control_apps_blocked_skip_result(case: ValidationCase) -> ValidationResult:
+    return ValidationResult(
+        name=case.name,
+        case_id=case.case_id,
+        layer=case.layer,
+        description=case.description,
+        status="skipped",
+        return_code=None,
+        duration_seconds=0.0,
+        command=case.command,
+        cwd=str(case.cwd),
+        note=f"blocked by {CONTROL_APPS_PREREQUISITE_CASE_ID}",
+        owner_scope=case.owner_scope,
+        primary_layer=case.primary_layer,
+        suite_ref=case.suite_ref,
+        risk_tags=case.risk_tags,
+        required_assets=case.required_assets,
+        required_fixtures=case.required_fixtures,
+        evidence_profile=case.evidence_profile,
+        stability_state=case.stability_state,
+        size_label=case.size_label,
+        label_refs=case.label_refs,
+    )
 
 
 def _primary_layer_for_case(case: ValidationCase) -> str:
@@ -564,6 +663,13 @@ def build_cases(
                     layer="contracts",
                     description="engineering data compatibility",
                     command=python_command(WORKSPACE_ROOT / "tests" / "contracts" / "test_engineering_data_compatibility.py"),
+                    cwd=WORKSPACE_ROOT,
+                ),
+                ValidationCase(
+                    name="control-apps-build-contract",
+                    layer="contracts",
+                    description="control-apps build root readiness contract",
+                    command=python_command(WORKSPACE_ROOT / "tests" / "contracts" / "test_control_apps_build_contract.py"),
                     cwd=WORKSPACE_ROOT,
                 ),
                 ValidationCase(
@@ -1188,7 +1294,26 @@ def main() -> int:
         skip_justification=args.skip_justification,
     )
     routed_request = route_validation_request(request)
-    metadata = _workspace_validation_metadata()
+    lane_definition = EXECUTION_LANES[routed_request.selected_lane_ref]
+    cases = _apply_lane_policy(
+        build_cases(
+            args.profile,
+            suites,
+            lane_ref=routed_request.selected_lane_ref,
+            include_hardware_smoke=bool(args.include_hardware_smoke),
+            include_hil_closed_loop=bool(args.include_hil_closed_loop),
+            include_hil_case_matrix=bool(args.include_hil_case_matrix),
+            report_dir=report_dir,
+        ),
+        routed_request.selected_lane_ref,
+    )
+    _validate_case_taxonomy(cases)
+    control_apps_readiness = probe_control_apps_build_readiness(
+        WORKSPACE_ROOT,
+        required_artifacts=_required_control_apps_artifacts(cases),
+        explicit_build_root=os.getenv("SILIGEN_CONTROL_APPS_BUILD_ROOT"),
+    )
+    metadata = _workspace_validation_metadata(control_apps_readiness)
     asset_catalog = build_asset_catalog(WORKSPACE_ROOT)
     asset_inventory = build_asset_inventory(WORKSPACE_ROOT, catalog=asset_catalog)
     baseline_governance = baseline_governance_summary(WORKSPACE_ROOT, catalog=asset_catalog)
@@ -1213,26 +1338,16 @@ def main() -> int:
         metadata=metadata,
     )
 
-    lane_definition = EXECUTION_LANES[routed_request.selected_lane_ref]
-    cases = _apply_lane_policy(
-        build_cases(
-            args.profile,
-            suites,
-            lane_ref=routed_request.selected_lane_ref,
-            include_hardware_smoke=bool(args.include_hardware_smoke),
-            include_hil_closed_loop=bool(args.include_hil_closed_loop),
-            include_hil_case_matrix=bool(args.include_hil_case_matrix),
-            report_dir=report_dir,
-        ),
-        routed_request.selected_lane_ref,
-    )
-    _validate_case_taxonomy(cases)
-
     fail_fast_triggered = False
     skipped_due_to_fail_fast = 0
     blocking_failure_count = 0
+    if control_apps_readiness.required_artifacts:
+        report.results.append(_control_apps_readiness_result(control_apps_readiness))
     for case in cases:
-        report.results.append(run_case(case))
+        if (not control_apps_readiness.ready) and case.name in CONTROL_APPS_CASE_ARTIFACTS:
+            report.results.append(_control_apps_blocked_skip_result(case))
+        else:
+            report.results.append(run_case(case))
         current_result = report.results[-1]
         if current_result.status == "failed":
             blocking_failure_count += 1

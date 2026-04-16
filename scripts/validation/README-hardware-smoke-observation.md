@@ -26,7 +26,7 @@
 - vendor 目录：`modules/runtime-execution/adapters/device/vendor/multicard`
 - runtime-service 脚本：`apps/runtime-service/run.ps1`
 - runtime-gateway 脚本：`apps/runtime-gateway/run.ps1`
-- build root：`$env:SILIGEN_CONTROL_APPS_BUILD_ROOT`；否则优先当前工作区 `build\ca`，兼容 fallback 到 `build\control-apps`、`build\`、匹配当前工作区的 `LOCALAPPDATA\SS\cab-*`，最后才是 legacy `LOCALAPPDATA\SiligenSuite\control-apps-build`
+- build root：`$env:SILIGEN_CONTROL_APPS_BUILD_ROOT`；否则优先携带当前工作区匹配 `CMakeCache.txt` 的 `build\ca`，兼容 fallback 到 `build\control-apps`、`build\`、匹配当前工作区且携带匹配 `CMakeCache.txt` 的 `LOCALAPPDATA\SS\cab-*`，最后才是携带当前工作区匹配 `CMakeCache.txt` 的 legacy `LOCALAPPDATA\SiligenSuite\control-apps-build`
 
 ## 默认输出
 
