@@ -122,17 +122,17 @@ function Test-ControlAppsBuildRootMatchesWorkspace {
 
     $cacheFile = Join-Path $BuildRoot "CMakeCache.txt"
     if (-not (Test-Path $cacheFile)) {
-        return $true
+        return $false
     }
 
     $homeDirectoryLine = Get-Content $cacheFile | Where-Object { $_ -like "CMAKE_HOME_DIRECTORY:*" } | Select-Object -First 1
     if (-not $homeDirectoryLine) {
-        return $true
+        return $false
     }
 
     $configuredSourceRoot = ($homeDirectoryLine -split "=", 2)[1]
     if ([string]::IsNullOrWhiteSpace($configuredSourceRoot)) {
-        return $true
+        return $false
     }
 
     $resolvedConfiguredSourceRoot = [System.IO.Path]::GetFullPath($configuredSourceRoot)
@@ -140,15 +140,11 @@ function Test-ControlAppsBuildRootMatchesWorkspace {
     return $resolvedConfiguredSourceRoot -ieq $resolvedWorkspaceSourceRoot
 }
 
-function Get-ControlAppsBuildRoots {
+function Get-ControlAppsBuildSearchRoots {
     param(
         [Parameter(Mandatory = $true)]
         [string]$WorkspaceRoot
     )
-
-    if (-not [string]::IsNullOrWhiteSpace($env:SILIGEN_CONTROL_APPS_BUILD_ROOT)) {
-        return @([System.IO.Path]::GetFullPath($env:SILIGEN_CONTROL_APPS_BUILD_ROOT))
-    }
 
     $roots = @(
         [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build\ca")),
@@ -164,20 +160,40 @@ function Get-ControlAppsBuildRoots {
         if (Test-Path $ssRoot) {
             foreach ($candidate in Get-ChildItem -Path $ssRoot -Directory -Filter "cab-*") {
                 $resolved = [System.IO.Path]::GetFullPath($candidate.FullName)
-                if (Test-ControlAppsBuildRootMatchesWorkspace -BuildRoot $resolved -WorkspaceRoot $WorkspaceRoot) {
-                    $roots += $resolved
-                }
+                $roots += $resolved
             }
         }
 
         $legacyRoot = [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA "SiligenSuite\control-apps-build"))
-        if (Test-ControlAppsBuildRootMatchesWorkspace -BuildRoot $legacyRoot -WorkspaceRoot $WorkspaceRoot) {
-            $roots += $legacyRoot
-        }
+        $roots += $legacyRoot
     }
 
     return @(
         $roots |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Select-Object -Unique
+    )
+}
+
+function Get-ControlAppsBuildRoots {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$WorkspaceRoot
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($env:SILIGEN_CONTROL_APPS_BUILD_ROOT)) {
+        return @([System.IO.Path]::GetFullPath($env:SILIGEN_CONTROL_APPS_BUILD_ROOT))
+    }
+
+    $acceptedRoots = @()
+    foreach ($root in @(Get-ControlAppsBuildSearchRoots -WorkspaceRoot $WorkspaceRoot)) {
+        if (Test-ControlAppsBuildRootMatchesWorkspace -BuildRoot $root -WorkspaceRoot $WorkspaceRoot) {
+            $acceptedRoots += [System.IO.Path]::GetFullPath($root)
+        }
+    }
+
+    return @(
+        $acceptedRoots |
             Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
             Select-Object -Unique
     )
@@ -190,6 +206,13 @@ function Get-ControlAppsBuildRoot {
     )
 
     $roots = @(Get-ControlAppsBuildRoots -WorkspaceRoot $WorkspaceRoot)
+    if ($roots.Count -eq 0) {
+        $searchRoots = @(Get-ControlAppsBuildSearchRoots -WorkspaceRoot $WorkspaceRoot)
+        if ($searchRoots.Count -gt 0) {
+            return [System.IO.Path]::GetFullPath($searchRoots[0])
+        }
+    }
+
     foreach ($root in $roots) {
         if ((Test-Path $root) -and (Test-ControlAppsBuildRootMatchesWorkspace -BuildRoot $root -WorkspaceRoot $WorkspaceRoot)) {
             return [System.IO.Path]::GetFullPath($root)

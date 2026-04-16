@@ -36,8 +36,13 @@ foreach ($controlAppsBuildRoot in $controlAppsBuildRoots) {
 }
 
 if (-not $exePath) {
+    if ($controlAppsBuildRoots.Count -eq 0) {
+        $searchRoots = @(Get-ControlAppsBuildSearchRoots -WorkspaceRoot $workspaceRoot)
+        $searchRootsText = ($searchRoots -join "', '")
+        throw "current-workspace control-apps build root not ready for planner-cli; searched: '$searchRootsText'"
+    }
     $rootsText = ($controlAppsBuildRoots -join "', '")
-    throw "planner-cli executable not found under any configured root: '$rootsText'"
+    throw "planner-cli executable not found under current-workspace control-apps roots: '$rootsText'"
 }
 
 if ($DryRun) {

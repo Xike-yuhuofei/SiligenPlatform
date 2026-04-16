@@ -10,6 +10,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def _write_matching_cmake_cache(build_root: Path, workspace_root: Path) -> Path:
+    cache_path = build_root / "CMakeCache.txt"
+    cache_path.write_text(
+        f"CMAKE_HOME_DIRECTORY:INTERNAL={workspace_root}\n",
+        encoding="utf-8",
+    )
+    return cache_path
+
+
 def test_resolve_default_exe_prefers_legacy_localappdata_over_noncanonical_workspace_build_child(tmp_path: Path) -> None:
     fake_file_name = "codex_runtime_gateway_resolution_probe.exe"
     workspace_build_root = ROOT / "build" / "zz-codex-harness-resolution"
@@ -21,6 +30,7 @@ def test_resolve_default_exe_prefers_legacy_localappdata_over_noncanonical_works
     workspace_exe.write_text("", encoding="utf-8")
     legacy_exe.parent.mkdir(parents=True, exist_ok=True)
     legacy_exe.write_text("", encoding="utf-8")
+    legacy_cache = _write_matching_cmake_cache(legacy_localappdata / "SiligenSuite" / "control-apps-build", ROOT)
 
     probe_code = "\n".join(
         (
@@ -51,6 +61,8 @@ def test_resolve_default_exe_prefers_legacy_localappdata_over_noncanonical_works
         assert completed.stdout.strip() == str(legacy_exe)
     finally:
         shutil.rmtree(workspace_build_root, ignore_errors=True)
+        if legacy_cache.exists():
+            legacy_cache.unlink()
 
 
 def test_resolve_default_exe_prefers_workspace_build_ca_over_workspace_build_and_legacy_localappdata(tmp_path: Path) -> None:
@@ -66,6 +78,9 @@ def test_resolve_default_exe_prefers_workspace_build_ca_over_workspace_build_and
     workspace_build_exe.write_text("", encoding="utf-8")
     legacy_exe.parent.mkdir(parents=True, exist_ok=True)
     legacy_exe.write_text("", encoding="utf-8")
+    workspace_ca_cache = _write_matching_cmake_cache(ROOT / "build" / "ca", ROOT)
+    workspace_build_cache = _write_matching_cmake_cache(ROOT / "build", ROOT)
+    legacy_cache = _write_matching_cmake_cache(legacy_localappdata / "SiligenSuite" / "control-apps-build", ROOT)
 
     probe_code = "\n".join(
         (
@@ -99,3 +114,6 @@ def test_resolve_default_exe_prefers_workspace_build_ca_over_workspace_build_and
             workspace_ca_exe.unlink()
         if workspace_build_exe.exists():
             workspace_build_exe.unlink()
+        for cache_path in (workspace_ca_cache, workspace_build_cache, legacy_cache):
+            if cache_path.exists():
+                cache_path.unlink()
