@@ -11,7 +11,13 @@
 namespace Siligen::JobIngest::Application::Ports::Dispensing {
 
 using Siligen::JobIngest::Contracts::UploadRequest;
+using Siligen::JobIngest::Contracts::DxfImportDiagnostics;
 using Siligen::Shared::Types::Result;
+
+struct PreparedInputArtifact {
+    std::string prepared_path;
+    DxfImportDiagnostics import_diagnostics;
+};
 
 class IUploadStoragePort {
    public:
@@ -30,7 +36,7 @@ class IUploadPreparationPort {
    public:
     virtual ~IUploadPreparationPort() = default;
 
-    virtual Result<std::string> EnsurePreparedInput(const std::string& source_path) const = 0;
+    virtual Result<PreparedInputArtifact> EnsurePreparedInput(const std::string& source_path) const = 0;
 
     virtual Result<void> CleanupPreparedInput(const std::string& source_path) const = 0;
 };

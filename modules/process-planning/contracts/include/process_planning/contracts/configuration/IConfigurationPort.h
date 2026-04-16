@@ -92,9 +92,8 @@ struct DispensingConfig {
 /**
  * @brief DXF 预处理配置（Python ezdxf -> .pb）
  */
-struct DxfPreprocessConfig {
+struct DxfImportConfig {
     bool normalize_units = true;     ///< 是否按DXF单位归一化为mm
-    bool strict_r12 = false;         ///< 是否严格限制输入为R12及核心实体
     bool approx_splines = false;     ///< 是否将SPLINE近似为折线
     bool snap_enabled = false;       ///< 是否启用坐标吸附
     bool densify_enabled = false;    ///< 是否启用线段密化
@@ -254,7 +253,7 @@ class IConfigurationPort {
     virtual Result<void> SetDispensingConfig(const DispensingConfig& config) = 0;
 
     // DXF 预处理配置
-    virtual Result<DxfPreprocessConfig> GetDxfPreprocessConfig() const = 0;
+    virtual Result<DxfImportConfig> GetDxfImportConfig() const = 0;
 
     // DXF 轨迹规划配置
     virtual Result<DxfTrajectoryConfig> GetDxfTrajectoryConfig() const = 0;

@@ -283,6 +283,20 @@ set(SILIGEN_LOG_LEVEL "ERROR" CACHE STRING "构建日志级别: ERROR/WARNING/IN
 option(SILIGEN_USE_PCH "使用预编译头加速编译" ON)
 option(SILIGEN_USE_UNITY_BUILD "使用Unity Build加速编译(实验性)" OFF)
 option(SILIGEN_PARALLEL_COMPILE "启用并行编译" ON)
+include(ProcessorCount)
+ProcessorCount(SILIGEN_HOST_CPU_COUNT)
+if(NOT SILIGEN_HOST_CPU_COUNT OR SILIGEN_HOST_CPU_COUNT LESS 1)
+    set(SILIGEN_HOST_CPU_COUNT 1)
+endif()
+math(EXPR SILIGEN_DEFAULT_PARALLEL_COMPILE_JOBS "(${SILIGEN_HOST_CPU_COUNT} * 8) / 10")
+if(SILIGEN_DEFAULT_PARALLEL_COMPILE_JOBS LESS 1)
+    set(SILIGEN_DEFAULT_PARALLEL_COMPILE_JOBS 1)
+endif()
+set(
+    SILIGEN_PARALLEL_COMPILE_JOBS
+    "${SILIGEN_DEFAULT_PARALLEL_COMPILE_JOBS}"
+    CACHE STRING "并行编译线程数(默认逻辑处理器数的80%)"
+)
 
 if(WIN32)
     message(STATUS "🔧 构建系统: ${CMAKE_GENERATOR}")
@@ -353,11 +367,11 @@ endif()
 
 if(SILIGEN_PARALLEL_COMPILE)
     if(MSVC AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-        add_compile_options(/MP)
+        add_compile_options(/MP${SILIGEN_PARALLEL_COMPILE_JOBS})
         add_compile_options(/FS)
-        message(STATUS "并行编译已启用: MSVC /MP")
+        message(STATUS "并行编译已启用: MSVC /MP${SILIGEN_PARALLEL_COMPILE_JOBS}")
     else()
-        message(STATUS "并行编译已启用: 使用构建系统并行能力")
+        message(STATUS "并行编译已启用: 使用构建系统并行能力 (${SILIGEN_PARALLEL_COMPILE_JOBS} jobs)")
     endif()
 endif()
 

@@ -107,8 +107,8 @@ class FakeConfigurationPort final : public IConfigurationPort {
         return Result<void>::Success();
     }
 
-    Result<Siligen::Domain::Configuration::Ports::DxfPreprocessConfig> GetDxfPreprocessConfig() const override {
-        return Result<Siligen::Domain::Configuration::Ports::DxfPreprocessConfig>::Success({});
+    Result<Siligen::Domain::Configuration::Ports::DxfImportConfig> GetDxfImportConfig() const override {
+        return Result<Siligen::Domain::Configuration::Ports::DxfImportConfig>::Success({});
     }
 
     Result<Siligen::Domain::Configuration::Ports::DxfTrajectoryConfig> GetDxfTrajectoryConfig() const override {

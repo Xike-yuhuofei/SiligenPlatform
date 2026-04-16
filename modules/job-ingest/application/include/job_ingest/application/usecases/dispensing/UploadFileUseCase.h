@@ -43,7 +43,6 @@ class UploadFileUseCase : public IUploadFilePort {
     size_t max_file_size_mb_;
 
     std::string GenerateSafeFilename(const std::string& original_filename);
-    Result<void> ValidateFileFormat(const std::vector<uint8_t>& file_content);
     void CleanupGeneratedArtifacts(const std::string& stored_path) const noexcept;
 };
 

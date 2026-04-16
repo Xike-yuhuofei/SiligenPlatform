@@ -11,7 +11,7 @@
 namespace {
 
 using Siligen::Domain::Configuration::Ports::DispensingConfig;
-using Siligen::Domain::Configuration::Ports::DxfPreprocessConfig;
+using Siligen::Domain::Configuration::Ports::DxfImportConfig;
 using Siligen::Domain::Configuration::Ports::DxfTrajectoryConfig;
 using Siligen::Domain::Configuration::Ports::HomingConfig;
 using Siligen::Domain::Configuration::Ports::MachineConfig;
@@ -57,7 +57,7 @@ const char* DispensingStrategyName(DispensingStrategy strategy) {
 
 std::string SerializeDefaults() {
     const DispensingConfig dispensing;
-    const DxfPreprocessConfig preprocess;
+    const DxfImportConfig preprocess;
     const DxfTrajectoryConfig trajectory;
     const MachineConfig machine;
     const HomingConfig homing;
@@ -72,10 +72,9 @@ std::string SerializeDefaults() {
     out << "dispensing.supply_stabilization_ms=" << dispensing.supply_stabilization_ms << "\n";
     out << "dispensing.retract_enabled=" << dispensing.retract_enabled << "\n";
     out << "dispensing.trajectory_sample_dt=" << dispensing.trajectory_sample_dt << "\n";
-    out << "dxf_preprocess.normalize_units=" << preprocess.normalize_units << "\n";
-    out << "dxf_preprocess.strict_r12=" << preprocess.strict_r12 << "\n";
-    out << "dxf_preprocess.spline_samples=" << preprocess.spline_samples << "\n";
-    out << "dxf_preprocess.chordal=" << preprocess.chordal << "\n";
+    out << "dxf_import.normalize_units=" << preprocess.normalize_units << "\n";
+    out << "dxf_import.spline_samples=" << preprocess.spline_samples << "\n";
+    out << "dxf_import.chordal=" << preprocess.chordal << "\n";
     out << "dxf_trajectory.python=" << trajectory.python << "\n";
     out << "dxf_trajectory.script=" << trajectory.script << "\n";
     out << "machine.work_area_width=" << machine.work_area_width << "\n";

@@ -106,10 +106,12 @@ Result<CreateArtifactResponse> DispensingWorkflowUseCase::CreateArtifact(const U
     response.success = true;
     response.artifact_id = GenerateId("artifact");
     response.filepath = upload.filepath;
+    response.prepared_filepath = upload.prepared_filepath;
     response.original_name = upload.original_name;
     response.generated_filename = upload.generated_filename;
     response.size = upload.size;
     response.timestamp = upload.timestamp;
+    response.import_diagnostics = upload.import_diagnostics;
 
     ArtifactRecord record;
     record.response = response;
@@ -189,10 +191,12 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
     response.plan_id = GenerateId("plan");
     response.plan_fingerprint = BuildPlanFingerprint(request.artifact_id, authority_preview, execution_launch);
     response.filepath = artifact.upload_response.filepath;
+    response.prepared_filepath = artifact.upload_response.prepared_filepath;
     response.segment_count = static_cast<std::uint32_t>(std::max(0, authority_preview.artifacts.segment_count));
     response.point_count = static_cast<std::uint32_t>(authority_preview.artifacts.preview_trajectory_points.size());
     response.total_length_mm = authority_preview.artifacts.total_length;
     response.estimated_time_s = authority_preview.artifacts.estimated_time;
+    response.import_diagnostics = artifact.upload_response.import_diagnostics;
     response.preview_validation_classification = authority_preview.artifacts.preview_validation_classification;
     response.preview_exception_reason = authority_preview.artifacts.preview_exception_reason;
     response.preview_failure_reason = authority_preview.artifacts.preview_failure_reason;
@@ -276,6 +280,7 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
                 reusable->execution_launch.runtime_overrides.source_path = artifact.upload_response.filepath;
             }
             reusable->response.filepath = artifact.upload_response.filepath;
+            reusable->response.prepared_filepath = artifact.upload_response.prepared_filepath;
             reusable->response.segment_count = static_cast<std::uint32_t>(std::max(0, authority_preview.artifacts.segment_count));
             reusable->response.point_count =
                 static_cast<std::uint32_t>(authority_preview.artifacts.preview_trajectory_points.size());
@@ -283,6 +288,7 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
             reusable->response.estimated_time_s = authority_preview.artifacts.estimated_time;
             reusable->response.generated_at = response.generated_at;
             reusable->response.performance_profile = response.performance_profile;
+            reusable->response.import_diagnostics = artifact.upload_response.import_diagnostics;
             reusable->response.preview_validation_classification = authority_preview.artifacts.preview_validation_classification;
             reusable->response.preview_exception_reason = authority_preview.artifacts.preview_exception_reason;
             reusable->response.preview_failure_reason = authority_preview.artifacts.preview_failure_reason;
@@ -398,6 +404,18 @@ Result<StartJobResponse> DispensingWorkflowUseCase::StartJob(const StartJobReque
     if (request.target_count == 0) {
         return Result<StartJobResponse>::Failure(
             Error(ErrorCode::INVALID_PARAMETER, "target_count must be greater than 0", "DispensingWorkflowUseCase"));
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(plans_mutex_);
+        auto it = plans_.find(request.plan_id);
+        if (it != plans_.end() && !it->second.response.import_diagnostics.production_ready) {
+            const std::string detail = it->second.response.import_diagnostics.summary.empty()
+                                           ? "DXF import is not production-ready"
+                                           : it->second.response.import_diagnostics.summary;
+            return Result<StartJobResponse>::Failure(
+                Error(ErrorCode::INVALID_STATE, detail, "DispensingWorkflowUseCase"));
+        }
     }
 
     auto initial_launch_result = ResolveStartJobExecutionLaunch(request, false);

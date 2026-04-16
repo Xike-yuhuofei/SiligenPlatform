@@ -57,7 +57,7 @@ class ConfigFileAdapter : public Domain::Configuration::Ports::IConfigurationPor
     // 点胶配置
     Result<Domain::Configuration::Ports::DispensingConfig> GetDispensingConfig() const override;
     Result<void> SetDispensingConfig(const Domain::Configuration::Ports::DispensingConfig& config) override;
-    Result<Domain::Configuration::Ports::DxfPreprocessConfig> GetDxfPreprocessConfig() const override;
+    Result<Domain::Configuration::Ports::DxfImportConfig> GetDxfImportConfig() const override;
     Result<Domain::Configuration::Ports::DxfTrajectoryConfig> GetDxfTrajectoryConfig() const override;
 
     // 机器配置

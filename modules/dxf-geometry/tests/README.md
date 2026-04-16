@@ -12,7 +12,7 @@ dxf-geometry 的模块级验证入口应收敛到此目录。
   - 冻结 `DxfPbPreparationService` 公开构造面、`EnsurePbReady` 与 `CleanupPreparedInput` 的最小稳定行为。
 - `golden/DxfPbPreparationServiceCommandGoldenTest.cpp`
   - 对应 target：`siligen_dxf_geometry_golden_tests`
-  - 冻结非默认 `DxfPreprocessConfig` 组装出的参数快照，防止命令旗标顺序和默认值漂移。
+  - 冻结非默认 `DxfImportConfig` 组装出的参数快照，防止命令旗标顺序和默认值漂移。
 - `integration/DxfPbPreparationServiceIntegrationTest.cpp`
   - 对应 target：`siligen_dxf_geometry_integration_tests`
   - 覆盖工作区 `scripts/engineering-data/dxf_to_pb.py` 解析、配置旗标透传，以及 prepared `.pb` cleanup 闭环。

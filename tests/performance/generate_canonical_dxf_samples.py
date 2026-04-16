@@ -96,7 +96,7 @@ def _render_dxf(spec: SampleSpec) -> str:
         "9",
         "$ACADVER",
         "1",
-        "AC1009",
+        "AC1015",
         "9",
         "$INSUNITS",
         "70",

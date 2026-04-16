@@ -15,7 +15,6 @@
 
 ## 已记录的兼容层
 
-- `dxf.load`: `filepath` / `file_path`
 - `recipe.*`: `recipeId` / `recipe_id`
 - `recipe.*version*`: `versionId` / `version_id`
 - `recipe.draft.create`: `templateId` / `template_id`

@@ -1,7 +1,10 @@
 # pyright: reportPrivateImportUsage=false
 
+from __future__ import annotations
+
 import argparse
 from collections import Counter
+from dataclasses import dataclass, field
 import math
 from pathlib import Path
 import sys
@@ -12,34 +15,106 @@ import ezdxf
 from engineering_data.proto import dxf_primitives_pb2 as pb
 
 MIN_BEZIER_SEGMENTS = 4
-R12_DXF_VERSION = "AC1009"
-R12_CORE_ENTITY_TYPES = {"LINE", "ARC", "CIRCLE", "POLYLINE", "POINT"}
-FALLBACK_ENTITY_TYPES = {"LWPOLYLINE", "SPLINE", "ELLIPSE"}
+STANDARD_DXF_VERSION = "AC1015"
+STANDARD_DXF_VERSION_LABEL = "R2000"
+MAX_INSERT_DEPTH = 8
+
+READABLE_DXF_VERSIONS = {
+    "AC1009": "R12",
+    "AC1015": "R2000",
+    "AC1018": "R2004",
+    "AC1021": "R2007",
+    "AC1024": "R2010",
+    "AC1027": "R2013",
+    "AC1032": "R2018",
+}
+
+STANDARD_CORE_ENTITY_TYPES = {"LINE", "ARC", "CIRCLE", "LWPOLYLINE", "POLYLINE", "POINT"}
+STANDARD_HIGH_ORDER_ENTITY_TYPES = {"SPLINE", "ELLIPSE"}
+IGNORED_ENTITY_TYPES = {"TEXT", "MTEXT", "DIMENSION", "LEADER", "MLEADER"}
+REJECTED_ENTITY_TYPES = {"XLINE", "RAY", "IMAGE", "PDFUNDERLAY", "3DFACE", "REGION", "BODY", "SURFACE", "MESH", "PROXY"}
+
+INSUNITS_TO_SCALE = {
+    1: 25.4,
+    2: 304.8,
+    3: 1609344.0,
+    4: 1.0,
+    5: 10.0,
+    6: 1000.0,
+    7: 1000000.0,
+    8: 25.4e-6,
+    9: 0.0254,
+    10: 914.4,
+    11: 1.0e-7,
+    12: 1.0e-6,
+    13: 1.0e-3,
+    14: 100.0,
+    15: 10000.0,
+    16: 100000.0,
+    17: 1.0e12,
+    18: 1.495978707e14,
+    19: 9.4607e18,
+    20: 3.0857e19,
+}
+
+INSUNITS_TO_NAME = {
+    1: "inch",
+    2: "foot",
+    3: "mile",
+    4: "mm",
+    5: "cm",
+    6: "m",
+    7: "km",
+    8: "microinch",
+    9: "mil",
+    10: "yard",
+    11: "angstrom",
+    12: "nanometer",
+    13: "micron",
+    14: "decimeter",
+    15: "decameter",
+    16: "hectometer",
+    17: "gigameter",
+    18: "astronomical_unit",
+    19: "light_year",
+    20: "parsec",
+}
+
+FATAL_IMPORT_ERROR_CODES = {
+    "DXF_E_FILE_NOT_FOUND",
+    "DXF_E_FILE_OPEN_FAILED",
+    "DXF_E_INVALID_SIGNATURE",
+    "DXF_E_CORRUPTED_FILE",
+    "DXF_E_UNSUPPORTED_VERSION",
+    "DXF_E_UNIT_UNSUPPORTED",
+    "DXF_E_NO_VALID_ENTITY",
+}
 
 
-def insunits_to_scale(insunits: int) -> float:
-    return {
-        1: 25.4,
-        2: 304.8,
-        3: 1609344.0,
-        4: 1.0,
-        5: 10.0,
-        6: 1000.0,
-        7: 1000000.0,
-        8: 25.4e-6,
-        9: 0.0254,
-        10: 914.4,
-        11: 1.0e-7,
-        12: 1.0e-6,
-        13: 1.0e-3,
-        14: 100.0,
-        15: 10000.0,
-        16: 100000.0,
-        17: 1.0e12,
-        18: 1.495978707e14,
-        19: 9.4607e18,
-        20: 3.0857e19,
-    }.get(insunits, 1.0)
+@dataclass
+class ImportIssue:
+    code: str
+    message: str
+
+
+@dataclass
+class ImportContext:
+    warnings: list[ImportIssue] = field(default_factory=list)
+    errors: list[ImportIssue] = field(default_factory=list)
+    ignored_entity_types: Counter[str] = field(default_factory=Counter)
+    rejected_entity_types: Counter[str] = field(default_factory=Counter)
+    resolved_units: str = "mm"
+    resolved_unit_scale: float = 1.0
+
+    def add_warning(self, code: str, message: str) -> None:
+        if any(issue.code == code and issue.message == message for issue in self.warnings):
+            return
+        self.warnings.append(ImportIssue(code=code, message=message))
+
+    def add_error(self, code: str, message: str) -> None:
+        if any(issue.code == code and issue.message == message for issue in self.errors):
+            return
+        self.errors.append(ImportIssue(code=code, message=message))
 
 
 def resolve_color(entity, doc) -> int:
@@ -161,7 +236,7 @@ def build_polyline_contour(points, closed):
     return contour
 
 
-def build_contour(points, bulges, closed):
+def build_contour(points, bulges, closed, context: ImportContext):
     contour = pb.ContourPrimitive()
     count = len(points)
     if count < 2:
@@ -180,6 +255,10 @@ def build_contour(points, bulges, closed):
         else:
             arc = bulge_to_arc(start, end, bulge)
             if arc is None:
+                context.add_error(
+                    "DXF_E_INVALID_ARC_PARAM",
+                    "Polyline bulge arc parameters are invalid; import stayed preview-only.",
+                )
                 elem.type = pb.CONTOUR_LINE
                 elem.line.start.CopyFrom(to_point2d(start[0], start[1]))
                 elem.line.end.CopyFrom(to_point2d(end[0], end[1]))
@@ -332,7 +411,7 @@ def approximate_spline_points(entity, chordal, max_seg, max_step, samples):
     return spline_points_from_ezdxf(entity, chordal, max_seg)
 
 
-def process_r12_polyline(entity, entity_id, bundle, scale, snap_eps, layer, color):
+def process_polyline_entity(entity, entity_id, bundle, scale, snap_eps, layer, color, context: ImportContext):
     points = []
     bulges = []
     vertices_attr = getattr(entity, "vertices", [])
@@ -344,13 +423,28 @@ def process_r12_polyline(entity, entity_id, bundle, scale, snap_eps, layer, colo
         points.append(transform_point((float(loc.x), float(loc.y)), scale, snap_eps))
         bulges.append(float(vertex.dxf.get("bulge", 0.0)))
     closed = bool(entity.is_closed)
-    contour = build_contour(points, bulges, closed)
-    add_contour(bundle, contour,
-                (entity_id, pb.DXF_ENTITY_LWPOLYLINE, 0, closed, layer, color))
+    contour = build_contour(points, bulges, closed, context)
+    if len(contour.elements) == 0:
+        return False
+    add_contour(bundle, contour, (entity_id, pb.DXF_ENTITY_LWPOLYLINE, 0, closed, layer, color))
     return True
 
 
-def process_r12_entity(entity, doc, entity_id, bundle, scale, opts):
+def process_lwpolyline_entity(entity, entity_id, bundle, scale, snap_eps, layer, color, context: ImportContext):
+    points = []
+    bulges = []
+    closed = bool(getattr(entity, "closed", False))
+    for x, y, b in entity.get_points("xyb"):
+        points.append(transform_point((float(x), float(y)), scale, snap_eps))
+        bulges.append(float(b))
+    contour = build_contour(points, bulges, closed, context)
+    if len(contour.elements) == 0:
+        return False
+    add_contour(bundle, contour, (entity_id, pb.DXF_ENTITY_LWPOLYLINE, 0, closed, layer, color))
+    return True
+
+
+def process_core_entity(entity, doc, entity_id, bundle, scale, opts, context: ImportContext):
     etype = entity.dxftype()
     layer = entity.dxf.get("layer", "0")
     color = resolve_color(entity, doc)
@@ -359,66 +453,64 @@ def process_r12_entity(entity, doc, entity_id, bundle, scale, opts):
     if etype == "LINE":
         start = transform_point((entity.dxf.start.x, entity.dxf.start.y), scale, snap_eps)
         end = transform_point((entity.dxf.end.x, entity.dxf.end.y), scale, snap_eps)
-        add_line(bundle, start, end,
-                 (entity_id, pb.DXF_ENTITY_LINE, 0, False, layer, color))
+        if distance(start, end) <= 1e-9:
+            context.add_error("DXF_E_ZERO_LENGTH_SEGMENT", "Detected zero-length LINE entity.")
+            return False
+        add_line(bundle, start, end, (entity_id, pb.DXF_ENTITY_LINE, 0, False, layer, color))
         return True
 
     if etype == "ARC":
         center = transform_point((entity.dxf.center.x, entity.dxf.center.y), scale, snap_eps)
         radius = float(entity.dxf.radius) * scale
+        if radius <= 1e-9:
+            context.add_error("DXF_E_INVALID_ARC_PARAM", "Detected ARC with non-positive radius.")
+            return False
         start_angle = float(entity.dxf.start_angle)
         end_angle = float(entity.dxf.end_angle)
-        add_arc(bundle, center, radius, start_angle, end_angle, False,
-                (entity_id, pb.DXF_ENTITY_ARC, 0, False, layer, color))
+        add_arc(bundle, center, radius, start_angle, end_angle, False, (entity_id, pb.DXF_ENTITY_ARC, 0, False, layer, color))
         return True
 
     if etype == "CIRCLE":
         center = transform_point((entity.dxf.center.x, entity.dxf.center.y), scale, snap_eps)
         radius = float(entity.dxf.radius) * scale
-        add_circle(bundle, center, radius,
-                   (entity_id, pb.DXF_ENTITY_CIRCLE, 0, True, layer, color))
+        if radius <= 1e-9:
+            context.add_error("DXF_E_INVALID_ARC_PARAM", "Detected CIRCLE with non-positive radius.")
+            return False
+        add_circle(bundle, center, radius, (entity_id, pb.DXF_ENTITY_CIRCLE, 0, True, layer, color))
         return True
 
+    if etype == "LWPOLYLINE":
+        return process_lwpolyline_entity(entity, entity_id, bundle, scale, snap_eps, layer, color, context)
+
     if etype == "POLYLINE":
-        return process_r12_polyline(entity, entity_id, bundle, scale, snap_eps, layer, color)
+        return process_polyline_entity(entity, entity_id, bundle, scale, snap_eps, layer, color, context)
 
     if etype == "POINT":
         pos = transform_point((entity.dxf.location.x, entity.dxf.location.y), scale, snap_eps)
-        add_point(bundle, pos,
-                  (entity_id, pb.DXF_ENTITY_POINT, 0, False, layer, color))
+        add_point(bundle, pos, (entity_id, pb.DXF_ENTITY_POINT, 0, False, layer, color))
         return True
 
     return False
 
 
-def process_fallback_entity(entity, doc, entity_id, bundle, scale, opts):
+def process_high_order_entity(entity, doc, entity_id, bundle, scale, opts):
     etype = entity.dxftype()
     layer = entity.dxf.get("layer", "0")
     color = resolve_color(entity, doc)
     snap_eps = opts["snap"] if opts["snap_enabled"] else 0.0
-
-    if etype == "LWPOLYLINE":
-        points = []
-        bulges = []
-        closed = bool(getattr(entity, "closed", False))
-        for x, y, b in entity.get_points("xyb"):
-            points.append(transform_point((float(x), float(y)), scale, snap_eps))
-            bulges.append(float(b))
-        contour = build_contour(points, bulges, closed)
-        add_contour(bundle, contour,
-                    (entity_id, pb.DXF_ENTITY_LWPOLYLINE, 0, closed, layer, color))
-        return True
 
     if etype == "SPLINE":
         closed = bool(getattr(entity, "closed", False))
         if opts["approx_splines"]:
             max_seg = opts["max_seg"] if opts["densify_enabled"] else 0.0
             min_seg = opts["min_seg"] if opts["min_seg_enabled"] else 0.0
-            points = approximate_spline_points(entity,
-                                                opts["chordal"],
-                                                max_seg,
-                                                opts["spline_max_step"],
-                                                opts["spline_samples"])
+            points = approximate_spline_points(
+                entity,
+                opts["chordal"],
+                max_seg,
+                opts["spline_max_step"],
+                opts["spline_samples"],
+            )
             points = [transform_point(p, scale, snap_eps) for p in points]
             if max_seg > 0:
                 points = densify(points, max_seg)
@@ -426,8 +518,7 @@ def process_fallback_entity(entity, doc, entity_id, bundle, scale, opts):
                 points = collapse_points(points, min_seg)
             if points:
                 contour = build_polyline_contour(points, closed)
-                add_contour(bundle, contour,
-                            (entity_id, pb.DXF_ENTITY_SPLINE, 0, closed, layer, color))
+                add_contour(bundle, contour, (entity_id, pb.DXF_ENTITY_SPLINE, 0, closed, layer, color))
                 return True
         control_points = []
         for p in entity.control_points:
@@ -436,8 +527,7 @@ def process_fallback_entity(entity, doc, entity_id, bundle, scale, opts):
             for p in entity.fit_points:
                 control_points.append(transform_point((float(p[0]), float(p[1])), scale, snap_eps))
         if control_points:
-            add_spline(bundle, control_points, closed,
-                       (entity_id, pb.DXF_ENTITY_SPLINE, 0, closed, layer, color))
+            add_spline(bundle, control_points, closed, (entity_id, pb.DXF_ENTITY_SPLINE, 0, closed, layer, color))
             return True
         return False
 
@@ -447,93 +537,165 @@ def process_fallback_entity(entity, doc, entity_id, bundle, scale, opts):
         ratio = float(entity.dxf.ratio)
         start_param = float(entity.dxf.start_param)
         end_param = float(entity.dxf.end_param)
-        add_ellipse(bundle, center, major_axis, ratio, start_param, end_param,
-                    (entity_id, pb.DXF_ENTITY_ELLIPSE, 0, False, layer, color))
+        add_ellipse(
+            bundle,
+            center,
+            major_axis,
+            ratio,
+            start_param,
+            end_param,
+            (entity_id, pb.DXF_ENTITY_ELLIPSE, 0, False, layer, color),
+        )
         return True
 
     return False
 
 
-def process_entity(entity, doc, entity_id, bundle, scale, opts):
-    if process_r12_entity(entity, doc, entity_id, bundle, scale, opts):
+def process_entity(entity, doc, entity_id, bundle, scale, opts, context: ImportContext):
+    if process_core_entity(entity, doc, entity_id, bundle, scale, opts, context):
         return True
-    return process_fallback_entity(entity, doc, entity_id, bundle, scale, opts)
+    return process_high_order_entity(entity, doc, entity_id, bundle, scale, opts)
 
 
 def classify_entity_type(entity) -> str:
     etype = entity.dxftype()
-    if etype in R12_CORE_ENTITY_TYPES:
+    if etype in STANDARD_CORE_ENTITY_TYPES:
         return "core"
-    if etype in FALLBACK_ENTITY_TYPES:
-        return "fallback"
+    if etype in STANDARD_HIGH_ORDER_ENTITY_TYPES:
+        return "high_order"
     return "unsupported"
 
-def format_entity_counts(counts):
-    if not counts:
-        return "none"
-    return ", ".join(f"{etype}={counts[etype]}" for etype in sorted(counts))
+
+def is_higher_than_standard(version: str) -> bool:
+    readable = list(READABLE_DXF_VERSIONS.keys())
+    if version not in readable or STANDARD_DXF_VERSION not in readable:
+        return False
+    return readable.index(version) > readable.index(STANDARD_DXF_VERSION)
 
 
-def is_r12_document(doc) -> bool:
-    return str(getattr(doc, "dxfversion", "")).upper() == R12_DXF_VERSION
+def resolve_unit_scale(doc, normalize_units: bool, context: ImportContext) -> float | None:
+    insunits = int(doc.header.get("$INSUNITS", 0) or 0)
+    if insunits == 0:
+        context.resolved_units = "mm"
+        context.resolved_unit_scale = 1.0
+        context.add_warning("DXF_W_UNIT_ASSUMED_MM", "DXF unit missing; assumed mm for preview import.")
+        context.add_error("DXF_E_UNIT_REQUIRED_FOR_PRODUCTION", "DXF unit missing; production import requires explicit unit.")
+        return 1.0 if normalize_units else 1.0
+
+    if insunits not in INSUNITS_TO_SCALE:
+        context.resolved_units = f"insunits_{insunits}"
+        context.resolved_unit_scale = 0.0
+        context.add_error("DXF_E_UNIT_UNSUPPORTED", f"Unsupported DXF unit code: {insunits}.")
+        return None
+
+    context.resolved_units = INSUNITS_TO_NAME.get(insunits, "mm")
+    context.resolved_unit_scale = float(INSUNITS_TO_SCALE[insunits])
+    return context.resolved_unit_scale if normalize_units else 1.0
 
 
-def validate_input_contract(doc, entities, strict_r12):
-    warnings = []
-    errors = []
-    dxf_version = str(getattr(doc, "dxfversion", "")).upper()
-    fallback_counts = Counter()
-    unsupported_counts = Counter()
+def expand_entities(entity, context: ImportContext, depth: int = 0):
+    etype = entity.dxftype()
+    if etype == "INSERT":
+        if depth >= MAX_INSERT_DEPTH:
+            context.add_error("DXF_E_BLOCK_DEPTH_EXCEEDED", f"INSERT nesting depth exceeded {MAX_INSERT_DEPTH}.")
+            return []
+        try:
+            virtual_entities = list(entity.virtual_entities())
+        except Exception as exc:
+            context.add_error("DXF_E_BLOCK_EXPAND_FAILED", f"Failed to expand INSERT entity: {exc}")
+            return []
+        expanded = []
+        for child in virtual_entities:
+            expanded.extend(expand_entities(child, context, depth + 1))
+        if not expanded:
+            context.add_error("DXF_E_BLOCK_EXPAND_FAILED", "INSERT expanded to no valid geometry.")
+        return expanded
 
-    if not is_r12_document(doc):
-        message = f"Expected DXF R12 ({R12_DXF_VERSION}), got {dxf_version or 'UNKNOWN'}."
-        if strict_r12:
-            errors.append(message)
-        else:
-            warnings.append(f"{message} Proceeding because --no-strict-r12 was set.")
+    if etype in IGNORED_ENTITY_TYPES:
+        context.ignored_entity_types[etype] += 1
+        warning_code = "DXF_W_TEXT_IGNORED" if etype in {"TEXT", "MTEXT"} else "DXF_W_DIMENSION_IGNORED"
+        context.add_warning(warning_code, f"Ignored non-production DXF entity type: {etype}.")
+        return []
 
-    for entity in entities:
-        etype = entity.dxftype()
-        category = classify_entity_type(entity)
-        if category == "fallback":
-            fallback_counts[etype] += 1
-        elif category == "unsupported":
-            unsupported_counts[etype] += 1
+    if etype in REJECTED_ENTITY_TYPES:
+        context.rejected_entity_types[etype] += 1
+        specific_code = "DXF_E_3D_ENTITY_FOUND" if etype in {"3DFACE", "BODY", "SURFACE", "MESH"} else "DXF_E_UNSUPPORTED_ENTITY"
+        context.add_error(specific_code, f"Rejected DXF entity type: {etype}.")
+        return []
 
-    if fallback_counts:
-        message = (
-            "Non-R12 compatibility handlers will be used for: "
-            f"{format_entity_counts(fallback_counts)}."
-        )
-        if strict_r12:
-            errors.append(message)
-        else:
-            warnings.append(message)
+    if classify_entity_type(entity) == "unsupported":
+        context.rejected_entity_types[etype] += 1
+        context.add_error("DXF_E_UNSUPPORTED_ENTITY", f"Unsupported DXF entity type: {etype}.")
+        return []
 
-    if unsupported_counts:
-        warnings.append(
-            "Unsupported DXF entities will be skipped: "
-            f"{format_entity_counts(unsupported_counts)}."
-        )
-
-    return errors, warnings
+    return [entity]
 
 
-def build_bundle(doc, source_path, schema_version, tolerances, normalize_units):
+def build_bundle(doc, source_path, schema_version, tolerances, context: ImportContext):
     bundle = pb.PathBundle()
     header = bundle.header
     header.schema_version = int(schema_version)
     header.source_path = str(source_path)
-    insunits = int(doc.header.get("$INSUNITS", 0) or 0)
-    unit_scale = float(insunits_to_scale(insunits))
-    header.unit_scale = unit_scale
-    header.units = "mm"
+    header.unit_scale = float(context.resolved_unit_scale)
+    header.units = str(context.resolved_units)
     header.tolerance.chordal = float(tolerances["chordal"])
     header.tolerance.max_seg = float(tolerances["max_seg"])
     header.tolerance.snap = float(tolerances["snap"])
     header.tolerance.angular = float(tolerances["angular"])
     header.tolerance.min_seg = float(tolerances["min_seg"])
-    return bundle, (unit_scale if normalize_units else 1.0)
+    return bundle
+
+
+def finalize_import_diagnostics(bundle: pb.PathBundle, context: ImportContext):
+    if not bundle.primitives and not any(issue.code == "DXF_E_NO_VALID_ENTITY" for issue in context.errors):
+        context.add_error("DXF_E_NO_VALID_ENTITY", "No valid production geometry could be imported from the DXF.")
+
+    warning_codes = [issue.code for issue in context.warnings]
+    error_codes = [issue.code for issue in context.errors]
+    preview_ready = bool(bundle.primitives)
+    has_fatal_error = any(code in FATAL_IMPORT_ERROR_CODES for code in error_codes)
+
+    if error_codes:
+        classification = pb.IMPORT_RESULT_PREVIEW_ONLY if preview_ready and not has_fatal_error else pb.IMPORT_RESULT_FAILED
+    elif warning_codes:
+        classification = pb.IMPORT_RESULT_SUCCESS_WITH_WARNINGS
+    else:
+        classification = pb.IMPORT_RESULT_SUCCESS
+
+    production_ready = classification in {pb.IMPORT_RESULT_SUCCESS, pb.IMPORT_RESULT_SUCCESS_WITH_WARNINGS}
+    primary_code = error_codes[0] if error_codes else (warning_codes[0] if warning_codes else "")
+
+    if classification == pb.IMPORT_RESULT_SUCCESS:
+        summary = "DXF import succeeded and is ready for production."
+    elif classification == pb.IMPORT_RESULT_SUCCESS_WITH_WARNINGS:
+        summary = context.warnings[0].message
+    elif classification == pb.IMPORT_RESULT_PREVIEW_ONLY:
+        summary = context.errors[0].message if context.errors else "DXF import is preview-only."
+    else:
+        summary = context.errors[0].message if context.errors else "DXF import failed."
+
+    diagnostics = bundle.import_diagnostics
+    diagnostics.classification = classification
+    diagnostics.preview_ready = preview_ready
+    diagnostics.production_ready = production_ready
+    diagnostics.summary = summary
+    diagnostics.primary_code = primary_code
+    diagnostics.warning_codes.extend(warning_codes)
+    diagnostics.error_codes.extend(error_codes)
+    diagnostics.warning_messages.extend(issue.message for issue in context.warnings)
+    diagnostics.error_messages.extend(issue.message for issue in context.errors)
+    diagnostics.ignored_entity_types.extend(sorted(context.ignored_entity_types))
+    diagnostics.rejected_entity_types.extend(sorted(context.rejected_entity_types))
+    diagnostics.resolved_units = context.resolved_units
+    diagnostics.resolved_unit_scale = float(context.resolved_unit_scale)
+    return diagnostics
+
+
+def emit_diagnostics_to_stderr(diagnostics: pb.ImportDiagnostics):
+    for code, message in zip(diagnostics.warning_codes, diagnostics.warning_messages):
+        print(f"Warning[{code}]: {message}", file=sys.stderr)
+    for code, message in zip(diagnostics.error_codes, diagnostics.error_messages):
+        print(f"Error[{code}]: {message}", file=sys.stderr)
 
 
 def parse_args(argv):
@@ -553,8 +715,6 @@ def parse_args(argv):
     parser.add_argument("--min-seg-enabled", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--spline-samples", type=int, default=64)
     parser.add_argument("--spline-max-step", type=float, default=0.0)
-    parser.add_argument("--strict-r12", action=argparse.BooleanOptionalAction, default=False,
-                        help="Reject non-R12 DXF versions and compatibility-only entities")
     return parser.parse_args(argv)
 
 
@@ -563,23 +723,29 @@ def main(argv=None):
     input_path = Path(args.input)
     output_path = Path(args.output)
     if not input_path.exists():
-        print(f"Error: DXF not found: {input_path}", file=sys.stderr)
+        print(f"Error[DXF_E_FILE_NOT_FOUND]: DXF not found: {input_path}", file=sys.stderr)
         return 1
 
     try:
         doc = ezdxf.readfile(str(input_path))
     except Exception as exc:
-        print(f"Error: failed to parse DXF: {input_path}: {exc}", file=sys.stderr)
+        print(f"Error[DXF_E_FILE_OPEN_FAILED]: failed to parse DXF: {input_path}: {exc}", file=sys.stderr)
         return 2
 
-    entities = list(doc.modelspace())
-    errors, warnings = validate_input_contract(doc, entities, args.strict_r12)
-    if errors:
-        for message in errors:
-            print(f"Error: {message}", file=sys.stderr)
-        return 4
-    for message in warnings:
-        print(f"Warning: {message}", file=sys.stderr)
+    context = ImportContext()
+    dxf_version = str(getattr(doc, "dxfversion", "")).upper()
+    if dxf_version not in READABLE_DXF_VERSIONS:
+        context.add_error(
+            "DXF_E_UNSUPPORTED_VERSION",
+            f"Unsupported DXF version: {dxf_version or 'UNKNOWN'}. Supported versions: {', '.join(sorted(READABLE_DXF_VERSIONS.values()))}.",
+        )
+    elif is_higher_than_standard(dxf_version):
+        context.add_warning(
+            "DXF_W_HIGH_VERSION_DOWNGRADED",
+            f"Accepted non-baseline DXF version {READABLE_DXF_VERSIONS[dxf_version]} ({dxf_version}); semantics were normalized to the R2000 owner baseline.",
+        )
+
+    unit_scale = resolve_unit_scale(doc, args.normalize_units, context)
 
     tolerances = {
         "chordal": args.chordal,
@@ -589,6 +755,7 @@ def main(argv=None):
         "min_seg": args.min_seg,
     }
 
+    bundle = build_bundle(doc, input_path, args.schema_version, tolerances, context)
     opts = {
         "chordal": args.chordal,
         "max_seg": args.max_seg,
@@ -603,22 +770,28 @@ def main(argv=None):
         "spline_max_step": args.spline_max_step,
     }
 
-    bundle, scale = build_bundle(doc, input_path, args.schema_version, tolerances, args.normalize_units)
+    if unit_scale is not None and not any(issue.code in FATAL_IMPORT_ERROR_CODES for issue in context.errors):
+        expanded_entities = []
+        for entity in doc.modelspace():
+            expanded_entities.extend(expand_entities(entity, context))
 
-    entity_id = 0
-    for entity in entities:
-        if process_entity(entity, doc, entity_id, bundle, scale, opts):
-            entity_id += 1
+        entity_id = 0
+        for entity in expanded_entities:
+            if process_entity(entity, doc, entity_id, bundle, unit_scale, opts, context):
+                entity_id += 1
 
-    if not bundle.primitives:
-        print(f"Error: no supported primitives exported from DXF: {input_path}", file=sys.stderr)
-        return 3
+    diagnostics = finalize_import_diagnostics(bundle, context)
+    emit_diagnostics_to_stderr(diagnostics)
+
+    if diagnostics.classification == pb.IMPORT_RESULT_FAILED:
+        return 4
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("wb") as f:
         f.write(bundle.SerializeToString())
 
-    print(f"Exported {len(bundle.primitives)} primitives -> {output_path}")
+    classification_name = pb.ImportResultClassification.Name(diagnostics.classification)
+    print(f"Exported {len(bundle.primitives)} primitives -> {output_path} [{classification_name}]")
     return 0
 
 

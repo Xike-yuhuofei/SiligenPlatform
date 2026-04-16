@@ -255,8 +255,8 @@ TEST(DxfPbPreparationServiceTest, RejectsCommandOverrideWithShellMetaCharacters)
     std::filesystem::remove_all(base_dir, ec);
 }
 
-TEST(DxfPbPreparationServiceTest, DefaultConfigPassesNoStrictR12ToPythonExporter) {
-    const auto base_dir = MakeTempDir("default_no_strict_r12");
+TEST(DxfPbPreparationServiceTest, DefaultConfigDoesNotPassRetiredStrictFlagsToPythonExporter) {
+    const auto base_dir = MakeTempDir("default_without_retired_strict_flags");
     const auto dxf_path = base_dir / "sample.dxf";
     const auto script_path = base_dir / "capture_args.py";
 
@@ -266,10 +266,10 @@ TEST(DxfPbPreparationServiceTest, DefaultConfigPassesNoStrictR12ToPythonExporter
         "import pathlib\n"
         "import sys\n"
         "args = sys.argv[1:]\n"
-        "if '--no-strict-r12' not in args:\n"
+        "if '--strict-r2000' in args or '--no-strict-r2000' in args:\n"
         "    raise SystemExit(8)\n"
         "output = pathlib.Path(args[args.index('--output') + 1])\n"
-        "output.write_bytes(b'default-no-strict')\n");
+        "output.write_bytes(b'default-without-retired-strict-flags')\n");
 
     SetEnvVar("SILIGEN_DXF_PB_SCRIPT", script_path.string());
     DxfPbPreparationService service;

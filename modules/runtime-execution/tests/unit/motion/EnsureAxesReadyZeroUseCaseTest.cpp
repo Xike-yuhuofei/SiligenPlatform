@@ -35,7 +35,7 @@ using Siligen::Application::Services::Motion::Execution::MotionReadinessBlockCau
 using Siligen::Application::Services::Motion::Execution::MotionReadinessReason;
 using Siligen::Application::Services::Motion::Execution::MotionReadinessService;
 using Siligen::Application::Services::Motion::Execution::ExecutionTransitionState;
-using Siligen::Domain::Configuration::Ports::DxfPreprocessConfig;
+using Siligen::Domain::Configuration::Ports::DxfImportConfig;
 using Siligen::Domain::Configuration::Ports::DxfTrajectoryConfig;
 using Siligen::Domain::Configuration::Ports::HomingConfig;
 using Siligen::Domain::Configuration::Ports::IConfigurationPort;
@@ -311,7 +311,7 @@ class FakeConfigurationPort final : public IConfigurationPort {
     Result<void> SetDispensingConfig(const Siligen::Domain::Configuration::Ports::DispensingConfig&) override {
         return Result<void>::Success();
     }
-    Result<DxfPreprocessConfig> GetDxfPreprocessConfig() const override { return Result<DxfPreprocessConfig>::Success({}); }
+    Result<DxfImportConfig> GetDxfImportConfig() const override { return Result<DxfImportConfig>::Success({}); }
     Result<DxfTrajectoryConfig> GetDxfTrajectoryConfig() const override { return Result<DxfTrajectoryConfig>::Success({}); }
     Result<Siligen::Shared::Types::DiagnosticsConfig> GetDiagnosticsConfig() const override {
         return Result<Siligen::Shared::Types::DiagnosticsConfig>::Success({});

@@ -587,11 +587,11 @@ Result<Shared::Types::DiagnosticsConfig> ConfigFileAdapter::GetDiagnosticsConfig
     return Result<Shared::Types::DiagnosticsConfig>::Success(config);
 }
 
-Result<DxfPreprocessConfig> ConfigFileAdapter::GetDxfPreprocessConfig() const {
-    DxfPreprocessConfig config;
+Result<DxfImportConfig> ConfigFileAdapter::GetDxfImportConfig() const {
+    DxfImportConfig config;
     auto load_result = LoadIniCache();
     if (load_result.IsError()) {
-        return Result<DxfPreprocessConfig>(load_result.GetError());
+        return Result<DxfImportConfig>(load_result.GetError());
     }
 
     auto read_optional_raw = [this](const std::string& sec, const std::string& key,
@@ -665,103 +665,104 @@ Result<DxfPreprocessConfig> ConfigFileAdapter::GetDxfPreprocessConfig() const {
         }
     };
 
-    const std::string section = "DXFPreprocess";
+    const std::string section = "DXFImport";
     bool found = false;
     std::string raw;
     Result<void> result;
 
     result = read_optional_raw(section, "normalize_units", raw, found);
-    if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+    if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     if (found) {
         result = parse_bool(section, "normalize_units", raw, config.normalize_units);
-        if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+        if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     }
 
-    result = read_optional_raw(section, "strict_r12", raw, found);
-    if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+    result = read_optional_raw(section, "strict_r2000", raw, found);
+    if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     if (found) {
-        result = parse_bool(section, "strict_r12", raw, config.strict_r12);
-        if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+        return Result<DxfImportConfig>(Error(
+            ErrorCode::CONFIGURATION_ERROR,
+            "配置项已废弃: [DXFImport] strict_r2000。DXF 输入现为固定 R2000(AC1015) 单轨契约，不再接受该开关。"));
     }
 
     result = read_optional_raw(section, "approx_splines", raw, found);
-    if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+    if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     if (found) {
         result = parse_bool(section, "approx_splines", raw, config.approx_splines);
-        if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+        if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     }
 
     result = read_optional_raw(section, "snap_enabled", raw, found);
-    if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+    if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     if (found) {
         result = parse_bool(section, "snap_enabled", raw, config.snap_enabled);
-        if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+        if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     }
 
     result = read_optional_raw(section, "densify_enabled", raw, found);
-    if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+    if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     if (found) {
         result = parse_bool(section, "densify_enabled", raw, config.densify_enabled);
-        if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+        if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     }
 
     result = read_optional_raw(section, "min_seg_enabled", raw, found);
-    if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+    if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     if (found) {
         result = parse_bool(section, "min_seg_enabled", raw, config.min_seg_enabled);
-        if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+        if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     }
 
     result = read_optional_raw(section, "spline_samples", raw, found);
-    if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+    if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     if (found) {
         result = parse_int(section, "spline_samples", raw, config.spline_samples);
-        if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+        if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     }
 
     result = read_optional_raw(section, "spline_max_step", raw, found);
-    if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+    if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     if (found) {
         result = parse_float(section, "spline_max_step", raw, config.spline_max_step);
-        if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+        if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     }
 
     result = read_optional_raw(section, "chordal", raw, found);
-    if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+    if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     if (found) {
         result = parse_float(section, "chordal", raw, config.chordal);
-        if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+        if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     }
 
     result = read_optional_raw(section, "max_seg", raw, found);
-    if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+    if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     if (found) {
         result = parse_float(section, "max_seg", raw, config.max_seg);
-        if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+        if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     }
 
     result = read_optional_raw(section, "snap", raw, found);
-    if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+    if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     if (found) {
         result = parse_float(section, "snap", raw, config.snap);
-        if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+        if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     }
 
     result = read_optional_raw(section, "angular", raw, found);
-    if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+    if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     if (found) {
         result = parse_float(section, "angular", raw, config.angular);
-        if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+        if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     }
 
     result = read_optional_raw(section, "min_seg", raw, found);
-    if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+    if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     if (found) {
         result = parse_float(section, "min_seg", raw, config.min_seg);
-        if (result.IsError()) return Result<DxfPreprocessConfig>(result.GetError());
+        if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     }
 
-    return Result<DxfPreprocessConfig>::Success(config);
+    return Result<DxfImportConfig>::Success(config);
 }
 
 Result<DxfTrajectoryConfig> ConfigFileAdapter::GetDxfTrajectoryConfig() const {

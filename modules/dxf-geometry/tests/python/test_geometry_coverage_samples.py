@@ -68,8 +68,8 @@ def test_bra_sample_exports_closed_lwpolyline_contour() -> None:
     assert _entity_counts(bundle) == Counter({pb.DXF_ENTITY_LWPOLYLINE: 1})
     assert bundle.primitives[0].contour.closed is True
     assert len(bundle.primitives[0].contour.elements) > 0
-    assert "Expected DXF R12" in result.stderr
-    assert "LWPOLYLINE=1" in result.stderr
+    assert "Warning:" not in result.stderr
+    assert "LWPOLYLINE=" not in result.stderr
 
 
 def test_demo_sample_exports_mixed_entities_and_contour_arcs() -> None:
@@ -93,8 +93,8 @@ def test_demo_sample_exports_mixed_entities_and_contour_arcs() -> None:
         if element.type == pb.CONTOUR_ARC
     )
     assert contour_arc_count > 0
-    assert "Expected DXF R12" in result.stderr
-    assert "LWPOLYLINE=31" in result.stderr
+    assert "Warning:" not in result.stderr
+    assert "LWPOLYLINE=" not in result.stderr
 
 
 def test_arc_circle_quadrants_sample_exports_native_arc_primitives() -> None:
@@ -130,7 +130,5 @@ def test_geometry_zoo_sample_covers_supported_importer_primitives() -> None:
             pb.DXF_ENTITY_ELLIPSE: 1,
         }
     )
-    assert "Expected DXF R12" in result.stderr
-    assert "ELLIPSE=1" in result.stderr
-    assert "LWPOLYLINE=1" in result.stderr
-    assert "SPLINE=1" in result.stderr
+    assert "Warning:" not in result.stderr
+    assert "LWPOLYLINE=" not in result.stderr

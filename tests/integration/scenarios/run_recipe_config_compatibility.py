@@ -85,15 +85,14 @@ def _assert_machine_config_defaults() -> CaseResult:
     parser = _CaseSensitiveConfigParser()
     parser.read(MACHINE_CONFIG, encoding="utf-8")
 
-    required_sections = ("Dispensing", "Machine", "DXF", "DXFPreprocess", "DXFTrajectory", "Hardware")
+    required_sections = ("Dispensing", "Machine", "DXF", "DXFImport", "DXFTrajectory", "Hardware")
     missing_sections = [name for name in required_sections if not parser.has_section(name)]
     assert not missing_sections, f"missing machine config sections: {missing_sections}"
 
     hardware_mode = parser.get("Hardware", "mode")
     dxf_path = parser.get("DXF", "dxf_file_path")
     trajectory_script = parser.get("DXFTrajectory", "script")
-    normalize_units = parser.getboolean("DXFPreprocess", "normalize_units")
-    strict_r12 = parser.getboolean("DXFPreprocess", "strict_r12")
+    normalize_units = parser.getboolean("DXFImport", "normalize_units")
     subsegment_count = parser.getint("Dispensing", "subsegment_count")
     pulse_per_mm = parser.getint("Machine", "pulse_per_mm")
 
@@ -101,7 +100,6 @@ def _assert_machine_config_defaults() -> CaseResult:
     assert dxf_path.endswith("samples\\dxf\\rect_diag.dxf")
     assert trajectory_script.endswith("scripts\\engineering-data\\path_to_trajectory.py")
     assert normalize_units is True
-    assert strict_r12 is False
     assert subsegment_count >= 1
     assert pulse_per_mm == 200
 
@@ -115,7 +113,6 @@ def _assert_machine_config_defaults() -> CaseResult:
             "dxf_file_path": dxf_path,
             "trajectory_script": trajectory_script,
             "normalize_units": normalize_units,
-            "strict_r12": strict_r12,
             "subsegment_count": subsegment_count,
             "pulse_per_mm": pulse_per_mm,
         },

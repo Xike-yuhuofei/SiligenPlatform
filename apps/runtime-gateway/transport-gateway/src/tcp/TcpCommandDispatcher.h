@@ -83,6 +83,7 @@ private:
         bool loaded = false;
         std::string artifact_id;
         std::string filepath;
+        std::string prepared_filepath;
         uint32_t segment_count = 0;
         double total_length = 0.0;
         double x_min = 0.0;
@@ -99,6 +100,15 @@ private:
         std::string preview_state;
         std::string preview_source;
         double preview_speed_mm_s = 0.0;
+        std::string import_result_classification;
+        bool import_preview_ready = false;
+        bool import_production_ready = false;
+        std::string import_summary;
+        std::string import_primary_code;
+        std::vector<std::string> import_warning_codes;
+        std::vector<std::string> import_error_codes;
+        std::string import_resolved_units;
+        double import_resolved_unit_scale = 1.0;
     };
 
     mutable std::mutex dxf_mutex_;
@@ -135,7 +145,6 @@ private:
     std::string HandlePurge(const std::string& id, const nlohmann::json& params);
     std::string HandleSupplyOpen(const std::string& id, const nlohmann::json& params);
     std::string HandleSupplyClose(const std::string& id, const nlohmann::json& params);
-    std::string HandleDxfLoad(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfArtifactCreate(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfPlanPrepare(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfJobStart(const std::string& id, const nlohmann::json& params);

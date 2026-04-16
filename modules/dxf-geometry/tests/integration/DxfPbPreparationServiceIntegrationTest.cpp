@@ -46,7 +46,6 @@ TEST(DxfPbPreparationServiceIntegrationTest, ResolvesWorkspaceScriptAndAppliesCo
 
     auto config = std::make_shared<FakeConfigurationPort>();
     config->preprocess_config.normalize_units = false;
-    config->preprocess_config.strict_r12 = true;
     config->preprocess_config.densify_enabled = true;
     config->preprocess_config.spline_samples = 8;
 
@@ -65,9 +64,10 @@ TEST(DxfPbPreparationServiceIntegrationTest, ResolvesWorkspaceScriptAndAppliesCo
 
     const auto args_snapshot = ReadTextFile(args_path);
     EXPECT_NE(args_snapshot.find("--no-normalize-units"), std::string::npos);
-    EXPECT_NE(args_snapshot.find("--strict-r12"), std::string::npos);
+    EXPECT_EQ(args_snapshot.find("--strict-r2000"), std::string::npos);
+    EXPECT_EQ(args_snapshot.find("--no-strict-r2000"), std::string::npos);
     EXPECT_NE(args_snapshot.find("--densify-enabled"), std::string::npos);
-    EXPECT_NE(args_snapshot.find("arg[11]=8"), std::string::npos);
+    EXPECT_NE(args_snapshot.find("arg[10]=8"), std::string::npos);
 }
 
 TEST(DxfPbPreparationServiceIntegrationTest, CleanupRemovesPreparedArtifactForDxfAndPbInputs) {

@@ -3,7 +3,7 @@ param(
     [string]$BuildDir = (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) "build"),
     [ValidateSet("Debug", "Release", "RelWithDebInfo", "MinSizeRel")]
     [string]$Config = "Debug",
-    [int]$Jobs = [Environment]::ProcessorCount,
+    [int]$Jobs = [Math]::Max(1, [Math]::Floor([Environment]::ProcessorCount * 0.8)),
     [switch]$Clean
 )
 
@@ -70,7 +70,8 @@ Write-Output "configure: cmake -S $workspaceRoot -B $resolvedBuildDir"
 & cmake -S $workspaceRoot -B $resolvedBuildDir `
     -DSILIGEN_BUILD_TESTS=OFF `
     -DSILIGEN_USE_PCH=ON `
-    -DSILIGEN_PARALLEL_COMPILE=ON
+    -DSILIGEN_PARALLEL_COMPILE=ON `
+    -DSILIGEN_PARALLEL_COMPILE_JOBS=$Jobs
 if ($LASTEXITCODE -ne 0) {
     throw "cmake configure 失败，退出码: $LASTEXITCODE"
 }

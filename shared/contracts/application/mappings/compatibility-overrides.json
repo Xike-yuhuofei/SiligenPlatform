@@ -20,12 +20,6 @@
         "recipe.import"
       ],
       "source": "apps/runtime-gateway/transport-gateway/src/tcp/TcpCommandDispatcher.cpp"
-    },
-    {
-      "id": "dxf-load-filepath-alias",
-      "type": "request-alias-family",
-      "methods": ["dxf.load"],
-      "source": "apps/runtime-gateway/transport-gateway/src/tcp/TcpCommandDispatcher.cpp"
     }
   ]
 }

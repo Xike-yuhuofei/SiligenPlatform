@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import socket
@@ -1434,10 +1435,15 @@ def main() -> int:
         )
 
         dxf_step, _ = _run_tcp_step(
-            name="tcp-dxf-load-preflight",
+            name="tcp-dxf-artifact-create-preflight",
             client=client,
-            method="dxf.load",
-            params={"filepath": str(args.dxf_file)},
+            method="dxf.artifact.create",
+            params={
+                "filename": args.dxf_file.name,
+                "original_filename": args.dxf_file.name,
+                "content_type": "application/dxf",
+                "file_content_b64": base64.b64encode(args.dxf_file.read_bytes()).decode("ascii"),
+            },
             timeout_seconds=60.0,
         )
         steps.append(dxf_step)

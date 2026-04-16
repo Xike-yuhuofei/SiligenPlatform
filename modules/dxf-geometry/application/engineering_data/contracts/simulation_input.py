@@ -17,9 +17,9 @@ def _bootstrap_runtime_execution() -> None:
 _bootstrap_runtime_execution()
 
 from engineering_data.processing.simulation_geometry import (  # noqa: E402
-    bundle_contains_fallback_primitives,
+    bundle_contains_high_order_primitives,
     collect_export_notes,
-    count_fallback_primitives,
+    count_high_order_primitives,
     count_skipped_points,
     load_path_bundle,
 )
@@ -43,10 +43,10 @@ __all__ = [
     "IoDelay",
     "TriggerPoint",
     "ValveConfig",
-    "bundle_contains_fallback_primitives",
+    "bundle_contains_high_order_primitives",
     "bundle_to_simulation_payload",
     "collect_export_notes",
-    "count_fallback_primitives",
+    "count_high_order_primitives",
     "count_skipped_points",
     "load_path_bundle",
     "load_trigger_points_csv",

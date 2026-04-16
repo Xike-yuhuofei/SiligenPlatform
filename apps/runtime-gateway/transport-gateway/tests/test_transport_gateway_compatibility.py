@@ -136,6 +136,7 @@ def test_canonical_targets_are_exported_without_legacy_aliases():
 
 def test_dxf_preview_gate_contract_is_wired():
     source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    assert 'RegisterCommand("dxf.load"' not in source
     assert 'RegisterCommand("dxf.preview.snapshot"' in source
     assert 'RegisterCommand("dxf.preview.confirm"' in source
     assert 'RegisterCommand("dxf.artifact.create"' in source
@@ -215,6 +216,9 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
     assert {"artifact_id", "recipe_id", "version_id", "dispensing_speed_mm_s"}.issubset(
         set(prepare_operation["paramsSchema"]["required"])
     )
+    assert {"import_result_classification", "import_production_ready", "prepared_filepath"}.issubset(
+        set(prepare_operation["resultSchema"]["required"])
+    )
     assert "speed_mm_s" not in prepare_operation["paramsSchema"]["properties"]
     assert not prepare_operation.get("compatibility", {}).get("requestAliases")
     assert "requested_execution_strategy" in prepare_operation["paramsSchema"]["properties"]
@@ -230,6 +234,9 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
     job_start_operation = next(op for op in command_set["operations"] if op["method"] == "dxf.job.start")
     job_start_notes = "\n".join(job_start_operation.get("compatibility", {}).get("notes", []))
     assert "回退最近一次 prepared plan" not in job_start_notes
+    assert {"import_result_classification", "import_production_ready", "prepared_filepath"}.issubset(
+        set(job_start_operation["resultSchema"]["required"])
+    )
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 2895, "Missing artifact_id")' in dispatcher_source
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 2895, "Missing recipe_id")' in dispatcher_source
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 2895, "Missing version_id")' in dispatcher_source

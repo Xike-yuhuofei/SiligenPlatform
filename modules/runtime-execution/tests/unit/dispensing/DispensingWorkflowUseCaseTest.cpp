@@ -52,6 +52,7 @@ using Siligen::Application::Ports::Dispensing::ResolvedRecipePlanningPolicy;
 using Siligen::Application::Services::Dispensing::PlanningArtifactExportResult;
 using Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort;
 using Siligen::Application::Services::DXF::DxfPbPreparationService;
+using Siligen::JobIngest::Contracts::DxfImportDiagnostics;
 using Siligen::JobIngest::Contracts::IUploadFilePort;
 using Siligen::Device::Contracts::Commands::DeviceConnection;
 using Siligen::Device::Contracts::Ports::DispenserDevicePort;
@@ -225,6 +226,27 @@ PointFlyingCarrierPolicy BuildCanonicalPointFlyingCarrierPolicy() {
     policy.direction_mode = PointFlyingCarrierDirectionMode::APPROACH_DIRECTION;
     policy.trigger_spatial_interval_mm = 5.0f;
     return policy;
+}
+
+DxfImportDiagnostics BuildProductionReadyImportDiagnostics() {
+    DxfImportDiagnostics diagnostics;
+    diagnostics.result_classification = "success";
+    diagnostics.preview_ready = true;
+    diagnostics.production_ready = true;
+    diagnostics.summary = "DXF import succeeded and is ready for production.";
+    diagnostics.resolved_units = "mm";
+    diagnostics.resolved_unit_scale = 1.0;
+    return diagnostics;
+}
+
+void SeedProductionReadyImportDiagnostics(DispensingWorkflowUseCase::PlanRecord& plan_record) {
+    plan_record.response.import_diagnostics = BuildProductionReadyImportDiagnostics();
+}
+
+void SeedProductionReadyImportDiagnostics(DispensingWorkflowUseCase::ArtifactRecord& artifact_record) {
+    const auto diagnostics = BuildProductionReadyImportDiagnostics();
+    artifact_record.response.import_diagnostics = diagnostics;
+    artifact_record.upload_response.import_diagnostics = diagnostics;
 }
 
 void ApplyCanonicalRecipeSelection(PlanningRequest& request) {
@@ -745,6 +767,7 @@ void SeedPlan(DispensingWorkflowUseCase& use_case, const std::string& plan_id) {
     DispensingWorkflowUseCase::PlanRecord plan_record;
     plan_record.response.plan_id = plan_id;
     plan_record.response.plan_fingerprint = "fp-" + plan_id;
+    SeedProductionReadyImportDiagnostics(plan_record);
     plan_record.execution_launch.execution_package =
         std::make_shared<Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated>(
             BuildMinimalExecutionPackage());
@@ -946,6 +969,7 @@ DispensingWorkflowUseCase::PlanRecord BuildPreviewPlanRecord(
     plan_record.response.point_count = static_cast<std::uint32_t>(points.size());
     plan_record.response.total_length_mm = 0.0f;
     plan_record.response.estimated_time_s = 1.0f;
+    SeedProductionReadyImportDiagnostics(plan_record);
     plan_record.preview_authority_ready = true;
     plan_record.preview_authority_shared_with_execution = true;
     plan_record.preview_binding_ready = true;
@@ -1083,6 +1107,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanUsesCanonicalPlanningInputAndRunt
     artifact_record.response.artifact_id = "artifact-prepare";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
+    SeedProductionReadyImportDiagnostics(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -1131,6 +1156,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanRejectsMissingTopLevelRecipeOrVer
     artifact_record.response.artifact_id = "artifact-missing-recipe-version";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
+    SeedProductionReadyImportDiagnostics(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     auto missing_recipe_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -1166,6 +1192,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanReusesLatestPlanForIdenticalAutho
     artifact_record.response.artifact_id = "artifact-cache-hit";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
+    SeedProductionReadyImportDiagnostics(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -1208,6 +1235,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanSingleFlightsConcurrentAuthorityP
     artifact_record.response.artifact_id = "artifact-single-flight";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
+    SeedProductionReadyImportDiagnostics(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -1261,6 +1289,7 @@ TEST(DispensingWorkflowUseCaseTest, StartJobReturnsStructuredResponseWithExecuti
     artifact_record.response.artifact_id = "artifact-start-profile";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
+    SeedProductionReadyImportDiagnostics(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -1356,6 +1385,7 @@ TEST(DispensingWorkflowUseCaseTest, EnsureExecutionAssemblySingleFlightsConcurre
     artifact_record.response.artifact_id = "artifact-exec-single-flight";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
+    SeedProductionReadyImportDiagnostics(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -1433,6 +1463,7 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotResolvesExecutionAssemblyF
     artifact_record.response.artifact_id = "artifact-preview-execution-alignment";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
+    SeedProductionReadyImportDiagnostics(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -2091,6 +2122,7 @@ TEST(DispensingWorkflowUseCaseTest, StartJobPreservesAuthorityFingerprintAndGlue
     artifact_record.response.artifact_id = "artifact-consistency";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
+    SeedProductionReadyImportDiagnostics(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -2154,6 +2186,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanParameterChangeInvalidatesPreviou
     artifact_record.response.artifact_id = "artifact-preview-stale";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
+    SeedProductionReadyImportDiagnostics(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest first_prepare_request =
@@ -2215,6 +2248,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanExecutionStrategyPresenceUpdatesP
     artifact_record.response.artifact_id = "artifact-strategy-fingerprint";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
+    SeedProductionReadyImportDiagnostics(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest first_prepare_request =
@@ -2260,6 +2294,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanRecipePolicyUpdatesPlanFingerprin
     artifact_record.response.artifact_id = "artifact-policy-fingerprint";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
+    SeedProductionReadyImportDiagnostics(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     const auto first_prepare = use_case.PreparePlan(
@@ -2526,6 +2561,7 @@ TEST(DispensingWorkflowUseCaseTest, ReleaseConfirmedPreviewDropsRetainedExecutio
     artifact_record.response.artifact_id = "artifact-release-rebuild";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
+    SeedProductionReadyImportDiagnostics(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);

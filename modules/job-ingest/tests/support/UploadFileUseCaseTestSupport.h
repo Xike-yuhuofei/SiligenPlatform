@@ -21,6 +21,7 @@ namespace Siligen::JobIngest::Tests::Support {
 
 using Siligen::JobIngest::Application::Ports::Dispensing::IUploadPreparationPort;
 using Siligen::JobIngest::Application::Ports::Dispensing::IUploadStoragePort;
+using Siligen::JobIngest::Application::Ports::Dispensing::PreparedInputArtifact;
 using Siligen::JobIngest::Contracts::UploadRequest;
 using Siligen::JobIngest::Contracts::UploadResponse;
 using Siligen::Shared::Types::Error;
@@ -218,21 +219,29 @@ class TestUploadStoragePort final : public IUploadStoragePort {
 
 class FakeUploadPreparationPort final : public IUploadPreparationPort {
    public:
-    using EnsureHandler = std::function<Result<std::string>(const std::string&)>;
+    using EnsureHandler = std::function<Result<PreparedInputArtifact>(const std::string&)>;
     using CleanupHandler = std::function<Result<void>(const std::string&)>;
 
     FakeUploadPreparationPort(EnsureHandler ensure_handler = {}, CleanupHandler cleanup_handler = {})
         : ensure_handler_(std::move(ensure_handler)),
           cleanup_handler_(std::move(cleanup_handler)) {}
 
-    Result<std::string> EnsurePreparedInput(const std::string& source_path) const override {
+    Result<PreparedInputArtifact> EnsurePreparedInput(const std::string& source_path) const override {
         if (ensure_handler_) {
             return ensure_handler_(source_path);
         }
 
         const auto pb_path = PbPathFor(source_path);
         WriteTextFile(pb_path, "pb");
-        return Result<std::string>::Success(pb_path.string());
+        PreparedInputArtifact artifact;
+        artifact.prepared_path = pb_path.string();
+        artifact.import_diagnostics.result_classification = "success";
+        artifact.import_diagnostics.preview_ready = true;
+        artifact.import_diagnostics.production_ready = true;
+        artifact.import_diagnostics.summary = "DXF import succeeded and is ready for production.";
+        artifact.import_diagnostics.resolved_units = "mm";
+        artifact.import_diagnostics.resolved_unit_scale = 1.0;
+        return Result<PreparedInputArtifact>::Success(std::move(artifact));
     }
 
     Result<void> CleanupPreparedInput(const std::string& source_path) const override {
