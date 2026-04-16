@@ -4,7 +4,7 @@ import time
 import unittest
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -765,7 +765,11 @@ class MainWindowTabsTest(unittest.TestCase):
         self.window._on_home(["X", "Y"])
         worker = _FakeHomeAutoWorker.instances[-1]
 
-        with patch.object(main_window_module.QMessageBox, "warning") as warning_mock:
+        with patch.object(
+            main_window_module.QMessageBox,
+            "warning",
+            new_callable=lambda: MagicMock(spec=main_window_module.QMessageBox.warning),
+        ) as warning_mock:
             worker.complete(False, "X: Axis homed but not at zero; Y: motion_not_ready")
 
         warning_mock.assert_called_once_with(
