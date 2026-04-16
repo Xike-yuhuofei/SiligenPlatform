@@ -14,6 +14,7 @@ using Siligen::Domain::Dispensing::Ports::IDispensingExecutionObserver;
 using Siligen::Domain::Dispensing::Ports::DispenserValveParams;
 using Siligen::Domain::Dispensing::Ports::DispenserValveState;
 using Siligen::Domain::Dispensing::Ports::DispenserValveStatus;
+using Siligen::Domain::Dispensing::Ports::PositionTriggeredDispenserParams;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionOptions;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionPlan;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionReport;
@@ -90,8 +91,21 @@ class FakeValvePort final : public Siligen::Domain::Dispensing::Ports::IValvePor
     }
 
     Result<DispenserValveState> StartPositionTriggeredDispenser(
-        const Siligen::Domain::Dispensing::Ports::PositionTriggeredDispenserParams&) noexcept override {
+        const PositionTriggeredDispenserParams& params) noexcept override {
         ++start_position_trigger_calls;
+        last_position_trigger_params = params;
+        if (use_position_trigger_status_override) {
+            status = position_trigger_status_override;
+            if (status.remainingCount == 0U && status.totalCount >= status.completedCount) {
+                status.remainingCount = status.totalCount - status.completedCount;
+            }
+        } else {
+            status.status = DispenserValveStatus::Idle;
+            status.totalCount = static_cast<uint32>(params.trigger_events.size());
+            status.completedCount = status.totalCount;
+            status.remainingCount = 0U;
+            status.errorMessage.clear();
+        }
         return Result<DispenserValveState>::Success(status);
     }
 
@@ -134,7 +148,10 @@ class FakeValvePort final : public Siligen::Domain::Dispensing::Ports::IValvePor
     int open_supply_calls = 0;
     int close_supply_calls = 0;
     DispenserValveParams last_timed_params{};
+    PositionTriggeredDispenserParams last_position_trigger_params{};
     DispenserValveState status{};
+    bool use_position_trigger_status_override = false;
+    DispenserValveState position_trigger_status_override{};
 };
 
 class FakeInterpolationPort final : public IInterpolationPort {
@@ -452,6 +469,111 @@ TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalRunsStationaryPointSh
     EXPECT_EQ(valve_port->open_supply_calls, 1);
     EXPECT_EQ(interpolation_port->add_calls, 1);
     EXPECT_EQ(interpolation_port->start_calls, 1);
+}
+
+TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalFailsWhenPathTriggerCountsAreIncomplete) {
+    auto valve_port = std::make_shared<FakeValvePort>();
+    valve_port->use_position_trigger_status_override = true;
+    valve_port->position_trigger_status_override.status = DispenserValveStatus::Idle;
+    valve_port->position_trigger_status_override.completedCount = 3U;
+    valve_port->position_trigger_status_override.totalCount = 5U;
+    valve_port->position_trigger_status_override.remainingCount = 2U;
+
+    auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    auto motion_state_port = std::make_shared<SequencedMotionStatePort>(
+        std::vector<Point2D>{Point2D{0.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f}});
+    DispensingProcessService service(valve_port,
+                                     interpolation_port,
+                                     motion_state_port,
+                                     nullptr,
+                                     nullptr);
+
+    auto plan = BuildLinearExecutionPlan();
+    auto params = BuildRuntimeParams();
+    auto options = BuildExecutionOptions();
+    options.dispense_enabled = true;
+    options.use_hardware_trigger = true;
+    options.guard_decision.allow_valve = true;
+    options.guard_decision.allow_supply = true;
+    options.guard_decision.allow_cmp = true;
+    std::atomic<bool> stop_flag{false};
+    std::atomic<bool> pause_flag{false};
+    std::atomic<bool> pause_applied_flag{false};
+    const auto execute_plan_internal = GetPrivateMember(ExecutePlanInternalTag{});
+
+    const auto result = (service.*execute_plan_internal)(
+        plan,
+        params,
+        options,
+        &stop_flag,
+        &pause_flag,
+        &pause_applied_flag,
+        nullptr);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::DISPENSER_TRIGGER_INCOMPLETE);
+    EXPECT_EQ(valve_port->start_position_trigger_calls, 1);
+    EXPECT_EQ(valve_port->stop_calls, 1);
+    EXPECT_NE(result.GetError().GetMessage().find("failure_stage=path_trigger_reconcile"), std::string::npos);
+    EXPECT_NE(result.GetError().GetMessage().find("completed_count=3"), std::string::npos);
+    EXPECT_NE(result.GetError().GetMessage().find("total_count=5"), std::string::npos);
+    EXPECT_NE(result.GetError().GetMessage().find("expected_trigger_count="), std::string::npos);
+}
+
+TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalFailsWhenPathTriggerStatusHasAdapterError) {
+    auto valve_port = std::make_shared<FakeValvePort>();
+    valve_port->use_position_trigger_status_override = true;
+    valve_port->position_trigger_status_override.status = DispenserValveStatus::Error;
+    valve_port->position_trigger_status_override.completedCount = 5U;
+    valve_port->position_trigger_status_override.totalCount = 5U;
+    valve_port->position_trigger_status_override.errorMessage = "adapter-path-trigger-error";
+
+    auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    auto motion_state_port = std::make_shared<SequencedMotionStatePort>(
+        std::vector<Point2D>{Point2D{0.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f}});
+    DispensingProcessService service(valve_port,
+                                     interpolation_port,
+                                     motion_state_port,
+                                     nullptr,
+                                     nullptr);
+
+    auto plan = BuildLinearExecutionPlan();
+    auto params = BuildRuntimeParams();
+    auto options = BuildExecutionOptions();
+    options.dispense_enabled = true;
+    options.use_hardware_trigger = true;
+    options.guard_decision.allow_valve = true;
+    options.guard_decision.allow_supply = true;
+    options.guard_decision.allow_cmp = true;
+    std::atomic<bool> stop_flag{false};
+    std::atomic<bool> pause_flag{false};
+    std::atomic<bool> pause_applied_flag{false};
+    const auto execute_plan_internal = GetPrivateMember(ExecutePlanInternalTag{});
+
+    const auto result = (service.*execute_plan_internal)(
+        plan,
+        params,
+        options,
+        &stop_flag,
+        &pause_flag,
+        &pause_applied_flag,
+        nullptr);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::DISPENSER_TRIGGER_INCOMPLETE);
+    EXPECT_NE(result.GetError().GetMessage().find("adapter_error_message=adapter-path-trigger-error"), std::string::npos);
 }
 
 }  // namespace
