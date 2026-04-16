@@ -38,6 +38,7 @@ from runtime_gateway_harness import (  # noqa: E402
     truncate_json,
     wait_gateway_ready,
 )
+from recipe_runtime_support import resolve_active_recipe  # noqa: E402
 
 
 DEFAULT_REPO_DXF = ROOT / "samples" / "dxf" / "rect_diag.dxf"
@@ -560,11 +561,15 @@ def main() -> int:
         if not artifact_id:
             raise RuntimeError("artifact.create missing artifact_id")
         add_step(steps, "dxf-artifact-create", "passed", f"artifact_id={artifact_id}")
+        recipe_id, version_id = resolve_active_recipe(client, timeout_seconds=10.0)
+        add_step(steps, "recipe-list", "passed", json.dumps({"recipe_id": recipe_id, "version_id": version_id}, ensure_ascii=True))
 
         plan_response = client.send_request(
             "dxf.plan.prepare",
             {
                 "artifact_id": artifact_id,
+                "recipe_id": recipe_id,
+                "version_id": version_id,
                 "dispensing_speed_mm_s": args.dispensing_speed_mm_s,
                 "dry_run": False,
                 "rapid_speed_mm_s": args.rapid_speed_mm_s,

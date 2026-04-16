@@ -7,7 +7,7 @@
 namespace {
 
 using Siligen::Domain::Configuration::Ports::DispensingConfig;
-using Siligen::Domain::Configuration::Ports::DxfPreprocessConfig;
+using Siligen::Domain::Configuration::Ports::DxfImportConfig;
 using Siligen::Domain::Configuration::Ports::DxfTrajectoryConfig;
 using Siligen::Domain::Configuration::Ports::HomingConfig;
 using Siligen::Domain::Configuration::Ports::MachineConfig;
@@ -17,14 +17,14 @@ using Siligen::Shared::Types::DispensingStrategy;
 using Siligen::Shared::Types::ErrorCode;
 
 static_assert(std::is_default_constructible_v<DispensingConfig>);
-static_assert(std::is_default_constructible_v<DxfPreprocessConfig>);
+static_assert(std::is_default_constructible_v<DxfImportConfig>);
 static_assert(std::is_default_constructible_v<DxfTrajectoryConfig>);
 static_assert(std::is_default_constructible_v<MachineConfig>);
 static_assert(std::is_default_constructible_v<HomingConfig>);
 
 TEST(ConfigurationContractsTest, UmbrellaHeaderExposesCanonicalConfigurationSurface) {
     const DispensingConfig dispensing;
-    const DxfPreprocessConfig preprocess;
+    const DxfImportConfig preprocess;
     const DxfTrajectoryConfig trajectory;
     const MachineConfig machine;
     const HomingConfig homing;

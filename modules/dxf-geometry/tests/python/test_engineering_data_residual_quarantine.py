@@ -16,18 +16,18 @@ import engineering_data
 from engineering_data.contracts.simulation_input import (
     DEFAULT_EXPORTS,
     TriggerPoint,
-    bundle_contains_fallback_primitives,
+    bundle_contains_high_order_primitives,
     bundle_to_simulation_payload,
     collect_export_notes,
-    count_fallback_primitives,
+    count_high_order_primitives,
     count_skipped_points,
     load_path_bundle,
     project_trigger_points,
 )
 from engineering_data.processing.simulation_geometry import (
-    bundle_contains_fallback_primitives as geometry_bundle_contains_fallback_primitives,
+    bundle_contains_high_order_primitives as geometry_bundle_contains_high_order_primitives,
     collect_export_notes as geometry_collect_export_notes,
-    count_fallback_primitives as geometry_count_fallback_primitives,
+    count_high_order_primitives as geometry_count_high_order_primitives,
     count_skipped_points as geometry_count_skipped_points,
     load_path_bundle as geometry_load_path_bundle,
 )
@@ -90,8 +90,8 @@ def test_simulation_contract_surface_stays_bound_to_runtime_owner_and_geometry_h
     assert load_path_bundle is geometry_load_path_bundle
     assert collect_export_notes is geometry_collect_export_notes
     assert count_skipped_points is geometry_count_skipped_points
-    assert count_fallback_primitives is geometry_count_fallback_primitives
-    assert bundle_contains_fallback_primitives is geometry_bundle_contains_fallback_primitives
+    assert count_high_order_primitives is geometry_count_high_order_primitives
+    assert bundle_contains_high_order_primitives is geometry_bundle_contains_high_order_primitives
     assert not SIMULATION_RUNTIME_RESIDUAL.exists()
 
 
@@ -145,8 +145,8 @@ def test_simulation_payload_projects_triggers_without_changing_fixture_notes() -
     assert payload["triggers"][0]["trigger_position"] == pytest.approx(0.0)
     assert payload["triggers"][1]["trigger_position"] >= payload["triggers"][0]["trigger_position"]
     assert count_skipped_points(bundle) == 0
-    assert count_fallback_primitives(bundle) == {}
-    assert not bundle_contains_fallback_primitives(bundle)
+    assert count_high_order_primitives(bundle) == {}
+    assert not bundle_contains_high_order_primitives(bundle)
     assert collect_export_notes(bundle) == []
 
 

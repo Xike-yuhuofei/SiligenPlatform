@@ -6,9 +6,19 @@
     "created": true,
     "artifact_id": "artifact-20260321-001",
     "filepath": "D:/runtime/uploads/sample.dxf",
+    "prepared_filepath": "D:/runtime/uploads/sample.pb",
     "original_name": "sample.dxf",
     "generated_filename": "20260321_sample.dxf",
     "size": 128,
-    "timestamp": 1774070400000
+    "timestamp": 1774070400000,
+    "import_result_classification": "success",
+    "import_preview_ready": true,
+    "import_production_ready": true,
+    "import_summary": "DXF import succeeded and is ready for production.",
+    "import_primary_code": "",
+    "import_warning_codes": [],
+    "import_error_codes": [],
+    "import_resolved_units": "mm",
+    "import_resolved_unit_scale": 1.0
   }
 }

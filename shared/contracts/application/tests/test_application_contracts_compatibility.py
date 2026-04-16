@@ -151,7 +151,6 @@ def test_recipe_aliases_are_explicit():
         if "compatibility" in op and op["compatibility"].get("requestAliases")
     }
     expected = {
-        "dxf.load",
         "recipe.get",
         "recipe.update",
         "recipe.archive",
@@ -171,6 +170,7 @@ def test_recipe_aliases_are_explicit():
 
 def test_dxf_preview_and_job_contract():
     operations = load_operations()
+    assert "dxf.load" not in operations
     assert "dxf.preview.snapshot" in operations
     assert "dxf.preview.confirm" in operations
     assert "dxf.artifact.create" in operations
@@ -217,6 +217,9 @@ def test_dxf_preview_and_job_contract():
 
     plan_prepare = operations["dxf.plan.prepare"]
     assert "preview_request_signature" not in plan_prepare["resultSchema"]["required"]
+    assert "import_result_classification" in plan_prepare["resultSchema"]["required"]
+    assert "import_production_ready" in plan_prepare["resultSchema"]["required"]
+    assert "prepared_filepath" in plan_prepare["resultSchema"]["required"]
     assert {
         "artifact_id",
         "recipe_id",
@@ -234,6 +237,9 @@ def test_dxf_preview_and_job_contract():
 
     job_start = operations["dxf.job.start"]
     assert {"started", "job_id", "plan_id", "plan_fingerprint", "target_count"}.issubset(
+        set(job_start["resultSchema"]["required"])
+    )
+    assert {"import_result_classification", "import_production_ready", "prepared_filepath"}.issubset(
         set(job_start["resultSchema"]["required"])
     )
     assert "task_id" not in job_start["resultSchema"]["required"]

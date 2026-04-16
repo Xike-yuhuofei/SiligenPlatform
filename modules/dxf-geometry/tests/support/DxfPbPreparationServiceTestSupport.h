@@ -17,7 +17,7 @@
 namespace Siligen::DxfGeometry::Tests::Support {
 
 using Siligen::Application::Services::DXF::DxfPbPreparationService;
-using Siligen::Domain::Configuration::Ports::DxfPreprocessConfig;
+using Siligen::Domain::Configuration::Ports::DxfImportConfig;
 using Siligen::Domain::Configuration::Ports::DxfTrajectoryConfig;
 using Siligen::Domain::Configuration::Ports::DispensingConfig;
 using Siligen::Domain::Configuration::Ports::HomingConfig;
@@ -175,7 +175,7 @@ inline std::filesystem::path ArgsPathFor(std::filesystem::path pb_path) {
 
 class FakeConfigurationPort final : public IConfigurationPort {
    public:
-    DxfPreprocessConfig preprocess_config{};
+    DxfImportConfig preprocess_config{};
     DxfTrajectoryConfig trajectory_config{};
     DispensingConfig dispensing_config{};
     MachineConfig machine_config{};
@@ -203,8 +203,8 @@ class FakeConfigurationPort final : public IConfigurationPort {
         dispensing_config = config;
         return Result<void>::Success();
     }
-    Result<DxfPreprocessConfig> GetDxfPreprocessConfig() const override {
-        return Result<DxfPreprocessConfig>::Success(preprocess_config);
+    Result<DxfImportConfig> GetDxfImportConfig() const override {
+        return Result<DxfImportConfig>::Success(preprocess_config);
     }
     Result<DxfTrajectoryConfig> GetDxfTrajectoryConfig() const override {
         return Result<DxfTrajectoryConfig>::Success(trajectory_config);

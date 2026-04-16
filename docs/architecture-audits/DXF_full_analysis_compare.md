@@ -5,7 +5,7 @@
 1. 两侧 DXF 主链已形成明确“边界分工”：`process-runtime-core` 负责运行时编排/执行，`engineering-data` 负责 DXF 离线预处理与工件产物生成（PB、preview、simulation-input、offline trajectory）。
 2. 当前交汇点是 `PathBundle(.pb)` 与脚本入口 `scripts/dxf_to_pb.py`；`process-runtime-core` 通过 `DxfPbPreparationService::EnsurePbReady` 统一桥接到 `engineering-data`。
 3. 发现 12 条关键差异（已附证据）：包括错误模型、默认值、触发策略、元数据契约、构建依赖开关、legacy 兼容方式、测试入口等。
-4. P0 风险集中在“legacy autopath 占位 PB + 成功返回语义”与“跨侧行为不一致（jerk/strict-r12/错误码）”，会导致线上行为漂移和定位困难。
+4. P0 风险集中在“legacy autopath 占位 PB + 成功返回语义”与“跨侧行为不一致（jerk/DXF 输入契约/错误码）”，会导致线上行为漂移和定位困难。
 5. 建议短期先做“契约收口+错误语义对齐+高风险 fallback 下线”，中期再做“边界固化+去重迁移+统一回归门禁”。
 
 ## 2. 文件清单总表（按 package）
@@ -52,7 +52,7 @@ DXF输入
 | 适配器/服务 | `DxfPbPreparationService.cpp` | `.dxf/.pb` 路径 | 就绪 `.pb` 路径 | 环境变量、配置口、外部 python 命令 | 命令模板非法、脚本缺失、PB空文件、命令退出码 |
 | 适配器/服务 | `PbPathSourceAdapter.cpp` | `.pb` | `PathSourceResult` | protobuf 解析 | Parse失败、空 primitives、`SILIGEN_ENABLE_PROTOBUF=OFF` |
 | 适配器/服务 | `AutoPathSourceAdapter.cpp` | `.dxf/.pb` | `DXFPathSourceResult` | migration config、pb adapter | legacy 默认禁用；多处“Success+error_message”；占位 PB 回退 |
-| 配置读取 | `IConfigurationPort.h` | 配置端口 | `DxfPreprocessConfig`/`DxfTrajectoryConfig` 等 | 运行时配置系统 | 读取失败走默认参数 |
+| 配置读取 | `IConfigurationPort.h` | 配置端口 | `DxfImportConfig`/`DxfTrajectoryConfig` 等 | 运行时配置系统 | 读取失败走默认参数 |
 
 ## 4. engineering-data DXF 架构图与职责
 
@@ -86,7 +86,7 @@ CLI/scripts 输入
 |---|---|---|---|
 | 1. 功能边界 | 负责运行时规划/执行与触发控制 | 负责离线预处理，不接管实时控制 | `packages/process-runtime-core/src/application/usecases/dispensing/README.md`；`packages/engineering-data/README.md` |
 | 2. DXF->PB 调用方式 | C++ 进程外调用 Python 脚本/命令模板 | Python 内部 canonical 实现 | `DxfPbPreparationService.cpp::ResolvePbCommandArgs`；`processing/dxf_to_pb.py::main` |
-| 3. 输入契约（strict-r12） | 配置项 `strict_r12`，默认 false；上传链路默认走 `--no-strict-r12` | `--strict-r12/--no-strict-r12`，严格模式失败返回 4 | `IConfigurationPort.h::DxfPreprocessConfig`；`UploadFileUseCaseTest.cpp`；`dxf_to_pb.py::validate_input_contract` |
+| 3. 输入契约（R2000 baseline） | 生产协同基线固定为 `R2000 / AC1015`，不再提供 `strict_*` 配置开关 | 可读取 `R12` 到 `R2018`，并在导入层统一归一化到 `R2000` owner baseline；高版本触发降级告警 | `docs/architecture/dxf-input-contract-v1.md`；`machine_config.ini`；`dxf_to_pb.py::READABLE_DXF_VERSIONS` |
 | 4. 错误模型 | `Result<T> + ErrorCode` 统一 | 异常 + CLI 返回码 | `DxfPbPreparationService.cpp`；`dxf_to_pb.py::return 1/2/3/4` |
 | 5. legacy 回退策略 | direct `.dxf` 输入稳定 hard-fail，必须先经 `DxfPbPreparationService` 生成 `.pb` | legacy 包全部 forward 到 canonical | `AutoPathSourceAdapter.cpp`；`src/dxf_pipeline/cli/*.py` |
 | 6. 数据契约（metadata） | `PathPrimitiveMeta` 仅 id/type/segment/closed | `PrimitiveMeta` 还写入 `layer/color` | `IPathSourcePort.h::PathPrimitiveMeta`；`dxf_to_pb.py::add_meta` |
@@ -108,7 +108,7 @@ CLI/scripts 输入
 | 级别 | 风险 | 触发条件 | 建议动作 |
 |---|---|---|---|
 | P0 | legacy autopath 会写“占位 PB”且上层可能收到 Success 语义 | 开启 legacy/autopath 或误走旧链路 | 立即禁用占位 PB 回退，失败必须显式 `Failure(Error)` |
-| P0 | 跨侧默认值不一致（`jmax<=0`、strict-r12 容错）导致离线/在线结果漂移 | 同一输入在两侧跑 | 建立统一参数契约与默认值基线，出厂即对齐 |
+| P0 | 跨侧默认值不一致（`jmax<=0`、DXF 输入契约）导致离线/在线结果漂移 | 同一输入在两侧跑 | 建立统一参数契约与默认值基线，出厂即对齐 |
 | P1 | metadata 契约丢失 `layer/color`，影响后续按图层/颜色策略扩展 | 需要图层级策略时 | 扩展 runtime `PathPrimitiveMeta` 并保持向后兼容 |
 | P1 | 旧轨迹脚本配置字段疑似“死字段”造成运维误判 | 修改配置无效果 | 明确删除或接入消费路径，补测试 |
 | P1 | 错误码映射不透明（Python exit code -> runtime ErrorCode） | 预处理失败排障 | 定义统一错误映射表并输出结构化日志 |
@@ -121,7 +121,7 @@ CLI/scripts 输入
 |---|---|---|---|---|
 | 短期 | 下线 `AutoPathSourceAdapter` 占位 PB fallback，统一失败语义 | runtime DXF 旧入口 | 单测补齐 + 人工注入失败场景 | 降低误成功与脏 PB 风险（P0） |
 | 短期 | 建立 `dxf_to_pb` 返回码到 `ErrorCode` 的固定映射 | `DxfPbPreparationService`、日志、告警 | 用 1/2/3/4 返回码逐例回归 | 故障定位成本显著下降 |
-| 短期 | 对齐关键默认值（`strict_r12`、`jmax`、trigger 间隔） | 预览、执行、离线轨迹 | 同 DXF 输入双侧产物对比测试 | 减少离线/在线行为漂移 |
+| 短期 | 对齐关键默认值（DXF 输入契约、`jmax`、trigger 间隔） | 预览、执行、离线轨迹 | 同 DXF 输入双侧产物对比测试 | 减少离线/在线行为漂移 |
 | 短期 | 增加跨包金标用例（DXF->PB->preview/sim/plan） | 两个 package 测试层 | CI 新增契约回归 job | 变更可回归、可追责 |
 | 中期 | 扩展统一 metadata 契约（含 layer/color） | pb schema、runtime port、策略层 | 兼容读写测试 + 历史 PB 回放 | 支撑图层策略/可视化一致性 |
 | 中期 | 清理死配置字段并文档化边界 | 配置系统、用例构建 | 配置生效性测试 | 降低配置歧义与维护成本 |
@@ -133,7 +133,7 @@ CLI/scripts 输入
 
 1. `rg --files packages/process-runtime-core packages/engineering-data | rg -i "dxf|pb|path_to_trajectory|dxf_to_pb|preview|contour|augment|simulation-input|trajectory"`
 2. `rg -n -i "dxf|pb|path_to_trajectory|dxf_to_pb|preview|augment|contour|trajectory|simulation-input" packages/process-runtime-core packages/engineering-data`
-3. `rg -n "EnsurePbReady|strict-r12|SILIGEN_DXF_PB_COMMAND|jmax|bundle_to_simulation_payload|generate_preview" ...`
+3. `rg -n "EnsurePbReady|AC1015|SILIGEN_DXF_PB_COMMAND|jmax|bundle_to_simulation_payload|generate_preview" ...`
 
 关键证据路径（核心）：
 
@@ -151,13 +151,10 @@ CLI/scripts 输入
 12. `packages/engineering-data/src/engineering_data/contracts/simulation_input.py`
 13. `packages/engineering-data/src/engineering_data/preview/html_preview.py`
 14. `packages/engineering-data/src/engineering_data/trajectory/offline_path_to_trajectory.py`
-15. `packages/engineering-data/src/dxf_pipeline/services/dxf_preprocessing.py`
+15. `packages/engineering-data/src/dxf_pipeline/services/dxf_importing.py`
 16. `packages/engineering-data/tests/test_engineering_data_compatibility.py`
 17. `packages/engineering-data/tests/test_dxf_pipeline_legacy_shims.py`
 
 ---
 
 本报告仅做分析，不包含代码修改。
-
-
-

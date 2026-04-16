@@ -49,6 +49,7 @@ namespace TcpFacades = Siligen::Application::Facades::Tcp;
 
 using Siligen::Shared::Types::LogicalAxisId;
 using Siligen::Shared::Types::float32;
+using Siligen::JobIngest::Contracts::DxfImportDiagnostics;
 using Siligen::Domain::Recipes::Serialization::RecipeJsonSerializer;
 using Siligen::Domain::Recipes::ValueObjects::ParameterValueEntry;
 using Siligen::Domain::Recipes::ValueObjects::ImportConflict;
@@ -217,6 +218,45 @@ std::string ResolveReadinessMessage(
         return result.message;
     }
     return ResolveReadinessReasonCode(result);
+}
+
+nlohmann::json BuildImportDiagnosticsJson(
+    const std::string& result_classification,
+    const bool preview_ready,
+    const bool production_ready,
+    const std::string& summary,
+    const std::string& primary_code,
+    const std::vector<std::string>& warning_codes,
+    const std::vector<std::string>& error_codes,
+    const std::string& resolved_units,
+    const double resolved_unit_scale,
+    const std::string& prepared_filepath) {
+    return {
+        {"import_result_classification", result_classification},
+        {"import_preview_ready", preview_ready},
+        {"import_production_ready", production_ready},
+        {"import_summary", summary},
+        {"import_primary_code", primary_code},
+        {"import_warning_codes", warning_codes},
+        {"import_error_codes", error_codes},
+        {"import_resolved_units", resolved_units},
+        {"import_resolved_unit_scale", resolved_unit_scale},
+        {"prepared_filepath", prepared_filepath},
+    };
+}
+
+nlohmann::json BuildImportDiagnosticsJson(const DxfImportDiagnostics& diagnostics, const std::string& prepared_filepath) {
+    return BuildImportDiagnosticsJson(
+        diagnostics.result_classification,
+        diagnostics.preview_ready,
+        diagnostics.production_ready,
+        diagnostics.summary,
+        diagnostics.primary_code,
+        diagnostics.warning_codes,
+        diagnostics.error_codes,
+        diagnostics.resolved_units,
+        diagnostics.resolved_unit_scale,
+        prepared_filepath);
 }
 
 void FlushLogs() {
@@ -985,7 +1025,6 @@ void TcpCommandDispatcher::RegisterDispensingCommands() {
 }
 
 void TcpCommandDispatcher::RegisterDxfCommands() {
-    RegisterCommand("dxf.load", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfLoad(id, params); });
     RegisterCommand("dxf.artifact.create", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfArtifactCreate(id, params); });
     RegisterCommand("dxf.plan.prepare", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfPlanPrepare(id, params); });
     RegisterCommand("dxf.job.start", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobStart(id, params); });
@@ -1986,18 +2025,30 @@ std::string TcpCommandDispatcher::HandleDxfArtifactCreate(const std::string& id,
         dxf_cache_.loaded = true;
         dxf_cache_.artifact_id = artifact.artifact_id;
         dxf_cache_.filepath = artifact.filepath;
+        dxf_cache_.prepared_filepath = artifact.prepared_filepath;
+        dxf_cache_.import_result_classification = artifact.import_diagnostics.result_classification;
+        dxf_cache_.import_preview_ready = artifact.import_diagnostics.preview_ready;
+        dxf_cache_.import_production_ready = artifact.import_diagnostics.production_ready;
+        dxf_cache_.import_summary = artifact.import_diagnostics.summary;
+        dxf_cache_.import_primary_code = artifact.import_diagnostics.primary_code;
+        dxf_cache_.import_warning_codes = artifact.import_diagnostics.warning_codes;
+        dxf_cache_.import_error_codes = artifact.import_diagnostics.error_codes;
+        dxf_cache_.import_resolved_units = artifact.import_diagnostics.resolved_units;
+        dxf_cache_.import_resolved_unit_scale = artifact.import_diagnostics.resolved_unit_scale;
         active_dxf_job_id_.clear();
     }
 
-    return GatewayJsonProtocol::MakeSuccessResponse(id, {
+    auto result = nlohmann::json{
         {"created", true},
         {"artifact_id", artifact.artifact_id},
         {"filepath", artifact.filepath},
         {"original_name", artifact.original_name},
         {"generated_filename", artifact.generated_filename},
         {"size", artifact.size},
-        {"timestamp", artifact.timestamp}
-    });
+        {"timestamp", artifact.timestamp},
+    };
+    result.update(BuildImportDiagnosticsJson(artifact.import_diagnostics, artifact.prepared_filepath));
+    return GatewayJsonProtocol::MakeSuccessResponse(id, result);
 }
 
 std::string TcpCommandDispatcher::HandleDxfPlanPrepare(const std::string& id, const nlohmann::json& params) {
@@ -2036,6 +2087,7 @@ std::string TcpCommandDispatcher::HandleDxfPlanPrepare(const std::string& id, co
         dxf_cache_.loaded = true;
         dxf_cache_.artifact_id = artifact_id;
         dxf_cache_.filepath = plan.filepath;
+        dxf_cache_.prepared_filepath = plan.prepared_filepath;
         dxf_cache_.segment_count = plan.segment_count;
         dxf_cache_.total_length = plan.total_length_mm;
         dxf_cache_.plan_id = plan.plan_id;
@@ -2048,6 +2100,15 @@ std::string TcpCommandDispatcher::HandleDxfPlanPrepare(const std::string& id, co
         dxf_cache_.preview_state = "prepared";
         dxf_cache_.preview_source.clear();
         dxf_cache_.preview_speed_mm_s = effective_speed;
+        dxf_cache_.import_result_classification = plan.import_diagnostics.result_classification;
+        dxf_cache_.import_preview_ready = plan.import_diagnostics.preview_ready;
+        dxf_cache_.import_production_ready = plan.import_diagnostics.production_ready;
+        dxf_cache_.import_summary = plan.import_diagnostics.summary;
+        dxf_cache_.import_primary_code = plan.import_diagnostics.primary_code;
+        dxf_cache_.import_warning_codes = plan.import_diagnostics.warning_codes;
+        dxf_cache_.import_error_codes = plan.import_diagnostics.error_codes;
+        dxf_cache_.import_resolved_units = plan.import_diagnostics.resolved_units;
+        dxf_cache_.import_resolved_unit_scale = plan.import_diagnostics.resolved_unit_scale;
         active_dxf_job_id_.clear();
     }
 
@@ -2063,7 +2124,7 @@ std::string TcpCommandDispatcher::HandleDxfPlanPrepare(const std::string& id, co
         {"prepare_total_ms", plan.performance_profile.prepare_total_ms}
     };
 
-    return GatewayJsonProtocol::MakeSuccessResponse(id, {
+    auto result = nlohmann::json{
         {"plan_id", plan.plan_id},
         {"plan_fingerprint", plan.plan_fingerprint},
         {"artifact_id", artifact_id},
@@ -2071,13 +2132,24 @@ std::string TcpCommandDispatcher::HandleDxfPlanPrepare(const std::string& id, co
         {"point_count", plan.point_count},
         {"total_length_mm", plan.total_length_mm},
         {"estimated_time_s", plan.estimated_time_s},
+        {"prepared_filepath", plan.prepared_filepath},
+        {"import_result_classification", plan.import_diagnostics.result_classification},
+        {"import_preview_ready", plan.import_diagnostics.preview_ready},
+        {"import_production_ready", plan.import_diagnostics.production_ready},
+        {"import_summary", plan.import_diagnostics.summary},
+        {"import_primary_code", plan.import_diagnostics.primary_code},
+        {"import_warning_codes", plan.import_diagnostics.warning_codes},
+        {"import_error_codes", plan.import_diagnostics.error_codes},
+        {"import_resolved_units", plan.import_diagnostics.resolved_units},
+        {"import_resolved_unit_scale", plan.import_diagnostics.resolved_unit_scale},
         {"generated_at", plan.generated_at},
         {"snapshot_id", ""},
         {"snapshot_hash", ""},
         {"preview_request_signature", request_signature},
         {"preview_state", "prepared"},
-        {"performance_profile", performance_profile}
-    });
+        {"performance_profile", performance_profile},
+    };
+    return GatewayJsonProtocol::MakeSuccessResponse(id, result);
 }
 
 std::string TcpCommandDispatcher::HandleDxfJobStart(const std::string& id, const nlohmann::json& params) {
@@ -2089,10 +2161,12 @@ std::string TcpCommandDispatcher::HandleDxfJobStart(const std::string& id, const
     std::string expected_plan_fingerprint = params.value("plan_fingerprint", "");
     std::string cached_plan_id;
     std::string cached_plan_fingerprint;
+    DxfCache cache_snapshot;
     if (plan_id.empty() || expected_plan_fingerprint.empty()) {
         std::lock_guard<std::mutex> lock(dxf_mutex_);
-        cached_plan_id = dxf_cache_.plan_id;
-        cached_plan_fingerprint = dxf_cache_.plan_fingerprint;
+        cache_snapshot = dxf_cache_;
+        cached_plan_id = cache_snapshot.plan_id;
+        cached_plan_fingerprint = cache_snapshot.plan_fingerprint;
         if (plan_id.empty()) {
             plan_id = cached_plan_id;
         }
@@ -2101,8 +2175,9 @@ std::string TcpCommandDispatcher::HandleDxfJobStart(const std::string& id, const
         }
     } else {
         std::lock_guard<std::mutex> lock(dxf_mutex_);
-        cached_plan_id = dxf_cache_.plan_id;
-        cached_plan_fingerprint = dxf_cache_.plan_fingerprint;
+        cache_snapshot = dxf_cache_;
+        cached_plan_id = cache_snapshot.plan_id;
+        cached_plan_fingerprint = cache_snapshot.plan_fingerprint;
     }
     if (plan_id.empty()) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 2899, "Missing plan_id");
@@ -2142,14 +2217,26 @@ std::string TcpCommandDispatcher::HandleDxfJobStart(const std::string& id, const
         {"execution_total_ms", start_response.performance_profile.execution_total_ms}
     };
 
-    return GatewayJsonProtocol::MakeSuccessResponse(id, {
+    auto result = nlohmann::json{
         {"started", start_response.started},
         {"job_id", start_response.job_id},
         {"plan_id", start_response.plan_id},
         {"plan_fingerprint", start_response.plan_fingerprint},
         {"target_count", start_response.target_count},
-        {"performance_profile", performance_profile}
-    });
+        {"performance_profile", performance_profile},
+    };
+    result.update(BuildImportDiagnosticsJson(
+        cache_snapshot.import_result_classification,
+        cache_snapshot.import_preview_ready,
+        cache_snapshot.import_production_ready,
+        cache_snapshot.import_summary,
+        cache_snapshot.import_primary_code,
+        cache_snapshot.import_warning_codes,
+        cache_snapshot.import_error_codes,
+        cache_snapshot.import_resolved_units,
+        cache_snapshot.import_resolved_unit_scale,
+        cache_snapshot.prepared_filepath));
+    return GatewayJsonProtocol::MakeSuccessResponse(id, result);
 }
 
 std::string TcpCommandDispatcher::HandleDxfJobStatus(const std::string& id, const nlohmann::json& params) {
@@ -2289,75 +2376,6 @@ std::string TcpCommandDispatcher::HandleDxfJobCancel(const std::string& id, cons
          {"job_id", job_id},
          {"transition_state", Application::Services::Motion::Execution::ToString(cancel_result.Value().transition_state)},
          {"message", cancel_result.Value().message}});
-}
-
-std::string TcpCommandDispatcher::HandleDxfLoad(const std::string& id, const nlohmann::json& params) {
-    if (!dispensingFacade_) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 2900, "TcpDispensingFacade not available");
-    }
-
-    std::string active_job_id;
-    {
-        std::lock_guard<std::mutex> lock(dxf_mutex_);
-        active_job_id = active_dxf_job_id_;
-    }
-    if (!active_job_id.empty()) {
-        auto stop_result = dispensingFacade_->StopDxfJob(active_job_id);
-        if (stop_result.IsError()) {
-            SILIGEN_LOG_WARNING("DXF加载前停止运行中作业失败: " + stop_result.GetError().GetMessage());
-            return GatewayJsonProtocol::MakeErrorResponse(id, 2903, stop_result.GetError().GetMessage());
-        }
-    }
-
-    std::string filePath = params.value("filepath", "");
-    if (filePath.empty()) {
-        filePath = params.value("file_path", "");
-    }
-    if (filePath.empty()) {
-        SILIGEN_LOG_WARNING("DXF加载失败: 缺少filepath参数");
-        return GatewayJsonProtocol::MakeErrorResponse(id, 2901, "Missing 'filepath' parameter");
-    }
-    SILIGEN_LOG_INFO("收到DXF加载请求: " + filePath);
-
-    std::vector<uint8_t> fileContent;
-    std::string readError;
-    if (!ReadFileToBuffer(filePath, fileContent, readError)) {
-        SILIGEN_LOG_WARNING("DXF读取失败: " + readError);
-        return GatewayJsonProtocol::MakeErrorResponse(id, 2902, readError);
-    }
-
-    Siligen::JobIngest::Contracts::UploadRequest request;
-    request.file_content = std::move(fileContent);
-    request.original_filename = ExtractFilename(filePath);
-    request.file_size = request.file_content.size();
-    request.content_type = "application/dxf";
-
-    auto uploadResult = dispensingFacade_->CreateDxfArtifact(request);
-    if (!uploadResult.IsSuccess()) {
-        SILIGEN_LOG_WARNING("DXF上传失败: " + uploadResult.GetError().GetMessage());
-        return GatewayJsonProtocol::MakeErrorResponse(id, 2903, uploadResult.GetError().GetMessage());
-    }
-
-    auto uploadResponse = uploadResult.Value();
-    DxfCache cache;
-    cache.loaded = true;
-    cache.artifact_id = uploadResponse.artifact_id;
-    cache.filepath = uploadResponse.filepath;
-
-    {
-        std::lock_guard<std::mutex> lock(dxf_mutex_);
-        dxf_cache_ = cache;
-        active_dxf_job_id_.clear();
-    }
-    SILIGEN_LOG_INFO("DXF加载成功: segments=" + std::to_string(cache.segment_count) +
-                     ", filepath=" + cache.filepath);
-    nlohmann::json resultJson = {
-        {"loaded", true},
-        {"artifact_id", cache.artifact_id},
-        {"segment_count", cache.segment_count},
-        {"filepath", cache.filepath}
-    };
-    return GatewayJsonProtocol::MakeSuccessResponse(id, resultJson);
 }
 
 std::string TcpCommandDispatcher::HandleDxfInfo(const std::string& id, const nlohmann::json& /*params*/) {

@@ -690,13 +690,6 @@ class CommandProtocol:
         resp = self._client.send_request("supply.close")
         return self._resolve_action_result(resp)
 
-    def dxf_load(self, filepath: str, timeout: float = 15.0) -> tuple[bool, object]:
-        resp = self._client.send_request("dxf.load", {"filepath": filepath}, timeout=timeout)
-        if "error" in resp:
-            return False, resp["error"].get("message", "Unknown error")
-        result = _as_dict(resp.get("result"))
-        return result.get("loaded", False), result.get("segment_count", 0)
-
     def dxf_create_artifact(self, filepath: str, timeout: float = 30.0) -> tuple[bool, JsonDict, str]:
         try:
             data = Path(filepath).read_bytes()

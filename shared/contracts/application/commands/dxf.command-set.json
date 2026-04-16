@@ -4,47 +4,6 @@
   "group": "dxf",
   "operations": [
     {
-      "method": "dxf.load",
-      "kind": "command",
-      "paramsSchema": {
-        "type": "object",
-        "required": ["filepath"],
-        "properties": {
-          "filepath": { "type": "string" },
-          "file_path": { "type": "string" }
-        },
-        "additionalProperties": false
-      },
-      "resultSchema": {
-        "type": "object",
-        "required": ["loaded", "artifact_id", "segment_count", "filepath"],
-        "properties": {
-          "loaded": { "type": "boolean" },
-          "artifact_id": { "type": "string" },
-          "segment_count": { "type": "integer" },
-          "filepath": { "type": "string" }
-        },
-        "additionalProperties": false
-      },
-      "errorCodes": [2900, 2901, 2902, 2903],
-      "consumers": [
-        "hmi-client CommandProtocol.dxf_load",
-        "Backend_CPP CLI DXF_PLAN",
-        "Backend_CPP CLI DXF_DISPENSE"
-      ],
-      "compatibility": {
-        "requestAliases": [
-          {
-            "canonical": "filepath",
-            "accepted": ["filepath", "file_path"]
-          }
-        ],
-        "notes": [
-          "该命令是兼容入口；服务端会先创建 artifact，再由后续 plan/job 模型继续执行。"
-        ]
-      }
-    },
-    {
       "method": "dxf.artifact.create",
       "kind": "command",
       "paramsSchema": {
@@ -60,15 +19,25 @@
       },
       "resultSchema": {
         "type": "object",
-        "required": ["created", "artifact_id", "filepath", "original_name", "generated_filename", "size", "timestamp"],
+        "required": ["created", "artifact_id", "filepath", "prepared_filepath", "original_name", "generated_filename", "size", "timestamp", "import_result_classification", "import_preview_ready", "import_production_ready", "import_summary", "import_primary_code", "import_warning_codes", "import_error_codes", "import_resolved_units", "import_resolved_unit_scale"],
         "properties": {
           "created": { "type": "boolean" },
           "artifact_id": { "type": "string" },
           "filepath": { "type": "string" },
+          "prepared_filepath": { "type": "string" },
           "original_name": { "type": "string" },
           "generated_filename": { "type": "string" },
           "size": { "type": "integer" },
-          "timestamp": { "type": "integer" }
+          "timestamp": { "type": "integer" },
+          "import_result_classification": { "type": "string" },
+          "import_preview_ready": { "type": "boolean" },
+          "import_production_ready": { "type": "boolean" },
+          "import_summary": { "type": "string" },
+          "import_primary_code": { "type": "string" },
+          "import_warning_codes": { "type": "array", "items": { "type": "string" } },
+          "import_error_codes": { "type": "array", "items": { "type": "string" } },
+          "import_resolved_units": { "type": "string" },
+          "import_resolved_unit_scale": { "type": "number" }
         },
         "additionalProperties": false
       },
@@ -117,15 +86,25 @@
       },
       "resultSchema": {
         "type": "object",
-        "required": ["plan_id", "plan_fingerprint", "artifact_id", "segment_count", "point_count", "total_length_mm", "estimated_time_s", "generated_at"],
+        "required": ["plan_id", "plan_fingerprint", "artifact_id", "segment_count", "point_count", "total_length_mm", "estimated_time_s", "generated_at", "prepared_filepath", "import_result_classification", "import_preview_ready", "import_production_ready", "import_summary", "import_primary_code", "import_warning_codes", "import_error_codes", "import_resolved_units", "import_resolved_unit_scale"],
         "properties": {
           "plan_id": { "type": "string" },
           "plan_fingerprint": { "type": "string" },
           "artifact_id": { "type": "string" },
+          "prepared_filepath": { "type": "string" },
           "segment_count": { "type": "integer" },
           "point_count": { "type": "integer" },
           "total_length_mm": { "type": "number" },
           "estimated_time_s": { "type": "number" },
+          "import_result_classification": { "type": "string" },
+          "import_preview_ready": { "type": "boolean" },
+          "import_production_ready": { "type": "boolean" },
+          "import_summary": { "type": "string" },
+          "import_primary_code": { "type": "string" },
+          "import_warning_codes": { "type": "array", "items": { "type": "string" } },
+          "import_error_codes": { "type": "array", "items": { "type": "string" } },
+          "import_resolved_units": { "type": "string" },
+          "import_resolved_unit_scale": { "type": "number" },
           "generated_at": { "type": "string" },
           "snapshot_id": { "type": "string" },
           "snapshot_hash": { "type": "string" },
@@ -299,13 +278,23 @@
       },
       "resultSchema": {
         "type": "object",
-        "required": ["started", "job_id", "plan_id", "plan_fingerprint", "target_count", "performance_profile"],
+        "required": ["started", "job_id", "plan_id", "plan_fingerprint", "target_count", "performance_profile", "prepared_filepath", "import_result_classification", "import_preview_ready", "import_production_ready", "import_summary", "import_primary_code", "import_warning_codes", "import_error_codes", "import_resolved_units", "import_resolved_unit_scale"],
         "properties": {
           "started": { "type": "boolean" },
           "job_id": { "type": "string" },
           "plan_id": { "type": "string" },
           "plan_fingerprint": { "type": "string" },
           "target_count": { "type": "integer" },
+          "prepared_filepath": { "type": "string" },
+          "import_result_classification": { "type": "string" },
+          "import_preview_ready": { "type": "boolean" },
+          "import_production_ready": { "type": "boolean" },
+          "import_summary": { "type": "string" },
+          "import_primary_code": { "type": "string" },
+          "import_warning_codes": { "type": "array", "items": { "type": "string" } },
+          "import_error_codes": { "type": "array", "items": { "type": "string" } },
+          "import_resolved_units": { "type": "string" },
+          "import_resolved_unit_scale": { "type": "number" },
           "performance_profile": {
             "type": "object",
             "properties": {

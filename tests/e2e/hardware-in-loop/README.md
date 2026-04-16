@@ -1,6 +1,6 @@
 # hardware-in-loop
 
-更新时间：`2026-04-13`
+更新时间：`2026-04-16`
 
 这里统一放硬件冒烟和机台联调入口。
 
@@ -17,7 +17,6 @@
 - `run_real_dxf_machine_dryrun_suite.py`
 - `run_hil_closed_loop.py`
 - `run_case_matrix.py`
-- `run_hil_tcp_recovery.py`
 - `run_hil_controlled_test.ps1`
 - `verify_hil_controlled_gate.py`
 - `render_hil_controlled_release_summary.py`
@@ -35,7 +34,7 @@
 - `run_hil_controlled_test.ps1` 在 `passed` 且门禁满足时，会将本次时间戳目录证据同步到固定目录 `tests/reports/hil-controlled-test`
 - 任何带 `PublishLatestOnPass=true` 的正式 publish 都必须提供非空 `-Executor`，否则脚本会直接失败，防止生成 unsigned latest authority
 - `run_hil_controlled_test.ps1` 在 offline prerequisites 已通过后，即使 hardware-smoke / hil-closed-loop / hil-case-matrix 阻塞，也会继续产出 `hil-controlled-gate-summary.*` 与 `hil-controlled-release-summary.md`
-- 固定目录会写入 `latest-source.txt`，用于追溯来源时间戳目录（双轨证据）
+- 固定目录会写入 `latest-source.txt`，用于追溯当前 fixed latest authority 对应的时间戳目录
 - 联机测试矩阵基线统一见 `docs/validation/online-test-matrix-v1.md`
 - `run_hil_closed_loop.py` 与 `run_case_matrix.py` 的 DXF case 选择统一来自 `shared/contracts/engineering/fixtures/dxf-truth-matrix.json`
 - 当前 full-chain canonical producer case 为 `rect_diag`、`bra`、`arc_circle_quadrants`
@@ -43,7 +42,6 @@
 - `run_real_dxf_machine_dryrun_suite.py` 会聚合同一组 canonical dry-run case，并输出 suite summary + per-case launcher log + evidence bundle
 - 默认 HIL case 仍是 truth matrix 中标记为 `default_hil_sample` 的 `rect_diag`；`bra`、`arc_circle_quadrants` 只应在显式传 `--dxf-case-id` 时进入真实设备路径
 - `limited-hil` 不是“实现完即全量上机”；当前正式口径仍是先过 `full-offline-gate`，再经人工签字进入 `run_hil_controlled_test.ps1` 的受控路径
-- `run_hil_tcp_recovery.py` 是 `P1-01` 的独立 recovery authority，不接 `verify_hil_controlled_gate.py`、`run_hil_controlled_test.ps1` 或 `release-check.ps1`
 - preview / dry-run suite 只用于 full-online blocker 汇总与 `G8` 补充证据，不会 publish latest，也不会覆盖 controlled HIL authority
 - `run_hil_closed_loop.py` 与 `run_case_matrix.py` 现在都会额外发布：
   - `case-index.json`
@@ -52,7 +50,6 @@
   - `report-index.json`
   - `evidence-links.md`
   - `failure-details.json`（存在非通过结论时）
-- `run_hil_tcp_recovery.py` 也会发布同套 evidence bundle 工件
 - HIL evidence bundle 必须声明前置离线层、`skip_justification` 与 `abort_metadata`
 - 根级 `test.ps1 -IncludeHardwareSmoke/-IncludeHil*` 与 `ci.ps1 -IncludeHilCaseMatrix` 只保留为 opt-in surface，不作为正式 controlled HIL release path
 
@@ -100,10 +97,6 @@ python .\tests\e2e\hardware-in-loop\run_case_matrix.py --mode both --rounds 20
 ```
 
 ```powershell
-python .\tests\e2e\hardware-in-loop\run_hil_tcp_recovery.py --rounds 10
-```
-
-```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\test.ps1 -Profile CI -Suite e2e -IncludeHilCaseMatrix -ReportDir .\tests\reports\verify\hil-case-matrix -FailOnKnownFailure
 ```
 
@@ -145,7 +138,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 
 `run_hil_closed_loop.py` 说明：
 
-- 预检阶段执行一次 `dxf.load`，循环阶段按 `tcp connect -> status -> supply.open -> dispenser.start/pause/resume -> dispenser.stop -> supply.close -> disconnect` 执行闭环
+- 预检阶段执行一次 `dxf.artifact.create` 上传当前 DXF，循环阶段按 `tcp connect -> status -> supply.open -> dispenser.start/pause/resume -> dispenser.stop -> supply.close -> disconnect` 执行闭环
 - 支持 `--dxf-case-id <case>` 或 `--dxf-file <path>` 二选一；`--dxf-case-id` 会从共享 truth matrix 解析 case 与资产引用
 - 当前可选 `--dxf-case-id` 为 `rect_diag`、`bra`、`arc_circle_quadrants`
 - 省略 `--dxf-case-id` 时使用 truth matrix 默认 HIL case `rect_diag`
@@ -294,30 +287,6 @@ python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun.py `
 - 已接入根级 `test.ps1` / `ci.ps1` / `run-local-validation-gate.ps1` 的 opt-in 开关 `-IncludeHilCaseMatrix`
 - `run_hil_controlled_test.ps1` 与 `release-check.ps1` 当前默认纳入 `hil-case-matrix`
 - 如需临时隔离矩阵影响，可显式传 `-IncludeHilCaseMatrix:$false`
-
-`run_hil_tcp_recovery.py` 说明：
-
-- 当前只验证 `TCP session disconnect/reconnect recovery`
-- 当前不覆盖物理网线拔插、gateway 进程崩溃/重启、控制卡掉电
-- recovery probe 固定为 `dxf.load(rect_diag.dxf)`，不扩展到 `home`、`move`、`jog`、`valve` 类动作
-- 默认流程：`connect -> status -> dxf.load -> disconnect -> reconnect -> status -> dxf.load -> disconnect`
-- 默认输出 `hil-tcp-recovery-summary.json` 与 `hil-tcp-recovery-summary.md`
-- 默认报告目录为 `tests/reports/adhoc/hil-tcp-recovery/`
-- 默认轮数为 `10`
-- 额外输出：
-  - `case-index.json`
-  - `validation-evidence-bundle.json`
-  - `report-manifest.json`
-  - `report-index.json`
-  - `evidence-links.md`
-  - `failure-details.json`（存在非通过结论时）
-- 当前 authority 字段固定聚焦：
-  - `rounds[].baseline_status`
-  - `rounds[].probe_before_disconnect`
-  - `rounds[].disconnect_ack`
-  - `rounds[].post_reconnect_status`
-  - `rounds[].probe_after_reconnect`
-- 当前阶段只作为专项 recovery authority 使用，不进入 controlled gate blocking policy
 
 `verify_hil_controlled_gate.py` 说明：
 

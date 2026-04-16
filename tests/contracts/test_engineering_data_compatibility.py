@@ -101,12 +101,12 @@ class EngineeringDataCompatibilityTest(unittest.TestCase):
         expected.header.source_path = ""
         self.assertEqual(actual.SerializeToString(), expected.SerializeToString())
 
-    def test_dxf_to_pb_skips_text_and_insert_without_affecting_supported_entities(self) -> None:
+    def test_dxf_to_pb_expands_insert_and_ignores_text_without_affecting_supported_entities(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             dxf_path = Path(tmp_dir) / "mixed_noise.dxf"
             output_path = Path(tmp_dir) / "mixed_noise.pb"
 
-            doc = getattr(ezdxf, "new")("R12")
+            doc = getattr(ezdxf, "new")("R2000")
             modelspace = doc.modelspace()
             modelspace.add_line((0.0, 0.0), (10.0, 0.0))
             modelspace.add_point((5.0, 5.0))
@@ -127,13 +127,13 @@ class EngineeringDataCompatibilityTest(unittest.TestCase):
             actual = load_path_bundle(output_path)
 
         entity_types = [meta.entity_type for meta in actual.metadata]
-        self.assertEqual(len(actual.primitives), 2)
-        self.assertEqual(entity_types.count(pb.DXF_ENTITY_LINE), 1)
+        self.assertEqual(len(actual.primitives), 3)
+        self.assertEqual(entity_types.count(pb.DXF_ENTITY_LINE), 2)
         self.assertEqual(entity_types.count(pb.DXF_ENTITY_POINT), 1)
         warning_text = stderr.getvalue()
-        self.assertIn("Unsupported DXF entities will be skipped", warning_text)
-        self.assertIn("INSERT=1", warning_text)
-        self.assertIn("TEXT=1", warning_text)
+        self.assertIn("Warning[DXF_W_TEXT_IGNORED]", warning_text)
+        self.assertIn("Ignored non-production DXF entity type: TEXT.", warning_text)
+        self.assertNotIn("INSERT=1", warning_text)
 
     def test_generate_preview_matches_fixture(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

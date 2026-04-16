@@ -32,6 +32,7 @@ using ArtifactID = std::string;
 using JobID = std::string;
 using PlanID = std::string;
 using Siligen::JobIngest::Contracts::IUploadFilePort;
+using Siligen::JobIngest::Contracts::DxfImportDiagnostics;
 using Siligen::JobIngest::Contracts::UploadRequest;
 using Siligen::JobIngest::Contracts::UploadResponse;
 
@@ -39,10 +40,12 @@ struct CreateArtifactResponse {
     bool success = false;
     ArtifactID artifact_id;
     std::string filepath;
+    std::string prepared_filepath;
     std::string original_name;
     std::string generated_filename;
     std::size_t size = 0;
     int64_t timestamp = 0;
+    DxfImportDiagnostics import_diagnostics;
 };
 
 struct PreparePlanRuntimeOverrides {
@@ -97,10 +100,12 @@ struct PreparePlanResponse {
     PlanID plan_id;
     std::string plan_fingerprint;
     std::string filepath;
+    std::string prepared_filepath;
     std::uint32_t segment_count = 0;
     std::uint32_t point_count = 0;
     float32 total_length_mm = 0.0f;
     float32 estimated_time_s = 0.0f;
+    DxfImportDiagnostics import_diagnostics;
     std::string preview_validation_classification;
     std::string preview_exception_reason;
     std::string preview_failure_reason;

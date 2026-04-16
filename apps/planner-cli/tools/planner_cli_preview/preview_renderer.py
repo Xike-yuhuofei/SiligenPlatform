@@ -2,21 +2,40 @@ from __future__ import annotations
 
 # pyright: reportPrivateImportUsage=false
 
+import io
 import hashlib
 import html
 import math
+from contextlib import redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
+import sys
+import tempfile
 from uuid import uuid4
-
-import ezdxf
-from ezdxf.path import make_path
 
 from planner_cli_preview.contracts import PreviewArtifact, PreviewRequest
 
 
 _MIN_TOLERANCE_MM = 0.05
 _DEFAULT_PADDING_MM = 5.0
+
+
+def _workspace_root() -> Path:
+    return Path(__file__).resolve().parents[4]
+
+
+def _bootstrap_engineering_data() -> None:
+    package_root = _workspace_root() / "modules" / "dxf-geometry" / "application"
+    package_root_str = str(package_root)
+    if package_root_str not in sys.path:
+        sys.path.insert(0, package_root_str)
+
+
+_bootstrap_engineering_data()
+
+from engineering_data.processing import dxf_to_pb  # noqa: E402
+from engineering_data.processing.simulation_geometry import load_path_bundle, primitive_to_segments  # noqa: E402
+from engineering_data.proto import dxf_primitives_pb2 as pb  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -47,54 +66,100 @@ def _unique_points(points: list[tuple[float, float]]) -> list[tuple[float, float
     return result
 
 
-def _flatten_entity(entity, tolerance_mm: float) -> list[tuple[float, float]]:
-    entity_type = entity.dxftype()
-    if entity_type == "POINT":
-        location = entity.dxf.location
-        return [(float(location.x), float(location.y))]
-
-    try:
-        path = make_path(entity)
-    except Exception:
-        return []
-
-    try:
-        vertices = list(path.flattening(distance=max(tolerance_mm, _MIN_TOLERANCE_MM)))
-    except Exception:
-        return []
-
-    points = [(float(vertex.x), float(vertex.y)) for vertex in vertices]
-    return _unique_points(points)
+def _arc_points(segment: dict, tolerance_mm: float) -> list[tuple[float, float]]:
+    center = segment["center"]
+    radius = float(segment["radius"])
+    start_angle = float(segment["start_angle"])
+    end_angle = float(segment["end_angle"])
+    sweep = abs(end_angle - start_angle)
+    arc_length = max(radius * sweep, radius * 0.25)
+    step = max(tolerance_mm, _MIN_TOLERANCE_MM)
+    sample_count = max(12, int(math.ceil(arc_length / step)))
+    points: list[tuple[float, float]] = []
+    for index in range(sample_count + 1):
+        angle = start_angle + ((end_angle - start_angle) * index / sample_count)
+        x = float(center["x"]) + radius * math.cos(angle)
+        y = float(center["y"]) + radius * math.sin(angle)
+        points.append((x, y))
+    return points
 
 
-def _is_closed_entity(entity, points: list[tuple[float, float]]) -> bool:
-    if len(points) < 2:
-        return False
-    if entity.dxftype() in {"CIRCLE", "ELLIPSE"}:
-        return True
-    closed_flag = getattr(entity, "closed", None)
-    if callable(closed_flag):
-        try:
-            return bool(closed_flag())
-        except Exception:
-            pass
-    if closed_flag is not None:
-        return bool(closed_flag)
-    return math.isclose(points[0][0], points[-1][0], abs_tol=1e-6) and math.isclose(
-        points[0][1], points[-1][1], abs_tol=1e-6
-    )
+def _segment_points(segment: dict, tolerance_mm: float) -> list[tuple[float, float]]:
+    if segment["type"] == "LINE":
+        return [
+            (float(segment["start"]["x"]), float(segment["start"]["y"])),
+            (float(segment["end"]["x"]), float(segment["end"]["y"])),
+        ]
+    if segment["type"] == "ARC":
+        return _arc_points(segment, tolerance_mm)
+    raise ValueError(f"Unsupported preview segment type: {segment['type']}")
+
+
+def _primitive_polylines(bundle: pb.PathBundle, tolerance_mm: float) -> list[_Polyline]:
+    polylines: list[_Polyline] = []
+    for index, primitive in enumerate(bundle.primitives):
+        layer_name = bundle.metadata[index].layer if index < len(bundle.metadata) and bundle.metadata[index].layer else "0"
+        if primitive.type == pb.PRIMITIVE_POINT:
+            polylines.append(
+                _Polyline(
+                    points=[(float(primitive.point.position.x), float(primitive.point.position.y))],
+                    layer=layer_name,
+                    closed=False,
+                )
+            )
+            continue
+
+        sampled_points: list[tuple[float, float]] = []
+        segments = primitive_to_segments(primitive, max_seg=max(tolerance_mm, _MIN_TOLERANCE_MM))
+        for segment in segments:
+            current_points = _segment_points(segment, tolerance_mm)
+            if sampled_points and current_points and sampled_points[-1] == current_points[0]:
+                sampled_points.extend(current_points[1:])
+            else:
+                sampled_points.extend(current_points)
+        sampled_points = _unique_points(sampled_points)
+        if not sampled_points:
+            continue
+        closed = bool(
+            primitive.type == pb.PRIMITIVE_CIRCLE
+            or (primitive.type == pb.PRIMITIVE_CONTOUR and primitive.contour.closed)
+            or (
+                len(sampled_points) > 2
+                and math.isclose(sampled_points[0][0], sampled_points[-1][0], abs_tol=1e-6)
+                and math.isclose(sampled_points[0][1], sampled_points[-1][1], abs_tol=1e-6)
+            )
+        )
+        if closed and sampled_points[0] != sampled_points[-1]:
+            sampled_points.append(sampled_points[0])
+        polylines.append(_Polyline(points=sampled_points, layer=layer_name, closed=closed))
+    return polylines
+
+
+def _load_bundle(input_path: Path) -> pb.PathBundle:
+    if input_path.suffix.lower() == ".pb":
+        return load_path_bundle(input_path)
+    if input_path.suffix.lower() != ".dxf":
+        raise ValueError(f"仅支持 DXF 或 PB 预览输入: {input_path}")
+
+    with tempfile.TemporaryDirectory(prefix="planner-preview-") as tmp_dir:
+        pb_path = Path(tmp_dir) / f"{input_path.stem}.pb"
+        with redirect_stdout(io.StringIO()):
+            exit_code = dxf_to_pb.main([
+                "--input",
+                str(input_path),
+                "--output",
+                str(pb_path),
+            ])
+        if exit_code != 0:
+            raise RuntimeError(f"DXF canonical import failed: {input_path}")
+        return load_path_bundle(pb_path)
 
 
 def _collect_polylines(input_path: Path, tolerance_mm: float) -> list[_Polyline]:
-    document = ezdxf.readfile(str(input_path))
-    polylines: list[_Polyline] = []
-    for entity in document.modelspace():
-        points = _flatten_entity(entity, tolerance_mm)
-        if not points:
-            continue
-        layer_name = getattr(entity.dxf, "layer", "0") or "0"
-        closed = _is_closed_entity(entity, points)
-        polylines.append(_Polyline(points=points, layer=layer_name, closed=closed))
+    bundle = _load_bundle(input_path)
+    polylines = _primitive_polylines(bundle, tolerance_mm)
+    if not polylines:
+        raise ValueError(f"输入中没有可用于预览的 canonical 几何: {input_path}")
     return polylines
 
 
@@ -125,7 +190,7 @@ def _compute_bounds(polylines: list[_Polyline]) -> tuple[float, float, float, fl
     xs = [point[0] for polyline in polylines for point in polyline.points]
     ys = [point[1] for polyline in polylines for point in polyline.points]
     if not xs or not ys:
-        raise ValueError("DXF 中没有可用于预览的几何实体")
+        raise ValueError("输入中没有可用于预览的几何实体")
     return min(xs), min(ys), max(xs), max(ys)
 
 
@@ -334,7 +399,7 @@ def _svg_markup(
         </div>
       </div>
       <div class="footer">
-        该预览由 planner-cli 本地生成，展示责任由 hmi-client 承接。
+        该预览由 planner-cli 基于 canonical PathBundle 生成，展示责任由 hmi-client 承接。
       </div>
     </section>
     <section class="panel canvas">
@@ -353,12 +418,9 @@ def _svg_markup(
 
 def generate_preview(request: PreviewRequest) -> PreviewArtifact:
     if not request.input_path.exists():
-        raise FileNotFoundError(f"DXF 文件不存在: {request.input_path}")
+        raise FileNotFoundError(f"预览输入不存在: {request.input_path}")
 
     polylines = _collect_polylines(request.input_path, request.curve_tolerance_mm)
-    if not polylines:
-        raise ValueError(f"DXF 中没有可用于预览的几何实体: {request.input_path}")
-
     reduced_polylines = _downsample_polylines(polylines, request.max_points)
     bounds = _compute_bounds(reduced_polylines)
     total_length = sum(_polyline_length(polyline.points) for polyline in reduced_polylines)

@@ -231,7 +231,7 @@ Result<std::vector<std::string>> BuildPbCommandArgs(
     const std::filesystem::path& pb_path,
     const std::string& python,
     const std::filesystem::path& external_root,
-    const Siligen::Domain::Configuration::Ports::DxfPreprocessConfig& preprocess_config) {
+    const Siligen::Domain::Configuration::Ports::DxfImportConfig& preprocess_config) {
     namespace fs = std::filesystem;
 
     std::vector<std::string> args;
@@ -248,7 +248,6 @@ Result<std::vector<std::string>> BuildPbCommandArgs(
         };
 
         AppendBoolArg(args, "--normalize-units", preprocess_config.normalize_units);
-        AppendBoolArg(args, "--strict-r12", preprocess_config.strict_r12);
         AppendBoolArg(args, "--approx-splines", preprocess_config.approx_splines);
         AppendBoolArg(args, "--snap-enabled", preprocess_config.snap_enabled);
         AppendBoolArg(args, "--densify-enabled", preprocess_config.densify_enabled);
@@ -285,7 +284,6 @@ Result<std::vector<std::string>> BuildPbCommandArgs(
     };
 
     AppendBoolArg(args, "--normalize-units", preprocess_config.normalize_units);
-    AppendBoolArg(args, "--strict-r12", preprocess_config.strict_r12);
     AppendBoolArg(args, "--approx-splines", preprocess_config.approx_splines);
     AppendBoolArg(args, "--snap-enabled", preprocess_config.snap_enabled);
     AppendBoolArg(args, "--densify-enabled", preprocess_config.densify_enabled);
@@ -358,14 +356,14 @@ std::string ResolvePythonExecutable() {
     return (python_env && *python_env) ? python_env : "python";
 }
 
-Siligen::Domain::Configuration::Ports::DxfPreprocessConfig ResolvePreprocessConfig(
+Siligen::Domain::Configuration::Ports::DxfImportConfig ResolvePreprocessConfig(
     const std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort>& config_port) {
-    Siligen::Domain::Configuration::Ports::DxfPreprocessConfig preprocess_config;
+    Siligen::Domain::Configuration::Ports::DxfImportConfig preprocess_config;
     if (!config_port) {
         return preprocess_config;
     }
 
-    auto config_result = config_port->GetDxfPreprocessConfig();
+    auto config_result = config_port->GetDxfImportConfig();
     if (config_result.IsSuccess()) {
         return config_result.Value();
     }

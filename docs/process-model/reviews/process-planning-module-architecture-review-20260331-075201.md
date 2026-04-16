@@ -24,7 +24,7 @@
 - 实际主要输入不是 `FeatureGraph`、recipe、process template，而是配置文件与配置项。
   - 证据：`modules/process-planning/domain/configuration/ports/IConfigurationPort.h:51-199`
   - 证据：`apps/runtime-service/runtime/configuration/ConfigFileAdapter.cpp:48-87`
-- 实际主要输出不是 `ProcessPlan`，而是 `DispensingConfig`、`MachineConfig`、`HomingConfig`、`DxfPreprocessConfig`、`IConfigurationPort`。
+- 实际主要输出不是 `ProcessPlan`，而是 `DispensingConfig`、`MachineConfig`、`HomingConfig`、`DxfImportConfig`、`IConfigurationPort`。
   - 证据：`modules/process-planning/domain/configuration/ports/IConfigurationPort.h:51-401`
 - 按冻结口径，它应依赖 `topology-feature/contracts`、`shared`。
   - 证据：`modules/process-planning/module.yaml:6-10`
@@ -98,7 +98,7 @@
   - `IFileStoragePort` 属于文件接入/存储抽象，更接近 M1。
     - 证据：`modules/process-planning/domain/configuration/ports/IFileStoragePort.h:22-91`
     - 证据：`modules/job-ingest/application/include/application/usecases/dispensing/UploadFileUseCase.h:28-47`
-  - `DxfPreprocessConfig` 与 DXF -> PB 的预处理参数，更接近 M2。
+  - `DxfImportConfig` 与 DXF -> PB 的预处理参数，更接近 M2。
     - 证据：`modules/process-planning/domain/configuration/ports/IConfigurationPort.h:93-117`
     - 证据：`modules/dxf-geometry/application/services/dxf/DxfPbPreparationService.cpp:551-584`
   - `HardwareMode`、`HardwareConfiguration`、`DiagnosticsConfig`、回零参数，更接近 M9/runtime 配置面。
@@ -193,7 +193,7 @@
   - 证据：`modules/dxf-geometry/CMakeLists.txt:25-27`
   - 工程后果：M2 对 M4 concrete 反向耦合。
 
-- `dxf-geometry` 的 `DxfPbPreparationService` 通过 `GetDxfPreprocessConfig()` 读取 M4 配置。
+- `dxf-geometry` 的 `DxfPbPreparationService` 通过 `GetDxfImportConfig()` 读取 M4 配置。
   - 证据：`modules/dxf-geometry/application/services/dxf/DxfPbPreparationService.cpp:551-584`
   - 工程后果：DXF 预处理策略和工艺模块绑定，模块边界漂移。
 
@@ -332,7 +332,7 @@
 
 - 目标：
   - 把 `IFileStoragePort` 迁到 M1 或共享基础设施。
-  - 把 `DxfPreprocessConfig` 迁到 M2。
+  - 把 `DxfImportConfig` 迁到 M2。
   - 把 machine/homing/hardware/diagnostics/backup 配置迁到 M9 或独立 runtime-config 模块。
   - 把 `ConfigFileAdapter` 从 `apps/runtime-service/` 迁回对应 owner。
 - 涉及目录/文件：

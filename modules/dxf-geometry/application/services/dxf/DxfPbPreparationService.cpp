@@ -9,8 +9,13 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <utility>
+
+#if SILIGEN_ENABLE_PROTOBUF
+#include "dxf_primitives.pb.h"
+#endif
 
 #ifdef MODULE_NAME
 #undef MODULE_NAME
@@ -44,6 +49,82 @@ bool NeedsGeneration(const std::filesystem::path& dxf_path, const std::filesyste
     const auto dxf_time = std::filesystem::last_write_time(dxf_path, dxf_time_ec);
     const auto pb_time = std::filesystem::last_write_time(pb_path, pb_time_ec);
     return !dxf_time_ec && !pb_time_ec && dxf_time > pb_time;
+}
+
+ImportDiagnosticsSummary DefaultImportDiagnosticsSummary() {
+    ImportDiagnosticsSummary summary;
+    summary.result_classification = "success";
+    summary.preview_ready = true;
+    summary.production_ready = true;
+    summary.summary = "DXF import succeeded and is ready for production.";
+    summary.resolved_units = "mm";
+    summary.resolved_unit_scale = 1.0;
+    return summary;
+}
+
+#if SILIGEN_ENABLE_PROTOBUF
+std::string ToClassificationText(const siligen::dxf::ImportResultClassification classification) {
+    switch (classification) {
+        case siligen::dxf::IMPORT_RESULT_SUCCESS:
+            return "success";
+        case siligen::dxf::IMPORT_RESULT_SUCCESS_WITH_WARNINGS:
+            return "success_with_warnings";
+        case siligen::dxf::IMPORT_RESULT_PREVIEW_ONLY:
+            return "preview_only";
+        case siligen::dxf::IMPORT_RESULT_FAILED:
+            return "failed";
+        case siligen::dxf::IMPORT_RESULT_UNSPECIFIED:
+        default:
+            return "unspecified";
+    }
+}
+
+ImportDiagnosticsSummary ToImportDiagnosticsSummary(const siligen::dxf::ImportDiagnostics& diagnostics) {
+    auto summary = DefaultImportDiagnosticsSummary();
+    summary.result_classification = ToClassificationText(diagnostics.classification());
+    summary.preview_ready = diagnostics.preview_ready();
+    summary.production_ready = diagnostics.production_ready();
+    summary.summary = diagnostics.summary().empty() ? summary.summary : diagnostics.summary();
+    summary.primary_code = diagnostics.primary_code();
+    summary.warning_codes.assign(diagnostics.warning_codes().begin(), diagnostics.warning_codes().end());
+    summary.error_codes.assign(diagnostics.error_codes().begin(), diagnostics.error_codes().end());
+    summary.resolved_units = diagnostics.resolved_units().empty() ? summary.resolved_units : diagnostics.resolved_units();
+    summary.resolved_unit_scale = diagnostics.resolved_unit_scale() <= 0.0
+                                      ? summary.resolved_unit_scale
+                                      : diagnostics.resolved_unit_scale();
+    return summary;
+}
+#endif
+
+Result<PreparedInputArtifact> LoadPreparedInputArtifact(const std::filesystem::path& pb_path) {
+    PreparedInputArtifact artifact;
+    artifact.prepared_path = pb_path.string();
+    artifact.import_diagnostics = DefaultImportDiagnosticsSummary();
+
+#if !SILIGEN_ENABLE_PROTOBUF
+    return Result<PreparedInputArtifact>::Success(std::move(artifact));
+#else
+    std::ifstream input(pb_path, std::ios::binary);
+    if (!input.good()) {
+        return Result<PreparedInputArtifact>::Failure(
+            Error(ErrorCode::FILE_NOT_FOUND,
+                  "prepared PB artifact not found: " + pb_path.string(),
+                  MODULE_NAME));
+    }
+
+    siligen::dxf::PathBundle bundle;
+    if (!bundle.ParseFromIstream(&input)) {
+        return Result<PreparedInputArtifact>::Failure(
+            Error(ErrorCode::FILE_FORMAT_INVALID,
+                  "prepared PB artifact parse failed: " + pb_path.string(),
+                  MODULE_NAME));
+    }
+
+    if (bundle.has_import_diagnostics()) {
+        artifact.import_diagnostics = ToImportDiagnosticsSummary(bundle.import_diagnostics());
+    }
+    return Result<PreparedInputArtifact>::Success(std::move(artifact));
+#endif
 }
 
 Result<std::filesystem::path> ResolvePreparedArtifactPath(const std::string& source_path) {
@@ -118,6 +199,15 @@ Result<std::string> DxfPbPreparationService::EnsurePbReady(const std::string& fi
     }
 
     return Result<std::string>::Success(pb_path.string());
+}
+
+Result<PreparedInputArtifact> DxfPbPreparationService::PrepareInputArtifact(const std::string& filepath) const {
+    auto ready_result = EnsurePbReady(filepath);
+    if (ready_result.IsError()) {
+        return Result<PreparedInputArtifact>::Failure(ready_result.GetError());
+    }
+
+    return LoadPreparedInputArtifact(std::filesystem::path(ready_result.Value()));
 }
 
 Result<void> DxfPbPreparationService::CleanupPreparedInput(const std::string& source_path) const {

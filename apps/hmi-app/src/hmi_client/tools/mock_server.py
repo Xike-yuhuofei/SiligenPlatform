@@ -710,34 +710,6 @@ class MockState:
             if method == "supply.close":
                 self.supply_valve_open = False
                 return {"result": {"supply_open": False}}
-            if method == "dxf.load":
-                self.dxf.loaded = True
-                self.dxf.artifact_id = f"artifact-{int(time.time() * 1000)}"
-                self.dxf.filepath = params.get("filepath", "")
-                self.dxf.segment_count = 120
-                self.dxf.total_length = 256.0
-                self.dxf.progress = 0.0
-                self.dxf.current_segment = 0
-                self.dxf.paused = False
-                self.dxf.current_job_id = ""
-                self.dxf.target_count = 0
-                self.dxf.completed_count = 0
-                self.dxf.preview_snapshot_hash = ""
-                self.dxf.preview_snapshot_id = ""
-                self.dxf.current_plan_id = ""
-                self.dxf.preview_generated_at = ""
-                self.dxf.preview_confirmed_at = ""
-                self.dxf.preview_state = "prepared"
-                self.dxf.preview_request_signature = ""
-                self.dxf.plan_dry_run = False
-                self.dxf.plan_speed_mm_s = 0.0
-                return {
-                    "result": {
-                        "loaded": True,
-                        "artifact_id": self.dxf.artifact_id,
-                        "segment_count": self.dxf.segment_count,
-                    }
-                }
             if method == "dxf.artifact.create":
                 self.dxf.loaded = True
                 self.dxf.artifact_id = f"artifact-{int(time.time() * 1000)}"
@@ -762,6 +734,16 @@ class MockState:
                         "created": True,
                         "artifact_id": self.dxf.artifact_id,
                         "filepath": self.dxf.filepath,
+                        "prepared_filepath": self.dxf.filepath.replace(".dxf", ".pb"),
+                        "import_result_classification": "success",
+                        "import_preview_ready": True,
+                        "import_production_ready": True,
+                        "import_summary": "DXF import succeeded and is ready for production.",
+                        "import_primary_code": "",
+                        "import_warning_codes": [],
+                        "import_error_codes": [],
+                        "import_resolved_units": "mm",
+                        "import_resolved_unit_scale": 1.0,
                         "segment_count": self.dxf.segment_count,
                     }
                 }
@@ -899,10 +881,20 @@ class MockState:
                         "artifact_id": self.dxf.artifact_id,
                         "plan_id": snapshot_id,
                         "plan_fingerprint": snapshot_hash,
+                        "prepared_filepath": self.dxf.filepath.replace(".dxf", ".pb"),
                         "segment_count": self.dxf.segment_count,
                         "point_count": point_count,
                         "total_length_mm": self.dxf.total_length,
                         "estimated_time_s": self.dxf.total_length / speed,
+                        "import_result_classification": "success",
+                        "import_preview_ready": True,
+                        "import_production_ready": True,
+                        "import_summary": "DXF import succeeded and is ready for production.",
+                        "import_primary_code": "",
+                        "import_warning_codes": [],
+                        "import_error_codes": [],
+                        "import_resolved_units": "mm",
+                        "import_resolved_unit_scale": 1.0,
                         "generated_at": generated_at,
                     }
                 }

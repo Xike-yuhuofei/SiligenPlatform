@@ -75,7 +75,6 @@ TEST(DxfPbPreparationServiceCommandGoldenTest, NonDefaultPreprocessConfigMatches
 
     auto config = std::make_shared<FakeConfigurationPort>();
     config->preprocess_config.normalize_units = true;
-    config->preprocess_config.strict_r12 = true;
     config->preprocess_config.approx_splines = true;
     config->preprocess_config.snap_enabled = true;
     config->preprocess_config.densify_enabled = false;

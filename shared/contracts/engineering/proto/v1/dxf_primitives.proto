@@ -36,6 +36,14 @@ enum DxfEntityType {
   DXF_ENTITY_POINT = 7;
 }
 
+enum ImportResultClassification {
+  IMPORT_RESULT_UNSPECIFIED = 0;
+  IMPORT_RESULT_SUCCESS = 1;
+  IMPORT_RESULT_SUCCESS_WITH_WARNINGS = 2;
+  IMPORT_RESULT_PREVIEW_ONLY = 3;
+  IMPORT_RESULT_FAILED = 4;
+}
+
 message LinePrimitive {
   Point2D start = 1;
   Point2D end = 2;
@@ -122,8 +130,25 @@ message PathHeader {
   ToleranceSettings tolerance = 5;
 }
 
+message ImportDiagnostics {
+  ImportResultClassification classification = 1;
+  bool preview_ready = 2;
+  bool production_ready = 3;
+  string summary = 4;
+  string primary_code = 5;
+  repeated string warning_codes = 6;
+  repeated string error_codes = 7;
+  repeated string warning_messages = 8;
+  repeated string error_messages = 9;
+  repeated string ignored_entity_types = 10;
+  repeated string rejected_entity_types = 11;
+  string resolved_units = 12;
+  double resolved_unit_scale = 13;
+}
+
 message PathBundle {
   PathHeader header = 1;
   repeated Primitive primitives = 2;
   repeated PrimitiveMeta metadata = 3;
+  ImportDiagnostics import_diagnostics = 4;
 }

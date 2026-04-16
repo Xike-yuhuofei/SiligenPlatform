@@ -1,10 +1,10 @@
 {
   "preview_path": "samples/dxf/arc_circle_quadrants-preview.html",
   "entity_count": 4,
-  "segment_count": 32,
-  "point_count": 36,
-  "total_length_mm": 125.47920359313322,
-  "estimated_time_s": 12.547920359313322,
+  "segment_count": 504,
+  "point_count": 508,
+  "total_length_mm": 125.662892383397,
+  "estimated_time_s": 12.5662892383397,
   "width_mm": 40.0,
   "height_mm": 40.0
 }

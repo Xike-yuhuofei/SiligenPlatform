@@ -1,6 +1,6 @@
 # 联机测试矩阵 v1
 
-更新时间：`2026-04-02`
+更新时间：`2026-04-16`
 
 ## 1. 目标与非目标
 
@@ -21,7 +21,6 @@
 | 场景簇 | authority artifact | owner 层 | consumer-only 层 |
 | --- | --- | --- | --- |
 | HIL 状态机闭环 | `hil-closed-loop-summary.json` | `tests/e2e/hardware-in-loop/` | `docs/runtime/`、发布收尾文档 |
-| HIL TCP recovery | `hil-tcp-recovery-summary.json` | `tests/e2e/hardware-in-loop/` | `docs/validation/`、专项 closeout |
 | HIL controlled gate | `hil-controlled-gate-summary.json` | `tests/e2e/hardware-in-loop/verify_hil_controlled_gate.py` | `docs/runtime/field-acceptance.md`、发布流程 |
 | DXF 真机 dry-run 主链 | `real-dxf-machine-dryrun.json` 及同批次观测工件 | `tests/e2e/hardware-in-loop/` | 诊断/回归说明文档 |
 | 在线预览证据 | `preview-verdict.json` + `plan-prepare.json` + `snapshot.json` | `tests/e2e/hardware-in-loop/` + `tests/contracts/` | HMI 展示、验证汇总 |
@@ -46,7 +45,6 @@
 | HMI failure stage 注入 | `apps/hmi-app/scripts/verify-online-ready-timeout.ps1` | `SUPERVISOR_DIAG` / `SUPERVISOR_EVENT` 映射证据 | P0 正式入口 |
 | HMI recovery | `apps/hmi-app/scripts/verify-online-recovery-loop.ps1` | 恢复前后事件与最终 `online_ready=true` | P0 正式入口 |
 | 多轮 home/closed-loop matrix | `tests/e2e/hardware-in-loop/run_case_matrix.py`，或根级 `test.ps1 -IncludeHilCaseMatrix` | `case-matrix-summary.json/md` | P1 补充入口，已接 root validation opt-in，已接 controlled gate / release-check 默认门禁 |
-| HIL TCP recovery | `tests/e2e/hardware-in-loop/run_hil_tcp_recovery.py` | `hil-tcp-recovery-summary.json/md` | P1 补充入口，当前不接 controlled gate / release-check |
 | DXF 批量在线预览 | `tests/e2e/hardware-in-loop/run_real_dxf_preview_suite.py` | suite summary + per-case `preview-verdict.json` + evidence bundle | owner-local 聚合入口，用于 full-online blocker 集合 |
 | 多 DXF dry-run 回归 | `tests/e2e/hardware-in-loop/run_real_dxf_machine_dryrun_suite.py` | suite summary + per-case dry-run 报告 + evidence bundle | owner-local 聚合入口，用于 full-online blocker 集合 |
 | HMI full-online 汇总 | `apps/hmi-app/scripts/run_full_online_hmi_suite.py` | suite summary + per-scenario logs + evidence bundle | owner-local 聚合入口，用于 full-online blocker 集合 |
@@ -80,7 +78,6 @@
 
 | ID | 层级 | 场景 | 建议落点 | 当前状态 |
 | --- | --- | --- | --- | --- |
-| `P1-01` | L2 | 断连恢复 | `tests/e2e/hardware-in-loop/run_hil_tcp_recovery.py` | `existing`：独立 authority，仅覆盖 TCP session disconnect/reconnect recovery，不接 formal gate |
 | `P1-02` | L3 | 门/急停/限位阻断专项 | 扩 `run_real_dxf_machine_dryrun.py` 的负例参数矩阵 | `planned` |
 | `P1-03` | L4 | DXF 基线集批量在线预览 | `tests/e2e/hardware-in-loop/run_real_dxf_preview_suite.py` | `existing`：聚合 `rect_diag` / `bra` / `arc_circle_quadrants`，产出 suite summary 与 evidence bundle，不替代 controlled publish |
 | `P1-04` | L5 | HMI runtime actions 批量在线回归 | `apps/hmi-app/scripts/run_online_runtime_action_matrix.py` + `online-smoke.ps1` / `ui_qtest.py` | `existing` |
@@ -96,18 +93,15 @@
 
 ## 5. 必须证据标准
 
-### 5.1 HIL 状态机 / recovery 类
+### 5.1 HIL 状态机类
 
 至少保留：
 
 - `hil-closed-loop-summary.json`
 - `hil-closed-loop-summary.md`
-- `hil-tcp-recovery-summary.json`
-- `hil-tcp-recovery-summary.md`
 - `failure_context`
 - `recent_status_snapshot`
 - `state_transition_checks`（`hil-closed-loop`）
-- `rounds[].baseline_status/probe_before_disconnect/disconnect_ack/post_reconnect_status/probe_after_reconnect`（`hil-tcp-recovery`）
 
 ### 5.2 在线预览类
 
@@ -226,7 +220,6 @@
 
 ### 第三阶段
 
-- 已完成 `P1-01` 的独立 HIL TCP recovery authority。
 - 已完成 `P1-03`、`P1-05` 与 `P2-01` 的 owner-local 套件化聚合。
 - 当前 full-online 推荐执行顺序固定为：`preview suite -> dry-run suite -> HMI full-online suite -> soak profiles -> controlled HIL signed publish`。
 

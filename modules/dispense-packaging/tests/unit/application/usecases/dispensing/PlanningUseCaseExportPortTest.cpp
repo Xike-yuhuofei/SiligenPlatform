@@ -89,7 +89,7 @@ public:
     ResultVoid ReloadConfiguration() override { return ResultVoid::Success(); }
     ResultT<Siligen::Domain::Configuration::Ports::DispensingConfig> GetDispensingConfig() const override { return ResultT<Siligen::Domain::Configuration::Ports::DispensingConfig>::Success({}); }
     ResultVoid SetDispensingConfig(const Siligen::Domain::Configuration::Ports::DispensingConfig&) override { return ResultVoid::Success(); }
-    ResultT<Siligen::Domain::Configuration::Ports::DxfPreprocessConfig> GetDxfPreprocessConfig() const override { return ResultT<Siligen::Domain::Configuration::Ports::DxfPreprocessConfig>::Success({}); }
+    ResultT<Siligen::Domain::Configuration::Ports::DxfImportConfig> GetDxfImportConfig() const override { return ResultT<Siligen::Domain::Configuration::Ports::DxfImportConfig>::Success({}); }
     ResultT<Siligen::Domain::Configuration::Ports::DxfTrajectoryConfig> GetDxfTrajectoryConfig() const override { return ResultT<Siligen::Domain::Configuration::Ports::DxfTrajectoryConfig>::Success({}); }
     ResultT<Siligen::Shared::Types::DiagnosticsConfig> GetDiagnosticsConfig() const override { return ResultT<Siligen::Shared::Types::DiagnosticsConfig>::Success({}); }
     ResultT<Siligen::Domain::Configuration::Ports::MachineConfig> GetMachineConfig() const override {

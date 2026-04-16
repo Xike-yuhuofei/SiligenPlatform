@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import subprocess
@@ -198,15 +199,20 @@ def _run_closed_loop_case(
     round_report: MatrixRoundReport,
 ) -> None:
     dxf_step, _ = _run_tcp_step(
-        name="tcp-dxf-load",
+        name="tcp-dxf-artifact-create",
         client=client,
-        method="dxf.load",
-        params={"filepath": str(args.dxf_file)},
+        method="dxf.artifact.create",
+        params={
+            "filename": args.dxf_file.name,
+            "original_filename": args.dxf_file.name,
+            "content_type": "application/dxf",
+            "file_content_b64": base64.b64encode(args.dxf_file.read_bytes()).decode("ascii"),
+        },
         timeout_seconds=60.0,
     )
     round_report.steps.append(asdict(dxf_step))
     if dxf_step.status != "passed":
-        raise RuntimeError(dxf_step.note or "dxf.load failed")
+        raise RuntimeError(dxf_step.note or "dxf.artifact.create failed")
 
     status_step, _ = _run_tcp_step(
         name="tcp-status",

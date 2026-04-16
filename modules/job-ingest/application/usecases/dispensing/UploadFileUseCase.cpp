@@ -47,17 +47,11 @@ Result<UploadResponse> UploadFileUseCase::Execute(const UploadRequest& request) 
                                                      "UploadFileUseCase"));
     }
 
-    // 2. 验证 DXF 格式
-    auto dxf_validation = ValidateFileFormat(request.file_content);
-    if (!dxf_validation.IsSuccess()) {
-        return Result<UploadResponse>::Failure(dxf_validation.GetError());
-    }
-
-    // 3. 生成安全文件名
+    // 2. 生成安全文件名
     std::string safe_filename = GenerateSafeFilename(request.original_filename);
     SILIGEN_LOG_INFO("Generated safe filename: " + safe_filename);
 
-    // 4. 验证文件（大小、类型）
+    // 3. 验证文件（大小、类型）
     std::vector<std::string> allowed_extensions = {"dxf", "DXF"};
     auto validation_result = storage_port_->Validate(request, max_file_size_mb_, allowed_extensions);
 
@@ -65,7 +59,7 @@ Result<UploadResponse> UploadFileUseCase::Execute(const UploadRequest& request) 
         return Result<UploadResponse>::Failure(validation_result.GetError());
     }
 
-    // 5. 存储文件
+    // 4. 存储文件
     auto store_result = storage_port_->Store(request, safe_filename);
 
     if (!store_result.IsSuccess()) {
@@ -73,7 +67,7 @@ Result<UploadResponse> UploadFileUseCase::Execute(const UploadRequest& request) 
     }
     const auto& stored_path = store_result.Value();
 
-    // 6. 生成对应的准备产物
+    // 5. 生成对应的准备产物
     auto prepared_result = preparation_port_->EnsurePreparedInput(stored_path);
     if (!prepared_result.IsSuccess()) {
         CleanupGeneratedArtifacts(stored_path);
@@ -84,10 +78,12 @@ Result<UploadResponse> UploadFileUseCase::Execute(const UploadRequest& request) 
     UploadResponse response;
     response.success = true;
     response.filepath = stored_path;
+    response.prepared_filepath = prepared_result.Value().prepared_path;
     response.original_name = request.original_filename;
     response.size = request.file_size;
     response.generated_filename = safe_filename;
     response.timestamp = std::chrono::system_clock::now().time_since_epoch().count();
+    response.import_diagnostics = prepared_result.Value().import_diagnostics;
 
     SILIGEN_LOG_INFO("File uploaded successfully: " + response.filepath);
 
@@ -143,44 +139,6 @@ std::string UploadFileUseCase::GenerateSafeFilename(const std::string& original_
     filename_ss << uuid << "_" << timestamp << "_" << base_name << extension;
 
     return filename_ss.str();
-}
-
-Result<void> UploadFileUseCase::ValidateFileFormat(const std::vector<uint8_t>& file_content) {
-    // DXF 文件格式验证（简化版）
-    // 检查文件头是否包含 DXF 标识
-
-    if (file_content.size() < 20) {
-        return Result<void>::Failure(
-            Error(ErrorCode::FILE_FORMAT_INVALID, "File too small to be a valid DXF file", "UploadFileUseCase"));
-    }
-
-    // DXF 文件通常以文本开头，检查前几个字节
-    std::string header(file_content.begin(), file_content.begin() + std::min(size_t(100), file_content.size()));
-
-    // 检查是否包含 DXF 标识（ASCII DXF 以 0 开始，然后是 SECTION）
-    // 这是一个简化的检查，实际 DXF 格式更复杂
-    bool is_valid_dxf = false;
-
-    // 检查 ASCII DXF 格式
-    if (header.find("SECTION") != std::string::npos || header.find("0") == 0 ||  // DXF 组码
-        header.find("$ACADVER") != std::string::npos) {
-        is_valid_dxf = true;
-    }
-
-    // 检查二进制 DXF 格式（以 AutoCAD Binary DXF 开头）
-    if (file_content.size() >= 22) {
-        std::string binary_sig(file_content.begin(), file_content.begin() + 22);
-        if (binary_sig.find("AutoCAD Binary DXF") != std::string::npos) {
-            is_valid_dxf = true;
-        }
-    }
-
-    if (!is_valid_dxf) {
-        return Result<void>::Failure(Error(
-            ErrorCode::FILE_FORMAT_INVALID, "File does not appear to be a valid DXF file", "UploadFileUseCase"));
-    }
-
-    return Result<void>::Success();
 }
 
 void UploadFileUseCase::CleanupGeneratedArtifacts(const std::string& stored_path) const noexcept {

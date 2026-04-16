@@ -87,14 +87,14 @@ class TcpClient:
 
         try:
             msg = json.dumps(request) + "\n"
-            if method in ("dxf.load", "home", "home.go", "home.auto"):
+            if method in ("home", "home.go", "home.auto"):
                 _LOGGER.info("TX %s id=%s payload=%s", method, req_id, msg.strip())
             sock = self._socket
             if sock is None:
                 return {"error": {"code": -1, "message": "TCP未连接"}}
             sock.sendall(msg.encode("utf-8"))
             response = response_queue.get(timeout=timeout)
-            if method in ("dxf.load", "home", "home.go", "home.auto"):
+            if method in ("home", "home.go", "home.auto"):
                 _LOGGER.info(
                     "RX %s id=%s payload=%s",
                     method,
@@ -105,8 +105,6 @@ class TcpClient:
         except Empty:
             return {"error": {"code": -1, "message": f"Request timed out ({timeout}s)"}}
         except Exception as e:
-            if method == "dxf.load":
-                _LOGGER.error("RX %s id=%s error=%s", method, req_id, e)
             msg = str(e) or "Unknown socket error"
             return {"error": {"code": -1, "message": msg}}
         finally:

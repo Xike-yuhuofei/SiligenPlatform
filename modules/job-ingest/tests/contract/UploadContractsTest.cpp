@@ -37,10 +37,14 @@ TEST(UploadContractsTest, UploadResponseDefaultsRemainNeutral) {
 
     EXPECT_FALSE(response.success);
     EXPECT_TRUE(response.filepath.empty());
+    EXPECT_TRUE(response.prepared_filepath.empty());
     EXPECT_TRUE(response.original_name.empty());
     EXPECT_EQ(response.size, 0u);
     EXPECT_TRUE(response.generated_filename.empty());
     EXPECT_EQ(response.timestamp, 0);
+    EXPECT_TRUE(response.import_diagnostics.result_classification.empty());
+    EXPECT_FALSE(response.import_diagnostics.preview_ready);
+    EXPECT_FALSE(response.import_diagnostics.production_ready);
 }
 
 }  // namespace

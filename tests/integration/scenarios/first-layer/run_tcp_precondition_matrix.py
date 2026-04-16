@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import shutil
@@ -36,6 +37,7 @@ from test_kit.evidence_bundle import (  # noqa: E402
 )
 from runtime_gateway_harness import load_connection_params, tcp_connect_and_ensure_ready  # noqa: E402
 from runtime_gateway_harness import build_process_env, resolve_default_exe  # noqa: E402
+from recipe_runtime_support import resolve_active_recipe  # noqa: E402
 
 DEFAULT_DXF_FILE = ROOT / "samples" / "dxf" / "rect_diag.dxf"
 DEFAULT_DXF_PB_SCRIPT = ROOT / "scripts" / "engineering-data" / "dxf_to_pb.py"
@@ -232,6 +234,10 @@ def _prepare_isolated_workspace(report_dir: Path) -> Path:
         shutil.copy2(DEFAULT_AGENTS_FILE, isolated_root / "AGENTS.md")
 
     source_config = ROOT / "config" / "machine" / "machine_config.ini"
+    source_recipes = ROOT / "data" / "recipes"
+    if source_recipes.exists():
+        shutil.copytree(source_recipes, isolated_root / "data" / "recipes", dirs_exist_ok=True)
+
     config_text = source_config.read_text(encoding="utf-8")
     trajectory_script = str(DEFAULT_DXF_TRAJECTORY_SCRIPT.resolve())
     rewritten_lines: list[str] = []
@@ -891,94 +897,132 @@ def main() -> int:
                     )
                 )
             else:
-                load_response = client.send_request(
-                    "dxf.load",
-                    {"filepath": str(args.dxf_file)},
-                    timeout_seconds=30.0,
-                )
-                if "error" in load_response:
+                recipe_id = ""
+                version_id = ""
+                try:
+                    recipe_id, version_id = resolve_active_recipe(client, timeout_seconds=10.0)
+                except Exception as exc:
                     results.append(
                         ScenarioResult(
                             scenario_id="S2-preview-confirm-required",
                             status="failed",
-                            expected="dxf.load success before preview confirm gate",
-                            actual=_truncate_json(load_response),
-                            note="dxf.load failed; cannot evaluate preview confirm gate",
-                            response=_truncate_json(load_response),
+                            expected="recipe.list returns active recipe/version before preview confirm gate",
+                            actual=str(exc),
+                            note="recipe resolution failed; cannot evaluate preview confirm gate",
                         )
                     )
-                else:
-                    plan_params: dict[str, Any] = {
-                        "dispensing_speed_mm_s": 10.0,
-                        "dry_run": False,
-                    }
-                    artifact_id = str(load_response.get("result", {}).get("artifact_id", "")).strip()
-                    if artifact_id:
-                        plan_params["artifact_id"] = artifact_id
+                    recipe_id = ""
+                    version_id = ""
 
-                    plan_response = client.send_request(
-                        "dxf.plan.prepare",
-                        plan_params,
+                if not recipe_id or not version_id:
+                    pass
+                else:
+                    artifact_response = client.send_request(
+                        "dxf.artifact.create",
+                        {
+                            "filename": args.dxf_file.name,
+                            "original_filename": args.dxf_file.name,
+                            "content_type": "application/dxf",
+                            "file_content_b64": base64.b64encode(args.dxf_file.read_bytes()).decode("ascii"),
+                        },
                         timeout_seconds=30.0,
                     )
-                    if "error" in plan_response:
+                    if "error" in artifact_response:
                         results.append(
                             ScenarioResult(
                                 scenario_id="S2-preview-confirm-required",
                                 status="failed",
-                                expected="dxf.plan.prepare success before preview confirm gate",
-                                actual=_truncate_json(plan_response),
-                                note="dxf.plan.prepare failed; cannot evaluate preview confirm gate",
-                                response=_truncate_json(plan_response),
+                                expected="dxf.artifact.create success before preview confirm gate",
+                                actual=_truncate_json(artifact_response),
+                                note="dxf.artifact.create failed; cannot evaluate preview confirm gate",
+                                response=_truncate_json(artifact_response),
                             )
                         )
                     else:
-                        plan_id = str(plan_response.get("result", {}).get("plan_id", "")).strip()
-                        snapshot_response = client.send_request(
-                            "dxf.preview.snapshot",
-                            {"plan_id": plan_id},
-                            timeout_seconds=30.0,
-                        )
-                        if "error" in snapshot_response:
+                        artifact_id = str(artifact_response.get("result", {}).get("artifact_id", "")).strip()
+                        if not artifact_id:
                             results.append(
                                 ScenarioResult(
                                     scenario_id="S2-preview-confirm-required",
                                     status="failed",
-                                    expected="dxf.preview.snapshot success before preview confirm gate",
-                                    actual=_truncate_json(snapshot_response),
-                                    note="dxf.preview.snapshot failed; cannot evaluate preview confirm gate",
-                                    response=_truncate_json(snapshot_response),
+                                    expected="dxf.artifact.create returns artifact_id before preview confirm gate",
+                                    actual=_truncate_json(artifact_response),
+                                    note="artifact_id missing; cannot evaluate preview confirm gate",
+                                    response=_truncate_json(artifact_response),
                                 )
                             )
                         else:
-                            s2_response = client.send_request(
-                                "dxf.job.start",
-                                {
-                                    "plan_id": str(plan_response.get("result", {}).get("plan_id", "")).strip(),
-                                    "plan_fingerprint": str(
-                                        plan_response.get("result", {}).get("plan_fingerprint", "")
-                                    ).strip(),
-                                    "target_count": 1,
-                                },
-                                timeout_seconds=15.0,
-                            )
+                            plan_params: dict[str, Any] = {
+                                "artifact_id": artifact_id,
+                                "recipe_id": recipe_id,
+                                "version_id": version_id,
+                                "dispensing_speed_mm_s": 10.0,
+                                "dry_run": False,
+                            }
 
-                            s2_result = _expect_error_code(
-                                scenario_id="S2-dxf-job-start-without-preview-confirm",
-                                response=s2_response,
-                                expected_code=2901,
-                                expected_desc="error_code=2901",
+                            plan_response = client.send_request(
+                                "dxf.plan.prepare",
+                                plan_params,
+                                timeout_seconds=30.0,
                             )
-                            if home_attempt_note:
-                                s2_result.note = (
-                                    f"{home_attempt_note}; {s2_result.note}"
-                                    if s2_result.note
-                                    else home_attempt_note
+                            if "error" in plan_response:
+                                results.append(
+                                    ScenarioResult(
+                                        scenario_id="S2-preview-confirm-required",
+                                        status="failed",
+                                        expected="dxf.plan.prepare success before preview confirm gate",
+                                        actual=_truncate_json(plan_response),
+                                        note="dxf.plan.prepare failed; cannot evaluate preview confirm gate",
+                                        response=_truncate_json(plan_response),
+                                    )
                                 )
+                            else:
+                                plan_id = str(plan_response.get("result", {}).get("plan_id", "")).strip()
+                                snapshot_response = client.send_request(
+                                    "dxf.preview.snapshot",
+                                    {"plan_id": plan_id},
+                                    timeout_seconds=30.0,
+                                )
+                                if "error" in snapshot_response:
+                                    results.append(
+                                        ScenarioResult(
+                                            scenario_id="S2-preview-confirm-required",
+                                            status="failed",
+                                            expected="dxf.preview.snapshot success before preview confirm gate",
+                                            actual=_truncate_json(snapshot_response),
+                                            note="dxf.preview.snapshot failed; cannot evaluate preview confirm gate",
+                                            response=_truncate_json(snapshot_response),
+                                        )
+                                    )
+                                else:
+                                    s2_response = client.send_request(
+                                        "dxf.job.start",
+                                        {
+                                            "plan_id": str(plan_response.get("result", {}).get("plan_id", "")).strip(),
+                                            "plan_fingerprint": str(
+                                                plan_response.get("result", {}).get("plan_fingerprint", "")
+                                            ).strip(),
+                                            "target_count": 1,
+                                        },
+                                        timeout_seconds=15.0,
+                                    )
 
-                            if s2_result.status == "failed" and "response has no error payload" in s2_result.note:
-                                s2_result.note = "dxf.job.start unexpectedly succeeded before preview.confirm"
-                            results.append(s2_result)
+                                    s2_result = _expect_error_code(
+                                        scenario_id="S2-dxf-job-start-without-preview-confirm",
+                                        response=s2_response,
+                                        expected_code=2901,
+                                        expected_desc="error_code=2901",
+                                    )
+                                    if home_attempt_note:
+                                        s2_result.note = (
+                                            f"{home_attempt_note}; {s2_result.note}"
+                                            if s2_result.note
+                                            else home_attempt_note
+                                        )
+
+                                    if s2_result.status == "failed" and "response has no error payload" in s2_result.note:
+                                        s2_result.note = "dxf.job.start unexpectedly succeeded before preview.confirm"
+                                    results.append(s2_result)
 
         try:
             client.send_request("disconnect", {}, timeout_seconds=5.0)

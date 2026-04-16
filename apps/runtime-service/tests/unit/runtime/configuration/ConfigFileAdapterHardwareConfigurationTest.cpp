@@ -211,6 +211,25 @@ TEST(ConfigFileAdapterHardwareConfigurationTest, DefaultsMissingAxisEncoderFlags
     std::filesystem::remove(ini_path, ec);
 }
 
+TEST(ConfigFileAdapterHardwareConfigurationTest, RejectsRetiredStrictR2000KeyInDxfPreprocessSection) {
+    const auto ini_path = WriteTempIni(
+        "retired_strict_r2000",
+        BuildBaseIni() +
+            "\n"
+            "[DXFImport]\n"
+            "strict_r2000=false\n");
+
+    ConfigFileAdapter adapter(ini_path.string());
+    auto result = adapter.GetDxfImportConfig();
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), Siligen::Shared::Types::ErrorCode::CONFIGURATION_ERROR);
+    EXPECT_NE(result.GetError().GetMessage().find("strict_r2000"), std::string::npos);
+
+    std::error_code ec;
+    std::filesystem::remove(ini_path, ec);
+}
+
 TEST(ConfigFileAdapterHardwareConfigurationTest, LoadsHomeBackoffFlagFromHomingSections) {
     auto ini = BuildBaseIni();
     ini = ReplaceAll(ini,

@@ -31,8 +31,6 @@ def main(host: str = "127.0.0.1", port: int = 9527) -> int:
         handle.write("0\nSECTION\n2\nENTITIES\n0\nENDSEC\n0\nEOF\n")
         sample_dxf_path = handle.name
 
-    print("dxf_load:", proto.dxf_load(sample_dxf_path))
-    print("dxf_info:", proto.dxf_get_info())
     recipes_ok, recipes_payload, recipes_error = proto.recipe_list()
     print("recipe_list:", recipes_ok, recipes_payload if recipes_ok else recipes_error)
     if not recipes_ok or not recipes_payload:
@@ -46,6 +44,7 @@ def main(host: str = "127.0.0.1", port: int = 9527) -> int:
         return 1
     artifact_ok, artifact_payload, artifact_error = proto.dxf_create_artifact(sample_dxf_path)
     print("dxf_create_artifact:", artifact_ok, artifact_payload if artifact_ok else artifact_error)
+    print("dxf_info:", proto.dxf_get_info())
     artifact_id = artifact_payload.get("artifact_id", "") if artifact_ok else ""
     plan_ok, plan_payload, plan_error = proto.dxf_prepare_plan(
         artifact_id,

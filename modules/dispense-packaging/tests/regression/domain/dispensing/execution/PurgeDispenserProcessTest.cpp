@@ -45,9 +45,9 @@ class FakeConfigurationPort : public Siligen::Domain::Configuration::Ports::ICon
         return NotImplementedVoid("SetDispensingConfig");
     }
 
-    Result<Siligen::Domain::Configuration::Ports::DxfPreprocessConfig> GetDxfPreprocessConfig() const override {
-        return Result<Siligen::Domain::Configuration::Ports::DxfPreprocessConfig>::Success(
-            Siligen::Domain::Configuration::Ports::DxfPreprocessConfig());
+    Result<Siligen::Domain::Configuration::Ports::DxfImportConfig> GetDxfImportConfig() const override {
+        return Result<Siligen::Domain::Configuration::Ports::DxfImportConfig>::Success(
+            Siligen::Domain::Configuration::Ports::DxfImportConfig());
     }
 
     Result<Siligen::Domain::Configuration::Ports::DxfTrajectoryConfig> GetDxfTrajectoryConfig() const override {

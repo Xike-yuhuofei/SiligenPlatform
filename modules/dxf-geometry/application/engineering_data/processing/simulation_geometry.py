@@ -8,14 +8,14 @@ from engineering_data.proto import dxf_primitives_pb2 as pb
 
 
 _TWO_PI = math.pi * 2.0
-R12_PRIMARY_PRIMITIVE_TYPES = {
+CANONICAL_CORE_PRIMITIVE_TYPES = {
     pb.PRIMITIVE_LINE,
     pb.PRIMITIVE_ARC,
     pb.PRIMITIVE_CIRCLE,
     pb.PRIMITIVE_CONTOUR,
     pb.PRIMITIVE_POINT,
 }
-FALLBACK_PRIMITIVE_TYPES = {
+CANONICAL_HIGH_ORDER_PRIMITIVE_TYPES = {
     pb.PRIMITIVE_SPLINE,
     pb.PRIMITIVE_ELLIPSE,
 }
@@ -161,7 +161,7 @@ def _contour_to_segments(contour: pb.ContourPrimitive, max_seg: float) -> List[d
     return segments
 
 
-def primitive_to_segments_r12(primitive: pb.Primitive, max_seg: float) -> List[dict] | None:
+def primitive_to_segments_core(primitive: pb.Primitive, max_seg: float) -> List[dict] | None:
     if primitive.type == pb.PRIMITIVE_LINE:
         return _line_to_segments(primitive.line)
     if primitive.type == pb.PRIMITIVE_ARC:
@@ -181,7 +181,7 @@ def primitive_to_segments_r12(primitive: pb.Primitive, max_seg: float) -> List[d
     return None
 
 
-def primitive_to_segments_fallback(primitive: pb.Primitive, max_seg: float) -> List[dict] | None:
+def primitive_to_segments_high_order(primitive: pb.Primitive, max_seg: float) -> List[dict] | None:
     if primitive.type == pb.PRIMITIVE_SPLINE:
         return _spline_to_segments(primitive.spline)
     if primitive.type == pb.PRIMITIVE_ELLIPSE:
@@ -190,12 +190,12 @@ def primitive_to_segments_fallback(primitive: pb.Primitive, max_seg: float) -> L
 
 
 def primitive_to_segments(primitive: pb.Primitive, max_seg: float) -> List[dict]:
-    r12_segments = primitive_to_segments_r12(primitive, max_seg)
-    if r12_segments is not None:
-        return r12_segments
-    fallback_segments = primitive_to_segments_fallback(primitive, max_seg)
-    if fallback_segments is not None:
-        return fallback_segments
+    core_segments = primitive_to_segments_core(primitive, max_seg)
+    if core_segments is not None:
+        return core_segments
+    high_order_segments = primitive_to_segments_high_order(primitive, max_seg)
+    if high_order_segments is not None:
+        return high_order_segments
     raise ValueError(f"Unsupported primitive type: {primitive.type}")
 
 
@@ -216,22 +216,22 @@ def count_skipped_points(bundle: pb.PathBundle) -> int:
     return sum(1 for primitive in bundle.primitives if primitive.type == pb.PRIMITIVE_POINT)
 
 
-def count_fallback_primitives(bundle: pb.PathBundle) -> dict[str, int]:
+def count_high_order_primitives(bundle: pb.PathBundle) -> dict[str, int]:
     counts: dict[str, int] = {}
     type_names = {
         pb.PRIMITIVE_SPLINE: "SPLINE",
         pb.PRIMITIVE_ELLIPSE: "ELLIPSE",
     }
     for primitive in bundle.primitives:
-        if primitive.type not in FALLBACK_PRIMITIVE_TYPES:
+        if primitive.type not in CANONICAL_HIGH_ORDER_PRIMITIVE_TYPES:
             continue
         name = type_names.get(int(primitive.type), f"TYPE_{primitive.type}")
         counts[name] = counts.get(name, 0) + 1
     return counts
 
 
-def bundle_contains_fallback_primitives(bundle: pb.PathBundle) -> bool:
-    return any(primitive.type in FALLBACK_PRIMITIVE_TYPES for primitive in bundle.primitives)
+def bundle_contains_high_order_primitives(bundle: pb.PathBundle) -> bool:
+    return any(primitive.type in CANONICAL_HIGH_ORDER_PRIMITIVE_TYPES for primitive in bundle.primitives)
 
 
 def collect_export_notes(bundle: pb.PathBundle) -> List[str]:
@@ -239,10 +239,6 @@ def collect_export_notes(bundle: pb.PathBundle) -> List[str]:
     skipped_points = count_skipped_points(bundle)
     if skipped_points:
         notes.append("Skipped %d point primitives because the runtime simulation path only accepts path segments." % skipped_points)
-    fallback_counts = count_fallback_primitives(bundle)
-    if fallback_counts:
-        summary = ", ".join(f"{name}={fallback_counts[name]}" for name in sorted(fallback_counts))
-        notes.append(f"Used non-R12 fallback primitive conversions for: {summary}.")
     if any(primitive.type == pb.PRIMITIVE_SPLINE for primitive in bundle.primitives):
         notes.append("Spline primitives were linearized into LINE segments.")
     if any(primitive.type == pb.PRIMITIVE_ELLIPSE for primitive in bundle.primitives):
