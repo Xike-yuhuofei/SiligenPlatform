@@ -4,7 +4,6 @@ import subprocess
 import sys
 import tempfile
 import unittest
-import hashlib
 from pathlib import Path
 from unittest.mock import patch
 
@@ -119,7 +118,7 @@ class OfflinePreviewBuilderTest(unittest.TestCase):
             local_app_data = temp_root / "localappdata"
             local_app_data.mkdir()
 
-            workspace_build_root = workspace_root / "build" / "control-apps"
+            workspace_build_root = workspace_root / "build"
             localappdata_build_root = local_app_data / "SiligenSuite" / "control-apps-build"
             workspace_bin = workspace_build_root / "bin" / "Debug"
             localappdata_bin = localappdata_build_root / "bin" / "Debug"
@@ -140,7 +139,7 @@ class OfflinePreviewBuilderTest(unittest.TestCase):
 
         self.assertEqual(resolved, workspace_cli.resolve())
 
-    def test_resolve_planner_cli_executable_accepts_explicit_override_even_if_cache_points_elsewhere(self) -> None:
+    def test_resolve_planner_cli_executable_rejects_explicit_override_outside_workspace_build(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)
             workspace_root = temp_root / "workspace"
@@ -163,38 +162,18 @@ class OfflinePreviewBuilderTest(unittest.TestCase):
                 {_CONTROL_APPS_BUILD_ROOT_ENV: str(override_root)},
                 clear=False,
             ):
-                resolved = _resolve_planner_cli_executable(workspace_root)
+                with self.assertRaisesRegex(FileNotFoundError, "siligen_planner_cli.exe"):
+                    _resolve_planner_cli_executable(workspace_root)
 
-        self.assertEqual(resolved, override_cli.resolve())
 
-    def test_resolve_planner_cli_executable_supports_workspace_ca_build_root(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_root = Path(temp_dir)
-            workspace_root = temp_root / "workspace"
-            workspace_root.mkdir()
-            build_root = workspace_root / "build" / "ca"
-            build_bin = build_root / "bin" / "Debug"
-            build_bin.mkdir(parents=True)
-
-            cli_path = build_bin / "siligen_planner_cli.exe"
-            cli_path.write_text("", encoding="utf-8")
-            (build_root / "CMakeCache.txt").write_text(
-                f"CMAKE_HOME_DIRECTORY:INTERNAL={workspace_root}\n",
-                encoding="utf-8",
-            )
-
-            resolved = _resolve_planner_cli_executable(workspace_root)
-
-        self.assertEqual(resolved, cli_path.resolve())
-
-    def test_resolve_planner_cli_executable_supports_workspace_token_build_root(self) -> None:
+    def test_resolve_planner_cli_executable_ignores_workspace_token_build_root(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)
             workspace_root = temp_root / "workspace"
             workspace_root.mkdir()
             local_app_data = temp_root / "localappdata"
             ss_root = local_app_data / "SS"
-            token = hashlib.sha256(str(workspace_root.resolve()).lower().encode("utf-8")).hexdigest()[:12]
+            token = "1234567890ab"
             token_build_root = ss_root / f"cab-{token}"
             token_bin = token_build_root / "bin" / "Debug"
             token_bin.mkdir(parents=True)
@@ -207,9 +186,8 @@ class OfflinePreviewBuilderTest(unittest.TestCase):
             )
 
             with patch.dict(os.environ, {"LOCALAPPDATA": str(local_app_data)}, clear=False):
-                resolved = _resolve_planner_cli_executable(workspace_root)
-
-        self.assertEqual(resolved, token_cli.resolve())
+                with self.assertRaisesRegex(FileNotFoundError, "siligen_planner_cli.exe"):
+                    _resolve_planner_cli_executable(workspace_root)
 
 
 if __name__ == "__main__":

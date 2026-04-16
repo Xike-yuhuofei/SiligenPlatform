@@ -93,25 +93,6 @@ function Get-WorkspaceRelativePath {
     return $resolvedTargetPath
 }
 
-function Get-WorkspaceBuildToken {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$WorkspaceRoot
-    )
-
-    $normalizedRoot = [System.IO.Path]::GetFullPath($WorkspaceRoot).ToLowerInvariant()
-    $bytes = [System.Text.Encoding]::UTF8.GetBytes($normalizedRoot)
-    $sha256 = [System.Security.Cryptography.SHA256]::Create()
-    try {
-        $hashBytes = $sha256.ComputeHash($bytes)
-    }
-    finally {
-        $sha256.Dispose()
-    }
-
-    return -join ($hashBytes[0..5] | ForEach-Object { $_.ToString("x2") })
-}
-
 function Test-ControlAppsBuildRootMatchesWorkspace {
     param(
         [Parameter(Mandatory = $true)]
@@ -146,33 +127,7 @@ function Get-ControlAppsBuildSearchRoots {
         [string]$WorkspaceRoot
     )
 
-    $roots = @(
-        [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build\ca")),
-        [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build\control-apps")),
-        [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build"))
-    )
-
-    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
-        $ssRoot = Join-Path $env:LOCALAPPDATA "SS"
-        $tokenRoot = Join-Path $ssRoot ("cab-{0}" -f (Get-WorkspaceBuildToken -WorkspaceRoot $WorkspaceRoot))
-        $roots += [System.IO.Path]::GetFullPath($tokenRoot)
-
-        if (Test-Path $ssRoot) {
-            foreach ($candidate in Get-ChildItem -Path $ssRoot -Directory -Filter "cab-*") {
-                $resolved = [System.IO.Path]::GetFullPath($candidate.FullName)
-                $roots += $resolved
-            }
-        }
-
-        $legacyRoot = [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA "SiligenSuite\control-apps-build"))
-        $roots += $legacyRoot
-    }
-
-    return @(
-        $roots |
-            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-            Select-Object -Unique
-    )
+    return @([System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build")))
 }
 
 function Get-ControlAppsBuildRoots {
@@ -182,7 +137,12 @@ function Get-ControlAppsBuildRoots {
     )
 
     if (-not [string]::IsNullOrWhiteSpace($env:SILIGEN_CONTROL_APPS_BUILD_ROOT)) {
-        return @([System.IO.Path]::GetFullPath($env:SILIGEN_CONTROL_APPS_BUILD_ROOT))
+        $explicitRoot = [System.IO.Path]::GetFullPath($env:SILIGEN_CONTROL_APPS_BUILD_ROOT)
+        $workspaceBuildRoot = [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build"))
+        if (-not $explicitRoot.StartsWith($workspaceBuildRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "SILIGEN_CONTROL_APPS_BUILD_ROOT must stay inside current workspace build root: '$workspaceBuildRoot'"
+        }
+        return @($explicitRoot)
     }
 
     $acceptedRoots = @()
@@ -207,10 +167,7 @@ function Get-ControlAppsBuildRoot {
 
     $roots = @(Get-ControlAppsBuildRoots -WorkspaceRoot $WorkspaceRoot)
     if ($roots.Count -eq 0) {
-        $searchRoots = @(Get-ControlAppsBuildSearchRoots -WorkspaceRoot $WorkspaceRoot)
-        if ($searchRoots.Count -gt 0) {
-            return [System.IO.Path]::GetFullPath($searchRoots[0])
-        }
+        return [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build"))
     }
 
     foreach ($root in $roots) {

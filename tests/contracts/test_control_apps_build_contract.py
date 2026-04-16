@@ -17,7 +17,6 @@ from test_kit.control_apps_build import (  # noqa: E402
     control_apps_build_root_probes,
     probe_control_apps_build_readiness,
     valid_control_apps_build_roots,
-    workspace_build_token,
 )
 
 
@@ -32,12 +31,10 @@ class ControlAppsBuildContractTest(unittest.TestCase):
     def test_valid_control_apps_build_roots_reject_workspace_root_without_matching_cache(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace_root = Path(temp_dir) / "workspace"
-            build_root = workspace_root / "build" / "ca"
+            build_root = workspace_root / "build"
             build_root.mkdir(parents=True)
-
-            with patch.dict(os.environ, {"LOCALAPPDATA": str(Path(temp_dir) / "localappdata")}, clear=False):
-                valid_roots = valid_control_apps_build_roots(workspace_root)
-                probes = control_apps_build_root_probes(workspace_root)
+            valid_roots = valid_control_apps_build_roots(workspace_root)
+            probes = control_apps_build_root_probes(workspace_root)
 
         self.assertEqual(valid_roots, ())
         first_probe = probes[0]
@@ -49,7 +46,7 @@ class ControlAppsBuildContractTest(unittest.TestCase):
         required_artifacts = ("siligen_runtime_gateway.exe", "siligen_runtime_service.exe")
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace_root = Path(temp_dir) / "workspace"
-            build_root = workspace_root / "build" / "ca"
+            build_root = workspace_root / "build"
             build_root.mkdir(parents=True)
             _write_matching_cmake_cache(build_root, workspace_root)
 
@@ -66,33 +63,48 @@ class ControlAppsBuildContractTest(unittest.TestCase):
         self.assertEqual(readiness.reason, "missing-required-artifacts")
         self.assertEqual(readiness.missing_artifacts, required_artifacts)
 
-    def test_readiness_accepts_matching_workspace_token_build_with_required_artifacts(self) -> None:
+    def test_readiness_accepts_matching_workspace_build_with_required_artifacts(self) -> None:
         required_artifacts = ("siligen_runtime_gateway.exe", "siligen_runtime_service.exe")
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace_root = Path(temp_dir) / "workspace"
             workspace_root.mkdir()
-            local_app_data = Path(temp_dir) / "localappdata"
-            token = workspace_build_token(workspace_root)
-            token_root = local_app_data / "SS" / f"cab-{token}"
+            build_root = workspace_root / "build"
             for artifact_name in required_artifacts:
-                artifact_path = token_root / "bin" / "Debug" / artifact_name
+                artifact_path = build_root / "bin" / "Debug" / artifact_name
                 artifact_path.parent.mkdir(parents=True, exist_ok=True)
                 artifact_path.write_text("", encoding="utf-8")
-            _write_matching_cmake_cache(token_root, workspace_root)
+            _write_matching_cmake_cache(build_root, workspace_root)
 
-            with patch.dict(os.environ, {"LOCALAPPDATA": str(local_app_data)}, clear=False):
-                readiness = probe_control_apps_build_readiness(
-                    workspace_root,
-                    required_artifacts=required_artifacts,
-                )
+            readiness = probe_control_apps_build_readiness(
+                workspace_root,
+                required_artifacts=required_artifacts,
+            )
 
         self.assertTrue(readiness.ready)
         selected_probe = readiness.selected_probe
         self.assertIsNotNone(selected_probe)
         assert selected_probe is not None
-        self.assertEqual(selected_probe.root, token_root.resolve())
-        self.assertEqual(selected_probe.source, "workspace-token-build")
+        self.assertEqual(selected_probe.root, build_root.resolve())
+        self.assertEqual(selected_probe.source, "workspace-build")
         self.assertEqual(readiness.missing_artifacts, ())
+
+    def test_explicit_build_root_rejects_path_outside_workspace_build(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            workspace_root = temp_root / "workspace"
+            workspace_root.mkdir()
+            outside_root = temp_root / "outside-build"
+            outside_root.mkdir()
+
+            readiness = probe_control_apps_build_readiness(
+                workspace_root,
+                required_artifacts=("siligen_runtime_gateway.exe",),
+                explicit_build_root=str(outside_root),
+            )
+
+        self.assertFalse(readiness.ready)
+        assert readiness.selected_probe is not None
+        self.assertEqual(readiness.reason, f"explicit-build-root-outside-workspace-build:{(workspace_root / 'build').resolve()}")
 
 
 if __name__ == "__main__":

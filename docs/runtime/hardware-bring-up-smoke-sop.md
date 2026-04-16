@@ -57,7 +57,7 @@ $ControlAppsBuildRoot = Get-ControlAppsBuildRoot -WorkspaceRoot (Get-Location)
 $ControlAppsBuildRoot
 ```
 
-默认解析顺序：`SILIGEN_CONTROL_APPS_BUILD_ROOT` -> `.\build\ca` -> `.\build\control-apps` -> `.\build` -> 匹配当前工作区的 `LOCALAPPDATA\SS\cab-*` -> legacy `LOCALAPPDATA\SiligenSuite\control-apps-build`。
+当前约束：`SILIGEN_CONTROL_APPS_BUILD_ROOT` 只能指向当前 worktree 的 `.\build`。
 
 建议在 `$EvidenceRoot` 中至少保留下列文件：
 
@@ -261,7 +261,7 @@ Copy-Item .\backup\config\machine_config.ini .\config\machine\machine_config.ini
 
 - `$env:SILIGEN_MULTICARD_VENDOR_DIR`
 - `apps/hmi-app/config/gateway-launch.json` 或临时 launch contract
-- 当前实际命中的 build root 下现场替换过的可执行文件或 DLL；canonical 默认是 `build\ca`，legacy fallback 仍可能命中 `control-apps-build`
+- 当前实际命中的 `build\` 下现场替换过的可执行文件或 DLL
 
 回滚后至少执行以下确认：
 

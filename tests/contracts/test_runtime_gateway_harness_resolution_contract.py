@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -19,15 +18,16 @@ def _write_matching_cmake_cache(build_root: Path, workspace_root: Path) -> Path:
     return cache_path
 
 
-def test_resolve_default_exe_prefers_legacy_localappdata_over_noncanonical_workspace_build_child(tmp_path: Path) -> None:
+def test_resolve_default_exe_ignores_localappdata_and_falls_back_to_workspace_build_root(tmp_path: Path) -> None:
     fake_file_name = "codex_runtime_gateway_resolution_probe.exe"
-    workspace_build_root = ROOT / "build" / "zz-codex-harness-resolution"
+    workspace_build_root = ROOT / "build"
     workspace_exe = workspace_build_root / "bin" / "Debug" / fake_file_name
     legacy_localappdata = tmp_path / "localappdata"
     legacy_exe = legacy_localappdata / "SiligenSuite" / "control-apps-build" / "bin" / "Debug" / fake_file_name
 
     workspace_exe.parent.mkdir(parents=True, exist_ok=True)
     workspace_exe.write_text("", encoding="utf-8")
+    workspace_cache = _write_matching_cmake_cache(workspace_build_root, ROOT)
     legacy_exe.parent.mkdir(parents=True, exist_ok=True)
     legacy_exe.write_text("", encoding="utf-8")
     legacy_cache = _write_matching_cmake_cache(legacy_localappdata / "SiligenSuite" / "control-apps-build", ROOT)
@@ -58,27 +58,25 @@ def test_resolve_default_exe_prefers_legacy_localappdata_over_noncanonical_works
             check=False,
         )
         assert completed.returncode == 0, completed.stderr
-        assert completed.stdout.strip() == str(legacy_exe)
+        assert completed.stdout.strip() == str(workspace_exe)
     finally:
-        shutil.rmtree(workspace_build_root, ignore_errors=True)
-        if legacy_cache.exists():
-            legacy_cache.unlink()
+        if workspace_exe.exists():
+            workspace_exe.unlink()
+        for cache_path in (workspace_cache, legacy_cache):
+            if cache_path.exists():
+                cache_path.unlink()
 
 
-def test_resolve_default_exe_prefers_workspace_build_ca_over_workspace_build_and_legacy_localappdata(tmp_path: Path) -> None:
-    fake_file_name = "codex_runtime_gateway_resolution_probe_ca.exe"
-    workspace_ca_exe = ROOT / "build" / "ca" / "bin" / "Debug" / fake_file_name
+def test_resolve_default_exe_prefers_workspace_build_and_ignores_localappdata(tmp_path: Path) -> None:
+    fake_file_name = "codex_runtime_gateway_resolution_probe.exe"
     workspace_build_exe = ROOT / "build" / "bin" / "Debug" / fake_file_name
     legacy_localappdata = tmp_path / "localappdata"
     legacy_exe = legacy_localappdata / "SiligenSuite" / "control-apps-build" / "bin" / "Debug" / fake_file_name
 
-    workspace_ca_exe.parent.mkdir(parents=True, exist_ok=True)
-    workspace_ca_exe.write_text("", encoding="utf-8")
     workspace_build_exe.parent.mkdir(parents=True, exist_ok=True)
     workspace_build_exe.write_text("", encoding="utf-8")
     legacy_exe.parent.mkdir(parents=True, exist_ok=True)
     legacy_exe.write_text("", encoding="utf-8")
-    workspace_ca_cache = _write_matching_cmake_cache(ROOT / "build" / "ca", ROOT)
     workspace_build_cache = _write_matching_cmake_cache(ROOT / "build", ROOT)
     legacy_cache = _write_matching_cmake_cache(legacy_localappdata / "SiligenSuite" / "control-apps-build", ROOT)
 
@@ -108,12 +106,10 @@ def test_resolve_default_exe_prefers_workspace_build_ca_over_workspace_build_and
             check=False,
         )
         assert completed.returncode == 0, completed.stderr
-        assert completed.stdout.strip() == str(workspace_ca_exe)
+        assert completed.stdout.strip() == str(workspace_build_exe)
     finally:
-        if workspace_ca_exe.exists():
-            workspace_ca_exe.unlink()
         if workspace_build_exe.exists():
             workspace_build_exe.unlink()
-        for cache_path in (workspace_ca_cache, workspace_build_cache, legacy_cache):
+        for cache_path in (workspace_build_cache, legacy_cache):
             if cache_path.exists():
                 cache_path.unlink()

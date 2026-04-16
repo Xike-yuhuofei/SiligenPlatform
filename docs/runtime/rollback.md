@@ -29,7 +29,7 @@ Set-Location <repo-root>
 
 control-apps 产物检查：
 
-默认解析顺序：`SILIGEN_CONTROL_APPS_BUILD_ROOT` -> `.\build\ca` -> `.\build\control-apps` -> `.\build` -> 匹配当前工作区的 `LOCALAPPDATA\SS\cab-*` -> legacy `LOCALAPPDATA\SiligenSuite\control-apps-build`。
+当前约束：`SILIGEN_CONTROL_APPS_BUILD_ROOT` 只能指向当前 worktree 的 `.\build`。
 
 ```powershell
 . .\scripts\validation\tooling-common.ps1

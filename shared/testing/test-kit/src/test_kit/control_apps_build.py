@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,11 +34,6 @@ class ControlAppsBuildReadiness:
     artifact_probes: tuple[RequiredArtifactProbe, ...]
     missing_artifacts: tuple[str, ...]
     reason: str = ""
-
-
-def workspace_build_token(workspace_root: Path) -> str:
-    normalized_root = str(workspace_root.resolve()).lower().encode("utf-8")
-    return hashlib.sha256(normalized_root).hexdigest()[:12]
 
 
 def _read_cmake_home_directory(cache_path: Path) -> str:
@@ -146,22 +140,29 @@ def control_apps_build_root_probes(
             )
         )
 
+    workspace_build_root = (workspace_root / "build").resolve()
+
     if explicit_build_root:
-        add_probe(Path(explicit_build_root), source="env", allow_stale=True)
+        explicit_root = Path(explicit_build_root).expanduser().resolve()
+        if explicit_root == workspace_build_root or workspace_build_root in explicit_root.parents:
+            add_probe(explicit_root, source="env", allow_stale=True)
+        else:
+            probes.append(
+                BuildRootProbe(
+                    root=explicit_root,
+                    source="env",
+                    exists=explicit_root.exists(),
+                    cache_path=explicit_root / "CMakeCache.txt",
+                    cache_present=(explicit_root / "CMakeCache.txt").exists(),
+                    cmake_home_directory=_read_cmake_home_directory(explicit_root / "CMakeCache.txt"),
+                    matches_workspace=False,
+                    accepted=False,
+                    reason=f"explicit-build-root-outside-workspace-build:{workspace_build_root}",
+                )
+            )
+            return tuple(probes)
 
-    add_probe(workspace_root / "build" / "ca", source="workspace-build-ca")
-    add_probe(workspace_root / "build" / "control-apps", source="workspace-build-control-apps")
     add_probe(workspace_root / "build", source="workspace-build")
-
-    local_app_data = os.getenv("LOCALAPPDATA", "").strip()
-    if local_app_data:
-        ss_root = Path(local_app_data) / "SS"
-        token_root = ss_root / f"cab-{workspace_build_token(workspace_root)}"
-        add_probe(token_root, source="workspace-token-build")
-        if ss_root.exists():
-            for candidate in sorted(ss_root.glob("cab-*")):
-                add_probe(candidate, source="workspace-cab-build")
-        add_probe(Path(local_app_data) / "SiligenSuite" / "control-apps-build", source="legacy-control-apps-build")
     return tuple(probes)
 
 
