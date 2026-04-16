@@ -4,6 +4,7 @@ import time
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -23,6 +24,8 @@ from client.protocol import (
     JobExecutionStatus,
     JobTransitionResult,
     MachineStatus,
+    MotionCoordAxisStatus,
+    MotionCoordStatus,
     SupervisionStatus,
 )
 
@@ -51,6 +54,17 @@ class FakeProtocol:
         self.dxf_job_status_calls = []
         self.preview_snapshot_calls = []
         self.preview_snapshot_response = (True, {}, "", None)
+        self.motion_coord_status_calls = []
+        self.motion_coord_status = MotionCoordStatus(
+            coord_sys=1,
+            state=0,
+            state_label="idle",
+            available=True,
+            axes={
+                "X": MotionCoordAxisStatus(enabled=True, homed=True),
+                "Y": MotionCoordAxisStatus(enabled=True, homed=True),
+            },
+        )
         self.emergency_stop_result = (True, "E-Stop")
         self.estop_reset_result = (True, "E-Stop reset")
         self.start_job_response = (
@@ -174,6 +188,10 @@ class FakeProtocol:
     ):
         self.preview_snapshot_calls.append((plan_id, max_polyline_points, max_glue_points, timeout))
         return self.preview_snapshot_response
+
+    def get_motion_coord_status(self, coord_sys: int = 1) -> MotionCoordStatus:
+        self.motion_coord_status_calls.append(coord_sys)
+        return self.motion_coord_status
 
     def get_alarms(self):
         return []
@@ -349,23 +367,54 @@ class MainWindowTabsTest(unittest.TestCase):
         effective_door: bool | None = None,
         x_homed: bool = False,
         y_homed: bool = False,
+        x_homing_state: str | None = None,
+        y_homing_state: str | None = None,
+        x_enabled: bool = True,
+        y_enabled: bool = True,
+        x_velocity: float = 0.0,
+        y_velocity: float = 0.0,
+        x_position: float = 0.0,
+        y_position: float = 0.0,
+        active_job_id: str = "",
+        active_job_state: str = "",
+        home_boundary_x_active: bool = False,
+        home_boundary_y_active: bool = False,
     ) -> MachineStatus:
+        resolved_x_homing_state = x_homing_state or ("homed" if x_homed else "not_homed")
+        resolved_y_homing_state = y_homing_state or ("homed" if y_homed else "not_homed")
         return MachineStatus(
             connected=connected,
             connection_state=connection_state,
             machine_state="Idle",
             machine_state_reason="idle",
             supervision=SupervisionStatus(current_state="Idle", requested_state="Idle", state_reason="idle"),
-            job_execution=JobExecutionStatus(),
+            job_execution=JobExecutionStatus(
+                job_id=active_job_id,
+                state=active_job_state or "idle",
+            ),
             axes={
-                "X": AxisStatus(enabled=True, homed=x_homed, homing_state="homed" if x_homed else "not_homed"),
-                "Y": AxisStatus(enabled=True, homed=y_homed, homing_state="homed" if y_homed else "not_homed"),
+                "X": AxisStatus(
+                    position=x_position,
+                    enabled=x_enabled,
+                    homed=x_homed,
+                    homing_state=resolved_x_homing_state,
+                    velocity=x_velocity,
+                ),
+                "Y": AxisStatus(
+                    position=y_position,
+                    enabled=y_enabled,
+                    homed=y_homed,
+                    homing_state=resolved_y_homing_state,
+                    velocity=y_velocity,
+                ),
             },
             effective_interlocks=EffectiveInterlocks(
                 estop_active=estop if effective_estop is None else effective_estop,
                 estop_known=estop_known,
                 door_open_active=door if effective_door is None else effective_door,
                 door_open_known=door_known,
+                home_boundary_x_active=home_boundary_x_active,
+                home_boundary_y_active=home_boundary_y_active,
             ),
             io=IOStatus(
                 estop=estop,
@@ -373,6 +422,34 @@ class MainWindowTabsTest(unittest.TestCase):
                 door=door,
                 door_known=door_known,
             ),
+        )
+
+    def _make_motion_coord_status(
+        self,
+        *,
+        state: int = 0,
+        is_moving: bool = False,
+        remaining_segments: int = 0,
+        current_velocity: float = 0.0,
+        available: bool = True,
+        x_velocity: float = 0.0,
+        y_velocity: float = 0.0,
+        x_enabled: bool = True,
+        y_enabled: bool = True,
+    ) -> MotionCoordStatus:
+        state_labels = {0: "idle", 1: "moving", 2: "paused", 3: "error"}
+        return MotionCoordStatus(
+            coord_sys=1,
+            state=state,
+            state_label=state_labels.get(state, "unknown"),
+            is_moving=is_moving,
+            remaining_segments=remaining_segments,
+            current_velocity=current_velocity,
+            available=available,
+            axes={
+                "X": MotionCoordAxisStatus(enabled=x_enabled, homed=True, velocity=x_velocity),
+                "Y": MotionCoordAxisStatus(enabled=y_enabled, homed=True, velocity=y_velocity),
+            },
         )
 
     def _set_cached_status(self, status: MachineStatus) -> None:
@@ -563,6 +640,38 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertFalse(result)
         self.assertEqual(self.window.statusBar().currentMessage(), "安全门打开，无法回零")
 
+    def test_check_home_preconditions_rejects_active_job_before_home(self) -> None:
+        status = self._make_status(x_homed=True, y_homed=True, active_job_id="job-1", active_job_state="running")
+        fake_protocol = FakeProtocol(status)
+        self.window._protocol = fake_protocol
+        self.window._require_online_mode = lambda capability: True
+        self._set_cached_status(status)
+
+        result = self.window._check_home_preconditions()
+
+        self.assertFalse(result)
+        self.assertEqual(self.window.statusBar().currentMessage(), "运动系统未稳定，暂不可回零，请稍候")
+        self.assertEqual(fake_protocol.motion_coord_status_calls, [])
+
+    def test_check_home_preconditions_rejects_unsettled_coordinate_status(self) -> None:
+        status = self._make_status(x_homed=True, y_homed=True)
+        fake_protocol = FakeProtocol(status)
+        fake_protocol.motion_coord_status = self._make_motion_coord_status(
+            state=1,
+            is_moving=True,
+            remaining_segments=2,
+            current_velocity=3.0,
+        )
+        self.window._protocol = fake_protocol
+        self.window._require_online_mode = lambda capability: True
+        self._set_cached_status(status)
+
+        result = self.window._check_home_preconditions()
+
+        self.assertFalse(result)
+        self.assertEqual(self.window.statusBar().currentMessage(), "运动系统未稳定，暂不可回零，请稍候")
+        self.assertEqual(fake_protocol.motion_coord_status_calls, [1])
+
     def test_on_home_starts_background_worker_and_updates_status_on_completion(self) -> None:
         status = self._make_status(x_homed=True, y_homed=True)
         fake_protocol = FakeProtocol(status)
@@ -644,6 +753,30 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertEqual(len(_FakeHomeAutoWorker.instances), 1)
         self.assertTrue(worker.isRunning())
         self.assertEqual(self.window.statusBar().currentMessage(), "回零进行中，请稍候")
+
+    def test_on_home_preserves_axis_level_failure_message_after_local_gate_passes(self) -> None:
+        status = self._make_status(x_homed=True, y_homed=True)
+        fake_protocol = FakeProtocol(status)
+        fake_protocol.motion_coord_status = self._make_motion_coord_status()
+        self.window._protocol = fake_protocol
+        self.window._require_online_mode = lambda capability: True
+        self._set_cached_status(status)
+
+        self.window._on_home(["X", "Y"])
+        worker = _FakeHomeAutoWorker.instances[-1]
+
+        with patch.object(main_window_module.QMessageBox, "warning") as warning_mock:
+            worker.complete(False, "X: Axis homed but not at zero; Y: motion_not_ready")
+
+        warning_mock.assert_called_once_with(
+            self.window,
+            "回零失败",
+            "X: Axis homed but not at zero; Y: motion_not_ready",
+        )
+        self.assertEqual(
+            self.window.statusBar().currentMessage(),
+            "回零: X: Axis homed but not at zero; Y: motion_not_ready",
+        )
 
     def test_on_production_pause_starts_background_worker(self) -> None:
         status = self._make_status()
@@ -1442,6 +1575,75 @@ class MainWindowTabsTest(unittest.TestCase):
             "authority layout missing for preview/execution share check",
         )
 
+    def test_check_production_preconditions_rejects_required_axis_not_homed_before_start(self) -> None:
+        status = self._make_status(x_homed=False, y_homed=True)
+        fake_protocol = FakeProtocol(status)
+        self.window._require_online_mode = lambda capability: True
+        self.window._is_online_ready = lambda: True
+        self.window._protocol = fake_protocol
+        self._set_launch_connectivity(connected=True, hardware_connected=True)
+        self.window._runtime_status_fault = False
+        self._arm_confirmed_preview()
+        warnings = []
+        self.window._show_preflight_warning = warnings.append
+
+        result = self.window._check_production_preconditions(dry_run=False)
+
+        self.assertFalse(result)
+        self.assertEqual(
+            warnings[-1],
+            "启动前检测到 X 未回零，请先回零后再启动",
+        )
+
+    def test_check_production_preconditions_rejects_home_boundary_before_start_when_axis_not_at_zero(self) -> None:
+        status = self._make_status(
+            x_homed=True,
+            y_homed=True,
+            x_position=1.0,
+            home_boundary_x_active=True,
+        )
+        fake_protocol = FakeProtocol(status)
+        self.window._require_online_mode = lambda capability: True
+        self.window._is_online_ready = lambda: True
+        self.window._protocol = fake_protocol
+        self._set_launch_connectivity(connected=True, hardware_connected=True)
+        self.window._runtime_status_fault = False
+        self._arm_confirmed_preview()
+        warnings = []
+        self.window._show_preflight_warning = warnings.append
+
+        result = self.window._check_production_preconditions(dry_run=False)
+
+        self.assertFalse(result)
+        self.assertEqual(
+            warnings[-1],
+            "启动前检测到 X 位于 HOME 边界，请先回零归一化后再启动",
+        )
+
+    def test_check_production_preconditions_allows_latched_home_boundary_when_axis_is_homed_at_zero(self) -> None:
+        status = self._make_status(
+            x_homed=True,
+            y_homed=True,
+            x_position=0.0,
+            y_position=0.0,
+            home_boundary_x_active=True,
+            home_boundary_y_active=True,
+        )
+        fake_protocol = FakeProtocol(status)
+        self.window._require_online_mode = lambda capability: True
+        self.window._is_online_ready = lambda: True
+        self.window._protocol = fake_protocol
+        self._set_launch_connectivity(connected=True, hardware_connected=True)
+        self.window._runtime_status_fault = False
+        self._arm_confirmed_preview()
+        warnings = []
+        self.window._show_preflight_warning = warnings.append
+
+        result = self.window._check_production_preconditions(dry_run=False)
+
+        self.assertTrue(result)
+        self.assertEqual(warnings, [])
+
     def test_production_controls_disabled_when_online_not_ready(self) -> None:
         self.window._apply_production_action_capabilities(False)
 
@@ -1958,9 +2160,39 @@ class MainWindowTabsTest(unittest.TestCase):
         self.window._production_running = False
         self.window._current_job_id = ""
 
+    def test_start_process_does_not_call_backend_when_homing_gate_blocks(self) -> None:
+        status = self._make_status(x_homed=False, y_homed=True)
+        fake_protocol = FakeProtocol(status)
+        self.window._protocol = fake_protocol
+        self.window._require_online_mode = lambda capability: True
+        self.window._is_online_ready = lambda: True
+        self._set_launch_connectivity(connected=True, hardware_connected=True)
+        self.window._runtime_status_fault = False
+        self.window._dxf_loaded = True
+        self._arm_confirmed_preview()
+        warnings = []
+        self.window._show_preflight_warning = warnings.append
+
+        self.window._start_production_process(dry_run=False)
+
+        self.assertEqual(fake_protocol.start_job_calls, [])
+        self.assertEqual(
+            warnings[-1],
+            "启动前检测到 X 未回零，请先回零后再启动",
+        )
+
     def test_target_count_defaults_to_single_cycle(self) -> None:
         self.assertEqual(self.window._target_count, 1)
         self.assertEqual(self.window._target_input.value(), 1)
+
+    def test_production_home_button_disabled_when_cached_axis_is_homing(self) -> None:
+        self._set_online_ready_session()
+        self._set_cached_status(self._make_status(x_homed=False, y_homed=True, x_homing_state="homing"))
+
+        self.window._update_home_controls_state()
+
+        self.assertFalse(self.window._prod_home_btn.isEnabled())
+        self.assertFalse(self.window._home_all_btn.isEnabled())
 
     def test_target_input_value_change_updates_production_stats_without_crash(self) -> None:
         self.window._completed_count = 3

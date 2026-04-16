@@ -187,12 +187,14 @@ EnsureAxesReadyZeroUseCase::EnsureAxesReadyZeroUseCase(
     std::shared_ptr<HomeAxesUseCase> home_use_case,
     std::shared_ptr<Manual::ManualMotionControlUseCase> manual_motion_use_case,
     std::shared_ptr<Monitoring::MotionMonitoringUseCase> monitoring_use_case,
+    std::shared_ptr<Domain::Motion::Ports::IPositionControlPort> position_control_port,
     std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> config_port,
     std::shared_ptr<ReadyZeroDecisionService> decision_service,
     std::shared_ptr<Siligen::Application::Services::Motion::Execution::MotionReadinessService> readiness_service)
     : home_use_case_(std::move(home_use_case)),
       manual_motion_use_case_(std::move(manual_motion_use_case)),
       monitoring_use_case_(std::move(monitoring_use_case)),
+      position_control_port_(std::move(position_control_port)),
       config_port_(std::move(config_port)),
       decision_service_(std::move(decision_service)),
       readiness_service_(std::move(readiness_service)) {}
@@ -438,29 +440,58 @@ Result<EnsureAxesReadyZeroResponse> EnsureAxesReadyZeroUseCase::Execute(const En
         }
 
         for (const auto& plan : go_home_plans) {
-            const auto axis = plan.axis;
-            auto* axis_result = FindAxisResult(response.axis_results, axis);
+            auto* axis_result = FindAxisResult(response.axis_results, plan.axis);
             if (axis_result) {
                 axis_result->executed = true;
             }
+        }
 
-            Manual::ManualMotionCommand command;
-            command.axis = axis;
-            command.position = 0.0f;
-            command.velocity = plan.speed_mm_s;
-
-            auto move_result = manual_motion_use_case_->ExecutePointToPointMotion(command, false);
-            if (move_result.IsError()) {
-                if (axis_result) {
-                    axis_result->success = false;
-                    axis_result->reason_code = "go_home_dispatch_failed";
-                    axis_result->message = move_result.GetError().GetMessage();
+        Result<void> move_result = Result<void>::Success();
+        if (position_control_port_) {
+            if (go_home_plans.size() == 1U) {
+                const auto& plan = go_home_plans.front();
+                move_result = position_control_port_->MoveAxisToPosition(plan.axis, 0.0f, plan.speed_mm_s);
+            } else {
+                std::vector<Domain::Motion::Ports::MotionCommand> commands;
+                commands.reserve(go_home_plans.size());
+                for (const auto& plan : go_home_plans) {
+                    Domain::Motion::Ports::MotionCommand command;
+                    command.axis = plan.axis;
+                    command.position = 0.0f;
+                    command.velocity = plan.speed_mm_s;
+                    command.relative = false;
+                    commands.push_back(command);
                 }
-                response.summary_state = "failed";
-                response.message = AxisScopedMessage(axis, move_result.GetError().GetMessage());
-                response.total_time_ms = ElapsedMs(start_time);
-                return Result<EnsureAxesReadyZeroResponse>::Success(response);
+                move_result = position_control_port_->SynchronizedMove(commands);
             }
+        } else {
+            for (const auto& plan : go_home_plans) {
+                Manual::ManualMotionCommand command;
+                command.axis = plan.axis;
+                command.position = 0.0f;
+                command.velocity = plan.speed_mm_s;
+                move_result = manual_motion_use_case_->ExecutePointToPointMotion(command, false);
+                if (move_result.IsError()) {
+                    break;
+                }
+            }
+        }
+
+        if (move_result.IsError()) {
+            const auto error_message = move_result.GetError().GetMessage();
+            for (const auto axis : axes_to_go_home) {
+                auto* axis_result = FindAxisResult(response.axis_results, axis);
+                if (!axis_result) {
+                    continue;
+                }
+                axis_result->success = false;
+                axis_result->reason_code = "go_home_dispatch_failed";
+                axis_result->message = error_message;
+            }
+            response.summary_state = "failed";
+            response.message = JoinMessages(std::vector<std::string>(1, error_message));
+            response.total_time_ms = ElapsedMs(start_time);
+            return Result<EnsureAxesReadyZeroResponse>::Success(response);
         }
 
         if (!request.wait_for_completion) {

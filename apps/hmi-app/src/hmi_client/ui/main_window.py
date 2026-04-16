@@ -90,6 +90,14 @@ DEFAULT_BASE_WIDTH = 1600
 ASPECT_RATIO_ENV = "SILIGEN_HMI_ASPECT_RATIO"
 STATUS_LOG_HISTORY_LIMIT = 200
 DEFAULT_HOME_AUTO_TIMEOUT_MS = 120_000
+PRODUCTION_REQUIRED_AXES = ("X", "Y")
+LOCAL_HOME_READINESS_COORD_SYS = 1
+LOCAL_HOME_READINESS_VELOCITY_EPSILON_MM_S = 0.1
+START_HOME_BOUNDARY_ZERO_TOLERANCE_MM = 0.1
+LOCAL_HOME_READINESS_BLOCK_MESSAGE = "运动系统未稳定，暂不可回零，请稍候"
+LOCAL_HOME_READINESS_BLOCKING_JOB_STATES = frozenset(
+    {"running", "pending", "stopping", "canceling", "cancelling", "canceled", "paused", "pausing"}
+)
 
 
 def _parse_aspect_ratio(value: str):
@@ -1311,6 +1319,7 @@ class MainWindow(QMainWindow):
         home_btn.setProperty("role", "primary")
         home_btn.setFixedSize(60, 60)
         home_btn.clicked.connect(lambda: self._on_home(["X", "Y"]))
+        self._home_all_btn = home_btn
         dpad_layout.addWidget(home_btn, 1, 1, Qt.AlignCenter)
 
         # X+ (right)
@@ -1793,6 +1802,7 @@ class MainWindow(QMainWindow):
             self._disp_pause_btn.setEnabled(manual_valve_pause_resume_enabled)
         if hasattr(self, "_disp_resume_btn"):
             self._disp_resume_btn.setEnabled(manual_valve_pause_resume_enabled)
+        self._update_home_controls_state()
         self._update_recovery_controls_state()
 
     def _apply_production_action_capabilities(self, online_actions_allowed: bool) -> None:
@@ -2055,12 +2065,190 @@ class MainWindow(QMainWindow):
             build_startup_error_message(result),
         )
 
+    def _status_has_homing_axis(self, status=None) -> bool:
+        status = status or self._get_cached_status(max_age_s=1.0)
+        if status is None:
+            return False
+        for axis in PRODUCTION_REQUIRED_AXES:
+            axis_status = status.axes.get(axis)
+            if axis_status is None:
+                continue
+            if str(axis_status.homing_state or "").strip().lower() == "homing":
+                return True
+        return False
+
+    def _read_motion_coord_status(self, coord_sys: int = LOCAL_HOME_READINESS_COORD_SYS):
+        protocol = getattr(self, "_protocol", None)
+        if protocol is None or not hasattr(protocol, "get_motion_coord_status"):
+            return None
+        try:
+            return protocol.get_motion_coord_status(coord_sys=coord_sys)
+        except Exception as exc:
+            _UI_LOGGER.warning("motion_coord_status_read_failed coord_sys=%s error=%s", coord_sys, exc)
+            return None
+
+    @staticmethod
+    def _format_axis_names(axes: list[str]) -> str:
+        normalized = [str(axis).strip().upper() for axis in axes if str(axis).strip()]
+        return "/".join(normalized)
+
+    def _axis_is_homed_at_zero_for_start_gate(self, axis: str, status) -> bool:
+        axis_name = str(axis).strip().upper()
+        axis_status = status.axes.get(axis_name)
+        if axis_status is None:
+            return False
+        if not bool(axis_status.homed):
+            return False
+        if str(axis_status.homing_state or "").strip().lower() != "homed":
+            return False
+        try:
+            axis_position = float(axis_status.position or 0.0)
+            axis_velocity = float(axis_status.velocity or 0.0)
+        except (TypeError, ValueError):
+            return False
+        return (
+            abs(axis_position) <= START_HOME_BOUNDARY_ZERO_TOLERANCE_MM
+            and abs(axis_velocity) <= LOCAL_HOME_READINESS_VELOCITY_EPSILON_MM_S
+        )
+
+    def _build_start_homing_gate_message(self, status) -> str:
+        failed_axes = []
+        not_homed_axes = []
+        home_boundary_axes = []
+        for axis in PRODUCTION_REQUIRED_AXES:
+            axis_status = status.axes.get(axis)
+            if axis_status is None:
+                not_homed_axes.append(axis)
+                continue
+            homing_state = str(axis_status.homing_state or "").strip().lower()
+            if homing_state == "failed":
+                failed_axes.append(axis)
+            elif not bool(axis_status.homed) or homing_state != "homed":
+                not_homed_axes.append(axis)
+            if status.home_boundary_active(axis) and not self._axis_is_homed_at_zero_for_start_gate(axis, status):
+                home_boundary_axes.append(axis)
+
+        messages = []
+        if failed_axes:
+            messages.append(
+                f"启动前检测到 {self._format_axis_names(failed_axes)} 回零失败，请先重新回零"
+            )
+        if not_homed_axes:
+            messages.append(
+                f"启动前检测到 {self._format_axis_names(not_homed_axes)} 未回零，请先回零后再启动"
+            )
+        if home_boundary_axes:
+            messages.append(
+                f"启动前检测到 {self._format_axis_names(home_boundary_axes)} 位于 HOME 边界，请先回零归一化后再启动"
+            )
+        if not messages:
+            return ""
+
+        _UI_LOGGER.warning(
+            "start_blocked_by_homing_gate failed_axes=%s not_homed_axes=%s home_boundary_axes=%s",
+            ",".join(failed_axes),
+            ",".join(not_homed_axes),
+            ",".join(home_boundary_axes),
+        )
+        return "; ".join(messages)
+
+    def _axis_velocity_for_home_readiness(self, axis: str, status, coord_status) -> float:
+        axis_name = str(axis).strip().upper()
+        if coord_status is not None:
+            coord_axis = getattr(coord_status, "axes", {}).get(axis_name)
+            if coord_axis is not None:
+                try:
+                    return float(getattr(coord_axis, "velocity", 0.0) or 0.0)
+                except (TypeError, ValueError):
+                    return 0.0
+        axis_status = status.axes.get(axis_name)
+        if axis_status is None:
+            return 0.0
+        try:
+            return float(axis_status.velocity or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _check_home_runtime_readiness(self, status) -> bool:
+        job_execution = self._normalize_job_execution_snapshot(getattr(status, "job_execution", None))
+        active_job_id = str(job_execution.get("job_id", "")).strip()
+        active_job_state = str(job_execution.get("state", "")).strip().lower()
+        if self._is_active_job_execution_state(active_job_state) or (
+            active_job_state == "unknown" and active_job_id
+        ):
+            _UI_LOGGER.info(
+                "home_blocked_by_local_readiness reason=active_job active_job_id=%s active_job_state=%s",
+                active_job_id,
+                active_job_state,
+            )
+            self.statusBar().showMessage(LOCAL_HOME_READINESS_BLOCK_MESSAGE)
+            return False
+
+        coord_status = self._read_motion_coord_status()
+        if coord_status is None or not getattr(coord_status, "available", False):
+            _UI_LOGGER.info(
+                "home_blocked_by_local_readiness reason=coord_status_unavailable error=%s",
+                "" if coord_status is None else getattr(coord_status, "error_message", ""),
+            )
+            self.statusBar().showMessage(LOCAL_HOME_READINESS_BLOCK_MESSAGE)
+            return False
+
+        coord_state_label = str(getattr(coord_status, "state_label", "unknown") or "unknown").strip().lower()
+        remaining_segments = int(getattr(coord_status, "remaining_segments", 0) or 0)
+        current_velocity = float(getattr(coord_status, "current_velocity", 0.0) or 0.0)
+        if (
+            coord_state_label in ("moving", "paused", "error")
+            or bool(getattr(coord_status, "is_moving", False))
+            or remaining_segments != 0
+            or abs(current_velocity) > LOCAL_HOME_READINESS_VELOCITY_EPSILON_MM_S
+        ):
+            _UI_LOGGER.info(
+                "home_blocked_by_local_readiness reason=coord_not_ready coord_state=%s coord_is_moving=%s remaining_segments=%s current_velocity=%.3f",
+                coord_state_label,
+                bool(getattr(coord_status, "is_moving", False)),
+                remaining_segments,
+                current_velocity,
+            )
+            self.statusBar().showMessage(LOCAL_HOME_READINESS_BLOCK_MESSAGE)
+            return False
+
+        for axis in PRODUCTION_REQUIRED_AXES:
+            axis_status = status.axes.get(axis)
+            if axis_status is None:
+                _UI_LOGGER.info("home_blocked_by_local_readiness reason=missing_axis_status axis=%s", axis)
+                self.statusBar().showMessage(LOCAL_HOME_READINESS_BLOCK_MESSAGE)
+                return False
+            if not bool(axis_status.enabled):
+                _UI_LOGGER.info("home_blocked_by_local_readiness reason=axis_disabled axis=%s", axis)
+                self.statusBar().showMessage(LOCAL_HOME_READINESS_BLOCK_MESSAGE)
+                return False
+            if str(axis_status.homing_state or "").strip().lower() == "homing":
+                _UI_LOGGER.info("home_blocked_by_local_readiness reason=axis_homing axis=%s", axis)
+                self.statusBar().showMessage(LOCAL_HOME_READINESS_BLOCK_MESSAGE)
+                return False
+            axis_velocity = self._axis_velocity_for_home_readiness(axis, status, coord_status)
+            if abs(axis_velocity) > LOCAL_HOME_READINESS_VELOCITY_EPSILON_MM_S:
+                _UI_LOGGER.info(
+                    "home_blocked_by_local_readiness reason=axis_velocity axis=%s velocity=%.3f",
+                    axis,
+                    axis_velocity,
+                )
+                self.statusBar().showMessage(LOCAL_HOME_READINESS_BLOCK_MESSAGE)
+                return False
+        return True
+
     def _update_home_controls_state(self):
-        enabled = self._is_online_ready() and not self._is_home_worker_running()
+        enabled = (
+            self._is_online_ready()
+            and not self._is_home_worker_running()
+            and not self._current_job_id
+            and not self._pending_production_action
+            and not self._status_has_homing_axis()
+        )
         if hasattr(self, "_home_all_btn"):
             self._home_all_btn.setEnabled(enabled)
         if hasattr(self, "_prod_home_btn"):
-            self._prod_home_btn.setEnabled(enabled and not self._current_job_id and not self._pending_production_action)
+            self._prod_home_btn.setEnabled(enabled)
         if hasattr(self, "_home_axis_buttons"):
             for btn in self._home_axis_buttons:
                 btn.setEnabled(enabled)
@@ -2265,6 +2453,8 @@ class MainWindow(QMainWindow):
             return False
         if status.gate_door_active():
             self.statusBar().showMessage("安全门打开，无法回零")
+            return False
+        if not self._check_home_runtime_readiness(status):
             return False
         return True
 
@@ -3744,6 +3934,10 @@ class MainWindow(QMainWindow):
             )
             self._sync_preview_session_fields()
         if decision.allowed:
+            homing_gate_message = self._build_start_homing_gate_message(status)
+            if homing_gate_message:
+                self._show_preflight_warning(homing_gate_message)
+                return False
             return True
         self._show_preflight_warning(decision.message)
         if self._preview_source:
@@ -4073,6 +4267,7 @@ class MainWindow(QMainWindow):
             self._runtime_status_fault = False
             self._last_status_error_notice_ts = 0.0
             self._state_label.setText(status.runtime_state)
+            self._update_home_controls_state()
 
             # Update Dispenser Status
             is_dispensing = status.dispenser_valve_open

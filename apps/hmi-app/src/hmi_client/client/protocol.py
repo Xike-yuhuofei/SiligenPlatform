@@ -34,6 +34,18 @@ def _resolve_homing_rpc_timeout_s(timeout_ms: int = 0) -> float:
     return max(30.0, effective_timeout_ms / 1000.0 + HOMING_RPC_GRACE_S)
 
 
+def _coord_state_label(value: int) -> str:
+    if value == 0:
+        return "idle"
+    if value == 1:
+        return "moving"
+    if value == 2:
+        return "paused"
+    if value == 3:
+        return "error"
+    return "unknown"
+
+
 @dataclass
 class AxisStatus:
     position: float = 0.0
@@ -155,6 +167,38 @@ class JobTransitionResult:
     job_id: str = ""
     message: str = ""
     error_code: int | None = None
+
+
+@dataclass
+class MotionCoordAxisStatus:
+    position: float = 0.0
+    velocity: float = 0.0
+    state: int | None = None
+    enabled: bool = False
+    homed: bool = False
+    in_position: bool = False
+    has_error: bool = False
+    error_code: int | None = None
+    servo_alarm: bool = False
+    following_error: bool = False
+    home_failed: bool = False
+
+
+@dataclass
+class MotionCoordStatus:
+    coord_sys: int = 1
+    state: int = 0
+    state_label: str = "idle"
+    is_moving: bool = False
+    remaining_segments: int = 0
+    current_velocity: float = 0.0
+    raw_status_word: int = 0
+    raw_segment: int = 0
+    mc_status_ret: int = 0
+    available: bool = False
+    error_message: str = ""
+    error_code: int | None = None
+    axes: Dict[str, MotionCoordAxisStatus] = field(default_factory=dict)
 
 
 class CommandProtocol:
@@ -382,6 +426,78 @@ class CommandProtocol:
                 enabled=bool(axis_data.get("enabled", False)),
                 homed=bool(axis_data.get("homed", False)),
                 homing_state=str(axis_data.get("homing_state", "unknown")),
+            )
+        return status
+
+    def get_motion_coord_status(self, coord_sys: int = 1) -> MotionCoordStatus:
+        resp = self._client.send_request("motion.coord.status", {"coord_sys": int(coord_sys)})
+        if "error" in resp:
+            error_payload = _as_dict(resp.get("error"))
+            message = str(error_payload.get("message", "") or "Unknown error")
+            code_raw = error_payload.get("code")
+            error_code = None
+            if code_raw is not None:
+                try:
+                    error_code = int(code_raw)
+                except (TypeError, ValueError):
+                    error_code = None
+            return MotionCoordStatus(
+                coord_sys=int(coord_sys),
+                available=False,
+                error_message=message,
+                error_code=error_code,
+            )
+
+        if "result" not in resp:
+            return MotionCoordStatus(
+                coord_sys=int(coord_sys),
+                available=False,
+                error_message="响应缺少 result 字段",
+            )
+
+        result = _as_dict(resp.get("result"))
+        state_value = int(result.get("state", 0) or 0)
+        status = MotionCoordStatus(
+            coord_sys=int(result.get("coord_sys", coord_sys) or coord_sys),
+            state=state_value,
+            state_label=_coord_state_label(state_value),
+            is_moving=bool(result.get("is_moving", False)),
+            remaining_segments=int(result.get("remaining_segments", 0) or 0),
+            current_velocity=float(result.get("current_velocity", 0.0) or 0.0),
+            raw_status_word=int(result.get("raw_status_word", 0) or 0),
+            raw_segment=int(result.get("raw_segment", 0) or 0),
+            mc_status_ret=int(result.get("mc_status_ret", 0) or 0),
+            available=True,
+        )
+        axes_payload = _as_dict(result.get("axes"))
+        for name, data in axes_payload.items():
+            axis_data = _as_dict(data)
+            error_code_raw = axis_data.get("error_code")
+            axis_error_code = None
+            if error_code_raw is not None:
+                try:
+                    axis_error_code = int(error_code_raw)
+                except (TypeError, ValueError):
+                    axis_error_code = None
+            state_raw = axis_data.get("state")
+            axis_state = None
+            if state_raw is not None:
+                try:
+                    axis_state = int(state_raw)
+                except (TypeError, ValueError):
+                    axis_state = None
+            status.axes[name] = MotionCoordAxisStatus(
+                position=float(axis_data.get("position", 0.0) or 0.0),
+                velocity=float(axis_data.get("velocity", 0.0) or 0.0),
+                state=axis_state,
+                enabled=bool(axis_data.get("enabled", False)),
+                homed=bool(axis_data.get("homed", False)),
+                in_position=bool(axis_data.get("in_position", False)),
+                has_error=bool(axis_data.get("has_error", False)),
+                error_code=axis_error_code,
+                servo_alarm=bool(axis_data.get("servo_alarm", False)),
+                following_error=bool(axis_data.get("following_error", False)),
+                home_failed=bool(axis_data.get("home_failed", False)),
             )
         return status
 
