@@ -10,6 +10,7 @@
 
 #include "domain/dispensing/domain-services/TriggerPlanner.h"
 #include "process_path/contracts/GeometryUtils.h"
+#include "shared/geometry/BoostGeometryAdapter.h"
 #include "shared/types/Error.h"
 
 #include <algorithm>
@@ -24,6 +25,7 @@ using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::int32;
 using Siligen::Shared::Types::Point2D;
+using Siligen::Shared::Geometry::IsPointOnSegment;
 using Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayoutState;
 using Siligen::Domain::Dispensing::ValueObjects::AuthorityLayoutComponent;
 using Siligen::Domain::Dispensing::ValueObjects::DispenseSpan;
@@ -46,6 +48,14 @@ using Siligen::ProcessPath::Contracts::SegmentType;
 using Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout;
 
 namespace {
+
+struct PendingComponentSpan {
+    std::size_t component_index = 0;
+    std::size_t local_span_index = 0;
+    const TopologySpanSlice* span = nullptr;
+    float32 start_distance_mm = 0.0f;
+    std::size_t source_segment_index = std::numeric_limits<std::size_t>::max();
+};
 
 constexpr float32 kEpsilon = 1e-6f;
 constexpr float32 kDefaultSpacingMinMm = 2.7f;
@@ -120,6 +130,81 @@ bool ShouldSkipAdjacentCrossSpanDuplicateTrigger(
     return previous.span_ref != candidate.span_ref &&
         PointsNear(previous.position, candidate.position, vertex_tolerance_mm) &&
         std::fabs(previous.distance_mm_global - candidate.distance_mm_global) <= kSharedVertexToleranceMm;
+}
+
+bool SegmentContainsInteriorPoint(
+    const Segment& segment,
+    const Point2D& point,
+    float32 tolerance_mm) {
+    if (segment.is_point) {
+        return false;
+    }
+
+    if (segment.type != SegmentType::Line) {
+        return false;
+    }
+
+    const Point2D start = SegmentStart(segment);
+    const Point2D end = SegmentEnd(segment);
+    return !PointsNear(start, point, tolerance_mm) &&
+        !PointsNear(end, point, tolerance_mm) &&
+        IsPointOnSegment(point, start, end, tolerance_mm);
+}
+
+bool SpanReachesPointAfterStart(
+    const TopologySpanSlice& span,
+    const Point2D& point,
+    float32 tolerance_mm) {
+    if (span.segments.empty()) {
+        return false;
+    }
+
+    if (PointsNear(SegmentStart(span.segments.front().geometry), point, tolerance_mm)) {
+        return false;
+    }
+
+    for (std::size_t segment_index = 0; segment_index < span.segments.size(); ++segment_index) {
+        const auto& geometry = span.segments[segment_index].geometry;
+        if (segment_index > 0 && PointsNear(SegmentStart(geometry), point, tolerance_mm)) {
+            return true;
+        }
+        if (PointsNear(SegmentEnd(geometry), point, tolerance_mm)) {
+            return true;
+        }
+        if (SegmentContainsInteriorPoint(geometry, point, tolerance_mm)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool ShouldSuppressOverlappedOpenEndTrigger(
+    const TopologySpanSlice& span,
+    const std::vector<PendingComponentSpan>& ordered_spans,
+    std::size_t current_span_index,
+    float32 tolerance_mm) {
+    if (span.split_reason != DispenseSpanSplitReason::ExplicitProcessBoundary ||
+        span.segments.empty()) {
+        return false;
+    }
+
+    const Point2D open_end = SegmentEnd(span.segments.back().geometry);
+    for (std::size_t later_span_index = current_span_index + 1;
+         later_span_index < ordered_spans.size();
+         ++later_span_index) {
+        const auto* later_span = ordered_spans[later_span_index].span;
+        if (later_span == nullptr ||
+            later_span->split_reason != DispenseSpanSplitReason::ExplicitProcessBoundary) {
+            continue;
+        }
+
+        if (SpanReachesPointAfterStart(*later_span, open_end, tolerance_mm)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 Result<float32> MeasureSegmentLength(
@@ -620,7 +705,9 @@ Result<AuthorityTriggerLayout> AuthorityTriggerLayoutPlanner::Plan(
     std::size_t global_sequence = 0;
     bool has_blocking_failure = component_result.effective_component_count == 0U;
     std::size_t span_order_index = 0;
-    layout.components.reserve(component_result.components.size());
+    std::vector<AuthorityLayoutComponent> component_records;
+    component_records.reserve(component_result.components.size());
+    std::vector<PendingComponentSpan> pending_spans;
 
     for (std::size_t component_index = 0; component_index < component_result.components.size(); ++component_index) {
         const auto& component = component_result.components[component_index];
@@ -637,16 +724,56 @@ Result<AuthorityTriggerLayout> AuthorityTriggerLayoutPlanner::Plan(
         component_record.blocking_reason = component.blocking_reason;
         component_record.source_segment_indices = component.source_segment_indices;
 
-        if (component.ignored) {
-            layout.components.push_back(std::move(component_record));
-            continue;
+        if (!component.ignored) {
+            for (std::size_t local_span_index = 0; local_span_index < component.spans.size(); ++local_span_index) {
+                PendingComponentSpan pending_span;
+                pending_span.component_index = component_index;
+                pending_span.local_span_index = local_span_index;
+                pending_span.span = &component.spans[local_span_index];
+                pending_span.start_distance_mm = component.spans[local_span_index].start_distance_mm;
+                if (!component.spans[local_span_index].source_segment_indices.empty()) {
+                    pending_span.source_segment_index =
+                        component.spans[local_span_index].source_segment_indices.front();
+                }
+                pending_spans.push_back(pending_span);
+            }
         }
 
-        for (std::size_t local_span_index = 0; local_span_index < component.spans.size(); ++local_span_index) {
-            const auto& span = component.spans[local_span_index];
+        component_records.push_back(std::move(component_record));
+    }
+
+    std::stable_sort(
+        pending_spans.begin(),
+        pending_spans.end(),
+        [](const PendingComponentSpan& lhs, const PendingComponentSpan& rhs) {
+            if (std::fabs(lhs.start_distance_mm - rhs.start_distance_mm) > kEpsilon) {
+                return lhs.start_distance_mm < rhs.start_distance_mm;
+            }
+            if (lhs.source_segment_index != rhs.source_segment_index) {
+                return lhs.source_segment_index < rhs.source_segment_index;
+            }
+            if (lhs.component_index != rhs.component_index) {
+                return lhs.component_index < rhs.component_index;
+            }
+            return lhs.local_span_index < rhs.local_span_index;
+        });
+
+    for (std::size_t pending_span_position = 0;
+         pending_span_position < pending_spans.size();
+         ++pending_span_position) {
+            const auto& pending_span = pending_spans[pending_span_position];
+            const auto& component = component_result.components[pending_span.component_index];
+            auto& component_record = component_records[pending_span.component_index];
+            const auto& span = *pending_span.span;
+            const bool suppress_overlapped_open_end_trigger =
+                ShouldSuppressOverlappedOpenEndTrigger(
+                    span,
+                    pending_spans,
+                    pending_span_position,
+                    vertex_tolerance_mm);
             const std::string span_id = BuildStableId(
                 "span",
-                component_record.component_id + "|" + std::to_string(local_span_index));
+                component_record.component_id + "|" + std::to_string(pending_span.local_span_index));
             component_record.span_refs.push_back(span_id);
 
             DispenseSpan layout_span;
@@ -836,16 +963,23 @@ Result<AuthorityTriggerLayout> AuthorityTriggerLayoutPlanner::Plan(
             span_trigger_points.reserve(point_count);
             bool span_failed = false;
             for (std::size_t point_index = 0; point_index < point_count; ++point_index) {
-                const float32 distance_mm = layout_span.closed
-                    ? Internal::WrapLoopDistance(
-                        layout_span.phase_mm + layout_span.actual_spacing_mm * static_cast<float32>(point_index),
-                        total_length_mm)
+                if (suppress_overlapped_open_end_trigger &&
+                    !layout_span.closed &&
+                    point_index + 1U == point_count) {
+                    continue;
+                }
+
+                const float32 traversal_distance_mm = layout_span.closed
+                    ? (layout_span.phase_mm + layout_span.actual_spacing_mm * static_cast<float32>(point_index))
                     : ((point_index == layout_span.interval_count)
                         ? total_length_mm
                         : layout_span.actual_spacing_mm * static_cast<float32>(point_index));
+                const float32 geometry_distance_mm = layout_span.closed
+                    ? Internal::WrapLoopDistance(traversal_distance_mm, total_length_mm)
+                    : traversal_distance_mm;
                 auto location_result = locator.Locate(
                     span.segments,
-                    distance_mm,
+                    geometry_distance_mm,
                     request.spline_max_error_mm,
                     request.spline_max_step_mm);
                 if (location_result.IsError()) {
@@ -861,20 +995,20 @@ Result<AuthorityTriggerLayout> AuthorityTriggerLayoutPlanner::Plan(
                 LayoutTriggerPoint point;
                 point.trigger_id = BuildStableId(
                     "trigger",
-                    layout_span.span_id + "|" + std::to_string(point_index) + "|" + std::to_string(distance_mm));
+                    layout_span.span_id + "|" + std::to_string(point_index) + "|" + std::to_string(geometry_distance_mm));
                 point.layout_ref = layout.layout_id;
                 point.span_ref = layout_span.span_id;
                 point.sequence_index_span = point_index;
-                point.distance_mm_global = span.start_distance_mm + distance_mm;
-                point.distance_mm_span = distance_mm;
+                point.distance_mm_global = span.start_distance_mm + traversal_distance_mm;
+                point.distance_mm_span = traversal_distance_mm;
                 point.position = location_result.Value().position;
                 point.source_segment_index = span.source_segment_indices[location_result.Value().segment_index];
-                point.shared_vertex = IsSharedVertexDistance(boundaries, distance_mm);
+                point.shared_vertex = IsSharedVertexDistance(boundaries, geometry_distance_mm);
                 if ((!layout_span.closed && (point_index == 0 || point_index + 1 == point_count)) ||
                     (layout_span.closed &&
                      HasStrongAnchorAtDistance(
                          layout_span,
-                         distance_mm,
+                         geometry_distance_mm,
                          total_length_mm,
                          closed_loop_anchor_tolerance_mm)) ||
                     HasStrongAnchorAtPosition(layout_span, point.position, split_request.vertex_tolerance_mm)) {
@@ -922,9 +1056,7 @@ Result<AuthorityTriggerLayout> AuthorityTriggerLayoutPlanner::Plan(
             layout.validation_outcomes.push_back(std::move(outcome));
         }
 
-        layout.components.push_back(std::move(component_record));
-    }
-
+    layout.components = std::move(component_records);
     layout.authority_ready =
         layout.effective_component_count > 0U &&
         !layout.trigger_points.empty() &&

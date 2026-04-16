@@ -429,6 +429,40 @@ void BindAuthorityLayoutToExecutionTrajectory(
             return;
         }
 
+        if (!best_candidate.monotonic) {
+            const auto& trajectory_point = (*execution_trajectory)[best_candidate.interpolation_index];
+            trace_row.matched = true;
+            trace_row.interpolation_index = best_candidate.interpolation_index;
+            trace_row.execution_sequence_id = trajectory_point.sequence_id;
+            trace_row.execution_position = trajectory_point.position;
+            trace_row.execution_trigger_position_mm = trajectory_point.trigger_position_mm;
+            trace_row.distance_delta_mm = trajectory_point.trigger_position_mm - trigger.distance_mm_global;
+            trace_row.position_delta_mm = trajectory_point.position.DistanceTo(trigger.position);
+            trace_row.monotonic = false;
+            trace_row.execution_segment_type = trajectory_point.segment_type;
+            binding_trace_rows.push_back(std::move(trace_row));
+
+            std::ostringstream oss;
+            oss << "preview_binding_stage=failed_non_monotonic"
+                << " layout_id=" << artifacts.authority_trigger_layout.layout_id
+                << " trigger_index=" << trigger_index
+                << " trigger_id=" << trigger.trigger_id
+                << " trigger_distance_mm=" << trigger.distance_mm_global
+                << " trigger_position=" << FormatPoint(trigger.position)
+                << " execution_index=" << best_candidate.interpolation_index
+                << " execution_sequence_id=" << trajectory_point.sequence_id
+                << " execution_trigger_position_mm=" << trajectory_point.trigger_position_mm
+                << " execution_position=" << FormatPoint(trajectory_point.position)
+                << " last_interpolation_index=" << last_interpolation_index
+                << " elapsed_ms=" << ElapsedMs(started_at);
+            SILIGEN_LOG_WARNING(oss.str());
+            LogBindingTraceWindow(artifacts.authority_trigger_layout, binding_trace_rows, trigger_index);
+            artifacts.failure_reason = "authority trigger binding non-monotonic";
+            artifacts.binding_ready = false;
+            artifacts.authority_trigger_layout.binding_ready = false;
+            return;
+        }
+
         bind_candidate(trigger_index, trigger, best_candidate, std::move(trace_row));
         consumed_enabled[best_candidate.enabled_position] = true;
         last_enabled_position = best_candidate.enabled_position;

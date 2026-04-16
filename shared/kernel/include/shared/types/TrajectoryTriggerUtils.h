@@ -518,7 +518,8 @@ inline bool ResolveIndexedPointTriggerMarkerPlan(const std::vector<TrajectoryPoi
                                                  const TriggerMarkerRequest& request,
                                                  float32 position_tolerance_mm,
                                                  size_t preferred_start_index,
-                                                 TriggerMarkerPlan& plan) {
+                                                 TriggerMarkerPlan& plan,
+                                                 bool allow_wraparound = true) {
     if (points.empty() || cumulative.empty()) {
         return false;
     }
@@ -553,7 +554,7 @@ inline bool ResolveIndexedPointTriggerMarkerPlan(const std::vector<TrajectoryPoi
     };
 
     consider_candidates(true);
-    if (!best_candidate.found) {
+    if (!best_candidate.found && allow_wraparound) {
         consider_candidates(false);
     }
     if (!best_candidate.found) {
@@ -575,7 +576,8 @@ inline bool ResolveSequentialSegmentTriggerMarkerPlan(const std::vector<Trajecto
                                                       const TriggerMarkerRequest& request,
                                                       float32 position_tolerance_mm,
                                                       size_t preferred_start_index,
-                                                      TriggerMarkerPlan& plan) {
+                                                      TriggerMarkerPlan& plan,
+                                                      bool allow_wraparound = true) {
     if (points.size() < 2 || cumulative.empty()) {
         return false;
     }
@@ -599,7 +601,9 @@ inline bool ResolveSequentialSegmentTriggerMarkerPlan(const std::vector<Trajecto
                 position_tolerance_mm,
                 segment_end_index,
                 candidate);
-            if (!candidate.found) {
+            if (!candidate.found ||
+                candidate.ratio <= kTriggerMarkerMatchToleranceMm ||
+                candidate.ratio >= 1.0f - kTriggerMarkerMatchToleranceMm) {
                 continue;
             }
 
@@ -619,7 +623,7 @@ inline bool ResolveSequentialSegmentTriggerMarkerPlan(const std::vector<Trajecto
     if (try_scan_range(forward_start, points.size() - 1)) {
         return true;
     }
-    return forward_start > 1 && try_scan_range(1, forward_start - 1);
+    return allow_wraparound && forward_start > 1 && try_scan_range(1, forward_start - 1);
 }
 
 inline bool ResolveDistanceOnlyTriggerMarkerPlan(const std::vector<TrajectoryPoint>& points,
@@ -686,6 +690,17 @@ inline bool ResolveDistanceOnlyTriggerMarkerPlan(const std::vector<TrajectoryPoi
     plan.pulse_width_us = request.pulse_width_us;
     plan.order_index = request.order_index;
     return true;
+}
+
+inline bool SupportsTriggerMarkerCyclicWraparound(const std::vector<TrajectoryPoint>& points,
+                                                  float32 position_tolerance_mm) {
+    if (points.size() < 3) {
+        return false;
+    }
+
+    const float32 closure_tolerance_mm =
+        std::max(position_tolerance_mm, kTriggerMarkerMatchToleranceMm);
+    return points.front().position.DistanceTo(points.back().position) <= closure_tolerance_mm;
 }
 
 inline std::vector<TrajectoryPoint> MaterializeTriggerMarkerPlans(
@@ -815,6 +830,8 @@ inline bool ApplyTriggerMarkersByPosition(std::vector<TrajectoryPoint>& points,
                 pulse_width_us);
             const auto cumulative = BuildTrajectoryCumulativeDistances(base_points);
             const auto point_index = BuildTriggerMarkerPointIndex(base_points, position_tolerance_mm);
+            const bool allow_cyclic_wraparound =
+                SupportsTriggerMarkerCyclicWraparound(base_points, position_tolerance_mm);
 
             std::vector<TriggerMarkerPlan> plans;
             plans.reserve(requests.size());
@@ -822,22 +839,37 @@ inline bool ApplyTriggerMarkersByPosition(std::vector<TrajectoryPoint>& points,
             size_t preferred_start_index = 0;
             for (const auto& request : requests) {
                 TriggerMarkerPlan plan;
-                if (!ResolveDistanceGuidedTriggerMarkerPlan(
-                        base_points, cumulative, request, position_tolerance_mm, plan) &&
-                    !ResolveIndexedPointTriggerMarkerPlan(
+                TriggerMarkerPlan indexed_point_plan;
+                const bool has_indexed_point_plan = ResolveIndexedPointTriggerMarkerPlan(
+                    base_points,
+                    cumulative,
+                    point_index,
+                    request,
+                    position_tolerance_mm,
+                    preferred_start_index,
+                    indexed_point_plan,
+                    allow_cyclic_wraparound);
+                TriggerMarkerPlan sequential_segment_plan;
+                const bool has_sequential_segment_plan = ResolveSequentialSegmentTriggerMarkerPlan(
+                    base_points,
+                    cumulative,
+                    request,
+                    position_tolerance_mm,
+                    preferred_start_index,
+                    sequential_segment_plan,
+                    allow_cyclic_wraparound);
+
+                if (has_sequential_segment_plan &&
+                    (!has_indexed_point_plan || sequential_segment_plan.index < indexed_point_plan.index)) {
+                    plan = sequential_segment_plan;
+                } else if (has_indexed_point_plan) {
+                    plan = indexed_point_plan;
+                } else if (
+                    !ResolveDistanceGuidedTriggerMarkerPlan(
                         base_points,
                         cumulative,
-                        point_index,
                         request,
                         position_tolerance_mm,
-                        preferred_start_index,
-                        plan) &&
-                    !ResolveSequentialSegmentTriggerMarkerPlan(
-                        base_points,
-                        cumulative,
-                        request,
-                        position_tolerance_mm,
-                        preferred_start_index,
                         plan) &&
                     !ResolveDistanceOnlyTriggerMarkerPlan(
                         base_points,
@@ -850,6 +882,10 @@ inline bool ApplyTriggerMarkersByPosition(std::vector<TrajectoryPoint>& points,
                 }
                 plans.push_back(plan);
                 preferred_start_index = plan.index;
+                if (plan.kind == TriggerMarkerCandidateKind::ExistingPoint &&
+                    preferred_start_index < base_points.size()) {
+                    ++preferred_start_index;
+                }
             }
 
             if (batch_resolved) {

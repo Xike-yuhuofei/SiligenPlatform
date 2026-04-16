@@ -185,6 +185,18 @@ bool HasConsecutiveNearDuplicateTriggerPoints(
     return false;
 }
 
+bool HasDecreasingGlobalTriggerDistances(
+    const std::vector<LayoutTriggerPoint>& trigger_points,
+    float tolerance_mm = 1e-4f) {
+    for (std::size_t index = 1; index < trigger_points.size(); ++index) {
+        if (trigger_points[index].distance_mm_global + tolerance_mm <
+            trigger_points[index - 1].distance_mm_global) {
+            return true;
+        }
+    }
+    return false;
+}
+
 }  // namespace
 
 TEST(AuthorityTriggerLayoutPlannerTest, PlansEquivalentLayoutForSingleAndSubdividedOpenSpan) {
@@ -388,6 +400,7 @@ TEST(AuthorityTriggerLayoutPlannerTest, SelectsAnchorConstrainedRectangleSolutio
     EXPECT_EQ(CountPointsNear(layout.trigger_points, span.span_id, Point2D(100.0f, 0.0f), anchor_tolerance_mm + 1e-3f), 1U);
     EXPECT_EQ(CountPointsNear(layout.trigger_points, span.span_id, Point2D(100.0f, 100.0f), anchor_tolerance_mm + 1e-3f), 1U);
     EXPECT_EQ(CountPointsNear(layout.trigger_points, span.span_id, Point2D(0.0f, 100.0f), anchor_tolerance_mm + 1e-3f), 1U);
+    EXPECT_FALSE(HasDecreasingGlobalTriggerDistances(layout.trigger_points));
 }
 
 TEST(AuthorityTriggerLayoutPlannerTest, FallsBackToPhaseSearchWhenClosedLoopCornerAnchorsAreDisabled) {
@@ -422,6 +435,7 @@ TEST(AuthorityTriggerLayoutPlannerTest, FallsBackToPhaseSearchWhenClosedLoopCorn
     EXPECT_FALSE(span.anchor_constraints_satisfied);
     EXPECT_LT(span.phase_mm, span.actual_spacing_mm);
     EXPECT_EQ(CountSourceKind(layout.trigger_points, span.span_id, LayoutTriggerSourceKind::Anchor), 0U);
+    EXPECT_FALSE(HasDecreasingGlobalTriggerDistances(layout.trigger_points));
 }
 
 TEST(AuthorityTriggerLayoutPlannerTest, PrefersInWindowAnchorConstrainedSolutionWhenPhaseCanSatisfyCorners) {
@@ -503,6 +517,7 @@ TEST(AuthorityTriggerLayoutPlannerTest, UsesSpacingDerivedDefaultToleranceForIrr
     EXPECT_GT(span.phase_mm, 0.0f);
     EXPECT_LT(span.phase_mm, span.actual_spacing_mm);
     EXPECT_EQ(CountSourceKind(layout.trigger_points, span.span_id, LayoutTriggerSourceKind::Anchor), 4U);
+    EXPECT_FALSE(HasDecreasingGlobalTriggerDistances(layout.trigger_points));
 }
 
 TEST(AuthorityTriggerLayoutPlannerTest, SplitsBranchRevisitCandidateIntoClosedLoopAndOpenSpan) {
@@ -741,6 +756,62 @@ TEST(AuthorityTriggerLayoutPlannerTest, ClassifiesRapidSeparatedSharedVertexSpan
     EXPECT_EQ(CountPointsNear(layout.trigger_points, layout.spans[1].span_id, Point2D(0.0f, 0.0f), 1e-4f), 1U);
     EXPECT_EQ(CountGlobalPointsNear(layout.trigger_points, Point2D(0.0f, 0.0f), 1e-4f), 2U);
     EXPECT_FALSE(HasConsecutiveNearDuplicateTriggerPoints(layout.trigger_points, 1e-4f));
+}
+
+TEST(AuthorityTriggerLayoutPlannerTest, SuppressesOpenEndAnchorWhenFutureExplicitBoundaryReachesItAfterStart) {
+    AuthorityTriggerLayoutPlanner planner;
+    auto request = BuildRequest();
+    request.target_spacing_mm = 5.0f;
+    request.min_spacing_mm = 4.7f;
+    request.max_spacing_mm = 5.3f;
+    request.process_path.segments.push_back(
+        BuildLineSegment(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)));
+    request.process_path.segments.push_back(
+        BuildLineSegment(Point2D(10.0f, 0.0f), Point2D(5.0f, 5.0f), false));
+    request.process_path.segments.push_back(
+        BuildLineSegment(Point2D(5.0f, 5.0f), Point2D(15.0f, -5.0f)));
+
+    const auto result = planner.Plan(request);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    const auto& layout = result.Value();
+    EXPECT_TRUE(layout.authority_ready);
+    ASSERT_EQ(layout.spans.size(), 2U);
+    EXPECT_EQ(layout.spans[0].split_reason, DispenseSpanSplitReason::ExplicitProcessBoundary);
+    EXPECT_EQ(layout.spans[1].split_reason, DispenseSpanSplitReason::ExplicitProcessBoundary);
+    EXPECT_EQ(CountPointsNear(layout.trigger_points, layout.spans[0].span_id, Point2D(10.0f, 0.0f), 1e-4f), 0U);
+    EXPECT_EQ(CountPointsNear(layout.trigger_points, layout.spans[1].span_id, Point2D(5.0f, 5.0f), 1e-4f), 1U);
+    EXPECT_FALSE(HasDecreasingGlobalTriggerDistances(layout.trigger_points));
+}
+
+TEST(AuthorityTriggerLayoutPlannerTest, SortsAuthoritySpansGloballyAcrossMultiComponentExplicitBoundaryFamilies) {
+    AuthorityTriggerLayoutPlanner planner;
+    auto request = BuildRequest();
+    request.target_spacing_mm = 5.0f;
+    request.min_spacing_mm = 4.7f;
+    request.max_spacing_mm = 5.3f;
+    request.process_path.segments.push_back(
+        BuildLineSegment(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)));
+    request.process_path.segments.push_back(
+        BuildLineSegment(Point2D(10.0f, 0.0f), Point2D(0.0f, 0.0f), false));
+    request.process_path.segments.push_back(
+        BuildLineSegment(Point2D(20.0f, 0.0f), Point2D(30.0f, 0.0f)));
+    request.process_path.segments.push_back(
+        BuildLineSegment(Point2D(30.0f, 0.0f), Point2D(0.0f, 0.0f), false));
+    request.process_path.segments.push_back(
+        BuildLineSegment(Point2D(0.0f, 0.0f), Point2D(0.0f, 10.0f)));
+
+    const auto result = planner.Plan(request);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    const auto& layout = result.Value();
+    EXPECT_TRUE(layout.authority_ready);
+    ASSERT_EQ(layout.components.size(), 2U);
+    ASSERT_EQ(layout.spans.size(), 3U);
+    EXPECT_EQ(layout.spans[0].source_segment_indices.front(), 0U);
+    EXPECT_EQ(layout.spans[1].source_segment_indices.front(), 2U);
+    EXPECT_EQ(layout.spans[2].source_segment_indices.front(), 4U);
+    EXPECT_FALSE(HasDecreasingGlobalTriggerDistances(layout.trigger_points));
 }
 
 TEST(AuthorityTriggerLayoutPlannerTest, DeduplicatesAdjacentSharedBoundaryTriggersAcrossBranchRevisitSpans) {

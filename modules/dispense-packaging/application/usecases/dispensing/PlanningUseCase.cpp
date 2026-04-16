@@ -630,7 +630,7 @@ Siligen::Application::Services::Dispensing::WorkflowAuthorityPreviewRequest Buil
     const std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort>& config_port) {
     Siligen::Application::Services::Dispensing::WorkflowAuthorityPreviewRequest workflow_input;
     workflow_input.process_path = process_path_result.shaped_path;
-    workflow_input.authority_process_path = process_path_result.process_path;
+    workflow_input.authority_process_path = process_path_result.shaped_path;
     workflow_input.source_path = source_path;
     workflow_input.dxf_filename = dxf_filename;
     workflow_input.runtime_options.dispensing_velocity = runtime_params.dispensing_velocity;
@@ -674,7 +674,7 @@ Siligen::Application::Services::Dispensing::WorkflowExecutionAssemblyRequest Bui
     const PlanningRuntimeParams& runtime_params) {
     Siligen::Application::Services::Dispensing::WorkflowExecutionAssemblyRequest workflow_input;
     workflow_input.process_path = authority_preview.process_path;
-    workflow_input.authority_process_path = authority_preview.authority_process_path;
+    workflow_input.authority_process_path = authority_preview.process_path;
     workflow_input.motion_plan = std::move(motion_plan);
     workflow_input.planning_start_position = Point2D(request.start_x, request.start_y);
     workflow_input.recipe_id = request.recipe_id;
@@ -1013,7 +1013,7 @@ Result<PreparedAuthorityPreview> PlanningUseCase::PrepareAuthorityPreview(const 
     prepared.source_path = request.dxf_filepath;
     prepared.prepared_pb_path = prepared_pb_path;
     prepared.process_path = process_path_result.shaped_path;
-    prepared.authority_process_path = process_path_result.process_path;
+    prepared.authority_process_path = process_path_result.shaped_path;
     prepared.discontinuity_count = process_path_result.normalized.report.discontinuity_count;
     prepared.preview_diagnostic_code =
         process_path_result.topology_diagnostics.fragmentation_suspected ? "process_path_fragmentation" : "";
