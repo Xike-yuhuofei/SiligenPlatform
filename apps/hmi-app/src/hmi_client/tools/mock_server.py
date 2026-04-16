@@ -333,14 +333,14 @@ class MockState:
                     axis.enabled = True
                 return {"result": {"connected": True, "message": "Mock hardware connected"}}
             if method == "status":
-                active_job_state = ""
+                job_execution_state = "idle"
                 if self.dxf.current_job_id:
                     if self.dxf.paused:
-                        active_job_state = "paused"
+                        job_execution_state = "paused"
                     elif self.dxf.running:
-                        active_job_state = "running"
+                        job_execution_state = "running"
                     else:
-                        active_job_state = "completed"
+                        job_execution_state = "completed"
                 if not self.hardware_connected:
                     supervision_current_state = "Disconnected"
                     supervision_reason = "hardware_disconnected"
@@ -394,8 +394,28 @@ class MockState:
                         "machine_state_reason": machine_state_reason,
                         "supervision": supervision,
                         "interlock_latched": bool(self.io.estop or self.io.door),
-                        "active_job_id": self.dxf.current_job_id,
-                        "active_job_state": active_job_state,
+                        "job_execution": {
+                            "job_id": self.dxf.current_job_id,
+                            "plan_id": self.dxf.current_plan_id,
+                            "plan_fingerprint": self.dxf.preview_snapshot_hash,
+                            "state": job_execution_state,
+                            "target_count": self.dxf.target_count,
+                            "completed_count": self.dxf.completed_count,
+                            "current_cycle": min(
+                                self.dxf.target_count,
+                                self.dxf.completed_count + (1 if self.dxf.running else 0),
+                            ),
+                            "current_segment": self.dxf.current_segment,
+                            "total_segments": self.dxf.segment_count,
+                            "cycle_progress_percent": int(self.dxf.progress),
+                            "overall_progress_percent": int(
+                                ((self.dxf.completed_count * 100.0) + self.dxf.progress)
+                                / max(1, self.dxf.target_count)
+                            ) if self.dxf.current_job_id else 0,
+                            "elapsed_seconds": 0.0,
+                            "error_message": "",
+                            "dry_run": self.dxf.job_dry_run,
+                        },
                         "axes": {
                             name: {
                                 "position": axis.position,
@@ -610,9 +630,13 @@ class MockState:
                 self.dispenser_valve_open = False
                 return {"result": {"dispensing": False}}
             if method == "dispenser.pause":
+                if self.dxf.running or self.dxf.paused:
+                    return {"error": {"code": 2811, "message": "manual dispenser pause is forbidden while DXF job is active"}}
                 self.dispenser_valve_open = False
                 return {"result": {"paused": True}}
             if method == "dispenser.resume":
+                if self.dxf.running or self.dxf.paused:
+                    return {"error": {"code": 2821, "message": "manual dispenser resume is forbidden while DXF job is active"}}
                 self.dispenser_valve_open = True
                 return {"result": {"resumed": True}}
             if method == "purge":

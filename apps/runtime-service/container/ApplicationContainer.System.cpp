@@ -101,11 +101,44 @@ void ApplicationContainer::ConfigureSystemOwnerPorts() {
             };
         }
 
+        Siligen::Runtime::Service::Status::RuntimeJobExecutionStatusReader job_execution_status_reader;
+        if (auto dispensing_execution_use_case = Resolve<UseCases::Dispensing::DispensingExecutionUseCase>()) {
+            job_execution_status_reader.read_job_status = [dispensing_execution_use_case](const std::string& job_id) {
+                auto runtime_result = dispensing_execution_use_case->GetJobStatus(job_id);
+                if (runtime_result.IsError()) {
+                    return Siligen::Shared::Types::Result<
+                        Siligen::RuntimeExecution::Contracts::System::RuntimeJobExecutionExportSnapshot>::Failure(
+                        runtime_result.GetError());
+                }
+
+                const auto& runtime_status = runtime_result.Value();
+                Siligen::RuntimeExecution::Contracts::System::RuntimeJobExecutionExportSnapshot snapshot;
+                snapshot.job_id = runtime_status.job_id;
+                snapshot.plan_id = runtime_status.plan_id;
+                snapshot.plan_fingerprint = runtime_status.plan_fingerprint;
+                snapshot.state = runtime_status.state;
+                snapshot.target_count = runtime_status.target_count;
+                snapshot.completed_count = runtime_status.completed_count;
+                snapshot.current_cycle = runtime_status.current_cycle;
+                snapshot.current_segment = runtime_status.current_segment;
+                snapshot.total_segments = runtime_status.total_segments;
+                snapshot.cycle_progress_percent = runtime_status.cycle_progress_percent;
+                snapshot.overall_progress_percent = runtime_status.overall_progress_percent;
+                snapshot.elapsed_seconds = runtime_status.elapsed_seconds;
+                snapshot.error_message = runtime_status.error_message;
+                snapshot.dry_run = runtime_status.dry_run;
+                return Siligen::Shared::Types::Result<
+                    Siligen::RuntimeExecution::Contracts::System::RuntimeJobExecutionExportSnapshot>::Success(
+                    std::move(snapshot));
+            };
+        }
+
         RegisterPort<Siligen::RuntimeExecution::Contracts::System::IRuntimeStatusExportPort>(
             std::make_shared<Siligen::Runtime::Service::Status::RuntimeStatusExportPort>(
                 runtime_supervision_port,
                 std::move(motion_status_reader),
-                std::move(dispenser_status_reader)));
+                std::move(dispenser_status_reader),
+                std::move(job_execution_status_reader)));
     }
 }
 

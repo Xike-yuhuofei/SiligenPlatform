@@ -11,6 +11,7 @@ set(RUNTIME_EXECUTION_UNIT_TEST_SOURCES
     DispensingProcessPortFactoryTest.cpp
     DispensingProcessServiceTraceTest.cpp
     DispensingProcessServiceWaitForMotionCompleteTest.cpp
+    dispensing/ValveAdapterRegressionTest.cpp
     domain/motion/JogControllerTest.cpp
     domain/motion/MotionBufferControllerTest.cpp
     domain/safety/EmergencyStopServiceTest.cpp

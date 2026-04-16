@@ -466,6 +466,7 @@ class MainWindow(QMainWindow):
         self._production_paused = False
         self._pending_production_action = ""
         self._production_dry_run = False
+        self._suppressed_terminal_job_id = ""
         self._completed_count = 0
         self._last_completed_count_seen = 0
         self._target_count = 1
@@ -1794,6 +1795,13 @@ class MainWindow(QMainWindow):
         if hasattr(self, "_global_estop_btn"):
             self._global_estop_btn.setEnabled(ui_state.global_estop_enabled)
         self._apply_production_action_capabilities(ui_state.allow_online_actions)
+        manual_valve_pause_resume_enabled = bool(
+            ui_state.allow_online_actions and not self._current_job_id and not self._pending_production_action
+        )
+        if hasattr(self, "_disp_pause_btn"):
+            self._disp_pause_btn.setEnabled(manual_valve_pause_resume_enabled)
+        if hasattr(self, "_disp_resume_btn"):
+            self._disp_resume_btn.setEnabled(manual_valve_pause_resume_enabled)
         self._update_home_controls_state()
         self._update_recovery_controls_state()
 
@@ -1806,6 +1814,7 @@ class MainWindow(QMainWindow):
         )
         start_enabled = bool(online_actions_allowed and not self._current_job_id and not self._pending_production_action)
         target_enabled = start_enabled
+        reset_enabled = bool(not self._current_job_id and not self._pending_production_action)
         pause_enabled = False
         resume_enabled = False
         stop_enabled = False
@@ -1836,6 +1845,8 @@ class MainWindow(QMainWindow):
             self._prod_stop_btn.setEnabled(stop_enabled)
         if hasattr(self, "_target_input"):
             self._target_input.setEnabled(target_enabled)
+        if hasattr(self, "_reset_counter_btn"):
+            self._reset_counter_btn.setEnabled(reset_enabled)
 
     def _show_initial_session_message(self) -> None:
         if self._requested_launch_mode == "online" and self._current_session_snapshot() is None:
@@ -2159,9 +2170,12 @@ class MainWindow(QMainWindow):
             return 0.0
 
     def _check_home_runtime_readiness(self, status) -> bool:
-        active_job_id = str(status.active_job_id or "").strip()
-        active_job_state = str(status.active_job_state or "").strip().lower()
-        if active_job_id or active_job_state in LOCAL_HOME_READINESS_BLOCKING_JOB_STATES:
+        job_execution = self._normalize_job_execution_snapshot(getattr(status, "job_execution", None))
+        active_job_id = str(job_execution.get("job_id", "")).strip()
+        active_job_state = str(job_execution.get("state", "")).strip().lower()
+        if self._is_active_job_execution_state(active_job_state) or (
+            active_job_state == "unknown" and active_job_id
+        ):
             _UI_LOGGER.info(
                 "home_blocked_by_local_readiness reason=active_job active_job_id=%s active_job_state=%s",
                 active_job_id,
@@ -2715,14 +2729,20 @@ class MainWindow(QMainWindow):
     def _on_dispenser_pause(self):
         if not self._require_online_mode("点胶控制"):
             return
-        ok = self._protocol.dispenser_pause()
-        self.statusBar().showMessage("点胶已暂停" if ok else "点胶暂停失败")
+        if self._current_job_id:
+            self.statusBar().showMessage("生产任务活跃时禁止手动暂停点胶阀")
+            return
+        ok, error, error_code = self._protocol.dispenser_pause()
+        self.statusBar().showMessage("点胶已暂停" if ok else self._format_action_failure("点胶暂停", error, error_code))
 
     def _on_dispenser_resume(self):
         if not self._require_online_mode("点胶控制"):
             return
-        ok = self._protocol.dispenser_resume()
-        self.statusBar().showMessage("点胶已继续" if ok else "点胶恢复失败")
+        if self._current_job_id:
+            self.statusBar().showMessage("生产任务活跃时禁止手动恢复点胶阀")
+            return
+        ok, error, error_code = self._protocol.dispenser_resume()
+        self.statusBar().showMessage("点胶已继续" if ok else self._format_action_failure("点胶恢复", error, error_code))
 
     def _on_dispenser_stop(self):
         if not self._require_online_mode("点胶控制"):
@@ -4014,12 +4034,15 @@ class MainWindow(QMainWindow):
         self._production_paused = False
         self._pending_production_action = ""
         self._production_dry_run = dry_run
+        self._suppressed_terminal_job_id = ""
         self._completed_count = 0
         self._last_completed_count_seen = 0
         self._cycle_times = []
         self._total_run_time = 0
         self._run_start_time = time.time()
         self._last_cycle_start = time.time()
+        if hasattr(self, "_global_progress"):
+            self._global_progress.setValue(0)
 
         mode_text = "空跑" if dry_run else "生产"
         self._operation_status.setText(f"{mode_text}运行中")
@@ -4069,14 +4092,99 @@ class MainWindow(QMainWindow):
         self._target_count = value
         self._update_production_stats()
 
+    def _build_idle_batch_progress_snapshot(self):
+        return {
+            "state": "idle",
+            "job_id": "",
+            "completed_count": 0,
+            "overall_progress_percent": 0,
+            "current_segment": 0,
+            "total_segments": 0,
+            "error_message": "",
+            "dry_run": False,
+        }
+
+    def _is_terminal_job_execution_state(self, state: str) -> bool:
+        return state in ("completed", "failed", "cancelled")
+
+    def _is_active_job_execution_state(self, state: str) -> bool:
+        return state in ("pending", "running", "paused", "stopping")
+
+    def _normalize_job_execution_snapshot(self, job_execution) -> dict[str, object]:
+        if job_execution is None:
+            return self._build_idle_batch_progress_snapshot()
+        return {
+            "job_id": str(getattr(job_execution, "job_id", "") or ""),
+            "state": str(getattr(job_execution, "state", "idle") or "idle").strip().lower(),
+            "completed_count": int(getattr(job_execution, "completed_count", 0) or 0),
+            "overall_progress_percent": int(getattr(job_execution, "overall_progress_percent", 0) or 0),
+            "current_segment": int(getattr(job_execution, "current_segment", 0) or 0),
+            "total_segments": int(getattr(job_execution, "total_segments", 0) or 0),
+            "error_message": str(getattr(job_execution, "error_message", "") or ""),
+            "dry_run": bool(getattr(job_execution, "dry_run", False)),
+        }
+
+    def _resolve_job_execution_snapshot(self, status) -> tuple[dict[str, object], bool]:
+        snapshot = self._normalize_job_execution_snapshot(getattr(status, "job_execution", None))
+        job_id = str(snapshot.get("job_id", "")).strip()
+        state = str(snapshot.get("state", "")).strip().lower()
+        suppressed_job_id = str(self._suppressed_terminal_job_id or "").strip()
+        if suppressed_job_id and job_id and job_id != suppressed_job_id:
+            self._suppressed_terminal_job_id = ""
+            suppressed_job_id = ""
+        if suppressed_job_id and job_id == suppressed_job_id and self._is_terminal_job_execution_state(state):
+            return self._build_idle_batch_progress_snapshot(), True
+        return snapshot, False
+
+    def _apply_batch_progress_snapshot(self, batch_progress):
+        progress_percent = int(batch_progress.get("overall_progress_percent", 0) or 0)
+        progress_percent = max(0, min(100, progress_percent))
+        completed_count = int(batch_progress.get("completed_count", 0) or 0)
+        completed_count = max(0, completed_count)
+
+        if hasattr(self, "_global_progress"):
+            self._global_progress.setValue(progress_percent)
+
+        if completed_count > self._last_completed_count_seen:
+            for _ in range(completed_count - self._last_completed_count_seen):
+                self._record_cycle_complete()
+            self._last_completed_count_seen = completed_count
+            return
+
+        self._completed_count = completed_count
+        self._update_production_stats()
+
     def _on_reset_counter(self):
         """Reset production counter."""
+        if self._current_job_id or self._pending_production_action:
+            self.statusBar().showMessage("运行中不可重置批次显示")
+            return
+
+        last_status = self._last_status
+        if last_status is not None:
+            last_job_execution = self._normalize_job_execution_snapshot(getattr(last_status, "job_execution", None))
+            last_state = str(last_job_execution.get("state", "")).strip().lower()
+            last_job_id = str(last_job_execution.get("job_id", "")).strip()
+            if last_job_id and self._is_terminal_job_execution_state(last_state):
+                self._suppressed_terminal_job_id = last_job_id
+            else:
+                self._suppressed_terminal_job_id = ""
+        else:
+            self._suppressed_terminal_job_id = ""
         self._completed_count = 0
         self._last_completed_count_seen = 0
         self._cycle_times = []
         self._total_run_time = 0
+        self._last_cycle_start = 0
+        self._run_start_time = 0
+        self._production_running = False
+        self._production_paused = False
+        self._operation_status.setText("空闲")
+        if hasattr(self, "_global_progress"):
+            self._global_progress.setValue(0)
         self._update_production_stats()
-        self.statusBar().showMessage("计数已重置")
+        self._apply_mode_capabilities()
+        self.statusBar().showMessage("批次显示已重置")
 
     def _record_cycle_complete(self):
         """Record completion of one production cycle."""
@@ -4103,11 +4211,12 @@ class MainWindow(QMainWindow):
 
         # Cycle time and UPH
         avg_cycle = 0
+        uph = 0
         if self._cycle_times:
             avg_cycle = sum(self._cycle_times) / len(self._cycle_times)
             # Cycle time label removed from UI, keeping calculation for UPH
             uph = int(3600 / avg_cycle) if avg_cycle > 0 else 0
-            self._uph_label.setText(str(uph))
+        self._uph_label.setText(str(uph))
 
         # Remaining Time
         remaining_count = max(0, self._target_count - self._completed_count)
@@ -4201,40 +4310,26 @@ class MainWindow(QMainWindow):
 
             # Update DXF Progress
             if self._dxf_loaded:
-                backend_active_job_id = str(getattr(status, "active_job_id", "")).strip()
-                backend_active_job_state = str(getattr(status, "active_job_state", "")).strip().lower()
-                tracked_job_id = backend_active_job_id or self._current_job_id
-                if backend_active_job_id:
-                    self._current_job_id = backend_active_job_id
-                dxf_progress = (
-                    self._protocol.dxf_get_job_status(tracked_job_id)
-                    if tracked_job_id
-                    else {
-                        "state": "idle",
-                        "overall_progress_percent": int(
-                            (self._completed_count / max(1, self._target_count)) * 100
-                        ) if self._target_count > 0 else 0,
-                        "completed_count": self._completed_count,
-                    }
-                )
-                current = dxf_progress.get("current_segment", 0)
-                total = dxf_progress.get("total_segments", 0)
-                progress = dxf_progress.get("overall_progress_percent", dxf_progress.get("progress", 0))
+                previous_tracked_job_id = self._current_job_id
+                dxf_progress, using_suppressed_terminal_progress = self._resolve_job_execution_snapshot(status)
                 state = str(dxf_progress.get("state", "")).strip().lower()
-                error_message = dxf_progress.get("error_message", "")
-                if backend_active_job_state and state in ("", "idle", "unknown"):
-                    state = backend_active_job_state
-                completed_count = int(dxf_progress.get("completed_count", self._completed_count) or 0)
-                if hasattr(self, '_global_progress'):
-                    self._global_progress.setValue(int(progress))
-                if completed_count > self._last_completed_count_seen:
-                    for _ in range(completed_count - self._last_completed_count_seen):
-                        self._record_cycle_complete()
-                    self._last_completed_count_seen = completed_count
+                job_id = str(dxf_progress.get("job_id", "")).strip()
+                error_message = str(dxf_progress.get("error_message", "") or "")
+                if not using_suppressed_terminal_progress and state != "idle":
+                    self._production_dry_run = bool(dxf_progress.get("dry_run", False))
+                if self._is_active_job_execution_state(state) or (state == "unknown" and job_id):
+                    self._current_job_id = job_id
                 else:
-                    self._completed_count = completed_count
+                    self._current_job_id = ""
+                self._apply_batch_progress_snapshot(dxf_progress)
 
-                if state == "paused":
+                if using_suppressed_terminal_progress or state == "idle":
+                    self._pending_production_action = ""
+                    self._production_running = False
+                    self._production_paused = False
+                    self._run_start_time = 0
+                    self._operation_status.setText("空闲")
+                elif state == "paused":
                     self._production_running = False
                     self._run_start_time = 0
                     if self._pending_production_action == "resume":
@@ -4278,9 +4373,9 @@ class MainWindow(QMainWindow):
                     self._production_running = False
                     self._production_paused = False
                     self._run_start_time = 0
-                    self._current_job_id = ""
-                    self._preview_session.mark_resync_pending()
-                    self._sync_preview_session_fields()
+                    if previous_tracked_job_id:
+                        self._preview_session.mark_resync_pending()
+                        self._sync_preview_session_fields()
                     self._operation_status.setText("完成")
                     self.statusBar().showMessage("生产目标已达成")
                 elif state == "unknown":
@@ -4298,9 +4393,9 @@ class MainWindow(QMainWindow):
                     self._production_running = False
                     self._production_paused = False
                     self._run_start_time = 0
-                    self._current_job_id = ""
-                    self._preview_session.mark_resync_pending()
-                    self._sync_preview_session_fields()
+                    if previous_tracked_job_id:
+                        self._preview_session.mark_resync_pending()
+                        self._sync_preview_session_fields()
                     status_text = "失败" if state == "failed" else "已停止"
                     self._operation_status.setText(status_text)
                     if error_message:
@@ -4311,11 +4406,10 @@ class MainWindow(QMainWindow):
                     else:
                         self.statusBar().showMessage(f"执行{status_text}")
                 else:
-                    if not tracked_job_id:
-                        self._pending_production_action = ""
-                        self._production_running = False
-                        self._production_paused = False
-                        self._run_start_time = 0
+                    self._pending_production_action = ""
+                    self._production_running = False
+                    self._production_paused = False
+                    self._run_start_time = 0
 
                 self._apply_mode_capabilities()
 

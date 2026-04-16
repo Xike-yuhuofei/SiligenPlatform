@@ -94,6 +94,26 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertEqual(error, "stop timeout")
         self.assertIsNone(error_code)
 
+    def test_dispenser_pause_returns_backend_error_details(self) -> None:
+        client = _FakeClient([{"error": {"code": 2811, "message": "manual dispenser pause is forbidden while DXF job is active"}}])
+        protocol = CommandProtocol(client)
+
+        ok, error, error_code = protocol.dispenser_pause()
+
+        self.assertFalse(ok)
+        self.assertEqual(error, "manual dispenser pause is forbidden while DXF job is active")
+        self.assertEqual(error_code, 2811)
+
+    def test_dispenser_resume_returns_success_contract(self) -> None:
+        client = _FakeClient([{"result": {"resumed": True}}])
+        protocol = CommandProtocol(client)
+
+        ok, error, error_code = protocol.dispenser_resume()
+
+        self.assertTrue(ok)
+        self.assertEqual(error, "")
+        self.assertIsNone(error_code)
+
     def test_supply_open_returns_backend_error_details(self) -> None:
         client = _FakeClient([{"error": {"code": 2842, "message": "door interlock active"}}])
         protocol = CommandProtocol(client)
@@ -180,8 +200,22 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
                             },
                         },
                         "interlock_latched": True,
-                        "active_job_id": "",
-                        "active_job_state": "",
+                        "job_execution": {
+                            "job_id": "",
+                            "plan_id": "",
+                            "plan_fingerprint": "",
+                            "state": "idle",
+                            "target_count": 0,
+                            "completed_count": 0,
+                            "current_cycle": 0,
+                            "current_segment": 0,
+                            "total_segments": 0,
+                            "cycle_progress_percent": 0,
+                            "overall_progress_percent": 0,
+                            "elapsed_seconds": 0.0,
+                            "error_message": "",
+                            "dry_run": False,
+                        },
                         "axes": {},
                         "io": {"estop": True, "estop_known": True, "door": True, "door_known": True},
                         "dispenser": {"valve_open": False, "supply_open": False},
@@ -206,6 +240,7 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertTrue(status.supervision.state_change_in_process)
         self.assertTrue(status.gate_estop_active())
         self.assertTrue(status.gate_door_active())
+        self.assertEqual(status.job_execution.state, "idle")
 
     def test_get_status_keeps_machine_state_as_compat_and_prefers_supervision_for_runtime_state(self) -> None:
         client = _FakeClient(
@@ -237,8 +272,22 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
                             "sources": {},
                         },
                         "interlock_latched": False,
-                        "active_job_id": "job-1",
-                        "active_job_state": "running",
+                        "job_execution": {
+                            "job_id": "job-1",
+                            "plan_id": "plan-1",
+                            "plan_fingerprint": "hash-1",
+                            "state": "running",
+                            "target_count": 2,
+                            "completed_count": 0,
+                            "current_cycle": 1,
+                            "current_segment": 10,
+                            "total_segments": 100,
+                            "cycle_progress_percent": 10,
+                            "overall_progress_percent": 5,
+                            "elapsed_seconds": 1.5,
+                            "error_message": "",
+                            "dry_run": False,
+                        },
                         "axes": {},
                         "io": {"estop": False, "estop_known": True, "door": False, "door_known": True},
                         "dispenser": {"valve_open": False, "supply_open": False},
@@ -254,6 +303,8 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertEqual(status.machine_state_reason, "idle")
         self.assertEqual(status.runtime_state, "Running")
         self.assertEqual(status.runtime_state_reason, "job_running")
+        self.assertEqual(status.job_execution.job_id, "job-1")
+        self.assertEqual(status.job_execution.state, "running")
 
     def test_get_status_preserves_degraded_connection_state(self) -> None:
         client = _FakeClient(
@@ -264,6 +315,22 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
                         "connection_state": "degraded",
                         "machine_state": "Degraded",
                         "machine_state_reason": "heartbeat_degraded",
+                        "job_execution": {
+                            "job_id": "",
+                            "plan_id": "",
+                            "plan_fingerprint": "",
+                            "state": "idle",
+                            "target_count": 0,
+                            "completed_count": 0,
+                            "current_cycle": 0,
+                            "current_segment": 0,
+                            "total_segments": 0,
+                            "cycle_progress_percent": 0,
+                            "overall_progress_percent": 0,
+                            "elapsed_seconds": 0.0,
+                            "error_message": "",
+                            "dry_run": False,
+                        },
                         "axes": {},
                         "io": {},
                         "dispenser": {"valve_open": False, "supply_open": False},
@@ -316,8 +383,22 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
                             },
                         },
                         "interlock_latched": False,
-                        "active_job_id": "",
-                        "active_job_state": "",
+                        "job_execution": {
+                            "job_id": "",
+                            "plan_id": "",
+                            "plan_fingerprint": "",
+                            "state": "idle",
+                            "target_count": 0,
+                            "completed_count": 0,
+                            "current_cycle": 0,
+                            "current_segment": 0,
+                            "total_segments": 0,
+                            "cycle_progress_percent": 0,
+                            "overall_progress_percent": 0,
+                            "elapsed_seconds": 0.0,
+                            "error_message": "",
+                            "dry_run": False,
+                        },
                         "axes": {},
                         "io": {"estop": False, "estop_known": False, "door": False, "door_known": False},
                         "dispenser": {"valve_open": False, "supply_open": False},

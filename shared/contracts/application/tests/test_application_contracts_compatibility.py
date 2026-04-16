@@ -254,7 +254,8 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
     effective_interlocks_required = set(states["definitions"]["effectiveInterlocks"]["required"])
     supervision_required = set(states["definitions"]["supervisionStatus"]["required"])
 
-    assert {"supervision", "effective_interlocks"}.issubset(machine_required)
+    assert {"supervision", "effective_interlocks", "job_execution"}.issubset(machine_required)
+    assert {"active_job_id", "active_job_state"}.isdisjoint(machine_required)
     assert {
         "estop_active",
         "estop_known",
@@ -282,6 +283,23 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
     assert "单向派生" in states["definitions"]["machineStatus"]["properties"]["machine_state_reason"]["description"]
 
     fixture_result = fixture["result"]
+    assert set(fixture_result["job_execution"].keys()) == {
+        "job_id",
+        "plan_id",
+        "plan_fingerprint",
+        "state",
+        "target_count",
+        "completed_count",
+        "current_cycle",
+        "current_segment",
+        "total_segments",
+        "cycle_progress_percent",
+        "overall_progress_percent",
+        "elapsed_seconds",
+        "error_message",
+        "dry_run",
+    }
+    assert fixture_result["job_execution"]["state"] == "idle"
     assert set(fixture_result["effective_interlocks"].keys()) == {
         "estop_active",
         "estop_known",
@@ -302,6 +320,19 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
         "recoverable",
         "updated_at",
     }
+    assert set(fixture_result["dispenser"].keys()) == {
+        "valve_open",
+        "supply_open",
+        "completedCount",
+        "totalCount",
+        "progress",
+    }
+    assert {"completedCount", "totalCount", "progress"}.issubset(
+        states["definitions"]["machineStatus"]["properties"]["dispenser"]["required"]
+    )
+    assert "点胶阀权威已完成触发计数" in states["definitions"]["machineStatus"]["properties"]["dispenser"]["properties"]["completedCount"]["description"]
+    assert "点胶阀权威目标触发总数" in states["definitions"]["machineStatus"]["properties"]["dispenser"]["properties"]["totalCount"]["description"]
+    assert "点胶阀权威进度百分比" in states["definitions"]["machineStatus"]["properties"]["dispenser"]["properties"]["progress"]["description"]
 
     class StubClient:
         def __init__(self, response: dict[str, object]) -> None:
@@ -326,6 +357,7 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
     assert status.gate_door_active() is False
     assert status.home_boundary_active("X") is False
     assert status.home_boundary_active("Y") is False
+    assert status.job_execution.state == "idle"
     assert status.effective_interlocks.sources["estop"] == "system_interlock"
     assert status.supervision.requested_state == "Idle"
     assert status.supervision.state_change_in_process is False
@@ -341,6 +373,7 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
     assert legacy_status.supervision.requested_state == "Preparing"
     assert legacy_status.supervision.state_reason == "awaiting-supervision"
     assert legacy_status.supervision.state_change_in_process is False
+    assert "BuildJobExecutionJson(status_snapshot)" in tcp_source
     assert "runtimeStatusExportPort_->ReadSnapshot()" in tcp_source
     assert "BuildRawIoJson(status_snapshot)" in tcp_source
     assert "BuildEffectiveInterlocksJson(status_snapshot)" in tcp_source
@@ -348,16 +381,31 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
     assert "BuildCompatMachineState(" not in tcp_source
     assert "{\"supervision\", supervisionJson}" in tcp_source
     assert "{\"effective_interlocks\", effectiveInterlocksJson}" in tcp_source
+    assert "{\"job_execution\", jobExecutionJson}" in tcp_source
+    assert "{\"active_job_id\"" not in tcp_source
+    assert "{\"active_job_state\"" not in tcp_source
     assert "snapshot.machine_state = supervision.supervision.current_state;" in status_source
     assert "snapshot.machine_state_reason = supervision.supervision.state_reason;" in status_source
     assert "snapshot.io = supervision.io;" in status_source
     assert "snapshot.effective_interlocks = supervision.effective_interlocks;" in status_source
     assert "snapshot.supervision = supervision.supervision;" in status_source
+    assert "snapshot.job_execution = BuildIdleJobExecutionSnapshot();" in status_source
     assert 'snapshot.requested_state = "Idle";' in supervision_adapter
     assert 'snapshot.requested_state = "Estop";' in supervision_adapter
     assert 'snapshot.requested_state = "Fault";' in supervision_adapter
     assert 'snapshot.state_change_in_process = true;' in supervision_adapter
     assert 'snapshot.failure_stage = snapshot.failure_code.empty() ? "" : "runtime_status";' in supervision_adapter
+
+
+def test_manual_dispenser_pause_resume_contracts_forbid_active_dxf_fallback():
+    operations = load_operations()
+    pause_notes = " ".join(operations["dispenser.pause"].get("compatibility", {}).get("notes", []))
+    resume_notes = " ".join(operations["dispenser.resume"].get("compatibility", {}).get("notes", []))
+
+    assert "直接失败" in pause_notes
+    assert "不得隐式停止 DXF 作业" in pause_notes
+    assert "直接失败" in resume_notes
+    assert "隐式" in resume_notes
 
 
 def test_mock_io_set_contract_and_hmi_helper():
@@ -382,6 +430,7 @@ def main():
       test_dxf_preview_and_job_contract,
       test_status_contract_describes_backend_interlock_authority,
       test_status_contract_exposes_effective_interlocks_and_supervision,
+      test_manual_dispenser_pause_resume_contracts_forbid_active_dxf_fallback,
       test_mock_io_set_contract_and_hmi_helper,
     ]
     for test in tests:
