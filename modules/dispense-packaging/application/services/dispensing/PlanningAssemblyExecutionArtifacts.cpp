@@ -117,6 +117,16 @@ Result<ExecutionAssemblyBuildResult> AssembleExecutionArtifacts(const ExecutionA
         log_stage("execution_binding_resolved", oss.str());
     }
 
+    if (!trigger_artifacts.binding_ready &&
+        input.authority_preview.preview_authority_ready &&
+        input.authority_preview.authority_trigger_layout.authority_ready) {
+        const std::string failure_reason = trigger_artifacts.failure_reason.empty()
+            ? "authority trigger binding unavailable"
+            : trigger_artifacts.failure_reason;
+        return Result<ExecutionAssemblyBuildResult>::Failure(
+            Error(ErrorCode::INVALID_STATE, failure_reason, "DispensePackagingAssembly"));
+    }
+
     result.execution_package = std::move(execution_package);
     result.preview_authority_shared_with_execution = trigger_artifacts.binding_ready;
     result.execution_binding_ready = trigger_artifacts.binding_ready;

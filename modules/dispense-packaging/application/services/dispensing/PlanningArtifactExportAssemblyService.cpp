@@ -10,6 +10,9 @@ PlanningArtifactExportAssemblyService::BuildRequest(
     request.dxf_filename = input.dxf_filename;
     request.process_path = input.process_path;
     request.glue_points = input.glue_points;
+    request.glue_distances_mm = input.glue_distances_mm;
+    request.glue_point_metadata = input.glue_point_metadata;
+    request.execution_trigger_metadata = input.execution_trigger_metadata;
     request.execution_trajectory_points = input.execution_trajectory_points;
     request.interpolation_trajectory_points = input.interpolation_trajectory_points;
     request.motion_trajectory_points = input.motion_trajectory_points;

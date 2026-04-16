@@ -85,9 +85,13 @@ ProcessPath BuildProcessPath() {
 
 std::vector<TrajectoryPoint> BuildTrajectoryPoints() {
     TrajectoryPoint start(1.0f, 2.0f, 3.0f);
+    start.sequence_id = 11U;
     start.timestamp = 0.1f;
     start.enable_position_trigger = true;
+    start.trigger_position_mm = 22.5f;
+    start.trigger_pulse_width_us = 1234U;
     TrajectoryPoint end(11.0f, 12.0f, 4.0f);
+    end.sequence_id = 12U;
     end.timestamp = 0.2f;
     return {start, end};
 }
@@ -104,6 +108,36 @@ PlanningArtifactExportRequest BuildRequest(
     request.motion_trajectory_points = BuildTrajectoryPoints();
     if (include_glue_points) {
         request.glue_points.push_back(Siligen::Shared::Types::Point2D(5.0f, 6.0f));
+        request.glue_distances_mm.push_back(42.5f);
+        Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportGluePointMetadata metadata;
+        metadata.span_ref = "span-demo";
+        metadata.component_index = 3U;
+        metadata.span_order_index = 4U;
+        metadata.sequence_index_global = 5U;
+        metadata.sequence_index_span = 6U;
+        metadata.source_segment_index = 7U;
+        metadata.span_closed = true;
+        metadata.distance_mm_span = 8.5f;
+        metadata.span_total_length_mm = 9.5f;
+        metadata.span_actual_spacing_mm = 10.5f;
+        metadata.span_phase_mm = 1.5f;
+        metadata.span_dispatch_type = "single_closed_loop";
+        metadata.span_split_reason = "multi_contour_boundary";
+        metadata.source_kind = "anchor";
+        request.glue_point_metadata.push_back(metadata);
+
+        Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportExecutionTriggerMetadata trigger_metadata;
+        trigger_metadata.trajectory_index = 0U;
+        trigger_metadata.authority_trigger_index = 5U;
+        trigger_metadata.component_index = 3U;
+        trigger_metadata.span_order_index = 4U;
+        trigger_metadata.source_segment_index = 7U;
+        trigger_metadata.authority_distance_mm = 42.5f;
+        trigger_metadata.binding_match_error_mm = 0.125f;
+        trigger_metadata.binding_monotonic = true;
+        trigger_metadata.authority_trigger_ref = "trigger-demo";
+        trigger_metadata.span_ref = "span-demo";
+        request.execution_trigger_metadata.push_back(trigger_metadata);
     }
     return request;
 }
@@ -161,6 +195,74 @@ TEST(PlanningArtifactExportPortAdapterTest, ExportCreatesProcessPathAndTrajector
     EXPECT_FALSE(CollectExportedFiles(temp_dir, "glue_points").empty());
 
     std::filesystem::remove_all(temp_dir);
+}
+
+TEST(PlanningArtifactExportPortAdapterTest, ExportTrajectoryCsvIncludesSequenceAndTriggerDistanceColumns) {
+    ScopedPreviewTrajectoryEnv env("1");
+    auto port = Siligen::RuntimeExecution::Host::Planning::CreatePlanningArtifactExportPort();
+    auto temp_dir = MakeTempDir();
+
+    auto result = port->Export(BuildRequest(temp_dir));
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    const auto execution_files = CollectExportedFiles(temp_dir, "execution_trajectory");
+    ASSERT_FALSE(execution_files.empty());
+
+    std::ifstream file(execution_files.front(), std::ios::binary);
+    ASSERT_TRUE(file.is_open());
+
+    std::string header;
+    std::getline(file, header);
+    EXPECT_NE(header.find("sequence_id"), std::string::npos);
+    EXPECT_NE(header.find("trigger_position_mm"), std::string::npos);
+    EXPECT_NE(header.find("trigger_pulse_width_us"), std::string::npos);
+    EXPECT_NE(header.find("actual_distance_mm"), std::string::npos);
+    EXPECT_NE(header.find("bound_authority_span_ref"), std::string::npos);
+
+    std::string first_row;
+    std::getline(file, first_row);
+    EXPECT_NE(first_row.find("11"), std::string::npos);
+    EXPECT_NE(first_row.find("22.500000"), std::string::npos);
+    EXPECT_NE(first_row.find("1234"), std::string::npos);
+    EXPECT_NE(first_row.find("0.000000"), std::string::npos);
+    EXPECT_NE(first_row.find("span-demo"), std::string::npos);
+
+    file.close();
+    std::error_code cleanup_error;
+    std::filesystem::remove_all(temp_dir, cleanup_error);
+}
+
+TEST(PlanningArtifactExportPortAdapterTest, ExportGlueCsvIncludesPointLevelDiagnosticsColumns) {
+    ScopedPreviewTrajectoryEnv env("1");
+    auto port = Siligen::RuntimeExecution::Host::Planning::CreatePlanningArtifactExportPort();
+    auto temp_dir = MakeTempDir();
+
+    auto result = port->Export(BuildRequest(temp_dir));
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    const auto glue_files = CollectExportedFiles(temp_dir, "glue_points");
+    ASSERT_FALSE(glue_files.empty());
+
+    std::ifstream file(glue_files.front(), std::ios::binary);
+    ASSERT_TRUE(file.is_open());
+
+    std::string header;
+    std::getline(file, header);
+    EXPECT_NE(header.find("span_ref"), std::string::npos);
+    EXPECT_NE(header.find("span_closed"), std::string::npos);
+    EXPECT_NE(header.find("span_phase_mm"), std::string::npos);
+    EXPECT_NE(header.find("source_kind"), std::string::npos);
+
+    std::string first_row;
+    std::getline(file, first_row);
+    EXPECT_NE(first_row.find("42.500000"), std::string::npos);
+    EXPECT_NE(first_row.find("span-demo"), std::string::npos);
+    EXPECT_NE(first_row.find("single_closed_loop"), std::string::npos);
+    EXPECT_NE(first_row.find("anchor"), std::string::npos);
+
+    file.close();
+    std::error_code cleanup_error;
+    std::filesystem::remove_all(temp_dir, cleanup_error);
 }
 
 TEST(PlanningArtifactExportPortAdapterTest, ExportSkipsGlueCsvWhenGluePointsAbsent) {
