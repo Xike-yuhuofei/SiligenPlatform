@@ -136,6 +136,78 @@ TEST(TrajectoryTriggerUtilsTest, ApplyTriggerMarkersByPositionFallsBackToDistanc
     }
 }
 
+TEST(TrajectoryTriggerUtilsTest, ApplyTriggerMarkersByPositionPrefersForwardSegmentProjectionOverLaterExactRevisit) {
+    std::vector<Siligen::TrajectoryPoint> points{
+        BuildPoint(0.0f, 0.0f),
+        BuildPoint(10.0f, 10.0f),
+        BuildPoint(7.0f, 9.0f),
+        BuildPoint(8.0f, 8.0f),
+    };
+    const std::vector<Point2D> trigger_positions{
+        Point2D(8.0f, 8.0f),
+        Point2D(9.0f, 9.0f),
+    };
+    const std::vector<float32> trigger_distances_mm{
+        11.3137085f,
+        12.7279221f,
+    };
+
+    ASSERT_TRUE(ApplyTriggerMarkersByPosition(points, trigger_positions, trigger_distances_mm));
+    ASSERT_EQ(CountTriggerMarkers(points), trigger_positions.size());
+
+    const auto actual_positions = CollectTriggerPositions(points);
+    ASSERT_EQ(actual_positions.size(), trigger_positions.size());
+    EXPECT_NEAR(actual_positions[0].x, 8.0f, 1e-4f);
+    EXPECT_NEAR(actual_positions[0].y, 8.0f, 1e-4f);
+    EXPECT_NEAR(actual_positions[1].x, 9.0f, 1e-4f);
+    EXPECT_NEAR(actual_positions[1].y, 9.0f, 1e-4f);
+
+    const auto actual_distances = CollectTriggerDistances(points);
+    ASSERT_EQ(actual_distances.size(), trigger_distances_mm.size());
+    EXPECT_NEAR(actual_distances[0], trigger_distances_mm[0], 1e-4f);
+    EXPECT_NEAR(actual_distances[1], trigger_distances_mm[1], 1e-4f);
+}
+
+TEST(TrajectoryTriggerUtilsTest, ApplyTriggerMarkersByPositionAllowsClosedLoopPhaseShiftWraparound) {
+    std::vector<Siligen::TrajectoryPoint> points{
+        BuildPoint(10.0f, 0.0f),
+        BuildPoint(10.0f, 10.0f),
+        BuildPoint(0.0f, 10.0f),
+        BuildPoint(0.0f, 0.0f),
+        BuildPoint(10.0f, 0.0f),
+    };
+    const std::vector<Point2D> trigger_positions{
+        Point2D(0.0f, 0.0f),
+        Point2D(5.0f, 0.0f),
+        Point2D(10.0f, 0.0f),
+        Point2D(10.0f, 5.0f),
+        Point2D(10.0f, 10.0f),
+        Point2D(5.0f, 10.0f),
+        Point2D(0.0f, 10.0f),
+        Point2D(0.0f, 5.0f),
+    };
+    const std::vector<float32> trigger_distances_mm{
+        0.0f,
+        5.0f,
+        10.0f,
+        15.0f,
+        20.0f,
+        25.0f,
+        30.0f,
+        35.0f,
+    };
+
+    ASSERT_TRUE(ApplyTriggerMarkersByPosition(points, trigger_positions, trigger_distances_mm));
+    ASSERT_EQ(CountTriggerMarkers(points), trigger_positions.size());
+
+    auto actual_distances = CollectTriggerDistances(points);
+    ASSERT_EQ(actual_distances.size(), trigger_distances_mm.size());
+    std::sort(actual_distances.begin(), actual_distances.end());
+    for (std::size_t index = 0; index < trigger_distances_mm.size(); ++index) {
+        EXPECT_NEAR(actual_distances[index], trigger_distances_mm[index], 1e-4f);
+    }
+}
+
 TEST(TrajectoryTriggerUtilsTest, ResolveIndexedPointTriggerMarkerPlanFindsLaterExactPointOutsideDistanceNeighborhood) {
     std::vector<Siligen::TrajectoryPoint> points{
         BuildPoint(0.0f, 0.0f),

@@ -5,11 +5,15 @@
 #include "shared/logging/PrintfLogFormatter.h"
 
 #include <sstream>
+#include <unordered_map>
 
 namespace Siligen::Application::Services::Dispensing::Internal {
 
 using Siligen::Application::Services::Dispensing::PlanningArtifactExportAssemblyInput;
 using Siligen::Application::Services::Dispensing::PlanningArtifactExportAssemblyService;
+using Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportGluePointMetadata;
+using Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportExecutionTriggerMetadata;
+using Siligen::Domain::Dispensing::ValueObjects::LayoutTriggerSourceKind;
 using Siligen::Shared::Types::Result;
 
 namespace {
@@ -22,6 +26,18 @@ struct ExecutionTrajectorySelection {
 
 std::vector<TrajectoryPoint> BuildTrajectoryFromMotion(const MotionTrajectory& trajectory) {
     return ConvertMotionTrajectoryToTrajectoryPoints(trajectory);
+}
+
+const char* ToString(LayoutTriggerSourceKind source_kind) {
+    switch (source_kind) {
+        case LayoutTriggerSourceKind::Anchor:
+            return "anchor";
+        case LayoutTriggerSourceKind::Generated:
+            return "generated";
+        case LayoutTriggerSourceKind::SharedVertex:
+            return "shared_vertex";
+    }
+    return "generated";
 }
 
 Result<void> ValidateExecutionStrategyFeasibility(
@@ -194,6 +210,68 @@ Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest BuildExecu
     export_input.dxf_filename = input.dxf_filename;
     export_input.process_path = execution_process_path;
     export_input.glue_points = CollectAuthorityPositions(result.authority_trigger_layout);
+    export_input.glue_distances_mm.reserve(result.authority_trigger_layout.trigger_points.size());
+    export_input.glue_point_metadata.reserve(result.authority_trigger_layout.trigger_points.size());
+    export_input.execution_trigger_metadata.reserve(result.authority_trigger_layout.bindings.size());
+    std::unordered_map<std::string, const Siligen::Domain::Dispensing::ValueObjects::LayoutTriggerPoint*> triggers_by_id;
+    triggers_by_id.reserve(result.authority_trigger_layout.trigger_points.size());
+    std::unordered_map<std::string, const Siligen::Domain::Dispensing::ValueObjects::DispenseSpan*> spans_by_id;
+    spans_by_id.reserve(result.authority_trigger_layout.spans.size());
+    for (const auto& trigger : result.authority_trigger_layout.trigger_points) {
+        triggers_by_id.emplace(trigger.trigger_id, &trigger);
+    }
+    for (const auto& span : result.authority_trigger_layout.spans) {
+        spans_by_id.emplace(span.span_id, &span);
+    }
+    for (const auto& trigger : result.authority_trigger_layout.trigger_points) {
+        export_input.glue_distances_mm.push_back(trigger.distance_mm_global);
+        PlanningArtifactExportGluePointMetadata metadata;
+        metadata.span_ref = trigger.span_ref;
+        metadata.sequence_index_global = trigger.sequence_index_global;
+        metadata.sequence_index_span = trigger.sequence_index_span;
+        metadata.source_segment_index = trigger.source_segment_index;
+        metadata.distance_mm_span = trigger.distance_mm_span;
+        metadata.source_kind = ToString(trigger.source_kind);
+        const auto span_it = spans_by_id.find(trigger.span_ref);
+        if (span_it != spans_by_id.end() && span_it->second != nullptr) {
+            const auto& span = *span_it->second;
+            metadata.component_index = span.component_index;
+            metadata.span_order_index = span.order_index;
+            metadata.span_closed = span.closed;
+            metadata.span_total_length_mm = span.total_length_mm;
+            metadata.span_actual_spacing_mm = span.actual_spacing_mm;
+            metadata.span_phase_mm = span.phase_mm;
+            metadata.span_dispatch_type = Siligen::Domain::Dispensing::ValueObjects::ToString(span.dispatch_type);
+            metadata.span_split_reason = Siligen::Domain::Dispensing::ValueObjects::ToString(span.split_reason);
+        }
+        export_input.glue_point_metadata.push_back(std::move(metadata));
+    }
+    for (const auto& binding : result.authority_trigger_layout.bindings) {
+        if (!binding.bound) {
+            continue;
+        }
+
+        PlanningArtifactExportExecutionTriggerMetadata metadata;
+        metadata.trajectory_index = binding.interpolation_index;
+        metadata.authority_trigger_ref = binding.trigger_ref;
+        metadata.binding_match_error_mm = binding.match_error_mm;
+        metadata.binding_monotonic = binding.monotonic;
+        const auto trigger_it = triggers_by_id.find(binding.trigger_ref);
+        if (trigger_it != triggers_by_id.end() && trigger_it->second != nullptr) {
+            const auto& trigger = *trigger_it->second;
+            metadata.authority_trigger_index = trigger.sequence_index_global;
+            metadata.source_segment_index = trigger.source_segment_index;
+            metadata.authority_distance_mm = trigger.distance_mm_global;
+            metadata.span_ref = trigger.span_ref;
+            const auto span_it = spans_by_id.find(trigger.span_ref);
+            if (span_it != spans_by_id.end() && span_it->second != nullptr) {
+                const auto& span = *span_it->second;
+                metadata.component_index = span.component_index;
+                metadata.span_order_index = span.order_index;
+            }
+        }
+        export_input.execution_trigger_metadata.push_back(std::move(metadata));
+    }
     export_input.execution_trajectory_points = result.execution_trajectory_points;
     export_input.interpolation_trajectory_points = result.interpolation_trajectory_points;
     export_input.motion_trajectory_points = result.motion_trajectory_points;

@@ -56,6 +56,80 @@ TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFrom
     EXPECT_EQ(payload.export_request.execution_trajectory_points.size(), payload.execution_trajectory_points.size());
 }
 
+TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFromAuthorityRejectsNonMonotonicAuthorityBinding) {
+    WorkflowPlanningAssemblyOperationsProvider provider;
+    const auto operations = provider.CreateOperations();
+
+    auto input = BuildPlanningInput();
+    auto authority = operations->BuildAuthorityPreviewArtifacts(BuildWorkflowAuthorityPreviewInput(input));
+    ASSERT_TRUE(authority.IsSuccess()) << authority.GetError().GetMessage();
+
+    auto corrupted_authority = authority.Value();
+    ASSERT_GE(corrupted_authority.authority_trigger_layout.trigger_points.size(), 3U);
+    ASSERT_GE(corrupted_authority.authority_trigger_points.size(), 3U);
+    ASSERT_GE(corrupted_authority.glue_points.size(), 3U);
+    std::swap(
+        corrupted_authority.authority_trigger_layout.trigger_points[1],
+        corrupted_authority.authority_trigger_layout.trigger_points[2]);
+    std::swap(corrupted_authority.authority_trigger_points[1], corrupted_authority.authority_trigger_points[2]);
+    std::swap(corrupted_authority.glue_points[1], corrupted_authority.glue_points[2]);
+
+    const auto result = operations->BuildExecutionArtifactsFromAuthority(
+        BuildWorkflowExecutionInput(input, corrupted_authority));
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), Siligen::Shared::Types::ErrorCode::INVALID_STATE);
+    EXPECT_EQ(result.GetError().GetMessage(), "authority trigger binding non-monotonic");
+}
+
+TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFromAuthorityKeepsOverlappedReturnBoundaryMonotonic) {
+    WorkflowPlanningAssemblyOperationsProvider provider;
+    const auto operations = provider.CreateOperations();
+
+    auto input = BuildPlanningInput();
+    input.trigger_spatial_interval_mm = 5.0f;
+    input.process_path.segments.clear();
+    input.process_path.segments.push_back(BuildLineSegment(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)));
+    input.process_path.segments.push_back(BuildLineSegment(Point2D(10.0f, 0.0f), Point2D(5.0f, 5.0f), false));
+    input.process_path.segments.push_back(BuildLineSegment(Point2D(5.0f, 5.0f), Point2D(15.0f, -5.0f)));
+    input.authority_process_path = input.process_path;
+    input.motion_plan.points = {
+        BuildMotionPoint(0.0f, 0.0f, 0.0f),
+        BuildMotionPoint(1.0f, 5.0f, 0.0f),
+        BuildMotionPoint(2.0f, 7.0f, 1.0f),
+        BuildMotionPoint(3.0f, 5.0f, 5.0f, false),
+        BuildMotionPoint(4.0f, 10.0f, 0.0f),
+        BuildMotionPoint(5.0f, 15.0f, -5.0f),
+    };
+    input.motion_plan.total_length =
+        5.0f +
+        std::sqrt(5.0f) +
+        std::sqrt(20.0f) +
+        std::sqrt(50.0f) +
+        std::sqrt(50.0f);
+    input.motion_plan.total_time = 5.0f;
+    input.estimated_time_s = 5.0f;
+
+    auto authority = operations->BuildAuthorityPreviewArtifacts(BuildWorkflowAuthorityPreviewInput(input));
+    ASSERT_TRUE(authority.IsSuccess()) << authority.GetError().GetMessage();
+
+    const auto result = operations->BuildExecutionArtifactsFromAuthority(
+        BuildWorkflowExecutionInput(input, authority.Value()));
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    const auto& payload = result.Value();
+    EXPECT_TRUE(payload.execution_binding_ready);
+    EXPECT_TRUE(payload.preview_authority_shared_with_execution);
+    EXPECT_TRUE(std::all_of(
+        payload.authority_trigger_layout.bindings.begin(),
+        payload.authority_trigger_layout.bindings.end(),
+        [](const auto& binding) { return binding.bound && binding.monotonic; }));
+    EXPECT_TRUE(std::all_of(
+        payload.export_request.execution_trigger_metadata.begin(),
+        payload.export_request.execution_trigger_metadata.end(),
+        [](const auto& metadata) { return metadata.binding_monotonic; }));
+}
+
 TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFromAuthorityUsesInputMotionPlanAsExecutionTruth) {
     WorkflowPlanningAssemblyOperationsProvider provider;
     const auto operations = provider.CreateOperations();
@@ -550,6 +624,13 @@ TEST(WorkflowPlanningAssemblyOperationsContractTest, AssemblePlanningArtifactsSp
     EXPECT_TRUE(payload.preview_binding_ready);
     EXPECT_TRUE(payload.preview_authority_shared_with_execution);
     EXPECT_EQ(payload.glue_points.size(), payload.authority_trigger_layout.trigger_points.size());
+    ASSERT_EQ(
+        payload.authority_trigger_layout.trigger_points.size(),
+        payload.authority_trigger_layout.bindings.size());
+    EXPECT_TRUE(std::all_of(
+        payload.authority_trigger_layout.bindings.begin(),
+        payload.authority_trigger_layout.bindings.end(),
+        [](const auto& binding) { return binding.bound && binding.monotonic; }));
     const auto& closed_span = payload.authority_trigger_layout.spans.front();
     EXPECT_TRUE(closed_span.closed);
     EXPECT_FALSE(payload.authority_trigger_layout.spans.back().closed);

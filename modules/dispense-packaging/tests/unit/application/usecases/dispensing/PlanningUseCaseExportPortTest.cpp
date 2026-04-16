@@ -89,7 +89,7 @@ public:
     ResultVoid ReloadConfiguration() override { return ResultVoid::Success(); }
     ResultT<Siligen::Domain::Configuration::Ports::DispensingConfig> GetDispensingConfig() const override { return ResultT<Siligen::Domain::Configuration::Ports::DispensingConfig>::Success({}); }
     ResultVoid SetDispensingConfig(const Siligen::Domain::Configuration::Ports::DispensingConfig&) override { return ResultVoid::Success(); }
-    ResultT<Siligen::Domain::Configuration::Ports::DxfImportConfig> GetDxfImportConfig() const override { return ResultT<Siligen::Domain::Configuration::Ports::DxfImportConfig>::Success({}); }
+    ResultT<Siligen::Domain::Configuration::Ports::DxfPreprocessConfig> GetDxfPreprocessConfig() const override { return ResultT<Siligen::Domain::Configuration::Ports::DxfPreprocessConfig>::Success({}); }
     ResultT<Siligen::Domain::Configuration::Ports::DxfTrajectoryConfig> GetDxfTrajectoryConfig() const override { return ResultT<Siligen::Domain::Configuration::Ports::DxfTrajectoryConfig>::Success({}); }
     ResultT<Siligen::Shared::Types::DiagnosticsConfig> GetDiagnosticsConfig() const override { return ResultT<Siligen::Shared::Types::DiagnosticsConfig>::Success({}); }
     ResultT<Siligen::Domain::Configuration::Ports::MachineConfig> GetMachineConfig() const override {
@@ -392,7 +392,7 @@ TEST(PlanningUseCaseExportPortTest, ExecuteBuildsExportRequestWithoutDirectFiles
     std::filesystem::remove(temp_pb, ec);
 }
 
-TEST(PlanningUseCaseExportPortTest, WorkflowUsesShapedPathForExecutionButPreservesAuthorityProcessPath) {
+TEST(PlanningUseCaseExportPortTest, WorkflowUsesShapedPathAsDownstreamAuthorityPath) {
     auto temp_pb = MakeTempPbPath();
     auto config_port = std::make_shared<FakeConfigurationPort>();
     auto path_source = std::make_shared<FakePathSourcePort>();
@@ -414,9 +414,10 @@ TEST(PlanningUseCaseExportPortTest, WorkflowUsesShapedPathForExecutionButPreserv
 
     ASSERT_TRUE(authority_result.IsSuccess()) << authority_result.GetError().ToString();
     ASSERT_EQ(authority_result.Value().process_path.segments.size(), 2U);
-    ASSERT_EQ(authority_result.Value().authority_process_path.segments.size(), 1U);
+    ASSERT_EQ(authority_result.Value().authority_process_path.segments.size(), 2U);
     EXPECT_FLOAT_EQ(authority_result.Value().process_path.segments.front().geometry.line.end.x, 4.0f);
-    EXPECT_FLOAT_EQ(authority_result.Value().authority_process_path.segments.front().geometry.line.end.x, 10.0f);
+    EXPECT_FLOAT_EQ(authority_result.Value().authority_process_path.segments.front().geometry.line.end.x, 4.0f);
+    EXPECT_FLOAT_EQ(authority_result.Value().authority_process_path.segments.back().geometry.line.end.x, 10.0f);
 
     const auto execute_result = use_case.Execute(request);
 
