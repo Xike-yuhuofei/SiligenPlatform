@@ -11,6 +11,14 @@
       "key": "dispense_pressure"
     },
     {
+      "value": 3.0,
+      "key": "trigger_spatial_interval_mm"
+    },
+    {
+      "value": "approach_direction",
+      "key": "point_flying_direction_mode"
+    },
+    {
       "value": "epoxy",
       "key": "material_type"
     }

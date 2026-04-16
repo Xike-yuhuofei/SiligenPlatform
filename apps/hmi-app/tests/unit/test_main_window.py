@@ -2691,7 +2691,7 @@ class MainWindowTabsTest(unittest.TestCase):
 
         self.assertTrue(messages)
         self.assertEqual(messages[-1][0], "胶点预览生成失败")
-        self.assertIn("recipe/version", messages[-1][1])
+        self.assertIn("预览工艺上下文", messages[-1][1])
         self.assertTrue(messages[-1][2])
         self.assertIsNone(self.window._preview_snapshot_worker)
         self.assertFalse(self.window._preview_session.state.preview_refresh_inflight)

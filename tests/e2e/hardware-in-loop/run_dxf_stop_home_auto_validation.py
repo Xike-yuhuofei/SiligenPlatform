@@ -67,6 +67,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config-path", type=Path, default=DEFAULT_CONFIG_PATH)
     parser.add_argument("--vendor-dir", type=Path, default=DEFAULT_VENDOR_DIR)
     parser.add_argument("--dxf-file", type=Path, default=ROOT / "samples" / "dxf" / "rect_diag.dxf")
+    parser.add_argument("--recipe-id", required=True)
+    parser.add_argument("--version-id", required=True)
     parser.add_argument("--report-root", type=Path, default=DEFAULT_REPORT_ROOT)
     parser.add_argument("--build-config", default="Debug")
     parser.add_argument("--machine-id", default="unknown-machine")
@@ -330,6 +332,9 @@ def build_report_markdown(report: dict[str, Any]) -> str:
         f"- overall_status: `{report.get('overall_status', '')}`",
         f"- verdict: `{(report.get('verdict', {}) or {}).get('kind', '')}`",
         f"- next_action: `{report.get('next_action', '')}`",
+        f"- recipe_id: `{(report.get('settings', {}) or {}).get('recipe_id', '')}`",
+        f"- version_id: `{(report.get('settings', {}) or {}).get('version_id', '')}`",
+        f"- recipe_context_source: `{(report.get('settings', {}) or {}).get('recipe_context_source', '')}`",
         f"- required_valid_runs: `{(report.get('settings', {}) or {}).get('required_valid_runs', '')}`",
         f"- valid_passed: `{counts.get('valid_passed', 0)}`",
         f"- skipped: `{counts.get('skipped', 0)}`",
@@ -421,6 +426,10 @@ def _build_probe_command(args: argparse.Namespace, attempt_root: Path) -> list[s
         str(args.config_path),
         "--dxf-file",
         str(args.dxf_file),
+        "--recipe-id",
+        str(args.recipe_id),
+        "--version-id",
+        str(args.version_id),
         "--report-root",
         str(attempt_root),
     ]
@@ -582,6 +591,9 @@ def main() -> int:
             "vendor_dir": str(args.vendor_dir),
             "gateway_exe": str(args.gateway_exe),
             "dxf_file": str(args.dxf_file),
+            "recipe_id": str(args.recipe_id),
+            "version_id": str(args.version_id),
+            "recipe_context_source": "cli_explicit",
             "machine_id": args.machine_id,
             "operator": args.operator,
             "required_valid_runs": args.required_valid_runs,

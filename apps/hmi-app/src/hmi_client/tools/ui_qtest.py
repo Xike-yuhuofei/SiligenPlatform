@@ -22,7 +22,7 @@ configure_qt_environment(headless=True)
 from PyQt5.QtCore import QSize, Qt, QTimer
 from PyQt5.QtGui import QColor, QPainter, QPen
 from PyQt5.QtTest import QTest
-from PyQt5.QtWidgets import QApplication, QWidget
+from PyQt5.QtWidgets import QApplication, QListWidget, QWidget
 
 import ui.main_window as main_window_module  # noqa: E402
 import ui.recipe_config_widget as recipe_config_widget_module  # noqa: E402
@@ -36,15 +36,25 @@ EXIT_ASSERTION_FAILED = 10
 EXIT_TIMEOUT = 11
 SUPPORTED_RUNTIME_ACTION_PROFILES = (
     "full",
-    "preview",
+    "operator_preview",
+    "snapshot_render",
     "home_move",
     "jog",
     "supply_dispenser",
     "estop_reset",
     "door_interlock",
 )
+OPERATOR_JOURNEY_RUNTIME_ACTION_PROFILES = ("full", "operator_preview")
 MOCK_RECIPE_ID = "recipe-mock-001"
 MOCK_VERSION_ID = "version-mock-001"
+
+
+def canonical_preview_sample() -> Path:
+    return Path(__file__).resolve().parents[5] / "samples" / "dxf" / "rect_diag.dxf"
+
+
+def uses_real_recipe_context(runtime_action_profile: str) -> bool:
+    return runtime_action_profile.strip().lower() in OPERATOR_JOURNEY_RUNTIME_ACTION_PROFILES
 
 
 def find_by_testid(root: QWidget, testid: str) -> Optional[QWidget]:
@@ -184,6 +194,25 @@ def patch_headless_preview() -> Iterator[None]:
 
 
 @contextmanager
+def patch_dxf_browse_dialog(dxf_path: str) -> Iterator[None]:
+    normalized_path = str(dxf_path or "").strip()
+    if not normalized_path:
+        yield
+        return
+
+    original_get_open_file_name = main_window_module.QFileDialog.getOpenFileName
+
+    def _patched_get_open_file_name(*_args, **_kwargs):
+        return normalized_path, "DXF文件 (*.dxf)"
+
+    main_window_module.QFileDialog.getOpenFileName = _patched_get_open_file_name
+    try:
+        yield
+    finally:
+        main_window_module.QFileDialog.getOpenFileName = original_get_open_file_name
+
+
+@contextmanager
 def patch_modal_dialogs() -> Iterator[None]:
     original_critical = main_window_module.QMessageBox.critical
     original_warning = main_window_module.QMessageBox.warning
@@ -227,6 +256,15 @@ def patch_recipe_context_loading() -> Iterator[None]:
     def _patched_load_recipe_context(self) -> None:
         self._current_recipe_id = MOCK_RECIPE_ID
         self._current_version_id = MOCK_VERSION_ID
+        owner = getattr(self, "_planning_context_owner", None)
+        if owner is not None:
+            owner.sync_recipe_catalog([{"id": MOCK_RECIPE_ID, "activeVersionId": MOCK_VERSION_ID}])
+            owner.select_recipe(MOCK_RECIPE_ID, selection_origin="ui_test_patch")
+            owner.sync_recipe_versions(
+                MOCK_RECIPE_ID,
+                [{"id": MOCK_VERSION_ID, "status": "published"}],
+            )
+            owner.select_version(MOCK_VERSION_ID, selection_origin="ui_test_patch")
 
     def _patched_current_recipe_selection(self):
         recipe_id = getattr(self, "_current_recipe_id", "") or MOCK_RECIPE_ID
@@ -407,17 +445,168 @@ class GuiContractRunner:
     def _resolved_runtime_action_profile(self) -> str:
         profile = self.runtime_action_profile
         if not profile:
-            return "preview" if self.preview_payload_path else "full"
+            if self.preview_payload_path:
+                self._fail("Preview payload requires explicit runtime action profile: snapshot_render")
+            return "full"
         if profile not in SUPPORTED_RUNTIME_ACTION_PROFILES:
             self._fail(
                 "Unsupported runtime action profile: "
                 f"{profile}; supported={','.join(SUPPORTED_RUNTIME_ACTION_PROFILES)}"
             )
             return "full"
+        if self.preview_payload_path and profile != "snapshot_render":
+            self._fail("Preview payload is only allowed with runtime action profile: snapshot_render")
+            return profile
+        if profile == "snapshot_render" and not self.preview_payload_path:
+            self._fail("Runtime action profile snapshot_render requires --preview-payload-path")
         return profile
 
     def _canonical_preview_sample(self) -> Path:
-        return Path(__file__).resolve().parents[5] / "samples" / "dxf" / "rect_diag.dxf"
+        return canonical_preview_sample()
+
+    def _switch_to_recipe_tab(self) -> None:
+        tabs = getattr(self.window, "_main_tabs", None)
+        recipe_tab = getattr(self.window, "_recipe_tab", None)
+        self._expect(tabs is not None and recipe_tab is not None, "Recipe tab should be available")
+        if tabs is None or recipe_tab is None:
+            return
+        tabs.setCurrentWidget(recipe_tab)
+        QTest.qWait(100)
+
+    def _switch_to_production_tab(self) -> None:
+        tabs = getattr(self.window, "_main_tabs", None)
+        production_tab = getattr(self.window, "_production_tab", None)
+        self._expect(tabs is not None and production_tab is not None, "Production tab should be available")
+        if tabs is None or production_tab is None:
+            return
+        tabs.setCurrentWidget(production_tab)
+        QTest.qWait(100)
+
+    def _recipe_widget(self):
+        recipe_widget = getattr(self.window, "_recipe_config_widget", None)
+        self._expect(recipe_widget is not None, "Recipe config widget should exist")
+        return recipe_widget
+
+    def _click_list_item(
+        self,
+        list_widget: QListWidget,
+        *,
+        description: str,
+        predicate: Callable[[object], bool],
+    ) -> str:
+        self._expect(list_widget.count() > 0, f"{description} requires non-empty list")
+        if list_widget.count() <= 0:
+            return ""
+        for index in range(list_widget.count()):
+            item = list_widget.item(index)
+            if not predicate(item):
+                continue
+            list_widget.clearSelection()
+            QTest.qWait(50)
+            rect = list_widget.visualItemRect(item)
+            if rect.isValid():
+                QTest.mouseClick(list_widget.viewport(), Qt.LeftButton, Qt.NoModifier, rect.center())
+            else:
+                list_widget.setCurrentItem(item)
+            QTest.qWait(150)
+            return str(item.data(Qt.UserRole) or "")
+        self._fail(f"Could not locate list item for {description}")
+        return ""
+
+    def _emit_operator_context(self, stage: str) -> None:
+        owner = getattr(self.window, "_preview_planning_context", None)
+        state = getattr(owner, "state", None)
+        if state is None:
+            print(f"OPERATOR_CONTEXT stage={stage} state=missing", flush=True)
+            return
+        invalid_reason = str(getattr(state, "invalid_reason", "") or "").replace(" ", "_")
+        print(
+            "OPERATOR_CONTEXT "
+            f"stage={stage} "
+            f"recipe_id={getattr(state, 'recipe_id', '') or 'null'} "
+            f"version_id={getattr(state, 'version_id', '') or 'null'} "
+            f"selection_origin={getattr(state, 'selection_origin', '') or 'null'} "
+            f"is_valid={str(bool(getattr(state, 'is_valid_for_prepare', False))).lower()} "
+            f"invalid_reason={invalid_reason or 'null'}",
+            flush=True,
+        )
+
+    def _assert_operator_preview_action(self) -> None:
+        recipe_widget = self._recipe_widget()
+        if recipe_widget is None:
+            return
+        self._switch_to_recipe_tab()
+        recipe_list = getattr(recipe_widget, "_recipe_list_widget", None)
+        version_list = getattr(recipe_widget, "_recipe_version_list", None)
+        self._expect(recipe_list is not None and version_list is not None, "Recipe/version lists should exist")
+        if recipe_list is None or version_list is None:
+            return
+
+        self._wait_for("recipe list loaded", lambda: recipe_list.count() > 0, timeout_ms=5000)
+        recipe_id = self._click_list_item(
+            recipe_list,
+            description="operator journey recipe selection",
+            predicate=lambda _item: True,
+        )
+        self._expect(bool(recipe_id), "Operator journey should select a recipe")
+        self._wait_for("recipe versions loaded", lambda: version_list.count() > 0, timeout_ms=5000)
+        self._emit_operator_context("recipe-selected")
+        self._expect(
+            getattr(self.window._preview_planning_context.state, "selection_origin", "") == "user_recipe_selection",
+            "Recipe selection should be recorded as explicit user selection",
+        )
+
+        self._switch_to_production_tab()
+        self._click_button("btn-dxf-browse")
+        self._wait_for(
+            "operator preview failure without explicit version",
+            lambda: getattr(self.window, "_preview_gate", None) is not None
+            and "未显式选择配方版本" in getattr(self.window._preview_gate, "last_error_message", ""),
+            timeout_ms=5000,
+        )
+        self._emit_operator_context("missing-version-blocked")
+        self._expect(
+            "未显式选择配方版本" in self._status_message(),
+            "Missing explicit version should surface the operator-facing preview failure",
+        )
+        freeze_result = self.window._preview_planning_context.freeze_for_prepare()
+        self._expect(not freeze_result.ok, "Context freeze should fail before explicit version selection")
+
+        self._switch_to_recipe_tab()
+        version_id = self._click_list_item(
+            version_list,
+            description="operator journey published version selection",
+            predicate=lambda item: str(
+                getattr(recipe_widget, "_recipe_versions", {}).get(str(item.data(Qt.UserRole) or ""), {}).get("status", "")
+            ).strip().lower()
+            == "published",
+        )
+        self._expect(bool(version_id), "Operator journey should select an explicit published version")
+        self._wait_for(
+            "explicit version selection reflected in planning context",
+            lambda: getattr(self.window._preview_planning_context.state, "version_id", "") == version_id
+            and getattr(self.window._preview_planning_context.state, "selection_origin", "") == "user_version_selection",
+            timeout_ms=3000,
+        )
+        self._emit_operator_context("version-selected")
+        freeze_result = self.window._preview_planning_context.freeze_for_prepare()
+        self._expect(freeze_result.ok, "Context freeze should succeed after explicit published version selection")
+
+        self._switch_to_production_tab()
+        self._click_button("btn-dxf-preview-refresh")
+        self._wait_for(
+            "operator preview succeeds after explicit version selection",
+            lambda: bool(self.window._preview_gate.snapshot)
+            and getattr(self.window, "_preview_source", "") == "planned_glue_snapshot"
+            and bool(getattr(self.window, "_current_plan_id", "")),
+            timeout_ms=15000,
+        )
+        self._emit_operator_context("preview-ready")
+        self._expect(
+            "未显式选择配方版本" not in getattr(self.window._preview_gate, "last_error_message", ""),
+            "Preview gate should clear the missing-version failure after explicit selection",
+        )
+        self._capture_screenshot("operator preview journey screenshot")
 
     def _ensure_runtime_motion_ready(self) -> None:
         if (
@@ -448,26 +637,25 @@ class GuiContractRunner:
             timeout_ms=10000,
         )
 
-    def _assert_runtime_preview_action(self) -> None:
+    def _assert_snapshot_render_action(self) -> None:
         sample_dxf = self._canonical_preview_sample()
         self._expect(sample_dxf.exists(), f"Canonical preview sample should exist: {sample_dxf}")
         if not sample_dxf.exists():
             return
 
         self.window._dxf_filepath = str(sample_dxf)
-        if self.preview_payload_path:
-            payload = self._load_preview_payload()
-            if payload:
-                payload.setdefault("plan_id", payload.get("snapshot_id", "plan-from-evidence"))
-                payload.setdefault("snapshot_id", payload.get("plan_id", "plan-from-evidence"))
-                payload.setdefault(
-                    "snapshot_hash",
-                    payload.get("plan_fingerprint", payload.get("snapshot_hash", "snapshot-from-evidence")),
-                )
-                payload.setdefault("generated_at", "")
-                self.window._on_preview_snapshot_completed(True, payload, "", source="worker")
-        else:
-            self.window._on_dxf_load()
+        payload = self._load_preview_payload()
+        if not payload:
+            self._fail("Snapshot render requires a non-empty preview payload")
+            return
+        payload.setdefault("plan_id", payload.get("snapshot_id", "plan-from-evidence"))
+        payload.setdefault("snapshot_id", payload.get("plan_id", "plan-from-evidence"))
+        payload.setdefault(
+            "snapshot_hash",
+            payload.get("plan_fingerprint", payload.get("snapshot_hash", "snapshot-from-evidence")),
+        )
+        payload.setdefault("generated_at", "")
+        self.window._on_preview_snapshot_completed(True, payload, "", source="worker")
 
         self._wait_for(
             "planned glue preview ready",
@@ -616,8 +804,10 @@ class GuiContractRunner:
         if self.failed:
             return
 
-        if profile in {"full", "preview"}:
-            self._assert_runtime_preview_action()
+        if profile == "snapshot_render":
+            self._assert_snapshot_render_action()
+        if profile in {"full", "operator_preview"}:
+            self._assert_operator_preview_action()
         if profile in {"full", "home_move"}:
             self._assert_runtime_move_to_action()
         if profile in {"full", "jog"}:
@@ -628,7 +818,7 @@ class GuiContractRunner:
             self._assert_runtime_estop_reset_action()
         if profile in {"full", "door_interlock"}:
             self._assert_runtime_door_interlock_action()
-        if profile != "preview":
+        if profile != "snapshot_render":
             self._capture_screenshot(f"runtime action profile {profile}")
 
     def _emit_supervisor_diag(self) -> None:
@@ -921,11 +1111,21 @@ class GuiContractRunner:
                 self.app.exit(self.exit_code)
 
 
-def build_window(launch_mode: str, host: str, port: int) -> MainWindow:
+def build_window(
+    launch_mode: str,
+    host: str,
+    port: int,
+    *,
+    patch_recipe_context: bool = True,
+    dxf_browse_path: str = "",
+) -> MainWindow:
     stack = ExitStack()
     stack.enter_context(patch_headless_preview())
     stack.enter_context(patch_modal_dialogs())
-    stack.enter_context(patch_recipe_context_loading())
+    if patch_recipe_context:
+        stack.enter_context(patch_recipe_context_loading())
+    if dxf_browse_path:
+        stack.enter_context(patch_dxf_browse_dialog(dxf_browse_path))
     if launch_mode == "online":
         stack.enter_context(patch_launch_endpoints(host, port))
     try:
@@ -956,6 +1156,11 @@ def main() -> int:
     parser.add_argument("--preview-payload-path", default="")
     parser.add_argument("--runtime-action-profile", default="")
     args = parser.parse_args()
+    requested_runtime_action_profile = str(args.runtime_action_profile or "").strip().lower()
+    resolved_runtime_action_profile = requested_runtime_action_profile
+    if args.exercise_runtime_actions and not resolved_runtime_action_profile:
+        resolved_runtime_action_profile = "full"
+    real_operator_journey = args.exercise_runtime_actions and uses_real_recipe_context(resolved_runtime_action_profile)
 
     server: Optional[MockTcpServer] = None
     port = args.port
@@ -963,7 +1168,13 @@ def main() -> int:
         server, port = start_mock_server(args.host, args.port, args.verbose)
 
     app = QApplication([])
-    window = build_window(args.mode, args.host, port)
+    window = build_window(
+        args.mode,
+        args.host,
+        port,
+        patch_recipe_context=not real_operator_journey,
+        dxf_browse_path=str(canonical_preview_sample()) if real_operator_journey else "",
+    )
     window.show()
 
     runner = GuiContractRunner(
@@ -977,7 +1188,7 @@ def main() -> int:
         exercise_runtime_actions=args.exercise_runtime_actions,
         screenshot_path=args.screenshot_path,
         preview_payload_path=args.preview_payload_path,
-        runtime_action_profile=args.runtime_action_profile,
+        runtime_action_profile=resolved_runtime_action_profile,
     )
     QTimer.singleShot(0, runner.run)
     QTimer.singleShot(args.timeout_ms, runner.request_timeout)

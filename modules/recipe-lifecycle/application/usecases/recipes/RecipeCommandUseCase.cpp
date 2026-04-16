@@ -115,6 +115,7 @@ Result<PublishRecipeVersionResponse> RecipeCommandUseCase::Execute(
         return Result<PublishRecipeVersionResponse>::Failure(
             Error(ErrorCode::RECIPE_INVALID_STATE, "Only draft versions can be published", "PublishRecipeVersionUseCase"));
     }
+    NormalizeRecipePlanningPolicyParameters(version.parameters);
 
     auto schema_result = schema_port_->GetDefaultSchema();
     if (schema_result.IsError()) {

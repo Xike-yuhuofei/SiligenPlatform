@@ -49,6 +49,43 @@ if ([string]::IsNullOrWhiteSpace($env:PYTHONPATH)) {
     $env:PYTHONPATH = "$hmiApplicationRoot$([IO.Path]::PathSeparator)$sourceRoot$([IO.Path]::PathSeparator)$env:PYTHONPATH"
 }
 
+function Assert-RuntimeActionParameterContract {
+    param(
+        [switch]$ExerciseRuntimeActions,
+        [string]$PreviewPayloadPath,
+        [string]$RuntimeActionProfile
+    )
+
+    $hasPayload = -not [string]::IsNullOrWhiteSpace($PreviewPayloadPath)
+    $hasProfile = -not [string]::IsNullOrWhiteSpace($RuntimeActionProfile)
+    $normalizedProfile = $RuntimeActionProfile.Trim().ToLowerInvariant()
+
+    if ($hasPayload -and -not $ExerciseRuntimeActions) {
+        throw "PreviewPayloadPath requires -ExerciseRuntimeActions and -RuntimeActionProfile snapshot_render"
+    }
+    if ($hasProfile -and -not $ExerciseRuntimeActions) {
+        throw "RuntimeActionProfile requires -ExerciseRuntimeActions"
+    }
+    if (-not $ExerciseRuntimeActions) {
+        return
+    }
+    if ($hasPayload -and -not $hasProfile) {
+        throw "PreviewPayloadPath requires explicit -RuntimeActionProfile snapshot_render; implicit fallback is forbidden"
+    }
+    if ($hasPayload -and $normalizedProfile -ne "snapshot_render") {
+        throw "PreviewPayloadPath is only allowed with -RuntimeActionProfile snapshot_render"
+    }
+    if ($normalizedProfile -eq "snapshot_render" -and -not $hasPayload) {
+        throw "RuntimeActionProfile snapshot_render requires -PreviewPayloadPath"
+    }
+}
+
+$normalizedRuntimeActionProfile = $RuntimeActionProfile.Trim().ToLowerInvariant()
+Assert-RuntimeActionParameterContract `
+    -ExerciseRuntimeActions:$ExerciseRuntimeActions `
+    -PreviewPayloadPath $PreviewPayloadPath `
+    -RuntimeActionProfile $normalizedRuntimeActionProfile
+
 function Get-FreeTcpPort {
     $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Parse($ListenHost), 0)
     $listener.Start()
@@ -323,8 +360,8 @@ function Invoke-UiSmoke {
         if (-not [string]::IsNullOrWhiteSpace($PreviewPayloadPath)) {
             $uiArgs += @("--preview-payload-path", $PreviewPayloadPath)
         }
-        if (-not [string]::IsNullOrWhiteSpace($RuntimeActionProfile)) {
-            $uiArgs += @("--runtime-action-profile", $RuntimeActionProfile)
+        if (-not [string]::IsNullOrWhiteSpace($normalizedRuntimeActionProfile)) {
+            $uiArgs += @("--runtime-action-profile", $normalizedRuntimeActionProfile)
         }
     }
 

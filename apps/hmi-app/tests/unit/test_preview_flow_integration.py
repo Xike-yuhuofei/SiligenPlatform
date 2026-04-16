@@ -165,7 +165,15 @@ class PreviewFlowIntegrationTest(unittest.TestCase):
         runtime_window._connected = True
         runtime_window._mode_production.setChecked(True)
         runtime_window._mode_dryrun.setChecked(False)
-        runtime_window._recipe_config_widget.current_recipe_selection = lambda: ("recipe-it", "version-it")
+        runtime_window._preview_planning_context.sync_recipe_catalog(
+            [{"id": "recipe-it", "activeVersionId": "version-it"}]
+        )
+        runtime_window._preview_planning_context.select_recipe("recipe-it")
+        runtime_window._preview_planning_context.sync_recipe_versions(
+            "recipe-it",
+            [{"id": "version-it", "status": "published"}],
+        )
+        runtime_window._preview_planning_context.select_version("version-it")
         runtime_window._dxf_filepath = str(PROJECT_ROOT.parent.parent / "samples" / "dxf" / "rect_diag.dxf")
 
         runtime_window._on_dxf_load()

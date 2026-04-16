@@ -25,4 +25,4 @@
 - `run_engineering_regression.py` 固化 `DXF -> PB -> simulation-input -> preview` 工程数据链。
 - `run_preview_flow_regression.py` 固化 `DXF 导入 -> preview snapshot -> HMI 状态推进`。
 - `run_recipe_config_compatibility.py` 固化 `recipe/config/version` 兼容与 alias override。
-- `first-layer/run_tcp_precondition_matrix.py` 固化 `preview confirm / execution preflight` 阻断矩阵。
+- `first-layer/run_tcp_precondition_matrix.py` 固化 `preview confirm / execution preflight` 阻断矩阵，并且必须显式传入已发布 `--recipe-id/--version-id`。
