@@ -8,6 +8,7 @@
 
 - `run_hardware_smoke.py`
 - `run_real_dxf_machine_dryrun.py`
+- `run_real_dxf_production_validation.py`
 - `run_dxf_stop_home_auto_probe.py`
 - `run_dxf_stop_home_auto_validation.py`
 - `run_real_dxf_machine_dryrun_negative_matrix.py`
@@ -63,6 +64,11 @@ python .\tests\e2e\hardware-in-loop\run_hardware_smoke.py
 
 ```powershell
 python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun.py
+```
+
+```powershell
+python .\tests\e2e\hardware-in-loop\run_real_dxf_production_validation.py `
+  --dxf-file D:\Projects\SiligenSuite\uploads\dxf\archive\rect_diag.dxf
 ```
 
 ```powershell
@@ -174,6 +180,22 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 - 当前 `state_contradiction` 默认阈值参数为：`--contradiction-progress-threshold-percent=95`、`--contradiction-consecutive-samples=5`、`--contradiction-grace-seconds=0.5`、`--position-epsilon-mm=0.001`、`--velocity-epsilon-mm-s=0.001`
 - 当前能力先作为 `BUG-312` 专项诊断入口使用，默认不直接接入 `verify_hil_controlled_gate.py`
 - 自动离线回归入口为 `python -m pytest tests/integration/scenarios/first-layer/test_real_dxf_machine_dryrun_observation_contract.py -q`
+
+`run_real_dxf_production_validation.py` 说明：
+
+- 当前用于 BUG-318 这类“生产模式 path-trigger 真机专项验证”，固定走 `dxf.artifact.create -> dxf.plan.prepare(dry_run=false,use_hardware_trigger=true) -> dxf.preview.snapshot -> dxf.preview.confirm -> dxf.job.start -> dxf.job.status`
+- 默认优先读取 `D:\Projects\SiligenSuite\uploads\dxf\archive\rect_diag.dxf`；若该路径不存在，则回退到仓内 `samples/dxf/rect_diag.dxf`
+- 会在真实连接前做最小 preflight：`status -> 必要时 home -> safety gate`
+- 会同时冻结 `job-status-history.json`、`machine-status-history.json` 与本次 gateway 追加日志切片 `tcp_server.log`
+- 当前 blocking 判定固定要求：
+  - `preview_source=planned_glue_snapshot`
+  - `preview_kind=glue_points`
+  - `job.state=completed`
+  - `overall_progress_percent=100`
+  - `PathTriggeredDispenserLoop.completedCount == glue_point_count`
+  - `StopDispenser.completedCount == StopDispenser.totalCount == glue_point_count`
+- 当前会额外用在线位置采样对比预览几何包围盒，默认要求 `X/Y` 轴观测跨度都至少覆盖预览跨度的 `80%`
+- 当前离线回归入口为 `python -m pytest tests/integration/scenarios/first-layer/test_real_dxf_production_validation_contract.py -q`
 
 `run_dxf_stop_home_auto_probe.py` 说明：
 

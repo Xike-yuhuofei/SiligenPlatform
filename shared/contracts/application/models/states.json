@@ -118,7 +118,7 @@
     },
     "machineStatus": {
       "type": "object",
-      "required": ["connected", "connection_state", "machine_state", "machine_state_reason", "supervision", "interlock_latched", "active_job_id", "active_job_state", "axes", "effective_interlocks", "io", "dispenser", "alarms"],
+      "required": ["connected", "connection_state", "machine_state", "machine_state_reason", "supervision", "interlock_latched", "job_execution", "axes", "effective_interlocks", "io", "dispenser", "alarms"],
       "properties": {
         "connected": { "type": "boolean" },
         "connection_state": { "type": "string" },
@@ -131,8 +131,7 @@
           "description": "兼容导出原因字段；当前由 supervision.state_reason 单向派生。"
         },
         "interlock_latched": { "type": "boolean" },
-        "active_job_id": { "type": "string" },
-        "active_job_state": { "type": "string" },
+        "job_execution": { "$ref": "#/definitions/dxfJobStatus" },
         "axes": { "type": "object" },
         "position": {
           "type": "object",
@@ -147,10 +146,24 @@
         "io": { "$ref": "#/definitions/ioStatus" },
         "dispenser": {
           "type": "object",
-          "required": ["valve_open", "supply_open"],
+          "required": ["valve_open", "supply_open", "completedCount", "totalCount", "progress"],
           "properties": {
             "valve_open": { "type": "boolean" },
-            "supply_open": { "type": "boolean" }
+            "supply_open": { "type": "boolean" },
+            "completedCount": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "点胶阀权威已完成触发计数；来自运行时点胶阀状态快照。"
+            },
+            "totalCount": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "点胶阀权威目标触发总数；来自运行时点胶阀状态快照。"
+            },
+            "progress": {
+              "type": "number",
+              "description": "点胶阀权威进度百分比，范围由运行时点胶阀状态快照给出。"
+            }
           },
           "additionalProperties": false
         },
@@ -316,7 +329,7 @@
         "plan_fingerprint": { "type": "string" },
         "state": {
           "type": "string",
-          "enum": ["pending", "running", "stopping", "paused", "completed", "failed", "cancelled", "unknown"]
+          "enum": ["idle", "pending", "running", "stopping", "paused", "completed", "failed", "cancelled", "unknown"]
         },
         "target_count": { "type": "integer" },
         "completed_count": { "type": "integer" },

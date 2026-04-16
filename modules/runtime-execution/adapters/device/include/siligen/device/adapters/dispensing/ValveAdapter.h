@@ -92,6 +92,7 @@
          * @return 调用结果（0=成功）
          */
         int CallMC_CmpPulseOnce(int16 channel, uint32 durationMs);
+        int CallMC_CmpPulseOnce(int16 channel, uint32 durationMs, short startLevel);
 
         /**
          * @brief 调用MultiCard CMP电平输出API（连续开阀/关阀）
@@ -129,36 +130,6 @@
         int ResetDispenserHardwareState(const char* reason, bool strict) noexcept;
 
         /**
-         * @brief 调用MultiCard MC_CmpBufData 加载位置触发缓冲区
-         *
-         * 注意：CMP 输出通道需要在调用前通过 MC_CmpBufSetChannel 设置。
-         * 此函数的第一个参数是位置比较源轴号（SDK 1-based），不是输出通道。
-         *
-         * @param compare_source_axis 位置比较源轴号（1-16），用于 MC_CmpBufData 的 nCmpEncodeNum
-         * @param positions 位置数组（脉冲单位）
-         * @param pulse_width_ms 脉冲宽度（毫秒）
-         * @param start_level 起始电平（0=低，1=高）
-         * @return 调用结果（0=成功）
-         */
-        int CallMC_CmpBufData(short compare_source_axis,
-                              const std::vector<long>& positions,
-                              uint32 pulse_width_ms,
-                              short start_level);
-
-        int CallMC_CmpBufDataBuffers(short compare_source_axis,
-                                     const std::vector<long>* buffer1,
-                                     const std::vector<long>* buffer2,
-                                     uint32 pulse_width_ms,
-                                     short start_level);
-
-        /**
-         * @brief 调用MultiCard MC_EncOff 关闭编码器反馈
-         * @param axis 轴号（1-16）
-         * @return 调用结果（0=成功）
-         */
-        int CallMC_EncOff(short axis);
-
-        /**
          * @brief 更新点胶阀状态（计算进度）
          */
         void UpdateDispenserProgress();
@@ -168,6 +139,13 @@
          */
         void RefreshTimedDispenserStateIfCompleted() noexcept;
 
+        void StopPathTriggeredDispenserThread() noexcept;
+        void JoinPathTriggeredDispenserThreadIfFinished() noexcept;
+        void PathTriggeredDispenserLoop() noexcept;
+        bool ReadCoordinateSystemPositionPulse(short coordinate_system,
+                                               long& x_position_pulse,
+                                               long& y_position_pulse) noexcept;
+
         /**
          * @brief 创建错误信息
          * @param errorCode MultiCard错误码
@@ -176,10 +154,6 @@
          */
         std::string CreateErrorMessage(int errorCode, const std::string& operation) const;
 
-        void StopCmpBufferStreaming() noexcept;
-        void StartCmpBufferStreamingThread() noexcept;
-        void CmpBufferStreamingLoop() noexcept;
-        bool LoadCmpBufferChunk(bool load_buf1) noexcept;
         void TimedDispenserLoop() noexcept;
         void StopTimedDispenserThread() noexcept;
         void JoinTimedDispenserThreadIfFinished() noexcept;
@@ -212,17 +186,17 @@
         bool timed_dispenser_pause_requested_ = false;
         std::string last_execution_id_;
 
-        // CMP 位置触发流式加载状态
-        std::atomic<bool> cmp_streaming_active_{false};
-        std::atomic<bool> cmp_stream_stop_{false};
-        std::thread cmp_stream_thread_;
-        std::mutex cmp_stream_mutex_;
-        std::vector<long> cmp_stream_positions_;
-        size_t cmp_stream_next_chunk_ = 0;
-        size_t cmp_stream_total_chunks_ = 0;
-        short cmp_stream_compare_source_axis_ = 0;
-        uint32 cmp_stream_pulse_width_ms_ = 0;
-        short cmp_stream_start_level_ = 0;
+        std::condition_variable path_trigger_cv_;
+        std::thread path_trigger_thread_;
+        bool path_trigger_active_ = false;
+        bool path_trigger_stop_requested_ = false;
+        bool path_trigger_pause_requested_ = false;
+        short path_trigger_coordinate_system_ = 1;
+        short path_trigger_start_level_ = 0;
+        uint32 path_trigger_pulse_width_ms_ = 0;
+        long path_trigger_position_tolerance_pulse_ = 0;
+        std::vector<Domain::Dispensing::Ports::PathTriggerEvent> path_trigger_events_;
+        size_t path_trigger_next_index_ = 0;
 
         // 供胶阀状态
         mutable std::mutex supply_mutex_;                       ///< 供胶阀状态互斥锁

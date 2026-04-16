@@ -18,8 +18,22 @@
       "updated_at": "2026-03-26T00:00:00Z"
     },
     "interlock_latched": false,
-    "active_job_id": "",
-    "active_job_state": "",
+    "job_execution": {
+      "job_id": "",
+      "plan_id": "",
+      "plan_fingerprint": "",
+      "state": "idle",
+      "target_count": 0,
+      "completed_count": 0,
+      "current_cycle": 0,
+      "current_segment": 0,
+      "total_segments": 0,
+      "cycle_progress_percent": 0,
+      "overall_progress_percent": 0,
+      "elapsed_seconds": 0.0,
+      "error_message": "",
+      "dry_run": false
+    },
     "axes": {
       "X": {
         "position": 12.5,
@@ -67,7 +81,10 @@
     },
     "dispenser": {
       "valve_open": false,
-      "supply_open": true
+      "supply_open": true,
+      "completedCount": 0,
+      "totalCount": 0,
+      "progress": 0.0
     },
     "alarms": []
   }

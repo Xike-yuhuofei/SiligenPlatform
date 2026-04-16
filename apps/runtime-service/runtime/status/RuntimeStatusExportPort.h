@@ -9,6 +9,9 @@
 
 #include <functional>
 #include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
 #include <vector>
 
 namespace Siligen::Runtime::Service::Status {
@@ -28,6 +31,14 @@ struct RuntimeDispenserStatusReader {
         read_supply_status;
 };
 
+struct RuntimeJobExecutionStatusReader {
+    std::function<
+        Siligen::Shared::Types::Result<
+            Siligen::RuntimeExecution::Contracts::System::RuntimeJobExecutionExportSnapshot>(
+            const std::string&)>
+        read_job_status;
+};
+
 class RuntimeStatusExportPort final
     : public Siligen::RuntimeExecution::Contracts::System::IRuntimeStatusExportPort {
    public:
@@ -35,7 +46,8 @@ class RuntimeStatusExportPort final
         std::shared_ptr<Siligen::RuntimeExecution::Contracts::System::IRuntimeSupervisionPort>
             runtime_supervision_port,
         RuntimeMotionStatusReader motion_status_reader = {},
-        RuntimeDispenserStatusReader dispenser_status_reader = {});
+        RuntimeDispenserStatusReader dispenser_status_reader = {},
+        RuntimeJobExecutionStatusReader job_execution_status_reader = {});
 
     Siligen::Shared::Types::Result<Siligen::RuntimeExecution::Contracts::System::RuntimeStatusExportSnapshot>
     ReadSnapshot() const override;
@@ -44,6 +56,12 @@ class RuntimeStatusExportPort final
     std::shared_ptr<Siligen::RuntimeExecution::Contracts::System::IRuntimeSupervisionPort> runtime_supervision_port_;
     RuntimeMotionStatusReader motion_status_reader_;
     RuntimeDispenserStatusReader dispenser_status_reader_;
+    RuntimeJobExecutionStatusReader job_execution_status_reader_;
+    mutable std::mutex job_execution_mutex_;
+    mutable std::string last_observed_job_id_;
+    mutable std::optional<
+        Siligen::RuntimeExecution::Contracts::System::RuntimeJobExecutionExportSnapshot>
+        cached_terminal_job_execution_;
 };
 
 }  // namespace Siligen::Runtime::Service::Status

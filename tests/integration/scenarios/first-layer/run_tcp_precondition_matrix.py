@@ -324,7 +324,21 @@ def _extract_io(status_response: dict[str, Any]) -> dict[str, Any]:
 
 def _extract_active_job_id(status_response: dict[str, Any]) -> str:
     result = status_response.get("result", {})
-    return str(result.get("active_job_id", "")).strip()
+    job_execution = result.get("job_execution", {})
+    if not isinstance(job_execution, dict):
+        return ""
+    state = str(job_execution.get("state", "")).strip().lower()
+    if state in ("idle", "completed", "failed", "cancelled"):
+        return ""
+    return str(job_execution.get("job_id", "")).strip()
+
+
+def _extract_job_execution_state(status_response: dict[str, Any]) -> str:
+    result = status_response.get("result", {})
+    job_execution = result.get("job_execution", {})
+    if not isinstance(job_execution, dict):
+        return ""
+    return str(job_execution.get("state", "")).strip().lower()
 
 
 def _extract_supply_open(status_response: dict[str, Any]) -> bool:
@@ -398,7 +412,8 @@ def _stabilize_runtime_state(client: TcpJsonClient) -> tuple[dict[str, Any], str
             break
 
     note = (
-        f"active_job_id={_extract_active_job_id(last_status) or 'none'} "
+        f"job_execution.job_id={_extract_active_job_id(last_status) or 'none'} "
+        f"job_execution.state={_extract_job_execution_state(last_status) or 'none'} "
         f"supply_open={_extract_supply_open(last_status)} "
         f"valve_open={_extract_valve_open(last_status)} "
         f"axis_motion={_has_axis_motion(last_status)} "

@@ -19,6 +19,12 @@ using namespace Shared::Types;
 // ============================================================
 
 int ValveAdapter::CallMC_CmpPulseOnce(int16 channel, uint32 durationMs) {
+    const short default_start_level =
+        static_cast<short>((dispenser_config_.pulse_type == 0) ? 0 : 1);
+    return CallMC_CmpPulseOnce(channel, durationMs, default_start_level);
+}
+
+int ValveAdapter::CallMC_CmpPulseOnce(int16 channel, uint32 durationMs, short startLevel) {
     try {
         // SDK API 原型 (MultiCardCPP.h:893):
         // int MC_CmpPluse(short nChannelMask, short nPluseType1, short nPluseType2,
@@ -33,7 +39,13 @@ int ValveAdapter::CallMC_CmpPulseOnce(int16 channel, uint32 durationMs) {
         const short selected_channel = (channel > 0)
                                            ? channel
                                            : static_cast<short>(dispenser_config_.cmp_channel);
+        const short normalized_start_level =
+            (startLevel == 0 || startLevel == 1)
+                ? startLevel
+                : static_cast<short>((dispenser_config_.pulse_type == 0) ? 0 : 1);
         short nChannelMask = 0;
+        short presetType1 = 0;
+        short presetType2 = 0;
         short nPluseType1 = 0;
         short nPluseType2 = 0;
         short nTime1 = 0;
@@ -43,11 +55,13 @@ int ValveAdapter::CallMC_CmpPulseOnce(int16 channel, uint32 durationMs) {
 
         if (selected_channel == 1) {
             nChannelMask = 0x01;
+            presetType1 = normalized_start_level;
             nPluseType1 = 2;  // 通道1脉冲输出
             nTime1 = static_cast<short>(durationMs);
             nTimeFlag1 = 1;   // 毫秒单位
         } else if (selected_channel == 2) {
             nChannelMask = 0x02;
+            presetType2 = normalized_start_level;
             nPluseType2 = 2;  // 通道2脉冲输出
             nTime2 = static_cast<short>(durationMs);
             nTimeFlag2 = 1;   // 毫秒单位
@@ -57,9 +71,18 @@ int ValveAdapter::CallMC_CmpPulseOnce(int16 channel, uint32 durationMs) {
             return 7;  // 参数错误
         }
 
+        // 先显式恢复到 contract 指定的空闲电平，再由硬件输出单次脉冲。
+        const int preset_result = hardware_->MC_CmpPluse(
+            nChannelMask, presetType1, presetType2, 0, 0, 0, 0);
+        if (preset_result != 0) {
+            SILIGEN_LOG_ERROR("CallMC_CmpPulseOnce: 预设起始电平失败: " + std::to_string(preset_result));
+            return preset_result;
+        }
+
         SILIGEN_LOG_INFO(std::string("CallMC_CmpPulseOnce: 调用 MC_CmpPluse 单次脉冲: Channel=") +
                          std::to_string(selected_channel) +
-                         ", PulseWidth=" + std::to_string(durationMs) + "ms");
+                         ", PulseWidth=" + std::to_string(durationMs) + "ms" +
+                         ", StartLevel=" + std::to_string(normalized_start_level));
 
         int result = hardware_->MC_CmpPluse(nChannelMask, nPluseType1, nPluseType2,
                                             nTime1, nTime2, nTimeFlag1, nTimeFlag2);
@@ -192,229 +215,24 @@ int ValveAdapter::ResetDispenserHardwareState(const char* reason, bool strict) n
     return 0;
 }
 
-int ValveAdapter::CallMC_CmpBufData(short compare_source_axis,
-                                     const std::vector<long>& positions,
-                                     uint32 pulse_width_ms, short start_level) {
+bool ValveAdapter::ReadCoordinateSystemPositionPulse(short coordinate_system,
+                                                     long& x_position_pulse,
+                                                     long& y_position_pulse) noexcept {
     try {
-        // =====================================================
-        // 使用 MC_CmpBufData API 加载位置触发缓冲区
-        // =====================================================
-        //
-        // SDK API 原型:
-        // int MC_CmpBufData(short nCmpEncodeNum, short nPluseType, short nStartLevel, short nTime,
-        //                   long* pBuf1, short nBufLen1, long* pBuf2, short nBufLen2,
-        //                   short nAbsPosFlag, short nTimerFlag);
-        //
-        // 参数说明:
-        // - nCmpEncodeNum: 位置比较源轴号（1-16），SDK 历史命名仍写作 EncodeNum
-        // - nPluseType: 脉冲类型（0=单次，1=持续）
-        // - nStartLevel: 起始电平（0=低电平，1=高电平）
-        // - nTime: 脉冲宽度（单位由 nTimerFlag 决定）
-        // - pBuf1: 位置缓冲区1（轴位置数组）
-        // - nBufLen1: 缓冲区1长度
-        // - pBuf2: 位置缓冲区2（可选，用于多轴触发）
-        // - nBufLen2: 缓冲区2长度
-        // - nAbsPosFlag: 位置类型（0=相对，1=绝对）
-        // - nTimerFlag: 时间单位标志（0=微秒，1=毫秒）
-        //
-        // 注意: CMP 输出通道需要通过 MC_CmpBufSetChannel 单独设置！
-
-        // 根据 MultiCard SDK 文档，nPluseType 必须为 2 表示"到比较位置后输出一个脉冲"
-        // 配置中的 pulse_type (0=正脉冲,1=负脉冲) 用于其他场景，不适用于 MC_CmpBufData
-        short nPluseType = 2;  // 固定为脉冲输出模式
-
-        // 使用传入的脉冲宽度参数，并根据值选择合适的时间单位
-        short nTimerFlag;
-        short nTime;
-
-        // 检查脉冲宽度是否在 short 范围内（-32768 到 32767）
-        if (pulse_width_ms > 32767) {
-            // 如果超过 short 范围，使用微秒单位并转换
-            nTimerFlag = 0;  // 微秒单位
-            nTime = static_cast<short>(pulse_width_ms * 1000);
-            // 注意：转换后可能仍然超出范围，需要截断到安全值
-            if (nTime < 0) {
-                nTime = 32767;  // 最大安全值
-            }
-        } else if (pulse_width_ms >= 1) {
-            // 使用毫秒单位
-            nTimerFlag = 1;  // 毫秒单位
-            nTime = static_cast<short>(pulse_width_ms);
-        } else {
-            // 脉冲宽度太小，使用微秒单位
-            nTimerFlag = 0;  // 微秒单位
-            nTime = static_cast<short>(pulse_width_ms * 1000);
-            if (nTime <= 0) {
-                nTime = 10;  // 最小 10 微秒
-            }
+        double positions[8] = {};
+        const int result = hardware_->MC_GetCrdPos(coordinate_system, positions);
+        if (result != 0) {
+            SILIGEN_LOG_WARNING("ReadCoordinateSystemPositionPulse: MC_GetCrdPos 失败, result=" +
+                                std::to_string(result));
+            return false;
         }
 
-        // 使用配置的绝对位置标志
-        short nAbsPosFlag = static_cast<short>(dispenser_config_.abs_position_flag);
-
-        // 创建可修改的位置数组副本（API 需要非 const 指针）
-        std::vector<long> positions_copy = positions;
-        long* pBuf1 = positions_copy.data();
-        short nBufLen1 = static_cast<short>(positions_copy.size());
-
-        // 详细诊断日志
-        SILIGEN_LOG_DEBUG("CallMC_CmpBufData: compare_source_axis=" + std::to_string(compare_source_axis) +
-                          " (有效范围: 1-16)");
-        SILIGEN_LOG_DEBUG("CallMC_CmpBufData: nPluseType=" + std::to_string(nPluseType) +
-                          " (2=脉冲输出, 0/1=电平输出)");
-        SILIGEN_LOG_DEBUG("CallMC_CmpBufData: start_level=" + std::to_string(start_level) +
-                          " (0=低, 1=高)");
-        SILIGEN_LOG_DEBUG("CallMC_CmpBufData: nTime=" + std::to_string(nTime) +
-                          (nTimerFlag == 1 ? " ms" : " μs"));
-        SILIGEN_LOG_DEBUG("CallMC_CmpBufData: nBufLen1=" + std::to_string(nBufLen1));
-        SILIGEN_LOG_DEBUG("CallMC_CmpBufData: nAbsPosFlag=" + std::to_string(nAbsPosFlag) +
-                          " (0=相对, 1=绝对)");
-
-        // 打印位置范围和前几个值
-        if (!positions_copy.empty()) {
-            long minPos = positions_copy[0], maxPos = positions_copy[0];
-            for (const auto& p : positions_copy) {
-                if (p < minPos) minPos = p;
-                if (p > maxPos) maxPos = p;
-            }
-            SILIGEN_LOG_DEBUG("CallMC_CmpBufData: 位置范围: [" + std::to_string(minPos) +
-                              ", " + std::to_string(maxPos) + "] 脉冲");
-        }
-
-        SILIGEN_LOG_INFO("CallMC_CmpBufData: 调用 MC_CmpBufData, compare_source_axis=" +
-                         std::to_string(compare_source_axis) +
-                         ", len=" + std::to_string(nBufLen1) +
-                         ", pulse_width_ms=" + std::to_string(pulse_width_ms) +
-                         ", start_level=" + std::to_string(start_level) +
-                         ", abs_flag=" + std::to_string(nAbsPosFlag) +
-                         ", timer_flag=" + std::to_string(nTimerFlag));
-
-        int result = hardware_->MC_CmpBufData(
-            compare_source_axis,  // 位置比较源轴号
-            nPluseType,         // 脉冲类型
-            start_level,        // 起始电平
-            nTime,              // 脉冲宽度
-            pBuf1,              // 位置数组
-            nBufLen1,           // 数组长度
-            nullptr,            // 无第二个缓冲区
-            0,                  // 第二个缓冲区长度为 0
-            nAbsPosFlag,        // 绝对位置
-            nTimerFlag          // 定时器标志
-        );
-
-        SILIGEN_LOG_DEBUG("CallMC_CmpBufData: MC_CmpBufData 返回: " + std::to_string(result));
-        return result;
-    }
-    catch (...) {
-        SILIGEN_LOG_ERROR("CallMC_CmpBufData: 异常捕获!");
-        return -9999;  // 异常情况返回特殊错误码
-    }
-}
-
-int ValveAdapter::CallMC_CmpBufDataBuffers(short compare_source_axis,
-                                           const std::vector<long>* buffer1,
-                                           const std::vector<long>* buffer2,
-                                           uint32 pulse_width_ms,
-                                           short start_level) {
-    try {
-        short nPluseType = 2;  // 脉冲输出
-
-        short nTimerFlag;
-        short nTime;
-        if (pulse_width_ms > 32767) {
-            nTimerFlag = 0;
-            nTime = static_cast<short>(pulse_width_ms * 1000);
-            if (nTime < 0) {
-                nTime = 32767;
-            }
-        } else if (pulse_width_ms >= 1) {
-            nTimerFlag = 1;
-            nTime = static_cast<short>(pulse_width_ms);
-        } else {
-            nTimerFlag = 0;
-            nTime = static_cast<short>(pulse_width_ms * 1000);
-            if (nTime <= 0) {
-                nTime = 10;
-            }
-        }
-
-        short nAbsPosFlag = static_cast<short>(dispenser_config_.abs_position_flag);
-
-        std::vector<long> buf1_copy;
-        std::vector<long> buf2_copy;
-        long* pBuf1 = nullptr;
-        long* pBuf2 = nullptr;
-        short nBufLen1 = 0;
-        short nBufLen2 = 0;
-
-        if (buffer1 && !buffer1->empty()) {
-            buf1_copy = *buffer1;
-            pBuf1 = buf1_copy.data();
-            nBufLen1 = static_cast<short>(buf1_copy.size());
-        }
-        if (buffer2 && !buffer2->empty()) {
-            buf2_copy = *buffer2;
-            pBuf2 = buf2_copy.data();
-            nBufLen2 = static_cast<short>(buf2_copy.size());
-        }
-
-        SILIGEN_LOG_DEBUG("CallMC_CmpBufDataBuffers: compare_source_axis=" +
-                          std::to_string(compare_source_axis) +
-                          ", buf1_len=" + std::to_string(nBufLen1) +
-                          ", buf2_len=" + std::to_string(nBufLen2));
-
-        SILIGEN_LOG_INFO("CallMC_CmpBufDataBuffers: 调用 MC_CmpBufData, compare_source_axis=" +
-                         std::to_string(compare_source_axis) +
-                         ", buf1_len=" + std::to_string(nBufLen1) +
-                         ", buf2_len=" + std::to_string(nBufLen2) +
-                         ", pulse_width_ms=" + std::to_string(pulse_width_ms) +
-                         ", start_level=" + std::to_string(start_level) +
-                         ", abs_flag=" + std::to_string(nAbsPosFlag) +
-                         ", timer_flag=" + std::to_string(nTimerFlag));
-
-        int result = hardware_->MC_CmpBufData(
-            compare_source_axis,
-            nPluseType,
-            start_level,
-            nTime,
-            pBuf1,
-            nBufLen1,
-            pBuf2,
-            nBufLen2,
-            nAbsPosFlag,
-            nTimerFlag);
-
-        SILIGEN_LOG_DEBUG("CallMC_CmpBufDataBuffers: MC_CmpBufData 返回: " + std::to_string(result));
-        return result;
+        x_position_pulse = static_cast<long>(std::llround(positions[0]));
+        y_position_pulse = static_cast<long>(std::llround(positions[1]));
+        return true;
     } catch (...) {
-        SILIGEN_LOG_ERROR("CallMC_CmpBufDataBuffers: 异常捕获!");
-        return -9999;
-    }
-}
-
-int ValveAdapter::CallMC_EncOff(short axis) {
-    try {
-        // =====================================================
-        // 使用 MC_EncOff API 关闭编码器反馈
-        // =====================================================
-        //
-        // SDK API 原型:
-        // int MC_EncOff(short axis);
-        //
-        // 功能说明:
-        // 关闭编码器反馈后，CMP 比较源从编码器实际位置切换为规划位置（Profile Position）。
-        // 这样可以保证在非匀速运动（加减速）时触发位置的均匀性。
-        //
-        // 参数:
-        // - axis: 轴号（1-16）
-
-        SILIGEN_LOG_DEBUG("CallMC_EncOff: Axis=" + std::to_string(axis) +
-                          " - 关闭编码器，切换到规划位置比较");
-
-        return hardware_->MC_EncOff(axis);
-    }
-    catch (...) {
-        return -9999;  // 异常情况返回特殊错误码
+        SILIGEN_LOG_WARNING("ReadCoordinateSystemPositionPulse: 读取坐标系位置时发生异常");
+        return false;
     }
 }
 
@@ -432,10 +250,6 @@ void ValveAdapter::RefreshTimedDispenserStateIfCompleted() noexcept {
 void ValveAdapter::UpdateDispenserProgress() {
     // 注意：此方法应在持有 dispenser_mutex_ 锁时调用
 
-    if (dispenser_run_mode_ != DispenserRunMode::Timed) {
-        return;
-    }
-
     if (dispenser_state_.totalCount == 0) {
         return;
     }
@@ -449,8 +263,9 @@ void ValveAdapter::UpdateDispenserProgress() {
         (static_cast<float>(dispenser_state_.completedCount) /
          static_cast<float>(dispenser_state_.totalCount)) * 100.0f;
 
-    // 如果完成，自动切换到空闲状态
-    if (dispenser_state_.completedCount >= dispenser_state_.totalCount) {
+    // 仅定时模式在计数完成时自动切换为空闲。路径触发模式由 StopDispenser 收口。
+    if (dispenser_run_mode_ == DispenserRunMode::Timed &&
+        dispenser_state_.completedCount >= dispenser_state_.totalCount) {
         dispenser_state_.status = DispenserValveStatus::Idle;
         dispenser_state_.progress = 100.0f;
         dispenser_state_.remainingCount = 0;

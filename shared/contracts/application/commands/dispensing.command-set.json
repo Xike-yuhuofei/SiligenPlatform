@@ -79,7 +79,7 @@
       ],
       "compatibility": {
         "notes": [
-          "如果当前存在 DXF 任务，TCP 适配器会先强制停止 DXF，再执行点胶暂停。"
+          "生产任务活跃时必须直接失败，不得隐式停止 DXF 作业后再执行点胶暂停。"
         ]
       }
     },
@@ -103,7 +103,12 @@
       "consumers": [
         "hmi-client CommandProtocol.dispenser_resume",
         "Backend_CPP CLI DISPENSER_RESUME"
-      ]
+      ],
+      "compatibility": {
+        "notes": [
+          "生产任务活跃时必须直接失败，不得隐式绕过生产执行链继续手动恢复点胶阀。"
+        ]
+      }
     },
     {
       "method": "purge",

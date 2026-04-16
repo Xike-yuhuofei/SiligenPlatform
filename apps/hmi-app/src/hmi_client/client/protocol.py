@@ -93,14 +93,31 @@ class SupervisionStatus:
 
 
 @dataclass
+class JobExecutionStatus:
+    job_id: str = ""
+    plan_id: str = ""
+    plan_fingerprint: str = ""
+    state: str = "idle"
+    target_count: int = 0
+    completed_count: int = 0
+    current_cycle: int = 0
+    current_segment: int = 0
+    total_segments: int = 0
+    cycle_progress_percent: int = 0
+    overall_progress_percent: int = 0
+    elapsed_seconds: float = 0.0
+    error_message: str = ""
+    dry_run: bool = False
+
+
+@dataclass
 class MachineStatus:
     connected: bool = False
     connection_state: str = "disconnected"
     machine_state: str = "Unknown"
     machine_state_reason: str = "unknown"
     interlock_latched: bool = False
-    active_job_id: str = ""
-    active_job_state: str = ""
+    job_execution: JobExecutionStatus = field(default_factory=JobExecutionStatus)
     axes: Dict[str, AxisStatus] = field(default_factory=dict)
     io: IOStatus = field(default_factory=IOStatus)
     effective_interlocks: EffectiveInterlocks = field(default_factory=EffectiveInterlocks)
@@ -360,6 +377,31 @@ class CommandProtocol:
             updated_at=str(supervision_payload.get("updated_at", "")),
         )
 
+        job_execution_payload = result.get("job_execution")
+        if isinstance(job_execution_payload, dict):
+            job_execution_data = _as_dict(job_execution_payload)
+            job_execution = JobExecutionStatus(
+                job_id=str(job_execution_data.get("job_id", "") or ""),
+                plan_id=str(job_execution_data.get("plan_id", "") or ""),
+                plan_fingerprint=str(job_execution_data.get("plan_fingerprint", "") or ""),
+                state=str(job_execution_data.get("state", "idle") or "idle"),
+                target_count=int(job_execution_data.get("target_count", 0) or 0),
+                completed_count=int(job_execution_data.get("completed_count", 0) or 0),
+                current_cycle=int(job_execution_data.get("current_cycle", 0) or 0),
+                current_segment=int(job_execution_data.get("current_segment", 0) or 0),
+                total_segments=int(job_execution_data.get("total_segments", 0) or 0),
+                cycle_progress_percent=int(job_execution_data.get("cycle_progress_percent", 0) or 0),
+                overall_progress_percent=int(job_execution_data.get("overall_progress_percent", 0) or 0),
+                elapsed_seconds=float(job_execution_data.get("elapsed_seconds", 0.0) or 0.0),
+                error_message=str(job_execution_data.get("error_message", "") or ""),
+                dry_run=bool(job_execution_data.get("dry_run", False)),
+            )
+        else:
+            job_execution = JobExecutionStatus(
+                state="unknown",
+                error_message="status.job_execution missing",
+            )
+
         status = MachineStatus(
             connected=result.get("connected", False),
             connection_state=result.get(
@@ -368,8 +410,7 @@ class CommandProtocol:
             machine_state=compat_state,
             machine_state_reason=compat_reason,
             interlock_latched=result.get("interlock_latched", False),
-            active_job_id=str(result.get("active_job_id", "")),
-            active_job_state=str(result.get("active_job_state", "")),
+            job_execution=job_execution,
             io=io_status,
             effective_interlocks=effective_interlocks,
             supervision=supervision,
@@ -629,13 +670,13 @@ class CommandProtocol:
         resp = self._client.send_request("dispenser.stop")
         return self._resolve_action_result(resp)
 
-    def dispenser_pause(self) -> bool:
+    def dispenser_pause(self) -> tuple[bool, str, int | None]:
         resp = self._client.send_request("dispenser.pause")
-        return "result" in resp
+        return self._resolve_action_result(resp)
 
-    def dispenser_resume(self) -> bool:
+    def dispenser_resume(self) -> tuple[bool, str, int | None]:
         resp = self._client.send_request("dispenser.resume")
-        return "result" in resp
+        return self._resolve_action_result(resp)
 
     def purge(self, timeout_ms: int = 5000) -> bool:
         resp = self._client.send_request("purge", {"timeout_ms": timeout_ms})

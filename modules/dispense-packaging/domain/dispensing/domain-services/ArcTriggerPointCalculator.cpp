@@ -21,7 +21,7 @@ namespace {
 constexpr float32 kEpsilon = 1e-6f;
 constexpr float32 kDegToRad = 3.14159265359f / 180.0f;
 constexpr uint32 kMaxTriggerCount = static_cast<uint32>(
-    Siligen::Domain::Dispensing::Ports::PositionTriggeredDispenserParams::kMaxTriggerPositions);
+    Siligen::Domain::Dispensing::Ports::PositionTriggeredDispenserParams::kMaxTriggerEvents);
 
 float32 NormalizeAngleSweep(float32 diff) {
     float32 mod = std::fmod(diff, 360.0f);
