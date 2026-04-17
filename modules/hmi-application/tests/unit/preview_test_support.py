@@ -114,8 +114,6 @@ class WorkerFakeProtocol:
     def dxf_prepare_plan(
         self,
         artifact_id: str,
-        recipe_id: str,
-        version_id: str,
         speed_mm_s: float,
         dry_run: bool = False,
         dry_run_speed_mm_s: float = 0.0,
@@ -125,8 +123,6 @@ class WorkerFakeProtocol:
             (
                 "dxf.plan.prepare",
                 artifact_id,
-                recipe_id,
-                version_id,
                 speed_mm_s,
                 dry_run,
                 dry_run_speed_mm_s,

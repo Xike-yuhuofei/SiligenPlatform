@@ -20,7 +20,8 @@ param(
     [switch]$FailOnKnownFailure,
     [switch]$IncludeHardwareSmoke,
     [switch]$IncludeHilClosedLoop,
-    [switch]$IncludeHilCaseMatrix
+    [switch]$IncludeHilCaseMatrix,
+    [switch]$EnableCppCoverage
 )
 
 $ErrorActionPreference = "Stop"
@@ -82,6 +83,52 @@ function Resolve-LanePolicy {
             throw "Unsupported lane policy request: $LaneId"
         }
     }
+}
+
+function Resolve-RootRunner {
+    param(
+        [string]$CanonicalRelativePath,
+        [string]$EntryName
+    )
+
+    $canonicalPath = Join-Path $workspaceRoot $CanonicalRelativePath
+    if (Test-Path $canonicalPath) {
+        return $canonicalPath
+    }
+
+    throw "未找到根级 $EntryName 入口。已检查: $canonicalPath"
+}
+
+function Resolve-BuildPrerequisiteSuites {
+    param(
+        [string]$ProfileName,
+        [string[]]$SuiteSet
+    )
+
+    $normalizedSuites = if (-not $SuiteSet -or $SuiteSet.Count -eq 0 -or $SuiteSet -contains "all") {
+        @("apps", "contracts", "protocol-compatibility", "integration", "e2e")
+    } else {
+        @($SuiteSet | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+    }
+
+    $buildSuites = @()
+    if ($normalizedSuites -contains "apps") {
+        $buildSuites += "apps"
+    }
+    if ($normalizedSuites -contains "integration") {
+        $buildSuites += "integration"
+    }
+    if ($normalizedSuites -contains "e2e") {
+        $buildSuites += "e2e"
+    }
+    if ($normalizedSuites -contains "performance") {
+        $buildSuites += "performance"
+    }
+    if (($normalizedSuites -contains "contracts") -and $ProfileName -eq "Local") {
+        $buildSuites += "contracts"
+    }
+
+    return @($buildSuites | Select-Object -Unique)
 }
 
 $resolvedReportDir = if ([System.IO.Path]::IsPathRooted($ReportDir)) {
@@ -165,6 +212,25 @@ Write-Output (
     $lanePolicy.RetryBudget,
     $lanePolicy.FailFastCaseLimit
 )
+
+$buildPrerequisiteSuites = Resolve-BuildPrerequisiteSuites -ProfileName $Profile -SuiteSet $Suite
+if ($buildPrerequisiteSuites.Count -gt 0) {
+    $rootBuildEntry = Resolve-RootRunner -CanonicalRelativePath "build.ps1" -EntryName "build"
+    Write-Output "root build prerequisite: powershell -NoProfile -ExecutionPolicy Bypass -File $rootBuildEntry"
+    & $rootBuildEntry `
+        -Profile $Profile `
+        -Suite $buildPrerequisiteSuites `
+        -Lane $Lane `
+        -RiskProfile $RiskProfile `
+        -DesiredDepth $DesiredDepth `
+        -ChangedScope $ChangedScope `
+        -SkipLayer $SkipLayer `
+        -SkipJustification $SkipJustification `
+        -EnableCppCoverage:$EnableCppCoverage
+    if ($LASTEXITCODE -ne 0) {
+        throw "root build prerequisite failed (exit: $LASTEXITCODE)."
+    }
+}
 
 $argsList += @("--lane", $Lane)
 $argsList += @("--risk-profile", $RiskProfile)

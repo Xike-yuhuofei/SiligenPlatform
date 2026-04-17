@@ -506,8 +506,6 @@ nlohmann::json BuildPreviewSignaturePayload(const std::string& filepath, const n
     nlohmann::json payload = nlohmann::json::object();
     payload["filepath"] = filepath;
     payload["artifact_id"] = ReadJsonString(params, "artifact_id");
-    payload["recipe_id"] = ReadJsonString(params, "recipe_id");
-    payload["version_id"] = ReadJsonString(params, "version_id");
     payload["dry_run"] = ReadJsonBool(params, "dry_run", false);
     payload["dispensing_speed_mm_s"] = ReadJsonDouble(params, "dispensing_speed_mm_s", 0.0);
     payload["dry_run_speed_mm_s"] = ReadJsonDouble(params, "dry_run_speed_mm_s", 0.0);
@@ -552,8 +550,6 @@ Application::UseCases::Dispensing::PlanningRequest BuildPreviewPlanningRequest(
     const nlohmann::json& params) {
     Application::UseCases::Dispensing::PlanningRequest request;
     request.dxf_filepath = filepath;
-    request.recipe_id = ReadJsonString(params, "recipe_id");
-    request.version_id = ReadJsonString(params, "version_id");
     request.trajectory_config = Siligen::Shared::Types::TrajectoryConfig();
 
     const double speed = ReadJsonDouble(params, "dispensing_speed_mm_s", 0.0);
@@ -657,8 +653,6 @@ Application::UseCases::Dispensing::PreparePlanRequest BuildPreparePlanRequest(
     Application::UseCases::Dispensing::PreparePlanRequest request;
     request.artifact_id = artifact_id;
     request.planning_request = BuildPreviewPlanningRequest(filepath, params);
-    request.recipe_id = request.planning_request.recipe_id;
-    request.version_id = request.planning_request.version_id;
     request.runtime_overrides = BuildPreparePlanRuntimeOverrides(filepath, params);
     return request;
 }
@@ -2059,14 +2053,6 @@ std::string TcpCommandDispatcher::HandleDxfPlanPrepare(const std::string& id, co
     const std::string artifact_id = ReadJsonString(params, "artifact_id");
     if (artifact_id.empty()) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 2895, "Missing artifact_id");
-    }
-    const std::string recipe_id = ReadJsonString(params, "recipe_id");
-    if (recipe_id.empty()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 2895, "Missing recipe_id");
-    }
-    const std::string version_id = ReadJsonString(params, "version_id");
-    if (version_id.empty()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 2895, "Missing version_id");
     }
 
     const auto prepare_request = BuildPreparePlanRequest(artifact_id, "", params);

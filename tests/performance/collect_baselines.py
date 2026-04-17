@@ -491,13 +491,6 @@ def measure_reliability(
 
     mock_failures = 0
     try:
-        recipes_ok, recipes_payload, recipes_error = protocol.recipe_list()
-        recipe_id = ""
-        version_id = ""
-        if recipes_ok and recipes_payload:
-            recipe = recipes_payload[0]
-            recipe_id = str(recipe.get("id", "")).strip()
-            version_id = str(recipe.get("activeVersionId", "")).strip()
         for _ in range(mock_flow_iterations):
             cycle_errors: list[str] = []
             if not protocol.ping():
@@ -516,59 +509,55 @@ def measure_reliability(
                 cycle_errors.append(artifact_error or "dxf.artifact.create")
             else:
                 artifact_id = str(artifact_payload.get("artifact_id", "")).strip()
-                if not recipe_id or not version_id:
-                    cycle_errors.append(recipes_error or "recipe.list.missing_recipe_version")
+                plan_ok, plan_payload, plan_error = protocol.dxf_prepare_plan(
+                    artifact_id,
+                    speed_mm_s=10.0,
+                    dry_run=True,
+                    dry_run_speed_mm_s=10.0,
+                )
+                if not plan_ok:
+                    cycle_errors.append(plan_error or "dxf.plan.prepare")
                 else:
-                    plan_ok, plan_payload, plan_error = protocol.dxf_prepare_plan(
-                        artifact_id,
-                        recipe_id,
-                        version_id,
-                        speed_mm_s=10.0,
-                        dry_run=True,
-                        dry_run_speed_mm_s=10.0,
-                    )
-                    if not plan_ok:
-                        cycle_errors.append(plan_error or "dxf.plan.prepare")
+                    plan_id = str(plan_payload.get("plan_id", "")).strip()
+                    plan_fingerprint = str(plan_payload.get("plan_fingerprint", "")).strip()
+                    if not plan_id or not plan_fingerprint:
+                        cycle_errors.append("dxf.plan.prepare.missing_payload")
                     else:
-                        plan_id = str(plan_payload.get("plan_id", "")).strip()
-                        plan_fingerprint = str(plan_payload.get("plan_fingerprint", "")).strip()
-                        if not plan_id or not plan_fingerprint:
-                            cycle_errors.append("dxf.plan.prepare.missing_payload")
+                        preview_ok, preview_payload, preview_error = protocol.dxf_preview_snapshot(plan_id=plan_id)
+                        if not preview_ok:
+                            cycle_errors.append(preview_error or "dxf.preview.snapshot")
                         else:
-                            preview_ok, preview_payload, preview_error = protocol.dxf_preview_snapshot(plan_id=plan_id)
-                            if not preview_ok:
-                                cycle_errors.append(preview_error or "dxf.preview.snapshot")
+                            snapshot_hash = str(preview_payload.get("snapshot_hash", "")).strip()
+                            if not snapshot_hash:
+                                cycle_errors.append("dxf.preview.snapshot.missing_hash")
                             else:
-                                snapshot_hash = str(preview_payload.get("snapshot_hash", "")).strip()
-                                if not snapshot_hash:
-                                    cycle_errors.append("dxf.preview.snapshot.missing_hash")
+                                confirm_ok, _, confirm_error = protocol.dxf_preview_confirm(plan_id, snapshot_hash)
+                                if not confirm_ok:
+                                    cycle_errors.append(confirm_error or "dxf.preview.confirm")
                                 else:
-                                    confirm_ok, _, confirm_error = protocol.dxf_preview_confirm(plan_id, snapshot_hash)
-                                    if not confirm_ok:
-                                        cycle_errors.append(confirm_error or "dxf.preview.confirm")
+                                    job_id = ""
+                                    job_ok, job_payload, job_error = protocol.dxf_start_job(
+                                        plan_id,
+                                        target_count=1,
+                                        plan_fingerprint=plan_fingerprint,
+                                    )
+                                    if not job_ok:
+                                        cycle_errors.append(job_error or "dxf.job.start")
                                     else:
-                                        job_ok, job_payload, job_error = protocol.dxf_start_job(
-                                            plan_id,
-                                            target_count=1,
-                                            plan_fingerprint=plan_fingerprint,
-                                        )
-                                        if not job_ok:
-                                            cycle_errors.append(job_error or "dxf.job.start")
+                                        job_id = str(job_payload.get("job_id", "")).strip()
+                                        if not job_id:
+                                            cycle_errors.append("dxf.job.start.missing_job_id")
                                         else:
-                                            job_id = str(job_payload.get("job_id", "")).strip()
-                                            if not job_id:
-                                                cycle_errors.append("dxf.job.start.missing_job_id")
-                                            else:
-                                                time.sleep(0.3)
-                                                job_status = protocol.dxf_get_job_status(job_id)
-                                                if str(job_status.get("state", "")).strip().lower() not in {
-                                                    "running",
-                                                    "paused",
-                                                    "completed",
-                                                }:
-                                                    cycle_errors.append(f"dxf.job.status:{job_status}")
-                                        if job_id and not protocol.dxf_job_stop(job_id):
-                                            cycle_errors.append("dxf.job.stop")
+                                            time.sleep(0.3)
+                                            job_status = protocol.dxf_get_job_status(job_id)
+                                            if str(job_status.get("state", "")).strip().lower() not in {
+                                                "running",
+                                                "paused",
+                                                "completed",
+                                            }:
+                                                cycle_errors.append(f"dxf.job.status:{job_status}")
+                                    if job_id and not protocol.dxf_job_stop(job_id):
+                                        cycle_errors.append("dxf.job.stop")
 
             if cycle_errors:
                 mock_failures += 1
@@ -605,12 +594,6 @@ def measure_reliability(
             "method": "dxf.job.resume",
             "expectation": "reject:protocol.invalid_state",
             "expected_error_category": "protocol.invalid_state",
-        },
-        {
-            "flow": "recipe.list",
-            "method": "recipe.list",
-            "expectation": "success",
-            "expected_error_category": None,
         },
     )
     try:

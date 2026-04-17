@@ -95,6 +95,8 @@ LOCAL_HOME_READINESS_COORD_SYS = 1
 LOCAL_HOME_READINESS_VELOCITY_EPSILON_MM_S = 0.1
 START_HOME_BOUNDARY_ZERO_TOLERANCE_MM = 0.1
 LOCAL_HOME_READINESS_BLOCK_MESSAGE = "运动系统未稳定，暂不可回零，请稍候"
+CURRENT_STAGE_RECIPE_MANAGEMENT_ENABLED = False
+CURRENT_STAGE_USER_MANAGEMENT_ENABLED = False
 LOCAL_HOME_READINESS_BLOCKING_JOB_STATES = frozenset(
     {"running", "pending", "stopping", "canceling", "cancelling", "canceled", "paused", "pausing"}
 )
@@ -524,7 +526,11 @@ class MainWindow(QMainWindow):
         self._alarm_panel = self._create_alarm_panel()
         tabs.addTab(self._production_tab, "生产")
         tabs.addTab(self._setup_tab, "设置")
-        tabs.addTab(self._recipe_tab, "配置")
+        recipe_tab_index = tabs.addTab(
+            self._recipe_tab,
+            "配置" if CURRENT_STAGE_RECIPE_MANAGEMENT_ENABLED else "配置(未启用)",
+        )
+        tabs.setTabEnabled(recipe_tab_index, CURRENT_STAGE_RECIPE_MANAGEMENT_ENABLED)
         tabs.addTab(self._alarm_panel, "报警")
         content_layout.addWidget(tabs)
 
@@ -674,6 +680,9 @@ class MainWindow(QMainWindow):
         self._switch_user_btn = QPushButton("切换")
         self._switch_user_btn.setProperty("data-testid", "btn-switch-user")
         self._switch_user_btn.clicked.connect(self._on_switch_user)
+        self._switch_user_btn.setEnabled(CURRENT_STAGE_USER_MANAGEMENT_ENABLED)
+        if not CURRENT_STAGE_USER_MANAGEMENT_ENABLED:
+            self._switch_user_btn.setToolTip("当前阶段未启用用户管理")
         layout.addWidget(self._switch_user_btn)
 
         layout.addSpacing(20)
@@ -1041,6 +1050,9 @@ class MainWindow(QMainWindow):
     def _create_recipe_tab(self) -> QWidget:
         """Create Recipe/File tab - for DXF and recipe management."""
         self._recipe_config_widget = RecipeConfigWidget(self._protocol, self._auth, parent=self)
+        self._recipe_config_widget.setEnabled(CURRENT_STAGE_RECIPE_MANAGEMENT_ENABLED)
+        if not CURRENT_STAGE_RECIPE_MANAGEMENT_ENABLED:
+            self._recipe_config_widget.setToolTip("当前阶段未启用配方管理")
         return self._recipe_config_widget
 
     def _create_system_panel(self) -> QGroupBox:
@@ -2040,7 +2052,7 @@ class MainWindow(QMainWindow):
         self._global_progress.setValue(0)
         if result.success:
             self._hw_connect_btn.setEnabled(False)
-            if hasattr(self, '_recipe_config_widget'):
+            if CURRENT_STAGE_RECIPE_MANAGEMENT_ENABLED and hasattr(self, '_recipe_config_widget'):
                 self._recipe_config_widget._load_recipe_context()
         else:
             self._show_startup_error(result)
@@ -3834,24 +3846,6 @@ class MainWindow(QMainWindow):
 
         speed = self._dxf_speed.value()
         dry_run_mode = self._mode_dryrun.isChecked() if hasattr(self, "_mode_dryrun") else False
-        recipe_id = ""
-        version_id = ""
-        if not self._is_offline_mode():
-            recipe_widget = getattr(self, "_recipe_config_widget", None)
-            selection_getter = getattr(recipe_widget, "current_recipe_selection", None)
-            if callable(selection_getter):
-                recipe_id, version_id = selection_getter()
-            if not recipe_id or not version_id:
-                result = self._preview_session.handle_local_failure(
-                    gate_error_message="preview request missing recipe/version",
-                    title="胶点预览生成失败",
-                    detail="在线预览必须显式选择 recipe 与 version；当前缺少有效的 recipe/version。",
-                )
-                self._sync_preview_session_fields()
-                self._update_info_label()
-                self.statusBar().showMessage(result.status_message)
-                self._set_preview_message_html(result.title, result.detail, is_error=result.is_error)
-                return
         self._preview_session.begin_preview_generation()
         self._sync_preview_session_fields()
         self._update_info_label()
@@ -3888,8 +3882,6 @@ class MainWindow(QMainWindow):
             host=self._client.host,
             port=self._client.port,
             artifact_id=self._dxf_artifact_id,
-            recipe_id=recipe_id,
-            version_id=version_id,
             speed_mm_s=speed,
             dry_run=dry_run_mode,
             dry_run_speed_mm_s=speed,
@@ -4277,7 +4269,7 @@ class MainWindow(QMainWindow):
         self._tick_preview_playback(time.monotonic())
 
         # Check auto-logout
-        if not self._auth.check_activity():
+        if CURRENT_STAGE_USER_MANAGEMENT_ENABLED and not self._auth.check_activity():
             self._user_label.setText("操作员")
             self._apply_permissions()
 
@@ -4521,6 +4513,9 @@ class MainWindow(QMainWindow):
     # User Permission Methods
     def _on_switch_user(self):
         """Show login dialog to switch user."""
+        if not CURRENT_STAGE_USER_MANAGEMENT_ENABLED:
+            self.statusBar().showMessage("当前阶段未启用用户管理")
+            return
         dialog = LoginDialog(self)
         if dialog.exec_() == QDialog.Accepted:
             ok, msg = self._auth.login(dialog.username, dialog.pin)
@@ -4534,6 +4529,35 @@ class MainWindow(QMainWindow):
 
     def _apply_permissions(self):
         """Apply permission restrictions based on user level."""
+        if not CURRENT_STAGE_USER_MANAGEMENT_ENABLED:
+            setup_widgets = [
+                self._speed_slider, self._move_btn,
+            ]
+            for w in setup_widgets:
+                w.setEnabled(True)
+
+            recipe_edit_widgets = [
+                '_recipe_create_btn',
+                '_recipe_update_btn',
+                '_recipe_draft_btn',
+                '_recipe_save_btn',
+                '_recipe_publish_btn',
+                '_recipe_version_create_btn',
+                '_recipe_activate_btn',
+                '_recipe_export_btn',
+                '_recipe_import_btn',
+            ]
+            for name in recipe_edit_widgets:
+                if hasattr(self, name):
+                    getattr(self, name).setEnabled(False)
+
+            if hasattr(self, '_reset_needle_btn'):
+                self._reset_needle_btn.setEnabled(True)
+
+            if hasattr(self, '_hw_connect_btn'):
+                self._hw_connect_btn.setEnabled(self._is_online_ready())
+            return
+
         level = self._auth.current_user.level if self._auth.current_user else 1
 
         # Setup tab controls (level 2+)
@@ -4570,6 +4594,8 @@ class MainWindow(QMainWindow):
 
     def _check_permission(self, required_level: int) -> bool:
         """Check if current user has required permission level."""
+        if not CURRENT_STAGE_USER_MANAGEMENT_ENABLED:
+            return True
         level = self._auth.current_user.level if self._auth.current_user else 1
         if level >= required_level:
             return True

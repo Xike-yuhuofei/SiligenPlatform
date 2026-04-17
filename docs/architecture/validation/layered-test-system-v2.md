@@ -1,6 +1,6 @@
 # SiligenPlatform 分层测试体系 v2
 
-更新时间：`2026-04-02`
+更新时间：`2026-04-17`
 
 ## 1. 正式分层定义
 
@@ -35,7 +35,6 @@
 | 运动规划 / 插补 / 时间语义 | 构建与静态 | 局部单测 | 输出 schema | integration / simulated input replay | simulated-line | 真实设备闭环 | 长稳与资源趋势 |
 | 网关启动 / 在线连接 / 状态机 | gateway launch gate | startup sequence 单测 | launch contract | `online-smoke.ps1` integration `run_tcp_precondition_matrix.py` | simulated-line readiness/abort hooks | HIL admission + closed loop | startup timing |
 | 报警 / 互锁 / 故障恢复 | 脚本完整性 | 判定/恢复规则 | 事件 schema | first-layer / integration smoke | simulated-line fault hooks | 报警/恢复闭环 | 重复暂停/恢复稳定性 |
-| 配方 / 配置 / 版本兼容 | 配置入口 | 默认值/兼容转换 | schema 契约 | integration replay | smoke 覆盖有限 | 待补最小 HIL 回放 | 待补长期趋势 |
 | 启动作业 / 运行期执行 | 静态与构建 | 局部 job 控制 | execution contract | online smoke / engineering regression | simulated-line | HIL execution closed loop | execution timing |
 | 停止 / 暂停 / 恢复 / 复位 | 静态与类型 | 局部逻辑 | 事件/状态契约 | integration smoke | simulated-line hooks | HIL case matrix | repeated pause/resume |
 | 部署 / 启动脚本 / 环境准备 | 根级入口 | 不适用 | launch contract | gateway startup integration | 不适用 | operator admission | startup trend |
@@ -46,6 +45,8 @@
 | 证据与可观测性 | static report | unit/assert log | contract evidence | integration summary | evidence bundle | admission + HIL bundle | threshold / trend bundle |
 | 性能与长稳 | - | - | - | 可复用样本 | 可复用主路径 | 少量硬件样本 | `L6` 主承载 |
 | 人工探索式工作流检查表 | 资产完整性 | - | checklist contract | 引用 | 引用 | operator checklist | 引用 |
+
+当前 active lane 不纳入配方管理与用户管理链路；相关代码与历史兼容资产保留，但不作为 `quick-gate` / `full-offline-gate` / `limited-hil` 的默认组成。
 
 ## 4. L0 责任边界
 

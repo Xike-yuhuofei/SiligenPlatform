@@ -266,12 +266,16 @@ function Invoke-ControlAppsBuild {
     $parallelCompileFlag = "ON"
     $parallelBuildJobs = [Math]::Max(1, [Math]::Floor([Environment]::ProcessorCount * 0.8))
     Reset-ControlAppsBuildIfSourceRootChanged
-    & cmake -S $workspaceSourceRoot -B $controlAppsBuild `
-        -DSILIGEN_BUILD_TESTS=$buildTestsFlag `
-        -DSILIGEN_ENABLE_COVERAGE=$coverageFlag `
-        -DSILIGEN_USE_PCH=$usePchFlag `
-        -DSILIGEN_PARALLEL_COMPILE=$parallelCompileFlag `
-        -DSILIGEN_PARALLEL_COMPILE_JOBS=$parallelBuildJobs
+    $controlAppsConfigureArgs = @(
+        "-S", $workspaceSourceRoot,
+        "-B", $controlAppsBuild,
+        "-DSILIGEN_BUILD_TESTS=$buildTestsFlag",
+        "-DSILIGEN_ENABLE_COVERAGE=$coverageFlag",
+        "-DSILIGEN_USE_PCH=$usePchFlag",
+        "-DSILIGEN_PARALLEL_COMPILE=$parallelCompileFlag",
+        "-DSILIGEN_PARALLEL_COMPILE_JOBS=$parallelBuildJobs"
+    )
+    & cmake @controlAppsConfigureArgs
     if ($LASTEXITCODE -ne 0) {
         throw "control-apps cmake configure 失败，退出码: $LASTEXITCODE"
     }
@@ -294,11 +298,15 @@ if ($resolvedSuites -contains "apps") {
     )
 }
 
-if (($resolvedSuites -contains "e2e") -and $localProfile) {
+if ($resolvedSuites -contains "e2e") {
     $controlAppTargets += "siligen_runtime_gateway"
 }
 
-if (($resolvedSuites -contains "integration") -and $localProfile) {
+if ($resolvedSuites -contains "integration") {
+    $controlAppTargets += "siligen_runtime_gateway"
+}
+
+if ($resolvedSuites -contains "performance") {
     $controlAppTargets += "siligen_runtime_gateway"
 }
 

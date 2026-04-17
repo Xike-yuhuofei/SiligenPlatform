@@ -760,8 +760,6 @@ class CommandProtocol:
     def dxf_prepare_plan(
         self,
         artifact_id: str,
-        recipe_id: str,
-        version_id: str,
         speed_mm_s: float,
         dry_run: bool = False,
         dry_run_speed_mm_s: float = 0.0,
@@ -774,8 +772,6 @@ class CommandProtocol:
             velocity_trace_enabled=False,
         )
         params["artifact_id"] = artifact_id
-        params["recipe_id"] = recipe_id
-        params["version_id"] = version_id
         resp = self._client.send_request("dxf.plan.prepare", params, timeout=timeout)
         if "error" in resp:
             return False, {}, resp["error"].get("message", "Unknown error")

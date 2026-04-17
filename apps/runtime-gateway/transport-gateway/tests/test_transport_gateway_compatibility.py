@@ -213,9 +213,9 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
     mapping = PROTOCOL_MAPPING.read_text(encoding="utf-8")
     dispatcher_source = TCP_DISPATCHER.read_text(encoding="utf-8")
 
-    assert {"artifact_id", "recipe_id", "version_id", "dispensing_speed_mm_s"}.issubset(
-        set(prepare_operation["paramsSchema"]["required"])
-    )
+    assert {"artifact_id", "dispensing_speed_mm_s"}.issubset(set(prepare_operation["paramsSchema"]["required"]))
+    assert "recipe_id" not in prepare_operation["paramsSchema"]["properties"]
+    assert "version_id" not in prepare_operation["paramsSchema"]["properties"]
     assert {"import_result_classification", "import_production_ready", "prepared_filepath"}.issubset(
         set(prepare_operation["resultSchema"]["required"])
     )
@@ -223,12 +223,14 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
     assert not prepare_operation.get("compatibility", {}).get("requestAliases")
     assert "requested_execution_strategy" in prepare_operation["paramsSchema"]["properties"]
     notes = "\n".join(prepare_operation.get("compatibility", {}).get("notes", []))
-    assert "published recipe version" in notes
+    assert "current production baseline" in notes
     assert "point_flying_carrier_policy" in notes
     assert "approach_direction = normalize(point - planning_start_position)" in notes
     assert "artifact_id 允许省略" not in notes
     assert "requested_execution_strategy" in mapping
+    assert "current production baseline" in mapping
     assert "published" in mapping
+    assert "recipe version" in mapping
     assert "activeVersionId" in mapping
     assert "允许省略 `artifact_id`" not in mapping
     job_start_operation = next(op for op in command_set["operations"] if op["method"] == "dxf.job.start")
@@ -238,8 +240,6 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
         set(job_start_operation["resultSchema"]["required"])
     )
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 2895, "Missing artifact_id")' in dispatcher_source
-    assert 'GatewayJsonProtocol::MakeErrorResponse(id, 2895, "Missing recipe_id")' in dispatcher_source
-    assert 'GatewayJsonProtocol::MakeErrorResponse(id, 2895, "Missing version_id")' in dispatcher_source
     assert 'ReadJsonStringAlias(params, "recipeId", "recipe_id")' not in dispatcher_source
     assert 'ReadJsonStringAlias(params, "versionId", "version_id")' not in dispatcher_source
     assert 'ReadJsonDouble(params, "dispensing_speed_mm_s", ReadJsonDouble(params, "speed_mm_s", 0.0))' not in dispatcher_source

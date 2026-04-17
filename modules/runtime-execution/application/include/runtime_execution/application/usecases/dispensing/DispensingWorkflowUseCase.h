@@ -1,7 +1,7 @@
 #pragma once
 
 #include "runtime_execution/application/usecases/dispensing/WorkflowExecutionPort.h"
-#include "runtime_execution/application/usecases/dispensing/IRecipePlanningPolicyPort.h"
+#include "runtime_execution/application/usecases/dispensing/IProductionBaselinePort.h"
 #include "dispense_packaging/application/usecases/dispensing/PlanningUseCase.h"
 #include "application/services/dispensing/PreviewSnapshotService.h"
 #include "job_ingest/contracts/dispensing/UploadContracts.h"
@@ -76,8 +76,6 @@ struct PreparePlanRuntimeOverrides {
 
 struct PreparePlanRequest {
     ArtifactID artifact_id;
-    std::string recipe_id;
-    std::string version_id;
     PlanningRequest planning_request;
     PreparePlanRuntimeOverrides runtime_overrides;
 };
@@ -209,7 +207,7 @@ class DispensingWorkflowUseCase {
     DispensingWorkflowUseCase(
         std::shared_ptr<IUploadFilePort> upload_use_case,
         std::shared_ptr<PlanningUseCase> planning_use_case,
-        std::shared_ptr<Siligen::Application::Ports::Dispensing::IRecipePlanningPolicyPort> recipe_planning_policy_port,
+        std::shared_ptr<Siligen::Application::Ports::Dispensing::IProductionBaselinePort> production_baseline_port,
         std::shared_ptr<Siligen::Application::Ports::Dispensing::IWorkflowExecutionPort> execution_port,
         std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
         std::shared_ptr<Siligen::Device::Contracts::Ports::MotionDevicePort> motion_device_port,
@@ -341,8 +339,7 @@ class DispensingWorkflowUseCase {
 
     std::shared_ptr<IUploadFilePort> upload_use_case_;
     std::shared_ptr<PlanningUseCase> planning_use_case_;
-    std::shared_ptr<Siligen::Application::Ports::Dispensing::IRecipePlanningPolicyPort>
-        recipe_planning_policy_port_;
+    std::shared_ptr<Siligen::Application::Ports::Dispensing::IProductionBaselinePort> production_baseline_port_;
     std::shared_ptr<Siligen::Application::Ports::Dispensing::IWorkflowExecutionPort> execution_port_;
     std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port_;
     std::shared_ptr<Siligen::Device::Contracts::Ports::MotionDevicePort> motion_device_port_;

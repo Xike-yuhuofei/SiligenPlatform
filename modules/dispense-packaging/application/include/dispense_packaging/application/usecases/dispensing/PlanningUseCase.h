@@ -124,8 +124,7 @@ struct ExecutionAssemblyArtifacts {
 
 struct PlanningRequest {
     std::string dxf_filepath;
-    std::string recipe_id;
-    std::string version_id;
+    std::string baseline_fingerprint;
     TrajectoryConfig trajectory_config;
     bool optimize_path = true;
     float32 start_x = 0.0f;
@@ -149,9 +148,6 @@ struct PlanningRequest {
 
     bool Validate() const {
         if (dxf_filepath.empty()) {
-            return false;
-        }
-        if (recipe_id.empty() || version_id.empty()) {
             return false;
         }
 

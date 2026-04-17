@@ -19,8 +19,6 @@ WorkflowExecutionAssemblyRequest BuildWorkflowExecutionAssemblyRequest(
     request.authority_process_path = input.authority_preview_request.authority_process_path;
     request.motion_plan = input.motion_plan;
     request.planning_start_position = input.planning_start_position;
-    request.recipe_id = input.recipe_id;
-    request.version_id = input.version_id;
     request.source_path = input.authority_preview_request.source_path;
     request.dxf_filename = input.authority_preview_request.dxf_filename;
     request.runtime_options = input.authority_preview_request.runtime_options;

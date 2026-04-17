@@ -33,8 +33,6 @@ struct FixturePlanningInput {
     Siligen::ProcessPath::Contracts::ProcessPath authority_process_path;
     Siligen::MotionPlanning::Contracts::MotionPlan motion_plan;
     Point2D planning_start_position{};
-    std::string recipe_id;
-    std::string version_id;
     std::string source_path;
     std::string dxf_filename;
     Siligen::Shared::Types::float32 dispensing_velocity = 0.0f;
@@ -127,8 +125,6 @@ inline ProcessSegment BuildPointSegment(const Point2D& point, bool dispense_on =
 inline FixturePlanningInput BuildPlanningInput() {
     FixturePlanningInput input;
     input.planning_start_position = Point2D(0.0f, 0.0f);
-    input.recipe_id = "recipe-fixture";
-    input.version_id = "version-published";
     input.source_path = "sample.pb";
     input.dxf_filename = "sample.pb";
     input.dispensing_velocity = 10.0f;
@@ -194,8 +190,6 @@ inline WorkflowExecutionAssemblyRequest BuildWorkflowExecutionInput(
     execution_input.authority_process_path = input.authority_process_path;
     execution_input.motion_plan = input.motion_plan;
     execution_input.planning_start_position = input.planning_start_position;
-    execution_input.recipe_id = input.recipe_id;
-    execution_input.version_id = input.version_id;
     execution_input.source_path = input.source_path;
     execution_input.dxf_filename = input.dxf_filename;
     execution_input.runtime_options.dispensing_velocity = input.dispensing_velocity;
@@ -226,8 +220,6 @@ inline WorkflowPlanningAssemblyRequest BuildWorkflowPlanningInput(const FixtureP
     workflow_input.authority_preview_request = BuildWorkflowAuthorityPreviewInput(input);
     workflow_input.motion_plan = input.motion_plan;
     workflow_input.planning_start_position = input.planning_start_position;
-    workflow_input.recipe_id = input.recipe_id;
-    workflow_input.version_id = input.version_id;
     workflow_input.max_jerk = input.max_jerk;
     workflow_input.estimated_time_s = input.estimated_time_s;
     workflow_input.use_interpolation_planner = input.use_interpolation_planner;

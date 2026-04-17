@@ -10,13 +10,6 @@ from hmi_client.tools.mock_server import MockState
 
 
 class MockServerInterlockTest(unittest.TestCase):
-    def _preview_recipe_params(self, state: MockState) -> dict[str, str]:
-        recipe = state.recipes[0]
-        return {
-            "recipe_id": recipe["id"],
-            "version_id": recipe["activeVersionId"],
-        }
-
     def test_motion_coord_status_reports_idle_axes_after_connect(self) -> None:
         state = MockState(seed_alarms=False)
         state.handle_request("connect", {})
@@ -100,7 +93,6 @@ class MockServerInterlockTest(unittest.TestCase):
             {
                 "artifact_id": state.dxf.artifact_id,
                 "dispensing_speed_mm_s": 12.5,
-                **self._preview_recipe_params(state),
             },
         )
         self.assertIn("result", plan)
@@ -142,7 +134,6 @@ class MockServerInterlockTest(unittest.TestCase):
             {
                 "artifact_id": state.dxf.artifact_id,
                 "dispensing_speed_mm_s": 12.5,
-                **self._preview_recipe_params(state),
             },
         )
         snapshot = state.handle_request("dxf.preview.snapshot", {"plan_id": plan["result"]["plan_id"]})
