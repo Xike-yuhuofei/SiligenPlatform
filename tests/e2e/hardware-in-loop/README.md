@@ -1,6 +1,6 @@
 # hardware-in-loop
 
-更新时间：`2026-04-16`
+更新时间：`2026-04-17`
 
 这里统一放硬件冒烟和机台联调入口。
 
@@ -65,7 +65,9 @@ python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun.py
 
 ```powershell
 python .\tests\e2e\hardware-in-loop\run_real_dxf_production_validation.py `
-  --dxf-file D:\Projects\SiligenSuite\uploads\dxf\archive\rect_diag.dxf
+  --recipe-id recipe-7d1b00f4-6a99 `
+  --version-id version-fea9ce29-f963 `
+  --dxf-file .\samples\dxf\rect_diag.dxf
 ```
 
 ```powershell
@@ -177,7 +179,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 `run_real_dxf_production_validation.py` 说明：
 
 - 当前用于 BUG-318 这类“生产模式 path-trigger 真机专项验证”，固定走 `dxf.artifact.create -> dxf.plan.prepare(dry_run=false,use_hardware_trigger=true) -> dxf.preview.snapshot -> dxf.preview.confirm -> dxf.job.start -> dxf.job.status`
-- 默认优先读取 `D:\Projects\SiligenSuite\uploads\dxf\archive\rect_diag.dxf`；若该路径不存在，则回退到仓内 `samples/dxf/rect_diag.dxf`
+- 当前命令行强制要求显式提供 `--recipe-id` 与 `--version-id`，并在真实连接后校验该版本必须是 published
+- 默认 DXF 为仓内 `samples/dxf/rect_diag.dxf`；若现场要验证别的文件，必须显式传 `--dxf-file <path>`
 - 会在真实连接前做最小 preflight：`status -> 必要时 home -> safety gate`
 - 会同时冻结 `job-status-history.json`、`machine-status-history.json` 与本次 gateway 追加日志切片 `tcp_server.log`
 - 当前 blocking 判定固定要求：
