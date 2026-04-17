@@ -4,7 +4,7 @@
 
 ## 1. 目标与适用范围
 
-本文档定义方案 B 的 P0 online 启动链路状态机，作为 `docs/architecture/hmi-supervisor-min-contract-v1.md` 的执行级补充。
+本文档定义方案 B 的 P0 online 启动链路状态机，作为 `docs/architecture/topics/runtime-hmi/hmi-supervisor-min-contract-v1.md` 的执行级补充。
 
 适用范围：
 

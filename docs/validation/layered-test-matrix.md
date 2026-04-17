@@ -2,9 +2,9 @@
 
 此文件保留为验证目录的入口索引，正式 authority 已切到：
 
-- `docs/architecture/layered-test-system-v2.md`
-- `docs/architecture/test-coverage-matrix-v1.md`
-- `docs/architecture/machine-preflight-quality-gate-v1.md`
+- `docs/architecture/validation/layered-test-system-v2.md`
+- `docs/architecture/validation/test-coverage-matrix-v1.md`
+- `docs/architecture/validation/machine-preflight-quality-gate-v1.md`
 
 ## 当前正式分层
 

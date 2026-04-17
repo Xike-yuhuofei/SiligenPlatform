@@ -21,7 +21,7 @@
     {
       "reference_id": "REF-001",
       "source_type": "closeout-doc",
-      "source_path": "docs/architecture/bridge-exit-closeout.md",
+      "source_path": "docs/architecture/governance/migration/bridge-exit-closeout.md",
       "statement_summary": "Zero bridge root, zero bridge metadata, zero default fallback is the current closeout rule.",
       "authority_level": "terminal-closeout",
       "effective_from": "2026-03-25"
@@ -45,7 +45,7 @@
     {
       "reference_id": "REF-004",
       "source_type": "rule-doc",
-      "source_path": "docs/architecture/legacy-exit-checks.md",
+      "source_path": "docs/architecture/governance/migration/legacy-exit-checks.md",
       "statement_summary": "Legacy exit gate must block bridge and fallback re-entry into active execution chains.",
       "authority_level": "operational-rule",
       "effective_from": "2026-03-23"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import shutil
@@ -933,45 +934,52 @@ def main() -> int:
                     )
                 )
             else:
-                load_response = client.send_request(
-                    "dxf.load",
-                    {"filepath": str(args.dxf_file)},
+                artifact_response = client.send_request(
+                    "dxf.artifact.create",
+                    {
+                        "filename": args.dxf_file.name,
+                        "original_filename": args.dxf_file.name,
+                        "content_type": "application/dxf",
+                        "file_content_b64": base64.b64encode(args.dxf_file.read_bytes()).decode("ascii"),
+                    },
                     timeout_seconds=30.0,
                 )
-                if "error" in load_response:
+                if "error" in artifact_response:
                     results.append(
                         ScenarioResult(
                             scenario_id="S2-preview-confirm-required",
                             status="failed",
-                            expected="dxf.load success before preview confirm gate",
-                            actual=_truncate_json(load_response),
-                            note="dxf.load failed; cannot evaluate preview confirm gate",
-                            response=_truncate_json(load_response),
+                            expected="dxf.artifact.create success before preview confirm gate",
+                            actual=_truncate_json(artifact_response),
+                            note="dxf.artifact.create failed; cannot evaluate preview confirm gate",
+                            response=_truncate_json(artifact_response),
                         )
                     )
                 else:
-                    artifact_id = str(load_response.get("result", {}).get("artifact_id", "")).strip()
+                    artifact_id = str(artifact_response.get("result", {}).get("artifact_id", "")).strip()
                     if not artifact_id:
                         results.append(
                             ScenarioResult(
                                 scenario_id="S2-preview-confirm-required",
                                 status="failed",
-                                expected="dxf.load returns artifact_id before preview confirm gate",
-                                actual=_truncate_json(load_response),
-                                note="dxf.load response missing artifact_id; cannot evaluate preview confirm gate",
-                                response=_truncate_json(load_response),
+                                expected="dxf.artifact.create returns artifact_id before preview confirm gate",
+                                actual=_truncate_json(artifact_response),
+                                note="artifact_id missing; cannot evaluate preview confirm gate",
+                                response=_truncate_json(artifact_response),
                             )
                         )
                     else:
+                        plan_params: dict[str, Any] = {
+                            "artifact_id": artifact_id,
+                            "recipe_id": recipe_context["recipe_id"],
+                            "version_id": recipe_context["version_id"],
+                            "dispensing_speed_mm_s": 10.0,
+                            "dry_run": False,
+                        }
+
                         plan_response = client.send_request(
                             "dxf.plan.prepare",
-                            {
-                                "artifact_id": artifact_id,
-                                "recipe_id": recipe_context["recipe_id"],
-                                "version_id": recipe_context["version_id"],
-                                "dispensing_speed_mm_s": 10.0,
-                                "dry_run": False,
-                            },
+                            plan_params,
                             timeout_seconds=30.0,
                         )
                         if "error" in plan_response:
@@ -990,7 +998,7 @@ def main() -> int:
                             snapshot_response = client.send_request(
                                 "dxf.preview.snapshot",
                                 {"plan_id": plan_id},
-                                timeout_seconds=15.0,
+                                timeout_seconds=30.0,
                             )
                             if "error" in snapshot_response:
                                 results.append(

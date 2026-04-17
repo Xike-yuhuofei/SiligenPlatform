@@ -5,7 +5,7 @@
 - 分支：feat/dispense/NOISSUE-e2e-flow-spec-alignment
 - 关联阶段计划：NOISSUE-stage-plan-20260322-134203.md
 - 关联基线状态：NOISSUE-baseline-status-20260322-134203.md
-- 关联 shared 边界文档：docs/architecture/shared-boundary-freeze-wave1.md
+- 关联 shared 边界文档：docs/architecture/governance/boundaries/shared-boundary-freeze-wave1.md
 
 ## 1. 出口目标
 

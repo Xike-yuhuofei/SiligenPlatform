@@ -194,8 +194,8 @@ def _validate_bridge_roots_absent(root: Path) -> list[str]:
 def _validate_root_wiring(root: Path) -> list[str]:
     issues: list[str] = []
     required_paths = (
-        root / "docs" / "architecture" / "migration-alignment-clearance-matrix.md",
-        root / "docs" / "architecture" / "bridge-exit-closeout.md",
+        root / "docs" / "architecture" / "governance" / "migration" / "migration-alignment-clearance-matrix.md",
+        root / "docs" / "architecture" / "governance" / "migration" / "bridge-exit-closeout.md",
         root / "shared" / "contracts" / "CMakeLists.txt",
         root / "scripts" / "build" / "build-validation.ps1",
         root / "scripts" / "validation" / "run-local-validation-gate.ps1",

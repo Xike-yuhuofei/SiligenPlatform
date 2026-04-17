@@ -6,7 +6,14 @@ from typing import cast
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
-MATRIX_PATH = WORKSPACE_ROOT / "docs" / "architecture" / "migration-alignment-clearance-matrix.md"
+MATRIX_PATH = (
+    WORKSPACE_ROOT
+    / "docs"
+    / "architecture"
+    / "governance"
+    / "migration"
+    / "migration-alignment-clearance-matrix.md"
+)
 REQUIRED_COLUMNS = (
     "module_id",
     "canonical_root_ref",

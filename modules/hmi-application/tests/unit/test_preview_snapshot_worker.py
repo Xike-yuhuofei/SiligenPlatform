@@ -19,8 +19,6 @@ class PreviewSnapshotWorkerTest(unittest.TestCase):
             host="127.0.0.1",
             port=9527,
             artifact_id="artifact-1",
-            recipe_id="recipe-1",
-            version_id="version-1",
             speed_mm_s=20.0,
             dry_run=False,
             dry_run_speed_mm_s=20.0,
@@ -34,7 +32,7 @@ class PreviewSnapshotWorkerTest(unittest.TestCase):
         self.assertEqual(
             WorkerFakeProtocol.calls,
             [
-                ("dxf.plan.prepare", "artifact-1", "recipe-1", "version-1", 20.0, False, 20.0, 300.0),
+                ("dxf.plan.prepare", "artifact-1", 20.0, False, 20.0, 300.0),
                 ("dxf.preview.snapshot", "plan-1", 4000, 300.0),
             ],
         )
@@ -50,8 +48,6 @@ class PreviewSnapshotWorkerTest(unittest.TestCase):
             host="127.0.0.1",
             port=9527,
             artifact_id="artifact-1",
-            recipe_id="recipe-1",
-            version_id="version-1",
             speed_mm_s=20.0,
             dry_run=False,
             dry_run_speed_mm_s=20.0,

@@ -29,7 +29,7 @@
 
 ## P2
 
-1. 文档漂移风险：docs/architecture/dispense-trajectory-preview-scope-baseline-v1.md 强调“预览与执行共享参数语义”，但当前实现未把“运行模式切换”纳入预览失效触发条件，需补齐一致性说明与状态图。
+1. 文档漂移风险：docs/architecture/topics/dispense-preview/dispense-trajectory-preview-scope-baseline-v1.md 强调“预览与执行共享参数语义”，但当前实现未把“运行模式切换”纳入预览失效触发条件，需补齐一致性说明与状态图。
 
 # Open Questions
 

@@ -7,8 +7,8 @@
 > 当前正式状态不要以本文为准。需要查看当前真值时，优先使用：
 >
 > - [docs/architecture/legacy-cutover-status.md](../../../architecture/legacy-cutover-status.md)
-> - [docs/architecture/legacy-deletion-gates.md](../../../architecture/legacy-deletion-gates.md)
-> - [docs/architecture/legacy-exit-checks.md](../../../architecture/legacy-exit-checks.md)
+> - [docs/architecture/governance/migration/legacy-deletion-gates.md](../../../architecture/governance/migration/legacy-deletion-gates.md)
+> - [docs/architecture/governance/migration/legacy-exit-checks.md](../../../architecture/governance/migration/legacy-exit-checks.md)
 
 ## 1. 执行范围
 
@@ -21,8 +21,8 @@
 
 执行依据：
 
-- `docs/architecture/legacy-deletion-gates.md`
-- `docs/architecture/legacy-exit-checks.md`
+- `docs/architecture/governance/migration/legacy-deletion-gates.md`
+- `docs/architecture/governance/migration/legacy-exit-checks.md`
 - `docs/architecture/history/progress/dxf-editor-strangler-progress.md`
 - `docs/architecture/history/progress/dxf-pipeline-strangler-progress.md`
 - `docs/architecture/history/closeouts/process-runtime-core-cutover.md`
@@ -121,7 +121,7 @@
 本次已同步修正：
 
 - `tools/scripts/legacy_exit_checks.py`
-- `docs/architecture/legacy-exit-checks.md`
+- `docs/architecture/governance/migration/legacy-exit-checks.md`
 - 新增 `control-core/modules/shared-kernel`、`control-core/src/domain`、`control-core/src/application`、`control-core/modules/process-core`、`control-core/modules/motion-core` 的“目录必须不存在 + direct-path 不得回流”门禁
 
 修正后，local 与 CI 的 `legacy-exit-check` 均为 `0` 失败；当前规则数为 `17`。

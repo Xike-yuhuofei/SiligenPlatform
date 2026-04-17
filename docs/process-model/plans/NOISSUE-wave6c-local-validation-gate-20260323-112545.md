@@ -35,7 +35,7 @@
 1. 已更新发布与门禁入口文档，统一默认验收口径为本地门禁脚本：
    - `docs/runtime/release-process.md`
    - `docs/architecture/build-and-test.md`
-   - `docs/architecture/legacy-exit-checks.md`
+   - `docs/architecture/governance/migration/legacy-exit-checks.md`
    - `docs/onboarding/developer-workflow.md`
 2. 文档明确：
    - 默认验收命令为 `tools/scripts/run-local-validation-gate.ps1`

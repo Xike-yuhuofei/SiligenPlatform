@@ -13,9 +13,9 @@
 验证体系的正式真值优先看：
 
 - `docs/architecture/build-and-test.md`
-- `docs/architecture/layered-test-system-v2.md`
-- `docs/architecture/test-coverage-matrix-v1.md`
-- `docs/architecture/machine-preflight-quality-gate-v1.md`
+- `docs/architecture/validation/layered-test-system-v2.md`
+- `docs/architecture/validation/test-coverage-matrix-v1.md`
+- `docs/architecture/validation/machine-preflight-quality-gate-v1.md`
 
 全仓只允许以下正式层级：
 

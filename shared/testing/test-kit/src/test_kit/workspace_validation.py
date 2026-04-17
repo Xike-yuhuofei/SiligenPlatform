@@ -99,23 +99,16 @@ def _layout_absolute_path(key: str) -> Path:
 
 
 def _control_apps_executable(name: str) -> Path:
-    candidates: list[Path] = []
-    probes = [probe for probe in CONTROL_APPS_BUILD_ROOT_PROBES if probe.accepted]
-    if not probes and CONTROL_APPS_BUILD_ROOT_PROBES:
-        probes = [CONTROL_APPS_BUILD_ROOT_PROBES[0]]
-    for probe in probes:
-        candidates.extend(
-            (
-                probe.root / "bin" / name,
-                probe.root / "bin" / "Debug" / name,
-                probe.root / "bin" / "Release" / name,
-                probe.root / "bin" / "RelWithDebInfo" / name,
-            )
-        )
+    candidates = [
+        CONTROL_APPS_BUILD_ROOT / "bin" / name,
+        CONTROL_APPS_BUILD_ROOT / "bin" / "Debug" / name,
+        CONTROL_APPS_BUILD_ROOT / "bin" / "Release" / name,
+        CONTROL_APPS_BUILD_ROOT / "bin" / "RelWithDebInfo" / name,
+    ]
     for candidate in candidates:
         if candidate.exists():
             return candidate
-    return candidates[0]
+    return candidates[1]
 
 
 def _powershell_file_command(script_path: Path, *script_args: str) -> list[str]:
@@ -189,6 +182,7 @@ def _normalize_suites(requested: list[str] | None) -> list[str]:
 
 
 def _workspace_validation_metadata(control_apps_readiness: ControlAppsBuildReadiness) -> dict[str, object]:
+    selected_probe = control_apps_readiness.selected_probe
     metadata = {
         "workspace_layout_file": str((WORKSPACE_ROOT / "cmake" / "workspace-layout.env").resolve()),
         "workspace_root": str(WORKSPACE_ROOT.resolve()),
@@ -196,18 +190,18 @@ def _workspace_validation_metadata(control_apps_readiness: ControlAppsBuildReadi
         "scripts_root": str((WORKSPACE_ROOT / "scripts").resolve()),
         "samples_root": str((WORKSPACE_ROOT / "samples").resolve()),
         "control_apps_build_root": (
-            str(control_apps_readiness.selected_probe.root)
-            if control_apps_readiness.ready and control_apps_readiness.selected_probe
+            str(selected_probe.root)
+            if selected_probe
             else ""
         ),
         "control_apps_cmake_home_directory": (
-            control_apps_readiness.selected_probe.cmake_home_directory
-            if control_apps_readiness.ready and control_apps_readiness.selected_probe
+            selected_probe.cmake_home_directory
+            if selected_probe
             else ""
         ),
         "control_apps_build_root_source": (
-            control_apps_readiness.selected_probe.source
-            if control_apps_readiness.ready and control_apps_readiness.selected_probe
+            selected_probe.source
+            if selected_probe
             else ""
         ),
         "control_apps_ready": control_apps_readiness.ready,
@@ -879,27 +873,6 @@ def build_cases(
                     cwd=WORKSPACE_ROOT,
                     required_assets=("sample.dxf.rect_diag",),
                     required_fixtures=("fixture.validation-evidence-bundle",),
-                ),
-                ValidationCase(
-                    name="recipe-config-compatibility",
-                    layer="integration",
-                    description="recipe/config/version compatibility regression",
-                    command=[
-                        *python_command(
-                            WORKSPACE_ROOT / "tests" / "integration" / "scenarios" / "run_recipe_config_compatibility.py"
-                        ),
-                        "--report-dir",
-                        str(resolved_report_dir / "integration" / "recipe-config-compatibility"),
-                    ],
-                    cwd=WORKSPACE_ROOT,
-                    required_assets=(
-                        "protocol.fixture.recipe_get_request",
-                        "protocol.fixture.recipe_get_response",
-                        "protocol.fixture.recipe_import_request",
-                        "protocol.fixture.recipe_import_response",
-                        "protocol.fixture.recipe_alias_overrides",
-                    ),
-                    required_fixtures=("fixture.recipe-config-compatibility", "fixture.validation-evidence-bundle"),
                 ),
                 ValidationCase(
                     name="tcp-precondition-matrix",

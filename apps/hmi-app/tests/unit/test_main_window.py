@@ -565,7 +565,7 @@ class MainWindowTabsTest(unittest.TestCase):
             for index in range(self.window._main_tabs.count())
         ]
 
-        self.assertEqual(labels, ["生产", "设置", "配置", "报警"])
+        self.assertEqual(labels, ["生产", "设置", "配置(未启用)", "报警"])
         self.assertNotIn("仿真观察", labels)
 
     def test_alarm_panel_exposes_status_log_view_and_copy_action(self) -> None:
@@ -2695,6 +2695,90 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertTrue(messages[-1][2])
         self.assertIsNone(self.window._preview_snapshot_worker)
         self.assertFalse(self.window._preview_session.state.preview_refresh_inflight)
+
+    def test_generate_dxf_preview_starts_worker_when_online_recipe_context_ready(self) -> None:
+        class _FakePreviewSnapshotWorker:
+            instances = []
+
+            def __init__(
+                self,
+                *,
+                host: str,
+                port: int,
+                artifact_id: str,
+                recipe_id: str,
+                version_id: str,
+                speed_mm_s: float,
+                dry_run: bool,
+                dry_run_speed_mm_s: float,
+            ) -> None:
+                self.host = host
+                self.port = port
+                self.artifact_id = artifact_id
+                self.recipe_id = recipe_id
+                self.version_id = version_id
+                self.speed_mm_s = speed_mm_s
+                self.dry_run = dry_run
+                self.dry_run_speed_mm_s = dry_run_speed_mm_s
+                self.completed = _FakeSignal()
+                self.finished = _FakeSignal()
+                self.started = False
+                self._running = False
+                type(self).instances.append(self)
+
+            def start(self) -> None:
+                self.started = True
+                self._running = True
+
+            def isRunning(self) -> bool:
+                return self._running
+
+            def wait(self, timeout_ms: int = 0) -> bool:
+                self._running = False
+                return True
+
+            def deleteLater(self) -> None:
+                return None
+
+        messages = []
+        self.window._set_preview_message_html = lambda title, detail="", is_error=False: messages.append((title, detail, is_error))
+        self.window._dxf_loaded = True
+        self.window._dxf_artifact_id = "artifact-1"
+        self.window._dxf_view = _FakePreviewView()
+        self.window._is_offline_mode = lambda: False
+        self._set_online_ready_session()
+        self._set_launch_connectivity(connected=True, hardware_connected=True)
+        self.window._client = type("Client", (), {"host": "127.0.0.1", "port": 9527})()
+        self.window._preview_planning_context.sync_recipe_catalog(
+            [{"id": "recipe-1", "activeVersionId": "version-1"}]
+        )
+        self.window._preview_planning_context.select_recipe("recipe-1")
+        self.window._preview_planning_context.sync_recipe_versions(
+            "recipe-1",
+            [{"id": "version-1", "status": "published"}],
+        )
+        self.window._preview_planning_context.select_version("version-1")
+        main_window_module.WEB_ENGINE_AVAILABLE = True
+
+        with patch.object(main_window_module, "PreviewSnapshotWorker", _FakePreviewSnapshotWorker):
+            self.window._generate_dxf_preview()
+
+        self.assertTrue(messages)
+        self.assertEqual(messages[-1][0], "胶点预览生成中")
+        self.assertFalse(messages[-1][2])
+        self.assertEqual(len(_FakePreviewSnapshotWorker.instances), 1)
+        worker = _FakePreviewSnapshotWorker.instances[0]
+        self.assertTrue(worker.started)
+        self.assertEqual(worker.host, "127.0.0.1")
+        self.assertEqual(worker.port, 9527)
+        self.assertEqual(worker.artifact_id, "artifact-1")
+        self.assertEqual(worker.recipe_id, "recipe-1")
+        self.assertEqual(worker.version_id, "version-1")
+        self.assertEqual(worker.speed_mm_s, self.window._dxf_speed.value())
+        self.assertFalse(worker.dry_run)
+        self.assertEqual(worker.dry_run_speed_mm_s, self.window._dxf_speed.value())
+        self.assertIs(self.window._preview_snapshot_worker, worker)
+        self.assertTrue(self.window._preview_session.state.preview_refresh_inflight)
 
     def test_preview_snapshot_ignores_stale_worker_completion(self) -> None:
         messages = []

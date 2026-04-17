@@ -551,15 +551,9 @@ bool TryBuildCliPlanningRequest(
     if (!ResolveTrajectoryConfig(config, trajectory, error_message)) {
         return false;
     }
-    if (config.recipe_id.empty() || config.version_id.empty()) {
-        error_message = "DXF规划要求显式 --recipe-id 与 --version-id";
-        return false;
-    }
 
     request = PlanningRequest{};
     request.dxf_filepath = config.dxf_file_path;
-    request.recipe_id = config.recipe_id;
-    request.version_id = config.version_id;
     request.trajectory_config = trajectory;
     request.optimize_path = config.optimize_path;
     request.start_x = static_cast<float32>(config.start_x);
@@ -706,8 +700,6 @@ bool TryBuildWorkflowPrepareRequest(
 
     request = Siligen::Application::UseCases::Dispensing::PreparePlanRequest{};
     request.artifact_id = artifact_id;
-    request.recipe_id = planning_request.recipe_id;
-    request.version_id = planning_request.version_id;
     request.planning_request = std::move(planning_request);
     request.runtime_overrides = std::move(runtime_overrides);
     return true;

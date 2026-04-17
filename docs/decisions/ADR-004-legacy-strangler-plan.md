@@ -90,7 +90,7 @@ legacy 目录统一使用以下状态：
 
 对应基线文件为：
 
-- `docs/architecture/legacy-deletion-gates.md`
+- `docs/architecture/governance/migration/legacy-deletion-gates.md`
 
 ### 5. 删除顺序固定为“小风险先行，大风险后置”
 
@@ -116,7 +116,7 @@ legacy 目录统一使用以下状态：
 2. `dxf-pipeline` 当前只允许冻结，不允许因为 canonical `engineering-data` 已存在就直接删除。
 3. `dxf-editor` 可以进入删除准备，但必须先解决同名包镜像和 legacy 文档引用。
 4. `simulation-engine` 旧顶层目录视为“已基本切走”，后续重点是清 residual fallback、防止旧路径回流。
-5. 后续任何 legacy 删除提案，都必须先更新 `docs/architecture/legacy-deletion-gates.md`，再做目录动作。
+5. 后续任何 legacy 删除提案，都必须先更新 `docs/architecture/governance/migration/legacy-deletion-gates.md`，再做目录动作。
 
 ## 不采纳的方案
 
@@ -142,5 +142,5 @@ legacy 目录统一使用以下状态：
 
 - `docs/architecture/canonical-paths.md`
 - `docs/architecture/history/audits/compatibility-shell-audit.md`
-- `docs/architecture/legacy-freeze-policy.md`
-- `docs/architecture/legacy-deletion-gates.md`
+- `docs/architecture/governance/migration/legacy-freeze-policy.md`
+- `docs/architecture/governance/migration/legacy-deletion-gates.md`

@@ -25,7 +25,7 @@
      - `apps/hmi-app/src/hmi_client/features/dispense_preview_gate/preview_gate.py:43`
      - `apps/hmi-app/src/hmi_client/ui/main_window.py:2071`
      - `packages/transport-gateway/src/tcp/TcpCommandDispatcher.cpp:1506`
-     - `docs/architecture/dispense-trajectory-preview-scope-baseline-v1.md:53`
+     - `docs/architecture/topics/dispense-preview/dispense-trajectory-preview-scope-baseline-v1.md:53`
    - 风险：
      - 系统真实状态只有“plan prepared”，没有“preview confirmed”
      - `dxf.job.start` 不校验确认态，任意客户端只要拿到 `plan_id` 就可启动

@@ -18,7 +18,7 @@
 2. 文档口径统一：
    - `docs/runtime/release-process.md`
    - `docs/architecture/build-and-test.md`
-   - `docs/architecture/legacy-exit-checks.md`
+   - `docs/architecture/governance/migration/legacy-exit-checks.md`
    - `docs/onboarding/developer-workflow.md`
    - `docs/process-model/plans/NOISSUE-wave6c-local-validation-gate-20260323-112545.md`
 

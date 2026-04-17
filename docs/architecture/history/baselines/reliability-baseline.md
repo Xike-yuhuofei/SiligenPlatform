@@ -6,7 +6,7 @@
 >
 > 当前正式状态不要以本文为准。需要查看当前正式入口时，优先使用：
 >
-> - 性能基线：[docs/architecture/performance-baseline.md](../../performance-baseline.md)
+> - 性能基线：[docs/architecture/validation/performance-baseline.md](../../validation/performance-baseline.md)
 > - 系统验收结论：[docs/architecture/system-acceptance-report.md](../../system-acceptance-report.md)
 > - 当前 cutover / 架构状态：[docs/architecture/legacy-cutover-status.md](../../legacy-cutover-status.md)
 >

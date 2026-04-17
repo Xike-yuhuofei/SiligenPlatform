@@ -5,7 +5,7 @@
 当前正式状态不要以本目录为准。需要查看当前真值时，优先使用：
 
 - [docs/architecture/legacy-cutover-status.md](../../../architecture/legacy-cutover-status.md)
-- [docs/architecture/legacy-deletion-gates.md](../../../architecture/legacy-deletion-gates.md)
+- [docs/architecture/governance/migration/legacy-deletion-gates.md](../../../architecture/governance/migration/legacy-deletion-gates.md)
 - [docs/decisions/process-path-legacy-compat-freeze.md](../../process-path-legacy-compat-freeze.md)
 
 当前内容：

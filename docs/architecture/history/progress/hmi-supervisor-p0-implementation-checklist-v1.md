@@ -4,8 +4,8 @@
 
 基线文档（冻结）：
 
-1. `docs/architecture/hmi-supervisor-min-contract-v1.md`
-2. `docs/architecture/hmi-online-startup-state-machine-v1.md`
+1. `docs/architecture/topics/runtime-hmi/hmi-supervisor-min-contract-v1.md`
+2. `docs/architecture/topics/runtime-hmi/hmi-online-startup-state-machine-v1.md`
 
 ## 1. 现状对齐（As-Is）
 

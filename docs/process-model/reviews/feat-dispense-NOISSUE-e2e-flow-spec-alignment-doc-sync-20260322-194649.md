@@ -17,7 +17,7 @@
    - 明确 `transport-gateway` 只暴露 canonical target，不再保留 gateway/tcp legacy alias。
 5. `docs/architecture/directory-responsibilities.md`
    - 把 `packages/transport-gateway` 从“活跃兼容壳”修正为“仅保留历史审计语义”。
-6. `docs/architecture/legacy-exit-checks.md`
+6. `docs/architecture/governance/migration/legacy-exit-checks.md`
    - 将 `test_transport_gateway_compatibility.py` 的存在理由修正为 legacy anti-regression，而不是继续支撑兼容壳。
 7. `packages/process-runtime-core/README.md`
    - 删除“legacy gateway/tcp alias 也由 package 侧导出”的过时描述，避免 README 与 CMake 终态冲突。
