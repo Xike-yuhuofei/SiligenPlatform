@@ -22,12 +22,12 @@ class HmiRunScriptContractTest(unittest.TestCase):
         )
 
     def _ensure_workspace_gateway_exe(self) -> tuple[Path, bool, bool]:
-        exe_path = WORKSPACE_ROOT / "build" / "bin" / "Debug" / "siligen_runtime_gateway.exe"
-        cache_path = WORKSPACE_ROOT / "build" / "CMakeCache.txt"
+        exe_path = WORKSPACE_ROOT / "build" / "ca" / "bin" / "Debug" / "siligen_runtime_gateway.exe"
+        cache_path = WORKSPACE_ROOT / "build" / "ca" / "CMakeCache.txt"
         if exe_path.exists():
             created_cache = False
             if not cache_path.exists():
-                self._write_matching_cmake_cache(WORKSPACE_ROOT / "build")
+                self._write_matching_cmake_cache(WORKSPACE_ROOT / "build" / "ca")
                 created_cache = True
             return exe_path, False, created_cache
 
@@ -35,7 +35,7 @@ class HmiRunScriptContractTest(unittest.TestCase):
         exe_path.write_text("", encoding="utf-8")
         created_cache = False
         if not cache_path.exists():
-            self._write_matching_cmake_cache(WORKSPACE_ROOT / "build")
+            self._write_matching_cmake_cache(WORKSPACE_ROOT / "build" / "ca")
             created_cache = True
         return exe_path, True, created_cache
 
@@ -100,7 +100,7 @@ class HmiRunScriptContractTest(unittest.TestCase):
         exe_path, created_workspace_exe, created_workspace_cache = self._ensure_workspace_gateway_exe()
         try:
             env = os.environ.copy()
-            env["SILIGEN_CONTROL_APPS_BUILD_ROOT"] = str(WORKSPACE_ROOT / "build")
+            env["SILIGEN_CONTROL_APPS_BUILD_ROOT"] = str(WORKSPACE_ROOT / "build" / "ca")
             env.pop("SILIGEN_GATEWAY_LAUNCH_SPEC", None)
             env.pop("SILIGEN_GATEWAY_EXE", None)
 
@@ -125,7 +125,7 @@ class HmiRunScriptContractTest(unittest.TestCase):
             if created_workspace_exe and exe_path.exists():
                 exe_path.unlink()
             if created_workspace_cache:
-                cache_path = WORKSPACE_ROOT / "build" / "CMakeCache.txt"
+                cache_path = WORKSPACE_ROOT / "build" / "ca" / "CMakeCache.txt"
                 if cache_path.exists():
                     cache_path.unlink()
 
@@ -177,9 +177,9 @@ class HmiRunScriptContractTest(unittest.TestCase):
         self.assertIn(str(workspace_exe), completed.stdout)
         self.assertNotIn(str(localappdata_exe), completed.stdout)
 
-    def test_runtime_gateway_runner_dryrun_rejects_workspace_root_without_matching_cache_even_if_localappdata_exists(self) -> None:
-        workspace_exe = WORKSPACE_ROOT / "build" / "bin" / "Debug" / "siligen_runtime_gateway.exe"
-        cache_path = WORKSPACE_ROOT / "build" / "CMakeCache.txt"
+    def test_runtime_gateway_runner_dryrun_rejects_workspace_build_tree_without_matching_cache_even_if_localappdata_exists(self) -> None:
+        workspace_exe = WORKSPACE_ROOT / "build" / "ca" / "bin" / "Debug" / "siligen_runtime_gateway.exe"
+        cache_path = WORKSPACE_ROOT / "build" / "ca" / "CMakeCache.txt"
         created_workspace_exe = False
         removed_cache = False
         original_cache = None
@@ -239,7 +239,7 @@ class HmiRunScriptContractTest(unittest.TestCase):
         exe_path, created_workspace_exe, created_workspace_cache = self._ensure_workspace_gateway_exe()
         try:
             env = os.environ.copy()
-            env["SILIGEN_CONTROL_APPS_BUILD_ROOT"] = str(WORKSPACE_ROOT / "build")
+            env["SILIGEN_CONTROL_APPS_BUILD_ROOT"] = str(WORKSPACE_ROOT / "build" / "ca")
 
             completed = subprocess.run(
                 [
@@ -262,7 +262,7 @@ class HmiRunScriptContractTest(unittest.TestCase):
             if created_workspace_exe and exe_path.exists():
                 exe_path.unlink()
             if created_workspace_cache:
-                cache_path = WORKSPACE_ROOT / "build" / "CMakeCache.txt"
+                cache_path = WORKSPACE_ROOT / "build" / "ca" / "CMakeCache.txt"
                 if cache_path.exists():
                     cache_path.unlink()
 
@@ -307,7 +307,7 @@ class HmiRunScriptContractTest(unittest.TestCase):
             if created_workspace_exe and workspace_exe.exists():
                 workspace_exe.unlink()
             if created_workspace_cache:
-                cache_path = WORKSPACE_ROOT / "build" / "CMakeCache.txt"
+                cache_path = WORKSPACE_ROOT / "build" / "ca" / "CMakeCache.txt"
                 if cache_path.exists():
                     cache_path.unlink()
 

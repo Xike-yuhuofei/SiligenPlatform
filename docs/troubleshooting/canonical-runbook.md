@@ -1,6 +1,6 @@
 # Canonical Runbook
 
-更新时间：`2026-03-25`
+更新时间：`2026-04-17`
 
 ## 1. 当前排障入口
 
@@ -22,7 +22,7 @@ Set-Location <repo-root>
 
 control-apps 产物检查：
 
-当前约束：`SILIGEN_CONTROL_APPS_BUILD_ROOT` 只能显式指向当前 worktree 仓内 `.\build`；联机链路不得解析或使用任何 `%LOCALAPPDATA%` 下的 build root。
+当前约束：`SILIGEN_CONTROL_APPS_BUILD_ROOT` 只能显式指向当前 worktree 仓内 `.\build` 树；联机链路不得解析或使用任何 `%LOCALAPPDATA%` 下的 build root。
 
 ```powershell
 . .\scripts\validation\tooling-common.ps1
@@ -51,9 +51,9 @@ Test-Path (Join-Path $controlAppsRoot "bin\Debug\siligen_planner_cli.exe")
 
 多 worktree 同机联机时，build root 只能绑定到“当前 worktree 自己仓内的构建目录”：
 
-- 每个 worktree 只允许使用自己仓内的 `build\`。
+- 每个 worktree 只允许使用自己仓内的 `build\` 树。
 - 禁止使用任何 `%LOCALAPPDATA%` 下的 build root，包括 `LOCALAPPDATA\SS\cab-*` 与 `LOCALAPPDATA\SiligenSuite\control-apps-build`。
-- 联机、HMI、gateway、HIL 只允许解析并启动当前 worktree 仓内 `build\` 下的 exe。
+- 联机、HMI、gateway、HIL 只允许解析并启动当前 worktree 仓内 `build\` 树下的 exe。
 
 建议在当前 worktree shell 内显式固定：
 
@@ -61,7 +61,9 @@ Test-Path (Join-Path $controlAppsRoot "bin\Debug\siligen_planner_cli.exe")
 Set-Location <current-worktree-root>
 . .\scripts\validation\tooling-common.ps1
 
-$env:SILIGEN_CONTROL_APPS_BUILD_ROOT = (Join-Path (Get-Location) "build")
+$env:SILIGEN_CONTROL_APPS_BUILD_ROOT = (Join-Path (Get-Location) "build\\ca")
 $controlAppsRoot = Get-ControlAppsBuildRoot -WorkspaceRoot (Get-Location)
 $controlAppsRoot
 ```
+
+默认解析顺序固定为：`build\ca -> build\control-apps -> build`。

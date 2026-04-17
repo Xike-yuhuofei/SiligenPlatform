@@ -17,14 +17,21 @@ def _resolve_workspace_root() -> Path:
     raise FileNotFoundError("未找到 apps/planner-cli，无法生成离线同源预览")
 
 
+def _is_within_workspace_build(build_root: Path, workspace_root: Path) -> bool:
+    resolved_build_root = build_root.resolve()
+    workspace_build_root = (workspace_root / "build").resolve()
+    return resolved_build_root == workspace_build_root or workspace_build_root in resolved_build_root.parents
+
+
 def _resolve_build_roots(workspace_root: Path) -> list[Path]:
     roots: list[Path] = []
     env_root = str(os.getenv(_CONTROL_APPS_BUILD_ROOT_ENV, "")).strip()
     if env_root:
         resolved_env_root = Path(env_root).expanduser().resolve()
-        workspace_build_root = (workspace_root / "build").resolve()
-        if resolved_env_root == workspace_build_root or workspace_build_root in resolved_env_root.parents:
+        if _is_within_workspace_build(resolved_env_root, workspace_root):
             roots.append(resolved_env_root)
+    roots.append(workspace_root / "build" / "ca")
+    roots.append(workspace_root / "build" / "control-apps")
     roots.append(workspace_root / "build")
     unique_roots: list[Path] = []
     for root in roots:

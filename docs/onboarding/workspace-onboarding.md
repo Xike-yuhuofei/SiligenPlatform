@@ -1,6 +1,6 @@
 # Workspace Onboarding
 
-更新时间：`2026-03-25`
+更新时间：`2026-04-17`
 
 ## 1. 当前 canonical 入口
 
@@ -69,7 +69,7 @@ docs/runtime/external-dxf-editing.md
 
 - 每个 worktree 只允许使用自己仓内的构建目录。
 - 禁止使用任何 `%LOCALAPPDATA%` 下的 build root，包括 `LOCALAPPDATA\SS\cab-*` 与 `LOCALAPPDATA\SiligenSuite\control-apps-build`。
-- 联机、HMI、gateway、HIL 只允许使用当前 worktree 仓内 `build\` 下生成的 exe。
+- 联机、HMI、gateway、HIL 只允许使用当前 worktree 仓内 `build\` 树下生成的 exe。
 
 推荐做法：
 
@@ -77,12 +77,14 @@ docs/runtime/external-dxf-editing.md
 Set-Location <current-worktree-root>
 . .\scripts\validation\tooling-common.ps1
 
-$env:SILIGEN_CONTROL_APPS_BUILD_ROOT = (Join-Path (Get-Location) "build")
+$env:SILIGEN_CONTROL_APPS_BUILD_ROOT = (Join-Path (Get-Location) "build\\ca")
 $controlAppsRoot = Get-ControlAppsBuildRoot -WorkspaceRoot (Get-Location)
 $controlAppsRoot
 ```
 
-如果当前 worktree 还没有仓内 `build\` 产物，先在本 worktree 内完成配置和构建，再启动 HMI / gateway / HIL。
+当前默认解析顺序固定为：`build\ca -> build\control-apps -> build`。
+
+如果当前 worktree 还没有仓内 `build` 树产物，先在本 worktree 内完成配置和构建，再启动 HMI / gateway / HIL。
 
 ## 4. 常见误区
 

@@ -58,29 +58,31 @@ def _probe_resolved_executable(script_path: Path, fake_file_name: str, localappd
     return Path(completed.stdout.strip())
 
 
-def test_gateway_resolution_consumers_prefer_workspace_build_and_ignore_localappdata(
+def test_gateway_resolution_consumers_prefer_workspace_build_tree_and_ignore_localappdata(
     tmp_path: Path,
 ) -> None:
     fake_file_name = "codex_gateway_resolution_consumer_probe.exe"
+    workspace_ca_exe = ROOT / "build" / "ca" / "bin" / "Debug" / fake_file_name
     workspace_build_exe = ROOT / "build" / "bin" / "Debug" / fake_file_name
     workspace_hmi_fix_exe = ROOT / "build" / "hmi-home-fix" / "bin" / "Debug" / fake_file_name
     legacy_localappdata = tmp_path / "localappdata"
     legacy_exe = legacy_localappdata / "SiligenSuite" / "control-apps-build" / "bin" / "Debug" / fake_file_name
 
-    for path in (workspace_build_exe, workspace_hmi_fix_exe, legacy_exe):
+    for path in (workspace_ca_exe, workspace_build_exe, workspace_hmi_fix_exe, legacy_exe):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
+    workspace_ca_cache = _write_matching_cmake_cache(ROOT / "build" / "ca")
     workspace_build_cache = _write_matching_cmake_cache(ROOT / "build")
     legacy_cache = _write_matching_cmake_cache(legacy_localappdata / "SiligenSuite" / "control-apps-build")
 
     try:
         for script_path in SCRIPT_PATHS:
             resolved = _probe_resolved_executable(script_path, fake_file_name, legacy_localappdata)
-            assert resolved == workspace_build_exe, f"{script_path.name} resolved {resolved}"
+            assert resolved == workspace_ca_exe, f"{script_path.name} resolved {resolved}"
     finally:
-        for path in (workspace_build_exe, workspace_hmi_fix_exe):
+        for path in (workspace_ca_exe, workspace_build_exe, workspace_hmi_fix_exe):
             if path.exists():
                 path.unlink()
-        for cache_path in (workspace_build_cache, legacy_cache):
+        for cache_path in (workspace_ca_cache, workspace_build_cache, legacy_cache):
             if cache_path.exists():
                 cache_path.unlink()

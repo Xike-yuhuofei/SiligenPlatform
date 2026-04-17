@@ -55,6 +55,12 @@ def _matches_workspace(cmake_home_directory: str, workspace_root: Path) -> bool:
         return False
 
 
+def _is_within_workspace_build(build_root: Path, workspace_root: Path) -> bool:
+    resolved_build_root = build_root.resolve()
+    workspace_build_root = (workspace_root / "build").resolve()
+    return resolved_build_root == workspace_build_root or workspace_build_root in resolved_build_root.parents
+
+
 def _artifact_candidates(build_root: Path, artifact_name: str) -> tuple[Path, ...]:
     return (
         build_root / "bin" / artifact_name,
@@ -144,7 +150,7 @@ def control_apps_build_root_probes(
 
     if explicit_build_root:
         explicit_root = Path(explicit_build_root).expanduser().resolve()
-        if explicit_root == workspace_build_root or workspace_build_root in explicit_root.parents:
+        if _is_within_workspace_build(explicit_root, workspace_root):
             add_probe(explicit_root, source="env", allow_stale=True)
         else:
             probes.append(
@@ -162,6 +168,8 @@ def control_apps_build_root_probes(
             )
             return tuple(probes)
 
+    add_probe(workspace_root / "build" / "ca", source="workspace-build-ca")
+    add_probe(workspace_root / "build" / "control-apps", source="workspace-build-control-apps")
     add_probe(workspace_root / "build", source="workspace-build")
     return tuple(probes)
 

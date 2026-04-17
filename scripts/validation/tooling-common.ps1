@@ -121,13 +121,35 @@ function Test-ControlAppsBuildRootMatchesWorkspace {
     return $resolvedConfiguredSourceRoot -ieq $resolvedWorkspaceSourceRoot
 }
 
+function Test-ControlAppsBuildRootInsideWorkspaceBuild {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$BuildRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$WorkspaceRoot
+    )
+
+    $resolvedBuildRoot = [System.IO.Path]::GetFullPath($BuildRoot).TrimEnd('\')
+    $resolvedWorkspaceBuildRoot = [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build")).TrimEnd('\')
+    if ($resolvedBuildRoot -ieq $resolvedWorkspaceBuildRoot) {
+        return $true
+    }
+
+    $workspaceBuildPrefix = "$resolvedWorkspaceBuildRoot\"
+    return $resolvedBuildRoot.StartsWith($workspaceBuildPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
 function Get-ControlAppsBuildSearchRoots {
     param(
         [Parameter(Mandatory = $true)]
         [string]$WorkspaceRoot
     )
 
-    return @([System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build")))
+    return @(
+        [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build\ca")),
+        [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build\control-apps")),
+        [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build"))
+    )
 }
 
 function Get-ControlAppsBuildRoots {
@@ -138,8 +160,8 @@ function Get-ControlAppsBuildRoots {
 
     if (-not [string]::IsNullOrWhiteSpace($env:SILIGEN_CONTROL_APPS_BUILD_ROOT)) {
         $explicitRoot = [System.IO.Path]::GetFullPath($env:SILIGEN_CONTROL_APPS_BUILD_ROOT)
-        $workspaceBuildRoot = [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build"))
-        if (-not $explicitRoot.StartsWith($workspaceBuildRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        if (-not (Test-ControlAppsBuildRootInsideWorkspaceBuild -BuildRoot $explicitRoot -WorkspaceRoot $WorkspaceRoot)) {
+            $workspaceBuildRoot = [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build"))
             throw "SILIGEN_CONTROL_APPS_BUILD_ROOT must stay inside current workspace build root: '$workspaceBuildRoot'"
         }
         return @($explicitRoot)
@@ -167,7 +189,10 @@ function Get-ControlAppsBuildRoot {
 
     $roots = @(Get-ControlAppsBuildRoots -WorkspaceRoot $WorkspaceRoot)
     if ($roots.Count -eq 0) {
-        return [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot "build"))
+        $searchRoots = @(Get-ControlAppsBuildSearchRoots -WorkspaceRoot $WorkspaceRoot)
+        if ($searchRoots.Count -gt 0) {
+            return [System.IO.Path]::GetFullPath($searchRoots[0])
+        }
     }
 
     foreach ($root in $roots) {

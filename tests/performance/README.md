@@ -12,7 +12,7 @@
 - 如需临时覆盖某个 sample，仍可显式通过 `--sample <label>=<PATH>` 提供，但正式 `nightly-performance` blocking gate 只认仓库内 canonical samples
 - 输出 `JSON + Markdown` 到 `tests/reports/performance/dxf-preview-profiles/`
 - `tests/performance/collect_dxf_preview_profiles.py` 同时是 `nightly-performance` 的正式 authority；当显式传 `--gate-mode nightly-performance --threshold-config tests/baselines/performance/dxf-preview-profile-thresholds.json` 时，threshold gate 为 blocking
-- 当前 gateway executable 只允许从当前工作区匹配 `CMakeCache.txt` 的 `<repo-root>\build\bin\*` 解析
+- 当前 gateway executable 只允许从当前工作区匹配 `CMakeCache.txt` 的 `<repo-root>\build\ca\bin\*`、`<repo-root>\build\control-apps\bin\*`、`<repo-root>\build\bin\*` 解析，且不会回退到 `%LOCALAPPDATA%`
 - 固定输出三张表：
   - `Preview`：authority 侧 `artifact.create -> plan.prepare -> preview.snapshot`
   - `Execution`：开启 `--include-start-job` 后的 `preview.confirm -> dxf.job.start -> dxf.job.status -> dxf.job.stop`

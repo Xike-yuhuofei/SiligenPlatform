@@ -21,6 +21,7 @@ from test_kit.control_apps_build import (  # noqa: E402
 
 
 def _write_matching_cmake_cache(build_root: Path, workspace_root: Path) -> None:
+    build_root.mkdir(parents=True, exist_ok=True)
     (build_root / "CMakeCache.txt").write_text(
         f"CMAKE_HOME_DIRECTORY:INTERNAL={workspace_root}\n",
         encoding="utf-8",
@@ -28,10 +29,10 @@ def _write_matching_cmake_cache(build_root: Path, workspace_root: Path) -> None:
 
 
 class ControlAppsBuildContractTest(unittest.TestCase):
-    def test_valid_control_apps_build_roots_reject_workspace_root_without_matching_cache(self) -> None:
+    def test_valid_control_apps_build_roots_reject_workspace_build_ca_without_matching_cache(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace_root = Path(temp_dir) / "workspace"
-            build_root = workspace_root / "build"
+            build_root = workspace_root / "build" / "ca"
             build_root.mkdir(parents=True)
             valid_roots = valid_control_apps_build_roots(workspace_root)
             probes = control_apps_build_root_probes(workspace_root)
@@ -42,11 +43,11 @@ class ControlAppsBuildContractTest(unittest.TestCase):
         self.assertFalse(first_probe.accepted)
         self.assertEqual(first_probe.reason, "missing-cmake-cache")
 
-    def test_readiness_reports_missing_artifacts_for_empty_matching_workspace_build(self) -> None:
+    def test_readiness_reports_missing_artifacts_for_empty_matching_workspace_child_build(self) -> None:
         required_artifacts = ("siligen_runtime_gateway.exe", "siligen_runtime_service.exe")
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace_root = Path(temp_dir) / "workspace"
-            build_root = workspace_root / "build"
+            build_root = workspace_root / "build" / "control-apps"
             build_root.mkdir(parents=True)
             _write_matching_cmake_cache(build_root, workspace_root)
 
@@ -60,6 +61,7 @@ class ControlAppsBuildContractTest(unittest.TestCase):
         self.assertIsNotNone(selected_probe)
         assert selected_probe is not None
         self.assertEqual(selected_probe.root, build_root.resolve())
+        self.assertEqual(selected_probe.source, "workspace-build-control-apps")
         self.assertEqual(readiness.reason, "missing-required-artifacts")
         self.assertEqual(readiness.missing_artifacts, required_artifacts)
 
@@ -87,6 +89,21 @@ class ControlAppsBuildContractTest(unittest.TestCase):
         self.assertEqual(selected_probe.root, build_root.resolve())
         self.assertEqual(selected_probe.source, "workspace-build")
         self.assertEqual(readiness.missing_artifacts, ())
+
+    def test_valid_control_apps_build_roots_ignore_localappdata_token_build(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            workspace_root = temp_root / "workspace"
+            workspace_root.mkdir()
+            token_root = temp_root / "localappdata" / "SS" / "cab-1234567890ab"
+            _write_matching_cmake_cache(token_root, workspace_root)
+
+            with patch.dict(os.environ, {"LOCALAPPDATA": str(temp_root / "localappdata")}, clear=False):
+                valid_roots = valid_control_apps_build_roots(workspace_root)
+                probes = control_apps_build_root_probes(workspace_root)
+
+        self.assertEqual(valid_roots, ())
+        self.assertTrue(all(probe.source != "workspace-token-build" for probe in probes))
 
     def test_explicit_build_root_rejects_path_outside_workspace_build(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
