@@ -561,8 +561,10 @@ TEST(PlanningUseCaseExportPortTest, PrepareAuthorityPreviewSupportsPointOnlyInpu
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
     EXPECT_TRUE(result.Value().artifacts.preview_authority_ready);
     EXPECT_TRUE(result.Value().artifacts.preview_binding_ready);
-    EXPECT_EQ(result.Value().process_path.segments.size(), 1U);
-    EXPECT_TRUE(result.Value().process_path.segments.front().geometry.is_point);
+    ASSERT_EQ(result.Value().authority_process_path.segments.size(), 1U);
+    ASSERT_EQ(result.Value().canonical_execution_process_path.segments.size(), 1U);
+    EXPECT_TRUE(result.Value().authority_process_path.segments.front().geometry.is_point);
+    EXPECT_TRUE(result.Value().canonical_execution_process_path.segments.front().geometry.is_point);
     ASSERT_EQ(result.Value().artifacts.glue_points.size(), 1U);
     EXPECT_EQ(CountPointsNear(result.Value().artifacts.glue_points, Point2D{5.0f, 5.0f}, 1e-4f), 1U);
     EXPECT_EQ(result.Value().artifacts.trigger_count, 1);

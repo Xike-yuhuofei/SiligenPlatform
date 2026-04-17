@@ -1898,7 +1898,7 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotUsesProcessPathWhenMotionT
     EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 25.0f, 25.0f, 1e-4f));
 }
 
-TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFallsBackToAuthorityProcessPathWhenExportRequestIsReleased) {
+TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFailsWhenExportRequestIsReleasedAndNoExecutionTruthRemains) {
     auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
     auto homing_port = std::make_shared<FakeHomingPort>();
@@ -1919,16 +1919,9 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFallsBackToAuthorityProces
     request.max_polyline_points = 64;
     const auto result = use_case.GetPreviewSnapshot(request);
 
-    ASSERT_TRUE(result.IsSuccess());
-    const auto& snapshot = result.Value();
-    EXPECT_EQ(snapshot.motion_preview_source, "process_path_snapshot");
-    EXPECT_EQ(snapshot.motion_preview_kind, "polyline");
-    EXPECT_EQ(snapshot.motion_preview_sampling_strategy, "process_path_geometry_preserving");
-    EXPECT_EQ(snapshot.motion_preview_source_point_count, 3U);
-    EXPECT_EQ(snapshot.motion_preview_point_count, snapshot.motion_preview_source_point_count);
-    EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 0.0f, 0.0f, 1e-4f));
-    EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 100.0f, 0.0f, 1e-4f));
-    EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 100.0f, 100.0f, 1e-4f));
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+    EXPECT_EQ(result.GetError().GetMessage(), "motion trajectory snapshot unavailable for preview");
 }
 
 TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFailsWhenMotionTrajectorySnapshotMissingAndOnlyExecutionPolylineExists) {
