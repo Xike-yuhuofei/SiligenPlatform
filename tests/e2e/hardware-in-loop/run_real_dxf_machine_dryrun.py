@@ -24,12 +24,13 @@ from runtime_gateway_harness import (  # noqa: E402
     KNOWN_FAILURE_EXIT_CODE,
     TcpJsonClient,
     build_process_env,
+    ensure_published_recipe_version,
     read_process_output,
+    recipe_context_metadata,
     resolve_default_exe,
     truncate_json,
     wait_gateway_ready,
 )
-from recipe_runtime_support import resolve_active_recipe  # noqa: E402
 
 
 DEFAULT_DXF_FILE = ROOT / "samples" / "dxf" / "rect_diag.dxf"
@@ -130,6 +131,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gateway-exe", type=Path, default=resolve_default_exe("siligen_runtime_gateway.exe"))
     parser.add_argument("--config-path", type=Path, default=DEFAULT_CONFIG_PATH)
     parser.add_argument("--dxf-file", type=Path, default=DEFAULT_DXF_FILE)
+    parser.add_argument("--recipe-id", required=True)
+    parser.add_argument("--version-id", required=True)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--gateway-ready-timeout", type=float, default=8.0)
@@ -775,6 +778,7 @@ def build_report_verdict(
 def build_report(
     *,
     args: argparse.Namespace,
+    recipe_context: dict[str, str],
     steps: list[Step],
     artifacts: dict[str, Any],
     overall_status: str,
@@ -796,6 +800,7 @@ def build_report(
         "gateway_port": int(parse_int(gateway_port) or 0),
         "config_path": str(args.config_path),
         "dxf_file": str(args.dxf_file),
+        **recipe_context,
         "overall_status": overall_status,
         "evidence_contract": build_evidence_contract(
             progress_threshold_percent=args.contradiction_progress_threshold_percent,
@@ -986,6 +991,9 @@ def build_report_markdown(report: dict[str, Any]) -> str:
     lines.append(f"- gateway_port: `{report.get('gateway_port', '')}`")
     lines.append(f"- config_path: `{report['config_path']}`")
     lines.append(f"- dxf_file: `{report['dxf_file']}`")
+    lines.append(f"- recipe_id: `{report.get('recipe_id', '')}`")
+    lines.append(f"- version_id: `{report.get('version_id', '')}`")
+    lines.append(f"- recipe_context_source: `{report.get('recipe_context_source', '')}`")
     job_timeout_budget = report.get("artifacts", {}).get("job_timeout_budget", {})
     if job_timeout_budget:
         lines.append(f"- effective_job_timeout_seconds: `{job_timeout_budget.get('effective_timeout_seconds')}`")
@@ -1040,6 +1048,7 @@ def main() -> int:
     ensure_exists(args.gateway_exe, "gateway executable")
     ensure_exists(args.config_path, "config")
     ensure_exists(args.dxf_file, "dxf file")
+    recipe_context = recipe_context_metadata(args.recipe_id, args.version_id)
     requested_mock_io = parse_mock_io_json(args.mock_io_json)
     effective_port = resolve_listen_port(args.host, args.port)
 
@@ -1104,6 +1113,20 @@ def main() -> int:
             "tcp-connect",
             "passed",
             json.dumps({"params": connect_params, "result": status_result(connect_response)}, ensure_ascii=False),
+        )
+
+        validated_recipe_context = ensure_published_recipe_version(
+            client,
+            recipe_id=recipe_context["recipe_id"],
+            version_id=recipe_context["version_id"],
+            timeout_seconds=min(10.0, args.connect_timeout),
+        )
+        artifacts["recipe_context_validation"] = validated_recipe_context
+        add_step(
+            steps,
+            "recipe-context-validate",
+            "passed",
+            json.dumps(validated_recipe_context, ensure_ascii=False),
         )
 
         if requested_mock_io:
@@ -1283,13 +1306,11 @@ def main() -> int:
         if not artifact_id:
             raise RuntimeError("artifact.create missing artifact_id")
         add_step(steps, "dxf-artifact-create", "passed", f"artifact_id={artifact_id}")
-        recipe_id, version_id = resolve_active_recipe(client, timeout_seconds=10.0)
-        add_step(steps, "recipe-list", "passed", json.dumps({"recipe_id": recipe_id, "version_id": version_id}, ensure_ascii=True))
 
         prepare_params = {
             "artifact_id": artifact_id,
-            "recipe_id": recipe_id,
-            "version_id": version_id,
+            "recipe_id": recipe_context["recipe_id"],
+            "version_id": recipe_context["version_id"],
             "dispensing_speed_mm_s": args.dispensing_speed_mm_s,
             "dry_run": True,
             "dry_run_speed_mm_s": args.dry_run_speed_mm_s,
@@ -1515,6 +1536,7 @@ def main() -> int:
 
         report = build_report(
             args=args,
+            recipe_context=recipe_context,
             steps=steps,
             artifacts=artifacts,
             overall_status=overall_status,

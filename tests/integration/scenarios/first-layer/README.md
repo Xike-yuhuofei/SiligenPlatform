@@ -13,6 +13,8 @@
 - `test_real_dxf_machine_dryrun_observation_contract.py`
 - `test_real_preview_snapshot_geometry.py`
 
+`run_tcp_precondition_matrix.py` 当前必须显式传入已发布 `--recipe-id/--version-id`，禁止回退到 active recipe / activeVersionId / 其他全局活动态。
+
 ## 边界
 
 - 属于 `tests/integration/scenarios/` 的离线验证面

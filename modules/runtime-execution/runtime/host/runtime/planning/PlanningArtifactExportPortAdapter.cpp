@@ -94,11 +94,34 @@ Result<void> WriteGluePointsCsv(const PlanningArtifactExportRequest& request,
 
     file.setf(std::ios::fixed);
     file << std::setprecision(6);
-    file << "index,segment_index,segment_type,trigger_index,x_mm,y_mm\n";
+    file << "index,segment_index,segment_type,trigger_index,x_mm,y_mm,distance_mm_global,"
+            "span_ref,component_index,span_order_index,span_closed,span_dispatch_type,"
+            "span_split_reason,sequence_index_global,sequence_index_span,distance_mm_span,"
+            "source_segment_index,source_kind,span_total_length_mm,span_actual_spacing_mm,"
+            "span_phase_mm\n";
     for (size_t index = 0; index < request.glue_points.size(); ++index) {
         const auto& point = request.glue_points[index];
+        const float32 distance_mm =
+            index < request.glue_distances_mm.size() ? request.glue_distances_mm[index] : 0.0f;
+        const auto* metadata =
+            index < request.glue_point_metadata.size() ? &request.glue_point_metadata[index] : nullptr;
         file << (index + 1) << ",0,TRAJ," << (index + 1) << ','
-             << point.x << ',' << point.y << '\n';
+             << point.x << ',' << point.y << ','
+             << distance_mm << ','
+             << (metadata ? metadata->span_ref : std::string()) << ','
+             << (metadata ? metadata->component_index : 0U) << ','
+             << (metadata ? metadata->span_order_index : 0U) << ','
+             << (metadata && metadata->span_closed ? 1 : 0) << ','
+             << (metadata ? metadata->span_dispatch_type : std::string()) << ','
+             << (metadata ? metadata->span_split_reason : std::string()) << ','
+             << (metadata ? metadata->sequence_index_global : 0U) << ','
+             << (metadata ? metadata->sequence_index_span : 0U) << ','
+             << (metadata ? metadata->distance_mm_span : 0.0f) << ','
+             << (metadata ? metadata->source_segment_index : 0U) << ','
+             << (metadata ? metadata->source_kind : std::string()) << ','
+             << (metadata ? metadata->span_total_length_mm : 0.0f) << ','
+             << (metadata ? metadata->span_actual_spacing_mm : 0.0f) << ','
+             << (metadata ? metadata->span_phase_mm : 0.0f) << '\n';
     }
     return Result<void>::Success();
 }
@@ -211,7 +234,25 @@ Result<void> WriteProcessPathCsv(const PlanningArtifactExportRequest& request,
     return Result<void>::Success();
 }
 
+std::vector<float32> BuildTrajectoryCumulativeDistances(const std::vector<TrajectoryPoint>& points) {
+    std::vector<float32> cumulative;
+    cumulative.reserve(points.size());
+    if (points.empty()) {
+        return cumulative;
+    }
+
+    cumulative.push_back(0.0f);
+    for (size_t index = 1; index < points.size(); ++index) {
+        cumulative.push_back(
+            cumulative.back() + points[index - 1].position.DistanceTo(points[index].position));
+    }
+    return cumulative;
+}
+
 Result<void> WriteTrajectoryCsv(const std::vector<TrajectoryPoint>& points,
+                                const std::vector<
+                                    Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportExecutionTriggerMetadata>&
+                                    trigger_metadata,
                                 const std::string& path_value) {
     auto ensure_result = EnsureParentDirectory(path_value);
     if (ensure_result.IsError()) {
@@ -228,12 +269,51 @@ Result<void> WriteTrajectoryCsv(const std::vector<TrajectoryPoint>& points,
 
     file.setf(std::ios::fixed);
     file << std::setprecision(6);
-    file << "index,x_mm,y_mm,velocity_mm_s,time_s,trigger\n";
+    const auto cumulative = BuildTrajectoryCumulativeDistances(points);
+    std::unordered_map<
+        size_t,
+        const Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportExecutionTriggerMetadata*>
+        metadata_by_index;
+    metadata_by_index.reserve(trigger_metadata.size());
+    for (const auto& metadata : trigger_metadata) {
+        metadata_by_index.emplace(metadata.trajectory_index, &metadata);
+    }
+
+    file << "index,sequence_id,x_mm,y_mm,velocity_mm_s,time_s,trigger,trigger_position_mm,trigger_pulse_width_us,"
+            "actual_distance_mm,bound_authority_trigger_index,bound_authority_trigger_ref,bound_authority_span_ref,"
+            "bound_authority_component_index,bound_authority_span_order_index,bound_authority_source_segment_index,"
+            "bound_authority_distance_mm,binding_distance_delta_mm,binding_monotonic,binding_match_error_mm\n";
     for (size_t index = 0; index < points.size(); ++index) {
         const auto& pt = points[index];
-        file << (index + 1) << ',' << pt.position.x << ',' << pt.position.y << ','
+        const auto metadata_it = metadata_by_index.find(index);
+        const auto* metadata = metadata_it != metadata_by_index.end() ? metadata_it->second : nullptr;
+        const float32 actual_distance_mm = index < cumulative.size() ? cumulative[index] : 0.0f;
+        file << (index + 1) << ',' << pt.sequence_id << ','
+             << pt.position.x << ',' << pt.position.y << ','
              << pt.velocity << ',' << pt.timestamp << ','
-             << (pt.enable_position_trigger ? 1 : 0) << '\n';
+             << (pt.enable_position_trigger ? 1 : 0) << ','
+             << pt.trigger_position_mm << ','
+             << pt.trigger_pulse_width_us << ','
+             << actual_distance_mm << ',';
+        if (metadata != nullptr) {
+            file << metadata->authority_trigger_index << ','
+                 << metadata->authority_trigger_ref << ','
+                 << metadata->span_ref << ','
+                 << metadata->component_index << ','
+                 << metadata->span_order_index << ','
+                 << metadata->source_segment_index << ','
+                 << metadata->authority_distance_mm << ','
+                 << (actual_distance_mm - metadata->authority_distance_mm) << ','
+                 << (metadata->binding_monotonic ? 1 : 0) << ','
+                 << metadata->binding_match_error_mm;
+        } else {
+            for (size_t blank_index = 0; blank_index < 10U; ++blank_index) {
+                if (blank_index > 0U) {
+                    file << ',';
+                }
+            }
+        }
+        file << '\n';
     }
     return Result<void>::Success();
 }
@@ -259,12 +339,17 @@ Result<void> WriteTrajectoryJson(const std::vector<TrajectoryPoint>& points,
     file << "{\n";
     file << "  \"source\": \"" << tag << "\",\n";
     file << "  \"point_count\": " << points.size() << ",\n";
+    file << "  \"columns\": [\"x_mm\",\"y_mm\",\"velocity_mm_s\",\"time_s\","
+            "\"trigger\",\"sequence_id\",\"trigger_position_mm\",\"trigger_pulse_width_us\"],\n";
     file << "  \"points\": [\n";
     for (size_t index = 0; index < points.size(); ++index) {
         const auto& pt = points[index];
         file << "    [" << pt.position.x << "," << pt.position.y << ","
              << pt.velocity << "," << pt.timestamp << ","
-             << (pt.enable_position_trigger ? 1 : 0) << "]";
+             << (pt.enable_position_trigger ? 1 : 0) << ","
+             << pt.sequence_id << ","
+             << pt.trigger_position_mm << ","
+             << pt.trigger_pulse_width_us << "]";
         if (index + 1 < points.size()) {
             file << ",";
         }
@@ -285,7 +370,12 @@ Result<void> ExportTrajectoryArtifacts(const PlanningArtifactExportRequest& requ
     }
 
     const auto csv_path = BuildArtifactPath(request.source_path, tag + "_trajectory", "csv", timestamp, true);
-    auto csv_result = WriteTrajectoryCsv(points, csv_path);
+    static const std::vector<
+        Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportExecutionTriggerMetadata>
+        kEmptyTriggerMetadata;
+    const auto& trigger_metadata =
+        (tag == "execution" || tag == "interpolation") ? request.execution_trigger_metadata : kEmptyTriggerMetadata;
+    auto csv_result = WriteTrajectoryCsv(points, trigger_metadata, csv_path);
     if (csv_result.IsError()) {
         return csv_result;
     }

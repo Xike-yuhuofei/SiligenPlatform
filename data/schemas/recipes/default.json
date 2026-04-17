@@ -35,6 +35,28 @@
       }
     },
     {
+      "key": "trigger_spatial_interval_mm",
+      "displayName": "Trigger Spatial Interval",
+      "type": "float",
+      "unit": "mm",
+      "required": true,
+      "constraints": {
+        "min": 0.1,
+        "max": 1000.0
+      }
+    },
+    {
+      "key": "point_flying_direction_mode",
+      "displayName": "Point Flying Direction Mode",
+      "type": "enum",
+      "required": true,
+      "constraints": {
+        "allowedValues": [
+          "approach_direction"
+        ]
+      }
+    },
+    {
       "key": "material_type",
       "displayName": "Material Type",
       "type": "enum",

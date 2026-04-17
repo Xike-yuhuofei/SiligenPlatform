@@ -169,6 +169,21 @@ class MockState:
                     "constraints": {"min": 0.0, "max": 500.0},
                 },
                 {
+                    "key": "trigger_spatial_interval_mm",
+                    "displayName": "Trigger Spatial Interval",
+                    "type": "float",
+                    "required": True,
+                    "unit": "mm",
+                    "constraints": {"min": 0.1, "max": 1000.0},
+                },
+                {
+                    "key": "point_flying_direction_mode",
+                    "displayName": "Point Flying Direction Mode",
+                    "type": "enum",
+                    "required": True,
+                    "constraints": {"allowedValues": ["approach_direction"]},
+                },
+                {
                     "key": "material_type",
                     "displayName": "Material Type",
                     "type": "enum",
@@ -185,6 +200,8 @@ class MockState:
                 "parameters": [
                     {"key": "dispense_speed", "value": 120.0},
                     {"key": "dispense_pressure", "value": 220.0},
+                    {"key": "trigger_spatial_interval_mm", "value": 3.0},
+                    {"key": "point_flying_direction_mode", "value": "approach_direction"},
                     {"key": "material_type", "value": "epoxy"},
                 ],
                 "createdAt": int(time.time() * 1000),
@@ -192,6 +209,7 @@ class MockState:
             }
         ]
         self.recipes: List[Dict] = []
+        self.recipe_versions_by_recipe: Dict[str, List[Dict]] = {}
         self._seed_recipe()
         self.reload_config()
 
@@ -215,6 +233,19 @@ class MockState:
         self._recipe_seq += 1
         recipe_id = f"recipe-mock-{self._recipe_seq:03d}"
         version_id = f"version-mock-{self._recipe_seq:03d}"
+        version = {
+            "id": version_id,
+            "recipeId": recipe_id,
+            "versionLabel": "v1",
+            "status": "published",
+            "parameters": [
+                dict(item)
+                for item in self.recipe_templates[0].get("parameters", [])
+                if isinstance(item, dict)
+            ],
+            "createdAt": now,
+            "updatedAt": now,
+        }
         self.recipes.append(
             {
                 "id": recipe_id,
@@ -228,6 +259,7 @@ class MockState:
                 "versionIds": [version_id],
             }
         )
+        self.recipe_versions_by_recipe[recipe_id] = [version]
 
     def _start_dxf_progress(self):
         def worker():
@@ -991,6 +1023,13 @@ class MockState:
                 if recipe is None:
                     return {"error": {"code": -33001, "message": "Recipe not found"}}
                 return {"result": {"recipe": dict(recipe)}}
+            if method == "recipe.versions":
+                recipe_id = str(params.get("recipeId") or params.get("recipe_id") or "").strip()
+                recipe = next((item for item in self.recipes if item["id"] == recipe_id), None)
+                if recipe is None:
+                    return {"error": {"code": -33005, "message": "Recipe not found"}}
+                versions = self.recipe_versions_by_recipe.get(recipe_id, [])
+                return {"result": {"versions": [dict(version) for version in versions]}}
             if method == "recipe.templates":
                 return {"result": {"templates": list(self.recipe_templates)}}
             if method == "recipe.schema.default":
@@ -1012,7 +1051,21 @@ class MockState:
                     "activeVersionId": f"version-mock-{self._recipe_seq:03d}",
                     "versionIds": [f"version-mock-{self._recipe_seq:03d}"],
                 }
+                version = {
+                    "id": recipe["activeVersionId"],
+                    "recipeId": recipe["id"],
+                    "versionLabel": "v1",
+                    "status": "published",
+                    "parameters": [
+                        dict(item)
+                        for item in self.recipe_templates[0].get("parameters", [])
+                        if isinstance(item, dict)
+                    ],
+                    "createdAt": now,
+                    "updatedAt": now,
+                }
                 self.recipes.append(recipe)
+                self.recipe_versions_by_recipe[recipe["id"]] = [version]
                 return {"result": {"recipe": dict(recipe)}}
             if method == "recipe.update":
                 recipe_id = params.get("recipeId") or params.get("recipe_id")

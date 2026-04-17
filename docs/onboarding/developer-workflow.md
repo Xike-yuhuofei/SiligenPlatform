@@ -18,9 +18,9 @@ Set-Location <repo-root>
 | 目标 | 推荐入口 | 备注 |
 |---|---|---|
 | HMI | `.\apps\hmi-app\run.ps1` | 官方默认入口；负责生成/注入 online gateway launch contract |
-| Runtime Service | `siligen_runtime_service.exe` | 构建产物入口（默认 `build/ca/bin/<Config>/`，legacy root 仅 fallback） |
-| Runtime Gateway | `siligen_runtime_gateway.exe` | 构建产物入口（默认 `build/ca/bin/<Config>/`，legacy root 仅 fallback） |
-| Planner CLI | `siligen_planner_cli.exe` | 构建产物入口（默认 `build/ca/bin/<Config>/`，legacy root 仅 fallback） |
+| Runtime Service | `siligen_runtime_service.exe` | 构建产物入口（显式 `SILIGEN_CONTROL_APPS_BUILD_ROOT`；否则只认 `build/ca/bin/<Config>/`） |
+| Runtime Gateway | `siligen_runtime_gateway.exe` | 构建产物入口（显式 `SILIGEN_CONTROL_APPS_BUILD_ROOT`；否则只认 `build/ca/bin/<Config>/`） |
+| Planner CLI | `siligen_planner_cli.exe` | 构建产物入口（显式 `SILIGEN_CONTROL_APPS_BUILD_ROOT`；否则只认 `build/ca/bin/<Config>/`） |
 
 DXF 编辑：
 

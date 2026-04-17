@@ -57,6 +57,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mock-flow-iterations", type=int, default=20)
     parser.add_argument("--unsupported-iterations", type=int, default=5)
     parser.add_argument("--hil-iterations", type=int, default=3)
+    parser.add_argument("--recipe-id", required=True)
+    parser.add_argument("--version-id", required=True)
     parser.add_argument("--report-dir", default=str(REPORT_ROOT))
     return parser.parse_args()
 
@@ -189,6 +191,58 @@ def wait_for_port(host: str, port: int, timeout: float = 5.0) -> bool:
         except OSError:
             time.sleep(0.05)
     return False
+
+
+def require_explicit_recipe_context(recipe_id: str, version_id: str) -> dict[str, str]:
+    normalized_recipe_id = str(recipe_id or "").strip()
+    normalized_version_id = str(version_id or "").strip()
+    missing: list[str] = []
+    if not normalized_recipe_id:
+        missing.append("recipe_id")
+    if not normalized_version_id:
+        missing.append("version_id")
+    if missing:
+        raise ValueError("missing explicit recipe context: " + ",".join(missing))
+    return {
+        "recipe_id": normalized_recipe_id,
+        "version_id": normalized_version_id,
+        "recipe_context_source": "cli_explicit",
+    }
+
+
+def validate_published_recipe_context(
+    protocol: CommandProtocol,
+    recipe_id: str,
+    version_id: str,
+) -> tuple[dict[str, str] | None, str]:
+    context = require_explicit_recipe_context(recipe_id, version_id)
+    versions_ok, versions_payload, versions_error = protocol.recipe_versions(context["recipe_id"])
+    if not versions_ok:
+        return None, f"recipe.versions failed: {versions_error or 'unknown'}"
+    if not isinstance(versions_payload, list):
+        return None, "recipe.versions response missing versions list"
+
+    matched_version = next(
+        (
+            item
+            for item in versions_payload
+            if isinstance(item, dict) and str(item.get("id", "")).strip() == context["version_id"]
+        ),
+        None,
+    )
+    if not isinstance(matched_version, dict):
+        return None, (
+            "recipe.versions missing explicit version: "
+            f"recipe_id={context['recipe_id']} version_id={context['version_id']}"
+        )
+
+    version_status = str(matched_version.get("status", "")).strip().lower()
+    if version_status != "published":
+        return None, (
+            "recipe version is not published: "
+            f"recipe_id={context['recipe_id']} version_id={context['version_id']} status={version_status or 'unknown'}"
+        )
+    return context, ""
 
 
 def start_mock_server(port: int) -> subprocess.Popen[str]:
@@ -470,6 +524,8 @@ def measure_reliability(
     mock_flow_iterations: int,
     unsupported_iterations: int,
     hil_iterations: int,
+    recipe_id: str,
+    version_id: str,
 ) -> dict[str, Any]:
     flows: list[dict[str, Any]] = []
     error_categories: dict[str, int] = {}
@@ -491,6 +547,7 @@ def measure_reliability(
 
     mock_failures = 0
     try:
+        recipe_context, recipe_context_error = validate_published_recipe_context(protocol, recipe_id, version_id)
         for _ in range(mock_flow_iterations):
             cycle_errors: list[str] = []
             if not protocol.ping():
@@ -509,20 +566,25 @@ def measure_reliability(
                 cycle_errors.append(artifact_error or "dxf.artifact.create")
             else:
                 artifact_id = str(artifact_payload.get("artifact_id", "")).strip()
-                plan_ok, plan_payload, plan_error = protocol.dxf_prepare_plan(
-                    artifact_id,
-                    speed_mm_s=10.0,
-                    dry_run=True,
-                    dry_run_speed_mm_s=10.0,
-                )
-                if not plan_ok:
-                    cycle_errors.append(plan_error or "dxf.plan.prepare")
+                if recipe_context is None:
+                    cycle_errors.append(recipe_context_error or "recipe.versions.validation_failed")
                 else:
-                    plan_id = str(plan_payload.get("plan_id", "")).strip()
-                    plan_fingerprint = str(plan_payload.get("plan_fingerprint", "")).strip()
-                    if not plan_id or not plan_fingerprint:
-                        cycle_errors.append("dxf.plan.prepare.missing_payload")
+                    plan_ok, plan_payload, plan_error = protocol.dxf_prepare_plan(
+                        artifact_id,
+                        recipe_context["recipe_id"],
+                        recipe_context["version_id"],
+                        speed_mm_s=10.0,
+                        dry_run=True,
+                        dry_run_speed_mm_s=10.0,
+                    )
+                    if not plan_ok:
+                        cycle_errors.append(plan_error or "dxf.plan.prepare")
                     else:
+                        plan_id = str(plan_payload.get("plan_id", "")).strip()
+                        plan_fingerprint = str(plan_payload.get("plan_fingerprint", "")).strip()
+                        if not plan_id or not plan_fingerprint:
+                            cycle_errors.append("dxf.plan.prepare.missing_payload")
+                            continue
                         preview_ok, preview_payload, preview_error = protocol.dxf_preview_snapshot(plan_id=plan_id)
                         if not preview_ok:
                             cycle_errors.append(preview_error or "dxf.preview.snapshot")
@@ -695,6 +757,9 @@ def render_markdown(payload: dict[str, Any]) -> str:
         "",
         f"- generated_at: `{payload['environment']['generated_at']}`",
         f"- workspace_root: `{payload['environment']['workspace_root']}`",
+        f"- recipe_id: `{payload.get('recipe_context', {}).get('recipe_id', '')}`",
+        f"- version_id: `{payload.get('recipe_context', {}).get('version_id', '')}`",
+        f"- recipe_context_source: `{payload.get('recipe_context', {}).get('recipe_context_source', '')}`",
         f"- platform: `{payload['environment']['platform']}`",
         f"- python_version: `{payload['environment']['python_version']}`",
         f"- cpu_count: `{payload['environment']['cpu_count']}`",
@@ -861,6 +926,7 @@ def main() -> int:
     args = parse_args()
     payload = {
         "environment": environment_snapshot(),
+        "recipe_context": require_explicit_recipe_context(args.recipe_id, args.version_id),
         "sampling": {
             "preprocess_iterations": args.preprocess_iterations,
             "simulation_iterations": args.simulation_iterations,
@@ -880,6 +946,8 @@ def main() -> int:
             args.mock_flow_iterations,
             args.unsupported_iterations,
             args.hil_iterations,
+            args.recipe_id,
+            args.version_id,
         ),
         "comparability_gaps": [
             "DXF/工程数据预处理基线只覆盖 canonical fixture rect_diag.dxf，不可直接外推到大尺寸或高实体数工程。",

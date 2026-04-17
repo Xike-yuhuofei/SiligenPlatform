@@ -5,17 +5,22 @@ from PyQt5.QtWidgets import (
     QComboBox, QFormLayout, QScrollArea, QListWidget, QListWidgetItem, 
     QTabWidget, QSplitter, QMessageBox, QFileDialog
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QSignalBlocker
+
+from hmi_application.preview_planning_context import PreviewPlanningContextOwner
 
 class RecipeConfigWidget(QWidget):
     """
     Widget for managing recipes, versions, and parameters.
     Refactored from MainWindow to separate concerns.
     """
-    def __init__(self, protocol, auth_manager, parent=None):
+    def __init__(self, protocol, auth_manager, planning_context_owner=None, parent=None):
         super().__init__(parent)
         self._protocol = protocol
         self._auth = auth_manager
+        self._planning_context_owner = (
+            planning_context_owner if planning_context_owner is not None else PreviewPlanningContextOwner()
+        )
         
         # Data state
         self._recipe_templates = []
@@ -35,7 +40,31 @@ class RecipeConfigWidget(QWidget):
         # self._load_recipe_context()
 
     def current_recipe_selection(self):
-        return self._current_recipe_id, self._current_version_id
+        return self._planning_context_owner.current_selection()
+
+    def freeze_preview_planning_context(self):
+        return self._planning_context_owner.freeze_for_prepare()
+
+    def _select_list_item_by_id(self, list_widget: QListWidget, item_id: str) -> bool:
+        normalized_item_id = str(item_id or "").strip()
+        if not normalized_item_id:
+            return False
+        for index in range(list_widget.count()):
+            item = list_widget.item(index)
+            if str(item.data(Qt.UserRole) or "").strip() != normalized_item_id:
+                continue
+            with QSignalBlocker(list_widget):
+                list_widget.setCurrentItem(item)
+                item.setSelected(True)
+            return True
+        return False
+
+    def _apply_version_view_state(self, version_id: str) -> None:
+        normalized_version_id = str(version_id or "").strip()
+        version = self._recipe_versions.get(normalized_version_id, {})
+        self._current_version = version
+        self._current_version_id = normalized_version_id
+        self._render_recipe_parameters(version.get("parameters", []), version.get("status", ""))
 
     def _init_ui(self):
         main_layout = QHBoxLayout(self)
@@ -357,12 +386,17 @@ class RecipeConfigWidget(QWidget):
             
             if recipe_id:
                 self._recipes[recipe_id] = recipe
+        self._planning_context_owner.sync_recipe_catalog(list(self._recipes.values()))
+        preferred_recipe_id, _ = self.current_recipe_selection()
+        if preferred_recipe_id and self._select_list_item_by_id(self._recipe_list_widget, preferred_recipe_id):
+            self._load_recipe_details(preferred_recipe_id)
 
     def _on_recipe_selected_from_list(self):
         items = self._recipe_list_widget.selectedItems()
         if not items:
             return
         recipe_id = items[0].data(Qt.UserRole)
+        self._planning_context_owner.select_recipe(recipe_id)
         self._load_recipe_details(recipe_id)
 
     def _load_recipe_details(self, recipe_id):
@@ -376,6 +410,8 @@ class RecipeConfigWidget(QWidget):
 
         self._current_recipe = recipe
         self._current_recipe_id = recipe_id
+        self._recipes[recipe_id] = recipe
+        self._planning_context_owner.sync_recipe_catalog(list(self._recipes.values()))
         
         self._update_recipe_summary(recipe)
         
@@ -478,19 +514,21 @@ class RecipeConfigWidget(QWidget):
             self._recipe_version_list.addItem(item)
             if version_id:
                 self._recipe_versions[version_id] = version
+        self._planning_context_owner.sync_recipe_versions(recipe_id, list(self._recipe_versions.values()))
+        _, preferred_version_id = self.current_recipe_selection()
+        if preferred_version_id and self._select_list_item_by_id(self._recipe_version_list, preferred_version_id):
+            self._apply_version_view_state(preferred_version_id)
 
     def _on_recipe_version_selected(self):
         items = self._recipe_version_list.selectedItems()
         if not items:
             return
         version_id = items[0].data(Qt.UserRole)
-        version = self._recipe_versions.get(version_id, {})
-        self._current_version = version
-        self._current_version_id = version_id
+        self._planning_context_owner.select_version(version_id)
+        self._apply_version_view_state(version_id)
         
         # Switch to Params tab to show context
         # self._tabs.setCurrentIndex(1) # Optional: Auto-switch
-        self._render_recipe_parameters(version.get("parameters", []), version.get("status", ""))
 
     def _render_recipe_parameters(self, parameters: list, status: str):
         self._clear_form_layout(self._recipe_params_form)

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "recipe_lifecycle/domain/recipes/value-objects/RecipePlanningPolicyDefaults.h"
 #include "recipe_lifecycle/domain/recipes/value-objects/RecipeTypes.h"
 
 #include <chrono>
@@ -116,6 +117,11 @@ inline std::vector<Siligen::Domain::Recipes::ValueObjects::FieldChange> DiffTags
         return oss.str();
     };
     return DiffStrings("tags", join(before), join(after));
+}
+
+inline void NormalizeRecipePlanningPolicyParameters(
+    std::vector<Siligen::Domain::Recipes::ValueObjects::ParameterValueEntry>& parameters) {
+    Siligen::Domain::Recipes::ValueObjects::EnsureRecipePlanningPolicyDefaults(parameters);
 }
 
 }  // namespace Siligen::Application::UseCases::Recipes

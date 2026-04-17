@@ -35,8 +35,14 @@ from test_kit.evidence_bundle import (  # noqa: E402
     trace_fields,
     write_bundle_artifacts,
 )
-from runtime_gateway_harness import load_connection_params, tcp_connect_and_ensure_ready  # noqa: E402
-from runtime_gateway_harness import build_process_env, resolve_default_exe  # noqa: E402
+from runtime_gateway_harness import (  # noqa: E402
+    build_process_env,
+    ensure_published_recipe_version,
+    load_connection_params,
+    recipe_context_metadata,
+    resolve_default_exe,
+    tcp_connect_and_ensure_ready,
+)
 
 DEFAULT_DXF_FILE = ROOT / "samples" / "dxf" / "rect_diag.dxf"
 DEFAULT_DXF_PB_SCRIPT = ROOT / "scripts" / "engineering-data" / "dxf_to_pb.py"
@@ -204,7 +210,7 @@ def _read_process_output(process: subprocess.Popen[str]) -> tuple[str, str]:
     return stdout or "", stderr or ""
 
 
-def _prepare_isolated_workspace(report_dir: Path) -> Path:
+def _prepare_isolated_workspace(report_dir: Path, *, recipe_id: str, version_id: str) -> Path:
     isolated_root = report_dir / "isolated-empty-recipe-workspace"
     if isolated_root.exists():
         shutil.rmtree(isolated_root)
@@ -233,10 +239,6 @@ def _prepare_isolated_workspace(report_dir: Path) -> Path:
         shutil.copy2(DEFAULT_AGENTS_FILE, isolated_root / "AGENTS.md")
 
     source_config = ROOT / "config" / "machine" / "machine_config.ini"
-    source_recipes = ROOT / "data" / "recipes"
-    if source_recipes.exists():
-        shutil.copytree(source_recipes, isolated_root / "data" / "recipes", dirs_exist_ok=True)
-
     config_text = source_config.read_text(encoding="utf-8")
     trajectory_script = str(DEFAULT_DXF_TRAJECTORY_SCRIPT.resolve())
     rewritten_lines: list[str] = []
@@ -268,6 +270,25 @@ def _prepare_isolated_workspace(report_dir: Path) -> Path:
         raise ValueError("failed to rewrite [Hardware] mode to Mock in isolated workspace config")
     isolated_config = isolated_root / "config" / "machine" / "machine_config.ini"
     isolated_config.write_text("\n".join(rewritten_lines) + "\n", encoding="utf-8")
+
+    source_recipe_path = ROOT / "data" / "recipes" / "recipes" / f"{recipe_id}.json"
+    source_version_dir = ROOT / "data" / "recipes" / "versions" / recipe_id
+    source_version_path = source_version_dir / f"{version_id}.json"
+    source_schema_path = ROOT / "data" / "schemas" / "recipes" / "default.json"
+
+    if not source_recipe_path.exists():
+        raise FileNotFoundError(f"isolated workspace seed recipe missing: {source_recipe_path}")
+    if not source_version_path.exists():
+        raise FileNotFoundError(f"isolated workspace seed version missing: {source_version_path}")
+    if not source_schema_path.exists():
+        raise FileNotFoundError(f"isolated workspace seed schema missing: {source_schema_path}")
+
+    shutil.copy2(source_recipe_path, isolated_root / "data" / "recipes" / "recipes" / source_recipe_path.name)
+    seeded_version_dir = isolated_root / "data" / "recipes" / "versions" / recipe_id
+    seeded_version_dir.mkdir(parents=True, exist_ok=True)
+    for version_file in sorted(source_version_dir.glob("*.json")):
+        shutil.copy2(version_file, seeded_version_dir / version_file.name)
+    shutil.copy2(source_schema_path, isolated_root / "data" / "schemas" / "recipes" / source_schema_path.name)
 
     return isolated_root.resolve()
 
@@ -489,6 +510,9 @@ def _write_report(report_dir: Path, report: dict[str, Any]) -> tuple[Path, Path]
         f"- host: `{report['host']}`",
         f"- port: `{report['port']}`",
         f"- dxf_file: `{report['dxf_file']}`",
+        f"- recipe_id: `{report.get('recipe_id', '')}`",
+        f"- version_id: `{report.get('version_id', '')}`",
+        f"- recipe_context_source: `{report.get('recipe_context_source', '')}`",
         "",
         "## Scenario Results",
         "",
@@ -609,19 +633,26 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--gateway-cwd", default=os.getenv("SILIGEN_HIL_GATEWAY_CWD", ""))
     parser.add_argument("--dxf-file", type=Path, default=DEFAULT_DXF_FILE)
+    parser.add_argument("--recipe-id", required=True)
+    parser.add_argument("--version-id", required=True)
     parser.add_argument("--allow-skip-on-missing-gateway", action="store_true")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    recipe_context = recipe_context_metadata(args.recipe_id, args.version_id)
     report_dir = Path(args.report_dir)
     gateway_exe = Path(args.gateway_exe)
     port, port_is_requested = _resolve_runtime_port(args.host, args.port)
     gateway_cwd = (
         Path(args.gateway_cwd).resolve()
         if str(args.gateway_cwd).strip()
-        else _prepare_isolated_workspace(report_dir)
+        else _prepare_isolated_workspace(
+            report_dir,
+            recipe_id=recipe_context["recipe_id"],
+            version_id=recipe_context["version_id"],
+        )
     )
     gateway_config = gateway_cwd / "config" / "machine" / "machine_config.ini"
     results: list[ScenarioResult] = []
@@ -808,6 +839,13 @@ def main() -> int:
                 return KNOWN_FAILURE_EXIT_CODE
             return 1
 
+        ensure_published_recipe_version(
+            client,
+            recipe_id=recipe_context["recipe_id"],
+            version_id=recipe_context["version_id"],
+            timeout_seconds=5.0,
+        )
+
         baseline_status, baseline_note = _stabilize_runtime_state(client)
         baseline_homed, _, baseline_inconsistent_axes = _all_axes_homed_consistently(baseline_status)
         baseline_active_job_id = _extract_active_job_id(baseline_status)
@@ -933,6 +971,8 @@ def main() -> int:
                     else:
                         plan_params: dict[str, Any] = {
                             "artifact_id": artifact_id,
+                            "recipe_id": recipe_context["recipe_id"],
+                            "version_id": recipe_context["version_id"],
                             "dispensing_speed_mm_s": 10.0,
                             "dry_run": False,
                         }
@@ -1036,6 +1076,7 @@ def main() -> int:
         "host": args.host,
         "port": port,
         "dxf_file": str(args.dxf_file),
+        **recipe_context,
         "overall_status": _compute_overall_status(results),
         "results": [asdict(item) for item in results],
     }

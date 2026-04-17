@@ -13,7 +13,12 @@ HIL_DIR = ROOT / "tests" / "e2e" / "hardware-in-loop"
 if str(HIL_DIR) not in sys.path:
     sys.path.insert(0, str(HIL_DIR))
 
-from runtime_gateway_harness import resolve_default_exe  # noqa: E402
+from runtime_gateway_harness import (  # noqa: E402
+    CANONICAL_RECIPE_ID,
+    CANONICAL_VERSION_ID,
+    build_recipe_context_cli_args,
+    resolve_default_exe,
+)
 
 
 SCRIPT_PATH = ROOT / "tests" / "e2e" / "hardware-in-loop" / "run_real_dxf_preview_snapshot.py"
@@ -45,6 +50,7 @@ def test_online_preview_evidence_bundle_contract(tmp_path: Path) -> None:
             str(gateway_exe),
             "--report-root",
             str(report_root),
+            *build_recipe_context_cli_args(CANONICAL_RECIPE_ID, CANONICAL_VERSION_ID),
         ],
         cwd=str(ROOT),
         capture_output=True,
@@ -77,7 +83,9 @@ def test_online_preview_evidence_bundle_contract(tmp_path: Path) -> None:
     preview_verdict = _load_json(required_paths["preview_verdict"])
     preview_evidence = required_paths["preview_evidence"].read_text(encoding="utf-8")
 
-    assert {"plan_id", "plan_fingerprint"}.issubset(plan_prepare.keys())
+    assert {"plan_id", "plan_fingerprint", "recipe_id", "version_id", "recipe_context_source"}.issubset(
+        plan_prepare.keys()
+    )
     assert {
         "snapshot_id",
         "snapshot_hash",
@@ -117,8 +125,14 @@ def test_online_preview_evidence_bundle_contract(tmp_path: Path) -> None:
         "incomplete",
     }
     assert preview_verdict["launch_mode"] == "online"
+    assert plan_prepare["recipe_id"] == CANONICAL_RECIPE_ID
+    assert plan_prepare["version_id"] == CANONICAL_VERSION_ID
+    assert plan_prepare["recipe_context_source"] == "cli_explicit"
     assert preview_verdict["plan_id"] == plan_prepare["plan_id"]
     assert preview_verdict["plan_fingerprint"] == plan_prepare["plan_fingerprint"]
+    assert preview_verdict["recipe_id"] == CANONICAL_RECIPE_ID
+    assert preview_verdict["version_id"] == CANONICAL_VERSION_ID
+    assert preview_verdict["recipe_context_source"] == "cli_explicit"
     assert preview_verdict["snapshot_hash"] == snapshot["snapshot_hash"]
     assert preview_verdict["preview_source"] == snapshot["preview_source"]
     assert preview_verdict["preview_kind"] == snapshot["preview_kind"]
