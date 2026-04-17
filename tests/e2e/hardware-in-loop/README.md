@@ -1,6 +1,6 @@
 # hardware-in-loop
 
-更新时间：`2026-04-16`
+更新时间：`2026-04-17`
 
 这里统一放硬件冒烟和机台联调入口。
 
@@ -70,7 +70,7 @@ python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun.py `
 python .\tests\e2e\hardware-in-loop\run_real_dxf_production_validation.py `
   --recipe-id recipe-7d1b00f4-6a99 `
   --version-id version-fea9ce29-f963 `
-  --dxf-file D:\Projects\SiligenSuite\uploads\dxf\archive\rect_diag.dxf
+  --dxf-file .\samples\dxf\rect_diag.dxf
 ```
 
 ```powershell
@@ -198,6 +198,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 - 必须显式传入已发布 `--recipe-id/--version-id`
 - 默认 DXF 固定为仓内 canonical sample `samples/dxf/rect_diag.dxf`
 - 不再允许 `uploads archive -> repo sample` 静默回退；若显式传入 `--dxf-file` 且文件不存在，脚本直接失败
+- 真实连接后会再次校验该版本必须处于 `published` 状态
 - 会在真实连接前做最小 preflight：`status -> 必要时 home -> safety gate`
 - 会同时冻结 `job-status-history.json`、`machine-status-history.json` 与本次 gateway 追加日志切片 `tcp_server.log`
 - 当前 blocking authority 固定为 `dxf.job.status` 单轨，固定要求：

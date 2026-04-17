@@ -32,17 +32,17 @@ from runtime_gateway_harness import (  # noqa: E402
     KNOWN_FAILURE_EXIT_CODE,
     TcpJsonClient,
     build_process_env,
+    ensure_published_recipe_version,
     read_process_output,
+    recipe_context_metadata,
     resolve_default_exe,
     tcp_connect_and_ensure_ready,
     truncate_json,
     wait_gateway_ready,
 )
-from recipe_runtime_support import resolve_active_recipe  # noqa: E402
 
 
 DEFAULT_REPO_DXF = ROOT / "samples" / "dxf" / "rect_diag.dxf"
-DEFAULT_ARCHIVE_DXF = Path(r"D:\Projects\SiligenSuite\uploads\dxf\archive\rect_diag.dxf")
 DEFAULT_CONFIG_PATH = ROOT / "config" / "machine" / "machine_config.ini"
 DEFAULT_REPORT_ROOT = ROOT / "tests" / "reports" / "online-validation" / "dxf-production-path-trigger"
 DEFAULT_STATUS_POLL_INTERVAL_SECONDS = 0.10
@@ -71,19 +71,15 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def resolve_default_dxf_file() -> Path:
-    if DEFAULT_ARCHIVE_DXF.exists():
-        return DEFAULT_ARCHIVE_DXF
-    return DEFAULT_REPO_DXF
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run a real-machine production validation for the path-trigger DXF chain."
     )
     parser.add_argument("--gateway-exe", type=Path, default=resolve_default_exe("siligen_runtime_gateway.exe"))
     parser.add_argument("--config-path", type=Path, default=DEFAULT_CONFIG_PATH)
-    parser.add_argument("--dxf-file", type=Path, default=resolve_default_dxf_file())
+    parser.add_argument("--dxf-file", type=Path, default=DEFAULT_REPO_DXF)
+    parser.add_argument("--recipe-id", required=True)
+    parser.add_argument("--version-id", required=True)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--gateway-ready-timeout", type=float, default=DEFAULT_GATEWAY_READY_TIMEOUT)
@@ -299,11 +295,6 @@ def build_checklist(
     min_axis_coverage_ratio: float,
 ) -> dict[str, dict[str, Any]]:
     expected_trigger_count = int(parse_int(snapshot_result.get("glue_point_count")) or 0)
-    path_trigger_completed = int(
-        parse_int((log_summary.get("path_trigger_completed") or {}).get("completed_count")) or 0
-    )
-    stop_completed = int(parse_int((log_summary.get("stop_dispenser") or {}).get("completed_count")) or 0)
-    stop_total = int(parse_int((log_summary.get("stop_dispenser") or {}).get("total_count")) or 0)
 
     final_state = str(final_job_status.get("state", "")).strip().lower()
     final_progress = int(parse_int(final_job_status.get("overall_progress_percent")) or 0)
@@ -329,18 +320,6 @@ def build_checklist(
         "job_completed_count_matches_target_count": {
             "passed": final_completed_count == final_target_count and final_target_count > 0,
         },
-        "path_trigger_completed_matches_glue_count": {
-            "passed": path_trigger_completed == expected_trigger_count and expected_trigger_count > 0,
-        },
-        "stop_counts_match_glue_count": {
-            "passed": stop_completed == stop_total == expected_trigger_count and expected_trigger_count > 0,
-        },
-        "observed_axis_coverage": {
-            "passed": (
-                float(axis_coverage.get("ratio_x", 0.0)) >= min_axis_coverage_ratio
-                and float(axis_coverage.get("ratio_y", 0.0)) >= min_axis_coverage_ratio
-            ),
-        },
     }
 
 
@@ -362,6 +341,9 @@ def build_report_markdown(report: dict[str, Any]) -> str:
         f"- gateway_port: `{report['gateway_port']}`",
         f"- config_path: `{report['config_path']}`",
         f"- dxf_file: `{report['dxf_file']}`",
+        f"- recipe_id: `{report.get('recipe_id', '')}`",
+        f"- version_id: `{report.get('version_id', '')}`",
+        f"- recipe_context_source: `{report.get('recipe_context_source', '')}`",
         f"- job_id: `{report.get('job_id', '')}`",
         "",
         "## Checks",
@@ -373,6 +355,15 @@ def build_report_markdown(report: dict[str, Any]) -> str:
     lines.extend(["", "## Steps", ""])
     for step in report.get("steps", []):
         lines.append(f"- `{step['step']}`: `{step['status']}` {step['detail']}")
+    lines.extend(
+        [
+            "",
+            "## Diagnostics",
+            "",
+            f"- `axis_coverage`: `{json.dumps(report.get('axis_coverage', {}), ensure_ascii=True)}`",
+            f"- `log_summary`: `{json.dumps(report.get('log_summary', {}), ensure_ascii=True)}`",
+        ]
+    )
     if report.get("error"):
         lines.extend(["", "## Error", "", report["error"]])
     return "\n".join(lines) + "\n"
@@ -397,6 +388,7 @@ def attempt_safe_stop(client: TcpJsonClient, job_id: str) -> None:
 
 def main() -> int:
     args = parse_args()
+    recipe_context = recipe_context_metadata(args.recipe_id, args.version_id)
     effective_port = resolve_listen_port(args.host, args.port)
     report_dir = args.report_root / time.strftime("%Y%m%d-%H%M%S")
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -482,8 +474,22 @@ def main() -> int:
                         "status_response": admission.status_response,
                     }
                 )
-            )
+        )
         add_step(steps, "tcp-connect", "passed", json.dumps(admission.connect_params, ensure_ascii=True))
+
+        validated_recipe_context = ensure_published_recipe_version(
+            client,
+            recipe_id=recipe_context["recipe_id"],
+            version_id=recipe_context["version_id"],
+            timeout_seconds=min(10.0, args.connect_timeout),
+        )
+        artifacts["recipe_context_validation"] = validated_recipe_context
+        add_step(
+            steps,
+            "recipe-context-validate",
+            "passed",
+            json.dumps(validated_recipe_context, ensure_ascii=False),
+        )
 
         status_before = client.send_request("status", None, timeout_seconds=5.0)
         artifacts["status_before"] = status_before
@@ -561,15 +567,13 @@ def main() -> int:
         if not artifact_id:
             raise RuntimeError("artifact.create missing artifact_id")
         add_step(steps, "dxf-artifact-create", "passed", f"artifact_id={artifact_id}")
-        recipe_id, version_id = resolve_active_recipe(client, timeout_seconds=10.0)
-        add_step(steps, "recipe-list", "passed", json.dumps({"recipe_id": recipe_id, "version_id": version_id}, ensure_ascii=True))
 
         plan_response = client.send_request(
             "dxf.plan.prepare",
             {
                 "artifact_id": artifact_id,
-                "recipe_id": recipe_id,
-                "version_id": version_id,
+                "recipe_id": recipe_context["recipe_id"],
+                "version_id": recipe_context["version_id"],
                 "dispensing_speed_mm_s": args.dispensing_speed_mm_s,
                 "dry_run": False,
                 "rapid_speed_mm_s": args.rapid_speed_mm_s,
@@ -765,6 +769,7 @@ def main() -> int:
             "gateway_port": effective_port,
             "config_path": str(args.config_path),
             "dxf_file": str(args.dxf_file),
+            **recipe_context,
             "job_id": job_id,
             "plan_id": plan_id,
             "plan_fingerprint": plan_fingerprint,

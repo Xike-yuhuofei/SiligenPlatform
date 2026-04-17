@@ -114,6 +114,22 @@ bool HasReachedPathTriggerEvent(bool has_previous_position,
                                event.y_position_pulse,
                                tolerance);
 }
+
+const char* ToString(DispenserValveStatus status) noexcept {
+    switch (status) {
+        case DispenserValveStatus::Idle:
+            return "idle";
+        case DispenserValveStatus::Running:
+            return "running";
+        case DispenserValveStatus::Paused:
+            return "paused";
+        case DispenserValveStatus::Stopped:
+            return "stopped";
+        case DispenserValveStatus::Error:
+            return "error";
+    }
+    return "unknown";
+}
 }  // namespace
 
 // ============================================================
@@ -439,6 +455,10 @@ Result<void> ValveAdapter::StopDispenser() noexcept {
 
         if (dispenser_state_.status == DispenserValveStatus::Idle ||
             dispenser_state_.status == DispenserValveStatus::Stopped) {
+            const auto path_trigger_next_index_snapshot = path_trigger_next_index_;
+            const auto path_trigger_event_count_snapshot = path_trigger_events_.size();
+            const auto status_snapshot = dispenser_state_.status;
+            const auto run_mode_snapshot = dispenser_run_mode_;
             dispenser_continuous_ = false;
             dispenser_run_mode_ = DispenserRunMode::None;
             path_trigger_events_.clear();
@@ -446,6 +466,13 @@ Result<void> ValveAdapter::StopDispenser() noexcept {
             path_trigger_start_level_ = 0;
             path_trigger_pulse_width_ms_ = 0;
             ResetDispenserHardwareState("StopDispenser", false);
+            SILIGEN_LOG_INFO(
+                "StopDispenser: completedCount=" + std::to_string(dispenser_state_.completedCount) +
+                ", totalCount=" + std::to_string(dispenser_state_.totalCount) +
+                ", nextIndex=" + std::to_string(path_trigger_next_index_snapshot) +
+                ", eventCount=" + std::to_string(path_trigger_event_count_snapshot) +
+                ", status=" + ToString(status_snapshot) +
+                ", run_mode=" + std::to_string(static_cast<int>(run_mode_snapshot)));
             return Result<void>::Success();
         }
 
@@ -456,6 +483,10 @@ Result<void> ValveAdapter::StopDispenser() noexcept {
         }
 
         UpdateDispenserProgress();
+        const auto path_trigger_next_index_snapshot = path_trigger_next_index_;
+        const auto path_trigger_event_count_snapshot = path_trigger_events_.size();
+        const auto status_snapshot = dispenser_state_.status;
+        const auto run_mode_snapshot = dispenser_run_mode_;
         dispenser_state_.status = DispenserValveStatus::Stopped;
         dispenser_state_.errorMessage.clear();
         dispenser_continuous_ = false;
@@ -473,9 +504,13 @@ Result<void> ValveAdapter::StopDispenser() noexcept {
         path_trigger_start_level_ = 0;
         path_trigger_pulse_width_ms_ = 0;
 
-        SILIGEN_LOG_INFO("StopDispenser: completedCount=" +
-                         std::to_string(dispenser_state_.completedCount) +
-                         ", totalCount=" + std::to_string(dispenser_state_.totalCount));
+        SILIGEN_LOG_INFO(
+            "StopDispenser: completedCount=" + std::to_string(dispenser_state_.completedCount) +
+            ", totalCount=" + std::to_string(dispenser_state_.totalCount) +
+            ", nextIndex=" + std::to_string(path_trigger_next_index_snapshot) +
+            ", eventCount=" + std::to_string(path_trigger_event_count_snapshot) +
+            ", status=" + ToString(status_snapshot) +
+            ", run_mode=" + std::to_string(static_cast<int>(run_mode_snapshot)));
 
         return Result<void>::Success();
     }
@@ -750,6 +785,26 @@ void ValveAdapter::PathTriggeredDispenserLoop() noexcept {
     long previous_x_position = 0;
     long previous_y_position = 0;
     uint32 read_failure_count = 0;
+    auto log_terminal = [&](const char* reason,
+                            bool has_current_position,
+                            long current_x_position,
+                            long current_y_position) {
+        std::lock_guard<std::mutex> lock(dispenser_mutex_);
+        const auto logged_current_x = has_current_position ? current_x_position : previous_x_position;
+        const auto logged_current_y = has_current_position ? current_y_position : previous_y_position;
+        SILIGEN_LOG_INFO(
+            std::string("PathTriggeredDispenserLoopExit: reason=") + reason +
+            ", nextIndex=" + std::to_string(path_trigger_next_index_) +
+            ", eventCount=" + std::to_string(path_trigger_events_.size()) +
+            ", completedCount=" + std::to_string(dispenser_state_.completedCount) +
+            ", totalCount=" + std::to_string(dispenser_state_.totalCount) +
+            ", status=" + ToString(dispenser_state_.status) +
+            ", run_mode=" + std::to_string(static_cast<int>(dispenser_run_mode_)) +
+            ", stop_requested=" + std::to_string(path_trigger_stop_requested_ ? 1 : 0) +
+            ", pause_requested=" + std::to_string(path_trigger_pause_requested_ ? 1 : 0) +
+            ", previous=(" + std::to_string(previous_x_position) + "," + std::to_string(previous_y_position) + ")" +
+            ", current=(" + std::to_string(logged_current_x) + "," + std::to_string(logged_current_y) + ")");
+    };
 
     while (true) {
         short coordinate_system = 0;
@@ -766,6 +821,8 @@ void ValveAdapter::PathTriggeredDispenserLoop() noexcept {
                 path_trigger_active_ = false;
                 path_trigger_pause_requested_ = false;
                 path_trigger_stop_requested_ = false;
+                lock.unlock();
+                log_terminal("stop_requested", false, 0, 0);
                 return;
             }
 
@@ -773,6 +830,8 @@ void ValveAdapter::PathTriggeredDispenserLoop() noexcept {
                 path_trigger_active_ = false;
                 path_trigger_pause_requested_ = false;
                 path_trigger_stop_requested_ = false;
+                lock.unlock();
+                log_terminal("run_mode_changed", false, 0, 0);
                 return;
             }
 
@@ -783,6 +842,8 @@ void ValveAdapter::PathTriggeredDispenserLoop() noexcept {
                 path_trigger_active_ = false;
                 path_trigger_pause_requested_ = false;
                 path_trigger_stop_requested_ = false;
+                lock.unlock();
+                log_terminal("status_not_running", false, 0, 0);
                 return;
             }
 
@@ -790,6 +851,8 @@ void ValveAdapter::PathTriggeredDispenserLoop() noexcept {
                 path_trigger_active_ = false;
                 path_trigger_pause_requested_ = false;
                 path_trigger_stop_requested_ = false;
+                lock.unlock();
+                log_terminal("events_already_drained", false, 0, 0);
                 return;
             }
 
@@ -803,13 +866,16 @@ void ValveAdapter::PathTriggeredDispenserLoop() noexcept {
         if (!ReadCoordinateSystemPositionPulse(coordinate_system, current_x_position, current_y_position)) {
             ++read_failure_count;
             if (read_failure_count >= kMaxCoordinateReadFailures) {
-                std::lock_guard<std::mutex> lock(dispenser_mutex_);
-                dispenser_state_.status = DispenserValveStatus::Error;
-                dispenser_state_.errorMessage = "连续读取坐标系位置失败，无法执行路径触发点胶";
-                dispenser_run_mode_ = DispenserRunMode::None;
-                path_trigger_active_ = false;
-                path_trigger_pause_requested_ = false;
-                path_trigger_stop_requested_ = false;
+                {
+                    std::lock_guard<std::mutex> lock(dispenser_mutex_);
+                    dispenser_state_.status = DispenserValveStatus::Error;
+                    dispenser_state_.errorMessage = "连续读取坐标系位置失败，无法执行路径触发点胶";
+                    dispenser_run_mode_ = DispenserRunMode::None;
+                    path_trigger_active_ = false;
+                    path_trigger_pause_requested_ = false;
+                    path_trigger_stop_requested_ = false;
+                }
+                log_terminal("coordinate_read_failed", false, current_x_position, current_y_position);
                 return;
             }
 
@@ -841,6 +907,8 @@ void ValveAdapter::PathTriggeredDispenserLoop() noexcept {
                 break;
             }
 
+            bool pulse_error = false;
+            bool path_trigger_completed = false;
             {
                 std::lock_guard<std::mutex> lock(dispenser_mutex_);
                 if (dispenser_run_mode_ != DispenserRunMode::PositionTriggered ||
@@ -863,23 +931,32 @@ void ValveAdapter::PathTriggeredDispenserLoop() noexcept {
                     path_trigger_pause_requested_ = false;
                     path_trigger_stop_requested_ = false;
                     SILIGEN_LOG_ERROR("PathTriggeredDispenserLoop: 脉冲触发失败: " + error_msg);
-                    return;
-                }
+                    pulse_error = true;
+                } else {
+                    ++path_trigger_next_index_;
+                    if (dispenser_state_.completedCount < dispenser_state_.totalCount) {
+                        ++dispenser_state_.completedCount;
+                    }
+                    UpdateDispenserProgress();
 
-                ++path_trigger_next_index_;
-                if (dispenser_state_.completedCount < dispenser_state_.totalCount) {
-                    ++dispenser_state_.completedCount;
+                    if (path_trigger_next_index_ >= path_trigger_events_.size()) {
+                        path_trigger_active_ = false;
+                        path_trigger_pause_requested_ = false;
+                        path_trigger_stop_requested_ = false;
+                        SILIGEN_LOG_INFO("PathTriggeredDispenserLoop: 路径触发任务完成, completedCount=" +
+                                         std::to_string(dispenser_state_.completedCount));
+                        path_trigger_completed = true;
+                    }
                 }
-                UpdateDispenserProgress();
+            }
 
-                if (path_trigger_next_index_ >= path_trigger_events_.size()) {
-                    path_trigger_active_ = false;
-                    path_trigger_pause_requested_ = false;
-                    path_trigger_stop_requested_ = false;
-                    SILIGEN_LOG_INFO("PathTriggeredDispenserLoop: 路径触发任务完成, completedCount=" +
-                                     std::to_string(dispenser_state_.completedCount));
-                    return;
-                }
+            if (pulse_error) {
+                log_terminal("pulse_error", true, current_x_position, current_y_position);
+                return;
+            }
+            if (path_trigger_completed) {
+                log_terminal("completed", true, current_x_position, current_y_position);
+                return;
             }
         }
 

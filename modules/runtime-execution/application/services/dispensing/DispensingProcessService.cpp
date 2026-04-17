@@ -289,6 +289,35 @@ const char* ToString(Motion::Ports::InterpolationType type) noexcept {
     return "unknown";
 }
 
+const char* ToString(Ports::DispenserValveStatus status) noexcept {
+    switch (status) {
+        case Ports::DispenserValveStatus::Idle:
+            return "idle";
+        case Ports::DispenserValveStatus::Running:
+            return "running";
+        case Ports::DispenserValveStatus::Paused:
+            return "paused";
+        case Ports::DispenserValveStatus::Stopped:
+            return "stopped";
+        case Ports::DispenserValveStatus::Error:
+            return "error";
+    }
+    return "unknown";
+}
+
+Error BuildPathTriggerReconcileFailure(const Ports::DispenserValveState& status,
+                                       uint32 expected_trigger_count) {
+    const auto adapter_error_message = status.errorMessage.empty() ? std::string("<none>") : status.errorMessage;
+    const auto message =
+        "failure_stage=path_trigger_reconcile;failure_code=DISPENSER_TRIGGER_INCOMPLETE;completed_count=" +
+        std::to_string(status.completedCount) +
+        ";total_count=" + std::to_string(status.totalCount) +
+        ";expected_trigger_count=" + std::to_string(expected_trigger_count) +
+        ";status=" + ToString(status.status) +
+        ";adapter_error_message=" + adapter_error_message;
+    return Error(ErrorCode::DISPENSER_TRIGGER_INCOMPLETE, message, "DispensingProcessService");
+}
+
 std::optional<Point2D> ResolveInterpolationEndPoint(
     const Motion::Ports::InterpolationData& segment) noexcept {
     if (segment.positions.size() < 2U) {
@@ -1023,6 +1052,8 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
     const auto& program = plan.interpolation_segments;
     const auto total_segments = program.size();
     size_t cursor = 0;
+    bool path_trigger_started = false;
+    uint32 expected_trigger_count = 0U;
     const auto controller_ready_trace = BuildControllerReadyTracePlan(plan);
 
     if (!plan.interpolation_points.empty()) {
@@ -1157,6 +1188,8 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
         if (start_result.IsError()) {
             return Result<DispensingExecutionReport>::Failure(start_result.GetError());
         }
+        path_trigger_started = true;
+        expected_trigger_count = static_cast<uint32>(params_for_trigger.trigger_events.size());
     }
 
     auto override_result = interpolation_port_->SetCoordinateSystemVelocityOverride(kCoordinateSystem, 100.0f);
@@ -1306,6 +1339,24 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
         observer);
     if (wait_result.IsError()) {
         return Result<DispensingExecutionReport>::Failure(wait_result.GetError());
+    }
+
+    if (path_trigger_started) {
+        auto dispenser_status_result = valve_port_->GetDispenserStatus();
+        if (dispenser_status_result.IsError()) {
+            return Result<DispensingExecutionReport>::Failure(dispenser_status_result.GetError());
+        }
+
+        const auto& dispenser_status = dispenser_status_result.Value();
+        const bool counts_complete =
+            dispenser_status.completedCount == dispenser_status.totalCount &&
+            dispenser_status.totalCount == expected_trigger_count &&
+            expected_trigger_count > 0U;
+        if (dispenser_status.HasError() || !counts_complete) {
+            const auto reconcile_error = BuildPathTriggerReconcileFailure(dispenser_status, expected_trigger_count);
+            SILIGEN_LOG_ERROR("路径触发点胶终态收口失败: " + reconcile_error.GetMessage());
+            return Result<DispensingExecutionReport>::Failure(reconcile_error);
+        }
     }
 
     PublishProgress(observer, static_cast<uint32>(total_segments), static_cast<uint32>(total_segments));

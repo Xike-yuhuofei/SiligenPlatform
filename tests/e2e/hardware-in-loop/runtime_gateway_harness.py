@@ -239,7 +239,6 @@ def recipe_context_metadata(
         or RECIPE_CONTEXT_SOURCE_CLI_EXPLICIT,
     }
 
-
 def build_recipe_context_cli_args(recipe_id: str, version_id: str) -> list[str]:
     metadata = recipe_context_metadata(recipe_id, version_id)
     return [

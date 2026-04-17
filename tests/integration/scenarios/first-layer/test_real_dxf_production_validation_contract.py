@@ -30,6 +30,10 @@ def test_extract_gateway_log_summary_reads_path_trigger_counts() -> None:
     assert summary["stop_dispenser"]["total_count"] == 180
 
 
+def test_default_dxf_file_uses_repo_canonical_sample() -> None:
+    assert production_validation.DEFAULT_REPO_DXF == ROOT / "samples" / "dxf" / "rect_diag.dxf"
+
+
 def test_compute_axis_coverage_reports_expected_ratios() -> None:
     expected_bbox = production_validation.summarize_points_bbox(
         [
@@ -50,7 +54,7 @@ def test_compute_axis_coverage_reports_expected_ratios() -> None:
     assert coverage["ratio_y"] == 0.84
 
 
-def test_build_checklist_passes_when_counts_and_coverage_match() -> None:
+def test_build_checklist_uses_job_status_as_single_blocking_authority() -> None:
     checks = production_validation.build_checklist(
         snapshot_result={
             "preview_source": "planned_glue_snapshot",
@@ -64,14 +68,39 @@ def test_build_checklist_passes_when_counts_and_coverage_match() -> None:
             "target_count": 1,
         },
         log_summary={
-            "path_trigger_completed": {"completed_count": 180},
-            "stop_dispenser": {"completed_count": 180, "total_count": 180},
+            "path_trigger_completed": {"completed_count": 67},
+            "stop_dispenser": {"completed_count": 67, "total_count": 180},
         },
-        axis_coverage={"ratio_x": 0.91, "ratio_y": 0.89},
+        axis_coverage={"ratio_x": 0.30, "ratio_y": 0.25},
         min_axis_coverage_ratio=0.80,
     )
 
     assert all(payload["passed"] for payload in checks.values())
+
+
+def test_build_checklist_fails_when_job_is_not_terminal_completed() -> None:
+    checks = production_validation.build_checklist(
+        snapshot_result={
+            "preview_source": "planned_glue_snapshot",
+            "preview_kind": "glue_points",
+            "glue_point_count": 180,
+        },
+        final_job_status={
+            "state": "failed",
+            "overall_progress_percent": 100,
+            "completed_count": 0,
+            "target_count": 1,
+            "error_message": "failure_stage=path_trigger_reconcile;failure_code=DISPENSER_TRIGGER_INCOMPLETE",
+        },
+        log_summary={
+            "path_trigger_completed": {"completed_count": 180},
+            "stop_dispenser": {"completed_count": 180, "total_count": 180},
+        },
+        axis_coverage={"ratio_x": 1.0, "ratio_y": 1.0},
+        min_axis_coverage_ratio=0.80,
+    )
+
+    assert not checks["job_terminal_completed"]["passed"]
 
 
 def test_read_log_segment_reads_full_file_after_rotation() -> None:
