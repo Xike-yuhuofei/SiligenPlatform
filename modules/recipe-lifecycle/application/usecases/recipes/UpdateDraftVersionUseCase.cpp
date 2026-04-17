@@ -47,6 +47,7 @@ Result<UpdateDraftVersionResponse> UpdateDraftVersionUseCase::Execute(const Upda
     if (!request.change_note.empty()) {
         version.change_note = request.change_note;
     }
+    NormalizeRecipePlanningPolicyParameters(version.parameters);
 
     auto schema_result = schema_port_->GetDefaultSchema();
     if (schema_result.IsError()) {

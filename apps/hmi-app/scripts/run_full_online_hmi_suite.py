@@ -96,7 +96,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gateway-exe", type=Path, default=None)
     parser.add_argument("--gateway-config", type=Path, default=None)
     parser.add_argument("--use-mock-gateway-config", action="store_true")
-    parser.add_argument("--preview-payload-path", type=Path, default=None)
     return parser.parse_args()
 
 
@@ -140,8 +139,6 @@ def _online_smoke_command(args: argparse.Namespace, screenshot_path: Path) -> li
         command.extend(["-GatewayConfig", str(args.gateway_config)])
     if args.use_mock_gateway_config:
         command.append("-UseMockGatewayConfig")
-    if args.preview_payload_path is not None:
-        command.extend(["-PreviewPayloadPath", str(args.preview_payload_path)])
     return command
 
 
@@ -186,8 +183,6 @@ def _runtime_action_matrix_command(args: argparse.Namespace, report_root: Path) 
         "--timeout-ms",
         str(args.timeout_ms),
     ]
-    if args.preview_payload_path is not None:
-        command.extend(["--preview-payload-path", str(args.preview_payload_path)])
     if args.gateway_exe is not None:
         command.extend(["--gateway-exe", str(args.gateway_exe)])
     if args.gateway_config is not None:

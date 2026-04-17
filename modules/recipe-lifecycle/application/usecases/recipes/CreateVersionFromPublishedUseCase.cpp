@@ -67,6 +67,7 @@ Result<CreateVersionFromPublishedResponse> CreateVersionFromPublishedUseCase::Ex
     version.created_by = request.created_by;
     version.created_at = NowEpochMillis();
     version.change_note = request.change_note;
+    NormalizeRecipePlanningPolicyParameters(version.parameters);
 
     auto schema_result = schema_port_->GetDefaultSchema();
     if (schema_result.IsError()) {

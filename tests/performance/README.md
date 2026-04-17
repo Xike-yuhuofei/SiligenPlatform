@@ -10,6 +10,7 @@
 - 默认采集当前仓库已跟踪的 DXF samples：`small=rect_diag.dxf`、`medium=rect_medium_ladder.dxf`、`large=rect_large_ladder.dxf`
 - canonical `medium` / `large` 由 `tests/performance/generate_canonical_dxf_samples.py` 生成并固化在 `samples/dxf/`
 - 如需临时覆盖某个 sample，仍可显式通过 `--sample <label>=<PATH>` 提供，但正式 `nightly-performance` blocking gate 只认仓库内 canonical samples
+- 作为 `dxf.plan.prepare` producer，脚本必须显式传入已发布 `--recipe-id/--version-id`；当前 canonical published context 固定为 `recipe-7d1b00f4-6a99 / version-fea9ce29-f963`
 - 输出 `JSON + Markdown` 到 `tests/reports/performance/dxf-preview-profiles/`
 - `tests/performance/collect_dxf_preview_profiles.py` 同时是 `nightly-performance` 的正式 authority；当显式传 `--gate-mode nightly-performance --threshold-config tests/baselines/performance/dxf-preview-profile-thresholds.json` 时，threshold gate 为 blocking
 - 默认 gateway executable 解析顺序与 shared build owner 保持一致：`SILIGEN_CONTROL_APPS_BUILD_ROOT` -> 携带当前工作区匹配 `CMakeCache.txt` 的 `<repo-root>\build\ca\bin\*` -> `<repo-root>\build\control-apps\bin\*` -> `<repo-root>\build\bin\*` -> 携带当前工作区匹配 `CMakeCache.txt` 的 `%LOCALAPPDATA%\SS\cab-*\bin\*` -> 携带当前工作区匹配 `CMakeCache.txt` 的 legacy `%LOCALAPPDATA%\SiligenSuite\control-apps-build\bin\*`
@@ -34,6 +35,7 @@
   - `soak-24h-small`：默认 `small` 样本的 24 小时长稳
 - `soak-30m-matrix` 可直接执行；超过 30 分钟的扩展 profile 必须显式传 `--allow-long-profiles`，避免误触超长任务
 - 该脚本只负责 `G8` 补充证据和 blocker 汇总，不替代 `nightly-performance` authority，也不会 publish latest authority
+- suite summary 会显式落 `recipe_context`，沿用调用方传入的 published `recipe/version`
 
 ### 场景语义
 
@@ -67,6 +69,8 @@
 - `small` smoke
   ```powershell
   python tests/performance/collect_dxf_preview_profiles.py `
+    --recipe-id recipe-7d1b00f4-6a99 `
+    --version-id version-fea9ce29-f963 `
     --sample-labels small `
     --cold-iterations 1 `
     --hot-warmup-iterations 1 `
@@ -77,6 +81,8 @@
 - `nightly-performance` threshold gate
   ```powershell
   python tests/performance/collect_dxf_preview_profiles.py `
+    --recipe-id recipe-7d1b00f4-6a99 `
+    --version-id version-fea9ce29-f963 `
     --sample-labels small medium large `
     --cold-iterations 1 `
     --hot-warmup-iterations 1 `
@@ -94,6 +100,8 @@
 - `small` + execution smoke
   ```powershell
   python tests/performance/collect_dxf_preview_profiles.py `
+    --recipe-id recipe-7d1b00f4-6a99 `
+    --version-id version-fea9ce29-f963 `
     --sample-labels small `
     --cold-iterations 1 `
     --hot-warmup-iterations 1 `
@@ -105,6 +113,8 @@
 - `large` single-flight 观测
   ```powershell
   python tests/performance/collect_dxf_preview_profiles.py `
+    --recipe-id recipe-7d1b00f4-6a99 `
+    --version-id version-fea9ce29-f963 `
     --sample-labels large `
     --cold-iterations 0 `
     --hot-iterations 0 `
@@ -114,6 +124,8 @@
 - 基线对比
   ```powershell
   python tests/performance/collect_dxf_preview_profiles.py `
+    --recipe-id recipe-7d1b00f4-6a99 `
+    --version-id version-fea9ce29-f963 `
     --sample-labels small medium large `
     --include-start-job `
     --baseline-json tests/reports/performance/dxf-preview-profiles/latest.json `
@@ -122,11 +134,15 @@
 - `30m` full-online soak 汇总
   ```powershell
   python tests/performance/run_online_soak_profiles.py `
+    --recipe-id recipe-7d1b00f4-6a99 `
+    --version-id version-fea9ce29-f963 `
     --profile-id soak-30m-matrix
   ```
 - 全 planned soak profile 汇总
   ```powershell
   python tests/performance/run_online_soak_profiles.py `
+    --recipe-id recipe-7d1b00f4-6a99 `
+    --version-id version-fea9ce29-f963 `
     --allow-long-profiles
   ```
 

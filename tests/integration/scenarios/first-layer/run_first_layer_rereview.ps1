@@ -69,6 +69,8 @@ function Get-OverallExitCode {
 }
 
 $workspaceRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
+$canonicalRecipeId = "recipe-7d1b00f4-6a99"
+$canonicalVersionId = "version-fea9ce29-f963"
 $resolvedReportRoot = Join-Path $workspaceRoot $ReportDir
 $runStamp = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ")
 $runReportDir = Join-Path $resolvedReportRoot $runStamp
@@ -97,7 +99,9 @@ $tasks = @(
         name = "s2-s4-precondition-matrix"
         script = $preconditionScript
         args = @(
-            "--report-dir", (Join-Path $runReportDir "s2-s4-precondition")
+            "--report-dir", (Join-Path $runReportDir "s2-s4-precondition"),
+            "--recipe-id", $canonicalRecipeId,
+            "--version-id", $canonicalVersionId
         )
     },
     [pscustomobject]@{

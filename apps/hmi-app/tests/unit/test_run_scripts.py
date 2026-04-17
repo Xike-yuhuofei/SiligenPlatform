@@ -389,3 +389,67 @@ class HmiRunScriptContractTest(unittest.TestCase):
             output = f"{completed.stdout}\n{completed.stderr}"
             self.assertEqual(completed.returncode, 0, msg=output)
             self.assertTrue(screenshot_path.exists(), msg=output)
+
+    def test_online_smoke_rejects_preview_payload_without_explicit_snapshot_render_profile(self) -> None:
+        smoke_script = PROJECT_ROOT / "scripts" / "online-smoke.ps1"
+        python_exe = Path(sys.executable).resolve()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            payload_path = Path(temp_dir) / "snapshot.json"
+            payload_path.write_text("{}", encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    POWERSHELL,
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(smoke_script),
+                    "-PythonExe",
+                    str(python_exe),
+                    "-ExerciseRuntimeActions",
+                    "-PreviewPayloadPath",
+                    str(payload_path),
+                ],
+                cwd=str(PROJECT_ROOT),
+                capture_output=True,
+                text=True,
+            )
+
+            output = f"{completed.stdout}\n{completed.stderr}"
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("PreviewPayloadPath requires explicit -RuntimeActionProfile snapshot_render", output)
+
+    def test_online_smoke_rejects_preview_payload_for_operator_preview(self) -> None:
+        smoke_script = PROJECT_ROOT / "scripts" / "online-smoke.ps1"
+        python_exe = Path(sys.executable).resolve()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            payload_path = Path(temp_dir) / "snapshot.json"
+            payload_path.write_text("{}", encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    POWERSHELL,
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(smoke_script),
+                    "-PythonExe",
+                    str(python_exe),
+                    "-ExerciseRuntimeActions",
+                    "-RuntimeActionProfile",
+                    "operator_preview",
+                    "-PreviewPayloadPath",
+                    str(payload_path),
+                ],
+                cwd=str(PROJECT_ROOT),
+                capture_output=True,
+                text=True,
+            )
+
+            output = f"{completed.stdout}\n{completed.stderr}"
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("PreviewPayloadPath is only allowed with -RuntimeActionProfile snapshot_render", output)

@@ -1,10 +1,13 @@
+#include "runtime/recipes/RecipeFileRepository.h"
 #include "runtime/recipes/TemplateFileRepository.h"
 
+#include "recipe_lifecycle/domain/recipes/aggregates/RecipeVersion.h"
 #include "recipe_lifecycle/domain/recipes/value-objects/RecipeTypes.h"
 #include "shared/types/Error.h"
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -13,7 +16,9 @@
 
 namespace {
 
+using Siligen::Domain::Recipes::Aggregates::RecipeVersion;
 using Siligen::Domain::Recipes::ValueObjects::Template;
+using Siligen::Infrastructure::Adapters::Recipes::RecipeFileRepository;
 using Siligen::Infrastructure::Adapters::Recipes::TemplateFileRepository;
 using Siligen::Shared::Types::ErrorCode;
 
@@ -87,6 +92,40 @@ std::string BuildCanonicalTemplateFile(const Template& tmpl) {
 
 std::string LegacyTemplateFileName() {
     return std::string("templates") + ".json";
+}
+
+std::string BuildCanonicalRecipeFile() {
+    return "{\n"
+           "  \"schemaVersion\": \"1.0\",\n"
+           "  \"recipe\": {\n"
+           "    \"id\": \"recipe-1\",\n"
+           "    \"name\": \"Demo Recipe\",\n"
+           "    \"description\": \"recipe\",\n"
+           "    \"status\": \"active\",\n"
+           "    \"activeVersionId\": \"version-1\",\n"
+           "    \"versionIds\": [\"version-1\"],\n"
+           "    \"createdAt\": 100,\n"
+           "    \"updatedAt\": 100\n"
+           "  }\n"
+           "}\n";
+}
+
+std::string BuildLegacyRecipeVersionFile() {
+    return "{\n"
+           "  \"schemaVersion\": \"1.0\",\n"
+           "  \"version\": {\n"
+           "    \"id\": \"version-1\",\n"
+           "    \"recipeId\": \"recipe-1\",\n"
+           "    \"versionLabel\": \"v1\",\n"
+           "    \"status\": \"published\",\n"
+           "    \"parameters\": [\n"
+           "      {\"key\": \"dispense_speed\", \"value\": 120.0}\n"
+           "    ],\n"
+           "    \"createdBy\": \"tester\",\n"
+           "    \"createdAt\": 100,\n"
+           "    \"publishedAt\": 200\n"
+           "  }\n"
+           "}\n";
 }
 
 }  // namespace
@@ -182,4 +221,46 @@ TEST(TemplateFileRepositoryTest, FailsFastWhenLegacyTemplateFileExistsDuringSave
 
     ASSERT_TRUE(save_result.IsError());
     EXPECT_EQ(save_result.GetError().GetCode(), ErrorCode::FILE_IO_ERROR);
+}
+
+TEST(RecipeFileRepositoryTest, GetVersionByIdNormalizesMissingPlanningPolicyParameters) {
+    ScopedTempRecipeDirectory temp_dir("normalize_legacy_version");
+    temp_dir.WriteFile("recipes/recipe-1.json", BuildCanonicalRecipeFile());
+    temp_dir.WriteFile("versions/recipe-1/version-1.json", BuildLegacyRecipeVersionFile());
+
+    RecipeFileRepository repository(temp_dir.root().string());
+    const auto result = repository.GetVersionById("recipe-1", "version-1");
+
+    ASSERT_TRUE(result.IsSuccess());
+    const auto& parameters = result.Value().parameters;
+    EXPECT_TRUE(std::any_of(
+        parameters.begin(),
+        parameters.end(),
+        [](const auto& entry) { return entry.key == "trigger_spatial_interval_mm"; }));
+    EXPECT_TRUE(std::any_of(
+        parameters.begin(),
+        parameters.end(),
+        [](const auto& entry) { return entry.key == "point_flying_direction_mode"; }));
+}
+
+TEST(RecipeFileRepositoryTest, SaveVersionPersistsNormalizedPlanningPolicyParameters) {
+    ScopedTempRecipeDirectory temp_dir("save_normalized_version");
+    temp_dir.WriteFile("recipes/recipe-1.json", BuildCanonicalRecipeFile());
+
+    RecipeFileRepository repository(temp_dir.root().string());
+    RecipeVersion version;
+    version.id = "version-2";
+    version.recipe_id = "recipe-1";
+    version.version_label = "v2";
+    version.status = Siligen::Domain::Recipes::ValueObjects::RecipeVersionStatus::Draft;
+    version.parameters = {{"dispense_speed", 150.0}};
+    version.created_by = "tester";
+    version.created_at = 100;
+
+    const auto save_result = repository.SaveVersion(version);
+
+    ASSERT_TRUE(save_result.IsSuccess());
+    const auto payload = temp_dir.ReadFile("versions/recipe-1/version-2.json");
+    EXPECT_NE(payload.find("\"trigger_spatial_interval_mm\""), std::string::npos);
+    EXPECT_NE(payload.find("\"point_flying_direction_mode\""), std::string::npos);
 }

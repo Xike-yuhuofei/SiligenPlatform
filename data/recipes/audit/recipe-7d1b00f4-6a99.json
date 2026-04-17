@@ -156,6 +156,34 @@
             "id": "audit-4e2fe732-1a22",
             "recipeId": "recipe-7d1b00f4-6a99",
             "timestamp": 1773586760119
+        },
+        {
+            "action": "edit",
+            "actor": "engineer",
+            "changes": [
+                {
+                    "after": "v1",
+                    "field": "versionLabel"
+                }
+            ],
+            "id": "audit-b99f2972-a24e",
+            "recipeId": "recipe-7d1b00f4-6a99",
+            "timestamp": 1776334032235,
+            "versionId": "version-e59c1c33-6043"
+        },
+        {
+            "action": "edit",
+            "actor": "engineer",
+            "changes": [
+                {
+                    "after": "v1",
+                    "field": "versionLabel"
+                }
+            ],
+            "id": "audit-a3e02c7c-8d4b",
+            "recipeId": "recipe-7d1b00f4-6a99",
+            "timestamp": 1776334038138,
+            "versionId": "version-f895bf3d-e810"
         }
     ],
     "schemaVersion": "1.0"
