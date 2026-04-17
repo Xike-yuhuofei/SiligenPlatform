@@ -103,8 +103,6 @@ struct ExecutionAssemblyBuildInput {
     ProcessPath authority_process_path;
     MotionPlan motion_plan;
     Point2D planning_start_position{};
-    std::string recipe_id;
-    std::string version_id;
     std::string source_path;
     std::string dxf_filename;
     float32 dispensing_velocity = 0.0f;

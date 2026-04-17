@@ -677,8 +677,6 @@ Siligen::Application::Services::Dispensing::WorkflowExecutionAssemblyRequest Bui
     workflow_input.authority_process_path = authority_preview.process_path;
     workflow_input.motion_plan = std::move(motion_plan);
     workflow_input.planning_start_position = Point2D(request.start_x, request.start_y);
-    workflow_input.recipe_id = request.recipe_id;
-    workflow_input.version_id = request.version_id;
     workflow_input.source_path = authority_preview.source_path;
     workflow_input.dxf_filename = authority_preview.artifacts.dxf_filename;
     workflow_input.runtime_options.dispensing_velocity = runtime_params.dispensing_velocity;
@@ -890,8 +888,7 @@ std::string PlanningUseCase::BuildAuthorityCacheKey(const PlanningRequest& reque
 
     std::ostringstream oss;
     oss << request.dxf_filepath << '|'
-        << request.recipe_id << '|'
-        << request.version_id << '|'
+        << request.baseline_fingerprint << '|'
         << request.optimize_path << '|'
         << request.start_x << '|'
         << request.start_y << '|'

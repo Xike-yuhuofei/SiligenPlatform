@@ -70,7 +70,7 @@ std::uint32_t ToElapsedMs(const std::chrono::steady_clock::time_point start_time
 DispensingWorkflowUseCase::DispensingWorkflowUseCase(
     std::shared_ptr<IUploadFilePort> upload_use_case,
     std::shared_ptr<PlanningUseCase> planning_use_case,
-    std::shared_ptr<Siligen::Application::Ports::Dispensing::IRecipePlanningPolicyPort> recipe_planning_policy_port,
+    std::shared_ptr<Siligen::Application::Ports::Dispensing::IProductionBaselinePort> production_baseline_port,
     std::shared_ptr<Siligen::Application::Ports::Dispensing::IWorkflowExecutionPort> execution_port,
     std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
     std::shared_ptr<MotionDevicePort> motion_device_port,
@@ -80,7 +80,7 @@ DispensingWorkflowUseCase::DispensingWorkflowUseCase(
     std::shared_ptr<IInterlockSignalPort> interlock_signal_port)
     : upload_use_case_(std::move(upload_use_case)),
       planning_use_case_(std::move(planning_use_case)),
-      recipe_planning_policy_port_(std::move(recipe_planning_policy_port)),
+      production_baseline_port_(std::move(production_baseline_port)),
       execution_port_(std::move(execution_port)),
       connection_port_(std::move(connection_port)),
       motion_device_port_(std::move(motion_device_port)),
@@ -88,7 +88,7 @@ DispensingWorkflowUseCase::DispensingWorkflowUseCase(
       motion_state_port_(std::move(motion_state_port)),
       homing_port_(std::move(homing_port)),
       interlock_signal_port_(std::move(interlock_signal_port)) {
-    if (!upload_use_case_ || !planning_use_case_ || !recipe_planning_policy_port_ || !execution_port_) {
+    if (!upload_use_case_ || !planning_use_case_ || !production_baseline_port_ || !execution_port_) {
         throw std::invalid_argument("DispensingWorkflowUseCase: dependencies cannot be null");
     }
 }
@@ -127,15 +127,6 @@ Result<CreateArtifactResponse> DispensingWorkflowUseCase::CreateArtifact(const U
 
 Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const PreparePlanRequest& request) {
     const auto prepare_start = std::chrono::steady_clock::now();
-    if (request.recipe_id.empty()) {
-        return Result<PreparePlanResponse>::Failure(
-            Error(ErrorCode::INVALID_PARAMETER, "recipe_id is required", "DispensingWorkflowUseCase"));
-    }
-    if (request.version_id.empty()) {
-        return Result<PreparePlanResponse>::Failure(
-            Error(ErrorCode::INVALID_PARAMETER, "version_id is required", "DispensingWorkflowUseCase"));
-    }
-
     ArtifactRecord artifact;
     {
         std::lock_guard<std::mutex> lock(artifacts_mutex_);
@@ -148,23 +139,13 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
     }
 
     auto planning_request = request.planning_request;
-    if (!planning_request.recipe_id.empty() && planning_request.recipe_id != request.recipe_id) {
-        return Result<PreparePlanResponse>::Failure(
-            Error(ErrorCode::INVALID_PARAMETER, "planning_request.recipe_id mismatch", "DispensingWorkflowUseCase"));
+    const auto baseline_result = production_baseline_port_->ResolveCurrentBaseline();
+    if (baseline_result.IsError()) {
+        return Result<PreparePlanResponse>::Failure(baseline_result.GetError());
     }
-    if (!planning_request.version_id.empty() && planning_request.version_id != request.version_id) {
-        return Result<PreparePlanResponse>::Failure(
-            Error(ErrorCode::INVALID_PARAMETER, "planning_request.version_id mismatch", "DispensingWorkflowUseCase"));
-    }
-    const auto recipe_policy_result =
-        recipe_planning_policy_port_->ResolvePlanningPolicy(request.recipe_id, request.version_id);
-    if (recipe_policy_result.IsError()) {
-        return Result<PreparePlanResponse>::Failure(recipe_policy_result.GetError());
-    }
-    const auto& recipe_policy = recipe_policy_result.Value();
-    planning_request.recipe_id = recipe_policy.recipe_id;
-    planning_request.version_id = recipe_policy.version_id;
-    planning_request.point_flying_carrier_policy = recipe_policy.point_flying_carrier_policy;
+    const auto& baseline = baseline_result.Value();
+    planning_request.baseline_fingerprint = baseline.baseline_fingerprint;
+    planning_request.point_flying_carrier_policy = baseline.point_flying_carrier_policy;
     if (planning_request.dxf_filepath.empty()) {
         planning_request.dxf_filepath = artifact.upload_response.filepath;
     }
@@ -654,8 +635,7 @@ std::string DispensingWorkflowUseCase::BuildPlanFingerprint(
 
     oss << artifact_id << '|'
         << execution_launch.authority_cache_key << '|'
-        << execution_launch.planning_request.recipe_id << '|'
-        << execution_launch.planning_request.version_id << '|'
+        << execution_launch.planning_request.baseline_fingerprint << '|'
         << execution_launch.planning_request.HasExplicitExecutionStrategy() << '|'
         << Siligen::Shared::Types::ToString(
                execution_launch.planning_request.ResolveRequestedExecutionStrategy()) << '|'

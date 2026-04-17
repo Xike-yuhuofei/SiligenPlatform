@@ -93,8 +93,6 @@ struct WorkflowExecutionAssemblyRequest {
     Siligen::ProcessPath::Contracts::ProcessPath authority_process_path;
     Siligen::MotionPlanning::Contracts::MotionPlan motion_plan;
     Siligen::Shared::Types::Point2D planning_start_position{};
-    std::string recipe_id;
-    std::string version_id;
     std::string source_path;
     std::string dxf_filename;
     WorkflowAssemblyRuntimeOptions runtime_options;
@@ -124,8 +122,6 @@ struct WorkflowPlanningAssemblyRequest {
     WorkflowAuthorityPreviewRequest authority_preview_request;
     Siligen::MotionPlanning::Contracts::MotionPlan motion_plan;
     Siligen::Shared::Types::Point2D planning_start_position{};
-    std::string recipe_id;
-    std::string version_id;
     Siligen::Shared::Types::float32 max_jerk = 0.0f;
     Siligen::Shared::Types::float32 estimated_time_s = 0.0f;
     bool use_interpolation_planner = false;

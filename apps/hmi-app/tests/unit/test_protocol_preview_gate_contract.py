@@ -926,8 +926,6 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
 
         ok, payload, error = protocol.dxf_prepare_plan(
             "artifact-1",
-            "recipe-1",
-            "version-1",
             speed_mm_s=20.0,
         )
 
@@ -936,8 +934,6 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertEqual(payload["plan_id"], "plan-1")
         self.assertEqual(client.calls[0][0], "dxf.plan.prepare")
         self.assertEqual(client.calls[0][1]["artifact_id"], "artifact-1")
-        self.assertEqual(client.calls[0][1]["recipe_id"], "recipe-1")
-        self.assertEqual(client.calls[0][1]["version_id"], "version-1")
         self.assertTrue(client.calls[0][1]["optimize_path"])
         self.assertTrue(client.calls[0][1]["use_interpolation_planner"])
         self.assertEqual(client.calls[0][1]["interpolation_algorithm"], 0)
@@ -949,8 +945,6 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
 
         ok, payload, error = protocol.dxf_prepare_plan(
             "artifact-1",
-            "recipe-1",
-            "version-1",
             speed_mm_s=20.0,
             timeout=300.0,
         )

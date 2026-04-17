@@ -65,8 +65,6 @@ def _build_preview_signature(filepath: str, params: Dict) -> str:
     payload = {
         "filepath": filepath,
         "artifact_id": str(params.get("artifact_id", "")),
-        "recipe_id": str(params.get("recipe_id", "")),
-        "version_id": str(params.get("version_id", "")),
         "dry_run": bool(params.get("dry_run", False)),
         "dispensing_speed_mm_s": float(params.get("dispensing_speed_mm_s", 0.0)),
         "dry_run_speed_mm_s": float(params.get("dry_run_speed_mm_s", 0.0)),
@@ -847,17 +845,6 @@ class MockState:
                     return {"error": {"code": -32005, "message": "Missing artifact_id"}}
                 if artifact_id != self.dxf.artifact_id:
                     return {"error": {"code": -32008, "message": "artifact not found"}}
-                recipe_id = str(params.get("recipe_id", "")).strip()
-                if not recipe_id:
-                    return {"error": {"code": -33001, "message": "Missing recipe_id"}}
-                version_id = str(params.get("version_id", "")).strip()
-                if not version_id:
-                    return {"error": {"code": -33002, "message": "Missing version_id"}}
-                recipe = next((item for item in self.recipes if item["id"] == recipe_id), None)
-                if recipe is None:
-                    return {"error": {"code": -33003, "message": "Recipe not found"}}
-                if recipe.get("activeVersionId") != version_id:
-                    return {"error": {"code": -33004, "message": "Version not found"}}
                 speed = float(params.get("dispensing_speed_mm_s", 0.0))
                 if speed <= 0:
                     return {"error": {"code": -32004, "message": "Invalid speed_mm_s"}}

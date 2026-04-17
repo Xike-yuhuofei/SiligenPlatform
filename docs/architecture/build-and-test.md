@@ -1,6 +1,6 @@
 # Build And Test
 
-更新时间：`2026-04-03`
+更新时间：`2026-04-17`
 
 ## 根级正式入口
 
@@ -18,7 +18,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\run-loc
 - `limited-hil` 正式入口使用 `-IncludeHilClosedLoop`、`-IncludeHilCaseMatrix` 控制 `L5` 闭环与矩阵资产
 - `limited-hil` 的 offline prerequisites 必须先覆盖 `contracts + integration + e2e + protocol-compatibility`，以满足 `engineering-regression` / `simulated-line` / `protocol-compatibility` admission 契约
 - `test.ps1` / `ci.ps1` 是根级测试聚合 authority；`python -m test_kit.workspace_validation` 仅在已完成环境引导并注入 `PYTHONPATH=shared\testing\test-kit\src` 时可作为底层模块入口
+- `test.ps1` 在所选 suite 会消费 control-apps 产物时，会先调用同一轮根级 `build.ps1` 做单轨预构建；`full-offline-gate` 不再依赖手工预构建
 - `tests/reports/static/` 是静态门禁正式报告根
+- 当前 active gate 不纳入配方管理与用户管理链路；相关代码与兼容资产保留，但不作为默认门禁组成
 
 ## 正式分层
 
@@ -64,7 +66,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\run-loc
 - `pyrightconfig.json`
 - `scripts/validation/run-pyright-gate.ps1`
 - `scripts/testing/check_no_loose_mock.py`
-- build root 自动发现默认只认 `build/`、`build/control-apps/`、显式 `SILIGEN_CONTROL_APPS_BUILD_ROOT` 与本地发布缓存；根级其他 `build-*` 仅作为本地临时目录保留，不参与默认候选。
+- control-apps build root 默认只认显式 `SILIGEN_CONTROL_APPS_BUILD_ROOT` 与当前工作区 `build/ca`；`build/`、`build/control-apps/` 与本地发布缓存仅作为历史残留或手工排查对象，不参与默认候选。
 
 `L0` 失败即阻断 `quick-gate`，并禁止继续进入 `L3/L4/L5`。
 

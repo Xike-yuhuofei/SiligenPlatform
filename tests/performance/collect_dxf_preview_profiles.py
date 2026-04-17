@@ -37,7 +37,7 @@ from hmi_client.client.gateway_launch import GatewayLaunchSpec, load_gateway_lau
 from hmi_client.client.protocol import CommandProtocol  # noqa: E402
 from hmi_client.client.tcp_client import TcpClient  # noqa: E402
 from test_kit.asset_catalog import default_performance_samples, performance_sample_asset_refs  # noqa: E402
-from test_kit.control_apps_build import preferred_control_apps_build_root, valid_control_apps_build_roots  # noqa: E402
+from test_kit.control_apps_build import preferred_control_apps_build_root  # noqa: E402
 from test_kit.evidence_bundle import EvidenceBundle, EvidenceCaseRecord, EvidenceLink, trace_fields, write_bundle_artifacts  # noqa: E402
 
 
@@ -54,29 +54,13 @@ def gateway_executable_candidates(
     control_apps_build_root: Path,
 ) -> tuple[Path, ...]:
     file_name = "siligen_runtime_gateway.exe"
-    discovered_roots = valid_control_apps_build_roots(
-        workspace_root,
-        explicit_build_root=os.getenv("SILIGEN_CONTROL_APPS_BUILD_ROOT"),
-    )
-    prioritized_roots: list[Path] = []
-    seen_roots: set[Path] = set()
-    for root in (control_apps_build_root, *discovered_roots, workspace_root / "build" / "hmi-home-fix"):
-        resolved_root = root.resolve()
-        if resolved_root in seen_roots:
-            continue
-        seen_roots.add(resolved_root)
-        prioritized_roots.append(resolved_root)
-
-    build_root_candidates: list[Path] = []
-    for root in prioritized_roots:
-        build_root_candidates.extend(
-            (
-                root / "bin" / file_name,
-                root / "bin" / "Debug" / file_name,
-                root / "bin" / "Release" / file_name,
-                root / "bin" / "RelWithDebInfo" / file_name,
-            )
-        )
+    resolved_root = control_apps_build_root.resolve()
+    build_root_candidates = [
+        resolved_root / "bin" / file_name,
+        resolved_root / "bin" / "Debug" / file_name,
+        resolved_root / "bin" / "Release" / file_name,
+        resolved_root / "bin" / "RelWithDebInfo" / file_name,
+    ]
     return tuple(build_root_candidates)
 
 
@@ -893,30 +877,9 @@ def prepare_and_snapshot_once(
     *,
     artifact_ms: float | None,
 ) -> PreviewCycleRecord:
-    recipes_ok, recipes_payload, recipes_error = protocol.recipe_list()
-    if not recipes_ok or not recipes_payload:
-        return PreviewCycleRecord(
-            success=False,
-            artifact_id=artifact_id,
-            artifact_ms=artifact_ms,
-            error=f"recipe.list failed: {recipes_error or 'missing recipe'}",
-        )
-    recipe = recipes_payload[0]
-    recipe_id = str(recipe.get("id", "")).strip()
-    version_id = str(recipe.get("activeVersionId", "")).strip()
-    if not recipe_id or not version_id:
-        return PreviewCycleRecord(
-            success=False,
-            artifact_id=artifact_id,
-            artifact_ms=artifact_ms,
-            error="recipe.list response missing recipe/version",
-        )
-
     plan_started = time.perf_counter()
     plan_ok, plan_payload, plan_error = protocol.dxf_prepare_plan(
         artifact_id=artifact_id,
-        recipe_id=recipe_id,
-        version_id=version_id,
         speed_mm_s=args.dispensing_speed_mm_s,
         dry_run=args.dry_run,
         dry_run_speed_mm_s=args.dry_run_speed_mm_s,
@@ -1820,30 +1783,10 @@ def concurrent_prepare_worker(
 ) -> None:
     try:
         with protocol_client(args.host, args.port) as (_, protocol):
-            recipes_ok, recipes_payload, recipes_error = protocol.recipe_list()
-            if not recipes_ok or not recipes_payload:
-                results[request_index] = ConcurrentPrepareRecord(
-                    request_index=request_index,
-                    success=False,
-                    error=f"recipe.list failed: {recipes_error or 'missing recipe'}",
-                )
-                return
-            recipe = recipes_payload[0]
-            recipe_id = str(recipe.get("id", "")).strip()
-            version_id = str(recipe.get("activeVersionId", "")).strip()
-            if not recipe_id or not version_id:
-                results[request_index] = ConcurrentPrepareRecord(
-                    request_index=request_index,
-                    success=False,
-                    error="recipe.list response missing recipe/version",
-                )
-                return
             barrier.wait(timeout=max(10.0, args.prepare_timeout))
             started = time.perf_counter()
             ok, payload, error = protocol.dxf_prepare_plan(
                 artifact_id=artifact_id,
-                recipe_id=recipe_id,
-                version_id=version_id,
                 speed_mm_s=args.dispensing_speed_mm_s,
                 dry_run=args.dry_run,
                 dry_run_speed_mm_s=args.dry_run_speed_mm_s,

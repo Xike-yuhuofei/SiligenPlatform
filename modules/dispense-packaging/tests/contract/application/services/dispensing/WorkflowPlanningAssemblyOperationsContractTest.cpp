@@ -56,7 +56,9 @@ TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFrom
     EXPECT_EQ(payload.export_request.execution_trajectory_points.size(), payload.execution_trajectory_points.size());
 }
 
-TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFromAuthorityRejectsNonMonotonicAuthorityBinding) {
+TEST(
+    WorkflowPlanningAssemblyOperationsContractTest,
+    BuildExecutionArtifactsFromAuthoritySurfacesNonMonotonicAuthorityBindingAsExecutionFailureReason) {
     WorkflowPlanningAssemblyOperationsProvider provider;
     const auto operations = provider.CreateOperations();
 
@@ -77,9 +79,11 @@ TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFrom
     const auto result = operations->BuildExecutionArtifactsFromAuthority(
         BuildWorkflowExecutionInput(input, corrupted_authority));
 
-    ASSERT_TRUE(result.IsError());
-    EXPECT_EQ(result.GetError().GetCode(), Siligen::Shared::Types::ErrorCode::INVALID_STATE);
-    EXPECT_EQ(result.GetError().GetMessage(), "authority trigger binding non-monotonic");
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    const auto& payload = result.Value();
+    EXPECT_FALSE(payload.preview_authority_shared_with_execution);
+    EXPECT_FALSE(payload.execution_binding_ready);
+    EXPECT_EQ(payload.execution_failure_reason, "authority trigger binding non-monotonic");
 }
 
 TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFromAuthorityKeepsOverlappedReturnBoundaryMonotonic) {

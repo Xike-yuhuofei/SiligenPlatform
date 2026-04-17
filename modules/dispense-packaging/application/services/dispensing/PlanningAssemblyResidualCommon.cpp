@@ -179,8 +179,6 @@ ExecutionAssemblyBuildInput BuildExecutionAssemblyBuildInput(const WorkflowExecu
     execution_input.authority_process_path = input.authority_process_path;
     execution_input.motion_plan = input.motion_plan;
     execution_input.planning_start_position = input.planning_start_position;
-    execution_input.recipe_id = input.recipe_id;
-    execution_input.version_id = input.version_id;
     execution_input.source_path = input.source_path;
     execution_input.dxf_filename = input.dxf_filename;
     execution_input.dispensing_velocity = input.runtime_options.dispensing_velocity;

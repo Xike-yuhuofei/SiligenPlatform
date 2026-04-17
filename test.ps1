@@ -103,7 +103,8 @@ try {
         -FailOnKnownFailure:$FailOnKnownFailure `
         -IncludeHardwareSmoke:$IncludeHardwareSmoke `
         -IncludeHilClosedLoop:$IncludeHilClosedLoop `
-        -IncludeHilCaseMatrix:$IncludeHilCaseMatrix
+        -IncludeHilCaseMatrix:$IncludeHilCaseMatrix `
+        -EnableCppCoverage:$EnableCppCoverage
 
     if ($EnablePythonCoverage) {
         $pythonCoverageRunner = Resolve-RootRunner `

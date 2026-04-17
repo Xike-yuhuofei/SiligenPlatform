@@ -220,17 +220,15 @@ def test_dxf_preview_and_job_contract():
     assert "import_result_classification" in plan_prepare["resultSchema"]["required"]
     assert "import_production_ready" in plan_prepare["resultSchema"]["required"]
     assert "prepared_filepath" in plan_prepare["resultSchema"]["required"]
-    assert {
-        "artifact_id",
-        "recipe_id",
-        "version_id",
-        "dispensing_speed_mm_s",
-    }.issubset(set(plan_prepare["paramsSchema"]["required"]))
+    assert {"artifact_id", "dispensing_speed_mm_s"}.issubset(set(plan_prepare["paramsSchema"]["required"]))
+    assert "recipe_id" not in plan_prepare["paramsSchema"]["properties"]
+    assert "version_id" not in plan_prepare["paramsSchema"]["properties"]
     assert "speed_mm_s" not in plan_prepare["paramsSchema"]["properties"]
     assert not plan_prepare.get("compatibility", {}).get("requestAliases")
     plan_prepare_notes = "\n".join(plan_prepare.get("compatibility", {}).get("notes", []))
-    assert "published recipe version" in plan_prepare_notes
+    assert "current production baseline" in plan_prepare_notes
     assert "point_flying_carrier_policy" in plan_prepare_notes
+    assert "published recipe version" in plan_prepare_notes
     assert "activeVersionId" in plan_prepare_notes
     job_start_notes = "\n".join(operations["dxf.job.start"].get("compatibility", {}).get("notes", []))
     assert "回退最近一次 prepared plan" not in job_start_notes

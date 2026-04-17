@@ -12,8 +12,6 @@ using Siligen::Shared::Types::TrajectoryConfig;
 PlanningRequest MakeValidRequest() {
     PlanningRequest request;
     request.dxf_filepath = "dummy.dxf";
-    request.recipe_id = "recipe-test";
-    request.version_id = "version-published";
     request.trajectory_config = TrajectoryConfig();
     request.trajectory_config.max_velocity = 100.0f;
     request.trajectory_config.max_acceleration = 500.0f;
@@ -46,14 +44,9 @@ TEST(PlanningRequestTest, RejectsEmptyFilepath) {
     EXPECT_FALSE(request.Validate());
 }
 
-TEST(PlanningRequestTest, RejectsMissingRecipeOrVersion) {
+TEST(PlanningRequestTest, AllowsCurrentChainWithoutRecipeOrVersion) {
     auto request = MakeValidRequest();
-    request.recipe_id.clear();
-    EXPECT_FALSE(request.Validate());
-
-    request = MakeValidRequest();
-    request.version_id.clear();
-    EXPECT_FALSE(request.Validate());
+    EXPECT_TRUE(request.Validate());
 }
 
 TEST(PlanningRequestTest, RejectsVelocityOutOfRange) {
