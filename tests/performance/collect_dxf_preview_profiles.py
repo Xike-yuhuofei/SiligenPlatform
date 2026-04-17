@@ -60,7 +60,7 @@ def gateway_executable_candidates(
     )
     prioritized_roots: list[Path] = []
     seen_roots: set[Path] = set()
-    for root in (control_apps_build_root, *discovered_roots, workspace_root / "build" / "hmi-home-fix"):
+    for root in (control_apps_build_root, *discovered_roots):
         resolved_root = root.resolve()
         if resolved_root in seen_roots:
             continue

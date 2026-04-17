@@ -1,6 +1,6 @@
 # hardware-in-loop
 
-更新时间：`2026-04-17`
+更新时间：`2026-04-16`
 
 这里统一放硬件冒烟和机台联调入口。
 
@@ -24,7 +24,7 @@
 当前策略：
 
 - 默认验证 canonical `siligen_tcp_server.exe` 的最小启动闭环
-- 当前产物根约束：`SILIGEN_CONTROL_APPS_BUILD_ROOT` 只能显式指向当前工作区的 `<repo-root>\build` 树；未显式设置时只解析当前工作区匹配 `CMakeCache.txt` 的 `<repo-root>\build\ca -> <repo-root>\build\control-apps -> <repo-root>\build`
+- 默认产物根与 shared build owner 保持单轨一致：显式设置 `SILIGEN_CONTROL_APPS_BUILD_ROOT` 时使用该路径；否则只认携带当前工作区匹配 `CMakeCache.txt` 的 `<repo-root>\build\ca`
 - 默认目标路径模式为 `<build-root>\bin\<Config>\*.exe`，当前 canonical 命中应为 `<repo-root>\build\ca\bin\<Config>\*.exe`
 - 可通过 `SILIGEN_HIL_GATEWAY_EXE` 显式覆盖可执行文件
 - 进程 `cwd` 使用仓库根，而不是 `control-core`

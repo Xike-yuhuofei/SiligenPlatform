@@ -110,7 +110,7 @@ class OfflinePreviewBuilderTest(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "非 JSON"):
                     build_offline_preview_payload(sample_path, speed_mm_s=20.0, dry_run=False)
 
-    def test_resolve_planner_cli_executable_prefers_workspace_build_root_over_localappdata(self) -> None:
+    def test_resolve_planner_cli_executable_prefers_workspace_build_ca_over_noncanonical_candidates(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)
             workspace_root = temp_root / "workspace"
@@ -118,28 +118,33 @@ class OfflinePreviewBuilderTest(unittest.TestCase):
             local_app_data = temp_root / "localappdata"
             local_app_data.mkdir()
 
-            workspace_build_root = workspace_root / "build" / "control-apps"
+            workspace_build_root = workspace_root / "build" / "ca"
+            legacy_workspace_build_root = workspace_root / "build" / "control-apps"
             localappdata_build_root = local_app_data / "SiligenSuite" / "control-apps-build"
             workspace_bin = workspace_build_root / "bin" / "Debug"
+            legacy_workspace_bin = legacy_workspace_build_root / "bin" / "Debug"
             localappdata_bin = localappdata_build_root / "bin" / "Debug"
             workspace_bin.mkdir(parents=True)
+            legacy_workspace_bin.mkdir(parents=True)
             localappdata_bin.mkdir(parents=True)
 
             workspace_cli = workspace_bin / "siligen_planner_cli.exe"
+            legacy_workspace_cli = legacy_workspace_bin / "siligen_planner_cli.exe"
             localappdata_cli = localappdata_bin / "siligen_planner_cli.exe"
             workspace_cli.write_text("", encoding="utf-8")
+            legacy_workspace_cli.write_text("", encoding="utf-8")
             localappdata_cli.write_text("", encoding="utf-8")
 
             cache_line = f"CMAKE_HOME_DIRECTORY:INTERNAL={workspace_root}\n"
             (workspace_build_root / "CMakeCache.txt").write_text(cache_line, encoding="utf-8")
+            (legacy_workspace_build_root / "CMakeCache.txt").write_text(cache_line, encoding="utf-8")
             (localappdata_build_root / "CMakeCache.txt").write_text(cache_line, encoding="utf-8")
 
-            with patch.dict(os.environ, {"LOCALAPPDATA": str(local_app_data)}, clear=False):
-                resolved = _resolve_planner_cli_executable(workspace_root)
+            resolved = _resolve_planner_cli_executable(workspace_root)
 
         self.assertEqual(resolved, workspace_cli.resolve())
 
-    def test_resolve_planner_cli_executable_rejects_explicit_override_outside_workspace_build(self) -> None:
+    def test_resolve_planner_cli_executable_accepts_explicit_override_even_if_cache_points_elsewhere(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)
             workspace_root = temp_root / "workspace"
@@ -162,8 +167,9 @@ class OfflinePreviewBuilderTest(unittest.TestCase):
                 {_CONTROL_APPS_BUILD_ROOT_ENV: str(override_root)},
                 clear=False,
             ):
-                with self.assertRaisesRegex(FileNotFoundError, "siligen_planner_cli.exe"):
-                    _resolve_planner_cli_executable(workspace_root)
+                resolved = _resolve_planner_cli_executable(workspace_root)
+
+        self.assertEqual(resolved, override_cli.resolve())
 
     def test_resolve_planner_cli_executable_supports_workspace_ca_build_root(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -185,27 +191,25 @@ class OfflinePreviewBuilderTest(unittest.TestCase):
 
         self.assertEqual(resolved, cli_path.resolve())
 
-    def test_resolve_planner_cli_executable_ignores_workspace_token_build_root(self) -> None:
+    def test_resolve_planner_cli_executable_rejects_noncanonical_fallback_when_build_ca_cache_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)
             workspace_root = temp_root / "workspace"
             workspace_root.mkdir()
             local_app_data = temp_root / "localappdata"
-            ss_root = local_app_data / "SS"
-            token = "1234567890ab"
-            token_build_root = ss_root / f"cab-{token}"
-            token_bin = token_build_root / "bin" / "Debug"
-            token_bin.mkdir(parents=True)
+            legacy_build_root = local_app_data / "SiligenSuite" / "control-apps-build"
+            legacy_bin = legacy_build_root / "bin" / "Debug"
+            legacy_bin.mkdir(parents=True)
 
-            token_cli = token_bin / "siligen_planner_cli.exe"
-            token_cli.write_text("", encoding="utf-8")
-            (token_build_root / "CMakeCache.txt").write_text(
+            legacy_cli = legacy_bin / "siligen_planner_cli.exe"
+            legacy_cli.write_text("", encoding="utf-8")
+            (legacy_build_root / "CMakeCache.txt").write_text(
                 f"CMAKE_HOME_DIRECTORY:INTERNAL={workspace_root}\n",
                 encoding="utf-8",
             )
 
             with patch.dict(os.environ, {"LOCALAPPDATA": str(local_app_data)}, clear=False):
-                with self.assertRaisesRegex(FileNotFoundError, "siligen_planner_cli.exe"):
+                with self.assertRaisesRegex(FileNotFoundError, "未找到当前工作区的 siligen_planner_cli.exe"):
                     _resolve_planner_cli_executable(workspace_root)
 
 

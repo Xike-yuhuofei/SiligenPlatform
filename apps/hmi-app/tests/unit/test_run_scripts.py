@@ -97,10 +97,15 @@ class HmiRunScriptContractTest(unittest.TestCase):
         self.assertIn("Use apps/hmi-app/run.ps1", output)
 
     def test_official_runner_dryrun_generates_explicit_contract_from_canonical_gateway(self) -> None:
-        exe_path, created_workspace_exe, created_workspace_cache = self._ensure_workspace_gateway_exe()
-        try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            build_root = temp_root / "control-apps-build"
+            exe_path = build_root / "bin" / "Debug" / "siligen_runtime_gateway.exe"
+            exe_path.parent.mkdir(parents=True, exist_ok=True)
+            exe_path.write_text("", encoding="utf-8")
+
             env = os.environ.copy()
-            env["SILIGEN_CONTROL_APPS_BUILD_ROOT"] = str(WORKSPACE_ROOT / "build" / "ca")
+            env["SILIGEN_CONTROL_APPS_BUILD_ROOT"] = str(build_root)
             env.pop("SILIGEN_GATEWAY_LAUNCH_SPEC", None)
             env.pop("SILIGEN_GATEWAY_EXE", None)
 
@@ -121,13 +126,6 @@ class HmiRunScriptContractTest(unittest.TestCase):
                 capture_output=True,
                 text=True,
             )
-        finally:
-            if created_workspace_exe and exe_path.exists():
-                exe_path.unlink()
-            if created_workspace_cache:
-                cache_path = WORKSPACE_ROOT / "build" / "ca" / "CMakeCache.txt"
-                if cache_path.exists():
-                    cache_path.unlink()
 
         self.assertEqual(completed.returncode, 0, msg=completed.stderr)
         self.assertIn("gateway contract source: generated-dev", completed.stdout)
@@ -169,7 +167,7 @@ class HmiRunScriptContractTest(unittest.TestCase):
             if created_workspace_exe and workspace_exe.exists():
                 workspace_exe.unlink()
             if created_workspace_cache:
-                cache_path = WORKSPACE_ROOT / "build" / "CMakeCache.txt"
+                cache_path = WORKSPACE_ROOT / "build" / "ca" / "CMakeCache.txt"
                 if cache_path.exists():
                     cache_path.unlink()
 
@@ -177,18 +175,17 @@ class HmiRunScriptContractTest(unittest.TestCase):
         self.assertIn(str(workspace_exe), completed.stdout)
         self.assertNotIn(str(localappdata_exe), completed.stdout)
 
-    def test_runtime_gateway_runner_dryrun_rejects_workspace_build_tree_without_matching_cache_even_if_localappdata_exists(self) -> None:
+    def test_runtime_gateway_runner_dryrun_does_not_fallback_when_workspace_root_missing_matching_cache(self) -> None:
         workspace_exe = WORKSPACE_ROOT / "build" / "ca" / "bin" / "Debug" / "siligen_runtime_gateway.exe"
         cache_path = WORKSPACE_ROOT / "build" / "ca" / "CMakeCache.txt"
         created_workspace_exe = False
         removed_cache = False
         original_cache = None
         try:
-            if workspace_exe.exists():
-                workspace_exe.unlink()
-            workspace_exe.parent.mkdir(parents=True, exist_ok=True)
-            workspace_exe.write_text("", encoding="utf-8")
-            created_workspace_exe = True
+            if not workspace_exe.exists():
+                workspace_exe.parent.mkdir(parents=True, exist_ok=True)
+                workspace_exe.write_text("", encoding="utf-8")
+                created_workspace_exe = True
             if cache_path.exists():
                 original_cache = cache_path.read_text(encoding="utf-8")
                 cache_path.unlink()
@@ -230,16 +227,23 @@ class HmiRunScriptContractTest(unittest.TestCase):
             if removed_cache and original_cache is not None:
                 cache_path.write_text(original_cache, encoding="utf-8")
 
+        output = f"{completed.stdout}\n{completed.stderr}"
         self.assertNotEqual(completed.returncode, 0)
-        self.assertNotIn(str(localappdata_exe), completed.stdout)
-        self.assertNotIn(str(workspace_exe), completed.stdout)
+        self.assertIn("current-workspace control-apps build root not ready for runtime-", output)
+        self.assertIn("gateway", output)
+        self.assertNotIn(str(localappdata_exe), output)
 
     def test_contract_builder_dryrun_parses_runtime_gateway_output_without_path_format_error(self) -> None:
         contract_builder = PROJECT_ROOT / "scripts" / "new-gateway-launch-contract.ps1"
-        exe_path, created_workspace_exe, created_workspace_cache = self._ensure_workspace_gateway_exe()
-        try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            build_root = temp_root / "control-apps-build"
+            exe_path = build_root / "bin" / "Debug" / "siligen_runtime_gateway.exe"
+            exe_path.parent.mkdir(parents=True, exist_ok=True)
+            exe_path.write_text("", encoding="utf-8")
+
             env = os.environ.copy()
-            env["SILIGEN_CONTROL_APPS_BUILD_ROOT"] = str(WORKSPACE_ROOT / "build" / "ca")
+            env["SILIGEN_CONTROL_APPS_BUILD_ROOT"] = str(build_root)
 
             completed = subprocess.run(
                 [
@@ -258,13 +262,6 @@ class HmiRunScriptContractTest(unittest.TestCase):
                 capture_output=True,
                 text=True,
             )
-        finally:
-            if created_workspace_exe and exe_path.exists():
-                exe_path.unlink()
-            if created_workspace_cache:
-                cache_path = WORKSPACE_ROOT / "build" / "ca" / "CMakeCache.txt"
-                if cache_path.exists():
-                    cache_path.unlink()
 
         self.assertEqual(completed.returncode, 0, msg=completed.stderr)
         self.assertIn(str(exe_path), completed.stdout)

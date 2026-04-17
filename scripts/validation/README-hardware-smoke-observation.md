@@ -26,7 +26,7 @@
 - vendor 目录：`modules/runtime-execution/adapters/device/vendor/multicard`
 - runtime-service 脚本：`apps/runtime-service/run.ps1`
 - runtime-gateway 脚本：`apps/runtime-gateway/run.ps1`
-- build root：`$env:SILIGEN_CONTROL_APPS_BUILD_ROOT`；否则只使用当前工作区匹配 `CMakeCache.txt` 的 `build\`
+- build root：显式设置 `$env:SILIGEN_CONTROL_APPS_BUILD_ROOT` 时使用该路径；否则只认携带当前工作区匹配 `CMakeCache.txt` 的 `build\ca`
 
 ## 默认输出
 

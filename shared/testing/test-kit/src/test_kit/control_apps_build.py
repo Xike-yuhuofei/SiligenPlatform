@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
@@ -53,12 +52,6 @@ def _matches_workspace(cmake_home_directory: str, workspace_root: Path) -> bool:
         return Path(cmake_home_directory).resolve() == workspace_root.resolve()
     except OSError:
         return False
-
-
-def _is_within_workspace_build(build_root: Path, workspace_root: Path) -> bool:
-    resolved_build_root = build_root.resolve()
-    workspace_build_root = (workspace_root / "build").resolve()
-    return resolved_build_root == workspace_build_root or workspace_build_root in resolved_build_root.parents
 
 
 def _artifact_candidates(build_root: Path, artifact_name: str) -> tuple[Path, ...]:
@@ -146,31 +139,10 @@ def control_apps_build_root_probes(
             )
         )
 
-    workspace_build_root = (workspace_root / "build").resolve()
-
     if explicit_build_root:
-        explicit_root = Path(explicit_build_root).expanduser().resolve()
-        if _is_within_workspace_build(explicit_root, workspace_root):
-            add_probe(explicit_root, source="env", allow_stale=True)
-        else:
-            probes.append(
-                BuildRootProbe(
-                    root=explicit_root,
-                    source="env",
-                    exists=explicit_root.exists(),
-                    cache_path=explicit_root / "CMakeCache.txt",
-                    cache_present=(explicit_root / "CMakeCache.txt").exists(),
-                    cmake_home_directory=_read_cmake_home_directory(explicit_root / "CMakeCache.txt"),
-                    matches_workspace=False,
-                    accepted=False,
-                    reason=f"explicit-build-root-outside-workspace-build:{workspace_build_root}",
-                )
-            )
-            return tuple(probes)
+        add_probe(Path(explicit_build_root), source="env", allow_stale=True)
 
     add_probe(workspace_root / "build" / "ca", source="workspace-build-ca")
-    add_probe(workspace_root / "build" / "control-apps", source="workspace-build-control-apps")
-    add_probe(workspace_root / "build", source="workspace-build")
     return tuple(probes)
 
 
@@ -189,6 +161,8 @@ def preferred_control_apps_build_root(
     explicit_build_root: str | None = None,
 ) -> BuildRootProbe:
     probes = control_apps_build_root_probes(workspace_root, explicit_build_root=explicit_build_root)
+    if explicit_build_root and probes:
+        return probes[0]
     existing_accepted = [probe for probe in probes if probe.accepted and probe.exists]
     if existing_accepted:
         with_matching_cache = [probe for probe in existing_accepted if probe.cache_present and probe.matches_workspace]
@@ -208,7 +182,6 @@ def probe_control_apps_build_readiness(
     explicit_build_root: str | None = None,
 ) -> ControlAppsBuildReadiness:
     normalized_artifacts = _normalized_required_artifacts(required_artifacts)
-    probes = control_apps_build_root_probes(workspace_root, explicit_build_root=explicit_build_root)
     selected_probe = preferred_control_apps_build_root(workspace_root, explicit_build_root=explicit_build_root)
 
     if explicit_build_root and not selected_probe.exists:

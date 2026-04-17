@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 
@@ -25,6 +26,19 @@ def _write_matching_cmake_cache(build_root: Path) -> Path:
         encoding="utf-8",
     )
     return cache_path
+
+
+@contextmanager
+def _preserve_file(path: Path):
+    original_bytes = path.read_bytes() if path.exists() else None
+    try:
+        yield path
+    finally:
+        if original_bytes is None:
+            if path.exists():
+                path.unlink()
+        else:
+            path.write_bytes(original_bytes)
 
 
 def _probe_resolved_executable(script_path: Path, fake_file_name: str, localappdata_root: Path) -> Path:
@@ -58,7 +72,7 @@ def _probe_resolved_executable(script_path: Path, fake_file_name: str, localappd
     return Path(completed.stdout.strip())
 
 
-def test_gateway_resolution_consumers_prefer_workspace_build_tree_and_ignore_localappdata(
+def test_gateway_resolution_consumers_use_workspace_build_ca_only(
     tmp_path: Path,
 ) -> None:
     fake_file_name = "codex_gateway_resolution_consumer_probe.exe"
@@ -71,18 +85,19 @@ def test_gateway_resolution_consumers_prefer_workspace_build_tree_and_ignore_loc
     for path in (workspace_ca_exe, workspace_build_exe, workspace_hmi_fix_exe, legacy_exe):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
-    workspace_ca_cache = _write_matching_cmake_cache(ROOT / "build" / "ca")
-    workspace_build_cache = _write_matching_cmake_cache(ROOT / "build")
     legacy_cache = _write_matching_cmake_cache(legacy_localappdata / "SiligenSuite" / "control-apps-build")
 
     try:
-        for script_path in SCRIPT_PATHS:
-            resolved = _probe_resolved_executable(script_path, fake_file_name, legacy_localappdata)
-            assert resolved == workspace_ca_exe, f"{script_path.name} resolved {resolved}"
+        with _preserve_file(ROOT / "build" / "ca" / "CMakeCache.txt"), _preserve_file(ROOT / "build" / "CMakeCache.txt"):
+            _write_matching_cmake_cache(ROOT / "build" / "ca")
+            _write_matching_cmake_cache(ROOT / "build")
+            for script_path in SCRIPT_PATHS:
+                resolved = _probe_resolved_executable(script_path, fake_file_name, legacy_localappdata)
+                assert resolved == workspace_ca_exe, f"{script_path.name} resolved {resolved}"
     finally:
         for path in (workspace_ca_exe, workspace_build_exe, workspace_hmi_fix_exe):
             if path.exists():
                 path.unlink()
-        for cache_path in (workspace_ca_cache, workspace_build_cache, legacy_cache):
+        for cache_path in (legacy_cache,):
             if cache_path.exists():
                 cache_path.unlink()

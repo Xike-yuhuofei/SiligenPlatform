@@ -430,7 +430,7 @@ def _build_probe_command(args: argparse.Namespace, attempt_root: Path) -> list[s
 
 def _workspace_build_env() -> dict[str, str]:
     env = os.environ.copy()
-    env.setdefault("SILIGEN_CONTROL_APPS_BUILD_ROOT", str(ROOT / "build"))
+    env.setdefault("SILIGEN_CONTROL_APPS_BUILD_ROOT", str(ROOT / "build" / "ca"))
     return env
 
 
