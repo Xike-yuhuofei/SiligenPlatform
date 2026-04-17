@@ -337,7 +337,7 @@ Result<PreviewSnapshotResponse> DispensingWorkflowUseCase::GetPreviewSnapshot(co
     const bool has_export_process_path =
         !snapshot_record.execution_assembly.export_request.process_path.segments.empty();
     const bool has_authority_process_path =
-        !snapshot_record.execution_launch.authority_preview.process_path.segments.empty();
+        !snapshot_record.execution_launch.authority_preview.authority_process_path.segments.empty();
     if (snapshot_record.execution_assembly.motion_trajectory_points.empty() &&
         !has_export_process_path &&
         !has_authority_process_path) {
@@ -552,7 +552,8 @@ PreviewSnapshotResponse DispensingWorkflowUseCase::BuildPreviewSnapshotResponse(
     std::size_t max_polyline_points,
     std::size_t max_glue_points) {
     Siligen::Application::Services::Dispensing::PreviewSnapshotInput input;
-    const auto& retained_authority_process_path = plan_record.execution_launch.authority_preview.process_path;
+    const auto& retained_authority_process_path =
+        plan_record.execution_launch.authority_preview.authority_process_path;
     input.snapshot_id = plan_record.preview_snapshot_id;
     input.snapshot_hash = plan_record.preview_snapshot_hash;
     input.plan_id = plan_record.response.plan_id;

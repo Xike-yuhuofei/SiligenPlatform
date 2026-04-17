@@ -73,8 +73,8 @@ struct PreparedAuthorityPreview {
     bool success = false;
     std::string source_path;
     std::string prepared_pb_path;
-    Siligen::ProcessPath::Contracts::ProcessPath process_path;
     Siligen::ProcessPath::Contracts::ProcessPath authority_process_path;
+    Siligen::ProcessPath::Contracts::ProcessPath canonical_execution_process_path;
     int discontinuity_count = 0;
     std::string preview_diagnostic_code;
     Siligen::Application::Services::Dispensing::WorkflowAuthorityPreviewArtifacts artifacts;

@@ -390,7 +390,7 @@ TEST(PlanningUseCaseExportPortTest, ExecuteBuildsExportRequestWithoutDirectFiles
     std::filesystem::remove(temp_pb, ec);
 }
 
-TEST(PlanningUseCaseExportPortTest, WorkflowUsesShapedPathAsDownstreamAuthorityPath) {
+TEST(PlanningUseCaseExportPortTest, WorkflowUsesCanonicalExecutionPathAsDownstreamExportTruth) {
     auto temp_pb = MakeTempPbPath();
     auto config_port = std::make_shared<FakeConfigurationPort>();
     auto path_source = std::make_shared<FakePathSourcePort>();
@@ -411,11 +411,12 @@ TEST(PlanningUseCaseExportPortTest, WorkflowUsesShapedPathAsDownstreamAuthorityP
     const auto authority_result = use_case.PrepareAuthorityPreview(request);
 
     ASSERT_TRUE(authority_result.IsSuccess()) << authority_result.GetError().ToString();
-    ASSERT_EQ(authority_result.Value().process_path.segments.size(), 2U);
     ASSERT_EQ(authority_result.Value().authority_process_path.segments.size(), 2U);
-    EXPECT_FLOAT_EQ(authority_result.Value().process_path.segments.front().geometry.line.end.x, 4.0f);
+    ASSERT_EQ(authority_result.Value().canonical_execution_process_path.segments.size(), 2U);
     EXPECT_FLOAT_EQ(authority_result.Value().authority_process_path.segments.front().geometry.line.end.x, 4.0f);
     EXPECT_FLOAT_EQ(authority_result.Value().authority_process_path.segments.back().geometry.line.end.x, 10.0f);
+    EXPECT_FLOAT_EQ(authority_result.Value().canonical_execution_process_path.segments.front().geometry.line.end.x, 4.0f);
+    EXPECT_FLOAT_EQ(authority_result.Value().canonical_execution_process_path.segments.back().geometry.line.end.x, 10.0f);
 
     const auto execute_result = use_case.Execute(request);
 

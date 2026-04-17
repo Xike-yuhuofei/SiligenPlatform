@@ -168,6 +168,39 @@ TEST(TrajectoryTriggerUtilsTest, ApplyTriggerMarkersByPositionPrefersForwardSegm
     EXPECT_NEAR(actual_distances[1], trigger_distances_mm[1], 1e-4f);
 }
 
+TEST(TrajectoryTriggerUtilsTest, ApplyTriggerMarkersByPositionPrefersForwardSegmentBoundaryOverLaterExactRevisit) {
+    std::vector<Siligen::TrajectoryPoint> points{
+        BuildPoint(0.0f, 0.0f),
+        BuildPoint(10.0f, 0.0f),
+        BuildPoint(20.0f, 0.0f),
+        BuildPoint(10.0f, 0.0f),
+        BuildPoint(10.0f, 10.0f),
+    };
+    const std::vector<Point2D> trigger_positions{
+        Point2D(10.0f, 0.0f),
+        Point2D(15.0f, 0.0f),
+    };
+    const std::vector<float32> trigger_distances_mm{
+        29.0f,
+        29.5f,
+    };
+
+    ASSERT_TRUE(ApplyTriggerMarkersByPosition(points, trigger_positions, trigger_distances_mm));
+    ASSERT_EQ(CountTriggerMarkers(points), trigger_positions.size());
+
+    const auto actual_positions = CollectTriggerPositions(points);
+    ASSERT_EQ(actual_positions.size(), trigger_positions.size());
+    EXPECT_NEAR(actual_positions[0].x, 10.0f, 1e-4f);
+    EXPECT_NEAR(actual_positions[0].y, 0.0f, 1e-4f);
+    EXPECT_NEAR(actual_positions[1].x, 15.0f, 1e-4f);
+    EXPECT_NEAR(actual_positions[1].y, 0.0f, 1e-4f);
+
+    const auto actual_distances = CollectTriggerDistances(points);
+    ASSERT_EQ(actual_distances.size(), trigger_distances_mm.size());
+    EXPECT_NEAR(actual_distances[0], trigger_distances_mm[0], 1e-4f);
+    EXPECT_NEAR(actual_distances[1], trigger_distances_mm[1], 1e-4f);
+}
+
 TEST(TrajectoryTriggerUtilsTest, ApplyTriggerMarkersByPositionAllowsClosedLoopPhaseShiftWraparound) {
     std::vector<Siligen::TrajectoryPoint> points{
         BuildPoint(10.0f, 0.0f),

@@ -71,6 +71,7 @@ struct WorkflowAuthorityPreviewArtifacts {
     int segment_count = 0;
     Siligen::Shared::Types::float32 total_length = 0.0f;
     Siligen::Shared::Types::float32 estimated_time = 0.0f;
+    Siligen::ProcessPath::Contracts::ProcessPath canonical_execution_process_path;
     std::vector<Siligen::TrajectoryPoint> preview_trajectory_points;
     std::vector<Siligen::Shared::Types::Point2D> glue_points;
     int trigger_count = 0;
@@ -89,8 +90,8 @@ struct WorkflowAuthorityPreviewArtifacts {
 };
 
 struct WorkflowExecutionAssemblyRequest {
-    Siligen::ProcessPath::Contracts::ProcessPath process_path;
     Siligen::ProcessPath::Contracts::ProcessPath authority_process_path;
+    Siligen::ProcessPath::Contracts::ProcessPath canonical_execution_process_path;
     Siligen::MotionPlanning::Contracts::MotionPlan motion_plan;
     Siligen::Shared::Types::Point2D planning_start_position{};
     std::string source_path;

@@ -71,7 +71,7 @@ Result<void> ValidateRequestedExecutionStrategyForAuthorityPreview(
     const PreparedAuthorityPreview& authority_preview) {
     const auto requested_strategy = request.ResolveRequestedExecutionStrategy();
     const bool point_only_geometry =
-        IsPointOnlyProcessPath(authority_preview.process_path) ||
+        IsPointOnlyProcessPath(authority_preview.canonical_execution_process_path) ||
         IsPointOnlyProcessPath(authority_preview.authority_process_path);
     if (!point_only_geometry) {
         if (requested_strategy == DispensingExecutionStrategy::STATIONARY_SHOT) {
@@ -673,8 +673,8 @@ Siligen::Application::Services::Dispensing::WorkflowExecutionAssemblyRequest Bui
     MotionPlan motion_plan,
     const PlanningRuntimeParams& runtime_params) {
     Siligen::Application::Services::Dispensing::WorkflowExecutionAssemblyRequest workflow_input;
-    workflow_input.process_path = authority_preview.process_path;
-    workflow_input.authority_process_path = authority_preview.process_path;
+    workflow_input.authority_process_path = authority_preview.authority_process_path;
+    workflow_input.canonical_execution_process_path = authority_preview.canonical_execution_process_path;
     workflow_input.motion_plan = std::move(motion_plan);
     workflow_input.planning_start_position = Point2D(request.start_x, request.start_y);
     workflow_input.source_path = authority_preview.source_path;
@@ -1009,8 +1009,8 @@ Result<PreparedAuthorityPreview> PlanningUseCase::PrepareAuthorityPreview(const 
     prepared.success = true;
     prepared.source_path = request.dxf_filepath;
     prepared.prepared_pb_path = prepared_pb_path;
-    prepared.process_path = process_path_result.shaped_path;
     prepared.authority_process_path = process_path_result.shaped_path;
+    prepared.canonical_execution_process_path = authority_result.Value().canonical_execution_process_path;
     prepared.discontinuity_count = process_path_result.normalized.report.discontinuity_count;
     prepared.preview_diagnostic_code =
         process_path_result.topology_diagnostics.fragmentation_suspected ? "process_path_fragmentation" : "";
@@ -1072,9 +1072,12 @@ Result<ExecutionAssemblyResponse> PlanningUseCase::AssembleExecutionFromAuthorit
     const auto runtime_params = BuildPreviewRuntimeParams(request, config_port_);
     const auto motion_plan_start = std::chrono::steady_clock::now();
     auto motion_plan = motion_planning_port_->Plan(
-        authority_preview.process_path,
+        authority_preview.canonical_execution_process_path,
         BuildMotionPlanningConfig(request, runtime_params, config_port_));
-    PopulatePlanningReport(authority_preview.process_path, authority_preview.discontinuity_count, motion_plan);
+    PopulatePlanningReport(
+        authority_preview.canonical_execution_process_path,
+        authority_preview.discontinuity_count,
+        motion_plan);
     if (motion_plan.points.empty() || motion_plan.planning_report.jerk_plan_failed) {
         return Result<ExecutionAssemblyResponse>::Failure(
             Error(ErrorCode::INVALID_STATE, "轨迹规划失败", "PlanningUseCase"));

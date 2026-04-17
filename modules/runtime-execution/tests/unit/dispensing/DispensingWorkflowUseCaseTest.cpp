@@ -1908,7 +1908,7 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFallsBackToAuthorityProces
     SeedPlan(use_case, "plan-authority-process-path-fallback");
     auto& plan_record = use_case.plans_.at("plan-authority-process-path-fallback");
     plan_record.execution_launch.authority_preview.success = true;
-    plan_record.execution_launch.authority_preview.process_path.segments = {
+    plan_record.execution_launch.authority_preview.authority_process_path.segments = {
         BuildLineProcessSegment(Point2D(0.0f, 0.0f), Point2D(100.0f, 0.0f)),
         BuildLineProcessSegment(Point2D(100.0f, 0.0f), Point2D(100.0f, 100.0f)),
     };
@@ -1922,6 +1922,10 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFallsBackToAuthorityProces
     ASSERT_TRUE(result.IsSuccess());
     const auto& snapshot = result.Value();
     EXPECT_EQ(snapshot.motion_preview_source, "process_path_snapshot");
+    EXPECT_EQ(snapshot.motion_preview_kind, "polyline");
+    EXPECT_EQ(snapshot.motion_preview_sampling_strategy, "process_path_geometry_preserving");
+    EXPECT_EQ(snapshot.motion_preview_source_point_count, 3U);
+    EXPECT_EQ(snapshot.motion_preview_point_count, snapshot.motion_preview_source_point_count);
     EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 0.0f, 0.0f, 1e-4f));
     EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 100.0f, 0.0f, 1e-4f));
     EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 100.0f, 100.0f, 1e-4f));

@@ -186,8 +186,8 @@ inline WorkflowExecutionAssemblyRequest BuildWorkflowExecutionInput(
     const FixturePlanningInput& input,
     const WorkflowAuthorityPreviewArtifacts& authority_preview) {
     WorkflowExecutionAssemblyRequest execution_input;
-    execution_input.process_path = input.process_path;
     execution_input.authority_process_path = input.authority_process_path;
+    execution_input.canonical_execution_process_path = authority_preview.canonical_execution_process_path;
     execution_input.motion_plan = input.motion_plan;
     execution_input.planning_start_position = input.planning_start_position;
     execution_input.source_path = input.source_path;
