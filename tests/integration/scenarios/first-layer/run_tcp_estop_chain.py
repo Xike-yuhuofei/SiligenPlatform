@@ -6,7 +6,6 @@ import os
 import socket
 import subprocess
 import sys
-import tempfile
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -24,7 +23,7 @@ if str(HIL_DIR) not in sys.path:
 CANONICAL_CONFIG = ROOT / "config" / "machine" / "machine_config.ini"
 
 from runtime_gateway_harness import build_process_env as _shared_build_process_env  # noqa: E402
-from runtime_gateway_harness import resolve_default_exe  # noqa: E402
+from runtime_gateway_harness import load_connection_params, prepare_mock_config, resolve_default_exe  # noqa: E402
 
 KNOWN_FAILURE_PATTERNS = (
     "IDiagnosticsPort 未注册",
@@ -119,32 +118,6 @@ class TcpJsonClient:
 
 def _build_process_env(gateway_exe: Path) -> dict[str, str]:
     return _shared_build_process_env(gateway_exe)
-
-
-def _rewrite_mock_config(source_text: str) -> str:
-    lines = source_text.splitlines()
-    in_hardware = False
-    replaced = False
-    for index, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped.startswith("[") and stripped.endswith("]"):
-            in_hardware = stripped.lower() == "[hardware]"
-            continue
-        if in_hardware and stripped.lower().startswith("mode="):
-            indent = line[: len(line) - len(line.lstrip())]
-            lines[index] = f"{indent}mode=Mock"
-            replaced = True
-            break
-    if not replaced:
-        raise ValueError("failed to locate [Hardware] mode entry in machine config")
-    return "\n".join(lines) + "\n"
-
-
-def _prepare_mock_config(temp_dir: Path, source_config: Path) -> Path:
-    rewritten = _rewrite_mock_config(source_config.read_text(encoding="utf-8"))
-    target = temp_dir / "machine_config.mock.ini"
-    target.write_text(rewritten, encoding="utf-8")
-    return target
 
 
 def _matches_known_failure(text: str) -> bool:
@@ -313,8 +286,10 @@ def main() -> int:
     gateway_exe = Path(args.gateway_exe)
     port, port_is_requested = _resolve_runtime_port(args.host, args.port)
     results: list[ChainResult] = []
-    temp_config_dir = tempfile.TemporaryDirectory(prefix="tcp-estop-chain-")
-    temp_config = _prepare_mock_config(Path(temp_config_dir.name), CANONICAL_CONFIG)
+    temp_config_dir, temp_config = prepare_mock_config(
+        prefix="tcp-estop-chain-",
+        source_config=CANONICAL_CONFIG,
+    )
 
     if not gateway_exe.exists():
         status = "skipped" if args.allow_skip_on_missing_gateway else "known_failure"
@@ -412,7 +387,11 @@ def main() -> int:
 
         client.connect(timeout_seconds=3.0)
 
-        connect_response = client.send_request("connect", {}, timeout_seconds=5.0)
+        connect_response = client.send_request(
+            "connect",
+            load_connection_params(temp_config),
+            timeout_seconds=5.0,
+        )
         if "error" in connect_response:
             results.append(
                 ChainResult(

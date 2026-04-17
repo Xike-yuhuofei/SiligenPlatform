@@ -17,6 +17,14 @@
             {
                 "key": "material_type",
                 "value": "silicone"
+            },
+            {
+                "key": "trigger_spatial_interval_mm",
+                "value": 3.0
+            },
+            {
+                "key": "point_flying_direction_mode",
+                "value": "approach_direction"
             }
         ],
         "publishedAt": 1769379308616,

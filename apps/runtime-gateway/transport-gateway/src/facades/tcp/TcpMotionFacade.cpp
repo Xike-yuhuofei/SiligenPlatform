@@ -7,11 +7,11 @@ namespace Siligen::Application::Facades::Tcp {
 TcpMotionFacade::TcpMotionFacade(
     std::shared_ptr<UseCases::Motion::MotionControlUseCase> motion_control_use_case,
     std::shared_ptr<UseCases::Motion::Safety::MotionSafetyUseCase> motion_safety_use_case,
-    std::shared_ptr<Domain::Motion::Ports::IPositionControlPort> position_control_port,
+    std::shared_ptr<UseCases::Motion::PTP::MoveToPositionUseCase> move_to_position_use_case,
     std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> hardware_connection_port)
     : motion_control_use_case_(std::move(motion_control_use_case)),
       motion_safety_use_case_(std::move(motion_safety_use_case)),
-      position_control_port_(std::move(position_control_port)),
+      move_to_position_use_case_(std::move(move_to_position_use_case)),
       hardware_connection_port_(std::move(hardware_connection_port)) {}
 
 Shared::Types::Result<UseCases::Motion::Homing::HomeAxesResponse> TcpMotionFacade::Home(
@@ -53,11 +53,24 @@ Shared::Types::Result<void> TcpMotionFacade::ExecutePointToPointMotion(
 }
 
 Shared::Types::Result<void> TcpMotionFacade::MoveToPosition(const Point2D& position, float32 velocity) {
-    if (!position_control_port_) {
+    if (!move_to_position_use_case_) {
         return Shared::Types::Result<void>::Failure(
-            Shared::Types::Error(Shared::Types::ErrorCode::PORT_NOT_INITIALIZED, "PositionControlPort not available"));
+            Shared::Types::Error(
+                Shared::Types::ErrorCode::PORT_NOT_INITIALIZED,
+                "MoveToPositionUseCase not available"));
     }
-    return position_control_port_->MoveToPosition(position, velocity);
+
+    UseCases::Motion::PTP::MoveToPositionRequest request;
+    request.target_position = position;
+    request.movement_speed = velocity;
+    request.validate_state = true;
+    request.wait_for_completion = false;
+
+    auto result = move_to_position_use_case_->Execute(request);
+    if (result.IsError()) {
+        return Shared::Types::Result<void>::Failure(result.GetError());
+    }
+    return Shared::Types::Result<void>::Success();
 }
 
 Shared::Types::Result<void> TcpMotionFacade::StartJog(

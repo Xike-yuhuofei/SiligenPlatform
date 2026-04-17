@@ -441,9 +441,15 @@ def rewrite_mock_config(source_text: str, door_input: int | None = None) -> str:
     return "\n".join(lines) + "\n"
 
 
-def prepare_mock_config(prefix: str, door_input: int | None = None) -> tuple[tempfile.TemporaryDirectory[str], Path]:
+def prepare_mock_config(
+    prefix: str,
+    *,
+    source_config: Path | None = None,
+    door_input: int | None = None,
+) -> tuple[tempfile.TemporaryDirectory[str], Path]:
     temp_dir = tempfile.TemporaryDirectory(prefix=prefix)
-    rewritten = rewrite_mock_config(CANONICAL_CONFIG.read_text(encoding="utf-8"), door_input=door_input)
+    effective_source_config = CANONICAL_CONFIG if source_config is None else source_config
+    rewritten = rewrite_mock_config(effective_source_config.read_text(encoding="utf-8"), door_input=door_input)
     target = Path(temp_dir.name) / "machine_config.mock.ini"
     target.write_text(rewritten, encoding="utf-8")
     return temp_dir, target
