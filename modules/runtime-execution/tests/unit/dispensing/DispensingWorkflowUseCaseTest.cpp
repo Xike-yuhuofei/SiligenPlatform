@@ -349,6 +349,8 @@ DispensingPlan BuildMinimalPlan() {
     plan.motion_trajectory.total_time = 1.0f;
     plan.interpolation_points.emplace_back(0.0f, 0.0f, 10.0f);
     plan.interpolation_points.emplace_back(20.0f, 0.0f, 10.0f);
+    plan.interpolation_points.front().timestamp = 0.0f;
+    plan.interpolation_points.back().timestamp = 1.0f;
     plan.interpolation_points.front().enable_position_trigger = true;
     plan.interpolation_points.back().enable_position_trigger = true;
     plan.trigger_distances_mm = {0.0f, 20.0f};

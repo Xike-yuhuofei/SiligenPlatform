@@ -228,6 +228,13 @@ Siligen::Shared::Types::Result<std::vector<Point2D>> BuildInterpolationSeedPoint
     float32 spline_max_error_mm,
     float32 step_mm);
 std::vector<TrajectoryPoint> ConvertPreviewPointsToTrajectory(const std::vector<Point2D>& preview_points);
+Siligen::Shared::Types::Result<std::vector<TrajectoryPoint>> BuildTimedExecutionTrajectoryFromMotionPlan(
+    const std::vector<Point2D>& preview_points,
+    const MotionPlan& motion_plan);
+Siligen::Shared::Types::Result<void> ValidatePathInterpolationTiming(
+    const std::vector<TrajectoryPoint>& points,
+    float32 expected_total_time_s,
+    const char* error_source);
 float32 EstimatePreviewTime(const AuthorityPreviewBuildInput& input, float32 total_length_mm);
 std::vector<Point2D> CollectAuthorityPositions(const AuthorityTriggerLayout& layout);
 Siligen::Shared::Types::Result<ProcessPath> BuildCanonicalExecutionProcessPath(

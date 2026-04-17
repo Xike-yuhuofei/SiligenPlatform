@@ -114,6 +114,8 @@ DispensingExecutionRequest BuildExecutionRequest(bool include_interpolation_poin
     if (include_interpolation_points) {
         plan.interpolation_points.emplace_back(0.0f, 0.0f, 10.0f);
         plan.interpolation_points.emplace_back(12.5f, 0.0f, 10.0f);
+        plan.interpolation_points.front().timestamp = 0.0f;
+        plan.interpolation_points.back().timestamp = 1.25f;
     }
 
     InterpolationData segment;

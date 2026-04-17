@@ -4,6 +4,7 @@
 #include "process_path/contracts/GeometryUtils.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
+#include "shared/types/TrajectoryTriggerUtils.h"
 
 #include <algorithm>
 #include <cmath>
@@ -62,6 +63,50 @@ float32 SpeedMagnitude(const MotionTrajectoryPoint& point) {
     const float32 vx = point.velocity.x;
     const float32 vy = point.velocity.y;
     return std::sqrt(vx * vx + vy * vy);
+}
+
+TrajectoryPoint ResolveMotionTrajectoryPointByDistance(
+    const std::vector<TrajectoryPoint>& motion_points,
+    const std::vector<float32>& cumulative_distances,
+    float32 target_distance_mm) {
+    if (motion_points.empty()) {
+        return {};
+    }
+
+    if (motion_points.size() == 1U || cumulative_distances.empty()) {
+        return motion_points.front();
+    }
+
+    const float32 total_length = cumulative_distances.back();
+    const float32 clamped_target = std::clamp(target_distance_mm, 0.0f, total_length);
+    if (clamped_target <= kEpsilon) {
+        return motion_points.front();
+    }
+    if (clamped_target + kEpsilon >= total_length) {
+        return motion_points.back();
+    }
+
+    const auto lower = std::lower_bound(cumulative_distances.begin(), cumulative_distances.end(), clamped_target);
+    if (lower == cumulative_distances.end()) {
+        return motion_points.back();
+    }
+
+    const std::size_t right_index = static_cast<std::size_t>(std::distance(cumulative_distances.begin(), lower));
+    if (right_index == 0U || std::fabs(*lower - clamped_target) <= kEpsilon) {
+        return motion_points[right_index];
+    }
+
+    const std::size_t left_index = right_index - 1U;
+    const float32 segment_length = cumulative_distances[right_index] - cumulative_distances[left_index];
+    if (segment_length <= kEpsilon) {
+        return motion_points[right_index];
+    }
+
+    const float32 ratio = (clamped_target - cumulative_distances[left_index]) / segment_length;
+    return Siligen::Shared::Types::InterpolateTrajectoryPoint(
+        motion_points[left_index],
+        motion_points[right_index],
+        ratio);
 }
 
 void AppendUniquePoint(std::vector<Point2D>& points, const Point2D& point) {
@@ -452,6 +497,97 @@ std::vector<TrajectoryPoint> ConvertPreviewPointsToTrajectory(
         points.push_back(point);
     }
     return points;
+}
+
+Result<std::vector<TrajectoryPoint>> BuildTimedExecutionTrajectoryFromMotionPlan(
+    const std::vector<Point2D>& preview_points,
+    const MotionPlan& motion_plan) {
+    if (preview_points.size() < 2U || motion_plan.points.size() < 2U) {
+        return Result<std::vector<TrajectoryPoint>>::Failure(Error(
+            ErrorCode::INVALID_PARAMETER,
+            "LINEAR执行轨迹缺少有效 timing truth",
+            "DispensePackagingAssembly"));
+    }
+
+    const auto preview_seed_points = ConvertPreviewPointsToTrajectory(preview_points);
+    const auto preview_cumulative = Siligen::Shared::Types::BuildTrajectoryCumulativeDistances(preview_seed_points);
+    if (preview_cumulative.empty() || preview_cumulative.back() <= kEpsilon) {
+        return Result<std::vector<TrajectoryPoint>>::Failure(Error(
+            ErrorCode::INVALID_PARAMETER,
+            "LINEAR执行轨迹缺少有效 canonical path",
+            "DispensePackagingAssembly"));
+    }
+
+    const auto motion_points = ConvertMotionTrajectoryToTrajectoryPoints(motion_plan);
+    const auto motion_cumulative = Siligen::Shared::Types::BuildTrajectoryCumulativeDistances(motion_points);
+    if (motion_cumulative.empty() || motion_cumulative.back() <= kEpsilon || motion_points.back().timestamp <= kEpsilon) {
+        return Result<std::vector<TrajectoryPoint>>::Failure(Error(
+            ErrorCode::INVALID_PARAMETER,
+            "LINEAR执行轨迹缺少有效 timing truth",
+            "DispensePackagingAssembly"));
+    }
+
+    std::vector<TrajectoryPoint> timed_points;
+    timed_points.reserve(preview_points.size());
+    const float32 distance_scale = motion_cumulative.back() / preview_cumulative.back();
+    for (std::size_t index = 0; index < preview_points.size(); ++index) {
+        float32 motion_target_distance = preview_cumulative[index] * distance_scale;
+        if (index == 0U) {
+            motion_target_distance = 0.0f;
+        } else if (index + 1U == preview_points.size()) {
+            motion_target_distance = motion_cumulative.back();
+        }
+
+        auto timed_point = ResolveMotionTrajectoryPointByDistance(
+            motion_points,
+            motion_cumulative,
+            motion_target_distance);
+        timed_point.position = preview_points[index];
+        timed_point.sequence_id = static_cast<uint32>(index);
+        Siligen::Shared::Types::ClearTriggerMarker(timed_point);
+        timed_points.push_back(timed_point);
+    }
+
+    return Result<std::vector<TrajectoryPoint>>::Success(std::move(timed_points));
+}
+
+Result<void> ValidatePathInterpolationTiming(
+    const std::vector<TrajectoryPoint>& points,
+    float32 expected_total_time_s,
+    const char* error_source) {
+    if (points.size() < 2U) {
+        return Result<void>::Success();
+    }
+
+    if (points.back().timestamp <= kEpsilon) {
+        return Result<void>::Failure(Error(
+            ErrorCode::INVALID_PARAMETER,
+            "PATH execution interpolation_points missing terminal timestamp",
+            error_source));
+    }
+
+    float32 previous_timestamp = points.front().timestamp;
+    for (std::size_t index = 1; index < points.size(); ++index) {
+        if (points[index].timestamp + kEpsilon < previous_timestamp) {
+            return Result<void>::Failure(Error(
+                ErrorCode::INVALID_PARAMETER,
+                "PATH execution interpolation_points timestamp must be monotonic",
+                error_source));
+        }
+        previous_timestamp = points[index].timestamp;
+    }
+
+    if (expected_total_time_s > kEpsilon) {
+        constexpr float32 kTimeToleranceS = 1e-3f;
+        if (std::fabs(points.back().timestamp - expected_total_time_s) > kTimeToleranceS) {
+            return Result<void>::Failure(Error(
+                ErrorCode::INVALID_PARAMETER,
+                "PATH execution interpolation_points timestamp mismatches motion_plan.total_time",
+                error_source));
+        }
+    }
+
+    return Result<void>::Success();
 }
 
 float32 EstimatePreviewTime(

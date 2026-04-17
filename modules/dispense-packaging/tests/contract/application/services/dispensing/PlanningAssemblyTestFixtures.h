@@ -242,19 +242,31 @@ inline FixturePlanningInput BuildPolylineInput(
     input.trigger_spatial_interval_mm = spacing_mm;
 
     float total_length = 0.0f;
-    float timestamp = 0.0f;
     for (std::size_t index = 1; index < polyline.size(); ++index) {
         input.process_path.segments.push_back(BuildLineSegment(polyline[index - 1], polyline[index]));
         if (index == 1) {
             input.motion_plan.points.push_back(
-                BuildMotionPoint(timestamp, polyline[index - 1].x, polyline[index - 1].y));
+                BuildMotionPoint(0.0f, polyline[index - 1].x, polyline[index - 1].y));
         }
         total_length += polyline[index - 1].DistanceTo(polyline[index]);
-        timestamp += 1.0f;
-        input.motion_plan.points.push_back(BuildMotionPoint(timestamp, polyline[index].x, polyline[index].y));
+        input.motion_plan.points.push_back(BuildMotionPoint(0.0f, polyline[index].x, polyline[index].y));
     }
     input.motion_plan.total_length = total_length;
     input.motion_plan.total_time = std::max(1.0f, total_length / 10.0f);
+    if (input.motion_plan.points.size() >= 2U) {
+        if (total_length > 0.0f) {
+            float traversed_length = 0.0f;
+            input.motion_plan.points.front().t = 0.0f;
+            for (std::size_t index = 1; index < input.motion_plan.points.size(); ++index) {
+                traversed_length += polyline[index - 1].DistanceTo(polyline[index]);
+                input.motion_plan.points[index].t =
+                    input.motion_plan.total_time * (traversed_length / total_length);
+            }
+        } else {
+            input.motion_plan.points.front().t = 0.0f;
+            input.motion_plan.points.back().t = input.motion_plan.total_time;
+        }
+    }
     input.estimated_time_s = input.motion_plan.total_time;
     return input;
 }

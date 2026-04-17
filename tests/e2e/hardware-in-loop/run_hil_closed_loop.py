@@ -431,10 +431,10 @@ def _read_process_output(process: subprocess.Popen[str]) -> tuple[str, str]:
     return stdout or "", stderr or ""
 
 
-def _wait_gateway_ready(process: subprocess.Popen[str], host: str, port: int, timeout_seconds: float) -> tuple[str, str]:
+def _wait_gateway_ready(process: subprocess.Popen[str] | None, host: str, port: int, timeout_seconds: float) -> tuple[str, str]:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
-        if process.poll() is not None:
+        if process is not None and process.poll() is not None:
             stdout, stderr = _read_process_output(process)
             combined = "\n".join(item for item in (stdout, stderr) if item)
             if _matches_known_failure(combined):
@@ -446,6 +446,16 @@ def _wait_gateway_ready(process: subprocess.Popen[str], host: str, port: int, ti
         except OSError:
             time.sleep(0.2)
     return "failed", f"gateway readiness timeout: {host}:{port}"
+
+
+def _gateway_mode(reuse_existing_gateway: bool) -> str:
+    return "existing" if reuse_existing_gateway else "spawned"
+
+
+def _gateway_ready_command(gateway_exe: Path, host: str, port: int, reuse_existing_gateway: bool) -> list[str]:
+    if reuse_existing_gateway:
+        return ["reuse-existing-gateway", f"{host}:{port}"]
+    return [str(gateway_exe)]
 
 
 def _run_tcp_step(
@@ -934,6 +944,7 @@ def _write_reports(report: dict, report_dir: Path) -> tuple[Path, Path]:
         f"- reconnect_count: `{report['reconnect_count']}`",
         f"- timeout_count: `{report['timeout_count']}`",
         f"- gateway_exe: `{report['gateway_exe']}`",
+        f"- gateway_mode: `{report['gateway_mode']}`",
         f"- cli_exe: `{report['cli_exe']}`",
         f"- transport: `{report['transport']}`",
         f"- dxf_case_id: `{report.get('dxf_case_id', '')}`",
@@ -1106,6 +1117,7 @@ def _build_report(
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "workspace_root": str(ROOT),
         "gateway_exe": str(gateway_exe),
+        "gateway_mode": _gateway_mode(bool(getattr(args, "reuse_existing_gateway", False))),
         "cli_exe": str(cli_exe),
         "transport": "tcp-json",
         "host": args.host,
@@ -1173,6 +1185,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--allow-skip-on-missing-gateway", action="store_true")
     parser.add_argument("--allow-skip-on-missing-cli", action="store_true")
+    parser.add_argument("--reuse-existing-gateway", action="store_true")
     parser.add_argument("--offline-prereq-report", default="")
     parser.add_argument("--operator-override-reason", default="")
     return parser.parse_args()
@@ -1190,6 +1203,7 @@ def main() -> int:
     report_dir = Path(args.report_dir)
     gateway_exe = Path(args.gateway_exe)
     cli_exe = Path(args.cli_exe)
+    gateway_ready_command = _gateway_ready_command(gateway_exe, args.host, args.port, args.reuse_existing_gateway)
     steps: list[StepResult] = []
     iterations = 0
     reconnect_count = 0
@@ -1261,7 +1275,7 @@ def main() -> int:
             failure_classification=admission.get("failure_classification"),
         )
 
-    if not gateway_exe.exists():
+    if not args.reuse_existing_gateway and not gateway_exe.exists():
         status = "skipped" if args.allow_skip_on_missing_gateway else "known_failure"
         steps.append(
             StepResult(
@@ -1269,7 +1283,7 @@ def main() -> int:
                 status=status,
                 duration_seconds=0.0,
                 return_code=None,
-                command=[str(gateway_exe)],
+                command=gateway_ready_command,
                 note=f"gateway executable missing: {gateway_exe}",
             )
         )
@@ -1319,27 +1333,31 @@ def main() -> int:
 
     started = time.perf_counter()
     connect_params = _load_connection_params(args.config_path)
-    process = subprocess.Popen(
-        [str(gateway_exe), "--config", str(args.config_path), "--port", str(args.port)],
-        cwd=str(ROOT),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        env=build_process_env(gateway_exe),
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-    )
+    process: subprocess.Popen[str] | None = None
+    if not args.reuse_existing_gateway:
+        process = subprocess.Popen(
+            [str(gateway_exe), "--config", str(args.config_path), "--port", str(args.port)],
+            cwd=str(ROOT),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            env=build_process_env(gateway_exe),
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
 
     client = TcpJsonClient(args.host, args.port)
     try:
         ready_status, ready_note = _wait_gateway_ready(process, args.host, args.port, timeout_seconds=8.0)
+        if args.reuse_existing_gateway and ready_status == "passed":
+            ready_note = f"existing gateway endpoint is reachable: {args.host}:{args.port}"
         steps.append(
             StepResult(
                 name="gateway-ready",
                 status=ready_status,
                 duration_seconds=0.0,
                 return_code=0 if ready_status == "passed" else 1,
-                command=[str(gateway_exe)],
+                command=gateway_ready_command,
                 note=ready_note,
             )
         )
@@ -1550,7 +1568,7 @@ def main() -> int:
         return 1
     finally:
         client.close()
-        if process.poll() is None:
+        if process is not None and process.poll() is None:
             process.terminate()
             try:
                 process.wait(timeout=5)

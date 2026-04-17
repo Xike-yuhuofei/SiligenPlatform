@@ -4,6 +4,7 @@
 #include "shared/types/Error.h"
 #include "shared/types/Result.h"
 
+#include <algorithm>
 #include <string>
 #include <utility>
 
@@ -67,6 +68,27 @@ struct ExecutionPackageValidated {
         } else if (!has_interpolation_segments && !has_interpolation_points && !has_motion_points) {
             return Result<void>::Failure(
                 Error(ErrorCode::INVALID_PARAMETER, "execution package missing executable trajectory"));
+        }
+
+        if (!execution_plan.IsPointGeometry() && has_interpolation_points) {
+            const auto terminal_timestamp = execution_plan.interpolation_points.back().timestamp;
+            if (terminal_timestamp <= 0.0f) {
+                return Result<void>::Failure(Error(
+                    ErrorCode::INVALID_PARAMETER,
+                    "path execution interpolation_points missing terminal timestamp"));
+            }
+
+            const bool monotonic = std::adjacent_find(
+                                       execution_plan.interpolation_points.begin(),
+                                       execution_plan.interpolation_points.end(),
+                                       [](const auto& lhs, const auto& rhs) {
+                                           return rhs.timestamp < lhs.timestamp;
+                                       }) == execution_plan.interpolation_points.end();
+            if (!monotonic) {
+                return Result<void>::Failure(Error(
+                    ErrorCode::INVALID_PARAMETER,
+                    "path execution interpolation_points timestamp must be monotonic"));
+            }
         }
 
         if (total_length_mm < 0.0f) {

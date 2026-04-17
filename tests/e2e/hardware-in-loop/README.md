@@ -33,6 +33,7 @@
 - `run_hil_controlled_test.ps1` 是唯一正式的 controlled HIL release path；默认执行顺序固定为 `offline-prereq -> hardware-smoke -> hil-closed-loop -> optional hil-case-matrix -> gate -> release-summary`
 - `run_hil_controlled_test.ps1` 在 `passed` 且门禁满足时，会将本次时间戳目录证据同步到固定目录 `tests/reports/hil-controlled-test`
 - 任何带 `PublishLatestOnPass=true` 的正式 publish 都必须提供非空 `-Executor`，否则脚本会直接失败，防止生成 unsigned latest authority
+- 如需 attach 到已运行网关，可在同一条 controlled path 上显式传 `-ReuseExistingGateway`；下游 `hardware-smoke` / `hil-closed-loop` / `hil-case-matrix` 会统一复用现有 `host:port`，不再自启第二个网关
 - `run_hil_controlled_test.ps1` 在 offline prerequisites 已通过后，即使 hardware-smoke / hil-closed-loop / hil-case-matrix 阻塞，也会继续产出 `hil-controlled-gate-summary.*` 与 `hil-controlled-release-summary.md`
 - 固定目录会写入 `latest-source.txt`，用于追溯当前 fixed latest authority 对应的时间戳目录
 - 联机测试矩阵基线统一见 `docs/validation/online-test-matrix-v1.md`
@@ -131,6 +132,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop\run_hil_controlled_test.ps1 `
   -Profile Local `
+  -ReuseExistingGateway `
   -SkipBuild `
   -UseTimestampedReportDir `
   -PublishLatestOnPass:$false
@@ -313,6 +315,8 @@ python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun.py `
 - `-SkipBuild` 只影响构建步骤，不改变 test/gate/release/publish 语义
 - 当 `PublishLatestOnPass=true` 时，必须提供非空 `-Executor`，latest publish 才会被允许
 - 支持 `-OperatorOverrideReason "<reason>"`；只有离线前置层不满足且现场负责人明确批准时才允许使用
+- 支持 `-ReuseExistingGateway`；启用后会把 `hardware-smoke`、`hil-closed-loop`、`hil-case-matrix` 统一切到“附着现有网关”模式，不再由这些脚本自行拉起第二个网关进程
+- 支持 `-OfflinePrereqReport "<workspace-validation.json>"`；启用后会复用已通过的 full-offline 证据并复制到当前时间戳目录，不再在本回合重跑离线前置
 - offline prerequisites 直接以 `-Suite @("contracts","integration","e2e","protocol-compatibility")` 调用根级 `test.ps1`，覆盖 `engineering-regression`，并避免子 `powershell -File` 多 `-Suite` 绑定歧义
 - 默认会把 `offline-prereq`、`hardware-smoke`、`hil-closed-loop`、`hil-controlled-gate`、`hil-controlled-release-summary` 聚合到同一报告根
 - 默认 `-IncludeHilCaseMatrix:$true`；如需隔离排障可显式关闭，但正式 release path 应优先保留

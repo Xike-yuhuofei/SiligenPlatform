@@ -13,6 +13,8 @@ param(
     [switch]$AllowSkipOnMissingHardware,
     [switch]$SkipBuild,
     [switch]$IncludeHilCaseMatrix = $true,
+    [switch]$ReuseExistingGateway,
+    [string]$OfflinePrereqReport = "",
     [bool]$PublishLatestOnPass = $true,
     [string]$PublishLatestReportDir = "tests\\reports\\hil-controlled-test",
     [string]$PythonExe = "python",
@@ -62,6 +64,12 @@ function Copy-PathIfPresent {
         return
     }
 
+    $resolvedSource = [System.IO.Path]::GetFullPath($Source)
+    $resolvedDestination = [System.IO.Path]::GetFullPath($Destination)
+    if ($resolvedSource -eq $resolvedDestination) {
+        return
+    }
+
     $item = Get-Item -LiteralPath $Source
     if ($item.PSIsContainer) {
         if (Test-Path $Destination) {
@@ -95,6 +103,9 @@ foreach ($requiredPath in @($buildScript, $testScript, $hardwareSmokeScript, $hi
 
 Assert-PathArgumentNotBooleanLiteral -ArgumentName "ReportDir" -PathValue $ReportDir
 Assert-PathArgumentNotBooleanLiteral -ArgumentName "PublishLatestReportDir" -PathValue $PublishLatestReportDir
+if (-not [string]::IsNullOrWhiteSpace($OfflinePrereqReport)) {
+    Assert-PathArgumentNotBooleanLiteral -ArgumentName "OfflinePrereqReport" -PathValue $OfflinePrereqReport
+}
 
 $resolvedReportDir = Resolve-AbsolutePath -WorkspaceRoot $workspaceRoot -PathValue $ReportDir
 if ($UseTimestampedReportDir) {
@@ -123,6 +134,7 @@ $hilCaseMatrixSummaryMdPath = Join-Path $hilCaseMatrixDir "case-matrix-summary.m
 $gateSummaryJsonPath = Join-Path $resolvedReportDir "hil-controlled-gate-summary.json"
 $gateSummaryMdPath = Join-Path $resolvedReportDir "hil-controlled-gate-summary.md"
 $releaseSummaryMdPath = Join-Path $resolvedReportDir "hil-controlled-release-summary.md"
+$resolvedOfflinePrereqReport = if ([string]::IsNullOrWhiteSpace($OfflinePrereqReport)) { "" } else { Resolve-AbsolutePath -WorkspaceRoot $workspaceRoot -PathValue $OfflinePrereqReport }
 
 New-Item -ItemType Directory -Path $resolvedReportDir -Force | Out-Null
 
@@ -138,6 +150,8 @@ Write-Output "  dispenser_duration_ms=$HilDispenserDurationMs"
 Write-Output "  state_wait_timeout_seconds=$HilStateWaitTimeoutSeconds"
 Write-Output "  allow_skip_on_missing_hardware=$([bool]$AllowSkipOnMissingHardware)"
 Write-Output "  include_hil_case_matrix=$([bool]$IncludeHilCaseMatrix)"
+Write-Output "  reuse_existing_gateway=$([bool]$ReuseExistingGateway)"
+Write-Output "  offline_prereq_report=$resolvedOfflinePrereqReport"
 Write-Output "  publish_latest_on_pass=$PublishLatestOnPass"
 Write-Output "  publish_latest_report_dir=$resolvedPublishLatestReportDir"
 Write-Output "  executor=$Executor"
@@ -164,23 +178,36 @@ if ($SkipBuild) {
     }
 }
 
-Write-Output "hil controlled test: run offline prerequisites"
-try {
-    & $testScript `
-        -Profile $Profile `
-        -Suite @("contracts", "integration", "e2e", "protocol-compatibility") `
-        -ReportDir $offlinePrereqDir `
-        -Lane "full-offline-gate" `
-        -DesiredDepth "full-offline" `
-        -FailOnKnownFailure
-    $offlineExitCode = 0
-} catch {
-    $offlineExitCode = if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { $LASTEXITCODE } else { 1 }
-    Write-Error $_
+if ([string]::IsNullOrWhiteSpace($resolvedOfflinePrereqReport)) {
+    Write-Output "hil controlled test: run offline prerequisites"
+    try {
+        & $testScript `
+            -Profile $Profile `
+            -Suite @("contracts", "integration", "e2e", "protocol-compatibility") `
+            -ReportDir $offlinePrereqDir `
+            -Lane "full-offline-gate" `
+            -DesiredDepth "full-offline" `
+            -FailOnKnownFailure
+        $offlineExitCode = 0
+    } catch {
+        $offlineExitCode = if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { $LASTEXITCODE } else { 1 }
+        Write-Error $_
+    }
+    if ($offlineExitCode -ne 0) {
+        Write-Output "hil controlled test failed: offline prerequisite validation exit_code=$offlineExitCode"
+        exit $offlineExitCode
+    }
 }
-if ($offlineExitCode -ne 0) {
-    Write-Output "hil controlled test failed: offline prerequisite validation exit_code=$offlineExitCode"
-    exit $offlineExitCode
+else {
+    if (-not (Test-Path -LiteralPath $resolvedOfflinePrereqReport)) {
+        throw "OfflinePrereqReport not found: $resolvedOfflinePrereqReport"
+    }
+
+    $resolvedOfflinePrereqMdReport = [System.IO.Path]::ChangeExtension($resolvedOfflinePrereqReport, ".md")
+    Write-Output "hil controlled test: reuse offline prerequisites report"
+    Write-Output "  source_json=$resolvedOfflinePrereqReport"
+    Copy-PathIfPresent -Source $resolvedOfflinePrereqReport -Destination $offlinePrereqJsonPath
+    Copy-PathIfPresent -Source $resolvedOfflinePrereqMdReport -Destination $offlinePrereqMdPath
 }
 
 Write-Output "hil controlled test: run hardware smoke"
@@ -188,6 +215,9 @@ $hardwareSmokeArgs = @(
     $hardwareSmokeScript,
     "--report-dir", $hardwareSmokeDir
 )
+if ($ReuseExistingGateway) {
+    $hardwareSmokeArgs += "--reuse-existing-gateway"
+}
 if ($AllowSkipOnMissingHardware) {
     $hardwareSmokeArgs += "--allow-skip-on-missing-gateway"
 }
@@ -209,6 +239,9 @@ $hilClosedLoopArgs = @(
     "--state-wait-timeout-seconds", $HilStateWaitTimeoutSeconds,
     "--offline-prereq-report", $offlinePrereqJsonPath
 )
+if ($ReuseExistingGateway) {
+    $hilClosedLoopArgs += "--reuse-existing-gateway"
+}
 if (-not [string]::IsNullOrWhiteSpace($OperatorOverrideReason)) {
     $hilClosedLoopArgs += @("--operator-override-reason", $OperatorOverrideReason)
 }
@@ -234,6 +267,9 @@ if ($IncludeHilCaseMatrix) {
         "--state-wait-timeout-seconds", $HilStateWaitTimeoutSeconds,
         "--offline-prereq-report", $offlinePrereqJsonPath
     )
+    if ($ReuseExistingGateway) {
+        $hilCaseMatrixArgs += "--reuse-existing-gateway"
+    }
     if (-not [string]::IsNullOrWhiteSpace($OperatorOverrideReason)) {
         $hilCaseMatrixArgs += @("--operator-override-reason", $OperatorOverrideReason)
     }
