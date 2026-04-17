@@ -13,7 +13,7 @@
 - 作为 `dxf.plan.prepare` producer，脚本必须显式传入已发布 `--recipe-id/--version-id`；当前 canonical published context 固定为 `recipe-7d1b00f4-6a99 / version-fea9ce29-f963`
 - 输出 `JSON + Markdown` 到 `tests/reports/performance/dxf-preview-profiles/`
 - `tests/performance/collect_dxf_preview_profiles.py` 同时是 `nightly-performance` 的正式 authority；当显式传 `--gate-mode nightly-performance --threshold-config tests/baselines/performance/dxf-preview-profile-thresholds.json` 时，threshold gate 为 blocking
-- 默认 gateway executable 解析顺序与 shared build owner 保持一致：`SILIGEN_CONTROL_APPS_BUILD_ROOT` -> 携带当前工作区匹配 `CMakeCache.txt` 的 `<repo-root>\build\ca\bin\*` -> `<repo-root>\build\control-apps\bin\*` -> `<repo-root>\build\bin\*` -> 携带当前工作区匹配 `CMakeCache.txt` 的 `%LOCALAPPDATA%\SS\cab-*\bin\*` -> 携带当前工作区匹配 `CMakeCache.txt` 的 legacy `%LOCALAPPDATA%\SiligenSuite\control-apps-build\bin\*`
+- 默认 gateway executable 与 shared build owner 保持单轨一致：显式设置 `SILIGEN_CONTROL_APPS_BUILD_ROOT` 时使用该路径；否则只认携带当前工作区匹配 `CMakeCache.txt` 的 `<repo-root>\build\ca\bin\*`
 - 固定输出三张表：
   - `Preview`：authority 侧 `artifact.create -> plan.prepare -> preview.snapshot`
   - `Execution`：开启 `--include-start-job` 后的 `preview.confirm -> dxf.job.start -> dxf.job.status -> dxf.job.stop`
@@ -59,7 +59,7 @@
 
 - 若显式传入 `--launch-spec`，脚本完全尊重该契约，不额外改写启动配置。
 - 若未传入 `--launch-spec` 且同时开启 `--include-start-job --dry-run`：
-  - 脚本固定使用当前工作区解析出的 `--gateway-exe/--config-path`，优先命中携带当前工作区匹配 `CMakeCache.txt` 的 `<repo-root>\build\ca\bin\*`，兼容 fallback 到 `<repo-root>\build\control-apps\bin\*`、`<repo-root>\build\bin\*` 与匹配当前工作区的 `%LOCALAPPDATA%\SS\cab-*\bin\*`，最后才是携带当前工作区匹配 `CMakeCache.txt` 的 legacy `%LOCALAPPDATA%\SiligenSuite\control-apps-build\bin\*`，而不是 HMI 外部 launch spec。
+  - 脚本固定使用当前工作区解析出的 `--gateway-exe/--config-path`，默认只认携带当前工作区匹配 `CMakeCache.txt` 的 `<repo-root>\build\ca\bin\*`，而不是 HMI 外部 launch spec，也不会再静默回退到其他 build 根。
   - 当 `--config-path` 指向的配置仍是 `Hardware.mode=Real` 时，脚本会在 `tests/reports/performance/dxf-preview-profiles/_runtime/` 下自动生成临时 mock 配置，并以该配置启动 gateway。
   - gateway 启动后，脚本会在采样前执行一次 mock `connect -> home.auto`，确保 `dxf.job.start` 的 dry-run/mock 路径具备可复跑前置条件。
 - 上述 bootstrap 只负责把 mock runtime 拉到可执行状态；其耗时不计入 `Execution` 表。

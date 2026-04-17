@@ -24,7 +24,7 @@
 当前策略：
 
 - 默认验证 canonical `siligen_tcp_server.exe` 的最小启动闭环
-- 默认产物根解析顺序与 shared build owner 保持一致：`SILIGEN_CONTROL_APPS_BUILD_ROOT`（显式设置时） -> 携带当前工作区匹配 `CMakeCache.txt` 的 `<repo-root>\build\ca` -> `<repo-root>\build\control-apps` -> `<repo-root>\build` -> 匹配当前工作区且携带匹配 `CMakeCache.txt` 的 `%LOCALAPPDATA%\SS\cab-*` -> 携带当前工作区匹配 `CMakeCache.txt` 的 legacy `%LOCALAPPDATA%\SiligenSuite\control-apps-build`
+- 默认产物根与 shared build owner 保持单轨一致：显式设置 `SILIGEN_CONTROL_APPS_BUILD_ROOT` 时使用该路径；否则只认携带当前工作区匹配 `CMakeCache.txt` 的 `<repo-root>\build\ca`
 - 默认目标路径模式为 `<build-root>\bin\<Config>\*.exe`，当前 canonical 命中应为 `<repo-root>\build\ca\bin\<Config>\*.exe`
 - 可通过 `SILIGEN_HIL_GATEWAY_EXE` 显式覆盖可执行文件
 - 进程 `cwd` 使用仓库根，而不是 `control-core`

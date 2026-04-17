@@ -71,4 +71,4 @@
 4. 分支命名必须符合 `<type>/<scope>/<ticket>-<short-desc>`，并统一以项目级 skill `.agents/skills/git-create/SKILL.md` 为准。
 5. `.specify/` 与 `specs/` 如存在，只能作为本地缓存；不得作为正式文档锚点、正式脚本输入或仓库事实源。
 6. 根级 `build-*` 与 `.claude/` 如存在，只能作为本地生成物或工具状态；不得进入版本管理，也不得被正式脚本声明为固定事实路径。
-7. build root 自动发现只允许 `build/`、`build/control-apps/`、显式环境变量和本地发布缓存；根级其他 `build-*` 不得作为默认 build root 候选。
+7. control-apps build root 默认只允许显式 `SILIGEN_CONTROL_APPS_BUILD_ROOT` 或当前工作区 `build/ca`；`build/`、`build/control-apps/` 和本地发布缓存不得作为默认 build root 候选。
