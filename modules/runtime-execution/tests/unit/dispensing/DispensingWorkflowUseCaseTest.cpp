@@ -1898,7 +1898,7 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotUsesProcessPathWhenMotionT
     EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 25.0f, 25.0f, 1e-4f));
 }
 
-TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFallsBackToAuthorityProcessPathWhenExportRequestIsReleased) {
+TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFailsWhenExportRequestIsReleasedAndNoExecutionTruthRemains) {
     auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
     auto homing_port = std::make_shared<FakeHomingPort>();
@@ -1908,7 +1908,7 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFallsBackToAuthorityProces
     SeedPlan(use_case, "plan-authority-process-path-fallback");
     auto& plan_record = use_case.plans_.at("plan-authority-process-path-fallback");
     plan_record.execution_launch.authority_preview.success = true;
-    plan_record.execution_launch.authority_preview.process_path.segments = {
+    plan_record.execution_launch.authority_preview.authority_process_path.segments = {
         BuildLineProcessSegment(Point2D(0.0f, 0.0f), Point2D(100.0f, 0.0f)),
         BuildLineProcessSegment(Point2D(100.0f, 0.0f), Point2D(100.0f, 100.0f)),
     };
@@ -1919,12 +1919,9 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFallsBackToAuthorityProces
     request.max_polyline_points = 64;
     const auto result = use_case.GetPreviewSnapshot(request);
 
-    ASSERT_TRUE(result.IsSuccess());
-    const auto& snapshot = result.Value();
-    EXPECT_EQ(snapshot.motion_preview_source, "process_path_snapshot");
-    EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 0.0f, 0.0f, 1e-4f));
-    EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 100.0f, 0.0f, 1e-4f));
-    EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 100.0f, 100.0f, 1e-4f));
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+    EXPECT_EQ(result.GetError().GetMessage(), "motion trajectory snapshot unavailable for preview");
 }
 
 TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFailsWhenMotionTrajectorySnapshotMissingAndOnlyExecutionPolylineExists) {

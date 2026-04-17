@@ -10,6 +10,12 @@
 #include <sstream>
 
 namespace Siligen::Application::Services::Dispensing::Internal {
+
+using Siligen::Domain::Dispensing::ValueObjects::DispenseSpan;
+using Siligen::Shared::Types::Error;
+using Siligen::Shared::Types::ErrorCode;
+using Siligen::Shared::Types::Result;
+
 namespace {
 
 WorkflowAuthorityTriggerPoint BuildWorkflowAuthorityTriggerPoint(const AuthorityTriggerPoint& input) {
@@ -124,6 +130,7 @@ WorkflowAuthorityPreviewArtifacts BuildWorkflowAuthorityPreviewArtifacts(const A
     artifacts.segment_count = input.segment_count;
     artifacts.total_length = input.total_length;
     artifacts.estimated_time = input.estimated_time;
+    artifacts.canonical_execution_process_path = input.canonical_execution_process_path;
     artifacts.preview_trajectory_points = input.preview_trajectory_points;
     artifacts.glue_points = input.glue_points;
     artifacts.trigger_count = input.trigger_count;
@@ -151,6 +158,7 @@ AuthorityPreviewBuildResult BuildAuthorityPreviewBuildResult(const WorkflowAutho
     authority_preview.segment_count = input.segment_count;
     authority_preview.total_length = input.total_length;
     authority_preview.estimated_time = input.estimated_time;
+    authority_preview.canonical_execution_process_path = input.canonical_execution_process_path;
     authority_preview.preview_trajectory_points = input.preview_trajectory_points;
     authority_preview.glue_points = input.glue_points;
     authority_preview.trigger_count = input.trigger_count;
@@ -175,8 +183,8 @@ AuthorityPreviewBuildResult BuildAuthorityPreviewBuildResult(const WorkflowAutho
 
 ExecutionAssemblyBuildInput BuildExecutionAssemblyBuildInput(const WorkflowExecutionAssemblyRequest& input) {
     ExecutionAssemblyBuildInput execution_input;
-    execution_input.process_path = input.process_path;
     execution_input.authority_process_path = input.authority_process_path;
+    execution_input.canonical_execution_process_path = input.canonical_execution_process_path;
     execution_input.motion_plan = input.motion_plan;
     execution_input.planning_start_position = input.planning_start_position;
     execution_input.source_path = input.source_path;
@@ -265,10 +273,68 @@ const ProcessPath& ResolveAuthorityProcessPath(const AuthorityPreviewBuildInput&
 }
 
 const ProcessPath& ResolveExecutionProcessPath(const ExecutionAssemblyBuildInput& input) {
-    if (!input.process_path.segments.empty()) {
-        return input.process_path;
+    return input.canonical_execution_process_path;
+}
+
+Result<ProcessPath> BuildCanonicalExecutionProcessPath(
+    const ProcessPath& authority_process_path,
+    const AuthorityTriggerLayout& authority_trigger_layout) {
+    if (authority_process_path.segments.empty()) {
+        return Result<ProcessPath>::Failure(Error(
+            ErrorCode::INVALID_PARAMETER,
+            "authority process path is empty",
+            "DispensePackagingAssembly"));
     }
-    return input.authority_process_path;
+    if (authority_trigger_layout.spans.empty()) {
+        return Result<ProcessPath>::Failure(Error(
+            ErrorCode::INVALID_STATE,
+            "authority trigger layout spans unavailable",
+            "DispensePackagingAssembly"));
+    }
+
+    std::vector<const DispenseSpan*> ordered_spans;
+    ordered_spans.reserve(authority_trigger_layout.spans.size());
+    for (const auto& span : authority_trigger_layout.spans) {
+        if (span.source_segment_indices.empty()) {
+            return Result<ProcessPath>::Failure(Error(
+                ErrorCode::INVALID_STATE,
+                "authority trigger layout span source segments unavailable",
+                "DispensePackagingAssembly"));
+        }
+        ordered_spans.push_back(&span);
+    }
+
+    std::stable_sort(
+        ordered_spans.begin(),
+        ordered_spans.end(),
+        [](const DispenseSpan* lhs, const DispenseSpan* rhs) {
+            return lhs->order_index < rhs->order_index;
+        });
+
+    ProcessPath canonical_process_path;
+    for (const auto* span : ordered_spans) {
+        for (const auto source_segment_index : span->source_segment_indices) {
+            if (source_segment_index >= authority_process_path.segments.size()) {
+                std::ostringstream oss;
+                oss << "authority trigger layout references missing source segment index="
+                    << source_segment_index;
+                return Result<ProcessPath>::Failure(Error(
+                    ErrorCode::INVALID_STATE,
+                    oss.str(),
+                    "DispensePackagingAssembly"));
+            }
+            canonical_process_path.segments.push_back(authority_process_path.segments[source_segment_index]);
+        }
+    }
+
+    if (canonical_process_path.segments.empty()) {
+        return Result<ProcessPath>::Failure(Error(
+            ErrorCode::INVALID_STATE,
+            "canonical execution process path is empty",
+            "DispensePackagingAssembly"));
+    }
+
+    return Result<ProcessPath>::Success(std::move(canonical_process_path));
 }
 
 DispensingExecutionGeometryKind ResolveExecutionGeometryKind(const ProcessPath& execution_process_path) {

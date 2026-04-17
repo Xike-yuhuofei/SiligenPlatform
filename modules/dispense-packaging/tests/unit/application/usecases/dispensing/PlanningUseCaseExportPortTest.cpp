@@ -390,7 +390,7 @@ TEST(PlanningUseCaseExportPortTest, ExecuteBuildsExportRequestWithoutDirectFiles
     std::filesystem::remove(temp_pb, ec);
 }
 
-TEST(PlanningUseCaseExportPortTest, WorkflowUsesShapedPathAsDownstreamAuthorityPath) {
+TEST(PlanningUseCaseExportPortTest, WorkflowUsesCanonicalExecutionPathAsDownstreamExportTruth) {
     auto temp_pb = MakeTempPbPath();
     auto config_port = std::make_shared<FakeConfigurationPort>();
     auto path_source = std::make_shared<FakePathSourcePort>();
@@ -411,11 +411,12 @@ TEST(PlanningUseCaseExportPortTest, WorkflowUsesShapedPathAsDownstreamAuthorityP
     const auto authority_result = use_case.PrepareAuthorityPreview(request);
 
     ASSERT_TRUE(authority_result.IsSuccess()) << authority_result.GetError().ToString();
-    ASSERT_EQ(authority_result.Value().process_path.segments.size(), 2U);
     ASSERT_EQ(authority_result.Value().authority_process_path.segments.size(), 2U);
-    EXPECT_FLOAT_EQ(authority_result.Value().process_path.segments.front().geometry.line.end.x, 4.0f);
+    ASSERT_EQ(authority_result.Value().canonical_execution_process_path.segments.size(), 2U);
     EXPECT_FLOAT_EQ(authority_result.Value().authority_process_path.segments.front().geometry.line.end.x, 4.0f);
     EXPECT_FLOAT_EQ(authority_result.Value().authority_process_path.segments.back().geometry.line.end.x, 10.0f);
+    EXPECT_FLOAT_EQ(authority_result.Value().canonical_execution_process_path.segments.front().geometry.line.end.x, 4.0f);
+    EXPECT_FLOAT_EQ(authority_result.Value().canonical_execution_process_path.segments.back().geometry.line.end.x, 10.0f);
 
     const auto execute_result = use_case.Execute(request);
 
@@ -560,8 +561,10 @@ TEST(PlanningUseCaseExportPortTest, PrepareAuthorityPreviewSupportsPointOnlyInpu
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
     EXPECT_TRUE(result.Value().artifacts.preview_authority_ready);
     EXPECT_TRUE(result.Value().artifacts.preview_binding_ready);
-    EXPECT_EQ(result.Value().process_path.segments.size(), 1U);
-    EXPECT_TRUE(result.Value().process_path.segments.front().geometry.is_point);
+    ASSERT_EQ(result.Value().authority_process_path.segments.size(), 1U);
+    ASSERT_EQ(result.Value().canonical_execution_process_path.segments.size(), 1U);
+    EXPECT_TRUE(result.Value().authority_process_path.segments.front().geometry.is_point);
+    EXPECT_TRUE(result.Value().canonical_execution_process_path.segments.front().geometry.is_point);
     ASSERT_EQ(result.Value().artifacts.glue_points.size(), 1U);
     EXPECT_EQ(CountPointsNear(result.Value().artifacts.glue_points, Point2D{5.0f, 5.0f}, 1e-4f), 1U);
     EXPECT_EQ(result.Value().artifacts.trigger_count, 1);

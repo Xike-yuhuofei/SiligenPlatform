@@ -391,10 +391,17 @@ Result<AuthorityPreviewBuildResult> AssembleAuthorityPreviewArtifacts(
         log_stage("trigger_artifacts_ready", oss.str());
     }
 
+    auto canonical_process_path_result =
+        BuildCanonicalExecutionProcessPath(authority_process_path, trigger_artifacts.authority_trigger_layout);
+    if (canonical_process_path_result.IsError()) {
+        return Result<AuthorityPreviewBuildResult>::Failure(canonical_process_path_result.GetError());
+    }
+    const auto canonical_process_path = canonical_process_path_result.Value();
+
     std::vector<TrajectoryPoint> preview_trajectory_points;
     auto preview_points_result =
         BuildInterpolationSeedPoints(
-            input.process_path,
+            canonical_process_path,
             input.spline_max_error_mm,
             ResolveInterpolationStep(authority_input));
     if (preview_points_result.IsError()) {
@@ -417,12 +424,13 @@ Result<AuthorityPreviewBuildResult> AssembleAuthorityPreviewArtifacts(
     }
 
     const auto glue_points = CollectAuthorityPositions(trigger_artifacts.authority_trigger_layout);
-    const auto total_length = ComputeProcessPathLength(input.process_path);
+    const auto total_length = ComputeProcessPathLength(canonical_process_path);
 
     AuthorityPreviewBuildResult result;
-    result.segment_count = static_cast<int>(input.process_path.segments.size());
+    result.segment_count = static_cast<int>(canonical_process_path.segments.size());
     result.total_length = total_length;
     result.estimated_time = EstimatePreviewTime(input, total_length);
+    result.canonical_execution_process_path = canonical_process_path;
     result.preview_trajectory_points = std::move(preview_trajectory_points);
     result.glue_points = glue_points;
     result.trigger_count = static_cast<int>(glue_points.size());

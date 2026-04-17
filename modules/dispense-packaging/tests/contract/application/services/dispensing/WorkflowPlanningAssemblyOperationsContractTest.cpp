@@ -134,7 +134,7 @@ TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFrom
         [](const auto& metadata) { return metadata.binding_monotonic; }));
 }
 
-TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFromAuthorityUsesInputMotionPlanAsExecutionTruth) {
+TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFromAuthorityUsesCanonicalExecutionPathAsExecutionTruth) {
     WorkflowPlanningAssemblyOperationsProvider provider;
     const auto operations = provider.CreateOperations();
 
@@ -163,8 +163,13 @@ TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFrom
     ASSERT_EQ(payload.motion_trajectory_points.size(), input.motion_plan.points.size());
     EXPECT_FLOAT_EQ(payload.motion_trajectory_points[1].position.x, 5.0f);
     EXPECT_FLOAT_EQ(payload.motion_trajectory_points[1].position.y, 2.0f);
-    EXPECT_GE(payload.execution_trajectory_points.size(), input.motion_plan.points.size());
-    EXPECT_TRUE(std::any_of(
+    EXPECT_TRUE(std::all_of(
+        payload.execution_trajectory_points.begin(),
+        payload.execution_trajectory_points.end(),
+        [](const auto& point) {
+            return std::abs(point.position.y) <= 1e-4f;
+        }));
+    EXPECT_FALSE(std::any_of(
         payload.execution_trajectory_points.begin(),
         payload.execution_trajectory_points.end(),
         [](const auto& point) {
@@ -223,7 +228,7 @@ TEST(WorkflowPlanningAssemblyOperationsContractTest, AssemblePlanningArtifactsPr
     EXPECT_TRUE(payload.spacing_validation_groups.front().short_segment_exception);
 }
 
-TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFromAuthorityUsesExecutionProcessPathForExportWhenPresent) {
+TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFromAuthorityUsesCanonicalExecutionProcessPathForExport) {
     WorkflowPlanningAssemblyOperationsProvider provider;
     const auto operations = provider.CreateOperations();
 
@@ -236,6 +241,7 @@ TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFrom
 
     auto authority = operations->BuildAuthorityPreviewArtifacts(BuildWorkflowAuthorityPreviewInput(input));
     ASSERT_TRUE(authority.IsSuccess()) << authority.GetError().GetMessage();
+    ASSERT_EQ(authority.Value().canonical_execution_process_path.segments.size(), 1U);
 
     const auto result = operations->BuildExecutionArtifactsFromAuthority(
         BuildWorkflowExecutionInput(input, authority.Value()));
@@ -243,14 +249,12 @@ TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFrom
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
     const auto& payload = result.Value();
     EXPECT_FALSE(payload.execution_package.execution_plan.interpolation_segments.empty());
-    ASSERT_EQ(payload.export_request.process_path.segments.size(), 2U);
+    ASSERT_EQ(payload.export_request.process_path.segments.size(), 1U);
     EXPECT_FLOAT_EQ(payload.export_request.process_path.segments.front().geometry.line.start.x, 0.0f);
-    EXPECT_FLOAT_EQ(payload.export_request.process_path.segments.front().geometry.line.end.x, 4.0f);
-    EXPECT_FLOAT_EQ(payload.export_request.process_path.segments.back().geometry.line.start.x, 4.0f);
-    EXPECT_FLOAT_EQ(payload.export_request.process_path.segments.back().geometry.line.end.x, 10.0f);
+    EXPECT_FLOAT_EQ(payload.export_request.process_path.segments.front().geometry.line.end.x, 10.0f);
 }
 
-TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildAuthorityPreviewArtifactsUsesAuthorityProcessPathForTriggerLayoutWhenProvided) {
+TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildAuthorityPreviewArtifactsUsesCanonicalExecutionPathForPreviewPolyline) {
     WorkflowPlanningAssemblyOperationsProvider provider;
     const auto operations = provider.CreateOperations();
 
@@ -266,19 +270,20 @@ TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildAuthorityPreviewArtifa
 
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
     const auto& payload = result.Value();
+    ASSERT_EQ(payload.canonical_execution_process_path.segments.size(), 1U);
     ASSERT_FALSE(payload.authority_trigger_points.empty());
     EXPECT_EQ(payload.trigger_count, static_cast<int>(payload.authority_trigger_points.size()));
     EXPECT_TRUE(std::all_of(
         payload.authority_trigger_points.begin(),
         payload.authority_trigger_points.end(),
         [](const auto& trigger) { return std::abs(trigger.position.y) <= 1e-4f; }));
-    EXPECT_TRUE(std::any_of(
+    EXPECT_TRUE(std::all_of(
         payload.preview_trajectory_points.begin(),
         payload.preview_trajectory_points.end(),
-        [](const auto& point) { return point.position.y >= 4.9f; }));
+        [](const auto& point) { return std::abs(point.position.y) <= 1e-4f; }));
 }
 
-TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFallsBackToAuthorityProcessPathOnlyWhenExecutionPathMissing) {
+TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsRejectsMissingCanonicalExecutionPath) {
     WorkflowPlanningAssemblyOperationsProvider provider;
     const auto operations = provider.CreateOperations();
 
@@ -292,16 +297,42 @@ TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFall
     auto authority = operations->BuildAuthorityPreviewArtifacts(BuildWorkflowAuthorityPreviewInput(input));
     ASSERT_TRUE(authority.IsSuccess()) << authority.GetError().GetMessage();
 
-    input.process_path.segments.clear();
-    const auto result = operations->BuildExecutionArtifactsFromAuthority(
-        BuildWorkflowExecutionInput(input, authority.Value()));
+    auto execution_input = BuildWorkflowExecutionInput(input, authority.Value());
+    execution_input.canonical_execution_process_path.segments.clear();
+    const auto result = operations->BuildExecutionArtifactsFromAuthority(execution_input);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetMessage(), "canonical execution process path为空");
+}
+
+TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildAuthorityPreviewArtifactsProjectsBranchRevisitIntoCanonicalExecutionOrder) {
+    WorkflowPlanningAssemblyOperationsProvider provider;
+    const auto operations = provider.CreateOperations();
+
+    auto input = BuildPolylineInput({
+        Point2D(0.0f, 0.0f),
+        Point2D(10.0f, 0.0f),
+        Point2D(10.0f, 10.0f),
+        Point2D(0.0f, 10.0f),
+        Point2D(0.0f, 0.0f),
+        Point2D(10.0f, 10.0f),
+    }, 5.0f);
+    input.authority_process_path = input.process_path;
+
+    const auto result = operations->BuildAuthorityPreviewArtifacts(BuildWorkflowAuthorityPreviewInput(input));
 
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
     const auto& payload = result.Value();
-    ASSERT_EQ(payload.export_request.process_path.segments.size(), 1U);
-    EXPECT_FLOAT_EQ(payload.export_request.process_path.segments.front().geometry.line.start.x, 0.0f);
-    EXPECT_FLOAT_EQ(payload.export_request.process_path.segments.front().geometry.line.end.x, 10.0f);
-    EXPECT_FLOAT_EQ(payload.export_request.process_path.segments.front().geometry.line.end.y, 0.0f);
+    ASSERT_TRUE(payload.authority_trigger_layout.branch_revisit_split_applied);
+    ASSERT_EQ(payload.canonical_execution_process_path.segments.size(), 5U);
+    EXPECT_FLOAT_EQ(payload.canonical_execution_process_path.segments[0].geometry.line.start.x, 0.0f);
+    EXPECT_FLOAT_EQ(payload.canonical_execution_process_path.segments[0].geometry.line.end.x, 10.0f);
+    EXPECT_FLOAT_EQ(payload.canonical_execution_process_path.segments[3].geometry.line.end.y, 0.0f);
+    EXPECT_FLOAT_EQ(payload.canonical_execution_process_path.segments[4].geometry.line.start.x, 0.0f);
+    EXPECT_FLOAT_EQ(payload.canonical_execution_process_path.segments[4].geometry.line.end.x, 10.0f);
+    ASSERT_FALSE(payload.preview_trajectory_points.empty());
+    EXPECT_NEAR(payload.preview_trajectory_points.back().position.x, 10.0f, 1e-4f);
+    EXPECT_NEAR(payload.preview_trajectory_points.back().position.y, 10.0f, 1e-4f);
 }
 
 TEST(WorkflowPlanningAssemblyOperationsContractTest, AssemblePlanningArtifactsSurfacesUnsupportedMixedTopologyAsFailClassification) {

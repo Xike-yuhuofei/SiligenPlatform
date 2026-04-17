@@ -601,15 +601,23 @@ inline bool ResolveSequentialSegmentTriggerMarkerPlan(const std::vector<Trajecto
                 position_tolerance_mm,
                 segment_end_index,
                 candidate);
-            if (!candidate.found ||
-                candidate.ratio <= kTriggerMarkerMatchToleranceMm ||
-                candidate.ratio >= 1.0f - kTriggerMarkerMatchToleranceMm) {
+            if (!candidate.found) {
                 continue;
             }
 
-            plan.kind = candidate.kind;
-            plan.index = candidate.index;
-            plan.ratio = candidate.ratio;
+            if (candidate.ratio <= kTriggerMarkerMatchToleranceMm) {
+                plan.kind = TriggerMarkerCandidateKind::ExistingPoint;
+                plan.index = segment_end_index - 1;
+                plan.ratio = 0.0f;
+            } else if (candidate.ratio >= 1.0f - kTriggerMarkerMatchToleranceMm) {
+                plan.kind = TriggerMarkerCandidateKind::ExistingPoint;
+                plan.index = segment_end_index;
+                plan.ratio = 0.0f;
+            } else {
+                plan.kind = candidate.kind;
+                plan.index = candidate.index;
+                plan.ratio = candidate.ratio;
+            }
             plan.position = request.position;
             plan.trigger_distance_mm = request.trigger_distance_mm;
             plan.pulse_width_us = request.pulse_width_us;

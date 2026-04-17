@@ -36,8 +36,8 @@ Result<ExecutionAssemblyBuildResult> AssembleExecutionArtifacts(const ExecutionA
         std::ostringstream oss;
         oss << "planning_artifacts_stage=" << stage
             << " dxf=" << input.dxf_filename
-            << " process_segments=" << input.process_path.segments.size()
             << " authority_segments=" << input.authority_process_path.segments.size()
+            << " canonical_execution_segments=" << input.canonical_execution_process_path.segments.size()
             << " execution_segments=" << execution_process_path.segments.size()
             << " motion_points=" << input.motion_plan.points.size()
             << " preview_layout=" << input.authority_preview.authority_trigger_layout.layout_id;
@@ -51,7 +51,10 @@ Result<ExecutionAssemblyBuildResult> AssembleExecutionArtifacts(const ExecutionA
 
     if (execution_process_path.segments.empty()) {
         return Result<ExecutionAssemblyBuildResult>::Failure(
-            Error(ErrorCode::INVALID_PARAMETER, "process path为空", "DispensePackagingAssembly"));
+            Error(
+                ErrorCode::INVALID_PARAMETER,
+                "canonical execution process path为空",
+                "DispensePackagingAssembly"));
     }
     if (input.motion_plan.points.empty()) {
         return Result<ExecutionAssemblyBuildResult>::Failure(

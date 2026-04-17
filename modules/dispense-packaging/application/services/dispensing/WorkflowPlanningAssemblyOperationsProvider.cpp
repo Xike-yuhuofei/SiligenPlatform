@@ -15,8 +15,8 @@ WorkflowExecutionAssemblyRequest BuildWorkflowExecutionAssemblyRequest(
     const WorkflowPlanningAssemblyRequest& input,
     const WorkflowAuthorityPreviewArtifacts& authority_preview) {
     WorkflowExecutionAssemblyRequest request;
-    request.process_path = input.authority_preview_request.process_path;
     request.authority_process_path = input.authority_preview_request.authority_process_path;
+    request.canonical_execution_process_path = authority_preview.canonical_execution_process_path;
     request.motion_plan = input.motion_plan;
     request.planning_start_position = input.planning_start_position;
     request.source_path = input.authority_preview_request.source_path;

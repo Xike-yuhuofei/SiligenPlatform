@@ -81,6 +81,7 @@ struct AuthorityPreviewBuildResult {
     int segment_count = 0;
     float32 total_length = 0.0f;
     float32 estimated_time = 0.0f;
+    ProcessPath canonical_execution_process_path;
     std::vector<TrajectoryPoint> preview_trajectory_points;
     std::vector<Point2D> glue_points;
     int trigger_count = 0;
@@ -99,8 +100,8 @@ struct AuthorityPreviewBuildResult {
 };
 
 struct ExecutionAssemblyBuildInput {
-    ProcessPath process_path;
     ProcessPath authority_process_path;
+    ProcessPath canonical_execution_process_path;
     MotionPlan motion_plan;
     Point2D planning_start_position{};
     std::string source_path;
@@ -229,6 +230,9 @@ Siligen::Shared::Types::Result<std::vector<Point2D>> BuildInterpolationSeedPoint
 std::vector<TrajectoryPoint> ConvertPreviewPointsToTrajectory(const std::vector<Point2D>& preview_points);
 float32 EstimatePreviewTime(const AuthorityPreviewBuildInput& input, float32 total_length_mm);
 std::vector<Point2D> CollectAuthorityPositions(const AuthorityTriggerLayout& layout);
+Siligen::Shared::Types::Result<ProcessPath> BuildCanonicalExecutionProcessPath(
+    const ProcessPath& authority_process_path,
+    const AuthorityTriggerLayout& authority_trigger_layout);
 TriggerArtifacts BuildTriggerArtifactsFromAuthorityPreview(const AuthorityPreviewBuildResult& authority_preview);
 Siligen::Shared::Types::Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
     const PlanningArtifactsAssemblyInput& input,

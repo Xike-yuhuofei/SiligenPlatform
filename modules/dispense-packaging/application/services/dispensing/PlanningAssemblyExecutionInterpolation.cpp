@@ -342,16 +342,21 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
     }
 
     if (input.interpolation_algorithm == InterpolationAlgorithm::LINEAR) {
-        if (input.motion_plan.points.size() < 2U) {
-            return Result<std::vector<TrajectoryPoint>>::Failure(
-                Error(ErrorCode::INVALID_PARAMETER, "motion plan为空", "DispensePackagingAssembly"));
+        const auto seed_points_result =
+            BuildInterpolationSeedPoints(path, input.spline_max_error_mm, ResolveInterpolationStep(input));
+        if (seed_points_result.IsError()) {
+            return Result<std::vector<TrajectoryPoint>>::Failure(seed_points_result.GetError());
         }
 
-        auto points = ConvertMotionTrajectoryToTrajectoryPoints(input.motion_plan);
+        auto points = ConvertPreviewPointsToTrajectory(seed_points_result.Value());
+        if (points.size() < 2U) {
+            return Result<std::vector<TrajectoryPoint>>::Failure(
+                Error(ErrorCode::INVALID_PARAMETER, "插补规划参数无效", "DispensePackagingAssembly"));
+        }
         log_stage(
-            "linear_motion_plan_consumed",
-            "motion_points=" + std::to_string(input.motion_plan.points.size()) +
-                " converted_points=" + std::to_string(points.size()));
+            "linear_canonical_path_consumed",
+            "seed_points=" + std::to_string(points.size()) +
+                " motion_points=" + std::to_string(input.motion_plan.points.size()));
 
         if (!trigger_artifacts.positions.empty() &&
             !ApplyTriggerMarkersByPositionWithDiagnostics(
