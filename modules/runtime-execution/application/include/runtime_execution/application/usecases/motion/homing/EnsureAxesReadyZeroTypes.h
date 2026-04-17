@@ -12,15 +12,24 @@ using Siligen::Shared::Types::int32;
 using Siligen::Shared::Types::LogicalAxisId;
 using Siligen::Shared::Types::Result;
 
+enum class EnsureAxesReadyZeroPolicy {
+    ENSURE_READY_ZERO,
+    GO_HOME_ONLY,
+};
+
 struct EnsureAxesReadyZeroRequest {
     std::vector<LogicalAxisId> axes;
     bool home_all_axes = false;
     bool wait_for_completion = true;
     int32 timeout_ms = 80000;
     bool force_rehome = false;
+    EnsureAxesReadyZeroPolicy policy = EnsureAxesReadyZeroPolicy::ENSURE_READY_ZERO;
 
     bool Validate() const {
         if (home_all_axes && !axes.empty()) {
+            return false;
+        }
+        if (policy == EnsureAxesReadyZeroPolicy::GO_HOME_ONLY && force_rehome) {
             return false;
         }
         return timeout_ms > 0 && timeout_ms <= 300000;

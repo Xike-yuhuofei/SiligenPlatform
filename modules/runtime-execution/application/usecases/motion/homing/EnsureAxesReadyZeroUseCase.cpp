@@ -12,6 +12,7 @@
 
 namespace Siligen::Application::UseCases::Motion::Homing {
 
+using Siligen::Application::UseCases::Motion::Homing::EnsureAxesReadyZeroPolicy;
 using Siligen::Domain::Motion::DomainServices::ReadyZeroDecision;
 using Siligen::Domain::Motion::DomainServices::ReadyZeroDecisionService;
 using Siligen::Domain::Motion::DomainServices::ReadyZeroPlannedAction;
@@ -90,6 +91,28 @@ std::string SuccessMessageFor(const EnsureAxesReadyZeroResponse::AxisResult& axi
         return force_rehome ? "Rehomed" : "Homing completed";
     }
     return "Ready at zero";
+}
+
+ReadyZeroPlannedAction ResolveEffectiveAction(
+    const AxisSnapshot& snapshot,
+    const EnsureAxesReadyZeroRequest& request,
+    EnsureAxesReadyZeroResponse::AxisResult& axis_result) {
+    ReadyZeroPlannedAction effective_action = snapshot.decision.planned_action;
+    if (request.policy == EnsureAxesReadyZeroPolicy::GO_HOME_ONLY &&
+        effective_action == ReadyZeroPlannedAction::HOME) {
+        effective_action = ReadyZeroPlannedAction::REJECT;
+        axis_result.planned_action = ReadyZeroDecisionService::ToString(effective_action);
+        return effective_action;
+    }
+
+    if (request.force_rehome && effective_action != ReadyZeroPlannedAction::REJECT) {
+        effective_action = ReadyZeroPlannedAction::HOME;
+        axis_result.planned_action = ReadyZeroDecisionService::ToString(effective_action);
+        axis_result.reason_code = "force_rehome";
+        axis_result.message = "Force rehome requested";
+        axis_result.success = false;
+    }
+    return effective_action;
 }
 
 Result<std::vector<LogicalAxisId>> ResolveAxes(
@@ -249,14 +272,7 @@ Result<EnsureAxesReadyZeroResponse> EnsureAxesReadyZeroUseCase::Execute(const En
         axis_result.message = snapshot.decision.message;
         axis_result.success = snapshot.decision.planned_action == ReadyZeroPlannedAction::NOOP;
 
-        ReadyZeroPlannedAction effective_action = snapshot.decision.planned_action;
-        if (request.force_rehome && effective_action != ReadyZeroPlannedAction::REJECT) {
-            effective_action = ReadyZeroPlannedAction::HOME;
-            axis_result.planned_action = ReadyZeroDecisionService::ToString(effective_action);
-            axis_result.reason_code = "force_rehome";
-            axis_result.message = "Force rehome requested";
-            axis_result.success = false;
-        }
+        const ReadyZeroPlannedAction effective_action = ResolveEffectiveAction(snapshot, request, axis_result);
 
         if (effective_action == ReadyZeroPlannedAction::REJECT) {
             if (snapshot.decision.reason_code == "axis_moving") {

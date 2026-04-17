@@ -16,9 +16,14 @@
 #include "recipe_lifecycle/application/usecases/recipes/UpdateRecipeUseCase.h"
 #include "runtime_execution/application/usecases/system/EmergencyStopUseCase.h"
 #include "runtime_execution/application/usecases/system/InitializeSystemUseCase.h"
+#include "runtime_execution/application/services/motion/DefaultMotionValidationService.h"
+#include "runtime_execution/application/services/motion/MotionControlServiceImpl.h"
+#include "runtime_execution/application/services/motion/MotionStatusServiceImpl.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 #include "job_ingest/contracts/dispensing/UploadContracts.h"
 #include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
+#include "runtime_execution/application/usecases/motion/ptp/MoveToPositionUseCase.h"
+#include "runtime_execution/contracts/system/IMachineExecutionStatePort.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingWorkflowUseCase.h"
 #include "dispense_packaging/application/usecases/dispensing/PlanningUseCase.h"
@@ -33,6 +38,24 @@
 namespace Siligen::Gateway::Tcp {
 
 template <typename Resolver>
+std::shared_ptr<Application::UseCases::Motion::PTP::MoveToPositionUseCase> BuildMoveToPositionUseCase(Resolver& resolver) {
+    auto position_control_port = resolver.template ResolvePort<Siligen::Domain::Motion::Ports::IPositionControlPort>();
+    auto motion_state_port = resolver.template ResolvePort<Siligen::Domain::Motion::Ports::IMotionStatePort>();
+    if (!position_control_port || !motion_state_port) {
+        return nullptr;
+    }
+
+    return std::make_shared<Application::UseCases::Motion::PTP::MoveToPositionUseCase>(
+        std::make_shared<Siligen::RuntimeExecution::Application::Services::Motion::MotionControlServiceImpl>(
+            std::move(position_control_port)),
+        std::make_shared<Siligen::RuntimeExecution::Application::Services::Motion::MotionStatusServiceImpl>(
+            std::move(motion_state_port)),
+        std::make_shared<Siligen::RuntimeExecution::Application::Services::Motion::DefaultMotionValidationService>(),
+        resolver.template ResolvePort<Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort>(),
+        nullptr);
+}
+
+template <typename Resolver>
 TcpFacadeBundle BuildTcpFacadeBundle(Resolver& resolver) {
     TcpFacadeBundle bundle;
 
@@ -43,7 +66,7 @@ TcpFacadeBundle BuildTcpFacadeBundle(Resolver& resolver) {
     bundle.motion = std::make_shared<Application::Facades::Tcp::TcpMotionFacade>(
         resolver.template Resolve<Application::UseCases::Motion::MotionControlUseCase>(),
         resolver.template Resolve<Application::UseCases::Motion::Safety::MotionSafetyUseCase>(),
-        resolver.template ResolvePort<Siligen::Domain::Motion::Ports::IPositionControlPort>(),
+        BuildMoveToPositionUseCase(resolver),
         resolver.template ResolvePort<Siligen::Device::Contracts::Ports::DeviceConnectionPort>());
 
     bundle.dispensing = std::make_shared<Application::Facades::Tcp::TcpDispensingFacade>(

@@ -1503,14 +1503,11 @@ std::string TcpCommandDispatcher::HandleHomeGo(const std::string& id, const nloh
         }
     }
 
-    for (auto axis_id : axes) {
-        auto homed_result = motionFacade_->IsAxisHomed(axis_id);
-        if (homed_result.IsError()) {
-            return GatewayJsonProtocol::MakeErrorResponse(id, 2413, homed_result.GetError().GetMessage());
-        }
-        if (!homed_result.Value()) {
-            return GatewayJsonProtocol::MakeErrorResponse(id, 2414, "Axis not homed, run homing first");
-        }
+    if (params.contains("speed")) {
+        return GatewayJsonProtocol::MakeErrorResponse(
+            id,
+            2415,
+            "home.go speed override is not supported; configure ready_zero_speed_mm_s");
     }
 
     if (auto interlock_error = MakeManualInterlockErrorResponse(
@@ -1521,47 +1518,42 @@ std::string TcpCommandDispatcher::HandleHomeGo(const std::string& id, const nloh
         return interlock_error.value();
     }
 
-    auto readiness_result =
-        motionFacade_->EvaluateMotionReadiness(BuildReadinessQuery(ResolveActiveDxfJobTransitionState()));
-    if (readiness_result.IsError()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 2416, readiness_result.GetError().GetMessage());
-    }
-    if (!readiness_result.Value().ready) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 2416, ResolveReadinessMessage(readiness_result.Value()));
+    Application::UseCases::Motion::Homing::EnsureAxesReadyZeroRequest request;
+    request.axes = axes;
+    request.home_all_axes = false;
+    request.force_rehome = false;
+    request.wait_for_completion = false;
+    request.policy = Application::UseCases::Motion::Homing::EnsureAxesReadyZeroPolicy::GO_HOME_ONLY;
+
+    auto result = motionFacade_->EnsureAxesReadyZero(request);
+    if (!result.IsSuccess()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2416, result.GetError().GetMessage());
     }
 
-    if (params.contains("speed")) {
-        return GatewayJsonProtocol::MakeErrorResponse(
+    const auto& response = result.Value();
+    const bool requires_homing_first = std::any_of(
+        response.axis_results.begin(),
+        response.axis_results.end(),
+        [](const auto& axis_result) {
+            return axis_result.reason_code == "not_homed" ||
+                   axis_result.reason_code == "homing_failed_rehome_required";
+        });
+    if (requires_homing_first) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2414, "Axis not homed, run homing first");
+    }
+
+    if (response.summary_state == "in_progress") {
+        return GatewayJsonProtocol::MakeSuccessResponse(
             id,
-            2415,
-            "home.go speed override is not supported; configure ready_zero_speed_mm_s");
+            {{"moving", true}, {"message", response.message}});
+    }
+    if (response.summary_state == "noop" || response.summary_state == "completed") {
+        return GatewayJsonProtocol::MakeSuccessResponse(
+            id,
+            {{"moving", false}, {"message", response.message}});
     }
 
-    std::vector<std::pair<LogicalAxisId, float32>> go_home_plans;
-    go_home_plans.reserve(axes.size());
-    for (auto axis_id : axes) {
-        auto speed_result = Siligen::Domain::Configuration::Services::ResolveReadyZeroSpeed(
-            axis_id,
-            configPort_,
-            "TcpCommandDispatcher");
-        if (speed_result.IsError()) {
-            return GatewayJsonProtocol::MakeErrorResponse(id, 2415, speed_result.GetError().GetMessage());
-        }
-        go_home_plans.emplace_back(axis_id, speed_result.Value().speed_mm_s);
-    }
-
-    for (const auto& plan : go_home_plans) {
-        Application::UseCases::Motion::Manual::ManualMotionCommand cmd;
-        cmd.axis = plan.first;
-        cmd.position = 0.0f;
-        cmd.velocity = plan.second;
-        auto result = motionFacade_->ExecutePointToPointMotion(cmd, false);
-        if (!result.IsSuccess()) {
-            return GatewayJsonProtocol::MakeErrorResponse(id, 2416, result.GetError().GetMessage());
-        }
-    }
-
-    return GatewayJsonProtocol::MakeSuccessResponse(id, {{"moving", true}, {"message", "Go home started"}});
+    return GatewayJsonProtocol::MakeErrorResponse(id, 2416, response.message);
 }
 
 std::string TcpCommandDispatcher::HandleJog(const std::string& id, const nlohmann::json& params) {

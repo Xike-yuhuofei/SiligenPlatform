@@ -13,8 +13,10 @@ SCRIPT_PATHS = (
     ROOT / "tests" / "e2e" / "hardware-in-loop" / "run_case_matrix.py",
     ROOT / "tests" / "e2e" / "hardware-in-loop" / "run_hardware_smoke.py",
     ROOT / "tests" / "integration" / "scenarios" / "first-layer" / "run_tcp_estop_chain.py",
+    ROOT / "tests" / "integration" / "scenarios" / "first-layer" / "run_tcp_door_interlock.py",
     ROOT / "tests" / "integration" / "scenarios" / "first-layer" / "run_tcp_jog_focus_smoke.py",
     ROOT / "tests" / "integration" / "scenarios" / "first-layer" / "run_tcp_manual_motion_matrix.py",
+    ROOT / "tests" / "integration" / "scenarios" / "first-layer" / "run_tcp_negative_limit_chain.py",
     ROOT / "tests" / "integration" / "scenarios" / "first-layer" / "run_tcp_precondition_matrix.py",
 )
 

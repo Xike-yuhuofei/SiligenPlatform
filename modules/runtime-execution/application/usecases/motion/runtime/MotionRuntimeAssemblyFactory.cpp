@@ -1,49 +1,20 @@
 #include "MotionRuntimeAssemblyFactory.h"
 
+#include "runtime_execution/application/services/motion/DefaultMotionValidationService.h"
+
 #include "shared/types/Error.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
 
-#include <cmath>
 #include <utility>
 
 namespace Siligen::Application::UseCases::Motion::Runtime {
 namespace {
 
-using MotionValidationService = Siligen::Domain::Motion::DomainServices::MotionValidationService;
-using Point2D = Siligen::Shared::Types::Point2D;
 using Error = Siligen::Shared::Types::Error;
 using ErrorCode = Siligen::Shared::Types::ErrorCode;
 template <typename T>
 using Result = Siligen::Shared::Types::Result<T>;
-using ResultVoid = Siligen::Shared::Types::Result<void>;
-
-class DefaultMotionRuntimeValidationService final : public MotionValidationService {
-public:
-    ResultVoid ValidatePosition(const Point2D& position) const override {
-        if (!std::isfinite(position.x) || !std::isfinite(position.y)) {
-            return ResultVoid::Failure(Error(
-                ErrorCode::INVALID_PARAMETER,
-                "Target position is not finite",
-                "MotionRuntimeAssemblyFactory"));
-        }
-        return ResultVoid::Success();
-    }
-
-    ResultVoid ValidateSpeed(float speed) const override {
-        if (!std::isfinite(speed) || speed <= 0.0f) {
-            return ResultVoid::Failure(Error(
-                ErrorCode::INVALID_PARAMETER,
-                "Speed must be positive",
-                "MotionRuntimeAssemblyFactory"));
-        }
-        return ResultVoid::Success();
-    }
-
-    Result<bool> IsPositionErrorExceeded(const Point2D& target, const Point2D& actual) const override {
-        return Result<bool>::Success(target.DistanceTo(actual) > 0.01f);
-    }
-};
 
 }  // namespace
 
@@ -65,7 +36,8 @@ Result<MotionRuntimeAssembly> MotionRuntimeAssemblyFactory::Create(MotionRuntime
     assembly.motion_status_service = std::move(provided_services.motion_status_service);
     assembly.motion_validation_service = std::move(provided_services.motion_validation_service);
     if (!assembly.motion_validation_service) {
-        assembly.motion_validation_service = std::make_shared<DefaultMotionRuntimeValidationService>();
+        assembly.motion_validation_service =
+            std::make_shared<Siligen::RuntimeExecution::Application::Services::Motion::DefaultMotionValidationService>();
     }
     if (!assembly.motion_control_service || !assembly.motion_status_service) {
         return Result<MotionRuntimeAssembly>::Failure(Error(

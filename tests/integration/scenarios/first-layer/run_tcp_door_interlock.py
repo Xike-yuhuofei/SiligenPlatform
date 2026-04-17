@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import socket
 import subprocess
 import sys
 import time
@@ -11,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 THIS_DIR = Path(__file__).resolve().parent
-ROOT = THIS_DIR.parents[4]
+ROOT = THIS_DIR.parents[3]
 HIL_DIR = ROOT / "tests" / "e2e" / "hardware-in-loop"
 if str(HIL_DIR) not in sys.path:
     sys.path.insert(0, str(HIL_DIR))
@@ -29,6 +31,7 @@ from runtime_gateway_harness import (
     disconnect_ack,
     extract_effective_interlocks,
     extract_io,
+    load_connection_params,
     extract_supply_open,
     extract_supervision,
     home_succeeded,
@@ -125,11 +128,28 @@ def _wait_for_status(
     return False, last_status
 
 
+def _is_tcp_endpoint_reachable(host: str, port: int, timeout_seconds: float = 0.5) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout_seconds):
+            return True
+    except OSError:
+        return False
+
+
+def _pick_free_port(host: str) -> int:
+    bind_host = host.strip() or "127.0.0.1"
+    if bind_host in {"0.0.0.0", "localhost"}:
+        bind_host = "127.0.0.1"
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind((bind_host, 0))
+        return int(sock.getsockname()[1])
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run TCP safety-door interlock probe and write a report.")
     parser.add_argument("--report-dir", default=str(ROOT / "tests" / "reports" / "first-layer" / "s5-door-interlock"))
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=9527)
+    parser.add_argument("--host", default=os.getenv("SILIGEN_HIL_HOST", "127.0.0.1"))
+    parser.add_argument("--port", type=int, default=int(os.getenv("SILIGEN_HIL_PORT", "0")))
     parser.add_argument(
         "--gateway-exe",
         default=str(resolve_default_exe("siligen_runtime_gateway.exe", "siligen_tcp_server.exe")),
@@ -142,6 +162,7 @@ def main() -> int:
     args = parse_args()
     report_dir = Path(args.report_dir)
     gateway_exe = Path(args.gateway_exe)
+    port = args.port if args.port > 0 else _pick_free_port(args.host)
     results: list[CheckResult] = []
     steps: list[StepRecord] = []
 
@@ -155,7 +176,7 @@ def main() -> int:
             "workspace_root": str(ROOT),
             "gateway_exe": str(gateway_exe),
             "host": args.host,
-            "port": args.port,
+            "port": port,
             "overall_status": compute_overall_status(results),
             "results": [asdict(item) for item in results],
             "steps": [asdict(item) for item in steps],
@@ -166,9 +187,35 @@ def main() -> int:
         print(f"markdown report: {md_path}")
         return SKIPPED_EXIT_CODE if status == "skipped" else KNOWN_FAILURE_EXIT_CODE
 
-    temp_config_dir, temp_config = prepare_mock_config("tcp-door-interlock-", door_input=6)
+    if args.port > 0 and _is_tcp_endpoint_reachable(args.host, port):
+        results.append(
+            CheckResult(
+                "D0-bootstrap",
+                "failed",
+                "requested TCP port is available before gateway launch",
+                f"{args.host}:{port}",
+                "requested port already has a reachable listener; refusing to connect to a stale process",
+            )
+        )
+        report = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "workspace_root": str(ROOT),
+            "gateway_exe": str(gateway_exe),
+            "host": args.host,
+            "port": port,
+            "overall_status": compute_overall_status(results),
+            "results": [asdict(item) for item in results],
+            "steps": [asdict(item) for item in steps],
+        }
+        json_path, md_path = _write_report(report_dir, report)
+        print(f"tcp door interlock complete: status={report['overall_status']}")
+        print(f"json report: {json_path}")
+        print(f"markdown report: {md_path}")
+        return 1
+
+    temp_config_dir, temp_config = prepare_mock_config(prefix="tcp-door-interlock-", door_input=6)
     process = subprocess.Popen(
-        [str(gateway_exe), "--config", str(temp_config), "--port", str(args.port)],
+        [str(gateway_exe), "--config", str(temp_config), "--port", str(port)],
         cwd=str(ROOT),
         env=build_process_env(gateway_exe),
         stdout=subprocess.PIPE,
@@ -177,10 +224,10 @@ def main() -> int:
         encoding="utf-8",
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
-    client = TcpJsonClient(args.host, args.port)
+    client = TcpJsonClient(args.host, port)
 
     try:
-        ready_status, ready_note = wait_gateway_ready(process, args.host, args.port, timeout_seconds=8.0)
+        ready_status, ready_note = wait_gateway_ready(process, args.host, port, timeout_seconds=8.0)
         if ready_status != "passed":
             results.append(CheckResult("D0-bootstrap", ready_status, "gateway ready", ready_note, "gateway readiness check failed"))
             raise RuntimeError("gateway not ready")
@@ -192,7 +239,12 @@ def main() -> int:
             steps.append(StepRecord(step_id, method, truncate_json(response)))
             return response
 
-        connect_response = call("step-connect", "connect", {}, timeout_seconds=10.0)
+        connect_response = call(
+            "step-connect",
+            "connect",
+            load_connection_params(temp_config),
+            timeout_seconds=10.0,
+        )
         if "error" in connect_response:
             results.append(CheckResult("D1-connect", "failed", "connect succeeds", truncate_json(connect_response), response=truncate_json(connect_response)))
             raise RuntimeError("connect failed")
@@ -348,7 +400,7 @@ def main() -> int:
         "workspace_root": str(ROOT),
         "gateway_exe": str(gateway_exe),
         "host": args.host,
-        "port": args.port,
+        "port": port,
         "overall_status": compute_overall_status(results),
         "results": [asdict(item) for item in results],
         "steps": [asdict(item) for item in steps],
