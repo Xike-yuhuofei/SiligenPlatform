@@ -21,6 +21,8 @@ from run_hil_closed_loop import (
     TcpJsonClient,
     _evaluate_offline_admission,
     _evaluate_safety_preflight,
+    _gateway_mode,
+    _gateway_ready_command,
     _run_connect_step,
     _resolve_dxf_selection,
     _run_tcp_step,
@@ -300,16 +302,19 @@ def _run_closed_loop_case(
 def _run_round(args: argparse.Namespace, round_index: int, selected_modes: tuple[str, ...]) -> MatrixRoundReport:
     round_report = MatrixRoundReport(round_index=round_index, cases_executed=list(selected_modes))
     gateway_exe = Path(args.gateway_exe)
-    process = subprocess.Popen(
-        [str(gateway_exe), "--config", str(args.config_path), "--port", str(args.port)],
-        cwd=str(ROOT),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        env=build_process_env(gateway_exe),
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-    )
+    gateway_ready_command = _gateway_ready_command(gateway_exe, args.host, args.port, args.reuse_existing_gateway)
+    process: subprocess.Popen[str] | None = None
+    if not args.reuse_existing_gateway:
+        process = subprocess.Popen(
+            [str(gateway_exe), "--config", str(args.config_path), "--port", str(args.port)],
+            cwd=str(ROOT),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            env=build_process_env(gateway_exe),
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
     client = TcpJsonClient(args.host, args.port)
 
     home_failed_axes: set[str] = set()
@@ -323,8 +328,12 @@ def _run_round(args: argparse.Namespace, round_index: int, selected_modes: tuple
             _step_to_dict(
                 name="gateway-ready",
                 status=ready_status,
-                note=ready_note,
-                command=[str(gateway_exe)],
+                note=(
+                    f"existing gateway endpoint is reachable: {args.host}:{args.port}"
+                    if args.reuse_existing_gateway and ready_status == "passed"
+                    else ready_note
+                ),
+                command=gateway_ready_command,
                 return_code=0 if ready_status == "passed" else 1,
             )
         )
@@ -444,16 +453,17 @@ def _run_round(args: argparse.Namespace, round_index: int, selected_modes: tuple
                 round_report.error = "servo_alarm/following_error observed during round"
 
         client.close()
-        if process.poll() is None:
+        if process is not None and process.poll() is None:
             process.terminate()
             try:
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=5)
-        stdout, stderr = process.communicate(timeout=5)
-        round_report.gateway_stdout = _truncate(stdout or "")
-        round_report.gateway_stderr = _truncate(stderr or "")
+        if process is not None:
+            stdout, stderr = process.communicate(timeout=5)
+            round_report.gateway_stdout = _truncate(stdout or "")
+            round_report.gateway_stderr = _truncate(stderr or "")
 
     return round_report
 
@@ -474,6 +484,7 @@ def _write_report(report_dir: Path, report: dict[str, Any]) -> tuple[Path, Path]
         f"- rounds_requested: `{report['rounds_requested']}`",
         f"- rounds_executed: `{report['rounds_executed']}`",
         f"- overall_status: `{report['overall_status']}`",
+        f"- gateway_mode: `{report['gateway_mode']}`",
         f"- rounds_passed: `{counts['passed_rounds']}`",
         f"- rounds_failed: `{counts['failed_rounds']}`",
         f"- home_failed_occurrences: `{counts['home_failed_occurrences']}`",
@@ -667,6 +678,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dispenser-duration-ms", type=int, default=int(os.getenv("SILIGEN_HIL_DISPENSER_DURATION_MS", "80")))
     parser.add_argument("--state-wait-timeout-seconds", type=float, default=float(os.getenv("SILIGEN_HIL_STATE_WAIT_TIMEOUT_SECONDS", "8")))
     parser.add_argument("--force-home", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--reuse-existing-gateway", action="store_true")
     parser.add_argument("--offline-prereq-report", default="")
     parser.add_argument("--operator-override-reason", default="")
     return parser.parse_args()
@@ -716,6 +728,7 @@ def main() -> int:
             "mode": args.mode,
             "rounds_requested": args.rounds,
             "rounds_executed": 0,
+            "gateway_mode": _gateway_mode(args.reuse_existing_gateway),
             "dxf_case_id": args.dxf_case_id,
             "dxf_asset_refs": list(args.dxf_asset_refs),
             "overall_status": "failed",
@@ -738,13 +751,14 @@ def main() -> int:
         print(f"markdown report: {md_path}")
         return 1
 
-    if not gateway_exe.exists():
+    if not args.reuse_existing_gateway and not gateway_exe.exists():
         report = {
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "workspace_root": str(ROOT),
             "mode": args.mode,
             "rounds_requested": args.rounds,
             "rounds_executed": 0,
+            "gateway_mode": _gateway_mode(args.reuse_existing_gateway),
             "dxf_case_id": args.dxf_case_id,
             "dxf_asset_refs": list(args.dxf_asset_refs),
             "overall_status": "known_failure",
@@ -795,6 +809,7 @@ def main() -> int:
             "mode": args.mode,
             "rounds_requested": args.rounds,
             "rounds_executed": 0,
+            "gateway_mode": _gateway_mode(args.reuse_existing_gateway),
             "dxf_case_id": args.dxf_case_id,
             "dxf_asset_refs": list(args.dxf_asset_refs),
             "overall_status": overall_status,
@@ -863,6 +878,7 @@ def main() -> int:
         "rounds_requested": args.rounds,
         "rounds_executed": len(rounds),
         "gateway_exe": str(gateway_exe),
+        "gateway_mode": _gateway_mode(args.reuse_existing_gateway),
         "dxf_case_id": args.dxf_case_id,
         "dxf_asset_refs": list(args.dxf_asset_refs),
         "dxf_file": str(args.dxf_file),

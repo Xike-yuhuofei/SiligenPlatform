@@ -30,6 +30,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--port", type=int, default=int(os.getenv("SILIGEN_HIL_PORT", "9527")))
     parser.add_argument("--gateway-exe", default=os.getenv("SILIGEN_HIL_GATEWAY_EXE", str(DEFAULT_EXE)))
     parser.add_argument("--allow-skip-on-missing-gateway", action="store_true")
+    parser.add_argument("--reuse-existing-gateway", action="store_true")
     return parser.parse_args()
 
 
@@ -56,6 +57,7 @@ def _write_report(report_dir: Path, payload: dict[str, object]) -> tuple[Path, P
         f"- host: `{payload['host']}`",
         f"- port: `{payload['port']}`",
         f"- gateway_exe: `{payload['gateway_exe']}`",
+        f"- gateway_mode: `{payload['gateway_mode']}`",
         f"- note: `{payload.get('note', '')}`",
         "",
     ]
@@ -73,6 +75,7 @@ def _emit_report(args: argparse.Namespace, *, status: str, note: str, stdout: st
         "host": args.host,
         "port": args.port,
         "gateway_exe": str(Path(args.gateway_exe)),
+        "gateway_mode": "existing" if args.reuse_existing_gateway else "spawned",
         "note": note,
         "stdout": stdout,
         "stderr": stderr,
@@ -85,27 +88,29 @@ def _emit_report(args: argparse.Namespace, *, status: str, note: str, stdout: st
 def main() -> int:
     args = parse_args()
     exe_path = Path(args.gateway_exe)
-    if not exe_path.exists():
+    if not args.reuse_existing_gateway and not exe_path.exists():
         status = "skipped" if args.allow_skip_on_missing_gateway else "known_failure"
         note = f"gateway executable missing: {exe_path}"
         print(f"HIL gateway executable missing: {exe_path}", file=sys.stderr)
         _emit_report(args, status=status, note=note)
         return SKIPPED_EXIT_CODE if status == "skipped" else KNOWN_FAILURE_EXIT_CODE
 
-    process = subprocess.Popen(
-        [str(exe_path)],
-        cwd=str(ROOT),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-    )
+    process: subprocess.Popen[str] | None = None
+    if not args.reuse_existing_gateway:
+        process = subprocess.Popen(
+            [str(exe_path)],
+            cwd=str(ROOT),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
 
     try:
         deadline = time.time() + 8.0
         while time.time() < deadline:
-            if process.poll() is not None:
+            if process is not None and process.poll() is not None:
                 stdout, stderr = _read_process_output(process)
                 combined = "\n".join(item for item in (stdout, stderr) if item)
                 if "IDiagnosticsPort 未注册" in combined:
@@ -130,22 +135,31 @@ def main() -> int:
 
             try:
                 with socket.create_connection((args.host, args.port), timeout=1.0):
-                    print("hardware smoke passed: TCP endpoint is reachable")
+                    passed_note = (
+                        f"existing gateway endpoint is reachable: {args.host}:{args.port}"
+                        if args.reuse_existing_gateway
+                        else "TCP endpoint is reachable"
+                    )
+                    print(f"hardware smoke passed: {passed_note}")
                     _emit_report(
                         args,
                         status="passed",
-                        note="TCP endpoint is reachable",
+                        note=passed_note,
                     )
                     return 0
             except OSError:
                 time.sleep(0.2)
 
-        timeout_note = f"hardware smoke timeout: {args.host}:{args.port} not reachable"
+        timeout_note = (
+            f"existing gateway timeout: {args.host}:{args.port} not reachable"
+            if args.reuse_existing_gateway
+            else f"hardware smoke timeout: {args.host}:{args.port} not reachable"
+        )
         print(timeout_note, file=sys.stderr)
         _emit_report(args, status="failed", note=timeout_note)
         return 1
     finally:
-        if process.poll() is None:
+        if process is not None and process.poll() is None:
             process.terminate()
             try:
                 process.wait(timeout=5)

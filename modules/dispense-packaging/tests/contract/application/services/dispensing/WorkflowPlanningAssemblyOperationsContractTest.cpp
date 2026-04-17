@@ -10,10 +10,13 @@
 namespace {
 
 using Siligen::Application::Services::Dispensing::WorkflowPlanningAssemblyOperationsProvider;
+using Siligen::Domain::Dispensing::Contracts::ExecutionPackageBuilt;
+using Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated;
 using Siligen::Domain::Dispensing::ValueObjects::StrongAnchorRole;
 using Siligen::Domain::Dispensing::ValueObjects::TopologyDispatchType;
 using Siligen::Shared::Types::DispensingExecutionGeometryKind;
 using Siligen::Shared::Types::DispensingExecutionStrategy;
+using Siligen::Shared::Types::ErrorCode;
 using namespace Siligen::Application::Services::Dispensing::TestFixtures;
 
 TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildAuthorityPreviewArtifactsReturnsStableAuthorityTruth) {
@@ -176,7 +179,53 @@ TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFrom
             return std::abs(point.position.x - 5.0f) <= 1e-4f &&
                    std::abs(point.position.y - 2.0f) <= 1e-4f;
         }));
+    EXPECT_FLOAT_EQ(payload.execution_trajectory_points.front().timestamp, 0.0f);
+    EXPECT_NEAR(payload.execution_trajectory_points.back().timestamp, input.motion_plan.total_time, 1e-4f);
+    EXPECT_EQ(
+        std::adjacent_find(
+            payload.execution_trajectory_points.begin(),
+            payload.execution_trajectory_points.end(),
+            [](const auto& lhs, const auto& rhs) {
+                return rhs.timestamp < lhs.timestamp;
+            }),
+        payload.execution_trajectory_points.end());
     EXPECT_EQ(payload.export_request.execution_trajectory_points.size(), payload.execution_trajectory_points.size());
+}
+
+TEST(WorkflowPlanningAssemblyOperationsContractTest, BuildExecutionArtifactsFromAuthorityRejectsLinearPathWithoutMotionTimingTruth) {
+    WorkflowPlanningAssemblyOperationsProvider provider;
+    const auto operations = provider.CreateOperations();
+
+    auto input = BuildPlanningInput();
+    input.motion_plan.points = {
+        BuildMotionPoint(0.0f, 0.0f, 0.0f),
+        BuildMotionPoint(0.0f, 10.0f, 0.0f),
+    };
+    input.motion_plan.total_length = 10.0f;
+    input.motion_plan.total_time = 0.0f;
+
+    auto authority = operations->BuildAuthorityPreviewArtifacts(BuildWorkflowAuthorityPreviewInput(input));
+    ASSERT_TRUE(authority.IsSuccess()) << authority.GetError().GetMessage();
+
+    const auto result = operations->BuildExecutionArtifactsFromAuthority(
+        BuildWorkflowExecutionInput(input, authority.Value()));
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_PARAMETER);
+}
+
+TEST(WorkflowPlanningAssemblyOperationsContractTest, ExecutionPackageValidateRejectsPathInterpolationPointsWithoutTiming) {
+    ExecutionPackageBuilt built;
+    built.execution_plan.interpolation_points.emplace_back(0.0f, 0.0f, 10.0f);
+    built.execution_plan.interpolation_points.emplace_back(10.0f, 0.0f, 10.0f);
+    built.total_length_mm = 10.0f;
+    built.estimated_time_s = 1.0f;
+
+    ExecutionPackageValidated package(std::move(built));
+    const auto result = package.Validate();
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_PARAMETER);
 }
 
 TEST(WorkflowPlanningAssemblyOperationsContractTest, AssemblePlanningArtifactsMatchesStagedAuthorityAndExecutionSemantics) {

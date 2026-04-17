@@ -348,7 +348,13 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
             return Result<std::vector<TrajectoryPoint>>::Failure(seed_points_result.GetError());
         }
 
-        auto points = ConvertPreviewPointsToTrajectory(seed_points_result.Value());
+        auto timed_points_result =
+            BuildTimedExecutionTrajectoryFromMotionPlan(seed_points_result.Value(), input.motion_plan);
+        if (timed_points_result.IsError()) {
+            return Result<std::vector<TrajectoryPoint>>::Failure(timed_points_result.GetError());
+        }
+
+        auto points = std::move(timed_points_result.Value());
         if (points.size() < 2U) {
             return Result<std::vector<TrajectoryPoint>>::Failure(
                 Error(ErrorCode::INVALID_PARAMETER, "插补规划参数无效", "DispensePackagingAssembly"));
@@ -369,6 +375,14 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
                 ErrorCode::TRAJECTORY_GENERATION_FAILED,
                 "显式 trigger authority 映射到上游 motion plan 轨迹失败",
                 "DispensePackagingAssembly"));
+        }
+
+        auto timing_validation = ValidatePathInterpolationTiming(
+            points,
+            input.motion_plan.total_time,
+            "DispensePackagingAssembly");
+        if (timing_validation.IsError()) {
+            return Result<std::vector<TrajectoryPoint>>::Failure(timing_validation.GetError());
         }
 
         log_stage(
