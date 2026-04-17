@@ -60,7 +60,7 @@ def gateway_executable_candidates(
     )
     prioritized_roots: list[Path] = []
     seen_roots: set[Path] = set()
-    for root in (control_apps_build_root, *discovered_roots, workspace_root / "build" / "hmi-home-fix"):
+    for root in (control_apps_build_root, *discovered_roots):
         resolved_root = root.resolve()
         if resolved_root in seen_roots:
             continue
@@ -252,6 +252,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config-path", default=str(DEFAULT_MACHINE_CONFIG))
     parser.add_argument("--vendor-dir", default=str(DEFAULT_VENDOR_DIR))
     parser.add_argument("--gateway-exe", default=str(DEFAULT_GATEWAY_EXE))
+    parser.add_argument("--recipe-id", required=True)
+    parser.add_argument("--version-id", required=True)
     parser.add_argument("--cold-iterations", type=int, default=1)
     parser.add_argument("--hot-warmup-iterations", type=int, default=1)
     parser.add_argument("--hot-iterations", type=int, default=3)
@@ -664,6 +666,58 @@ def resolve_samples(args: argparse.Namespace) -> dict[str, Path]:
     return selected
 
 
+def require_explicit_recipe_context(recipe_id: str, version_id: str) -> dict[str, str]:
+    normalized_recipe_id = str(recipe_id or "").strip()
+    normalized_version_id = str(version_id or "").strip()
+    missing: list[str] = []
+    if not normalized_recipe_id:
+        missing.append("recipe_id")
+    if not normalized_version_id:
+        missing.append("version_id")
+    if missing:
+        raise ValueError("missing explicit recipe context: " + ",".join(missing))
+    return {
+        "recipe_id": normalized_recipe_id,
+        "version_id": normalized_version_id,
+        "recipe_context_source": "cli_explicit",
+    }
+
+
+def validate_published_recipe_context(
+    protocol: CommandProtocol,
+    recipe_id: str,
+    version_id: str,
+) -> tuple[dict[str, str] | None, str]:
+    context = require_explicit_recipe_context(recipe_id, version_id)
+    versions_ok, versions_payload, versions_error = protocol.recipe_versions(context["recipe_id"])
+    if not versions_ok:
+        return None, f"recipe.versions failed: {versions_error or 'unknown'}"
+    if not isinstance(versions_payload, list):
+        return None, "recipe.versions response missing versions list"
+
+    matched_version = next(
+        (
+            item
+            for item in versions_payload
+            if isinstance(item, dict) and str(item.get("id", "")).strip() == context["version_id"]
+        ),
+        None,
+    )
+    if not isinstance(matched_version, dict):
+        return None, (
+            "recipe.versions missing explicit version: "
+            f"recipe_id={context['recipe_id']} version_id={context['version_id']}"
+        )
+
+    version_status = str(matched_version.get("status", "")).strip().lower()
+    if version_status != "published":
+        return None, (
+            "recipe version is not published: "
+            f"recipe_id={context['recipe_id']} version_id={context['version_id']} status={version_status or 'unknown'}"
+        )
+    return context, ""
+
+
 def create_artifact(protocol: CommandProtocol, sample_path: Path, timeout: float) -> tuple[str, float]:
     started = time.perf_counter()
     ok, payload, error = protocol.dxf_create_artifact(str(sample_path), timeout=timeout)
@@ -893,30 +947,24 @@ def prepare_and_snapshot_once(
     *,
     artifact_ms: float | None,
 ) -> PreviewCycleRecord:
-    recipes_ok, recipes_payload, recipes_error = protocol.recipe_list()
-    if not recipes_ok or not recipes_payload:
+    recipe_context, recipe_context_error = validate_published_recipe_context(
+        protocol,
+        args.recipe_id,
+        args.version_id,
+    )
+    if recipe_context is None:
         return PreviewCycleRecord(
             success=False,
             artifact_id=artifact_id,
             artifact_ms=artifact_ms,
-            error=f"recipe.list failed: {recipes_error or 'missing recipe'}",
-        )
-    recipe = recipes_payload[0]
-    recipe_id = str(recipe.get("id", "")).strip()
-    version_id = str(recipe.get("activeVersionId", "")).strip()
-    if not recipe_id or not version_id:
-        return PreviewCycleRecord(
-            success=False,
-            artifact_id=artifact_id,
-            artifact_ms=artifact_ms,
-            error="recipe.list response missing recipe/version",
+            error=recipe_context_error or "recipe context validation failed",
         )
 
     plan_started = time.perf_counter()
     plan_ok, plan_payload, plan_error = protocol.dxf_prepare_plan(
         artifact_id=artifact_id,
-        recipe_id=recipe_id,
-        version_id=version_id,
+        recipe_id=recipe_context["recipe_id"],
+        version_id=recipe_context["version_id"],
         speed_mm_s=args.dispensing_speed_mm_s,
         dry_run=args.dry_run,
         dry_run_speed_mm_s=args.dry_run_speed_mm_s,
@@ -1820,30 +1868,24 @@ def concurrent_prepare_worker(
 ) -> None:
     try:
         with protocol_client(args.host, args.port) as (_, protocol):
-            recipes_ok, recipes_payload, recipes_error = protocol.recipe_list()
-            if not recipes_ok or not recipes_payload:
+            recipe_context, recipe_context_error = validate_published_recipe_context(
+                protocol,
+                args.recipe_id,
+                args.version_id,
+            )
+            if recipe_context is None:
                 results[request_index] = ConcurrentPrepareRecord(
                     request_index=request_index,
                     success=False,
-                    error=f"recipe.list failed: {recipes_error or 'missing recipe'}",
-                )
-                return
-            recipe = recipes_payload[0]
-            recipe_id = str(recipe.get("id", "")).strip()
-            version_id = str(recipe.get("activeVersionId", "")).strip()
-            if not recipe_id or not version_id:
-                results[request_index] = ConcurrentPrepareRecord(
-                    request_index=request_index,
-                    success=False,
-                    error="recipe.list response missing recipe/version",
+                    error=recipe_context_error or "recipe context validation failed",
                 )
                 return
             barrier.wait(timeout=max(10.0, args.prepare_timeout))
             started = time.perf_counter()
             ok, payload, error = protocol.dxf_prepare_plan(
                 artifact_id=artifact_id,
-                recipe_id=recipe_id,
-                version_id=version_id,
+                recipe_id=recipe_context["recipe_id"],
+                version_id=recipe_context["version_id"],
                 speed_mm_s=args.dispensing_speed_mm_s,
                 dry_run=args.dry_run,
                 dry_run_speed_mm_s=args.dry_run_speed_mm_s,
@@ -2594,6 +2636,9 @@ def render_markdown(payload: dict[str, Any]) -> str:
         f"- gateway_hardware_mode: `{payload['environment'].get('gateway_hardware_mode', 'unknown')}`",
         f"- gateway_auto_provisioned_mock: `{payload['environment'].get('gateway_auto_provisioned_mock', False)}`",
         f"- host_port: `{payload['gateway']['host']}:{payload['gateway']['port']}`",
+        f"- recipe_id: `{payload.get('recipe_context', {}).get('recipe_id', '')}`",
+        f"- version_id: `{payload.get('recipe_context', {}).get('version_id', '')}`",
+        f"- recipe_context_source: `{payload.get('recipe_context', {}).get('recipe_context_source', '')}`",
         f"- dry_run: `{payload['sampling']['dry_run']}`",
         f"- include_start_job: `{payload['sampling']['include_start_job']}`",
         f"- include_control_cycles: `{payload['sampling']['include_control_cycles']}`",
@@ -2884,6 +2929,7 @@ def main() -> int:
 
     payload: dict[str, Any] = {
         "environment": environment_snapshot(launch_spec),
+        "recipe_context": require_explicit_recipe_context(args.recipe_id, args.version_id),
         "gateway": {
             "host": args.host,
             "port": args.port,

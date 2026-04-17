@@ -175,18 +175,17 @@ class HmiRunScriptContractTest(unittest.TestCase):
         self.assertIn(str(workspace_exe), completed.stdout)
         self.assertNotIn(str(localappdata_exe), completed.stdout)
 
-    def test_runtime_gateway_runner_dryrun_rejects_workspace_root_without_matching_cache(self) -> None:
+    def test_runtime_gateway_runner_dryrun_does_not_fallback_when_workspace_root_missing_matching_cache(self) -> None:
         workspace_exe = WORKSPACE_ROOT / "build" / "ca" / "bin" / "Debug" / "siligen_runtime_gateway.exe"
         cache_path = WORKSPACE_ROOT / "build" / "ca" / "CMakeCache.txt"
         created_workspace_exe = False
         removed_cache = False
         original_cache = None
         try:
-            if workspace_exe.exists():
-                workspace_exe.unlink()
-            workspace_exe.parent.mkdir(parents=True, exist_ok=True)
-            workspace_exe.write_text("", encoding="utf-8")
-            created_workspace_exe = True
+            if not workspace_exe.exists():
+                workspace_exe.parent.mkdir(parents=True, exist_ok=True)
+                workspace_exe.write_text("", encoding="utf-8")
+                created_workspace_exe = True
             if cache_path.exists():
                 original_cache = cache_path.read_text(encoding="utf-8")
                 cache_path.unlink()
@@ -228,9 +227,11 @@ class HmiRunScriptContractTest(unittest.TestCase):
             if removed_cache and original_cache is not None:
                 cache_path.write_text(original_cache, encoding="utf-8")
 
-        self.assertEqual(completed.returncode, 0, msg=completed.stderr)
-        self.assertIn(str(localappdata_exe), completed.stdout)
-        self.assertNotIn(str(workspace_exe), completed.stdout)
+        output = f"{completed.stdout}\n{completed.stderr}"
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("current-workspace control-apps build root not ready for runtime-", output)
+        self.assertIn("gateway", output)
+        self.assertNotIn(str(localappdata_exe), output)
 
     def test_contract_builder_dryrun_parses_runtime_gateway_output_without_path_format_error(self) -> None:
         contract_builder = PROJECT_ROOT / "scripts" / "new-gateway-launch-contract.ps1"
@@ -389,3 +390,67 @@ class HmiRunScriptContractTest(unittest.TestCase):
             output = f"{completed.stdout}\n{completed.stderr}"
             self.assertEqual(completed.returncode, 0, msg=output)
             self.assertTrue(screenshot_path.exists(), msg=output)
+
+    def test_online_smoke_rejects_preview_payload_without_explicit_snapshot_render_profile(self) -> None:
+        smoke_script = PROJECT_ROOT / "scripts" / "online-smoke.ps1"
+        python_exe = Path(sys.executable).resolve()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            payload_path = Path(temp_dir) / "snapshot.json"
+            payload_path.write_text("{}", encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    POWERSHELL,
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(smoke_script),
+                    "-PythonExe",
+                    str(python_exe),
+                    "-ExerciseRuntimeActions",
+                    "-PreviewPayloadPath",
+                    str(payload_path),
+                ],
+                cwd=str(PROJECT_ROOT),
+                capture_output=True,
+                text=True,
+            )
+
+            output = f"{completed.stdout}\n{completed.stderr}"
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("PreviewPayloadPath requires explicit -RuntimeActionProfile snapshot_render", output)
+
+    def test_online_smoke_rejects_preview_payload_for_operator_preview(self) -> None:
+        smoke_script = PROJECT_ROOT / "scripts" / "online-smoke.ps1"
+        python_exe = Path(sys.executable).resolve()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            payload_path = Path(temp_dir) / "snapshot.json"
+            payload_path.write_text("{}", encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    POWERSHELL,
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(smoke_script),
+                    "-PythonExe",
+                    str(python_exe),
+                    "-ExerciseRuntimeActions",
+                    "-RuntimeActionProfile",
+                    "operator_preview",
+                    "-PreviewPayloadPath",
+                    str(payload_path),
+                ],
+                cwd=str(PROJECT_ROOT),
+                capture_output=True,
+                text=True,
+            )
+
+            output = f"{completed.stdout}\n{completed.stderr}"
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("PreviewPayloadPath is only allowed with -RuntimeActionProfile snapshot_render", output)

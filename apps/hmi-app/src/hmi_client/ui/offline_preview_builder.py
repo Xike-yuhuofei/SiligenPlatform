@@ -1,7 +1,6 @@
 import json
 import os
 import subprocess
-import hashlib
 from pathlib import Path
 
 
@@ -17,27 +16,12 @@ def _resolve_workspace_root() -> Path:
             return parent
     raise FileNotFoundError("未找到 apps/planner-cli，无法生成离线同源预览")
 
-
-def _workspace_build_token(workspace_root: Path) -> str:
-    normalized = str(workspace_root.resolve()).lower().encode("utf-8")
-    return hashlib.sha256(normalized).hexdigest()[:12]
-
-
 def _resolve_build_roots(workspace_root: Path) -> list[Path]:
     roots: list[Path] = []
     env_root = str(os.getenv(_CONTROL_APPS_BUILD_ROOT_ENV, "")).strip()
     if env_root:
         roots.append(Path(env_root).expanduser())
     roots.append(workspace_root / "build" / "ca")
-    roots.append(workspace_root / "build" / "control-apps")
-    roots.append(workspace_root / "build")
-    local_app_data = str(os.getenv("LOCALAPPDATA", "")).strip()
-    if local_app_data:
-        ss_root = Path(local_app_data) / "SS"
-        roots.append(ss_root / f"cab-{_workspace_build_token(workspace_root)}")
-        if ss_root.exists():
-            roots.extend(sorted(ss_root.glob("cab-*")))
-        roots.append(Path(local_app_data) / "SiligenSuite" / "control-apps-build")
     unique_roots: list[Path] = []
     for root in roots:
         resolved = root.resolve()

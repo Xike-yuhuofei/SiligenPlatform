@@ -8,7 +8,7 @@
 - 已退出并物理删除：`packages/`、`integration/`、`tools/`、`examples/`
 - 本地缓存且默认忽略：`.specify/`、`specs/`
 - 本地生成物且默认忽略：根级 `build-*/`、`.claude/`
-- build root 自动发现只认 `build/`、`build/control-apps/`、显式环境变量与本地发布缓存；根级其他 `build-*` 不再作为默认候选。
+- control-apps build root 默认只认显式 `SILIGEN_CONTROL_APPS_BUILD_ROOT` 或当前工作区 `build/ca`；`build/`、`build/control-apps/` 和本地发布缓存不再参与默认候选。
 
 当前进程入口：
 

@@ -16,13 +16,15 @@ from typing import Any
 KNOWN_FAILURE_EXIT_CODE = 10
 SKIPPED_EXIT_CODE = 11
 RECIPE_CONTEXT_SOURCE_CLI_EXPLICIT = "cli_explicit"
+CANONICAL_RECIPE_ID = "recipe-7d1b00f4-6a99"
+CANONICAL_VERSION_ID = "version-fea9ce29-f963"
 
 ROOT = Path(__file__).resolve().parents[3]
 TEST_KIT_SRC = ROOT / "shared" / "testing" / "test-kit" / "src"
 if str(TEST_KIT_SRC) not in sys.path:
     sys.path.insert(0, str(TEST_KIT_SRC))
 
-from test_kit.control_apps_build import preferred_control_apps_build_root, valid_control_apps_build_roots
+from test_kit.control_apps_build import preferred_control_apps_build_root
 
 CANONICAL_CONFIG = ROOT / "config" / "machine" / "machine_config.ini"
 CONTROL_APPS_BUILD_ROOT = Path(
@@ -142,34 +144,21 @@ class TcpJsonClient:
 
 
 def resolve_default_exe(*file_names: str) -> Path:
-    valid_roots = valid_control_apps_build_roots(
-        ROOT,
-        explicit_build_root=os.getenv("SILIGEN_CONTROL_APPS_BUILD_ROOT"),
-    )
-    prioritized_roots: list[Path] = []
-    seen_roots: set[Path] = set()
-    for root in (CONTROL_APPS_BUILD_ROOT, *valid_roots, ROOT / "build" / "hmi-home-fix"):
-        resolved_root = root.resolve()
-        if resolved_root in seen_roots:
-            continue
-        seen_roots.add(resolved_root)
-        prioritized_roots.append(resolved_root)
-
     candidates: list[Path] = []
     for file_name in file_names:
-        for build_root in prioritized_roots:
-            candidates.extend(
-                (
-                    build_root / "bin" / file_name,
-                    build_root / "bin" / "Debug" / file_name,
-                    build_root / "bin" / "Release" / file_name,
-                    build_root / "bin" / "RelWithDebInfo" / file_name,
-                )
+        build_root = CONTROL_APPS_BUILD_ROOT.resolve()
+        candidates.extend(
+            (
+                build_root / "bin" / file_name,
+                build_root / "bin" / "Debug" / file_name,
+                build_root / "bin" / "Release" / file_name,
+                build_root / "bin" / "RelWithDebInfo" / file_name,
             )
+        )
     for candidate in candidates:
         if candidate.exists():
             return candidate
-    return candidates[0]
+    return candidates[1]
 
 
 def build_process_env(gateway_exe: Path) -> dict[str, str]:
@@ -249,6 +238,15 @@ def recipe_context_metadata(
         "recipe_context_source": str(source or RECIPE_CONTEXT_SOURCE_CLI_EXPLICIT).strip()
         or RECIPE_CONTEXT_SOURCE_CLI_EXPLICIT,
     }
+
+def build_recipe_context_cli_args(recipe_id: str, version_id: str) -> list[str]:
+    metadata = recipe_context_metadata(recipe_id, version_id)
+    return [
+        "--recipe-id",
+        metadata["recipe_id"],
+        "--version-id",
+        metadata["version_id"],
+    ]
 
 
 def result_payload(payload: dict[str, Any] | None) -> dict[str, Any]:

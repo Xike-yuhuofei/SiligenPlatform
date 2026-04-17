@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$BuildDir = (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) "build"),
+    [string]$BuildDir = "",
     [ValidateSet("Debug", "Release", "RelWithDebInfo", "MinSizeRel")]
     [string]$Config = "Debug",
     [int]$Jobs = [Math]::Max(1, [Math]::Floor([Environment]::ProcessorCount * 0.8)),
@@ -11,6 +11,9 @@ $ErrorActionPreference = "Stop"
 
 $workspaceRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $workspaceRoot = [System.IO.Path]::GetFullPath($workspaceRoot)
+if ([string]::IsNullOrWhiteSpace($BuildDir)) {
+    $BuildDir = Join-Path $workspaceRoot "build\ca"
+}
 $resolvedBuildDir = [System.IO.Path]::GetFullPath($BuildDir)
 
 function Get-CMakeHomeDirectory {
@@ -67,11 +70,15 @@ if ($configuredHome -and ($configuredHome -ine $workspaceRoot)) {
 }
 
 Write-Output "configure: cmake -S $workspaceRoot -B $resolvedBuildDir"
-& cmake -S $workspaceRoot -B $resolvedBuildDir `
-    -DSILIGEN_BUILD_TESTS=OFF `
-    -DSILIGEN_USE_PCH=ON `
-    -DSILIGEN_PARALLEL_COMPILE=ON `
-    -DSILIGEN_PARALLEL_COMPILE_JOBS=$Jobs
+$configureArgs = @(
+    "-S", $workspaceRoot,
+    "-B", $resolvedBuildDir,
+    "-DSILIGEN_BUILD_TESTS=OFF",
+    "-DSILIGEN_USE_PCH=ON",
+    "-DSILIGEN_PARALLEL_COMPILE=ON",
+    "-DSILIGEN_PARALLEL_COMPILE_JOBS=$Jobs"
+)
+& cmake @configureArgs
 if ($LASTEXITCODE -ne 0) {
     throw "cmake configure 失败，退出码: $LASTEXITCODE"
 }

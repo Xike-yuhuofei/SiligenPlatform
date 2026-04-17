@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -15,9 +17,17 @@ for candidate in (HIL_DIR, HMI_SCRIPTS_DIR, PERFORMANCE_DIR, TEST_KIT_SRC):
         sys.path.insert(0, str(candidate))
 
 from run_full_online_hmi_suite import FULL_ONLINE_HMI_SCENARIOS, scenario_ids  # noqa: E402
+from run_online_runtime_action_matrix import (  # noqa: E402
+    OPERATOR_PREVIEW_REQUIRED_STAGES,
+    RUNTIME_ACTION_CASES,
+    summarize_operator_context,
+)
 from run_online_soak_profiles import (  # noqa: E402
     DEFAULT_SOAK_PROFILE_IDS,
+    SoakProfileResult,
+    _write_report as write_soak_report,
     evaluate_collect_payload_status,
+    require_explicit_recipe_context,
     resolve_profiles,
 )
 from run_real_dxf_machine_dryrun_suite import DEFAULT_CASE_IDS as DEFAULT_DRYRUN_CASE_IDS  # noqa: E402
@@ -52,6 +62,40 @@ class OnlineTestMatrixRunnerContractTest(unittest.TestCase):
             ),
         )
         self.assertEqual(len(FULL_ONLINE_HMI_SCENARIOS), 4)
+
+    def test_hmi_runtime_action_matrix_freezes_operator_preview_authority(self) -> None:
+        self.assertEqual(
+            tuple((case.case_id, case.profile) for case in RUNTIME_ACTION_CASES),
+            (
+                ("operator-preview", "operator_preview"),
+                ("runtime-home-move", "home_move"),
+                ("runtime-jog", "jog"),
+                ("runtime-supply-dispenser", "supply_dispenser"),
+                ("runtime-estop-reset", "estop_reset"),
+                ("runtime-door-interlock", "door_interlock"),
+            ),
+        )
+
+    def test_operator_preview_contract_requires_explicit_version_stage_sequence(self) -> None:
+        output = "\n".join(
+            [
+                "OPERATOR_CONTEXT stage=recipe-selected recipe_id=recipe-001 version_id=null selection_origin=user_recipe_selection is_valid=false invalid_reason=missing_version",
+                "OPERATOR_CONTEXT stage=missing-version-blocked recipe_id=recipe-001 version_id=null selection_origin=user_recipe_selection is_valid=false invalid_reason=missing_version",
+                "OPERATOR_CONTEXT stage=version-selected recipe_id=recipe-001 version_id=version-001 selection_origin=user_version_selection is_valid=true invalid_reason=null",
+                "OPERATOR_CONTEXT stage=preview-ready recipe_id=recipe-001 version_id=version-001 selection_origin=user_version_selection is_valid=true invalid_reason=null",
+            ]
+        )
+
+        summary = summarize_operator_context(output)
+
+        self.assertEqual(tuple(summary["operator_context_stages"]), OPERATOR_PREVIEW_REQUIRED_STAGES)
+        self.assertTrue(summary["missing_version_block_observed"])
+        self.assertTrue(summary["preview_ready_observed"])
+        self.assertTrue(summary["stage_sequence_ok"])
+        self.assertTrue(summary["contract_ok"])
+        self.assertEqual(summary["selected_recipe_id"], "recipe-001")
+        self.assertEqual(summary["selected_version_id"], "version-001")
+        self.assertEqual(summary["selection_origin"], "user_version_selection")
 
     def test_soak_profiles_cover_formal_and_planned_blockers(self) -> None:
         profiles = resolve_profiles(())
@@ -111,6 +155,45 @@ class OnlineTestMatrixRunnerContractTest(unittest.TestCase):
         }
         self.assertEqual(evaluate_collect_payload_status(passing_payload), "passed")
         self.assertEqual(evaluate_collect_payload_status(failing_payload), "failed")
+
+    def test_soak_summary_persists_recipe_context(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            report_dir = Path(temp_dir)
+            json_path, md_path = write_soak_report(
+                report_dir=report_dir,
+                profile_results=[
+                    SoakProfileResult(
+                        profile_id="soak-30m-matrix",
+                        status="passed",
+                        exit_code=0,
+                        long_run_minutes=30.0,
+                        sample_labels=("small", "medium", "large"),
+                        gate_mode="adhoc",
+                        command=["python", "tests/performance/collect_dxf_preview_profiles.py"],
+                        report_dir=str(report_dir / "profiles" / "soak-30m-matrix"),
+                        latest_json=str(report_dir / "profiles" / "soak-30m-matrix" / "latest.json"),
+                        latest_markdown=str(report_dir / "profiles" / "soak-30m-matrix" / "latest.md"),
+                        threshold_gate_status="passed",
+                    )
+                ],
+                selected_profile_ids=("soak-30m-matrix",),
+                recipe_context=require_explicit_recipe_context("recipe-001", "version-001"),
+            )
+
+            payload = json.loads(json_path.read_text(encoding="utf-8"))
+            markdown = md_path.read_text(encoding="utf-8")
+
+        self.assertEqual(
+            payload["recipe_context"],
+            {
+                "recipe_id": "recipe-001",
+                "version_id": "version-001",
+                "recipe_context_source": "cli_explicit",
+            },
+        )
+        self.assertIn("- recipe_id: `recipe-001`", markdown)
+        self.assertIn("- version_id: `version-001`", markdown)
+        self.assertIn("- recipe_context_source: `cli_explicit`", markdown)
 
 
 if __name__ == "__main__":
