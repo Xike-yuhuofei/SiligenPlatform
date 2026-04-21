@@ -8,6 +8,8 @@ ROOT = Path(__file__).resolve().parents[4]
 CONTRACTS = ROOT / "shared" / "contracts" / "application"
 DXF_COMMAND_SET = CONTRACTS / "commands" / "dxf.command-set.json"
 DXF_PREVIEW_SUCCESS_FIXTURE = CONTRACTS / "fixtures" / "responses" / "dxf.preview.snapshot.success.json"
+DXF_JOB_CONTINUE_REQUEST_FIXTURE = CONTRACTS / "fixtures" / "requests" / "dxf.job.continue.request.json"
+DXF_JOB_CONTINUE_SUCCESS_FIXTURE = CONTRACTS / "fixtures" / "responses" / "dxf.job.continue.success.json"
 PROTOCOL_MAPPING = CONTRACTS / "mappings" / "protocol-mapping.md"
 TCP_DISPATCHER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "tcp" / "TcpCommandDispatcher.cpp"
 TCP_DISPATCHER_HEADER = ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "src" / "tcp" / "TcpCommandDispatcher.h"
@@ -143,8 +145,10 @@ def test_dxf_preview_gate_contract_is_wired():
     assert 'RegisterCommand("dxf.plan.prepare"' in source
     assert 'RegisterCommand("dxf.job.start"' in source
     assert 'RegisterCommand("dxf.job.status"' in source
+    assert 'RegisterCommand("dxf.job.continue"' in source
     assert 'std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot' in source
     assert 'std::string TcpCommandDispatcher::HandleDxfPreviewConfirm' in source
+    assert 'std::string TcpCommandDispatcher::HandleDxfJobContinue' in source
     assert "GetDxfPreviewSnapshot(" in source
     assert "ConfirmDxfPreview(" in source
     assert '{"preview_source", snapshot.preview_source}' in source
@@ -156,6 +160,7 @@ def test_dxf_preview_gate_contract_is_wired():
     assert '{"source", snapshot.motion_preview_source}' in source
     assert '{"point_count", snapshot.motion_preview_point_count}' in source
     assert 'for (const auto& point : snapshot.motion_preview_polyline)' in source
+    assert '{"execution_polyline"' not in source
     assert "dxf_cache_.preview_state = snapshot.preview_state;" in source
     assert 'request.snapshot_hash = snapshot_hash;' in source
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3011, "Missing plan_id")' in source
@@ -172,11 +177,15 @@ def test_dxf_preview_gate_contract_is_wired():
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview source must be planned_glue_snapshot")' in source
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview kind must be glue_points")' in source
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview glue points are empty")' in source
+    assert "Preview motion preview source must be execution_trajectory_snapshot" in source
+    assert "Preview motion preview kind must be polyline" in source
+    assert "Preview motion preview polyline is empty" in source
     assert 'LogPreviewGateFailure("dxf.preview.snapshot"' in source
     assert 'LogPreviewGateFailure("dxf.preview.confirm"' in source
     assert 'LogPreviewGateFailure("dxf.job.start"' in source
     assert 'ReadJsonBool(params, "optimize_path", true)' in source
     assert 'ReadJsonBool(params, "use_interpolation_planner", true)' in source
+    assert 'ReadJsonBool(params, "auto_continue", true)' in source
     assert 'ReadJsonInt(params, "requested_execution_strategy", -1)' in source
     assert "BuildPreparePlanRequest(" in source
     assert "BuildPreparePlanRuntimeOverrides(" in source
@@ -216,10 +225,15 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
     assert {"artifact_id", "dispensing_speed_mm_s"}.issubset(set(prepare_operation["paramsSchema"]["required"]))
     assert "recipe_id" not in prepare_operation["paramsSchema"]["properties"]
     assert "version_id" not in prepare_operation["paramsSchema"]["properties"]
-    assert {"import_result_classification", "import_production_ready", "prepared_filepath"}.issubset(
+    assert {"import_result_classification", "import_production_ready", "formal_compare_gate", "prepared_filepath"}.issubset(
         set(prepare_operation["resultSchema"]["required"])
     )
+    assert {"execution_nominal_time_s", "execution_plan_summary"}.issubset(
+        set(prepare_operation["resultSchema"]["required"])
+    )
+    assert "estimated_time_s" not in prepare_operation["resultSchema"]["required"]
     assert "speed_mm_s" not in prepare_operation["paramsSchema"]["properties"]
+    assert "use_hardware_trigger" not in prepare_operation["paramsSchema"]["properties"]
     assert not prepare_operation.get("compatibility", {}).get("requestAliases")
     assert "requested_execution_strategy" in prepare_operation["paramsSchema"]["properties"]
     notes = "\n".join(prepare_operation.get("compatibility", {}).get("notes", []))
@@ -236,13 +250,47 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
     job_start_operation = next(op for op in command_set["operations"] if op["method"] == "dxf.job.start")
     job_start_notes = "\n".join(job_start_operation.get("compatibility", {}).get("notes", []))
     assert "回退最近一次 prepared plan" not in job_start_notes
-    assert {"import_result_classification", "import_production_ready", "prepared_filepath"}.issubset(
+    assert {"import_result_classification", "import_production_ready", "formal_compare_gate", "prepared_filepath"}.issubset(
+        set(job_start_operation["resultSchema"]["required"])
+    )
+    assert {"execution_budget_s", "execution_budget_breakdown"}.issubset(
         set(job_start_operation["resultSchema"]["required"])
     )
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 2895, "Missing artifact_id")' in dispatcher_source
+    assert '{"execution_nominal_time_s", plan.execution_nominal_time_s}' in dispatcher_source
+    assert '{"execution_plan_summary", BuildExecutionPlanSummaryJson(plan.execution_plan_summary)}' in dispatcher_source
+    assert '{"execution_budget_s", start_response.execution_budget_s}' in dispatcher_source
     assert 'ReadJsonStringAlias(params, "recipeId", "recipe_id")' not in dispatcher_source
     assert 'ReadJsonStringAlias(params, "versionId", "version_id")' not in dispatcher_source
     assert 'ReadJsonDouble(params, "dispensing_speed_mm_s", ReadJsonDouble(params, "speed_mm_s", 0.0))' not in dispatcher_source
+    assert 'ReadJsonBool(params, "use_hardware_trigger", true)' not in dispatcher_source
+
+
+def test_dxf_job_continue_contract_freezes_wait_for_continue_semantics():
+    command_set = load_json(DXF_COMMAND_SET)
+    mapping = PROTOCOL_MAPPING.read_text(encoding="utf-8")
+    dispatcher_source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    states = load_json(CONTRACTS / "models" / "states.json")
+    continue_request = load_json(DXF_JOB_CONTINUE_REQUEST_FIXTURE)
+    continue_success = load_json(DXF_JOB_CONTINUE_SUCCESS_FIXTURE)
+
+    job_start_operation = next(op for op in command_set["operations"] if op["method"] == "dxf.job.start")
+    job_continue_operation = next(op for op in command_set["operations"] if op["method"] == "dxf.job.continue")
+    job_start_notes = "\n".join(job_start_operation.get("compatibility", {}).get("notes", []))
+
+    assert "auto_continue" in job_start_operation["paramsSchema"]["properties"]
+    assert "auto_continue 省略时默认为 true" in job_start_notes
+    assert "awaiting_continue" in states["definitions"]["dxfJobStatus"]["properties"]["state"]["enum"]
+    assert "dxf.job.continue" in mapping
+    assert "awaiting_continue" in mapping
+    assert "dispensingFacade_->ContinueDxfJob(job_id)" in dispatcher_source
+    assert 'GatewayJsonProtocol::MakeErrorResponse(id, 2917, "TcpDispensingFacade not available")' in dispatcher_source
+    assert 'GatewayJsonProtocol::MakeErrorResponse(id, 2918, "DXF job not waiting for continue")' in dispatcher_source
+    assert 'GatewayJsonProtocol::MakeErrorResponse(id, 2919, continue_result.GetError().GetMessage())' in dispatcher_source
+    assert continue_request["method"] == "dxf.job.continue"
+    assert continue_request["params"]["job_id"]
+    assert continue_success["result"]["continued"] is True
+    assert continue_success["result"]["job_id"]
 
 
 def test_legacy_execute_and_task_surface_are_removed():
@@ -305,6 +353,8 @@ def test_legacy_execute_and_task_surface_are_removed():
     )
     assert runtime_job_status_match, "cannot locate RuntimeJobStatusResponse"
     assert "active_task_id" not in runtime_job_status_match.group("body")
+    assert "execution_budget_s" in runtime_job_status_match.group("body")
+    assert "execution_budget_breakdown" in runtime_job_status_match.group("body")
 
     assert not LEGACY_EXECUTION_WORKFLOW_HEADER.exists()
     assert not LEGACY_EXECUTION_WORKFLOW_CPP.exists()
@@ -350,7 +400,7 @@ def test_status_supervision_contract_is_derived_by_runtime_supervision_adapter()
     assert 'snapshot.failure_stage = snapshot.failure_code.empty() ? "" : "runtime_status";' in source
 
 
-def test_status_dispatcher_only_serializes_snapshot_and_compat_projection():
+def test_status_dispatcher_only_serializes_authority_status_fields():
     source = TCP_DISPATCHER.read_text(encoding="utf-8")
     status_source = RUNTIME_STATUS_EXPORT_PORT.read_text(encoding="utf-8")
     assert "runtimeStatusExportPort_->ReadSnapshot()" in source
@@ -359,6 +409,8 @@ def test_status_dispatcher_only_serializes_snapshot_and_compat_projection():
     assert "BuildSupervisionJson(status_snapshot)" in source
     assert "BuildJobExecutionJson(status_snapshot)" in source
     assert "BuildCompatMachineState(" not in source
+    assert '{"machine_state", status_snapshot.machine_state}' in source
+    assert '{"machine_state_reason", status_snapshot.machine_state_reason}' in source
     assert "snapshot.machine_state = supervision.supervision.current_state;" in status_source
     assert "snapshot.machine_state_reason = supervision.supervision.state_reason;" in status_source
     assert "snapshot.dispenser.completedCount = dispenser.completedCount;" in status_source
@@ -367,6 +419,7 @@ def test_status_dispatcher_only_serializes_snapshot_and_compat_projection():
     assert '{"supervision", supervisionJson}' in source
     assert '{"effective_interlocks", effectiveInterlocksJson}' in source
     assert '{"job_execution", jobExecutionJson}' in source
+    assert '{"execution_budget_s", snapshot.job_execution.execution_budget_s}' in source
     assert '{"active_job_id"' not in source
     assert '{"active_job_state"' not in source
     assert '{"completedCount", snapshot.dispenser.completedCount}' in source
@@ -653,10 +706,11 @@ def main():
         test_dxf_preview_gate_contract_is_wired,
         test_dxf_preview_contract_docs_freeze_shared_authority_semantics,
         test_dxf_plan_prepare_contract_exposes_requested_execution_strategy,
+        test_dxf_job_continue_contract_freezes_wait_for_continue_semantics,
         test_legacy_execute_and_task_surface_are_removed,
         test_status_reads_backend_interlock_signals,
         test_status_supervision_contract_is_derived_by_runtime_supervision_adapter,
-        test_status_dispatcher_only_serializes_snapshot_and_compat_projection,
+        test_status_dispatcher_only_serializes_authority_status_fields,
         test_manual_dispenser_pause_resume_do_not_stop_dxf_job_implicitly,
         test_motion_coord_status_exposes_feedback_diagnostics,
         test_estop_reset_and_disconnect_semantics_are_wired,

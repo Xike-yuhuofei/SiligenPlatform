@@ -132,7 +132,6 @@ struct CommandLineConfig {
     double arc_tolerance = 0.01;
     double dispensing_interval = 3.0;
     int trigger_pulse_us = 100;
-    bool use_hardware_trigger = true;
     bool use_interpolation_planner = false;
     std::string interpolation_algorithm;
     double spacing_tol_ratio = 0.0;

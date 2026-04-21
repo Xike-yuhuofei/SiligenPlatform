@@ -45,6 +45,7 @@ TEST(UploadContractsTest, UploadResponseDefaultsRemainNeutral) {
     EXPECT_TRUE(response.import_diagnostics.result_classification.empty());
     EXPECT_FALSE(response.import_diagnostics.preview_ready);
     EXPECT_FALSE(response.import_diagnostics.production_ready);
+    EXPECT_FALSE(response.import_diagnostics.formal_compare_gate.HasValue());
 }
 
 }  // namespace

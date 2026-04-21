@@ -1,6 +1,8 @@
 #pragma once
 
+#include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "domain/dispensing/contracts/ExecutionPackage.h"
+#include "runtime_execution/contracts/dispensing/ProfileCompareExecutionSchedule.h"
 #include "runtime_execution/contracts/dispensing/DispensingExecutionTypes.h"
 #include "runtime_execution/contracts/machine/MachineMode.h"
 #include "domain/safety/domain-services/SafetyOutputGuard.h"
@@ -17,6 +19,7 @@ using Siligen::Domain::Dispensing::ValueObjects::DispensingRuntimeOverrides;
 using Siligen::Domain::Dispensing::ValueObjects::JobExecutionMode;
 using Siligen::Domain::Dispensing::ValueObjects::ProcessOutputPolicy;
 using Siligen::Domain::Machine::ValueObjects::MachineMode;
+using Siligen::Application::UseCases::Dispensing::JobCycleAdvanceMode;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::float32;
@@ -28,9 +31,10 @@ using WorkflowJobId = std::string;
 
 struct WorkflowExecutionRequest {
     ExecutionPackageValidated execution_package;
+    std::shared_ptr<const Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareExecutionSchedule>
+        profile_compare_schedule;
     std::string source_path;
 
-    bool use_hardware_trigger = true;
     bool dry_run = false;
     std::optional<MachineMode> machine_mode;
     std::optional<JobExecutionMode> execution_mode;
@@ -80,13 +84,31 @@ struct WorkflowExecutionRequest {
         if (package_validation.IsError()) {
             return package_validation;
         }
+        if (execution_package.execution_plan.production_trigger_mode ==
+            Siligen::Domain::Dispensing::ValueObjects::ProductionTriggerMode::PROFILE_COMPARE) {
+            if (!profile_compare_schedule) {
+                return Result<void>::Failure(Error(
+                    ErrorCode::INVALID_PARAMETER,
+                    "PROFILE_COMPARE workflow execution request 缺少 profile compare schedule"));
+            }
+            auto schedule_validation =
+                Siligen::RuntimeExecution::Contracts::Dispensing::ValidateProfileCompareExecutionSchedule(
+                    execution_package.execution_plan,
+                    *profile_compare_schedule);
+            if (schedule_validation.IsError()) {
+                return Result<void>::Failure(schedule_validation.GetError());
+            }
+        } else if (profile_compare_schedule) {
+            return Result<void>::Failure(Error(
+                ErrorCode::INVALID_PARAMETER,
+                "非 PROFILE_COMPARE workflow execution request 不允许携带 profile compare schedule"));
+        }
         if (max_jerk < 0.0f) {
             return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "max_jerk不能为负数"));
         }
         if (arc_tolerance_mm < 0.0f) {
             return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "arc_tolerance_mm不能为负数"));
         }
-
         DispensingRuntimeOverrides overrides;
         overrides.dry_run = dry_run;
         overrides.machine_mode = machine_mode;
@@ -127,6 +149,7 @@ struct WorkflowRuntimeStartJobRequest {
     WorkflowExecutionRequest execution_request;
     std::string plan_fingerprint;
     uint32 target_count = 1;
+    JobCycleAdvanceMode cycle_advance_mode = JobCycleAdvanceMode::WAIT_FOR_CONTINUE;
 };
 
 class IWorkflowExecutionPort {

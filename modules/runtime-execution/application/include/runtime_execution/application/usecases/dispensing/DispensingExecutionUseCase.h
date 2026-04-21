@@ -3,6 +3,7 @@
 #include "dispense_packaging/contracts/ExecutionPackage.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "runtime_execution/contracts/dispensing/IDispensingProcessPort.h"
+#include "runtime_execution/contracts/dispensing/ProfileCompareExecutionSchedule.h"
 #include "runtime_execution/contracts/dispensing/ITaskSchedulerPort.h"
 #include "runtime_execution/contracts/dispensing/IValvePort.h"
 #include "runtime_execution/contracts/dispensing/QualityMetrics.h"
@@ -24,6 +25,7 @@
 namespace Siligen::Application::UseCases::Dispensing {
 
 using Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated;
+using Siligen::Domain::Dispensing::Contracts::ExecutionBudgetBreakdown;
 using Siligen::Domain::Dispensing::ValueObjects::JobExecutionMode;
 using Siligen::Domain::Dispensing::ValueObjects::ProcessOutputPolicy;
 using Siligen::Domain::Machine::ValueObjects::MachineMode;
@@ -36,11 +38,17 @@ using RuntimeHomingPort = Siligen::Domain::Motion::Ports::IHomingPort;
 using RuntimeInterlockSignalPort = Siligen::Domain::Safety::Ports::IInterlockSignalPort;
 using ExecutionTransitionState = Siligen::Application::Services::Motion::Execution::ExecutionTransitionState;
 
+enum class JobCycleAdvanceMode {
+    WAIT_FOR_CONTINUE = 0,
+    AUTO_CONTINUE,
+};
+
 struct DispensingExecutionRequest {
     ExecutionPackageValidated execution_package;
+    std::shared_ptr<const Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareExecutionSchedule>
+        profile_compare_schedule;
     std::string source_path;
 
-    bool use_hardware_trigger = true;
     bool dry_run = false;
     std::optional<MachineMode> machine_mode;
     std::optional<JobExecutionMode> execution_mode;
@@ -93,6 +101,7 @@ struct RuntimeStartJobRequest {
     DispensingExecutionRequest execution_request;
     std::string plan_fingerprint;
     uint32 target_count = 1;
+    JobCycleAdvanceMode cycle_advance_mode = JobCycleAdvanceMode::WAIT_FOR_CONTINUE;
 };
 
 struct RuntimeJobStatusResponse {
@@ -109,6 +118,8 @@ struct RuntimeJobStatusResponse {
     uint32 cycle_progress_percent = 0;
     uint32 overall_progress_percent = 0;
     float32 elapsed_seconds = 0.0f;
+    float32 execution_budget_s = 0.0f;
+    ExecutionBudgetBreakdown execution_budget_breakdown;
     std::string error_message;
     bool dry_run = false;
 };
@@ -150,6 +161,7 @@ class DispensingExecutionUseCase {
     JobID GetActiveJobId() const;
     Shared::Types::Result<void> PauseJob(const JobID& job_id);
     Shared::Types::Result<void> ResumeJob(const JobID& job_id);
+    Shared::Types::Result<void> ContinueJob(const JobID& job_id);
     Shared::Types::Result<void> StopJob(const JobID& job_id);
 
 #ifdef SILIGEN_TEST_HOOKS

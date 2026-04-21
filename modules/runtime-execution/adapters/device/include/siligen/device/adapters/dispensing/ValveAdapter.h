@@ -1,6 +1,7 @@
 #pragma once
 
 #include "runtime_execution/contracts/dispensing/DispenseCompensationProfile.h"
+#include "runtime_execution/contracts/dispensing/IProfileComparePort.h"
 #include "runtime_execution/contracts/dispensing/IValvePort.h"
 #include "process_planning/contracts/configuration/ValveConfig.h"
 #include "siligen/device/contracts/ports/device_ports.h"
@@ -26,6 +27,7 @@
      * 作为基础设施层的适配器，负责将领域接口转换为具体的硬件操作
      */
     class ValveAdapter : public Domain::Dispensing::Ports::IValvePort,
+                         public Domain::Dispensing::Ports::IProfileComparePort,
                          public Siligen::Device::Contracts::Ports::DispenserDevicePort {
        public:
         /**
@@ -69,6 +71,13 @@
 
         Shared::Types::Result<Domain::Dispensing::Ports::DispenserValveState> GetDispenserStatus() noexcept override;
 
+        Shared::Types::Result<void> ArmProfileCompare(
+            const Domain::Dispensing::Ports::ProfileCompareArmRequest& request) noexcept override;
+
+        Shared::Types::Result<void> DisarmProfileCompare() noexcept override;
+
+        Shared::Types::Result<Domain::Dispensing::Ports::ProfileCompareStatus> GetProfileCompareStatus() noexcept override;
+
         // IValvePort 供胶阀接口实现
         Shared::Types::Result<Domain::Dispensing::Ports::SupplyValveState> OpenSupply() noexcept override;
 
@@ -93,6 +102,7 @@
          */
         int CallMC_CmpPulseOnce(int16 channel, uint32 durationMs);
         int CallMC_CmpPulseOnce(int16 channel, uint32 durationMs, short startLevel);
+        int CallMC_CmpPulseOnceMicroseconds(int16 channel, uint32 durationUs, short startLevel);
 
         /**
          * @brief 调用MultiCard CMP电平输出API（连续开阀/关阀）
@@ -120,6 +130,37 @@
          * @return 调用结果（0=成功）
          */
         int CallMC_StopCmpOutputs(unsigned short channelMask);
+
+        short ResolvePrimaryCompareSourceAxis(
+            const Domain::Dispensing::Ports::ProfileCompareArmRequest& request) const noexcept;
+        void ResetProfileCompareTrackingState() noexcept;
+        void StopProfileCompareWorker() noexcept;
+        void ProfileCompareWorkerLoop() noexcept;
+        bool UseAbsoluteProfileComparePositioning() const noexcept;
+        std::string BuildProfileCompareContext(
+            const Domain::Dispensing::Ports::ProfileCompareArmRequest& request,
+            short compare_source_axis,
+            short cmp_channel,
+            long base_profile_position_pulse,
+            std::size_t future_compare_count,
+            short abs_position_flag,
+            short timer_flag,
+            short sdk_pulse_type,
+            const std::vector<long>* compare_positions) const;
+        Shared::Types::Result<void> ValidateProfileCompareRequestForHardware(
+            const Domain::Dispensing::Ports::ProfileCompareArmRequest& request,
+            short compare_source_axis,
+            short cmp_channel,
+            short abs_position_flag,
+            short timer_flag,
+            short sdk_pulse_type,
+            long base_profile_position_pulse,
+            const std::vector<long>& compare_positions) const noexcept;
+        void UpdateProfileCompareStatusFromHardwareSnapshot(unsigned short status,
+                                                           unsigned short remain_data_1,
+                                                           unsigned short remain_data_2,
+                                                           unsigned short remain_space_1,
+                                                           unsigned short remain_space_2) noexcept;
 
         /**
          * @brief 重置点胶阀CMP硬件状态（停止触发并拉低输出电平）
@@ -197,6 +238,32 @@
         long path_trigger_position_tolerance_pulse_ = 0;
         std::vector<Domain::Dispensing::Ports::PathTriggerEvent> path_trigger_events_;
         size_t path_trigger_next_index_ = 0;
+
+        struct ProfileCompareSession {
+            bool active = false;
+            bool stop_requested = false;
+            short compare_source_axis = 0;
+            short cmp_channel = 0;
+            short abs_position_flag = 0;
+            short timer_flag = 0;
+            short sdk_pulse_type = 0;
+            short start_level = 0;
+            short pulse_width_us = 0;
+            std::vector<long> compare_positions_pulse;
+            std::size_t submitted_future_compare_count = 0U;
+            unsigned short last_status = 0;
+            unsigned short last_remain_data_1 = 0;
+            unsigned short last_remain_data_2 = 0;
+            unsigned short last_remain_space_1 = 0;
+            unsigned short last_remain_space_2 = 0;
+            std::string compare_context;
+        };
+
+        Domain::Dispensing::Ports::ProfileCompareStatus profile_compare_status_;
+        Shared::Types::uint32 profile_compare_start_boundary_trigger_count_ = 0;
+        std::thread profile_compare_worker_thread_;
+        bool profile_compare_worker_active_ = false;
+        ProfileCompareSession profile_compare_session_;
 
         // 供胶阀状态
         mutable std::mutex supply_mutex_;                       ///< 供胶阀状态互斥锁

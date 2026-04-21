@@ -53,7 +53,7 @@ PlanningArtifactsAssemblyInput BuildExecutionPlanningInput(
     execution_input.sample_ds = input.sample_ds;
     execution_input.spline_max_step_mm = input.spline_max_step_mm;
     execution_input.spline_max_error_mm = input.spline_max_error_mm;
-    execution_input.estimated_time_s = input.estimated_time_s;
+    execution_input.execution_nominal_time_s = input.execution_nominal_time_s;
     execution_input.use_interpolation_planner = input.use_interpolation_planner;
     execution_input.interpolation_algorithm = input.interpolation_algorithm;
     execution_input.compensation_profile = input.compensation_profile;

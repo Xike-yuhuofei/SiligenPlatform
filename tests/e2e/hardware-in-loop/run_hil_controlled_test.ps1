@@ -4,7 +4,7 @@ param(
     [string]$Profile = "Local",
     [string]$ReportDir = "tests\\reports\\hil-controlled-test",
     [switch]$UseTimestampedReportDir,
-    [int]$HilDurationSeconds = 1800,
+    [int]$HilDurationSeconds = 60,
     [int]$HilPauseResumeCycles = 3,
     [int]$HilDispenserCount = 300,
     [int]$HilDispenserIntervalMs = 200,
@@ -15,7 +15,7 @@ param(
     [switch]$IncludeHilCaseMatrix = $true,
     [switch]$ReuseExistingGateway,
     [string]$OfflinePrereqReport = "",
-    [bool]$PublishLatestOnPass = $true,
+    [bool]$PublishLatestOnPass = $false,
     [string]$PublishLatestReportDir = "tests\\reports\\hil-controlled-test",
     [string]$PythonExe = "python",
     [string]$Executor = "",
@@ -23,6 +23,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+$quickGateDurationSeconds = 60
 
 function Resolve-AbsolutePath {
     param(
@@ -106,6 +108,9 @@ Assert-PathArgumentNotBooleanLiteral -ArgumentName "PublishLatestReportDir" -Pat
 if (-not [string]::IsNullOrWhiteSpace($OfflinePrereqReport)) {
     Assert-PathArgumentNotBooleanLiteral -ArgumentName "OfflinePrereqReport" -PathValue $OfflinePrereqReport
 }
+if (-not $PSBoundParameters.ContainsKey('ReuseExistingGateway')) {
+    $ReuseExistingGateway = $true
+}
 
 $resolvedReportDir = Resolve-AbsolutePath -WorkspaceRoot $workspaceRoot -PathValue $ReportDir
 if ($UseTimestampedReportDir) {
@@ -157,8 +162,19 @@ Write-Output "  publish_latest_report_dir=$resolvedPublishLatestReportDir"
 Write-Output "  executor=$Executor"
 Write-Output "  operator_override_reason=$OperatorOverrideReason"
 
-if ($PublishLatestOnPass -and [string]::IsNullOrWhiteSpace($Executor)) {
-    throw "hil controlled test requires -Executor when PublishLatestOnPass=true so the latest authority stays signed"
+if ($HilDurationSeconds -ne $quickGateDurationSeconds) {
+    throw "formal HIL gate 已禁用；HilDurationSeconds 只能为 $quickGateDurationSeconds 秒。"
+}
+
+if ($PublishLatestOnPass) {
+    throw "formal latest publish 已禁用；PublishLatestOnPass 必须为 false。"
+}
+
+if (-not [string]::IsNullOrWhiteSpace($Executor)) {
+    throw "formal HIL executor 签字入口已禁用；请移除 -Executor。"
+}
+if (-not $ReuseExistingGateway) {
+    throw "formal HIL quick gate 必须复用现有 gateway；请移除 -ReuseExistingGateway:`$false。"
 }
 
 if ($SkipBuild) {
@@ -213,11 +229,9 @@ else {
 Write-Output "hil controlled test: run hardware smoke"
 $hardwareSmokeArgs = @(
     $hardwareSmokeScript,
-    "--report-dir", $hardwareSmokeDir
+    "--report-dir", $hardwareSmokeDir,
+    "--reuse-existing-gateway"
 )
-if ($ReuseExistingGateway) {
-    $hardwareSmokeArgs += "--reuse-existing-gateway"
-}
 if ($AllowSkipOnMissingHardware) {
     $hardwareSmokeArgs += "--allow-skip-on-missing-gateway"
 }
@@ -237,11 +251,9 @@ $hilClosedLoopArgs = @(
     "--dispenser-interval-ms", $HilDispenserIntervalMs,
     "--dispenser-duration-ms", $HilDispenserDurationMs,
     "--state-wait-timeout-seconds", $HilStateWaitTimeoutSeconds,
-    "--offline-prereq-report", $offlinePrereqJsonPath
+    "--offline-prereq-report", $offlinePrereqJsonPath,
+    "--reuse-existing-gateway"
 )
-if ($ReuseExistingGateway) {
-    $hilClosedLoopArgs += "--reuse-existing-gateway"
-}
 if (-not [string]::IsNullOrWhiteSpace($OperatorOverrideReason)) {
     $hilClosedLoopArgs += @("--operator-override-reason", $OperatorOverrideReason)
 }
@@ -265,11 +277,9 @@ if ($IncludeHilCaseMatrix) {
         "--dispenser-interval-ms", $HilDispenserIntervalMs,
         "--dispenser-duration-ms", $HilDispenserDurationMs,
         "--state-wait-timeout-seconds", $HilStateWaitTimeoutSeconds,
-        "--offline-prereq-report", $offlinePrereqJsonPath
+        "--offline-prereq-report", $offlinePrereqJsonPath,
+        "--reuse-existing-gateway"
     )
-    if ($ReuseExistingGateway) {
-        $hilCaseMatrixArgs += "--reuse-existing-gateway"
-    }
     if (-not [string]::IsNullOrWhiteSpace($OperatorOverrideReason)) {
         $hilCaseMatrixArgs += @("--operator-override-reason", $OperatorOverrideReason)
     }

@@ -14,14 +14,6 @@ FORMAL_CONTRACT_GUARD = (
 
 
 class HmiFormalGatewayContractGuardTest(unittest.TestCase):
-    def _canonical_contract_payload(self) -> dict[str, object]:
-        return {
-            "executable": "build/ca/bin/Debug/siligen_runtime_gateway.exe",
-            "cwd": "build/ca/bin/Debug",
-            "args": [],
-            "pathEntries": ["build/ca/bin/Debug"],
-        }
-
     def test_guard_rejects_missing_contract(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             contract_path = Path(temp_dir) / "gateway-launch.json"
@@ -67,38 +59,15 @@ class HmiFormalGatewayContractGuardTest(unittest.TestCase):
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("missing executable", f"{completed.stdout}\n{completed.stderr}")
 
-    def test_guard_accepts_valid_contract(self) -> None:
+    def test_guard_rejects_noncanonical_build_root(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            contract_path = Path(temp_dir) / "gateway-launch.json"
-            contract_path.write_text(json.dumps(self._canonical_contract_payload()), encoding="utf-8")
-            completed = subprocess.run(
-                [
-                    POWERSHELL,
-                    "-NoProfile",
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-File",
-                    str(FORMAL_CONTRACT_GUARD),
-                    "-ContractPath",
-                    str(contract_path),
-                ],
-                cwd=str(WORKSPACE_ROOT),
-                capture_output=True,
-                text=True,
-            )
-
-        self.assertEqual(completed.returncode, 0, msg=completed.stderr)
-        self.assertIn(str(contract_path), completed.stdout)
-
-    def test_guard_rejects_legacy_build_bin_contract(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            contract_path = Path(temp_dir) / "gateway-launch.json"
+            workspace_root = Path(temp_dir)
+            contract_path = workspace_root / "gateway-launch.json"
             contract_path.write_text(
                 json.dumps(
                     {
                         "executable": "build/bin/Debug/siligen_runtime_gateway.exe",
                         "cwd": "build/bin/Debug",
-                        "args": [],
                         "pathEntries": ["build/bin/Debug"],
                     }
                 ),
@@ -112,6 +81,45 @@ class HmiFormalGatewayContractGuardTest(unittest.TestCase):
                     "Bypass",
                     "-File",
                     str(FORMAL_CONTRACT_GUARD),
+                    "-WorkspaceRoot",
+                    str(workspace_root),
+                    "-ContractPath",
+                    str(contract_path),
+                ],
+                cwd=str(WORKSPACE_ROOT),
+                capture_output=True,
+                text=True,
+        )
+
+        self.assertNotEqual(completed.returncode, 0)
+        output = f"{completed.stdout}\n{completed.stderr}".replace("\\\\", "\\")
+        self.assertIn("canonical build\\ca root", output)
+
+    def test_guard_accepts_valid_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace_root = Path(temp_dir)
+            contract_path = workspace_root / "gateway-launch.json"
+            contract_path.write_text(
+                json.dumps(
+                    {
+                        "executable": "build/ca/bin/Debug/siligen_runtime_gateway.exe",
+                        "cwd": "build/ca/bin/Debug",
+                        "args": [],
+                        "pathEntries": ["build/ca/bin/Debug"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    POWERSHELL,
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(FORMAL_CONTRACT_GUARD),
+                    "-WorkspaceRoot",
+                    str(workspace_root),
                     "-ContractPath",
                     str(contract_path),
                 ],
@@ -120,5 +128,5 @@ class HmiFormalGatewayContractGuardTest(unittest.TestCase):
                 text=True,
             )
 
-        self.assertNotEqual(completed.returncode, 0)
-        self.assertIn("must not point to legacy build/bin root", f"{completed.stdout}\n{completed.stderr}")
+        self.assertEqual(completed.returncode, 0, msg=completed.stderr)
+        self.assertIn(str(contract_path), completed.stdout)

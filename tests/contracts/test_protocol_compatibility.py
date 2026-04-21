@@ -108,6 +108,13 @@ def test_fixtures():
         assert_event_envelope(load_json(path))
 
 
+def test_dxf_job_start_request_fixture_keeps_canonical_default_auto_continue() -> None:
+    fixture = load_json(CONTRACTS / "fixtures" / "requests" / "dxf.job.start.request.json")
+
+    assert fixture["method"] == "dxf.job.start"
+    assert "auto_continue" not in fixture["params"]
+
+
 def test_known_compatibility_gaps_are_recorded():
     overrides = load_json(CONTRACTS / "mappings" / "compatibility-overrides.json")
     ids = {item["id"] for item in overrides["overrides"]}
@@ -177,6 +184,9 @@ def test_dxf_preview_and_job_contract():
     assert "dxf.job.start" in operations
     assert "dxf.job.status" in operations
 
+    artifact_create = operations["dxf.artifact.create"]
+    assert "formal_compare_gate" in artifact_create["resultSchema"]["required"]
+
     preview = operations["dxf.preview.snapshot"]
     preview_params = preview["paramsSchema"]
     assert "plan_id" in preview_params["required"]
@@ -204,15 +214,23 @@ def test_dxf_preview_and_job_contract():
     assert "preview_request_signature" not in plan_prepare["resultSchema"]["required"]
     assert "import_result_classification" in plan_prepare["resultSchema"]["required"]
     assert "import_production_ready" in plan_prepare["resultSchema"]["required"]
+    assert "formal_compare_gate" in plan_prepare["resultSchema"]["required"]
     assert "prepared_filepath" in plan_prepare["resultSchema"]["required"]
+    assert "execution_nominal_time_s" in plan_prepare["resultSchema"]["required"]
+    assert "execution_plan_summary" in plan_prepare["resultSchema"]["required"]
+    assert "estimated_time_s" not in plan_prepare["resultSchema"]["required"]
 
     job_start = operations["dxf.job.start"]
     assert {"started", "job_id", "plan_id", "plan_fingerprint", "target_count"}.issubset(
         set(job_start["resultSchema"]["required"])
     )
+    assert {"execution_budget_s", "execution_budget_breakdown"}.issubset(
+        set(job_start["resultSchema"]["required"])
+    )
     assert {"import_result_classification", "import_production_ready", "prepared_filepath"}.issubset(
         set(job_start["resultSchema"]["required"])
     )
+    assert "formal_compare_gate" in job_start["resultSchema"]["required"]
     assert "task_id" not in job_start["resultSchema"]["required"]
     assert "task_id" not in job_start["resultSchema"]["properties"]
 
@@ -220,8 +238,20 @@ def test_dxf_preview_and_job_contract():
     assert job_status["resultRef"].endswith("#/definitions/dxfJobStatus")
     states = load_json(CONTRACTS / "models" / "states.json")
     dxf_job_status = states["definitions"]["dxfJobStatus"]
+    assert {"execution_budget_s", "execution_budget_breakdown"}.issubset(set(dxf_job_status["required"]))
     assert "active_task_id" not in dxf_job_status["required"]
     assert "active_task_id" not in dxf_job_status["properties"]
+
+    artifact_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.artifact.create.success.json")
+    prepare_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.plan.prepare.success.json")
+    start_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.job.start.success.json")
+    assert artifact_fixture["result"]["formal_compare_gate"] is None
+    assert prepare_fixture["result"]["formal_compare_gate"] is None
+    assert "estimated_time_s" not in prepare_fixture["result"]
+    assert "execution_nominal_time_s" in prepare_fixture["result"]
+    assert "execution_plan_summary" in prepare_fixture["result"]
+    assert start_fixture["result"]["formal_compare_gate"] is None
+    assert {"execution_budget_s", "execution_budget_breakdown"}.issubset(set(start_fixture["result"].keys()))
 
 
 def test_core_estop_reset_contract_and_disconnect_semantics():
@@ -290,10 +320,13 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
 
     machine_required = set(states["definitions"]["machineStatus"]["required"])
     effective_interlocks_required = set(states["definitions"]["effectiveInterlocks"]["required"])
+    safety_boundary_required = set(states["definitions"]["safetyBoundaryStatus"]["required"])
+    action_capabilities_required = set(states["definitions"]["actionCapabilitiesStatus"]["required"])
     supervision_required = set(states["definitions"]["supervisionStatus"]["required"])
 
-    assert {"supervision", "effective_interlocks", "job_execution"}.issubset(machine_required)
+    assert {"supervision", "effective_interlocks", "safety_boundary", "action_capabilities", "job_execution", "device_mode"}.issubset(machine_required)
     assert {"active_job_id", "active_job_state"}.isdisjoint(machine_required)
+    assert {"machine_state", "machine_state_reason"}.issubset(machine_required)
     assert {
         "estop_active",
         "estop_known",
@@ -314,11 +347,69 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
         "recoverable",
         "updated_at",
     }.issubset(supervision_required)
+    assert {
+        "state",
+        "motion_permitted",
+        "process_output_permitted",
+        "estop_active",
+        "estop_known",
+        "door_open_active",
+        "door_open_known",
+        "interlock_latched",
+        "blocking_reasons",
+    }.issubset(safety_boundary_required)
+    assert {
+        "motion_commands_permitted",
+        "manual_output_commands_permitted",
+        "active_job_present",
+        "estop_reset_permitted",
+    }.issubset(action_capabilities_required)
     assert "控制器有效保护，不等同于原始负限位输入" in states["definitions"]["effectiveInterlocks"]["properties"]["home_boundary_x_active"]["description"]
     assert "监督层当前目标状态" in states["definitions"]["supervisionStatus"]["properties"]["requested_state"]["description"]
     assert "监督态切换窗口" in states["definitions"]["supervisionStatus"]["properties"]["state_change_in_process"]["description"]
+    assert "软件动作准入总览" in states["definitions"]["safetyBoundaryStatus"]["properties"]["state"]["description"]
+    assert "后端粗粒度摘要" in states["definitions"]["actionCapabilitiesStatus"]["properties"]["motion_commands_permitted"]["description"]
+    assert "不包含 HMI 本地 pending/worker/session 门禁" in states["definitions"]["actionCapabilitiesStatus"]["properties"]["manual_output_commands_permitted"]["description"]
+    assert "supervision.current_state 为 Estop" in states["definitions"]["actionCapabilitiesStatus"]["properties"]["estop_reset_permitted"]["description"]
+    assert states["definitions"]["machineStatus"]["properties"]["device_mode"]["enum"] == ["production", "test"]
+    assert "运行时执行上下文单向派生" in states["definitions"]["machineStatus"]["properties"]["device_mode"]["description"]
+    assert "device_mode" in states["definitions"]["machineStatus"]["properties"]
+    assert "machine_state" in states["definitions"]["machineStatus"]["properties"]
+    assert "machine_state_reason" in states["definitions"]["machineStatus"]["properties"]
+    assert "safety_boundary" in states["definitions"]["machineStatus"]["properties"]
+    assert "action_capabilities" in states["definitions"]["machineStatus"]["properties"]
 
     fixture_result = fixture["result"]
+    assert fixture_result["device_mode"] == "production"
+    assert fixture_result["machine_state"] == "Idle"
+    assert fixture_result["machine_state_reason"] == "idle"
+    assert set(fixture_result["safety_boundary"].keys()) == {
+        "state",
+        "motion_permitted",
+        "process_output_permitted",
+        "estop_active",
+        "estop_known",
+        "door_open_active",
+        "door_open_known",
+        "interlock_latched",
+        "blocking_reasons",
+    }
+    assert fixture_result["safety_boundary"]["state"] == "safe"
+    assert fixture_result["safety_boundary"]["blocking_reasons"] == []
+    assert set(fixture_result["action_capabilities"].keys()) == {
+        "motion_commands_permitted",
+        "manual_output_commands_permitted",
+        "manual_dispenser_pause_permitted",
+        "manual_dispenser_resume_permitted",
+        "active_job_present",
+        "estop_reset_permitted",
+    }
+    assert fixture_result["action_capabilities"]["motion_commands_permitted"] is True
+    assert fixture_result["action_capabilities"]["manual_output_commands_permitted"] is True
+    assert fixture_result["action_capabilities"]["manual_dispenser_pause_permitted"] is False
+    assert fixture_result["action_capabilities"]["manual_dispenser_resume_permitted"] is False
+    assert fixture_result["action_capabilities"]["active_job_present"] is False
+    assert fixture_result["action_capabilities"]["estop_reset_permitted"] is False
     assert set(fixture_result["job_execution"].keys()) == {
         "job_id",
         "plan_id",
@@ -332,6 +423,8 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
         "cycle_progress_percent",
         "overall_progress_percent",
         "elapsed_seconds",
+        "execution_budget_s",
+        "execution_budget_breakdown",
         "error_message",
         "dry_run",
     }
@@ -384,9 +477,10 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
     assert client.calls == [("status", None, 5.0)]
     assert status.connected is True
     assert status.connection_state == "connected"
-    assert status.machine_state == "Idle"
+    assert status.device_mode == "production"
     assert status.runtime_state == "Idle"
     assert status.runtime_state_reason == "idle"
+    assert not hasattr(status, "machine_state")
     assert status.gate_estop_known() is True
     assert status.gate_estop_active() is False
     assert status.gate_door_known() is True
@@ -394,33 +488,64 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
     assert status.home_boundary_active("X") is False
     assert status.home_boundary_active("Y") is False
     assert status.job_execution.state == "idle"
+    assert status.safety_boundary.state == "safe"
+    assert status.safety_boundary.motion_permitted is True
+    assert status.safety_boundary.process_output_permitted is True
+    assert status.safety_boundary.blocking_reasons == []
+    assert status.action_capabilities.motion_commands_permitted is True
+    assert status.action_capabilities.manual_output_commands_permitted is True
+    assert status.action_capabilities.manual_dispenser_pause_permitted is False
+    assert status.action_capabilities.manual_dispenser_resume_permitted is False
+    assert status.action_capabilities.active_job_present is False
+    assert status.action_capabilities.estop_reset_permitted is False
     assert status.effective_interlocks.sources["estop"] == "system_interlock"
     assert status.supervision.requested_state == "Idle"
     assert status.supervision.state_change_in_process is False
 
     legacy_fixture = json.loads(json.dumps(fixture))
     legacy_result = legacy_fixture["result"]
-    legacy_result["machine_state"] = "Preparing"
-    legacy_result["machine_state_reason"] = "awaiting-supervision"
+    legacy_result.pop("device_mode", None)
+    legacy_result.pop("safety_boundary", None)
+    legacy_result.pop("action_capabilities", None)
     legacy_result["supervision"] = ["legacy-payload"]
 
     legacy_status = CommandProtocol(cast(Any, StubClient(legacy_fixture))).get_status()
-    assert legacy_status.supervision.current_state == "Preparing"
-    assert legacy_status.supervision.requested_state == "Preparing"
-    assert legacy_status.supervision.state_reason == "awaiting-supervision"
+    assert legacy_status.device_mode == "production"
+    assert legacy_status.supervision.current_state == "Unknown"
+    assert legacy_status.supervision.requested_state == "Unknown"
+    assert legacy_status.supervision.state_reason == "unknown"
     assert legacy_status.supervision.state_change_in_process is False
+    assert legacy_status.safety_boundary.state == "safe"
+    assert legacy_status.safety_boundary.motion_permitted is True
+    assert legacy_status.safety_boundary.process_output_permitted is True
+    assert legacy_status.action_capabilities.motion_commands_permitted is True
+    assert legacy_status.action_capabilities.manual_output_commands_permitted is True
+    assert legacy_status.action_capabilities.manual_dispenser_pause_permitted is True
+    assert legacy_status.action_capabilities.manual_dispenser_resume_permitted is True
+    assert legacy_status.action_capabilities.active_job_present is False
+    assert legacy_status.action_capabilities.estop_reset_permitted is False
     assert "runtimeStatusExportPort_->ReadSnapshot()" in tcp_source
     assert "BuildRawIoJson(status_snapshot)" in tcp_source
     assert "BuildEffectiveInterlocksJson(status_snapshot)" in tcp_source
     assert "BuildSupervisionJson(status_snapshot)" in tcp_source
     assert "BuildJobExecutionJson(status_snapshot)" in tcp_source
+    assert "BuildSafetyBoundaryJson(status_snapshot)" in tcp_source
+    assert "BuildActionCapabilitiesJson(status_snapshot)" in tcp_source
     status_source = RUNTIME_STATUS_EXPORT_PORT.read_text(encoding="utf-8")
+    assert 'snapshot.device_mode = snapshot.job_execution.dry_run ? "test" : "production";' in status_source
     assert "snapshot.machine_state = supervision.supervision.current_state;" in status_source
     assert "snapshot.machine_state_reason = supervision.supervision.state_reason;" in status_source
     assert "snapshot.io = supervision.io;" in status_source
     assert "snapshot.effective_interlocks = supervision.effective_interlocks;" in status_source
     assert "snapshot.supervision = supervision.supervision;" in status_source
+    assert "snapshot.safety_boundary = BuildSafetyBoundarySnapshot(snapshot);" in status_source
+    assert "BuildActionCapabilitiesSnapshot(snapshot, dispenser_status_for_action_capabilities);" in status_source
+    assert "{\"device_mode\", status_snapshot.device_mode}" in tcp_source
+    assert "{\"machine_state\", status_snapshot.machine_state}" in tcp_source
+    assert "{\"machine_state_reason\", status_snapshot.machine_state_reason}" in tcp_source
     assert "{\"supervision\", supervisionJson}" in tcp_source
+    assert "{\"safety_boundary\", safetyBoundaryJson}" in tcp_source
+    assert "{\"action_capabilities\", actionCapabilitiesJson}" in tcp_source
     assert "{\"effective_interlocks\", effectiveInterlocksJson}" in tcp_source
     assert "{\"job_execution\", jobExecutionJson}" in tcp_source
     assert "{\"active_job_id\"" not in tcp_source

@@ -54,6 +54,8 @@ const char* JobStateCode(JobState state) {
             return "PENDING";
         case JobState::RUNNING:
             return "RUNNING";
+        case JobState::WAITING_CONTINUE:
+            return "WAITING_CONTINUE";
         case JobState::STOPPING:
             return "STOPPING";
         case JobState::PAUSED:
@@ -82,6 +84,8 @@ ExecutionTransitionState ResolveJobTransitionState(
             return ExecutionTransitionState::PENDING;
         case JobState::RUNNING:
             return ExecutionTransitionState::RUNNING;
+        case JobState::WAITING_CONTINUE:
+            return ExecutionTransitionState::AWAITING_CONTINUE;
         case JobState::STOPPING:
             return requested_transition_state == ExecutionTransitionState::CANCELING
                 ? ExecutionTransitionState::CANCELING
@@ -108,6 +112,9 @@ ParsedJobStateForTesting ParseJobStateForTesting(const std::string& state) {
             break;
         case ExecutionTransitionState::RUNNING:
             parsed.job_state = JobState::RUNNING;
+            break;
+        case ExecutionTransitionState::AWAITING_CONTINUE:
+            parsed.job_state = JobState::WAITING_CONTINUE;
             break;
         case ExecutionTransitionState::STOPPING:
         case ExecutionTransitionState::CANCELING:
@@ -689,6 +696,11 @@ Result<JobID> DispensingExecutionUseCase::Impl::StartJob(const RuntimeStartJobRe
     context->state.store(JobState::PENDING);
     context->requested_transition_state.store(ExecutionTransitionState::PENDING);
     context->target_count.store(request.target_count);
+    context->execution_budget_breakdown =
+        Domain::Dispensing::Contracts::BuildExecutionBudgetBreakdown(
+            execution_request->execution_package,
+            request.target_count);
+    context->cycle_advance_mode = request.cycle_advance_mode;
     context->dry_run =
         execution_request->ResolveOutputPolicy() == ProcessOutputPolicy::Inhibited;
     context->start_time = std::chrono::steady_clock::now();
@@ -1016,6 +1028,8 @@ std::string DispensingExecutionUseCase::Impl::JobStateToString(JobState state) c
             return "pending";
         case JobState::RUNNING:
             return "running";
+        case JobState::WAITING_CONTINUE:
+            return "awaiting_continue";
         case JobState::STOPPING:
             return "stopping";
         case JobState::PAUSED:
@@ -1048,6 +1062,8 @@ RuntimeJobStatusResponse DispensingExecutionUseCase::Impl::BuildJobStatusRespons
     response.total_segments = context->total_segments.load();
     response.cycle_progress_percent = context->cycle_progress_percent.load();
     response.dry_run = context->dry_run;
+    response.execution_budget_breakdown = context->execution_budget_breakdown;
+    response.execution_budget_s = context->execution_budget_breakdown.total_budget_s;
 
     if (response.target_count > 0) {
         const std::uint64_t numerator =
@@ -1226,10 +1242,12 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
                 }
             } else if (task_status.state == "completed") {
                 context->completed_count.store(cycle + 1);
-                context->cycle_progress_percent.store(100);
-                if (context->stop_requested.load() && cycle + 1 < context->target_count.load()) {
-                    FinalizeStoppedJob(context, "job cancelled");
-                    return;
+                context->current_segment.store(0);
+                context->total_segments.store(0);
+                if (cycle + 1 >= context->target_count.load()) {
+                    context->cycle_progress_percent.store(100);
+                } else {
+                    context->cycle_progress_percent.store(0);
                 }
                 break;
             } else if (task_status.state == "cancelled") {
@@ -1246,6 +1264,37 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
         {
             std::lock_guard<std::mutex> lock(context->mutex_);
             context->active_task_id.clear();
+        }
+
+        if (cycle + 1 >= target_count) {
+            continue;
+        }
+
+        if (context->stop_requested.load()) {
+            FinalizeStoppedJob(context, "job cancelled");
+            return;
+        }
+
+        if (context->cycle_advance_mode == JobCycleAdvanceMode::AUTO_CONTINUE) {
+            continue;
+        }
+
+        context->state.store(JobState::WAITING_CONTINUE);
+        context->requested_transition_state.store(ExecutionTransitionState::AWAITING_CONTINUE);
+        while (!context->continue_requested.load()) {
+            if (context->final_state_committed.load()) {
+                return;
+            }
+            if (context->stop_requested.load()) {
+                FinalizeStoppedJob(context, "job cancelled");
+                return;
+            }
+            std::this_thread::sleep_for(kInflightReconcilePoll);
+        }
+        context->continue_requested.store(false);
+        if (!context->final_state_committed.load()) {
+            context->state.store(JobState::PENDING);
+            context->requested_transition_state.store(ExecutionTransitionState::PENDING);
         }
     }
 
@@ -1294,12 +1343,14 @@ void DispensingExecutionUseCase::Impl::SeedJobStateForTesting(
         ? parsed_state.transition_state
         : status.transition_state);
     context->target_count.store(status.target_count);
+    context->execution_budget_breakdown = status.execution_budget_breakdown;
     context->completed_count.store(status.completed_count);
     context->current_cycle.store(status.current_cycle);
     context->current_segment.store(status.current_segment);
     context->total_segments.store(status.total_segments);
     context->cycle_progress_percent.store(status.cycle_progress_percent);
     context->pause_requested.store(pause_requested);
+    context->continue_requested.store(false);
     context->dry_run = status.dry_run;
     context->start_time = std::chrono::steady_clock::now() -
                           std::chrono::milliseconds(static_cast<std::int64_t>(status.elapsed_seconds * 1000.0f));

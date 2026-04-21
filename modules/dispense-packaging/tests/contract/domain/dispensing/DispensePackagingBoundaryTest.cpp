@@ -291,6 +291,39 @@ TEST(DispensePackagingBoundaryTest, ExecutionPackageUsesPlanOnlyBackingTypeAndRu
         std::string::npos);
 }
 
+TEST(DispensePackagingBoundaryTest, FormalCompareGateDiagnosticLivesInDispensePackagingContracts) {
+    const fs::path repo_root = RepoRoot();
+    const fs::path public_header =
+        repo_root / "modules/dispense-packaging/contracts/include/dispense_packaging/contracts/FormalCompareGateDiagnostic.h";
+    const fs::path owner_header =
+        repo_root / "modules/dispense-packaging/contracts/include/domain/dispensing/contracts/FormalCompareGateDiagnostic.h";
+    const std::string public_content = ReadTextFile(public_header);
+    const std::string owner_content = ReadTextFile(owner_header);
+    const std::string workflow_types = ReadTextFile(
+        repo_root / "modules/dispense-packaging/application/include/application/services/dispensing/WorkflowPlanningAssemblyTypes.h");
+    const std::string planning_use_case = ReadTextFile(
+        repo_root / "modules/dispense-packaging/application/include/dispense_packaging/application/usecases/dispensing/PlanningUseCase.h");
+
+    EXPECT_TRUE(fs::exists(public_header));
+    EXPECT_TRUE(fs::exists(owner_header));
+    EXPECT_FALSE(fs::exists(repo_root / "shared/kernel/include/shared/types/FormalCompareGate.h"));
+    EXPECT_NE(
+        public_content.find(
+            '#' + std::string("include \"../../domain/dispensing/contracts/FormalCompareGateDiagnostic.h\"")),
+        std::string::npos);
+    EXPECT_NE(owner_content.find("namespace Siligen::Domain::Dispensing::Contracts"), std::string::npos);
+    EXPECT_EQ(owner_content.find("namespace Siligen::Shared::Types"), std::string::npos);
+    EXPECT_NE(
+        workflow_types.find('#' + std::string("include \"dispense_packaging/contracts/FormalCompareGateDiagnostic.h\"")),
+        std::string::npos);
+    EXPECT_NE(
+        planning_use_case.find(
+            '#' + std::string("include \"dispense_packaging/contracts/FormalCompareGateDiagnostic.h\"")),
+        std::string::npos);
+    EXPECT_EQ(workflow_types.find("shared/types/FormalCompareGate.h"), std::string::npos);
+    EXPECT_EQ(planning_use_case.find("shared/types/FormalCompareGate.h"), std::string::npos);
+}
+
 TEST(DispensePackagingBoundaryTest, LegacyDispensingPortsAndDtosLiveOnlyOnOwnerModules) {
     const fs::path repo_root = RepoRoot();
     const std::string runtime_compensation = ReadTextFile(

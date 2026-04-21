@@ -2,6 +2,7 @@
 #include "dispense_packaging/application/usecases/dispensing/PlanningPortAdapters.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/process_path/ProcessPathFacade.h"
+#include "dxf_geometry/adapters/planning/dxf/PbPathSourceAdapter.h"
 #include "dxf_geometry/application/services/dxf/DxfPbPreparationService.h"
 #include "application/services/dispensing/PlanningArtifactExportPort.h"
 #include "application/services/dispensing/WorkflowPlanningAssemblyOperationsProvider.h"
@@ -25,6 +26,7 @@ using Siligen::Application::UseCases::Dispensing::PlanningRequest;
 using Siligen::Application::UseCases::Dispensing::PlanningUseCase;
 using Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort;
 using Siligen::Application::Services::Dispensing::PlanningArtifactExportResult;
+using Siligen::Infrastructure::Adapters::Parsing::PbPathSourceAdapter;
 using Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest;
 using Siligen::Domain::Configuration::Ports::IConfigurationPort;
 using Siligen::Domain::Configuration::Ports::HomingConfig;
@@ -359,6 +361,41 @@ std::shared_ptr<Siligen::Application::Ports::Dispensing::IPlanningInputPreparati
 CreatePlanningInputPreparationPort(const std::shared_ptr<DxfPbPreparationService>& pb_service) {
     return Siligen::Application::Ports::Dispensing::AdaptDxfPreparationService(pb_service);
 }
+
+std::filesystem::path ResolveWorkspaceRoot() {
+    auto cursor = std::filesystem::path(__FILE__).parent_path();
+    while (!cursor.empty()) {
+        if (std::filesystem::exists(cursor / "samples" / "dxf" / "Demo-1.dxf")) {
+            return cursor;
+        }
+        cursor = cursor.parent_path();
+    }
+    return {};
+}
+
+class PreparedInputCleanupGuard {
+public:
+    PreparedInputCleanupGuard(
+        std::shared_ptr<DxfPbPreparationService> pb_service,
+        std::filesystem::path source_path,
+        bool cleanup_required)
+        : pb_service_(std::move(pb_service)),
+          source_path_(std::move(source_path)),
+          cleanup_required_(cleanup_required) {}
+
+    ~PreparedInputCleanupGuard() {
+        if (!cleanup_required_ || !pb_service_) {
+            return;
+        }
+
+        pb_service_->CleanupPreparedInput(source_path_.string());
+    }
+
+private:
+    std::shared_ptr<DxfPbPreparationService> pb_service_;
+    std::filesystem::path source_path_;
+    bool cleanup_required_ = false;
+};
 
 }  // namespace
 
@@ -876,6 +913,48 @@ TEST(PlanningUseCaseExportPortTest, AuthorityCacheKeyIncludesMachineSoftLimits) 
 
     std::error_code ec;
     std::filesystem::remove(temp_pb, ec);
+}
+
+TEST(PlanningUseCaseExportPortTest, Demo1DxfModuleLocalAssemblyBuildsProductionReadyFormalContract) {
+    const auto workspace_root = ResolveWorkspaceRoot();
+    ASSERT_FALSE(workspace_root.empty());
+
+    const auto demo_dxf = workspace_root / "samples" / "dxf" / "Demo-1.dxf";
+    ASSERT_TRUE(std::filesystem::exists(demo_dxf));
+
+    const auto prepared_pb = demo_dxf.parent_path() / "Demo-1.pb";
+    const bool prepared_pb_existed = std::filesystem::exists(prepared_pb);
+
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto export_port = std::make_shared<FakePlanningArtifactExportPort>();
+    auto pb_service = std::make_shared<DxfPbPreparationService>();
+    PreparedInputCleanupGuard cleanup_guard(pb_service, demo_dxf, !prepared_pb_existed);
+
+    PlanningUseCase use_case(
+        std::make_shared<PbPathSourceAdapter>(),
+        CreateProcessPathPort(),
+        CreateMotionPlanningPort(),
+        CreatePlanningOperations(),
+        config_port,
+        CreatePlanningInputPreparationPort(pb_service),
+        export_port);
+
+    const auto request = MakePlanningRequest(demo_dxf);
+    const auto authority_result = use_case.PrepareAuthorityPreview(request);
+    ASSERT_TRUE(authority_result.IsSuccess()) << authority_result.GetError().ToString();
+    EXPECT_TRUE(authority_result.Value().artifacts.preview_authority_ready);
+    EXPECT_TRUE(authority_result.Value().artifacts.preview_binding_ready);
+
+    const auto assembly_result = use_case.AssembleExecutionFromAuthority(request, authority_result.Value());
+    ASSERT_TRUE(assembly_result.IsSuccess()) << assembly_result.GetError().ToString();
+
+    const auto& response = assembly_result.Value();
+    EXPECT_TRUE(response.execution_contract_ready);
+    EXPECT_FALSE(response.formal_compare_gate.HasValue());
+    EXPECT_FALSE(response.authority_trigger_layout.trigger_points.empty());
+    ASSERT_TRUE(static_cast<bool>(response.execution_package));
+    EXPECT_FALSE(response.execution_package->execution_plan.profile_compare_program.trigger_points.empty());
+    EXPECT_FALSE(response.execution_package->execution_plan.profile_compare_program.spans.empty());
 }
 
 

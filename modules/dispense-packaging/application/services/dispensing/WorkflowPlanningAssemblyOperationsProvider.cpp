@@ -23,11 +23,12 @@ WorkflowExecutionAssemblyRequest BuildWorkflowExecutionAssemblyRequest(
     request.dxf_filename = input.authority_preview_request.dxf_filename;
     request.runtime_options = input.authority_preview_request.runtime_options;
     request.max_jerk = input.max_jerk;
-    request.estimated_time_s = input.estimated_time_s;
+    request.execution_nominal_time_s = input.execution_nominal_time_s;
     request.use_interpolation_planner = input.use_interpolation_planner;
     request.interpolation_algorithm = input.interpolation_algorithm;
     request.requested_execution_strategy = input.requested_execution_strategy;
     request.point_flying_carrier_policy = input.point_flying_carrier_policy;
+    request.profile_compare_runtime_contract = input.profile_compare_runtime_contract;
     request.authority_preview = authority_preview;
     return request;
 }
@@ -70,7 +71,7 @@ public:
         result.execution_package = execution.execution_package;
         result.segment_count = authority_preview.segment_count;
         result.total_length = execution.execution_package.total_length_mm;
-        result.estimated_time = execution.execution_package.estimated_time_s;
+        result.execution_nominal_time_s = ResolveExecutionNominalTimeS(execution.execution_package);
         result.trajectory_points = execution.execution_trajectory_points;
         result.glue_points = authority_preview.glue_points;
         result.trigger_count = authority_preview.trigger_count;
@@ -84,10 +85,7 @@ public:
         result.preview_has_short_segment_exceptions = authority_preview.preview_has_short_segment_exceptions;
         result.preview_validation_classification = authority_preview.preview_validation_classification;
         result.preview_exception_reason = authority_preview.preview_exception_reason;
-        result.preview_failure_reason =
-            execution.execution_failure_reason.empty()
-                ? authority_preview.preview_failure_reason
-                : execution.execution_failure_reason;
+        result.preview_failure_reason = authority_preview.preview_failure_reason;
         result.authority_trigger_layout = execution.authority_trigger_layout;
         result.authority_trigger_points = authority_preview.authority_trigger_points;
         result.spacing_validation_groups = authority_preview.spacing_validation_groups;

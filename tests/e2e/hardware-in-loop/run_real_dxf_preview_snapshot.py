@@ -677,7 +677,6 @@ def main() -> int:
                 "version_id": recipe_context["version_id"],
                 "dispensing_speed_mm_s": args.dispensing_speed_mm_s,
                 "dry_run": False,
-                "use_hardware_trigger": False,
                 "velocity_trace_enabled": False,
             },
             timeout_seconds=30.0,

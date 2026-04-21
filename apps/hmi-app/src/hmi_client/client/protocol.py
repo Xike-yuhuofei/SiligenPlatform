@@ -29,6 +29,10 @@ def _as_list(value: object) -> list[object]:
     return cast(list[object], value) if isinstance(value, list) else []
 
 
+def _as_string_list(value: object) -> list[str]:
+    return [str(item) for item in _as_list(value)]
+
+
 def _resolve_homing_rpc_timeout_s(timeout_ms: int = 0) -> float:
     effective_timeout_ms = int(timeout_ms) if timeout_ms and timeout_ms > 0 else DEFAULT_HOMING_TIMEOUT_MS
     return max(30.0, effective_timeout_ms / 1000.0 + HOMING_RPC_GRACE_S)
@@ -111,16 +115,40 @@ class JobExecutionStatus:
 
 
 @dataclass
+class SafetyBoundaryStatus:
+    state: str = "unknown"
+    motion_permitted: bool = False
+    process_output_permitted: bool = False
+    estop_active: bool = False
+    estop_known: bool = False
+    door_open_active: bool = False
+    door_open_known: bool = False
+    interlock_latched: bool = False
+    blocking_reasons: list[str] = field(default_factory=list)
+
+
+@dataclass
+class ActionCapabilitiesStatus:
+    motion_commands_permitted: bool = False
+    manual_output_commands_permitted: bool = False
+    manual_dispenser_pause_permitted: bool = False
+    manual_dispenser_resume_permitted: bool = False
+    active_job_present: bool = False
+    estop_reset_permitted: bool = False
+
+
+@dataclass
 class MachineStatus:
     connected: bool = False
     connection_state: str = "disconnected"
-    machine_state: str = "Unknown"
-    machine_state_reason: str = "unknown"
+    device_mode: str = "production"
     interlock_latched: bool = False
     job_execution: JobExecutionStatus = field(default_factory=JobExecutionStatus)
     axes: Dict[str, AxisStatus] = field(default_factory=dict)
     io: IOStatus = field(default_factory=IOStatus)
     effective_interlocks: EffectiveInterlocks = field(default_factory=EffectiveInterlocks)
+    safety_boundary: SafetyBoundaryStatus = field(default_factory=SafetyBoundaryStatus)
+    action_capabilities: ActionCapabilitiesStatus = field(default_factory=ActionCapabilitiesStatus)
     supervision: SupervisionStatus = field(default_factory=SupervisionStatus)
     dispenser_valve_open: bool = False
     supply_valve_open: bool = False
@@ -128,12 +156,12 @@ class MachineStatus:
     @property
     def runtime_state(self) -> str:
         current = str(self.supervision.current_state or "").strip()
-        return current or self.machine_state
+        return current or "Unknown"
 
     @property
     def runtime_state_reason(self) -> str:
         reason = str(self.supervision.state_reason or "").strip()
-        return reason or self.machine_state_reason
+        return reason or "unknown"
 
     def gate_estop_known(self) -> bool:
         return bool(self.effective_interlocks.estop_known or self.io.estop_known)
@@ -158,6 +186,107 @@ class MachineStatus:
         if axis_name == "Y":
             return bool(self.effective_interlocks.home_boundary_y_active)
         return False
+
+
+def _resolve_gate_estop_known(io_status: IOStatus, effective_interlocks: EffectiveInterlocks) -> bool:
+    return bool(effective_interlocks.estop_known or io_status.estop_known)
+
+
+def _resolve_gate_estop_active(io_status: IOStatus, effective_interlocks: EffectiveInterlocks) -> bool:
+    if effective_interlocks.estop_known:
+        return bool(effective_interlocks.estop_active)
+    return bool(io_status.estop)
+
+
+def _resolve_gate_door_known(io_status: IOStatus, effective_interlocks: EffectiveInterlocks) -> bool:
+    return bool(effective_interlocks.door_open_known or io_status.door_known)
+
+
+def _resolve_gate_door_active(io_status: IOStatus, effective_interlocks: EffectiveInterlocks) -> bool:
+    if effective_interlocks.door_open_known:
+        return bool(effective_interlocks.door_open_active)
+    return bool(io_status.door)
+
+
+def _derive_safety_boundary_status(
+    io_status: IOStatus,
+    effective_interlocks: EffectiveInterlocks,
+    *,
+    interlock_latched: bool,
+    device_mode: str,
+    job_execution_dry_run: bool,
+) -> SafetyBoundaryStatus:
+    estop_known = _resolve_gate_estop_known(io_status, effective_interlocks)
+    estop_active = _resolve_gate_estop_active(io_status, effective_interlocks)
+    door_open_known = _resolve_gate_door_known(io_status, effective_interlocks)
+    door_open_active = _resolve_gate_door_active(io_status, effective_interlocks)
+
+    blocking_reasons: list[str] = []
+    if not estop_known:
+        blocking_reasons.append("estop_unknown")
+    elif estop_active:
+        blocking_reasons.append("estop_active")
+
+    if not door_open_known:
+        blocking_reasons.append("door_unknown")
+    elif door_open_active:
+        blocking_reasons.append("door_open_active")
+
+    if interlock_latched:
+        blocking_reasons.append("interlock_latched")
+
+    motion_permitted = not blocking_reasons
+    process_output_permitted = motion_permitted and device_mode == "production" and not job_execution_dry_run
+
+    if "estop_unknown" in blocking_reasons or "door_unknown" in blocking_reasons:
+        state = "unknown"
+    elif blocking_reasons:
+        state = "blocked"
+    else:
+        state = "safe"
+
+    return SafetyBoundaryStatus(
+        state=state,
+        motion_permitted=motion_permitted,
+        process_output_permitted=process_output_permitted,
+        estop_active=estop_active,
+        estop_known=estop_known,
+        door_open_active=door_open_active,
+        door_open_known=door_open_known,
+        interlock_latched=interlock_latched,
+        blocking_reasons=blocking_reasons,
+    )
+
+
+def _derive_action_capabilities_status(
+    *,
+    connected: bool,
+    connection_state: str,
+    safety_boundary: SafetyBoundaryStatus,
+    job_execution: JobExecutionStatus,
+    supervision: SupervisionStatus,
+) -> ActionCapabilitiesStatus:
+    backend_online = bool(connected) and str(connection_state or "").strip().lower() == "connected"
+    job_state = str(job_execution.state or "").strip().lower()
+    supervision_state = str(supervision.current_state or "").strip().lower()
+    active_job_present = bool(str(job_execution.job_id or "").strip()) and job_state not in {
+        "idle",
+        "completed",
+        "failed",
+        "cancelled",
+    }
+    return ActionCapabilitiesStatus(
+        motion_commands_permitted=backend_online and safety_boundary.motion_permitted,
+        manual_output_commands_permitted=backend_online and safety_boundary.process_output_permitted,
+        manual_dispenser_pause_permitted=(
+            backend_online and safety_boundary.process_output_permitted and not active_job_present
+        ),
+        manual_dispenser_resume_permitted=(
+            backend_online and safety_boundary.process_output_permitted and not active_job_present
+        ),
+        active_job_present=active_job_present,
+        estop_reset_permitted=backend_online and supervision_state == "estop",
+    )
 
 
 @dataclass
@@ -348,20 +477,9 @@ class CommandProtocol:
             sources=dict(effective_interlocks_data.get("sources", {})),
         )
 
-        compat_state = str(result.get("machine_state", "Unknown"))
-        compat_reason = str(result.get("machine_state_reason", "unknown"))
         supervision_data: object = result.get("supervision")
         if not isinstance(supervision_data, dict):
-            supervision_data = {
-                "current_state": compat_state,
-                "requested_state": compat_state,
-                "state_change_in_process": False,
-                "state_reason": compat_reason,
-                "failure_code": "",
-                "failure_stage": "",
-                "recoverable": True,
-                "updated_at": "",
-            }
+            supervision_data = {}
 
         supervision_payload = _as_dict(supervision_data)
         current_state = str(supervision_payload.get("current_state", "Unknown") or "Unknown")
@@ -401,18 +519,114 @@ class CommandProtocol:
                 state="unknown",
                 error_message="status.job_execution missing",
             )
+        device_mode = str(result.get("device_mode", "") or "").strip().lower()
+        if device_mode not in {"production", "test"}:
+            device_mode = "test" if job_execution.dry_run else "production"
+        interlock_latched = bool(result.get("interlock_latched", False))
+        derived_safety_boundary = _derive_safety_boundary_status(
+            io_status,
+            effective_interlocks,
+            interlock_latched=interlock_latched,
+            device_mode=device_mode,
+            job_execution_dry_run=job_execution.dry_run,
+        )
+        safety_boundary_payload = result.get("safety_boundary")
+        if isinstance(safety_boundary_payload, dict):
+            safety_boundary_data = _as_dict(safety_boundary_payload)
+            safety_boundary = SafetyBoundaryStatus(
+                state=str(safety_boundary_data.get("state", derived_safety_boundary.state) or derived_safety_boundary.state),
+                motion_permitted=bool(
+                    safety_boundary_data.get("motion_permitted", derived_safety_boundary.motion_permitted)
+                ),
+                process_output_permitted=bool(
+                    safety_boundary_data.get(
+                        "process_output_permitted",
+                        derived_safety_boundary.process_output_permitted,
+                    )
+                ),
+                estop_active=bool(safety_boundary_data.get("estop_active", derived_safety_boundary.estop_active)),
+                estop_known=bool(safety_boundary_data.get("estop_known", derived_safety_boundary.estop_known)),
+                door_open_active=bool(
+                    safety_boundary_data.get("door_open_active", derived_safety_boundary.door_open_active)
+                ),
+                door_open_known=bool(
+                    safety_boundary_data.get("door_open_known", derived_safety_boundary.door_open_known)
+                ),
+                interlock_latched=bool(
+                    safety_boundary_data.get("interlock_latched", derived_safety_boundary.interlock_latched)
+                ),
+                blocking_reasons=_as_string_list(
+                    safety_boundary_data.get("blocking_reasons", derived_safety_boundary.blocking_reasons)
+                ),
+            )
+        else:
+            safety_boundary = derived_safety_boundary
+
+        derived_action_capabilities = _derive_action_capabilities_status(
+            connected=bool(result.get("connected", False)),
+            connection_state=str(
+                result.get("connection_state", "connected" if result.get("connected", False) else "disconnected")
+            ),
+            safety_boundary=safety_boundary,
+            job_execution=job_execution,
+            supervision=supervision,
+        )
+        action_capabilities_payload = result.get("action_capabilities")
+        if isinstance(action_capabilities_payload, dict):
+            action_capabilities_data = _as_dict(action_capabilities_payload)
+            action_capabilities = ActionCapabilitiesStatus(
+                motion_commands_permitted=bool(
+                    action_capabilities_data.get(
+                        "motion_commands_permitted",
+                        derived_action_capabilities.motion_commands_permitted,
+                    )
+                ),
+                manual_output_commands_permitted=bool(
+                    action_capabilities_data.get(
+                        "manual_output_commands_permitted",
+                        derived_action_capabilities.manual_output_commands_permitted,
+                    )
+                ),
+                manual_dispenser_pause_permitted=bool(
+                    action_capabilities_data.get(
+                        "manual_dispenser_pause_permitted",
+                        derived_action_capabilities.manual_dispenser_pause_permitted,
+                    )
+                ),
+                manual_dispenser_resume_permitted=bool(
+                    action_capabilities_data.get(
+                        "manual_dispenser_resume_permitted",
+                        derived_action_capabilities.manual_dispenser_resume_permitted,
+                    )
+                ),
+                active_job_present=bool(
+                    action_capabilities_data.get(
+                        "active_job_present",
+                        derived_action_capabilities.active_job_present,
+                    )
+                ),
+                estop_reset_permitted=bool(
+                    action_capabilities_data.get(
+                        "estop_reset_permitted",
+                        derived_action_capabilities.estop_reset_permitted,
+                    )
+                ),
+            )
+        else:
+            action_capabilities = derived_action_capabilities
 
         status = MachineStatus(
             connected=result.get("connected", False),
             connection_state=result.get(
                 "connection_state", "connected" if result.get("connected", False) else "disconnected"
             ),
-            machine_state=compat_state,
-            machine_state_reason=compat_reason,
-            interlock_latched=result.get("interlock_latched", False),
+            device_mode=device_mode,
+            interlock_latched=interlock_latched,
             job_execution=job_execution,
             io=io_status,
             effective_interlocks=effective_interlocks,
+            safety_boundary=safety_boundary,
+            action_capabilities=action_capabilities,
             supervision=supervision,
             dispenser_valve_open=_as_dict(result.get("dispenser")).get("valve_open", False),
             supply_valve_open=_as_dict(result.get("dispenser")).get("supply_open", False),
@@ -777,10 +991,18 @@ class CommandProtocol:
             return False, {}, resp["error"].get("message", "Unknown error")
         return True, _as_dict(resp.get("result")), ""
 
-    def dxf_start_job(self, plan_id: str, target_count: int = 1, plan_fingerprint: str = "") -> tuple[bool, JsonDict, str]:
+    def dxf_start_job(
+        self,
+        plan_id: str,
+        target_count: int = 1,
+        plan_fingerprint: str = "",
+        auto_continue: bool | None = None,
+    ) -> tuple[bool, JsonDict, str]:
         params: dict[str, object] = {"plan_id": plan_id, "target_count": max(1, int(target_count))}
         if plan_fingerprint:
             params["plan_fingerprint"] = plan_fingerprint
+        if auto_continue is not None:
+            params["auto_continue"] = bool(auto_continue)
         resp = self._client.send_request("dxf.job.start", params, timeout=15.0)
         if "error" in resp:
             return False, {}, resp["error"].get("message", "Unknown error")
@@ -803,6 +1025,13 @@ class CommandProtocol:
     def dxf_job_resume(self, job_id: str = "") -> tuple[bool, str]:
         params = {"job_id": job_id} if job_id else {}
         resp = self._client.send_request("dxf.job.resume", params, timeout=15.0)
+        if "error" in resp:
+            return False, resp["error"].get("message", "Unknown error")
+        return True, ""
+
+    def dxf_job_continue(self, job_id: str = "") -> tuple[bool, str]:
+        params = {"job_id": job_id} if job_id else {}
+        resp = self._client.send_request("dxf.job.continue", params, timeout=15.0)
         if "error" in resp:
             return False, resp["error"].get("message", "Unknown error")
         return True, ""

@@ -565,7 +565,6 @@ bool TryBuildCliPlanningRequest(
     request.continuity_tolerance_mm = static_cast<float32>(config.continuity_tolerance_mm);
     request.curve_chain_angle_deg = static_cast<float32>(config.curve_chain_angle_deg);
     request.curve_chain_max_segment_mm = static_cast<float32>(config.curve_chain_max_segment_mm);
-    request.use_hardware_trigger = config.use_hardware_trigger;
     request.use_interpolation_planner = config.use_interpolation_planner;
     request.spacing_tol_ratio = static_cast<float32>(config.spacing_tol_ratio);
     request.spacing_min_mm = static_cast<float32>(config.spacing_min_mm);
@@ -596,7 +595,6 @@ bool TryBuildCliExecutionRequest(
     request = DispensingExecutionRequest{};
     request.execution_package = *planning_response.execution_package;
     request.source_path = request.execution_package.source_path;
-    request.use_hardware_trigger = config.use_hardware_trigger;
     request.velocity_trace_enabled = config.velocity_trace;
     request.velocity_trace_interval_ms = config.velocity_trace_interval_ms;
     request.velocity_trace_path = config.velocity_trace_path;
@@ -681,7 +679,6 @@ bool TryBuildWorkflowPrepareRequest(
 
     auto runtime_overrides = Siligen::Application::UseCases::Dispensing::PreparePlanRuntimeOverrides{};
     runtime_overrides.source_path = planning_request.dxf_filepath;
-    runtime_overrides.use_hardware_trigger = config.use_hardware_trigger;
     runtime_overrides.dry_run = config.dry_run;
     runtime_overrides.velocity_trace_enabled = false;
     runtime_overrides.arc_tolerance_mm = static_cast<float32>(config.arc_tolerance);
@@ -755,7 +752,7 @@ int CLICommandHandlers::HandleDXFPlan(const CommandLineConfig& config) {
     std::cout << "DXF 规划成功" << std::endl;
     std::cout << "段数: " << response.segment_count << std::endl;
     std::cout << "总长度: " << response.total_length << " mm" << std::endl;
-    std::cout << "预计时间: " << response.estimated_time << " s" << std::endl;
+    std::cout << "执行名义时长: " << response.execution_nominal_time_s << " s" << std::endl;
     std::cout << "触发点数: " << response.trigger_count << std::endl;
     std::cout << "执行轨迹点数: " << response.execution_trajectory_points.size() << std::endl;
 
@@ -981,10 +978,6 @@ int CLICommandHandlers::HandleDXFPreviewSnapshot(const CommandLineConfig& config
         glue_points.push_back(BuildPreviewPointJson(point.x, point.y));
     }
 
-    nlohmann::json execution_polyline = nlohmann::json::array();
-    for (const auto& point : snapshot.execution_polyline) {
-        execution_polyline.push_back(BuildPreviewPointJson(point.x, point.y));
-    }
     nlohmann::json motion_preview_polyline = nlohmann::json::array();
     for (const auto& point : snapshot.motion_preview_polyline) {
         motion_preview_polyline.push_back(BuildPreviewPointJson(point.x, point.y));
@@ -1027,12 +1020,6 @@ int CLICommandHandlers::HandleDXFPreviewSnapshot(const CommandLineConfig& config
         {"glue_points", glue_points},
         {"motion_preview", motion_preview},
         {"execution_point_count", snapshot.execution_point_count},
-        {"execution_polyline_point_count", snapshot.execution_polyline_point_count},
-        {"execution_polyline_source_point_count", snapshot.execution_polyline_source_point_count},
-        {"execution_polyline", execution_polyline},
-        {"polyline_point_count", snapshot.execution_polyline_point_count},
-        {"polyline_source_point_count", snapshot.execution_polyline_source_point_count},
-        {"trajectory_polyline", execution_polyline},
         {"total_length_mm", snapshot.total_length_mm},
         {"estimated_time_s", snapshot.estimated_time_s},
         {"generated_at", snapshot.generated_at},

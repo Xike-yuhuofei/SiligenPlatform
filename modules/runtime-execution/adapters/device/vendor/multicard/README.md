@@ -11,10 +11,21 @@ Current in-repo assets:
 - `MultiCard.dll`
 - `MultiCard.lib`
 - `README.md`
+- `reference/README.md`
+- `reference/SELECTION_NOTE.md`
+- `reference/notes/*`
+- `reference/manual/*`
+- `reference/guides/*`
+- `reference/api/*`
 
 Tracked real-hardware vendor assets:
 - `MultiCard.dll`
 - `MultiCard.lib`
+
+Tracked reference documents:
+- selected materials copied from `D:\Projects\Document\BopaiMotionController`
+- see `reference/README.md` for scope and rationale
+- repository-local online validation notes also live under `reference/notes/`
 
 Bring-up rules:
 - `config/machine/machine_config.ini` is the only canonical machine config entry; do not introduce alternate bridge config paths.

@@ -2,15 +2,15 @@
 
 #include "DispensingProcessService.h"
 
-#include "DispenseCompensationService.h"
-#include "DispensingController.h"
 #include "SupplyStabilizationPolicy.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
+#include "shared/types/TrajectoryTriggerUtils.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <optional>
 #include <thread>
 #include <utility>
@@ -37,7 +37,7 @@ constexpr float32 kTraceRadiansPerDegree = 0.017453292519943295f;
 constexpr float32 kTraceFullCirclePositionToleranceMm = 0.1f;
 constexpr float32 kDefaultAcceleration = 100.0f;
 constexpr float32 kDefaultPulsePerMm = 200.0f;
-constexpr float32 kPathTriggerPositionToleranceMm = 0.1f;
+constexpr int32 kDefaultCompareAxisMask = 0x03;
 constexpr uint32 kDefaultDispenserIntervalMs = 100;
 constexpr uint32 kDefaultDispenserDurationMs = 100;
 constexpr float32 kDefaultTriggerSpatialIntervalMm = 3.0f;
@@ -47,6 +47,7 @@ constexpr uint32 kMotionCompletionGraceMaxMs = 30000;
 constexpr float32 kMotionCompletionGraceRatio = 0.15f;
 constexpr float32 kCompletionVelocityToleranceMmS = 0.5f;
 constexpr float32 kCompletionPositionToleranceFloorMm = 0.2f;
+constexpr float32 kDefaultComparePulseWidthUsPerMs = 1000.0f;
 constexpr auto kCompletionSettleWindow = std::chrono::milliseconds(250);
 constexpr auto kFormalPathClearRetryTimeout = std::chrono::milliseconds(8000);
 constexpr auto kStopDrainTimeout = std::chrono::milliseconds(2000);
@@ -112,6 +113,41 @@ std::optional<uint32> TryResolveExecutedSegmentsForProgress(const Motion::Ports:
     return total_segments - remaining_segments;
 }
 
+bool IsProfileCompareTerminalCompleted(const Ports::ProfileCompareStatus& status,
+                                       uint32 expected_trigger_count) noexcept {
+    return status.completed_trigger_count == expected_trigger_count && status.Completed();
+}
+
+std::string BuildProfileCompareStatusLogContext(
+    uint32 expected_trigger_count,
+    const Ports::ProfileCompareStatus& status) {
+    std::string context =
+        "expected_trigger_count=" + std::to_string(expected_trigger_count) +
+        ", completed_trigger_count=" + std::to_string(status.completed_trigger_count) +
+        ", remaining_trigger_count=" + std::to_string(status.remaining_trigger_count) +
+        ", armed=" + std::to_string(status.armed ? 1 : 0);
+
+    const bool has_hardware_snapshot =
+        status.submitted_future_compare_count > 0U ||
+        status.hardware_status_word != 0U ||
+        status.hardware_remain_data_1 != 0U ||
+        status.hardware_remain_data_2 != 0U ||
+        status.hardware_remain_space_1 != 0U ||
+        status.hardware_remain_space_2 != 0U;
+    if (!has_hardware_snapshot) {
+        return context;
+    }
+
+    context +=
+        ", submitted_future_compare_count=" + std::to_string(status.submitted_future_compare_count) +
+        ", hw_status=" + std::to_string(status.hardware_status_word) +
+        ", remain_data_1=" + std::to_string(status.hardware_remain_data_1) +
+        ", remain_data_2=" + std::to_string(status.hardware_remain_data_2) +
+        ", remain_space_1=" + std::to_string(status.hardware_remain_space_1) +
+        ", remain_space_2=" + std::to_string(status.hardware_remain_space_2);
+    return context;
+}
+
 struct SupplyValveGuard {
     std::shared_ptr<IValvePort> port;
     bool opened = false;
@@ -148,6 +184,60 @@ struct SupplyValveGuard {
 
     SupplyValveGuard(const SupplyValveGuard&) = delete;
     SupplyValveGuard& operator=(const SupplyValveGuard&) = delete;
+};
+
+class ProfileCompareGuard {
+   public:
+    explicit ProfileCompareGuard(std::shared_ptr<Ports::IProfileComparePort> port)
+        : port_(std::move(port)) {}
+
+    Result<void> Arm(const Ports::ProfileCompareArmRequest& request) {
+        if (!port_) {
+            return Result<void>::Failure(
+                Error(ErrorCode::PORT_NOT_INITIALIZED, "profile compare 端口未初始化"));
+        }
+        auto result = port_->ArmProfileCompare(request);
+        if (result.IsSuccess()) {
+            armed_ = true;
+        }
+        return result;
+    }
+
+    Result<Ports::ProfileCompareStatus> GetStatus() const {
+        if (!port_) {
+            return Result<Ports::ProfileCompareStatus>::Failure(
+                Error(ErrorCode::PORT_NOT_INITIALIZED, "profile compare 端口未初始化"));
+        }
+        return port_->GetProfileCompareStatus();
+    }
+
+    Result<void> Disarm() {
+        if (!port_ || !armed_) {
+            return Result<void>::Success();
+        }
+        auto result = port_->DisarmProfileCompare();
+        if (result.IsSuccess()) {
+            armed_ = false;
+        }
+        return result;
+    }
+
+    ~ProfileCompareGuard() {
+        if (!port_ || !armed_) {
+            return;
+        }
+        auto result = port_->DisarmProfileCompare();
+        if (!result.IsSuccess()) {
+            SILIGEN_LOG_WARNING("关闭 profile compare 失败: " + result.GetError().GetMessage());
+        }
+    }
+
+    ProfileCompareGuard(const ProfileCompareGuard&) = delete;
+    ProfileCompareGuard& operator=(const ProfileCompareGuard&) = delete;
+
+   private:
+    std::shared_ptr<Ports::IProfileComparePort> port_;
+    bool armed_ = false;
 };
 
 class DispenserOperationGuard {
@@ -264,13 +354,355 @@ int32 BuildMotionCompletionTimeoutMs(float32 estimated_motion_time_ms) noexcept 
     return base_timeout + grace_ms;
 }
 
-long ResolvePathTriggerTolerancePulse(float32 pulse_per_mm) noexcept {
-    if (pulse_per_mm <= kTraceEpsilonMm) {
-        return 0;
+int32 ResolveEstimatedMotionTimeMs(const DispensingExecutionPlan& plan) noexcept {
+    if (plan.motion_trajectory.total_time > 0.0f) {
+        return static_cast<int32>(std::ceil(plan.motion_trajectory.total_time * 1000.0f));
     }
-    return std::max<long>(
-        1L,
-        static_cast<long>(std::llround(kPathTriggerPositionToleranceMm * pulse_per_mm)));
+
+    if (plan.interpolation_points.size() >= 2U) {
+        const auto terminal_timestamp = plan.interpolation_points.back().timestamp;
+        if (terminal_timestamp > 0.0f) {
+            return static_cast<int32>(std::ceil(terminal_timestamp * 1000.0f));
+        }
+    }
+
+    return 0;
+}
+
+float32 ResolveAuthoritativeExecutionTimeMs(const DispensingExecutionPlan& plan,
+                                            float32 execution_nominal_time_s) noexcept {
+    const auto plan_estimated_time_ms = static_cast<float32>(ResolveEstimatedMotionTimeMs(plan));
+    const auto nominal_execution_time_ms =
+        execution_nominal_time_s > 0.0f ? execution_nominal_time_s * 1000.0f : 0.0f;
+    return std::max(plan_estimated_time_ms, nominal_execution_time_ms);
+}
+
+Result<Ports::ProfileCompareArmRequest> BuildProfileCompareArmRequest(
+    const Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareExecutionSpan& span,
+    short start_level) {
+    if (span.Empty()) {
+        return Result<Ports::ProfileCompareArmRequest>::Failure(
+            Error(ErrorCode::INVALID_STATE,
+                  "profile_compare execution span 为空",
+                  "DispensingProcessService"));
+    }
+
+    Ports::ProfileCompareArmRequest request;
+    request.expected_trigger_count = span.expected_trigger_count;
+    request.start_level = start_level;
+    request.compare_source_axis = span.compare_source_axis;
+    request.start_boundary_trigger_count = span.start_boundary_trigger_count;
+    request.pulse_width_us = span.pulse_width_us;
+    request.compare_positions_pulse = span.compare_positions_pulse;
+
+    if (!request.IsValid()) {
+        return Result<Ports::ProfileCompareArmRequest>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER,
+                  "profile_compare execution span arm request 无效: " + request.GetValidationError(),
+                  "DispensingProcessService"));
+    }
+
+    SILIGEN_LOG_INFO_FMT_HELPER(
+        "profile_compare_request_summary span_index=%u compare_source_axis=%d business_trigger_count=%u "
+        "start_boundary_trigger_count=%u future_compare_count=%zu pulse_width_us=%u",
+        span.span_index,
+        request.compare_source_axis,
+        request.expected_trigger_count,
+        request.start_boundary_trigger_count,
+        request.compare_positions_pulse.size(),
+        request.pulse_width_us);
+    return Result<Ports::ProfileCompareArmRequest>::Success(request);
+}
+
+struct MaterializedProfileCompareSpan {
+    Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareExecutionSpan schedule_span;
+    std::vector<Siligen::TrajectoryPoint> trajectory_points;
+    std::vector<Motion::Ports::InterpolationData> controller_segments;
+    Point2D motion_start_position_mm{};
+    Point2D final_target_position_mm{};
+    float32 estimated_duration_s = 0.0f;
+    uint32 global_progress_begin = 0U;
+    uint32 global_progress_end = 0U;
+};
+
+std::optional<Point2D> ResolveInterpolationEndPoint(
+    const Motion::Ports::InterpolationData& segment) noexcept;
+
+float32 ResolveControllerReadySegmentLengthMm(const Point2D& start_point,
+                                              const Motion::Ports::InterpolationData& segment) noexcept;
+
+float32 CalculatePolylineLength(const std::vector<Siligen::TrajectoryPoint>& points) noexcept {
+    if (points.size() < 2U) {
+        return 0.0f;
+    }
+
+    float32 length_mm = 0.0f;
+    for (std::size_t index = 1; index < points.size(); ++index) {
+        length_mm += points[index - 1U].position.DistanceTo(points[index].position);
+    }
+    return length_mm;
+}
+
+float32 ResolveSpanEstimatedDurationSeconds(const std::vector<Siligen::TrajectoryPoint>& points,
+                                            float32 fallback_velocity_mm_s) noexcept {
+    if (points.size() >= 2U) {
+        const auto duration_s = points.back().timestamp - points.front().timestamp;
+        if (duration_s > kTraceEpsilonMm) {
+            return duration_s;
+        }
+    }
+
+    const auto length_mm = CalculatePolylineLength(points);
+    if (fallback_velocity_mm_s > kTraceEpsilonMm && length_mm > kTraceEpsilonMm) {
+        return length_mm / fallback_velocity_mm_s;
+    }
+    return 0.0f;
+}
+
+float32 ResolveControllerSegmentsNominalDurationSeconds(
+    const std::vector<Motion::Ports::InterpolationData>& controller_segments,
+    const Point2D& start_point,
+    float32 fallback_velocity_mm_s) noexcept {
+    if (controller_segments.empty()) {
+        return 0.0f;
+    }
+
+    float32 duration_s = 0.0f;
+    bool has_duration = false;
+    auto segment_start = start_point;
+    for (const auto& segment : controller_segments) {
+        const auto end_point = ResolveInterpolationEndPoint(segment);
+        if (!end_point.has_value()) {
+            continue;
+        }
+
+        const auto segment_length_mm = ResolveControllerReadySegmentLengthMm(segment_start, segment);
+        const auto segment_velocity_mm_s =
+            segment.velocity > kTraceEpsilonMm ? segment.velocity : fallback_velocity_mm_s;
+        if (segment_length_mm > kTraceEpsilonMm && segment_velocity_mm_s > kTraceEpsilonMm) {
+            duration_s += segment_length_mm / segment_velocity_mm_s;
+            has_duration = true;
+        }
+        segment_start = end_point.value();
+    }
+
+    return has_duration ? duration_s : 0.0f;
+}
+
+float32 ResolveProfileCompareSpanEstimatedDurationSeconds(
+    const std::vector<Siligen::TrajectoryPoint>& trajectory_points,
+    const std::vector<Motion::Ports::InterpolationData>& controller_segments,
+    const Point2D& controller_start_point,
+    float32 fallback_velocity_mm_s) noexcept {
+    const auto trajectory_duration_s =
+        ResolveSpanEstimatedDurationSeconds(trajectory_points, fallback_velocity_mm_s);
+    if (trajectory_points.empty()) {
+        return trajectory_duration_s;
+    }
+
+    const auto controller_duration_s = ResolveControllerSegmentsNominalDurationSeconds(
+        controller_segments,
+        controller_start_point,
+        fallback_velocity_mm_s);
+    return std::max(trajectory_duration_s, controller_duration_s);
+}
+
+std::optional<std::size_t> FindBoundaryIndex(const std::vector<Siligen::TrajectoryPoint>& points,
+                                             float32 target_distance_mm,
+                                             bool last_match) {
+    std::optional<std::size_t> matched_index;
+    for (std::size_t index = 0; index < points.size(); ++index) {
+        const auto& point = points[index];
+        if (!point.enable_position_trigger) {
+            continue;
+        }
+        if (std::fabs(point.trigger_position_mm - target_distance_mm) > kTraceEpsilonMm) {
+            continue;
+        }
+        matched_index = index;
+        if (!last_match) {
+            return matched_index;
+        }
+    }
+    return matched_index;
+}
+
+std::vector<Siligen::TrajectoryPoint> DropConsecutiveDuplicatePoints(const std::vector<Siligen::TrajectoryPoint>& points) {
+    std::vector<Siligen::TrajectoryPoint> result;
+    result.reserve(points.size());
+    for (const auto& point : points) {
+        if (!result.empty() &&
+            result.back().position.DistanceTo(point.position) <= kTraceEpsilonMm) {
+            result.back() = point;
+            continue;
+        }
+        result.push_back(point);
+    }
+    return result;
+}
+
+std::vector<Motion::Ports::InterpolationData> BuildLinearInterpolationSegments(
+    const std::vector<Siligen::TrajectoryPoint>& points,
+    const DispensingRuntimeParams& params) {
+    std::vector<Motion::Ports::InterpolationData> segments;
+    if (points.size() < 2U) {
+        return segments;
+    }
+
+    const auto normalized_points = DropConsecutiveDuplicatePoints(points);
+    if (normalized_points.size() < 2U) {
+        return segments;
+    }
+
+    segments.reserve(normalized_points.size() - 1U);
+    const auto fallback_velocity = params.dispensing_velocity > kTraceEpsilonMm
+        ? params.dispensing_velocity
+        : 10.0f;
+    const auto acceleration = params.acceleration > kTraceEpsilonMm
+        ? params.acceleration
+        : kDefaultAcceleration;
+    for (std::size_t index = 1; index < normalized_points.size(); ++index) {
+        Motion::Ports::InterpolationData segment;
+        segment.type = Motion::Ports::InterpolationType::LINEAR;
+        segment.positions = {
+            normalized_points[index].position.x,
+            normalized_points[index].position.y,
+        };
+        segment.velocity = normalized_points[index].velocity > kTraceEpsilonMm
+            ? normalized_points[index].velocity
+            : fallback_velocity;
+        segment.acceleration = acceleration;
+        segment.end_velocity = index + 1U == normalized_points.size()
+            ? 0.0f
+            : (normalized_points[index].velocity > kTraceEpsilonMm
+                   ? normalized_points[index].velocity
+                   : fallback_velocity);
+        segments.push_back(segment);
+    }
+    return segments;
+}
+
+Result<std::vector<Siligen::TrajectoryPoint>> SliceTrajectoryPointsForSpan(
+    const DispensingExecutionPlan& plan,
+    const Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareExecutionSpan& span) {
+    if (plan.interpolation_points.size() < 2U) {
+        return Result<std::vector<Siligen::TrajectoryPoint>>::Failure(
+            Error(ErrorCode::INVALID_STATE,
+                  "profile_compare 多 span 执行缺少 interpolation_points",
+                  "DispensingProcessService"));
+    }
+
+    auto points = Siligen::Shared::Types::ClearTriggerMarkers(plan.interpolation_points);
+    Siligen::Shared::Types::ReassignTrajectorySequenceIds(points);
+    const auto cumulative_distances = Siligen::Shared::Types::BuildTrajectoryCumulativeDistances(points);
+    if (cumulative_distances.empty()) {
+        return Result<std::vector<Siligen::TrajectoryPoint>>::Failure(
+            Error(ErrorCode::INVALID_STATE,
+                  "profile_compare interpolation_points 无法构建累计距离",
+                  "DispensingProcessService"));
+    }
+
+    const auto total_distance_mm = cumulative_distances.back();
+    const auto start_distance_mm = std::clamp(span.start_profile_position_mm, 0.0f, total_distance_mm);
+    const auto end_distance_mm = std::clamp(
+        std::max(span.start_profile_position_mm, span.end_profile_position_mm),
+        start_distance_mm,
+        total_distance_mm);
+
+    if (!Siligen::Shared::Types::InsertTriggerMarkerByDistance(
+            points,
+            start_distance_mm,
+            Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm,
+            1U)) {
+        return Result<std::vector<Siligen::TrajectoryPoint>>::Failure(
+            Error(ErrorCode::TRAJECTORY_GENERATION_FAILED,
+                  "profile_compare span 起点无法映射到 interpolation_points",
+                  "DispensingProcessService"));
+    }
+    if (!Siligen::Shared::Types::InsertTriggerMarkerByDistance(
+            points,
+            end_distance_mm,
+            Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm,
+            1U)) {
+        return Result<std::vector<Siligen::TrajectoryPoint>>::Failure(
+            Error(ErrorCode::TRAJECTORY_GENERATION_FAILED,
+                  "profile_compare span 终点无法映射到 interpolation_points",
+                  "DispensingProcessService"));
+    }
+
+    const auto start_index = FindBoundaryIndex(points, start_distance_mm, false);
+    const auto end_index = FindBoundaryIndex(points, end_distance_mm, true);
+    if (!start_index.has_value() || !end_index.has_value() || end_index.value() < start_index.value()) {
+        return Result<std::vector<Siligen::TrajectoryPoint>>::Failure(
+            Error(ErrorCode::TRAJECTORY_GENERATION_FAILED,
+                  "profile_compare span 边界定位失败",
+                  "DispensingProcessService"));
+    }
+
+    std::vector<Siligen::TrajectoryPoint> sliced_points(
+        points.begin() + static_cast<std::ptrdiff_t>(start_index.value()),
+        points.begin() + static_cast<std::ptrdiff_t>(end_index.value() + 1U));
+    Siligen::Shared::Types::ReassignTrajectorySequenceIds(sliced_points);
+    return Result<std::vector<Siligen::TrajectoryPoint>>::Success(std::move(sliced_points));
+}
+
+Result<std::vector<MaterializedProfileCompareSpan>> MaterializeProfileCompareSpans(
+    const DispensingExecutionPlan& plan,
+    const DispensingRuntimeParams& params,
+    const Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareExecutionSchedule& schedule) {
+    std::vector<MaterializedProfileCompareSpan> spans;
+    spans.reserve(schedule.spans.size());
+
+    const bool can_use_full_plan_directly =
+        schedule.spans.size() == 1U &&
+        std::fabs(schedule.spans.front().start_profile_position_mm) <= kTraceEpsilonMm &&
+        std::fabs(schedule.spans.front().end_profile_position_mm - schedule.path_total_length_mm) <=
+            Siligen::Shared::Types::kTriggerMarkerMatchToleranceMm &&
+        !plan.interpolation_segments.empty();
+
+    for (const auto& schedule_span : schedule.spans) {
+        MaterializedProfileCompareSpan materialized;
+        materialized.schedule_span = schedule_span;
+        materialized.final_target_position_mm = schedule_span.end_position_mm;
+
+        if (can_use_full_plan_directly) {
+            materialized.trajectory_points = plan.interpolation_points;
+            materialized.controller_segments = plan.interpolation_segments;
+        } else {
+            auto sliced_points_result = SliceTrajectoryPointsForSpan(plan, schedule_span);
+            if (sliced_points_result.IsError()) {
+                return Result<std::vector<MaterializedProfileCompareSpan>>::Failure(
+                    sliced_points_result.GetError());
+            }
+            materialized.trajectory_points = sliced_points_result.Value();
+            materialized.controller_segments = BuildLinearInterpolationSegments(
+                materialized.trajectory_points,
+                params);
+        }
+
+        spans.push_back(std::move(materialized));
+    }
+
+    for (std::size_t index = 0; index < spans.size(); ++index) {
+        auto& materialized = spans[index];
+        if (index > 0U) {
+            // Later spans resume from the previous span's actual terminal point. If the schedule
+            // window starts after that point, the controller still executes the implicit lead-in.
+            materialized.motion_start_position_mm = spans[index - 1U].final_target_position_mm;
+        } else if (!materialized.trajectory_points.empty()) {
+            materialized.motion_start_position_mm = materialized.trajectory_points.front().position;
+        } else {
+            materialized.motion_start_position_mm = materialized.schedule_span.start_position_mm;
+        }
+
+        materialized.estimated_duration_s = ResolveProfileCompareSpanEstimatedDurationSeconds(
+            materialized.trajectory_points,
+            materialized.controller_segments,
+            materialized.motion_start_position_mm,
+            params.dispensing_velocity);
+    }
+
+    return Result<std::vector<MaterializedProfileCompareSpan>>::Success(std::move(spans));
 }
 
 const char* ToString(Motion::Ports::InterpolationType type) noexcept {
@@ -287,35 +719,6 @@ const char* ToString(Motion::Ports::InterpolationType type) noexcept {
             return "buffer_stop";
     }
     return "unknown";
-}
-
-const char* ToString(Ports::DispenserValveStatus status) noexcept {
-    switch (status) {
-        case Ports::DispenserValveStatus::Idle:
-            return "idle";
-        case Ports::DispenserValveStatus::Running:
-            return "running";
-        case Ports::DispenserValveStatus::Paused:
-            return "paused";
-        case Ports::DispenserValveStatus::Stopped:
-            return "stopped";
-        case Ports::DispenserValveStatus::Error:
-            return "error";
-    }
-    return "unknown";
-}
-
-Error BuildPathTriggerReconcileFailure(const Ports::DispenserValveState& status,
-                                       uint32 expected_trigger_count) {
-    const auto adapter_error_message = status.errorMessage.empty() ? std::string("<none>") : status.errorMessage;
-    const auto message =
-        "failure_stage=path_trigger_reconcile;failure_code=DISPENSER_TRIGGER_INCOMPLETE;completed_count=" +
-        std::to_string(status.completedCount) +
-        ";total_count=" + std::to_string(status.totalCount) +
-        ";expected_trigger_count=" + std::to_string(expected_trigger_count) +
-        ";status=" + ToString(status.status) +
-        ";adapter_error_message=" + adapter_error_message;
-    return Error(ErrorCode::DISPENSER_TRIGGER_INCOMPLETE, message, "DispensingProcessService");
 }
 
 std::optional<Point2D> ResolveInterpolationEndPoint(
@@ -601,6 +1004,7 @@ DispensingProcessService::DispensingProcessService(std::shared_ptr<IValvePort> v
                                                    std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
                                                    std::shared_ptr<IConfigurationPort> config_port) noexcept
     : valve_port_(std::move(valve_port)),
+      profile_compare_port_(std::dynamic_pointer_cast<IProfileComparePort>(valve_port_)),
       interpolation_port_(std::move(interpolation_port)),
       motion_state_port_(std::move(motion_state_port)),
       connection_port_(std::move(connection_port)),
@@ -779,13 +1183,14 @@ Result<void> DispensingProcessService::ConfigureCoordinateSystem(const Dispensin
 }
 
 Result<DispensingExecutionReport> DispensingProcessService::ExecuteProcess(
-    const DispensingExecutionPlan& plan,
+    const Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated& execution_package,
     const DispensingRuntimeParams& params,
     const DispensingExecutionOptions& options,
     std::atomic<bool>* stop_flag,
     std::atomic<bool>* pause_flag,
     std::atomic<bool>* pause_applied_flag,
     IDispensingExecutionObserver* observer) noexcept {
+    const auto& plan = execution_package.execution_plan;
     auto conn_check = ValidateHardwareConnection();
     if (conn_check.IsError()) {
         return Result<DispensingExecutionReport>::Failure(conn_check.GetError());
@@ -799,7 +1204,15 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecuteProcess(
     CoordinateSystemStopGuard coord_guard(interpolation_port_, kCoordinateSystemMask);
     coord_guard.Arm();
 
-    return ExecutePlanInternal(plan, params, options, stop_flag, pause_flag, pause_applied_flag, observer);
+    return ExecutePlanInternal(
+        plan,
+        ResolveExecutionNominalTimeS(execution_package),
+        params,
+        options,
+        stop_flag,
+        pause_flag,
+        pause_applied_flag,
+        observer);
 }
 
 Result<void> DispensingProcessService::PrePositionToPlanStart(const DispensingExecutionPlan& plan,
@@ -890,6 +1303,7 @@ Result<void> DispensingProcessService::PrePositionToPlanStart(const DispensingEx
                                              &program_start.value(),
                                              position_tolerance_mm,
                                              0U,
+                                             0U,
                                              false,
                                              nullptr);
     if (wait_result.IsError()) {
@@ -906,6 +1320,7 @@ Result<void> DispensingProcessService::PrePositionToPlanStart(const DispensingEx
 
 Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
     const DispensingExecutionPlan& plan,
+    float32 execution_nominal_time_s,
     const DispensingRuntimeParams& params,
     const DispensingExecutionOptions& options,
     std::atomic<bool>* stop_flag,
@@ -1002,40 +1417,383 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
         return Result<DispensingExecutionReport>::Success(report);
     }
 
-    DispensingController controller;
-    ControllerConfig controller_config;
-    controller_config.use_hardware_trigger = options.dispense_enabled;
-    controller_config.spatial_interval_mm = params.trigger_spatial_interval_mm;
-    controller_config.pulse_per_mm = params.pulse_per_mm;
-    controller_config.acceleration_mm_s2 = params.acceleration;
-    controller_config.trigger_distances_mm = plan.trigger_distances_mm;
-
-    if (plan.trigger_interval_mm > 0.0f) {
-        controller_config.spatial_interval_mm = plan.trigger_interval_mm;
-    }
-
-    auto trigger_result = plan.interpolation_points.empty()
-                              ? controller.Build(plan.motion_trajectory, controller_config)
-                              : controller.Build(plan.interpolation_points, controller_config);
-    if (trigger_result.IsError()) {
-        return Result<DispensingExecutionReport>::Failure(trigger_result.GetError());
-    }
-
-    auto trigger_output = trigger_result.Value();
-    if (options.dispense_enabled && trigger_output.trigger_events.empty()) {
+    const bool require_profile_compare =
+        options.dispense_enabled &&
+        plan.production_trigger_mode == ValueObjects::ProductionTriggerMode::PROFILE_COMPARE;
+    if (plan.production_trigger_mode == ValueObjects::ProductionTriggerMode::PROFILE_COMPARE &&
+        !options.use_hardware_trigger) {
         return Result<DispensingExecutionReport>::Failure(
-            Error(ErrorCode::CMP_TRIGGER_SETUP_FAILED,
-                  "位置触发不可用，禁止回退为定时触发",
+            Error(ErrorCode::INVALID_PARAMETER,
+                  "PROFILE_COMPARE 执行要求 use_hardware_trigger=true",
                   "DispensingProcessService"));
     }
-    if (plan.interpolation_segments.empty()) {
+    if (options.dispense_enabled && !require_profile_compare) {
+        return Result<DispensingExecutionReport>::Failure(
+            Error(ErrorCode::CMP_TRIGGER_SETUP_FAILED,
+                  "DXF生产路径要求 owner 下发 PROFILE_COMPARE trigger program",
+                  "DispensingProcessService"));
+    }
+    if (!require_profile_compare && plan.interpolation_segments.empty()) {
         return Result<DispensingExecutionReport>::Failure(
             Error(ErrorCode::TRAJECTORY_GENERATION_FAILED, "插补数据为空", "DispensingProcessService"));
+    }
+
+    std::shared_ptr<const Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareExecutionSchedule>
+        profile_compare_schedule;
+    std::vector<MaterializedProfileCompareSpan> materialized_compare_spans;
+    if (require_profile_compare) {
+        if (!profile_compare_port_) {
+            return Result<DispensingExecutionReport>::Failure(
+                Error(ErrorCode::PORT_NOT_INITIALIZED,
+                      "点胶阀端口未实现 profile compare 能力",
+                      "DispensingProcessService"));
+        }
+        profile_compare_schedule = options.profile_compare_schedule;
+        if (!profile_compare_schedule) {
+            return Result<DispensingExecutionReport>::Failure(
+                Error(ErrorCode::INVALID_PARAMETER,
+                      "PROFILE_COMPARE 执行缺少正式 execution schedule",
+                      "DispensingProcessService"));
+        }
+        auto schedule_validation =
+            Siligen::RuntimeExecution::Contracts::Dispensing::ValidateProfileCompareExecutionSchedule(
+                plan,
+                *profile_compare_schedule);
+        if (schedule_validation.IsError()) {
+            return Result<DispensingExecutionReport>::Failure(schedule_validation.GetError());
+        }
+        auto materialized_spans_result =
+            MaterializeProfileCompareSpans(plan, params, *profile_compare_schedule);
+        if (materialized_spans_result.IsError()) {
+            return Result<DispensingExecutionReport>::Failure(materialized_spans_result.GetError());
+        }
+        materialized_compare_spans = materialized_spans_result.Value();
     }
 
     auto pre_position_result = PrePositionToPlanStart(plan, params, stop_flag, pause_flag, pause_applied_flag);
     if (pre_position_result.IsError()) {
         return Result<DispensingExecutionReport>::Failure(pre_position_result.GetError());
+    }
+
+    if (require_profile_compare) {
+        const uint32 total_segments = !plan.interpolation_segments.empty()
+            ? static_cast<uint32>(plan.interpolation_segments.size())
+            : (plan.interpolation_points.size() > 1U
+                   ? static_cast<uint32>(plan.interpolation_points.size() - 1U)
+                   : 0U);
+        const auto path_total_length_mm = profile_compare_schedule->path_total_length_mm > kTraceEpsilonMm
+            ? profile_compare_schedule->path_total_length_mm
+            : (plan.total_length_mm > kTraceEpsilonMm ? plan.total_length_mm : plan.motion_trajectory.total_length);
+
+        uint32 previous_progress_end = 0U;
+        for (std::size_t index = 0; index < materialized_compare_spans.size(); ++index) {
+            auto& span = materialized_compare_spans[index];
+            span.global_progress_begin = previous_progress_end;
+            if (index + 1U == materialized_compare_spans.size()) {
+                span.global_progress_end = total_segments;
+            } else if (total_segments == 0U || path_total_length_mm <= kTraceEpsilonMm) {
+                span.global_progress_end = previous_progress_end;
+            } else {
+                auto mapped = static_cast<uint32>(std::llround(
+                    (span.schedule_span.end_profile_position_mm / path_total_length_mm) *
+                    static_cast<float32>(total_segments)));
+                mapped = std::clamp(mapped, previous_progress_end, total_segments);
+                if (!span.controller_segments.empty() &&
+                    mapped == previous_progress_end &&
+                    mapped < total_segments) {
+                    ++mapped;
+                }
+                span.global_progress_end = mapped;
+            }
+            previous_progress_end = span.global_progress_end;
+        }
+
+        constexpr uint32 kMinBufferSpace = 20;
+        constexpr uint32 kZeroSpaceWarmupBatch = kMinBufferSpace;
+        constexpr auto kBufferPollInterval = std::chrono::milliseconds(5);
+        constexpr auto kBufferStallTimeout = std::chrono::seconds(10);
+        constexpr float32 kMinMovingVelocityMmS = 0.1f;
+        const auto position_tolerance_mm = ResolveCompletionPositionToleranceMm(config_port_);
+        const auto start_level = ResolveDispenserStartLevel();
+
+        auto query_buffer_space = [&]() -> Result<uint32> {
+            auto crd_space_result = interpolation_port_->GetInterpolationBufferSpace(kCoordinateSystem);
+            if (crd_space_result.IsError()) {
+                return Result<uint32>::Failure(crd_space_result.GetError());
+            }
+            uint32 space = crd_space_result.Value();
+
+            auto lookahead_space_result = interpolation_port_->GetLookAheadBufferSpace(kCoordinateSystem);
+            if (lookahead_space_result.IsSuccess() && lookahead_space_result.Value() > 0U) {
+                space = std::min(space, lookahead_space_result.Value());
+            }
+            return Result<uint32>::Success(space);
+        };
+
+        auto resolve_batch_size = [&](uint32 space, size_t remaining_segments) -> size_t {
+            if (space == 0U || remaining_segments == 0U) {
+                return 0U;
+            }
+
+            const auto remaining = static_cast<uint32>(remaining_segments);
+            if (remaining <= space) {
+                return remaining_segments;
+            }
+
+            if (space > kMinBufferSpace) {
+                return static_cast<size_t>(std::min<uint32>(remaining, space - kMinBufferSpace));
+            }
+
+            return 1U;
+        };
+
+        auto map_local_progress = [&](const MaterializedProfileCompareSpan& span,
+                                      uint32 local_executed_segments) -> uint32 {
+            if (span.controller_segments.empty()) {
+                return span.global_progress_end;
+            }
+            const auto local_total_segments = static_cast<uint32>(span.controller_segments.size());
+            if (local_total_segments == 0U ||
+                span.global_progress_end <= span.global_progress_begin) {
+                return span.global_progress_end;
+            }
+            const auto local_clamped = std::min(local_executed_segments, local_total_segments);
+            const auto global_delta = span.global_progress_end - span.global_progress_begin;
+            return span.global_progress_begin +
+                   static_cast<uint32>(
+                       (static_cast<std::uint64_t>(local_clamped) * static_cast<std::uint64_t>(global_delta)) /
+                       static_cast<std::uint64_t>(local_total_segments));
+        };
+
+        SupplyValveGuard supply_guard(valve_port_);
+        if (options.dispense_enabled) {
+            auto supply_result = supply_guard.Open();
+            if (supply_result.IsError()) {
+                return Result<DispensingExecutionReport>::Failure(supply_result.GetError());
+            }
+            auto stabilization_ms = SupplyStabilizationPolicy::Resolve(config_port_);
+            if (stabilization_ms.IsError()) {
+                return Result<DispensingExecutionReport>::Failure(stabilization_ms.GetError());
+            }
+            if (stabilization_ms.Value() > 0) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(stabilization_ms.Value()));
+            }
+        }
+
+        auto override_result = interpolation_port_->SetCoordinateSystemVelocityOverride(kCoordinateSystem, 100.0f);
+        if (override_result.IsError()) {
+            SILIGEN_LOG_WARNING("设置坐标系速度倍率失败: " + override_result.GetError().GetMessage());
+        }
+
+        MotionObserverGuard observer_guard(observer);
+        observer_guard.Start();
+        PublishProgress(observer, 0U, total_segments);
+
+        ProfileCompareGuard profile_compare_guard(profile_compare_port_);
+        for (const auto& span : materialized_compare_spans) {
+            auto arm_request_result = BuildProfileCompareArmRequest(span.schedule_span, start_level);
+            if (arm_request_result.IsError()) {
+                return Result<DispensingExecutionReport>::Failure(arm_request_result.GetError());
+            }
+
+            auto clear_result = ClearInterpolationBufferForFormalPath(stop_flag, pause_flag, pause_applied_flag);
+            if (clear_result.IsError()) {
+                return Result<DispensingExecutionReport>::Failure(clear_result.GetError());
+            }
+
+            auto arm_result = profile_compare_guard.Arm(arm_request_result.Value());
+            if (arm_result.IsError()) {
+                return Result<DispensingExecutionReport>::Failure(arm_result.GetError());
+            }
+
+            if (span.controller_segments.empty()) {
+                auto compare_status_result = profile_compare_guard.GetStatus();
+                if (compare_status_result.IsError()) {
+                    return Result<DispensingExecutionReport>::Failure(compare_status_result.GetError());
+                }
+                const auto& compare_status = compare_status_result.Value();
+                if (compare_status.HasError()) {
+                    return Result<DispensingExecutionReport>::Failure(
+                        Error(ErrorCode::HARDWARE_ERROR,
+                              compare_status.error_message,
+                              "DispensingProcessService"));
+                }
+                if (compare_status.completed_trigger_count != span.schedule_span.expected_trigger_count) {
+                    return Result<DispensingExecutionReport>::Failure(
+                        Error(ErrorCode::CMP_TRIGGER_SETUP_FAILED,
+                              "profile_compare immediate-only span 未完成全部触发点",
+                              "DispensingProcessService"));
+                }
+
+                auto disarm_result = profile_compare_guard.Disarm();
+                if (disarm_result.IsError()) {
+                    return Result<DispensingExecutionReport>::Failure(disarm_result.GetError());
+                }
+                PublishProgress(observer, span.global_progress_end, total_segments);
+                continue;
+            }
+
+            const auto& program = span.controller_segments;
+            const auto local_total_segments = program.size();
+            size_t cursor = 0U;
+
+            auto send_batch = [&](size_t batch_size) -> Result<void> {
+                for (size_t index = 0; index < batch_size && cursor < local_total_segments; ++index, ++cursor) {
+                    auto add_result = interpolation_port_->AddInterpolationData(kCoordinateSystem, program[cursor]);
+                    if (add_result.IsError()) {
+                        return Result<void>::Failure(add_result.GetError());
+                    }
+                }
+                return Result<void>::Success();
+            };
+
+            auto initial_space_result = query_buffer_space();
+            if (initial_space_result.IsError()) {
+                return Result<DispensingExecutionReport>::Failure(initial_space_result.GetError());
+            }
+            const auto initial_space = initial_space_result.Value();
+            const auto initial_batch = [&]() -> size_t {
+                if (local_total_segments == 0U) {
+                    return 0U;
+                }
+                if (initial_space == 0U) {
+                    return std::min<std::size_t>(
+                        local_total_segments,
+                        static_cast<size_t>(kZeroSpaceWarmupBatch));
+                }
+                return std::max<std::size_t>(1U, resolve_batch_size(initial_space, local_total_segments));
+            }();
+
+            if (initial_batch > 0U) {
+                auto send_result = send_batch(initial_batch);
+                if (send_result.IsError()) {
+                    return Result<DispensingExecutionReport>::Failure(send_result.GetError());
+                }
+            }
+
+            auto flush_result = interpolation_port_->FlushInterpolationData(kCoordinateSystem);
+            if (flush_result.IsError()) {
+                return Result<DispensingExecutionReport>::Failure(flush_result.GetError());
+            }
+
+            auto start_result = interpolation_port_->StartCoordinateSystemMotion(kCoordinateSystemMask);
+            if (start_result.IsError()) {
+                return Result<DispensingExecutionReport>::Failure(start_result.GetError());
+            }
+
+            auto last_progress = std::chrono::steady_clock::now();
+            while (cursor < local_total_segments) {
+                auto pause_result =
+                    WaitWhilePaused(stop_flag, pause_flag, pause_applied_flag, false, observer);
+                if (pause_result.IsError()) {
+                    return Result<DispensingExecutionReport>::Failure(pause_result.GetError());
+                }
+
+                if (IsStopRequested(stop_flag)) {
+                    return Result<DispensingExecutionReport>::Failure(
+                        Error(ErrorCode::INVALID_STATE, "用户请求停止", "DispensingProcessService"));
+                }
+
+                auto space_result = query_buffer_space();
+                if (space_result.IsError()) {
+                    return Result<DispensingExecutionReport>::Failure(space_result.GetError());
+                }
+
+                auto progress_status_result = interpolation_port_->GetCoordinateSystemStatus(kCoordinateSystem);
+                if (progress_status_result.IsSuccess()) {
+                    const auto& progress_status = progress_status_result.Value();
+                    auto local_executed = TryResolveExecutedSegmentsForProgress(
+                        progress_status,
+                        static_cast<uint32>(local_total_segments));
+                    if (local_executed.has_value()) {
+                        PublishProgress(
+                            observer,
+                            map_local_progress(span, local_executed.value()),
+                            total_segments);
+                    }
+                }
+
+                auto compare_status_result = profile_compare_guard.GetStatus();
+                if (compare_status_result.IsError()) {
+                    return Result<DispensingExecutionReport>::Failure(compare_status_result.GetError());
+                }
+                const auto& compare_status = compare_status_result.Value();
+                if (compare_status.HasError()) {
+                    return Result<DispensingExecutionReport>::Failure(
+                        Error(ErrorCode::HARDWARE_ERROR,
+                              compare_status.error_message,
+                              "DispensingProcessService"));
+                }
+
+                const auto space = space_result.Value();
+                if (space == 0U) {
+                    auto now = std::chrono::steady_clock::now();
+                    auto status_result = interpolation_port_->GetCoordinateSystemStatus(kCoordinateSystem);
+                    if (status_result.IsSuccess()) {
+                        const auto& status = status_result.Value();
+                        if (status.is_moving &&
+                            (status.current_velocity > kMinMovingVelocityMmS ||
+                             status.current_velocity < -kMinMovingVelocityMmS)) {
+                            last_progress = now;
+                        }
+                    }
+                    if (now - last_progress > kBufferStallTimeout) {
+                        return Result<DispensingExecutionReport>::Failure(
+                            Error(ErrorCode::MOTION_TIMEOUT,
+                                  "profile_compare span 插补缓冲区长期无可用空间",
+                                  "DispensingProcessService"));
+                    }
+                    std::this_thread::sleep_for(kBufferPollInterval);
+                    continue;
+                }
+
+                const auto batch_size = resolve_batch_size(space, local_total_segments - cursor);
+                if (batch_size == 0U) {
+                    std::this_thread::sleep_for(kBufferPollInterval);
+                    continue;
+                }
+
+                auto send_result = send_batch(batch_size);
+                if (send_result.IsError()) {
+                    return Result<DispensingExecutionReport>::Failure(send_result.GetError());
+                }
+
+                auto span_flush_result = interpolation_port_->FlushInterpolationData(kCoordinateSystem);
+                if (span_flush_result.IsError()) {
+                    return Result<DispensingExecutionReport>::Failure(span_flush_result.GetError());
+                }
+                last_progress = std::chrono::steady_clock::now();
+            }
+
+            const auto estimated_motion_time_ms = static_cast<float32>(
+                std::max(0.0f, span.estimated_duration_s * 1000.0f));
+            const auto timeout_ms = BuildMotionCompletionTimeoutMs(estimated_motion_time_ms);
+            auto wait_result = WaitForMotionComplete(
+                timeout_ms,
+                stop_flag,
+                pause_flag,
+                pause_applied_flag,
+                &span.final_target_position_mm,
+                position_tolerance_mm,
+                static_cast<uint32>(local_total_segments),
+                span.schedule_span.expected_trigger_count,
+                false,
+                nullptr);
+            if (wait_result.IsError()) {
+                return Result<DispensingExecutionReport>::Failure(wait_result.GetError());
+            }
+
+            auto disarm_result = profile_compare_guard.Disarm();
+            if (disarm_result.IsError()) {
+                return Result<DispensingExecutionReport>::Failure(disarm_result.GetError());
+            }
+            PublishProgress(observer, span.global_progress_end, total_segments);
+        }
+
+        DispensingExecutionReport report;
+        report.executed_segments = total_segments;
+        report.total_distance = plan.total_length_mm > 0.0f ? plan.total_length_mm : plan.motion_trajectory.total_length;
+        return Result<DispensingExecutionReport>::Success(report);
     }
 
     constexpr uint32 kMinBufferSpace = 20;
@@ -1052,8 +1810,6 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
     const auto& program = plan.interpolation_segments;
     const auto total_segments = program.size();
     size_t cursor = 0;
-    bool path_trigger_started = false;
-    uint32 expected_trigger_count = 0U;
     const auto controller_ready_trace = BuildControllerReadyTracePlan(plan);
 
     if (!plan.interpolation_points.empty()) {
@@ -1172,25 +1928,7 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
         }
     }
 
-    DispenserOperationGuard dispenser_guard(valve_port_);
-    if (options.dispense_enabled) {
-        Ports::PositionTriggeredDispenserParams params_for_trigger;
-        params_for_trigger.trigger_events = trigger_output.trigger_events;
-        params_for_trigger.pulse_width_ms = params.dispenser_duration_ms;
-        params_for_trigger.start_level = ResolveDispenserStartLevel();
-        params_for_trigger.coordinate_system = kCoordinateSystem;
-        params_for_trigger.position_tolerance_pulse = ResolvePathTriggerTolerancePulse(params.pulse_per_mm);
-        DispenseCompensationService compensation_service;
-        params_for_trigger = compensation_service.ApplyPositionCompensation(params_for_trigger,
-                                                                            params.compensation_profile,
-                                                                            false);
-        auto start_result = dispenser_guard.Start(params_for_trigger);
-        if (start_result.IsError()) {
-            return Result<DispensingExecutionReport>::Failure(start_result.GetError());
-        }
-        path_trigger_started = true;
-        expected_trigger_count = static_cast<uint32>(params_for_trigger.trigger_events.size());
-    }
+    const bool pause_dispenser_on_pause = options.dispense_enabled;
 
     auto override_result = interpolation_port_->SetCoordinateSystemVelocityOverride(kCoordinateSystem, 100.0f);
     if (override_result.IsError()) {
@@ -1209,7 +1947,7 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
     auto last_progress = std::chrono::steady_clock::now();
     while (cursor < total_segments) {
         auto pause_result =
-            WaitWhilePaused(stop_flag, pause_flag, pause_applied_flag, options.dispense_enabled, observer);
+            WaitWhilePaused(stop_flag, pause_flag, pause_applied_flag, pause_dispenser_on_pause, observer);
         if (pause_result.IsError()) {
             return Result<DispensingExecutionReport>::Failure(pause_result.GetError());
         }
@@ -1315,13 +2053,22 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
 
     const auto final_target_position = ResolveFinalTargetPosition(plan);
     const auto position_tolerance_mm = ResolveCompletionPositionToleranceMm(config_port_);
-    const auto timeout_ms = BuildMotionCompletionTimeoutMs(trigger_output.estimated_motion_time_ms);
+    const auto plan_estimated_motion_time_ms = static_cast<float32>(ResolveEstimatedMotionTimeMs(plan));
+    const auto nominal_execution_time_ms =
+        execution_nominal_time_s > 0.0f ? execution_nominal_time_s * 1000.0f : 0.0f;
+    const auto effective_estimated_motion_time_ms =
+        ResolveAuthoritativeExecutionTimeMs(plan, execution_nominal_time_s);
+    const auto timeout_ms = BuildMotionCompletionTimeoutMs(effective_estimated_motion_time_ms);
 
     SILIGEN_LOG_INFO_FMT_HELPER(
-        "等待运动完成: timeout_ms=%d, estimated_motion_time_ms=%.1f, final_target=(%.3f, %.3f), "
+        "等待运动完成: timeout_ms=%d, plan_estimated_motion_time_ms=%.1f, "
+        "execution_nominal_time_ms=%.1f, effective_estimated_motion_time_ms=%.1f, "
+        "final_target=(%.3f, %.3f), "
         "position_tolerance_mm=%.3f, total_segments=%zu",
         timeout_ms,
-        trigger_output.estimated_motion_time_ms,
+        plan_estimated_motion_time_ms,
+        nominal_execution_time_ms,
+        effective_estimated_motion_time_ms,
         final_target_position.x,
         final_target_position.y,
         position_tolerance_mm,
@@ -1335,28 +2082,11 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
         &final_target_position,
         position_tolerance_mm,
         static_cast<uint32>(total_segments),
-        options.dispense_enabled,
+        0U,
+        pause_dispenser_on_pause,
         observer);
     if (wait_result.IsError()) {
         return Result<DispensingExecutionReport>::Failure(wait_result.GetError());
-    }
-
-    if (path_trigger_started) {
-        auto dispenser_status_result = valve_port_->GetDispenserStatus();
-        if (dispenser_status_result.IsError()) {
-            return Result<DispensingExecutionReport>::Failure(dispenser_status_result.GetError());
-        }
-
-        const auto& dispenser_status = dispenser_status_result.Value();
-        const bool counts_complete =
-            dispenser_status.completedCount == dispenser_status.totalCount &&
-            dispenser_status.totalCount == expected_trigger_count &&
-            expected_trigger_count > 0U;
-        if (dispenser_status.HasError() || !counts_complete) {
-            const auto reconcile_error = BuildPathTriggerReconcileFailure(dispenser_status, expected_trigger_count);
-            SILIGEN_LOG_ERROR("路径触发点胶终态收口失败: " + reconcile_error.GetMessage());
-            return Result<DispensingExecutionReport>::Failure(reconcile_error);
-        }
     }
 
     PublishProgress(observer, static_cast<uint32>(total_segments), static_cast<uint32>(total_segments));
@@ -1375,11 +2105,18 @@ Result<void> DispensingProcessService::WaitForMotionComplete(int32 timeout_ms,
                                                              const Point2D* final_target_position,
                                                              float32 position_tolerance_mm,
                                                              uint32 total_segments,
+                                                             uint32 profile_compare_expected_trigger_count,
                                                              bool dispense_enabled,
                                                              IDispensingExecutionObserver* observer) noexcept {
     if (!interpolation_port_) {
         return Result<void>::Failure(
             Error(ErrorCode::PORT_NOT_INITIALIZED, "插补端口未初始化", "DispensingProcessService"));
+    }
+    if (profile_compare_expected_trigger_count > 0U && !profile_compare_port_) {
+        return Result<void>::Failure(
+            Error(ErrorCode::PORT_NOT_INITIALIZED,
+                  "profile compare 端口未初始化",
+                  "DispensingProcessService"));
     }
 
     auto start = std::chrono::steady_clock::now();
@@ -1398,6 +2135,7 @@ Result<void> DispensingProcessService::WaitForMotionComplete(int32 timeout_ms,
     Point2D last_position{};
     bool observed_motion = false;
     bool observed_progress_signal = false;
+    bool profile_compare_terminal_wait_logged = false;
     while (true) {
         auto pause_result = WaitWhilePaused(stop_flag, pause_flag, pause_applied_flag, dispense_enabled, observer);
         if (pause_result.IsError()) {
@@ -1422,6 +2160,23 @@ Result<void> DispensingProcessService::WaitForMotionComplete(int32 timeout_ms,
             if (executed_segments.value() > 0U) {
                 observed_progress_signal = true;
             }
+        }
+
+        std::optional<Ports::ProfileCompareStatus> compare_status_snapshot;
+        if (profile_compare_expected_trigger_count > 0U && profile_compare_port_) {
+            auto compare_status_result = profile_compare_port_->GetProfileCompareStatus();
+            if (compare_status_result.IsError()) {
+                return Result<void>::Failure(compare_status_result.GetError());
+            }
+
+            const auto& compare_status = compare_status_result.Value();
+            if (compare_status.HasError()) {
+                return Result<void>::Failure(
+                    Error(ErrorCode::HARDWARE_ERROR,
+                          compare_status.error_message,
+                          "DispensingProcessService"));
+            }
+            compare_status_snapshot = compare_status;
         }
         const bool coord_completed = IsCoordinateSystemCompleted(status);
 
@@ -1456,35 +2211,67 @@ Result<void> DispensingProcessService::WaitForMotionComplete(int32 timeout_ms,
                         settled_since = now;
                         settle_tracking = true;
                     } else if (now - settled_since >= kCompletionSettleWindow) {
-                        SILIGEN_LOG_INFO_FMT_HELPER(
-                            "运动完成采用权威反馈收敛: pos=(%.3f, %.3f), target=(%.3f, %.3f), "
-                            "distance=%.4f, delta=%.4f, vx=%.4f, vy=%.4f, observed_motion=%d, "
-                            "observed_progress=%d, raw_status=%d, raw_segment=%d",
-                            current_position.x,
-                            current_position.y,
-                            final_target_position->x,
-                            final_target_position->y,
-                            distance_to_target,
-                            position_delta,
-                            x_velocity,
-                            y_velocity,
-                            observed_motion ? 1 : 0,
-                            observed_progress_signal ? 1 : 0,
-                            status.raw_status_word,
-                            status.raw_segment);
-                        PublishProgress(observer, total_segments, total_segments);
-                        return Result<void>::Success();
+                        if (compare_status_snapshot.has_value() &&
+                            !IsProfileCompareTerminalCompleted(
+                                compare_status_snapshot.value(),
+                                profile_compare_expected_trigger_count)) {
+                            if (!profile_compare_terminal_wait_logged) {
+                                SILIGEN_LOG_WARNING(
+                                    "运动已收敛但 profile_compare 仍未完成: " +
+                                    BuildProfileCompareStatusLogContext(
+                                        profile_compare_expected_trigger_count,
+                                        compare_status_snapshot.value()));
+                                profile_compare_terminal_wait_logged = true;
+                            }
+                        } else {
+                            SILIGEN_LOG_INFO_FMT_HELPER(
+                                "运动完成采用权威反馈收敛: pos=(%.3f, %.3f), target=(%.3f, %.3f), "
+                                "distance=%.4f, delta=%.4f, vx=%.4f, vy=%.4f, observed_motion=%d, "
+                                "observed_progress=%d, raw_status=%d, raw_segment=%d",
+                                current_position.x,
+                                current_position.y,
+                                final_target_position->x,
+                                final_target_position->y,
+                                distance_to_target,
+                                position_delta,
+                                x_velocity,
+                                y_velocity,
+                                observed_motion ? 1 : 0,
+                                observed_progress_signal ? 1 : 0,
+                                status.raw_status_word,
+                                status.raw_segment);
+                            PublishProgress(observer, total_segments, total_segments);
+                            return Result<void>::Success();
+                        }
                     }
                 } else {
                     settle_tracking = false;
+                    profile_compare_terminal_wait_logged = false;
                 }
                 last_position = current_position;
             } else {
                 settle_tracking = false;
+                profile_compare_terminal_wait_logged = false;
             }
         } else if (coord_completed) {
-            PublishProgress(observer, total_segments, total_segments);
-            return Result<void>::Success();
+            if (compare_status_snapshot.has_value() &&
+                !IsProfileCompareTerminalCompleted(
+                    compare_status_snapshot.value(),
+                    profile_compare_expected_trigger_count)) {
+                if (!profile_compare_terminal_wait_logged) {
+                    SILIGEN_LOG_WARNING(
+                        "坐标系已完成但 profile_compare 仍未完成: " +
+                        BuildProfileCompareStatusLogContext(
+                            profile_compare_expected_trigger_count,
+                            compare_status_snapshot.value()));
+                    profile_compare_terminal_wait_logged = true;
+                }
+            } else {
+                PublishProgress(observer, total_segments, total_segments);
+                return Result<void>::Success();
+            }
+        } else {
+            profile_compare_terminal_wait_logged = false;
         }
 
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1522,6 +2309,7 @@ Result<void> DispensingProcessService::WaitForMotionComplete(int32 timeout_ms,
             int x_encoder_velocity_ret = 0;
             int y_profile_velocity_ret = 0;
             int y_encoder_velocity_ret = 0;
+            std::optional<Ports::ProfileCompareStatus> timeout_compare_status;
 
             auto timeout_status_result = interpolation_port_->GetCoordinateSystemStatus(kCoordinateSystem);
             if (timeout_status_result.IsSuccess()) {
@@ -1583,6 +2371,21 @@ Result<void> DispensingProcessService::WaitForMotionComplete(int32 timeout_ms,
                 }
             }
 
+            if (profile_compare_expected_trigger_count > 0U && profile_compare_port_) {
+                auto compare_status_result = profile_compare_port_->GetProfileCompareStatus();
+                if (compare_status_result.IsError()) {
+                    return Result<void>::Failure(compare_status_result.GetError());
+                }
+                const auto& compare_status = compare_status_result.Value();
+                if (compare_status.HasError()) {
+                    return Result<void>::Failure(
+                        Error(ErrorCode::HARDWARE_ERROR,
+                              compare_status.error_message,
+                              "DispensingProcessService"));
+                }
+                timeout_compare_status = compare_status;
+            }
+
             SILIGEN_LOG_ERROR_FMT_HELPER(
                 "等待运动完成超时: elapsed_ms=%lld, observed_motion=%d, observed_progress=%d, "
                 "coord_completed=%d, state=%d, moving=%d, remaining=%u, coord_vel=%.4f, "
@@ -1629,6 +2432,32 @@ Result<void> DispensingProcessService::WaitForMotionComplete(int32 timeout_ms,
                 y_encoder_position_ret,
                 y_profile_velocity_ret,
                 y_encoder_velocity_ret);
+
+            if (timeout_compare_status.has_value()) {
+                SILIGEN_LOG_ERROR(
+                    "等待运动完成时 profile_compare 状态: " +
+                    BuildProfileCompareStatusLogContext(
+                        profile_compare_expected_trigger_count,
+                        timeout_compare_status.value()));
+
+                const bool motion_terminal_ready =
+                    coord_completed_flag == 1 &&
+                    (!final_target_position ||
+                     (has_position_snapshot &&
+                      distance_to_target >= 0.0f &&
+                      distance_to_target <= position_tolerance_mm &&
+                      std::fabs(x_velocity) <= kCompletionVelocityToleranceMmS &&
+                      std::fabs(y_velocity) <= kCompletionVelocityToleranceMmS));
+                if (motion_terminal_ready &&
+                    !IsProfileCompareTerminalCompleted(
+                        timeout_compare_status.value(),
+                        profile_compare_expected_trigger_count)) {
+                    return Result<void>::Failure(
+                        Error(ErrorCode::CMP_TRIGGER_SETUP_FAILED,
+                              "profile_compare 未完成全部触发点",
+                              "DispensingProcessService"));
+                }
+            }
             return Result<void>::Failure(
                 Error(ErrorCode::MOTION_TIMEOUT, "等待运动完成超时", "DispensingProcessService"));
         }
@@ -1810,6 +2639,12 @@ void DispensingProcessService::StopExecution(std::atomic<bool>* stop_flag, std::
         auto result = valve_port_->StopDispenser();
         if (result.IsError()) {
             SILIGEN_LOG_WARNING("停止点胶阀失败: " + result.GetError().GetMessage());
+        }
+    }
+    if (profile_compare_port_) {
+        auto result = profile_compare_port_->DisarmProfileCompare();
+        if (result.IsError()) {
+            SILIGEN_LOG_WARNING("关闭 profile compare 失败: " + result.GetError().GetMessage());
         }
     }
     if (!stop_command_sent || !interpolation_port_) {

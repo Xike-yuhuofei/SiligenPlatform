@@ -13,6 +13,12 @@
 namespace Siligen::Application::Services::Dispensing::Internal {
 
 using Siligen::Domain::Dispensing::ValueObjects::DispenseSpan;
+using Siligen::Domain::Dispensing::ValueObjects::LayoutTriggerPoint;
+using Siligen::ProcessPath::Contracts::ProcessSegment;
+using Siligen::ProcessPath::Contracts::ProcessTag;
+using Siligen::ProcessPath::Contracts::SegmentEnd;
+using Siligen::ProcessPath::Contracts::SegmentStart;
+using Siligen::ProcessPath::Contracts::SegmentType;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
@@ -113,6 +119,89 @@ void AppendUniquePoint(std::vector<Point2D>& points, const Point2D& point) {
     if (points.empty() || points.back().DistanceTo(point) > kEpsilon) {
         points.push_back(point);
     }
+}
+
+ProcessSegment ReverseProcessSegment(const ProcessSegment& segment) {
+    ProcessSegment reversed = segment;
+    if (segment.geometry.is_point) {
+        return reversed;
+    }
+
+    switch (segment.geometry.type) {
+        case SegmentType::Line:
+            std::swap(reversed.geometry.line.start, reversed.geometry.line.end);
+            break;
+        case SegmentType::Arc:
+            std::swap(reversed.geometry.arc.start_angle_deg, reversed.geometry.arc.end_angle_deg);
+            reversed.geometry.arc.clockwise = !reversed.geometry.arc.clockwise;
+            break;
+        case SegmentType::Spline:
+            std::reverse(
+                reversed.geometry.spline.control_points.begin(),
+                reversed.geometry.spline.control_points.end());
+            break;
+    }
+    return reversed;
+}
+
+Result<std::vector<ProcessSegment>> MaterializeAuthoritySpanSegments(
+    const ProcessPath& authority_process_path,
+    const DispenseSpan& span) {
+    std::vector<ProcessSegment> materialized;
+    materialized.reserve(span.source_segment_indices.size());
+    for (const auto source_segment_index : span.source_segment_indices) {
+        if (source_segment_index >= authority_process_path.segments.size()) {
+            std::ostringstream oss;
+            oss << "authority trigger layout references missing source segment index="
+                << source_segment_index;
+            return Result<std::vector<ProcessSegment>>::Failure(Error(
+                ErrorCode::INVALID_STATE,
+                oss.str(),
+                "DispensePackagingAssembly"));
+        }
+        materialized.push_back(authority_process_path.segments[source_segment_index]);
+    }
+
+    if (span.reverse_traversal) {
+        std::reverse(materialized.begin(), materialized.end());
+        for (auto& segment : materialized) {
+            segment = ReverseProcessSegment(segment);
+        }
+    }
+
+    return Result<std::vector<ProcessSegment>>::Success(std::move(materialized));
+}
+
+ProcessSegment BuildRapidProcessSegment(const Point2D& start, const Point2D& end) {
+    ProcessSegment rapid;
+    rapid.geometry.type = SegmentType::Line;
+    rapid.geometry.line.start = start;
+    rapid.geometry.line.end = end;
+    rapid.geometry.length = start.DistanceTo(end);
+    rapid.geometry.is_point = rapid.geometry.length <= kEpsilon;
+    rapid.dispense_on = false;
+    rapid.flow_rate = 0.0f;
+    rapid.tag = ProcessTag::Rapid;
+    return rapid;
+}
+
+std::vector<LayoutTriggerPoint*> CollectSpanTriggers(
+    AuthorityTriggerLayout& authority_trigger_layout,
+    const std::string& span_id) {
+    std::vector<LayoutTriggerPoint*> span_triggers;
+    for (auto& trigger : authority_trigger_layout.trigger_points) {
+        if (trigger.span_ref == span_id) {
+            span_triggers.push_back(&trigger);
+        }
+    }
+
+    std::stable_sort(
+        span_triggers.begin(),
+        span_triggers.end(),
+        [](const LayoutTriggerPoint* lhs, const LayoutTriggerPoint* rhs) {
+            return lhs->sequence_index_span < rhs->sequence_index_span;
+        });
+    return span_triggers;
 }
 
 void SampleLinePoints(
@@ -247,12 +336,13 @@ ExecutionAssemblyBuildInput BuildExecutionAssemblyBuildInput(const WorkflowExecu
     execution_input.sample_ds = input.runtime_options.sample_ds;
     execution_input.spline_max_step_mm = input.runtime_options.spline_max_step_mm;
     execution_input.spline_max_error_mm = input.runtime_options.spline_max_error_mm;
-    execution_input.estimated_time_s = input.estimated_time_s;
+    execution_input.execution_nominal_time_s = input.execution_nominal_time_s;
     execution_input.use_interpolation_planner = input.use_interpolation_planner;
     execution_input.interpolation_algorithm = input.interpolation_algorithm;
     execution_input.requested_execution_strategy = input.requested_execution_strategy;
     execution_input.point_flying_carrier_policy = input.point_flying_carrier_policy;
     execution_input.compensation_profile = input.runtime_options.compensation_profile;
+    execution_input.profile_compare_runtime_contract = input.profile_compare_runtime_contract;
     execution_input.authority_preview = BuildAuthorityPreviewBuildResult(input.authority_preview);
     return execution_input;
 }
@@ -264,7 +354,10 @@ WorkflowExecutionAssemblyResult BuildWorkflowExecutionAssemblyResult(const Execu
     result.motion_trajectory_points = input.motion_trajectory_points;
     result.preview_authority_shared_with_execution = input.preview_authority_shared_with_execution;
     result.execution_binding_ready = input.execution_binding_ready;
+    result.execution_contract_ready = input.execution_contract_ready;
     result.execution_failure_reason = input.execution_failure_reason;
+    result.execution_diagnostic_code = input.execution_diagnostic_code;
+    result.formal_compare_gate = input.formal_compare_gate;
     result.authority_trigger_layout = input.authority_trigger_layout;
     result.export_request = input.export_request;
     return result;
@@ -323,7 +416,7 @@ const ProcessPath& ResolveExecutionProcessPath(const ExecutionAssemblyBuildInput
 
 Result<ProcessPath> BuildCanonicalExecutionProcessPath(
     const ProcessPath& authority_process_path,
-    const AuthorityTriggerLayout& authority_trigger_layout) {
+    AuthorityTriggerLayout& authority_trigger_layout) {
     if (authority_process_path.segments.empty()) {
         return Result<ProcessPath>::Failure(Error(
             ErrorCode::INVALID_PARAMETER,
@@ -337,9 +430,9 @@ Result<ProcessPath> BuildCanonicalExecutionProcessPath(
             "DispensePackagingAssembly"));
     }
 
-    std::vector<const DispenseSpan*> ordered_spans;
+    std::vector<DispenseSpan*> ordered_spans;
     ordered_spans.reserve(authority_trigger_layout.spans.size());
-    for (const auto& span : authority_trigger_layout.spans) {
+    for (auto& span : authority_trigger_layout.spans) {
         if (span.source_segment_indices.empty()) {
             return Result<ProcessPath>::Failure(Error(
                 ErrorCode::INVALID_STATE,
@@ -357,19 +450,43 @@ Result<ProcessPath> BuildCanonicalExecutionProcessPath(
         });
 
     ProcessPath canonical_process_path;
-    for (const auto* span : ordered_spans) {
-        for (const auto source_segment_index : span->source_segment_indices) {
-            if (source_segment_index >= authority_process_path.segments.size()) {
-                std::ostringstream oss;
-                oss << "authority trigger layout references missing source segment index="
-                    << source_segment_index;
-                return Result<ProcessPath>::Failure(Error(
-                    ErrorCode::INVALID_STATE,
-                    oss.str(),
-                    "DispensePackagingAssembly"));
-            }
-            canonical_process_path.segments.push_back(authority_process_path.segments[source_segment_index]);
+    float32 cumulative_distance_mm = 0.0f;
+    bool has_previous_span = false;
+    Point2D previous_span_end{};
+    for (auto* span : ordered_spans) {
+        auto span_segments_result = MaterializeAuthoritySpanSegments(authority_process_path, *span);
+        if (span_segments_result.IsError()) {
+            return Result<ProcessPath>::Failure(span_segments_result.GetError());
         }
+
+        auto span_segments = span_segments_result.Value();
+        if (span_segments.empty()) {
+            return Result<ProcessPath>::Failure(Error(
+                ErrorCode::INVALID_STATE,
+                "canonical execution process path span is empty",
+                "DispensePackagingAssembly"));
+        }
+
+        const Point2D span_start_position = SegmentStart(span_segments.front().geometry);
+        const Point2D span_end_position = SegmentEnd(span_segments.back().geometry);
+        if (has_previous_span &&
+            previous_span_end.DistanceTo(span_start_position) > kGluePointDedupEpsilonMm) {
+            canonical_process_path.segments.push_back(
+                BuildRapidProcessSegment(previous_span_end, span_start_position));
+            cumulative_distance_mm += previous_span_end.DistanceTo(span_start_position);
+        }
+
+        for (auto* trigger : CollectSpanTriggers(authority_trigger_layout, span->span_id)) {
+            trigger->distance_mm_global = cumulative_distance_mm + trigger->distance_mm_span;
+        }
+
+        canonical_process_path.segments.insert(
+            canonical_process_path.segments.end(),
+            span_segments.begin(),
+            span_segments.end());
+        cumulative_distance_mm += span->total_length_mm;
+        previous_span_end = span_end_position;
+        has_previous_span = true;
     }
 
     if (canonical_process_path.segments.empty()) {
@@ -404,11 +521,11 @@ DispensingExecutionStrategy ResolveExecutionStrategy(
 float32 EstimateExecutionTime(
     const PlanningArtifactsAssemblyInput& input,
     const ExecutionPackageBuilt& built) {
-    if (input.estimated_time_s > kEpsilon) {
-        return input.estimated_time_s;
+    if (input.execution_nominal_time_s > kEpsilon) {
+        return input.execution_nominal_time_s;
     }
-    if (built.estimated_time_s > kEpsilon) {
-        return built.estimated_time_s;
+    if (built.execution_nominal_time_s > kEpsilon) {
+        return built.execution_nominal_time_s;
     }
     if (input.motion_plan.total_time > kEpsilon) {
         return input.motion_plan.total_time;

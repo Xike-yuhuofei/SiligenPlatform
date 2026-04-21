@@ -1,6 +1,6 @@
 # hardware-in-loop
 
-更新时间：`2026-04-17`
+更新时间：`2026-04-21`
 
 这里统一放硬件冒烟和机台联调入口。
 
@@ -30,12 +30,11 @@
 - 进程 `cwd` 使用仓库根，而不是 `control-core`
 - 若启动失败并命中当前已知模式，会归类为 `known_failure`
 - 若未来接入真实机台，可通过环境变量替换目标可执行程序
-- `run_hil_controlled_test.ps1` 是唯一正式的 controlled HIL release path；默认执行顺序固定为 `offline-prereq -> hardware-smoke -> hil-closed-loop -> optional hil-case-matrix -> gate -> release-summary`
-- `run_hil_controlled_test.ps1` 在 `passed` 且门禁满足时，会将本次时间戳目录证据同步到固定目录 `tests/reports/hil-controlled-test`
-- 任何带 `PublishLatestOnPass=true` 的正式 publish 都必须提供非空 `-Executor`，否则脚本会直接失败，防止生成 unsigned latest authority
-- 如需 attach 到已运行网关，可在同一条 controlled path 上显式传 `-ReuseExistingGateway`；下游 `hardware-smoke` / `hil-closed-loop` / `hil-case-matrix` 会统一复用现有 `host:port`，不再自启第二个网关
+- `run_hil_controlled_test.ps1` 是唯一受控 HIL quick-gate 入口；默认执行顺序固定为 `offline-prereq -> hardware-smoke -> hil-closed-loop -> optional hil-case-matrix -> gate -> release-summary`
+- `run_hil_controlled_test.ps1` 现在只保留 `60s` quick gate；formal `1800s` gate 已禁用
+- `PublishLatestOnPass=true` 与 `-Executor` 签字 publish 已禁用；脚本只保留时间戳证据目录，不再刷新 `tests/reports/hil-controlled-test` fixed latest authority
+- `run_hil_controlled_test.ps1` 默认强制 attach 现有 gateway；下游 `hardware-smoke` / `hil-closed-loop` / `hil-case-matrix` 统一复用现有 `host:port`，不再自启第二个网关，也不允许 `-ReuseExistingGateway:$false`
 - `run_hil_controlled_test.ps1` 在 offline prerequisites 已通过后，即使 hardware-smoke / hil-closed-loop / hil-case-matrix 阻塞，也会继续产出 `hil-controlled-gate-summary.*` 与 `hil-controlled-release-summary.md`
-- 固定目录会写入 `latest-source.txt`，用于追溯当前 fixed latest authority 对应的时间戳目录
 - 联机测试矩阵基线统一见 `docs/validation/online-test-matrix-v1.md`
 - `run_hil_closed_loop.py` 与 `run_case_matrix.py` 的 DXF case 选择统一来自 `shared/contracts/engineering/fixtures/dxf-truth-matrix.json`
 - 当前 full-chain canonical producer case 为 `rect_diag`、`bra`、`arc_circle_quadrants`
@@ -43,8 +42,8 @@
 - `run_real_dxf_machine_dryrun_suite.py` 会聚合同一组 canonical dry-run case，并输出 suite summary + per-case launcher log + evidence bundle
 - 默认 HIL case 仍是 truth matrix 中标记为 `default_hil_sample` 的 `rect_diag`；`bra`、`arc_circle_quadrants` 只应在显式传 `--dxf-case-id` 时进入真实设备路径
 - 所有会触发 `dxf.plan.prepare` 的正式 DXF/HIL 脚本现在都必须显式传入已发布 recipe/version；当前 canonical published context 固定为 `--recipe-id recipe-7d1b00f4-6a99 --version-id version-fea9ce29-f963`
-- `limited-hil` 不是“实现完即全量上机”；当前正式口径仍是先过 `full-offline-gate`，再经人工签字进入 `run_hil_controlled_test.ps1` 的受控路径
-- preview / dry-run suite 只用于 full-online blocker 汇总与 `G8` 补充证据，不会 publish latest，也不会覆盖 controlled HIL authority
+- `limited-hil` 不是“实现完即全量上机”；当前正式口径仍是先过 `full-offline-gate`，再进入 `run_hil_controlled_test.ps1` 的 `60s` 受控 quick gate
+- preview / dry-run suite 只用于 full-online blocker 汇总与 `G8` 补充证据；controlled HIL 也只输出时间戳 evidence，不再 publish latest
 - `run_hil_closed_loop.py` 与 `run_case_matrix.py` 现在都会额外发布：
   - `case-index.json`
   - `validation-evidence-bundle.json`
@@ -123,7 +122,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 ```
 
 ```powershell
-python .\tests\e2e\hardware-in-loop\run_hil_closed_loop.py --report-dir .\tests\reports\hil-controlled-test --duration-seconds 1800
+python .\tests\e2e\hardware-in-loop\run_hil_closed_loop.py --report-dir .\tests\reports\hil-controlled-test --duration-seconds 60
 ```
 
 ```powershell
@@ -141,15 +140,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop\run_hil_controlled_test.ps1 `
   -Profile Local `
-  -UseTimestampedReportDir `
-  -Executor "Codex + Xike" `
-  -PublishLatestReportDir tests\reports\hil-controlled-test
-```
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop\run_hil_controlled_test.ps1 `
-  -Profile Local `
-  -ReuseExistingGateway `
   -SkipBuild `
   -UseTimestampedReportDir `
   -PublishLatestOnPass:$false
@@ -182,10 +172,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 - gateway 监听端口默认改为自动分配空闲端口，并在 dry-run 报告根字段 `gateway_port` 中固化本次实际端口
 - 支持 `--mock-io-json`，用于在 `Hardware.mode=Mock` 下对受控 negative case 注入 `estop`、`door`、`limit_x_neg`、`limit_y_neg`
 - 默认参数为 `dispensing=10mm/s`、`dry_run=10mm/s`、`rapid=20mm/s`、`velocity_trace_interval_ms=50`
-- `--job-timeout` 现在表示最小超时下限，不再直接等于最终等待时长；脚本会基于 `dxf.plan.prepare.estimated_time_s` 计算动态预算：`max(job_timeout, estimated_time_s * job_timeout_scale + job_timeout_buffer_seconds)`
-- 当前动态超时默认参数为：`--job-timeout=120`、`--job-timeout-scale=2.0`、`--job-timeout-buffer-seconds=15`
+- dry-run 脚本等待预算完全以 runtime `dxf.job.start.execution_budget_s` 为唯一真值；若缺失该字段或与 `execution_budget_breakdown.total_budget_s` 不一致，脚本会直接判为契约错误
 - 从 `BUG-312` 起，dry-run 报告除兼容保留的 `job_status_history` 外，还会并列输出 `machine_status_history`、`coord_status_history`、`phase_timeline`、`verdict`、`evidence_contract`
-- 报告 `artifacts.job_timeout_budget` 和 `observation_summary.effective_job_timeout_seconds` 会落本次实际采用的等待预算，便于区分“真实执行超时”与“预算过紧”
+- 报告 `artifacts.job_timeout_budget` 和 `observation_summary.effective_job_timeout_seconds` 会落 runtime owner 导出的唯一等待预算，便于区分“真实执行超时”与“contract 缺失/不一致”
 - 当前 authority 口径固定为：`status=safety gate only`、`dxf.job.status=display progress only`、`motion.coord.status + axis feedback=physical execution`
 - 当前阶段枚举固定为：`prepare -> binding -> start -> coord_running -> axis_motion -> terminal`
 - 当前 verdict 枚举固定为：`completed`、`canonical_step_failed`、`motion_timeout_unclassified`、`state_contradiction`
@@ -196,21 +185,39 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 
 `run_real_dxf_production_validation.py` 说明：
 
-- 当前用于 BUG-318 这类“生产模式 path-trigger 真机专项验证”，固定走 `dxf.artifact.create -> dxf.plan.prepare(dry_run=false,use_hardware_trigger=true) -> dxf.preview.snapshot -> dxf.preview.confirm -> dxf.job.start -> dxf.job.status`
+- 当前用于 BUG-318 这类“生产模式 path-trigger 真机专项验证”，固定走 `dxf.artifact.create -> dxf.plan.prepare(dry_run=false) -> dxf.preview.snapshot -> dxf.preview.confirm -> dxf.job.start -> dxf.job.status`
 - 必须显式传入已发布 `--recipe-id/--version-id`
 - 默认 DXF 固定为仓内 canonical sample `samples/dxf/rect_diag.dxf`
-- 不再允许 `uploads archive -> repo sample` 静默回退；若显式传入 `--dxf-file` 且文件不存在，脚本直接失败
-- 真实连接后会再次校验该版本必须处于 `published` 状态
+- `run_real_dxf_production_validation.py` 的 authority 结论一律以本次生成的 `real-dxf-production-validation.json` 为准，不允许沿用历史报告、旧命令或人工口述替代
+- 若 mode 解析为 `production_execution`，当前 authority 通过条件固定为：
+  - `dxf.job.start` 成功返回 `execution_budget_s` 与 `execution_budget_breakdown`
+  - 报告根字段 `timing_summary` 必须给出 `execution_nominal_time_s`、`execution_budget_s`、`execution_budget_breakdown`、`observed_execution_time_s`
+  - `artifacts.job_timeout_budget` 必须直接反映 runtime owner 导出的唯一等待预算
+  - `job-terminal.state=completed`，且 checklist 通过
+- 若 mode 解析为 `production_blocked`，当前 authority 通过条件固定为：
+  - `dxf.job.start` 被正式拒绝且错误文案与 `import_summary` 对齐
+  - 阻塞后必须继续采到 post-block 观测窗口，且 `blocked_motion_observation.sample_count > 0`
+  - 只有在窗口内确认未发生轴运动时，报告才允许为 `overall_status=known_failure`，退出码 `10`
+  - 报告根字段 `timing_summary.execution_budget_s / execution_budget_breakdown / observed_execution_time_s` 固定为 `null`
+- 这条只约束 `run_real_dxf_production_validation.py` 的真机 production validation 入口，不改变 truth matrix 默认 HIL case `rect_diag`
 - 会在真实连接前做最小 preflight：`status -> 必要时 home -> safety gate`
-- 会同时冻结 `job-status-history.json`、`machine-status-history.json` 与本次 gateway 追加日志切片 `tcp_server.log`
-- 当前 blocking authority 固定为 `dxf.job.status` 单轨，固定要求：
+- 会同时冻结 `job-status-history.json`、`machine-status-history.json`、`coord-status-history.json`、`blocked_motion_observation` 摘要与本次 gateway 追加日志切片 `tcp_server.log`
+- 当前 `production_blocked` checklist 固定要求：
   - `preview_source=planned_glue_snapshot`
   - `preview_kind=glue_points`
-  - `job.state=completed`
-  - `overall_progress_percent=100`
-  - `completed_count == target_count`
-- `tcp_server.log` 中的 `PathTriggeredDispenserLoop/StopDispenser` 计数与在线轴覆盖率仅保留为 diagnostics，不再作为第二条 blocker
-- 若 runtime 发现 path-trigger 计数未完整收口，必须把 `job.state` 直接收口为 `failed`，并在 `error_message` 中返回 `failure_stage=path_trigger_reconcile;failure_code=DISPENSER_TRIGGER_INCOMPLETE;...`
+  - `plan_import_production_blocked=true`
+  - `formal_compare_gate.status=production_blocked`
+  - `dxf.job.start` 被拒绝且错误文案与 `import_summary` 对齐
+  - `post_block_observation_samples_collected=true`
+  - `no_axis_motion_observed_after_block=true`
+- 当前 `production_execution` checklist 固定要求：
+  - `preview_source=planned_glue_snapshot`
+  - `preview_kind=glue_points`
+  - `job_terminal_completed=true`
+  - 若 execution mode 为 `profile_compare`，则 `profile_compare_business_trigger_matches_glue_count=true`
+  - `execution_complete_logged=true`
+  - `supply_close_logged=true`
+- 当前会额外用在线位置采样对比预览几何包围盒，默认要求 `X/Y` 轴观测跨度都至少覆盖预览跨度的 `80%`
 - 当前离线回归入口为 `python -m pytest tests/integration/scenarios/first-layer/test_real_dxf_production_validation_contract.py -q`
 
 `run_dxf_stop_home_auto_probe.py` 说明：
@@ -261,7 +268,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 `run_real_dxf_machine_dryrun_negative_matrix.py` 说明：
 
 - 默认输出 `real-dxf-machine-dryrun-negative-matrix.json` 与 `real-dxf-machine-dryrun-negative-matrix.md`
-- 必须显式传入已发布 `--recipe-id/--version-id`
 - 默认报告目录为 `tests/reports/adhoc/real-dxf-machine-dryrun-negative-matrix/<timestamp>/`
 - 当前矩阵固定覆盖 `estop`、`door_open`、`home_boundary_x_active`、`home_boundary_y_active`
 - 每个 case 会复用 `run_real_dxf_machine_dryrun.py` 生成独立 per-case dry-run 报告，并保留 `launcher.log`
@@ -271,8 +277,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 
 ```powershell
 python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun.py `
-  --recipe-id recipe-7d1b00f4-6a99 `
-  --version-id version-fea9ce29-f963 `
   --report-root .\tests\reports\adhoc\live-hmi-bug312 `
   --contradiction-progress-threshold-percent 95 `
   --contradiction-consecutive-samples 5 `
@@ -291,7 +295,6 @@ python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun.py `
 `run_real_dxf_preview_snapshot.py` 说明：
 
 - 只走 preview-only 主链：`dxf.artifact.create -> dxf.plan.prepare -> dxf.preview.snapshot`
-- 必须显式传入已发布 `--recipe-id/--version-id`
 - 预览成功后会继续执行 `dxf.preview.confirm`，用于固化 `plan_fingerprint <-> snapshot_hash` 相关性
 - 默认用 `--config-mode mock` 生成 mock 硬件配置，但预览数据源必须仍为 `preview_source=planned_glue_snapshot`
 - 默认 DXF 为 `samples/dxf/rect_diag.dxf`
@@ -340,9 +343,9 @@ python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun.py `
 
 - 支持 `-SkipBuild` 跳过 `build.ps1 -Suite apps`（用于诊断回合提速）
 - `-SkipBuild` 只影响构建步骤，不改变 test/gate/release/publish 语义
-- 当 `PublishLatestOnPass=true` 时，必须提供非空 `-Executor`，latest publish 才会被允许
+- `run_hil_controlled_test.ps1` 不再允许 `PublishLatestOnPass=true`，也不再接受 `-Executor`
 - 支持 `-OperatorOverrideReason "<reason>"`；只有离线前置层不满足且现场负责人明确批准时才允许使用
-- 支持 `-ReuseExistingGateway`；启用后会把 `hardware-smoke`、`hil-closed-loop`、`hil-case-matrix` 统一切到“附着现有网关”模式，不再由这些脚本自行拉起第二个网关进程
+- 默认强制 attach 现有 gateway；`hardware-smoke`、`hil-closed-loop`、`hil-case-matrix` 统一工作在“附着现有网关”模式，不再由这些脚本自行拉起第二个网关进程，也不允许 `-ReuseExistingGateway:$false`
 - 支持 `-OfflinePrereqReport "<workspace-validation.json>"`；启用后会复用已通过的 full-offline 证据并复制到当前时间戳目录，不再在本回合重跑离线前置
 - offline prerequisites 直接以 `-Suite @("contracts","integration","e2e","protocol-compatibility")` 调用根级 `test.ps1`，覆盖 `engineering-regression`，并避免子 `powershell -File` 多 `-Suite` 绑定歧义
 - 默认会把 `offline-prereq`、`hardware-smoke`、`hil-closed-loop`、`hil-controlled-gate`、`hil-controlled-release-summary` 聚合到同一报告根

@@ -5,6 +5,7 @@
   "result": {
     "connected": true,
     "connection_state": "connected",
+    "device_mode": "production",
     "machine_state": "Idle",
     "machine_state_reason": "idle",
     "supervision": {
@@ -16,6 +17,25 @@
       "failure_stage": "",
       "recoverable": true,
       "updated_at": "2026-03-26T00:00:00Z"
+    },
+    "safety_boundary": {
+      "state": "safe",
+      "motion_permitted": true,
+      "process_output_permitted": true,
+      "estop_active": false,
+      "estop_known": true,
+      "door_open_active": false,
+      "door_open_known": true,
+      "interlock_latched": false,
+      "blocking_reasons": []
+    },
+    "action_capabilities": {
+      "motion_commands_permitted": true,
+      "manual_output_commands_permitted": true,
+      "manual_dispenser_pause_permitted": false,
+      "manual_dispenser_resume_permitted": false,
+      "active_job_present": false,
+      "estop_reset_permitted": false
     },
     "interlock_latched": false,
     "job_execution": {
@@ -31,6 +51,16 @@
       "cycle_progress_percent": 0,
       "overall_progress_percent": 0,
       "elapsed_seconds": 0.0,
+      "execution_budget_s": 0.0,
+      "execution_budget_breakdown": {
+        "execution_nominal_time_s": 0.0,
+        "motion_completion_grace_s": 0.0,
+        "owner_span_count": 0,
+        "owner_span_overhead_s": 0.0,
+        "cycle_budget_s": 0.0,
+        "target_count": 0,
+        "total_budget_s": 0.0
+      },
       "error_message": "",
       "dry_run": false
     },

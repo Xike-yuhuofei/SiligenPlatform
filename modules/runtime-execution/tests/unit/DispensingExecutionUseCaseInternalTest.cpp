@@ -54,7 +54,8 @@ class StubDispensingProcessPort final : public RuntimeDispensingProcessPort {
         return Result<DispensingRuntimeParams>::Success(params);
     }
 
-    Result<DispensingExecutionReport> ExecuteProcess(const DispensingExecutionPlan& plan,
+    Result<DispensingExecutionReport> ExecuteProcess(
+                                                     const Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated& execution_package,
                                                      const DispensingRuntimeParams&,
                                                      const DispensingExecutionOptions&,
                                                      std::atomic<bool>*,
@@ -62,6 +63,9 @@ class StubDispensingProcessPort final : public RuntimeDispensingProcessPort {
                                                      std::atomic<bool>*,
                                                      Siligen::Domain::Dispensing::Ports::IDispensingExecutionObserver*)
         noexcept override {
+        execute_called = true;
+        last_execution_nominal_time_s = execution_package.execution_nominal_time_s;
+        const auto& plan = execution_package.execution_plan;
         DispensingExecutionReport report;
         report.executed_segments = static_cast<std::uint32_t>(plan.interpolation_segments.size());
         report.total_distance = plan.total_length_mm;
@@ -69,6 +73,9 @@ class StubDispensingProcessPort final : public RuntimeDispensingProcessPort {
     }
 
     void StopExecution(std::atomic<bool>*, std::atomic<bool>* = nullptr) noexcept override {}
+
+    bool execute_called = false;
+    float32 last_execution_nominal_time_s = 0.0f;
 };
 
 class CapturingTaskSchedulerPort final : public RuntimeTaskSchedulerPort {
@@ -106,7 +113,7 @@ DispensingExecutionRequest BuildExecutionRequest(bool include_interpolation_poin
 
     auto& package = request.execution_package;
     package.total_length_mm = 12.5f;
-    package.estimated_time_s = 1.25f;
+    package.execution_nominal_time_s = 1.25f;
 
     auto& plan = package.execution_plan;
     plan.total_length_mm = package.total_length_mm;
@@ -376,6 +383,24 @@ TEST(DispensingExecutionUseCaseInternalTest, ExecuteAsyncKeepsMotionTrajectoryPo
     const auto& retained_plan = task_it->second->request->execution_package.execution_plan;
     EXPECT_TRUE(retained_plan.interpolation_points.empty());
     EXPECT_EQ(retained_plan.motion_trajectory.points.size(), 2U);
+}
+
+TEST(DispensingExecutionUseCaseInternalTest, ExecuteAsyncForwardsAuthorityEstimatedTimeToProcessPort) {
+    auto scheduler = std::make_shared<CapturingTaskSchedulerPort>();
+    auto process_port = std::make_shared<StubDispensingProcessPort>();
+    auto use_case = CreateExecutionUseCase(process_port, scheduler);
+    auto request = BuildExecutionRequest(true);
+    request.execution_package.execution_nominal_time_s = 3.75f;
+    request.execution_package.execution_plan.motion_trajectory.total_time = 0.4f;
+    request.execution_package.execution_plan.interpolation_points.back().timestamp = 0.4f;
+
+    auto task_result = use_case->ExecuteAsync(request);
+
+    ASSERT_TRUE(task_result.IsSuccess());
+    ASSERT_TRUE(static_cast<bool>(scheduler->last_executor));
+    scheduler->last_executor();
+    EXPECT_TRUE(process_port->execute_called);
+    EXPECT_FLOAT_EQ(process_port->last_execution_nominal_time_s, 3.75f);
 }
 
 TEST(DispensingExecutionUseCaseInternalTest, ExecuteAsyncDropsOlderTerminalTasksBeforeRegisteringNewTask) {
@@ -701,7 +726,7 @@ TEST(DispensingExecutionUseCaseInternalTest, StationaryPointExecutionRequestIsAc
     request.dispensing_speed_mm_s = 25.0f;
     request.dry_run_speed_mm_s = 80.0f;
     request.execution_package.total_length_mm = 0.0f;
-    request.execution_package.estimated_time_s = 0.05f;
+    request.execution_package.execution_nominal_time_s = 0.05f;
 
     auto& plan = request.execution_package.execution_plan;
     plan.geometry_kind = DispensingExecutionGeometryKind::POINT;
@@ -727,7 +752,7 @@ TEST(DispensingExecutionUseCaseInternalTest, PointFlyingExecutionRequestIsAccept
     request.dispensing_speed_mm_s = 25.0f;
     request.dry_run_speed_mm_s = 80.0f;
     request.execution_package.total_length_mm = 3.0f;
-    request.execution_package.estimated_time_s = 0.12f;
+    request.execution_package.execution_nominal_time_s = 0.12f;
 
     auto& plan = request.execution_package.execution_plan;
     plan.geometry_kind = DispensingExecutionGeometryKind::POINT;

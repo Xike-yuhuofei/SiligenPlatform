@@ -295,47 +295,12 @@ int RealMultiCardWrapper::MC_CmpPluse(short nChannelMask,
     return multicard_->MC_CmpPluse(nChannelMask, nPluseType1, nPluseType2, nTime1, nTime2, nTimeFlag1, nTimeFlag2);
 }
 
-int RealMultiCardWrapper::MC_CmpRpt(
-    short nCmpNum, unsigned long lIntervalTime, short nTime, short nTimeFlag, unsigned long ulRptTime) noexcept {
-    // COMPILE FIX: MC_CmpRpt signature mismatch in MultiCard.lib
-    // TODO: Update MultiCard.lib or verify correct parameter types
-    (void)nCmpNum;
-    (void)lIntervalTime;
-    (void)nTime;
-    (void)nTimeFlag;
-    (void)ulRptTime;
-    return -1;  // Error: function not implemented in current hardware library version
-}
-
 int RealMultiCardWrapper::MC_CmpBufStop(unsigned short channelMask) noexcept {
     return multicard_->MC_CmpBufStop(channelMask);
 }
 
 int RealMultiCardWrapper::MC_CmpBufSetChannel(short nBuf1ChannelNum, short nBuf2ChannelNum) noexcept {
     return multicard_->MC_CmpBufSetChannel(nBuf1ChannelNum, nBuf2ChannelNum);
-}
-
-int RealMultiCardWrapper::MC_CmpBufRpt(short nEncNum,
-                                       short nDir,
-                                       short nEncFlag,
-                                       long lTrigValue,
-                                       short nCmpNum,
-                                       unsigned long lIntervalTime,
-                                       short nTime,
-                                       short nTimeFlag,
-                                       unsigned long ulRptTime) noexcept {
-    // COMPILE FIX: MC_CmpBufRpt not found in MultiCard.lib
-    // TODO: Update MultiCard.lib or use alternative function (MC_CmpRpt)
-    (void)nEncNum;
-    (void)nDir;
-    (void)nEncFlag;
-    (void)lTrigValue;
-    (void)nCmpNum;
-    (void)lIntervalTime;
-    (void)nTime;
-    (void)nTimeFlag;
-    (void)ulRptTime;
-    return -1;  // Error: function not implemented in hardware library
 }
 
 // ========== I/O 控制 ==========

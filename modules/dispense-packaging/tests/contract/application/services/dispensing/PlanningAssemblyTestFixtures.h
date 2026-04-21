@@ -48,7 +48,7 @@ struct FixturePlanningInput {
     Siligen::Shared::Types::float32 sample_ds = 0.0f;
     Siligen::Shared::Types::float32 spline_max_step_mm = 0.0f;
     Siligen::Shared::Types::float32 spline_max_error_mm = 0.0f;
-    Siligen::Shared::Types::float32 estimated_time_s = 0.0f;
+    Siligen::Shared::Types::float32 execution_nominal_time_s = 0.0f;
     Siligen::Shared::Types::DispensingStrategy dispensing_strategy =
         Siligen::Shared::Types::DispensingStrategy::BASELINE;
     int subsegment_count = 8;
@@ -145,7 +145,7 @@ inline FixturePlanningInput BuildPlanningInput() {
     };
     input.motion_plan.total_length = 10.0f;
     input.motion_plan.total_time = 1.0f;
-    input.estimated_time_s = 1.25f;
+    input.execution_nominal_time_s = 1.25f;
     return input;
 }
 
@@ -205,11 +205,14 @@ inline WorkflowExecutionAssemblyRequest BuildWorkflowExecutionInput(
     execution_input.runtime_options.sample_ds = input.sample_ds;
     execution_input.runtime_options.spline_max_step_mm = input.spline_max_step_mm;
     execution_input.runtime_options.spline_max_error_mm = input.spline_max_error_mm;
-    execution_input.estimated_time_s = input.estimated_time_s;
+    execution_input.execution_nominal_time_s = input.execution_nominal_time_s;
     execution_input.use_interpolation_planner = input.use_interpolation_planner;
     execution_input.interpolation_algorithm = input.interpolation_algorithm;
     execution_input.requested_execution_strategy = input.requested_execution_strategy;
     execution_input.point_flying_carrier_policy = input.point_flying_carrier_policy;
+    execution_input.profile_compare_runtime_contract.pulse_per_mm = 200.0f;
+    execution_input.profile_compare_runtime_contract.compare_axis_mask = 0x03;
+    execution_input.profile_compare_runtime_contract.max_future_compare_count = 256U;
     execution_input.runtime_options.compensation_profile = input.compensation_profile;
     execution_input.authority_preview = authority_preview;
     return execution_input;
@@ -221,11 +224,14 @@ inline WorkflowPlanningAssemblyRequest BuildWorkflowPlanningInput(const FixtureP
     workflow_input.motion_plan = input.motion_plan;
     workflow_input.planning_start_position = input.planning_start_position;
     workflow_input.max_jerk = input.max_jerk;
-    workflow_input.estimated_time_s = input.estimated_time_s;
+    workflow_input.execution_nominal_time_s = input.execution_nominal_time_s;
     workflow_input.use_interpolation_planner = input.use_interpolation_planner;
     workflow_input.interpolation_algorithm = input.interpolation_algorithm;
     workflow_input.requested_execution_strategy = input.requested_execution_strategy;
     workflow_input.point_flying_carrier_policy = input.point_flying_carrier_policy;
+    workflow_input.profile_compare_runtime_contract.pulse_per_mm = 200.0f;
+    workflow_input.profile_compare_runtime_contract.compare_axis_mask = 0x03;
+    workflow_input.profile_compare_runtime_contract.max_future_compare_count = 256U;
     return workflow_input;
 }
 
@@ -267,7 +273,7 @@ inline FixturePlanningInput BuildPolylineInput(
             input.motion_plan.points.back().t = input.motion_plan.total_time;
         }
     }
-    input.estimated_time_s = input.motion_plan.total_time;
+    input.execution_nominal_time_s = input.motion_plan.total_time;
     return input;
 }
 

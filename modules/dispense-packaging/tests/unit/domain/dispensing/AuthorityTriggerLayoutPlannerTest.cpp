@@ -548,7 +548,6 @@ TEST(AuthorityTriggerLayoutPlannerTest, SplitsBranchRevisitCandidateIntoClosedLo
     EXPECT_EQ(layout.ignored_component_count, 0U);
     ASSERT_EQ(layout.components.size(), 1U);
     ASSERT_EQ(layout.spans.size(), 2U);
-
     const auto& closed_span = layout.spans[0];
     const auto& diagonal_span = layout.spans[1];
     EXPECT_EQ(layout.components.front().dispatch_type, TopologyDispatchType::BranchOrRevisit);

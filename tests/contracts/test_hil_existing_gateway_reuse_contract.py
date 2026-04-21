@@ -90,10 +90,13 @@ def test_wait_gateway_ready_accepts_existing_endpoint_without_spawned_process() 
 def test_hil_controlled_runner_forwards_reuse_existing_gateway_to_child_runners() -> None:
     script_text = HIL_CONTROLLED_RUNNER.read_text(encoding="utf-8")
     assert "[switch]$ReuseExistingGateway" in script_text
+    assert "if (-not $PSBoundParameters.ContainsKey('ReuseExistingGateway')) {" in script_text
+    assert "$ReuseExistingGateway = $true" in script_text
     assert 'Write-Output "  reuse_existing_gateway=$([bool]$ReuseExistingGateway)"' in script_text
-    assert '$hardwareSmokeArgs += "--reuse-existing-gateway"' in script_text
-    assert '$hilClosedLoopArgs += "--reuse-existing-gateway"' in script_text
-    assert '$hilCaseMatrixArgs += "--reuse-existing-gateway"' in script_text
+    assert 'throw "formal HIL quick gate 必须复用现有 gateway；请移除 -ReuseExistingGateway:`$false。"' in script_text
+    assert '"--report-dir", $hardwareSmokeDir,' in script_text
+    assert '"--reuse-existing-gateway"' in script_text
+    assert '"--offline-prereq-report", $offlinePrereqJsonPath,' in script_text
 
 
 def test_hil_controlled_runner_supports_reusing_existing_offline_prereq_report() -> None:

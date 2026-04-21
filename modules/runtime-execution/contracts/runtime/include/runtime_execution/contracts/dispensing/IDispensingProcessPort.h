@@ -19,7 +19,7 @@ class IDispensingProcessPort {
 
     virtual Siligen::Shared::Types::Result<Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionReport>
     ExecuteProcess(
-        const Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionPlan& plan,
+        const Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated& execution_package,
         const Siligen::Domain::Dispensing::ValueObjects::DispensingRuntimeParams& params,
         const Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionOptions& options,
         std::atomic<bool>* stop_flag,

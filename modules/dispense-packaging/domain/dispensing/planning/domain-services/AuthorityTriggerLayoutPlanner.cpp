@@ -41,6 +41,7 @@ using Siligen::Domain::Dispensing::ValueObjects::SpacingValidationOutcome;
 using Siligen::Domain::Dispensing::ValueObjects::StrongAnchor;
 using Siligen::Domain::Dispensing::ValueObjects::StrongAnchorRole;
 using Siligen::Domain::Dispensing::ValueObjects::TopologyDispatchType;
+using Siligen::ProcessPath::Contracts::ProcessSegment;
 using Siligen::ProcessPath::Contracts::Segment;
 using Siligen::ProcessPath::Contracts::SegmentEnd;
 using Siligen::ProcessPath::Contracts::SegmentStart;
@@ -612,6 +613,194 @@ void PopulateOutcomeDiagnostics(SpacingValidationOutcome& outcome, const Dispens
     outcome.phase_strategy = layout_span.phase_strategy;
 }
 
+struct PlannedAuthoritySpan {
+    DispenseSpan span;
+    SpacingValidationOutcome outcome;
+    std::vector<LayoutTriggerPoint> trigger_points;
+    bool blocking_failure = false;
+};
+
+Result<PlannedAuthoritySpan> FinalizeAuthoritySpanLayout(
+    const TopologySpanSlice& span,
+    DispenseSpan layout_span,
+    const AuthorityTriggerLayoutPlannerRequest& request,
+    const TriggerPlan& trigger_plan,
+    float32 min_spacing_mm,
+    float32 max_spacing_mm,
+    float32 vertex_tolerance_mm,
+    float32 closed_loop_anchor_tolerance_mm,
+    bool suppress_overlapped_open_end_trigger) {
+    PlannedAuthoritySpan planned;
+    planned.span = std::move(layout_span);
+
+    PathArcLengthLocator locator;
+    TriggerPlanner trigger_planner;
+    Internal::ClosedLoopAnchorConstraintSolver closed_loop_solver;
+
+    auto timing_result = trigger_planner.Plan(
+        planned.span.total_length_mm,
+        request.dispensing_velocity,
+        request.acceleration,
+        request.target_spacing_mm,
+        request.dispenser_interval_ms,
+        0.0f,
+        trigger_plan,
+        request.compensation_profile);
+    if (timing_result.IsError()) {
+        return Result<PlannedAuthoritySpan>::Failure(timing_result.GetError());
+    }
+
+    const std::size_t default_division_count = std::max<std::size_t>(
+        1,
+        static_cast<std::size_t>(std::lround(planned.span.total_length_mm / request.target_spacing_mm)));
+    const auto boundaries = BuildSegmentBoundaries(span);
+
+    planned.span.interval_count = default_division_count;
+    planned.span.actual_spacing_mm =
+        planned.span.total_length_mm / static_cast<float32>(default_division_count);
+    planned.span.phase_mm = 0.0f;
+    planned.span.anchor_constraints_satisfied = false;
+    if (planned.span.closed) {
+        if (planned.span.phase_strategy == DispenseSpanPhaseStrategy::AnchorConstrained) {
+            const auto anchor_solution = closed_loop_solver.Solve({
+                &planned.span.strong_anchors,
+                planned.span.total_length_mm,
+                request.target_spacing_mm,
+                min_spacing_mm,
+                max_spacing_mm,
+                closed_loop_anchor_tolerance_mm,
+            });
+            if (!anchor_solution.solved) {
+                planned.span.validation_state = SpacingValidationClassification::Fail;
+                planned.outcome =
+                    BuildBlockingOutcome(planned.span.layout_ref, planned.span.span_id, anchor_solution.blocking_reason);
+                planned.outcome.anchor_constraint_state = anchor_solution.anchor_constraint_state;
+                PopulateOutcomeDiagnostics(planned.outcome, planned.span);
+                planned.blocking_failure = true;
+                return Result<PlannedAuthoritySpan>::Success(std::move(planned));
+            }
+            planned.span.interval_count = anchor_solution.interval_count;
+            planned.span.actual_spacing_mm = anchor_solution.actual_spacing_mm;
+            planned.span.phase_mm = anchor_solution.phase_mm;
+            planned.span.anchor_constraints_satisfied = true;
+        } else {
+            planned.span.phase_mm = closed_loop_solver.ResolvePhase(
+                planned.span.total_length_mm,
+                planned.span.actual_spacing_mm,
+                planned.span.interval_count,
+                boundaries);
+        }
+    }
+
+    planned.outcome.outcome_id = BuildStableId("spacing", planned.span.span_id);
+    planned.outcome.layout_ref = planned.span.layout_ref;
+    planned.outcome.span_ref = planned.span.span_id;
+    if (planned.span.closed &&
+        planned.span.phase_strategy == DispenseSpanPhaseStrategy::AnchorConstrained) {
+        if (planned.span.actual_spacing_mm >= min_spacing_mm - kEpsilon &&
+            planned.span.actual_spacing_mm <= max_spacing_mm + kEpsilon) {
+            planned.outcome.classification = SpacingValidationClassification::Pass;
+            planned.outcome.anchor_constraint_state = "satisfied";
+        } else {
+            planned.outcome.classification = SpacingValidationClassification::PassWithException;
+            planned.outcome.anchor_constraint_state = "satisfied_with_exception";
+            planned.outcome.anchor_exception_reason = "anchor_constrained_spacing_outside_window";
+            planned.outcome.exception_reason = planned.outcome.anchor_exception_reason;
+        }
+    } else {
+        planned.outcome.classification = ResolveClassification(
+            planned.span.actual_spacing_mm,
+            min_spacing_mm,
+            max_spacing_mm,
+            planned.outcome.exception_reason,
+            planned.outcome.blocking_reason);
+        planned.outcome.anchor_constraint_state = "not_applicable";
+    }
+    planned.outcome.min_observed_spacing_mm = planned.span.actual_spacing_mm;
+    planned.outcome.max_observed_spacing_mm = planned.span.actual_spacing_mm;
+    PopulateOutcomeDiagnostics(planned.outcome, planned.span);
+    planned.span.validation_state = planned.outcome.classification;
+    if (planned.outcome.classification == SpacingValidationClassification::Fail) {
+        planned.blocking_failure = true;
+        return Result<PlannedAuthoritySpan>::Success(std::move(planned));
+    }
+
+    const std::size_t point_count =
+        planned.span.closed ? planned.span.interval_count : (planned.span.interval_count + 1U);
+    planned.trigger_points.reserve(point_count);
+    for (std::size_t point_index = 0; point_index < point_count; ++point_index) {
+        if (suppress_overlapped_open_end_trigger &&
+            !planned.span.closed &&
+            point_index + 1U == point_count) {
+            continue;
+        }
+
+        const float32 traversal_distance_mm = planned.span.closed
+            ? (planned.span.phase_mm + planned.span.actual_spacing_mm * static_cast<float32>(point_index))
+            : ((point_index == planned.span.interval_count)
+                ? planned.span.total_length_mm
+                : planned.span.actual_spacing_mm * static_cast<float32>(point_index));
+        const float32 geometry_distance_mm = planned.span.closed
+            ? Internal::WrapLoopDistance(traversal_distance_mm, planned.span.total_length_mm)
+            : traversal_distance_mm;
+        auto location_result = locator.Locate(
+            span.segments,
+            geometry_distance_mm,
+            request.spline_max_error_mm,
+            request.spline_max_step_mm);
+        if (location_result.IsError()) {
+            planned.outcome.classification = SpacingValidationClassification::Fail;
+            planned.outcome.exception_reason.clear();
+            planned.outcome.blocking_reason = location_result.GetError().GetMessage();
+            planned.span.validation_state = planned.outcome.classification;
+            planned.blocking_failure = true;
+            planned.trigger_points.clear();
+            return Result<PlannedAuthoritySpan>::Success(std::move(planned));
+        }
+
+        LayoutTriggerPoint point;
+        point.trigger_id = BuildStableId(
+            "trigger",
+            planned.span.span_id + "|" + std::to_string(point_index) + "|" + std::to_string(geometry_distance_mm));
+        point.layout_ref = planned.span.layout_ref;
+        point.span_ref = planned.span.span_id;
+        point.sequence_index_span = point_index;
+        point.distance_mm_global = traversal_distance_mm;
+        point.distance_mm_span = traversal_distance_mm;
+        point.position = location_result.Value().position;
+        point.source_segment_index = span.source_segment_indices[location_result.Value().segment_index];
+        point.shared_vertex = IsSharedVertexDistance(boundaries, geometry_distance_mm);
+        if ((!planned.span.closed && (point_index == 0 || point_index + 1 == point_count)) ||
+            (planned.span.closed &&
+             HasStrongAnchorAtDistance(
+                 planned.span,
+                 geometry_distance_mm,
+                 planned.span.total_length_mm,
+                 closed_loop_anchor_tolerance_mm)) ||
+            HasStrongAnchorAtPosition(planned.span, point.position, vertex_tolerance_mm)) {
+            point.source_kind = LayoutTriggerSourceKind::Anchor;
+        } else if (point.shared_vertex) {
+            point.source_kind = LayoutTriggerSourceKind::SharedVertex;
+        } else {
+            point.source_kind = LayoutTriggerSourceKind::Generated;
+        }
+
+        planned.trigger_points.push_back(point);
+        planned.outcome.trigger_refs.push_back(point.trigger_id);
+        planned.outcome.points.push_back(point.position);
+    }
+
+    if (planned.trigger_points.empty()) {
+        planned.outcome.classification = SpacingValidationClassification::Fail;
+        planned.outcome.exception_reason.clear();
+        planned.outcome.blocking_reason = "authority trigger points unavailable";
+        planned.span.validation_state = planned.outcome.classification;
+        planned.blocking_failure = true;
+    }
+
+    return Result<PlannedAuthoritySpan>::Success(std::move(planned));
+}
+
 }  // namespace
 
 Result<AuthorityTriggerLayout> AuthorityTriggerLayoutPlanner::Plan(
@@ -697,14 +886,12 @@ Result<AuthorityTriggerLayout> AuthorityTriggerLayoutPlanner::Plan(
     trigger_plan.safety.min_interval_ms = static_cast<int32>(request.min_interval_ms);
     trigger_plan.safety.downgrade_on_violation = request.downgrade_on_violation;
 
-    TriggerPlanner trigger_planner;
-    PathArcLengthLocator locator;
     Internal::ClosedLoopCornerAnchorResolver corner_anchor_resolver;
-    Internal::ClosedLoopAnchorConstraintSolver closed_loop_solver;
 
     std::size_t global_sequence = 0;
     bool has_blocking_failure = component_result.effective_component_count == 0U;
     std::size_t span_order_index = 0;
+    float32 global_distance_adjustment_mm = 0.0f;
     std::vector<AuthorityLayoutComponent> component_records;
     component_records.reserve(component_result.components.size());
     std::vector<PendingComponentSpan> pending_spans;
@@ -771,10 +958,11 @@ Result<AuthorityTriggerLayout> AuthorityTriggerLayoutPlanner::Plan(
                     pending_spans,
                     pending_span_position,
                     vertex_tolerance_mm);
+            const std::string span_id_seed =
+                component_record.component_id + "|" + std::to_string(pending_span.local_span_index);
             const std::string span_id = BuildStableId(
                 "span",
-                component_record.component_id + "|" + std::to_string(pending_span.local_span_index));
-            component_record.span_refs.push_back(span_id);
+                span_id_seed);
 
             DispenseSpan layout_span;
             layout_span.span_id = span_id;
@@ -782,7 +970,6 @@ Result<AuthorityTriggerLayout> AuthorityTriggerLayoutPlanner::Plan(
             layout_span.component_id = component_record.component_id;
             layout_span.component_index = component_record.component_index;
             layout_span.source_segment_indices = span.source_segment_indices;
-            layout_span.order_index = span_order_index++;
             layout_span.closed = IsClosedSpan(span, split_request.vertex_tolerance_mm);
             layout_span.curve_mode = ResolveCurveMode(span);
             layout_span.dispatch_type = component.dispatch_type;
@@ -790,13 +977,47 @@ Result<AuthorityTriggerLayout> AuthorityTriggerLayoutPlanner::Plan(
 
             auto append_failed_span =
                 [&](const std::string& reason, const std::string& anchor_constraint_state = "not_applicable") {
+                    layout_span.order_index = span_order_index++;
                     layout_span.validation_state = SpacingValidationClassification::Fail;
                     has_blocking_failure = true;
                     auto outcome = BuildBlockingOutcome(layout.layout_id, span_id, reason);
                     outcome.anchor_constraint_state = anchor_constraint_state;
                     PopulateOutcomeDiagnostics(outcome, layout_span);
+                    component_record.span_refs.push_back(layout_span.span_id);
                     layout.spans.push_back(layout_span);
                     layout.validation_outcomes.push_back(std::move(outcome));
+                };
+            auto append_planned_span =
+                [&](PlannedAuthoritySpan&& planned, float32 distance_offset_mm, bool allow_cross_span_dedup) {
+                    planned.span.order_index = span_order_index++;
+                    std::vector<std::string> kept_trigger_refs;
+                    std::vector<Point2D> kept_points;
+                    kept_trigger_refs.reserve(planned.trigger_points.size());
+                    kept_points.reserve(planned.trigger_points.size());
+                    for (auto& point : planned.trigger_points) {
+                        point.distance_mm_global = distance_offset_mm + point.distance_mm_span;
+                        if (allow_cross_span_dedup &&
+                            ShouldSkipAdjacentCrossSpanDuplicateTrigger(
+                                layout.trigger_points,
+                                point,
+                                vertex_tolerance_mm)) {
+                            continue;
+                        }
+
+                        point.sequence_index_global = global_sequence++;
+                        kept_trigger_refs.push_back(point.trigger_id);
+                        kept_points.push_back(point.position);
+                        layout.trigger_points.push_back(std::move(point));
+                    }
+
+                    planned.outcome.trigger_refs = std::move(kept_trigger_refs);
+                    planned.outcome.points = std::move(kept_points);
+                    if (planned.blocking_failure) {
+                        has_blocking_failure = true;
+                    }
+                    component_record.span_refs.push_back(planned.span.span_id);
+                    layout.spans.push_back(std::move(planned.span));
+                    layout.validation_outcomes.push_back(std::move(planned.outcome));
                 };
 
             if (component.dispatch_type == TopologyDispatchType::UnsupportedMixedTopology) {
@@ -809,6 +1030,7 @@ Result<AuthorityTriggerLayout> AuthorityTriggerLayoutPlanner::Plan(
             if (point_only_span) {
                 PopulateStrongAnchors(layout_span, span, 0.0f, vertex_tolerance_mm);
                 ResolveSpanPolicies(layout_span);
+                layout_span.order_index = span_order_index++;
                 layout_span.total_length_mm = 0.0f;
                 layout_span.interval_count = 0U;
                 layout_span.actual_spacing_mm = 0.0f;
@@ -830,7 +1052,7 @@ Result<AuthorityTriggerLayout> AuthorityTriggerLayoutPlanner::Plan(
                 point.layout_ref = layout.layout_id;
                 point.span_ref = layout_span.span_id;
                 point.sequence_index_span = 0U;
-                point.distance_mm_global = span.start_distance_mm;
+                point.distance_mm_global = pending_span.start_distance_mm + global_distance_adjustment_mm;
                 point.distance_mm_span = 0.0f;
                 point.position = SegmentStart(span.segments.front().geometry);
                 point.source_segment_index = span.source_segment_indices.front();
@@ -847,6 +1069,7 @@ Result<AuthorityTriggerLayout> AuthorityTriggerLayoutPlanner::Plan(
                     layout.trigger_points.push_back(point);
                 }
 
+                component_record.span_refs.push_back(layout_span.span_id);
                 layout.spans.push_back(std::move(layout_span));
                 layout.validation_outcomes.push_back(std::move(outcome));
                 continue;
@@ -857,6 +1080,7 @@ Result<AuthorityTriggerLayout> AuthorityTriggerLayoutPlanner::Plan(
             }
 
             PopulateStrongAnchors(layout_span, span, total_length_mm, vertex_tolerance_mm);
+            layout_span.total_length_mm = total_length_mm;
             if (layout_span.closed) {
                 const auto corner_resolution = corner_anchor_resolver.Resolve({
                     &span,
@@ -872,188 +1096,25 @@ Result<AuthorityTriggerLayout> AuthorityTriggerLayoutPlanner::Plan(
             }
             ResolveSpanPolicies(layout_span);
 
-            auto timing_result = trigger_planner.Plan(
-                total_length_mm,
-                request.dispensing_velocity,
-                request.acceleration,
-                request.target_spacing_mm,
-                request.dispenser_interval_ms,
-                0.0f,
+            auto finalized_result = FinalizeAuthoritySpanLayout(
+                span,
+                std::move(layout_span),
+                request,
                 trigger_plan,
-                request.compensation_profile);
-            if (timing_result.IsError()) {
-                return Result<AuthorityTriggerLayout>::Failure(timing_result.GetError());
+                layout.min_spacing_mm,
+                layout.max_spacing_mm,
+                vertex_tolerance_mm,
+                closed_loop_anchor_tolerance_mm,
+                suppress_overlapped_open_end_trigger);
+            if (finalized_result.IsError()) {
+                return Result<AuthorityTriggerLayout>::Failure(finalized_result.GetError());
             }
 
-            const std::size_t default_division_count = std::max<std::size_t>(
-                1,
-                static_cast<std::size_t>(std::lround(total_length_mm / request.target_spacing_mm)));
-            const auto boundaries = BuildSegmentBoundaries(span);
-
-            layout_span.total_length_mm = total_length_mm;
-            layout_span.interval_count = default_division_count;
-            layout_span.actual_spacing_mm = total_length_mm / static_cast<float32>(default_division_count);
-            layout_span.phase_mm = 0.0f;
-            layout_span.anchor_constraints_satisfied = false;
-            if (layout_span.closed) {
-                if (layout_span.phase_strategy == DispenseSpanPhaseStrategy::AnchorConstrained) {
-                    const auto anchor_solution = closed_loop_solver.Solve({
-                        &layout_span.strong_anchors,
-                        total_length_mm,
-                        request.target_spacing_mm,
-                        layout.min_spacing_mm,
-                        layout.max_spacing_mm,
-                        closed_loop_anchor_tolerance_mm,
-                    });
-                    if (!anchor_solution.solved) {
-                        append_failed_span(anchor_solution.blocking_reason, anchor_solution.anchor_constraint_state);
-                        continue;
-                    }
-                    layout_span.interval_count = anchor_solution.interval_count;
-                    layout_span.actual_spacing_mm = anchor_solution.actual_spacing_mm;
-                    layout_span.phase_mm = anchor_solution.phase_mm;
-                    layout_span.anchor_constraints_satisfied = true;
-                } else {
-                    layout_span.phase_mm = closed_loop_solver.ResolvePhase(
-                        total_length_mm,
-                        layout_span.actual_spacing_mm,
-                        layout_span.interval_count,
-                        boundaries);
-                }
-            }
-
-            SpacingValidationOutcome outcome;
-            outcome.outcome_id = BuildStableId("spacing", layout_span.span_id);
-            outcome.layout_ref = layout.layout_id;
-            outcome.span_ref = layout_span.span_id;
-            if (layout_span.closed && layout_span.phase_strategy == DispenseSpanPhaseStrategy::AnchorConstrained) {
-                if (layout_span.actual_spacing_mm >= layout.min_spacing_mm - kEpsilon &&
-                    layout_span.actual_spacing_mm <= layout.max_spacing_mm + kEpsilon) {
-                    outcome.classification = SpacingValidationClassification::Pass;
-                    outcome.anchor_constraint_state = "satisfied";
-                } else {
-                    outcome.classification = SpacingValidationClassification::PassWithException;
-                    outcome.anchor_constraint_state = "satisfied_with_exception";
-                    outcome.anchor_exception_reason = "anchor_constrained_spacing_outside_window";
-                    outcome.exception_reason = outcome.anchor_exception_reason;
-                }
-            } else {
-                outcome.classification = ResolveClassification(
-                    layout_span.actual_spacing_mm,
-                    layout.min_spacing_mm,
-                    layout.max_spacing_mm,
-                    outcome.exception_reason,
-                    outcome.blocking_reason);
-                outcome.anchor_constraint_state = "not_applicable";
-            }
-            outcome.min_observed_spacing_mm = layout_span.actual_spacing_mm;
-            outcome.max_observed_spacing_mm = layout_span.actual_spacing_mm;
-            PopulateOutcomeDiagnostics(outcome, layout_span);
-            layout_span.validation_state = outcome.classification;
-            if (outcome.classification == SpacingValidationClassification::Fail) {
-                has_blocking_failure = true;
-                layout.spans.push_back(layout_span);
-                layout.validation_outcomes.push_back(std::move(outcome));
-                continue;
-            }
-
-            const std::size_t point_count =
-                layout_span.closed ? layout_span.interval_count : (layout_span.interval_count + 1U);
-            std::vector<LayoutTriggerPoint> span_trigger_points;
-            span_trigger_points.reserve(point_count);
-            bool span_failed = false;
-            for (std::size_t point_index = 0; point_index < point_count; ++point_index) {
-                if (suppress_overlapped_open_end_trigger &&
-                    !layout_span.closed &&
-                    point_index + 1U == point_count) {
-                    continue;
-                }
-
-                const float32 traversal_distance_mm = layout_span.closed
-                    ? (layout_span.phase_mm + layout_span.actual_spacing_mm * static_cast<float32>(point_index))
-                    : ((point_index == layout_span.interval_count)
-                        ? total_length_mm
-                        : layout_span.actual_spacing_mm * static_cast<float32>(point_index));
-                const float32 geometry_distance_mm = layout_span.closed
-                    ? Internal::WrapLoopDistance(traversal_distance_mm, total_length_mm)
-                    : traversal_distance_mm;
-                auto location_result = locator.Locate(
-                    span.segments,
-                    geometry_distance_mm,
-                    request.spline_max_error_mm,
-                    request.spline_max_step_mm);
-                if (location_result.IsError()) {
-                    outcome.classification = SpacingValidationClassification::Fail;
-                    outcome.exception_reason.clear();
-                    outcome.blocking_reason = location_result.GetError().GetMessage();
-                    layout_span.validation_state = outcome.classification;
-                    has_blocking_failure = true;
-                    span_failed = true;
-                    break;
-                }
-
-                LayoutTriggerPoint point;
-                point.trigger_id = BuildStableId(
-                    "trigger",
-                    layout_span.span_id + "|" + std::to_string(point_index) + "|" + std::to_string(geometry_distance_mm));
-                point.layout_ref = layout.layout_id;
-                point.span_ref = layout_span.span_id;
-                point.sequence_index_span = point_index;
-                point.distance_mm_global = span.start_distance_mm + traversal_distance_mm;
-                point.distance_mm_span = traversal_distance_mm;
-                point.position = location_result.Value().position;
-                point.source_segment_index = span.source_segment_indices[location_result.Value().segment_index];
-                point.shared_vertex = IsSharedVertexDistance(boundaries, geometry_distance_mm);
-                if ((!layout_span.closed && (point_index == 0 || point_index + 1 == point_count)) ||
-                    (layout_span.closed &&
-                     HasStrongAnchorAtDistance(
-                         layout_span,
-                         geometry_distance_mm,
-                         total_length_mm,
-                         closed_loop_anchor_tolerance_mm)) ||
-                    HasStrongAnchorAtPosition(layout_span, point.position, split_request.vertex_tolerance_mm)) {
-                    point.source_kind = LayoutTriggerSourceKind::Anchor;
-                } else if (point.shared_vertex) {
-                    point.source_kind = LayoutTriggerSourceKind::SharedVertex;
-                } else {
-                    point.source_kind = LayoutTriggerSourceKind::Generated;
-                }
-
-                if (ShouldSkipAdjacentCrossSpanDuplicateTrigger(
-                        layout.trigger_points,
-                        point,
-                        vertex_tolerance_mm)) {
-                    continue;
-                }
-
-                span_trigger_points.push_back(point);
-                outcome.trigger_refs.push_back(point.trigger_id);
-                outcome.points.push_back(point.position);
-            }
-
-            if (span_failed) {
-                layout.spans.push_back(layout_span);
-                layout.validation_outcomes.push_back(std::move(outcome));
-                continue;
-            }
-            if (span_trigger_points.empty()) {
-                outcome.classification = SpacingValidationClassification::Fail;
-                outcome.exception_reason.clear();
-                outcome.blocking_reason = "authority trigger points unavailable";
-                layout_span.validation_state = outcome.classification;
-                has_blocking_failure = true;
-                layout.spans.push_back(layout_span);
-                layout.validation_outcomes.push_back(std::move(outcome));
-                continue;
-            }
-
-            for (auto& point : span_trigger_points) {
-                point.sequence_index_global = global_sequence++;
-                layout.trigger_points.push_back(std::move(point));
-            }
-
-            layout.spans.push_back(std::move(layout_span));
-            layout.validation_outcomes.push_back(std::move(outcome));
+            auto finalized_span = finalized_result.Value();
+            append_planned_span(
+                std::move(finalized_span),
+                pending_span.start_distance_mm + global_distance_adjustment_mm,
+                true);
         }
 
     layout.components = std::move(component_records);

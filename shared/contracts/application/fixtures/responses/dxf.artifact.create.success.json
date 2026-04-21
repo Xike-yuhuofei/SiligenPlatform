@@ -14,6 +14,7 @@
     "import_result_classification": "success",
     "import_preview_ready": true,
     "import_production_ready": true,
+    "formal_compare_gate": null,
     "import_summary": "DXF import succeeded and is ready for production.",
     "import_primary_code": "",
     "import_warning_codes": [],

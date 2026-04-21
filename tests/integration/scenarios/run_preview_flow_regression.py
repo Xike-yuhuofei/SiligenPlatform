@@ -108,6 +108,7 @@ class _FakePreviewSnapshotWorker:
             "segment_count": 2,
             "glue_point_count": 2,
             "glue_points": [{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
+            "glue_reveal_lengths_mm": [0.0, 10.0],
             "motion_preview": {
                 "source": "execution_trajectory_snapshot",
                 "kind": "polyline",
@@ -129,33 +130,6 @@ class _FakePreviewSnapshotWorker:
         return None
 
 
-def _build_fake_offline_preview_payload(_filepath: str, *, speed_mm_s: float, dry_run: bool) -> dict[str, Any]:
-    return {
-        "snapshot_id": "snapshot-int",
-        "snapshot_hash": "hash-int",
-        "plan_id": "plan-int",
-        "preview_source": "planned_glue_snapshot",
-        "preview_kind": "glue_points",
-        "segment_count": 2,
-        "glue_point_count": 2,
-        "glue_points": [{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
-        "motion_preview": {
-            "source": "execution_trajectory_snapshot",
-            "kind": "polyline",
-            "source_point_count": 8,
-            "point_count": 2,
-            "is_sampled": True,
-            "sampling_strategy": "execution_trajectory_geometry_preserving_clamp",
-            "polyline": [{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
-        },
-        "total_length_mm": 10.0,
-        "estimated_time_s": 0.5,
-        "generated_at": "2026-04-02T00:00:00Z",
-        "dry_run": bool(dry_run),
-        "requested_speed_mm_s": float(speed_mm_s),
-    }
-
-
 class _FakeProtocol:
     def __init__(self) -> None:
         self.calls: list[tuple[object, ...]] = []
@@ -175,24 +149,27 @@ class _FakeClient:
         self.port = port
 
 
-def _run_preview_flow() -> CaseResult:
+def _run_online_preview_flow() -> CaseResult:
     app = QApplication.instance() or QApplication([])
     _FakePreviewSnapshotWorker.created.clear()
 
     original_web_view = getattr(main_window_module, "QWebEngineView", None)
     original_web_engine_flag = getattr(main_window_module, "WEB_ENGINE_AVAILABLE", False)
     original_worker = main_window_module.PreviewSnapshotWorker
-    original_offline_preview_builder = main_window_module.build_offline_preview_payload
 
     main_window_module.QWebEngineView = _FakePreviewView
     main_window_module.WEB_ENGINE_AVAILABLE = True
     main_window_module.PreviewSnapshotWorker = _FakePreviewSnapshotWorker
-    main_window_module.build_offline_preview_payload = _build_fake_offline_preview_payload
 
     window = cast(Any, main_window_module.MainWindow(launch_mode="offline"))
     try:
+        window._requested_launch_mode = "online"
+        window._launch_result = None
+        window._session_snapshot = None
+        window._require_online_mode = lambda _capability: True
         window._protocol = _FakeProtocol()
         window._client = _FakeClient()
+        window._connected = True
         window._mode_production.setChecked(True)
         window._mode_dryrun.setChecked(False)
         window._dxf_filepath = str(ROOT / "samples" / "dxf" / "rect_diag.dxf")
@@ -221,7 +198,7 @@ def _run_preview_flow() -> CaseResult:
         }
 
         assert window._dxf_loaded
-        assert payload["artifact_id"] == "offline-local"
+        assert payload["artifact_id"] == "artifact-int"
         assert payload["plan_id"] == "plan-int"
         assert payload["snapshot_hash"] == "hash-int"
         assert payload["preview_source"] == "planned_glue_snapshot"
@@ -234,7 +211,10 @@ def _run_preview_flow() -> CaseResult:
         assert payload["debug_contains_hash"] is True
         assert payload["filename_display"] == "rect_diag.dxf"
         assert payload["html_contains_playback_overlay"] is True
-        assert payload["protocol_calls"] == []
+        assert payload["protocol_calls"] == [
+            ("dxf.artifact.create", str(ROOT / "samples" / "dxf" / "rect_diag.dxf")),
+            ("dxf.info",),
+        ]
         assert payload["offline_payload"]["motion_preview_source"] == "execution_trajectory_snapshot"
         assert payload["offline_payload"]["motion_preview_sampling_strategy"] == "execution_trajectory_geometry_preserving_clamp"
         assert payload["offline_payload"]["motion_preview_point_count"] == 2
@@ -254,7 +234,71 @@ def _run_preview_flow() -> CaseResult:
         main_window_module.QWebEngineView = original_web_view
         main_window_module.WEB_ENGINE_AVAILABLE = original_web_engine_flag
         main_window_module.PreviewSnapshotWorker = original_worker
-        main_window_module.build_offline_preview_payload = original_offline_preview_builder
+        app.processEvents()
+
+
+def _run_offline_preview_block() -> CaseResult:
+    app = QApplication.instance() or QApplication([])
+    _FakePreviewSnapshotWorker.created.clear()
+
+    original_web_view = getattr(main_window_module, "QWebEngineView", None)
+    original_web_engine_flag = getattr(main_window_module, "WEB_ENGINE_AVAILABLE", False)
+    original_worker = main_window_module.PreviewSnapshotWorker
+
+    main_window_module.QWebEngineView = _FakePreviewView
+    main_window_module.WEB_ENGINE_AVAILABLE = True
+    main_window_module.PreviewSnapshotWorker = _FakePreviewSnapshotWorker
+
+    window = cast(Any, main_window_module.MainWindow(launch_mode="offline"))
+    try:
+        window._protocol = _FakeProtocol()
+        window._mode_production.setChecked(True)
+        window._mode_dryrun.setChecked(False)
+        window._dxf_filepath = str(ROOT / "samples" / "dxf" / "rect_diag.dxf")
+
+        window._on_dxf_load()
+        payload = {
+            "dxf_loaded": window._dxf_loaded,
+            "artifact_id": window._dxf_artifact_id,
+            "plan_id": window._current_plan_id,
+            "snapshot_hash": window._current_plan_fingerprint,
+            "preview_source": window._preview_source,
+            "preview_kind": window._preview_session.state.preview_kind,
+            "glue_point_count": window._preview_session.state.glue_point_count,
+            "motion_preview_source": window._preview_session.state.motion_preview_source,
+            "status_message": cast(Any, window.statusBar()).currentMessage(),
+            "protocol_calls": cast(Any, window._protocol).calls,
+            "html_contains_block_message": "当前生产预览链仅支持在线 gateway 快照" in cast(Any, window._dxf_view).html,
+        }
+
+        assert payload["dxf_loaded"] is False
+        assert payload["artifact_id"] == ""
+        assert payload["plan_id"] == ""
+        assert payload["snapshot_hash"] == ""
+        assert payload["preview_source"] == ""
+        assert payload["preview_kind"] == ""
+        assert payload["glue_point_count"] == 0
+        assert payload["motion_preview_source"] == ""
+        assert payload["status_message"] == "当前生产预览链仅支持在线 gateway 快照"
+        assert payload["protocol_calls"] == []
+        assert payload["html_contains_block_message"] is True
+        assert window._preview_snapshot_worker is None
+        assert window._preview_refresh_inflight is False
+        assert not _FakePreviewSnapshotWorker.created
+
+        return CaseResult(
+            case_id="offline-dxf-preview-block-contract",
+            title="Offline DXF load blocks preview contract",
+            status="passed",
+            sample_id="sample.dxf.rect_diag",
+            detail=payload,
+        )
+    finally:
+        window.close()
+        window.deleteLater()
+        main_window_module.QWebEngineView = original_web_view
+        main_window_module.WEB_ENGINE_AVAILABLE = original_web_engine_flag
+        main_window_module.PreviewSnapshotWorker = original_worker
         app.processEvents()
 
 
@@ -363,7 +407,8 @@ def main() -> int:
     results: list[CaseResult] = []
 
     try:
-        results.append(_run_preview_flow())
+        results.append(_run_online_preview_flow())
+        results.append(_run_offline_preview_block())
         overall_status = "passed"
     except Exception as exc:
         overall_status = "failed"

@@ -1,6 +1,6 @@
 # 联机测试矩阵 v1
 
-更新时间：`2026-04-16`
+更新时间：`2026-04-21`
 
 ## 1. 目标与非目标
 
@@ -23,6 +23,7 @@
 | HIL 状态机闭环 | `hil-closed-loop-summary.json` | `tests/e2e/hardware-in-loop/` | `docs/runtime/`、发布收尾文档 |
 | HIL controlled gate | `hil-controlled-gate-summary.json` | `tests/e2e/hardware-in-loop/verify_hil_controlled_gate.py` | `docs/runtime/field-acceptance.md`、发布流程 |
 | DXF 真机 dry-run 主链 | `real-dxf-machine-dryrun.json` 及同批次观测工件 | `tests/e2e/hardware-in-loop/` | 诊断/回归说明文档 |
+| DXF 生产模式真机专项 | `real-dxf-production-validation.json` 及同批次观测工件 | `tests/e2e/hardware-in-loop/` | 验证汇总、incident 材料 |
 | 在线预览证据 | `preview-verdict.json` + `plan-prepare.json` + `snapshot.json` | `tests/e2e/hardware-in-loop/` + `tests/contracts/` | HMI 展示、验证汇总 |
 | HMI online 成功/失败/恢复 | `online-smoke.log` 中的 `SUPERVISOR_EVENT` / `SUPERVISOR_DIAG` | `apps/hmi-app/scripts/` + `apps/hmi-app/src/hmi_client/tools/` | `docs/validation/`、`docs/runtime/` |
 
@@ -40,6 +41,7 @@
 | HIL 闭环 | `tests/e2e/hardware-in-loop/run_hil_closed_loop.py` | `hil-closed-loop-summary.json/md` | P0 正式入口 |
 | HIL controlled gate | `tests/e2e/hardware-in-loop/run_hil_controlled_test.ps1` + `verify_hil_controlled_gate.py` | offline-prereq / hardware-smoke / HIL / gate / release summary | P0 正式入口 |
 | DXF canonical dry-run | `tests/e2e/hardware-in-loop/run_real_dxf_machine_dryrun.py` | dry-run 报告目录、状态观测工件 | P0 正式入口 |
+| DXF 生产模式真机专项 | `tests/e2e/hardware-in-loop/run_real_dxf_production_validation.py` | `real-dxf-production-validation.json/md`、状态观测工件、gateway 日志切片 | owner-local 正式专项入口，不替代 controlled gate |
 | 在线预览证据 | `tests/e2e/hardware-in-loop/run_real_dxf_preview_snapshot.py` | `plan-prepare.json`、`snapshot.json`、`preview-verdict.json` 等 | P0 正式入口 |
 | HMI online smoke | `apps/hmi-app/scripts/online-smoke.ps1` | `online-smoke.log`、qtest stdout/stderr、截图 | P0 正式入口 |
 | HMI failure stage 注入 | `apps/hmi-app/scripts/verify-online-ready-timeout.ps1` | `SUPERVISOR_DIAG` / `SUPERVISOR_EVENT` 映射证据 | P0 正式入口 |
@@ -50,12 +52,12 @@
 | HMI full-online 汇总 | `apps/hmi-app/scripts/run_full_online_hmi_suite.py` | suite summary + per-scenario logs + evidence bundle | owner-local 聚合入口，用于 full-online blocker 集合 |
 | soak profiles 汇总 | `tests/performance/run_online_soak_profiles.py` | suite summary + per-profile `latest.json/md` + evidence bundle | owner-local 聚合入口，用于 full-online blocker 集合 |
 
-### 3.1 full-online blocker 集合与 signed publish 关系
+### 3.1 full-online blocker 集合与 controlled quick gate 关系
 
 - 当前没有 repo-root 单一“全量联机测试总入口”；full-online 仍由多个 owner-local 入口组成。
 - `run_real_dxf_preview_suite.py`、`run_real_dxf_machine_dryrun_suite.py`、`run_full_online_hmi_suite.py`、`run_online_soak_profiles.py` 只负责补齐 blocker 集合与 `G8` 补充证据。
-- `tests/e2e/hardware-in-loop/run_hil_controlled_test.ps1` 仍是唯一允许 `signed publish` 和刷新 latest authority 的正式入口。
-- blocker 集合通过后，如需刷新 latest authority，必须沿用 controlled HIL path，并在 `PublishLatestOnPass=true` 时传非空 `-Executor`。
+- `tests/e2e/hardware-in-loop/run_hil_controlled_test.ps1` 仍是唯一 canonical controlled HIL 入口，但现在只保留 `60s` quick gate，且默认强制 attach 现有 gateway，不再允许双轨自启第二个 gateway。
+- `signed publish`、`latest authority` 刷新和 `1800s formal gate` 均已禁用；后续只保留时间戳 evidence 批次。
 
 ## 4. 联机测试矩阵
 
@@ -151,7 +153,26 @@
 - `hil-controlled-release-summary.md`
 - optional `hil-case-matrix/case-matrix-summary.json/md`
 
-### 5.6 canonical dry-run negative matrix
+### 5.6 DXF 生产模式真机专项
+
+至少保留：
+
+- `real-dxf-production-validation.json`
+- `real-dxf-production-validation.md`
+- `job-status-history.json`
+- `machine-status-history.json`
+- `coord-status-history.json`
+- `tcp_server.log`
+- `gateway-stdout.log`
+- `gateway-stderr.log`
+
+其中 `real-dxf-production-validation.json` 必须满足：
+
+- 根字段 `validation_mode` 只能由 `dxf.plan.prepare` 真值解析，不允许文档预设
+- `production_execution` 时必须给出 `timing_summary.execution_nominal_time_s / execution_budget_s / execution_budget_breakdown / observed_execution_time_s`
+- `production_blocked` 时必须给出 post-block 观测证据，且 `timing_summary.execution_budget_s / execution_budget_breakdown / observed_execution_time_s = null`
+
+### 5.7 canonical dry-run negative matrix
 
 至少保留：
 
@@ -160,7 +181,7 @@
 - 每个 negative case 的 `real-dxf-machine-dryrun-canonical.json/.md`
 - 每个 negative case 的 `launcher.log`
 
-### 5.7 multi-DXF dry-run suite
+### 5.8 multi-DXF dry-run suite
 
 至少保留：
 
@@ -169,7 +190,7 @@
 - 每个 case 的 `real-dxf-machine-dryrun-canonical.json/.md`
 - 每个 case 的 `launcher.log`
 
-### 5.8 soak profiles
+### 5.9 soak profiles
 
 至少保留：
 
@@ -178,7 +199,7 @@
 - 每个 profile 的 `latest.json`
 - 每个 profile 的 `latest.md`
 
-### 5.9 分层 evidence bundle 约束
+### 5.10 分层 evidence bundle 约束
 
 受限 HIL 与联机相关 evidence 还必须补充：
 

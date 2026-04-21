@@ -26,6 +26,7 @@ from collect_dxf_preview_profiles import (
     LaunchSpecResolution,
     PreviewCycleRecord,
     StartJobCycleRecord,
+    _start_job_after_confirm,
     collect_long_run_profile,
     collect_process_metrics,
     evaluate_threshold_gate,
@@ -167,6 +168,48 @@ def _payload() -> dict[str, object]:
 
 
 class PerformanceThresholdGateContractTest(unittest.TestCase):
+    def test_start_job_after_confirm_keeps_default_auto_continue_semantics(self) -> None:
+        class FakeProtocol:
+            def __init__(self) -> None:
+                self.start_calls: list[tuple[str, int, str, object]] = []
+
+            def dxf_preview_confirm(self, plan_id: str, snapshot_hash: str) -> tuple[bool, dict[str, Any], str]:
+                return True, {"confirmed": True, "plan_id": plan_id, "snapshot_hash": snapshot_hash}, ""
+
+            def dxf_start_job(
+                self,
+                plan_id: str,
+                target_count: int = 1,
+                plan_fingerprint: str = "",
+                auto_continue: bool | None = None,
+            ) -> tuple[bool, dict[str, Any], str]:
+                self.start_calls.append((plan_id, target_count, plan_fingerprint, auto_continue))
+                return True, {"job_id": "job-1"}, ""
+
+            def dxf_get_job_status(self, job_id: str = "") -> dict[str, Any]:
+                return {"job_id": job_id, "state": "running"}
+
+        protocol = FakeProtocol()
+        preview_record = PreviewCycleRecord(
+            success=True,
+            artifact_id="artifact-1",
+            plan_id="plan-1",
+            plan_fingerprint="fp-1",
+            snapshot_hash="snap-1",
+        )
+
+        ok, job_id, _, status_payload, error = _start_job_after_confirm(
+            cast(Any, protocol),
+            preview_record,
+            target_count=3,
+        )
+
+        self.assertTrue(ok)
+        self.assertEqual(job_id, "job-1")
+        self.assertEqual(error, "")
+        self.assertEqual(status_payload["state"], "running")
+        self.assertEqual(protocol.start_calls, [("plan-1", 3, "fp-1", None)])
+
     def test_collect_process_metrics_ignores_sampler_timeout(self) -> None:
         with patch(
             "collect_dxf_preview_profiles.subprocess.run",

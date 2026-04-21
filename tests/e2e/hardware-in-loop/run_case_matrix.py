@@ -124,10 +124,19 @@ def _collect_snapshot(client: TcpJsonClient, name: str) -> dict[str, Any]:
                 axes[axis_name] = _normalize_axis_snapshot(axis_name, axis_payload)
 
     io_payload = status_result.get("io", {})
+    supervision_payload = status_result.get("supervision", {})
+    if not isinstance(supervision_payload, dict):
+        supervision_payload = {}
     snapshot = {
         "name": name,
-        "machine_state": str(status_result.get("machine_state", "")),
-        "machine_state_reason": str(status_result.get("machine_state_reason", "")),
+        "supervision": {
+            "current_state": str(supervision_payload.get("current_state", "")),
+            "requested_state": str(supervision_payload.get("requested_state", "")),
+            "state_reason": str(supervision_payload.get("state_reason", "")),
+            "state_change_in_process": bool(supervision_payload.get("state_change_in_process", False)),
+            "failure_stage": str(supervision_payload.get("failure_stage", "")),
+            "failure_code": str(supervision_payload.get("failure_code", "")),
+        },
         "connected": bool(status_result.get("connected", False)),
         "io": {
             "estop": bool(io_payload.get("estop", False)),

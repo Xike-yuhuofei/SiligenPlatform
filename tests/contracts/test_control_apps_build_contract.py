@@ -28,28 +28,6 @@ def _write_matching_cmake_cache(build_root: Path, workspace_root: Path) -> None:
 
 
 class ControlAppsBuildContractTest(unittest.TestCase):
-    def test_control_apps_build_root_probes_only_include_explicit_override_and_workspace_build_ca(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            workspace_root = Path(temp_dir) / "workspace"
-            workspace_root.mkdir()
-            explicit_root = Path(temp_dir) / "explicit-build-root"
-            probes = control_apps_build_root_probes(
-                workspace_root,
-                explicit_build_root=str(explicit_root),
-            )
-
-        self.assertEqual(
-            tuple(probe.source for probe in probes),
-            ("env", "workspace-build-ca"),
-        )
-        self.assertEqual(
-            tuple(probe.root for probe in probes),
-            (
-                explicit_root.resolve(),
-                (workspace_root / "build" / "ca").resolve(),
-            ),
-        )
-
     def test_valid_control_apps_build_roots_reject_workspace_root_without_matching_cache(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace_root = Path(temp_dir) / "workspace"
@@ -92,14 +70,12 @@ class ControlAppsBuildContractTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace_root = Path(temp_dir) / "workspace"
             workspace_root.mkdir()
-            canonical_root = workspace_root / "build" / "ca"
-            canonical_root.mkdir(parents=True)
-            _write_matching_cmake_cache(canonical_root, workspace_root)
-            explicit_root = Path(temp_dir) / "explicit-build-root"
+            explicit_root = Path(temp_dir) / "external-build-root"
             for artifact_name in required_artifacts:
                 artifact_path = explicit_root / "bin" / "Debug" / artifact_name
                 artifact_path.parent.mkdir(parents=True, exist_ok=True)
                 artifact_path.write_text("", encoding="utf-8")
+            _write_matching_cmake_cache(explicit_root, workspace_root)
 
             readiness = probe_control_apps_build_readiness(
                 workspace_root,

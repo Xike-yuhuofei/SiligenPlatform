@@ -5,6 +5,7 @@
 #include "runtime_execution/contracts/motion/IMotionStatePort.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "runtime_execution/contracts/dispensing/IDispensingProcessPort.h"
+#include "runtime_execution/contracts/dispensing/IProfileComparePort.h"
 #include "runtime_execution/contracts/dispensing/IValvePort.h"
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "shared/types/Result.h"
@@ -18,6 +19,7 @@ namespace Siligen::RuntimeExecution::Application::Services::Dispensing {
 
 using Siligen::Domain::Configuration::Ports::IConfigurationPort;
 using Siligen::Domain::Dispensing::Ports::IDispensingExecutionObserver;
+using Siligen::Domain::Dispensing::Ports::IProfileComparePort;
 using Siligen::Domain::Dispensing::Ports::IValvePort;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionOptions;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionPlan;
@@ -42,7 +44,7 @@ class DispensingProcessService final : public IDispensingProcessPort {
 
     Result<void> ValidateHardwareConnection() noexcept override;
     Result<DispensingRuntimeParams> BuildRuntimeParams(const DispensingRuntimeOverrides& overrides) noexcept override;
-    Result<DispensingExecutionReport> ExecuteProcess(const DispensingExecutionPlan& plan,
+    Result<DispensingExecutionReport> ExecuteProcess(const Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated& execution_package,
                                                      const DispensingRuntimeParams& params,
                                                      const DispensingExecutionOptions& options,
                                                      std::atomic<bool>* stop_flag,
@@ -65,6 +67,7 @@ class DispensingProcessService final : public IDispensingProcessPort {
                                        const Siligen::Shared::Types::Point2D* final_target_position,
                                        float32 position_tolerance_mm,
                                        uint32 total_segments,
+                                       uint32 profile_compare_expected_trigger_count,
                                        bool dispense_enabled,
                                        IDispensingExecutionObserver* observer) noexcept;
     Result<void> ClearInterpolationBufferForFormalPath(std::atomic<bool>* stop_flag,
@@ -76,6 +79,7 @@ class DispensingProcessService final : public IDispensingProcessPort {
                                  bool dispense_enabled,
                                  IDispensingExecutionObserver* observer) noexcept;
     Result<DispensingExecutionReport> ExecutePlanInternal(const DispensingExecutionPlan& plan,
+                                                          float32 execution_nominal_time_s,
                                                           const DispensingRuntimeParams& params,
                                                           const DispensingExecutionOptions& options,
                                                           std::atomic<bool>* stop_flag,
@@ -91,6 +95,7 @@ class DispensingProcessService final : public IDispensingProcessPort {
     void PublishPauseState(IDispensingExecutionObserver* observer, bool paused) const noexcept;
 
     std::shared_ptr<IValvePort> valve_port_;
+    std::shared_ptr<IProfileComparePort> profile_compare_port_;
     std::shared_ptr<IInterpolationPort> interpolation_port_;
     std::shared_ptr<IMotionStatePort> motion_state_port_;
     std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port_;

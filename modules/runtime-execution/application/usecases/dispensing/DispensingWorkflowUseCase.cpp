@@ -2,6 +2,7 @@
 
 #include "runtime_execution/application/usecases/dispensing/DispensingWorkflowUseCase.h"
 
+#include "runtime_execution/contracts/dispensing/ProfileCompareExecutionCompiler.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
 
@@ -67,11 +68,37 @@ std::uint32_t ToElapsedMs(const std::chrono::steady_clock::time_point start_time
 
 }  // namespace
 
+const Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated*
+DispensingWorkflowUseCase::ResolveExecutionContractPackage(const PlanRecord& plan_record) {
+    if (plan_record.execution_launch.execution_package) {
+        return plan_record.execution_launch.execution_package.get();
+    }
+    if (plan_record.execution_assembly.execution_package) {
+        return plan_record.execution_assembly.execution_package.get();
+    }
+    return nullptr;
+}
+
+void DispensingWorkflowUseCase::RefreshResponseExecutionContract(PlanRecord& plan_record) {
+    const auto* execution_package = ResolveExecutionContractPackage(plan_record);
+    if (!execution_package) {
+        plan_record.response.execution_nominal_time_s = 0.0f;
+        plan_record.response.execution_plan_summary = {};
+        return;
+    }
+
+    plan_record.response.execution_nominal_time_s =
+        Siligen::Domain::Dispensing::Contracts::ResolveExecutionNominalTimeS(*execution_package);
+    plan_record.response.execution_plan_summary =
+        Siligen::Domain::Dispensing::Contracts::BuildExecutionPlanSummary(*execution_package);
+}
+
 DispensingWorkflowUseCase::DispensingWorkflowUseCase(
     std::shared_ptr<IUploadFilePort> upload_use_case,
     std::shared_ptr<PlanningUseCase> planning_use_case,
     std::shared_ptr<Siligen::Application::Ports::Dispensing::IProductionBaselinePort> production_baseline_port,
     std::shared_ptr<Siligen::Application::Ports::Dispensing::IWorkflowExecutionPort> execution_port,
+    std::shared_ptr<IConfigurationPort> config_port,
     std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
     std::shared_ptr<MotionDevicePort> motion_device_port,
     std::shared_ptr<DispenserDevicePort> dispenser_device_port,
@@ -82,13 +109,14 @@ DispensingWorkflowUseCase::DispensingWorkflowUseCase(
       planning_use_case_(std::move(planning_use_case)),
       production_baseline_port_(std::move(production_baseline_port)),
       execution_port_(std::move(execution_port)),
+      config_port_(std::move(config_port)),
       connection_port_(std::move(connection_port)),
       motion_device_port_(std::move(motion_device_port)),
       dispenser_device_port_(std::move(dispenser_device_port)),
       motion_state_port_(std::move(motion_state_port)),
       homing_port_(std::move(homing_port)),
       interlock_signal_port_(std::move(interlock_signal_port)) {
-    if (!upload_use_case_ || !planning_use_case_ || !production_baseline_port_ || !execution_port_) {
+    if (!upload_use_case_ || !planning_use_case_ || !production_baseline_port_ || !execution_port_ || !config_port_) {
         throw std::invalid_argument("DispensingWorkflowUseCase: dependencies cannot be null");
     }
 }
@@ -176,7 +204,6 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
     response.segment_count = static_cast<std::uint32_t>(std::max(0, authority_preview.artifacts.segment_count));
     response.point_count = static_cast<std::uint32_t>(authority_preview.artifacts.preview_trajectory_points.size());
     response.total_length_mm = authority_preview.artifacts.total_length;
-    response.estimated_time_s = authority_preview.artifacts.estimated_time;
     response.import_diagnostics = artifact.upload_response.import_diagnostics;
     response.preview_validation_classification = authority_preview.artifacts.preview_validation_classification;
     response.preview_exception_reason = authority_preview.artifacts.preview_exception_reason;
@@ -211,6 +238,7 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
         SILIGEN_LOG_INFO(oss.str());
     };
 
+    PlanID prepared_plan_id = response.plan_id;
     PlanRecord record;
     record.response = response;
     record.execution_launch = std::move(execution_launch);
@@ -222,6 +250,10 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
     record.preview_binding_ready = authority_preview.artifacts.preview_binding_ready;
     record.execution_authority_shared_with_execution = false;
     record.execution_binding_ready = false;
+    record.execution_contract_ready = false;
+    record.execution_failure_reason.clear();
+    record.execution_diagnostic_code.clear();
+    record.profile_compare_schedule_failure.clear();
     record.preview_spacing_valid = authority_preview.artifacts.preview_spacing_valid;
     record.preview_has_short_segment_exceptions = authority_preview.artifacts.preview_has_short_segment_exceptions;
     record.preview_validation_classification = authority_preview.artifacts.preview_validation_classification;
@@ -229,6 +261,7 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
     record.preview_failure_reason = authority_preview.artifacts.preview_failure_reason;
     record.preview_diagnostic_code = authority_preview.preview_diagnostic_code;
     record.preview_state = PlanPreviewState::PREPARED;
+    record.preview_estimated_time_s = authority_preview.artifacts.estimated_time;
     record.latest = true;
 
     {
@@ -266,7 +299,6 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
             reusable->response.point_count =
                 static_cast<std::uint32_t>(authority_preview.artifacts.preview_trajectory_points.size());
             reusable->response.total_length_mm = authority_preview.artifacts.total_length;
-            reusable->response.estimated_time_s = authority_preview.artifacts.estimated_time;
             reusable->response.generated_at = response.generated_at;
             reusable->response.performance_profile = response.performance_profile;
             reusable->response.import_diagnostics = artifact.upload_response.import_diagnostics;
@@ -277,15 +309,25 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
             reusable->preview_authority_ready = authority_preview.artifacts.preview_authority_ready;
             reusable->preview_authority_shared_with_execution = false;
             reusable->preview_binding_ready = authority_preview.artifacts.preview_binding_ready;
+            reusable->execution_authority_shared_with_execution = false;
+            reusable->execution_binding_ready = false;
+            reusable->execution_contract_ready = false;
+            reusable->execution_failure_reason.clear();
+            reusable->execution_diagnostic_code.clear();
+            reusable->profile_compare_schedule_failure.clear();
             reusable->preview_spacing_valid = authority_preview.artifacts.preview_spacing_valid;
             reusable->preview_has_short_segment_exceptions = authority_preview.artifacts.preview_has_short_segment_exceptions;
             reusable->preview_validation_classification = authority_preview.artifacts.preview_validation_classification;
             reusable->preview_exception_reason = authority_preview.artifacts.preview_exception_reason;
             reusable->preview_failure_reason = authority_preview.artifacts.preview_failure_reason;
             reusable->preview_diagnostic_code = authority_preview.preview_diagnostic_code;
+            reusable->preview_estimated_time_s = authority_preview.artifacts.estimated_time;
             reusable->glue_points = authority_preview.artifacts.glue_points;
             reusable->execution_trajectory_points = authority_preview.artifacts.preview_trajectory_points;
             reusable->authority_trigger_layout = authority_preview.artifacts.authority_trigger_layout;
+            reusable->execution_launch.execution_package.reset();
+            reusable->execution_launch.profile_compare_schedule.reset();
+            reusable->execution_assembly = ExecutionAssemblyResponse{};
             if (reusable->preview_state == PlanPreviewState::STALE) {
                 reusable->preview_state =
                     (!reusable->confirmed_at.empty() &&
@@ -295,20 +337,32 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
                            ? PlanPreviewState::SNAPSHOT_READY
                            : PlanPreviewState::PREPARED);
             }
-            log_prepare_profile(reusable->response);
-            return Result<PreparePlanResponse>::Success(reusable->response);
-        }
-        for (auto& [existing_plan_id, existing_record] : plans_) {
-            if (existing_plan_id == response.plan_id) {
-                continue;
+            prepared_plan_id = reusable->response.plan_id;
+            response = reusable->response;
+        } else {
+            for (auto& [existing_plan_id, existing_record] : plans_) {
+                if (existing_plan_id == response.plan_id) {
+                    continue;
+                }
+                if (existing_record.response.artifact_id == request.artifact_id && existing_record.latest) {
+                    existing_record.latest = false;
+                    existing_record.preview_state = PlanPreviewState::STALE;
+                    existing_record.confirmed_at.clear();
+                }
             }
-            if (existing_record.response.artifact_id == request.artifact_id && existing_record.latest) {
-                existing_record.latest = false;
-                existing_record.preview_state = PlanPreviewState::STALE;
-                existing_record.confirmed_at.clear();
-            }
+            plans_[response.plan_id] = record;
         }
-        plans_[response.plan_id] = record;
+    }
+
+    (void)EnsureExecutionAssemblyReady(prepared_plan_id);
+    {
+        std::lock_guard<std::mutex> lock(plans_mutex_);
+        auto it = plans_.find(prepared_plan_id);
+        if (it != plans_.end() && it->second.latest) {
+            RefreshResponseExecutionContract(it->second);
+            RefreshPlanImportDiagnostics(it->second);
+            response = it->second.response;
+        }
     }
 
     log_prepare_profile(response);
@@ -384,18 +438,6 @@ Result<StartJobResponse> DispensingWorkflowUseCase::StartJob(const StartJobReque
             Error(ErrorCode::INVALID_PARAMETER, "target_count must be greater than 0", "DispensingWorkflowUseCase"));
     }
 
-    {
-        std::lock_guard<std::mutex> lock(plans_mutex_);
-        auto it = plans_.find(request.plan_id);
-        if (it != plans_.end() && !it->second.response.import_diagnostics.production_ready) {
-            const std::string detail = it->second.response.import_diagnostics.summary.empty()
-                                           ? "DXF import is not production-ready"
-                                           : it->second.response.import_diagnostics.summary;
-            return Result<StartJobResponse>::Failure(
-                Error(ErrorCode::INVALID_STATE, detail, "DispensingWorkflowUseCase"));
-        }
-    }
-
     auto initial_launch_result = ResolveStartJobExecutionLaunch(request, false);
     if (initial_launch_result.IsError()) {
         return Result<StartJobResponse>::Failure(initial_launch_result.GetError());
@@ -407,17 +449,47 @@ Result<StartJobResponse> DispensingWorkflowUseCase::StartJob(const StartJobReque
     }
     const auto execution_resolution = ensure_execution_result.Value();
 
+    {
+        std::lock_guard<std::mutex> lock(plans_mutex_);
+        auto it = plans_.find(request.plan_id);
+        if (it != plans_.end() && it->second.latest) {
+            RefreshPlanImportDiagnostics(it->second);
+            if (!it->second.response.import_diagnostics.production_ready) {
+                const std::string detail = it->second.response.import_diagnostics.summary.empty()
+                    ? "DXF import is not production-ready"
+                    : it->second.response.import_diagnostics.summary;
+                return Result<StartJobResponse>::Failure(
+                    Error(ErrorCode::INVALID_STATE, detail, "DispensingWorkflowUseCase"));
+            }
+        }
+    }
+
     auto execution_launch_result = ResolveStartJobExecutionLaunch(request, true);
     if (execution_launch_result.IsError()) {
         return Result<StartJobResponse>::Failure(execution_launch_result.GetError());
     }
     auto execution_launch = execution_launch_result.Value();
 
+    {
+        std::lock_guard<std::mutex> lock(plans_mutex_);
+        auto it = plans_.find(request.plan_id);
+        if (it == plans_.end() || !it->second.latest) {
+            return Result<StartJobResponse>::Failure(
+                Error(ErrorCode::NOT_FOUND, "plan not found", "DispensingWorkflowUseCase"));
+        }
+        auto materialize_result = MaterializeProfileCompareSchedule(it->second);
+        if (materialize_result.IsError()) {
+            return Result<StartJobResponse>::Failure(materialize_result.GetError());
+        }
+        execution_launch = it->second.execution_launch;
+    }
+
     Siligen::Application::Ports::Dispensing::WorkflowRuntimeStartJobRequest runtime_request;
     runtime_request.plan_id = request.plan_id;
     runtime_request.execution_request = BuildExecutionRequest(execution_launch);
     runtime_request.plan_fingerprint = request.plan_fingerprint;
     runtime_request.target_count = request.target_count;
+    runtime_request.cycle_advance_mode = request.cycle_advance_mode;
     auto execution_validation = runtime_request.execution_request.Validate();
     if (execution_validation.IsError()) {
         return Result<StartJobResponse>::Failure(execution_validation.GetError());
@@ -447,6 +519,13 @@ Result<StartJobResponse> DispensingWorkflowUseCase::StartJob(const StartJobReque
     response.plan_id = request.plan_id;
     response.plan_fingerprint = request.plan_fingerprint;
     response.target_count = request.target_count;
+    if (execution_launch.execution_package) {
+        response.execution_budget_breakdown =
+            Domain::Dispensing::Contracts::BuildExecutionBudgetBreakdown(
+                *execution_launch.execution_package,
+                request.target_count);
+        response.execution_budget_s = response.execution_budget_breakdown.total_budget_s;
+    }
     response.performance_profile.execution_cache_hit = execution_resolution.cache_hit;
     response.performance_profile.execution_joined_inflight = execution_resolution.joined_inflight;
     response.performance_profile.execution_wait_ms = execution_resolution.wait_ms;
@@ -557,7 +636,7 @@ PreviewSnapshotResponse DispensingWorkflowUseCase::BuildPreviewSnapshotResponse(
     input.segment_count = plan_record.response.segment_count;
     input.point_count = plan_record.response.point_count;
     input.total_length_mm = plan_record.response.total_length_mm;
-    input.estimated_time_s = plan_record.response.estimated_time_s;
+    input.estimated_time_s = plan_record.preview_estimated_time_s;
     input.generated_at = plan_record.preview_generated_at;
     input.trajectory_points = &plan_record.execution_trajectory_points;
     if (!plan_record.execution_assembly.motion_trajectory_points.empty()) {
@@ -591,8 +670,8 @@ DispensingWorkflowUseCase::BuildExecutionRequest(const PlanExecutionLaunch& laun
     if (launch.execution_package) {
         request.execution_package = *launch.execution_package;
     }
+    request.profile_compare_schedule = launch.profile_compare_schedule;
     request.source_path = launch.runtime_overrides.source_path;
-    request.use_hardware_trigger = launch.runtime_overrides.use_hardware_trigger;
     request.dry_run = launch.runtime_overrides.dry_run;
     request.machine_mode = launch.runtime_overrides.machine_mode;
     request.execution_mode = launch.runtime_overrides.execution_mode;
@@ -657,7 +736,6 @@ std::string DispensingWorkflowUseCase::BuildPlanFingerprint(
         << authority_preview.artifacts.authority_trigger_points.size() << '|'
         << authority_preview.artifacts.total_length << '|'
         << authority_preview.artifacts.estimated_time << '|'
-        << runtime_request.use_hardware_trigger << '|'
         << runtime_request.max_jerk << '|'
         << runtime_request.arc_tolerance_mm << '|'
         << runtime_request.dispensing_speed_mm_s.value_or(0.0f) << '|'
@@ -854,7 +932,9 @@ Result<DispensingWorkflowUseCase::ExecutionAssemblyResolveResult> DispensingWork
                 it->second.preview_binding_ready = false;
                 it->second.execution_authority_shared_with_execution = false;
                 it->second.execution_binding_ready = false;
-                it->second.preview_failure_reason = assembly_resolve_result.GetError().GetMessage();
+                it->second.execution_contract_ready = false;
+                it->second.execution_failure_reason = assembly_resolve_result.GetError().GetMessage();
+                it->second.execution_diagnostic_code = "execution_assembly_unavailable";
             }
             return Result<ExecutionAssemblyResolveResult>::Failure(assembly_resolve_result.GetError());
         }
@@ -878,11 +958,10 @@ Result<DispensingWorkflowUseCase::ExecutionAssemblyResolveResult> DispensingWork
     it->second.preview_binding_ready = assembly.execution_binding_ready;
     it->second.execution_authority_shared_with_execution = assembly.preview_authority_shared_with_execution;
     it->second.execution_binding_ready = assembly.execution_binding_ready;
-    if (!assembly.execution_failure_reason.empty()) {
-        it->second.preview_failure_reason = assembly.execution_failure_reason;
-    } else {
-        it->second.preview_failure_reason = it->second.execution_launch.authority_preview.artifacts.preview_failure_reason;
-    }
+    it->second.execution_contract_ready = assembly.execution_contract_ready;
+    it->second.execution_failure_reason = assembly.execution_failure_reason;
+    it->second.execution_diagnostic_code = assembly.execution_diagnostic_code;
+    it->second.preview_failure_reason = it->second.execution_launch.authority_preview.artifacts.preview_failure_reason;
     std::ostringstream oss;
     oss << "workflow_execution_assembly_profile"
         << " plan_id=" << plan_id
@@ -1132,16 +1211,13 @@ DispensingWorkflowUseCase::EvaluateExecutionCapability(const PlanRecord& plan_re
     const auto& motion_capabilities = motion_capabilities_result.Value();
     const auto& trigger = motion_capabilities.trigger;
     const auto& dispenser = dispenser_capability_result.Value();
-    if (execution_request.use_hardware_trigger) {
+    if (execution_plan.production_trigger_mode ==
+        Domain::Dispensing::ValueObjects::ProductionTriggerMode::PROFILE_COMPARE) {
         if (!trigger.supports_in_motion_position_trigger) {
             diagnostic.ready = false;
-            diagnostic.failure_reason = "flying_shot requires in-motion position trigger support";
+            diagnostic.failure_reason = "profile_compare requires in-motion position trigger support";
             return diagnostic;
         }
-    } else if (!trigger.supports_in_motion_time_trigger) {
-        diagnostic.ready = false;
-        diagnostic.failure_reason = "flying_shot requires in-motion time trigger support";
-        return diagnostic;
     }
 
     if (execution_plan.geometry_kind == DispensingExecutionGeometryKind::POINT) {
@@ -1157,6 +1233,119 @@ DispensingWorkflowUseCase::EvaluateExecutionCapability(const PlanRecord& plan_re
     }
 
     return diagnostic;
+}
+
+std::string DispensingWorkflowUseCase::ResolveProductionGateFailure(const PlanRecord& plan_record) const {
+    const auto preview_gate = BuildPreviewGateDiagnostic(plan_record, false);
+    if (!preview_gate.owner_message.empty()) {
+        return preview_gate.owner_message;
+    }
+    if (plan_record.execution_assembly.formal_compare_gate.IsProductionBlocked()) {
+        return plan_record.execution_failure_reason.empty()
+            ? "owner execution package is not production-ready"
+            : plan_record.execution_failure_reason;
+    }
+    if (!plan_record.execution_authority_shared_with_execution) {
+        return "preview authority is not shared with execution";
+    }
+    if (!plan_record.execution_binding_ready) {
+        return plan_record.execution_failure_reason.empty()
+            ? "authority trigger binding unavailable"
+            : plan_record.execution_failure_reason;
+    }
+    if (!plan_record.execution_contract_ready) {
+        return plan_record.execution_failure_reason.empty()
+            ? "owner execution package is not production-ready"
+            : plan_record.execution_failure_reason;
+    }
+    return {};
+}
+
+void DispensingWorkflowUseCase::RefreshProfileCompareSchedule(PlanRecord& plan_record) const {
+    plan_record.execution_launch.profile_compare_schedule.reset();
+    plan_record.profile_compare_schedule_failure.clear();
+
+    const auto execution_package = plan_record.execution_launch.execution_package;
+    if (!execution_package) {
+        return;
+    }
+
+    const auto& execution_plan = execution_package->execution_plan;
+    if (execution_plan.production_trigger_mode !=
+        Domain::Dispensing::ValueObjects::ProductionTriggerMode::PROFILE_COMPARE) {
+        return;
+    }
+    if (!plan_record.execution_contract_ready) {
+        plan_record.profile_compare_schedule_failure = plan_record.execution_failure_reason.empty()
+            ? "owner execution package is not production-ready"
+            : plan_record.execution_failure_reason;
+        return;
+    }
+
+    const auto machine_config_result = config_port_->GetMachineConfig();
+    if (machine_config_result.IsError()) {
+        plan_record.profile_compare_schedule_failure =
+            "profile_compare schedule compile failed: " + machine_config_result.GetError().GetMessage();
+        return;
+    }
+    const auto dispenser_config_result = config_port_->GetDispenserValveConfig();
+    if (dispenser_config_result.IsError()) {
+        plan_record.profile_compare_schedule_failure =
+            "profile_compare schedule compile failed: " + dispenser_config_result.GetError().GetMessage();
+        return;
+    }
+
+    RuntimeExecution::Contracts::Dispensing::ProfileCompareExecutionCompileInput compile_input{
+        execution_plan,
+        RuntimeExecution::Contracts::Dispensing::ProfileCompareRuntimeContract{
+            machine_config_result.Value().pulse_per_mm,
+            dispenser_config_result.Value().cmp_axis_mask,
+            dispenser_config_result.Value().max_count > 0
+                ? static_cast<uint32>(dispenser_config_result.Value().max_count)
+                : 0U,
+        },
+    };
+    auto compile_result =
+        RuntimeExecution::Contracts::Dispensing::CompileProfileCompareExecutionSchedule(compile_input);
+    if (compile_result.IsError()) {
+        plan_record.profile_compare_schedule_failure = compile_result.GetError().GetMessage();
+        return;
+    }
+
+    plan_record.execution_launch.profile_compare_schedule =
+        std::make_shared<Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareExecutionSchedule>(
+            std::move(compile_result.Value()));
+}
+
+Result<void> DispensingWorkflowUseCase::MaterializeProfileCompareSchedule(PlanRecord& plan_record) const {
+    RefreshProfileCompareSchedule(plan_record);
+    if (!plan_record.profile_compare_schedule_failure.empty()) {
+        return Result<void>::Failure(Error(
+            ErrorCode::INVALID_STATE,
+            plan_record.profile_compare_schedule_failure,
+            "DispensingWorkflowUseCase"));
+    }
+    return Result<void>::Success();
+}
+
+void DispensingWorkflowUseCase::RefreshPlanImportDiagnostics(PlanRecord& plan_record) const {
+    auto& diagnostics = plan_record.response.import_diagnostics;
+    const bool import_preview_ready = diagnostics.preview_ready;
+    const bool import_production_ready = diagnostics.production_ready;
+    const auto preview_gate = BuildPreviewGateDiagnostic(plan_record, false);
+    const auto production_failure = ResolveProductionGateFailure(plan_record);
+
+    diagnostics.formal_compare_gate = plan_record.execution_assembly.formal_compare_gate;
+    diagnostics.preview_ready = import_preview_ready && preview_gate.owner_message.empty();
+    diagnostics.production_ready = import_production_ready && production_failure.empty();
+
+    if (!production_failure.empty()) {
+        diagnostics.summary = production_failure;
+    } else if (!preview_gate.owner_message.empty()) {
+        diagnostics.summary = preview_gate.owner_message;
+    } else if (diagnostics.summary.empty()) {
+        diagnostics.summary = "DXF import succeeded and is ready for production.";
+    }
 }
 
 DispensingWorkflowUseCase::PreviewGateDiagnostic DispensingWorkflowUseCase::BuildPreviewGateDiagnostic(
@@ -1213,9 +1402,9 @@ DispensingWorkflowUseCase::PreviewGateDiagnostic DispensingWorkflowUseCase::Buil
             return diagnostic;
         }
         if (!diagnostic.execution_binding_ready) {
-            diagnostic.owner_message = diagnostic.failure_reason.empty()
+            diagnostic.owner_message = plan_record.execution_failure_reason.empty()
                 ? "authority trigger binding unavailable"
-                : diagnostic.failure_reason;
+                : plan_record.execution_failure_reason;
             return diagnostic;
         }
         const auto capability_diagnostic = EvaluateExecutionCapability(plan_record);
@@ -1373,10 +1562,15 @@ std::string DispensingWorkflowUseCase::PreviewStateToString(PlanPreviewState sta
 
 void DispensingWorkflowUseCase::ReleaseRetainedExecutionState(PlanRecord& plan_record) const {
     plan_record.execution_launch.execution_package.reset();
+    plan_record.execution_launch.profile_compare_schedule.reset();
     plan_record.execution_assembly = {};
     plan_record.preview_authority_shared_with_execution = false;
     plan_record.execution_authority_shared_with_execution = false;
     plan_record.execution_binding_ready = false;
+    plan_record.execution_contract_ready = false;
+    plan_record.execution_failure_reason.clear();
+    plan_record.execution_diagnostic_code.clear();
+    plan_record.profile_compare_schedule_failure.clear();
 }
 
 void DispensingWorkflowUseCase::EraseExecutionAssemblyCacheEntry(const std::string& execution_cache_key) const {

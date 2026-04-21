@@ -1,4 +1,5 @@
 import sys
+import time
 import unittest
 from pathlib import Path
 
@@ -161,6 +162,120 @@ class MockServerInterlockTest(unittest.TestCase):
 
         self.assertIn("error", resume)
         self.assertIn("emergency stop active", resume["error"]["message"])
+
+    def test_job_start_defaults_to_auto_continue_for_multi_cycle_jobs(self) -> None:
+        state = MockState(seed_alarms=False)
+        state.handle_request("connect", {})
+        state.handle_request(
+            "dxf.artifact.create",
+            {"filename": "sample.dxf", "file_content_b64": "MFxOU0VDVElPTgoyXEVOVElUSUVTXDAKRU5EU0VDXDAKRU9GCg=="},
+        )
+        plan = state.handle_request(
+            "dxf.plan.prepare",
+            {
+                "artifact_id": state.dxf.artifact_id,
+                "dispensing_speed_mm_s": 12.5,
+            },
+        )
+        snapshot = state.handle_request("dxf.preview.snapshot", {"plan_id": plan["result"]["plan_id"]})
+        state.handle_request(
+            "dxf.preview.confirm",
+            {
+                "plan_id": plan["result"]["plan_id"],
+                "snapshot_hash": snapshot["result"]["snapshot_hash"],
+            },
+        )
+
+        start = state.handle_request(
+            "dxf.job.start",
+            {
+                "plan_id": plan["result"]["plan_id"],
+                "plan_fingerprint": plan["result"]["plan_fingerprint"],
+                "target_count": 2,
+            },
+        )
+        self.assertIn("result", start)
+        self.assertTrue(state.dxf.auto_continue)
+
+        with state._lock:
+            state.dxf.progress = 97.5
+
+        deadline = time.time() + 2.0
+        status = {"result": {"state": "unknown", "completed_count": 0, "current_cycle": 0}}
+        while time.time() < deadline:
+            status = state.handle_request("dxf.job.status", {"job_id": start["result"]["job_id"]})
+            if status["result"]["completed_count"] >= 1:
+                break
+            time.sleep(0.05)
+
+        self.assertEqual(status["result"]["state"], "running")
+        self.assertEqual(status["result"]["completed_count"], 1)
+        self.assertEqual(status["result"]["current_cycle"], 2)
+
+    def test_job_start_can_explicitly_wait_for_continue(self) -> None:
+        state = MockState(seed_alarms=False)
+        state.handle_request("connect", {})
+        state.handle_request(
+            "dxf.artifact.create",
+            {"filename": "sample.dxf", "file_content_b64": "MFxOU0VDVElPTgoyXEVOVElUSUVTXDAKRU5EU0VDXDAKRU9GCg=="},
+        )
+        plan = state.handle_request(
+            "dxf.plan.prepare",
+            {
+                "artifact_id": state.dxf.artifact_id,
+                "dispensing_speed_mm_s": 12.5,
+            },
+        )
+        snapshot = state.handle_request("dxf.preview.snapshot", {"plan_id": plan["result"]["plan_id"]})
+        state.handle_request(
+            "dxf.preview.confirm",
+            {
+                "plan_id": plan["result"]["plan_id"],
+                "snapshot_hash": snapshot["result"]["snapshot_hash"],
+            },
+        )
+
+        start = state.handle_request(
+            "dxf.job.start",
+            {
+                "plan_id": plan["result"]["plan_id"],
+                "plan_fingerprint": plan["result"]["plan_fingerprint"],
+                "target_count": 2,
+                "auto_continue": False,
+            },
+        )
+        self.assertIn("result", start)
+        self.assertFalse(state.dxf.auto_continue)
+
+        with state._lock:
+            state.dxf.progress = 97.5
+
+        deadline = time.time() + 2.0
+        status = {"result": {"state": "unknown", "completed_count": 0}}
+        while time.time() < deadline:
+            status = state.handle_request("dxf.job.status", {"job_id": start["result"]["job_id"]})
+            if status["result"]["state"] == "awaiting_continue":
+                break
+            time.sleep(0.05)
+
+        self.assertEqual(status["result"]["state"], "awaiting_continue")
+        self.assertEqual(status["result"]["completed_count"], 1)
+
+        continued = state.handle_request("dxf.job.continue", {"job_id": start["result"]["job_id"]})
+        self.assertIn("result", continued)
+
+        with state._lock:
+            state.dxf.progress = 97.5
+
+        deadline = time.time() + 2.0
+        while time.time() < deadline:
+            status = state.handle_request("dxf.job.status", {"job_id": start["result"]["job_id"]})
+            if status["result"]["state"] == "completed":
+                break
+            time.sleep(0.05)
+
+        self.assertEqual(status["result"]["state"], "completed")
+        self.assertEqual(status["result"]["completed_count"], 2)
 
     def test_home_is_rejected_when_interlock_active(self) -> None:
         state = MockState(seed_alarms=False)

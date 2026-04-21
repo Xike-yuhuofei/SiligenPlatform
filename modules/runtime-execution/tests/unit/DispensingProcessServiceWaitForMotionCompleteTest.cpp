@@ -17,6 +17,16 @@ namespace {
 
 using Siligen::RuntimeExecution::Application::Services::Dispensing::DispensingProcessService;
 using Siligen::Domain::Dispensing::Ports::IDispensingExecutionObserver;
+using Siligen::Domain::Dispensing::Ports::DispenserValveParams;
+using Siligen::Domain::Dispensing::Ports::DispenserValveState;
+using Siligen::Domain::Dispensing::Ports::DispenserValveStatus;
+using Siligen::Domain::Dispensing::Ports::IProfileComparePort;
+using Siligen::Domain::Dispensing::Ports::IValvePort;
+using Siligen::Domain::Dispensing::Ports::PositionTriggeredDispenserParams;
+using Siligen::Domain::Dispensing::Ports::ProfileCompareArmRequest;
+using Siligen::Domain::Dispensing::Ports::ProfileCompareStatus;
+using Siligen::Domain::Dispensing::Ports::SupplyValveState;
+using Siligen::Domain::Dispensing::Ports::SupplyValveStatusDetail;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionOptions;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionPlan;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionReport;
@@ -30,6 +40,11 @@ using Siligen::Domain::Motion::Ports::InterpolationData;
 using Siligen::Domain::Motion::Ports::InterpolationType;
 using Siligen::Domain::Motion::Ports::MotionState;
 using Siligen::Domain::Motion::Ports::MotionStatus;
+using Siligen::Device::Contracts::Commands::DeviceConnection;
+using Siligen::Device::Contracts::Ports::DeviceConnectionPort;
+using Siligen::Device::Contracts::State::DeviceConnectionSnapshot;
+using Siligen::Device::Contracts::State::DeviceConnectionState;
+using Siligen::Device::Contracts::State::HeartbeatSnapshot;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::LogicalAxisId;
@@ -55,6 +70,7 @@ struct WaitForMotionCompleteTag {
                                                             const Point2D*,
                                                             float32,
                                                             uint32,
+                                                            uint32,
                                                             bool,
                                                             IDispensingExecutionObserver*) noexcept;
     friend type GetPrivateMember(WaitForMotionCompleteTag);
@@ -62,6 +78,7 @@ struct WaitForMotionCompleteTag {
 
 struct ExecutePlanInternalTag {
     using type = Result<DispensingExecutionReport> (DispensingProcessService::*)(const DispensingExecutionPlan&,
+                                                                                 float32,
                                                                                  const DispensingRuntimeParams&,
                                                                                  const DispensingExecutionOptions&,
                                                                                  std::atomic<bool>*,
@@ -305,6 +322,130 @@ class SequencedMotionStatePort final : public IMotionStatePort {
     std::vector<Point2D> positions{};
 };
 
+class FakeHardwareConnectionPort final : public DeviceConnectionPort {
+   public:
+    Result<void> Connect(const DeviceConnection&) override { return Result<void>::Success(); }
+
+    Result<void> Disconnect() override { return Result<void>::Success(); }
+
+    Result<DeviceConnectionSnapshot> ReadConnection() const override {
+        DeviceConnectionSnapshot snapshot;
+        snapshot.state = connected ? DeviceConnectionState::Connected : DeviceConnectionState::Disconnected;
+        return Result<DeviceConnectionSnapshot>::Success(snapshot);
+    }
+
+    bool IsConnected() const override { return connected; }
+
+    Result<void> Reconnect() override { return Result<void>::Success(); }
+
+    void SetConnectionStateCallback(std::function<void(const DeviceConnectionSnapshot&)>) override {}
+
+    Result<void> StartStatusMonitoring(std::uint32_t) override { return Result<void>::Success(); }
+
+    void StopStatusMonitoring() override {}
+
+    std::string GetLastError() const override { return {}; }
+
+    void ClearError() override {}
+
+    Result<void> StartHeartbeat(const HeartbeatSnapshot&) override { return Result<void>::Success(); }
+
+    void StopHeartbeat() override {}
+
+    HeartbeatSnapshot ReadHeartbeat() const override { return {}; }
+
+    Result<bool> Ping() const override { return Result<bool>::Success(connected); }
+
+    bool connected = true;
+};
+
+class DelayedProfileCompareValvePort final : public IValvePort,
+                                            public IProfileComparePort {
+   public:
+    Result<DispenserValveState> StartDispenser(const DispenserValveParams&) noexcept override {
+        return Result<DispenserValveState>::Success(dispenser_state);
+    }
+
+    Result<DispenserValveState> OpenDispenser() noexcept override {
+        return Result<DispenserValveState>::Success(dispenser_state);
+    }
+
+    Result<void> CloseDispenser() noexcept override {
+        return Result<void>::Success();
+    }
+
+    Result<DispenserValveState> StartPositionTriggeredDispenser(
+        const PositionTriggeredDispenserParams&) noexcept override {
+        return Result<DispenserValveState>::Success(dispenser_state);
+    }
+
+    Result<void> StopDispenser() noexcept override {
+        return Result<void>::Success();
+    }
+
+    Result<void> PauseDispenser() noexcept override {
+        return Result<void>::Success();
+    }
+
+    Result<void> ResumeDispenser() noexcept override {
+        return Result<void>::Success();
+    }
+
+    Result<DispenserValveState> GetDispenserStatus() noexcept override {
+        return Result<DispenserValveState>::Success(dispenser_state);
+    }
+
+    Result<SupplyValveState> OpenSupply() noexcept override {
+        return Result<SupplyValveState>::Success(SupplyValveState::Open);
+    }
+
+    Result<SupplyValveState> CloseSupply() noexcept override {
+        return Result<SupplyValveState>::Success(SupplyValveState::Closed);
+    }
+
+    Result<SupplyValveStatusDetail> GetSupplyStatus() noexcept override {
+        return Result<SupplyValveStatusDetail>::Success({});
+    }
+
+    Result<void> ArmProfileCompare(const ProfileCompareArmRequest& request) noexcept override {
+        profile_compare_status = {};
+        profile_compare_status.armed = !request.compare_positions_pulse.empty();
+        profile_compare_status.expected_trigger_count = request.expected_trigger_count;
+        profile_compare_status.completed_trigger_count = request.start_boundary_trigger_count;
+        profile_compare_status.remaining_trigger_count =
+            request.expected_trigger_count - request.start_boundary_trigger_count;
+        remaining_incomplete_status_reads = incomplete_status_reads_before_complete;
+        return Result<void>::Success();
+    }
+
+    Result<void> DisarmProfileCompare() noexcept override {
+        profile_compare_status.armed = false;
+        profile_compare_status.remaining_trigger_count = 0U;
+        profile_compare_status.completed_trigger_count = profile_compare_status.expected_trigger_count;
+        return Result<void>::Success();
+    }
+
+    Result<ProfileCompareStatus> GetProfileCompareStatus() noexcept override {
+        ++status_reads;
+        if (profile_compare_status.armed) {
+            if (remaining_incomplete_status_reads > 0) {
+                --remaining_incomplete_status_reads;
+            } else {
+                profile_compare_status.armed = false;
+                profile_compare_status.completed_trigger_count = profile_compare_status.expected_trigger_count;
+                profile_compare_status.remaining_trigger_count = 0U;
+            }
+        }
+        return Result<ProfileCompareStatus>::Success(profile_compare_status);
+    }
+
+    int incomplete_status_reads_before_complete = 0;
+    int remaining_incomplete_status_reads = 0;
+    int status_reads = 0;
+    ProfileCompareStatus profile_compare_status{};
+    DispenserValveState dispenser_state{DispenserValveStatus::Idle, 0U, 0U, 0U, 0.0f, std::nullopt, {}};
+};
+
 DispensingExecutionPlan BuildLinearExecutionPlan() {
     DispensingExecutionPlan plan;
 
@@ -390,6 +531,7 @@ TEST(DispensingProcessServiceWaitForMotionCompleteTest, StablePositionAwayFromTa
         &final_target,
         1.0f,
         9U,
+        0U,
         false,
         nullptr);
 
@@ -425,6 +567,7 @@ TEST(DispensingProcessServiceWaitForMotionCompleteTest, NearTargetLowVelocityFal
         &final_target,
         1.0f,
         9U,
+        0U,
         false,
         nullptr);
 
@@ -465,6 +608,7 @@ TEST(DispensingProcessServiceWaitForMotionCompleteTest, FifoFinishedWithLatchedR
         &final_target,
         1.0f,
         9U,
+        0U,
         false,
         nullptr);
 
@@ -500,11 +644,129 @@ TEST(DispensingProcessServiceWaitForMotionCompleteTest, IdleCoordinateSystemAway
         &final_target,
         1.0f,
         9U,
+        0U,
         false,
         nullptr);
 
     ASSERT_TRUE(result.IsError());
     EXPECT_EQ(result.GetError().GetCode(), ErrorCode::MOTION_TIMEOUT);
+}
+
+TEST(DispensingProcessServiceWaitForMotionCompleteTest,
+     MotionTerminalWaitsForDelayedProfileCompareCompletionWithinBudget) {
+    auto valve_port = std::make_shared<DelayedProfileCompareValvePort>();
+    valve_port->incomplete_status_reads_before_complete = 8;
+    ProfileCompareArmRequest request{};
+    request.compare_source_axis = 1;
+    request.expected_trigger_count = 3U;
+    request.start_boundary_trigger_count = 1U;
+    request.compare_positions_pulse = {100L, 200L};
+    request.pulse_width_us = 2000U;
+    request.start_level = 0;
+    ASSERT_TRUE(valve_port->ArmProfileCompare(request).IsSuccess());
+
+    auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    interpolation_port->status.state = CoordinateSystemState::IDLE;
+    interpolation_port->status.is_moving = false;
+    interpolation_port->status.remaining_segments = 0U;
+    auto motion_state_port = std::make_shared<SequencedMotionStatePort>(
+        std::vector<Point2D>{Point2D{0.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f}});
+    DispensingProcessService service(valve_port,
+                                     interpolation_port,
+                                     motion_state_port,
+                                     nullptr,
+                                     nullptr);
+
+    std::atomic<bool> stop_flag{false};
+    std::atomic<bool> pause_flag{false};
+    std::atomic<bool> pause_applied_flag{false};
+    Point2D final_target{10.0f, 0.0f};
+    const auto wait_for_motion_complete = GetPrivateMember(WaitForMotionCompleteTag{});
+
+    auto result = (service.*wait_for_motion_complete)(
+        1200,
+        &stop_flag,
+        &pause_flag,
+        &pause_applied_flag,
+        &final_target,
+        1.0f,
+        9U,
+        request.expected_trigger_count,
+        false,
+        nullptr);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    EXPECT_GE(valve_port->status_reads, 9);
+}
+
+TEST(DispensingProcessServiceWaitForMotionCompleteTest,
+     MotionTerminalProfileCompareTimeoutStillReturnsCompareFailure) {
+    auto valve_port = std::make_shared<DelayedProfileCompareValvePort>();
+    valve_port->incomplete_status_reads_before_complete = 100;
+    ProfileCompareArmRequest request{};
+    request.compare_source_axis = 1;
+    request.expected_trigger_count = 3U;
+    request.start_boundary_trigger_count = 1U;
+    request.compare_positions_pulse = {100L, 200L};
+    request.pulse_width_us = 2000U;
+    request.start_level = 0;
+    ASSERT_TRUE(valve_port->ArmProfileCompare(request).IsSuccess());
+
+    auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    interpolation_port->status.state = CoordinateSystemState::IDLE;
+    interpolation_port->status.is_moving = false;
+    interpolation_port->status.remaining_segments = 0U;
+    auto motion_state_port = std::make_shared<SequencedMotionStatePort>(
+        std::vector<Point2D>{Point2D{0.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f}});
+    DispensingProcessService service(valve_port,
+                                     interpolation_port,
+                                     motion_state_port,
+                                     nullptr,
+                                     nullptr);
+
+    std::atomic<bool> stop_flag{false};
+    std::atomic<bool> pause_flag{false};
+    std::atomic<bool> pause_applied_flag{false};
+    Point2D final_target{10.0f, 0.0f};
+    const auto wait_for_motion_complete = GetPrivateMember(WaitForMotionCompleteTag{});
+
+    auto result = (service.*wait_for_motion_complete)(
+        320,
+        &stop_flag,
+        &pause_flag,
+        &pause_applied_flag,
+        &final_target,
+        1.0f,
+        9U,
+        request.expected_trigger_count,
+        false,
+        nullptr);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::CMP_TRIGGER_SETUP_FAILED);
+    EXPECT_EQ(result.GetError().GetMessage(), "profile_compare 未完成全部触发点");
 }
 
 TEST(DispensingProcessServiceWaitForMotionCompleteTest, ConfigureCoordinateSystemPinsDispensingCyclesToMachineZero) {
@@ -555,6 +817,7 @@ TEST(DispensingProcessServiceWaitForMotionCompleteTest, ExecutePlanInternalKeeps
 
     const auto result = (service.*execute_plan_internal)(
         plan,
+        0.0f,
         params,
         options,
         &stop_flag,
@@ -611,6 +874,7 @@ TEST(DispensingProcessServiceWaitForMotionCompleteTest, ExecutePlanInternalPrePo
 
     const auto result = (service.*execute_plan_internal)(
         plan,
+        0.0f,
         params,
         options,
         &stop_flag,
@@ -630,6 +894,72 @@ TEST(DispensingProcessServiceWaitForMotionCompleteTest, ExecutePlanInternalPrePo
     EXPECT_FLOAT_EQ(interpolation_port->add_history[0].velocity, 20.0f);
     EXPECT_FLOAT_EQ(interpolation_port->add_history[1].positions[0], 5.0f);
     EXPECT_FLOAT_EQ(interpolation_port->add_history[2].positions[0], 10.0f);
+}
+
+TEST(DispensingProcessServiceWaitForMotionCompleteTest,
+     ExecuteProcessUsesAuthorityEstimatedTimeForFinalCompletionBudget) {
+    auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    interpolation_port->status_sequence.reserve(122);
+    for (int index = 0; index < 6; ++index) {
+        interpolation_port->status_sequence.push_back(
+            CoordinateSystemStatus{CoordinateSystemState::IDLE, false, 0U, 0.0f, 0x10, 1, 0});
+    }
+    for (int index = 0; index < 107; ++index) {
+        interpolation_port->status_sequence.push_back(
+            CoordinateSystemStatus{CoordinateSystemState::MOVING, true, 1U, 1.0f, 0x01, 1, 1});
+    }
+    for (int index = 0; index < 8; ++index) {
+        interpolation_port->status_sequence.push_back(
+            CoordinateSystemStatus{CoordinateSystemState::IDLE, false, 0U, 0.0f, 0x10, 1, 0});
+    }
+
+    std::vector<Point2D> positions;
+    positions.reserve(117);
+    positions.push_back(Point2D{0.0f, 0.0f});
+    positions.push_back(Point2D{0.0f, 0.0f});
+    for (int index = 0; index < 107; ++index) {
+        const auto ratio = static_cast<float>(index + 1) / 107.0f;
+        positions.push_back(Point2D{9.8f * ratio, 0.0f});
+    }
+    for (int index = 0; index < 8; ++index) {
+        positions.push_back(Point2D{10.0f, 0.0f});
+    }
+    auto motion_state_port = std::make_shared<SequencedMotionStatePort>(std::move(positions));
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    DispensingProcessService service(nullptr,
+                                     interpolation_port,
+                                     motion_state_port,
+                                     connection_port,
+                                     nullptr);
+
+    auto plan = BuildLinearExecutionPlan();
+    plan.motion_trajectory.total_time = 0.0f;
+    plan.interpolation_points.back().timestamp = 0.4f;
+
+    Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated execution_package;
+    execution_package.execution_plan = plan;
+    execution_package.total_length_mm = plan.total_length_mm;
+    // Keep the authority estimate above this synthetic ~7s wait path so the test
+    // verifies authority-budget forwarding instead of timing out on fixture latency.
+    execution_package.execution_nominal_time_s = 3.0f;
+
+    auto params = BuildRuntimeParams();
+    auto options = BuildExecutionOptions();
+    std::atomic<bool> stop_flag{false};
+    std::atomic<bool> pause_flag{false};
+    std::atomic<bool> pause_applied_flag{false};
+
+    const auto result = service.ExecuteProcess(
+        execution_package,
+        params,
+        options,
+        &stop_flag,
+        &pause_flag,
+        &pause_applied_flag,
+        nullptr);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    EXPECT_EQ(result.Value().executed_segments, 2U);
 }
 
 TEST(DispensingProcessServiceWaitForMotionCompleteTest,

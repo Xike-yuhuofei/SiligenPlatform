@@ -122,6 +122,17 @@ class PreviewPayloadAuthorityServiceTest(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.glue_reveal_lengths_mm, (0.0, 3.25, 6.5))
 
+    def test_process_snapshot_payload_fails_when_glue_reveal_lengths_invalid(self) -> None:
+        payload = valid_payload()
+        payload["glue_reveal_lengths_mm"] = [0.0, 6.5, 3.25]
+
+        result = self.authority.process_snapshot_payload(payload, current_dry_run=False)
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.title, "胶点预览生成失败")
+        self.assertEqual(self.state.gate.last_error_message, "运行时快照缺少有效 glue_reveal_lengths_mm")
+        self.assertIn("glue_reveal_lengths_mm", result.detail)
+
     def test_process_snapshot_payload_stores_preview_diagnostic_code(self) -> None:
         payload = valid_payload()
         payload["preview_validation_classification"] = "pass_with_exception"

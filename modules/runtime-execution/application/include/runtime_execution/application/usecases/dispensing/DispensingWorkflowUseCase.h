@@ -5,6 +5,7 @@
 #include "dispense_packaging/application/usecases/dispensing/PlanningUseCase.h"
 #include "application/services/dispensing/PreviewSnapshotService.h"
 #include "job_ingest/contracts/dispensing/UploadContracts.h"
+#include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "runtime_execution/contracts/machine/MachineMode.h"
 #include "runtime_execution/contracts/motion/IHomingPort.h"
 #include "runtime_execution/contracts/motion/IMotionStatePort.h"
@@ -31,10 +32,13 @@ namespace Siligen::Application::UseCases::Dispensing {
 using ArtifactID = std::string;
 using JobID = std::string;
 using PlanID = std::string;
+using Siligen::Domain::Dispensing::Contracts::ExecutionBudgetBreakdown;
+using Siligen::Domain::Dispensing::Contracts::ExecutionPlanSummary;
 using Siligen::JobIngest::Contracts::IUploadFilePort;
 using Siligen::JobIngest::Contracts::DxfImportDiagnostics;
 using Siligen::JobIngest::Contracts::UploadRequest;
 using Siligen::JobIngest::Contracts::UploadResponse;
+using Siligen::Domain::Configuration::Ports::IConfigurationPort;
 
 struct CreateArtifactResponse {
     bool success = false;
@@ -50,7 +54,6 @@ struct CreateArtifactResponse {
 
 struct PreparePlanRuntimeOverrides {
     std::string source_path;
-    bool use_hardware_trigger = true;
     bool dry_run = false;
     std::optional<Domain::Machine::ValueObjects::MachineMode> machine_mode;
     std::optional<Domain::Dispensing::ValueObjects::JobExecutionMode> execution_mode;
@@ -102,7 +105,8 @@ struct PreparePlanResponse {
     std::uint32_t segment_count = 0;
     std::uint32_t point_count = 0;
     float32 total_length_mm = 0.0f;
-    float32 estimated_time_s = 0.0f;
+    float32 execution_nominal_time_s = 0.0f;
+    ExecutionPlanSummary execution_plan_summary;
     DxfImportDiagnostics import_diagnostics;
     std::string preview_validation_classification;
     std::string preview_exception_reason;
@@ -133,6 +137,7 @@ struct StartJobRequest {
     PlanID plan_id;
     std::string plan_fingerprint;
     std::uint32_t target_count = 1;
+    JobCycleAdvanceMode cycle_advance_mode = JobCycleAdvanceMode::WAIT_FOR_CONTINUE;
 };
 
 struct StartJobResponse {
@@ -151,6 +156,8 @@ struct StartJobResponse {
     PlanID plan_id;
     std::string plan_fingerprint;
     std::uint32_t target_count = 0;
+    float32 execution_budget_s = 0.0f;
+    ExecutionBudgetBreakdown execution_budget_breakdown;
     PerformanceProfile performance_profile;
 };
 
@@ -190,6 +197,8 @@ struct JobStatusResponse {
     std::uint32_t cycle_progress_percent = 0;
     std::uint32_t overall_progress_percent = 0;
     float32 elapsed_seconds = 0.0f;
+    float32 execution_budget_s = 0.0f;
+    ExecutionBudgetBreakdown execution_budget_breakdown;
     std::string error_message;
     bool dry_run = false;
 };
@@ -209,6 +218,7 @@ class DispensingWorkflowUseCase {
         std::shared_ptr<PlanningUseCase> planning_use_case,
         std::shared_ptr<Siligen::Application::Ports::Dispensing::IProductionBaselinePort> production_baseline_port,
         std::shared_ptr<Siligen::Application::Ports::Dispensing::IWorkflowExecutionPort> execution_port,
+        std::shared_ptr<IConfigurationPort> config_port,
         std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port,
         std::shared_ptr<Siligen::Device::Contracts::Ports::MotionDevicePort> motion_device_port,
         std::shared_ptr<Siligen::Device::Contracts::Ports::DispenserDevicePort> dispenser_device_port,
@@ -244,6 +254,8 @@ class DispensingWorkflowUseCase {
         PlanningRequest planning_request;
         std::string authority_cache_key;
         std::shared_ptr<Domain::Dispensing::Contracts::ExecutionPackageValidated> execution_package;
+        std::shared_ptr<const Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareExecutionSchedule>
+            profile_compare_schedule;
         PreparePlanRuntimeOverrides runtime_overrides;
     };
 
@@ -259,6 +271,10 @@ class DispensingWorkflowUseCase {
         bool preview_binding_ready = false;
         bool execution_authority_shared_with_execution = false;
         bool execution_binding_ready = false;
+        bool execution_contract_ready = false;
+        std::string execution_failure_reason;
+        std::string execution_diagnostic_code;
+        std::string profile_compare_schedule_failure;
         bool preview_spacing_valid = false;
         bool preview_has_short_segment_exceptions = false;
         std::string preview_validation_classification;
@@ -269,6 +285,7 @@ class DispensingWorkflowUseCase {
         std::string preview_snapshot_id;
         std::string preview_snapshot_hash;
         std::string preview_generated_at;
+        float32 preview_estimated_time_s = 0.0f;
         std::string confirmed_at;
         std::string failure_message;
         JobID runtime_job_id;
@@ -341,6 +358,7 @@ class DispensingWorkflowUseCase {
     std::shared_ptr<PlanningUseCase> planning_use_case_;
     std::shared_ptr<Siligen::Application::Ports::Dispensing::IProductionBaselinePort> production_baseline_port_;
     std::shared_ptr<Siligen::Application::Ports::Dispensing::IWorkflowExecutionPort> execution_port_;
+    std::shared_ptr<IConfigurationPort> config_port_;
     std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort> connection_port_;
     std::shared_ptr<Siligen::Device::Contracts::Ports::MotionDevicePort> motion_device_port_;
     std::shared_ptr<Siligen::Device::Contracts::Ports::DispenserDevicePort> dispenser_device_port_;
@@ -366,6 +384,9 @@ class DispensingWorkflowUseCase {
 
     std::atomic<std::uint64_t> id_sequence_{0};
 
+    static const Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated* ResolveExecutionContractPackage(
+        const PlanRecord& plan_record);
+    static void RefreshResponseExecutionContract(PlanRecord& plan_record);
     PreviewSnapshotResponse BuildPreviewSnapshotResponse(
         const PlanRecord& plan_record,
         std::size_t max_polyline_points,
@@ -407,6 +428,10 @@ class DispensingWorkflowUseCase {
         bool require_execution_binding) const;
     ExecutionCapabilityDiagnostic EvaluateExecutionCapability(
         const PlanRecord& plan_record) const;
+    std::string ResolveProductionGateFailure(const PlanRecord& plan_record) const;
+    void RefreshProfileCompareSchedule(PlanRecord& plan_record) const;
+    Siligen::Shared::Types::Result<void> MaterializeProfileCompareSchedule(PlanRecord& plan_record) const;
+    void RefreshPlanImportDiagnostics(PlanRecord& plan_record) const;
     std::optional<Siligen::Shared::Types::Error> BuildPreviewGateError(
         PlanRecord& plan_record,
         bool mark_failed,

@@ -9,6 +9,7 @@
 #include <mutex>
 #include <cstdint>
 
+#include "dispense_packaging/contracts/FormalCompareGateDiagnostic.h"
 #include "shared/types/DiagnosticsConfig.h"
 #include "runtime_execution/application/services/motion/execution/MotionReadinessService.h"
 
@@ -109,6 +110,7 @@ private:
         std::vector<std::string> import_error_codes;
         std::string import_resolved_units;
         double import_resolved_unit_scale = 1.0;
+        Siligen::Domain::Dispensing::Contracts::FormalCompareGateDiagnostic formal_compare_gate;
     };
 
     mutable std::mutex dxf_mutex_;
@@ -151,6 +153,7 @@ private:
     std::string HandleDxfJobStatus(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfJobPause(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfJobResume(const std::string& id, const nlohmann::json& params);
+    std::string HandleDxfJobContinue(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfJobStop(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfJobCancel(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfInfo(const std::string& id, const nlohmann::json& params);

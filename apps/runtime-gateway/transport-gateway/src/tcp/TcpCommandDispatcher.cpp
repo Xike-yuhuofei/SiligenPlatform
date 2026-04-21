@@ -48,6 +48,7 @@ namespace Application = Siligen::Application;
 namespace TcpFacades = Siligen::Application::Facades::Tcp;
 
 using Siligen::Shared::Types::LogicalAxisId;
+using Siligen::Domain::Dispensing::Contracts::FormalCompareGateDiagnostic;
 using Siligen::Shared::Types::float32;
 using Siligen::JobIngest::Contracts::DxfImportDiagnostics;
 using Siligen::Domain::Recipes::Serialization::RecipeJsonSerializer;
@@ -224,6 +225,7 @@ nlohmann::json BuildImportDiagnosticsJson(
     const std::string& result_classification,
     const bool preview_ready,
     const bool production_ready,
+    const FormalCompareGateDiagnostic& formal_compare_gate,
     const std::string& summary,
     const std::string& primary_code,
     const std::vector<std::string>& warning_codes,
@@ -231,10 +233,25 @@ nlohmann::json BuildImportDiagnosticsJson(
     const std::string& resolved_units,
     const double resolved_unit_scale,
     const std::string& prepared_filepath) {
+    const auto build_formal_compare_gate_json = [](const FormalCompareGateDiagnostic& gate) -> nlohmann::json {
+        if (!gate.HasValue()) {
+            return nullptr;
+        }
+        return {
+            {"status", gate.status},
+            {"reason_code", gate.reason_code},
+            {"authority_span_ref", gate.authority_span_ref},
+            {"trigger_begin_index", gate.trigger_begin_index},
+            {"current_start_position_mm", {{"x", gate.current_start_position_mm.x}, {"y", gate.current_start_position_mm.y}}},
+            {"next_trigger_position_mm", {{"x", gate.next_trigger_position_mm.x}, {"y", gate.next_trigger_position_mm.y}}},
+            {"candidate_failures", gate.candidate_failures},
+        };
+    };
     return {
         {"import_result_classification", result_classification},
         {"import_preview_ready", preview_ready},
         {"import_production_ready", production_ready},
+        {"formal_compare_gate", build_formal_compare_gate_json(formal_compare_gate)},
         {"import_summary", summary},
         {"import_primary_code", primary_code},
         {"import_warning_codes", warning_codes},
@@ -250,6 +267,7 @@ nlohmann::json BuildImportDiagnosticsJson(const DxfImportDiagnostics& diagnostic
         diagnostics.result_classification,
         diagnostics.preview_ready,
         diagnostics.production_ready,
+        diagnostics.formal_compare_gate,
         diagnostics.summary,
         diagnostics.primary_code,
         diagnostics.warning_codes,
@@ -523,7 +541,6 @@ nlohmann::json BuildPreviewSignaturePayload(const std::string& filepath, const n
     payload["curve_chain_angle_deg"] = ReadJsonDouble(params, "curve_chain_angle_deg", 0.0);
     payload["curve_chain_max_segment_mm"] = ReadJsonDouble(params, "curve_chain_max_segment_mm", 0.0);
     payload["max_jerk"] = ReadJsonDouble(params, "max_jerk", 0.0);
-    payload["use_hardware_trigger"] = ReadJsonBool(params, "use_hardware_trigger", true);
     payload["use_interpolation_planner"] = ReadJsonBool(params, "use_interpolation_planner", true);
     payload["interpolation_algorithm"] = ReadJsonInt(params, "interpolation_algorithm", 0);
     payload["requested_execution_strategy"] = ReadJsonInt(params, "requested_execution_strategy", -1);
@@ -579,7 +596,6 @@ Application::UseCases::Dispensing::PlanningRequest BuildPreviewPlanningRequest(
         ReadJsonDouble(params, "continuity_tolerance_mm", ReadJsonDouble(params, "continuity_tolerance", 0.0)));
     request.curve_chain_angle_deg = static_cast<float32>(ReadJsonDouble(params, "curve_chain_angle_deg", 0.0));
     request.curve_chain_max_segment_mm = static_cast<float32>(ReadJsonDouble(params, "curve_chain_max_segment_mm", 0.0));
-    request.use_hardware_trigger = ReadJsonBool(params, "use_hardware_trigger", true);
     request.use_interpolation_planner = ReadJsonBool(params, "use_interpolation_planner", true);
     const int algorithm_raw = ReadJsonInt(params, "interpolation_algorithm", 0);
     using InterpolationAlgorithm = Siligen::MotionPlanning::Contracts::InterpolationAlgorithm;
@@ -598,7 +614,6 @@ Application::UseCases::Dispensing::PreparePlanRuntimeOverrides BuildPreparePlanR
     request.source_path = filepath;
     request.arc_tolerance_mm = static_cast<float32>(
         ReadJsonDouble(params, "arc_tolerance_mm", ReadJsonDouble(params, "arc_tolerance", 0.01)));
-    request.use_hardware_trigger = ReadJsonBool(params, "use_hardware_trigger", true);
     request.dry_run = ReadJsonBool(params, "dry_run", false);
 
     const double dispensingSpeed = ReadJsonDouble(params, "dispensing_speed_mm_s", 0.0);
@@ -846,6 +861,33 @@ nlohmann::json BuildSupervisionJson(const RuntimeStatusExportSnapshot& snapshot)
     };
 }
 
+nlohmann::json BuildSafetyBoundaryJson(const RuntimeStatusExportSnapshot& snapshot) {
+    return {
+        {"state", snapshot.safety_boundary.state},
+        {"motion_permitted", snapshot.safety_boundary.motion_permitted},
+        {"process_output_permitted", snapshot.safety_boundary.process_output_permitted},
+        {"estop_active", snapshot.safety_boundary.estop_active},
+        {"estop_known", snapshot.safety_boundary.estop_known},
+        {"door_open_active", snapshot.safety_boundary.door_open_active},
+        {"door_open_known", snapshot.safety_boundary.door_open_known},
+        {"interlock_latched", snapshot.safety_boundary.interlock_latched},
+        {"blocking_reasons", snapshot.safety_boundary.blocking_reasons}
+    };
+}
+
+nlohmann::json BuildActionCapabilitiesJson(const RuntimeStatusExportSnapshot& snapshot) {
+    return {
+        {"motion_commands_permitted", snapshot.action_capabilities.motion_commands_permitted},
+        {"manual_output_commands_permitted", snapshot.action_capabilities.manual_output_commands_permitted},
+        {"manual_dispenser_pause_permitted",
+         snapshot.action_capabilities.manual_dispenser_pause_permitted},
+        {"manual_dispenser_resume_permitted",
+         snapshot.action_capabilities.manual_dispenser_resume_permitted},
+        {"active_job_present", snapshot.action_capabilities.active_job_present},
+        {"estop_reset_permitted", snapshot.action_capabilities.estop_reset_permitted}
+    };
+}
+
 nlohmann::json BuildAxesJson(const RuntimeStatusExportSnapshot& snapshot) {
     nlohmann::json axes_json = nlohmann::json::object();
     for (const auto& [axis_name, axis_status] : snapshot.axes) {
@@ -880,6 +922,35 @@ nlohmann::json BuildDispenserJson(const RuntimeStatusExportSnapshot& snapshot) {
     };
 }
 
+nlohmann::json BuildExecutionPlanSummaryJson(
+    const Siligen::Domain::Dispensing::Contracts::ExecutionPlanSummary& summary) {
+    return {
+        {"geometry_kind", summary.geometry_kind},
+        {"execution_strategy", summary.execution_strategy},
+        {"production_trigger_mode", summary.production_trigger_mode},
+        {"interpolation_segment_count", summary.interpolation_segment_count},
+        {"interpolation_point_count", summary.interpolation_point_count},
+        {"motion_point_count", summary.motion_point_count},
+        {"trigger_count", summary.trigger_count},
+        {"owner_span_count", summary.owner_span_count},
+        {"immediate_only_span_count", summary.immediate_only_span_count},
+        {"future_compare_span_count", summary.future_compare_span_count},
+    };
+}
+
+nlohmann::json BuildExecutionBudgetBreakdownJson(
+    const Siligen::Domain::Dispensing::Contracts::ExecutionBudgetBreakdown& breakdown) {
+    return {
+        {"execution_nominal_time_s", breakdown.execution_nominal_time_s},
+        {"motion_completion_grace_s", breakdown.motion_completion_grace_s},
+        {"owner_span_count", breakdown.owner_span_count},
+        {"owner_span_overhead_s", breakdown.owner_span_overhead_s},
+        {"cycle_budget_s", breakdown.cycle_budget_s},
+        {"target_count", breakdown.target_count},
+        {"total_budget_s", breakdown.total_budget_s},
+    };
+}
+
 nlohmann::json BuildJobExecutionJson(const RuntimeStatusExportSnapshot& snapshot) {
     return {
         {"job_id", snapshot.job_execution.job_id},
@@ -894,6 +965,8 @@ nlohmann::json BuildJobExecutionJson(const RuntimeStatusExportSnapshot& snapshot
         {"cycle_progress_percent", snapshot.job_execution.cycle_progress_percent},
         {"overall_progress_percent", snapshot.job_execution.overall_progress_percent},
         {"elapsed_seconds", snapshot.job_execution.elapsed_seconds},
+        {"execution_budget_s", snapshot.job_execution.execution_budget_s},
+        {"execution_budget_breakdown", BuildExecutionBudgetBreakdownJson(snapshot.job_execution.execution_budget_breakdown)},
         {"error_message", snapshot.job_execution.error_message},
         {"dry_run", snapshot.job_execution.dry_run}
     };
@@ -1025,6 +1098,7 @@ void TcpCommandDispatcher::RegisterDxfCommands() {
     RegisterCommand("dxf.job.status", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobStatus(id, params); });
     RegisterCommand("dxf.job.pause", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobPause(id, params); });
     RegisterCommand("dxf.job.resume", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobResume(id, params); });
+    RegisterCommand("dxf.job.continue", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobContinue(id, params); });
     RegisterCommand("dxf.job.stop", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobStop(id, params); });
     RegisterCommand("dxf.job.cancel", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobCancel(id, params); });
     RegisterCommand("dxf.preview.snapshot", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfPreviewSnapshot(id, params); });
@@ -1248,13 +1322,18 @@ std::string TcpCommandDispatcher::HandleStatus(const std::string& id, const nloh
     const nlohmann::json ioJson = BuildRawIoJson(status_snapshot);
     const nlohmann::json effectiveInterlocksJson = BuildEffectiveInterlocksJson(status_snapshot);
     const nlohmann::json supervisionJson = BuildSupervisionJson(status_snapshot);
+    const nlohmann::json safetyBoundaryJson = BuildSafetyBoundaryJson(status_snapshot);
+    const nlohmann::json actionCapabilitiesJson = BuildActionCapabilitiesJson(status_snapshot);
 
     nlohmann::json resultJson = {
         {"connected", status_snapshot.connected},
         {"connection_state", status_snapshot.connection_state},
+        {"device_mode", status_snapshot.device_mode},
         {"machine_state", status_snapshot.machine_state},
         {"machine_state_reason", status_snapshot.machine_state_reason},
         {"supervision", supervisionJson},
+        {"safety_boundary", safetyBoundaryJson},
+        {"action_capabilities", actionCapabilitiesJson},
         {"interlock_latched", status_snapshot.interlock_latched},
         {"job_execution", jobExecutionJson},
         {"axes", axesJson},
@@ -2015,6 +2094,7 @@ std::string TcpCommandDispatcher::HandleDxfArtifactCreate(const std::string& id,
         dxf_cache_.import_result_classification = artifact.import_diagnostics.result_classification;
         dxf_cache_.import_preview_ready = artifact.import_diagnostics.preview_ready;
         dxf_cache_.import_production_ready = artifact.import_diagnostics.production_ready;
+        dxf_cache_.formal_compare_gate = artifact.import_diagnostics.formal_compare_gate;
         dxf_cache_.import_summary = artifact.import_diagnostics.summary;
         dxf_cache_.import_primary_code = artifact.import_diagnostics.primary_code;
         dxf_cache_.import_warning_codes = artifact.import_diagnostics.warning_codes;
@@ -2081,6 +2161,7 @@ std::string TcpCommandDispatcher::HandleDxfPlanPrepare(const std::string& id, co
         dxf_cache_.import_result_classification = plan.import_diagnostics.result_classification;
         dxf_cache_.import_preview_ready = plan.import_diagnostics.preview_ready;
         dxf_cache_.import_production_ready = plan.import_diagnostics.production_ready;
+        dxf_cache_.formal_compare_gate = plan.import_diagnostics.formal_compare_gate;
         dxf_cache_.import_summary = plan.import_diagnostics.summary;
         dxf_cache_.import_primary_code = plan.import_diagnostics.primary_code;
         dxf_cache_.import_warning_codes = plan.import_diagnostics.warning_codes;
@@ -2109,17 +2190,8 @@ std::string TcpCommandDispatcher::HandleDxfPlanPrepare(const std::string& id, co
         {"segment_count", plan.segment_count},
         {"point_count", plan.point_count},
         {"total_length_mm", plan.total_length_mm},
-        {"estimated_time_s", plan.estimated_time_s},
-        {"prepared_filepath", plan.prepared_filepath},
-        {"import_result_classification", plan.import_diagnostics.result_classification},
-        {"import_preview_ready", plan.import_diagnostics.preview_ready},
-        {"import_production_ready", plan.import_diagnostics.production_ready},
-        {"import_summary", plan.import_diagnostics.summary},
-        {"import_primary_code", plan.import_diagnostics.primary_code},
-        {"import_warning_codes", plan.import_diagnostics.warning_codes},
-        {"import_error_codes", plan.import_diagnostics.error_codes},
-        {"import_resolved_units", plan.import_diagnostics.resolved_units},
-        {"import_resolved_unit_scale", plan.import_diagnostics.resolved_unit_scale},
+        {"execution_nominal_time_s", plan.execution_nominal_time_s},
+        {"execution_plan_summary", BuildExecutionPlanSummaryJson(plan.execution_plan_summary)},
         {"generated_at", plan.generated_at},
         {"snapshot_id", ""},
         {"snapshot_hash", ""},
@@ -2127,6 +2199,7 @@ std::string TcpCommandDispatcher::HandleDxfPlanPrepare(const std::string& id, co
         {"preview_state", "prepared"},
         {"performance_profile", performance_profile},
     };
+    result.update(BuildImportDiagnosticsJson(plan.import_diagnostics, plan.prepared_filepath));
     return GatewayJsonProtocol::MakeSuccessResponse(id, result);
 }
 
@@ -2169,10 +2242,14 @@ std::string TcpCommandDispatcher::HandleDxfJobStart(const std::string& id, const
     }
 
     const std::uint32_t target_count = static_cast<std::uint32_t>(ReadJsonSizeT(params, "target_count", 1));
+    const bool auto_continue = ReadJsonBool(params, "auto_continue", true);
     Application::UseCases::Dispensing::StartJobRequest request;
     request.plan_id = plan_id;
     request.plan_fingerprint = expected_plan_fingerprint;
     request.target_count = std::max<std::uint32_t>(1, target_count);
+    request.cycle_advance_mode = auto_continue
+        ? Application::UseCases::Dispensing::JobCycleAdvanceMode::AUTO_CONTINUE
+        : Application::UseCases::Dispensing::JobCycleAdvanceMode::WAIT_FOR_CONTINUE;
     auto start_result = dispensingFacade_->StartDxfJob(request);
     if (start_result.IsError()) {
         LogPreviewGateFailure("dxf.job.start", id, plan_id, start_result.GetError().GetMessage());
@@ -2201,12 +2278,15 @@ std::string TcpCommandDispatcher::HandleDxfJobStart(const std::string& id, const
         {"plan_id", start_response.plan_id},
         {"plan_fingerprint", start_response.plan_fingerprint},
         {"target_count", start_response.target_count},
+        {"execution_budget_s", start_response.execution_budget_s},
+        {"execution_budget_breakdown", BuildExecutionBudgetBreakdownJson(start_response.execution_budget_breakdown)},
         {"performance_profile", performance_profile},
     };
     result.update(BuildImportDiagnosticsJson(
         cache_snapshot.import_result_classification,
         cache_snapshot.import_preview_ready,
         cache_snapshot.import_production_ready,
+        cache_snapshot.formal_compare_gate,
         cache_snapshot.import_summary,
         cache_snapshot.import_primary_code,
         cache_snapshot.import_warning_codes,
@@ -2257,6 +2337,8 @@ std::string TcpCommandDispatcher::HandleDxfJobStatus(const std::string& id, cons
         {"cycle_progress_percent", status.cycle_progress_percent},
         {"overall_progress_percent", status.overall_progress_percent},
         {"elapsed_seconds", status.elapsed_seconds},
+        {"execution_budget_s", status.execution_budget_s},
+        {"execution_budget_breakdown", BuildExecutionBudgetBreakdownJson(status.execution_budget_breakdown)},
         {"error_message", status.error_message},
         {"dry_run", status.dry_run}
     });
@@ -2298,6 +2380,25 @@ std::string TcpCommandDispatcher::HandleDxfJobResume(const std::string& id, cons
         return GatewayJsonProtocol::MakeErrorResponse(id, 2910, resume_result.GetError().GetMessage());
     }
     return GatewayJsonProtocol::MakeSuccessResponse(id, {{"resumed", true}, {"job_id", job_id}});
+}
+
+std::string TcpCommandDispatcher::HandleDxfJobContinue(const std::string& id, const nlohmann::json& params) {
+    if (!dispensingFacade_) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2917, "TcpDispensingFacade not available");
+    }
+    std::string job_id = params.value("job_id", "");
+    if (job_id.empty()) {
+        std::lock_guard<std::mutex> lock(dxf_mutex_);
+        job_id = active_dxf_job_id_;
+    }
+    if (job_id.empty()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2918, "DXF job not waiting for continue");
+    }
+    auto continue_result = dispensingFacade_->ContinueDxfJob(job_id);
+    if (continue_result.IsError()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2919, continue_result.GetError().GetMessage());
+    }
+    return GatewayJsonProtocol::MakeSuccessResponse(id, {{"continued", true}, {"job_id", job_id}});
 }
 
 std::string TcpCommandDispatcher::HandleDxfJobStop(const std::string& id, const nlohmann::json& params) {
@@ -2464,6 +2565,18 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
     nlohmann::json glue_reveal_lengths_mm = nlohmann::json::array();
     for (const auto reveal_length_mm : snapshot.glue_reveal_lengths_mm) {
         glue_reveal_lengths_mm.push_back(reveal_length_mm);
+    }
+    if (snapshot.motion_preview_source != "execution_trajectory_snapshot") {
+        return GatewayJsonProtocol::MakeErrorResponse(
+            id,
+            3014,
+            "Preview motion preview source must be execution_trajectory_snapshot");
+    }
+    if (snapshot.motion_preview_kind != "polyline") {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview motion preview kind must be polyline");
+    }
+    if (snapshot.motion_preview_polyline.empty()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview motion preview polyline is empty");
     }
 
     nlohmann::json motion_preview_polyline = nlohmann::json::array();

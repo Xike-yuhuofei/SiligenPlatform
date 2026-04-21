@@ -338,6 +338,23 @@ function Invoke-UiSmoke {
         [string]$LaunchSpecPath = ""
     )
 
+    if ($ExerciseRuntimeActions -and -not [string]::IsNullOrWhiteSpace($PreviewPayloadPath)) {
+        $previewPayloadContractFailure = ""
+        if ([string]::IsNullOrWhiteSpace($RuntimeActionProfile)) {
+            $previewPayloadContractFailure = "PreviewPayloadPath requires explicit -RuntimeActionProfile snapshot_render"
+        } elseif ($RuntimeActionProfile -ine "snapshot_render") {
+            $previewPayloadContractFailure = "PreviewPayloadPath is only allowed with -RuntimeActionProfile snapshot_render"
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($previewPayloadContractFailure)) {
+            Write-Host "FAIL: $previewPayloadContractFailure"
+            return @{
+                RawExitCode = 1
+                Output      = "FAIL: $previewPayloadContractFailure"
+            }
+        }
+    }
+
     $uiArgs = @(
         $uiQtest,
         "--mode", "online",

@@ -29,56 +29,48 @@ function Resolve-ContractPath {
     return [System.IO.Path]::GetFullPath((Join-Path $ResolvedWorkspaceRoot "apps\hmi-app\config\gateway-launch.json"))
 }
 
-function Resolve-ContractRelativePath {
+function Resolve-ContractValuePath {
     param(
         [string]$ResolvedWorkspaceRoot,
-        [string]$RawPath
+        [string]$RawValue
     )
 
-    if ([string]::IsNullOrWhiteSpace($RawPath)) {
+    if ([string]::IsNullOrWhiteSpace($RawValue)) {
         return ""
     }
 
-    if ([System.IO.Path]::IsPathRooted($RawPath)) {
-        $resolved = [System.IO.Path]::GetFullPath($RawPath)
-    } else {
-        $resolved = [System.IO.Path]::GetFullPath((Join-Path $ResolvedWorkspaceRoot $RawPath))
+    if ([System.IO.Path]::IsPathRooted($RawValue)) {
+        return [System.IO.Path]::GetFullPath($RawValue)
     }
 
-    $workspacePrefix = [System.IO.Path]::GetFullPath($ResolvedWorkspaceRoot).TrimEnd('\') + "\"
-    if (-not $resolved.StartsWith($workspacePrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "HMI formal gateway launch contract must stay inside workspace root: $resolved"
-    }
-
-    return $resolved.Substring($workspacePrefix.Length).Replace('/', '\')
+    return [System.IO.Path]::GetFullPath((Join-Path $ResolvedWorkspaceRoot $RawValue))
 }
 
-function Assert-CanonicalBuildCaPath {
+function Test-PathWithinRoot {
     param(
-        [string]$ResolvedWorkspaceRoot,
-        [string]$RawPath,
-        [string]$Label,
-        [string]$ResolvedContractPath
+        [string]$CandidatePath,
+        [string]$AllowedRoot
     )
 
-    $relative = Resolve-ContractRelativePath -ResolvedWorkspaceRoot $ResolvedWorkspaceRoot -RawPath $RawPath
-    if ([string]::IsNullOrWhiteSpace($relative)) {
-        throw "HMI formal gateway launch contract missing ${Label}: $ResolvedContractPath"
+    if ([string]::IsNullOrWhiteSpace($CandidatePath) -or [string]::IsNullOrWhiteSpace($AllowedRoot)) {
+        return $false
     }
 
-    if ($relative.StartsWith("build\bin\", [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "HMI formal gateway launch contract must not point to legacy build/bin root ($Label): $relative"
+    $resolvedCandidate = [System.IO.Path]::GetFullPath($CandidatePath)
+    $resolvedRoot = [System.IO.Path]::GetFullPath($AllowedRoot)
+    if ($resolvedCandidate -ieq $resolvedRoot) {
+        return $true
     }
 
-    if (-not $relative.StartsWith("build\ca\bin\", [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "HMI formal gateway launch contract must point to canonical build/ca root ($Label): $relative"
-    }
+    $rootWithSeparator = $resolvedRoot.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+    return $resolvedCandidate.StartsWith($rootWithSeparator, [System.StringComparison]::OrdinalIgnoreCase)
 }
 
 $resolvedWorkspaceRoot = Resolve-WorkspaceRoot -WorkspaceRootPath $WorkspaceRoot
 $resolvedContractPath = Resolve-ContractPath `
     -ResolvedWorkspaceRoot $resolvedWorkspaceRoot `
     -ExplicitContractPath $ContractPath
+$resolvedCanonicalBuildRoot = [System.IO.Path]::GetFullPath((Join-Path $resolvedWorkspaceRoot "build\ca"))
 
 if (-not (Test-Path $resolvedContractPath)) {
     throw (
@@ -109,28 +101,41 @@ if ([string]::IsNullOrWhiteSpace($executable)) {
     throw "HMI formal gateway launch contract missing executable: $resolvedContractPath"
 }
 
+$resolvedExecutable = Resolve-ContractValuePath -ResolvedWorkspaceRoot $resolvedWorkspaceRoot -RawValue $executable
+if (-not (Test-PathWithinRoot -CandidatePath $resolvedExecutable -AllowedRoot $resolvedCanonicalBuildRoot)) {
+    throw "HMI formal gateway launch contract executable must stay under canonical build\\ca root: $resolvedContractPath"
+}
+
 $cwdProperty = $payload.PSObject.Properties["cwd"]
 $cwd = if ($null -ne $cwdProperty) {
     [string]$cwdProperty.Value
 } else {
     ""
 }
+if ([string]::IsNullOrWhiteSpace($cwd)) {
+    throw "HMI formal gateway launch contract missing cwd: $resolvedContractPath"
+}
+
+$resolvedCwd = Resolve-ContractValuePath -ResolvedWorkspaceRoot $resolvedWorkspaceRoot -RawValue $cwd
+if (-not (Test-PathWithinRoot -CandidatePath $resolvedCwd -AllowedRoot $resolvedCanonicalBuildRoot)) {
+    throw "HMI formal gateway launch contract cwd must stay under canonical build\\ca root: $resolvedContractPath"
+}
 
 $pathEntriesProperty = $payload.PSObject.Properties["pathEntries"]
-$pathEntries = if (
-    $null -ne $pathEntriesProperty `
-        -and $pathEntriesProperty.Value -is [System.Collections.IEnumerable] `
-        -and -not ($pathEntriesProperty.Value -is [string])
-) {
+$pathEntries = if ($null -ne $pathEntriesProperty) {
     @($pathEntriesProperty.Value)
 } else {
     @()
 }
+if ($pathEntries.Count -eq 0) {
+    throw "HMI formal gateway launch contract missing pathEntries: $resolvedContractPath"
+}
 
-Assert-CanonicalBuildCaPath -ResolvedWorkspaceRoot $resolvedWorkspaceRoot -RawPath $executable -Label "executable" -ResolvedContractPath $resolvedContractPath
-Assert-CanonicalBuildCaPath -ResolvedWorkspaceRoot $resolvedWorkspaceRoot -RawPath $cwd -Label "cwd" -ResolvedContractPath $resolvedContractPath
 foreach ($entry in $pathEntries) {
-    Assert-CanonicalBuildCaPath -ResolvedWorkspaceRoot $resolvedWorkspaceRoot -RawPath ([string]$entry) -Label "pathEntries" -ResolvedContractPath $resolvedContractPath
+    $resolvedEntry = Resolve-ContractValuePath -ResolvedWorkspaceRoot $resolvedWorkspaceRoot -RawValue ([string]$entry)
+    if (-not (Test-PathWithinRoot -CandidatePath $resolvedEntry -AllowedRoot $resolvedCanonicalBuildRoot)) {
+        throw "HMI formal gateway launch contract pathEntries must stay under canonical build\\ca root: $resolvedContractPath"
+    }
 }
 
 Write-Output "hmi formal gateway contract: $resolvedContractPath"

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dispense_packaging/contracts/FormalCompareGateDiagnostic.h"
 #include "shared/types/Result.h"
 
 #include <cstddef>
@@ -15,6 +16,7 @@ struct DxfImportDiagnostics {
     std::string result_classification;
     bool preview_ready = false;
     bool production_ready = false;
+    Siligen::Domain::Dispensing::Contracts::FormalCompareGateDiagnostic formal_compare_gate;
     std::string summary;
     std::string primary_code;
     std::vector<std::string> warning_codes;

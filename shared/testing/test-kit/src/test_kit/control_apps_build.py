@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
@@ -33,6 +34,11 @@ class ControlAppsBuildReadiness:
     artifact_probes: tuple[RequiredArtifactProbe, ...]
     missing_artifacts: tuple[str, ...]
     reason: str = ""
+
+
+def workspace_build_token(workspace_root: Path) -> str:
+    normalized_root = str(workspace_root.resolve()).lower().encode("utf-8")
+    return hashlib.sha256(normalized_root).hexdigest()[:12]
 
 
 def _read_cmake_home_directory(cache_path: Path) -> str:
@@ -141,6 +147,7 @@ def control_apps_build_root_probes(
 
     if explicit_build_root:
         add_probe(Path(explicit_build_root), source="env", allow_stale=True)
+        return tuple(probes)
 
     add_probe(workspace_root / "build" / "ca", source="workspace-build-ca")
     return tuple(probes)
@@ -161,8 +168,6 @@ def preferred_control_apps_build_root(
     explicit_build_root: str | None = None,
 ) -> BuildRootProbe:
     probes = control_apps_build_root_probes(workspace_root, explicit_build_root=explicit_build_root)
-    if explicit_build_root and probes:
-        return probes[0]
     existing_accepted = [probe for probe in probes if probe.accepted and probe.exists]
     if existing_accepted:
         with_matching_cache = [probe for probe in existing_accepted if probe.cache_present and probe.matches_workspace]
@@ -182,6 +187,7 @@ def probe_control_apps_build_readiness(
     explicit_build_root: str | None = None,
 ) -> ControlAppsBuildReadiness:
     normalized_artifacts = _normalized_required_artifacts(required_artifacts)
+    probes = control_apps_build_root_probes(workspace_root, explicit_build_root=explicit_build_root)
     selected_probe = preferred_control_apps_build_root(workspace_root, explicit_build_root=explicit_build_root)
 
     if explicit_build_root and not selected_probe.exists:

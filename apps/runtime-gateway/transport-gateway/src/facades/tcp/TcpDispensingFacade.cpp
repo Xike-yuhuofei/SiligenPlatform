@@ -19,6 +19,8 @@ UseCases::Dispensing::JobStatusResponse ToWorkflowJobStatus(
     response.cycle_progress_percent = runtime_status.cycle_progress_percent;
     response.overall_progress_percent = runtime_status.overall_progress_percent;
     response.elapsed_seconds = runtime_status.elapsed_seconds;
+    response.execution_budget_s = runtime_status.execution_budget_s;
+    response.execution_budget_breakdown = runtime_status.execution_budget_breakdown;
     response.error_message = runtime_status.error_message;
     response.dry_run = runtime_status.dry_run;
     return response;
@@ -136,6 +138,11 @@ Shared::Types::Result<void> TcpDispensingFacade::PauseDxfJob(
 Shared::Types::Result<void> TcpDispensingFacade::ResumeDxfJob(
     const UseCases::Dispensing::JobID& job_id) {
     return dxf_execute_use_case_->ResumeJob(job_id);
+}
+
+Shared::Types::Result<void> TcpDispensingFacade::ContinueDxfJob(
+    const UseCases::Dispensing::JobID& job_id) {
+    return dxf_execute_use_case_->ContinueJob(job_id);
 }
 
 Shared::Types::Result<void> TcpDispensingFacade::StopDxfJob(

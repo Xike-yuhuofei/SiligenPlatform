@@ -131,7 +131,8 @@ RuntimeJobExecutionExportSnapshot BuildJobExecutionSnapshot(
     const std::string& job_id,
     const std::string& state,
     std::uint32_t completed_count = 0,
-    std::uint32_t overall_progress_percent = 0) {
+    std::uint32_t overall_progress_percent = 0,
+    bool dry_run = false) {
     RuntimeJobExecutionExportSnapshot snapshot;
     snapshot.job_id = job_id;
     snapshot.plan_id = "plan-" + job_id;
@@ -146,8 +147,19 @@ RuntimeJobExecutionExportSnapshot BuildJobExecutionSnapshot(
     snapshot.overall_progress_percent = overall_progress_percent;
     snapshot.elapsed_seconds = 3.5;
     snapshot.error_message = state == "failed" ? "job failed" : "";
-    snapshot.dry_run = false;
+    snapshot.dry_run = dry_run;
     return snapshot;
+}
+
+void SetKnownSafeGateSignals(RuntimeSupervisionSnapshot& snapshot) {
+    snapshot.io.estop = false;
+    snapshot.io.estop_known = true;
+    snapshot.io.door = false;
+    snapshot.io.door_known = true;
+    snapshot.effective_interlocks.estop_active = false;
+    snapshot.effective_interlocks.estop_known = true;
+    snapshot.effective_interlocks.door_open_active = false;
+    snapshot.effective_interlocks.door_open_known = true;
 }
 
 TEST(RuntimeStatusExportPortTest, MissingSupervisionPortReturnsNotInitializedError) {
@@ -168,6 +180,7 @@ TEST(RuntimeStatusExportPortTest, ConnectedSnapshotIncludesAuthorityAndOptionalE
     supervision_port->next_snapshot.active_job_state = "running";
     supervision_port->next_snapshot.supervision.current_state = "Running";
     supervision_port->next_snapshot.supervision.state_reason = "executing";
+    SetKnownSafeGateSignals(supervision_port->next_snapshot);
 
     auto motion_reader_state = std::make_shared<FakeMotionReaderState>();
     MotionStatus x_status;
@@ -206,6 +219,7 @@ TEST(RuntimeStatusExportPortTest, ConnectedSnapshotIncludesAuthorityAndOptionalE
     const auto& snapshot = result.Value();
     EXPECT_TRUE(snapshot.connected);
     EXPECT_EQ(snapshot.connection_state, "connected");
+    EXPECT_EQ(snapshot.device_mode, "production");
     EXPECT_EQ(snapshot.machine_state, "Running");
     EXPECT_EQ(snapshot.machine_state_reason, "executing");
     EXPECT_TRUE(snapshot.interlock_latched);
@@ -228,6 +242,17 @@ TEST(RuntimeStatusExportPortTest, ConnectedSnapshotIncludesAuthorityAndOptionalE
     EXPECT_EQ(snapshot.job_execution.state, "running");
     EXPECT_EQ(snapshot.job_execution.completed_count, 1U);
     EXPECT_EQ(snapshot.job_execution.overall_progress_percent, 55U);
+    EXPECT_EQ(snapshot.safety_boundary.state, "blocked");
+    EXPECT_FALSE(snapshot.safety_boundary.motion_permitted);
+    EXPECT_FALSE(snapshot.safety_boundary.process_output_permitted);
+    EXPECT_FALSE(snapshot.action_capabilities.motion_commands_permitted);
+    EXPECT_FALSE(snapshot.action_capabilities.manual_output_commands_permitted);
+    EXPECT_FALSE(snapshot.action_capabilities.manual_dispenser_pause_permitted);
+    EXPECT_FALSE(snapshot.action_capabilities.manual_dispenser_resume_permitted);
+    EXPECT_TRUE(snapshot.action_capabilities.active_job_present);
+    EXPECT_FALSE(snapshot.action_capabilities.estop_reset_permitted);
+    EXPECT_TRUE(snapshot.safety_boundary.interlock_latched);
+    EXPECT_EQ(snapshot.safety_boundary.blocking_reasons, std::vector<std::string>({"interlock_latched"}));
     EXPECT_EQ(job_execution_reader_state->last_requested_job_id, "job-42");
 }
 
@@ -243,11 +268,24 @@ TEST(RuntimeStatusExportPortTest, DisconnectedSnapshotSkipsMotionReadsAndReturns
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
     EXPECT_FALSE(result.Value().connected);
     EXPECT_EQ(result.Value().connection_state, "degraded");
+    EXPECT_EQ(result.Value().device_mode, "production");
     EXPECT_EQ(result.Value().machine_state, "Unknown");
     EXPECT_EQ(result.Value().machine_state_reason, "unknown");
     EXPECT_TRUE(result.Value().axes.empty());
     EXPECT_FALSE(result.Value().has_position);
     EXPECT_EQ(result.Value().job_execution.state, "idle");
+    EXPECT_EQ(result.Value().safety_boundary.state, "unknown");
+    EXPECT_FALSE(result.Value().safety_boundary.motion_permitted);
+    EXPECT_FALSE(result.Value().safety_boundary.process_output_permitted);
+    EXPECT_FALSE(result.Value().action_capabilities.motion_commands_permitted);
+    EXPECT_FALSE(result.Value().action_capabilities.manual_output_commands_permitted);
+    EXPECT_FALSE(result.Value().action_capabilities.manual_dispenser_pause_permitted);
+    EXPECT_FALSE(result.Value().action_capabilities.manual_dispenser_resume_permitted);
+    EXPECT_FALSE(result.Value().action_capabilities.active_job_present);
+    EXPECT_FALSE(result.Value().action_capabilities.estop_reset_permitted);
+    EXPECT_EQ(
+        result.Value().safety_boundary.blocking_reasons,
+        std::vector<std::string>({"estop_unknown", "door_unknown"}));
     EXPECT_EQ(motion_reader_state->all_status_reads, 0);
     EXPECT_EQ(motion_reader_state->current_position_reads, 0);
 }
@@ -258,11 +296,13 @@ TEST(RuntimeStatusExportPortTest, MissingOptionalReadersStillReturnsAuthoritySna
     supervision_port->next_snapshot.connection_state = "connected";
     supervision_port->next_snapshot.supervision.current_state = "Idle";
     supervision_port->next_snapshot.supervision.state_reason = "ready";
+    SetKnownSafeGateSignals(supervision_port->next_snapshot);
 
     RuntimeStatusExportPort port(supervision_port);
     auto result = port.ReadSnapshot();
 
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    EXPECT_EQ(result.Value().device_mode, "production");
     EXPECT_EQ(result.Value().machine_state, "Idle");
     EXPECT_EQ(result.Value().machine_state_reason, "ready");
     EXPECT_TRUE(result.Value().axes.empty());
@@ -273,6 +313,16 @@ TEST(RuntimeStatusExportPortTest, MissingOptionalReadersStillReturnsAuthoritySna
     EXPECT_EQ(result.Value().dispenser.totalCount, 0U);
     EXPECT_DOUBLE_EQ(result.Value().dispenser.progress, 0.0);
     EXPECT_EQ(result.Value().job_execution.state, "idle");
+    EXPECT_EQ(result.Value().safety_boundary.state, "safe");
+    EXPECT_TRUE(result.Value().safety_boundary.motion_permitted);
+    EXPECT_TRUE(result.Value().safety_boundary.process_output_permitted);
+    EXPECT_TRUE(result.Value().action_capabilities.motion_commands_permitted);
+    EXPECT_TRUE(result.Value().action_capabilities.manual_output_commands_permitted);
+    EXPECT_FALSE(result.Value().action_capabilities.manual_dispenser_pause_permitted);
+    EXPECT_FALSE(result.Value().action_capabilities.manual_dispenser_resume_permitted);
+    EXPECT_FALSE(result.Value().action_capabilities.active_job_present);
+    EXPECT_FALSE(result.Value().action_capabilities.estop_reset_permitted);
+    EXPECT_TRUE(result.Value().safety_boundary.blocking_reasons.empty());
 }
 
 TEST(RuntimeStatusExportPortTest, OptionalReaderFailuresDoNotFailSnapshot) {
@@ -303,6 +353,7 @@ TEST(RuntimeStatusExportPortTest, OptionalReaderFailuresDoNotFailSnapshot) {
     auto result = port.ReadSnapshot();
 
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    EXPECT_EQ(result.Value().device_mode, "production");
     EXPECT_EQ(result.Value().machine_state, "Running");
     EXPECT_EQ(result.Value().machine_state_reason, "authoritative");
     EXPECT_TRUE(result.Value().axes.empty());
@@ -315,11 +366,137 @@ TEST(RuntimeStatusExportPortTest, OptionalReaderFailuresDoNotFailSnapshot) {
     EXPECT_EQ(result.Value().job_execution.job_id, "job-failed");
     EXPECT_EQ(result.Value().job_execution.state, "unknown");
     EXPECT_EQ(result.Value().job_execution.error_message, "job execution failed");
+    EXPECT_FALSE(result.Value().action_capabilities.motion_commands_permitted);
+    EXPECT_FALSE(result.Value().action_capabilities.manual_output_commands_permitted);
+    EXPECT_FALSE(result.Value().action_capabilities.manual_dispenser_pause_permitted);
+    EXPECT_FALSE(result.Value().action_capabilities.manual_dispenser_resume_permitted);
+    EXPECT_TRUE(result.Value().action_capabilities.active_job_present);
+    EXPECT_FALSE(result.Value().action_capabilities.estop_reset_permitted);
     EXPECT_EQ(motion_reader_state->all_status_reads, 1);
     EXPECT_EQ(motion_reader_state->current_position_reads, 1);
     EXPECT_EQ(dispenser_reader_state->dispenser_reads, 1);
     EXPECT_EQ(dispenser_reader_state->supply_reads, 1);
     EXPECT_EQ(job_execution_reader_state->read_count, 1);
+}
+
+TEST(RuntimeStatusExportPortTest, ActiveDryRunJobExportsTestDeviceMode) {
+    auto supervision_port = std::make_shared<FakeRuntimeSupervisionPort>();
+    supervision_port->next_snapshot.connected = true;
+    supervision_port->next_snapshot.connection_state = "connected";
+    supervision_port->next_snapshot.active_job_id = "job-test";
+    supervision_port->next_snapshot.active_job_state = "running";
+    supervision_port->next_snapshot.supervision.current_state = "Running";
+    supervision_port->next_snapshot.supervision.state_reason = "executing";
+    SetKnownSafeGateSignals(supervision_port->next_snapshot);
+
+    auto job_execution_reader_state = std::make_shared<FakeJobExecutionReaderState>();
+    job_execution_reader_state->snapshots_by_job_id.emplace(
+        "job-test",
+        BuildJobExecutionSnapshot("job-test", "running", 0, 25, true));
+
+    RuntimeStatusExportPort port(
+        supervision_port,
+        {},
+        {},
+        BuildJobExecutionStatusReader(job_execution_reader_state));
+    auto result = port.ReadSnapshot();
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    EXPECT_EQ(result.Value().device_mode, "test");
+    EXPECT_TRUE(result.Value().job_execution.dry_run);
+    EXPECT_EQ(result.Value().safety_boundary.state, "safe");
+    EXPECT_TRUE(result.Value().safety_boundary.motion_permitted);
+    EXPECT_FALSE(result.Value().safety_boundary.process_output_permitted);
+    EXPECT_TRUE(result.Value().action_capabilities.motion_commands_permitted);
+    EXPECT_FALSE(result.Value().action_capabilities.manual_output_commands_permitted);
+    EXPECT_FALSE(result.Value().action_capabilities.manual_dispenser_pause_permitted);
+    EXPECT_FALSE(result.Value().action_capabilities.manual_dispenser_resume_permitted);
+    EXPECT_TRUE(result.Value().action_capabilities.active_job_present);
+    EXPECT_FALSE(result.Value().action_capabilities.estop_reset_permitted);
+    EXPECT_TRUE(result.Value().safety_boundary.blocking_reasons.empty());
+}
+
+TEST(RuntimeStatusExportPortTest, EstopStateExportsEstopResetCapability) {
+    auto supervision_port = std::make_shared<FakeRuntimeSupervisionPort>();
+    supervision_port->next_snapshot.connected = true;
+    supervision_port->next_snapshot.connection_state = "connected";
+    supervision_port->next_snapshot.supervision.current_state = "Estop";
+    supervision_port->next_snapshot.supervision.state_reason = "interlock_estop";
+    supervision_port->next_snapshot.io.estop = true;
+    supervision_port->next_snapshot.io.estop_known = true;
+    supervision_port->next_snapshot.effective_interlocks.estop_active = true;
+    supervision_port->next_snapshot.effective_interlocks.estop_known = true;
+    supervision_port->next_snapshot.io.door = false;
+    supervision_port->next_snapshot.io.door_known = true;
+    supervision_port->next_snapshot.effective_interlocks.door_open_active = false;
+    supervision_port->next_snapshot.effective_interlocks.door_open_known = true;
+
+    RuntimeStatusExportPort port(supervision_port);
+    auto result = port.ReadSnapshot();
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    EXPECT_FALSE(result.Value().action_capabilities.motion_commands_permitted);
+    EXPECT_FALSE(result.Value().action_capabilities.manual_output_commands_permitted);
+    EXPECT_FALSE(result.Value().action_capabilities.manual_dispenser_pause_permitted);
+    EXPECT_FALSE(result.Value().action_capabilities.manual_dispenser_resume_permitted);
+    EXPECT_FALSE(result.Value().action_capabilities.active_job_present);
+    EXPECT_TRUE(result.Value().action_capabilities.estop_reset_permitted);
+}
+
+TEST(RuntimeStatusExportPortTest, ManualDispenserResumeCapabilityRequiresPausedValveState) {
+    auto supervision_port = std::make_shared<FakeRuntimeSupervisionPort>();
+    supervision_port->next_snapshot.connected = true;
+    supervision_port->next_snapshot.connection_state = "connected";
+    supervision_port->next_snapshot.supervision.current_state = "Idle";
+    supervision_port->next_snapshot.supervision.state_reason = "ready";
+    SetKnownSafeGateSignals(supervision_port->next_snapshot);
+
+    auto dispenser_reader_state = std::make_shared<FakeDispenserReaderState>();
+    dispenser_reader_state->dispenser_state.status = DispenserValveStatus::Paused;
+    dispenser_reader_state->dispenser_state.completedCount = 1;
+    dispenser_reader_state->dispenser_state.totalCount = 2;
+    dispenser_reader_state->dispenser_state.progress = 50.0f;
+
+    RuntimeStatusExportPort port(
+        supervision_port,
+        {},
+        BuildDispenserStatusReader(dispenser_reader_state),
+        {});
+    auto result = port.ReadSnapshot();
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    EXPECT_TRUE(result.Value().action_capabilities.motion_commands_permitted);
+    EXPECT_TRUE(result.Value().action_capabilities.manual_output_commands_permitted);
+    EXPECT_FALSE(result.Value().action_capabilities.manual_dispenser_pause_permitted);
+    EXPECT_TRUE(result.Value().action_capabilities.manual_dispenser_resume_permitted);
+    EXPECT_FALSE(result.Value().action_capabilities.active_job_present);
+    EXPECT_FALSE(result.Value().action_capabilities.estop_reset_permitted);
+}
+
+TEST(RuntimeStatusExportPortTest, ManualDispenserPauseCapabilityRequiresRunningValveState) {
+    auto supervision_port = std::make_shared<FakeRuntimeSupervisionPort>();
+    supervision_port->next_snapshot.connected = true;
+    supervision_port->next_snapshot.connection_state = "connected";
+    supervision_port->next_snapshot.supervision.current_state = "Idle";
+    supervision_port->next_snapshot.supervision.state_reason = "ready";
+    SetKnownSafeGateSignals(supervision_port->next_snapshot);
+
+    auto dispenser_reader_state = std::make_shared<FakeDispenserReaderState>();
+    dispenser_reader_state->dispenser_state.status = DispenserValveStatus::Running;
+    dispenser_reader_state->dispenser_state.completedCount = 1;
+    dispenser_reader_state->dispenser_state.totalCount = 2;
+    dispenser_reader_state->dispenser_state.progress = 50.0f;
+
+    RuntimeStatusExportPort port(
+        supervision_port,
+        {},
+        BuildDispenserStatusReader(dispenser_reader_state),
+        {});
+    auto result = port.ReadSnapshot();
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    EXPECT_TRUE(result.Value().action_capabilities.manual_dispenser_pause_permitted);
+    EXPECT_FALSE(result.Value().action_capabilities.manual_dispenser_resume_permitted);
 }
 
 TEST(RuntimeStatusExportPortTest, RetainsTerminalJobExecutionUntilNextJobStarts) {

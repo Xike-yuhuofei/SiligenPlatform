@@ -335,6 +335,25 @@ Result<void> DispensingExecutionRequest::Validate() const noexcept {
     if (package_validation.IsError()) {
         return package_validation;
     }
+    if (execution_package.execution_plan.production_trigger_mode ==
+        Domain::Dispensing::ValueObjects::ProductionTriggerMode::PROFILE_COMPARE) {
+        if (!profile_compare_schedule) {
+            return Result<void>::Failure(Error(
+                ErrorCode::INVALID_PARAMETER,
+                "PROFILE_COMPARE execution request 缺少 profile compare schedule"));
+        }
+        auto schedule_validation =
+            Siligen::RuntimeExecution::Contracts::Dispensing::ValidateProfileCompareExecutionSchedule(
+                execution_package.execution_plan,
+                *profile_compare_schedule);
+        if (schedule_validation.IsError()) {
+            return Result<void>::Failure(schedule_validation.GetError());
+        }
+    } else if (profile_compare_schedule) {
+        return Result<void>::Failure(Error(
+            ErrorCode::INVALID_PARAMETER,
+            "非 PROFILE_COMPARE execution request 不允许携带 profile compare schedule"));
+    }
     if (max_jerk < 0.0f) {
         return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "max_jerk不能为负数"));
     }
@@ -432,6 +451,10 @@ Result<void> DispensingExecutionUseCase::PauseJob(const JobID& job_id) {
 
 Result<void> DispensingExecutionUseCase::ResumeJob(const JobID& job_id) {
     return impl_->ResumeJob(job_id);
+}
+
+Result<void> DispensingExecutionUseCase::ContinueJob(const JobID& job_id) {
+    return impl_->ContinueJob(job_id);
 }
 
 Result<void> DispensingExecutionUseCase::StopJob(const JobID& job_id) {
@@ -656,9 +679,7 @@ Result<DispensingExecutionResult> DispensingExecutionUseCase::Impl::ExecuteInter
         const auto estimated_execution_ms = static_cast<uint32>(
             std::max(
                 0.0f,
-                (execution_package.estimated_time_s > 0.0f
-                     ? execution_package.estimated_time_s
-                     : execution_plan.motion_trajectory.total_time) * 1000.0f));
+                ResolveExecutionNominalTimeS(execution_package) * 1000.0f));
         context->estimated_execution_ms.store(estimated_execution_ms);
         if (!context->terminal_committed.load()) {
             context->state.store(TaskState::RUNNING);
@@ -679,11 +700,14 @@ Result<DispensingExecutionResult> DispensingExecutionUseCase::Impl::ExecuteInter
         guard_decision.allow_cmp ? 1 : 0);
     Domain::Dispensing::ValueObjects::DispensingExecutionOptions options;
     options.dispense_enabled = dispense_enabled;
-    options.use_hardware_trigger = request.use_hardware_trigger;
+    options.use_hardware_trigger =
+        request.execution_package.execution_plan.production_trigger_mode ==
+        Domain::Dispensing::ValueObjects::ProductionTriggerMode::PROFILE_COMPARE;
     options.machine_mode = resolved_execution_.machine_mode;
     options.execution_mode = resolved_execution_.execution_mode;
     options.output_policy = resolved_execution_.output_policy;
     options.guard_decision = guard_decision;
+    options.profile_compare_schedule = request.profile_compare_schedule;
 
     std::unique_ptr<VelocityTraceObserver> trace_observer;
     if (trace_settings.enabled) {
@@ -696,7 +720,7 @@ Result<DispensingExecutionResult> DispensingExecutionUseCase::Impl::ExecuteInter
     TaskTrackingObserver task_observer(trace_observer ? trace_observer.get() : nullptr, context);
 
     auto start_time = std::chrono::steady_clock::now();
-    auto exec_result = process_port_->ExecuteProcess(execution_plan,
+    auto exec_result = process_port_->ExecuteProcess(execution_package,
                                                      runtime_params_,
                                                      options,
                                                      &stop_requested_,

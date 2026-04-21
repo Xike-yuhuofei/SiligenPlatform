@@ -4,10 +4,12 @@
 #include "dispense_packaging/contracts/ExecutionPackage.h"
 #include "dispense_packaging/contracts/AuthorityTriggerLayout.h"
 #include "dispense_packaging/contracts/DispenseCompensationProfile.h"
+#include "runtime_execution/contracts/dispensing/ProfileCompareRuntimeContract.h"
 #include "motion_planning/contracts/InterpolationTypes.h"
 #include "motion_planning/contracts/MotionPlan.h"
 #include "motion_planning/contracts/MotionPlanningReport.h"
 #include "process_path/contracts/ProcessPath.h"
+#include "dispense_packaging/contracts/FormalCompareGateDiagnostic.h"
 #include "shared/types/DispensingExecutionSemantics.h"
 #include "shared/types/DispensingStrategy.h"
 #include "shared/types/TrajectoryTypes.h"
@@ -98,13 +100,14 @@ struct WorkflowExecutionAssemblyRequest {
     std::string dxf_filename;
     WorkflowAssemblyRuntimeOptions runtime_options;
     Siligen::Shared::Types::float32 max_jerk = 0.0f;
-    Siligen::Shared::Types::float32 estimated_time_s = 0.0f;
+    Siligen::Shared::Types::float32 execution_nominal_time_s = 0.0f;
     bool use_interpolation_planner = false;
     Siligen::MotionPlanning::Contracts::InterpolationAlgorithm interpolation_algorithm =
         Siligen::MotionPlanning::Contracts::InterpolationAlgorithm::LINEAR;
     Siligen::Shared::Types::DispensingExecutionStrategy requested_execution_strategy =
         Siligen::Shared::Types::DispensingExecutionStrategy::FLYING_SHOT;
     std::optional<Siligen::Shared::Types::PointFlyingCarrierPolicy> point_flying_carrier_policy;
+    Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareRuntimeContract profile_compare_runtime_contract{};
     WorkflowAuthorityPreviewArtifacts authority_preview;
 };
 
@@ -114,7 +117,10 @@ struct WorkflowExecutionAssemblyResult {
     std::vector<Siligen::TrajectoryPoint> motion_trajectory_points;
     bool preview_authority_shared_with_execution = false;
     bool execution_binding_ready = false;
+    bool execution_contract_ready = false;
     std::string execution_failure_reason;
+    std::string execution_diagnostic_code;
+    Siligen::Domain::Dispensing::Contracts::FormalCompareGateDiagnostic formal_compare_gate;
     Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
     Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest export_request;
 };
@@ -124,20 +130,22 @@ struct WorkflowPlanningAssemblyRequest {
     Siligen::MotionPlanning::Contracts::MotionPlan motion_plan;
     Siligen::Shared::Types::Point2D planning_start_position{};
     Siligen::Shared::Types::float32 max_jerk = 0.0f;
-    Siligen::Shared::Types::float32 estimated_time_s = 0.0f;
+    Siligen::Shared::Types::float32 execution_nominal_time_s = 0.0f;
     bool use_interpolation_planner = false;
     Siligen::MotionPlanning::Contracts::InterpolationAlgorithm interpolation_algorithm =
         Siligen::MotionPlanning::Contracts::InterpolationAlgorithm::LINEAR;
     Siligen::Shared::Types::DispensingExecutionStrategy requested_execution_strategy =
         Siligen::Shared::Types::DispensingExecutionStrategy::FLYING_SHOT;
     std::optional<Siligen::Shared::Types::PointFlyingCarrierPolicy> point_flying_carrier_policy;
+    Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareRuntimeContract
+        profile_compare_runtime_contract{};
 };
 
 struct WorkflowPlanningAssemblyResult {
     Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated execution_package;
     int segment_count = 0;
     Siligen::Shared::Types::float32 total_length = 0.0f;
-    Siligen::Shared::Types::float32 estimated_time = 0.0f;
+    Siligen::Shared::Types::float32 execution_nominal_time_s = 0.0f;
     std::vector<Siligen::TrajectoryPoint> trajectory_points;
     std::vector<Siligen::Shared::Types::Point2D> glue_points;
     int trigger_count = 0;

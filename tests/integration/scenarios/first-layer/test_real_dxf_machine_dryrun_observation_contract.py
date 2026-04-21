@@ -30,31 +30,27 @@ def test_load_connection_params_reads_network_ips(tmp_path: Path) -> None:
     assert params == {"card_ip": "192.168.0.1", "local_ip": "192.168.0.200"}
 
 
-def test_resolve_job_timeout_budget_uses_estimate_scale_and_buffer() -> None:
+def test_resolve_job_timeout_budget_uses_runtime_budget_as_authority() -> None:
     budget = dryrun.resolve_job_timeout_budget(
-        configured_timeout_seconds=120.0,
-        estimated_time_seconds=108.2842788696289,
-        timeout_scale=2.0,
-        timeout_buffer_seconds=15.0,
+        execution_budget_seconds=158.3,
+        execution_budget_breakdown={"cycle_budget_s": 79.15, "total_budget_s": 158.3},
     )
 
-    assert budget["configured_timeout_seconds"] == 120.0
-    assert budget["estimated_time_seconds"] == 108.2842788696289
-    assert budget["timeout_scale"] == 2.0
-    assert budget["timeout_buffer_seconds"] == 15.0
-    assert budget["effective_timeout_seconds"] == 231.5685577392578
+    assert budget["execution_budget_seconds"] == 158.3
+    assert budget["cycle_budget_seconds"] == 79.15
+    assert budget["effective_timeout_seconds"] == 158.3
 
 
-def test_resolve_job_timeout_budget_keeps_configured_floor_without_estimate() -> None:
-    budget = dryrun.resolve_job_timeout_budget(
-        configured_timeout_seconds=120.0,
-        estimated_time_seconds=None,
-        timeout_scale=2.0,
-        timeout_buffer_seconds=15.0,
-    )
-
-    assert budget["estimated_time_seconds"] is None
-    assert budget["effective_timeout_seconds"] == 120.0
+def test_resolve_job_timeout_budget_rejects_missing_runtime_budget() -> None:
+    try:
+        dryrun.resolve_job_timeout_budget(
+            execution_budget_seconds=None,
+            execution_budget_breakdown={},
+        )
+    except ValueError as exc:
+        assert "execution_budget_s" in str(exc)
+    else:
+        raise AssertionError("expected ValueError when runtime budget is missing")
 
 
 class FakeTcpClient:
@@ -73,8 +69,12 @@ def test_collect_poll_observation_captures_status_job_and_coord() -> None:
             "status": {
                 "result": {
                     "connected": True,
-                    "machine_state": "Idle",
-                    "machine_state_reason": "ready",
+                    "supervision": {
+                        "current_state": "Idle",
+                        "requested_state": "Idle",
+                        "state_reason": "ready",
+                        "state_change_in_process": False,
+                    },
                     "io": {
                         "estop": False,
                         "door": False,
@@ -140,7 +140,9 @@ def test_collect_poll_observation_captures_status_job_and_coord() -> None:
     assert job_status["poll_index"] == 7
     assert coord_status["poll_index"] == 7
     assert machine_status["sampled_at"] == job_status["sampled_at"] == coord_status["sampled_at"]
-    assert machine_status["machine_state"] == "Idle"
+    assert machine_status["supervision"]["current_state"] == "Idle"
+    assert machine_status["supervision"]["state_reason"] == "ready"
+    assert "machine_state" not in machine_status
     assert machine_status["io"]["door_known"] is True
     assert machine_status["axes"]["X"]["position"] == 1.25
     assert job_status["state"] == "running"
@@ -160,15 +162,19 @@ def test_build_report_keeps_legacy_history_and_new_contract() -> None:
         contradiction_grace_seconds=dryrun.DEFAULT_CONTRADICTION_GRACE_SECONDS,
         position_epsilon_mm=dryrun.DEFAULT_POSITION_EPSILON_MM,
         velocity_epsilon_mm_s=dryrun.DEFAULT_VELOCITY_EPSILON_MM_S,
-        job_timeout=120.0,
-        job_timeout_scale=dryrun.DEFAULT_JOB_TIMEOUT_SCALE,
-        job_timeout_buffer_seconds=dryrun.DEFAULT_JOB_TIMEOUT_BUFFER_SECONDS,
     )
     steps = [dryrun.Step(name="dxf-job-start", status="passed", note="job_id=job-1", timestamp="2026-03-31T00:00:00Z")]
     job_history = [{"job_id": "job-1", "state": "running", "poll_index": 0, "sampled_at": "2026-03-31T00:00:01Z"}]
     machine_history = [
         {
-            "machine_state": "Idle",
+            "supervision": {
+                "current_state": "Idle",
+                "requested_state": "Idle",
+                "state_reason": "ready",
+                "state_change_in_process": False,
+                "failure_stage": "",
+                "failure_code": "",
+            },
             "poll_index": 0,
             "sampled_at": "2026-03-31T00:00:01Z",
             "io": {},
@@ -202,11 +208,18 @@ def test_build_report_keeps_legacy_history_and_new_contract() -> None:
         steps=steps,
         artifacts={
             "job_timeout_budget": {
-                "configured_timeout_seconds": 120.0,
-                "estimated_time_seconds": 108.2842788696289,
-                "timeout_scale": 2.0,
-                "timeout_buffer_seconds": 15.0,
-                "effective_timeout_seconds": 231.5685577392578,
+                "execution_budget_seconds": 158.3,
+                "cycle_budget_seconds": 79.15,
+                "execution_budget_breakdown": {
+                    "execution_nominal_time_s": 41.0,
+                    "motion_completion_grace_s": 6.15,
+                    "owner_span_count": 32,
+                    "owner_span_overhead_s": 32.0,
+                    "cycle_budget_s": 79.15,
+                    "target_count": 2,
+                    "total_budget_s": 158.3,
+                },
+                "effective_timeout_seconds": 158.3,
             }
         },
         overall_status="failed",
@@ -230,7 +243,7 @@ def test_build_report_keeps_legacy_history_and_new_contract() -> None:
     assert report["observation_summary"]["job_status_samples"] == 1
     assert report["observation_summary"]["machine_status_samples"] == 1
     assert report["observation_summary"]["coord_status_samples"] == 1
-    assert report["observation_summary"]["effective_job_timeout_seconds"] == 231.5685577392578
+    assert report["observation_summary"]["effective_job_timeout_seconds"] == 158.3
 
     evidence_contract = report["evidence_contract"]
     assert evidence_contract["authority"]["physical_execution"] == "motion.coord.status + axis feedback"
