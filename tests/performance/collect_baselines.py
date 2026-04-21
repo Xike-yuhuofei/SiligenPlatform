@@ -571,9 +571,9 @@ def measure_reliability(
                 else:
                     plan_ok, plan_payload, plan_error = protocol.dxf_prepare_plan(
                         artifact_id,
-                        recipe_context["recipe_id"],
-                        recipe_context["version_id"],
                         speed_mm_s=10.0,
+                        recipe_id=recipe_context["recipe_id"],
+                        version_id=recipe_context["version_id"],
                         dry_run=True,
                         dry_run_speed_mm_s=10.0,
                     )

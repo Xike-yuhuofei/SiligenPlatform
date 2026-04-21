@@ -2106,7 +2106,7 @@ class MainWindow(QMainWindow):
         self._global_progress.setValue(0)
         if result.success:
             self._hw_connect_btn.setEnabled(False)
-            if CURRENT_STAGE_RECIPE_MANAGEMENT_ENABLED and hasattr(self, '_recipe_config_widget'):
+            if result.online_ready and hasattr(self, '_recipe_config_widget'):
                 self._recipe_config_widget._load_recipe_context()
         else:
             self._show_startup_error(result)
@@ -2119,6 +2119,8 @@ class MainWindow(QMainWindow):
         self._recovery_worker = None
         self._apply_launch_result(result)
         self._global_progress.setValue(0)
+        if result.online_ready and hasattr(self, '_recipe_config_widget'):
+            self._recipe_config_widget._load_recipe_context()
         self.statusBar().showMessage(build_recovery_finished_message(action, result))
         self._apply_permissions()
         self._update_recovery_controls_state()

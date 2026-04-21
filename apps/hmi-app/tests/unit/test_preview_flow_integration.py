@@ -56,6 +56,8 @@ class _FakePreviewSnapshotWorker:
         host: str,
         port: int,
         artifact_id: str,
+        recipe_id: str,
+        version_id: str,
         speed_mm_s: float,
         dry_run: bool,
         dry_run_speed_mm_s: float,
@@ -63,6 +65,8 @@ class _FakePreviewSnapshotWorker:
         self.host = host
         self.port = port
         self.artifact_id = artifact_id
+        self.recipe_id = recipe_id
+        self.version_id = version_id
         self.speed_mm_s = speed_mm_s
         self.dry_run = dry_run
         self.dry_run_speed_mm_s = dry_run_speed_mm_s
@@ -202,6 +206,8 @@ class PreviewFlowIntegrationTest(unittest.TestCase):
         self.assertEqual(worker.host, "127.0.0.1")
         self.assertEqual(worker.port, 9527)
         self.assertEqual(worker.artifact_id, "artifact-it")
+        self.assertEqual(worker.recipe_id, "recipe-it")
+        self.assertEqual(worker.version_id, "version-it")
         self.assertEqual(worker.speed_mm_s, runtime_window._dxf_speed.value())
         self.assertFalse(worker.dry_run)
         self.assertEqual(worker.dry_run_speed_mm_s, runtime_window._dxf_speed.value())
