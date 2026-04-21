@@ -3,6 +3,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 
 
@@ -38,6 +39,29 @@ class HmiRunScriptContractTest(unittest.TestCase):
             self._write_matching_cmake_cache(WORKSPACE_ROOT / "build" / "ca")
             created_cache = True
         return exe_path, True, created_cache
+
+    @contextmanager
+    def _preserve_workspace_gateway_artifacts(self):
+        exe_path = WORKSPACE_ROOT / "build" / "ca" / "bin" / "Debug" / "siligen_runtime_gateway.exe"
+        cache_path = WORKSPACE_ROOT / "build" / "ca" / "CMakeCache.txt"
+        original_exe_bytes = exe_path.read_bytes() if exe_path.exists() else None
+        original_cache_text = cache_path.read_text(encoding="utf-8") if cache_path.exists() else None
+        try:
+            yield exe_path, cache_path
+        finally:
+            if original_exe_bytes is None:
+                if exe_path.exists():
+                    exe_path.unlink()
+            else:
+                exe_path.parent.mkdir(parents=True, exist_ok=True)
+                exe_path.write_bytes(original_exe_bytes)
+
+            if original_cache_text is None:
+                if cache_path.exists():
+                    cache_path.unlink()
+            else:
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                cache_path.write_text(original_cache_text, encoding="utf-8")
 
     def test_internal_online_runner_requires_official_entrypoint_or_explicit_contract(self) -> None:
         env = os.environ.copy()
@@ -175,22 +199,14 @@ class HmiRunScriptContractTest(unittest.TestCase):
         self.assertIn(str(workspace_exe), completed.stdout)
         self.assertNotIn(str(localappdata_exe), completed.stdout)
 
-    def test_runtime_gateway_runner_dryrun_rejects_workspace_root_without_matching_cache(self) -> None:
-        workspace_exe = WORKSPACE_ROOT / "build" / "ca" / "bin" / "Debug" / "siligen_runtime_gateway.exe"
-        cache_path = WORKSPACE_ROOT / "build" / "ca" / "CMakeCache.txt"
-        created_workspace_exe = False
-        removed_cache = False
-        original_cache = None
-        try:
+    def test_runtime_gateway_runner_dryrun_rejects_workspace_root_without_matching_cache_and_does_not_fallback(self) -> None:
+        with self._preserve_workspace_gateway_artifacts() as (workspace_exe, cache_path):
             if workspace_exe.exists():
                 workspace_exe.unlink()
             workspace_exe.parent.mkdir(parents=True, exist_ok=True)
             workspace_exe.write_text("", encoding="utf-8")
-            created_workspace_exe = True
             if cache_path.exists():
-                original_cache = cache_path.read_text(encoding="utf-8")
                 cache_path.unlink()
-                removed_cache = True
 
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp_root = Path(temp_dir)
@@ -222,15 +238,11 @@ class HmiRunScriptContractTest(unittest.TestCase):
                     capture_output=True,
                     text=True,
                 )
-        finally:
-            if created_workspace_exe and workspace_exe.exists():
-                workspace_exe.unlink()
-            if removed_cache and original_cache is not None:
-                cache_path.write_text(original_cache, encoding="utf-8")
 
-        self.assertEqual(completed.returncode, 0, msg=completed.stderr)
-        self.assertIn(str(localappdata_exe), completed.stdout)
-        self.assertNotIn(str(workspace_exe), completed.stdout)
+        output = f"{completed.stdout}\n{completed.stderr}"
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("current-workspace control-apps build root not ready", output)
+        self.assertNotIn(str(localappdata_exe), output)
 
     def test_contract_builder_dryrun_parses_runtime_gateway_output_without_path_format_error(self) -> None:
         contract_builder = PROJECT_ROOT / "scripts" / "new-gateway-launch-contract.ps1"
