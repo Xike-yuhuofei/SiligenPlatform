@@ -67,6 +67,8 @@ inline std::string GetSystemErrorDescription(Types::ErrorCode code) {
             return "硬件无响应";
         case Types::ErrorCode::HARDWARE_COMMAND_FAILED:
             return "硬件命令执行失败";
+        case Types::ErrorCode::DISPENSER_TRIGGER_INCOMPLETE:
+            return "路径触发点胶计数未完整收口";
 
         // 连接相关错误 (Connection errors)
         case Types::ErrorCode::PORT_NOT_INITIALIZED:

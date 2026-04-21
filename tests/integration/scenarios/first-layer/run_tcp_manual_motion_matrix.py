@@ -6,7 +6,6 @@ import os
 import socket
 import subprocess
 import sys
-import tempfile
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -24,7 +23,7 @@ if str(HIL_DIR) not in sys.path:
     sys.path.insert(0, str(HIL_DIR))
 
 from runtime_gateway_harness import build_process_env as _shared_build_process_env  # noqa: E402
-from runtime_gateway_harness import resolve_default_exe  # noqa: E402
+from runtime_gateway_harness import load_connection_params, prepare_mock_config, resolve_default_exe  # noqa: E402
 
 KNOWN_FAILURE_PATTERNS = (
     "IDiagnosticsPort 未注册",
@@ -154,32 +153,6 @@ def _read_process_output(process: subprocess.Popen[str]) -> tuple[str, str]:
     return stdout or "", stderr or ""
 
 
-def _rewrite_mock_config(source_text: str) -> str:
-    lines = source_text.splitlines()
-    in_hardware = False
-    replaced = False
-    for index, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped.startswith("[") and stripped.endswith("]"):
-            in_hardware = stripped.lower() == "[hardware]"
-            continue
-        if in_hardware and stripped.lower().startswith("mode="):
-            indent = line[: len(line) - len(line.lstrip())]
-            lines[index] = f"{indent}mode=Mock"
-            replaced = True
-            break
-    if not replaced:
-        raise ValueError("failed to locate [Hardware] mode entry in machine config")
-    return "\n".join(lines) + "\n"
-
-
-def _prepare_mock_config(temp_dir: Path, source_config: Path) -> Path:
-    rewritten = _rewrite_mock_config(source_config.read_text(encoding="utf-8"))
-    target = temp_dir / "machine_config.mock.ini"
-    target.write_text(rewritten, encoding="utf-8")
-    return target
-
-
 def _wait_gateway_ready(process: subprocess.Popen[str], host: str, port: int, timeout_seconds: float) -> tuple[str, str]:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
@@ -195,6 +168,23 @@ def _wait_gateway_ready(process: subprocess.Popen[str], host: str, port: int, ti
         except OSError:
             time.sleep(0.2)
     return "failed", f"gateway readiness timeout: {host}:{port}"
+
+
+def _is_tcp_endpoint_reachable(host: str, port: int, timeout_seconds: float = 0.5) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout_seconds):
+            return True
+    except OSError:
+        return False
+
+
+def _pick_free_port(host: str) -> int:
+    bind_host = host.strip() or "127.0.0.1"
+    if bind_host in {"0.0.0.0", "localhost"}:
+        bind_host = "127.0.0.1"
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind((bind_host, 0))
+        return int(sock.getsockname()[1])
 
 
 def _extract_axes(status_response: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -362,6 +352,69 @@ def _build_safe_home_go_params(status_response: dict[str, Any]) -> tuple[dict[st
     return payload, note
 
 
+def _wait_for_axis_effect(
+    client: TcpJsonClient,
+    steps: list[StepRecord],
+    step_prefix: str,
+    observed_axes: list[str],
+    baseline_positions: dict[str, float],
+    timeout_seconds: float = 4.0,
+    velocity_tolerance: float = 0.05,
+    position_tolerance: float = 0.05,
+) -> tuple[bool, dict[str, Any], str]:
+    deadline = time.time() + timeout_seconds
+    last_status: dict[str, Any] = {}
+    last_note = "no status observed"
+    while time.time() < deadline:
+        last_status = client.send_request("status", {}, timeout_seconds=8.0)
+        steps.append(StepRecord(f"{step_prefix}-status", "status", _truncate_json(last_status)))
+
+        motion_axes: list[str] = []
+        changed_axes: list[str] = []
+        for axis_name in observed_axes:
+            axis_payload = _extract_axes(last_status).get(axis_name, {})
+            current_velocity = abs(float(axis_payload.get("velocity", 0.0)))
+            current_position = float(axis_payload.get("position", baseline_positions.get(axis_name, 0.0)))
+            baseline_position = baseline_positions.get(axis_name, current_position)
+            if current_velocity > velocity_tolerance:
+                motion_axes.append(f"{axis_name}@{current_velocity:.3f}")
+            if abs(current_position - baseline_position) > position_tolerance:
+                changed_axes.append(f"{axis_name}:{baseline_position:.3f}->{current_position:.3f}")
+
+        result = last_status.get("result", {})
+        machine_state = str(result.get("machine_state", ""))
+        machine_state_reason = str(result.get("machine_state_reason", ""))
+        last_note = (
+            f"motion_axes={motion_axes or ['none']} "
+            f"changed_axes={changed_axes or ['none']} "
+            f"machine_state={machine_state} "
+            f"reason={machine_state_reason}"
+        )
+        if motion_axes or changed_axes:
+            return True, last_status, last_note
+        time.sleep(0.2)
+    return False, last_status, last_note
+
+
+def _wait_for_axes_idle(
+    client: TcpJsonClient,
+    steps: list[StepRecord],
+    step_prefix: str,
+    timeout_seconds: float = 6.0,
+    velocity_tolerance: float = 0.05,
+) -> tuple[bool, dict[str, Any]]:
+    deadline = time.time() + timeout_seconds
+    last_status: dict[str, Any] = {}
+    while time.time() < deadline:
+        last_status = client.send_request("status", {}, timeout_seconds=8.0)
+        steps.append(StepRecord(f"{step_prefix}-status", "status", _truncate_json(last_status)))
+        axes = _extract_axes(last_status)
+        if axes and all(abs(float(axis_payload.get("velocity", 0.0))) <= velocity_tolerance for axis_payload in axes.values()):
+            return True, last_status
+        time.sleep(0.2)
+    return False, last_status
+
+
 def _compute_overall_status(results: list[CheckResult]) -> str:
     statuses = {item.status for item in results}
     if "failed" in statuses:
@@ -422,7 +475,7 @@ def parse_args() -> argparse.Namespace:
         default=str(ROOT / "tests" / "reports" / "first-layer" / "s1-manual-motion-matrix"),
     )
     parser.add_argument("--host", default=os.getenv("SILIGEN_HIL_HOST", "127.0.0.1"))
-    parser.add_argument("--port", type=int, default=int(os.getenv("SILIGEN_HIL_PORT", "9527")))
+    parser.add_argument("--port", type=int, default=int(os.getenv("SILIGEN_HIL_PORT", "0")))
     parser.add_argument(
         "--gateway-exe",
         default=os.getenv(
@@ -439,6 +492,7 @@ def main() -> int:
     report_dir = Path(args.report_dir)
     gateway_exe = Path(args.gateway_exe)
     source_config = CANONICAL_CONFIG
+    port = args.port if args.port > 0 else _pick_free_port(args.host)
     results: list[CheckResult] = []
     steps: list[StepRecord] = []
 
@@ -458,7 +512,7 @@ def main() -> int:
             "workspace_root": str(ROOT),
             "gateway_exe": str(gateway_exe),
             "host": args.host,
-            "port": args.port,
+            "port": port,
             "overall_status": _compute_overall_status(results),
             "results": [asdict(item) for item in results],
             "steps": [asdict(item) for item in steps],
@@ -469,11 +523,39 @@ def main() -> int:
         print(f"markdown report: {md_path}")
         return SKIPPED_EXIT_CODE if status == "skipped" else KNOWN_FAILURE_EXIT_CODE
 
-    temp_config_dir = tempfile.TemporaryDirectory(prefix="tcp-manual-motion-")
-    temp_config = _prepare_mock_config(Path(temp_config_dir.name), source_config)
+    if args.port > 0 and _is_tcp_endpoint_reachable(args.host, port):
+        results.append(
+            CheckResult(
+                check_id="M0-bootstrap",
+                status="failed",
+                expected="requested TCP port is available before gateway launch",
+                actual=f"{args.host}:{port}",
+                note="requested port already has a reachable listener; refusing to connect to a stale process",
+            )
+        )
+        report = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "workspace_root": str(ROOT),
+            "gateway_exe": str(gateway_exe),
+            "host": args.host,
+            "port": port,
+            "overall_status": _compute_overall_status(results),
+            "results": [asdict(item) for item in results],
+            "steps": [asdict(item) for item in steps],
+        }
+        json_path, md_path = _write_report(report_dir, report)
+        print(f"tcp manual motion matrix complete: status={report['overall_status']}")
+        print(f"json report: {json_path}")
+        print(f"markdown report: {md_path}")
+        return 1
+
+    temp_config_dir, temp_config = prepare_mock_config(
+        prefix="tcp-manual-motion-",
+        source_config=source_config,
+    )
 
     process = subprocess.Popen(
-        [str(gateway_exe), "--config", str(temp_config), "--port", str(args.port)],
+        [str(gateway_exe), "--config", str(temp_config), "--port", str(port)],
         cwd=str(ROOT),
         env=_build_process_env(gateway_exe),
         stdout=subprocess.PIPE,
@@ -481,10 +563,10 @@ def main() -> int:
         text=True,
     )
 
-    client = TcpJsonClient(args.host, args.port)
+    client = TcpJsonClient(args.host, port)
     home_ready = False
     try:
-        ready_status, ready_note = _wait_gateway_ready(process, args.host, args.port, timeout_seconds=20.0)
+        ready_status, ready_note = _wait_gateway_ready(process, args.host, port, timeout_seconds=20.0)
         results.append(
             CheckResult(
                 check_id="M0-gateway-ready",
@@ -546,7 +628,12 @@ def main() -> int:
             )
             return last_status, note
 
-        connect_response = call("step-connect", "connect", {}, timeout_seconds=10.0)
+        connect_response = call(
+            "step-connect",
+            "connect",
+            load_connection_params(temp_config),
+            timeout_seconds=10.0,
+        )
         if "error" in connect_response:
             results.append(CheckResult("M1-connect", "failed", "connect succeeds", _truncate_json(connect_response), response=_truncate_json(connect_response)))
             raise RuntimeError("connect failed")
@@ -630,11 +717,50 @@ def main() -> int:
 
         if home_ready:
             home_go_params, home_go_note = _build_safe_home_go_params(latest_home_status)
+            home_go_baseline_positions = {
+                axis_name: float(axis_payload.get("position", 0.0))
+                for axis_name, axis_payload in _extract_axes(latest_home_status).items()
+            }
+            home_go_observed_axes = [str(axis_name) for axis_name in (home_go_params or {}).get("axes", []) if isinstance(axis_name, str)]
             home_go = {"skipped": True, "note": home_go_note} if home_go_params is None else call("step-home-go", "home.go", home_go_params)
-            move_after_home_params, move_after_home_note = _build_safe_move_after_home_params(latest_home_status)
+            home_go_effect_visible = False
+            home_go_effect_note = "home.go skipped"
+            status_after_home_go_effect = latest_home_status
+            home_go_idle = True
+            status_after_home_go_idle = latest_home_status
+            if home_go_params is not None:
+                home_go_effect_visible, status_after_home_go_effect, home_go_effect_note = _wait_for_axis_effect(
+                    client,
+                    steps,
+                    "step-home-go-observe",
+                    home_go_observed_axes,
+                    home_go_baseline_positions,
+                )
+                home_go_idle, status_after_home_go_idle = _wait_for_axes_idle(
+                    client,
+                    steps,
+                    "step-home-go-settle",
+                )
+
+            move_basis_status = status_after_home_go_idle if "result" in status_after_home_go_idle else latest_home_status
+            move_after_home_params, move_after_home_note = _build_safe_move_after_home_params(move_basis_status)
+            move_after_home_baseline_positions = {
+                axis_name: float(axis_payload.get("position", 0.0))
+                for axis_name, axis_payload in _extract_axes(move_basis_status).items()
+            }
             move_after_home = call("step-move-after-home", "move", move_after_home_params)
-            time.sleep(0.25)
-            status_after_move_after_home = call("step-status-after-move-after-home", "status")
+            move_after_home_visible, status_after_move_after_home, move_after_home_note_runtime = _wait_for_axis_effect(
+                client,
+                steps,
+                "step-move-after-home-observe",
+                sorted(move_after_home_baseline_positions),
+                move_after_home_baseline_positions,
+            )
+            move_after_home_idle, status_after_move_after_home_idle = _wait_for_axes_idle(
+                client,
+                steps,
+                "step-move-after-home-settle",
+            )
             jog_after_home = call("step-jog-after-home", "jog", {"axis": "X", "direction": 1, "speed": 3.0})
             time.sleep(0.25)
             status_after_jog_after_home = call("step-status-after-jog-after-home", "status")
@@ -673,9 +799,37 @@ def main() -> int:
             status_after_supply_close_after_estop = call("step-status-after-supply-close-after-estop", "status")
             disconnect_response = call("step-disconnect", "disconnect")
 
-            home_go_status = "skipped" if home_go_params is None else ("passed" if "error" not in home_go else "failed")
-            results.append(CheckResult("M7-home-go-normal-path", home_go_status, "home.go succeeds after homing", _truncate_json(home_go), note=home_go_note, response=_truncate_json(home_go)))
-            results.append(CheckResult("M8-move-normal-path", "passed" if "error" not in move_after_home else "failed", "move succeeds after homing", _truncate_json(move_after_home), note=f"{move_after_home_note}; status_after_move={_truncate_json(status_after_move_after_home)}", response=_truncate_json(move_after_home)))
+            home_go_status = "skipped" if home_go_params is None else ("passed" if "error" not in home_go or home_go_effect_visible else "failed")
+            results.append(
+                CheckResult(
+                    "M7-home-go-normal-path",
+                    home_go_status,
+                    "home.go succeeds after homing",
+                    _truncate_json(home_go),
+                    note=(
+                        f"{home_go_note}; observed_effect={home_go_effect_note}; "
+                        f"idle_after_home_go={home_go_idle}; "
+                        f"status_after_effect={_truncate_json(status_after_home_go_effect)}; "
+                        f"status_after_idle={_truncate_json(status_after_home_go_idle)}"
+                    ),
+                    response=_truncate_json(home_go),
+                )
+            )
+            results.append(
+                CheckResult(
+                    "M8-move-normal-path",
+                    "passed" if "error" not in move_after_home or move_after_home_visible else "failed",
+                    "move succeeds after homing",
+                    _truncate_json(move_after_home),
+                    note=(
+                        f"{move_after_home_note}; observed_effect={move_after_home_note_runtime}; "
+                        f"idle_after_move={move_after_home_idle}; "
+                        f"status_after_move={_truncate_json(status_after_move_after_home)}; "
+                        f"status_after_idle={_truncate_json(status_after_move_after_home_idle)}"
+                    ),
+                    response=_truncate_json(move_after_home),
+                )
+            )
             results.append(CheckResult("M9-jog-normal-path", "passed" if "error" not in jog_after_home else "failed", "jog succeeds after homing", _truncate_json(jog_after_home), note=f"status_after_jog={_truncate_json(status_after_jog_after_home)}", response=_truncate_json(jog_after_home)))
             zero_velocity = all(float(axis.get("velocity", 0.0)) == 0.0 for axis in _extract_axes(status_after_stop_after_jog).values())
             results.append(CheckResult("M10-stop-normal-path", "passed" if "error" not in stop_after_jog_after_home and zero_velocity else "failed", "stop succeeds and clears axis velocity", _truncate_json(stop_after_jog_after_home), note=f"status_after_stop={_truncate_json(status_after_stop_after_jog)}", response=_truncate_json(stop_after_jog_after_home)))
@@ -712,7 +866,7 @@ def main() -> int:
         "workspace_root": str(ROOT),
         "gateway_exe": str(gateway_exe),
         "host": args.host,
-        "port": args.port,
+        "port": port,
         "overall_status": _compute_overall_status(results),
         "results": [asdict(item) for item in results],
         "steps": [asdict(item) for item in steps],

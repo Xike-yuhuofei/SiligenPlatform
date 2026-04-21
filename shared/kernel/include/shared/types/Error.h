@@ -46,6 +46,7 @@ enum class ErrorCode : int32 {
     HARDWARE_TIMEOUT = 1011,         // 硬件响应超时
     HARDWARE_NOT_RESPONDING = 1012,  // 硬件无响应
     HARDWARE_COMMAND_FAILED = 1013,  // 硬件命令执行失败
+    DISPENSER_TRIGGER_INCOMPLETE = 1014,  // 路径触发点胶计数未完整收口
 
     // 配置错误 (Configuration errors 2000-2999)
     CONFIGURATION_ERROR = 2001,
@@ -359,6 +360,8 @@ inline const char* ErrorCodeToString(ErrorCode code) {
             return "HARDWARE_NOT_RESPONDING";
         case ErrorCode::HARDWARE_COMMAND_FAILED:
             return "HARDWARE_COMMAND_FAILED";
+        case ErrorCode::DISPENSER_TRIGGER_INCOMPLETE:
+            return "DISPENSER_TRIGGER_INCOMPLETE";
 
         // 连接相关错误 (Connection errors)
         case ErrorCode::PORT_NOT_INITIALIZED:

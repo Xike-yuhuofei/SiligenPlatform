@@ -24,7 +24,7 @@
 当前策略：
 
 - 默认验证 canonical `siligen_tcp_server.exe` 的最小启动闭环
-- 默认产物根解析顺序与 shared build owner 保持一致：`SILIGEN_CONTROL_APPS_BUILD_ROOT`（显式设置时） -> 携带当前工作区匹配 `CMakeCache.txt` 的 `<repo-root>\build\ca` -> `<repo-root>\build\control-apps` -> `<repo-root>\build` -> 匹配当前工作区且携带匹配 `CMakeCache.txt` 的 `%LOCALAPPDATA%\SS\cab-*` -> 携带当前工作区匹配 `CMakeCache.txt` 的 legacy `%LOCALAPPDATA%\SiligenSuite\control-apps-build`
+- 默认产物根与 shared build owner 保持单轨一致：显式设置 `SILIGEN_CONTROL_APPS_BUILD_ROOT` 时使用该路径；否则只认携带当前工作区匹配 `CMakeCache.txt` 的 `<repo-root>\build\ca`
 - 默认目标路径模式为 `<build-root>\bin\<Config>\*.exe`，当前 canonical 命中应为 `<repo-root>\build\ca\bin\<Config>\*.exe`
 - 可通过 `SILIGEN_HIL_GATEWAY_EXE` 显式覆盖可执行文件
 - 进程 `cwd` 使用仓库根，而不是 `control-core`
@@ -41,6 +41,7 @@
 - `run_real_dxf_preview_suite.py` 会聚合 `rect_diag`、`bra`、`arc_circle_quadrants` 三个 canonical preview case，并补 `case-index.json`、`validation-evidence-bundle.json`、`report-manifest.json`、`report-index.json`
 - `run_real_dxf_machine_dryrun_suite.py` 会聚合同一组 canonical dry-run case，并输出 suite summary + per-case launcher log + evidence bundle
 - 默认 HIL case 仍是 truth matrix 中标记为 `default_hil_sample` 的 `rect_diag`；`bra`、`arc_circle_quadrants` 只应在显式传 `--dxf-case-id` 时进入真实设备路径
+- 所有会触发 `dxf.plan.prepare` 的正式 DXF/HIL 脚本现在都必须显式传入已发布 recipe/version；当前 canonical published context 固定为 `--recipe-id recipe-7d1b00f4-6a99 --version-id version-fea9ce29-f963`
 - `limited-hil` 不是“实现完即全量上机”；当前正式口径仍是先过 `full-offline-gate`，再进入 `run_hil_controlled_test.ps1` 的 `60s` 受控 quick gate
 - preview / dry-run suite 只用于 full-online blocker 汇总与 `G8` 补充证据；controlled HIL 也只输出时间戳 evidence，不再 publish latest
 - `run_hil_closed_loop.py` 与 `run_case_matrix.py` 现在都会额外发布：
@@ -60,36 +61,52 @@ python .\tests\e2e\hardware-in-loop\run_hardware_smoke.py
 ```
 
 ```powershell
-python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun.py
+python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun.py `
+  --recipe-id recipe-7d1b00f4-6a99 `
+  --version-id version-fea9ce29-f963
 ```
 
 ```powershell
 python .\tests\e2e\hardware-in-loop\run_real_dxf_production_validation.py `
-  --dxf-file D:\Projects\SiligenSuite\uploads\dxf\archive\Demo-1.dxf
+  --recipe-id recipe-7d1b00f4-6a99 `
+  --version-id version-fea9ce29-f963 `
+  --dxf-file .\samples\dxf\rect_diag.dxf
 ```
 
 ```powershell
-python .\tests\e2e\hardware-in-loop\run_dxf_stop_home_auto_probe.py
+python .\tests\e2e\hardware-in-loop\run_dxf_stop_home_auto_probe.py `
+  --recipe-id recipe-7d1b00f4-6a99 `
+  --version-id version-fea9ce29-f963
 ```
 
 ```powershell
-python .\tests\e2e\hardware-in-loop\run_dxf_stop_home_auto_validation.py
+python .\tests\e2e\hardware-in-loop\run_dxf_stop_home_auto_validation.py `
+  --recipe-id recipe-7d1b00f4-6a99 `
+  --version-id version-fea9ce29-f963
 ```
 
 ```powershell
-python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun_negative_matrix.py
+python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun_negative_matrix.py `
+  --recipe-id recipe-7d1b00f4-6a99 `
+  --version-id version-fea9ce29-f963
 ```
 
 ```powershell
-python .\tests\e2e\hardware-in-loop\run_real_dxf_preview_snapshot.py
+python .\tests\e2e\hardware-in-loop\run_real_dxf_preview_snapshot.py `
+  --recipe-id recipe-7d1b00f4-6a99 `
+  --version-id version-fea9ce29-f963
 ```
 
 ```powershell
-python .\tests\e2e\hardware-in-loop\run_real_dxf_preview_suite.py
+python .\tests\e2e\hardware-in-loop\run_real_dxf_preview_suite.py `
+  --recipe-id recipe-7d1b00f4-6a99 `
+  --version-id version-fea9ce29-f963
 ```
 
 ```powershell
-python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun_suite.py
+python .\tests\e2e\hardware-in-loop\run_real_dxf_machine_dryrun_suite.py `
+  --recipe-id recipe-7d1b00f4-6a99 `
+  --version-id version-fea9ce29-f963
 ```
 
 ```powershell
@@ -144,6 +161,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 `run_real_dxf_machine_dryrun.py` 说明：
 
 - 明确只走 canonical 链：`dxf.artifact.create -> dxf.plan.prepare -> dxf.preview.snapshot -> dxf.preview.confirm -> dxf.job.start -> dxf.job.status`
+- 必须显式传入已发布 `--recipe-id/--version-id`，禁止回退到 active recipe / activeVersionId / 最近 artifact 推断
 - 默认 DXF 为 `samples/dxf/rect_diag.dxf`
 - 默认报告目录为 `tests/reports/adhoc/real-dxf-machine-dryrun-canonical/<timestamp>/`
 - 运行前会检查急停/门/限位，并在需要时先执行回零
@@ -168,8 +186,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 `run_real_dxf_production_validation.py` 说明：
 
 - 当前用于 BUG-318 这类“生产模式 path-trigger 真机专项验证”，固定走 `dxf.artifact.create -> dxf.plan.prepare(dry_run=false) -> dxf.preview.snapshot -> dxf.preview.confirm -> dxf.job.start -> dxf.job.status`
-- 当前默认样例固定为 `Demo-1.dxf`：优先读取 `D:\Projects\SiligenSuite\uploads\dxf\archive\Demo-1.dxf`；若该路径不存在，则回退到仓内 `samples/dxf/Demo-1.dxf`
-- `Demo-1.dxf` 不是文档层预设的“必过正例”或“必阻断负例”；当前 run 的 authority mode 只能由 `dxf.plan.prepare.import_preview_ready / import_production_ready / formal_compare_gate` 现场解析决定
+- 必须显式传入已发布 `--recipe-id/--version-id`
+- 默认 DXF 固定为仓内 canonical sample `samples/dxf/rect_diag.dxf`
 - `run_real_dxf_production_validation.py` 的 authority 结论一律以本次生成的 `real-dxf-production-validation.json` 为准，不允许沿用历史报告、旧命令或人工口述替代
 - 若 mode 解析为 `production_execution`，当前 authority 通过条件固定为：
   - `dxf.job.start` 成功返回 `execution_budget_s` 与 `execution_budget_breakdown`
@@ -205,6 +223,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 `run_dxf_stop_home_auto_probe.py` 说明：
 
 - 当前用于 `MC_PrfTrap` 现场专项复测，固定执行 `dxf.job.start -> dxf.job.stop -> 等 cancel 终态 -> immediate home.auto`
+- 必须显式传入已发布 `--recipe-id/--version-id`
 - 默认报告目录为 `tests/reports/adhoc/dxf-stop-home-auto-probe/<timestamp>/`
 - 会同时落盘：
   - `dxf-stop-home-auto-probe.json`
@@ -224,6 +243,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 `run_dxf_stop_home_auto_validation.py` 说明：
 
 - 当前用于把 `MC_PrfTrap` 现场专项复测固定成一个正式编排入口，不替代单次 probe
+- 必须显式传入已发布 `--recipe-id/--version-id`
 - 固定先执行 `run-hardware-smoke-observation.ps1`，再根据 `--manual-checks-confirmed` 决定是否允许进入真实动作
 - 默认成功条件为累计 `3` 个有效通过样本；有效样本必须同时满足：
   - `overall_status=passed`

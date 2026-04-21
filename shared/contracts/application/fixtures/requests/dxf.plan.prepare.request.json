@@ -3,6 +3,8 @@
   "method": "dxf.plan.prepare",
   "params": {
     "artifact_id": "artifact-20260321-001",
+    "recipe_id": "recipe-7d1b00f4-6a99",
+    "version_id": "version-fea9ce29-f963",
     "dispensing_speed_mm_s": 12.5,
     "dry_run": false
   }

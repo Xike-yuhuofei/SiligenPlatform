@@ -233,14 +233,11 @@ class PerformanceThresholdGateContractTest(unittest.TestCase):
 
         self.assertEqual(actual_path, expected_path)
 
-    def test_default_gateway_executable_prefers_workspace_build_ca_over_hmi_home_fix(self) -> None:
+    def test_default_gateway_executable_does_not_fallback_to_hmi_home_fix(self) -> None:
         with tempfile.TemporaryDirectory() as workspace_dir:
             workspace_root = Path(workspace_dir)
-            workspace_ca_exe = workspace_root / "build" / "ca" / "bin" / "Debug" / "siligen_runtime_gateway.exe"
             workspace_hmi_fix_exe = workspace_root / "build" / "hmi-home-fix" / "bin" / "Debug" / "siligen_runtime_gateway.exe"
-            workspace_ca_exe.parent.mkdir(parents=True, exist_ok=True)
             workspace_hmi_fix_exe.parent.mkdir(parents=True, exist_ok=True)
-            workspace_ca_exe.write_text("ca", encoding="utf-8")
             workspace_hmi_fix_exe.write_text("fix", encoding="utf-8")
 
             actual_path = resolve_default_gateway_executable(
@@ -248,7 +245,10 @@ class PerformanceThresholdGateContractTest(unittest.TestCase):
                 control_apps_build_root=workspace_root / "build" / "ca",
             )
 
-        self.assertEqual(actual_path, workspace_ca_exe)
+        self.assertEqual(
+            actual_path,
+            workspace_root / "build" / "ca" / "bin" / "Debug" / "siligen_runtime_gateway.exe",
+        )
 
     def test_missing_threshold_config_fails_nightly_gate(self) -> None:
         gate = evaluate_threshold_gate(_payload(), "nightly-performance", "missing-threshold-config.json")

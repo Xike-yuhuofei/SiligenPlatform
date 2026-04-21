@@ -200,6 +200,11 @@ def test_build_report_keeps_legacy_history_and_new_contract() -> None:
 
     report = dryrun.build_report(
         args=args,
+        recipe_context={
+            "recipe_id": "recipe-7d1b00f4-6a99",
+            "version_id": "version-fea9ce29-f963",
+            "recipe_context_source": "cli_explicit",
+        },
         steps=steps,
         artifacts={
             "job_timeout_budget": {
@@ -232,6 +237,9 @@ def test_build_report_keeps_legacy_history_and_new_contract() -> None:
     assert report["coord_status_history"] == coord_history
     assert report["phase_timeline"] == phase_timeline
     assert report["verdict"]["kind"] == "motion_timeout_unclassified"
+    assert report["recipe_id"] == "recipe-7d1b00f4-6a99"
+    assert report["version_id"] == "version-fea9ce29-f963"
+    assert report["recipe_context_source"] == "cli_explicit"
     assert report["observation_summary"]["job_status_samples"] == 1
     assert report["observation_summary"]["machine_status_samples"] == 1
     assert report["observation_summary"]["coord_status_samples"] == 1

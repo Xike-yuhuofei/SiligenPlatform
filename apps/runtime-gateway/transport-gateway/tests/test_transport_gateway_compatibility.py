@@ -641,21 +641,28 @@ def test_manual_readiness_gate_uses_typed_job_transition_owner_state():
     assert ".state" not in resolve_body
 
 
-def test_home_go_uses_ready_zero_configuration_and_rejects_speed_override():
+def test_home_go_routes_through_owner_ready_zero_and_rejects_speed_override():
     source = TCP_DISPATCHER.read_text(encoding="utf-8")
 
     home_go_match = re.search(
-        r"std::string TcpCommandDispatcher::HandleHomeGo.*?return GatewayJsonProtocol::MakeSuccessResponse",
+        r"std::string TcpCommandDispatcher::HandleHomeGo\(.*?\) \{(?P<body>.*?)\n\}\n\nstd::string TcpCommandDispatcher::HandleJog",
         source,
         re.S,
     )
     assert home_go_match, "cannot locate HandleHomeGo body"
-    home_go_body = home_go_match.group(0)
+    home_go_body = home_go_match.group("body")
 
-    assert "ResolveReadyZeroSpeed(" in home_go_body
-    assert "ready_zero_speed_mm_s" in home_go_body
+    assert "EnsureAxesReadyZeroRequest request;" in home_go_body
+    assert "request.wait_for_completion = false;" in home_go_body
+    assert "request.policy = Application::UseCases::Motion::Homing::EnsureAxesReadyZeroPolicy::GO_HOME_ONLY;" in home_go_body
+    assert "motionFacade_->EnsureAxesReadyZero(request);" in home_go_body
     assert "home.go speed override is not supported; configure ready_zero_speed_mm_s" in home_go_body
-    assert "machine_result.Value().max_speed" not in home_go_body
+    assert 'response.summary_state == "in_progress"' in home_go_body
+    assert 'response.summary_state == "noop" || response.summary_state == "completed"' in home_go_body
+    assert "motionFacade_->IsAxisHomed(" not in home_go_body
+    assert "motionFacade_->EvaluateMotionReadiness(" not in home_go_body
+    assert "ResolveReadyZeroSpeed(" not in home_go_body
+    assert "motionFacade_->ExecutePointToPointMotion(" not in home_go_body
 
 
 def test_jog_allows_positive_escape_when_home_is_active_but_axis_not_homed():
@@ -674,15 +681,17 @@ def test_jog_allows_positive_escape_when_home_is_active_but_axis_not_homed():
     assert '"Axis not homed, run homing first"' in jog_body
 
 
-def test_move_command_uses_synchronized_xy_position_control():
+def test_move_command_routes_through_owner_move_use_case():
     dispatcher_source = TCP_DISPATCHER.read_text(encoding="utf-8")
     motion_facade_header = TCP_MOTION_FACADE_HEADER.read_text(encoding="utf-8")
     motion_facade_impl = TCP_MOTION_FACADE_CPP.read_text(encoding="utf-8")
     builder = TCP_FACADE_BUILDER.read_text(encoding="utf-8")
 
     assert "Shared::Types::Result<void> MoveToPosition(const Point2D& position, float32 velocity);" in motion_facade_header
-    assert "position_control_port_->MoveToPosition(position, velocity);" in motion_facade_impl
-    assert "ResolvePort<Siligen::Domain::Motion::Ports::IPositionControlPort>()" in builder
+    assert "std::shared_ptr<UseCases::Motion::PTP::MoveToPositionUseCase> move_to_position_use_case_" in motion_facade_header
+    assert "move_to_position_use_case_->Execute(request);" in motion_facade_impl
+    assert "request.wait_for_completion = false;" in motion_facade_impl
+    assert "BuildMoveToPositionUseCase(resolver)" in builder
     assert "motionFacade_->MoveToPosition(target_position, speed);" in dispatcher_source
     assert "auto resultX = motionFacade_->ExecutePointToPointMotion(cmdX);" not in dispatcher_source
     assert "auto resultY = motionFacade_->ExecutePointToPointMotion(cmdY);" not in dispatcher_source
@@ -712,9 +721,9 @@ def main():
         test_home_command_exposes_axis_level_results,
         test_home_auto_command_is_registered_and_uses_supervisor_chain,
         test_manual_readiness_gate_uses_typed_job_transition_owner_state,
-        test_home_go_uses_ready_zero_configuration_and_rejects_speed_override,
+        test_home_go_routes_through_owner_ready_zero_and_rejects_speed_override,
         test_jog_allows_positive_escape_when_home_is_active_but_axis_not_homed,
-        test_move_command_uses_synchronized_xy_position_control,
+        test_move_command_routes_through_owner_move_use_case,
     ]
     for test in tests:
         test()

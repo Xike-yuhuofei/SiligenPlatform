@@ -40,8 +40,10 @@ class CurrentChainValidationContractTest(unittest.TestCase):
             WORKSPACE_ROOT / "tests" / "integration" / "scenarios" / "first-layer" / "run_tcp_precondition_matrix.py"
         ).read_text(encoding="utf-8")
         self.assertNotIn("resolve_active_recipe", text)
-        self.assertNotIn('"recipe_id":', text)
-        self.assertNotIn('"version_id":', text)
+        self.assertIn("recipe_context_metadata(args.recipe_id, args.version_id)", text)
+        self.assertIn("ensure_published_recipe_version(", text)
+        self.assertIn('"recipe_id": recipe_context["recipe_id"]', text)
+        self.assertIn('"version_id": recipe_context["version_id"]', text)
         self.assertIn('"dispensing_speed_mm_s": 10.0', text)
 
 

@@ -173,6 +173,7 @@ set_target_properties(siligen_runtime_execution_motion_execution_services PROPER
 
 if(NOT TARGET siligen_runtime_execution_application)
     add_library(siligen_runtime_execution_application STATIC
+        services/motion/DefaultMotionValidationService.cpp
         services/motion/MotionControlServiceImpl.cpp
         services/motion/MotionStatusServiceImpl.cpp
         services/motion/interpolation/ValidatedInterpolationPort.cpp

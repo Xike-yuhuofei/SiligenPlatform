@@ -15,13 +15,16 @@ from typing import Any
 
 KNOWN_FAILURE_EXIT_CODE = 10
 SKIPPED_EXIT_CODE = 11
+RECIPE_CONTEXT_SOURCE_CLI_EXPLICIT = "cli_explicit"
+CANONICAL_RECIPE_ID = "recipe-7d1b00f4-6a99"
+CANONICAL_VERSION_ID = "version-fea9ce29-f963"
 
 ROOT = Path(__file__).resolve().parents[3]
 TEST_KIT_SRC = ROOT / "shared" / "testing" / "test-kit" / "src"
 if str(TEST_KIT_SRC) not in sys.path:
     sys.path.insert(0, str(TEST_KIT_SRC))
 
-from test_kit.control_apps_build import preferred_control_apps_build_root, valid_control_apps_build_roots
+from test_kit.control_apps_build import preferred_control_apps_build_root
 
 CANONICAL_CONFIG = ROOT / "config" / "machine" / "machine_config.ini"
 CONTROL_APPS_BUILD_ROOT = Path(
@@ -141,34 +144,21 @@ class TcpJsonClient:
 
 
 def resolve_default_exe(*file_names: str) -> Path:
-    valid_roots = valid_control_apps_build_roots(
-        ROOT,
-        explicit_build_root=os.getenv("SILIGEN_CONTROL_APPS_BUILD_ROOT"),
-    )
-    prioritized_roots: list[Path] = []
-    seen_roots: set[Path] = set()
-    for root in (CONTROL_APPS_BUILD_ROOT, *valid_roots):
-        resolved_root = root.resolve()
-        if resolved_root in seen_roots:
-            continue
-        seen_roots.add(resolved_root)
-        prioritized_roots.append(resolved_root)
-
     candidates: list[Path] = []
     for file_name in file_names:
-        for build_root in prioritized_roots:
-            candidates.extend(
-                (
-                    build_root / "bin" / file_name,
-                    build_root / "bin" / "Debug" / file_name,
-                    build_root / "bin" / "Release" / file_name,
-                    build_root / "bin" / "RelWithDebInfo" / file_name,
-                )
+        build_root = CONTROL_APPS_BUILD_ROOT.resolve()
+        candidates.extend(
+            (
+                build_root / "bin" / file_name,
+                build_root / "bin" / "Debug" / file_name,
+                build_root / "bin" / "Release" / file_name,
+                build_root / "bin" / "RelWithDebInfo" / file_name,
             )
+        )
     for candidate in candidates:
         if candidate.exists():
             return candidate
-    return candidates[0]
+    return candidates[1]
 
 
 def build_process_env(gateway_exe: Path) -> dict[str, str]:
@@ -222,11 +212,104 @@ def load_connection_params(config_path: Path) -> dict[str, str]:
     return params
 
 
+def require_explicit_recipe_context(recipe_id: str, version_id: str) -> tuple[str, str]:
+    normalized_recipe_id = str(recipe_id or "").strip()
+    normalized_version_id = str(version_id or "").strip()
+    missing: list[str] = []
+    if not normalized_recipe_id:
+        missing.append("recipe_id")
+    if not normalized_version_id:
+        missing.append("version_id")
+    if missing:
+        raise ValueError("missing explicit recipe context: " + ",".join(missing))
+    return normalized_recipe_id, normalized_version_id
+
+
+def recipe_context_metadata(
+    recipe_id: str,
+    version_id: str,
+    *,
+    source: str = RECIPE_CONTEXT_SOURCE_CLI_EXPLICIT,
+) -> dict[str, str]:
+    normalized_recipe_id, normalized_version_id = require_explicit_recipe_context(recipe_id, version_id)
+    return {
+        "recipe_id": normalized_recipe_id,
+        "version_id": normalized_version_id,
+        "recipe_context_source": str(source or RECIPE_CONTEXT_SOURCE_CLI_EXPLICIT).strip()
+        or RECIPE_CONTEXT_SOURCE_CLI_EXPLICIT,
+    }
+
+
+def build_recipe_context_cli_args(recipe_id: str, version_id: str) -> list[str]:
+    metadata = recipe_context_metadata(recipe_id, version_id)
+    return [
+        "--recipe-id",
+        metadata["recipe_id"],
+        "--version-id",
+        metadata["version_id"],
+    ]
+
+
 def result_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {}
     result = payload.get("result", {})
     return result if isinstance(result, dict) else {}
+
+
+def ensure_published_recipe_version(
+    client: Any,
+    *,
+    recipe_id: str,
+    version_id: str,
+    timeout_seconds: float = 10.0,
+) -> dict[str, Any]:
+    metadata = recipe_context_metadata(recipe_id, version_id)
+    versions_response = client.send_request(
+        "recipe.versions",
+        {"recipeId": metadata["recipe_id"]},
+        timeout_seconds=timeout_seconds,
+    )
+    if "error" in versions_response:
+        raise RuntimeError("recipe.versions failed: " + truncate_json(versions_response))
+
+    versions_payload = result_payload(versions_response).get("versions", [])
+    if not isinstance(versions_payload, list):
+        raise RuntimeError("recipe.versions response missing versions list")
+
+    matched_version: dict[str, Any] | None = None
+    for item in versions_payload:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("id", "")).strip() != metadata["version_id"]:
+            continue
+        matched_version = item
+        break
+
+    if matched_version is None:
+        raise RuntimeError(
+            "recipe.versions missing explicit version: "
+            f"recipe_id={metadata['recipe_id']} version_id={metadata['version_id']}"
+        )
+
+    matched_recipe_id = str(matched_version.get("recipeId", "")).strip()
+    if matched_recipe_id and matched_recipe_id != metadata["recipe_id"]:
+        raise RuntimeError(
+            "recipe.versions returned mismatched recipe: "
+            f"expected={metadata['recipe_id']} actual={matched_recipe_id}"
+        )
+
+    version_status = str(matched_version.get("status", "")).strip().lower()
+    if version_status != "published":
+        raise RuntimeError(
+            "recipe version is not published: "
+            f"recipe_id={metadata['recipe_id']} version_id={metadata['version_id']} status={version_status or 'unknown'}"
+        )
+
+    return {
+        **metadata,
+        "version_status": version_status,
+    }
 
 
 def tcp_connect_and_ensure_ready(

@@ -1,6 +1,7 @@
 #include "RecipeFileRepository.h"
 
 #include "recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h"
+#include "recipe_lifecycle/domain/recipes/value-objects/RecipePlanningPolicyDefaults.h"
 #include "shared/types/Error.h"
 #include "shared/interfaces/ILoggingService.h"
 
@@ -24,6 +25,7 @@ using Siligen::Shared::Types::Result;
 using Siligen::Domain::Recipes::Serialization::RecipeJsonSerializer;
 using Siligen::Domain::Recipes::Aggregates::Recipe;
 using Siligen::Domain::Recipes::Aggregates::RecipeVersion;
+using Siligen::Domain::Recipes::ValueObjects::EnsureRecipePlanningPolicyDefaults;
 
 std::int64_t NowTimestamp() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -397,6 +399,7 @@ Result<Siligen::Domain::Recipes::ValueObjects::RecipeVersionId> RecipeFileReposi
     }
 
     RecipeVersion updated = version;
+    EnsureRecipePlanningPolicyDefaults(updated.parameters);
     if (updated.created_at == 0) {
         updated.created_at = NowTimestamp();
     }
@@ -456,8 +459,10 @@ Result<RecipeVersion> RecipeFileRepository::GetVersionById(
     if (version_result.IsError()) {
         return Result<RecipeVersion>::Failure(version_result.GetError());
     }
+    auto version = version_result.Value();
+    EnsureRecipePlanningPolicyDefaults(version.parameters);
 
-    return Result<RecipeVersion>::Success(version_result.Value());
+    return Result<RecipeVersion>::Success(version);
 }
 
 Result<std::vector<RecipeVersion>> RecipeFileRepository::ListVersions(
@@ -493,7 +498,9 @@ Result<std::vector<RecipeVersion>> RecipeFileRepository::ListVersions(
         if (version_result.IsError()) {
             return Result<std::vector<RecipeVersion>>::Failure(version_result.GetError());
         }
-        results.push_back(version_result.Value());
+        auto version = version_result.Value();
+        EnsureRecipePlanningPolicyDefaults(version.parameters);
+        results.push_back(std::move(version));
     }
 
     return Result<std::vector<RecipeVersion>>::Success(results);

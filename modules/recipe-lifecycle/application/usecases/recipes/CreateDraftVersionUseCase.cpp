@@ -71,6 +71,7 @@ Result<CreateDraftVersionResponse> CreateDraftVersionUseCase::Execute(const Crea
         }
         version.parameters = base_result.Value().parameters;
     }
+    NormalizeRecipePlanningPolicyParameters(version.parameters);
 
     auto schema_result = schema_port_->GetDefaultSchema();
     if (schema_result.IsError()) {

@@ -26,6 +26,7 @@ namespace {
 
 using Siligen::Application::UseCases::Motion::Homing::EnsureAxesReadyZeroRequest;
 using Siligen::Application::UseCases::Motion::Homing::EnsureAxesReadyZeroResponse;
+using Siligen::Application::UseCases::Motion::Homing::EnsureAxesReadyZeroPolicy;
 using Siligen::Application::UseCases::Motion::Homing::EnsureAxesReadyZeroUseCase;
 using Siligen::Application::UseCases::Motion::Homing::HomeAxesUseCase;
 using Siligen::Application::UseCases::Motion::Manual::ManualMotionControlUseCase;
@@ -452,6 +453,53 @@ TEST(EnsureAxesReadyZeroUseCaseTest, HomesThenMovesToZeroWhenAxisWasNotHomed) {
     EXPECT_EQ(response.axis_results[0].message, "Homed then moved to zero");
 }
 
+TEST(EnsureAxesReadyZeroUseCaseTest, RejectsNotHomedAxisWhenGoHomeOnlyRequested) {
+    auto environment = std::make_shared<FakeMotionEnvironment>();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto event_port = std::make_shared<FakeEventPublisher>();
+    auto use_case = MakeUseCase(environment, config_port, event_port);
+
+    environment->Axis(LogicalAxisId::X).homing_state = HomingState::NOT_HOMED;
+    environment->Axis(LogicalAxisId::X).status.axis_position_mm = 9.0f;
+
+    EnsureAxesReadyZeroRequest request;
+    request.axes = {LogicalAxisId::X};
+    request.policy = EnsureAxesReadyZeroPolicy::GO_HOME_ONLY;
+
+    auto result = use_case->Execute(request);
+
+    ASSERT_TRUE(result.IsSuccess());
+    const auto& response = result.Value();
+    ASSERT_EQ(response.axis_results.size(), 1U);
+    EXPECT_FALSE(response.accepted);
+    EXPECT_EQ(response.summary_state, "rejected");
+    EXPECT_EQ(environment->home_calls, 0);
+    EXPECT_EQ(environment->move_calls, 0);
+    EXPECT_EQ(response.axis_results[0].supervisor_state, "not_homed");
+    EXPECT_EQ(response.axis_results[0].planned_action, "reject");
+    EXPECT_EQ(response.axis_results[0].reason_code, "not_homed");
+    EXPECT_EQ(response.axis_results[0].message, "Axis is not homed");
+}
+
+TEST(EnsureAxesReadyZeroUseCaseTest, RejectsForceRehomeCombinationWhenGoHomeOnlyRequested) {
+    auto environment = std::make_shared<FakeMotionEnvironment>();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto event_port = std::make_shared<FakeEventPublisher>();
+    auto use_case = MakeUseCase(environment, config_port, event_port);
+
+    EnsureAxesReadyZeroRequest request;
+    request.axes = {LogicalAxisId::X};
+    request.force_rehome = true;
+    request.policy = EnsureAxesReadyZeroPolicy::GO_HOME_ONLY;
+
+    auto result = use_case->Execute(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_PARAMETER);
+    EXPECT_EQ(environment->home_calls, 0);
+    EXPECT_EQ(environment->move_calls, 0);
+}
+
 TEST(EnsureAxesReadyZeroUseCaseTest, GoesHomeWithoutRehomingWhenAxisAlreadyHomedAwayFromZero) {
     auto environment = std::make_shared<FakeMotionEnvironment>();
     auto config_port = std::make_shared<FakeConfigurationPort>();
@@ -478,6 +526,66 @@ TEST(EnsureAxesReadyZeroUseCaseTest, GoesHomeWithoutRehomingWhenAxisAlreadyHomed
     EXPECT_EQ(response.axis_results[0].planned_action, "go_home");
     EXPECT_TRUE(response.axis_results[0].success);
     EXPECT_EQ(response.axis_results[0].message, "Moved to zero");
+}
+
+TEST(EnsureAxesReadyZeroUseCaseTest, GoesHomeWithoutRehomingWhenGoHomeOnlyRequested) {
+    auto environment = std::make_shared<FakeMotionEnvironment>();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto event_port = std::make_shared<FakeEventPublisher>();
+    auto use_case = MakeUseCase(environment, config_port, event_port);
+
+    environment->Axis(LogicalAxisId::Y).homing_state = HomingState::HOMED;
+    environment->Axis(LogicalAxisId::Y).status.axis_position_mm = 3.5f;
+    environment->Axis(LogicalAxisId::Y).status.position.y = 3.5f;
+
+    EnsureAxesReadyZeroRequest request;
+    request.axes = {LogicalAxisId::Y};
+    request.policy = EnsureAxesReadyZeroPolicy::GO_HOME_ONLY;
+
+    auto result = use_case->Execute(request);
+
+    ASSERT_TRUE(result.IsSuccess());
+    const auto& response = result.Value();
+    ASSERT_EQ(response.axis_results.size(), 1U);
+    EXPECT_TRUE(response.accepted);
+    EXPECT_EQ(response.summary_state, "completed");
+    EXPECT_EQ(environment->home_calls, 0);
+    EXPECT_EQ(environment->move_calls, 1);
+    EXPECT_EQ(response.axis_results[0].planned_action, "go_home");
+    EXPECT_TRUE(response.axis_results[0].executed);
+    EXPECT_TRUE(response.axis_results[0].success);
+    EXPECT_EQ(response.axis_results[0].message, "Moved to zero");
+}
+
+TEST(EnsureAxesReadyZeroUseCaseTest, ReturnsInProgressWhenGoHomeOnlyRequestedWithoutWaiting) {
+    auto environment = std::make_shared<FakeMotionEnvironment>();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto event_port = std::make_shared<FakeEventPublisher>();
+    auto use_case = MakeUseCase(environment, config_port, event_port);
+
+    environment->Axis(LogicalAxisId::Y).homing_state = HomingState::HOMED;
+    environment->Axis(LogicalAxisId::Y).status.axis_position_mm = 3.5f;
+    environment->Axis(LogicalAxisId::Y).status.position.y = 3.5f;
+
+    EnsureAxesReadyZeroRequest request;
+    request.axes = {LogicalAxisId::Y};
+    request.wait_for_completion = false;
+    request.policy = EnsureAxesReadyZeroPolicy::GO_HOME_ONLY;
+
+    auto result = use_case->Execute(request);
+
+    ASSERT_TRUE(result.IsSuccess());
+    const auto& response = result.Value();
+    ASSERT_EQ(response.axis_results.size(), 1U);
+    EXPECT_TRUE(response.accepted);
+    EXPECT_EQ(response.summary_state, "in_progress");
+    EXPECT_EQ(response.message, "Go-home started");
+    EXPECT_EQ(environment->home_calls, 0);
+    EXPECT_EQ(environment->move_calls, 1);
+    EXPECT_TRUE(response.axis_results[0].executed);
+    EXPECT_TRUE(response.axis_results[0].success);
+    EXPECT_EQ(response.axis_results[0].planned_action, "go_home");
+    EXPECT_EQ(response.axis_results[0].message, "Moving to zero");
 }
 
 TEST(EnsureAxesReadyZeroUseCaseTest, RejectsGoHomeWhenReadyZeroSpeedIsMissing) {
@@ -518,6 +626,33 @@ TEST(EnsureAxesReadyZeroUseCaseTest, ReturnsNoopWhenAxisAlreadyAtZero) {
 
     EnsureAxesReadyZeroRequest request;
     request.axes = {LogicalAxisId::X};
+
+    auto result = use_case->Execute(request);
+
+    ASSERT_TRUE(result.IsSuccess());
+    const auto& response = result.Value();
+    ASSERT_EQ(response.axis_results.size(), 1U);
+    EXPECT_TRUE(response.accepted);
+    EXPECT_EQ(response.summary_state, "noop");
+    EXPECT_EQ(environment->home_calls, 0);
+    EXPECT_EQ(environment->move_calls, 0);
+    EXPECT_FALSE(response.axis_results[0].executed);
+    EXPECT_TRUE(response.axis_results[0].success);
+    EXPECT_EQ(response.axis_results[0].planned_action, "noop");
+}
+
+TEST(EnsureAxesReadyZeroUseCaseTest, ReturnsNoopWhenAxisAlreadyAtZeroAndGoHomeOnlyRequested) {
+    auto environment = std::make_shared<FakeMotionEnvironment>();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto event_port = std::make_shared<FakeEventPublisher>();
+    auto use_case = MakeUseCase(environment, config_port, event_port);
+
+    environment->Axis(LogicalAxisId::X).homing_state = HomingState::HOMED;
+    environment->Axis(LogicalAxisId::X).status.axis_position_mm = 0.0f;
+
+    EnsureAxesReadyZeroRequest request;
+    request.axes = {LogicalAxisId::X};
+    request.policy = EnsureAxesReadyZeroPolicy::GO_HOME_ONLY;
 
     auto result = use_case->Execute(request);
 
@@ -765,6 +900,39 @@ TEST(EnsureAxesReadyZeroUseCaseTest, BlocksGoHomeWhenMotionNotReady) {
     EXPECT_EQ(response.reason_code, "motion_not_ready");
     EXPECT_EQ(response.message, "motion_not_ready");
     EXPECT_EQ(response.axis_results[0].reason_code, "motion_not_ready");
+    EXPECT_EQ(environment->move_calls, 0);
+}
+
+TEST(EnsureAxesReadyZeroUseCaseTest, BlocksGoHomeWhenMotionNotReadyAndGoHomeOnlyRequested) {
+    auto environment = std::make_shared<FakeMotionEnvironment>();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto event_port = std::make_shared<FakeEventPublisher>();
+    auto use_case = MakeUseCase(environment, config_port, event_port);
+
+    environment->Axis(LogicalAxisId::X).homing_state = HomingState::HOMED;
+    environment->Axis(LogicalAxisId::X).status.axis_position_mm = 2.5f;
+    environment->Axis(LogicalAxisId::X).status.position.x = 2.5f;
+    environment->Axis(LogicalAxisId::X).status.state = MotionState::MOVING;
+    environment->Axis(LogicalAxisId::X).status.velocity = 1.0f;
+    environment->coord_status.state = CoordinateSystemState::MOVING;
+    environment->coord_status.is_moving = true;
+    environment->coord_status.remaining_segments = 1U;
+
+    EnsureAxesReadyZeroRequest request;
+    request.axes = {LogicalAxisId::X};
+    request.policy = EnsureAxesReadyZeroPolicy::GO_HOME_ONLY;
+
+    auto result = use_case->Execute(request);
+
+    ASSERT_TRUE(result.IsSuccess());
+    const auto& response = result.Value();
+    ASSERT_EQ(response.axis_results.size(), 1U);
+    EXPECT_FALSE(response.accepted);
+    EXPECT_EQ(response.summary_state, "blocked");
+    EXPECT_EQ(response.reason_code, "motion_not_ready");
+    EXPECT_EQ(response.message, "motion_not_ready");
+    EXPECT_EQ(response.axis_results[0].reason_code, "motion_not_ready");
+    EXPECT_EQ(environment->home_calls, 0);
     EXPECT_EQ(environment->move_calls, 0);
 }
 

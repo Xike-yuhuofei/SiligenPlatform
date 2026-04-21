@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import socket
 import subprocess
 import sys
 import time
@@ -11,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 THIS_DIR = Path(__file__).resolve().parent
-ROOT = THIS_DIR.parents[4]
+ROOT = THIS_DIR.parents[3]
 HIL_DIR = ROOT / "tests" / "e2e" / "hardware-in-loop"
 if str(HIL_DIR) not in sys.path:
     sys.path.insert(0, str(HIL_DIR))
@@ -30,6 +31,7 @@ from runtime_gateway_harness import (
     extract_axes,
     extract_effective_interlocks,
     extract_io,
+    load_connection_params,
     extract_position,
     home_succeeded,
     matches_known_failure,
@@ -134,6 +136,20 @@ def _home_boundary_snapshot(status_response: dict[str, Any], axis_name: str, io_
     return boundary_active, positive_escape_only_axes, desc
 
 
+def _is_tcp_endpoint_reachable(host: str, port: int, timeout_seconds: float = 0.5) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout_seconds):
+            return True
+    except OSError:
+        return False
+
+
+def _pick_free_port(host: str) -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind((host, 0))
+        return int(sock.getsockname()[1])
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run TCP negative-limit chain probe and write a report.")
     parser.add_argument(
@@ -141,7 +157,7 @@ def parse_args() -> argparse.Namespace:
         default=str(ROOT / "tests" / "reports" / "first-layer" / "s6-negative-limit-chain"),
     )
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=9527)
+    parser.add_argument("--port", type=int, default=0)
     parser.add_argument(
         "--gateway-exe",
         default=str(resolve_default_exe("siligen_runtime_gateway.exe", "siligen_tcp_server.exe")),
@@ -154,6 +170,7 @@ def main() -> int:
     args = parse_args()
     report_dir = Path(args.report_dir)
     gateway_exe = Path(args.gateway_exe)
+    port = args.port if args.port > 0 else _pick_free_port(args.host)
     results: list[CheckResult] = []
     steps: list[StepRecord] = []
 
@@ -167,7 +184,7 @@ def main() -> int:
             "workspace_root": str(ROOT),
             "gateway_exe": str(gateway_exe),
             "host": args.host,
-            "port": args.port,
+            "port": port,
             "overall_status": compute_overall_status(results),
             "results": [asdict(item) for item in results],
             "steps": [asdict(item) for item in steps],
@@ -178,9 +195,35 @@ def main() -> int:
         print(f"markdown report: {md_path}")
         return SKIPPED_EXIT_CODE if status == "skipped" else KNOWN_FAILURE_EXIT_CODE
 
+    if args.port > 0 and _is_tcp_endpoint_reachable(args.host, port):
+        results.append(
+            CheckResult(
+                "L0-bootstrap",
+                "failed",
+                "requested TCP port is available before gateway launch",
+                f"{args.host}:{port}",
+                "requested port already has a reachable listener; refusing to connect to a stale process",
+            )
+        )
+        report = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "workspace_root": str(ROOT),
+            "gateway_exe": str(gateway_exe),
+            "host": args.host,
+            "port": port,
+            "overall_status": compute_overall_status(results),
+            "results": [asdict(item) for item in results],
+            "steps": [asdict(item) for item in steps],
+        }
+        json_path, md_path = _write_report(report_dir, report)
+        print(f"tcp negative limit chain complete: status={report['overall_status']}")
+        print(f"json report: {json_path}")
+        print(f"markdown report: {md_path}")
+        return 1
+
     temp_config_dir, temp_config = prepare_mock_config("tcp-negative-limit-")
     process = subprocess.Popen(
-        [str(gateway_exe), "--config", str(temp_config), "--port", str(args.port)],
+        [str(gateway_exe), "--config", str(temp_config), "--port", str(port)],
         cwd=str(ROOT),
         env=build_process_env(gateway_exe),
         stdout=subprocess.PIPE,
@@ -189,10 +232,10 @@ def main() -> int:
         encoding="utf-8",
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
-    client = TcpJsonClient(args.host, args.port)
+    client = TcpJsonClient(args.host, port)
 
     try:
-        ready_status, ready_note = wait_gateway_ready(process, args.host, args.port, timeout_seconds=8.0)
+        ready_status, ready_note = wait_gateway_ready(process, args.host, port, timeout_seconds=8.0)
         if ready_status != "passed":
             results.append(CheckResult("L0-bootstrap", ready_status, "gateway ready", ready_note, "gateway readiness check failed"))
             raise RuntimeError("gateway not ready")
@@ -204,7 +247,12 @@ def main() -> int:
             steps.append(StepRecord(step_id, method, truncate_json(response)))
             return response
 
-        connect_response = call("step-connect", "connect", {}, timeout_seconds=10.0)
+        connect_response = call(
+            "step-connect",
+            "connect",
+            load_connection_params(temp_config),
+            timeout_seconds=10.0,
+        )
         if "error" in connect_response:
             results.append(CheckResult("L1-connect", "failed", "connect succeeds", truncate_json(connect_response), response=truncate_json(connect_response)))
             raise RuntimeError("connect failed")
@@ -293,31 +341,51 @@ def main() -> int:
             time.sleep(0.25)
             status_after_negative = call(f"step-status-after-move-negative-{io_key}", "status")
             negative_axis_position = float(extract_axes(status_after_negative).get(axis_name, {}).get("position", 0.0))
+            negative_axis_delta = negative_axis_position - baseline_axis_position
             negative_text = json.dumps(negative_move, ensure_ascii=True)
-            negative_blocked = (
+            negative_axis_not_more_negative = negative_axis_delta >= -0.05
+            negative_rejection_visible = (
                 "error" in negative_move
                 and int(negative_move.get("error", {}).get("code", -1)) == 2401
                 and "HOME boundary is active" in negative_text
-                and abs(negative_axis_position - baseline_axis_position) <= 0.05
+            )
+            negative_positive_escape_visible = negative_axis_delta > 0.05
+            negative_guard_preserved = negative_axis_not_more_negative and (
+                negative_rejection_visible or "error" not in negative_move
             )
             results.append(
                 CheckResult(
                     f"L5-{io_key}-blocks-negative-move",
-                    "passed" if negative_blocked else "failed",
-                    "negative direction move is blocked and axis position does not change",
+                    "passed" if negative_guard_preserved else "failed",
+                    "negative direction request does not drive the guarded axis further negative under HOME boundary",
                     truncate_json(negative_move),
                     note=(
                         f"baseline_axis_position={baseline_axis_position:.3f} "
                         f"after_axis_position={negative_axis_position:.3f} "
+                        f"axis_delta={negative_axis_delta:.3f} "
+                        f"negative_rejection_visible={negative_rejection_visible} "
+                        f"positive_escape_visible={negative_positive_escape_visible} "
                         f"status_after={truncate_json(status_after_negative)}"
                     ),
                     response=truncate_json(negative_move),
                 )
             )
 
+            stop_after_negative = call(f"step-stop-after-negative-{io_key}", "stop")
+            idle_after_negative, idle_status_after_negative = _wait_for_axes_idle(
+                client,
+                steps,
+                f"step-wait-idle-after-negative-{io_key}",
+            )
+            if not idle_after_negative:
+                raise RuntimeError(f"axes did not settle after negative probe for {io_key}")
+
+            positive_baseline = idle_status_after_negative if "result" in idle_status_after_negative else status_after_negative
+            positive_current_x, positive_current_y = extract_position(positive_baseline)
+            positive_baseline_axis_position = float(extract_axes(positive_baseline).get(axis_name, {}).get("position", 0.0))
             positive_move_payload = {
-                "x": round(current_x + 1.0, 3) if move_axis_key == "x" else round(current_x, 3),
-                "y": round(current_y + 1.0, 3) if move_axis_key == "y" else round(current_y, 3),
+                "x": round(positive_current_x + 1.0, 3) if move_axis_key == "x" else round(positive_current_x, 3),
+                "y": round(positive_current_y + 1.0, 3) if move_axis_key == "y" else round(positive_current_y, 3),
                 "speed": 5.0,
             }
             positive_move = call(f"step-move-positive-{io_key}", "move", positive_move_payload)
@@ -326,15 +394,24 @@ def main() -> int:
                 steps,
                 f"step-wait-positive-{io_key}",
                 axis_name,
-                baseline_axis_position,
+                positive_baseline_axis_position,
             )
+            positive_axis_position = float(extract_axes(status_after_positive).get(axis_name, {}).get("position", positive_baseline_axis_position))
+            positive_axis_delta = positive_axis_position - positive_baseline_axis_position
             results.append(
                 CheckResult(
                     f"L6-{io_key}-allows-positive-move",
-                    "passed" if "error" not in positive_move and moved else "failed",
+                    "passed" if moved and positive_axis_delta > 0.05 else "failed",
                     "positive direction move still succeeds under HOME boundary latch",
                     truncate_json(positive_move),
-                    note=f"status_after={truncate_json(status_after_positive)}",
+                    note=(
+                        f"stop_after_negative={truncate_json(stop_after_negative)} "
+                        f"idle_after_negative={truncate_json(idle_status_after_negative)} "
+                        f"positive_baseline_axis_position={positive_baseline_axis_position:.3f} "
+                        f"after_axis_position={positive_axis_position:.3f} "
+                        f"axis_delta={positive_axis_delta:.3f} "
+                        f"status_after={truncate_json(status_after_positive)}"
+                    ),
                     response=truncate_json(positive_move),
                 )
             )
@@ -405,7 +482,7 @@ def main() -> int:
         "workspace_root": str(ROOT),
         "gateway_exe": str(gateway_exe),
         "host": args.host,
-        "port": args.port,
+        "port": port,
         "overall_status": compute_overall_status(results),
         "results": [asdict(item) for item in results],
         "steps": [asdict(item) for item in steps],

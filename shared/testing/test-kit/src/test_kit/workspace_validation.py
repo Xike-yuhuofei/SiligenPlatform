@@ -66,6 +66,8 @@ CONTROL_APPS_BUILD_ROOT = preferred_control_apps_build_root(
     explicit_build_root=os.getenv("SILIGEN_CONTROL_APPS_BUILD_ROOT"),
 ).root
 PERFORMANCE_THRESHOLD_CONFIG = WORKSPACE_ROOT / "tests" / "baselines" / "performance" / "dxf-preview-profile-thresholds.json"
+CANONICAL_RECIPE_ID = "recipe-7d1b00f4-6a99"
+CANONICAL_VERSION_ID = "version-fea9ce29-f963"
 CONTROL_APPS_CASE_ARTIFACTS: dict[str, str] = {
     "runtime-service-dry-run": "siligen_runtime_service.exe",
     "runtime-gateway-dry-run": "siligen_runtime_gateway.exe",
@@ -81,6 +83,15 @@ CONTROL_APPS_PREREQUISITE_CASE_ID = "control-apps-build-readiness"
 
 def _default_report_dir() -> Path:
     return WORKSPACE_ROOT / "tests" / "reports"
+
+
+def _canonical_recipe_context_args() -> list[str]:
+    return [
+        "--recipe-id",
+        CANONICAL_RECIPE_ID,
+        "--version-id",
+        CANONICAL_VERSION_ID,
+    ]
 
 
 def _layout_absolute_path(key: str) -> Path:
@@ -878,6 +889,8 @@ def build_cases(
                         ),
                         "--report-dir",
                         str(resolved_report_dir / "integration" / "tcp-precondition-matrix"),
+                        *_canonical_recipe_context_args(),
+                        "--allow-skip-on-missing-gateway",
                     ],
                     cwd=WORKSPACE_ROOT,
                     known_failure_exit_codes=(KNOWN_FAILURE_EXIT_CODE,),
@@ -1075,6 +1088,7 @@ def build_cases(
             *python_command(WORKSPACE_ROOT / "tests" / "performance" / "collect_dxf_preview_profiles.py"),
             "--report-dir",
             str(resolved_report_dir / "performance" / "dxf-preview-profiles"),
+            *_canonical_recipe_context_args(),
             "--gate-mode",
             performance_gate_mode,
             "--threshold-config",

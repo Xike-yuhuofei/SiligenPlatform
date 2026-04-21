@@ -24,7 +24,7 @@ if str(HIL_DIR) not in sys.path:
 CANONICAL_CONFIG = ROOT / "config" / "machine" / "machine_config.ini"
 
 from runtime_gateway_harness import build_process_env as _shared_build_process_env  # noqa: E402
-from runtime_gateway_harness import resolve_default_exe  # noqa: E402
+from runtime_gateway_harness import load_connection_params, prepare_mock_config, resolve_default_exe  # noqa: E402
 
 
 @dataclass
@@ -148,32 +148,6 @@ def _tail_text(path: Path, max_chars: int = 4000) -> str:
     if len(text) <= max_chars:
         return text
     return text[-max_chars:]
-
-
-def _rewrite_mock_config(source_text: str) -> str:
-    lines = source_text.splitlines()
-    in_hardware = False
-    replaced = False
-    for index, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped.startswith("[") and stripped.endswith("]"):
-            in_hardware = stripped.lower() == "[hardware]"
-            continue
-        if in_hardware and stripped.lower().startswith("mode="):
-            indent = line[: len(line) - len(line.lstrip())]
-            lines[index] = f"{indent}mode=Mock"
-            replaced = True
-            break
-    if not replaced:
-        raise ValueError("failed to locate [Hardware] mode entry in machine config")
-    return "\n".join(lines) + "\n"
-
-
-def _prepare_mock_config(temp_dir: Path, source_config: Path) -> Path:
-    rewritten = _rewrite_mock_config(source_config.read_text(encoding="utf-8"))
-    target = temp_dir / "machine_config.mock.ini"
-    target.write_text(rewritten, encoding="utf-8")
-    return target
 
 
 def _wait_gateway_ready(process: subprocess.Popen[str], host: str, port: int, timeout_seconds: float) -> str:
@@ -357,193 +331,205 @@ def main() -> int:
     process: subprocess.Popen[str] | None = None
     stdout_path: Path | None = None
     stderr_path: Path | None = None
+    temp_config_dir = None
+    temp_config: Path | None = None
     fatal_error = ""
 
-    with tempfile.TemporaryDirectory(prefix="tcp-jog-focus-") as temp_dir_str:
-        temp_dir = Path(temp_dir_str)
-        temp_config = _prepare_mock_config(temp_dir, source_config)
-        stdout_path = temp_dir / "gateway.stdout.log"
-        stderr_path = temp_dir / "gateway.stderr.log"
+    try:
+        temp_config_dir, temp_config = prepare_mock_config(
+            prefix="tcp-jog-focus-config-",
+            source_config=source_config,
+        )
 
-        with stdout_path.open("w", encoding="utf-8") as stdout_file, stderr_path.open("w", encoding="utf-8") as stderr_file:
-            process = subprocess.Popen(
-                [str(gateway_exe), "--config", str(temp_config), "--port", str(port)],
-                cwd=str(ROOT),
-                stdout=stdout_file,
-                stderr=stderr_file,
-                text=True,
-                env=_build_process_env(gateway_exe),
-            )
+        with tempfile.TemporaryDirectory(prefix="tcp-jog-focus-") as temp_dir_str:
+            temp_dir = Path(temp_dir_str)
+            stdout_path = temp_dir / "gateway.stdout.log"
+            stderr_path = temp_dir / "gateway.stderr.log"
 
-            try:
+            with stdout_path.open("w", encoding="utf-8") as stdout_file, stderr_path.open("w", encoding="utf-8") as stderr_file:
+                process = subprocess.Popen(
+                    [str(gateway_exe), "--config", str(temp_config), "--port", str(port)],
+                    cwd=str(ROOT),
+                    stdout=stdout_file,
+                    stderr=stderr_file,
+                    text=True,
+                    env=_build_process_env(gateway_exe),
+                )
+
                 try:
-                    ready_error = _wait_gateway_ready(process, args.host, port, timeout_seconds=25.0)
-                    if ready_error:
+                    try:
+                        ready_error = _wait_gateway_ready(process, args.host, port, timeout_seconds=25.0)
+                        if ready_error:
+                            results.append(
+                                CheckResult(
+                                    check_id="J0-gateway-ready",
+                                    status="failed",
+                                    expected="TCP endpoint is reachable",
+                                    actual=ready_error,
+                                )
+                            )
+                            raise RuntimeError(ready_error)
+
                         results.append(
                             CheckResult(
                                 check_id="J0-gateway-ready",
-                                status="failed",
+                                status="passed",
                                 expected="TCP endpoint is reachable",
-                                actual=ready_error,
+                                actual=f"{args.host}:{port}",
                             )
                         )
-                        raise RuntimeError(ready_error)
 
-                    results.append(
-                        CheckResult(
-                            check_id="J0-gateway-ready",
-                            status="passed",
-                            expected="TCP endpoint is reachable",
-                            actual=f"{args.host}:{port}",
+                        client.connect(timeout_seconds=5.0)
+
+                        def call(step_id: str, method: str, params: dict[str, Any] | None = None, timeout_seconds: float = 8.0) -> dict[str, Any]:
+                            response = client.send_request(method, params or {}, timeout_seconds=timeout_seconds)
+                            steps.append(StepRecord(step_id=step_id, method=method, response=_truncate_json(response, max_chars=2400)))
+                            return response
+
+                        def poll_status(
+                            step_prefix: str,
+                            predicate: Callable[[dict[str, Any]], bool],
+                            attempts: int,
+                            interval_seconds: float,
+                        ) -> tuple[bool, dict[str, Any]]:
+                            last_response: dict[str, Any] = {}
+                            for attempt in range(1, attempts + 1):
+                                if attempt > 1:
+                                    time.sleep(interval_seconds)
+                                last_response = call(f"{step_prefix}-{attempt}", "status", {}, timeout_seconds=5.0)
+                                if "result" in last_response and predicate(last_response):
+                                    return True, last_response
+                            return False, last_response
+
+                        connect_response = call(
+                            "step-connect",
+                            "connect",
+                            load_connection_params(temp_config),
+                            timeout_seconds=12.0,
                         )
-                    )
-
-                    client.connect(timeout_seconds=5.0)
-
-                    def call(step_id: str, method: str, params: dict[str, Any] | None = None, timeout_seconds: float = 8.0) -> dict[str, Any]:
-                        response = client.send_request(method, params or {}, timeout_seconds=timeout_seconds)
-                        steps.append(StepRecord(step_id=step_id, method=method, response=_truncate_json(response, max_chars=2400)))
-                        return response
-
-                    def poll_status(
-                        step_prefix: str,
-                        predicate: Callable[[dict[str, Any]], bool],
-                        attempts: int,
-                        interval_seconds: float,
-                    ) -> tuple[bool, dict[str, Any]]:
-                        last_response: dict[str, Any] = {}
-                        for attempt in range(1, attempts + 1):
-                            if attempt > 1:
-                                time.sleep(interval_seconds)
-                            last_response = call(f"{step_prefix}-{attempt}", "status", {}, timeout_seconds=5.0)
-                            if "result" in last_response and predicate(last_response):
-                                return True, last_response
-                        return False, last_response
-
-                    connect_response = call("step-connect", "connect", {}, timeout_seconds=12.0)
-                    connect_ok = "error" not in connect_response and bool(connect_response.get("result", {}).get("connected", False))
-                    results.append(
-                        CheckResult(
-                            check_id="J1-connect",
-                            status="passed" if connect_ok else "failed",
-                            expected="connect succeeds",
-                            actual=_truncate_json(connect_response),
-                            response=_truncate_json(connect_response),
+                        connect_ok = "error" not in connect_response and bool(connect_response.get("result", {}).get("connected", False))
+                        results.append(
+                            CheckResult(
+                                check_id="J1-connect",
+                                status="passed" if connect_ok else "failed",
+                                expected="connect succeeds",
+                                actual=_truncate_json(connect_response),
+                                response=_truncate_json(connect_response),
+                            )
                         )
-                    )
-                    if not connect_ok:
-                        raise RuntimeError("connect failed")
+                        if not connect_ok:
+                            raise RuntimeError("connect failed")
 
-                    jog_before_home = call("step-jog-before-home", "jog", {"axis": "X", "direction": 1, "speed": 5.0})
-                    time.sleep(0.2)
-                    status_after_jog_before_home = call("step-status-after-jog-before-home", "status", {}, timeout_seconds=5.0)
-                    jog_before_home_blocked = "error" in jog_before_home and not _any_axis_velocity_nonzero(status_after_jog_before_home)
-                    results.append(
-                        CheckResult(
-                            check_id="J2-jog-before-home-blocked",
-                            status="passed" if jog_before_home_blocked else "failed",
-                            expected="jog before home is rejected and no axis motion is visible",
-                            actual=_truncate_json(jog_before_home),
-                            note=f"status_after={_truncate_json(status_after_jog_before_home)}",
-                            response=_truncate_json(jog_before_home),
+                        jog_before_home = call("step-jog-before-home", "jog", {"axis": "X", "direction": 1, "speed": 5.0})
+                        time.sleep(0.2)
+                        status_after_jog_before_home = call("step-status-after-jog-before-home", "status", {}, timeout_seconds=5.0)
+                        jog_before_home_blocked = "error" in jog_before_home and not _any_axis_velocity_nonzero(status_after_jog_before_home)
+                        results.append(
+                            CheckResult(
+                                check_id="J2-jog-before-home-blocked",
+                                status="passed" if jog_before_home_blocked else "failed",
+                                expected="jog before home is rejected and no axis motion is visible",
+                                actual=_truncate_json(jog_before_home),
+                                note=f"status_after={_truncate_json(status_after_jog_before_home)}",
+                                response=_truncate_json(jog_before_home),
+                            )
                         )
-                    )
 
-                    home_response = call("step-home", "home", {}, timeout_seconds=45.0)
-                    home_completed = "error" not in home_response and bool(home_response.get("result", {}).get("completed", False))
-                    homed_ok, status_after_home = poll_status("step-status-after-home", _all_axes_homed, attempts=20, interval_seconds=0.25)
-                    results.append(
-                        CheckResult(
-                            check_id="J3-home-completes",
-                            status="passed" if home_completed and homed_ok else "failed",
-                            expected="home completes and all axes reach homed state",
-                            actual=_truncate_json(home_response),
-                            note=f"status_after={_truncate_json(status_after_home)}",
-                            response=_truncate_json(home_response),
+                        home_response = call("step-home", "home", {}, timeout_seconds=45.0)
+                        home_completed = "error" not in home_response and bool(home_response.get("result", {}).get("completed", False))
+                        homed_ok, status_after_home = poll_status("step-status-after-home", _all_axes_homed, attempts=20, interval_seconds=0.25)
+                        results.append(
+                            CheckResult(
+                                check_id="J3-home-completes",
+                                status="passed" if home_completed and homed_ok else "failed",
+                                expected="home completes and all axes reach homed state",
+                                actual=_truncate_json(home_response),
+                                note=f"status_after={_truncate_json(status_after_home)}",
+                                response=_truncate_json(home_response),
+                            )
                         )
-                    )
 
-                    home_connection_ok = "result" in status_after_home and _connection_state(status_after_home) != "degraded"
-                    results.append(
-                        CheckResult(
-                            check_id="J4-home-status-not-degraded",
-                            status="passed" if home_connection_ok else "failed",
-                            expected="status.connection_state != degraded after home",
-                            actual=f"connection_state={_connection_state(status_after_home)} reason={_machine_state_reason(status_after_home)}",
-                            response=_truncate_json(status_after_home),
+                        home_connection_ok = "result" in status_after_home and _connection_state(status_after_home) != "degraded"
+                        results.append(
+                            CheckResult(
+                                check_id="J4-home-status-not-degraded",
+                                status="passed" if home_connection_ok else "failed",
+                                expected="status.connection_state != degraded after home",
+                                actual=f"connection_state={_connection_state(status_after_home)} reason={_machine_state_reason(status_after_home)}",
+                                response=_truncate_json(status_after_home),
+                            )
                         )
-                    )
 
-                    jog_after_home = call("step-jog-after-home", "jog", {"axis": "X", "direction": 1, "speed": 5.0})
-                    jog_started = "error" not in jog_after_home
-                    motion_visible, status_after_jog = poll_status(
-                        "step-status-after-jog",
-                        _any_axis_velocity_nonzero,
-                        attempts=15,
-                        interval_seconds=0.15,
-                    )
-                    results.append(
-                        CheckResult(
-                            check_id="J5-jog-after-home-has-velocity",
-                            status="passed" if jog_started and motion_visible else "failed",
-                            expected="jog succeeds after home and at least one axis exposes non-zero velocity",
-                            actual=_truncate_json(jog_after_home),
-                            note=f"status_after={_truncate_json(status_after_jog)}",
-                            response=_truncate_json(jog_after_home),
+                        jog_after_home = call("step-jog-after-home", "jog", {"axis": "X", "direction": 1, "speed": 5.0})
+                        jog_started = "error" not in jog_after_home
+                        motion_visible, status_after_jog = poll_status(
+                            "step-status-after-jog",
+                            _any_axis_velocity_nonzero,
+                            attempts=15,
+                            interval_seconds=0.15,
                         )
-                    )
+                        results.append(
+                            CheckResult(
+                                check_id="J5-jog-after-home-has-velocity",
+                                status="passed" if jog_started and motion_visible else "failed",
+                                expected="jog succeeds after home and at least one axis exposes non-zero velocity",
+                                actual=_truncate_json(jog_after_home),
+                                note=f"status_after={_truncate_json(status_after_jog)}",
+                                response=_truncate_json(jog_after_home),
+                            )
+                        )
 
-                    jog_connection_ok = "result" in status_after_jog and _connection_state(status_after_jog) != "degraded"
-                    results.append(
-                        CheckResult(
-                            check_id="J6-jog-status-not-degraded",
-                            status="passed" if jog_connection_ok else "failed",
-                            expected="status.connection_state != degraded during jog",
-                            actual=f"connection_state={_connection_state(status_after_jog)} reason={_machine_state_reason(status_after_jog)}",
-                            response=_truncate_json(status_after_jog),
+                        jog_connection_ok = "result" in status_after_jog and _connection_state(status_after_jog) != "degraded"
+                        results.append(
+                            CheckResult(
+                                check_id="J6-jog-status-not-degraded",
+                                status="passed" if jog_connection_ok else "failed",
+                                expected="status.connection_state != degraded during jog",
+                                actual=f"connection_state={_connection_state(status_after_jog)} reason={_machine_state_reason(status_after_jog)}",
+                                response=_truncate_json(status_after_jog),
+                            )
                         )
-                    )
 
-                    stop_response = call("step-stop-after-jog", "stop", {}, timeout_seconds=8.0)
-                    stop_ack = "error" not in stop_response
-                    zero_velocity, status_after_stop = poll_status(
-                        "step-status-after-stop",
-                        _all_axis_velocity_zero,
-                        attempts=15,
-                        interval_seconds=0.15,
-                    )
-                    results.append(
-                        CheckResult(
-                            check_id="J7-stop-clears-velocity",
-                            status="passed" if stop_ack and zero_velocity else "failed",
-                            expected="stop succeeds and all axes velocity return to zero",
-                            actual=_truncate_json(stop_response),
-                            note=f"status_after={_truncate_json(status_after_stop)}",
-                            response=_truncate_json(stop_response),
+                        stop_response = call("step-stop-after-jog", "stop", {}, timeout_seconds=8.0)
+                        stop_ack = "error" not in stop_response
+                        zero_velocity, status_after_stop = poll_status(
+                            "step-status-after-stop",
+                            _all_axis_velocity_zero,
+                            attempts=15,
+                            interval_seconds=0.15,
                         )
-                    )
-                except Exception as exc:
-                    fatal_error = repr(exc)
-                    results.append(
-                        CheckResult(
-                            check_id="JX-runtime-exception",
-                            status="failed",
-                            expected="smoke flow completes without unhandled exception",
-                            actual=repr(exc),
+                        results.append(
+                            CheckResult(
+                                check_id="J7-stop-clears-velocity",
+                                status="passed" if stop_ack and zero_velocity else "failed",
+                                expected="stop succeeds and all axes velocity return to zero",
+                                actual=_truncate_json(stop_response),
+                                note=f"status_after={_truncate_json(status_after_stop)}",
+                                response=_truncate_json(stop_response),
+                            )
                         )
-                    )
+                    except Exception as exc:
+                        fatal_error = repr(exc)
+                        results.append(
+                            CheckResult(
+                                check_id="JX-runtime-exception",
+                                status="failed",
+                                expected="smoke flow completes without unhandled exception",
+                                actual=repr(exc),
+                            )
+                        )
 
-            finally:
-                try:
-                    client.close()
                 finally:
-                    if process.poll() is None:
-                        process.terminate()
-                        try:
-                            process.wait(timeout=5.0)
-                        except subprocess.TimeoutExpired:
-                            process.kill()
-                            process.wait(timeout=5.0)
+                    try:
+                        client.close()
+                    finally:
+                        if process.poll() is None:
+                            process.terminate()
+                            try:
+                                process.wait(timeout=5.0)
+                            except subprocess.TimeoutExpired:
+                                process.kill()
+                                process.wait(timeout=5.0)
 
         report = {
             "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -567,6 +553,9 @@ def main() -> int:
         if report["overall_status"] == "skipped":
             return SKIPPED_EXIT_CODE
         return 0 if report["overall_status"] == "passed" else 1
+    finally:
+        if temp_config_dir is not None:
+            temp_config_dir.cleanup()
 
 
 if __name__ == "__main__":

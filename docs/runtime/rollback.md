@@ -29,7 +29,7 @@ Set-Location <repo-root>
 
 control-apps 产物检查：
 
-默认解析顺序：`SILIGEN_CONTROL_APPS_BUILD_ROOT` -> `.\build\ca` -> `.\build\control-apps` -> `.\build` -> 匹配当前工作区的 `LOCALAPPDATA\SS\cab-*` -> legacy `LOCALAPPDATA\SiligenSuite\control-apps-build`。
+默认解析顺序：显式 `SILIGEN_CONTROL_APPS_BUILD_ROOT`；否则只认携带当前工作区匹配 `CMakeCache.txt` 的 `.\build\ca`。`.\build\control-apps`、`.\build` 和 `LOCALAPPDATA` 发布缓存不再参与默认解析。
 
 ```powershell
 . .\scripts\validation\tooling-common.ps1

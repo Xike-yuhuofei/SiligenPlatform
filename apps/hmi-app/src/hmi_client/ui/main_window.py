@@ -61,6 +61,7 @@ from client import (
     normalize_launch_mode,
 )
 from hmi_application.adapters.qt_workers import PreviewSnapshotWorker
+from hmi_application.preview_planning_context import PreviewPlanningContextOwner
 from hmi_application.preview_session import (
     MotionPreviewMeta,
     PreviewDiagnosticNotice,
@@ -452,6 +453,7 @@ class MainWindow(QMainWindow):
         self._dxf_total_length_val = 0.0
         self._dxf_segment_count_cache = 0
         self._dxf_est_time_val = "-"
+        self._preview_planning_context = PreviewPlanningContextOwner()
         self._preview_session = PreviewSessionOwner()
         self._preview_gate = self._preview_session.gate
         self._preview_plan_dry_run = None
@@ -1069,7 +1071,12 @@ class MainWindow(QMainWindow):
 
     def _create_recipe_tab(self) -> QWidget:
         """Create Recipe/File tab - for DXF and recipe management."""
-        self._recipe_config_widget = RecipeConfigWidget(self._protocol, self._auth, parent=self)
+        self._recipe_config_widget = RecipeConfigWidget(
+            self._protocol,
+            self._auth,
+            planning_context_owner=self._preview_planning_context,
+            parent=self,
+        )
         self._recipe_config_widget.setEnabled(CURRENT_STAGE_RECIPE_MANAGEMENT_ENABLED)
         if not CURRENT_STAGE_RECIPE_MANAGEMENT_ENABLED:
             self._recipe_config_widget.setToolTip("当前阶段未启用配方管理")
@@ -3990,6 +3997,21 @@ class MainWindow(QMainWindow):
 
         speed = self._dxf_speed.value()
         dry_run_mode = self._mode_dryrun.isChecked() if hasattr(self, "_mode_dryrun") else False
+        if not self._is_offline_mode():
+            freeze_result = self._preview_planning_context.freeze_for_prepare()
+            if not freeze_result.ok or freeze_result.snapshot is None:
+                result = self._preview_session.handle_local_failure(
+                    gate_error_message=freeze_result.message or "preview planning context unavailable",
+                    title="胶点预览生成失败",
+                    detail=freeze_result.message or "在线预览未形成有效的 recipe/version 绑定。",
+                )
+                self._sync_preview_session_fields()
+                self._update_info_label()
+                self.statusBar().showMessage(result.status_message)
+                self._set_preview_message_html(result.title, result.detail, is_error=result.is_error)
+                return
+            recipe_id = freeze_result.snapshot.recipe_id
+            version_id = freeze_result.snapshot.version_id
         self._preview_session.begin_preview_generation()
         self._sync_preview_session_fields()
         self._update_info_label()
@@ -4006,6 +4028,8 @@ class MainWindow(QMainWindow):
             host=self._client.host,
             port=self._client.port,
             artifact_id=self._dxf_artifact_id,
+            recipe_id=recipe_id,
+            version_id=version_id,
             speed_mm_s=speed,
             dry_run=dry_run_mode,
             dry_run_speed_mm_s=speed,

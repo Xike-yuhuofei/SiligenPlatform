@@ -3055,7 +3055,27 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertEqual(self.window._preview_session.state.current_plan_id, "")
         self.assertEqual(self.window._preview_session.state.current_plan_fingerprint, "")
 
-    def test_generate_dxf_preview_in_online_mode_does_not_require_recipe_version(self) -> None:
+    def test_generate_dxf_preview_requires_recipe_version_in_online_mode(self) -> None:
+        messages = []
+        self.window._set_preview_message_html = lambda title, detail="", is_error=False: messages.append((title, detail, is_error))
+        self.window._dxf_loaded = True
+        self.window._dxf_artifact_id = "artifact-1"
+        self.window._dxf_view = _FakePreviewView()
+        self.window._is_offline_mode = lambda: False
+        self._set_online_ready_session()
+        self._set_launch_connectivity(connected=True, hardware_connected=True)
+        main_window_module.WEB_ENGINE_AVAILABLE = True
+
+        self.window._generate_dxf_preview()
+
+        self.assertTrue(messages)
+        self.assertEqual(messages[-1][0], "胶点预览生成失败")
+        self.assertIn("预览工艺上下文", messages[-1][1])
+        self.assertTrue(messages[-1][2])
+        self.assertIsNone(self.window._preview_snapshot_worker)
+        self.assertFalse(self.window._preview_session.state.preview_refresh_inflight)
+
+    def test_generate_dxf_preview_starts_worker_when_online_recipe_context_ready(self) -> None:
         class _FakePreviewSnapshotWorker:
             instances = []
 
@@ -3065,6 +3085,8 @@ class MainWindowTabsTest(unittest.TestCase):
                 host: str,
                 port: int,
                 artifact_id: str,
+                recipe_id: str,
+                version_id: str,
                 speed_mm_s: float,
                 dry_run: bool,
                 dry_run_speed_mm_s: float,
@@ -3072,6 +3094,8 @@ class MainWindowTabsTest(unittest.TestCase):
                 self.host = host
                 self.port = port
                 self.artifact_id = artifact_id
+                self.recipe_id = recipe_id
+                self.version_id = version_id
                 self.speed_mm_s = speed_mm_s
                 self.dry_run = dry_run
                 self.dry_run_speed_mm_s = dry_run_speed_mm_s
@@ -3104,6 +3128,15 @@ class MainWindowTabsTest(unittest.TestCase):
         self._set_online_ready_session()
         self._set_launch_connectivity(connected=True, hardware_connected=True)
         self.window._client = type("Client", (), {"host": "127.0.0.1", "port": 9527})()
+        self.window._preview_planning_context.sync_recipe_catalog(
+            [{"id": "recipe-1", "activeVersionId": "version-1"}]
+        )
+        self.window._preview_planning_context.select_recipe("recipe-1")
+        self.window._preview_planning_context.sync_recipe_versions(
+            "recipe-1",
+            [{"id": "version-1", "status": "published"}],
+        )
+        self.window._preview_planning_context.select_version("version-1")
         main_window_module.WEB_ENGINE_AVAILABLE = True
 
         with patch.object(main_window_module, "PreviewSnapshotWorker", _FakePreviewSnapshotWorker):
@@ -3118,6 +3151,8 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertEqual(worker.host, "127.0.0.1")
         self.assertEqual(worker.port, 9527)
         self.assertEqual(worker.artifact_id, "artifact-1")
+        self.assertEqual(worker.recipe_id, "recipe-1")
+        self.assertEqual(worker.version_id, "version-1")
         self.assertEqual(worker.speed_mm_s, self.window._dxf_speed.value())
         self.assertFalse(worker.dry_run)
         self.assertEqual(worker.dry_run_speed_mm_s, self.window._dxf_speed.value())

@@ -14,11 +14,8 @@ production_validation = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(production_validation)
 
 
-def test_default_dxf_contract_points_to_demo1() -> None:
-    assert production_validation.DEFAULT_REPO_DXF == ROOT / "samples" / "dxf" / "Demo-1.dxf"
-    assert production_validation.DEFAULT_ARCHIVE_DXF == Path(
-        r"D:\Projects\SiligenSuite\uploads\dxf\archive\Demo-1.dxf"
-    )
+def test_default_dxf_file_uses_repo_canonical_sample() -> None:
+    assert production_validation.DEFAULT_REPO_DXF == ROOT / "samples" / "dxf" / "rect_diag.dxf"
 
 
 def test_extract_gateway_log_summary_reads_path_trigger_counts() -> None:
@@ -294,8 +291,10 @@ def test_build_report_freezes_execution_timing_summary_contract() -> None:
     args = argparse.Namespace(
         gateway_exe=Path("D:/fake/siligen_runtime_gateway.exe"),
         config_path=Path("D:/fake/machine_config.ini"),
-        dxf_file=Path("D:/fake/Demo-1.dxf"),
+        dxf_file=Path("D:/fake/rect_diag.dxf"),
         host="127.0.0.1",
+        recipe_id="recipe-7d1b00f4-6a99",
+        version_id="version-fea9ce29-f963",
     )
     breakdown = {
         "execution_nominal_time_s": 340.0968,
@@ -350,8 +349,10 @@ def test_build_report_nulls_execution_timing_summary_for_production_blocked() ->
     args = argparse.Namespace(
         gateway_exe=Path("D:/fake/siligen_runtime_gateway.exe"),
         config_path=Path("D:/fake/machine_config.ini"),
-        dxf_file=Path("D:/fake/Demo-1.dxf"),
+        dxf_file=Path("D:/fake/rect_diag.dxf"),
         host="127.0.0.1",
+        recipe_id="recipe-7d1b00f4-6a99",
+        version_id="version-fea9ce29-f963",
     )
 
     report = production_validation.build_report(

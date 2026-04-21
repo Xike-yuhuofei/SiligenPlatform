@@ -82,7 +82,7 @@
 | --- | --- | --- | --- | --- |
 | `P1-02` | L3 | 门/急停/限位阻断专项 | 扩 `run_real_dxf_machine_dryrun.py` 的负例参数矩阵 | `planned` |
 | `P1-03` | L4 | DXF 基线集批量在线预览 | `tests/e2e/hardware-in-loop/run_real_dxf_preview_suite.py` | `existing`：聚合 `rect_diag` / `bra` / `arc_circle_quadrants`，产出 suite summary 与 evidence bundle，不替代 controlled publish |
-| `P1-04` | L5 | HMI runtime actions 批量在线回归 | `apps/hmi-app/scripts/run_online_runtime_action_matrix.py` + `online-smoke.ps1` / `ui_qtest.py` | `existing` |
+| `P1-04` | L5 | HMI runtime actions 批量在线回归 | `apps/hmi-app/scripts/run_online_runtime_action_matrix.py` + `online-smoke.ps1` / `ui_qtest.py` | `existing`：正式在线预览 authority 仅允许 `operator_preview`；`snapshot_render` 仅供 HIL 截图链 render-only 使用，不进入 matrix |
 | `P1-05` | L6 | 30 分钟以上 soak | `tests/performance/run_online_soak_profiles.py --profile-id soak-30m-matrix` | `existing`：已纳入 full-online blocker 集合；`>30m` 扩展 profile 需要显式 `--allow-long-profiles` |
 
 ### 4.3 P2：发布前与容量边界
@@ -140,6 +140,7 @@
 - `online-runtime-action-matrix-summary.md`
 - 每个 profile 的 `online-smoke.log`
 - 每个 profile 的 screenshot
+- `operator_preview` case 的 `OPERATOR_CONTEXT` 阶段序列与显式 version 选择证据
 
 ### 5.5 controlled gate 类
 
