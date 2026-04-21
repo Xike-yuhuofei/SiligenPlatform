@@ -18,10 +18,17 @@ if (-not (Test-Path $resolvedConfigPath)) {
     throw "未找到 Semgrep 规则文件: $resolvedConfigPath"
 }
 
-$semgrepCommand = Resolve-WorkspaceToolPath -ToolNames @("pysemgrep", "semgrep") -Required
+$fallbackScannerPath = Join-Path $PSScriptRoot "run_refactor_guard_fallback.py"
 $jsonReportPath = Join-Path $resolvedReportDir "semgrep-results.json"
 $toolOutputPath = Join-Path $resolvedReportDir "semgrep-tool-output.txt"
 $mdReportPath = Join-Path $resolvedReportDir "semgrep-summary.md"
+$preferFallbackScanner = [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+    [System.Runtime.InteropServices.OSPlatform]::Windows
+)
+$semgrepCommand = $null
+if (-not $preferFallbackScanner) {
+    $semgrepCommand = Resolve-WorkspaceToolPath -ToolNames @("pysemgrep", "semgrep") -Required
+}
 
 if (Test-Path $jsonReportPath) {
     Remove-Item -LiteralPath $jsonReportPath -Force
@@ -60,28 +67,94 @@ $arguments = @(
     "--error"
 )
 
-Write-Output "semgrep gate: $semgrepCommand $($arguments -join ' ')"
-$previousErrorActionPreference = $ErrorActionPreference
-$ErrorActionPreference = "Continue"
-try {
-    $toolOutput = & $semgrepCommand @arguments 2>&1
-}
-finally {
-    $ErrorActionPreference = $previousErrorActionPreference
-}
-$semgrepExitCode = $LASTEXITCODE
-Set-Content -LiteralPath $toolOutputPath -Value (($toolOutput | Out-String).Trim()) -Encoding UTF8
+$toolOutput = $null
+$semgrepExitCode = 0
+$fallbackOutput = $null
+$fallbackExitCode = $null
+$fallbackUsed = $false
+$toolExecutionFailed = $false
 
 $payload = $null
-if (Test-Path $jsonReportPath) {
+if (-not $preferFallbackScanner) {
+    Write-Output "semgrep gate: $semgrepCommand $($arguments -join ' ')"
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     try {
-        $payload = Get-Content -LiteralPath $jsonReportPath -Raw | ConvertFrom-Json
+        $toolOutput = & $semgrepCommand @arguments 2>&1
     }
-    catch {
-        $payload = $null
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
     }
+    $semgrepExitCode = $LASTEXITCODE
+
+    if (Test-Path $jsonReportPath) {
+        try {
+            $payload = Get-Content -LiteralPath $jsonReportPath -Raw | ConvertFrom-Json
+        }
+        catch {
+            $payload = $null
+        }
+    }
+    $toolExecutionFailed = $semgrepExitCode -gt 1 -or $null -eq $payload
 }
-$toolExecutionFailed = $semgrepExitCode -gt 1 -or $null -eq $payload
+
+$shouldRunFallback = $preferFallbackScanner -or $toolExecutionFailed
+if ($shouldRunFallback) {
+    $pythonCommand = Get-WorkspacePythonCommand
+    $fallbackArguments = @(
+        $fallbackScannerPath,
+        "--workspace-root",
+        $workspaceRoot,
+        "--config-path",
+        $resolvedConfigPath,
+        "--report-json",
+        $jsonReportPath
+    )
+    foreach ($scanTarget in $scanTargets) {
+        $fallbackArguments += @("--scan-target", $scanTarget)
+    }
+
+    if ($preferFallbackScanner) {
+        Write-Output "Windows detected; using refactor-guard fallback scanner"
+    } else {
+        Write-Output "semgrep tool execution failed; attempting refactor-guard fallback scanner"
+    }
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $fallbackOutput = & $pythonCommand @fallbackArguments 2>&1
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    $fallbackExitCode = $LASTEXITCODE
+    $fallbackUsed = $true
+
+    $payload = $null
+    if (Test-Path $jsonReportPath) {
+        try {
+            $payload = Get-Content -LiteralPath $jsonReportPath -Raw | ConvertFrom-Json
+        }
+        catch {
+            $payload = $null
+        }
+    }
+    $toolExecutionFailed = $fallbackExitCode -gt 1 -or $null -eq $payload
+}
+
+$toolLogSections = @()
+$toolLogSections += if ($preferFallbackScanner) {
+    "primary semgrep gate: skipped on Windows in favor of repo-owned fallback scanner"
+} else {
+    "primary semgrep gate: $semgrepCommand $($arguments -join ' ')"
+}
+$toolLogSections += (($toolOutput | Out-String).Trim())
+if ($fallbackUsed) {
+    $toolLogSections += "fallback scanner: $pythonCommand $($fallbackArguments -join ' ')"
+    $toolLogSections += (($fallbackOutput | Out-String).Trim())
+}
+Set-Content -LiteralPath $toolOutputPath -Value (($toolLogSections | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join "`r`n`r`n") -Encoding UTF8
+
 if ($toolExecutionFailed) {
     $fallbackPayload = [PSCustomObject]@{
         version = "wrapper-fallback"
@@ -89,8 +162,9 @@ if ($toolExecutionFailed) {
             [PSCustomObject]@{
                 type = "semgrep-tool-error"
                 exit_code = $semgrepExitCode
+                fallback_exit_code = $fallbackExitCode
                 tool_output_path = $toolOutputPath
-                message = "Semgrep tool execution failed or did not emit valid JSON output."
+                message = "Semgrep tool execution failed and fallback scanner did not emit valid JSON output."
             }
         )
         results = @()
@@ -116,6 +190,12 @@ $summaryLines = @(
     ('- tool_exit_code: `{0}`' -f $semgrepExitCode),
     ''
 )
+if ($fallbackUsed) {
+    $summaryLines += ('- fallback_engine: `scripts/validation/run_refactor_guard_fallback.py`')
+    $summaryLines += ('- fallback_exit_code: `{0}`' -f $fallbackExitCode)
+    $summaryLines += ('- execution_mode: `{0}`' -f $(if ($preferFallbackScanner) { 'windows-fallback' } else { 'fallback-after-native-tool-error' }))
+    $summaryLines += ''
+}
 
 if ($toolExecutionFailed) {
     $summaryLines += '- status: `tool-error`'
@@ -124,8 +204,23 @@ if ($toolExecutionFailed) {
 }
 elseif ($results.Count -eq 0) {
     $summaryLines += '- status: `passed`'
+    if ($fallbackUsed) {
+        if ($preferFallbackScanner) {
+            $summaryLines += '- detail: Windows uses the repo-owned fallback scanner because the native Semgrep runtime is currently replaced on this platform.'
+        } else {
+            $summaryLines += '- detail: primary Semgrep tool failed in current environment; repo-owned fallback scanner produced the blocking result set.'
+        }
+    }
 } else {
     $summaryLines += '- status: `failed`'
+    if ($fallbackUsed) {
+        $summaryLines += ''
+        if ($preferFallbackScanner) {
+            $summaryLines += '- detail: Windows uses the repo-owned fallback scanner because the native Semgrep runtime is currently replaced on this platform.'
+        } else {
+            $summaryLines += '- detail: primary Semgrep tool failed in current environment; repo-owned fallback scanner produced the blocking result set.'
+        }
+    }
     $summaryLines += ''
     $summaryLines += '| rule_id | file | line | message |'
     $summaryLines += '|---|---|---:|---|'
