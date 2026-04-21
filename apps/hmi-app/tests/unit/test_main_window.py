@@ -18,6 +18,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src" / "hmi_client"))
 import ui.main_window as main_window_module
 from client import SessionSnapshot, launch_result_from_snapshot
 from client.protocol import (
+    ActionCapabilitiesStatus,
     AxisStatus,
     EffectiveInterlocks,
     IOStatus,
@@ -26,6 +27,7 @@ from client.protocol import (
     MachineStatus,
     MotionCoordAxisStatus,
     MotionCoordStatus,
+    SafetyBoundaryStatus,
     SupervisionStatus,
 )
 
@@ -50,6 +52,7 @@ class FakeProtocol:
         self.start_job_calls = []
         self.dxf_job_pause_calls = []
         self.dxf_job_resume_calls = []
+        self.dxf_job_continue_calls = []
         self.dxf_job_stop_calls = []
         self.dxf_job_status_calls = []
         self.preview_snapshot_calls = []
@@ -85,6 +88,7 @@ class FakeProtocol:
         )
         self.pause_job_response = (True, "")
         self.resume_job_response = (True, "")
+        self.continue_job_response = (True, "")
         self.stop_job_response = JobTransitionResult(
             accepted=True,
             transition_state="stopping",
@@ -157,8 +161,14 @@ class FakeProtocol:
         self.estop_reset_calls += 1
         return self.estop_reset_result
 
-    def dxf_start_job(self, plan_id: str, target_count: int = 1, plan_fingerprint: str = ""):
-        self.start_job_calls.append((plan_id, target_count, plan_fingerprint))
+    def dxf_start_job(
+        self,
+        plan_id: str,
+        target_count: int = 1,
+        plan_fingerprint: str = "",
+        auto_continue: bool | None = None,
+    ):
+        self.start_job_calls.append((plan_id, target_count, plan_fingerprint, auto_continue))
         return self.start_job_response
 
     def dxf_job_pause(self, job_id: str = ""):
@@ -168,6 +178,10 @@ class FakeProtocol:
     def dxf_job_resume(self, job_id: str = ""):
         self.dxf_job_resume_calls.append(job_id)
         return self.resume_job_response
+
+    def dxf_job_continue(self, job_id: str = ""):
+        self.dxf_job_continue_calls.append(job_id)
+        return self.continue_job_response
 
     def dxf_job_stop(self, job_id: str = ""):
         self.dxf_job_stop_calls.append(job_id)
@@ -230,6 +244,27 @@ class _FakeSignal:
     def emit(self, *args, **kwargs) -> None:
         for callback in list(self._callbacks):
             callback(*args, **kwargs)
+
+
+class _RunningPreviewWorker(_CancellableWorker):
+    def __init__(self) -> None:
+        super().__init__()
+        self.completed = _FakeSignal()
+        self.finished = _FakeSignal()
+        self.delete_later_called = False
+        self.wait_calls = []
+        self.running = True
+
+    def isRunning(self) -> bool:
+        return self.running
+
+    def wait(self, timeout_ms: int = 0) -> bool:
+        self.wait_calls.append(timeout_ms)
+        self.running = False
+        return True
+
+    def deleteLater(self) -> None:
+        self.delete_later_called = True
 
 
 class _FakeHomeAutoWorker:
@@ -377,20 +412,78 @@ class MainWindowTabsTest(unittest.TestCase):
         y_position: float = 0.0,
         active_job_id: str = "",
         active_job_state: str = "",
+        interlock_latched: bool = False,
+        motion_commands_permitted: bool | None = None,
+        manual_output_commands_permitted: bool | None = None,
+        manual_dispenser_pause_permitted: bool | None = None,
+        manual_dispenser_resume_permitted: bool | None = None,
+        active_job_present: bool | None = None,
+        estop_reset_permitted: bool | None = None,
         home_boundary_x_active: bool = False,
         home_boundary_y_active: bool = False,
     ) -> MachineStatus:
         resolved_x_homing_state = x_homing_state or ("homed" if x_homed else "not_homed")
         resolved_y_homing_state = y_homing_state or ("homed" if y_homed else "not_homed")
+        resolved_effective_estop = estop if effective_estop is None else effective_estop
+        resolved_effective_door = door if effective_door is None else effective_door
+        resolved_active_job_state = active_job_state or "idle"
+        blocking_reasons = []
+        if not estop_known:
+            blocking_reasons.append("estop_unknown")
+        elif resolved_effective_estop:
+            blocking_reasons.append("estop_active")
+        if not door_known:
+            blocking_reasons.append("door_unknown")
+        elif resolved_effective_door:
+            blocking_reasons.append("door_open_active")
+        if interlock_latched:
+            blocking_reasons.append("interlock_latched")
+        safety_motion_permitted = not blocking_reasons
+        if "estop_unknown" in blocking_reasons or "door_unknown" in blocking_reasons:
+            safety_state = "unknown"
+        elif blocking_reasons:
+            safety_state = "blocked"
+        else:
+            safety_state = "safe"
+        backend_online = connected and connection_state == "connected"
+        resolved_motion_commands_permitted = (
+            backend_online and safety_motion_permitted
+            if motion_commands_permitted is None
+            else motion_commands_permitted
+        )
+        resolved_manual_output_commands_permitted = (
+            backend_online and safety_motion_permitted
+            if manual_output_commands_permitted is None
+            else manual_output_commands_permitted
+        )
+        resolved_active_job_present = (
+            bool(active_job_id) and resolved_active_job_state not in {"idle", "completed", "failed", "cancelled"}
+            if active_job_present is None
+            else active_job_present
+        )
+        resolved_manual_dispenser_pause_permitted = (
+            resolved_manual_output_commands_permitted and not resolved_active_job_present
+            if manual_dispenser_pause_permitted is None
+            else manual_dispenser_pause_permitted
+        )
+        resolved_manual_dispenser_resume_permitted = (
+            resolved_manual_output_commands_permitted and not resolved_active_job_present
+            if manual_dispenser_resume_permitted is None
+            else manual_dispenser_resume_permitted
+        )
+        resolved_estop_reset_permitted = (
+            backend_online and connection_state == "connected" and estop and not interlock_latched
+            if estop_reset_permitted is None
+            else estop_reset_permitted
+        )
         return MachineStatus(
             connected=connected,
             connection_state=connection_state,
-            machine_state="Idle",
-            machine_state_reason="idle",
+            interlock_latched=interlock_latched,
             supervision=SupervisionStatus(current_state="Idle", requested_state="Idle", state_reason="idle"),
             job_execution=JobExecutionStatus(
                 job_id=active_job_id,
-                state=active_job_state or "idle",
+                state=resolved_active_job_state,
             ),
             axes={
                 "X": AxisStatus(
@@ -409,12 +502,31 @@ class MainWindowTabsTest(unittest.TestCase):
                 ),
             },
             effective_interlocks=EffectiveInterlocks(
-                estop_active=estop if effective_estop is None else effective_estop,
+                estop_active=resolved_effective_estop,
                 estop_known=estop_known,
-                door_open_active=door if effective_door is None else effective_door,
+                door_open_active=resolved_effective_door,
                 door_open_known=door_known,
                 home_boundary_x_active=home_boundary_x_active,
                 home_boundary_y_active=home_boundary_y_active,
+            ),
+            safety_boundary=SafetyBoundaryStatus(
+                state=safety_state,
+                motion_permitted=safety_motion_permitted,
+                process_output_permitted=safety_motion_permitted,
+                estop_active=resolved_effective_estop,
+                estop_known=estop_known,
+                door_open_active=resolved_effective_door,
+                door_open_known=door_known,
+                interlock_latched=interlock_latched,
+                blocking_reasons=blocking_reasons,
+            ),
+            action_capabilities=ActionCapabilitiesStatus(
+                motion_commands_permitted=resolved_motion_commands_permitted,
+                manual_output_commands_permitted=resolved_manual_output_commands_permitted,
+                manual_dispenser_pause_permitted=resolved_manual_dispenser_pause_permitted,
+                manual_dispenser_resume_permitted=resolved_manual_dispenser_resume_permitted,
+                active_job_present=resolved_active_job_present,
+                estop_reset_permitted=resolved_estop_reset_permitted,
             ),
             io=IOStatus(
                 estop=estop,
@@ -640,8 +752,34 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertFalse(result)
         self.assertEqual(self.window.statusBar().currentMessage(), "安全门打开，无法回零")
 
+    def test_check_home_preconditions_rejects_backend_motion_capability_block(self) -> None:
+        status = self._make_status(interlock_latched=True)
+        fake_protocol = FakeProtocol(status)
+        self.window._protocol = fake_protocol
+        self.window._require_online_mode = lambda capability: True
+        self._set_cached_status(status)
+
+        result = self.window._check_home_preconditions()
+
+        self.assertFalse(result)
+        self.assertEqual(self.window.statusBar().currentMessage(), "后端当前未允许回零相关动作，请稍后重试")
+        self.assertEqual(fake_protocol.motion_coord_status_calls, [])
+
     def test_check_home_preconditions_rejects_active_job_before_home(self) -> None:
         status = self._make_status(x_homed=True, y_homed=True, active_job_id="job-1", active_job_state="running")
+        fake_protocol = FakeProtocol(status)
+        self.window._protocol = fake_protocol
+        self.window._require_online_mode = lambda capability: True
+        self._set_cached_status(status)
+
+        result = self.window._check_home_preconditions()
+
+        self.assertFalse(result)
+        self.assertEqual(self.window.statusBar().currentMessage(), "运动系统未稳定，暂不可回零，请稍候")
+        self.assertEqual(fake_protocol.motion_coord_status_calls, [])
+
+    def test_check_home_preconditions_rejects_awaiting_continue_job_before_home(self) -> None:
+        status = self._make_status(x_homed=True, y_homed=True, active_job_id="job-1", active_job_state="awaiting_continue")
         fake_protocol = FakeProtocol(status)
         self.window._protocol = fake_protocol
         self.window._require_online_mode = lambda capability: True
@@ -805,6 +943,29 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertEqual(self.window._operation_status.text(), "暂停中")
         self.assertEqual(self.window.statusBar().currentMessage(), "暂停请求已发送，等待后端确认")
 
+    def test_on_production_continue_starts_background_worker(self) -> None:
+        status = self._make_status()
+        self.window._protocol = FakeProtocol(status)
+        self._set_online_ready_session()
+        self.window._is_online_ready = lambda: True
+        self.window._require_online_mode = lambda capability: True
+        self.window._dxf_loaded = True
+        self.window._current_job_id = "job-1"
+        self.window._production_running = False
+        self.window._production_paused = False
+        self.window._production_awaiting_continue = True
+
+        self.window._on_production_continue()
+        worker = _FakeProductionActionWorker.instances[-1]
+
+        self.assertEqual(worker.action, "continue")
+        self.assertEqual(worker.job_id, "job-1")
+        self.assertTrue(worker.start_called)
+        self.assertTrue(worker.isRunning())
+        self.assertEqual(self.window._pending_production_action, "continue")
+        self.assertEqual(self.window._operation_status.text(), "继续中")
+        self.assertEqual(self.window.statusBar().currentMessage(), "继续请求已发送，等待后端确认")
+
     def test_stop_cancels_inflight_pause_worker_and_starts_stop_worker(self) -> None:
         status = self._make_status()
         self.window._protocol = FakeProtocol(status)
@@ -920,10 +1081,17 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertFalse(result)
         self.assertEqual(self.window.statusBar().currentMessage(), "移动失败: 安全门打开")
 
-    def test_update_status_prefers_runtime_supervision_state_over_compat_machine_state(self) -> None:
+    def test_check_motion_preconditions_rejects_backend_motion_capability_block(self) -> None:
+        self.window._require_online_mode = lambda capability: True
+        self.window._protocol = FakeProtocol(self._make_status(interlock_latched=True))
+
+        result = self.window._check_motion_preconditions()
+
+        self.assertFalse(result)
+        self.assertEqual(self.window.statusBar().currentMessage(), "后端当前未允许运动动作，无法点动")
+
+    def test_update_status_uses_runtime_supervision_state(self) -> None:
         status = self._make_status()
-        status.machine_state = "Idle"
-        status.machine_state_reason = "idle"
         status.supervision.current_state = "Running"
         status.supervision.state_reason = "job_running"
         fake_protocol = FakeProtocol(status)
@@ -1098,15 +1266,39 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertEqual(self.window.statusBar().currentMessage(), "急停: E-Stop")
 
     def test_on_estop_reset_uses_runtime_command_channel_gate(self) -> None:
-        status = self._make_status()
+        status = self._make_status(estop=True, estop_reset_permitted=True)
         fake_protocol = FakeProtocol(status)
         self.window._protocol = fake_protocol
         self.window._require_runtime_command_channel = lambda capability: True
+        self._set_cached_status(status)
 
         self.window._on_estop_reset()
 
         self.assertEqual(fake_protocol.estop_reset_calls, 1)
         self.assertEqual(self.window.statusBar().currentMessage(), "急停复位: E-Stop reset")
+
+    def test_on_estop_reset_rejects_when_backend_capability_not_permitted(self) -> None:
+        status = self._make_status(estop=False, estop_reset_permitted=False)
+        fake_protocol = FakeProtocol(status)
+        self.window._protocol = fake_protocol
+        self.window._require_runtime_command_channel = lambda capability: True
+        self._set_cached_status(status)
+
+        self.window._on_estop_reset()
+
+        self.assertEqual(fake_protocol.estop_reset_calls, 0)
+        self.assertEqual(self.window.statusBar().currentMessage(), "后端当前未允许急停复位，请确认设备处于急停状态")
+
+    def test_estop_reset_button_follows_backend_capability(self) -> None:
+        self._set_online_ready_session()
+        self._set_cached_status(self._make_status(estop=True, estop_reset_permitted=True))
+
+        self.window._apply_mode_capabilities()
+        self.assertTrue(self.window._estop_reset_btn.isEnabled())
+
+        self._set_cached_status(self._make_status(estop=False, estop_reset_permitted=False))
+        self.window._apply_mode_capabilities()
+        self.assertFalse(self.window._estop_reset_btn.isEnabled())
 
     def test_system_panel_does_not_render_home_buttons(self) -> None:
         testids = self._collect_testids()
@@ -1284,6 +1476,7 @@ class MainWindowTabsTest(unittest.TestCase):
             dry_run=False,
             preview_source="planned_glue_snapshot",
             glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
+            glue_reveal_lengths_mm=[0.0, 6.0, 12.0, 18.0],
             motion_preview=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
             preview_kind="glue_points",
         )
@@ -1354,7 +1547,7 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertEqual(reveal_lengths, [0.0, 60.0, 120.0])
         self.assertEqual(diagnostics["source"], "authority_glue_reveal_lengths_mm")
 
-    def test_resolve_preview_glue_reveal_lengths_falls_back_when_authority_lengths_invalid(self) -> None:
+    def test_resolve_preview_glue_reveal_lengths_rejects_invalid_authority_lengths(self) -> None:
         snapshot = main_window_module.PreviewSnapshotMeta(
             snapshot_id="snapshot-fallback",
             snapshot_hash="hash-fallback",
@@ -1365,24 +1558,22 @@ class MainWindowTabsTest(unittest.TestCase):
             generated_at="2026-04-06T00:00:00Z",
         )
 
-        reveal_lengths, diagnostics = self.window._resolve_preview_glue_reveal_lengths(
-            glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
-            motion_preview=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
-            glue_reveal_lengths_mm=[0.0, 8.0, 7.0, 18.0],
-            scale_px_per_mm=1.0,
-            snapshot=snapshot,
-            motion_preview_meta=main_window_module.MotionPreviewMeta(
-                source="execution_trajectory_snapshot",
-                kind="polyline",
-                point_count=4,
-                source_point_count=4,
-                is_sampled=False,
-                sampling_strategy="execution_trajectory_geometry_preserving",
-            ),
-        )
-
-        self.assertEqual(reveal_lengths, [0.0, 6.0, 12.0, 18.0])
-        self.assertEqual(diagnostics["source"], "legacy_motion_preview_projection")
+        with self.assertRaisesRegex(ValueError, "运行时快照缺少有效 glue_reveal_lengths_mm"):
+            self.window._resolve_preview_glue_reveal_lengths(
+                glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
+                motion_preview=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
+                glue_reveal_lengths_mm=[0.0, 8.0, 7.0, 18.0],
+                scale_px_per_mm=1.0,
+                snapshot=snapshot,
+                motion_preview_meta=main_window_module.MotionPreviewMeta(
+                    source="execution_trajectory_snapshot",
+                    kind="polyline",
+                    point_count=4,
+                    source_point_count=4,
+                    is_sampled=False,
+                    sampling_strategy="execution_trajectory_geometry_preserving",
+                ),
+            )
 
     def test_render_preview_debug_html_contains_runtime_debug_fields(self) -> None:
         snapshot = main_window_module.PreviewSnapshotMeta(
@@ -1655,6 +1846,7 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertFalse(self.window._prod_start_btn.isEnabled())
         self.assertFalse(self.window._prod_pause_btn.isEnabled())
         self.assertFalse(self.window._prod_resume_btn.isEnabled())
+        self.assertFalse(self.window._prod_continue_btn.isEnabled())
         self.assertFalse(self.window._prod_stop_btn.isEnabled())
         self.assertFalse(self.window._target_input.isEnabled())
 
@@ -1671,8 +1863,34 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertTrue(self.window._prod_start_btn.isEnabled())
         self.assertFalse(self.window._prod_pause_btn.isEnabled())
         self.assertFalse(self.window._prod_resume_btn.isEnabled())
+        self.assertFalse(self.window._prod_continue_btn.isEnabled())
         self.assertFalse(self.window._prod_stop_btn.isEnabled())
         self.assertTrue(self.window._target_input.isEnabled())
+
+    def test_production_controls_disable_home_when_backend_motion_not_permitted(self) -> None:
+        self._set_online_ready_session()
+        self._set_cached_status(self._make_status(interlock_latched=True))
+        self.window._current_job_id = ""
+        self.window._pending_production_action = ""
+
+        self.window._apply_mode_capabilities()
+
+        self.assertFalse(self.window._prod_home_btn.isEnabled())
+        self.assertTrue(self.window._prod_start_btn.isEnabled())
+        self.assertTrue(self.window._target_input.isEnabled())
+
+    def test_production_controls_disable_start_home_reset_when_backend_reports_active_job(self) -> None:
+        self._set_online_ready_session()
+        self._set_cached_status(self._make_status(active_job_present=True))
+        self.window._current_job_id = ""
+        self.window._pending_production_action = ""
+
+        self.window._apply_mode_capabilities()
+
+        self.assertFalse(self.window._prod_home_btn.isEnabled())
+        self.assertFalse(self.window._prod_start_btn.isEnabled())
+        self.assertFalse(self.window._target_input.isEnabled())
+        self.assertFalse(self.window._reset_counter_btn.isEnabled())
 
     def test_production_controls_running_enable_only_pause_and_stop(self) -> None:
         self._set_online_ready_session()
@@ -1687,6 +1905,7 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertFalse(self.window._prod_start_btn.isEnabled())
         self.assertTrue(self.window._prod_pause_btn.isEnabled())
         self.assertFalse(self.window._prod_resume_btn.isEnabled())
+        self.assertFalse(self.window._prod_continue_btn.isEnabled())
         self.assertTrue(self.window._prod_stop_btn.isEnabled())
         self.assertFalse(self.window._target_input.isEnabled())
 
@@ -1703,6 +1922,25 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertFalse(self.window._prod_start_btn.isEnabled())
         self.assertFalse(self.window._prod_pause_btn.isEnabled())
         self.assertTrue(self.window._prod_resume_btn.isEnabled())
+        self.assertFalse(self.window._prod_continue_btn.isEnabled())
+        self.assertTrue(self.window._prod_stop_btn.isEnabled())
+        self.assertFalse(self.window._target_input.isEnabled())
+
+    def test_production_controls_waiting_continue_enable_only_continue_and_stop(self) -> None:
+        self._set_online_ready_session()
+        self.window._current_job_id = "job-1"
+        self.window._production_running = False
+        self.window._production_paused = False
+        self.window._production_awaiting_continue = True
+        self.window._pending_production_action = ""
+
+        self.window._apply_mode_capabilities()
+
+        self.assertFalse(self.window._prod_home_btn.isEnabled())
+        self.assertFalse(self.window._prod_start_btn.isEnabled())
+        self.assertFalse(self.window._prod_pause_btn.isEnabled())
+        self.assertFalse(self.window._prod_resume_btn.isEnabled())
+        self.assertTrue(self.window._prod_continue_btn.isEnabled())
         self.assertTrue(self.window._prod_stop_btn.isEnabled())
         self.assertFalse(self.window._target_input.isEnabled())
 
@@ -1719,6 +1957,7 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertFalse(self.window._prod_start_btn.isEnabled())
         self.assertFalse(self.window._prod_pause_btn.isEnabled())
         self.assertFalse(self.window._prod_resume_btn.isEnabled())
+        self.assertFalse(self.window._prod_continue_btn.isEnabled())
         self.assertFalse(self.window._prod_stop_btn.isEnabled())
         self.assertFalse(self.window._target_input.isEnabled())
 
@@ -1828,6 +2067,54 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertTrue(self.window._prod_pause_btn.isEnabled())
         self.assertTrue(self.window._prod_stop_btn.isEnabled())
 
+    def test_on_production_continue_enters_pending_until_poll_confirms_running(self) -> None:
+        status = self._make_status()
+        status.job_execution.job_id = "job-1"
+        status.job_execution.state = "awaiting_continue"
+        status.job_execution.completed_count = 1
+        status.job_execution.overall_progress_percent = 50
+        fake_protocol = FakeProtocol(status)
+        self.window._protocol = fake_protocol
+        self._set_online_ready_session()
+        self.window._is_online_ready = lambda: True
+        self.window._require_online_mode = lambda capability: True
+        self.window._dxf_loaded = True
+        self.window._current_job_id = "job-1"
+        self.window._production_running = False
+        self.window._production_paused = False
+        self.window._production_awaiting_continue = True
+        self.window._completed_count = 1
+        self.window._last_completed_count_seen = 1
+
+        self.window._on_production_continue()
+        worker = _FakeProductionActionWorker.instances[-1]
+        worker.complete("continue", True, "")
+
+        self.assertEqual(worker.action, "continue")
+        self.assertEqual(worker.job_id, "job-1")
+        self.assertEqual(self.window._pending_production_action, "continue")
+        self.assertEqual(self.window._operation_status.text(), "继续中")
+        self.assertEqual(self.window.statusBar().currentMessage(), "继续请求已发送，等待后端确认")
+        self.assertFalse(self.window._prod_continue_btn.isEnabled())
+
+        self.window._update_status()
+
+        self.assertEqual(self.window._pending_production_action, "continue")
+        self.assertTrue(self.window._production_awaiting_continue)
+        self.assertEqual(self.window._operation_status.text(), "继续中")
+        self.assertEqual(fake_protocol.dxf_job_status_calls, [])
+
+        status.job_execution.state = "running"
+        status.job_execution.overall_progress_percent = 60
+        self.window._update_status()
+
+        self.assertEqual(self.window._pending_production_action, "")
+        self.assertFalse(self.window._production_awaiting_continue)
+        self.assertTrue(self.window._production_running)
+        self.assertIn("运行中", self.window._operation_status.text())
+        self.assertTrue(self.window._prod_pause_btn.isEnabled())
+        self.assertFalse(self.window._prod_continue_btn.isEnabled())
+
     def test_on_production_stop_keeps_tracking_old_job_until_terminal_state(self) -> None:
         status = self._make_status()
         status.job_execution.job_id = "job-1"
@@ -1890,6 +2177,7 @@ class MainWindowTabsTest(unittest.TestCase):
                 "segment_count": 1,
                 "glue_point_count": 2,
                 "glue_points": [{"x": 0.0, "y": 0.0}, {"x": 5.0, "y": 0.0}],
+                "glue_reveal_lengths_mm": [0.0, 5.0],
                 "motion_preview": {
                     "source": "execution_trajectory_snapshot",
                     "kind": "polyline",
@@ -1955,6 +2243,7 @@ class MainWindowTabsTest(unittest.TestCase):
                 "segment_count": 1,
                 "glue_point_count": 2,
                 "glue_points": [{"x": 0.0, "y": 0.0}, {"x": 5.0, "y": 0.0}],
+                "glue_reveal_lengths_mm": [0.0, 5.0],
                 "motion_preview": {
                     "source": "execution_trajectory_snapshot",
                     "kind": "polyline",
@@ -2021,6 +2310,7 @@ class MainWindowTabsTest(unittest.TestCase):
                 "segment_count": 2,
                 "glue_point_count": 2,
                 "glue_points": [{"x": 0.0, "y": 0.0}, {"x": 6.0, "y": 0.0}],
+                "glue_reveal_lengths_mm": [0.0, 6.0],
                 "motion_preview": {
                     "source": "execution_trajectory_snapshot",
                     "kind": "polyline",
@@ -2155,7 +2445,7 @@ class MainWindowTabsTest(unittest.TestCase):
         with self.assertLogs(main_window_module._UI_LOGGER.name, level="INFO") as captured:
             self.window._start_production_process(dry_run=False)
 
-        self.assertEqual(fake_protocol.start_job_calls, [("plan-1", 2, "hash-1")])
+        self.assertEqual(fake_protocol.start_job_calls, [("plan-1", 2, "hash-1", False)])
         self.assertEqual(self.window._current_job_id, "job-42")
         log_text = "\n".join(captured.output)
         self.assertIn("job_start_performance_profile", log_text)
@@ -2345,6 +2635,71 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertEqual(fake_protocol.dispenser_pause_calls, 0)
         self.assertEqual(self.window.statusBar().currentMessage(), "生产任务活跃时禁止手动暂停点胶阀")
 
+    def test_manual_dispenser_pause_resume_are_disabled_when_backend_disallows_manual_output(self) -> None:
+        self._set_online_ready_session()
+        self._set_cached_status(self._make_status(manual_output_commands_permitted=False))
+
+        self.window._apply_mode_capabilities()
+
+        self.assertFalse(self.window._disp_pause_btn.isEnabled())
+        self.assertFalse(self.window._disp_resume_btn.isEnabled())
+
+    def test_manual_dispenser_pause_resume_are_disabled_when_backend_disallows_pause_resume_capability(self) -> None:
+        status = self._make_status(
+            manual_dispenser_pause_permitted=False,
+            manual_dispenser_resume_permitted=False,
+        )
+        fake_protocol = FakeProtocol(status)
+        self.window._protocol = fake_protocol
+        self._set_online_ready_session()
+        self._set_cached_status(status)
+        self.window._require_online_mode = lambda capability: True
+
+        self.window._apply_mode_capabilities()
+
+        self.assertFalse(self.window._disp_pause_btn.isEnabled())
+        self.assertFalse(self.window._disp_resume_btn.isEnabled())
+        self.window._on_dispenser_pause()
+        self.assertEqual(fake_protocol.dispenser_pause_calls, 0)
+        self.assertEqual(self.window.statusBar().currentMessage(), "后端当前未允许手动暂停点胶阀，请稍后重试")
+
+        self.window._on_dispenser_resume()
+        self.assertEqual(fake_protocol.dispenser_resume_calls, 0)
+        self.assertEqual(self.window.statusBar().currentMessage(), "后端当前未允许手动恢复点胶阀，请稍后重试")
+
+    def test_manual_dispenser_pause_and_resume_consume_separate_backend_capabilities(self) -> None:
+        status = self._make_status(
+            manual_dispenser_pause_permitted=True,
+            manual_dispenser_resume_permitted=False,
+        )
+        self.window._protocol = FakeProtocol(status)
+        self._set_online_ready_session()
+        self._set_cached_status(status)
+        self.window._require_online_mode = lambda capability: True
+
+        self.window._apply_mode_capabilities()
+
+        self.assertTrue(self.window._disp_pause_btn.isEnabled())
+        self.assertFalse(self.window._disp_resume_btn.isEnabled())
+
+        status.action_capabilities.manual_dispenser_pause_permitted = False
+        status.action_capabilities.manual_dispenser_resume_permitted = True
+        self._set_cached_status(status)
+
+        self.window._apply_mode_capabilities()
+
+        self.assertFalse(self.window._disp_pause_btn.isEnabled())
+        self.assertTrue(self.window._disp_resume_btn.isEnabled())
+
+    def test_manual_dispenser_pause_resume_are_disabled_when_backend_reports_active_job(self) -> None:
+        self._set_online_ready_session()
+        self._set_cached_status(self._make_status(active_job_present=True))
+
+        self.window._apply_mode_capabilities()
+
+        self.assertFalse(self.window._disp_pause_btn.isEnabled())
+        self.assertFalse(self.window._disp_resume_btn.isEnabled())
+
     def test_manual_dispenser_pause_resume_surface_protocol_errors(self) -> None:
         status = self._make_status()
         fake_protocol = FakeProtocol(status)
@@ -2380,6 +2735,7 @@ class MainWindowTabsTest(unittest.TestCase):
                     {"x": 0.0, "y": 0.0},
                     {"x": 10.0, "y": 0.0},
                 ],
+                "glue_reveal_lengths_mm": [0.0, 10.0],
                 "motion_preview": {
                     "source": "execution_trajectory_snapshot",
                     "kind": "polyline",
@@ -2445,10 +2801,7 @@ class MainWindowTabsTest(unittest.TestCase):
                     {"x": 0.0, "y": 0.0},
                     {"x": 10.0, "y": 0.0},
                 ],
-                "execution_polyline": [
-                    {"x": 0.0, "y": 0.0},
-                    {"x": 10.0, "y": 0.0},
-                ],
+                "glue_reveal_lengths_mm": [0.0, 10.0],
                 "motion_preview": {
                     "source": "execution_trajectory_snapshot",
                     "kind": "polyline",
@@ -2644,6 +2997,32 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertEqual(self.window._preview_session.state.current_plan_id, "")
         self.assertEqual(self.window._preview_session.state.current_plan_fingerprint, "")
         self.assertFalse(self.window._preview_session.state.preview_refresh_inflight)
+
+    def test_invalidate_preview_plan_retains_cancelled_running_worker_until_finished(self) -> None:
+        worker = _RunningPreviewWorker()
+        worker.finished.connect(lambda ref=worker: self.window._release_preview_worker(ref))
+        self.window._preview_snapshot_worker = worker
+
+        self.window._invalidate_preview_plan()
+
+        self.assertTrue(worker.cancel_called)
+        self.assertIsNone(self.window._preview_snapshot_worker)
+        self.assertIn(worker, self.window._retired_preview_workers)
+        self.assertFalse(worker.delete_later_called)
+
+        worker.finished.emit()
+
+        self.assertNotIn(worker, self.window._retired_preview_workers)
+        self.assertTrue(worker.delete_later_called)
+
+    def test_close_event_waits_for_retired_preview_worker(self) -> None:
+        worker = _RunningPreviewWorker()
+        self.window._retired_preview_workers.append(worker)
+
+        self.window.close()
+        QApplication.processEvents()
+
+        self.assertEqual(worker.wait_calls, [1000])
 
     def test_mode_toggle_auto_regenerates_preview_when_runtime_preview_is_available(self) -> None:
         generated = []

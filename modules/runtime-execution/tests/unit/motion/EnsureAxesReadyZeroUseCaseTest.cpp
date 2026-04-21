@@ -681,6 +681,26 @@ TEST(EnsureAxesReadyZeroUseCaseTest, MotionReadinessBlocksTypedCancelingJobState
     EXPECT_EQ(result.Value().diagnostic_message, "active_job_state=canceling");
 }
 
+TEST(EnsureAxesReadyZeroUseCaseTest, MotionReadinessBlocksAwaitingContinueJobState) {
+    auto environment = std::make_shared<FakeMotionEnvironment>();
+    auto readiness_service = std::make_shared<MotionReadinessService>(
+        std::static_pointer_cast<IMotionStatePort>(environment),
+        std::static_pointer_cast<Siligen::Domain::Motion::Ports::IInterpolationPort>(environment));
+
+    MotionReadinessQuery query;
+    query.active_job_state = "awaiting_continue";
+
+    auto result = readiness_service->Evaluate(query);
+
+    ASSERT_TRUE(result.IsSuccess());
+    EXPECT_FALSE(result.Value().ready);
+    EXPECT_EQ(result.Value().reason, MotionReadinessReason::MOTION_NOT_READY);
+    EXPECT_EQ(result.Value().block_cause, MotionReadinessBlockCause::ACTIVE_JOB_STATE);
+    EXPECT_EQ(result.Value().active_job_transition_state, ExecutionTransitionState::AWAITING_CONTINUE);
+    EXPECT_EQ(result.Value().reason_code, "motion_not_ready");
+    EXPECT_EQ(result.Value().diagnostic_message, "active_job_state=awaiting_continue");
+}
+
 TEST(EnsureAxesReadyZeroUseCaseTest, MotionReadinessBlocksAxisVelocityAboveTolerance) {
     auto environment = std::make_shared<FakeMotionEnvironment>();
     auto readiness_service = std::make_shared<MotionReadinessService>(

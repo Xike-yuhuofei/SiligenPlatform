@@ -275,29 +275,12 @@ int MockMultiCardWrapper::MC_CmpPluse(short nChannelMask,
     return mockMulticard_->MC_CmpPluse(nChannelMask, nPluseType1, nPluseType2, nTime1, nTime2, nTimeFlag1, nTimeFlag2);
 }
 
-int MockMultiCardWrapper::MC_CmpRpt(
-    short nCmpNum, unsigned long lIntervalTime, short nTime, short nTimeFlag, unsigned long ulRptTime) noexcept {
-    return mockMulticard_->MC_CmpRpt(nCmpNum, lIntervalTime, nTime, nTimeFlag, ulRptTime);
-}
 int MockMultiCardWrapper::MC_CmpBufStop(unsigned short channelMask) noexcept {
     return mockMulticard_->MC_CmpBufStop(channelMask);
 }
 
 int MockMultiCardWrapper::MC_CmpBufSetChannel(short nBuf1ChannelNum, short nBuf2ChannelNum) noexcept {
     return mockMulticard_->MC_CmpBufSetChannel(nBuf1ChannelNum, nBuf2ChannelNum);
-}
-
-int MockMultiCardWrapper::MC_CmpBufRpt(short nEncNum,
-                                       short nDir,
-                                       short nEncFlag,
-                                       long lTrigValue,
-                                       short nCmpNum,
-                                       unsigned long lIntervalTime,
-                                       short nTime,
-                                       short nTimeFlag,
-                                       unsigned long ulRptTime) noexcept {
-    return mockMulticard_->MC_CmpBufRpt(
-        nEncNum, nDir, nEncFlag, lTrigValue, nCmpNum, lIntervalTime, nTime, nTimeFlag, ulRptTime);
 }
 
 // ========== I/O 控制 ==========

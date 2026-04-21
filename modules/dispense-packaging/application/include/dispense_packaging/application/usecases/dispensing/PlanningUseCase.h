@@ -8,6 +8,7 @@
 #include "domain/dispensing/value-objects/DispenseCompensationProfile.h"
 #include "domain/dispensing/contracts/ExecutionPackage.h"
 #include "domain/dispensing/contracts/PlanningArtifactExportRequest.h"
+#include "dispense_packaging/contracts/FormalCompareGateDiagnostic.h"
 #include "process_path/contracts/ProcessPath.h"
 #include "runtime/contracts/system/IEventPublisherPort.h"
 #include "shared/types/DispensingExecutionSemantics.h"
@@ -88,7 +89,10 @@ struct ExecutionAssemblyResponse {
     MotionPlanningReport planning_report;
     bool preview_authority_shared_with_execution = false;
     bool execution_binding_ready = false;
+    bool execution_contract_ready = false;
     std::string execution_failure_reason;
+    std::string execution_diagnostic_code;
+    Siligen::Domain::Dispensing::Contracts::FormalCompareGateDiagnostic formal_compare_gate;
     std::shared_ptr<ExecutionPackageValidated> execution_package;
     Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
     Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest export_request;
@@ -112,6 +116,8 @@ struct PlanningRuntimeParams {
     float32 min_interval_ms = 0.0f;
     float32 sample_dt = 0.01f;
     float32 sample_ds = 0.0f;
+    Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareRuntimeContract
+        profile_compare_runtime_contract{};
     Siligen::Domain::Dispensing::ValueObjects::DispenseCompensationProfile compensation_profile{};
 };
 
@@ -136,7 +142,6 @@ struct PlanningRequest {
     float32 continuity_tolerance_mm = 0.0f;
     float32 curve_chain_angle_deg = 0.0f;
     float32 curve_chain_max_segment_mm = 0.0f;
-    bool use_hardware_trigger = true;
     bool use_interpolation_planner = false;
     MotionPlanning::Contracts::InterpolationAlgorithm interpolation_algorithm =
         MotionPlanning::Contracts::InterpolationAlgorithm::LINEAR;
@@ -215,7 +220,7 @@ struct PlanningResponse {
 
     int segment_count = 0;
     float32 total_length = 0.0f;
-    float32 estimated_time = 0.0f;
+    float32 execution_nominal_time_s = 0.0f;
 
     std::vector<TrajectoryPoint> execution_trajectory_points;
     std::vector<Siligen::Shared::Types::Point2D> glue_points;

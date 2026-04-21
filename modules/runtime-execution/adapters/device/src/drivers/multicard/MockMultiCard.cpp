@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstring>
 #include <iostream>
+#include <limits>
 
 namespace Siligen {
 namespace Infrastructure {
@@ -762,6 +763,16 @@ int MockMultiCard::MC_CmpPluse(unsigned short channel,
                                unsigned short output_mode,
                                unsigned short output_inverse) {
     std::lock_guard<std::mutex> lock(state_mutex_);
+
+    ++cmp_pulse_call_count_;
+    last_cmp_pulse_channel_mask_ = static_cast<short>(channel);
+    last_cmp_pulse_type1_ = static_cast<short>(crd);
+    last_cmp_pulse_type2_ = static_cast<short>(start_pos);
+    last_cmp_pulse_time1_ = static_cast<short>(interval);
+    last_cmp_pulse_time2_ = static_cast<short>(count);
+    last_cmp_pulse_time_flag1_ = static_cast<short>(output_mode);
+    last_cmp_pulse_time_flag2_ = static_cast<short>(output_inverse);
+
     (void)crd;
     (void)output_mode;
     (void)output_inverse;
@@ -776,58 +787,25 @@ int MockMultiCard::MC_CmpPluse(unsigned short channel,
     return 0;
 }
 
-int MockMultiCard::MC_CmpRpt(
-    short nCmpNum, unsigned long lIntervalTime, short nTime, short nTimeFlag, unsigned long ulRptTime) {
-    std::lock_guard<std::mutex> lock(state_mutex_);
-    (void)nTime;
-    (void)nTimeFlag;
-
-    if (nCmpNum < 0 || nCmpNum > 3) {
-        return -1;
-    }
-
-    CMPTrigger& trigger = cmp_triggers_[nCmpNum];
-    trigger.enabled = true;
-    trigger.axis = 1;
-    trigger.start_pos = 0;
-    trigger.interval = static_cast<long>(lIntervalTime);
-    trigger.count = static_cast<long>(ulRptTime);
-    trigger.trigger_times.clear();
-    return 0;
-}
-
 int MockMultiCard::MC_CmpBufStop(unsigned short channelMask) {
     std::lock_guard<std::mutex> lock(state_mutex_);
     (void)channelMask;
+    cmp_buffer1_queue_.clear();
+    cmp_buffer2_queue_.clear();
+    last_cmp_encode_axis_ = 0;
+    last_cmp_abs_position_flag_ = 0;
     return 0;
 }
 
 int MockMultiCard::MC_CmpBufSetChannel(short nBuf1ChannelNum, short nBuf2ChannelNum) {
     std::lock_guard<std::mutex> lock(state_mutex_);
-    (void)nBuf1ChannelNum;
-    (void)nBuf2ChannelNum;
-    return 0;
-}
+    if (nBuf1ChannelNum < 0 || nBuf1ChannelNum > 2 ||
+        nBuf2ChannelNum < 0 || nBuf2ChannelNum > 2) {
+        return 7;
+    }
 
-int MockMultiCard::MC_CmpBufRpt(short nEncNum,
-                                short nDir,
-                                short nEncFlag,
-                                long lTrigValue,
-                                short nCmpNum,
-                                unsigned long lIntervalTime,
-                                short nTime,
-                                short nTimeFlag,
-                                unsigned long ulRptTime) {
-    std::lock_guard<std::mutex> lock(state_mutex_);
-    (void)nEncNum;
-    (void)nDir;
-    (void)nEncFlag;
-    (void)lTrigValue;
-    (void)nCmpNum;
-    (void)lIntervalTime;
-    (void)nTime;
-    (void)nTimeFlag;
-    (void)ulRptTime;
+    last_cmp_buffer1_channel_ = nBuf1ChannelNum;
+    last_cmp_buffer2_channel_ = nBuf2ChannelNum;
     return 0;
 }
 
@@ -842,16 +820,92 @@ int MockMultiCard::MC_CmpBufData(short nCmpEncodeNum,
                                  short nAbsPosFlag,
                                  short nTimerFlag) {
     std::lock_guard<std::mutex> lock(state_mutex_);
-    (void)nCmpEncodeNum;
-    (void)nPluseType;
-    (void)nStartLevel;
-    (void)nTime;
-    (void)pBuf1;
-    (void)nBufLen1;
-    (void)pBuf2;
-    (void)nBufLen2;
-    (void)nAbsPosFlag;
-    (void)nTimerFlag;
+    const bool has_buf1 = pBuf1 != nullptr && nBufLen1 > 0;
+    const bool has_buf2 = pBuf2 != nullptr && nBufLen2 > 0;
+
+    if (nCmpEncodeNum <= 0 || nPluseType != 2 || (nStartLevel != 0 && nStartLevel != 1) || nTime <= 0 ||
+        (nAbsPosFlag != 0 && nAbsPosFlag != 1) || (nTimerFlag != 0 && nTimerFlag != 1) ||
+        nBufLen1 < 0 || nBufLen2 < 0 || (!has_buf1 && !has_buf2) ||
+        (nBufLen1 > 0 && pBuf1 == nullptr) || (nBufLen2 > 0 && pBuf2 == nullptr)) {
+        return 7;
+    }
+
+    if (cmp_buffer1_queue_.size() > static_cast<std::size_t>(cmp_buffer1_capacity_) ||
+        cmp_buffer2_queue_.size() > static_cast<std::size_t>(cmp_buffer2_capacity_)) {
+        return 7;
+    }
+
+    const auto remain_space_1 =
+        static_cast<std::size_t>(cmp_buffer1_capacity_) - cmp_buffer1_queue_.size();
+    const auto remain_space_2 =
+        static_cast<std::size_t>(cmp_buffer2_capacity_) - cmp_buffer2_queue_.size();
+    if (static_cast<std::size_t>(nBufLen1) > remain_space_1 ||
+        static_cast<std::size_t>(nBufLen2) > remain_space_2) {
+        return 7;
+    }
+
+    if (nAbsPosFlag == 1) {
+        const long current_axis_position = GetOrCreateAxisStateUnlocked(nCmpEncodeNum).position;
+        if (has_buf1 && pBuf1[0] <= current_axis_position) {
+            return 7;
+        }
+        if (!has_buf1 && has_buf2 && pBuf2[0] <= current_axis_position) {
+            return 7;
+        }
+    }
+
+    auto validate_buffer = [](const std::deque<long>& queue, long* buffer, short length) -> bool {
+        long previous_compare_position = queue.empty() ? 0L : queue.back();
+        for (short index = 0; index < length; ++index) {
+            const auto compare_position = buffer[index];
+            if (compare_position <= 0 || compare_position <= previous_compare_position) {
+                return false;
+            }
+            previous_compare_position = compare_position;
+        }
+        return true;
+    };
+
+    if (has_buf1 && !validate_buffer(cmp_buffer1_queue_, pBuf1, nBufLen1)) {
+        return 7;
+    }
+    if (has_buf2 && !validate_buffer(cmp_buffer2_queue_, pBuf2, nBufLen2)) {
+        return 7;
+    }
+
+    if (has_buf1 && has_buf2) {
+        const auto last_buffer1_value = pBuf1[nBufLen1 - 1];
+        if (pBuf2[0] <= last_buffer1_value) {
+            return 7;
+        }
+    }
+
+    if (has_buf1) {
+        for (short index = 0; index < nBufLen1; ++index) {
+            cmp_buffer1_queue_.push_back(pBuf1[index]);
+        }
+    }
+    if (has_buf2) {
+        for (short index = 0; index < nBufLen2; ++index) {
+            cmp_buffer2_queue_.push_back(pBuf2[index]);
+        }
+    }
+
+    last_cmp_encode_axis_ = nCmpEncodeNum;
+    last_cmp_abs_position_flag_ = nAbsPosFlag;
+    ++cmp_buf_data_call_count_;
+
+    CmpBufLoadCall load_call;
+    load_call.compare_encode_axis = nCmpEncodeNum;
+    load_call.abs_position_flag = nAbsPosFlag;
+    if (has_buf1) {
+        load_call.buffer1.assign(pBuf1, pBuf1 + nBufLen1);
+    }
+    if (has_buf2) {
+        load_call.buffer2.assign(pBuf2, pBuf2 + nBufLen2);
+    }
+    cmp_buf_data_history_.push_back(std::move(load_call));
+
     return 0;
 }
 
@@ -861,21 +915,32 @@ int MockMultiCard::MC_CmpBufSts(unsigned short* pStatus,
                                 unsigned short* pRemainSpace1,
                                 unsigned short* pRemainSpace2) {
     std::lock_guard<std::mutex> lock(state_mutex_);
+    const auto remain_count_1 = static_cast<unsigned short>(
+        std::min<std::size_t>(cmp_buffer1_queue_.size(), std::numeric_limits<unsigned short>::max()));
+    const auto remain_count_2 = static_cast<unsigned short>(
+        std::min<std::size_t>(cmp_buffer2_queue_.size(), std::numeric_limits<unsigned short>::max()));
 
     if (pStatus) {
-        *pStatus = 0;
+        unsigned short status = 0;
+        if (remain_count_1 > 0U) {
+            status |= 0x0001;
+        }
+        if (remain_count_2 > 0U) {
+            status |= 0x0002;
+        }
+        *pStatus = status;
     }
     if (pRemainData1) {
-        *pRemainData1 = 0;
+        *pRemainData1 = remain_count_1;
     }
     if (pRemainData2) {
-        *pRemainData2 = 0;
+        *pRemainData2 = remain_count_2;
     }
     if (pRemainSpace1) {
-        *pRemainSpace1 = 0;
+        *pRemainSpace1 = static_cast<unsigned short>(cmp_buffer1_capacity_ - remain_count_1);
     }
     if (pRemainSpace2) {
-        *pRemainSpace2 = 0;
+        *pRemainSpace2 = static_cast<unsigned short>(cmp_buffer2_capacity_ - remain_count_2);
     }
     return 0;
 }
@@ -892,6 +957,86 @@ int MockMultiCard::MC_GetPrfPos(short axis, double* pos) {
     AdvanceAxisStateUnlocked(axis, now);
     *pos = static_cast<double>(GetOrCreateAxisStateUnlocked(axis).position);
     return 0;
+}
+
+std::vector<long> MockMultiCard::GetLastCmpBuffer1() const {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return {cmp_buffer1_queue_.begin(), cmp_buffer1_queue_.end()};
+}
+
+std::vector<long> MockMultiCard::GetLastCmpBuffer2() const {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return {cmp_buffer2_queue_.begin(), cmp_buffer2_queue_.end()};
+}
+
+short MockMultiCard::GetLastCmpEncodeAxis() const {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return last_cmp_encode_axis_;
+}
+
+short MockMultiCard::GetLastCmpAbsPositionFlag() const {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return last_cmp_abs_position_flag_;
+}
+
+int MockMultiCard::GetCmpPulseCallCount() const {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return cmp_pulse_call_count_;
+}
+
+int MockMultiCard::GetCmpBufDataCallCount() const {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return cmp_buf_data_call_count_;
+}
+
+short MockMultiCard::GetLastCmpBuffer1Channel() const {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return last_cmp_buffer1_channel_;
+}
+
+short MockMultiCard::GetLastCmpBuffer2Channel() const {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return last_cmp_buffer2_channel_;
+}
+
+std::vector<MockMultiCard::CmpBufLoadCall> MockMultiCard::GetCmpBufDataHistory() const {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return cmp_buf_data_history_;
+}
+
+short MockMultiCard::GetLastCmpPulseChannelMask() const {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return last_cmp_pulse_channel_mask_;
+}
+
+short MockMultiCard::GetLastCmpPulseType1() const {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return last_cmp_pulse_type1_;
+}
+
+short MockMultiCard::GetLastCmpPulseType2() const {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return last_cmp_pulse_type2_;
+}
+
+short MockMultiCard::GetLastCmpPulseTime1() const {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return last_cmp_pulse_time1_;
+}
+
+short MockMultiCard::GetLastCmpPulseTime2() const {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return last_cmp_pulse_time2_;
+}
+
+short MockMultiCard::GetLastCmpPulseTimeFlag1() const {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return last_cmp_pulse_time_flag1_;
+}
+
+short MockMultiCard::GetLastCmpPulseTimeFlag2() const {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return last_cmp_pulse_time_flag2_;
 }
 
 int MockMultiCard::MC_GetSts(short axis, long* sts, short from_axis, unsigned long* clock) {
@@ -1376,6 +1521,22 @@ int MockMultiCard::MC_GetLookAheadSpace(short crd, long* space, short fifo) {
     auto it = coordinate_systems_.find(crd);
     *space = (it != coordinate_systems_.end()) ? it->second.lookahead_space : 1000;
     return 0;
+}
+
+void MockMultiCard::SetCmpBufferCapacity(unsigned short capacity1, unsigned short capacity2) {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    cmp_buffer1_capacity_ = capacity1;
+    cmp_buffer2_capacity_ = capacity2;
+}
+
+void MockMultiCard::ConsumeCmpBufferData(unsigned short count1, unsigned short count2) {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    for (unsigned short index = 0; index < count1 && !cmp_buffer1_queue_.empty(); ++index) {
+        cmp_buffer1_queue_.pop_front();
+    }
+    for (unsigned short index = 0; index < count2 && !cmp_buffer2_queue_.empty(); ++index) {
+        cmp_buffer2_queue_.pop_front();
+    }
 }
 
 }  // namespace Hardware

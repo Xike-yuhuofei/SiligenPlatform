@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace Siligen::Runtime::Service::Status {
 namespace {
@@ -14,7 +15,12 @@ using RuntimeAxisStatusExportSnapshot =
     Siligen::RuntimeExecution::Contracts::System::RuntimeAxisStatusExportSnapshot;
 using RuntimeJobExecutionExportSnapshot =
     Siligen::RuntimeExecution::Contracts::System::RuntimeJobExecutionExportSnapshot;
+using RuntimeActionCapabilitiesExportSnapshot =
+    Siligen::RuntimeExecution::Contracts::System::RuntimeActionCapabilitiesExportSnapshot;
+using RuntimeSafetyBoundaryExportSnapshot =
+    Siligen::RuntimeExecution::Contracts::System::RuntimeSafetyBoundaryExportSnapshot;
 using RuntimeStatusExportSnapshot = Siligen::RuntimeExecution::Contracts::System::RuntimeStatusExportSnapshot;
+using DispenserValveStatus = Siligen::Domain::Dispensing::Ports::DispenserValveStatus;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
@@ -46,6 +52,10 @@ bool IsTerminalJobState(const std::string& state) {
     return state == "completed" || state == "failed" || state == "cancelled";
 }
 
+bool IsInactiveJobState(const std::string& state) {
+    return state == "idle" || IsTerminalJobState(state);
+}
+
 RuntimeJobExecutionExportSnapshot BuildIdleJobExecutionSnapshot() {
     RuntimeJobExecutionExportSnapshot snapshot;
     snapshot.state = "idle";
@@ -60,6 +70,114 @@ RuntimeJobExecutionExportSnapshot BuildUnknownJobExecutionSnapshot(
     snapshot.state = "unknown";
     snapshot.error_message = error_message;
     return snapshot;
+}
+
+bool ResolveEstopKnown(const RuntimeStatusExportSnapshot& snapshot) {
+    return snapshot.effective_interlocks.estop_known || snapshot.io.estop_known;
+}
+
+bool ResolveEstopActive(const RuntimeStatusExportSnapshot& snapshot) {
+    if (snapshot.effective_interlocks.estop_known) {
+        return snapshot.effective_interlocks.estop_active;
+    }
+    return snapshot.io.estop;
+}
+
+bool ResolveDoorKnown(const RuntimeStatusExportSnapshot& snapshot) {
+    return snapshot.effective_interlocks.door_open_known || snapshot.io.door_known;
+}
+
+bool ResolveDoorOpenActive(const RuntimeStatusExportSnapshot& snapshot) {
+    if (snapshot.effective_interlocks.door_open_known) {
+        return snapshot.effective_interlocks.door_open_active;
+    }
+    return snapshot.io.door;
+}
+
+bool IsUnknownSafetyBlockingReason(const std::string& reason) {
+    return reason == "estop_unknown" || reason == "door_unknown";
+}
+
+bool IsBackendOnline(const RuntimeStatusExportSnapshot& snapshot) {
+    return snapshot.connected && snapshot.connection_state == "connected";
+}
+
+RuntimeSafetyBoundaryExportSnapshot BuildSafetyBoundarySnapshot(const RuntimeStatusExportSnapshot& snapshot) {
+    RuntimeSafetyBoundaryExportSnapshot safety_boundary;
+    safety_boundary.estop_known = ResolveEstopKnown(snapshot);
+    safety_boundary.estop_active = ResolveEstopActive(snapshot);
+    safety_boundary.door_open_known = ResolveDoorKnown(snapshot);
+    safety_boundary.door_open_active = ResolveDoorOpenActive(snapshot);
+    safety_boundary.interlock_latched = snapshot.interlock_latched;
+
+    std::vector<std::string> blocking_reasons;
+    if (!safety_boundary.estop_known) {
+        blocking_reasons.emplace_back("estop_unknown");
+    } else if (safety_boundary.estop_active) {
+        blocking_reasons.emplace_back("estop_active");
+    }
+
+    if (!safety_boundary.door_open_known) {
+        blocking_reasons.emplace_back("door_unknown");
+    } else if (safety_boundary.door_open_active) {
+        blocking_reasons.emplace_back("door_open_active");
+    }
+
+    if (safety_boundary.interlock_latched) {
+        blocking_reasons.emplace_back("interlock_latched");
+    }
+
+    safety_boundary.motion_permitted = blocking_reasons.empty();
+    safety_boundary.process_output_permitted =
+        safety_boundary.motion_permitted && snapshot.device_mode == "production" && !snapshot.job_execution.dry_run;
+    safety_boundary.blocking_reasons = std::move(blocking_reasons);
+
+    bool has_unknown_reason = false;
+    for (const auto& reason : safety_boundary.blocking_reasons) {
+        if (IsUnknownSafetyBlockingReason(reason)) {
+            has_unknown_reason = true;
+            break;
+        }
+    }
+
+    if (has_unknown_reason) {
+        safety_boundary.state = "unknown";
+    } else if (!safety_boundary.blocking_reasons.empty()) {
+        safety_boundary.state = "blocked";
+    } else {
+        safety_boundary.state = "safe";
+    }
+
+    return safety_boundary;
+}
+
+RuntimeActionCapabilitiesExportSnapshot BuildActionCapabilitiesSnapshot(
+    const RuntimeStatusExportSnapshot& snapshot,
+    const std::optional<DispenserValveStatus>& dispenser_status) {
+    RuntimeActionCapabilitiesExportSnapshot action_capabilities;
+    const bool backend_online = IsBackendOnline(snapshot);
+    const bool active_job_present =
+        !snapshot.job_execution.job_id.empty() && !IsInactiveJobState(snapshot.job_execution.state);
+    action_capabilities.motion_commands_permitted =
+        backend_online && snapshot.safety_boundary.motion_permitted;
+    action_capabilities.manual_output_commands_permitted =
+        backend_online && snapshot.safety_boundary.process_output_permitted;
+    action_capabilities.manual_dispenser_pause_permitted =
+        backend_online &&
+        snapshot.safety_boundary.process_output_permitted &&
+        !active_job_present &&
+        dispenser_status.has_value() &&
+        *dispenser_status == DispenserValveStatus::Running;
+    action_capabilities.manual_dispenser_resume_permitted =
+        backend_online &&
+        snapshot.safety_boundary.process_output_permitted &&
+        !active_job_present &&
+        dispenser_status.has_value() &&
+        *dispenser_status == DispenserValveStatus::Paused;
+    action_capabilities.active_job_present = active_job_present;
+    action_capabilities.estop_reset_permitted =
+        backend_online && snapshot.supervision.current_state == "Estop";
+    return action_capabilities;
 }
 
 }  // namespace
@@ -141,6 +259,9 @@ Result<RuntimeStatusExportSnapshot> RuntimeStatusExportPort::ReadSnapshot() cons
             }
         }
     }
+    snapshot.device_mode = snapshot.job_execution.dry_run ? "test" : "production";
+
+    std::optional<DispenserValveStatus> dispenser_status_for_action_capabilities;
 
     if (snapshot.connected && motion_status_reader_.read_all_axes_motion_status) {
         auto all_status_result = motion_status_reader_.read_all_axes_motion_status();
@@ -167,6 +288,7 @@ Result<RuntimeStatusExportSnapshot> RuntimeStatusExportPort::ReadSnapshot() cons
         auto dispenser_result = dispenser_status_reader_.read_dispenser_status();
         if (dispenser_result.IsSuccess()) {
             const auto& dispenser = dispenser_result.Value();
+            dispenser_status_for_action_capabilities = dispenser.status;
             snapshot.dispenser.valve_open = dispenser.IsRunning();
             snapshot.dispenser.completedCount = dispenser.completedCount;
             snapshot.dispenser.totalCount = dispenser.totalCount;
@@ -180,6 +302,10 @@ Result<RuntimeStatusExportSnapshot> RuntimeStatusExportPort::ReadSnapshot() cons
             snapshot.dispenser.supply_open = supply_result.Value().IsOpen();
         }
     }
+
+    snapshot.safety_boundary = BuildSafetyBoundarySnapshot(snapshot);
+    snapshot.action_capabilities =
+        BuildActionCapabilitiesSnapshot(snapshot, dispenser_status_for_action_capabilities);
 
     return Result<RuntimeStatusExportSnapshot>::Success(std::move(snapshot));
 }

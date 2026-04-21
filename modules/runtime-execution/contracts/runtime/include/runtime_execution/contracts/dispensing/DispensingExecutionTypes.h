@@ -1,5 +1,6 @@
 #pragma once
 
+#include "runtime_execution/contracts/dispensing/ProfileCompareExecutionSchedule.h"
 #include "runtime_execution/contracts/dispensing/DispenseCompensationProfile.h"
 #include "runtime_execution/contracts/dispensing/GuardDecision.h"
 #include "runtime_execution/contracts/dispensing/JobExecutionMode.h"
@@ -9,6 +10,7 @@
 #include "shared/types/Result.h"
 #include "shared/types/Types.h"
 
+#include <memory>
 #include <optional>
 
 namespace Siligen::Domain::Dispensing::ValueObjects {
@@ -135,6 +137,8 @@ struct DispensingExecutionOptions {
     JobExecutionMode execution_mode = JobExecutionMode::Production;
     ProcessOutputPolicy output_policy = ProcessOutputPolicy::Enabled;
     GuardDecision guard_decision{};
+    std::shared_ptr<const Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareExecutionSchedule>
+        profile_compare_schedule;
 };
 
 struct DispensingExecutionReport {

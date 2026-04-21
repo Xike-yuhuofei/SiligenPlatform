@@ -226,6 +226,16 @@ PlanningRuntimeParams BuildPreviewRuntimeParams(
                 params.min_interval_ms = static_cast<float32>(valve_cfg.min_interval_ms);
             }
         }
+
+        auto dispenser_config_result = config_port->GetDispenserValveConfig();
+        if (dispenser_config_result.IsSuccess()) {
+            params.profile_compare_runtime_contract.compare_axis_mask =
+                dispenser_config_result.Value().cmp_axis_mask;
+            params.profile_compare_runtime_contract.max_future_compare_count =
+                dispenser_config_result.Value().max_count > 0
+                ? static_cast<uint32>(dispenser_config_result.Value().max_count)
+                : 0U;
+        }
     }
 
     if (request.trajectory_config.max_velocity > 0.0f) {
@@ -244,6 +254,7 @@ PlanningRuntimeParams BuildPreviewRuntimeParams(
     if (params.pulse_per_mm <= 0.0f) {
         params.pulse_per_mm = 200.0f;
     }
+    params.profile_compare_runtime_contract.pulse_per_mm = params.pulse_per_mm;
     if (params.dispenser_interval_ms == 0) {
         params.dispenser_interval_ms = 100;
     }
@@ -693,11 +704,11 @@ Siligen::Application::Services::Dispensing::WorkflowExecutionAssemblyRequest Bui
     workflow_input.runtime_options.spline_max_error_mm = request.spline_max_error_mm;
     workflow_input.runtime_options.compensation_profile = runtime_params.compensation_profile;
     workflow_input.max_jerk = request.trajectory_config.max_jerk;
-    workflow_input.estimated_time_s = authority_preview.artifacts.estimated_time;
     workflow_input.use_interpolation_planner = request.use_interpolation_planner;
     workflow_input.interpolation_algorithm = request.interpolation_algorithm;
     workflow_input.requested_execution_strategy = request.ResolveRequestedExecutionStrategy();
     workflow_input.point_flying_carrier_policy = request.point_flying_carrier_policy;
+    workflow_input.profile_compare_runtime_contract = runtime_params.profile_compare_runtime_contract;
     workflow_input.authority_preview = authority_preview.artifacts;
     return workflow_input;
 }
@@ -821,8 +832,8 @@ Result<PlanningResponse> PlanningUseCase::Execute(const PlanningRequest& request
     response.success = true;
     response.segment_count = authority.artifacts.segment_count;
     response.total_length = execution.execution_package ? execution.execution_package->total_length_mm : authority.artifacts.total_length;
-    response.estimated_time =
-        execution.execution_package ? execution.execution_package->estimated_time_s : authority.artifacts.estimated_time;
+    response.execution_nominal_time_s =
+        execution.execution_package ? ResolveExecutionNominalTimeS(*execution.execution_package) : 0.0f;
     response.execution_trajectory_points = execution.execution_trajectory_points;
     response.glue_points = authority.artifacts.glue_points;
     response.process_tags.assign(response.execution_trajectory_points.size(), 0);
@@ -837,9 +848,7 @@ Result<PlanningResponse> PlanningUseCase::Execute(const PlanningRequest& request
     response.preview_has_short_segment_exceptions = authority.artifacts.preview_has_short_segment_exceptions;
     response.preview_validation_classification = authority.artifacts.preview_validation_classification;
     response.preview_exception_reason = authority.artifacts.preview_exception_reason;
-    response.preview_failure_reason = execution.execution_failure_reason.empty()
-        ? authority.artifacts.preview_failure_reason
-        : execution.execution_failure_reason;
+    response.preview_failure_reason = authority.artifacts.preview_failure_reason;
     response.preview_diagnostic_code = authority.preview_diagnostic_code;
     response.authority_trigger_layout = execution.authority_trigger_layout;
     response.authority_trigger_points = authority.artifacts.authority_trigger_points;
@@ -1084,6 +1093,7 @@ Result<ExecutionAssemblyResponse> PlanningUseCase::AssembleExecutionFromAuthorit
     }
     const auto motion_plan_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - motion_plan_start).count();
+    const auto planning_report = motion_plan.planning_report;
 
     const auto assembly_start = std::chrono::steady_clock::now();
     auto assembly_result = planning_operations_->BuildExecutionArtifactsFromAuthority(
@@ -1100,10 +1110,13 @@ Result<ExecutionAssemblyResponse> PlanningUseCase::AssembleExecutionFromAuthorit
     response.success = true;
     response.execution_trajectory_points = assembled.execution_trajectory_points;
     response.motion_trajectory_points = assembled.motion_trajectory_points;
-    response.planning_report = motion_plan.planning_report;
+    response.planning_report = planning_report;
     response.preview_authority_shared_with_execution = assembled.preview_authority_shared_with_execution;
     response.execution_binding_ready = assembled.execution_binding_ready;
+    response.execution_contract_ready = assembled.execution_contract_ready;
     response.execution_failure_reason = assembled.execution_failure_reason;
+    response.execution_diagnostic_code = assembled.execution_diagnostic_code;
+    response.formal_compare_gate = assembled.formal_compare_gate;
     response.execution_package =
         std::make_shared<Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated>(
             assembled.execution_package);

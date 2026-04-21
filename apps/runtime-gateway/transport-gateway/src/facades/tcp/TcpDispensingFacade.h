@@ -60,6 +60,7 @@ class TcpDispensingFacade {
         UseCases::Dispensing::ExecutionTransitionState requested_transition_state);
     Shared::Types::Result<void> PauseDxfJob(const UseCases::Dispensing::JobID& job_id);
     Shared::Types::Result<void> ResumeDxfJob(const UseCases::Dispensing::JobID& job_id);
+    Shared::Types::Result<void> ContinueDxfJob(const UseCases::Dispensing::JobID& job_id);
     Shared::Types::Result<void> StopDxfJob(const UseCases::Dispensing::JobID& job_id);
     Shared::Types::Result<Domain::Safety::ValueObjects::InterlockSignals> ReadInterlockSignals() const;
     bool IsInterlockLatched() const;

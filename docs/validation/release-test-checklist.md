@@ -222,7 +222,7 @@ New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
   通过标准：最小启动闭环通过。  
   说明：该项只能证明最小启动闭环，不可单独作为正式发布放行依据。
 
-- [ ] `P5-03` 执行 HIL 快速门禁（60s）  
+- [ ] `P5-03` 执行 HIL 快速门禁（60s，唯一 HIL 门禁）
   命令：
   ```powershell
   powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop\run_hil_controlled_test.ps1 `
@@ -233,24 +233,12 @@ New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
     -PublishLatestOnPass:$false
   ```
  通过标准：`hil-controlled-gate-summary.json` 的 `overall_status=passed`；`offline-prereq/workspace-validation`、`hardware-smoke`、`hil-closed-loop` 全部通过；若保留默认 `hil-case-matrix`，则其 `overall_status=passed`；evidence bundle/manifest/index 兼容；若使用 override，必须显式记录 `-OperatorOverrideReason`。
-  若 `P5-03` 阻塞：保留 `hil-controlled-gate-summary.*` 与 `hil-controlled-release-summary.md` 作为 blocked evidence，记录阻断原因后停止 `P5-04`，不得直接升级到 1800s formal gate。
+  说明：脚本默认强制 attach 现有 gateway；不得通过 `-ReuseExistingGateway:$false` 另起第二条 gateway 轨道。
+  若 `P5-03` 阻塞：保留 `hil-controlled-gate-summary.*` 与 `hil-controlled-release-summary.md` 作为 blocked evidence，记录阻断原因后停止；不得执行已禁用的 formal gate。
   默认已纳入多轮矩阵；仅在临时隔离排障时显式使用：`-IncludeHilCaseMatrix:$false`
 
-- [ ] `P5-04` 执行 HIL 正式门禁（1800s）  
-  命令：
-  ```powershell
-  powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop\run_hil_controlled_test.ps1 `
-    -Profile Local `
-    -UseTimestampedReportDir `
-    -HilDurationSeconds 1800 `
-    -HilPauseResumeCycles 3 `
-    -Executor "<operator>"
-  ```
- 通过标准：`hil-controlled-gate-summary.json` 的 `overall_status=passed`，`hil-controlled-release-summary.md` 给出 `通过`；`timeout_count=0`，`pause/resume=3` 达标；`admission` / `safety_preflight` 均为通过；若保留默认 `hil-case-matrix`，则其 `overall_status=passed`。
-  发布约束：正式 latest publish 必须带非空 `-Executor`，否则不得覆盖 `tests\reports\hil-controlled-test\latest-source.txt`。
-  前置条件：`P5-03` 必须已通过；若 `P5-03` 为 blocked / failed / known_failure，则本项不得执行。
-  证据：`tests\reports\hil-controlled-test\<timestamp>\` 和 `tests\reports\hil-controlled-test\latest-source.txt`
-  默认已纳入多轮矩阵；仅在临时隔离排障时显式使用：`-IncludeHilCaseMatrix:$false`
+- [ ] `P5-04` 已禁用：不再执行 HIL 正式门禁（1800s）
+  说明：formal gate 已废止；`run_hil_controlled_test.ps1` 只允许 `HilDurationSeconds=60`，且不再允许 `PublishLatestOnPass=true` 或 `-Executor`。
 
 - [ ] `P5-05` 完成真机多批次回归记录  
   参考模板：  

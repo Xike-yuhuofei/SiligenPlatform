@@ -59,15 +59,16 @@ class HmiFormalGatewayContractGuardTest(unittest.TestCase):
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("missing executable", f"{completed.stdout}\n{completed.stderr}")
 
-    def test_guard_accepts_valid_contract(self) -> None:
+    def test_guard_rejects_noncanonical_build_root(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            contract_path = Path(temp_dir) / "gateway-launch.json"
+            workspace_root = Path(temp_dir)
+            contract_path = workspace_root / "gateway-launch.json"
             contract_path.write_text(
                 json.dumps(
                     {
-                        "executable": "D:/Deploy/Siligen/siligen_runtime_gateway.exe",
-                        "cwd": "D:/Deploy/Siligen",
-                        "args": [],
+                        "executable": "build/bin/Debug/siligen_runtime_gateway.exe",
+                        "cwd": "build/bin/Debug",
+                        "pathEntries": ["build/bin/Debug"],
                     }
                 ),
                 encoding="utf-8",
@@ -80,6 +81,45 @@ class HmiFormalGatewayContractGuardTest(unittest.TestCase):
                     "Bypass",
                     "-File",
                     str(FORMAL_CONTRACT_GUARD),
+                    "-WorkspaceRoot",
+                    str(workspace_root),
+                    "-ContractPath",
+                    str(contract_path),
+                ],
+                cwd=str(WORKSPACE_ROOT),
+                capture_output=True,
+                text=True,
+        )
+
+        self.assertNotEqual(completed.returncode, 0)
+        output = f"{completed.stdout}\n{completed.stderr}".replace("\\\\", "\\")
+        self.assertIn("canonical build\\ca root", output)
+
+    def test_guard_accepts_valid_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace_root = Path(temp_dir)
+            contract_path = workspace_root / "gateway-launch.json"
+            contract_path.write_text(
+                json.dumps(
+                    {
+                        "executable": "build/ca/bin/Debug/siligen_runtime_gateway.exe",
+                        "cwd": "build/ca/bin/Debug",
+                        "args": [],
+                        "pathEntries": ["build/ca/bin/Debug"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    POWERSHELL,
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(FORMAL_CONTRACT_GUARD),
+                    "-WorkspaceRoot",
+                    str(workspace_root),
                     "-ContractPath",
                     str(contract_path),
                 ],

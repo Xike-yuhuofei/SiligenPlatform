@@ -21,6 +21,7 @@ enum class ExecutionTransitionState {
     UNSPECIFIED = 0,
     PENDING,
     RUNNING,
+    AWAITING_CONTINUE,
     STOPPING,
     CANCELING,
     PAUSING,

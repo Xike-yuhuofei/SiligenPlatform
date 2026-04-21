@@ -72,9 +72,10 @@ class RuntimeWorkflowExecutionPortAdapter final : public IWorkflowExecutionPort 
         runtime_request.plan_id = request.plan_id;
         runtime_request.plan_fingerprint = request.plan_fingerprint;
         runtime_request.target_count = request.target_count;
+        runtime_request.cycle_advance_mode = request.cycle_advance_mode;
         runtime_request.execution_request.execution_package = request.execution_request.execution_package;
+        runtime_request.execution_request.profile_compare_schedule = request.execution_request.profile_compare_schedule;
         runtime_request.execution_request.source_path = request.execution_request.source_path;
-        runtime_request.execution_request.use_hardware_trigger = request.execution_request.use_hardware_trigger;
         runtime_request.execution_request.dry_run = request.execution_request.dry_run;
         runtime_request.execution_request.machine_mode = request.execution_request.machine_mode;
         runtime_request.execution_request.execution_mode = request.execution_request.execution_mode;
@@ -364,6 +365,7 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::DispensingWorkflowUse
         CreateRuntimeProductionBaselinePort(config_port_),
         CreateRuntimeWorkflowExecutionPort(
             Resolve<UseCases::Dispensing::DispensingExecutionUseCase>()),
+        config_port_,
         device_connection_port_,
         motion_device_port_,
         dispenser_device_port_,

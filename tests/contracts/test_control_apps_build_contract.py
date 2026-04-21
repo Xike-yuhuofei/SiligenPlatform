@@ -17,7 +17,6 @@ from test_kit.control_apps_build import (  # noqa: E402
     control_apps_build_root_probes,
     probe_control_apps_build_readiness,
     valid_control_apps_build_roots,
-    workspace_build_token,
 )
 
 
@@ -66,32 +65,30 @@ class ControlAppsBuildContractTest(unittest.TestCase):
         self.assertEqual(readiness.reason, "missing-required-artifacts")
         self.assertEqual(readiness.missing_artifacts, required_artifacts)
 
-    def test_readiness_accepts_matching_workspace_token_build_with_required_artifacts(self) -> None:
+    def test_readiness_accepts_explicit_build_root_with_required_artifacts(self) -> None:
         required_artifacts = ("siligen_runtime_gateway.exe", "siligen_runtime_service.exe")
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace_root = Path(temp_dir) / "workspace"
             workspace_root.mkdir()
-            local_app_data = Path(temp_dir) / "localappdata"
-            token = workspace_build_token(workspace_root)
-            token_root = local_app_data / "SS" / f"cab-{token}"
+            explicit_root = Path(temp_dir) / "external-build-root"
             for artifact_name in required_artifacts:
-                artifact_path = token_root / "bin" / "Debug" / artifact_name
+                artifact_path = explicit_root / "bin" / "Debug" / artifact_name
                 artifact_path.parent.mkdir(parents=True, exist_ok=True)
                 artifact_path.write_text("", encoding="utf-8")
-            _write_matching_cmake_cache(token_root, workspace_root)
+            _write_matching_cmake_cache(explicit_root, workspace_root)
 
-            with patch.dict(os.environ, {"LOCALAPPDATA": str(local_app_data)}, clear=False):
-                readiness = probe_control_apps_build_readiness(
-                    workspace_root,
-                    required_artifacts=required_artifacts,
-                )
+            readiness = probe_control_apps_build_readiness(
+                workspace_root,
+                required_artifacts=required_artifacts,
+                explicit_build_root=str(explicit_root),
+            )
 
         self.assertTrue(readiness.ready)
         selected_probe = readiness.selected_probe
         self.assertIsNotNone(selected_probe)
         assert selected_probe is not None
-        self.assertEqual(selected_probe.root, token_root.resolve())
-        self.assertEqual(selected_probe.source, "workspace-token-build")
+        self.assertEqual(selected_probe.root, explicit_root.resolve())
+        self.assertEqual(selected_probe.source, "env")
         self.assertEqual(readiness.missing_artifacts, ())
 
 

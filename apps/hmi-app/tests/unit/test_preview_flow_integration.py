@@ -83,6 +83,7 @@ class _FakePreviewSnapshotWorker:
                 {"x": 0.0, "y": 0.0},
                 {"x": 10.0, "y": 0.0},
             ],
+            "glue_reveal_lengths_mm": [0.0, 10.0],
             "motion_preview": {
                 "source": "execution_trajectory_snapshot",
                 "kind": "polyline",
@@ -136,7 +137,6 @@ class PreviewFlowIntegrationTest(unittest.TestCase):
         self._original_web_view = getattr(main_window_module, "QWebEngineView", None)
         self._original_web_engine_flag = getattr(main_window_module, "WEB_ENGINE_AVAILABLE", False)
         self._original_worker = main_window_module.PreviewSnapshotWorker
-        self._original_offline_builder = main_window_module.build_offline_preview_payload
         main_window_module.QWebEngineView = _FakePreviewView
         main_window_module.WEB_ENGINE_AVAILABLE = True
         main_window_module.PreviewSnapshotWorker = _FakePreviewSnapshotWorker
@@ -148,7 +148,6 @@ class PreviewFlowIntegrationTest(unittest.TestCase):
         main_window_module.QWebEngineView = self._original_web_view
         main_window_module.WEB_ENGINE_AVAILABLE = self._original_web_engine_flag
         main_window_module.PreviewSnapshotWorker = self._original_worker
-        main_window_module.build_offline_preview_payload = self._original_offline_builder
 
     def test_on_dxf_load_runs_import_to_preview_update_chain(self) -> None:
         runtime_window = cast(Any, self.window)
@@ -200,59 +199,28 @@ class PreviewFlowIntegrationTest(unittest.TestCase):
         self.assertIsNone(runtime_window._preview_snapshot_worker)
         self.assertFalse(runtime_window._preview_refresh_inflight)
 
-    def test_offline_dxf_load_uses_same_source_preview_builder(self) -> None:
-        calls = []
+    def test_offline_dxf_load_blocks_preview_chain(self) -> None:
+        runtime_window = cast(Any, self.window)
+        runtime_window._protocol = _FakeProtocol()
+        runtime_window._dxf_filepath = str(PROJECT_ROOT.parent.parent / "samples" / "dxf" / "rect_diag.dxf")
+        runtime_window._mode_production.setChecked(True)
+        runtime_window._mode_dryrun.setChecked(False)
 
-        def _fake_offline_builder(filepath: str, *, speed_mm_s: float, dry_run: bool) -> dict:
-            calls.append((filepath, speed_mm_s, dry_run))
-            return {
-                "snapshot_id": "offline-preview-1",
-                "snapshot_hash": "offline-hash-1",
-                "plan_id": "offline-preview-1",
-                "preview_state": "snapshot_ready",
-                "preview_source": "planned_glue_snapshot",
-                "preview_kind": "glue_points",
-                "segment_count": 4,
-                "glue_point_count": 3,
-                "glue_points": [
-                    {"x": 0.0, "y": 0.0},
-                    {"x": 6.0, "y": 0.0},
-                    {"x": 12.0, "y": 0.0},
-                ],
-                "motion_preview": {
-                    "source": "execution_trajectory_snapshot",
-                    "kind": "polyline",
-                    "source_point_count": 3,
-                    "point_count": 3,
-                    "is_sampled": False,
-                    "sampling_strategy": "execution_trajectory_geometry_preserving",
-                    "polyline": [
-                        {"x": 0.0, "y": 0.0},
-                        {"x": 6.0, "y": 0.0},
-                        {"x": 12.0, "y": 0.0},
-                    ],
-                },
-                "total_length_mm": 12.0,
-                "estimated_time_s": 0.6,
-                "generated_at": "2026-04-03T00:00:00Z",
-                "dry_run": False,
-            }
+        runtime_window._on_dxf_load()
 
-        main_window_module.build_offline_preview_payload = _fake_offline_builder
-        self.window._dxf_filepath = str(PROJECT_ROOT.parent.parent / "samples" / "dxf" / "rect_diag.dxf")
-        self.window._mode_production.setChecked(True)
-        self.window._mode_dryrun.setChecked(False)
-
-        self.window._on_dxf_load()
-
-        self.assertEqual(calls, [(self.window._dxf_filepath, self.window._dxf_speed.value(), False)])
-        self.assertTrue(self.window._dxf_loaded)
-        self.assertEqual(self.window._dxf_artifact_id, "offline-local")
-        self.assertEqual(self.window._current_plan_id, "offline-preview-1")
-        self.assertEqual(self.window._current_plan_fingerprint, "offline-hash-1")
-        self.assertEqual(self.window._preview_session.state.motion_preview_source, "execution_trajectory_snapshot")
-        self.assertIn("执行轨迹快照", self.window._preview_debug_view.toPlainText())
-        self.assertTrue(self.window._preview_session.local_playback_status().available)
+        self.assertFalse(runtime_window._dxf_loaded)
+        self.assertEqual(runtime_window._dxf_artifact_id, "")
+        self.assertEqual(runtime_window._current_job_id, "")
+        self.assertEqual(runtime_window._current_plan_id, "")
+        self.assertEqual(runtime_window._current_plan_fingerprint, "")
+        self.assertEqual(runtime_window._preview_source, "")
+        self.assertEqual(runtime_window._preview_session.state.preview_kind, "")
+        self.assertEqual(runtime_window._preview_session.state.glue_point_count, 0)
+        self.assertEqual(runtime_window._preview_session.state.motion_preview_source, "")
+        self.assertEqual(runtime_window.statusBar().currentMessage(), "当前生产预览链仅支持在线 gateway 快照")
+        self.assertEqual(cast(Any, runtime_window._protocol).calls, [])
+        self.assertIn("当前生产预览链仅支持在线 gateway 快照", cast(Any, runtime_window._dxf_view).html)
+        self.assertFalse(runtime_window._preview_refresh_inflight)
         self.assertFalse(_FakePreviewSnapshotWorker.created)
 
 

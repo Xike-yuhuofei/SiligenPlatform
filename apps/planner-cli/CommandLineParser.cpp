@@ -301,14 +301,6 @@ CommandLineConfig CommandLineParser::Parse(int argc, char* argv[]) {
             config.dry_run = true;
             continue;
         }
-        if (arg == "--use-hardware-trigger") {
-            config.use_hardware_trigger = true;
-            continue;
-        }
-        if (arg == "--no-hardware-trigger") {
-            config.use_hardware_trigger = false;
-            continue;
-        }
         if (arg == "--use-interpolation-planner" || arg == "--interpolation-planner") {
             config.use_interpolation_planner = true;
             continue;

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
@@ -148,20 +147,9 @@ def control_apps_build_root_probes(
 
     if explicit_build_root:
         add_probe(Path(explicit_build_root), source="env", allow_stale=True)
+        return tuple(probes)
 
     add_probe(workspace_root / "build" / "ca", source="workspace-build-ca")
-    add_probe(workspace_root / "build" / "control-apps", source="workspace-build-control-apps")
-    add_probe(workspace_root / "build", source="workspace-build")
-
-    local_app_data = os.getenv("LOCALAPPDATA", "").strip()
-    if local_app_data:
-        ss_root = Path(local_app_data) / "SS"
-        token_root = ss_root / f"cab-{workspace_build_token(workspace_root)}"
-        add_probe(token_root, source="workspace-token-build")
-        if ss_root.exists():
-            for candidate in sorted(ss_root.glob("cab-*")):
-                add_probe(candidate, source="workspace-cab-build")
-        add_probe(Path(local_app_data) / "SiligenSuite" / "control-apps-build", source="legacy-control-apps-build")
     return tuple(probes)
 
 

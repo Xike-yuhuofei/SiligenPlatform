@@ -28,7 +28,9 @@
 
 ## 当前未对齐但已记录
 
-- `status.machine_state` / `machine_state_reason` 仍保留为兼容导出面；当前由 `IRuntimeStatusExportPort` snapshot 内的 `supervision` 单向派生，HMI 主显示与门禁已优先消费 `status.supervision` 与 `effective_interlocks`，不再把 `machine_state` 视为主真相。
-- `status` 的 owner 数据面当前来自 `IRuntimeStatusExportPort` snapshot；其中 `connected` / `connection_state` / `interlock_latched` / `active_job_*` / `supervision` / `effective_interlocks` / `io` 由 export snapshot 统一导出，底层 supervision 语义仍来自 `IRuntimeSupervisionPort` 输入，`runtime-gateway` 只承担协议序列化。
-- HMI 仅在 `status.supervision` 整体缺失时回退到 `machine_state` compat 面，避免对 `supervision` 单字段回填形成双向真相。
+- `status` 的 owner 数据面当前来自 `IRuntimeStatusExportPort` snapshot；其中 `connected` / `connection_state` / `device_mode` / `interlock_latched` / `job_execution` / `supervision` / `effective_interlocks` / `io` 由 export snapshot 统一导出，底层 supervision 语义仍来自 `IRuntimeSupervisionPort` 输入，`runtime-gateway` 只承担协议序列化。
+- `status` 当前继续保留 `machine_state` / `machine_state_reason` compat 面，语义镜像 `status.supervision.current_state` / `status.supervision.state_reason`；HMI 主显示与门禁统一依赖 `status.supervision` 与 `effective_interlocks`。
+- `status.device_mode` 当前是 V1 派生字段：`job_execution.dry_run=true` 时导出 `test`，其余导出 `production`；在独立 device mode owner 落地前，不表达 HMI 启动模式或离线模式。
+- `status.safety_boundary` 当前是 V1 软件动作准入快照：基于 `effective_interlocks` / `io` / `interlock_latched` / `device_mode` / `job_execution.dry_run` 单向派生，只表达运动与真实工艺输出是否准入，不等同功能安全认证状态；gateway 直接透传，HMI 在字段缺失时按同一规则兼容派生。
+- `status.action_capabilities` 当前是 V1 后端粗粒度动作能力摘要：基于 `connected` / `connection_state` / `safety_boundary` / `job_execution` 单向派生，只表达网关侧是否适合继续向后端发起常规运动命令、手动输出命令，以及后端是否存在活动 job；不包含 HMI 本地 pending、worker、session 门禁。
 - 当前事件 envelope 已存在，但未发现已稳定发布的具体事件名。

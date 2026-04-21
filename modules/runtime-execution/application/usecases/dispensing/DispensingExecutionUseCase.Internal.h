@@ -31,6 +31,7 @@ enum class TaskState {
 enum class JobState {
     PENDING,
     RUNNING,
+    WAITING_CONTINUE,
     STOPPING,
     PAUSED,
     COMPLETED,
@@ -88,9 +89,12 @@ struct JobExecutionContext {
     std::atomic<uint32> current_segment{0};
     std::atomic<uint32> total_segments{0};
     std::atomic<uint32> cycle_progress_percent{0};
+    ExecutionBudgetBreakdown execution_budget_breakdown{};
     std::atomic<bool> stop_requested{false};
     std::atomic<bool> pause_requested{false};
+    std::atomic<bool> continue_requested{false};
     std::atomic<bool> final_state_committed{false};
+    JobCycleAdvanceMode cycle_advance_mode = JobCycleAdvanceMode::WAIT_FOR_CONTINUE;
     bool dry_run = false;
     std::chrono::steady_clock::time_point start_time{};
     std::chrono::steady_clock::time_point end_time{};
@@ -125,6 +129,7 @@ struct DispensingExecutionUseCase::Impl {
     JobID GetActiveJobId() const;
     Shared::Types::Result<void> PauseJob(const JobID& job_id);
     Shared::Types::Result<void> ResumeJob(const JobID& job_id);
+    Shared::Types::Result<void> ContinueJob(const JobID& job_id);
     Shared::Types::Result<void> StopJob(const JobID& job_id);
 
 #ifdef SILIGEN_TEST_HOOKS

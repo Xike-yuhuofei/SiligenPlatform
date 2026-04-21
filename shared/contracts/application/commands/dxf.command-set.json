@@ -19,7 +19,7 @@
       },
       "resultSchema": {
         "type": "object",
-        "required": ["created", "artifact_id", "filepath", "prepared_filepath", "original_name", "generated_filename", "size", "timestamp", "import_result_classification", "import_preview_ready", "import_production_ready", "import_summary", "import_primary_code", "import_warning_codes", "import_error_codes", "import_resolved_units", "import_resolved_unit_scale"],
+        "required": ["created", "artifact_id", "filepath", "prepared_filepath", "original_name", "generated_filename", "size", "timestamp", "import_result_classification", "import_preview_ready", "import_production_ready", "formal_compare_gate", "import_summary", "import_primary_code", "import_warning_codes", "import_error_codes", "import_resolved_units", "import_resolved_unit_scale"],
         "properties": {
           "created": { "type": "boolean" },
           "artifact_id": { "type": "string" },
@@ -32,6 +32,36 @@
           "import_result_classification": { "type": "string" },
           "import_preview_ready": { "type": "boolean" },
           "import_production_ready": { "type": "boolean" },
+          "formal_compare_gate": {
+            "type": ["object", "null"],
+            "required": ["status", "reason_code", "authority_span_ref", "trigger_begin_index", "current_start_position_mm", "next_trigger_position_mm", "candidate_failures"],
+            "properties": {
+              "status": { "type": "string" },
+              "reason_code": { "type": "string" },
+              "authority_span_ref": { "type": "string" },
+              "trigger_begin_index": { "type": "integer" },
+              "current_start_position_mm": {
+                "type": "object",
+                "required": ["x", "y"],
+                "properties": {
+                  "x": { "type": "number" },
+                  "y": { "type": "number" }
+                },
+                "additionalProperties": false
+              },
+              "next_trigger_position_mm": {
+                "type": "object",
+                "required": ["x", "y"],
+                "properties": {
+                  "x": { "type": "number" },
+                  "y": { "type": "number" }
+                },
+                "additionalProperties": false
+              },
+              "candidate_failures": { "type": "array", "items": { "type": "string" } }
+            },
+            "additionalProperties": false
+          },
           "import_summary": { "type": "string" },
           "import_primary_code": { "type": "string" },
           "import_warning_codes": { "type": "array", "items": { "type": "string" } },
@@ -72,7 +102,6 @@
           "curve_chain_angle_deg": { "type": "number" },
           "curve_chain_max_segment_mm": { "type": "number" },
           "max_jerk": { "type": "number" },
-          "use_hardware_trigger": { "type": "boolean" },
           "use_interpolation_planner": { "type": "boolean" },
           "interpolation_algorithm": { "type": "integer" },
           "requested_execution_strategy": { "type": "integer" },
@@ -84,7 +113,7 @@
       },
       "resultSchema": {
         "type": "object",
-        "required": ["plan_id", "plan_fingerprint", "artifact_id", "segment_count", "point_count", "total_length_mm", "estimated_time_s", "generated_at", "prepared_filepath", "import_result_classification", "import_preview_ready", "import_production_ready", "import_summary", "import_primary_code", "import_warning_codes", "import_error_codes", "import_resolved_units", "import_resolved_unit_scale"],
+        "required": ["plan_id", "plan_fingerprint", "artifact_id", "segment_count", "point_count", "total_length_mm", "execution_nominal_time_s", "execution_plan_summary", "generated_at", "prepared_filepath", "import_result_classification", "import_preview_ready", "import_production_ready", "formal_compare_gate", "import_summary", "import_primary_code", "import_warning_codes", "import_error_codes", "import_resolved_units", "import_resolved_unit_scale"],
         "properties": {
           "plan_id": { "type": "string" },
           "plan_fingerprint": { "type": "string" },
@@ -93,10 +122,57 @@
           "segment_count": { "type": "integer" },
           "point_count": { "type": "integer" },
           "total_length_mm": { "type": "number" },
-          "estimated_time_s": { "type": "number" },
+          "execution_nominal_time_s": { "type": "number" },
+          "execution_plan_summary": {
+            "type": "object",
+            "required": ["geometry_kind", "execution_strategy", "production_trigger_mode", "interpolation_segment_count", "interpolation_point_count", "motion_point_count", "trigger_count", "owner_span_count", "immediate_only_span_count", "future_compare_span_count"],
+            "properties": {
+              "geometry_kind": { "type": "string" },
+              "execution_strategy": { "type": "string" },
+              "production_trigger_mode": { "type": "string" },
+              "interpolation_segment_count": { "type": "integer" },
+              "interpolation_point_count": { "type": "integer" },
+              "motion_point_count": { "type": "integer" },
+              "trigger_count": { "type": "integer" },
+              "owner_span_count": { "type": "integer" },
+              "immediate_only_span_count": { "type": "integer" },
+              "future_compare_span_count": { "type": "integer" }
+            },
+            "additionalProperties": false
+          },
           "import_result_classification": { "type": "string" },
           "import_preview_ready": { "type": "boolean" },
           "import_production_ready": { "type": "boolean" },
+          "formal_compare_gate": {
+            "type": ["object", "null"],
+            "required": ["status", "reason_code", "authority_span_ref", "trigger_begin_index", "current_start_position_mm", "next_trigger_position_mm", "candidate_failures"],
+            "properties": {
+              "status": { "type": "string" },
+              "reason_code": { "type": "string" },
+              "authority_span_ref": { "type": "string" },
+              "trigger_begin_index": { "type": "integer" },
+              "current_start_position_mm": {
+                "type": "object",
+                "required": ["x", "y"],
+                "properties": {
+                  "x": { "type": "number" },
+                  "y": { "type": "number" }
+                },
+                "additionalProperties": false
+              },
+              "next_trigger_position_mm": {
+                "type": "object",
+                "required": ["x", "y"],
+                "properties": {
+                  "x": { "type": "number" },
+                  "y": { "type": "number" }
+                },
+                "additionalProperties": false
+              },
+              "candidate_failures": { "type": "array", "items": { "type": "string" } }
+            },
+            "additionalProperties": false
+          },
           "import_summary": { "type": "string" },
           "import_primary_code": { "type": "string" },
           "import_warning_codes": { "type": "array", "items": { "type": "string" } },
@@ -270,23 +346,69 @@
         "properties": {
           "plan_id": { "type": "string" },
           "plan_fingerprint": { "type": "string" },
-          "target_count": { "type": "integer", "minimum": 1 }
+          "target_count": { "type": "integer", "minimum": 1 },
+          "auto_continue": { "type": "boolean" }
         },
         "additionalProperties": false
       },
       "resultSchema": {
         "type": "object",
-        "required": ["started", "job_id", "plan_id", "plan_fingerprint", "target_count", "performance_profile", "prepared_filepath", "import_result_classification", "import_preview_ready", "import_production_ready", "import_summary", "import_primary_code", "import_warning_codes", "import_error_codes", "import_resolved_units", "import_resolved_unit_scale"],
+        "required": ["started", "job_id", "plan_id", "plan_fingerprint", "target_count", "execution_budget_s", "execution_budget_breakdown", "performance_profile", "prepared_filepath", "import_result_classification", "import_preview_ready", "import_production_ready", "formal_compare_gate", "import_summary", "import_primary_code", "import_warning_codes", "import_error_codes", "import_resolved_units", "import_resolved_unit_scale"],
         "properties": {
           "started": { "type": "boolean" },
           "job_id": { "type": "string" },
           "plan_id": { "type": "string" },
           "plan_fingerprint": { "type": "string" },
           "target_count": { "type": "integer" },
+          "execution_budget_s": { "type": "number" },
+          "execution_budget_breakdown": {
+            "type": "object",
+            "required": ["execution_nominal_time_s", "motion_completion_grace_s", "owner_span_count", "owner_span_overhead_s", "cycle_budget_s", "target_count", "total_budget_s"],
+            "properties": {
+              "execution_nominal_time_s": { "type": "number" },
+              "motion_completion_grace_s": { "type": "number" },
+              "owner_span_count": { "type": "integer" },
+              "owner_span_overhead_s": { "type": "number" },
+              "cycle_budget_s": { "type": "number" },
+              "target_count": { "type": "integer" },
+              "total_budget_s": { "type": "number" }
+            },
+            "additionalProperties": false
+          },
           "prepared_filepath": { "type": "string" },
           "import_result_classification": { "type": "string" },
           "import_preview_ready": { "type": "boolean" },
           "import_production_ready": { "type": "boolean" },
+          "formal_compare_gate": {
+            "type": ["object", "null"],
+            "required": ["status", "reason_code", "authority_span_ref", "trigger_begin_index", "current_start_position_mm", "next_trigger_position_mm", "candidate_failures"],
+            "properties": {
+              "status": { "type": "string" },
+              "reason_code": { "type": "string" },
+              "authority_span_ref": { "type": "string" },
+              "trigger_begin_index": { "type": "integer" },
+              "current_start_position_mm": {
+                "type": "object",
+                "required": ["x", "y"],
+                "properties": {
+                  "x": { "type": "number" },
+                  "y": { "type": "number" }
+                },
+                "additionalProperties": false
+              },
+              "next_trigger_position_mm": {
+                "type": "object",
+                "required": ["x", "y"],
+                "properties": {
+                  "x": { "type": "number" },
+                  "y": { "type": "number" }
+                },
+                "additionalProperties": false
+              },
+              "candidate_failures": { "type": "array", "items": { "type": "string" } }
+            },
+            "additionalProperties": false
+          },
           "import_summary": { "type": "string" },
           "import_primary_code": { "type": "string" },
           "import_warning_codes": { "type": "array", "items": { "type": "string" } },
@@ -315,7 +437,8 @@
       ],
       "compatibility": {
         "notes": [
-          "仅接受显式 plan_id 与 plan_fingerprint。"
+          "仅接受显式 plan_id 与 plan_fingerprint。",
+          "auto_continue 省略时默认为 true，以保持既有多周期调用方的自动推进语义；仅当显式传入 auto_continue=false 时，单周期完成后进入 awaiting_continue。"
         ]
       }
     },
@@ -365,6 +488,30 @@
       "errorCodes": [2908, 2909, 2910],
       "consumers": [
         "hmi-client CommandProtocol.dxf_job_resume"
+      ]
+    },
+    {
+      "method": "dxf.job.continue",
+      "kind": "command",
+      "paramsSchema": {
+        "type": "object",
+        "properties": {
+          "job_id": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "resultSchema": {
+        "type": "object",
+        "required": ["continued", "job_id"],
+        "properties": {
+          "continued": { "type": "boolean" },
+          "job_id": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "errorCodes": [2917, 2918, 2919],
+      "consumers": [
+        "hmi-client CommandProtocol.dxf_job_continue"
       ]
     },
     {

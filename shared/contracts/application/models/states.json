@@ -86,6 +86,90 @@
       },
       "additionalProperties": false
     },
+    "safetyBoundaryStatus": {
+      "type": "object",
+      "required": [
+        "state",
+        "motion_permitted",
+        "process_output_permitted",
+        "estop_active",
+        "estop_known",
+        "door_open_active",
+        "door_open_known",
+        "interlock_latched",
+        "blocking_reasons"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": ["safe", "blocked", "unknown"],
+          "description": "软件动作准入总览，不等同功能安全认证状态。"
+        },
+        "motion_permitted": {
+          "type": "boolean",
+          "description": "常规运动动作当前是否允许执行。"
+        },
+        "process_output_permitted": {
+          "type": "boolean",
+          "description": "真实工艺输出当前是否允许执行；dry_run 或 device_mode=test 时必须为 false。"
+        },
+        "estop_active": { "type": "boolean" },
+        "estop_known": {
+          "type": "boolean",
+          "description": "safety boundary 视角下急停是否可靠可判定。"
+        },
+        "door_open_active": { "type": "boolean" },
+        "door_open_known": {
+          "type": "boolean",
+          "description": "safety boundary 视角下安全门是否可靠可判定。"
+        },
+        "interlock_latched": { "type": "boolean" },
+        "blocking_reasons": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "阻断当前动作准入的最小原因集合；unknown 原因优先将 state 标记为 unknown。"
+        }
+      },
+      "additionalProperties": false
+    },
+    "actionCapabilitiesStatus": {
+      "type": "object",
+      "required": [
+        "motion_commands_permitted",
+        "manual_output_commands_permitted",
+        "manual_dispenser_pause_permitted",
+        "manual_dispenser_resume_permitted",
+        "active_job_present",
+        "estop_reset_permitted"
+      ],
+      "properties": {
+        "motion_commands_permitted": {
+          "type": "boolean",
+          "description": "后端粗粒度摘要；仅当 backend 已连接且 safety_boundary.motion_permitted 为 true 时为 true。"
+        },
+        "manual_output_commands_permitted": {
+          "type": "boolean",
+          "description": "后端粗粒度摘要；仅当 backend 已连接且 safety_boundary.process_output_permitted 为 true 时为 true，不包含 HMI 本地 pending/worker/session 门禁。"
+        },
+        "manual_dispenser_pause_permitted": {
+          "type": "boolean",
+          "description": "后端粗粒度摘要；仅当 backend 已连接、safety_boundary.process_output_permitted 为 true、无 active job 且点胶阀状态为 Running 时为 true；不包含 Timed/PositionTriggered/连续开阀模式差异，也不包含 HMI 本地 pending/worker/session 门禁。"
+        },
+        "manual_dispenser_resume_permitted": {
+          "type": "boolean",
+          "description": "后端粗粒度摘要；仅当 backend 已连接、safety_boundary.process_output_permitted 为 true、无 active job 且点胶阀状态为 Paused 时为 true；不包含 Timed/PositionTriggered/连续开阀模式差异，也不包含 HMI 本地 pending/worker/session 门禁。"
+        },
+        "active_job_present": {
+          "type": "boolean",
+          "description": "后端当前是否存在活动 job 上下文；仅基于 job_execution 派生，不等同 HMI 本地 current job。"
+        },
+        "estop_reset_permitted": {
+          "type": "boolean",
+          "description": "后端粗粒度摘要；仅当 backend 已连接且 supervision.current_state 为 Estop 时为 true，不包含底层硬件按钮释放等更细执行条件。"
+        }
+      },
+      "additionalProperties": false
+    },
     "supervisionStatus": {
       "type": "object",
       "required": [
@@ -118,20 +202,27 @@
     },
     "machineStatus": {
       "type": "object",
-      "required": ["connected", "connection_state", "machine_state", "machine_state_reason", "supervision", "interlock_latched", "job_execution", "axes", "effective_interlocks", "io", "dispenser", "alarms"],
+      "required": ["connected", "connection_state", "device_mode", "machine_state", "machine_state_reason", "supervision", "safety_boundary", "action_capabilities", "interlock_latched", "job_execution", "axes", "effective_interlocks", "io", "dispenser", "alarms"],
       "properties": {
         "connected": { "type": "boolean" },
         "connection_state": { "type": "string" },
+        "device_mode": {
+          "type": "string",
+          "enum": ["production", "test"],
+          "description": "设备模式 V1 字段；当前由运行时执行上下文单向派生：job_execution.dry_run 为 true 时为 \"test\"，其余为 \"production\"。在独立 device_mode owner 落地前，不表达 HMI 启动模式或离线模式。"
+        },
         "machine_state": {
           "type": "string",
-          "description": "兼容导出状态枚举；当前由 supervision.current_state 单向派生，保留给旧消费者读取。"
+          "description": "兼容字段；语义镜像 supervision.current_state，供尚未迁移到 supervision 的调用方读取。"
         },
         "machine_state_reason": {
           "type": "string",
-          "description": "兼容导出原因字段；当前由 supervision.state_reason 单向派生。"
+          "description": "兼容字段；语义镜像 supervision.state_reason，供尚未迁移到 supervision 的调用方读取。"
         },
         "interlock_latched": { "type": "boolean" },
         "job_execution": { "$ref": "#/definitions/dxfJobStatus" },
+        "safety_boundary": { "$ref": "#/definitions/safetyBoundaryStatus" },
+        "action_capabilities": { "$ref": "#/definitions/actionCapabilitiesStatus" },
         "axes": { "type": "object" },
         "position": {
           "type": "object",
@@ -322,14 +413,14 @@
     },
     "dxfJobStatus": {
       "type": "object",
-      "required": ["job_id", "plan_id", "plan_fingerprint", "state", "target_count", "completed_count", "current_cycle", "current_segment", "total_segments", "cycle_progress_percent", "overall_progress_percent", "elapsed_seconds", "error_message", "dry_run"],
+      "required": ["job_id", "plan_id", "plan_fingerprint", "state", "target_count", "completed_count", "current_cycle", "current_segment", "total_segments", "cycle_progress_percent", "overall_progress_percent", "elapsed_seconds", "execution_budget_s", "execution_budget_breakdown", "error_message", "dry_run"],
       "properties": {
         "job_id": { "type": "string" },
         "plan_id": { "type": "string" },
         "plan_fingerprint": { "type": "string" },
         "state": {
           "type": "string",
-          "enum": ["idle", "pending", "running", "stopping", "paused", "completed", "failed", "cancelled", "unknown"]
+          "enum": ["idle", "pending", "running", "awaiting_continue", "stopping", "paused", "completed", "failed", "cancelled", "unknown"]
         },
         "target_count": { "type": "integer" },
         "completed_count": { "type": "integer" },
@@ -339,6 +430,21 @@
         "cycle_progress_percent": { "type": "integer" },
         "overall_progress_percent": { "type": "integer" },
         "elapsed_seconds": { "type": "number" },
+        "execution_budget_s": { "type": "number" },
+        "execution_budget_breakdown": {
+          "type": "object",
+          "required": ["execution_nominal_time_s", "motion_completion_grace_s", "owner_span_count", "owner_span_overhead_s", "cycle_budget_s", "target_count", "total_budget_s"],
+          "properties": {
+            "execution_nominal_time_s": { "type": "number" },
+            "motion_completion_grace_s": { "type": "number" },
+            "owner_span_count": { "type": "integer" },
+            "owner_span_overhead_s": { "type": "number" },
+            "cycle_budget_s": { "type": "number" },
+            "target_count": { "type": "integer" },
+            "total_budget_s": { "type": "number" }
+          },
+          "additionalProperties": false
+        },
         "error_message": { "type": "string" },
         "dry_run": { "type": "boolean" }
       },

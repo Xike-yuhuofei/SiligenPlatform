@@ -505,15 +505,6 @@ PreviewSnapshotResponse PreviewSnapshotService::BuildResponse(
     response.preview_diagnostic_code = input.diagnostic_code;
     response.generated_at = input.generated_at;
 
-    const auto* trajectory_points = input.trajectory_points;
-    const auto trajectory_source_count = trajectory_points ? trajectory_points->size() : 0U;
-    response.execution_polyline_source_point_count = static_cast<std::uint32_t>(trajectory_source_count);
-    const auto execution_polyline = trajectory_points
-        ? BuildPreviewPolyline(*trajectory_points, max_polyline_points)
-        : std::vector<Point2D>{};
-    response.execution_polyline_point_count = static_cast<std::uint32_t>(execution_polyline.size());
-    CopyPreviewPolyline(execution_polyline, response.execution_polyline);
-
     if (HasAuthoritativeGluePoints(input)) {
         response.glue_point_count = static_cast<std::uint32_t>(input.glue_points->size());
         response.point_count = response.glue_point_count;
@@ -547,31 +538,6 @@ PreviewSnapshotResponse PreviewSnapshotService::BuildResponse(
             ? "execution_trajectory_geometry_preserving_clamp"
             : "execution_trajectory_geometry_preserving";
         CopyPreviewPolyline(motion_polyline, response.motion_preview_polyline);
-    } else if (input.process_path != nullptr && !input.process_path->segments.empty()) {
-        motion_points = Internal::BuildPreviewProcessPathPoints(*input.process_path);
-        response.motion_preview_source = "process_path_snapshot";
-        response.motion_preview_kind = "polyline";
-        auto motion_polyline = ClampPolylineByMaxPointsPreserveCorners(motion_points, max_polyline_points);
-        response.motion_preview_source_point_count = static_cast<std::uint32_t>(motion_points.size());
-        response.motion_preview_point_count = static_cast<std::uint32_t>(motion_polyline.size());
-        response.motion_preview_is_sampled =
-            response.motion_preview_source_point_count != response.motion_preview_point_count;
-        response.motion_preview_sampling_strategy = response.motion_preview_is_sampled
-            ? "process_path_geometry_preserving_clamp"
-            : "process_path_geometry_preserving";
-        CopyPreviewPolyline(motion_polyline, response.motion_preview_polyline);
-    } else if (input.trajectory_points != nullptr && !input.trajectory_points->empty()) {
-        motion_points = BuildPreviewPolyline(*input.trajectory_points, max_polyline_points);
-        response.motion_preview_source = "execution_preview_polyline_snapshot";
-        response.motion_preview_kind = "polyline";
-        response.motion_preview_source_point_count = static_cast<std::uint32_t>(trajectory_source_count);
-        response.motion_preview_point_count = static_cast<std::uint32_t>(motion_points.size());
-        response.motion_preview_is_sampled =
-            response.motion_preview_source_point_count != response.motion_preview_point_count;
-        response.motion_preview_sampling_strategy = response.motion_preview_is_sampled
-            ? "execution_preview_polyline_fixed_spacing_clamp"
-            : "execution_preview_polyline_fixed_spacing";
-        CopyPreviewPolyline(motion_points, response.motion_preview_polyline);
     }
 
     return response;

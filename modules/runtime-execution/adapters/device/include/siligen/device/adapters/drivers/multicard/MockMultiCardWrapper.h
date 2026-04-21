@@ -144,22 +144,8 @@ class MockMultiCardWrapper : public IMultiCardWrapper {
                     short nTime2,
                     short nTimeFlag1,
                     short nTimeFlag2) noexcept override;
-    int MC_CmpRpt(short nCmpNum,
-                  unsigned long lIntervalTime,
-                  short nTime,
-                  short nTimeFlag,
-                  unsigned long ulRptTime) noexcept override;
     int MC_CmpBufStop(unsigned short channelMask) noexcept override;
     int MC_CmpBufSetChannel(short nBuf1ChannelNum, short nBuf2ChannelNum) noexcept override;
-    int MC_CmpBufRpt(short nEncNum,
-                     short nDir,
-                     short nEncFlag,
-                     long lTrigValue,
-                     short nCmpNum,
-                     unsigned long lIntervalTime,
-                     short nTime,
-                     short nTimeFlag,
-                     unsigned long ulRptTime) noexcept override;
     int MC_CrdStatus(short nCrdNum, short* pCrdStatus, long* pSegment, short FifoIndex = 0) noexcept override;
     int MC_GetCrdPos(short nCrdNum, double* pPos) noexcept override;
     int MC_GetCrdVel(short nCrdNum, double* pSynVel) noexcept override;

@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <functional>
 #include <fstream>
+#include <iomanip>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -20,17 +21,23 @@
 #endif
 #define private public
 #include "dispense_packaging/application/usecases/dispensing/PlanningPortAdapters.h"
+#include "job_ingest/application/ports/dispensing/UploadPorts.h"
+#include "job_ingest/application/usecases/dispensing/UploadFileUseCase.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "runtime_execution/application/usecases/dispensing/IProductionBaselinePort.h"
+#include "runtime_execution/contracts/dispensing/ProfileCompareExecutionCompiler.h"
 #include "runtime_execution/contracts/dispensing/IDispensingProcessPort.h"
 #include "application/services/motion_planning/MotionPlanningFacade.h"
+#include "application/services/motion_planning/SevenSegmentSCurveProfile.h"
 #include "application/services/process_path/ProcessPathFacade.h"
 #include "application/services/dispensing/PlanningArtifactExportPort.h"
 #include "application/services/dispensing/WorkflowPlanningAssemblyOperationsProvider.h"
+#include "runtime/configuration/ConfigFileAdapter.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingWorkflowUseCase.h"
 #include "process_path/contracts/IPathSourcePort.h"
 #include "process_path/contracts/Primitive.h"
 #include "process_path/contracts/ProcessPath.h"
+#include "dxf_geometry/adapters/planning/dxf/PbPathSourceAdapter.h"
 #undef private
 #include "domain/dispensing/planning/domain-services/DispensingPlannerService.h"
 #include "dxf_geometry/application/services/dxf/DxfPbPreparationService.h"
@@ -39,6 +46,7 @@ namespace {
 
 using Siligen::Application::UseCases::Dispensing::DispensingExecutionUseCase;
 using Siligen::Application::UseCases::Dispensing::DispensingWorkflowUseCase;
+using Siligen::Application::UseCases::Dispensing::JobCycleAdvanceMode;
 using Siligen::Application::UseCases::Dispensing::PlanningUseCase;
 using Siligen::Application::UseCases::Dispensing::PlanningRequest;
 using Siligen::Application::UseCases::Dispensing::PlanningResponse;
@@ -47,13 +55,21 @@ using Siligen::Application::UseCases::Dispensing::PreparePlanResponse;
 using Siligen::Application::UseCases::Dispensing::PreparePlanRuntimeOverrides;
 using Siligen::Application::UseCases::Dispensing::RuntimeJobStatusResponse;
 using Siligen::Application::UseCases::Dispensing::StartJobResponse;
+using Siligen::Infrastructure::Adapters::Parsing::PbPathSourceAdapter;
 using Siligen::Application::Ports::Dispensing::IProductionBaselinePort;
 using Siligen::Application::Ports::Dispensing::ResolvedProductionBaseline;
 using Siligen::Application::Services::Dispensing::PlanningArtifactExportResult;
 using Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort;
 using Siligen::Application::Services::DXF::DxfPbPreparationService;
+using Siligen::Infrastructure::Adapters::ConfigFileAdapter;
 using Siligen::JobIngest::Contracts::DxfImportDiagnostics;
 using Siligen::JobIngest::Contracts::IUploadFilePort;
+using Siligen::JobIngest::Contracts::UploadRequest;
+using Siligen::JobIngest::Contracts::UploadResponse;
+using Siligen::JobIngest::Application::Ports::Dispensing::IUploadPreparationPort;
+using Siligen::JobIngest::Application::Ports::Dispensing::IUploadStoragePort;
+using Siligen::JobIngest::Application::Ports::Dispensing::PreparedInputArtifact;
+using Siligen::JobIngest::Application::UseCases::Dispensing::UploadFileUseCase;
 using Siligen::Device::Contracts::Commands::DeviceConnection;
 using Siligen::Device::Contracts::Ports::DispenserDevicePort;
 using Siligen::Device::Contracts::Ports::DeviceConnectionPort;
@@ -69,8 +85,10 @@ using Siligen::Domain::Dispensing::Ports::IDispensingExecutionObserver;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionOptions;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionPlan;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionReport;
+using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareProgramSpan;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingRuntimeOverrides;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingRuntimeParams;
+using Siligen::Domain::Configuration::Ports::IConfigurationPort;
 using Siligen::Domain::Motion::Ports::InterpolationData;
 using Siligen::Domain::Motion::Ports::HomingState;
 using Siligen::Domain::Motion::Ports::HomingStatus;
@@ -82,6 +100,10 @@ using Siligen::Domain::Motion::ValueObjects::MotionTrajectoryPoint;
 using Siligen::Domain::Safety::Ports::IInterlockSignalPort;
 using Siligen::Domain::Safety::ValueObjects::InterlockSignals;
 using Siligen::RuntimeExecution::Contracts::Motion::InterpolationType;
+using Siligen::RuntimeExecution::Contracts::Dispensing::CompileProfileCompareExecutionSchedule;
+using Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareExecutionCompileInput;
+using Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareExecutionSchedule;
+using Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareRuntimeContract;
 using Siligen::Shared::Types::DispensingExecutionGeometryKind;
 using Siligen::Shared::Types::DispensingExecutionStrategy;
 using Siligen::Shared::Types::ErrorCode;
@@ -118,9 +140,10 @@ public:
         runtime_request.plan_id = request.plan_id;
         runtime_request.plan_fingerprint = request.plan_fingerprint;
         runtime_request.target_count = request.target_count;
+        runtime_request.cycle_advance_mode = request.cycle_advance_mode;
         runtime_request.execution_request.execution_package = request.execution_request.execution_package;
+        runtime_request.execution_request.profile_compare_schedule = request.execution_request.profile_compare_schedule;
         runtime_request.execution_request.source_path = request.execution_request.source_path;
-        runtime_request.execution_request.use_hardware_trigger = request.execution_request.use_hardware_trigger;
         runtime_request.execution_request.dry_run = request.execution_request.dry_run;
         runtime_request.execution_request.machine_mode = request.execution_request.machine_mode;
         runtime_request.execution_request.execution_mode = request.execution_request.execution_mode;
@@ -200,6 +223,27 @@ class SlowCountingLinePathSourceStub final : public Siligen::ProcessPath::Contra
     std::chrono::milliseconds delay_;
 };
 
+class RectDiagPathSourceStub final : public Siligen::ProcessPath::Contracts::IPathSourcePort {
+   public:
+    Result<Siligen::ProcessPath::Contracts::PathSourceResult> LoadFromFile(const std::string&) override {
+        using Siligen::ProcessPath::Contracts::PathPrimitiveMeta;
+        using Siligen::ProcessPath::Contracts::PathSourceResult;
+        using Siligen::ProcessPath::Contracts::Primitive;
+
+        PathSourceResult result;
+        result.success = true;
+        result.primitives = {
+            Primitive::MakeLine(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)),
+            Primitive::MakeLine(Point2D(10.0f, 0.0f), Point2D(10.0f, 10.0f)),
+            Primitive::MakeLine(Point2D(10.0f, 10.0f), Point2D(0.0f, 10.0f)),
+            Primitive::MakeLine(Point2D(0.0f, 10.0f), Point2D(0.0f, 0.0f)),
+            Primitive::MakeLine(Point2D(0.0f, 0.0f), Point2D(10.0f, 10.0f)),
+        };
+        result.metadata.resize(result.primitives.size(), PathPrimitiveMeta{});
+        return Result<PathSourceResult>::Success(std::move(result));
+    }
+};
+
 class SlowExportPortStub final : public IPlanningArtifactExportPort {
    public:
     explicit SlowExportPortStub(
@@ -253,14 +297,125 @@ class FakeProductionBaselinePort final : public IProductionBaselinePort {
    public:
     Result<ResolvedProductionBaseline> ResolveCurrentBaseline() const override {
         ResolvedProductionBaseline resolved;
-        resolved.baseline_id = "test-production-baseline";
+        resolved.baseline_id = baseline_id;
         resolved.baseline_fingerprint = baseline_fingerprint;
         resolved.point_flying_carrier_policy = policy;
         return Result<ResolvedProductionBaseline>::Success(std::move(resolved));
     }
 
+    std::string baseline_id = "test-production-baseline";
     PointFlyingCarrierPolicy policy = BuildCanonicalPointFlyingCarrierPolicy();
     std::string baseline_fingerprint = "baseline-fingerprint";
+};
+
+class FakeConfigurationPort final : public IConfigurationPort {
+   public:
+    Result<Siligen::Domain::Configuration::Ports::SystemConfig> LoadConfiguration() override {
+        SyncSystemConfig();
+        return Result<Siligen::Domain::Configuration::Ports::SystemConfig>::Success(system_config);
+    }
+
+    Result<void> SaveConfiguration(const Siligen::Domain::Configuration::Ports::SystemConfig&) override {
+        return Result<void>::Success();
+    }
+
+    Result<void> ReloadConfiguration() override { return Result<void>::Success(); }
+
+    Result<Siligen::Domain::Configuration::Ports::DispensingConfig> GetDispensingConfig() const override {
+        return Result<Siligen::Domain::Configuration::Ports::DispensingConfig>::Success(dispensing_config);
+    }
+
+    Result<void> SetDispensingConfig(
+        const Siligen::Domain::Configuration::Ports::DispensingConfig& config) override {
+        dispensing_config = config;
+        system_config.dispensing = config;
+        return Result<void>::Success();
+    }
+
+    Result<Siligen::Domain::Configuration::Ports::DxfImportConfig> GetDxfImportConfig() const override {
+        return Result<Siligen::Domain::Configuration::Ports::DxfImportConfig>::Success(dxf_import_config);
+    }
+
+    Result<Siligen::Domain::Configuration::Ports::DxfTrajectoryConfig> GetDxfTrajectoryConfig() const override {
+        return Result<Siligen::Domain::Configuration::Ports::DxfTrajectoryConfig>::Success({});
+    }
+
+    Result<Siligen::Shared::Types::DiagnosticsConfig> GetDiagnosticsConfig() const override {
+        return Result<Siligen::Shared::Types::DiagnosticsConfig>::Success({});
+    }
+
+    Result<Siligen::Domain::Configuration::Ports::MachineConfig> GetMachineConfig() const override {
+        return Result<Siligen::Domain::Configuration::Ports::MachineConfig>::Success(machine_config);
+    }
+
+    Result<void> SetMachineConfig(const Siligen::Domain::Configuration::Ports::MachineConfig& config) override {
+        machine_config = config;
+        system_config.machine = config;
+        return Result<void>::Success();
+    }
+
+    Result<Siligen::Domain::Configuration::Ports::HomingConfig> GetHomingConfig(int) const override {
+        return Result<Siligen::Domain::Configuration::Ports::HomingConfig>::Success({});
+    }
+
+    Result<void> SetHomingConfig(int, const Siligen::Domain::Configuration::Ports::HomingConfig&) override {
+        return Result<void>::Success();
+    }
+
+    Result<std::vector<Siligen::Domain::Configuration::Ports::HomingConfig>> GetAllHomingConfigs() const override {
+        return Result<std::vector<Siligen::Domain::Configuration::Ports::HomingConfig>>::Success({});
+    }
+
+    Result<Siligen::Domain::Configuration::Ports::ValveSupplyConfig> GetValveSupplyConfig() const override {
+        return Result<Siligen::Domain::Configuration::Ports::ValveSupplyConfig>::Success({});
+    }
+
+    Result<Siligen::Shared::Types::DispenserValveConfig> GetDispenserValveConfig() const override {
+        return Result<Siligen::Shared::Types::DispenserValveConfig>::Success(dispenser_config);
+    }
+
+    Result<Siligen::Shared::Types::ValveCoordinationConfig> GetValveCoordinationConfig() const override {
+        return Result<Siligen::Shared::Types::ValveCoordinationConfig>::Success(valve_coordination_config);
+    }
+
+    Result<Siligen::Shared::Types::VelocityTraceConfig> GetVelocityTraceConfig() const override {
+        return Result<Siligen::Shared::Types::VelocityTraceConfig>::Success({});
+    }
+
+    Result<bool> ValidateConfiguration() const override { return Result<bool>::Success(true); }
+
+    Result<std::vector<std::string>> GetValidationErrors() const override {
+        return Result<std::vector<std::string>>::Success({});
+    }
+
+    Result<void> BackupConfiguration(const std::string&) override { return Result<void>::Success(); }
+
+    Result<void> RestoreConfiguration(const std::string&) override { return Result<void>::Success(); }
+
+    Result<Siligen::Shared::Types::HardwareMode> GetHardwareMode() const override {
+        return Result<Siligen::Shared::Types::HardwareMode>::Success(
+            Siligen::Shared::Types::HardwareMode::Mock);
+    }
+
+    Result<Siligen::Shared::Types::HardwareConfiguration> GetHardwareConfiguration() const override {
+        Siligen::Shared::Types::HardwareConfiguration config;
+        config.pulse_per_mm = machine_config.pulse_per_mm;
+        return Result<Siligen::Shared::Types::HardwareConfiguration>::Success(config);
+    }
+
+    void SyncSystemConfig() {
+        system_config.machine = machine_config;
+        system_config.dispensing = dispensing_config;
+        system_config.dxf = dxf_config;
+    }
+
+    Siligen::Domain::Configuration::Ports::SystemConfig system_config{};
+    Siligen::Domain::Configuration::Ports::MachineConfig machine_config{};
+    Siligen::Domain::Configuration::Ports::DispensingConfig dispensing_config{};
+    Siligen::Domain::Configuration::Ports::DxfImportConfig dxf_import_config{};
+    Siligen::Domain::Configuration::Ports::DxfConfig dxf_config{};
+    Siligen::Shared::Types::DispenserValveConfig dispenser_config{};
+    Siligen::Shared::Types::ValveCoordinationConfig valve_coordination_config{};
 };
 
 class ScopedTempPbFile {
@@ -283,12 +438,310 @@ class ScopedTempPbFile {
     std::filesystem::path path_;
 };
 
+std::filesystem::path ResolveWorkspaceRoot() {
+    auto cursor = std::filesystem::path(__FILE__).parent_path();
+    while (!cursor.empty()) {
+        if (std::filesystem::exists(cursor / "samples" / "dxf" / "Demo-1.dxf")) {
+            return cursor;
+        }
+        cursor = cursor.parent_path();
+    }
+    return {};
+}
+
+std::shared_ptr<IConfigurationPort> CreateCanonicalMachineConfigPort(const std::filesystem::path& workspace_root) {
+    return std::make_shared<ConfigFileAdapter>(
+        (workspace_root / "config" / "machine" / "machine_config.ini").string());
+}
+
+std::shared_ptr<FakeProductionBaselinePort> CreateCurrentProductionBaselinePort(
+    const std::shared_ptr<IConfigurationPort>& config_port) {
+    auto baseline_port = std::make_shared<FakeProductionBaselinePort>();
+    const auto config_result = config_port->LoadConfiguration();
+    if (config_result.IsError()) {
+        return baseline_port;
+    }
+
+    const auto& config = config_result.Value();
+    baseline_port->baseline_id = "current-production-baseline";
+    baseline_port->policy.direction_mode = PointFlyingCarrierDirectionMode::APPROACH_DIRECTION;
+    baseline_port->policy.trigger_spatial_interval_mm = config.dispensing.dot_diameter_target_mm;
+    if (config.dispensing.dot_edge_gap_mm > 0.0f) {
+        baseline_port->policy.trigger_spatial_interval_mm += config.dispensing.dot_edge_gap_mm;
+    }
+
+    std::ostringstream fingerprint;
+    fingerprint << "current-production-baseline|approach_direction|"
+                << std::fixed << std::setprecision(6)
+                << baseline_port->policy.trigger_spatial_interval_mm;
+    baseline_port->baseline_fingerprint = fingerprint.str();
+    return baseline_port;
+}
+
+class ScopedTempDxfCopy {
+   public:
+    explicit ScopedTempDxfCopy(const std::filesystem::path& source_path) {
+        root_ = std::filesystem::temp_directory_path() /
+                ("siligen-demo1-" + std::to_string(std::rand()));
+        std::filesystem::create_directories(root_);
+        dxf_path_ = root_ / source_path.filename();
+        std::filesystem::copy_file(
+            source_path,
+            dxf_path_,
+            std::filesystem::copy_options::overwrite_existing);
+    }
+
+    ~ScopedTempDxfCopy() {
+        std::error_code ec;
+        std::filesystem::remove_all(root_, ec);
+    }
+
+    [[nodiscard]] const std::filesystem::path& path() const noexcept { return dxf_path_; }
+    [[nodiscard]] std::string string() const { return dxf_path_.string(); }
+
+   private:
+    std::filesystem::path root_;
+    std::filesystem::path dxf_path_;
+};
+
+void ConfigureDemo1ProductionLikeConfig(const std::shared_ptr<FakeConfigurationPort>& config_port) {
+    ASSERT_NE(config_port, nullptr);
+
+    config_port->machine_config.max_speed = 300.0f;
+    config_port->machine_config.max_acceleration = 1000.0f;
+    config_port->machine_config.pulse_per_mm = 200.0f;
+    config_port->machine_config.soft_limits.x_min = 0.0f;
+    config_port->machine_config.soft_limits.x_max = 480.0f;
+    config_port->machine_config.soft_limits.y_min = 0.0f;
+    config_port->machine_config.soft_limits.y_max = 480.0f;
+
+    config_port->dispensing_config.strategy = Siligen::Shared::Types::DispensingStrategy::SUBSEGMENTED;
+    config_port->dispensing_config.subsegment_count = 8;
+    config_port->dispensing_config.dispense_only_cruise = false;
+    config_port->dispensing_config.dot_diameter_target_mm = 1.0f;
+    config_port->dispensing_config.dot_edge_gap_mm = 2.0f;
+    config_port->dispensing_config.trajectory_sample_dt = 0.01f;
+
+    config_port->dispenser_config.cmp_axis_mask = 0x03;
+    config_port->dispenser_config.max_count = 1000;
+
+    config_port->valve_coordination_config.dispensing_interval_ms = 100;
+    config_port->valve_coordination_config.dispensing_duration_ms = 15;
+    config_port->valve_coordination_config.valve_response_ms = 5;
+    config_port->valve_coordination_config.visual_margin_ms = 10;
+    config_port->valve_coordination_config.min_interval_ms = 10;
+
+    config_port->SyncSystemConfig();
+}
+
+void ConfigureProfileCompareRuntimeContractConfig(const std::shared_ptr<FakeConfigurationPort>& config_port) {
+    ASSERT_NE(config_port, nullptr);
+
+    config_port->machine_config.pulse_per_mm = 200.0f;
+    config_port->dispenser_config.cmp_axis_mask = 0x03;
+    config_port->dispenser_config.max_count = 1000;
+    config_port->SyncSystemConfig();
+}
+
+PlanningRequest BuildDemo1GatewayLikePlanningRequest() {
+    PlanningRequest request;
+    request.trajectory_config = Siligen::Shared::Types::TrajectoryConfig();
+    request.trajectory_config.max_velocity = 10.0f;
+    request.optimize_path = true;
+    request.start_x = 0.0f;
+    request.start_y = 0.0f;
+    request.approximate_splines = false;
+    request.two_opt_iterations = 0;
+    request.spline_max_step_mm = 0.0f;
+    request.spline_max_error_mm = 0.0f;
+    request.continuity_tolerance_mm = 0.0f;
+    request.curve_chain_angle_deg = 0.0f;
+    request.curve_chain_max_segment_mm = 0.0f;
+    request.use_interpolation_planner = true;
+    request.interpolation_algorithm = Siligen::MotionPlanning::Contracts::InterpolationAlgorithm::LINEAR;
+    return request;
+}
+
+PreparePlanRuntimeOverrides BuildDemo1ProductionValidationRuntimeOverrides() {
+    PreparePlanRuntimeOverrides overrides;
+    overrides.dry_run = false;
+    overrides.dispensing_speed_mm_s = 10.0f;
+    overrides.rapid_speed_mm_s = 10.0f;
+    overrides.velocity_trace_enabled = false;
+    return overrides;
+}
+
+DxfImportDiagnostics ToUploadImportDiagnostics(
+    const Siligen::Application::Services::DXF::ImportDiagnosticsSummary& summary);
+
+class TempUploadStoragePort final : public IUploadStoragePort {
+   public:
+    explicit TempUploadStoragePort(std::filesystem::path root) : root_(std::move(root)) {
+        std::filesystem::create_directories(root_);
+    }
+
+    Result<void> Validate(
+        const UploadRequest& request,
+        size_t max_file_size_mb,
+        const std::vector<std::string>& allowed_extensions) const override {
+        if (!request.Validate()) {
+            return Result<void>::Failure(
+                Siligen::Shared::Types::Error(
+                    ErrorCode::INVALID_PARAMETER,
+                    "upload request is invalid",
+                    "TempUploadStoragePort"));
+        }
+        if (max_file_size_mb > 0U) {
+            const auto max_bytes = max_file_size_mb * 1024ULL * 1024ULL;
+            if (request.file_size > max_bytes) {
+                return Result<void>::Failure(
+                    Siligen::Shared::Types::Error(
+                        ErrorCode::INVALID_PARAMETER,
+                        "upload file exceeds max size",
+                        "TempUploadStoragePort"));
+            }
+        }
+
+        auto extension = std::filesystem::path(request.original_filename).extension().string();
+        if (!extension.empty() && extension.front() == '.') {
+            extension.erase(extension.begin());
+        }
+        if (!allowed_extensions.empty() &&
+            std::find(allowed_extensions.begin(), allowed_extensions.end(), extension) == allowed_extensions.end()) {
+            return Result<void>::Failure(
+                Siligen::Shared::Types::Error(
+                    ErrorCode::INVALID_PARAMETER,
+                    "upload file extension is not allowed",
+                    "TempUploadStoragePort"));
+        }
+        return Result<void>::Success();
+    }
+
+    Result<std::string> Store(const UploadRequest& request, const std::string& target_filename) override {
+        std::filesystem::create_directories(root_);
+        const auto target_path = root_ / target_filename;
+        std::ofstream output(target_path, std::ios::binary);
+        if (!output.is_open()) {
+            return Result<std::string>::Failure(
+                Siligen::Shared::Types::Error(
+                    ErrorCode::FILE_IO_ERROR,
+                    "failed to open upload target file",
+                    "TempUploadStoragePort"));
+        }
+        output.write(
+            reinterpret_cast<const char*>(request.file_content.data()),
+            static_cast<std::streamsize>(request.file_content.size()));
+        output.close();
+        if (!output) {
+            return Result<std::string>::Failure(
+                Siligen::Shared::Types::Error(
+                    ErrorCode::FILE_IO_ERROR,
+                    "failed to write upload file",
+                    "TempUploadStoragePort"));
+        }
+        return Result<std::string>::Success(target_path.string());
+    }
+
+    Result<void> Delete(const std::string& stored_path) override {
+        std::error_code ec;
+        std::filesystem::remove(stored_path, ec);
+        return Result<void>::Success();
+    }
+
+   private:
+    std::filesystem::path root_;
+};
+
+class TempDxfPreparationPort final : public IUploadPreparationPort {
+   public:
+    explicit TempDxfPreparationPort(std::shared_ptr<IConfigurationPort> config_port)
+        : service_(std::move(config_port)) {}
+
+    Result<PreparedInputArtifact> EnsurePreparedInput(const std::string& source_path) const override {
+        auto result = service_.PrepareInputArtifact(source_path);
+        if (result.IsError()) {
+            return Result<PreparedInputArtifact>::Failure(result.GetError());
+        }
+
+        PreparedInputArtifact artifact;
+        artifact.prepared_path = result.Value().prepared_path;
+        artifact.import_diagnostics = ToUploadImportDiagnostics(result.Value().import_diagnostics);
+        return Result<PreparedInputArtifact>::Success(std::move(artifact));
+    }
+
+    Result<void> CleanupPreparedInput(const std::string& source_path) const override {
+        return service_.CleanupPreparedInput(source_path);
+    }
+
+   private:
+    DxfPbPreparationService service_;
+};
+
+class RuntimeLikeUploadPort final : public IUploadFilePort {
+   public:
+    explicit RuntimeLikeUploadPort(const std::shared_ptr<IConfigurationPort>& config_port)
+        : root_(std::filesystem::temp_directory_path() / ("siligen-upload-" + std::to_string(std::rand()))),
+          storage_port_(std::make_shared<TempUploadStoragePort>(root_ / "uploads" / "dxf")),
+          preparation_port_(std::make_shared<TempDxfPreparationPort>(config_port)),
+          use_case_(storage_port_, preparation_port_, 10) {}
+
+    ~RuntimeLikeUploadPort() override {
+        std::error_code ec;
+        std::filesystem::remove_all(root_, ec);
+    }
+
+    Result<UploadResponse> Execute(const UploadRequest& request) override {
+        return use_case_.Execute(request);
+    }
+
+   private:
+    std::filesystem::path root_;
+    std::shared_ptr<TempUploadStoragePort> storage_port_;
+    std::shared_ptr<TempDxfPreparationPort> preparation_port_;
+    UploadFileUseCase use_case_;
+};
+
+std::shared_ptr<IUploadFilePort> CreateRuntimeLikeUploadPort(const std::shared_ptr<IConfigurationPort>& config_port) {
+    return std::make_shared<RuntimeLikeUploadPort>(config_port);
+}
+
+UploadRequest BuildUploadRequestFromFile(const std::filesystem::path& filepath) {
+    std::ifstream input(filepath, std::ios::binary);
+    if (!input.is_open()) {
+        throw std::runtime_error("failed to open upload fixture file");
+    }
+    std::vector<uint8_t> bytes(
+        (std::istreambuf_iterator<char>(input)),
+        std::istreambuf_iterator<char>());
+    UploadRequest request;
+    request.file_content = std::move(bytes);
+    request.original_filename = filepath.filename().string();
+    request.file_size = request.file_content.size();
+    request.content_type = "application/dxf";
+    return request;
+}
+
+DxfImportDiagnostics ToUploadImportDiagnostics(
+    const Siligen::Application::Services::DXF::ImportDiagnosticsSummary& summary) {
+    DxfImportDiagnostics diagnostics;
+    diagnostics.result_classification = summary.result_classification;
+    diagnostics.preview_ready = summary.preview_ready;
+    diagnostics.production_ready = summary.production_ready;
+    diagnostics.summary = summary.summary;
+    diagnostics.primary_code = summary.primary_code;
+    diagnostics.warning_codes = summary.warning_codes;
+    diagnostics.error_codes = summary.error_codes;
+    diagnostics.resolved_units = summary.resolved_units;
+    diagnostics.resolved_unit_scale = summary.resolved_unit_scale;
+    return diagnostics;
+}
+
 PlanningRequest BuildCanonicalPlanningRequest(const std::string& filepath = "canonical.dxf") {
     PlanningRequest request;
     request.dxf_filepath = filepath;
     request.optimize_path = true;
-    request.start_x = 12.5f;
-    request.start_y = -3.0f;
+    request.start_x = 0.0f;
+    request.start_y = 0.0f;
     request.approximate_splines = true;
     request.two_opt_iterations = 7;
     request.spline_max_step_mm = 0.25f;
@@ -296,7 +749,6 @@ PlanningRequest BuildCanonicalPlanningRequest(const std::string& filepath = "can
     request.continuity_tolerance_mm = 0.02f;
     request.curve_chain_angle_deg = 15.0f;
     request.curve_chain_max_segment_mm = 1.5f;
-    request.use_hardware_trigger = false;
     request.use_interpolation_planner = true;
     request.interpolation_algorithm = Siligen::MotionPlanning::Contracts::InterpolationAlgorithm::LINEAR;
     request.trajectory_config.max_velocity = 88.0f;
@@ -308,7 +760,6 @@ PlanningRequest BuildCanonicalPlanningRequest(const std::string& filepath = "can
 
 PreparePlanRuntimeOverrides BuildPreparePlanRuntimeOverrides() {
     PreparePlanRuntimeOverrides overrides;
-    overrides.use_hardware_trigger = false;
     overrides.dry_run = true;
     overrides.max_jerk = 500.0f;
     overrides.arc_tolerance_mm = 0.1f;
@@ -357,6 +808,27 @@ DispensingPlan BuildMinimalPlan() {
     return plan;
 }
 
+ProfileCompareProgramSpan MakeProgramSpan(
+    uint32 trigger_begin_index,
+    uint32 trigger_end_index,
+    float32 start_profile_position_mm,
+    float32 end_profile_position_mm,
+    const Point2D& start_position_mm,
+    const Point2D& end_position_mm,
+    short compare_source_axis,
+    uint32 start_boundary_trigger_count) {
+    ProfileCompareProgramSpan span;
+    span.trigger_begin_index = trigger_begin_index;
+    span.trigger_end_index = trigger_end_index;
+    span.compare_source_axis = compare_source_axis;
+    span.start_boundary_trigger_count = start_boundary_trigger_count;
+    span.start_profile_position_mm = start_profile_position_mm;
+    span.end_profile_position_mm = end_profile_position_mm;
+    span.start_position_mm = start_position_mm;
+    span.end_position_mm = end_position_mm;
+    return span;
+}
+
 Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated BuildMinimalExecutionPackage() {
     const auto plan = BuildMinimalPlan();
 
@@ -367,11 +839,292 @@ Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated BuildMinimalEx
     built.execution_plan.trigger_interval_ms = plan.trigger_interval_ms;
     built.execution_plan.trigger_interval_mm = plan.trigger_interval_mm;
     built.execution_plan.total_length_mm = plan.total_length_mm;
+    built.execution_plan.production_trigger_mode =
+        Siligen::Domain::Dispensing::ValueObjects::ProductionTriggerMode::PROFILE_COMPARE;
+    built.execution_plan.profile_compare_program.expected_trigger_count = 2U;
+    built.execution_plan.profile_compare_program.trigger_points = {
+        {0U, 0.0f, Point2D{0.0f, 0.0f}, 2000U},
+        {1U, 20.0f, Point2D{20.0f, 0.0f}, 2000U},
+    };
+    built.execution_plan.profile_compare_program.spans = {
+        MakeProgramSpan(0U, 1U, 0.0f, 20.0f, Point2D{0.0f, 0.0f}, Point2D{20.0f, 0.0f}, 1, 1U),
+    };
+    built.execution_plan.completion_contract.enabled = true;
+    built.execution_plan.completion_contract.final_target_position_mm = Point2D{20.0f, 0.0f};
+    built.execution_plan.completion_contract.final_position_tolerance_mm = 0.2f;
+    built.execution_plan.completion_contract.expected_trigger_count = 2U;
     built.total_length_mm = plan.total_length_mm;
-    built.estimated_time_s = plan.estimated_time_s;
+    built.execution_nominal_time_s = plan.estimated_time_s;
     built.source_path = "artifact.pb";
     built.source_fingerprint = "artifact-fingerprint";
     return Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated(built);
+}
+
+Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated BuildAxisSwitchExecutionPackage() {
+    using Siligen::Domain::Dispensing::Contracts::ExecutionPackageBuilt;
+    using Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated;
+
+    const std::vector<Point2D> trigger_points{
+        Point2D(0.0f, 0.0f),
+        Point2D(100.0f, 0.0f),
+        Point2D(100.0f, 100.0f)};
+
+    ExecutionPackageBuilt built;
+    built.execution_plan.total_length_mm = 200.0f;
+    built.execution_plan.production_trigger_mode =
+        Siligen::Domain::Dispensing::ValueObjects::ProductionTriggerMode::PROFILE_COMPARE;
+
+    float32 cumulative_length_mm = 0.0f;
+    for (std::size_t index = 0; index < trigger_points.size(); ++index) {
+        if (index > 0U) {
+            cumulative_length_mm += static_cast<float32>(trigger_points[index - 1U].DistanceTo(trigger_points[index]));
+        }
+
+        Siligen::TrajectoryPoint interpolation_point;
+        interpolation_point.position = trigger_points[index];
+        interpolation_point.sequence_id = static_cast<uint32>(index);
+        interpolation_point.timestamp = static_cast<float32>(index) * 0.1f;
+        interpolation_point.velocity = 20.0f;
+        interpolation_point.enable_position_trigger = true;
+        interpolation_point.trigger_position_mm = cumulative_length_mm;
+        interpolation_point.trigger_pulse_width_us = 2000U;
+        built.execution_plan.interpolation_points.push_back(interpolation_point);
+
+        Siligen::Domain::Motion::ValueObjects::MotionTrajectoryPoint motion_point;
+        motion_point.t = static_cast<float32>(index) * 0.1f;
+        motion_point.position = {trigger_points[index].x, trigger_points[index].y, 0.0f};
+        motion_point.velocity = {20.0f, 20.0f, 0.0f};
+        built.execution_plan.motion_trajectory.points.push_back(motion_point);
+
+        built.execution_plan.profile_compare_program.trigger_points.push_back(
+            {static_cast<uint32>(index), cumulative_length_mm, trigger_points[index], 2000U});
+        built.execution_plan.trigger_distances_mm.push_back(cumulative_length_mm);
+
+        if (index == 0U) {
+            continue;
+        }
+
+        InterpolationData segment;
+        segment.type = InterpolationType::LINEAR;
+        segment.positions = {trigger_points[index].x, trigger_points[index].y};
+        segment.velocity = 20.0f;
+        segment.acceleration = 100.0f;
+        segment.end_velocity = index + 1U == trigger_points.size() ? 0.0f : 20.0f;
+        built.execution_plan.interpolation_segments.push_back(segment);
+    }
+
+    built.execution_plan.motion_trajectory.total_length = cumulative_length_mm;
+    built.execution_plan.motion_trajectory.total_time =
+        static_cast<float32>(trigger_points.size() - 1U) * 0.1f;
+    built.execution_plan.profile_compare_program.expected_trigger_count =
+        static_cast<uint32>(built.execution_plan.profile_compare_program.trigger_points.size());
+    built.execution_plan.profile_compare_program.spans = {
+        MakeProgramSpan(0U, 1U, 0.0f, 100.0f, Point2D{0.0f, 0.0f}, Point2D{100.0f, 0.0f}, 1, 1U),
+        MakeProgramSpan(2U, 2U, 100.0f, 200.0f, Point2D{100.0f, 0.0f}, Point2D{100.0f, 100.0f}, 2, 0U),
+    };
+    built.execution_plan.completion_contract.enabled = true;
+    built.execution_plan.completion_contract.final_target_position_mm = trigger_points.back();
+    built.execution_plan.completion_contract.final_position_tolerance_mm = 0.2f;
+    built.execution_plan.completion_contract.expected_trigger_count =
+        built.execution_plan.profile_compare_program.expected_trigger_count;
+    built.total_length_mm = cumulative_length_mm;
+    built.execution_nominal_time_s = built.execution_plan.motion_trajectory.total_time;
+    built.source_path = "artifact.pb";
+    built.source_fingerprint = "axis-switch";
+    return ExecutionPackageValidated(std::move(built));
+}
+
+Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated BuildInterpolationAnchoredExecutionPackage() {
+    using Siligen::Domain::Dispensing::Contracts::ExecutionPackageBuilt;
+    using Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated;
+
+    ExecutionPackageBuilt built;
+    built.execution_plan.total_length_mm = 10.0f;
+    built.execution_plan.production_trigger_mode =
+        Siligen::Domain::Dispensing::ValueObjects::ProductionTriggerMode::PROFILE_COMPARE;
+
+    const std::vector<Point2D> trigger_points{
+        Point2D(10.0f, 0.0f),
+        Point2D(15.0f, 0.0f),
+        Point2D(20.0f, 0.0f)};
+
+    for (std::size_t index = 0; index < trigger_points.size(); ++index) {
+        Siligen::TrajectoryPoint interpolation_point;
+        interpolation_point.position = trigger_points[index];
+        interpolation_point.sequence_id = static_cast<uint32>(index);
+        interpolation_point.timestamp = static_cast<float32>(index) * 0.1f;
+        interpolation_point.velocity = 20.0f;
+        interpolation_point.enable_position_trigger = true;
+        interpolation_point.trigger_position_mm = static_cast<float32>(index) * 5.0f;
+        interpolation_point.trigger_pulse_width_us = 2000U;
+        built.execution_plan.interpolation_points.push_back(interpolation_point);
+        built.execution_plan.profile_compare_program.trigger_points.push_back(
+            {static_cast<uint32>(index),
+             static_cast<float32>(index) * 5.0f,
+             trigger_points[index],
+             2000U});
+        built.execution_plan.trigger_distances_mm.push_back(static_cast<float32>(index) * 5.0f);
+
+        if (index == 0U) {
+            continue;
+        }
+
+        InterpolationData segment;
+        segment.type = InterpolationType::LINEAR;
+        segment.positions = {trigger_points[index].x, trigger_points[index].y};
+        segment.velocity = 20.0f;
+        segment.acceleration = 100.0f;
+        segment.end_velocity = index + 1U == trigger_points.size() ? 0.0f : 20.0f;
+        built.execution_plan.interpolation_segments.push_back(segment);
+    }
+
+    {
+        MotionTrajectoryPoint motion_point;
+        motion_point.t = 0.0f;
+        motion_point.position = {0.0f, 0.0f, 0.0f};
+        motion_point.velocity = {20.0f, 0.0f, 0.0f};
+        built.execution_plan.motion_trajectory.points.push_back(motion_point);
+    }
+    for (std::size_t index = 0; index < trigger_points.size(); ++index) {
+        MotionTrajectoryPoint motion_point;
+        motion_point.t = static_cast<float32>(index + 1U) * 0.1f;
+        motion_point.position = {trigger_points[index].x, trigger_points[index].y, 0.0f};
+        motion_point.velocity = {20.0f, 0.0f, 0.0f};
+        built.execution_plan.motion_trajectory.points.push_back(motion_point);
+    }
+    built.execution_plan.motion_trajectory.total_length = 0.0f;
+    built.execution_plan.motion_trajectory.total_time = 0.3f;
+
+    built.execution_plan.profile_compare_program.expected_trigger_count =
+        static_cast<uint32>(built.execution_plan.profile_compare_program.trigger_points.size());
+    built.execution_plan.profile_compare_program.spans = {
+        MakeProgramSpan(0U, 2U, 0.0f, 10.0f, Point2D{10.0f, 0.0f}, Point2D{20.0f, 0.0f}, 1, 1U),
+    };
+    built.execution_plan.completion_contract.enabled = true;
+    built.execution_plan.completion_contract.final_target_position_mm = trigger_points.back();
+    built.execution_plan.completion_contract.final_position_tolerance_mm = 0.2f;
+    built.execution_plan.completion_contract.expected_trigger_count =
+        built.execution_plan.profile_compare_program.expected_trigger_count;
+    built.total_length_mm = built.execution_plan.total_length_mm;
+    built.execution_nominal_time_s = built.execution_plan.motion_trajectory.total_time;
+    built.source_path = "artifact.pb";
+    built.source_fingerprint = "interpolation-anchored";
+    return ExecutionPackageValidated(std::move(built));
+}
+
+Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated BuildClosedLoopBranchRevisitExecutionPackage() {
+    using Siligen::Domain::Dispensing::Contracts::ExecutionPackageBuilt;
+    using Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated;
+
+    const std::vector<Point2D> trigger_points{
+        Point2D(0.0f, 0.0f),
+        Point2D(100.0f, 0.0f),
+        Point2D(100.0f, 100.0f),
+        Point2D(0.0f, 100.0f),
+        Point2D(0.0f, 0.0f),
+        Point2D(100.0f, 100.0f)};
+
+    ExecutionPackageBuilt built;
+    built.execution_plan.total_length_mm = 541.4214f;
+    built.execution_plan.production_trigger_mode =
+        Siligen::Domain::Dispensing::ValueObjects::ProductionTriggerMode::PROFILE_COMPARE;
+
+    float32 cumulative_length_mm = 0.0f;
+    for (std::size_t index = 0; index < trigger_points.size(); ++index) {
+        if (index > 0U) {
+            cumulative_length_mm += static_cast<float32>(trigger_points[index - 1U].DistanceTo(trigger_points[index]));
+        }
+
+        Siligen::TrajectoryPoint interpolation_point;
+        interpolation_point.position = trigger_points[index];
+        interpolation_point.sequence_id = static_cast<uint32>(index);
+        interpolation_point.timestamp = static_cast<float32>(index) * 0.1f;
+        interpolation_point.velocity = 20.0f;
+        interpolation_point.enable_position_trigger = true;
+        interpolation_point.trigger_position_mm = cumulative_length_mm;
+        interpolation_point.trigger_pulse_width_us = 2000U;
+        built.execution_plan.interpolation_points.push_back(interpolation_point);
+
+        Siligen::Domain::Motion::ValueObjects::MotionTrajectoryPoint motion_point;
+        motion_point.t = static_cast<float32>(index) * 0.1f;
+        motion_point.position = {trigger_points[index].x, trigger_points[index].y, 0.0f};
+        motion_point.velocity = {20.0f, 20.0f, 0.0f};
+        built.execution_plan.motion_trajectory.points.push_back(motion_point);
+
+        built.execution_plan.profile_compare_program.trigger_points.push_back(
+            {static_cast<uint32>(index), cumulative_length_mm, trigger_points[index], 2000U});
+        built.execution_plan.trigger_distances_mm.push_back(cumulative_length_mm);
+
+        if (index == 0U) {
+            continue;
+        }
+
+        InterpolationData segment;
+        segment.type = InterpolationType::LINEAR;
+        segment.positions = {trigger_points[index].x, trigger_points[index].y};
+        segment.velocity = 20.0f;
+        segment.acceleration = 100.0f;
+        segment.end_velocity = index + 1U == trigger_points.size() ? 0.0f : 20.0f;
+        built.execution_plan.interpolation_segments.push_back(segment);
+    }
+
+    built.execution_plan.motion_trajectory.total_length = cumulative_length_mm;
+    built.execution_plan.motion_trajectory.total_time =
+        static_cast<float32>(trigger_points.size() - 1U) * 0.1f;
+    built.execution_plan.profile_compare_program.expected_trigger_count =
+        static_cast<uint32>(built.execution_plan.profile_compare_program.trigger_points.size());
+    built.execution_plan.profile_compare_program.spans = {
+        MakeProgramSpan(0U, 5U, 0.0f, cumulative_length_mm, Point2D{0.0f, 0.0f}, Point2D{10.0f, 10.0f}, 1, 1U),
+    };
+    built.execution_plan.completion_contract.enabled = true;
+    built.execution_plan.completion_contract.final_target_position_mm = trigger_points.back();
+    built.execution_plan.completion_contract.final_position_tolerance_mm = 0.2f;
+    built.execution_plan.completion_contract.expected_trigger_count =
+        built.execution_plan.profile_compare_program.expected_trigger_count;
+    built.total_length_mm = cumulative_length_mm;
+    built.execution_nominal_time_s = built.execution_plan.motion_trajectory.total_time;
+    built.source_path = "artifact.pb";
+    built.source_fingerprint = "branch-revisit";
+    return ExecutionPackageValidated(std::move(built));
+}
+
+void ApplyOwnerExecutionContractState(DispensingWorkflowUseCase::PlanRecord& plan_record) {
+    plan_record.execution_contract_ready = true;
+    plan_record.execution_failure_reason.clear();
+    plan_record.execution_diagnostic_code.clear();
+    plan_record.response.import_diagnostics.formal_compare_gate = {};
+    plan_record.execution_assembly.execution_contract_ready = true;
+    plan_record.execution_assembly.execution_failure_reason.clear();
+    plan_record.execution_assembly.execution_diagnostic_code.clear();
+    plan_record.execution_assembly.formal_compare_gate = {};
+
+    if (!plan_record.execution_launch.execution_package) {
+        return;
+    }
+
+    const auto& execution_plan = plan_record.execution_launch.execution_package->execution_plan;
+    if (execution_plan.production_trigger_mode !=
+        Siligen::Domain::Dispensing::ValueObjects::ProductionTriggerMode::PROFILE_COMPARE) {
+        return;
+    }
+
+    const auto compile_result = CompileProfileCompareExecutionSchedule(
+        ProfileCompareExecutionCompileInput{
+            execution_plan,
+            ProfileCompareRuntimeContract{200.0f, 0x03, 1000U},
+        });
+    if (compile_result.IsSuccess()) {
+        return;
+    }
+
+    plan_record.execution_contract_ready = false;
+    plan_record.execution_failure_reason =
+        "owner execution package 不满足 formal runtime compare contract: " +
+        compile_result.GetError().GetMessage();
+    plan_record.execution_diagnostic_code = "formal_runtime_compare_contract_unsatisfied";
+    plan_record.execution_assembly.execution_contract_ready = false;
+    plan_record.execution_assembly.execution_failure_reason = plan_record.execution_failure_reason;
+    plan_record.execution_assembly.execution_diagnostic_code = plan_record.execution_diagnostic_code;
 }
 
 bool SpinUntil(
@@ -400,7 +1153,8 @@ std::shared_ptr<Siligen::Application::Services::Dispensing::IWorkflowPlanningAss
         .CreateOperations();
 }
 
-std::shared_ptr<PlanningUseCase> CreateRealPlanningUseCase() {
+std::shared_ptr<PlanningUseCase> CreateRealPlanningUseCase(
+    const std::shared_ptr<IConfigurationPort>& config_port = nullptr) {
     auto path_source = std::make_shared<LinePathSourceStub>();
     auto pb_service = std::make_shared<DxfPbPreparationService>();
     return std::make_shared<PlanningUseCase>(
@@ -410,13 +1164,14 @@ std::shared_ptr<PlanningUseCase> CreateRealPlanningUseCase() {
         Siligen::Application::Ports::Dispensing::AdaptMotionPlanningFacade(
             std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>()),
         CreatePlanningOperations(),
-        nullptr,
+        config_port,
         Siligen::Application::Ports::Dispensing::AdaptDxfPreparationService(pb_service));
 }
 
 std::shared_ptr<PlanningUseCase> CreatePlanningUseCaseWithPathSourceAndExport(
     const std::shared_ptr<Siligen::ProcessPath::Contracts::IPathSourcePort>& path_source,
-    const std::shared_ptr<IPlanningArtifactExportPort>& export_port) {
+    const std::shared_ptr<IPlanningArtifactExportPort>& export_port,
+    const std::shared_ptr<IConfigurationPort>& config_port = nullptr) {
     auto pb_service = std::make_shared<DxfPbPreparationService>();
     return std::make_shared<PlanningUseCase>(
         path_source,
@@ -425,7 +1180,7 @@ std::shared_ptr<PlanningUseCase> CreatePlanningUseCaseWithPathSourceAndExport(
         Siligen::Application::Ports::Dispensing::AdaptMotionPlanningFacade(
             std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>()),
         CreatePlanningOperations(),
-        nullptr,
+        config_port,
         Siligen::Application::Ports::Dispensing::AdaptDxfPreparationService(pb_service),
         export_port);
 }
@@ -629,13 +1384,14 @@ class FakeDispensingProcessPort final : public RuntimeDispensingProcessPort {
     }
 
     Result<DispensingExecutionReport> ExecuteProcess(
-        const DispensingExecutionPlan& plan,
+        const Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated& execution_package,
         const DispensingRuntimeParams&,
         const DispensingExecutionOptions&,
         std::atomic<bool>* stop_flag,
         std::atomic<bool>* pause_flag,
         std::atomic<bool>* pause_applied_flag,
         IDispensingExecutionObserver* observer = nullptr) noexcept override {
+        const auto& plan = execution_package.execution_plan;
         DispensingExecutionReport report;
         report.total_distance = plan.total_length_mm;
         const uint32 total_segments = !plan.interpolation_segments.empty()
@@ -761,7 +1517,6 @@ void SeedPlan(DispensingWorkflowUseCase& use_case, const std::string& plan_id) {
         std::make_shared<Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated>(
             BuildMinimalExecutionPackage());
     plan_record.execution_launch.runtime_overrides.source_path = "artifact.pb";
-    plan_record.execution_launch.runtime_overrides.use_hardware_trigger = false;
     plan_record.execution_launch.runtime_overrides.dry_run = true;
     plan_record.execution_launch.runtime_overrides.dispensing_speed_mm_s = 22.0f;
     plan_record.execution_launch.runtime_overrides.dry_run_speed_mm_s = 88.0f;
@@ -784,9 +1539,25 @@ void SeedPlan(DispensingWorkflowUseCase& use_case, const std::string& plan_id) {
     plan_record.execution_assembly.execution_binding_ready = true;
     plan_record.execution_assembly.execution_package = plan_record.execution_launch.execution_package;
     plan_record.execution_assembly.authority_trigger_layout = plan_record.authority_trigger_layout;
+    ApplyOwnerExecutionContractState(plan_record);
     SeedAuthorityTriggerPoints(plan_record, plan_record.glue_points);
     plan_record.execution_assembly.authority_trigger_layout = plan_record.authority_trigger_layout;
     use_case.plans_[plan_id] = plan_record;
+}
+
+std::shared_ptr<PlanningUseCase> CreatePbBackedPlanningUseCase(
+    const std::shared_ptr<IConfigurationPort>& config_port) {
+    auto pb_service = std::make_shared<DxfPbPreparationService>(config_port);
+    return std::make_shared<PlanningUseCase>(
+        std::make_shared<PbPathSourceAdapter>(),
+        Siligen::Application::Ports::Dispensing::AdaptProcessPathFacade(
+            std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>()),
+        Siligen::Application::Ports::Dispensing::AdaptMotionPlanningFacade(
+            std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>(
+                std::make_shared<Siligen::Domain::Motion::DomainServices::SevenSegmentSCurveProfile>())),
+        CreatePlanningOperations(),
+        config_port,
+        Siligen::Application::Ports::Dispensing::AdaptDxfPreparationService(pb_service));
 }
 
 void ConfigurePointFlyingShotPlan(DispensingWorkflowUseCase::PlanRecord& plan_record) {
@@ -799,8 +1570,21 @@ void ConfigurePointFlyingShotPlan(DispensingWorkflowUseCase::PlanRecord& plan_re
     built.execution_plan.trigger_distances_mm = {0.0f};
     built.execution_plan.trigger_interval_mm = 3.0f;
     built.execution_plan.total_length_mm = 3.0f;
+    built.execution_plan.production_trigger_mode =
+        Siligen::Domain::Dispensing::ValueObjects::ProductionTriggerMode::PROFILE_COMPARE;
+    built.execution_plan.profile_compare_program.expected_trigger_count = 1U;
+    built.execution_plan.profile_compare_program.trigger_points = {
+        {0U, 0.0f, Point2D{5.0f, 5.0f}, 2000U},
+    };
+    built.execution_plan.profile_compare_program.spans = {
+        MakeProgramSpan(0U, 0U, 0.0f, 3.0f, Point2D{5.0f, 5.0f}, Point2D{8.0f, 5.0f}, 1, 1U),
+    };
+    built.execution_plan.completion_contract.enabled = true;
+    built.execution_plan.completion_contract.final_target_position_mm = Point2D{8.0f, 5.0f};
+    built.execution_plan.completion_contract.final_position_tolerance_mm = 0.2f;
+    built.execution_plan.completion_contract.expected_trigger_count = 1U;
     built.total_length_mm = 3.0f;
-    built.estimated_time_s = 0.12f;
+    built.execution_nominal_time_s = 0.12f;
     built.source_path = "artifact.pb";
     built.source_fingerprint = "point-flying";
 
@@ -854,6 +1638,86 @@ void ConfigurePointFlyingShotPlan(DispensingWorkflowUseCase::PlanRecord& plan_re
     plan_record.authority_trigger_layout.trigger_points.clear();
     SeedAuthorityTriggerPoints(plan_record, plan_record.glue_points);
     plan_record.execution_assembly.authority_trigger_layout = plan_record.authority_trigger_layout;
+    ApplyOwnerExecutionContractState(plan_record);
+}
+
+void ConfigureAxisSwitchProfileComparePlan(DispensingWorkflowUseCase::PlanRecord& plan_record) {
+    auto package = std::make_shared<Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated>(
+        BuildAxisSwitchExecutionPackage());
+    plan_record.execution_launch.execution_package = package;
+    plan_record.execution_assembly.execution_package = package;
+    plan_record.execution_trajectory_points = package->execution_plan.interpolation_points;
+    plan_record.execution_assembly.execution_trajectory_points = plan_record.execution_trajectory_points;
+    plan_record.glue_points = {
+        Point2D(0.0f, 0.0f),
+        Point2D(100.0f, 0.0f),
+        Point2D(100.0f, 100.0f),
+    };
+    plan_record.response.total_length_mm = package->total_length_mm;
+    plan_record.response.point_count = static_cast<std::uint32_t>(plan_record.execution_trajectory_points.size());
+    plan_record.authority_trigger_layout.branch_revisit_split_applied = false;
+    plan_record.authority_trigger_layout.spans.clear();
+    SeedAuthorityTriggerPoints(plan_record, plan_record.glue_points);
+    plan_record.execution_assembly.authority_trigger_layout = plan_record.authority_trigger_layout;
+    ApplyOwnerExecutionContractState(plan_record);
+}
+
+void ConfigureClosedLoopBranchRevisitProfileComparePlan(DispensingWorkflowUseCase::PlanRecord& plan_record) {
+    auto package = std::make_shared<Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated>(
+        BuildClosedLoopBranchRevisitExecutionPackage());
+    plan_record.execution_launch.execution_package = package;
+    plan_record.execution_assembly.execution_package = package;
+    plan_record.execution_trajectory_points = package->execution_plan.interpolation_points;
+    plan_record.execution_assembly.execution_trajectory_points = plan_record.execution_trajectory_points;
+    plan_record.glue_points = {
+        Point2D(0.0f, 0.0f),
+        Point2D(100.0f, 0.0f),
+        Point2D(100.0f, 100.0f),
+        Point2D(0.0f, 100.0f),
+        Point2D(0.0f, 0.0f),
+        Point2D(100.0f, 100.0f),
+    };
+    plan_record.response.total_length_mm = package->total_length_mm;
+    plan_record.response.point_count = static_cast<std::uint32_t>(plan_record.execution_trajectory_points.size());
+    plan_record.authority_trigger_layout.branch_revisit_split_applied = true;
+    plan_record.authority_trigger_layout.spans.clear();
+    {
+        Siligen::Domain::Dispensing::ValueObjects::DispenseSpan closed_span;
+        closed_span.span_id = "closed-span";
+        closed_span.closed = true;
+        plan_record.authority_trigger_layout.spans.push_back(closed_span);
+    }
+    {
+        Siligen::Domain::Dispensing::ValueObjects::DispenseSpan revisit_span;
+        revisit_span.span_id = "revisit-span";
+        revisit_span.split_reason =
+            Siligen::Domain::Dispensing::ValueObjects::DispenseSpanSplitReason::BranchOrRevisit;
+        plan_record.authority_trigger_layout.spans.push_back(revisit_span);
+    }
+    SeedAuthorityTriggerPoints(plan_record, plan_record.glue_points);
+    plan_record.execution_assembly.authority_trigger_layout = plan_record.authority_trigger_layout;
+    ApplyOwnerExecutionContractState(plan_record);
+}
+
+void ConfigureInterpolationAnchoredProfileComparePlan(DispensingWorkflowUseCase::PlanRecord& plan_record) {
+    auto package = std::make_shared<Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated>(
+        BuildInterpolationAnchoredExecutionPackage());
+    plan_record.execution_launch.execution_package = package;
+    plan_record.execution_assembly.execution_package = package;
+    plan_record.execution_trajectory_points = package->execution_plan.interpolation_points;
+    plan_record.execution_assembly.execution_trajectory_points = plan_record.execution_trajectory_points;
+    plan_record.glue_points = {
+        Point2D(10.0f, 0.0f),
+        Point2D(15.0f, 0.0f),
+        Point2D(20.0f, 0.0f),
+    };
+    plan_record.response.total_length_mm = package->total_length_mm;
+    plan_record.response.point_count = static_cast<std::uint32_t>(plan_record.execution_trajectory_points.size());
+    plan_record.authority_trigger_layout.branch_revisit_split_applied = false;
+    plan_record.authority_trigger_layout.spans.clear();
+    SeedAuthorityTriggerPoints(plan_record, plan_record.glue_points);
+    plan_record.execution_assembly.authority_trigger_layout = plan_record.authority_trigger_layout;
+    ApplyOwnerExecutionContractState(plan_record);
 }
 
 DispensingWorkflowUseCase CreateUseCase(
@@ -863,7 +1727,9 @@ DispensingWorkflowUseCase CreateUseCase(
     const std::shared_ptr<FakeInterlockSignalPort>& interlock_port,
     std::shared_ptr<DispensingExecutionUseCase> execution_use_case = nullptr,
     std::shared_ptr<FakeProductionBaselinePort> recipe_planning_policy_port =
-        std::make_shared<FakeProductionBaselinePort>()) {
+        std::make_shared<FakeProductionBaselinePort>(),
+    std::shared_ptr<IConfigurationPort> config_port =
+        std::make_shared<FakeConfigurationPort>()) {
     auto motion_device_port = std::make_shared<FakeMotionDevicePort>();
     auto dispenser_device_port = std::make_shared<FakeDispenserDevicePort>();
     auto execution_port = execution_use_case
@@ -874,6 +1740,7 @@ DispensingWorkflowUseCase CreateUseCase(
         MakeDummyShared<PlanningUseCase>(),
         recipe_planning_policy_port,
         execution_port,
+        config_port,
         connection_port,
         motion_device_port,
         dispenser_device_port,
@@ -889,7 +1756,9 @@ DispensingWorkflowUseCase CreateUseCaseWithPlanning(
     const std::shared_ptr<FakeHomingPort>& homing_port,
     const std::shared_ptr<FakeInterlockSignalPort>& interlock_port,
     std::shared_ptr<FakeProductionBaselinePort> recipe_planning_policy_port =
-        std::make_shared<FakeProductionBaselinePort>()) {
+        std::make_shared<FakeProductionBaselinePort>(),
+    std::shared_ptr<IConfigurationPort> config_port =
+        std::make_shared<FakeConfigurationPort>()) {
     auto motion_device_port = std::make_shared<FakeMotionDevicePort>();
     auto dispenser_device_port = std::make_shared<FakeDispenserDevicePort>();
     return DispensingWorkflowUseCase(
@@ -897,6 +1766,34 @@ DispensingWorkflowUseCase CreateUseCaseWithPlanning(
         planning_use_case,
         recipe_planning_policy_port,
         MakeDummyShared<Siligen::Application::Ports::Dispensing::IWorkflowExecutionPort>(),
+        config_port,
+        connection_port,
+        motion_device_port,
+        dispenser_device_port,
+        motion_state_port,
+        homing_port,
+        interlock_port);
+}
+
+DispensingWorkflowUseCase CreateUseCaseWithUploadAndPlanning(
+    const std::shared_ptr<IUploadFilePort>& upload_port,
+    const std::shared_ptr<PlanningUseCase>& planning_use_case,
+    const std::shared_ptr<FakeHardwareConnectionPort>& connection_port,
+    const std::shared_ptr<FakeMotionStatePort>& motion_state_port,
+    const std::shared_ptr<FakeHomingPort>& homing_port,
+    const std::shared_ptr<FakeInterlockSignalPort>& interlock_port,
+    std::shared_ptr<FakeProductionBaselinePort> recipe_planning_policy_port =
+        std::make_shared<FakeProductionBaselinePort>(),
+    std::shared_ptr<IConfigurationPort> config_port =
+        std::make_shared<FakeConfigurationPort>()) {
+    auto motion_device_port = std::make_shared<FakeMotionDevicePort>();
+    auto dispenser_device_port = std::make_shared<FakeDispenserDevicePort>();
+    return DispensingWorkflowUseCase(
+        upload_port,
+        planning_use_case,
+        recipe_planning_policy_port,
+        MakeDummyShared<Siligen::Application::Ports::Dispensing::IWorkflowExecutionPort>(),
+        config_port,
         connection_port,
         motion_device_port,
         dispenser_device_port,
@@ -913,7 +1810,9 @@ DispensingWorkflowUseCase CreateUseCaseWithPlanningAndExecution(
     const std::shared_ptr<FakeHomingPort>& homing_port,
     const std::shared_ptr<FakeInterlockSignalPort>& interlock_port,
     std::shared_ptr<FakeProductionBaselinePort> recipe_planning_policy_port =
-        std::make_shared<FakeProductionBaselinePort>()) {
+        std::make_shared<FakeProductionBaselinePort>(),
+    std::shared_ptr<IConfigurationPort> config_port =
+        std::make_shared<FakeConfigurationPort>()) {
     auto motion_device_port = std::make_shared<FakeMotionDevicePort>();
     auto dispenser_device_port = std::make_shared<FakeDispenserDevicePort>();
     return DispensingWorkflowUseCase(
@@ -921,6 +1820,7 @@ DispensingWorkflowUseCase CreateUseCaseWithPlanningAndExecution(
         planning_use_case,
         recipe_planning_policy_port,
         CreateRuntimeWorkflowExecutionPort(execution_use_case),
+        config_port,
         connection_port,
         motion_device_port,
         dispenser_device_port,
@@ -957,7 +1857,8 @@ DispensingWorkflowUseCase::PlanRecord BuildPreviewPlanRecord(
     plan_record.response.segment_count = static_cast<std::uint32_t>(points.size() > 1 ? points.size() - 1 : 0);
     plan_record.response.point_count = static_cast<std::uint32_t>(points.size());
     plan_record.response.total_length_mm = 0.0f;
-    plan_record.response.estimated_time_s = 1.0f;
+    plan_record.response.execution_nominal_time_s = 1.0f;
+    plan_record.preview_estimated_time_s = 1.0f;
     SeedProductionReadyImportDiagnostics(plan_record);
     plan_record.preview_authority_ready = true;
     plan_record.preview_authority_shared_with_execution = true;
@@ -1111,7 +2012,6 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanUsesCanonicalPlanningInputAndRunt
     const auto& stored_launch = it->second.execution_launch;
     EXPECT_EQ(stored_launch.runtime_overrides.source_path, temp_pb_file.string());
     EXPECT_TRUE(stored_launch.runtime_overrides.dry_run);
-    EXPECT_FALSE(stored_launch.runtime_overrides.use_hardware_trigger);
     ASSERT_TRUE(stored_launch.runtime_overrides.dispensing_speed_mm_s.has_value());
     EXPECT_FLOAT_EQ(stored_launch.runtime_overrides.dispensing_speed_mm_s.value(), 22.0f);
     ASSERT_TRUE(stored_launch.runtime_overrides.dry_run_speed_mm_s.has_value());
@@ -1120,7 +2020,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanUsesCanonicalPlanningInputAndRunt
     EXPECT_EQ(stored_launch.runtime_overrides.velocity_trace_interval_ms, 25);
     EXPECT_EQ(stored_launch.runtime_overrides.velocity_trace_path, "logs/trace.csv");
     EXPECT_TRUE(stored_launch.runtime_overrides.velocity_guard_stop_on_violation);
-    EXPECT_FALSE(stored_launch.execution_package);
+    EXPECT_TRUE(stored_launch.execution_package);
     EXPECT_TRUE(stored_launch.authority_preview.success);
     EXPECT_FALSE(stored_launch.authority_preview.artifacts.glue_points.empty());
     EXPECT_FALSE(stored_launch.authority_cache_key.empty());
@@ -1153,6 +2053,54 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanUsesCurrentProductionBaselineWith
     EXPECT_FALSE(result.Value().plan_fingerprint.empty());
 }
 
+TEST(DispensingWorkflowUseCaseTest, Demo1PreparePlanWithProductionLikeInputsReturnsProductionReadyContract) {
+    const auto workspace_root = ResolveWorkspaceRoot();
+    ASSERT_FALSE(workspace_root.empty());
+
+    ScopedTempDxfCopy temp_demo_dxf(workspace_root / "samples" / "dxf" / "Demo-1.dxf");
+    auto config_port = CreateCanonicalMachineConfigPort(workspace_root);
+    const auto loaded_config = config_port->LoadConfiguration();
+    ASSERT_TRUE(loaded_config.IsSuccess()) << loaded_config.GetError().ToString();
+    ASSERT_GT(loaded_config.Value().dispensing.dot_diameter_target_mm, 0.0f);
+
+    auto planning_use_case = CreatePbBackedPlanningUseCase(config_port);
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto baseline_port = CreateCurrentProductionBaselinePort(config_port);
+    auto upload_port = CreateRuntimeLikeUploadPort(config_port);
+    auto use_case = CreateUseCaseWithUploadAndPlanning(
+        upload_port,
+        planning_use_case,
+        connection_port,
+        motion_state_port,
+        homing_port,
+        interlock_port,
+        baseline_port,
+        config_port);
+
+    const auto artifact_result = use_case.CreateArtifact(BuildUploadRequestFromFile(temp_demo_dxf.path()));
+    ASSERT_TRUE(artifact_result.IsSuccess()) << artifact_result.GetError().ToString();
+
+    PreparePlanRequest request;
+    request.artifact_id = artifact_result.Value().artifact_id;
+    request.planning_request = BuildDemo1GatewayLikePlanningRequest();
+    request.runtime_overrides = BuildDemo1ProductionValidationRuntimeOverrides();
+
+    const auto result = use_case.PreparePlan(request);
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
+
+    const auto& gate = result.Value().import_diagnostics.formal_compare_gate;
+    EXPECT_TRUE(result.Value().import_diagnostics.preview_ready);
+    EXPECT_TRUE(result.Value().import_diagnostics.production_ready);
+    EXPECT_FALSE(gate.HasValue());
+
+    const auto& plan_record = use_case.plans_.at(result.Value().plan_id);
+    EXPECT_TRUE(plan_record.execution_contract_ready);
+    EXPECT_FALSE(plan_record.execution_assembly.formal_compare_gate.HasValue());
+}
+
 TEST(DispensingWorkflowUseCaseTest, PreparePlanReusesLatestPlanForIdenticalAuthorityAndRuntimeFingerprint) {
     ScopedTempPbFile temp_pb_file;
     auto planning_use_case = CreateRealPlanningUseCase();
@@ -1182,7 +2130,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanReusesLatestPlanForIdenticalAutho
     stored_record.response.segment_count = 999U;
     stored_record.response.point_count = 999U;
     stored_record.response.total_length_mm = 999.0f;
-    stored_record.response.estimated_time_s = 999.0f;
+    stored_record.response.execution_nominal_time_s = 999.0f;
 
     const auto second = use_case.PreparePlan(request);
     ASSERT_TRUE(second.IsSuccess()) << second.GetError().ToString();
@@ -1191,7 +2139,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanReusesLatestPlanForIdenticalAutho
     EXPECT_EQ(second.Value().segment_count, first.Value().segment_count);
     EXPECT_EQ(second.Value().point_count, first.Value().point_count);
     EXPECT_FLOAT_EQ(second.Value().total_length_mm, first.Value().total_length_mm);
-    EXPECT_FLOAT_EQ(second.Value().estimated_time_s, first.Value().estimated_time_s);
+    EXPECT_FLOAT_EQ(second.Value().execution_nominal_time_s, first.Value().execution_nominal_time_s);
 }
 
 TEST(DispensingWorkflowUseCaseTest, PreparePlanSingleFlightsConcurrentAuthorityPreviewRequests) {
@@ -1243,9 +2191,12 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanSingleFlightsConcurrentAuthorityP
 TEST(DispensingWorkflowUseCaseTest, StartJobReturnsStructuredResponseWithExecutionProfile) {
     ScopedTempPbFile temp_pb_file;
     auto export_calls = std::make_shared<std::atomic<int>>(0);
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    ConfigureProfileCompareRuntimeContractConfig(config_port);
     auto planning_use_case = CreatePlanningUseCaseWithPathSourceAndExport(
         std::make_shared<LinePathSourceStub>(),
-        std::make_shared<SlowExportPortStub>(export_calls, std::chrono::milliseconds(10)));
+        std::make_shared<SlowExportPortStub>(export_calls, std::chrono::milliseconds(10)),
+        config_port);
     auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
     auto homing_port = std::make_shared<FakeHomingPort>();
@@ -1262,7 +2213,9 @@ TEST(DispensingWorkflowUseCaseTest, StartJobReturnsStructuredResponseWithExecuti
         connection_port,
         motion_state_port,
         homing_port,
-        interlock_port);
+        interlock_port,
+        std::make_shared<FakeProductionBaselinePort>(),
+        config_port);
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
     artifact_record.response.artifact_id = "artifact-start-profile";
@@ -1452,10 +2405,10 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotResolvesExecutionAssemblyF
     const auto plan_id = prepare_result.Value().plan_id;
 
     const auto& prepared_plan = use_case.plans_.at(plan_id);
-    EXPECT_FALSE(prepared_plan.preview_authority_shared_with_execution);
-    EXPECT_FALSE(prepared_plan.execution_authority_shared_with_execution);
-    EXPECT_FALSE(prepared_plan.execution_binding_ready);
-    EXPECT_FALSE(static_cast<bool>(prepared_plan.execution_launch.execution_package));
+    EXPECT_TRUE(prepared_plan.preview_authority_shared_with_execution);
+    EXPECT_TRUE(prepared_plan.execution_authority_shared_with_execution);
+    EXPECT_TRUE(prepared_plan.execution_binding_ready);
+    EXPECT_TRUE(static_cast<bool>(prepared_plan.execution_launch.execution_package));
 
     Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest snapshot_request;
     snapshot_request.plan_id = plan_id;
@@ -1556,7 +2509,8 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotKeepsConfirmedStateWhenFin
     plan_record.response.segment_count = 1;
     plan_record.response.point_count = 2;
     plan_record.response.total_length_mm = 10.0f;
-    plan_record.response.estimated_time_s = 1.0f;
+    plan_record.response.execution_nominal_time_s = 1.0f;
+    plan_record.preview_estimated_time_s = 1.0f;
     plan_record.preview_authority_ready = true;
     plan_record.preview_authority_shared_with_execution = true;
     plan_record.preview_binding_ready = true;
@@ -1861,7 +2815,7 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotClampsLongExecutionTraject
     EXPECT_FALSE(MotionPreviewHasUnexpectedSegmentAngle(snapshot, {0.0, 90.0, -135.0}));
 }
 
-TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotUsesProcessPathWhenMotionTrajectorySnapshotMissing) {
+TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotUsesExecutionTrajectorySnapshotAsMotionPreviewTruth) {
     auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
     auto homing_port = std::make_shared<FakeHomingPort>();
@@ -1878,7 +2832,6 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotUsesProcessPathWhenMotionT
         Siligen::TrajectoryPoint(0.0f, 0.0f, 0.0f),
         Siligen::TrajectoryPoint(50.0f, 0.0f, 0.0f),
     };
-    plan_record.execution_assembly.motion_trajectory_points.clear();
     plan_record.execution_assembly.export_request.process_path.segments = {
         BuildLineProcessSegment(Point2D(0.0f, 0.0f), Point2D(0.0f, 25.0f)),
         BuildLineProcessSegment(Point2D(0.0f, 25.0f), Point2D(25.0f, 25.0f)),
@@ -1892,12 +2845,11 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotUsesProcessPathWhenMotionT
 
     ASSERT_TRUE(result.IsSuccess());
     const auto& snapshot = result.Value();
-    EXPECT_EQ(snapshot.motion_preview_source, "process_path_snapshot");
+    EXPECT_EQ(snapshot.motion_preview_source, "execution_trajectory_snapshot");
     EXPECT_EQ(snapshot.motion_preview_kind, "polyline");
-    EXPECT_EQ(snapshot.motion_preview_sampling_strategy, "process_path_geometry_preserving");
+    EXPECT_EQ(snapshot.motion_preview_sampling_strategy, "execution_trajectory_geometry_preserving");
     EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 0.0f, 0.0f, 1e-4f));
-    EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 0.0f, 25.0f, 1e-4f));
-    EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 25.0f, 25.0f, 1e-4f));
+    EXPECT_TRUE(MotionPreviewContainsPoint(snapshot, 50.0f, 0.0f, 1e-4f));
 }
 
 TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFailsWhenExportRequestIsReleasedAndNoExecutionTruthRemains) {
@@ -2075,7 +3027,9 @@ TEST(DispensingWorkflowUseCaseTest, PreviewGateFailureReasonIsConsistentAcrossSn
 
 TEST(DispensingWorkflowUseCaseTest, StartJobPreservesAuthorityFingerprintAndGluePoints) {
     ScopedTempPbFile temp_pb_file;
-    auto planning_use_case = CreateRealPlanningUseCase();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    ConfigureProfileCompareRuntimeContractConfig(config_port);
+    auto planning_use_case = CreateRealPlanningUseCase(config_port);
     auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
     auto homing_port = std::make_shared<FakeHomingPort>();
@@ -2092,7 +3046,9 @@ TEST(DispensingWorkflowUseCaseTest, StartJobPreservesAuthorityFingerprintAndGlue
         connection_port,
         motion_state_port,
         homing_port,
-        interlock_port);
+        interlock_port,
+        std::make_shared<FakeProductionBaselinePort>(),
+        config_port);
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
     artifact_record.response.artifact_id = "artifact-consistency";
@@ -2286,7 +3242,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanRecipePolicyUpdatesPlanFingerprin
     EXPECT_NE(second_prepare.Value().plan_id, first_prepare.Value().plan_id);
 }
 
-TEST(DispensingWorkflowUseCaseTest, ConfirmPreviewRejectsFlyingShotWhenInMotionTimeTriggerCapabilityMissing) {
+TEST(DispensingWorkflowUseCaseTest, ConfirmPreviewRejectsProfileCompareWhenInMotionPositionTriggerCapabilityMissing) {
     auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
     auto homing_port = std::make_shared<FakeHomingPort>();
@@ -2300,7 +3256,7 @@ TEST(DispensingWorkflowUseCaseTest, ConfirmPreviewRejectsFlyingShotWhenInMotionT
 
     auto motion_device_port = std::dynamic_pointer_cast<FakeMotionDevicePort>(use_case.motion_device_port_);
     ASSERT_TRUE(static_cast<bool>(motion_device_port));
-    motion_device_port->capabilities.trigger.supports_in_motion_time_trigger = false;
+    motion_device_port->capabilities.trigger.supports_in_motion_position_trigger = false;
 
     Siligen::Application::UseCases::Dispensing::ConfirmPreviewRequest request;
     request.plan_id = "plan-missing-time-trigger";
@@ -2309,7 +3265,7 @@ TEST(DispensingWorkflowUseCaseTest, ConfirmPreviewRejectsFlyingShotWhenInMotionT
 
     ASSERT_TRUE(result.IsError());
     EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
-    EXPECT_NE(result.GetError().GetMessage().find("in-motion time trigger"), std::string::npos);
+    EXPECT_NE(result.GetError().GetMessage().find("in-motion position trigger"), std::string::npos);
 }
 
 TEST(DispensingWorkflowUseCaseTest, StartJobRejectsFlyingShotWhenContinuousModeCapabilityMissing) {
@@ -2335,6 +3291,232 @@ TEST(DispensingWorkflowUseCaseTest, StartJobRejectsFlyingShotWhenContinuousModeC
     ASSERT_TRUE(result.IsError());
     EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
     EXPECT_NE(result.GetError().GetMessage().find("continuous mode"), std::string::npos);
+}
+
+TEST(DispensingWorkflowUseCaseTest, StartJobAllowsProfileComparePlanRequiringMultipleScheduleSpansBeforeRuntimeLaunch) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_use_case =
+        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port, execution_use_case);
+    SeedPlan(use_case, "plan-axis-switch-start");
+
+    auto& plan_record = use_case.plans_.at("plan-axis-switch-start");
+    ConfigureAxisSwitchProfileComparePlan(plan_record);
+    motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
+    motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
+    homing_port->homed[LogicalAxisId::X] = true;
+    homing_port->homed[LogicalAxisId::Y] = true;
+
+    Siligen::Application::UseCases::Dispensing::StartJobRequest request;
+    request.plan_id = "plan-axis-switch-start";
+    request.plan_fingerprint = "fp-plan-axis-switch-start";
+    request.target_count = 1;
+    const auto result = use_case.StartJob(request);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
+    EXPECT_TRUE(plan_record.response.import_diagnostics.preview_ready);
+    EXPECT_TRUE(plan_record.response.import_diagnostics.production_ready);
+    ASSERT_TRUE(plan_record.execution_launch.profile_compare_schedule);
+    EXPECT_EQ(plan_record.execution_launch.profile_compare_schedule->spans.size(), 2U);
+    EXPECT_EQ(plan_record.execution_launch.profile_compare_schedule->spans[0].compare_source_axis, 1);
+    EXPECT_EQ(plan_record.execution_launch.profile_compare_schedule->spans[0].start_boundary_trigger_count, 1U);
+    EXPECT_EQ(plan_record.execution_launch.profile_compare_schedule->spans[1].compare_source_axis, 2);
+    EXPECT_EQ(plan_record.execution_launch.profile_compare_schedule->spans[1].start_boundary_trigger_count, 0U);
+}
+
+TEST(DispensingWorkflowUseCaseTest, StartJobCompilesProfileCompareScheduleFromInterpolationAnchorInsteadOfMotionLeadIn) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_use_case =
+        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port, execution_use_case);
+    SeedPlan(use_case, "plan-interpolation-anchor-start");
+
+    auto& plan_record = use_case.plans_.at("plan-interpolation-anchor-start");
+    ConfigureInterpolationAnchoredProfileComparePlan(plan_record);
+    motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
+    motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
+    homing_port->homed[LogicalAxisId::X] = true;
+    homing_port->homed[LogicalAxisId::Y] = true;
+
+    Siligen::Application::UseCases::Dispensing::StartJobRequest request;
+    request.plan_id = "plan-interpolation-anchor-start";
+    request.plan_fingerprint = "fp-plan-interpolation-anchor-start";
+    request.target_count = 1;
+    const auto result = use_case.StartJob(request);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
+    ASSERT_TRUE(plan_record.execution_launch.profile_compare_schedule);
+    ASSERT_EQ(plan_record.execution_launch.profile_compare_schedule->spans.size(), 1U);
+    const auto& span = plan_record.execution_launch.profile_compare_schedule->spans.front();
+    EXPECT_EQ(span.compare_source_axis, 1);
+    EXPECT_EQ(span.start_boundary_trigger_count, 1U);
+    EXPECT_EQ(span.start_position_mm.x, 10.0f);
+    EXPECT_EQ(span.start_position_mm.y, 0.0f);
+    ASSERT_EQ(span.compare_positions_pulse.size(), 2U);
+    EXPECT_GT(span.compare_positions_pulse[0], 0);
+    EXPECT_GT(span.compare_positions_pulse[1], span.compare_positions_pulse[0]);
+}
+
+TEST(DispensingWorkflowUseCaseTest, StartJobRejectsClosedLoopBranchRevisitProfileComparePlanBeforeRuntimeLaunch) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_use_case =
+        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port, execution_use_case);
+    SeedPlan(use_case, "plan-branch-revisit-start");
+
+    auto& plan_record = use_case.plans_.at("plan-branch-revisit-start");
+    ConfigureClosedLoopBranchRevisitProfileComparePlan(plan_record);
+
+    Siligen::Application::UseCases::Dispensing::StartJobRequest request;
+    request.plan_id = "plan-branch-revisit-start";
+    request.plan_fingerprint = "fp-plan-branch-revisit-start";
+    request.target_count = 1;
+    const auto result = use_case.StartJob(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+    EXPECT_NE(result.GetError().GetMessage().find("无法编译正式 execution schedule"), std::string::npos);
+    EXPECT_TRUE(plan_record.response.import_diagnostics.preview_ready);
+    EXPECT_FALSE(plan_record.response.import_diagnostics.production_ready);
+    EXPECT_FALSE(plan_record.response.import_diagnostics.formal_compare_gate.HasValue());
+    EXPECT_NE(
+        plan_record.response.import_diagnostics.summary.find("owner execution package 不满足 formal runtime compare contract"),
+        std::string::npos);
+}
+
+TEST(DispensingWorkflowUseCaseTest, PreparePlanBuildsProfileCompareOwnerContractForRectDiag) {
+    auto temp_pb_file = ScopedTempPbFile();
+    auto path_source = std::make_shared<RectDiagPathSourceStub>();
+    auto pb_service = std::make_shared<DxfPbPreparationService>();
+    auto planning_use_case = std::make_shared<PlanningUseCase>(
+        path_source,
+        Siligen::Application::Ports::Dispensing::AdaptProcessPathFacade(
+            std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>()),
+        Siligen::Application::Ports::Dispensing::AdaptMotionPlanningFacade(
+            std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>()),
+        CreatePlanningOperations(),
+        std::make_shared<FakeConfigurationPort>(),
+        Siligen::Application::Ports::Dispensing::AdaptDxfPreparationService(pb_service));
+
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto use_case = DispensingWorkflowUseCase(
+        MakeDummyShared<IUploadFilePort>(),
+        planning_use_case,
+        std::make_shared<FakeProductionBaselinePort>(),
+        MakeDummyShared<Siligen::Application::Ports::Dispensing::IWorkflowExecutionPort>(),
+        std::make_shared<FakeConfigurationPort>(),
+        connection_port,
+        std::make_shared<FakeMotionDevicePort>(),
+        std::make_shared<FakeDispenserDevicePort>(),
+        motion_state_port,
+        homing_port,
+        interlock_port);
+
+    DispensingWorkflowUseCase::ArtifactRecord artifact_record;
+    artifact_record.response.artifact_id = "artifact-owner-gate";
+    artifact_record.response.filepath = temp_pb_file.string();
+    artifact_record.response.prepared_filepath = temp_pb_file.string();
+    artifact_record.upload_response.filepath = temp_pb_file.string();
+    artifact_record.upload_response.prepared_filepath = temp_pb_file.string();
+    artifact_record.upload_response.success = true;
+    SeedProductionReadyImportDiagnostics(artifact_record);
+    use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
+
+    auto request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
+    request.planning_request.dxf_filepath = temp_pb_file.string();
+    const auto result = use_case.PreparePlan(request);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
+    EXPECT_TRUE(result.Value().import_diagnostics.preview_ready);
+    EXPECT_TRUE(result.Value().import_diagnostics.production_ready);
+    EXPECT_FALSE(result.Value().import_diagnostics.formal_compare_gate.HasValue());
+
+    const auto& plan_record = use_case.plans_.at(result.Value().plan_id);
+    EXPECT_TRUE(plan_record.preview_binding_ready);
+    EXPECT_TRUE(plan_record.execution_binding_ready);
+    EXPECT_TRUE(plan_record.execution_contract_ready);
+    EXPECT_EQ(plan_record.execution_diagnostic_code, "");
+    EXPECT_FALSE(plan_record.execution_assembly.formal_compare_gate.HasValue());
+    EXPECT_FALSE(plan_record.response.import_diagnostics.formal_compare_gate.HasValue());
+}
+
+TEST(DispensingWorkflowUseCaseTest, ProfileCompareOwnerContractKeepsPreviewFlowReadyAfterConfirm) {
+    auto temp_pb_file = ScopedTempPbFile();
+    auto path_source = std::make_shared<RectDiagPathSourceStub>();
+    auto pb_service = std::make_shared<DxfPbPreparationService>();
+    auto planning_use_case = std::make_shared<PlanningUseCase>(
+        path_source,
+        Siligen::Application::Ports::Dispensing::AdaptProcessPathFacade(
+            std::make_shared<Siligen::Application::Services::ProcessPath::ProcessPathFacade>()),
+        Siligen::Application::Ports::Dispensing::AdaptMotionPlanningFacade(
+            std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>()),
+        CreatePlanningOperations(),
+        std::make_shared<FakeConfigurationPort>(),
+        Siligen::Application::Ports::Dispensing::AdaptDxfPreparationService(pb_service));
+
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto use_case = CreateUseCaseWithPlanning(
+        planning_use_case,
+        connection_port,
+        motion_state_port,
+        homing_port,
+        interlock_port);
+
+    DispensingWorkflowUseCase::ArtifactRecord artifact_record;
+    artifact_record.response.artifact_id = "artifact-owner-gate-preview";
+    artifact_record.response.filepath = temp_pb_file.string();
+    artifact_record.response.prepared_filepath = temp_pb_file.string();
+    artifact_record.upload_response.filepath = temp_pb_file.string();
+    artifact_record.upload_response.prepared_filepath = temp_pb_file.string();
+    artifact_record.upload_response.success = true;
+    SeedProductionReadyImportDiagnostics(artifact_record);
+    use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
+
+    auto prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
+    prepare_request.planning_request.dxf_filepath = temp_pb_file.string();
+    const auto prepare_result = use_case.PreparePlan(prepare_request);
+
+    ASSERT_TRUE(prepare_result.IsSuccess()) << prepare_result.GetError().ToString();
+    EXPECT_TRUE(prepare_result.Value().import_diagnostics.preview_ready);
+    EXPECT_TRUE(prepare_result.Value().import_diagnostics.production_ready);
+    EXPECT_FALSE(prepare_result.Value().import_diagnostics.formal_compare_gate.HasValue());
+
+    Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest snapshot_request;
+    snapshot_request.plan_id = prepare_result.Value().plan_id;
+    const auto snapshot_result = use_case.GetPreviewSnapshot(snapshot_request);
+
+    ASSERT_TRUE(snapshot_result.IsSuccess()) << snapshot_result.GetError().ToString();
+    EXPECT_EQ(snapshot_result.Value().preview_state, "snapshot_ready");
+
+    Siligen::Application::UseCases::Dispensing::ConfirmPreviewRequest confirm_request;
+    confirm_request.plan_id = prepare_result.Value().plan_id;
+    confirm_request.snapshot_hash = snapshot_result.Value().snapshot_hash;
+    const auto confirm_result = use_case.ConfirmPreview(confirm_request);
+
+    ASSERT_TRUE(confirm_result.IsSuccess()) << confirm_result.GetError().ToString();
+    EXPECT_EQ(confirm_result.Value().preview_state, "confirmed");
+
+    const auto& plan_record = use_case.plans_.at(prepare_result.Value().plan_id);
+    EXPECT_EQ(plan_record.preview_state, DispensingWorkflowUseCase::PlanPreviewState::CONFIRMED);
+    EXPECT_TRUE(plan_record.response.import_diagnostics.preview_ready);
+    EXPECT_TRUE(plan_record.response.import_diagnostics.production_ready);
+    EXPECT_FALSE(plan_record.response.import_diagnostics.formal_compare_gate.HasValue());
+    EXPECT_EQ(plan_record.preview_failure_reason, prepare_result.Value().preview_failure_reason);
 }
 
 TEST(DispensingWorkflowUseCaseTest, StartJobRejectsPointFlyingShotWhenInMotionPulseCapabilityMissing) {
@@ -2410,7 +3592,10 @@ TEST(DispensingWorkflowUseCaseTest, StartJobRejectsPreviewBindingUnavailableBefo
     auto& plan_record = use_case.plans_.at("plan-binding-mismatch");
     plan_record.execution_binding_ready = false;
     plan_record.execution_assembly.execution_binding_ready = false;
-    plan_record.preview_failure_reason = "authority trigger binding unavailable";
+    plan_record.execution_contract_ready = false;
+    plan_record.execution_failure_reason = "authority trigger binding unavailable";
+    plan_record.execution_assembly.execution_contract_ready = false;
+    plan_record.execution_assembly.execution_failure_reason = "authority trigger binding unavailable";
 
     Siligen::Application::UseCases::Dispensing::StartJobRequest request;
     request.plan_id = "plan-binding-mismatch";
@@ -2421,6 +3606,141 @@ TEST(DispensingWorkflowUseCaseTest, StartJobRejectsPreviewBindingUnavailableBefo
     ASSERT_TRUE(result.IsError());
     EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
     EXPECT_NE(result.GetError().GetMessage().find("binding"), std::string::npos);
+}
+
+TEST(DispensingWorkflowUseCaseTest, StartJobWaitsForExplicitContinueBetweenCycles) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_use_case =
+        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
+    motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
+    homing_port->homed[LogicalAxisId::X] = true;
+    homing_port->homed[LogicalAxisId::Y] = true;
+    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port, execution_use_case);
+    SeedPlan(use_case, "plan-wait-continue");
+
+    Siligen::Application::UseCases::Dispensing::StartJobRequest request;
+    request.plan_id = "plan-wait-continue";
+    request.plan_fingerprint = "fp-plan-wait-continue";
+    request.target_count = 2;
+    request.cycle_advance_mode = JobCycleAdvanceMode::WAIT_FOR_CONTINUE;
+
+    const auto start_result = use_case.StartJob(request);
+    ASSERT_TRUE(start_result.IsSuccess()) << start_result.GetError().ToString();
+
+    RuntimeJobStatusResponse waiting_status;
+    const auto wait_for_continue = SpinUntil(
+        [&]() {
+            const auto status_result = execution_use_case->GetJobStatus(start_result.Value().job_id);
+            if (status_result.IsError()) {
+                return false;
+            }
+            waiting_status = status_result.Value();
+            return waiting_status.state == "awaiting_continue";
+        },
+        std::chrono::milliseconds(1000));
+    ASSERT_TRUE(wait_for_continue);
+    EXPECT_EQ(waiting_status.transition_state, Siligen::Application::UseCases::Dispensing::ExecutionTransitionState::AWAITING_CONTINUE);
+    EXPECT_EQ(waiting_status.completed_count, 1U);
+    EXPECT_EQ(waiting_status.current_cycle, 1U);
+
+    const auto pause_result = execution_use_case->PauseJob(start_result.Value().job_id);
+    ASSERT_TRUE(pause_result.IsError());
+    EXPECT_EQ(pause_result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+
+    const auto resume_result = execution_use_case->ResumeJob(start_result.Value().job_id);
+    ASSERT_TRUE(resume_result.IsError());
+    EXPECT_EQ(resume_result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+
+    const auto continue_result = execution_use_case->ContinueJob(start_result.Value().job_id);
+    ASSERT_TRUE(continue_result.IsSuccess()) << continue_result.GetError().ToString();
+
+    RuntimeJobStatusResponse completed_status;
+    const auto wait_for_completion = SpinUntil(
+        [&]() {
+            const auto status_result = execution_use_case->GetJobStatus(start_result.Value().job_id);
+            if (status_result.IsError()) {
+                return false;
+            }
+            completed_status = status_result.Value();
+            return completed_status.state == "completed";
+        },
+        std::chrono::milliseconds(1000));
+    ASSERT_TRUE(wait_for_completion);
+    EXPECT_EQ(completed_status.completed_count, 2U);
+    EXPECT_EQ(completed_status.target_count, 2U);
+}
+
+TEST(DispensingWorkflowUseCaseTest, StartJobAutoContinueCompletesMultiCycleJobWithoutManualContinue) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_use_case =
+        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
+    motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
+    homing_port->homed[LogicalAxisId::X] = true;
+    homing_port->homed[LogicalAxisId::Y] = true;
+    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port, execution_use_case);
+    SeedPlan(use_case, "plan-auto-continue");
+
+    Siligen::Application::UseCases::Dispensing::StartJobRequest request;
+    request.plan_id = "plan-auto-continue";
+    request.plan_fingerprint = "fp-plan-auto-continue";
+    request.target_count = 2;
+    request.cycle_advance_mode = JobCycleAdvanceMode::AUTO_CONTINUE;
+
+    const auto start_result = use_case.StartJob(request);
+    ASSERT_TRUE(start_result.IsSuccess()) << start_result.GetError().ToString();
+
+    RuntimeJobStatusResponse completed_status;
+    const auto wait_for_completion = SpinUntil(
+        [&]() {
+            const auto status_result = execution_use_case->GetJobStatus(start_result.Value().job_id);
+            if (status_result.IsError()) {
+                return false;
+            }
+            completed_status = status_result.Value();
+            return completed_status.state == "completed";
+        },
+        std::chrono::milliseconds(1000));
+    ASSERT_TRUE(wait_for_completion);
+    EXPECT_EQ(completed_status.completed_count, 2U);
+    EXPECT_EQ(completed_status.target_count, 2U);
+}
+
+TEST(DispensingWorkflowUseCaseTest, ContinueJobRejectsNonWaitingState) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_use_case =
+        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
+    motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
+    homing_port->homed[LogicalAxisId::X] = true;
+    homing_port->homed[LogicalAxisId::Y] = true;
+
+    RuntimeJobStatusResponse runtime_status;
+    runtime_status.job_id = "job-non-waiting";
+    runtime_status.plan_id = "plan-non-waiting";
+    runtime_status.plan_fingerprint = "fp-plan-non-waiting";
+    runtime_status.state = "running";
+    runtime_status.target_count = 2;
+    runtime_status.current_cycle = 1;
+    runtime_status.dry_run = true;
+    execution_use_case->SeedJobStateForTesting(runtime_status);
+    execution_use_case->SetActiveJobForTesting(runtime_status.job_id);
+
+    const auto continue_result = execution_use_case->ContinueJob(runtime_status.job_id);
+
+    ASSERT_TRUE(continue_result.IsError());
+    EXPECT_EQ(continue_result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+    EXPECT_NE(continue_result.GetError().GetMessage().find("not waiting for continue"), std::string::npos);
 }
 
 TEST(DispensingWorkflowUseCaseTest, OnRuntimeJobTerminalClearsConfirmedPreviewState) {
@@ -2439,6 +3759,10 @@ TEST(DispensingWorkflowUseCaseTest, OnRuntimeJobTerminalClearsConfirmedPreviewSt
     plan_record.preview_authority_shared_with_execution = true;
     plan_record.execution_authority_shared_with_execution = true;
     plan_record.execution_binding_ready = true;
+    plan_record.execution_contract_ready = true;
+    plan_record.execution_failure_reason = "stale execution failure";
+    plan_record.execution_diagnostic_code = "stale_execution_diagnostic";
+    plan_record.profile_compare_schedule_failure = "stale profile compare schedule";
     plan_record.preview_spacing_valid = true;
     plan_record.preview_state = DispensingWorkflowUseCase::PlanPreviewState::CONFIRMED;
     plan_record.preview_snapshot_hash = "fp-plan-finish";
@@ -2452,11 +3776,14 @@ TEST(DispensingWorkflowUseCaseTest, OnRuntimeJobTerminalClearsConfirmedPreviewSt
     plan_record.execution_trajectory_points.emplace_back(10.0f, 0.0f, 0.0f);
     plan_record.glue_points.emplace_back(0.0f, 0.0f);
     plan_record.glue_points.emplace_back(10.0f, 0.0f);
+    plan_record.execution_launch.profile_compare_schedule =
+        std::make_shared<ProfileCompareExecutionSchedule>();
     SeedAuthorityMetadata(plan_record, "layout-plan-finish");
     plan_record.execution_assembly.success = true;
     plan_record.execution_assembly.execution_trajectory_points = plan_record.execution_trajectory_points;
     plan_record.execution_assembly.preview_authority_shared_with_execution = true;
     plan_record.execution_assembly.execution_binding_ready = true;
+    plan_record.execution_assembly.execution_contract_ready = true;
     plan_record.execution_assembly.execution_package = plan_record.execution_launch.execution_package;
     plan_record.execution_assembly.authority_trigger_layout = plan_record.authority_trigger_layout;
     const std::size_t retained_glue_points = plan_record.glue_points.size();
@@ -2479,6 +3806,11 @@ TEST(DispensingWorkflowUseCaseTest, OnRuntimeJobTerminalClearsConfirmedPreviewSt
     EXPECT_FALSE(use_case.plans_.at("plan-finish").preview_authority_shared_with_execution);
     EXPECT_FALSE(use_case.plans_.at("plan-finish").execution_authority_shared_with_execution);
     EXPECT_FALSE(use_case.plans_.at("plan-finish").execution_binding_ready);
+    EXPECT_FALSE(use_case.plans_.at("plan-finish").execution_contract_ready);
+    EXPECT_TRUE(use_case.plans_.at("plan-finish").execution_failure_reason.empty());
+    EXPECT_TRUE(use_case.plans_.at("plan-finish").execution_diagnostic_code.empty());
+    EXPECT_FALSE(static_cast<bool>(use_case.plans_.at("plan-finish").execution_launch.profile_compare_schedule));
+    EXPECT_TRUE(use_case.plans_.at("plan-finish").profile_compare_schedule_failure.empty());
     EXPECT_EQ(use_case.plans_.at("plan-finish").glue_points.size(), retained_glue_points);
     EXPECT_EQ(use_case.plans_.at("plan-finish").execution_trajectory_points.size(), retained_preview_points);
     EXPECT_TRUE(use_case.execution_assembly_cache_.find("fp-plan-finish") == use_case.execution_assembly_cache_.end());

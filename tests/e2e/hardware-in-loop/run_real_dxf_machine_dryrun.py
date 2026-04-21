@@ -20,6 +20,7 @@ HIL_DIR = ROOT / "tests" / "e2e" / "hardware-in-loop"
 if str(HIL_DIR) not in sys.path:
     sys.path.insert(0, str(HIL_DIR))
 
+import dxf_hil_observation as hil_observation  # noqa: E402
 from runtime_gateway_harness import (  # noqa: E402
     KNOWN_FAILURE_EXIT_CODE,
     TcpJsonClient,
@@ -41,8 +42,6 @@ DEFAULT_CONTRADICTION_CONSECUTIVE_SAMPLES = 5
 DEFAULT_CONTRADICTION_GRACE_SECONDS = 0.5
 DEFAULT_POSITION_EPSILON_MM = 0.001
 DEFAULT_VELOCITY_EPSILON_MM_S = 0.001
-DEFAULT_JOB_TIMEOUT_SCALE = 2.0
-DEFAULT_JOB_TIMEOUT_BUFFER_SECONDS = 15.0
 CRDSYS_STATUS_PROG_RUN = 0x00000001
 CRDSYS_STATUS_PROG_STOP = 0x00000002
 CRDSYS_STATUS_PROG_ESTOP = 0x00000004
@@ -135,9 +134,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gateway-ready-timeout", type=float, default=8.0)
     parser.add_argument("--connect-timeout", type=float, default=15.0)
     parser.add_argument("--home-timeout", type=float, default=60.0)
-    parser.add_argument("--job-timeout", type=float, default=120.0)
-    parser.add_argument("--job-timeout-scale", type=float, default=DEFAULT_JOB_TIMEOUT_SCALE)
-    parser.add_argument("--job-timeout-buffer-seconds", type=float, default=DEFAULT_JOB_TIMEOUT_BUFFER_SECONDS)
     parser.add_argument("--report-root", type=Path, default=DEFAULT_REPORT_ROOT)
     parser.add_argument("--dispensing-speed-mm-s", type=float, default=10.0)
     parser.add_argument("--dry-run-speed-mm-s", type=float, default=10.0)
@@ -243,6 +239,18 @@ def status_result(payload: dict[str, Any]) -> dict[str, Any]:
     return result if isinstance(result, dict) else {}
 
 
+def normalize_supervision_payload(payload: Any) -> dict[str, Any]:
+    supervision = payload if isinstance(payload, dict) else {}
+    return {
+        "current_state": str(supervision.get("current_state", "")).strip(),
+        "requested_state": str(supervision.get("requested_state", "")).strip(),
+        "state_reason": str(supervision.get("state_reason", "")).strip(),
+        "state_change_in_process": bool(supervision.get("state_change_in_process", False)),
+        "failure_stage": str(supervision.get("failure_stage", "")).strip(),
+        "failure_code": str(supervision.get("failure_code", "")).strip(),
+    }
+
+
 def parse_float(value: Any) -> float | None:
     if value in (None, ""):
         return None
@@ -313,42 +321,11 @@ def normalize_machine_status_sample(
     sampled_at: str,
     poll_index: int,
 ) -> dict[str, Any]:
-    result = status_result(status_payload)
-    io_payload = result.get("io", {})
-    interlocks = result.get("effective_interlocks", {})
-    axes_payload = result.get("axes", {})
-    if not isinstance(io_payload, dict):
-        io_payload = {}
-    if not isinstance(interlocks, dict):
-        interlocks = {}
-    if not isinstance(axes_payload, dict):
-        axes_payload = {}
-
-    axes: dict[str, Any] = {}
-    for axis_name in ("X", "Y"):
-        axis_payload = axes_payload.get(axis_name)
-        if isinstance(axis_payload, dict):
-            axes[axis_name] = normalize_axis_snapshot(axis_payload)
-
-    return {
-        "sampled_at": sampled_at,
-        "poll_index": poll_index,
-        "machine_state": str(result.get("machine_state", "")).strip(),
-        "machine_state_reason": str(result.get("machine_state_reason", "")).strip(),
-        "connected": bool(result.get("connected", False)),
-        "io": {
-            "estop": bool(io_payload.get("estop", False)),
-            "door_open": bool(io_payload.get("door", False)),
-            "door_known": bool(io_payload.get("door_known", False)),
-            "limit_x_pos": bool(io_payload.get("limit_x_pos", False)),
-            "limit_x_neg": bool(io_payload.get("limit_x_neg", False)),
-            "limit_y_pos": bool(io_payload.get("limit_y_pos", False)),
-            "limit_y_neg": bool(io_payload.get("limit_y_neg", False)),
-            "home_boundary_x_active": bool(interlocks.get("home_boundary_x_active", False)),
-            "home_boundary_y_active": bool(interlocks.get("home_boundary_y_active", False)),
-        },
-        "axes": axes,
-    }
+    return hil_observation.normalize_machine_status_sample(
+        status_payload,
+        sampled_at=sampled_at,
+        poll_index=poll_index,
+    )
 
 
 def normalize_job_status_sample(
@@ -357,10 +334,11 @@ def normalize_job_status_sample(
     sampled_at: str,
     poll_index: int,
 ) -> dict[str, Any]:
-    result = dict(status_result(job_payload))
-    result["sampled_at"] = sampled_at
-    result["poll_index"] = poll_index
-    return result
+    return hil_observation.normalize_job_status_sample(
+        job_payload,
+        sampled_at=sampled_at,
+        poll_index=poll_index,
+    )
 
 
 def normalize_coord_status_sample(
@@ -370,39 +348,12 @@ def normalize_coord_status_sample(
     poll_index: int,
     coord_sys: int,
 ) -> dict[str, Any]:
-    result = status_result(coord_payload)
-    position_payload = result.get("position", {})
-    axes_payload = result.get("axes", {})
-    if not isinstance(position_payload, dict):
-        position_payload = {}
-    if not isinstance(axes_payload, dict):
-        axes_payload = {}
-
-    axes: dict[str, Any] = {}
-    for axis_name in ("X", "Y"):
-        axis_payload = axes_payload.get(axis_name)
-        if isinstance(axis_payload, dict):
-            axes[axis_name] = normalize_axis_snapshot(axis_payload)
-
-    return {
-        "sampled_at": sampled_at,
-        "poll_index": poll_index,
-        "coord_sys": coord_sys,
-        "state": parse_int(result.get("state")),
-        "is_moving": bool(result.get("is_moving", False)),
-        "remaining_segments": parse_int(result.get("remaining_segments")),
-        "current_velocity": parse_float(result.get("current_velocity")),
-        "raw_status_word": parse_int(result.get("raw_status_word")),
-        "raw_segment": parse_int(result.get("raw_segment")),
-        "mc_status_ret": parse_int(result.get("mc_status_ret")),
-        "buffer_space": parse_int(result.get("buffer_space")),
-        "lookahead_space": parse_int(result.get("lookahead_space")),
-        "position": {
-            "x": parse_float(position_payload.get("x")),
-            "y": parse_float(position_payload.get("y")),
-        },
-        "axes": axes,
-    }
+    return hil_observation.normalize_coord_status_sample(
+        coord_payload,
+        sampled_at=sampled_at,
+        poll_index=poll_index,
+        coord_sys=coord_sys,
+    )
 
 
 def collect_poll_observation(
@@ -412,71 +363,39 @@ def collect_poll_observation(
     poll_index: int,
     coord_sys: int = DEFAULT_COORD_SYS,
 ) -> dict[str, dict[str, Any]]:
-    sampled_at = utc_now()
-
-    machine_response = client.send_request("status", None, timeout_seconds=5.0)
-    if "error" in machine_response:
-        raise RuntimeError("status failed during dry-run polling: " + truncate_json(machine_response))
-
-    job_response = client.send_request(
-        "dxf.job.status",
-        {"job_id": job_id},
-        timeout_seconds=5.0,
+    return hil_observation.collect_poll_observation(
+        client,
+        job_id=job_id,
+        poll_index=poll_index,
+        coord_sys=coord_sys,
     )
-    if "error" in job_response:
-        raise RuntimeError("dxf.job.status failed: " + truncate_json(job_response))
-
-    coord_response = client.send_request(
-        "motion.coord.status",
-        {"coord_sys": coord_sys},
-        timeout_seconds=5.0,
-    )
-    if "error" in coord_response:
-        raise RuntimeError("motion.coord.status failed: " + truncate_json(coord_response))
-
-    return {
-        "machine_status": normalize_machine_status_sample(
-            machine_response,
-            sampled_at=sampled_at,
-            poll_index=poll_index,
-        ),
-        "job_status": normalize_job_status_sample(
-            job_response,
-            sampled_at=sampled_at,
-            poll_index=poll_index,
-        ),
-        "coord_status": normalize_coord_status_sample(
-            coord_response,
-            sampled_at=sampled_at,
-            poll_index=poll_index,
-            coord_sys=coord_sys,
-        ),
-    }
 
 
 def resolve_job_timeout_budget(
     *,
-    configured_timeout_seconds: float,
-    estimated_time_seconds: Any,
-    timeout_scale: float,
-    timeout_buffer_seconds: float,
+    execution_budget_seconds: Any,
+    execution_budget_breakdown: Any,
 ) -> dict[str, Any]:
-    estimated_seconds = parse_float(estimated_time_seconds)
-    configured_seconds = max(0.0, float(configured_timeout_seconds))
-    scale = max(1.0, float(timeout_scale))
-    buffer_seconds = max(0.0, float(timeout_buffer_seconds))
+    runtime_budget_seconds = parse_float(execution_budget_seconds)
+    breakdown = execution_budget_breakdown if isinstance(execution_budget_breakdown, dict) else {}
+    cycle_budget_seconds = parse_float(breakdown.get("cycle_budget_s"))
+    if runtime_budget_seconds is None or runtime_budget_seconds <= 0.0:
+        raise ValueError("dxf.job.start missing valid execution_budget_s")
 
-    if estimated_seconds is None or estimated_seconds <= 0.0:
-        effective_seconds = configured_seconds
-    else:
-        effective_seconds = max(configured_seconds, estimated_seconds * scale + buffer_seconds)
+    breakdown_total_budget_seconds = parse_float(breakdown.get("total_budget_s"))
+    if breakdown and (breakdown_total_budget_seconds is None or breakdown_total_budget_seconds <= 0.0):
+        raise ValueError("dxf.job.start missing valid execution_budget_breakdown.total_budget_s")
+    if (
+        breakdown_total_budget_seconds is not None
+        and abs(breakdown_total_budget_seconds - runtime_budget_seconds) > 1e-3
+    ):
+        raise ValueError("execution_budget_s does not match execution_budget_breakdown.total_budget_s")
 
     return {
-        "configured_timeout_seconds": configured_seconds,
-        "estimated_time_seconds": estimated_seconds,
-        "timeout_scale": scale,
-        "timeout_buffer_seconds": buffer_seconds,
-        "effective_timeout_seconds": effective_seconds,
+        "execution_budget_seconds": runtime_budget_seconds,
+        "cycle_budget_seconds": cycle_budget_seconds,
+        "execution_budget_breakdown": breakdown,
+        "effective_timeout_seconds": runtime_budget_seconds,
     }
 
 
@@ -485,17 +404,9 @@ def coord_status_indicates_running(
     *,
     velocity_epsilon_mm_s: float,
 ) -> bool:
-    if bool(coord_status.get("is_moving", False)):
-        return True
-    if abs_or_zero(parse_float(coord_status.get("current_velocity"))) > velocity_epsilon_mm_s:
-        return True
-    remaining_segments = parse_int(coord_status.get("remaining_segments"))
-    raw_segment = parse_int(coord_status.get("raw_segment"))
-    raw_status_word = parse_int(coord_status.get("raw_status_word")) or 0
-    return bool(
-        (remaining_segments or 0) > 0
-        or (raw_segment or 0) > 0
-        or (raw_status_word & CRDSYS_STATUS_ACTIVE_MOTION_MASK) != 0
+    return hil_observation.coord_status_indicates_running(
+        coord_status,
+        velocity_epsilon_mm_s=velocity_epsilon_mm_s,
     )
 
 
@@ -505,47 +416,11 @@ def axis_window_shows_motion(
     position_epsilon_mm: float,
     velocity_epsilon_mm_s: float,
 ) -> bool:
-    if not coord_window:
-        return False
-
-    for coord_status in coord_window:
-        if abs_or_zero(parse_float(coord_status.get("current_velocity"))) > velocity_epsilon_mm_s:
-            return True
-        axes_payload = coord_status.get("axes", {})
-        if not isinstance(axes_payload, dict):
-            continue
-        for axis_name in ("X", "Y"):
-            axis_payload = axes_payload.get(axis_name)
-            if not isinstance(axis_payload, dict):
-                continue
-            if abs_or_zero(parse_float(axis_payload.get("velocity"))) > velocity_epsilon_mm_s:
-                return True
-
-    first_sample = coord_window[0]
-    last_sample = coord_window[-1]
-    coord_delta_candidates = []
-    for axis_key in ("x", "y"):
-        first_position = parse_float(first_sample.get("position", {}).get(axis_key))
-        last_position = parse_float(last_sample.get("position", {}).get(axis_key))
-        if first_position is not None and last_position is not None:
-            coord_delta_candidates.append(abs(last_position - first_position))
-    if coord_delta_candidates and any(delta > position_epsilon_mm for delta in coord_delta_candidates):
-        return True
-
-    axis_delta_candidates = []
-    for axis_name in ("X", "Y"):
-        first_axis = first_sample.get("axes", {}).get(axis_name)
-        last_axis = last_sample.get("axes", {}).get(axis_name)
-        if not isinstance(first_axis, dict) or not isinstance(last_axis, dict):
-            continue
-        first_position = parse_float(first_axis.get("position"))
-        last_position = parse_float(last_axis.get("position"))
-        if first_position is not None and last_position is not None:
-            axis_delta_candidates.append(abs(last_position - first_position))
-    if axis_delta_candidates and any(delta > position_epsilon_mm for delta in axis_delta_candidates):
-        return True
-
-    return False
+    return hil_observation.axis_window_shows_motion(
+        coord_window,
+        position_epsilon_mm=position_epsilon_mm,
+        velocity_epsilon_mm_s=velocity_epsilon_mm_s,
+    )
 
 
 def update_runtime_phases(
@@ -622,16 +497,9 @@ def coord_status_is_idle_empty(
     *,
     velocity_epsilon_mm_s: float,
 ) -> bool:
-    remaining_segments = parse_int(coord_status.get("remaining_segments")) or 0
-    raw_segment = parse_int(coord_status.get("raw_segment")) or 0
-    raw_status_word = parse_int(coord_status.get("raw_status_word")) or 0
-    current_velocity = parse_float(coord_status.get("current_velocity")) or 0.0
-    return (
-        not bool(coord_status.get("is_moving", False))
-        and remaining_segments == 0
-        and raw_segment <= 0
-        and (raw_status_word & ~CRDSYS_STATUS_IDLE_ALLOWED_MASK) == 0
-        and abs(current_velocity) <= velocity_epsilon_mm_s
+    return hil_observation.coord_status_is_idle_empty(
+        coord_status,
+        velocity_epsilon_mm_s=velocity_epsilon_mm_s,
     )
 
 
@@ -1139,8 +1007,7 @@ def main() -> int:
             "passed",
             json.dumps(
                 {
-                    "machine_state": status_result(status_before).get("machine_state", ""),
-                    "machine_state_reason": status_result(status_before).get("machine_state_reason", ""),
+                    "supervision": normalize_supervision_payload(status_result(status_before).get("supervision", {})),
                     "safety": safety_before,
                 },
                 ensure_ascii=True,
@@ -1294,7 +1161,6 @@ def main() -> int:
             "dry_run": True,
             "dry_run_speed_mm_s": args.dry_run_speed_mm_s,
             "rapid_speed_mm_s": args.rapid_speed_mm_s,
-            "use_hardware_trigger": False,
             "velocity_trace_enabled": True,
             "velocity_trace_interval_ms": args.velocity_trace_interval_ms,
         }
@@ -1326,23 +1192,10 @@ def main() -> int:
                     "plan_id": plan_id,
                     "plan_fingerprint": plan_fingerprint,
                     "segment_count": plan_result.get("segment_count", 0),
-                    "estimated_time_s": plan_result.get("estimated_time_s", 0),
+                    "execution_nominal_time_s": plan_result.get("execution_nominal_time_s", 0),
                 },
                 ensure_ascii=True,
             ),
-        )
-        job_timeout_budget = resolve_job_timeout_budget(
-            configured_timeout_seconds=args.job_timeout,
-            estimated_time_seconds=plan_result.get("estimated_time_s"),
-            timeout_scale=args.job_timeout_scale,
-            timeout_buffer_seconds=args.job_timeout_buffer_seconds,
-        )
-        artifacts["job_timeout_budget"] = job_timeout_budget
-        add_step(
-            steps,
-            "job-timeout-budget",
-            "passed",
-            json.dumps(job_timeout_budget, ensure_ascii=True),
         )
 
         snapshot_response = client.send_request(
@@ -1387,6 +1240,17 @@ def main() -> int:
         job_id = str(job_result.get("job_id", "")).strip()
         if not job_id:
             raise RuntimeError("job.start missing job_id")
+        job_timeout_budget = resolve_job_timeout_budget(
+            execution_budget_seconds=job_result.get("execution_budget_s"),
+            execution_budget_breakdown=job_result.get("execution_budget_breakdown"),
+        )
+        artifacts["job_timeout_budget"] = job_timeout_budget
+        add_step(
+            steps,
+            "job-timeout-budget",
+            "passed",
+            json.dumps(job_timeout_budget, ensure_ascii=True),
+        )
         append_phase_timeline(
             phase_timeline,
             phase="start",
@@ -1452,10 +1316,8 @@ def main() -> int:
             raise TimeoutError(
                 "job did not reach terminal state within "
                 f"{effective_job_timeout_seconds:.3f}s "
-                f"(configured_floor={job_timeout_budget['configured_timeout_seconds']:.3f}s "
-                f"estimated_time_s={job_timeout_budget['estimated_time_seconds']} "
-                f"scale={job_timeout_budget['timeout_scale']:.3f} "
-                f"buffer_s={job_timeout_budget['timeout_buffer_seconds']:.3f})"
+                f"(execution_budget_s={job_timeout_budget['execution_budget_seconds']} "
+                f"cycle_budget_s={job_timeout_budget['cycle_budget_seconds']})"
             )
 
         artifacts["final_job_status"] = final_job_status

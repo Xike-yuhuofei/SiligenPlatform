@@ -124,6 +124,7 @@ Result<DispenserValveState> ValveAdapter::StartDispenser(
     const DispenserValveParams& params) noexcept
 {
     try {
+        StopProfileCompareWorker();
         JoinTimedDispenserThreadIfFinished();
         JoinPathTriggeredDispenserThreadIfFinished();
 
@@ -146,6 +147,7 @@ Result<DispenserValveState> ValveAdapter::StartDispenser(
         }
 
         ResetDispenserHardwareState("StartDispenser", false);
+        ResetProfileCompareTrackingState();
 
         SILIGEN_LOG_INFO("StartDispenser: 开始启动点胶阀");
         SILIGEN_LOG_INFO("参数: count=" + std::to_string(params.count) +
@@ -223,6 +225,7 @@ Result<DispenserValveState> ValveAdapter::StartDispenser(
 
 Result<DispenserValveState> ValveAdapter::OpenDispenser() noexcept {
     try {
+        StopProfileCompareWorker();
         JoinTimedDispenserThreadIfFinished();
         JoinPathTriggeredDispenserThreadIfFinished();
 
@@ -237,6 +240,7 @@ Result<DispenserValveState> ValveAdapter::OpenDispenser() noexcept {
         }
 
         ResetDispenserHardwareState("OpenDispenser", false);
+        ResetProfileCompareTrackingState();
 
         SILIGEN_LOG_INFO("OpenDispenser: 开始连续打开点胶阀");
 
@@ -278,6 +282,7 @@ Result<DispenserValveState> ValveAdapter::OpenDispenser() noexcept {
 
 Result<void> ValveAdapter::CloseDispenser() noexcept {
     try {
+        StopProfileCompareWorker();
         std::lock_guard<std::mutex> lock(dispenser_mutex_);
 
         if (dispenser_run_mode_ == DispenserRunMode::Timed ||
@@ -291,6 +296,7 @@ Result<void> ValveAdapter::CloseDispenser() noexcept {
             dispenser_continuous_ = false;
             dispenser_run_mode_ = DispenserRunMode::None;
             ResetDispenserHardwareState("CloseDispenser", false);
+            ResetProfileCompareTrackingState();
             return Result<void>::Success();
         }
 
@@ -309,6 +315,7 @@ Result<void> ValveAdapter::CloseDispenser() noexcept {
         dispenser_state_.errorMessage.clear();
         dispenser_continuous_ = false;
         dispenser_run_mode_ = DispenserRunMode::None;
+        ResetProfileCompareTrackingState();
 
         ResetDispenserHardwareState("CloseDispenser", false);
 
@@ -324,6 +331,7 @@ Result<DispenserValveState> ValveAdapter::StartPositionTriggeredDispenser(
     const PositionTriggeredDispenserParams& params) noexcept
 {
     try {
+        StopProfileCompareWorker();
         JoinTimedDispenserThreadIfFinished();
         JoinPathTriggeredDispenserThreadIfFinished();
 
@@ -346,6 +354,7 @@ Result<DispenserValveState> ValveAdapter::StartPositionTriggeredDispenser(
         }
 
         ResetDispenserHardwareState("StartPositionTriggeredDispenser", false);
+        ResetProfileCompareTrackingState();
 
         Domain::Dispensing::DomainServices::DispenseCompensationService compensation_service;
         const auto adjusted_params =
@@ -432,6 +441,7 @@ Result<DispenserValveState> ValveAdapter::StartPositionTriggeredDispenser(
 
 Result<void> ValveAdapter::StopDispenser() noexcept {
     try {
+        StopProfileCompareWorker();
         StopTimedDispenserThread();
         StopPathTriggeredDispenserThread();
 
@@ -446,6 +456,7 @@ Result<void> ValveAdapter::StopDispenser() noexcept {
             path_trigger_start_level_ = 0;
             path_trigger_pulse_width_ms_ = 0;
             ResetDispenserHardwareState("StopDispenser", false);
+            ResetProfileCompareTrackingState();
             return Result<void>::Success();
         }
 
@@ -472,6 +483,7 @@ Result<void> ValveAdapter::StopDispenser() noexcept {
         path_trigger_next_index_ = 0;
         path_trigger_start_level_ = 0;
         path_trigger_pulse_width_ms_ = 0;
+        ResetProfileCompareTrackingState();
 
         SILIGEN_LOG_INFO("StopDispenser: completedCount=" +
                          std::to_string(dispenser_state_.completedCount) +

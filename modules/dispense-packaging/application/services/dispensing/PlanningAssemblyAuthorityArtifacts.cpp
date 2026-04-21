@@ -397,6 +397,14 @@ Result<AuthorityPreviewBuildResult> AssembleAuthorityPreviewArtifacts(
         return Result<AuthorityPreviewBuildResult>::Failure(canonical_process_path_result.GetError());
     }
     const auto canonical_process_path = canonical_process_path_result.Value();
+    trigger_artifacts.authority_trigger_points =
+        ConvertAuthorityTriggerPoints(trigger_artifacts.authority_trigger_layout);
+    trigger_artifacts.positions = CollectAuthorityPositions(trigger_artifacts.authority_trigger_layout);
+    trigger_artifacts.distances.clear();
+    trigger_artifacts.distances.reserve(trigger_artifacts.authority_trigger_points.size());
+    for (const auto& trigger : trigger_artifacts.authority_trigger_points) {
+        trigger_artifacts.distances.push_back(trigger.trigger_distance_mm);
+    }
 
     std::vector<TrajectoryPoint> preview_trajectory_points;
     auto preview_points_result =

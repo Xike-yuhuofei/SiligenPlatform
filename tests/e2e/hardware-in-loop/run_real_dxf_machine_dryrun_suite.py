@@ -66,9 +66,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gateway-ready-timeout", type=float, default=8.0)
     parser.add_argument("--connect-timeout", type=float, default=15.0)
     parser.add_argument("--home-timeout", type=float, default=60.0)
-    parser.add_argument("--job-timeout", type=float, default=120.0)
-    parser.add_argument("--job-timeout-scale", type=float, default=2.0)
-    parser.add_argument("--job-timeout-buffer-seconds", type=float, default=15.0)
     parser.add_argument("--dispensing-speed-mm-s", type=float, default=10.0)
     parser.add_argument("--dry-run-speed-mm-s", type=float, default=10.0)
     parser.add_argument("--rapid-speed-mm-s", type=float, default=20.0)
@@ -123,12 +120,6 @@ def _build_command(
         str(args.connect_timeout),
         "--home-timeout",
         str(args.home_timeout),
-        "--job-timeout",
-        str(args.job_timeout),
-        "--job-timeout-scale",
-        str(args.job_timeout_scale),
-        "--job-timeout-buffer-seconds",
-        str(args.job_timeout_buffer_seconds),
         "--dispensing-speed-mm-s",
         str(args.dispensing_speed_mm_s),
         "--dry-run-speed-mm-s",

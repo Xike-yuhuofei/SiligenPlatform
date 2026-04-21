@@ -1,5 +1,6 @@
 #include "application/services/dispensing/PlanningAssemblyResidualInternals.h"
 
+#include "runtime_execution/contracts/dispensing/ProfileCompareExecutionCompiler.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
 
@@ -25,6 +26,32 @@ Result<void> ValidateExecutionStrategyInput(
     }
 
     return Result<void>::Success();
+}
+
+Result<void> ValidateFormalProfileCompareContract(
+    const ExecutionPackageValidated& execution_package,
+    const Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareRuntimeContract& runtime_contract) {
+    const auto& execution_plan = execution_package.execution_plan;
+    if (execution_plan.production_trigger_mode !=
+        Siligen::Domain::Dispensing::ValueObjects::ProductionTriggerMode::PROFILE_COMPARE) {
+        return Result<void>::Success();
+    }
+
+    const auto compile_result =
+        Siligen::RuntimeExecution::Contracts::Dispensing::CompileProfileCompareExecutionSchedule(
+            {execution_plan, runtime_contract});
+    if (compile_result.IsSuccess()) {
+        return Result<void>::Success();
+    }
+
+    std::string detail = "owner execution package 不满足 formal runtime compare contract";
+    if (!compile_result.GetError().GetMessage().empty()) {
+        detail += ": " + compile_result.GetError().GetMessage();
+    }
+    return Result<void>::Failure(Error(
+        compile_result.GetError().GetCode(),
+        detail,
+        "ExecutionAssemblyService"));
 }
 
 }  // namespace
@@ -123,13 +150,46 @@ Result<ExecutionAssemblyBuildResult> AssembleExecutionArtifacts(const ExecutionA
     result.execution_package = std::move(execution_package);
     result.preview_authority_shared_with_execution = trigger_artifacts.binding_ready;
     result.execution_binding_ready = trigger_artifacts.binding_ready;
+    result.execution_contract_ready = trigger_artifacts.binding_ready;
     result.execution_failure_reason = trigger_artifacts.failure_reason;
     result.authority_trigger_layout = trigger_artifacts.authority_trigger_layout;
+
+    if (result.execution_binding_ready) {
+        Siligen::Domain::Dispensing::Contracts::FormalCompareGateDiagnostic formal_compare_gate;
+        auto profiled_package_result = BuildFormalProfileCompareExecutionPackage(
+            result.execution_package,
+            trigger_artifacts,
+            input.profile_compare_runtime_contract,
+            &formal_compare_gate);
+        if (profiled_package_result.IsError()) {
+            result.execution_contract_ready = false;
+            result.execution_failure_reason =
+                "owner execution package 不满足 formal runtime compare contract: " +
+                profiled_package_result.GetError().GetMessage();
+            result.execution_diagnostic_code = "formal_runtime_compare_contract_unsatisfied";
+            result.formal_compare_gate = std::move(formal_compare_gate);
+        } else {
+            result.execution_package = std::move(profiled_package_result.Value());
+        }
+    }
+
+    if (result.execution_contract_ready) {
+        auto contract_result =
+            ValidateFormalProfileCompareContract(result.execution_package, input.profile_compare_runtime_contract);
+        if (contract_result.IsError()) {
+            result.execution_contract_ready = false;
+            result.execution_failure_reason = contract_result.GetError().GetMessage();
+            result.execution_diagnostic_code = "formal_runtime_compare_contract_unsatisfied";
+        }
+    }
+
     result.export_request = BuildExecutionExportRequest(input, execution_process_path, result);
 
     {
         std::ostringstream oss;
         oss << "execution_binding_ready=" << (result.execution_binding_ready ? 1 : 0)
+            << " execution_contract_ready=" << (result.execution_contract_ready ? 1 : 0)
+            << " execution_diagnostic_code=" << result.execution_diagnostic_code
             << " execution_failure_reason=" << result.execution_failure_reason;
         log_stage("execution_assembly_complete", oss.str());
     }

@@ -48,6 +48,7 @@ enum class DispenseSpanSplitReason {
     BranchOrRevisit,
     MultiContourBoundary,
     ExplicitProcessBoundary,
+    FormalCompareFeasibility,
     ExceptionFeature,
 };
 
@@ -60,6 +61,7 @@ enum class DispenseSpanAnchorPolicy {
 
 enum class DispenseSpanPhaseStrategy {
     FixedZero,
+    CarryForward,
     DeterministicSearch,
     AnchorConstrained,
 };
@@ -150,6 +152,7 @@ struct DispenseSpan {
     std::size_t component_index = 0;
     std::vector<std::size_t> source_segment_indices;
     std::size_t order_index = 0;
+    bool reverse_traversal = false;
     bool closed = false;
     DispenseSpanTopologyType topology_type = DispenseSpanTopologyType::OpenChain;
     TopologyDispatchType dispatch_type = TopologyDispatchType::SingleOpenChain;
@@ -277,6 +280,8 @@ inline const char* ToString(DispenseSpanSplitReason split_reason) {
             return "multi_contour_boundary";
         case DispenseSpanSplitReason::ExplicitProcessBoundary:
             return "explicit_process_boundary";
+        case DispenseSpanSplitReason::FormalCompareFeasibility:
+            return "formal_compare_feasibility";
         case DispenseSpanSplitReason::ExceptionFeature:
             return "exception_feature";
     }
@@ -301,6 +306,8 @@ inline const char* ToString(DispenseSpanPhaseStrategy phase_strategy) {
     switch (phase_strategy) {
         case DispenseSpanPhaseStrategy::FixedZero:
             return "fixed_zero";
+        case DispenseSpanPhaseStrategy::CarryForward:
+            return "carry_forward";
         case DispenseSpanPhaseStrategy::DeterministicSearch:
             return "deterministic_search";
         case DispenseSpanPhaseStrategy::AnchorConstrained:

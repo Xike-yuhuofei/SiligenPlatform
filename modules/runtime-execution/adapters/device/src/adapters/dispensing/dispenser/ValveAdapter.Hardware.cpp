@@ -3,7 +3,10 @@
 
 #include "ValveAdapter.h"
 #include "shared/interfaces/ILoggingService.h"
+#include <algorithm>
 #include <cmath>
+#include <initializer_list>
+#include <limits>
 #include <chrono>
 #include <thread>
 
@@ -18,31 +21,96 @@ using namespace Shared::Types;
 // 私有辅助方法
 // ============================================================
 
-int ValveAdapter::CallMC_CmpPulseOnce(int16 channel, uint32 durationMs) {
-    const short default_start_level =
-        static_cast<short>((dispenser_config_.pulse_type == 0) ? 0 : 1);
-    return CallMC_CmpPulseOnce(channel, durationMs, default_start_level);
+namespace {
+
+constexpr short kSdkCmpPulseType = 2;
+constexpr short kSdkCmpTimerFlagMicroseconds = 0;
+constexpr auto kProfileCompareWorkerPollInterval = std::chrono::milliseconds(2);
+
+struct CompareBufferChunk {
+    std::vector<long> buffer1;
+    std::vector<long> buffer2;
+};
+
+CompareBufferChunk TakeCompareChunk(const std::vector<long>& compare_positions,
+                                    std::size_t submitted_count,
+                                    unsigned short space1,
+                                    unsigned short space2) {
+    CompareBufferChunk chunk;
+    std::size_t cursor = submitted_count;
+    const auto total_count = compare_positions.size();
+
+    const auto buffer1_count = std::min<std::size_t>(
+        static_cast<std::size_t>(space1),
+        total_count - cursor);
+    chunk.buffer1.insert(
+        chunk.buffer1.end(),
+        compare_positions.begin() + static_cast<std::ptrdiff_t>(cursor),
+        compare_positions.begin() + static_cast<std::ptrdiff_t>(cursor + buffer1_count));
+    cursor += buffer1_count;
+
+    const auto buffer2_count = std::min<std::size_t>(
+        static_cast<std::size_t>(space2),
+        total_count - cursor);
+    chunk.buffer2.insert(
+        chunk.buffer2.end(),
+        compare_positions.begin() + static_cast<std::ptrdiff_t>(cursor),
+        compare_positions.begin() + static_cast<std::ptrdiff_t>(cursor + buffer2_count));
+    return chunk;
 }
 
-int ValveAdapter::CallMC_CmpPulseOnce(int16 channel, uint32 durationMs, short startLevel) {
+int32 CompareAxisMaskBit(short compare_source_axis) noexcept {
+    switch (compare_source_axis) {
+        case 1:
+            return 0x01;
+        case 2:
+            return 0x02;
+        case 3:
+            return 0x04;
+        case 4:
+            return 0x08;
+        default:
+            return 0;
+    }
+}
+
+std::string JoinCompareContextFields(const std::initializer_list<std::string>& fields) {
+    std::string context;
+    bool first = true;
+    for (const auto& field : fields) {
+        if (field.empty()) {
+            continue;
+        }
+        if (!first) {
+            context += ", ";
+        }
+        context += field;
+        first = false;
+    }
+    return context;
+}
+
+int CallCmpPulseOnce(Siligen::Infrastructure::Hardware::IMultiCardWrapper& hardware,
+                     const DispenserValveConfig& dispenser_config,
+                     int16 channel,
+                     uint32 duration,
+                     short start_level,
+                     short time_flag,
+                     const char* duration_unit) {
     try {
-        // SDK API 原型 (MultiCardCPP.h:893):
-        // int MC_CmpPluse(short nChannelMask, short nPluseType1, short nPluseType2,
-        //                 short nTime1, short nTime2, short nTimeFlag1, short nTimeFlag2);
-        //
-        // 参数说明:
-        // - nChannelMask: 通道掩码（bit0=通道1，bit1=通道2）
-        // - nPluseType1/2: 输出类型（0=低电平，1=高电平，2=脉冲）
-        // - nTime1/2: 脉冲持续时间（仅脉冲类型时有效）
-        // - nTimeFlag1/2: 时间单位（0=微秒，1=毫秒）
+        if (duration == 0U || duration > static_cast<uint32>(std::numeric_limits<short>::max())) {
+            SILIGEN_LOG_WARNING(std::string("CallCmpPulseOnce: 脉冲宽度超出 SDK short 范围, duration=") +
+                                std::to_string(duration));
+            return 7;
+        }
 
         const short selected_channel = (channel > 0)
                                            ? channel
-                                           : static_cast<short>(dispenser_config_.cmp_channel);
+                                           : static_cast<short>(dispenser_config.cmp_channel);
         const short normalized_start_level =
-            (startLevel == 0 || startLevel == 1)
-                ? startLevel
-                : static_cast<short>((dispenser_config_.pulse_type == 0) ? 0 : 1);
+            (start_level == 0 || start_level == 1)
+                ? start_level
+                : static_cast<short>((dispenser_config.pulse_type == 0) ? 0 : 1);
         short nChannelMask = 0;
         short presetType1 = 0;
         short presetType2 = 0;
@@ -56,44 +124,59 @@ int ValveAdapter::CallMC_CmpPulseOnce(int16 channel, uint32 durationMs, short st
         if (selected_channel == 1) {
             nChannelMask = 0x01;
             presetType1 = normalized_start_level;
-            nPluseType1 = 2;  // 通道1脉冲输出
-            nTime1 = static_cast<short>(durationMs);
-            nTimeFlag1 = 1;   // 毫秒单位
+            nPluseType1 = 2;
+            nTime1 = static_cast<short>(duration);
+            nTimeFlag1 = time_flag;
         } else if (selected_channel == 2) {
             nChannelMask = 0x02;
             presetType2 = normalized_start_level;
-            nPluseType2 = 2;  // 通道2脉冲输出
-            nTime2 = static_cast<short>(durationMs);
-            nTimeFlag2 = 1;   // 毫秒单位
+            nPluseType2 = 2;
+            nTime2 = static_cast<short>(duration);
+            nTimeFlag2 = time_flag;
         } else {
-            SILIGEN_LOG_WARNING("CallMC_CmpPulseOnce: 不支持的CMP通道=" + std::to_string(selected_channel) +
+            SILIGEN_LOG_WARNING("CallCmpPulseOnce: 不支持的CMP通道=" + std::to_string(selected_channel) +
                                 " (仅支持1/2)");
-            return 7;  // 参数错误
+            return 7;
         }
 
-        // 先显式恢复到 contract 指定的空闲电平，再由硬件输出单次脉冲。
-        const int preset_result = hardware_->MC_CmpPluse(
+        const int preset_result = hardware.MC_CmpPluse(
             nChannelMask, presetType1, presetType2, 0, 0, 0, 0);
         if (preset_result != 0) {
-            SILIGEN_LOG_ERROR("CallMC_CmpPulseOnce: 预设起始电平失败: " + std::to_string(preset_result));
+            SILIGEN_LOG_ERROR("CallCmpPulseOnce: 预设起始电平失败: " + std::to_string(preset_result));
             return preset_result;
         }
 
-        SILIGEN_LOG_INFO(std::string("CallMC_CmpPulseOnce: 调用 MC_CmpPluse 单次脉冲: Channel=") +
+        SILIGEN_LOG_INFO(std::string("CallCmpPulseOnce: 调用 MC_CmpPluse 单次脉冲: Channel=") +
                          std::to_string(selected_channel) +
-                         ", PulseWidth=" + std::to_string(durationMs) + "ms" +
+                         ", PulseWidth=" + std::to_string(duration) + duration_unit +
                          ", StartLevel=" + std::to_string(normalized_start_level));
 
-        int result = hardware_->MC_CmpPluse(nChannelMask, nPluseType1, nPluseType2,
-                                            nTime1, nTime2, nTimeFlag1, nTimeFlag2);
+        const int result = hardware.MC_CmpPluse(nChannelMask, nPluseType1, nPluseType2,
+                                                nTime1, nTime2, nTimeFlag1, nTimeFlag2);
         if (result != 0) {
-            SILIGEN_LOG_ERROR("CallMC_CmpPulseOnce: MC_CmpPluse 失败: " + std::to_string(result));
+            SILIGEN_LOG_ERROR("CallCmpPulseOnce: MC_CmpPluse 失败: " + std::to_string(result));
         }
         return result;
     }
     catch (...) {
-        return -9999;  // 异常情况返回特殊错误码
+        return -9999;
     }
+}
+
+}  // namespace
+
+int ValveAdapter::CallMC_CmpPulseOnce(int16 channel, uint32 durationMs) {
+    const short default_start_level =
+        static_cast<short>((dispenser_config_.pulse_type == 0) ? 0 : 1);
+    return CallMC_CmpPulseOnce(channel, durationMs, default_start_level);
+}
+
+int ValveAdapter::CallMC_CmpPulseOnce(int16 channel, uint32 durationMs, short startLevel) {
+    return CallCmpPulseOnce(*hardware_, dispenser_config_, channel, durationMs, startLevel, 1, "ms");
+}
+
+int ValveAdapter::CallMC_CmpPulseOnceMicroseconds(int16 channel, uint32 durationUs, short startLevel) {
+    return CallCmpPulseOnce(*hardware_, dispenser_config_, channel, durationUs, startLevel, 0, "us");
 }
 
 int ValveAdapter::CallMC_SetCmpLevel(bool high) {
@@ -175,6 +258,358 @@ int ValveAdapter::CallMC_StopCmpOutputs(unsigned short channelMask) {
     }
 }
 
+short ValveAdapter::ResolvePrimaryCompareSourceAxis(const ProfileCompareArmRequest& request) const noexcept {
+    if (request.compare_source_axis < 1 || request.compare_source_axis > 4) {
+        return 0;
+    }
+
+    const int32 mask_bit = CompareAxisMaskBit(request.compare_source_axis);
+    if (mask_bit == 0) {
+        return 0;
+    }
+
+    return (dispenser_config_.cmp_axis_mask & mask_bit) != 0
+        ? request.compare_source_axis
+        : 0;
+}
+
+void ValveAdapter::ResetProfileCompareTrackingState() noexcept {
+    profile_compare_status_ = {};
+    profile_compare_start_boundary_trigger_count_ = 0U;
+    profile_compare_worker_active_ = false;
+    profile_compare_session_ = {};
+}
+
+void ValveAdapter::UpdateProfileCompareStatusFromHardwareSnapshot(unsigned short status,
+                                                                  unsigned short remain_data_1,
+                                                                  unsigned short remain_data_2,
+                                                                  unsigned short remain_space_1,
+                                                                  unsigned short remain_space_2) noexcept {
+    profile_compare_session_.last_status = status;
+    profile_compare_session_.last_remain_data_1 = remain_data_1;
+    profile_compare_session_.last_remain_data_2 = remain_data_2;
+    profile_compare_session_.last_remain_space_1 = remain_space_1;
+    profile_compare_session_.last_remain_space_2 = remain_space_2;
+
+    const auto submitted_future_compare_count =
+        static_cast<uint32>(profile_compare_session_.submitted_future_compare_count);
+    const auto queued_future_compare_count =
+        static_cast<uint32>(remain_data_1) + static_cast<uint32>(remain_data_2);
+    const auto completed_future_compare_count =
+        submitted_future_compare_count > queued_future_compare_count
+            ? submitted_future_compare_count - queued_future_compare_count
+            : 0U;
+
+    profile_compare_status_.submitted_future_compare_count = submitted_future_compare_count;
+    profile_compare_status_.hardware_status_word = status;
+    profile_compare_status_.hardware_remain_data_1 = remain_data_1;
+    profile_compare_status_.hardware_remain_data_2 = remain_data_2;
+    profile_compare_status_.hardware_remain_space_1 = remain_space_1;
+    profile_compare_status_.hardware_remain_space_2 = remain_space_2;
+    profile_compare_status_.completed_trigger_count =
+        profile_compare_start_boundary_trigger_count_ + completed_future_compare_count;
+    if (profile_compare_status_.completed_trigger_count > profile_compare_status_.expected_trigger_count) {
+        profile_compare_status_.completed_trigger_count = profile_compare_status_.expected_trigger_count;
+    }
+    profile_compare_status_.remaining_trigger_count =
+        profile_compare_status_.expected_trigger_count - profile_compare_status_.completed_trigger_count;
+    profile_compare_status_.armed =
+        profile_compare_session_.active &&
+        (profile_compare_status_.remaining_trigger_count > 0U);
+}
+
+void ValveAdapter::StopProfileCompareWorker() noexcept {
+    std::thread worker_to_join;
+    {
+        std::lock_guard<std::mutex> lock(dispenser_mutex_);
+        if (profile_compare_worker_thread_.joinable()) {
+            profile_compare_session_.stop_requested = true;
+            worker_to_join = std::move(profile_compare_worker_thread_);
+        } else {
+            profile_compare_session_.stop_requested = true;
+        }
+    }
+
+    if (worker_to_join.joinable()) {
+        worker_to_join.join();
+    }
+
+    std::lock_guard<std::mutex> lock(dispenser_mutex_);
+    profile_compare_worker_active_ = false;
+    profile_compare_session_.stop_requested = false;
+}
+
+void ValveAdapter::ProfileCompareWorkerLoop() noexcept {
+    while (true) {
+        short compare_source_axis = 0;
+        short sdk_pulse_type = 0;
+        short start_level = 0;
+        short pulse_width_us = 0;
+        short abs_position_flag = 0;
+        short timer_flag = 0;
+        std::size_t submitted_count = 0U;
+        std::vector<long> compare_positions;
+        std::string compare_context;
+
+        {
+            std::lock_guard<std::mutex> lock(dispenser_mutex_);
+            if (profile_compare_session_.stop_requested || !profile_compare_session_.active) {
+                profile_compare_worker_active_ = false;
+                return;
+            }
+            compare_source_axis = profile_compare_session_.compare_source_axis;
+            sdk_pulse_type = profile_compare_session_.sdk_pulse_type;
+            start_level = profile_compare_session_.start_level;
+            pulse_width_us = profile_compare_session_.pulse_width_us;
+            abs_position_flag = profile_compare_session_.abs_position_flag;
+            timer_flag = profile_compare_session_.timer_flag;
+            submitted_count = profile_compare_session_.submitted_future_compare_count;
+            compare_positions = profile_compare_session_.compare_positions_pulse;
+            compare_context = profile_compare_session_.compare_context;
+        }
+
+        unsigned short status = 0;
+        unsigned short remain_data_1 = 0;
+        unsigned short remain_data_2 = 0;
+        unsigned short remain_space_1 = 0;
+        unsigned short remain_space_2 = 0;
+        const int status_result = hardware_->MC_CmpBufSts(
+            &status,
+            &remain_data_1,
+            &remain_data_2,
+            &remain_space_1,
+            &remain_space_2);
+        if (status_result != 0) {
+            std::lock_guard<std::mutex> lock(dispenser_mutex_);
+            profile_compare_status_.error_message =
+                CreateErrorMessage(status_result, "MC_CmpBufSts");
+            profile_compare_status_.armed = false;
+            profile_compare_worker_active_ = false;
+            profile_compare_session_.active = false;
+            return;
+        }
+
+        bool should_exit = false;
+        {
+            std::lock_guard<std::mutex> lock(dispenser_mutex_);
+            UpdateProfileCompareStatusFromHardwareSnapshot(
+                status,
+                remain_data_1,
+                remain_data_2,
+                remain_space_1,
+                remain_space_2);
+
+            if (profile_compare_session_.stop_requested || !profile_compare_session_.active) {
+                profile_compare_worker_active_ = false;
+                return;
+            }
+
+            if (profile_compare_session_.submitted_future_compare_count >=
+                    profile_compare_session_.compare_positions_pulse.size() &&
+                remain_data_1 == 0U && remain_data_2 == 0U) {
+                profile_compare_status_.armed = false;
+                profile_compare_worker_active_ = false;
+                profile_compare_session_.active = false;
+                return;
+            }
+
+            should_exit = profile_compare_session_.submitted_future_compare_count >=
+                              profile_compare_session_.compare_positions_pulse.size() ||
+                          (remain_space_1 == 0U && remain_space_2 == 0U);
+        }
+
+        if (!should_exit) {
+            auto chunk = TakeCompareChunk(
+                compare_positions,
+                submitted_count,
+                remain_space_1,
+                remain_space_2);
+            if (!chunk.buffer1.empty() || !chunk.buffer2.empty()) {
+                const int refill_result = hardware_->MC_CmpBufData(
+                    compare_source_axis,
+                    sdk_pulse_type,
+                    start_level,
+                    pulse_width_us,
+                    chunk.buffer1.empty() ? nullptr : chunk.buffer1.data(),
+                    static_cast<short>(chunk.buffer1.size()),
+                    chunk.buffer2.empty() ? nullptr : chunk.buffer2.data(),
+                    static_cast<short>(chunk.buffer2.size()),
+                    abs_position_flag,
+                    timer_flag);
+                if (refill_result != 0) {
+                    std::lock_guard<std::mutex> lock(dispenser_mutex_);
+                    profile_compare_status_.error_message =
+                        CreateErrorMessage(refill_result, "MC_CmpBufData") + "; " + compare_context;
+                    profile_compare_status_.armed = false;
+                    profile_compare_worker_active_ = false;
+                    profile_compare_session_.active = false;
+                    return;
+                }
+
+                std::lock_guard<std::mutex> lock(dispenser_mutex_);
+                profile_compare_session_.submitted_future_compare_count +=
+                    chunk.buffer1.size() + chunk.buffer2.size();
+                UpdateProfileCompareStatusFromHardwareSnapshot(
+                    status,
+                    static_cast<unsigned short>(remain_data_1 + chunk.buffer1.size()),
+                    static_cast<unsigned short>(remain_data_2 + chunk.buffer2.size()),
+                    remain_space_1 >= chunk.buffer1.size()
+                        ? static_cast<unsigned short>(remain_space_1 - chunk.buffer1.size())
+                        : 0,
+                    remain_space_2 >= chunk.buffer2.size()
+                        ? static_cast<unsigned short>(remain_space_2 - chunk.buffer2.size())
+                        : 0);
+            }
+        }
+
+        std::this_thread::sleep_for(kProfileCompareWorkerPollInterval);
+    }
+}
+
+bool ValveAdapter::UseAbsoluteProfileComparePositioning() const noexcept {
+    return dispenser_config_.abs_position_flag != 0;
+}
+
+std::string ValveAdapter::BuildProfileCompareContext(const ProfileCompareArmRequest& request,
+                                                     short compare_source_axis,
+                                                     short cmp_channel,
+                                                     long base_profile_position_pulse,
+                                                     std::size_t future_compare_count,
+                                                     short abs_position_flag,
+                                                     short timer_flag,
+                                                     short sdk_pulse_type,
+                                                     const std::vector<long>* compare_positions) const {
+    long first_compare_position = 0;
+    long last_compare_position = 0;
+    if (compare_positions && !compare_positions->empty()) {
+        first_compare_position = compare_positions->front();
+        last_compare_position = compare_positions->back();
+    }
+
+    return JoinCompareContextFields({
+        "source_axis=" + std::to_string(compare_source_axis),
+        "cmp_channel=" + std::to_string(cmp_channel),
+        "business_trigger_count=" + std::to_string(request.expected_trigger_count),
+        "start_boundary_trigger_count=" + std::to_string(request.start_boundary_trigger_count),
+        "future_compare_count=" + std::to_string(future_compare_count),
+        "pulse_width_us=" + std::to_string(request.pulse_width_us),
+        "start_level=" + std::to_string(request.start_level),
+        "abs_position_flag=" + std::to_string(abs_position_flag),
+        "timer_flag=" + std::to_string(timer_flag),
+        "sdk_pulse_type=" + std::to_string(sdk_pulse_type),
+        "base_profile_position_pulse=" + std::to_string(base_profile_position_pulse),
+        "first_compare_position=" + std::to_string(first_compare_position),
+        "last_compare_position=" + std::to_string(last_compare_position),
+    });
+}
+
+Result<void> ValveAdapter::ValidateProfileCompareRequestForHardware(
+    const ProfileCompareArmRequest& request,
+    short compare_source_axis,
+    short cmp_channel,
+    short abs_position_flag,
+    short timer_flag,
+    short sdk_pulse_type,
+    long base_profile_position_pulse,
+    const std::vector<long>& compare_positions) const noexcept {
+    if (compare_source_axis <= 0) {
+        return Result<void>::Failure(
+            Shared::Types::Error(ErrorCode::INVALID_PARAMETER,
+                                 "profile compare request.compare_source_axis 不在 ValveDispenser.cmp_axis_mask 允许范围内",
+                                 "ValveAdapter"));
+    }
+
+    if (cmp_channel < 1 || cmp_channel > 2) {
+        return Result<void>::Failure(
+            Shared::Types::Error(ErrorCode::INVALID_CONFIG_VALUE,
+                                 "ValveDispenser.cmp_channel 仅支持 1 或 2",
+                                 "ValveAdapter"));
+    }
+
+    if (sdk_pulse_type != kSdkCmpPulseType) {
+        return Result<void>::Failure(
+            Shared::Types::Error(ErrorCode::INVALID_PARAMETER,
+                                 "profile compare 仅支持 MultiCard 脉冲输出模式",
+                                 "ValveAdapter"));
+    }
+
+    if (timer_flag != kSdkCmpTimerFlagMicroseconds) {
+        return Result<void>::Failure(
+            Shared::Types::Error(ErrorCode::INVALID_PARAMETER,
+                                 "profile compare 仅支持微秒时间单位",
+                                 "ValveAdapter"));
+    }
+
+    if (abs_position_flag != 0 && abs_position_flag != 1) {
+        return Result<void>::Failure(
+            Shared::Types::Error(ErrorCode::INVALID_CONFIG_VALUE,
+                                 "ValveDispenser.abs_position_flag 必须为 0 或 1",
+                                 "ValveAdapter"));
+    }
+
+    if (request.expected_trigger_count < request.start_boundary_trigger_count) {
+        return Result<void>::Failure(
+            Shared::Types::Error(ErrorCode::INVALID_PARAMETER,
+                                 "profile compare expected_trigger_count 不能小于起点边界触发数",
+                                 "ValveAdapter"));
+    }
+
+    const auto future_compare_count = static_cast<uint32>(compare_positions.size());
+    if (future_compare_count == 0U) {
+        return Result<void>::Success();
+    }
+
+    if (dispenser_config_.max_count < 1) {
+        return Result<void>::Failure(
+            Shared::Types::Error(ErrorCode::INVALID_CONFIG_VALUE,
+                                 "ValveDispenser.max_count 必须大于 0",
+                                 "ValveAdapter"));
+    }
+
+    if (future_compare_count > static_cast<uint32>(std::numeric_limits<short>::max())) {
+        return Result<void>::Failure(
+            Shared::Types::Error(ErrorCode::INVALID_PARAMETER,
+                                 "profile compare future_compare_count 超出 SDK short 范围",
+                                 "ValveAdapter"));
+    }
+
+    if (future_compare_count > static_cast<uint32>(dispenser_config_.max_count)) {
+        return Result<void>::Failure(
+            Shared::Types::Error(
+                ErrorCode::INVALID_PARAMETER,
+                "profile compare future_compare_count 超出 ValveDispenser.max_count: future_compare_count=" +
+                    std::to_string(future_compare_count) +
+                    ", max_count=" + std::to_string(dispenser_config_.max_count),
+                "ValveAdapter"));
+    }
+
+    long previous_compare_position = 0;
+    bool has_previous_compare_position = false;
+    for (const auto compare_position : compare_positions) {
+        if (abs_position_flag == 1 && compare_position <= base_profile_position_pulse) {
+            return Result<void>::Failure(
+                Shared::Types::Error(
+                    ErrorCode::INVALID_PARAMETER,
+                    "profile compare absolute position 必须严格晚于当前规划位置: compare_position=" +
+                        std::to_string(compare_position) +
+                        ", base_profile_position_pulse=" + std::to_string(base_profile_position_pulse),
+                    "ValveAdapter"));
+        }
+
+        if (has_previous_compare_position && compare_position <= previous_compare_position) {
+            return Result<void>::Failure(
+                Shared::Types::Error(ErrorCode::INVALID_PARAMETER,
+                                     "profile compare 下发到硬件的 compare 位置必须严格递增",
+                                     "ValveAdapter"));
+        }
+
+        previous_compare_position = compare_position;
+        has_previous_compare_position = true;
+    }
+
+    return Result<void>::Success();
+}
+
 int ValveAdapter::ResetDispenserHardwareState(const char* reason, bool strict) noexcept {
     const unsigned short channel_mask = BuildCmpChannelMask();
 
@@ -213,6 +648,362 @@ int ValveAdapter::ResetDispenserHardwareState(const char* reason, bool strict) n
     }
 
     return 0;
+}
+
+Result<void> ValveAdapter::ArmProfileCompare(const ProfileCompareArmRequest& request) noexcept {
+    try {
+        StopProfileCompareWorker();
+        JoinTimedDispenserThreadIfFinished();
+        JoinPathTriggeredDispenserThreadIfFinished();
+
+        std::lock_guard<std::mutex> lock(dispenser_mutex_);
+
+        auto fail_profile_compare = [&](ErrorCode code, const std::string& error_message) -> Result<void> {
+            ResetProfileCompareTrackingState();
+            profile_compare_status_.error_message = error_message;
+            return Result<void>::Failure(
+                Shared::Types::Error(code, error_message, "ValveAdapter"));
+        };
+
+        if (!request.IsValid()) {
+            const auto error_message = request.GetValidationError();
+            return fail_profile_compare(ErrorCode::INVALID_PARAMETER, error_message);
+        }
+
+        if (dispenser_state_.status == DispenserValveStatus::Running ||
+            dispenser_state_.status == DispenserValveStatus::Paused) {
+            return fail_profile_compare(ErrorCode::INVALID_STATE, "点胶阀已在运行中");
+        }
+
+        ResetProfileCompareTrackingState();
+
+        const short compare_source_axis = ResolvePrimaryCompareSourceAxis(request);
+
+        const int reset_result = ResetDispenserHardwareState("ArmProfileCompare", false);
+        if (reset_result != 0) {
+            SILIGEN_LOG_WARNING("ArmProfileCompare: ResetDispenserHardwareState 返回非零值 " +
+                                std::to_string(reset_result) + ",继续尝试装载 compare 程序");
+        }
+
+        const short cmp_channel = static_cast<short>(dispenser_config_.cmp_channel);
+        const short abs_position_flag = UseAbsoluteProfileComparePositioning() ? 1 : 0;
+        const short timer_flag = kSdkCmpTimerFlagMicroseconds;
+        const short sdk_pulse_type = kSdkCmpPulseType;
+        const auto static_validation_result = ValidateProfileCompareRequestForHardware(
+            request,
+            compare_source_axis,
+            cmp_channel,
+            abs_position_flag,
+            timer_flag,
+            sdk_pulse_type,
+            0,
+            request.compare_positions_pulse);
+        if (static_validation_result.IsError()) {
+            return fail_profile_compare(
+                static_validation_result.GetError().GetCode(),
+                static_validation_result.GetError().GetMessage());
+        }
+
+        if (request.start_boundary_trigger_count == 1U) {
+            const int pulse_result = CallMC_CmpPulseOnceMicroseconds(
+                cmp_channel,
+                request.pulse_width_us,
+                request.start_level);
+            if (pulse_result != 0) {
+                const auto error_message = CreateErrorMessage(pulse_result, "MC_CmpPluse");
+                return fail_profile_compare(ErrorCode::HARDWARE_ERROR, error_message);
+            }
+        }
+
+        if (request.compare_positions_pulse.empty()) {
+            profile_compare_start_boundary_trigger_count_ = request.start_boundary_trigger_count;
+            profile_compare_status_.armed = false;
+            profile_compare_status_.expected_trigger_count = request.expected_trigger_count;
+            profile_compare_status_.completed_trigger_count = request.expected_trigger_count;
+            profile_compare_status_.remaining_trigger_count = 0U;
+            profile_compare_status_.error_message.clear();
+
+            SILIGEN_LOG_INFO("ArmProfileCompare: immediate-only request, source_axis=" +
+                             std::to_string(compare_source_axis) +
+                             ", cmp_channel=" + std::to_string(cmp_channel) +
+                             ", business_trigger_count=" + std::to_string(request.expected_trigger_count) +
+                             ", start_boundary_trigger_count=" +
+                             std::to_string(request.start_boundary_trigger_count) +
+                             ", future_compare_count=0" +
+                             ", pulse_width_us=" + std::to_string(request.pulse_width_us));
+            return Result<void>::Success();
+        }
+
+        const int encoder_result = hardware_->MC_EncOff(compare_source_axis);
+        if (encoder_result != 0) {
+            const auto error_message = CreateErrorMessage(encoder_result, "MC_EncOff");
+            return fail_profile_compare(ErrorCode::HARDWARE_ERROR, error_message);
+        }
+
+        const int channel_result = hardware_->MC_CmpBufSetChannel(cmp_channel, cmp_channel);
+        if (channel_result != 0) {
+            const auto error_message = CreateErrorMessage(channel_result, "MC_CmpBufSetChannel");
+            return fail_profile_compare(ErrorCode::HARDWARE_ERROR, error_message);
+        }
+
+        std::vector<long> compare_positions = request.compare_positions_pulse;
+        long current_profile_position_pulse = 0;
+        if (abs_position_flag == 1) {
+            double current_profile_position = 0.0;
+            const int profile_position_result = hardware_->MC_GetPrfPos(compare_source_axis, &current_profile_position);
+            if (profile_position_result != 0) {
+                const auto error_message = CreateErrorMessage(profile_position_result, "MC_GetPrfPos");
+                return fail_profile_compare(ErrorCode::HARDWARE_ERROR, error_message);
+            }
+
+            const auto rounded_current_profile_position = std::llround(current_profile_position);
+            if (rounded_current_profile_position < static_cast<long long>(std::numeric_limits<long>::min()) ||
+                rounded_current_profile_position > static_cast<long long>(std::numeric_limits<long>::max())) {
+                return fail_profile_compare(
+                    ErrorCode::INVALID_PARAMETER,
+                    "MC_GetPrfPos 返回值超出 long 范围");
+            }
+
+            current_profile_position_pulse = static_cast<long>(rounded_current_profile_position);
+
+            // BuildProfileCompareArmRequest 产出的是从当前工艺起点累计的 compare 距离；
+            // 真实板卡在 abs_position_flag=1 下要求绝对 compare 位置，因此需叠加当前规划位置。
+            for (auto& compare_position : compare_positions) {
+                const auto absolute_compare_position =
+                    static_cast<long long>(current_profile_position_pulse) + static_cast<long long>(compare_position);
+                if (absolute_compare_position < static_cast<long long>(std::numeric_limits<long>::min()) ||
+                    absolute_compare_position > static_cast<long long>(std::numeric_limits<long>::max())) {
+                    return fail_profile_compare(
+                        ErrorCode::INVALID_PARAMETER,
+                        "profile compare absolute position 超出 long 范围");
+                }
+                compare_position = static_cast<long>(absolute_compare_position);
+            }
+        }
+
+        const auto validation_result = ValidateProfileCompareRequestForHardware(
+            request,
+            compare_source_axis,
+            cmp_channel,
+            abs_position_flag,
+            timer_flag,
+            sdk_pulse_type,
+            current_profile_position_pulse,
+            compare_positions);
+        if (validation_result.IsError()) {
+            const auto context = BuildProfileCompareContext(
+                request,
+                compare_source_axis,
+                cmp_channel,
+                current_profile_position_pulse,
+                compare_positions.size(),
+                abs_position_flag,
+                timer_flag,
+                sdk_pulse_type,
+                &compare_positions);
+            return fail_profile_compare(
+                validation_result.GetError().GetCode(),
+                validation_result.GetError().GetMessage() + "; " + context);
+        }
+
+        const auto compare_context = BuildProfileCompareContext(
+            request,
+            compare_source_axis,
+            cmp_channel,
+            current_profile_position_pulse,
+            compare_positions.size(),
+            abs_position_flag,
+            timer_flag,
+            sdk_pulse_type,
+            &compare_positions);
+
+        unsigned short status = 0;
+        unsigned short remain_data_1 = 0;
+        unsigned short remain_data_2 = 0;
+        unsigned short remain_space_1 = 0;
+        unsigned short remain_space_2 = 0;
+        const int buffer_status_result = hardware_->MC_CmpBufSts(
+            &status,
+            &remain_data_1,
+            &remain_data_2,
+            &remain_space_1,
+            &remain_space_2);
+        if (buffer_status_result != 0) {
+            const auto error_message = CreateErrorMessage(buffer_status_result, "MC_CmpBufSts");
+            return fail_profile_compare(ErrorCode::HARDWARE_ERROR, error_message + "; " + compare_context);
+        }
+
+        auto initial_chunk = TakeCompareChunk(compare_positions, 0U, remain_space_1, remain_space_2);
+        if (initial_chunk.buffer1.empty() && initial_chunk.buffer2.empty()) {
+            return fail_profile_compare(
+                ErrorCode::CMP_TRIGGER_SETUP_FAILED,
+                "profile compare 板卡 compare buffer 无可用空间; " + compare_context);
+        }
+
+        const int arm_result = hardware_->MC_CmpBufData(
+            compare_source_axis,
+            sdk_pulse_type,
+            request.start_level,
+            static_cast<short>(request.pulse_width_us),
+            initial_chunk.buffer1.empty() ? nullptr : initial_chunk.buffer1.data(),
+            static_cast<short>(initial_chunk.buffer1.size()),
+            initial_chunk.buffer2.empty() ? nullptr : initial_chunk.buffer2.data(),
+            static_cast<short>(initial_chunk.buffer2.size()),
+            abs_position_flag,
+            timer_flag);
+        if (arm_result != 0) {
+            const auto error_message = CreateErrorMessage(arm_result, "MC_CmpBufData");
+            return fail_profile_compare(ErrorCode::HARDWARE_ERROR, error_message + "; " + compare_context);
+        }
+
+        profile_compare_start_boundary_trigger_count_ = request.start_boundary_trigger_count;
+        profile_compare_status_.armed = true;
+        profile_compare_status_.expected_trigger_count = request.expected_trigger_count;
+        profile_compare_status_.completed_trigger_count = request.start_boundary_trigger_count;
+        profile_compare_status_.remaining_trigger_count =
+            request.expected_trigger_count - request.start_boundary_trigger_count;
+        profile_compare_status_.error_message.clear();
+
+        profile_compare_session_.active = true;
+        profile_compare_session_.stop_requested = false;
+        profile_compare_session_.compare_source_axis = compare_source_axis;
+        profile_compare_session_.cmp_channel = cmp_channel;
+        profile_compare_session_.abs_position_flag = abs_position_flag;
+        profile_compare_session_.timer_flag = timer_flag;
+        profile_compare_session_.sdk_pulse_type = sdk_pulse_type;
+        profile_compare_session_.start_level = request.start_level;
+        profile_compare_session_.pulse_width_us = static_cast<short>(request.pulse_width_us);
+        profile_compare_session_.compare_positions_pulse = compare_positions;
+        profile_compare_session_.submitted_future_compare_count =
+            initial_chunk.buffer1.size() + initial_chunk.buffer2.size();
+        profile_compare_session_.compare_context = compare_context;
+        UpdateProfileCompareStatusFromHardwareSnapshot(
+            status,
+            remain_data_1 + static_cast<unsigned short>(initial_chunk.buffer1.size()),
+            remain_data_2 + static_cast<unsigned short>(initial_chunk.buffer2.size()),
+            remain_space_1 >= initial_chunk.buffer1.size()
+                ? static_cast<unsigned short>(remain_space_1 - initial_chunk.buffer1.size())
+                : 0,
+            remain_space_2 >= initial_chunk.buffer2.size()
+                ? static_cast<unsigned short>(remain_space_2 - initial_chunk.buffer2.size())
+                : 0);
+
+        profile_compare_worker_active_ = true;
+        try {
+            profile_compare_worker_thread_ = std::thread([this]() { ProfileCompareWorkerLoop(); });
+        }
+        catch (const std::exception& e) {
+            profile_compare_worker_active_ = false;
+            profile_compare_session_.active = false;
+            profile_compare_status_.armed = false;
+            profile_compare_status_.error_message = std::string("启动 profile compare worker 失败: ") + e.what();
+            return Result<void>::Failure(
+                Shared::Types::Error(
+                    ErrorCode::UNKNOWN_ERROR,
+                    profile_compare_status_.error_message,
+                    "ValveAdapter"));
+        }
+
+        SILIGEN_LOG_INFO("ArmProfileCompare: source_axis=" + std::to_string(compare_source_axis) +
+                         ", cmp_channel=" + std::to_string(cmp_channel) +
+                         ", business_trigger_count=" + std::to_string(request.expected_trigger_count) +
+                         ", start_boundary_trigger_count=" +
+                         std::to_string(request.start_boundary_trigger_count) +
+                         ", future_compare_count=" +
+                          std::to_string(request.compare_positions_pulse.size()) +
+                         ", initial_buffer1_load=" + std::to_string(initial_chunk.buffer1.size()) +
+                         ", initial_buffer2_load=" + std::to_string(initial_chunk.buffer2.size()) +
+                         ", pulse_width_us=" + std::to_string(request.pulse_width_us) +
+                         ", abs_position_flag=" + std::to_string(abs_position_flag) +
+                         ", base_profile_position_pulse=" + std::to_string(current_profile_position_pulse));
+        return Result<void>::Success();
+    }
+    catch (const std::exception& e) {
+        ResetProfileCompareTrackingState();
+        profile_compare_status_.error_message = std::string("Exception: ") + e.what();
+        return Result<void>::Failure(
+            Shared::Types::Error(ErrorCode::UNKNOWN_ERROR, profile_compare_status_.error_message, "ValveAdapter"));
+    }
+}
+
+Result<void> ValveAdapter::DisarmProfileCompare() noexcept {
+    try {
+        StopProfileCompareWorker();
+        std::lock_guard<std::mutex> lock(dispenser_mutex_);
+        const int reset_result = ResetDispenserHardwareState("DisarmProfileCompare", false);
+        if (reset_result != 0) {
+            const auto error_message = CreateErrorMessage(reset_result, "DisarmProfileCompare");
+            ResetProfileCompareTrackingState();
+            profile_compare_status_.error_message = error_message;
+            return Result<void>::Failure(
+                Shared::Types::Error(ErrorCode::HARDWARE_ERROR, error_message, "ValveAdapter"));
+        }
+
+        ResetProfileCompareTrackingState();
+        return Result<void>::Success();
+    }
+    catch (const std::exception& e) {
+        ResetProfileCompareTrackingState();
+        profile_compare_status_.error_message = std::string("Exception: ") + e.what();
+        return Result<void>::Failure(
+            Shared::Types::Error(ErrorCode::UNKNOWN_ERROR, profile_compare_status_.error_message, "ValveAdapter"));
+    }
+}
+
+Result<ProfileCompareStatus> ValveAdapter::GetProfileCompareStatus() noexcept {
+    try {
+        std::lock_guard<std::mutex> lock(dispenser_mutex_);
+        if (!profile_compare_status_.armed && !profile_compare_session_.active) {
+            return Result<ProfileCompareStatus>::Success(profile_compare_status_);
+        }
+
+        // The background worker is already the single owner polling MC_CmpBufSts and
+        // materializing the hardware snapshot into profile_compare_status_. Returning the
+        // cached snapshot here avoids foreground/background contention on the board API while
+        // a compare session is active.
+        if (profile_compare_session_.active && profile_compare_worker_active_) {
+            return Result<ProfileCompareStatus>::Success(profile_compare_status_);
+        }
+
+        unsigned short status = 0;
+        unsigned short remain_data_1 = 0;
+        unsigned short remain_data_2 = 0;
+        unsigned short remain_space_1 = 0;
+        unsigned short remain_space_2 = 0;
+        const int result = hardware_->MC_CmpBufSts(
+            &status,
+            &remain_data_1,
+            &remain_data_2,
+            &remain_space_1,
+            &remain_space_2);
+        if (result != 0) {
+            const auto error_message = CreateErrorMessage(result, "MC_CmpBufSts");
+            profile_compare_status_.error_message = error_message;
+            return Result<ProfileCompareStatus>::Failure(
+                Shared::Types::Error(ErrorCode::HARDWARE_ERROR, error_message, "ValveAdapter"));
+        }
+
+        UpdateProfileCompareStatusFromHardwareSnapshot(
+            status,
+            remain_data_1,
+            remain_data_2,
+            remain_space_1,
+            remain_space_2);
+        if (profile_compare_session_.submitted_future_compare_count >=
+                profile_compare_session_.compare_positions_pulse.size() &&
+            remain_data_1 == 0U && remain_data_2 == 0U) {
+            profile_compare_status_.armed = false;
+            profile_compare_session_.active = false;
+            profile_compare_worker_active_ = false;
+        }
+        profile_compare_status_.error_message.clear();
+        return Result<ProfileCompareStatus>::Success(profile_compare_status_);
+    }
+    catch (const std::exception& e) {
+        profile_compare_status_.error_message = std::string("Exception: ") + e.what();
+        return Result<ProfileCompareStatus>::Failure(
+            Shared::Types::Error(ErrorCode::UNKNOWN_ERROR, profile_compare_status_.error_message, "ValveAdapter"));
+    }
 }
 
 bool ValveAdapter::ReadCoordinateSystemPositionPulse(short coordinate_system,

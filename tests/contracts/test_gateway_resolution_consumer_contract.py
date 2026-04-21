@@ -27,6 +27,20 @@ def _write_matching_cmake_cache(build_root: Path) -> Path:
     return cache_path
 
 
+def _capture_text_if_exists(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    return path.read_text(encoding="utf-8")
+
+
+def _restore_text(path: Path, original_text: str | None) -> None:
+    if original_text is None:
+        if path.exists():
+            path.unlink()
+        return
+    path.write_text(original_text, encoding="utf-8")
+
+
 def _probe_resolved_executable(script_path: Path, fake_file_name: str, localappdata_root: Path) -> Path:
     probe_code = "\n".join(
         (
@@ -67,6 +81,10 @@ def test_gateway_resolution_consumers_prefer_workspace_build_ca_over_workspace_b
     workspace_hmi_fix_exe = ROOT / "build" / "hmi-home-fix" / "bin" / "Debug" / fake_file_name
     legacy_localappdata = tmp_path / "localappdata"
     legacy_exe = legacy_localappdata / "SiligenSuite" / "control-apps-build" / "bin" / "Debug" / fake_file_name
+    workspace_ca_cache_path = ROOT / "build" / "ca" / "CMakeCache.txt"
+    workspace_build_cache_path = ROOT / "build" / "CMakeCache.txt"
+    workspace_ca_cache_original = _capture_text_if_exists(workspace_ca_cache_path)
+    workspace_build_cache_original = _capture_text_if_exists(workspace_build_cache_path)
 
     for path in (workspace_ca_exe, workspace_build_exe, workspace_hmi_fix_exe, legacy_exe):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -83,6 +101,7 @@ def test_gateway_resolution_consumers_prefer_workspace_build_ca_over_workspace_b
         for path in (workspace_ca_exe, workspace_build_exe, workspace_hmi_fix_exe):
             if path.exists():
                 path.unlink()
-        for cache_path in (workspace_ca_cache, workspace_build_cache, legacy_cache):
-            if cache_path.exists():
-                cache_path.unlink()
+        _restore_text(workspace_ca_cache, workspace_ca_cache_original)
+        _restore_text(workspace_build_cache, workspace_build_cache_original)
+        if legacy_cache.exists():
+            legacy_cache.unlink()

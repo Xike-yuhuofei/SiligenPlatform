@@ -1,0 +1,7 @@
+{
+  "id": "25",
+  "method": "dxf.job.continue",
+  "params": {
+    "job_id": "job-20260321-001"
+  }
+}

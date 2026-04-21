@@ -99,6 +99,8 @@ target_link_libraries(siligen_runtime_execution_workflow_seam_tests PRIVATE
     siligen_process_path_application_public
     siligen_motion_planning_application_public
     siligen_dxf_geometry_application_public
+    siligen_dxf_geometry_pb_path_source_adapter
+    siligen_runtime_process_bootstrap_public
     siligen_shared
     siligen_types
     siligen_utils

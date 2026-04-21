@@ -45,6 +45,8 @@ class DxfState:
     })
     running: bool = False
     paused: bool = False
+    awaiting_continue: bool = False
+    auto_continue: bool = False
     progress: float = 0.0
     current_segment: int = 0
     preview_snapshot_hash: str = ""
@@ -83,7 +85,6 @@ def _build_preview_signature(filepath: str, params: Dict) -> str:
         "curve_chain_angle_deg": float(params.get("curve_chain_angle_deg", 0.0)),
         "curve_chain_max_segment_mm": float(params.get("curve_chain_max_segment_mm", 0.0)),
         "max_jerk": float(params.get("max_jerk", 0.0)),
-        "use_hardware_trigger": bool(params.get("use_hardware_trigger", True)),
         "use_interpolation_planner": bool(params.get("use_interpolation_planner", False)),
         "interpolation_algorithm": int(params.get("interpolation_algorithm", 0)),
     }
@@ -126,6 +127,87 @@ def _load_ini_config(path: Optional[str]) -> Tuple[Dict[str, Dict[str, str]], Op
 
     config = _normalize_config(parser)
     return config, None, _hash_config(config)
+
+
+def _resolve_execution_nominal_time_s(dxf: DxfState) -> float:
+    if dxf.plan_speed_mm_s <= 0.0:
+        return 0.0
+    return dxf.total_length / max(0.1, dxf.plan_speed_mm_s)
+
+
+def _resolve_execution_owner_span_count(dxf: DxfState) -> int:
+    if dxf.segment_count <= 0:
+        return 0
+    return max(1, math.ceil(dxf.segment_count / 40.0))
+
+
+def _build_execution_plan_summary(dxf: DxfState) -> Dict[str, object]:
+    owner_span_count = _resolve_execution_owner_span_count(dxf)
+    point_count = max(dxf.segment_count * 2, 0)
+    return {
+        "geometry_kind": "path",
+        "execution_strategy": "flying_shot",
+        "production_trigger_mode": "profile_compare",
+        "interpolation_segment_count": dxf.segment_count,
+        "interpolation_point_count": point_count,
+        "motion_point_count": point_count,
+        "trigger_count": dxf.segment_count,
+        "owner_span_count": owner_span_count,
+        "immediate_only_span_count": 0,
+        "future_compare_span_count": owner_span_count,
+    }
+
+
+def _build_execution_budget_breakdown(dxf: DxfState, target_count: int) -> Dict[str, object]:
+    normalized_target_count = max(0, int(target_count))
+    if normalized_target_count <= 0:
+        return {
+            "execution_nominal_time_s": 0.0,
+            "motion_completion_grace_s": 0.0,
+            "owner_span_count": 0,
+            "owner_span_overhead_s": 0.0,
+            "cycle_budget_s": 0.0,
+            "target_count": 0,
+            "total_budget_s": 0.0,
+        }
+
+    execution_nominal_time_s = _resolve_execution_nominal_time_s(dxf)
+    if execution_nominal_time_s <= 0.0:
+        motion_completion_grace_s = 5.0
+    else:
+        motion_completion_grace_s = max(
+            5.0,
+            min(30.0, math.ceil(execution_nominal_time_s * 1000.0 * 0.15) / 1000.0),
+        )
+    owner_span_count = _resolve_execution_owner_span_count(dxf)
+    owner_span_overhead_s = float(owner_span_count)
+    cycle_budget_s = execution_nominal_time_s + motion_completion_grace_s + owner_span_overhead_s
+    total_budget_s = cycle_budget_s * normalized_target_count
+    return {
+        "execution_nominal_time_s": execution_nominal_time_s,
+        "motion_completion_grace_s": motion_completion_grace_s,
+        "owner_span_count": owner_span_count,
+        "owner_span_overhead_s": owner_span_overhead_s,
+        "cycle_budget_s": cycle_budget_s,
+        "target_count": normalized_target_count,
+        "total_budget_s": total_budget_s,
+    }
+
+
+def _build_import_contract(dxf: DxfState) -> Dict[str, object]:
+    return {
+        "prepared_filepath": dxf.filepath.replace(".dxf", ".pb"),
+        "import_result_classification": "success",
+        "import_preview_ready": True,
+        "import_production_ready": True,
+        "formal_compare_gate": None,
+        "import_summary": "DXF import succeeded and is ready for production.",
+        "import_primary_code": "",
+        "import_warning_codes": [],
+        "import_error_codes": [],
+        "import_resolved_units": "mm",
+        "import_resolved_unit_scale": 1.0,
+    }
 
 
 class MockState:
@@ -248,10 +330,18 @@ class MockState:
                             if self.dxf.completed_count >= max(1, self.dxf.target_count):
                                 self.dxf.running = False
                                 self.dxf.paused = False
+                                self.dxf.awaiting_continue = False
                                 self.dxf.progress = 100.0
                                 break
                             self.dxf.progress = 0.0
                             self.dxf.current_segment = 0
+                            if self.dxf.auto_continue:
+                                pass
+                            else:
+                                self.dxf.running = False
+                                self.dxf.paused = False
+                                self.dxf.awaiting_continue = True
+                                break
                 time.sleep(0.2)
 
         if self._dxf_thread and self._dxf_thread.is_alive():
@@ -281,6 +371,26 @@ class MockState:
         if not axis.enabled:
             return 0
         return 1 if abs(axis.velocity) > 1e-6 else 0
+
+    def _current_dxf_job_state(self) -> str:
+        if not self.dxf.current_job_id:
+            return "idle"
+        if self.dxf.paused:
+            return "paused"
+        if self.dxf.awaiting_continue:
+            return "awaiting_continue"
+        if self.dxf.running:
+            return "running"
+        return "completed"
+
+    def _current_dxf_cycle(self) -> int:
+        if not self.dxf.current_job_id:
+            return 0
+        if self.dxf.running or self.dxf.paused:
+            return min(self.dxf.target_count, self.dxf.completed_count + 1)
+        if self.dxf.awaiting_continue:
+            return min(self.dxf.target_count, max(1, self.dxf.completed_count))
+        return min(self.dxf.target_count, self.dxf.completed_count)
 
     def _motion_coord_status(self, coord_sys: int) -> Dict:
         if not self.hardware_connected:
@@ -385,14 +495,7 @@ class MockState:
                     axis.enabled = True
                 return {"result": {"connected": True, "message": "Mock hardware connected"}}
             if method == "status":
-                job_execution_state = "idle"
-                if self.dxf.current_job_id:
-                    if self.dxf.paused:
-                        job_execution_state = "paused"
-                    elif self.dxf.running:
-                        job_execution_state = "running"
-                    else:
-                        job_execution_state = "completed"
+                job_execution_state = self._current_dxf_job_state()
                 if not self.hardware_connected:
                     supervision_current_state = "Disconnected"
                     supervision_reason = "hardware_disconnected"
@@ -402,13 +505,14 @@ class MockState:
                 elif self.io.door:
                     supervision_current_state = "Fault"
                     supervision_reason = "interlock_door_open"
+                elif self.dxf.awaiting_continue:
+                    supervision_current_state = "Idle"
+                    supervision_reason = "job_waiting_continue"
                 else:
                     supervision_current_state = "Running" if self.dxf.running else ("Paused" if self.dxf.paused else "Idle")
                     supervision_reason = (
                         "job_running" if self.dxf.running else ("job_paused" if self.dxf.paused else "idle")
                     )
-                machine_state = supervision_current_state
-                machine_state_reason = supervision_reason
                 effective_interlocks = {
                     "estop_active": self.io.estop,
                     "estop_known": True,
@@ -442,8 +546,6 @@ class MockState:
                     "result": {
                         "connected": self.hardware_connected,
                         "connection_state": "connected" if self.hardware_connected else "disconnected",
-                        "machine_state": machine_state,
-                        "machine_state_reason": machine_state_reason,
                         "supervision": supervision,
                         "interlock_latched": bool(self.io.estop or self.io.door),
                         "job_execution": {
@@ -453,10 +555,7 @@ class MockState:
                             "state": job_execution_state,
                             "target_count": self.dxf.target_count,
                             "completed_count": self.dxf.completed_count,
-                            "current_cycle": min(
-                                self.dxf.target_count,
-                                self.dxf.completed_count + (1 if self.dxf.running else 0),
-                            ),
+                            "current_cycle": self._current_dxf_cycle(),
                             "current_segment": self.dxf.current_segment,
                             "total_segments": self.dxf.segment_count,
                             "cycle_progress_percent": int(self.dxf.progress),
@@ -465,6 +564,14 @@ class MockState:
                                 / max(1, self.dxf.target_count)
                             ) if self.dxf.current_job_id else 0,
                             "elapsed_seconds": 0.0,
+                            "execution_budget_s": _build_execution_budget_breakdown(
+                                self.dxf,
+                                self.dxf.target_count if self.dxf.current_job_id else 0,
+                            )["total_budget_s"],
+                            "execution_budget_breakdown": _build_execution_budget_breakdown(
+                                self.dxf,
+                                self.dxf.target_count if self.dxf.current_job_id else 0,
+                            ),
                             "error_message": "",
                             "dry_run": self.dxf.job_dry_run,
                         },
@@ -863,25 +970,22 @@ class MockState:
                 self.dxf.plan_dry_run = bool(params.get("dry_run", False))
                 self.dxf.plan_speed_mm_s = speed
                 point_count = max(self.dxf.segment_count * 2, 0)
+                execution_nominal_time_s = _resolve_execution_nominal_time_s(self.dxf)
                 return {
                     "result": {
                         "artifact_id": self.dxf.artifact_id,
                         "plan_id": snapshot_id,
                         "plan_fingerprint": snapshot_hash,
-                        "prepared_filepath": self.dxf.filepath.replace(".dxf", ".pb"),
                         "segment_count": self.dxf.segment_count,
                         "point_count": point_count,
                         "total_length_mm": self.dxf.total_length,
-                        "estimated_time_s": self.dxf.total_length / speed,
-                        "import_result_classification": "success",
-                        "import_preview_ready": True,
-                        "import_production_ready": True,
-                        "import_summary": "DXF import succeeded and is ready for production.",
-                        "import_primary_code": "",
-                        "import_warning_codes": [],
-                        "import_error_codes": [],
-                        "import_resolved_units": "mm",
-                        "import_resolved_unit_scale": 1.0,
+                        "execution_nominal_time_s": execution_nominal_time_s,
+                        "execution_plan_summary": _build_execution_plan_summary(self.dxf),
+                        **_build_import_contract(self.dxf),
+                        "preview_validation_classification": "pass",
+                        "preview_exception_reason": "",
+                        "preview_failure_reason": "",
+                        "preview_diagnostic_code": "",
                         "generated_at": generated_at,
                     }
                 }
@@ -900,12 +1004,15 @@ class MockState:
                 self.dxf.current_job_id = f"job-{int(time.time() * 1000)}"
                 self.dxf.running = True
                 self.dxf.paused = False
+                self.dxf.awaiting_continue = False
                 self.dxf.progress = 0.0
                 self.dxf.current_segment = 0
                 self.dxf.target_count = max(1, int(params.get("target_count", 1)))
                 self.dxf.completed_count = 0
                 self.dxf.job_dry_run = self.dxf.plan_dry_run
+                self.dxf.auto_continue = bool(params.get("auto_continue", True))
                 self._start_dxf_progress()
+                execution_budget_breakdown = _build_execution_budget_breakdown(self.dxf, self.dxf.target_count)
                 return {
                     "result": {
                         "started": True,
@@ -913,12 +1020,25 @@ class MockState:
                         "plan_id": self.dxf.current_plan_id,
                         "plan_fingerprint": self.dxf.preview_snapshot_hash,
                         "target_count": self.dxf.target_count,
+                        "execution_budget_s": execution_budget_breakdown["total_budget_s"],
+                        "execution_budget_breakdown": execution_budget_breakdown,
+                        **_build_import_contract(self.dxf),
+                        "performance_profile": {
+                            "execution_cache_hit": False,
+                            "execution_joined_inflight": False,
+                            "execution_wait_ms": 0,
+                            "motion_plan_ms": 0,
+                            "assembly_ms": 0,
+                            "export_ms": 0,
+                            "execution_total_ms": 0,
+                        },
                     }
                 }
             if method == "dxf.job.status":
                 if not self.dxf.current_job_id:
                     return {"error": {"code": -32010, "message": "job not found"}}
-                state = "paused" if self.dxf.paused else ("running" if self.dxf.running else "completed")
+                state = self._current_dxf_job_state()
+                execution_budget_breakdown = _build_execution_budget_breakdown(self.dxf, self.dxf.target_count)
                 return {
                     "result": {
                         "job_id": self.dxf.current_job_id,
@@ -927,7 +1047,7 @@ class MockState:
                         "state": state,
                         "target_count": self.dxf.target_count,
                         "completed_count": self.dxf.completed_count,
-                        "current_cycle": min(self.dxf.target_count, self.dxf.completed_count + (1 if self.dxf.running else 0)),
+                        "current_cycle": self._current_dxf_cycle(),
                         "current_segment": self.dxf.current_segment,
                         "total_segments": self.dxf.segment_count,
                         "cycle_progress_percent": int(self.dxf.progress),
@@ -935,6 +1055,8 @@ class MockState:
                             ((self.dxf.completed_count * 100.0) + self.dxf.progress) / max(1, self.dxf.target_count)
                         ),
                         "elapsed_seconds": 0.0,
+                        "execution_budget_s": execution_budget_breakdown["total_budget_s"],
+                        "execution_budget_breakdown": execution_budget_breakdown,
                         "error_message": "",
                         "dry_run": self.dxf.job_dry_run,
                     }
@@ -945,7 +1067,7 @@ class MockState:
                 self.dxf.paused = True
                 return {"result": {"paused": True, "job_id": self.dxf.current_job_id}}
             if method == "dxf.job.resume":
-                if not self.dxf.current_job_id:
+                if not self.dxf.current_job_id or self.dxf.awaiting_continue:
                     return {"error": {"code": -32002, "message": "DXF not paused"}}
                 interlock_error = self._interlock_error()
                 if interlock_error:
@@ -954,16 +1076,29 @@ class MockState:
                 self.dxf.running = True
                 self._start_dxf_progress()
                 return {"result": {"resumed": True, "job_id": self.dxf.current_job_id}}
+            if method == "dxf.job.continue":
+                if not self.dxf.current_job_id or not self.dxf.awaiting_continue:
+                    return {"error": {"code": -32020, "message": "DXF not waiting for continue"}}
+                interlock_error = self._interlock_error()
+                if interlock_error:
+                    return interlock_error
+                self.dxf.awaiting_continue = False
+                self.dxf.paused = False
+                self.dxf.running = True
+                self._start_dxf_progress()
+                return {"result": {"continued": True, "job_id": self.dxf.current_job_id}}
             if method in ("dxf.job.stop", "dxf.job.cancel"):
                 job_id = self.dxf.current_job_id
                 self.dxf.running = False
                 self.dxf.paused = False
+                self.dxf.awaiting_continue = False
                 self.dxf.progress = 0.0
                 self.dxf.current_segment = 0
                 self.dxf.current_job_id = ""
                 self.dxf.completed_count = 0
                 self.dxf.target_count = 0
                 self.dxf.job_dry_run = False
+                self.dxf.auto_continue = False
                 if method == "dxf.job.cancel":
                     return {"result": {"cancelled": True, "job_id": job_id, "transition_state": "canceling"}}
                 return {"result": {"stopped": True, "job_id": job_id, "transition_state": "stopping"}}

@@ -37,6 +37,7 @@ ExecutionTransitionState ResolveActiveJobTransitionState(const MotionReadinessQu
 
 bool IsBlockingJobState(ExecutionTransitionState state) {
     return state == ExecutionTransitionState::RUNNING ||
+           state == ExecutionTransitionState::AWAITING_CONTINUE ||
            state == ExecutionTransitionState::STOPPING ||
            state == ExecutionTransitionState::CANCELING ||
            state == ExecutionTransitionState::PAUSING ||
@@ -97,6 +98,8 @@ const char* ToString(ExecutionTransitionState state) noexcept {
             return "pending";
         case ExecutionTransitionState::RUNNING:
             return "running";
+        case ExecutionTransitionState::AWAITING_CONTINUE:
+            return "awaiting_continue";
         case ExecutionTransitionState::STOPPING:
             return "stopping";
         case ExecutionTransitionState::CANCELING:
@@ -131,6 +134,9 @@ ExecutionTransitionState ParseExecutionTransitionState(std::string_view state) n
     }
     if (normalized == "pending") {
         return ExecutionTransitionState::PENDING;
+    }
+    if (normalized == "awaiting_continue") {
+        return ExecutionTransitionState::AWAITING_CONTINUE;
     }
     if (normalized == "stopping") {
         return ExecutionTransitionState::STOPPING;

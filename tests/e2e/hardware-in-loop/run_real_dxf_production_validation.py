@@ -18,6 +18,15 @@ HIL_DIR = ROOT / "tests" / "e2e" / "hardware-in-loop"
 if str(HIL_DIR) not in sys.path:
     sys.path.insert(0, str(HIL_DIR))
 
+from dxf_hil_observation import (  # noqa: E402
+    DEFAULT_COORD_SYS,
+    DEFAULT_POSITION_EPSILON_MM,
+    DEFAULT_VELOCITY_EPSILON_MM_S,
+    collect_poll_observation,
+    normalize_job_status_sample,
+    normalize_machine_status_sample,
+    summarize_blocked_motion_observation,
+)
 from run_real_dxf_machine_dryrun import (  # noqa: E402
     active_home_boundary_axes,
     extract_machine_position,
@@ -25,6 +34,7 @@ from run_real_dxf_machine_dryrun import (  # noqa: E402
     parse_float,
     parse_int,
     require_safe_for_motion,
+    resolve_job_timeout_budget,
     status_result,
     summarize_safety,
 )
@@ -41,15 +51,15 @@ from runtime_gateway_harness import (  # noqa: E402
 from recipe_runtime_support import resolve_active_recipe  # noqa: E402
 
 
-DEFAULT_REPO_DXF = ROOT / "samples" / "dxf" / "rect_diag.dxf"
-DEFAULT_ARCHIVE_DXF = Path(r"D:\Projects\SiligenSuite\uploads\dxf\archive\rect_diag.dxf")
+DEFAULT_REPO_DXF = ROOT / "samples" / "dxf" / "Demo-1.dxf"
+DEFAULT_ARCHIVE_DXF = Path(r"D:\Projects\SiligenSuite\uploads\dxf\archive\Demo-1.dxf")
 DEFAULT_CONFIG_PATH = ROOT / "config" / "machine" / "machine_config.ini"
 DEFAULT_REPORT_ROOT = ROOT / "tests" / "reports" / "online-validation" / "dxf-production-path-trigger"
 DEFAULT_STATUS_POLL_INTERVAL_SECONDS = 0.10
 DEFAULT_GATEWAY_READY_TIMEOUT = 8.0
 DEFAULT_CONNECT_TIMEOUT = 15.0
 DEFAULT_HOME_TIMEOUT = 60.0
-DEFAULT_JOB_TIMEOUT = 120.0
+DEFAULT_BLOCKED_OBSERVATION_WINDOW_SECONDS = 1.0
 DEFAULT_DISPENSING_SPEED_MM_S = 10.0
 DEFAULT_RAPID_SPEED_MM_S = 10.0
 DEFAULT_MIN_AXIS_COVERAGE_RATIO = 0.80
@@ -65,6 +75,19 @@ PATH_TRIGGER_DONE_RE = re.compile(
 STOP_DISPENSER_RE = re.compile(
     r"StopDispenser: completedCount=(?P<completed_count>\d+), totalCount=(?P<total_count>\d+)"
 )
+PROFILE_COMPARE_REQUEST_RE = re.compile(
+    r"profile_compare_request_summary span_index=(?P<span_index>\d+) compare_source_axis=(?P<compare_source_axis>-?\d+) "
+    r"business_trigger_count=(?P<business_trigger_count>\d+) "
+    r"start_boundary_trigger_count=(?P<start_boundary_trigger_count>\d+) "
+    r"future_compare_count=(?P<future_compare_count>\d+)"
+)
+CALL_CMP_PULSE_ONCE_RE = re.compile(r"CallCmpPulseOnce:")
+SUPPLY_OPEN_RE = re.compile(r"OpenSupply: 供胶阀 .* 打开成功")
+SUPPLY_CLOSE_RE = re.compile(r"CloseSupply: 供胶阀 .* 关闭成功")
+EXECUTION_COMPLETE_RE = re.compile(
+    r"点胶执行完成: segments=(?P<segments>\d+), distance=(?P<distance_mm>\d+(?:\.\d+)?)mm, time=(?P<time_s>\d+(?:\.\d+)?)s"
+)
+BOOT_MARK_TEMPLATE = "###BOOT_MARK:TCP_SERVER_DIAG_20260203###"
 
 
 def utc_now() -> str:
@@ -89,8 +112,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gateway-ready-timeout", type=float, default=DEFAULT_GATEWAY_READY_TIMEOUT)
     parser.add_argument("--connect-timeout", type=float, default=DEFAULT_CONNECT_TIMEOUT)
     parser.add_argument("--home-timeout", type=float, default=DEFAULT_HOME_TIMEOUT)
-    parser.add_argument("--job-timeout", type=float, default=DEFAULT_JOB_TIMEOUT)
     parser.add_argument("--status-poll-interval-seconds", type=float, default=DEFAULT_STATUS_POLL_INTERVAL_SECONDS)
+    parser.add_argument(
+        "--blocked-observation-window-seconds",
+        type=float,
+        default=DEFAULT_BLOCKED_OBSERVATION_WINDOW_SECONDS,
+    )
     parser.add_argument("--dispensing-speed-mm-s", type=float, default=DEFAULT_DISPENSING_SPEED_MM_S)
     parser.add_argument("--rapid-speed-mm-s", type=float, default=DEFAULT_RAPID_SPEED_MM_S)
     parser.add_argument("--target-count", type=int, default=1)
@@ -101,6 +128,8 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     if args.status_poll_interval_seconds <= 0:
         raise SystemExit("--status-poll-interval-seconds must be > 0")
+    if args.blocked_observation_window_seconds <= 0:
+        raise SystemExit("--blocked-observation-window-seconds must be > 0")
     if args.target_count <= 0:
         raise SystemExit("--target-count must be > 0")
     if args.min_axis_coverage_ratio < 0.0:
@@ -131,54 +160,6 @@ def add_step(
             "timestamp": utc_now(),
         }
     )
-
-
-def normalize_job_status_sample(
-    payload: dict[str, Any],
-    *,
-    sampled_at: str,
-    poll_index: int,
-) -> dict[str, Any]:
-    result = status_result(payload)
-    return {
-        "sampled_at": sampled_at,
-        "poll_index": poll_index,
-        "job_id": str(result.get("job_id", "")).strip(),
-        "state": str(result.get("state", "")).strip(),
-        "completed_count": int(parse_int(result.get("completed_count")) or 0),
-        "target_count": int(parse_int(result.get("target_count")) or 0),
-        "current_cycle": int(parse_int(result.get("current_cycle")) or 0),
-        "current_segment": int(parse_int(result.get("current_segment")) or 0),
-        "total_segments": int(parse_int(result.get("total_segments")) or 0),
-        "cycle_progress_percent": int(parse_int(result.get("cycle_progress_percent")) or 0),
-        "overall_progress_percent": int(parse_int(result.get("overall_progress_percent")) or 0),
-        "elapsed_seconds": float(parse_float(result.get("elapsed_seconds")) or 0.0),
-        "error_message": str(result.get("error_message", "")).strip(),
-        "dry_run": bool(result.get("dry_run", False)),
-    }
-
-
-def normalize_machine_status_sample(
-    payload: dict[str, Any],
-    *,
-    sampled_at: str,
-    poll_index: int,
-) -> dict[str, Any]:
-    result = status_result(payload)
-    job_execution = result.get("job_execution", {})
-    if not isinstance(job_execution, dict):
-        job_execution = {}
-    return {
-        "sampled_at": sampled_at,
-        "poll_index": poll_index,
-        "job_execution": {
-            "job_id": str(job_execution.get("job_id", "")).strip(),
-            "state": str(job_execution.get("state", "")).strip(),
-        },
-        "connected": bool(result.get("connected", False)),
-        "position": extract_machine_position(payload),
-        "safety": summarize_safety(payload),
-    }
 
 
 def summarize_points_bbox(points: list[dict[str, Any]]) -> dict[str, Any]:
@@ -248,6 +229,40 @@ def compute_axis_coverage(
     }
 
 
+def observe_blocked_motion_window(
+    client: TcpJsonClient,
+    *,
+    machine_status_history: list[dict[str, Any]],
+    coord_status_history: list[dict[str, Any]],
+    observation_window_seconds: float,
+    poll_interval_seconds: float,
+    coord_sys: int = DEFAULT_COORD_SYS,
+    position_epsilon_mm: float = DEFAULT_POSITION_EPSILON_MM,
+    velocity_epsilon_mm_s: float = DEFAULT_VELOCITY_EPSILON_MM_S,
+) -> dict[str, Any]:
+    deadline = time.time() + observation_window_seconds
+    poll_index = 0
+    while True:
+        observation = collect_poll_observation(
+            client,
+            poll_index=poll_index,
+            coord_sys=coord_sys,
+        )
+        machine_status_history.append(observation["machine_status"])
+        coord_status_history.append(observation["coord_status"])
+        poll_index += 1
+        if time.time() >= deadline:
+            break
+        time.sleep(min(poll_interval_seconds, max(0.0, deadline - time.time())))
+
+    return summarize_blocked_motion_observation(
+        machine_status_history,
+        coord_status_history,
+        position_epsilon_mm=position_epsilon_mm,
+        velocity_epsilon_mm_s=velocity_epsilon_mm_s,
+    )
+
+
 def extract_last_log_match(log_text: str, pattern: re.Pattern[str]) -> dict[str, Any]:
     last_match: re.Match[str] | None = None
     last_line = ""
@@ -268,12 +283,87 @@ def extract_last_log_match(log_text: str, pattern: re.Pattern[str]) -> dict[str,
     return payload
 
 
-def extract_gateway_log_summary(log_text: str) -> dict[str, Any]:
+def count_log_matches(log_text: str, pattern: re.Pattern[str]) -> int:
+    count = 0
+    for line in log_text.splitlines():
+        if pattern.search(line):
+            count += 1
+    return count
+
+
+def summarize_profile_compare_requests(log_text: str) -> dict[str, Any]:
+    request_count = 0
+    sum_business_trigger_count = 0
+    sum_start_boundary_trigger_count = 0
+    sum_future_compare_count = 0
+    first_span_index: int | None = None
+    last_span_index: int | None = None
+    first_line = ""
+    last_line = ""
+
+    for line in log_text.splitlines():
+        match = PROFILE_COMPARE_REQUEST_RE.search(line)
+        if match is None:
+            continue
+        span_index = int(match.group("span_index"))
+        business_trigger_count = int(match.group("business_trigger_count"))
+        start_boundary_trigger_count = int(match.group("start_boundary_trigger_count"))
+        future_compare_count = int(match.group("future_compare_count"))
+
+        if request_count == 0:
+            first_span_index = span_index
+            first_line = line
+
+        request_count += 1
+        sum_business_trigger_count += business_trigger_count
+        sum_start_boundary_trigger_count += start_boundary_trigger_count
+        sum_future_compare_count += future_compare_count
+        last_span_index = span_index
+        last_line = line
+
+    if request_count <= 0:
+        return {}
+
     return {
+        "request_count": request_count,
+        "sum_business_trigger_count": sum_business_trigger_count,
+        "sum_start_boundary_trigger_count": sum_start_boundary_trigger_count,
+        "sum_future_compare_count": sum_future_compare_count,
+        "first_span_index": first_span_index,
+        "last_span_index": last_span_index,
+        "first_line": first_line,
+        "last_line": last_line,
+    }
+
+
+def extract_gateway_log_summary(log_text: str) -> dict[str, Any]:
+    profile_compare_summary = summarize_profile_compare_requests(log_text)
+    execution_complete = extract_last_log_match(log_text, EXECUTION_COMPLETE_RE)
+    execution_complete["count"] = count_log_matches(log_text, EXECUTION_COMPLETE_RE)
+
+    summary = {
         "start_position_triggered": extract_last_log_match(log_text, START_TRIGGER_RE),
         "path_trigger_completed": extract_last_log_match(log_text, PATH_TRIGGER_DONE_RE),
         "stop_dispenser": extract_last_log_match(log_text, STOP_DISPENSER_RE),
+        "profile_compare_request_summary": profile_compare_summary,
+        "cmp_pulse_once": {
+            "count": count_log_matches(log_text, CALL_CMP_PULSE_ONCE_RE),
+        },
+        "supply_open": {
+            "count": count_log_matches(log_text, SUPPLY_OPEN_RE),
+        },
+        "supply_close": {
+            "count": count_log_matches(log_text, SUPPLY_CLOSE_RE),
+        },
+        "execution_complete": execution_complete,
     }
+    if profile_compare_summary:
+        summary["execution_mode"] = "profile_compare"
+    elif summary["path_trigger_completed"] or summary["stop_dispenser"] or summary["start_position_triggered"]:
+        summary["execution_mode"] = "path_trigger"
+    else:
+        summary["execution_mode"] = "unknown"
+    return summary
 
 
 def read_log_segment(log_path: Path, start_offset: int) -> str:
@@ -290,27 +380,135 @@ def read_log_segment(log_path: Path, start_offset: int) -> str:
     return segment.decode("utf-8", errors="replace")
 
 
+def read_current_run_gateway_log(log_path: Path, start_offset: int, effective_port: int) -> str:
+    appended_text = read_log_segment(log_path, start_offset)
+    if effective_port <= 0 or not log_path.exists():
+        return appended_text
+
+    try:
+        full_text = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return appended_text
+
+    boot_pattern = re.compile(
+        rf"(?m)^\[[^\r\n]+\].*{re.escape(BOOT_MARK_TEMPLATE)} .*port={re.escape(str(effective_port))}\s*$"
+    )
+    matches = list(boot_pattern.finditer(full_text))
+    if matches:
+        return full_text[matches[-1].start():]
+    return appended_text or full_text
+
+
+def extract_error_message(payload: dict[str, Any]) -> str:
+    error = payload.get("error", {}) if isinstance(payload, dict) else {}
+    if not isinstance(error, dict):
+        return ""
+    return str(error.get("message", "")).strip()
+
+
+def is_production_blocked_gate(gate: Any) -> bool:
+    return isinstance(gate, dict) and str(gate.get("status", "")).strip() == "production_blocked"
+
+
+def resolve_validation_mode(plan_result: dict[str, Any]) -> str:
+    if (
+        bool(plan_result.get("import_preview_ready", False))
+        and not bool(plan_result.get("import_production_ready", True))
+        and is_production_blocked_gate(plan_result.get("formal_compare_gate"))
+    ):
+        return "production_blocked"
+    return "production_execution"
+
+
 def build_checklist(
     *,
+    validation_mode: str,
+    plan_result: dict[str, Any],
     snapshot_result: dict[str, Any],
+    job_start_response: dict[str, Any],
+    blocked_motion_observation: dict[str, Any],
     final_job_status: dict[str, Any],
     log_summary: dict[str, Any],
     axis_coverage: dict[str, Any],
+    observed_bbox: dict[str, Any],
     min_axis_coverage_ratio: float,
 ) -> dict[str, dict[str, Any]]:
     expected_trigger_count = int(parse_int(snapshot_result.get("glue_point_count")) or 0)
+    job_start_error_message = extract_error_message(job_start_response)
+    import_summary = str(plan_result.get("import_summary", "")).strip()
+    formal_compare_gate = plan_result.get("formal_compare_gate")
+
+    if validation_mode == "production_blocked":
+        return {
+            "preview_source_planned_glue_snapshot": {
+                "passed": str(snapshot_result.get("preview_source", "")).strip() == "planned_glue_snapshot",
+            },
+            "preview_kind_glue_points": {
+                "passed": str(snapshot_result.get("preview_kind", "")).strip() == "glue_points",
+            },
+            "expected_trigger_count_positive": {
+                "passed": expected_trigger_count > 0,
+            },
+            "plan_import_preview_ready": {
+                "passed": bool(plan_result.get("import_preview_ready", False)),
+            },
+            "plan_import_production_blocked": {
+                "passed": not bool(plan_result.get("import_production_ready", True)),
+            },
+            "formal_compare_gate_present": {
+                "passed": isinstance(formal_compare_gate, dict) and bool(formal_compare_gate),
+            },
+            "formal_compare_gate_status_production_blocked": {
+                "passed": is_production_blocked_gate(formal_compare_gate),
+            },
+            "job_start_rejected": {
+                "passed": bool(job_start_error_message),
+            },
+            "job_start_matches_import_summary": {
+                "passed": bool(job_start_error_message) and job_start_error_message == import_summary,
+            },
+            "post_block_observation_samples_collected": {
+                "passed": int(parse_int(blocked_motion_observation.get("sample_count")) or 0) > 0,
+            },
+            "no_axis_motion_observed_after_block": {
+                "passed": (
+                    int(parse_int(blocked_motion_observation.get("sample_count")) or 0) > 0
+                    and not bool(blocked_motion_observation.get("motion_detected", True))
+                ),
+            },
+        }
+
     path_trigger_completed = int(
         parse_int((log_summary.get("path_trigger_completed") or {}).get("completed_count")) or 0
     )
     stop_completed = int(parse_int((log_summary.get("stop_dispenser") or {}).get("completed_count")) or 0)
     stop_total = int(parse_int((log_summary.get("stop_dispenser") or {}).get("total_count")) or 0)
+    profile_compare_summary = log_summary.get("profile_compare_request_summary") or {}
+    profile_compare_request_count = int(parse_int(profile_compare_summary.get("request_count")) or 0)
+    profile_compare_business_count = int(
+        parse_int(profile_compare_summary.get("sum_business_trigger_count")) or 0
+    )
+    profile_compare_start_boundary_count = int(
+        parse_int(profile_compare_summary.get("sum_start_boundary_trigger_count")) or 0
+    )
+    cmp_pulse_once_count = int(parse_int((log_summary.get("cmp_pulse_once") or {}).get("count")) or 0)
+    supply_close_count = int(parse_int((log_summary.get("supply_close") or {}).get("count")) or 0)
+    execution_complete_count = int(parse_int((log_summary.get("execution_complete") or {}).get("count")) or 0)
+    execution_mode = str(log_summary.get("execution_mode", "")).strip().lower()
+    if not execution_mode:
+        if profile_compare_request_count > 0:
+            execution_mode = "profile_compare"
+        elif path_trigger_completed > 0 or stop_completed > 0:
+            execution_mode = "path_trigger"
+        else:
+            execution_mode = "unknown"
 
     final_state = str(final_job_status.get("state", "")).strip().lower()
     final_progress = int(parse_int(final_job_status.get("overall_progress_percent")) or 0)
     final_completed_count = int(parse_int(final_job_status.get("completed_count")) or 0)
     final_target_count = int(parse_int(final_job_status.get("target_count")) or 0)
-
-    return {
+    completed_cycles = final_completed_count if final_completed_count > 0 else 0
+    common_checks = {
         "preview_source_planned_glue_snapshot": {
             "passed": str(snapshot_result.get("preview_source", "")).strip() == "planned_glue_snapshot",
         },
@@ -329,6 +527,49 @@ def build_checklist(
         "job_completed_count_matches_target_count": {
             "passed": final_completed_count == final_target_count and final_target_count > 0,
         },
+    }
+
+    if execution_mode == "profile_compare":
+        return {
+            **common_checks,
+            "profile_compare_business_trigger_matches_glue_count": {
+                "passed": (
+                    profile_compare_business_count == expected_trigger_count
+                    and expected_trigger_count > 0
+                    and profile_compare_request_count > 0
+                ),
+                "expected_trigger_count": expected_trigger_count,
+                "observed_business_trigger_count": profile_compare_business_count,
+                "request_count": profile_compare_request_count,
+            },
+            "profile_compare_immediate_pulse_matches_start_boundary_count": {
+                "passed": (
+                    cmp_pulse_once_count == profile_compare_start_boundary_count
+                    and profile_compare_request_count > 0
+                ),
+                "observed_cmp_pulse_once_count": cmp_pulse_once_count,
+                "observed_start_boundary_trigger_count": profile_compare_start_boundary_count,
+            },
+            "execution_complete_logged": {
+                "passed": execution_complete_count >= completed_cycles and completed_cycles > 0,
+                "observed_execution_complete_count": execution_complete_count,
+                "expected_completed_cycles": completed_cycles,
+            },
+            "supply_close_logged": {
+                "passed": supply_close_count >= completed_cycles and completed_cycles > 0,
+                "observed_supply_close_count": supply_close_count,
+                "expected_completed_cycles": completed_cycles,
+            },
+            "observed_axis_coverage": {
+                "passed": (
+                    float(axis_coverage.get("ratio_x", 0.0)) >= min_axis_coverage_ratio
+                    and float(axis_coverage.get("ratio_y", 0.0)) >= min_axis_coverage_ratio
+                ),
+            },
+        }
+
+    return {
+        **common_checks,
         "path_trigger_completed_matches_glue_count": {
             "passed": path_trigger_completed == expected_trigger_count and expected_trigger_count > 0,
         },
@@ -344,11 +585,102 @@ def build_checklist(
     }
 
 
-def determine_overall_status(checks: dict[str, dict[str, Any]]) -> tuple[str, str]:
+def determine_overall_status(checks: dict[str, dict[str, Any]], validation_mode: str) -> tuple[str, str]:
     failed = [name for name, payload in checks.items() if not bool(payload.get("passed", False))]
     if not failed:
-        return "passed", ""
+        return ("known_failure", "") if validation_mode == "production_blocked" else ("passed", "")
     return "failed", "failed checks: " + ", ".join(failed)
+
+
+def build_timing_summary(
+    *,
+    validation_mode: str,
+    plan_result: dict[str, Any],
+    artifacts: dict[str, Any],
+    log_summary: dict[str, Any],
+) -> dict[str, Any]:
+    if validation_mode == "production_blocked":
+        return {
+            "validation_mode": validation_mode,
+            "execution_nominal_time_s": None,
+            "execution_budget_s": None,
+            "execution_budget_breakdown": None,
+            "observed_execution_time_s": None,
+        }
+
+    job_timeout_budget = artifacts.get("job_timeout_budget", {})
+    execution_budget_breakdown = None
+    if isinstance(job_timeout_budget, dict):
+        raw_breakdown = job_timeout_budget.get("execution_budget_breakdown")
+        if isinstance(raw_breakdown, dict):
+            execution_budget_breakdown = raw_breakdown
+
+    return {
+        "validation_mode": validation_mode,
+        "execution_nominal_time_s": parse_float(plan_result.get("execution_nominal_time_s")),
+        "execution_budget_s": parse_float(job_timeout_budget.get("execution_budget_seconds")),
+        "execution_budget_breakdown": execution_budget_breakdown,
+        "observed_execution_time_s": parse_float((log_summary.get("execution_complete") or {}).get("time_s")),
+    }
+
+
+def build_report(
+    *,
+    args: argparse.Namespace,
+    effective_port: int,
+    overall_status: str,
+    validation_mode: str,
+    job_id: str,
+    plan_id: str,
+    plan_fingerprint: str,
+    snapshot_hash: str,
+    steps: list[dict[str, str]],
+    checks: dict[str, dict[str, Any]],
+    axis_coverage: dict[str, Any],
+    expected_bbox: dict[str, Any],
+    observed_bbox: dict[str, Any],
+    blocked_motion_observation: dict[str, Any],
+    snapshot_result: dict[str, Any],
+    final_job_status: dict[str, Any],
+    log_summary: dict[str, Any],
+    artifacts: dict[str, Any],
+    error_message: str,
+    plan_result: dict[str, Any],
+) -> dict[str, Any]:
+    timing_summary = build_timing_summary(
+        validation_mode=validation_mode,
+        plan_result=plan_result,
+        artifacts=artifacts,
+        log_summary=log_summary,
+    )
+    return {
+        "generated_at": utc_now(),
+        "overall_status": overall_status,
+        "validation_mode": validation_mode,
+        "gateway_exe": str(args.gateway_exe),
+        "gateway_host": args.host,
+        "gateway_port": effective_port,
+        "config_path": str(args.config_path),
+        "dxf_file": str(args.dxf_file),
+        "job_id": job_id,
+        "plan_id": plan_id,
+        "plan_fingerprint": plan_fingerprint,
+        "snapshot_hash": snapshot_hash,
+        "timing_summary": timing_summary,
+        "steps": steps,
+        "checks": checks,
+        "axis_coverage": axis_coverage,
+        "expected_bbox": expected_bbox,
+        "observed_bbox": observed_bbox,
+        "blocked_motion_observation": blocked_motion_observation,
+        "snapshot_result": snapshot_result,
+        "final_job_status": final_job_status,
+        "log_summary": log_summary,
+        "artifacts": {
+            **artifacts,
+        },
+        "error": error_message,
+    }
 
 
 def build_report_markdown(report: dict[str, Any]) -> str:
@@ -357,6 +689,7 @@ def build_report_markdown(report: dict[str, Any]) -> str:
         "",
         f"- generated_at: `{report['generated_at']}`",
         f"- overall_status: `{report['overall_status']}`",
+        f"- validation_mode: `{report.get('validation_mode', 'production_execution')}`",
         f"- gateway_exe: `{report['gateway_exe']}`",
         f"- gateway_host: `{report['gateway_host']}`",
         f"- gateway_port: `{report['gateway_port']}`",
@@ -364,12 +697,41 @@ def build_report_markdown(report: dict[str, Any]) -> str:
         f"- dxf_file: `{report['dxf_file']}`",
         f"- job_id: `{report.get('job_id', '')}`",
         "",
-        "## Checks",
+        "## Timing Summary",
         "",
     ]
+    timing_summary = report.get("timing_summary", {})
+    if timing_summary:
+        lines.extend(
+            [
+                f"- `execution_nominal_time_s`: `{timing_summary.get('execution_nominal_time_s')}`",
+                f"- `execution_budget_s`: `{timing_summary.get('execution_budget_s')}`",
+                f"- `observed_execution_time_s`: `{timing_summary.get('observed_execution_time_s')}`",
+                f"- `execution_budget_breakdown`: `{json.dumps(timing_summary.get('execution_budget_breakdown'), ensure_ascii=False)}`",
+                "",
+            ]
+        )
+    lines.extend(
+        [
+        "## Checks",
+        "",
+        ]
+    )
     for name, payload in report.get("checks", {}).items():
         status = "passed" if payload.get("passed", False) else "failed"
         lines.append(f"- `{name}`: `{status}`")
+    blocked_motion_observation = report.get("blocked_motion_observation", {})
+    if blocked_motion_observation:
+        lines.extend(
+            [
+                "",
+                "## Blocked Motion Observation",
+                "",
+                f"- `sample_count`: `{blocked_motion_observation.get('sample_count', 0)}`",
+                f"- `window_seconds`: `{blocked_motion_observation.get('window_seconds', 0.0)}`",
+                f"- `motion_detected`: `{bool(blocked_motion_observation.get('motion_detected', False))}`",
+            ]
+        )
     lines.extend(["", "## Steps", ""])
     for step in report.get("steps", []):
         lines.append(f"- `{step['step']}`: `{step['status']}` {step['detail']}")
@@ -405,6 +767,7 @@ def main() -> int:
     report_md_path = report_dir / "real-dxf-production-validation.md"
     job_status_json_path = report_dir / "job-status-history.json"
     machine_status_json_path = report_dir / "machine-status-history.json"
+    coord_status_json_path = report_dir / "coord-status-history.json"
     gateway_log_copy_path = report_dir / "tcp_server.log"
     gateway_stdout_path = report_dir / "gateway-stdout.log"
     gateway_stderr_path = report_dir / "gateway-stderr.log"
@@ -413,6 +776,8 @@ def main() -> int:
     artifacts: dict[str, Any] = {}
     job_status_history: list[dict[str, Any]] = []
     machine_status_history: list[dict[str, Any]] = []
+    coord_status_history: list[dict[str, Any]] = []
+    blocked_motion_observation: dict[str, Any] = {}
     overall_status = "failed"
     error_message = ""
     return_code = 1
@@ -420,7 +785,10 @@ def main() -> int:
     plan_id = ""
     plan_fingerprint = ""
     snapshot_hash = ""
+    validation_mode = "production_execution"
+    plan_result: dict[str, Any] = {}
     snapshot_result: dict[str, Any] = {}
+    job_start_response: dict[str, Any] = {}
     final_job_status: dict[str, Any] = {}
     process: subprocess.Popen[str] | None = None
     client = TcpJsonClient(args.host, effective_port)
@@ -573,7 +941,6 @@ def main() -> int:
                 "dispensing_speed_mm_s": args.dispensing_speed_mm_s,
                 "dry_run": False,
                 "rapid_speed_mm_s": args.rapid_speed_mm_s,
-                "use_hardware_trigger": True,
                 "velocity_trace_enabled": False,
             },
             timeout_seconds=30.0,
@@ -586,6 +953,7 @@ def main() -> int:
         plan_fingerprint = str(plan_result.get("plan_fingerprint", "")).strip()
         if not plan_id or not plan_fingerprint:
             raise RuntimeError("plan.prepare missing plan_id/plan_fingerprint")
+        validation_mode = resolve_validation_mode(plan_result)
         add_step(
             steps,
             "dxf-plan-prepare",
@@ -594,12 +962,28 @@ def main() -> int:
                 {
                     "plan_id": plan_id,
                     "plan_fingerprint": plan_fingerprint,
-                    "estimated_time_s": plan_result.get("estimated_time_s", 0),
+                    "execution_nominal_time_s": plan_result.get("execution_nominal_time_s", 0),
                     "segment_count": plan_result.get("segment_count", 0),
                 },
                 ensure_ascii=True,
             ),
         )
+        if validation_mode == "production_blocked":
+            gate = plan_result.get("formal_compare_gate", {})
+            add_step(
+                steps,
+                "formal-compare-gate",
+                "known_failure",
+                json.dumps(
+                    {
+                        "status": gate.get("status", ""),
+                        "reason_code": gate.get("reason_code", ""),
+                        "trigger_begin_index": gate.get("trigger_begin_index", 0),
+                        "authority_span_ref": gate.get("authority_span_ref", ""),
+                    },
+                    ensure_ascii=True,
+                ),
+            )
 
         snapshot_response = client.send_request(
             "dxf.preview.snapshot",
@@ -653,61 +1037,104 @@ def main() -> int:
         )
         artifacts["dxf_job_start"] = job_start_response
         if "error" in job_start_response:
-            raise RuntimeError("dxf.job.start failed: " + truncate_json(job_start_response))
+            if validation_mode == "production_blocked":
+                add_step(steps, "dxf-job-start", "known_failure", truncate_json(job_start_response))
+                blocked_motion_observation = observe_blocked_motion_window(
+                    client,
+                    machine_status_history=machine_status_history,
+                    coord_status_history=coord_status_history,
+                    observation_window_seconds=args.blocked_observation_window_seconds,
+                    poll_interval_seconds=args.status_poll_interval_seconds,
+                )
+                add_step(
+                    steps,
+                    "blocked-motion-observation",
+                    "passed" if not blocked_motion_observation.get("motion_detected", True) else "failed",
+                    json.dumps(blocked_motion_observation, ensure_ascii=True),
+                )
+                overall_status = "known_failure"
+                error_message = extract_error_message(job_start_response)
+                return_code = KNOWN_FAILURE_EXIT_CODE
+            else:
+                raise RuntimeError("dxf.job.start failed: " + truncate_json(job_start_response))
         job_result = status_result(job_start_response)
-        job_id = str(job_result.get("job_id", "")).strip()
-        if not job_id:
-            raise RuntimeError("dxf.job.start missing job_id")
-        add_step(steps, "dxf-job-start", "passed", f"job_id={job_id}")
-
-        deadline = time.time() + args.job_timeout
-        poll_index = 0
-        while time.time() < deadline:
-            sampled_at = utc_now()
-
-            job_status_payload = client.send_request(
-                "dxf.job.status",
-                {"job_id": job_id},
-                timeout_seconds=5.0,
+        if validation_mode == "production_blocked" and "error" not in job_start_response:
+            job_id = str(job_result.get("job_id", "")).strip()
+            raise RuntimeError(
+                "dxf.job.start unexpectedly succeeded while formal_compare_gate reported production_blocked"
             )
-            if "error" in job_status_payload:
-                raise RuntimeError("dxf.job.status failed: " + truncate_json(job_status_payload))
-            normalized_job_status = normalize_job_status_sample(
-                job_status_payload,
-                sampled_at=sampled_at,
-                poll_index=poll_index,
+        if validation_mode != "production_blocked":
+            job_id = str(job_result.get("job_id", "")).strip()
+            if not job_id:
+                raise RuntimeError("dxf.job.start missing job_id")
+            job_timeout_budget = resolve_job_timeout_budget(
+                execution_budget_seconds=job_result.get("execution_budget_s"),
+                execution_budget_breakdown=job_result.get("execution_budget_breakdown"),
             )
-            job_status_history.append(normalized_job_status)
-            final_job_status = normalized_job_status
+            artifacts["job_timeout_budget"] = job_timeout_budget
+            add_step(
+                steps,
+                "job-timeout-budget",
+                "passed",
+                json.dumps(job_timeout_budget, ensure_ascii=True),
+            )
+            add_step(steps, "dxf-job-start", "passed", f"job_id={job_id}")
 
-            machine_status_payload = client.send_request("status", None, timeout_seconds=5.0)
-            if "error" in machine_status_payload:
-                raise RuntimeError("status failed during production polling: " + truncate_json(machine_status_payload))
-            machine_status_history.append(
-                normalize_machine_status_sample(
-                    machine_status_payload,
+        if validation_mode != "production_blocked":
+            effective_job_timeout_seconds = float(job_timeout_budget["effective_timeout_seconds"])
+            deadline = time.time() + effective_job_timeout_seconds
+            poll_index = 0
+            while time.time() < deadline:
+                sampled_at = utc_now()
+
+                job_status_payload = client.send_request(
+                    "dxf.job.status",
+                    {"job_id": job_id},
+                    timeout_seconds=5.0,
+                )
+                if "error" in job_status_payload:
+                    raise RuntimeError("dxf.job.status failed: " + truncate_json(job_status_payload))
+                normalized_job_status = normalize_job_status_sample(
+                    job_status_payload,
                     sampled_at=sampled_at,
                     poll_index=poll_index,
                 )
+                job_status_history.append(normalized_job_status)
+                final_job_status = normalized_job_status
+
+                machine_status_payload = client.send_request("status", None, timeout_seconds=5.0)
+                if "error" in machine_status_payload:
+                    raise RuntimeError("status failed during production polling: " + truncate_json(machine_status_payload))
+                machine_status_history.append(
+                    normalize_machine_status_sample(
+                        machine_status_payload,
+                        sampled_at=sampled_at,
+                        poll_index=poll_index,
+                    )
+                )
+
+                if normalized_job_status["state"].lower() in {"completed", "failed", "cancelled"}:
+                    break
+
+                poll_index += 1
+                time.sleep(args.status_poll_interval_seconds)
+            else:
+                raise TimeoutError(
+                    "production validation timed out after "
+                    f"{effective_job_timeout_seconds:.1f}s "
+                    f"(execution_budget_s={job_timeout_budget['execution_budget_seconds']} "
+                    f"cycle_budget_s={job_timeout_budget['cycle_budget_seconds']})"
+                )
+
+            add_step(
+                steps,
+                "job-terminal",
+                "passed" if final_job_status.get("state", "").lower() == "completed" else "failed",
+                json.dumps(final_job_status, ensure_ascii=True),
             )
 
-            if normalized_job_status["state"].lower() in {"completed", "failed", "cancelled"}:
-                break
-
-            poll_index += 1
-            time.sleep(args.status_poll_interval_seconds)
-        else:
-            raise TimeoutError(f"production validation timed out after {args.job_timeout:.1f}s")
-
-        add_step(
-            steps,
-            "job-terminal",
-            "passed" if final_job_status.get("state", "").lower() == "completed" else "failed",
-            json.dumps(final_job_status, ensure_ascii=True),
-        )
-
-        overall_status = "passed"
-        return_code = 0
+            overall_status = "passed"
+            return_code = 0
     except Exception as exc:
         error_message = str(exc)
         add_step(steps, "exception", "failed", error_message)
@@ -733,51 +1160,59 @@ def main() -> int:
             gateway_stderr_path.write_text(stderr_text, encoding="utf-8")
 
         time.sleep(0.3)
-        gateway_log_text = read_log_segment(gateway_log_path, gateway_log_offset)
+        gateway_log_text = read_current_run_gateway_log(gateway_log_path, gateway_log_offset, effective_port)
         gateway_log_copy_path.write_text(gateway_log_text, encoding="utf-8")
 
         write_json(job_status_json_path, job_status_history)
         write_json(machine_status_json_path, machine_status_history)
+        write_json(coord_status_json_path, coord_status_history)
 
         expected_bbox = summarize_points_bbox(snapshot_result.get("glue_points", []))
         observed_bbox = summarize_machine_bbox(machine_status_history)
         axis_coverage = compute_axis_coverage(expected_bbox, observed_bbox)
         log_summary = extract_gateway_log_summary(gateway_log_text)
         checks = build_checklist(
+            validation_mode=validation_mode,
+            plan_result=plan_result,
             snapshot_result=snapshot_result,
+            job_start_response=job_start_response,
+            blocked_motion_observation=blocked_motion_observation,
             final_job_status=final_job_status,
             log_summary=log_summary,
             axis_coverage=axis_coverage,
+            observed_bbox=observed_bbox,
             min_axis_coverage_ratio=args.min_axis_coverage_ratio,
         )
 
-        if overall_status == "passed":
-            overall_status, error_from_checks = determine_overall_status(checks)
+        if overall_status in {"passed", "known_failure"}:
+            overall_status, error_from_checks = determine_overall_status(checks, validation_mode)
             if error_from_checks:
                 error_message = error_from_checks
                 return_code = 1
+            elif overall_status == "known_failure":
+                return_code = KNOWN_FAILURE_EXIT_CODE
+            else:
+                return_code = 0
 
-        report = {
-            "generated_at": utc_now(),
-            "overall_status": overall_status,
-            "gateway_exe": str(args.gateway_exe),
-            "gateway_host": args.host,
-            "gateway_port": effective_port,
-            "config_path": str(args.config_path),
-            "dxf_file": str(args.dxf_file),
-            "job_id": job_id,
-            "plan_id": plan_id,
-            "plan_fingerprint": plan_fingerprint,
-            "snapshot_hash": snapshot_hash,
-            "steps": steps,
-            "checks": checks,
-            "axis_coverage": axis_coverage,
-            "expected_bbox": expected_bbox,
-            "observed_bbox": observed_bbox,
-            "snapshot_result": snapshot_result,
-            "final_job_status": final_job_status,
-            "log_summary": log_summary,
-            "artifacts": {
+        report = build_report(
+            args=args,
+            effective_port=effective_port,
+            overall_status=overall_status,
+            validation_mode=validation_mode,
+            job_id=job_id,
+            plan_id=plan_id,
+            plan_fingerprint=plan_fingerprint,
+            snapshot_hash=snapshot_hash,
+            steps=steps,
+            checks=checks,
+            axis_coverage=axis_coverage,
+            expected_bbox=expected_bbox,
+            observed_bbox=observed_bbox,
+            blocked_motion_observation=blocked_motion_observation,
+            snapshot_result=snapshot_result,
+            final_job_status=final_job_status,
+            log_summary=log_summary,
+            artifacts={
                 **artifacts,
                 "gateway_log_path": str(gateway_log_path),
                 "gateway_log_copy": str(gateway_log_copy_path),
@@ -785,9 +1220,11 @@ def main() -> int:
                 "gateway_stderr_log": str(gateway_stderr_path),
                 "job_status_history": str(job_status_json_path),
                 "machine_status_history": str(machine_status_json_path),
+                "coord_status_history": str(coord_status_json_path),
             },
-            "error": error_message,
-        }
+            error_message=error_message,
+            plan_result=plan_result,
+        )
         write_json(report_json_path, report)
         report_md_path.write_text(build_report_markdown(report), encoding="utf-8")
         print(f"report json: {report_json_path}")

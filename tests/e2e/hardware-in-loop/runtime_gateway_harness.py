@@ -147,7 +147,7 @@ def resolve_default_exe(*file_names: str) -> Path:
     )
     prioritized_roots: list[Path] = []
     seen_roots: set[Path] = set()
-    for root in (CONTROL_APPS_BUILD_ROOT, *valid_roots, ROOT / "build" / "hmi-home-fix"):
+    for root in (CONTROL_APPS_BUILD_ROOT, *valid_roots):
         resolved_root = root.resolve()
         if resolved_root in seen_roots:
             continue

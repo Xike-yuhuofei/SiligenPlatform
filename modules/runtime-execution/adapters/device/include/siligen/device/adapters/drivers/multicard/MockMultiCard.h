@@ -3,6 +3,7 @@
 #include "MultiCardCPP.h"
 
 #include <chrono>
+#include <deque>
 #include <map>
 #include <mutex>
 #include <string>
@@ -36,6 +37,13 @@ public:
         long center_x = 0;
         long center_y = 0;
         short direction = -1;
+    };
+
+    struct CmpBufLoadCall {
+        short compare_encode_axis = 0;
+        short abs_position_flag = 0;
+        std::vector<long> buffer1;
+        std::vector<long> buffer2;
     };
 
     MockMultiCard();
@@ -91,10 +99,8 @@ public:
     int MC_CrdData(short nCrdNum, void* pCrdData, short nFifoIndex = 0);
     int MC_CrdStart(short crd, short mask);
     int MC_CmpPluse(unsigned short channel, unsigned short crd, long start_pos, long interval, unsigned short count, unsigned short output_mode, unsigned short output_inverse);
-    int MC_CmpRpt(short nCmpNum, unsigned long lIntervalTime, short nTime, short nTimeFlag, unsigned long ulRptTime);
     int MC_CmpBufStop(unsigned short channelMask);
     int MC_CmpBufSetChannel(short nBuf1ChannelNum, short nBuf2ChannelNum);
-    int MC_CmpBufRpt(short nEncNum, short nDir, short nEncFlag, long lTrigValue, short nCmpNum, unsigned long lIntervalTime, short nTime, short nTimeFlag, unsigned long ulRptTime);
     int MC_GetPrfPos(short axis, double* pos);
     int MC_GetSts(short axis, long* sts, short from_axis = 1, unsigned long* clock = nullptr);
     int MC_GetClock(double* pClock);
@@ -152,6 +158,8 @@ public:
     void SetGetStsReturnValue(int return_value);  // Set MC_GetSts return value for testing
     void SetAxisStatus(short axis, long status);
     void SetDigitalInputRaw(short card_index, long value);
+    void SetCmpBufferCapacity(unsigned short capacity1, unsigned short capacity2);
+    void ConsumeCmpBufferData(unsigned short count1, unsigned short count2);
 
     // Time simulation
     void TickMs(double dt_ms);
@@ -160,6 +168,22 @@ public:
     // Test verification interface
     std::vector<long> GetCMPTriggerTimes(short cmp) const;
     std::vector<BufferedArcSegment> GetBufferedArcSegments(short crd) const;
+    std::vector<long> GetLastCmpBuffer1() const;
+    std::vector<long> GetLastCmpBuffer2() const;
+    short GetLastCmpEncodeAxis() const;
+    short GetLastCmpAbsPositionFlag() const;
+    int GetCmpPulseCallCount() const;
+    int GetCmpBufDataCallCount() const;
+    short GetLastCmpBuffer1Channel() const;
+    short GetLastCmpBuffer2Channel() const;
+    std::vector<CmpBufLoadCall> GetCmpBufDataHistory() const;
+    short GetLastCmpPulseChannelMask() const;
+    short GetLastCmpPulseType1() const;
+    short GetLastCmpPulseType2() const;
+    short GetLastCmpPulseTime1() const;
+    short GetLastCmpPulseTime2() const;
+    short GetLastCmpPulseTimeFlag1() const;
+    short GetLastCmpPulseTimeFlag2() const;
 
 private:
     struct AxisState {
@@ -218,12 +242,30 @@ private:
     int getsts_call_count_ = 0;  // Track MC_GetSts calls
     bool simulate_disconnected_ = false;  // Flag to simulate disconnection
     int forced_getsts_return_value_ = 0;  // Forced return value (default: 0 for success, set to -999 for degraded mode testing)
+    short last_cmp_encode_axis_ = 0;
+    short last_cmp_abs_position_flag_ = 0;
+    int cmp_buf_data_call_count_ = 0;
+    int cmp_pulse_call_count_ = 0;
+    short last_cmp_buffer1_channel_ = 0;
+    short last_cmp_buffer2_channel_ = 0;
+    short last_cmp_pulse_channel_mask_ = 0;
+    short last_cmp_pulse_type1_ = 0;
+    short last_cmp_pulse_type2_ = 0;
+    short last_cmp_pulse_time1_ = 0;
+    short last_cmp_pulse_time2_ = 0;
+    short last_cmp_pulse_time_flag1_ = 0;
+    short last_cmp_pulse_time_flag2_ = 0;
 
     mutable std::mutex state_mutex_;
     std::map<short, MockCardState> card_states_;
     std::map<short, CoordinateSystem> coordinate_systems_;
     std::map<short, AxisState> axes_;
     std::map<short, CMPTrigger> cmp_triggers_;  // Map from cmp_id to trigger state
+    std::deque<long> cmp_buffer1_queue_;
+    std::deque<long> cmp_buffer2_queue_;
+    unsigned short cmp_buffer1_capacity_ = 256;
+    unsigned short cmp_buffer2_capacity_ = 256;
+    std::vector<CmpBufLoadCall> cmp_buf_data_history_;
     std::map<short, long> axis_status_;
     std::map<short, long> digital_inputs_raw_;
     int open_call_count_ = 0;

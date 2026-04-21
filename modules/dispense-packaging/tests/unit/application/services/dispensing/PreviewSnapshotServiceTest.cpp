@@ -39,6 +39,7 @@ PreviewSnapshotInput BuildInput(const std::vector<Siligen::TrajectoryPoint>& tra
     input.estimated_time_s = 1.0f;
     input.generated_at = "2026-03-28T00:00:01Z";
     input.trajectory_points = &trajectory;
+    input.motion_trajectory_points = &trajectory;
     return input;
 }
 
@@ -105,7 +106,7 @@ TEST(PreviewSnapshotServiceTest, BuildResponsePreservesMetadataAndBuildsPreviewP
     EXPECT_EQ(payload.motion_preview_point_count, payload.motion_preview_polyline.size());
 }
 
-TEST(PreviewSnapshotServiceTest, BuildResponseSuppressesShortABATailArtifacts) {
+TEST(PreviewSnapshotServiceTest, BuildResponsePreservesExecutionTrajectoryVerticesWhenWithinClampBudget) {
     PreviewSnapshotService service;
     const auto trajectory = BuildTrajectory({
         Point2D(0.0f, 0.0f),
@@ -119,9 +120,13 @@ TEST(PreviewSnapshotServiceTest, BuildResponseSuppressesShortABATailArtifacts) {
 
     const auto payload = service.BuildResponse(input, 64, 8);
 
-    EXPECT_FALSE(SnapshotContainsPoint(payload, 10.2f, 10.0f, 1e-4f));
-    EXPECT_FALSE(SnapshotContainsPoint(payload, 10.0f, 10.0f, 1e-4f));
-    EXPECT_EQ(CountSnapshotPointsNear(payload, 10.0f, 10.0f, 2.1f), 2U);
+    EXPECT_EQ(payload.motion_preview_sampling_strategy, "execution_trajectory_geometry_preserving");
+    EXPECT_FALSE(payload.motion_preview_is_sampled);
+    EXPECT_EQ(payload.motion_preview_source_point_count, trajectory.size());
+    EXPECT_EQ(payload.motion_preview_point_count, trajectory.size());
+    EXPECT_TRUE(SnapshotContainsPoint(payload, 10.2f, 10.0f, 1e-4f));
+    EXPECT_TRUE(SnapshotContainsPoint(payload, 10.0f, 10.0f, 1e-4f));
+    EXPECT_EQ(CountSnapshotPointsNear(payload, 10.0f, 10.0f, 2.1f), 3U);
     EXPECT_TRUE(SnapshotContainsPoint(payload, 0.0f, 0.0f, 1e-4f));
     EXPECT_TRUE(SnapshotContainsPoint(payload, 0.0f, 10.0f, 1e-4f));
 }
@@ -144,7 +149,7 @@ TEST(PreviewSnapshotServiceTest, BuildResponseKeepsCornerWhenDownsampling) {
     EXPECT_TRUE(SnapshotContainsPoint(payload, 9.0f, 0.0f, 1e-4f));
 }
 
-TEST(PreviewSnapshotServiceTest, BuildResponseUsesThreeMillimeterCenterSpacing) {
+TEST(PreviewSnapshotServiceTest, BuildResponsePreservesDenseExecutionTrajectoryWhenWithinClampBudget) {
     PreviewSnapshotService service;
     std::vector<Point2D> raw_points;
     for (int i = 0; i <= 30; ++i) {
@@ -156,20 +161,22 @@ TEST(PreviewSnapshotServiceTest, BuildResponseUsesThreeMillimeterCenterSpacing) 
     const auto payload = service.BuildResponse(input, 128, 8);
 
     ASSERT_GE(payload.motion_preview_polyline.size(), 2U);
+    EXPECT_EQ(payload.motion_preview_sampling_strategy, "execution_trajectory_geometry_preserving");
+    EXPECT_FALSE(payload.motion_preview_is_sampled);
     EXPECT_NEAR(payload.motion_preview_polyline.front().x, 0.0f, 1e-4f);
     EXPECT_NEAR(payload.motion_preview_polyline.back().x, 30.0f, 1e-4f);
-    EXPECT_EQ(payload.motion_preview_polyline.size(), 11U);
+    EXPECT_EQ(payload.motion_preview_polyline.size(), 31U);
     for (std::size_t i = 1; i < payload.motion_preview_polyline.size(); ++i) {
         const auto& prev = payload.motion_preview_polyline[i - 1U];
         const auto& curr = payload.motion_preview_polyline[i];
         const double dx = static_cast<double>(curr.x) - static_cast<double>(prev.x);
         const double dy = static_cast<double>(curr.y) - static_cast<double>(prev.y);
         const double distance = std::sqrt(dx * dx + dy * dy);
-        EXPECT_NEAR(distance, 3.0, 1e-2) << "spacing at segment index " << i;
+        EXPECT_NEAR(distance, 1.0, 1e-2) << "spacing at segment index " << i;
     }
 }
 
-TEST(PreviewSnapshotServiceTest, BuildResponseDoesNotForceCornerVerticesIntoFixedSpacingPreview) {
+TEST(PreviewSnapshotServiceTest, BuildResponsePreservesCornerVerticesWhenWithinClampBudget) {
     PreviewSnapshotService service;
     const auto trajectory = BuildTrajectory({
         Point2D(0.0f, 0.0f),
@@ -182,15 +189,15 @@ TEST(PreviewSnapshotServiceTest, BuildResponseDoesNotForceCornerVerticesIntoFixe
 
     const auto payload = service.BuildResponse(input, 256, 8);
 
-    EXPECT_FALSE(SnapshotContainsPoint(payload, 100.0f, 0.0f, 1e-4f));
-    EXPECT_FALSE(SnapshotContainsPoint(payload, 100.0f, 102.0f, 1e-4f));
-    EXPECT_FALSE(SnapshotContainsPoint(payload, 0.0f, 102.0f, 1e-4f));
-    EXPECT_LE(CountSnapshotPointsNear(payload, 100.0f, 0.0f, 3.5f), 2U);
-    EXPECT_LE(CountSnapshotPointsNear(payload, 100.0f, 102.0f, 3.5f), 2U);
-    EXPECT_LE(CountSnapshotPointsNear(payload, 0.0f, 102.0f, 3.5f), 2U);
+    EXPECT_EQ(payload.motion_preview_sampling_strategy, "execution_trajectory_geometry_preserving");
+    EXPECT_FALSE(payload.motion_preview_is_sampled);
+    EXPECT_TRUE(SnapshotContainsPoint(payload, 100.0f, 0.0f, 1e-4f));
+    EXPECT_TRUE(SnapshotContainsPoint(payload, 100.0f, 102.0f, 1e-4f));
+    EXPECT_TRUE(SnapshotContainsPoint(payload, 0.0f, 102.0f, 1e-4f));
+    EXPECT_EQ(payload.motion_preview_point_count, trajectory.size());
 }
 
-TEST(PreviewSnapshotServiceTest, BuildResponseBuildsMotionPreviewFromProcessPathSnapshot) {
+TEST(PreviewSnapshotServiceTest, BuildResponseDoesNotFallbackToProcessPathForMotionPreview) {
     PreviewSnapshotService service;
     Segment line_segment;
     line_segment.type = SegmentType::Line;
@@ -208,10 +215,9 @@ TEST(PreviewSnapshotServiceTest, BuildResponseBuildsMotionPreviewFromProcessPath
 
     const auto payload = service.BuildResponse(input, 64, 8);
 
-    EXPECT_EQ(payload.motion_preview_source, "process_path_snapshot");
-    EXPECT_EQ(payload.motion_preview_kind, "polyline");
-    EXPECT_GT(payload.motion_preview_source_point_count, 0U);
-    EXPECT_EQ(payload.motion_preview_point_count, payload.motion_preview_polyline.size());
-    EXPECT_TRUE(SnapshotContainsPoint(payload, 0.0f, 0.0f, 1e-4f));
-    EXPECT_TRUE(SnapshotContainsPoint(payload, 12.0f, 0.0f, 1e-4f));
+    EXPECT_TRUE(payload.motion_preview_source.empty());
+    EXPECT_TRUE(payload.motion_preview_kind.empty());
+    EXPECT_EQ(payload.motion_preview_source_point_count, 0U);
+    EXPECT_EQ(payload.motion_preview_point_count, 0U);
+    EXPECT_TRUE(payload.motion_preview_polyline.empty());
 }

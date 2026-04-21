@@ -15,6 +15,16 @@
     "cycle_progress_percent": 10,
     "overall_progress_percent": 5,
     "elapsed_seconds": 1.2,
+    "execution_budget_s": 158.3,
+    "execution_budget_breakdown": {
+      "execution_nominal_time_s": 41.0,
+      "motion_completion_grace_s": 6.15,
+      "owner_span_count": 32,
+      "owner_span_overhead_s": 32.0,
+      "cycle_budget_s": 79.15,
+      "target_count": 2,
+      "total_budget_s": 158.3
+    },
     "error_message": "",
     "dry_run": true
   }

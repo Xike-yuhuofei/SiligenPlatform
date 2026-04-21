@@ -68,7 +68,6 @@ from hmi_application.preview_session import (
 )
 from client.auth import AuthManager
 from .dxf_default_paths import build_default_dxf_candidates
-from .offline_preview_builder import build_offline_preview_payload
 from .styles import DARK_THEME
 from .recipe_config_widget import RecipeConfigWidget
 
@@ -98,7 +97,17 @@ LOCAL_HOME_READINESS_BLOCK_MESSAGE = "运动系统未稳定，暂不可回零，
 CURRENT_STAGE_RECIPE_MANAGEMENT_ENABLED = False
 CURRENT_STAGE_USER_MANAGEMENT_ENABLED = False
 LOCAL_HOME_READINESS_BLOCKING_JOB_STATES = frozenset(
-    {"running", "pending", "stopping", "canceling", "cancelling", "canceled", "paused", "pausing"}
+    {
+        "running",
+        "pending",
+        "stopping",
+        "canceling",
+        "cancelling",
+        "canceled",
+        "paused",
+        "pausing",
+        "awaiting_continue",
+    }
 )
 
 
@@ -384,6 +393,8 @@ class ProductionActionWorker(QThread):
                     ok, error = _protocol.dxf_job_pause(self._job_id)
                 elif self._action == "resume":
                     ok, error = _protocol.dxf_job_resume(self._job_id)
+                elif self._action == "continue":
+                    ok, error = _protocol.dxf_job_continue(self._job_id)
                 elif self._action == "stop":
                     transition = _protocol.dxf_job_stop(self._job_id)
                     ok = transition.accepted
@@ -448,6 +459,7 @@ class MainWindow(QMainWindow):
         self._home_auto_worker = None
         self._home_request_generation = 0
         self._preview_snapshot_worker = None
+        self._retired_preview_workers = []
         self._preview_request_generation = 0
         self._production_action_worker = None
         self._production_action_request_generation = 0
@@ -466,6 +478,7 @@ class MainWindow(QMainWindow):
         # Production statistics
         self._production_running = False
         self._production_paused = False
+        self._production_awaiting_continue = False
         self._pending_production_action = ""
         self._production_dry_run = False
         self._suppressed_terminal_job_id = ""
@@ -891,7 +904,13 @@ class MainWindow(QMainWindow):
         self._prod_resume_btn.setProperty("role", "production-secondary")
         self._prod_resume_btn.setCursor(Qt.PointingHandCursor)
         self._prod_resume_btn.clicked.connect(self._on_production_resume)
-        
+
+        self._prod_continue_btn = QPushButton("继续")
+        self._prod_continue_btn.setProperty("data-testid", "btn-production-continue")
+        self._prod_continue_btn.setProperty("role", "production-secondary")
+        self._prod_continue_btn.setCursor(Qt.PointingHandCursor)
+        self._prod_continue_btn.clicked.connect(self._on_production_continue)
+
         self._prod_stop_btn = QPushButton("停止")
         self._prod_stop_btn.setProperty("data-testid", "btn-production-stop")
         self._prod_stop_btn.setProperty("role", "danger-stop")
@@ -900,6 +919,7 @@ class MainWindow(QMainWindow):
         
         sub_control_layout.addWidget(self._prod_pause_btn)
         sub_control_layout.addWidget(self._prod_resume_btn)
+        sub_control_layout.addWidget(self._prod_continue_btn)
         sub_control_layout.addWidget(self._prod_stop_btn)
         control_layout.addLayout(sub_control_layout)
         
@@ -1806,36 +1826,61 @@ class MainWindow(QMainWindow):
             self._hw_connect_btn.setEnabled(ui_state.hw_connect_enabled)
         if hasattr(self, "_global_estop_btn"):
             self._global_estop_btn.setEnabled(ui_state.global_estop_enabled)
+        if hasattr(self, "_estop_reset_btn"):
+            self._estop_reset_btn.setEnabled(
+                bool(ui_state.allow_online_actions and self._resolve_backend_estop_reset_permitted())
+            )
         self._apply_production_action_capabilities(ui_state.allow_online_actions)
-        manual_valve_pause_resume_enabled = bool(
-            ui_state.allow_online_actions and not self._current_job_id and not self._pending_production_action
+        _, _, backend_active_job_present = self._resolve_backend_action_capabilities()
+        manual_valve_pause_enabled = bool(
+            ui_state.allow_online_actions
+            and self._resolve_backend_manual_dispenser_pause_permitted()
+            and not self._current_job_id
+            and not backend_active_job_present
+            and not self._pending_production_action
+        )
+        manual_valve_resume_enabled = bool(
+            ui_state.allow_online_actions
+            and self._resolve_backend_manual_dispenser_resume_permitted()
+            and not self._current_job_id
+            and not backend_active_job_present
+            and not self._pending_production_action
         )
         if hasattr(self, "_disp_pause_btn"):
-            self._disp_pause_btn.setEnabled(manual_valve_pause_resume_enabled)
+            self._disp_pause_btn.setEnabled(manual_valve_pause_enabled)
         if hasattr(self, "_disp_resume_btn"):
-            self._disp_resume_btn.setEnabled(manual_valve_pause_resume_enabled)
+            self._disp_resume_btn.setEnabled(manual_valve_resume_enabled)
         self._update_home_controls_state()
         self._update_recovery_controls_state()
 
     def _apply_production_action_capabilities(self, online_actions_allowed: bool) -> None:
+        backend_motion_permitted, _, backend_active_job_present = self._resolve_backend_action_capabilities()
+        backend_job_active = bool(self._current_job_id or backend_active_job_present)
         home_enabled = bool(
             online_actions_allowed
-            and not self._current_job_id
+            and backend_motion_permitted
+            and not backend_job_active
             and not self._pending_production_action
             and not self._is_home_worker_running()
         )
-        start_enabled = bool(online_actions_allowed and not self._current_job_id and not self._pending_production_action)
+        start_enabled = bool(
+            online_actions_allowed and not backend_job_active and not self._pending_production_action
+        )
         target_enabled = start_enabled
-        reset_enabled = bool(not self._current_job_id and not self._pending_production_action)
+        reset_enabled = bool(not backend_job_active and not self._pending_production_action)
         pause_enabled = False
         resume_enabled = False
+        continue_enabled = False
         stop_enabled = False
 
         if online_actions_allowed and self._current_job_id:
             if self._pending_production_action == "pause":
                 stop_enabled = True
-            elif self._pending_production_action in ("resume", "stop"):
+            elif self._pending_production_action in ("resume", "continue", "stop"):
                 pass
+            elif self._production_awaiting_continue:
+                continue_enabled = True
+                stop_enabled = True
             elif self._production_paused:
                 resume_enabled = True
                 stop_enabled = True
@@ -1853,6 +1898,8 @@ class MainWindow(QMainWindow):
             self._prod_pause_btn.setEnabled(pause_enabled)
         if hasattr(self, "_prod_resume_btn"):
             self._prod_resume_btn.setEnabled(resume_enabled)
+        if hasattr(self, "_prod_continue_btn"):
+            self._prod_continue_btn.setEnabled(continue_enabled)
         if hasattr(self, "_prod_stop_btn"):
             self._prod_stop_btn.setEnabled(stop_enabled)
         if hasattr(self, "_target_input"):
@@ -2250,10 +2297,13 @@ class MainWindow(QMainWindow):
         return True
 
     def _update_home_controls_state(self):
+        backend_motion_permitted, _, backend_active_job_present = self._resolve_backend_action_capabilities()
         enabled = (
             self._is_online_ready()
+            and backend_motion_permitted
             and not self._is_home_worker_running()
             and not self._current_job_id
+            and not backend_active_job_present
             and not self._pending_production_action
             and not self._status_has_homing_axis()
         )
@@ -2310,6 +2360,7 @@ class MainWindow(QMainWindow):
             return
         self._production_running = bool(restore_state.get("production_running", False))
         self._production_paused = bool(restore_state.get("production_paused", False))
+        self._production_awaiting_continue = bool(restore_state.get("production_awaiting_continue", False))
         self._run_start_time = float(restore_state.get("run_start_time", 0.0) or 0.0)
         self._total_run_time = float(restore_state.get("total_run_time", self._total_run_time) or 0.0)
         self._production_action_restore_state = None
@@ -2334,6 +2385,7 @@ class MainWindow(QMainWindow):
         failure_messages = {
             "pause": "暂停失败",
             "resume": "恢复失败",
+            "continue": "继续失败",
             "stop": "停止失败",
         }
         self.statusBar().showMessage(error or failure_messages.get(action, "生产控制失败"))
@@ -2365,6 +2417,13 @@ class MainWindow(QMainWindow):
             allowed = self._pending_production_action in ("", "resume")
             pending_text = "恢复中"
             status_message = "恢复请求已发送，等待后端确认"
+        elif action == "continue":
+            if not self._production_awaiting_continue:
+                self.statusBar().showMessage("当前没有等待继续的生产任务")
+                return
+            allowed = self._pending_production_action in ("", "continue")
+            pending_text = "继续中"
+            status_message = "继续请求已发送，等待后端确认"
         elif action == "stop":
             allowed = self._pending_production_action in ("", "pause", "stop")
             pending_text = "停止中"
@@ -2390,6 +2449,7 @@ class MainWindow(QMainWindow):
             "action": action,
             "production_running": self._production_running,
             "production_paused": self._production_paused,
+            "production_awaiting_continue": self._production_awaiting_continue,
             "run_start_time": self._run_start_time,
             "total_run_time": self._total_run_time,
         }
@@ -2402,12 +2462,19 @@ class MainWindow(QMainWindow):
         elif action == "resume":
             self._production_running = False
             self._production_paused = True
+            self._production_awaiting_continue = False
+            self._run_start_time = 0
+        elif action == "continue":
+            self._production_running = False
+            self._production_paused = False
+            self._production_awaiting_continue = True
             self._run_start_time = 0
         elif action == "stop":
             if self._production_running and self._run_start_time > 0:
                 self._total_run_time += time.time() - self._run_start_time
             self._production_running = False
             self._production_paused = False
+            self._production_awaiting_continue = False
             self._run_start_time = 0
 
         self._operation_status.setText(pending_text)
@@ -2466,6 +2533,9 @@ class MainWindow(QMainWindow):
         if status.gate_door_active():
             self.statusBar().showMessage("安全门打开，无法回零")
             return False
+        if not status.action_capabilities.motion_commands_permitted:
+            self.statusBar().showMessage("后端当前未允许回零相关动作，请稍后重试")
+            return False
         if not self._check_home_runtime_readiness(status):
             return False
         return True
@@ -2492,6 +2562,11 @@ class MainWindow(QMainWindow):
             return False
         if status.gate_door_active():
             self.statusBar().showMessage(self._format_motion_precondition_failure(action_name, "安全门打开"))
+            return False
+        if not status.action_capabilities.motion_commands_permitted:
+            self.statusBar().showMessage(
+                self._format_motion_precondition_failure(action_name, "后端当前未允许运动动作")
+            )
             return False
         return True
 
@@ -2603,6 +2678,58 @@ class MainWindow(QMainWindow):
                 return None
         return self._last_status
 
+    def _resolve_backend_action_capabilities(self, status=None) -> tuple[bool, bool, bool]:
+        resolved_status = status if status is not None else self._get_cached_status(max_age_s=None)
+        if resolved_status is None:
+            return True, True, False
+        action_capabilities = getattr(resolved_status, "action_capabilities", None)
+        if action_capabilities is None:
+            return True, True, False
+        return (
+            bool(getattr(action_capabilities, "motion_commands_permitted", True)),
+            bool(getattr(action_capabilities, "manual_output_commands_permitted", True)),
+            bool(getattr(action_capabilities, "active_job_present", False)),
+        )
+
+    def _resolve_backend_estop_reset_permitted(self, status=None) -> bool:
+        resolved_status = status if status is not None else self._get_cached_status(max_age_s=None)
+        if resolved_status is None:
+            return False
+        action_capabilities = getattr(resolved_status, "action_capabilities", None)
+        if action_capabilities is None:
+            return False
+        return bool(getattr(action_capabilities, "estop_reset_permitted", False))
+
+    def _resolve_backend_manual_dispenser_pause_permitted(self, status=None) -> bool:
+        resolved_status = status if status is not None else self._get_cached_status(max_age_s=None)
+        if resolved_status is None:
+            return True
+        action_capabilities = getattr(resolved_status, "action_capabilities", None)
+        if action_capabilities is None:
+            return True
+        return bool(
+            getattr(
+                action_capabilities,
+                "manual_dispenser_pause_permitted",
+                True,
+            )
+        )
+
+    def _resolve_backend_manual_dispenser_resume_permitted(self, status=None) -> bool:
+        resolved_status = status if status is not None else self._get_cached_status(max_age_s=None)
+        if resolved_status is None:
+            return True
+        action_capabilities = getattr(resolved_status, "action_capabilities", None)
+        if action_capabilities is None:
+            return True
+        return bool(
+            getattr(
+                action_capabilities,
+                "manual_dispenser_resume_permitted",
+                True,
+            )
+        )
+
     def _log_motion_snapshot(self, tag: str, axis: str = None) -> None:
         status = self._get_cached_status()
         if not status or not status.connected:
@@ -2706,6 +2833,10 @@ class MainWindow(QMainWindow):
     def _on_estop_reset(self):
         if not self._require_runtime_command_channel("急停复位"):
             return
+        status = self._get_cached_status()
+        if not self._resolve_backend_estop_reset_permitted(status):
+            self.statusBar().showMessage("后端当前未允许急停复位，请确认设备处于急停状态")
+            return
         ok, msg = self._protocol.estop_reset()
         self.statusBar().showMessage(f"急停复位: {msg}" if ok else (f"急停复位失败: {msg}" if msg else "急停复位失败"))
 
@@ -2760,6 +2891,9 @@ class MainWindow(QMainWindow):
         if self._current_job_id:
             self.statusBar().showMessage("生产任务活跃时禁止手动暂停点胶阀")
             return
+        if not self._resolve_backend_manual_dispenser_pause_permitted():
+            self.statusBar().showMessage("后端当前未允许手动暂停点胶阀，请稍后重试")
+            return
         ok, error, error_code = self._protocol.dispenser_pause()
         self.statusBar().showMessage("点胶已暂停" if ok else self._format_action_failure("点胶暂停", error, error_code))
 
@@ -2768,6 +2902,9 @@ class MainWindow(QMainWindow):
             return
         if self._current_job_id:
             self.statusBar().showMessage("生产任务活跃时禁止手动恢复点胶阀")
+            return
+        if not self._resolve_backend_manual_dispenser_resume_permitted():
+            self.statusBar().showMessage("后端当前未允许手动恢复点胶阀，请稍后重试")
             return
         ok, error, error_code = self._protocol.dispenser_resume()
         self.statusBar().showMessage("点胶已继续" if ok else self._format_action_failure("点胶恢复", error, error_code))
@@ -2859,11 +2996,6 @@ class MainWindow(QMainWindow):
     def _auto_regenerate_preview_after_mode_change(self) -> bool:
         if not self._dxf_loaded:
             return False
-        if self._is_offline_mode():
-            if not self._dxf_filepath or not WEB_ENGINE_AVAILABLE or not self._dxf_view:
-                return False
-            self._generate_dxf_preview()
-            return True
         if not self._dxf_artifact_id:
             return False
         if not self._is_launch_connected():
@@ -2878,6 +3010,7 @@ class MainWindow(QMainWindow):
         worker = self._preview_snapshot_worker
         self._preview_snapshot_worker = None
         if worker is not None:
+            self._retain_preview_worker(worker)
             try:
                 worker.cancel()
             except Exception as exc:
@@ -2885,6 +3018,32 @@ class MainWindow(QMainWindow):
         if not keep_refresh_inflight:
             self._set_preview_refresh_inflight(False)
         _UI_LOGGER.info("preview_worker_cancelled reason=%s generation=%s", reason, self._preview_request_generation)
+
+    def _retain_preview_worker(self, worker) -> None:
+        if worker not in self._retired_preview_workers:
+            self._retired_preview_workers.append(worker)
+
+    def _release_preview_worker(self, worker) -> None:
+        if self._preview_snapshot_worker is worker:
+            self._preview_snapshot_worker = None
+        try:
+            self._retired_preview_workers.remove(worker)
+        except ValueError:
+            pass
+        try:
+            worker.deleteLater()
+        except Exception:
+            pass
+
+    def _preview_workers_for_shutdown(self) -> list:
+        workers = []
+        current = self._preview_snapshot_worker
+        if current is not None:
+            workers.append(current)
+        for worker in self._retired_preview_workers:
+            if worker not in workers:
+                workers.append(worker)
+        return workers
 
     def _update_dxf_info(self):
         info = self._protocol.dxf_get_info()
@@ -3001,14 +3160,11 @@ class MainWindow(QMainWindow):
     def _update_preview_refresh_button_state(self):
         if not hasattr(self, "_refresh_preview_btn"):
             return
-        if self._is_offline_mode():
-            enabled = bool(self._dxf_loaded and WEB_ENGINE_AVAILABLE and self._dxf_view and (not self._preview_refresh_inflight))
-        else:
-            enabled = self._preview_session.should_enable_refresh(
-                offline_mode=self._is_offline_mode(),
-                connected=self._is_launch_connected(),
-                dxf_loaded=self._dxf_loaded,
-            )
+        enabled = self._preview_session.should_enable_refresh(
+            offline_mode=self._is_offline_mode(),
+            connected=self._is_launch_connected(),
+            dxf_loaded=self._dxf_loaded,
+        )
         self._refresh_preview_btn.setEnabled(enabled)
 
     def _is_unrecoverable_preview_resync_error(self, error_message: str, error_code=None) -> bool:
@@ -3095,7 +3251,6 @@ class MainWindow(QMainWindow):
         preview_kind: str,
         glue_reveal_lengths_mm: list[float] | None = None,
         motion_preview: list | None = None,
-        execution_polyline: list | None = None,
         motion_preview_meta: MotionPreviewMeta | None = None,
         preview_warning: str = "",
         preview_diagnostic_notice: PreviewDiagnosticNotice | None = None,
@@ -3106,7 +3261,7 @@ class MainWindow(QMainWindow):
         preview_diagnostic_code: str = "",
     ) -> str:
         normalized_source = str(preview_source or "").strip().lower()
-        effective_motion_preview = list(motion_preview or execution_polyline or [])
+        effective_motion_preview = list(motion_preview or [])
         effective_motion_preview_meta = motion_preview_meta
         if effective_motion_preview_meta is None and effective_motion_preview:
             effective_motion_preview_meta = MotionPreviewMeta(
@@ -3300,63 +3455,41 @@ class MainWindow(QMainWindow):
         motion_preview_meta: MotionPreviewMeta | None,
     ) -> tuple[list[float], dict[str, object]]:
         service_lengths = list(glue_reveal_lengths_mm or [])
-        if service_lengths:
-            monotonic = True
-            previous_length = service_lengths[0]
-            for current_length in service_lengths[1:]:
-                if current_length + 1e-6 < previous_length:
-                    monotonic = False
-                    break
-                previous_length = current_length
-            if len(service_lengths) == len(glue_points) and monotonic:
-                reveal_lengths = [round(length_mm * scale_px_per_mm, 6) for length_mm in service_lengths]
-                diagnostics: dict[str, object] = {
-                    "sample_points": [
-                        {
-                            "glue_index": index,
-                            "reveal_length_mm": round(service_lengths[index], 6),
-                            "reveal_length": reveal_lengths[index],
-                            "mode": "authority",
-                        }
-                        for index in range(min(len(service_lengths), 12))
-                    ],
-                    "aligned_count": len(reveal_lengths),
-                    "fallback_count": 0,
-                    "stalled_count": sum(
-                        1
-                        for index, reveal_length in enumerate(reveal_lengths)
-                        if index == 0 or abs(reveal_length - reveal_lengths[index - 1]) <= 1e-6
-                    ),
-                    "max_segment_jump": 0,
-                    "max_distance_sq": 0.0,
-                    "final_reveal_length": reveal_lengths[-1] if reveal_lengths else 0.0,
-                    "source": "authority_glue_reveal_lengths_mm",
-                }
-                self._log_preview_glue_reveal_diagnostics(
-                    diagnostics,
-                    glue_point_count=len(glue_points),
-                    motion_point_count=len(motion_preview),
-                    snapshot=snapshot,
-                    motion_preview_meta=motion_preview_meta,
-                )
-                return reveal_lengths, diagnostics
-            reason = "length_mismatch" if len(service_lengths) != len(glue_points) else "non_monotonic"
-            _UI_LOGGER.warning(
-                "preview_glue_reveal_compat_warning file=%s snapshot_id=%s reason=%s glue_points=%d reveal_lengths=%d",
-                os.path.basename(self._dxf_filepath) if self._dxf_filepath else "-",
-                snapshot.snapshot_id,
-                reason,
-                len(glue_points),
-                len(service_lengths),
-            )
+        monotonic = bool(service_lengths)
+        previous_length = service_lengths[0] if service_lengths else 0.0
+        for current_length in service_lengths[1:]:
+            if current_length + 1e-6 < previous_length:
+                monotonic = False
+                break
+            previous_length = current_length
+        if len(service_lengths) != len(glue_points) or not monotonic:
+            raise ValueError("运行时快照缺少有效 glue_reveal_lengths_mm")
 
-        reveal_lengths, reveal_diagnostics = self._build_preview_glue_reveal_lengths_with_diagnostics(
-            glue_points=glue_points,
-            motion_preview=motion_preview,
-        )
-        reveal_diagnostics["source"] = "legacy_motion_preview_projection"
+        reveal_lengths = [round(length_mm * scale_px_per_mm, 6) for length_mm in service_lengths]
+        reveal_diagnostics: dict[str, object] = {
+            "sample_points": [
+                {
+                    "glue_index": index,
+                    "reveal_length_mm": round(service_lengths[index], 6),
+                    "reveal_length": reveal_lengths[index],
+                    "mode": "authority",
+                }
+                for index in range(min(len(service_lengths), 12))
+            ],
+            "aligned_count": len(reveal_lengths),
+            "fallback_count": 0,
+            "stalled_count": sum(
+                1
+                for index, reveal_length in enumerate(reveal_lengths)
+                if index == 0 or abs(reveal_length - reveal_lengths[index - 1]) <= 1e-6
+            ),
+            "max_segment_jump": 0,
+            "max_distance_sq": 0.0,
+            "final_reveal_length": reveal_lengths[-1] if reveal_lengths else 0.0,
+            "source": "authority_glue_reveal_lengths_mm",
+        }
         self._log_preview_glue_reveal_diagnostics(
-            reveal_diagnostics,
+            diagnostics=reveal_diagnostics,
             glue_point_count=len(glue_points),
             motion_point_count=len(motion_preview),
             snapshot=snapshot,
@@ -3673,36 +3806,50 @@ class MainWindow(QMainWindow):
         self._update_info_label()
 
         render_started_at = time.perf_counter()
-        html_content = self._render_runtime_preview_html(
-            snapshot=result.snapshot,
-            speed_mm_s=self._dxf_speed.value(),
-            dry_run=result.dry_run,
-            preview_source=result.preview_source,
-            glue_points=list(result.glue_points),
-            glue_reveal_lengths_mm=list(result.glue_reveal_lengths_mm),
-            motion_preview=list(result.motion_preview),
-            motion_preview_meta=result.motion_preview_meta,
-            preview_kind=result.preview_kind,
-            preview_warning=result.preview_warning,
-            preview_diagnostic_notice=result.preview_diagnostic_notice,
-            motion_preview_warning=result.motion_preview_warning,
-            preview_validation_classification=self._preview_session.state.preview_validation_classification,
-            preview_exception_reason=self._preview_session.state.preview_exception_reason,
-            preview_failure_reason=self._preview_session.state.preview_failure_reason,
-            preview_diagnostic_code=self._preview_session.state.preview_diagnostic_code,
-        )
-        debug_html = self._render_preview_debug_html(
-            snapshot=result.snapshot,
-            speed_mm_s=self._dxf_speed.value(),
-            dry_run=result.dry_run,
-            preview_source=result.preview_source,
-            glue_points=list(result.glue_points),
-            motion_preview=list(result.motion_preview),
-            motion_preview_meta=result.motion_preview_meta,
-            preview_kind=result.preview_kind,
-            preview_validation_classification=self._preview_session.state.preview_validation_classification,
-            preview_diagnostic_code=self._preview_session.state.preview_diagnostic_code,
-        )
+        try:
+            html_content = self._render_runtime_preview_html(
+                snapshot=result.snapshot,
+                speed_mm_s=self._dxf_speed.value(),
+                dry_run=result.dry_run,
+                preview_source=result.preview_source,
+                glue_points=list(result.glue_points),
+                glue_reveal_lengths_mm=list(result.glue_reveal_lengths_mm),
+                motion_preview=list(result.motion_preview),
+                motion_preview_meta=result.motion_preview_meta,
+                preview_kind=result.preview_kind,
+                preview_warning=result.preview_warning,
+                preview_diagnostic_notice=result.preview_diagnostic_notice,
+                motion_preview_warning=result.motion_preview_warning,
+                preview_validation_classification=self._preview_session.state.preview_validation_classification,
+                preview_exception_reason=self._preview_session.state.preview_exception_reason,
+                preview_failure_reason=self._preview_session.state.preview_failure_reason,
+                preview_diagnostic_code=self._preview_session.state.preview_diagnostic_code,
+            )
+            debug_html = self._render_preview_debug_html(
+                snapshot=result.snapshot,
+                speed_mm_s=self._dxf_speed.value(),
+                dry_run=result.dry_run,
+                preview_source=result.preview_source,
+                glue_points=list(result.glue_points),
+                motion_preview=list(result.motion_preview),
+                motion_preview_meta=result.motion_preview_meta,
+                preview_kind=result.preview_kind,
+                preview_validation_classification=self._preview_session.state.preview_validation_classification,
+                preview_diagnostic_code=self._preview_session.state.preview_diagnostic_code,
+            )
+        except ValueError as exc:
+            preview_result = self._preview_session.handle_local_failure(
+                gate_error_message=str(exc),
+                title="胶点预览生成失败",
+                detail=str(exc),
+                clear_source=True,
+            )
+            self._sync_preview_session_fields()
+            self._update_info_label()
+            self.statusBar().showMessage(preview_result.status_message)
+            self._set_preview_message_html(preview_result.title, preview_result.detail, is_error=preview_result.is_error)
+            _UI_LOGGER.warning("preview_render_rejected snapshot_id=%s error=%s", result.snapshot.snapshot_id, exc)
+            return
         self._preview_dom_ready = False
         self._dxf_view.setHtml(html_content)
         self._preview_debug_view.setHtml(debug_html)
@@ -3764,18 +3911,15 @@ class MainWindow(QMainWindow):
             return
         self._cancel_active_preview_worker(reason="dxf_reload")
         if self._is_offline_mode():
-            self._dxf_artifact_id = "offline-local"
+            self._dxf_loaded = False
+            self._dxf_artifact_id = ""
             self._current_job_id = ""
-            self._dxf_loaded = True
             self._preview_session.reset_for_loaded_dxf()
             self._sync_preview_session_fields()
-            filename = os.path.basename(self._dxf_filepath)
-            self._dxf_filename_display.setText(filename)
-            self._dxf_filename_display.setToolTip(self._dxf_filepath)
             self._update_info_label()
-            self.statusBar().showMessage("DXF已加载，正在生成离线预览")
             self._update_preview_refresh_button_state()
-            self._generate_dxf_preview()
+            self.statusBar().showMessage("当前生产预览链仅支持在线 gateway 快照")
+            self._set_preview_message_html("胶点预览不可用", "当前生产预览链仅支持在线 gateway 快照。", is_error=True)
             return
         ok, payload, error = self._protocol.dxf_create_artifact(self._dxf_filepath)
         if ok:
@@ -3812,7 +3956,7 @@ class MainWindow(QMainWindow):
 
     def _generate_dxf_preview(self):
         """Generate and display DXF preview in embedded view."""
-        if not self._is_offline_mode() and not self._require_online_mode("DXF预览"):
+        if not self._require_online_mode("DXF预览"):
             return
         if self._preview_refresh_inflight:
             self.statusBar().showMessage("胶点预览仍在生成中，请稍后")
@@ -3851,29 +3995,9 @@ class MainWindow(QMainWindow):
         self._update_info_label()
         self._set_preview_refresh_inflight(True)
         self._cleanup_temp_preview()
-        if self._is_offline_mode():
-            self._set_preview_message_html("胶点预览生成中", "正在生成离线动态预览，请稍候。")
-        else:
-            self._set_preview_message_html("胶点预览生成中", "正在请求规划胶点快照和执行轨迹辅助层，请稍候。")
+        self._set_preview_message_html("胶点预览生成中", "正在请求规划胶点快照和执行轨迹辅助层，请稍候。")
         self.statusBar().showMessage("胶点预览生成中...")
         _UI_LOGGER.info("preview_requested speed_mm_s=%.3f file=%s", speed, self._dxf_filepath)
-        if self._is_offline_mode():
-            try:
-                payload = build_offline_preview_payload(
-                    self._dxf_filepath,
-                    speed_mm_s=speed,
-                    dry_run=bool(dry_run_mode),
-                )
-            except Exception as exc:
-                self._set_preview_refresh_inflight(False)
-                result = self._preview_session.handle_worker_error(str(exc))
-                self._sync_preview_session_fields()
-                self._update_info_label()
-                self.statusBar().showMessage(result.status_message)
-                self._set_preview_message_html(result.title, result.detail, is_error=result.is_error)
-                return
-            self._on_preview_snapshot_completed(True, payload, "", source="offline_local")
-            return
         self._cancel_active_preview_worker(reason="preview_restart", keep_refresh_inflight=True)
         self._preview_request_generation += 1
         request_token = self._preview_request_generation
@@ -3894,12 +4018,13 @@ class MainWindow(QMainWindow):
                 request_token=token,
             )
         )
-        worker.finished.connect(worker.deleteLater)
+        worker.finished.connect(lambda ref=worker: self._release_preview_worker(ref))
         self._preview_snapshot_worker = worker
         try:
             worker.start()
         except Exception as exc:
             self._preview_snapshot_worker = None
+            self._release_preview_worker(worker)
             self._set_preview_refresh_inflight(False)
             result = self._preview_session.handle_worker_error(str(exc))
             self._sync_preview_session_fields()
@@ -4050,6 +4175,7 @@ class MainWindow(QMainWindow):
             self._current_plan_id,
             target_count=self._target_count,
             plan_fingerprint=self._current_plan_fingerprint,
+            auto_continue=False,
         )
         if not ok:
             self._production_running = False
@@ -4060,6 +4186,7 @@ class MainWindow(QMainWindow):
         self._current_job_id = str(payload.get("job_id", "")).strip()
         self._production_running = True
         self._production_paused = False
+        self._production_awaiting_continue = False
         self._pending_production_action = ""
         self._production_dry_run = dry_run
         self._suppressed_terminal_job_id = ""
@@ -4111,6 +4238,10 @@ class MainWindow(QMainWindow):
         """Resume production after a pause."""
         self._start_production_action("resume")
 
+    def _on_production_continue(self):
+        """Continue production after one completed cycle."""
+        self._start_production_action("continue")
+
     def _on_production_stop(self, *, status_capability: str = "生产控制"):
         """Stop production."""
         self._start_production_action("stop", status_capability=status_capability)
@@ -4136,7 +4267,7 @@ class MainWindow(QMainWindow):
         return state in ("completed", "failed", "cancelled")
 
     def _is_active_job_execution_state(self, state: str) -> bool:
-        return state in ("pending", "running", "paused", "stopping")
+        return state in ("pending", "running", "paused", "stopping", "awaiting_continue")
 
     def _normalize_job_execution_snapshot(self, job_execution) -> dict[str, object]:
         if job_execution is None:
@@ -4207,6 +4338,7 @@ class MainWindow(QMainWindow):
         self._run_start_time = 0
         self._production_running = False
         self._production_paused = False
+        self._production_awaiting_continue = False
         self._operation_status.setText("空闲")
         if hasattr(self, "_global_progress"):
             self._global_progress.setValue(0)
@@ -4355,10 +4487,12 @@ class MainWindow(QMainWindow):
                     self._pending_production_action = ""
                     self._production_running = False
                     self._production_paused = False
+                    self._production_awaiting_continue = False
                     self._run_start_time = 0
                     self._operation_status.setText("空闲")
                 elif state == "paused":
                     self._production_running = False
+                    self._production_awaiting_continue = False
                     self._run_start_time = 0
                     if self._pending_production_action == "resume":
                         self._production_paused = True
@@ -4371,6 +4505,7 @@ class MainWindow(QMainWindow):
                         self._production_paused = True
                         self._operation_status.setText("已暂停")
                 elif state in ("running", "pending"):
+                    self._production_awaiting_continue = False
                     if self._pending_production_action == "pause":
                         self._production_paused = False
                         self._production_running = True
@@ -4390,16 +4525,28 @@ class MainWindow(QMainWindow):
                             self._run_start_time = time.time()
                         mode_text = "空跑" if self._production_dry_run else "生产"
                         self._operation_status.setText(f"{mode_text}运行中")
+                elif state == "awaiting_continue":
+                    self._production_running = False
+                    self._production_paused = False
+                    self._production_awaiting_continue = True
+                    self._run_start_time = 0
+                    if self._pending_production_action == "continue":
+                        self._operation_status.setText("继续中")
+                    else:
+                        self._pending_production_action = ""
+                        self._operation_status.setText("等待继续")
                 elif state == "stopping":
                     self._pending_production_action = "stop"
                     self._production_paused = False
                     self._production_running = False
+                    self._production_awaiting_continue = False
                     self._run_start_time = 0
                     self._operation_status.setText("停止中")
                 elif state == "completed":
                     self._pending_production_action = ""
                     self._production_running = False
                     self._production_paused = False
+                    self._production_awaiting_continue = False
                     self._run_start_time = 0
                     if previous_tracked_job_id:
                         self._preview_session.mark_resync_pending()
@@ -4409,6 +4556,7 @@ class MainWindow(QMainWindow):
                 elif state == "unknown":
                     self._production_running = False
                     self._production_paused = False
+                    self._production_awaiting_continue = False
                     self._run_start_time = 0
                     self._operation_status.setText("状态未知")
                     self._runtime_status_fault = True
@@ -4420,6 +4568,7 @@ class MainWindow(QMainWindow):
                     self._pending_production_action = ""
                     self._production_running = False
                     self._production_paused = False
+                    self._production_awaiting_continue = False
                     self._run_start_time = 0
                     if previous_tracked_job_id:
                         self._preview_session.mark_resync_pending()
@@ -4437,6 +4586,7 @@ class MainWindow(QMainWindow):
                     self._pending_production_action = ""
                     self._production_running = False
                     self._production_paused = False
+                    self._production_awaiting_continue = False
                     self._run_start_time = 0
 
                 self._apply_mode_capabilities()
@@ -4504,8 +4654,13 @@ class MainWindow(QMainWindow):
             self._cancel_active_production_action_worker(reason="window_close")
             if production_action_worker.isRunning():
                 production_action_worker.wait(1000)
-        if self._preview_snapshot_worker and self._preview_snapshot_worker.isRunning():
-            self._preview_snapshot_worker.wait(1000)
+        self._cancel_active_preview_worker(reason="window_close")
+        for preview_worker in self._preview_workers_for_shutdown():
+            try:
+                if preview_worker.isRunning():
+                    preview_worker.wait(1000)
+            except Exception:
+                pass
         if self._backend:
             self._backend.stop()
         super().closeEvent(event)

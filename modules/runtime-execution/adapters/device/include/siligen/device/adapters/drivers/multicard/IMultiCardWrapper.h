@@ -406,21 +406,7 @@ class IMultiCardWrapper {
                             short nTimeFlag2) noexcept = 0;
 
     /**
-     * @brief 按固定时间间隔重复输出脉冲（用于定时点胶）
-     * @param nCmpNum CMP 通道号（0-15）
-     * @param lIntervalTime 重复间隔时间（单位由 nTimeFlag 决定）
-     * @param nTime 脉冲宽度（单位由 nTimeFlag 决定）
-     * @param nTimeFlag 时间单位标志（0=微秒，1=毫秒）
-     * @param ulRptTime 重复次数（0=无限重复，>0=指定次数）
-     * @return 错误码（0=成功）
-     *
-     * 注意：此接口用于定时重复脉冲（适合点胶阀控制）
-     */
-    virtual int MC_CmpRpt(
-        short nCmpNum, unsigned long lIntervalTime, short nTime, short nTimeFlag, unsigned long ulRptTime) noexcept = 0;
-
-    /**
-     * @brief 停止 CMP 触发输出（同时支持 MC_CmpPluse 和 MC_CmpRpt）
+     * @brief 停止 CMP 触发输出
      * @param channelMask 通道掩码
      * @return 错误码（0=成功）
      */
@@ -431,33 +417,9 @@ class IMultiCardWrapper {
      * @param nBuf1ChannelNum 缓冲区1绑定的 CMP 通道号（1-16，0=不使用）
      * @param nBuf2ChannelNum 缓冲区2绑定的 CMP 通道号（1-16，0=不使用）
      * @return 错误码（0=成功）
-     * @note 此接口必须在使用 MC_CmpRpt 前调用，用于配置缓冲区与 CMP 通道的映射关系
+     * @note 用于配置两个 compare buffer 映射到哪个 CMP 输出通道
      */
     virtual int MC_CmpBufSetChannel(short nBuf1ChannelNum, short nBuf2ChannelNum) noexcept = 0;
-
-    /**
-     * @brief CMP 缓冲区定时重复脉冲输出（带编码器配置）
-     * @param nEncNum 编码器编号（1-2，对应轴1-2）
-     * @param nDir 方向（0=正向，1=负向）
-     * @param nEncFlag 编码器标志（0=内部编码器，1=外部编码器）
-     * @param lTrigValue 触发位置（编码器值）
-     * @param nCmpNum CMP 通道号（1-16）
-     * @param lIntervalTime 重复间隔（毫秒）
-     * @param nTime 脉冲宽度
-     * @param nTimeFlag 时间单位（0=微秒，1=毫秒）
-     * @param ulRptTime 重复次数
-     * @return 错误码（0=成功，-99=编码器未配置）
-     * @note 此接口是 MC_CmpRpt 的完整版本，包含编码器配置参数
-     */
-    virtual int MC_CmpBufRpt(short nEncNum,
-                             short nDir,
-                             short nEncFlag,
-                             long lTrigValue,
-                             short nCmpNum,
-                             unsigned long lIntervalTime,
-                             short nTime,
-                             short nTimeFlag,
-                             unsigned long ulRptTime) noexcept = 0;
 
     // ========== I/O 控制 ==========
 

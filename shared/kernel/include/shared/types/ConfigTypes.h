@@ -308,8 +308,8 @@ struct DispenserValveConfig {
 
     // 获取验证错误信息 (Get validation error message)
     std::string GetValidationError() const {
-        if (cmp_channel < 0 || cmp_channel > 3) {
-            return "CMP通道必须在0-3范围内";
+        if (cmp_channel < 1 || cmp_channel > 4) {
+            return "CMP通道必须在1-4范围内";
         }
         if (pulse_type < 0 || pulse_type > 1) {
             return "脉冲类型必须是0或1";

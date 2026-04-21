@@ -1,6 +1,7 @@
 #pragma once
 
 #include "application/services/dispensing/WorkflowPlanningAssemblyTypes.h"
+#include "runtime_execution/contracts/dispensing/ProfileCompareRuntimeContract.h"
 #include "shared/types/Result.h"
 
 #include <chrono>
@@ -22,6 +23,7 @@ using Siligen::ProcessPath::Contracts::Segment;
 using Siligen::ProcessPath::Contracts::SegmentType;
 using Siligen::RuntimeExecution::Contracts::Motion::InterpolationData;
 using Siligen::Shared::Types::Point2D;
+using Siligen::Domain::Dispensing::Contracts::FormalCompareGateDiagnostic;
 using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::DispensingExecutionGeometryKind;
 using Siligen::Shared::Types::DispensingExecutionStrategy;
@@ -119,12 +121,14 @@ struct ExecutionAssemblyBuildInput {
     float32 sample_ds = 0.0f;
     float32 spline_max_step_mm = 0.0f;
     float32 spline_max_error_mm = 0.0f;
-    float32 estimated_time_s = 0.0f;
+    float32 execution_nominal_time_s = 0.0f;
     bool use_interpolation_planner = false;
     InterpolationAlgorithm interpolation_algorithm = InterpolationAlgorithm::LINEAR;
     DispensingExecutionStrategy requested_execution_strategy = DispensingExecutionStrategy::FLYING_SHOT;
     std::optional<Siligen::Shared::Types::PointFlyingCarrierPolicy> point_flying_carrier_policy;
     Siligen::Domain::Dispensing::ValueObjects::DispenseCompensationProfile compensation_profile{};
+    Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareRuntimeContract
+        profile_compare_runtime_contract{};
     AuthorityPreviewBuildResult authority_preview;
 };
 
@@ -141,7 +145,10 @@ struct ExecutionAssemblyBuildResult {
     std::vector<TrajectoryPoint> motion_trajectory_points;
     bool preview_authority_shared_with_execution = false;
     bool execution_binding_ready = false;
+    bool execution_contract_ready = false;
     std::string execution_failure_reason;
+    std::string execution_diagnostic_code;
+    FormalCompareGateDiagnostic formal_compare_gate;
     AuthorityTriggerLayout authority_trigger_layout;
     Siligen::Domain::Dispensing::Contracts::PlanningArtifactExportRequest export_request;
 };
@@ -165,7 +172,7 @@ struct PlanningArtifactsAssemblyInput {
     float32 sample_ds = 0.0f;
     float32 spline_max_step_mm = 0.0f;
     float32 spline_max_error_mm = 0.0f;
-    float32 estimated_time_s = 0.0f;
+    float32 execution_nominal_time_s = 0.0f;
     Siligen::Shared::Types::DispensingStrategy dispensing_strategy =
         Siligen::Shared::Types::DispensingStrategy::BASELINE;
     int subsegment_count = 8;
@@ -239,7 +246,7 @@ float32 EstimatePreviewTime(const AuthorityPreviewBuildInput& input, float32 tot
 std::vector<Point2D> CollectAuthorityPositions(const AuthorityTriggerLayout& layout);
 Siligen::Shared::Types::Result<ProcessPath> BuildCanonicalExecutionProcessPath(
     const ProcessPath& authority_process_path,
-    const AuthorityTriggerLayout& authority_trigger_layout);
+    AuthorityTriggerLayout& authority_trigger_layout);
 TriggerArtifacts BuildTriggerArtifactsFromAuthorityPreview(const AuthorityPreviewBuildResult& authority_preview);
 Siligen::Shared::Types::Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
     const PlanningArtifactsAssemblyInput& input,
@@ -257,6 +264,11 @@ Siligen::Shared::Types::Result<ExecutionPackageValidated> BuildValidatedExecutio
     const ProcessPath& execution_process_path,
     const TriggerArtifacts& trigger_artifacts,
     ExecutionGenerationArtifacts generation_artifacts);
+Siligen::Shared::Types::Result<ExecutionPackageValidated> BuildFormalProfileCompareExecutionPackage(
+    const ExecutionPackageValidated& base_package,
+    const TriggerArtifacts& trigger_artifacts,
+    const Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareRuntimeContract& runtime_contract,
+    FormalCompareGateDiagnostic* formal_compare_gate = nullptr);
 void PopulateExecutionTrajectorySelection(
     const ExecutionPackageValidated& execution_package,
     ExecutionAssemblyBuildResult& result,

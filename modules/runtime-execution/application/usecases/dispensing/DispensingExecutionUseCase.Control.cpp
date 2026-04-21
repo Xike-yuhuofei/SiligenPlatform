@@ -121,6 +121,10 @@ Result<void> DispensingExecutionUseCase::Impl::PauseJob(const JobID& job_id) {
     if (state == JobState::PAUSED) {
         return Result<void>::Success();
     }
+    if (state == JobState::WAITING_CONTINUE) {
+        return Result<void>::Failure(
+            Error(ErrorCode::INVALID_STATE, "job is waiting for continue", "DispensingExecutionUseCase"));
+    }
     if (state == JobState::STOPPING) {
         return Result<void>::Failure(
             Error(ErrorCode::INVALID_STATE, "job is stopping", "DispensingExecutionUseCase"));
@@ -158,6 +162,10 @@ Result<void> DispensingExecutionUseCase::Impl::ResumeJob(const JobID& job_id) {
     }
 
     const auto state = context->state.load();
+    if (state == JobState::WAITING_CONTINUE) {
+        return Result<void>::Failure(
+            Error(ErrorCode::INVALID_STATE, "job is waiting for continue", "DispensingExecutionUseCase"));
+    }
     if (state == JobState::STOPPING) {
         return Result<void>::Failure(
             Error(ErrorCode::INVALID_STATE, "job is stopping", "DispensingExecutionUseCase"));
@@ -189,6 +197,45 @@ Result<void> DispensingExecutionUseCase::Impl::ResumeJob(const JobID& job_id) {
             return resume_result;
         }
     }
+    return Result<void>::Success();
+}
+
+Result<void> DispensingExecutionUseCase::Impl::ContinueJob(const JobID& job_id) {
+    std::shared_ptr<JobExecutionContext> context;
+    {
+        std::lock_guard<std::mutex> lock(jobs_mutex_);
+        auto it = jobs_.find(job_id);
+        if (it == jobs_.end()) {
+            return Result<void>::Failure(
+                Error(ErrorCode::NOT_FOUND, "job not found", "DispensingExecutionUseCase"));
+        }
+        context = it->second;
+    }
+
+    const auto state = context->state.load();
+    if (state == JobState::STOPPING) {
+        return Result<void>::Failure(
+            Error(ErrorCode::INVALID_STATE, "job is stopping", "DispensingExecutionUseCase"));
+    }
+    if (IsTerminalJobState(state)) {
+        return Result<void>::Failure(
+            Error(ErrorCode::INVALID_STATE, "job already finished", "DispensingExecutionUseCase"));
+    }
+    if (state != JobState::WAITING_CONTINUE) {
+        return Result<void>::Failure(
+            Error(ErrorCode::INVALID_STATE, "job is not waiting for continue", "DispensingExecutionUseCase"));
+    }
+    if (!context->execution_request) {
+        return Result<void>::Failure(
+            Error(ErrorCode::INVALID_STATE, "job execution request is unavailable", "DispensingExecutionUseCase"));
+    }
+
+    auto precondition_result = ValidateExecutionPreconditions(context->execution_request->dry_run);
+    if (precondition_result.IsError()) {
+        return Result<void>::Failure(precondition_result.GetError());
+    }
+
+    context->continue_requested.store(true);
     return Result<void>::Success();
 }
 
