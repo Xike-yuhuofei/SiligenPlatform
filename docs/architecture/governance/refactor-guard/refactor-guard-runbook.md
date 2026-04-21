@@ -134,19 +134,14 @@ Dependency graph 关键文件：
 
 ## 6. 已知限制
 
-- 当前 Windows 本机的 `semgrep-core` 扫描时会返回 `RPC input error: Expected a number, got ''`。wrapper 已将其收敛为：
-  - `semgrep-results.json`
-  - `semgrep-summary.md`
-  - `semgrep-tool-output.txt`
-  - CI 视为 hard-fail
+- Windows 默认不再直接执行本机 `semgrep-core`；`invoke-semgrep.ps1` 会改走 `scripts/validation/run_refactor_guard_fallback.py`，复用同一 `arch-rules.yml` 与报告出口。
 - `cppcheck` 当前环境未安装，因此只能输出 `tool-missing` 报告。
 - C/C++ coverage 已完成开关与汇总脚本，但当前尚未采集 `.profraw`，因此报告为 `not-collected`。
 - `legacy-exit` 仍保留 8 条 `controlled-exception`，根因是模块内 canonical `tests/integration` 文本命中 legacy regex。
 
 ## 7. 下一步收敛方向
 
-1. 修复或替换当前 Windows Semgrep CE 运行时，恢复真实 finding 扫描。
-2. 将 `legacy-exit` 的 retired-root regex 从“路径片段命中”收敛到“仓库根引用命中”，移除现有 controlled exception。
-3. 收敛 `hmi_application -> hmi_client.client.*` 与 `hmi_client.ui -> hmi_application`，再把 advisory contracts 升级为 hard。
-4. 在一次 `build.ps1 -EnableCppCoverage` + `test.ps1 -EnableCppCoverage` 后补齐 `.profraw` 采集闭环。
-5. 安装 `cppcheck` 后根据真实噪声水平决定首批 blocking 等级。
+1. 将 `legacy-exit` 的 retired-root regex 从“路径片段命中”收敛到“仓库根引用命中”，移除现有 controlled exception。
+2. 收敛 `hmi_application -> hmi_client.client.*` 与 `hmi_client.ui -> hmi_application`，再把 advisory contracts 升级为 hard。
+3. 在一次 `build.ps1 -EnableCppCoverage` + `test.ps1 -EnableCppCoverage` 后补齐 `.profraw` 采集闭环。
+4. 安装 `cppcheck` 后根据真实噪声水平决定首批 blocking 等级。

@@ -36,8 +36,9 @@
   - JSON 报告
   - Markdown 摘要
   - 工具原始输出留档
+  - Windows fallback scanner
   - tool execution failure 按 hard-fail 处理
-- 当前本机 Windows 环境中 `semgrep-core` 失败，报告状态为 `tool-error`，仍视为 gate failure。
+- 当前 Windows 路径默认改走 repo-owned fallback scanner：复用 `scripts/validation/semgrep/arch-rules.yml` 的同一组规则与报告出口，不再依赖本机 `semgrep-core` 成功启动。
 
 ## 3. Import Linter 契约
 
