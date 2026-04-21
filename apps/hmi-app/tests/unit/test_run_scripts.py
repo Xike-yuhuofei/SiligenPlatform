@@ -199,12 +199,11 @@ class HmiRunScriptContractTest(unittest.TestCase):
         self.assertIn(str(workspace_exe), completed.stdout)
         self.assertNotIn(str(localappdata_exe), completed.stdout)
 
-    def test_runtime_gateway_runner_dryrun_rejects_workspace_root_without_matching_cache_and_does_not_fallback(self) -> None:
+    def test_runtime_gateway_runner_dryrun_does_not_fallback_when_workspace_root_missing_matching_cache(self) -> None:
         with self._preserve_workspace_gateway_artifacts() as (workspace_exe, cache_path):
-            if workspace_exe.exists():
-                workspace_exe.unlink()
-            workspace_exe.parent.mkdir(parents=True, exist_ok=True)
-            workspace_exe.write_text("", encoding="utf-8")
+            if not workspace_exe.exists():
+                workspace_exe.parent.mkdir(parents=True, exist_ok=True)
+                workspace_exe.write_text("", encoding="utf-8")
             if cache_path.exists():
                 cache_path.unlink()
 
@@ -241,7 +240,8 @@ class HmiRunScriptContractTest(unittest.TestCase):
 
         output = f"{completed.stdout}\n{completed.stderr}"
         self.assertNotEqual(completed.returncode, 0)
-        self.assertIn("current-workspace control-apps build root not ready", output)
+        self.assertIn("current-workspace control-apps build root not ready for runtime-", output)
+        self.assertIn("gateway", output)
         self.assertNotIn(str(localappdata_exe), output)
 
     def test_contract_builder_dryrun_parses_runtime_gateway_output_without_path_format_error(self) -> None:
