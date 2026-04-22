@@ -23,6 +23,10 @@
       "immediate_only_span_count": 8,
       "future_compare_span_count": 24
     },
+    "production_baseline": {
+      "baseline_id": "baseline-production-default",
+      "baseline_fingerprint": "baseline-fp-20260421"
+    },
     "import_result_classification": "success",
     "import_preview_ready": true,
     "import_production_ready": true,

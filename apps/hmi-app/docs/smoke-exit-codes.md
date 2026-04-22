@@ -20,8 +20,8 @@
 
 在线预览补充约束：
 
-- 当传入 `-ExerciseRuntimeActions -RuntimeActionProfile operator_preview` 时，GUI smoke 必须走显式 recipe/version 选择的操作员预览链路，并输出 `OPERATOR_CONTEXT` 阶段序列：
-  - `recipe-selected -> missing-version-blocked -> version-selected -> preview-ready`
+- 当传入 `-ExerciseRuntimeActions -RuntimeActionProfile operator_preview` 时，GUI smoke 必须走 `DXF browse -> preview-ready -> preview-refreshed` 的操作员在线预览链路，并输出对应 `OPERATOR_CONTEXT` 阶段序列。
+- `operator_preview` 链路不得要求显式 recipe/version 选择；成功依据固定为 runtime 返回的 `plan_id`、`snapshot_hash` 与 `preview_source=planned_glue_snapshot`。
 - `-PreviewPayloadPath` 只允许与 `-ExerciseRuntimeActions -RuntimeActionProfile snapshot_render` 搭配。
 - `snapshot_render` 仅用于 HIL 证据截图渲染，不得作为正式在线预览通过依据。
 - 禁止根据 `-PreviewPayloadPath` 做隐式 profile 推断或静默回退。

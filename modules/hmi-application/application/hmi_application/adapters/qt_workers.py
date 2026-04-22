@@ -21,8 +21,6 @@ class PreviewSnapshotWorker(QThread):
         host: str,
         port: int,
         artifact_id: str,
-        recipe_id: str,
-        version_id: str,
         speed_mm_s: float,
         dry_run: bool,
         dry_run_speed_mm_s: float,
@@ -31,8 +29,6 @@ class PreviewSnapshotWorker(QThread):
         self._host = host
         self._port = port
         self._artifact_id = artifact_id
-        self._recipe_id = recipe_id
-        self._version_id = version_id
         self._speed_mm_s = speed_mm_s
         self._dry_run = dry_run
         self._dry_run_speed_mm_s = dry_run_speed_mm_s
@@ -83,8 +79,6 @@ class PreviewSnapshotWorker(QThread):
                 plan_ok, plan_payload, plan_error = protocol.dxf_prepare_plan(
                     artifact_id=self._artifact_id,
                     speed_mm_s=self._speed_mm_s,
-                    recipe_id=self._recipe_id,
-                    version_id=self._version_id,
                     dry_run=self._dry_run,
                     dry_run_speed_mm_s=self._dry_run_speed_mm_s,
                     timeout=DXF_OPEN_AUTO_PREVIEW_TIMEOUT_S,

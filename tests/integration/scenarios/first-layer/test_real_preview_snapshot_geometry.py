@@ -14,12 +14,7 @@ HIL_DIR = ROOT / "tests" / "e2e" / "hardware-in-loop"
 if str(HIL_DIR) not in sys.path:
     sys.path.insert(0, str(HIL_DIR))
 
-from runtime_gateway_harness import (
-    CANONICAL_RECIPE_ID,
-    CANONICAL_VERSION_ID,
-    build_recipe_context_cli_args,
-    resolve_default_exe,
-)
+from runtime_gateway_harness import resolve_default_exe
 
 
 SCRIPT_PATH = ROOT / "tests" / "e2e" / "hardware-in-loop" / "run_real_dxf_preview_snapshot.py"
@@ -58,7 +53,6 @@ def test_real_preview_snapshot_matches_rect_diag_baseline(tmp_path: Path) -> Non
             str(gateway_exe),
             "--report-root",
             str(report_root),
-            *build_recipe_context_cli_args(CANONICAL_RECIPE_ID, CANONICAL_VERSION_ID),
         ],
         cwd=str(ROOT),
         capture_output=True,
@@ -105,15 +99,15 @@ def test_real_preview_snapshot_matches_rect_diag_baseline(tmp_path: Path) -> Non
     assert report["config_mode"] == baseline["config_mode"]
     assert report["preview_source"] == baseline["preview_source"]
     assert report["preview_kind"] == baseline["preview_kind"]
-    assert report["recipe_id"] == CANONICAL_RECIPE_ID
-    assert report["version_id"] == CANONICAL_VERSION_ID
-    assert report["recipe_context_source"] == "cli_explicit"
+    assert report["baseline_id"]
+    assert report["baseline_fingerprint"]
+    assert report["production_baseline_source"] == "dxf.plan.prepare"
     assert report["dxf_file"].endswith(str(baseline["dxf_file"]).replace("/", "\\"))
     assert report["plan_id"] == plan_prepare["plan_id"]
     assert report["plan_fingerprint"] == plan_prepare["plan_fingerprint"]
-    assert plan_prepare["recipe_id"] == CANONICAL_RECIPE_ID
-    assert plan_prepare["version_id"] == CANONICAL_VERSION_ID
-    assert plan_prepare["recipe_context_source"] == "cli_explicit"
+    assert plan_prepare["baseline_id"] == report["baseline_id"]
+    assert plan_prepare["baseline_fingerprint"] == report["baseline_fingerprint"]
+    assert plan_prepare["production_baseline"]["baseline_id"] == report["baseline_id"]
     assert snapshot["preview_state"] == baseline["snapshot"]["preview_state"]
     assert snapshot["plan_id"] == plan_prepare["plan_id"]
     assert snapshot["snapshot_hash"] == plan_prepare["plan_fingerprint"]
@@ -129,9 +123,9 @@ def test_real_preview_snapshot_matches_rect_diag_baseline(tmp_path: Path) -> Non
     assert preview_verdict["verdict"] == "passed"
     assert preview_verdict["launch_mode"] == "online"
     assert preview_verdict["online_ready"] is True
-    assert preview_verdict["recipe_id"] == CANONICAL_RECIPE_ID
-    assert preview_verdict["version_id"] == CANONICAL_VERSION_ID
-    assert preview_verdict["recipe_context_source"] == "cli_explicit"
+    assert preview_verdict["baseline_id"] == report["baseline_id"]
+    assert preview_verdict["baseline_fingerprint"] == report["baseline_fingerprint"]
+    assert preview_verdict["production_baseline_source"] == "dxf.plan.prepare"
     assert preview_verdict["preview_source"] == baseline["preview_source"]
     assert preview_verdict["preview_kind"] == baseline["preview_kind"]
     assert preview_verdict["plan_id"] == plan_prepare["plan_id"]

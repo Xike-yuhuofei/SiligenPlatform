@@ -210,6 +210,8 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
     response.preview_failure_reason = authority_preview.artifacts.preview_failure_reason;
     response.preview_diagnostic_code = authority_preview.preview_diagnostic_code;
     response.generated_at = ToIso8601UtcNow();
+    response.production_baseline.baseline_id = baseline.baseline_id;
+    response.production_baseline.baseline_fingerprint = baseline.baseline_fingerprint;
     response.performance_profile.authority_cache_hit = authority_resolution.cache_hit;
     response.performance_profile.authority_joined_inflight = authority_resolution.joined_inflight;
     response.performance_profile.authority_wait_ms = authority_resolution.wait_ms;
@@ -469,6 +471,7 @@ Result<StartJobResponse> DispensingWorkflowUseCase::StartJob(const StartJobReque
         return Result<StartJobResponse>::Failure(execution_launch_result.GetError());
     }
     auto execution_launch = execution_launch_result.Value();
+    StartJobResponse::ProductionBaselineContext production_baseline;
 
     {
         std::lock_guard<std::mutex> lock(plans_mutex_);
@@ -482,6 +485,7 @@ Result<StartJobResponse> DispensingWorkflowUseCase::StartJob(const StartJobReque
             return Result<StartJobResponse>::Failure(materialize_result.GetError());
         }
         execution_launch = it->second.execution_launch;
+        production_baseline = it->second.response.production_baseline;
     }
 
     Siligen::Application::Ports::Dispensing::WorkflowRuntimeStartJobRequest runtime_request;
@@ -526,6 +530,7 @@ Result<StartJobResponse> DispensingWorkflowUseCase::StartJob(const StartJobReque
                 request.target_count);
         response.execution_budget_s = response.execution_budget_breakdown.total_budget_s;
     }
+    response.production_baseline = production_baseline;
     response.performance_profile.execution_cache_hit = execution_resolution.cache_hit;
     response.performance_profile.execution_joined_inflight = execution_resolution.joined_inflight;
     response.performance_profile.execution_wait_ms = execution_resolution.wait_ms;

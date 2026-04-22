@@ -1159,7 +1159,20 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertTrue(client.calls[0][1]["file_content_b64"])
 
     def test_dxf_prepare_plan_contract(self) -> None:
-        client = _FakeClient([{"result": {"plan_id": "plan-1", "plan_fingerprint": "fp-1"}}])
+        client = _FakeClient(
+            [
+                {
+                    "result": {
+                        "plan_id": "plan-1",
+                        "plan_fingerprint": "fp-1",
+                        "production_baseline": {
+                            "baseline_id": "baseline-1",
+                            "baseline_fingerprint": "baseline-fp-1",
+                        },
+                    }
+                }
+            ]
+        )
         protocol = CommandProtocol(client)
 
         ok, payload, error = protocol.dxf_prepare_plan(
@@ -1172,9 +1185,12 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertEqual(payload["plan_id"], "plan-1")
         self.assertEqual(client.calls[0][0], "dxf.plan.prepare")
         self.assertEqual(client.calls[0][1]["artifact_id"], "artifact-1")
+        self.assertNotIn("recipe_id", client.calls[0][1])
+        self.assertNotIn("version_id", client.calls[0][1])
         self.assertTrue(client.calls[0][1]["optimize_path"])
         self.assertTrue(client.calls[0][1]["use_interpolation_planner"])
         self.assertEqual(client.calls[0][1]["interpolation_algorithm"], 0)
+        self.assertEqual(payload["production_baseline"]["baseline_id"], "baseline-1")
         self.assertEqual(client.calls[0][2], 15.0)
 
     def test_dxf_prepare_plan_accepts_timeout_override(self) -> None:
@@ -1198,6 +1214,10 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
             {
                 "result": {
                     "job_id": "job-1",
+                    "production_baseline": {
+                        "baseline_id": "baseline-1",
+                        "baseline_fingerprint": "baseline-fp-1",
+                    },
                     "performance_profile": {
                         "execution_cache_hit": False,
                         "execution_joined_inflight": True,
@@ -1222,6 +1242,7 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertEqual(client.calls[0][1]["target_count"], 3)
         self.assertEqual(client.calls[0][1]["plan_fingerprint"], "fp-1")
         self.assertNotIn("auto_continue", client.calls[0][1])
+        self.assertEqual(payload["production_baseline"]["baseline_fingerprint"], "baseline-fp-1")
         self.assertEqual(payload["performance_profile"]["execution_total_ms"], 75)
         self.assertEqual(client.calls[0][2], 15.0)
 

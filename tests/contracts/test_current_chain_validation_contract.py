@@ -40,11 +40,20 @@ class CurrentChainValidationContractTest(unittest.TestCase):
             WORKSPACE_ROOT / "tests" / "integration" / "scenarios" / "first-layer" / "run_tcp_precondition_matrix.py"
         ).read_text(encoding="utf-8")
         self.assertNotIn("resolve_active_recipe", text)
-        self.assertIn("recipe_context_metadata(args.recipe_id, args.version_id)", text)
-        self.assertIn("ensure_published_recipe_version(", text)
-        self.assertIn('"recipe_id": recipe_context["recipe_id"]', text)
-        self.assertIn('"version_id": recipe_context["version_id"]', text)
+        self.assertNotIn("recipe_context_metadata(", text)
+        self.assertNotIn("ensure_published_recipe_version(", text)
+        self.assertNotIn('"recipe_id":', text)
+        self.assertNotIn('"version_id":', text)
+        self.assertIn("production_baseline_metadata(", text)
         self.assertIn('"dispensing_speed_mm_s": 10.0', text)
+
+    def test_first_layer_rereview_does_not_forward_legacy_recipe_cli(self) -> None:
+        text = (
+            WORKSPACE_ROOT / "tests" / "integration" / "scenarios" / "first-layer" / "run_first_layer_rereview.ps1"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("--recipe-id", text)
+        self.assertNotIn("--version-id", text)
+        self.assertNotIn("AllowSkipOnActiveRecipe", text)
 
 
 if __name__ == "__main__":

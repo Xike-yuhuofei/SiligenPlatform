@@ -200,10 +200,10 @@ def test_build_report_keeps_legacy_history_and_new_contract() -> None:
 
     report = dryrun.build_report(
         args=args,
-        recipe_context={
-            "recipe_id": "recipe-7d1b00f4-6a99",
-            "version_id": "version-fea9ce29-f963",
-            "recipe_context_source": "cli_explicit",
+        production_baseline={
+            "baseline_id": "baseline-production-default",
+            "baseline_fingerprint": "baseline-fp-20260421",
+            "production_baseline_source": "dxf.plan.prepare",
         },
         steps=steps,
         artifacts={
@@ -237,9 +237,9 @@ def test_build_report_keeps_legacy_history_and_new_contract() -> None:
     assert report["coord_status_history"] == coord_history
     assert report["phase_timeline"] == phase_timeline
     assert report["verdict"]["kind"] == "motion_timeout_unclassified"
-    assert report["recipe_id"] == "recipe-7d1b00f4-6a99"
-    assert report["version_id"] == "version-fea9ce29-f963"
-    assert report["recipe_context_source"] == "cli_explicit"
+    assert report["baseline_id"] == "baseline-production-default"
+    assert report["baseline_fingerprint"] == "baseline-fp-20260421"
+    assert report["production_baseline_source"] == "dxf.plan.prepare"
     assert report["observation_summary"]["job_status_samples"] == 1
     assert report["observation_summary"]["machine_status_samples"] == 1
     assert report["observation_summary"]["coord_status_samples"] == 1

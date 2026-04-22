@@ -90,8 +90,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--python-exe", default=sys.executable or "python")
     parser.add_argument("--report-root", type=Path, default=DEFAULT_REPORT_ROOT)
     parser.add_argument("--dxf-file", type=Path, default=ROOT / "samples" / "dxf" / "rect_diag.dxf")
-    parser.add_argument("--recipe-id", required=True)
-    parser.add_argument("--version-id", required=True)
     parser.add_argument("--allow-skip-on-missing-gateway", action="store_true")
     return parser.parse_args()
 
@@ -215,10 +213,6 @@ def main() -> int:
                 str(args.dxf_file),
                 "--report-root",
                 str(case_report_root),
-                "--recipe-id",
-                args.recipe_id,
-                "--version-id",
-                args.version_id,
                 "--port",
                 str(port),
                 "--mock-io-json",

@@ -27,7 +27,7 @@ RUNTIME_ACTION_CASES = (
     RuntimeActionCase(
         case_id="operator-preview",
         profile="operator_preview",
-        description="Drive the explicit recipe/version operator preview journey and capture the HMI surface.",
+        description="Drive the runtime-owned production baseline preview journey and capture the HMI surface.",
     ),
     RuntimeActionCase(
         case_id="runtime-home-move",
@@ -56,10 +56,8 @@ RUNTIME_ACTION_CASES = (
     ),
 )
 OPERATOR_PREVIEW_REQUIRED_STAGES = (
-    "recipe-selected",
-    "missing-version-blocked",
-    "version-selected",
     "preview-ready",
+    "preview-refreshed",
 )
 
 
@@ -140,49 +138,46 @@ def summarize_operator_context(output: str) -> dict[str, Any]:
     events = [event for event in events if event]
     stages = [str(event.get("stage", "")).strip() for event in events if str(event.get("stage", "")).strip()]
     by_stage = {stage: event for stage, event in ((event.get("stage", ""), event) for event in events) if stage}
-    recipe_selected = by_stage.get("recipe-selected", {})
-    version_selected = by_stage.get("version-selected", {})
     preview_ready = by_stage.get("preview-ready", {})
-    missing_version_blocked = by_stage.get("missing-version-blocked", {})
+    preview_refreshed = by_stage.get("preview-refreshed", {})
 
-    selected_recipe_id = str(
-        recipe_selected.get("recipe_id")
-        or preview_ready.get("recipe_id")
-        or version_selected.get("recipe_id")
-        or "null"
-    )
-    selected_version_id = str(version_selected.get("version_id") or preview_ready.get("version_id") or "null")
-    selection_origin = str(preview_ready.get("selection_origin") or version_selected.get("selection_origin") or "null")
-    missing_version_block_observed = "missing-version-blocked" in stages
+    artifact_id = str(preview_refreshed.get("artifact_id") or preview_ready.get("artifact_id") or "null")
+    plan_id = str(preview_refreshed.get("plan_id") or preview_ready.get("plan_id") or "null")
+    snapshot_hash = str(preview_refreshed.get("snapshot_hash") or preview_ready.get("snapshot_hash") or "null")
+    preview_source = str(preview_refreshed.get("preview_source") or preview_ready.get("preview_source") or "null")
+    snapshot_ready = str(preview_refreshed.get("snapshot_ready") or preview_ready.get("snapshot_ready") or "false")
     preview_ready_observed = "preview-ready" in stages
+    preview_refresh_observed = "preview-refreshed" in stages
     stage_sequence_ok = _contains_stage_sequence(stages, OPERATOR_PREVIEW_REQUIRED_STAGES)
     contract_ok = (
         stage_sequence_ok
-        and missing_version_block_observed
         and preview_ready_observed
-        and selected_recipe_id not in {"", "null"}
-        and selected_version_id not in {"", "null"}
-        and str(version_selected.get("selection_origin", "null")) == "user_version_selection"
-        and str(preview_ready.get("selection_origin", "null")) == "user_version_selection"
+        and preview_refresh_observed
+        and artifact_id not in {"", "null"}
+        and plan_id not in {"", "null"}
+        and snapshot_hash not in {"", "null"}
+        and preview_source == "planned_glue_snapshot"
+        and snapshot_ready == "true"
     )
     contract_error = ""
     if not contract_ok:
         contract_error = (
-            "operator preview contract missing required OPERATOR_CONTEXT sequence or explicit version selection; "
+            "operator preview contract missing required OPERATOR_CONTEXT sequence or baseline-backed preview evidence; "
             f"observed_stages={stages}"
         )
 
     return {
-        "selected_recipe_id": selected_recipe_id,
-        "selected_version_id": selected_version_id,
-        "selection_origin": selection_origin,
-        "missing_version_block_observed": missing_version_block_observed,
+        "artifact_id": artifact_id,
+        "plan_id": plan_id,
+        "snapshot_hash": snapshot_hash,
+        "preview_source": preview_source,
+        "snapshot_ready": snapshot_ready == "true",
         "preview_ready_observed": preview_ready_observed,
+        "preview_refresh_observed": preview_refresh_observed,
         "operator_context_stages": stages,
         "stage_sequence_ok": stage_sequence_ok,
         "contract_ok": contract_ok,
         "contract_error": contract_error,
-        "missing_version_invalid_reason": str(missing_version_blocked.get("invalid_reason", "null")),
     }
 
 
@@ -247,9 +242,10 @@ def write_report(report_dir: Path, report: dict[str, Any]) -> tuple[Path, Path]:
         lines.append(f"  log: `{case['online_smoke_log']}`")
         if case.get("operator_context_stages"):
             lines.append(f"  operator_context_stages: `{case['operator_context_stages']}`")
-            lines.append(f"  selected_recipe_id: `{case.get('selected_recipe_id', 'null')}`")
-            lines.append(f"  selected_version_id: `{case.get('selected_version_id', 'null')}`")
-            lines.append(f"  selection_origin: `{case.get('selection_origin', 'null')}`")
+            lines.append(f"  artifact_id: `{case.get('artifact_id', 'null')}`")
+            lines.append(f"  plan_id: `{case.get('plan_id', 'null')}`")
+            lines.append(f"  snapshot_hash: `{case.get('snapshot_hash', 'null')}`")
+            lines.append(f"  preview_source: `{case.get('preview_source', 'null')}`")
         if case.get("error"):
             lines.append(f"  error: `{case['error']}`")
     lines.append("")

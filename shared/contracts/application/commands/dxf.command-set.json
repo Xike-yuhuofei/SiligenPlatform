@@ -113,7 +113,7 @@
       },
       "resultSchema": {
         "type": "object",
-        "required": ["plan_id", "plan_fingerprint", "artifact_id", "segment_count", "point_count", "total_length_mm", "execution_nominal_time_s", "execution_plan_summary", "generated_at", "prepared_filepath", "import_result_classification", "import_preview_ready", "import_production_ready", "formal_compare_gate", "import_summary", "import_primary_code", "import_warning_codes", "import_error_codes", "import_resolved_units", "import_resolved_unit_scale"],
+        "required": ["plan_id", "plan_fingerprint", "artifact_id", "segment_count", "point_count", "total_length_mm", "execution_nominal_time_s", "execution_plan_summary", "generated_at", "production_baseline", "prepared_filepath", "import_result_classification", "import_preview_ready", "import_production_ready", "formal_compare_gate", "import_summary", "import_primary_code", "import_warning_codes", "import_error_codes", "import_resolved_units", "import_resolved_unit_scale"],
         "properties": {
           "plan_id": { "type": "string" },
           "plan_fingerprint": { "type": "string" },
@@ -137,6 +137,15 @@
               "owner_span_count": { "type": "integer" },
               "immediate_only_span_count": { "type": "integer" },
               "future_compare_span_count": { "type": "integer" }
+            },
+            "additionalProperties": false
+          },
+          "production_baseline": {
+            "type": "object",
+            "required": ["baseline_id", "baseline_fingerprint"],
+            "properties": {
+              "baseline_id": { "type": "string" },
+              "baseline_fingerprint": { "type": "string" }
             },
             "additionalProperties": false
           },
@@ -353,7 +362,7 @@
       },
       "resultSchema": {
         "type": "object",
-        "required": ["started", "job_id", "plan_id", "plan_fingerprint", "target_count", "execution_budget_s", "execution_budget_breakdown", "performance_profile", "prepared_filepath", "import_result_classification", "import_preview_ready", "import_production_ready", "formal_compare_gate", "import_summary", "import_primary_code", "import_warning_codes", "import_error_codes", "import_resolved_units", "import_resolved_unit_scale"],
+        "required": ["started", "job_id", "plan_id", "plan_fingerprint", "target_count", "execution_budget_s", "execution_budget_breakdown", "production_baseline", "performance_profile", "prepared_filepath", "import_result_classification", "import_preview_ready", "import_production_ready", "formal_compare_gate", "import_summary", "import_primary_code", "import_warning_codes", "import_error_codes", "import_resolved_units", "import_resolved_unit_scale"],
         "properties": {
           "started": { "type": "boolean" },
           "job_id": { "type": "string" },
@@ -372,6 +381,15 @@
               "cycle_budget_s": { "type": "number" },
               "target_count": { "type": "integer" },
               "total_budget_s": { "type": "number" }
+            },
+            "additionalProperties": false
+          },
+          "production_baseline": {
+            "type": "object",
+            "required": ["baseline_id", "baseline_fingerprint"],
+            "properties": {
+              "baseline_id": { "type": "string" },
+              "baseline_fingerprint": { "type": "string" }
             },
             "additionalProperties": false
           },

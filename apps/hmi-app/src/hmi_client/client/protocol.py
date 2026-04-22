@@ -976,8 +976,6 @@ class CommandProtocol:
         artifact_id: str,
         speed_mm_s: float,
         *,
-        recipe_id: str = "",
-        version_id: str = "",
         dry_run: bool = False,
         dry_run_speed_mm_s: float = 0.0,
         timeout: float = 15.0,
@@ -989,10 +987,6 @@ class CommandProtocol:
             velocity_trace_enabled=False,
         )
         params["artifact_id"] = artifact_id
-        if recipe_id:
-            params["recipe_id"] = recipe_id
-        if version_id:
-            params["version_id"] = version_id
         resp = self._client.send_request("dxf.plan.prepare", params, timeout=timeout)
         if "error" in resp:
             return False, {}, resp["error"].get("message", "Unknown error")

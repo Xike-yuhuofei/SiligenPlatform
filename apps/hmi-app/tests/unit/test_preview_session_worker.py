@@ -45,17 +45,19 @@ class _FakeCommandProtocol:
         artifact_id,
         speed_mm_s,
         *,
-        recipe_id="",
-        version_id="",
         dry_run=False,
         dry_run_speed_mm_s=0.0,
         timeout=15.0,
     ):
-        self.calls.append(("dxf.plan.prepare", artifact_id, recipe_id, version_id))
+        self.calls.append(("dxf.plan.prepare", artifact_id))
         self.prepare_timeout = timeout
         return True, {
             "plan_id": "plan-1",
             "plan_fingerprint": "fp-1",
+            "production_baseline": {
+                "baseline_id": "baseline-production-default",
+                "baseline_fingerprint": "baseline-fp-20260421",
+            },
             "performance_profile": {
                 "authority_cache_hit": True,
                 "authority_joined_inflight": False,
@@ -97,8 +99,6 @@ class PreviewSnapshotWorkerTimeoutTest(unittest.TestCase):
             host="127.0.0.1",
             port=9527,
             artifact_id="artifact-1",
-            recipe_id="recipe-1",
-            version_id="version-1",
             speed_mm_s=20.0,
             dry_run=False,
             dry_run_speed_mm_s=20.0,
@@ -137,7 +137,7 @@ class PreviewSnapshotWorkerTimeoutTest(unittest.TestCase):
         self.assertEqual(
             protocol.calls,
             [
-                ("dxf.plan.prepare", "artifact-1", "recipe-1", "version-1"),
+                ("dxf.plan.prepare", "artifact-1"),
                 ("dxf.preview.snapshot", "plan-1"),
             ],
         )
@@ -147,8 +147,6 @@ class PreviewSnapshotWorkerTimeoutTest(unittest.TestCase):
             host="127.0.0.1",
             port=9527,
             artifact_id="artifact-1",
-            recipe_id="recipe-1",
-            version_id="version-1",
             speed_mm_s=20.0,
             dry_run=False,
             dry_run_speed_mm_s=20.0,

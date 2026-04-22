@@ -116,8 +116,6 @@ class WorkerFakeProtocol:
         artifact_id: str,
         speed_mm_s: float,
         *,
-        recipe_id: str = "",
-        version_id: str = "",
         dry_run: bool = False,
         dry_run_speed_mm_s: float = 0.0,
         timeout: float = 15.0,
@@ -126,8 +124,6 @@ class WorkerFakeProtocol:
             (
                 "dxf.plan.prepare",
                 artifact_id,
-                recipe_id,
-                version_id,
                 speed_mm_s,
                 dry_run,
                 dry_run_speed_mm_s,
@@ -137,6 +133,10 @@ class WorkerFakeProtocol:
         return True, {
             "plan_id": "plan-1",
             "plan_fingerprint": "fp-1",
+            "production_baseline": {
+                "baseline_id": "baseline-production-default",
+                "baseline_fingerprint": "baseline-fp-20260421",
+            },
             "performance_profile": {
                 "authority_cache_hit": False,
                 "authority_joined_inflight": True,

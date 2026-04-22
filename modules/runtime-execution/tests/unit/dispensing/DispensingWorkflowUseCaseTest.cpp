@@ -2051,6 +2051,8 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanUsesCurrentProductionBaselineWith
     const auto result = use_case.PreparePlan(BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id));
     ASSERT_TRUE(result.IsSuccess());
     EXPECT_FALSE(result.Value().plan_fingerprint.empty());
+    EXPECT_EQ(result.Value().production_baseline.baseline_id, "test-production-baseline");
+    EXPECT_EQ(result.Value().production_baseline.baseline_fingerprint, "baseline-fingerprint");
 }
 
 TEST(DispensingWorkflowUseCaseTest, Demo1PreparePlanWithProductionLikeInputsReturnsProductionReadyContract) {
@@ -2253,6 +2255,10 @@ TEST(DispensingWorkflowUseCaseTest, StartJobReturnsStructuredResponseWithExecuti
     EXPECT_EQ(response.plan_id, prepare_result.Value().plan_id);
     EXPECT_EQ(response.plan_fingerprint, prepare_result.Value().plan_fingerprint);
     EXPECT_EQ(response.target_count, 2U);
+    EXPECT_EQ(response.production_baseline.baseline_id, prepare_result.Value().production_baseline.baseline_id);
+    EXPECT_EQ(
+        response.production_baseline.baseline_fingerprint,
+        prepare_result.Value().production_baseline.baseline_fingerprint);
     EXPECT_GE(response.performance_profile.motion_plan_ms, 0U);
     EXPECT_GE(response.performance_profile.assembly_ms, 0U);
     EXPECT_GE(response.performance_profile.export_ms, 0U);

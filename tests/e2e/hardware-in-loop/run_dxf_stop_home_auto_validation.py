@@ -67,8 +67,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config-path", type=Path, default=DEFAULT_CONFIG_PATH)
     parser.add_argument("--vendor-dir", type=Path, default=DEFAULT_VENDOR_DIR)
     parser.add_argument("--dxf-file", type=Path, default=ROOT / "samples" / "dxf" / "rect_diag.dxf")
-    parser.add_argument("--recipe-id", required=True)
-    parser.add_argument("--version-id", required=True)
     parser.add_argument("--report-root", type=Path, default=DEFAULT_REPORT_ROOT)
     parser.add_argument("--build-config", default="Debug")
     parser.add_argument("--machine-id", default="unknown-machine")
@@ -332,9 +330,9 @@ def build_report_markdown(report: dict[str, Any]) -> str:
         f"- overall_status: `{report.get('overall_status', '')}`",
         f"- verdict: `{(report.get('verdict', {}) or {}).get('kind', '')}`",
         f"- next_action: `{report.get('next_action', '')}`",
-        f"- recipe_id: `{(report.get('settings', {}) or {}).get('recipe_id', '')}`",
-        f"- version_id: `{(report.get('settings', {}) or {}).get('version_id', '')}`",
-        f"- recipe_context_source: `{(report.get('settings', {}) or {}).get('recipe_context_source', '')}`",
+        f"- baseline_id: `{(report.get('production_baseline', {}) or {}).get('baseline_id', '')}`",
+        f"- baseline_fingerprint: `{(report.get('production_baseline', {}) or {}).get('baseline_fingerprint', '')}`",
+        f"- production_baseline_source: `{(report.get('production_baseline', {}) or {}).get('production_baseline_source', '')}`",
         f"- required_valid_runs: `{(report.get('settings', {}) or {}).get('required_valid_runs', '')}`",
         f"- valid_passed: `{counts.get('valid_passed', 0)}`",
         f"- skipped: `{counts.get('skipped', 0)}`",
@@ -426,10 +424,6 @@ def _build_probe_command(args: argparse.Namespace, attempt_root: Path) -> list[s
         str(args.config_path),
         "--dxf-file",
         str(args.dxf_file),
-        "--recipe-id",
-        str(args.recipe_id),
-        "--version-id",
-        str(args.version_id),
         "--report-root",
         str(attempt_root),
     ]
@@ -539,6 +533,11 @@ def main() -> int:
                 "report_json": str(probe_report_dir / PROBE_REPORT_NAME),
                 "launcher_log": str(attempt_log_path),
                 "validity_checks": attempt_eval["validity_checks"],
+                "production_baseline": {
+                    "baseline_id": str(probe_report.get("baseline_id", "")).strip(),
+                    "baseline_fingerprint": str(probe_report.get("baseline_fingerprint", "")).strip(),
+                    "production_baseline_source": str(probe_report.get("production_baseline_source", "")).strip(),
+                },
             }
             attempts.append(attempt_record)
 
@@ -572,6 +571,16 @@ def main() -> int:
         "failed": sum(1 for attempt in attempts if attempt.get("attempt_status") == "failed"),
     }
 
+    production_baseline = next(
+        (
+            baseline
+            for attempt in attempts
+            for baseline in [attempt.get("production_baseline", {})]
+            if isinstance(baseline, dict) and str(baseline.get("baseline_id", "")).strip()
+        ),
+        {},
+    )
+
     report = {
         "generated_at": utc_now(),
         "workspace_root": str(ROOT),
@@ -581,6 +590,7 @@ def main() -> int:
             "message": final_outcome["next_action"],
         },
         "next_action": final_outcome["next_action"],
+        "production_baseline": production_baseline,
         "settings": {
             "probe_script": str(args.probe_script),
             "smoke_script": str(args.smoke_script),
@@ -591,9 +601,7 @@ def main() -> int:
             "vendor_dir": str(args.vendor_dir),
             "gateway_exe": str(args.gateway_exe),
             "dxf_file": str(args.dxf_file),
-            "recipe_id": str(args.recipe_id),
-            "version_id": str(args.version_id),
-            "recipe_context_source": "cli_explicit",
+            "expected_baseline_owner": "runtime_owned",
             "machine_id": args.machine_id,
             "operator": args.operator,
             "required_valid_runs": args.required_valid_runs,

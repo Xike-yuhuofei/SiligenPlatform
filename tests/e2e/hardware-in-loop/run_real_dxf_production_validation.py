@@ -42,9 +42,9 @@ from runtime_gateway_harness import (  # noqa: E402
     KNOWN_FAILURE_EXIT_CODE,
     TcpJsonClient,
     build_process_env,
-    ensure_published_recipe_version,
+    ensure_matching_production_baseline,
     read_process_output,
-    recipe_context_metadata,
+    production_baseline_metadata,
     resolve_default_exe,
     tcp_connect_and_ensure_ready,
     truncate_json,
@@ -101,8 +101,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gateway-exe", type=Path, default=resolve_default_exe("siligen_runtime_gateway.exe"))
     parser.add_argument("--config-path", type=Path, default=DEFAULT_CONFIG_PATH)
     parser.add_argument("--dxf-file", type=Path, default=DEFAULT_REPO_DXF)
-    parser.add_argument("--recipe-id", required=True)
-    parser.add_argument("--version-id", required=True)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--gateway-ready-timeout", type=float, default=DEFAULT_GATEWAY_READY_TIMEOUT)
@@ -642,6 +640,7 @@ def build_report(
     artifacts: dict[str, Any],
     error_message: str,
     plan_result: dict[str, Any],
+    production_baseline: dict[str, Any],
 ) -> dict[str, Any]:
     timing_summary = build_timing_summary(
         validation_mode=validation_mode,
@@ -658,8 +657,7 @@ def build_report(
         "gateway_port": effective_port,
         "config_path": str(args.config_path),
         "dxf_file": str(args.dxf_file),
-        "recipe_id": args.recipe_id,
-        "version_id": args.version_id,
+        **production_baseline,
         "job_id": job_id,
         "plan_id": plan_id,
         "plan_fingerprint": plan_fingerprint,
@@ -693,6 +691,9 @@ def build_report_markdown(report: dict[str, Any]) -> str:
         f"- gateway_port: `{report['gateway_port']}`",
         f"- config_path: `{report['config_path']}`",
         f"- dxf_file: `{report['dxf_file']}`",
+        f"- baseline_id: `{report.get('baseline_id', '')}`",
+        f"- baseline_fingerprint: `{report.get('baseline_fingerprint', '')}`",
+        f"- production_baseline_source: `{report.get('production_baseline_source', '')}`",
         f"- job_id: `{report.get('job_id', '')}`",
         "",
         "## Timing Summary",
@@ -757,7 +758,6 @@ def attempt_safe_stop(client: TcpJsonClient, job_id: str) -> None:
 
 def main() -> int:
     args = parse_args()
-    recipe_context = recipe_context_metadata(args.recipe_id, args.version_id)
     effective_port = resolve_listen_port(args.host, args.port)
     report_dir = args.report_root / time.strftime("%Y%m%d-%H%M%S")
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -789,6 +789,7 @@ def main() -> int:
     snapshot_result: dict[str, Any] = {}
     job_start_response: dict[str, Any] = {}
     final_job_status: dict[str, Any] = {}
+    production_baseline: dict[str, Any] = {}
     process: subprocess.Popen[str] | None = None
     client = TcpJsonClient(args.host, effective_port)
     connected = False
@@ -810,8 +811,7 @@ def main() -> int:
             json.dumps(
                 {
                     "dxf": str(args.dxf_file),
-                    "recipe_id": recipe_context["recipe_id"],
-                    "version_id": recipe_context["version_id"],
+                    "expected_baseline_owner": "runtime_owned",
                 },
                 ensure_ascii=True,
             ),
@@ -863,20 +863,6 @@ def main() -> int:
                 )
             )
         add_step(steps, "tcp-connect", "passed", json.dumps(admission.connect_params, ensure_ascii=True))
-
-        validated_recipe_context = ensure_published_recipe_version(
-            client,
-            recipe_id=recipe_context["recipe_id"],
-            version_id=recipe_context["version_id"],
-            timeout_seconds=min(10.0, args.connect_timeout),
-        )
-        artifacts["recipe_context_validation"] = validated_recipe_context
-        add_step(
-            steps,
-            "recipe-context-validate",
-            "passed",
-            json.dumps(validated_recipe_context, ensure_ascii=False),
-        )
 
         status_before = client.send_request("status", None, timeout_seconds=5.0)
         artifacts["status_before"] = status_before
@@ -959,8 +945,6 @@ def main() -> int:
             "dxf.plan.prepare",
             {
                 "artifact_id": artifact_id,
-                "recipe_id": recipe_context["recipe_id"],
-                "version_id": recipe_context["version_id"],
                 "dispensing_speed_mm_s": args.dispensing_speed_mm_s,
                 "dry_run": False,
                 "rapid_speed_mm_s": args.rapid_speed_mm_s,
@@ -976,6 +960,7 @@ def main() -> int:
         plan_fingerprint = str(plan_result.get("plan_fingerprint", "")).strip()
         if not plan_id or not plan_fingerprint:
             raise RuntimeError("plan.prepare missing plan_id/plan_fingerprint")
+        production_baseline = production_baseline_metadata(plan_result, source="dxf.plan.prepare")
         validation_mode = resolve_validation_mode(plan_result)
         add_step(
             steps,
@@ -987,6 +972,7 @@ def main() -> int:
                     "plan_fingerprint": plan_fingerprint,
                     "execution_nominal_time_s": plan_result.get("execution_nominal_time_s", 0),
                     "segment_count": plan_result.get("segment_count", 0),
+                    "production_baseline": production_baseline,
                 },
                 ensure_ascii=True,
             ),
@@ -1087,6 +1073,11 @@ def main() -> int:
                 "dxf.job.start unexpectedly succeeded while formal_compare_gate reported production_blocked"
             )
         if validation_mode != "production_blocked":
+            production_baseline = ensure_matching_production_baseline(
+                production_baseline,
+                production_baseline_metadata(job_result, source="dxf.job.start"),
+                label="dxf.job.start",
+            )
             job_id = str(job_result.get("job_id", "")).strip()
             if not job_id:
                 raise RuntimeError("dxf.job.start missing job_id")
@@ -1247,6 +1238,7 @@ def main() -> int:
             },
             error_message=error_message,
             plan_result=plan_result,
+            production_baseline=production_baseline,
         )
         write_json(report_json_path, report)
         report_md_path.write_text(build_report_markdown(report), encoding="utf-8")

@@ -514,89 +514,40 @@ class GuiContractRunner:
         return ""
 
     def _emit_operator_context(self, stage: str) -> None:
-        owner = getattr(self.window, "_preview_planning_context", None)
-        state = getattr(owner, "state", None)
-        if state is None:
-            print(f"OPERATOR_CONTEXT stage={stage} state=missing", flush=True)
-            return
-        invalid_reason = str(getattr(state, "invalid_reason", "") or "").replace(" ", "_")
+        preview_gate = getattr(self.window, "_preview_gate", None)
+        snapshot = getattr(preview_gate, "snapshot", None)
+        artifact_id = getattr(self.window, "_dxf_artifact_id", "") or "null"
+        plan_id = getattr(self.window, "_current_plan_id", "") or "null"
+        preview_source = getattr(self.window, "_preview_source", "") or "null"
+        snapshot_hash = getattr(snapshot, "snapshot_hash", "") if snapshot is not None else ""
         print(
             "OPERATOR_CONTEXT "
             f"stage={stage} "
-            f"recipe_id={getattr(state, 'recipe_id', '') or 'null'} "
-            f"version_id={getattr(state, 'version_id', '') or 'null'} "
-            f"selection_origin={getattr(state, 'selection_origin', '') or 'null'} "
-            f"is_valid={str(bool(getattr(state, 'is_valid_for_prepare', False))).lower()} "
-            f"invalid_reason={invalid_reason or 'null'}",
+            f"artifact_id={artifact_id} "
+            f"plan_id={plan_id} "
+            f"preview_source={preview_source} "
+            f"snapshot_hash={snapshot_hash or 'null'} "
+            f"snapshot_ready={str(bool(snapshot)).lower()}",
             flush=True,
         )
 
     def _assert_operator_preview_action(self) -> None:
-        recipe_widget = self._recipe_widget()
-        if recipe_widget is None:
-            return
-        self._switch_to_recipe_tab()
-        recipe_list = getattr(recipe_widget, "_recipe_list_widget", None)
-        version_list = getattr(recipe_widget, "_recipe_version_list", None)
-        self._expect(recipe_list is not None and version_list is not None, "Recipe/version lists should exist")
-        if recipe_list is None or version_list is None:
-            return
-
-        self._wait_for("recipe list loaded", lambda: recipe_list.count() > 0, timeout_ms=5000)
-        recipe_id = self._click_list_item(
-            recipe_list,
-            description="operator journey recipe selection",
-            predicate=lambda _item: True,
-        )
-        self._expect(bool(recipe_id), "Operator journey should select a recipe")
-        self._wait_for("recipe versions loaded", lambda: version_list.count() > 0, timeout_ms=5000)
-        self._emit_operator_context("recipe-selected")
-        self._expect(
-            getattr(self.window._preview_planning_context.state, "selection_origin", "") == "user_recipe_selection",
-            "Recipe selection should be recorded as explicit user selection",
-        )
-
         self._switch_to_production_tab()
         self._click_button("btn-dxf-browse")
         self._wait_for(
-            "operator preview failure without explicit version",
-            lambda: getattr(self.window, "_preview_gate", None) is not None
-            and "未显式选择配方版本" in getattr(self.window._preview_gate, "last_error_message", ""),
-            timeout_ms=5000,
+            "operator preview loads dxf artifact",
+            lambda: bool(getattr(self.window, "_dxf_loaded", False))
+            and bool(getattr(self.window, "_dxf_artifact_id", "")),
+            timeout_ms=10000,
         )
-        self._emit_operator_context("missing-version-blocked")
         self._expect(
-            "未显式选择配方版本" in self._status_message(),
-            "Missing explicit version should surface the operator-facing preview failure",
+            "未显式选择配方版本" not in self._status_message(),
+            "DXF preview should not be blocked by recipe/version selection",
         )
-        freeze_result = self.window._preview_planning_context.freeze_for_prepare()
-        self._expect(not freeze_result.ok, "Context freeze should fail before explicit version selection")
-
-        self._switch_to_recipe_tab()
-        version_id = self._click_list_item(
-            version_list,
-            description="operator journey published version selection",
-            predicate=lambda item: str(
-                getattr(recipe_widget, "_recipe_versions", {}).get(str(item.data(Qt.UserRole) or ""), {}).get("status", "")
-            ).strip().lower()
-            == "published",
-        )
-        self._expect(bool(version_id), "Operator journey should select an explicit published version")
         self._wait_for(
-            "explicit version selection reflected in planning context",
-            lambda: getattr(self.window._preview_planning_context.state, "version_id", "") == version_id
-            and getattr(self.window._preview_planning_context.state, "selection_origin", "") == "user_version_selection",
-            timeout_ms=3000,
-        )
-        self._emit_operator_context("version-selected")
-        freeze_result = self.window._preview_planning_context.freeze_for_prepare()
-        self._expect(freeze_result.ok, "Context freeze should succeed after explicit published version selection")
-
-        self._switch_to_production_tab()
-        self._click_button("btn-dxf-preview-refresh")
-        self._wait_for(
-            "operator preview succeeds after explicit version selection",
-            lambda: bool(self.window._preview_gate.snapshot)
+            "operator preview becomes ready without recipe selection",
+            lambda: bool(getattr(self.window, "_preview_gate", None))
+            and bool(getattr(self.window._preview_gate, "snapshot", None))
             and getattr(self.window, "_preview_source", "") == "planned_glue_snapshot"
             and bool(getattr(self.window, "_current_plan_id", "")),
             timeout_ms=15000,
@@ -604,8 +555,17 @@ class GuiContractRunner:
         self._emit_operator_context("preview-ready")
         self._expect(
             "未显式选择配方版本" not in getattr(self.window._preview_gate, "last_error_message", ""),
-            "Preview gate should clear the missing-version failure after explicit selection",
+            "Preview gate should not report missing recipe/version",
         )
+        self._click_button("btn-dxf-preview-refresh")
+        self._wait_for(
+            "operator preview refresh succeeds without recipe selection",
+            lambda: bool(self.window._preview_gate.snapshot)
+            and getattr(self.window, "_preview_source", "") == "planned_glue_snapshot"
+            and bool(getattr(self.window, "_current_plan_id", "")),
+            timeout_ms=15000,
+        )
+        self._emit_operator_context("preview-refreshed")
         self._capture_screenshot("operator preview journey screenshot")
 
     def _ensure_runtime_motion_ready(self) -> None:

@@ -93,20 +93,6 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def require_explicit_recipe_context(recipe_id: str, version_id: str) -> dict[str, str]:
-    normalized_recipe_id = str(recipe_id or "").strip()
-    normalized_version_id = str(version_id or "").strip()
-    if not normalized_recipe_id:
-        raise SystemExit("--recipe-id is required and must be non-empty")
-    if not normalized_version_id:
-        raise SystemExit("--version-id is required and must be non-empty")
-    return {
-        "recipe_id": normalized_recipe_id,
-        "version_id": normalized_version_id,
-        "recipe_context_source": "cli_explicit",
-    }
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run named online soak profiles by orchestrating collect_dxf_preview_profiles.py."
@@ -119,8 +105,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--launch-spec", default="")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=9527)
-    parser.add_argument("--recipe-id", required=True)
-    parser.add_argument("--version-id", required=True)
     parser.add_argument("--threshold-config", default=str(DEFAULT_THRESHOLD_CONFIG))
     parser.add_argument("--allow-long-profiles", action="store_true")
     return parser.parse_args()
@@ -177,10 +161,6 @@ def _build_command(
         args.host,
         "--port",
         str(args.port),
-        "--recipe-id",
-        args.recipe_id,
-        "--version-id",
-        args.version_id,
         "--include-start-job",
         "--include-control-cycles",
         "--pause-resume-cycles",
@@ -269,7 +249,7 @@ def _write_report(
     report_dir: Path,
     profile_results: list[SoakProfileResult],
     selected_profile_ids: tuple[str, ...],
-    recipe_context: dict[str, str],
+    production_baseline: dict[str, str],
 ) -> tuple[Path, Path]:
     report_dir.mkdir(parents=True, exist_ok=True)
     json_path = report_dir / "online-soak-profiles-summary.json"
@@ -281,7 +261,7 @@ def _write_report(
         "overall_status": overall_status,
         "signed_publish_authority": "tests/e2e/hardware-in-loop/run_hil_controlled_test.ps1",
         "selected_profile_ids": list(selected_profile_ids),
-        "recipe_context": recipe_context,
+        "production_baseline": production_baseline,
         "counts": {
             "requested": len(profile_results),
             "passed": sum(1 for item in profile_results if item.status == "passed"),
@@ -297,9 +277,9 @@ def _write_report(
         f"- generated_at: `{payload['generated_at']}`",
         f"- overall_status: `{payload['overall_status']}`",
         f"- signed_publish_authority: `{payload['signed_publish_authority']}`",
-        f"- recipe_id: `{recipe_context['recipe_id']}`",
-        f"- version_id: `{recipe_context['version_id']}`",
-        f"- recipe_context_source: `{recipe_context['recipe_context_source']}`",
+        f"- baseline_id: `{production_baseline.get('baseline_id', '')}`",
+        f"- baseline_fingerprint: `{production_baseline.get('baseline_fingerprint', '')}`",
+        f"- production_baseline_source: `{production_baseline.get('production_baseline_source', '')}`",
         f"- requested: `{payload['counts']['requested']}`",
         f"- passed: `{payload['counts']['passed']}`",
         f"- failed: `{payload['counts']['failed']}`",
@@ -381,7 +361,7 @@ def _write_evidence_bundle(
         metadata={
             "selected_profile_ids": payload.get("selected_profile_ids", []),
             "signed_publish_authority": payload.get("signed_publish_authority", ""),
-            "recipe_context": payload.get("recipe_context", {}),
+            "production_baseline": payload.get("production_baseline", {}),
         },
     )
     write_bundle_artifacts(
@@ -406,7 +386,6 @@ def _write_evidence_bundle(
 
 def main() -> int:
     args = parse_args()
-    recipe_context = require_explicit_recipe_context(args.recipe_id, args.version_id)
     selected_profiles = resolve_profiles(tuple(args.profile_id))
     if any(profile.long_run_minutes > 30.0 for profile in selected_profiles) and not args.allow_long_profiles:
         raise SystemExit(
@@ -414,11 +393,22 @@ def main() -> int:
         )
     report_dir = args.report_dir / time.strftime("%Y%m%d-%H%M%S")
     profile_results = [_run_profile(args=args, suite_report_dir=report_dir, profile=profile) for profile in selected_profiles]
+    production_baseline: dict[str, str] = {}
+    for item in profile_results:
+        if not item.latest_json:
+            continue
+        latest_json_path = Path(item.latest_json)
+        if not latest_json_path.exists():
+            continue
+        baseline = json.loads(latest_json_path.read_text(encoding="utf-8")).get("production_baseline", {})
+        if isinstance(baseline, dict) and baseline:
+            production_baseline = baseline
+            break
     json_path, md_path = _write_report(
         report_dir=report_dir,
         profile_results=profile_results,
         selected_profile_ids=tuple(profile.profile_id for profile in selected_profiles),
-        recipe_context=recipe_context,
+        production_baseline=production_baseline,
     )
     overall_status = json.loads(json_path.read_text(encoding="utf-8")).get("overall_status", "failed")
     print(f"online soak profiles complete: status={overall_status}")

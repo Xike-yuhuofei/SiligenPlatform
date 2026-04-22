@@ -18,6 +18,10 @@
       "target_count": 2,
       "total_budget_s": 158.3
     },
+    "production_baseline": {
+      "baseline_id": "baseline-production-default",
+      "baseline_fingerprint": "baseline-fp-20260421"
+    },
     "prepared_filepath": "D:/runtime/uploads/sample.pb",
     "import_result_classification": "success",
     "import_preview_ready": true,

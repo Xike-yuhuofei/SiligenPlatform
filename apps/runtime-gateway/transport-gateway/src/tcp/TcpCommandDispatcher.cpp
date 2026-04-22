@@ -262,6 +262,15 @@ nlohmann::json BuildImportDiagnosticsJson(
     };
 }
 
+nlohmann::json BuildProductionBaselineJson(
+    const std::string& baseline_id,
+    const std::string& baseline_fingerprint) {
+    return {
+        {"baseline_id", baseline_id},
+        {"baseline_fingerprint", baseline_fingerprint},
+    };
+}
+
 nlohmann::json BuildImportDiagnosticsJson(const DxfImportDiagnostics& diagnostics, const std::string& prepared_filepath) {
     return BuildImportDiagnosticsJson(
         diagnostics.result_classification,
@@ -2150,6 +2159,8 @@ std::string TcpCommandDispatcher::HandleDxfPlanPrepare(const std::string& id, co
         dxf_cache_.total_length = plan.total_length_mm;
         dxf_cache_.plan_id = plan.plan_id;
         dxf_cache_.plan_fingerprint = plan.plan_fingerprint;
+        dxf_cache_.production_baseline_id = plan.production_baseline.baseline_id;
+        dxf_cache_.production_baseline_fingerprint = plan.production_baseline.baseline_fingerprint;
         dxf_cache_.preview_snapshot_id.clear();
         dxf_cache_.preview_snapshot_hash.clear();
         dxf_cache_.preview_request_signature = request_signature;
@@ -2192,6 +2203,9 @@ std::string TcpCommandDispatcher::HandleDxfPlanPrepare(const std::string& id, co
         {"total_length_mm", plan.total_length_mm},
         {"execution_nominal_time_s", plan.execution_nominal_time_s},
         {"execution_plan_summary", BuildExecutionPlanSummaryJson(plan.execution_plan_summary)},
+        {"production_baseline", BuildProductionBaselineJson(
+            plan.production_baseline.baseline_id,
+            plan.production_baseline.baseline_fingerprint)},
         {"generated_at", plan.generated_at},
         {"snapshot_id", ""},
         {"snapshot_hash", ""},
@@ -2280,6 +2294,9 @@ std::string TcpCommandDispatcher::HandleDxfJobStart(const std::string& id, const
         {"target_count", start_response.target_count},
         {"execution_budget_s", start_response.execution_budget_s},
         {"execution_budget_breakdown", BuildExecutionBudgetBreakdownJson(start_response.execution_budget_breakdown)},
+        {"production_baseline", BuildProductionBaselineJson(
+            start_response.production_baseline.baseline_id,
+            start_response.production_baseline.baseline_fingerprint)},
         {"performance_profile", performance_profile},
     };
     result.update(BuildImportDiagnosticsJson(

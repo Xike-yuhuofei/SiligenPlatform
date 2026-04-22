@@ -84,8 +84,6 @@ class _FakePreviewSnapshotWorker:
         host: str,
         port: int,
         artifact_id: str,
-        recipe_id: str,
-        version_id: str,
         speed_mm_s: float,
         dry_run: bool,
         dry_run_speed_mm_s: float,
@@ -93,8 +91,6 @@ class _FakePreviewSnapshotWorker:
         self.host = host
         self.port = port
         self.artifact_id = artifact_id
-        self.recipe_id = recipe_id
-        self.version_id = version_id
         self.speed_mm_s = speed_mm_s
         self.dry_run = dry_run
         self.dry_run_speed_mm_s = dry_run_speed_mm_s
@@ -107,6 +103,10 @@ class _FakePreviewSnapshotWorker:
             "snapshot_id": "snapshot-int",
             "snapshot_hash": "hash-int",
             "plan_id": "plan-int",
+            "production_baseline": {
+                "baseline_id": "baseline-int",
+                "baseline_fingerprint": "baseline-fingerprint-int",
+            },
             "preview_source": "planned_glue_snapshot",
             "preview_kind": "glue_points",
             "segment_count": 2,
@@ -176,15 +176,6 @@ def _run_online_preview_flow() -> CaseResult:
         window._connected = True
         window._mode_production.setChecked(True)
         window._mode_dryrun.setChecked(False)
-        window._preview_planning_context.sync_recipe_catalog(
-            [{"id": "recipe-int", "activeVersionId": "version-int"}]
-        )
-        window._preview_planning_context.select_recipe("recipe-int")
-        window._preview_planning_context.sync_recipe_versions(
-            "recipe-int",
-            [{"id": "version-int", "status": "published"}],
-        )
-        window._preview_planning_context.select_version("version-int")
         window._dxf_filepath = str(ROOT / "samples" / "dxf" / "rect_diag.dxf")
 
         window._on_dxf_load()
@@ -204,8 +195,7 @@ def _run_online_preview_flow() -> CaseResult:
             "filename_display": window._dxf_filename_display.text(),
             "html_contains_playback_overlay": "id='preview-head'" in cast(Any, window._dxf_view).html,
             "protocol_calls": cast(Any, window._protocol).calls,
-            "worker_recipe_id": worker.recipe_id,
-            "worker_version_id": worker.version_id,
+            "worker_artifact_id": worker.artifact_id,
             "offline_payload": {
                 "motion_preview_source": window._preview_session.state.motion_preview_source,
                 "motion_preview_sampling_strategy": window._preview_session.state.motion_preview_sampling_strategy,
@@ -227,8 +217,7 @@ def _run_online_preview_flow() -> CaseResult:
         assert payload["debug_contains_hash"] is True
         assert payload["filename_display"] == "rect_diag.dxf"
         assert payload["html_contains_playback_overlay"] is True
-        assert payload["worker_recipe_id"] == "recipe-int"
-        assert payload["worker_version_id"] == "version-int"
+        assert payload["worker_artifact_id"] == "artifact-int"
         assert payload["protocol_calls"] == [
             ("dxf.artifact.create", str(ROOT / "samples" / "dxf" / "rect_diag.dxf")),
             ("dxf.info",),
