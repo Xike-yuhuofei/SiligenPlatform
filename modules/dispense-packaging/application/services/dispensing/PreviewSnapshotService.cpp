@@ -459,6 +459,155 @@ std::vector<float32> BuildAuthorityRevealLengths(
     return BuildFallbackRevealLengthsFromGluePoints(glue_points);
 }
 
+std::vector<float32> BuildPolylineCumulativeLengths(const std::vector<Point2D>& polyline) {
+    std::vector<float32> cumulative_lengths;
+    if (polyline.empty()) {
+        return cumulative_lengths;
+    }
+
+    cumulative_lengths.reserve(polyline.size());
+    cumulative_lengths.push_back(0.0f);
+    float32 total_length_mm = 0.0f;
+    for (std::size_t index = 1; index < polyline.size(); ++index) {
+        total_length_mm += static_cast<float32>(polyline[index - 1U].DistanceTo(polyline[index]));
+        cumulative_lengths.push_back(total_length_mm);
+    }
+    return cumulative_lengths;
+}
+
+bool ProjectPointOntoPolylineInOrder(
+    const Point2D& point,
+    const std::vector<Point2D>& polyline,
+    const std::vector<float32>& cumulative_lengths,
+    std::size_t start_segment_index,
+    float32 minimum_length_mm,
+    float32* projected_length_mm,
+    std::size_t* matched_segment_index) {
+    if (projected_length_mm == nullptr || matched_segment_index == nullptr) {
+        return false;
+    }
+    if (polyline.size() < 2U || cumulative_lengths.size() != polyline.size()) {
+        return false;
+    }
+
+    bool found = false;
+    double best_distance_sq = 0.0;
+    float32 best_length_mm = minimum_length_mm;
+    std::size_t best_segment_index = start_segment_index;
+    for (std::size_t segment_index = start_segment_index; segment_index + 1U < polyline.size(); ++segment_index) {
+        const auto& start = polyline[segment_index];
+        const auto& end = polyline[segment_index + 1U];
+        const double dx = static_cast<double>(end.x) - static_cast<double>(start.x);
+        const double dy = static_cast<double>(end.y) - static_cast<double>(start.y);
+        const double segment_length_sq = (dx * dx) + (dy * dy);
+        if (segment_length_sq <= 1e-9) {
+            continue;
+        }
+
+        const double point_dx = static_cast<double>(point.x) - static_cast<double>(start.x);
+        const double point_dy = static_cast<double>(point.y) - static_cast<double>(start.y);
+        const double ratio = std::clamp(((point_dx * dx) + (point_dy * dy)) / segment_length_sq, 0.0, 1.0);
+        const Point2D projected = InterpolatePoint(start, end, ratio);
+        const double distance_sq = DistanceSquared(point, projected);
+        const float32 segment_length_mm =
+            static_cast<float32>(std::sqrt(segment_length_sq));
+        const float32 segment_start_length_mm = cumulative_lengths[segment_index];
+        const float32 candidate_length_mm = std::max(
+            minimum_length_mm,
+            segment_start_length_mm + static_cast<float32>(segment_length_mm * ratio));
+
+        if (!found || distance_sq < best_distance_sq) {
+            found = true;
+            best_distance_sq = distance_sq;
+            best_length_mm = candidate_length_mm;
+            best_segment_index = segment_index;
+        }
+    }
+
+    if (!found) {
+        return false;
+    }
+
+    *projected_length_mm = best_length_mm;
+    *matched_segment_index = best_segment_index;
+    return true;
+}
+
+PreviewBindingSnapshot BuildPreviewBindingSnapshot(
+    const PreviewSnapshotInput& input,
+    const std::vector<std::size_t>& sampled_glue_indices,
+    const std::vector<Point2D>& motion_polyline) {
+    PreviewBindingSnapshot binding_snapshot;
+    binding_snapshot.source = "runtime_authority_preview_binding";
+    binding_snapshot.status = "unavailable";
+    binding_snapshot.layout_id = input.authority_layout_id;
+    binding_snapshot.glue_point_count = static_cast<std::uint32_t>(sampled_glue_indices.size());
+    binding_snapshot.binding_basis = "execution_binding_to_motion_preview_polyline";
+    binding_snapshot.diagnostic_code = input.diagnostic_code;
+
+    if (input.authority_layout_id.empty()) {
+        binding_snapshot.failure_reason = "preview authority layout id unavailable";
+        return binding_snapshot;
+    }
+    if (!input.binding_ready || input.authority_trigger_layout == nullptr) {
+        binding_snapshot.failure_reason = "preview binding unavailable";
+        return binding_snapshot;
+    }
+    if (motion_polyline.size() < 2U) {
+        binding_snapshot.failure_reason = "preview motion preview unavailable";
+        return binding_snapshot;
+    }
+
+    const auto cumulative_lengths = BuildPolylineCumulativeLengths(motion_polyline);
+    if (cumulative_lengths.empty()) {
+        binding_snapshot.failure_reason = "preview motion preview unavailable";
+        return binding_snapshot;
+    }
+    binding_snapshot.display_path_length_mm = cumulative_lengths.back();
+
+    const auto& layout = *input.authority_trigger_layout;
+    if (!layout.binding_ready || layout.bindings.size() != layout.trigger_points.size()) {
+        binding_snapshot.failure_reason = "preview binding unavailable";
+        return binding_snapshot;
+    }
+
+    binding_snapshot.source_trigger_indices.reserve(sampled_glue_indices.size());
+    binding_snapshot.display_reveal_lengths_mm.reserve(sampled_glue_indices.size());
+    std::size_t search_segment_index = 0U;
+    float32 previous_length_mm = 0.0f;
+    for (const auto sampled_index : sampled_glue_indices) {
+        binding_snapshot.source_trigger_indices.push_back(static_cast<std::uint32_t>(sampled_index));
+        if (sampled_index >= layout.bindings.size() || !layout.bindings[sampled_index].bound) {
+            binding_snapshot.failure_reason = "preview binding unavailable";
+            binding_snapshot.display_reveal_lengths_mm.clear();
+            return binding_snapshot;
+        }
+
+        float32 projected_length_mm = previous_length_mm;
+        std::size_t matched_segment_index = search_segment_index;
+        if (!ProjectPointOntoPolylineInOrder(
+                layout.bindings[sampled_index].execution_position,
+                motion_polyline,
+                cumulative_lengths,
+                search_segment_index,
+                previous_length_mm,
+                &projected_length_mm,
+                &matched_segment_index)) {
+            binding_snapshot.failure_reason = "preview binding projection unavailable";
+            binding_snapshot.display_reveal_lengths_mm.clear();
+            return binding_snapshot;
+        }
+
+        binding_snapshot.display_reveal_lengths_mm.push_back(projected_length_mm);
+        previous_length_mm = projected_length_mm;
+        search_segment_index = matched_segment_index;
+    }
+
+    binding_snapshot.status = "ready";
+    binding_snapshot.failure_reason.clear();
+    return binding_snapshot;
+}
+
 std::vector<Point2D> BuildPointVectorFromTrajectory(
     const std::vector<Siligen::TrajectoryPoint>& trajectory_points) {
     std::vector<Point2D> points;
@@ -504,12 +653,18 @@ PreviewSnapshotResponse PreviewSnapshotService::BuildResponse(
     response.preview_failure_reason = input.failure_reason;
     response.preview_diagnostic_code = input.diagnostic_code;
     response.generated_at = input.generated_at;
+    response.preview_binding.source = "runtime_authority_preview_binding";
+    response.preview_binding.status = "unavailable";
+    response.preview_binding.layout_id = input.authority_layout_id;
+    response.preview_binding.binding_basis = "execution_binding_to_motion_preview_polyline";
+    response.preview_binding.diagnostic_code = input.diagnostic_code;
 
+    std::vector<std::size_t> sampled_glue_indices;
     if (HasAuthoritativeGluePoints(input)) {
         response.glue_point_count = static_cast<std::uint32_t>(input.glue_points->size());
         response.point_count = response.glue_point_count;
         const auto authority_reveal_lengths = BuildAuthorityRevealLengths(input, *input.glue_points);
-        const auto sampled_glue_indices = SampleGluePointIndices(input.glue_points->size(), max_glue_points);
+        sampled_glue_indices = SampleGluePointIndices(input.glue_points->size(), max_glue_points);
         response.glue_points.reserve(sampled_glue_indices.size());
         response.glue_reveal_lengths_mm.reserve(sampled_glue_indices.size());
         for (const auto sampled_index : sampled_glue_indices) {
@@ -525,11 +680,12 @@ PreviewSnapshotResponse PreviewSnapshotService::BuildResponse(
     }
 
     std::vector<Point2D> motion_points;
+    std::vector<Point2D> motion_polyline;
     if (input.motion_trajectory_points != nullptr && !input.motion_trajectory_points->empty()) {
         motion_points = BuildPointVectorFromTrajectory(*input.motion_trajectory_points);
         response.motion_preview_source = "execution_trajectory_snapshot";
         response.motion_preview_kind = "polyline";
-        auto motion_polyline = ClampPolylineByMaxPointsPreserveCorners(motion_points, max_polyline_points);
+        motion_polyline = ClampPolylineByMaxPointsPreserveCorners(motion_points, max_polyline_points);
         response.motion_preview_source_point_count = static_cast<std::uint32_t>(motion_points.size());
         response.motion_preview_point_count = static_cast<std::uint32_t>(motion_polyline.size());
         response.motion_preview_is_sampled =
@@ -539,6 +695,7 @@ PreviewSnapshotResponse PreviewSnapshotService::BuildResponse(
             : "execution_trajectory_geometry_preserving";
         CopyPreviewPolyline(motion_polyline, response.motion_preview_polyline);
     }
+    response.preview_binding = BuildPreviewBindingSnapshot(input, sampled_glue_indices, motion_polyline);
 
     return response;
 }

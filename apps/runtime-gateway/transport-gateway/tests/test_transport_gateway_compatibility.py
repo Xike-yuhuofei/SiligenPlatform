@@ -155,6 +155,11 @@ def test_dxf_preview_gate_contract_is_wired():
     assert '{"preview_kind", snapshot.preview_kind}' in source
     assert '{"glue_points", glue_points}' in source
     assert '{"glue_reveal_lengths_mm", glue_reveal_lengths_mm}' in source
+    assert "Preview binding source must be runtime_authority_preview_binding" in source
+    assert '{"preview_binding", preview_binding}' in source
+    assert '{"source", snapshot.preview_binding.source}' in source
+    assert '{"source_trigger_indices", preview_binding_source_trigger_indices}' in source
+    assert '{"display_reveal_lengths_mm", preview_binding_display_reveal_lengths_mm}' in source
     assert '{"glue_point_count", snapshot.glue_point_count}' in source
     assert '{"motion_preview", motion_preview}' in source
     assert '{"source", snapshot.motion_preview_source}' in source
@@ -210,6 +215,10 @@ def test_dxf_preview_contract_docs_freeze_shared_authority_semantics():
     assert fixture["result"]["glue_point_count"] > 0
     assert len(fixture["result"]["glue_points"]) == fixture["result"]["glue_point_count"]
     assert len(fixture["result"]["glue_reveal_lengths_mm"]) == len(fixture["result"]["glue_points"])
+    assert fixture["result"]["preview_binding"]["status"] == "ready"
+    assert fixture["result"]["preview_binding"]["source"] == "runtime_authority_preview_binding"
+    assert len(fixture["result"]["preview_binding"]["source_trigger_indices"]) == len(fixture["result"]["glue_points"])
+    assert len(fixture["result"]["preview_binding"]["display_reveal_lengths_mm"]) == len(fixture["result"]["glue_points"])
     assert fixture["result"]["motion_preview"]["source"] == "execution_trajectory_snapshot"
     assert fixture["result"]["motion_preview"]["sampling_strategy"] == "execution_trajectory_geometry_preserving_clamp"
     assert len(fixture["result"]["motion_preview"]["polyline"]) == fixture["result"]["motion_preview"]["point_count"]

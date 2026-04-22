@@ -31,6 +31,19 @@ struct PreviewSnapshotPoint {
     float32 y = 0.0f;
 };
 
+struct PreviewBindingSnapshot {
+    std::string source;
+    std::string status;
+    std::string layout_id;
+    std::uint32_t glue_point_count = 0;
+    std::string binding_basis;
+    float32 display_path_length_mm = 0.0f;
+    std::vector<std::uint32_t> source_trigger_indices;
+    std::vector<float32> display_reveal_lengths_mm;
+    std::string diagnostic_code;
+    std::string failure_reason;
+};
+
 struct PreviewSnapshotResponse {
     std::string snapshot_id;
     std::string snapshot_hash;
@@ -52,6 +65,7 @@ struct PreviewSnapshotResponse {
     std::vector<PreviewSnapshotPoint> glue_points;
     std::vector<float32> glue_reveal_lengths_mm;
     std::vector<PreviewSnapshotPoint> motion_preview_polyline;
+    PreviewBindingSnapshot preview_binding;
     float32 total_length_mm = 0.0f;
     float32 estimated_time_s = 0.0f;
     std::string preview_validation_classification;

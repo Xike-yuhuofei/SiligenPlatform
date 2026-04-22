@@ -2583,6 +2583,36 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
     for (const auto reveal_length_mm : snapshot.glue_reveal_lengths_mm) {
         glue_reveal_lengths_mm.push_back(reveal_length_mm);
     }
+    if (snapshot.preview_binding.source != "runtime_authority_preview_binding") {
+        return GatewayJsonProtocol::MakeErrorResponse(
+            id,
+            3014,
+            "Preview binding source must be runtime_authority_preview_binding");
+    }
+    if (snapshot.preview_binding.status != "ready") {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview binding status must be ready");
+    }
+    if (snapshot.preview_binding.layout_id.empty()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 3014, "Preview binding layout_id is missing");
+    }
+    if (snapshot.preview_binding.glue_point_count != snapshot.glue_points.size()) {
+        return GatewayJsonProtocol::MakeErrorResponse(
+            id,
+            3014,
+            "Preview binding glue_point_count must match returned glue_points");
+    }
+    if (snapshot.preview_binding.source_trigger_indices.size() != snapshot.glue_points.size()) {
+        return GatewayJsonProtocol::MakeErrorResponse(
+            id,
+            3014,
+            "Preview binding source_trigger_indices must match returned glue_points");
+    }
+    if (snapshot.preview_binding.display_reveal_lengths_mm.size() != snapshot.glue_points.size()) {
+        return GatewayJsonProtocol::MakeErrorResponse(
+            id,
+            3014,
+            "Preview binding display_reveal_lengths_mm must match returned glue_points");
+    }
     if (snapshot.motion_preview_source != "execution_trajectory_snapshot") {
         return GatewayJsonProtocol::MakeErrorResponse(
             id,
@@ -2608,6 +2638,26 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
         {"is_sampled", snapshot.motion_preview_is_sampled},
         {"sampling_strategy", snapshot.motion_preview_sampling_strategy},
         {"polyline", motion_preview_polyline}
+    };
+    nlohmann::json preview_binding_source_trigger_indices = nlohmann::json::array();
+    for (const auto trigger_index : snapshot.preview_binding.source_trigger_indices) {
+        preview_binding_source_trigger_indices.push_back(trigger_index);
+    }
+    nlohmann::json preview_binding_display_reveal_lengths_mm = nlohmann::json::array();
+    for (const auto reveal_length_mm : snapshot.preview_binding.display_reveal_lengths_mm) {
+        preview_binding_display_reveal_lengths_mm.push_back(reveal_length_mm);
+    }
+    nlohmann::json preview_binding = {
+        {"source", snapshot.preview_binding.source},
+        {"status", snapshot.preview_binding.status},
+        {"layout_id", snapshot.preview_binding.layout_id},
+        {"glue_point_count", snapshot.preview_binding.glue_point_count},
+        {"binding_basis", snapshot.preview_binding.binding_basis},
+        {"display_path_length_mm", snapshot.preview_binding.display_path_length_mm},
+        {"source_trigger_indices", preview_binding_source_trigger_indices},
+        {"display_reveal_lengths_mm", preview_binding_display_reveal_lengths_mm},
+        {"diagnostic_code", snapshot.preview_binding.diagnostic_code},
+        {"failure_reason", snapshot.preview_binding.failure_reason}
     };
 
     {
@@ -2651,6 +2701,7 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
         {"glue_point_count", snapshot.glue_point_count},
         {"glue_points", glue_points},
         {"glue_reveal_lengths_mm", glue_reveal_lengths_mm},
+        {"preview_binding", preview_binding},
         {"motion_preview", motion_preview},
         {"execution_point_count", snapshot.execution_point_count},
         {"total_length_mm", snapshot.total_length_mm},

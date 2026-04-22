@@ -1,13 +1,22 @@
 from __future__ import annotations
 
 import types
+import sys
 from dataclasses import dataclass
+from pathlib import Path
+
+
+WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
+TEST_KIT_SRC = WORKSPACE_ROOT / "shared" / "testing" / "test-kit" / "src"
+if str(TEST_KIT_SRC) not in sys.path:
+    sys.path.insert(0, str(TEST_KIT_SRC))
 
 from hmi_application.domain.preview_session_types import PreviewSessionState
 from hmi_application.preview_gate import DispensePreviewGate
 from hmi_application.services.preview_payload_authority import PreviewPayloadAuthorityService
 from hmi_application.services.preview_playback import PreviewPlaybackController
 from hmi_application.services.preview_preflight import PreviewPreflightService
+from test_kit.preview_snapshot_fixture import build_preview_snapshot_success_result
 
 
 @dataclass
@@ -46,35 +55,29 @@ def valid_payload(
         else []
     )
     total_length_mm = float(glue_points[-1]["x"]) if glue_points else 0.0
-    payload = {
-        "snapshot_id": "snapshot-1",
-        "snapshot_hash": "hash-1",
-        "plan_id": "plan-1",
-        "preview_source": preview_source,
-        "preview_kind": preview_kind,
-        "segment_count": 2,
-        "glue_point_count": glue_point_count,
-        "glue_points": glue_points,
-        "glue_reveal_lengths_mm": [float(index) * 3.0 for index in range(glue_point_count)],
-        "total_length_mm": total_length_mm,
-        "estimated_time_s": 1.0,
-        "generated_at": "2026-03-28T00:00:00Z",
-        "dry_run": dry_run,
-        "preview_diagnostic_code": "",
-    }
-    if include_motion_preview:
-        payload["motion_preview"] = {
-            "source": "execution_trajectory_snapshot",
-            "kind": "polyline",
-            "source_point_count": motion_source_point_count,
-            "point_count": 2,
-            "is_sampled": motion_source_point_count > 2,
-            "sampling_strategy": "execution_trajectory_geometry_preserving_clamp",
-            "polyline": [
-                {"x": 0.0, "y": 0.0},
-                {"x": total_length_mm, "y": 0.0},
-            ],
-        }
+    motion_preview = [
+        {"x": 0.0, "y": 0.0},
+        {"x": total_length_mm, "y": 0.0},
+    ]
+    payload = build_preview_snapshot_success_result(
+        snapshot_id="snapshot-1",
+        snapshot_hash="hash-1",
+        plan_id="plan-1",
+        preview_source=preview_source,
+        preview_kind=preview_kind,
+        segment_count=2,
+        glue_points=glue_points,
+        motion_preview=motion_preview,
+        motion_preview_source_point_count=motion_source_point_count,
+        execution_point_count=motion_source_point_count,
+        total_length_mm=total_length_mm,
+        estimated_time_s=1.0,
+        generated_at="2026-03-28T00:00:00Z",
+        dry_run=dry_run,
+        preview_binding_layout_id="layout-1",
+    )
+    if not include_motion_preview:
+        payload.pop("motion_preview", None)
     return payload
 
 
@@ -148,7 +151,21 @@ class WorkerFakeProtocol:
         timeout: float = 15.0,
     ) -> tuple:
         type(self).calls.append(("dxf.preview.snapshot", plan_id, max_polyline_points, timeout))
-        return True, {"snapshot_id": "snapshot-1", "preview_source": "planned_glue_snapshot", "preview_kind": "glue_points"}, ""
+        payload = build_preview_snapshot_success_result(
+            snapshot_id="snapshot-1",
+            snapshot_hash="hash-1",
+            plan_id=plan_id,
+            segment_count=2,
+            glue_points=[{"x": 0.0, "y": 0.0}, {"x": 6.0, "y": 0.0}],
+            motion_preview=[{"x": 0.0, "y": 0.0}, {"x": 6.0, "y": 0.0}],
+            motion_preview_source_point_count=2,
+            execution_point_count=2,
+            total_length_mm=6.0,
+            estimated_time_s=0.5,
+            generated_at="2026-03-28T00:00:00Z",
+            preview_binding_layout_id="layout-worker",
+        )
+        return True, payload, ""
 
 
 def worker_import_modules() -> dict[str, object]:

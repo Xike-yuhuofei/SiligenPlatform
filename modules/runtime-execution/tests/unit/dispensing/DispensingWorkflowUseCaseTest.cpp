@@ -1491,7 +1491,9 @@ void SeedAuthorityTriggerPoints(
     DispensingWorkflowUseCase::PlanRecord& plan_record,
     const std::vector<Point2D>& points) {
     plan_record.authority_trigger_layout.trigger_points.clear();
+    plan_record.authority_trigger_layout.bindings.clear();
     plan_record.authority_trigger_layout.trigger_points.reserve(points.size());
+    plan_record.authority_trigger_layout.bindings.reserve(points.size());
     float cumulative_length_mm = 0.0f;
     for (std::size_t index = 0; index < points.size(); ++index) {
         if (index > 0U) {
@@ -1504,6 +1506,17 @@ void SeedAuthorityTriggerPoints(
         trigger_point.distance_mm_global = cumulative_length_mm;
         trigger_point.position = points[index];
         plan_record.authority_trigger_layout.trigger_points.push_back(trigger_point);
+
+        Siligen::Domain::Dispensing::ValueObjects::InterpolationTriggerBinding binding;
+        binding.binding_id = plan_record.authority_trigger_layout.layout_id + "-binding-" + std::to_string(index);
+        binding.layout_ref = plan_record.authority_trigger_layout.layout_id;
+        binding.trigger_ref = trigger_point.trigger_id;
+        binding.interpolation_index = index;
+        binding.execution_position = points[index];
+        binding.match_error_mm = 0.0f;
+        binding.monotonic = true;
+        binding.bound = true;
+        plan_record.authority_trigger_layout.bindings.push_back(binding);
     }
     plan_record.response.total_length_mm = cumulative_length_mm;
 }
@@ -2422,6 +2435,7 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotResolvesExecutionAssemblyF
     const auto snapshot_result = use_case.GetPreviewSnapshot(snapshot_request);
 
     ASSERT_TRUE(snapshot_result.IsSuccess()) << snapshot_result.GetError().ToString();
+    const auto& snapshot = snapshot_result.Value();
     const auto& resolved_plan = use_case.plans_.at(plan_id);
     EXPECT_TRUE(resolved_plan.preview_authority_shared_with_execution);
     EXPECT_TRUE(resolved_plan.preview_binding_ready);
@@ -2433,6 +2447,12 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotResolvesExecutionAssemblyF
         resolved_plan.response.point_count,
         static_cast<std::uint32_t>(resolved_plan.execution_trajectory_points.size()));
     EXPECT_EQ(resolved_plan.preview_snapshot_hash, prepare_result.Value().plan_fingerprint);
+    EXPECT_EQ(snapshot.preview_binding.source, "runtime_authority_preview_binding");
+    EXPECT_EQ(snapshot.preview_binding.status, "ready");
+    EXPECT_FALSE(snapshot.preview_binding.layout_id.empty());
+    EXPECT_EQ(snapshot.preview_binding.glue_point_count, snapshot.glue_point_count);
+    EXPECT_EQ(snapshot.preview_binding.source_trigger_indices.size(), snapshot.glue_points.size());
+    EXPECT_EQ(snapshot.preview_binding.display_reveal_lengths_mm.size(), snapshot.glue_points.size());
 }
 
 TEST(DispensingWorkflowUseCaseTest, StartJobRejectsUnhomedAxis) {
@@ -2532,6 +2552,8 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotKeepsConfirmedStateWhenFin
     plan_record.execution_assembly.motion_trajectory_points.emplace_back(10.0f, 0.0f, 0.0f);
     plan_record.glue_points.emplace_back(0.0f, 0.0f);
     plan_record.glue_points.emplace_back(10.0f, 0.0f);
+    SeedAuthorityTriggerPoints(plan_record, plan_record.glue_points);
+    plan_record.execution_assembly.authority_trigger_layout = plan_record.authority_trigger_layout;
     use_case.plans_[plan_record.response.plan_id] = plan_record;
 
     Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest request;
@@ -2552,6 +2574,15 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotKeepsConfirmedStateWhenFin
     ASSERT_EQ(snapshot.glue_reveal_lengths_mm.size(), 2U);
     EXPECT_FLOAT_EQ(snapshot.glue_reveal_lengths_mm[0], 0.0f);
     EXPECT_FLOAT_EQ(snapshot.glue_reveal_lengths_mm[1], 10.0f);
+    EXPECT_EQ(snapshot.preview_binding.source, "runtime_authority_preview_binding");
+    EXPECT_EQ(snapshot.preview_binding.status, "ready");
+    EXPECT_EQ(snapshot.preview_binding.binding_basis, "execution_binding_to_motion_preview_polyline");
+    ASSERT_EQ(snapshot.preview_binding.source_trigger_indices.size(), 2U);
+    EXPECT_EQ(snapshot.preview_binding.source_trigger_indices[0], 0U);
+    EXPECT_EQ(snapshot.preview_binding.source_trigger_indices[1], 1U);
+    ASSERT_EQ(snapshot.preview_binding.display_reveal_lengths_mm.size(), 2U);
+    EXPECT_FLOAT_EQ(snapshot.preview_binding.display_reveal_lengths_mm[0], 0.0f);
+    EXPECT_FLOAT_EQ(snapshot.preview_binding.display_reveal_lengths_mm[1], 10.0f);
 }
 
 TEST(DispensingWorkflowUseCaseTest, ConfirmPreviewRejectsMissingAuthorityLayoutId) {
@@ -2882,6 +2913,12 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFailsWhenExportRequestIsRe
     ASSERT_TRUE(result.IsError());
     EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
     EXPECT_EQ(result.GetError().GetMessage(), "motion trajectory snapshot unavailable for preview");
+    EXPECT_EQ(
+        use_case.plans_.at("plan-authority-process-path-fallback").preview_state,
+        DispensingWorkflowUseCase::PlanPreviewState::FAILED);
+    EXPECT_EQ(
+        use_case.plans_.at("plan-authority-process-path-fallback").failure_message,
+        "motion trajectory snapshot unavailable for preview");
 }
 
 TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFailsWhenMotionTrajectorySnapshotMissingAndOnlyExecutionPolylineExists) {
@@ -2910,6 +2947,12 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFailsWhenMotionTrajectoryS
     ASSERT_TRUE(result.IsError());
     EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
     EXPECT_EQ(result.GetError().GetMessage(), "motion trajectory snapshot unavailable for preview");
+    EXPECT_EQ(
+        use_case.plans_.at("plan-motion-preview-legacy-fallback").preview_state,
+        DispensingWorkflowUseCase::PlanPreviewState::FAILED);
+    EXPECT_EQ(
+        use_case.plans_.at("plan-motion-preview-legacy-fallback").failure_message,
+        "motion trajectory snapshot unavailable for preview");
 }
 
 TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFailsWhenPreviewAuthorityIsUnavailable) {
@@ -2966,6 +3009,35 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFailsAtSnapshotStageWhenBi
     EXPECT_EQ(
         use_case.plans_.at("plan-binding-unavailable").failure_message,
         "authority trigger binding unavailable");
+}
+
+TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotFailsClosedWhenPreviewBindingPayloadIsUnavailable) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+
+    auto plan_record = BuildPreviewPlanRecord(
+        "plan-binding-payload-unavailable",
+        {Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f), Point2D(20.0f, 0.0f)});
+    plan_record.preview_state = DispensingWorkflowUseCase::PlanPreviewState::PREPARED;
+    plan_record.authority_trigger_layout.bindings.pop_back();
+    use_case.plans_[plan_record.response.plan_id] = plan_record;
+
+    Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest request;
+    request.plan_id = "plan-binding-payload-unavailable";
+    const auto result = use_case.GetPreviewSnapshot(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+    EXPECT_EQ(result.GetError().GetMessage(), "preview binding unavailable");
+    EXPECT_EQ(
+        use_case.plans_.at("plan-binding-payload-unavailable").preview_state,
+        DispensingWorkflowUseCase::PlanPreviewState::FAILED);
+    EXPECT_EQ(
+        use_case.plans_.at("plan-binding-payload-unavailable").failure_message,
+        "preview binding unavailable");
 }
 
 TEST(DispensingWorkflowUseCaseTest, PreviewGateFailureReasonIsConsistentAcrossSnapshotConfirmAndStart) {

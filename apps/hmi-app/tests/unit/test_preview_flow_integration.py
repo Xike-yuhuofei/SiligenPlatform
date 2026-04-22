@@ -11,10 +11,14 @@ from PyQt5.QtWidgets import QApplication, QWidget
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+WORKSPACE_ROOT = PROJECT_ROOT.parents[1]
+TEST_KIT_SRC = WORKSPACE_ROOT / "shared" / "testing" / "test-kit" / "src"
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 sys.path.insert(0, str(PROJECT_ROOT / "src" / "hmi_client"))
+sys.path.insert(0, str(TEST_KIT_SRC))
 
 from hmi_client.ui import main_window as main_window_module
+from test_kit.preview_snapshot_fixture import build_preview_snapshot_success_result
 
 
 class _DummyPage:
@@ -71,36 +75,21 @@ class _FakePreviewSnapshotWorker:
         type(self).created.append(self)
 
     def start(self) -> None:
-        payload = {
-            "snapshot_id": "snapshot-it",
-            "snapshot_hash": "hash-it",
-            "plan_id": "plan-it",
-            "preview_source": "planned_glue_snapshot",
-            "preview_kind": "glue_points",
-            "segment_count": 2,
-            "glue_point_count": 2,
-            "glue_points": [
-                {"x": 0.0, "y": 0.0},
-                {"x": 10.0, "y": 0.0},
-            ],
-            "glue_reveal_lengths_mm": [0.0, 10.0],
-            "motion_preview": {
-                "source": "execution_trajectory_snapshot",
-                "kind": "polyline",
-                "source_point_count": 8,
-                "point_count": 2,
-                "is_sampled": True,
-                "sampling_strategy": "execution_trajectory_geometry_preserving_clamp",
-                "polyline": [
-                    {"x": 0.0, "y": 0.0},
-                    {"x": 10.0, "y": 0.0},
-                ],
-            },
-            "total_length_mm": 10.0,
-            "estimated_time_s": 0.5,
-            "generated_at": "2026-04-02T00:00:00Z",
-            "dry_run": False,
-        }
+        payload = build_preview_snapshot_success_result(
+            snapshot_id="snapshot-it",
+            snapshot_hash="hash-it",
+            plan_id="plan-it",
+            segment_count=2,
+            glue_points=[{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
+            motion_preview=[{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
+            motion_preview_source_point_count=8,
+            execution_point_count=8,
+            total_length_mm=10.0,
+            estimated_time_s=0.5,
+            generated_at="2026-04-02T00:00:00Z",
+            dry_run=False,
+            preview_binding_layout_id="layout-it",
+        )
         self.completed.emit(True, payload, "")
         self.finished.emit()
 

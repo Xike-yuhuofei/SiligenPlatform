@@ -8,10 +8,19 @@ import hashlib
 import json
 import math
 import socketserver
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+WORKSPACE_ROOT = Path(__file__).resolve().parents[5]
+TEST_KIT_SRC = WORKSPACE_ROOT / "shared" / "testing" / "test-kit" / "src"
+if str(TEST_KIT_SRC) not in sys.path:
+    sys.path.insert(0, str(TEST_KIT_SRC))
+
+from test_kit.preview_snapshot_fixture import build_preview_snapshot_success_result
 
 
 @dataclass
@@ -921,38 +930,25 @@ class MockState:
                     motion_preview.append({"x": x, "y": y})
                 self.dxf.preview_state = "snapshot_ready"
                 self.dxf.preview_confirmed_at = ""
+                result = build_preview_snapshot_success_result(
+                    snapshot_id=self.dxf.preview_snapshot_id,
+                    snapshot_hash=self.dxf.preview_snapshot_hash,
+                    plan_id=self.dxf.current_plan_id,
+                    preview_state=self.dxf.preview_state,
+                    confirmed_at=self.dxf.preview_confirmed_at,
+                    segment_count=self.dxf.segment_count,
+                    glue_points=glue_points,
+                    motion_preview=motion_preview,
+                    motion_preview_source_point_count=execution_point_count,
+                    execution_point_count=execution_point_count,
+                    total_length_mm=self.dxf.total_length,
+                    estimated_time_s=self.dxf.total_length / max(0.1, self.dxf.plan_speed_mm_s),
+                    generated_at=generated_at,
+                    dry_run=self.dxf.plan_dry_run,
+                    preview_binding_layout_id=f"layout-{self.dxf.current_plan_id}",
+                )
                 return {
-                    "result": {
-                        "snapshot_id": self.dxf.preview_snapshot_id,
-                        "snapshot_hash": self.dxf.preview_snapshot_hash,
-                        "plan_id": self.dxf.current_plan_id,
-                        "preview_state": self.dxf.preview_state,
-                        "preview_source": "planned_glue_snapshot",
-                        "preview_kind": "glue_points",
-                        "confirmed_at": self.dxf.preview_confirmed_at,
-                        "segment_count": self.dxf.segment_count,
-                        "point_count": glue_point_count,
-                        "glue_point_count": glue_point_count,
-                        "glue_points": glue_points,
-                        "glue_reveal_lengths_mm": glue_reveal_lengths_mm,
-                        "execution_point_count": execution_point_count,
-                        "motion_preview": {
-                            "source": "execution_trajectory_snapshot",
-                            "kind": "polyline",
-                            "source_point_count": execution_point_count,
-                            "point_count": motion_preview_point_count,
-                            "is_sampled": motion_preview_point_count < execution_point_count,
-                            "sampling_strategy": (
-                                "execution_trajectory_geometry_preserving_clamp"
-                                if motion_preview_point_count < execution_point_count
-                                else "execution_trajectory_geometry_preserving"
-                            ),
-                            "polyline": motion_preview,
-                        },
-                        "total_length_mm": self.dxf.total_length,
-                        "estimated_time_s": self.dxf.total_length / max(0.1, self.dxf.plan_speed_mm_s),
-                        "generated_at": generated_at,
-                    }
+                    "result": result
                 }
             if method == "dxf.preview.confirm":
                 plan_id = str(params.get("plan_id", self.dxf.current_plan_id)).strip()

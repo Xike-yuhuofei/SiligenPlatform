@@ -33,6 +33,7 @@ from test_kit.evidence_bundle import (  # noqa: E402
     trace_fields,
     write_bundle_artifacts,
 )
+from test_kit.preview_snapshot_fixture import build_preview_snapshot_success_result  # noqa: E402
 
 
 @dataclass
@@ -99,33 +100,24 @@ class _FakePreviewSnapshotWorker:
         type(self).created.append(self)
 
     def start(self) -> None:
-        payload = {
-            "snapshot_id": "snapshot-int",
-            "snapshot_hash": "hash-int",
-            "plan_id": "plan-int",
-            "production_baseline": {
-                "baseline_id": "baseline-int",
-                "baseline_fingerprint": "baseline-fingerprint-int",
-            },
-            "preview_source": "planned_glue_snapshot",
-            "preview_kind": "glue_points",
-            "segment_count": 2,
-            "glue_point_count": 2,
-            "glue_points": [{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
-            "glue_reveal_lengths_mm": [0.0, 10.0],
-            "motion_preview": {
-                "source": "execution_trajectory_snapshot",
-                "kind": "polyline",
-                "source_point_count": 8,
-                "point_count": 2,
-                "is_sampled": True,
-                "sampling_strategy": "execution_trajectory_geometry_preserving_clamp",
-                "polyline": [{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
-            },
-            "total_length_mm": 10.0,
-            "estimated_time_s": 0.5,
-            "generated_at": "2026-04-02T00:00:00Z",
-            "dry_run": False,
+        payload = build_preview_snapshot_success_result(
+            snapshot_id="snapshot-int",
+            snapshot_hash="hash-int",
+            plan_id="plan-int",
+            segment_count=2,
+            glue_points=[{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
+            motion_preview=[{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
+            motion_preview_source_point_count=8,
+            execution_point_count=8,
+            total_length_mm=10.0,
+            estimated_time_s=0.5,
+            generated_at="2026-04-02T00:00:00Z",
+            dry_run=False,
+            preview_binding_layout_id="layout-int",
+        )
+        payload["production_baseline"] = {
+            "baseline_id": "baseline-int",
+            "baseline_fingerprint": "baseline-fingerprint-int",
         }
         self.completed.emit(True, payload, "")
         self.finished.emit()
