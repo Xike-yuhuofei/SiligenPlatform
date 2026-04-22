@@ -3498,7 +3498,7 @@ class MainWindow(QMainWindow):
             "source": "authority_glue_reveal_lengths_mm",
         }
         self._log_preview_glue_reveal_diagnostics(
-            diagnostics=diagnostics,
+            diagnostics,
             glue_point_count=len(glue_points),
             motion_point_count=len(motion_preview),
             snapshot=snapshot,

@@ -264,28 +264,6 @@ class PreviewPayloadAuthorityService:
                 title="胶点预览生成失败",
                 detail="返回结果缺少非空 glue_points。请核对 runtime-gateway 是否已升级到 planned_glue_snapshot 契约。",
             )
-        if not glue_reveal_lengths_mm:
-            return self.handle_local_failure(
-                gate_error_message="运行时快照返回了非法 glue_reveal_lengths_mm: missing",
-                title="胶点预览生成失败",
-                detail=self.glue_reveal_lengths_error_detail("missing"),
-            )
-        if len(glue_reveal_lengths_mm) != len(glue_points):
-            return self.handle_local_failure(
-                gate_error_message="运行时快照缺少有效 glue_reveal_lengths_mm",
-                title="胶点预览生成失败",
-                detail="返回结果的 glue_reveal_lengths_mm 与 glue_points 数量不一致。",
-            )
-        previous_reveal_length = glue_reveal_lengths_mm[0]
-        for current_reveal_length in glue_reveal_lengths_mm[1:]:
-            if current_reveal_length + 1e-6 < previous_reveal_length:
-                return self.handle_local_failure(
-                    gate_error_message="运行时快照缺少有效 glue_reveal_lengths_mm",
-                    title="胶点预览生成失败",
-                    detail="返回结果的 glue_reveal_lengths_mm 不是单调不减序列。",
-                )
-            previous_reveal_length = current_reveal_length
-
         if not motion_preview:
             return self.handle_local_failure(
                 gate_error_message="运行时快照缺少 motion_preview",

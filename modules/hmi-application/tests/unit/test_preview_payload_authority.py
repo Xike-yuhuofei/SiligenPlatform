@@ -136,6 +136,20 @@ class PreviewPayloadAuthorityServiceTest(unittest.TestCase):
             "运行时快照返回了非法 glue_reveal_lengths_mm: missing",
         )
 
+    def test_process_snapshot_payload_fails_when_glue_reveal_lengths_non_monotonic(self) -> None:
+        payload = valid_payload()
+        payload["glue_reveal_lengths_mm"] = [0.0, 6.5, 3.25]
+
+        result = self.authority.process_snapshot_payload(payload, current_dry_run=False)
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.title, "胶点预览生成失败")
+        self.assertIn("不是单调递增序列", result.detail)
+        self.assertEqual(
+            self.state.gate.last_error_message,
+            "运行时快照返回了非法 glue_reveal_lengths_mm: non_monotonic",
+        )
+
     def test_process_snapshot_payload_fails_when_glue_reveal_lengths_geometry_mismatch(self) -> None:
         payload = valid_payload()
         payload["glue_reveal_lengths_mm"] = [0.0, 0.0, 6.0]
@@ -149,6 +163,33 @@ class PreviewPayloadAuthorityServiceTest(unittest.TestCase):
             self.state.gate.last_error_message,
             "运行时快照返回了非法 glue_reveal_lengths_mm: geometry_mismatch",
         )
+
+    def test_validate_glue_reveal_lengths_reports_length_mismatch(self) -> None:
+        reason = self.authority.validate_glue_reveal_lengths(
+            glue_points=[(0.0, 0.0), (3.0, 0.0)],
+            motion_preview=[(0.0, 0.0), (3.0, 0.0)],
+            glue_reveal_lengths_mm=[0.0],
+        )
+
+        self.assertEqual(reason, "length_mismatch")
+
+    def test_validate_glue_reveal_lengths_reports_motion_preview_too_short(self) -> None:
+        reason = self.authority.validate_glue_reveal_lengths(
+            glue_points=[(0.0, 0.0), (3.0, 0.0)],
+            motion_preview=[(0.0, 0.0)],
+            glue_reveal_lengths_mm=[0.0, 3.0],
+        )
+
+        self.assertEqual(reason, "motion_preview_too_short")
+
+    def test_validate_glue_reveal_lengths_reports_beyond_motion_length(self) -> None:
+        reason = self.authority.validate_glue_reveal_lengths(
+            glue_points=[(0.0, 0.0), (3.0, 0.0)],
+            motion_preview=[(0.0, 0.0), (3.0, 0.0)],
+            glue_reveal_lengths_mm=[0.0, 9.0],
+        )
+
+        self.assertEqual(reason, "beyond_motion_length")
 
     def test_process_snapshot_payload_stores_preview_diagnostic_code(self) -> None:
         payload = valid_payload()
