@@ -40,15 +40,12 @@ def valid_payload(
     motion_source_point_count: int = 10,
     include_motion_preview: bool = True,
 ) -> dict:
-    glue_points = [
-        {"x": 0.0, "y": 0.0},
-        {"x": 3.0, "y": 0.0},
-        {"x": 6.0, "y": 0.0},
-    ]
-    if glue_point_count <= 0:
-        glue_points = []
-    elif glue_point_count > len(glue_points):
-        glue_points.extend({"x": float(index), "y": 0.0} for index in range(len(glue_points), glue_point_count))
+    glue_points = (
+        [{"x": float(index) * 3.0, "y": 0.0} for index in range(glue_point_count)]
+        if glue_point_count > 0
+        else []
+    )
+    total_length_mm = float(glue_points[-1]["x"]) if glue_points else 0.0
     payload = {
         "snapshot_id": "snapshot-1",
         "snapshot_hash": "hash-1",
@@ -59,7 +56,7 @@ def valid_payload(
         "glue_point_count": glue_point_count,
         "glue_points": glue_points,
         "glue_reveal_lengths_mm": [float(index) * 3.0 for index in range(glue_point_count)],
-        "total_length_mm": 6.0,
+        "total_length_mm": total_length_mm,
         "estimated_time_s": 1.0,
         "generated_at": "2026-03-28T00:00:00Z",
         "dry_run": dry_run,
@@ -75,7 +72,7 @@ def valid_payload(
             "sampling_strategy": "execution_trajectory_geometry_preserving_clamp",
             "polyline": [
                 {"x": 0.0, "y": 0.0},
-                {"x": 6.0, "y": 0.0},
+                {"x": total_length_mm, "y": 0.0},
             ],
         }
     return payload
