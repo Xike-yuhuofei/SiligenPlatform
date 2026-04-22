@@ -293,8 +293,6 @@ def test_build_report_freezes_execution_timing_summary_contract() -> None:
         config_path=Path("D:/fake/machine_config.ini"),
         dxf_file=Path("D:/fake/rect_diag.dxf"),
         host="127.0.0.1",
-        recipe_id="recipe-7d1b00f4-6a99",
-        version_id="version-fea9ce29-f963",
     )
     breakdown = {
         "execution_nominal_time_s": 340.0968,
@@ -334,6 +332,11 @@ def test_build_report_freezes_execution_timing_summary_contract() -> None:
         },
         error_message="",
         plan_result={"execution_nominal_time_s": 340.0968},
+        production_baseline={
+            "baseline_id": "baseline-production-default",
+            "baseline_fingerprint": "baseline-fp-20260421",
+            "production_baseline_source": "dxf.plan.prepare",
+        },
     )
 
     assert report["timing_summary"] == {
@@ -351,8 +354,6 @@ def test_build_report_nulls_execution_timing_summary_for_production_blocked() ->
         config_path=Path("D:/fake/machine_config.ini"),
         dxf_file=Path("D:/fake/rect_diag.dxf"),
         host="127.0.0.1",
-        recipe_id="recipe-7d1b00f4-6a99",
-        version_id="version-fea9ce29-f963",
     )
 
     report = production_validation.build_report(
@@ -376,6 +377,11 @@ def test_build_report_nulls_execution_timing_summary_for_production_blocked() ->
         artifacts={},
         error_message="blocked",
         plan_result={"execution_nominal_time_s": 340.0968},
+        production_baseline={
+            "baseline_id": "baseline-production-default",
+            "baseline_fingerprint": "baseline-fp-20260421",
+            "production_baseline_source": "dxf.plan.prepare",
+        },
     )
 
     assert report["timing_summary"] == {

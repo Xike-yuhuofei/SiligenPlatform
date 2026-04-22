@@ -23,11 +23,10 @@ from runtime_gateway_harness import (  # noqa: E402
     KNOWN_FAILURE_EXIT_CODE,
     TcpJsonClient,
     build_process_env,
-    ensure_published_recipe_version,
     load_connection_params,
     prepare_mock_config,
+    production_baseline_metadata,
     read_process_output,
-    recipe_context_metadata,
     resolve_default_exe,
     result_payload,
     tcp_connect_and_ensure_ready,
@@ -53,8 +52,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config-path", type=Path, default=DEFAULT_CONFIG_PATH)
     parser.add_argument("--config-mode", choices=("mock", "real"), default="mock")
     parser.add_argument("--dxf-file", type=Path, default=DEFAULT_DXF_FILE)
-    parser.add_argument("--recipe-id", required=True)
-    parser.add_argument("--version-id", required=True)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--gateway-ready-timeout", type=float, default=8.0)
@@ -337,7 +334,7 @@ def build_preview_evidence_markdown(
     *,
     generated_at: str,
     overall_status: str,
-    recipe_context: dict[str, Any],
+    production_baseline: dict[str, Any],
     plan_payload: dict[str, Any],
     snapshot_payload: dict[str, Any],
     verdict_payload: dict[str, Any],
@@ -352,9 +349,9 @@ def build_preview_evidence_markdown(
     lines.append(f"- generated_at: `{generated_at}`")
     lines.append(f"- overall_status: `{overall_status}`")
     lines.append(f"- verdict: `{verdict_payload.get('verdict', 'incomplete')}`")
-    lines.append(f"- recipe_id: `{recipe_context.get('recipe_id', '')}`")
-    lines.append(f"- version_id: `{recipe_context.get('version_id', '')}`")
-    lines.append(f"- recipe_context_source: `{recipe_context.get('recipe_context_source', '')}`")
+    lines.append(f"- baseline_id: `{production_baseline.get('baseline_id', '')}`")
+    lines.append(f"- baseline_fingerprint: `{production_baseline.get('baseline_fingerprint', '')}`")
+    lines.append(f"- production_baseline_source: `{production_baseline.get('production_baseline_source', '')}`")
     lines.append(f"- plan_id: `{verdict_payload.get('plan_id', '')}`")
     lines.append(f"- plan_fingerprint: `{verdict_payload.get('plan_fingerprint', '')}`")
     lines.append(f"- snapshot_hash: `{verdict_payload.get('snapshot_hash', '')}`")
@@ -416,9 +413,9 @@ def build_report_markdown(report: dict[str, Any]) -> str:
     lines.append(f"- config_path: `{report['config_path']}`")
     lines.append(f"- config_mode: `{report['config_mode']}`")
     lines.append(f"- dxf_file: `{report['dxf_file']}`")
-    lines.append(f"- recipe_id: `{report.get('recipe_id', '')}`")
-    lines.append(f"- version_id: `{report.get('version_id', '')}`")
-    lines.append(f"- recipe_context_source: `{report.get('recipe_context_source', '')}`")
+    lines.append(f"- baseline_id: `{report.get('baseline_id', '')}`")
+    lines.append(f"- baseline_fingerprint: `{report.get('baseline_fingerprint', '')}`")
+    lines.append(f"- production_baseline_source: `{report.get('production_baseline_source', '')}`")
     lines.append(f"- preview_source: `{report['preview_source']}`")
     lines.append(f"- preview_kind: `{report['preview_kind']}`")
     lines.append(f"- snapshot_hash: `{report['snapshot_hash']}`")
@@ -522,7 +519,6 @@ def main() -> int:
     ensure_exists(args.gateway_exe, "gateway executable")
     ensure_exists(args.config_path, "config")
     ensure_exists(args.dxf_file, "dxf file")
-    recipe_context = recipe_context_metadata(args.recipe_id, args.version_id)
 
     report_dir = args.report_root / time.strftime("%Y%m%d-%H%M%S")
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -548,6 +544,7 @@ def main() -> int:
     snapshot_hash = ""
     plan_result: dict[str, Any] = {}
     plan_prepare_payload: dict[str, Any] = {}
+    production_baseline: dict[str, Any] = {}
     snapshot_result: dict[str, Any] = {}
     glue_points: list[dict[str, float]] = []
     glue_reveal_lengths_mm: list[float] = []
@@ -636,20 +633,6 @@ def main() -> int:
             ),
         )
 
-        validated_recipe_context = ensure_published_recipe_version(
-            client,
-            recipe_id=recipe_context["recipe_id"],
-            version_id=recipe_context["version_id"],
-            timeout_seconds=min(10.0, args.connect_timeout),
-        )
-        artifacts["recipe_context_validation"] = validated_recipe_context
-        add_step(
-            steps,
-            "recipe-context-validate",
-            "passed",
-            json.dumps(validated_recipe_context, ensure_ascii=False),
-        )
-
         dxf_bytes = args.dxf_file.read_bytes()
         artifact_response = client.send_request(
             "dxf.artifact.create",
@@ -673,8 +656,6 @@ def main() -> int:
             "dxf.plan.prepare",
             {
                 "artifact_id": artifact_id,
-                "recipe_id": recipe_context["recipe_id"],
-                "version_id": recipe_context["version_id"],
                 "dispensing_speed_mm_s": args.dispensing_speed_mm_s,
                 "dry_run": False,
                 "velocity_trace_enabled": False,
@@ -691,7 +672,8 @@ def main() -> int:
             raise RuntimeError("dxf.plan.prepare missing plan_id")
         if not plan_fingerprint:
             raise RuntimeError("dxf.plan.prepare missing plan_fingerprint")
-        plan_prepare_payload = {**plan_result, **recipe_context}
+        production_baseline = production_baseline_metadata(plan_result, source="dxf.plan.prepare")
+        plan_prepare_payload = {**plan_result, **production_baseline}
         write_json(plan_prepare_json_path, plan_prepare_payload)
         add_step(
             steps,
@@ -702,6 +684,7 @@ def main() -> int:
                     "plan_id": plan_id,
                     "plan_fingerprint": plan_fingerprint,
                     "segment_count": plan_result.get("segment_count", 0),
+                    "production_baseline": production_baseline,
                 },
                 ensure_ascii=False,
             ),
@@ -868,12 +851,12 @@ def main() -> int:
             confirmed=preview_confirmed,
             error_message=error_message,
         )
-        preview_verdict.update(recipe_context)
+        preview_verdict.update(production_baseline)
         write_json(preview_verdict_json_path, preview_verdict)
         preview_evidence_markdown = build_preview_evidence_markdown(
             generated_at=utc_now(),
             overall_status=overall_status,
-            recipe_context=recipe_context,
+            production_baseline=production_baseline,
             plan_payload=plan_prepare_payload,
             snapshot_payload=snapshot_result,
             verdict_payload=preview_verdict,
@@ -892,7 +875,7 @@ def main() -> int:
             "config_path": str(effective_config_path),
             "config_mode": args.config_mode,
             "dxf_file": str(args.dxf_file),
-            **recipe_context,
+            **production_baseline,
             "artifact_id": artifact_id,
             "plan_id": plan_id,
             "plan_fingerprint": plan_fingerprint,

@@ -226,6 +226,7 @@ def test_dxf_preview_and_job_contract():
     assert "prepared_filepath" in plan_prepare["resultSchema"]["required"]
     assert "execution_nominal_time_s" in plan_prepare["resultSchema"]["required"]
     assert "execution_plan_summary" in plan_prepare["resultSchema"]["required"]
+    assert "production_baseline" in plan_prepare["resultSchema"]["required"]
     assert "estimated_time_s" not in plan_prepare["resultSchema"]["required"]
     assert {"artifact_id", "dispensing_speed_mm_s"}.issubset(set(plan_prepare["paramsSchema"]["required"]))
     assert "recipe_id" not in plan_prepare["paramsSchema"]["properties"]
@@ -246,7 +247,7 @@ def test_dxf_preview_and_job_contract():
     assert {"started", "job_id", "plan_id", "plan_fingerprint", "target_count"}.issubset(
         set(job_start["resultSchema"]["required"])
     )
-    assert {"execution_budget_s", "execution_budget_breakdown"}.issubset(
+    assert {"execution_budget_s", "execution_budget_breakdown", "production_baseline"}.issubset(
         set(job_start["resultSchema"]["required"])
     )
     assert {"import_result_classification", "import_production_ready", "prepared_filepath"}.issubset(
@@ -268,16 +269,23 @@ def test_dxf_preview_and_job_contract():
     job_continue = operations["dxf.job.continue"]
     assert {"continued", "job_id"} == set(job_continue["resultSchema"]["required"])
 
+    prepare_request_fixture = load_json(CONTRACTS / "fixtures" / "requests" / "dxf.plan.prepare.request.json")
     artifact_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.artifact.create.success.json")
     prepare_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.plan.prepare.success.json")
     start_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.job.start.success.json")
+    assert "recipe_id" not in prepare_request_fixture["params"]
+    assert "version_id" not in prepare_request_fixture["params"]
     assert artifact_fixture["result"]["formal_compare_gate"] is None
     assert prepare_fixture["result"]["formal_compare_gate"] is None
+    assert prepare_fixture["result"]["production_baseline"]["baseline_id"]
+    assert prepare_fixture["result"]["production_baseline"]["baseline_fingerprint"]
     assert "estimated_time_s" not in prepare_fixture["result"]
     assert "execution_nominal_time_s" in prepare_fixture["result"]
     assert "execution_plan_summary" in prepare_fixture["result"]
     assert start_fixture["result"]["formal_compare_gate"] is None
-    assert {"execution_budget_s", "execution_budget_breakdown"}.issubset(set(start_fixture["result"].keys()))
+    assert start_fixture["result"]["production_baseline"]["baseline_id"]
+    assert start_fixture["result"]["production_baseline"]["baseline_fingerprint"]
+    assert {"execution_budget_s", "execution_budget_breakdown", "production_baseline"}.issubset(set(start_fixture["result"].keys()))
 
 
 def test_status_contract_describes_backend_interlock_authority():

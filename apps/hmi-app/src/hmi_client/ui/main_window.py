@@ -61,7 +61,6 @@ from client import (
     normalize_launch_mode,
 )
 from hmi_application.adapters.qt_workers import PreviewSnapshotWorker
-from hmi_application.preview_planning_context import PreviewPlanningContextOwner
 from hmi_application.preview_session import (
     MotionPreviewMeta,
     PreviewDiagnosticNotice,
@@ -453,7 +452,6 @@ class MainWindow(QMainWindow):
         self._dxf_total_length_val = 0.0
         self._dxf_segment_count_cache = 0
         self._dxf_est_time_val = "-"
-        self._preview_planning_context = PreviewPlanningContextOwner()
         self._preview_session = PreviewSessionOwner()
         self._preview_gate = self._preview_session.gate
         self._preview_plan_dry_run = None
@@ -1074,7 +1072,6 @@ class MainWindow(QMainWindow):
         self._recipe_config_widget = RecipeConfigWidget(
             self._protocol,
             self._auth,
-            planning_context_owner=self._preview_planning_context,
             parent=self,
         )
         self._recipe_config_widget.setEnabled(CURRENT_STAGE_RECIPE_MANAGEMENT_ENABLED)
@@ -2106,7 +2103,7 @@ class MainWindow(QMainWindow):
         self._global_progress.setValue(0)
         if result.success:
             self._hw_connect_btn.setEnabled(False)
-            if CURRENT_STAGE_RECIPE_MANAGEMENT_ENABLED and hasattr(self, '_recipe_config_widget'):
+            if result.online_ready and hasattr(self, '_recipe_config_widget'):
                 self._recipe_config_widget._load_recipe_context()
         else:
             self._show_startup_error(result)
@@ -2119,6 +2116,8 @@ class MainWindow(QMainWindow):
         self._recovery_worker = None
         self._apply_launch_result(result)
         self._global_progress.setValue(0)
+        if result.online_ready and hasattr(self, '_recipe_config_widget'):
+            self._recipe_config_widget._load_recipe_context()
         self.statusBar().showMessage(build_recovery_finished_message(action, result))
         self._apply_permissions()
         self._update_recovery_controls_state()
@@ -3997,21 +3996,6 @@ class MainWindow(QMainWindow):
 
         speed = self._dxf_speed.value()
         dry_run_mode = self._mode_dryrun.isChecked() if hasattr(self, "_mode_dryrun") else False
-        if not self._is_offline_mode():
-            freeze_result = self._preview_planning_context.freeze_for_prepare()
-            if not freeze_result.ok or freeze_result.snapshot is None:
-                result = self._preview_session.handle_local_failure(
-                    gate_error_message=freeze_result.message or "preview planning context unavailable",
-                    title="胶点预览生成失败",
-                    detail=freeze_result.message or "在线预览未形成有效的 recipe/version 绑定。",
-                )
-                self._sync_preview_session_fields()
-                self._update_info_label()
-                self.statusBar().showMessage(result.status_message)
-                self._set_preview_message_html(result.title, result.detail, is_error=result.is_error)
-                return
-            recipe_id = freeze_result.snapshot.recipe_id
-            version_id = freeze_result.snapshot.version_id
         self._preview_session.begin_preview_generation()
         self._sync_preview_session_fields()
         self._update_info_label()
@@ -4028,8 +4012,6 @@ class MainWindow(QMainWindow):
             host=self._client.host,
             port=self._client.port,
             artifact_id=self._dxf_artifact_id,
-            recipe_id=recipe_id,
-            version_id=version_id,
             speed_mm_s=speed,
             dry_run=dry_run_mode,
             dry_run_speed_mm_s=speed,

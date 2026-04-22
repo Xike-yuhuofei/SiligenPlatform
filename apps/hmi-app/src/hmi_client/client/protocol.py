@@ -975,6 +975,7 @@ class CommandProtocol:
         self,
         artifact_id: str,
         speed_mm_s: float,
+        *,
         dry_run: bool = False,
         dry_run_speed_mm_s: float = 0.0,
         timeout: float = 15.0,

@@ -3,8 +3,7 @@ param(
     [string]$Wave = "Wave1",
     [string]$ReportDir = "tests\\reports\\first-layer-rereview",
     [string]$PythonExe = "python",
-    [switch]$AllowSkipOnMissingGateway,
-    [switch]$AllowSkipOnActiveRecipe
+    [switch]$AllowSkipOnMissingGateway
 )
 
 Set-StrictMode -Version Latest
@@ -69,8 +68,6 @@ function Get-OverallExitCode {
 }
 
 $workspaceRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
-$canonicalRecipeId = "recipe-7d1b00f4-6a99"
-$canonicalVersionId = "version-fea9ce29-f963"
 $resolvedReportRoot = Join-Path $workspaceRoot $ReportDir
 $runStamp = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ")
 $runReportDir = Join-Path $resolvedReportRoot $runStamp
@@ -99,9 +96,7 @@ $tasks = @(
         name = "s2-s4-precondition-matrix"
         script = $preconditionScript
         args = @(
-            "--report-dir", (Join-Path $runReportDir "s2-s4-precondition"),
-            "--recipe-id", $canonicalRecipeId,
-            "--version-id", $canonicalVersionId
+            "--report-dir", (Join-Path $runReportDir "s2-s4-precondition")
         )
     },
     [pscustomobject]@{
@@ -130,13 +125,6 @@ $tasks = @(
 if ($AllowSkipOnMissingGateway) {
     foreach ($task in $tasks) {
         $task.args += "--allow-skip-on-missing-gateway"
-    }
-}
-if ($AllowSkipOnActiveRecipe) {
-    foreach ($task in $tasks) {
-        if ($task.name -eq "s2-s4-precondition-matrix") {
-            $task.args += "--allow-skip-on-active-recipe"
-        }
     }
 }
 

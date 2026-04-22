@@ -44,6 +44,7 @@ class _FakeCommandProtocol:
         self,
         artifact_id,
         speed_mm_s,
+        *,
         dry_run=False,
         dry_run_speed_mm_s=0.0,
         timeout=15.0,
@@ -53,6 +54,10 @@ class _FakeCommandProtocol:
         return True, {
             "plan_id": "plan-1",
             "plan_fingerprint": "fp-1",
+            "production_baseline": {
+                "baseline_id": "baseline-production-default",
+                "baseline_fingerprint": "baseline-fp-20260421",
+            },
             "performance_profile": {
                 "authority_cache_hit": True,
                 "authority_joined_inflight": False,
@@ -131,7 +136,10 @@ class PreviewSnapshotWorkerTimeoutTest(unittest.TestCase):
         self.assertEqual(protocol.snapshot_timeout, DXF_OPEN_AUTO_PREVIEW_TIMEOUT_S)
         self.assertEqual(
             protocol.calls,
-            [("dxf.plan.prepare", "artifact-1"), ("dxf.preview.snapshot", "plan-1")],
+            [
+                ("dxf.plan.prepare", "artifact-1"),
+                ("dxf.preview.snapshot", "plan-1"),
+            ],
         )
 
     def test_worker_cancelled_before_run_does_not_emit_result(self) -> None:

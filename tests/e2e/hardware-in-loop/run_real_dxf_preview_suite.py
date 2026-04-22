@@ -65,8 +65,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gateway-exe", type=Path, default=None)
     parser.add_argument("--config-path", type=Path, default=None)
     parser.add_argument("--config-mode", choices=("mock", "real"), default="mock")
-    parser.add_argument("--recipe-id", required=True)
-    parser.add_argument("--version-id", required=True)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--gateway-ready-timeout", type=float, default=8.0)
@@ -116,10 +114,6 @@ def _build_command(
         str(case_report_root),
         "--config-mode",
         args.config_mode,
-        "--recipe-id",
-        args.recipe_id,
-        "--version-id",
-        args.version_id,
         "--host",
         args.host,
         "--port",

@@ -221,6 +221,7 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
     prepare_operation = next(op for op in command_set["operations"] if op["method"] == "dxf.plan.prepare")
     mapping = PROTOCOL_MAPPING.read_text(encoding="utf-8")
     dispatcher_source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    dispatcher_header = TCP_DISPATCHER_HEADER.read_text(encoding="utf-8")
 
     assert {"artifact_id", "dispensing_speed_mm_s"}.issubset(set(prepare_operation["paramsSchema"]["required"]))
     assert "recipe_id" not in prepare_operation["paramsSchema"]["properties"]
@@ -228,7 +229,7 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
     assert {"import_result_classification", "import_production_ready", "formal_compare_gate", "prepared_filepath"}.issubset(
         set(prepare_operation["resultSchema"]["required"])
     )
-    assert {"execution_nominal_time_s", "execution_plan_summary"}.issubset(
+    assert {"execution_nominal_time_s", "execution_plan_summary", "production_baseline"}.issubset(
         set(prepare_operation["resultSchema"]["required"])
     )
     assert "estimated_time_s" not in prepare_operation["resultSchema"]["required"]
@@ -253,17 +254,20 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
     assert {"import_result_classification", "import_production_ready", "formal_compare_gate", "prepared_filepath"}.issubset(
         set(job_start_operation["resultSchema"]["required"])
     )
-    assert {"execution_budget_s", "execution_budget_breakdown"}.issubset(
+    assert {"execution_budget_s", "execution_budget_breakdown", "production_baseline"}.issubset(
         set(job_start_operation["resultSchema"]["required"])
     )
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 2895, "Missing artifact_id")' in dispatcher_source
     assert '{"execution_nominal_time_s", plan.execution_nominal_time_s}' in dispatcher_source
     assert '{"execution_plan_summary", BuildExecutionPlanSummaryJson(plan.execution_plan_summary)}' in dispatcher_source
+    assert '{"production_baseline", BuildProductionBaselineJson(' in dispatcher_source
     assert '{"execution_budget_s", start_response.execution_budget_s}' in dispatcher_source
     assert 'ReadJsonStringAlias(params, "recipeId", "recipe_id")' not in dispatcher_source
     assert 'ReadJsonStringAlias(params, "versionId", "version_id")' not in dispatcher_source
     assert 'ReadJsonDouble(params, "dispensing_speed_mm_s", ReadJsonDouble(params, "speed_mm_s", 0.0))' not in dispatcher_source
     assert 'ReadJsonBool(params, "use_hardware_trigger", true)' not in dispatcher_source
+    assert "std::string production_baseline_id;" in dispatcher_header
+    assert "std::string production_baseline_fingerprint;" in dispatcher_header
 
 
 def test_dxf_job_continue_contract_freezes_wait_for_continue_semantics():

@@ -23,9 +23,9 @@ from runtime_gateway_harness import (  # noqa: E402
     SKIPPED_EXIT_CODE,
     TcpJsonClient,
     build_process_env,
-    ensure_published_recipe_version,
+    ensure_matching_production_baseline,
+    production_baseline_metadata,
     read_process_output,
-    recipe_context_metadata,
     resolve_default_exe,
     truncate_json,
     wait_gateway_ready,
@@ -67,8 +67,6 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--config-path", type=Path, default=dryrun.DEFAULT_CONFIG_PATH)
     parser.add_argument("--dxf-file", type=Path, default=dryrun.DEFAULT_DXF_FILE)
-    parser.add_argument("--recipe-id", required=True)
-    parser.add_argument("--version-id", required=True)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--gateway-ready-timeout", type=float, default=8.0)
@@ -293,10 +291,9 @@ def _start_dxf_job(
     client: TcpJsonClient,
     *,
     args: argparse.Namespace,
-    recipe_context: dict[str, str],
     steps: list[dryrun.Step],
     artifacts: dict[str, Any],
-) -> tuple[str, str, str]:
+) -> tuple[str, str, str, dict[str, str]]:
     dxf_bytes = args.dxf_file.read_bytes()
     artifact_response = client.send_request(
         "dxf.artifact.create",
@@ -320,8 +317,6 @@ def _start_dxf_job(
         "dxf.plan.prepare",
         {
             "artifact_id": artifact_id,
-            "recipe_id": recipe_context["recipe_id"],
-            "version_id": recipe_context["version_id"],
             "dispensing_speed_mm_s": args.dispensing_speed_mm_s,
             "dry_run": True,
             "dry_run_speed_mm_s": args.dry_run_speed_mm_s,
@@ -339,6 +334,7 @@ def _start_dxf_job(
     plan_fingerprint = str(plan_result.get("plan_fingerprint", "")).strip()
     if not plan_id or not plan_fingerprint:
         raise RuntimeError("plan.prepare missing plan_id/plan_fingerprint")
+    production_baseline = production_baseline_metadata(plan_result, source="dxf.plan.prepare")
     dryrun.add_step(
         steps,
         "dxf-plan-prepare",
@@ -349,6 +345,7 @@ def _start_dxf_job(
                 "plan_fingerprint": plan_fingerprint,
                 "segment_count": plan_result.get("segment_count", 0),
                 "execution_nominal_time_s": plan_result.get("execution_nominal_time_s", 0),
+                "production_baseline": production_baseline,
             },
             ensure_ascii=True,
         ),
@@ -389,11 +386,17 @@ def _start_dxf_job(
     artifacts["dxf_job_start"] = job_start_response
     if "error" in job_start_response:
         raise RuntimeError("dxf.job.start failed: " + truncate_json(job_start_response))
-    job_id = str(dryrun.status_result(job_start_response).get("job_id", "")).strip()
+    job_result = dryrun.status_result(job_start_response)
+    production_baseline = ensure_matching_production_baseline(
+        production_baseline,
+        production_baseline_metadata(job_result, source="dxf.job.start"),
+        label="dxf.job.start",
+    )
+    job_id = str(job_result.get("job_id", "")).strip()
     if not job_id:
         raise RuntimeError("dxf.job.start missing job_id")
     dryrun.add_step(steps, "dxf-job-start", "passed", f"job_id={job_id}")
-    return artifact_id, plan_id, job_id
+    return artifact_id, plan_id, job_id, production_baseline
 
 
 def _write_text(path: Path, text: str) -> None:
@@ -447,7 +450,7 @@ def _build_observation_summary(
 def build_report(
     *,
     args: argparse.Namespace,
-    recipe_context: dict[str, str],
+    production_baseline: dict[str, str],
     effective_port: int,
     steps: list[dryrun.Step],
     artifacts: dict[str, Any],
@@ -470,7 +473,7 @@ def build_report(
         "gateway_exe": str(args.gateway_exe),
         "config_path": str(args.config_path),
         "dxf_file": str(args.dxf_file),
-        **recipe_context,
+        **production_baseline,
         "gateway_host": args.host,
         "gateway_port": effective_port,
         "parameters": {
@@ -520,9 +523,9 @@ def build_report_markdown(report: dict[str, Any]) -> str:
         f"- gateway_exe: `{report['gateway_exe']}`",
         f"- config_path: `{report['config_path']}`",
         f"- dxf_file: `{report['dxf_file']}`",
-        f"- recipe_id: `{report.get('recipe_id', '')}`",
-        f"- version_id: `{report.get('version_id', '')}`",
-        f"- recipe_context_source: `{report.get('recipe_context_source', '')}`",
+        f"- baseline_id: `{report.get('baseline_id', '')}`",
+        f"- baseline_fingerprint: `{report.get('baseline_fingerprint', '')}`",
+        f"- production_baseline_source: `{report.get('production_baseline_source', '')}`",
         f"- gateway: `{report['gateway_host']}:{report['gateway_port']}`",
         "",
         "## Observation Summary",
@@ -597,7 +600,6 @@ def main() -> int:
     dryrun.ensure_exists(args.gateway_exe, "gateway executable")
     dryrun.ensure_exists(args.config_path, "config")
     dryrun.ensure_exists(args.dxf_file, "dxf file")
-    recipe_context = recipe_context_metadata(args.recipe_id, args.version_id)
 
     effective_port = dryrun.resolve_listen_port(args.host, args.port)
     report_dir = args.report_root / time.strftime("%Y%m%d-%H%M%S")
@@ -624,6 +626,7 @@ def main() -> int:
     gateway_stdout = ""
     gateway_stderr = ""
     prftrap_hits: list[str] = []
+    production_baseline: dict[str, str] = {}
 
     try:
         process = subprocess.Popen(
@@ -658,20 +661,6 @@ def main() -> int:
         if "error" in connect_response:
             raise RuntimeError("connect failed: " + truncate_json(connect_response))
         dryrun.add_step(steps, "connect", "passed", truncate_json(connect_response))
-
-        validated_recipe_context = ensure_published_recipe_version(
-            client,
-            recipe_id=recipe_context["recipe_id"],
-            version_id=recipe_context["version_id"],
-            timeout_seconds=min(10.0, args.connect_timeout),
-        )
-        artifacts["recipe_context_validation"] = validated_recipe_context
-        dryrun.add_step(
-            steps,
-            "recipe-context-validate",
-            "passed",
-            json.dumps(validated_recipe_context, ensure_ascii=False),
-        )
 
         status_before = client.send_request("status", None, timeout_seconds=5.0)
         artifacts["status_before"] = status_before
@@ -752,10 +741,9 @@ def main() -> int:
         )
         dryrun.add_step(steps, "preflight-safe-for-motion", "passed", "status is safe for motion")
 
-        _, _, job_id = _start_dxf_job(
+        _, _, job_id, production_baseline = _start_dxf_job(
             client,
             args=args,
-            recipe_context=recipe_context,
             steps=steps,
             artifacts=artifacts,
         )
@@ -995,7 +983,7 @@ def main() -> int:
 
         report = build_report(
             args=args,
-            recipe_context=recipe_context,
+            production_baseline=production_baseline,
             effective_port=effective_port,
             steps=steps,
             artifacts=artifacts,

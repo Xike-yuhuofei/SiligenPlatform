@@ -25,6 +25,7 @@ SIM_INPUT = FIXTURE_ROOT / "simulation-input.json"
 CONFIG_PATH = ROOT / "config" / "machine" / "machine_config.ini"
 MOCK_SERVER = ROOT / "apps" / "hmi-app" / "src" / "hmi_client" / "tools" / "mock_server.py"
 HARDWARE_SMOKE = ROOT / "tests" / "e2e" / "hardware-in-loop" / "run_hardware_smoke.py"
+HIL_DIR = ROOT / "tests" / "e2e" / "hardware-in-loop"
 ENGINEERING_REGRESSION = ROOT / "tests" / "integration" / "scenarios" / "run_engineering_regression.py"
 SIMULATED_LINE = ROOT / "tests" / "e2e" / "simulated-line" / "run_simulated_line.py"
 DXF_TO_PB = ROOT / "scripts" / "engineering-data" / "dxf_to_pb.py"
@@ -33,11 +34,14 @@ HMI_SRC = ROOT / "apps" / "hmi-app" / "src"
 
 if str(HMI_SRC) not in sys.path:
     sys.path.insert(0, str(HMI_SRC))
+if str(HIL_DIR) not in sys.path:
+    sys.path.insert(0, str(HIL_DIR))
 
 from hmi_client.client.backend_manager import BackendManager  # noqa: E402
 from hmi_client.client.gateway_launch import GatewayLaunchSpec  # noqa: E402
 from hmi_client.client.protocol import CommandProtocol  # noqa: E402
 from hmi_client.client.tcp_client import TcpClient  # noqa: E402
+from runtime_gateway_harness import production_baseline_metadata  # noqa: E402
 
 
 @dataclass
@@ -57,8 +61,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mock-flow-iterations", type=int, default=20)
     parser.add_argument("--unsupported-iterations", type=int, default=5)
     parser.add_argument("--hil-iterations", type=int, default=3)
-    parser.add_argument("--recipe-id", required=True)
-    parser.add_argument("--version-id", required=True)
     parser.add_argument("--report-dir", default=str(REPORT_ROOT))
     return parser.parse_args()
 
@@ -193,56 +195,11 @@ def wait_for_port(host: str, port: int, timeout: float = 5.0) -> bool:
     return False
 
 
-def require_explicit_recipe_context(recipe_id: str, version_id: str) -> dict[str, str]:
-    normalized_recipe_id = str(recipe_id or "").strip()
-    normalized_version_id = str(version_id or "").strip()
-    missing: list[str] = []
-    if not normalized_recipe_id:
-        missing.append("recipe_id")
-    if not normalized_version_id:
-        missing.append("version_id")
-    if missing:
-        raise ValueError("missing explicit recipe context: " + ",".join(missing))
-    return {
-        "recipe_id": normalized_recipe_id,
-        "version_id": normalized_version_id,
-        "recipe_context_source": "cli_explicit",
-    }
-
-
-def validate_published_recipe_context(
-    protocol: CommandProtocol,
-    recipe_id: str,
-    version_id: str,
-) -> tuple[dict[str, str] | None, str]:
-    context = require_explicit_recipe_context(recipe_id, version_id)
-    versions_ok, versions_payload, versions_error = protocol.recipe_versions(context["recipe_id"])
-    if not versions_ok:
-        return None, f"recipe.versions failed: {versions_error or 'unknown'}"
-    if not isinstance(versions_payload, list):
-        return None, "recipe.versions response missing versions list"
-
-    matched_version = next(
-        (
-            item
-            for item in versions_payload
-            if isinstance(item, dict) and str(item.get("id", "")).strip() == context["version_id"]
-        ),
-        None,
-    )
-    if not isinstance(matched_version, dict):
-        return None, (
-            "recipe.versions missing explicit version: "
-            f"recipe_id={context['recipe_id']} version_id={context['version_id']}"
-        )
-
-    version_status = str(matched_version.get("status", "")).strip().lower()
-    if version_status != "published":
-        return None, (
-            "recipe version is not published: "
-            f"recipe_id={context['recipe_id']} version_id={context['version_id']} status={version_status or 'unknown'}"
-        )
-    return context, ""
+def resolve_production_baseline_from_result(payload: dict[str, Any], *, source: str) -> tuple[dict[str, str] | None, str]:
+    try:
+        return production_baseline_metadata(payload, source=source), ""
+    except Exception as exc:  # noqa: BLE001
+        return None, str(exc)
 
 
 def start_mock_server(port: int) -> subprocess.Popen[str]:
@@ -524,11 +481,10 @@ def measure_reliability(
     mock_flow_iterations: int,
     unsupported_iterations: int,
     hil_iterations: int,
-    recipe_id: str,
-    version_id: str,
 ) -> dict[str, Any]:
     flows: list[dict[str, Any]] = []
     error_categories: dict[str, int] = {}
+    production_baseline: dict[str, str] = {}
 
     def record_error(category: str) -> None:
         error_categories[category] = error_categories.get(category, 0) + 1
@@ -547,7 +503,6 @@ def measure_reliability(
 
     mock_failures = 0
     try:
-        recipe_context, recipe_context_error = validate_published_recipe_context(protocol, recipe_id, version_id)
         for _ in range(mock_flow_iterations):
             cycle_errors: list[str] = []
             if not protocol.ping():
@@ -566,60 +521,63 @@ def measure_reliability(
                 cycle_errors.append(artifact_error or "dxf.artifact.create")
             else:
                 artifact_id = str(artifact_payload.get("artifact_id", "")).strip()
-                if recipe_context is None:
-                    cycle_errors.append(recipe_context_error or "recipe.versions.validation_failed")
+                plan_ok, plan_payload, plan_error = protocol.dxf_prepare_plan(
+                    artifact_id,
+                    speed_mm_s=10.0,
+                    dry_run=True,
+                    dry_run_speed_mm_s=10.0,
+                )
+                if not plan_ok:
+                    cycle_errors.append(plan_error or "dxf.plan.prepare")
                 else:
-                    plan_ok, plan_payload, plan_error = protocol.dxf_prepare_plan(
-                        artifact_id,
-                        recipe_context["recipe_id"],
-                        recipe_context["version_id"],
-                        speed_mm_s=10.0,
-                        dry_run=True,
-                        dry_run_speed_mm_s=10.0,
+                    plan_id = str(plan_payload.get("plan_id", "")).strip()
+                    plan_fingerprint = str(plan_payload.get("plan_fingerprint", "")).strip()
+                    if not plan_id or not plan_fingerprint:
+                        cycle_errors.append("dxf.plan.prepare.missing_payload")
+                        continue
+                    baseline_payload, baseline_error = resolve_production_baseline_from_result(
+                        plan_payload,
+                        source="dxf.plan.prepare",
                     )
-                    if not plan_ok:
-                        cycle_errors.append(plan_error or "dxf.plan.prepare")
+                    if baseline_payload is None:
+                        cycle_errors.append(baseline_error or "dxf.plan.prepare.missing_production_baseline")
+                    elif not production_baseline:
+                        production_baseline = baseline_payload
+                    preview_ok, preview_payload, preview_error = protocol.dxf_preview_snapshot(plan_id=plan_id)
+                    if not preview_ok:
+                        cycle_errors.append(preview_error or "dxf.preview.snapshot")
                     else:
-                        plan_id = str(plan_payload.get("plan_id", "")).strip()
-                        plan_fingerprint = str(plan_payload.get("plan_fingerprint", "")).strip()
-                        if not plan_id or not plan_fingerprint:
-                            cycle_errors.append("dxf.plan.prepare.missing_payload")
-                            continue
-                        preview_ok, preview_payload, preview_error = protocol.dxf_preview_snapshot(plan_id=plan_id)
-                        if not preview_ok:
-                            cycle_errors.append(preview_error or "dxf.preview.snapshot")
+                        snapshot_hash = str(preview_payload.get("snapshot_hash", "")).strip()
+                        if not snapshot_hash:
+                            cycle_errors.append("dxf.preview.snapshot.missing_hash")
                         else:
-                            snapshot_hash = str(preview_payload.get("snapshot_hash", "")).strip()
-                            if not snapshot_hash:
-                                cycle_errors.append("dxf.preview.snapshot.missing_hash")
+                            confirm_ok, _, confirm_error = protocol.dxf_preview_confirm(plan_id, snapshot_hash)
+                            if not confirm_ok:
+                                cycle_errors.append(confirm_error or "dxf.preview.confirm")
                             else:
-                                confirm_ok, _, confirm_error = protocol.dxf_preview_confirm(plan_id, snapshot_hash)
-                                if not confirm_ok:
-                                    cycle_errors.append(confirm_error or "dxf.preview.confirm")
+                                job_id = ""
+                                job_ok, job_payload, job_error = protocol.dxf_start_job(
+                                    plan_id,
+                                    target_count=1,
+                                    plan_fingerprint=plan_fingerprint,
+                                )
+                                if not job_ok:
+                                    cycle_errors.append(job_error or "dxf.job.start")
                                 else:
-                                    job_id = ""
-                                    job_ok, job_payload, job_error = protocol.dxf_start_job(
-                                        plan_id,
-                                        target_count=1,
-                                        plan_fingerprint=plan_fingerprint,
-                                    )
-                                    if not job_ok:
-                                        cycle_errors.append(job_error or "dxf.job.start")
+                                    job_id = str(job_payload.get("job_id", "")).strip()
+                                    if not job_id:
+                                        cycle_errors.append("dxf.job.start.missing_job_id")
                                     else:
-                                        job_id = str(job_payload.get("job_id", "")).strip()
-                                        if not job_id:
-                                            cycle_errors.append("dxf.job.start.missing_job_id")
-                                        else:
-                                            time.sleep(0.3)
-                                            job_status = protocol.dxf_get_job_status(job_id)
-                                            if str(job_status.get("state", "")).strip().lower() not in {
-                                                "running",
-                                                "paused",
-                                                "completed",
-                                            }:
-                                                cycle_errors.append(f"dxf.job.status:{job_status}")
-                                    if job_id and not protocol.dxf_job_stop(job_id):
-                                        cycle_errors.append("dxf.job.stop")
+                                        time.sleep(0.3)
+                                        job_status = protocol.dxf_get_job_status(job_id)
+                                        if str(job_status.get("state", "")).strip().lower() not in {
+                                            "running",
+                                            "paused",
+                                            "completed",
+                                        }:
+                                            cycle_errors.append(f"dxf.job.status:{job_status}")
+                                if job_id and not protocol.dxf_job_stop(job_id):
+                                    cycle_errors.append("dxf.job.stop")
 
             if cycle_errors:
                 mock_failures += 1
@@ -722,6 +680,7 @@ def measure_reliability(
     return {
         "flows": flows,
         "error_categories": dict(sorted(error_categories.items())),
+        "production_baseline": production_baseline,
         "notes": [
             "mock_startup_and_dxf_cycle 使用本地 mock server，目标是建立稳定回归基线，而不是替代真实硬件可靠性数据。",
             "hardware_smoke_hil 直接执行 tests/e2e/hardware-in-loop/run_hardware_smoke.py，当前失败被视为已知环境/装配缺口。",
@@ -757,9 +716,9 @@ def render_markdown(payload: dict[str, Any]) -> str:
         "",
         f"- generated_at: `{payload['environment']['generated_at']}`",
         f"- workspace_root: `{payload['environment']['workspace_root']}`",
-        f"- recipe_id: `{payload.get('recipe_context', {}).get('recipe_id', '')}`",
-        f"- version_id: `{payload.get('recipe_context', {}).get('version_id', '')}`",
-        f"- recipe_context_source: `{payload.get('recipe_context', {}).get('recipe_context_source', '')}`",
+        f"- baseline_id: `{payload.get('production_baseline', {}).get('baseline_id', '')}`",
+        f"- baseline_fingerprint: `{payload.get('production_baseline', {}).get('baseline_fingerprint', '')}`",
+        f"- production_baseline_source: `{payload.get('production_baseline', {}).get('production_baseline_source', '')}`",
         f"- platform: `{payload['environment']['platform']}`",
         f"- python_version: `{payload['environment']['python_version']}`",
         f"- cpu_count: `{payload['environment']['cpu_count']}`",
@@ -924,9 +883,14 @@ def write_reports(payload: dict[str, Any], report_dir: Path) -> dict[str, str]:
 
 def main() -> int:
     args = parse_args()
+    reliability = measure_reliability(
+        args.mock_flow_iterations,
+        args.unsupported_iterations,
+        args.hil_iterations,
+    )
     payload = {
         "environment": environment_snapshot(),
-        "recipe_context": require_explicit_recipe_context(args.recipe_id, args.version_id),
+        "production_baseline": reliability.get("production_baseline", {}),
         "sampling": {
             "preprocess_iterations": args.preprocess_iterations,
             "simulation_iterations": args.simulation_iterations,
@@ -942,13 +906,7 @@ def main() -> int:
             "hmi_startup": measure_hmi_startup(args.startup_iterations),
             "tcp_latency": measure_tcp_latency(args.tcp_iterations),
         },
-        "reliability": measure_reliability(
-            args.mock_flow_iterations,
-            args.unsupported_iterations,
-            args.hil_iterations,
-            args.recipe_id,
-            args.version_id,
-        ),
+        "reliability": reliability,
         "comparability_gaps": [
             "DXF/工程数据预处理基线只覆盖 canonical fixture rect_diag.dxf，不可直接外推到大尺寸或高实体数工程。",
             "HMI 启动时间基于 mock backend 的 StartupWorker 等价顺序，不包含 Qt 首帧渲染、窗口管理器调度和真实网关初始化。",

@@ -15,9 +15,7 @@ from typing import Any
 
 KNOWN_FAILURE_EXIT_CODE = 10
 SKIPPED_EXIT_CODE = 11
-RECIPE_CONTEXT_SOURCE_CLI_EXPLICIT = "cli_explicit"
-CANONICAL_RECIPE_ID = "recipe-7d1b00f4-6a99"
-CANONICAL_VERSION_ID = "version-fea9ce29-f963"
+PRODUCTION_BASELINE_SOURCE_RUNTIME = "runtime_owned"
 
 ROOT = Path(__file__).resolve().parents[3]
 TEST_KIT_SRC = ROOT / "shared" / "testing" / "test-kit" / "src"
@@ -212,42 +210,60 @@ def load_connection_params(config_path: Path) -> dict[str, str]:
     return params
 
 
-def require_explicit_recipe_context(recipe_id: str, version_id: str) -> tuple[str, str]:
-    normalized_recipe_id = str(recipe_id or "").strip()
-    normalized_version_id = str(version_id or "").strip()
-    missing: list[str] = []
-    if not normalized_recipe_id:
-        missing.append("recipe_id")
-    if not normalized_version_id:
-        missing.append("version_id")
-    if missing:
-        raise ValueError("missing explicit recipe context: " + ",".join(missing))
-    return normalized_recipe_id, normalized_version_id
-
-
-def recipe_context_metadata(
-    recipe_id: str,
-    version_id: str,
+def normalize_production_baseline(
+    baseline_payload: Any,
     *,
-    source: str = RECIPE_CONTEXT_SOURCE_CLI_EXPLICIT,
+    source: str = PRODUCTION_BASELINE_SOURCE_RUNTIME,
 ) -> dict[str, str]:
-    normalized_recipe_id, normalized_version_id = require_explicit_recipe_context(recipe_id, version_id)
+    if not isinstance(baseline_payload, dict):
+        raise RuntimeError("production_baseline missing or invalid")
+
+    baseline_id = str(baseline_payload.get("baseline_id", "")).strip()
+    baseline_fingerprint = str(baseline_payload.get("baseline_fingerprint", "")).strip()
+    missing: list[str] = []
+    if not baseline_id:
+        missing.append("baseline_id")
+    if not baseline_fingerprint:
+        missing.append("baseline_fingerprint")
+    if missing:
+        raise RuntimeError("production_baseline missing fields: " + ",".join(missing))
+
     return {
-        "recipe_id": normalized_recipe_id,
-        "version_id": normalized_version_id,
-        "recipe_context_source": str(source or RECIPE_CONTEXT_SOURCE_CLI_EXPLICIT).strip()
-        or RECIPE_CONTEXT_SOURCE_CLI_EXPLICIT,
+        "baseline_id": baseline_id,
+        "baseline_fingerprint": baseline_fingerprint,
+        "production_baseline_source": str(source or PRODUCTION_BASELINE_SOURCE_RUNTIME).strip()
+        or PRODUCTION_BASELINE_SOURCE_RUNTIME,
     }
 
 
-def build_recipe_context_cli_args(recipe_id: str, version_id: str) -> list[str]:
-    metadata = recipe_context_metadata(recipe_id, version_id)
-    return [
-        "--recipe-id",
-        metadata["recipe_id"],
-        "--version-id",
-        metadata["version_id"],
-    ]
+def production_baseline_metadata(
+    payload: dict[str, Any] | None,
+    *,
+    source: str = PRODUCTION_BASELINE_SOURCE_RUNTIME,
+) -> dict[str, str]:
+    if not isinstance(payload, dict):
+        raise RuntimeError("response payload missing")
+    return normalize_production_baseline(payload.get("production_baseline"), source=source)
+
+
+def ensure_matching_production_baseline(
+    expected: dict[str, Any],
+    actual: dict[str, Any],
+    *,
+    label: str,
+) -> dict[str, str]:
+    expected_baseline = normalize_production_baseline(expected)
+    actual_baseline = normalize_production_baseline(actual)
+    if (
+        expected_baseline["baseline_id"] != actual_baseline["baseline_id"]
+        or expected_baseline["baseline_fingerprint"] != actual_baseline["baseline_fingerprint"]
+    ):
+        raise RuntimeError(
+            f"{label} production_baseline mismatch: "
+            f"expected={json.dumps(expected_baseline, ensure_ascii=True)} "
+            f"actual={json.dumps(actual_baseline, ensure_ascii=True)}"
+        )
+    return actual_baseline
 
 
 def result_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
@@ -255,61 +271,6 @@ def result_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
         return {}
     result = payload.get("result", {})
     return result if isinstance(result, dict) else {}
-
-
-def ensure_published_recipe_version(
-    client: Any,
-    *,
-    recipe_id: str,
-    version_id: str,
-    timeout_seconds: float = 10.0,
-) -> dict[str, Any]:
-    metadata = recipe_context_metadata(recipe_id, version_id)
-    versions_response = client.send_request(
-        "recipe.versions",
-        {"recipeId": metadata["recipe_id"]},
-        timeout_seconds=timeout_seconds,
-    )
-    if "error" in versions_response:
-        raise RuntimeError("recipe.versions failed: " + truncate_json(versions_response))
-
-    versions_payload = result_payload(versions_response).get("versions", [])
-    if not isinstance(versions_payload, list):
-        raise RuntimeError("recipe.versions response missing versions list")
-
-    matched_version: dict[str, Any] | None = None
-    for item in versions_payload:
-        if not isinstance(item, dict):
-            continue
-        if str(item.get("id", "")).strip() != metadata["version_id"]:
-            continue
-        matched_version = item
-        break
-
-    if matched_version is None:
-        raise RuntimeError(
-            "recipe.versions missing explicit version: "
-            f"recipe_id={metadata['recipe_id']} version_id={metadata['version_id']}"
-        )
-
-    matched_recipe_id = str(matched_version.get("recipeId", "")).strip()
-    if matched_recipe_id and matched_recipe_id != metadata["recipe_id"]:
-        raise RuntimeError(
-            "recipe.versions returned mismatched recipe: "
-            f"expected={metadata['recipe_id']} actual={matched_recipe_id}"
-        )
-
-    version_status = str(matched_version.get("status", "")).strip().lower()
-    if version_status != "published":
-        raise RuntimeError(
-            "recipe version is not published: "
-            f"recipe_id={metadata['recipe_id']} version_id={metadata['version_id']} status={version_status or 'unknown'}"
-        )
-
-    return {
-        **metadata,
-        "version_status": version_status,
-    }
 
 
 def tcp_connect_and_ensure_ready(
@@ -442,9 +403,15 @@ def rewrite_mock_config(source_text: str, door_input: int | None = None) -> str:
     return "\n".join(lines) + "\n"
 
 
-def prepare_mock_config(prefix: str, door_input: int | None = None) -> tuple[tempfile.TemporaryDirectory[str], Path]:
+def prepare_mock_config(
+    prefix: str,
+    *,
+    source_config: Path | None = None,
+    door_input: int | None = None,
+) -> tuple[tempfile.TemporaryDirectory[str], Path]:
     temp_dir = tempfile.TemporaryDirectory(prefix=prefix)
-    rewritten = rewrite_mock_config(CANONICAL_CONFIG.read_text(encoding="utf-8"), door_input=door_input)
+    config_source = source_config if source_config is not None else CANONICAL_CONFIG
+    rewritten = rewrite_mock_config(config_source.read_text(encoding="utf-8"), door_input=door_input)
     target = Path(temp_dir.name) / "machine_config.mock.ini"
     target.write_text(rewritten, encoding="utf-8")
     return temp_dir, target

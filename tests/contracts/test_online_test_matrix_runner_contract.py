@@ -27,7 +27,6 @@ from run_online_soak_profiles import (  # noqa: E402
     SoakProfileResult,
     _write_report as write_soak_report,
     evaluate_collect_payload_status,
-    require_explicit_recipe_context,
     resolve_profiles,
 )
 from run_real_dxf_machine_dryrun_suite import DEFAULT_CASE_IDS as DEFAULT_DRYRUN_CASE_IDS  # noqa: E402
@@ -76,26 +75,26 @@ class OnlineTestMatrixRunnerContractTest(unittest.TestCase):
             ),
         )
 
-    def test_operator_preview_contract_requires_explicit_version_stage_sequence(self) -> None:
+    def test_operator_preview_contract_requires_runtime_owned_stage_sequence(self) -> None:
         output = "\n".join(
             [
-                "OPERATOR_CONTEXT stage=recipe-selected recipe_id=recipe-001 version_id=null selection_origin=user_recipe_selection is_valid=false invalid_reason=missing_version",
-                "OPERATOR_CONTEXT stage=missing-version-blocked recipe_id=recipe-001 version_id=null selection_origin=user_recipe_selection is_valid=false invalid_reason=missing_version",
-                "OPERATOR_CONTEXT stage=version-selected recipe_id=recipe-001 version_id=version-001 selection_origin=user_version_selection is_valid=true invalid_reason=null",
-                "OPERATOR_CONTEXT stage=preview-ready recipe_id=recipe-001 version_id=version-001 selection_origin=user_version_selection is_valid=true invalid_reason=null",
+                "OPERATOR_CONTEXT stage=preview-ready artifact_id=artifact-001 plan_id=plan-001 preview_source=planned_glue_snapshot snapshot_hash=hash-001 snapshot_ready=true",
+                "OPERATOR_CONTEXT stage=preview-refreshed artifact_id=artifact-001 plan_id=plan-001 preview_source=planned_glue_snapshot snapshot_hash=hash-001 snapshot_ready=true",
             ]
         )
 
         summary = summarize_operator_context(output)
 
         self.assertEqual(tuple(summary["operator_context_stages"]), OPERATOR_PREVIEW_REQUIRED_STAGES)
-        self.assertTrue(summary["missing_version_block_observed"])
         self.assertTrue(summary["preview_ready_observed"])
+        self.assertTrue(summary["preview_refresh_observed"])
         self.assertTrue(summary["stage_sequence_ok"])
         self.assertTrue(summary["contract_ok"])
-        self.assertEqual(summary["selected_recipe_id"], "recipe-001")
-        self.assertEqual(summary["selected_version_id"], "version-001")
-        self.assertEqual(summary["selection_origin"], "user_version_selection")
+        self.assertEqual(summary["artifact_id"], "artifact-001")
+        self.assertEqual(summary["plan_id"], "plan-001")
+        self.assertEqual(summary["snapshot_hash"], "hash-001")
+        self.assertEqual(summary["preview_source"], "planned_glue_snapshot")
+        self.assertTrue(summary["snapshot_ready"])
 
     def test_soak_profiles_cover_formal_and_planned_blockers(self) -> None:
         profiles = resolve_profiles(())
@@ -156,7 +155,7 @@ class OnlineTestMatrixRunnerContractTest(unittest.TestCase):
         self.assertEqual(evaluate_collect_payload_status(passing_payload), "passed")
         self.assertEqual(evaluate_collect_payload_status(failing_payload), "failed")
 
-    def test_soak_summary_persists_recipe_context(self) -> None:
+    def test_soak_summary_persists_production_baseline(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             report_dir = Path(temp_dir)
             json_path, md_path = write_soak_report(
@@ -177,23 +176,27 @@ class OnlineTestMatrixRunnerContractTest(unittest.TestCase):
                     )
                 ],
                 selected_profile_ids=("soak-30m-matrix",),
-                recipe_context=require_explicit_recipe_context("recipe-001", "version-001"),
+                production_baseline={
+                    "baseline_id": "baseline-001",
+                    "baseline_fingerprint": "baseline-fp-001",
+                    "production_baseline_source": "runtime_owned",
+                },
             )
 
             payload = json.loads(json_path.read_text(encoding="utf-8"))
             markdown = md_path.read_text(encoding="utf-8")
 
         self.assertEqual(
-            payload["recipe_context"],
+            payload["production_baseline"],
             {
-                "recipe_id": "recipe-001",
-                "version_id": "version-001",
-                "recipe_context_source": "cli_explicit",
+                "baseline_id": "baseline-001",
+                "baseline_fingerprint": "baseline-fp-001",
+                "production_baseline_source": "runtime_owned",
             },
         )
-        self.assertIn("- recipe_id: `recipe-001`", markdown)
-        self.assertIn("- version_id: `version-001`", markdown)
-        self.assertIn("- recipe_context_source: `cli_explicit`", markdown)
+        self.assertIn("- baseline_id: `baseline-001`", markdown)
+        self.assertIn("- baseline_fingerprint: `baseline-fp-001`", markdown)
+        self.assertIn("- production_baseline_source: `runtime_owned`", markdown)
 
 
 if __name__ == "__main__":

@@ -103,6 +103,10 @@ class _FakePreviewSnapshotWorker:
             "snapshot_id": "snapshot-int",
             "snapshot_hash": "hash-int",
             "plan_id": "plan-int",
+            "production_baseline": {
+                "baseline_id": "baseline-int",
+                "baseline_fingerprint": "baseline-fingerprint-int",
+            },
             "preview_source": "planned_glue_snapshot",
             "preview_kind": "glue_points",
             "segment_count": 2,
@@ -175,6 +179,7 @@ def _run_online_preview_flow() -> CaseResult:
         window._dxf_filepath = str(ROOT / "samples" / "dxf" / "rect_diag.dxf")
 
         window._on_dxf_load()
+        worker = _FakePreviewSnapshotWorker.created[0]
         payload = {
             "artifact_id": window._dxf_artifact_id,
             "plan_id": window._current_plan_id,
@@ -190,6 +195,7 @@ def _run_online_preview_flow() -> CaseResult:
             "filename_display": window._dxf_filename_display.text(),
             "html_contains_playback_overlay": "id='preview-head'" in cast(Any, window._dxf_view).html,
             "protocol_calls": cast(Any, window._protocol).calls,
+            "worker_artifact_id": worker.artifact_id,
             "offline_payload": {
                 "motion_preview_source": window._preview_session.state.motion_preview_source,
                 "motion_preview_sampling_strategy": window._preview_session.state.motion_preview_sampling_strategy,
@@ -211,6 +217,7 @@ def _run_online_preview_flow() -> CaseResult:
         assert payload["debug_contains_hash"] is True
         assert payload["filename_display"] == "rect_diag.dxf"
         assert payload["html_contains_playback_overlay"] is True
+        assert payload["worker_artifact_id"] == "artifact-int"
         assert payload["protocol_calls"] == [
             ("dxf.artifact.create", str(ROOT / "samples" / "dxf" / "rect_diag.dxf")),
             ("dxf.info",),

@@ -101,6 +101,8 @@ private:
         std::string preview_state;
         std::string preview_source;
         double preview_speed_mm_s = 0.0;
+        std::string production_baseline_id;
+        std::string production_baseline_fingerprint;
         std::string import_result_classification;
         bool import_preview_ready = false;
         bool import_production_ready = false;

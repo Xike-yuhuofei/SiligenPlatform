@@ -25,17 +25,21 @@ DEFAULT_MACHINE_CONFIG = ROOT / "config" / "machine" / "machine_config.ini"
 DEFAULT_VENDOR_DIR = ROOT / "modules" / "runtime-execution" / "adapters" / "device" / "vendor" / "multicard"
 HMI_SRC = ROOT / "apps" / "hmi-app" / "src"
 TEST_KIT_SRC = ROOT / "shared" / "testing" / "test-kit" / "src"
+HIL_DIR = ROOT / "tests" / "e2e" / "hardware-in-loop"
 TERMINAL_JOB_STATES = {"completed", "failed", "cancelled", "stopped"}
 
 if str(HMI_SRC) not in sys.path:
     sys.path.insert(0, str(HMI_SRC))
 if str(TEST_KIT_SRC) not in sys.path:
     sys.path.insert(0, str(TEST_KIT_SRC))
+if str(HIL_DIR) not in sys.path:
+    sys.path.insert(0, str(HIL_DIR))
 
 from hmi_client.client.backend_manager import BackendManager  # noqa: E402
 from hmi_client.client.gateway_launch import GatewayLaunchSpec, load_gateway_launch_spec  # noqa: E402
 from hmi_client.client.protocol import CommandProtocol  # noqa: E402
 from hmi_client.client.tcp_client import TcpClient  # noqa: E402
+from runtime_gateway_harness import ensure_matching_production_baseline, production_baseline_metadata  # noqa: E402
 from test_kit.asset_catalog import default_performance_samples, performance_sample_asset_refs  # noqa: E402
 from test_kit.control_apps_build import preferred_control_apps_build_root, valid_control_apps_build_roots  # noqa: E402
 from test_kit.evidence_bundle import EvidenceBundle, EvidenceCaseRecord, EvidenceLink, trace_fields, write_bundle_artifacts  # noqa: E402
@@ -125,6 +129,9 @@ class PreviewCycleRecord:
     plan_id: str = ""
     plan_fingerprint: str = ""
     snapshot_hash: str = ""
+    baseline_id: str = ""
+    baseline_fingerprint: str = ""
+    production_baseline_source: str = ""
     glue_point_count: int = 0
     motion_preview_point_count: int = 0
     artifact_ms: float | None = None
@@ -150,6 +157,9 @@ class StartJobCycleRecord:
     plan_id: str = ""
     plan_fingerprint: str = ""
     snapshot_hash: str = ""
+    baseline_id: str = ""
+    baseline_fingerprint: str = ""
+    production_baseline_source: str = ""
     job_id: str = ""
     confirm_rpc_ms: float | None = None
     job_start_rpc_ms: float | None = None
@@ -252,8 +262,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config-path", default=str(DEFAULT_MACHINE_CONFIG))
     parser.add_argument("--vendor-dir", default=str(DEFAULT_VENDOR_DIR))
     parser.add_argument("--gateway-exe", default=str(DEFAULT_GATEWAY_EXE))
-    parser.add_argument("--recipe-id", required=True)
-    parser.add_argument("--version-id", required=True)
     parser.add_argument("--cold-iterations", type=int, default=1)
     parser.add_argument("--hot-warmup-iterations", type=int, default=1)
     parser.add_argument("--hot-iterations", type=int, default=3)
@@ -666,56 +674,11 @@ def resolve_samples(args: argparse.Namespace) -> dict[str, Path]:
     return selected
 
 
-def require_explicit_recipe_context(recipe_id: str, version_id: str) -> dict[str, str]:
-    normalized_recipe_id = str(recipe_id or "").strip()
-    normalized_version_id = str(version_id or "").strip()
-    missing: list[str] = []
-    if not normalized_recipe_id:
-        missing.append("recipe_id")
-    if not normalized_version_id:
-        missing.append("version_id")
-    if missing:
-        raise ValueError("missing explicit recipe context: " + ",".join(missing))
-    return {
-        "recipe_id": normalized_recipe_id,
-        "version_id": normalized_version_id,
-        "recipe_context_source": "cli_explicit",
-    }
-
-
-def validate_published_recipe_context(
-    protocol: CommandProtocol,
-    recipe_id: str,
-    version_id: str,
-) -> tuple[dict[str, str] | None, str]:
-    context = require_explicit_recipe_context(recipe_id, version_id)
-    versions_ok, versions_payload, versions_error = protocol.recipe_versions(context["recipe_id"])
-    if not versions_ok:
-        return None, f"recipe.versions failed: {versions_error or 'unknown'}"
-    if not isinstance(versions_payload, list):
-        return None, "recipe.versions response missing versions list"
-
-    matched_version = next(
-        (
-            item
-            for item in versions_payload
-            if isinstance(item, dict) and str(item.get("id", "")).strip() == context["version_id"]
-        ),
-        None,
-    )
-    if not isinstance(matched_version, dict):
-        return None, (
-            "recipe.versions missing explicit version: "
-            f"recipe_id={context['recipe_id']} version_id={context['version_id']}"
-        )
-
-    version_status = str(matched_version.get("status", "")).strip().lower()
-    if version_status != "published":
-        return None, (
-            "recipe version is not published: "
-            f"recipe_id={context['recipe_id']} version_id={context['version_id']} status={version_status or 'unknown'}"
-        )
-    return context, ""
+def resolve_production_baseline_from_result(payload: dict[str, Any], *, source: str) -> tuple[dict[str, str] | None, str]:
+    try:
+        return production_baseline_metadata(payload, source=source), ""
+    except Exception as exc:  # noqa: BLE001
+        return None, str(exc)
 
 
 def create_artifact(protocol: CommandProtocol, sample_path: Path, timeout: float) -> tuple[str, float]:
@@ -947,24 +910,9 @@ def prepare_and_snapshot_once(
     *,
     artifact_ms: float | None,
 ) -> PreviewCycleRecord:
-    recipe_context, recipe_context_error = validate_published_recipe_context(
-        protocol,
-        args.recipe_id,
-        args.version_id,
-    )
-    if recipe_context is None:
-        return PreviewCycleRecord(
-            success=False,
-            artifact_id=artifact_id,
-            artifact_ms=artifact_ms,
-            error=recipe_context_error or "recipe context validation failed",
-        )
-
     plan_started = time.perf_counter()
     plan_ok, plan_payload, plan_error = protocol.dxf_prepare_plan(
         artifact_id=artifact_id,
-        recipe_id=recipe_context["recipe_id"],
-        version_id=recipe_context["version_id"],
         speed_mm_s=args.dispensing_speed_mm_s,
         dry_run=args.dry_run,
         dry_run_speed_mm_s=args.dry_run_speed_mm_s,
@@ -991,6 +939,20 @@ def prepare_and_snapshot_once(
             plan_prepare_rpc_ms=plan_elapsed_ms,
             worker_total_ms=plan_elapsed_ms,
             error="plan.prepare response missing plan_id",
+        )
+
+    production_baseline, baseline_error = resolve_production_baseline_from_result(
+        plan_payload,
+        source="dxf.plan.prepare",
+    )
+    if production_baseline is None:
+        return PreviewCycleRecord(
+            success=False,
+            artifact_id=artifact_id,
+            artifact_ms=artifact_ms,
+            plan_prepare_rpc_ms=plan_elapsed_ms,
+            worker_total_ms=plan_elapsed_ms,
+            error=baseline_error or "plan.prepare response missing production_baseline",
         )
 
     snapshot_started = time.perf_counter()
@@ -1024,6 +986,9 @@ def prepare_and_snapshot_once(
         plan_id=plan_id,
         plan_fingerprint=plan_fingerprint,
         snapshot_hash=snapshot_hash,
+        baseline_id=production_baseline["baseline_id"],
+        baseline_fingerprint=production_baseline["baseline_fingerprint"],
+        production_baseline_source=production_baseline["production_baseline_source"],
         glue_point_count=int(snapshot_payload.get("glue_point_count", 0) or 0),
         motion_preview_point_count=int(motion_preview_payload.get("point_count", 0) or 0),
         artifact_ms=artifact_ms,
@@ -1088,9 +1053,55 @@ def run_start_job_cycle(
             plan_id=preview_record.plan_id,
             plan_fingerprint=preview_record.plan_fingerprint,
             snapshot_hash=preview_record.snapshot_hash,
+            baseline_id=preview_record.baseline_id,
+            baseline_fingerprint=preview_record.baseline_fingerprint,
+            production_baseline_source=preview_record.production_baseline_source,
             confirm_rpc_ms=confirm_elapsed_ms,
             job_start_rpc_ms=start_elapsed_ms,
             error=f"dxf.job.start failed: {start_error}",
+        )
+
+    start_baseline, start_baseline_error = resolve_production_baseline_from_result(
+        start_payload,
+        source="dxf.job.start",
+    )
+    if start_baseline is None:
+        return StartJobCycleRecord(
+            success=False,
+            artifact_id=preview_record.artifact_id,
+            plan_id=preview_record.plan_id,
+            plan_fingerprint=preview_record.plan_fingerprint,
+            snapshot_hash=preview_record.snapshot_hash,
+            baseline_id=preview_record.baseline_id,
+            baseline_fingerprint=preview_record.baseline_fingerprint,
+            production_baseline_source=preview_record.production_baseline_source,
+            confirm_rpc_ms=confirm_elapsed_ms,
+            job_start_rpc_ms=start_elapsed_ms,
+            error=start_baseline_error or "dxf.job.start response missing production_baseline",
+        )
+    try:
+        matched_baseline = ensure_matching_production_baseline(
+            {
+                "baseline_id": preview_record.baseline_id,
+                "baseline_fingerprint": preview_record.baseline_fingerprint,
+                "production_baseline_source": preview_record.production_baseline_source,
+            },
+            start_baseline,
+            label="dxf.job.start",
+        )
+    except Exception as exc:  # noqa: BLE001
+        return StartJobCycleRecord(
+            success=False,
+            artifact_id=preview_record.artifact_id,
+            plan_id=preview_record.plan_id,
+            plan_fingerprint=preview_record.plan_fingerprint,
+            snapshot_hash=preview_record.snapshot_hash,
+            baseline_id=preview_record.baseline_id,
+            baseline_fingerprint=preview_record.baseline_fingerprint,
+            production_baseline_source=preview_record.production_baseline_source,
+            confirm_rpc_ms=confirm_elapsed_ms,
+            job_start_rpc_ms=start_elapsed_ms,
+            error=str(exc),
         )
 
     job_id = str(start_payload.get("job_id", "")).strip()
@@ -1101,6 +1112,9 @@ def run_start_job_cycle(
             plan_id=preview_record.plan_id,
             plan_fingerprint=preview_record.plan_fingerprint,
             snapshot_hash=preview_record.snapshot_hash,
+            baseline_id=matched_baseline["baseline_id"],
+            baseline_fingerprint=matched_baseline["baseline_fingerprint"],
+            production_baseline_source=matched_baseline["production_baseline_source"],
             confirm_rpc_ms=confirm_elapsed_ms,
             job_start_rpc_ms=start_elapsed_ms,
             error="dxf.job.start response missing job_id",
@@ -1174,6 +1188,9 @@ def run_start_job_cycle(
         plan_id=preview_record.plan_id,
         plan_fingerprint=preview_record.plan_fingerprint,
         snapshot_hash=preview_record.snapshot_hash,
+        baseline_id=matched_baseline["baseline_id"],
+        baseline_fingerprint=matched_baseline["baseline_fingerprint"],
+        production_baseline_source=matched_baseline["production_baseline_source"],
         job_id=job_id,
         confirm_rpc_ms=confirm_elapsed_ms,
         job_start_rpc_ms=start_elapsed_ms,
@@ -1868,24 +1885,10 @@ def concurrent_prepare_worker(
 ) -> None:
     try:
         with protocol_client(args.host, args.port) as (_, protocol):
-            recipe_context, recipe_context_error = validate_published_recipe_context(
-                protocol,
-                args.recipe_id,
-                args.version_id,
-            )
-            if recipe_context is None:
-                results[request_index] = ConcurrentPrepareRecord(
-                    request_index=request_index,
-                    success=False,
-                    error=recipe_context_error or "recipe context validation failed",
-                )
-                return
             barrier.wait(timeout=max(10.0, args.prepare_timeout))
             started = time.perf_counter()
             ok, payload, error = protocol.dxf_prepare_plan(
                 artifact_id=artifact_id,
-                recipe_id=recipe_context["recipe_id"],
-                version_id=recipe_context["version_id"],
                 speed_mm_s=args.dispensing_speed_mm_s,
                 dry_run=args.dry_run,
                 dry_run_speed_mm_s=args.dry_run_speed_mm_s,
@@ -1960,6 +1963,33 @@ def summarize_concurrent_records(records: list[ConcurrentPrepareRecord]) -> dict
             [float(getattr(record, field)) for record in successful if getattr(record, field) is not None]
         )
     return summary
+
+
+def resolve_sample_production_baseline(result: dict[str, Any]) -> dict[str, str]:
+    for block_name in ("cold", "hot", "long_run"):
+        block = result.get(block_name, {})
+        if not isinstance(block, dict):
+            continue
+        preview_records: list[dict[str, Any]] = []
+        if block_name == "long_run":
+            preview_setup = block.get("preview_setup", {})
+            if isinstance(preview_setup, dict):
+                preview_records.append(preview_setup)
+        else:
+            for key in ("preview_iterations", "hot_warmup_preview_iterations"):
+                raw_records = block.get(key, [])
+                if isinstance(raw_records, list):
+                    preview_records.extend(item for item in raw_records if isinstance(item, dict))
+        for record in preview_records:
+            baseline_id = str(record.get("baseline_id", "")).strip()
+            baseline_fingerprint = str(record.get("baseline_fingerprint", "")).strip()
+            if baseline_id and baseline_fingerprint:
+                return {
+                    "baseline_id": baseline_id,
+                    "baseline_fingerprint": baseline_fingerprint,
+                    "production_baseline_source": str(record.get("production_baseline_source", "")).strip(),
+                }
+    return {}
 
 
 def collect_singleflight_profile(
@@ -2636,9 +2666,9 @@ def render_markdown(payload: dict[str, Any]) -> str:
         f"- gateway_hardware_mode: `{payload['environment'].get('gateway_hardware_mode', 'unknown')}`",
         f"- gateway_auto_provisioned_mock: `{payload['environment'].get('gateway_auto_provisioned_mock', False)}`",
         f"- host_port: `{payload['gateway']['host']}:{payload['gateway']['port']}`",
-        f"- recipe_id: `{payload.get('recipe_context', {}).get('recipe_id', '')}`",
-        f"- version_id: `{payload.get('recipe_context', {}).get('version_id', '')}`",
-        f"- recipe_context_source: `{payload.get('recipe_context', {}).get('recipe_context_source', '')}`",
+        f"- baseline_id: `{payload.get('production_baseline', {}).get('baseline_id', '')}`",
+        f"- baseline_fingerprint: `{payload.get('production_baseline', {}).get('baseline_fingerprint', '')}`",
+        f"- production_baseline_source: `{payload.get('production_baseline', {}).get('production_baseline_source', '')}`",
         f"- dry_run: `{payload['sampling']['dry_run']}`",
         f"- include_start_job: `{payload['sampling']['include_start_job']}`",
         f"- include_control_cycles: `{payload['sampling']['include_control_cycles']}`",
@@ -2929,7 +2959,7 @@ def main() -> int:
 
     payload: dict[str, Any] = {
         "environment": environment_snapshot(launch_spec),
-        "recipe_context": require_explicit_recipe_context(args.recipe_id, args.version_id),
+        "production_baseline": {},
         "gateway": {
             "host": args.host,
             "port": args.port,
@@ -2971,6 +3001,8 @@ def main() -> int:
 
     for label, sample_path in samples.items():
         payload["results"][label] = collect_for_sample(args, launch_spec, label, sample_path)
+        if not payload["production_baseline"]:
+            payload["production_baseline"] = resolve_sample_production_baseline(payload["results"][label])
 
     if args.baseline_json:
         payload["baseline_comparison"] = compare_against_baseline(

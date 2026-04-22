@@ -84,6 +84,11 @@ struct PreparePlanRequest {
 };
 
 struct PreparePlanResponse {
+    struct ProductionBaselineContext {
+        std::string baseline_id;
+        std::string baseline_fingerprint;
+    };
+
     struct PerformanceProfile {
         bool authority_cache_hit = false;
         bool authority_joined_inflight = false;
@@ -113,6 +118,7 @@ struct PreparePlanResponse {
     std::string preview_failure_reason;
     std::string preview_diagnostic_code;
     std::string generated_at;
+    ProductionBaselineContext production_baseline;
     PerformanceProfile performance_profile;
 };
 
@@ -141,6 +147,8 @@ struct StartJobRequest {
 };
 
 struct StartJobResponse {
+    using ProductionBaselineContext = PreparePlanResponse::ProductionBaselineContext;
+
     struct PerformanceProfile {
         bool execution_cache_hit = false;
         bool execution_joined_inflight = false;
@@ -158,6 +166,7 @@ struct StartJobResponse {
     std::uint32_t target_count = 0;
     float32 execution_budget_s = 0.0f;
     ExecutionBudgetBreakdown execution_budget_breakdown;
+    ProductionBaselineContext production_baseline;
     PerformanceProfile performance_profile;
 };
 
