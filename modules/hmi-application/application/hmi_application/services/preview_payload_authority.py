@@ -264,22 +264,6 @@ class PreviewPayloadAuthorityService:
                 title="胶点预览生成失败",
                 detail="返回结果缺少非空 glue_points。请核对 runtime-gateway 是否已升级到 planned_glue_snapshot 契约。",
             )
-        if len(glue_reveal_lengths_mm) != len(glue_points):
-            return self.handle_local_failure(
-                gate_error_message="运行时快照缺少有效 glue_reveal_lengths_mm",
-                title="胶点预览生成失败",
-                detail="返回结果的 glue_reveal_lengths_mm 与 glue_points 数量不一致。",
-            )
-        previous_reveal_length = glue_reveal_lengths_mm[0]
-        for current_reveal_length in glue_reveal_lengths_mm[1:]:
-            if current_reveal_length + 1e-6 < previous_reveal_length:
-                return self.handle_local_failure(
-                    gate_error_message="运行时快照缺少有效 glue_reveal_lengths_mm",
-                    title="胶点预览生成失败",
-                    detail="返回结果的 glue_reveal_lengths_mm 不是单调不减序列。",
-                )
-            previous_reveal_length = current_reveal_length
-
         if not motion_preview:
             return self.handle_local_failure(
                 gate_error_message="运行时快照缺少 motion_preview",
@@ -320,6 +304,20 @@ class PreviewPayloadAuthorityService:
                     "不是 execution_trajectory_geometry_preserving / "
                     "execution_trajectory_geometry_preserving_clamp。"
                 ),
+            )
+        glue_reveal_lengths_reason = self.validate_glue_reveal_lengths(
+            glue_points=glue_points,
+            motion_preview=motion_preview,
+            glue_reveal_lengths_mm=glue_reveal_lengths_mm,
+        )
+        if glue_reveal_lengths_reason:
+            return self.handle_local_failure(
+                gate_error_message=(
+                    "运行时快照返回了非法 glue_reveal_lengths_mm: "
+                    f"{glue_reveal_lengths_reason}"
+                ),
+                title="胶点预览生成失败",
+                detail=self.glue_reveal_lengths_error_detail(glue_reveal_lengths_reason),
             )
 
         self._state.glue_point_count = len(glue_points)
@@ -495,6 +493,90 @@ class PreviewPayloadAuthorityService:
                 return []
             values.append(value)
         return values
+
+    @staticmethod
+    def validate_glue_reveal_lengths(
+        *,
+        glue_points: list[tuple[float, float]],
+        motion_preview: list[tuple[float, float]],
+        glue_reveal_lengths_mm: list[float],
+    ) -> str:
+        if not glue_reveal_lengths_mm:
+            return "missing"
+        if len(glue_reveal_lengths_mm) != len(glue_points):
+            return "length_mismatch"
+
+        previous_length = glue_reveal_lengths_mm[0]
+        for current_length in glue_reveal_lengths_mm[1:]:
+            if current_length + 1e-6 < previous_length:
+                return "non_monotonic"
+            previous_length = current_length
+
+        segments: list[tuple[float, float, float, float, float]] = []
+        total_length = 0.0
+        for index in range(1, len(motion_preview)):
+            start_x, start_y = motion_preview[index - 1]
+            end_x, end_y = motion_preview[index]
+            segment_length = ((end_x - start_x) ** 2 + (end_y - start_y) ** 2) ** 0.5
+            if segment_length <= 1e-9:
+                continue
+            segments.append((start_x, start_y, end_x, end_y, total_length))
+            total_length += segment_length
+        if not segments:
+            return "motion_preview_too_short"
+
+        distance_tolerance_mm = 2.0
+        distance_tolerance_sq = distance_tolerance_mm ** 2
+        for (point_x, point_y), reveal_length in zip(glue_points, glue_reveal_lengths_mm):
+            if reveal_length < -1e-6 or reveal_length > total_length + distance_tolerance_mm:
+                return "beyond_motion_length"
+            clamped_reveal_length = max(0.0, min(total_length, reveal_length))
+            projected_x, projected_y = motion_preview[-1]
+            for start_x, start_y, end_x, end_y, start_length in segments:
+                segment_length = ((end_x - start_x) ** 2 + (end_y - start_y) ** 2) ** 0.5
+                if segment_length <= 1e-9:
+                    continue
+                end_length = start_length + segment_length
+                if clamped_reveal_length > end_length + 1e-6:
+                    continue
+                ratio = max(0.0, min(1.0, (clamped_reveal_length - start_length) / segment_length))
+                projected_x = start_x + ((end_x - start_x) * ratio)
+                projected_y = start_y + ((end_y - start_y) * ratio)
+                break
+            distance_sq = ((point_x - projected_x) ** 2) + ((point_y - projected_y) ** 2)
+            if distance_sq > distance_tolerance_sq:
+                return "geometry_mismatch"
+        return ""
+
+    @staticmethod
+    def glue_reveal_lengths_error_detail(reason: str) -> str:
+        normalized = str(reason or "").strip().lower()
+        detail_map = {
+            "missing": (
+                "返回结果缺少 glue_reveal_lengths_mm。当前 HMI 已禁用基于 motion_preview 的兼容投影显隐算法，"
+                "无法保证胶点显隐与真实执行轨迹一致。"
+            ),
+            "length_mismatch": (
+                "返回结果的 glue_reveal_lengths_mm 数量与 glue_points 不一致。当前 HMI 已禁用兼容投影显隐算法。"
+            ),
+            "non_monotonic": (
+                "返回结果的 glue_reveal_lengths_mm 不是单调递增序列。当前 HMI 已禁用兼容投影显隐算法。"
+            ),
+            "motion_preview_too_short": (
+                "返回结果的 motion_preview 点数不足，无法校验 glue_reveal_lengths_mm。当前 HMI 已禁用兼容投影显隐算法。"
+            ),
+            "beyond_motion_length": (
+                "返回结果的 glue_reveal_lengths_mm 超出 motion_preview 总长度。当前 HMI 已禁用兼容投影显隐算法。"
+            ),
+            "geometry_mismatch": (
+                "返回结果的 glue_reveal_lengths_mm 与 glue_points / motion_preview 几何不一致。"
+                "当前 HMI 已禁用兼容投影显隐算法。"
+            ),
+        }
+        return detail_map.get(
+            normalized,
+            "返回结果的 glue_reveal_lengths_mm 不合法。当前 HMI 已禁用兼容投影显隐算法。",
+        )
 
     @staticmethod
     def sampling_warning(glue_point_count: int, execution_source_point_count: int) -> str:
