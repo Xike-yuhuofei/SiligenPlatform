@@ -94,17 +94,17 @@ class PreviewPayloadAuthorityServiceTest(unittest.TestCase):
             "is_sampled": True,
             "sampling_strategy": "execution_trajectory_geometry_preserving_clamp",
             "polyline": [
-                {"x": 1.0, "y": 1.0},
-                {"x": 4.0, "y": 2.0},
-                {"x": 6.0, "y": 3.0},
+                {"x": 0.0, "y": 0.0},
+                {"x": 3.0, "y": 0.0},
+                {"x": 6.0, "y": 0.0},
             ],
         }
 
         result = self.authority.process_snapshot_payload(payload, current_dry_run=False)
 
         self.assertTrue(result.ok)
-        self.assertEqual(result.motion_preview[0], (1.0, 1.0))
-        self.assertEqual(result.motion_preview[-1], (6.0, 3.0))
+        self.assertEqual(result.motion_preview[0], (0.0, 0.0))
+        self.assertEqual(result.motion_preview[-1], (6.0, 0.0))
         self.assertEqual(self.state.motion_preview_source, "execution_trajectory_snapshot")
         self.assertEqual(self.state.motion_preview_point_count, 3)
         self.assertEqual(
@@ -122,16 +122,33 @@ class PreviewPayloadAuthorityServiceTest(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.glue_reveal_lengths_mm, (0.0, 3.25, 6.5))
 
-    def test_process_snapshot_payload_fails_when_glue_reveal_lengths_invalid(self) -> None:
+    def test_process_snapshot_payload_fails_when_glue_reveal_lengths_missing(self) -> None:
         payload = valid_payload()
-        payload["glue_reveal_lengths_mm"] = [0.0, 6.5, 3.25]
+        payload["glue_reveal_lengths_mm"] = []
 
         result = self.authority.process_snapshot_payload(payload, current_dry_run=False)
 
         self.assertFalse(result.ok)
         self.assertEqual(result.title, "胶点预览生成失败")
-        self.assertEqual(self.state.gate.last_error_message, "运行时快照缺少有效 glue_reveal_lengths_mm")
-        self.assertIn("glue_reveal_lengths_mm", result.detail)
+        self.assertIn("缺少 glue_reveal_lengths_mm", result.detail)
+        self.assertEqual(
+            self.state.gate.last_error_message,
+            "运行时快照返回了非法 glue_reveal_lengths_mm: missing",
+        )
+
+    def test_process_snapshot_payload_fails_when_glue_reveal_lengths_geometry_mismatch(self) -> None:
+        payload = valid_payload()
+        payload["glue_reveal_lengths_mm"] = [0.0, 0.0, 6.0]
+
+        result = self.authority.process_snapshot_payload(payload, current_dry_run=False)
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.title, "胶点预览生成失败")
+        self.assertIn("几何不一致", result.detail)
+        self.assertEqual(
+            self.state.gate.last_error_message,
+            "运行时快照返回了非法 glue_reveal_lengths_mm: geometry_mismatch",
+        )
 
     def test_process_snapshot_payload_stores_preview_diagnostic_code(self) -> None:
         payload = valid_payload()

@@ -1498,25 +1498,6 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertEqual(self.window._preview_tabs.tabText(0), "轨迹预览")
         self.assertEqual(self.window._preview_tabs.tabText(1), "调试信息")
 
-    def test_build_preview_glue_reveal_lengths_skips_reverse_air_move_matches(self) -> None:
-        reveal_lengths = self.window._build_preview_glue_reveal_lengths(
-            glue_points=[
-                (0.0, 0.0),
-                (4.0, 0.0),
-                (4.0, 6.0),
-                (4.0, 4.0),
-                (4.0, 2.0),
-            ],
-            motion_preview=[
-                (0.0, 0.0),
-                (4.0, 0.0),
-                (4.0, 6.0),
-                (4.0, 2.0),
-            ],
-        )
-
-        self.assertEqual(reveal_lengths, [0.0, 4.0, 10.0, 12.0, 14.0])
-
     def test_resolve_preview_glue_reveal_lengths_prefers_authority_lengths(self) -> None:
         snapshot = main_window_module.PreviewSnapshotMeta(
             snapshot_id="snapshot-authority",
@@ -1547,10 +1528,10 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertEqual(reveal_lengths, [0.0, 60.0, 120.0])
         self.assertEqual(diagnostics["source"], "authority_glue_reveal_lengths_mm")
 
-    def test_resolve_preview_glue_reveal_lengths_rejects_invalid_authority_lengths(self) -> None:
+    def test_resolve_preview_glue_reveal_lengths_rejects_missing_authority_lengths(self) -> None:
         snapshot = main_window_module.PreviewSnapshotMeta(
-            snapshot_id="snapshot-fallback",
-            snapshot_hash="hash-fallback",
+            snapshot_id="snapshot-missing",
+            snapshot_hash="hash-missing",
             segment_count=4,
             point_count=4,
             total_length_mm=18.0,
@@ -1558,7 +1539,35 @@ class MainWindowTabsTest(unittest.TestCase):
             generated_at="2026-04-06T00:00:00Z",
         )
 
-        with self.assertRaisesRegex(ValueError, "运行时快照缺少有效 glue_reveal_lengths_mm"):
+        with self.assertRaisesRegex(ValueError, "缺少 glue_reveal_lengths_mm"):
+            self.window._resolve_preview_glue_reveal_lengths(
+                glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
+                motion_preview=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
+                glue_reveal_lengths_mm=[],
+                scale_px_per_mm=1.0,
+                snapshot=snapshot,
+                motion_preview_meta=main_window_module.MotionPreviewMeta(
+                    source="execution_trajectory_snapshot",
+                    kind="polyline",
+                    point_count=4,
+                    source_point_count=4,
+                    is_sampled=False,
+                    sampling_strategy="execution_trajectory_geometry_preserving",
+                ),
+            )
+
+    def test_resolve_preview_glue_reveal_lengths_rejects_non_monotonic_authority_lengths(self) -> None:
+        snapshot = main_window_module.PreviewSnapshotMeta(
+            snapshot_id="snapshot-invalid",
+            snapshot_hash="hash-invalid",
+            segment_count=4,
+            point_count=4,
+            total_length_mm=18.0,
+            estimated_time_s=2.0,
+            generated_at="2026-04-06T00:00:00Z",
+        )
+
+        with self.assertRaisesRegex(ValueError, "不是单调递增"):
             self.window._resolve_preview_glue_reveal_lengths(
                 glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
                 motion_preview=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
