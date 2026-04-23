@@ -1,3 +1,3 @@
-from .main_window import MainWindow, LoginDialog, main
+from .main_window import MainWindow, main
 
-__all__ = ["MainWindow", "LoginDialog", "main"]
+__all__ = ["MainWindow", "main"]

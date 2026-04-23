@@ -73,16 +73,6 @@ add_library(siligen_runtime_process_bootstrap STATIC
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/storage/files/LocalFileStorageAdapter.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/security/AuditLogger.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/security/InterlockMonitor.cpp
-    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/security/NetworkAccessControl.cpp
-    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/security/NetworkWhitelist.cpp
-    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/security/PasswordHasher.cpp
-    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/security/PermissionService.cpp
-    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/security/SafetyLimitsValidator.cpp
-    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/security/SecurityService.cpp
-    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/security/SessionService.cpp
-    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/security/UserService.cpp
-    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/security/config/ConfigurationVersionService.cpp
-    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/security/config/SecurityConfigLoader.cpp
 )
 
 target_include_directories(siligen_runtime_process_bootstrap PRIVATE

@@ -14,10 +14,9 @@ class RecipeConfigWidget(QWidget):
     Widget for managing recipes, versions, and parameters.
     Refactored from MainWindow to separate concerns.
     """
-    def __init__(self, protocol, auth_manager, planning_context_owner=None, parent=None):
+    def __init__(self, protocol, planning_context_owner=None, parent=None):
         super().__init__(parent)
         self._protocol = protocol
-        self._auth = auth_manager
         self._planning_context_owner = (
             planning_context_owner if planning_context_owner is not None else PreviewPlanningContextOwner()
         )
@@ -287,33 +286,6 @@ class RecipeConfigWidget(QWidget):
 
     # === Logic Implementation ===
 
-    def _get_actor(self) -> str:
-        user = self._auth.current_user
-        if user:
-            return user.username
-        return "operator"
-    
-    def _check_permission(self, level: int = 1) -> bool:
-        # Simple wrapper, ideally this logic is in AuthManager or passed in
-        # For now we assume auth_manager has a method or we check manually
-        # In MainWindow it was: self._auth.current_user.permission_level >= level
-        user = self._auth.current_user
-        if not user:
-            self._show_error("未登录")
-            return False
-        # Assuming permission levels: 0=Viewer, 1=Operator, 2=Engineer, 3=Admin
-        # Using a safer default check if level attr exists
-        user_level = getattr(user, "level", 1) 
-        # Map role to level if level is not int
-        if isinstance(user_level, str):
-            roles = {"operator": 1, "engineer": 2, "admin": 3}
-            user_level = roles.get(user_level, 0)
-            
-        if user_level < level:
-            self._show_error("权限不足")
-            return False
-        return True
-
     def _show_error(self, msg: str):
         # We can use a signal or QMessageBox
         # For a widget, QMessageBox is acceptable
@@ -451,9 +423,6 @@ class RecipeConfigWidget(QWidget):
             self._create_recipe(name)
 
     def _create_recipe(self, name: str):
-        if not self._check_permission(2):
-            return
-        
         # Description/Tags could be optional or asked
         description = "" 
         tags = []
@@ -462,7 +431,6 @@ class RecipeConfigWidget(QWidget):
             name=name,
             description=description,
             tags=tags,
-            actor=self._get_actor()
         )
         if not ok:
             self._show_error(f"创建配方失败: {msg}")
@@ -471,8 +439,6 @@ class RecipeConfigWidget(QWidget):
         self._refresh_recipe_list()
 
     def _on_recipe_update(self):
-        if not self._check_permission(2):
-            return
         recipe_id = self._current_recipe_id
         if not recipe_id:
             self._show_error("请先选择配方")
@@ -486,7 +452,6 @@ class RecipeConfigWidget(QWidget):
             name=name,
             description=description,
             tags=tags,
-            actor=self._get_actor()
         )
         if not ok:
             self._show_error(f"更新配方失败: {msg}")
@@ -608,8 +573,6 @@ class RecipeConfigWidget(QWidget):
         return parameters
 
     def _on_recipe_draft_create(self):
-        if not self._check_permission(2):
-            return
         if not self._current_recipe_id:
             self._show_error("请先选择配方")
             return
@@ -626,7 +589,6 @@ class RecipeConfigWidget(QWidget):
             template_id=template_id,
             version_label=version_label,
             change_note=change_note,
-            actor=self._get_actor()
         )
         if not ok:
             self._show_error(f"创建草稿失败: {msg}")
@@ -637,8 +599,6 @@ class RecipeConfigWidget(QWidget):
         # Auto select the new version logic can be improved (find by ID)
 
     def _on_recipe_draft_save(self):
-        if not self._check_permission(2):
-            return
         if not self._current_recipe_id or not self._current_version_id:
             self._show_error("请先选择草稿版本")
             return
@@ -652,7 +612,6 @@ class RecipeConfigWidget(QWidget):
             version_id=self._current_version_id,
             parameters=parameters,
             change_note=self._recipe_change_note_input.text().strip(),
-            actor=self._get_actor()
         )
         if not ok:
             self._show_error(f"保存草稿失败: {msg}")
@@ -661,8 +620,6 @@ class RecipeConfigWidget(QWidget):
         self._refresh_versions(self._current_recipe_id)
 
     def _on_recipe_publish(self):
-        if not self._check_permission(2):
-            return
         if not self._current_recipe_id or not self._current_version_id:
             self._show_error("请先选择版本")
             return
@@ -670,7 +627,6 @@ class RecipeConfigWidget(QWidget):
         ok, version, msg = self._protocol.recipe_publish(
             recipe_id=self._current_recipe_id,
             version_id=self._current_version_id,
-            actor=self._get_actor()
         )
         if not ok:
             self._show_error(f"发布失败: {msg}")
@@ -728,7 +684,6 @@ class RecipeConfigWidget(QWidget):
             bundle_path=filepath,
             resolution=resolution,
             dry_run=dry_run,
-            actor=self._get_actor(),
         )
         if ok:
             self._show_message(f"导入成功: {result}")

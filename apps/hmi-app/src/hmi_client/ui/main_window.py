@@ -24,7 +24,7 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QGroupBox, QLabel, QPushButton, QLineEdit, QGridLayout, QFrame,
     QSlider, QSpinBox, QDoubleSpinBox, QCheckBox, QTabWidget, QFileDialog,
-    QProgressBar, QListWidget, QListWidgetItem, QMessageBox, QDialog, QDialogButtonBox,
+    QProgressBar, QListWidget, QListWidgetItem, QMessageBox,
     QComboBox, QFormLayout, QScrollArea, QRadioButton, QStatusBar, QPlainTextEdit,
     QTextBrowser
 )
@@ -66,7 +66,6 @@ from hmi_application.preview_session import (
     PreviewDiagnosticNotice,
     PreviewSessionOwner,
 )
-from client.auth import AuthManager
 from .dxf_default_paths import build_default_dxf_candidates
 from .styles import DARK_THEME
 from .recipe_config_widget import RecipeConfigWidget
@@ -95,7 +94,6 @@ LOCAL_HOME_READINESS_VELOCITY_EPSILON_MM_S = 0.1
 START_HOME_BOUNDARY_ZERO_TOLERANCE_MM = 0.1
 LOCAL_HOME_READINESS_BLOCK_MESSAGE = "运动系统未稳定，暂不可回零，请稍候"
 CURRENT_STAGE_RECIPE_MANAGEMENT_ENABLED = False
-CURRENT_STAGE_USER_MANAGEMENT_ENABLED = False
 LOCAL_HOME_READINESS_BLOCKING_JOB_STATES = frozenset(
     {
         "running",
@@ -194,60 +192,6 @@ class JogButton(QPushButton):
         super().mouseReleaseEvent(event)
         if event.button() == Qt.LeftButton:
             _UI_LOGGER.info("JogButton mouse release text=%s", self.text())
-
-
-class LoginDialog(QDialog):
-    """Login dialog for user authentication."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("用户登录")
-        self.setProperty("data-testid", "dialog-login")
-        self.setFixedSize(300, 200)
-
-        layout = QVBoxLayout(self)
-        layout.setSpacing(15)
-
-        # Username
-        user_layout = QHBoxLayout()
-        user_layout.addWidget(QLabel("用户名:"))
-        self._username_input = QLineEdit()
-        self._username_input.setProperty("data-testid", "input-username")
-        self._username_input.setPlaceholderText("operator/tech/engineer")
-        user_layout.addWidget(self._username_input)
-        layout.addLayout(user_layout)
-
-        # PIN
-        pin_layout = QHBoxLayout()
-        pin_layout.addWidget(QLabel("密码:"))
-        self._pin_input = QLineEdit()
-        self._pin_input.setProperty("data-testid", "input-password")
-        self._pin_input.setEchoMode(QLineEdit.Password)
-        self._pin_input.setPlaceholderText("PIN码")
-        pin_layout.addWidget(self._pin_input)
-        layout.addLayout(pin_layout)
-
-        # Buttons
-        btn_layout = QHBoxLayout()
-        self._login_btn = QPushButton("登录")
-        self._login_btn.setProperty("data-testid", "btn-login")
-        self._login_btn.setProperty("role", "primary")
-        self._login_btn.clicked.connect(self.accept)
-        btn_layout.addWidget(self._login_btn)
-
-        self._cancel_btn = QPushButton("取消")
-        self._cancel_btn.setProperty("data-testid", "btn-login-cancel")
-        self._cancel_btn.clicked.connect(self.reject)
-        btn_layout.addWidget(self._cancel_btn)
-        layout.addLayout(btn_layout)
-
-    @property
-    def username(self) -> str:
-        return self._username_input.text()
-
-    @property
-    def pin(self) -> str:
-        return self._pin_input.text()
 
 
 
@@ -499,9 +443,6 @@ class MainWindow(QMainWindow):
         self._status_log_entries = []
         self._last_status_log_message = ""
 
-        # User permission management
-        self._auth = AuthManager(auto_logout_minutes=5)
-
         self._setup_ui()
         self._setup_timer()
         self._refresh_launch_status_ui()
@@ -682,21 +623,6 @@ class MainWindow(QMainWindow):
         self._reset_needle_btn.setProperty("data-testid", "btn-reset-needle-count")
         self._reset_needle_btn.clicked.connect(self._on_reset_needle)
         layout.addWidget(self._reset_needle_btn)
-
-        layout.addSpacing(20)
-
-        # User Info
-        self._user_label = QLabel("操作员")
-        self._user_label.setProperty("data-testid", "label-current-user")
-        layout.addWidget(self._user_label)
-
-        self._switch_user_btn = QPushButton("切换")
-        self._switch_user_btn.setProperty("data-testid", "btn-switch-user")
-        self._switch_user_btn.clicked.connect(self._on_switch_user)
-        self._switch_user_btn.setEnabled(CURRENT_STAGE_USER_MANAGEMENT_ENABLED)
-        if not CURRENT_STAGE_USER_MANAGEMENT_ENABLED:
-            self._switch_user_btn.setToolTip("当前阶段未启用用户管理")
-        layout.addWidget(self._switch_user_btn)
 
         layout.addSpacing(20)
 
@@ -1071,7 +997,6 @@ class MainWindow(QMainWindow):
         """Create Recipe/File tab - for DXF and recipe management."""
         self._recipe_config_widget = RecipeConfigWidget(
             self._protocol,
-            self._auth,
             parent=self,
         )
         self._recipe_config_widget.setEnabled(CURRENT_STAGE_RECIPE_MANAGEMENT_ENABLED)
@@ -1957,7 +1882,6 @@ class MainWindow(QMainWindow):
         self._refresh_launch_status_ui()
         self._apply_mode_capabilities()
         self._update_home_controls_state()
-        self._apply_permissions()
         self.statusBar().showMessage(runtime_result.status_message)
 
     def _apply_runtime_requalification_result(self, runtime_result) -> None:
@@ -1969,7 +1893,6 @@ class MainWindow(QMainWindow):
         self._refresh_launch_status_ui()
         self._apply_mode_capabilities()
         self._update_home_controls_state()
-        self._apply_permissions()
         self.statusBar().showMessage(runtime_result.status_message)
 
     def _detect_runtime_degradation(
@@ -2105,11 +2028,14 @@ class MainWindow(QMainWindow):
         self._global_progress.setValue(0)
         if result.success:
             self._hw_connect_btn.setEnabled(False)
-            if result.online_ready and hasattr(self, '_recipe_config_widget'):
+            if (
+                CURRENT_STAGE_RECIPE_MANAGEMENT_ENABLED
+                and result.online_ready
+                and hasattr(self, '_recipe_config_widget')
+            ):
                 self._recipe_config_widget._load_recipe_context()
         else:
             self._show_startup_error(result)
-        self._apply_permissions()
         self._update_recovery_controls_state()
 
     def _on_recovery_finished(self, result: LaunchResult):
@@ -2118,10 +2044,13 @@ class MainWindow(QMainWindow):
         self._recovery_worker = None
         self._apply_launch_result(result)
         self._global_progress.setValue(0)
-        if result.online_ready and hasattr(self, '_recipe_config_widget'):
+        if (
+            CURRENT_STAGE_RECIPE_MANAGEMENT_ENABLED
+            and result.online_ready
+            and hasattr(self, '_recipe_config_widget')
+        ):
             self._recipe_config_widget._load_recipe_context()
         self.statusBar().showMessage(build_recovery_finished_message(action, result))
-        self._apply_permissions()
         self._update_recovery_controls_state()
 
     def _show_startup_error(self, result: LaunchResult):
@@ -2403,7 +2332,6 @@ class MainWindow(QMainWindow):
         action = str(action or "").strip().lower()
         if not self._require_online_mode(status_capability):
             return
-        self._auth.record_activity()
         if not self._current_job_id:
             self.statusBar().showMessage("当前没有运行中的生产任务")
             return
@@ -2606,7 +2534,6 @@ class MainWindow(QMainWindow):
         widget.style().polish(widget)
 
     def _on_home(self, axes, force_rehome=False, allow_go_home=True):
-        self._auth.record_activity()
         if self._is_home_worker_running():
             self.statusBar().showMessage("回零进行中，请稍候")
             return
@@ -2770,7 +2697,6 @@ class MainWindow(QMainWindow):
                 _UI_LOGGER.info("%s axis=%s status missing", tag, axis)
 
     def _on_jog(self, axis: str, direction: int):
-        self._auth.record_activity()
         if not self._check_motion_preconditions():
             self._jog_press_time = None
             return
@@ -2851,7 +2777,6 @@ class MainWindow(QMainWindow):
     def _on_move_to(self):
         if not self._require_online_mode("移动控制"):
             return
-        self._auth.record_activity()
         if not self._check_motion_preconditions("移动", "移动控制"):
             return
         x = self._move_inputs["X"].value()
@@ -4065,7 +3990,6 @@ class MainWindow(QMainWindow):
         """Start production cycle (or dry run)."""
         if not self._require_online_mode("生产控制"):
             return
-        self._auth.record_activity()
         if not self._dxf_loaded:
             self.statusBar().showMessage("请先加载DXF文件")
             return
@@ -4300,11 +4224,6 @@ class MainWindow(QMainWindow):
 
     def _update_status(self):
         self._tick_preview_playback(time.monotonic())
-
-        # Check auto-logout
-        if CURRENT_STAGE_USER_MANAGEMENT_ENABLED and not self._auth.check_activity():
-            self._user_label.setText("操作员")
-            self._apply_permissions()
 
         self._update_maintenance_display()
 
@@ -4565,99 +4484,6 @@ class MainWindow(QMainWindow):
         if self._backend:
             self._backend.stop()
         super().closeEvent(event)
-
-    # User Permission Methods
-    def _on_switch_user(self):
-        """Show login dialog to switch user."""
-        if not CURRENT_STAGE_USER_MANAGEMENT_ENABLED:
-            self.statusBar().showMessage("当前阶段未启用用户管理")
-            return
-        dialog = LoginDialog(self)
-        if dialog.exec_() == QDialog.Accepted:
-            ok, msg = self._auth.login(dialog.username, dialog.pin)
-            if ok:
-                user = self._auth.current_user
-                self._user_label.setText(f"{user.role}")
-                self._apply_permissions()
-                self.statusBar().showMessage(msg)
-            else:
-                self.statusBar().showMessage(msg)
-
-    def _apply_permissions(self):
-        """Apply permission restrictions based on user level."""
-        if not CURRENT_STAGE_USER_MANAGEMENT_ENABLED:
-            setup_widgets = [
-                self._speed_slider, self._move_btn,
-            ]
-            for w in setup_widgets:
-                w.setEnabled(True)
-
-            recipe_edit_widgets = [
-                '_recipe_create_btn',
-                '_recipe_update_btn',
-                '_recipe_draft_btn',
-                '_recipe_save_btn',
-                '_recipe_publish_btn',
-                '_recipe_version_create_btn',
-                '_recipe_activate_btn',
-                '_recipe_export_btn',
-                '_recipe_import_btn',
-            ]
-            for name in recipe_edit_widgets:
-                if hasattr(self, name):
-                    getattr(self, name).setEnabled(False)
-
-            if hasattr(self, '_reset_needle_btn'):
-                self._reset_needle_btn.setEnabled(True)
-
-            if hasattr(self, '_hw_connect_btn'):
-                self._hw_connect_btn.setEnabled(self._is_online_ready())
-            return
-
-        level = self._auth.current_user.level if self._auth.current_user else 1
-
-        # Setup tab controls (level 2+)
-        # Note: Valve buttons (dispenser & supply) and Purge button are always enabled (level 1)
-        setup_widgets = [
-            self._speed_slider, self._move_btn,
-        ]
-        for w in setup_widgets:
-            w.setEnabled(level >= 2)
-
-        # Recipe save (level 2+)
-        recipe_edit_widgets = [
-            '_recipe_create_btn',
-            '_recipe_update_btn',
-            '_recipe_draft_btn',
-            '_recipe_save_btn',
-            '_recipe_publish_btn',
-            '_recipe_version_create_btn',
-            '_recipe_activate_btn',
-            '_recipe_export_btn',
-            '_recipe_import_btn',
-        ]
-        for name in recipe_edit_widgets:
-            if hasattr(self, name):
-                getattr(self, name).setEnabled(level >= 2)
-
-        # Reset needle (level 2+)
-        if hasattr(self, '_reset_needle_btn'):
-            self._reset_needle_btn.setEnabled(level >= 2)
-
-        # Hardware init (level 3)
-        if hasattr(self, '_hw_connect_btn'):
-            self._hw_connect_btn.setEnabled(level >= 3 and self._is_online_ready())
-
-    def _check_permission(self, required_level: int) -> bool:
-        """Check if current user has required permission level."""
-        if not CURRENT_STAGE_USER_MANAGEMENT_ENABLED:
-            return True
-        level = self._auth.current_user.level if self._auth.current_user else 1
-        if level >= required_level:
-            return True
-        self.statusBar().showMessage(f"权限不足 (需要等级 {required_level})")
-        return False
-
 
 def main(launch_mode: str = "online") -> int:
     app = QApplication(sys.argv)

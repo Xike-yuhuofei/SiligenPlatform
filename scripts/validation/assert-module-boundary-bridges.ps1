@@ -251,10 +251,6 @@ $requiredBridgeReferences = @(
     },
     @{
         path = "apps/runtime-service/CMakeLists.txt"
-        pattern = "security/SecurityService.cpp"
-    },
-    @{
-        path = "apps/runtime-service/CMakeLists.txt"
         pattern = "siligen_workflow_adapters_public"
     },
     @{
