@@ -452,6 +452,24 @@ $allowedHardwareDiagnosticsQuarantineReferences = @(
 
 $forbiddenCompatReferences = @(
     @{
+        path = "CMakeLists.txt"
+        pattern = "BUILD_SECURITY_MODULE"
+        rule_id = "root-still-defines-build-security-module"
+        detail = "root CMake must not keep the retired BUILD_SECURITY_MODULE option or conditional branch"
+    },
+    @{
+        path = "CMakeLists.txt"
+        pattern = "add_library(security_module"
+        rule_id = "root-still-defines-security-module-target"
+        detail = "root CMake must not define the retired security_module target anymore"
+    },
+    @{
+        path = "CMakeLists.txt"
+        pattern = '${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/'
+        rule_id = "root-still-points-security-to-runtime-host"
+        detail = "root CMake must not compile retired runtime-host security sources after landing moved to apps/runtime-service"
+    },
+    @{
         path = "apps/planner-cli/CMakeLists.txt"
         pattern = "siligen_runtime_execution_workflow_runtime_compat"
         rule_id = "app-still-uses-runtime-workflow-compat"
@@ -592,6 +610,16 @@ $forbiddenCompatReferences = @(
 )
 
 $forbiddenScopedSearches = @(
+    @{
+        rule_id = "docs-still-claim-runtime-host-owns-security"
+        pattern = "runtime-execution/runtime/host/security"
+        search_roots = @(
+            "docs/architecture",
+            "modules",
+            "apps"
+        )
+        detail = "active docs and module maps must not describe runtime/host/security as a live owner surface after security landing moved to apps/runtime-service"
+    },
     @{
         rule_id = "workflow-application-still-leaks-dispenser-model"
         pattern = "DispenserModel"
@@ -2389,6 +2417,7 @@ if (Test-Path $workflowExamplesRoot) {
 }
 
 $exactWordScopedSearchRuleIds = @(
+    "docs-still-claim-runtime-host-owns-security",
     "live-targets-still-reference-siligen-domain",
     "live-targets-still-reference-siligen-motion-core",
     "live-targets-still-reference-siligen-domain-services",

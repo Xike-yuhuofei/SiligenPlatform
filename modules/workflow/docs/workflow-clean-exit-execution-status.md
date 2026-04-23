@@ -1048,7 +1048,7 @@
     - `siligen_runtime_process_bootstrap` 的 `HardwareTestAdapter.h` include 缺口继续冻结为 `modules/runtime-execution/**` 既有越界阻塞，不并入本轮。
   - scope_audit:
     - 本轮代码改动仅限 [modules/workflow/CMakeLists.txt](/D:/Projects/SiligenSuite/modules/workflow/CMakeLists.txt)、[tests/contracts/test_bridge_exit_contract.py](/D:/Projects/SiligenSuite/tests/contracts/test_bridge_exit_contract.py)、[scripts/validation/assert-module-boundary-bridges.ps1](/D:/Projects/SiligenSuite/scripts/validation/assert-module-boundary-bridges.ps1) 与 workflow 状态/ledger 文档。
-    - 本轮未修改 `apps/*` 产品源码 include、未触达 `modules/runtime-execution/**`，也未并入 root `BUILD_SECURITY_MODULE` 的失真路径问题。
+    - 后续批次已继续收口 root `BUILD_SECURITY_MODULE` / `security_module` 失真路径：repo 根不再保留该 optional build 分支，`runtime-execution/runtime/host/security/**` 已退出 live surface，当前 app-local landing 位于 `apps/runtime-service/**`，并由 boundary gate + bridge-exit contract 共同 fail-close。
     - `python -m pytest D:/Projects/SiligenSuite/tests/contracts/test_bridge_exit_contract.py -q` 当前仍失败于 `test_dxf_geometry_docs_record_only_simulation_residual_and_external_preview_trajectory_owners`；该失败来自 `modules/dxf-geometry/**` 既有 docs drift，不并入本轮 workflow slice。
   - continuation:
     - `yes`
