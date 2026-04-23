@@ -1498,6 +1498,7 @@ TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalUsesMultipleProfileCo
 TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalProducesStrictTraceabilityForOrthogonalTurnProfileComparePath) {
     auto valve_port = std::make_shared<FakeValvePort>();
     auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    auto config_port = MakeSupplyStabilizationConfigPort();
     auto motion_state_port = std::make_shared<SpanAwareMotionStatePort>(
         interpolation_port,
         std::vector<Point2D>{Point2D{0.0f, 0.0f},
@@ -1507,7 +1508,7 @@ TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalProducesStrictTraceab
                                      interpolation_port,
                                      motion_state_port,
                                      nullptr,
-                                     nullptr);
+                                     config_port);
 
     auto plan = BuildOrthogonalTurnProfileCompareExecutionPlan();
     auto params = BuildRuntimeParams();
@@ -1566,6 +1567,7 @@ TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalFailsClosedWhenSpanCo
     auto valve_port = std::make_shared<FakeValvePort>();
     valve_port->forced_completed_trigger_count = 3U;
     auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    auto config_port = MakeSupplyStabilizationConfigPort();
     auto motion_state_port = std::make_shared<SequencedMotionStatePort>(
         std::vector<Point2D>{Point2D{0.0f, 0.0f},
                              Point2D{10.0f, 0.0f},
@@ -1577,7 +1579,7 @@ TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalFailsClosedWhenSpanCo
                                      interpolation_port,
                                      motion_state_port,
                                      nullptr,
-                                     nullptr);
+                                     config_port);
 
     auto plan = BuildProfileCompareExecutionPlan();
     auto params = BuildRuntimeParams();
@@ -1615,6 +1617,7 @@ TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalFailsClosedWhenSpanCo
 TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalFailsClosedWhenExpectedTraceDriftsOutsideCurrentSpan) {
     auto valve_port = std::make_shared<FakeValvePort>();
     auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    auto config_port = MakeSupplyStabilizationConfigPort();
     auto motion_state_port = std::make_shared<SequencedMotionStatePort>(
         std::vector<Point2D>{Point2D{0.0f, 0.0f},
                              Point2D{10.0f, 0.0f},
@@ -1626,7 +1629,7 @@ TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalFailsClosedWhenExpect
                                      interpolation_port,
                                      motion_state_port,
                                      nullptr,
-                                     nullptr);
+                                     config_port);
 
     auto plan = BuildProfileCompareExecutionPlan();
     auto params = BuildRuntimeParams();
