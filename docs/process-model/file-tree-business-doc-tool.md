@@ -15,7 +15,10 @@
 |---|---|---|
 | `目标目录` | 本次要整理的目录 | `modules/` |
 | `业务主线` | 所有说明围绕的业务流程 | `点胶流程` |
-| `结果文件` | 最终输出文档路径 | `modules/MODULES_BUSINESS_FILE_TREE_AND_TABLES.md` |
+| `结果文件` | 最终输出文档路径，由当前任务显式指定 | `docs/process-model/reviews/<task>-file-tree-business.md` |
+
+- `结果文件` 不再允许复用仓库级固定总表。
+- `modules/MODULES_BUSINESS_FILE_TREE_AND_TABLES.md` 已退役，不能再作为默认输出或声明性边界依据。
 
 ## 3. 输出形式
 
@@ -196,6 +199,7 @@
 
 ## 9. 当前实例
 
-当前仓库的实例结果文件：
+当前仓库不再维护固定总表实例文件。
 
-- `modules/MODULES_BUSINESS_FILE_TREE_AND_TABLES.md`
+- 每次执行都必须为当前任务单独指定结果文件路径。
+- 推荐示例：`docs/process-model/reviews/<task>-file-tree-business.md`

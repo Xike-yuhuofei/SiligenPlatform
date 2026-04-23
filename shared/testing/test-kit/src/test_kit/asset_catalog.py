@@ -679,43 +679,11 @@ def build_asset_catalog(workspace_root: Path) -> AssetCatalog:
         ),
         _asset(
             root,
-            asset_id="protocol.fixture.recipe_get_request",
-            asset_kind="protocol-fixture",
-            relative_path="shared/contracts/application/fixtures/requests/recipe.get.request.json",
-            owner_scope="shared/contracts",
-            source_of_truth="application contract fixture recipe.get request",
-        ),
-        _asset(
-            root,
-            asset_id="protocol.fixture.recipe_get_response",
-            asset_kind="protocol-fixture",
-            relative_path="shared/contracts/application/fixtures/responses/recipe.get.success.json",
-            owner_scope="shared/contracts",
-            source_of_truth="application contract fixture recipe.get response",
-        ),
-        _asset(
-            root,
-            asset_id="protocol.fixture.recipe_import_request",
-            asset_kind="protocol-fixture",
-            relative_path="shared/contracts/application/fixtures/requests/recipe.import.request.json",
-            owner_scope="shared/contracts",
-            source_of_truth="application contract fixture recipe.import request",
-        ),
-        _asset(
-            root,
-            asset_id="protocol.fixture.recipe_import_response",
-            asset_kind="protocol-fixture",
-            relative_path="shared/contracts/application/fixtures/responses/recipe.import.conflicts.success.json",
-            owner_scope="shared/contracts",
-            source_of_truth="application contract fixture recipe.import response",
-        ),
-        _asset(
-            root,
-            asset_id="protocol.fixture.recipe_alias_overrides",
+            asset_id="protocol.fixture.compatibility_overrides",
             asset_kind="protocol-fixture",
             relative_path="shared/contracts/application/mappings/compatibility-overrides.json",
             owner_scope="shared/contracts",
-            source_of_truth="application contract compatibility alias overrides",
+            source_of_truth="application contract compatibility overrides",
         ),
         _asset(
             root,
@@ -806,17 +774,6 @@ def build_asset_catalog(workspace_root: Path) -> AssetCatalog:
                 "fault.simulated.following_error_quantized",
             ),
             notes="cross-owner simulated fault matrix smoke",
-        )
-    )
-    catalog.add_fixture(
-        TestFixture(
-            fixture_id="fixture.recipe-config-compatibility",
-            fixture_kind="assertion-kit",
-            provider_path="tests/integration/scenarios/run_recipe_config_compatibility.py",
-            supported_layers=("L2", "L3"),
-            dependency_mode="offline-only",
-            reusable_across_modules=True,
-            notes="recipe/config/version compatibility regression and alias override assertions",
         )
     )
     catalog.add_fixture(

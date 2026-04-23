@@ -10,7 +10,6 @@
 
 #include "facades/tcp/TcpDispensingFacade.h"
 #include "facades/tcp/TcpMotionFacade.h"
-#include "facades/tcp/TcpRecipeFacade.h"
 #include "facades/tcp/TcpSystemFacade.h"
 #include "runtime_execution/application/usecases/motion/homing/EnsureAxesReadyZeroUseCase.h"
 #include "runtime_execution/application/usecases/motion/manual/ManualMotionControlUseCase.h"
@@ -18,8 +17,6 @@
 #include "process_planning/contracts/configuration/ReadyZeroSpeedResolver.h"
 #include "motion_planning/contracts/InterpolationTypes.h"
 #include "runtime_execution/contracts/system/IRuntimeStatusExportPort.h"
-
-#include "recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h"
 
 #include <algorithm>
 #include <cctype>
@@ -51,10 +48,6 @@ using Siligen::Shared::Types::LogicalAxisId;
 using Siligen::Domain::Dispensing::Contracts::FormalCompareGateDiagnostic;
 using Siligen::Shared::Types::float32;
 using Siligen::JobIngest::Contracts::DxfImportDiagnostics;
-using Siligen::Domain::Recipes::Serialization::RecipeJsonSerializer;
-using Siligen::Domain::Recipes::ValueObjects::ParameterValueEntry;
-using Siligen::Domain::Recipes::ValueObjects::ImportConflict;
-using Siligen::Domain::Recipes::ValueObjects::ConflictResolution;
 using GatewayJsonProtocol = Siligen::Adapters::Tcp::JsonProtocol;
 
 double ReadJsonDouble(const nlohmann::json& params, const char* key, double fallback) {
@@ -85,22 +78,6 @@ std::string ReadJsonString(const nlohmann::json& params, const char* key, const 
         }
     } catch (...) {
         return fallback;
-    }
-    return fallback;
-}
-
-std::string ReadJsonStringAlias(
-    const nlohmann::json& params,
-    const char* canonical_key,
-    const char* alias_key,
-    const std::string& fallback = {}) {
-    const auto canonical_value = ReadJsonString(params, canonical_key);
-    if (!canonical_value.empty()) {
-        return canonical_value;
-    }
-    const auto alias_value = ReadJsonString(params, alias_key);
-    if (!alias_value.empty()) {
-        return alias_value;
     }
     return fallback;
 }
@@ -731,85 +708,6 @@ std::string TrimAscii(const std::string& value) {
     return value.substr(start, end - start);
 }
 
-std::string ToLowerAscii(std::string value) {
-    std::transform(value.begin(), value.end(), value.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return value;
-}
-
-std::vector<std::string> SplitCommaSeparated(const std::string& text) {
-    std::vector<std::string> items;
-    std::stringstream ss(text);
-    std::string token;
-    while (std::getline(ss, token, ',')) {
-        auto trimmed = TrimAscii(token);
-        if (!trimmed.empty()) {
-            items.push_back(trimmed);
-        }
-    }
-    return items;
-}
-
-std::vector<std::string> ParseTags(const nlohmann::json& params) {
-    std::vector<std::string> tags;
-    if (!params.contains("tags")) {
-        return tags;
-    }
-    const auto& value = params.at("tags");
-    if (value.is_array()) {
-        for (const auto& entry : value) {
-            if (entry.is_string()) {
-                auto tag = TrimAscii(entry.get<std::string>());
-                if (!tag.empty()) {
-                    tags.push_back(tag);
-                }
-            }
-        }
-        return tags;
-    }
-    if (value.is_string()) {
-        return SplitCommaSeparated(value.get<std::string>());
-    }
-    return tags;
-}
-
-bool ParseParameterEntries(const nlohmann::json& params,
-                           std::vector<ParameterValueEntry>& out,
-                           std::string& error) {
-    out.clear();
-    if (!params.contains("parameters")) {
-        return true;
-    }
-    const auto& entries = params.at("parameters");
-    if (!entries.is_array()) {
-        error = "parameters must be an array";
-        return false;
-    }
-    for (const auto& entry_json : entries) {
-        if (!entry_json.is_object()) {
-            error = "parameter entry must be an object";
-            return false;
-        }
-        auto entry_result = RecipeJsonSerializer::ParameterValueEntryFromJson(entry_json);
-        if (entry_result.IsError()) {
-            error = entry_result.GetError().GetMessage();
-            return false;
-        }
-        out.push_back(entry_result.Value());
-    }
-    return true;
-}
-
-nlohmann::json ImportConflictToJson(const ImportConflict& conflict) {
-    return {
-        {"type", RecipeJsonSerializer::ImportConflictTypeToString(conflict.type)},
-        {"message", conflict.message},
-        {"existingId", conflict.existing_id},
-        {"incomingName", conflict.incoming_name},
-        {"suggestedResolution", RecipeJsonSerializer::ConflictResolutionToString(conflict.suggested_resolution)}
-    };
-}
-
 std::string ToConnectionStateLabel(Siligen::Device::Contracts::State::DeviceConnectionState state) {
     using State = Siligen::Device::Contracts::State::DeviceConnectionState;
     switch (state) {
@@ -1052,21 +950,17 @@ namespace Siligen::Adapters::Tcp {
 using Siligen::Shared::Types::FromIndex;
 using Siligen::Shared::Types::IsValid;
 using Siligen::Shared::Types::LogicalAxisId;
-using Siligen::Domain::Recipes::Serialization::RecipeJsonSerializer;
-using Siligen::Domain::Recipes::ValueObjects::ParameterValueEntry;
 
 TcpCommandDispatcher::TcpCommandDispatcher(
     std::shared_ptr<Application::Facades::Tcp::TcpSystemFacade> systemFacade,
     std::shared_ptr<Application::Facades::Tcp::TcpMotionFacade> motionFacade,
     std::shared_ptr<Application::Facades::Tcp::TcpDispensingFacade> dispensingFacade,
-    std::shared_ptr<Application::Facades::Tcp::TcpRecipeFacade> recipeFacade,
     std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> configPort,
     std::shared_ptr<RuntimeExecution::Contracts::System::IRuntimeStatusExportPort> runtimeStatusExportPort,
     std::shared_ptr<MockIoControlService> mockIoControl)
     : systemFacade_(std::move(systemFacade))
     , motionFacade_(std::move(motionFacade))
     , dispensingFacade_(std::move(dispensingFacade))
-    , recipeFacade_(std::move(recipeFacade))
     , configPort_(std::move(configPort))
     , runtimeStatusExportPort_(std::move(runtimeStatusExportPort))
     , mockIoControl_(std::move(mockIoControl))
@@ -1114,6 +1008,7 @@ void TcpCommandDispatcher::RegisterDxfCommands() {
     RegisterCommand("dxf.plan.prepare", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfPlanPrepare(id, params); });
     RegisterCommand("dxf.job.start", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobStart(id, params); });
     RegisterCommand("dxf.job.status", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobStatus(id, params); });
+    RegisterCommand("dxf.job.traceability", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobTraceability(id, params); });
     RegisterCommand("dxf.job.pause", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobPause(id, params); });
     RegisterCommand("dxf.job.resume", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobResume(id, params); });
     RegisterCommand("dxf.job.continue", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobContinue(id, params); });
@@ -1130,33 +1025,12 @@ void TcpCommandDispatcher::RegisterAlarmCommands() {
     RegisterCommand("alarms.acknowledge", [this](const std::string& id, const nlohmann::json& params) { return HandleAlarmsAcknowledge(id, params); });
 }
 
-void TcpCommandDispatcher::RegisterRecipeCommands() {
-    RegisterCommand("recipe.list", [this](const std::string& id, const nlohmann::json& params) { return HandleRecipeList(id, params); });
-    RegisterCommand("recipe.get", [this](const std::string& id, const nlohmann::json& params) { return HandleRecipeGet(id, params); });
-    RegisterCommand("recipe.create", [this](const std::string& id, const nlohmann::json& params) { return HandleRecipeCreate(id, params); });
-    RegisterCommand("recipe.update", [this](const std::string& id, const nlohmann::json& params) { return HandleRecipeUpdate(id, params); });
-    RegisterCommand("recipe.archive", [this](const std::string& id, const nlohmann::json& params) { return HandleRecipeArchive(id, params); });
-    RegisterCommand("recipe.draft.create", [this](const std::string& id, const nlohmann::json& params) { return HandleRecipeDraftCreate(id, params); });
-    RegisterCommand("recipe.draft.update", [this](const std::string& id, const nlohmann::json& params) { return HandleRecipeDraftUpdate(id, params); });
-    RegisterCommand("recipe.publish", [this](const std::string& id, const nlohmann::json& params) { return HandleRecipePublish(id, params); });
-    RegisterCommand("recipe.versions", [this](const std::string& id, const nlohmann::json& params) { return HandleRecipeVersions(id, params); });
-    RegisterCommand("recipe.version.create", [this](const std::string& id, const nlohmann::json& params) { return HandleRecipeVersionCreate(id, params); });
-    RegisterCommand("recipe.version.compare", [this](const std::string& id, const nlohmann::json& params) { return HandleRecipeCompare(id, params); });
-    RegisterCommand("recipe.version.activate", [this](const std::string& id, const nlohmann::json& params) { return HandleRecipeActivate(id, params); });
-    RegisterCommand("recipe.templates", [this](const std::string& id, const nlohmann::json& params) { return HandleRecipeTemplates(id, params); });
-    RegisterCommand("recipe.schema.default", [this](const std::string& id, const nlohmann::json& params) { return HandleRecipeSchemaDefault(id, params); });
-    RegisterCommand("recipe.audit", [this](const std::string& id, const nlohmann::json& params) { return HandleRecipeAudit(id, params); });
-    RegisterCommand("recipe.export", [this](const std::string& id, const nlohmann::json& params) { return HandleRecipeExport(id, params); });
-    RegisterCommand("recipe.import", [this](const std::string& id, const nlohmann::json& params) { return HandleRecipeImport(id, params); });
-}
-
 void TcpCommandDispatcher::RegisterCommands() {
     RegisterCoreCommands();
     RegisterMotionCommands();
     RegisterDispensingCommands();
     RegisterDxfCommands();
     RegisterAlarmCommands();
-    RegisterRecipeCommands();
 }
 
 void TcpCommandDispatcher::LoadDiagnosticsConfig() {
@@ -2372,6 +2246,94 @@ std::string TcpCommandDispatcher::HandleDxfJobStatus(const std::string& id, cons
     });
 }
 
+std::string TcpCommandDispatcher::HandleDxfJobTraceability(const std::string& id, const nlohmann::json& params) {
+    if (!dispensingFacade_) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2920, "TcpDispensingFacade not available");
+    }
+
+    const std::string job_id = params.value("job_id", "");
+    if (job_id.empty()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2921, "Missing job_id");
+    }
+
+    auto traceability_result = dispensingFacade_->GetDxfJobTraceability(job_id);
+    if (traceability_result.IsError()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2922, traceability_result.GetError().GetMessage());
+    }
+    const auto& traceability = traceability_result.Value();
+
+    auto build_expected_trace_item = [](const auto& item) {
+        return nlohmann::json{
+            {"cycle_index", item.cycle_index},
+            {"trigger_sequence_id", item.trigger_sequence_id},
+            {"authority_trigger_index", item.authority_trigger_index},
+            {"span_index", item.span_index},
+            {"component_index", item.component_index},
+            {"span_order_index", item.span_order_index},
+            {"source_segment_index", item.source_segment_index},
+            {"execution_interpolation_index", item.execution_interpolation_index},
+            {"authority_distance_mm", item.authority_distance_mm},
+            {"execution_profile_position_mm", item.execution_profile_position_mm},
+            {"execution_position_mm", {{"x", item.execution_position_mm.x}, {"y", item.execution_position_mm.y}}},
+            {"execution_trigger_position_mm", {{"x", item.execution_trigger_position_mm.x}, {"y", item.execution_trigger_position_mm.y}}},
+            {"compare_source_axis", item.compare_source_axis},
+            {"compare_position_pulse", item.compare_position_pulse},
+            {"pulse_width_us", item.pulse_width_us},
+            {"authority_trigger_ref", item.authority_trigger_ref},
+            {"authority_span_ref", item.authority_span_ref},
+            {"trigger_mode", item.trigger_mode}
+        };
+    };
+    auto build_actual_trace_item = [](const auto& item) {
+        return nlohmann::json{
+            {"cycle_index", item.cycle_index},
+            {"trigger_sequence_id", item.trigger_sequence_id},
+            {"completion_sequence", item.completion_sequence},
+            {"span_index", item.span_index},
+            {"local_completed_trigger_count", item.local_completed_trigger_count},
+            {"observed_completed_trigger_count", item.observed_completed_trigger_count},
+            {"compare_source_axis", item.compare_source_axis},
+            {"compare_position_pulse", item.compare_position_pulse},
+            {"authority_trigger_ref", item.authority_trigger_ref},
+            {"trigger_mode", item.trigger_mode}
+        };
+    };
+    auto build_mismatch_item = [](const auto& item) {
+        return nlohmann::json{
+            {"cycle_index", item.cycle_index},
+            {"trigger_sequence_id", item.trigger_sequence_id},
+            {"code", item.code},
+            {"message", item.message}
+        };
+    };
+
+    nlohmann::json expected_trace = nlohmann::json::array();
+    for (const auto& item : traceability.expected_trace) {
+        expected_trace.push_back(build_expected_trace_item(item));
+    }
+    nlohmann::json actual_trace = nlohmann::json::array();
+    for (const auto& item : traceability.actual_trace) {
+        actual_trace.push_back(build_actual_trace_item(item));
+    }
+    nlohmann::json mismatches = nlohmann::json::array();
+    for (const auto& item : traceability.mismatches) {
+        mismatches.push_back(build_mismatch_item(item));
+    }
+
+    return GatewayJsonProtocol::MakeSuccessResponse(id, {
+        {"job_id", traceability.job_id},
+        {"plan_id", traceability.plan_id},
+        {"plan_fingerprint", traceability.plan_fingerprint},
+        {"terminal_state", traceability.terminal_state},
+        {"expected_trace", std::move(expected_trace)},
+        {"actual_trace", std::move(actual_trace)},
+        {"mismatches", std::move(mismatches)},
+        {"verdict", traceability.verdict},
+        {"verdict_reason", traceability.verdict_reason},
+        {"strict_one_to_one_proven", traceability.strict_one_to_one_proven}
+    });
+}
+
 std::string TcpCommandDispatcher::HandleDxfJobPause(const std::string& id, const nlohmann::json& params) {
     if (!dispensingFacade_) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 2905, "TcpDispensingFacade not available");
@@ -2866,467 +2828,6 @@ std::string TcpCommandDispatcher::HandleAlarmsAcknowledge(const std::string& id,
     return GatewayJsonProtocol::MakeSuccessResponse(id, {{"ok", true}});
 }
 
-std::string TcpCommandDispatcher::HandleRecipeList(const std::string& id, const nlohmann::json& params) {
-    if (!recipeFacade_) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3300, "TcpRecipeFacade not available");
-    }
-
-    Application::UseCases::Recipes::ListRecipesRequest request;
-    request.status = params.value("status", "");
-    request.query = params.value("query", "");
-    request.tag = params.value("tag", "");
-
-    auto result = recipeFacade_->ListRecipes(request);
-    if (result.IsError()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3301, result.GetError().GetMessage());
-    }
-
-    nlohmann::json recipes = nlohmann::json::array();
-    for (const auto& recipe : result.Value().recipes) {
-        recipes.push_back(RecipeJsonSerializer::RecipeToJson(recipe));
-    }
-    return GatewayJsonProtocol::MakeSuccessResponse(id, {{"recipes", recipes}});
-}
-
-std::string TcpCommandDispatcher::HandleRecipeGet(const std::string& id, const nlohmann::json& params) {
-    if (!recipeFacade_) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3310, "TcpRecipeFacade not available");
-    }
-
-    std::string recipe_id = params.value("recipeId", "");
-    if (recipe_id.empty()) {
-        recipe_id = params.value("recipe_id", "");
-    }
-    if (recipe_id.empty()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3311, "Missing 'recipeId' parameter");
-    }
-
-    Application::UseCases::Recipes::GetRecipeRequest request;
-    request.recipe_id = recipe_id;
-
-    auto result = recipeFacade_->GetRecipe(request);
-    if (result.IsError()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3312, result.GetError().GetMessage());
-    }
-
-    return GatewayJsonProtocol::MakeSuccessResponse(id, {{"recipe", RecipeJsonSerializer::RecipeToJson(result.Value().recipe)}});
-}
-
-std::string TcpCommandDispatcher::HandleRecipeCreate(const std::string& id, const nlohmann::json& params) {
-    if (!recipeFacade_) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3320, "TcpRecipeFacade not available");
-    }
-
-    std::string name = params.value("name", "");
-    if (name.empty()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3321, "Missing 'name' parameter");
-    }
-
-    Application::UseCases::Recipes::CreateRecipeRequest request;
-    request.name = name;
-    request.description = params.value("description", "");
-    request.tags = ParseTags(params);
-    request.actor = params.value("actor", "");
-
-    auto result = recipeFacade_->CreateRecipe(request);
-    if (result.IsError()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3322, result.GetError().GetMessage());
-    }
-
-    return GatewayJsonProtocol::MakeSuccessResponse(id, {{"recipe", RecipeJsonSerializer::RecipeToJson(result.Value().recipe)}});
-}
-
-std::string TcpCommandDispatcher::HandleRecipeUpdate(const std::string& id, const nlohmann::json& params) {
-    if (!recipeFacade_) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3330, "TcpRecipeFacade not available");
-    }
-
-    std::string recipe_id = params.value("recipeId", "");
-    if (recipe_id.empty()) {
-        recipe_id = params.value("recipe_id", "");
-    }
-    if (recipe_id.empty()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3331, "Missing 'recipeId' parameter");
-    }
-
-    Application::UseCases::Recipes::UpdateRecipeRequest request;
-    request.recipe_id = recipe_id;
-    if (params.contains("name")) {
-        request.name = params.value("name", "");
-        request.update_name = true;
-    }
-    if (params.contains("description")) {
-        request.description = params.value("description", "");
-        request.update_description = true;
-    }
-    if (params.contains("tags")) {
-        request.tags = ParseTags(params);
-        request.update_tags = true;
-    }
-    request.actor = params.value("actor", "");
-
-    auto result = recipeFacade_->UpdateRecipe(request);
-    if (result.IsError()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3332, result.GetError().GetMessage());
-    }
-
-    return GatewayJsonProtocol::MakeSuccessResponse(id, {{"recipe", RecipeJsonSerializer::RecipeToJson(result.Value().recipe)}});
-}
-
-std::string TcpCommandDispatcher::HandleRecipeArchive(const std::string& id, const nlohmann::json& params) {
-    if (!recipeFacade_) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3340, "TcpRecipeFacade not available");
-    }
-
-    std::string recipe_id = params.value("recipeId", "");
-    if (recipe_id.empty()) {
-        recipe_id = params.value("recipe_id", "");
-    }
-    if (recipe_id.empty()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3341, "Missing 'recipeId' parameter");
-    }
-
-    Application::UseCases::Recipes::ArchiveRecipeRequest request;
-    request.recipe_id = recipe_id;
-    request.actor = params.value("actor", "");
-
-    auto result = recipeFacade_->ArchiveRecipe(request);
-    if (result.IsError()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3342, result.GetError().GetMessage());
-    }
-
-    return GatewayJsonProtocol::MakeSuccessResponse(id, {{"archived", result.Value().archived}});
-}
-
-std::string TcpCommandDispatcher::HandleRecipeDraftCreate(const std::string& id, const nlohmann::json& params) {
-    if (!recipeFacade_) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3350, "TcpRecipeFacade not available");
-    }
-
-    std::string recipe_id = params.value("recipeId", "");
-    if (recipe_id.empty()) {
-        recipe_id = params.value("recipe_id", "");
-    }
-    std::string template_id = params.value("templateId", "");
-    if (template_id.empty()) {
-        template_id = params.value("template_id", "");
-    }
-    if (recipe_id.empty() || template_id.empty()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3351, "Missing 'recipeId' or 'templateId' parameter");
-    }
-
-    Application::UseCases::Recipes::CreateDraftVersionRequest request;
-    request.recipe_id = recipe_id;
-    request.template_id = template_id;
-    request.base_version_id = params.value("baseVersionId", params.value("base_version_id", ""));
-    request.version_label = params.value("versionLabel", params.value("version_label", ""));
-    request.change_note = params.value("changeNote", params.value("change_note", ""));
-    request.created_by = params.value("actor", "");
-
-    auto result = recipeFacade_->CreateDraft(request);
-    if (result.IsError()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3352, result.GetError().GetMessage());
-    }
-
-    return GatewayJsonProtocol::MakeSuccessResponse(id, {{"version", RecipeJsonSerializer::RecipeVersionToJson(result.Value().version)}});
-}
-
-std::string TcpCommandDispatcher::HandleRecipeDraftUpdate(const std::string& id, const nlohmann::json& params) {
-    if (!recipeFacade_) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3360, "TcpRecipeFacade not available");
-    }
-
-    std::string recipe_id = params.value("recipeId", "");
-    if (recipe_id.empty()) {
-        recipe_id = params.value("recipe_id", "");
-    }
-    std::string version_id = params.value("versionId", "");
-    if (version_id.empty()) {
-        version_id = params.value("version_id", "");
-    }
-    if (recipe_id.empty() || version_id.empty()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3361, "Missing 'recipeId' or 'versionId' parameter");
-    }
-
-    std::vector<ParameterValueEntry> parameters;
-    std::string parse_error;
-    if (!ParseParameterEntries(params, parameters, parse_error)) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3362, parse_error);
-    }
-
-    Application::UseCases::Recipes::UpdateDraftVersionRequest request;
-    request.recipe_id = recipe_id;
-    request.version_id = version_id;
-    request.parameters = parameters;
-    request.change_note = params.value("changeNote", params.value("change_note", ""));
-    request.editor = params.value("actor", "");
-
-    auto result = recipeFacade_->UpdateDraft(request);
-    if (result.IsError()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3363, result.GetError().GetMessage());
-    }
-
-    return GatewayJsonProtocol::MakeSuccessResponse(id, {{"version", RecipeJsonSerializer::RecipeVersionToJson(result.Value().version)}});
-}
-
-std::string TcpCommandDispatcher::HandleRecipePublish(const std::string& id, const nlohmann::json& params) {
-    if (!recipeFacade_) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3370, "TcpRecipeFacade not available");
-    }
-
-    std::string recipe_id = params.value("recipeId", "");
-    if (recipe_id.empty()) {
-        recipe_id = params.value("recipe_id", "");
-    }
-    std::string version_id = params.value("versionId", "");
-    if (version_id.empty()) {
-        version_id = params.value("version_id", "");
-    }
-    if (recipe_id.empty() || version_id.empty()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3371, "Missing 'recipeId' or 'versionId' parameter");
-    }
-
-    Application::UseCases::Recipes::PublishRecipeVersionRequest request;
-    request.recipe_id = recipe_id;
-    request.version_id = version_id;
-    request.actor = params.value("actor", "");
-
-    auto result = recipeFacade_->PublishRecipeVersion(request);
-    if (result.IsError()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3372, result.GetError().GetMessage());
-    }
-
-    return GatewayJsonProtocol::MakeSuccessResponse(id, {{"version", RecipeJsonSerializer::RecipeVersionToJson(result.Value().version)}});
-}
-
-std::string TcpCommandDispatcher::HandleRecipeVersions(const std::string& id, const nlohmann::json& params) {
-    if (!recipeFacade_) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3380, "TcpRecipeFacade not available");
-    }
-
-    std::string recipe_id = params.value("recipeId", "");
-    if (recipe_id.empty()) {
-        recipe_id = params.value("recipe_id", "");
-    }
-    if (recipe_id.empty()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3381, "Missing 'recipeId' parameter");
-    }
-
-    Application::UseCases::Recipes::ListRecipeVersionsRequest request;
-    request.recipe_id = recipe_id;
-
-    auto result = recipeFacade_->ListRecipeVersions(request);
-    if (result.IsError()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3382, result.GetError().GetMessage());
-    }
-
-    nlohmann::json versions = nlohmann::json::array();
-    for (const auto& version : result.Value().versions) {
-        versions.push_back(RecipeJsonSerializer::RecipeVersionToJson(version));
-    }
-    return GatewayJsonProtocol::MakeSuccessResponse(id, {{"versions", versions}});
-}
-
-std::string TcpCommandDispatcher::HandleRecipeVersionCreate(const std::string& id, const nlohmann::json& params) {
-    if (!recipeFacade_) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3390, "TcpRecipeFacade not available");
-    }
-
-    std::string recipe_id = params.value("recipeId", "");
-    if (recipe_id.empty()) {
-        recipe_id = params.value("recipe_id", "");
-    }
-    if (recipe_id.empty()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3391, "Missing 'recipeId' parameter");
-    }
-
-    Application::UseCases::Recipes::CreateVersionFromPublishedRequest request;
-    request.recipe_id = recipe_id;
-    request.base_version_id = params.value("baseVersionId", params.value("base_version_id", ""));
-    request.version_label = params.value("versionLabel", params.value("version_label", ""));
-    request.change_note = params.value("changeNote", params.value("change_note", ""));
-    request.created_by = params.value("actor", "");
-
-    auto result = recipeFacade_->CreateVersionFromPublished(request);
-    if (result.IsError()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3392, result.GetError().GetMessage());
-    }
-
-    return GatewayJsonProtocol::MakeSuccessResponse(id, {{"version", RecipeJsonSerializer::RecipeVersionToJson(result.Value().version)}});
-}
-
-std::string TcpCommandDispatcher::HandleRecipeCompare(const std::string& id, const nlohmann::json& params) {
-    if (!recipeFacade_) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3400, "TcpRecipeFacade not available");
-    }
-
-    std::string recipe_id = params.value("recipeId", "");
-    if (recipe_id.empty()) {
-        recipe_id = params.value("recipe_id", "");
-    }
-    std::string base_version_id = params.value("baseVersionId", params.value("base_version_id", ""));
-    std::string version_id = params.value("versionId", params.value("version_id", ""));
-    if (recipe_id.empty() || base_version_id.empty() || version_id.empty()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3401, "Missing 'recipeId', 'baseVersionId', or 'versionId' parameter");
-    }
-
-    Application::UseCases::Recipes::CompareRecipeVersionsRequest request;
-    request.recipe_id = recipe_id;
-    request.from_version_id = base_version_id;
-    request.to_version_id = version_id;
-
-    auto result = recipeFacade_->CompareRecipeVersions(request);
-    if (result.IsError()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3402, result.GetError().GetMessage());
-    }
-
-    nlohmann::json changes = nlohmann::json::array();
-    for (const auto& change : result.Value().changes) {
-        changes.push_back(RecipeJsonSerializer::FieldChangeToJson(change));
-    }
-    return GatewayJsonProtocol::MakeSuccessResponse(id, {{"changes", changes}});
-}
-
-std::string TcpCommandDispatcher::HandleRecipeActivate(const std::string& id, const nlohmann::json& params) {
-    if (!recipeFacade_) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3410, "TcpRecipeFacade not available");
-    }
-
-    std::string recipe_id = params.value("recipeId", "");
-    if (recipe_id.empty()) {
-        recipe_id = params.value("recipe_id", "");
-    }
-    std::string version_id = params.value("versionId", "");
-    if (version_id.empty()) {
-        version_id = params.value("version_id", "");
-    }
-    if (recipe_id.empty() || version_id.empty()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3411, "Missing 'recipeId' or 'versionId' parameter");
-    }
-
-    Application::UseCases::Recipes::ActivateRecipeVersionRequest request;
-    request.recipe_id = recipe_id;
-    request.version_id = version_id;
-    request.actor = params.value("actor", "");
-
-    auto result = recipeFacade_->ActivateRecipeVersion(request);
-    if (result.IsError()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3412, result.GetError().GetMessage());
-    }
-
-    return GatewayJsonProtocol::MakeSuccessResponse(id, {{"activated", true}});
-}
-
-std::string TcpCommandDispatcher::HandleRecipeTemplates(const std::string& id, const nlohmann::json& /*params*/) {
-    if (!recipeFacade_) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3420, "TcpRecipeFacade not available");
-    }
-
-    Application::UseCases::Recipes::ListTemplatesRequest request;
-    auto result = recipeFacade_->ListTemplates(request);
-    if (result.IsError()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3421, result.GetError().GetMessage());
-    }
-
-    nlohmann::json templates = nlohmann::json::array();
-    for (const auto& tmpl : result.Value().templates) {
-        templates.push_back(RecipeJsonSerializer::TemplateToJson(tmpl));
-    }
-    return GatewayJsonProtocol::MakeSuccessResponse(id, {{"templates", templates}});
-}
-
-std::string TcpCommandDispatcher::HandleRecipeSchemaDefault(const std::string& id, const nlohmann::json& /*params*/) {
-    if (!recipeFacade_) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3430, "TcpRecipeFacade not available");
-    }
-
-    Application::UseCases::Recipes::GetDefaultParameterSchemaRequest request;
-    auto result = recipeFacade_->GetDefaultParameterSchema(request);
-    if (result.IsError()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3431, result.GetError().GetMessage());
-    }
-
-    return GatewayJsonProtocol::MakeSuccessResponse(id, {{"schema", RecipeJsonSerializer::ParameterSchemaToJson(result.Value().schema)}});
-}
-
-std::string TcpCommandDispatcher::HandleRecipeAudit(const std::string& id, const nlohmann::json& params) {
-    if (!recipeFacade_) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3440, "TcpRecipeFacade not available");
-    }
-
-    std::string recipe_id = params.value("recipeId", "");
-    if (recipe_id.empty()) {
-        recipe_id = params.value("recipe_id", "");
-    }
-    if (recipe_id.empty()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3441, "Missing 'recipeId' parameter");
-    }
-
-    Application::UseCases::Recipes::GetRecipeAuditRequest request;
-    request.recipe_id = recipe_id;
-    std::string version_id = params.value("versionId", params.value("version_id", ""));
-    if (!version_id.empty()) {
-        request.version_id = version_id;
-    }
-
-    auto result = recipeFacade_->GetRecipeAudit(request);
-    if (result.IsError()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3442, result.GetError().GetMessage());
-    }
-
-    nlohmann::json records = nlohmann::json::array();
-    for (const auto& record : result.Value().records) {
-        records.push_back(RecipeJsonSerializer::AuditRecordToJson(record));
-    }
-    return GatewayJsonProtocol::MakeSuccessResponse(id, {{"records", records}});
-}
-
-std::string TcpCommandDispatcher::HandleRecipeExport(const std::string& id, const nlohmann::json& params) {
-    if (!recipeFacade_) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3450, "TcpRecipeFacade not available");
-    }
-
-    std::string recipe_id = params.value("recipeId", "");
-    if (recipe_id.empty()) {
-        recipe_id = params.value("recipe_id", "");
-    }
-    if (recipe_id.empty()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3451, "Missing 'recipeId' parameter");
-    }
-
-    Application::UseCases::Recipes::ExportRecipeBundlePayloadRequest request;
-    request.recipe_id = recipe_id;
-    const std::string output_path = params.value("outputPath", params.value("output_path", ""));
-
-    auto result = recipeFacade_->ExportBundle(request);
-    if (result.IsError()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3452, result.GetError().GetMessage());
-    }
-
-    if (!output_path.empty()) {
-        std::ofstream out(output_path, std::ios::binary | std::ios::trunc);
-        if (!out) {
-            return GatewayJsonProtocol::MakeErrorResponse(id, 3453, "Failed to write export file");
-        }
-        out << result.Value().bundle_json;
-        if (!out) {
-            return GatewayJsonProtocol::MakeErrorResponse(id, 3454, "Failed to write export file");
-        }
-    }
-
-    nlohmann::json response = {
-        {"outputPath", output_path},
-        {"recipeCount", result.Value().recipe_count},
-        {"versionCount", result.Value().version_count},
-        {"auditCount", result.Value().audit_count}
-    };
-    if (output_path.empty()) {
-        response["bundleJson"] = result.Value().bundle_json;
-    }
-
-    return GatewayJsonProtocol::MakeSuccessResponse(id, response);
-}
-
 std::string TcpCommandDispatcher::HandleMotionCoordStatus(const std::string& id, const nlohmann::json& params) {
     if (!motionFacade_) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 2200, "TcpMotionFacade not available");
@@ -3430,51 +2931,6 @@ std::string TcpCommandDispatcher::HandleMotionCoordStatus(const std::string& id,
     }
 
     return GatewayJsonProtocol::MakeSuccessResponse(id, response);
-}
-
-std::string TcpCommandDispatcher::HandleRecipeImport(const std::string& id, const nlohmann::json& params) {
-    if (!recipeFacade_) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3460, "TcpRecipeFacade not available");
-    }
-
-    std::string bundle_json = params.value("bundleJson", params.value("bundle_json", ""));
-    std::string bundle_path = params.value("bundlePath", params.value("bundle_path", ""));
-    if (bundle_json.empty() && bundle_path.empty()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3461, "Missing bundle payload");
-    }
-
-    if (bundle_json.empty() && !bundle_path.empty()) {
-        std::ifstream in(bundle_path, std::ios::binary);
-        if (!in) {
-            return GatewayJsonProtocol::MakeErrorResponse(id, 3463, "Bundle file not found");
-        }
-        std::ostringstream buffer;
-        buffer << in.rdbuf();
-        bundle_json = buffer.str();
-    }
-
-    Application::UseCases::Recipes::ImportRecipeBundlePayloadRequest request;
-    request.bundle_json = bundle_json;
-    request.resolution_strategy = params.value("resolution", "");
-    request.dry_run = params.value("dryRun", params.value("dry_run", false));
-    request.actor = params.value("actor", "");
-    request.source_label = bundle_path;
-
-    auto result = recipeFacade_->ImportBundle(request);
-    if (result.IsError()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 3462, result.GetError().GetMessage());
-    }
-
-    nlohmann::json conflicts = nlohmann::json::array();
-    for (const auto& conflict : result.Value().conflicts) {
-        conflicts.push_back(ImportConflictToJson(conflict));
-    }
-
-    return GatewayJsonProtocol::MakeSuccessResponse(id, {
-        {"status", result.Value().status},
-        {"importedCount", result.Value().imported_count},
-        {"conflicts", conflicts}
-    });
 }
 
 Application::Services::Motion::Execution::ExecutionTransitionState

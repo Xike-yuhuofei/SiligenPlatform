@@ -5,7 +5,6 @@ set(RUNTIME_PROCESS_BOOTSTRAP_UNIT_TEST_SOURCES
     unit/runtime/configuration/ConfigFileAdapterHardwareConfigurationTest.cpp
     unit/runtime/configuration/InterlockConfigResolverTest.cpp
     unit/runtime/configuration/WorkspaceAssetPathsTest.cpp
-    unit/runtime/recipes/TemplateFileRepositoryTest.cpp
     unit/runtime/status/RuntimeStatusExportPortTest.cpp
     unit/runtime/supervision/RuntimeExecutionSupervisionBackendTest.cpp
     unit/runtime/supervision/RuntimeSupervisionSyncPortTest.cpp

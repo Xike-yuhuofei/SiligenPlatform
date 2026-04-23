@@ -1,9 +1,9 @@
 # Historical note
 - 本文件记录的是 `2026-04-08` 当时的 governance snapshot，不应被直接当作当前 residue 状态表。
 - 当前 canonical truth：
-  - recipe family owner = `modules/recipe-lifecycle`
+  - recipe manager 已退役；`modules/recipe-lifecycle` 与 recipe management public surface 当前应保持删除
   - `IEventPublisherPort` owner = `shared/contracts/runtime/include/runtime/contracts/system/IEventPublisherPort.h`
-- 若下文仍把 workflow recipe targets、`runtime_process_bootstrap/recipes/RecipeJsonSerializer.h` 或 workflow-owned event seam 视为当前 owner，请按历史快照理解。
+- 若下文仍把 `modules/recipe-lifecycle`、workflow recipe targets、`runtime_process_bootstrap/recipes/RecipeJsonSerializer.h` 或 workflow-owned event seam 视为当前 owner，请按历史快照理解。
 
 # WORKFLOW_BOUNDARY_GOVERNANCE_REPORT
 
@@ -31,7 +31,7 @@
 
 | ID | original conclusion | workflow slice | current judgement | key evidence |
 |---|---|---|---|---|
-| `WF-R001` | root legacy provider / include-root residue | repo root -> workflow seam | Oracle partly stale; absorbed into broader root global include leak | `CMakeLists.txt`; `SILIGEN_WORKSPACE_PUBLIC_INCLUDE_DIRS`; `security_module -> siligen_workflow_runtime_consumer_public` |
+| `WF-R001` | root legacy provider / include-root residue | repo root -> workflow seam | Oracle stale; default build 已不再由 workflow optional security path 提供 root seam，剩余问题转为退役中的 root build contract drift | `CMakeLists.txt`; `SILIGEN_WORKSPACE_PUBLIC_INCLUDE_DIRS`; retired `BUILD_SECURITY_MODULE` branch |
 | `WF-R002` | `process-core` compat target compiles recipe concrete | `domain/process-core` | live | `domain/process-core/CMakeLists.txt` |
 | `WF-R003` | `motion-core` compat target compiles safety concrete | `domain/motion-core` | live | `domain/motion-core/CMakeLists.txt` |
 | `WF-R004` | `siligen_domain` super aggregate anchors foreign public/concrete | `domain/CMakeLists.txt` | live inside workflow; Oracle external consumer list partly stale | `domain/CMakeLists.txt` |
@@ -77,7 +77,7 @@
 |---|---|---|---|---|---|
 | `R010/R017/R024` | `apps/planner-cli`, `apps/runtime-service`, `apps/runtime-gateway` | app consumers still `#include "workflow/application/usecases/recipes/*"` and link `siligen_workflow_recipe_*` | yes | yes | `apps/planner-cli/CommandHandlers.Recipe.cpp`; `apps/runtime-service/CMakeLists.txt`; `apps/runtime-gateway/transport-gateway/CMakeLists.txt` |
 | `R025` | `modules/runtime-execution/**` | runtime-execution no longer links `siligen_domain`, but still PUBLIC-links `siligen_workflow_domain_headers` and consumes `domain/supervision/ports/IEventPublisherPort.h` via runtime contracts | yes | yes | `modules/runtime-execution/application/CMakeLists.txt`; `contracts/runtime/CMakeLists.txt`; `runtime/host/CMakeLists.txt` |
-| `R001/R017` | repo root | root global include dirs still pre-wire workflow + dxf + runtime public roots, and `security_module` links `siligen_workflow_runtime_consumer_public` | yes | yes | repo `CMakeLists.txt` |
+| `R001/R017` | repo root | root global include dirs 仍预接 workflow + dxf + runtime public roots；历史 `security_module` 路径已确认为退役失真分支，不再作为 workflow owner seam 证据 | yes | yes | repo `CMakeLists.txt` |
 | `R028` | `modules/motion-planning/README.md` | README says execution owner fixed in `modules/workflow/domain/domain/motion/domain-services/`, directly contradicting M0 baseline | yes | yes | `modules/motion-planning/README.md` |
 | `R028` | `modules/runtime-execution/README.md` | README says machine execution state canonical domain model surface comes from workflow `domain/machine/aggregates/DispenserModel.h` | yes | yes | `modules/runtime-execution/README.md` |
 | `R028` | `modules/workflow/domain/domain/README.md`, `application/usecases/README.md` | workflow internal docs still declare motion/machine/recipes/safety/system as workflow domain/application facts | yes | yes | those two README files |

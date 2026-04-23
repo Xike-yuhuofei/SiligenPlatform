@@ -113,7 +113,6 @@ def test_known_compatibility_gaps_are_recorded():
     overrides = load_json(CONTRACTS / "mappings" / "compatibility-overrides.json")
     ids = {item["id"] for item in overrides["overrides"]}
     assert "dxf-info-total-segments-gap" not in ids
-    assert "recipe-request-aliases" in ids
 
     hmi_ui = HMI_MAIN_WINDOW.read_text(encoding="utf-8")
     tcp_source = TCP_DISPATCHER.read_text(encoding="utf-8")
@@ -141,31 +140,6 @@ def test_known_compatibility_gaps_are_recorded():
     assert '"total_length"' in dxf_info_body
     assert '"bounds"' in dxf_info_body
     assert '"total_segments"' in dxf_info_body
-
-
-def test_recipe_aliases_are_explicit():
-    operations = load_operations()
-    alias_methods = {
-        method
-        for method, op in operations.items()
-        if "compatibility" in op and op["compatibility"].get("requestAliases")
-    }
-    expected = {
-        "recipe.get",
-        "recipe.update",
-        "recipe.archive",
-        "recipe.draft.create",
-        "recipe.draft.update",
-        "recipe.publish",
-        "recipe.versions",
-        "recipe.version.create",
-        "recipe.version.compare",
-        "recipe.version.activate",
-        "recipe.audit",
-        "recipe.export",
-        "recipe.import",
-    }
-    assert expected.issubset(alias_methods)
 
 
 def test_dxf_preview_and_job_contract():
@@ -239,15 +213,11 @@ def test_dxf_preview_and_job_contract():
     assert "production_baseline" in plan_prepare["resultSchema"]["required"]
     assert "estimated_time_s" not in plan_prepare["resultSchema"]["required"]
     assert {"artifact_id", "dispensing_speed_mm_s"}.issubset(set(plan_prepare["paramsSchema"]["required"]))
-    assert "recipe_id" not in plan_prepare["paramsSchema"]["properties"]
-    assert "version_id" not in plan_prepare["paramsSchema"]["properties"]
     assert "speed_mm_s" not in plan_prepare["paramsSchema"]["properties"]
     assert not plan_prepare.get("compatibility", {}).get("requestAliases")
     plan_prepare_notes = "\n".join(plan_prepare.get("compatibility", {}).get("notes", []))
     assert "current production baseline" in plan_prepare_notes
     assert "point_flying_carrier_policy" in plan_prepare_notes
-    assert "published recipe version" in plan_prepare_notes
-    assert "activeVersionId" in plan_prepare_notes
     job_start_notes = "\n".join(operations["dxf.job.start"].get("compatibility", {}).get("notes", []))
     assert "回退最近一次 prepared plan" not in job_start_notes
 
@@ -283,8 +253,6 @@ def test_dxf_preview_and_job_contract():
     artifact_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.artifact.create.success.json")
     prepare_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.plan.prepare.success.json")
     start_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.job.start.success.json")
-    assert "recipe_id" not in prepare_request_fixture["params"]
-    assert "version_id" not in prepare_request_fixture["params"]
     assert artifact_fixture["result"]["formal_compare_gate"] is None
     assert prepare_fixture["result"]["formal_compare_gate"] is None
     assert prepare_fixture["result"]["production_baseline"]["baseline_id"]
@@ -657,7 +625,6 @@ def main():
       lambda: test_tcp_methods_match_contracts(operations),
       test_fixtures,
       test_known_compatibility_gaps_are_recorded,
-      test_recipe_aliases_are_explicit,
       test_dxf_preview_and_job_contract,
       test_status_contract_describes_backend_interlock_authority,
       test_status_contract_exposes_effective_interlocks_and_supervision,

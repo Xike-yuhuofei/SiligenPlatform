@@ -479,6 +479,101 @@
       },
       "additionalProperties": false
     },
+    "dxfJobTraceabilityExpectedItem": {
+      "type": "object",
+      "required": ["cycle_index", "trigger_sequence_id", "authority_trigger_index", "span_index", "component_index", "span_order_index", "source_segment_index", "execution_interpolation_index", "authority_distance_mm", "execution_profile_position_mm", "execution_position_mm", "execution_trigger_position_mm", "compare_source_axis", "compare_position_pulse", "pulse_width_us", "authority_trigger_ref", "authority_span_ref", "trigger_mode"],
+      "properties": {
+        "cycle_index": { "type": "integer" },
+        "trigger_sequence_id": { "type": "integer" },
+        "authority_trigger_index": { "type": "integer" },
+        "span_index": { "type": "integer" },
+        "component_index": { "type": "integer" },
+        "span_order_index": { "type": "integer" },
+        "source_segment_index": { "type": "integer" },
+        "execution_interpolation_index": { "type": "integer" },
+        "authority_distance_mm": { "type": "number" },
+        "execution_profile_position_mm": { "type": "number" },
+        "execution_position_mm": {
+          "type": "object",
+          "required": ["x", "y"],
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" }
+          },
+          "additionalProperties": false
+        },
+        "execution_trigger_position_mm": {
+          "type": "object",
+          "required": ["x", "y"],
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" }
+          },
+          "additionalProperties": false
+        },
+        "compare_source_axis": { "type": "integer" },
+        "compare_position_pulse": { "type": "integer" },
+        "pulse_width_us": { "type": "integer" },
+        "authority_trigger_ref": { "type": "string" },
+        "authority_span_ref": { "type": "string" },
+        "trigger_mode": { "type": "string", "enum": ["start_boundary", "future_compare"] }
+      },
+      "additionalProperties": false
+    },
+    "dxfJobTraceabilityActualItem": {
+      "type": "object",
+      "required": ["cycle_index", "trigger_sequence_id", "completion_sequence", "span_index", "local_completed_trigger_count", "observed_completed_trigger_count", "compare_source_axis", "compare_position_pulse", "authority_trigger_ref", "trigger_mode"],
+      "properties": {
+        "cycle_index": { "type": "integer" },
+        "trigger_sequence_id": { "type": "integer" },
+        "completion_sequence": { "type": "integer" },
+        "span_index": { "type": "integer" },
+        "local_completed_trigger_count": { "type": "integer" },
+        "observed_completed_trigger_count": { "type": "integer" },
+        "compare_source_axis": { "type": "integer" },
+        "compare_position_pulse": { "type": "integer" },
+        "authority_trigger_ref": { "type": "string" },
+        "trigger_mode": { "type": "string", "enum": ["start_boundary", "future_compare"] }
+      },
+      "additionalProperties": false
+    },
+    "dxfJobTraceabilityMismatch": {
+      "type": "object",
+      "required": ["cycle_index", "trigger_sequence_id", "code", "message"],
+      "properties": {
+        "cycle_index": { "type": "integer" },
+        "trigger_sequence_id": { "type": "integer" },
+        "code": { "type": "string" },
+        "message": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "dxfJobTraceability": {
+      "type": "object",
+      "required": ["job_id", "plan_id", "plan_fingerprint", "terminal_state", "expected_trace", "actual_trace", "mismatches", "verdict", "verdict_reason", "strict_one_to_one_proven"],
+      "properties": {
+        "job_id": { "type": "string" },
+        "plan_id": { "type": "string" },
+        "plan_fingerprint": { "type": "string" },
+        "terminal_state": { "type": "string", "enum": ["completed", "failed", "cancelled"] },
+        "expected_trace": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/dxfJobTraceabilityExpectedItem" }
+        },
+        "actual_trace": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/dxfJobTraceabilityActualItem" }
+        },
+        "mismatches": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/dxfJobTraceabilityMismatch" }
+        },
+        "verdict": { "type": "string", "enum": ["passed", "failed"] },
+        "verdict_reason": { "type": "string" },
+        "strict_one_to_one_proven": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
     "alarm": {
       "type": "object",
       "required": ["id", "level", "message"],
@@ -486,136 +581,6 @@
         "id": { "type": "string" },
         "level": { "type": "string", "enum": ["CRIT", "WARN"] },
         "message": { "type": "string" }
-      },
-      "additionalProperties": false
-    },
-    "parameterValueEntry": {
-      "type": "object",
-      "required": ["key", "value"],
-      "properties": {
-        "key": { "type": "string" },
-        "value": { "description": "当前序列化事实允许 bool / int / float / string。" }
-      },
-      "additionalProperties": false
-    },
-    "recipe": {
-      "type": "object",
-      "required": ["id", "name", "description", "status", "tags", "versionIds", "createdAt", "updatedAt"],
-      "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
-        "description": { "type": "string" },
-        "status": { "type": "string", "enum": ["active", "archived"] },
-        "tags": {
-          "type": "array",
-          "items": { "type": "string" }
-        },
-        "activeVersionId": { "type": "string" },
-        "versionIds": {
-          "type": "array",
-          "items": { "type": "string" }
-        },
-        "createdAt": { "type": "integer" },
-        "updatedAt": { "type": "integer" }
-      },
-      "additionalProperties": false
-    },
-    "recipeVersion": {
-      "type": "object",
-      "required": ["id", "recipeId", "versionLabel", "status", "parameters", "createdBy", "createdAt"],
-      "properties": {
-        "id": { "type": "string" },
-        "recipeId": { "type": "string" },
-        "versionLabel": { "type": "string" },
-        "status": { "type": "string", "enum": ["draft", "published", "archived"] },
-        "baseVersionId": { "type": "string" },
-        "parameters": {
-          "type": "array",
-          "items": { "$ref": "#/definitions/parameterValueEntry" }
-        },
-        "createdBy": { "type": "string" },
-        "createdAt": { "type": "integer" },
-        "publishedAt": { "type": "integer" },
-        "changeNote": { "type": "string" }
-      },
-      "additionalProperties": false
-    },
-    "template": {
-      "type": "object",
-      "required": ["id", "name", "description", "parameters", "createdAt", "updatedAt"],
-      "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
-        "description": { "type": "string" },
-        "parameters": {
-          "type": "array",
-          "items": { "$ref": "#/definitions/parameterValueEntry" }
-        },
-        "createdAt": { "type": "integer" },
-        "updatedAt": { "type": "integer" }
-      },
-      "additionalProperties": false
-    },
-    "parameterSchema": {
-      "type": "object",
-      "required": ["schemaId", "entries"],
-      "properties": {
-        "schemaId": { "type": "string" },
-        "entries": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["key", "type", "required"],
-            "properties": {
-              "key": { "type": "string" },
-              "displayName": { "type": "string" },
-              "type": { "type": "string", "enum": ["int", "float", "bool", "string", "enum"] },
-              "unit": { "type": "string" },
-              "required": { "type": "boolean" },
-              "constraints": { "type": "object" }
-            },
-            "additionalProperties": true
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    "fieldChange": {
-      "type": "object",
-      "required": ["field"],
-      "properties": {
-        "field": { "type": "string" },
-        "before": { "type": "string" },
-        "after": { "type": "string" }
-      },
-      "additionalProperties": false
-    },
-    "auditRecord": {
-      "type": "object",
-      "required": ["id", "recipeId", "action", "actor", "timestamp", "changes"],
-      "properties": {
-        "id": { "type": "string" },
-        "recipeId": { "type": "string" },
-        "versionId": { "type": "string" },
-        "action": { "type": "string", "enum": ["create", "edit", "publish", "rollback", "archive", "import", "export"] },
-        "actor": { "type": "string" },
-        "timestamp": { "type": "integer" },
-        "changes": {
-          "type": "array",
-          "items": { "$ref": "#/definitions/fieldChange" }
-        }
-      },
-      "additionalProperties": false
-    },
-    "importConflict": {
-      "type": "object",
-      "required": ["type", "message", "existingId", "incomingName", "suggestedResolution"],
-      "properties": {
-        "type": { "type": "string", "enum": ["name", "version"] },
-        "message": { "type": "string" },
-        "existingId": { "type": "string" },
-        "incomingName": { "type": "string" },
-        "suggestedResolution": { "type": "string", "enum": ["rename", "skip", "replace"] }
       },
       "additionalProperties": false
     }

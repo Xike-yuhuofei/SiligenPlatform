@@ -122,7 +122,7 @@ artifact_ref = {
 - `part_type`
 - `fixture_rev`
 - `material_code`
-- `recipe_id`
+- `baseline_id`
 - `machine_id`
 - `operator_id`
 - `source_file_name`
@@ -320,7 +320,7 @@ artifact_ref = {
 - `artifact_type = ProcessPlan`
 - `job_id`
 - `feature_graph_ref`
-- `recipe_snapshot_ref`
+- `production_baseline_ref`
 - `process_items`
 - `process_rule_result`
 - `created_at`
@@ -525,7 +525,7 @@ artifact_ref = {
 
 ### 不允许承载的内容
 - 阀提前开 / 延迟关逻辑
-- 材料配方状态
+- 材料/固定参数状态
 - 设备 ready 状态
 - UI 显示字段
 
@@ -593,7 +593,7 @@ artifact_ref = {
 - `job_id`
 - `motion_plan_ref`
 - `dispense_timing_plan_ref`
-- `recipe_snapshot_ref`
+- `production_baseline_ref`
 - `run_mode`
 - `package_hash`
 - `build_result`
@@ -646,7 +646,7 @@ artifact_ref = {
 - `servo_ready`
 - `homed`
 - `safety_chain_ok`
-- `recipe_valid`
+- `baseline_valid`
 - `machine_mode`
 - `ready_result`（`passed / blocked`）
 - `created_at`

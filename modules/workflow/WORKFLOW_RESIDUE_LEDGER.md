@@ -1,12 +1,11 @@
 # Historical note
 - 本文件保留一份早期 residue baseline，供治理追溯使用，不应再被当作当前唯一真值。
 - 当前 canonical truth：
-  - recipe family owner = `modules/recipe-lifecycle`
-  - recipe JSON serializer surface = `modules/recipe-lifecycle/adapters/include/recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h`
+  - recipe manager 已退役；`modules/recipe-lifecycle`、`recipe.command-set`、`recipe.query-set` 与 `data/recipes/**` 当前都应保持删除
   - `IEventPublisherPort` owner = `shared/contracts/runtime/include/runtime/contracts/system/IEventPublisherPort.h`
   - generic diagnostics sink owner = `modules/trace-diagnostics/contracts/include/trace_diagnostics/contracts/{IDiagnosticsPort,DiagnosticTypes}.h`
   - hardware-test diagnostics live landing = `apps/runtime-service/include/runtime_process_bootstrap/diagnostics/**` (app-local quarantine surface)
-- 若下文出现 `runtime_process_bootstrap/recipes/RecipeJsonSerializer.h`、`siligen_workflow_recipe_*` 或 workflow-owned event seam 作为“当前 owner”的表述，应按历史证据理解。
+- 若下文出现 `modules/recipe-lifecycle`、`runtime_process_bootstrap/recipes/RecipeJsonSerializer.h`、`siligen_workflow_recipe_*` 或 workflow-owned event seam 作为“当前 owner”的表述，应按历史证据理解。
 
 # 1. Audit scope
 - **主目录**：`modules/workflow`
@@ -34,10 +33,10 @@
 - `domain/supervision/ports/IEventPublisherPort.h` 已是独立 canonical surface；旧 `domain/system/ports/IEventPublisherPort.h` live consumer 已归零，compat shim 已删除。
 - `siligen_domain` 已于 round `18` 从 `modules/workflow/domain/CMakeLists.txt` 删除；workflow 对外当前只保留 canonical `siligen_workflow_domain_headers` / `siligen_workflow_domain_public`，因此 `WF-R009` / `WF-B08` 已完成当前 family-close。
 - repo-wide 非文档源码检索下，`modules/runtime-execution/**` 当前不再直接链接 `siligen_domain` / `siligen_motion_core`，也未再命中 live `#include "domain/*"`；round `18` 已将 `WF-B02` 的 formal family-close 写回，后续主线不再把 runtime-execution reverse-dep 视为 active blocker。
-- `recipe serialization` app-cross-boundary 批次已完成：authority artifact 当前收口到 `modules/recipe-lifecycle/adapters/include/recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h` + `modules/recipe-lifecycle/adapters/serialization/RecipeJsonSerializer.cpp`，`apps/runtime-service` / `apps/runtime-gateway` live consumer 已全部 retarget，workflow 旧 producer 与 `siligen_workflow_recipe_serialization_public` 已删除。
+- `recipe serialization` app-cross-boundary 批次已完成，且后续 recipe management 已整体退场：workflow 旧 producer、app 侧 recipe JSON serializer consumer、`recipe.command-set` / `recipe.query-set`、`data/recipes/**` 与 `data/schemas/recipes/**` 当前都保持删除。
 - `diagnostics` app-cross-boundary 批次已完成：generic diagnostics sink 当前收口到 `modules/trace-diagnostics/contracts/include/trace_diagnostics/contracts/{IDiagnosticsPort,DiagnosticTypes}.h`；hardware-test diagnostics contracts 当前仍停留在 `apps/runtime-service/include/runtime_process_bootstrap/diagnostics/**` 这组 app-local quarantine surface。
-- `recipe serialization` 当前已从 workflow residue ledger 中退出：`modules/recipe-lifecycle` 承担 `RecipeJsonSerializer` surface，workflow 不再保留该 producer/compat target；recipe family 的后续 concrete closeout 已在 round `20` 完成。
-- recipe family closeout 已于 round `20` 完成：`modules/workflow/domain/process-core/**`、`modules/workflow/domain/domain/recipes/**` 与 `modules/workflow/application/usecases/recipes/**` 已退出 live build graph；`planner-cli`、`runtime-service`、`runtime-gateway` live consumer 与 focused tests 当前均已收口到 `modules/recipe-lifecycle`。
+- `recipe serialization` 与 recipe family 当前都已从 workflow residue ledger active set 退出：recipe management 已退场，不再存在新的 live recipe owner；任何 consumer 都不得重新引入 recipe serializer / CRUD / import-export surface。
+- recipe family closeout 已于 round `20` 完成，且在当前工作树继续保持删除真值：`modules/workflow/domain/process-core/**`、`modules/workflow/domain/domain/recipes/**` 与 `modules/workflow/application/usecases/recipes/**` 已退出 live build graph；`planner-cli`、`runtime-service`、`runtime-gateway` 也不再保留 recipe live consumer。
 - dispensing concrete closeout 已于 round `21` 完成当前最小切片：`modules/workflow/domain/domain/CMakeLists.txt` 已不再定义 `siligen_triggering` 或编译 `dispensing/domain-services/PositionTriggerController.cpp`；triggering concrete 的 canonical live owner 当前固定为 `modules/dispense-packaging/domain/dispensing`。
 - round `21` revalidation 已确认 `siligen_runtime_execution_unit_tests`、`siligen_runtime_host_unit_tests`、`siligen_motion_planning_unit_tests`、contract test 与 boundary gate 通过；`siligen_runtime_service_unit_tests` 当前仍被 `apps/runtime-service` 既有 motion port duplicate-definition blocker 卡住，该问题位于 `ApplicationContainerFwd.h` / `InfrastructureBindings.h` 所在 app 级链路，不属于本轮 `WF-B10` scope。
 - `modules/workflow/domain/domain/**` 当前物理目录只剩 `_shared/`、`motion/`、`geometry/`、`dispensing/`；旧 `WF-B14` 口径中的 `domain/domain/machine/**` 已不再存在，因此该 scope 只能继续作为历史证据保留。
@@ -81,7 +80,7 @@
 - **`current_symbol_or_target`**：`deleted siligen_process_core`
 - **`observed_fact`**：round `20` 已删除 `modules/workflow/domain/process-core/CMakeLists.txt` 及其配套 recipe concrete 文件；repo-wide 非文档源码检索下，当前未再发现 live code 命中 `siligen_process_core`。
 - **`why_it_is_residue`**：该 residue 已在 round `20` 收口；workflow 不再保留 process-core compat bridge，也不再承担 recipe concrete 的物理承载。
-- **`expected_owner_or_surface`**：recipe owner = `modules/recipe-lifecycle`；其他非 recipe 语义按各自 canonical owner 承接
+- **`expected_owner_or_surface`**：无 live recipe owner；若涉及生产参数 authority，应收口到 runtime `production_baseline` 或其他现行 canonical surface，不能恢复 recipe 链
 - **`illegal_pattern`**：bridge carries real payload
 - **`suggested_disposition`**：keep-deleted / guard-against-reintroduction
 - **`acceptance_check`**：`modules/workflow/domain/process-core/CMakeLists.txt` 保持删除；`siligen_process_core` 不得回流；recipe family targeted build/test 与 boundary gate 持续通过。
@@ -121,9 +120,9 @@
 - **`severity`**：high
 - **`current_path`**：`deleted modules/workflow/domain/domain/recipes`
 - **`current_symbol_or_target`**：`deleted siligen_recipe_domain_services`
-- **`observed_fact`**：round `20` 已删除 `modules/workflow/domain/domain/recipes/**`，且 `modules/workflow/domain/domain/CMakeLists.txt` 不再命中 `add_subdirectory(recipes)` 或 `siligen_recipe_domain_services`；recipe live domain services 当前收口到 `modules/recipe-lifecycle/domain`。
+- **`observed_fact`**：round `20` 已删除 `modules/workflow/domain/domain/recipes/**`，且 `modules/workflow/domain/domain/CMakeLists.txt` 不再命中 `add_subdirectory(recipes)` 或 `siligen_recipe_domain_services`；在当前工作树中 recipe live domain services 已整体退场，不再存在替代 owner。
 - **`why_it_is_residue`**：该 residue 已在 round `20` 收口；workflow bridge-domain 不再编译 recipe concrete。
-- **`expected_owner_or_surface`**：`modules/recipe-lifecycle/domain`
+- **`expected_owner_or_surface`**：无；recipe management 已退场，任何需要恢复的业务能力都必须以新的正式 owner/契约重建，而不是复活 recipe domain
 - **`illegal_pattern`**：workflow owns foreign concrete
 - **`suggested_disposition`**：keep-deleted / guard-against-reintroduction
 - **`acceptance_check`**：`modules/workflow/domain/domain/recipes/**` 保持删除；repo-wide 非文档源码检索不再命中 `siligen_recipe_domain_services`；recipe family targeted build/test 持续通过。

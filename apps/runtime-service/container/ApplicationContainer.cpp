@@ -40,11 +40,6 @@ ApplicationContainer::~ApplicationContainer() {
     velocity_profile_service_.reset();
     jog_controller_.reset();
 
-    recipe_bundle_serializer_port_.reset();
-    parameter_schema_port_.reset();
-    audit_repository_.reset();
-    template_repository_.reset();
-    recipe_repository_.reset();
     task_scheduler_port_.reset();
     velocity_profile_port_.reset();
     interpolation_port_.reset();
@@ -97,7 +92,6 @@ void ApplicationContainer::ConfigurePorts() {
     ValidateDiagnosticsPorts();
     ValidateMotionPorts();
     ValidateDispensingPorts();
-    ValidateRecipePorts();
 }
 
 void ApplicationContainer::ConfigureUseCases() {
@@ -107,7 +101,6 @@ void ApplicationContainer::ConfigureUseCases() {
 void ApplicationContainer::ConfigureServices() {
     ConfigureMotionServices();
     ConfigureDispensingServices();
-    ConfigureRecipeServices();
     SILIGEN_LOG_INFO("Domain Services configuration complete");
 }
 

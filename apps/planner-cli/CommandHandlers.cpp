@@ -49,36 +49,6 @@ int CLICommandHandlers::Execute(const CommandLineConfig& config) {
             return HandleDXFPreviewSnapshot(config);
         case CommandType::DXF_AUGMENT:
             return HandleDXFAugment(config);
-        case CommandType::RECIPE_CREATE:
-            return HandleRecipeCreate(config);
-        case CommandType::RECIPE_UPDATE:
-            return HandleRecipeUpdate(config);
-        case CommandType::RECIPE_DRAFT_CREATE:
-            return HandleRecipeDraftCreate(config);
-        case CommandType::RECIPE_DRAFT_UPDATE:
-            return HandleRecipeDraftUpdate(config);
-        case CommandType::RECIPE_PUBLISH:
-            return HandleRecipePublish(config);
-        case CommandType::RECIPE_LIST:
-            return HandleRecipeList(config);
-        case CommandType::RECIPE_GET:
-            return HandleRecipeGet(config);
-        case CommandType::RECIPE_LIST_VERSIONS:
-            return HandleRecipeListVersions(config);
-        case CommandType::RECIPE_ARCHIVE:
-            return HandleRecipeArchive(config);
-        case CommandType::RECIPE_VERSION_CREATE:
-            return HandleRecipeVersionCreate(config);
-        case CommandType::RECIPE_VERSION_COMPARE:
-            return HandleRecipeCompare(config);
-        case CommandType::RECIPE_VERSION_ACTIVATE:
-            return HandleRecipeActivate(config);
-        case CommandType::RECIPE_AUDIT:
-            return HandleRecipeAudit(config);
-        case CommandType::RECIPE_EXPORT:
-            return HandleRecipeExport(config);
-        case CommandType::RECIPE_IMPORT:
-            return HandleRecipeImport(config);
         case CommandType::INTERACTIVE:
         case CommandType::NONE:
         case CommandType::BOOTSTRAP_CHECK:

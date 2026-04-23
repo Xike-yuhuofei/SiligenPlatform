@@ -4,8 +4,7 @@
 
 当前约定：
 
-- `data/recipes/`：配方主数据、版本、模板，以及必要的审计 seed
-- `data/schemas/`：配方 schema 与工程契约 schema/proto
+- `data/schemas/`：工程契约 schema/proto
 - `data/baselines/`：deprecated redirect，仅保留迁移说明，不再承载 canonical baseline/fixture 真值
 
 边界说明：

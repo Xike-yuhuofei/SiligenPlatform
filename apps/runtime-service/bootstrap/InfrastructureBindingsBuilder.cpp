@@ -33,11 +33,6 @@
 #include "security/AuditLogger.h"
 #include "security/InterlockMonitor.h"
 #include "dxf_geometry/adapters/planning/dxf/PbPathSourceAdapter.h"
-#include "runtime/recipes/RecipeFileRepository.h"
-#include "runtime/recipes/TemplateFileRepository.h"
-#include "runtime/recipes/AuditFileRepository.h"
-#include "runtime/recipes/ParameterSchemaFileProvider.h"
-#include "runtime/recipes/RecipeBundleSerializer.h"
 
 #if SILIGEN_ENABLE_MOCK_MULTICARD
 #include "siligen/device/adapters/drivers/multicard/MockMultiCardWrapper.h"
@@ -277,21 +272,6 @@ InfrastructureBindings CreateInfrastructureBindings(const InfrastructureBootstra
     const auto upload_base_dir = RuntimeConfig::ResolveUploadDirectory();
     bindings.file_storage_port = std::make_shared<Infrastructure::Adapters::LocalFileStorageAdapter>(
         upload_base_dir);
-
-    bindings.recipe_base_dir = RuntimeConfig::ResolveRecipeDirectory();
-    bindings.recipe_repository = std::make_shared<Infrastructure::Adapters::Recipes::RecipeFileRepository>(
-        bindings.recipe_base_dir);
-    bindings.template_repository = std::make_shared<Infrastructure::Adapters::Recipes::TemplateFileRepository>(
-        bindings.recipe_base_dir);
-    bindings.audit_repository = std::make_shared<Infrastructure::Adapters::Recipes::AuditFileRepository>(
-        bindings.recipe_base_dir);
-    const auto schema_primary_dir = RuntimeConfig::ResolveRecipeSchemaDirectory();
-    std::error_code schema_ec;
-    std::filesystem::create_directories(schema_primary_dir, schema_ec);
-    bindings.parameter_schema_port = std::make_shared<Infrastructure::Adapters::Recipes::ParameterSchemaFileProvider>(
-        schema_primary_dir);
-    bindings.recipe_bundle_serializer_port =
-        std::make_shared<Infrastructure::Adapters::Recipes::RecipeBundleSerializer>();
 
     auto interpolation_adapter = std::make_shared<Infrastructure::Adapters::InterpolationAdapter>(multi_card);
     bindings.interpolation_port =

@@ -1,9 +1,9 @@
 # Historical note
 - 本文件是 `2026-04-08` 的治理基线快照，不应直接替代当前代码真值。
 - 当前 canonical truth：
-  - recipe family owner = `modules/recipe-lifecycle`
+  - recipe manager 已退役；`modules/recipe-lifecycle` 与 recipe management public surface 当前应保持删除
   - `IEventPublisherPort` owner = `shared/contracts/runtime/include/runtime/contracts/system/IEventPublisherPort.h`
-- 若下文仍把 workflow recipe targets、`runtime_process_bootstrap/recipes/RecipeJsonSerializer.h` 或 workflow-owned event seam 记为当前 owner，请按历史快照理解。
+- 若下文仍把 `modules/recipe-lifecycle`、workflow recipe targets、`runtime_process_bootstrap/recipes/RecipeJsonSerializer.h` 或 workflow-owned event seam 记为当前 owner，请按历史快照理解。
 
 # 1. Audit scope
 - 主目录：`modules/workflow`

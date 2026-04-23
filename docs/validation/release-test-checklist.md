@@ -26,8 +26,6 @@ Set-Location D:\Projects\SiligenSuite
 
 $Version = "0.1.0"
 $RcVersion = "0.1.0-rc.1"
-$CanonicalRecipeId = "recipe-7d1b00f4-6a99"
-$CanonicalVersionId = "version-fea9ce29-f963"
 $EvidenceRootRelative = Join-Path "tests\reports\verify" ("release-validation-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
 $EvidenceRoot = Join-Path (Get-Location) $EvidenceRootRelative
 New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
@@ -83,11 +81,9 @@ New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
   ```powershell
   python .\tests\integration\scenarios\first-layer\run_tcp_precondition_matrix.py `
     --report-dir (Join-Path $EvidenceRootRelative "phase1-tcp-precondition") `
-    --recipe-id $CanonicalRecipeId `
-    --version-id $CanonicalVersionId
   ```
-  通过标准：未回零不得 `home.go`，未加载 DXF 不得执行，缺少激活配方时必须按预期阻断。  
-  说明：脚本当前会在报告目录下自动生成隔离空配方工作区并启动 gateway，排除真实工作区激活配方对 `S2` 的污染；本次证据中的 `gateway_cwd` 为 `phase1-tcp-precondition\isolated-empty-recipe-workspace`。  
+  通过标准：未回零不得 `home.go`，未准备 `plan` 不得 `dxf.job.start`，preview 未 confirm 时必须按预期阻断。
+  说明：脚本当前会在报告目录下自动生成隔离预条件工作区并启动 gateway，排除真实工作区 uploads/logs/pending state 对 `S2-S4` 的污染；本次证据中的 `gateway_cwd` 为 `phase1-tcp-precondition\isolated-precondition-workspace`。
   证据：`$EvidenceRoot\phase1-tcp-precondition\tcp-precondition-matrix.json/.md`
 
 - [x] `P1-07` 第一层 TCP 急停链探针  
@@ -95,20 +91,18 @@ New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
   ```powershell
   python .\tests\integration\scenarios\first-layer\run_tcp_estop_chain.py --report-dir (Join-Path $EvidenceRootRelative "phase1-tcp-estop")
   ```
-  通过标准：`connect -> estop -> status(estop 可见) -> estop.reset -> status(estop 清除) -> disconnect(disconnected=true)` 全链通过。  
-  说明：脚本当前默认自动选择空闲端口并把 `--port` 显式传给 gateway，避免本机已有 `9527` listener 污染测试会话；本次证据在端口 `57415` 上通过。该项仅验证无机台第一层协议与状态收敛，不可替代 HIL/真机异常恢复放行。  
+  通过标准：`connect -> estop -> status(estop 可见) -> estop.reset -> status(estop 清除) -> disconnect(disconnected=true)` 全链通过。
+  说明：脚本当前默认自动选择空闲端口并把 `--port` 显式传给 gateway，避免本机已有 `9527` listener 污染测试会话；本次证据在端口 `57415` 上通过。该项仅验证无机台第一层协议与状态收敛，不可替代 HIL/真机异常恢复放行。
   证据：`$EvidenceRoot\phase1-tcp-estop\tcp-estop-chain.json/.md`
 
 - [x] `P1-08` 性能与稳定性基线采集  
   命令：
   ```powershell
   python .\tests\performance\collect_baselines.py `
-    --report-dir (Join-Path $EvidenceRootRelative "phase1-performance") `
-    --recipe-id $CanonicalRecipeId `
-    --version-id $CanonicalVersionId
+    --report-dir (Join-Path $EvidenceRootRelative "phase1-performance")
   ```
-  通过标准：基线采集完成，输出 `latest.json/.md`；无异常退化或明显抖动。  
-  说明：`2026-03-25T14:06:58.767473+00:00` 已按当前脚本口径重采；DXF 预处理入口已对齐 `scripts\engineering-data\*.py`，`dxf.job.resume_without_pause` 记录为预期拒绝 `protocol.invalid_state`，不计入稳定性失败。  
+  通过标准：基线采集完成，输出 `latest.json/.md`；无异常退化或明显抖动。
+  说明：`2026-03-25T14:06:58.767473+00:00` 已按当前脚本口径重采；DXF 预处理入口已对齐 `scripts\engineering-data\*.py`，`dxf.job.resume_without_pause` 记录为预期拒绝 `protocol.invalid_state`，不计入稳定性失败；脚本会从 `dxf.plan.prepare` / `dxf.job.start` 返回中记录 runtime-owned `production_baseline`。
   证据：`$EvidenceRoot\phase1-performance\latest.json/.md`
 
 ## 5. Phase 2 仓内自动化门禁

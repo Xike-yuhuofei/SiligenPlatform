@@ -19,7 +19,6 @@
 - `samples/dxf/`：DXF 输入样本，按 `canonical performance`、`importer canonical truth / geometry coverage`、`diagnostic / exploratory` 三类维护；详见 `samples/dxf/README.md`
 - `samples/simulation/`：simulated-line / fault scenario 输入
 - `samples/replay-data/`：recording / preview 相关回放工件
-- `samples/recipes/`：recipe/import-export 样本
 
 ## 当前 inventory
 

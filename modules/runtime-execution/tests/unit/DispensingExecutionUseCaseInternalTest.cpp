@@ -4,10 +4,13 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
+#include "runtime_execution/contracts/dispensing/ProfileCompareExecutionCompiler.h"
 #include "usecases/dispensing/DispensingExecutionUseCase.Internal.h"
 
 namespace {
@@ -16,7 +19,10 @@ using Siligen::Application::UseCases::Dispensing::DispensingExecutionRequest;
 using Siligen::Application::UseCases::Dispensing::DispensingExecutionUseCase;
 using Siligen::Application::UseCases::Dispensing::ExecutionTransitionState;
 using Siligen::Application::UseCases::Dispensing::JobExecutionContext;
+using Siligen::Application::UseCases::Dispensing::JobCycleAdvanceMode;
 using Siligen::Application::UseCases::Dispensing::JobState;
+using Siligen::Application::UseCases::Dispensing::RuntimeJobTraceabilityResponse;
+using Siligen::Application::UseCases::Dispensing::RuntimeStartJobRequest;
 using Siligen::Application::UseCases::Dispensing::RuntimeJobStatusResponse;
 using Siligen::Application::UseCases::Dispensing::RuntimeJobTraceabilityResponse;
 using Siligen::Application::UseCases::Dispensing::TaskExecutionContext;
@@ -25,6 +31,7 @@ using Siligen::Domain::Dispensing::Ports::TaskExecutor;
 using Siligen::Domain::Dispensing::Ports::TaskStatus;
 using Siligen::Domain::Dispensing::Ports::TaskStatusInfo;
 using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareActualTraceItem;
+using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareExpectedTrace;
 using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareExpectedTraceItem;
 using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareTraceabilityMismatch;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionOptions;
@@ -34,19 +41,35 @@ using Siligen::Domain::Dispensing::ValueObjects::DispensingRuntimeOverrides;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingRuntimeParams;
 using Siligen::Domain::Dispensing::ValueObjects::JobExecutionMode;
 using Siligen::Domain::Dispensing::ValueObjects::ProcessOutputPolicy;
+using Siligen::Domain::Dispensing::ValueObjects::ProductionTriggerMode;
 using Siligen::Domain::Machine::ValueObjects::MachineMode;
+using Siligen::Domain::Motion::Ports::IMotionStatePort;
+using Siligen::Domain::Motion::Ports::MotionState;
+using Siligen::Domain::Motion::Ports::MotionStatus;
 using Siligen::Domain::Motion::Ports::InterpolationData;
 using Siligen::Domain::Motion::Ports::InterpolationType;
 using Siligen::Domain::Motion::ValueObjects::MotionTrajectoryPoint;
+using Siligen::RuntimeExecution::Contracts::Dispensing::CompileProfileCompareExecutionSchedule;
+using Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareExecutionCompileInput;
+using Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareExecutionSchedule;
+using Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareRuntimeContract;
+using Siligen::Device::Contracts::Commands::DeviceConnection;
+using Siligen::Device::Contracts::Ports::DeviceConnectionPort;
+using Siligen::Device::Contracts::State::DeviceConnectionSnapshot;
+using Siligen::Device::Contracts::State::DeviceConnectionState;
+using Siligen::Device::Contracts::State::HeartbeatSnapshot;
 using Siligen::Shared::Types::DispensingExecutionGeometryKind;
 using Siligen::Shared::Types::DispensingExecutionStrategy;
+using Siligen::Shared::Types::LogicalAxisId;
+using Siligen::Shared::Types::Point2D;
 using RuntimeDispensingProcessPort = Siligen::RuntimeExecution::Contracts::Dispensing::IDispensingProcessPort;
 using RuntimeTaskSchedulerPort = Siligen::Domain::Dispensing::Ports::ITaskSchedulerPort;
 using Siligen::Shared::Types::float32;
 using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::ErrorCode;
+using Siligen::Shared::Types::uint32;
 
-class StubDispensingProcessPort final : public RuntimeDispensingProcessPort {
+class StubDispensingProcessPort : public RuntimeDispensingProcessPort {
    public:
     Result<void> ValidateHardwareConnection() noexcept override {
         return Result<void>::Success();
@@ -82,6 +105,37 @@ class StubDispensingProcessPort final : public RuntimeDispensingProcessPort {
     float32 last_execution_nominal_time_s = 0.0f;
 };
 
+class TracingStubDispensingProcessPort final : public StubDispensingProcessPort {
+   public:
+    Result<DispensingExecutionReport> ExecuteProcess(
+                                                     const Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated& execution_package,
+                                                     const DispensingRuntimeParams& params,
+                                                     const DispensingExecutionOptions& options,
+                                                     std::atomic<bool>* stop_flag,
+                                                     std::atomic<bool>* pause_flag,
+                                                     std::atomic<bool>* pause_applied_flag,
+                                                     Siligen::Domain::Dispensing::Ports::IDispensingExecutionObserver* observer)
+        noexcept override {
+        ++execute_process_calls;
+        if (execute_process_calls <= scripted_reports.size()) {
+            execute_called = true;
+            last_execution_nominal_time_s = execution_package.execution_nominal_time_s;
+            return Result<DispensingExecutionReport>::Success(scripted_reports[execute_process_calls - 1U]);
+        }
+        return StubDispensingProcessPort::ExecuteProcess(
+            execution_package,
+            params,
+            options,
+            stop_flag,
+            pause_flag,
+            pause_applied_flag,
+            observer);
+    }
+
+    std::vector<DispensingExecutionReport> scripted_reports;
+    std::size_t execute_process_calls = 0U;
+};
+
 class CapturingTaskSchedulerPort final : public RuntimeTaskSchedulerPort {
    public:
     Result<std::string> SubmitTask(TaskExecutor executor) override {
@@ -109,6 +163,67 @@ class CapturingTaskSchedulerPort final : public RuntimeTaskSchedulerPort {
     int cleanup_calls = 0;
     int submit_calls = 0;
     std::optional<Siligen::Shared::Types::Error> submit_error;
+};
+
+class FakeHardwareConnectionPort final : public DeviceConnectionPort {
+   public:
+    Result<void> Connect(const DeviceConnection&) override { return Result<void>::Success(); }
+    Result<void> Disconnect() override { return Result<void>::Success(); }
+
+    Result<DeviceConnectionSnapshot> ReadConnection() const override {
+        DeviceConnectionSnapshot snapshot;
+        snapshot.state = connected ? DeviceConnectionState::Connected : DeviceConnectionState::Disconnected;
+        return Result<DeviceConnectionSnapshot>::Success(snapshot);
+    }
+
+    bool IsConnected() const override { return connected; }
+    Result<void> Reconnect() override { return Result<void>::Success(); }
+    void SetConnectionStateCallback(std::function<void(const DeviceConnectionSnapshot&)>) override {}
+    Result<void> StartStatusMonitoring(std::uint32_t = 1000) override { return Result<void>::Success(); }
+    void StopStatusMonitoring() override {}
+    std::string GetLastError() const override { return {}; }
+    void ClearError() override {}
+    Result<void> StartHeartbeat(const HeartbeatSnapshot&) override { return Result<void>::Success(); }
+    void StopHeartbeat() override {}
+    HeartbeatSnapshot ReadHeartbeat() const override { return {}; }
+    Result<bool> Ping() const override { return Result<bool>::Success(connected); }
+
+    bool connected = true;
+};
+
+class FakeMotionStatePort final : public IMotionStatePort {
+   public:
+    Result<Point2D> GetCurrentPosition() const override { return Result<Point2D>::Success(status.position); }
+
+    Result<float32> GetAxisPosition(LogicalAxisId axis) const override {
+        return Result<float32>::Success(axis == LogicalAxisId::Y ? status.position.y : status.position.x);
+    }
+
+    Result<float32> GetAxisVelocity(LogicalAxisId) const override { return Result<float32>::Success(status.velocity); }
+
+    Result<MotionStatus> GetAxisStatus(LogicalAxisId axis) const override {
+        MotionStatus axis_status = status;
+        axis_status.axis_position_mm = axis == LogicalAxisId::Y ? status.position.y : status.position.x;
+        return Result<MotionStatus>::Success(axis_status);
+    }
+
+    Result<bool> IsAxisMoving(LogicalAxisId) const override {
+        return Result<bool>::Success(status.state == MotionState::MOVING);
+    }
+
+    Result<bool> IsAxisInPosition(LogicalAxisId) const override {
+        return Result<bool>::Success(status.in_position);
+    }
+
+    Result<std::vector<MotionStatus>> GetAllAxesStatus() const override {
+        MotionStatus x_status = status;
+        x_status.axis_position_mm = status.position.x;
+        MotionStatus y_status = status;
+        y_status.axis_position_mm = status.position.y;
+        return Result<std::vector<MotionStatus>>::Success({x_status, y_status});
+    }
+
+    MotionStatus status{};
 };
 
 DispensingExecutionRequest BuildExecutionRequest(bool include_interpolation_points) {
@@ -150,14 +265,145 @@ DispensingExecutionRequest BuildExecutionRequest(bool include_interpolation_poin
     return request;
 }
 
+std::shared_ptr<ProfileCompareExpectedTrace> BuildExpectedTraceFromPlanAndSchedule(
+    const DispensingExecutionPlan& plan,
+    const ProfileCompareExecutionSchedule& schedule) {
+    auto trace = std::make_shared<ProfileCompareExpectedTrace>();
+    trace->items.reserve(plan.profile_compare_program.trigger_points.size());
+
+    for (const auto& schedule_span : schedule.spans) {
+        const auto future_compare_offset = schedule_span.trigger_begin_index + schedule_span.start_boundary_trigger_count;
+        for (uint32 trigger_index = schedule_span.trigger_begin_index;
+             trigger_index <= schedule_span.trigger_end_index;
+             ++trigger_index) {
+            const auto& owner_trigger = plan.profile_compare_program.trigger_points[trigger_index];
+            ProfileCompareExpectedTraceItem item;
+            item.cycle_index = 1U;
+            item.trigger_sequence_id = owner_trigger.sequence_index;
+            item.authority_trigger_index = owner_trigger.sequence_index;
+            item.span_index = schedule_span.span_index;
+            item.execution_interpolation_index = plan.interpolation_points.empty()
+                ? 0U
+                : std::min<uint32>(
+                      trigger_index,
+                      static_cast<uint32>(plan.interpolation_points.size() - 1U));
+            item.authority_distance_mm = owner_trigger.profile_position_mm;
+            item.execution_profile_position_mm = owner_trigger.profile_position_mm;
+            item.execution_position_mm = owner_trigger.trigger_position_mm;
+            item.execution_trigger_position_mm = owner_trigger.trigger_position_mm;
+            item.compare_source_axis = schedule_span.compare_source_axis;
+            item.pulse_width_us = owner_trigger.pulse_width_us;
+            item.authority_trigger_ref = "trigger-" + std::to_string(owner_trigger.sequence_index);
+            item.authority_span_ref = "span-" + std::to_string(schedule_span.span_index);
+            if (trigger_index == schedule_span.trigger_begin_index &&
+                schedule_span.start_boundary_trigger_count == 1U) {
+                item.trigger_mode = "start_boundary";
+                item.compare_position_pulse = 0L;
+            } else {
+                const auto future_compare_index =
+                    static_cast<std::size_t>(trigger_index - future_compare_offset);
+                item.trigger_mode = "future_compare";
+                item.compare_position_pulse = schedule_span.compare_positions_pulse[future_compare_index];
+            }
+            trace->items.push_back(std::move(item));
+        }
+    }
+
+    return trace;
+}
+
+DispensingExecutionRequest BuildProfileCompareExecutionRequest() {
+    auto request = BuildExecutionRequest(true);
+    auto& plan = request.execution_package.execution_plan;
+    plan.production_trigger_mode = ProductionTriggerMode::PROFILE_COMPARE;
+    plan.profile_compare_program.expected_trigger_count = 2U;
+    plan.profile_compare_program.trigger_points = {
+        {0U, 0.0f, Point2D{0.0f, 0.0f}, 2000U},
+        {1U, 12.5f, Point2D{12.5f, 0.0f}, 2000U},
+    };
+    plan.profile_compare_program.spans = {
+        {0U, 1U, 1, 1U, 0.0f, 12.5f, Point2D{0.0f, 0.0f}, Point2D{12.5f, 0.0f}},
+    };
+    plan.completion_contract.enabled = true;
+    plan.completion_contract.final_target_position_mm = Point2D{12.5f, 0.0f};
+    plan.completion_contract.final_position_tolerance_mm = 0.2f;
+    plan.completion_contract.expected_trigger_count = 2U;
+
+    ProfileCompareExecutionCompileInput compile_input{
+        plan,
+        ProfileCompareRuntimeContract{100.0f, 0x03, 1000U},
+    };
+    const auto schedule_result = CompileProfileCompareExecutionSchedule(compile_input);
+    if (schedule_result.IsError()) {
+        throw std::runtime_error(schedule_result.GetError().GetMessage());
+    }
+
+    request.profile_compare_schedule =
+        std::make_shared<ProfileCompareExecutionSchedule>(schedule_result.Value());
+    request.expected_trace = BuildExpectedTraceFromPlanAndSchedule(
+        plan,
+        *request.profile_compare_schedule);
+    return request;
+}
+
+ProfileCompareActualTraceItem BuildActualTraceItem(
+    const ProfileCompareExpectedTraceItem& expected_item,
+    uint32 completion_sequence,
+    uint32 local_completed_trigger_count,
+    uint32 observed_completed_trigger_count) {
+    ProfileCompareActualTraceItem item;
+    item.cycle_index = expected_item.cycle_index;
+    item.trigger_sequence_id = expected_item.trigger_sequence_id;
+    item.completion_sequence = completion_sequence;
+    item.span_index = expected_item.span_index;
+    item.local_completed_trigger_count = local_completed_trigger_count;
+    item.observed_completed_trigger_count = observed_completed_trigger_count;
+    item.compare_source_axis = expected_item.compare_source_axis;
+    item.compare_position_pulse = expected_item.compare_position_pulse;
+    item.authority_trigger_ref = expected_item.authority_trigger_ref;
+    item.trigger_mode = expected_item.trigger_mode;
+    return item;
+}
+
+std::optional<RuntimeJobStatusResponse> WaitForTerminalJobStatus(
+    DispensingExecutionUseCase::Impl& use_case,
+    const std::string& job_id,
+    std::chrono::milliseconds timeout = std::chrono::seconds(2)) {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        auto status_result = use_case.GetJobStatus(job_id);
+        if (status_result.IsSuccess()) {
+            const auto& status = status_result.Value();
+            if (status.state == "completed" ||
+                status.state == "failed" ||
+                status.state == "cancelled") {
+                return status;
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return std::nullopt;
+}
+
 std::unique_ptr<DispensingExecutionUseCase::Impl> CreateExecutionUseCase(
     std::shared_ptr<RuntimeDispensingProcessPort> process_port = std::make_shared<StubDispensingProcessPort>(),
-    std::shared_ptr<RuntimeTaskSchedulerPort> task_scheduler_port = nullptr) {
+    std::shared_ptr<RuntimeTaskSchedulerPort> task_scheduler_port = nullptr,
+    std::shared_ptr<DeviceConnectionPort> connection_port = std::make_shared<FakeHardwareConnectionPort>(),
+    std::shared_ptr<IMotionStatePort> motion_state_port = [] {
+        auto port = std::make_shared<FakeMotionStatePort>();
+        port->status.state = MotionState::HOMED;
+        port->status.homing_state = "homed";
+        port->status.position = Point2D{0.0f, 0.0f};
+        port->status.velocity = 0.0f;
+        port->status.in_position = true;
+        port->status.enabled = true;
+        return port;
+    }()) {
     return std::make_unique<DispensingExecutionUseCase::Impl>(
         nullptr,
         nullptr,
-        nullptr,
-        nullptr,
+        std::move(motion_state_port),
+        std::move(connection_port),
         nullptr,
         std::move(process_port),
         nullptr,
@@ -796,6 +1042,144 @@ TEST(DispensingExecutionUseCaseInternalTest, CleanupTerminalJobsLockedDropsOlder
 
     EXPECT_EQ(use_case->jobs_.find(terminal_job->job_id), use_case->jobs_.end());
     EXPECT_TRUE(use_case->active_job_id_.empty());
+}
+
+TEST(DispensingExecutionUseCaseInternalTest, GetJobTraceabilityReturnsCompletedTerminalPayload) {
+    auto use_case = CreateExecutionUseCase();
+    const auto request = BuildProfileCompareExecutionRequest();
+
+    auto job_context = std::make_shared<JobExecutionContext>();
+    job_context->job_id = "job-trace-completed";
+    job_context->plan_id = "plan-trace-completed";
+    job_context->plan_fingerprint = "fp-trace-completed";
+    job_context->execution_request = std::make_shared<DispensingExecutionRequest>(request);
+    job_context->state.store(JobState::COMPLETED);
+    job_context->final_state_committed.store(true);
+    job_context->target_count.store(1);
+    job_context->completed_count.store(1);
+    job_context->current_cycle.store(1);
+    job_context->cycle_progress_percent.store(100);
+    {
+        std::lock_guard<std::mutex> lock(job_context->mutex_);
+        job_context->expected_trace = request.expected_trace->items;
+        job_context->actual_trace = {
+            BuildActualTraceItem(request.expected_trace->items[0], 1U, 1U, 2U),
+            BuildActualTraceItem(request.expected_trace->items[1], 2U, 2U, 2U),
+        };
+        job_context->traceability_verdict = "passed";
+        job_context->traceability_verdict_reason.clear();
+        job_context->strict_one_to_one_proven = true;
+    }
+    use_case->jobs_[job_context->job_id] = job_context;
+
+    const auto traceability_result = use_case->GetJobTraceability(job_context->job_id);
+
+    ASSERT_TRUE(traceability_result.IsSuccess()) << traceability_result.GetError().GetMessage();
+    const auto& response = traceability_result.Value();
+    EXPECT_EQ(response.job_id, job_context->job_id);
+    EXPECT_EQ(response.plan_id, job_context->plan_id);
+    EXPECT_EQ(response.plan_fingerprint, job_context->plan_fingerprint);
+    EXPECT_EQ(response.terminal_state, "completed");
+    ASSERT_EQ(response.expected_trace.size(), 2U);
+    ASSERT_EQ(response.actual_trace.size(), 2U);
+    EXPECT_EQ(response.actual_trace[0].completion_sequence, 1U);
+    EXPECT_EQ(response.actual_trace[1].completion_sequence, 2U);
+    EXPECT_EQ(response.verdict, "passed");
+    EXPECT_TRUE(response.verdict_reason.empty());
+    EXPECT_TRUE(response.strict_one_to_one_proven);
+}
+
+TEST(DispensingExecutionUseCaseInternalTest, GetJobTraceabilityFailsClosedForCancelledTerminal) {
+    auto use_case = CreateExecutionUseCase();
+    const auto request = BuildProfileCompareExecutionRequest();
+
+    auto job_context = std::make_shared<JobExecutionContext>();
+    job_context->job_id = "job-trace-cancelled";
+    job_context->plan_id = "plan-trace-cancelled";
+    job_context->plan_fingerprint = "fp-trace-cancelled";
+    job_context->execution_request = std::make_shared<DispensingExecutionRequest>(request);
+    job_context->state.store(JobState::CANCELLED);
+    job_context->final_state_committed.store(true);
+    job_context->target_count.store(1);
+    job_context->completed_count.store(0);
+    job_context->current_cycle.store(1);
+    {
+        std::lock_guard<std::mutex> lock(job_context->mutex_);
+        job_context->expected_trace = request.expected_trace->items;
+        job_context->traceability_verdict = "failed";
+        job_context->traceability_verdict_reason =
+            "job terminated in state cancelled before strict traceability could be proven";
+        job_context->strict_one_to_one_proven = false;
+    }
+    use_case->jobs_[job_context->job_id] = job_context;
+
+    const auto traceability_result = use_case->GetJobTraceability(job_context->job_id);
+
+    ASSERT_TRUE(traceability_result.IsSuccess()) << traceability_result.GetError().GetMessage();
+    const auto& response = traceability_result.Value();
+    EXPECT_EQ(response.terminal_state, "cancelled");
+    EXPECT_EQ(response.verdict, "failed");
+    EXPECT_FALSE(response.strict_one_to_one_proven);
+    EXPECT_NE(response.verdict_reason.find("cancelled"), std::string::npos);
+    ASSERT_EQ(response.expected_trace.size(), request.expected_trace->items.size());
+    EXPECT_TRUE(response.actual_trace.empty());
+}
+
+TEST(DispensingExecutionUseCaseInternalTest,
+     StartJobAggregatesMultiCycleTraceAndProducesActualTraceCountMismatch) {
+    auto process_port = std::make_shared<TracingStubDispensingProcessPort>();
+    const auto request = BuildProfileCompareExecutionRequest();
+
+    DispensingExecutionReport first_cycle_report;
+    first_cycle_report.executed_segments = 1U;
+    first_cycle_report.total_distance = 12.5f;
+    first_cycle_report.actual_trace = {
+        BuildActualTraceItem(request.expected_trace->items[0], 1U, 1U, 1U),
+    };
+    first_cycle_report.traceability_verdict = "passed";
+    first_cycle_report.strict_one_to_one_proven = true;
+
+    DispensingExecutionReport second_cycle_report;
+    second_cycle_report.executed_segments = 1U;
+    second_cycle_report.total_distance = 12.5f;
+    second_cycle_report.traceability_verdict = "passed";
+    second_cycle_report.strict_one_to_one_proven = true;
+
+    process_port->scripted_reports = {first_cycle_report, second_cycle_report};
+    auto use_case = CreateExecutionUseCase(process_port);
+
+    RuntimeStartJobRequest start_request;
+    start_request.plan_id = "plan-trace-multi";
+    start_request.execution_request = request;
+    start_request.plan_fingerprint = "fp-trace-multi";
+    start_request.target_count = 2U;
+    start_request.cycle_advance_mode = JobCycleAdvanceMode::AUTO_CONTINUE;
+
+    const auto start_result = use_case->StartJob(start_request);
+    ASSERT_TRUE(start_result.IsSuccess()) << start_result.GetError().GetMessage();
+
+    const auto terminal_status = WaitForTerminalJobStatus(*use_case, start_result.Value());
+    ASSERT_TRUE(terminal_status.has_value());
+    EXPECT_EQ(terminal_status->state, "completed");
+    EXPECT_EQ(terminal_status->completed_count, 2U);
+
+    const auto traceability_result = use_case->GetJobTraceability(start_result.Value());
+    ASSERT_TRUE(traceability_result.IsSuccess()) << traceability_result.GetError().GetMessage();
+    const auto& response = traceability_result.Value();
+
+    EXPECT_EQ(response.terminal_state, "completed");
+    EXPECT_EQ(response.expected_trace.size(), 4U);
+    EXPECT_EQ(response.actual_trace.size(), 1U);
+    EXPECT_EQ(response.verdict, "failed");
+    EXPECT_FALSE(response.strict_one_to_one_proven);
+    EXPECT_NE(
+        response.verdict_reason.find("actual trace count does not match expected trace count at terminal state"),
+        std::string::npos);
+    ASSERT_FALSE(response.mismatches.empty());
+    EXPECT_EQ(response.mismatches.back().code, "actual_trace_count_mismatch");
+    EXPECT_EQ(
+        response.mismatches.back().message,
+        "actual trace count does not match expected trace count at terminal state");
 }
 
 TEST(DispensingExecutionUseCaseInternalTest, DryRunExecutionRequestResolvesToExplicitSafeProfile) {

@@ -26,6 +26,22 @@ UseCases::Dispensing::JobStatusResponse ToWorkflowJobStatus(
     return response;
 }
 
+UseCases::Dispensing::JobTraceabilityResponse ToWorkflowJobTraceability(
+    const UseCases::Dispensing::RuntimeJobTraceabilityResponse& runtime_traceability) {
+    UseCases::Dispensing::JobTraceabilityResponse response;
+    response.job_id = runtime_traceability.job_id;
+    response.plan_id = runtime_traceability.plan_id;
+    response.plan_fingerprint = runtime_traceability.plan_fingerprint;
+    response.terminal_state = runtime_traceability.terminal_state;
+    response.expected_trace = runtime_traceability.expected_trace;
+    response.actual_trace = runtime_traceability.actual_trace;
+    response.mismatches = runtime_traceability.mismatches;
+    response.verdict = runtime_traceability.verdict;
+    response.verdict_reason = runtime_traceability.verdict_reason;
+    response.strict_one_to_one_proven = runtime_traceability.strict_one_to_one_proven;
+    return response;
+}
+
 }  // namespace
 
 TcpDispensingFacade::TcpDispensingFacade(
@@ -111,6 +127,17 @@ Shared::Types::Result<UseCases::Dispensing::JobStatusResponse> TcpDispensingFaca
     }
     return Shared::Types::Result<UseCases::Dispensing::JobStatusResponse>::Success(
         ToWorkflowJobStatus(runtime_result.Value()));
+}
+
+Shared::Types::Result<UseCases::Dispensing::JobTraceabilityResponse> TcpDispensingFacade::GetDxfJobTraceability(
+    const UseCases::Dispensing::JobID& job_id) const {
+    auto runtime_result = dxf_execute_use_case_->GetJobTraceability(job_id);
+    if (runtime_result.IsError()) {
+        return Shared::Types::Result<UseCases::Dispensing::JobTraceabilityResponse>::Failure(
+            runtime_result.GetError());
+    }
+    return Shared::Types::Result<UseCases::Dispensing::JobTraceabilityResponse>::Success(
+        ToWorkflowJobTraceability(runtime_result.Value()));
 }
 
 Shared::Types::Result<UseCases::Dispensing::ExecutionTransitionState> TcpDispensingFacade::GetDxfJobTransitionState(

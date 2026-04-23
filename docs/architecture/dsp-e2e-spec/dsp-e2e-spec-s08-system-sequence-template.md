@@ -176,7 +176,7 @@ sequenceDiagram
     PK-->>WF: Event(DispenseTimingPlanBuilt, dispense_timing_plan_ref)
     WF->>WF: state = TimingPlanned
 
-    WF->>PK: Command(AssembleExecutionPackage, motion_plan_ref, dispense_timing_plan_ref, recipe_snapshot_ref, run_mode)
+    WF->>PK: Command(AssembleExecutionPackage, motion_plan_ref, dispense_timing_plan_ref, production_baseline_ref, run_mode)
     PK-->>WF: Event(ExecutionPackageBuilt, execution_package_ref)
     WF->>WF: state = PackageBuilt
 
@@ -190,7 +190,7 @@ sequenceDiagram
 
     WF->>RT: Command(RunPreflight, execution_id)
     RT-->>WF: Event(PreflightStarted, execution_id)
-    RT->>DEV: Check servo / home / safety / recipe / alarm / workpiece
+    RT->>DEV: Check servo / home / safety / fixed-parameter baseline / alarm / workpiece
     DEV-->>RT: Ready snapshot
     RT-->>WF: Event(PreflightPassed, machine_ready_snapshot_ref)
     WF->>WF: state = MachineReady
@@ -311,7 +311,7 @@ sequenceDiagram
         WF->>PK: Command(BuildDispenseTimingPlan, new_motion_plan_ref, process_plan_ref)
         PK-->>WF: Event(DispenseTimingPlanBuilt, new_dispense_timing_plan_ref)
 
-        WF->>PK: Command(AssembleExecutionPackage, new_motion_plan_ref, new_dispense_timing_plan_ref, recipe_snapshot_ref, run_mode)
+        WF->>PK: Command(AssembleExecutionPackage, new_motion_plan_ref, new_dispense_timing_plan_ref, production_baseline_ref, run_mode)
         PK-->>WF: Event(ExecutionPackageBuilt, new_execution_package_ref)
 
         WF->>PK: Command(ValidateExecutionPackage, new_execution_package_ref)
@@ -330,7 +330,7 @@ sequenceDiagram
         WF->>PK: Command(BuildDispenseTimingPlan, motion_plan_ref, process_plan_ref)
         PK-->>WF: Event(DispenseTimingPlanBuilt, new_dispense_timing_plan_ref)
 
-        WF->>PK: Command(AssembleExecutionPackage, motion_plan_ref, new_dispense_timing_plan_ref, recipe_snapshot_ref, run_mode)
+        WF->>PK: Command(AssembleExecutionPackage, motion_plan_ref, new_dispense_timing_plan_ref, production_baseline_ref, run_mode)
         PK-->>WF: Event(ExecutionPackageBuilt, new_execution_package_ref)
 
         WF->>PK: Command(ValidateExecutionPackage, new_execution_package_ref)
@@ -367,7 +367,7 @@ sequenceDiagram
         WF->>PK: Command(BuildDispenseTimingPlan, new_motion_plan_ref, process_plan_ref)
         PK-->>WF: Event(DispenseTimingPlanBuilt, new_dispense_timing_plan_ref)
 
-        WF->>PK: Command(AssembleExecutionPackage, new_motion_plan_ref, new_dispense_timing_plan_ref, recipe_snapshot_ref, run_mode)
+        WF->>PK: Command(AssembleExecutionPackage, new_motion_plan_ref, new_dispense_timing_plan_ref, production_baseline_ref, run_mode)
         PK-->>WF: Event(ExecutionPackageBuilt, new_execution_package_ref)
 
         WF->>PK: Command(ValidateExecutionPackage, new_execution_package_ref)
@@ -443,7 +443,7 @@ sequenceDiagram
 
     WF->>RT: Command(RunPreflight, execution_id)
     RT-->>WF: Event(PreflightStarted, execution_id)
-    RT->>DEV: Check servo / home / safety / recipe / alarm / workpiece
+    RT->>DEV: Check servo / home / safety / fixed-parameter baseline / alarm / workpiece
     DEV-->>RT: Snapshot indicates NOT READY
     RT-->>WF: Event(PreflightBlocked, machine_ready_snapshot_ref, failure_code, recommended_action)
     WF->>WF: state = PreflightBlocked
@@ -480,7 +480,7 @@ sequenceDiagram
 - 伺服未 ready
 - 工件未到位
 - 安全门未闭合
-- `recipe invalid`
+- `baseline invalid`
 - 活动报警
 - 气压/温度未达标
 

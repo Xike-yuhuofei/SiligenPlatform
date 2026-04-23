@@ -23,7 +23,6 @@ target_link_libraries(siligen_app_planner_cli INTERFACE
     siligen_dispense_packaging_application_public
     siligen_valve_core
     siligen_workflow_adapters_public
-    siligen_recipe_lifecycle_application_public
     siligen_runtime_execution_application_public
     siligen_runtime_process_bootstrap_public
     siligen_process_planning_contracts_public
@@ -45,7 +44,6 @@ if(
         ${CMAKE_CURRENT_SOURCE_DIR}/CommandHandlers.Motion.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/CommandHandlers.Dispensing.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/CommandHandlers.Dxf.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/CommandHandlers.Recipe.cpp
     )
     set_target_properties(siligen_planner_cli PROPERTIES
         CXX_STANDARD 17

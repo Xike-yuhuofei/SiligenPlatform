@@ -17,20 +17,20 @@
 
 | 阶段 | 阶段名称 | owner 模块 | 进入门槛 | 主要输入 | 核心命令 | 主要输出/事实对象 | 成功/决策事件 | 失败/阻断事件 | 默认处理 |
 |---|---|---|---|---|---|---|---|---|---|
-| S0 | 任务创建与工艺上下文绑定 | M1（M0 编排） | 尚未存在活动 `job_id` | 产品型号、工件类型、治具版本、材料批次、配方版本、设备型号、操作员、工单号、源文件引用 | `CreateJobCommand` | `JobDefinition` | `JobCreated` | 命令拒绝 + `S0_CTX_xxx` | 停留 S0，补齐上下文 |
+| S0 | 任务创建与工艺上下文绑定 | M1（M0 编排） | 尚未存在活动 `job_id` | 产品型号、工件类型、治具版本、材料批次、production baseline、设备型号、操作员、工单号、源文件引用 | `CreateJobCommand` | `JobDefinition` | `JobCreated` | 命令拒绝 + `S0_CTX_xxx` | 停留 S0，补齐上下文 |
 | S1 | 文件接收、封存与格式校验 | M1 | `JobDefinition` 已存在 | `job_ref`、原始 DXF | `AttachSourceFileCommand` | `SourceDrawing` | `SourceFileAccepted` | `SourceFileRejected` | 停留 S1，重新接收文件 |
 | S2 | DXF 解析与几何标准化 | M2 | `SourceDrawing` 已封存 | `source_drawing_ref` | `ParseSourceDrawingCommand` | `CanonicalGeometry` | `CanonicalGeometryBuilt` | `CanonicalGeometryRejected` | 回到 S1 或留在 S2 处理解析规则 |
 | S3 | 几何修复与拓扑重建 | M3 | `CanonicalGeometry` 有效 | `canonical_geometry_ref` | `BuildTopologyCommand` | `TopologyModel` | `TopologyBuilt` | `TopologyRejected` | 回到 S2/S3 |
 | S4 | 制造特征提取 | M3 | `TopologyModel` 有效 | `topology_model_ref`、特征规则 | `ExtractFeaturesCommand` | `FeatureGraph` | `FeatureGraphBuilt` | `FeatureClassificationFailed` | 回到 S3/S4 |
-| S5 | 工艺规则映射 | M4 | `FeatureGraph` 已就绪 | `feature_graph_ref`、工艺模板、材料/针嘴参数、配方快照 | `PlanProcessCommand` | `ProcessPlan` | `ProcessPlanBuilt` | `ProcessRuleRejected` | 回到 S4/S5 |
+| S5 | 工艺规则映射 | M4 | `FeatureGraph` 已就绪 | `feature_graph_ref`、工艺模板、材料/针嘴参数、production baseline 快照 | `PlanProcessCommand` | `ProcessPlan` | `ProcessPlanBuilt` | `ProcessRuleRejected` | 回到 S4/S5 |
 | S6 | 坐标体系建立 | M5 | `ProcessPlan` 已就绪 | `process_plan_ref`、治具基准、标定参数、装夹规则 | `ResolveCoordinateTransformsCommand` | `CoordinateTransformSet` | `CoordinateTransformResolved` | 命令失败 + `S6_COORD_xxx` | 停留 S6 或回到 S5 |
 | S7 | 对位、针嘴校准与高度补偿 | M5 | `CoordinateTransformSet` 已就绪 | `coordinate_transform_set_ref`、视觉图像、测高数据、校准数据、策略引用 | `RunAlignmentCommand` / `MarkAlignmentNotRequiredCommand` | `AlignmentCompensation` | `AlignmentSucceeded` / `AlignmentNotRequired` | `AlignmentFailed` / `CompensationOutOfRange` | 识别失败可停留 S7 重试；补偿超限回到 S6/S7 |
 | S8 | 工艺路径生成 | M6 | `ProcessPlan`、`CoordinateTransformSet`、`AlignmentCompensation` 已就绪 | `process_plan_ref`、`coordinate_transform_set_ref`、`alignment_compensation_ref` | `BuildProcessPathCommand` | `ProcessPath` | `ProcessPathBuilt` | `ProcessPathRejected` / `UncoveredFeatureDetected` | 回到 S5/S8 |
 | S9 | 运动轨迹生成 | M7 | `ProcessPath` 已就绪 | `process_path_ref`、设备动态参数、插补策略、机型约束 | `PlanMotionCommand` | `MotionPlan` | `MotionPlanBuilt` | `TrajectoryConstraintViolated` / `MotionPlanRejected` | 回到 S8/S9 |
 | S10 | 点胶 I/O 时序生成 | M8 | `MotionPlan` 已就绪 | `motion_plan_ref`、`process_plan_ref`、阀/泵响应参数 | `BuildDispenseTimingPlanCommand` | `DispenseTimingPlan` | `DispenseTimingPlanBuilt` | `DispenseTimingPlanRejected` | 回到 S9/S10 或 S5 |
-| S11A | 执行包组装 | M8 | `MotionPlan` 与 `DispenseTimingPlan` 已就绪 | `motion_plan_ref`、`dispense_timing_plan_ref`、配方快照、运行模式 | `AssembleExecutionPackageCommand` | `ExecutionPackage(build_result=built)` | `ExecutionPackageBuilt` | `ExecutionPackageRejected` | 停留 S11A 或回到 S9/S10 |
+| S11A | 执行包组装 | M8 | `MotionPlan` 与 `DispenseTimingPlan` 已就绪 | `motion_plan_ref`、`dispense_timing_plan_ref`、production baseline 快照、运行模式 | `AssembleExecutionPackageCommand` | `ExecutionPackage(build_result=built)` | `ExecutionPackageBuilt` | `ExecutionPackageRejected` | 停留 S11A 或回到 S9/S10 |
 | S11B | 离线规则校验 | M8 | 已存在 `ExecutionPackage` 且 `build_result=built` | `execution_package_ref`、离线规则集、机型快照 | `ValidateExecutionPackageCommand` | `ExecutionPackage(validation_result=passed/rejected)`、校验报告 | `ExecutionPackageValidated` | `OfflineValidationFailed` / `ExecutionPackageRejected` | 留在 S11B 或回到 S9/S10/S5 |
-| S12 | 执行会话创建与设备预检 | M9 | `ExecutionPackageValidated` 已完成 | `execution_package_ref`、实时设备状态、报警状态、recipe 状态、工件到位状态 | `CreateExecutionSessionCommand`、`RunPreflightCommand` | `ExecutionSession`、`MachineReadySnapshot` | `ExecutionSessionCreated`、`PreflightStarted`、`PreflightPassed` | `PreflightBlocked` | 停留 S12，修复门禁后重试；禁止回退规划层 |
+| S12 | 执行会话创建与设备预检 | M9 | `ExecutionPackageValidated` 已完成 | `execution_package_ref`、实时设备状态、报警状态、fixed-parameter baseline 状态、工件到位状态 | `CreateExecutionSessionCommand`、`RunPreflightCommand` | `ExecutionSession`、`MachineReadySnapshot` | `ExecutionSessionCreated`、`PreflightStarted`、`PreflightPassed` | `PreflightBlocked` | 停留 S12，修复门禁后重试；禁止回退规划层 |
 | S13 | 试运行、首件与放行决策 | M9 | `PreflightPassed`，已绑定执行会话 | `execution_package_ref`、`machine_ready_snapshot_ref`、首件策略、审批策略 | `RunPreviewCommand` / `RunDryRunCommand` / `RunFirstArticleCommand` / `ApproveFirstArticleCommand` / `RejectFirstArticleCommand` / `WaiveFirstArticleCommand` | `FirstArticleResult` | `PreviewCompleted`、`DryRunCompleted`、`FirstArticleStarted`、`FirstArticlePassed`、`FirstArticleRejected`、`FirstArticleWaived`、`FirstArticleNotRequired` | `FirstArticleRejected`（失败决策） | 回退到对应规划层，或在授权策略下放行；未放行不得进 S14 |
 | S14 | 正式执行 | M9 | `ReadyForProduction` | `execution_package_ref`、`execution_id`、`machine_ready_snapshot_ref` | `StartExecutionCommand`、`PauseExecutionCommand`、`ResumeExecutionCommand` | 运行状态流、段进度、局部结果 | `ExecutionStarted`、`ExecutionPaused`、`ExecutionResumed`、`ExecutionCompleted` | `ExecutionFaulted` / `ExecutionAborted` | 转入 S15 分层或进入终态 |
 | S15 | 在线故障分层与恢复/终止决策 | M9（TR 旁路固化） | 执行中存在 fault / alarm / condition loss | `execution_id`、轴状态、I/O 状态、报警、视觉反馈、过程传感器 | `RecoverExecutionCommand` / `AbortExecutionCommand` / `RunPreflightCommand` | `FaultEvent`、恢复决策、检查点信息 | `ExecutionRecovered`、`ExecutionResumed` | `ExecutionFaulted` / `ExecutionAborted` | 可恢复则回到 S14；需门禁重检则回 S12；不可恢复终止 |
@@ -85,7 +85,7 @@
 | S9 | 运动轨迹层 | 轨迹不可达、动态超限、Z 过渡冲突 | 回到 S9 或 S8 |
 | S10 | 点胶时序层 | 开关阀越界、起止补偿异常、索引不一致 | 回到 S10 或 S5 |
 | S11A-S11B | 执行包与离线规则层 | 冻结包不完整、版本不一致、离线规则失败 | 回到 S11A/S11B 或更早规划层 |
-| S12 | 执行门禁层 | 未回零、报警、recipe invalid、工件未到位 | 停留 S12，修门禁，不回退规划层 |
+| S12 | 执行门禁层 | 未回零、报警、baseline invalid、工件未到位 | 停留 S12，修门禁，不回退规划层 |
 | S13 | 首件质量门 | 空跑错、出胶错、位置偏、审批缺失 | 回退到对应规划/补偿层 |
 | S14-S15 | 运行时执行层 | 通信中断、堵针、无胶、安全链触发、恢复失败 | 运行内恢复 / 重新预检 / 中止 |
 | S16 | 追溯归档层 | 记录缺失、主链断裂、归档失败 | 停留 S16 修复追溯系统，不改生产事实 |

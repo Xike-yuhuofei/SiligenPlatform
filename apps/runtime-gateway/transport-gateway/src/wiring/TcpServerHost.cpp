@@ -17,7 +17,6 @@ TcpServerHost::TcpServerHost(
           facades.system,
           facades.motion,
           facades.dispensing,
-          facades.recipe,
           std::move(config_port),
           std::move(runtime_status_export_port),
           std::move(mock_io_control))),

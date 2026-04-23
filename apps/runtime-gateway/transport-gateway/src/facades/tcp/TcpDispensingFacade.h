@@ -53,6 +53,8 @@ class TcpDispensingFacade {
         const UseCases::Dispensing::StartJobRequest& request);
     Shared::Types::Result<UseCases::Dispensing::JobStatusResponse> GetDxfJobStatus(
         const UseCases::Dispensing::JobID& job_id) const;
+    Shared::Types::Result<UseCases::Dispensing::JobTraceabilityResponse> GetDxfJobTraceability(
+        const UseCases::Dispensing::JobID& job_id) const;
     Shared::Types::Result<UseCases::Dispensing::ExecutionTransitionState> GetDxfJobTransitionState(
         const UseCases::Dispensing::JobID& job_id) const;
     Shared::Types::Result<UseCases::Dispensing::ExecutionTransitionSnapshot> RequestDxfJobTransition(

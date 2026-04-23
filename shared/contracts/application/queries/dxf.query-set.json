@@ -32,6 +32,23 @@
       "consumers": [
         "hmi-client CommandProtocol.dxf_get_job_status"
       ]
+    },
+    {
+      "method": "dxf.job.traceability",
+      "kind": "query",
+      "paramsSchema": {
+        "type": "object",
+        "required": ["job_id"],
+        "properties": {
+          "job_id": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "resultRef": "../models/states.json#/definitions/dxfJobTraceability",
+      "errorCodes": [2920, 2921, 2922],
+      "consumers": [
+        "hmi-client CommandProtocol.dxf_get_job_traceability"
+      ]
     }
   ]
 }

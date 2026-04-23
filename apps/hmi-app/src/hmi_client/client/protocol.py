@@ -1079,6 +1079,16 @@ class CommandProtocol:
             return {"state": "unknown", "error_message": resp["error"].get("message", "Unknown error")}
         return _as_dict(resp.get("result"))
 
+    def dxf_get_job_traceability(self, job_id: str) -> JsonDict:
+        resp = self._client.send_request("dxf.job.traceability", {"job_id": job_id})
+        if "error" in resp:
+            return {
+                "verdict": "failed",
+                "verdict_reason": resp["error"].get("message", "Unknown error"),
+                "strict_one_to_one_proven": False,
+            }
+        return _as_dict(resp.get("result"))
+
     def dxf_job_pause(self, job_id: str = "") -> tuple[bool, str]:
         params = {"job_id": job_id} if job_id else {}
         resp = self._client.send_request("dxf.job.pause", params, timeout=15.0)
@@ -1153,159 +1163,3 @@ class CommandProtocol:
         if result_key:
             return True, result.get(result_key, default), ""
         return True, result, ""
-
-    def recipe_list(self, status: str = "", query: str = "", tag: str = "") -> tuple:
-        params: dict[str, object] = {}
-        if status:
-            params["status"] = status
-        if query:
-            params["query"] = query
-        if tag:
-            params["tag"] = tag
-        return self._call("recipe.list", params, "recipes", [])
-
-    def recipe_get(self, recipe_id: str) -> tuple:
-        return self._call("recipe.get", {"recipeId": recipe_id}, "recipe", {})
-
-    def recipe_templates(self) -> tuple:
-        return self._call("recipe.templates", {}, "templates", [])
-
-    def recipe_schema_default(self) -> tuple:
-        return self._call("recipe.schema.default", {}, "schema", {})
-
-    def recipe_create(
-        self,
-        name: str,
-        description: str = "",
-        tags: list[object] | None = None,
-        actor: str = "",
-    ) -> tuple:
-        params: dict[str, object] = {"name": name}
-        if description:
-            params["description"] = description
-        if tags is not None:
-            params["tags"] = tags
-        if actor:
-            params["actor"] = actor
-        return self._call("recipe.create", params, "recipe", {})
-
-    def recipe_update(
-        self,
-        recipe_id: str,
-        name: str | None = None,
-        description: str | None = None,
-        tags: list[object] | None = None,
-        actor: str = "",
-    ) -> tuple:
-        params: dict[str, object] = {"recipeId": recipe_id}
-        if name is not None:
-            params["name"] = name
-        if description is not None:
-            params["description"] = description
-        if tags is not None:
-            params["tags"] = tags
-        if actor:
-            params["actor"] = actor
-        return self._call("recipe.update", params, "recipe", {})
-
-    def recipe_archive(self, recipe_id: str, actor: str = "") -> tuple:
-        params: dict[str, object] = {"recipeId": recipe_id}
-        if actor:
-            params["actor"] = actor
-        return self._call("recipe.archive", params, "archived", False)
-
-    def recipe_draft_create(self, recipe_id: str, template_id: str, base_version_id: str = "",
-                            version_label: str = "", change_note: str = "", actor: str = "") -> tuple:
-        params: dict[str, object] = {
-            "recipeId": recipe_id,
-            "templateId": template_id
-        }
-        if base_version_id:
-            params["baseVersionId"] = base_version_id
-        if version_label:
-            params["versionLabel"] = version_label
-        if change_note:
-            params["changeNote"] = change_note
-        if actor:
-            params["actor"] = actor
-        return self._call("recipe.draft.create", params, "version", {})
-
-    def recipe_draft_update(self, recipe_id: str, version_id: str, parameters: list[object],
-                            change_note: str = "", actor: str = "") -> tuple:
-        params: dict[str, object] = {
-            "recipeId": recipe_id,
-            "versionId": version_id,
-            "parameters": parameters
-        }
-        if change_note:
-            params["changeNote"] = change_note
-        if actor:
-            params["actor"] = actor
-        return self._call("recipe.draft.update", params, "version", {})
-
-    def recipe_publish(self, recipe_id: str, version_id: str, actor: str = "") -> tuple:
-        params: dict[str, object] = {"recipeId": recipe_id, "versionId": version_id}
-        if actor:
-            params["actor"] = actor
-        return self._call("recipe.publish", params, "version", {})
-
-    def recipe_versions(self, recipe_id: str) -> tuple:
-        return self._call("recipe.versions", {"recipeId": recipe_id}, "versions", [])
-
-    def recipe_version_create(self, recipe_id: str, base_version_id: str = "", version_label: str = "",
-                              change_note: str = "", actor: str = "") -> tuple:
-        params: dict[str, object] = {"recipeId": recipe_id}
-        if base_version_id:
-            params["baseVersionId"] = base_version_id
-        if version_label:
-            params["versionLabel"] = version_label
-        if change_note:
-            params["changeNote"] = change_note
-        if actor:
-            params["actor"] = actor
-        return self._call("recipe.version.create", params, "version", {})
-
-    def recipe_compare(self, recipe_id: str, base_version_id: str, version_id: str) -> tuple:
-        params: dict[str, object] = {
-            "recipeId": recipe_id,
-            "baseVersionId": base_version_id,
-            "versionId": version_id
-        }
-        return self._call("recipe.version.compare", params, "changes", [])
-
-    def recipe_activate(self, recipe_id: str, version_id: str, actor: str = "") -> tuple:
-        params: dict[str, object] = {"recipeId": recipe_id, "versionId": version_id}
-        if actor:
-            params["actor"] = actor
-        return self._call("recipe.version.activate", params, "activated", False)
-
-    def recipe_audit(self, recipe_id: str, version_id: str = "") -> tuple:
-        params: dict[str, object] = {"recipeId": recipe_id}
-        if version_id:
-            params["versionId"] = version_id
-        return self._call("recipe.audit", params, "records", [])
-
-    def recipe_export(self, recipe_id: str, output_path: str = "", actor: str = "") -> tuple:
-        params: dict[str, object] = {"recipeId": recipe_id}
-        if output_path:
-            params["outputPath"] = output_path
-        if actor:
-            params["actor"] = actor
-        if output_path:
-            return self._call("recipe.export", params, "outputPath", "")
-        return self._call("recipe.export", params, None, {})
-
-    def recipe_import(self, bundle_json: str = "", bundle_path: str = "", resolution: str = "",
-                      dry_run: bool = False, actor: str = "") -> tuple:
-        params: dict[str, object] = {}
-        if bundle_json:
-            params["bundleJson"] = bundle_json
-        if bundle_path:
-            params["bundlePath"] = bundle_path
-        if resolution:
-            params["resolution"] = resolution
-        if dry_run:
-            params["dryRun"] = True
-        if actor:
-            params["actor"] = actor
-        return self._call("recipe.import", params, None, {})

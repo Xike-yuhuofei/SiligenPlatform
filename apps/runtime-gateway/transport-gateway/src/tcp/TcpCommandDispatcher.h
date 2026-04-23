@@ -17,7 +17,6 @@ namespace Siligen::Application::Facades::Tcp {
 class TcpSystemFacade;
 class TcpMotionFacade;
 class TcpDispensingFacade;
-class TcpRecipeFacade;
 }
 
 namespace Siligen::Domain::Configuration::Ports {
@@ -54,7 +53,6 @@ public:
         std::shared_ptr<Application::Facades::Tcp::TcpSystemFacade> systemFacade,
         std::shared_ptr<Application::Facades::Tcp::TcpMotionFacade> motionFacade,
         std::shared_ptr<Application::Facades::Tcp::TcpDispensingFacade> dispensingFacade,
-        std::shared_ptr<Application::Facades::Tcp::TcpRecipeFacade> recipeFacade,
         std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> configPort,
         std::shared_ptr<RuntimeExecution::Contracts::System::IRuntimeStatusExportPort> runtimeStatusExportPort,
         std::shared_ptr<MockIoControlService> mockIoControl
@@ -74,7 +72,6 @@ private:
     std::shared_ptr<Application::Facades::Tcp::TcpSystemFacade> systemFacade_;
     std::shared_ptr<Application::Facades::Tcp::TcpMotionFacade> motionFacade_;
     std::shared_ptr<Application::Facades::Tcp::TcpDispensingFacade> dispensingFacade_;
-    std::shared_ptr<Application::Facades::Tcp::TcpRecipeFacade> recipeFacade_;
     std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort> configPort_;
     std::shared_ptr<RuntimeExecution::Contracts::System::IRuntimeStatusExportPort> runtimeStatusExportPort_;
     std::shared_ptr<MockIoControlService> mockIoControl_;
@@ -153,6 +150,7 @@ private:
     std::string HandleDxfPlanPrepare(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfJobStart(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfJobStatus(const std::string& id, const nlohmann::json& params);
+    std::string HandleDxfJobTraceability(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfJobPause(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfJobResume(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfJobContinue(const std::string& id, const nlohmann::json& params);
@@ -164,23 +162,6 @@ private:
     std::string HandleAlarmsList(const std::string& id, const nlohmann::json& params);
     std::string HandleAlarmsClear(const std::string& id, const nlohmann::json& params);
     std::string HandleAlarmsAcknowledge(const std::string& id, const nlohmann::json& params);
-    std::string HandleRecipeList(const std::string& id, const nlohmann::json& params);
-    std::string HandleRecipeGet(const std::string& id, const nlohmann::json& params);
-    std::string HandleRecipeCreate(const std::string& id, const nlohmann::json& params);
-    std::string HandleRecipeUpdate(const std::string& id, const nlohmann::json& params);
-    std::string HandleRecipeArchive(const std::string& id, const nlohmann::json& params);
-    std::string HandleRecipeDraftCreate(const std::string& id, const nlohmann::json& params);
-    std::string HandleRecipeDraftUpdate(const std::string& id, const nlohmann::json& params);
-    std::string HandleRecipePublish(const std::string& id, const nlohmann::json& params);
-    std::string HandleRecipeVersions(const std::string& id, const nlohmann::json& params);
-    std::string HandleRecipeVersionCreate(const std::string& id, const nlohmann::json& params);
-    std::string HandleRecipeCompare(const std::string& id, const nlohmann::json& params);
-    std::string HandleRecipeActivate(const std::string& id, const nlohmann::json& params);
-    std::string HandleRecipeTemplates(const std::string& id, const nlohmann::json& params);
-    std::string HandleRecipeSchemaDefault(const std::string& id, const nlohmann::json& params);
-    std::string HandleRecipeAudit(const std::string& id, const nlohmann::json& params);
-    std::string HandleRecipeExport(const std::string& id, const nlohmann::json& params);
-    std::string HandleRecipeImport(const std::string& id, const nlohmann::json& params);
 
     // 命令路由表
     using CommandHandler = std::function<std::string(const std::string&, const nlohmann::json&)>;
@@ -192,7 +173,6 @@ private:
     void RegisterDispensingCommands();
     void RegisterDxfCommands();
     void RegisterAlarmCommands();
-    void RegisterRecipeCommands();
     void RegisterCommands();
     Application::Services::Motion::Execution::ExecutionTransitionState ResolveActiveDxfJobTransitionState() const;
 };

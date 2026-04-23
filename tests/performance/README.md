@@ -10,7 +10,7 @@
 - 默认采集当前仓库已跟踪的 DXF samples：`small=rect_diag.dxf`、`medium=rect_medium_ladder.dxf`、`large=rect_large_ladder.dxf`
 - canonical `medium` / `large` 由 `tests/performance/generate_canonical_dxf_samples.py` 生成并固化在 `samples/dxf/`
 - 如需临时覆盖某个 sample，仍可显式通过 `--sample <label>=<PATH>` 提供，但正式 `nightly-performance` blocking gate 只认仓库内 canonical samples
-- 作为 `dxf.plan.prepare` producer，脚本不得显式传入 `recipe_id/version_id`；固定参数 owner 已正式收敛为 runtime 返回的 `production_baseline`
+- 作为 `dxf.plan.prepare` producer，脚本不得显式传入已退役的固定参数标识；固定参数 owner 已正式收敛为 runtime 返回的 `production_baseline`
 - 输出 `JSON + Markdown` 到 `tests/reports/performance/dxf-preview-profiles/`
 - `tests/performance/collect_dxf_preview_profiles.py` 同时是 `nightly-performance` 的正式 authority；当显式传 `--gate-mode nightly-performance --threshold-config tests/baselines/performance/dxf-preview-profile-thresholds.json` 时，threshold gate 为 blocking
 - 默认 gateway executable 与 shared build owner 保持单轨一致：显式设置 `SILIGEN_CONTROL_APPS_BUILD_ROOT` 时使用该路径；否则只认携带当前工作区匹配 `CMakeCache.txt` 的 `<repo-root>\build\ca\bin\*`

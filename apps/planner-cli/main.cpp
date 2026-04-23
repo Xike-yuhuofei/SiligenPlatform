@@ -42,11 +42,9 @@ void PrintUsage() {
         << "  siligen_planner_cli dxf-preview --file <path> [--output-dir <dir>] [--preview-max-points <n>] [--json]\n"
         << "  siligen_planner_cli dxf-preview-snapshot --file <path> [--dxf-speed <mm/s>] [--dry-run] [--json]\n"
         << "  siligen_planner_cli dxf-augment --file <path> [--output <path>] [--dxf-r12]\n"
-        << "  siligen_planner_cli recipe create|update|draft|draft-update|publish [...]\n"
-        << "  siligen_planner_cli recipe list|get|versions|archive|version-create|compare|rollback|activate|audit|export|import [...]\n"
         << "\n"
         << "说明:\n"
-        << "  - canonical CLI 已承载连接调试、运动、点胶、DXF 与完整 recipe 命令面\n"
+        << "  - canonical CLI 当前只承载连接调试、运动、点胶与 DXF 主链命令面\n"
         << "  - 默认配置优先使用 "
         << Siligen::Infrastructure::Configuration::kCanonicalMachineConfigRelativePath
         << "，可通过 --config 覆盖\n"

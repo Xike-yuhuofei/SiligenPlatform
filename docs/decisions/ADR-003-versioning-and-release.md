@@ -93,7 +93,7 @@
 配套快照至少包括：
 
 - `config\`
-- `data\recipes\`
+- `data\`
 - canonical control-apps build root 下的 `bin\<Config>\`
 - 如发布范围包含 DXF 预览、`.pb` 或 simulation input 导出，额外保留对应 `samples\` / `data\schemas\engineering\` / `shared\contracts\engineering\fixtures\` 快照或可追溯证据
 

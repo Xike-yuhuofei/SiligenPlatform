@@ -111,14 +111,14 @@
 - 任意执行动作前**MUST** 经过安全许可判断。
 - 安全层不属于本文核心对象集，但本文所有执行对象都默认受其约束。
 
-### L1 作业 / 配方层
+### L1 作业 / 固定参数层
 
 职责：描述一次点胶任务的产品与工艺目标。
 
 典型对象：
 
 - `JobOrder`
-- `Recipe`
+- `ProductionBaseline`
 - `OperationSpec`
 
 边界：
@@ -373,7 +373,7 @@
 | `id` | id | 是 | process-planner | 路径 ID |
 | `schema_version` | string | 是 | process-planner | 版本 |
 | `job_id` | string | 是 | process-planner | 所属作业 |
-| `recipe_id` | string | 否 | process-planner | 所属配方 |
+| `baseline_id` | string | 否 | process-planner | 所属固定参数基线 |
 | `segment_refs` | ref[] | 是 | process-planner | 工艺段序列 |
 | `path_role` | enum | 否 | process-planner | `MAIN/ASSIST/CLEAN/CALIBRATION` |
 | `coordinate_frame` | string | 是 | process-planner | 坐标系 |
@@ -857,4 +857,3 @@ SegmentResult.execution_segment_ref
 - 任一执行结果都可以向上追溯到工艺段
 
 后续实现、重构、仿真与板卡替换，都不得突破本文规定的主边界。
-

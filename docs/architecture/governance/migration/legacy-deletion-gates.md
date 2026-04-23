@@ -31,7 +31,7 @@
 ### 4.1 已完成的 fallback 清理
 
 1. `control-runtime`、`control-tcp-server`、`control-cli` 的默认 exe 产物来源已经切到 canonical control-apps build root。
-2. `config\machine\machine_config.ini` 与 `data\recipes\` / `data\schemas\recipes\` 已成为默认配置与数据来源。
+2. `config\machine\machine_config.ini` 与根级 `data\` 已成为默认配置与数据来源。
 3. HIL 默认入口已经切到 `integration/hardware-in-loop/run_hardware_smoke.py` + canonical `siligen_tcp_server.exe`。
 4. legacy gateway/tcp alias 曾短暂前移到 `packages/transport-gateway`；在 `2026-03-19` 审计确认消费者归零后，3 个 alias 已提前删除，`control-core/src/adapters/tcp` 与 `control-core/modules/control-gateway` 仍保持退出默认库图。
 5. `apps/*`、`packages/runtime-host`、`packages/process-runtime-core`、`packages/transport-gateway` 已不再通过隐式 `CMAKE_SOURCE_DIR` 回落到 `control-core` source root。

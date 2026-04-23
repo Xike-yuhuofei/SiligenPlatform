@@ -27,7 +27,7 @@
 | `tests/` | `effective-canonical` | `adjacent` | `keep` | integration/e2e/performance/contract-lint 的正式承载面。 |
 | `scripts/` | `effective-canonical` | `adjacent` | `migrate` | 根级自动化、迁移脚本与构建辅助的正式目标根。 |
 | `config/` | `effective-canonical` | `adjacent` | `keep` | 机台与环境配置源。 |
-| `data/` | `effective-canonical` | `adjacent` | `keep` | 配方、schema、运行资产。 |
+| `data/` | `effective-canonical` | `adjacent` | `keep` | 工程 schema、运行资产。 |
 | `deploy/` | `effective-canonical` | `adjacent` | `migrate` | 部署与交付材料的目标根。 |
 | `.specify/` | `local-cache` | `non-main-chain` | `ignore-local` | 本地工具缓存；允许存在，但不纳入正式基线、不得作为仓库正式资产。 |
 | `specs/` | `local-cache` | `non-main-chain` | `ignore-local` | 本地工具缓存；允许存在，但不作为 `feature artifact` 正式根。 |

@@ -212,6 +212,19 @@ struct JobStatusResponse {
     bool dry_run = false;
 };
 
+struct JobTraceabilityResponse {
+    JobID job_id;
+    PlanID plan_id;
+    std::string plan_fingerprint;
+    std::string terminal_state;
+    std::vector<Domain::Dispensing::ValueObjects::ProfileCompareExpectedTraceItem> expected_trace;
+    std::vector<Domain::Dispensing::ValueObjects::ProfileCompareActualTraceItem> actual_trace;
+    std::vector<Domain::Dispensing::ValueObjects::ProfileCompareTraceabilityMismatch> mismatches;
+    std::string verdict = "failed";
+    std::string verdict_reason;
+    bool strict_one_to_one_proven = false;
+};
+
 class DispensingWorkflowUseCase {
    public:
     enum class PlanPreviewState {

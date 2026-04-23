@@ -234,10 +234,10 @@ M11 只能发命令、看状态、做审批、看追溯，不能直接写 owner 
 
 ### 负责消费的对象
 - `FeatureGraph`
-- 工艺模板 / 配方快照
+- 工艺模板 / production baseline 快照
 
 ### 对外输入命令
-- `PlanProcess(feature_graph_ref, recipe_snapshot_ref, process_template_ref)`
+- `PlanProcess(feature_graph_ref, production_baseline_ref, process_template_ref)`
 - `ReplanProcess(process_context)`
 - `SupersedeOwnedArtifact(artifact_ref, superseded_by_ref, reason)`
 
@@ -384,13 +384,13 @@ M11 只能发命令、看状态、做审批、看追溯，不能直接写 owner 
 ### 负责消费的对象
 - `MotionPlan`
 - `ProcessPlan`
-- 配方快照
+- production baseline 快照
 - 运行模式
 - 设备配置快照
 
 ### 对外输入命令
 - `BuildDispenseTimingPlan(motion_plan_ref, process_plan_ref, valve_profile_ref)`
-- `AssembleExecutionPackage(motion_plan_ref, timing_plan_ref, recipe_snapshot_ref, run_mode)`
+- `AssembleExecutionPackage(motion_plan_ref, timing_plan_ref, production_baseline_ref, run_mode)`
 - `ValidateExecutionPackage(execution_package_ref)`
 - `SupersedeOwnedArtifact(artifact_ref, superseded_by_ref, reason)`
 

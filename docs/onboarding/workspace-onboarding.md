@@ -20,7 +20,7 @@ Set-Location <repo-root>
 | `.\ci.ps1` | 根级严格验证入口 | 已验证 |
 | `.\apps\hmi-app\run.ps1` | HMI 启动入口 | 已验证 |
 | `config\machine\machine_config.ini` | 机器配置 canonical 源 | 已验证 |
-| `data\recipes\` | 配方数据 canonical 源 | 已验证 |
+| `data\` | 运行数据与工程 schema 根 | 已验证 |
 
 control-apps 产物（构建后）：
 

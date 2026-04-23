@@ -11,8 +11,6 @@
 namespace Siligen::Infrastructure::Configuration {
 
 inline constexpr char kCanonicalMachineConfigRelativePath[] = "config/machine/machine_config.ini";
-inline constexpr char kCanonicalRecipeDirectoryRelativePath[] = "data/recipes";
-inline constexpr char kCanonicalRecipeSchemaDirectoryRelativePath[] = "data/schemas/recipes";
 inline constexpr char kCanonicalUploadDirectoryRelativePath[] = "uploads/dxf/";
 
 enum class ConfigPathBridgeMode {
@@ -32,14 +30,6 @@ struct ConfigPathResolution {
 
 inline std::string CanonicalMachineConfigRelativePath() {
     return kCanonicalMachineConfigRelativePath;
-}
-
-inline std::string CanonicalRecipeDirectoryRelativePath() {
-    return kCanonicalRecipeDirectoryRelativePath;
-}
-
-inline std::string CanonicalRecipeSchemaDirectoryRelativePath() {
-    return kCanonicalRecipeSchemaDirectoryRelativePath;
 }
 
 inline std::string CanonicalUploadDirectoryRelativePath() {
@@ -214,16 +204,6 @@ inline std::string ResolveWorkspaceRelativePath(
 
 inline std::string ResolveConfigFilePath(const std::string& config_path) noexcept {
     return ResolveConfigFilePathWithBridge(config_path).resolved_path;
-}
-
-inline std::string ResolveRecipeDirectory(
-    std::initializer_list<std::string> fallback_relative_paths = {}) noexcept {
-    return ResolveWorkspaceRelativePath(kCanonicalRecipeDirectoryRelativePath, fallback_relative_paths);
-}
-
-inline std::string ResolveRecipeSchemaDirectory(
-    std::initializer_list<std::string> fallback_relative_paths = {}) noexcept {
-    return ResolveWorkspaceRelativePath(kCanonicalRecipeSchemaDirectoryRelativePath, fallback_relative_paths);
 }
 
 inline std::string ResolveUploadDirectory(

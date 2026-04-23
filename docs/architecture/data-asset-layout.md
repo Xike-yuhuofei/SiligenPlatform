@@ -1,17 +1,16 @@
 # 数据资产布局
 
-更新时间：`2026-03-19`
+更新时间：`2026-04-23`
 
 ## 1. 目标
 
-把配方、schema、稳定样本与回放输入收口到工作区根级 `data/`、`samples/` 与 `shared/contracts/engineering/fixtures/`，并让运行时代码只认这些 canonical 路径。
+把工程 schema、稳定样本与回放输入收口到工作区根级 `data/`、`samples/` 与 `shared/contracts/engineering/fixtures/`，并让运行时代码只认这些 canonical 路径。
 
 ## 2. 分类规则
 
 | 分类 | 定义 | canonical 落位 | 备注 |
 |---|---|---|---|
-| 源码资产 | 人工维护、被业务逻辑直接消费的正式数据 | `data/recipes/`、`data/schemas/`、`samples/` | 必须有 owner 和 canonical 路径 |
-| 运行时业务产物 | 运行时产生，但仍属于业务记录的一部分 | `data/recipes/audit/` | 可保留 seed，不应被误判为日志 |
+| 源码资产 | 人工维护、被业务逻辑直接消费的正式数据 | `data/schemas/`、`samples/` | 必须有 owner 和 canonical 路径 |
 | 契约 fixture / 稳定样本 | 用于契约比对、仿真回归与演示输入的稳定样本 | `shared/contracts/engineering/fixtures/`、`samples/` | 必须明确 authority 或 consumer |
 | 已降级 baseline redirect | 历史基线路径，占位用于防回流或 provenance 审计 | `data/baselines/` | 不是 live source of truth |
 
@@ -19,25 +18,20 @@
 
 | 资产 | owner | canonical 路径 | 当前说明 |
 |---|---|---|---|
-| 配方主记录 / 版本 / 模板 / 审计 seed | `modules/recipe-lifecycle/` + runtime consumer | `data/recipes/` | runtime consumer 默认只读取这里 |
-| 配方参数 schema | `modules/recipe-lifecycle/` | `data/schemas/recipes/default.json` | runtime consumer 默认只读取这里 |
 | DXF proto / JSON schema | `shared/contracts/engineering/` | `data/schemas/engineering/dxf/v1/` | 工作区公开 schema 根；authority 由 engineering contracts 维护 |
 | 工程契约 fixture | `shared/contracts/engineering/fixtures/` | `shared/contracts/engineering/fixtures/cases/` | 用于 `.pb`、preview artifact、simulation input 的契约回归 |
 | 仿真稳定样本 / 回放输入 | 对应 consumer owner + `shared/testing/` 目录约束 | `samples/simulation/`、`samples/replay-data/` | 用于仿真与回放链路的稳定输入 |
-| DXF / 配方演示输入 | 各对应 owner | `samples/` | 共享给文档、仿真与演示脚本 |
+| DXF 演示输入 | 各对应 owner | `samples/` | 共享给文档、仿真与演示脚本 |
 
 ## 4. 默认消费规则
 
 - runtime consumer 默认只解析：
-  - `data/recipes/`
-  - `data/schemas/recipes/`
-- `control-core/data/recipes/` 与 `control-core/src/infrastructure/resources/config/files/recipes/schemas/` 已退出默认 fallback 链路。
+  - `data/schemas/engineering/dxf/v1/`
 - `data/schemas/engineering/dxf/v1/` 是工作区公开 schema 根；长期 authority 由 `shared/contracts/engineering/` 维护。
 - `shared/contracts/engineering/fixtures/` 是工程契约 fixture 的正式 authority；`data/baselines/**` 不再承担 live fixture 职责。
+- 已退役的历史管理数据根与对应 schema 根已删除，不再是任何 runtime 或测试链路的 canonical 输入。
 
 ## 5. 风险说明
 
 1. `data/`、`samples/` 与 `shared/contracts/engineering/fixtures/` 同时承载不同类型资产，后续仍需持续避免 authority 漂移。
-2. `data/recipes/audit/` 属于运行时业务产物，后续仍建议引入 seed 与真实运行数据分层策略。
-3. `data/baselines/**` 当前已降级为 deprecated redirect；若重新承载 live 资产，应由 workspace gate 直接阻断。
-4. `control-core/data/recipes/*` 当前已没有默认运行价值，但物理目录仍作为历史残留存在，删除前仍需完成仓内 provenance 审计。
+2. `data/baselines/**` 当前已降级为 deprecated redirect；若重新承载 live 资产，应由 workspace gate 直接阻断。

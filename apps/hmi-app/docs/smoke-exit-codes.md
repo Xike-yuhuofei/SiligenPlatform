@@ -22,7 +22,7 @@
 
 - `operator_preview` 与 `operator_production` 必须显式传入 `-DxfBrowsePath`；禁止使用隐式 canonical sample fallback。
 - 当传入 `-ExerciseRuntimeActions -RuntimeActionProfile operator_preview` 时，GUI smoke 必须走 `DXF browse -> preview-ready -> preview-refreshed` 的操作员在线预览链路，并输出对应 `OPERATOR_CONTEXT` 阶段序列。
-- `operator_preview` 链路不得要求显式 recipe/version 选择；成功依据固定为 runtime 返回的 `plan_id`、`snapshot_hash` 与 `preview_source=planned_glue_snapshot`。
+- `operator_preview` 链路不得要求额外的历史配置选择；成功依据固定为 runtime 返回的 `plan_id`、`snapshot_hash` 与 `preview_source=planned_glue_snapshot`。
 - 当传入 `-ExerciseRuntimeActions -RuntimeActionProfile operator_production` 时，GUI smoke 必须继续走：
   - `preview-ready -> preview-refreshed -> production-started -> production-running -> production-completed -> next-job-ready`
   - 且 `production-started` 必须仍经由 HMI 现有 `preview.confirm` 语义，不允许测试脚本绕过确认。

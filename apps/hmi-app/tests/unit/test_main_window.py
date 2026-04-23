@@ -831,7 +831,7 @@ class MainWindowTabsTest(unittest.TestCase):
             for index in range(self.window._main_tabs.count())
         ]
 
-        self.assertEqual(labels, ["生产", "设置", "配置(未启用)", "报警"])
+        self.assertEqual(labels, ["生产", "设置", "报警"])
         self.assertNotIn("仿真观察", labels)
 
     def test_alarm_panel_exposes_status_log_view_and_copy_action(self) -> None:

@@ -52,7 +52,6 @@ add_library(siligen_runtime_process_bootstrap STATIC
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/container/ApplicationContainer.System.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/container/ApplicationContainer.Motion.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/container/ApplicationContainer.Dispensing.cpp
-    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/container/ApplicationContainer.Recipes.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/factories/InfrastructureAdapterFactory.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/configuration/ConfigFileAdapter.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/configuration/ConfigFileAdapter.Ini.cpp
@@ -61,11 +60,6 @@ add_library(siligen_runtime_process_bootstrap STATIC
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/configuration/InterlockConfigResolver.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/motion/MotionControlOperationsBridge.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/configuration/validators/ConfigValidator.cpp
-    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/recipes/AuditFileRepository.cpp
-    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/recipes/ParameterSchemaFileProvider.cpp
-    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/recipes/RecipeBundleSerializer.cpp
-    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/recipes/RecipeFileRepository.cpp
-    ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/recipes/TemplateFileRepository.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/status/RuntimeStatusExportPort.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/supervision/RuntimeExecutionSupervisionBackend.cpp
     ${RUNTIME_PROCESS_BOOTSTRAP_APP_ROOT}/runtime/supervision/RuntimeJobTerminalSync.cpp
@@ -100,9 +94,6 @@ target_link_libraries(siligen_runtime_process_bootstrap PUBLIC
     siligen_job_ingest_application_public
     siligen_motion_planning_application_public
     siligen_workflow_adapters_public
-    siligen_recipe_lifecycle_domain_public
-    siligen_recipe_lifecycle_application_public
-    siligen_recipe_lifecycle_serialization_public
     siligen_runtime_execution_application_public
     siligen_trace_diagnostics_contracts_public
     siligen_trace_diagnostics_application_public

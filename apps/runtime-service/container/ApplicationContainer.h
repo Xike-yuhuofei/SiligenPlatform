@@ -201,11 +201,6 @@ private:
     std::shared_ptr<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort> interpolation_port_;
     std::shared_ptr<Domain::Motion::Ports::IVelocityProfilePort> velocity_profile_port_;
     std::shared_ptr<Domain::Dispensing::Ports::ITaskSchedulerPort> task_scheduler_port_;  // Phase 2: 任务调度器
-    std::shared_ptr<Domain::Recipes::Ports::IRecipeRepositoryPort> recipe_repository_;
-    std::shared_ptr<Domain::Recipes::Ports::ITemplateRepositoryPort> template_repository_;
-    std::shared_ptr<Domain::Recipes::Ports::IAuditRepositoryPort> audit_repository_;
-    std::shared_ptr<Domain::Recipes::Ports::IParameterSchemaPort> parameter_schema_port_;
-    std::shared_ptr<Domain::Recipes::Ports::IRecipeBundleSerializerPort> recipe_bundle_serializer_port_;
 
     // Domain Service实例
     std::shared_ptr<Domain::Motion::DomainServices::JogController> jog_controller_;
@@ -252,11 +247,9 @@ private:
     void ValidateDiagnosticsPorts();
     void ValidateMotionPorts();
     void ValidateDispensingPorts();
-    void ValidateRecipePorts();
 
     void ConfigureMotionServices();
     void ConfigureDispensingServices();
-    void ConfigureRecipeServices();
 
     template<typename T>
     std::shared_ptr<T> FindInRegistry(const InstanceMap& registry) const {
@@ -319,16 +312,6 @@ private:
             velocity_profile_port_ = port;
         } else if constexpr (std::is_same_v<TPort, Domain::Dispensing::Ports::ITaskSchedulerPort>) {
             task_scheduler_port_ = port;
-        } else if constexpr (std::is_same_v<TPort, Domain::Recipes::Ports::IRecipeRepositoryPort>) {
-            recipe_repository_ = port;
-        } else if constexpr (std::is_same_v<TPort, Domain::Recipes::Ports::ITemplateRepositoryPort>) {
-            template_repository_ = port;
-        } else if constexpr (std::is_same_v<TPort, Domain::Recipes::Ports::IAuditRepositoryPort>) {
-            audit_repository_ = port;
-        } else if constexpr (std::is_same_v<TPort, Domain::Recipes::Ports::IParameterSchemaPort>) {
-            parameter_schema_port_ = port;
-        } else if constexpr (std::is_same_v<TPort, Domain::Recipes::Ports::IRecipeBundleSerializerPort>) {
-            recipe_bundle_serializer_port_ = port;
         }
     }
 
@@ -488,47 +471,6 @@ ApplicationContainer::CreateInstance<UseCases::Dispensing::DispensingWorkflowUse
 template<>
 std::shared_ptr<UseCases::System::EmergencyStopUseCase>
 ApplicationContainer::CreateInstance<UseCases::System::EmergencyStopUseCase>();
-
-// Recipe UseCase 特化声明
-template<>
-std::shared_ptr<UseCases::Recipes::CreateRecipeUseCase>
-ApplicationContainer::CreateInstance<UseCases::Recipes::CreateRecipeUseCase>();
-
-template<>
-std::shared_ptr<UseCases::Recipes::UpdateRecipeUseCase>
-ApplicationContainer::CreateInstance<UseCases::Recipes::UpdateRecipeUseCase>();
-
-template<>
-std::shared_ptr<UseCases::Recipes::CreateDraftVersionUseCase>
-ApplicationContainer::CreateInstance<UseCases::Recipes::CreateDraftVersionUseCase>();
-
-template<>
-std::shared_ptr<UseCases::Recipes::UpdateDraftVersionUseCase>
-ApplicationContainer::CreateInstance<UseCases::Recipes::UpdateDraftVersionUseCase>();
-
-template<>
-std::shared_ptr<UseCases::Recipes::RecipeCommandUseCase>
-ApplicationContainer::CreateInstance<UseCases::Recipes::RecipeCommandUseCase>();
-
-template<>
-std::shared_ptr<UseCases::Recipes::RecipeQueryUseCase>
-ApplicationContainer::CreateInstance<UseCases::Recipes::RecipeQueryUseCase>();
-
-template<>
-std::shared_ptr<UseCases::Recipes::CreateVersionFromPublishedUseCase>
-ApplicationContainer::CreateInstance<UseCases::Recipes::CreateVersionFromPublishedUseCase>();
-
-template<>
-std::shared_ptr<UseCases::Recipes::CompareRecipeVersionsUseCase>
-ApplicationContainer::CreateInstance<UseCases::Recipes::CompareRecipeVersionsUseCase>();
-
-template<>
-std::shared_ptr<UseCases::Recipes::ExportRecipeBundlePayloadUseCase>
-ApplicationContainer::CreateInstance<UseCases::Recipes::ExportRecipeBundlePayloadUseCase>();
-
-template<>
-std::shared_ptr<UseCases::Recipes::ImportRecipeBundlePayloadUseCase>
-ApplicationContainer::CreateInstance<UseCases::Recipes::ImportRecipeBundlePayloadUseCase>();
 
 template<>
 std::shared_ptr<Domain::Configuration::Ports::IConfigurationPort>

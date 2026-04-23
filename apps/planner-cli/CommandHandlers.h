@@ -52,21 +52,6 @@ class CLICommandHandlers {
     int HandleDXFPreview(const Siligen::Application::CommandLineConfig& config);
     int HandleDXFPreviewSnapshot(const Siligen::Application::CommandLineConfig& config);
     int HandleDXFAugment(const Siligen::Application::CommandLineConfig& config);
-    int HandleRecipeCreate(const Siligen::Application::CommandLineConfig& config);
-    int HandleRecipeUpdate(const Siligen::Application::CommandLineConfig& config);
-    int HandleRecipeDraftCreate(const Siligen::Application::CommandLineConfig& config);
-    int HandleRecipeDraftUpdate(const Siligen::Application::CommandLineConfig& config);
-    int HandleRecipePublish(const Siligen::Application::CommandLineConfig& config);
-    int HandleRecipeList(const Siligen::Application::CommandLineConfig& config);
-    int HandleRecipeGet(const Siligen::Application::CommandLineConfig& config);
-    int HandleRecipeListVersions(const Siligen::Application::CommandLineConfig& config);
-    int HandleRecipeArchive(const Siligen::Application::CommandLineConfig& config);
-    int HandleRecipeVersionCreate(const Siligen::Application::CommandLineConfig& config);
-    int HandleRecipeCompare(const Siligen::Application::CommandLineConfig& config);
-    int HandleRecipeActivate(const Siligen::Application::CommandLineConfig& config);
-    int HandleRecipeAudit(const Siligen::Application::CommandLineConfig& config);
-    int HandleRecipeExport(const Siligen::Application::CommandLineConfig& config);
-    int HandleRecipeImport(const Siligen::Application::CommandLineConfig& config);
 
     Siligen::Application::CommandLineConfig ApplyDxfDefaults(
         const Siligen::Application::CommandLineConfig& config) const;

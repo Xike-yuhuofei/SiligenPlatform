@@ -72,6 +72,8 @@ class DxfState:
     plan_dry_run: bool = False
     plan_speed_mm_s: float = 0.0
     current_job_id: str = ""
+    last_terminal_job_id: str = ""
+    last_terminal_state: str = "idle"
     target_count: int = 0
     completed_count: int = 0
     job_dry_run: bool = False
@@ -240,73 +242,10 @@ class MockState:
             self._add_alarm("INFO", "待机时间过长")
         self._dxf_thread: Optional[threading.Thread] = None
         self._disp_thread: Optional[threading.Thread] = None
-        self._recipe_seq = 0
         self.config_path = config_path
         self.config: Dict[str, Dict[str, str]] = {}
         self.config_error: Optional[str] = None
         self.config_hash: str = ""
-        self.recipe_schema = {
-            "schemaId": "default",
-            "entries": [
-                {
-                    "key": "dispense_speed",
-                    "displayName": "Dispense Speed",
-                    "type": "float",
-                    "required": True,
-                    "unit": "mm/s",
-                    "constraints": {"min": 0.1, "max": 200.0},
-                },
-                {
-                    "key": "dispense_pressure",
-                    "displayName": "Dispense Pressure",
-                    "type": "float",
-                    "required": True,
-                    "unit": "kPa",
-                    "constraints": {"min": 0.0, "max": 500.0},
-                },
-                {
-                    "key": "trigger_spatial_interval_mm",
-                    "displayName": "Trigger Spatial Interval",
-                    "type": "float",
-                    "required": True,
-                    "unit": "mm",
-                    "constraints": {"min": 0.1, "max": 1000.0},
-                },
-                {
-                    "key": "point_flying_direction_mode",
-                    "displayName": "Point Flying Direction Mode",
-                    "type": "enum",
-                    "required": True,
-                    "constraints": {"allowedValues": ["approach_direction"]},
-                },
-                {
-                    "key": "material_type",
-                    "displayName": "Material Type",
-                    "type": "enum",
-                    "required": True,
-                    "constraints": {"allowedValues": ["epoxy", "silicone", "acrylic"]},
-                },
-            ],
-        }
-        self.recipe_templates = [
-            {
-                "id": "template_demo",
-                "name": "Demo Template",
-                "description": "Default demo template",
-                "parameters": [
-                    {"key": "dispense_speed", "value": 120.0},
-                    {"key": "dispense_pressure", "value": 220.0},
-                    {"key": "trigger_spatial_interval_mm", "value": 3.0},
-                    {"key": "point_flying_direction_mode", "value": "approach_direction"},
-                    {"key": "material_type", "value": "epoxy"},
-                ],
-                "createdAt": int(time.time() * 1000),
-                "updatedAt": int(time.time() * 1000),
-            }
-        ]
-        self.recipes: List[Dict] = []
-        self.recipe_versions_by_recipe: Dict[str, List[Dict]] = {}
-        self._seed_recipe()
         self.reload_config()
 
     def reload_config(self) -> None:
@@ -323,39 +262,6 @@ class MockState:
         alarm = {"id": f"A{self._alarm_seq:03d}", "level": level, "message": message}
         self.alarms.append(alarm)
         return alarm
-
-    def _seed_recipe(self) -> None:
-        now = int(time.time() * 1000)
-        self._recipe_seq += 1
-        recipe_id = f"recipe-mock-{self._recipe_seq:03d}"
-        version_id = f"version-mock-{self._recipe_seq:03d}"
-        version = {
-            "id": version_id,
-            "recipeId": recipe_id,
-            "versionLabel": "v1",
-            "status": "published",
-            "parameters": [
-                dict(item)
-                for item in self.recipe_templates[0].get("parameters", [])
-                if isinstance(item, dict)
-            ],
-            "createdAt": now,
-            "updatedAt": now,
-        }
-        self.recipes.append(
-            {
-                "id": recipe_id,
-                "name": "Mock Demo Recipe",
-                "description": "Mock recipe for UI smoke",
-                "status": "active",
-                "tags": ["mock", "demo"],
-                "createdAt": now,
-                "updatedAt": now,
-                "activeVersionId": version_id,
-                "versionIds": [version_id],
-            }
-        )
-        self.recipe_versions_by_recipe[recipe_id] = [version]
 
     def _start_dxf_progress(self):
         def worker():
@@ -378,6 +284,8 @@ class MockState:
                                 self.dxf.paused = False
                                 self.dxf.awaiting_continue = False
                                 self.dxf.progress = 100.0
+                                self.dxf.last_terminal_job_id = self.dxf.current_job_id
+                                self.dxf.last_terminal_state = "completed"
                                 break
                             self.dxf.progress = 0.0
                             self.dxf.current_segment = 0
@@ -420,7 +328,7 @@ class MockState:
 
     def _current_dxf_job_state(self) -> str:
         if not self.dxf.current_job_id:
-            return "idle"
+            return self.dxf.last_terminal_state if self.dxf.last_terminal_job_id else "idle"
         if self.dxf.paused:
             return "paused"
         if self.dxf.awaiting_continue:
@@ -1041,6 +949,8 @@ class MockState:
                 if self.dxf.preview_state != "confirmed":
                     return {"error": {"code": -32019, "message": "preview not confirmed"}}
                 self.dxf.current_job_id = f"job-{int(time.time() * 1000)}"
+                self.dxf.last_terminal_job_id = ""
+                self.dxf.last_terminal_state = "idle"
                 self.dxf.running = True
                 self.dxf.paused = False
                 self.dxf.awaiting_continue = False
@@ -1100,6 +1010,30 @@ class MockState:
                         "dry_run": self.dxf.job_dry_run,
                     }
                 }
+            if method == "dxf.job.traceability":
+                job_id = str(params.get("job_id", "")).strip()
+                if not job_id:
+                    return {"error": {"code": 2921, "message": "Missing job_id"}}
+                current_or_terminal_job_id = self.dxf.current_job_id or self.dxf.last_terminal_job_id
+                if not current_or_terminal_job_id or job_id != current_or_terminal_job_id:
+                    return {"error": {"code": 2922, "message": "job traceability not available"}}
+                state = self._current_dxf_job_state()
+                if state not in ("completed", "failed", "cancelled"):
+                    return {"error": {"code": 2922, "message": "job traceability is available only after terminal state"}}
+                return {
+                    "result": {
+                        "job_id": current_or_terminal_job_id,
+                        "plan_id": self.dxf.current_plan_id,
+                        "plan_fingerprint": self.dxf.preview_snapshot_hash,
+                        "terminal_state": state,
+                        "expected_trace": [],
+                        "actual_trace": [],
+                        "mismatches": [],
+                        "verdict": "passed" if state == "completed" else "failed",
+                        "verdict_reason": "" if state == "completed" else f"job terminal state is {state}",
+                        "strict_one_to_one_proven": state == "completed",
+                    }
+                }
             if method == "dxf.job.pause":
                 if not self.dxf.running:
                     return {"error": {"code": -32001, "message": "DXF not running"}}
@@ -1133,6 +1067,8 @@ class MockState:
                 self.dxf.awaiting_continue = False
                 self.dxf.progress = 0.0
                 self.dxf.current_segment = 0
+                self.dxf.last_terminal_job_id = job_id
+                self.dxf.last_terminal_state = "cancelled"
                 self.dxf.current_job_id = ""
                 self.dxf.completed_count = 0
                 self.dxf.target_count = 0
@@ -1157,80 +1093,6 @@ class MockState:
                 alarm_id = params.get("id")
                 self.alarms = [a for a in self.alarms if a.get("id") != alarm_id]
                 return {"result": {"ok": True}}
-            if method == "recipe.list":
-                return {"result": {"recipes": list(self.recipes)}}
-            if method == "recipe.get":
-                recipe_id = params.get("recipeId") or params.get("recipe_id")
-                recipe = next((item for item in self.recipes if item["id"] == recipe_id), None)
-                if recipe is None:
-                    return {"error": {"code": -33001, "message": "Recipe not found"}}
-                return {"result": {"recipe": dict(recipe)}}
-            if method == "recipe.versions":
-                recipe_id = str(params.get("recipeId") or params.get("recipe_id") or "").strip()
-                recipe = next((item for item in self.recipes if item["id"] == recipe_id), None)
-                if recipe is None:
-                    return {"error": {"code": -33005, "message": "Recipe not found"}}
-                versions = self.recipe_versions_by_recipe.get(recipe_id, [])
-                return {"result": {"versions": [dict(version) for version in versions]}}
-            if method == "recipe.templates":
-                return {"result": {"templates": list(self.recipe_templates)}}
-            if method == "recipe.schema.default":
-                return {"result": {"schema": dict(self.recipe_schema)}}
-            if method == "recipe.create":
-                name = str(params.get("name", "")).strip()
-                if not name:
-                    return {"error": {"code": -33002, "message": "Missing 'name' parameter"}}
-                self._recipe_seq += 1
-                now = int(time.time() * 1000)
-                recipe = {
-                    "id": f"recipe-mock-{self._recipe_seq:03d}",
-                    "name": name,
-                    "description": str(params.get("description", "")),
-                    "status": "active",
-                    "tags": list(params.get("tags", [])),
-                    "createdAt": now,
-                    "updatedAt": now,
-                    "activeVersionId": f"version-mock-{self._recipe_seq:03d}",
-                    "versionIds": [f"version-mock-{self._recipe_seq:03d}"],
-                }
-                version = {
-                    "id": recipe["activeVersionId"],
-                    "recipeId": recipe["id"],
-                    "versionLabel": "v1",
-                    "status": "published",
-                    "parameters": [
-                        dict(item)
-                        for item in self.recipe_templates[0].get("parameters", [])
-                        if isinstance(item, dict)
-                    ],
-                    "createdAt": now,
-                    "updatedAt": now,
-                }
-                self.recipes.append(recipe)
-                self.recipe_versions_by_recipe[recipe["id"]] = [version]
-                return {"result": {"recipe": dict(recipe)}}
-            if method == "recipe.update":
-                recipe_id = params.get("recipeId") or params.get("recipe_id")
-                recipe = next((item for item in self.recipes if item["id"] == recipe_id), None)
-                if recipe is None:
-                    return {"error": {"code": -33003, "message": "Recipe not found"}}
-                if "name" in params:
-                    recipe["name"] = str(params.get("name", ""))
-                if "description" in params:
-                    recipe["description"] = str(params.get("description", ""))
-                if "tags" in params:
-                    recipe["tags"] = list(params.get("tags", []))
-                recipe["updatedAt"] = int(time.time() * 1000)
-                return {"result": {"recipe": dict(recipe)}}
-            if method == "recipe.archive":
-                recipe_id = params.get("recipeId") or params.get("recipe_id")
-                recipe = next((item for item in self.recipes if item["id"] == recipe_id), None)
-                if recipe is None:
-                    return {"error": {"code": -33004, "message": "Recipe not found"}}
-                recipe["status"] = "archived"
-                recipe["updatedAt"] = int(time.time() * 1000)
-                return {"result": {"archived": True}}
-
         return {"error": {"code": -32601, "message": f"Unknown method: {method}"}}
 
 

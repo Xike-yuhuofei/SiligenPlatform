@@ -145,9 +145,11 @@ def test_dxf_preview_gate_contract_is_wired():
     assert 'RegisterCommand("dxf.plan.prepare"' in source
     assert 'RegisterCommand("dxf.job.start"' in source
     assert 'RegisterCommand("dxf.job.status"' in source
+    assert 'RegisterCommand("dxf.job.traceability"' in source
     assert 'RegisterCommand("dxf.job.continue"' in source
     assert 'std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot' in source
     assert 'std::string TcpCommandDispatcher::HandleDxfPreviewConfirm' in source
+    assert 'std::string TcpCommandDispatcher::HandleDxfJobTraceability' in source
     assert 'std::string TcpCommandDispatcher::HandleDxfJobContinue' in source
     assert "GetDxfPreviewSnapshot(" in source
     assert "ConfirmDxfPreview(" in source
@@ -233,8 +235,6 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
     dispatcher_header = TCP_DISPATCHER_HEADER.read_text(encoding="utf-8")
 
     assert {"artifact_id", "dispensing_speed_mm_s"}.issubset(set(prepare_operation["paramsSchema"]["required"]))
-    assert "recipe_id" not in prepare_operation["paramsSchema"]["properties"]
-    assert "version_id" not in prepare_operation["paramsSchema"]["properties"]
     assert {"import_result_classification", "import_production_ready", "formal_compare_gate", "prepared_filepath"}.issubset(
         set(prepare_operation["resultSchema"]["required"])
     )
@@ -253,9 +253,6 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
     assert "artifact_id 允许省略" not in notes
     assert "requested_execution_strategy" in mapping
     assert "current production baseline" in mapping
-    assert "published" in mapping
-    assert "recipe version" in mapping
-    assert "activeVersionId" in mapping
     assert "允许省略 `artifact_id`" not in mapping
     job_start_operation = next(op for op in command_set["operations"] if op["method"] == "dxf.job.start")
     job_start_notes = "\n".join(job_start_operation.get("compatibility", {}).get("notes", []))
@@ -271,8 +268,6 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
     assert '{"execution_plan_summary", BuildExecutionPlanSummaryJson(plan.execution_plan_summary)}' in dispatcher_source
     assert '{"production_baseline", BuildProductionBaselineJson(' in dispatcher_source
     assert '{"execution_budget_s", start_response.execution_budget_s}' in dispatcher_source
-    assert 'ReadJsonStringAlias(params, "recipeId", "recipe_id")' not in dispatcher_source
-    assert 'ReadJsonStringAlias(params, "versionId", "version_id")' not in dispatcher_source
     assert 'ReadJsonDouble(params, "dispensing_speed_mm_s", ReadJsonDouble(params, "speed_mm_s", 0.0))' not in dispatcher_source
     assert 'ReadJsonBool(params, "use_hardware_trigger", true)' not in dispatcher_source
     assert "std::string production_baseline_id;" in dispatcher_header
@@ -304,6 +299,28 @@ def test_dxf_job_continue_contract_freezes_wait_for_continue_semantics():
     assert continue_request["params"]["job_id"]
     assert continue_success["result"]["continued"] is True
     assert continue_success["result"]["job_id"]
+
+
+def test_dxf_job_traceability_contract_is_wired():
+    operations = load_operations()
+    dispatcher_source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    protocol_source = (ROOT / "apps" / "hmi-app" / "src" / "hmi_client" / "client" / "protocol.py").read_text(encoding="utf-8")
+    states = load_json(CONTRACTS / "models" / "states.json")
+
+    assert "dxf.job.traceability" in operations
+    query_op = operations["dxf.job.traceability"]
+    assert query_op["resultRef"].endswith("#/definitions/dxfJobTraceability")
+    assert query_op["paramsSchema"]["required"] == ["job_id"]
+    assert {2920, 2921, 2922}.issubset(set(query_op["errorCodes"]))
+    assert 'RegisterCommand("dxf.job.traceability"' in dispatcher_source
+    assert 'std::string TcpCommandDispatcher::HandleDxfJobTraceability' in dispatcher_source
+    assert "GetDxfJobTraceability(job_id)" in dispatcher_source
+    assert 'def dxf_get_job_traceability' in protocol_source
+    assert 'send_request("dxf.job.traceability", {"job_id": job_id})' in protocol_source
+    dxf_job_traceability = states["definitions"]["dxfJobTraceability"]
+    assert {"job_id", "plan_id", "plan_fingerprint", "terminal_state", "expected_trace", "actual_trace", "mismatches", "verdict", "verdict_reason", "strict_one_to_one_proven"}.issubset(
+        set(dxf_job_traceability["required"])
+    )
 
 
 def test_legacy_execute_and_task_surface_are_removed():
@@ -730,6 +747,7 @@ def main():
         test_dxf_preview_contract_docs_freeze_shared_authority_semantics,
         test_dxf_plan_prepare_contract_exposes_requested_execution_strategy,
         test_dxf_job_continue_contract_freezes_wait_for_continue_semantics,
+        test_dxf_job_traceability_contract_is_wired,
         test_legacy_execute_and_task_surface_are_removed,
         test_status_reads_backend_interlock_signals,
         test_status_supervision_contract_is_derived_by_runtime_supervision_adapter,

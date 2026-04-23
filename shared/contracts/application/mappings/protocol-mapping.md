@@ -21,7 +21,7 @@
 | 方法 | 类型 | HMI 调用点 | TCP 处理器 | CLI 对应语义 | 结果字段 | 兼容说明 |
 |---|---|---|---|---|---|---|
 | `dxf.artifact.create` | 命令 | `CommandProtocol.dxf_create_artifact()` | `HandleDxfArtifactCreate` | 无独立 CLI facade | `artifact_id` / `filepath` / `prepared_filepath` / `size` / `import_result_classification` / `import_production_ready` / `formal_compare_gate` | 生成 canonical artifact，作为后续 prepare 的唯一输入；旧 `dxf.load` 已退役，不再保留兼容入口 |
-| `dxf.plan.prepare` | 命令 | `CommandProtocol.dxf_prepare_plan()` | `HandleDxfPlanPrepare` | `DXF_PLAN` | `plan_id` / `plan_fingerprint` / `prepared_filepath` / `production_baseline` / `execution_nominal_time_s` / `execution_plan_summary` / `import_result_classification` / `import_production_ready` / `formal_compare_gate` / `preview_validation_classification` / `preview_exception_reason` / `preview_failure_reason` / `preview_diagnostic_code` | 必须显式传入 `artifact_id`；当前阶段由 runtime owner 解析 `current production baseline`，不再要求 `recipe_id` / `version_id`，也不再依赖 `published` recipe version 或 `activeVersionId`。返回中的 `production_baseline` 是 DXF 主链固定参数与追溯真值。可选 `requested_execution_strategy` 未传时默认按 `flying_shot` 解析。`preview.snapshot.estimated_time_s` 继续保留 preview 真值；`prepare` 不再导出 execution 语义的 `estimated_time_s`，execution 消费者只能读取 `execution_nominal_time_s` 与 `execution_plan_summary`。`formal_compare_gate` 为 owner formal compare 准入真值；当前 `Demo-1` 一类下降/回返 compare 几何必须固化为 preview-only / production-blocked，而不是由 runtime 静默兜底。`POINT` 若无 formal carrier trajectory，仅允许基于 baseline-owned `point_flying_carrier_policy` 并按 `approach_direction = normalize(point - planning_start_position)` 合成 formal carrier trajectory；禁止 `artifact_id` 或其他全局活动态回退 |
+| `dxf.plan.prepare` | 命令 | `CommandProtocol.dxf_prepare_plan()` | `HandleDxfPlanPrepare` | `DXF_PLAN` | `plan_id` / `plan_fingerprint` / `prepared_filepath` / `production_baseline` / `execution_nominal_time_s` / `execution_plan_summary` / `import_result_classification` / `import_production_ready` / `formal_compare_gate` / `preview_validation_classification` / `preview_exception_reason` / `preview_failure_reason` / `preview_diagnostic_code` | 必须显式传入 `artifact_id`；当前阶段由 runtime owner 解析 `current production baseline`，返回中的 `production_baseline` 是 DXF 主链固定参数与追溯真值。可选 `requested_execution_strategy` 未传时默认按 `flying_shot` 解析。`preview.snapshot.estimated_time_s` 继续保留 preview 真值；`prepare` 不再导出 execution 语义的 `estimated_time_s`，execution 消费者只能读取 `execution_nominal_time_s` 与 `execution_plan_summary`。`formal_compare_gate` 为 owner formal compare 准入真值；当前 `Demo-1` 一类下降/回返 compare 几何必须固化为 preview-only / production-blocked，而不是由 runtime 静默兜底。`POINT` 若无 formal carrier trajectory，仅允许基于 baseline-owned `point_flying_carrier_policy` 并按 `approach_direction = normalize(point - planning_start_position)` 合成 formal carrier trajectory；禁止 `artifact_id` 或其他全局活动态回退 |
 | `dxf.preview.snapshot` | 命令 | `CommandProtocol.dxf_preview_snapshot()` | `HandleDxfPreviewSnapshot` | 无独立 CLI facade | `snapshot_hash` / `plan_id` / `preview_kind` / `glue_points` / `glue_reveal_lengths_mm` / `preview_binding` / `motion_preview` / `preview_validation_classification` / `preview_exception_reason` / `preview_failure_reason` / `preview_diagnostic_code` | 唯一 shared authority success shape 是 `preview_source=planned_glue_snapshot` + `preview_kind=glue_points` + 非空 `glue_points`；`glue_reveal_lengths_mm` 与 `glue_points` 等长同序，作为 execution reveal 真值；`preview_binding` 是 owner 导出的 display binding 真值；`motion_preview` 只接受 `execution_trajectory_snapshot + polyline + 非空 polyline` 单轨语义 |
 | `dxf.preview.confirm` | 命令 | `CommandProtocol.dxf_preview_confirm()` | `HandleDxfPreviewConfirm` | 无独立 CLI facade | `confirmed` / `plan_id` / `snapshot_hash` | 预览确认必须绑定当前 `plan_id + snapshot_hash`，确认后才能进入 `dxf.job.start` |
 | `dxf.job.start` | 命令 | `CommandProtocol.dxf_start_job()` | `HandleDxfJobStart` | `DXF_DISPENSE` | `started` / `job_id` / `plan_id` / `plan_fingerprint` / `production_baseline` / `execution_budget_s` / `execution_budget_breakdown` / `import_result_classification` / `import_production_ready` / `formal_compare_gate` | canonical 启动入口；旧 `dxf.execute` 已退役；仅在 preview confirmed、source valid、authority shared 且导入结果 production-ready 时允许启动；返回中的 `production_baseline` 与 prepare 保持同一 owner 真值。省略 `auto_continue` 时保持既有自动推进语义，显式 `auto_continue=false` 时单周期完成后进入 `awaiting_continue`。所有 execution timeout/budget 消费者必须以 runtime 导出的 `execution_budget_s` / `execution_budget_breakdown` 为准 |
@@ -40,31 +40,8 @@
 - 以下场景必须按失败边界处理，不得进入 HMI 成功渲染或执行前通过路径：non-`planned_glue_snapshot`、non-`glue_points`、空 `glue_points`、缺少或无效 `snapshot_hash`、`plan_id` / authority mismatch、legacy `runtime_snapshot` / `trajectory_polyline`、缺少或无效 `glue_reveal_lengths_mm`、缺少或无效 `preview_binding`、non-`execution_trajectory_snapshot`、non-`polyline`、空 `motion_preview.polyline`。
 - `dxf.preview.confirm` 负责把当前 `plan_id + snapshot_hash` 绑定到已确认预览；`dxf.job.start` 继续依赖该确认结果与 `plan_fingerprint` 一致，避免 preview 与 execution 消费不同 shared authority 结果。
 
-## `recipe.*`
-
-| 方法 | 类型 | HMI 调用点 | TCP 处理器 | CLI 对应语义 | 结果字段 | 兼容说明 |
-|---|---|---|---|---|---|---|
-| `recipe.list` | 查询 | `recipe_list()` | `HandleRecipeList` | `RECIPE_LIST` | `recipes[]` | `status/query/tag` 直接透传 |
-| `recipe.get` | 查询 | `recipe_get()` | `HandleRecipeGet` | `RECIPE_GET` | `recipe` | 接受 `recipeId` / `recipe_id` |
-| `recipe.templates` | 查询 | `recipe_templates()` | `HandleRecipeTemplates` | 无 | `templates[]` | 模板实体由 `TemplateToJson` 序列化 |
-| `recipe.schema.default` | 查询 | `recipe_schema_default()` | `HandleRecipeSchemaDefault` | 无 | `schema` | 返回参数 schema 默认模板 |
-| `recipe.create` | 命令 | `recipe_create()` | `HandleRecipeCreate` | `RECIPE_CREATE` | `recipe` | `tags` 支持数组或逗号分隔字符串 |
-| `recipe.update` | 命令 | `recipe_update()` | `HandleRecipeUpdate` | `RECIPE_UPDATE` | `recipe` | 接受 `recipeId` / `recipe_id` |
-| `recipe.archive` | 命令 | `recipe_archive()` | `HandleRecipeArchive` | `RECIPE_ARCHIVE` | `archived` | 接受 `recipeId` / `recipe_id` |
-| `recipe.draft.create` | 命令 | `recipe_draft_create()` | `HandleRecipeDraftCreate` | `RECIPE_DRAFT_CREATE` | `version` | 多组 camel/snake 别名共存 |
-| `recipe.draft.update` | 命令 | `recipe_draft_update()` | `HandleRecipeDraftUpdate` | `RECIPE_DRAFT_UPDATE` | `version` | `parameters[]` 为显式数组，不兼容 CLI token 文本格式 |
-| `recipe.publish` | 命令 | `recipe_publish()` | `HandleRecipePublish` | `RECIPE_PUBLISH` | `version` | 接受 `versionId` / `version_id` |
-| `recipe.versions` | 查询 | `recipe_versions()` | `HandleRecipeVersions` | `RECIPE_LIST_VERSIONS` | `versions[]` | 接受 `recipeId` / `recipe_id` |
-| `recipe.version.create` | 命令 | `recipe_version_create()` | `HandleRecipeVersionCreate` | `RECIPE_VERSION_CREATE` | `version` | 从已发布版本派生草稿 |
-| `recipe.version.compare` | 查询 | `recipe_compare()` | `HandleRecipeCompare` | `RECIPE_VERSION_COMPARE` | `changes[]` | `baseVersionId` / `base_version_id` 均可 |
-| `recipe.version.activate` | 命令 | `recipe_activate()` | `HandleRecipeActivate` | `RECIPE_VERSION_ACTIVATE` | `activated` | HMI 将其作为激活/回滚入口 |
-| `recipe.audit` | 查询 | `recipe_audit()` | `HandleRecipeAudit` | `RECIPE_AUDIT` | `records[]` | `versionId` 可选 |
-| `recipe.export` | 命令 | `recipe_export()` | `HandleRecipeExport` | `RECIPE_EXPORT` | `outputPath` / `recipeCount` / `versionCount` / `auditCount` / `bundleJson?` | 指定输出路径时不返回 `bundleJson` |
-| `recipe.import` | 命令 | `recipe_import()` | `HandleRecipeImport` | `RECIPE_IMPORT` | `status` / `importedCount` / `conflicts[]` | `bundleJson` / `bundlePath` 与 `dryRun` 均保留 snake_case 兼容 |
-
 ## 额外观察
 
-- `recipe.*` 是当前别名兼容最密集的一组协议。
 - `dxf.*` 当前正式执行链已收敛到 `artifact.create -> plan.prepare -> preview.snapshot -> preview.confirm -> job.start -> job.status`。
 - runtime-execution 对跨模块公开面已收敛为 `DispensingExecutionRequest + DispensingExecutionResult + job API`；`task` 只允许留在 runtime-execution 内部实现或内部测试语境。
 - `status` 当前整体由 `IRuntimeStatusExportPort` snapshot 提供；其中 `connected` / `connection_state` / `device_mode` / `interlock_latched` / `job_execution` / `supervision` / `runtime_identity` / `effective_interlocks` / `io` 由 export snapshot 统一导出，底层 supervision 语义来自 `IRuntimeSupervisionPort` 输入，`runtime-gateway` 只负责 transport 序列化。

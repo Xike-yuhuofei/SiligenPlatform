@@ -229,18 +229,33 @@ class BridgeExitContractTest(unittest.TestCase):
             WORKSPACE_ROOT / "modules" / "runtime-execution" / "runtime" / "host" / "README.md"
         )
         runtime_service_cmake = _read(WORKSPACE_ROOT / "apps" / "runtime-service" / "CMakeLists.txt")
-        business_file_tree = _read(WORKSPACE_ROOT / "modules" / "MODULES_BUSINESS_FILE_TREE_AND_TABLES.md")
+        file_tree_doc_tool = _read(WORKSPACE_ROOT / "docs" / "process-model" / "file-tree-business-doc-tool.md")
 
         self.assertIn("`security/**/*`", runtime_host_readme)
         self.assertIn("已迁到 [`apps/runtime-service`", runtime_host_readme)
         self.assertNotIn("BUILD_SECURITY_MODULE", root_cmake)
+        self.assertNotIn('option(BUILD_SECURITY_MODULE "构建安全模块" OFF)', root_cmake)
         self.assertNotIn("add_library(security_module", root_cmake)
         self.assertNotIn("${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/", root_cmake)
         self.assertIn("security/AuditLogger.cpp", runtime_service_cmake)
         self.assertIn("security/InterlockMonitor.cpp", runtime_service_cmake)
-        self.assertIn("apps/runtime-service/security/**", business_file_tree)
-        self.assertNotIn("runtime-execution/runtime/host/security/**", business_file_tree)
-        self.assertNotIn("runtime-execution/runtime/host/security/config/**", business_file_tree)
+        self.assertIn("modules/MODULES_BUSINESS_FILE_TREE_AND_TABLES.md` 已退役", file_tree_doc_tool)
+
+    def test_modules_owner_boundary_documents_workflow_as_canonical_bundle(self) -> None:
+        owner_boundary = _read(WORKSPACE_ROOT / "docs" / "architecture" / "modules-owner-boundary.md")
+
+        self.assertIn(
+            "`workflow` 默认 build slice 已收口为 `M0` canonical/orchestration owner",
+            owner_boundary,
+        )
+        self.assertNotIn(
+            "`workflow` 仍处于兼容聚合与部分事实入口并存的状态，尚未完全收回到纯 orchestration 边界",
+            owner_boundary,
+        )
+        self.assertNotIn(
+            "- `workflow`：尚未回到纯 orchestration / port 层",
+            owner_boundary,
+        )
 
     def test_non_workflow_tests_do_not_include_workflow_internal_skeleton_headers(self) -> None:
         for pattern in (
@@ -377,7 +392,6 @@ class BridgeExitContractTest(unittest.TestCase):
         self.assertIn("workflow application legacy foreign surface must stay deleted", workflow_application)
         self.assertIn("workflow adapters legacy redundancy residue must stay deleted", workflow_adapters)
         self.assertNotIn("WORKFLOW_DOMAIN_SAFETY_TEST_SOURCES", workflow_canonical)
-        self.assertNotIn("WORKFLOW_DOMAIN_RECIPE_TEST_SOURCES", workflow_canonical)
         self.assertNotIn("WORKFLOW_APPLICATION_PLANNING_TRIGGER_TEST_SOURCES", workflow_canonical)
         self.assertNotIn("WORKFLOW_APPLICATION_COMPAT_TEST_SOURCES", workflow_canonical)
         self.assertNotIn("WORKFLOW_PR1_TEST_SOURCES", workflow_canonical)
@@ -846,84 +860,6 @@ class BridgeExitContractTest(unittest.TestCase):
         for pattern, expected in expected_hits.items():
             hits = set(_fixed_string_hits(pattern, roots=("modules", "apps")))
             self.assertEqual(expected, hits, msg=f"hardware-test diagnostics cutover drifted for pattern: {pattern}")
-
-    def test_workflow_recipe_serializer_is_deleted_after_recipe_lifecycle_cutover(self) -> None:
-        legacy_header = (
-            WORKSPACE_ROOT
-            / "modules"
-            / "workflow"
-            / "domain"
-            / "include"
-            / "domain"
-            / "recipes"
-            / "serialization"
-            / "RecipeJsonSerializer.h"
-        )
-        legacy_impl = (
-            WORKSPACE_ROOT
-            / "modules"
-            / "workflow"
-            / "domain"
-            / "domain"
-            / "recipes"
-            / "serialization"
-            / "RecipeJsonSerializer.cpp"
-        )
-        self.assertFalse(legacy_header.exists(), msg="workflow recipe serializer header should be deleted after recipe-lifecycle cutover")
-        self.assertFalse(legacy_impl.exists(), msg="workflow recipe serializer implementation should be deleted after recipe-lifecycle cutover")
-
-    def test_recipe_lifecycle_owns_recipe_cutover(self) -> None:
-        runtime_service_cmake = _read(WORKSPACE_ROOT / "apps" / "runtime-service" / "CMakeLists.txt")
-        planner_cli_cmake = _read(WORKSPACE_ROOT / "apps" / "planner-cli" / "CMakeLists.txt")
-        gateway_cmake = _read(WORKSPACE_ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "CMakeLists.txt")
-        recipe_lifecycle_root_cmake = _read(WORKSPACE_ROOT / "modules" / "recipe-lifecycle" / "CMakeLists.txt")
-        recipe_lifecycle_domain_cmake = _read(WORKSPACE_ROOT / "modules" / "recipe-lifecycle" / "domain" / "CMakeLists.txt")
-        recipe_lifecycle_application_cmake = _read(
-            WORKSPACE_ROOT / "modules" / "recipe-lifecycle" / "application" / "CMakeLists.txt"
-        )
-        recipe_lifecycle_adapters_cmake = _read(WORKSPACE_ROOT / "modules" / "recipe-lifecycle" / "adapters" / "CMakeLists.txt")
-
-        self.assertIn("siligen_recipe_lifecycle_domain_public", runtime_service_cmake)
-        self.assertIn("siligen_recipe_lifecycle_application_public", runtime_service_cmake)
-        self.assertIn("siligen_recipe_lifecycle_serialization_public", runtime_service_cmake)
-        self.assertIn("siligen_recipe_lifecycle_application_public", planner_cli_cmake)
-        self.assertIn("siligen_recipe_lifecycle_application_public", gateway_cmake)
-        self.assertIn("siligen_recipe_lifecycle_serialization_public", gateway_cmake)
-        self.assertNotIn("runtime/recipes/RecipeJsonSerializer.cpp", runtime_service_cmake)
-        self.assertNotIn("siligen_workflow_recipe_serialization_public", runtime_service_cmake)
-        self.assertNotIn("siligen_workflow_recipe_serialization_public", gateway_cmake)
-        self.assertNotIn("siligen_workflow_recipe_application_public", runtime_service_cmake)
-        self.assertNotIn("siligen_workflow_recipe_application_public", planner_cli_cmake)
-        self.assertNotIn("siligen_workflow_recipe_application_public", gateway_cmake)
-        self.assertNotIn("SILIGEN_SHARED_COMPAT_INCLUDE_ROOT", recipe_lifecycle_root_cmake)
-        self.assertNotIn("SILIGEN_SHARED_COMPAT_INCLUDE_ROOT", recipe_lifecycle_domain_cmake)
-        self.assertNotIn("SILIGEN_SHARED_COMPAT_INCLUDE_ROOT", recipe_lifecycle_application_cmake)
-        self.assertNotIn("SILIGEN_SHARED_COMPAT_INCLUDE_ROOT", recipe_lifecycle_adapters_cmake)
-
-        serializer_header = (
-            WORKSPACE_ROOT
-            / "modules"
-            / "recipe-lifecycle"
-            / "adapters"
-            / "include"
-            / "recipe_lifecycle"
-            / "adapters"
-            / "serialization"
-            / "RecipeJsonSerializer.h"
-        )
-        self.assertTrue(serializer_header.exists(), msg="recipe-lifecycle must expose RecipeJsonSerializer from adapters public surface")
-        self.assertNotIn("domain/recipes/serialization/RecipeJsonSerializer.h", _read(serializer_header))
-
-        expected_include = '#include "recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h"'
-        for relative in (
-            "apps/runtime-gateway/transport-gateway/src/tcp/TcpCommandDispatcher.cpp",
-            "apps/runtime-service/runtime/recipes/RecipeBundleSerializer.h",
-            "apps/runtime-service/runtime/recipes/RecipeFileRepository.cpp",
-            "apps/runtime-service/runtime/recipes/ParameterSchemaFileProvider.cpp",
-            "apps/runtime-service/runtime/recipes/TemplateFileRepository.cpp",
-            "apps/runtime-service/runtime/recipes/AuditFileRepository.cpp",
-        ):
-            self.assertIn(expected_include, _read(WORKSPACE_ROOT / relative), msg=f"{relative} must include recipe-lifecycle serializer header")
 
     def test_workflow_unit_directory_is_registration_only(self) -> None:
         workflow_tests_unit = WORKSPACE_ROOT / "modules" / "workflow" / "tests" / "unit"

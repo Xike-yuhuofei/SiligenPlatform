@@ -74,10 +74,6 @@ set(SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR
     "${SILIGEN_MODULES_ROOT}/motion-planning"
     CACHE INTERNAL "Canonical motion-planning public include root"
 )
-set(SILIGEN_RUNTIME_HOST_CANONICAL_DIR
-    "${SILIGEN_MODULES_ROOT}/runtime-execution/runtime/host"
-    CACHE INTERNAL "Canonical runtime/host source root"
-)
 set(SILIGEN_TRANSPORT_GATEWAY_CANONICAL_DIR
     "${SILIGEN_APPS_ROOT}/runtime-gateway/transport-gateway"
     CACHE INTERNAL "Canonical transport-gateway source root"

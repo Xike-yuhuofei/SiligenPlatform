@@ -210,20 +210,15 @@ def _read_process_output(process: subprocess.Popen[str]) -> tuple[str, str]:
 
 
 def _prepare_isolated_workspace(report_dir: Path) -> Path:
-    isolated_root = report_dir / "isolated-empty-recipe-workspace"
+    isolated_root = report_dir / "isolated-precondition-workspace"
     if isolated_root.exists():
         shutil.rmtree(isolated_root)
 
     required_dirs = (
         isolated_root / "cmake",
         isolated_root / "config" / "machine",
-        isolated_root / "data" / "recipes",
-        isolated_root / "data" / "recipes" / "recipes",
-        isolated_root / "data" / "recipes" / "versions",
-        isolated_root / "data" / "recipes" / "audit",
-        isolated_root / "data" / "recipes" / "templates",
+        isolated_root / "data",
         isolated_root / "data" / "schemas",
-        isolated_root / "data" / "schemas" / "recipes",
         isolated_root / "logs" / "audit",
         isolated_root / "uploads" / "dxf",
     )
@@ -269,24 +264,6 @@ def _prepare_isolated_workspace(report_dir: Path) -> Path:
         raise ValueError("failed to rewrite [Hardware] mode to Mock in isolated workspace config")
     isolated_config = isolated_root / "config" / "machine" / "machine_config.ini"
     isolated_config.write_text("\n".join(rewritten_lines) + "\n", encoding="utf-8")
-
-    source_recipe_root = ROOT / "data" / "recipes"
-    source_schema_root = ROOT / "data" / "schemas" / "recipes"
-    if not source_recipe_root.exists():
-        raise FileNotFoundError(f"isolated workspace seed recipes missing: {source_recipe_root}")
-    if not source_schema_root.exists():
-        raise FileNotFoundError(f"isolated workspace seed schemas missing: {source_schema_root}")
-
-    shutil.copytree(
-        source_recipe_root,
-        isolated_root / "data" / "recipes",
-        dirs_exist_ok=True,
-    )
-    shutil.copytree(
-        source_schema_root,
-        isolated_root / "data" / "schemas" / "recipes",
-        dirs_exist_ok=True,
-    )
 
     return isolated_root.resolve()
 

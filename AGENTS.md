@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-`SiligenSuite` is a canonical workspace rooted at `apps/`, `modules/`, and `shared/`. Put process hosts and packaging shells in `apps/` (`runtime-service`, `runtime-gateway`, `planner-cli`, `hmi-app`, `trace-viewer`). Put business owners and domain workflows in `modules/`. Reserve `shared/` for stable contracts, kernel utilities, IDs, and test infrastructure only. Keep validation assets in `tests/`, architecture and runbooks in `docs/`, machine and recipe data in `config/` and `data/`, and helper automation in `scripts/`. Do not reintroduce retired roots such as `packages/`, `integration/`, or `tools/`.
+`SiligenSuite` is a canonical workspace rooted at `apps/`, `modules/`, and `shared/`. Put process hosts and packaging shells in `apps/` (`runtime-service`, `runtime-gateway`, `planner-cli`, `hmi-app`, `trace-viewer`). Put business owners and domain workflows in `modules/`. Reserve `shared/` for stable contracts, kernel utilities, IDs, and test infrastructure only. Keep validation assets in `tests/`, architecture and runbooks in `docs/`, machine configuration and runtime data in `config/` and `data/`, and helper automation in `scripts/`. Do not reintroduce retired roots such as `packages/`, `integration/`, or `tools/`.
 
 ## Build, Test, and Development Commands
 Run everything from the repository root.
