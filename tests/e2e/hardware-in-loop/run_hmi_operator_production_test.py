@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import socket
 import subprocess
 import sys
@@ -31,7 +30,7 @@ from run_real_dxf_production_validation import (  # noqa: E402
     summarize_points_bbox,
     write_json,
 )
-from runtime_gateway_harness import TcpJsonClient, build_process_env, read_process_output, resolve_default_exe, wait_gateway_ready  # noqa: E402
+from runtime_gateway_harness import TcpJsonClient, VENDOR_DIR, resolve_default_exe, wait_gateway_ready  # noqa: E402
 
 
 DEFAULT_GATEWAY_EXE = resolve_default_exe("siligen_runtime_gateway.exe")
@@ -43,7 +42,7 @@ DEFAULT_GATEWAY_READY_TIMEOUT = 8.0
 DEFAULT_CONNECT_TIMEOUT = 15.0
 DEFAULT_UI_TIMEOUT_MS = 900000
 DEFAULT_MAX_POLYLINE_POINTS = 4000
-DEFAULT_MAX_GLUE_POINTS = 4000
+DEFAULT_MAX_GLUE_POINTS = 5000
 DEFAULT_MIN_AXIS_COVERAGE_RATIO = 0.80
 UI_QTEST = ROOT / "apps" / "hmi-app" / "src" / "hmi_client" / "tools" / "ui_qtest.py"
 HMI_SOURCE_ROOT = ROOT / "apps" / "hmi-app" / "src"
@@ -65,6 +64,26 @@ REQUIRED_SCREENSHOT_STAGES = (
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def read_text_if_exists(path: Path) -> str:
+    if not path.exists():
+        return ""
+    return path.read_text(encoding="utf-8")
+
+
+def finalize_process_log_capture(
+    *,
+    stdout_stream: Any | None,
+    stderr_stream: Any | None,
+    stdout_path: Path,
+    stderr_path: Path,
+) -> tuple[None, None, str, str]:
+    if stdout_stream is not None:
+        stdout_stream.close()
+    if stderr_stream is not None:
+        stderr_stream.close()
+    return None, None, read_text_if_exists(stdout_path), read_text_if_exists(stderr_path)
 
 
 def parse_args() -> argparse.Namespace:
@@ -107,11 +126,84 @@ def resolve_listen_port(host: str, requested_port: int) -> int:
         return int(sock.getsockname()[1])
 
 
-def build_hmi_process_env() -> dict[str, str]:
+def _normalize_existing_path_entries(paths: list[Path]) -> list[str]:
+    entries: list[str] = []
+    seen: set[str] = set()
+    for candidate in paths:
+        resolved = candidate.resolve()
+        if not resolved.exists():
+            continue
+        normalized = os.path.normcase(str(resolved))
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        entries.append(str(resolved))
+    return entries
+
+
+def build_gateway_launch_spec_payload(*, args: argparse.Namespace, effective_port: int) -> dict[str, Any]:
+    exe_path = args.gateway_exe.resolve()
+    config_path = args.config_path.resolve()
+    exe_dir = exe_path.parent
+    path_candidates = [exe_dir]
+    if exe_dir.parent.name.lower() == "bin":
+        sibling_lib_dir = exe_dir.parent.parent / "lib" / exe_dir.name
+        if sibling_lib_dir.exists():
+            path_candidates.append(sibling_lib_dir)
+    if VENDOR_DIR.exists():
+        path_candidates.append(VENDOR_DIR.resolve())
+
+    env_payload = {
+        "SILIGEN_TCP_SERVER_HOST": args.host,
+        "SILIGEN_TCP_SERVER_PORT": str(effective_port),
+    }
+    if VENDOR_DIR.exists():
+        env_payload["SILIGEN_MULTICARD_VENDOR_DIR"] = str(VENDOR_DIR.resolve())
+
+    return {
+        "executable": str(exe_path),
+        "cwd": str(ROOT.resolve()),
+        "args": ["--config", str(config_path), "--port", str(effective_port)],
+        "pathEntries": _normalize_existing_path_entries(path_candidates),
+        "env": env_payload,
+    }
+
+
+def write_gateway_launch_spec(
+    *,
+    args: argparse.Namespace,
+    effective_port: int,
+    spec_path: Path,
+) -> dict[str, Any]:
+    payload = build_gateway_launch_spec_payload(args=args, effective_port=effective_port)
+    spec_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return payload
+
+
+def build_launch_spec_process_env(spec_payload: dict[str, Any]) -> dict[str, str]:
+    env = os.environ.copy()
+    env_payload = spec_payload.get("env", {})
+    if isinstance(env_payload, dict):
+        env.update({str(key): str(value) for key, value in env_payload.items()})
+
+    path_entries_raw = spec_payload.get("pathEntries", [])
+    path_entries = [str(item).strip() for item in path_entries_raw if str(item).strip()]
+    existing = env.get("PATH", "")
+    if path_entries:
+        env["PATH"] = os.pathsep.join(path_entries + ([existing] if existing else []))
+    return env
+
+
+def build_hmi_process_env(*, gateway_launch_spec_path: Path, host: str, port: int) -> dict[str, str]:
     env = os.environ.copy()
     py_entries = [str(HMI_APPLICATION_ROOT), str(HMI_SOURCE_ROOT)]
     existing = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = os.pathsep.join(py_entries + ([existing] if existing else []))
+    env["SILIGEN_GATEWAY_LAUNCH_SPEC"] = str(gateway_launch_spec_path.resolve())
+    env["SILIGEN_GATEWAY_AUTOSTART"] = "1"
+    env["SILIGEN_TCP_SERVER_HOST"] = host
+    env["SILIGEN_TCP_SERVER_PORT"] = str(port)
+    env.pop("SILIGEN_GATEWAY_EXE", None)
     return env
 
 
@@ -161,6 +253,14 @@ def _contains_stage_sequence(stages: list[str], required_stages: tuple[str, ...]
     return cursor == len(required_stages)
 
 
+def _latest_field(events: list[dict[str, str]], field: str, *, default: str = "null") -> str:
+    for event in reversed(events):
+        value = str(event.get(field, "")).strip()
+        if value and value.lower() != "null":
+            return value
+    return default
+
+
 def summarize_operator_output(output: str) -> dict[str, Any]:
     events = [
         _parse_key_value_line(prefix="OPERATOR_CONTEXT ", line=line.strip())
@@ -173,6 +273,7 @@ def summarize_operator_output(output: str) -> dict[str, Any]:
     ]
     screenshots = [event for event in screenshots if event]
     stages = [str(event.get("stage", "")).strip() for event in events if str(event.get("stage", "")).strip()]
+    failure_stages = [stage for stage in stages if stage.endswith("-failed")]
     by_stage: dict[str, dict[str, str]] = {}
     for event in events:
         stage = str(event.get("stage", "")).strip()
@@ -206,40 +307,46 @@ def summarize_operator_output(output: str) -> dict[str, Any]:
         preview_refreshed.get("preview_source")
         or preview_ready.get("preview_source")
         or production_started.get("preview_source")
-        or "null"
+        or _latest_field(events, "preview_source")
     )
     preview_kind = str(
         preview_refreshed.get("preview_kind")
         or preview_ready.get("preview_kind")
         or production_started.get("preview_kind")
-        or "null"
+        or _latest_field(events, "preview_kind")
     )
     glue_point_count = int(
         parse_int(
             preview_refreshed.get("glue_point_count")
             or preview_ready.get("glue_point_count")
             or production_started.get("glue_point_count")
+            or _latest_field(events, "glue_point_count", default="0")
         )
         or 0
     )
     snapshot_hash = str(
         preview_refreshed.get("snapshot_hash")
         or preview_ready.get("snapshot_hash")
-        or "null"
+        or _latest_field(events, "snapshot_hash")
     )
     confirmed_snapshot_hash = str(
         production_started.get("confirmed_snapshot_hash")
         or production_running.get("confirmed_snapshot_hash")
         or production_completed.get("confirmed_snapshot_hash")
-        or "null"
+        or _latest_field(events, "confirmed_snapshot_hash")
     )
     preview_confirmed = any(
         str(event.get("preview_confirmed", "")).strip().lower() == "true"
         for event in (production_started, production_running, production_completed, next_job_ready)
         if event
     )
+    plan_fingerprint = _latest_field(events, "plan_fingerprint")
+    preview_gate_state = _latest_field(events, "preview_gate_state")
+    preview_gate_error = _latest_field(events, "preview_gate_error")
+
     contract_ok = (
         stage_sequence_ok
+        and not failure_stages
         and preview_source == "planned_glue_snapshot"
         and preview_kind == "glue_points"
         and glue_point_count > 0
@@ -252,11 +359,17 @@ def summarize_operator_output(output: str) -> dict[str, Any]:
     if not contract_ok:
         contract_error = (
             "operator production contract missing required stage sequence, preview authority evidence, "
-            f"or staged screenshots; observed_stages={stages}; missing_screenshots={missing_screenshot_stages}"
+            "or staged screenshots; "
+            f"observed_stages={stages}; "
+            f"failure_stages={failure_stages}; "
+            f"missing_screenshots={missing_screenshot_stages}; "
+            f"preview_gate_state={preview_gate_state}; "
+            f"preview_gate_error={preview_gate_error}"
         )
 
     return {
         "operator_context_stages": stages,
+        "failure_stages": failure_stages,
         "stage_sequence_ok": stage_sequence_ok,
         "artifact_id": str(
             preview_refreshed.get("artifact_id")
@@ -270,9 +383,12 @@ def summarize_operator_output(output: str) -> dict[str, Any]:
             or production_started.get("plan_id")
             or "null"
         ),
+        "plan_fingerprint": plan_fingerprint,
         "preview_source": preview_source,
         "preview_kind": preview_kind,
         "glue_point_count": glue_point_count,
+        "preview_gate_state": preview_gate_state,
+        "preview_gate_error": preview_gate_error,
         "snapshot_hash": snapshot_hash,
         "confirmed_snapshot_hash": confirmed_snapshot_hash,
         "snapshot_ready": str(preview_refreshed.get("snapshot_ready") or preview_ready.get("snapshot_ready") or "false")
@@ -450,6 +566,25 @@ def evaluate_operator_execution(
                 owner_layer="apps/hmi-app/src/hmi_client/tools/ui_qtest.py",
             )
         )
+    if operator_summary.get("failure_stages"):
+        issues.append(
+            build_operator_issue(
+                issue_type="阻塞类",
+                phenomenon="operator_production 进入 fail-closed 失败阶段。",
+                impact="正式链路在 HMI 阶段已中止，不能把本轮结果视为成功生产。",
+                reproduction_steps="检查 *-failed 阶段、preview_gate_state/preview_gate_error 与失败截图。",
+                current_evidence=json.dumps(
+                    {
+                        "failure_stages": operator_summary.get("failure_stages", []),
+                        "preview_gate_state": operator_summary.get("preview_gate_state", "null"),
+                        "preview_gate_error": operator_summary.get("preview_gate_error", "null"),
+                        "plan_fingerprint": operator_summary.get("plan_fingerprint", "null"),
+                    },
+                    ensure_ascii=False,
+                ),
+                owner_layer="apps/hmi-app/src/hmi_client/tools/ui_qtest.py",
+            )
+        )
     if str(operator_summary.get("preview_source", "")).strip() != "planned_glue_snapshot":
         issues.append(
             build_operator_issue(
@@ -544,7 +679,11 @@ def evaluate_operator_execution(
         "hmi_exit_code": hmi_exit_code,
         "final_job_status": final_job_status,
         "operator_context": operator_summary,
-        "hmi_output_excerpt": "\n".join(line for line in combined_output.splitlines() if line.strip().startswith(("FAIL:", "OPERATOR_CONTEXT ", "HMI_SCREENSHOT ")))[:4000],
+        "hmi_output_excerpt": "\n".join(
+            line
+            for line in combined_output.splitlines()
+            if line.strip().startswith(("FAIL:", "OPERATOR_CONTEXT ", "HMI_SCREENSHOT "))
+        )[:4000],
     }
 
 
@@ -741,6 +880,7 @@ def build_report_markdown(report: dict[str, Any]) -> str:
             f"- HMI：`{artifacts.get('hmi_stdout_log', '')}`",
             f"- runtime：`{artifacts.get('gateway_stdout_log', '')}`",
             f"- gateway：`{artifacts.get('gateway_stderr_log', '')}`",
+            f"- gateway launch spec：`{artifacts.get('gateway_launch_spec', '')}`",
             f"- report：`{artifacts.get('report_json', '')}` / `{artifacts.get('report_markdown', '')}`",
             f"- coord-status-history：`{artifacts.get('coord_status_history', '')}`",
             f"- staged screenshots：`{artifacts.get('hmi_screenshot_dir', '')}`",
@@ -784,6 +924,7 @@ def main() -> int:
     gateway_log_copy_path = report_dir / "tcp_server.log"
     gateway_stdout_path = report_dir / "gateway-stdout.log"
     gateway_stderr_path = report_dir / "gateway-stderr.log"
+    gateway_launch_spec_path = report_dir / "gateway-launch.json"
 
     steps: list[dict[str, str]] = []
     artifacts: dict[str, Any] = {}
@@ -805,8 +946,13 @@ def main() -> int:
     hmi_stderr = ""
     hmi_exit_code = 1
     hmi_command: list[str] = []
+    gateway_launch_spec_payload: dict[str, Any] = {}
     gateway_log_path = ROOT / "logs" / "tcp_server.log"
     gateway_log_offset = gateway_log_path.stat().st_size if gateway_log_path.exists() else 0
+    gateway_stdout_stream = gateway_stdout_path.open("w", encoding="utf-8")
+    gateway_stderr_stream = gateway_stderr_path.open("w", encoding="utf-8")
+    hmi_stdout_stream = hmi_stdout_log_path.open("w", encoding="utf-8")
+    hmi_stderr_stream = hmi_stderr_log_path.open("w", encoding="utf-8")
 
     try:
         if not args.gateway_exe.exists():
@@ -830,14 +976,24 @@ def main() -> int:
             ),
         )
 
+        gateway_launch_spec_payload = write_gateway_launch_spec(
+            args=args,
+            effective_port=effective_port,
+            spec_path=gateway_launch_spec_path,
+        )
+        add_step(steps, "gateway-launch-spec", "passed", str(gateway_launch_spec_path))
+
         gateway_process = subprocess.Popen(
-            [str(args.gateway_exe), "--config", str(args.config_path), "--port", str(effective_port)],
-            cwd=str(ROOT),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            [
+                str(gateway_launch_spec_payload["executable"]),
+                *[str(item) for item in gateway_launch_spec_payload.get("args", [])],
+            ],
+            cwd=str(gateway_launch_spec_payload.get("cwd") or ROOT),
+            stdout=gateway_stdout_stream,
+            stderr=gateway_stderr_stream,
             text=True,
             encoding="utf-8",
-            env=build_process_env(args.gateway_exe),
+            env=build_launch_spec_process_env(gateway_launch_spec_payload),
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         add_step(steps, "gateway-launch", "passed", f"pid={gateway_process.pid}")
@@ -856,11 +1012,15 @@ def main() -> int:
         hmi_process = subprocess.Popen(
             hmi_command,
             cwd=str(ROOT),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=hmi_stdout_stream,
+            stderr=hmi_stderr_stream,
             text=True,
             encoding="utf-8",
-            env=build_hmi_process_env(),
+            env=build_hmi_process_env(
+                gateway_launch_spec_path=gateway_launch_spec_path,
+                host=args.host,
+                port=effective_port,
+            ),
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         add_step(steps, "hmi-launch", "passed", f"pid={hmi_process.pid}")
@@ -895,8 +1055,13 @@ def main() -> int:
                 break
             time.sleep(args.status_poll_interval_seconds)
 
-        hmi_exit_code = int(hmi_process.poll() or 0)
-        hmi_stdout, hmi_stderr = hmi_process.communicate(timeout=5)
+        hmi_exit_code = int(hmi_process.wait(timeout=5) or 0)
+        hmi_stdout_stream, hmi_stderr_stream, hmi_stdout, hmi_stderr = finalize_process_log_capture(
+            stdout_stream=hmi_stdout_stream,
+            stderr_stream=hmi_stderr_stream,
+            stdout_path=hmi_stdout_log_path,
+            stderr_path=hmi_stderr_log_path,
+        )
         add_step(
             steps,
             "hmi-exit",
@@ -952,36 +1117,79 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001
         error_message = str(exc).strip()
         add_step(steps, "exception", "failed", error_message)
-        operator_execution = {
-            "status": "failed",
-            "issues": [
-                build_operator_issue(
-                    issue_type="阻塞类",
-                    phenomenon="runner 执行异常",
-                    impact="本轮 HMI operator 证据未收敛。",
-                    reproduction_steps="查看 runner exception 与 artifacts。",
-                    current_evidence=error_message,
-                    owner_layer="tests/e2e/hardware-in-loop/run_hmi_operator_production_test.py",
+        if hmi_process is not None:
+            if hmi_process.poll() is None:
+                hmi_process.terminate()
+                try:
+                    hmi_process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    hmi_process.kill()
+                    hmi_process.wait(timeout=5)
+            hmi_exit_code = int(hmi_process.returncode or 0)
+        hmi_stdout_stream, hmi_stderr_stream, hmi_stdout, hmi_stderr = finalize_process_log_capture(
+            stdout_stream=hmi_stdout_stream,
+            stderr_stream=hmi_stderr_stream,
+            stdout_path=hmi_stdout_log_path,
+            stderr_path=hmi_stderr_log_path,
+        )
+
+        combined_output = (hmi_stdout or "") + ("\n" if hmi_stderr else "") + (hmi_stderr or "")
+        operator_summary = summarize_operator_output(combined_output)
+        plan_id = str(operator_summary.get("plan_id", "") or "").strip()
+        if observer_connected and plan_id and plan_id != "null":
+            try:
+                snapshot_result = read_preview_snapshot(
+                    observer_client,
+                    plan_id=plan_id,
+                    max_polyline_points=args.max_polyline_points,
+                    max_glue_points=args.max_glue_points,
                 )
-            ],
-            "hmi_exit_code": hmi_exit_code,
-            "final_job_status": final_job_status,
-            "operator_context": summarize_operator_output((hmi_stdout or "") + ("\n" if hmi_stderr else "") + (hmi_stderr or "")),
-            "hmi_output_excerpt": "",
-        }
+                add_step(steps, "snapshot-readback", "passed", f"plan_id={plan_id}")
+            except Exception as snapshot_exc:  # noqa: BLE001
+                snapshot_readback_error = str(snapshot_exc).strip()
+                add_step(steps, "snapshot-readback", "failed", snapshot_readback_error)
+        elif not snapshot_readback_error:
+            snapshot_readback_error = "plan_id missing from operator output; cannot read back preview snapshot"
+            add_step(steps, "snapshot-readback", "failed", snapshot_readback_error)
+
+        operator_execution = evaluate_operator_execution(
+            operator_summary=operator_summary,
+            final_job_status=final_job_status,
+            hmi_exit_code=hmi_exit_code,
+            combined_output=combined_output,
+        )
+        operator_execution["issues"].insert(
+            0,
+            build_operator_issue(
+                issue_type="阻塞类",
+                phenomenon="runner 执行异常",
+                impact="本轮 HMI operator 证据未收敛。",
+                reproduction_steps="查看 runner exception 与 artifacts。",
+                current_evidence=error_message,
+                owner_layer="tests/e2e/hardware-in-loop/run_hmi_operator_production_test.py",
+            ),
+        )
+        operator_execution["status"] = "failed"
         overall_status = "failed"
     finally:
         if hmi_process is not None and hmi_process.poll() is None:
             hmi_process.terminate()
             try:
-                hmi_stdout, hmi_stderr = hmi_process.communicate(timeout=5)
+                hmi_process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 hmi_process.kill()
-                hmi_stdout, hmi_stderr = hmi_process.communicate(timeout=5)
+                hmi_process.wait(timeout=5)
             hmi_exit_code = int(hmi_process.returncode or 0)
-
-        hmi_stdout_log_path.write_text(hmi_stdout or "", encoding="utf-8")
-        hmi_stderr_log_path.write_text(hmi_stderr or "", encoding="utf-8")
+        if hmi_stdout_stream is not None:
+            hmi_stdout_stream.close()
+            hmi_stdout_stream = None
+        if hmi_stderr_stream is not None:
+            hmi_stderr_stream.close()
+            hmi_stderr_stream = None
+        if not hmi_stdout:
+            hmi_stdout = read_text_if_exists(hmi_stdout_log_path)
+        if not hmi_stderr:
+            hmi_stderr = read_text_if_exists(hmi_stderr_log_path)
 
         if observer_connected:
             observer_client.close()
@@ -994,13 +1202,14 @@ def main() -> int:
                 except subprocess.TimeoutExpired:
                     gateway_process.kill()
                     gateway_process.wait(timeout=5)
-            gateway_stdout, gateway_stderr = read_process_output(gateway_process)
-        else:
-            gateway_stdout = ""
-            gateway_stderr = ""
-
-        gateway_stdout_path.write_text(gateway_stdout, encoding="utf-8")
-        gateway_stderr_path.write_text(gateway_stderr, encoding="utf-8")
+        if gateway_stdout_stream is not None:
+            gateway_stdout_stream.close()
+            gateway_stdout_stream = None
+        if gateway_stderr_stream is not None:
+            gateway_stderr_stream.close()
+            gateway_stderr_stream = None
+        gateway_stdout = read_text_if_exists(gateway_stdout_path)
+        gateway_stderr = read_text_if_exists(gateway_stderr_path)
         time.sleep(0.3)
         gateway_log_text = read_current_run_gateway_log(gateway_log_path, gateway_log_offset, effective_port)
         gateway_log_copy_path.write_text(gateway_log_text, encoding="utf-8")
@@ -1033,6 +1242,7 @@ def main() -> int:
                 "gateway_stdout_log": str(gateway_stdout_path),
                 "gateway_stderr_log": str(gateway_stderr_path),
                 "gateway_log_copy": str(gateway_log_copy_path),
+                "gateway_launch_spec": str(gateway_launch_spec_path),
                 "job_status_history": str(job_status_json_path),
                 "machine_status_history": str(machine_status_json_path),
                 "coord_status_history": str(coord_status_json_path),
