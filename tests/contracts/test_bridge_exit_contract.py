@@ -223,6 +223,24 @@ class BridgeExitContractTest(unittest.TestCase):
         self.assertNotIn("${SILIGEN_MODULES_ROOT}/workflow/application", implementation_block)
         self.assertNotIn("${SILIGEN_MODULES_ROOT}/workflow/adapters", implementation_block)
 
+    def test_root_build_graph_retires_security_module_residual(self) -> None:
+        root_cmake = _read(WORKSPACE_ROOT / "CMakeLists.txt")
+        runtime_host_readme = _read(
+            WORKSPACE_ROOT / "modules" / "runtime-execution" / "runtime" / "host" / "README.md"
+        )
+        runtime_service_cmake = _read(WORKSPACE_ROOT / "apps" / "runtime-service" / "CMakeLists.txt")
+        business_file_tree = _read(WORKSPACE_ROOT / "modules" / "MODULES_BUSINESS_FILE_TREE_AND_TABLES.md")
+
+        self.assertIn("`security/**/*`", runtime_host_readme)
+        self.assertIn("已迁到 [`apps/runtime-service`", runtime_host_readme)
+        self.assertNotIn("BUILD_SECURITY_MODULE", root_cmake)
+        self.assertNotIn("add_library(security_module", root_cmake)
+        self.assertNotIn("${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/", root_cmake)
+        self.assertIn("security/SecurityService.cpp", runtime_service_cmake)
+        self.assertIn("apps/runtime-service/security/**", business_file_tree)
+        self.assertNotIn("runtime-execution/runtime/host/security/**", business_file_tree)
+        self.assertNotIn("runtime-execution/runtime/host/security/config/**", business_file_tree)
+
     def test_non_workflow_tests_do_not_include_workflow_internal_skeleton_headers(self) -> None:
         for pattern in (
             '#include "workflow/application/',

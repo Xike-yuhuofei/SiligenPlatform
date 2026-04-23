@@ -278,7 +278,6 @@ option(SILIGEN_ENABLE_COVERAGE "启用代码覆盖率" OFF)
 option(SILIGEN_ENABLE_MOCK_MULTICARD "构建 MockMultiCard 支持" ON)
 option(SILIGEN_ENABLE_CGAL "启用CGAL支持（DXF轮廓增广）" OFF)
 option(SILIGEN_ENABLE_PROTOBUF "启用Protobuf支持" ON)
-option(BUILD_SECURITY_MODULE "构建安全模块" OFF)
 set(SILIGEN_LOG_LEVEL "ERROR" CACHE STRING "构建日志级别: ERROR/WARNING/INFO")
 option(SILIGEN_USE_PCH "使用预编译头加速编译" ON)
 option(SILIGEN_USE_UNITY_BUILD "使用Unity Build加速编译(实验性)" OFF)
@@ -525,40 +524,6 @@ if(EXISTS "${SILIGEN_MULTICARD_VENDOR_DIR}/MultiCard.dll")
     install(FILES ${SILIGEN_MULTICARD_VENDOR_DIR}/MultiCard.dll
         DESTINATION bin
     )
-endif()
-
-if(BUILD_SECURITY_MODULE)
-    message(STATUS "安全模块已启用")
-    add_library(security_module STATIC
-        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/AuditLogger.cpp
-        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/NetworkWhitelist.cpp
-        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/NetworkAccessControl.cpp
-        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/SafetyLimitsValidator.cpp
-        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/SessionService.cpp
-        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/PermissionService.cpp
-        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/UserService.cpp
-        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/SecurityService.cpp
-        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/InterlockMonitor.cpp
-        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/config/SecurityConfigLoader.cpp
-        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/config/ConfigurationVersionService.cpp
-        ${SILIGEN_SHARED_KERNEL_CANONICAL_DIR}/src/shared/hashing/HashCalculator.cpp
-    )
-
-    target_include_directories(security_module PRIVATE
-        ${SILIGEN_WORKSPACE_ROOT}
-        ${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}
-        ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
-        ${SILIGEN_BOOST_INCLUDE_DIR}
-    )
-
-    target_link_libraries(security_module PRIVATE
-        siligen_module_workflow
-        siligen_shared_kernel
-        ${WINDOWS_LIBS}
-        bcrypt
-    )
-else()
-    message(STATUS "安全模块未启用(使用-DBUILD_SECURITY_MODULE=ON启用)")
 endif()
 
 if(SILIGEN_BUILD_TESTS)
