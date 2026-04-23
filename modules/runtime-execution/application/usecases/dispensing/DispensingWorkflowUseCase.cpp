@@ -66,6 +66,36 @@ std::uint32_t ToElapsedMs(const std::chrono::steady_clock::time_point start_time
         std::chrono::steady_clock::now() - start_time).count());
 }
 
+std::string ResolvePreviewBindingFailureMessage(
+    const Siligen::Application::Services::Dispensing::PreviewBindingSnapshot& preview_binding) {
+    return preview_binding.failure_reason.empty()
+        ? "preview binding unavailable"
+        : preview_binding.failure_reason;
+}
+
+std::optional<std::string> ValidatePreviewBindingPayload(
+    const Siligen::Application::Services::Dispensing::PreviewSnapshotResponse& snapshot) {
+    if (snapshot.preview_binding.source != "runtime_authority_preview_binding") {
+        return "preview binding source must be runtime_authority_preview_binding";
+    }
+    if (snapshot.preview_binding.status != "ready") {
+        return ResolvePreviewBindingFailureMessage(snapshot.preview_binding);
+    }
+    if (snapshot.preview_binding.layout_id.empty()) {
+        return "preview binding layout_id is missing";
+    }
+    if (snapshot.preview_binding.glue_point_count != snapshot.glue_points.size()) {
+        return "preview binding glue_point_count must match returned glue_points";
+    }
+    if (snapshot.preview_binding.source_trigger_indices.size() != snapshot.glue_points.size()) {
+        return "preview binding source_trigger_indices must match returned glue_points";
+    }
+    if (snapshot.preview_binding.display_reveal_lengths_mm.size() != snapshot.glue_points.size()) {
+        return "preview binding display_reveal_lengths_mm must match returned glue_points";
+    }
+    return std::nullopt;
+}
+
 }  // namespace
 
 const Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated*
@@ -390,19 +420,34 @@ Result<PreviewSnapshotResponse> DispensingWorkflowUseCase::GetPreviewSnapshot(co
     }
 
     auto snapshot_record = snapshot_result.Value();
+    auto fail_snapshot_stage = [&](const std::string& detail) {
+        {
+            std::lock_guard<std::mutex> lock(plans_mutex_);
+            auto it = plans_.find(request.plan_id);
+            if (it != plans_.end() && it->second.latest) {
+                it->second.preview_state = PlanPreviewState::FAILED;
+                it->second.confirmed_at.clear();
+                it->second.failure_message = detail;
+            }
+        }
+        return Result<PreviewSnapshotResponse>::Failure(
+            Error(ErrorCode::INVALID_STATE, detail, "DispensingWorkflowUseCase"));
+    };
     const bool has_export_process_path =
         !snapshot_record.execution_assembly.export_request.process_path.segments.empty();
     if (snapshot_record.execution_assembly.motion_trajectory_points.empty() &&
         !has_export_process_path) {
-        return Result<PreviewSnapshotResponse>::Failure(
-            Error(
-                ErrorCode::INVALID_STATE,
-                "motion trajectory snapshot unavailable for preview",
-                "DispensingWorkflowUseCase"));
+        return fail_snapshot_stage("motion trajectory snapshot unavailable for preview");
     }
 
-    return Result<PreviewSnapshotResponse>::Success(
-        BuildPreviewSnapshotResponse(snapshot_record, request.max_polyline_points, request.max_glue_points));
+    auto snapshot_payload =
+        BuildPreviewSnapshotResponse(snapshot_record, request.max_polyline_points, request.max_glue_points);
+    if (const auto preview_binding_error = ValidatePreviewBindingPayload(snapshot_payload);
+        preview_binding_error.has_value()) {
+        return fail_snapshot_stage(preview_binding_error.value());
+    }
+
+    return Result<PreviewSnapshotResponse>::Success(std::move(snapshot_payload));
 }
 
 Result<ConfirmPreviewResponse> DispensingWorkflowUseCase::ConfirmPreview(const ConfirmPreviewRequest& request) {

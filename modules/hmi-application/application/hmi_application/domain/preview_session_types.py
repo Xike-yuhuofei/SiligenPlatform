@@ -106,6 +106,19 @@ class PreviewDiagnosticNotice:
 
 
 @dataclass(frozen=True)
+class PreviewBindingMeta:
+    source: str = ""
+    status: str = ""
+    layout_id: str = ""
+    glue_point_count: int = 0
+    binding_basis: str = ""
+    display_path_length_mm: float = 0.0
+    source_trigger_indices: tuple[int, ...] = ()
+    diagnostic_code: str = ""
+    failure_reason: str = ""
+
+
+@dataclass(frozen=True)
 class PreviewPayloadResult:
     ok: bool
     title: str
@@ -116,8 +129,10 @@ class PreviewPayloadResult:
     snapshot: PreviewSnapshotMeta | None = None
     glue_points: tuple[tuple[float, float], ...] = ()
     glue_reveal_lengths_mm: tuple[float, ...] = ()
+    display_reveal_lengths_mm: tuple[float, ...] = ()
     motion_preview: tuple[tuple[float, float], ...] = ()
     motion_preview_meta: MotionPreviewMeta | None = None
+    preview_binding_meta: PreviewBindingMeta | None = None
     preview_source: str = ""
     preview_kind: str = "glue_points"
     dry_run: bool = False
@@ -130,6 +145,7 @@ __all__ = [
     "MotionPreviewMeta",
     "PreflightBlockReason",
     "PreflightDecision",
+    "PreviewBindingMeta",
     "PreviewConfirmResult",
     "PreviewDiagnosticNotice",
     "PreviewPayloadResult",

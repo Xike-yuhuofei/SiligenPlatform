@@ -6,10 +6,13 @@ from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 WORKSPACE_ROOT = PROJECT_ROOT.parents[1]
+TEST_KIT_SRC = WORKSPACE_ROOT / "shared" / "testing" / "test-kit" / "src"
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 sys.path.insert(0, str(WORKSPACE_ROOT / "modules" / "hmi-application" / "application"))
+sys.path.insert(0, str(TEST_KIT_SRC))
 
 from hmi_application.adapters.qt_workers import DXF_OPEN_AUTO_PREVIEW_TIMEOUT_S, PreviewSnapshotWorker
+from test_kit.preview_snapshot_fixture import build_preview_snapshot_success_result
 
 
 class _FakeTcpClient:
@@ -68,25 +71,18 @@ class _FakeCommandProtocol:
     def dxf_preview_snapshot(self, plan_id, max_polyline_points=4000, max_glue_points=5000, timeout=15.0):
         self.calls.append(("dxf.preview.snapshot", plan_id))
         self.snapshot_timeout = timeout
-        return True, {
-            "snapshot_id": "snapshot-1",
-            "snapshot_hash": "fp-1",
-            "plan_id": plan_id,
-            "preview_source": "planned_glue_snapshot",
-            "preview_kind": "glue_points",
-            "glue_point_count": 2,
-            "glue_points": [{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
-            "glue_reveal_lengths_mm": [0.0, 10.0],
-            "motion_preview": {
-                "source": "execution_trajectory_snapshot",
-                "kind": "polyline",
-                "source_point_count": 2,
-                "point_count": 2,
-                "is_sampled": False,
-                "sampling_strategy": "execution_trajectory_geometry_preserving",
-                "polyline": [{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
-            },
-        }, ""
+        payload = build_preview_snapshot_success_result(
+            snapshot_id="snapshot-1",
+            snapshot_hash="fp-1",
+            plan_id=plan_id,
+            glue_points=[{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
+            motion_preview=[{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
+            motion_preview_source_point_count=2,
+            execution_point_count=2,
+            total_length_mm=10.0,
+            preview_binding_layout_id="layout-worker",
+        )
+        return True, payload, ""
 
 
 class PreviewSnapshotWorkerTimeoutTest(unittest.TestCase):

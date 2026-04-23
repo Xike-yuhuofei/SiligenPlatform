@@ -23,6 +23,18 @@
       { "x": 90.0, "y": 0.0 }
     ],
     "glue_reveal_lengths_mm": [0.0, 771.125, 1542.25],
+    "preview_binding": {
+      "source": "runtime_authority_preview_binding",
+      "status": "ready",
+      "layout_id": "layout-preview-fixture",
+      "glue_point_count": 3,
+      "binding_basis": "execution_binding_to_motion_preview_polyline",
+      "display_path_length_mm": 91.594063,
+      "source_trigger_indices": [0, 1, 2],
+      "display_reveal_lengths_mm": [0.0, 45.797031, 91.594063],
+      "diagnostic_code": "process_path_fragmentation",
+      "failure_reason": ""
+    },
     "execution_point_count": 384,
     "motion_preview": {
       "source": "execution_trajectory_snapshot",

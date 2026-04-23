@@ -1,4 +1,5 @@
 #include "application/services/dispensing/PreviewSnapshotService.h"
+#include "domain/dispensing/value-objects/AuthorityTriggerLayout.h"
 #include "process_path/contracts/ProcessPath.h"
 
 #include <gtest/gtest.h>
@@ -11,6 +12,9 @@ namespace {
 using Siligen::Application::Services::Dispensing::PreviewSnapshotInput;
 using Siligen::Application::Services::Dispensing::PreviewSnapshotResponse;
 using Siligen::Application::Services::Dispensing::PreviewSnapshotService;
+using Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout;
+using Siligen::Domain::Dispensing::ValueObjects::InterpolationTriggerBinding;
+using Siligen::Domain::Dispensing::ValueObjects::LayoutTriggerPoint;
 using Siligen::ProcessPath::Contracts::ProcessPath;
 using Siligen::ProcessPath::Contracts::ProcessSegment;
 using Siligen::ProcessPath::Contracts::Segment;
@@ -57,6 +61,46 @@ PreviewSnapshotInput BuildProcessPathInput(const ProcessPath& process_path) {
     input.generated_at = "2026-03-28T00:00:01Z";
     input.process_path = &process_path;
     return input;
+}
+
+AuthorityTriggerLayout BuildAuthorityTriggerLayout(
+    const std::string& layout_id,
+    const std::vector<Point2D>& points) {
+    AuthorityTriggerLayout layout;
+    layout.layout_id = layout_id;
+    layout.plan_id = "plan-1";
+    layout.plan_fingerprint = "fp-snapshot-1";
+    layout.authority_ready = true;
+    layout.binding_ready = true;
+
+    float cumulative_length_mm = 0.0f;
+    for (std::size_t index = 0; index < points.size(); ++index) {
+        if (index > 0U) {
+            cumulative_length_mm += static_cast<float>(
+                points[index - 1U].DistanceTo(points[index]));
+        }
+
+        LayoutTriggerPoint trigger_point;
+        trigger_point.trigger_id = layout_id + "-trigger-" + std::to_string(index);
+        trigger_point.layout_ref = layout_id;
+        trigger_point.sequence_index_global = index;
+        trigger_point.distance_mm_global = cumulative_length_mm;
+        trigger_point.position = points[index];
+        layout.trigger_points.push_back(trigger_point);
+
+        InterpolationTriggerBinding binding;
+        binding.binding_id = layout_id + "-binding-" + std::to_string(index);
+        binding.layout_ref = layout_id;
+        binding.trigger_ref = trigger_point.trigger_id;
+        binding.interpolation_index = index;
+        binding.execution_position = points[index];
+        binding.match_error_mm = 0.0f;
+        binding.monotonic = true;
+        binding.bound = true;
+        layout.bindings.push_back(binding);
+    }
+
+    return layout;
 }
 
 bool SnapshotContainsPoint(
@@ -220,4 +264,65 @@ TEST(PreviewSnapshotServiceTest, BuildResponseDoesNotFallbackToProcessPathForMot
     EXPECT_EQ(payload.motion_preview_source_point_count, 0U);
     EXPECT_EQ(payload.motion_preview_point_count, 0U);
     EXPECT_TRUE(payload.motion_preview_polyline.empty());
+}
+
+TEST(PreviewSnapshotServiceTest, BuildResponsePublishesReadyPreviewBindingFromAuthorityExecutionTruth) {
+    PreviewSnapshotService service;
+    const std::vector<Point2D> glue_points = {
+        Point2D(0.0f, 0.0f),
+        Point2D(10.0f, 0.0f),
+        Point2D(20.0f, 0.0f),
+    };
+    const auto trajectory = BuildTrajectory(glue_points);
+    auto input = BuildInput(trajectory);
+    auto authority_trigger_layout = BuildAuthorityTriggerLayout("layout-ready", glue_points);
+    input.glue_points = &glue_points;
+    input.authority_trigger_layout = &authority_trigger_layout;
+    input.authority_layout_id = authority_trigger_layout.layout_id;
+    input.binding_ready = true;
+
+    const auto payload = service.BuildResponse(input, 32, 32);
+
+    ASSERT_EQ(payload.glue_points.size(), 3U);
+    EXPECT_EQ(payload.preview_binding.source, "runtime_authority_preview_binding");
+    EXPECT_EQ(payload.preview_binding.status, "ready");
+    EXPECT_EQ(payload.preview_binding.layout_id, "layout-ready");
+    EXPECT_EQ(payload.preview_binding.glue_point_count, payload.glue_points.size());
+    EXPECT_EQ(payload.preview_binding.binding_basis, "execution_binding_to_motion_preview_polyline");
+    EXPECT_FLOAT_EQ(payload.preview_binding.display_path_length_mm, 20.0f);
+    ASSERT_EQ(payload.preview_binding.source_trigger_indices.size(), 3U);
+    EXPECT_EQ(payload.preview_binding.source_trigger_indices[0], 0U);
+    EXPECT_EQ(payload.preview_binding.source_trigger_indices[1], 1U);
+    EXPECT_EQ(payload.preview_binding.source_trigger_indices[2], 2U);
+    ASSERT_EQ(payload.preview_binding.display_reveal_lengths_mm.size(), 3U);
+    EXPECT_FLOAT_EQ(payload.preview_binding.display_reveal_lengths_mm[0], 0.0f);
+    EXPECT_FLOAT_EQ(payload.preview_binding.display_reveal_lengths_mm[1], 10.0f);
+    EXPECT_FLOAT_EQ(payload.preview_binding.display_reveal_lengths_mm[2], 20.0f);
+    EXPECT_TRUE(payload.preview_binding.failure_reason.empty());
+}
+
+TEST(PreviewSnapshotServiceTest, BuildResponseMarksPreviewBindingUnavailableWhenAuthorityBindingsAreIncomplete) {
+    PreviewSnapshotService service;
+    const std::vector<Point2D> glue_points = {
+        Point2D(0.0f, 0.0f),
+        Point2D(10.0f, 0.0f),
+        Point2D(20.0f, 0.0f),
+    };
+    const auto trajectory = BuildTrajectory(glue_points);
+    auto input = BuildInput(trajectory);
+    auto authority_trigger_layout = BuildAuthorityTriggerLayout("layout-unavailable", glue_points);
+    authority_trigger_layout.bindings.pop_back();
+    input.glue_points = &glue_points;
+    input.authority_trigger_layout = &authority_trigger_layout;
+    input.authority_layout_id = authority_trigger_layout.layout_id;
+    input.binding_ready = true;
+
+    const auto payload = service.BuildResponse(input, 32, 32);
+
+    EXPECT_EQ(payload.preview_binding.source, "runtime_authority_preview_binding");
+    EXPECT_EQ(payload.preview_binding.status, "unavailable");
+    EXPECT_EQ(payload.preview_binding.layout_id, "layout-unavailable");
+    EXPECT_EQ(payload.preview_binding.failure_reason, "preview binding unavailable");
+    EXPECT_TRUE(payload.preview_binding.source_trigger_indices.empty());
+    EXPECT_TRUE(payload.preview_binding.display_reveal_lengths_mm.empty());
 }

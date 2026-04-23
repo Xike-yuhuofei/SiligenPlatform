@@ -195,12 +195,22 @@ def test_dxf_preview_and_job_contract():
     assert "glue_points" in preview_result_properties
     assert "glue_point_count" in preview_result_properties
     assert "glue_reveal_lengths_mm" in preview_result_properties
+    assert "preview_binding" in preview_result_properties
     assert "motion_preview" in preview_result_properties
 
     preview_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.preview.snapshot.success.json")
     glue_reveal_lengths = preview_fixture["result"]["glue_reveal_lengths_mm"]
     assert len(glue_reveal_lengths) == len(preview_fixture["result"]["glue_points"])
     assert glue_reveal_lengths == sorted(glue_reveal_lengths)
+    preview_binding = preview_fixture["result"]["preview_binding"]
+    assert preview_binding["source"] == "runtime_authority_preview_binding"
+    assert preview_binding["status"] == "ready"
+    assert preview_binding["layout_id"]
+    assert preview_binding["glue_point_count"] == len(preview_fixture["result"]["glue_points"])
+    assert len(preview_binding["source_trigger_indices"]) == len(preview_fixture["result"]["glue_points"])
+    assert len(preview_binding["display_reveal_lengths_mm"]) == len(preview_fixture["result"]["glue_points"])
+    assert preview_binding["display_reveal_lengths_mm"] == sorted(preview_binding["display_reveal_lengths_mm"])
+    assert preview_binding["display_path_length_mm"] >= preview_binding["display_reveal_lengths_mm"][-1]
     motion_preview = preview_fixture["result"]["motion_preview"]
     assert motion_preview["source"] == "execution_trajectory_snapshot"
     assert motion_preview["kind"] == "polyline"

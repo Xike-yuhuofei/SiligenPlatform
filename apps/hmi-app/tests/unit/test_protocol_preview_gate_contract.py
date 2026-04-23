@@ -5,10 +5,14 @@ from unittest.mock import patch
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+WORKSPACE_ROOT = PROJECT_ROOT.parents[1]
+TEST_KIT_SRC = WORKSPACE_ROOT / "shared" / "testing" / "test-kit" / "src"
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
+sys.path.insert(0, str(TEST_KIT_SRC))
 
 from hmi_client.client.gateway_launch import MachineConnectionConfig
 from hmi_client.client.protocol import CommandProtocol, JobTransitionResult
+from test_kit.preview_snapshot_fixture import build_preview_snapshot_success_result
 
 
 class _FakeClient:
@@ -874,39 +878,30 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertEqual(client.calls[0], ("home.auto", {"axes": ["X"], "timeout_ms": 120000}, 130.0))
 
     def test_preview_snapshot_success_contract(self) -> None:
+        preview_result = build_preview_snapshot_success_result(
+            snapshot_id="s1",
+            snapshot_hash="h1",
+            plan_id="plan-1",
+            segment_count=12,
+            glue_points=[
+                {"x": 0.0, "y": 0.0},
+                {"x": 10.0, "y": 2.0},
+            ],
+            motion_preview=[
+                {"x": 0.0, "y": 0.0},
+                {"x": 10.0, "y": 2.0},
+            ],
+            motion_preview_source_point_count=48,
+            execution_point_count=48,
+            total_length_mm=120.5,
+            estimated_time_s=6.0,
+            generated_at="2026-03-21T10:00:00Z",
+            preview_binding_layout_id="layout-contract",
+        )
         client = _FakeClient(
             [
                 {
-                    "result": {
-                        "snapshot_id": "s1",
-                        "snapshot_hash": "h1",
-                        "preview_source": "planned_glue_snapshot",
-                        "preview_kind": "glue_points",
-                        "segment_count": 12,
-                        "point_count": 36,
-                        "glue_point_count": 36,
-                        "glue_points": [
-                            {"x": 0.0, "y": 0.0},
-                            {"x": 10.0, "y": 2.0},
-                        ],
-                        "glue_reveal_lengths_mm": [0.0, 10.198039],
-                        "execution_point_count": 48,
-                        "motion_preview": {
-                            "source": "execution_trajectory_snapshot",
-                            "kind": "polyline",
-                            "source_point_count": 48,
-                            "point_count": 2,
-                            "is_sampled": True,
-                            "sampling_strategy": "execution_trajectory_geometry_preserving_clamp",
-                            "polyline": [
-                                {"x": 0.0, "y": 0.0},
-                                {"x": 10.0, "y": 2.0},
-                            ],
-                        },
-                        "total_length_mm": 120.5,
-                        "estimated_time_s": 6.0,
-                        "generated_at": "2026-03-21T10:00:00Z",
-                    }
+                    "result": preview_result
                 }
             ]
         )
@@ -921,6 +916,8 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertEqual(payload["preview_kind"], "glue_points")
         self.assertEqual(len(payload["glue_points"]), 2)
         self.assertEqual(payload["glue_reveal_lengths_mm"], [0.0, 10.198039])
+        self.assertEqual(payload["preview_binding"]["status"], "ready")
+        self.assertEqual(payload["preview_binding"]["display_reveal_lengths_mm"], [0.0, 10.198039])
         self.assertEqual(payload["motion_preview"]["source"], "execution_trajectory_snapshot")
         self.assertEqual(len(payload["motion_preview"]["polyline"]), 2)
         self.assertEqual(client.calls[0][0], "dxf.preview.snapshot")
@@ -1021,7 +1018,18 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         self.assertIn("DXF not loaded", error)
 
     def test_preview_snapshot_accepts_max_polyline_points(self) -> None:
-        client = _FakeClient([{"result": {"snapshot_id": "s2", "snapshot_hash": "h2", "plan_id": "plan-2", "preview_source": "planned_glue_snapshot", "preview_kind": "glue_points"}}])
+        client = _FakeClient(
+            [
+                {
+                    "result": build_preview_snapshot_success_result(
+                        snapshot_id="s2",
+                        snapshot_hash="h2",
+                        plan_id="plan-2",
+                        preview_binding_layout_id="layout-contract-plan-2",
+                    )
+                }
+            ]
+        )
         protocol = CommandProtocol(client)
 
         ok, payload, _ = protocol.dxf_preview_snapshot(plan_id="plan-2", max_polyline_points=128)
@@ -1037,13 +1045,12 @@ class PreviewGateProtocolContractTest(unittest.TestCase):
         client = _FakeClient(
             [
                 {
-                    "result": {
-                        "snapshot_id": "s-timeout",
-                        "snapshot_hash": "h-timeout",
-                        "plan_id": "plan-1",
-                        "preview_source": "planned_glue_snapshot",
-                        "preview_kind": "glue_points",
-                    }
+                    "result": build_preview_snapshot_success_result(
+                        snapshot_id="s-timeout",
+                        snapshot_hash="h-timeout",
+                        plan_id="plan-1",
+                        preview_binding_layout_id="layout-timeout",
+                    )
                 }
             ]
         )

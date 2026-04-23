@@ -101,6 +101,10 @@ class MockServerInterlockTest(unittest.TestCase):
         self.assertIn("result", snapshot)
         self.assertEqual(snapshot["result"]["preview_source"], "planned_glue_snapshot")
         self.assertEqual(snapshot["result"]["preview_kind"], "glue_points")
+        self.assertEqual(
+            snapshot["result"]["preview_binding"]["source"],
+            "runtime_authority_preview_binding",
+        )
         confirm = state.handle_request(
             "dxf.preview.confirm",
             {

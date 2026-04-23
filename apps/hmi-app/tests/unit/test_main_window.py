@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import math
 import unittest
 from dataclasses import replace
 from pathlib import Path
@@ -14,7 +15,10 @@ from PyQt5.QtWidgets import QApplication, QWidget
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+WORKSPACE_ROOT = PROJECT_ROOT.parents[1]
+TEST_KIT_SRC = WORKSPACE_ROOT / "shared" / "testing" / "test-kit" / "src"
 sys.path.insert(0, str(PROJECT_ROOT / "src" / "hmi_client"))
+sys.path.insert(0, str(TEST_KIT_SRC))
 
 import ui.main_window as main_window_module
 from client import SessionSnapshot, launch_result_from_snapshot
@@ -32,6 +36,7 @@ from client.protocol import (
     SafetyBoundaryStatus,
     SupervisionStatus,
 )
+from test_kit.preview_snapshot_fixture import build_preview_snapshot_success_result
 
 
 class FakeProtocol:
@@ -632,37 +637,33 @@ class MainWindowTabsTest(unittest.TestCase):
         )
         if glue_reveal_lengths_mm is None:
             glue_reveal_lengths_mm = [0.0, 6.0, 12.708204]
+        motion_preview_payload = [
+            {"x": 0.0, "y": 0.0},
+            {"x": 12.0, "y": 3.0},
+        ]
+        payload = self._build_preview_snapshot_payload(
+            snapshot_id="snapshot-1",
+            snapshot_hash=snapshot_hash,
+            plan_id=plan_id,
+            preview_source=preview_source,
+            preview_kind=preview_kind,
+            segment_count=2,
+            glue_points=glue_point_payload,
+            glue_reveal_lengths_mm=glue_reveal_lengths_mm,
+            motion_preview=motion_preview_payload,
+            motion_preview_source_point_count=8,
+            execution_point_count=8,
+            total_length_mm=12.0,
+            estimated_time_s=1.5,
+            generated_at="2026-03-26T00:00:00Z",
+            dry_run=False,
+            preview_validation_classification=preview_validation_classification,
+            preview_exception_reason=preview_exception_reason,
+            preview_failure_reason=preview_failure_reason,
+            preview_binding_layout_id="layout-preview-test",
+        )
         result = self.window._preview_session.process_snapshot_payload(
-            {
-                "snapshot_id": "snapshot-1",
-                "snapshot_hash": snapshot_hash,
-                "plan_id": plan_id,
-                "preview_source": preview_source,
-                "preview_kind": preview_kind,
-                "segment_count": 2,
-                "glue_point_count": len(glue_point_payload),
-                "glue_points": glue_point_payload,
-                "glue_reveal_lengths_mm": glue_reveal_lengths_mm,
-                "motion_preview": {
-                    "source": "execution_trajectory_snapshot",
-                    "kind": "polyline",
-                    "source_point_count": 8,
-                    "point_count": 2,
-                    "is_sampled": True,
-                    "sampling_strategy": "execution_trajectory_geometry_preserving_clamp",
-                    "polyline": [
-                        {"x": 0.0, "y": 0.0},
-                        {"x": 12.0, "y": 3.0},
-                    ],
-                },
-                "preview_validation_classification": preview_validation_classification,
-                "preview_exception_reason": preview_exception_reason,
-                "preview_failure_reason": preview_failure_reason,
-                "total_length_mm": 12.0,
-                "estimated_time_s": 1.5,
-                "generated_at": "2026-03-26T00:00:00Z",
-                "dry_run": False,
-            },
+            payload,
             current_dry_run=False,
         )
         self.assertEqual(result.ok, expect_ok)
@@ -670,6 +671,152 @@ class MainWindowTabsTest(unittest.TestCase):
             self.window._preview_session.gate.confirm_current_snapshot()
             self.window._sync_preview_session_fields()
         return result
+
+    @classmethod
+    def _build_preview_snapshot_payload(
+        cls,
+        *,
+        snapshot_id: str,
+        snapshot_hash: str,
+        plan_id: str,
+        preview_source: str = "planned_glue_snapshot",
+        preview_kind: str = "glue_points",
+        segment_count: int = 2,
+        glue_points,
+        glue_reveal_lengths_mm=None,
+        motion_preview,
+        motion_preview_source_point_count: int = 8,
+        execution_point_count: int | None = None,
+        total_length_mm: float | None = None,
+        estimated_time_s: float = 0.5,
+        generated_at: str = "2026-03-29T00:00:00Z",
+        dry_run: bool = False,
+        preview_validation_classification: str = "pass",
+        preview_exception_reason: str = "",
+        preview_failure_reason: str = "",
+        preview_diagnostic_code: str = "",
+        preview_binding_layout_id: str = "layout-preview-test",
+    ) -> dict:
+        resolved_execution_point_count = (
+            motion_preview_source_point_count
+            if execution_point_count is None
+            else execution_point_count
+        )
+        return build_preview_snapshot_success_result(
+            snapshot_id=snapshot_id,
+            snapshot_hash=snapshot_hash,
+            plan_id=plan_id,
+            preview_source=preview_source,
+            preview_kind=preview_kind,
+            segment_count=segment_count,
+            glue_points=glue_points,
+            glue_reveal_lengths_mm=glue_reveal_lengths_mm,
+            motion_preview=motion_preview,
+            motion_preview_source_point_count=motion_preview_source_point_count,
+            execution_point_count=resolved_execution_point_count,
+            total_length_mm=total_length_mm,
+            estimated_time_s=estimated_time_s,
+            generated_at=generated_at,
+            dry_run=dry_run,
+            preview_validation_classification=preview_validation_classification,
+            preview_exception_reason=preview_exception_reason,
+            preview_failure_reason=preview_failure_reason,
+            preview_diagnostic_code=preview_diagnostic_code,
+            preview_binding_layout_id=preview_binding_layout_id,
+        )
+
+    @staticmethod
+    def _normalize_points(points):
+        normalized = []
+        for point in points or []:
+            if isinstance(point, dict):
+                normalized.append((float(point["x"]), float(point["y"])))
+            else:
+                normalized.append((float(point[0]), float(point[1])))
+        return normalized
+
+    @classmethod
+    def _project_display_reveal_lengths(cls, glue_points, motion_preview):
+        normalized_glue_points = cls._normalize_points(glue_points)
+        normalized_motion_preview = cls._normalize_points(motion_preview)
+        if len(normalized_motion_preview) < 2:
+            return [0.0 for _ in normalized_glue_points]
+
+        cumulative_lengths = [0.0]
+        for index in range(1, len(normalized_motion_preview)):
+            prev_x, prev_y = normalized_motion_preview[index - 1]
+            curr_x, curr_y = normalized_motion_preview[index]
+            cumulative_lengths.append(
+                cumulative_lengths[-1] + math.hypot(curr_x - prev_x, curr_y - prev_y)
+            )
+
+        reveal_lengths = []
+        search_segment_index = 0
+        previous_length = 0.0
+        for glue_x, glue_y in normalized_glue_points:
+            best_distance_sq = None
+            best_length = previous_length
+            best_segment_index = search_segment_index
+            for segment_index in range(search_segment_index, len(normalized_motion_preview) - 1):
+                start_x, start_y = normalized_motion_preview[segment_index]
+                end_x, end_y = normalized_motion_preview[segment_index + 1]
+                dx = end_x - start_x
+                dy = end_y - start_y
+                segment_length_sq = (dx * dx) + (dy * dy)
+                if segment_length_sq <= 1e-12:
+                    continue
+                point_dx = glue_x - start_x
+                point_dy = glue_y - start_y
+                ratio = max(0.0, min(1.0, ((point_dx * dx) + (point_dy * dy)) / segment_length_sq))
+                projected_x = start_x + (dx * ratio)
+                projected_y = start_y + (dy * ratio)
+                distance_sq = ((glue_x - projected_x) ** 2) + ((glue_y - projected_y) ** 2)
+                segment_length = math.sqrt(segment_length_sq)
+                candidate_length = max(previous_length, cumulative_lengths[segment_index] + (segment_length * ratio))
+                if best_distance_sq is None or distance_sq < best_distance_sq:
+                    best_distance_sq = distance_sq
+                    best_length = candidate_length
+                    best_segment_index = segment_index
+            reveal_lengths.append(round(best_length, 6))
+            previous_length = best_length
+            search_segment_index = best_segment_index
+        return reveal_lengths
+
+    @classmethod
+    def _build_preview_binding_payload(
+        cls,
+        *,
+        glue_points,
+        motion_preview,
+        layout_id: str = "layout-preview-test",
+        display_reveal_lengths_mm=None,
+        diagnostic_code: str = "",
+        failure_reason: str = "",
+    ):
+        normalized_glue_points = cls._normalize_points(glue_points)
+        normalized_motion_preview = cls._normalize_points(motion_preview)
+        display_path_length_mm = 0.0
+        for index in range(1, len(normalized_motion_preview)):
+            prev_x, prev_y = normalized_motion_preview[index - 1]
+            curr_x, curr_y = normalized_motion_preview[index]
+            display_path_length_mm += math.hypot(curr_x - prev_x, curr_y - prev_y)
+        resolved_display_reveal_lengths = (
+            cls._project_display_reveal_lengths(normalized_glue_points, normalized_motion_preview)
+            if display_reveal_lengths_mm is None
+            else [float(value) for value in display_reveal_lengths_mm]
+        )
+        return {
+            "source": "runtime_authority_preview_binding",
+            "status": "ready",
+            "layout_id": layout_id,
+            "glue_point_count": len(normalized_glue_points),
+            "binding_basis": "execution_binding_to_motion_preview_polyline",
+            "display_path_length_mm": round(display_path_length_mm, 6),
+            "source_trigger_indices": list(range(len(normalized_glue_points))),
+            "display_reveal_lengths_mm": resolved_display_reveal_lengths,
+            "diagnostic_code": diagnostic_code,
+            "failure_reason": failure_reason,
+        }
 
     def _collect_testids(self) -> set[str]:
         return {
@@ -1493,7 +1640,7 @@ class MainWindowTabsTest(unittest.TestCase):
             dry_run=False,
             preview_source="planned_glue_snapshot",
             glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
-            glue_reveal_lengths_mm=[0.0, 6.0, 12.0, 18.0],
+            display_reveal_lengths_mm=[0.0, 6.0, 12.0, 18.0],
             motion_preview=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
             preview_kind="glue_points",
         )
@@ -1529,7 +1676,7 @@ class MainWindowTabsTest(unittest.TestCase):
         reveal_lengths, diagnostics = self.window._resolve_preview_glue_reveal_lengths(
             glue_points=[(0.0, 0.0), (60.0, 0.0), (120.0, 0.0)],
             motion_preview=[(0.0, 0.0), (60.0, 0.0), (120.0, 0.0)],
-            glue_reveal_lengths_mm=[0.0, 6.0, 12.0],
+            display_reveal_lengths_mm=[0.0, 6.0, 12.0],
             scale_px_per_mm=10.0,
             snapshot=snapshot,
             motion_preview_meta=main_window_module.MotionPreviewMeta(
@@ -1543,7 +1690,7 @@ class MainWindowTabsTest(unittest.TestCase):
         )
 
         self.assertEqual(reveal_lengths, [0.0, 60.0, 120.0])
-        self.assertEqual(diagnostics["source"], "authority_glue_reveal_lengths_mm")
+        self.assertEqual(diagnostics["source"], "preview_binding.display_reveal_lengths_mm")
 
     def test_resolve_preview_glue_reveal_lengths_rejects_missing_authority_lengths(self) -> None:
         snapshot = main_window_module.PreviewSnapshotMeta(
@@ -1556,11 +1703,11 @@ class MainWindowTabsTest(unittest.TestCase):
             generated_at="2026-04-06T00:00:00Z",
         )
 
-        with self.assertRaisesRegex(ValueError, "缺少 glue_reveal_lengths_mm"):
+        with self.assertRaisesRegex(ValueError, "缺少 preview_binding.display_reveal_lengths_mm"):
             self.window._resolve_preview_glue_reveal_lengths(
                 glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
                 motion_preview=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
-                glue_reveal_lengths_mm=[],
+                display_reveal_lengths_mm=[],
                 scale_px_per_mm=1.0,
                 snapshot=snapshot,
                 motion_preview_meta=main_window_module.MotionPreviewMeta(
@@ -1588,7 +1735,7 @@ class MainWindowTabsTest(unittest.TestCase):
             self.window._resolve_preview_glue_reveal_lengths(
                 glue_points=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
                 motion_preview=[(0.0, 0.0), (6.0, 0.0), (12.0, 0.0), (12.0, 6.0)],
-                glue_reveal_lengths_mm=[0.0, 8.0, 7.0, 18.0],
+                display_reveal_lengths_mm=[0.0, 8.0, 7.0, 18.0],
                 scale_px_per_mm=1.0,
                 snapshot=snapshot,
                 motion_preview_meta=main_window_module.MotionPreviewMeta(
@@ -2194,30 +2341,19 @@ class MainWindowTabsTest(unittest.TestCase):
         fake_protocol = FakeProtocol(status)
         fake_protocol.preview_snapshot_response = (
             True,
-            {
-                "snapshot_id": "snapshot-resync",
-                "snapshot_hash": "hash-resync",
-                "plan_id": "plan-1",
-                "preview_source": "planned_glue_snapshot",
-                "preview_kind": "glue_points",
-                "segment_count": 1,
-                "glue_point_count": 2,
-                "glue_points": [{"x": 0.0, "y": 0.0}, {"x": 5.0, "y": 0.0}],
-                "glue_reveal_lengths_mm": [0.0, 5.0],
-                "motion_preview": {
-                    "source": "execution_trajectory_snapshot",
-                    "kind": "polyline",
-                    "source_point_count": 2,
-                    "point_count": 2,
-                    "is_sampled": False,
-                    "sampling_strategy": "",
-                    "polyline": [{"x": 0.0, "y": 0.0}, {"x": 5.0, "y": 0.0}],
-                },
-                "total_length_mm": 5.0,
-                "estimated_time_s": 0.5,
-                "generated_at": "2026-04-06T00:00:00Z",
-                "dry_run": False,
-            },
+            self._build_preview_snapshot_payload(
+                snapshot_id="snapshot-resync",
+                snapshot_hash="hash-resync",
+                plan_id="plan-1",
+                segment_count=1,
+                glue_points=[{"x": 0.0, "y": 0.0}, {"x": 5.0, "y": 0.0}],
+                motion_preview=[{"x": 0.0, "y": 0.0}, {"x": 5.0, "y": 0.0}],
+                motion_preview_source_point_count=2,
+                execution_point_count=2,
+                total_length_mm=5.0,
+                estimated_time_s=0.5,
+                generated_at="2026-04-06T00:00:00Z",
+            ),
             "",
             None,
         )
@@ -2260,30 +2396,19 @@ class MainWindowTabsTest(unittest.TestCase):
         fake_protocol = FakeProtocol(status)
         fake_protocol.preview_snapshot_response = (
             True,
-            {
-                "snapshot_id": "snapshot-resync",
-                "snapshot_hash": "hash-resync",
-                "plan_id": "plan-1",
-                "preview_source": "planned_glue_snapshot",
-                "preview_kind": "glue_points",
-                "segment_count": 1,
-                "glue_point_count": 2,
-                "glue_points": [{"x": 0.0, "y": 0.0}, {"x": 5.0, "y": 0.0}],
-                "glue_reveal_lengths_mm": [0.0, 5.0],
-                "motion_preview": {
-                    "source": "execution_trajectory_snapshot",
-                    "kind": "polyline",
-                    "source_point_count": 2,
-                    "point_count": 2,
-                    "is_sampled": False,
-                    "sampling_strategy": "",
-                    "polyline": [{"x": 0.0, "y": 0.0}, {"x": 5.0, "y": 0.0}],
-                },
-                "total_length_mm": 5.0,
-                "estimated_time_s": 0.5,
-                "generated_at": "2026-04-06T00:00:00Z",
-                "dry_run": False,
-            },
+            self._build_preview_snapshot_payload(
+                snapshot_id="snapshot-resync",
+                snapshot_hash="hash-resync",
+                plan_id="plan-1",
+                segment_count=1,
+                glue_points=[{"x": 0.0, "y": 0.0}, {"x": 5.0, "y": 0.0}],
+                motion_preview=[{"x": 0.0, "y": 0.0}, {"x": 5.0, "y": 0.0}],
+                motion_preview_source_point_count=2,
+                execution_point_count=2,
+                total_length_mm=5.0,
+                estimated_time_s=0.5,
+                generated_at="2026-04-06T00:00:00Z",
+            ),
             "",
             None,
         )
@@ -2327,30 +2452,19 @@ class MainWindowTabsTest(unittest.TestCase):
         fake_protocol = FakeProtocol(status)
         fake_protocol.preview_snapshot_response = (
             True,
-            {
-                "snapshot_id": "snapshot-resync",
-                "snapshot_hash": "hash-resync",
-                "plan_id": "plan-1",
-                "preview_source": "planned_glue_snapshot",
-                "preview_kind": "glue_points",
-                "segment_count": 2,
-                "glue_point_count": 2,
-                "glue_points": [{"x": 0.0, "y": 0.0}, {"x": 6.0, "y": 0.0}],
-                "glue_reveal_lengths_mm": [0.0, 6.0],
-                "motion_preview": {
-                    "source": "execution_trajectory_snapshot",
-                    "kind": "polyline",
-                    "source_point_count": 2,
-                    "point_count": 2,
-                    "is_sampled": False,
-                    "sampling_strategy": "",
-                    "polyline": [{"x": 0.0, "y": 0.0}, {"x": 6.0, "y": 0.0}],
-                },
-                "total_length_mm": 6.0,
-                "estimated_time_s": 0.6,
-                "generated_at": "2026-04-06T00:00:00Z",
-                "dry_run": False,
-            },
+            self._build_preview_snapshot_payload(
+                snapshot_id="snapshot-resync",
+                snapshot_hash="hash-resync",
+                plan_id="plan-1",
+                segment_count=2,
+                glue_points=[{"x": 0.0, "y": 0.0}, {"x": 6.0, "y": 0.0}],
+                motion_preview=[{"x": 0.0, "y": 0.0}, {"x": 6.0, "y": 0.0}],
+                motion_preview_source_point_count=2,
+                execution_point_count=2,
+                total_length_mm=6.0,
+                estimated_time_s=0.6,
+                generated_at="2026-04-06T00:00:00Z",
+            ),
             "",
             None,
         )
@@ -2749,37 +2863,25 @@ class MainWindowTabsTest(unittest.TestCase):
 
         self.window._on_preview_snapshot_completed(
             True,
-            {
-                "snapshot_id": "snapshot-300s",
-                "snapshot_hash": "hash-300s",
-                "plan_id": "plan-300s",
-                "preview_source": "planned_glue_snapshot",
-                "preview_kind": "glue_points",
-                "segment_count": 2,
-                "glue_point_count": 2,
-                "glue_points": [
+            self._build_preview_snapshot_payload(
+                snapshot_id="snapshot-300s",
+                snapshot_hash="hash-300s",
+                plan_id="plan-300s",
+                glue_points=[
                     {"x": 0.0, "y": 0.0},
                     {"x": 10.0, "y": 0.0},
                 ],
-                "glue_reveal_lengths_mm": [0.0, 10.0],
-                "motion_preview": {
-                    "source": "execution_trajectory_snapshot",
-                    "kind": "polyline",
-                    "source_point_count": 8,
-                    "point_count": 2,
-                    "is_sampled": True,
-                    "sampling_strategy": "execution_trajectory_geometry_preserving_clamp",
-                    "polyline": [
-                        {"x": 0.0, "y": 0.0},
-                        {"x": 10.0, "y": 0.0},
-                    ],
-                },
-                "total_length_mm": 10.0,
-                "estimated_time_s": 0.5,
-                "generated_at": "2026-03-29T00:00:00Z",
-                "dry_run": False,
-                "preview_diagnostic_code": "",
-            },
+                motion_preview=[
+                    {"x": 0.0, "y": 0.0},
+                    {"x": 10.0, "y": 0.0},
+                ],
+                motion_preview_source_point_count=8,
+                execution_point_count=8,
+                total_length_mm=10.0,
+                estimated_time_s=0.5,
+                generated_at="2026-03-29T00:00:00Z",
+                dry_run=False,
+            ),
             "",
         )
 
@@ -2812,39 +2914,28 @@ class MainWindowTabsTest(unittest.TestCase):
 
         self.window._on_preview_snapshot_completed(
             True,
-            {
-                "snapshot_id": "snapshot-fragmented",
-                "snapshot_hash": "hash-fragmented",
-                "plan_id": "plan-fragmented",
-                "preview_source": "planned_glue_snapshot",
-                "preview_kind": "glue_points",
-                "preview_validation_classification": "pass_with_exception",
-                "preview_exception_reason": "span spacing outside configured window but accepted as explicit exception",
-                "preview_diagnostic_code": "process_path_fragmentation",
-                "segment_count": 2,
-                "glue_point_count": 2,
-                "glue_points": [
+            self._build_preview_snapshot_payload(
+                snapshot_id="snapshot-fragmented",
+                snapshot_hash="hash-fragmented",
+                plan_id="plan-fragmented",
+                glue_points=[
                     {"x": 0.0, "y": 0.0},
                     {"x": 10.0, "y": 0.0},
                 ],
-                "glue_reveal_lengths_mm": [0.0, 10.0],
-                "motion_preview": {
-                    "source": "execution_trajectory_snapshot",
-                    "kind": "polyline",
-                    "source_point_count": 8,
-                    "point_count": 2,
-                    "is_sampled": True,
-                    "sampling_strategy": "execution_trajectory_geometry_preserving_clamp",
-                    "polyline": [
-                        {"x": 0.0, "y": 0.0},
-                        {"x": 10.0, "y": 0.0},
-                    ],
-                },
-                "total_length_mm": 10.0,
-                "estimated_time_s": 0.5,
-                "generated_at": "2026-03-29T00:00:00Z",
-                "dry_run": False,
-            },
+                motion_preview=[
+                    {"x": 0.0, "y": 0.0},
+                    {"x": 10.0, "y": 0.0},
+                ],
+                motion_preview_source_point_count=8,
+                execution_point_count=8,
+                total_length_mm=10.0,
+                estimated_time_s=0.5,
+                generated_at="2026-03-29T00:00:00Z",
+                dry_run=False,
+                preview_validation_classification="pass_with_exception",
+                preview_exception_reason="span spacing outside configured window but accepted as explicit exception",
+                preview_diagnostic_code="process_path_fragmentation",
+            ),
             "",
         )
 

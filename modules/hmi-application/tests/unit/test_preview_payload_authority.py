@@ -4,6 +4,7 @@ from bootstrap import ensure_hmi_application_test_paths
 
 ensure_hmi_application_test_paths()
 
+from hmi_application.domain.preview_session_types import PreviewBindingMeta
 from hmi_application.preview_gate import PreviewGateState
 from unit.preview_test_support import build_preview_services, valid_payload
 
@@ -121,6 +122,10 @@ class PreviewPayloadAuthorityServiceTest(unittest.TestCase):
 
         self.assertTrue(result.ok)
         self.assertEqual(result.glue_reveal_lengths_mm, (0.0, 3.25, 6.5))
+        self.assertEqual(result.display_reveal_lengths_mm, (0.0, 3.0, 6.0))
+        self.assertIsNotNone(result.preview_binding_meta)
+        assert result.preview_binding_meta is not None
+        self.assertEqual(result.preview_binding_meta.status, "ready")
 
     def test_process_snapshot_payload_fails_when_glue_reveal_lengths_missing(self) -> None:
         payload = valid_payload()
@@ -150,46 +155,67 @@ class PreviewPayloadAuthorityServiceTest(unittest.TestCase):
             "运行时快照返回了非法 glue_reveal_lengths_mm: non_monotonic",
         )
 
-    def test_process_snapshot_payload_fails_when_glue_reveal_lengths_geometry_mismatch(self) -> None:
+    def test_process_snapshot_payload_fails_when_preview_binding_display_reveal_lengths_missing(self) -> None:
         payload = valid_payload()
-        payload["glue_reveal_lengths_mm"] = [0.0, 0.0, 6.0]
+        payload["preview_binding"]["display_reveal_lengths_mm"] = []
 
         result = self.authority.process_snapshot_payload(payload, current_dry_run=False)
 
         self.assertFalse(result.ok)
         self.assertEqual(result.title, "胶点预览生成失败")
-        self.assertIn("几何不一致", result.detail)
+        self.assertIn("缺少 preview_binding.display_reveal_lengths_mm", result.detail)
         self.assertEqual(
             self.state.gate.last_error_message,
-            "运行时快照返回了非法 glue_reveal_lengths_mm: geometry_mismatch",
+            "运行时快照返回了非法 preview_binding: missing_display_reveal_lengths",
         )
 
     def test_validate_glue_reveal_lengths_reports_length_mismatch(self) -> None:
         reason = self.authority.validate_glue_reveal_lengths(
             glue_points=[(0.0, 0.0), (3.0, 0.0)],
-            motion_preview=[(0.0, 0.0), (3.0, 0.0)],
             glue_reveal_lengths_mm=[0.0],
         )
 
         self.assertEqual(reason, "length_mismatch")
 
-    def test_validate_glue_reveal_lengths_reports_motion_preview_too_short(self) -> None:
-        reason = self.authority.validate_glue_reveal_lengths(
-            glue_points=[(0.0, 0.0), (3.0, 0.0)],
-            motion_preview=[(0.0, 0.0)],
-            glue_reveal_lengths_mm=[0.0, 3.0],
-        )
-
-        self.assertEqual(reason, "motion_preview_too_short")
-
-    def test_validate_glue_reveal_lengths_reports_beyond_motion_length(self) -> None:
-        reason = self.authority.validate_glue_reveal_lengths(
+    def test_validate_preview_binding_reports_missing_display_reveal_lengths(self) -> None:
+        reason = self.authority.validate_preview_binding(
             glue_points=[(0.0, 0.0), (3.0, 0.0)],
             motion_preview=[(0.0, 0.0), (3.0, 0.0)],
-            glue_reveal_lengths_mm=[0.0, 9.0],
+            preview_binding=PreviewBindingMeta(
+                source="runtime_authority_preview_binding",
+                status="ready",
+                layout_id="layout-1",
+                glue_point_count=2,
+                binding_basis="execution_binding_to_motion_preview_polyline",
+                display_path_length_mm=3.0,
+                source_trigger_indices=(0, 1),
+                diagnostic_code="",
+                failure_reason="",
+            ),
+            display_reveal_lengths_mm=[],
         )
 
-        self.assertEqual(reason, "beyond_motion_length")
+        self.assertEqual(reason, "missing_display_reveal_lengths")
+
+    def test_validate_preview_binding_reports_beyond_path_length(self) -> None:
+        reason = self.authority.validate_preview_binding(
+            glue_points=[(0.0, 0.0), (3.0, 0.0), (6.0, 0.0)],
+            motion_preview=[(0.0, 0.0), (6.0, 0.0)],
+            preview_binding=PreviewBindingMeta(
+                source="runtime_authority_preview_binding",
+                status="ready",
+                layout_id="layout-1",
+                glue_point_count=3,
+                binding_basis="execution_binding_to_motion_preview_polyline",
+                display_path_length_mm=3.0,
+                source_trigger_indices=(0, 1, 2),
+                diagnostic_code="",
+                failure_reason="",
+            ),
+            display_reveal_lengths_mm=[0.0, 3.0, 6.0],
+        )
+
+        self.assertEqual(reason, "display_reveal_beyond_path_length")
 
     def test_process_snapshot_payload_stores_preview_diagnostic_code(self) -> None:
         payload = valid_payload()

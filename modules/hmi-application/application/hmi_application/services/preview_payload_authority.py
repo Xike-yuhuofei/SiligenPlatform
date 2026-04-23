@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 
-from ..domain.preview_session_types import MotionPreviewMeta, PreviewPayloadResult, PreviewSessionState
+from ..domain.preview_session_types import MotionPreviewMeta, PreviewBindingMeta, PreviewPayloadResult, PreviewSessionState
 from ..preview_gate import PreviewGateState, PreviewSnapshotMeta, StartBlockReason
 from .preview_playback import PreviewPlaybackController
 from .preview_preflight import PreviewPreflightService
@@ -159,6 +159,8 @@ class PreviewPayloadAuthorityService:
         motion_preview_payload = payload.get("motion_preview")
         motion_preview_block = motion_preview_payload if isinstance(motion_preview_payload, dict) else {}
         motion_preview = self.extract_points(motion_preview_block, "polyline")
+        preview_binding_payload = payload.get("preview_binding")
+        preview_binding_block = preview_binding_payload if isinstance(preview_binding_payload, dict) else {}
         preview_source = str(payload.get("preview_source", "")).strip().lower() or "unknown"
         preview_kind = str(payload.get("preview_kind", "glue_points")).strip().lower() or "glue_points"
         preview_dry_run = bool(payload.get("dry_run", False))
@@ -197,6 +199,26 @@ class PreviewPayloadAuthorityService:
             motion_preview_point_count = len(motion_preview)
         if motion_preview and motion_preview_source_point_count <= 0:
             motion_preview_source_point_count = motion_preview_point_count
+        try:
+            preview_binding_glue_point_count = int(preview_binding_block.get("glue_point_count", len(glue_points)) or 0)
+        except (TypeError, ValueError):
+            preview_binding_glue_point_count = 0
+        try:
+            preview_binding_display_path_length_mm = float(preview_binding_block.get("display_path_length_mm", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            preview_binding_display_path_length_mm = 0.0
+        preview_binding_meta = PreviewBindingMeta(
+            source=str(preview_binding_block.get("source", "")).strip().lower(),
+            status=str(preview_binding_block.get("status", "")).strip().lower(),
+            layout_id=str(preview_binding_block.get("layout_id", "")).strip(),
+            glue_point_count=preview_binding_glue_point_count,
+            binding_basis=str(preview_binding_block.get("binding_basis", "")).strip().lower(),
+            display_path_length_mm=preview_binding_display_path_length_mm,
+            source_trigger_indices=tuple(self.extract_int_list(preview_binding_block, "source_trigger_indices")),
+            diagnostic_code=str(preview_binding_block.get("diagnostic_code", "")).strip().lower(),
+            failure_reason=str(preview_binding_block.get("failure_reason", "")).strip(),
+        )
+        display_reveal_lengths_mm = self.extract_float_list(preview_binding_block, "display_reveal_lengths_mm")
 
         motion_preview_meta = MotionPreviewMeta(
             source=motion_preview_source,
@@ -307,7 +329,6 @@ class PreviewPayloadAuthorityService:
             )
         glue_reveal_lengths_reason = self.validate_glue_reveal_lengths(
             glue_points=glue_points,
-            motion_preview=motion_preview,
             glue_reveal_lengths_mm=glue_reveal_lengths_mm,
         )
         if glue_reveal_lengths_reason:
@@ -318,6 +339,21 @@ class PreviewPayloadAuthorityService:
                 ),
                 title="胶点预览生成失败",
                 detail=self.glue_reveal_lengths_error_detail(glue_reveal_lengths_reason),
+            )
+        preview_binding_reason = self.validate_preview_binding(
+            glue_points=glue_points,
+            motion_preview=motion_preview,
+            preview_binding=preview_binding_meta,
+            display_reveal_lengths_mm=display_reveal_lengths_mm,
+        )
+        if preview_binding_reason:
+            return self.handle_local_failure(
+                gate_error_message=(
+                    "运行时快照返回了非法 preview_binding: "
+                    f"{preview_binding_reason}"
+                ),
+                title="胶点预览生成失败",
+                detail=self.preview_binding_error_detail(preview_binding_reason),
             )
 
         self._state.glue_point_count = len(glue_points)
@@ -385,8 +421,10 @@ class PreviewPayloadAuthorityService:
             snapshot=snapshot,
             glue_points=tuple(glue_points),
             glue_reveal_lengths_mm=tuple(glue_reveal_lengths_mm),
+            display_reveal_lengths_mm=tuple(display_reveal_lengths_mm),
             motion_preview=tuple(motion_preview),
             motion_preview_meta=motion_preview_meta,
+            preview_binding_meta=preview_binding_meta,
             preview_source=preview_source,
             preview_kind=preview_kind,
             dry_run=preview_dry_run,
@@ -495,10 +533,25 @@ class PreviewPayloadAuthorityService:
         return values
 
     @staticmethod
+    def extract_int_list(payload: dict[str, object], field_name: str) -> list[int]:
+        values: list[int] = []
+        raw_values = payload.get(field_name, [])
+        if not isinstance(raw_values, list):
+            return values
+        for raw in raw_values:
+            try:
+                value = int(raw)
+            except (TypeError, ValueError):
+                return []
+            if value < 0:
+                return []
+            values.append(value)
+        return values
+
+    @staticmethod
     def validate_glue_reveal_lengths(
         *,
         glue_points: list[tuple[float, float]],
-        motion_preview: list[tuple[float, float]],
         glue_reveal_lengths_mm: list[float],
     ) -> str:
         if not glue_reveal_lengths_mm:
@@ -511,41 +564,41 @@ class PreviewPayloadAuthorityService:
             if current_length + 1e-6 < previous_length:
                 return "non_monotonic"
             previous_length = current_length
+        return ""
 
-        segments: list[tuple[float, float, float, float, float]] = []
-        total_length = 0.0
-        for index in range(1, len(motion_preview)):
-            start_x, start_y = motion_preview[index - 1]
-            end_x, end_y = motion_preview[index]
-            segment_length = ((end_x - start_x) ** 2 + (end_y - start_y) ** 2) ** 0.5
-            if segment_length <= 1e-9:
-                continue
-            segments.append((start_x, start_y, end_x, end_y, total_length))
-            total_length += segment_length
-        if not segments:
-            return "motion_preview_too_short"
-
-        distance_tolerance_mm = 2.0
-        distance_tolerance_sq = distance_tolerance_mm ** 2
-        for (point_x, point_y), reveal_length in zip(glue_points, glue_reveal_lengths_mm):
-            if reveal_length < -1e-6 or reveal_length > total_length + distance_tolerance_mm:
-                return "beyond_motion_length"
-            clamped_reveal_length = max(0.0, min(total_length, reveal_length))
-            projected_x, projected_y = motion_preview[-1]
-            for start_x, start_y, end_x, end_y, start_length in segments:
-                segment_length = ((end_x - start_x) ** 2 + (end_y - start_y) ** 2) ** 0.5
-                if segment_length <= 1e-9:
-                    continue
-                end_length = start_length + segment_length
-                if clamped_reveal_length > end_length + 1e-6:
-                    continue
-                ratio = max(0.0, min(1.0, (clamped_reveal_length - start_length) / segment_length))
-                projected_x = start_x + ((end_x - start_x) * ratio)
-                projected_y = start_y + ((end_y - start_y) * ratio)
-                break
-            distance_sq = ((point_x - projected_x) ** 2) + ((point_y - projected_y) ** 2)
-            if distance_sq > distance_tolerance_sq:
-                return "geometry_mismatch"
+    @staticmethod
+    def validate_preview_binding(
+        *,
+        glue_points: list[tuple[float, float]],
+        motion_preview: list[tuple[float, float]],
+        preview_binding: PreviewBindingMeta,
+        display_reveal_lengths_mm: list[float],
+    ) -> str:
+        if not preview_binding.source:
+            return "missing"
+        if preview_binding.source != "runtime_authority_preview_binding":
+            return "invalid_source"
+        if preview_binding.status != "ready":
+            return "invalid_status"
+        if not preview_binding.layout_id:
+            return "missing_layout_id"
+        if preview_binding.glue_point_count != len(glue_points):
+            return "glue_point_count_mismatch"
+        if len(preview_binding.source_trigger_indices) != len(glue_points):
+            return "trigger_index_count_mismatch"
+        if not display_reveal_lengths_mm:
+            return "missing_display_reveal_lengths"
+        if len(display_reveal_lengths_mm) != len(glue_points):
+            return "display_reveal_length_count_mismatch"
+        previous_length = display_reveal_lengths_mm[0]
+        for current_length in display_reveal_lengths_mm[1:]:
+            if current_length + 1e-6 < previous_length:
+                return "display_reveal_non_monotonic"
+            previous_length = current_length
+        if preview_binding.display_path_length_mm <= 0.0 and len(motion_preview) >= 2:
+            return "display_path_length_missing"
+        if display_reveal_lengths_mm[-1] > preview_binding.display_path_length_mm + 1e-6:
+            return "display_reveal_beyond_path_length"
         return ""
 
     @staticmethod
@@ -553,30 +606,43 @@ class PreviewPayloadAuthorityService:
         normalized = str(reason or "").strip().lower()
         detail_map = {
             "missing": (
-                "返回结果缺少 glue_reveal_lengths_mm。当前 HMI 已禁用基于 motion_preview 的兼容投影显隐算法，"
-                "无法保证胶点显隐与真实执行轨迹一致。"
+                "返回结果缺少 glue_reveal_lengths_mm，无法确认 execution reveal 真值。"
             ),
             "length_mismatch": (
-                "返回结果的 glue_reveal_lengths_mm 数量与 glue_points 不一致。当前 HMI 已禁用兼容投影显隐算法。"
+                "返回结果的 glue_reveal_lengths_mm 数量与 glue_points 不一致。"
             ),
             "non_monotonic": (
-                "返回结果的 glue_reveal_lengths_mm 不是单调递增序列。当前 HMI 已禁用兼容投影显隐算法。"
-            ),
-            "motion_preview_too_short": (
-                "返回结果的 motion_preview 点数不足，无法校验 glue_reveal_lengths_mm。当前 HMI 已禁用兼容投影显隐算法。"
-            ),
-            "beyond_motion_length": (
-                "返回结果的 glue_reveal_lengths_mm 超出 motion_preview 总长度。当前 HMI 已禁用兼容投影显隐算法。"
-            ),
-            "geometry_mismatch": (
-                "返回结果的 glue_reveal_lengths_mm 与 glue_points / motion_preview 几何不一致。"
-                "当前 HMI 已禁用兼容投影显隐算法。"
+                "返回结果的 glue_reveal_lengths_mm 不是单调递增序列。"
             ),
         }
         return detail_map.get(
             normalized,
-            "返回结果的 glue_reveal_lengths_mm 不合法。当前 HMI 已禁用兼容投影显隐算法。",
+            "返回结果的 glue_reveal_lengths_mm 不合法。",
         )
+
+    @staticmethod
+    def preview_binding_error_detail(reason: str) -> str:
+        normalized = str(reason or "").strip().lower()
+        detail_map = {
+            "missing": "返回结果缺少 preview_binding，无法确认 display binding 真值。",
+            "invalid_source": "返回结果的 preview_binding.source 不是 runtime_authority_preview_binding。",
+            "invalid_status": "返回结果的 preview_binding.status 不是 ready。",
+            "missing_layout_id": "返回结果的 preview_binding.layout_id 为空。",
+            "glue_point_count_mismatch": "返回结果的 preview_binding.glue_point_count 与 glue_points 不一致。",
+            "trigger_index_count_mismatch": "返回结果的 preview_binding.source_trigger_indices 与 glue_points 不一致。",
+            "missing_display_reveal_lengths": "返回结果缺少 preview_binding.display_reveal_lengths_mm。",
+            "display_reveal_length_count_mismatch": (
+                "返回结果的 preview_binding.display_reveal_lengths_mm 与 glue_points 不一致。"
+            ),
+            "display_reveal_non_monotonic": (
+                "返回结果的 preview_binding.display_reveal_lengths_mm 不是单调递增序列。"
+            ),
+            "display_path_length_missing": "返回结果缺少有效的 preview_binding.display_path_length_mm。",
+            "display_reveal_beyond_path_length": (
+                "返回结果的 preview_binding.display_reveal_lengths_mm 超出 display path 总长度。"
+            ),
+        }
+        return detail_map.get(normalized, "返回结果的 preview_binding 不合法。")
 
     @staticmethod
     def sampling_warning(glue_point_count: int, execution_source_point_count: int) -> str:

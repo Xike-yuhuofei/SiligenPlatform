@@ -3287,9 +3287,10 @@ class MainWindow(QMainWindow):
         preview_source: str,
         glue_points: list,
         preview_kind: str,
-        glue_reveal_lengths_mm: list[float] | None = None,
+        display_reveal_lengths_mm: list[float] | None = None,
         motion_preview: list | None = None,
         motion_preview_meta: MotionPreviewMeta | None = None,
+        preview_binding_meta=None,
         preview_warning: str = "",
         preview_diagnostic_notice: PreviewDiagnosticNotice | None = None,
         motion_preview_warning: str = "",
@@ -3399,10 +3400,11 @@ class MainWindow(QMainWindow):
             reveal_lengths, reveal_diagnostics = self._resolve_preview_glue_reveal_lengths(
                 glue_points=display_points,
                 motion_preview=display_motion_preview,
-                glue_reveal_lengths_mm=glue_reveal_lengths_mm,
+                display_reveal_lengths_mm=display_reveal_lengths_mm,
                 scale_px_per_mm=scale_px_per_mm,
                 snapshot=snapshot,
                 motion_preview_meta=effective_motion_preview_meta,
+                preview_binding_meta=preview_binding_meta,
             )
             playback_lengths_json = json.dumps(cumulative_lengths)
             reveal_lengths_json = json.dumps(reveal_lengths)
@@ -3487,16 +3489,17 @@ class MainWindow(QMainWindow):
         *,
         glue_points: list[tuple[float, float]],
         motion_preview: list[tuple[float, float]],
-        glue_reveal_lengths_mm: list[float] | None,
+        display_reveal_lengths_mm: list[float] | None,
         scale_px_per_mm: float,
         snapshot: PreviewSnapshotMeta,
         motion_preview_meta: MotionPreviewMeta | None,
+        preview_binding_meta=None,
     ) -> tuple[list[float], dict[str, object]]:
-        service_lengths = list(glue_reveal_lengths_mm or [])
+        service_lengths = list(display_reveal_lengths_mm or [])
         if not service_lengths:
-            raise ValueError("返回结果缺少 glue_reveal_lengths_mm，当前 HMI 已禁用兼容投影显隐算法。")
+            raise ValueError("返回结果缺少 preview_binding.display_reveal_lengths_mm，当前 HMI 已禁用兼容投影显隐算法。")
         if len(service_lengths) != len(glue_points):
-            raise ValueError("返回结果的 glue_reveal_lengths_mm 数量与 glue_points 不一致。")
+            raise ValueError("返回结果的 preview_binding.display_reveal_lengths_mm 数量与 glue_points 不一致。")
         monotonic = True
         previous_length = service_lengths[0]
         for current_length in service_lengths[1:]:
@@ -3505,16 +3508,24 @@ class MainWindow(QMainWindow):
                 break
             previous_length = current_length
         if not monotonic:
-            raise ValueError("返回结果的 glue_reveal_lengths_mm 不是单调递增序列。")
+            raise ValueError("返回结果的 preview_binding.display_reveal_lengths_mm 不是单调递增序列。")
 
         reveal_lengths = [round(length_mm * scale_px_per_mm, 6) for length_mm in service_lengths]
+        source_trigger_indices = []
+        if preview_binding_meta is not None:
+            source_trigger_indices = list(getattr(preview_binding_meta, "source_trigger_indices", ()) or ())
         diagnostics: dict[str, object] = {
             "sample_points": [
                 {
                     "glue_index": index,
-                    "reveal_length_mm": round(service_lengths[index], 6),
+                    "source_trigger_index": (
+                        source_trigger_indices[index]
+                        if index < len(source_trigger_indices)
+                        else index
+                    ),
+                    "display_reveal_length_mm": round(service_lengths[index], 6),
                     "reveal_length": reveal_lengths[index],
-                    "mode": "authority",
+                    "mode": "preview_binding",
                 }
                 for index in range(min(len(service_lengths), 12))
             ],
@@ -3527,7 +3538,7 @@ class MainWindow(QMainWindow):
             "max_segment_jump": 0,
             "max_distance_sq": 0.0,
             "final_reveal_length": reveal_lengths[-1] if reveal_lengths else 0.0,
-            "source": "authority_glue_reveal_lengths_mm",
+            "source": "preview_binding.display_reveal_lengths_mm",
         }
         self._log_preview_glue_reveal_diagnostics(
             diagnostics,
@@ -3560,7 +3571,7 @@ class MainWindow(QMainWindow):
             meta.source_point_count or motion_point_count,
             meta.is_sampled,
             meta.sampling_strategy or "-",
-            diagnostics.get("source", "authority_glue_reveal_lengths_mm"),
+            diagnostics.get("source", "preview_binding.display_reveal_lengths_mm"),
             diagnostics.get("aligned_count", 0),
             diagnostics.get("stalled_count", 0),
             diagnostics.get("max_segment_jump", 0),
@@ -3702,9 +3713,10 @@ class MainWindow(QMainWindow):
                 dry_run=result.dry_run,
                 preview_source=result.preview_source,
                 glue_points=list(result.glue_points),
-                glue_reveal_lengths_mm=list(result.glue_reveal_lengths_mm),
+                display_reveal_lengths_mm=list(result.display_reveal_lengths_mm),
                 motion_preview=list(result.motion_preview),
                 motion_preview_meta=result.motion_preview_meta,
+                preview_binding_meta=result.preview_binding_meta,
                 preview_kind=result.preview_kind,
                 preview_warning=result.preview_warning,
                 preview_diagnostic_notice=result.preview_diagnostic_notice,
