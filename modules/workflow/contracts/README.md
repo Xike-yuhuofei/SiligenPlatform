@@ -22,7 +22,7 @@
 - 仅放置 `workflow` owner 专属契约，不放 planning / execution specific request-response。
 - 跨模块长期稳定契约应维护在 `shared/contracts/`。
 - `modules/workflow/contracts/` 当前没有额外 compat / bridge 子树；live 契约只存在于 `include/workflow/contracts/**`。
-- 契约字段仅表达编排、阶段推进、失败分类、回退与归档握手，不承载 motion / recipe / planning 的内部算法参数或状态机细节。
+- 契约字段仅表达编排、阶段推进、失败分类、回退与归档握手，不承载 motion / planning 的内部算法参数或状态机细节。
 
 ## 明确不属于本目录的对象
 

@@ -1,5 +1,7 @@
 # ADR-004 Legacy Strangler Plan
 
+> Historical migration note: 本 ADR 固化的是 `2026-03-18` 的 legacy strangler 决策快照；文中出现的已退役历史管理资产分类仅用于说明当时的切换风险，不代表当前主线仍保留对应系统。
+
 - 状态：`Accepted`
 - 日期：`2026-03-18`
 

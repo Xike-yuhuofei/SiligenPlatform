@@ -44,7 +44,7 @@ TEST(PlanningRequestTest, RejectsEmptyFilepath) {
     EXPECT_FALSE(request.Validate());
 }
 
-TEST(PlanningRequestTest, AllowsCurrentChainWithoutRecipeOrVersion) {
+TEST(PlanningRequestTest, AllowsCurrentChainWithoutLegacyIdentifiers) {
     auto request = MakeValidRequest();
     EXPECT_TRUE(request.Validate());
 }

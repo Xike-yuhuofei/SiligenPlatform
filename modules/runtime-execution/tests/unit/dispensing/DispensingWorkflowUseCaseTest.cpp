@@ -117,9 +117,6 @@ using Siligen::Shared::Types::float32;
 using Siligen::Shared::Types::uint32;
 using RuntimeDispensingProcessPort = Siligen::RuntimeExecution::Contracts::Dispensing::IDispensingProcessPort;
 
-constexpr char kCanonicalRecipeId[] = "recipe-preview";
-constexpr char kCanonicalVersionId[] = "version-published";
-
 template <typename T>
 std::shared_ptr<T> MakeDummyShared() {
     return std::shared_ptr<T>(reinterpret_cast<T*>(0x1), [](T*) {});
@@ -1969,7 +1966,7 @@ DispensingWorkflowUseCase CreateUseCase(
     const std::shared_ptr<FakeHomingPort>& homing_port,
     const std::shared_ptr<FakeInterlockSignalPort>& interlock_port,
     std::shared_ptr<DispensingExecutionUseCase> execution_use_case = nullptr,
-    std::shared_ptr<FakeProductionBaselinePort> recipe_planning_policy_port =
+    std::shared_ptr<FakeProductionBaselinePort> baseline_policy_port =
         std::make_shared<FakeProductionBaselinePort>(),
     std::shared_ptr<IConfigurationPort> config_port =
         std::make_shared<FakeConfigurationPort>()) {
@@ -1981,7 +1978,7 @@ DispensingWorkflowUseCase CreateUseCase(
     return DispensingWorkflowUseCase(
         MakeDummyShared<IUploadFilePort>(),
         MakeDummyShared<PlanningUseCase>(),
-        recipe_planning_policy_port,
+        baseline_policy_port,
         execution_port,
         config_port,
         connection_port,
@@ -1998,7 +1995,7 @@ DispensingWorkflowUseCase CreateUseCaseWithPlanning(
     const std::shared_ptr<FakeMotionStatePort>& motion_state_port,
     const std::shared_ptr<FakeHomingPort>& homing_port,
     const std::shared_ptr<FakeInterlockSignalPort>& interlock_port,
-    std::shared_ptr<FakeProductionBaselinePort> recipe_planning_policy_port =
+    std::shared_ptr<FakeProductionBaselinePort> baseline_policy_port =
         std::make_shared<FakeProductionBaselinePort>(),
     std::shared_ptr<IConfigurationPort> config_port =
         std::make_shared<FakeConfigurationPort>()) {
@@ -2007,7 +2004,7 @@ DispensingWorkflowUseCase CreateUseCaseWithPlanning(
     return DispensingWorkflowUseCase(
         MakeDummyShared<IUploadFilePort>(),
         planning_use_case,
-        recipe_planning_policy_port,
+        baseline_policy_port,
         MakeDummyShared<Siligen::Application::Ports::Dispensing::IWorkflowExecutionPort>(),
         config_port,
         connection_port,
@@ -2025,7 +2022,7 @@ DispensingWorkflowUseCase CreateUseCaseWithUploadAndPlanning(
     const std::shared_ptr<FakeMotionStatePort>& motion_state_port,
     const std::shared_ptr<FakeHomingPort>& homing_port,
     const std::shared_ptr<FakeInterlockSignalPort>& interlock_port,
-    std::shared_ptr<FakeProductionBaselinePort> recipe_planning_policy_port =
+    std::shared_ptr<FakeProductionBaselinePort> baseline_policy_port =
         std::make_shared<FakeProductionBaselinePort>(),
     std::shared_ptr<IConfigurationPort> config_port =
         std::make_shared<FakeConfigurationPort>()) {
@@ -2034,7 +2031,7 @@ DispensingWorkflowUseCase CreateUseCaseWithUploadAndPlanning(
     return DispensingWorkflowUseCase(
         upload_port,
         planning_use_case,
-        recipe_planning_policy_port,
+        baseline_policy_port,
         MakeDummyShared<Siligen::Application::Ports::Dispensing::IWorkflowExecutionPort>(),
         config_port,
         connection_port,
@@ -2052,7 +2049,7 @@ DispensingWorkflowUseCase CreateUseCaseWithPlanningAndExecution(
     const std::shared_ptr<FakeMotionStatePort>& motion_state_port,
     const std::shared_ptr<FakeHomingPort>& homing_port,
     const std::shared_ptr<FakeInterlockSignalPort>& interlock_port,
-    std::shared_ptr<FakeProductionBaselinePort> recipe_planning_policy_port =
+    std::shared_ptr<FakeProductionBaselinePort> baseline_policy_port =
         std::make_shared<FakeProductionBaselinePort>(),
     std::shared_ptr<IConfigurationPort> config_port =
         std::make_shared<FakeConfigurationPort>()) {
@@ -2061,7 +2058,7 @@ DispensingWorkflowUseCase CreateUseCaseWithPlanningAndExecution(
     return DispensingWorkflowUseCase(
         MakeDummyShared<IUploadFilePort>(),
         planning_use_case,
-        recipe_planning_policy_port,
+        baseline_policy_port,
         CreateRuntimeWorkflowExecutionPort(execution_use_case),
         config_port,
         connection_port,
@@ -2270,7 +2267,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanUsesCanonicalPlanningInputAndRunt
     EXPECT_EQ(prepared.filepath, temp_pb_file.string());
 }
 
-TEST(DispensingWorkflowUseCaseTest, PreparePlanUsesCurrentProductionBaselineWithoutRecipeVersion) {
+TEST(DispensingWorkflowUseCaseTest, PreparePlanUsesCurrentProductionBaselineWithoutLegacyIdentifiers) {
     ScopedTempPbFile temp_pb_file;
     auto planning_use_case = CreateRealPlanningUseCase();
     auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
@@ -2285,7 +2282,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanUsesCurrentProductionBaselineWith
         interlock_port);
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
-    artifact_record.response.artifact_id = "artifact-missing-recipe-version";
+    artifact_record.response.artifact_id = "artifact-missing-legacy-identifiers";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
     SeedProductionReadyImportDiagnostics(artifact_record);
@@ -3509,7 +3506,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanExecutionStrategyPresenceUpdatesP
     EXPECT_NE(second_prepare.Value().plan_id, first_prepare.Value().plan_id);
 }
 
-TEST(DispensingWorkflowUseCaseTest, PreparePlanRecipePolicyUpdatesPlanFingerprint) {
+TEST(DispensingWorkflowUseCaseTest, PreparePlanBaselinePolicyUpdatesPlanFingerprint) {
     ScopedTempPbFile temp_pb_file;
     auto planning_use_case = CreateRealPlanningUseCase();
     auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
@@ -3518,7 +3515,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanRecipePolicyUpdatesPlanFingerprin
     auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
     auto execution_use_case =
         CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
-    auto recipe_planning_policy_port = std::make_shared<FakeProductionBaselinePort>();
+    auto baseline_policy_port = std::make_shared<FakeProductionBaselinePort>();
     motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
     motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
     homing_port->homed[LogicalAxisId::X] = true;
@@ -3530,7 +3527,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanRecipePolicyUpdatesPlanFingerprin
         motion_state_port,
         homing_port,
         interlock_port,
-        recipe_planning_policy_port);
+        baseline_policy_port);
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
     artifact_record.response.artifact_id = "artifact-policy-fingerprint";
@@ -3543,7 +3540,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanRecipePolicyUpdatesPlanFingerprin
         BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id));
     ASSERT_TRUE(first_prepare.IsSuccess()) << first_prepare.GetError().ToString();
 
-    recipe_planning_policy_port->policy.trigger_spatial_interval_mm = 7.5f;
+    baseline_policy_port->policy.trigger_spatial_interval_mm = 7.5f;
     const auto second_prepare = use_case.PreparePlan(
         BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id));
     ASSERT_TRUE(second_prepare.IsSuccess()) << second_prepare.GetError().ToString();

@@ -135,7 +135,7 @@ description: "Drive real production from the HMI to simulate operator workflow, 
 
 ## 6. 旧语义不得误导人工问题判断
 
-若 HMI 仍被本地 `recipe_id` / `version_id` 选择阻断，而当前 authoritative truth 已转到 runtime `production_baseline`，应记录为真实操作问题，而不是归咎于操作员。
+若 HMI 仍被本地历史选择面阻断，而当前 authoritative truth 已转到 runtime `production_baseline`，应记录为真实操作问题，而不是归咎于操作员。
 
 # Output format
 

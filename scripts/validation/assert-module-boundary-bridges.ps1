@@ -458,12 +458,6 @@ $forbiddenCompatReferences = @(
         detail = "device-adapters must consume dedicated owner targets instead of the residual domain compat bridge"
     },
     @{
-        path = "modules/runtime-execution/runtime/host/tests/CMakeLists.txt"
-        pattern = "siligen_recipe_json_codec"
-        rule_id = "runtime-host-tests-still-link-recipe-impl-target"
-        detail = "runtime-host tests must consume recipe serialization through siligen_runtime_process_bootstrap_public"
-    },
-    @{
         path = "apps/planner-cli/CommandHandlers.Dxf.cpp"
         pattern = '#include "application/usecases/dispensing/DispensingExecutionUseCase.h"'
         rule_id = "app-still-includes-workflow-execution-header"
@@ -1334,12 +1328,6 @@ $forbiddenOwnershipReferences = @(
     },
     @{
         path = "apps/runtime-gateway/transport-gateway/include/siligen/gateway/tcp/tcp_facade_builder.h"
-        pattern = '#include "application/usecases/recipes/'
-        rule_id = "gateway-builder-still-includes-legacy-recipe-usecases"
-        detail = "transport-gateway builder must include recipe_lifecycle/application/usecases/recipes/* public headers"
-    },
-    @{
-        path = "apps/runtime-gateway/transport-gateway/include/siligen/gateway/tcp/tcp_facade_builder.h"
         pattern = "Resolve<Application::UseCases::Motion::Homing::HomeAxesUseCase>"
         rule_id = "gateway-builder-still-resolves-legacy-motion-usecases"
         detail = "transport-gateway builder must resolve the Stage B motion entry via MotionControlUseCase instead of individual workflow motion use cases"
@@ -1388,9 +1376,9 @@ $forbiddenOwnershipReferences = @(
     },
     @{
         path = "apps/runtime-gateway/transport-gateway/src/tcp/TcpCommandDispatcher.cpp"
-        pattern = '#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"'
-        rule_id = "gateway-dispatcher-still-includes-legacy-recipe-serializer"
-        detail = "transport-gateway dispatcher must not include the deleted workflow recipe serializer path"
+        pattern = '#include "workflow/adapters/diagnostics/ports/IDiagnosticsPort.h"'
+        rule_id = "gateway-dispatcher-still-includes-legacy-diagnostics-sink"
+        detail = "transport-gateway dispatcher must not include deleted workflow diagnostics sink paths"
     }
 )
 
@@ -1429,76 +1417,6 @@ $requiredDeletedFiles = @(
         path = "modules/workflow/domain/include/domain/machine/aggregates/DispenserModel.h"
         rule_id = "workflow-machine-aggregate-bridge-still-exists"
         detail = "workflow machine aggregate bridge header must be deleted after runtime-host owns machine execution state concrete"
-    },
-    @{
-        path = "modules/workflow/domain/include/domain/recipes/serialization/RecipeJsonSerializer.h"
-        rule_id = "workflow-recipe-serializer-header-still-exists"
-        detail = "workflow recipe serializer public header must stay deleted after recipe manager retirement"
-    },
-    @{
-        path = "modules/workflow/domain/domain/recipes/serialization/RecipeJsonSerializer.cpp"
-        rule_id = "workflow-recipe-serializer-impl-still-exists"
-        detail = "workflow recipe serializer implementation must stay deleted after recipe manager retirement"
-    },
-    @{
-        path = "modules/recipe-lifecycle"
-        rule_id = "recipe-lifecycle-module-still-exists"
-        detail = "modules/recipe-lifecycle must stay deleted after recipe manager retirement"
-    },
-    @{
-        path = "apps/runtime-service/container/ApplicationContainer.Recipes.cpp"
-        rule_id = "runtime-service-recipe-container-still-exists"
-        detail = "runtime-service recipe container must stay deleted after recipe manager retirement"
-    },
-    @{
-        path = "apps/runtime-service/runtime/recipes"
-        rule_id = "runtime-service-recipe-persistence-root-still-exists"
-        detail = "runtime-service recipe persistence root must stay deleted after recipe manager retirement"
-    },
-    @{
-        path = "shared/contracts/application/commands/recipe.command-set.json"
-        rule_id = "recipe-command-contract-still-exists"
-        detail = "recipe command contract must stay deleted after recipe manager retirement"
-    },
-    @{
-        path = "shared/contracts/application/queries/recipe.query-set.json"
-        rule_id = "recipe-query-contract-still-exists"
-        detail = "recipe query contract must stay deleted after recipe manager retirement"
-    },
-    @{
-        path = "shared/contracts/application/fixtures/requests/recipe.get.request.json"
-        rule_id = "recipe-get-request-fixture-still-exists"
-        detail = "recipe.get request fixture must stay deleted after recipe manager retirement"
-    },
-    @{
-        path = "shared/contracts/application/fixtures/responses/recipe.get.success.json"
-        rule_id = "recipe-get-response-fixture-still-exists"
-        detail = "recipe.get response fixture must stay deleted after recipe manager retirement"
-    },
-    @{
-        path = "shared/contracts/application/fixtures/requests/recipe.import.request.json"
-        rule_id = "recipe-import-request-fixture-still-exists"
-        detail = "recipe.import request fixture must stay deleted after recipe manager retirement"
-    },
-    @{
-        path = "shared/contracts/application/fixtures/responses/recipe.import.conflicts.success.json"
-        rule_id = "recipe-import-response-fixture-still-exists"
-        detail = "recipe.import response fixture must stay deleted after recipe manager retirement"
-    },
-    @{
-        path = "tests/e2e/hardware-in-loop/recipe_runtime_support.py"
-        rule_id = "hil-recipe-runtime-support-still-exists"
-        detail = "HIL recipe runtime support helper must stay deleted after recipe manager retirement"
-    },
-    @{
-        path = "data/recipes"
-        rule_id = "recipe-data-root-still-exists"
-        detail = "data/recipes must stay deleted after recipe manager retirement"
-    },
-    @{
-        path = "data/schemas/recipes"
-        rule_id = "recipe-schema-root-still-exists"
-        detail = "data/schemas/recipes must stay deleted after recipe manager retirement"
     },
     @{
         path = "modules/process-path/contracts/include/process_path/contracts/IDXFPathSourcePort.h"
@@ -1654,12 +1572,6 @@ $forbiddenCompatReferences += @(
     },
     @{
         path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
-        pattern = "runtime/recipes/"
-        rule_id = "runtime-host-core-still-compiles-recipe-persistence"
-        detail = "runtime host core must not compile runtime/recipes sources"
-    },
-    @{
-        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
         pattern = "runtime/storage/files/"
         rule_id = "runtime-host-core-still-compiles-storage"
         detail = "runtime host core must not compile runtime/storage/files sources"
@@ -1690,24 +1602,6 @@ $forbiddenCompatReferences += @(
     },
     @{
         path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
-        pattern = "siligen_workflow_recipe_domain_public"
-        rule_id = "runtime-host-core-still-links-recipe-owner-surface"
-        detail = "siligen_runtime_host must not PUBLIC link workflow_recipe domain after S5"
-    },
-    @{
-        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
-        pattern = "siligen_workflow_recipe_application_public"
-        rule_id = "runtime-host-core-still-links-recipe-owner-surface"
-        detail = "siligen_runtime_host must not PUBLIC link workflow_recipe application after S5"
-    },
-    @{
-        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
-        pattern = "siligen_workflow_recipe_serialization_public"
-        rule_id = "runtime-host-core-still-links-recipe-owner-surface"
-        detail = "siligen_runtime_host must not PUBLIC link workflow_recipe serialization after S5"
-    },
-    @{
-        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
         pattern = "siligen_dxf_geometry_pb_path_source_adapter"
         rule_id = "runtime-host-core-still-links-dxf-adapter"
         detail = "siligen_runtime_host must not PUBLIC link DXF/parsing adapters after S5"
@@ -1717,12 +1611,6 @@ $forbiddenCompatReferences += @(
         pattern = "siligen_runtime_host_storage"
         rule_id = "runtime-host-core-still-links-storage-compat"
         detail = "siligen_runtime_host must not PUBLIC link runtime host storage compatibility targets after S5"
-    },
-    @{
-        path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
-        pattern = "siligen_runtime_recipe_persistence"
-        rule_id = "runtime-host-core-still-links-recipe-persistence-compat"
-        detail = "siligen_runtime_host must not PUBLIC link runtime recipe persistence compatibility targets after S5"
     },
     @{
         path = "modules/runtime-execution/runtime/host/CMakeLists.txt"
