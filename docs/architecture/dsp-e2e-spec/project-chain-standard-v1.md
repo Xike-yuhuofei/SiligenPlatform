@@ -62,13 +62,13 @@
 | A01 | 任务接入链 | 任务上下文、源文件引用 -> `JobDefinition`、`SourceDrawing` | 建立任务事实并封存源文件，使后续阶段拥有唯一任务上下文和可追溯源图事实。 | DXF 解析链、几何链 |
 | A02 | 几何规范化链 | `SourceDrawing` -> `CanonicalGeometry` | 把源图转换为系统统一几何表达，收敛单位、方向和基础坐标语义。 | 拓扑修复链、工艺规划链 |
 | A03 | 拓扑与特征链 | `CanonicalGeometry` -> `TopologyModel`、`FeatureGraph` | 把规范几何进一步转成可制造拓扑关系和制造特征事实。 | 工艺规则链、运动规划链 |
-| A04 | 工艺规划链 | `FeatureGraph`、fixed-parameter baseline/材料/模板 -> `ProcessPlan` | 把制造特征映射为工艺规则与工艺参数，不负责路径顺序或动态约束。 | 路径链、轨迹链 |
+| A04 | 工艺规划链 | `FeatureGraph`、配方/材料/模板 -> `ProcessPlan` | 把制造特征映射为工艺规则与工艺参数，不负责路径顺序或动态约束。 | 路径链、轨迹链 |
 | A05 | 坐标/对位/补偿链 | `ProcessPlan`、治具/标定/视觉/测高输入 -> `CoordinateTransformSet`、`AlignmentCompensation` | 生成当前任务的坐标真相、补偿真相和“无需补偿”的显式事实。 | 路径优化链、速度规划链 |
 | A06 | 工艺路径链 | `ProcessPlan`、坐标变换、补偿 -> `ProcessPath` | 按工艺语义组织实际要走的几何段、顺序、连接、进退刀和段级工艺标签。 | 时间参数化链、板卡程序链 |
 | A07 | 轨迹生成链 | `ProcessPath`、动态参数（当前 canonical 为 `TimePlanningConfig`） -> `MotionPlan`（代码级 payload = `MotionTrajectory`） | 当前 M7 canonical owner 在 `modules/motion-planning/`。业务阶段名保留 `MotionPlan`，代码级实际通过 `MotionPlanningFacade -> MotionPlanner -> MotionTrajectory` 产出时间化运动描述。 | `InterpolationProgramPlanner`、板卡 API 调用链、HMI 预览渲染链 |
 | A08 | 插补程序合成链 | `ProcessPath` + `MotionPlan`（代码级 payload = `MotionTrajectory`） -> `InterpolationData` / `interpolation_segments` | 由 `InterpolationProgramPlanner` 把几何段语义与速度语义合成为板卡段级程序。`interpolation_points` 属于预览 / authority binding 辅助资产，不是 A08 的 canonical 执行程序输出。 | `MotionPlanner` 时间参数化链、板卡执行链、状态回流链 |
 | A09 | 点胶时序链 | `MotionPlan`、`ProcessPlan`、阀/泵响应参数 -> `DispenseTimingPlan` | 生成出胶开闭、触发、补偿和供胶协同的时序事实。 | 轨迹生成链、手动阀调试链 |
-| A10 | 执行包链 | `MotionPlan`、`DispenseTimingPlan`、fixed-parameter baseline/模式 -> `ExecutionPackage(built/validated)` | 冻结正式执行输入，并把“已组包”和“已通过离线校验”显式分离。 | 设备预检链、正式执行链 |
+| A10 | 执行包链 | `MotionPlan`、`DispenseTimingPlan`、配方/模式 -> `ExecutionPackage(built/validated)` | 冻结正式执行输入，并把“已组包”和“已通过离线校验”显式分离。 | 设备预检链、正式执行链 |
 | A11 | 执行门禁与首件链 | `ExecutionPackage(validated)`、实时设备状态 -> `MachineReadySnapshot`、`FirstArticleResult`、`ReadyForProduction` | 判断当前是否允许进入执行；其本质是执行前门禁与质量放行，不回写上游规划对象。 | 规划失败链、归档链 |
 | A12 | 正式执行与恢复链 | 已放行执行输入、执行会话、设备状态 -> 运行事件流、故障事件、恢复决策 | 负责启动、暂停、恢复、故障分层和中止，是运行时闭环，不重算规划对象。 | 轨迹规划链、预览确认链 |
 | A13 | 归档追溯链 | 执行日志、fault 历史、首件结论、上下文快照 -> `ExecutionRecord`、`TraceLinkSet`、`WorkflowArchived` | 固化执行事实并建立可追溯证据链。 | 追溯查看 UI、运行时状态链 |

@@ -1,7 +1,5 @@
 # Device Boundary Split
 
-> Historical migration note: 本文保留 legacy `control-core` 拆边界时的阻塞快照；若出现已退役历史管理路径，仅表示历史 residual，不代表当前主线能力。
-
 ## Contracts
 
 `packages/device-contracts` owns:
@@ -49,12 +47,12 @@ These still exist under `control-core/modules/device-hal/src` and are intentiona
 
 - motion-domain types and ports mixed into motion adapters
 - dispensing/configuration domain types mixed into valve and trigger adapters
-- retired file-persistence repositories still live under `device-hal/src/adapters/recipes`
+- recipe file repositories still live under `device-hal/src/adapters/recipes`
 - diagnostics logging still lives under `device-hal/src/adapters/diagnostics/logging`
 
 ## Next Split Points
 
 - split `MotionDevicePort` into connection / axis / homing / interpolation ports
 - split digital IO into input / output / trigger ports
-- move retired file persistence out of `device-hal`
+- move recipe persistence out of `device-hal`
 - move diagnostics logging/query concerns out of `device-hal`

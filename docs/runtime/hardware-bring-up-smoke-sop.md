@@ -270,7 +270,7 @@ Set-Location D:\Projects\SiligenSuite
 .\apps\hmi-app\run.ps1 -DryRun -DisableGatewayAutostart
 ```
 
-如需完整回滚，请继续执行 `docs/runtime/rollback.md` 中的数据恢复、产物恢复和验证步骤。
+如需完整回滚，请继续执行 `docs/runtime/rollback.md` 中的配方恢复、产物恢复和验证步骤。
 
 ## 12. 日志与证据采集
 

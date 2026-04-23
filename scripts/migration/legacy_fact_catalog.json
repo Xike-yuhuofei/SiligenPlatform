@@ -138,7 +138,7 @@
       "impl_owner_policy": "forbidden",
       "entry_role": "none",
       "content_constraint": "runtime-data-only",
-      "notes": "Data contains canonical engineering schemas and runtime data assets."
+      "notes": "Data contains canonical recipes, schemas, and runtime data assets."
     },
     {
       "root_id": "ROOT-009",

@@ -222,7 +222,7 @@
       "compatibility": {
         "notes": [
           "artifact_id 必须显式提供；服务端不再回退最近 artifact 或其他全局活动态。",
-          "当前阶段 prepare 链路基于 current production baseline 解析 point_flying_carrier_policy。requested_execution_strategy 为可选显式执行策略；未传时默认按 flying_shot 解析。POINT 若无 formal carrier trajectory，仅允许基于 baseline-owned point_flying_carrier_policy，并按 approach_direction = normalize(point - planning_start_position) 合成 formal carrier trajectory。"
+          "当前阶段 prepare 链路基于 current production baseline 解析 point_flying_carrier_policy，不再依赖任何 recipe/version 全局态。requested_execution_strategy 为可选显式执行策略；未传时默认按 flying_shot 解析。POINT 若无 formal carrier trajectory，仅允许基于 baseline-owned point_flying_carrier_policy，并按 approach_direction = normalize(point - planning_start_position) 合成 formal carrier trajectory。"
         ]
       }
     },

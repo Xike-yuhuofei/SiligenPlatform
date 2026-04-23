@@ -50,7 +50,7 @@
 | `tests/` | contracts/e2e/performance/protocol-compatibility 验证根 | 唯一测试与验证承载根 |
 | `scripts/` | 自动化、迁移脚本、构建辅助 | 唯一脚本与迁移承载根 |
 | `config/` | 版本化配置 | 默认机器与环境配置源 |
-| `data/` | 工程 schema、运行资产 | 默认数据源 |
+| `data/` | 配方、schema、运行资产 | 默认数据源 |
 | `deploy/` | 部署与交付材料 | 发布清单、交付约束和环境说明 |
 
 ## 5. 当前 live 入口

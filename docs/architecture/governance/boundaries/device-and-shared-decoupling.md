@@ -1,7 +1,5 @@
 # Device And Shared Decoupling
 
-> Historical migration note: 本文记录 `control-core` 时代的 legacy device/shared 拆分阻塞；下文出现的已退役历史管理路径与类型仅用于迁移追溯，不代表当前主线仍承载该能力。
-
 更新时间：`2026-03-18`
 
 ## 1. 目标
@@ -149,7 +147,7 @@
 
 这些文件里仍混有以下非 package 化职责：
 
-- 历史文件仓储与序列化
+- recipe 文件仓储与序列化
 - diagnostics logging / query 前置实现
 - runtime-facing hardware test / validation
 - 更粗粒度的 motion / dispensing adapter
@@ -168,5 +166,5 @@
 ### 4.2 当前风险
 
 - `packages/shared-kernel` 仍通过 `control-core` 的 CMake configure/build 间接编译，尚无完全独立的根级 C++ build/test 入口
-- `device-hal` 的复杂 motion/dispensing/diagnostics/legacy-persistence 实现仍散落在 legacy 目录，删除顺序必须继续按职责拆分
+- `device-hal` 的复杂 motion/dispensing/diagnostics/recipes 实现仍散落在 legacy 目录，删除顺序必须继续按职责拆分
 - `packages/device-adapters` 仍使用 `control-core/third_party` 中的 Boost 头；这不是 `modules/*` 依赖，但后续若要完全脱离 `control-core` 目录，还要继续处理第三方头布局

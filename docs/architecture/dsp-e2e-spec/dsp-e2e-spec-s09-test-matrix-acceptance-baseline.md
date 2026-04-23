@@ -120,7 +120,7 @@ UI 观察只能辅助，不能替代：
 
 | 对象 | 必测不变量 | 典型失败 |
 |---|---|---|
-| `JobDefinition` | 主键稳定、上下文字段完整 | 缺 baseline、缺设备、缺产品编码 |
+| `JobDefinition` | 主键稳定、上下文字段完整 | 缺配方、缺设备、缺产品编码 |
 | `SourceDrawing` | 文件哈希可追溯、输入不可变 | 空文件、损坏文件、重复文件处理错误 |
 | `CanonicalGeometry` | 单位一致、实体数量稳定 | 不支持实体、退化几何 |
 | `TopologyModel` | 连通图合法、闭环/开环分类正确 | 自交歧义、闭环不可解释 |
@@ -153,7 +153,7 @@ UI 观察只能辅助，不能替代：
 
 | 阶段 | 核心测试目标 | 正常用例 | 边界用例 | 失败用例 | 验收断言 |
 |---|---|---|---|---|---|
-| S0 | 任务上下文建模 | 合法产品/治具/baseline 组合 | 可选字段缺省 | 缺产品、缺 baseline | `JobDefinition` 完整，失败停在 S0 |
+| S0 | 任务上下文建模 | 合法产品/治具/配方组合 | 可选字段缺省 | 缺产品、缺配方 | `JobDefinition` 完整，失败停在 S0 |
 | S1 | 文件接收与封存 | 合法 DXF 上传 | 大文件、重复文件 | 空文件、损坏文件 | `SourceDrawing` 可追溯，失败不进入 S2 |
 | S2 | DXF 解析标准化 | line/arc/polyline/spline 混合图 | 极小段、极短弧 | 不支持实体、字段缺失 | `CanonicalGeometry` 结构稳定 |
 | S3 | 几何修复与拓扑重建 | 闭环/开环可重建 | 轻微断口、轻微重复段 | 自交不可解释、闭环歧义 | `TopologyModel` 连通关系稳定 |
@@ -166,7 +166,7 @@ UI 观察只能辅助，不能替代：
 | S10 | 点胶时序生成 | 标准开/关阀逻辑 | 极短段、极短延迟 | 触发点越界、索引不一致 | `DispenseTimingPlan` 与轨迹一致 |
 | S11A | 执行包组包 | 正常组包 | 大包、复杂工艺 | 缺字段、引用错版 | 必须产生 `ExecutionPackageBuilt`，但不得自动视为已校验 |
 | S11B | 离线校验 | 已组包对象校验通过 | 规则边界包 | 越界、干涉、包不一致 | 必须产生 `ExecutionPackageValidated / OfflineValidationFailed` |
-| S12 | 设备预检 | 全 ready | 个别慢 ready | 未回零、报警、baseline invalid | `PreflightPassed / PreflightBlocked` 正确，规划对象版本不变化 |
+| S12 | 设备预检 | 全 ready | 个别慢 ready | 未回零、报警、production_baseline 未解析或不一致 | `PreflightPassed / PreflightBlocked` 正确，规划对象版本不变化 |
 | S13 | 首件确认 | 预览/空跑/首件通过 | 临界质量阈值、豁免、无需首件 | 空跑错、出胶错、位置偏 | 正确进入 `Passed / Rejected / Waived / NotRequired` |
 | S14 | 正式执行 | 标准跑通 | 暂停恢复 | 通信中断、段索引异常 | 执行状态迁移正确 |
 | S15 | 在线故障分层 | 可恢复 fault | 重复 fault、连锁 fault | 故障不可分类 | 正确给出恢复/终止决策 |
@@ -284,7 +284,7 @@ UI 观察只能辅助，不能替代：
 ### 子场景至少覆盖
 - 未回零
 - 报警未清
-- `baseline invalid`
+- `production_baseline 未解析或不一致`
 - 工件未到位
 - 门禁 / 安全链未满足
 
@@ -371,7 +371,7 @@ UI 观察只能辅助，不能替代：
 | 轨迹层 | 动态超限、不可达 | 阻断在 S9 |
 | 时序层 | 开关阀越界、索引错位 | 阻断在 S10 |
 | 组包层 | 越界、干涉、包不一致 | 阻断在 S11B |
-| 设备门禁层 | 未回零、报警、baseline invalid | 阻断在 S12 |
+| 设备门禁层 | 未回零、报警、production_baseline 未解析或不一致 | 阻断在 S12 |
 | 首件层 | 空跑错、出胶错、位置偏 | 回退在 S13 |
 | 运行层 | 通信中断、堵针、安全链 | 恢复/终止在 S15 |
 | 追溯层 | 归档失败、主链断裂 | 阻断在 S16 |
@@ -397,7 +397,7 @@ UI 观察只能辅助，不能替代：
   - DXF
   - 任务上下文
   - 治具 / 标定样本
-  - fixed-parameter baseline 样本
+  - 配方样本
 - `expected/`
   - 特征摘要
   - 工艺计划摘要
@@ -552,7 +552,7 @@ UI 观察只能辅助，不能替代：
 ## 10.2 前置条件
 - 输入对象版本
 - 设备状态
-- fixed-parameter baseline 状态
+- 配方状态
 - 对位 / 补偿状态
 - 是否首件必需
 - 是否允许恢复

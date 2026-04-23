@@ -1,7 +1,5 @@
 # Legacy Exit Checks
 
-> Historical migration note: 本文用于 legacy 目录退出门禁。下文出现的已退役历史管理路径仅用于防回流检查，不代表当前主线仍保留对应系统。
-
 更新时间：`2026-03-23`
 
 ## 1. 目的

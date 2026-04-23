@@ -1,8 +1,5 @@
 # WF-T00 Shared Graph Integrator
 
-- Historical note: 本文件保留 `2026-04-08` 的执行提示快照，仅供追溯。
-- Historical note: 下文若出现已退役历史管理面的旧名称或旧路径，请按历史执行语境理解。
-
 - Task type: serial-integrator
 - Target residues: `WF-R001`, `WF-R004`, `WF-R005`, `WF-R014`, `WF-R015`, `WF-R016`, `WF-R017`
 - Depends on: ledger baseline only; then consumes outputs from all worker tasks

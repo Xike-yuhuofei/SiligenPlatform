@@ -1,7 +1,5 @@
 # ADR-004 Legacy Strangler Plan
 
-> Historical migration note: 本 ADR 固化的是 `2026-03-18` 的 legacy strangler 决策快照；文中出现的已退役历史管理资产分类仅用于说明当时的切换风险，不代表当前主线仍保留对应系统。
-
 - 状态：`Accepted`
 - 日期：`2026-03-18`
 
@@ -31,7 +29,7 @@
 
 特别是：
 
-- `control-core` 必须拆成运行入口、主体源码、shared-kernel/device include、配置、历史管理数据 五类子职责分别 gate。
+- `control-core` 必须拆成运行入口、主体源码、shared-kernel/device include、配置、recipes 五类子职责分别 gate。
 - `dxf-pipeline` 必须拆成 HMI preview、CLI/import 兼容层、proto/fixture 事实来源三类 gate。
 - `dxf-editor` 必须拆成历史脚本、mirror 源码、legacy 文档/样例三类 gate。
 - `simulation-engine` 顶层旧目录虽已消失，但 residual fallback 仍要单独 gate，防止回流。

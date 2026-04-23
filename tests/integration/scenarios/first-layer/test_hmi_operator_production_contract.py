@@ -139,7 +139,7 @@ def test_summarize_operator_output_requires_formal_stage_sequence_and_staged_scr
 def test_summarize_operator_output_fail_closes_on_partial_preview_evidence() -> None:
     output = "\n".join(
         [
-            "FAIL: Timed out waiting for operator preview becomes ready without extra selection gate",
+            "FAIL: Timed out waiting for operator preview becomes ready without recipe selection",
             "OPERATOR_CONTEXT stage=preview-ready-failed artifact_id=artifact-1 plan_id=null plan_fingerprint=null preview_source=null preview_kind=null glue_point_count=0 preview_gate_state=failed preview_gate_error=preview_timeout snapshot_hash=null confirmed_snapshot_hash=null snapshot_ready=false job_id=null target_count=1 completed_count=0/1 global_progress_percent=0 current_operation=空闲 preview_confirmed=false",
         ]
     )

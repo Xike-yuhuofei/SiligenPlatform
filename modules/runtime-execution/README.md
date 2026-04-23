@@ -15,7 +15,7 @@
 
 - 进程级 `BuildContainer(...)` bootstrap / composition root。
 - `WorkspaceAssetPaths` 与进程启动期配置路径解析。
-- 已退役历史管理持久化 wiring、runtime file storage、security 子系统、DXF / workflow / job-ingest 宿主装配。
+- recipe persistence wiring、runtime file storage、security 子系统、DXF / workflow / job-ingest 宿主装配。
 
 这些职责已迁到 [`apps/runtime-service`](D:/Projects/SiligenSuite/apps/runtime-service/README.md) 的 app-local composition / infrastructure shell；`M9` 不再以 `siligen_runtime_host` 对外聚合这些能力。
 
@@ -59,7 +59,7 @@
 
 deterministic-path 的 `ProcessPath` 重建、轨迹规划与插补程序生成现由 `M7 motion-planning` 持有；`runtime-execution` 仅负责 runtime port 装配、tick 推进调用与执行态消费。
 
-`siligen_runtime_host` 不再 `PUBLIC` 聚合 `job-ingest`、`workflow`、DXF adapter、host storage 或已退役持久化兼容层。
+`siligen_runtime_host` 不再 `PUBLIC` 聚合 `job-ingest`、`workflow`、`workflow_recipe`、DXF adapter、host storage 或 recipe persistence。
 
 ## App 边界
 

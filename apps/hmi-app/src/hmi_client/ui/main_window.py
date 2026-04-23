@@ -190,6 +190,11 @@ class JogButton(QPushButton):
         super().mouseReleaseEvent(event)
         if event.button() == Qt.LeftButton:
             _UI_LOGGER.info("JogButton mouse release text=%s", self.text())
+
+
+
+
+
 class AspectRatioContainer(QWidget):
     def __init__(self, content: QWidget, aspect_ratio: float, parent=None):
         super().__init__(parent)
@@ -658,7 +663,7 @@ class MainWindow(QMainWindow):
         self._dxf_filename_display = QLineEdit()
         self._dxf_filename_display.setReadOnly(True)
         self._dxf_filename_display.setPlaceholderText("未加载DXF文件")
-        self._dxf_filename_display.setProperty("data-testid", "input-current-dxf")
+        self._dxf_filename_display.setProperty("data-testid", "input-current-recipe")
         file_row.addWidget(self._dxf_filename_display)
         
         browse_btn = QPushButton("浏览...")

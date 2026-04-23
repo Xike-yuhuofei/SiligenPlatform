@@ -23,6 +23,7 @@
   ],
   "ignore": [
     "apps/hmi-app/src/hmi_client/ui/main_window.py",
+    "apps/hmi-app/src/hmi_client/ui/recipe_config_widget.py",
     "apps/hmi-app/src/hmi_client/tools/ui_qtest.py",
     "apps/hmi-app/src/hmi_client/tools/offline_ui_smoke.py",
     "apps/hmi-app/src/hmi_client/tools/config_mock_test.py",
