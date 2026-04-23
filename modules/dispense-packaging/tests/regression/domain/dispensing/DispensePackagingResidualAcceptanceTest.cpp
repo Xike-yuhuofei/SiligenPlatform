@@ -25,16 +25,6 @@ std::string ReadTextFile(const fs::path& path) {
     return buffer.str();
 }
 
-std::size_t CountOccurrences(const std::string& content, const std::string& needle) {
-    std::size_t count = 0;
-    std::size_t cursor = 0;
-    while ((cursor = content.find(needle, cursor)) != std::string::npos) {
-        ++count;
-        cursor += needle.size();
-    }
-    return count;
-}
-
 std::string ExtractBlock(const std::string& content, const std::string& start_token) {
     const std::size_t start = content.find(start_token);
     EXPECT_NE(start, std::string::npos) << "missing token: " << start_token;
@@ -126,7 +116,7 @@ TEST(DispensePackagingResidualAcceptanceTest, ContourOptimizationResidualShrinks
     EXPECT_NE(dispense_packaging_tests.find("DispensingPlannerService.cpp"), std::string::npos);
 }
 
-TEST(DispensePackagingResidualAcceptanceTest, DomainDispensingShrinksToThinOwnerCoreAndSplitsResidualHeaderBridgeByIntent) {
+TEST(DispensePackagingResidualAcceptanceTest, DomainDispensingShrinksToThinOwnerCoreAndLeavesOnlyPlanningResidualHeaderBridge) {
     const fs::path repo_root = RepoRoot();
     const std::string content = ReadTextFile(
         repo_root / "modules/dispense-packaging/domain/dispensing/CMakeLists.txt");
@@ -143,12 +133,6 @@ TEST(DispensePackagingResidualAcceptanceTest, DomainDispensingShrinksToThinOwner
     const std::string planning_residual_link_block = ExtractBlock(
         content,
         "target_link_libraries(siligen_dispense_packaging_domain_dispensing_planning_residual_headers INTERFACE");
-    const std::string execution_residual_include_block = ExtractBlock(
-        content,
-        "target_include_directories(siligen_dispense_packaging_domain_dispensing_execution_residual_headers BEFORE INTERFACE");
-    const std::string execution_residual_link_block = ExtractBlock(
-        content,
-        "target_link_libraries(siligen_dispense_packaging_domain_dispensing_execution_residual_headers INTERFACE");
 
     EXPECT_EQ(include_block.find("SILIGEN_RUNTIME_EXECUTION_RUNTIME_CONTRACTS_INCLUDE_DIR"), std::string::npos);
     EXPECT_EQ(include_block.find("SILIGEN_WORKFLOW_DOMAIN_PUBLIC_INCLUDE_DIR"), std::string::npos);
@@ -169,7 +153,7 @@ TEST(DispensePackagingResidualAcceptanceTest, DomainDispensingShrinksToThinOwner
     EXPECT_NE(
         content.find("add_library(siligen_dispense_packaging_domain_dispensing_planning_residual_headers INTERFACE)"),
         std::string::npos);
-    EXPECT_NE(
+    EXPECT_EQ(
         content.find("add_library(siligen_dispense_packaging_domain_dispensing_execution_residual_headers INTERFACE)"),
         std::string::npos);
     EXPECT_EQ(
@@ -188,22 +172,12 @@ TEST(DispensePackagingResidualAcceptanceTest, DomainDispensingShrinksToThinOwner
     EXPECT_EQ(
         planning_residual_link_block.find("siligen_device_contracts"),
         std::string::npos);
-    EXPECT_NE(
-        execution_residual_include_block.find("SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR"),
-        std::string::npos);
-    EXPECT_NE(
-        execution_residual_link_block.find("siligen_dispense_packaging_domain_dispensing"),
-        std::string::npos);
-    EXPECT_NE(
-        execution_residual_link_block.find("siligen_runtime_execution_runtime_contracts"),
-        std::string::npos);
-    EXPECT_NE(
-        execution_residual_link_block.find("siligen_process_planning_contracts_public"),
-        std::string::npos);
+    EXPECT_EQ(content.find("siligen_dispense_packaging_execution_residual"), std::string::npos);
+    EXPECT_EQ(content.find("siligen_dispense_packaging_compensation_residual"), std::string::npos);
     EXPECT_EQ(content.find("GuardDecision bridge headers"), std::string::npos);
 }
 
-TEST(DispensePackagingResidualAcceptanceTest, DispensePackagingOwnerTargetShrinksToCoreAndResidualTargetsCarrySplitHeaderLinks) {
+TEST(DispensePackagingResidualAcceptanceTest, DispensePackagingOwnerTargetShrinksToCoreAndDeletesExecutionResidualTargets) {
     const fs::path repo_root = RepoRoot();
     const std::string content = ReadTextFile(
         repo_root / "modules/dispense-packaging/domain/dispensing/CMakeLists.txt");
@@ -213,21 +187,15 @@ TEST(DispensePackagingResidualAcceptanceTest, DispensePackagingOwnerTargetShrink
     const std::string planning_header_link_block = ExtractBlock(
         content,
         "target_link_libraries(siligen_dispense_packaging_domain_dispensing_planning_residual_headers INTERFACE");
-    const std::string execution_header_link_block = ExtractBlock(
-        content,
-        "target_link_libraries(siligen_dispense_packaging_domain_dispensing_execution_residual_headers INTERFACE");
     const std::string planning_owner_link_block = ExtractBlock(
         content,
         "target_link_libraries(siligen_dispense_packaging_planning_owner_residual PUBLIC");
-    const std::string execution_link_block = ExtractBlock(
-        content,
-        "target_link_libraries(siligen_dispense_packaging_execution_residual PUBLIC");
 
     EXPECT_NE(content.find("add_library(siligen_dispense_packaging_domain_dispensing INTERFACE)"), std::string::npos);
     EXPECT_NE(
         content.find("add_library(siligen_dispense_packaging_domain_dispensing_planning_residual_headers INTERFACE)"),
         std::string::npos);
-    EXPECT_NE(
+    EXPECT_EQ(
         content.find("add_library(siligen_dispense_packaging_domain_dispensing_execution_residual_headers INTERFACE)"),
         std::string::npos);
     EXPECT_EQ(
@@ -242,7 +210,8 @@ TEST(DispensePackagingResidualAcceptanceTest, DispensePackagingOwnerTargetShrink
     EXPECT_EQ(content.find("add_library(siligen_dispense_packaging_planning_residual STATIC"), std::string::npos);
     EXPECT_FALSE(fs::exists(
         repo_root / "modules/dispense-packaging/domain/dispensing/PlanningResidualCompat.cpp"));
-    EXPECT_NE(content.find("add_library(siligen_dispense_packaging_execution_residual STATIC"), std::string::npos);
+    EXPECT_EQ(content.find("add_library(siligen_dispense_packaging_execution_residual STATIC"), std::string::npos);
+    EXPECT_EQ(content.find("add_library(siligen_dispense_packaging_compensation_residual STATIC"), std::string::npos);
     EXPECT_NE(planning_owner_link_block.find("siligen_process_path_contracts_public"), std::string::npos);
     EXPECT_EQ(planning_owner_link_block.find("siligen_process_path_application_public"), std::string::npos);
     EXPECT_EQ(
@@ -265,15 +234,40 @@ TEST(DispensePackagingResidualAcceptanceTest, DispensePackagingOwnerTargetShrink
     EXPECT_NE(
         planning_owner_link_block.find("siligen_dispense_packaging_domain_dispensing_planning_residual_headers"),
         std::string::npos);
-    EXPECT_NE(
-        execution_header_link_block.find("siligen_runtime_execution_runtime_contracts"),
-        std::string::npos);
-    EXPECT_NE(
-        execution_header_link_block.find("siligen_process_planning_contracts_public"),
-        std::string::npos);
-    EXPECT_NE(
-        execution_link_block.find("siligen_dispense_packaging_domain_dispensing_execution_residual_headers"),
-        std::string::npos);
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/domain/dispensing/domain-services/DispenseCompensationService.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/domain/dispensing/domain-services/DispenseCompensationService.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/domain/dispensing/domain-services/PurgeDispenserProcess.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/domain/dispensing/domain-services/PurgeDispenserProcess.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/domain/dispensing/domain-services/ValveCoordinationService.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/domain/dispensing/domain-services/ValveCoordinationService.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/domain/dispensing/domain-services/DispensingController.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/domain/dispensing/domain-services/DispensingController.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/domain/dispensing/domain-services/DispensingProcessService.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/domain/dispensing/domain-services/DispensingProcessService.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/domain/dispensing/domain-services/SupplyStabilizationPolicy.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/domain/dispensing/domain-services/SupplyStabilizationPolicy.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/domain/dispensing/domain-services/CMPTriggerService.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/domain/dispensing/domain-services/CMPTriggerService.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/application/include/dispense_packaging/application/usecases/dispensing/valve/ValveCommandUseCase.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/application/include/dispense_packaging/application/usecases/dispensing/valve/ValveQueryUseCase.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/application/usecases/dispensing/valve/ValveUseCases.cpp"));
 }
 
 TEST(DispensePackagingResidualAcceptanceTest, DomainPortShimsRemainResidualOnlyWhilePublicCompatHeadersPointAtRuntimeOwners) {
@@ -324,7 +318,7 @@ TEST(DispensePackagingResidualAcceptanceTest, DomainPortShimsRemainResidualOnlyW
         std::string::npos);
 }
 
-TEST(DispensePackagingResidualAcceptanceTest, ApplicationPlanningResidualTargetLocalizesPlanningConcreteLinks) {
+TEST(DispensePackagingResidualAcceptanceTest, ApplicationPlanningInternalTargetsLocalizePlanningConcreteLinks) {
     const fs::path repo_root = RepoRoot();
     const std::string content = ReadTextFile(
         repo_root / "modules/dispense-packaging/application/CMakeLists.txt");
@@ -333,53 +327,56 @@ TEST(DispensePackagingResidualAcceptanceTest, ApplicationPlanningResidualTargetL
         "add_library(siligen_dispense_packaging_application STATIC");
     const std::string planning_common_source_block = ExtractBlock(
         content,
-        "add_library(siligen_dispense_packaging_application_planning_common_residual STATIC");
+        "add_library(siligen_dispense_packaging_application_planning_common STATIC");
     const std::string planning_authority_source_block = ExtractBlock(
         content,
-        "add_library(siligen_dispense_packaging_application_planning_authority_residual STATIC");
+        "add_library(siligen_dispense_packaging_application_planning_authority STATIC");
     const std::string planning_execution_source_block = ExtractBlock(
         content,
-        "add_library(siligen_dispense_packaging_application_planning_execution_residual STATIC");
-    const std::string planning_residual_source_block = ExtractBlock(
+        "add_library(siligen_dispense_packaging_application_planning_execution STATIC");
+    const std::string planning_source_block = ExtractBlock(
         content,
-        "add_library(siligen_dispense_packaging_application_planning_residual STATIC");
+        "add_library(siligen_dispense_packaging_application_planning STATIC");
     const std::string application_private_block = ExtractBlock(
         content,
         "target_link_libraries(siligen_dispense_packaging_application PRIVATE");
     const std::string planning_common_private_block = ExtractBlock(
         content,
-        "target_link_libraries(siligen_dispense_packaging_application_planning_common_residual PRIVATE");
+        "target_link_libraries(siligen_dispense_packaging_application_planning_common PRIVATE");
     const std::string planning_authority_private_block = ExtractBlock(
         content,
-        "target_link_libraries(siligen_dispense_packaging_application_planning_authority_residual PRIVATE");
+        "target_link_libraries(siligen_dispense_packaging_application_planning_authority PRIVATE");
     const std::string planning_execution_private_block = ExtractBlock(
         content,
-        "target_link_libraries(siligen_dispense_packaging_application_planning_execution_residual PRIVATE");
-    const std::string planning_residual_private_block = ExtractBlock(
+        "target_link_libraries(siligen_dispense_packaging_application_planning_execution PRIVATE");
+    const std::string planning_private_block = ExtractBlock(
         content,
-        "target_link_libraries(siligen_dispense_packaging_application_planning_residual PRIVATE");
+        "target_link_libraries(siligen_dispense_packaging_application_planning PRIVATE");
 
     EXPECT_NE(content.find("add_library(siligen_dispense_packaging_application STATIC"), std::string::npos);
     EXPECT_NE(
-        content.find("add_library(siligen_dispense_packaging_application_planning_common_residual STATIC"),
+        content.find("add_library(siligen_dispense_packaging_application_planning_common STATIC"),
         std::string::npos);
     EXPECT_NE(
-        content.find("add_library(siligen_dispense_packaging_application_planning_authority_residual STATIC"),
+        content.find("add_library(siligen_dispense_packaging_application_planning_authority STATIC"),
         std::string::npos);
     EXPECT_NE(
-        content.find("add_library(siligen_dispense_packaging_application_planning_execution_residual STATIC"),
+        content.find("add_library(siligen_dispense_packaging_application_planning_execution STATIC"),
         std::string::npos);
     EXPECT_NE(
+        content.find("add_library(siligen_dispense_packaging_application_planning STATIC"),
+        std::string::npos);
+    EXPECT_EQ(
         content.find("add_library(siligen_dispense_packaging_application_planning_residual STATIC"),
         std::string::npos);
-    EXPECT_NE(application_source_block.find("services/dispensing/PlanningAssemblyServices.cpp"), std::string::npos);
+    EXPECT_EQ(application_source_block.find("services/dispensing/PlanningAssemblyServices.cpp"), std::string::npos);
     EXPECT_NE(
-        planning_common_source_block.find("services/dispensing/PlanningAssemblyResidualCommon.cpp"),
+        planning_common_source_block.find("services/dispensing/PlanningAssemblyCommon.cpp"),
         std::string::npos);
     EXPECT_NE(
         planning_authority_source_block.find("services/dispensing/PlanningAssemblyAuthorityArtifacts.cpp"),
         std::string::npos);
-    EXPECT_NE(
+    EXPECT_EQ(
         planning_authority_source_block.find("services/dispensing/PreviewSnapshotResidualProcessPath.cpp"),
         std::string::npos);
     EXPECT_NE(
@@ -395,10 +392,10 @@ TEST(DispensePackagingResidualAcceptanceTest, ApplicationPlanningResidualTargetL
         planning_execution_source_block.find("services/dispensing/PlanningAssemblyExecutionPackaging.cpp"),
         std::string::npos);
     EXPECT_NE(
-        planning_residual_source_block.find("services/dispensing/PlanningAssemblyResidualFacade.cpp"),
+        planning_source_block.find("services/dispensing/PlanningAssemblyServices.cpp"),
         std::string::npos);
     EXPECT_NE(
-        application_private_block.find("siligen_dispense_packaging_application_planning_residual"),
+        application_private_block.find("siligen_dispense_packaging_application_planning"),
         std::string::npos);
     EXPECT_EQ(
         application_private_block.find("siligen_dispense_packaging_domain_dispensing_residual_headers"),
@@ -413,7 +410,7 @@ TEST(DispensePackagingResidualAcceptanceTest, ApplicationPlanningResidualTargetL
         planning_common_private_block.find("siligen_dispense_packaging_planning_legacy_dxf_residual"),
         std::string::npos);
     EXPECT_NE(
-        planning_authority_private_block.find("siligen_dispense_packaging_application_planning_common_residual"),
+        planning_authority_private_block.find("siligen_dispense_packaging_application_planning_common"),
         std::string::npos);
     EXPECT_NE(
         planning_authority_private_block.find("siligen_dispense_packaging_planning_owner_residual"),
@@ -422,7 +419,7 @@ TEST(DispensePackagingResidualAcceptanceTest, ApplicationPlanningResidualTargetL
         planning_authority_private_block.find("siligen_dispense_packaging_planning_legacy_dxf_residual"),
         std::string::npos);
     EXPECT_NE(
-        planning_execution_private_block.find("siligen_dispense_packaging_application_planning_common_residual"),
+        planning_execution_private_block.find("siligen_dispense_packaging_application_planning_common"),
         std::string::npos);
     EXPECT_NE(
         planning_execution_private_block.find("siligen_dispense_packaging_domain_dispensing_planning_residual_headers"),
@@ -434,111 +431,106 @@ TEST(DispensePackagingResidualAcceptanceTest, ApplicationPlanningResidualTargetL
         planning_execution_private_block.find("${SILIGEN_DISPENSE_PACKAGING_MOTION_PLANNING_APP_TARGET}"),
         std::string::npos);
     EXPECT_NE(
-        planning_residual_private_block.find("siligen_dispense_packaging_application_planning_common_residual"),
+        planning_private_block.find("siligen_dispense_packaging_application_planning_common"),
         std::string::npos);
     EXPECT_NE(
-        planning_residual_private_block.find("siligen_dispense_packaging_application_planning_authority_residual"),
+        planning_private_block.find("siligen_dispense_packaging_application_planning_authority"),
         std::string::npos);
     EXPECT_NE(
-        planning_residual_private_block.find("siligen_dispense_packaging_application_planning_execution_residual"),
+        planning_private_block.find("siligen_dispense_packaging_application_planning_execution"),
         std::string::npos);
     EXPECT_EQ(
         application_private_block.find("siligen_dispense_packaging_planning_residual"),
         std::string::npos);
     EXPECT_EQ(
-        planning_residual_private_block.find("siligen_dispense_packaging_planning_legacy_dxf_residual"),
+        planning_private_block.find("siligen_dispense_packaging_planning_legacy_dxf_residual"),
         std::string::npos);
     EXPECT_EQ(
         application_private_block.find("siligen_dispense_packaging_domain_dispensing\n"),
         std::string::npos);
     EXPECT_EQ(
-        application_private_block.find("${SILIGEN_DISPENSE_PACKAGING_MOTION_PLANNING_APP_TARGET}"),
-        std::string::npos);
-    EXPECT_EQ(
-        planning_residual_private_block.find("siligen_dispense_packaging_domain_dispensing_planning_residual_headers"),
+        planning_private_block.find("siligen_dispense_packaging_domain_dispensing_planning_residual_headers"),
         std::string::npos);
 }
 
-TEST(DispensePackagingResidualAcceptanceTest, ApplicationPublicStopsExportingValveResidualAndMotionPlanningTargets) {
+TEST(DispensePackagingResidualAcceptanceTest, ApplicationPublicStopsExportingValveResidualAndPlanningInternals) {
     const fs::path repo_root = RepoRoot();
     const std::string content = ReadTextFile(
         repo_root / "modules/dispense-packaging/application/CMakeLists.txt");
 
-    const std::string application_source_block = ExtractBlock(
+    const std::string planning_source_block = ExtractBlock(
         content,
-        "add_library(siligen_dispense_packaging_application STATIC");
-    const std::string planning_residual_source_block = ExtractBlock(
-        content,
-        "add_library(siligen_dispense_packaging_application_planning_residual STATIC");
+        "add_library(siligen_dispense_packaging_application_planning STATIC");
     const std::string header_block = ExtractBlock(
         content,
         "target_link_libraries(siligen_dispense_packaging_application_headers INTERFACE");
     const std::string application_private_block = ExtractBlock(
         content,
         "target_link_libraries(siligen_dispense_packaging_application PRIVATE");
-    const std::string planning_residual_private_block = ExtractBlock(
+    const std::string planning_private_block = ExtractBlock(
         content,
-        "target_link_libraries(siligen_dispense_packaging_application_planning_residual PRIVATE");
+        "target_link_libraries(siligen_dispense_packaging_application_planning PRIVATE");
     const std::string public_block = ExtractBlock(
         content,
         "target_link_libraries(siligen_dispense_packaging_application_public INTERFACE");
 
-    EXPECT_NE(application_source_block.find("services/dispensing/PlanningAssemblyServices.cpp"), std::string::npos);
+    EXPECT_NE(planning_source_block.find("services/dispensing/PlanningAssemblyServices.cpp"), std::string::npos);
     EXPECT_NE(
-        planning_residual_source_block.find("services/dispensing/PlanningAssemblyResidualFacade.cpp"),
+        content.find("add_library(siligen_dispense_packaging_application_planning STATIC"),
         std::string::npos);
     EXPECT_EQ(
-        planning_residual_source_block.find("services/dispensing/PlanningAssemblyAuthorityArtifacts.cpp"),
+        planning_source_block.find("services/dispensing/PlanningAssemblyResidualFacade.cpp"),
         std::string::npos);
     EXPECT_EQ(header_block.find("siligen_motion_planning_application_public"), std::string::npos);
     EXPECT_EQ(header_block.find("SILIGEN_DISPENSE_PACKAGING_MOTION_PLANNING_APP_TARGET"), std::string::npos);
     EXPECT_NE(
-        application_private_block.find("siligen_dispense_packaging_application_planning_residual"),
+        application_private_block.find("siligen_dispense_packaging_application_planning"),
         std::string::npos);
     EXPECT_EQ(
         application_private_block.find("siligen_dispense_packaging_domain_dispensing_residual_headers"),
         std::string::npos);
-    EXPECT_NE(
-        planning_residual_private_block.find("siligen_dispense_packaging_application_planning_execution_residual"),
+    EXPECT_EQ(
+        planning_private_block.find("siligen_dispense_packaging_domain_dispensing_planning_residual_headers"),
         std::string::npos);
     EXPECT_EQ(
-        planning_residual_private_block.find("siligen_dispense_packaging_domain_dispensing_planning_residual_headers"),
-        std::string::npos);
-    EXPECT_EQ(
-        planning_residual_private_block.find("siligen_dispense_packaging_domain_dispensing_execution_residual_headers"),
+        planning_private_block.find("siligen_dispense_packaging_domain_dispensing_execution_residual_headers"),
         std::string::npos);
     EXPECT_EQ(application_private_block.find("siligen_dispense_packaging_planning_residual"), std::string::npos);
-    EXPECT_EQ(application_private_block.find("${SILIGEN_DISPENSE_PACKAGING_MOTION_PLANNING_APP_TARGET}"), std::string::npos);
     EXPECT_EQ(application_private_block.find("siligen_motion_planning_application_public"), std::string::npos);
     EXPECT_EQ(application_private_block.find("siligen_dispense_packaging_domain_dispensing\n"), std::string::npos);
     EXPECT_EQ(public_block.find("siligen_valve_core"), std::string::npos);
     EXPECT_EQ(public_block.find("siligen_dispense_packaging_execution_residual"), std::string::npos);
     EXPECT_EQ(public_block.find("siligen_dispense_packaging_planning_residual"), std::string::npos);
     EXPECT_EQ(
-        public_block.find("$<LINK_ONLY:siligen_dispense_packaging_application_planning_residual>"),
+        public_block.find("$<LINK_ONLY:siligen_dispense_packaging_application_planning>"),
+        std::string::npos);
+    EXPECT_EQ(
+        public_block.find("siligen_dispense_packaging_application_planning"),
         std::string::npos);
 }
 
-TEST(DispensePackagingResidualAcceptanceTest, PreviewSnapshotServiceDelegatesProcessPathConcreteToPlanningResidual) {
+TEST(DispensePackagingResidualAcceptanceTest, PreviewSnapshotServiceDeletesDeadProcessPathResidualShim) {
     const fs::path repo_root = RepoRoot();
     const std::string cmake_content = ReadTextFile(
         repo_root / "modules/dispense-packaging/application/CMakeLists.txt");
     const std::string planning_authority_source_block = ExtractBlock(
         cmake_content,
-        "add_library(siligen_dispense_packaging_application_planning_authority_residual STATIC");
+        "add_library(siligen_dispense_packaging_application_planning_authority STATIC");
     const std::string preview_service = ReadTextFile(
         repo_root / "modules/dispense-packaging/application/services/dispensing/PreviewSnapshotService.cpp");
-    const std::string preview_residual = ReadTextFile(
-        repo_root / "modules/dispense-packaging/application/services/dispensing/PreviewSnapshotResidualProcessPath.cpp");
 
-    EXPECT_NE(
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/application/services/dispensing/PreviewSnapshotResidualProcessPath.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/application/services/dispensing/PreviewSnapshotResidualProcessPath.cpp"));
+    EXPECT_EQ(
         planning_authority_source_block.find("services/dispensing/PreviewSnapshotResidualProcessPath.cpp"),
         std::string::npos);
-    EXPECT_NE(
+    EXPECT_EQ(
         preview_service.find(
             '#' + std::string("include \"application/services/dispensing/PreviewSnapshotResidualProcessPath.h\"")),
         std::string::npos);
-    EXPECT_NE(
+    EXPECT_EQ(
         preview_service.find("Internal::BuildPreviewProcessPathPoints(*input.process_path)"),
         std::string::npos);
     EXPECT_EQ(
@@ -548,20 +540,26 @@ TEST(DispensePackagingResidualAcceptanceTest, PreviewSnapshotServiceDelegatesPro
     EXPECT_EQ(
         preview_service.find("std::vector<Point2D> BuildPointVectorFromProcessPath("),
         std::string::npos);
-    EXPECT_NE(
-        preview_residual.find(
-            '#' + std::string("include \"domain/dispensing/planning/domain-services/CurveFlatteningService.h\"")),
+    EXPECT_EQ(
+        preview_service.find('#' + std::string("include \"process_path/contracts/ProcessPath.h\"")),
         std::string::npos);
-    EXPECT_NE(preview_residual.find("BuildPreviewProcessPathPoints("), std::string::npos);
 }
 
-TEST(DispensePackagingResidualAcceptanceTest, PlanningResidualFacadeShrinksToOrchestrationOnly) {
+TEST(DispensePackagingResidualAcceptanceTest, PlanningAssemblyServicesOwnsThinPublicOrchestration) {
     const fs::path repo_root = RepoRoot();
+    const fs::path wrapper_header =
+        repo_root / "modules/dispense-packaging/application/services/dispensing/PlanningAssemblyResidualFacade.h";
+    const fs::path wrapper_source =
+        repo_root / "modules/dispense-packaging/application/services/dispensing/PlanningAssemblyResidualFacade.cpp";
     const std::string content = ReadTextFile(
-        repo_root / "modules/dispense-packaging/application/services/dispensing/PlanningAssemblyResidualFacade.cpp");
+        repo_root / "modules/dispense-packaging/application/services/dispensing/PlanningAssemblyServices.cpp");
 
-    EXPECT_EQ(CountOccurrences(content, "BuildAuthorityPreviewArtifactsResidual("), 1U);
-    EXPECT_EQ(CountOccurrences(content, "BuildExecutionArtifactsFromAuthorityResidual("), 1U);
+    EXPECT_FALSE(fs::exists(wrapper_header));
+    EXPECT_FALSE(fs::exists(wrapper_source));
+    EXPECT_NE(content.find("PlanningAssemblyInternals.h"), std::string::npos);
+    EXPECT_EQ(content.find("PlanningAssemblyResidualFacade.h"), std::string::npos);
+    EXPECT_EQ(content.find("BuildAuthorityPreviewArtifactsResidual("), std::string::npos);
+    EXPECT_EQ(content.find("BuildExecutionArtifactsFromAuthorityResidual("), std::string::npos);
     EXPECT_NE(content.find("AssembleAuthorityPreviewArtifacts("), std::string::npos);
     EXPECT_NE(content.find("AssembleExecutionArtifacts("), std::string::npos);
 
@@ -584,7 +582,7 @@ TEST(DispensePackagingResidualAcceptanceTest, ExecutionResidualSplitsIntoModuleL
         repo_root / "modules/dispense-packaging/application/CMakeLists.txt");
     const std::string planning_execution_source_block = ExtractBlock(
         cmake_content,
-        "add_library(siligen_dispense_packaging_application_planning_execution_residual STATIC");
+        "add_library(siligen_dispense_packaging_application_planning_execution STATIC");
     const std::string execution_artifacts = ReadTextFile(
         repo_root / "modules/dispense-packaging/application/services/dispensing/PlanningAssemblyExecutionArtifacts.cpp");
     const std::string execution_interpolation = ReadTextFile(
@@ -646,19 +644,19 @@ TEST(DispensePackagingResidualAcceptanceTest, ExecutionResidualSplitsIntoModuleL
 
 TEST(DispensePackagingResidualAcceptanceTest, LegacyPlannerLiveConsumerMovesToResidualQuarantineSupportAndAudit) {
     const fs::path repo_root = RepoRoot();
-    const std::string workflow_integration = ReadTextFile(
-        repo_root / "modules/workflow/tests/integration/DispensingWorkflowUseCaseTest.cpp");
     const std::string motion_planning_tests = ReadTextFile(
         repo_root / "modules/motion-planning/tests/CMakeLists.txt");
     const std::string dispense_packaging_tests = ReadTextFile(
         repo_root / "modules/dispense-packaging/tests/CMakeLists.txt");
     const std::string dispense_packaging_domain = ReadTextFile(
         repo_root / "modules/dispense-packaging/domain/dispensing/CMakeLists.txt");
+    const fs::path legacy_workflow_test =
+        repo_root / "modules/workflow/tests/integration/DispensingWorkflowUseCaseTest.cpp";
+    const fs::path runtime_execution_workflow_test =
+        repo_root / "modules/runtime-execution/tests/unit/dispensing/DispensingWorkflowUseCaseTest.cpp";
 
-    EXPECT_EQ(
-        workflow_integration.find('#' + std::string("include \"domain/dispensing/planning/domain-services/DispensingPlannerService.h\"")),
-        std::string::npos);
-    EXPECT_EQ(workflow_integration.find("DomainServices::DispensingPlan"), std::string::npos);
+    EXPECT_FALSE(fs::exists(legacy_workflow_test));
+    EXPECT_TRUE(fs::exists(runtime_execution_workflow_test));
     EXPECT_NE(
         motion_planning_tests.find("unit/domain/motion/MainlineTrajectoryAuditTest.cpp"),
         std::string::npos);

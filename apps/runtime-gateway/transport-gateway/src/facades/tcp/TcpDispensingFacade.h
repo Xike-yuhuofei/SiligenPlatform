@@ -1,11 +1,11 @@
 #pragma once
 
-#include "dispense_packaging/application/usecases/dispensing/valve/ValveCommandUseCase.h"
-#include "dispense_packaging/application/usecases/dispensing/valve/ValveQueryUseCase.h"
 #include "job_ingest/contracts/dispensing/UploadContracts.h"
 #include "runtime_execution/contracts/safety/InterlockTypes.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingWorkflowUseCase.h"
+#include "runtime_execution/application/usecases/dispensing/valve/ValveCommandUseCase.h"
+#include "runtime_execution/application/usecases/dispensing/valve/ValveQueryUseCase.h"
 #include "dispense_packaging/application/usecases/dispensing/PlanningUseCase.h"
 
 #include <memory>

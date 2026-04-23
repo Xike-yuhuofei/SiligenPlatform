@@ -93,69 +93,6 @@ target_link_libraries(siligen_dispense_packaging_domain_dispensing_planning_resi
 )
 target_compile_features(siligen_dispense_packaging_domain_dispensing_planning_residual_headers INTERFACE cxx_std_17)
 
-if(NOT TARGET siligen_dispense_packaging_domain_dispensing_execution_residual_headers)
-    add_library(siligen_dispense_packaging_domain_dispensing_execution_residual_headers INTERFACE)
-endif()
-target_include_directories(siligen_dispense_packaging_domain_dispensing_execution_residual_headers BEFORE INTERFACE
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../..
-    ${SILIGEN_MOTION_PLANNING_PUBLIC_INCLUDE_DIR}
-    ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
-)
-target_link_libraries(siligen_dispense_packaging_domain_dispensing_execution_residual_headers INTERFACE
-    siligen_dispense_packaging_domain_dispensing
-    siligen_runtime_execution_runtime_contracts
-    siligen_process_planning_contracts_public
-)
-if(TARGET siligen_device_contracts)
-    target_link_libraries(siligen_dispense_packaging_domain_dispensing_execution_residual_headers INTERFACE
-        siligen_device_contracts
-    )
-endif()
-target_compile_features(siligen_dispense_packaging_domain_dispensing_execution_residual_headers INTERFACE cxx_std_17)
-
-if(NOT TARGET siligen_dispense_packaging_compensation_residual)
-    add_library(siligen_dispense_packaging_compensation_residual STATIC
-        domain-services/DispenseCompensationService.cpp
-    )
-endif()
-target_include_directories(siligen_dispense_packaging_compensation_residual BEFORE PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../..
-    ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
-)
-target_link_libraries(siligen_dispense_packaging_compensation_residual PUBLIC
-    siligen_dispense_packaging_domain_dispensing_execution_residual_headers
-    siligen_types
-    siligen_utils
-)
-target_compile_features(siligen_dispense_packaging_compensation_residual PUBLIC cxx_std_17)
-
-if(NOT TARGET siligen_dispense_packaging_execution_residual)
-    add_library(siligen_dispense_packaging_execution_residual STATIC
-        domain-services/CMPTriggerService.cpp
-        domain-services/PurgeDispenserProcess.cpp
-        domain-services/ValveCoordinationService.cpp
-        domain-services/DispensingController.cpp
-        domain-services/DispensingProcessService.cpp
-        domain-services/SupplyStabilizationPolicy.cpp
-    )
-endif()
-target_include_directories(siligen_dispense_packaging_execution_residual BEFORE PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../..
-    ${SILIGEN_SHARED_COMPAT_INCLUDE_ROOT}
-)
-target_link_libraries(siligen_dispense_packaging_execution_residual PUBLIC
-    siligen_dispense_packaging_domain_dispensing_execution_residual_headers
-    siligen_types
-    siligen_utils
-)
-target_link_libraries(siligen_dispense_packaging_execution_residual PRIVATE
-    siligen_dispense_packaging_compensation_residual
-)
-target_compile_features(siligen_dispense_packaging_execution_residual PUBLIC cxx_std_17)
-
 if(NOT TARGET siligen_dispense_packaging_planning_owner_residual)
     add_library(siligen_dispense_packaging_planning_owner_residual STATIC
         domain-services/ArcTriggerPointCalculator.cpp
@@ -180,9 +117,6 @@ target_link_libraries(siligen_dispense_packaging_planning_owner_residual PUBLIC
     siligen_types
     siligen_utils
 )
-target_link_libraries(siligen_dispense_packaging_planning_owner_residual PRIVATE
-    siligen_dispense_packaging_compensation_residual
-)
 target_compile_features(siligen_dispense_packaging_planning_owner_residual PUBLIC cxx_std_17)
 
-message(STATUS "[DispensePackaging::Domain::Dispensing] owner/core target and residual targets 已添加")
+message(STATUS "[DispensePackaging::Domain::Dispensing] owner/core target and planning residual target 已添加")

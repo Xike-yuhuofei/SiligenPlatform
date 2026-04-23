@@ -1,6 +1,6 @@
 #pragma once
 
-#include "dispense_packaging/contracts/IValvePort.h"
+#include "runtime_execution/contracts/dispensing/IValvePort.h"
 #include "shared/types/Result.h"
 #include "shared/types/Types.h"
 

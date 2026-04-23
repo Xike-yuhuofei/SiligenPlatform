@@ -1,4 +1,4 @@
-#include "application/services/dispensing/PlanningAssemblyResidualInternals.h"
+#include "application/services/dispensing/PlanningAssemblyInternals.h"
 
 #include "application/services/dispensing/PlanningArtifactExportAssemblyService.h"
 #include "runtime_execution/contracts/dispensing/ProfileCompareExecutionCompiler.h"

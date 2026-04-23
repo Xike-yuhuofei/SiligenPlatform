@@ -28,7 +28,7 @@
 ## 当前收口状态（2026-04-09）
 
 - `device/adapters` public surface 已不再依赖 `src/**` forwarding shell；对 motion value objects 的消费统一经 canonical include root 解析。
-- `src/adapters/dispensing/dispenser/ValveAdapter.Dispenser.cpp` 已从 workflow-style `domain/dispensing/domain-services/DispenseCompensationService.h` 歧义入口，retarget 到 `modules/dispense-packaging/domain/dispensing/domain-services/DispenseCompensationService.h` canonical owner。
+- `src/adapters/dispensing/dispenser/ValveAdapter.Dispenser.cpp` 已改为直接消费 `runtime_execution/contracts/dispensing/DispenseCompensationRules.h`，不再依赖 M8 compensation service。
 - motion connection 已收敛到 `MotionRuntimeFacade` + `DeviceConnectionPort` stable device contracts，不再依赖 `coordinate-alignment/domain/machine/IHardwareConnectionPort`。
 - `HardwareTestAdapter` / `TriggerControllerAdapter` 保留为 `runtime-execution/adapters/device` 内部 concrete；
   `HardwareTestAdapter` 当前不再继承 legacy machine-test 合同面，不再暴露过渡接口；

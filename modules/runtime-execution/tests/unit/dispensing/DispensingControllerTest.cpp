@@ -1,15 +1,15 @@
 #include <gtest/gtest.h>
 
-#include "domain/dispensing/domain-services/DispensingController.h"
+#include "services/dispensing/DispensingController.h"
 #include "shared/types/Point.h"
 
-using Siligen::TrajectoryPoint;
-using Siligen::Point3D;
 using Siligen::MotionPlanning::Contracts::MotionTrajectory;
 using Siligen::MotionPlanning::Contracts::MotionTrajectoryPoint;
+using Siligen::Point3D;
+using Siligen::RuntimeExecution::Application::Services::Dispensing::ControllerConfig;
+using Siligen::RuntimeExecution::Application::Services::Dispensing::DispensingController;
 using Siligen::Shared::Types::Point2D;
-using Siligen::Domain::Dispensing::DomainServices::ControllerConfig;
-using Siligen::Domain::Dispensing::DomainServices::DispensingController;
+using Siligen::TrajectoryPoint;
 
 TEST(DispensingControllerTest, MonotonicTriggerUsesHardware) {
     DispensingController controller;

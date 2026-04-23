@@ -147,12 +147,8 @@ target_link_libraries(siligen_device_adapters PUBLIC
     siligen_process_planning_contracts_public
 )
 target_link_libraries(siligen_device_adapters PRIVATE
-    siligen_dispense_packaging_execution_residual
+    siligen_types
 )
-if(TARGET siligen_types)
-    target_link_libraries(siligen_device_adapters PRIVATE siligen_types)
-endif()
-
 if(TARGET siligen_utils)
     target_link_libraries(siligen_device_adapters PRIVATE siligen_utils)
 endif()

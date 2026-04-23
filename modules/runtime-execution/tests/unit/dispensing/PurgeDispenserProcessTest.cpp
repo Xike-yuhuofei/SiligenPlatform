@@ -1,4 +1,4 @@
-#include "domain/dispensing/domain-services/PurgeDispenserProcess.h"
+#include "services/dispensing/PurgeDispenserProcess.h"
 
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "shared/types/Error.h"
@@ -13,6 +13,10 @@
 
 namespace {
 
+using RuntimePurgeDispenserProcess =
+    Siligen::RuntimeExecution::Application::Services::Dispensing::PurgeDispenserProcess;
+using RuntimePurgeDispenserRequest =
+    Siligen::RuntimeExecution::Application::Services::Dispensing::PurgeDispenserRequest;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
@@ -250,8 +254,8 @@ TEST(PurgeDispenserProcessTest, UsesConfigStabilizationDelay) {
     auto valve_port = std::make_shared<TrackingValvePort>();
     auto config_port = std::make_shared<FakeConfigurationPort>(10);
 
-    Siligen::Domain::Dispensing::DomainServices::PurgeDispenserProcess process(valve_port, config_port);
-    Siligen::Domain::Dispensing::DomainServices::PurgeDispenserRequest request;
+    RuntimePurgeDispenserProcess process(valve_port, config_port);
+    RuntimePurgeDispenserRequest request;
     request.manage_supply = true;
     request.wait_for_completion = false;
     request.supply_stabilization_ms = 0;
@@ -274,8 +278,8 @@ TEST(PurgeDispenserProcessTest, ClosesValvesOnTimeout) {
     running_state.status = Siligen::Domain::Dispensing::Ports::DispenserValveStatus::Running;
     valve_port->SetStatusSequence({running_state});
 
-    Siligen::Domain::Dispensing::DomainServices::PurgeDispenserProcess process(valve_port, config_port);
-    Siligen::Domain::Dispensing::DomainServices::PurgeDispenserRequest request;
+    RuntimePurgeDispenserProcess process(valve_port, config_port);
+    RuntimePurgeDispenserRequest request;
     request.manage_supply = true;
     request.wait_for_completion = true;
     request.supply_stabilization_ms = 1;
@@ -290,10 +294,10 @@ TEST(PurgeDispenserProcessTest, ClosesValvesOnTimeout) {
 }
 
 TEST(PurgeDispenserProcessTest, RejectsWhenValvePortUnavailable) {
-    auto config_port = std::make_shared<FakeConfigurationPort>(0);
+    auto config_port = std::make_shared<FakeConfigurationPort>(1);
 
-    Siligen::Domain::Dispensing::DomainServices::PurgeDispenserProcess process(nullptr, config_port);
-    Siligen::Domain::Dispensing::DomainServices::PurgeDispenserRequest request;
+    RuntimePurgeDispenserProcess process(nullptr, config_port);
+    RuntimePurgeDispenserRequest request;
     request.manage_supply = false;
     request.wait_for_completion = false;
 
