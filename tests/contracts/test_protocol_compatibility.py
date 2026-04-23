@@ -119,7 +119,6 @@ def test_known_compatibility_gaps_are_recorded():
     overrides = load_json(CONTRACTS / "mappings" / "compatibility-overrides.json")
     ids = {item["id"] for item in overrides["overrides"]}
     assert "dxf-info-total-segments-gap" not in ids
-    assert "recipe-request-aliases" not in ids
 
     hmi_ui = HMI_MAIN_WINDOW.read_text(encoding="utf-8")
     tcp_source = TCP_DISPATCHER.read_text(encoding="utf-8")

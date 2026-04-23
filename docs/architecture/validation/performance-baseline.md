@@ -19,7 +19,7 @@
 - Python：`3.12.1`
 - CPU：`16` 逻辑核
 - 采样脚本：`tests/performance/collect_baselines.py`
-- 采样脚本当前按 runtime-owned `production_baseline` 单轨运行，不接受显式 `--recipe-id/--version-id`
+- 采样脚本当前按 runtime-owned `production_baseline` 单轨运行，不接受已退役的固定参数 CLI
 - 原始报告：`tests/reports/performance/2026-03-25-baseline.json`
 - 冻结快照：`tests/reports/performance/2026-03-25-baseline.md`
 - 最新快照：`tests/reports/performance/latest.json`、`tests/reports/performance/latest.md`

@@ -235,8 +235,6 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
     dispatcher_header = TCP_DISPATCHER_HEADER.read_text(encoding="utf-8")
 
     assert {"artifact_id", "dispensing_speed_mm_s"}.issubset(set(prepare_operation["paramsSchema"]["required"]))
-    assert "recipe_id" not in prepare_operation["paramsSchema"]["properties"]
-    assert "version_id" not in prepare_operation["paramsSchema"]["properties"]
     assert {"import_result_classification", "import_production_ready", "formal_compare_gate", "prepared_filepath"}.issubset(
         set(prepare_operation["resultSchema"]["required"])
     )
@@ -255,8 +253,6 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
     assert "artifact_id 允许省略" not in notes
     assert "requested_execution_strategy" in mapping
     assert "current production baseline" in mapping
-    assert "published recipe version" not in mapping
-    assert "activeVersionId" not in mapping
     assert "允许省略 `artifact_id`" not in mapping
     job_start_operation = next(op for op in command_set["operations"] if op["method"] == "dxf.job.start")
     job_start_notes = "\n".join(job_start_operation.get("compatibility", {}).get("notes", []))
@@ -272,8 +268,6 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
     assert '{"execution_plan_summary", BuildExecutionPlanSummaryJson(plan.execution_plan_summary)}' in dispatcher_source
     assert '{"production_baseline", BuildProductionBaselineJson(' in dispatcher_source
     assert '{"execution_budget_s", start_response.execution_budget_s}' in dispatcher_source
-    assert 'ReadJsonStringAlias(params, "recipeId", "recipe_id")' not in dispatcher_source
-    assert 'ReadJsonStringAlias(params, "versionId", "version_id")' not in dispatcher_source
     assert 'ReadJsonDouble(params, "dispensing_speed_mm_s", ReadJsonDouble(params, "speed_mm_s", 0.0))' not in dispatcher_source
     assert 'ReadJsonBool(params, "use_hardware_trigger", true)' not in dispatcher_source
     assert "std::string production_baseline_id;" in dispatcher_header

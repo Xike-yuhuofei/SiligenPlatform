@@ -274,12 +274,6 @@ option(SILIGEN_ENABLE_COVERAGE "启用代码覆盖率" OFF)
 option(SILIGEN_ENABLE_MOCK_MULTICARD "构建 MockMultiCard 支持" ON)
 option(SILIGEN_ENABLE_CGAL "启用CGAL支持（DXF轮廓增广）" OFF)
 option(SILIGEN_ENABLE_PROTOBUF "启用Protobuf支持" ON)
-if(DEFINED CACHE{BUILD_SECURITY_MODULE})
-    message(FATAL_ERROR
-        "BUILD_SECURITY_MODULE has been retired. Remove BUILD_SECURITY_MODULE from the CMake cache "
-        "and consume security sources via apps/runtime-service; root CMake no longer defines security_module."
-    )
-endif()
 set(SILIGEN_LOG_LEVEL "ERROR" CACHE STRING "构建日志级别: ERROR/WARNING/INFO")
 option(SILIGEN_USE_PCH "使用预编译头加速编译" ON)
 option(SILIGEN_USE_UNITY_BUILD "使用Unity Build加速编译(实验性)" OFF)

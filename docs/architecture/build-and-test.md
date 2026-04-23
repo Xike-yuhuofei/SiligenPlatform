@@ -20,7 +20,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\run-loc
 - `test.ps1` / `ci.ps1` 是根级测试聚合 authority；`python -m test_kit.workspace_validation` 仅在已完成环境引导并注入 `PYTHONPATH=shared\testing\test-kit\src` 时可作为底层模块入口
 - `test.ps1` 在所选 suite 会消费 control-apps 产物时，会先调用同一轮根级 `build.ps1` 做单轨预构建；`full-offline-gate` 不再依赖手工预构建
 - `tests/reports/static/` 是静态门禁正式报告根
-- 当前 active gate 不纳入已退役的 recipe management 与用户管理链路；相关验证已从正式门禁、模块索引与运行时接线中清除。
+- 当前 active gate 不纳入已退役的管理链路与用户管理链路；相关验证已从正式门禁、模块索引与运行时接线中清除。
 
 ## 正式分层
 

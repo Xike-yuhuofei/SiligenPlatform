@@ -57,10 +57,10 @@
 M1（M0 编排）
 
 **阶段职责**  
-建立一次完整制造任务，把产品、工件、治具、材料、配方、设备与操作者绑定成统一上下文。
+建立一次完整制造任务，把产品、工件、治具、材料、production baseline、设备与操作者绑定成统一上下文。
 
 **主要输入**  
-产品型号、工件类型、治具版本、材料批次、配方版本、设备型号、操作员、工单号、DXF 文件引用。
+产品型号、工件类型、治具版本、材料批次、production baseline、设备型号、操作员、工单号、DXF 文件引用。
 
 **主要输出**  
 `JobDefinition`
@@ -72,11 +72,11 @@ M1（M0 编排）
 **成功判定**  
 - 任务主键生成成功
 - 所有必填上下文字段齐全
-- 所选配方与设备能力兼容
+- 所选 production baseline 与设备能力兼容
 - `JobDefinition` 可作为后续阶段唯一任务上下文事实源
 
 **失败判定**  
-- 产品/治具/配方缺失
+- 产品/治具/fixed-parameter baseline 缺失
 - 设备能力与任务类型不匹配
 - 必填上下文信息不完整
 
@@ -85,7 +85,7 @@ M1（M0 编排）
 - `request_id`
 - `operator_id`
 - `product_code`
-- `recipe_id`
+- `baseline_id`
 - `machine_id`
 
 **验收重点**  
@@ -288,7 +288,7 @@ M4
 把制造特征映射成具体点胶工艺动作和参数。
 
 **主要输入**  
-`FeatureGraph`、工艺模板、材料参数、针嘴参数、配方快照。
+`FeatureGraph`、工艺模板、材料参数、针嘴参数、production baseline 快照。
 
 **主要输出**  
 `ProcessPlan`
@@ -312,7 +312,7 @@ M4
 **必须记录**  
 - `process_plan_ref`
 - `feature_graph_ref`
-- `recipe_snapshot_ref`
+- `production_baseline_ref`
 - `process_template_ref`
 
 **验收重点**  
@@ -564,10 +564,10 @@ M8
 M8
 
 **阶段职责**  
-将轨迹、时序、配方、运行模式等冻结为一次待校验执行包。
+将轨迹、时序、production baseline、运行模式等冻结为一次待校验执行包。
 
 **主要输入**  
-`MotionPlan`、`DispenseTimingPlan`、配方快照、运行模式、机型快照。
+`MotionPlan`、`DispenseTimingPlan`、production baseline 快照、运行模式、机型快照。
 
 **主要输出**  
 `ExecutionPackage(build_result=built)`
@@ -585,7 +585,7 @@ M8
 **失败判定**  
 - 轨迹与时序版本不一致
 - 包字段缺失
-- 配方/模式上下文不完整
+- fixed-parameter baseline / 模式上下文不完整
 
 **必须记录**  
 - `execution_package_ref`
@@ -609,7 +609,7 @@ S11A 只代表“包已组装”，不代表“包已离线验证通过”。
 M8
 
 **阶段职责**  
-对已组装执行包做越界、干涉、配方一致性、估算等离线规则校验。
+对已组装执行包做越界、干涉、fixed-parameter baseline 一致性、估算等离线规则校验。
 
 **主要输入**  
 `ExecutionPackage(build_result=built)`、离线规则集、机型约束。
@@ -657,7 +657,7 @@ M9
 创建执行会话并检查设备是否具备执行条件。
 
 **主要输入**  
-`ExecutionPackage`、实时设备状态、报警状态、recipe 状态、工件到位状态。
+`ExecutionPackage`、实时设备状态、报警状态、fixed-parameter baseline 状态、工件到位状态。
 
 **主要输出**  
 `ExecutionSession`、`MachineReadySnapshot`
@@ -672,7 +672,7 @@ M9
 
 **成功判定**  
 - 会话创建成功
-- 伺服、回零、安全链、气压、工件、配方、材料状态全部满足门禁
+- 伺服、回零、安全链、气压、工件、fixed-parameter baseline、材料状态全部满足门禁
 - `MachineReadySnapshot.ready_result = passed`
 
 **失败/阻断判定**  

@@ -29,7 +29,7 @@
   - `data/schemas/engineering/dxf/v1/`
 - `data/schemas/engineering/dxf/v1/` 是工作区公开 schema 根；长期 authority 由 `shared/contracts/engineering/` 维护。
 - `shared/contracts/engineering/fixtures/` 是工程契约 fixture 的正式 authority；`data/baselines/**` 不再承担 live fixture 职责。
-- `data/recipes/**` 与 `data/schemas/recipes/**` 已随 recipe management 退场而删除，不再是任何 runtime 或测试链路的 canonical 输入。
+- 已退役的历史管理数据根与对应 schema 根已删除，不再是任何 runtime 或测试链路的 canonical 输入。
 
 ## 5. 风险说明
 

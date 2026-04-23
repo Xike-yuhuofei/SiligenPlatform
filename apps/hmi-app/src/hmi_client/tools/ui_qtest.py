@@ -655,7 +655,7 @@ class GuiContractRunner:
             self._record_operator_stage_failure("preview-load-failed", "operator preview load failed screenshot")
             return False
         self._expect(
-            "未显式选择配方版本" not in self._status_message(),
+            "未显式选择" not in self._status_message(),
             "DXF preview should not be blocked by retired configuration gating",
         )
         if self.failed:
@@ -678,7 +678,7 @@ class GuiContractRunner:
         self._emit_operator_context("preview-ready")
         self._capture_screenshot("operator preview ready screenshot", stage_name="preview-ready")
         self._expect(
-            "未显式选择配方版本" not in getattr(getattr(self.window, "_preview_gate", None), "last_error_message", ""),
+            "未显式选择" not in getattr(getattr(self.window, "_preview_gate", None), "last_error_message", ""),
             "Preview gate should not report retired configuration gating errors",
         )
         if self.failed:

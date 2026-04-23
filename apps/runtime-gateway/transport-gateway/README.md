@@ -14,7 +14,7 @@
 ## 不负责什么
 
 - `M9 runtime-execution` 的 formal owner 声明
-- 任何运动、点胶、配方、系统初始化等核心业务规则
+- 任何运动、点胶、系统初始化等核心业务规则
 - 容器宿主、配置加载、安全初始化、后台任务
 - 应用协议 schema 的 source of truth
 - workspace config 路径解析与 fallback owner

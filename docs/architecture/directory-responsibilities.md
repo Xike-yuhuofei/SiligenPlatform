@@ -12,7 +12,7 @@
 | `tests/` | integration/e2e/performance/contract-lint 承载面 | 一级业务实现 |
 | `scripts/` | 根级自动化、迁移脚本、构建辅助 | 业务 owner |
 | `config/` | 版本化配置 | 运行时临时文件 |
-| `data/` | 配方、schema、运行资产 | 上传缓存 |
+| `data/` | 工程 schema、运行资产 | 上传缓存 |
 | `deploy/` | 部署材料、交付约束 | 业务实现源码 |
 
 补充规则：
@@ -40,7 +40,7 @@
 
 | 模块 | target owner path | 当前正式关注点 |
 |---|---|---|
-| `M0` | `modules/workflow/` | orchestration 边界仍需继续收紧，避免重新吸入 recipe / runtime / engineering concrete |
+| `M0` | `modules/workflow/` | orchestration 边界仍需继续收紧，避免重新吸入已退役管理面 / runtime / engineering concrete |
 | `M1` | `modules/job-ingest/` | 负责上传语义与输入归一，不应被宿主或 UI 重新承接 owner 事实 |
 | `M2` | `modules/dxf-geometry/` | DXF preprocess 与 PB 准备链当前以模块实现 + `shared/contracts/engineering/` 为准 |
 | `M3` | `modules/topology-feature/` | 目录语义与 owner 面仍需继续收口 |

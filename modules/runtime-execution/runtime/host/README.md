@@ -30,7 +30,7 @@
 - `security/**/*`
 
 其中 bootstrap / container / infrastructure 相关文件已迁到 [`apps/runtime-service`](D:/Projects/SiligenSuite/apps/runtime-service/README.md) 的 app-local 目录；
-recipe management surface 已在 TASK-167 中正式退役，不再保留 `runtime/recipes/*` 的 app-local 替代目录。
+历史管理持久化面已在 TASK-167 中正式退役，不再保留 `runtime/recipes/*` 的 app-local 替代目录。
 
 ## 目标与依赖
 
@@ -41,7 +41,7 @@ recipe management surface 已在 TASK-167 中正式退役，不再保留 `runtim
   - `siligen_trace_diagnostics_contracts_public`
   - `siligen_device_contracts`
   - `siligen_shared`
-- 不再 `PUBLIC` 聚合 `job-ingest`、`workflow`、`workflow_recipe`、DXF adapter、host storage、recipe persistence。
+- 不再 `PUBLIC` 聚合 `job-ingest`、`workflow`、历史管理相关 target、DXF adapter、host storage、已退役持久化兼容层。
 
 ## 已摘除旧入口
 
