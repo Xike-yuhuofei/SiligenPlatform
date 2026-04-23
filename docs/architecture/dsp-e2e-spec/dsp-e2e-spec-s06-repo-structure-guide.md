@@ -87,6 +87,7 @@ repo/
 │  ├─ dxf/
 │  ├─ jobs/
 │  ├─ fixtures/
+│  ├─ process-templates/
 │  └─ golden-cases/
 ├─ tests/
 │  ├─ integration/
@@ -187,6 +188,7 @@ repo/
 - `dxf/`：标准 DXF 样例
 - `jobs/`：任务上下文样例
 - `fixtures/`：治具/坐标/标定样例
+- `process-templates/`：工艺模板与固定参数样例
 - `golden-cases/`：金标准回归用例
 
 ---

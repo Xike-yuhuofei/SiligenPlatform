@@ -23,4 +23,4 @@
 
 - `run_engineering_regression.py` 固化 `DXF -> PB -> simulation-input -> preview` 工程数据链。
 - `run_preview_flow_regression.py` 固化 `DXF 导入 -> preview snapshot -> HMI 状态推进`。
-- `first-layer/run_tcp_precondition_matrix.py` 固化 `preview confirm / execution preflight` 阻断矩阵；`dxf.plan.prepare` 固定参数 owner 已正式收敛为 runtime 返回的 `production_baseline`，不再接受已退役的固定参数 CLI。
+- `first-layer/run_tcp_precondition_matrix.py` 固化 `preview confirm / execution preflight` 阻断矩阵；`dxf.plan.prepare` 固定参数 owner 已正式收敛为 runtime 返回的 `production_baseline`，不再接受 `--recipe-id/--version-id`。

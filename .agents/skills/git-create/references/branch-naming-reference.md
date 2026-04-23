@@ -53,6 +53,7 @@ Recommended project scopes:
 - `protocol`
 - `sdk`
 - `sim`
+- `recipe`
 - `config`
 - `infra`
 - `build`
@@ -170,7 +171,7 @@ Recommended regex:
 Example with explicit scope whitelist:
 
 ```regex
-^(feat|fix|refactor|docs|test|chore|perf|build|ci|revert|spike)\/(workflow|ingest|geometry|topology|process|align|path|motion|runtime|trace|hmi|protocol|sdk|sim|config|infra|build)\/[A-Z]+-\d{3,4}-[a-z0-9-]+$
+^(feat|fix|refactor|docs|test|chore|perf|build|ci|revert|spike)\/(workflow|ingest|geometry|topology|process|align|path|motion|runtime|trace|hmi|protocol|sdk|sim|recipe|config|infra|build)\/[A-Z]+-\d{3,4}-[a-z0-9-]+$
 ```
 
 Notes:

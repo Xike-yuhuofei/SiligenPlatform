@@ -157,7 +157,7 @@ rg -n "dxf-to-pb|path-to-trajectory|export-simulation-input|generate-dxf-preview
 人工确认：
 
 - 回滚只恢复 `config\machine\machine_config.ini`
-- 回滚只恢复根级 `data\`
+- 回滚只恢复 `data\recipes\`
 - 回滚 control app 时只恢复 canonical build root 产物
 - SOP 中不再写 `config\machine_config.ini` bridge
 

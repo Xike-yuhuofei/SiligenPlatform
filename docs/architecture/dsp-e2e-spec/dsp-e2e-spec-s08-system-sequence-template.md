@@ -190,7 +190,7 @@ sequenceDiagram
 
     WF->>RT: Command(RunPreflight, execution_id)
     RT-->>WF: Event(PreflightStarted, execution_id)
-    RT->>DEV: Check servo / home / safety / fixed-parameter baseline / alarm / workpiece
+    RT->>DEV: Check servo / home / safety / alarm / workpiece / production_baseline
     DEV-->>RT: Ready snapshot
     RT-->>WF: Event(PreflightPassed, machine_ready_snapshot_ref)
     WF->>WF: state = MachineReady
@@ -443,7 +443,7 @@ sequenceDiagram
 
     WF->>RT: Command(RunPreflight, execution_id)
     RT-->>WF: Event(PreflightStarted, execution_id)
-    RT->>DEV: Check servo / home / safety / fixed-parameter baseline / alarm / workpiece
+    RT->>DEV: Check servo / home / safety / recipe / alarm / workpiece
     DEV-->>RT: Snapshot indicates NOT READY
     RT-->>WF: Event(PreflightBlocked, machine_ready_snapshot_ref, failure_code, recommended_action)
     WF->>WF: state = PreflightBlocked
@@ -480,7 +480,7 @@ sequenceDiagram
 - 伺服未 ready
 - 工件未到位
 - 安全门未闭合
-- `baseline invalid`
+- `production_baseline 未解析或不一致`
 - 活动报警
 - 气压/温度未达标
 

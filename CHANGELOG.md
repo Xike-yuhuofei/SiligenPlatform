@@ -64,5 +64,5 @@
 
 ### Rollback Notes
 
-- `0.1.0-rc.1` 的最小回滚点应由四件套共同定义：提交 hash、release evidence、`config/` 与 `data/` 快照，以及 canonical control-apps 构建产物快照。
+- `0.1.0-rc.1` 的最小回滚点应由四件套共同定义：提交 hash、release evidence、`config/` 与 `data/recipes/` 快照，以及 canonical control-apps 构建产物快照。
 - 本轮若仅完成仓内 `RC evidence`，则只能声称“候选版可回放”，不能声称“已形成现场验证完备的稳定回滚点”。

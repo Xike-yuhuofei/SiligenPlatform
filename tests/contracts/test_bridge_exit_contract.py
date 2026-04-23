@@ -223,23 +223,15 @@ class BridgeExitContractTest(unittest.TestCase):
         self.assertNotIn("${SILIGEN_MODULES_ROOT}/workflow/application", implementation_block)
         self.assertNotIn("${SILIGEN_MODULES_ROOT}/workflow/adapters", implementation_block)
 
-    def test_root_build_graph_retires_security_module_residual(self) -> None:
+    def test_root_cmake_fail_closes_retired_security_module_entry(self) -> None:
         root_cmake = _read(WORKSPACE_ROOT / "CMakeLists.txt")
-        runtime_host_readme = _read(
-            WORKSPACE_ROOT / "modules" / "runtime-execution" / "runtime" / "host" / "README.md"
-        )
-        runtime_service_cmake = _read(WORKSPACE_ROOT / "apps" / "runtime-service" / "CMakeLists.txt")
-        file_tree_doc_tool = _read(WORKSPACE_ROOT / "docs" / "process-model" / "file-tree-business-doc-tool.md")
 
-        self.assertIn("`security/**/*`", runtime_host_readme)
-        self.assertIn("已迁到 [`apps/runtime-service`", runtime_host_readme)
-        self.assertNotIn("BUILD_SECURITY_MODULE", root_cmake)
+        self.assertIn("BUILD_SECURITY_MODULE has been retired.", root_cmake)
         self.assertNotIn('option(BUILD_SECURITY_MODULE "构建安全模块" OFF)', root_cmake)
-        self.assertNotIn("add_library(security_module", root_cmake)
-        self.assertNotIn("${SILIGEN_RUNTIME_HOST_CANONICAL_DIR}/security/", root_cmake)
-        self.assertIn("security/AuditLogger.cpp", runtime_service_cmake)
-        self.assertIn("security/InterlockMonitor.cpp", runtime_service_cmake)
-        self.assertIn("modules/MODULES_BUSINESS_FILE_TREE_AND_TABLES.md` 已退役", file_tree_doc_tool)
+        self.assertNotIn("add_library(security_module STATIC", root_cmake)
+        self.assertNotIn("SILIGEN_RUNTIME_HOST_CANONICAL_DIR", root_cmake)
+        self.assertNotIn("message(STATUS \"安全模块已启用\")", root_cmake)
+        self.assertNotIn("message(STATUS \"安全模块未启用(使用-DBUILD_SECURITY_MODULE=ON启用)\")", root_cmake)
 
     def test_modules_owner_boundary_documents_workflow_as_canonical_bundle(self) -> None:
         owner_boundary = _read(WORKSPACE_ROOT / "docs" / "architecture" / "modules-owner-boundary.md")
@@ -392,6 +384,7 @@ class BridgeExitContractTest(unittest.TestCase):
         self.assertIn("workflow application legacy foreign surface must stay deleted", workflow_application)
         self.assertIn("workflow adapters legacy redundancy residue must stay deleted", workflow_adapters)
         self.assertNotIn("WORKFLOW_DOMAIN_SAFETY_TEST_SOURCES", workflow_canonical)
+        self.assertNotIn("WORKFLOW_DOMAIN_RECIPE_TEST_SOURCES", workflow_canonical)
         self.assertNotIn("WORKFLOW_APPLICATION_PLANNING_TRIGGER_TEST_SOURCES", workflow_canonical)
         self.assertNotIn("WORKFLOW_APPLICATION_COMPAT_TEST_SOURCES", workflow_canonical)
         self.assertNotIn("WORKFLOW_PR1_TEST_SOURCES", workflow_canonical)
@@ -860,6 +853,81 @@ class BridgeExitContractTest(unittest.TestCase):
         for pattern, expected in expected_hits.items():
             hits = set(_fixed_string_hits(pattern, roots=("modules", "apps")))
             self.assertEqual(expected, hits, msg=f"hardware-test diagnostics cutover drifted for pattern: {pattern}")
+
+    def test_workflow_recipe_serializer_is_deleted_after_recipe_lifecycle_cutover(self) -> None:
+        legacy_header = (
+            WORKSPACE_ROOT
+            / "modules"
+            / "workflow"
+            / "domain"
+            / "include"
+            / "domain"
+            / "recipes"
+            / "serialization"
+            / "RecipeJsonSerializer.h"
+        )
+        legacy_impl = (
+            WORKSPACE_ROOT
+            / "modules"
+            / "workflow"
+            / "domain"
+            / "domain"
+            / "recipes"
+            / "serialization"
+            / "RecipeJsonSerializer.cpp"
+        )
+        self.assertFalse(legacy_header.exists(), msg="workflow recipe serializer header should be deleted after recipe-lifecycle cutover")
+        self.assertFalse(legacy_impl.exists(), msg="workflow recipe serializer implementation should be deleted after recipe-lifecycle cutover")
+
+    def test_recipe_management_surface_is_deleted(self) -> None:
+        runtime_service_cmake = _read(WORKSPACE_ROOT / "apps" / "runtime-service" / "CMakeLists.txt")
+        planner_cli_cmake = _read(WORKSPACE_ROOT / "apps" / "planner-cli" / "CMakeLists.txt")
+        gateway_cmake = _read(WORKSPACE_ROOT / "apps" / "runtime-gateway" / "transport-gateway" / "CMakeLists.txt")
+        protocol_mapping = _read(WORKSPACE_ROOT / "shared" / "contracts" / "application" / "mappings" / "protocol-mapping.md")
+        compatibility_overrides = _read(
+            WORKSPACE_ROOT / "shared" / "contracts" / "application" / "mappings" / "compatibility-overrides.json"
+        )
+        workflow_readme = _read(WORKSPACE_ROOT / "modules" / "workflow" / "README.md")
+        workflow_application_readme = _read(WORKSPACE_ROOT / "modules" / "workflow" / "application" / "README.md")
+        project_chain_standard = _read(
+            WORKSPACE_ROOT / "docs" / "architecture" / "dsp-e2e-spec" / "project-chain-standard-v1.md"
+        )
+        asset_catalog = _read(WORKSPACE_ROOT / "shared" / "testing" / "test-kit" / "src" / "test_kit" / "asset_catalog.py")
+
+        self.assertFalse((WORKSPACE_ROOT / "modules" / "recipe-lifecycle").exists(), msg="recipe-lifecycle module must be deleted")
+        self.assertFalse((WORKSPACE_ROOT / "data" / "recipes").exists(), msg="data/recipes must be deleted")
+        self.assertFalse((WORKSPACE_ROOT / "data" / "schemas" / "recipes").exists(), msg="data/schemas/recipes must be deleted")
+
+        for relative in (
+            "apps/runtime-service/container/ApplicationContainer.Recipes.cpp",
+            "apps/runtime-service/runtime/recipes",
+            "shared/contracts/application/commands/recipe.command-set.json",
+            "shared/contracts/application/queries/recipe.query-set.json",
+            "shared/contracts/application/fixtures/requests/recipe.get.request.json",
+            "shared/contracts/application/fixtures/responses/recipe.get.success.json",
+            "shared/contracts/application/fixtures/requests/recipe.import.request.json",
+            "shared/contracts/application/fixtures/responses/recipe.import.conflicts.success.json",
+            "tests/e2e/hardware-in-loop/recipe_runtime_support.py",
+        ):
+            self.assertFalse((WORKSPACE_ROOT / relative).exists(), msg=f"recipe management residue must be deleted: {relative}")
+
+        self.assertNotIn("siligen_recipe_lifecycle", runtime_service_cmake)
+        self.assertNotIn("runtime/recipes/", runtime_service_cmake)
+        self.assertNotIn("siligen_recipe_lifecycle", planner_cli_cmake)
+        self.assertNotIn("siligen_recipe_lifecycle", gateway_cmake)
+        self.assertNotIn("## `recipe.*`", protocol_mapping)
+        self.assertNotIn("recipe-request-aliases", compatibility_overrides)
+        self.assertNotIn("modules/recipe-lifecycle", workflow_readme)
+        self.assertNotIn("modules/recipe-lifecycle", workflow_application_readme)
+        self.assertNotIn("| B08 | 配方生命周期链 |", project_chain_standard)
+        self.assertNotIn("protocol.fixture.recipe_get_request", asset_catalog)
+        self.assertNotIn("protocol.fixture.recipe_get_response", asset_catalog)
+        self.assertNotIn("protocol.fixture.recipe_import_request", asset_catalog)
+        self.assertNotIn("protocol.fixture.recipe_import_response", asset_catalog)
+        self.assertNotIn("recipe.get.request.json", asset_catalog)
+        self.assertNotIn("recipe.get.success.json", asset_catalog)
+        self.assertNotIn("recipe.import.request.json", asset_catalog)
+        self.assertNotIn("recipe.import.conflicts.success.json", asset_catalog)
 
     def test_workflow_unit_directory_is_registration_only(self) -> None:
         workflow_tests_unit = WORKSPACE_ROOT / "modules" / "workflow" / "tests" / "unit"

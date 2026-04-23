@@ -10,8 +10,8 @@
 
 ## 当前边界真值
 
-- `workflow` 只承载 `M0` 编排职责，不再承载已退役历史管理 owner、runtime concrete owner 或跨模块稳定事件契约 owner。
-- 已退役历史管理 surface 已随对应系统退场而删除；`workflow` 不再承接相关 owner、serializer 或 CRUD/import-export surface。
+- `workflow` 只承载 `M0` 编排职责，不再承载 recipe owner、runtime concrete owner 或跨模块稳定事件契约 owner。
+- recipe management surface 已随 recipe manager 退役而删除；`workflow` 不再承接 recipe owner、serializer 或 CRUD/import-export surface。
 - 跨模块稳定事件发布契约 `IEventPublisherPort` 的 canonical owner 已迁到 [`shared/contracts/runtime`](D:/Projects/SiligenSuite/shared/contracts/runtime/README.md)，代码统一从 `runtime/contracts/system/IEventPublisherPort.h` 引入。
 - generic diagnostics sink 的 canonical owner 已收口到 `trace_diagnostics/contracts/{IDiagnosticsPort,DiagnosticTypes}.h`；`workflow/domain/include/domain/diagnostics/**` 旧 public headers 已删除。
 - hardware-test diagnostics contracts 当前 live landing 位于 `apps/runtime-service/include/runtime_process_bootstrap/diagnostics/**`，属于 app-local quarantine surface，不属于 `workflow` owner。
@@ -36,7 +36,7 @@
 
 ## 禁止事项
 
-- 不允许把已退役历史管理面、motion execution、system concrete、valve concrete 或新的 engineering concrete 回流到 `workflow`。
+- 不允许把 recipe、motion execution、system concrete、valve concrete 或新的 engineering concrete 回流到 `workflow`。
 - 不允许新增 compat / bridge / facade shell 来替代真实 owner 迁移。
 - 不允许把 live 代码写回 shell-only 目录。
 - 不允许在 `tests/canonical/` 之外新增 source-bearing workflow 测试。

@@ -93,6 +93,7 @@ Default generic `scope` examples:
 - `protocol`
 - `sdk`
 - `sim`
+- `recipe`
 - `config`
 - `infra`
 - `build`

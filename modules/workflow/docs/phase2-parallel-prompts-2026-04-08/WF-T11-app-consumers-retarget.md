@@ -1,8 +1,5 @@
 # WF-T11 App Consumers Retarget
 
-- Historical note: 本文件保留 `2026-04-08` 的执行提示快照，仅供追溯。
-- Historical note: 下文若出现已退役历史管理面的旧名称或旧路径，请按历史执行语境理解。
-
 - Task type: parallel-worker
 - Target residues: `WF-R024`
 - Depends on: Wave B outputs merged by `WF-T00`

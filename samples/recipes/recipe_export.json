@@ -1,0 +1,43 @@
+{
+    "auditRecords": [
+        {
+            "action": "create",
+            "actor": "tester",
+            "changes": [
+                {
+                    "after": "Demo Recipe",
+                    "field": "name"
+                },
+                {
+                    "after": "Demo",
+                    "field": "description"
+                },
+                {
+                    "after": "demo",
+                    "field": "tags"
+                }
+            ],
+            "id": "audit-29432d80-73c5",
+            "recipeId": "recipe-7d1b00f4-6a99",
+            "timestamp": 1769377537518
+        }
+    ],
+    "exportedAt": 1769378095538,
+    "recipes": [
+        {
+            "createdAt": 1769377537517,
+            "description": "Demo",
+            "id": "recipe-7d1b00f4-6a99",
+            "name": "Demo Recipe",
+            "status": "active",
+            "tags": [
+                "demo"
+            ],
+            "updatedAt": 1769377537517,
+            "versionIds": []
+        }
+    ],
+    "schemaVersion": "1.0",
+    "templates": [],
+    "versions": []
+}

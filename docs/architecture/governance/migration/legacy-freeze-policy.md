@@ -1,7 +1,5 @@
 # Legacy Freeze Policy
 
-> Historical migration note: 下文若出现已退役历史管理路径，仅表示 `control-core` 时代的冻结/退出基线，不代表当前主线仍保留对应系统。
-
 > `2026-03-19` 状态更新：`control-core/modules/shared-kernel`、`control-core/src/domain`、`control-core/src/application`、`control-core/modules/process-core`、`control-core/modules/motion-core` 已删除，相关“允许维护”口径仅代表历史冻结基线。当前删除状态与 live 收口口径请以 `docs/architecture/governance/migration/legacy-deletion-gates.md` 与 `docs/architecture/legacy-cutover-status.md` 为准。
 
 更新时间：`2026-03-19`

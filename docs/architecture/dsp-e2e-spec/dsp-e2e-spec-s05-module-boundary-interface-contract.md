@@ -234,10 +234,10 @@ M11 只能发命令、看状态、做审批、看追溯，不能直接写 owner 
 
 ### 负责消费的对象
 - `FeatureGraph`
-- 工艺模板 / production baseline 快照
+- 工艺模板 / 材料画像
 
 ### 对外输入命令
-- `PlanProcess(feature_graph_ref, production_baseline_ref, process_template_ref)`
+- `PlanProcess(feature_graph_ref, material_profile_ref, process_template_ref)`
 - `ReplanProcess(process_context)`
 - `SupersedeOwnedArtifact(artifact_ref, superseded_by_ref, reason)`
 
@@ -384,7 +384,7 @@ M11 只能发命令、看状态、做审批、看追溯，不能直接写 owner 
 ### 负责消费的对象
 - `MotionPlan`
 - `ProcessPlan`
-- production baseline 快照
+- `production_baseline`
 - 运行模式
 - 设备配置快照
 

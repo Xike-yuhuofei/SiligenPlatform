@@ -124,6 +124,12 @@ enum class ErrorCode : int32 {
     DATABASE_WRITE_FAILED = 301,      // 数据库写入失败
     DATA_SERIALIZATION_FAILED = 302,  // 数据序列化失败
     NOT_FOUND = 303,                  // 资源未找到
+    RECIPE_NOT_FOUND = 310,           // 配方未找到
+    RECIPE_VERSION_NOT_FOUND = 311,   // 配方版本未找到
+    RECIPE_ALREADY_EXISTS = 312,      // 配方已存在
+    RECIPE_INVALID_STATE = 313,       // 配方状态非法
+    RECIPE_VALIDATION_FAILED = 314,   // 配方校验失败
+    RECIPE_IMPORT_CONFLICT = 315,     // 配方导入冲突
     TEMPLATE_NOT_FOUND = 316,         // 模板未找到
     PARAMETER_SCHEMA_NOT_FOUND = 317, // 参数模式未找到
 
@@ -380,6 +386,18 @@ inline const char* ErrorCodeToString(ErrorCode code) {
             return "DATA_SERIALIZATION_FAILED";
         case ErrorCode::NOT_FOUND:
             return "NOT_FOUND";
+        case ErrorCode::RECIPE_NOT_FOUND:
+            return "RECIPE_NOT_FOUND";
+        case ErrorCode::RECIPE_VERSION_NOT_FOUND:
+            return "RECIPE_VERSION_NOT_FOUND";
+        case ErrorCode::RECIPE_ALREADY_EXISTS:
+            return "RECIPE_ALREADY_EXISTS";
+        case ErrorCode::RECIPE_INVALID_STATE:
+            return "RECIPE_INVALID_STATE";
+        case ErrorCode::RECIPE_VALIDATION_FAILED:
+            return "RECIPE_VALIDATION_FAILED";
+        case ErrorCode::RECIPE_IMPORT_CONFLICT:
+            return "RECIPE_IMPORT_CONFLICT";
         case ErrorCode::TEMPLATE_NOT_FOUND:
             return "TEMPLATE_NOT_FOUND";
         case ErrorCode::PARAMETER_SCHEMA_NOT_FOUND:
